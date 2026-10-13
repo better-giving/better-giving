@@ -6,7 +6,15 @@ import {
 	type RowControl
 } from '@better-giving/operator/components/forms/RepeatingRows';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
-import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+	type KeyboardEvent,
+	type MouseEvent,
+	type ReactNode,
+	type SyntheticEvent,
+	useEffect,
+	useRef,
+	useState
+} from 'react';
 import { formatMinorBrief, minorUnitDigits } from '$lib/donations/money';
 import {
 	MAX_SUGGESTED_AMOUNTS,
@@ -17,7 +25,8 @@ import {
 } from '$lib/forms/amounts';
 import { FORM_FIELD_LABELS } from '$lib/forms/fields';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import { type Box, boxErrorId, boxProps } from '../use-admin-form';
+import { drawAmountEntry, keyInAmountBox, regroupAmountBox } from '../amount-box';
+import { type Box, boxErrorId, boxProps, listPress, useHydrated } from '../use-admin-form';
 
 // what a donor may give: the currency the figures are in, the two bounds, and the amounts a donor
 // is offered as buttons.
@@ -35,13 +44,16 @@ import { type Box, boxErrorId, boxProps } from '../use-admin-form';
 // indexed name — `suggested_amounts[0]` — which is the one bracket a submitted body may hold and
 // the reason `$lib/server/conform.ts` bounds the index rather than refusing it. adding and removing
 // a row are the form's own controls, handed in as button props by the screen that holds the form,
-// so this group states no intent of its own and neither screen states the arithmetic twice.
+// so this group states no intent of its own and neither screen states the arithmetic twice. they
+// are drawn through `listPress` (../use-admin-form.ts), which keeps them from being the form's
+// default button: Enter in any box here presses the screen's own submit — the sheet's Done, the
+// group's Save, Create — and never Add.
 //
 // the rows are the library's `RepeatingRows`
-// (packages/operator/src/components/forms/RepeatingRows.jsx), handed those two controls as they
-// are, and each row the `key` the form minted for it: a row's id is its position, so the key is
-// what keeps a half-typed figure on its own row as rows are removed above it. where focus lands
-// after either press is that component's too.
+// (packages/operator/src/components/forms/RepeatingRows.jsx), handed those two controls through
+// `listPress`, and each row the `key` the form minted for it: a row's id is its position, so the
+// key is what keeps a half-typed figure on its own row as rows are removed above it. where focus
+// lands after either press is that component's too.
 //
 // a row is a box with a name of its own, so it is refused under itself. `suggestedAmountsRule` in
 // `$lib/forms/input-schema.ts` keys an offending amount to `suggested_amounts[1]`, which is the
@@ -70,6 +82,11 @@ import { type Box, boxErrorId, boxProps } from '../use-admin-form';
 // each bound draws its own message, under its own box: `parseFormGiving` keys every sentence to the
 // box whose label it names, the two bounds being the right way round included. every box in this
 // group is bound the same way, the amounts' rows included.
+//
+// every box here is a money box (../amount-box.ts): its digits are grouped as they are typed, and
+// its seed is drawn grouped in the server markup and after it alike. what is posted is the text
+// each box draws, grouped, which `readAmount` in `$lib/forms/amounts.ts` reads on both sides of the
+// wire — so a post made without script is the same text.
 
 /**
  * the stops the bounds slider moves along, in major units, lowest first.
@@ -138,6 +155,18 @@ function typeInto(box: HTMLInputElement, text: string): void {
 	box.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+/** a press that changes the rows rather than the record: conform's four attributes, all stated. */
+type RowPress = RowControl & { readonly form: string; readonly formNoValidate: boolean };
+
+/**
+ * a row press as `RepeatingRows` is handed it: the form's attributes it names the press by, and the
+ * type and click `listPress` draws it with, which win.
+ */
+function drawn(press: RowPress, hydrated: boolean) {
+	const as = listPress(press, hydrated);
+	return as.type === 'submit' ? { ...press, type: as.type } : { ...press, ...as };
+}
+
 /** one amount box, plus the identity the form minted for its row when the row appeared. */
 type AmountRow = Box & {
 	readonly key: string | undefined;
@@ -159,9 +188,9 @@ type AmountRows = {
 	 * withheld on, `insertWhenValid` in ../use-admin-form.ts. a press at the cap is held here, ahead
 	 * of it.
 	 */
-	readonly add: RowControl;
+	readonly add: RowPress;
 	/** the control that drops one row, as the form states it for that position. */
-	readonly remove: (index: number) => RowControl;
+	readonly remove: (index: number) => RowPress;
 };
 
 type FormGivingFieldsProps = {
@@ -179,9 +208,18 @@ type FormGivingFieldsProps = {
 	 * has one submit for all four groups.
 	 */
 	readonly footer?: ReactNode;
+	/** the group's heading level: `h2` on a form screen, `h3` in a sheet whose title is the `h2`. */
+	readonly heading?: 'h2' | 'h3' | undefined;
 };
 
-export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivingFieldsProps) {
+export function FormGivingFields({
+	boxes,
+	amounts,
+	currency,
+	footer,
+	heading: Heading = 'h2'
+}: FormGivingFieldsProps) {
+	const hydrated = useHydrated();
 	// the rows a press was held over at the cap. the sentence stands while they are the rows on
 	// screen, and goes the moment one is added or dropped. it is the answer to the latest press, so
 	// it stands over a save's refusal of the same group.
@@ -197,20 +235,25 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 	const capErrorId = boxErrorId(amounts.id);
 	const addId = `${amounts.id}-add`;
 	const add = {
-		...amounts.add,
+		...drawn(
+			{
+				...amounts.add,
+				onClick(event: MouseEvent<HTMLButtonElement>) {
+					const form = event.currentTarget.form;
+					const texts = amounts.rows.map((row) => textIn(form, row.name));
+					if (suggestedEntries(texts).length >= MAX_SUGGESTED_AMOUNTS) {
+						event.preventDefault();
+						setHeldPresses((at) => at + 1);
+						setHeldOver(identities);
+						return;
+					}
+					amounts.add.onClick?.(event);
+				}
+			},
+			hydrated
+		),
 		id: addId,
-		...(capError ? { 'aria-describedby': capErrorId } : {}),
-		onClick(event: MouseEvent<HTMLButtonElement>) {
-			const form = event.currentTarget.form;
-			const texts = amounts.rows.map((row) => textIn(form, row.name));
-			if (suggestedEntries(texts).length >= MAX_SUGGESTED_AMOUNTS) {
-				event.preventDefault();
-				setHeldPresses((at) => at + 1);
-				setHeldOver(identities);
-				return;
-			}
-			amounts.add.onClick?.(event);
-		}
+		...(capError ? { 'aria-describedby': capErrorId } : {})
 	};
 	const suggestedHintId = `${amounts.id}-hint`;
 
@@ -341,6 +384,21 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 		]);
 	};
 
+	// a seed as a money box draws it.
+	const seed = (box: Box) =>
+		box.defaultValue === undefined ? undefined : drawAmountEntry(box.defaultValue, currency);
+	// a money box's handlers, each regrouping edit handing its text on to `typed`.
+	const money = (typed: (text: string) => void = () => {}) => {
+		const regroup = (event: SyntheticEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+			typed(regroupAmountBox(event, currency));
+		return {
+			onKeyDown: (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+				keyInAmountBox(event, currency),
+			onInput: regroup,
+			onCompositionEnd: regroup
+		};
+	};
+
 	// a box being typed in moves its thumb to the nearest stop, and never past the other thumb.
 	// text that is not an amount leaves the thumb where it is: the box's own message says what is
 	// wrong with it when the group is saved.
@@ -357,7 +415,7 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 
 	return (
 		<>
-			<h2>What a donor may give</h2>
+			<Heading>What a donor may give</Heading>
 
 			<div className="adm-stack">
 				{/* a value that is stated and never editable. it is not a disabled box: disabled reads
@@ -412,7 +470,8 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 							inputMode="decimal"
 							required
 							{...boxProps(boxes.min_minor)}
-							onInput={(event) => typedLower(event.currentTarget.value)}
+							defaultValue={seed(boxes.min_minor)}
+							{...money(typedLower)}
 							error={
 								boxes.min_minor.errors?.[0] === undefined ? undefined : (
 									<MarkedText text={boxes.min_minor.errors[0]} />
@@ -425,7 +484,8 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 							inputMode="decimal"
 							required
 							{...boxProps(boxes.max_minor)}
-							onInput={(event) => typedUpper(event.currentTarget.value)}
+							defaultValue={seed(boxes.max_minor)}
+							{...money(typedUpper)}
 							error={
 								boxes.max_minor.errors?.[0] === undefined ? undefined : (
 									<MarkedText text={boxes.max_minor.errors[0]} />
@@ -457,6 +517,8 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 						// replacing the message's id (../use-admin-form.ts). the sentence goes over as a
 						// node for the reason the bounds' do.
 						...boxProps(row, { describedBy: suggestedHintId }),
+						defaultValue: seed(row),
+						...money(),
 						key: row.key,
 						className: 'adm-num',
 						inputMode: 'decimal',
@@ -464,7 +526,7 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 						// a lone row draws no Remove: with one box left there is nothing to choose
 						// between, and a control that would leave the group empty is one the group has
 						// no state for. it comes back on every row the moment there are two.
-						remove: amounts.rows.length > 1 ? amounts.remove(index) : undefined
+						remove: amounts.rows.length > 1 ? drawn(amounts.remove(index), hydrated) : undefined
 					}))}
 				/>
 

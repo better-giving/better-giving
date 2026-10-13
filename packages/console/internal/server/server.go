@@ -19,12 +19,14 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/better-giving/console/internal/account"
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/chariot"
 	"github.com/better-giving/console/internal/deployment"
+	"github.com/better-giving/console/internal/nonprofits"
 	"github.com/better-giving/console/internal/nowpayments"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/paypal"
@@ -80,6 +82,10 @@ type Options struct {
 	// Presses is where the long presses register the reading a stop makes of them. Nil is a server
 	// nothing is waiting on, which is every case that starts one without a terminal to stop it.
 	Presses *Presses
+	// Nonprofits is where an organisation is found in the IRS nonprofit API, remembered for the life
+	// of this server. Nil is the API at the address every console is built with, and in a test binary
+	// a client with no address, so reaching the live API's allowance is a test's choice to name.
+	Nonprofits *nonprofits.Client
 	// Close asks the run around this server to end, which the close press calls and may call more
 	// than once — guarding a second press is the run's own (../../cmd/better-giving/main.go). Nil
 	// is a server with no run to stop, which is every case that starts one; the press still
@@ -103,8 +109,9 @@ func New(options Options) http.Handler {
 	}
 	surface := options.Surface
 	// the same surface held to a longer deadline, for the errands the deployment answers only once
-	// a third party has (./errands.go). a case that binds one binds both: what it answers with is
-	// already immediate, so a second deadline over it would be one nothing ever waits out.
+	// a third party has and the logo's upload (./errands.go). a case that binds one binds both: what
+	// it answers with is already immediate, so a second deadline over it would be one nothing ever
+	// waits out.
 	patient := deployment.PatientCalls
 	if surface == nil {
 		surface = deployment.Calls
@@ -131,6 +138,12 @@ func New(options Options) http.Handler {
 	if sends == nil {
 		sends = cf.APISend
 	}
+	lookups := options.Nonprofits
+	if lookups == nil && testing.Testing() {
+		lookups = nonprofits.At("")
+	} else if lookups == nil {
+		lookups = nonprofits.New()
+	}
 	presses := options.Presses
 	if presses == nil {
 		presses = &Presses{}
@@ -141,9 +154,12 @@ func New(options Options) http.Handler {
 	routes := http.NewServeMux()
 	homeRoutes(routes, options.Flow, reads, options.Accounts, options.Records, surface)
 	valuesRoutes(routes, options.Flow, reads, patches, settings, options.Accounts)
+	aiRoutes(routes, options.Flow, reads, options.Accounts)
 	sessionRoutes(routes, options.Flow, reads, patches, options.Accounts, options.Records, surface,
 		presses)
 	errandRoutes(routes, doors, patientDoors)
+	logoRoutes(routes, surfaceSend(options.Records, surface), surfaceSend(options.Records, patient),
+		surfacePhotos(options.Records))
 	widgetRoutes(routes, options.Flow, reads, sends, options.Accounts)
 	stripeRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, processor,
 		presses)
@@ -152,6 +168,7 @@ func New(options Options) http.Handler {
 	chariotRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, bindChariot,
 		presses)
 	nowpaymentsRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, bindNowpayments)
+	nonprofitRoutes(routes, lookups)
 	closeRoutes(routes, options.Close)
 	routes.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {
 		// a placeholder while the folds are still the react app's own: what it says is true, and
@@ -217,16 +234,17 @@ func Listen(handler http.Handler, port int) *http.Server {
 }
 
 // how long an answer may take once its request has arrived: the longest any press here is bound to
-// by its own deadlines — a connect, an errand the deployment answers once a third party has, and a
-// write of the values — and slack past that for the answer itself to be written. the NOWPayments
-// press is counted by none of the three: it is two reads at cf.ReadTimeout in front of a write,
-// which stays under the connect's bound.
+// by its own deadlines — a connect, an errand the deployment answers once a third party has or the
+// logo's upload, and a write of the values — or a nonprofit lookup or search that waits out the
+// API's per-minute limit, and slack past that for the answer itself to be written. the NOWPayments
+// press is counted by none of these: it is two reads at cf.ReadTimeout in front of a write, which
+// stays under the connect's bound.
 //
 // **derived, never typed.** an answer cut off by this deadline is a press that finished on the
 // deployment and reads as a failure on the page, and a connect pressed again on that reading mints
 // a second session — so the deadline follows the bounds it must cover rather than restating them.
-const writeTimeout = max(deployment.ConnectBound, deployment.PatientTimeout, deployment.WriteBound) +
-	answerSlack
+const writeTimeout = max(deployment.ConnectBound, deployment.PatientTimeout, deployment.WriteBound,
+	nonprofits.AskBound) + answerSlack
 
 // what writing an answer may take past the press it carries: a local record and a json body.
 const answerSlack = 10 * time.Second

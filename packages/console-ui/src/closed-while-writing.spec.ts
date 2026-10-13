@@ -34,15 +34,18 @@ import { describe, expect, it } from 'vitest';
 // two messages: the operator presses, nothing on the control says it may not be pressed again, and
 // the second press starts a second navigation. that is the hole this half was written for.
 //
-// **what a press is here is three shapes.** `SaveButton`
+// **what a press is here is four shapes.** `SaveButton`
 // (`@better-giving/operator/components/controls/SaveButton`); a `.adm-save` drawn by hand (the one
-// twin in ./lib/smtp-fold.tsx, whose own comment says why it is not the shared button); and a
+// twin in ./lib/smtp-fold.tsx, whose own comment says why it is not the shared button); a
 // `Button` that says it is carrying an errand — one stating `aria-busy` and a closing attribute,
 // whether at its own tag or in the `*Props` object a card hands the button it draws
-// (`dangerProps` on `Modal`, `@better-giving/operator/behaviour/Dialog`). those are every control on
-// this console that carries a write. a link, a disclosure toggle and the Add and Remove inside
-// `RepeatingRows` are not presses by this reading and are not swept: the first two carry no write at
-// all, and the last two are closed as a group by the sweep above.
+// (`dangerProps` on `Modal`, `@better-giving/operator/behaviour/Dialog`); and a `<button>` drawn by
+// hand in a `Button`'s place, told by the class it wears (`STANDS_IN`), and read as a `Button`
+// press whatever it states — so one that stops stating its closing attribute is caught rather than
+// passed over. those are every control on this console that carries a write. a link, a disclosure
+// toggle and the Add and Remove inside `RepeatingRows` are not presses by this reading and are not
+// swept: the first two carry no write at all, and the last two are closed as a group by the sweep
+// above.
 //
 // a `Button` stating `aria-busy` and no closing attribute at all is not read here: it is a press
 // nothing closes, which is a hole beside this one rather than this one. a props object reached
@@ -59,8 +62,10 @@ import { describe, expect, it } from 'vitest';
 //   hold focus, so the reader standing on it is dropped to the document for the whole wait — inside
 //   a popover or a card, out of the thing they were in — and the `aria-busy` beside it is heard by
 //   nobody. the click handler is what turns the second press away instead, so it reads every name
-//   `aria-disabled` reads; on a submit it has to stop the submission, which a handler that only
-//   returns does not do, and that half is held at the press's own spec rather than here.
+//   `aria-disabled` reads, and so does any other handler a press is taken through — the logo's
+//   square takes a dropped file as well as a press (`TAKES`); on a submit it has to stop the
+//   submission, which a handler that only returns does not do, and that half is held at the
+//   press's own spec rather than here.
 // - **a press that says it is busy is closed on the same reading it says it with.** `aria-busy`
 //   announces that a press is in flight, so a tag stating it out of one value and its closing
 //   attribute out of another is a control telling an operator it is working while taking a second
@@ -140,6 +145,22 @@ const HAND_DRAWN = 'adm-save';
 
 /** the shared button a press is drawn with where it is neither of the two above. */
 const BUTTON = 'Button';
+
+/**
+ * the classes of a press drawn by hand where the shared button cannot draw it, each read as a
+ * `Button` press: the logo's square in ./lib/org-fold.tsx, which is the logo itself as well as the
+ * press that replaces it.
+ */
+const STANDS_IN = ['adm-logo__square'];
+
+/**
+ * each handler a press is taken through, by the way it is taken: a click, read off every press,
+ * and a drop, read off a press stating a handler for one. each reads every name `aria-disabled` does.
+ */
+const TAKES = [
+	['onClick', 'press'],
+	['onDrop', 'drop']
+] as const;
 
 /** the attribute naming the props a card hands the button it draws, as `dangerProps` on `Modal`. */
 const HANDED_PROPS = /Props$/;
@@ -320,7 +341,10 @@ function drawnBoxes(files: readonly string[]): Drawn[] {
 		.map((tag) => ({ where: tag.where, closable: attribute(tag.node, 'disabled') !== undefined }));
 }
 
-/** which of the three shapes a press is drawn in, which is what decides the rules read off it. */
+/**
+ * which rules a press is read against: the shared button's, the hand-drawn twin's, or a `Button`'s,
+ * which the fourth shape, a `<button>` standing in a `Button`'s place, is read as.
+ */
 type Kind = 'shared' | 'hand-drawn' | 'button';
 
 /** one press as written: a tag, or the props object a card hands the button it draws. */
@@ -372,12 +396,19 @@ const carriesErrand = (site: Site): boolean =>
 const isHandDrawn = (tag: Tag): boolean =>
 	tag.name === 'button' && (attribute(tag.node, 'className')?.getText() ?? '').includes(HAND_DRAWN);
 
-/** every press written in these files, in any of the three shapes. */
+/** whether one tag is a `<button>` standing in a `Button`'s place, by the class it wears. */
+const standsIn = (tag: Tag): boolean => {
+	const worn = attribute(tag.node, 'className')?.getText() ?? '';
+	return tag.name === 'button' && STANDS_IN.some((name) => worn.includes(name));
+};
+
+/** every press written in these files, in any of the four shapes. */
 function pressSites(files: readonly string[]): Site[] {
 	const found: Site[] = [];
 	for (const tag of tags(files)) {
 		if (tag.name === PRESS) found.push(tagSite(tag, 'shared'));
 		else if (isHandDrawn(tag)) found.push(tagSite(tag, 'hand-drawn'));
+		else if (standsIn(tag)) found.push(tagSite(tag, 'button'));
 		else if (tag.name === BUTTON) {
 			const site = tagSite(tag, 'button');
 			if (carriesErrand(site)) found.push(site);
@@ -402,8 +433,10 @@ type Pressed = {
 	readonly announcesBusy: boolean;
 	/** whether it is closed by `disabled` where it is not the shared button: focus dropped mid-press. */
 	readonly closedNatively: boolean;
-	/** what `aria-disabled` reads that its click handler does not: a refusal the press still takes. */
+	/** what `aria-disabled` reads that a handler it is taken through does not: a refusal it still takes. */
 	readonly takenWhileRefused: string[];
+	/** whether a file dropped on it is taken as well as a press. */
+	readonly takesDrops: boolean;
 	/** what `aria-busy` reads that the closing attribute does not: a press open while busy. */
 	readonly openWhileBusy: string[];
 	/** whether it is drawn by hand, which is the one that answers for its own region. */
@@ -419,19 +452,25 @@ function drawnPresses(files: readonly string[]): Pressed[] {
 	return pressSites(files).map((site) => {
 		const shared = site.kind === 'shared';
 		const closing = shared ? 'disabled' : 'aria-disabled';
-		const closed = new Set(reads(site.value(closing)));
-		const handled = new Set(reads(site.value('onClick')));
+		const closed = [...new Set(reads(site.value(closing)))];
+		const missed = TAKES.filter(
+			([handler]) => handler === 'onClick' || site.states(handler)
+		).flatMap(([handler, way]) => {
+			const handled = new Set(reads(site.value(handler)));
+			return closed.filter((name) => !handled.has(name)).map((name) => `a ${way} over ${name}`);
+		});
 		return {
 			where: site.where,
 			kind: site.kind,
 			reads: site.states(closing) || (shared && site.states('state')),
 			announcesBusy: site.states('aria-busy'),
 			closedNatively: !shared && site.states('disabled'),
-			takenWhileRefused: shared ? [] : [...closed].filter((name) => !handled.has(name)),
+			takenWhileRefused: shared ? [] : missed,
+			takesDrops: site.states('onDrop'),
 			openWhileBusy:
 				site.kind === 'button'
 					? []
-					: reads(site.value('aria-busy')).filter((name) => !closed.has(name)),
+					: reads(site.value('aria-busy')).filter((name) => !closed.includes(name)),
 			handDrawn: site.kind === 'hand-drawn',
 			saysItself: site.element !== null && holdsRegion(site.element),
 			announcesBeside:
@@ -475,9 +514,10 @@ describe('every press is closed while its own press is in flight', () => {
 	});
 
 	it('reads the Button presses drawn outside the shared button', () => {
-		// the three files known to hold a `Button` press, each named, because a press that stops
-		// stating `aria-busy` leaves this sweep without failing it — and then a native `disabled` put
-		// back on it is read by nothing.
+		// the files known to hold a `Button` press, each named, because a press that stops stating
+		// `aria-busy` leaves this sweep without failing it — and then a native `disabled` put back on
+		// it is read by nothing. ./lib/org-fold.tsx's is the press standing in a `Button`'s place, and
+		// a class it stops wearing leaves the sweep the same way.
 		const at = (file: string) =>
 			drawnPresses(screens).filter(
 				(press) => press.kind === 'button' && press.where.startsWith(`${file}:`)
@@ -485,6 +525,7 @@ describe('every press is closed while its own press is in flight', () => {
 		expect(at('src/lib/recurring-block.tsx')).toBeGreaterThanOrEqual(1);
 		expect(at('src/lib/stripe-section.tsx')).toBeGreaterThanOrEqual(1);
 		expect(at('src/lib/withheld-values.tsx')).toBeGreaterThanOrEqual(2);
+		expect(at('src/lib/org-fold.tsx')).toBeGreaterThanOrEqual(1);
 	});
 
 	it('draws no press but the shared button closed by `disabled`, which drops the focus on it', () => {
@@ -495,12 +536,18 @@ describe('every press is closed while its own press is in flight', () => {
 		).toEqual([]);
 	});
 
-	it('draws no press whose own click handler takes the press its `aria-disabled` refuses', () => {
+	it('draws no press whose own handlers take the press its `aria-disabled` refuses', () => {
 		expect(
 			drawnPresses(screens)
 				.filter((press) => press.takenWhileRefused.length > 0)
-				.map((press) => `${press.where} takes a press over ${press.takenWhileRefused.join(', ')}`)
+				.map((press) => `${press.where} takes ${press.takenWhileRefused.join(', ')}`)
 		).toEqual([]);
+	});
+
+	it('reads a drop off the press that takes one', () => {
+		// the logo's square takes a dropped file; a sweep that stopped finding its handler would read
+		// the drop half of the rule off nothing.
+		expect(drawnPresses(screens).filter((press) => press.takesDrops).length).toBeGreaterThan(0);
 	});
 });
 

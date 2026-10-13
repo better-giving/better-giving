@@ -46,13 +46,25 @@ import { Button } from '../controls/Button.jsx';
  */
 
 /**
+ * where the globe leading the organisation's name goes when it goes somewhere on the same surface:
+ * an address the shell's `link` is handed, and the name the globe is read out by — a mark carries
+ * no word of its own.
+ *
+ * @typedef {object} SiteLink
+ * @property {string} href
+ * @property {string} label
+ */
+
+/**
  * @typedef {object} AppShellProps
  * @property {ReactNode} org the operating organisation's legal name. there is no logo. it has no
  * default, and neither has `groups`: a shell that filled either in would put a fictional
  * organisation and its rail on a real deployment whose surface forgot to state its own.
- * @property {string | undefined} [site] the address of the deployment's dashboard. drawn as a globe
- * leading the name, in the narrow band and the rail's head alike, opening in a new tab: the address
- * is its `title` and never printed. the console hands it; the dashboard hands nothing.
+ * @property {string | SiteLink | undefined} [site] the globe leading the name, in the narrow band and
+ * the rail's head alike. an address is somewhere off this surface — the console hands its
+ * deployment's dashboard — and opens in a new tab, named "Open dashboard", with the address as its
+ * `title` and never printed. a `SiteLink` is somewhere on it, drawn as `link` in the same tab under
+ * its own name. absent, no globe.
  * @property {string | Whereabouts | undefined} [current] the destination the reader is in: a bare
  * word is the `label`, and the page itself. absent, the reader is in none of them and no cell is
  * marked — which is what a surface hands for an address under no destination, and is the only
@@ -239,17 +251,29 @@ export function AppShell({
 	const lead =
 		site === undefined ? null : (
 			<span className="adm-rail__lead">
-				<Button
-					as="a"
-					href={site}
-					target="_blank"
-					rel="noreferrer"
-					variant="quiet"
-					size="sm"
-					mark="globe"
-					aria-label="Open dashboard"
-					title={site}
-				/>
+				{typeof site === 'string' ? (
+					<Button
+						as="a"
+						href={site}
+						target="_blank"
+						rel="noreferrer"
+						variant="quiet"
+						size="sm"
+						mark="globe"
+						aria-label="Open dashboard"
+						title={site}
+					/>
+				) : (
+					<Button
+						as={link ?? 'a'}
+						href={site.href}
+						variant="quiet"
+						size="sm"
+						mark="globe"
+						aria-label={site.label}
+						title={site.label}
+					/>
+				)}
 			</span>
 		);
 	const name = (
@@ -341,8 +365,8 @@ export function AppShell({
 					    outside it closes it. */}
 					<Dialog.Backdrop className="adm-sheetscrim" />
 					<Dialog.Positioner>
-						<Dialog.Content className="adm-sheet">
-							<nav className="adm-sheet__cells" aria-label="More sections">
+						<Dialog.Content className="adm-moresheet">
+							<nav className="adm-moresheet__cells" aria-label="More sections">
 								{sheet.map((group, index) => (
 									<RailGroup
 										key={group.heading ?? `group-${index}`}
@@ -360,7 +384,7 @@ export function AppShell({
 							    with no Escape to send, which a phone's screen reader is — whose cursor
 							    reaches a control without focusing it, so one drawn only on focus would be a
 							    point a finger cannot find. */}
-							<Dialog.CloseTrigger className="adm-btn adm-btn--quiet adm-btn--sm adm-sheet__close">
+							<Dialog.CloseTrigger className="adm-btn adm-btn--quiet adm-btn--sm adm-moresheet__close">
 								Close
 							</Dialog.CloseTrigger>
 						</Dialog.Content>
@@ -427,7 +451,7 @@ function offBar(groups) {
  */
 
 /* one group's run of cells, flat inside `.adm-rail__cells` so the bar can stand every entry as a
-   tab of its own, and inside `.adm-sheet__cells` for the More sheet's rows.
+   tab of its own, and inside `.adm-moresheet__cells` for the More sheet's rows.
 
    a headed group's heading and cells are one `group` named by the heading, so a reader moving
    through the links hears which group they are in rather than meeting the heading as loose text

@@ -97,9 +97,9 @@ import { refusalStanding } from './refusal-standing';
 // `id` it was handed — `${id}-err` is the message it draws — and renders every element it names.
 // `getInputProps` composes one too, out of conform's `errorId`, and names an element it expects the
 // *screen* to have rendered; no screen here renders one. spread its props onto that field and
-// conform's wins through the component's `...rest`, so the control points at an id nothing on the
-// page answers to: it renders, it hydrates, it looks right, and a reader following the description
-// finds nothing.
+// conform's id joins the field's own, so the control points at an id nothing on the page answers
+// to: it renders, it hydrates, it looks right, and a reader following the description finds
+// nothing.
 //
 // what a fold loses with them is nothing it had. `aria-invalid` is the field's own off the message
 // it holds, the value is {@link ConsoleForm.box}'s below, and the constraint attributes
@@ -212,6 +212,8 @@ type IntentProps = {
 export type ListControls = {
 	/** the press that puts an empty row at the end. */
 	readonly add: IntentProps;
+	/** the press that puts a row holding `value` at the end — a value offered rather than typed. */
+	readonly addHolding: (value: string) => IntentProps;
 	/** the press that drops the row at one position. */
 	readonly remove: (index: number) => IntentProps;
 };
@@ -386,6 +388,9 @@ export function useConsoleForm<S extends z.ZodObject>(
 		},
 		list: (name) => ({
 			add: conform.insert.getButtonProps({ name }),
+			/* the schema is a type parameter here, so the row type conform derives from it is
+			   unresolved; every list on this console is a list of strings (./sites.ts). */
+			addHolding: (value) => conform.insert.getButtonProps({ name, defaultValue: value as never }),
 			remove: (index) => conform.remove.getButtonProps({ name, index })
 		}),
 		press,

@@ -113,8 +113,8 @@ describe('the local seed', () => {
 		expect(profile?.taxId).toBe('12-3456789');
 	});
 
-	// a checkout gives on its own donation page at `/{form_id}` (../../../routes/$formId.tsx), which
-	// is on no `site` row, so the seed leaves the list empty and a form needs no site to be given to.
+	// a checkout gives on its own donation page at `/donate` (../../../routes/donate.tsx), which is
+	// on no `site` row, so the seed leaves the list empty and a gift needs no site to be given.
 	it('leaves the site list empty', async () => {
 		await applySeed();
 

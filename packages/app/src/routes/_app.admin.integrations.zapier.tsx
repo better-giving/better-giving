@@ -428,9 +428,7 @@ function ReplaceCard({
 				danger="Yes, replace"
 				dangerProps={{
 					type: 'submit',
-					// the press's own `formaction`, which react router reads before the form's. the form
-					// takes no `action` attribute: ../routes.spec.ts's bundle sweep reads that name as
-					// this module's `action` export, which the browser bundle never carries.
+					// the press's own `formaction`, which react router reads before the form's.
 					formAction: SCREEN,
 					'aria-busy': replacing,
 					'aria-disabled': replacing || undefined,

@@ -30,9 +30,8 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * column whatever the page under it is set in — so a page in the wide column has its header stop
  * short of the plane below it, which is visible here only because the specimen beside it is short.
  *
- * no specimen states a slot called `action`: react router strips a route module's `action` export
- * and packages/app/src/routes.spec.ts reads a JSX attribute name as an identifier, which is why the
- * prop is `pageAction` at all.
+ * the trailing slot is `pageAction`, never `action`, the name of the route export react router
+ * strips from the browser build.
  */
 export default function ShellPageHeaderPreview() {
 	return (

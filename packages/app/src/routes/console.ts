@@ -46,6 +46,8 @@ export const middleware: Route.MiddlewareFunction[] = [consoleGate];
  * serialized to a caller and an env in scope is the Stripe secret one spread away from being a
  * member, and every configuration value the console wants it reads off the Cloudflare account.
  */
-export async function loader({ context }: Route.LoaderArgs): Promise<Response> {
-	return consoleJson(await consoleReport(context.get(database), context.get(consoleSession)));
+export async function loader({ context, request }: Route.LoaderArgs): Promise<Response> {
+	return consoleJson(
+		await consoleReport(context.get(database), context.get(consoleSession), request.url)
+	);
 }

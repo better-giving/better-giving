@@ -94,7 +94,7 @@ describe('the rail', () => {
 		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, INTEGRATIONS);
 		expect(cells(groups)).toEqual([
 			'Dashboard password → /password',
-			'Organisation → /organisation',
+			'Organisation details → /organisation',
 			'Stripe → /payments/stripe',
 			'PayPal → /payments/paypal',
 			'Chariot → /payments/chariot',
@@ -102,6 +102,7 @@ describe('the rail', () => {
 			'Sites → /sites',
 			'SMTP → /smtp',
 			'Notifications → /notifications',
+			'AI model → /ai-model',
 			'QuickBooks → /quickbooks'
 		]);
 		expect(groups.map((group) => group.heading)).toEqual([
@@ -109,6 +110,23 @@ describe('the rail', () => {
 			'Donation processor',
 			undefined,
 			'Integrations'
+		]);
+	});
+
+	it('reads one word per cell across a narrow window', () => {
+		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, INTEGRATIONS);
+		expect(groups.flatMap((group) => group.destinations.map((d) => d.short))).toEqual([
+			'Password',
+			'Legal',
+			'Stripe',
+			'PayPal',
+			'Chariot',
+			'NOWPayments',
+			'Sites',
+			'SMTP',
+			'Notifications',
+			'AI',
+			'QuickBooks'
 		]);
 	});
 
@@ -125,6 +143,21 @@ describe('the rail', () => {
 				}
 			]
 		});
+	});
+
+	it('draws the model cell after notifications, marked and with no status', () => {
+		// no set-up job waits on the model: an unset one is the default model, which answers.
+		const model = (...todo: readonly SectionId[]) =>
+			railGroups(rows(...todo), processorLinks(new Set()), LOGOS, INTEGRATIONS)[2]?.destinations.at(
+				-1
+			);
+		expect(model()).toEqual({
+			label: 'AI model',
+			short: 'AI',
+			href: '/ai-model',
+			mark: 'sparkles'
+		});
+		expect(model(...IDS)?.status).toBeUndefined();
 	});
 
 	it('marks the integration cells with no status, however the set-up jobs stand', () => {

@@ -154,9 +154,7 @@ describe('/admin/forms/new save — what never reaches the database', () => {
 		expect(data.form.message).toBeUndefined();
 		// the sites are deliberately not on this list. a group with nothing ticked submits no key at
 		// all and `.prefault([])` feeds that absence through the schema, which states nothing about an
-		// empty list: a form on no site loads on this deployment's own donation page. the one
-		// arrangement that is nowhere reads the env and is the action's, past the handle this file
-		// does not have.
+		// empty list: a form is made ahead of the site it goes on.
 		expect(Object.keys(data.form.errors).sort()).toEqual([
 			'max_minor',
 			'min_minor',

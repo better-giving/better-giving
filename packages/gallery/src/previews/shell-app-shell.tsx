@@ -66,7 +66,13 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * shell's page past the whole rail. the page draws no ring when it lands there.
  *
  * `head` is the strip across the top of the panel, and `site` is the globe leading the
- * organisation's name — the console's link to its deployment's dashboard.
+ * organisation's name, drawn both ways: an address — the console's link to its deployment's
+ * dashboard, a new tab — and an in-app destination with its own name, the dashboard's, drawn as the
+ * handed link in the same tab.
+ *
+ * the dashboard's rail marks its four tabs `bar`, as the dashboard does: the column is unchanged,
+ * and below 64rem the bar holds those four and ends in a More tab whose sheet holds the rest. the
+ * reader is in Donors there, a tab; press More to see the sheet.
  *
  * `link` is what every cell is drawn as. a mounted rail states one — this package declares no
  * router and cannot (CLAUDE.md: the graph is `app → operator ← console`) — so the second shell
@@ -152,24 +158,39 @@ export default function ShellAppShellPreview() {
 				</Column>
 			</AppShell>
 
-			{/* the dashboard's rail: three groups with a mark on every entry, the reader in a section
-			    rather than on its page, a name long enough to contest the identity row, a strip over
-			    the panel, and the cells drawn as the link the surface handed in. */}
+			{/* the dashboard's rail: three groups with a mark on every entry, the four tabs marked `bar`
+			    and the rest under More on a phone, the reader in a section rather than on its page, a name long enough to
+			    contest the identity row led by the in-app globe, a strip over the panel, and the cells
+			    drawn as the link the surface handed in. */}
 			<AppShell
 				org="The Wharfedale Riverside Community Kitchen and Night Shelter Trust"
+				site={{ href: '#', label: 'Donation page' }}
 				current={{ label: 'Donors', kind: 'section' }}
 				groups={[
 					{
 						destinations: [
-							{ label: 'Dashboard', short: 'Dashboard', href: '#', mark: 'layout-dashboard' }
+							{
+								label: 'Dashboard',
+								short: 'Dashboard',
+								href: '#',
+								mark: 'layout-dashboard',
+								bar: true
+							}
 						]
 					},
 					{
 						destinations: [
+							{
+								label: 'Campaigns',
+								short: 'Campaigns',
+								href: '#',
+								mark: 'megaphone',
+								bar: true
+							},
 							{ label: 'Donation forms', short: 'Forms', href: '#', mark: 'file-text' },
 							{ label: 'Programs', short: 'Programs', href: '#', mark: 'folder-heart' },
-							{ label: 'Donors', short: 'Donors', href: '#', mark: 'users' },
-							{ label: 'Gifts', short: 'Gifts', href: '#', mark: 'hand-heart' },
+							{ label: 'Donors', short: 'Donors', href: '#', mark: 'users', bar: true },
+							{ label: 'Gifts', short: 'Gifts', href: '#', mark: 'hand-heart', bar: true },
 							{ label: 'Recurring gifts', short: 'Recurring', href: '#', mark: 'repeat' }
 						]
 					},

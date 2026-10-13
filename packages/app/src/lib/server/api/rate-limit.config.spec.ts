@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { callerRateLimitRefusal, keyRateLimitRefusal } from '../integrations/surface';
 import { readWranglerConfig } from '../wrangler-config.testing';
-import { quoteRateLimitRefusal, rateLimitRefusal, signInRateLimitMessage } from './rate-limit';
+import {
+	donorPageRateLimitRefusal,
+	imageRateLimitRefusal,
+	quoteRateLimitRefusal,
+	rateLimitRefusal,
+	signInRateLimitMessage
+} from './rate-limit';
 
 // the join between this module's promises and the bindings that have to keep them.
 //
@@ -157,6 +163,13 @@ describe.each(BLOCKS)('the rate limit bindings $where is deployed with', ({ limi
 			String(declared(limiters, 'INTEGRATIONS_KEY_RATE_LIMITER')?.simple?.period)
 		);
 		expect(callerRateLimitRefusal().headers.get('retry-after')).toBe(
+			String(declared(limiters, 'API_RATE_LIMITER')?.simple?.period)
+		);
+		// the photo and donor page buckets are counted by the surface binding under keys of their own.
+		expect(imageRateLimitRefusal().headers.get('retry-after')).toBe(
+			String(declared(limiters, 'API_RATE_LIMITER')?.simple?.period)
+		);
+		expect(new Headers(donorPageRateLimitRefusal().init?.headers).get('retry-after')).toBe(
 			String(declared(limiters, 'API_RATE_LIMITER')?.simple?.period)
 		);
 	});

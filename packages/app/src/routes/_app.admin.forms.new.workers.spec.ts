@@ -80,8 +80,8 @@ beforeEach(async () => {
 	// after the forms, because `form.program_id` points here and nothing carries an ON DELETE.
 	await env.DB.prepare('delete from program').run();
 	await saveIdentity();
-	// every case starts from a deployment that has somewhere to serve a form, because a deployment
-	// with no site listed can make no form at all — the cases about that state say so themselves.
+	// every case starts from a deployment with sites to tick; the cases about a deployment that lists
+	// none say so themselves.
 	await listSites('https://acme.org', 'https://give.acme.org');
 	bindings = await finishSetup(PASSWORD);
 });
@@ -243,6 +243,8 @@ type SaveFailure = {
 	valid: boolean;
 	errors: Record<string, string[]>;
 	formErrors: string[];
+	/** the boxes as the rejection hands them back, which is what the screen re-renders them from. */
+	typed: Record<string, unknown>;
 };
 
 /** what a save that went through hands back: a redirect and the marker riding on it. */
@@ -281,7 +283,13 @@ async function save(
 	}
 
 	const body = (await response.json()) as {
-		form: { result: { status?: string; error?: Record<string, string[]> } };
+		form: {
+			result: {
+				status?: string;
+				error?: Record<string, string[]>;
+				initialValue?: Record<string, unknown>;
+			};
+		};
 	};
 	const keyed = body.form.result.error ?? {};
 	return {
@@ -289,7 +297,8 @@ async function save(
 			status: response.status,
 			valid: body.form.result.status !== 'error',
 			errors: Object.fromEntries(Object.entries(keyed).filter(([field]) => field !== '')),
-			formErrors: keyed[''] ?? []
+			formErrors: keyed[''] ?? [],
+			typed: body.form.result.initialValue ?? {}
 		} satisfies SaveFailure
 	};
 }
@@ -340,7 +349,6 @@ describe('/admin/forms/new load', () => {
 		// on a form they have not touched.
 		expect(Object.keys(await load()).sort()).toEqual([
 			'currency',
-			'donatePageOrigin',
 			'programs',
 			'readiness',
 			'sites',
@@ -376,14 +384,41 @@ describe('/admin/forms/new load', () => {
 
 	it('draws the group on a deployment with no site listed rather than hiding it', async () => {
 		// the empty list is a real state and it is what the group says something about — the boxes are
-		// still where the operator will come back and tick one. what it costs is the submit, which the
-		// page draws switched off and the action refuses behind.
+		// still where the operator will come back and tick one.
 		await listSites();
 		expect((await load()).sites).toEqual([]);
 	});
 });
 
+/**
+ * runs `during` with `table` out of reach, and puts it back whatever happens.
+ *
+ * renamed rather than dropped, so the migrations' own constraints and the rows around it survive —
+ * the shape ./_app.admin.books.workers.spec.ts takes for a read that could not be answered.
+ */
+async function withoutTable<T>(table: string, during: () => Promise<T>): Promise<T> {
+	await env.DB.prepare(`alter table ${table} rename to ${table}_hidden`).run();
+	try {
+		return await during();
+	} finally {
+		await env.DB.prepare(`alter table ${table}_hidden rename to ${table}`).run();
+	}
+}
+
 describe('/admin/forms/new save', () => {
+	it('answers a read it could not make with its own sentence, keeping what was typed', async () => {
+		// the two reads in front of the create, either one out of reach.
+		for (const table of ['org_profile', 'site']) {
+			const { failure } = await withoutTable(table, () => save(submission()));
+			expect(failure?.status, table).toBe(500);
+			expect(failure?.formErrors, table).toEqual([
+				'Making this form failed and nothing was saved. Try again.'
+			]);
+			expect(failure?.typed, table).toMatchObject({ name: 'Gala 2026', status: 'live' });
+		}
+		expect(await readForms(db)).toEqual([]);
+	});
+
 	it('stores the form as it was configured', async () => {
 		await save(submission());
 		const [stored] = await readForms(db);
@@ -492,11 +527,11 @@ describe('/admin/forms/new — the sites tick boxes', () => {
 		expect(stored?.allowedOrigins).toEqual(['https://acme.org', 'https://give.acme.org']);
 	});
 
-	it('makes a form with no site ticked, because the donation page is where it loads', async () => {
+	it('makes a form with no site ticked, ahead of the site it goes on', async () => {
 		// the group with nothing ticked submits no key at all, which is the body a drawn page actually
 		// sends — `.prefault([])` is what feeds that absence through the rule, and the rule has nothing
-		// to say about it. every form this deployment serves loads on the donation page it answers on
-		// its own address, so a form on no site is an ordinary form.
+		// to say about it. a form is made ahead of the site it goes on, so a form on no site is an
+		// ordinary form.
 		const withoutSites = submission();
 		delete withoutSites.allowed_origins;
 		const { redirect, failure } = await save(withoutSites);
@@ -507,10 +542,8 @@ describe('/admin/forms/new — the sites tick boxes', () => {
 	});
 
 	it('makes a form on a deployment that lists no site at all', async () => {
-		// the deployment an organisation with no website of its own has: nothing to tick, and its forms
-		// given on the donation page this deployment answers on its own address. it is the state set-up
-		// is allowed to finish in, so it must be one a form can be made in — and there is no
-		// arrangement left in which a form would load nowhere.
+		// the deployment set-up may finish in: nothing to tick yet. a form is made ahead of the site it
+		// goes on, so this must be a state a form can be made in.
 		await listSites();
 
 		const empty = submission();

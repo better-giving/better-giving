@@ -12,7 +12,7 @@ import {
 	MICRODEPOSIT_WINDOW_MS,
 	PORT_TIMEOUT_MS
 } from './checkout.machine';
-import type { CheckoutEvent } from './checkout.machine';
+import type { CheckoutEvent, CheckoutInput } from './checkout.machine';
 import type { CheckoutPorts, ConfirmInput } from './ports';
 import type { DonationStatus, FormConfig, Quote, QuoteRequest } from './v1';
 
@@ -114,6 +114,7 @@ const QUOTE: Quote = { paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor:
 type HarnessOptions = {
 	readonly config?: FormConfig;
 	readonly resume?: { readonly paymentToken: string };
+	readonly opening?: CheckoutInput['opening'];
 	readonly quote?: (request: QuoteRequest) => Promise<Quote>;
 	readonly confirm?: (input: ConfirmInput) => Promise<import('./ports').ConfirmOutcome>;
 	readonly resumeWith?: () => Promise<import('./ports').ConfirmOutcome>;
@@ -156,7 +157,8 @@ function harness(options: HarnessOptions = {}) {
 		input: {
 			config: options.config ?? CONFIG,
 			ports,
-			...(options.resume ? { resume: options.resume } : {})
+			...(options.resume ? { resume: options.resume } : {}),
+			...(options.opening ? { opening: options.opening } : {})
 		}
 	});
 	actor.start();
@@ -410,6 +412,91 @@ describe('the amount step', () => {
 	});
 });
 
+describe('a flow the page opens preset', () => {
+	it('opens on monthly when told to and the form offers monthly', () => {
+		const { actor } = harness({ opening: { monthly: true } });
+		expect(actor.getSnapshot().value).toBe('amount');
+		expect(actor.getSnapshot().context.draft.frequency).toBe('monthly');
+	});
+
+	it('opens on one-time when told monthly and the form offers only one-time', () => {
+		// a cadence the deployment cannot charge is never offered, so the flag is dropped rather
+		// than seeding a frequency the card draws no chip for.
+		const { actor } = harness({
+			config: { ...CONFIG, frequencies: ['one_time'] },
+			opening: { monthly: true }
+		});
+		expect(actor.getSnapshot().context.draft.frequency).toBe('one_time');
+	});
+
+	it('opens with the dedication asked and every box in it empty when told to', () => {
+		const { actor } = harness({ opening: { dedication: true } });
+		expect(actor.getSnapshot().context.draft.tribute).toEqual({
+			kind: 'honor',
+			honoree: '',
+			notifyName: '',
+			notifyEmail: ''
+		});
+	});
+
+	it('opens on monthly with the dedication asked when told both', () => {
+		const { actor } = harness({ opening: { monthly: true, dedication: true } });
+		const { draft } = actor.getSnapshot().context;
+		expect(draft.frequency).toBe('monthly');
+		expect(draft.tribute).toEqual({ kind: 'honor', honoree: '', notifyName: '', notifyEmail: '' });
+	});
+
+	it('lets the donor switch back to one-time and take the dedication back', () => {
+		// a preset is where the card starts, never a decision the donor is held to.
+		const { actor } = harness({ opening: { monthly: true, dedication: true } });
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'one_time' });
+		actor.send({ type: 'TOGGLE_TRIBUTE' });
+		actor.send({ type: 'CONTINUE' });
+
+		expect(actor.getSnapshot().value).toBe('details');
+		expect(actor.getSnapshot().context.fv).toEqual({
+			amountMinor: 2500,
+			frequency: 'one_time',
+			programId: null
+		});
+	});
+
+	it('lands a declined return on the cadence and dedication the page opens on', async () => {
+		// a resumed page load remembers neither the donor's choice nor the page's, so the page's
+		// opening is where the card starts again. the resume still reads the token it carried.
+		const { actor, calls } = harness({
+			resume: { paymentToken: 'pi_3ds_secret_x' },
+			resumeWith: async () => ({ kind: 'declined', message: 'Your bank declined the payment.' }),
+			opening: { monthly: true, dedication: true }
+		});
+		await settle();
+		actor.send({ type: 'RETRY' });
+
+		expect(calls.resume).toEqual(['pi_3ds_secret_x']);
+		const { draft } = actor.getSnapshot().context;
+		expect(draft.frequency).toBe('monthly');
+		expect(draft.tribute).toEqual({ kind: 'honor', honoree: '', notifyName: '', notifyEmail: '' });
+	});
+
+	it('asks for a monthly quote when the donor takes the monthly it opened on', async () => {
+		const { actor, calls } = harness({ opening: { monthly: true } });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote).toHaveLength(1);
+		expect(calls.quote[0]).toMatchObject({ amountMinor: 2500, frequency: 'monthly' });
+	});
+});
+
 describe('the details step', () => {
 	it('refuses to continue until every field the receipt needs is filled in', () => {
 		// the receipt is the thing the donor keeps, and it needs somewhere to go. a press that
@@ -635,6 +722,39 @@ describe('the press that spends the money', () => {
 		await settle();
 
 		expect(calls.quote[0]).toMatchObject({ programId: 'prg_school' });
+	});
+
+	it('takes a cause picked on the two steps after the amount onto the gift it sends', async () => {
+		// a host can draw the choice outside the card, where it stands beside every step: the app's
+		// donation page does (its program chooser). a pick the flow dropped there is a gift sent
+		// to a cause the page no longer shows.
+		const { actor, calls } = atDetails({ config: CHOICE_CONFIG });
+		actor.send({ type: 'SET_PROGRAM', programId: 'prg_water' });
+		expect(actor.getSnapshot().context.fv?.programId).toBe('prg_water');
+
+		actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_PROGRAM', programId: 'prg_school' });
+		expect(actor.getSnapshot().context.draft.programId).toBe('prg_school');
+
+		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(calls.quote[0]).toMatchObject({ programId: 'prg_school' });
+	});
+
+	it('leaves the cause alone once the press is in flight', () => {
+		// the request carrying it has already left, so a pick taken now would be a receipt stating
+		// a cause the gift was not sent to.
+		const { actor } = readyToSubmit({ config: CHOICE_CONFIG, quote: neverAnswers });
+		actor.send({ type: 'SUBMIT' });
+		actor.send({ type: 'SET_PROGRAM', programId: 'prg_water' });
+		expect(actor.getSnapshot().context.fv?.programId).toBeNull();
 	});
 
 	it('sends no program on a gift the donor chose no cause for', async () => {
@@ -1958,6 +2078,25 @@ describe('a gift from a donor-advised fund', () => {
 		});
 		expect(calls.confirm).toHaveLength(0);
 		expect(actor.getSnapshot().value).toBe('processing');
+	});
+
+	it('leaves the cause alone while the fund’s window is open, and sends the one it opened on', async () => {
+		// the window is the authorization for the gift the review step stated, cause included.
+		const { actor, calls } = onFundRail({
+			config: {
+				...CHOICE_CONFIG,
+				providers: DAF_CONFIG.providers,
+				paymentMethods: DAF_CONFIG.paymentMethods
+			},
+			quote: () => Promise.resolve(GRANT)
+		});
+		actor.send({ type: 'OPEN_FUND' });
+		actor.send({ type: 'SET_PROGRAM', programId: 'prg_water' });
+		expect(actor.getSnapshot().context.fv?.programId).toBeNull();
+
+		actor.send({ type: 'FUND_APPROVED', authorizationId: 'wfs_1', authorizedMinor: 2600 });
+		await settle();
+		expect(calls.quote[0]).not.toHaveProperty('programId');
 	});
 
 	it('goes back to the review step with nothing sent when the window closes unapproved', async () => {

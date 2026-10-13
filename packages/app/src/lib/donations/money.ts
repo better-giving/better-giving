@@ -77,3 +77,43 @@ export function formatMinorBrief(amountMinor: number, currency: string): string 
 	});
 	return format.format(amountMinor / 10 ** digits);
 }
+
+/**
+ * how the whole part of a figure in `currency` is grouped on a screen: the separator, the size of
+ * the group nearest the point, and the size of every group before it — `,` 3 3 for `$1,234,567`.
+ *
+ * read off the same formatter as the exponent, so a box an operator types in groups its digits the
+ * way every figure beside it does. two sizes because a locale may group the rest more tightly than
+ * the last group, as `en-IN`'s `12,34,567` does.
+ */
+export function digitGrouping(currency: string): {
+	readonly separator: string;
+	readonly last: number;
+	readonly rest: number;
+} {
+	const parts = new Intl.NumberFormat(DISPLAY_LOCALE, {
+		style: 'currency',
+		currency
+	}).formatToParts(1_234_567_890);
+	const runs = parts.filter((part) => part.type === 'integer').map((part) => part.value.length);
+	const separator = parts.find((part) => part.type === 'group')?.value ?? ',';
+	const last = runs.at(-1) ?? 3;
+	return { separator, last, rest: runs.at(-2) ?? last };
+}
+
+/**
+ * the mark a screen writes in front of a figure in `currency` — `$` for USD — which an operator may
+ * type in front of an amount as well.
+ *
+ * the narrow form, because that is the mark a person types: `en-US` writes Canadian dollars `CA$`
+ * in full and `$` in narrow, and nobody types the first. read off the formatter for the reason the
+ * grouping is; a code with no symbol of its own formats as itself.
+ */
+export function currencySymbol(currency: string): string {
+	const parts = new Intl.NumberFormat(DISPLAY_LOCALE, {
+		style: 'currency',
+		currency,
+		currencyDisplay: 'narrowSymbol'
+	}).formatToParts(1);
+	return parts.find((part) => part.type === 'currency')?.value ?? currency;
+}

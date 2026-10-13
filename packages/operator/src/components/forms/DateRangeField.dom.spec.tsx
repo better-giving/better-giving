@@ -67,9 +67,22 @@ function opener(root: HTMLElement, index: number): HTMLButtonElement {
 	return button;
 }
 
+/**
+ * the calendar's panel. it is portalled out of the range (./DateRangeField.jsx), so it is found in
+ * the document rather than under the element the range was mounted into.
+ */
+function calendar(): HTMLElement {
+	const panel = document.querySelector<HTMLElement>('.adm-cal[data-part="content"]');
+	if (panel === null) throw new Error('the range drew no calendar');
+	return panel;
+}
+
+/** every calendar panel in the document. */
+const panels = () => document.querySelectorAll('.adm-cal[data-part="content"]');
+
 /** the open calendar's cell for one day, or nothing where the visible month does not hold it. */
-function cell(root: HTMLElement, value: string): Element {
-	const found = root.querySelector(`[data-part="table-cell-trigger"][data-value="${value}"]`);
+function cell(value: string): Element {
+	const found = calendar().querySelector(`[data-part="table-cell-trigger"][data-value="${value}"]`);
 	if (found === null) throw new Error(`the open calendar drew no ${value}`);
 	return found;
 }
@@ -266,8 +279,8 @@ describe('a date range mounted into a document', () => {
 		await flushed();
 
 		// one calendar for two boxes, which is the whole of what this component is for.
-		expect(root.querySelectorAll('[data-part="content"]')).toHaveLength(1);
-		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('open');
+		expect(panels()).toHaveLength(1);
+		expect(calendar().getAttribute('data-state')).toBe('open');
 	});
 
 	it('opens the same one calendar from the far end’s own press', async () => {
@@ -281,8 +294,8 @@ describe('a date range mounted into a document', () => {
 		press(opener(root, FAR));
 		await flushed();
 
-		expect(root.querySelectorAll('[data-part="content"]')).toHaveLength(1);
-		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('open');
+		expect(panels()).toHaveLength(1);
+		expect(calendar().getAttribute('data-state')).toBe('open');
 	});
 
 	it('fills each box from a day chosen in the calendar that box’s own press opened', async () => {
@@ -298,7 +311,7 @@ describe('a date range mounted into a document', () => {
 
 		press(opener(root, FAR));
 		await flushed();
-		press(cell(root, '2026-01-20'));
+		press(cell('2026-01-20'));
 		await flushed();
 
 		expect(submitted(root, 'from')).toBe('2026-01-15');
@@ -308,7 +321,7 @@ describe('a date range mounted into a document', () => {
 
 		press(opener(root, NEAR));
 		await flushed();
-		press(cell(root, '2026-01-05'));
+		press(cell('2026-01-05'));
 		await flushed();
 
 		expect(submitted(root, 'from')).toBe('2026-01-05');
@@ -329,10 +342,10 @@ describe('a date range mounted into a document', () => {
 
 		press(opener(root, FAR));
 		await flushed();
-		press(cell(root, '2026-01-20'));
+		press(cell('2026-01-20'));
 		await flushed();
 
-		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('closed');
+		expect(calendar().getAttribute('data-state')).toBe('closed');
 	});
 
 	it('hands focus back to the press that opened the calendar, each end in turn', async () => {
@@ -349,7 +362,7 @@ describe('a date range mounted into a document', () => {
 
 		press(opener(root, FAR));
 		await flushed();
-		press(cell(root, '2026-01-20'));
+		press(cell('2026-01-20'));
 		await flushed();
 		await painted();
 
@@ -357,7 +370,7 @@ describe('a date range mounted into a document', () => {
 
 		press(opener(root, NEAR));
 		await flushed();
-		press(cell(root, '2026-01-05'));
+		press(cell('2026-01-05'));
 		await flushed();
 		await painted();
 
@@ -384,7 +397,7 @@ describe('a date range mounted into a document', () => {
 		await flushed();
 		await painted();
 
-		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('closed');
+		expect(calendar().getAttribute('data-state')).toBe('closed');
 		expect(document.activeElement).toBe(opener(root, FAR));
 	});
 
@@ -406,7 +419,7 @@ describe('a date range mounted into a document', () => {
 		await flushed();
 		await painted();
 
-		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('closed');
+		expect(calendar().getAttribute('data-state')).toBe('closed');
 		expect(document.activeElement).toBe(opener(root, FAR));
 	});
 
@@ -466,7 +479,7 @@ describe('a date range mounted into a document', () => {
 
 		press(opener(root, FAR));
 		await flushed();
-		press(cell(root, '2026-01-05'));
+		press(cell('2026-01-05'));
 		await flushed();
 
 		expect(submitted(root, 'from')).toBe('2026-01-15');
@@ -485,7 +498,7 @@ describe('a date range mounted into a document', () => {
 
 		press(opener(root, FAR));
 		await flushed();
-		press(cell(root, '2026-01-20'));
+		press(cell('2026-01-20'));
 		await flushed();
 
 		expect(submitted(root, 'from')).toBe('2026-01-15');
@@ -507,13 +520,70 @@ describe('a date range mounted into a document', () => {
 		press(opener(root, FAR));
 		await flushed();
 
-		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('open');
+		expect(calendar().getAttribute('data-state')).toBe('open');
 
-		press(cell(root, '2026-01-20'));
+		press(cell('2026-01-20'));
 		await flushed();
 
 		expect(submitted(root, 'from')).toBe('2026-01-15');
 		expect(submitted(root, 'to')).toBe('2026-01-20');
+	});
+
+	it('places the calendar under the box whose press opened it, each end in turn', async () => {
+		// the picker's control stands over both boxes, so a calendar placed under it opens under the
+		// near box whichever press opened it. nothing lays out in this pool, so each box and the
+		// control are handed a rect of their own and the panel is read for which one it was put under.
+		const root = render(DateRangeField, { id: 'range', legend: 'Date range', ...ends });
+		const at = (element: Element | null | undefined, x: number, width: number) => {
+			if (!element) throw new Error('the range drew nothing to place against');
+			element.getBoundingClientRect = () => new DOMRect(x, 100, width, 48);
+		};
+		at(root.querySelector('[data-scope="date-picker"][data-part="control"]'), 20, 700);
+		const boxes = root.querySelectorAll('.adm-datebox');
+		at(boxes[NEAR], 20, 340);
+		at(boxes[FAR], 380, 340);
+		const left = () => calendar().parentElement?.style.getPropertyValue('--x');
+
+		press(opener(root, FAR));
+		await flushed();
+		await painted();
+		await flushed();
+		expect(left()).toBe('380px');
+
+		press(opener(root, FAR));
+		await flushed();
+		press(opener(root, NEAR));
+		await flushed();
+		await painted();
+		await flushed();
+		expect(left()).toBe('20px');
+	});
+
+	it('draws its calendar out of the range: into the modal it stands in, or into the body', () => {
+		// ./DateField.dom.spec.tsx's case of the same name, for the same reason: a sheet clips what
+		// stands inside it, and a modal holds everything outside it inert.
+		const loose = render(DateRangeField, { id: 'loose', legend: 'Date range', ...ends });
+		const inModal = render(
+			() => (
+				<dialog open>
+					<DateRangeField
+						id="held"
+						legend="Export"
+						from={{ id: 'held-from', name: 'from', label: 'From' }}
+						to={{ id: 'held-to', name: 'to', label: 'To' }}
+					/>
+				</dialog>
+			),
+			{}
+		);
+
+		const all = [...panels()];
+		const held = all.find((panel) => inModal.contains(panel));
+		const free = all.find((panel) => !inModal.contains(panel));
+		expect(held?.closest('dialog')).toBe(inModal.querySelector('dialog'));
+		expect(held?.closest('.adm-fieldset')).toBeNull();
+		expect(free?.parentElement?.closest('body')).toBe(document.body);
+		expect(loose.contains(free ?? null)).toBe(false);
 	});
 
 	it('draws all three of the calendar’s grids while the range has only its far end', async () => {
@@ -526,14 +596,14 @@ describe('a date range mounted into a document', () => {
 		press(opener(root, FAR));
 		await flushed();
 
-		expect(root.querySelectorAll('[data-part="view"]')).toHaveLength(3);
+		expect(calendar().querySelectorAll('[data-part="view"]')).toHaveLength(3);
 
-		const climb = root.querySelector('[data-part="view-trigger"]');
+		const climb = calendar().querySelector('[data-part="view-trigger"]');
 		if (climb === null) throw new Error('the open calendar drew no head');
 		press(climb);
 		await flushed();
 		expect(
-			root
+			calendar()
 				.querySelector('[data-part="view"]:not([hidden]) [data-part="table"]')
 				?.getAttribute('data-view')
 		).toBe('month');
@@ -552,14 +622,14 @@ describe('a date range mounted into a document', () => {
 		press(opener(root, NEAR));
 		await flushed();
 
-		expect(root.querySelectorAll('[data-part="view"]')).toHaveLength(3);
+		expect(calendar().querySelectorAll('[data-part="view"]')).toHaveLength(3);
 
-		const climb = root.querySelector('[data-part="view-trigger"]');
+		const climb = calendar().querySelector('[data-part="view-trigger"]');
 		if (climb === null) throw new Error('the open calendar drew no head');
 		press(climb);
 		await flushed();
 		expect(
-			root
+			calendar()
 				.querySelector('[data-part="view"]:not([hidden]) [data-part="table"]')
 				?.getAttribute('data-view')
 		).toBe('month');

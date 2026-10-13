@@ -1,7 +1,7 @@
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, data, Form, Outlet } from 'react-router';
-import { expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { ErrorBoundary } from './root';
 
 // the faces of the app's one error page, chosen by what reached it: a missing address, a request
@@ -18,7 +18,11 @@ const DASHBOARD: Screen = {
 	path: '/admin/forms',
 	at: '/admin/forms'
 };
-const DONOR_PAGE: Screen = { id: 'routes/$formId', path: '/:formId', at: '/f_0001' };
+/** the donor pages: the organisation's donation page and a campaign at its own address. */
+const DONOR_PAGES: readonly Screen[] = [
+	{ id: 'routes/donate', path: '/donate', at: '/donate' },
+	{ id: 'routes/$slug', path: '/:slug', at: '/spring-appeal' }
+];
 
 /**
  * the root's boundary over a screen whose read throws `thrown`, mounted into a document that lives
@@ -170,42 +174,44 @@ it.each([
 	expect(document.title).toBe(title);
 });
 
-/** the donor's page is the organisation's, so its tab names what the reader came to do instead. */
-it.each([
-	['a missing address', data(null, { status: 404 }), 'No such page · Donate'],
-	[
-		'a refused request',
-		data('`amount` is not a number.', { status: 400 }),
-		'This request was refused · Donate'
-	],
-	[
-		'a failure',
-		new Error('the database is not answering'),
-		'This donation page couldn’t load · Donate'
-	]
-])('titles the donor page after %s without the project name', async (_face, thrown, title) => {
-	await boundaryOver(thrown, DONOR_PAGE);
+describe.each(DONOR_PAGES)('on the donor page $at', (donorPage) => {
+	/** a donor page is the organisation's, so its tab names what the reader came to do instead. */
+	it.each([
+		['a missing address', data(null, { status: 404 }), 'No such page · Donate'],
+		[
+			'a refused request',
+			data('`amount` is not a number.', { status: 400 }),
+			'This request was refused · Donate'
+		],
+		[
+			'a failure',
+			new Error('the database is not answering'),
+			'This donation page couldn’t load · Donate'
+		]
+	])('titles the document after %s without the project name', async (_face, thrown, title) => {
+		await boundaryOver(thrown, donorPage);
 
-	expect(document.title).toBe(title);
-});
+		expect(document.title).toBe(title);
+	});
 
-/** a donor holds no staff session, so a way out to the dashboard is a link they cannot use. */
-it.each([
-	['a missing address', data(null, { status: 404 })],
-	['a refused request', data('`amount` is not a number.', { status: 400 })]
-])('offers no way out to forms on the donor page after %s', async (_face, thrown) => {
-	const root = await boundaryOver(thrown, DONOR_PAGE);
+	/** a donor holds no staff session, so a way out to the dashboard is a link they cannot use. */
+	it.each([
+		['a missing address', data(null, { status: 404 })],
+		['a refused request', data('`amount` is not a number.', { status: 400 })]
+	])('offers no way out to forms after %s', async (_face, thrown) => {
+		const root = await boundaryOver(thrown, donorPage);
 
-	expect(root.querySelector('a[href="/admin/forms"]')).toBeNull();
-	expect(root.querySelectorAll('a, button')).toHaveLength(0);
-});
+		expect(root.querySelector('a[href="/admin/forms"]')).toBeNull();
+		expect(root.querySelectorAll('a, button')).toHaveLength(0);
+	});
 
-/** the fallback sentence names no way out the donor page does not draw. */
-it('tells a donor only to go back when a refusal carries no sentence', async () => {
-	const root = await boundaryOver(data({ field: 'amount' }, { status: 403 }), DONOR_PAGE);
+	/** the fallback sentence names no way out the donor page does not draw. */
+	it('tells a donor only to go back when a refusal carries no sentence', async () => {
+		const root = await boundaryOver(data({ field: 'amount' }, { status: 403 }), donorPage);
 
-	expect(root.textContent).toContain('Nothing more is known about why. Go back and try again.');
-	expect(root.textContent).not.toContain('go to forms');
+		expect(root.textContent).toContain('Nothing more is known about why. Go back and try again.');
+		expect(root.textContent).not.toContain('go to forms');
+	});
 });
 
 /** a 5xx response is the deployment failing whatever it carries, and has no way out. */
@@ -218,15 +224,18 @@ it('draws a 5xx response as the deployment failing, with its sentence', async ()
 });
 
 /** a donor is told the page did not load and what to do, never the deployment's words or its logs. */
-it('tells a donor the page could not load, with none of the sentence staff are told', async () => {
-	const root = await boundaryOver(
-		data('`BETTER_AUTH_URL` is not set.', { status: 503 }),
-		DONOR_PAGE
-	);
+it.each(DONOR_PAGES)(
+	'tells a donor on $at the page could not load, with none of the sentence staff are told',
+	async (donorPage) => {
+		const root = await boundaryOver(
+			data('`BETTER_AUTH_URL` is not set.', { status: 503 }),
+			donorPage
+		);
 
-	expect(root.querySelector('h1')?.textContent).toBe('This donation page couldn’t load');
-	expect(root.textContent).toContain('Please try again in a moment.');
-	expect(root.textContent).not.toContain('BETTER_AUTH_URL');
-	expect(root.textContent).not.toContain('deployment');
-	expect(root.querySelectorAll('a, button')).toHaveLength(0);
-});
+		expect(root.querySelector('h1')?.textContent).toBe('This donation page couldn’t load');
+		expect(root.textContent).toContain('Please try again in a moment.');
+		expect(root.textContent).not.toContain('BETTER_AUTH_URL');
+		expect(root.textContent).not.toContain('deployment');
+		expect(root.querySelectorAll('a, button')).toHaveLength(0);
+	}
+);

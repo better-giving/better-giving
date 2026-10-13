@@ -140,6 +140,30 @@ export type VarsRead =
 export type DeployedValues = { vars: VarsRead };
 
 /**
+ * what the account's cloudflare credits say about the model choice, from `GET /api/ai-model`.
+ *
+ * read only for a choice billed to credits, and a hint rather than a gate; what the deployment does
+ * on an empty account is `generate`'s header in packages/app/src/lib/server/ai/generate.ts.
+ * `missing` is a balance at or under zero. `unknown` is a balance not read: in cloudflare's words
+ * where the read was refused, or in a fixed sentence on the browser sign-in, which cannot read it
+ * and so never asks (`CreditsUnreadOnSignIn` in packages/console/internal/deployment/aimodel.go).
+ */
+export type ModelCredits =
+	| { kind: 'not-asked' }
+	| { kind: 'held' | 'missing'; balance: number }
+	| { kind: 'unknown'; detail: string };
+
+/**
+ * `AI_MODEL` as the deployment holds it, and the credits that choice spends.
+ *
+ * the choice is written through the vars press like every other value, and refused there for an id
+ * off `AI_MODELS` in `@better-giving/operator/ai-models`; an absent row is the default model.
+ */
+export type ModelChoice =
+	| { kind: 'read'; model: DeployedVar; credits: ModelCredits }
+	| Exclude<VarsRead, { kind: 'read' }>;
+
+/**
  * the account this console was started in, and the two names every screen under it is about.
  *
  * it answers within a loopback round trip because everything in it is this machine's own memory and
@@ -179,8 +203,8 @@ export type HomeReading = {
 	/** the deployment's own site list, which the sites fold seeds its boxes from. */
 	sites: string[];
 	/**
-	 * where this deployment answers, which is where its donation page is served, and `''` where the
-	 * binary could read no address for it (`packages/console/internal/deployment/address.go`).
+	 * where this deployment's one donation page is served, `/donate` on the address it answers at, and
+	 * `''` where the binary could read no address for it (`packages/console/internal/deployment/address.go`).
 	 *
 	 * it is on no site row and on no form's allowed origins, so the sites fold states it beside that
 	 * list rather than holding it in one: nothing an operator can untick takes their own donation
@@ -1316,3 +1340,66 @@ export type ConsoleVersion = {
 	version: string;
 	commit: string;
 };
+
+/**
+ * one organisation a search of the IRS nonprofit API listed
+ * (`packages/console/internal/nonprofits`).
+ *
+ * `ein` is the nine digits with no dash. `state` is the US state the IRS lists it in, and `revokedOn`
+ * is the `YYYY-MM-DD` its tax-exempt status was revoked on, `''` where it is not revoked or was
+ * reinstated since.
+ */
+export type NonprofitMatch = {
+	ein: string;
+	name: string;
+	city: string;
+	state: string;
+	deductible: boolean;
+	revokedOn: string;
+};
+
+/**
+ * how one search went. `unavailable` is the API not answering, or a console built with no address
+ * for it, and `matches` is empty on it — never a refusal, so set-up goes on by hand. at most ten
+ * matches, in the API's order.
+ */
+export type NonprofitSearch = {
+	state: 'ok' | 'unavailable';
+	matches: NonprofitMatch[];
+};
+
+/**
+ * one organisation as the IRS nonprofit API holds it, under the names the Organisation details fold gives
+ * the boxes it fills (`ORG_FIELDS` in ../lib/org-fields.ts) where it fills one.
+ *
+ * `ein` is the nine digits with no dash, which is not the spelling `tax_id` is stored in — the fold
+ * spells it. `deductible` is the IRS listing gifts to it as tax-deductible; `mission` is what its
+ * latest filing states, trimmed; `revokedOn`, `website` and `mission` are `''` where there is none.
+ */
+export type NonprofitOrganisation = {
+	ein: string;
+	name: string;
+	address_line1: string;
+	city: string;
+	region: string;
+	postal_code: string;
+	deductible: boolean;
+	revokedOn: string;
+	website: string;
+	mission: string;
+};
+
+/**
+ * how one lookup by EIN went. `organisation` is written in every state and every field of it is
+ * empty unless `found`; `unavailable` is never a refusal, for the reason a search's is not.
+ */
+export type NonprofitLookup = {
+	state: 'found' | 'not_found' | 'unavailable';
+	organisation: NonprofitOrganisation;
+};
+
+/**
+ * whether this binary was built with the IRS nonprofit API's address. `false` is every search and
+ * lookup answering `unavailable`, known before anyone types; asking it spends nothing of the API's.
+ */
+export type NonprofitsStatus = { built: boolean };

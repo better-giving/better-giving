@@ -199,24 +199,34 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 	 * passing `request:` to one switches them on, against the `trustedOrigins` set below,
 	 * which names nothing on a non-loopback host.
 	 *
-	 * what refuses a cross-origin form post is react-router: on a document or `.data` POST it
-	 * answers 400, ahead of every middleware and the action, when the `Origin` host differs
-	 * from the request's (`throwIfPotentialCSRFAttack` in its server runtime;
-	 * react-router.config.ts sets no `allowedActionOrigins`). `Origin: null` is refused too. a
-	 * request with no `Origin` passes, and `Referer` is not read. it covers `/login`, `/join`,
-	 * `/forgot` and `/reset`, and not `/admin/sign-out`, a resource route the check never runs
-	 * on (../../../routes/_app.admin.sign-out.ts). it only ever refuses: a matching `Origin`
-	 * grants nothing, and the session is what authorizes (CLAUDE.md → Bans). the cases under
+	 * two checks stand in their place, and both bound other origins only. the first is
+	 * react-router's: on a document or `.data` POST it answers 400, ahead of every middleware and
+	 * the action, when the `Origin` host differs from the request's (`throwIfPotentialCSRFAttack`
+	 * in its server runtime; react-router.config.ts sets no `allowedActionOrigins`). `Origin: null`
+	 * is refused too. a request with no `Origin` passes, and `Referer` is not read. it covers
+	 * `/login`, `/join`, `/forgot` and `/reset`, and not `/admin/sign-out`, a resource route the
+	 * check never runs on (../../../routes/_app.admin.sign-out.ts). it only ever refuses: a matching
+	 * `Origin` grants nothing, and the session is what authorizes (CLAUDE.md → Bans). the cases under
 	 * "a sign-in posted from another origin" in ../../../entry.server.workers.spec.ts hold it.
 	 *
-	 * behind it stand the session cookie's `sameSite: 'lax'` below, which a cross-site POST
-	 * does not carry and which is all that stands in front of the sign-out, and the sign-in
-	 * bucket `signInRateLimitKey` charges (CLAUDE.md). login-CSRF from a browser that omits
-	 * `Origin` is accepted: neither of those reaches it.
+	 * the second is `refuseWriteFromAnotherOrigin` (./gate.ts), which refuses any method but GET and
+	 * HEAD whose `Sec-Fetch-Site` is present and not `same-origin`. `staffGate` runs it for every
+	 * write behind the login, the sign-out included, and the routes that sign someone in
+	 * (`src/routes/login.tsx`, `join.tsx`, `reset.tsx`) and the reset request at `forgot.tsx` sit
+	 * outside the gate, so each action calls it itself, after charging the bucket
+	 * `signInRateLimitKey` names (CLAUDE.md). a browser that sends no `Sec-Fetch-Site` passes it.
 	 *
-	 * none of it bounds a script on this origin, and `/{form_id}` is served on it (CLAUDE.md →
-	 * Product surface) and runs vendor scripts. what bounds that is argued in
-	 * ../../../document-policy.ts's header.
+	 * behind them stands the session cookie's `sameSite: 'lax'` below, which keeps a cross-site POST
+	 * from carrying the session. it does not stop a same-site one, and a deployment on the
+	 * organisation's own domain is same-site with the organisation's website; the `Sec-Fetch-Site`
+	 * rule is what covers that case. login-CSRF, where the victim's browser submits credentials the
+	 * attacker holds and the victim is signed into the attacker's account, needs no cookie from the
+	 * victim, so the cookie attribute does not reach it: a browser that omits both `Origin` and
+	 * `Sec-Fetch-Site` is accepted.
+	 *
+	 * none of it bounds a script on this origin, and the donor pages, `/donate` and each campaign's
+	 * address, are served on it (CLAUDE.md → Product surface) and run vendor scripts. what bounds
+	 * that is argued in ../../../document-policy.ts's header.
 	 *
 	 * `x-forwarded-host` is not consulted: better-auth honours forwarded headers only
 	 * when `advanced.trustedProxyHeaders` is set, and it is not. that is also why

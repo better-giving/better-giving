@@ -1,5 +1,12 @@
 import { createExecutionContext, env as poolEnv } from 'cloudflare:test';
-import { createStaticHandler, isRouteErrorResponse, type RouteObject } from 'react-router';
+import {
+	createStaticHandler,
+	isRouteErrorResponse,
+	type RouteObject,
+	type RouterContextProvider,
+	type StaticHandler,
+	type StaticHandlerContext
+} from 'react-router';
 import { requestContext } from './request-context';
 
 // one request through a route module's own `loader`, `action` and `middleware`, inside workerd
@@ -112,6 +119,36 @@ export function mountRoutes(chain: readonly MountedRoute[]): RouteRequester {
 			return errorResponse(error);
 		}
 	};
+}
+
+/**
+ * one document request through a handler's `middleware` and `loader`s, answered with what the page
+ * would be drawn from: the status, each route's loader data and its headers.
+ *
+ * `query` rather than `queryRoute`, because a donor page's refusal is a `data()` whose status is
+ * the answer, and `queryRoute` hands the value back with that status dropped. and
+ * `generateMiddlewareResponse` for the reason `mountRoutes` passes it: without it no middleware
+ * runs, silently.
+ */
+export async function queryDocument(
+	handler: StaticHandler,
+	request: Request,
+	context: RouterContextProvider
+): Promise<StaticHandlerContext> {
+	let drawn: StaticHandlerContext | undefined;
+	const answered = await handler.query(request, {
+		requestContext: context,
+		generateMiddlewareResponse: async (query) => {
+			const result = await query(request);
+			if (result instanceof Response) return result;
+			drawn = result;
+			return new Response(null, { status: result.statusCode });
+		}
+	});
+	if (drawn !== undefined) return drawn;
+	// the type allows a context back, but with `generateMiddlewareResponse` it is always a response.
+	const status = answered instanceof Response ? answered.status : answered.statusCode;
+	throw new Error(`the request short-circuited with a ${status}`);
 }
 
 /**

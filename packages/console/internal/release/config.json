@@ -26,7 +26,11 @@
 		"0020_webhook_delivery_recent_index.sql",
 		"0021_list_walk_indexes.sql",
 		"0022_webhook_delivery_owed_index.sql",
-		"0023_refund_notice_owed.sql"
+		"0023_refund_notice_owed.sql",
+		"0024_donor_pages_images_and_chat.sql",
+		"0025_org_profile_story_brand_and_logo.sql",
+		"0026_org_presentation_dropped.sql",
+		"0027_page_look_legacy_keys.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
@@ -35,5 +39,5 @@
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "a0f259ef7ab659a8edf8f5dfa1f16ff9e754b4f1"
+	"commit": "cfe1fb22b194df0d0abb39834ead3cb0a5abdfcb"
 }

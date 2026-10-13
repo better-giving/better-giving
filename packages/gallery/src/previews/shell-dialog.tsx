@@ -20,11 +20,13 @@ import { useState } from 'react';
  * draws; with no script lifting it, the page under the ground stays pressable, which is how the
  * next press here reaches its button.
  *
- * **the control row is not three independent slots.** `danger` suppresses `exit`
- * (packages/operator/src/components/shell/Dialog.jsx:139), so a card with a destructive control has
- * no primary one and the way out is `cancel` or nothing. that rule is invisible in any single
- * specimen and is the reason the arrangements are walked in order: exit alone, exit and cancel,
- * danger and cancel, danger alone, and none at all.
+ * **the control row is not independent slots.** `danger` and `commit` each suppress `exit`
+ * (packages/operator/src/components/shell/Dialog.jsx:157), so a card that asks has its act first
+ * and `cancel` or nothing beside it. that rule is invisible in any single specimen and is the
+ * reason the arrangements are walked in order: exit alone, exit and cancel, commit and cancel,
+ * danger and cancel, danger alone, and none at all. the commit and the danger pair stand the act in
+ * the same place and differ by rank alone, which is what the two opened one after the other are
+ * for.
  *
  * danger alone is drawn because it is reachable and it is a card with no way out — worth seeing
  * next to the pair that has one, since a screen writing it has almost certainly forgotten a
@@ -53,6 +55,7 @@ type Which =
 	| 'once'
 	| 'named-exit'
 	| 'pair'
+	| 'commit'
 	| 'danger'
 	| 'danger-alone'
 	| 'titled'
@@ -63,6 +66,7 @@ const OPENERS: readonly (readonly [Which, string])[] = [
 	['once', 'Everything defaulted'],
 	['named-exit', 'A named way out'],
 	['pair', 'Exit and cancel'],
+	['commit', 'Commit and cancel'],
 	['danger', 'Danger and cancel'],
 	['danger-alone', 'Danger alone'],
 	['titled', 'A stated heading id'],
@@ -117,6 +121,22 @@ export default function ShellDialogPreview() {
 					<p>
 						A short test message is sent to the address in the box. Nothing is recorded and no donor
 						hears about it.
+					</p>
+				</Dialog>
+			) : null}
+
+			{/* an act that destroys nothing: the primary rank, where the danger pair below stands its act. */}
+			{open === 'commit' ? (
+				<Dialog
+					title="Publish Winter coat drive?"
+					commit="Publish"
+					commitProps={close}
+					cancel="Cancel"
+					cancelProps={close}
+				>
+					<p>
+						The page goes live at /winter-coat-drive and takes gifts from the moment it is
+						published.
 					</p>
 				</Dialog>
 			) : null}

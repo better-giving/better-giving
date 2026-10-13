@@ -2,13 +2,19 @@ package deployment
 
 import (
 	"context"
+	"mime"
 	"net/http"
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/release"
 )
 
-// the organisation's legal identity, as this console writes it back.
+// the organisation's profile, as this console writes it back: its legal identity, mission, vision,
+// brand colour, social links and logo — and the logo read back as its bytes, for the cropper.
 //
 // **the deployment is the authority and this states no rule of its own.** what a value may be — the
 // caps, which boxes refuse a blank, what an email has to look like — is decided inside the worker
@@ -33,6 +39,10 @@ import (
 
 // OrgPath is the path on a deployment that stores an organisation's profile.
 const OrgPath = "/console/org"
+
+// OrgLogoPath is the path on a deployment that puts the organisation's logo on, by POST, and takes
+// it off, by DELETE.
+const OrgLogoPath = "/console/org/logo"
 
 // OrgWriteKind is how one write of the profile ended.
 type OrgWriteKind string
@@ -79,11 +89,128 @@ type OrgWrite struct {
 // without a network. A nil writer is its own answer rather than a request made with no credential:
 // the state an operator is in is that this console has not connected, which is a different sentence
 // from anything the deployment would say.
-func SaveOrg(ctx context.Context, post cf.Post, values map[string]string) OrgWrite {
+//
+// The links are the addresses as typed, blanks included: which platform each is and whether a blank
+// is skipped are the deployment's to decide, like every other rule here.
+func SaveOrg(ctx context.Context, post cf.Post, values map[string]string, links []string) OrgWrite {
 	if post == nil {
 		return unsaved(NoReport{Kind: NoSession})
 	}
-	return readOrgWrite(post(ctx, OrgPath, map[string]any{"org": values}))
+	if links == nil {
+		links = []string{}
+	}
+	return readOrgWrite(post(ctx, OrgPath, map[string]any{"org": values, "social_links": links}))
+}
+
+// SaveLogo puts the logo on, or says why it did not.
+//
+// The body is the browser's own multipart post under the type it came with, forwarded unread: the
+// photo's size, type and pixels are the deployment's intake to judge, and its refusal is keyed at
+// `logo` like any other box's.
+func SaveLogo(ctx context.Context, send cf.Send, contentType string, body []byte) OrgWrite {
+	if send == nil {
+		return unsaved(NoReport{Kind: NoSession})
+	}
+	return readOrgWrite(send(ctx, http.MethodPost, OrgLogoPath, cf.Encoded{Type: contentType, Bytes: body}))
+}
+
+// DropLogo takes the logo off, or says why it did not.
+func DropLogo(ctx context.Context, send cf.Send) OrgWrite {
+	if send == nil {
+		return unsaved(NoReport{Kind: NoSession})
+	}
+	return readOrgWrite(send(ctx, http.MethodDelete, OrgLogoPath, nil))
+}
+
+// ImagePath is the path on a deployment that serves one image's bytes, by its id. it is ungated:
+// knowing the id is the permission (packages/app/src/routes/image.$id.ts).
+func ImagePath(id string) string { return "/image/" + url.PathEscape(id) }
+
+// Images is how a read of a deployment's image bytes is bound: at its origin, held to a read's
+// deadline, and carrying no session, because the address it reads asks for none.
+func Images(origin string) cf.Fetch { return cf.BytesGetWithin(origin, cf.ReadTimeout) }
+
+// LogoReadKind is how one read of the logo's bytes ended.
+type LogoReadKind string
+
+const (
+	// LogoHeld is the bytes, which is the only kind carrying any.
+	LogoHeld LogoReadKind = "held"
+	// LogoNone is a profile holding no logo, or one whose logo was taken off between the reading
+	// and the read of its bytes.
+	LogoNone LogoReadKind = "none"
+	// LogoUnread is no answer about the logo either way, and Read says which way.
+	LogoUnread LogoReadKind = "unread"
+)
+
+// LogoRead is the logo's bytes under the type the deployment served them with, or why there are
+// none.
+type LogoRead struct {
+	Kind  LogoReadKind
+	Type  string
+	Bytes []byte
+	Read  *NoReport
+}
+
+// ReadLogo is the logo the deployment holds now, found the way the fold finds it: by the id its
+// reading names, and then the bytes at that id's address.
+//
+// The bytes are held to the most an upload may carry and to an image type, because they are served
+// again on this console's own origin: a body past what the deployment stores, or one that is not a
+// photo, is not the logo it stored.
+func ReadLogo(ctx context.Context, send cf.Send, fetch cf.Fetch) LogoRead {
+	if send == nil || fetch == nil {
+		return unreadLogo(NoReport{Kind: NoSession})
+	}
+	read := readReport(send(ctx, http.MethodGet, ConsolePath, nil))
+	if read.Kind != Reported {
+		return unreadLogo(read.NoReport)
+	}
+	org, _ := read.Org.(map[string]any)
+	if org["logo"] == nil {
+		return LogoRead{Kind: LogoNone}
+	}
+	logo, _ := org["logo"].(map[string]any)
+	id, _ := logo["id"].(string)
+	if id == "" {
+		return unreadLogo(NoReport{
+			Kind:   NoReportUnreadable,
+			Detail: "This deployment names a logo with no id",
+		})
+	}
+
+	fetched := fetch(ctx, ImagePath(id), release.LogoUploadMax)
+	switch {
+	case fetched.Kind == cf.Unreachable:
+		return unreadLogo(NoReport{Kind: NoReportUnreachable, Detail: fetched.Detail})
+	case fetched.Status == http.StatusNotFound:
+		return LogoRead{Kind: LogoNone}
+	case fetched.Status < 200 || fetched.Status > 299:
+		body, _ := fetched.Body.(map[string]any)
+		return unreadLogo(unreadable(fetched.Answer, body).NoReport)
+	case fetched.Over:
+		return unreadLogo(NoReport{
+			Kind:   NoReportUnreadable,
+			Detail: "This deployment's logo is over " + strconv.Itoa(release.LogoUploadMax) + " bytes, the most it stores",
+			Status: fetched.Status,
+		})
+	case !isImage(fetched.Type):
+		return unreadLogo(NoReport{
+			Kind:   NoReportUnreadable,
+			Detail: "This deployment answered " + strconv.Quote(fetched.Type) + " where its logo was expected",
+			Status: fetched.Status,
+		})
+	}
+	return LogoRead{Kind: LogoHeld, Type: fetched.Type, Bytes: fetched.Bytes}
+}
+
+func isImage(kind string) bool {
+	media, _, err := mime.ParseMediaType(kind)
+	return err == nil && strings.HasPrefix(media, "image/")
+}
+
+func unreadLogo(read NoReport) LogoRead {
+	return LogoRead{Kind: LogoUnread, Read: &read}
 }
 
 // what the deployment answered a write with, read.
@@ -131,14 +258,11 @@ func fieldErrors(answer cf.Answer) (OrgWrite, bool) {
 	return refused, true
 }
 
-// whether this console has a box that sentence could be printed under.
+// whether this console has a box that sentence could be printed under: one per field, the list of
+// links and the logo.
 func drawn(field string) bool {
-	for _, one := range release.OrgProfileFields {
-		if one == field {
-			return true
-		}
-	}
-	return false
+	return field == release.SocialLinksField || field == release.LogoField ||
+		slices.Contains(release.OrgProfileFields, field)
 }
 
 func unsaved(read NoReport) OrgWrite {

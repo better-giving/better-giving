@@ -1,9 +1,10 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { Form, createRoutesStub } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { getFormProps } from '@conform-to/react';
-import { MAX_SUGGESTED_AMOUNTS, SUGGESTED_AMOUNTS_HELD } from '$lib/forms/amounts';
+import { groupedEntry, MAX_SUGGESTED_AMOUNTS, SUGGESTED_AMOUNTS_HELD } from '$lib/forms/amounts';
 import { defineForm } from '$lib/forms/definition';
 import { FORM_GIVING_INPUT } from '$lib/forms/input-schema';
 import { boxErrorId, insertWhenValid, useAdminForm } from '../use-admin-form';
@@ -215,9 +216,78 @@ it('puts a thumb at the end of the scale for a figure past the last stop', async
 it('leaves a thumb where it is while its box holds text that is not an amount', async () => {
 	const { upper, max } = bounds(group({ rows: [row(0)] }));
 
-	await type(max, '5,000');
+	await type(max, 'about 50');
 	expect(upper.getAttribute('aria-valuenow')).toBe(AT_500);
 	expect(upper.getAttribute('aria-valuetext')).toBe('$500');
+});
+
+// the boxes group thousands as they are typed and post the text they draw, grouped, which
+// `readAmount` reads where the grouping is well formed.
+
+it('groups a bound’s thousands as it is typed, and moves its thumb on the figure', async () => {
+	const { upper, max } = bounds(group({ rows: [row(0)] }));
+
+	await type(max, '2000');
+
+	expect(max.value).toBe('2,000');
+	expect(upper.getAttribute('aria-valuetext')).toBe('$2,000');
+});
+
+it('draws a seed grouped, in the server markup and once hydrated alike', () => {
+	const seeded = {
+		boxes: {
+			min_minor: { id: MIN_BOX, name: 'min_minor', defaultValue: '5' },
+			max_minor: { id: MAX_BOX, name: 'max_minor', defaultValue: '20000' }
+		},
+		amounts: {
+			id: GROUP,
+			rows: [{ ...row(0), defaultValue: '1500' }],
+			add: intent,
+			remove: () => intent
+		},
+		currency: 'USD'
+	};
+	const served = document.createElement('div');
+	served.innerHTML = renderToString(createElement(FormGivingFields, seeded));
+	const hydrated = mount(createElement(FormGivingFields, seeded));
+	const values = (root: HTMLElement) =>
+		[MAX_BOX, `${GROUP}[0]`].map(
+			(id) => root.querySelector<HTMLInputElement>(`[id="${id}"]`)?.value
+		);
+
+	expect(values(served)).toEqual(['20,000', '1,500']);
+	expect(values(hydrated)).toEqual(['20,000', '1,500']);
+});
+
+it('deletes the digit before a separator on a Backspace just after it', async () => {
+	const root = group({ rows: [row(0)] });
+	const box = input(root, 0);
+	await type(box, '12345');
+
+	await act(async () => {
+		box.setSelectionRange(3, 3);
+		box.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true })
+		);
+	});
+
+	expect(box.value).toBe('1,345');
+	expect(box.selectionStart).toBe(1);
+});
+
+it('posts every amount as it draws it', async () => {
+	const { root, form } = inForm({ min: '5', max: '500' });
+	const { min, max } = bounds(root);
+	await type(min, '1000');
+	await type(max, '250000.5');
+	await type(input(root, 0), '12500');
+	expect([min.value, max.value, input(root, 0).value]).toEqual(['1,000', '250,000.5', '12,500']);
+
+	expect([...new FormData(form)]).toEqual([
+		['min_minor', '1,000'],
+		['max_minor', '250,000.5'],
+		['suggested_amounts[0]', '12,500']
+	]);
 });
 
 /** a key pressed on a thumb. the machine takes each event on a microtask after react's handler. */
@@ -321,6 +391,25 @@ it('moves the thumbs to a new seed when the form is reset onto it', async () => 
 	expect(upper.getAttribute('aria-valuetext')).toBe('$20,000');
 });
 
+it('regroups a digit typed into the seed a form was reset onto', async () => {
+	// the box last drew what was typed before the reset; the keystroke's own keydown is what reads
+	// the seed the reset put back in front of the edit.
+	const { root, form, draw } = inForm({ min: '5', max: '500' });
+	const { max } = bounds(root);
+	await type(max, '2000');
+	draw({ min: '5', max: '20000' });
+	await reset(form);
+	expect(max.value).toBe('20,000');
+
+	await act(async () => {
+		max.setSelectionRange(6, 6);
+		max.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true, cancelable: true }));
+	});
+	await type(max, '20,0000');
+
+	expect(max.value).toBe('200,000');
+});
+
 it('gives the bounds no named field but the two boxes', () => {
 	// the slider submits nothing: what the group posts for its bounds is the two boxes alone.
 	const { fieldset } = bounds(group({ rows: [row(0)] }));
@@ -328,6 +417,51 @@ it('gives the bounds no named field but the two boxes', () => {
 	expect(
 		[...fieldset.querySelectorAll('[name]')].map((field) => field.getAttribute('name'))
 	).toEqual(['min_minor', 'max_minor']);
+});
+
+// Add and Remove are the form's intents, drawn so they are never the form's default button once the
+// page runs script — the platform clicks the first submit button in tree order for Enter in a box,
+// and these sit above the screen's own submit. before hydration they are the intents' own submits,
+// which the action answers without script.
+
+/** the amounts' presses as `group` hands them over, with the row count that draws Remove. */
+const PRESSES = { rows: [row(0), row(1)] };
+
+function presses(within: Element) {
+	// Add reads its words, and Remove is its mark alone and named for its row to a reader.
+	return [...within.querySelectorAll('button')].filter(
+		(one) =>
+			one.textContent?.trim() === 'Add an amount' ||
+			/^Remove /.test(one.getAttribute('aria-label') ?? '')
+	);
+}
+
+it('draws Add and Remove as submits of the intent before hydration', () => {
+	const served = document.createElement('div');
+	served.innerHTML = renderToString(
+		createElement(FormGivingFields, {
+			boxes: {
+				min_minor: { id: MIN_BOX, name: 'min_minor', defaultValue: '5' },
+				max_minor: { id: MAX_BOX, name: 'max_minor', defaultValue: '500' }
+			},
+			amounts: { id: GROUP, ...PRESSES, add: intent, remove: () => intent },
+			currency: 'USD'
+		})
+	);
+
+	expect(presses(served).map((one) => [one.type, one.name, one.value, one.formNoValidate])).toEqual(
+		[
+			['submit', 'intent', 'insert', true],
+			['submit', 'intent', 'insert', true],
+			['submit', 'intent', 'insert', true]
+		]
+	);
+});
+
+it('draws Add and Remove as no submit at all once hydrated', () => {
+	const root = group(PRESSES);
+
+	expect(presses(root).map((one) => one.type)).toEqual(['button', 'button', 'button']);
 });
 
 // these mount the group under the real form layer, because what is under test is what a press and
@@ -338,10 +472,23 @@ const GIVING = defineForm({ id: 'form-edit-giving', schema: FORM_GIVING_INPUT })
 /** distinct figures inside the $5–$500 bounds, one per row. */
 const figures = (count: number) => Array.from({ length: count }, (_, i) => String(10 + i));
 
-function Giving({ rows, min = '5' }: { readonly rows: string[]; readonly min?: string }) {
+/** whether the group last rendered holds anything to save, as its save button would be drawn. */
+let armed = false;
+
+function Giving({
+	rows,
+	min = '5',
+	max = '500'
+}: {
+	readonly rows: string[];
+	readonly min?: string;
+	readonly max?: string;
+}) {
 	const [form, fields] = useAdminForm(GIVING, undefined, {
-		defaultValue: { min_minor: min, max_minor: '500', suggested_amounts: rows }
+		defaultValue: { min_minor: min, max_minor: max, suggested_amounts: rows }
 	});
+	// read during the render, which is what subscribes this component to it.
+	armed = form.dirty;
 	return (
 		<form {...getFormProps(form)}>
 			<FormGivingFields
@@ -361,8 +508,14 @@ function Giving({ rows, min = '5' }: { readonly rows: string[]; readonly min?: s
 	);
 }
 
-function giving(rows: string[], min?: string) {
-	const root = mount(createElement(Giving, min === undefined ? { rows } : { rows, min }));
+function giving(rows: string[], min?: string, max?: string) {
+	const root = mount(
+		createElement(Giving, {
+			rows,
+			...(min === undefined ? {} : { min }),
+			...(max === undefined ? {} : { max })
+		})
+	);
 	const button = (label: string) => {
 		const found = [...root.querySelectorAll('button')].find((b) => b.textContent === label);
 		if (!found) throw new Error(`no ${label} button`);
@@ -391,6 +544,28 @@ function giving(rows: string[], min?: string) {
 				.map((id) => document.getElementById(id)?.textContent)
 	};
 }
+
+it('holds nothing to save once an edit to a grouped seed is undone', async () => {
+	// the seed is the text the server writes (`formInputValuesFrom` in
+	// `$lib/server/forms/form-input.ts`), and the box draws it grouped.
+	const group = giving([groupedEntry(150_000, 'USD')], '5', groupedEntry(2_000_000, 'USD'));
+	const max = group.root.querySelector('input[name="max_minor"]');
+	const tile = group.root.querySelector('input[name="suggested_amounts[0]"]');
+	if (!(max instanceof HTMLInputElement) || !(tile instanceof HTMLInputElement)) {
+		throw new Error('no amount boxes');
+	}
+	expect(armed).toBe(false);
+
+	await type(max, '20,0000');
+	await type(tile, '1,5000');
+	expect([max.value, tile.value]).toEqual(['200,000', '15,000']);
+	expect(armed).toBe(true);
+
+	await type(max, '200,00');
+	await type(tile, '15,00');
+	expect([max.value, tile.value]).toEqual(['20,000', '1,500']);
+	expect(armed).toBe(false);
+});
 
 it('adds a row while the group is under the cap', async () => {
 	const group = giving(figures(MAX_SUGGESTED_AMOUNTS - 1));

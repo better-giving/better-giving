@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { WHICH_FORM } from '$lib/forms/definition';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import type { FormInputValues } from '$lib/forms/fields';
 import type { FormReadinessLine } from '$lib/forms/readiness';
 import { redact } from '$lib/redact';
@@ -101,6 +101,8 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+	// before the forms, because `page.form_id` points there and nothing carries an ON DELETE.
+	await env.DB.prepare('delete from page').run();
 	await env.DB.prepare('delete from form').run();
 	// after the forms, because `form.program_id` points here and nothing carries an ON DELETE.
 	await env.DB.prepare('delete from program').run();
@@ -188,6 +190,21 @@ async function listSites(...origins: string[]): Promise<void> {
 }
 
 /**
+ * runs `during` with `table` out of reach, and puts it back whatever happens.
+ *
+ * renamed rather than dropped, so the migrations' own constraints and the rows around it survive —
+ * the shape ./_app.admin.books.workers.spec.ts takes for a read that could not be answered.
+ */
+async function withoutTable<T>(table: string, during: () => Promise<T>): Promise<T> {
+	await env.DB.prepare(`alter table ${table} rename to ${table}_hidden`).run();
+	try {
+		return await during();
+	} finally {
+		await env.DB.prepare(`alter table ${table}_hidden rename to ${table}`).run();
+	}
+}
+
+/**
  * the deploy-time values a fully set-up deployment holds.
  *
  * nothing this route reads is among them, which is what the pair below is for: a deployment with
@@ -243,6 +260,7 @@ type Loaded = {
 	saved: 'name' | 'program' | 'giving' | 'origins' | null;
 	archivedJustNow: boolean;
 	confirmArchive: boolean;
+	version: number;
 };
 
 /** one visit to this screen, carrying the session and whatever the browser holds beside it. */
@@ -301,9 +319,14 @@ function identityLine(loaded: Loaded): FormReadinessLine {
  * the amounts are a repeating row editor, so each row carries its own indexed name; the sites are a
  * checkbox group, so each ticked box repeats one name.
  */
-function bodyOf(form: string, fields: Record<string, string | string[]>): FormData {
+function bodyOf(
+	form: string,
+	version: string,
+	fields: Record<string, string | string[]>
+): FormData {
 	const body = new FormData();
 	body.set(WHICH_FORM, form);
+	body.set(RECORD_VERSION, version);
 	for (const [field, value] of Object.entries(fields)) {
 		if (field === 'suggested_amounts') {
 			const rows = typeof value === 'string' ? [value] : value;
@@ -356,7 +379,21 @@ type Failure = {
 	valid: boolean;
 	errors: Record<string, string[]>;
 	message?: string;
+	/** the boxes as the rejection hands them back, which is what the screen re-renders them from. */
+	typed: Record<string, unknown>;
 };
+
+/**
+ * the version a page drawn this moment carries: the row's own `updated_at`, read past drizzle so
+ * the fixture is not the query under test. `0` when no row answers; the fixture row is inserted at
+ * `0` too.
+ */
+async function drawnNow(id: string): Promise<string> {
+	const row = await env.DB.prepare('select updated_at from form where id = ?')
+		.bind(id)
+		.first<{ updated_at: number }>();
+	return String(row?.updated_at ?? 0);
+}
 
 /** what a write that went through hands back: a redirect and the marker riding on it. */
 type Redirected = { status: number; location: string | null; cookie: string | null };
@@ -373,13 +410,13 @@ async function post(
 	id: string,
 	fields: Record<string, string | string[]>,
 	vars: Record<string, string> = READY,
-	ungated = false
+	{ version, ungated = false }: { version?: string; ungated?: boolean } = {}
 ): Promise<{ redirect?: Redirected; failure?: Failure }> {
 	const response = await (ungated ? direct : request)(
 		new Request(`${ORIGIN}/admin/forms/${id}`, {
 			method: 'POST',
 			headers: { cookie: session },
-			body: bodyOf(form, fields)
+			body: bodyOf(form, version ?? (await drawnNow(id)), fields)
 		}),
 		{ env: envOf(vars) }
 	);
@@ -395,7 +432,13 @@ async function post(
 	}
 
 	const body = (await response.json()) as {
-		form: { result: { status?: string; error?: Record<string, string[]> } };
+		form: {
+			result: {
+				status?: string;
+				error?: Record<string, string[]>;
+				initialValue?: Record<string, unknown>;
+			};
+		};
 	};
 	const keyed = body.form.result.error ?? {};
 	const banner = keyed['']?.at(-1);
@@ -404,7 +447,8 @@ async function post(
 			status: response.status,
 			valid: body.form.result.status !== 'error',
 			errors: Object.fromEntries(Object.entries(keyed).filter(([field]) => field !== '')),
-			...(banner === undefined ? {} : { message: banner })
+			...(banner === undefined ? {} : { message: banner }),
+			typed: body.form.result.initialValue ?? {}
 		}
 	};
 }
@@ -467,6 +511,96 @@ async function archiveInPlace(id = FORM_ID): Promise<void> {
 		.run();
 }
 
+/** the donation-settings rows the page-owned cases below write, one per kind of page. */
+const OWNED = { donation_page: 'frm_donationpage001', campaign: 'frm_campaignowned01' } as const;
+
+/**
+ * a live donation-settings row owned by a page of `type`, written past drizzle so the fixture is not
+ * the query under test. the campaign is named, the Donation page is not (`page_name_check`).
+ */
+async function pageOwned(type: keyof typeof OWNED): Promise<string> {
+	const id = OWNED[type];
+	await env.DB.prepare(
+		`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+		                   suggested_amounts, allowed_origins, created_at, updated_at)
+		 values (?, 'Page settings', 'live', ?, 'USD', 500, 1000000, '[2500]', '[]', 0, 0)`
+	)
+		.bind(id, revenueAccountId)
+		.run();
+	const campaign = type === 'campaign';
+	await env.DB.prepare(
+		`insert into page (id, type, name, slug, state, form_id, draft, published, created_at, updated_at)
+		 values (?, ?, ?, ?, 'live', ?, '{}', '{}', 0, 0)`
+	)
+		.bind(`pge_${id}`, type, campaign ? 'Winter coats' : null, campaign ? 'winter-coats' : null, id)
+		.run();
+	return id;
+}
+
+/** how a refusal names the page that owns a row: the Donation page by its word, a campaign by its name. */
+const OWNER_WORDS = { donation_page: 'the Donation page', campaign: 'Winter coats' } as const;
+
+describe('/admin/forms/[id] — a page’s own donation settings', () => {
+	it.each(['donation_page', 'campaign'] as const)(
+		'404s for the row a %s owns, naming the page and its editor',
+		async (type) => {
+			const id = await pageOwned(type);
+			const response = await visit({ id });
+			expect(response.status).toBe(404);
+			const body = (await response.json()) as string;
+			expect(body).toContain(id);
+			expect(body).toContain(OWNER_WORDS[type]);
+			expect(body).toContain('editor');
+		}
+	);
+});
+
+describe('/admin/forms/[id] — a write aimed at a page’s own donation settings', () => {
+	it.each(['donation_page', 'campaign'] as const)(
+		'refuses every group’s save on the row a %s owns, naming the page, and writes nothing',
+		async (type) => {
+			// no screen draws these boxes for a page's row, so this is a hand-built body. the refusal
+			// is at the write's own `where`, and the sentence comes off the read after it.
+			const id = await pageOwned(type);
+			const before = await readForm(db, id);
+
+			for (const form of [NAME_FORM, PROGRAM_FORM, GIVING_FORM, ORIGINS_FORM]) {
+				const { failure } = await post(form, id, submission(form));
+				expect(failure?.status, form).toBe(404);
+				expect(failure?.message, form).toContain(OWNER_WORDS[type]);
+				expect(failure?.message, form).toContain('editor');
+				expect(failure?.errors, form).toEqual({});
+			}
+			expect(await readForm(db, id)).toEqual(before);
+		}
+	);
+
+	it.each(['donation_page', 'campaign'] as const)(
+		'refuses to archive the row a %s owns, naming the page, and leaves it serving',
+		async (type) => {
+			const id = await pageOwned(type);
+			const { failure } = await post(ARCHIVE_FORM, id, {});
+			expect(failure?.status).toBe(404);
+			expect(failure?.message).toContain(OWNER_WORDS[type]);
+			expect(failure?.message).toContain('editor');
+			expect((await readForm(db, id))?.status).toBe('live');
+		}
+	);
+
+	it('saves every group and the archive of a form while leaving every page’s settings as they were', async () => {
+		const owned = [await pageOwned('donation_page'), await pageOwned('campaign')];
+		const before = await Promise.all(owned.map((id) => readForm(db, id)));
+
+		for (const form of [NAME_FORM, PROGRAM_FORM, GIVING_FORM, ORIGINS_FORM, ARCHIVE_FORM]) {
+			const { redirect } = await post(form, FORM_ID, submission(form));
+			expect(redirect?.status, form).toBe(303);
+		}
+		// the form's own writes landed, so the read below is of rows the same statements reached past.
+		expect((await readForm(db, FORM_ID))?.name).toBe('Gala 2026');
+		expect(await Promise.all(owned.map((id) => readForm(db, id)))).toEqual(before);
+	});
+});
+
 describe('/admin/forms/[id] load', () => {
 	it('renders the stored form into the boxes it was typed in', async () => {
 		const { id, values, currency } = await runLoad();
@@ -474,12 +608,12 @@ describe('/admin/forms/[id] load', () => {
 		expect(values).toMatchObject({
 			name: 'General Fund',
 			status: 'draft',
-			// the row holds 500, 1000000 and [2500]; the boxes hold what an operator types, which is
-			// major units with no cents where there are none — the two are the same amounts read in
-			// the two directions `$lib/forms/amounts.ts` converts between.
+			// the row holds 500, 1000000 and [2500]; the boxes hold what an operator types, grouped
+			// as the box draws it, which is major units with no cents where there are none — the two
+			// are the same amounts read in the two directions `$lib/forms/amounts.ts` converts between.
 			suggested_amounts: ['25'],
 			min_minor: '5',
-			max_minor: '10000',
+			max_minor: '10,000',
 			allowed_origins: ['https://acme.org']
 		});
 		// shown and never editable: an operator who cannot see the currency cannot tell what their
@@ -691,6 +825,30 @@ describe('/admin/forms/[id] — a group saves on its own', () => {
 		expect(after?.allowedOrigins).toEqual(before?.allowedOrigins);
 	});
 
+	it('writes amounts posted grouped the way the boxes draw them', async () => {
+		const sent = await post(
+			GIVING_FORM,
+			FORM_ID,
+			submission(GIVING_FORM, { max_minor: '10,000.00', suggested_amounts: ['1,000', '25'] })
+		);
+
+		expect(sent.redirect?.status).toBe(303);
+		expect(await readForm(db, FORM_ID)).toMatchObject({
+			maxMinor: 1_000_000,
+			suggestedAmounts: [100_000, 2500]
+		});
+	});
+
+	it('refuses a comma no box draws, saying where, and writes nothing', async () => {
+		const before = await readForm(db, FORM_ID);
+		const sent = await post(GIVING_FORM, FORM_ID, submission(GIVING_FORM, { max_minor: '25,50' }));
+
+		expect(sent.failure?.errors.max_minor).toEqual([
+			'must have 3 digits after each comma, and `,50` has 2, write 25.00 for $25.00'
+		]);
+		expect((await readForm(db, FORM_ID))?.maxMinor).toBe(before?.maxMinor);
+	});
+
 	it('writes the origins group and leaves every other column alone', async () => {
 		const before = await readForm(db, FORM_ID);
 		await post(ORIGINS_FORM, FORM_ID, {
@@ -824,6 +982,87 @@ describe('/admin/forms/[id] — a group that cannot be saved', () => {
 	});
 });
 
+describe('/admin/forms/[id] — a save from a page drawn before another save', () => {
+	/** what a save from a stale tab is refused with, up to the move it names. */
+	const STALE = 'Nothing was saved: this form has changed since this page was opened.';
+
+	it('refuses a name fix from a tab drawn while the form was a draft, and it stays live', async () => {
+		// two tabs on one form. the first was drawn while it was a draft; the second publishes it.
+		const tab = await runLoad();
+		const published = await post(NAME_FORM, FORM_ID, { name: 'General Fund', status: 'live' });
+		expect(published.redirect?.status).toBe(303);
+
+		// the first tab fixes a typo, with its status box still reading what it was drawn with.
+		const { failure, redirect } = await post(
+			NAME_FORM,
+			FORM_ID,
+			{ name: 'General Fund 2026', status: 'draft' },
+			READY,
+			{ version: String(tab.version) }
+		);
+		expect(redirect).toBeUndefined();
+		expect(failure?.status).toBe(409);
+		expect(failure?.valid).toBe(false);
+		// a banner saying what to do, and no box blamed: every box on it holds a value the operator
+		// may save once the page shows what moved.
+		expect(failure?.errors).toEqual({});
+		expect(failure?.message).toContain(STALE);
+		expect(failure?.message).toContain('Reload the page');
+		expect(failure?.typed).toMatchObject({ name: 'General Fund 2026', status: 'draft' });
+
+		const after = await readForm(db, FORM_ID);
+		expect(after?.status).toBe('live');
+		expect(after?.name).toBe('General Fund');
+	});
+
+	it('refuses every other group’s save from that tab too, and writes none of them', async () => {
+		// the same lost update without the status in it: a tab drawn before a colleague's save puts
+		// back whatever that save moved in the group it submits.
+		const tab = await runLoad();
+		await post(NAME_FORM, FORM_ID, submission(NAME_FORM));
+		const before = await readForm(db, FORM_ID);
+
+		for (const form of [PROGRAM_FORM, GIVING_FORM, ORIGINS_FORM]) {
+			const { failure } = await post(form, FORM_ID, submission(form), READY, {
+				version: String(tab.version)
+			});
+			expect(failure?.status, form).toBe(409);
+			expect(failure?.message, form).toContain(STALE);
+		}
+		expect(await readForm(db, FORM_ID)).toEqual(before);
+	});
+
+	it('still says an archived form is archived, rather than that the tab is behind', async () => {
+		// both are a `where` the write missed; the archived one is the sentence an operator can act on.
+		const tab = await runLoad();
+		await archiveInPlace();
+		const { failure } = await post(NAME_FORM, FORM_ID, submission(NAME_FORM), READY, {
+			version: String(tab.version)
+		});
+		expect(failure?.status).toBe(400);
+		expect(failure?.message).not.toContain(STALE);
+	});
+
+	it('refuses a body carrying no version, naming the box, and writes nothing', async () => {
+		const before = await readForm(db, FORM_ID);
+		const response = await request(
+			new Request(`${ORIGIN}${EDITOR_PATH}`, {
+				method: 'POST',
+				headers: { cookie: session },
+				body: (() => {
+					const body = bodyOf(NAME_FORM, '', submission(NAME_FORM));
+					body.delete(RECORD_VERSION);
+					return body;
+				})()
+			}),
+			{ env: envOf(READY) }
+		);
+		expect(response.status).toBe(400);
+		expect(await response.text()).toContain(RECORD_VERSION);
+		expect(await readForm(db, FORM_ID)).toEqual(before);
+	});
+});
+
 describe('/admin/forms/[id] — Live while a blocker stands', () => {
 	it('does not offer Live on the screen while the identity columns are blank', async () => {
 		// the select renders `EDITABLE_FORM_STATUSES` filtered by this flag. a blocker means
@@ -852,13 +1091,9 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		// the button being pressed. the check is read in the action rather than carried from the
 		// loader, so what it answers is the deployment as it stands at the moment of the write.
 		await clearOrgProfile();
-		const { failure, redirect } = await post(
-			NAME_FORM,
-			FORM_ID,
-			submission(NAME_FORM),
-			READY,
-			true
-		);
+		const { failure, redirect } = await post(NAME_FORM, FORM_ID, submission(NAME_FORM), READY, {
+			ungated: true
+		});
 		expect(redirect).toBeUndefined();
 		expect(failure?.status).toBe(400);
 		// keyed to the status box, because that is the one an operator can change — and the sentence
@@ -868,9 +1103,8 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 	});
 
 	it('lets a form on no site at all go Live', async () => {
-		// where a form loads is not a second gate on Live. every form this deployment serves loads on
-		// the donation page it answers on its own address whatever is ticked, so the empty list is a
-		// complete state and a form on no site publishes.
+		// where a form goes is not a second gate on Live. a form is made ahead of the site it goes on,
+		// so the empty list is a complete state and a form on no site publishes.
 		await env.DB.prepare('update form set allowed_origins = ? where id = ?')
 			.bind('[]', FORM_ID)
 			.run();
@@ -890,7 +1124,7 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 			FORM_ID,
 			submission(NAME_FORM, { status: 'draft', name: 'Renamed while blocked' }),
 			READY,
-			true
+			{ ungated: true }
 		);
 		expect(redirect?.status).toBe(303);
 		expect((await readForm(db, FORM_ID))?.name).toBe('Renamed while blocked');
@@ -904,10 +1138,22 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 			FORM_ID,
 			submission(NAME_FORM, { status: 'live' }),
 			NOTHING_SET,
-			true
+			{ ungated: true }
 		);
 		expect(redirect?.status).toBe(303);
 		expect((await readForm(db, FORM_ID))?.status).toBe('live');
+	});
+});
+
+describe('/admin/forms/[id] — a read a save makes that could not be answered', () => {
+	it('answers a failed Live re-check with the group’s own sentence, keeping what was typed', async () => {
+		const { failure } = await withoutTable('org_profile', () =>
+			post(NAME_FORM, FORM_ID, { name: 'Gala 2026', status: 'live' })
+		);
+		expect(failure?.status).toBe(500);
+		expect(failure?.message).toBe('Saving this group failed and nothing was changed. Try again.');
+		expect(failure?.typed).toMatchObject({ name: 'Gala 2026', status: 'live' });
+		expect((await readForm(db, FORM_ID))?.status).toBe('draft');
 	});
 });
 
@@ -929,25 +1175,35 @@ describe('/admin/forms/[id] — the sites tick boxes', () => {
 
 	it('lands two saves made from one mounted screen, with no reload between them', async () => {
 		// the screen is drawn once and saved twice, which is an operator ticking a site, seeing the
-		// tick, and then ticking another. the body is the boxes and nothing else, so the second save
-		// is the first one's with a box moved and there is nothing on it that ages between the two.
-		const first = await post(ORIGINS_FORM, FORM_ID, {
-			allowed_origins: ['https://acme.org', 'https://give.acme.org']
-		});
+		// tick, and then ticking another. the one thing on the body that ages is the version, and the
+		// first save's redirect revalidates the loader, so the second carries the one that landing
+		// published rather than the one the screen was first drawn with.
+		const drawn = await runLoad();
+		const first = await post(
+			ORIGINS_FORM,
+			FORM_ID,
+			{ allowed_origins: ['https://acme.org', 'https://give.acme.org'] },
+			READY,
+			{ version: String(drawn.version) }
+		);
 		expect(first.redirect?.status).toBe(303);
 
-		const second = await post(ORIGINS_FORM, FORM_ID, {
-			allowed_origins: ['https://give.acme.org']
-		});
+		const landing = await runLoad({ flash: held(first.redirect?.cookie) });
+		const second = await post(
+			ORIGINS_FORM,
+			FORM_ID,
+			{ allowed_origins: ['https://give.acme.org'] },
+			READY,
+			{ version: String(landing.version) }
+		);
 		expect(second.failure).toBeUndefined();
 		expect(second.redirect?.status).toBe(303);
 		expect((await readForm(db, FORM_ID))?.allowedOrigins).toEqual(['https://give.acme.org']);
 	});
 
-	it('empties a form of every site, because a form on no site is a form', async () => {
-		// a form ticked onto nothing loads on the donation page this deployment answers on its own
-		// address and takes real gifts there, so this group states no rule at all about the empty
-		// list and neither does the status group.
+	it('empties a form of every site, because a form may wait on no site', async () => {
+		// a form stands on no site while the site it goes on is still being made, so this group states
+		// no rule at all about the empty list and neither does the status group.
 		//
 		// the group with nothing ticked submits no key at all, which is the body this posts.
 		const { failure, redirect } = await post(ORIGINS_FORM, FORM_ID, {});

@@ -344,6 +344,32 @@ describe('the identity a shell draws', () => {
 		expect(heads(root)).toHaveLength(2);
 	});
 
+	it('leads the name with a same-tab link through the handed link where the site is on this surface', () => {
+		// the dashboard's globe: somewhere in-app, named for where it goes. a new tab or the
+		// console's name would be the outside address's reading of a place the reader is already on.
+		const Handed = ({ children, ...rest }: DestinationLinkProps) => (
+			<a {...rest} data-handed="yes">
+				{children}
+			</a>
+		);
+		const root = render(AppShell, {
+			groups: GROUPS,
+			org: 'Riverbank Trust',
+			site: { href: '/admin/donation-page', label: 'Donation page' },
+			link: Handed
+		});
+
+		for (const head of heads(root)) {
+			const link = head.firstElementChild?.querySelector('a');
+			expect(link?.getAttribute('href')).toBe('/admin/donation-page');
+			expect(link?.getAttribute('aria-label')).toBe('Donation page');
+			expect(link?.getAttribute('title')).toBe('Donation page');
+			expect(link?.hasAttribute('target')).toBe(false);
+			expect(link?.getAttribute('data-handed')).toBe('yes');
+		}
+		expect(heads(root)).toHaveLength(2);
+	});
+
 	it('draws the name alone where no site is handed', () => {
 		const root = render(AppShell, { groups: GROUPS, org: 'Riverbank Trust' });
 
@@ -540,7 +566,7 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 
 	/** the sheet's run of entries, spelled as `railRun` spells the rail's. */
 	function sheetRun(dialog: HTMLElement): string[] {
-		return laidOut(dialog.querySelector('.adm-sheet__cells')).map((node) => {
+		return laidOut(dialog.querySelector('.adm-moresheet__cells')).map((node) => {
 			if (node.matches('a')) {
 				const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
 				return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;

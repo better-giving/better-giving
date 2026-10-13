@@ -54,8 +54,9 @@ import { Dialog, type DialogProps } from '../components/shell/Dialog.jsx';
 type ModalProps<
 	C extends ElementType = 'button',
 	X extends ElementType = 'button',
-	D extends ElementType = 'button'
-> = Omit<DialogProps<C, X, D>, 'inPage' | 'ref' | 'onCancel' | 'onClick'> & {
+	D extends ElementType = 'button',
+	M extends ElementType = 'button'
+> = Omit<DialogProps<C, X, D, M>, 'inPage' | 'ref' | 'onCancel' | 'onClick'> & {
 	/**
 	 * what Escape and a press on the ground answer with.
 	 *
@@ -96,8 +97,9 @@ function onGround(node: HTMLDialogElement, event: MouseEvent | ReactMouseEvent):
 export function Modal<
 	C extends ElementType = 'button',
 	X extends ElementType = 'button',
-	D extends ElementType = 'button'
->({ onDismiss, fallbackFocus, ...interior }: ModalProps<C, X, D>) {
+	D extends ElementType = 'button',
+	M extends ElementType = 'button'
+>({ onDismiss, fallbackFocus, ...interior }: ModalProps<C, X, D, M>) {
 	// which presentation the element is drawn in. it starts as the one the server sent — an open,
 	// whole, non-modal card where the lifted one will stand — and the effect turns it off at the
 	// moment the same element is lifted, so the modifier and the presentation cannot disagree.

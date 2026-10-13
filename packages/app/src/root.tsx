@@ -16,11 +16,11 @@ import type { Route } from './+types/root';
 import { APP_NAME } from '$lib/admin/screen-title';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 // the operator stylesheet is not imported here, and that absence is the mechanism: the document
-// below renders the donor's page at `/{form_id}` as well as every operator screen, and the donation
-// form's four sheets are unlayered while every operator declaration is layered (./app.css) — so a
-// document that carried both would let one side outrank the other on every property only one of
-// them sets. each surface links its own chain from its own `links`; $lib/admin/operator-links.ts is
-// where that is argued and src/routes.spec.ts is what holds it.
+// below renders the donor pages, `/donate` and each campaign's address, as well as every operator
+// screen, and the donation form's four sheets are unlayered while every operator declaration is
+// layered (./app.css) — so a document that carried both would let one side outrank the other on
+// every property only one of them sets. each surface links its own chain from its own `links`;
+// $lib/admin/operator-links.ts is where that is argued and src/routes.spec.ts is what holds it.
 import operatorSheet from './app.css?url';
 
 // the document every screen is rendered into.
@@ -68,8 +68,8 @@ export default function App() {
 	return <Outlet />;
 }
 
-/** the id react router gives ./routes/$formId.tsx. */
-const DONOR_PAGE_ROUTE_ID = 'routes/$formId';
+/** the ids react router gives the donor pages, ./routes/donate.tsx and ./routes/$slug.tsx. */
+const DONOR_PAGE_ROUTE_IDS: ReadonlySet<string> = new Set(['routes/donate', 'routes/$slug']);
 
 /**
  * the app's one error page, and it is on the root rather than on the protected layout
@@ -85,7 +85,7 @@ const DONOR_PAGE_ROUTE_ID = 'routes/$formId';
  * it is also the one thing in this app under no surface, and therefore the one place a stylesheet
  * is linked from inside a tree rather than from a route's `links`: react 19 hoists a
  * `<link rel="stylesheet" precedence>` into the head, which is how a boundary that can replace any
- * screen — the donor's page included — still arrives dressed.
+ * screen — a donor page included — still arrives dressed.
  *
  * nothing under `/api/v1` renders it: those routes answer with json or with the framework's own
  * fallback, so the public surface is unchanged by anything here.
@@ -105,10 +105,10 @@ export function ErrorBoundary() {
 	// this page depends on no data. `<Meta />` draws no title over it: it reads no route beneath a
 	// boundary, and neither this route nor ./routes/_app.tsx exports `meta`.
 	//
-	// the donor's page is the organisation's and not the project's, so there the second half is the
-	// word its own tab falls back to (`meta` in ./routes/$formId.tsx). which page this is comes off
+	// a donor page is the organisation's and not the project's, so there the second half is the
+	// word its own tab falls back to (`meta` in ./routes/donate.tsx). which page this is comes off
 	// the matched route's id and never its data, for the same reason the name does.
-	const onDonorPage = useMatches().some((match) => match.id === DONOR_PAGE_ROUTE_ID);
+	const onDonorPage = useMatches().some((match) => DONOR_PAGE_ROUTE_IDS.has(match.id));
 	const tab = (face: string) => <title>{`${face} · ${onDonorPage ? 'Donate' : APP_NAME}`}</title>;
 
 	// the panel has three faces, and the 404 and the 4xx have a way out: an address that is not
@@ -121,7 +121,7 @@ export function ErrorBoundary() {
 	// away the whole client for a destination the router already has
 	// ($lib/admin/button-navigates.dom.spec.tsx).
 	//
-	// a donor holds no staff session, so on the donor's page the way out is a sign-in screen they
+	// a donor holds no staff session, so on a donor page the way out is a sign-in screen they
 	// cannot pass and is not drawn at all.
 	const toForms = onDonorPage
 		? {}
@@ -148,7 +148,7 @@ export function ErrorBoundary() {
 
 	// a 4xx is the app answering, not failing: the form layer refuses a hand-built body with a 400
 	// ($lib/server/conform.ts), and the page says what the status says. a string thrown with a 4xx
-	// is drawn as page copy on every page this boundary replaces, the donor's page included, so a
+	// is drawn as page copy on every page this boundary replaces, a donor page included, so a
 	// 4xx thrown anywhere under it is a sentence its reader will see.
 	if (status >= 400 && status < 500) {
 		const title = 'This request was refused';

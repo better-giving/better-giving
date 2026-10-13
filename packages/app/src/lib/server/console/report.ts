@@ -1,7 +1,11 @@
 import type { Db } from '../db/client';
+import { imageSrc } from '$lib/page/image-src';
 import { toFormValues } from '../org/form-values';
-import type { OrgProfileField, OrgProfileFormValues } from '../org/org-input';
-import type { OrgProfileField as WireOrgField } from '@better-giving/operator/console/org';
+import type { OrgProfileField } from '../org/org-input';
+import type {
+	OrgReading,
+	OrgProfileField as WireOrgField
+} from '@better-giving/operator/console/org';
 import { readOrgProfile } from '../org/queries';
 import { readSites } from '../sites/queries';
 import type { ConsoleReport as Wire } from '@better-giving/operator/console/report';
@@ -35,14 +39,14 @@ import type { ConsoleSession } from './access';
 // typed, and a build whose environment named no version answers `null`.
 
 /** the whole of what this surface answers, whether the request read or wrote. */
-export type ConsoleReport = Wire<OrgProfileFormValues>;
+export type ConsoleReport = Wire<OrgReading>;
 
 /**
  * one vocabulary at both ends of the wire, held to it here.
  *
  * the console draws a box per field off `@better-giving/operator/console/org`'s list, and this
  * deployment refuses a save off ../org/org-input.ts's, which is where the rules are. the two are
- * the same ten names and nothing but this line says so: each has to extend the other, so a field
+ * the same names and nothing but this line says so: each has to extend the other, so a field
  * added on one side and not the other stops compiling at the file that owns the wire rather than
  * arriving as a box no console draws or a box no save reaches.
  *
@@ -59,19 +63,37 @@ export type Agreed<Same extends true> = Same;
 export type OrgWireFields = Agreed<SameNames<OrgProfileField, WireOrgField>>;
 
 /**
- * the deployment's own answer, assembled once.
+ * the deployment's own answer, assembled once. `requestUrl` is the address the request arrived
+ * on, and the logo's address is made absolute on its origin.
  *
  * the reads overlap rather than queue — none has anything to say to another.
  *
  * no `platform.env` is passed in and none may be: this value is serialized to a caller, and an env
  * in scope here is the Stripe secret one spread away from being one of the fields.
  */
-export async function consoleReport(db: Db, session: ConsoleSession): Promise<ConsoleReport> {
+export async function consoleReport(
+	db: Db,
+	session: ConsoleSession,
+	requestUrl: string
+): Promise<ConsoleReport> {
 	const [sites, profile] = await Promise.all([readSites(db), readOrgProfile(db)]);
 
 	return {
 		sites,
-		org: profile === null ? null : toFormValues(profile),
+		org:
+			profile === null
+				? null
+				: {
+						...toFormValues(profile),
+						social_links: profile.socialLinks,
+						logo:
+							profile.logoImageId === null
+								? null
+								: {
+										id: profile.logoImageId,
+										url: new URL(imageSrc(profile.logoImageId), requestUrl).href
+									}
+					},
 		// a bare global with nothing to import, the way the generated bindings are: the build
 		// replaces it (`versionDefine` in `packages/app/version-define.ts`), and a checkout build
 		// leaves it `null`.

@@ -124,6 +124,33 @@ describe('a field mounted into a document', () => {
 		expect(root.querySelector('label')).toBeNull();
 	});
 
+	it('stands what it is handed beside the label on the label’s own row, and the label still names the box', () => {
+		const root = render(Field, {
+			id: 'heading',
+			label: 'Heading',
+			labelAside: (
+				<button type="button" aria-label="Write with AI">
+					*
+				</button>
+			)
+		});
+		const head = root.querySelector('.adm-field__head');
+
+		expect(head?.querySelector('label')?.getAttribute('for')).toBe('heading');
+		expect(head?.querySelector('.adm-field__aside button')?.getAttribute('aria-label')).toBe(
+			'Write with AI'
+		);
+		expect(head?.nextElementSibling?.matches('input#heading')).toBe(true);
+		expect(root.querySelector('label')?.textContent).toBe('Heading');
+	});
+
+	it('draws no head row where nothing stands beside the label', () => {
+		const root = render(Field, { id: 'heading', label: 'Heading' });
+
+		expect(root.querySelector('.adm-field__head')).toBeNull();
+		expect(root.querySelector('.adm-field > label')).not.toBeNull();
+	});
+
 	it('holds a masked box as dots until the press shows it, and hides it again', () => {
 		// the whole of the reveal: the value is in the box either way — a console box is seeded with
 		// what the deployment is holding — and what the press changes is whether it is legible to
@@ -405,5 +432,149 @@ describe('a field mounted into a document', () => {
 		});
 
 		expect(field.root.querySelector('input')).toBe(before);
+	});
+});
+
+describe('what a box is described by', () => {
+	it('takes in the blocks a caller draws after its own, in the order each is drawn', () => {
+		// a pair's refusal is drawn by the group, once, and the box still has its own hint and its own
+		// refusal to be read beside it: a caller's ids standing in for the field's would drop both.
+		const root = render(Field, {
+			id: 'min-minor',
+			label: 'Smallest gift',
+			hint: 'In dollars.',
+			error: 'Write a number.',
+			needed: 'The form shows this first.',
+			'aria-describedby': 'pair-err pair-note'
+		});
+
+		expect(describedBy(root)).toEqual([
+			'min-minor-hint',
+			'min-minor-err',
+			'min-minor-need',
+			'pair-err',
+			'pair-note'
+		]);
+	});
+
+	it('names an id once, where it first stands', () => {
+		const root = render(Field, {
+			id: 'min-minor',
+			label: 'Smallest gift',
+			error: 'Write a number.',
+			'aria-describedby': 'min-minor-err pair-err'
+		});
+
+		expect(describedBy(root)).toEqual(['min-minor-err', 'pair-err']);
+	});
+
+	it('reads a caller’s explicit undefined as nothing said, and keeps its own', () => {
+		// a caller composing a list that came out empty hands `undefined` with the key present; the
+		// field's own blocks still describe the box.
+		const root = render(Field, {
+			id: 'org-name',
+			label: 'Registered name',
+			hint: 'As the IRS has it.',
+			'aria-describedby': undefined
+		});
+
+		expect(describedBy(root)).toEqual(['org-name-hint']);
+	});
+
+	it('describes the box by its lead’s words first, drawn once, inside the mark out of the tree', () => {
+		const root = render(Field, {
+			id: 'link-0',
+			'aria-label': 'Link 1',
+			hint: 'An address on the network.',
+			lead: { mark: <img className="led" alt="" />, said: 'Riverbank' },
+			'aria-describedby': 'links-err'
+		});
+		const slot = root.querySelector('.adm-leadwrap > .adm-leadwrap__lead');
+		const words = root.querySelector('#link-0-lead');
+
+		expect(describedBy(root)).toEqual(['link-0-lead', 'link-0-hint', 'links-err']);
+		expect(words?.textContent).toBe('Riverbank');
+		// inside the hidden mark, so browse mode does not read it as loose text before the box reads
+		// it again; a description still reads hidden words it names directly
+		// (https://www.w3.org/TR/accname-1.2/, step 2A).
+		expect(slot?.getAttribute('aria-hidden')).toBe('true');
+		expect(slot?.contains(words)).toBe(true);
+		expect(words instanceof HTMLElement && words.hidden).toBe(true);
+	});
+
+	it('names no words for a lead that states none', () => {
+		const root = render(Field, {
+			id: 'link-0',
+			'aria-label': 'Link 1',
+			lead: { mark: <img className="led" alt="" /> }
+		});
+
+		expect(root.querySelector('img.led')).not.toBeNull();
+		expect(root.querySelector('#link-0-lead')).toBeNull();
+		expect(describedBy(root)).toEqual([]);
+	});
+});
+
+describe('a field that reports what was found about its value', () => {
+	it('stands its status region under the box before it has anything to say', () => {
+		// a region that arrives holding its words is an insertion rather than a change, and a reader
+		// may be told nothing — so it is there, empty, before the lookup answers.
+		const root = render(Field, { id: 'org-tax_id', label: 'EIN', status: '' });
+		const region = root.querySelector('[role="status"]');
+
+		expect(region?.textContent).toBe('');
+		expect(describedBy(root)).toEqual([]);
+	});
+
+	it('says the fact in that same region and points the box at it', () => {
+		const root = render(Field, {
+			id: 'org-tax_id',
+			label: 'EIN',
+			status: 'Not on the IRS list.'
+		});
+
+		expect(root.querySelector('[role="status"]')?.textContent).toBe('Not on the IRS list.');
+		expect(describedBy(root)).toEqual(['org-tax_id-status']);
+	});
+
+	it('tells a reader alone what the caller says beside the fact, in the same region', () => {
+		// a lookup that filled other boxes: news to someone whose cursor never moved, and a sentence
+		// the screen does not draw.
+		const root = render(Field, {
+			id: 'org-tax_id',
+			label: 'EIN',
+			status: 'Not on the IRS list.',
+			statusSaid: 'Filled from the IRS list.'
+		});
+		const region = root.querySelector('[role="status"]');
+
+		expect(region?.textContent).toBe('Filled from the IRS list.Not on the IRS list.');
+		expect(region?.querySelector('.adm-vh')?.textContent).toBe('Filled from the IRS list.');
+	});
+
+	it('draws no mark where the region holds only what a reader is told', () => {
+		const root = render(Field, {
+			id: 'org-tax_id',
+			label: 'EIN',
+			status: '',
+			statusSaid: 'Filled from the IRS list.'
+		});
+		const region = root.querySelector('[role="status"]');
+
+		expect(region?.textContent).toBe('Filled from the IRS list.');
+		expect(region?.querySelector('svg')).toBeNull();
+	});
+
+	it('draws no region where the caller has nothing to report', () => {
+		const root = render(Field, { id: 'org-legal_name', label: 'Registered name' });
+
+		expect(root.querySelector('[role="status"]')).toBeNull();
+	});
+
+	it('leaves the box unmarked, since a fact about the value is not a refusal of it', () => {
+		const root = render(Field, { id: 'org-tax_id', label: 'EIN', status: 'Not on the IRS list.' });
+
+		expect(root.querySelector('input')?.getAttribute('aria-invalid')).toBeNull();
+		expect(boxClasses(root)).not.toContain('adm-input--needed');
 	});
 });

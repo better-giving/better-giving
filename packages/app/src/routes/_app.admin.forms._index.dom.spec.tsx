@@ -143,23 +143,20 @@ it('carries a form’s mark on the line its name is on, with its status word', (
 	expect(head?.lastElementChild?.textContent).toBe('Live');
 });
 
-it('ends a record with its own page and then each of its sites, in the form’s own order', () => {
-	// the foot is the record's ways out, and the order is the form's: its own donation page first,
-	// because every form has one, then the sites as the form lists them.
+it('ends a record with each of its sites, in the form’s own order', () => {
+	// the foot is the record's ways out, and the order is the form's: the sites as the form lists them.
 	const presses = foot(records(screen())[0]);
 
 	expect(presses.map((press) => press.textContent?.trim())).toEqual([
-		'form page',
 		'https://riverbanktrust.org',
 		'https://give.riverbanktrust.org'
 	]);
-	expect(presses[0]?.getAttribute('href')).toBe('/frm_general');
 });
 
 it('aims a site’s press at that site on that form', () => {
 	// the press carries both halves, so the card it opens names the site the operator pressed rather
 	// than leaving them to match it up themselves.
-	const press = foot(records(screen())[0])[1];
+	const press = foot(records(screen())[0])[0];
 
 	expect(press?.getAttribute('href')).toBe(
 		'/admin/forms?embed=frm_general&site=https%3A%2F%2Friverbanktrust.org'
@@ -171,14 +168,9 @@ it('aims a site’s press at that site on that form', () => {
 	);
 });
 
-it('gives a form with no sites a foot of its own page alone', () => {
-	// the draft is `APPEAL`, and it is offered its own page exactly as the live form is: this screen
-	// withholds nothing over a state it cannot repair, and publishing is a press on the form's own
-	// page. a form nobody has ticked a site on has one press and no list of them.
-	const presses = foot(records(screen())[1]);
-
-	expect(presses.map((press) => press.textContent?.trim())).toEqual(['form page']);
-	expect(presses[0]?.getAttribute('href')).toBe('/frm_appeal');
+it('gives a form with no sites no foot', () => {
+	// `APPEAL` is ticked on no site, so the record has no ways out to list and draws no empty list.
+	expect(records(screen())[1]?.querySelector('.adm-record__foot')).toBe(null);
 });
 
 it('puts nothing over the list and no labelled value inside a card, on either reading', () => {

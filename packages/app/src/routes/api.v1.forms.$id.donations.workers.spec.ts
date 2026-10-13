@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { edgeCache } from '$lib/server/edge-cache.testing';
+import { campaignOwning } from '$lib/server/pages/page-row.testing';
 import { mountRoutes } from '../route-request.testing';
 import * as donations from './api.v1.forms.$id.donations';
 import * as surface from './api.v1';
@@ -71,6 +72,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+	await env.DB.prepare('delete from page').run();
 	await env.DB.prepare('delete from form').run();
 	await env.DB.prepare('delete from org_profile').run();
 	await env.DB.prepare(
@@ -330,13 +332,36 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
 		expect(await response.json()).toMatchObject({ error: 'form_not_found' });
 	});
 
-	it('answers 409 for a form that is still a draft', async () => {
+	it('answers 409 for a form that is still a draft, naming Forms', async () => {
 		await env.DB.prepare(`update form set status = 'draft' where id = ?`).bind(FORM_ID).run();
 
 		const response = await post();
 
 		expect(response.status).toBe(409);
-		expect(await response.json()).toMatchObject({ error: 'form_not_published' });
+		const body = (await response.json()) as { error: string; fix: string };
+		expect(body.error).toBe('form_not_published');
+		expect(body.fix).toContain('Open Forms in /admin');
+	});
+
+	/**
+	 * a donor on an ended campaign's page submits into this — the page was drawn before it ended.
+	 * the fix names Campaigns, since the Forms screen 404s a campaign's row.
+	 */
+	it.each([
+		['never published', 'never_published', /not published/],
+		['ended', 'ended', /has ended/]
+	] as const)('answers 409 naming Campaigns for a campaign %s', async (_, state, words) => {
+		await env.DB.prepare(`update form set status = 'draft' where id = ?`).bind(FORM_ID).run();
+		await campaignOwning(FORM_ID, state);
+
+		const response = await post();
+
+		expect(response.status).toBe(409);
+		const body = (await response.json()) as { error: string; message: string; fix: string };
+		expect(body.error).toBe('form_not_published');
+		expect(body.message).toMatch(words);
+		expect(body.fix).toContain('Campaigns in /admin');
+		expect(body.fix).not.toContain('Forms');
 	});
 
 	it('answers 410 for a form that was retired', async () => {

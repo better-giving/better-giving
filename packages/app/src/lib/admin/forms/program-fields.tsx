@@ -76,6 +76,8 @@ type FormProgramFieldsProps = {
 	 * absent on the create screen, which has one submit for every group.
 	 */
 	readonly footer?: ReactNode;
+	/** the group's heading level: `h2` on a form screen, `h3` in a sheet whose title is the `h2`. */
+	readonly heading?: 'h2' | 'h3' | undefined;
 };
 
 /** the chosen mode, from a box that carries whatever a body last put in it. */
@@ -94,7 +96,13 @@ const CHOOSE = 'Choose a program';
 /** said when a mode change puts the program box on the screen, and nothing otherwise. */
 const REVEALED = 'Choose which program below.';
 
-export function FormProgramFields({ boxes, programs, retired, footer }: FormProgramFieldsProps) {
+export function FormProgramFields({
+	boxes,
+	programs,
+	retired,
+	footer,
+	heading: Heading = 'h2'
+}: FormProgramFieldsProps) {
 	const [mode, setMode] = useState<ProgramMode>(() => asMode(boxes.program_mode.defaultValue));
 	// a second state rather than the mode read again: a form loaded already pinned opens with the
 	// program box on the screen, so nothing appeared and a reader is told nothing on arrival.
@@ -105,7 +113,7 @@ export function FormProgramFields({ boxes, programs, retired, footer }: FormProg
 
 	return (
 		<>
-			<h2>Program</h2>
+			<Heading>Program</Heading>
 
 			<fieldset className="adm-fieldset">
 				<legend className="adm-fieldset__legend">Where a gift goes</legend>

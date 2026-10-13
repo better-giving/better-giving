@@ -12,6 +12,7 @@ describe('the rail', () => {
 	it('opens on the dashboard, then goes to a bare path under /admin, one per section', () => {
 		expect(DESTINATIONS.map((d) => d.href)).toEqual([
 			'/admin',
+			'/admin/campaigns',
 			'/admin/forms',
 			'/admin/programs',
 			'/admin/donors',
@@ -28,7 +29,7 @@ describe('the rail', () => {
 	it('stands the dashboard alone, then the records of giving, then who can sign in, then the integrations, then the books', () => {
 		expect(DESTINATION_GROUPS.map((group) => group.destinations.map((d) => d.label))).toEqual([
 			['Dashboard'],
-			['Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
+			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
 			['Members'],
 			['Zapier', 'API', 'Webhooks'],
 			['Books']
@@ -56,7 +57,7 @@ describe('who the rail is drawn for', () => {
 			destinationGroupsFor(false).map((group) => group.destinations.map((d) => d.label))
 		).toEqual([
 			['Dashboard'],
-			['Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
+			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
 			['Members'],
 			['Books']
 		]);
@@ -64,10 +65,10 @@ describe('who the rail is drawn for', () => {
 });
 
 describe('the bar at a phone width', () => {
-	it('carries the dashboard, the forms, the donors and the gifts, and leaves the rest to More', () => {
+	it('carries the dashboard, the campaigns, the donors and the gifts, and leaves the rest to More', () => {
 		expect(DESTINATIONS.filter((d) => 'bar' in d && d.bar).map((d) => d.label)).toEqual([
 			'Dashboard',
-			'Donation forms',
+			'Campaigns',
 			'Donors',
 			'Gifts'
 		]);

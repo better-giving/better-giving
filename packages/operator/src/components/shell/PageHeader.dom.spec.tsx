@@ -181,11 +181,7 @@ describe('a page header mounted into a document', () => {
 
 describe('the page header’s slots', () => {
 	// the word beside the title and the action at the end of the row are two slots and neither is
-	// called `action`. packages/app/src/routes.spec.ts reads a JSX attribute name as an identifier,
-	// so a route exporting `action` and writing `action={…}` here reaches its own handler
-	// through its own component and is reported as D1 and the stripe client in the bundle a visitor
-	// downloads. that spec holds the mounted case; this one holds the name, so a rename here fails
-	// where the name lives rather than in a sweep whose message names neither.
+	// called `action`, the name of the route export react router strips from the browser build.
 	const source = readFileSync('src/components/shell/PageHeader.jsx', 'utf8').replace(
 		/\/\*[\s\S]*?\*\//g,
 		' '

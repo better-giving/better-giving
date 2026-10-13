@@ -40,31 +40,64 @@ import { FieldMessage } from './FieldMessage.jsx';
  * `remove` is the control that drops this row, absent where nothing may drop it — a list that has
  * to keep one row is a rule its caller holds and this component does not.
  *
- * `error` is this row's own sentence, drawn under this row's own box. the group's is a different
- * thing and is {@link RepeatingRowsProps.error}.
- *
  * @typedef {object} RepeatingRowOwnProps
  * @property {string} id
  * @property {string | undefined} [key]
- * @property {ReactNode} [error]
  * @property {RowControl | undefined} [remove]
  */
 
 /**
+ * a row that is one box. `error` is this row's own sentence, drawn under this row's own box. the
+ * group's is a different thing and is {@link RepeatingRowsProps.error}.
+ *
  * the rest is ./Field.jsx's, because a row is one: what a row holds is the platform's own
  * `defaultValue` — or `value` with a handler beside it — and a row naming itself beats the group's
- * `name`. that file's header says why a starting value is never a prop of the component's own.
+ * `name`. that file's header says why a starting value is never a prop of the component's own. a
+ * row's `lead` is that file's too: a mark inside the row's box saying what the row holds, stated row
+ * by row because what one row holds is not what the next does.
  *
  * five of a field's are not a row's. the label and the standing note belong to the group, a box
  * that is a paragraph is not a row in a list of one-line values, and the masked press's pair of
  * names says which credential a screen means — a row is told apart by its place in the list.
  *
  * @typedef {RepeatingRowOwnProps
+ *   & { error?: ReactNode, boxes?: undefined }
  *   & Omit<
  *     FieldProps,
- *     keyof RepeatingRowOwnProps | 'label' | 'needed' | 'as' | 'revealLabel' | 'hideLabel'
- *   >} RepeatingRow
+ *     | keyof RepeatingRowOwnProps
+ *     | 'error' | 'boxes' | 'label' | 'needed' | 'as' | 'revealLabel' | 'hideLabel'
+ *   >} RepeatingBoxRow
  */
+
+/**
+ * what a row of several boxes hands each of its boxes, so every one is wired into the group as the
+ * one box of a plain row is: described by the group's hint and its refusal, marked refused while
+ * the group's refusal stands, closed with the group, and named for its column and its place.
+ *
+ * @typedef {object} PairWiring
+ * @property {string | undefined} describedBy the ids of the group's hint and the group's refusal,
+ *   for the box's `aria-describedby` beside the box's own.
+ * @property {boolean} invalid whether the group's refusal stands, for the box's `aria-invalid`.
+ * @property {boolean | undefined} disabled the group's own.
+ * @property {readonly string[]} names each box's accessible name, in the order of
+ *   {@link RepeatingRowsProps.columns}: the column's head, then the row's place — `Amount, tier 2`.
+ */
+
+/**
+ * a row that is more than one box — an amount and what it does — drawn side by side in the one
+ * box's place (`.adm-rows__row > .adm-pair` in ../../styles/adm.css), under the heads the group
+ * states in `columns`. `boxes` draws them from the wiring the group hands over, and they are the
+ * caller's whole: each box holds, names and refuses itself, so nothing else a field takes is a
+ * pair row's, and stating one is a type error rather than a prop dropped on the floor. `id` names
+ * the box among them that focus goes to when the row is added or the row under it dropped.
+ *
+ * @typedef {RepeatingRowOwnProps
+ *   & { boxes: (wiring: PairWiring) => ReactNode }
+ *   & { [K in Exclude<keyof RepeatingBoxRow, keyof RepeatingRowOwnProps | 'boxes'>]?: undefined }
+ * } RepeatingPairRow
+ */
+
+/** @typedef {RepeatingBoxRow | RepeatingPairRow} RepeatingRow */
 
 /**
  * a row the group holds and the operator can neither type in nor drop, drawn in front of the rows
@@ -127,14 +160,21 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   already stated a step above it, where the mark would be a third naming of one thing. the names
  *   are unaffected: `legend` is stated whether or not it is drawn.
  * @property {ReactNode} [hint]
+ * @property {readonly string[] | undefined} [columns] the heads over a group whose rows are pairs
+ *   ({@link RepeatingPairRow}), one per box in the order the row draws them, drawn once above the
+ *   rows and building each box's accessible name ({@link PairWiring.names}).
  * @property {ReactNode} [error] what is true of the list rather than of any one row — a cap on how
  *   many rows there may be, or a refusal the far end keyed to none of them. a row's own sentence is
- *   the row's ({@link RepeatingRowOwnProps.error}), and a row carrying one is described by it rather
- *   than by this: two sentences under one box is two things to fix where there is one.
+ *   the row's ({@link RepeatingBoxRow}), and a row carrying one is described by it rather
+ *   than by this: two sentences under one box is two things to fix where there is one. a pair
+ *   row's boxes carry their own sentences, so the group's reaches both of them.
  * @property {readonly RepeatingRow[] | undefined} [rows]
  * @property {FixedRow | undefined} [fixed] one row the operator can neither edit nor remove, drawn
  *   in front of the rest and submitting nothing at all ({@link FixedRow}).
  * @property {ReactNode} [addLabel]
+ * @property {ReactNode} [addNote] a short line drawn directly under Add, about Add — why a press
+ *   of it is held, say. its id is the group's `id` and `-add-note`, for the caller to name on
+ *   Add's `aria-describedby` while the line says something a press of Add needs.
  * @property {RowControl} add the control that puts an empty row at the end, as the form holding
  *   these rows states it. stated rather than minted here, and it is what makes this group a
  *   component rather than a round trip: adding a row is that form's own business — a list intent
@@ -150,8 +190,8 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   list the closed boxes are showing. a row states its own where one of them is closed alone.
  */
 
-/* zero or more rows, a standing hint, a sentence under any row that has one, and one about the list
-   itself.
+/* zero or more rows, a standing hint, a sentence under any row that has one, one about the list
+   itself, and a line under Add about Add.
 
    the two presses are the caller's and this group only places them: what adding and dropping a row
    do is the form layer's, and the row a Remove drops is named by the control the caller minted for
@@ -176,10 +216,12 @@ export function RepeatingRows({
 	describedBy,
 	legendHidden,
 	hint,
+	columns = [],
 	error,
 	rows = [],
 	fixed,
 	addLabel = 'Add another',
+	addNote,
 	add,
 	placeholder,
 	code,
@@ -231,6 +273,50 @@ export function RepeatingRows({
 		(rows.length === 0 ? addPress : box(Math.max(press.at - 1, 0)))?.focus();
 	});
 
+	/* no label on a row: the legend above names the group and the box says which row it is to a
+	   reader, so a label element here would be an empty one.
+
+	   the field names what it draws — the row's own sentence, a `lead`'s words — and the group's
+	   two blocks join them: the standing hint reaches every row, and the group's own sentence
+	   reaches only a row that has none of its own. a row's own `aria-describedby` goes in ahead of
+	   the group's, so the composed list is stated after `{...rest}`, which would otherwise
+	   overwrite it. */
+	const oneBox = (
+		/** @type {RepeatingBoxRow} */ { id: row, key: _key, error: said, remove: _remove, ...rest },
+		/** @type {number} */ i
+	) => (
+		<Field
+			id={row}
+			name={name}
+			code={code}
+			placeholder={placeholder}
+			disabled={disabled}
+			error={said}
+			aria-label={`${rowLabel} ${i + 1}`}
+			aria-invalid={error && said === undefined ? 'true' : undefined}
+			{...rest}
+			aria-describedby={
+				[rest['aria-describedby'], hintId, said === undefined ? groupErrorId : null]
+					.filter(Boolean)
+					.join(' ') || undefined
+			}
+		/>
+	);
+
+	/* the same two blocks reach every box of a pair, and the group's refusal reaches each of them
+	   whatever the box says itself: a box's own sentence is about its own value, and the group's is
+	   about the list, so neither stands in for the other. */
+	const pair = (/** @type {RepeatingPairRow} */ entry, /** @type {number} */ i) => (
+		<div className="adm-pair">
+			{entry.boxes({
+				describedBy: [hintId, groupErrorId].filter(Boolean).join(' ') || undefined,
+				invalid: Boolean(error),
+				disabled,
+				names: columns.map((head) => `${head}, ${rowLabel} ${i + 1}`)
+			})}
+		</div>
+	);
+
 	return (
 		<fieldset className="adm-fieldset" aria-describedby={describedBy}>
 			<legend className={legendHidden ? 'adm-vh' : 'adm-fieldset__legend'}>{legend}</legend>
@@ -240,6 +326,17 @@ export function RepeatingRows({
 				</p>
 			) : null}
 			<div className="adm-rows">
+				{/* the columns' heads, once over every row, each standing over the box it names.
+				    they are read as well as drawn: each box's own name begins with its head. */}
+				{columns.length > 0 && rows.length > 0 ? (
+					<div className="adm-rows__head">
+						{columns.map((head) => (
+							<span className="adm-field__label" key={head}>
+								{head}
+							</span>
+						))}
+					</div>
+				) : null}
 				{rows.length === 0 && emptyNote ? <p className="adm-empty">{emptyNote}</p> : null}
 				{fixed ? (
 					<div className="adm-rows__row">
@@ -263,59 +360,35 @@ export function RepeatingRows({
 						)}
 					</div>
 				) : null}
-				{rows.map(({ id: row, key, error: said, remove, ...rest }, i) => (
+				{rows.map((entry, i) => (
 					// keyed by the identity the caller minted for the row rather than by the box's id:
 					// under a list named by position the id is whichever row is in that place right now
 					// ({@link RepeatingRowOwnProps}). the id is the fallback, which is only ever reached
 					// by a caller whose rows carry no identity of their own.
-					<div className="adm-rows__row" key={key ?? row}>
-						{/* no label on the row: the legend above names the group and the box says which
-						    row it is to a reader, so a label element here would be an empty one.
-
-						    the description is composed here rather than left to the field, because the
-						    group draws two of the blocks it would name: the standing hint is the group's
-						    and reaches every row, and the group's own sentence reaches only a row that
-						    has none of its own. the row's own message is the field's and is named the way
-						    the field names it. */}
-						<Field
-							id={row}
-							name={name}
-							code={code}
-							placeholder={placeholder}
-							disabled={disabled}
-							error={said}
-							aria-label={`${rowLabel} ${i + 1}`}
-							aria-invalid={error && said === undefined ? 'true' : undefined}
-							aria-describedby={
-								[hintId, said === undefined ? groupErrorId : `${row}-err`]
-									.filter(Boolean)
-									.join(' ') || undefined
-							}
-							{...rest}
-						/>
-						{/* the visible word is the same on every row, which is right beside the box it
-						    acts on and useless in a list of controls read out of context — so each says
-						    which row it drops to a reader and nothing extra on the screen. */}
-						{remove === undefined ? null : (
+					<div className="adm-rows__row" key={entry.key ?? entry.id}>
+						{entry.boxes === undefined ? oneBox(entry, i) : pair(entry, i)}
+						{/* a mark and no word, standing beside the box it drops and the box's own height
+						    (`.adm-rows__remove` in ../../styles/adm.css). the mark is the same on every
+						    row, so the name is what says which row it drops to a reader out of context. */}
+						{entry.remove === undefined ? null : (
 							<Button
 								variant="quiet"
 								size="sm"
-								mark="trash-2"
+								mark="x"
+								className="adm-rows__remove"
 								type="submit"
 								disabled={disabled}
 								aria-label={`Remove ${rowLabel} ${i + 1}`}
-								{...remove}
+								{...entry.remove}
 								onClick={(event) => {
-									remove.onClick?.(event);
+									entry.remove?.onClick?.(event);
 									if (!event.defaultPrevented) owe('remove', i);
 								}}
-							>
-								Remove
-							</Button>
+							/>
 						)}
 					</div>
 				))}
-				<div ref={addRow}>
+				<div className="adm-rows__add" ref={addRow}>
 					<Button
 						size="sm"
 						mark="plus"
@@ -329,6 +402,11 @@ export function RepeatingRows({
 					>
 						{addLabel}
 					</Button>
+					{addNote ? (
+						<p className="adm-hint" id={`${id}-add-note`}>
+							{addNote}
+						</p>
+					) : null}
 				</div>
 			</div>
 			{/* the one live region on the group, for ./FieldMessage.jsx's reason: a refusal is what a

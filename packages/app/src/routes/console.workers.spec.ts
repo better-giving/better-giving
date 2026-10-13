@@ -118,7 +118,7 @@ const TOKEN = formatConsoleToken(EXPIRES_AT, 'z'.repeat(CONSOLE_TOKEN_MIN_RANDOM
 
 interface Envelope {
 	sites: string[];
-	org: Record<string, string> | null;
+	org: Record<string, unknown> | null;
 	version: string | null;
 	session: { expiresAt: string };
 }
@@ -626,6 +626,33 @@ describe('writing the organisation’s legal identity', () => {
 		expect(body.org).toMatchObject(PROFILE);
 	});
 
+	it('stores the story, the colour and the links, and reads them back', async () => {
+		await saveOrg({
+			org: { ...PROFILE, mission: ' Clean water. ', vision: '', brand_colour: '#1F6FEB' },
+			social_links: ['https://www.instagram.com/hope', '', 'youtu.be/abc']
+		});
+		const body = await envelopeOf(await report());
+		expect(body.org).toMatchObject({
+			mission: 'Clean water.',
+			brand_colour: '#1f6feb',
+			social_links: [
+				{ platform: 'instagram', href: 'https://www.instagram.com/hope' },
+				{ platform: 'youtube', href: 'https://youtu.be/abc' }
+			],
+			logo: null
+		});
+		expect(body.org).not.toHaveProperty('vision');
+	});
+
+	it('refuses a link on no platform it knows, keyed at the list', async () => {
+		const response = await saveOrg({ org: PROFILE, social_links: ['https://example.org'] });
+		expect(response.status).toBe(422);
+		expect(((await response.json()) as { errors: Record<string, string> }).errors).toEqual({
+			social_links:
+				'https://example.org is not a Facebook, Instagram, YouTube, LinkedIn, TikTok or X address.'
+		});
+	});
+
 	it('reads back through a later report', async () => {
 		await saveOrg({ org: PROFILE });
 		const body = await envelopeOf(await report());
@@ -649,7 +676,9 @@ describe('writing the organisation’s legal identity', () => {
 	it.each([
 		{ what: 'no org key at all', body: {} },
 		{ what: 'an org that is not an object', body: { org: 'Hope Foundation' } },
-		{ what: 'a field that is not a string', body: { org: { legal_name: 7 } } }
+		{ what: 'a field that is not a string', body: { org: { legal_name: 7 } } },
+		{ what: 'social links that are not a list', body: { org: PROFILE, social_links: 'x.com/h' } },
+		{ what: 'a social link that is not a string', body: { org: PROFILE, social_links: [7] } }
 	])('refuses a body carrying $what', async ({ body }) => {
 		const response = await saveOrg(body);
 		expect(response.status).toBe(400);

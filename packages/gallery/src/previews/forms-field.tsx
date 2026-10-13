@@ -1,8 +1,11 @@
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 
 /*
  * every combination of the four blocks a field draws around its box — label, hint, error, needed —
- * plus the box types, the two pointer states, and the box with a control on its own row.
+ * plus the box types, the two pointer states, and the box with a control on its own row. `status`
+ * is drawn twice, empty and speaking, because the empty region is the state that has to hold no room.
  *
  * `beside` is drawn three times because the row is where the two heights meet: the press takes the
  * field's height rather than the control's, so a specimen of it at rest says nothing on its own —
@@ -30,6 +33,13 @@ import { Field } from '@better-giving/operator/components/forms/Field';
  * that end too; the box closed, where the press is closed with it; a value long enough to run under
  * the press if the box reserved it no room; and the wrapper standing on a row a caller also put a
  * control on.
+ *
+ * `labelAside` is drawn in each state it takes: the press alone at the label row's end; the press
+ * with the word and the Undo a filled box carries before it, over a hint, where the row's height
+ * meets the sentence's tighter step; the press in flight, its dots over its word and the field's
+ * region up and silent; the press after an ask that wrote nothing, its sentence in that region; and
+ * a label too long to share its row, which drops the word and both presses under it at the trailing
+ * edge.
  *
  * the last field's label and hint are long on purpose: string length is a layout constraint, and
  * a label that wraps is what puts the box at a different distance from the one above it.
@@ -59,6 +69,22 @@ export default function FormsFieldPreview() {
 				id="forms-field-needed"
 				label="Registered charity number"
 				needed="A test send is waiting on this."
+			/>
+			<Field
+				id="forms-field-status-empty"
+				label="EIN"
+				className="adm-num"
+				inputMode="numeric"
+				defaultValue="12-3456789"
+				status=""
+			/>
+			<Field
+				id="forms-field-status"
+				label="EIN"
+				className="adm-num"
+				inputMode="numeric"
+				defaultValue="12-3456789"
+				status="Tax-exempt status revoked May 15, 2023."
 			/>
 			<Field
 				id="forms-field-hint-error"
@@ -217,6 +243,123 @@ export default function FormsFieldPreview() {
 				label="disabled attribute"
 				disabled
 				defaultValue="EUR"
+			/>
+			<Field
+				id="forms-field-aside"
+				label="What it buys"
+				defaultValue="one winter coat"
+				labelAside={
+					<Button
+						type="button"
+						variant="quiet"
+						size="sm"
+						mark="sparkles"
+						className="adm-field__press"
+						aria-label="Write with AI"
+					>
+						Write
+					</Button>
+				}
+			/>
+			<Field
+				id="forms-field-aside-filled"
+				label="Heading"
+				optional
+				hint="Leave it empty to show the page’s name."
+				defaultValue="Keep 300 kids warm this winter"
+				labelAside={
+					<>
+						<StatusWord>AI suggestion</StatusWord>
+						<Button
+							type="button"
+							variant="quiet"
+							size="sm"
+							mark="undo-2"
+							className="adm-field__press"
+						>
+							Undo
+						</Button>
+						<Button
+							type="button"
+							variant="quiet"
+							size="sm"
+							mark="sparkles"
+							className="adm-field__press"
+							aria-label="Write with AI"
+						>
+							Write
+						</Button>
+					</>
+				}
+			/>
+			<Field
+				id="forms-field-aside-busy"
+				label="What it buys"
+				defaultValue="one winter coat"
+				status=""
+				labelAside={
+					<Button
+						type="button"
+						variant="quiet"
+						size="sm"
+						mark="sparkles"
+						className="adm-field__press"
+						aria-label="Write with AI"
+						aria-busy
+						aria-disabled
+					>
+						Write
+					</Button>
+				}
+			/>
+			<Field
+				id="forms-field-aside-refused"
+				label="What it buys"
+				defaultValue="one winter coat"
+				status="No model answered, so nothing changed. Try again in a moment."
+				labelAside={
+					<Button
+						type="button"
+						variant="quiet"
+						size="sm"
+						mark="sparkles"
+						className="adm-field__press"
+						aria-label="Write with AI"
+					>
+						Write
+					</Button>
+				}
+			/>
+			<Field
+				id="forms-field-aside-wrapped"
+				label="The sentence a donor reads beside the amount when they pick a monthly gift"
+				optional
+				hint="Leave it empty to show the amount alone."
+				defaultValue="Keeps a child in a warm coat all winter, every winter"
+				labelAside={
+					<>
+						<StatusWord>AI suggestion</StatusWord>
+						<Button
+							type="button"
+							variant="quiet"
+							size="sm"
+							mark="undo-2"
+							className="adm-field__press"
+						>
+							Undo
+						</Button>
+						<Button
+							type="button"
+							variant="quiet"
+							size="sm"
+							mark="sparkles"
+							className="adm-field__press"
+							aria-label="Write with AI"
+						>
+							Write
+						</Button>
+					</>
+				}
 			/>
 			<Field
 				id="forms-field-long"

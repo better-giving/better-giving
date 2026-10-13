@@ -1,6 +1,13 @@
 import { AnchoredNote } from '@better-giving/operator/behaviour/AnchoredCard';
+import { Field } from '@better-giving/operator/components/forms/Field';
 import { RepeatingRows } from '@better-giving/operator/components/forms/RepeatingRows';
-import type { RowControl } from '@better-giving/operator/components/forms/RepeatingRows';
+import type {
+	RepeatingRow,
+	RowControl
+} from '@better-giving/operator/components/forms/RepeatingRows';
+import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
+import { Mark } from '@better-giving/operator/components/status/Mark';
+import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-links';
 
 /*
  * a list of boxes and the controls that add and drop one, at every length it can be.
@@ -8,6 +15,9 @@ import type { RowControl } from '@better-giving/operator/components/forms/Repeat
  * the two empty groups are the pair worth the lines: with an `emptyNote` the group says why it is
  * blank, and without one it is a legend, a hint and an Add button standing over nothing — which is
  * what a screen forgetting the note actually ships, and it looks deliberate.
+ *
+ * every Remove is the `x` mark and no word, a square as tall as the box beside it, and is named to a
+ * reader for the row it drops — so the rows here read as boxes with a quiet mark down their edge.
  *
  * the list of one is here because a group that has to keep one row is a rule this component does not
  * hold: the caller states no Remove for that row and the trailing track is left empty.
@@ -31,6 +41,23 @@ import type { RowControl } from '@better-giving/operator/components/forms/Repeat
  * and a word the caller hands over bare, and it is a status rather than a control: the group is
  * what stands the two of them in the trailing track as one item, on the presses' own step.
  *
+ * the group with a mark at the start of each box is the one whose rows say what each holds: a
+ * network's own mark in front of an address on it, and the muted globe in front of one no network
+ * is read from, the empty row included. the slot is the box's whichever stands in it, so the
+ * addresses start on one edge down the column — YouTube's wide mark and X's narrow one alike. a
+ * network's mark carries its name for the box to be described by, and the globe carries none.
+ *
+ * the groups whose rows are two boxes are an amount beside what it does, under the two columns'
+ * heads: the pair stands in the one box's place, side by side at every width with the sentence
+ * taking two shares to the figure's one, and the Remove stands off the pair by the step the two
+ * stand off each other. the first carries the group's hint, which describes every box, and a row
+ * refused at its amount and one at its words; the second the group's own sentence, which marks
+ * every box; the third is the group at its cap, Add held and described by the line the group
+ * draws directly under it; the fourth is the group closed, which closes both boxes of every row.
+ * each amount stands behind the `$` the AI's tiers question draws, here as the box's own lead — the
+ * question's amount box is the app's (packages/app/src/lib/admin/editor/money-field.tsx), out of
+ * this page's reach.
+ *
  * both presses are the caller's and are stated here as a form layer's list intents would arrive.
  * nothing on this page is inside a form, so no press does anything — what a group draws is the
  * whole of what a preview can show about them.
@@ -45,6 +72,61 @@ const drop = (at: number): RowControl => ({
 	value: `remove:${at}`,
 	formNoValidate: true
 });
+
+/** Add held at a list's cap, described by the line its group draws under it. */
+const held: RowControl & { 'aria-disabled': 'true' } = {
+	...add,
+	'aria-disabled': 'true',
+	'aria-describedby': 'forms-rows-pair-full-add-note'
+};
+
+/** the heads over a row of an amount and what it does, as the AI's tiers question states them. */
+const TIER_COLUMNS = ['Amount', 'What it does'];
+
+/** one tier as typed, and the sentence either of its boxes was refused with. */
+type Tier = {
+	readonly amount: string;
+	readonly text: string;
+	readonly amountError?: string;
+	readonly textError?: string;
+};
+
+/**
+ * tier rows wired as the AI's tiers question wires its own: each box takes what the group hands it,
+ * and the amount stands behind a `$`.
+ */
+const tierRows = (group: string, tiers: readonly Tier[]): RepeatingRow[] =>
+	tiers.map(({ amount, text, amountError, textError }, at) => ({
+		id: `${group}-${at}-amount`,
+		key: `${group}-${at}`,
+		remove: tiers.length > 1 ? drop(at) : undefined,
+		boxes: ({ describedBy, invalid, disabled, names: [amountName, textName] }) => (
+			<>
+				<Field
+					id={`${group}-${at}-amount`}
+					className="adm-num"
+					inputMode="decimal"
+					lead={{ mark: '$', said: '$' }}
+					defaultValue={amount}
+					error={amountError}
+					aria-label={amountName}
+					aria-describedby={describedBy}
+					aria-invalid={invalid || undefined}
+					disabled={disabled}
+				/>
+				<Field
+					id={`${group}-${at}-text`}
+					defaultValue={text}
+					placeholder="Stocks the shelves for a month"
+					error={textError}
+					aria-label={textName}
+					aria-describedby={describedBy}
+					aria-invalid={invalid || undefined}
+					disabled={disabled}
+				/>
+			</>
+		)
+	}));
 
 export default function FormsRepeatingRowsPreview() {
 	return (
@@ -234,6 +316,109 @@ export default function FormsRepeatingRowsPreview() {
 						remove: drop(0)
 					}
 				]}
+			/>
+			<RepeatingRows
+				id="forms-rows-lead"
+				legend="Social links"
+				rowLabel="Link"
+				add={add}
+				addLabel="Add a link"
+				placeholder="https://www.instagram.com/yourorganisation"
+				rows={[
+					{
+						id: 'forms-rows-lead-1',
+						key: 'lead-1',
+						defaultValue: 'https://www.youtube.com/@riversideshelter',
+						lead: {
+							mark: <BrandMark platform="youtube" className="adm-brand-mark" />,
+							said: SOCIAL_PLATFORM_NAMES.youtube
+						},
+						remove: drop(0)
+					},
+					{
+						id: 'forms-rows-lead-2',
+						key: 'lead-2',
+						defaultValue: 'https://x.com/riversideshelter',
+						lead: {
+							mark: <BrandMark platform="x" className="adm-brand-mark" />,
+							said: SOCIAL_PLATFORM_NAMES.x
+						},
+						remove: drop(1)
+					},
+					{
+						id: 'forms-rows-lead-3',
+						key: 'lead-3',
+						defaultValue: 'https://riverside-shelter.org/news',
+						lead: { mark: <Mark name="globe" /> },
+						remove: drop(2)
+					},
+					{
+						id: 'forms-rows-lead-4',
+						key: 'lead-4',
+						defaultValue: '',
+						lead: { mark: <Mark name="globe" /> },
+						remove: drop(3)
+					}
+				]}
+			/>
+			<RepeatingRows
+				id="forms-rows-pair"
+				legend="What does each amount do?"
+				hint="What one gift at that amount does, in a few words."
+				rowLabel="tier"
+				columns={TIER_COLUMNS}
+				addLabel="Add a tier"
+				add={add}
+				rows={tierRows('forms-rows-pair', [
+					{ amount: '25', text: 'Feeds a family for a week' },
+					{ amount: '0', text: 'Stocks a pantry shelf', amountError: 'must be more than $0' },
+					{ amount: '100', text: '', textError: 'required' },
+					{ amount: '1,500', text: 'Keeps the pantry open on a Saturday morning, staff and all' }
+				])}
+			/>
+			<RepeatingRows
+				id="forms-rows-pair-error"
+				legend="What does each amount do?"
+				rowLabel="tier"
+				columns={TIER_COLUMNS}
+				error="A page shows six tiers at most. Remove one to add another."
+				addLabel="Add a tier"
+				add={add}
+				rows={tierRows('forms-rows-pair-error', [
+					{ amount: '25', text: 'Feeds a family for a week' },
+					{ amount: '100', text: 'Stocks a pantry shelf' }
+				])}
+			/>
+			<RepeatingRows
+				id="forms-rows-pair-full"
+				legend="What does each amount do?"
+				rowLabel="tier"
+				columns={TIER_COLUMNS}
+				addLabel="Add a tier"
+				add={held}
+				addNote="Up to 6 tiers"
+				rows={tierRows('forms-rows-pair-full', [
+					{ amount: '25', text: 'Feeds a family for a week' },
+					{ amount: '50', text: 'Stocks a pantry shelf' },
+					{ amount: '100', text: 'Fills a winter coat drive box' },
+					{ amount: '250', text: 'Covers a month of fresh produce' },
+					{ amount: '500', text: 'Keeps the kitchen open for a weekend' },
+					{ amount: '1,500', text: 'Keeps the pantry open on a Saturday morning, staff and all' }
+				])}
+			/>
+			<RepeatingRows
+				id="forms-rows-pair-closed"
+				legend="What does each amount do?"
+				hint="The group while the answers are on their way."
+				rowLabel="tier"
+				columns={TIER_COLUMNS}
+				disabled
+				addLabel="Add a tier"
+				add={add}
+				rows={tierRows('forms-rows-pair-closed', [
+					{ amount: '25', text: 'Feeds a family for a week' },
+					{ amount: '100', text: 'Stocks a pantry shelf' }
+				])}
 			/>
 			<RepeatingRows
 				id="forms-rows-long"

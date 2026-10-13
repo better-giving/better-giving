@@ -252,6 +252,14 @@ async function rawColumn(id: string, column: string): Promise<unknown> {
 	return row?.v ?? null;
 }
 
+/**
+ * the version a page drawn this moment would carry, past drizzle. an id no row carries reads as
+ * the epoch, which no row written here carries either.
+ */
+async function at(id: string): Promise<Date> {
+	return new Date(Number((await rawColumn(id, 'updated_at')) ?? 0));
+}
+
 describe('createForm', () => {
 	it('mints a public id the length check accepts, prefixed so a human can place it', async () => {
 		// the one primary key in this schema that is not a uuidv7: it sits in the org's own HTML
@@ -322,7 +330,8 @@ describe('readForm', () => {
 			'programMode',
 			'revenueAccountId',
 			'status',
-			'suggestedAmounts'
+			'suggestedAmounts',
+			'updatedAt'
 		]);
 		expect(found?.minMinor).toBe(500);
 		expect(found?.maxMinor).toBe(1000000);
@@ -404,7 +413,12 @@ describe('the three group writes', () => {
 		// the amount bounds.
 		const made = await created(submitted());
 
-		await updateFormName(db, made.id, submitted({ name: 'Gala 2027', status: 'draft' }));
+		await updateFormName(
+			db,
+			made.id,
+			await at(made.id),
+			submitted({ name: 'Gala 2027', status: 'draft' })
+		);
 		let after = await readForm(db, made.id);
 		expect(after).toMatchObject({ name: 'Gala 2027', status: 'draft' });
 		// and nothing the name group does not own moved.
@@ -415,6 +429,7 @@ describe('the three group writes', () => {
 		await updateFormGiving(
 			db,
 			made.id,
+			await at(made.id),
 			submitted({ min_minor: '10.00', max_minor: '20.00', suggested_amounts: ['10.00'] })
 		);
 		after = await readForm(db, made.id);
@@ -423,7 +438,7 @@ describe('the three group writes', () => {
 		expect(after?.name).toBe('Gala 2027');
 		expect(after?.allowedOrigins).toEqual(made.allowedOrigins);
 
-		await updateFormOrigins(db, made.id, submitted({ allowed_origins: [] }));
+		await updateFormOrigins(db, made.id, await at(made.id), submitted({ allowed_origins: [] }));
 		after = await readForm(db, made.id);
 		expect(after?.allowedOrigins).toEqual([]);
 		expect(after?.name).toBe('Gala 2027');
@@ -434,14 +449,37 @@ describe('the three group writes', () => {
 		// an edit posts to an id from a URL, so a stale tab is the ordinary way here. it is an
 		// answer rather than a throw because the caller turns it into a rejected save, not a 500.
 		const missing = 'frm_nosuchformatall';
-		expect(await updateFormName(db, missing, submitted())).toBe(false);
-		expect(await updateFormGiving(db, missing, submitted())).toBe(false);
-		expect(await updateFormOrigins(db, missing, submitted())).toBe(false);
+		expect(await updateFormName(db, missing, await at(missing), submitted())).toBe('gone');
+		expect(await updateFormGiving(db, missing, await at(missing), submitted())).toBe('gone');
+		expect(await updateFormOrigins(db, missing, await at(missing), submitted())).toBe('gone');
+	});
+
+	it('refuses a write drawn at a version the row has moved past, and writes nothing', async () => {
+		// two tabs drawn at one version; the first saves, the second is behind. backdated so the first
+		// save's own stamp cannot land in the millisecond both tabs were drawn at.
+		const made = await created(submitted({ status: 'draft' }));
+		await env.DB.prepare('update form set updated_at = 0 where id = ?').bind(made.id).run();
+		const behind = new Date(0);
+
+		expect(await updateFormName(db, made.id, behind, submitted({ status: 'live' }))).toBe('saved');
+		const published = await readForm(db, made.id);
+
+		expect(await updateFormName(db, made.id, behind, submitted({ name: 'Typo Fixed' }))).toBe(
+			'stale'
+		);
+		expect(await updateFormGiving(db, made.id, behind, submitted({ min_minor: '10.00' }))).toBe(
+			'stale'
+		);
+		expect(await updateFormOrigins(db, made.id, behind, submitted({ allowed_origins: [] }))).toBe(
+			'stale'
+		);
+		expect(await updateFormProgram(db, made.id, behind, programOf())).toBe('stale');
+		expect(await readForm(db, made.id)).toEqual(published);
 	});
 
 	it('leaves every other form alone', async () => {
 		const made = await created(submitted());
-		await updateFormName(db, made.id, submitted({ name: 'Renamed' }));
+		await updateFormName(db, made.id, await at(made.id), submitted({ name: 'Renamed' }));
 		expect((await readForm(db, PRIMARY_FORM_ID))?.name).toBe('General Fund');
 	});
 
@@ -455,19 +493,27 @@ describe('the three group writes', () => {
 		await archiveForm(db, made.id);
 		const stamped = await rawColumn(made.id, 'archived_at');
 
-		expect(await updateFormName(db, made.id, submitted({ name: 'Back From The Dead' }))).toBe(
-			false
-		);
+		expect(
+			await updateFormName(
+				db,
+				made.id,
+				await at(made.id),
+				submitted({ name: 'Back From The Dead' })
+			)
+		).toBe('gone');
 		// the suggested tiles move with the floor, because the fixture parses the whole form and a
 		// tile under the smallest gift is a submission `parseFormInput` refuses.
 		expect(
 			await updateFormGiving(
 				db,
 				made.id,
+				await at(made.id),
 				submitted({ min_minor: '99.99', suggested_amounts: ['99.99'] })
 			)
-		).toBe(false);
-		expect(await updateFormOrigins(db, made.id, submitted({ allowed_origins: [] }))).toBe(false);
+		).toBe('gone');
+		expect(
+			await updateFormOrigins(db, made.id, await at(made.id), submitted({ allowed_origins: [] }))
+		).toBe('gone');
 
 		expect(await rawColumn(made.id, 'status')).toBe('archived');
 		expect(await rawColumn(made.id, 'archived_at')).toBe(stamped);
@@ -492,7 +538,9 @@ describe('the three group writes', () => {
 			otherRevenueAccountId
 		);
 
-		expect(await updateFormName(db, pointed, submitted({ name: 'Renamed Appeal' }))).toBe(true);
+		expect(
+			await updateFormName(db, pointed, await at(pointed), submitted({ name: 'Renamed Appeal' }))
+		).toBe('saved');
 
 		expect((await readForm(db, pointed))?.name).toBe('Renamed Appeal');
 		expect(await rawColumn(pointed, 'revenue_account_id')).toBe(otherRevenueAccountId);
@@ -506,12 +554,19 @@ describe('updateFormOrigins', () => {
 		// same `false` for each because there is nothing an operator could do differently about them.
 		const made = await created(submitted());
 
-		expect(await updateFormOrigins(db, 'frm_nosuchformatall', submitted())).toBe(false);
+		expect(
+			await updateFormOrigins(
+				db,
+				'frm_nosuchformatall',
+				await at('frm_nosuchformatall'),
+				submitted()
+			)
+		).toBe('gone');
 
 		await archiveForm(db, made.id);
 		// the `where` is what keeps an archived row out of reach, so the list it still holds is the
 		// list it was retired with.
-		expect(await updateFormOrigins(db, made.id, submitted())).toBe(false);
+		expect(await updateFormOrigins(db, made.id, await at(made.id), submitted())).toBe('gone');
 		expect((await readForm(db, made.id))?.allowedOrigins).toEqual(made.allowedOrigins);
 	});
 });
@@ -633,6 +688,7 @@ describe('updateFormProgram', () => {
 			await updateFormProgram(
 				db,
 				PRIMARY_FORM_ID,
+				await at(PRIMARY_FORM_ID),
 				programOf({ program_mode: 'pinned', program_id: WATER })
 			)
 		).toBe('saved');
@@ -645,6 +701,7 @@ describe('updateFormProgram', () => {
 			await updateFormProgram(
 				db,
 				PRIMARY_FORM_ID,
+				await at(PRIMARY_FORM_ID),
 				programOf({ program_mode: 'choice', program_id: WATER })
 			)
 		).toBe('saved');
@@ -662,6 +719,7 @@ describe('updateFormProgram', () => {
 			await updateFormProgram(
 				db,
 				PRIMARY_FORM_ID,
+				await at(PRIMARY_FORM_ID),
 				programOf({ program_mode: 'pinned', program_id: GALA })
 			)
 		).toBe('unknown_program');
@@ -669,6 +727,7 @@ describe('updateFormProgram', () => {
 			await updateFormProgram(
 				db,
 				PRIMARY_FORM_ID,
+				await at(PRIMARY_FORM_ID),
 				programOf({
 					program_mode: 'pinned',
 					program_id: '019fb100-0000-7000-8000-00000000dead'
@@ -681,10 +740,14 @@ describe('updateFormProgram', () => {
 	it('answers `gone` for a form that is missing or archived', async () => {
 		// both are a tab that was open when somebody else retired the form, which is a sentence an
 		// operator can act on rather than a 500.
-		expect(await updateFormProgram(db, 'frm_nosuchformtest', programOf())).toBe('gone');
+		expect(
+			await updateFormProgram(db, 'frm_nosuchformtest', await at('frm_nosuchformtest'), programOf())
+		).toBe('gone');
 
 		await archiveForm(db, PRIMARY_FORM_ID);
-		expect(await updateFormProgram(db, PRIMARY_FORM_ID, programOf())).toBe('gone');
+		expect(
+			await updateFormProgram(db, PRIMARY_FORM_ID, await at(PRIMARY_FORM_ID), programOf())
+		).toBe('gone');
 	});
 
 	it('touches no column outside its own group', async () => {
@@ -693,6 +756,7 @@ describe('updateFormProgram', () => {
 		await updateFormProgram(
 			db,
 			PRIMARY_FORM_ID,
+			await at(PRIMARY_FORM_ID),
 			programOf({ program_mode: 'pinned', program_id: WATER })
 		);
 		const after = await readForm(db, PRIMARY_FORM_ID);

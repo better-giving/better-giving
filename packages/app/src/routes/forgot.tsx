@@ -19,6 +19,7 @@ import {
 	signInRateLimitMessage
 } from '$lib/server/api/rate-limit';
 import { createAuth, readAuthEnv, requestPasswordReset, resolveAuthSecret } from '$lib/server/auth';
+import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
 import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { readSetupState } from '$lib/server/config/setup-state';
 import { invalid, parseForm, unread } from '$lib/server/conform';
@@ -174,6 +175,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, bucket)) {
 		return invalid(429, unread(FORGOT_FORM, signInRateLimitMessage()));
 	}
+	// after the charge, so a post refused for its origin still spends from the bucket.
+	refuseWriteFromAnotherOrigin(request);
 
 	// so a caller with no bucket is refused here, for every address alike and before the body is
 	// read. `signInRateLimitKey` argues why this site refuses all of them where ./login.tsx lets the

@@ -1,8 +1,13 @@
 import { type DefaultValue, useForm } from '@conform-to/react';
 import { parseWithZod, type SubmissionResult } from '@conform-to/zod/v4';
-import { type MouseEventHandler, useEffect, useRef } from 'react';
+import { type MouseEventHandler, useEffect, useRef, useSyncExternalStore } from 'react';
 import type { z } from 'zod';
-import { type FormRejection, type StatedForm, WHICH_FORM } from '$lib/forms/definition';
+import {
+	type FormRejection,
+	RECORD_VERSION,
+	type StatedForm,
+	WHICH_FORM
+} from '$lib/forms/definition';
 
 // the browser half of the form seam: the one way an /admin screen mounts a form it stated.
 //
@@ -32,9 +37,9 @@ import { type FormRejection, type StatedForm, WHICH_FORM } from '$lib/forms/defi
 // both compute one. `Field` composes its own from the `id` it was handed — `${id}-err` is the
 // message it draws — and renders every element it names. conform's `getInputProps` composes one
 // too, out of its `errorId`, and names an element it expects the *screen* to have rendered; no
-// screen in this app renders one. spread conform's props onto `Field` and conform's wins through
-// that component's `...rest`, so the control points at an id nothing on the page answers to. it
-// renders, it hydrates, it looks right, and a reader following the description finds nothing.
+// screen in this app renders one. spread conform's props onto `Field` and conform's id joins the
+// field's own, so the control points at an id nothing on the page answers to. it renders, it
+// hydrates, it looks right, and a reader following the description finds nothing.
 //
 // so conform's aria attributes never reach a control. what a screen loses with them is nothing it
 // had: `aria-invalid` is `Field`'s off the same message, the value is `boxProps`' below, and the
@@ -112,6 +117,22 @@ export function whichForm(id: string): {
 	readonly value: string;
 } {
 	return { type: 'hidden', name: WHICH_FORM, value: id };
+}
+
+/**
+ * the hidden box carrying the version of the record a form's page was drawn from.
+ *
+ * one per `<form>` whose save replaces columns, with the version the loader published — so a
+ * revalidation after any save hands every form on the screen the new one without touching what is
+ * typed in its boxes. what it is for is `$lib/forms/definition.ts`; what reads it is
+ * `submittedVersion` in `$lib/server/conform.ts`.
+ */
+export function recordVersion(version: number | string): {
+	readonly type: 'hidden';
+	readonly name: string;
+	readonly value: string;
+} {
+	return { type: 'hidden', name: RECORD_VERSION, value: String(version) };
 }
 
 /** what a screen may say about a form beyond the statement the action reads too. */
@@ -262,6 +283,74 @@ export function insertWhenValid<S extends z.ZodObject>(
 	};
 }
 
+/** a list press as a screen hands it over: conform's four attributes, and a guard on the press. */
+type ListPress = IntentProps & {
+	readonly onClick?: MouseEventHandler<HTMLButtonElement> | undefined;
+};
+
+/** what a list press is drawn with: a submit before hydration, a plain button after. */
+type ListPressProps =
+	| (ListPress & { readonly type: 'submit' })
+	| {
+			readonly type: 'button';
+			readonly form: string;
+			readonly onClick: MouseEventHandler<HTMLButtonElement>;
+	  };
+
+const neverChanges = () => () => {};
+
+/** false on the server and on the render that hydrates, true on every render after. */
+export function useHydrated(): boolean {
+	return useSyncExternalStore(
+		neverChanges,
+		() => true,
+		() => false
+	);
+}
+
+/**
+ * a row editor's Add or Remove, drawn so that Enter in a box presses the form's own submit and not
+ * this.
+ *
+ * the platform's implicit submission clicks the form's default button, which is the first submit
+ * button in tree order whose form owner is the form — and a list press sits among the boxes, above
+ * the submit that ends the form. so once the page is hydrated the press is `type="button"` and is
+ * no default button at all; its intent goes through a submitter made for the one press, which is
+ * how conform's own `form.insert()` sends one (`requestIntent` in @conform-to/dom's dom.js).
+ * before hydration it stays conform's submit, which `pressedList` in `$lib/server/conform.ts`
+ * answers without script.
+ *
+ * the press's own `onClick` runs first, and a press it withholds — `insertWhenValid` above calls
+ * `preventDefault()` — sends nothing.
+ */
+export function listPress(press: ListPress, hydrated: boolean): ListPressProps {
+	if (!hydrated) return { ...press, type: 'submit' };
+	return {
+		type: 'button',
+		form: press.form,
+		onClick(event) {
+			press.onClick?.(event);
+			const form = event.currentTarget.form;
+			if (event.defaultPrevented || form === null) return;
+			const submitter = form.ownerDocument.createElement('button');
+			submitter.type = 'submit';
+			submitter.name = press.name;
+			submitter.value = press.value;
+			submitter.formNoValidate = press.formNoValidate;
+			submitter.hidden = true;
+			submitter.setAttribute('form', press.form);
+			// outside the form, where conform places its own: removed from inside it, the submitter
+			// upset focus in a modal (https://github.com/edmundhung/conform/issues/783).
+			form.ownerDocument.body.appendChild(submitter);
+			try {
+				form.requestSubmit(submitter);
+			} finally {
+				submitter.remove();
+			}
+		}
+	};
+}
+
 /**
  * the element the library's `Field` draws a box's message into.
  *
@@ -296,13 +385,10 @@ type BoxOptions = {
 	 * an element describing this box that the field itself does not draw.
 	 *
 	 * one case, and it is a fieldset's: a message about a pair of boxes belongs to neither of them,
-	 * so it is rendered once by the group and both boxes point at it. it is taken *in* rather than
-	 * replacing — a box carrying a rule it broke and a pair rule it broke has two things said about
-	 * it, and a description naming one of them is the other one lost.
-	 *
-	 * what it cannot see is a `hint` or a `needed` on the same field, which `Field` names from its
-	 * own id and this composition would drop. no screen carries both; one that needs to is a
-	 * widening of this option rather than an `aria-describedby` written at a screen.
+	 * so it is rendered once by the group and both boxes point at it. it goes over as the platform's
+	 * own `aria-describedby`, which `Field` takes in beside the blocks it names itself rather than in
+	 * place of them — a box carrying a rule it broke and a pair rule it broke has two things said
+	 * about it, and a description naming one of them is the other one lost.
 	 */
 	readonly describedBy?: string;
 	/**
@@ -317,8 +403,7 @@ type BoxOptions = {
 	 * the attribute and the invalid border from — its own message or a caller's mark, either one.
 	 *
 	 * `refused` and not `invalid`, because a screen that writes this also imports `invalid()` to
-	 * reject with — and `src/routes.spec.ts` reads an object key by its name alone, so the two
-	 * spelled alike make a component look like it reaches into the server tree.
+	 * reject with, and the two spelled alike would read as one.
 	 */
 	readonly refused?: boolean;
 };
@@ -350,21 +435,18 @@ type BoxProps = {
  */
 export function boxProps(box: Box, options: BoxOptions = {}): BoxProps {
 	const error = box.errors?.[0];
-	const described = [error === undefined ? null : boxErrorId(box.id), options.describedBy]
-		.filter((token): token is string => typeof token === 'string')
-		.join(' ');
 
 	return {
 		id: box.id,
 		name: box.name,
 		defaultValue: box.defaultValue,
 		error,
-		// the key is left off rather than set to `undefined` where the screen points at nothing:
-		// absent, `Field` composes its own and names the hint and the needed note it draws too.
-		// `exactOptionalPropertyTypes` is why it is a spread rather than a key.
-		...(options.describedBy === undefined ? {} : { 'aria-describedby': described }),
-		// left off unless a screen says so, for the same reason: `Field` writes this one itself off
-		// the message it holds, and a key present and `undefined` would still be the caller's.
+		// left off where the screen points at nothing, and a spread rather than a key for
+		// `exactOptionalPropertyTypes`.
+		...(options.describedBy === undefined ? {} : { 'aria-describedby': options.describedBy }),
+		// a spread for the same reason, and left off unless a screen says so: `Field` writes this
+		// one itself off the message it holds, and a key present and `undefined` would still be the
+		// caller's.
 		...(options.refused === true && error === undefined ? { 'aria-invalid': 'true' as const } : {})
 	};
 }

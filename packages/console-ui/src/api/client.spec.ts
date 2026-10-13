@@ -5,13 +5,22 @@ import {
 	chariotRun,
 	consoleVersion,
 	levelWallets,
+	lookUpNonprofit,
+	nonprofitsStatus,
 	pressQuickbooks,
+	readAiModel,
+	readOrgLogo,
 	readQuickbooks,
 	repairWebhook,
 	saveNowpayments,
+	searchNonprofits,
 	startChariotSetup,
 	readPayments,
-	startStripeSetup
+	removeOrgLogo,
+	saveOrgProfile,
+	startStripeSetup,
+	uploadOrgLogo,
+	writesAnswered
 } from './client';
 
 // what the page does with each way the binary answers a press.
@@ -162,6 +171,242 @@ describe('the press that stores nowpayments from the three boxes', () => {
 	});
 });
 
+describe("the organisation's profile and its logo", () => {
+	const saved = { kind: 'saved', errors: {}, org: { legal_name: 'Hope Foundation' } };
+
+	it('posts every box and the link rows as typed, and answers the write', async () => {
+		const calls = recording(saved);
+
+		await expect(
+			saveOrgProfile({ legal_name: 'Hope Foundation' }, ['instagram.com/hope', ''])
+		).resolves.toEqual(saved);
+		expect(calls[0]?.[0]).toBe('/api/deployment/org');
+		expect(JSON.parse(String(calls[0]?.[1]?.body))).toEqual({
+			values: { legal_name: 'Hope Foundation' },
+			social_links: ['instagram.com/hope', '']
+		});
+	});
+
+	it('posts the photo as multipart under `file`, and answers the write', async () => {
+		const calls = recording(saved);
+		const photo = new Blob(['webp bytes'], { type: 'image/webp' });
+
+		await expect(uploadOrgLogo(photo)).resolves.toEqual(saved);
+		expect(calls[0]?.[0]).toBe('/api/deployment/org/logo');
+		expect(calls[0]?.[1]?.method).toBe('POST');
+		const body = calls[0]?.[1]?.body;
+		if (!(body instanceof FormData)) throw new Error('the photo was not posted as a form');
+		const file = body.get('file');
+		expect(file).toBeInstanceOf(Blob);
+		expect(await (file as Blob).text()).toBe('webp bytes');
+	});
+
+	it('answers a photo the binary would not carry as a refusal at the logo, in its words', async () => {
+		// the binary turns these down before the deployment hears of them, so there is no keyed map —
+		// and the fold draws one shape of refusal wherever it came from.
+		for (const status of [413, 400]) {
+			answering(status, { error: 'the logo upload is over 1965536 bytes' });
+
+			await expect(uploadOrgLogo(new Blob(['x']))).resolves.toEqual({
+				kind: 'refused',
+				message: null,
+				fix: null,
+				errors: { logo: 'the logo upload is over 1965536 bytes' },
+				unread: 0
+			});
+		}
+	});
+
+	it('takes the logo off with a DELETE and no body, and answers the write', async () => {
+		const calls = recording(saved);
+
+		await expect(removeOrgLogo()).resolves.toEqual(saved);
+		expect(calls[0]?.[0]).toBe('/api/deployment/org/logo');
+		expect(calls[0]?.[1]?.method).toBe('DELETE');
+		expect(calls[0]?.[1]?.body).toBeUndefined();
+	});
+
+	it('reads the stored logo as the bytes the binary answered', async () => {
+		const calls: [string, RequestInit | undefined][] = [];
+		vi.stubGlobal('fetch', (path: string, init: RequestInit | undefined) => {
+			calls.push([path, init]);
+			return Promise.resolve(
+				new Response('webp bytes', { status: 200, headers: { 'content-type': 'image/webp' } })
+			);
+		});
+		const pressed = new AbortController().signal;
+
+		const stored = await readOrgLogo(pressed);
+
+		expect(calls[0]?.[0]).toBe('/api/deployment/org/logo');
+		expect(calls[0]?.[1]?.method).toBe('GET');
+		expect(calls[0]?.[1]?.signal).toBe(pressed);
+		expect(stored).toBeInstanceOf(Blob);
+		expect((stored as Blob).type).toBe('image/webp');
+		expect(await (stored as Blob).text()).toBe('webp bytes');
+	});
+
+	it('reads no stored logo where the binary answers 404', async () => {
+		answering(404, { error: 'this deployment holds no logo' });
+
+		await expect(readOrgLogo(new AbortController().signal)).resolves.toBeNull();
+	});
+
+	it('throws the 404 of a binary that serves no logo read at all', async () => {
+		// the binary's answer at an `/api` path it has no route for (internal/server/server.go).
+		answering(404, { error: 'no such endpoint' });
+
+		await expect(readOrgLogo(new AbortController().signal)).rejects.toMatchObject({
+			name: 'ConsoleRefused',
+			status: 404,
+			message: 'no such endpoint'
+		});
+	});
+
+	// the 502 bodies `GET /api/deployment/org/logo` writes (packages/console/internal/server/errands.go),
+	// one per way its reading did not land, as `errands_test.go` provokes them.
+	it.each([
+		{ kind: 'no-session', error: null, message: null, fix: null, detail: '' },
+		{
+			kind: 'refused',
+			error: 'session_refused',
+			message: 'Not this session.',
+			fix: 'Connect again.',
+			detail: ''
+		},
+		{
+			kind: 'unreachable',
+			error: null,
+			message: null,
+			fix: null,
+			detail: 'dial tcp 127.0.0.1:1: connect: connection refused'
+		},
+		{
+			kind: 'unreadable',
+			error: 'rate_limited',
+			message: null,
+			fix: 'Wait a minute.',
+			detail: 'Too many reads.',
+			status: 429
+		}
+	])('answers a stored logo the binary could not read ($kind) as its report', async (report) => {
+		answering(502, report);
+
+		await expect(readOrgLogo(new AbortController().signal)).resolves.toEqual(report);
+	});
+
+	it('throws a refusal of the stored logo that carries no report', async () => {
+		answering(502, { error: 'upstream' });
+
+		await expect(readOrgLogo(new AbortController().signal)).rejects.toMatchObject({
+			name: 'ConsoleRefused',
+			status: 502
+		});
+	});
+
+	it('throws the abort of a press abandoned while a refusal was being read', async () => {
+		const leaving = new AbortController();
+		const body = new ReadableStream({
+			pull(stream) {
+				leaving.abort();
+				stream.error(leaving.signal.reason);
+			}
+		});
+		vi.stubGlobal('fetch', () => Promise.resolve(new Response(body, { status: 502 })));
+
+		await expect(readOrgLogo(leaving.signal)).rejects.toMatchObject({ name: 'AbortError' });
+	});
+
+	it('holds the removal among the writes out until the binary answers it', async () => {
+		// a reading waits on the writes out (../lib/console-reading.ts), so a removal missing from
+		// them is a reading taken before the logo came off.
+		let answer: (response: Response) => void = () => {};
+		vi.stubGlobal('fetch', () => new Promise<Response>((done) => (answer = done)));
+		let waited = false;
+
+		const removal = removeOrgLogo();
+		const reading = writesAnswered().then(() => (waited = true));
+		await Promise.resolve();
+		expect(waited).toBe(false);
+
+		answer(new Response(JSON.stringify(saved), { status: 200 }));
+		await Promise.all([removal, reading]);
+		expect(waited).toBe(true);
+	});
+});
+
+describe('finding the organisation in the IRS nonprofit API', () => {
+	it('asks the binary for a search with the query encoded, and answers its matches', async () => {
+		const matches = {
+			state: 'ok',
+			matches: [
+				{
+					ein: '530196605',
+					name: 'American National Red Cross',
+					city: 'Washington',
+					state: 'DC',
+					deductible: true,
+					revokedOn: ''
+				}
+			]
+		};
+		const calls = recording(matches);
+
+		await expect(searchNonprofits('red cross & co')).resolves.toEqual(matches);
+		expect(calls[0]?.[0]).toBe('/api/nonprofits/search?q=red%20cross%20%26%20co');
+		expect(calls[0]?.[1]?.method).toBe('GET');
+	});
+
+	it('answers a search the API could not make as a value', async () => {
+		answering(200, { state: 'unavailable', matches: [] });
+
+		await expect(searchNonprofits('red cross')).resolves.toEqual({
+			state: 'unavailable',
+			matches: []
+		});
+	});
+
+	it('throws a search the binary refused, which the box never sends', async () => {
+		answering(400, { error: 'the search box needs 3 to 200 characters, and "ab" is 2' });
+
+		await expect(searchNonprofits('ab')).rejects.toThrow(ConsoleRefused);
+	});
+
+	it('asks the binary for one EIN, encoded into the path, and answers the organisation', async () => {
+		const organisation = {
+			ein: '530196605',
+			name: 'American National Red Cross',
+			address_line1: '431 18th St NW',
+			city: 'Washington',
+			region: 'DC',
+			postal_code: '20006-5310',
+			deductible: true,
+			revokedOn: '',
+			website: 'https://www.redcross.org'
+		};
+		const calls = recording({ state: 'found', organisation });
+
+		await expect(lookUpNonprofit('53-0196605')).resolves.toEqual({ state: 'found', organisation });
+		expect(calls[0]?.[0]).toBe('/api/nonprofits/53-0196605');
+	});
+
+	it('asks the binary whether it was built with the API address at all', async () => {
+		const calls = recording({ built: false });
+
+		await expect(nonprofitsStatus()).resolves.toEqual({ built: false });
+		expect(calls[0]?.[0]).toBe('/api/nonprofits/status');
+		expect(calls[0]?.[1]?.method).toBe('GET');
+	});
+
+	it('encodes what the box held, so a slash cannot reach another route', async () => {
+		const calls = recording({ state: 'not_found', organisation: {} });
+
+		await lookUpNonprofit('53/search');
+
+		expect(calls[0]?.[0]).toBe('/api/nonprofits/53%2Fsearch');
+	});
+});
+
 describe('the press that registers the hostnames wallet buttons are drawn on', () => {
 	it("posts to the binary with no body, because the hostnames are the deployment's own", async () => {
 		// a hostname that travelled through a page would be a registration made on the operator's own
@@ -208,6 +453,39 @@ describe('the press that repairs where payment notices reach the deployment', ()
 		expect(path).toBe('/api/deployment/webhook-repair');
 		expect(init?.method).toBe('POST');
 		expect(init?.body).toBeUndefined();
+	});
+});
+
+describe('the reading of the model choice', () => {
+	it('asks the binary for it with a GET and no body, and hands the choice back as it came', async () => {
+		const choice = {
+			kind: 'read',
+			model: { name: 'AI_MODEL', kind: 'value', value: 'anthropic/claude-sonnet-4.6' },
+			credits: { kind: 'unknown', detail: 'Authentication error' }
+		};
+		const calls = recording(choice);
+
+		expect(await readAiModel()).toEqual(choice);
+		expect(calls).toHaveLength(1);
+		const [path, init] = calls[0] ?? [];
+		expect(path).toBe('/api/ai-model');
+		expect(init?.method).toBe('GET');
+		expect(init?.body).toBeUndefined();
+	});
+
+	it('carries a values read cloudflare turned down back as a value, for the page to gate on', async () => {
+		answering(200, { kind: 'refused', detail: 'Authentication error' });
+
+		await expect(readAiModel()).resolves.toEqual({
+			kind: 'refused',
+			detail: 'Authentication error'
+		});
+	});
+
+	it('throws where the binary itself answers an error, for the page’s boundary to draw', async () => {
+		answering(500, { error: 'the state directory could not be read' });
+
+		await expect(readAiModel()).rejects.toThrow();
 	});
 });
 

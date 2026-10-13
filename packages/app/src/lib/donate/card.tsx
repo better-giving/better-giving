@@ -20,7 +20,13 @@ import {
 import { getInitialSnapshot } from 'xstate';
 import { DonateAnnouncer } from './announce';
 import * as copy from './copy';
-import { initialSnapshot, startCheckout, type Checkout, type CheckoutMounts } from './machine';
+import {
+	initialSnapshot,
+	startCheckout,
+	type Checkout,
+	type CheckoutMounts,
+	type Opening
+} from './machine';
 import { createReactPropTypes, type ReactApi } from './normalize';
 import { AmountStep, type AmountRefs } from './steps/amount';
 import { DetailsStep, fieldProblem, type DetailsRefs } from './steps/details';
@@ -41,12 +47,12 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //   - the two-node root. an outer `[data-donate-root]` carrying the token ladder the form's own
 //     `:host` block declares in a shadow tree, and the card itself carrying `part="card"`, which is
 //     the query container every breakpoint in the form's layout sheet resolves against.
-//   - the server render. `initialSnapshot` is a pure function of the configuration, so the amounts,
-//     the cadences and the tiles are in the HTML and the client's first render produces the same
-//     tree; a page the route says is a resume draws the resume's takeover there instead
-//     (`servedSnapshot`). the live actor is created in an effect after that first commit — the
-//     payment provider reads computed style off a mounted node, and taking the resume token
-//     rewrites the URL, which is not a thing a render may do.
+//   - the server render. `initialSnapshot` is a pure function of the configuration and the page's
+//     opening, so the amounts, the cadences and the tiles are in the HTML and the client's first
+//     render produces the same tree; a page the route says is a resume draws the resume's takeover
+//     there instead (`servedSnapshot`). the live actor is created in an effect after that first
+//     commit, on the same opening — the payment provider reads computed style off a mounted node,
+//     and taking the resume token rewrites the URL, which is not a thing a render may do.
 //   - which screen the card is on. a busy flow stays on the last screen shown, because the flow
 //     collapses five machine states into one thing a donor is told and the projection cannot say
 //     which screen asked.
@@ -83,14 +89,19 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
  * starts the live flow, and nothing reads it off this snapshot. `getInitialSnapshot` starts nothing
  * — the read `resuming` invokes is never run and its timeout never armed — so this stays a value
  * the way `initialSnapshot` is, on that snapshot's own inert ports.
+ *
+ * a resume and the page's opening are one input, and the resume wins the first paint: the machine
+ * boots into `resuming` whatever the opening says, and the opening only seeds the draft a declined
+ * return hands back (`openingDraft` in @better-giving/form/machine).
  */
-function servedSnapshot(config: FormConfig, resuming: boolean): CheckoutSnapshot {
-	const booted = initialSnapshot(config);
+function servedSnapshot(config: FormConfig, resuming: boolean, opening: Opening): CheckoutSnapshot {
+	const booted = initialSnapshot(config, opening);
 	if (!resuming) return booted;
 	return getInitialSnapshot(checkoutMachine, {
 		config,
 		ports: booted.context.ports,
-		resume: { paymentToken: 'unclaimed' }
+		resume: { paymentToken: 'unclaimed' },
+		opening
 	});
 }
 
@@ -148,6 +159,31 @@ export type DonateCardProps = {
 	 */
 	readonly seams?: CheckoutMounts['seams'];
 	/**
+	 * the program a page's own chooser picked, where the page draws one: an id from the served
+	 * config's list, or null for where it's needed most.
+	 *
+	 * absent, the card draws its own program select. present, it draws none and the gift carries
+	 * this pick, sent through the same door the select's own pick goes through and followed while
+	 * mounted — a remount would drop what the donor typed. an id the served config does not offer
+	 * is not the page's to send: the card draws its own select again and the donor picks there.
+	 */
+	readonly pageProgram?: string | null;
+	/**
+	 * the program the flow holds (null for where it's needed most), and whether it takes a pick at
+	 * all — `locked` from the press on Donate until a donor is back on a step they edit. told on
+	 * arrival and on every change of either, so a page's chooser can draw the gift's own answer.
+	 */
+	readonly onProgramChange?: (programId: string | null, locked: boolean) => void;
+	/**
+	 * where the card starts when the page asks: on monthly, or with the dedication open and empty.
+	 *
+	 * a starting point and nothing more — the donor changes either the way they would have chosen it,
+	 * and a card back from the donor's bank starts where the flow sends it instead. absent, the card
+	 * starts as the served config alone says. a change of either flag while mounted starts the card
+	 * over, as a new config does.
+	 */
+	readonly opening?: Opening;
+	/**
 	 * whether the page's url carries this form's resume stamp (`RESUME_FORM_PARAM` in
 	 * @better-giving/form/embed/resume), which is what the route can see of a return from a payment
 	 * provider.
@@ -160,7 +196,14 @@ export type DonateCardProps = {
 	readonly resuming?: boolean;
 };
 
-export function DonateCard({ config, seams, resuming = false }: DonateCardProps) {
+export function DonateCard({
+	config,
+	seams,
+	resuming = false,
+	pageProgram,
+	onProgramChange,
+	opening
+}: DonateCardProps) {
 	// a second gift is a fresh boot rather than a state on the flow: what the last gift left behind is
 	// not the flow's to clear — the provider's own fields still hold the card the donor entered and a
 	// challenge token is spent once. remounting is what builds both again, and it starts empty, which
@@ -178,6 +221,10 @@ export function DonateCard({ config, seams, resuming = false }: DonateCardProps)
 			resuming={resuming && boot.at === 0}
 			restart={(focused) => setBoot((last) => ({ at: last.at + 1, focused }))}
 			{...(seams === undefined ? {} : { seams })}
+			{...(pageProgram === undefined ? {} : { pageProgram })}
+			{...(onProgramChange === undefined ? {} : { onProgramChange })}
+			monthly={opening?.monthly === true}
+			dedication={opening?.dedication === true}
 		/>
 	);
 }
@@ -187,7 +234,11 @@ function CheckoutCard({
 	takeFocus,
 	restart,
 	seams,
-	resuming
+	resuming,
+	pageProgram,
+	onProgramChange,
+	monthly,
+	dedication
 }: {
 	config: FormConfig;
 	/** whether this card's first paint puts the caret on its heading, which only a restart asks. */
@@ -196,12 +247,20 @@ function CheckoutCard({
 	restart: (focused: boolean) => void;
 	seams?: CheckoutMounts['seams'];
 	resuming: boolean;
+	pageProgram?: string | null;
+	onProgramChange?: DonateCardProps['onProgramChange'];
+	// the opening as its two flags, so a page handing a fresh object each render starts nothing anew.
+	monthly: boolean;
+	dedication: boolean;
 }) {
 	const { locale, currency } = config;
 	const money = (minor: number) => formatMinor(minor, locale, currency);
 	const offer = (minor: number) => formatOffer(minor, locale, currency);
 
-	const initial = useMemo(() => servedSnapshot(config, resuming), [config, resuming]);
+	const initial = useMemo(
+		() => servedSnapshot(config, resuming, { monthly, dedication }),
+		[config, resuming, monthly, dedication]
+	);
 	const [live, setLive] = useState<Checkout | null>(null);
 	const [deposit, setDeposit] = useState<DepositView | null>(null);
 	const [paymentRows, setPaymentRows] = useState(0);
@@ -224,12 +283,16 @@ function CheckoutCard({
 		if (claimed.current?.formId !== config.formId) {
 			claimed.current = { formId: config.formId, token: takeResumeToken(document, config.formId) };
 		}
-		const started = startCheckout(config, {
-			paymentMount: payment,
-			challengeMount: challenge,
-			resumeToken: claimed.current.token,
-			...(seams === undefined ? {} : { seams })
-		});
+		const started = startCheckout(
+			config,
+			{
+				paymentMount: payment,
+				challengeMount: challenge,
+				resumeToken: claimed.current.token,
+				...(seams === undefined ? {} : { seams })
+			},
+			{ monthly, dedication }
+		);
 		started.rows(setPaymentRows);
 		setLive(started);
 		// a Copy's outcome is said on the card's one region, again on every press: the words do not
@@ -251,7 +314,7 @@ function CheckoutCard({
 			block.stop();
 			block.root.remove();
 		};
-	}, [config, seams]);
+	}, [config, seams, monthly, dedication]);
 
 	const subscribe = useCallback(
 		(onChange: () => void) => {
@@ -424,6 +487,29 @@ function CheckoutCard({
 	// next, and the decline names what happened last.
 	const paymentWords =
 		api.state.step !== 'give' ? '' : refusedPayment ? copy.PAYMENT_PROBLEM : decline.words;
+
+	// ── the program the page picked ──────────────────────────────────────────────────────────────
+
+	// in the select's own encoding, `''` being where it's needed most. undefined is no pick of the
+	// page's to send: none handed in, or one the served config does not offer.
+	const held = api.programSelect.value;
+	const pagePick =
+		pageProgram === null
+			? ''
+			: api.programSelect.options.some((option) => option.value === pageProgram)
+				? pageProgram
+				: undefined;
+	const editing = step === 'amount' || step === 'details' || step === 'give';
+	// sent where the flow holds something else and takes a pick: on the page's pick moving, and on
+	// the flow arriving back on a step a donor edits — a pick made while a press was in flight was
+	// dropped there, and a retry lands on the review step.
+	useEffect(() => {
+		if (pagePick === undefined || pagePick === held || !editing) return;
+		send({ type: 'SET_PROGRAM', programId: pagePick === '' ? null : pagePick });
+	}, [pagePick, held, editing, send]);
+	useEffect(() => {
+		onProgramChange?.(held === '' ? null : held, !editing);
+	}, [held, editing, onProgramChange]);
 
 	// ── a repeating gift no processor still up can take ─────────────────────────────────────────
 
@@ -1069,6 +1155,7 @@ function CheckoutCard({
 						onContinue={onAmountContinue}
 						submits={shown === 'amount'}
 						refs={amountRefs}
+						drawsProgram={pagePick === undefined}
 					/>
 					<DetailsStep
 						api={api}

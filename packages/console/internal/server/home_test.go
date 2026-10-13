@@ -225,9 +225,9 @@ func TestTheReadingIsOneAnswerCarryingEveryReadThePageDraws(t *testing.T) {
 	if want := []string{"donatePage", "face", "holdsStripeKey", "org", "sites", "values"}; !slices.Equal(members, want) {
 		t.Fatalf("the reading carries %v, not %v", members, want)
 	}
-	// the donor-facing page is a route on this deployment's own worker (CLAUDE.md → Product
-	// surface), so where it answers is where the deployment answers.
-	if body["donatePage"] != "https://"+release.Baked.Name+".hound-haven.workers.dev" {
+	// the donor-facing page is the one route `/donate` on this deployment's own worker (CLAUDE.md →
+	// Product surface), so it answers at that path on the deployment's own address.
+	if body["donatePage"] != "https://"+release.Baked.Name+".hound-haven.workers.dev/donate" {
 		t.Fatalf("donation page %v", body["donatePage"])
 	}
 }

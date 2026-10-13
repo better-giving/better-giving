@@ -10,10 +10,12 @@ import {
 	Outlet,
 	redirect,
 	useLocation,
+	useMatches,
 	useNavigation
 } from 'react-router';
 import { ScreenCrumbs, useCrumbs } from '$lib/admin/crumbs';
 import { currentDestination, destinationGroupsFor } from '$lib/admin/destinations';
+import { revalidatesAfter } from '$lib/admin/editor/suggest-url';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { RouterLink } from '$lib/admin/router-link';
 import { APP_NAME } from '$lib/admin/screen-title';
@@ -27,14 +29,16 @@ import { database, platform, setupState, staff } from '../context';
 import { ErrorBoundary as RootErrorBoundary } from '../root';
 import type { Route } from './+types/_app';
 
-// the layout every screen behind the login sits under, and the one place the session gate and the
-// set-up gate are mounted.
+// the layout every screen behind the login sits under, and where the session gate and the set-up
+// gate are mounted for all of them. the one route behind the login outside it is the editor's
+// preview, which mounts the session gate itself because this frame would be drawn around it
+// (./preview.$pageId.tsx).
 //
 // pathless: the `_` prefix keeps the segment out of the URL, so /admin is /admin and this file is
 // what decides that reaching it needs a session. **being under this route is what makes a route
 // gated** — there is no group id and no naming convention standing in for it — and
-// ../routes.spec.ts holds every route in the app to that: under this layout, on the public
-// allow-list with the reason typed beside it, or on the console surface.
+// ../routes.spec.ts holds every route in the app to that: under this layout, the preview, on the
+// public allow-list with the reason typed beside it, or on the console surface.
 //
 // the gate is here rather than on ../root.tsx because middleware on the root runs for every route,
 // the payment processor's callback included, and its body must be read exactly once by the handler
@@ -44,7 +48,8 @@ import type { Route } from './+types/_app';
 // it is also the frame: the shell, the rail and the way out are drawn once here rather than by
 // each screen, so a screen under this route is a screen and nothing else. every part of that frame
 // is `@better-giving/operator`'s and is dressed by packages/operator/src/styles/adm.css — this
-// file states no arrangement, no breakpoint and no count.
+// file states no arrangement, no breakpoint and no count. a screen whose `handle` is a
+// `BareHandle` — the editor — is drawn without the frame, across the whole window.
 //
 // and it draws the bar over a move to another screen, held by `clientMiddleware` below. the rule
 // that bar keeps is packages/operator/src/progress-bar.ts's header.
@@ -121,6 +126,22 @@ export const clientMiddleware: Route.ClientMiddlewareFunction[] = [
 	}
 ];
 
+/**
+ * what a screen drawn across the whole window exports as `handle`: the editor, whose own bar is
+ * the way out (`$lib/admin/editor/editor-shell.tsx`). the gate and the set-up gate hold it as they
+ * hold every screen; only the frame is left off.
+ */
+export type BareHandle = { readonly frame: 'bare' };
+
+function isBare(handle: unknown): boolean {
+	return (
+		typeof handle === 'object' && handle !== null && 'frame' in handle && handle.frame === 'bare'
+	);
+}
+
+/** where the globe beside the organisation's name goes: the Donation page's editor. */
+const DONATION_PAGE_EDITOR = { href: '/admin/donation-page', label: 'Donation page' } as const;
+
 // the sheet every screen beneath this layout wears, linked once here rather than by each of them.
 export const links = operatorLinks;
 
@@ -144,6 +165,9 @@ export async function loader({ context }: Route.LoaderArgs) {
 	};
 }
 
+// as the page editors' own: an ask of Write with AI writes nothing this loader reads.
+export const shouldRevalidate = revalidatesAfter;
+
 export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 	// the destination is decided from the address rather than from a route id, because what marks
 	// a cell is which section the reader is in and a section is several routes deep
@@ -151,6 +175,7 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 	const { pathname } = useLocation();
 	const at = currentDestination(pathname);
 	const crumbs = useCrumbs();
+	const bare = useMatches().some((match) => isBare(match.handle));
 	const navigation = useNavigation();
 	useEffect(() => pageDrawn(pathname), [pathname]);
 	useEffect(() => {
@@ -162,19 +187,35 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 	const moving =
 		navigation.location !== undefined && movesPage(navigation.location.pathname, pathname);
 
-	return (
+	// the words stand for the whole life of the document and the line only for the move: a region
+	// that arrived with the move is one a reader has not registered by the time its words land
+	// (`MoveStatus` in packages/operator/src/components/status/ProgressBar.jsx).
+	const progress = (
 		<>
-			{/* the words stand for the whole life of the document and the line only for the move: a
-			    region that arrived with the move is one a reader has not registered by the time its
-			    words land (`MoveStatus` in packages/operator/src/components/status/ProgressBar.jsx). */}
 			<MoveStatus label={moving ? openingLabel(navigation.location?.state) : ''} />
 			{moving ? <ProgressBar overMove /> : null}
+		</>
+	);
+
+	if (bare) {
+		return (
+			<>
+				{progress}
+				<Outlet />
+			</>
+		);
+	}
+
+	return (
+		<>
+			{progress}
 			<AppShell
 				// before anyone has saved the organisation's details on the console there is no name to
 				// show, so it says what the software is rather than printing an empty band. the word is
 				// shared with every screen's tab title, which falls back to the same one
 				// ($lib/admin/screen-title.ts).
 				org={loaderData.orgName ?? APP_NAME}
+				site={DONATION_PAGE_EDITOR}
 				groups={destinationGroupsFor(loaderData.deployer)}
 				link={RouterLink}
 				current={at}
@@ -205,7 +246,13 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 					// a screen that is its destination's own page draws no title, and the tab title and the
 					// marked rail cell name it to the eye; this is the in-document name a screen reader
 					// jumps to. a screen under a section draws its own `h1`, so it gets none here.
-					at?.kind === 'page' ? <h1 className="adm-vh">{at.label}</h1> : null
+					// `tabIndex` -1 so a screen can land focus on it when a press removed the control
+					// that held it (./_app.admin.campaigns._index.tsx).
+					at?.kind === 'page' ? (
+						<h1 className="adm-vh" tabIndex={-1}>
+							{at.label}
+						</h1>
+					) : null
 				}
 				<Outlet />
 			</AppShell>

@@ -1,6 +1,6 @@
 import { RouterContextProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
-import { WHICH_FORM } from '$lib/forms/definition';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import type { FormInputField } from '$lib/forms/fields';
 import { MAX_FORM_NAME } from '$lib/forms/input-schema';
 import type { Db } from '$lib/server/db/client';
@@ -87,11 +87,13 @@ type Rejection = {
  * did not send at all, which is what an unticked group is.
  *
  * every body names the form it was submitted from, because the screen's markup does: one `action`
- * serves four submissions and that box is what tells them apart.
+ * serves four submissions and that box is what tells them apart. it carries a version for the same
+ * reason; no case here reaches the write that compares it.
  */
 function bodyOf(form: string, fields: Record<string, string | string[]>): FormData {
 	const body = new FormData();
 	body.set(WHICH_FORM, form);
+	body.set(RECORD_VERSION, '0');
 	for (const [field, value] of Object.entries(fields)) {
 		if (field === 'suggested_amounts') {
 			const rows = typeof value === 'string' ? [value] : value;
@@ -293,8 +295,8 @@ describe('/admin/forms/[id] the sites group — what never reaches the database'
 	it('carries a body that never mentions the sites past every rule the schema states', async () => {
 		// a group with nothing ticked submits no key rather than an empty one, so this is the
 		// submission a rendered page actually makes. `.prefault([])` in `$lib/forms/input-schema.ts`
-		// feeds that absence through the rule, and the rule has nothing to say about it: a form on no
-		// site loads on this deployment's own donation page. so the save goes on to the list read,
+		// feeds that absence through the rule, and the rule has nothing to say about it: a form may be
+		// on no site while the site it goes on is being made. so the save goes on to the list read,
 		// which is where it meets the handle this spec deliberately does not have — a 500 with no
 		// field error is the shape of "it got that far".
 		const { status, data } = await post(ORIGINS_FORM, {});

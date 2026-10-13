@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { edgeCache } from '$lib/server/edge-cache.testing';
+import { campaignOwning } from '$lib/server/pages/page-row.testing';
 import { mountRoutes } from '../route-request.testing';
 import * as config from './api.v1.forms.$id.config';
 import * as surface from './api.v1';
@@ -63,6 +64,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+	await env.DB.prepare('delete from page').run();
 	await env.DB.prepare('delete from form').run();
 	await env.DB.prepare('delete from org_profile').run();
 	await env.DB.prepare(
@@ -266,6 +268,31 @@ describe('GET /api/v1/forms/:id/config', () => {
 		expect(response.status).toBe(409);
 		expect(response.headers.get('access-control-allow-origin')).toBe(ALLOWED);
 		expect(await response.json()).toMatchObject({ error: 'form_not_published' });
+	});
+
+	it('sends a draft form to Forms to set it live', async () => {
+		await env.DB.prepare(`update form set status = 'draft' where id = ?`).bind(FORM_ID).run();
+		const { fix } = (await (await get()).json()) as { fix: string };
+		expect(fix).toContain('Open Forms in /admin');
+	});
+
+	/**
+	 * a campaign's settings row is not set live on Forms — that screen 404s it — so the fix names
+	 * the campaign and the screen it is published from.
+	 */
+	it.each([
+		['never published', 'never_published', /not published/],
+		['ended', 'ended', /has ended/]
+	] as const)('sends a campaign %s to Campaigns rather than Forms', async (_, state, words) => {
+		await env.DB.prepare(`update form set status = 'draft' where id = ?`).bind(FORM_ID).run();
+		await campaignOwning(FORM_ID, state);
+		const response = await get();
+		expect(response.status).toBe(409);
+		const body = (await response.json()) as { error: string; message: string; fix: string };
+		expect(body.error).toBe('form_not_published');
+		expect(body.message).toMatch(words);
+		expect(body.fix).toContain('Campaigns in /admin');
+		expect(body.fix).not.toContain('Forms');
 	});
 
 	/**

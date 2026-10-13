@@ -26,11 +26,13 @@ type ProgramFieldsProps = {
 		readonly name: Box;
 		readonly description: Box;
 	};
+	/** the program's photo, beside the name: ./photo-control.tsx, where the screen offers one. */
+	readonly photo?: ReactNode;
 	/** the group's own submit, at the foot of the group it saves. */
 	readonly footer?: ReactNode;
 };
 
-export function ProgramFields({ boxes, footer }: ProgramFieldsProps) {
+export function ProgramFields({ boxes, photo, footer }: ProgramFieldsProps) {
 	return (
 		<Section>
 			<div className="adm-stack">
@@ -49,18 +51,20 @@ export function ProgramFields({ boxes, footer }: ProgramFieldsProps) {
 					}
 				/>
 
+				{photo}
+
 				{/* a multi-line box, because what goes in it is a sentence and a single line hides
 				    every word but the last few typed.
 
-				    the hint is the one thing neither the label nor the box can carry: which of the two
-				    boxes a donor ever reads. it is a fact about somewhere else — a donation form, on
-				    somebody else's site — so there is nothing on this screen that could demonstrate
-				    it. */}
+				    the hint is the one thing neither the label nor the box can carry: that no donor ever
+				    reads it. it is a fact about somewhere else — a donation form on somebody else's
+				    site, the Donation page's chooser — so there is nothing on this screen that could
+				    demonstrate it. */}
 				<Field
 					as="textarea"
 					label="Description"
 					optional
-					hint="For your team. Donors see only the name."
+					hint="For your team. Donors never see it."
 					{...boxProps(boxes.description)}
 					error={
 						boxes.description.errors?.[0] === undefined ? undefined : (

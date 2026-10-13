@@ -66,6 +66,16 @@ function opener(root: HTMLElement): HTMLButtonElement {
 	return button;
 }
 
+/**
+ * the calendar's panel. it is portalled out of the field (./DateField.jsx), so it is found in the
+ * document rather than under the element the field was mounted into.
+ */
+function calendar(): HTMLElement {
+	const panel = document.querySelector<HTMLElement>('.adm-cal[data-part="content"]');
+	if (panel === null) throw new Error('the field drew no calendar');
+	return panel;
+}
+
 /** clicks, with the redraw finished by the time the call returns. */
 function press(element: Element): void {
 	act(() => {
@@ -409,9 +419,11 @@ describe('a date field mounted into a document', () => {
 
 		press(opener(root));
 		await flushed();
-		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('open');
+		expect(calendar().getAttribute('data-state')).toBe('open');
 
-		const day = root.querySelector('[data-part="table-cell-trigger"][data-value="2026-01-22"]');
+		const day = calendar().querySelector(
+			'[data-part="table-cell-trigger"][data-value="2026-01-22"]'
+		);
 		if (day === null) throw new Error('the open calendar drew no 22nd of January');
 		press(day);
 		await flushed();
@@ -444,8 +456,30 @@ describe('a date field mounted into a document', () => {
 		await flushed();
 		await painted();
 
-		expect(root.querySelector('[data-part="content"]')?.getAttribute('data-state')).toBe('closed');
+		expect(calendar().getAttribute('data-state')).toBe('closed');
 		expect(document.activeElement).toBe(opener(root));
+	});
+
+	it('draws its calendar out of the field: into the modal it stands in, or into the body', () => {
+		// a sheet clips what stands inside it, and a modal holds everything outside it inert, so the
+		// calendar is drawn in the one place it can be both seen and pressed.
+		const loose = render(DateField, { id: 'loose', name: 'loose', label: 'Given' });
+		const inModal = render(
+			() => (
+				<dialog open>
+					<DateField id="held" name="held" label="Ends" />
+				</dialog>
+			),
+			{}
+		);
+
+		const panels = [...document.querySelectorAll<HTMLElement>('.adm-cal')];
+		const held = panels.find((panel) => inModal.contains(panel));
+		const free = panels.find((panel) => !inModal.contains(panel));
+		expect(held?.closest('dialog')).toBe(inModal.querySelector('dialog'));
+		expect(held?.closest('.adm-field')).toBeNull();
+		expect(free?.parentElement?.closest('body')).toBe(document.body);
+		expect(loose.contains(free ?? null)).toBe(false);
 	});
 
 	it('exposes no operable calendar press on a box that cannot be answered', () => {

@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:test';
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
@@ -336,7 +337,7 @@ describe('sendReceipt() — what the operator is told to do about a refusal', ()
 		await sendReceipt(deps(mail.port), target());
 
 		expect(alertText(mail.sent)).toContain(
-			'Open the console (run `better-giving start`), go to Organisation and fill in what’s missing.'
+			`Open the console (run \`better-giving start\`), go to ${IDENTITY_FOLD} and fill in what’s missing.`
 		);
 	});
 });

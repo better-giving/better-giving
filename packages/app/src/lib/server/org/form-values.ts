@@ -48,6 +48,9 @@ export function toFormValues(profile: StoredOrgProfile): OrgProfileFormValues {
 	put(values, 'postal_code', profile.postalCode);
 	put(values, 'country', profile.country);
 	put(values, 'notification_email', profile.notificationEmail);
+	put(values, 'mission', profile.mission);
+	put(values, 'vision', profile.vision);
+	put(values, 'brand_colour', profile.brandColour);
 	return values;
 }
 

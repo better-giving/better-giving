@@ -7,11 +7,14 @@ import { Mark } from '../status/Mark.jsx';
  *
  * what a cell hands whatever it is drawn as: the address, the class list the sheet draws off, and
  * the claim about where the reader is. everything the cell settles, and nothing a caller restates.
+ * ./AppShell.jsx draws one more link through the same component — the globe, which is a mark and so
+ * is named by `aria-label`.
  *
  * @typedef {{
  *   href: string;
  *   className: string;
  *   'aria-current'?: 'page' | 'true' | undefined;
+ *   'aria-label'?: string | undefined;
  *   title?: string | undefined;
  *   onClick?: MouseEventHandler<HTMLAnchorElement> | undefined;
  *   children?: ReactNode | undefined;

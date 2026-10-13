@@ -236,6 +236,45 @@ it('reads a snapshot off the configuration alone, so the served html holds the a
 	expect(toState(initialSnapshot(CONFIG))).toEqual(api.state);
 });
 
+// the served html is read off `initialSnapshot` and the live card off `startCheckout`, so a page's
+// opening that reached one of them and not the other is the card flipping cadence on hydrate.
+it('starts the live flow on the step and draft the served snapshot was read with', async () => {
+	const payment = paymentProvider();
+	const timer = clock();
+	const config: FormConfig = { ...CONFIG, frequencies: ['one_time', 'monthly'] };
+	const openings = [{ monthly: true }, { dedication: true }, { monthly: true, dedication: true }];
+
+	for (const opening of openings) {
+		const served = initialSnapshot(config, opening);
+		const { paymentMount, challengeMount } = boxes();
+		const checkout = startCheckout(
+			config,
+			{
+				paymentMount,
+				challengeMount,
+				resumeToken: null,
+				seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
+			},
+			opening
+		);
+		onTestFinished(() => checkout.stop());
+		const live = checkout.actor.getSnapshot();
+
+		expect(toState(live), JSON.stringify(opening)).toEqual(toState(served));
+		expect(live.context.draft, JSON.stringify(opening)).toEqual(served.context.draft);
+	}
+	// and the opening is what those drafts hold, rather than both having dropped it alike.
+	expect(initialSnapshot(config, { monthly: true }).context.draft.frequency).toBe('monthly');
+	expect(initialSnapshot(config, { dedication: true }).context.draft.tribute).toBeDefined();
+	await settle();
+});
+
+it('reads monthly on a one-time-only config as no opening at all', () => {
+	expect(initialSnapshot(CONFIG, { monthly: true }).context.draft).toEqual(
+		initialSnapshot(CONFIG).context.draft
+	);
+});
+
 it('mounts the payment provider into the box it was handed and draws no challenge yet', async () => {
 	const { paymentMount, challengeMount } = boxes();
 	const payment = paymentProvider();

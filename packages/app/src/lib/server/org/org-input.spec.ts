@@ -30,8 +30,11 @@ const MINIMAL: OrgProfileFormValues = {
 };
 
 /** unwraps a result that must have parsed, reporting the errors if it did not. */
-function parsed(values: OrgProfileFormValues): ParsedOrgProfile {
-	const result = parseOrgProfile(values);
+function parsed(
+	values: OrgProfileFormValues,
+	socialLinks: readonly string[] = []
+): ParsedOrgProfile {
+	const result = parseOrgProfile(values, socialLinks);
 	if (!result.ok) {
 		throw new Error(`expected these values to parse, got ${JSON.stringify(result.errors)}`);
 	}
@@ -39,8 +42,11 @@ function parsed(values: OrgProfileFormValues): ParsedOrgProfile {
 }
 
 /** the mirror: unwraps the error map from a result that must have been rejected. */
-function rejected(values: OrgProfileFormValues): OrgProfileFieldErrors {
-	const result = parseOrgProfile(values);
+function rejected(
+	values: OrgProfileFormValues,
+	socialLinks: readonly string[] = []
+): OrgProfileFieldErrors {
+	const result = parseOrgProfile(values, socialLinks);
 	if (result.ok) {
 		throw new Error(`expected these values to be rejected, got ${JSON.stringify(result.value)}`);
 	}
@@ -352,5 +358,91 @@ describe('parseOrgProfile — length limits', () => {
 		const message = rejected({ ...MINIMAL, postal_code: 'x'.repeat(21) }).postal_code;
 		expect(message).toContain('21');
 		expect(message).toContain('20');
+	});
+});
+
+describe('parseOrgProfile — the mission and the vision', () => {
+	it('trims what was typed and keeps the line breaks inside it', () => {
+		expect(
+			parsed({
+				...MINIMAL,
+				mission: '  Clean water.\nFor everyone.  ',
+				vision: 'A dry well nowhere.'
+			})
+		).toMatchObject({ mission: 'Clean water.\nFor everyone.', vision: 'A dry well nowhere.' });
+	});
+
+	it('stores a blank or omitted one as null', () => {
+		expect(parsed({ ...MINIMAL, mission: '  \n ' })).toMatchObject({ mission: null, vision: null });
+	});
+
+	it.each(['mission', 'vision'] as const)(
+		'accepts a %s of exactly 2000 characters and refuses 2001',
+		(field) => {
+			expect(parsed({ ...MINIMAL, [field]: 'x'.repeat(2000) })[field]).toHaveLength(2000);
+			expect(rejected({ ...MINIMAL, [field]: 'x'.repeat(2001) })[field]).toBe(
+				'This is 2001 characters, over the 2000-character limit.'
+			);
+		}
+	);
+});
+
+describe('parseOrgProfile — the brand colour', () => {
+	it('stores a colour typed in capitals in lowercase', () => {
+		expect(parsed({ ...MINIMAL, brand_colour: ' #AABBCC ' }).brandColour).toBe('#aabbcc');
+	});
+
+	it('stores a blank or omitted one as null', () => {
+		expect(parsed({ ...MINIMAL, brand_colour: ' ' }).brandColour).toBeNull();
+		expect(parsed(MINIMAL).brandColour).toBeNull();
+	});
+
+	it.each(['#abc', 'red', 'aabbcc', '#aabbcg', '#aabbccdd'])('refuses %s', (typed) => {
+		expect(rejected({ ...MINIMAL, brand_colour: typed }).brand_colour).toBe(
+			'A `#` and six hex digits, like `#1f6feb`.'
+		);
+	});
+});
+
+describe('parseOrgProfile — the social links', () => {
+	it('stores each link on its platform, in the order typed, skipping the blank boxes', () => {
+		expect(
+			parsed(MINIMAL, [
+				'https://www.facebook.com/x',
+				'',
+				'youtu.be/dQw4w9WgXcQ',
+				'   ',
+				'twitter.com/hope'
+			]).socialLinks
+		).toEqual([
+			{ platform: 'facebook', href: 'https://www.facebook.com/x' },
+			{ platform: 'youtube', href: 'https://youtu.be/dQw4w9WgXcQ' },
+			{ platform: 'x', href: 'https://twitter.com/hope' }
+		]);
+	});
+
+	it('stores none where none were sent', () => {
+		expect(parsed(MINIMAL).socialLinks).toEqual([]);
+	});
+
+	it.each(['https://example.org', 'ftp://facebook.com/hope'])(
+		'refuses %s, naming it and the six',
+		(typed) => {
+			expect(rejected(MINIMAL, [typed]).social_links).toBe(
+				`${typed} is not a Facebook, Instagram, YouTube, LinkedIn, TikTok or X address.`
+			);
+		}
+	);
+
+	it('refuses two Instagram links, naming Instagram', () => {
+		expect(
+			rejected(MINIMAL, ['https://instagram.com/hope', 'https://instagram.com/hope2']).social_links
+		).toContain('Instagram');
+	});
+
+	it('reports a refused link beside every refused box', () => {
+		expect(Object.keys(rejected({ ...MINIMAL, city: '' }, ['https://example.org'])).sort()).toEqual(
+			['city', 'social_links']
+		);
 	});
 });

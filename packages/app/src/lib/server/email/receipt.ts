@@ -1,6 +1,7 @@
 import { receipt } from '@better-giving/emails';
 import { renderEmail } from '@better-giving/emails/render';
 import { TRIBUTE_KIND_LABELS, type TributeKind } from '@better-giving/form/v1';
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import type { OrgProfile } from '../db/schema';
 import { listFields, profileForReceipt, type ReceiptField } from '../org/receipt-fields';
 import type { RenderedEmail } from './provider';
@@ -159,7 +160,7 @@ export async function renderReceipt(input: ReceiptInput): Promise<ReceiptResult>
 				`No receipt was rendered: the organisation's ${listFields(profile.missing)} ` +
 				`${profile.missing.length === 1 ? 'is' : 'are'} not saved, and a receipt must carry ` +
 				'them. Open the console (`better-giving start`) and fill in your organisation details ' +
-				'under Organisation.'
+				`under ${IDENTITY_FOLD}.`
 		};
 	}
 

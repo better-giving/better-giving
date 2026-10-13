@@ -48,13 +48,13 @@ import {
 // every route is in one of three categories, and a name that no longer matches a file fails too,
 // so a list cannot rot into permission for a route that was moved or deleted.
 //
-// the three, and the third is not a kind of public. a route is under the protected layout, in
-// which case the gate redirects an anonymous caller to the login; or it is on PUBLIC_ROUTE_FILES
-// below, which is a decision somebody typed next to the reason; or it is on the console surface,
-// which is neither. `/console` is checked by a credential rather than by a session
-// ($lib/server/console/access.ts), so it may not sit under the layout, where the gate would answer
-// a wire caller with a 303 to an HTML login, and it may not be listed as public, which would be a
-// lie this file then blesses.
+// the three, and the third is not a kind of public. a route is under the protected layout, or is
+// the preview that mounts the same gate itself, in which case the gate redirects an anonymous
+// caller to the login; or it is on PUBLIC_ROUTE_FILES below, which is a decision somebody typed
+// next to the reason; or it is on the console surface, which is neither. `/console` is checked by
+// a credential rather than by a session ($lib/server/console/access.ts), so it may not sit under
+// the layout, where the gate would answer a wire caller with a 303 to an HTML login, and it may not
+// be listed as public, which would be a lie this file then blesses.
 //
 // and it holds two more mountings on the same principle, one category over each. being public is a
 // line somebody typed on the list below; being *metered* is not a decision and must not become
@@ -124,16 +124,31 @@ const PROCESSOR_CALLBACKS: Readonly<Record<string, string>> = {
 	'routes/api.nowpayments.webhook.ts': NOWPAYMENTS_IPN_PATH
 };
 
+/** the donation page, at `/donate`. */
+const DONOR_PAGE = 'routes/donate.tsx';
+
+/** a campaign, at its own top-level address. */
+const CAMPAIGN_PAGE = 'routes/$slug.tsx';
+
 /**
- * the donor's page, which is the one screen outside the layout that wears no operator stylesheet.
+ * the donor's pages, which with the preview below are the screens outside the layout that wear no
+ * operator stylesheet.
  *
- * it draws the donation form's own card and links the form's four sheets in its own `links`, and
+ * each draws the donation form's own card and links the form's four sheets in its own `links`, and
  * those four are unlayered while every operator declaration is layered (src/app.css) — so a
  * document holding both would let one side outrank the other on properties only one of them sets.
- * it is named here so the sweep below can hold every *other* screen outside the layout to carrying
- * the operator sheet without holding this one to it.
+ * they are named here so the sweep below can hold every *other* screen outside the layout to
+ * carrying the operator sheet without holding these to it.
  */
-const DONOR_PAGE = 'routes/$formId.tsx';
+const DONOR_PAGES: readonly string[] = [DONOR_PAGE, CAMPAIGN_PAGE];
+
+/**
+ * the editor's preview of a page, the one route outside the protected layout that is behind the
+ * login: it mounts the layout's own gate itself, because the layout's frame would be drawn around a
+ * page that has to look as a donor sees it. the file's own header argues it; the cases below hold
+ * it to mounting the gate, and to the donor page's sheets rather than the operator's.
+ */
+const PREVIEW_PAGE = 'routes/preview.$pageId.tsx';
 
 /**
  * every route file that is deliberately served to anonymous callers.
@@ -213,13 +228,24 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// stands in for a session is the `state` that went out with it, in a cookie on that same browser
 	// and cleared on every arm — so the round trip cannot be made twice.
 	'routes/quickbooks.callback.tsx',
-	// the donor's page, opened from a link the organisation published. it is unauthenticated
+	// the donation page, opened from a link the organisation published. it is unauthenticated
 	// because a donor holds no session and never could — there is nobody for a gate here to ask
 	// about. it initiates no payment itself and takes no submission: the gift goes through the
-	// endpoint above it, same-origin, which owes all four of that surface's checks. and what its
-	// loader hands the browser is the served config alone, never the `form` row it was read from —
-	// that row carries `allowed_origins`.
+	// endpoint above it, same-origin, which owes all four of that surface's checks. the one write
+	// its loader makes is the page itself, once per deployment — the one-Donation-page index turns
+	// every later arrival into a read. and what it hands the browser is the served config alone,
+	// never the `form` row it was read from — that row carries `allowed_origins`.
 	DONOR_PAGE,
+	// a campaign's page, opened from a link the organisation published, and public for the same
+	// reasons: no session, no submission, the gift through the endpoint above, the served config
+	// alone. its loader writes nothing, and an address no campaign could hold is refused before the
+	// database is read, so a scanner walking top-level paths costs this deployment no query.
+	CAMPAIGN_PAGE,
+	// a page's photos, fetched by the `<img>` of a donor who holds no session. it reads bytes by id
+	// and writes nothing, and a draft's image is as reachable by its id as a live one's: the id is a
+	// uuidv7 minted by `createImage` ($lib/server/images/queries.ts), whose random bits nobody outside
+	// this deployment can enumerate, so knowing the address is the permission.
+	'routes/image.$id.ts',
 	// the read API's OpenAPI document and the agent prompt beside it: documentation a developer or
 	// an agent reads before they hold a key, so neither is under ./routes/integrations.v1.ts's key
 	// check. each is built from constants and the request's own origin and reads nothing from the
@@ -249,6 +275,8 @@ const CONSOLE_ROUTE_FILES: readonly string[] = [
 	'routes/console.sites.ts',
 	// the organisation's legal identity, written whole.
 	'routes/console.org.ts',
+	// the organisation's logo, put on from a posted photo or taken off.
+	'routes/console.org.logo.ts',
 	// a test message, sent over this deployment's own transport with its own SMTP credentials.
 	// no row moves, so it answers with a report of the press rather than with the deployment's.
 	'routes/console.test-email.ts',
@@ -359,6 +387,7 @@ function ungatedRoutes(manifest: readonly RouteRecord[], allowed: readonly strin
 		.filter(
 			(route) =>
 				!under(route, PROTECTED_LAYOUT) &&
+				route.file !== PREVIEW_PAGE &&
 				!allowed.includes(route.file) &&
 				!consoleRoute(route) &&
 				!zapierRoute(route) &&
@@ -385,7 +414,9 @@ function ungatedRoutes(manifest: readonly RouteRecord[], allowed: readonly strin
  */
 function undressedRoutes(manifest: readonly RouteRecord[], read: ReadModule): string[] {
 	return manifest
-		.filter((route) => !route.ancestors.includes(PROTECTED_LAYOUT) && route.file !== DONOR_PAGE)
+		.filter(
+			(route) => !route.ancestors.includes(PROTECTED_LAYOUT) && !DONOR_PAGES.includes(route.file)
+		)
 		.filter((route) => {
 			const source = read(route.file) ?? '';
 			return drawsAScreen(source) && !exportsLinks(source);
@@ -676,37 +707,40 @@ describe('the route surface', () => {
 	 * so. ./root.tsx's `ErrorBoundary` is what renders it; the 404 here is the half a component
 	 * cannot claim for itself.
 	 *
-	 * a single top-level segment is not one of those addresses. `/not-a-page` matches the
-	 * donor's page, whose loader finds no form and draws its own notice with a 404 of its own
-	 * (./routes/$formId.workers.spec.ts) — a donor holding a link that did not work is not shown the
-	 * operator error panel. what still reaches the boundary is everything that segment cannot be:
-	 * a path under a route that claims no such child, and any address of more than one segment.
+	 * a single top-level segment is not one of those addresses: every one reaches a campaign's route,
+	 * whose loader refuses what no campaign holds (./routes/$slug.workers.spec.ts).
 	 */
 	it('answers an address matching no route with a 404, above every layout', async () => {
 		expect(await statusAt('/admin/not-a-screen')).toBe(404);
 		expect(await statusAt('/a/b')).toBe(404);
+		expect(await statusAt('/winter-coat-drive/extra')).toBe(404);
 		expect(routes.filter((r) => r.path === '/admin/not-a-screen' || r.path === '/a/b')).toEqual([]);
 	});
 
 	/**
-	 * and a single segment reaches the donor's page whatever it holds, malformed included.
-	 *
-	 * the guard on the form id is the loader's rather than the router's, and it draws the same
-	 * notice: `/.env` is a scanner asking, and answering it with the operator error panel would be
-	 * putting /admin's dress on a stranger's screen to say the same 404.
+	 * the organisation's profile, logo, colour, mission, vision and links are the console's
+	 * (CLAUDE.md → Two operator surfaces), so the dashboard serves no screen for them. two segments,
+	 * so no campaign's address catches it either: the matcher finds nothing and the gate never runs.
 	 */
-	it('answers every single segment with the donor’s page', async () => {
-		expect(await matchedFileAt('/frm_something')).toBe(DONOR_PAGE);
-		expect(await matchedFileAt('/.env')).toBe(DONOR_PAGE);
+	it('serves no dashboard screen for the organisation', async () => {
+		expect(await matchedFileAt('/admin/organisation')).toBeNull();
+		expect(await statusAt('/admin/organisation')).toBe(404);
 	});
+
+	it.each(['/winter-coat-drive', '/frm_something', '/.env'])(
+		'hands the single segment %s to the campaign route',
+		async (address) => {
+			expect(await matchedFileAt(address)).toBe(CAMPAIGN_PAGE);
+		}
+	);
 
 	/**
 	 * every static top-level route this app serves still answers its own address.
 	 *
-	 * a dynamic top-level segment matches all of them, and what keeps them theirs is react router's
-	 * own ranking rather than anything either file says — so it is asked of the matcher. nothing in
-	 * ./routes/$formId.tsx names them and nothing there may: a list of reserved words in a loader
-	 * would be a second copy of this tree, wrong the moment a route is added.
+	 * a dynamic top-level segment would match all of them, and what keeps them theirs is react
+	 * router's own ranking rather than anything either file says — so it is asked of the matcher. a
+	 * list of reserved words in a loader would be a second copy of this tree, wrong the moment a
+	 * route is added.
 	 *
 	 * `/embed.js` is not here because it is not a route at all — static/ is copied whole into the
 	 * client build and the worker serves it as an asset before routing (CLAUDE.md, ../vite.config.ts).
@@ -717,6 +751,8 @@ describe('the route surface', () => {
 		{ address: '/forgot', file: 'routes/forgot.tsx' },
 		{ address: '/reset', file: 'routes/reset.tsx' },
 		{ address: '/admin', file: 'routes/_app.admin._index.tsx' },
+		{ address: '/donate', file: DONOR_PAGE },
+		{ address: '/preview/0198c1d2-0000-7000-8000-000000000001', file: PREVIEW_PAGE },
 		{ address: API_BASE_PATH, file: API_LAYOUT },
 		{ address: CONSOLE_BASE_PATH, file: CONSOLE_LAYOUT }
 	])('keeps $address on $file', async ({ address, file }) => {
@@ -776,12 +812,13 @@ describe('reaching for middleware', () => {
 });
 
 describe('where middleware is mounted', () => {
-	// the surface layouts and nothing else, each covering one surface: the session gate over every
-	// screen behind the login, the meter over every route on the public api, the credential check
-	// over every route on the operator console, and a key check over every route Zapier calls and
-	// another over every route of the read API.
-	// any other name here is a route that took a decision one of those makes for a whole surface,
-	// which is the shape they all exist to remove.
+	// the surface layouts, each covering one surface: the session gate over every screen behind the
+	// login, the meter over every route on the public api, the credential check over every route on
+	// the operator console, and a key check over every route Zapier calls and another over every
+	// route of the read API. any other name here is a route that took a decision one of those makes
+	// for a whole surface, which is the shape they all exist to remove — but for the preview and the
+	// two donor pages, which sit under no layout that could carry what they owe, and are held to it
+	// by the cases below.
 	//
 	// the console's is not the session gate and must never be confused for one. it reads a bearer
 	// header against a value only an account holder could have written
@@ -794,7 +831,35 @@ describe('where middleware is mounted', () => {
 			.map((r) => r.file)
 			.sort();
 		expect(mounted).toEqual(
-			[API_LAYOUT, CONSOLE_LAYOUT, INTEGRATIONS_LAYOUT, PROTECTED_LAYOUT, ZAPIER_LAYOUT].sort()
+			[
+				API_LAYOUT,
+				CONSOLE_LAYOUT,
+				INTEGRATIONS_LAYOUT,
+				PROTECTED_LAYOUT,
+				ZAPIER_LAYOUT,
+				PREVIEW_PAGE,
+				DONOR_PAGE,
+				CAMPAIGN_PAGE
+			].sort()
+		);
+	});
+
+	// a donor page reads what `/api/v1` bounds and more, so it is metered as that surface is, on a
+	// bucket of its own ($lib/server/api/meter.ts, `meterDonorPage`). the meter alone, and on both.
+	it.each([DONOR_PAGE, CAMPAIGN_PAGE])('is the donor page meter alone on %s', (file) => {
+		expect(readFromDisk(file) ?? '').toMatch(
+			/export const middleware: Route\.MiddlewareFunction\[\] = \[meterDonorPage\];/
+		);
+	});
+
+	// the preview is one of the exceptions above, and what it mounts is the layout's own session gate
+	// and nothing else — a gate of its own would be a second one to keep true.
+	it('is the session gate alone on the preview, the one the protected layout mounts first', () => {
+		expect(readFromDisk(PROTECTED_LAYOUT) ?? '').toMatch(
+			/export const middleware: Route\.MiddlewareFunction\[\] = \[\s*staffGate,/
+		);
+		expect(readFromDisk(PREVIEW_PAGE) ?? '').toMatch(
+			/export const middleware: Route\.MiddlewareFunction\[\] = \[staffGate\];/
 		);
 	});
 
@@ -891,22 +956,25 @@ describe('the stylesheet a screen outside the layout carries', () => {
 	});
 
 	/**
-	 * and the donor's page carries none of it, which the sweep above cannot say for it.
+	 * and the donor's pages and the preview carry none of it, which the sweep above cannot say for
+	 * them: the donor's pages are excluded from it by name, and it passes the preview's `links`, the
+	 * donor sheets. so a line adding the operator sheet to one would pass everything else in this
+	 * file — and what that produces is not an exception on one screen: the operator reset zeroes
+	 * `border` on `*` and `background` on every control, from a layer the form's own unlayered
+	 * rules then outrank back. src/app.css argues both directions.
 	 *
-	 * it is excluded from that sweep by name, so a line adding the operator sheet to it would pass
-	 * everything else in this file — and what that produces is not an exception on one screen: the
-	 * operator reset zeroes `border` on `*` and `background` on every control, from a layer the
-	 * form's own unlayered rules then outrank back. src/app.css argues both directions.
-	 *
-	 * the import rather than the name, because the file's own header names the helper to say it does
-	 * not use it.
+	 * the import rather than the name, because ./routes/donate.tsx's header names the helper to say
+	 * it does not use it.
 	 */
-	it('imports neither the helper nor the sheet on the donor’s page', () => {
-		const source = readFromDisk(DONOR_PAGE) ?? '';
-		expect(source).not.toBe('');
-		expect(source).not.toMatch(/from '\$lib\/admin\/operator-links'/);
-		expect(source).not.toMatch(/from '[^']*app\.css/);
-	});
+	it.each([...DONOR_PAGES, PREVIEW_PAGE])(
+		'imports neither the helper nor the sheet on %s',
+		(file) => {
+			const source = readFromDisk(file) ?? '';
+			expect(source).not.toBe('');
+			expect(source).not.toMatch(/from '\$lib\/admin\/operator-links'/);
+			expect(source).not.toMatch(/from '[^']*app\.css/);
+		}
+	);
 
 	it('is carried by every screen this app serves outside the layout', () => {
 		expect(routes.length).toBeGreaterThan(0);
@@ -1005,7 +1073,10 @@ describe('the session the gate resolved', () => {
 
 	it('is resolved once, by the gate, and not again by a route beneath it', () => {
 		const offenders = routes
-			.filter((r) => r.file !== PROTECTED_LAYOUT && under(r, PROTECTED_LAYOUT))
+			.filter(
+				(r) =>
+					(r.file !== PROTECTED_LAYOUT && under(r, PROTECTED_LAYOUT)) || r.file === PREVIEW_PAGE
+			)
 			.filter((r) => resolvesItsOwnSession(readFromDisk(r.file) ?? ''))
 			.map((r) => r.file);
 		expect(
@@ -1235,6 +1306,54 @@ describe('the server tree and the browser bundle', () => {
 		expect(chain).toEqual([]);
 	});
 
+	/** a route exporting an `action` that reaches the server tree, beside a component written in `body`. */
+	function besideAnAction(body: string): ReadModule {
+		return tree({
+			'routes/_app.donors.tsx': [
+				"import { Form } from 'react-router';",
+				"import { saveDonor } from '$lib/server/donors/commands';",
+				"const SAVE = '?index';",
+				'export async function action() { return saveDonor(); }',
+				body
+			].join('\n'),
+			'lib/server/donors/commands.ts': 'export function saveDonor() {}'
+		});
+	}
+
+	it('reads a JSX attribute name as a label, not as the export it is spelled like', () => {
+		const chain = reachesServerTree(
+			'routes/_app.donors.tsx',
+			besideAnAction(
+				'export default function Donors() { return <Form method="post" action={SAVE} />; }'
+			)
+		);
+		expect(chain).toEqual([]);
+	});
+
+	it('reads the name after a dot as a property, not as the export it is spelled like', () => {
+		const chain = reachesServerTree(
+			'routes/_app.donors.tsx',
+			besideAnAction('export default function Donors(props) { return props.action ?? SAVE; }')
+		);
+		expect(chain).toEqual([]);
+	});
+
+	it('reads an object key as a property, not as the export it is spelled like', () => {
+		const chain = reachesServerTree(
+			'routes/_app.donors.tsx',
+			besideAnAction('export default function Donors() { return { action: SAVE }; }')
+		);
+		expect(chain).toEqual([]);
+	});
+
+	it('follows a shorthand property, which reads the export it names', () => {
+		const chain = reachesServerTree(
+			'routes/_app.donors.tsx',
+			besideAnAction('export default function Donors() { return { action }; }')
+		);
+		expect(chain).toEqual(['routes/_app.donors.tsx', 'lib/server/donors/commands.ts']);
+	});
+
 	/** the page header's slot names, read off the component so a rename to one of them lands here. */
 	function pageHeaderSlots(): string[] {
 		const file = createRequire(import.meta.url).resolve(
@@ -1253,17 +1372,9 @@ describe('the server tree and the browser bundle', () => {
 	}
 
 	/**
-	 * a slot on a shared component may not carry the name of an export react router strips.
-	 *
-	 * `collectIdentifiers` in ./routes.testing.ts adds every identifier it walks, a JSX attribute
-	 * name included — so a route writing `action={…}` on a component reaches its own `action`
-	 * handler from its component, and with it every `$lib/server/**` import the handler has. the
-	 * failure that produces is the last case in this file, which reports D1 and the stripe client in
-	 * the bundle a visitor downloads: a diagnosis pointing at nothing real. that over-reach is what
-	 * makes the sweep safe, so the name moves rather than the sweep.
-	 *
-	 * the slots are read off the header itself, so renaming one back onto a stripped export fails
-	 * here rather than on whichever screen next mounts it beside an `action`.
+	 * the real header, every slot it has written as an attribute, beside an `action` that reaches
+	 * the server tree. the slots are read off the header itself, so whatever it is given to draw,
+	 * mounting it on a route with handlers reaches nothing.
 	 */
 	it('mounts the page header on a route that exports an action, and reaches nothing', () => {
 		const slots = pageHeaderSlots();

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../controls/Button.jsx';
 import { CopyControl } from '../controls/CopyControl.jsx';
+import { Mark } from '../status/Mark.jsx';
 import { FieldMessage } from './FieldMessage.jsx';
 
 /**
@@ -21,6 +22,19 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {ReactNode} [hint]
  * @property {ReactNode} [error]
  * @property {ReactNode} [needed] what marks the field as wanted by something elsewhere on the page.
+ * @property {ReactNode} [status] a fact found out about the value after it was typed — a lookup's
+ *   answer — said in a polite live region under the box. the region is drawn whenever this is not
+ *   `undefined`, and `''` draws it empty: a caller that will speak later hands `''` from the first
+ *   render, because a region arriving with its words is an insertion a reader may never be told
+ *   about. it is not a refusal and marks nothing on the box. it takes the row `needed` takes, so a
+ *   field states one or the other.
+ * @property {string | undefined} [statusSaid] words the same region says to a reader alone, ahead of
+ *   `status` — what changed elsewhere on the screen because of the value, which the screen shows by
+ *   the change itself. drawn only inside a region `status` has put up.
+ * @property {ReactNode} [labelAside] what stands at the trailing end of the label's own row: a small
+ *   press that writes the whole box, and the words saying where the value in it came from. the
+ *   label and it are one row, `.adm-field__head`, as tall as the small control, so the press stands
+ *   level with the name of the box it acts on and leaves the box its whole width in a narrow sheet.
  * @property {ReactNode} [beside] a control that acts on what is in the box, put on the box's own
  *   row rather than under it — one destination and one send, instead of a press below a column of
  *   boxes. the row is `.adm-actions`, which is what makes the box take the line's remainder and the
@@ -43,6 +57,10 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   read-only box holding a credential somebody pastes elsewhere: copied from the box, the value
  *   need never be shown to be taken. it stands in the same place the masked press does and for the
  *   same reason, and the two share one trailing cluster. an input's alone, as `masked` is.
+ * @property {FieldLead | undefined} [lead] a mark inside the box at its start, saying what the value
+ *   is read as — a network's mark in front of an address on it. the box reserves the slot whenever
+ *   this is stated, a `null` mark included, so text typed into the box never moves as the mark
+ *   arrives, changes or goes. an input's alone, as `masked` is.
  * @property {string | undefined} [copyLabel] the copy control's accessible name, where a bare Copy
  *   would not say what of.
  * @property {Ref<HTMLButtonElement> | undefined} [copyRef] the copy control's button, for a caller
@@ -55,6 +73,18 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   which is what a specimen wants and no screen does. unavailable is not one of them:
  *   packages/operator/src/styles/adm.css draws `.adm-input:disabled` with no twin beside it, so
  *   a box that cannot be used takes the platform's own `disabled` through the rest.
+ */
+
+/**
+ * the mark is drawn out of the tree and `said` is what it says, in words the box is described by:
+ * drawn inside the hidden mark and named `${id}-lead`. a description reads hidden words it names
+ * directly (https://www.w3.org/TR/accname-1.2/, step 2A), so a reader meets them once, on the box,
+ * and browse mode does not read them out a second time as loose text. a mark that says nothing a
+ * reader needs — a glyph standing for no reading at all — states no words.
+ *
+ * @typedef {object} FieldLead
+ * @property {ReactNode} mark
+ * @property {string | undefined} [said]
  */
 
 /**
@@ -77,11 +107,18 @@ import { FieldMessage } from './FieldMessage.jsx';
 /**
  * the rest reaches whichever box `as` names.
  *
- * three of a caller's own arrive as the platform's attributes rather than as props of this field's,
+ * four of a caller's own arrive as the platform's attributes rather than as props of this field's,
  * and each is taken in rather than replaced: `className` is added to the class list this field
  * composes, `aria-invalid` marks the box refused alongside whatever message it holds, and the
  * starting value is `defaultValue` — or `value` with a handler beside it, which this field has no
  * opinion about either way.
+ *
+ * the fourth, `aria-describedby`, names blocks the caller draws — a group's hint, a pair's
+ * refusal — and they join the ones this field names rather than standing in for them: the lead's
+ * words, then the field's own hint, refusal, needed note and status in the order they are drawn,
+ * then the caller's as stated. an id named twice keeps its first place, and `undefined` states
+ * nothing, so the field's own still describe the box. a caller names only the blocks it draws
+ * itself.
  *
  * @typedef {FieldOwnProps
  *   & (MaskNamesUnstated | MaskNamesStated)
@@ -101,8 +138,12 @@ export function Field({
 	hint,
 	error,
 	needed,
+	status,
+	statusSaid,
+	labelAside,
 	beside,
 	masked,
+	lead,
 	revealLabel = 'Show the value',
 	hideLabel = 'Hide the value',
 	copyable,
@@ -115,6 +156,7 @@ export function Field({
 	state,
 	className,
 	'aria-invalid': stated,
+	'aria-describedby': describedByStated,
 	...rest
 }) {
 	const Tag = as === 'textarea' ? 'textarea' : 'input';
@@ -168,7 +210,7 @@ export function Field({
 	   is what places them and reserves the room. one press stands in the wrapper on its own; two
 	   stand in `.adm-maskwrap__presses`, the copy first so the reveal keeps the trailing end it has
 	   on every other masked box. a box with no press draws no wrapper. */
-	const inBox = (/** @type {ReactNode} */ box) =>
+	const withPresses = (/** @type {ReactNode} */ box) =>
 		reveal === null && copy === null ? (
 			box
 		) : (
@@ -182,6 +224,26 @@ export function Field({
 						{reveal}
 					</div>
 				)}
+			</div>
+		);
+	/* the leading mark stands in a wrapper of its own around everything above, which reserves its
+	   slot inside the box (`.adm-leadwrap` in packages/operator/src/styles/adm.css). */
+	const leading = lead === undefined || as === 'textarea' ? undefined : lead;
+	const leadSaid = leading?.said ? `${id}-lead` : null;
+	const inBox = (/** @type {ReactNode} */ box) =>
+		leading === undefined ? (
+			withPresses(box)
+		) : (
+			<div className="adm-leadwrap">
+				<span className="adm-leadwrap__lead" aria-hidden="true">
+					{leading.mark}
+					{leadSaid ? (
+						<span hidden id={leadSaid}>
+							{leading.said}
+						</span>
+					) : null}
+				</span>
+				{withPresses(box)}
 			</div>
 		);
 	/* the box, alone on its row or sharing it. what shares it is wrapped rather than placed beside
@@ -216,10 +278,20 @@ export function Field({
 	// one box: a fieldset draws a pair's message once and marks both boxes from out here, since
 	// either box fixes the pair and neither one is the wrong one.
 	const refused = error ? true : stated === true || stated === 'true';
+	// the lead's words first, as the mark they stand for is the first thing in the box.
 	const describedBy =
-		[hint ? `${id}-hint` : null, error ? `${id}-err` : null, needed ? `${id}-need` : null]
-			.filter(Boolean)
-			.join(' ') || undefined;
+		[
+			...new Set(
+				[
+					leadSaid,
+					hint ? `${id}-hint` : null,
+					error ? `${id}-err` : null,
+					needed ? `${id}-need` : null,
+					status ? `${id}-status` : null,
+					...(describedByStated?.split(/\s+/) ?? [])
+				].filter(Boolean)
+			)
+		].join(' ') || undefined;
 	const cls = [
 		as === 'textarea' ? 'adm-textarea' : 'adm-input',
 		refused ? (as === 'textarea' ? 'adm-textarea--invalid' : 'adm-input--invalid') : '',
@@ -230,14 +302,22 @@ export function Field({
 	]
 		.filter(Boolean)
 		.join(' ');
+	const named = label ? (
+		<label className="adm-field__label" htmlFor={id}>
+			{label}
+			{optional ? <span className="adm-field__optional"> (optional)</span> : null}
+		</label>
+	) : null;
 	return (
 		<div className="adm-field">
-			{label ? (
-				<label className="adm-field__label" htmlFor={id}>
-					{label}
-					{optional ? <span className="adm-field__optional"> (optional)</span> : null}
-				</label>
-			) : null}
+			{labelAside ? (
+				<div className="adm-field__head">
+					{named}
+					<div className="adm-field__aside">{labelAside}</div>
+				</div>
+			) : (
+				named
+			)}
 			{hint ? (
 				<p className="adm-hint" id={`${id}-hint`}>
 					{hint}
@@ -269,6 +349,21 @@ export function Field({
 							{needed}
 						</FieldMessage>
 					) : null}
+					{/* the standing row's look on an element that is a region rather than a message: the
+					    mark and the words only while there are words to see, so a region holding nothing
+					    on the screen holds no room (`.adm-field > .adm-field__needed` in
+					    packages/operator/src/styles/adm.css). */}
+					{status === undefined ? null : (
+						<p className="adm-field__needed" id={`${id}-status`} role="status">
+							{statusSaid ? <span className="adm-vh">{statusSaid}</span> : null}
+							{status ? (
+								<>
+									<Mark name="triangle-alert" />
+									<span>{status}</span>
+								</>
+							) : null}
+						</p>
+					)}
 				</>
 			)}
 		</div>

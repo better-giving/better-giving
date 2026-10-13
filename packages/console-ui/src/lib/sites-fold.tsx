@@ -1,4 +1,5 @@
 import { AnchoredNote } from '@better-giving/operator/behaviour/AnchoredCard';
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { RepeatingRows } from '@better-giving/operator/components/forms/RepeatingRows';
@@ -6,9 +7,10 @@ import type { RepeatingRow } from '@better-giving/operator/components/forms/Repe
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Form } from 'react-router';
 import { WhyNot } from './deployment-states';
+import { foundSite } from './found-organisation';
 import { useReseeded } from './reseed';
 import { Said } from './said';
 import type { SitesWrite } from '../api/types';
@@ -46,9 +48,9 @@ import { WIDGET_LEAD, widgetTrouble } from './widget-level';
 // here: this page draws none of those hostnames.
 //
 // **the deployment's own donation page is the first row of the list and no press can take it off.**
-// every deployment serves one at its own address, and it is on no `site` row and on no form's
-// `allowed_origins` because the deployment takes its own origin off each request (CLAUDE.md →
-// Product surface). so the row is read-only and carries no name at all (`fixed` in
+// every deployment serves one, at `/donate` on its own address, and it is on no `site` row and on
+// no form's `allowed_origins` because the deployment takes its own origin off each request
+// (CLAUDE.md → Product surface). so the row is read-only and carries no name at all (`fixed` in
 // `@better-giving/operator/components/forms/RepeatingRows`) — the list is stored whole, so a row
 // with a Remove beside it would take the operator's own donation page down at the next save, and a
 // row that reached the submission would be stored as a site the deployment never had. what stands
@@ -134,8 +136,9 @@ export type SitesFoldProps = {
 	/** the list the deployment holds, which is what the boxes are seeded from. */
 	sites: readonly string[];
 	/**
-	 * where this deployment's own donation page answers, which is the list's first row and is
-	 * locked, or `''` where it answers nowhere the console could read — which draws no such row.
+	 * where this deployment's own donation page answers, `/donate` on its address, which is the
+	 * list's first row and is locked, or `''` where it answers nowhere the console could read — which
+	 * draws no such row.
 	 */
 	donatePage: string;
 	/** how the last list press went, or `null` where none has been made. */
@@ -200,6 +203,21 @@ export function SitesFold({ sites, donatePage, list, busy, pending }: SitesFoldP
 		return () => fold.removeEventListener('toggle', shut);
 	}, [element, reset]);
 
+	/* the website the IRS list holds for the organisation the Organisation details fold last found
+	   (./found-organisation.ts), offered as the first site while there is none: stored nowhere and
+	   typed nowhere yet. the press is the form's own insert, holding the host, so nothing is saved
+	   until Save. it goes with the row it adds, so focus is put in that row's box once it lands —
+	   the press it was on is no longer on the page. */
+	const offered = foundSite();
+	const offering = offered !== '' && sites.length === 0 && rows.length === 0;
+	const tookOffer = useRef(false);
+	const firstBox = rows[0] === undefined ? null : form.box(rows[0]).id;
+	useEffect(() => {
+		if (!tookOffer.current || firstBox === null) return;
+		tookOffer.current = false;
+		document.getElementById(firstBox)?.focus();
+	}, [firstBox]);
+
 	/* the client pass's own sentence about the list, which is the cap on how many sites there may
 	   be. it is keyed to the bare field and so belongs to no box: this fold's header says why that
 	   makes the button the one place it can be read. */
@@ -228,6 +246,22 @@ export function SitesFold({ sites, donatePage, list, busy, pending }: SitesFoldP
 			    (../routes/_sections.sites.tsx), and either one here would say a second time what an
 			    operator has just read. the naming is the page's, so nothing stands over the boxes. */}
 			<Form {...form.mount} className="adm-stack" method="post" preventScrollReset>
+				{offering ? (
+					<div className="adm-actions">
+						<Button
+							size="sm"
+							mark="plus"
+							type="submit"
+							disabled={busy || underway}
+							{...controls.addHolding(offered)}
+							onClick={() => {
+								tookOffer.current = true;
+							}}
+						>
+							Add {offered}
+						</Button>
+					</div>
+				) : null}
 				<RepeatingRows
 					id={SITES_BOX}
 					// stated and not drawn. the page's header already names this list
@@ -267,8 +301,8 @@ export function SitesFold({ sites, donatePage, list, busy, pending }: SitesFoldP
 										<>
 											<AnchoredNote mark="info" label="Why your donation page is always listed">
 												<p>
-													This deployment serves a donation page at its own address, and every form
-													loads there whatever else is listed.
+													This deployment has one donation page, at /donate. A form is for
+													embedding, and loads only on the sites ticked for it.
 												</p>
 												<p>
 													It is not one of the sites you type here, so nothing on this list can take

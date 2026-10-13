@@ -356,8 +356,12 @@ describe('parseFormInput', () => {
 		expect(rejectedForm(complete({ max_minor: '1e6' })).max_minor).toBeTypeOf('string');
 		expect(rejectedForm(complete({ max_minor: 'lots' })).max_minor).toBeTypeOf('string');
 		expect(rejectedForm(complete({ min_minor: '-500' })).min_minor).toBeTypeOf('string');
-		// a thousands separator is not a group of three digits in any of these boxes.
-		expect(rejectedForm(complete({ max_minor: '1,000' })).max_minor).toBeTypeOf('string');
+		// a comma only where a screen groups the digits: `25,50` is a decimal-comma habit, and
+		// reading it as 2550 is a bound a hundred times the one meant.
+		expect(parsedForm(complete({ max_minor: '1,000' })).maxMinor).toBe(100_000);
+		expect(rejectedForm(complete({ max_minor: '25,50' })).max_minor).toBe(
+			'must have 3 digits after each comma, and `,50` has 2, write 25.00 for $25.00'
+		);
 	});
 
 	it('refuses an inverted pair, under the largest gift', () => {
@@ -385,13 +389,13 @@ describe('parseFormInput', () => {
 
 	it('takes each box as one amount, in the order they were written', () => {
 		// one `<input name="suggested_amounts">` per amount, read with `getAll`. the order is the
-		// operator's — it is the order the buttons appear in on the card — and a separator is not a
-		// thing: a box holding `1,000` is one amount that cannot be read rather than two.
+		// operator's — it is the order the buttons appear in on the card — and a comma is never a
+		// second amount: `1,000` is one grouped figure, and `25,50` one that cannot be read.
 		expect(
-			parsedForm(complete({ suggested_amounts: ['25', '50.00', '100'] })).suggestedAmounts
-		).toEqual([2500, 5000, 10000]);
-		expect(rejectedForm(complete({ suggested_amounts: ['1,000'] })).suggested_amounts).toContain(
-			'`1,000`'
+			parsedForm(complete({ suggested_amounts: ['25', '50.00', '1,000'] })).suggestedAmounts
+		).toEqual([2500, 5000, 100_000]);
+		expect(rejectedForm(complete({ suggested_amounts: ['25,50'] })).suggested_amounts).toContain(
+			'`25,50`'
 		);
 	});
 
@@ -520,7 +524,7 @@ describe('formInputValuesFrom', () => {
 			status: 'live',
 			suggested_amounts: ['25', '50', '100'],
 			min_minor: '5',
-			max_minor: '10000',
+			max_minor: '10,000',
 			allowed_origins: ['https://acme.org', 'https://give.acme.org'],
 			program_mode: 'none',
 			program_id: ''
@@ -530,8 +534,8 @@ describe('formInputValuesFrom', () => {
 	it('re-parses to the values it was rendered from', () => {
 		// the round trip is the whole claim: an edit page that renders a stored form and saves it
 		// untouched must store the same form. it holds because both directions read how an amount is
-		// written out of this module — a route that rendered one with a thousands separator would
-		// draw a box its own parser refuses, and nothing else in the repo would notice.
+		// written out of ../../forms/amounts.ts — a route that rendered one any other way would draw
+		// a box its own parser might refuse, and nothing else in the repo would notice.
 		const reparsed = parsedForm(formInputValuesFrom(record));
 		expect({ ...reparsed }).toEqual({
 			name: record.name,
@@ -573,6 +577,20 @@ describe('formInputValuesFrom', () => {
 		expect(values.min_minor).toBe('10');
 		expect(values.max_minor).toBe('12.50');
 		expect(values.suggested_amounts).toEqual(['50', '5']);
+	});
+
+	it('seeds a box grouped the way the box draws it', () => {
+		// conform reads a group as changed when a box's text differs from its seed, and the box
+		// draws `20,000` — a seed of `20000` would leave Save live after an edit undone.
+		const values = formInputValuesFrom({
+			...record,
+			minMinor: 2500,
+			maxMinor: 2_000_000,
+			suggestedAmounts: [123_456_750, 100_000]
+		});
+		expect(values.min_minor).toBe('25');
+		expect(values.max_minor).toBe('20,000');
+		expect(values.suggested_amounts).toEqual(['1,234,567.50', '1,000']);
 	});
 
 	it('renders a bound the column allows to be missing as an empty box', () => {

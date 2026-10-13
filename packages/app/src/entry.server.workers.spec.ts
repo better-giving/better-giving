@@ -7,22 +7,26 @@ import {
 	UNSAFE_withComponentProps,
 	UNSAFE_withErrorBoundaryProps
 } from 'react-router';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import routerConfig from '../react-router.config';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import type { ConfigEnv } from '$lib/server/config/env';
 import { createDb } from '$lib/server/db/client';
+import { edgeCache } from '$lib/server/edge-cache.testing';
+import { writeOrgRow } from '$lib/server/org/org-row.testing';
+import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import * as entryServer from './entry.server';
 import { requestContext } from './request-context';
 import * as root from './root';
 import * as layout from './routes/_app';
 import * as dashboard from './routes/_app.admin._index';
-import * as donorPage from './routes/$formId';
+import * as donorPage from './routes/donate';
 import * as stripeWebhook from './routes/api.stripe.webhook';
 import * as publicApi from './routes/api.v1';
 import * as servedConfig from './routes/api.v1.forms.$id.config';
 import * as login from './routes/login';
+import * as previewPage from './routes/preview.$pageId';
 import { finishSetup } from './webhook-routes.testing';
 
 // the headers every answer this deployment draws a document for carries, and the ones it does not.
@@ -150,7 +154,13 @@ const handle = createRequestHandler(
 			module: dashboard
 		},
 		{ id: 'routes/login', parentId: 'root', path: 'login', module: login },
-		{ id: 'routes/$formId', parentId: 'root', path: ':formId', module: donorPage },
+		{ id: 'routes/donate', parentId: 'root', path: 'donate', module: donorPage },
+		{
+			id: 'routes/preview.$pageId',
+			parentId: 'root',
+			path: 'preview/:pageId',
+			module: previewPage
+		},
 		{ id: 'routes/api.v1', parentId: 'root', path: 'api/v1', module: publicApi },
 		{
 			id: 'routes/api.v1.forms.$id.config',
@@ -287,6 +297,11 @@ async function expectStrictDocument(response: Response): Promise<void> {
 }
 
 describe('a dashboard document', () => {
+	// the donor page's cases below are drawn on a deployment that has saved no profile.
+	afterAll(async () => {
+		await env.DB.prepare('delete from org_profile').run();
+	});
+
 	it('carries the strict policy, and its nonce is the one on every script it draws', async () => {
 		// the dashboard is served only once set-up is finished (./routes/_app.tsx), and the gate's
 		// own document is not the one this case is about.
@@ -321,9 +336,9 @@ describe('a sign-in document', () => {
 });
 
 describe('the donor page', () => {
-	// an id no form carries: the page draws its refusal, under the same route and so the same
-	// policy as a form it can draw.
-	const answer = () => send('/frm_nosuchform');
+	// a deployment whose organisation has saved no details: the page draws its refusal, under the
+	// same route and so the same policy as a page it can draw.
+	const answer = () => send('/donate');
 
 	it('allows the processors the card loads, and scripts only by origin or by the nonce', async () => {
 		const response = await answer();
@@ -377,9 +392,7 @@ describe('the donor page', () => {
 		// a host whose first label is `api-m.`, so `paypalSdkUrl` maps it to its `www.` sibling.
 		const vars = { PAYPAL_API_URL: 'https://api-m.payments.example' };
 		const policyOf = async () =>
-			directives(
-				(await send('/frm_nosuchform', undefined, vars)).headers.get('content-security-policy')
-			);
+			directives((await send('/donate', undefined, vars)).headers.get('content-security-policy'));
 
 		it("loads paypal's script and frames from the sibling that address maps to", async () => {
 			const policy = await policyOf();
@@ -411,7 +424,7 @@ describe('the donor page', () => {
 	});
 
 	it('reads a blank `PAYPAL_API_URL` as unset', async () => {
-		const response = await send('/frm_nosuchform', undefined, { PAYPAL_API_URL: ' ' });
+		const response = await send('/donate', undefined, { PAYPAL_API_URL: ' ' });
 		expect(directives(response.headers.get('content-security-policy')).get('connect-src')).toEqual([
 			"'self'",
 			'https://api.stripe.com',
@@ -423,7 +436,7 @@ describe('the donor page', () => {
 
 	it('names no paypal address on a deployment whose `PAYPAL_API_URL` is not an origin', async () => {
 		// the served config offers paypal nowhere on such a deployment, so the page reaches for none.
-		const response = await send('/frm_nosuchform', undefined, {
+		const response = await send('/donate', undefined, {
 			PAYPAL_API_URL: 'https://api-m.payments.example/v2'
 		});
 		const policy = directives(response.headers.get('content-security-policy'));
@@ -443,6 +456,68 @@ describe('the donor page', () => {
 		expect(policy.get('script-src')).not.toContain("'unsafe-eval'");
 		expect(policy.has('script-src-elem')).toBe(false);
 		expect(policy.has('script-src-attr')).toBe(false);
+	});
+});
+
+describe('the editor’s preview of a page', () => {
+	let pageId: string;
+
+	// a deployment able to draw the page. the profile goes again after, because the donor page's
+	// cases above are drawn on a deployment that has saved none.
+	beforeAll(async () => {
+		await writeOrgRow(env.DB, { tax_id: '12-3456789' });
+		// the served cadences and rails, put in front of the loader so it never sends the fixture key
+		// to Stripe, and so the rails an earlier case's keyless deployment kept are not what it reads
+		// ($lib/server/forms/cadence-cache.ts, rail-cache.ts).
+		for (const [path, kept] of [
+			['/__recurring-cadences', ['one_time']],
+			['/__offered-rails', ['card']]
+		] as const) {
+			await edgeCache().put(
+				new Request(`${ORIGIN}${path}`),
+				new Response(JSON.stringify(kept), {
+					headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
+				})
+			);
+		}
+		pageId = (await ensureDonationPage(createDb(env.DB))).id;
+	});
+	afterAll(async () => {
+		await env.DB.prepare('delete from org_profile').run();
+	});
+
+	/** the page's preview, asked for with a staff session. */
+	function answer(): Promise<Response> {
+		return send(
+			`/preview/${pageId}`,
+			{ headers: { cookie: session } },
+			{
+				STRIPE_SECRET_KEY: 'sk_test_abc',
+				STRIPE_PUBLISHABLE_KEY: 'pk_test_abc',
+				STRIPE_WEBHOOK_SECRET: 'whsec_abc'
+			}
+		);
+	}
+
+	it('may be framed by this deployment’s own pages and by no one else’s', async () => {
+		const response = await answer();
+		expect(response.status).toBe(200);
+		expect(response.headers.get('content-type')).toMatch(/^text\/html/);
+		const policy = directives(response.headers.get('content-security-policy'));
+		expect(policy.get('frame-ancestors')).toEqual(["'self'"]);
+		expect(response.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+	});
+
+	it('is drawn under the donor page’s policy, so the box it shows loads as a donor’s does', async () => {
+		const policy = directives((await answer()).headers.get('content-security-policy'));
+		expect(policy.get('script-src')).toContain('https://js.stripe.com');
+		expect(policy.get('frame-src')).toContain('https://hooks.stripe.com');
+		expect(policy.get('object-src')).toEqual(["'none'"]);
+		expect(policy.get('form-action')).toEqual(["'self'"]);
+	});
+
+	it('is kept by no cache, since it is a draft read under a session', async () => {
+		expect((await answer()).headers.get('cache-control')).toBe('no-store');
 	});
 });
 

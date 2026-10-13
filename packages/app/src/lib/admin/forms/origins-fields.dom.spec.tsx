@@ -3,17 +3,14 @@ import { createRoot } from 'react-dom/client';
 import { expect, it, onTestFinished } from 'vitest';
 import { FormOriginsFields } from './origins-fields';
 
-// where a form loads, as the group states it: the deployment's own donation page, which is always
-// there, and the sites an operator listed, which may be none.
+// where a form loads, as the group states it: the sites an operator ticked, which may be none.
 //
-// what it covers is that the group says one true thing either way. the donation page is stated and
-// never a control — a form loads on it whatever this screen is used to do, so a box that looked
-// untickable would be a control an operator would try — and no site listed is a complete state the
-// group warns about not at all.
+// what it covers is that nothing ticked is said, as an empty state rather than a fault, and that
+// the group only asks for a tick where there is a box to tick. a form is for embedding and has no
+// page of its own, so no address is stated beside the boxes.
 //
-// in the dom pool because what is asserted is which controls exist: a value that is stated and a
-// value that is ticked are one string on the screen and two different things in the tree, and the
-// difference is `input` elements rather than text.
+// in the dom pool because what is asserted is which boxes exist beside what the group says, and
+// which boxes the sentence describes.
 //
 // nothing here reads a class or asks how any of it looks, which is what keeps it clear of
 // CLAUDE.md's ban on a browser spec over a dashboard screen.
@@ -33,43 +30,53 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-const PAGE = 'https://give.example.workers.dev';
-
-/** the group as a form screen mounts it, with nothing ticked and nothing refused. */
-function group(options: { sites: string[] }): HTMLElement {
+/** the group as a form screen mounts it, with nothing refused. */
+function group(options: { sites: string[]; ticked?: string[] }): HTMLElement {
 	return mount(
 		createElement(FormOriginsFields, {
-			box: { id: 'origins', name: 'allowed_origins', ticked: [] },
-			sites: options.sites,
-			donatePageOrigin: PAGE
+			box: { id: 'origins', name: 'allowed_origins', ticked: options.ticked ?? [] },
+			sites: options.sites
 		})
 	);
 }
 
-/** every value a box would submit, which is what tells a stated address from a ticked one. */
+/** every value a box would submit. */
 function boxValues(root: HTMLElement): string[] {
 	return [...root.querySelectorAll('input[type="checkbox"]')].map(
 		(box) => (box as HTMLInputElement).value
 	);
 }
 
-/** the hint, which is the only place a site is said to come from. */
-const WHERE_A_SITE_COMES_FROM = 'A site that is not here';
+/** the group's standing sentence, which is what says whether the form is on any site. */
+function hint(root: HTMLElement): string {
+	return root.querySelector('#origins-hint')?.textContent ?? '';
+}
 
-it('states the donation page beside the sites, and never as a box', () => {
+const WHERE_A_SITE_COMES_FROM = 'A site that is not here is listed on the console.';
+
+it('says a form with nothing ticked is on no site, and asks for a tick', () => {
 	const root = group({ sites: ['https://example.org'] });
-	expect(root.textContent ?? '').toContain(PAGE);
+	expect(hint(root)).toBe(
+		`Not on any site yet. Tick the sites you’ll paste this form on. ${WHERE_A_SITE_COMES_FROM}`
+	);
 	expect(boxValues(root)).toEqual(['https://example.org']);
+	// the hint describes every box, so the empty state is read where the operator is about to tick.
+	const box = root.querySelector('input[type="checkbox"]');
+	expect(box?.getAttribute('aria-describedby')).toContain('origins-hint');
 });
 
-it('says nothing is wrong when the page is the only place the form loads', () => {
+it('asks for no tick where there is no box to tick', () => {
 	const root = group({ sites: [] });
-	const said = root.textContent ?? '';
-	// no site listed is where this form loads and not a fault: the page is stated, the group is
-	// empty, and what stands under it is the standing sentence rather than a warning. there is no
-	// state left in which the group warns, because the deployment's own address is always one.
-	expect(said).toContain(PAGE);
-	expect(said).not.toContain('Loads nowhere');
-	expect(said).toContain(WHERE_A_SITE_COMES_FROM);
+	expect(hint(root)).toBe(`Not on any site yet. ${WHERE_A_SITE_COMES_FROM}`);
 	expect(boxValues(root)).toEqual([]);
+});
+
+it('says only where a site comes from once one is ticked', () => {
+	const root = group({ sites: ['https://example.org'], ticked: ['https://example.org'] });
+	expect(hint(root)).toBe(WHERE_A_SITE_COMES_FROM);
+});
+
+it('states no donation page beside the sites', () => {
+	const root = group({ sites: ['https://example.org'] });
+	expect(root.textContent ?? '').not.toContain('Donation page');
 });

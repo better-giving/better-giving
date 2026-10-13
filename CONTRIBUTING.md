@@ -12,6 +12,7 @@ pnpm dev                                                   # http://localhost:53
 
 - `pnpm install` runs `prepare`: route typegen, `worker-configuration.d.ts`. Stale types after editing `wrangler.jsonc` want `pnpm wrangler types`, not a reinstall.
 - `pnpm dev` does not build the embed: `/embed.js` 404s until `pnpm run build` has run once.
+- `pnpm dev` and `pnpm run preview` reach no model: Workers AI has no local simulator, so every AI request is refused as `not_bound`. To reach one, `pnpm run login`, then `BETTER_GIVING_REMOTE_AI=1 pnpm dev`. Calls are real and a credit-billed `AI_MODEL` spends the account's credits.
 
 Before changing code, read [`CLAUDE.md`](./.claude/CLAUDE.md) for the invariants, several non-obvious enough that inferring intent from the code gets them backwards.
 
@@ -19,7 +20,7 @@ Before changing code, read [`CLAUDE.md`](./.claude/CLAUDE.md) for the invariants
 
 | command            | what                                    | port        |
 | ------------------ | --------------------------------------- | ----------- |
-| `pnpm dev`         | the app: `/admin`, `/api/v1`, and the donation page at `/{form_id}` | 5321        |
+| `pnpm dev`         | the app: `/admin`, `/api/v1`, and the Donation page at `/donate`    | 5321        |
 | `pnpm run console` | console screens + its Go api            | 5322 (5325) |
 | `pnpm run gallery` | every `packages/operator` component     | 5323        |
 | `pnpm run form`    | the donation form against fixtures      | 5324        |
@@ -58,14 +59,15 @@ The copy deletes a tracked placeholder. Restore it with `git checkout packages/c
 
 ## The workspace
 
-Seven packages under `packages/`; commands run from the root:
+Eight packages under `packages/`; commands run from the root:
 
-- `packages/app` is the deployed Worker: React Router app, D1 server code, `/admin`, `/console` routes, and the donation page at `/{form_id}`.
+- `packages/app` is the deployed Worker: React Router app, D1 server code, `/admin`, `/console` routes, and the Donation page at `/donate`.
 - `packages/form` is the embeddable element and its flow logic, a permanent public contract; the donation page draws the same flow in React off the same machine.
 - `packages/emails` is the mail templates, rendered to strings by the app at send time; `packages/emails-preview` is their preview page, dev-only.
 - `packages/operator` is the leaf both operator surfaces consume: components, stylesheets, shared vocabulary.
 - `packages/console-ui` is the console's screens; client-only React, embedded into the Go binary at `packages/console` beside it (no `package.json`, invisible to `pnpm -r`).
 - `packages/gallery` is the component gallery, dev-only.
+- `packages/zapier` is the Zapier integration, pushed with its own CLI; it reaches no other package and none reaches it.
 
 Which package may import which is enforced by `biome.jsonc`'s overrides (`CLAUDE.md` → *The map*). `pnpm run build` is three ordered steps, and `CLAUDE.md` holds the chain and what silently breaks when a step moves.
 

@@ -9,7 +9,7 @@ import { FORM_STATUS_TONES } from '$lib/admin/status-tones';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
 import { type ReactNode, useEffect, useRef } from 'react';
-import { data, Form, href, Link, useNavigate, useNavigation } from 'react-router';
+import { data, Form, href, Link, useFormAction, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { FormGivingFields } from '$lib/admin/forms/giving-fields';
 import { FormNameFields } from '$lib/admin/forms/name-fields';
@@ -25,6 +25,7 @@ import {
 	type AdminActionData,
 	resultFor,
 	insertWhenValid,
+	recordVersion,
 	useAdminForm,
 	whichForm
 } from '$lib/admin/use-admin-form';
@@ -53,7 +54,7 @@ import {
 } from '$lib/forms/statuses';
 import { formatMinor } from '$lib/donations/money';
 import { redactPublicId } from '$lib/redact';
-import { invalid, parseForm, submittedForm, unread } from '$lib/server/conform';
+import { invalid, parseForm, submittedForm, submittedVersion, unread } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
 import {
@@ -66,8 +67,11 @@ import {
 } from '$lib/server/forms/form-input';
 import {
 	archiveForm,
+	type FormSave,
 	type ProgramSave,
+	type OwningPage,
 	readForm,
+	readOwningPage,
 	updateFormGiving,
 	updateFormName,
 	updateFormOrigins,
@@ -218,6 +222,22 @@ const LIVE_WITHHELD =
 const NO_SUCH_PROGRAM = 'Choose an active program.';
 
 /**
+ * the page a refusal names as the owner of a row: the Donation page by the word screens call it,
+ * a campaign by its own name.
+ */
+function ownerWords(owner: OwningPage): string {
+	return owner.type === 'donation_page' ? 'the Donation page' : `the campaign “${owner.name}”`;
+}
+
+/**
+ * the sentence a write answers with when the row is a page's donation settings. no screen draws a
+ * save or an archive for one — the loader 404s it — so this answers a hand-built body, at that 404.
+ */
+function pageOwnedRefusal(owner: OwningPage): string {
+	return `Nothing was changed: these donation settings belong to ${ownerWords(owner)} and are edited in its editor rather than under /admin/forms.`;
+}
+
+/**
  * the sentence a group save answers with when the row is not there to be written.
  *
  * one string for four arms: `updateForm*` refuses an archived row as well as a missing one at its
@@ -230,6 +250,16 @@ const NO_SUCH_PROGRAM = 'Choose an active program.';
 const ROW_GONE =
 	'Nothing was saved: this form has been archived, or it no longer exists. Reload the page to ' +
 	'see how it stands.';
+
+/**
+ * the sentence a group save answers with when the form has been saved since its page was drawn.
+ *
+ * answered at a 409 and keyed to no box: nothing typed is wrong, and the same body is refused
+ * until the page is redrawn, which is the one move it names.
+ */
+const STALE_SAVE =
+	'Nothing was saved: this form has changed since this page was opened. Reload the page to see ' +
+	'how it stands, then make this change again.';
 
 /**
  * the sentence a group save answers with when the write itself threw.
@@ -397,13 +427,14 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const url = new URL(request.url);
 
 	let record: Awaited<ReturnType<typeof readForm>>;
+	let owner: Awaited<ReturnType<typeof readOwningPage>>;
 	let profile: Awaited<ReturnType<typeof readOrgProfile>>;
 	let sites: string[];
 	let programs: Awaited<ReturnType<typeof readActivePrograms>>;
 
 	try {
-		// four independent reads, so they go together: none is an input to another, and awaiting them
-		// in turn pays four round trips for one screen. every one of them is this deployment's own
+		// five independent reads, so they go together: none is an input to another, and awaiting them
+		// in turn pays five round trips for one screen. every one of them is this deployment's own
 		// database — nothing on this screen leaves the deployment, because neither of the two values
 		// that would need the processor is a form's to answer and both are the console's.
 		//
@@ -420,11 +451,15 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		// this form is archived is `record`'s to say and `record` is one of the three, so the only way
 		// to skip it would be to await the row first and the list after — a second round trip on
 		// every reading of the page that is not archived.
-		[record, profile, sites, programs] = await Promise.all([
+		//
+		// the fifth is the page this id's row belongs to, if any: a page's donation settings are edited
+		// in its editor and never here.
+		[record, profile, sites, programs, owner] = await Promise.all([
 			readForm(db, params.id),
 			readOrgProfile(db),
 			readSites(db),
-			readActivePrograms(db)
+			readActivePrograms(db),
+			readOwningPage(db, params.id, Date.now())
 		]);
 	} catch (e) {
 		console.error('reading a donation form failed:', e);
@@ -443,11 +478,17 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		);
 	}
 
+	if (owner !== null) {
+		notFound(
+			`The donation settings \`${redactPublicId(params.id)}\` belong to ${ownerWords(owner)} and are edited in its editor rather than under /admin/forms.`
+		);
+	}
+
 	const archived = record.status === 'archived';
 
 	// the cause this form names, where it names one the active list no longer holds — a cause
-	// retired after this form was pinned to it. a fifth read rather than a fourth, because it takes
-	// the row's own `program_id` and there is nothing to read until the first four have landed; it
+	// retired after this form was pinned to it. a sixth read rather than a fifth, because it takes
+	// the row's own `program_id` and there is nothing to read until the first five have landed; it
 	// is skipped on every form that is not in that state, which is every form on a deployment that
 	// has retired nothing.
 	//
@@ -537,13 +578,6 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// `PROGRAM_MODE_LABELS` is keyed by the mode and a box holds a string.
 			programMode: record.programMode,
 			pinnedProgram: pinned?.name ?? null,
-			// where this deployment's own donation page answers, which the sites group states above the
-			// boxes: this form loads on that page whatever is ticked, and the page is on no `site` row.
-			//
-			// the request rather than a stored value: the host this request arrived on is one this
-			// worker answers on, which is the same reading `corsHeaders` in `$lib/server/api/cors.ts`
-			// makes.
-			donatePageOrigin: url.origin,
 			// whether the status box may offer Live at all. a blocker means `publishedConfig` serves
 			// nothing, so publishing here would produce a form that renders nothing on the org's own
 			// site — the name group's save re-checks this, because a filtered `<option>` list is not a
@@ -567,7 +601,10 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			//
 			// never offered for a form that is already archived: the action would refuse it, so a panel
 			// asking about it is a question with one wrong answer.
-			confirmArchive: !archived && url.searchParams.get('confirm') === 'archive'
+			confirmArchive: !archived && url.searchParams.get('confirm') === 'archive',
+			// the version every group's save is written against, carried back in each `<form>` so a
+			// tab drawn before another save is refused rather than putting back what that save moved.
+			version: record.updatedAt.getTime()
 		},
 		// the header that burns the marker rides on the response that publishes it, so a reload of
 		// this screen reports nothing. a `Set-Cookie` from a loader is sent without this route
@@ -648,27 +685,42 @@ export async function action(args: Route.ActionArgs) {
 			// select does not offer Live while a blocker stands, but a filtered `<option>` list is markup
 			// and markup is not what stops a POST.
 			//
-			// a form on no site is not the second thing. it loads on the donation page this deployment
-			// serves on its own address whatever is ticked, so an empty list publishes.
-			const profile = await readOrgProfile(db);
+			// a form on no site is not the second thing. a form is made ahead of the site it goes on, so an
+			// empty list publishes and the form serves wherever a site is ticked later.
+			let profile: Awaited<ReturnType<typeof readOrgProfile>>;
+			try {
+				profile = await readOrgProfile(db);
+			} catch (e) {
+				// the same banner a failed write gets, and it is the truthful one: nothing was saved and
+				// nothing an operator can do to a box would change that.
+				console.error('reading the organisation details for the Live check failed:', e);
+				return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
+			}
 
 			if (anyBlocker(formsReadiness(profile))) {
 				return invalid(400, submission.reject({ fieldErrors: { status: [LIVE_WITHHELD] } }));
 			}
 		}
 
-		let saved: boolean;
+		const version = submittedVersion(body);
+		let saved: FormSave;
 		try {
-			saved = await updateFormName(db, id, parsed.value);
+			saved = await updateFormName(db, id, version, parsed.value);
 		} catch (e) {
 			console.error('saving a donation form’s name and status failed:', e);
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 		}
 
-		if (!saved) return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
+		if (typeof saved === 'object') {
+			return invalid(404, submission.reject({ formErrors: [pageOwnedRefusal(saved.ownedBy)] }));
+		}
+		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
+		if (saved === 'stale') {
+			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
+		}
 
-		// POST-redirect-GET, so a reload does not re-post: this write replaces every column the group
-		// owns, so a stale body sitting in the browser's reload buffer would silently undo a later save.
+		// POST-redirect-GET, so a reload does not re-post: the body in the browser's reload buffer
+		// carries the version this write moved past, so a re-post would be refused as stale.
 		return redirectWithFlash(request, SAVED_FLASH, screen(id), 'name');
 	}
 
@@ -694,20 +746,27 @@ export async function action(args: Route.ActionArgs) {
 			);
 		}
 
+		const version = submittedVersion(body);
 		let saved: ProgramSave;
 		try {
-			saved = await updateFormProgram(context.get(database), id, parsed.value);
+			saved = await updateFormProgram(context.get(database), id, version, parsed.value);
 		} catch (e) {
 			console.error('saving which cause a donation form records against failed:', e);
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 		}
 
-		// three answers and three sentences. the cause is the one an operator can fix without
+		// five answers and five sentences. the cause is the one an operator can fix without
 		// leaving the page, so it is keyed to the box they pick in rather than banner-ed.
 		if (saved === 'unknown_program') {
 			return invalid(400, submission.reject({ fieldErrors: { program_id: [NO_SUCH_PROGRAM] } }));
 		}
+		if (typeof saved === 'object') {
+			return invalid(404, submission.reject({ formErrors: [pageOwnedRefusal(saved.ownedBy)] }));
+		}
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
+		if (saved === 'stale') {
+			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
+		}
 		return redirectWithFlash(request, SAVED_FLASH, screen(id), 'program');
 	}
 
@@ -732,15 +791,22 @@ export async function action(args: Route.ActionArgs) {
 			);
 		}
 
-		let saved: boolean;
+		const version = submittedVersion(body);
+		let saved: FormSave;
 		try {
-			saved = await updateFormGiving(context.get(database), id, parsed.value);
+			saved = await updateFormGiving(context.get(database), id, version, parsed.value);
 		} catch (e) {
 			console.error('saving what a donation form may take failed:', e);
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 		}
 
-		if (!saved) return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
+		if (typeof saved === 'object') {
+			return invalid(404, submission.reject({ formErrors: [pageOwnedRefusal(saved.ownedBy)] }));
+		}
+		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
+		if (saved === 'stale') {
+			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
+		}
 		return redirectWithFlash(request, SAVED_FLASH, screen(id), 'giving');
 	}
 
@@ -790,15 +856,22 @@ export async function action(args: Route.ActionArgs) {
 			return invalid(400, submission.reject({ fieldErrors: { allowed_origins: [unlisted] } }));
 		}
 
-		let saved: boolean;
+		const version = submittedVersion(body);
+		let saved: FormSave;
 		try {
-			saved = await updateFormOrigins(db, id, parsed.value);
+			saved = await updateFormOrigins(db, id, version, parsed.value);
 		} catch (e) {
 			console.error('saving where a donation form may be used failed:', e);
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 		}
 
-		if (!saved) return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
+		if (typeof saved === 'object') {
+			return invalid(404, submission.reject({ formErrors: [pageOwnedRefusal(saved.ownedBy)] }));
+		}
+		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
+		if (saved === 'stale') {
+			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
+		}
 		return redirectWithFlash(request, SAVED_FLASH, screen(id), 'origins');
 	}
 
@@ -819,7 +892,7 @@ export async function action(args: Route.ActionArgs) {
 	 */
 	async function archive({ context, params, request }: Route.ActionArgs) {
 		const id = params.id;
-		let archived: boolean;
+		let archived: Awaited<ReturnType<typeof archiveForm>>;
 		try {
 			archived = await archiveForm(context.get(database), id);
 		} catch (e) {
@@ -827,6 +900,9 @@ export async function action(args: Route.ActionArgs) {
 			return invalid(500, unread(FORM_ARCHIVE, ARCHIVE_FAILED));
 		}
 
+		if (typeof archived === 'object') {
+			return invalid(404, unread(FORM_ARCHIVE, pageOwnedRefusal(archived.ownedBy)));
+		}
 		if (!archived) return invalid(400, unread(FORM_ARCHIVE, ARCHIVE_GONE));
 
 		return redirectWithFlash(request, SAVED_FLASH, screen(id), ARCHIVED);
@@ -934,9 +1010,7 @@ export default function DonationForm({ loaderData, actionData }: Route.Component
 			    own row rather than in the page under it. the header is written out of the classes
 			    packages/operator/src/styles/adm.css already draws rather than mounted from the
 			    library's `PageHeader`, which is the gap this route was reported against: that
-			    component has one trailing slot and it is documented as the page's own action — and a
-			    route exporting an `action` cannot pass a prop of that name at all, because
-			    ../routes.spec.ts's bundle sweep reads the attribute as a reference to the export.
+			    component has one trailing slot and it is documented as the page's own action.
 			    nothing new is drawn and no value is stated.
 
 			    an archived form's word is the hueless one: the `note` tone is for a status that has
@@ -1030,12 +1104,22 @@ function Editor({
 		defaultValue: editor.originsBoxes
 	});
 
-	// which group is being submitted right now, read off the body the router is carrying rather than
-	// off the navigation state alone: four forms post to one address, and a bare `submitting` would
-	// put the dots on all four at once.
+	// whether a save from this screen is in flight, over the whole navigation the press started and
+	// not its `submitting` half, which is the create screens' test. `useFormAction` is the address
+	// these forms post to, query included, and it stays on the navigation through the loading phase
+	// the redirect starts.
+	//
+	// it holds all four presses and not only the pressed one. the version the forms carry is the
+	// row's, so any second press before the landing renders carries the version the first moved past
+	// and is refused as stale — and that 4xx cuts off the landing's revalidation, leaving the screen
+	// on the old seed and the old version until a reload.
 	const navigation = useNavigation();
-	const submitting =
-		navigation.state === 'submitting' ? navigation.formData?.get(WHICH_FORM) : null;
+	const here = useFormAction();
+	const writing = navigation.state !== 'idle' && navigation.formAction === here;
+
+	// which group that save is, read off the body the router is carrying: the dots go on the button
+	// that was pressed, and the other three are held without them.
+	const submitting = writing ? navigation.formData?.get(WHICH_FORM) : null;
 
 	// `!actionData` on each, and the reason is the same for all four: a refused write is answered
 	// with a rejection rather than a redirect, so the marker the last landing published may still be
@@ -1090,11 +1174,18 @@ function Editor({
 			    form up by. */}
 			<Form method="post" {...getFormProps(nameForm)}>
 				<input {...whichForm(FORM_EDIT_NAME.id)} />
+				<input {...recordVersion(data.version)} />
 				<Section card>
 					<FormNameFields
 						boxes={{ name: nameFields.name, status: nameFields.status }}
 						liveOffered={data.liveOffered}
-						footer={<SaveButton label="Save name and status" state={buttonState(nameSave)} />}
+						footer={
+							<SaveButton
+								label="Save name and status"
+								state={buttonState(nameSave)}
+								disabled={writing}
+							/>
+						}
 					/>
 				</Section>
 			</Form>
@@ -1104,6 +1195,7 @@ function Editor({
 			    gift. */}
 			<Form method="post" {...getFormProps(programForm)}>
 				<input {...whichForm(FORM_EDIT_PROGRAM.id)} />
+				<input {...recordVersion(data.version)} />
 				<Section card>
 					<FormProgramFields
 						boxes={{
@@ -1112,13 +1204,20 @@ function Editor({
 						}}
 						programs={data.programs}
 						retired={data.retiredProgram}
-						footer={<SaveButton label="Save program" state={buttonState(programSave)} />}
+						footer={
+							<SaveButton
+								label="Save program"
+								state={buttonState(programSave)}
+								disabled={writing}
+							/>
+						}
 					/>
 				</Section>
 			</Form>
 
 			<Form method="post" {...getFormProps(givingForm)}>
 				<input {...whichForm(FORM_EDIT_GIVING.id)} />
+				<input {...recordVersion(data.version)} />
 				<Section card>
 					<FormGivingFields
 						boxes={{ min_minor: givingFields.min_minor, max_minor: givingFields.max_minor }}
@@ -1139,7 +1238,11 @@ function Editor({
 						}}
 						currency={data.currency}
 						footer={
-							<SaveButton label="Save what a donor may give" state={buttonState(givingSave)} />
+							<SaveButton
+								label="Save what a donor may give"
+								state={buttonState(givingSave)}
+								disabled={writing}
+							/>
 						}
 					/>
 				</Section>
@@ -1147,6 +1250,7 @@ function Editor({
 
 			<Form method="post" {...getFormProps(originsForm)}>
 				<input {...whichForm(FORM_EDIT_ORIGINS.id)} />
+				<input {...recordVersion(data.version)} />
 				<Section card>
 					<FormOriginsFields
 						box={{
@@ -1159,9 +1263,12 @@ function Editor({
 							ticked: tickedSites(originsFields.allowed_origins.initialValue)
 						}}
 						sites={data.sites}
-						donatePageOrigin={data.donatePageOrigin}
 						footer={
-							<SaveButton label="Save where it may be used" state={buttonState(originsSave)} />
+							<SaveButton
+								label="Save where it may be used"
+								state={buttonState(originsSave)}
+								disabled={writing}
+							/>
 						}
 					/>
 				</Section>
@@ -1207,10 +1314,10 @@ function StoredRecord({ data }: { readonly data: Route.ComponentProps['loaderDat
 	 * one of the record's amounts, as money rather than as the boxes hold it.
 	 *
 	 * every amount on this row arrives as the text an editor box takes — `formInputValuesFrom` writes
-	 * those boxes and this record reads that same object — so it is major units with no grouping and
-	 * no symbol, which is text for a parser rather than a figure for a person. `readAmount` is the
-	 * same rule a save is parsed by, and `$lib/donations/money.ts` is the one place the integer it
-	 * hands back becomes a shown figure.
+	 * those boxes and this record reads that same object — so it is major units, grouped as the box
+	 * draws them and with no symbol, which is text for a parser rather than a figure for a person.
+	 * `readAmount` is the same rule a save is parsed by, and `$lib/donations/money.ts` is the one
+	 * place the integer it hands back becomes a shown figure.
 	 *
 	 * a value that rule cannot read is printed as it is stored. it is unreachable — this text was
 	 * written by the inverse of that parser — and is answered rather than asserted away, because a
@@ -1292,11 +1399,11 @@ function StoredRecord({ data }: { readonly data: Route.ComponentProps['loaderDat
 				<div className="adm-setting">
 					<dt className="adm-setting__label">Sites</dt>
 					{/* the one row that reads as a sentence rather than a dash, because a form with no
-					    site is the reason this record is worth reading at all — and one with nothing
-					    ticked is still served on this deployment's own donation page, which is on no
-					    `site` row and is accepted off the request instead (./$formId.tsx). */}
+					    site is the reason this record is worth reading at all. the same words the sites
+					    group's hint leads with ($lib/admin/forms/origins-fields.tsx): a form is pageless,
+					    so one with nothing ticked is on no page. */}
 					{origins.length === 0 ? (
-						<dd className="adm-setting__value">Your donation page only.</dd>
+						<dd className="adm-setting__value">Not on any site yet.</dd>
 					) : (
 						// a list and never the joined text, however few there are: an origin is an
 						// identifier, and a comma between two of them reads as part of one.
@@ -1345,6 +1452,16 @@ function ArchiveSection({
 }) {
 	const navigate = useNavigate();
 
+	// held for the whole navigation the press started: a second press during the redirect's loading
+	// phase is refused as already archived, and that refusal is not revalidated, so it would stand
+	// above a form still drawn as editable.
+	const navigation = useNavigation();
+	const here = useFormAction();
+	const archiving =
+		navigation.state !== 'idle' &&
+		navigation.formAction === here &&
+		navigation.formData?.get(WHICH_FORM) === FORM_ARCHIVE.id;
+
 	// where the answer lands when the question is left. moving focus in is the card's own and is not
 	// written here; handing it back cannot be the card's, because the link that asked is off the
 	// page by the time the shell reads what to return to. so this is the return leg alone: cancel,
@@ -1382,6 +1499,13 @@ function ArchiveSection({
 					<Modal
 						title={`Archive ${name}?`}
 						danger="Yes, archive this form"
+						dangerProps={{
+							'aria-disabled': archiving,
+							'aria-busy': archiving,
+							onClick: (event) => {
+								if (archiving) event.preventDefault();
+							}
+						}}
 						// a `Link` rather than an anchor, so leaving the card is a navigation the router
 						// handles rather than a full document load. it takes the secondary rank the
 						// library pairs a danger control with, and states no `variant` of its own to get

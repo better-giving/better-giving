@@ -42,6 +42,7 @@ func baked() release.Config {
 func shape() release.UploadShape {
 	return release.UploadShape{
 		D1Binding:          "DB",
+		AIBinding:          "AI",
 		RateLimits:         []release.RateLimit{{Name: "API_RATE_LIMITER", NamespaceID: "7412", Simple: release.Simple{Limit: 600, Period: 60}}},
 		CompatibilityDate:  "2026-07-22",
 		CompatibilityFlags: []string{"nodejs_compat"},
@@ -434,7 +435,7 @@ func (held *account) settings(w http.ResponseWriter) {
 	held.mutex.Lock()
 	named := held.bound
 	if named == nil {
-		named = []string{"DB", "API_RATE_LIMITER"}
+		named = []string{"DB", "API_RATE_LIMITER", "AI"}
 	}
 	refused, unknown := held.refusesWorkers, held.neverDeployed && len(held.metadata) == 0
 	held.mutex.Unlock()

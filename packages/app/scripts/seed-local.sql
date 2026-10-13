@@ -21,8 +21,8 @@
 -- that is the whole of what is left.
 --
 -- **no `site` row is seeded and none is needed.** a checkout serves its own donation page on the
--- app's own route at `/{form_id}` (src/routes/$formId.tsx), so a form is given to there without
--- being ticked onto any site.
+-- app's own route at `/donate` (src/routes/donate.tsx), which takes gifts without being ticked
+-- onto any site.
 --
 -- **re-running it is safe.** the row is a singleton pinned to `default` by `org_profile_id_check`,
 -- and the conflict arm fills only a column that is still empty — an EIN or an address typed on the

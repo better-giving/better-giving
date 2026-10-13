@@ -212,13 +212,16 @@ describe('readPublishedConfig', () => {
 	// is what the served config states while asking.
 	it('serves the standard wording for a saved profile that carries no statement', async () => {
 		await env.DB.prepare('delete from org_profile').run();
-		const parsed = parseOrgProfile({
-			legal_name: 'Hope Foundation',
-			tax_id: '12-3456789',
-			address_line1: '12 Kigali Road',
-			city: 'Kigali',
-			country: 'Rwanda'
-		});
+		const parsed = parseOrgProfile(
+			{
+				legal_name: 'Hope Foundation',
+				tax_id: '12-3456789',
+				address_line1: '12 Kigali Road',
+				city: 'Kigali',
+				country: 'Rwanda'
+			},
+			[]
+		);
 		if (!parsed.ok) throw new Error(`the profile was refused: ${JSON.stringify(parsed.errors)}`);
 		await saveOrgProfile(db, parsed.value);
 

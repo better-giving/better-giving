@@ -1,7 +1,7 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
-import { program, type Program } from '../db/schema';
+import { image, program, type Program } from '../db/schema';
 import { sqliteResultCode } from '../db/rejection';
 import type { ParsedProgram } from './program-input';
 
@@ -61,7 +61,8 @@ const PROGRAM_COLUMNS = {
 	status: program.status,
 	createdAt: program.createdAt,
 	updatedAt: program.updatedAt,
-	archivedAt: program.archivedAt
+	archivedAt: program.archivedAt,
+	imageId: program.imageId
 } satisfies Record<keyof ProgramRecord, SQLiteColumn>;
 
 /** one active cause, as a donation form offers it. */
@@ -134,6 +135,18 @@ export async function readActivePrograms(db: Db): Promise<ProgramOption[]> {
 }
 
 /**
+ * each active cause's photo, as its stored image id, by the cause's id — the photos to
+ * `readActivePrograms`' list, under the same archived-row filter. a cause with no photo is absent.
+ */
+export async function readActiveProgramPhotos(db: Db): Promise<Map<string, string>> {
+	const rows = await db
+		.select({ id: program.id, imageId: program.imageId })
+		.from(program)
+		.where(and(isNull(program.archivedAt), isNotNull(program.imageId)));
+	return new Map(rows.flatMap(({ id, imageId }) => (imageId === null ? [] : [[id, imageId]])));
+}
+
+/**
  * one cause by id, or `null` when there is none.
  *
  * unlike `readActivePrograms` this does not filter archived rows, and the difference is the
@@ -183,16 +196,21 @@ export async function createProgram(db: Db, input: ParsedProgram): Promise<Progr
 }
 
 /**
- * what a save of a cause did, which is three answers rather than two.
+ * what a save of a cause did, which is more answers than saved or not.
  *
  * `duplicate_name` is its own word because it is its own sentence, keyed to the box the operator
  * has to retype: `gone` says this cause is not there to write to, and saying that to somebody who
  * picked a name a colleague used yesterday would send them looking for a cause that is fine.
+ * `stale` is a cause written since the version the caller was drawn from, refused rather than
+ * overwritten: a save replaces both columns, so a tab drawn before a colleague's rename would put
+ * the old name back. `no_image` and `not_photo` are a photo id the save cannot hold, each its own
+ * sentence at the photo's box, and nothing is written for either.
  */
-export type ProgramSave = 'saved' | 'gone' | 'duplicate_name';
+export type ProgramSave = 'saved' | 'gone' | 'stale' | 'duplicate_name' | 'no_image' | 'not_photo';
 
 /**
- * renames a cause and rewrites its description, and answers whether there was one to write.
+ * renames a cause and rewrites its description, and answers whether there was one to write at the
+ * version the caller was drawn from.
  *
  * `gone` rather than a throw for a row that is missing or archived: both are a tab that was open
  * when somebody else retired the cause, which is an ordinary thing for a staff screen to meet and
@@ -211,25 +229,48 @@ export type ProgramSave = 'saved' | 'gone' | 'duplicate_name';
  *
  * `updated_at` is in no `set`: the column carries `$onUpdateFn`, so drizzle adds it to every
  * update it emits.
+ *
+ * the photo must be an `image` of kind `photo`, which the column cannot check (`program.imageId` in
+ * ../db/schema.ts). read ahead of the write, and no race is opened by it: an image row is never
+ * deleted and its kind never changes after the insert.
  */
 export async function updateProgram(
 	db: Db,
 	id: string,
-	input: ParsedProgram
+	version: Date,
+	input: ParsedProgram,
+	imageId: string | null
 ): Promise<ProgramSave> {
+	if (imageId !== null) {
+		const [photo] = await db
+			.select({ kind: image.kind })
+			.from(image)
+			.where(eq(image.id, imageId))
+			.limit(1);
+		if (photo === undefined) return 'no_image';
+		if (photo.kind !== 'photo') return 'not_photo';
+	}
+
 	let updated: { id: string }[];
 	try {
 		updated = await db
 			.update(program)
-			.set({ name: input.name, description: input.description })
-			.where(and(eq(program.id, id), isNull(program.archivedAt)))
+			.set({ name: input.name, description: input.description, imageId })
+			.where(and(eq(program.id, id), isNull(program.archivedAt), eq(program.updatedAt, version)))
 			.returning({ id: program.id });
 	} catch (error) {
 		if (sqliteResultCode(error) === NAME_TAKEN) return 'duplicate_name';
 		throw error;
 	}
+	if (updated.length > 0) return 'saved';
 
-	return updated.length > 0 ? 'saved' : 'gone';
+	// which refusal the `where` met, read after it: this picks the sentence and guards nothing.
+	const [row] = await db
+		.select({ archivedAt: program.archivedAt })
+		.from(program)
+		.where(eq(program.id, id))
+		.limit(1);
+	return row === undefined || row.archivedAt !== null ? 'gone' : 'stale';
 }
 
 /**

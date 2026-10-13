@@ -19,6 +19,10 @@
 // rather than a client of their own: the same credential in the same header, the same failure as a
 // value, and the deadline stated by whoever binds it.
 //
+// **a read of bytes is the same call with no json on it.** a deployment's photo is the one answer
+// this binary hands on as it arrived, so BytesGetWithin reads it to a cap the caller states and
+// parses only a refusal — the same failure as a value, under the same caller-stated deadline.
+//
 // **a write answers in the same three ways a read does** — a status with a body, a body that is not
 // json, nothing at all — so a write is this same call with a method and a body on it rather than a
 // client of its own. a second place deciding any of those is a second timeout and a second reading
@@ -140,14 +144,56 @@ func JSONSend(base string, headers map[string]string) Send {
 // ten seconds a screen's read is held to is what a migration file outlasts, and a call cut there
 // reports a stop on a file the database may go on to land.
 func JSONSendWithin(base string, headers map[string]string, within time.Duration) Send {
+	return sendWithin(base, headers, within, asJSON)
+}
+
+// Encoded is a body somebody else already wrote, sent as its bytes under the type it came with.
+//
+// What a deployment's logo errand forwards: the browser's multipart body, whose boundary is named in
+// its type, so re-encoding it would be a second spelling of a body nothing here reads.
+type Encoded struct {
+	Type  string
+	Bytes []byte
+}
+
+// ForwardingSendWithin is JSONSendWithin's call, except that an Encoded body goes up as its own
+// bytes under its own type. Every other body is json.
+//
+// It is how a deployment's own console surface is bound, because one errand on it forwards a body
+// this binary did not write.
+func ForwardingSendWithin(base string, headers map[string]string, within time.Duration) Send {
+	return sendWithin(base, headers, within, func(body any) (io.Reader, string, error) {
+		if given, encoded := body.(Encoded); encoded {
+			return bytes.NewReader(given.Bytes), given.Type, nil
+		}
+		return asJSON(body)
+	})
+}
+
+// a body as json, and the type it declares.
+func asJSON(body any) (io.Reader, string, error) {
+	written, err := json.Marshal(body)
+	if err != nil {
+		return nil, "", err
+	}
+	return bytes.NewReader(written), "application/json", nil
+}
+
+func sendWithin(
+	base string,
+	headers map[string]string,
+	within time.Duration,
+	encode func(body any) (io.Reader, string, error),
+) Send {
 	return func(ctx context.Context, method, path string, body any) Answer {
 		var reader io.Reader
+		var declared string
 		if body != nil {
-			written, err := json.Marshal(body)
+			var err error
+			reader, declared, err = encode(body)
 			if err != nil {
 				return Answer{Kind: Unreachable, Detail: err.Error()}
 			}
-			reader = bytes.NewReader(written)
 		}
 
 		bound, stop := context.WithTimeout(ctx, within)
@@ -158,12 +204,63 @@ func JSONSendWithin(base string, headers map[string]string, within time.Duration
 			return Answer{Kind: Unreachable, Detail: err.Error()}
 		}
 		if body != nil {
-			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Content-Type", declared)
 		}
 		for name, value := range headers {
 			request.Header.Set(name, value)
 		}
 		return answered(request)
+	}
+}
+
+// Fetched is what a read of bytes answered: the Answer every call hands back, and the bytes a
+// success carried beside it.
+//
+// Body is the json of an answer outside 2xx, which is where a host writes its refusal, and nil on a
+// success: what a success carries is Bytes, under the Type it was sent with.
+type Fetched struct {
+	Answer
+	Type  string
+	Bytes []byte
+	// Over is a success whose body ran past the most the caller would read, and Bytes is empty on it:
+	// a body cut at the cap is a different photo, not a shorter one.
+	Over bool
+}
+
+// Fetch is one unauthenticated read of bytes, by path, read to no more than `most` of them.
+type Fetch func(ctx context.Context, path string, most int64) Fetched
+
+// BytesGetWithin is a read of one host's bytes rather than its json, carrying no credential, and
+// bound to a deadline that covers the body as well as the status: a body still arriving at the
+// deadline is unreachable rather than a short read.
+func BytesGetWithin(base string, within time.Duration) Fetch {
+	return func(ctx context.Context, path string, most int64) Fetched {
+		bound, stop := context.WithTimeout(ctx, within)
+		defer stop()
+
+		request, err := http.NewRequestWithContext(bound, http.MethodGet, base+path, nil)
+		if err != nil {
+			return Fetched{Answer: Answer{Kind: Unreachable, Detail: err.Error()}}
+		}
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			return Fetched{Answer: Answer{Kind: Unreachable, Detail: err.Error()}}
+		}
+		defer response.Body.Close()
+
+		answer := Answer{Kind: Answered, Status: response.StatusCode}
+		if response.StatusCode < 200 || response.StatusCode > 299 {
+			answer.Body = parsed(io.LimitReader(response.Body, most))
+			return Fetched{Answer: answer}
+		}
+		body, err := io.ReadAll(io.LimitReader(response.Body, most+1))
+		if err != nil {
+			return Fetched{Answer: Answer{Kind: Unreachable, Detail: err.Error()}}
+		}
+		if int64(len(body)) > most {
+			return Fetched{Answer: answer, Type: response.Header.Get("Content-Type"), Over: true}
+		}
+		return Fetched{Answer: answer, Type: response.Header.Get("Content-Type"), Bytes: body}
 	}
 }
 

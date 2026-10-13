@@ -1,6 +1,12 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { act, type FormEvent, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SOCIAL_PLATFORMS } from '../../console/org';
+import { ruleOf, rulesIn, sheet } from '../../styles/sheet-rule.testing';
 import { mount, render } from '../render.testing';
+import { Field } from './Field.jsx';
 import { type RepeatingRow, type RowControl, RepeatingRows } from './RepeatingRows.jsx';
 
 // zero or more boxes holding one kind of value. what a case here is about is that a form can submit
@@ -234,6 +240,32 @@ describe('repeating rows mounted into a document', () => {
 			'That is more sites than may be stored.'
 		]);
 		expect(described(root, said as HTMLInputElement)).toEqual(['Write `https://` first.']);
+	});
+
+	it('describes a row by its own sentence, then its caller’s, then the group’s standing hint', () => {
+		// the field names the row's own sentence; the group adds only what it draws, and a row's own
+		// `aria-describedby` is taken in beside both rather than standing in for them.
+		const root = render(RepeatingRows, {
+			id: 'origins',
+			legend: 'Allowed origins',
+			hint: 'Where the form may load.',
+			add: ADD,
+			rows: [
+				{
+					id: 'origins-0',
+					key: 'a',
+					defaultValue: 'acme.org',
+					error: 'Write `https://` first.',
+					'aria-describedby': 'origins-0-note'
+				}
+			]
+		});
+
+		expect(inputs(root)[0]?.getAttribute('aria-describedby')?.split(' ')).toEqual([
+			'origins-0-err',
+			'origins-0-note',
+			'origins-hint'
+		]);
 	});
 
 	/**
@@ -501,5 +533,389 @@ describe('where focus lands after a row is added or dropped', () => {
 
 		expect(inputs(root)).toHaveLength(2);
 		expect(document.activeElement?.textContent).toBe('Add another');
+	});
+});
+
+/**
+ * a group whose rows are an amount and what it does, held by its caller, whose presses change the
+ * rows on the click itself rather than through a submit. each box takes the whole of the wiring the
+ * group hands it, as a caller's boxes do.
+ */
+function Pairs(props: {
+	start: readonly string[];
+	hint?: string;
+	error?: string;
+	disabled?: boolean;
+	refused?: string;
+}) {
+	const [keys, setKeys] = useState(props.start);
+	const press = (onClick: () => void): RowControl & { type: 'button' } => ({
+		...ADD,
+		type: 'button',
+		onClick
+	});
+	return (
+		<form>
+			<RepeatingRows
+				id="tiers"
+				legend="What does each amount do?"
+				rowLabel="tier"
+				columns={['Amount', 'What it does']}
+				hint={props.hint}
+				error={props.error}
+				disabled={props.disabled}
+				add={press(() => setKeys((was) => [...was, `new-${was.length}`]))}
+				rows={keys.map((key, at) => ({
+					id: `tiers-${key}-amount`,
+					key,
+					remove: press(() => setKeys((was) => was.filter((one) => one !== key))),
+					boxes: ({ describedBy, invalid, disabled, names: [amount, text] }) => (
+						<>
+							<Field
+								id={`tiers-${key}-amount`}
+								name={`amount[${at}]`}
+								defaultValue={key}
+								aria-label={amount}
+								aria-describedby={describedBy}
+								aria-invalid={invalid || undefined}
+								disabled={disabled}
+								error={key === props.refused ? 'must be more than $0' : undefined}
+							/>
+							<Field
+								id={`tiers-${key}-text`}
+								name={`text[${at}]`}
+								defaultValue="Feeds a family"
+								aria-label={text}
+								aria-describedby={describedBy}
+								aria-invalid={invalid || undefined}
+								disabled={disabled}
+							/>
+						</>
+					)
+				}))}
+			/>
+		</form>
+	);
+}
+
+/** a box by the name a reader hears it by. */
+function named(root: HTMLElement, name: string): HTMLInputElement {
+	const found = root.querySelector<HTMLInputElement>(`input[aria-label="${name}"]`);
+	if (found === null) throw new Error(`the case drew no box named ${name}`);
+	return found;
+}
+
+describe('a row of two boxes', () => {
+	it('draws its boxes in the one box’s place, each posting its own name', () => {
+		const root = render(Pairs, { start: ['25', '100'] });
+		const rows = [...root.querySelectorAll('.adm-rows__row')];
+
+		expect(rows.map((row) => row.querySelectorAll('input').length)).toEqual([2, 2]);
+		expect(root.querySelector('.adm-rows__row > .adm-field')).toBeNull();
+		expect(submitted(root)).toEqual([
+			'amount[0]=25',
+			'text[0]=Feeds a family',
+			'amount[1]=100',
+			'text[1]=Feeds a family'
+		]);
+		expect(
+			[...root.querySelectorAll('.adm-rows__remove')].map((one) => one.getAttribute('aria-label'))
+		).toEqual(['Remove tier 1', 'Remove tier 2']);
+	});
+
+	it('draws the columns’ heads once over the rows, and names each box for its column and its row', () => {
+		const root = render(Pairs, { start: ['25', '100'] });
+
+		expect([...root.querySelectorAll('.adm-rows__head > *')].map((one) => one.textContent)).toEqual(
+			['Amount', 'What it does']
+		);
+		expect(root.querySelectorAll('.adm-rows__head')).toHaveLength(1);
+		expect(inputs(root).map((box) => box.getAttribute('aria-label'))).toEqual([
+			'Amount, tier 1',
+			'What it does, tier 1',
+			'Amount, tier 2',
+			'What it does, tier 2'
+		]);
+	});
+
+	it('draws no heads over a group with no rows in it', () => {
+		const root = render(Pairs, { start: [] });
+
+		expect(root.querySelector('.adm-rows__head')).toBeNull();
+	});
+
+	it('describes both boxes of every row by the group’s hint', () => {
+		const root = render(Pairs, {
+			start: ['25', '100'],
+			hint: 'What one gift at that amount does.'
+		});
+
+		for (const box of inputs(root)) {
+			expect(described(root, box)).toEqual(['What one gift at that amount does.']);
+			expect(box.hasAttribute('aria-invalid')).toBe(false);
+		}
+	});
+
+	it('marks both boxes of every row refused by the group’s sentence, and describes them by it', () => {
+		const root = render(Pairs, {
+			start: ['25', '100'],
+			hint: 'What one gift at that amount does.',
+			error: 'That is more tiers than a page may show.'
+		});
+
+		for (const box of inputs(root)) {
+			expect(box.getAttribute('aria-invalid')).toBe('true');
+			expect(described(root, box)).toEqual([
+				'What one gift at that amount does.',
+				'That is more tiers than a page may show.'
+			]);
+		}
+	});
+
+	it('describes a box by its own sentence first, and the group’s after it', () => {
+		const root = render(Pairs, {
+			start: ['0', '100'],
+			error: 'That is more tiers than a page may show.',
+			refused: '0'
+		});
+
+		expect(described(root, named(root, 'Amount, tier 1'))).toEqual([
+			'must be more than $0',
+			'That is more tiers than a page may show.'
+		]);
+		expect(described(root, named(root, 'What it does, tier 1'))).toEqual([
+			'That is more tiers than a page may show.'
+		]);
+	});
+
+	it('closes both boxes of every row with the group', () => {
+		const root = render(Pairs, { start: ['25', '100'], disabled: true });
+
+		expect(inputs(root).map((box) => box.disabled)).toEqual([true, true, true, true]);
+	});
+
+	it('takes none of a field’s own props on a row of boxes', () => {
+		const boxes = () => null;
+		// @ts-expect-error a row of boxes holds its values in its boxes, never on the row.
+		const held: RepeatingRow = { id: 'tiers-0-amount', boxes, defaultValue: '25' };
+		// @ts-expect-error a row of boxes says its sentences on its boxes, never on the row.
+		const refused: RepeatingRow = { id: 'tiers-0-amount', boxes, error: 'required' };
+		// @ts-expect-error a row of boxes is described through what it hands its boxes, never on the row.
+		const labelled: RepeatingRow = { id: 'tiers-0-amount', boxes, 'aria-describedby': 'note' };
+
+		expect([held, refused, labelled]).toHaveLength(3);
+	});
+
+	it('goes into the box its id names when a row is added, and to the row above when one is dropped', () => {
+		const { root } = mount(Pairs, { start: ['25', '100'] });
+
+		press(root, 'Add another');
+		expect(document.activeElement?.id).toBe('tiers-new-2-amount');
+
+		press(root, 'Remove tier 2');
+		expect(document.activeElement?.id).toBe('tiers-25-amount');
+	});
+});
+
+describe('the Remove beside a row', () => {
+	// happy-dom lays nothing out, so the height is read as the sheet states it: the press and the
+	// box it stands beside are given the same token, and that is the whole of the claim.
+	const css = sheet('adm.css');
+
+	it('is the x mark and no word, named for the row it drops', () => {
+		const root = render(Bound, { rows: SITES });
+		const removes = [...root.querySelectorAll<HTMLButtonElement>('.adm-rows__row button')];
+
+		expect(removes.map((button) => button.textContent)).toEqual(['', '']);
+		expect(removes.map((button) => button.getAttribute('aria-label'))).toEqual([
+			'Remove Allowed origins 1',
+			'Remove Allowed origins 2'
+		]);
+		for (const button of removes) {
+			expect(button.classList.contains('adm-rows__remove')).toBe(true);
+			expect(button.querySelector('svg')?.getAttribute('class')).toContain('lucide-x');
+		}
+	});
+
+	it('is as tall as the box beside it, and as wide', () => {
+		const remove = ruleOf(css, '.adm-rows__row > .adm-rows__remove');
+		const box = rulesIn(css)
+			.find(({ selector }) => selector.split(', ').includes('.adm-input'))
+			?.stated.get('min-block-size');
+
+		expect(box).toBe('var(--admin-field-height)');
+		expect(remove.get('min-block-size')).toBe(box);
+		expect(remove.get('inline-size')).toBe(box);
+	});
+});
+
+describe('a mark at the start of a row’s box', () => {
+	/** two rows, the first stating a mark and its words and the second stating none. */
+	const LED: readonly RepeatingRow[] = [
+		{
+			id: 'origins-0',
+			key: 'riverbank',
+			defaultValue: 'riverbank.org',
+			remove: drop('riverbank'),
+			lead: { mark: <img className="led" alt="" />, said: 'Riverbank' }
+		},
+		{ id: 'origins-1', key: 'shop', defaultValue: 'shop.riverbank.org', remove: drop('shop') }
+	];
+
+	it('stands inside the box of the row that states one, out of the tree, and in no other row', () => {
+		const root = render(Bound, { rows: LED });
+		const [first, second] = [...root.querySelectorAll('.adm-rows__row')];
+
+		const slot = first?.querySelector('.adm-leadwrap > .adm-leadwrap__lead');
+		expect(slot?.getAttribute('aria-hidden')).toBe('true');
+		expect(slot?.querySelector('img.led')).not.toBe(null);
+		// the box is the wrapper's, so the mark is inside the box's own edge rather than beside it.
+		expect(first?.querySelector('.adm-leadwrap > input')?.id).toBe('origins-0');
+		expect(second?.querySelector('.adm-leadwrap')).toBe(null);
+	});
+
+	it('reserves the slot where the row states it empty, so nothing moves when a mark arrives', () => {
+		const root = render(Bound, {
+			rows: [
+				{ id: 'origins-0', key: 'riverbank', defaultValue: 'riverbank.org', lead: { mark: null } }
+			]
+		});
+
+		expect(root.querySelector('.adm-leadwrap > .adm-leadwrap__lead')?.childElementCount).toBe(0);
+		expect(root.querySelector('.adm-leadwrap > input')).not.toBe(null);
+	});
+
+	it('describes the box by the mark’s words, inside the hidden slot, beside the group’s own', () => {
+		const root = render(Bound, { rows: LED, error: 'Two of these are the same site.' });
+		const [first, second] = [...root.querySelectorAll('input')];
+		const described = (box: Element | undefined) =>
+			(box?.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean);
+
+		expect(described(first)).toEqual(['origins-0-lead', 'origins-err']);
+		const words = root.querySelector('#origins-0-lead');
+		expect(words?.textContent).toBe('Riverbank');
+		// read once, through the description: browse mode passes over the slot.
+		expect(words?.closest('.adm-leadwrap__lead')?.getAttribute('aria-hidden')).toBe('true');
+		// a row whose lead states no words is described by the group alone.
+		expect(described(second)).toEqual(['origins-err']);
+	});
+
+	// the lead's words are a string the field draws into the form, beside a box that posts under
+	// the group's name: drawn through anything that posts, they would arrive as a third site.
+	it('posts what the box holds and nothing of the mark’s', () => {
+		const root = render(Bound, { rows: LED });
+
+		expect(submitted(root)).toEqual([
+			'allowed_origins=riverbank.org',
+			'allowed_origins=shop.riverbank.org'
+		]);
+	});
+
+	it('draws a mark with no words and names no description for it', () => {
+		const root = render(Bound, {
+			rows: [
+				{
+					id: 'origins-0',
+					key: 'riverbank',
+					defaultValue: 'riverbank.org',
+					lead: { mark: <img className="led" alt="" /> }
+				}
+			]
+		});
+
+		expect(root.querySelector('img.led')).not.toBe(null);
+		expect(root.querySelector('#origins-0-lead')).toBe(null);
+		expect(root.querySelector('input')?.hasAttribute('aria-describedby')).toBe(false);
+	});
+
+	// happy-dom lays nothing out, so the claim is the arithmetic of the tokens: a mark is drawn at
+	// `--admin-brand-mark-size` tall and as wide as its file's own shape, and the slot has to hold the
+	// widest of the networks a link row reads.
+	it('is at least as wide as the widest network’s mark', () => {
+		const tokens = sheet('tokens.css');
+		const rem = (value: string | undefined) => {
+			const name = value?.match(/^var\((--[\w-]+)\)$/)?.[1];
+			const stated = tokens.match(new RegExp(`${name}:\\s*([\\d.]+)rem\\s*;`))?.[1];
+			if (name === undefined || stated === undefined) throw new Error(`not a rem token: ${value}`);
+			return Number.parseFloat(stated);
+		};
+		const marks = join(dirname(fileURLToPath(import.meta.url)), '../status/brand-marks');
+		/** a mark's width over its height, as the `<img>` drawing its file takes it. */
+		const shape = (platform: string) => {
+			const svg = join(marks, `${platform}.svg`);
+			if (!existsSync(svg)) {
+				// a png's IHDR chunk: the width, then the height, from byte 16.
+				const png = readFileSync(join(marks, `${platform}.png`));
+				return png.readUInt32BE(16) / png.readUInt32BE(20);
+			}
+			const [, width, height] =
+				readFileSync(svg, 'utf8').match(/<svg[^>]*\swidth="([\d.]+)"[^>]*\sheight="([\d.]+)"/) ??
+				[];
+			return Number(width) / Number(height);
+		};
+		const css = sheet('adm.css');
+		const height = rem(ruleOf(sheet('base.css'), '.adm-brand-mark').get('block-size'));
+		const widest = Math.max(...SOCIAL_PLATFORMS.map((platform) => height * shape(platform)));
+
+		expect(widest).toBeGreaterThan(height);
+		expect(rem(ruleOf(css, '.adm-leadwrap__lead').get('inline-size'))).toBeGreaterThanOrEqual(
+			widest
+		);
+	});
+});
+
+describe('a line under Add', () => {
+	const css = sheet('adm.css');
+	const HELD: RowControl = { ...ADD, 'aria-describedby': 'origins-add-note' };
+
+	it('stands directly under Add, named for the caller to point Add at', () => {
+		const root = render(RepeatingRows, {
+			id: 'origins',
+			legend: 'Allowed origins',
+			add: HELD,
+			addNote: 'Up to 2 origins',
+			rows: SITES
+		});
+		const holder = root.querySelector('.adm-rows__add');
+		const press = holder?.querySelector('button');
+		const line = holder?.querySelector('.adm-hint');
+
+		expect(line?.textContent).toBe('Up to 2 origins');
+		expect(line?.id).toBe('origins-add-note');
+		expect(press?.nextElementSibling).toBe(line);
+		expect(press?.getAttribute('aria-describedby')).toBe('origins-add-note');
+		expect(root.ownerDocument.getElementById('origins-add-note')).toBe(line);
+	});
+
+	it('draws nothing under Add while the caller states no line', () => {
+		const root = render(Bound, { rows: SITES });
+		const holder = root.querySelector('.adm-rows__add');
+
+		expect(holder?.children).toHaveLength(1);
+		expect(holder?.querySelector('.adm-hint')).toBeNull();
+		expect(root.ownerDocument.getElementById('origins-add-note')).toBeNull();
+	});
+
+	it('is not one of the rows: no box is described by it', () => {
+		const root = render(RepeatingRows, {
+			id: 'origins',
+			legend: 'Allowed origins',
+			add: HELD,
+			addNote: 'Up to 2 origins',
+			rows: SITES
+		});
+
+		for (const box of inputs(root)) expect(described(root, box)).not.toContain('Up to 2 origins');
+	});
+
+	// happy-dom lays nothing out, so the step is read as the sheet states it: the line hangs under
+	// Add at a legend's sentence step, closer than the rows stand to one another.
+	it('stands the step a sentence stands under a legend, not the rows’ own', () => {
+		const line = ruleOf(css, '.adm-rows__add > .adm-hint').get('margin-block-start');
+
+		expect(line).toBe(
+			ruleOf(css, '.adm-fieldset > .adm-fieldset__legend + .adm-hint').get('margin-block-start')
+		);
+		expect(ruleOf(css, '.adm-rows').get('gap')?.split(' ')[0]).not.toBe(line);
 	});
 });

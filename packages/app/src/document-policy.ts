@@ -24,6 +24,11 @@ import { PAYPAL_DEFAULT_API_URL, paypalApiOrigin, paypalSdkUrl } from '$lib/serv
 // every document gets the dashboard's policy unless a route it matched says otherwise through its
 // `handle`, so a screen added later is strict until someone widens it on purpose.
 //
+// no document may be framed but the editor's preview of a page (./routes/preview.$pageId.tsx), and
+// that one only by this deployment's own pages — the editor frames it and reads the block a click
+// lands in ($lib/admin/editor/preview-frame.tsx). it is drawn under the donor page's policy, since
+// what it draws is the donor page.
+//
 // every document allows inline style, the dashboard's as well as the donor page's. operator
 // components set layout through style attributes the server renders — the column widths in
 // packages/operator/src/components/data/DataTable.jsx, the bar heights in data/Series.jsx, the style
@@ -39,18 +44,20 @@ export interface DonorPolicyHandle {
 	readonly documentPolicy: 'donor';
 }
 
+/** what the editor's preview carries: the donor page's policy, framed by this origin's own pages. */
+export interface PreviewPolicyHandle {
+	readonly documentPolicy: 'preview';
+}
+
+type DocumentPolicy = 'operator' | (DonorPolicyHandle | PreviewPolicyHandle)['documentPolicy'];
+
 /** a fresh nonce: 128 bits, base64. */
 export function mintNonce(): string {
 	return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
 }
 
-/** the directives both policies share, the ones that are never widened. */
-const LOCKED = [
-	"object-src 'none'",
-	"base-uri 'none'",
-	"form-action 'self'",
-	"frame-ancestors 'none'"
-];
+/** the directives every policy shares, the ones that are never widened. */
+const LOCKED = ["object-src 'none'", "base-uri 'none'", "form-action 'self'"];
 
 /** every operator document: the dashboard, sign-in, and the error page under no surface. */
 function operatorPolicy(nonce: string): string[] {
@@ -163,12 +170,11 @@ function paypalOrigins(apiUrl: string = PAYPAL_DEFAULT_API_URL): PaypalOrigins {
 	};
 }
 
-function isDonorPolicyHandle(handle: unknown): handle is DonorPolicyHandle {
-	return (
-		typeof handle === 'object' &&
-		handle !== null &&
-		(handle as Partial<DonorPolicyHandle>).documentPolicy === 'donor'
-	);
+/** the policy a route's `handle` asks for, or null where it asks for none. */
+function handlePolicy(handle: unknown): DocumentPolicy | null {
+	if (typeof handle !== 'object' || handle === null) return null;
+	const asked = (handle as Partial<DonorPolicyHandle | PreviewPolicyHandle>).documentPolicy;
+	return asked === 'donor' || asked === 'preview' ? asked : null;
 }
 
 /**
@@ -181,13 +187,23 @@ export function setDocumentHeaders(
 	nonce: string,
 	paypalApiUrl: string | undefined
 ): void {
-	const donor = context.staticHandlerContext.matches.some((match) =>
-		isDonorPolicyHandle(match.route.handle)
-	);
+	const policy =
+		context.staticHandlerContext.matches
+			.map((match) => handlePolicy(match.route.handle))
+			.findLast((asked) => asked !== null) ?? 'operator';
+	const framed = policy === 'preview';
 	headers.set(
 		'Content-Security-Policy',
-		(donor ? donorPolicy(nonce, paypalOrigins(paypalApiUrl)) : operatorPolicy(nonce)).join('; ')
+		[
+			...(policy === 'operator'
+				? operatorPolicy(nonce)
+				: donorPolicy(nonce, paypalOrigins(paypalApiUrl))),
+			`frame-ancestors ${framed ? "'self'" : "'none'"}`
+		].join('; ')
 	);
-	headers.set('X-Frame-Options', 'DENY');
-	headers.set('Referrer-Policy', donor ? 'strict-origin-when-cross-origin' : 'same-origin');
+	headers.set('X-Frame-Options', framed ? 'SAMEORIGIN' : 'DENY');
+	headers.set(
+		'Referrer-Policy',
+		policy === 'operator' ? 'same-origin' : 'strict-origin-when-cross-origin'
+	);
 }

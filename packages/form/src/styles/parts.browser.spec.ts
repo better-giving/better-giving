@@ -15,6 +15,7 @@ import type { FormConfig } from '../v1';
 import { createSkeleton } from '../views';
 import layoutSheet from './layout.css?inline';
 import partSheet from './parts.css?inline';
+import { resolveAppearance } from './resolve';
 import tokens from './tokens.css?inline';
 
 // the browser pool, and the only pool that can see any of this. what is measured here is which
@@ -837,6 +838,22 @@ describe('the labels on the pair under the name', () => {
 		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + arc);
 	});
 
+	// under `square` the box has no arc to clear, and a band starting flush with the box would take
+	// the top of its inline-start edge with it and leave the corner open. so the band starts where
+	// `soft`'s inner corner ends, and the edge stays drawn up to the corner.
+	it('starts the floated band clear of the edge under square', async () => {
+		page('body { --donate-corner: square; }');
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+
+		expect(corner(box)).toBe(0);
+		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + 4);
+	});
+
 	// standing on the edge, the label has to be painted behind or the edge reads through its words.
 	// two fills and not one: the half above the edge covers the card and the half below covers the
 	// box, and a single flat colour would match one of them and show as a patch on the other. the
@@ -1223,9 +1240,9 @@ describe('the step marks as laid out', () => {
 		expect(onShape.outlineWidth).toBe('1px');
 		expect(onShape.outlineColor).toBe(ring);
 		expect(onShape.outlineOffset).toBe('0px');
-		// the corner is over half the box, which is what the engine reduces to a circle.
+		// a circle by construction, and the ring follows it round.
 		const box = shape.getBoundingClientRect();
-		expect(parseFloat(onShape.borderRadius)).toBeGreaterThanOrEqual(box.width / 2);
+		expect(onShape.borderRadius).toBe('50%');
 		// and the ring, a pixel out from the shape, stands well inside the target it is not on.
 		const target = button.getBoundingClientRect();
 		expect(box.left - 1).toBeGreaterThan(target.left);
@@ -3304,6 +3321,54 @@ describe('the ring and the brand never touch', () => {
 	});
 });
 
+// a screen's heading takes the caret by script so the screen is announced, and chromium matches
+// `:focus-visible` on a script's focus whenever the last input was a key or there was none yet —
+// which is every page load. so the heading is read with that match live: without it, no ring is
+// what every rule draws and the case passes whatever the sheet says.
+describe('a node focused only to be announced', () => {
+	function stepHeading(shadow: ShadowRoot): HTMLElement {
+		return shadow.querySelector(
+			".step:not([hidden]) [part~='heading'][tabindex='-1']"
+		) as HTMLElement;
+	}
+
+	/** the caret on the step's heading by script, then carried onward by real Tab presses. */
+	async function tabFromHeading(shadow: ShadowRoot, until: string): Promise<HTMLElement> {
+		await caretOn(stepHeading(shadow));
+		for (let presses = 0; !shadow.activeElement?.matches(until); presses += 1) {
+			if (presses > 8) throw new Error(`Tab never reached ${until} from the heading`);
+			await userEvent.keyboard('{Tab}');
+		}
+		return shadow.activeElement as HTMLElement;
+	}
+
+	it('draws no ring around a heading the script focused', async () => {
+		const { shadow } = await mount();
+		const heading = stepHeading(shadow);
+		const drawn = await caretOn(heading);
+
+		expect(heading.matches(':focus-visible')).toBe(true);
+		expect(drawn.outlineStyle).toBe('none');
+		expect(drawn.boxShadow).toBe('none');
+	});
+
+	it('still rings a step mark whose button Tab reaches from that heading', async () => {
+		const { shadow } = await mount();
+		const button = await tabFromHeading(shadow, 'button.step-dot');
+		const mark = getComputedStyle(button.querySelector('.step-mark') as HTMLElement);
+
+		expect(mark.outlineStyle).toBe('solid');
+		expect(mark.outlineColor).toBe(used(shadow, '--_focus-ring'));
+	});
+
+	it('still rings the first choice Tab reaches from that heading', async () => {
+		const { shadow } = await mount();
+		const radio = await tabFromHeading(shadow, "[part~='frequency-option'] input");
+
+		expect(getComputedStyle(radio).boxShadow).toContain(used(shadow, '--_focus-ring'));
+	});
+});
+
 // the same ring, read off the pixels an engine painted rather than off the declaration that asked
 // for them — and this is the one question in this file no computed style can answer. a ring drawn
 // on the fill's own outermost band and a ring drawn a band in from it are the same string in
@@ -3715,6 +3780,102 @@ describe('a refusal under its box', () => {
 			step(shadow, '--_sp1'),
 			0
 		);
+	});
+});
+
+describe('the presets a host page picks', () => {
+	/** a colour as the engine computes it in the host's own document, to compare a drawn one to. */
+	function computedColour(colour: string): string {
+		const probe = document.createElement('div');
+		probe.style.backgroundColor = colour;
+		document.body.appendChild(probe);
+		const value = getComputedStyle(probe).backgroundColor;
+		probe.remove();
+		return value;
+	}
+
+	function corner(element: Element | null): string {
+		if (element === null) throw new Error('the card drew no such box');
+		return getComputedStyle(element).borderTopLeftRadius;
+	}
+
+	// the two seeds set where a host page sets anything, above the element rather than on it: every
+	// grey on the card leans warm and every corner rounds, and the tick box stays a box.
+	it('draws the card warm and round when the page sets the two seeds', async () => {
+		page('body { --donate-shade: warm; --donate-corner: round; }');
+		const { card } = await mount();
+
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.995 0.006 70)'));
+		expect(corner(card)).toBe('12px');
+		expect(corner(card.querySelector("[part~='amount-option']"))).toBe('8px');
+		expect(corner(card.querySelector("[part~='checkbox']"))).toBe('4px');
+	});
+
+	// the provider paints inside its own frame from what the node it is handed resolves, and that
+	// node is the host's light-DOM child projected into the card, so the presets reach it through the
+	// slot rather than from the host it hangs off.
+	it('hands the provider the corner and the ground the page picked', async () => {
+		page('body { --donate-shade: warm; --donate-corner: round; }');
+		const { host } = await mount();
+		const node = host.querySelector('[slot="payment"]') as HTMLElement;
+		const { variables } = resolveAppearance(node);
+		const [red = 0, , blue = 0] =
+			(variables.colorBackground ?? '').match(/\d+/g)?.map(Number) ?? [];
+
+		expect(variables.borderRadius).toBe('12px');
+		expect(red).toBeGreaterThan(blue);
+	});
+
+	it('draws the card cool when the page asks for it', async () => {
+		page('body { --donate-shade: cool; }');
+		const { card } = await mount();
+
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.995 0.006 240)'));
+	});
+
+	// square squares the boxes and nothing drawn as a shape of its own: the marks on the step head
+	// are dots whatever the corner, and the fee switch is a track.
+	it('keeps the step marks round and the switch a pill under square', async () => {
+		page('body { --donate-corner: square; }');
+		const { shadow, card } = await mount();
+		await atReview(shadow);
+		const mark = shadow.querySelector('.step-mark') as HTMLElement;
+		const track = shadow.querySelector('.fee-decision [part~="checkbox"]') as HTMLElement;
+
+		expect(corner(card)).toBe('0px');
+		expect(corner(card.querySelector("[part~='action']"))).toBe('0px');
+		expect(corner(mark)).toBe('50%');
+		expect(parseFloat(corner(track))).toBeCloseTo(track.getBoundingClientRect().height / 2, 1);
+	});
+
+	it('draws the skeleton’s marks round under square as well', async () => {
+		page('body { --donate-corner: square; }');
+		const { card } = await mount();
+		card.appendChild(createSkeleton(document));
+
+		expect(corner(card.querySelector('.skeleton-mark'))).toBe('50%');
+	});
+
+	// a keyword off either list is invalid at computed-value time and takes what it inherits, which
+	// is the initial value where nothing above sets one: the card a host who set nothing gets.
+	it('draws today’s card for a preset off either list', async () => {
+		page('body { --donate-shade: dark; --donate-corner: pill; }');
+		const { card } = await mount();
+
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.995 0.001 264)'));
+		expect(corner(card)).toBe('8px');
+	});
+
+	// the fallback is the value above, not the default: a theme that set the presets on the page
+	// keeps them when the element itself carries a keyword off the list.
+	it('draws the presets the page above set for a preset off either list on the element', async () => {
+		page('body { --donate-shade: warm; --donate-corner: round; }');
+		const { host, card } = await mount();
+		host.style.setProperty('--donate-shade', 'dark');
+		host.style.setProperty('--donate-corner', 'rounded');
+
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.995 0.006 70)'));
+		expect(corner(card)).toBe('12px');
 	});
 });
 

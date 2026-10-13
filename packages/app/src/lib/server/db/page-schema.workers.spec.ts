@@ -1,0 +1,561 @@
+import { env } from 'cloudflare:test';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { POSTING_ACCOUNTS } from './accounts';
+
+// the constraints `page` and `chat_turn` carry, each a table rebuild to change once shipped — the
+// reason ./donation-schema.workers.spec.ts opens with.
+//
+// `STRICT` on the two tables and `NO ACTION` on their foreign keys are read off sqlite's
+// catalogue by ./strict.workers.spec.ts and not repeated here.
+//
+// the pool gives per-file storage, not per-test: every case starts with one Donation page, and a
+// case probing a Donation page row takes that slot through `refusedAsDonationPage` and puts it back.
+
+const SQLITE_CONSTRAINT_CHECK = 'SQLITE_CONSTRAINT_CHECK';
+const SQLITE_CONSTRAINT_UNIQUE = 'SQLITE_CONSTRAINT_UNIQUE';
+const SQLITE_CONSTRAINT_FOREIGNKEY = 'SQLITE_CONSTRAINT_FOREIGNKEY';
+
+/** runs `fn` and requires D1 to have rejected it; same helper as the sibling schema specs. */
+async function rejection(fn: () => Promise<unknown>): Promise<string> {
+	try {
+		await fn();
+	} catch (e) {
+		return String((e as Error).message);
+	}
+	throw new Error('expected D1 to reject this statement, but it succeeded');
+}
+
+let formSequence = 0;
+
+/** a donation-settings row for a page to own; every page owns its own. */
+async function settingsRow(): Promise<string> {
+	formSequence += 1;
+	const id = `frm_pageschema${String(formSequence).padStart(4, '0')}`;
+	await env.DB.prepare(
+		`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
+		 values (?, 'page settings', ?, 'USD', 0, 0)`
+	)
+		.bind(id, POSTING_ACCOUNTS.donationsDeductible.id)
+		.run();
+	return id;
+}
+
+type PageRow = {
+	type: string;
+	name: string | null;
+	slug: string | null;
+	state: string;
+	draft: string;
+	published: string | null;
+	last_published: string | null;
+	campaign_type: string | null;
+};
+
+const DONATION_PAGE: PageRow = {
+	type: 'donation_page',
+	name: null,
+	slug: null,
+	state: 'live',
+	draft: '{"blocks":[]}',
+	published: '{"blocks":[]}',
+	last_published: null,
+	campaign_type: null
+};
+
+let pageSequence = 0;
+
+async function insertPage(row: PageRow): Promise<string> {
+	pageSequence += 1;
+	const id = `019fc400-0000-7000-8000-${String(pageSequence).padStart(12, '0')}`;
+	await env.DB.prepare(
+		`insert into page (id, type, name, slug, state, form_id, draft, published, last_published,
+		                   campaign_type, created_at, updated_at)
+		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`
+	)
+		.bind(
+			id,
+			row.type,
+			row.name,
+			row.slug,
+			row.state,
+			await settingsRow(),
+			row.draft,
+			row.published,
+			row.last_published,
+			row.campaign_type
+		)
+		.run();
+	return id;
+}
+
+beforeAll(async () => {
+	await insertPage(DONATION_PAGE);
+});
+
+/** D1's refusal of `row` as the Donation page, tried with that slot emptied and refilled after. */
+async function refusedAsDonationPage(row: PageRow): Promise<string> {
+	await env.DB.prepare(`delete from page where type = 'donation_page'`).run();
+	try {
+		return await rejection(() => insertPage(row));
+	} finally {
+		await insertPage(DONATION_PAGE);
+	}
+}
+
+describe('one Donation page, held by the table', () => {
+	it('refuses a second Donation page', async () => {
+		const message = await rejection(() => insertPage(DONATION_PAGE));
+		expect(message).toContain(SQLITE_CONSTRAINT_UNIQUE);
+		expect(message).toContain('page.type');
+	});
+});
+
+const CAMPAIGN: PageRow = {
+	type: 'campaign',
+	name: 'Winter coat drive',
+	slug: 'winter-coat-drive',
+	state: 'never_published',
+	draft: '{"blocks":[],"goalMinor":1500000}',
+	published: null,
+	last_published: null,
+	campaign_type: null
+};
+
+describe('a page is the Donation page or a campaign, and no other kind', () => {
+	it.each([['event'], ['Campaign'], ['']])('refuses the type %j', async (type) => {
+		const message = await rejection(() => insertPage({ ...CAMPAIGN, slug: null, type }));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_type_check');
+	});
+});
+
+describe('a campaign slug is unique; the Donation page has none', () => {
+	it('refuses a second campaign at a slug another holds', async () => {
+		await insertPage({ ...CAMPAIGN, slug: 'spring-appeal' });
+		const message = await rejection(() => insertPage({ ...CAMPAIGN, slug: 'spring-appeal' }));
+		expect(message).toContain(SQLITE_CONSTRAINT_UNIQUE);
+		expect(message).toContain('page.slug');
+	});
+
+	it('refuses a slug on the Donation page, which is served at /donate', async () => {
+		const message = await refusedAsDonationPage({ ...DONATION_PAGE, slug: 'donate' });
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_slug_check');
+	});
+
+	it.each([['never_published'], ['live']])('refuses a %s campaign with no slug', async (state) => {
+		const published = state === 'live' ? CAMPAIGN.draft : null;
+		const message = await rejection(() =>
+			insertPage({ ...CAMPAIGN, slug: null, state, published })
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_slug_check');
+	});
+
+	it('accepts an ended campaign whose slug another campaign has taken', async () => {
+		const id = await insertPage({
+			...CAMPAIGN,
+			slug: null,
+			state: 'ended',
+			published: CAMPAIGN.draft
+		});
+		const row = await env.DB.prepare(`select slug, state from page where id = ?`).bind(id).first();
+		expect(row).toEqual({ slug: null, state: 'ended' });
+	});
+});
+
+describe('a campaign is named; the Donation page has no name of its own', () => {
+	it.each([
+		['a blank name', ''],
+		['a lone NBSP', '\u00a0'],
+		['no name', null]
+	])('refuses a campaign with %s', async (_, name) => {
+		const message = await rejection(() => insertPage({ ...CAMPAIGN, slug: 'name-probe', name }));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_name_check');
+	});
+
+	it('refuses a name on the Donation page', async () => {
+		const message = await refusedAsDonationPage({ ...DONATION_PAGE, name: 'Donate' });
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_name_check');
+	});
+});
+
+describe('a page is never published, live or ended', () => {
+	it.each([['draft'], ['published'], ['']])('refuses the state %j', async (state) => {
+		const message = await rejection(() => insertPage({ ...CAMPAIGN, slug: 'state-probe', state }));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_state_check');
+	});
+
+	it.each([['never_published'], ['ended']])('refuses a Donation page that is %s', async (state) => {
+		const message = await refusedAsDonationPage({ ...DONATION_PAGE, state });
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_donation_page_live_check');
+	});
+});
+
+describe('a published page exists exactly when the page has been live', () => {
+	it('refuses a never-published campaign holding a published page', async () => {
+		const message = await rejection(() =>
+			insertPage({ ...CAMPAIGN, slug: 'published-probe', published: CAMPAIGN.draft })
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_published_check');
+	});
+
+	it.each([['live'], ['ended']])('refuses a %s campaign with no published page', async (state) => {
+		const message = await rejection(() =>
+			insertPage({ ...CAMPAIGN, slug: 'published-probe', state, published: null })
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_published_check');
+	});
+
+	it('refuses a last published page with no published page after it', async () => {
+		const message = await rejection(() =>
+			insertPage({ ...CAMPAIGN, slug: 'published-probe', last_published: CAMPAIGN.draft })
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_last_published_check');
+	});
+});
+
+describe('each page document is a JSON object', () => {
+	const LIVE = { ...CAMPAIGN, slug: 'json-probe', state: 'live', published: CAMPAIGN.draft };
+
+	it.each([
+		['draft', 'not json'],
+		['draft', '[]'],
+		['draft', 'null'],
+		['published', '"a string"'],
+		['last_published', '{"blocks":'],
+		['last_published', '42']
+	] as const)('refuses %s holding %j', async (column, value) => {
+		const message = await rejection(() => insertPage({ ...LIVE, [column]: value }));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain(`page_${column}_object_check`);
+	});
+});
+
+describe('a goal or an end date belongs to a campaign, never to the Donation page', () => {
+	const GOAL = '{"blocks":[],"goalMinor":1500000}';
+	const END = '{"blocks":[],"endsAt":1798761599999}';
+
+	it.each([
+		['draft', 'a goal', GOAL],
+		['draft', 'an end date', END],
+		['published', 'a goal', GOAL],
+		['published', 'an end date', END],
+		['last_published', 'a goal', GOAL],
+		['last_published', 'an end date', END]
+	] as const)('refuses a Donation page whose %s carries %s', async (column, _, value) => {
+		const row = { ...DONATION_PAGE, last_published: DONATION_PAGE.published, [column]: value };
+		const message = await refusedAsDonationPage(row);
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_campaign_only_settings_check');
+	});
+
+	it('accepts both on a campaign, in each of its documents', async () => {
+		const both = '{"blocks":[],"goalMinor":1500000,"endsAt":1798761599999}';
+		const id = await insertPage({
+			...CAMPAIGN,
+			slug: 'goal-probe',
+			state: 'live',
+			draft: both,
+			published: both,
+			last_published: both
+		});
+		const row = await env.DB.prepare(
+			`select json_extract(published, '$.goalMinor') as goal from page where id = ?`
+		)
+			.bind(id)
+			.first();
+		expect(row).toEqual({ goal: 1500000 });
+	});
+});
+
+describe("a page's own look takes the closed sets", () => {
+	const LIVE = { ...CAMPAIGN, slug: 'look-probe', state: 'live', published: CAMPAIGN.draft };
+	const withLook = (look: Record<string, unknown>) => JSON.stringify({ blocks: [], look });
+	const DOCUMENTS = ['draft', 'published', 'last_published'] as const;
+
+	it.each(
+		DOCUMENTS.flatMap((column) => [
+			[column, 'the shade', { shade: 'dark' }],
+			[column, 'the corner', { corner: 'pill' }],
+			[column, 'the brand colour', { brandColour: 'red' }]
+		])
+	)('refuses %s holding an off-list look: %s', async (column, _, look) => {
+		const message = await rejection(() => insertPage({ ...LIVE, [column]: withLook(look) }));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain(`page_${column}_look_check`);
+	});
+
+	it.each(DOCUMENTS)('refuses %s holding a look that is not an object', async (column) => {
+		const doc = JSON.stringify({ blocks: [], look: 'warm' });
+		const message = await rejection(() => insertPage({ ...LIVE, [column]: doc }));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain(`page_${column}_look_check`);
+	});
+
+	it('accepts a page with its own look, and one with none', async () => {
+		const own = withLook({ shade: 'warm', corner: 'round' });
+		const id = await insertPage({ ...LIVE, draft: own, published: '{"look":null}' });
+		const row = await env.DB.prepare(
+			`select json_extract(draft, '$.look.shade') as shade from page where id = ?`
+		)
+			.bind(id)
+			.first();
+		expect(row).toEqual({ shade: 'warm' });
+	});
+});
+
+describe("a campaign's type is one of the list, and the Donation page has none", () => {
+	it('refuses a type on the Donation page', async () => {
+		const message = await refusedAsDonationPage({ ...DONATION_PAGE, campaign_type: 'year_end' });
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_campaign_type_check');
+	});
+
+	it.each([['year-end'], ['Year_end'], ['gala'], ['']])('refuses the type %j', async (type) => {
+		const message = await rejection(() =>
+			insertPage({ ...CAMPAIGN, slug: 'type-probe', campaign_type: type })
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_campaign_type_check');
+	});
+
+	it.each([
+		['tribute', 'type-tribute'],
+		['other', 'type-other'],
+		[null, 'type-none']
+	])('accepts a campaign of the type %j', async (type, slug) => {
+		const id = await insertPage({ ...CAMPAIGN, slug, campaign_type: type });
+		const row = await env.DB.prepare(`select campaign_type from page where id = ?`)
+			.bind(id)
+			.first();
+		expect(row).toEqual({ campaign_type: type });
+	});
+});
+
+describe('every page owns its own donation-settings row', () => {
+	it('refuses a second page naming a settings row another page owns', async () => {
+		const owned = await env.DB.prepare(`select form_id from page where type = 'donation_page'`)
+			.first<{ form_id: string }>()
+			.then((row) => row?.form_id);
+		const message = await rejection(() =>
+			env.DB.prepare(
+				`insert into page (id, type, name, slug, state, form_id, draft, created_at, updated_at)
+				 values ('019fc400-0000-7000-8000-00000000ffff', 'campaign', 'Borrowed', 'borrowed',
+				         'never_published', ?, '{}', 0, 0)`
+			)
+				.bind(owned)
+				.run()
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_UNIQUE);
+		expect(message).toContain('page.form_id');
+	});
+});
+
+type TurnRow = {
+	seq: number;
+	author: string;
+	text: string;
+	model: string | null;
+	image_ids: string;
+	note: string | null;
+	questions: string | null;
+	answers: string | null;
+};
+
+const OPERATOR_TURN: TurnRow = {
+	seq: 1,
+	author: 'operator',
+	text: 'coats for 300 kids, goal $15k by Dec 31',
+	model: null,
+	image_ids: '[]',
+	note: null,
+	questions: null,
+	answers: null
+};
+
+const ASSISTANT_TURN: TurnRow = {
+	...OPERATOR_TURN,
+	author: 'assistant',
+	text: 'here is a first draft',
+	model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+};
+
+const QUESTIONS = '[{"id":"goal","kind":"amount","prompt":"How much are you raising?"}]';
+const ANSWERS = '[{"id":"goal","value":1500000}]';
+
+let turnSequence = 0;
+
+async function insertTurn(pageId: string, row: TurnRow): Promise<void> {
+	turnSequence += 1;
+	await env.DB.prepare(
+		`insert into chat_turn (id, page_id, seq, author, text, model, image_ids, note, questions,
+		                        answers, created_at)
+		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+	)
+		.bind(
+			`019fc500-0000-7000-8000-${String(turnSequence).padStart(12, '0')}`,
+			pageId,
+			row.seq,
+			row.author,
+			row.text,
+			row.model,
+			row.image_ids,
+			row.note,
+			row.questions,
+			row.answers
+		)
+		.run();
+}
+
+describe('the chat, a page at a time and in order', () => {
+	let pageId: string;
+	beforeAll(async () => {
+		pageId = await insertPage({ ...CAMPAIGN, slug: 'chat-probe' });
+		await insertTurn(pageId, OPERATOR_TURN);
+	});
+
+	it('refuses a turn for a page that does not exist', async () => {
+		const message = await rejection(() =>
+			insertTurn('019fc400-0000-7000-8000-00000000dead', { ...OPERATOR_TURN, seq: 99 })
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_FOREIGNKEY);
+	});
+
+	it('refuses a second turn at a place in the chat another holds', async () => {
+		const message = await rejection(() => insertTurn(pageId, OPERATOR_TURN));
+		expect(message).toContain(SQLITE_CONSTRAINT_UNIQUE);
+		expect(message).toContain('chat_turn.page_id, chat_turn.seq');
+	});
+
+	it.each([['system'], ['user'], ['']])('refuses the author %j', async (author) => {
+		const message = await rejection(() => insertTurn(pageId, { ...OPERATOR_TURN, seq: 2, author }));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_author_check');
+	});
+
+	it('refuses an assistant turn that does not say which model wrote it', async () => {
+		const turn = { ...OPERATOR_TURN, seq: 2, author: 'assistant', model: null };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_model_check');
+	});
+
+	it('refuses a model on a turn the operator wrote', async () => {
+		const turn = { ...OPERATOR_TURN, seq: 2, model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_model_check');
+	});
+
+	it.each([['refused '], ['Refused'], ['declined'], ['']])('refuses the note %j', async (note) => {
+		const turn = { ...ASSISTANT_TURN, seq: 2, note };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_note_check');
+	});
+
+	it('refuses a note on a turn the operator wrote', async () => {
+		const turn = { ...OPERATOR_TURN, seq: 2, note: 'refused' };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_note_check');
+	});
+
+	it.each([
+		['refused', 10],
+		['fell-back', 11],
+		['unanswered', 12],
+		['starter', 14],
+		[null, 13]
+	])('accepts an assistant turn noted %j', async (note, seq) => {
+		await insertTurn(pageId, { ...ASSISTANT_TURN, seq, note });
+		const row = await env.DB.prepare(`select note from chat_turn where page_id = ? and seq = ?`)
+			.bind(pageId, seq)
+			.first();
+		expect(row).toEqual({ note });
+	});
+
+	it.each([
+		['not json', 'a list'],
+		['an object', '{}'],
+		['a bare id', '"019fc600-0000-7000-8000-000000000001"']
+	])('refuses image ids held as %s', async (_, imageIds) => {
+		const turn = { ...OPERATOR_TURN, seq: 2, image_ids: imageIds };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_image_ids_array_check');
+	});
+
+	it('refuses questions on a turn the operator wrote', async () => {
+		const turn = { ...OPERATOR_TURN, seq: 2, questions: QUESTIONS };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_questions_check');
+	});
+
+	it('refuses answers on a turn the assistant wrote', async () => {
+		const turn = { ...ASSISTANT_TURN, seq: 2, answers: ANSWERS };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_answers_check');
+	});
+
+	it.each([
+		['questions', 'not json', ASSISTANT_TURN],
+		['questions', '{"id":"goal"}', ASSISTANT_TURN],
+		['questions', 'null', ASSISTANT_TURN],
+		['questions', '[]', ASSISTANT_TURN],
+		['answers', '{"goal":1500000}', OPERATOR_TURN],
+		['answers', '"none"', OPERATOR_TURN],
+		['answers', '[{"id":', OPERATOR_TURN]
+	] as const)('refuses %s held as %j', async (column, value, author) => {
+		const turn = { ...author, seq: 2, [column]: value };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain(`chat_turn_${column}_check`);
+	});
+
+	it.each([
+		['questions an assistant asked', { ...ASSISTANT_TURN, seq: 20, questions: QUESTIONS }],
+		['answers the operator gave', { ...OPERATOR_TURN, seq: 21, answers: ANSWERS }],
+		['an answers turn with every question skipped', { ...OPERATOR_TURN, seq: 22, answers: '[]' }]
+	])('accepts %s', async (_, turn) => {
+		await insertTurn(pageId, turn);
+		const row = await env.DB.prepare(
+			`select questions, answers from chat_turn where page_id = ? and seq = ?`
+		)
+			.bind(pageId, turn.seq)
+			.first();
+		expect(row).toEqual({ questions: turn.questions, answers: turn.answers });
+	});
+
+	it('refuses a turn with no words and no photo', async () => {
+		const message = await rejection(() =>
+			insertTurn(pageId, { ...OPERATOR_TURN, seq: 2, text: ' ' })
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_text_check');
+	});
+
+	it('accepts a photo sent with no words', async () => {
+		const turn = {
+			...OPERATOR_TURN,
+			seq: 3,
+			text: '',
+			image_ids: '["019fc600-0000-7000-8000-000000000001"]'
+		};
+		await insertTurn(pageId, turn);
+		const row = await env.DB.prepare(`select text from chat_turn where page_id = ? and seq = 3`)
+			.bind(pageId)
+			.first();
+		expect(row).toEqual({ text: '' });
+	});
+});

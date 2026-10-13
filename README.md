@@ -32,7 +32,7 @@ Sign in at `/login` on `http://localhost:5321` as `admin`, with the `ADMIN_PASSW
 
 The dashboard is not served until set-up reads finished (`packages/app/src/lib/server/config/readiness.ts`). The seed above settles the two jobs that are rows (the organisation's registered name and EIN, and the notification address); the example file settles mail; Payments waits on a processor's keys, and both processors' blocks are commented out at the foot of that file.
 
-**A donation cannot complete locally out of the box**: every processor key is commented out, and the published Turnstile pair passes every visitor and then has its submission refused. The seed lists no site and none is needed: the app serves its own donation page at `/{form_id}`, so a form can be added and opened at `http://localhost:5321/{form_id}`; every site is typed on the console.
+**A donation cannot complete locally out of the box**: every processor key is commented out, and the published Turnstile pair passes every visitor and then has its submission refused. The seed lists no site and none is needed: the app serves its own Donation page, made the first time it is asked for, at `http://localhost:5321/donate`; every site is typed on the console.
 
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) is the rest: what the commit hook gates, how migrations work, how to reach the console surface against a local dev server.
 
@@ -68,7 +68,7 @@ Then the values in `packages/app/.deploy.vars`, deployed in one press with `pnpm
 
 ## Embed the form
 
-Every deployment serves a donation page of its own, one form at `/{form_id}` on its own address, so an organisation with no website can take a gift the day it deploys.
+Every deployment serves a Donation page of its own, at `/donate` on its own address, so an organisation with no website can take a gift the day it deploys.
 
 To put the form on your own site as well, or instead:
 
@@ -181,13 +181,16 @@ Vendor lists: Stripe's [integration security guide](https://docs.stripe.com/secu
 
 ## Theme the form
 
-One custom property, set on the element or anything above it:
+Three custom properties, set on the element or anything above it:
 
 ```html
-<bg-donate-form form="frm_…" style="--donate-primary: #0f766e"></bg-donate-form>
+<bg-donate-form
+  form="frm_…"
+  style="--donate-primary: #0f766e; --donate-shade: warm; --donate-corner: round"
+></bg-donate-form>
 ```
 
-`--donate-primary` is your brand colour: every solid block a donor acts on, plus the two places the brand is ink (the quiet action, and the word on a selected amount or frequency). The card's greys, type, corners and focus ring are the form's own, and more than a brand colour means a fork. **Light only, by decision**: a dark host page gets a light card.
+`--donate-primary` is your brand colour: every solid block a donor acts on, plus the two places the brand is ink (the quiet action, and the word on a selected amount or frequency). `--donate-shade` picks the tone of the card's greys: `light` (the default), `warm` or `cool`. `--donate-corner` picks its corners: `square`, `soft` (the default) or `round`. Anything else in either falls back to what the element inherits, and to the default where nothing above sets one. A browser without container style queries on custom properties draws the light, soft card whatever the two are set to. The type and the focus ring are the form's own, and more than a brand colour and those two presets means a fork. **Light only, by decision**: every shade is light, and a dark host page gets a light card.
 
 [`custom-elements.json`](./packages/form/custom-elements.json) is the canonical list of part names and tokens, permanent exactly like `/api/v1`.
 

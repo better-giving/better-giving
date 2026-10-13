@@ -167,6 +167,19 @@
 		}
 	],
 
+	// the Workers AI binding, and the only way this deployment reaches a model — the default Workers
+	// AI one and the credit-billed Claude and GPT alike, each through AI Gateway
+	// (src/lib/server/ai/generate.ts). there is no resource behind it to create and no id to keep
+	// out of the repo: the binding is the account's, and the `default` gateway every call names
+	// creates itself on first use.
+	//
+	// Workers AI has no local simulator. `pnpm dev` and `pnpm run preview` open a session to the
+	// account for it only under `BETTER_GIVING_REMOTE_AI=1` (vite.config.ts, and the `preview`
+	// script's `--local`), so a checkout with no Cloudflare sign-in still starts.
+	"ai": {
+		"binding": "AI"
+	},
+
 	// the four buckets this app charges: the whole public surface, the one endpoint on it that
 	// takes money, the staff sign-in and its password reset, and each key on the read API.
 	// CLAUDE.md names rate limiting as one of the things an endpoint on `/api/v1` owes before it
@@ -190,15 +203,15 @@
 	//
 	// where each is spent is in the code, not here: the surface in `src/routes/api.v1.ts`, whose
 	// `middleware` meters every route beneath it — and, on that same binding under keys of their
-	// own, a failed key check in `src/routes/zapier.ts` and every read-API request, ahead of its key
-	// lookup, in `src/routes/integrations.v1.ts`; the quote in
-	// `src/routes/api.v1.forms.$id.donations.ts`; the sign-in in `src/routes/login.tsx`'s own
-	// action and `src/routes/forgot.tsx`'s, the two sites that spend that bucket; and each read-API
-	// key, once admitted, in `src/routes/integrations.v1.ts`'s middleware. what
-	// happens when one of these bindings is missing, and what happens when the edge attributes no
-	// address to a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the
-	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all four to this file, and
-	// `test` runs in ci.yml on a push to `main` and every pull request.
+	// own, a failed key check in `src/routes/zapier.ts`, every read-API request, ahead of its key
+	// lookup, in `src/routes/integrations.v1.ts`, and each other surface the `API_RATE_LIMITER`
+	// block below names; the quote in `src/routes/api.v1.forms.$id.donations.ts`; the sign-in in
+	// each action that takes a credential, which `src/routes/login.tsx`'s action lists; and each
+	// read-API key, once admitted, in `src/routes/integrations.v1.ts`'s middleware. what happens
+	// when one of these bindings is missing, and what happens when the edge attributes no address to
+	// a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the call sites.
+	// `src/lib/server/api/rate-limit.config.spec.ts` holds all four to this file, and `test` runs in
+	// ci.yml on a push to `main` and every pull request.
 	"ratelimits": [
 		{
 			"name": "API_RATE_LIMITER",
@@ -218,17 +231,20 @@
 			"namespace_id": "7412",
 
 			"simple": {
-				// per client IP per minute — see `apiRateLimitKey` in
-				// src/lib/server/api/rate-limit.ts for what the key is and why the form id is
-				// not in it.
+				// per client IP per minute, and per surface: five surfaces charge this binding and
+				// each key opens with a prefix of its own (src/lib/server/api/rate-limit.ts), so
+				// one surface never spends another's count. `/api/v1` is every route under the
+				// public api (`apiRateLimitKey`, which says why the form id is not in it),
+				// `/zapier` a request there that failed the key check, `/integrations/v1` every
+				// read-API request ahead of its key lookup, `image` a photo view at `/image/:id`,
+				// and `donor-page` a view of `/donate` or a campaign's address.
 				//
-				// the number is sized for the caller this endpoint actually has: one embedded
-				// donation form asks once per page load, so ten a second is far above any
-				// browser and still bounds a single address to ten D1 reads a second. it is
-				// deliberately generous because the failure modes are not symmetric — a
-				// mobile carrier puts thousands of real donors behind one address, and
-				// refusing a donor costs a gift while letting a scanner have ten reads a
-				// second costs a fraction of a cent.
+				// the number is sized for the embedded donation form: it asks once per page
+				// load, so ten a second is far above any browser and still bounds a single
+				// address to ten D1 reads a second on each surface. it is deliberately generous
+				// because the failure modes are not symmetric — a mobile carrier puts thousands
+				// of real donors behind one address, and refusing a donor costs a gift while
+				// letting a scanner have ten reads a second costs a fraction of a cent.
 				//
 				// two things this number is not, both documented at
 				// https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/.
@@ -365,12 +381,12 @@
 	// what an environment inherits is not what the published list says, and the two that matter
 	// most are the two it leaves out. wrangler runs `name` (suffixed, so this one deploys as
 	// `better-giving-test`), `main`, `assets`, `compatibility_date`, `compatibility_flags` and
-	// `observability` through its `inheritable` helper, and `d1_databases`, `ratelimits` and `vars`
-	// through `notInheritable`, which takes only what the environment itself declares and warns
-	// when the top level holds one the environment does not. that is why the database and all four
-	// limiters are repeated below in full: an entry left out of here is a binding this deployment
-	// does not have, not one it borrows. `vars` needs no repeating for the same reason there is no
-	// top-level `vars` block to inherit.
+	// `observability` through its `inheritable` helper, and `d1_databases`, `ratelimits`, `ai` and
+	// `vars` through `notInheritable`, which takes only what the environment itself declares and
+	// warns when the top level holds one the environment does not. that is why the database, the AI
+	// binding and all four limiters are repeated below in full: an entry left out of here is a
+	// binding this deployment does not have, not one it borrows. `vars` needs no repeating for the
+	// same reason there is no top-level `vars` block to inherit.
 	//
 	// one thing is shared and cannot be unshared, and it is local only: `wrangler dev` and
 	// `wrangler dev --env test` read one sqlite file under .wrangler/state/, because with no
@@ -395,6 +411,12 @@
 					"migrations_dir": "./migrations"
 				}
 			],
+
+			// the same binding under the same name; the model a rehearsal answers with is its own
+			// `AI_MODEL`, like every other value.
+			"ai": {
+				"binding": "AI"
+			},
 
 			// the same four buckets and the same four limits, under four namespaces of their own.
 			//

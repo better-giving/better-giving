@@ -1,6 +1,7 @@
 import { tribute } from '@better-giving/emails';
 import { renderEmail } from '@better-giving/emails/render';
 import { TRIBUTE_KIND_LABELS, type TributeKind } from '@better-giving/form/v1';
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import type { OrgProfile } from '../db/schema';
 import { present } from '../org/receipt-fields';
 import type { RenderedEmail } from './provider';
@@ -55,7 +56,7 @@ export async function renderTributeNotice(input: TributeNoticeInput): Promise<Tr
 				'goes to somebody who never gave this deployment an address, about somebody they have ' +
 				'lost. An organisation that cannot name itself is indistinguishable from a stranger. ' +
 				'Open the console (`better-giving start`) and fill in your organisation details under ' +
-				'Organisation.'
+				`${IDENTITY_FOLD}.`
 		};
 	}
 

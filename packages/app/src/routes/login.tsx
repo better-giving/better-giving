@@ -6,7 +6,7 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { getFormProps } from '@conform-to/react';
 import { APIError } from 'better-auth/api';
-import { data, Form, Link, redirect, useNavigation } from 'react-router';
+import { data, Form, Link, redirect, useFormAction, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { useAdminForm } from '$lib/admin/use-admin-form';
@@ -27,6 +27,7 @@ import {
 	signInMember,
 	STAFF_USER_EMAIL
 } from '$lib/server/auth';
+import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
 import { PIN_UNUSABLE } from '$lib/server/auth/pin';
 import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { invalid, parseForm, unread } from '$lib/server/conform';
@@ -277,7 +278,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	//
 	// what it saves is the hash every attempt costs — the SHA-256 compare in `secretEquals` for the
 	// deployer, better-auth's scrypt for a member — and, on a correct guess, the session write.
-	// three actions pay on that bucket — this one, ./forgot.tsx and
+	// five actions pay on that bucket — this one, ./forgot.tsx, ./join.tsx, ./reset.tsx and
 	// ./_app.admin.members_.password.tsx — and each charges it once, before its own body is read.
 	// they share a key rather than holding one each because a guess at a credential is a guess
 	// whichever form carries it ($lib/server/api/rate-limit.ts); nothing else in a request's path
@@ -303,6 +304,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, bucket)) {
 		return invalid(429, unread(LOGIN_FORM, signInRateLimitMessage()));
 	}
+	// after the charge, so a post refused for its origin still spends a guess.
+	refuseWriteFromAnotherOrigin(request);
 
 	const submission = parseForm(await request.formData(), LOGIN_FORM);
 
@@ -454,8 +457,13 @@ function SignInScreen({
 	actionData: Route.ComponentProps['actionData'];
 }) {
 	const [form, fields] = useAdminForm(LOGIN_FORM, actionData);
+	// the whole navigation the press started and not its `submitting` half, which is the create
+	// screens' test: a sign-in answers with a redirect, and a second press during its loading phase
+	// spends the sign-in bucket again and mints a second session. `useFormAction` is the address the
+	// form posts to, `?next=` included, and it stays on the navigation through that phase.
 	const navigation = useNavigation();
-	const signingIn = navigation.state === 'submitting';
+	const here = useFormAction();
+	const signingIn = navigation.state !== 'idle' && navigation.formAction === here;
 
 	// what a refused attempt says about the attempt as a whole, above the form. the sentence about
 	// the box is under the box and is the field's own.
@@ -554,10 +562,16 @@ function SignInScreen({
 						    switching this one off at the moment it is pressed throws the focus that
 						    pressed it to the document body, and `aria-busy` on a control nothing can
 						    reach announces to nobody. a second press while the first is in flight is
-						    the router's to coalesce rather than something to buy by taking the
-						    control away. the console's submits are the same shape
-						    (packages/console-ui/src/routes/_index.tsx). */}
-						<Button variant="primary" aria-busy={signingIn}>
+						    stopped in the handler, because `aria-disabled` only announces the control
+						    as unavailable and stops no press. */}
+						<Button
+							variant="primary"
+							aria-disabled={signingIn}
+							aria-busy={signingIn}
+							onClick={(event) => {
+								if (signingIn) event.preventDefault();
+							}}
+						>
 							{SCREEN_TITLE}
 						</Button>
 					</div>

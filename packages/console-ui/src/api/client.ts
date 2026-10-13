@@ -5,9 +5,15 @@ import type {
 	ConsoleVersion,
 	HomeReading,
 	HomeShape,
+	ModelChoice,
+	NonprofitLookup,
+	NonprofitSearch,
+	NonprofitsStatus,
+	NoReport,
 	NowpaymentsListing,
 	NowpaymentsPress,
 	NowpaymentsSaved,
+	OrgRefused,
 	OrgWrite,
 	PaymentsRead,
 	PaypalRunRead,
@@ -31,6 +37,7 @@ import type {
 	QuickbooksBacklogLine,
 	QuickbooksStartAtSide
 } from '@better-giving/operator/console/quickbooks';
+import { LOGO_FIELD } from '@better-giving/operator/console/org';
 
 // the console's own process, reached from the page it serves.
 //
@@ -77,7 +84,7 @@ export class ConsoleRefused extends Error {
 	}
 }
 
-/** one request to the local process, held among the writes out while a `POST` is unanswered. */
+/** one request to the local process, held among the writes out while a write is unanswered. */
 function call(path: string, init: RequestInit): Promise<Response> {
 	const answer = fetch(`/api${path}`, init).catch((cause: unknown) => {
 		// an abandoned reading rejects the same way, and it is the router's to drop rather than a
@@ -85,7 +92,7 @@ function call(path: string, init: RequestInit): Promise<Response> {
 		if (init.signal?.aborted) throw cause;
 		throw new ConsoleUnreachable(`/api${path} could not be reached`, { cause });
 	});
-	if (init.method !== 'POST') return answer;
+	if (init.method === 'GET') return answer;
 	writesOut.add(answer);
 	const answered = () => writesOut.delete(answer);
 	answer.then(answered, answered);
@@ -101,7 +108,11 @@ export async function writesAnswered(): Promise<void> {
  * one call to the local process, answered as json or thrown. `signal` is a loader's request's, so a
  * reading the router abandoned is not asked for.
  */
-async function ask<T>(path: string, method: 'GET' | 'POST', signal?: AbortSignal): Promise<T> {
+async function ask<T>(
+	path: string,
+	method: 'GET' | 'POST' | 'DELETE',
+	signal?: AbortSignal
+): Promise<T> {
 	const answer = await call(path, {
 		method,
 		headers: { accept: 'application/json' },
@@ -228,12 +239,93 @@ export const connect = (): Promise<Connection> => ask('/session', 'POST');
  * stores the organisation's profile, whole, from whichever of the two folds pressed.
  *
  * every box goes with every press, empty ones included, because that is what the endpoint reads: a
- * field left out of the body is stored as cleared. what a value may be is the deployment's rule and
- * is not read here — a refusal comes back keyed by field, and each sentence is drawn under the box
- * it is about.
+ * field left out of the body is stored as cleared, and so is a link left out of the list. what a
+ * value may be is the deployment's rule and is not read here — a refusal comes back keyed by field,
+ * the links under `social_links`, and each sentence is drawn where it is about.
  */
-export const saveOrgProfile = (values: Record<string, string>): Promise<OrgWrite> =>
-	post('/deployment/org', { values });
+export const saveOrgProfile = (
+	values: Record<string, string>,
+	socialLinks: readonly string[]
+): Promise<OrgWrite> => post('/deployment/org', { values, social_links: socialLinks });
+
+/** a photo turned down, in the shape a refusal of the profile comes back in, keyed at the logo. */
+export const logoRefused = (sentence: string): OrgRefused => ({
+	kind: 'refused',
+	message: null,
+	fix: null,
+	errors: { [LOGO_FIELD]: sentence },
+	unread: 0
+});
+
+/**
+ * puts the organisation's logo on: the photo, already resized, posted as multipart under `file` for
+ * the binary to forward unread (`packages/console/internal/deployment/org.go`'s `SaveLogo`).
+ *
+ * the binary turns down a body over the deployment's upload cap (413) and one it could not read
+ * (400) before the deployment hears of it, so neither carries a keyed map; each is answered as a
+ * refusal at the logo in the binary's own sentence, so the fold draws one shape wherever the photo
+ * was turned down.
+ */
+export async function uploadOrgLogo(file: Blob): Promise<OrgWrite> {
+	const body = new FormData();
+	body.set('file', file);
+	const answer = await call('/deployment/org/logo', {
+		method: 'POST',
+		headers: { accept: 'application/json' },
+		body
+	});
+	const read = await parsed(answer);
+	if (answer.status === 413 || answer.status === 400) {
+		return logoRefused(refused(read, answer.status).message);
+	}
+	if (!answer.ok) throw refused(read, answer.status);
+	return read as OrgWrite;
+}
+
+const NO_REPORT_KINDS: ReadonlySet<unknown> = new Set<NoReport['kind']>([
+	'refused',
+	'no-session',
+	'no-surface',
+	'unreachable',
+	'unreadable'
+]);
+
+const isNoReport = (body: unknown): body is NoReport =>
+	typeof body === 'object' &&
+	body !== null &&
+	NO_REPORT_KINDS.has((body as { kind?: unknown }).kind);
+
+/**
+ * the binary's 404 at an `/api` path it routes nowhere (`packages/console/internal/server/server.go`),
+ * told apart by its sentence, which `errands_test.go` pins; the logo's own 404 carries one nothing
+ * pins.
+ */
+const unrouted = (body: unknown): boolean =>
+	typeof body === 'object' &&
+	body !== null &&
+	(body as { error?: unknown }).error === 'no such endpoint';
+
+/**
+ * the stored logo's own bytes, as the deployment serves them, or `null` where the organisation has
+ * none (404) — what a re-crop draws from, so an edge an earlier crop took off stays off — or the
+ * binary's 502: the reading's own {@link NoReport}, which the deployment's state between the page's
+ * reading and the press can produce, so it comes back as the value every org write answers it as.
+ *
+ * `pressed` is the press's request signal: a press the router abandoned asks for nothing more.
+ */
+export async function readOrgLogo(pressed: AbortSignal): Promise<Blob | null | NoReport> {
+	const answer = await call('/deployment/org/logo', { method: 'GET', signal: pressed });
+	if (answer.ok) return answer.blob();
+	const read = await parsed(answer);
+	// `parsed` takes an abandoned body read for a body that is not json.
+	pressed.throwIfAborted();
+	if (answer.status === 404 && !unrouted(read)) return null;
+	if (answer.status === 502 && isNoReport(read)) return read;
+	throw refused(read, answer.status);
+}
+
+/** takes the organisation's logo off. there is one, so the address names it and nothing is sent. */
+export const removeOrgLogo = (): Promise<OrgWrite> => ask('/deployment/org/logo', 'DELETE');
 
 /**
  * asks the deployment to send a test message to the address typed beside the button.
@@ -243,6 +335,12 @@ export const saveOrgProfile = (values: Record<string, string>): Promise<OrgWrite
  */
 export const sendTestEmail = (to: string): Promise<TestSend> =>
 	post('/deployment/test-email', { to });
+
+/**
+ * the model the deployment answers generated text with, and what the account's credits say about
+ * it. the choice is stored through {@link setVars} like every other value; this is its read.
+ */
+export const readAiModel = (): Promise<ModelChoice> => ask('/ai-model', 'GET');
 
 /** what the deployment says about the account it charges on. */
 export const readPayments = (signal?: AbortSignal): Promise<PaymentsRead> =>
@@ -540,3 +638,29 @@ function named(body: unknown, name: string): string {
  */
 export const levelWidget = (sites: readonly string[]): Promise<WidgetLevel> =>
 	post('/widget/level', { sites: [...sites] });
+
+/**
+ * the organisations the IRS nonprofit API lists for what the find box holds: a name, or an EIN, which
+ * is answered as the one organisation it names.
+ *
+ * **every search is one request the API is charged for**, the first time it is made in a run — the
+ * binary remembers the rest (`packages/console/internal/nonprofits`). so the finder asks only at a
+ * press, Search or Enter, never while typing, and only over at least three characters, which the
+ * binary refuses under and this throws. `signal` is the finder's own, so a finder taken off the
+ * page is not waited on.
+ */
+export const searchNonprofits = (query: string, signal?: AbortSignal): Promise<NonprofitSearch> =>
+	ask(`/nonprofits/search?q=${encodeURIComponent(query)}`, 'GET', signal);
+
+/**
+ * one organisation by EIN, `12-3456789` or `123456789`, as the IRS nonprofit API holds it.
+ *
+ * anything else is refused by the binary and thrown here, so the box asks only once it holds a whole
+ * EIN, and once per EIN that changed.
+ */
+export const lookUpNonprofit = (ein: string, signal?: AbortSignal): Promise<NonprofitLookup> =>
+	ask(`/nonprofits/${encodeURIComponent(ein)}`, 'GET', signal);
+
+/** whether this binary can ask the IRS nonprofit API at all, which asks the API nothing. */
+export const nonprofitsStatus = (signal?: AbortSignal): Promise<NonprofitsStatus> =>
+	ask('/nonprofits/status', 'GET', signal);

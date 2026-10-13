@@ -112,10 +112,10 @@ type Reading struct {
 	Values Values `json:"values"`
 	// Sites is the deployment's own site list, which the sites fold seeds its boxes from.
 	Sites []string `json:"sites"`
-	// DonatePage is where this deployment's own donation page answers, which is this deployment's
-	// own address: the donor-facing page is a route on this worker and no second one is deployed
-	// (CLAUDE.md → Product surface). Empty where the deployment answers nowhere this console could
-	// read.
+	// DonatePage is where this deployment's own donation page answers: `/donate` on this
+	// deployment's own address, the organisation's one donation page, a route on this worker with no
+	// second one deployed (CLAUDE.md → Product surface). Empty where the deployment answers nowhere
+	// this console could read.
 	//
 	// It is on no site row and on no form's allowed origins, so it is stated beside that list rather
 	// than in it — the deployment accepts its own origin off the request instead, and nothing an
@@ -280,7 +280,7 @@ func assemble(databases DatabaseList, address Address, values Values, report Rep
 	read.Face = Face{Kind: FaceReady, Address: origin}
 	read.HoldsStripeKey = HoldsStripeSecret(values.Vars)
 	read.Sites = report.Sites
-	read.DonatePage = origin
+	read.DonatePage = origin + "/donate"
 	read.Org = report.Org
 	return read
 }

@@ -22,15 +22,17 @@ type GateNext = Parameters<MiddlewareFunction<Response>>[1];
 /**
  * the gate in front of every screen behind the login, as a route `middleware`.
  *
- * it is mounted on the protected layout — `src/routes/_app.tsx` exports it — and never on the
- * root. middleware on the root runs for every route, the payment processor's callback included,
- * and the signature is computed over that request's body exactly as sent (CLAUDE.md).
+ * it is mounted on the protected layout — `src/routes/_app.tsx` exports it — and on the editor's
+ * preview, the one screen behind the login drawn outside that layout
+ * (`src/routes/preview.$pageId.tsx`); never on the root. middleware on the root runs for every
+ * route, the payment processor's callback included, and the signature is computed over that
+ * request's body exactly as sent (CLAUDE.md).
  *
  * a `middleware` rather than a check each loader repeats, and that is the whole shape of it: a
  * loader written without the check would be served to anyone, and nothing would report it. what
  * decides whether a route is behind this gate is where it sits in the route tree, which
- * `src/routes.spec.ts` holds every route to — every route is under this layout, on the public
- * allow-list with the reason typed beside it, or on the console surface.
+ * `src/routes.spec.ts` holds every route to — every route is under this layout, the preview, on
+ * the public allow-list with the reason typed beside it, or on the console surface.
  *
  * it resolves the session once and hands it down with `context.set(staff, …)`, so no loader
  * beneath resolves one of its own. `src/routes.spec.ts` refuses a route under the layout that
@@ -46,6 +48,10 @@ export async function staffGate(
 	{ context, request, url }: GateArgs,
 	next: GateNext
 ): Promise<Response> {
+	// ahead of the key and session reads: a refused write costs no D1 read, and it is refused
+	// whoever is signed in, because the browser that sends it is the signed-in one.
+	refuseWriteFromAnotherOrigin(request);
+
 	const { env } = context.get(platform);
 	// the request's own handle, seeded above the router (src/request-context.ts) and taken off the
 	// context here like every other surface takes it. built from the binding here instead, this
@@ -110,4 +116,47 @@ export async function staffGate(
 	const response = await next();
 	for (const cookie of headers.getSetCookie()) response.headers.append('set-cookie', cookie);
 	return response;
+}
+
+/**
+ * every write behind the login, and every write to the sign-in routes in front of it
+ * (`src/routes/login.tsx`, `join.tsx`, `reset.tsx` and `forgot.tsx`), comes from a page on this
+ * origin, or it is refused. those four sit outside this gate, so each action calls this itself,
+ * after it has charged the sign-in bucket.
+ *
+ * a write is any method but GET and HEAD, and it is refused when `Sec-Fetch-Site` is present and
+ * is anything but `same-origin`. `same-site` is the case that matters: a deployment on the
+ * organisation's own domain shares a site with the organisation's website, the page the snippet
+ * is pasted into, and the session cookie's `sameSite: 'lax'` (./index.ts) rides along on a POST
+ * from any page on that site.
+ *
+ * a route with a page is already covered there: react-router refuses a document or `.data` action
+ * whose `Origin` host is not the request's host (`throwIfPotentialCSRFAttack`, called from its
+ * server runtime's `handleDocumentRequest` and `singleFetchAction`), and a sibling subdomain is
+ * another host. a resource route is not — react-router runs that check on no endpoint, nor on a
+ * POST with no `Origin` at all. so what this adds is the endpoints beneath the gate, the ones with
+ * an action and no page: `src/routes/_app.admin.sign-out.ts`, `_app.admin.images.ts`,
+ * `_app.admin.pages.$pageId.chat.ts` and `_app.admin.pages.$pageId.suggest.ts`. a script stored in
+ * the website's own CMS could otherwise sign an operator out, upload into their deployment, or
+ * spend its AI on their behalf.
+ *
+ * the browser sets the header and a page's script cannot (it is a forbidden request header,
+ * https://fetch.spec.whatwg.org/#forbidden-request-header), and the check only ever refuses.
+ * nothing here grants a request anything, so it is not an authorization control on `Origin`
+ * (CLAUDE.md → Bans → Boundaries).
+ *
+ * a request with no `Sec-Fetch-Site` goes on to the checks behind this one — an older browser,
+ * or a client that is not a browser at all and so holds no operator's cookie unless it was given
+ * one. against a same-site page in a browser that old, `lax` is the only line and it does not
+ * hold. GET and HEAD pass whatever the header says, because following a link into /admin from
+ * anywhere is a GET.
+ */
+export function refuseWriteFromAnotherOrigin(request: Request): void {
+	if (request.method === 'GET' || request.method === 'HEAD') return;
+	const site = request.headers.get('sec-fetch-site');
+	if (site === null || site === 'same-origin') return;
+	throw new Response(
+		`\`Sec-Fetch-Site: ${site}\` on a ${request.method}: a write to this deployment's sign-in or dashboard is accepted only from a page on its own origin (\`same-origin\`). submit it from the screen on this deployment that owns it.`,
+		{ status: 403 }
+	);
 }

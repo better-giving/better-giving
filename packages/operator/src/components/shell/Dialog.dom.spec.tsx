@@ -5,7 +5,7 @@ import { Dialog } from './Dialog.jsx';
 // the dialog the server sends, with no script having run over it.
 //
 // what is asserted here is the half that does not need a browser: the element is a `dialog` the
-// markup already carries `open`, it is labelled by the heading a reader can see, each of the three
+// markup already carries `open`, it is labelled by the heading a reader can see, each of its
 // controls hands its press to whoever passed it, and the actions row is the pairing and the shapes
 // a destructive confirmation needs of it — one coloured control and it is the destructive one, a
 // way out that can be a link, and a confirm that is a submit belonging to the form the card stands
@@ -136,6 +136,43 @@ describe('the dialog the server renders', () => {
 
 		expect(confirm?.className).toContain('adm-btn--danger');
 		expect(cancel?.className).toBe('adm-btn');
+	});
+
+	it('stands a commit where a destructive control stands, in the primary rank and with no exit', () => {
+		// the arrangement for an act that destroys nothing — Publish, Create. the act first and the
+		// way out beside it, as the danger pair is, and told apart from that pair by its rank alone.
+		const pressed = vi.fn();
+		const root = render(Dialog, {
+			title: 'Publish Winter coat drive?',
+			commit: 'Publish',
+			commitProps: { onClick: pressed },
+			cancel: 'Cancel'
+		});
+		const [press, cancel, ...rest] = [...root.querySelectorAll('.adm-dialog__actions > *')];
+
+		expect(press?.textContent).toBe('Publish');
+		expect(press?.className).toContain('adm-btn--primary');
+		expect(root.querySelector('.adm-btn--danger')).toBeNull();
+		expect(cancel?.textContent).toBe('Cancel');
+		expect(cancel?.className).toBe('adm-btn');
+		expect(rest).toEqual([]);
+
+		(press as HTMLButtonElement).click();
+		expect(pressed).toHaveBeenCalledTimes(1);
+	});
+
+	it('lets the commit be a submit inside the form the card stands in', () => {
+		const root = render(Dialog, {
+			title: 'New campaign',
+			commit: 'Create',
+			commitProps: { type: 'submit' as const, name: 'intent', value: 'create' },
+			cancel: 'Cancel'
+		});
+		const commit = root.querySelector('.adm-dialog__actions button');
+
+		expect(commit?.textContent).toBe('Create');
+		expect(commit?.getAttribute('type')).toBe('submit');
+		expect(commit?.getAttribute('value')).toBe('create');
 	});
 
 	it('lets the way out be a link, which is what leaving a card opened by an address is', () => {

@@ -1,8 +1,7 @@
-import type { OrgProfileField } from '@better-giving/operator/console/org';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 import { CONNECT_ELSEWHERE, WhyNot } from './deployment-states';
-import { ORG_FIELDS, boxFold } from './org-fields';
+import { boxFold, refusalLabel } from './org-fields';
 import { listed } from './org-form';
 import type { OrgWrite } from '../api/types';
 
@@ -21,11 +20,14 @@ import type { OrgWrite } from '../api/types';
 // whichever one draws the box that was named (`boxFold` in ./org-fields.ts), which is a reading no
 // caller is in a position to make and none is asked to.
 
-/** the fields one fold draws a box for, which is what decides where a refusal landed. */
 export type OrgWriteOutcomeProps = {
 	/** how the last press in this fold went, or `null` where none has been made. */
 	write: OrgWrite | null;
-	drawn: readonly OrgProfileField[];
+	/**
+	 * every key a refusal may carry that this fold draws — a box, the links, the logo — which is
+	 * what decides where a refusal landed.
+	 */
+	drawn: readonly string[];
 };
 
 export function OrgWriteOutcome({ write, drawn }: OrgWriteOutcomeProps): ReactNode {
@@ -34,7 +36,7 @@ export function OrgWriteOutcome({ write, drawn }: OrgWriteOutcomeProps): ReactNo
 		return <WhyNot answer={write.read} what="nothing was saved" where={CONNECT_ELSEWHERE} />;
 	}
 
-	const keys = Object.keys(write.errors) as OrgProfileField[];
+	const keys = Object.keys(write.errors);
 	const marked = keys.filter((field) => drawn.includes(field)).length;
 	// a box the console draws and this fold does not: the profile is one row, so a press made here
 	// is refused by the other fold's blanks too. counted separately from `unread`, which is a key
@@ -52,9 +54,9 @@ export function OrgWriteOutcome({ write, drawn }: OrgWriteOutcomeProps): ReactNo
 				// the way out, and it names rows rather than describing them: the profile is stored whole,
 				// so this press cannot land while a box on another row is the one being turned down.
 				<p className="adm-prose">
-					Refused under {listed(rows)}: {listed(away.map((field) => ORG_FIELDS[field].label))}. The
-					profile is stored whole, so open {rows.length === 1 ? 'that fold' : 'those folds'} and
-					save from there first.
+					Refused under {listed(rows)}: {listed(away.map(refusalLabel))}. The profile is stored
+					whole, so open {rows.length === 1 ? 'that fold' : 'those folds'} and save from there
+					first.
 				</p>
 			) : null}
 			{marked === 0 && away.length === 0 && write.message !== null ? (

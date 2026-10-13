@@ -62,6 +62,7 @@ pnpm run deploy:vars      # one deploy, carrying every line of the file as a var
 - Anyone who can open this Cloudflare account can read every one of them, and that is the trade: the console shows you a stored processor key and a stored SMTP password rather than four dots, because it already runs on your Cloudflare session. Treat account access as credential access.
 - `.deploy.vars` is not `.dev.vars`, which feeds `pnpm dev` and is never uploaded.
 - `CONSOLE_TOKEN` sits on the same Worker and is not one of these values: a Worker secret holding the console's session, minted when a console connects, twelve hours, replaced by the next connect. `pnpm run secret:list` names it, and `pnpm run secret:delete CONSOLE_TOKEN` closes the console surface until a console connects again.
+- `AI_MODEL` picks the model that writes the dashboard's generated text, and the console's model setting writes it. Left unset it is the default Workers AI model. Claude and GPT are billed to this Cloudflare account's credits, with no provider key to store, and when a call to one fails the default model answers in its place (`packages/app/src/lib/server/ai/generate.ts` says why).
 - `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are escape hatches, not setup steps: the first revokes every session, the second pins a canonical origin (read the caveat in `.dev.vars.example` first). `SMTP_PORT` is a third configuration value usually left unset; the app refuses every port but 465.
 
 ## 2. The console jobs
@@ -78,7 +79,7 @@ pnpm console              # http://localhost:5322
 
 **PayPal's charity rate**: PayPal reports on no call which rate an account is on, so the console's **PayPal** page asks. Answer yes only if PayPal has approved this organisation for that rate. Ticked wrongly, a donor covering fees is quoted less than the gift costs and the org nets less than the donor gave; left unticked on an approved account, the surplus reaches the org. Untick it and the answer goes back to unset.
 
-**Chariot**: gifts from a donor-advised fund, one-time only. Chariot issues keys by email: sandbox keys from support@givechariot.com, and live keys after Chariot reviews a test form's address and a recording of a gift made on it. The console's **Chariot** page stores all four values in one press, and finds the organisation at Chariot by the EIN on the **Organisation** page, so fill that in first. A rehearsal deployment holding sandbox keys takes the sandbox address, `https://sandboxapi.givechariot.com`. **Without the notification address the press registers, a grant never reads received**, so the same press is the repair. A gift reads pending until the fund pays: the organisation matches the arriving payment by the tracking id `/admin` Gifts shows beside it and marks the grant received in Chariot's dashboard, and only then does it reach the books, with Chariot's fee. The donor gets an email when the grant request is sent and a thank-you when it is received; neither is a tax receipt, because the fund's sponsor receipted the donor's contribution to the fund. A grant cancelled before it was received reads cancelled and emails nobody. One cancelled after it was marked received, through Chariot's support, reads Refunded: the whole gift comes out of the donor's total and the books as any refund does ([Refunds and disputes](#refunds-and-disputes)), and the donor, thanked at receipt, is sent the refund notice. A grant received and cancelled before this deployment recorded the receipt is booked and refunded in one delivery, and nobody is emailed.
+**Chariot**: gifts from a donor-advised fund, one-time only. Chariot issues keys by email: sandbox keys from support@givechariot.com, and live keys after Chariot reviews a test form's address and a recording of a gift made on it. The console's **Chariot** page stores all four values in one press, and finds the organisation at Chariot by the EIN on the **Organisation details** page, so fill that in first. A rehearsal deployment holding sandbox keys takes the sandbox address, `https://sandboxapi.givechariot.com`. **Without the notification address the press registers, a grant never reads received**, so the same press is the repair. A gift reads pending until the fund pays: the organisation matches the arriving payment by the tracking id `/admin` Gifts shows beside it and marks the grant received in Chariot's dashboard, and only then does it reach the books, with Chariot's fee. The donor gets an email when the grant request is sent and a thank-you when it is received; neither is a tax receipt, because the fund's sponsor receipted the donor's contribution to the fund. A grant cancelled before it was received reads cancelled and emails nobody. One cancelled after it was marked received, through Chariot's support, reads Refunded: the whole gift comes out of the donor's total and the books as any refund does ([Refunds and disputes](#refunds-and-disputes)), and the donor, thanked at receipt, is sent the refund notice. A grant received and cancelled before this deployment recorded the receipt is booked and refunded in one delivery, and nobody is emailed.
 
 **NOWPayments**: one-time crypto gifts. The console's **NOWPayments** page stores the API key, the IPN secret and the payout currency in one press, and checks the key and the currency with NOWPayments before it writes. The payout currency is the lowercase code of the outcome wallet set in NOWPayments' dashboard, such as `usdttrc20`; a gift's minimum is priced against it, so a code that disagrees with the wallet quotes minimums for the wrong coin. A gift is valued at what arrived, not at what was quoted. NOWPayments has no sandbox this deployment reaches: the key is the live account's, and rehearsing is [a second deployment](#a-rehearsal-deployment).
 
@@ -110,9 +111,11 @@ Sign in at `/` as `admin` with `ADMIN_PASSWORD`. Forms and their paste-ready sni
 - A CSP on the target site needs the directives [`README.md`](./README.md) lists. The failure happens in the donor's browser; this deployment never sees it.
 - **Check which deployment a snippet came from before pasting it anywhere real**: it points at the address you read it at. See [A rehearsal deployment](#a-rehearsal-deployment).
 
-## Your organisation's legal identity
+## Your organisation's profile
 
-The console's **Organisation** page: registered name, EIN, address, all rows on your deployment rather than Cloudflare values. **Registered name and EIN gate every form.** US 501(c)(3) only: the EIN is checked to the digit, stored `12-3456789`; another jurisdiction forks and changes the rule.
+The console's **Organisation details** page: registered name, EIN, address, mission, vision, brand colour, social links and logo, all rows on your deployment rather than Cloudflare values. **Registered name and EIN gate every form.** US 501(c)(3) only: the EIN is checked to the digit, stored `12-3456789`; another jurisdiction forks and changes the rule.
+
+On a deployment that ran migration `0026`, the mission, vision, logo and colour set on the dashboard's old organisation page were not carried over: enter them again on this page. Migration `0027` repairs donation pages and campaigns saved under the old look settings.
 
 Every form prints the standard receipt sentence, *"No goods or services were provided in exchange for this gift."* Gifts carrying a benefit (a gala ticket, member perks) make it wrong: edit `SUGGESTED_DEDUCTIBILITY_STATEMENT` in `packages/operator/src/deductibility.ts` and deploy, or write `org_profile.deductibility_statement` directly, where a non-empty value wins. Your organisation makes the claim; a tax professional reviews it.
 
@@ -215,13 +218,23 @@ Or **Workers & Pages → your Worker → Settings → Domains & Routes**. Consid
 
 ## Backups
 
-D1 keeps a point-in-time restore window (Time Travel): 30 days paid, 7 free. The one backup that survives your Cloudflare account:
+D1 keeps a point-in-time restore window (Time Travel): 30 days. The one backup that survives your Cloudflare account is two halves, the books and the photos:
 
 ```sh
-pnpm run db:export --output ./backup.sql
+pnpm run db:export --output ./backup.sql          # the books: every table, photos' bytes left out
+pnpm run db:export:photos --output ./photos       # one file per photo, named by its id
 ```
 
-Take one before an upgrade with migrations. A bookkeeping mistake is corrected by a compensating entry, never a rollback: the restore window repairs a damaged schema, not a wrong figure.
+The photos are kept apart because a backup holding them as SQL could not be restored (`packages/app/scripts/db-export.js` says why). Both paths are relative to `packages/app`.
+
+Restore into an empty database, books first: a photo is stored only under an image the books already hold. Don't apply migrations to it first: the books carry the schema and the record of which migrations ran.
+
+```sh
+pnpm wrangler d1 execute better-giving --remote --file ./backup.sql
+pnpm run db:restore:photos --input ./photos      # safe to re-run; names any photo it refused
+```
+
+Take both before an upgrade with migrations. A bookkeeping mistake is corrected by a compensating entry, never a rollback: the restore window repairs a damaged schema, not a wrong figure.
 
 ## A rehearsal deployment
 

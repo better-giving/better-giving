@@ -95,6 +95,50 @@ func TestAWriteDeclaresJsonAndCarriesIt(t *testing.T) {
 	}
 }
 
+// a body somebody else encoded goes up as the bytes it is, under the type it came with: what a
+// multipart body's own boundary names is in its content type, so a re-spelling of either breaks it.
+func TestAForwardingCallSendsAnEncodedBodyAsItIsUnderItsOwnType(t *testing.T) {
+	server, held := recording(t, 200, `{}`)
+	send := ForwardingSendWithin(server.URL, map[string]string{}, ReadTimeout)
+	raw := "--b\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\n\x89PNG\r\n--b--\r\n"
+
+	send(context.Background(), "POST", "/console/org/logo", Encoded{
+		Type: "multipart/form-data; boundary=b", Bytes: []byte(raw),
+	})
+
+	if held.contentType != "multipart/form-data; boundary=b" {
+		t.Errorf("Content-Type = %q, want the type the body came with", held.contentType)
+	}
+	if held.body != raw {
+		t.Errorf("body = %q, want the bytes handed over", held.body)
+	}
+}
+
+// every other body a forwarding call carries is json, the way a json call's is.
+func TestAForwardingCallSendsAnyOtherBodyAsJson(t *testing.T) {
+	server, held := recording(t, 200, `{}`)
+	send := ForwardingSendWithin(server.URL, map[string]string{}, ReadTimeout)
+
+	send(context.Background(), "POST", "/console/org", map[string]string{"name": "better-giving"})
+
+	if held.contentType != "application/json" || held.body != `{"name":"better-giving"}` {
+		t.Errorf("sent %q under %q, want the json the caller handed over", held.body, held.contentType)
+	}
+}
+
+// a json call is json whatever it is handed: an Encoded body is marshalled like any other value,
+// never sent as its bytes.
+func TestAJsonCallMarshalsAnEncodedBodyRatherThanForwardingIt(t *testing.T) {
+	server, held := recording(t, 200, `{}`)
+	send := JSONSend(server.URL, map[string]string{})
+
+	send(context.Background(), "POST", "/x", Encoded{Type: "text/plain", Bytes: []byte("hi")})
+
+	if held.contentType != "application/json" || held.body != `{"Type":"text/plain","Bytes":"aGk="}` {
+		t.Errorf("sent %q under %q, want the value marshalled as json", held.body, held.contentType)
+	}
+}
+
 func TestABoundContentTypeWinsOverTheJsonDefault(t *testing.T) {
 	// the merge patch is the one binding that names the header, and it has to survive a call that
 	// carries a body — which is the only call that sets one of its own.

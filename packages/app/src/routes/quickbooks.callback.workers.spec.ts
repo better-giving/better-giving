@@ -34,7 +34,7 @@ import type { Route } from './+types/quickbooks.callback';
 //
 // the loader is run through react router's own matcher rather than called, so a refusal's status
 // and the `set-cookie` it carries are read off the context the framework builds — the same reason
-// ./$formId.workers.spec.ts gives.
+// ./login.workers.spec.ts gives.
 
 const OWN = 'https://give.example.workers.dev';
 /** the second hostname the same deployment answers on, and the one an operator pinned it to. */

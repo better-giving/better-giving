@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
 	amountRule,
+	groupAmountEntry,
 	majorEntry,
 	majorText,
 	MAX_SUGGESTED_AMOUNTS,
 	readAmount,
+	readPlainAmount,
 	readSuggestedAmounts,
-	suggestedEntries
+	suggestedEntries,
+	ungroupAmountEdit,
+	ungroupAmountEntry
 } from './amounts';
 
 // node pool, no database: every rule here is decidable from one typed string and a currency code.
@@ -64,14 +68,51 @@ describe('readAmount', () => {
 		expect(refusal('0.001')).toContain('must not be finer than $0.01');
 	});
 
-	it('refuses anything that is not a plain figure, naming it', () => {
-		// no sign, no exponent, no thousands separator and no currency symbol: the suggested amounts
-		// are one box per amount, so a comma inside a box is a thousands separator or a second
-		// figure, and both are a box nobody can store.
-		for (const text of ['', ' ', 'lots', '-5', '+5', '1e6', '25,00', '1,000', '$25', '25.', '.5']) {
+	it('refuses anything that is not a figure', () => {
+		// no sign, no exponent and no currency symbol, and a comma only where a screen would draw one.
+		for (const text of ['', ' ', 'lots', '-5', '+5', '1e6', '25,00', '$25', '25.', '.5']) {
 			expect(refusal(text)).toBeTypeOf('string');
 		}
 		expect(refusal('lots')).toBe('must be an amount, write 25.00 for $25.00');
+	});
+
+	it('reads digits grouped in threes, the way a money box draws them', () => {
+		// the box draws `100000` as `100,000`, so the text a box holds is grouped, and a post that
+		// carries it as drawn is the same figure.
+		expect(minor('1,000')).toBe(100_000);
+		expect(minor('1,000.50')).toBe(100_050);
+		expect(minor('1,234,567')).toBe(123_456_700);
+	});
+
+	it('refuses a comma anywhere a screen would not draw one, saying where', () => {
+		// taking the comma out would read `25,50` — a decimal-comma habit — as 2550, a hundred times
+		// the gift meant. the sentence names the group it went wrong at, which the box does not mark.
+		const rule = 'write 25.00 for $25.00';
+		expect(refusal('25,50')).toBe(
+			`must have 3 digits after each comma, and \`,50\` has 2, ${rule}`
+		);
+		expect(refusal('1,00,0')).toBe(
+			`must have 3 digits after each comma, and \`,00\` has 2, ${rule}`
+		);
+		expect(refusal('1,0000')).toBe(
+			`must have 3 digits after each comma, and \`,0000\` has 4, ${rule}`
+		);
+		expect(refusal('100,')).toBe(
+			`must have 3 digits after each comma, and \`,\` has none, ${rule}`
+		);
+		expect(refusal(',100')).toBe(`must have a digit before the first comma, ${rule}`);
+		expect(refusal('1000,000')).toBe(
+			`must have at most 3 digits before the first comma, and \`1000,\` has 4, ${rule}`
+		);
+		expect(refusal('1.000,5')).toBe(`must have no comma after the point, ${rule}`);
+	});
+
+	it("reads a processor's plain figure and refuses any grouping in it", () => {
+		// a payment path reads what a processor sent, which is never grouped.
+		expect(readPlainAmount('1000.50', 'USD').minor).toBe(100_050);
+		expect(readPlainAmount('1,000', 'USD').problem).toBe(
+			'must be an amount, write 25.00 for $25.00'
+		);
 	});
 
 	it('refuses a paste too long to be a number this app can hold', () => {
@@ -205,11 +246,15 @@ describe('readSuggestedAmounts', () => {
 		expect(stored(['100', '25.00', '50'])).toEqual([10000, 2500, 5000]);
 	});
 
-	it('takes a box holding a comma as one amount and refuses it', () => {
-		// one box per amount is the whole shape of this field: a comma inside a box is a
-		// thousands separator or a second figure, and both are a box nobody can store.
-		expect(perRow(['1,000'])).toEqual([
-			{ row: 0, problem: 'must be an amount, write 25.00 for $25.00' }
+	it('takes a box holding a comma as one amount, grouped or refused', () => {
+		// one box per amount is the whole shape of this field: a comma inside a box is the box's own
+		// grouping or a second figure, and the second is a box nobody can store.
+		expect(stored(['1,000'])).toEqual([100_000]);
+		expect(perRow(['25,50'])).toEqual([
+			{
+				row: 0,
+				problem: 'must have 3 digits after each comma, and `,50` has 2, write 25.00 for $25.00'
+			}
 		]);
 	});
 
@@ -327,5 +372,54 @@ describe('amountRule', () => {
 		// `25.00 for ¥25` would teach a shape the box refuses, and this is the branch that keeps the
 		// exponent `Intl`'s rather than a constant.
 		expect(amountRule('JPY')).toBe('write 25 for ¥25');
+	});
+});
+
+describe('an amount box grouped as typed', () => {
+	it('groups the whole part and leaves the point and what follows it alone', () => {
+		expect(groupAmountEntry('100000', 'USD')).toBe('100,000');
+		expect(groupAmountEntry('1234567.5', 'USD')).toBe('1,234,567.5');
+		expect(groupAmountEntry('1000.', 'USD')).toBe('1,000.');
+		expect(groupAmountEntry('999', 'USD')).toBe('999');
+		expect(groupAmountEntry('2500000', 'JPY')).toBe('2,500,000');
+	});
+
+	it('draws text that is not a figure as typed', () => {
+		expect(groupAmountEntry('about 5000', 'USD')).toBe('about 5000');
+		expect(groupAmountEntry('$5000', 'USD')).toBe('$5000');
+		expect(groupAmountEntry('', 'USD')).toBe('');
+	});
+
+	it('takes the separators out of a figure, for the parse to read what was typed', () => {
+		const typed = ungroupAmountEntry('1,234,567.50', 'USD');
+		expect(typed).toBe('1234567.50');
+		expect(minor(typed)).toBe(123_456_750);
+	});
+
+	it('hands on a comma a screen would not draw as typed, for the parse to refuse', () => {
+		expect(ungroupAmountEntry('12,34', 'USD')).toBe('12,34');
+		expect(ungroupAmountEntry('1,00,0', 'USD')).toBe('1,00,0');
+		expect(ungroupAmountEntry('1,000.', 'USD')).toBe('1000.');
+	});
+
+	it("takes the box's own separators out of a keystroke that moved them", () => {
+		// a digit typed into or deleted from `1,000` leaves the box's separators where the figure no
+		// longer groups, and they were the box's to move rather than the operator's to have typed.
+		expect(ungroupAmountEdit('1,000', '1,0000', 'USD')).toBe('10000');
+		expect(ungroupAmountEdit('1,000', '1,5000', 'USD')).toBe('15000');
+		expect(ungroupAmountEdit('1,000', '1,00', 'USD')).toBe('100');
+		expect(ungroupAmountEdit('', '1,000', 'USD')).toBe('1000');
+	});
+
+	it('keeps a comma the operator typed or pasted, for the parse to refuse', () => {
+		expect(ungroupAmountEdit('25', '25,', 'USD')).toBe('25,');
+		expect(ungroupAmountEdit('25,', '25,5', 'USD')).toBe('25,5');
+		expect(ungroupAmountEdit('1,000', '25,50', 'USD')).toBe('25,50');
+		expect(ungroupAmountEdit('1,000', '1,,000', 'USD')).toBe('1,,000');
+	});
+
+	it('hands on text that is not a figure as typed, for the parse to refuse', () => {
+		expect(ungroupAmountEntry('about 5,000', 'USD')).toBe('about 5,000');
+		expect(refusal(ungroupAmountEntry('5,000,x', 'USD'))).toContain('must be an amount');
 	});
 });

@@ -1,3 +1,4 @@
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { adminAlert, type EmailTemplate } from '@better-giving/emails';
 import { renderEmail } from '@better-giving/emails/render';
 import type { Db } from '../db/client';
@@ -37,8 +38,7 @@ export async function alert(deps: MailDeps, input: adminAlert.AdminAlertData): P
 }
 
 /** an alert's action where only the organisation's saved details fix what went wrong. */
-export const FILL_IN_ORG_DETAILS =
-	'Open the console (run `better-giving start`), go to Organisation and fill in what’s missing.';
+export const FILL_IN_ORG_DETAILS = `Open the console (run \`better-giving start\`), go to ${IDENTITY_FOLD} and fill in what’s missing.`;
 
 /** an alert's action where an email did not send. */
 export const TEST_THE_SMTP_SETTINGS =

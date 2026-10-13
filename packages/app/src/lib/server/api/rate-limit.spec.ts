@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	apiRateLimitKey,
+	donorPageRateLimitKey,
+	imageRateLimitKey,
 	integrationsCallerRateLimitKey,
 	integrationsKeyRateLimitKey,
 	isRateLimited,
@@ -313,7 +315,17 @@ describe('what the tighter buckets count against', () => {
 		['a quote submission', quoteRateLimitKey]
 	] as const;
 
-	it.each(TIGHT)('keys %s on the block one payer holds, not on one address', (_what, key) => {
+	/**
+	 * the keys built on the attributed caller: the tight two, and the two view keys on the `/64`.
+	 * the read API's caller key is one too, and its cases are its own block below.
+	 */
+	const ATTRIBUTED = [
+		...TIGHT,
+		['a photo view', imageRateLimitKey],
+		['a donor page view', donorPageRateLimitKey]
+	] as const;
+
+	it.each(ATTRIBUTED)('keys %s on the block one payer holds, not on one address', (_what, key) => {
 		expect(key(from('2001:db8:1:2::1'))).toBe(key(from('2001:db8:1:2:aaaa:bbbb:cccc:dddd')));
 		expect(key(from('::ffff:203.0.113.7'))).toBe(key(from('203.0.113.7')));
 		expect(key(from('203.0.113.7'))).not.toBe(key(from('198.51.100.4')));
@@ -348,14 +360,16 @@ describe('what the tighter buckets count against', () => {
 	});
 
 	/**
-	 * the `/48` is these two buckets' width and no other's. the surface and read-api caller buckets
-	 * bound reads rather than guesses or charges, so what a `/48` of `/64`s buys there is reads,
-	 * while keying them wider would put a whole network's donors in one bucket.
+	 * the `/48` is these two buckets' width and no other's. the surface, read-api caller, photo and
+	 * donor page buckets bound reads rather than guesses or charges, so what a `/48` of `/64`s buys
+	 * there is reads, while keying them wider would put a whole network's donors in one bucket.
 	 */
-	it('leaves the surface and read-api caller buckets on the /64', () => {
+	it('leaves the surface, read-api caller and view buckets on the /64', () => {
 		const asked = from('2001:db8:1:2::1');
 		expect(apiRateLimitKey(asked)).toBe('/api/v1 2001:db8:1:2::/64');
 		expect(integrationsCallerRateLimitKey(asked)).toBe('/integrations/v1 2001:db8:1:2::/64');
+		expect(imageRateLimitKey(asked)).toBe('image 2001:db8:1:2::/64');
+		expect(donorPageRateLimitKey(asked)).toBe('donor-page 2001:db8:1:2::/64');
 		expect(signInRateLimitKey(asked)).toBe('sign-in 2001:db8:1::/48');
 	});
 
@@ -370,7 +384,7 @@ describe('what the tighter buckets count against', () => {
 	 * an operator who switches that transform on gets what this deployment did before these two
 	 * buckets existed rather than a dark donation form.
 	 */
-	it.each(TIGHT)('mints no bucket for %s it cannot attribute to a payer', (_what, key) => {
+	it.each(ATTRIBUTED)('mints no bucket for %s it cannot attribute to a payer', (_what, key) => {
 		expect(key(new Request('https://give.example.workers.dev/'))).toBeNull();
 		expect(key(from('not-an-ip'))).toBeNull();
 		expect(key(from(''))).toBeNull();
@@ -388,6 +402,24 @@ describe('what the tighter buckets count against', () => {
 		expect(
 			new Set([apiRateLimitKey(asked), signInRateLimitKey(asked), quoteRateLimitKey(asked)]).size
 		).toBe(3);
+	});
+
+	/**
+	 * the surface binding counts five things, and a prefix each is what keeps one from spending
+	 * another's allowance: a donor page's photos cannot refuse the donation box its config, nor a
+	 * keyless Zapier loop or an integration's caller a donor's view of the page.
+	 */
+	it('keys every surface the surface binding counts apart', () => {
+		const asked = from('203.0.113.7');
+		expect(
+			new Set([
+				apiRateLimitKey(asked),
+				zapierRateLimitKey(asked),
+				integrationsCallerRateLimitKey(asked),
+				imageRateLimitKey(asked),
+				donorPageRateLimitKey(asked)
+			]).size
+		).toBe(5);
 	});
 
 	/**

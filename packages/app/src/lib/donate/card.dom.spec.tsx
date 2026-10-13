@@ -15,12 +15,12 @@ import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/tur
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
 import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
-import { act, createRef, StrictMode, Suspense } from 'react';
+import { act, createRef, type ReactElement, StrictMode, Suspense } from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { DonateAnnouncerProps } from './announce';
-import { DonateCard } from './card';
+import { DonateCard, type DonateCardProps } from './card';
 import { Choice, type ChoiceProps } from './choice';
 import * as copy from './copy';
 import { createReactPropTypes } from './normalize';
@@ -230,6 +230,19 @@ const CHALLENGE: ChallengeSeam = {
 	delay: () => () => {}
 };
 
+/** every provider's seam, the payment one answered by `payment`. */
+function seamsOver(payment: ReturnType<typeof paymentProvider>): DonateCardProps['seams'] {
+	const paypal = paypalProvider();
+	return {
+		payment: {
+			stripe: { load: payment.load, delay: () => () => {} },
+			paypal: { load: paypal.load, delay: () => () => {} },
+			chariot: { load: async () => true, delay: () => () => {} }
+		},
+		challenge: CHALLENGE
+	};
+}
+
 /** the challenge widget minting a token, which it does on its own schedule rather than a donor's. */
 function token(value: string): void {
 	act(() => {
@@ -247,35 +260,40 @@ function token(value: string): void {
 async function card(
 	config: FormConfig = CONFIG,
 	answers: Answers = {},
-	{
-		strict = false,
-		boundary = false
-	}: { readonly strict?: boolean; readonly boundary?: boolean } = {}
+	page: {
+		readonly pageProgram?: string | null;
+		readonly onProgramChange?: (programId: string | null, locked: boolean) => void;
+		readonly opening?: DonateCardProps['opening'];
+		/**
+		 * react-router's default client entry hydrates under `<StrictMode>`, which runs every effect
+		 * twice on a development mount.
+		 */
+		readonly strict?: boolean;
+		/** a boundary to suspend into, for the spec that has react discard a render (`regionHeld`). */
+		readonly boundary?: boolean;
+	} = {}
 ) {
 	const payment = paymentProvider(answers);
-	const paypal = paypalProvider();
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
-	const drawn = (
-		<DonateCard
-			config={config}
-			seams={{
-				payment: {
-					stripe: { load: payment.load, delay: () => () => {} },
-					paypal: { load: paypal.load, delay: () => () => {} },
-					chariot: { load: async () => true, delay: () => () => {} }
-				},
-				challenge: CHALLENGE
-			}}
-		/>
-	);
-	// a boundary to suspend into, for the spec that has react discard a render (`regionHeld`).
-	const bounded = boundary ? <Suspense fallback={null}>{drawn}</Suspense> : drawn;
+	// built once: a new seams object is a new checkout, and a re-render here is the page's pick moving.
+	const seams = seamsOver(payment);
+	const draw = (pageProgram: string | null | undefined): void => {
+		const drawn = (
+			<DonateCard
+				config={config}
+				seams={seams}
+				{...(pageProgram === undefined ? {} : { pageProgram })}
+				{...(page.onProgramChange === undefined ? {} : { onProgramChange: page.onProgramChange })}
+				{...(page.opening === undefined ? {} : { opening: page.opening })}
+			/>
+		);
+		const bounded = page.boundary === true ? <Suspense fallback={null}>{drawn}</Suspense> : drawn;
+		mounted.render(page.strict === true ? <StrictMode>{bounded}</StrictMode> : bounded);
+	};
 	act(() => {
-		// react-router's default client entry hydrates under `<StrictMode>`, which runs every effect
-		// twice on a development mount.
-		mounted.render(strict ? <StrictMode>{bounded}</StrictMode> : bounded);
+		draw(page.pageProgram);
 	});
 	onTestFinished(() => {
 		act(() => {
@@ -286,7 +304,16 @@ async function card(
 	await act(async () => {
 		for (let at = 0; at < 4; at += 1) await Promise.resolve();
 	});
-	return { root: host, payment };
+	return {
+		root: host,
+		payment,
+		/** the page's program chooser moving to another pick, with the card still mounted. */
+		pagePicks: (pageProgram: string | null): void => {
+			act(() => {
+				draw(pageProgram);
+			});
+		}
+	};
 }
 
 function one(root: HTMLElement, selector: string): HTMLElement {
@@ -431,6 +458,139 @@ it('carries the cause a donor chose onto the review step', async () => {
 
 	walkToGive(root);
 	expect(one(root, '.row.program .program-name').textContent).toBe('Schools');
+});
+
+describe('a program the page picks', () => {
+	/** the quote requests the card posts, each read back as the body it sent; none is answered. */
+	function sent(): Record<string, unknown>[] {
+		const bodies: Record<string, unknown>[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((_url: string, init?: RequestInit) => {
+				bodies.push(JSON.parse(String(init?.body)));
+				return new Promise<Response>(() => {});
+			})
+		);
+		return bodies;
+	}
+
+	function donate(root: HTMLElement, payment: { pick(type: string): void }): void {
+		payment.pick('card');
+		press(one(root, 'button[part~="submit"]'));
+	}
+
+	const programRow = (root: HTMLElement) =>
+		one(root, '.row.program .program-name').textContent ?? '';
+
+	it('draws no program select of its own where the page picks, and its own one elsewhere', async () => {
+		const picked = await card(CONFIG, {}, { pageProgram: null });
+		expect(picked.root.querySelector('#program')).toBeNull();
+
+		const own = await card();
+		expect(own.root.querySelector('#program')).not.toBeNull();
+	});
+
+	it('sends the program the page picked with the gift', async () => {
+		const bodies = sent();
+		const { root, payment } = await card(CONFIG, {}, { pageProgram: 'p2' });
+		walkToGive(root);
+		expect(programRow(root)).toBe('Schools');
+
+		donate(root, payment);
+		expect(bodies).toHaveLength(1);
+		expect(bodies[0]).toMatchObject({ programId: 'p2' });
+	});
+
+	it('follows the page to another pick on the review step, keeping what the donor gave', async () => {
+		const bodies = sent();
+		const { root, payment, pagePicks } = await card(CONFIG, {}, { pageProgram: 'p1' });
+		walkToGive(root);
+		expect(programRow(root)).toBe('Clean water');
+
+		pagePicks('p2');
+		// the same card, on the same step: a remount would have put the donor back on step one.
+		expect(screen(root).className).toContain('step-give');
+		expect(programRow(root)).toBe('Schools');
+
+		donate(root, payment);
+		expect(bodies[0]).toMatchObject({ programId: 'p2', email: 'donor@example.org' });
+	});
+
+	it('sends no program once the page is back on where it is needed most', async () => {
+		const bodies = sent();
+		const { root, payment, pagePicks } = await card(CONFIG, {}, { pageProgram: 'p1' });
+		pagePicks(null);
+		walkToGive(root);
+		expect(programRow(root)).toBe('Where it’s needed most');
+
+		donate(root, payment);
+		expect(bodies[0]).not.toHaveProperty('programId');
+	});
+
+	it('keeps its own select where the page names a program the served form does not offer', async () => {
+		// the page is showing a cause the gift cannot be credited to, so the card asks for itself
+		// rather than recording the gift somewhere the page does not say.
+		const bodies = sent();
+		const { root, payment } = await card(CONFIG, {}, { pageProgram: 'p-retired' });
+		expect(root.querySelector('#program')).not.toBeNull();
+
+		await choose(root, 'program', 'Schools');
+		walkToGive(root);
+		expect(programRow(root)).toBe('Schools');
+		donate(root, payment);
+		expect(bodies[0]).toMatchObject({ programId: 'p2' });
+	});
+
+	it('reports the program the flow holds, and that it takes no pick once Donate is pressed', async () => {
+		sent();
+		const reports: [string | null, boolean][] = [];
+		const { root, payment, pagePicks } = await card(
+			CONFIG,
+			{},
+			{ pageProgram: null, onProgramChange: (id, locked) => reports.push([id, locked]) }
+		);
+		expect(reports.at(-1)).toEqual([null, false]);
+
+		pagePicks('p2');
+		expect(reports.at(-1)).toEqual(['p2', false]);
+
+		walkToGive(root);
+		donate(root, payment);
+		expect(reports.at(-1)).toEqual(['p2', true]);
+	});
+
+	it('sends a pick the page made while a press was in flight with the gift a retry sends', async () => {
+		const bodies: Record<string, unknown>[] = [];
+		const answers: ((response: Promise<Response>) => void)[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((_url: string, init?: RequestInit) => {
+				bodies.push(JSON.parse(String(init?.body)));
+				return new Promise<Response>((resolve) => {
+					answers.push((response) => resolve(response));
+				});
+			})
+		);
+		const { root, payment, pagePicks } = await card(CONFIG, {}, { pageProgram: 'p1' });
+		walkToGive(root);
+		donate(root, payment);
+		expect(bodies[0]).toMatchObject({ programId: 'p1' });
+
+		pagePicks('p2');
+		await act(async () => {
+			answers[0]?.(Promise.reject(new Error('the connection dropped')));
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+		expect(screen(root).className).toContain('takeover');
+
+		press(one(screen(root), ':scope > button[part~="action"]'));
+		expect(screen(root).className).toContain('step-give');
+		expect(programRow(root)).toBe('Schools');
+
+		press(one(root, 'button[part~="submit"]'));
+		expect(bodies).toHaveLength(2);
+		expect(bodies[1]).toMatchObject({ programId: 'p2' });
+	});
 });
 
 it('holds the dedication a donor chose, on the box and on its row', async () => {
@@ -825,6 +985,114 @@ it('carries the cadence a donor picked onto the receipt', async () => {
 	expect(one(root, '.receipt-note').textContent).toBe(
 		`Then ${one(root, 'output.figure').textContent} monthly until you cancel.`
 	);
+});
+
+describe('a page’s opening', () => {
+	const MONTHLY_TOO: FormConfig = { ...CONFIG, frequencies: ['one_time', 'monthly'] };
+	const ONE_TIME_ONLY: FormConfig = { ...CONFIG, frequencies: ['one_time'] };
+	const TICK = '.disclosure.tribute input[type="checkbox"]';
+
+	/** what the card starts on: the screen, the cadence, and whether the dedication is open. */
+	function start(root: HTMLElement) {
+		return {
+			screen: every(root, 'section.step').findIndex((section) => !section.hidden),
+			cadence: [...root.querySelectorAll('.segment input[type="radio"]')]
+				.filter((box) => box instanceof HTMLInputElement && box.checked)
+				.map((box) => box.getAttribute('value')),
+			dedication: input(root, TICK).checked,
+			dedicationShown: !one(root, '.disclosure.tribute .disclosure-body').hidden
+		};
+	}
+
+	/**
+	 * the card served as html and then hydrated, the way a route delivers it.
+	 *
+	 * `served` is read off the html before any script, `live` once the actor the effect starts has
+	 * answered: a page's opening that reached the server render and not the live flow, or the reverse,
+	 * is the two disagreeing.
+	 */
+	async function hydrated(config: FormConfig, opening?: DonateCardProps['opening']) {
+		const element: ReactElement = (
+			<DonateCard
+				config={config}
+				seams={seamsOver(paymentProvider())}
+				{...(opening === undefined ? {} : { opening })}
+			/>
+		);
+		const host = document.createElement('div');
+		host.innerHTML = renderToString(element);
+		document.body.appendChild(host);
+		const served = start(host);
+		const recovered: unknown[] = [];
+		const complained = vi.spyOn(console, 'error');
+		const mounted = await act(async () =>
+			hydrateRoot(host, element, { onRecoverableError: (error) => recovered.push(error) })
+		);
+		onTestFinished(() => {
+			act(() => {
+				mounted.unmount();
+			});
+			host.remove();
+		});
+		await act(async () => {
+			for (let at = 0; at < 4; at += 1) await Promise.resolve();
+		});
+		return { served, live: start(host), recovered, complained };
+	}
+
+	it('opens on Monthly where the page asks and the form offers it', async () => {
+		const { root } = await card(MONTHLY_TOO, {}, { opening: { monthly: true } });
+
+		expect(start(root).cadence).toEqual(['monthly']);
+		walkToGive(root);
+		expect(one(root, '[part~="summary"] .row-label').textContent).toBe('Monthly gift');
+	});
+
+	it('opens with the dedication boxes shown and empty where the page asks', async () => {
+		const { root } = await card(CONFIG, {}, { opening: { dedication: true } });
+
+		expect(start(root)).toMatchObject({ dedication: true, dedicationShown: true });
+		expect(one(root, '#tribute-kind [data-chosen]').textContent).toBe('In honor of');
+		expect(input(root, '#tribute-honoree').value).toBe('');
+		// the flow's first paint takes no caret, a preset one included.
+		expect(document.activeElement).not.toBe(input(root, '#tribute-honoree'));
+		// and it is the donor's to take back, the way one they opened themselves is.
+		press(input(root, TICK));
+		expect(start(root)).toMatchObject({ dedication: false, dedicationShown: false });
+	});
+
+	it('serves the opening in its html and starts the live flow on the same one', async () => {
+		const cases = [
+			[{ monthly: true }, { cadence: ['monthly'], dedication: false }],
+			[{ dedication: true }, { cadence: ['one_time'], dedication: true }],
+			[
+				{ monthly: true, dedication: true },
+				{ cadence: ['monthly'], dedication: true }
+			]
+		] as const;
+
+		for (const [opening, expected] of cases) {
+			const { served, live, recovered, complained } = await hydrated(MONTHLY_TOO, opening);
+			const label = JSON.stringify(opening);
+
+			expect(served, label).toMatchObject({ screen: 0, ...expected });
+			expect(live, label).toEqual(served);
+			expect(recovered, label).toEqual([]);
+			expect(complained, label).not.toHaveBeenCalled();
+		}
+	});
+
+	it('draws a one-time-only form asked for Monthly exactly as it draws it asked for nothing', async () => {
+		const seams = seamsOver(paymentProvider());
+		const asked = renderToString(
+			<DonateCard config={ONE_TIME_ONLY} seams={seams} opening={{ monthly: true }} />
+		);
+
+		expect(asked).toBe(renderToString(<DonateCard config={ONE_TIME_ONLY} seams={seams} />));
+		const { served, live } = await hydrated(ONE_TIME_ONLY, { monthly: true });
+		expect(live).toEqual(served);
+		expect(live.cadence).toEqual([]);
+	});
 });
 
 // the label on each of the three boxes is a real `<label for>`, and the words in it are what the box
@@ -1851,13 +2119,21 @@ describe('a resume drawn before the flow starts', () => {
 	};
 
 	/** the card's server markup, standing in a host on the page the way a document request leaves it. */
-	function served(resuming: boolean | undefined): HTMLElement {
+	function served(
+		resuming: boolean | undefined,
+		opening?: DonateCardProps['opening']
+	): HTMLElement {
 		const host = document.createElement('div');
 		host.innerHTML = renderToString(
 			resuming === undefined ? (
 				<DonateCard config={CONFIG} seams={SEAMS} />
 			) : (
-				<DonateCard config={CONFIG} seams={SEAMS} resuming={resuming} />
+				<DonateCard
+					config={CONFIG}
+					seams={SEAMS}
+					resuming={resuming}
+					{...(opening === undefined ? {} : { opening })}
+				/>
 			)
 		);
 		document.body.appendChild(host);
@@ -1875,7 +2151,11 @@ describe('a resume drawn before the flow starts', () => {
 	 * write took out — because several commits land between two deliveries of the observer, and the
 	 * region's text by then is only the last of them.
 	 */
-	async function hydrated(host: HTMLElement, resuming: boolean) {
+	async function hydrated(
+		host: HTMLElement,
+		resuming: boolean,
+		opening?: DonateCardProps['opening']
+	) {
 		const shownOnTheWay: string[] = [];
 		const watch = new MutationObserver(() => {
 			const open = every(host, 'section.step').filter((section) => !section.hidden);
@@ -1909,7 +2189,12 @@ describe('a resume drawn before the flow starts', () => {
 			mounted = hydrateRoot(
 				host,
 				<StrictMode>
-					<DonateCard config={CONFIG} seams={SEAMS} resuming={resuming} />
+					<DonateCard
+						config={CONFIG}
+						seams={SEAMS}
+						resuming={resuming}
+						{...(opening === undefined ? {} : { opening })}
+					/>
 				</StrictMode>,
 				{ onRecoverableError: (error) => recovered.push(error) }
 			);
@@ -2048,6 +2333,41 @@ describe('a resume drawn before the flow starts', () => {
 		expect(one(host, '#note-problem').hidden).toBe(false);
 		expect(said(host)).toBe('');
 		await saidAgainAfterSettling(host);
+	});
+
+	// a page's opening is where a fresh card starts, and a return from the donor's bank is no fresh
+	// card: the checking screen is drawn whatever the page asked for.
+	it('draws the resume’s takeover over a page’s opening, server and hydration alike', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			`?bg_donate_form=${CONFIG.formId}&payment_intent_client_secret=pi_1_secret_x`
+		);
+		const opening = { monthly: true, dedication: true };
+		const host = served(true, opening);
+
+		expect(screen(host).classList.contains('takeover')).toBe(true);
+		expect(one(screen(host), ':scope > h2').textContent).toBe(copy.RESUMING_HEADING);
+
+		const { shownOnTheWay, recovered } = await hydrated(host, true, opening);
+
+		expect(recovered).toEqual([]);
+		expect(shownOnTheWay.filter((open) => open !== 'step takeover')).toEqual([]);
+		expect(one(screen(host), ':scope > h2').textContent).toBe(copy.RESUMING_HEADING);
+	});
+
+	it('hands back the page’s opening where the stamped return arrived with no token', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true, { monthly: true });
+
+		await hydrated(host, true, { monthly: true });
+
+		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(
+			[...host.querySelectorAll('.segment input[type="radio"]')]
+				.filter((box) => box instanceof HTMLInputElement && box.checked)
+				.map((box) => box.getAttribute('value'))
+		).toEqual(['monthly']);
 	});
 });
 
