@@ -7,10 +7,11 @@ import { operatorLinks } from '$lib/admin/operator-links';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
 import { issueCode } from '$lib/server/connector/keys';
+import { connectorOrigin } from '$lib/server/connector/origin';
 import { CONNECTOR_RETURN } from '$lib/server/connector/surface';
 import { notFound } from '$lib/server/db/load-failure';
 import { readOrgProfile } from '$lib/server/org/queries';
-import { database, staff } from '../context';
+import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.connector.allow';
 
 // the Allow screen: where Better Giving's connector sends an operator who asked Claude or ChatGPT to
@@ -18,9 +19,10 @@ import type { Route } from './+types/_app.admin.connector.allow';
 // signed-out operator to sign in and back here), so the deployment's sign-in is the only login there
 // is. Allow issues a single-use code ($lib/server/connector/keys.ts) and sends the browser to the
 // connector's return — `CONNECTOR_RETURN`, fixed in code — with it; Deny sends it there with
-// `error=access_denied`. the key itself is minted only when the connector redeems the code
-// (./connector.v1.exchange.ts). a route action, so no auth HTTP API is added (CLAUDE.md → Product
-// surface).
+// `error=access_denied`. both carry `iss`, this deployment's published origin, so the connector can
+// refuse a return arriving from a deployment other than the one it bound `state` to (RFC 9207).
+// the key itself is minted only when the connector redeems the code (./connector.v1.exchange.ts).
+// a route action, so no auth HTTP API is added (CLAUDE.md → Product surface).
 //
 // **only the deployer reaches it**, as with every screen under Integrations: a connection reads
 // donors and can publish pages, which is the deployer's to hand out.
@@ -58,6 +60,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 		};
 	const back = new URL(CONNECTOR_RETURN);
 	back.searchParams.set('state', state);
+	back.searchParams.set('iss', connectorOrigin(url, context.get(platform).env));
 	const body = await request.formData();
 	if (body.get('intent') === 'allow') {
 		back.searchParams.set('code', await issueCode(context.get(database), context.get(staff).id));

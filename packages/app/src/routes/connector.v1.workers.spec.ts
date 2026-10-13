@@ -99,6 +99,37 @@ describe('the Allow screen', () => {
 		expect(await h.db.select().from(connectorCode)).toEqual([]);
 	});
 
+	it('names this deployment as the issuer of the return Allow sends', async () => {
+		const back = new URL((await pressAllow(h.deployer, 'allow')).headers.get('location') ?? '');
+
+		expect(back.searchParams.get('iss')).toBe(ORIGIN);
+	});
+
+	it('names the same issuer on the return Deny sends, with no code', async () => {
+		const back = new URL((await pressAllow(h.deployer, 'deny')).headers.get('location') ?? '');
+
+		expect(back.searchParams.get('iss')).toBe(ORIGIN);
+		expect(back.searchParams.has('code')).toBe(false);
+	});
+
+	it('names the pinned published origin as the issuer, not the host the press arrived at', async () => {
+		const pinned = { ...DEPLOYMENT.env, BETTER_AUTH_URL: 'https://donate.example.org/' };
+		const body = new FormData();
+		body.set('intent', 'allow');
+		const response = await route('allow')(
+			new Request(`${ORIGIN}/admin/connector/allow?state=st-123`, {
+				method: 'POST',
+				headers: { cookie: h.deployer, origin: ORIGIN, 'sec-fetch-site': 'same-origin' },
+				body
+			}),
+			{ env: pinned }
+		);
+
+		expect(response.status).toBe(303);
+		const back = new URL(response.headers.get('location') ?? '');
+		expect(back.searchParams.get('iss')).toBe('https://donate.example.org');
+	});
+
 	it('is not there for a member', async () => {
 		const member = await signInAsMember(h.db, DEPLOYMENT);
 		const response = await pressAllow(member, 'allow');
