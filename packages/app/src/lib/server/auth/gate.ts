@@ -129,7 +129,8 @@ function isRead(request: Request): boolean {
  * the address the operator was going to.
  *
  * a write never returns to its own address. it was posted to an action — `/admin/images` answers
- * no GET at all, an editor's action is addressed `?index` — and landing there after signing in is
+ * no GET at all, and the Campaigns list's (src/routes/_app.admin.campaigns._index.tsx) is addressed
+ * `?index` — and landing there after signing in is
  * an error page where the operator's screen was. it returns to the page the press was made from,
  * read off `Referer`, which the dashboard's documents send whole to their own origin
  * (`Referrer-Policy: same-origin`, src/document-policy.ts). that page is honoured only when it is
