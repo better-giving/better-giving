@@ -25,12 +25,14 @@ import {
 // `../org/queries.ts` and `../ledger/posting.ts` draw, and it is what makes "all the writes are
 // here" true rather than aspirational.
 //
-// the table object itself leaves this module in exactly one place, and it is worth naming rather
-// than papering over: `findTarget` in `../donations/settle.ts` joins `form` for the form's name in
-// the same query that already joins `contact` the same way. what it buys is a name for a message
-// the settlement path sends; what routing it through here would cost is a second round trip on the
-// money path, per settled gift, to preserve a sentence. a read of a column that has no decoding and
-// no archived-row rule to keep is the shape that may do that. anything needing this table's JSON
+// the table object itself leaves this module in exactly two places, and they are worth naming
+// rather than papering over. `findTarget` in `../donations/settle.ts` joins `form` for the form's
+// name in the same query that already joins `contact` the same way: what it buys is a name for a
+// message the settlement path sends, and routing it through here would cost a second round trip on
+// the money path, per settled gift, to preserve a sentence. `readRaisedThroughForm` in
+// `../ledger/queries.ts` reads `form.currency` in the query that sums the form's gifts, because the
+// sum is taken in that currency and is null for a form no row carries. a read of a column that has
+// no decoding and no archived-row rule to keep is the shape that may do that. anything needing this table's JSON
 // columns, its `status` filter, or a write may not — `readForm` and `readForms` below are where the
 // decisions about those live, and a caller that reimplements one has reimplemented the rules with
 // it.

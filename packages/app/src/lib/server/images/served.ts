@@ -13,8 +13,11 @@ import type { BytesPort } from './bytes';
 // **this is not the balance cache CLAUDE.md bans**, and it is the carve-out the served form config
 // set: what is kept is what may be drawn, never a figure the books sum. and nothing under an id goes
 // stale — the bytes never change (./bytes.ts) and a replaced photo is a new id — so an entry is kept
-// as long as the response says, a year, with no window to weigh. an image freed (./free.ts) is one
-// nothing places any more, and its bytes are served from here until the entry ages out.
+// as long as the response says, a year, with no window to weigh. an id's bytes do not outlive
+// their image here, though: ./free.ts deletes an image no row names any longer, which is what
+// replacing or removing the organisation's logo does (../org/queries.ts) and what an editor's write
+// that lets a photo go does (`freeLetGoStatements`' callers), and a freed image's bytes go on being
+// served from this store, in each data centre that kept them, until the entry ages out.
 //
 // kept under an address no route serves, for the reason ../forms/rail-cache.ts's `CACHE_PATH`
 // states: `caches.default` is the zone's store keyed by URL. keying on the id alone also means a
