@@ -1,6 +1,5 @@
-import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
 	CODE_TTL_MS,
 	CONNECTOR_KEY_SHAPE,
@@ -10,23 +9,20 @@ import {
 	sweepConnectorLeftovers
 } from '$lib/server/connector/keys';
 import { CONNECTOR_ACTIONS, CONNECTOR_RETURN } from '$lib/server/connector/surface';
-import { createDb, type Db } from '$lib/server/db/client';
 import { connectorCode, connectorKey, page, photoLink } from '$lib/server/db/schema';
 import { pngHeader } from '$lib/server/images/headers.testing';
 import { mintApiKey } from '$lib/server/integrations/keys';
-import { mountRoutes, type RouteRequester } from '../route-request.testing';
-import { deployedBindings, signInAsDeployer, signInAsMember } from '../staff-session.testing';
+import { connectorHarness, DEPLOYMENT, ORIGIN, under } from '../connector-routes.testing';
+import { mountRoutes } from '../route-request.testing';
+import { signInAsMember } from '../staff-session.testing';
 import * as layout from './_app';
-import * as allow from './_app.admin.connector.allow';
 import * as connections from './_app.admin.integrations.connector';
-import * as surface from './connector.v1';
 import * as unserved from './connector.v1.$';
 import * as campaign from './connector.v1.campaigns.$id._index';
 import * as blocks from './connector.v1.campaigns.$id.blocks';
 import * as settings from './connector.v1.campaigns.$id.settings';
 import * as campaigns from './connector.v1.campaigns._index';
 import * as disconnect from './connector.v1.disconnect';
-import * as exchange from './connector.v1.exchange';
 import * as hello from './connector.v1.hello';
 import * as uploadLink from './connector.v1.photos.upload-link';
 import * as photo from './photo.$token';
@@ -36,120 +32,22 @@ import * as photo from './photo.$token';
 // the connector's own token refresh, the connector letting its key go (revoke) and sweeping what is
 // left (cleanup), and Disconnect pressed on the dashboard — then the edits and the photo link.
 
-const ORIGIN = 'https://give.example';
-const PASSWORD = 'a-very-long-random-staff-password';
-const DEPLOYMENT = { env: deployedBindings(PASSWORD), password: PASSWORD, origin: ORIGIN };
-
-let db: Db;
-let deployer: string;
-let caller = 0;
-
-const under = (path: string, module: Parameters<typeof mountRoutes>[0][number]['module']) =>
-	mountRoutes([
-		{ path: 'connector/v1', module: surface },
-		{ path, module }
-	]);
-
-let routes: Record<string, RouteRequester>;
-
-beforeAll(() => {
-	db = createDb(env.DB);
-	routes = {
-		hello: under('hello', hello),
-		exchange: under('exchange', exchange),
-		disconnect: under('disconnect', disconnect),
-		campaigns: under('campaigns', campaigns),
-		campaign: under('campaigns/:id', campaign),
-		blocks: under('campaigns/:id/blocks', blocks),
-		settings: under('campaigns/:id/settings', settings),
-		uploadLink: under('photos/upload-link', uploadLink),
-		unserved: under('*', unserved),
-		allow: mountRoutes([
-			{ path: undefined, module: layout },
-			{ path: 'admin/connector/allow', module: allow }
-		]),
-		connections: mountRoutes([
-			{ path: undefined, module: layout },
-			{ path: 'admin/integrations/connector', module: connections }
-		]),
-		photo: mountRoutes([{ path: 'photo/:token', module: photo }])
-	};
-});
-
-beforeEach(async () => {
-	for (const table of [
-		'photo_link',
-		'connector_code',
-		'connector_key',
-		'api_key',
-		'page',
-		'form',
-		'auth_member_invitation',
-		'auth_session',
-		'auth_user',
-		'org_profile'
-	]) {
-		await env.DB.prepare(`delete from ${table}`).run();
-	}
-	await env.DB.prepare(
-		`insert into org_profile (id, legal_name, tax_id, notification_email, created_at, updated_at)
-		 values ('default', 'Riverbank Trust', '12-3456789', 'alerts@example.org', 0, 0)`
-	).run();
-	deployer = await signInAsDeployer(db, DEPLOYMENT);
-	caller += 1;
-});
-
-let calls = 0;
-/** each call from an address of its own, so the caller bucket is never what answers a case. */
-const ip = () => `2001:db8:${caller.toString(16)}:${(calls++).toString(16)}::1`;
-
-/** the bindings with no per-key bucket, which the test pool sizes at three calls a minute. */
-const UNMETERED = { ...DEPLOYMENT.env, INTEGRATIONS_KEY_RATE_LIMITER: undefined } as unknown as Env;
-
-function call(
-	route: keyof typeof routes,
-	path: string,
-	init: { method?: string; key?: string; body?: unknown; metered?: boolean } = {}
-): Promise<Response> {
-	const headers: Record<string, string> = { 'cf-connecting-ip': ip(), accept: 'application/json' };
-	if (init.key !== undefined) headers.authorization = `Bearer ${init.key}`;
-	if (init.body !== undefined) headers['content-type'] = 'application/json';
-	return (routes[route] as RouteRequester)(
-		new Request(`${ORIGIN}/connector/v1${path}`, {
-			method: init.method ?? 'GET',
-			headers,
-			...(init.body === undefined ? {} : { body: JSON.stringify(init.body) })
-		}),
-		{ env: init.metered === true ? DEPLOYMENT.env : UNMETERED }
-	);
-}
-
-/** Allow pressed by `cookie` for `state`, answering the redirect it sends the browser. */
-async function pressAllow(
-	cookie: string,
-	intent: 'allow' | 'deny',
-	state = 'st-123'
-): Promise<Response> {
-	const body = new FormData();
-	body.set('intent', intent);
-	return routes.allow!(
-		new Request(`${ORIGIN}/admin/connector/allow?state=${state}`, {
-			method: 'POST',
-			headers: { cookie, origin: ORIGIN, 'sec-fetch-site': 'same-origin' },
-			body
-		}),
-		{ env: DEPLOYMENT.env }
-	);
-}
-
-/** the whole connect: Allow, then the exchange the connector makes with the code. */
-async function connect(): Promise<string> {
-	const allowed = await pressAllow(deployer, 'allow');
-	const code = new URL(allowed.headers.get('location') ?? '').searchParams.get('code');
-	const exchanged = await call('exchange', '/exchange', { method: 'POST', body: { code } });
-	expect(exchanged.status).toBe(200);
-	return ((await exchanged.json()) as { key: string }).key;
-}
+const h = connectorHarness(() => ({
+	hello: under('hello', hello),
+	disconnect: under('disconnect', disconnect),
+	campaigns: under('campaigns', campaigns),
+	campaign: under('campaigns/:id', campaign),
+	blocks: under('campaigns/:id/blocks', blocks),
+	settings: under('campaigns/:id/settings', settings),
+	uploadLink: under('photos/upload-link', uploadLink),
+	unserved: under('*', unserved),
+	connections: mountRoutes([
+		{ path: undefined, module: layout },
+		{ path: 'admin/integrations/connector', module: connections }
+	]),
+	photo: mountRoutes([{ path: 'photo/:token', module: photo }])
+}));
+const { call, connect, pressAllow, route } = h;
 
 describe('hello', () => {
 	it('answers without a key, in the contract’s shape, with every action it serves', async () => {
@@ -169,9 +67,9 @@ describe('hello', () => {
 
 describe('the Allow screen', () => {
 	it('shows the deployer what the connection may do', async () => {
-		const response = await routes.allow!(
+		const response = await route('allow')(
 			new Request(`${ORIGIN}/admin/connector/allow?state=st-123`, {
-				headers: { cookie: deployer }
+				headers: { cookie: h.deployer }
 			}),
 			{ env: DEPLOYMENT.env }
 		);
@@ -181,7 +79,7 @@ describe('the Allow screen', () => {
 	});
 
 	it('sends the browser to the connector’s fixed return with the state and a code', async () => {
-		const response = await pressAllow(deployer, 'allow');
+		const response = await pressAllow(h.deployer, 'allow');
 
 		expect(response.status).toBe(303);
 		const back = new URL(response.headers.get('location') ?? '');
@@ -189,33 +87,33 @@ describe('the Allow screen', () => {
 		expect(back.searchParams.get('state')).toBe('st-123');
 		expect(back.searchParams.get('code')).toMatch(/^[A-Za-z0-9_-]{43}$/);
 		// no key exists until the connector redeems the code
-		expect(await db.select().from(connectorKey)).toEqual([]);
+		expect(await h.db.select().from(connectorKey)).toEqual([]);
 	});
 
 	it('sends Deny back as access_denied, with no code', async () => {
-		const back = new URL((await pressAllow(deployer, 'deny')).headers.get('location') ?? '');
+		const back = new URL((await pressAllow(h.deployer, 'deny')).headers.get('location') ?? '');
 
 		expect(back.searchParams.get('error')).toBe('access_denied');
 		expect(back.searchParams.has('code')).toBe(false);
-		expect(await db.select().from(connectorCode)).toEqual([]);
+		expect(await h.db.select().from(connectorCode)).toEqual([]);
 	});
 
 	it('is not there for a member', async () => {
-		const member = await signInAsMember(db, DEPLOYMENT);
+		const member = await signInAsMember(h.db, DEPLOYMENT);
 		const response = await pressAllow(member, 'allow');
 
 		expect(response.status).toBe(404);
-		expect(await db.select().from(connectorCode)).toEqual([]);
+		expect(await h.db.select().from(connectorCode)).toEqual([]);
 	});
 
 	it('refuses a press posted from another site', async () => {
 		const body = new FormData();
 		body.set('intent', 'allow');
-		const response = await routes.allow!(
+		const response = await route('allow')(
 			new Request(`${ORIGIN}/admin/connector/allow?state=st-123`, {
 				method: 'POST',
 				headers: {
-					cookie: deployer,
+					cookie: h.deployer,
 					origin: 'https://evil.example',
 					'sec-fetch-site': 'cross-site'
 				},
@@ -230,7 +128,7 @@ describe('the Allow screen', () => {
 
 describe('the code exchange', () => {
 	it('mints a connector key once, and refuses the code a second time', async () => {
-		const code = await issueCode(db, 'staff');
+		const code = await issueCode(h.db, 'staff');
 		const first = await call('exchange', '/exchange', { method: 'POST', body: { code } });
 		const second = await call('exchange', '/exchange', { method: 'POST', body: { code } });
 
@@ -243,7 +141,7 @@ describe('the code exchange', () => {
 	});
 
 	it('refuses a code past its ten minutes', async () => {
-		const code = await issueCode(db, 'staff', new Date(Date.now() - CODE_TTL_MS - 1));
+		const code = await issueCode(h.db, 'staff', new Date(Date.now() - CODE_TTL_MS - 1));
 		const response = await call('exchange', '/exchange', { method: 'POST', body: { code } });
 
 		expect(response.status).toBe(400);
@@ -319,7 +217,7 @@ describe('an action with the connected key', () => {
 		for (let at = 0; at < 3; at += 1) {
 			expect((await call('campaigns', '/campaigns', { key })).status).toBe(200);
 		}
-		const [row] = await db.select().from(connectorKey);
+		const [row] = await h.db.select().from(connectorKey);
 		expect(row?.lastUsedAt).not.toBeNull();
 	});
 
@@ -335,7 +233,7 @@ describe('an action with the connected key', () => {
 	});
 
 	it('refuses a read-API key, which is another surface’s', async () => {
-		const { key } = await mintApiKey(db, { name: 'CRM', kind: 'api' });
+		const { key } = await mintApiKey(h.db, { name: 'CRM', kind: 'api' });
 		const response = await call('campaigns', '/campaigns', { key });
 
 		expect(response.status).toBe(401);
@@ -372,7 +270,7 @@ describe('revoke and cleanup from the connector', () => {
 		const after = await call('campaigns', '/campaigns', { key });
 		expect(after.status).toBe(401);
 		expect(await after.json()).toMatchObject({ code: 'key_refused' });
-		const [row] = await db.select().from(connectorKey);
+		const [row] = await h.db.select().from(connectorKey);
 		expect(row?.revokedBy).toBe('connector');
 	});
 
@@ -386,14 +284,14 @@ describe('revoke and cleanup from the connector', () => {
 			key,
 			body: { target: { kind: 'campaign', id } }
 		});
-		await issueCode(db, 'staff');
+		await issueCode(h.db, 'staff');
 		const later = new Date(Date.now() + LEFTOVER_KEEP_MS + 60 * 60_000);
 
-		await sweepConnectorLeftovers(db, later);
+		await sweepConnectorLeftovers(h.db, later);
 
-		expect(await db.select().from(connectorCode)).toEqual([]);
-		expect(await db.select().from(photoLink)).toEqual([]);
-		expect(await db.select().from(connectorKey)).toHaveLength(1);
+		expect(await h.db.select().from(connectorCode)).toEqual([]);
+		expect(await h.db.select().from(photoLink)).toEqual([]);
+		expect(await h.db.select().from(connectorKey)).toHaveLength(1);
 		expect((await call('campaigns', '/campaigns', { key })).status).toBe(200);
 	});
 
@@ -402,11 +300,11 @@ describe('revoke and cleanup from the connector', () => {
 		const cut = await connect();
 		await call('disconnect', '/disconnect', { method: 'POST', key: cut });
 
-		await sweepConnectorLeftovers(db, new Date(Date.now() + REVOKED_KEY_KEEP_MS - 60 * 60_000));
-		expect(await db.select().from(connectorKey)).toHaveLength(2);
+		await sweepConnectorLeftovers(h.db, new Date(Date.now() + REVOKED_KEY_KEEP_MS - 60 * 60_000));
+		expect(await h.db.select().from(connectorKey)).toHaveLength(2);
 
-		await sweepConnectorLeftovers(db, new Date(Date.now() + REVOKED_KEY_KEEP_MS + 60 * 60_000));
-		const left = await db.select().from(connectorKey);
+		await sweepConnectorLeftovers(h.db, new Date(Date.now() + REVOKED_KEY_KEEP_MS + 60 * 60_000));
+		const left = await h.db.select().from(connectorKey);
 		expect(left).toHaveLength(1);
 		expect(left[0]?.revokedAt).toBeNull();
 		expect((await call('campaigns', '/campaigns', { key: kept })).status).toBe(200);
@@ -417,8 +315,8 @@ describe('Disconnect on the dashboard', () => {
 	it('lists the connection and cuts its key at once', async () => {
 		const key = await connect();
 		const listed = (await (
-			await routes.connections!(
-				new Request(`${ORIGIN}/admin/integrations/connector`, { headers: { cookie: deployer } }),
+			await route('connections')(
+				new Request(`${ORIGIN}/admin/integrations/connector`, { headers: { cookie: h.deployer } }),
 				{ env: DEPLOYMENT.env }
 			)
 		).json()) as { connections: { id: string; key: string }[] };
@@ -428,10 +326,10 @@ describe('Disconnect on the dashboard', () => {
 
 		const body = new FormData();
 		body.set('connection', shown?.id ?? '');
-		const pressed = await routes.connections!(
+		const pressed = await route('connections')(
 			new Request(`${ORIGIN}/admin/integrations/connector`, {
 				method: 'POST',
-				headers: { cookie: deployer, origin: ORIGIN, 'sec-fetch-site': 'same-origin' },
+				headers: { cookie: h.deployer, origin: ORIGIN, 'sec-fetch-site': 'same-origin' },
 				body
 			}),
 			{ env: DEPLOYMENT.env }
@@ -441,7 +339,7 @@ describe('Disconnect on the dashboard', () => {
 		const after = await call('campaigns', '/campaigns', { key });
 		expect(after.status).toBe(401);
 		expect(await after.json()).toMatchObject({ code: 'key_refused' });
-		const [row] = await db.select().from(connectorKey);
+		const [row] = await h.db.select().from(connectorKey);
 		expect(row?.revokedBy).toBe('dashboard');
 	});
 });
@@ -507,7 +405,7 @@ describe('campaign edits', () => {
 			sharing: { message: 'Help us keep 300 kids warm' },
 			status: 'draft'
 		});
-		const [row] = await db.select().from(page).where(eq(page.id, id));
+		const [row] = await h.db.select().from(page).where(eq(page.id, id));
 		expect(row?.published).toBeNull();
 	});
 
@@ -596,7 +494,7 @@ describe('the photo link', () => {
 	function upload(url: URL): Promise<Response> {
 		const body = new FormData();
 		body.set('file', new Blob([pngHeader(40, 30)], { type: 'image/png' }), 'coats.png');
-		return routes.photo!(
+		return route('photo')(
 			new Request(`${ORIGIN}${url.pathname}`, {
 				method: 'POST',
 				headers: { origin: ORIGIN, 'sec-fetch-site': 'same-origin' },
@@ -630,7 +528,7 @@ describe('the photo link', () => {
 		await call('disconnect', '/disconnect', { method: 'POST', key });
 
 		const shown = (await (
-			await routes.photo!(new Request(`${ORIGIN}${url.pathname}`), { env: DEPLOYMENT.env })
+			await route('photo')(new Request(`${ORIGIN}${url.pathname}`), { env: DEPLOYMENT.env })
 		).json()) as { live: boolean };
 
 		expect(shown.live).toBe(false);

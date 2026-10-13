@@ -9,14 +9,17 @@ import type { Page as PageRow } from '../db/schema';
 import { firstMissingImage } from '../images/queries';
 import { createCampaign, readCampaigns } from '../pages/campaign';
 import { readDocument } from '../pages/document';
-import { type DraftWritten, editPageDraft } from '../pages/draft-writer';
-import { readPage } from '../pages/queries';
+import { type DraftCommand, type DraftWritten, editPageDraft } from '../pages/draft-writer';
+import { publishPage } from '../pages/publish';
+import { endCampaign, readPage } from '../pages/queries';
 
 // the campaign actions of `/connector/v1`, in the contract's terms: a campaign is `draft`,
 // `published` or `ended`, money is a decimal string with its currency, a day is `YYYY-MM-DD`. every
 // edit goes through `editPageDraft` (../pages/draft-writer.ts), the writer the dashboard's own
 // presses use, so a page the connector edits meets the same page rule a hand edit does, and is only
-// ever the draft: donors see nothing of it until Publish.
+// ever the draft: donors see nothing of it until Publish. Publish and End are the dashboard's own
+// (`publishPage` in ../pages/publish.ts, `endCampaign` in ../pages/queries.ts), guarded on the row
+// as read just before.
 
 export type CampaignStatus = 'draft' | 'published' | 'ended';
 
@@ -41,7 +44,7 @@ const money = (minor: number | null | undefined): Money | null =>
 		? null
 		: { amount: majorText(minor, CURRENCY), currency: CURRENCY };
 
-function statusOf(state: PageRow['state']): CampaignStatus {
+export function statusOf(state: PageRow['state']): CampaignStatus {
 	return state === 'never_published' ? 'draft' : state === 'live' ? 'published' : 'ended';
 }
 
@@ -155,6 +158,17 @@ export async function replaceBlocks(
 	id: string,
 	body: unknown
 ): Promise<Done | Refused> {
+	const edit = blocksEdit(db, body);
+	if (typeof edit !== 'function') return edit;
+	const written = await editPageDraft(db, { type: 'campaign', id }, 'current', edit);
+	return answer(db, origin, now, id, written);
+}
+
+/**
+ * an update_blocks body, `{ blocks }`, as the draft edit that puts those blocks in place of the
+ * draft's; or its refusal. a photo it places is one already stored here, never an id made up.
+ */
+export function blocksEdit(db: Db, body: unknown): DraftCommand | Refused {
 	const blocks =
 		typeof body === 'object' && body !== null ? (body as { blocks?: unknown }).blocks : undefined;
 	if (!Array.isArray(blocks))
@@ -162,7 +176,7 @@ export async function replaceBlocks(
 			'blocks',
 			'blocks is the whole list of the page’s blocks, in the catalog’s shape (blocks.catalog)'
 		);
-	const written = await editPageDraft(db, { type: 'campaign', id }, 'current', async (draft) => {
+	return async (draft) => {
 		const next = { ...draft, blocks };
 		const before = new Set(placedImageIds(draft));
 		const added = imageIdsIn(blocks).filter((imageId) => !before.has(imageId));
@@ -175,8 +189,7 @@ export async function replaceBlocks(
 			};
 		}
 		return { ok: true, draft: next };
-	});
-	return answer(db, origin, now, id, written);
+	};
 }
 
 /** sets a campaign's goal, end date and sharing on its draft; a key left out is left alone. */
@@ -257,37 +270,100 @@ async function answer(
 ): Promise<Done | Refused> {
 	switch (written.kind) {
 		case 'gone':
-			return {
-				ok: false,
-				status: 404,
-				code: 'not_found',
-				detail: `Campaign ${id} does not exist on this deployment.`
-			};
+			return missing(id);
 		case 'stale':
-			return {
-				ok: false,
-				status: 409,
-				code: 'conflict',
-				detail:
-					'The campaign changed while this edit was being made, probably in the dashboard. Read it again with campaigns.get and redo the edit on what it holds now.'
-			};
+			return changed('while this edit was being made', 'redo the edit on what it holds now');
 		case 'refused':
 			return invalid(pathText(written.path), written.message);
-		case 'written': {
-			const campaign = await readCampaign(db, origin, now, id);
-			if (campaign === null) throw new Error(`campaign ${id} was written and does not read back`);
-			return { ok: true, campaign };
-		}
+		case 'written':
+			return { ok: true, campaign: await reread(db, origin, now, id) };
 	}
 }
 
-const pathText = (path: readonly (string | number)[]) => path.join('.');
+/**
+ * makes a campaign's draft live, through the dashboard's own Publish and its rules, guarded on the
+ * row as read just before. a first Publish keeps where the draft's donation settings send gifts,
+ * the answer the editor's first-Publish confirm opens on.
+ */
+export async function publishCampaign(
+	db: Db,
+	origin: string,
+	now: Date,
+	id: string
+): Promise<Done | Refused> {
+	const row = await readPage(db, id);
+	if (row === null || row.type !== 'campaign') return missing(id);
+	const outcome = await publishPage(db, { type: 'campaign', id }, row.updatedAt, {
+		now: now.getTime(),
+		giftsGoTo: row.state === 'never_published' ? null : undefined
+	});
+	switch (outcome.kind) {
+		case 'gone':
+			return missing(id);
+		case 'stale':
+			return changed('as it was being published', 'publish it again if it should still go live');
+		case 'refused':
+			return { ok: false, status: 422, code: 'invalid', detail: outcome.text };
+		case 'published':
+			return { ok: true, campaign: await reread(db, origin, now, id) };
+	}
+}
+
+/** takes a live campaign off the air through the dashboard's End, guarded on the row as just read. */
+export async function endLiveCampaign(
+	db: Db,
+	origin: string,
+	now: Date,
+	id: string
+): Promise<Done | Refused> {
+	const row = await readPage(db, id);
+	if (row === null || row.type !== 'campaign') return missing(id);
+	const status = statusOf(stateAt(row, now.getTime()));
+	if (status !== 'published') {
+		return {
+			ok: false,
+			status: 422,
+			code: 'invalid',
+			detail: `Nothing was ended: only a published campaign can be ended, and this one is ${status}.`
+		};
+	}
+	if (!(await endCampaign(db, id, row.updatedAt)))
+		return changed('as it was being ended', 'end it again if it is still published');
+	return { ok: true, campaign: await reread(db, origin, now, id) };
+}
+
+async function reread(db: Db, origin: string, now: Date, id: string): Promise<CampaignDetail> {
+	const campaign = await readCampaign(db, origin, now, id);
+	if (campaign === null) throw new Error(`campaign ${id} was written and does not read back`);
+	return campaign;
+}
+
+function missing(id: string): Refused {
+	return {
+		ok: false,
+		status: 404,
+		code: 'not_found',
+		detail: `Campaign ${id} does not exist on this deployment.`
+	};
+}
+
+/** the 409 for a write that lost to another: when it changed, and what to do next. */
+function changed(when: string, then: string): Refused {
+	return {
+		ok: false,
+		status: 409,
+		code: 'conflict',
+		detail: `The campaign changed ${when}, probably in the dashboard. Read it again with campaigns.get and ${then}.`
+	};
+}
+
+export const pathText = (path: readonly (string | number)[]) => path.join('.');
 
 function refuse(path: string, message: string) {
 	return { ok: false as const, path: path.split('.'), message };
 }
 
-function invalid(path: string, message: string): Refused {
+export function invalid(path: string, message: string): Refused {
 	return {
 		ok: false,
 		status: 422,

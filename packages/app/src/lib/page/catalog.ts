@@ -192,7 +192,8 @@ function strictBlock<S extends z.ZodRawShape>(type: BlockType, shape: S) {
 	});
 }
 
-const block = z.discriminatedUnion(
+/** one block as the page rule holds it, its type choosing the arm; `blocks.catalog` publishes each arm. */
+export const block = z.discriminatedUnion(
 	'type',
 	[
 		strictBlock('title', { ...frame('title', BLOCKS.title), ...BLOCK_DATA.title }),

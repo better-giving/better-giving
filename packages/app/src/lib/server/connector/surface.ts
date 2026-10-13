@@ -32,6 +32,12 @@ export const CONNECTOR_ACTIONS = [
 	'campaigns.create',
 	'campaigns.update_blocks',
 	'campaigns.update_settings',
+	'campaigns.publish',
+	'campaigns.end',
+	'donation_page.get',
+	'donation_page.update_blocks',
+	'donation_page.reset',
+	'blocks.catalog',
 	'photos.upload_link'
 ] as const;
 
