@@ -1,24 +1,48 @@
-// what the editor edits a page's blocks by hand through: the forms a block's sheet and the Settings
-// sheet's layout pictures post, and each block as those sheets are drawn from the draft. each form's
-// id and rules are here, where the sheets ($lib/admin/editor/block-edit.tsx) post them and the save
-// ($lib/server/pages/blocks.ts) states and parses them, and both editors' actions name the ids.
+// what the editor edits a page by hand through: the forms a block's sheet, the block list and the
+// Settings sheet's pictures and share boxes post, and the page as those are drawn from the draft.
+// every value a page document holds but its donation settings and switches, goal, end date and
+// name — which $lib/server/pages/editor.ts, page-settings.ts and the editor routes write — has a
+// form here. each form's id and rules are here, where the sheets ($lib/admin/editor/block-edit.tsx)
+// post them and the save ($lib/server/pages/blocks.ts) states and parses them, and both editors'
+// actions name the ids.
 //
-// the boxes carry text, and a photo block's the id of a photo already uploaded, and every value is
-// the block catalog's to judge (./catalog.ts): the save puts the words into the block and runs the
-// page through `parsePage`, so a box and the chat are held to the one rule. a block's variants and
-// the page's layouts come from `BLOCKS` and `LAYOUTS`, so a name the catalog drops is a picture
-// nobody is offered.
+// the boxes carry text, names from closed sets, and a photo block's the id of a photo already
+// uploaded, and every value is the block catalog's to judge (./catalog.ts): the save makes the
+// change to the draft and runs the page through `parsePage`, so every box is held to the page's one
+// rule. the pictures offered come from `BLOCKS`, `LAYOUTS`, `SHADES`, `CORNERS`, `PALETTES` and
+// `SHARE_CHANNELS`, so a name the catalog drops is a picture nobody is offered.
 //
-// no form here adds, removes or moves a block: arranging the page is the chat's.
+// a block is added in its type's first variant and first background (`startingBlock` in
+// ./defaults.ts), removed, or moved one step; the donation box, which a page holds exactly once, is
+// neither added nor removed.
 //
 // pure and not under `$lib/server/**`: a component draws what `editorBlocks` returns.
 import { z } from 'zod';
 import { formatMinorBrief } from '../donations/money';
 import { groupedEntry } from '../forms/amounts';
 import { plainText, type RichTextDocument } from '../rich-text/document';
-import { BLOCKS, type Block, type BlockType, LAYOUTS, type Page } from './catalog';
-import { isIllustrated } from './illustration';
-import type { Layout } from './keys';
+import { BLOCK_TYPES, BLOCKS, type Block, type BlockType, LAYOUTS, type Page } from './catalog';
+import type { AddableBlockType } from './defaults';
+import { oneOf } from './refusal';
+import {
+	SHARE_CHANNEL_LABELS,
+	SHARE_CHANNELS,
+	SHARE_CHANNELS_DEFAULT,
+	type ShareChannel
+} from './share';
+import {
+	type Background,
+	type Corner,
+	CORNERS,
+	DEFAULT_CORNER,
+	DEFAULT_SHADE,
+	type Layout,
+	type PageType,
+	type Palette,
+	PALETTES,
+	type Shade,
+	SHADES
+} from './keys';
 
 export const BLOCK_FORMS = {
 	title: 'block-title',
@@ -27,25 +51,86 @@ export const BLOCK_FORMS = {
 	faq: 'block-faq',
 	photo: 'block-photo',
 	variant: 'block-variant',
-	layout: 'page-layout'
+	layout: 'page-layout',
+	shade: 'page-shade',
+	corners: 'page-corners',
+	palette: 'page-palette',
+	shareMessage: 'page-share-message',
+	shareChannels: 'page-share-channels',
+	add: 'block-add',
+	remove: 'block-remove',
+	move: 'block-move',
+	background: 'block-background'
 } as const;
 
 export type BlockFormId = (typeof BLOCK_FORMS)[keyof typeof BLOCK_FORMS];
 
-/** every form a block's sheet or the layout pictures post, for an editor's `submittedForm`. */
+/** every form above, for an editor's `submittedForm`. */
 export const BLOCK_FORM_IDS = Object.values(BLOCK_FORMS) as BlockFormId[];
+
+/**
+ * the name each form below posts a box under, and the key its schema reads it by: the sheets that
+ * post the boxes and the save that parses them both spell a box from here, so a box renamed here is
+ * renamed on both sides. a row's box adds its place — `tier_amount[1]` (`rowBox`).
+ */
+export const BOXES = {
+	blockId: 'block_id',
+	blockType: 'block_type',
+	direction: 'direction',
+	background: 'background',
+	heading: 'heading',
+	lede: 'lede',
+	body: 'body',
+	tierAmount: 'tier_amount',
+	tierBuys: 'tier_buys',
+	question: 'question',
+	answer: 'answer',
+	imageId: 'image_id',
+	alt: 'alt',
+	variant: 'variant',
+	layout: 'layout',
+	shade: 'shade',
+	corners: 'corners',
+	palette: 'palette',
+	shareMessage: 'share_message',
+	shareChannels: 'share_channels'
+} as const;
+
+/** a row's box by its place, as a list of rows posts it — `tier_amount[1]`. */
+export const rowBox = (box: string, at: number) => `${box}[${at}]`;
+
+/** a block added to the page, by its type; `addableTypes` says which the page takes. */
+export const BLOCK_ADD_INPUT = z.object({ [BOXES.blockType]: z.string('required') });
+
+/** a block taken off the page; the donation box is on every page and is refused. */
+export const BLOCK_REMOVE_INPUT = z.object({ [BOXES.blockId]: z.string('required') });
+
+/** the two ways a block moves, one step at a time. */
+export const MOVES = ['up', 'down'] as const;
+
+/** a block moved one step up or down the page. */
+export const BLOCK_MOVE_INPUT = z.object({
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.direction]: oneOf(MOVES, 'a direction', 'a block moves')
+});
+
+/** a block's background picture, which applies on pick. */
+export const BLOCK_BACKGROUND_INPUT = z.object({
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.background]: z.string('required')
+});
 
 /** a blank heading draws the page's own name, and a blank lede is none. */
 export const BLOCK_TITLE_INPUT = z.object({
-	block_id: z.string('required'),
-	heading: z.string().default(''),
-	lede: z.string().default('')
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.heading]: z.string().default(''),
+	[BOXES.lede]: z.string().default('')
 });
 
 /** the story's body, the document's JSON as the rich-text box posts it. */
 export const BLOCK_STORY_INPUT = z.object({
-	block_id: z.string('required'),
-	body: z.string('required')
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.body]: z.string('required')
 });
 
 /**
@@ -53,16 +138,16 @@ export const BLOCK_STORY_INPUT = z.object({
  * `tier_buys[i]`: two lists, since a form's fields are flat ($lib/server/conform.ts).
  */
 export const BLOCK_IMPACT_TIERS_INPUT = z.object({
-	block_id: z.string('required'),
-	tier_amount: z.array(z.string().default('')),
-	tier_buys: z.array(z.string().default(''))
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.tierAmount]: z.array(z.string().default('')),
+	[BOXES.tierBuys]: z.array(z.string().default(''))
 });
 
 /** the questions as rows, `question[i]` beside `answer[i]`, the answer's document as JSON. */
 export const BLOCK_FAQ_INPUT = z.object({
-	block_id: z.string('required'),
-	question: z.array(z.string().default('')),
-	answer: z.array(z.string().default(''))
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.question]: z.array(z.string().default('')),
+	[BOXES.answer]: z.array(z.string().default(''))
 });
 
 /**
@@ -70,19 +155,34 @@ export const BLOCK_FAQ_INPUT = z.object({
  * answered its upload with, and what describes it; a blank description is a decorative photo.
  */
 export const BLOCK_PHOTO_INPUT = z.object({
-	block_id: z.string('required'),
-	image_id: z.string('required'),
-	alt: z.string().default('')
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.imageId]: z.string('required'),
+	[BOXES.alt]: z.string().default('')
 });
 
 /** a block's variant picture, which applies on pick. */
 export const BLOCK_VARIANT_INPUT = z.object({
-	block_id: z.string('required'),
-	variant: z.string('required')
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.variant]: z.string('required')
 });
 
 /** the page's layout picture, which applies on pick. */
-export const PAGE_LAYOUT_INPUT = z.object({ layout: z.string('required') });
+export const PAGE_LAYOUT_INPUT = z.object({ [BOXES.layout]: z.string('required') });
+
+/** the page's shade picture, which applies on pick. */
+export const PAGE_SHADE_INPUT = z.object({ [BOXES.shade]: z.string('required') });
+
+/** the page's corners picture, which applies on pick. */
+export const PAGE_CORNERS_INPUT = z.object({ [BOXES.corners]: z.string('required') });
+
+/** the page's palette picture, which applies on pick. */
+export const PAGE_PALETTE_INPUT = z.object({ [BOXES.palette]: z.string('required') });
+
+/** what a share says beside the page's address; a blank box removes it, and the title is said. */
+export const PAGE_SHARE_MESSAGE_INPUT = z.object({ [BOXES.shareMessage]: z.string().optional() });
+
+/** the share buttons the page offers, in the order they stand: one `share_channels` each. */
+export const PAGE_SHARE_CHANNELS_INPUT = z.object({ [BOXES.shareChannels]: z.array(z.string()) });
 
 /** a block's words as its sheet's boxes are seeded with them; null for a block with none. */
 export type BlockText =
@@ -99,7 +199,12 @@ export type BlockText =
 			readonly kind: 'faq';
 			readonly items: readonly { readonly question: string; readonly answer: RichTextDocument }[];
 	  }
-	| { readonly kind: 'photo'; readonly imageId: string; readonly alt: string };
+	| {
+			readonly kind: 'photo';
+			/** null until a first photo is placed. */
+			readonly imageId: string | null;
+			readonly alt: string;
+	  };
 
 /** one block of the draft, as the block list and its sheet draw it. */
 export type EditorBlock = {
@@ -113,24 +218,24 @@ export type EditorBlock = {
 	readonly variant: string | null;
 	/** the variants it may take, empty where `variant` is null. */
 	readonly variants: readonly Picture[];
+	/** the ground its section stands on. */
+	readonly background: Background;
+	/** the grounds it may stand on; one where it has no choice. */
+	readonly backgrounds: readonly Picture[];
+	/** false for the donation box alone, which every page holds once. */
+	readonly removable: boolean;
+	/** whether a block stands above it, and below it, for a move to swap it with. */
+	readonly movesUp: boolean;
+	readonly movesDown: boolean;
 	readonly text: BlockText | null;
-	/** a hero or an image block whose picture an AI drew, until a photo replaces it. */
-	readonly illustration: boolean;
 };
 
 /** a picture a picker offers: the catalog's name, and what the picture is called. */
 export type Picture = { readonly value: string; readonly label: string };
 
-/**
- * the draft's blocks in its order; `currency` is the draft's donation settings', `illustrations`
- * the ids of its pictures an AI drew.
- */
-export function editorBlocks(
-	draft: Page,
-	currency: string,
-	illustrations: ReadonlySet<string>
-): EditorBlock[] {
-	return draft.blocks.map((block) => ({
+/** the draft's blocks in its order; `currency` is the draft's donation settings'. */
+export function editorBlocks(draft: Page, currency: string): EditorBlock[] {
+	return draft.blocks.map((block, at) => ({
 		id: block.id,
 		type: block.type,
 		label: BLOCK_LABELS[block.type],
@@ -144,15 +249,98 @@ export function editorBlocks(
 						label: VARIANT_LABELS[name]
 					}))
 				}),
-		text: blockText(block, currency),
-		illustration: isIllustrated(block, illustrations)
+		background: block.background,
+		backgrounds: BLOCKS[block.type].backgrounds.map((name) => ({
+			value: name,
+			label: BACKGROUND_LABELS[name]
+		})),
+		removable: block.type !== 'donation-box',
+		movesUp: at > 0,
+		movesDown: at < draft.blocks.length - 1,
+		text: blockText(block, currency)
 	}));
+}
+
+/** the blocks a page of `type` may be given, in the catalog's order. */
+export function addableTypes(type: PageType): AddableBlockType[] {
+	return BLOCK_TYPES.filter(
+		(block): block is AddableBlockType =>
+			block !== 'donation-box' && (BLOCKS[block].pages as readonly PageType[]).includes(type)
+	);
+}
+
+/** the blocks a page of `type` may be given, as the add picker offers them. */
+export function addablePictures(type: PageType): Picture[] {
+	return addableTypes(type).map((block) => ({ value: block, label: BLOCK_LABELS[block] }));
+}
+
+/** the page's look as it draws: a draft holding no look of its own draws the defaults. */
+export type EditorLook = {
+	readonly shade: Shade;
+	readonly corners: Corner;
+	readonly palette: Palette;
+};
+
+export function editorLook(draft: Page): EditorLook {
+	return {
+		shade: draft.look?.shade ?? DEFAULT_SHADE,
+		corners: draft.look?.corner ?? DEFAULT_CORNER,
+		palette: draft.palette
+	};
+}
+
+/** the look's pictures, each offering the catalog's names. */
+export function lookPictures() {
+	return {
+		shades: SHADES.map((name) => ({ value: name, label: SHADE_LABELS[name] })),
+		corners: CORNERS.map((name) => ({ value: name, label: CORNER_LABELS[name] })),
+		palettes: PALETTES.map((name) => ({ value: name, label: PALETTE_LABELS[name] }))
+	} satisfies Record<string, Picture[]>;
+}
+
+const SHADE_LABELS: Record<Shade, string> = { light: 'Light', warm: 'Warm', cool: 'Cool' };
+
+const CORNER_LABELS: Record<Corner, string> = { square: 'Square', soft: 'Soft', round: 'Round' };
+
+const PALETTE_LABELS: Record<Palette, string> = {
+	plain: 'Plain',
+	tint: 'Tinted',
+	duo: 'Two-tone',
+	bright: 'Bright',
+	bold: 'Bold'
+};
+
+/** every share button a page may offer, as the share sheet lists them. */
+export function shareChannelPictures(): Picture[] {
+	return SHARE_CHANNELS.map((name) => ({ value: name, label: SHARE_CHANNEL_LABELS[name] }));
+}
+
+/** what the page's share block hands a donor's share, as the draft holds it. */
+export type EditorShare = {
+	/** `''` where the page has none, and a share says the page's title. */
+	readonly message: string;
+	/** the buttons in the order they stand: the draft's, or the default where it has chosen none. */
+	readonly channels: readonly ShareChannel[];
+};
+
+export function editorShare(draft: Page): EditorShare {
+	return {
+		message: draft.shareMessage ?? '',
+		channels: draft.shareChannels ?? SHARE_CHANNELS_DEFAULT
+	};
 }
 
 /** the page's layouts, as the Settings sheet's pictures offer them. */
 export function layoutPictures(): Picture[] {
 	return LAYOUTS.map((name) => ({ value: name, label: LAYOUT_LABELS[name] }));
 }
+
+const BACKGROUND_LABELS: Record<Background, string> = {
+	none: 'None',
+	soft: 'Soft',
+	tint: 'Tinted',
+	strong: 'Strong'
+};
 
 const LAYOUT_LABELS: Record<Layout, string> = {
 	'box-right': 'Box beside',
@@ -247,12 +435,9 @@ function blockText(block: Block, currency: string): BlockText | null {
 			};
 		case 'faq':
 			return { kind: 'faq', items: block.items };
-		// a photo is replaced where one is placed; placing the first is the chat's.
 		case 'hero':
 		case 'image':
-			return block.imageId === null
-				? null
-				: { kind: 'photo', imageId: block.imageId, alt: block.alt ?? '' };
+			return { kind: 'photo', imageId: block.imageId, alt: block.alt ?? '' };
 		default:
 			return null;
 	}

@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ruleOf, sheet } from './sheet-rule.testing';
 
-// a page editor at a phone's width holds whatever a campaign is named, and what an operator typed
-// into the AI's questions, within the screen.
+// a page editor at a phone's width holds whatever a campaign is named within the screen.
 //
 // `.adm-editor` is a grid, and an implicit `auto` column grows to the min-content width of what it
 // holds: the publish bar's, which takes the name's whole length where the name does not wrap. on a
@@ -25,9 +24,5 @@ describe('the page editor at a phone’s width', () => {
 			expect(rule.get('overflow')).toBe('hidden');
 			expect(rule.get('text-overflow')).toBe('ellipsis');
 		}
-	});
-
-	it('breaks a long word or address in an answer rather than running out of the summary', () => {
-		expect(ruleOf(css, '.adm-answers__list > dd').get('overflow-wrap')).toBe('anywhere');
 	});
 });

@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react';
-import { useFetcher } from 'react-router';
-import { type AdminActionData, resultFor } from '$lib/admin/use-admin-form';
-import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import { Button } from '@better-giving/operator/components/controls/Button';
+import { Field } from '@better-giving/operator/components/forms/Field';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { type FetcherWithComponents, useFetcher } from 'react-router';
 import type { Resized } from '@better-giving/operator/images/resize';
-import { BLOCK_FORMS, type BlockText, type EditorBlock } from '$lib/page/block-edit';
+import { BLOCK_FORMS, BOXES, type BlockText, type EditorBlock, rowBox } from '$lib/page/block-edit';
+import { FAQ_MAX, TIERS_MAX } from '$lib/page/catalog';
 import { imageSrc } from '$lib/page/image-src';
+import type { RichTextDocument } from '$lib/rich-text/document';
+import { RichTextEditor } from '../rich-text/rich-text-editor';
 import { BlockSheet } from './block-sheet';
 import { useFocusOnRefusal } from './done-sheet';
+import { useDraftPresses } from './draft-presses';
 import { MoneyField } from './money-field';
 import { postPhoto, type UploadAnswer } from './photo-upload';
 import {
@@ -14,75 +18,56 @@ import {
 	type ReplacePhotoControlProps,
 	replaceRefusal
 } from './replace-photo';
-import { type Saves, type SuggestAsk, SuggestedField, SuggestedRichText } from './suggest';
 
 // a block's sheet as both editors open it — from a click on the block in the preview and from its
-// row in Settings' block list alike, the donation box's being the Donation settings sheet — and the
-// layout pictures' pick, each posted through a fetcher to the editor route's action (`saveBlockForm`
-// in $lib/server/pages/blocks.ts), so the editor does not navigate. a landed write moves the page's
-// version, which reloads the preview.
+// row in Settings' block list alike, the donation box's being the Donation settings sheet — each
+// press posted to the editor route's action through ./draft-presses.ts.
 //
 // the words are the boxes' own, uncontrolled: a refused Done leaves them holding what was typed,
-// the refusal under the box the catalog's rule names, and the caret moved there. a picture applies
-// on pick and is drawn picked while its write is in flight; a refused one goes back to the draft's,
-// with its refusal under the pictures and never at Done. every post carries the version as the
-// editor holds it at the press, so a pick that landed first does not make the Done after it stale.
+// the refusal under the box the catalog's rule names, and the caret moved there. a variant picture
+// or a background applies on pick and is drawn picked while its write is in flight; a refused one
+// goes back to the draft's, with its refusal under the picks and never at Done. the picks and Done
+// are one owner's presses, so a pick made while another press is in flight waits for its answer,
+// drawn picked meanwhile, and Done is held, since either would carry the version the first is about
+// to move.
 //
 // the tiers and the questions are repeating rows: each row a pair of boxes whose legend, read to a
 // screen reader and not drawn, names it by its place — Tier 2 — and the rows a stack, so one row
 // stands off the next further than the two boxes inside it stand apart, and nearer than the
 // pictures stand off the rows. a tier's amount carries its currency on the box and groups its
-// digits as typed (./money-field.tsx), as the goal's does.
+// digits as typed (./money-field.tsx), as the goal's does. a row is added under the rows, up to the
+// catalog's cap, and dropped by its own Remove while another row stands; a block holding none opens
+// on one empty row, and the save leaves out a row emptied of both its boxes. each row is keyed by an
+// identity of its own, so a half-typed row keeps its words as rows above it go, and the focus moves
+// into the row added, or onto the row above the one dropped. a refused Done names a row by the place
+// it stood in when Done posted, and the refusal is read back to the row that stood there: it stays
+// on that row as rows above it go, goes with it when it is dropped, and is never on a row added
+// since. the caret is moved to the first refused box when the refusal arrives, and not again as rows
+// come and go. Add and Remove stand at the touch floor.
 //
-// a placed photo's sheet is the replace press and its description (./replace-photo.tsx), with
-// Illustration over the art while the photo is still the AI illustration it opened on. a new
+// a placed photo's sheet is the replace press and its description (./replace-photo.tsx). a new
 // photo is posted to the images route as soon as it is resized (./photo-upload.ts) and drawn once
 // stored, and Done writes its id and the description to the block, as a text block's words are;
-// a sheet dismissed before Done leaves the block as it was. a refused description lands under its
-// box, with the caret moved there; what else the photo's rule refuses lands at Done.
-//
-// every text box but a tier's amount and a photo's description carries Write with AI
-// (./suggest.tsx), asked of the page's suggest route at `suggestUrl`: the model never sees the
-// photo, so a description it wrote would be one a screen-reader donor hears as fact. a tier's
-// words are asked for its amount, and an answer for its question, each as the sheet holds it at
-// the press. the words it fills go with Done like typed ones, and a Done that lands takes the
-// boxes' "AI suggestion" away.
-
-type Answer = AdminActionData & { readonly saved?: string };
-
-/** the version a press is written against, beside the form it came from. */
-function post(form: { readonly id: string }, version: number, fields: FormData = new FormData()) {
-	fields.set(WHICH_FORM, form.id);
-	fields.set(RECORD_VERSION, String(version));
-	return fields;
-}
-
-/** the first message the last answer refused `form` with under `box` — `''` is the form's own. */
-function refusal(
-	form: { readonly id: string },
-	answer: Answer | undefined,
-	box: string
-): string | null {
-	return resultFor(form, answer)?.error?.[box]?.[0] ?? null;
-}
+// a sheet dismissed before Done leaves the block as it was. while a new photo resizes or uploads,
+// Done is held as it is while a press is in flight, so it never writes the photo being replaced
+// nor says a photo is wanted. a refused description lands under its box, with the caret moved
+// there; what else the photo's rule refuses lands at Done. a hero or an image with no photo yet
+// opens on Add photo alone, and Done there posts nothing: it says at the press that a photo is
+// wanted and puts the focus on it.
 
 const TEXT_FORMS = {
-	title: { id: BLOCK_FORMS.title },
-	story: { id: BLOCK_FORMS.story },
-	'impact-tiers': { id: BLOCK_FORMS.impactTiers },
-	faq: { id: BLOCK_FORMS.faq },
-	photo: { id: BLOCK_FORMS.photo }
+	title: BLOCK_FORMS.title,
+	story: BLOCK_FORMS.story,
+	'impact-tiers': BLOCK_FORMS.impactTiers,
+	faq: BLOCK_FORMS.faq,
+	photo: BLOCK_FORMS.photo
 } as const;
-const VARIANT_FORM = { id: BLOCK_FORMS.variant };
-const LAYOUT_FORM = { id: BLOCK_FORMS.layout };
 
 type BlockEditSheetProps = {
-	/** the block as the editor reads it; `illustration` marks a photo that is an AI illustration. */
-	readonly block: EditorBlock & { readonly illustration?: boolean | undefined };
+	/** the block as the editor reads it. */
+	readonly block: EditorBlock;
 	/** the page's version as the editor holds it now. */
 	readonly version: number;
-	/** the page's suggest route (`suggestUrl` in ./suggest-url.ts), which Write with AI asks. */
-	readonly suggestUrl: string;
 	/** X or Escape. */
 	readonly onDismiss: () => void;
 	/** a Done landed: the draft holds the words. */
@@ -94,29 +79,32 @@ type BlockEditSheetProps = {
 export function BlockEditSheet({
 	block,
 	version,
-	suggestUrl,
 	onDismiss,
 	onSaved,
 	stacked = false
 }: BlockEditSheetProps) {
-	// unkeyed, so an answer does not outlive the sheet: a reopened sheet starts with none.
-	const words = useFetcher<Answer>();
-	const picks = useFetcher<Answer>();
-
-	const applying = words.state !== 'idle';
-	const wordsAnswer = applying ? undefined : words.data;
-	const saved = wordsAnswer?.saved === 'block';
-	const picking = picks.state !== 'idle';
-	const pickAnswer = picking ? undefined : picks.data;
-	const picked = picking ? picks.formData?.get('variant') : null;
+	const presses = useDraftPresses(version);
+	const picked = presses.sending(BLOCK_FORMS.variant, BOXES.variant)?.[0];
+	const grounded = presses.sending(BLOCK_FORMS.background, BOXES.background)?.[0];
+	/** a photo block's Done found no photo, until one is chosen. */
+	const [photoWanted, setPhotoWanted] = useState(false);
+	/** a photo block's new photo, posted to the images route once resized. */
+	const upload = useFetcher<UploadAnswer>();
+	const [resizing, setResizing] = useState(false);
+	const photoLanding = resizing || upload.state !== 'idle';
+	const pressId = boxId(block.id, 'photo');
+	const textForm = block.text === null ? null : TEXT_FORMS[block.text.kind];
+	const saved = textForm !== null && presses.landed(textForm);
 
 	useEffect(() => {
 		if (saved) onSaved();
 	}, [saved, onSaved]);
 
-	const textForm = block.text === null ? null : TEXT_FORMS[block.text.kind];
-	const pickRefusal =
-		refusal(VARIANT_FORM, pickAnswer, 'variant') ?? refusal(VARIANT_FORM, pickAnswer, '');
+	const pick = (form: string, box: string, value: string) =>
+		presses.press(form, [
+			[BOXES.blockId, block.id],
+			[box, value]
+		]);
 
 	return (
 		<BlockSheet
@@ -128,15 +116,18 @@ export function BlockEditSheet({
 					? undefined
 					: {
 							options: block.variants,
-							value: typeof picked === 'string' ? picked : block.variant,
-							refusal: pickRefusal,
-							onPick: (variant) => {
-								const body = post(VARIANT_FORM, version);
-								body.set('block_id', block.id);
-								body.set('variant', variant);
-								picks.submit(body, { method: 'post' });
-							}
+							value: picked ?? block.variant,
+							onPick: (variant) => pick(BLOCK_FORMS.variant, BOXES.variant, variant)
 						}
+			}
+			backgrounds={{
+				options: block.backgrounds,
+				value: grounded ?? block.background,
+				onPick: (background) => pick(BLOCK_FORMS.background, BOXES.background, background)
+			}}
+			pickRefusal={
+				presses.said(BLOCK_FORMS.variant, BOXES.variant) ??
+				presses.said(BLOCK_FORMS.background, BOXES.background)
 			}
 			text={
 				block.text === null || textForm === null
@@ -146,18 +137,23 @@ export function BlockEditSheet({
 								<BlockFields
 									id={block.id}
 									text={block.text}
-									error={(box) => refusal(textForm, wordsAnswer, box)}
-									illustration={block.illustration === true}
-									suggest={{ url: suggestUrl, saved: saved ? wordsAnswer : null, saving: applying }}
+									error={(box) => presses.refused(textForm, box)}
+									posting={presses.flying(textForm)}
+									photo={{ pressId, wanted: photoWanted, upload, onResizing: setResizing }}
 								/>
 							),
 							onDone: (form) => {
-								const body = post(textForm, version, new FormData(form));
-								body.set('block_id', block.id);
-								words.submit(body, { method: 'post' });
+								const body = new FormData(form);
+								if (block.text?.kind === 'photo' && body.get(BOXES.imageId) === '') {
+									setPhotoWanted(true);
+									document.getElementById(pressId)?.focus();
+									return;
+								}
+								body.set(BOXES.blockId, block.id);
+								presses.press(textForm, body);
 							},
-							applying,
-							refusal: refusal(textForm, wordsAnswer, '')
+							applying: presses.busy || photoLanding,
+							refusal: presses.refused(textForm, '')
 						}
 			}
 			onDismiss={onDismiss}
@@ -171,18 +167,28 @@ type BlockFieldsProps = {
 	readonly text: BlockText;
 	/** the last Done's refusal under `box`. */
 	readonly error: (box: string) => string | null;
-	/** the photo it holds is an AI illustration. */
-	readonly illustration?: boolean | undefined;
-	/** the suggest route, and where the block's save stands, which takes a box's mark away. */
-	readonly suggest: Saves & { readonly url: string };
+	/** a Done is in flight. */
+	readonly posting: boolean;
+	/**
+	 * a photo block's press, by its id; whether a Done found no photo chosen; the upload of a new
+	 * photo; and its resize starting and ending — the sheet holds Done on the last two.
+	 */
+	readonly photo: {
+		readonly pressId: string;
+		readonly wanted: boolean;
+		readonly upload: FetcherWithComponents<UploadAnswer>;
+		readonly onResizing: (resizing: boolean) => void;
+	};
 };
 
 /** the boxes a block's words are typed in, named as its form posts them. */
-function BlockFields({ id, text, error, illustration, suggest }: BlockFieldsProps) {
-	if (text.kind === 'photo')
-		return <PhotoFields id={id} text={text} error={error} illustration={illustration} />;
-	return <WordFields id={id} text={text} error={error} suggest={suggest} />;
+function BlockFields({ id, text, error, posting, photo }: BlockFieldsProps) {
+	if (text.kind === 'photo') return <PhotoFields id={id} text={text} error={error} photo={photo} />;
+	return <WordFields id={id} text={text} error={error} posting={posting} />;
 }
+
+/** what the press says to a Done that found no photo chosen. */
+const PHOTO_WANTED = 'Add a photo first. The page doesn’t change until you do.';
 
 type PhotoText = Extract<BlockText, { kind: 'photo' }>;
 
@@ -191,9 +197,9 @@ function PhotoFields({
 	id,
 	text,
 	error,
-	illustration = false
-}: Omit<BlockFieldsProps, 'suggest'> & { readonly text: PhotoText }) {
-	const upload = useFetcher<UploadAnswer>();
+	photo
+}: Omit<BlockFieldsProps, 'posting'> & { readonly text: PhotoText }) {
+	const { upload } = photo;
 	const [imageId, setImageId] = useState(text.imageId);
 	const [alt, setAlt] = useState(text.alt);
 	const [refused, setRefused] = useState<string | null>(null);
@@ -212,6 +218,7 @@ function PhotoFields({
 	}
 
 	const resized = (result: Resized) => {
+		photo.onResizing(false);
 		if (!result.ok) {
 			setRefused(replaceRefusal(result.reason));
 			return;
@@ -219,170 +226,329 @@ function PhotoFields({
 		setRefused(null);
 		postPhoto(upload, result.blob);
 	};
+	const said = refused ?? (photo.wanted && imageId === null ? PHOTO_WANTED : null);
 	const state: ReplacePhotoControlProps['state'] =
-		upload.state !== 'idle' ? 'uploading' : refused === null ? undefined : { refused };
-	const altId = boxId(id, 'alt');
-	const altError = error('alt');
+		upload.state !== 'idle' ? 'uploading' : said === null ? undefined : { refused: said };
+	const altId = boxId(id, BOXES.alt);
+	const altError = error(BOXES.alt);
 	useFocusOnRefusal(altError, altId);
 
 	return (
 		<>
 			<ReplacePhotoControl
-				imageSrc={imageSrc(imageId)}
+				imageSrc={imageId === null ? undefined : imageSrc(imageId)}
 				alt={alt}
+				onPicked={() => photo.onResizing(true)}
 				onResized={resized}
 				onAltChange={setAlt}
 				state={state}
 				altId={altId}
 				altError={altError}
-				flag={illustration && imageId === text.imageId ? 'Illustration' : undefined}
+				pressId={photo.pressId}
 			/>
-			<input type="hidden" name="image_id" value={imageId} />
-			<input type="hidden" name="alt" value={alt} />
+			<input type="hidden" name={BOXES.imageId} value={imageId ?? ''} />
+			<input type="hidden" name={BOXES.alt} value={alt} />
 		</>
 	);
 }
 
 type WordsText = Exclude<BlockText, PhotoText>;
+type WordsProps<K extends WordsText['kind']> = Pick<BlockFieldsProps, 'id' | 'error'> & {
+	readonly text: Extract<WordsText, { kind: K }>;
+};
+/** a list's rows take the Done in flight as well, which is when their keys are taken. */
+type RowsProps<K extends 'impact-tiers' | 'faq'> = WordsProps<K> &
+	Pick<BlockFieldsProps, 'posting'>;
 
 /** the boxes of a block whose words are typed. */
-function WordFields({ id, text, error, suggest }: BlockFieldsProps & { readonly text: WordsText }) {
-	const ask = (field: string, beside?: string): SuggestAsk => ({
-		url: suggest.url,
-		block: id,
-		field,
-		beside: beside === undefined ? undefined : () => boxValue(boxId(id, beside))
-	});
-	const boxes = boxNames(text);
+function WordFields({
+	id,
+	text,
+	error,
+	posting
+}: Omit<BlockFieldsProps, 'photo'> & { readonly text: WordsText }) {
+	switch (text.kind) {
+		case 'title':
+			return <TitleFields id={id} text={text} error={error} />;
+		case 'story':
+			return <StoryFields id={id} text={text} error={error} />;
+		case 'impact-tiers':
+			return <TierRows id={id} text={text} error={error} posting={posting} />;
+		case 'faq':
+			return <QuestionRows id={id} text={text} error={error} posting={posting} />;
+	}
+}
+
+/** the caret moved to the first of `boxes` the last Done refused, on the render it arrives in. */
+function useFocusOnFirstRefused(
+	id: string,
+	boxes: readonly string[],
+	error: (box: string) => string | null
+) {
 	const refused = boxes.find((box) => error(box) !== null) ?? null;
 	useFocusOnRefusal(
 		refused === null ? null : error(refused),
 		refused === null ? '' : boxId(id, refused)
 	);
-
-	switch (text.kind) {
-		case 'title':
-			return (
-				<>
-					<SuggestedField
-						ask={ask('heading')}
-						saves={suggest}
-						id={boxId(id, 'heading')}
-						name="heading"
-						label="Heading"
-						optional
-						hint="Leave it empty to show the page’s name."
-						defaultValue={text.heading}
-						error={error('heading')}
-					/>
-					<SuggestedField
-						ask={ask('lede')}
-						saves={suggest}
-						id={boxId(id, 'lede')}
-						name="lede"
-						label="Lead-in"
-						optional
-						as="textarea"
-						defaultValue={text.lede}
-						error={error('lede')}
-					/>
-				</>
-			);
-		case 'story':
-			return (
-				<SuggestedRichText
-					ask={ask('body')}
-					saves={suggest}
-					id={boxId(id, 'body')}
-					name="body"
-					label="Story"
-					defaultValue={text.body}
-					error={error('body')}
-				/>
-			);
-		case 'impact-tiers':
-			return (
-				<div className="adm-stack">
-					{text.tiers.map((tier, at) => (
-						<fieldset key={`tier-${String(at)}`} className="adm-pair">
-							<legend className="adm-vh">Tier {at + 1}</legend>
-							<MoneyField
-								id={boxId(id, `tier_amount[${at}]`)}
-								name={`tier_amount[${at}]`}
-								label="Amount"
-								affix={text.currency}
-								affixAt="end"
-								currency={text.currency}
-								defaultValue={tier.amount}
-								error={error(`tier_amount[${at}]`)}
-							/>
-							<SuggestedField
-								ask={ask(`tier_buys[${at}]`, `tier_amount[${at}]`)}
-								saves={suggest}
-								id={boxId(id, `tier_buys[${at}]`)}
-								name={`tier_buys[${at}]`}
-								label="What it buys"
-								defaultValue={tier.buys}
-								error={error(`tier_buys[${at}]`)}
-							/>
-						</fieldset>
-					))}
-				</div>
-			);
-		case 'faq':
-			return (
-				<div className="adm-stack">
-					{text.items.map((item, at) => (
-						<fieldset key={`item-${String(at)}`} className="adm-pair">
-							<legend className="adm-vh">Question {at + 1}</legend>
-							<SuggestedField
-								ask={ask(`question[${at}]`)}
-								saves={suggest}
-								id={boxId(id, `question[${at}]`)}
-								name={`question[${at}]`}
-								label="Question"
-								defaultValue={item.question}
-								error={error(`question[${at}]`)}
-							/>
-							<SuggestedRichText
-								ask={ask(`answer[${at}]`, `question[${at}]`)}
-								saves={suggest}
-								id={boxId(id, `answer[${at}]`)}
-								name={`answer[${at}]`}
-								label="Answer"
-								defaultValue={item.answer}
-								error={error(`answer[${at}]`)}
-							/>
-						</fieldset>
-					))}
-				</div>
-			);
-	}
 }
 
-/** every box a block's form posts, in the order the sheet draws them. */
-function boxNames(text: WordsText): string[] {
-	switch (text.kind) {
-		case 'title':
-			return ['heading', 'lede'];
-		case 'story':
-			return ['body'];
-		case 'impact-tiers':
-			return text.tiers.flatMap((_, at) => [`tier_amount[${at}]`, `tier_buys[${at}]`]);
-		case 'faq':
-			return text.items.flatMap((_, at) => [`question[${at}]`, `answer[${at}]`]);
+function TitleFields({ id, text, error }: WordsProps<'title'>) {
+	useFocusOnFirstRefused(id, [BOXES.heading, BOXES.lede], error);
+	return (
+		<>
+			<Field
+				id={boxId(id, BOXES.heading)}
+				name={BOXES.heading}
+				label="Heading"
+				optional
+				hint="Leave it empty to show the page’s name."
+				defaultValue={text.heading}
+				error={error(BOXES.heading)}
+			/>
+			<Field
+				id={boxId(id, BOXES.lede)}
+				name={BOXES.lede}
+				label="Lead-in"
+				optional
+				as="textarea"
+				defaultValue={text.lede}
+				error={error(BOXES.lede)}
+			/>
+		</>
+	);
+}
+
+function StoryFields({ id, text, error }: WordsProps<'story'>) {
+	useFocusOnFirstRefused(id, [BOXES.body], error);
+	return (
+		<RichTextEditor
+			id={boxId(id, BOXES.body)}
+			name={BOXES.body}
+			label="Story"
+			defaultValue={text.body}
+			error={error(BOXES.body)}
+		/>
+	);
+}
+
+/** a row of a list the sheet adds to and drops from, and the identity it is keyed by. */
+type Keyed<T> = { readonly key: string; readonly row: T };
+
+/**
+ * the rows a block's list holds as the sheet draws them: the block's own, or one empty row where it
+ * holds none. `first(at)` is the id of the box the focus goes to in the row at `at`.
+ */
+function useRows<T>(seed: readonly T[], blank: T, first: (at: number) => string) {
+	const minted = useRef(0);
+	const [rows, setRows] = useState<readonly Keyed<T>[]>(() =>
+		(seed.length === 0 ? [blank] : seed).map((row, at) => ({ key: `held-${at}`, row }))
+	);
+	/** the box the focus is owed to by the add or remove that just changed the rows. */
+	const [owed, setOwed] = useState<string | null>(null);
+	useEffect(() => {
+		if (owed === null) return;
+		document.getElementById(owed)?.focus();
+		setOwed(null);
+	}, [owed]);
+	return {
+		rows,
+		add() {
+			minted.current += 1;
+			const key = `added-${minted.current}`;
+			setRows((was) => [...was, { key, row: blank }]);
+			setOwed(first(rows.length));
+		},
+		remove(key: string) {
+			const at = rows.findIndex((one) => one.key === key);
+			setRows((was) => was.filter((one) => one.key !== key));
+			setOwed(first(Math.max(at - 1, 0)));
+		}
+	};
+}
+
+/**
+ * the last Done's refusals, row by row. the answer names a row by its place when Done posted, so
+ * the rows' keys are taken as Done goes and each place is read back to the row that stood in it.
+ * the caret is moved to the first refused box on the render the answer arrives in.
+ */
+function useRowRefusals<T>(
+	id: string,
+	rows: readonly Keyed<T>[],
+	boxes: readonly string[],
+	{ error, posting }: Pick<BlockFieldsProps, 'error' | 'posting'>
+) {
+	const keys = rows.map((one) => one.key);
+	const [posted, setPosted] = useState(keys);
+	const [wasPosting, setWasPosting] = useState(posting);
+	if (posting !== wasPosting) {
+		setWasPosting(posting);
+		if (posting) setPosted(keys);
 	}
+	const refused = (key: string, box: string): string | null => {
+		const at = posted.indexOf(key);
+		return at === -1 ? null : error(rowBox(box, at));
+	};
+	const first = rows
+		.flatMap(({ key }, at) => boxes.map((box) => ({ at, box, said: refused(key, box) })))
+		.find((one) => one.said !== null);
+	// the keys Done posted, while a refusal of theirs stands: a new Done takes new keys, and its
+	// answer arriving is the refusal standing again, so this changes on that render and on no other.
+	const answered = first === undefined ? null : posted;
+	const focusFirst = useEffectEvent(() => {
+		if (first === undefined) return;
+		document.getElementById(boxId(id, rowBox(first.box, first.at)))?.focus();
+	});
+	useEffect(() => {
+		if (answered !== null) focusFirst();
+	}, [answered]);
+	return refused;
+}
+
+type RowPressesProps = {
+	/** how many rows stand, and how many the catalog lets the block hold. */
+	readonly count: number;
+	readonly max: number;
+	/** Add's words — `Add a tier` — and what stands in its place once the list is full. */
+	readonly add: string;
+	readonly full: string;
+	readonly onAdd: () => void;
+};
+
+/** Add under a list's rows, or the line saying the list is full. */
+function AddRow({ count, max, add, full, onAdd }: RowPressesProps) {
+	return count < max ? (
+		<div className="adm-actions">
+			<Button type="button" size="sm" mark="plus" className="adm-rowpress" onClick={onAdd}>
+				{add}
+			</Button>
+		</div>
+	) : (
+		<p className="adm-hint">{full}</p>
+	);
+}
+
+/** a row's Remove, named for the row it drops. */
+function RemoveRow({ name, onRemove }: { readonly name: string; readonly onRemove: () => void }) {
+	return (
+		<div className="adm-actions">
+			<Button
+				type="button"
+				size="sm"
+				variant="quiet"
+				mark="x"
+				className="adm-rowpress"
+				aria-label={`Remove ${name}`}
+				onClick={onRemove}
+			>
+				Remove
+			</Button>
+		</div>
+	);
+}
+
+function TierRows({ id, text, error, posting }: RowsProps<'impact-tiers'>) {
+	const list = useRows(text.tiers, { amount: '', buys: '' }, (at) =>
+		boxId(id, rowBox(BOXES.tierAmount, at))
+	);
+	const refused = useRowRefusals(id, list.rows, [BOXES.tierAmount, BOXES.tierBuys], {
+		error,
+		posting
+	});
+	return (
+		<div className="adm-stack">
+			{list.rows.map(({ key, row }, at) => {
+				const amount = rowBox(BOXES.tierAmount, at);
+				const buys = rowBox(BOXES.tierBuys, at);
+				return (
+					<fieldset key={key} className="adm-pair">
+						<legend className="adm-vh">Tier {at + 1}</legend>
+						<MoneyField
+							id={boxId(id, amount)}
+							name={amount}
+							label="Amount"
+							affix={text.currency}
+							affixAt="end"
+							currency={text.currency}
+							defaultValue={row.amount}
+							error={refused(key, BOXES.tierAmount)}
+						/>
+						<Field
+							id={boxId(id, buys)}
+							name={buys}
+							label="What it buys"
+							defaultValue={row.buys}
+							error={refused(key, BOXES.tierBuys)}
+						/>
+						{list.rows.length > 1 ? (
+							<RemoveRow name={`tier ${at + 1}`} onRemove={() => list.remove(key)} />
+						) : null}
+					</fieldset>
+				);
+			})}
+			<AddRow
+				count={list.rows.length}
+				max={TIERS_MAX}
+				add="Add a tier"
+				full={`A block holds ${TIERS_MAX} tiers at most.`}
+				onAdd={list.add}
+			/>
+		</div>
+	);
+}
+
+function QuestionRows({ id, text, error, posting }: RowsProps<'faq'>) {
+	const blank: { question: string; answer: RichTextDocument | undefined } = {
+		question: '',
+		answer: undefined
+	};
+	const list = useRows<typeof blank>(text.items, blank, (at) =>
+		boxId(id, rowBox(BOXES.question, at))
+	);
+	const refused = useRowRefusals(id, list.rows, [BOXES.question, BOXES.answer], {
+		error,
+		posting
+	});
+	return (
+		<div className="adm-stack">
+			{list.rows.map(({ key, row }, at) => {
+				const question = rowBox(BOXES.question, at);
+				const answer = rowBox(BOXES.answer, at);
+				return (
+					<fieldset key={key} className="adm-pair">
+						<legend className="adm-vh">Question {at + 1}</legend>
+						<Field
+							id={boxId(id, question)}
+							name={question}
+							label="Question"
+							defaultValue={row.question}
+							error={refused(key, BOXES.question)}
+						/>
+						<RichTextEditor
+							id={boxId(id, answer)}
+							name={answer}
+							label="Answer"
+							{...(row.answer === undefined ? {} : { defaultValue: row.answer })}
+							error={refused(key, BOXES.answer)}
+						/>
+						{list.rows.length > 1 ? (
+							<RemoveRow name={`question ${at + 1}`} onRemove={() => list.remove(key)} />
+						) : null}
+					</fieldset>
+				);
+			})}
+			<AddRow
+				count={list.rows.length}
+				max={FAQ_MAX}
+				add="Add a question"
+				full={`A block holds ${FAQ_MAX} questions at most.`}
+				onAdd={list.add}
+			/>
+		</div>
+	);
 }
 
 function boxId(block: string, box: string): string {
 	return `block-${block}-${box.replace(/[[\]]/g, '-')}`;
-}
-
-/** what the box `id` holds now, `""` for a blank one. */
-function boxValue(id: string): string {
-	return (
-		(document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? ''
-	);
 }
 
 /**
@@ -391,32 +557,4 @@ function boxValue(id: string): string {
  */
 export function isDonationBox(blocks: readonly EditorBlock[], id: string): boolean {
 	return blocks.some((block) => block.id === id && block.type === 'donation-box');
-}
-
-/**
- * the Settings sheet's layout pictures: `sheet` is the draft's layout, drawn as the pick in flight
- * while its write is, the pick posted to the editor's action, and the last pick's refusal.
- * `startClean` is the sheet opening: the editor holds this hook for as long as it is up, so a
- * refusal the sheet was closed on is let go of there, and the sheet opens without it. a pick still
- * in flight is left to land.
- */
-export function useLayoutPick(layout: string, version: number) {
-	const fetcher = useFetcher<Answer>();
-	const idle = fetcher.state === 'idle';
-	const sent = idle ? null : fetcher.formData?.get('layout');
-	const answer = idle ? fetcher.data : undefined;
-	return {
-		sheet: {
-			layout: typeof sent === 'string' ? sent : layout,
-			layoutRefusal: refusal(LAYOUT_FORM, answer, 'layout') ?? refusal(LAYOUT_FORM, answer, ''),
-			onLayout: (next: string) => {
-				const body = post(LAYOUT_FORM, version);
-				body.set('layout', next);
-				fetcher.submit(body, { method: 'post' });
-			}
-		},
-		startClean: () => {
-			if (idle) fetcher.reset();
-		}
-	};
 }

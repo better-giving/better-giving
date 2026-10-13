@@ -1,7 +1,7 @@
 // a campaign's end date, between the day an operator names (`YYYY-MM-DD`) and the instant a page
 // document stores (`endsAt` in ./keys.ts): the last millisecond before the next day first begins in
-// the operator's time zone. a day an operator or a reply names (`set.endDate` in ./accept-reply.ts)
-// lands through `endOfDay`, and `endDayOf` reads a stored end back as the day it closes.
+// the operator's time zone. a day an operator names lands through `endOfDay`, and `endDayOf` reads
+// a stored end back as the day it closes.
 //
 // the zone's rules are `Intl`'s, so a day that is 23 or 25 hours long, or one whose next day starts
 // at 01:00 because the clocks skip midnight, ends where the zone says it does. an IANA name the

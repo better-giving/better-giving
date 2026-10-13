@@ -39,11 +39,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-	await env.DB.batch([
-		env.DB.prepare('delete from chat_turn'),
-		env.DB.prepare('delete from page'),
-		env.DB.prepare('delete from form')
-	]);
+	await env.DB.batch([env.DB.prepare('delete from page'), env.DB.prepare('delete from form')]);
 });
 
 async function stored(pageId: string) {
@@ -79,35 +75,11 @@ function donationPage(): Promise<string> {
 	return insertPage(db, 'donation_page', { ...defaultDonationPage(), settings: SETTINGS });
 }
 
-const CUSTOM = { look: 'custom', shade: 'warm', corner: 'round', brand_colour: '#1d6b4f' };
-
 /** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
 let bindings: Env;
 
 beforeEach(async () => {
 	bindings = await finishedDeployment();
-});
-
-describe('the look and the share message', () => {
-	// each is the page's own and set only through its editor's chat ($lib/page/accept-reply.ts).
-	it.each([
-		['page-look', 'campaign', CUSTOM],
-		['page-look', 'donation_page', CUSTOM],
-		['page-share-message', 'campaign', { share_message: 'custom', message: 'Join me?' }],
-		['page-share-message', 'donation_page', { share_message: 'custom', message: 'Join me?' }]
-	] as const)(
-		'a press of %s on the %s editor is refused, writing nothing',
-		async (form, type, fields) => {
-			const pageId = type === 'campaign' ? await insertPage(db, 'campaign') : await donationPage();
-			const before = await stored(pageId);
-
-			const response = await post(pageId, form, fields);
-
-			expect(response.status).toBe(400);
-			expect(await response.text()).toMatch(/names no form on this screen/);
-			expect(await stored(pageId)).toEqual(before);
-		}
-	);
 });
 
 /** a campaign donors can see: its draft published as it stands. */

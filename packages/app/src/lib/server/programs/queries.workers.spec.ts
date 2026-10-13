@@ -1,6 +1,8 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
+import { createImage, stored } from '../images/image.testing';
+import { heroShowing, insertPage } from '../pages/page-row.testing';
 import { parseProgramInput, type ParsedProgram } from './program-input';
 import {
 	archiveProgram,
@@ -270,6 +272,76 @@ describe('updateProgram', () => {
 			await updateProgram(db, created.id, await at(created.id), input('Gala 2025'), null)
 		).toBe('gone');
 		expect(await readProgram(db, created.id)).toMatchObject({ name: 'Gala' });
+	});
+});
+
+describe('a cause’s photo', () => {
+	const PHOTO = {
+		kind: 'photo',
+		contentType: 'image/webp',
+		width: 400,
+		height: 300,
+		alt: null
+	} as const;
+	const photo = () => createImage(db, PHOTO, new Uint8Array([0x52, 0x49, 0x46, 0x46]));
+
+	/** a cause made and given `imageId` as its photo, by the save the cause's screen makes. */
+	async function showing(imageId: string) {
+		const created = await made(`Clean Water ${imageId}`);
+		const save = await updateProgram(
+			db,
+			created.id,
+			await at(created.id),
+			input(created.name),
+			imageId
+		);
+		if (save !== 'saved') throw new Error(`the fixture photo was not put on: ${save}`);
+		return created;
+	}
+
+	it('frees the photo a save replaces, row and bytes, and keeps the new one', async () => {
+		const first = await photo();
+		const cause = await showing(first);
+		const second = await photo();
+
+		expect(await updateProgram(db, cause.id, await at(cause.id), input(cause.name), second)).toBe(
+			'saved'
+		);
+		expect(await stored(db, first)).toEqual({ row: false, bytes: false });
+		expect(await stored(db, second)).toEqual({ row: true, bytes: true });
+	});
+
+	it('frees the photo a save takes off', async () => {
+		const first = await photo();
+		const cause = await showing(first);
+
+		expect(await updateProgram(db, cause.id, await at(cause.id), input(cause.name), null)).toBe(
+			'saved'
+		);
+		expect(await stored(db, first)).toEqual({ row: false, bytes: false });
+	});
+
+	it('keeps a photo it lets go of that a page still places', async () => {
+		const first = await photo();
+		const cause = await showing(first);
+		await insertPage(db, 'campaign', heroShowing(first));
+
+		expect(await updateProgram(db, cause.id, await at(cause.id), input(cause.name), null)).toBe(
+			'saved'
+		);
+		expect(await stored(db, first)).toEqual({ row: true, bytes: true });
+	});
+
+	it('keeps the photo when the save is refused, the batch failing whole', async () => {
+		await made('Gala');
+		const first = await photo();
+		const cause = await showing(first);
+
+		expect(await updateProgram(db, cause.id, await at(cause.id), input('Gala'), null)).toBe(
+			'duplicate_name'
+		);
+		expect(await readProgram(db, cause.id)).toMatchObject({ imageId: first });
+		expect(await stored(db, first)).toEqual({ row: true, bytes: true });
 	});
 });
 

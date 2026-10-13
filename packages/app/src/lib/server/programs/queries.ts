@@ -1,7 +1,9 @@
 import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
-import { image, program, type Program } from '../db/schema';
+import { program, type Program } from '../db/schema';
+import { freeLetGoStatements } from '../images/free';
+import { firstMissingImage } from '../images/queries';
 import { sqliteResultCode } from '../db/rejection';
 import type { ParsedProgram } from './program-input';
 
@@ -203,10 +205,10 @@ export async function createProgram(db: Db, input: ParsedProgram): Promise<Progr
  * picked a name a colleague used yesterday would send them looking for a cause that is fine.
  * `stale` is a cause written since the version the caller was drawn from, refused rather than
  * overwritten: a save replaces both columns, so a tab drawn before a colleague's rename would put
- * the old name back. `no_image` and `not_photo` are a photo id the save cannot hold, each its own
- * sentence at the photo's box, and nothing is written for either.
+ * the old name back. `no_image` is a photo id no stored image has, its own sentence at the photo's
+ * box, and nothing is written for it.
  */
-export type ProgramSave = 'saved' | 'gone' | 'stale' | 'duplicate_name' | 'no_image' | 'not_photo';
+export type ProgramSave = 'saved' | 'gone' | 'stale' | 'duplicate_name' | 'no_image';
 
 /**
  * renames a cause and rewrites its description, and answers whether there was one to write at the
@@ -230,9 +232,10 @@ export type ProgramSave = 'saved' | 'gone' | 'stale' | 'duplicate_name' | 'no_im
  * `updated_at` is in no `set`: the column carries `$onUpdateFn`, so drizzle adds it to every
  * update it emits.
  *
- * the photo must be an `image` of kind `photo`, which the column cannot check (`program.imageId` in
- * ../db/schema.ts). read ahead of the write, and no race is opened by it: an image row is never
- * deleted and its kind never changes after the insert.
+ * the photo must be a stored `image`, read ahead of the write so a missing one is answered at its
+ * box rather than by the column's foreign key. the photo the save replaces or takes off is freed in
+ * the write's own `batch()`, where nothing else places it (../images/free.ts); the read of which
+ * photo that is only names it, and a stale save keeps it because the row still does.
  */
 export async function updateProgram(
 	db: Db,
@@ -241,23 +244,22 @@ export async function updateProgram(
 	input: ParsedProgram,
 	imageId: string | null
 ): Promise<ProgramSave> {
-	if (imageId !== null) {
-		const [photo] = await db
-			.select({ kind: image.kind })
-			.from(image)
-			.where(eq(image.id, imageId))
-			.limit(1);
-		if (photo === undefined) return 'no_image';
-		if (photo.kind !== 'photo') return 'not_photo';
-	}
+	if (imageId !== null && (await firstMissingImage(db, [imageId])) !== null) return 'no_image';
+	const [held] = await db
+		.select({ imageId: program.imageId })
+		.from(program)
+		.where(eq(program.id, id));
 
 	let updated: { id: string }[];
 	try {
-		updated = await db
-			.update(program)
-			.set({ name: input.name, description: input.description, imageId })
-			.where(and(eq(program.id, id), isNull(program.archivedAt), eq(program.updatedAt, version)))
-			.returning({ id: program.id });
+		[updated] = await db.batch([
+			db
+				.update(program)
+				.set({ name: input.name, description: input.description, imageId })
+				.where(and(eq(program.id, id), isNull(program.archivedAt), eq(program.updatedAt, version)))
+				.returning({ id: program.id }),
+			...freeLetGoStatements(db, [held?.imageId ?? null], [imageId])
+		]);
 	} catch (error) {
 		if (sqliteResultCode(error) === NAME_TAKEN) return 'duplicate_name';
 		throw error;

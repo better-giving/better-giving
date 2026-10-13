@@ -14,7 +14,7 @@ import {
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// `appendChild` rather than `append`: see ../chat/ai-panel.dom.spec.tsx's `mount`.
+// `appendChild` rather than `append`: see ../crumbs.dom.spec.tsx's `mount`.
 function mount(node: ReactElement) {
 	const host = document.createElement('div');
 	document.body.appendChild(host);
@@ -242,24 +242,5 @@ describe('Remove', () => {
 
 		expect(document.activeElement).toBe(press(host));
 		expect(press(host).textContent).toBe('Add photo');
-	});
-});
-
-describe('the flag', () => {
-	it('stands over the art as a plain word', () => {
-		const { host } = mount(<ReplacePhotoControl {...props({ flag: 'Illustration' })} />);
-		const flag = one<HTMLElement>(host, '.adm-placed > .adm-actions:first-child');
-		expect(flag.textContent).toBe('Illustration');
-		expect(one(flag, '.adm-state').className).toBe('adm-state');
-		expect(flag.nextElementSibling?.tagName).toBe('IMG');
-	});
-
-	it('is not drawn without it, nor over no art', () => {
-		expect(mount(<ReplacePhotoControl {...props()} />).host.querySelector('.adm-state')).toBeNull();
-		expect(
-			mount(
-				<ReplacePhotoControl {...props({ flag: 'Illustration', imageSrc: undefined })} />
-			).host.querySelector('.adm-state')
-		).toBeNull();
 	});
 });

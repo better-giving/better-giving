@@ -2,18 +2,17 @@ import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { POSTING_ACCOUNTS } from './accounts';
 
-// the constraints `page` and `chat_turn` carry, each a table rebuild to change once shipped — the
-// reason ./donation-schema.workers.spec.ts opens with.
+// the constraints `page` carries, each a table rebuild to change once shipped — the reason
+// ./donation-schema.workers.spec.ts opens with.
 //
-// `STRICT` on the two tables and `NO ACTION` on their foreign keys are read off sqlite's
-// catalogue by ./strict.workers.spec.ts and not repeated here.
+// `STRICT` on the table and `NO ACTION` on its foreign key are read off sqlite's catalogue by
+// ./strict.workers.spec.ts and not repeated here.
 //
 // the pool gives per-file storage, not per-test: every case starts with one Donation page, and a
 // case probing a Donation page row takes that slot through `refusedAsDonationPage` and puts it back.
 
 const SQLITE_CONSTRAINT_CHECK = 'SQLITE_CONSTRAINT_CHECK';
 const SQLITE_CONSTRAINT_UNIQUE = 'SQLITE_CONSTRAINT_UNIQUE';
-const SQLITE_CONSTRAINT_FOREIGNKEY = 'SQLITE_CONSTRAINT_FOREIGNKEY';
 
 /** runs `fn` and requires D1 to have rejected it; same helper as the sibling schema specs. */
 async function rejection(fn: () => Promise<unknown>): Promise<string> {
@@ -356,206 +355,5 @@ describe('every page owns its own donation-settings row', () => {
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_UNIQUE);
 		expect(message).toContain('page.form_id');
-	});
-});
-
-type TurnRow = {
-	seq: number;
-	author: string;
-	text: string;
-	model: string | null;
-	image_ids: string;
-	note: string | null;
-	questions: string | null;
-	answers: string | null;
-};
-
-const OPERATOR_TURN: TurnRow = {
-	seq: 1,
-	author: 'operator',
-	text: 'coats for 300 kids, goal $15k by Dec 31',
-	model: null,
-	image_ids: '[]',
-	note: null,
-	questions: null,
-	answers: null
-};
-
-const ASSISTANT_TURN: TurnRow = {
-	...OPERATOR_TURN,
-	author: 'assistant',
-	text: 'here is a first draft',
-	model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
-};
-
-const QUESTIONS = '[{"id":"goal","kind":"amount","prompt":"How much are you raising?"}]';
-const ANSWERS = '[{"id":"goal","value":1500000}]';
-
-let turnSequence = 0;
-
-async function insertTurn(pageId: string, row: TurnRow): Promise<void> {
-	turnSequence += 1;
-	await env.DB.prepare(
-		`insert into chat_turn (id, page_id, seq, author, text, model, image_ids, note, questions,
-		                        answers, created_at)
-		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
-	)
-		.bind(
-			`019fc500-0000-7000-8000-${String(turnSequence).padStart(12, '0')}`,
-			pageId,
-			row.seq,
-			row.author,
-			row.text,
-			row.model,
-			row.image_ids,
-			row.note,
-			row.questions,
-			row.answers
-		)
-		.run();
-}
-
-describe('the chat, a page at a time and in order', () => {
-	let pageId: string;
-	beforeAll(async () => {
-		pageId = await insertPage({ ...CAMPAIGN, slug: 'chat-probe' });
-		await insertTurn(pageId, OPERATOR_TURN);
-	});
-
-	it('refuses a turn for a page that does not exist', async () => {
-		const message = await rejection(() =>
-			insertTurn('019fc400-0000-7000-8000-00000000dead', { ...OPERATOR_TURN, seq: 99 })
-		);
-		expect(message).toContain(SQLITE_CONSTRAINT_FOREIGNKEY);
-	});
-
-	it('refuses a second turn at a place in the chat another holds', async () => {
-		const message = await rejection(() => insertTurn(pageId, OPERATOR_TURN));
-		expect(message).toContain(SQLITE_CONSTRAINT_UNIQUE);
-		expect(message).toContain('chat_turn.page_id, chat_turn.seq');
-	});
-
-	it.each([['system'], ['user'], ['']])('refuses the author %j', async (author) => {
-		const message = await rejection(() => insertTurn(pageId, { ...OPERATOR_TURN, seq: 2, author }));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('chat_turn_author_check');
-	});
-
-	it('refuses an assistant turn that does not say which model wrote it', async () => {
-		const turn = { ...OPERATOR_TURN, seq: 2, author: 'assistant', model: null };
-		const message = await rejection(() => insertTurn(pageId, turn));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('chat_turn_model_check');
-	});
-
-	it('refuses a model on a turn the operator wrote', async () => {
-		const turn = { ...OPERATOR_TURN, seq: 2, model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' };
-		const message = await rejection(() => insertTurn(pageId, turn));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('chat_turn_model_check');
-	});
-
-	it.each([['refused '], ['Refused'], ['declined'], ['']])('refuses the note %j', async (note) => {
-		const turn = { ...ASSISTANT_TURN, seq: 2, note };
-		const message = await rejection(() => insertTurn(pageId, turn));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('chat_turn_note_check');
-	});
-
-	it('refuses a note on a turn the operator wrote', async () => {
-		const turn = { ...OPERATOR_TURN, seq: 2, note: 'refused' };
-		const message = await rejection(() => insertTurn(pageId, turn));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('chat_turn_note_check');
-	});
-
-	it.each([
-		['refused', 10],
-		['fell-back', 11],
-		['unanswered', 12],
-		['starter', 14],
-		[null, 13]
-	])('accepts an assistant turn noted %j', async (note, seq) => {
-		await insertTurn(pageId, { ...ASSISTANT_TURN, seq, note });
-		const row = await env.DB.prepare(`select note from chat_turn where page_id = ? and seq = ?`)
-			.bind(pageId, seq)
-			.first();
-		expect(row).toEqual({ note });
-	});
-
-	it.each([
-		['not json', 'a list'],
-		['an object', '{}'],
-		['a bare id', '"019fc600-0000-7000-8000-000000000001"']
-	])('refuses image ids held as %s', async (_, imageIds) => {
-		const turn = { ...OPERATOR_TURN, seq: 2, image_ids: imageIds };
-		const message = await rejection(() => insertTurn(pageId, turn));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('chat_turn_image_ids_array_check');
-	});
-
-	it('refuses questions on a turn the operator wrote', async () => {
-		const turn = { ...OPERATOR_TURN, seq: 2, questions: QUESTIONS };
-		const message = await rejection(() => insertTurn(pageId, turn));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('chat_turn_questions_check');
-	});
-
-	it('refuses answers on a turn the assistant wrote', async () => {
-		const turn = { ...ASSISTANT_TURN, seq: 2, answers: ANSWERS };
-		const message = await rejection(() => insertTurn(pageId, turn));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('chat_turn_answers_check');
-	});
-
-	it.each([
-		['questions', 'not json', ASSISTANT_TURN],
-		['questions', '{"id":"goal"}', ASSISTANT_TURN],
-		['questions', 'null', ASSISTANT_TURN],
-		['questions', '[]', ASSISTANT_TURN],
-		['answers', '{"goal":1500000}', OPERATOR_TURN],
-		['answers', '"none"', OPERATOR_TURN],
-		['answers', '[{"id":', OPERATOR_TURN]
-	] as const)('refuses %s held as %j', async (column, value, author) => {
-		const turn = { ...author, seq: 2, [column]: value };
-		const message = await rejection(() => insertTurn(pageId, turn));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain(`chat_turn_${column}_check`);
-	});
-
-	it.each([
-		['questions an assistant asked', { ...ASSISTANT_TURN, seq: 20, questions: QUESTIONS }],
-		['answers the operator gave', { ...OPERATOR_TURN, seq: 21, answers: ANSWERS }],
-		['an answers turn with every question skipped', { ...OPERATOR_TURN, seq: 22, answers: '[]' }]
-	])('accepts %s', async (_, turn) => {
-		await insertTurn(pageId, turn);
-		const row = await env.DB.prepare(
-			`select questions, answers from chat_turn where page_id = ? and seq = ?`
-		)
-			.bind(pageId, turn.seq)
-			.first();
-		expect(row).toEqual({ questions: turn.questions, answers: turn.answers });
-	});
-
-	it('refuses a turn with no words and no photo', async () => {
-		const message = await rejection(() =>
-			insertTurn(pageId, { ...OPERATOR_TURN, seq: 2, text: ' ' })
-		);
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('chat_turn_text_check');
-	});
-
-	it('accepts a photo sent with no words', async () => {
-		const turn = {
-			...OPERATOR_TURN,
-			seq: 3,
-			text: '',
-			image_ids: '["019fc600-0000-7000-8000-000000000001"]'
-		};
-		await insertTurn(pageId, turn);
-		const row = await env.DB.prepare(`select text from chat_turn where page_id = ? and seq = 3`)
-			.bind(pageId)
-			.first();
-		expect(row).toEqual({ text: '' });
 	});
 });

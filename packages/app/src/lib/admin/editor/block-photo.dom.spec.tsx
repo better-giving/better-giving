@@ -16,7 +16,8 @@ vi.mock('@better-giving/operator/images/resize', async (actual) => ({
 }));
 
 // a placed photo's sheet as the editor routes mount it: a new photo is resized, posted to the images
-// route, drawn once stored, and written to the block by Done with what describes it. both routes are
+// route, drawn once stored, and written to the block by Done with what describes it; and the sheet of
+// a block with no photo yet, whose Done posts nothing until one is chosen. both routes are
 // stand-ins; what the real ones store is src/routes/_app.admin.images.workers.spec.ts's and
 // $lib/server/pages/blocks.workers.spec.ts's.
 
@@ -50,22 +51,20 @@ const hero: EditorBlock = {
 		{ value: 'wide', label: 'Wide' },
 		{ value: 'framed', label: 'Framed' }
 	],
-	text: { kind: 'photo', imageId: PLACED, alt: 'Volunteers' },
-	illustration: false
+	background: 'none',
+	backgrounds: [{ value: 'none', label: 'None' }],
+	removable: true,
+	movesUp: false,
+	movesDown: true,
+	text: { kind: 'photo', imageId: PLACED, alt: 'Volunteers' }
 };
 
-function editor({ illustration = false }: { readonly illustration?: boolean } = {}) {
+function editor(block: EditorBlock = hero) {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/campaigns/:pageId',
 			Component: () => (
-				<BlockEditSheet
-					block={{ ...hero, illustration }}
-					version={3}
-					suggestUrl="/admin/pages/p1/suggest"
-					onDismiss={() => {}}
-					onSaved={() => {}}
-				/>
+				<BlockEditSheet block={block} version={3} onDismiss={() => {}} onSaved={() => {}} />
 			),
 			action: async ({ request }) => {
 				saves.push(
@@ -100,8 +99,8 @@ function editor({ illustration = false }: { readonly illustration?: boolean } = 
 
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
-/** a photo picked, and the resize answering with `resized` — a 480 kB WebP unless a case says. */
-async function pick(root: HTMLElement, resized?: Resized) {
+/** a photo picked, its resize still running. */
+async function choose(root: HTMLElement) {
 	const input = root.querySelector<HTMLInputElement>('input[type="file"]');
 	if (input === null) throw new Error('no picker');
 	Object.defineProperty(input, 'files', {
@@ -111,6 +110,11 @@ async function pick(root: HTMLElement, resized?: Resized) {
 	await act(async () => {
 		input.dispatchEvent(new Event('change', { bubbles: true }));
 	});
+}
+
+/** a photo picked, and the resize answering with `resized` — a 480 kB WebP unless a case says. */
+async function pick(root: HTMLElement, resized?: Resized) {
+	await choose(root);
 	const blob = new Blob([new Uint8Array(480_000)], { type: 'image/webp' });
 	await act(async () =>
 		resizes.shift()?.(resized ?? { ok: true, blob, width: 1600, height: 1067 })
@@ -139,6 +143,7 @@ function describePhoto(root: HTMLElement, words: string) {
 async function done(root: HTMLElement) {
 	const found = [...root.querySelectorAll('button')].find((one) => one.textContent === 'Done');
 	if (found === undefined) throw new Error('no Done');
+	found.focus();
 	await act(async () => found.click());
 	await settle();
 }
@@ -167,6 +172,31 @@ describe('a placed photo’s sheet', () => {
 				alt: 'Coats on a rack'
 			})
 		]);
+	});
+
+	it('holds Done while a new photo resizes or uploads, and writes the new photo once it is stored', async () => {
+		const root = editor();
+
+		await choose(root);
+		await done(root);
+		expect(saves).toEqual([]);
+
+		await act(async () =>
+			resizes.shift()?.({
+				ok: true,
+				blob: new Blob([new Uint8Array(480_000)], { type: 'image/webp' }),
+				width: 1600,
+				height: 1067
+			})
+		);
+		await settle();
+		expect(pressWords(root)).toBe('Uploading');
+		await done(root);
+		expect(saves).toEqual([]);
+
+		await uploaded({ id: STORED, width: 1600, height: 1067 });
+		await done(root);
+		expect(saves).toEqual([expect.objectContaining({ image_id: STORED, alt: 'Volunteers' })]);
 	});
 
 	it('draws a refused description under its box, and moves the caret there', async () => {
@@ -223,25 +253,77 @@ describe('a placed photo’s sheet', () => {
 	});
 });
 
-describe('an AI illustration in its sheet', () => {
-	const flag = (root: HTMLElement) => root.querySelector('.adm-placed .adm-state')?.textContent;
+describe('the sheet of a block with no photo yet', () => {
+	const bare: EditorBlock = {
+		...hero,
+		summary: 'No photo yet',
+		text: { kind: 'photo', imageId: null, alt: '' }
+	};
 
-	it('stands the plain word Illustration over the art', () => {
-		const root = editor({ illustration: true });
-		expect(flag(root)).toBe('Illustration');
-		expect(root.querySelector('.adm-placed .adm-state')?.className).toBe('adm-state');
+	it('offers Add photo alone, and Done posts nothing but says a photo is wanted at the press', async () => {
+		const root = editor(bare);
+		expect([shown(root), pressWords(root)]).toEqual([undefined, 'Add photo']);
+
+		await done(root);
+
+		expect(saves).toEqual([]);
+		const press = root.querySelector('.adm-placed button');
+		const said = root.querySelector('.adm-placed [role="status"]');
+		expect(said?.textContent).toBe('Add a photo first. The page doesn’t change until you do.');
+		expect(press?.getAttribute('aria-describedby')).toBe(said?.id);
+		expect(document.activeElement).toBe(press);
 	});
 
-	it('drops the word once a photo replaces it', async () => {
-		const root = editor({ illustration: true });
+	it('holds Done while the photo resizes or uploads, without saying a photo is wanted', async () => {
+		const root = editor(bare);
+		const said = () => root.querySelector('.adm-placed [role="status"]')?.textContent;
+
+		await choose(root);
+		await done(root);
+		expect([saves, said(), document.activeElement?.textContent]).toEqual([[], '', 'Done']);
+
+		await act(async () =>
+			resizes.shift()?.({
+				ok: true,
+				blob: new Blob([new Uint8Array(480_000)], { type: 'image/webp' }),
+				width: 1600,
+				height: 1067
+			})
+		);
+		await settle();
+		await done(root);
+		expect([saves, pressWords(root), said(), document.activeElement?.textContent]).toEqual([
+			[],
+			'Uploading',
+			'',
+			'Done'
+		]);
+
+		await uploaded({ id: STORED, width: 1600, height: 1067 });
+		await done(root);
+		expect(saves).toEqual([expect.objectContaining({ image_id: STORED })]);
+	});
+
+	it('writes the photo chosen, by its id, at the next Done', async () => {
+		const root = editor(bare);
+		await done(root);
+
 		await pick(root);
 		await uploaded({ id: STORED, width: 1600, height: 1067 });
+		expect([shown(root), root.querySelector('.adm-placed [role="status"]')?.textContent]).toEqual([
+			`/image/${STORED}`,
+			''
+		]);
+		describePhoto(root, 'Coats on a rack');
+		await done(root);
 
-		expect(shown(root)).toBe(`/image/${STORED}`);
-		expect(flag(root)).toBeUndefined();
-	});
-
-	it('flags nothing over a photo', () => {
-		expect(flag(editor())).toBeUndefined();
+		expect(saves).toEqual([
+			expect.objectContaining({
+				[WHICH_FORM]: BLOCK_FORMS.photo,
+				block_id: 'hero',
+				image_id: STORED,
+				alt: 'Coats on a rack'
+			})
+		]);
 	});
 });

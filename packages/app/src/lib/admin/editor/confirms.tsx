@@ -7,10 +7,10 @@ import { useId, useState } from 'react';
 
 // the editor's questions, each a card over the editor that the caller puts up and takes down.
 //
-// two arrangements, by what the press costs: Reset to default and Discard changes destroy work and
-// are the danger card, listing only what the press replaces; a campaign's first Publish destroys
-// nothing and is the commit card. the act stands first in both, and Escape or a press on the
-// ground is the way out the card names.
+// two arrangements, by what the press costs: Reset to default, Discard changes and a block's Remove
+// destroy work and are the danger card, listing only what the press replaces or takes; a campaign's
+// first Publish destroys nothing and is the commit card. the act stands first in both, and Escape or
+// a press on the ground is the way out the card names.
 //
 // the act holds its focus while it is in flight — `aria-disabled` and the press turned away, never
 // `disabled` — and a refusal it comes back with is said inside the card, in a region that is there
@@ -65,7 +65,6 @@ export function ResetConfirm({ resetting, onReset, onCancel, refusal }: ResetCon
 			<div>
 				<SettingRow label="Your draft" value="Replaced" />
 				<SettingRow label="The published page at /donate" value="Replaced" />
-				<SettingRow label="This page’s chat" value="Cleared" />
 			</div>
 			<p className="adm-prose">This can’t be undone.</p>
 			<Refusal id={refusalId} text={refusal} />
@@ -80,7 +79,7 @@ type DiscardConfirmProps = {
 	readonly refusal?: string | null | undefined;
 };
 
-/** Discard changes: the draft goes back to what is live, and the chat with it. */
+/** Discard changes: the draft goes back to what is live. */
 export function DiscardConfirm({ discarding, onDiscard, onCancel, refusal }: DiscardConfirmProps) {
 	const refusalId = useId();
 	return (
@@ -94,9 +93,44 @@ export function DiscardConfirm({ discarding, onDiscard, onCancel, refusal }: Dis
 		>
 			<div>
 				<SettingRow label="Your draft" value="Back to the live page" />
-				<SettingRow label="This page’s chat" value="Cleared" />
 			</div>
 			<Refusal id={refusalId} text={refusal} />
+		</Modal>
+	);
+}
+
+type RemoveBlockConfirmProps = {
+	/** the block's name — Story, Photo. */
+	readonly name: string;
+	/** another press of the sheet's is in flight. */
+	readonly removing: boolean;
+	readonly onRemove: () => void;
+	readonly onCancel: () => void;
+};
+
+/**
+ * a block's Remove in Settings' block list: the block, and that what it holds goes with it. the card
+ * comes down on Remove and the list reports the press, as it reports a move (./settings-sheet.tsx).
+ */
+export function RemoveBlockConfirm({
+	name,
+	removing,
+	onRemove,
+	onCancel
+}: RemoveBlockConfirmProps) {
+	return (
+		<Modal
+			title={`Remove ${name}?`}
+			danger="Remove"
+			dangerProps={held(removing, onRemove, undefined)}
+			cancel="Cancel"
+			cancelProps={{ type: 'button', onClick: onCancel }}
+			onDismiss={onCancel}
+		>
+			<div>
+				<SettingRow label={name} value="Off the page, with what it holds" />
+			</div>
+			<p className="adm-prose">Adding it again starts it empty.</p>
 		</Modal>
 	);
 }

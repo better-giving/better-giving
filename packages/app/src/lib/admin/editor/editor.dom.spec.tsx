@@ -6,10 +6,9 @@ import { editorBlocks } from '$lib/page/block-edit';
 import { BLOCK_TYPES, type Block, type Page } from '$lib/page/catalog';
 import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
 import { PageView } from '$lib/donate/page-view';
-import { AiPanel } from '../chat/ai-panel';
 import { AddressSheet } from './address-sheet';
 import { BlockSheet } from './block-sheet';
-import { AiLayer, ChatOpening, EditorShell } from './editor-shell';
+import { EditorShell } from './editor-shell';
 import { GoalSheet } from './goal-sheet';
 import { InPlaceName } from './in-place-name';
 import { PicturePicker } from './pictures';
@@ -18,12 +17,11 @@ import { PublishBar } from './publish-bar';
 import { SettingsSheet } from './settings-sheet';
 
 // the editor's parts, mounted so what a reader meets is looked at: the sheet each bar press opens
-// and the ways out of it, the AI panel docked or a sheet by width, the groups Settings draws only
-// when handed, the names a picture and the name box carry and a drawing for every variant the
-// catalog offers, what More holds and when, which presses the bar draws without a handler and
-// which below the wide breakpoint alone, the address's save and its refusal at Save, the goal's
-// figure in and out, which messages the preview frame listens to, and what the bar's own region
-// says as its states turn.
+// and the ways out of it, the groups Settings draws only when handed, the names a picture and the
+// name box carry and a drawing for every variant the catalog offers, what More holds and when,
+// which presses the bar draws without a handler and in what order at each width, the address's
+// save and its refusal at Save, the goal's figure in and out, which messages the preview frame
+// listens to, and what the bar's own region says as Edit turns.
 // a class is read only to find a part, such as whether a picture holds a drawing, and never to ask
 // how anything looks — how the editor looks is left to a person looking at it.
 //
@@ -73,7 +71,7 @@ function button(root: Element, name: string): HTMLButtonElement {
 	return found;
 }
 
-/** the editor at the wide breakpoint or below it, as ./wide.ts reads it. */
+/** the editor past every breakpoint ./wide.ts reads, or below them all. */
 function atWidth(wide: boolean) {
 	vi.spyOn(window, 'matchMedia').mockImplementation(
 		(media) =>
@@ -89,7 +87,7 @@ function atWidth(wide: boolean) {
 beforeEach(() => atWidth(true));
 
 /** the bar as an editor draws it over a live Donation page, with the presses that open sheets. */
-function Bar({ onSettings, onAi }: { onSettings: () => void; onAi: () => void }) {
+function Bar({ onSettings }: { onSettings: () => void }) {
 	return (
 		<PublishBar
 			closeHref="/admin"
@@ -99,7 +97,6 @@ function Bar({ onSettings, onAi }: { onSettings: () => void; onAi: () => void })
 			republished={false}
 			undoing={false}
 			onSettings={onSettings}
-			onAi={onAi}
 		/>
 	);
 }
@@ -108,7 +105,7 @@ describe('the Settings sheet opened from Settings while Edit is on', () => {
 	function Editor() {
 		const [open, setOpen] = useState(false);
 		return (
-			<EditorShell bar={<Bar onSettings={() => setOpen(true)} onAi={() => {}} />} preview={null}>
+			<EditorShell bar={<Bar onSettings={() => setOpen(true)} />} preview={null}>
 				{open ? (
 					<SettingsSheet
 						onDismiss={() => setOpen(false)}
@@ -154,88 +151,6 @@ describe('the Settings sheet opened from Settings while Edit is on', () => {
 		const root = routed(<Editor />);
 		const { entry, sheet } = opened(root);
 		act(() => button(sheet, 'Close').click());
-		expect(root.querySelector('dialog')).toBeNull();
-		expect(document.activeElement).toBe(entry);
-	});
-});
-
-describe('the AI panel in the editor', () => {
-	function Editor() {
-		const [open, setOpen] = useState(false);
-		return (
-			<EditorShell
-				bar={<Bar onSettings={() => {}} onAi={() => setOpen(true)} />}
-				preview={<output>preview</output>}
-				panel={
-					<AiPanel
-						messages={[]}
-						isRunning={false}
-						onSend={() => {}}
-						onAnswer={() => {}}
-						open={open}
-						onDismiss={() => setOpen(false)}
-						suggestions={['Add a FAQ']}
-						imageSrc={(id) => `/image/${id}`}
-					/>
-				}
-			>
-				<AiLayer open={open} unread={false} onClose={() => setOpen(false)} />
-			</EditorShell>
-		);
-	}
-
-	function opened(root: HTMLElement): { entry: HTMLButtonElement; sheet: HTMLDialogElement } {
-		const entry = button(root, 'AI');
-		entry.focus();
-		act(() => entry.click());
-		const sheet = root.querySelector('dialog');
-		if (sheet === null) throw new Error('the press opened no sheet');
-		return { entry, sheet };
-	}
-
-	it('floats over the preview from the wide breakpoint, opened and closed by the AI press', () => {
-		const root = routed(<Editor />);
-		const body = root.querySelector('.adm-editor__body');
-		const entry = button(root, 'AI');
-		expect(body?.querySelector(':scope > main output')).not.toBeNull();
-		expect(body?.querySelector('.adm-aipanel')).toBeNull();
-
-		entry.focus();
-		act(() => entry.click());
-		expect(body?.querySelector(':scope > main output')).not.toBeNull();
-		expect(body?.querySelector(':scope > [role="complementary"] textarea')).not.toBeNull();
-		expect(root.querySelector('dialog')).toBeNull();
-		expect(entry.getAttribute('aria-expanded')).toBe('true');
-
-		act(() => entry.click());
-		expect(body?.querySelector('.adm-aipanel')).toBeNull();
-		expect(entry.getAttribute('aria-expanded')).toBe('false');
-	});
-
-	it('is a modal below it, opened from the AI press, with the focus inside it', () => {
-		atWidth(false);
-		const root = routed(<Editor />);
-		expect(root.querySelector('.adm-aipanel')).toBeNull();
-		const { sheet } = opened(root);
-		expect(sheet.open).toBe(true);
-		expect(sheet.querySelector('textarea')).not.toBeNull();
-		expect(sheet.contains(document.activeElement)).toBe(true);
-	});
-
-	it('goes on its X and hands the focus back to the AI press', () => {
-		atWidth(false);
-		const root = routed(<Editor />);
-		const { entry, sheet } = opened(root);
-		act(() => button(sheet, 'Close').click());
-		expect(root.querySelector('dialog')).toBeNull();
-		expect(document.activeElement).toBe(entry);
-	});
-
-	it('goes on Escape and hands the focus back to the AI press', () => {
-		atWidth(false);
-		const root = routed(<Editor />);
-		const { entry, sheet } = opened(root);
-		act(() => sheet.dispatchEvent(new Event('cancel', { cancelable: true })));
 		expect(root.querySelector('dialog')).toBeNull();
 		expect(document.activeElement).toBe(entry);
 	});
@@ -389,7 +304,7 @@ describe('the pictures', () => {
 
 	it('draw every variant the catalog gives a block, each under its label', () => {
 		const undrawn: string[] = [];
-		for (const block of editorBlocks(everyBlock(), 'USD', new Set())) {
+		for (const block of editorBlocks(everyBlock(), 'USD')) {
 			if (block.variant === null) continue;
 			const root = mount(
 				<PicturePicker
@@ -457,9 +372,9 @@ describe('a block with nothing typed in it', () => {
 					{ value: 'icons', label: 'Icons' }
 				],
 				value: 'buttons',
-				onPick: () => {},
-				refusal
+				onPick: () => {}
 			}}
+			pickRefusal={refusal}
 			onDismiss={() => {}}
 		/>
 	);
@@ -615,30 +530,35 @@ describe('the publish bar', () => {
 		expect(names(routed(campaign('unpublished')))).not.toContain('More');
 	});
 
-	it('offers the AI press at every width, opening a dialog below the wide breakpoint alone', () => {
-		const onAi = vi.fn();
+	it('draws no AI press and no unread mark at any width', () => {
 		const at = () =>
 			routed(
-				<PublishBar
-					closeHref="/admin"
-					page={{ kind: 'donation' }}
-					state="live"
-					publishing={false}
-					republished={false}
-					undoing={false}
-					onAi={onAi}
+				<EditorShell
+					bar={
+						<PublishBar
+							closeHref="/admin"
+							page={{ kind: 'donation' }}
+							state="changed"
+							livePath="/donate"
+							publishing={false}
+							republished={false}
+							onPublish={() => {}}
+							undoing={false}
+							onSettings={() => {}}
+						/>
+					}
+					preview={<output>preview</output>}
 				/>
 			);
-		const floating = button(at(), 'AI');
-		expect(floating.hasAttribute('aria-haspopup')).toBe(false);
-		act(() => floating.click());
-		expect(onAi).toHaveBeenCalledOnce();
-
-		atWidth(false);
-		const ai = button(at(), 'AI');
-		expect(ai.getAttribute('aria-haspopup')).toBe('dialog');
-		act(() => ai.click());
-		expect(onAi).toHaveBeenCalledTimes(2);
+		for (const wide of [true, false]) {
+			atWidth(wide);
+			const root = at();
+			act(() => button(root, 'Edit').click());
+			expect(names(root)).not.toContain('AI');
+			expect(root.querySelector('.adm-publishbar [role="img"]')).toBeNull();
+			expect(root.querySelector('.adm-editor__body > :not(main)')).toBeNull();
+			expect(root.querySelector('dialog, [role="complementary"]')).toBeNull();
+		}
 	});
 
 	it('walks its presses in the order it draws them: Publish before the quieter ones on a phone', () => {
@@ -666,16 +586,15 @@ describe('the publish bar', () => {
 						onPublish={() => {}}
 						undoing={false}
 						onSettings={() => {}}
-						onAi={() => {}}
 					/>
 				)
 			).filter((name) => name !== 'Close editor' && name !== 'Open /donate (opens in a new tab)');
 
 		atMiddle(false);
-		expect(presses()).toEqual(['Publish', 'Edit', 'AI', 'More']);
+		expect(presses()).toEqual(['Publish', 'Edit', 'More']);
 
 		atMiddle(true);
-		expect(presses()).toEqual(['Edit', 'AI', 'More', 'Publish']);
+		expect(presses()).toEqual(['Edit', 'More', 'Publish']);
 	});
 
 	it('offers Reset to default only once the page has edits', () => {
@@ -786,82 +705,28 @@ describe('the publish bar', () => {
 });
 
 describe('what the bar says to a reader', () => {
-	type Shown = { readonly unread: boolean; readonly opening: boolean };
-	let show: (next: Shown) => void = () => {};
-	/** the bar in the shell, the AI panel's mark and its wait driven from the case. */
-	function Driven() {
-		const [shown, setShown] = useState<Shown>({ unread: false, opening: false });
-		show = setShown;
-		return (
-			<EditorShell bar={<Bar onSettings={() => {}} onAi={() => {}} />} preview={null}>
-				<AiLayer open={false} unread={shown.unread} onClose={() => {}} />
-				{shown.opening ? <ChatOpening /> : null}
-			</EditorShell>
-		);
-	}
 	const region = (root: HTMLElement) => {
 		const found = root.querySelector('.adm-publishbar > p.adm-vh[role="status"]');
 		if (found === null) throw new Error('the bar has no region of its own');
 		return found;
 	};
 
-	it('says New reply in a region there and empty from the first render, and clears it once read', () => {
-		const root = routed(<Driven />);
-		const said = region(root);
-		expect(said.textContent).toBe('');
-
-		act(() => show({ unread: true, opening: false }));
-		expect(region(root)).toBe(said);
-		expect(said.textContent).toBe('New reply');
-		expect(button(root, 'AI').querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
-			'New reply'
-		);
-
-		act(() => show({ unread: false, opening: false }));
-		expect(said.textContent).toBe('');
-	});
-
-	it('says the AI press is opening while it waits for its panel, and nothing once it is up', () => {
-		const root = routed(<Driven />);
-		const said = region(root);
-
-		act(() => show({ unread: false, opening: true }));
-		expect(button(root, 'AI').getAttribute('aria-busy')).toBe('true');
-		expect(said.textContent).toBe('Opening AI');
-
-		act(() => show({ unread: false, opening: false }));
-		expect(said.textContent).toBe('');
-	});
-
 	it('reads Done while on with no pressed state beside its name, and says once what to do with it on', () => {
-		const root = routed(<Driven />);
+		const root = routed(<EditorShell bar={<Bar onSettings={() => {}} />} preview={null} />);
 		const said = region(root);
+		expect(said.textContent).toBe('');
 		const edit = button(root, 'Edit');
 		expect(edit.hasAttribute('aria-pressed')).toBe(false);
 
 		act(() => edit.click());
+		expect(region(root)).toBe(said);
 		expect(edit.hasAttribute('aria-pressed')).toBe(false);
 		expect(edit.textContent).toBe('Done');
-		expect(said.textContent).toBe('Edit is on: choose a block, or open Settings for the list');
-
-		act(() => show({ unread: false, opening: false }));
 		expect(said.textContent).toBe('Edit is on: choose a block, or open Settings for the list');
 
 		act(() => edit.click());
 		expect(edit.textContent).toBe('Edit');
 		expect(said.textContent).toBe('');
-	});
-
-	it('says a reply that lands while Edit is on over what Edit said', () => {
-		const root = routed(<Driven />);
-		const said = region(root);
-		act(() => button(root, 'Edit').click());
-
-		act(() => show({ unread: true, opening: false }));
-		expect(said.textContent).toBe('New reply');
-
-		act(() => button(root, 'Done').click());
-		expect(said.textContent).toBe('New reply');
 	});
 });
 
@@ -990,7 +855,7 @@ describe('the preview frame', () => {
 	function framed(onBlockClick: (id: string) => void) {
 		const root = routed(
 			<EditorShell
-				bar={<Bar onSettings={() => {}} onAi={() => {}} />}
+				bar={<Bar onSettings={() => {}} />}
 				preview={
 					<PreviewFrame
 						src="about:blank"

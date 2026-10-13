@@ -197,9 +197,8 @@ it('sends a photo from someone signed out to sign in, and stores nothing', async
 
 	const response = await post(new Blob([pngHeader(40, 30)], { type: 'image/png' }), '');
 
-	expect([response.status, response.headers.get('Location')]).toEqual([
-		303,
-		expect.stringMatching(/^\/login\?/)
-	]);
+	// a write never returns to its own address after sign-in; with no page it was pressed from
+	// (no Referer), sign-in lands on the dashboard (`returnTo` in $lib/server/auth/gate.ts).
+	expect([response.status, response.headers.get('Location')]).toEqual([303, '/login']);
 	expect(await db.$count(image)).toBe(before);
 });

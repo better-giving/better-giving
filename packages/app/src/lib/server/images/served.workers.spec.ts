@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { type BytesPort, d1BytesPort } from './bytes';
 import { pngHeader } from './headers.testing';
-import { createImage } from './queries';
+import { createImage } from './image.testing';
 import { type ServeOptions, servedImage } from './served';
 
 // the edge cache in front of an image's bytes, against workerd's own `caches` and real D1.

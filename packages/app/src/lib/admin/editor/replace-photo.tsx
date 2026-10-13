@@ -1,7 +1,6 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Mark } from '@better-giving/operator/components/status/Mark';
-import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { useEffect, useId, useRef } from 'react';
 import type { Resized, ResizeRefusal } from '@better-giving/operator/images/resize';
 import { usePhotoPicker } from '../photo-picker';
@@ -30,6 +29,8 @@ type Description =
 export type ReplacePhotoControlProps = Description & {
 	/** the placed photo as it is served; absent while the block holds none. */
 	readonly imageSrc?: string | undefined;
+	/** a new photo was chosen, and its resize begins. */
+	readonly onPicked?: (() => void) | undefined;
 	/** a new photo, resized or refused. the route posts `blob` and moves `state`. */
 	readonly onResized: (result: Resized) => void;
 	/** `uploading` while the route posts; `refused` with the words to show at the press. */
@@ -39,8 +40,8 @@ export type ReplacePhotoControlProps = Description & {
 	readonly frame?: 'square' | undefined;
 	/** Remove beside the press while an image is placed; absent, no Remove is drawn. */
 	readonly onRemove?: (() => void) | undefined;
-	/** a plain word over the art, naming what kind of image it is — Illustration. */
-	readonly flag?: string | undefined;
+	/** the press's id, for a caller that moves the focus to it. */
+	readonly pressId?: string | undefined;
 };
 
 /* a placed image and the press that swaps it: a block's photo in its edit sheet, a program's
@@ -58,6 +59,7 @@ export type ReplacePhotoControlProps = Description & {
 export function ReplacePhotoControl({
 	imageSrc,
 	alt,
+	onPicked,
 	onResized,
 	onAltChange,
 	state,
@@ -66,9 +68,9 @@ export function ReplacePhotoControl({
 	describe = true,
 	frame,
 	onRemove,
-	flag
+	pressId
 }: ReplacePhotoControlProps) {
-	const picker = usePhotoPicker({ onResized });
+	const picker = usePhotoPicker({ onPicked, onResized });
 	const id = useId();
 	const pressRef = useRef<HTMLButtonElement>(null);
 	const removing = useRef(false);
@@ -87,11 +89,6 @@ export function ReplacePhotoControl({
 	return (
 		<>
 			<div className="adm-placed">
-				{flag === undefined || !placed ? null : (
-					<div className="adm-actions">
-						<StatusWord>{flag}</StatusWord>
-					</div>
-				)}
 				{placed ? (
 					<img
 						className={
@@ -104,6 +101,7 @@ export function ReplacePhotoControl({
 				<div className="adm-actions">
 					<Button
 						ref={pressRef}
+						id={pressId}
 						type="button"
 						mark="image-up"
 						state={picker.choosing ? 'active' : undefined}

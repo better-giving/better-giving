@@ -1,5 +1,4 @@
 import { env } from 'cloudflare:test';
-import { vi } from 'vitest';
 import type { Page } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
 import type { PageType } from '../../page/keys';
@@ -26,9 +25,18 @@ export const CAMPAIGN_NAME = 'Winter coat drive';
 
 let sequence = 0;
 
+/** a campaign document whose hero places `imageId`, and no other block a photo. */
+export function heroShowing(imageId: string): Page {
+	const draft: Page = { ...defaultCampaign(), settings: SETTINGS };
+	return {
+		...draft,
+		blocks: draft.blocks.map((block) => (block.type === 'hero' ? { ...block, imageId } : block))
+	};
+}
+
 /**
  * a page of `type` whose draft is `draft`, published as `live` where that is given. the Donation
- * page is always live, and there is one, so it replaces any other and its chat.
+ * page is always live, and there is one, so it replaces any other.
  */
 export async function insertPage(
 	db: Db,
@@ -37,12 +45,7 @@ export async function insertPage(
 	live: Page | null = type === 'donation_page' ? draft : null
 ): Promise<string> {
 	if (type === 'donation_page') {
-		await env.DB.batch([
-			env.DB.prepare(
-				"delete from chat_turn where page_id in (select id from page where type = 'donation_page')"
-			),
-			env.DB.prepare("delete from page where type = 'donation_page'")
-		]);
+		await env.DB.prepare("delete from page where type = 'donation_page'").run();
 	}
 	sequence += 1;
 	const [owned] = await db
@@ -100,21 +103,4 @@ export async function endAsItStands(db: Db, pageId: string): Promise<void> {
 	if (row === null || !(await endCampaign(db, pageId, row.updatedAt))) {
 		throw new Error(`the fixture campaign ${pageId} did not end`);
 	}
-}
-
-/** a Workers AI binding answering each call with the next of `replies`, in the default model's format. */
-export function answering(...replies: unknown[]) {
-	const run = vi.fn();
-	for (const reply of replies) {
-		run.mockImplementationOnce(async () => {
-			if (reply instanceof Error) throw reply;
-			return defaultModelReply(typeof reply === 'string' ? reply : JSON.stringify(reply));
-		});
-	}
-	return { run };
-}
-
-/** `text` as the default model's reply, which is chat completions' shape. */
-export function defaultModelReply(text: string) {
-	return { choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }] };
 }

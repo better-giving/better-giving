@@ -42,6 +42,18 @@ describe('a menu mounted into a document', () => {
 		expect(list(root)?.hidden).toBe(true);
 	});
 
+	it('draws its name as its words where it is labelled, and is named by them', () => {
+		const root = render(Menu, {
+			label: 'Add a block',
+			labelled: true,
+			mark: 'plus',
+			items: items()
+		});
+
+		expect(trigger(root).hasAttribute('aria-label')).toBe(false);
+		expect(trigger(root).textContent).toBe('Add a block');
+	});
+
 	it('opens from the keyboard and runs the line Enter lands on, the focus back on the press', async () => {
 		const discard = vi.fn();
 		const reset = vi.fn();
@@ -121,5 +133,31 @@ describe('a menu mounted into a document', () => {
 		expect(link?.target).toBe('_blank');
 		expect(link?.rel.split(' ')).toContain('noopener');
 		expect(link?.textContent).toBe('Open /donate (opens in a new tab)');
+	});
+
+	it('says it is unavailable while held, opens to neither a press nor a key, and keeps the focus', async () => {
+		const root = render(Menu, { label: 'Add a block', labelled: true, items: items(), held: true });
+		const press_ = trigger(root);
+		expect(press_.getAttribute('aria-disabled')).toBe('true');
+		expect(press_.disabled).toBe(false);
+
+		act(() => press_.focus());
+		await act(async () => press_.click());
+		// a browser's keydown is cancelable, which is what lets the press turn it away.
+		for (const key of ['Enter', 'ArrowDown', ' '])
+			await act(async () => {
+				press_.dispatchEvent(
+					new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+				);
+			});
+
+		expect(press_.getAttribute('aria-expanded')).toBe('false');
+		expect(list(root)?.hidden).toBe(true);
+		expect(document.activeElement).toBe(press_);
+	});
+
+	it('is described by what the caller names', () => {
+		const root = render(Menu, { label: 'More', items: items(), describedBy: 'refused' });
+		expect(trigger(root).getAttribute('aria-describedby')).toBe('refused');
 	});
 });

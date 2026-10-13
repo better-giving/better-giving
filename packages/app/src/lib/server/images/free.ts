@@ -1,6 +1,6 @@
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { chatTurn, image, orgProfile, page, program } from '../db/schema';
+import { image, orgProfile, page, program } from '../db/schema';
 import { deleteBytes } from './bytes';
 
 // freeing an image: its metadata row and its bytes deleted together, and only where nothing names it.
@@ -13,15 +13,13 @@ import { deleteBytes } from './bytes';
 // image it names is freed from under it, bytes and all.
 
 /**
- * no row names `id`: no cause's photo, the profile's logo, no page document and no chat turn's
- * photos. a page document is matched on its text, so an id anywhere in one keeps the image whichever
- * block holds it.
+ * no row names `id`: no cause's photo, the profile's logo and no page document. a page document is
+ * matched on its text, so an id anywhere in one keeps the image whichever block holds it.
  */
 function unreferenced(id: string): SQL {
 	return sql`not exists (select 1 from ${program} where ${program.imageId} = ${id})
 		and not exists (select 1 from ${orgProfile} where ${orgProfile.logoImageId} = ${id})
-		and not exists (select 1 from ${page} where instr(${page.draft}, ${id}) > 0 or instr(${page.published}, ${id}) > 0 or instr(${page.lastPublished}, ${id}) > 0)
-		and not exists (select 1 from ${chatTurn}, json_each(${chatTurn.imageIds}) where json_each.value = ${id})`;
+		and not exists (select 1 from ${page} where instr(${page.draft}, ${id}) > 0 or instr(${page.published}, ${id}) > 0 or instr(${page.lastPublished}, ${id}) > 0)`;
 }
 
 /**
@@ -32,4 +30,21 @@ function unreferenced(id: string): SQL {
 export function freeImageStatements(db: Db, id: string) {
 	const when = unreferenced(id);
 	return [deleteBytes(db, id, when), db.delete(image).where(and(eq(image.id, id), when))] as const;
+}
+
+/**
+ * `freeImageStatements` for each id `before` names and `after` does not: what a write moving a row
+ * from one to the other lets go of, for that write's `batch()` and after it. an id let go of that
+ * something else still names is kept by the guard, so `before` and `after` are the written row's
+ * own and nothing wider.
+ */
+export function freeLetGoStatements(
+	db: Db,
+	before: Iterable<string | null>,
+	after: Iterable<string | null>
+) {
+	const kept = new Set(after);
+	return [...new Set(before)].flatMap((id) =>
+		id === null || kept.has(id) ? [] : freeImageStatements(db, id)
+	);
 }

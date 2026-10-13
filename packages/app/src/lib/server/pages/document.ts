@@ -1,4 +1,5 @@
 import { type Page as PageDocument, type PageRefusal, parsePage } from '../../page/catalog';
+import { placedImageIds } from '../../page/image-src';
 import type { PageType } from '../../page/keys';
 import type { Page as PageRow } from '../db/schema';
 
@@ -57,4 +58,26 @@ export function readableDraft(row: PageRow): PageDocument {
 	const draft = readDocument(row, 'draft', row.draft);
 	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
 	return draft.page;
+}
+
+/**
+ * the id of each photo `documents` place, each read as the column of `row` it is stored in or is
+ * about to be — what a write hands `freeLetGoStatements` (../images/free.ts) to name the photos it
+ * lets go of. a document the rule refuses names none, so its photos stay stored rather than being
+ * freed from under it.
+ */
+export function placedPhotos(
+	row: { readonly id: string; readonly type: PageType },
+	documents: Partial<Record<DocumentColumn, string | null>>
+): string[] {
+	return Object.entries(documents).flatMap(([column, text]) => {
+		if (text === null || text === undefined) return [];
+		const read = readDocument(row, column as DocumentColumn, text);
+		return read.ok ? placedImageIds(read.page) : [];
+	});
+}
+
+/** the three documents `row` stores, by column, as `placedPhotos` takes them. */
+export function documentsOf(row: PageRow): Record<DocumentColumn, string | null> {
+	return { draft: row.draft, published: row.published, last_published: row.lastPublished };
 }

@@ -2,7 +2,7 @@ import { data, redirect, type MiddlewareFunction } from 'react-router';
 import { auth as authForRequest, database, platform, staff } from '../../../context';
 import { readAuthEnv } from './env';
 import { createAuth } from './index';
-import { LOGIN_PATH, NEXT_PARAM } from './next';
+import { LOGIN_PATH, NEXT_PARAM, safeNext } from './next';
 import { requirePin } from './pin';
 import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from './signing-key';
 
@@ -90,22 +90,18 @@ export async function staffGate(
 	});
 
 	if (!session) {
-		// turned away carrying where they were going, so the sign-in can put them back there. the
-		// whole request target and not just its path — a deep link into /admin names a tab or a
-		// filter in its query as often as not, and dropping it lands the operator on a page that is
-		// not the one the link was for.
-		//
 		// one percent-encoded parameter, so a `?` in the destination cannot read as the login's own
-		// query. what may be returned to is `safeNext`'s decision at the other end (./next.ts) —
-		// this side mints the value and validates nothing, because the parameter that arrives at
-		// the login is whatever a caller put in a url and never only what was minted here.
-		//
-		// `url` and never `request.url`: after the first navigation the browser asks react router
-		// for a screen at `<path>.data` with routing parameters of its own, and `url` is that
-		// request normalised back to the address the operator was going to. minted off the request
-		// instead, the login would send them to a serialized payload.
-		const destination = `${url.pathname}${url.search}`;
-		throw redirect(`${LOGIN_PATH}?${NEXT_PARAM}=${encodeURIComponent(destination)}`, 303);
+		// query. what may be returned to is `safeNext`'s decision at the other end (./next.ts),
+		// because the parameter that arrives at the login is whatever a caller put in a url and
+		// never only what was minted here. no destination is no parameter, and the login lands on
+		// `/`, the app's entrance.
+		const destination = returnTo(request, url);
+		throw redirect(
+			destination === null
+				? LOGIN_PATH
+				: `${LOGIN_PATH}?${NEXT_PARAM}=${encodeURIComponent(destination)}`,
+			303
+		);
 	}
 
 	context.set(staff, session.user);
@@ -116,6 +112,37 @@ export async function staffGate(
 	const response = await next();
 	for (const cookie of headers.getSetCookie()) response.headers.append('set-cookie', cookie);
 	return response;
+}
+
+function isRead(request: Request): boolean {
+	return request.method === 'GET' || request.method === 'HEAD';
+}
+
+/**
+ * where a request turned away for want of a session returns once the operator has signed in, or
+ * `null` for the app's entrance.
+ *
+ * a read returns to its own address: the whole request target and not just its path, because a
+ * deep link into /admin names a tab or a filter in its query as often as not. `url` and never
+ * `request.url` — after the first navigation the browser asks react router for a screen at
+ * `<path>.data` with routing parameters of its own, and `url` is that request normalised back to
+ * the address the operator was going to.
+ *
+ * a write never returns to its own address. it was posted to an action — `/admin/images` answers
+ * no GET at all, and the Campaigns list's (src/routes/_app.admin.campaigns._index.tsx) is addressed
+ * `?index` — and landing there after signing in is
+ * an error page where the operator's screen was. it returns to the page the press was made from,
+ * read off `Referer`, which the dashboard's documents send whole to their own origin
+ * (`Referrer-Policy: same-origin`, src/document-policy.ts). that page is honoured only when it is
+ * on this deployment's origin and passes `safeNext`; anything else is the entrance. `Referer` picks
+ * where to land and authorizes nothing (CLAUDE.md → Bans → Boundaries).
+ */
+function returnTo(request: Request, url: URL): string | null {
+	if (isRead(request)) return `${url.pathname}${url.search}`;
+
+	const pressedOn = URL.parse(request.headers.get('referer') ?? '');
+	if (pressedOn === null || pressedOn.origin !== url.origin) return null;
+	return safeNext(`${pressedOn.pathname}${pressedOn.search}`);
 }
 
 /**
@@ -135,10 +162,9 @@ export async function staffGate(
  * server runtime's `handleDocumentRequest` and `singleFetchAction`), and a sibling subdomain is
  * another host. a resource route is not — react-router runs that check on no endpoint, nor on a
  * POST with no `Origin` at all. so what this adds is the endpoints beneath the gate, the ones with
- * an action and no page: `src/routes/_app.admin.sign-out.ts`, `_app.admin.images.ts`,
- * `_app.admin.pages.$pageId.chat.ts` and `_app.admin.pages.$pageId.suggest.ts`. a script stored in
- * the website's own CMS could otherwise sign an operator out, upload into their deployment, or
- * spend its AI on their behalf.
+ * an action and no page: `src/routes/_app.admin.sign-out.ts` and `_app.admin.images.ts`. a script
+ * stored in the website's own CMS could otherwise sign an operator out or upload into their
+ * deployment.
  *
  * the browser sets the header and a page's script cannot (it is a forbidden request header,
  * https://fetch.spec.whatwg.org/#forbidden-request-header), and the check only ever refuses.
@@ -152,7 +178,7 @@ export async function staffGate(
  * anywhere is a GET.
  */
 export function refuseWriteFromAnotherOrigin(request: Request): void {
-	if (request.method === 'GET' || request.method === 'HEAD') return;
+	if (isRead(request)) return;
 	const site = request.headers.get('sec-fetch-site');
 	if (site === null || site === 'same-origin') return;
 	throw new Response(

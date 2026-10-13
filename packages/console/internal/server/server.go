@@ -154,7 +154,6 @@ func New(options Options) http.Handler {
 	routes := http.NewServeMux()
 	homeRoutes(routes, options.Flow, reads, options.Accounts, options.Records, surface)
 	valuesRoutes(routes, options.Flow, reads, patches, settings, options.Accounts)
-	aiRoutes(routes, options.Flow, reads, options.Accounts)
 	sessionRoutes(routes, options.Flow, reads, patches, options.Accounts, options.Records, surface,
 		presses)
 	errandRoutes(routes, doors, patientDoors)

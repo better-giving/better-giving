@@ -103,6 +103,19 @@ describe('choice chips mounted into a document', () => {
 		expect(submitted(root)).toEqual(['who=Animals']);
 	});
 
+	it('draw the answer their caller holds, and hand a press to it without taking it themselves', async () => {
+		const onChange = vi.fn();
+		const root = render(Bound, {
+			other: undefined,
+			options: WHO.map((one) => ({ ...one, checked: one.value === 'Children', onChange }))
+		});
+		await take(chip(root, 'Animals'));
+
+		expect(onChange).toHaveBeenCalledOnce();
+		expect(onChange.mock.calls[0]?.[0].target.value).toBe('Animals');
+		expect(submitted(root)).toEqual(['who=Children']);
+	});
+
 	it('describe every control by the hint', () => {
 		const root = render(Bound, { hint: 'Pick the closest.' });
 		const hint = root.querySelector('.adm-hint');

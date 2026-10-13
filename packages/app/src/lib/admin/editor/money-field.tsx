@@ -2,12 +2,10 @@ import { useState } from 'react';
 import { drawAmountEntry, isComposing, keyInAmountBox, regroupAmountBox } from '../amount-box';
 import { AffixedField, type AffixedFieldProps } from './affixed-field';
 
-// every box on the page editor and the AI's question card an operator types a sum of money in: the
-// goal (./goal-sheet.tsx), a tier's amount (./block-edit.tsx), and an amount question's box and a
-// tiers question's amounts (../chat/question-card.tsx). an affixed box (./affixed-field.tsx) that
-// groups its digits as they are typed and hands on the text with the box's own separators taken
-// out, as ../amount-box.ts states for every money box. an example figure in the box is grouped as
-// well.
+// every box on the page editor an operator types a sum of money in: the goal (./goal-sheet.tsx)
+// and a tier's amount (./block-edit.tsx). an affixed box (./affixed-field.tsx) that groups its
+// digits as they are typed and hands on the text with the box's own separators taken out, as
+// ../amount-box.ts states for every money box. an example figure in the box is grouped as well.
 //
 // the box is the caller's to hold, with `value` and `onValueChange`, or the form's, with `name` and
 // `defaultValue`, in which case it holds what is typed itself and posts the text it draws, grouped,

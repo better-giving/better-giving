@@ -5,6 +5,7 @@ import { staff } from '../../../context';
 import { requestContext } from '../../../request-context';
 import { staffGate } from './gate';
 import { createAuth, STAFF_USER_EMAIL } from './index';
+import { signInDestination } from './next';
 import { PIN_UNUSABLE } from './pin';
 import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from './signing-key';
 import { withSigningKeyUnreadable } from './signing-key.testing';
@@ -298,5 +299,108 @@ describe('a write arriving from another origin', () => {
 		);
 
 		expect(await response.text()).toBe('the screen');
+	});
+});
+
+/**
+ * where the sign-in a refusal sends the operator to puts them afterwards: the login reads the
+ * gate's `next` back through `signInDestination` (src/routes/login.tsx), so this is the address the
+ * browser lands on once the password is in.
+ */
+function afterSignIn(redirect: Response): string {
+	return signInDestination(new URL(redirect.headers.get('location') ?? '', ORIGIN));
+}
+
+describe('where a lapsed session returns once the operator signs in', () => {
+	// a GET is for the screen itself, so it returns there and not to the page that linked to it.
+	it('returns a read to its own address, whichever page it was followed from', async () => {
+		const redirect = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/forms?tab=live`, {
+					headers: { referer: `${ORIGIN}/admin/donations` }
+				}),
+				screen().next
+			)
+		);
+
+		expect(afterSignIn(redirect)).toBe('/admin/forms?tab=live');
+	});
+
+	// the press was made on a screen, and the screen is what answers a GET. the address the write
+	// was posted to may answer none — `/admin/images` is an action alone — so landing there after
+	// signing in is an error page where the operator's screen was.
+	it('returns to the page the press was made from', async () => {
+		const redirect = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/images`, {
+					method: 'POST',
+					headers: { referer: `${ORIGIN}/admin/campaigns/abc?tab=photos` }
+				}),
+				screen().next
+			)
+		);
+
+		expect(redirect.status).toBe(303);
+		expect(afterSignIn(redirect)).toBe('/admin/campaigns/abc?tab=photos');
+	});
+
+	// `/` is the app's entrance, which forwards to the dashboard home (src/routes/_app._index.tsx).
+	it('returns to the dashboard home when the browser named no page', async () => {
+		const redirect = await refusal(
+			staffGate(args(`${ORIGIN}/admin/images`, { method: 'POST' }), screen().next)
+		);
+
+		expect(redirect.status).toBe(303);
+		expect(afterSignIn(redirect)).toBe('/');
+	});
+
+	// the page a browser names is a convenience for where to land, and only a page of this
+	// deployment's is one: a path read off another site's address would be a path on this one
+	// nobody pressed anything on.
+	it('returns to the dashboard home when the page named is on another origin', async () => {
+		const redirect = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/images`, {
+					method: 'POST',
+					headers: { referer: 'https://evil.example/admin/campaigns/abc' }
+				}),
+				screen().next
+			)
+		);
+
+		expect(afterSignIn(redirect)).toBe('/');
+	});
+
+	// returning to the sign-in page would put the operator back at the form they just cleared. the
+	// login refuses that `next` as well (./next.ts), so what is held here is that the gate mints
+	// none to be refused.
+	it('mints no destination when the page named is the sign-in itself', async () => {
+		const redirect = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/images`, {
+					method: 'POST',
+					headers: { referer: `${ORIGIN}/login?next=%2Fadmin` }
+				}),
+				screen().next
+			)
+		);
+
+		expect(redirect.headers.get('location')).toBe('/login');
+	});
+
+	// an editor's own action is addressed `?index`, a routing parameter react router reads and no
+	// screen answers a GET at. the page pressed on is what the operator returns to, whole.
+	it('carries none of the action address into the destination', async () => {
+		const redirect = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/campaigns/abc?index`, {
+					method: 'POST',
+					headers: { referer: `${ORIGIN}/admin/campaigns/abc` }
+				}),
+				screen().next
+			)
+		);
+
+		expect(redirect.headers.get('location')).toBe('/login?next=%2Fadmin%2Fcampaigns%2Fabc');
 	});
 });

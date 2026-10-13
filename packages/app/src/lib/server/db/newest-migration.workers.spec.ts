@@ -29,8 +29,9 @@ import { createDb } from './client';
 // `api_key` is one: `seedApiKeys` writes it in front of the file that rebuilds it, and
 // `webhook_delivery` another, which `seedWebhookDeliveries` writes in front of 0019 and
 // `seedPausedBacklog` in front of 0022, `org_presentation` a third, which `seedOrgPresentation`
-// writes in front of 0026, and `page` a fourth, which `seedLegacyLooks` writes in front of 0027 on
-// the forms `seed` wrote for it.
+// writes in front of 0026, `page` a fourth, which `seedLegacyLooks` writes in front of 0027 on
+// the forms `seed` wrote for it, and `chat_turn` a fifth, which `seedChat` writes in front of 0028
+// beside the images and the page that place them, on the cause and profile `seed` wrote.
 
 const CONTACT_ID = '019fb300-0000-7000-8000-000000000001';
 const FORM_ID = 'frm_migrationprobe';
@@ -71,6 +72,23 @@ const LEGACY_LOOK_FORMS = ['frm_legacylookcampaign', 'frm_legacylookdonate'] as 
 const LEGACY_LOOK_CAMPAIGN = '019fb300-0000-7000-8000-000000000301';
 const LEGACY_LOOK_DONATION_PAGE = '019fb300-0000-7000-8000-000000000302';
 const LEGACY_LOOK_UPDATED_AT = 1_790_000_000_500;
+
+const CHAT_DROPPED_BY = '0028_page_chat_and_illustrations_dropped.sql';
+const CHAT_DROP = env.TEST_MIGRATIONS.findIndex((m) => m.name === CHAT_DROPPED_BY);
+const CHAT_PAGE_FORM = 'frm_chatpage';
+const CHAT_PAGE = '019fb300-0000-7000-8000-000000000401';
+const CHAT_CAUSE = '019fb300-0000-7000-8000-000000000402';
+/** each image `seedChat` attaches to a chat turn, by what else names it. */
+const CHAT_IMAGES = {
+	draft: '019fb300-0000-7000-8000-000000000411',
+	published: '019fb300-0000-7000-8000-000000000412',
+	lastPublished: '019fb300-0000-7000-8000-000000000413',
+	cause: '019fb300-0000-7000-8000-000000000414',
+	logo: '019fb300-0000-7000-8000-000000000415',
+	chatOnly: '019fb300-0000-7000-8000-000000000416',
+	chatOnlyTwice: '019fb300-0000-7000-8000-000000000417'
+} as const;
+const CHAT_ONLY_IMAGES: readonly string[] = [CHAT_IMAGES.chatOnly, CHAT_IMAGES.chatOnlyTwice];
 
 const LOGO_IMAGES = [
 	'019fb300-0000-7000-8000-000000000201',
@@ -129,7 +147,8 @@ async function seed() {
 				`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
 				 values (?, 'probe', ?, 'USD', 0, 0),
 				        (?, 'campaign page', ?, 'USD', 0, 0),
-				        (?, 'donation page', ?, 'USD', 0, 0)`
+				        (?, 'donation page', ?, 'USD', 0, 0),
+				        (?, 'chat page', ?, 'USD', 0, 0)`
 			)
 			.bind(
 				FORM_ID,
@@ -137,8 +156,17 @@ async function seed() {
 				LEGACY_LOOK_FORMS[0],
 				POSTING_ACCOUNTS.donationsDeductible.id,
 				LEGACY_LOOK_FORMS[1],
+				POSTING_ACCOUNTS.donationsDeductible.id,
+				CHAT_PAGE_FORM,
 				POSTING_ACCOUNTS.donationsDeductible.id
 			),
+		db()
+			.prepare(`insert into program (id, name, created_at, updated_at) values (?, 'Coats', 0, 0)`)
+			.bind(CHAT_CAUSE),
+		db().prepare(
+			`insert into org_profile (id, legal_name, created_at, updated_at)
+			 values ('default', 'Riverside Shelter', 0, 0)`
+		),
 		db()
 			.prepare(
 				`insert into recurring_plan
@@ -389,6 +417,65 @@ async function seedLegacyLooks() {
 }
 
 /**
+ * a page's chat whose turns attach seven images: one in each of the page's three documents, the
+ * photo of the cause `seed` wrote, the logo on the profile it wrote, and two no row but a turn
+ * names, one of them in both turns. illustrations and photos among both kinds.
+ */
+async function seedChat() {
+	const { draft, published, lastPublished, cause, logo, chatOnly, chatOnlyTwice } = CHAT_IMAGES;
+	const kinds: [string, string][] = [
+		[draft, 'illustration'],
+		[published, 'photo'],
+		[lastPublished, 'illustration'],
+		[cause, 'illustration'],
+		[logo, 'photo'],
+		[chatOnly, 'illustration'],
+		[chatOnlyTwice, 'photo']
+	];
+	const statements = kinds.flatMap(([id, kind], n) => [
+		db()
+			.prepare(
+				`insert into image (id, kind, content_type, width, height, byte_size, alt, created_at, updated_at)
+				 values (?, ?, 'image/webp', 640, 480, 2, ?, ?, ?)`
+			)
+			.bind(id, kind, n % 2 ? null : `probe ${n}`, 10 + n, 20 + n),
+		db().prepare(`insert into image_bytes (image_id, bytes) values (?, x'0a0b')`).bind(id)
+	]);
+	const document = (imageId: string) =>
+		JSON.stringify({ blocks: [{ id: 'hero', type: 'hero', imageId }] });
+	await db().batch([
+		...statements,
+		db()
+			.prepare(
+				`insert into page
+				   (id, type, name, slug, state, form_id, draft, published, last_published, created_at, updated_at)
+				 values (?, 'campaign', 'Spring appeal', 'spring-appeal', 'live', ?, ?, ?, ?, 0, 0)`
+			)
+			.bind(
+				CHAT_PAGE,
+				CHAT_PAGE_FORM,
+				document(draft),
+				document(published),
+				document(lastPublished)
+			),
+		db().prepare(`update program set image_id = ? where id = ?`).bind(cause, CHAT_CAUSE),
+		db().prepare(`update org_profile set logo_image_id = ?`).bind(logo),
+		db()
+			.prepare(
+				`insert into chat_turn (id, page_id, seq, author, text, model, image_ids, created_at, note)
+				 values ('turn-1', ?, 1, 'operator', 'our photos', null, ?, 0, null),
+				        ('turn-2', ?, 2, 'assistant', 'a page from them', '@cf/probe-model', ?, 1, 'refused')`
+			)
+			.bind(
+				CHAT_PAGE,
+				JSON.stringify([draft, chatOnly, chatOnlyTwice]),
+				CHAT_PAGE,
+				JSON.stringify([published, lastPublished, cause, logo, chatOnlyTwice])
+			)
+	]);
+}
+
+/**
  * a journal entry for a delivery row to hang off, posted through `post()`: ../ledger/sole-writer.spec.ts
  * refuses a direct write to the ledger tables anywhere outside the ledger module.
  */
@@ -423,6 +510,7 @@ let migrated:
 			pausedBacklogBefore: Row[];
 			orgPresentationBefore: Row[];
 			pagesBefore: Row[];
+			imagesBefore: Row[];
 			atApiKeyMove: Map<string, Row[]>;
 			recopy: { error: string | null; zapierRows: Row[] };
 			after: Map<string, Row[]>;
@@ -487,6 +575,9 @@ function migrateOverSeed() {
 		await seedLegacyLooks();
 		const pagesBefore = (await db().prepare('select * from page order by rowid').all<Row>())
 			.results;
+		await applyD1Migrations(db(), chain.slice(0, CHAT_DROP));
+		await seedChat();
+		const imagesBefore = (await db().prepare('select * from image order by id').all<Row>()).results;
 		await applyD1Migrations(db(), chain);
 		const overSeed = (await recorded()).slice(underSeed.length);
 		return {
@@ -496,6 +587,7 @@ function migrateOverSeed() {
 			pausedBacklogBefore,
 			orgPresentationBefore,
 			pagesBefore,
+			imagesBefore,
 			atApiKeyMove,
 			recopy,
 			after: await snapshot(),
@@ -930,54 +1022,6 @@ describe('0022 holds the backlog of a destination already paused out of the due 
 	);
 });
 
-// what 0024's `chat_turn_note_check` is for, on the database it migrated: a page made on the
-// seeded form takes an assistant turn the reply went wrong on, and refuses a note on an operator's.
-describe('0024 notes an assistant turn and never an operator one', () => {
-	const PAGE_ID = '019fb300-0000-7000-8000-000000000101';
-	const turn = (id: string, seq: number, author: string, model: string | null, note: string) =>
-		db()
-			.prepare(
-				`insert into chat_turn (id, page_id, seq, author, text, model, image_ids, created_at, note)
-				 values (?, ?, ?, ?, 'coats for 300 kids', ?, '[]', 0, ?)`
-			)
-			.bind(id, PAGE_ID, seq, author, model, note)
-			.run();
-
-	beforeAll(async () => {
-		if (nowhereToStop) return;
-		await migrateOverSeed();
-		await db()
-			.prepare(
-				`insert into page (id, type, name, slug, state, form_id, draft, created_at, updated_at)
-				 values (?, 'campaign', 'Winter coat drive', 'winter-coats', 'never_published', ?,
-				         '{"blocks":[]}', 0, 0)`
-			)
-			.bind(PAGE_ID, FORM_ID)
-			.run();
-	});
-
-	it.skipIf(nowhereToStop)('takes a note on an assistant turn', async () => {
-		await turn(
-			'019fb300-0000-7000-8000-000000000102',
-			1,
-			'assistant',
-			'@cf/probe-model',
-			'refused'
-		);
-		const row = await db()
-			.prepare(`select note from chat_turn where page_id = ?`)
-			.bind(PAGE_ID)
-			.first();
-		expect(row).toEqual({ note: 'refused' });
-	});
-
-	it.skipIf(nowhereToStop)("refuses a note on an operator's turn", async () => {
-		await expect(
-			turn('019fb300-0000-7000-8000-000000000103', 2, 'operator', null, 'refused')
-		).rejects.toThrow(/chat_turn_note_check/);
-	});
-});
-
 // what 0026 is for: the dashboard's organisation page was `org_presentation`'s only reader and
 // writer, and the organisation's story, brand colour and logo are `org_profile`'s, so the table goes.
 describe('0026 drops org_presentation', () => {
@@ -1006,8 +1050,13 @@ describe('0026 drops org_presentation', () => {
 				'the seed wrote no logo for the drop to run over'
 			).toEqual([[...LOGO_IMAGES]]);
 			expect(overSeed).toContain(ORG_PRESENTATION_DROPPED_BY);
-			expect(after.get('image')?.map((r) => r.id)).toEqual([...LOGO_IMAGES]);
-			expect(after.get('image_bytes')?.map((r) => r.image_id)).toEqual([...LOGO_IMAGES]);
+			const logos = (table: string, column: string) =>
+				after
+					.get(table)
+					?.map((r) => r[column])
+					.filter((id) => LOGO_IMAGES.includes(id as (typeof LOGO_IMAGES)[number]));
+			expect(logos('image', 'id')).toEqual([...LOGO_IMAGES]);
+			expect(logos('image_bytes', 'image_id')).toEqual([...LOGO_IMAGES]);
 		}
 	);
 });
@@ -1083,11 +1132,92 @@ describe('0027 reads a page whose look the earlier settings sheet saved', () => 
 	);
 
 	it.skipIf(nowhereToStop)("leaves the editor's version where it was", () => {
-		expect(after.get('page')?.map((r) => [r.id, r.updated_at])).toEqual([
-			[LEGACY_LOOK_CAMPAIGN, LEGACY_LOOK_UPDATED_AT],
-			[LEGACY_LOOK_DONATION_PAGE, LEGACY_LOOK_UPDATED_AT]
-		]);
+		expect(
+			[LEGACY_LOOK_CAMPAIGN, LEGACY_LOOK_DONATION_PAGE].map((id) => stored(id)?.updated_at)
+		).toEqual([LEGACY_LOOK_UPDATED_AT, LEGACY_LOOK_UPDATED_AT]);
 	});
+});
+
+// what 0028 is for: the page chat is gone, and with it every image only a chat turn named, while an
+// image a page, a cause or the logo still draws stays, a photo whatever kind it was made as.
+describe('0028 drops the page chat and the illustration kind', () => {
+	let after: Map<string, Row[]>;
+	let imagesBefore: Row[];
+	let overSeed: string[];
+	const ids = (table: string, column: string) =>
+		(after.get(table) ?? []).map((r) => r[column] as string).sort();
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		({ after, imagesBefore, overSeed } = await migrateOverSeed());
+	});
+
+	it('is in the chain', () => {
+		expect(env.TEST_MIGRATIONS.map((m) => m.name)).toContain(CHAT_DROPPED_BY);
+	});
+
+	it.skipIf(nowhereToStop)('applies over a chat whose turns attach images', () => {
+		expect(overSeed).toContain(CHAT_DROPPED_BY);
+		expect(imagesBefore.map((r) => r.id)).toEqual(
+			expect.arrayContaining(Object.values(CHAT_IMAGES))
+		);
+		expect(imagesBefore.map((r) => r.kind)).toContain('illustration');
+	});
+
+	it.skipIf(nowhereToStop)('leaves no chat_turn table and no index on it', async () => {
+		expect([...after.keys()]).not.toContain('chat_turn');
+		const { results } = await db()
+			.prepare(`select name from sqlite_master where tbl_name = 'chat_turn'`)
+			.all();
+		expect(results).toEqual([]);
+	});
+
+	it.skipIf(nowhereToStop)(
+		'frees every image only a chat turn named, its bytes with it, and keeps every other',
+		() => {
+			const kept = imagesBefore
+				.map((r) => r.id as string)
+				.filter((id) => !CHAT_ONLY_IMAGES.includes(id))
+				.sort();
+			expect(kept).toEqual(
+				expect.arrayContaining([
+					CHAT_IMAGES.draft,
+					CHAT_IMAGES.published,
+					CHAT_IMAGES.lastPublished,
+					CHAT_IMAGES.cause,
+					CHAT_IMAGES.logo,
+					...LOGO_IMAGES
+				])
+			);
+			expect(ids('image', 'id')).toEqual(kept);
+			expect(ids('image_bytes', 'image_id')).toEqual(kept);
+		}
+	);
+
+	it.skipIf(nowhereToStop)(
+		'holds every image it keeps as a photo, and changes nothing else on it',
+		() => {
+			const stored = new Map((after.get('image') ?? []).map((r) => [r.id, r]));
+			for (const row of imagesBefore) {
+				if (CHAT_ONLY_IMAGES.includes(row.id as string)) continue;
+				expect(stored.get(row.id)).toEqual({ ...row, kind: 'photo' });
+			}
+		}
+	);
+
+	it.skipIf(nowhereToStop)(
+		'leaves the page, the cause and the logo naming the images they drew',
+		() => {
+			expect(after.get('program')?.find((r) => r.id === CHAT_CAUSE)?.image_id).toBe(
+				CHAT_IMAGES.cause
+			);
+			expect(after.get('org_profile')?.[0]?.logo_image_id).toBe(CHAT_IMAGES.logo);
+			const page = after.get('page')?.find((r) => r.id === CHAT_PAGE);
+			expect(page?.draft).toContain(CHAT_IMAGES.draft);
+			expect(page?.published).toContain(CHAT_IMAGES.published);
+			expect(page?.last_published).toContain(CHAT_IMAGES.lastPublished);
+		}
+	);
 });
 
 // what 0023 is for: a refund written before the column arrived was told to its donor on its own

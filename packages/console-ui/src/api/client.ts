@@ -5,7 +5,6 @@ import type {
 	ConsoleVersion,
 	HomeReading,
 	HomeShape,
-	ModelChoice,
 	NonprofitLookup,
 	NonprofitSearch,
 	NonprofitsStatus,
@@ -335,12 +334,6 @@ export const removeOrgLogo = (): Promise<OrgWrite> => ask('/deployment/org/logo'
  */
 export const sendTestEmail = (to: string): Promise<TestSend> =>
 	post('/deployment/test-email', { to });
-
-/**
- * the model the deployment answers generated text with, and what the account's credits say about
- * it. the choice is stored through {@link setVars} like every other value; this is its read.
- */
-export const readAiModel = (): Promise<ModelChoice> => ask('/ai-model', 'GET');
 
 /** what the deployment says about the account it charges on. */
 export const readPayments = (signal?: AbortSignal): Promise<PaymentsRead> =>

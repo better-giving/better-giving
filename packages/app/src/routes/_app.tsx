@@ -15,7 +15,6 @@ import {
 } from 'react-router';
 import { ScreenCrumbs, useCrumbs } from '$lib/admin/crumbs';
 import { currentDestination, destinationGroupsFor } from '$lib/admin/destinations';
-import { revalidatesAfter } from '$lib/admin/editor/suggest-url';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { RouterLink } from '$lib/admin/router-link';
 import { APP_NAME } from '$lib/admin/screen-title';
@@ -164,9 +163,6 @@ export async function loader({ context }: Route.LoaderArgs) {
 		deployer: context.get(staff).id === STAFF_USER_ID
 	};
 }
-
-// as the page editors' own: an ask of Write with AI writes nothing this loader reads.
-export const shouldRevalidate = revalidatesAfter;
 
 export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 	// the destination is decided from the address rather than from a route id, because what marks

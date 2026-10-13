@@ -3,8 +3,8 @@ import { ChoiceChips } from '@better-giving/operator/components/forms/ChoiceChip
 /*
  * the chips as the editor's questions draw them: one of a few short answers, several of them, each
  * chip's tick box saying so, and the Other chip with its box — open in the third specimen, which is
- * the state a press reaches and a page at rest never shows. then the cards New campaign draws its
- * kinds as, one taken and one pinned under the pointer, and the same cards refused.
+ * the state a press reaches and a page at rest never shows. then the cards a choice with a line
+ * under it is drawn as, one taken and one pinned under the pointer, and the same cards refused.
  *
  * the pointer states are pinned per chip: `hover` on the chip and `focus` on the control inside it,
  * whose ring the chip draws. the taken chip is the platform's own `checked`, set here with

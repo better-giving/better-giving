@@ -1,15 +1,16 @@
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { useCallback, useState } from 'react';
-import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/block-edit';
-import { useEditorChat } from '$lib/admin/editor/chat-wiring';
+import { BlockEditSheet, isDonationBox } from '$lib/admin/editor/block-edit';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
-import { revalidatesAfter, suggestUrl } from '$lib/admin/editor/suggest-url';
+import { ShareMessageSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
+import { useSettingsPresses } from '$lib/admin/editor/settings-presses';
 import { usePublishPresses } from '$lib/admin/editor/publish-wiring';
 import { SettingsSheet } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
+import { formPress } from '$lib/admin/unreached';
 import { BLOCK_FORM_IDS } from '$lib/page/block-edit';
 import {
 	PAGE_END_DATE_FORM_ID,
@@ -27,10 +28,9 @@ import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-for
 import { submittedForm } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
-import { draftIllustrations, editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
+import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import {
-	type EditorPage,
 	editorPage,
 	readEditorSettings,
 	saveDraftSettings,
@@ -44,12 +44,10 @@ import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.donation-page';
 
 // the Donation page's editor, reached from the globe beside the organisation's name: its draft
-// framed by the preview route, the publish bar over it, the AI panel its AI press opens
-// ($lib/admin/editor/chat-wiring.tsx, which asks a page never drafted its opening questions — the
-// mission first while the profile has none, $lib/server/pages/draft.ts), and the Settings sheet
-// behind the bar's Settings, beside Done while Edit is on. the parts are $lib/admin/editor/'s. the
-// Donation page has no name to edit and no address of its own: the bar calls it "Donation page",
-// and it is always at /donate.
+// framed by the preview route, the publish bar over it, and the Settings sheet behind the bar's
+// Settings, beside Done while Edit is on. the parts are $lib/admin/editor/'s. the Donation page
+// has no name to edit and no address of its own: the bar calls it "Donation page", and it is
+// always at /donate.
 //
 // **the loader makes the page on first need** (`ensureDonationPage` in
 // $lib/server/pages/donation-page.ts), so on a fresh deployment the globe opens an editor rather
@@ -57,8 +55,7 @@ import type { Route } from './+types/_app.admin.donation-page';
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
 // only at Publish, as a campaign's are ($lib/server/pages/editor.ts). a goal and an end date are a
-// campaign's alone, and this action refuses them ($lib/server/pages/page-settings.ts); the shade,
-// corners and share message are set only through the chat ($lib/page/accept-reply.ts). until a
+// campaign's alone, and this action refuses them ($lib/server/pages/page-settings.ts). until a
 // Publish carries donation settings, the program follows the active programs
 // ($lib/server/pages/donation-page.ts).
 //
@@ -73,8 +70,11 @@ import type { Route } from './+types/_app.admin.donation-page';
 // **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
 // preview while Edit is on and by its row in Settings' block list alike, and the layout by
 // Settings' pictures; each writes the draft ($lib/server/pages/blocks.ts), as a campaign's editor
-// does.
+// does. the look, the sharing and a block added, removed or moved are presses there too.
 // the donation box opens Donation settings, which are what it draws.
+//
+// the action below is the one writer; `clientAction` only answers, as its form's refusal, a press
+// whose request never reached it ($lib/admin/unreached.ts).
 
 export const handle: BareHandle = { frame: 'bare' };
 
@@ -99,36 +99,24 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const { env } = context.get(platform);
 	let row: Page;
 	let settings: SettingsSeed;
-	let edited: boolean;
-	let illustrations: ReadonlySet<string>;
-	let framed: EditorPage;
 	const now = Date.now();
 	try {
 		row = await ensureDonationPage(db);
 		const unreadable = unreadableEditor(row, now);
 		// a draft the rule refuses is itself an edit Reset puts back (`hasEditsToReset`).
 		if (unreadable !== null) return { ...unreadable, hasEdits: true };
-		[framed, settings, edited, illustrations] = await Promise.all([
-			editorPage(db, row, now),
-			readEditorSettings(db, env, row, new URL(request.url).origin),
-			hasEditsToReset(db, row),
-			draftIllustrations(db, row)
-		]);
+		settings = await readEditorSettings(db, env, row, new URL(request.url).origin);
 	} catch (e) {
 		console.error('loading the Donation page editor failed:', e);
 		loadFailed('The Donation page');
 	}
 	return {
-		...framed,
-		...editorDraft(row, settings.currency, illustrations),
+		...editorPage(row, now),
+		...editorDraft(row, settings.currency),
 		settings,
-		hasEdits: edited,
-		pageId: row.id
+		hasEdits: hasEditsToReset(row)
 	};
 }
-
-// Write with AI's ask writes nothing, so the editor is not read again after one.
-export const shouldRevalidate = revalidatesAfter;
 
 export async function action({ context, request }: Route.ActionArgs) {
 	const body = await request.formData();
@@ -150,6 +138,10 @@ export async function action({ context, request }: Route.ActionArgs) {
 		default:
 			return saveBlockForm(db, { type: 'donation_page' }, pressed, body, NO_DONATION_PAGE);
 	}
+}
+
+export function clientAction({ request, serverAction }: Route.ClientActionArgs) {
+	return formPress(request, serverAction);
 }
 
 type Loaded = Route.ComponentProps['loaderData'];
@@ -213,18 +205,24 @@ function DraftEditor({
 	const { state, version, preview, hasEdits } = loaderData;
 	const [settings, setSettings] = useState(false);
 	const [donationSettings, setDonationSettings] = useState(false);
+	const [shareMessage, setShareMessage] = useState(false);
 	const presses = usePublishPresses({ version, state, reset: { hasEdits } });
 	const [blockId, setBlockId] = useState<string | null>(null);
 	const openBlock = loaderData.blocks.find((block) => block.id === blockId) ?? null;
-	const layoutPick = useLayoutPick(loaderData.layout, version);
 	const closeBlock = useCallback(() => setBlockId(null), []);
 	const openBlockSheet = (id: string) =>
 		isDonationBox(loaderData.blocks, id) ? setDonationSettings(true) : setBlockId(id);
-	const chat = useEditorChat(loaderData.chat, loaderData.drafted);
+	const settingsPresses = useSettingsPresses({
+		version,
+		layout: loaderData.layout,
+		look: loaderData.look,
+		share: loaderData.share,
+		addable: loaderData.addable,
+		onAdded: openBlockSheet
+	});
 
 	return (
 		<EditorShell
-			undrafted={chat.undrafted}
 			bar={
 				<PublishBar
 					closeHref="/admin"
@@ -233,10 +231,9 @@ function DraftEditor({
 					livePath="/donate"
 					{...presses.bar}
 					onSettings={() => {
-						layoutPick.startClean();
+						settingsPresses.startClean();
 						setSettings(true);
 					}}
-					onAi={chat.open}
 				/>
 			}
 			preview={
@@ -247,16 +244,17 @@ function DraftEditor({
 					onBlockClick={openBlockSheet}
 				/>
 			}
-			panel={chat.panel}
 		>
-			{chat.sheet}
 			{settings ? (
 				<SettingsSheet
 					onDismiss={() => setSettings(false)}
 					blocks={loaderData.blocks}
 					onOpenBlock={openBlockSheet}
 					layouts={loaderData.layouts}
-					{...layoutPick.sheet}
+					lookPictures={loaderData.lookPictures}
+					shareChannels={loaderData.shareChannels}
+					{...settingsPresses.sheet}
+					onShareMessage={() => setShareMessage(true)}
 					donationSettings={loaderData.settings.summary}
 					onOpen={(row) => {
 						if (row === 'donation-settings') setDonationSettings(true);
@@ -268,12 +266,19 @@ function DraftEditor({
 					key={openBlock.id}
 					block={openBlock}
 					version={version}
-					suggestUrl={suggestUrl(loaderData.pageId)}
 					onDismiss={closeBlock}
 					onSaved={closeBlock}
 					stacked={settings}
 				/>
 			)}
+			{shareMessage ? (
+				<ShareMessageSettingsSheet
+					message={loaderData.share.message}
+					version={version}
+					onDismiss={() => setShareMessage(false)}
+					onSaved={() => setShareMessage(false)}
+				/>
+			) : null}
 			{donationSettings ? (
 				<DonationSettingsSheet
 					seed={loaderData.settings}

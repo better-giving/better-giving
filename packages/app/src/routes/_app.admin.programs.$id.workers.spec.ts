@@ -2,8 +2,7 @@ import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
-import type { ImageKind } from '$lib/server/db/schema';
-import { createImage } from '$lib/server/images/queries';
+import { createImage } from '$lib/server/images/image.testing';
 import { readProgram } from '$lib/server/programs/queries';
 import { insertProgram, ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -152,11 +151,11 @@ async function archiveInPlace(): Promise<void> {
 		.run();
 }
 
-/** an image stored the way the images route stores one, of `kind`. */
-function stored(kind: ImageKind = 'photo'): Promise<string> {
+/** an image stored the way the images route stores one. */
+function stored(): Promise<string> {
 	return createImage(
 		db,
-		{ kind, contentType: 'image/webp', width: 800, height: 800, alt: null },
+		{ kind: 'photo', contentType: 'image/webp', width: 800, height: 800, alt: null },
 		new Uint8Array([1])
 	);
 }
@@ -292,18 +291,6 @@ describe('/admin/programs/[id] save — the photo', () => {
 		});
 		expect(redirect?.status).toBe(303);
 		expect((await readProgram(db, PROGRAM_ID))?.imageId).toBeNull();
-	});
-
-	it('refuses an illustration’s id at the photo box, and writes nothing', async () => {
-		const drawn = await stored('illustration');
-		const { failure } = await post(DETAILS_FORM, {
-			name: 'Water',
-			description: '',
-			image_id: drawn
-		});
-		expect(failure?.status).toBe(400);
-		expect(failure?.errors.image_id?.at(-1)).toContain('illustration');
-		expect(await readProgram(db, PROGRAM_ID)).toMatchObject({ name: 'Clean Water', imageId: null });
 	});
 
 	it('refuses an id no stored image has at the photo box, and writes nothing', async () => {

@@ -4,10 +4,9 @@
    browser code only — it decodes and draws with the page's own canvas, so nothing on the server
    ever holds the photo at the size the camera took it.
 
-   every operator screen that posts a photo runs it — the dashboard's (the chat's attach press in
-   `packages/app/src/lib/admin/chat/attach-control.tsx`, a placed photo's replace press in
-   `packages/app/src/lib/admin/editor/replace-photo.tsx`) and the console's — and the route each
-   reports to posts what it returns. */
+   every operator screen that posts a photo runs it — the dashboard's (a placed photo's replace
+   press in `packages/app/src/lib/admin/editor/replace-photo.tsx`) and the console's — and the
+   route each reports to posts what it returns. */
 
 /**
  * the most one image's bytes may weigh: `IMAGE_BYTES_MAX` in
@@ -181,21 +180,4 @@ export async function resizeImage(file: File): Promise<Resized> {
 	} finally {
 		bitmap.close();
 	}
-}
-
-/** a resized photo's size and weight as the chat names it: `1600 × 1200, 480 KB`. */
-export function describeResized({
-	width,
-	height,
-	bytes
-}: {
-	width: number;
-	height: number;
-	bytes: number;
-}) {
-	const weight =
-		bytes < 1_000_000
-			? `${Math.max(1, Math.round(bytes / 1000))} KB`
-			: `${(bytes / 1_000_000).toFixed(1)} MB`;
-	return `${width} × ${height}, ${weight}`;
 }

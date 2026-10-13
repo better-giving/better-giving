@@ -1,7 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CampaignType } from '../../page/campaign-types';
 import { defaultCampaign } from '../../page/defaults';
 import { SLUG_MAX_LENGTH } from '../../page/slug';
 import { createDb, type Db } from '../db/client';
@@ -9,7 +8,6 @@ import { form, page, program } from '../db/schema';
 import { readForms } from '../forms/queries';
 import { createCampaign } from './campaign';
 import { ensureDonationPage } from './donation-page';
-import { readChat } from './draft';
 import { insertPage, SETTINGS } from './page-row.testing';
 
 // a new campaign against the real D1: the Donation page it copies from, the owned settings row, the
@@ -23,15 +21,14 @@ beforeAll(() => {
 
 beforeEach(async () => {
 	await env.DB.batch([
-		env.DB.prepare('delete from chat_turn'),
 		env.DB.prepare('delete from page'),
 		env.DB.prepare('delete from form'),
 		env.DB.prepare('delete from program')
 	]);
 });
 
-function create(name: string, campaignType: CampaignType = 'year_end') {
-	return createCampaign(db, { name, campaignType });
+function create(name: string) {
+	return createCampaign(db, { name });
 }
 
 async function stored(pageId: string) {
@@ -144,12 +141,11 @@ describe('a new campaign’s address', () => {
 });
 
 describe('a new campaign’s type', () => {
-	it('is recorded on its row, its chat left empty for the editor to open, and its draft the clean default', async () => {
-		const { pageId } = await create('Coats for Kids', 'tribute');
+	it('is none, and its draft the clean default', async () => {
+		const { pageId } = await create('Coats for Kids');
 
 		const made = await stored(pageId);
-		expect(made.campaignType).toBe('tribute');
-		expect(await readChat(db, pageId)).toEqual([]);
+		expect(made.campaignType).toBeNull();
 		expect(JSON.parse(made.draft)).toMatchObject({ ...defaultCampaign(), name: 'Coats for Kids' });
 	});
 });

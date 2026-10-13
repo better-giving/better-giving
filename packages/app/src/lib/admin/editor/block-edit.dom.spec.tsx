@@ -2,14 +2,16 @@ import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { WHICH_FORM } from '$lib/forms/definition';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { BLOCK_FORMS, type EditorBlock } from '$lib/page/block-edit';
-import { BlockEditSheet, useLayoutPick } from './block-edit';
+import { FAQ_MAX, TIERS_MAX } from '$lib/page/catalog';
+import { BlockEditSheet } from './block-edit';
+import { useSettingsPresses } from './settings-presses';
 import { SettingsSheet } from './settings-sheet';
 
 // a block's sheet and the layout pictures as the editor routes mount them, each press posted
-// through a fetcher to a stubbed action: where a refused pick is reported, what a tier's row posts,
-// and that a sheet opened over Settings stands over it.
+// through a fetcher to a stubbed action: where a refused pick is reported, what a tier's row and a
+// background pick post, and that a sheet opened over Settings stands over it.
 //
 // `stacked` has one output, the class packages/operator/src/components/shell/Sheet.jsx writes for
 // it, and that file's own spec holds what the class is; the one case reading it here asks only
@@ -20,8 +22,15 @@ import { SettingsSheet } from './settings-sheet';
 
 const STALE = 'The page changed while this was open. Reload to see it.';
 
-/** `tree` under the editor's route, whose action refuses `refusing` and records every body. */
-function editor(tree: ReactNode, refusing: string) {
+/**
+ * `tree` under the editor's route, whose action refuses `refusing` with `error` — the stale sentence
+ * unless stated — and records every body.
+ */
+function editor(
+	tree: ReactNode,
+	refusing: string,
+	error: Record<string, string[]> = { '': [STALE] }
+) {
 	const posted: FormData[] = [];
 	const Stub = createRoutesStub([
 		{
@@ -32,7 +41,7 @@ function editor(tree: ReactNode, refusing: string) {
 				posted.push(body);
 				const form = body.get(WHICH_FORM);
 				return form === refusing
-					? { form: { id: form, result: { status: 'error', error: { '': [STALE] } } } }
+					? { form: { id: form, result: { status: 'error', error } } }
 					: { saved: 'block' };
 			}
 		}
@@ -65,14 +74,9 @@ function done(root: Element): HTMLButtonElement {
 	return found;
 }
 
-/**
- * every report region in the open sheet, in tree order: the pictures' first, Done's after it. a
- * box's own region, which Write with AI speaks in, is the box's and not one of these.
- */
+/** every report region in the open sheet, in tree order: the pictures' first, Done's after it. */
 const reports = (root: Element) =>
-	[...root.querySelectorAll('dialog [role="status"]:not(.adm-field__needed)')].map(
-		(one) => one.textContent
-	);
+	[...root.querySelectorAll('dialog [role="status"]')].map((one) => one.textContent);
 
 const title: EditorBlock = {
 	id: 'b1',
@@ -84,8 +88,12 @@ const title: EditorBlock = {
 		{ value: 'left', label: 'Left' },
 		{ value: 'center', label: 'Centred' }
 	],
-	text: { kind: 'title', heading: 'Keep 300 kids warm this winter', lede: '' },
-	illustration: false
+	background: 'none',
+	backgrounds: [{ value: 'none', label: 'None' }],
+	removable: true,
+	movesUp: false,
+	movesDown: true,
+	text: { kind: 'title', heading: 'Keep 300 kids warm this winter', lede: '' }
 };
 
 const tiers: EditorBlock = {
@@ -98,6 +106,11 @@ const tiers: EditorBlock = {
 		{ value: 'cards', label: 'Cards' },
 		{ value: 'list', label: 'List' }
 	],
+	background: 'none',
+	backgrounds: [{ value: 'none', label: 'None' }],
+	removable: true,
+	movesUp: false,
+	movesDown: true,
 	text: {
 		kind: 'impact-tiers',
 		currency: 'USD',
@@ -105,15 +118,13 @@ const tiers: EditorBlock = {
 			{ amount: '40.00', buys: 'one winter coat' },
 			{ amount: '120.00', buys: 'coats for a family of three' }
 		]
-	},
-	illustration: false
+	}
 };
 
 const sheet = (block: EditorBlock, stacked?: boolean) => (
 	<BlockEditSheet
 		block={block}
 		version={3}
-		suggestUrl="/admin/pages/p1/suggest"
 		onDismiss={() => {}}
 		onSaved={() => {}}
 		stacked={stacked}
@@ -145,16 +156,61 @@ describe('a block sheet', () => {
 	});
 });
 
-describe('the tiers', () => {
-	/** the amount box drawn in tier `at`'s row. */
-	function amountBox(root: Element, at: number): HTMLInputElement {
-		const found = root
-			.querySelectorAll('dialog fieldset')
-			[at]?.querySelector<HTMLInputElement>('.adm-affixed__input');
-		if (found == null) throw new Error(`no amount box in tier ${at + 1}`);
-		return found;
-	}
+describe('a block’s background', () => {
+	const grounded: EditorBlock = {
+		...title,
+		background: 'soft',
+		backgrounds: [
+			{ value: 'none', label: 'None' },
+			{ value: 'soft', label: 'Soft' },
+			{ value: 'tint', label: 'Tinted' }
+		]
+	};
+	const legends = (root: Element) =>
+		[...root.querySelectorAll('dialog legend')].map((one) => one.textContent);
+	const chip = (root: Element, words: string) =>
+		[...root.querySelectorAll<HTMLLabelElement>('dialog label')]
+			.find((one) => one.textContent === words)
+			?.querySelector('input') ?? null;
 
+	it('is offered only where the block may stand on more than one, the one it stands on picked', () => {
+		expect(legends(editor(sheet(title), '').root)).not.toContain('Background');
+		const { root } = editor(sheet(grounded), '');
+		expect(legends(root)).toContain('Background');
+		expect(chip(root, 'Soft')?.checked).toBe(true);
+	});
+
+	it('posts the block and the ground picked with the version, and nothing else', async () => {
+		const { root, posted } = editor(sheet(grounded), '');
+		await press(chip(root, 'Tinted'));
+		expect(posted.map((body) => [...body.entries()])).toEqual([
+			[
+				[WHICH_FORM, BLOCK_FORMS.background],
+				[RECORD_VERSION, '3'],
+				['block_id', 'b1'],
+				['background', 'tint']
+			]
+		]);
+	});
+
+	it('reports a refused pick under the picks, and draws the block’s ground again', async () => {
+		const { root } = editor(sheet(grounded), BLOCK_FORMS.background);
+		await press(chip(root, 'Tinted'));
+		expect(reports(root)).toEqual([STALE, '']);
+		expect(chip(root, 'Soft')?.checked).toBe(true);
+	});
+});
+
+/** the amount box drawn in tier `at`'s row. */
+function amountBox(root: Element, at: number): HTMLInputElement {
+	const found = root
+		.querySelectorAll('dialog fieldset')
+		[at]?.querySelector<HTMLInputElement>('.adm-affixed__input');
+	if (found == null) throw new Error(`no amount box in tier ${at + 1}`);
+	return found;
+}
+
+describe('the tiers', () => {
 	it('are a row per tier, each named by its place', () => {
 		const { root } = editor(sheet(tiers), '');
 		expect(
@@ -197,10 +253,161 @@ describe('the tiers', () => {
 	});
 });
 
+describe('a list’s rows', () => {
+	const empty = (kind: 'tiers' | 'faq'): EditorBlock =>
+		kind === 'tiers'
+			? { ...tiers, text: { kind: 'impact-tiers', currency: 'USD', tiers: [] } }
+			: {
+					...tiers,
+					id: 'b3',
+					type: 'faq',
+					label: 'Questions',
+					variant: 'accordion',
+					variants: [{ value: 'accordion', label: 'Folded' }],
+					text: { kind: 'faq', items: [] }
+				};
+	const full = (kind: 'tiers' | 'faq', count: number): EditorBlock => {
+		const block = empty(kind);
+		if (block.text?.kind === 'impact-tiers')
+			return {
+				...block,
+				text: {
+					...block.text,
+					tiers: Array.from({ length: count }, (_, at) => ({
+						amount: String(at + 1),
+						buys: 'a coat'
+					}))
+				}
+			};
+		return {
+			...block,
+			text: {
+				kind: 'faq',
+				items: Array.from({ length: count }, (_, at) => ({
+					question: `Question ${at + 1}?`,
+					answer: { type: 'doc', content: [{ type: 'paragraph' }] }
+				}))
+			}
+		};
+	};
+	const rows = (root: Element) => root.querySelectorAll('dialog fieldset').length;
+	const typeInto = (box: HTMLInputElement | null, text: string) =>
+		act(() => {
+			if (box === null) throw new Error('no box');
+			Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, text);
+			box.dispatchEvent(new Event('input', { bubbles: true }));
+		});
+	const named = (root: Element, name: string) =>
+		[...root.querySelectorAll<HTMLButtonElement>('dialog button')].find(
+			(one) => (one.getAttribute('aria-label') ?? one.textContent) === name
+		) ?? null;
+
+	it('offer an empty tiers block a first row, and post it', async () => {
+		const { root, posted } = editor(sheet(empty('tiers')), '');
+		expect(rows(root)).toBe(1);
+		expect(named(root, 'Remove tier 1')).toBeNull();
+
+		typeInto(amountBox(root, 0), '25');
+		typeInto(
+			root.querySelector<HTMLInputElement>('input[name="tier_buys[0]"]'),
+			'a pair of gloves'
+		);
+		await press(done(root));
+
+		expect(posted[0]?.getAll('tier_amount[0]')).toEqual(['25']);
+		expect(posted[0]?.getAll('tier_buys[0]')).toEqual(['a pair of gloves']);
+	});
+
+	it('offer an empty questions block a first row, and post it', async () => {
+		const { root, posted } = editor(sheet(empty('faq')), '');
+		expect(rows(root)).toBe(1);
+
+		typeInto(
+			root.querySelector<HTMLInputElement>('input[name="question[0]"]'),
+			'Where do coats go?'
+		);
+		await press(done(root));
+
+		expect(posted[0]?.get(WHICH_FORM)).toBe(BLOCK_FORMS.faq);
+		expect(posted[0]?.getAll('question[0]')).toEqual(['Where do coats go?']);
+		expect(posted[0]?.getAll('answer[0]')).toHaveLength(1);
+	});
+
+	it('add a row with the caret in it, and drop one with the caret on the row above', async () => {
+		const { root, posted } = editor(sheet(tiers), '');
+		await press(named(root, 'Add a tier'));
+		expect(rows(root)).toBe(3);
+		expect(document.activeElement).toBe(amountBox(root, 2));
+
+		await press(named(root, 'Remove tier 2'));
+		expect(rows(root)).toBe(2);
+		expect(document.activeElement).toBe(amountBox(root, 0));
+		await press(done(root));
+		expect(posted[0]?.getAll('tier_buys[0]')).toEqual(['one winter coat']);
+		expect(posted[0]?.getAll('tier_buys[1]')).toEqual(['']);
+	});
+
+	it('keep a refusal on the row it was said of as rows come and go, with the caret where Remove put it', async () => {
+		const three: EditorBlock = {
+			...tiers,
+			text: {
+				kind: 'impact-tiers',
+				currency: 'USD',
+				tiers: [
+					{ amount: '40.00', buys: 'one winter coat' },
+					{ amount: '120.00', buys: 'coats for a family of three' },
+					{ amount: '0', buys: 'a scarf' }
+				]
+			}
+		};
+		const { root } = editor(sheet(three), BLOCK_FORMS.impactTiers, {
+			'tier_amount[2]': ['more than $0']
+		});
+		const refused = () =>
+			[...root.querySelectorAll('dialog fieldset')].map(
+				(one) => one.querySelector('.adm-affixed__input')?.getAttribute('aria-invalid') === 'true'
+			);
+
+		await press(done(root));
+		expect(refused()).toEqual([false, false, true]);
+		expect(document.activeElement).toBe(amountBox(root, 2));
+
+		await press(named(root, 'Remove tier 1'));
+		expect(refused()).toEqual([false, true]);
+		expect(document.activeElement).toBe(amountBox(root, 0));
+
+		await press(named(root, 'Add a tier'));
+		expect(refused()).toEqual([false, true, false]);
+		expect(document.activeElement).toBe(amountBox(root, 2));
+
+		await press(named(root, 'Remove tier 2'));
+		expect(refused()).toEqual([false, false]);
+		expect(document.activeElement).toBe(amountBox(root, 0));
+	});
+
+	it.each([
+		['tiers', TIERS_MAX, 'Add a tier'],
+		['faq', FAQ_MAX, 'Add a question']
+	] as const)('offer a full %s block no more rows', (kind, max, add) => {
+		const { root } = editor(sheet(full(kind, max)), '');
+		expect(rows(root)).toBe(max);
+		expect(named(root, add)).toBeNull();
+		const short = editor(sheet(full(kind, max - 1)), '').root;
+		expect(named(short, add)).not.toBeNull();
+	});
+});
+
 describe('the layout pictures', () => {
 	/** the Settings sheet as an editor route mounts it: the pick held by the editor, the sheet opened and closed. */
 	function Layout() {
-		const pick = useLayoutPick('box-right', 3);
+		const pick = useSettingsPresses({
+			version: 3,
+			layout: 'box-right',
+			look: { shade: 'light', corners: 'soft', palette: 'plain' },
+			share: { message: '', channels: [] },
+			addable: [],
+			onAdded: () => {}
+		});
 		const [open, setOpen] = useState(true);
 		return open ? (
 			<SettingsSheet
@@ -209,7 +416,9 @@ describe('the layout pictures', () => {
 					{ value: 'box-right', label: 'Box beside' },
 					{ value: 'banner', label: 'Banner' }
 				]}
-				{...pick.sheet}
+				layout={pick.sheet.layout}
+				onLayout={pick.sheet.onLayout}
+				layoutRefusal={pick.sheet.layoutRefusal}
 			/>
 		) : (
 			<button

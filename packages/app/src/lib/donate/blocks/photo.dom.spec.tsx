@@ -8,8 +8,8 @@ import type { PhotoBlockValues } from './photo';
 
 // the hero and image blocks, mounted in every variant: each photo is drawn from the deployment's
 // image route by its id and by nothing else, its alt text is the stored one or empty, a block with
-// no photo placed leaves itself out, and an AI illustration is never drawn without its caption. how
-// any of it looks is left to a person looking at it.
+// no photo placed leaves itself out, and nothing is drawn beside the photo, whatever else the
+// block carries. how any of it looks is left to a person looking at it.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -29,7 +29,7 @@ const ID = '0192a4c1-7d1e-7c3a-9f2b-4e5d6c7b8a90';
 const ALT = 'Volunteers sorting winter coats by size at the Elm Street coat bank';
 
 /** the values a case varies. */
-type Own = Partial<Pick<PhotoBlockValues<string>, 'imageId' | 'alt' | 'illustration'>>;
+type Own = Partial<Pick<PhotoBlockValues<string>, 'imageId' | 'alt'>>;
 
 const values = <V extends string>(variant: V, own: Own = {}): PhotoBlockValues<V> => ({
 	id: `b-${variant}`,
@@ -99,25 +99,11 @@ describe.each(CASES)('$name', ({ draw }) => {
 		expect(mount(draw({ imageId: null })).childNodes).toHaveLength(0);
 	});
 
-	it('captions an AI illustration Illustration, as the figure its photo is', () => {
-		const host = mount(draw({ illustration: true }));
-		const figure = host.firstElementChild;
-		const caption = figure?.lastElementChild;
-
-		expect(figure?.tagName).toBe('FIGURE');
-		expect(figure?.querySelector(':scope > img')?.getAttribute('src')).toBe(`/image/${ID}`);
-		expect(caption?.tagName).toBe('FIGCAPTION');
-		expect(caption?.textContent).toBe('Illustration');
-		expect(host.querySelectorAll('figcaption')).toHaveLength(1);
-	});
-
-	it.each([
-		['marked a photo', { illustration: false }],
-		['read with no mark', {}]
-	])('captions nothing %s', (_, own: Own) => {
-		const host = mount(draw(own));
+	it('draws a plain photo and captions nothing', () => {
+		const host = mount(draw());
+		expect(host.firstElementChild?.tagName).toBe('DIV');
+		expect(onlyPhoto(host).getAttribute('src')).toBe(`/image/${ID}`);
 		expect(host.querySelector('figure, figcaption')).toBeNull();
-		expect(host.textContent).not.toContain('Illustration');
 	});
 });
 
@@ -136,20 +122,6 @@ describe('when each photo is fetched', () => {
 });
 
 describe('the cover', () => {
-	it('keeps its title over an illustration, and the caption beside it', () => {
-		const host = mount(
-			<HeroBlock
-				block={values('framed', { illustration: true })}
-				imageSrc={imageSrc}
-				over={<h1>Winter coat drive</h1>}
-			/>
-		);
-		const figure = host.querySelector('figure.page-hero');
-		expect(figure?.getAttribute('data-variant')).toBe('cover');
-		expect(figure?.querySelector('.page-hero-over h1')?.textContent).toBe('Winter coat drive');
-		expect(figure?.querySelector(':scope > figcaption')?.textContent).toBe('Illustration');
-	});
-
 	it('lays the title over the photo, whatever the stored variant', () => {
 		for (const variant of HEROES) {
 			const host = mount(

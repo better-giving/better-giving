@@ -49,6 +49,23 @@ describe('the sheet', () => {
 		expect(root.querySelector('.adm-sheet__foot')?.textContent).toBe('Done');
 	});
 
+	it('says what it is doing beside its heading, from a region there before it speaks', () => {
+		expect(
+			sheetIn(render(Sheet, { title: 'Look', onDismiss: () => {} })).querySelector(
+				'[role="status"]'
+			)
+		).toBeNull();
+
+		let root = render(Sheet, { title: 'Settings', status: '', onDismiss: () => {} });
+		const region = sheetIn(root).querySelector('.adm-sheet__head [role="status"]');
+		expect(region?.textContent).toBe('');
+
+		root = render(Sheet, { title: 'Settings', status: 'Saving your change…', onDismiss: () => {} });
+		expect(sheetIn(root).querySelector('.adm-sheet__head [role="status"]')?.textContent).toBe(
+			'Saving your change…'
+		);
+	});
+
 	it('wears each arrangement a caller states', () => {
 		const root = render(Sheet, { title: 'Name', stacked: true, wide: true, onDismiss: () => {} });
 

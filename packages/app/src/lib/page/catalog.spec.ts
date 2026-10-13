@@ -1,5 +1,3 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { FAQ_MAX, HEADING_MAX, ID_MAX, parsePage, SHARE_MESSAGE_MAX, TIERS_MAX } from './catalog';
@@ -500,13 +498,5 @@ describe('one rule', () => {
 			if (value instanceof z.ZodType)
 				expect([name, value.safeParse(valid).success]).toEqual([name, false]);
 		}
-	});
-
-	it('reaches json-render from the drafting side alone, so an upgrade there never touches a stored page', () => {
-		const src = resolve(import.meta.dirname, '../..');
-		const reaching = readdirSync(src, { recursive: true, encoding: 'utf8' })
-			.filter((file) => /\.tsx?$/.test(file) && !/\.spec\.tsx?$/.test(file))
-			.filter((file) => /from '@json-render\//.test(readFileSync(join(src, file), 'utf8')));
-		expect(reaching).toEqual([join('lib', 'page', 'ai-catalog.ts')]);
 	});
 });

@@ -198,7 +198,6 @@ describe('a fold seeding its boxes through the form layer says when they go back
 		const calling = folds.filter((file) => direct(file, readFileSync(file, 'utf8')).length > 0);
 		expect(calling).toContain('src/lib/secret-group-form.tsx');
 		expect(calling).toContain('src/lib/answer-switch-block.tsx');
-		expect(calling).toContain('src/lib/ai-model-section.tsx');
 		expect(calling).toContain('src/lib/quickbooks-accounts.tsx');
 		expect(calling).toContain('src/lib/use-console-form.ts');
 	});

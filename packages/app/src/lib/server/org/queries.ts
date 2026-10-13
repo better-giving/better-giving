@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { image, orgProfile, type OrgProfile } from '../db/schema';
 import { freeImageStatements } from '../images/free';
-import { firstMissingImage, illustrationsAmong, type NewImageStatements } from '../images/queries';
+import type { NewImageStatements } from '../images/queries';
 import type { ParsedOrgProfile } from './org-input';
 
 // every read and write of `org_profile`, so the table object never leaves this module — the same
@@ -130,20 +130,13 @@ export async function saveOrgProfile(db: Db, input: ParsedOrgProfile): Promise<O
 }
 
 // ---------------------------------------------------------------------------
-// the profile's logo, `org_profile.logo_image_id`: set to a stored photo or taken off, and the logo
+// the profile's logo, `org_profile.logo_image_id`: a new photo put on or taken off, and the logo
 // it replaces freed in the same `batch()` where nothing else names it (../images/free.ts). no undo:
 // a freed image is gone.
 //
 // the write is compare-and-set on the logo it read, so the logo it frees is the one it replaced; a
 // write landing between the two answers `stale`.
 // ---------------------------------------------------------------------------
-
-/**
- * what a profile logo write answers: it landed, the logo moved since it was read, or the id refused
- * — `no-profile` where no profile is saved for it to sit on, `unknown` where no image has the id,
- * `illustration` where the image is not a photo.
- */
-export type ProfileLogoWrite = 'written' | 'stale' | 'no-profile' | 'unknown' | 'illustration';
 
 /** the logo as a page lays it out: its image and that image's stored size. */
 export type OrgLogo = { readonly imageId: string; readonly width: number; readonly height: number };
@@ -156,13 +149,6 @@ export async function readOrgProfileLogo(db: Db): Promise<OrgLogo | null> {
 		.innerJoin(image, eq(image.id, orgProfile.logoImageId))
 		.where(eq(orgProfile.id, ORG_PROFILE_ID));
 	return row ?? null;
-}
-
-/** set the profile's logo to the stored photo `imageId`, freeing the one it replaces. */
-export async function setOrgProfileLogo(db: Db, imageId: string): Promise<ProfileLogoWrite> {
-	if ((await firstMissingImage(db, [imageId])) !== null) return 'unknown';
-	if ((await illustrationsAmong(db, [imageId])).has(imageId)) return 'illustration';
-	return writeProfileLogo(db, imageId);
 }
 
 /**
@@ -188,20 +174,10 @@ export async function putNewOrgProfileLogo(
 
 /** take the profile's logo off, freeing it. no profile has no logo, so that is `written` too. */
 export async function removeOrgProfileLogo(db: Db): Promise<'written' | 'stale'> {
-	const written = await writeProfileLogo(db, null);
-	return written === 'no-profile' ? 'written' : written;
-}
-
-async function writeProfileLogo(
-	db: Db,
-	next: string | null
-): Promise<'written' | 'stale' | 'no-profile'> {
 	const read = await readLogo(db);
-	if (!read) return 'no-profile';
-	const write = logoWrite(db, read.logo, next);
-	if (read.logo === null || read.logo === next) {
-		return (await write).length > 0 ? 'written' : 'stale';
-	}
+	if (!read) return 'written';
+	const write = logoWrite(db, read.logo, null);
+	if (read.logo === null) return (await write).length > 0 ? 'written' : 'stale';
 	const [written] = await db.batch([write, ...freeImageStatements(db, read.logo)]);
 	return written.length > 0 ? 'written' : 'stale';
 }

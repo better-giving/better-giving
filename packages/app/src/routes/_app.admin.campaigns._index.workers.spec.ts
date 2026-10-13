@@ -8,8 +8,7 @@ import { createDb, type Db } from '$lib/server/db/client';
 import { form, page } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
-import { readChat } from '$lib/server/pages/draft';
-import { answering, insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
+import { insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -41,25 +40,20 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-	await env.DB.batch([
-		env.DB.prepare('delete from chat_turn'),
-		env.DB.prepare('delete from page'),
-		env.DB.prepare('delete from form')
-	]);
+	await env.DB.batch([env.DB.prepare('delete from page'), env.DB.prepare('delete from form')]);
 });
 
-function post(fields: Record<string, string>, AI: { run: unknown } = answering()) {
+function post(fields: Record<string, string>) {
 	const body = new FormData();
 	body.set(WHICH_FORM, 'campaign-create');
 	for (const [name, value] of Object.entries(fields)) body.set(name, value);
 	return request(
 		new Request(`${ORIGIN}${LIST}?new`, { method: 'POST', headers: { cookie: session }, body }),
-		// the stand-in answers `run` alone, which is all `generate` calls.
-		{ env: { ...bindings, AI } as unknown as Env }
+		{ env: bindings }
 	);
 }
 
-const CREATE = { type: 'event', name: 'Winter coat drive' };
+const CREATE = { name: 'Winter coat drive' };
 
 type Row = {
 	id: string;
@@ -244,34 +238,25 @@ describe('the Campaigns list', () => {
 });
 
 describe('New campaign', () => {
-	it('makes the campaign of the type picked, asking no model, and opens its editor on an empty chat', async () => {
-		const AI = answering();
-
-		const response = await post(CREATE, AI);
+	it('makes the campaign from its name alone, of no type, on the default page, and opens its editor', async () => {
+		const response = await post(CREATE);
 
 		expect(response.status).toBe(302);
 		const [made] = await db.select().from(page).where(eq(page.type, 'campaign'));
-		expect(made).toMatchObject({ name: 'Winter coat drive', campaignType: 'event' });
+		expect(made).toMatchObject({ name: 'Winter coat drive', campaignType: null });
+		expect(JSON.parse(made?.draft ?? 'null')).toMatchObject({
+			...defaultCampaign(),
+			name: 'Winter coat drive'
+		});
 		expect(response.headers.get('Location')).toBe(`${LIST}/${made?.id}`);
-		expect(await readChat(db, made?.id ?? '')).toEqual([]);
-		expect(AI.run).not.toHaveBeenCalled();
 	});
 
-	it.each([
-		['no type', { name: 'Winter coat drive' }, 'pick a campaign type'],
-		[
-			'a type off the list',
-			{ ...CREATE, type: 'gala' },
-			'"gala" is no campaign type: year_end, emergency, building, event, tribute, monthly, program or other'
-		]
-	])('refuses %s at its box, and makes nothing', async (_, fields, said) => {
-		const response = await post(fields);
+	it('ignores a type posted beside the name, as the form layer drops any box it does not state', async () => {
+		const response = await post({ ...CREATE, type: 'gala' });
 
-		expect(response.status).toBe(400);
-		expect(await response.json()).toMatchObject({
-			form: { id: 'campaign-create', result: { error: { type: [said] } } }
-		});
-		expect(await db.select().from(page)).toEqual([]);
+		expect(response.status).toBe(302);
+		const [made] = await db.select().from(page).where(eq(page.type, 'campaign'));
+		expect(made).toMatchObject({ name: 'Winter coat drive', campaignType: null });
 	});
 
 	it('refuses a blank name at its box, and makes nothing', async () => {

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-	describeResized,
 	anyTransparent,
 	encodeUnder,
 	IMAGE_UPLOAD_MAX,
@@ -313,14 +312,4 @@ describe('an opaque image', () => {
 			['image/jpeg', 0.85, 1600]
 		]);
 	});
-});
-
-it('describes a resized photo by its size and weight', () => {
-	expect(describeResized({ width: 1600, height: 1200, bytes: 480_400 })).toBe(
-		'1600 × 1200, 480 KB'
-	);
-	expect(describeResized({ width: 1600, height: 1067, bytes: 1_412_000 })).toBe(
-		'1600 × 1067, 1.4 MB'
-	);
-	expect(describeResized({ width: 20, height: 20, bytes: 300 })).toBe('20 × 20, 1 KB');
 });

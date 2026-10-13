@@ -3,16 +3,17 @@ import { eq } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
-import { chatTurn, form, page } from '../db/schema';
+import { form, page } from '../db/schema';
 import type { PageState, PageType } from '../../page/keys';
 import { defaultCampaign } from '../../page/defaults';
 import { readForm } from '../forms/queries';
-import { CAMPAIGN_NAME, insertPage, SETTINGS } from './page-row.testing';
+import { createImage, stored as imageStored } from '../images/image.testing';
+import { CAMPAIGN_NAME, heroShowing, insertPage, SETTINGS } from './page-row.testing';
 import { publishPage } from './publish';
 import { deleteNeverPublishedCampaign, endCampaign, readPage, updateCampaignSlug } from './queries';
 
-// the one delete of a page: a campaign that has never been live, with its owned settings row and
-// its chat, in one `batch()`. everything that has been live is refused, and so is the Donation page.
+// the one delete of a page: a campaign that has never been live, with its owned settings row, in
+// one `batch()`. everything that has been live is refused, and so is the Donation page.
 // and a campaign's end: a live campaign to `ended` with its owned settings row out of service, in one
 // `batch()`, and every other page refused with its row untouched. and an address taken from a
 // campaign past its end date, which a Publish of it landing mid-way leaves where it was.
@@ -26,17 +27,12 @@ beforeAll(() => {
 let sequence = 0;
 
 /**
- * a page of the given type and state, owning a fresh settings row, with one chat turn. there is one
- * Donation page, so a new one replaces any other and its chat.
+ * a page of the given type and state, owning a fresh settings row. there is one Donation page, so a
+ * new one replaces any other.
  */
-async function pageWithChat(type: PageType, state: PageState) {
+async function pageOwningRow(type: PageType, state: PageState) {
 	if (type === 'donation_page') {
-		await env.DB.batch([
-			env.DB.prepare(
-				"delete from chat_turn where page_id in (select id from page where type = 'donation_page')"
-			),
-			env.DB.prepare("delete from page where type = 'donation_page'")
-		]);
+		await env.DB.prepare("delete from page where type = 'donation_page'").run();
 	}
 	sequence += 1;
 	const [owned] = await db
@@ -62,7 +58,6 @@ async function pageWithChat(type: PageType, state: PageState) {
 		})
 		.returning({ id: page.id });
 	if (!row) throw new Error('inserting the fixture page returned no row');
-	await db.insert(chatTurn).values({ pageId: row.id, seq: 1, author: 'operator', text: 'hello' });
 	return { pageId: row.id, formId: owned.id };
 }
 
@@ -79,42 +74,56 @@ const EARLIER = new Date(0);
 async function remaining({ pageId, formId }: { pageId: string; formId: string }) {
 	const pages = await db.select({ id: page.id }).from(page).where(eq(page.id, pageId));
 	const forms = await db.select({ id: form.id }).from(form).where(eq(form.id, formId));
-	const turns = await db
-		.select({ id: chatTurn.id })
-		.from(chatTurn)
-		.where(eq(chatTurn.pageId, pageId));
-	return { pages: pages.length, forms: forms.length, turns: turns.length };
+	return { pages: pages.length, forms: forms.length };
 }
 
 describe('deleteNeverPublishedCampaign()', () => {
-	it('removes a never-published campaign with its owned settings row and its chat', async () => {
-		const made = await pageWithChat('campaign', 'never_published');
+	it('removes a never-published campaign with its owned settings row', async () => {
+		const made = await pageOwningRow('campaign', 'never_published');
 		expect(await deleteNeverPublishedCampaign(db, made.pageId, await versionOf(made.pageId))).toBe(
 			true
 		);
-		expect(await remaining(made)).toEqual({ pages: 0, forms: 0, turns: 0 });
+		expect(await remaining(made)).toEqual({ pages: 0, forms: 0 });
+	});
+
+	it('frees the photo only its draft placed, and keeps one a page left standing places', async () => {
+		const upload = () =>
+			createImage(
+				db,
+				{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+				new Uint8Array([1, 2, 3])
+			);
+		const [alone, shared] = [await upload(), await upload()];
+		const pageId = await insertPage(db, 'campaign', heroShowing(alone));
+		await insertPage(db, 'campaign', heroShowing(shared));
+		const both = await insertPage(db, 'campaign', heroShowing(shared));
+
+		expect(await deleteNeverPublishedCampaign(db, pageId, await versionOf(pageId))).toBe(true);
+		expect(await deleteNeverPublishedCampaign(db, both, await versionOf(both))).toBe(true);
+		expect(await imageStored(db, alone)).toEqual({ row: false, bytes: false });
+		expect(await imageStored(db, shared)).toEqual({ row: true, bytes: true });
 	});
 
 	it('refuses a campaign written since the version it was drawn at', async () => {
-		const made = await pageWithChat('campaign', 'never_published');
+		const made = await pageOwningRow('campaign', 'never_published');
 		expect(await deleteNeverPublishedCampaign(db, made.pageId, EARLIER)).toBe(false);
-		expect(await remaining(made)).toEqual({ pages: 1, forms: 1, turns: 1 });
+		expect(await remaining(made)).toEqual({ pages: 1, forms: 1 });
 	});
 
 	it.each([['live'], ['ended']] as const)('refuses a campaign that is %s', async (state) => {
-		const made = await pageWithChat('campaign', state);
+		const made = await pageOwningRow('campaign', state);
 		expect(await deleteNeverPublishedCampaign(db, made.pageId, await versionOf(made.pageId))).toBe(
 			false
 		);
-		expect(await remaining(made)).toEqual({ pages: 1, forms: 1, turns: 1 });
+		expect(await remaining(made)).toEqual({ pages: 1, forms: 1 });
 	});
 
 	it('refuses the Donation page', async () => {
-		const made = await pageWithChat('donation_page', 'live');
+		const made = await pageOwningRow('donation_page', 'live');
 		expect(await deleteNeverPublishedCampaign(db, made.pageId, await versionOf(made.pageId))).toBe(
 			false
 		);
-		expect(await remaining(made)).toEqual({ pages: 1, forms: 1, turns: 1 });
+		expect(await remaining(made)).toEqual({ pages: 1, forms: 1 });
 	});
 
 	it('refuses a page that does not exist', async () => {
@@ -125,9 +134,9 @@ describe('deleteNeverPublishedCampaign()', () => {
 });
 
 describe('endCampaign()', () => {
-	/** a page as `pageWithChat` leaves it, its owned settings row taking gifts. */
+	/** a page as `pageOwningRow` leaves it, its owned settings row taking gifts. */
 	async function servingPage(type: PageType, state: PageState) {
-		const made = await pageWithChat(type, state);
+		const made = await pageOwningRow(type, state);
 		await db.update(form).set({ status: 'live' }).where(eq(form.id, made.formId));
 		return made;
 	}

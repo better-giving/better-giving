@@ -5,7 +5,6 @@ import type {
 import type { DestinationStatus } from '@better-giving/operator/components/shell/DestinationCell';
 import type { MarkName } from '@better-giving/operator/components/status/Mark';
 import { FOLD_LABELS, JOB_WORDS } from '@better-giving/operator/setup-folds';
-import { MODEL_PAGE, MODEL_TITLE } from './ai-model';
 import type { HomeSection, SectionId } from './home-sections';
 import type { PaymentProcessor } from '../api/types';
 import type { ProcessorLink } from './processor-links';
@@ -76,16 +75,11 @@ function processorStatus(link: ProcessorLink): DestinationStatus {
 
 /**
  * the rail, in four groups: the two sections an operator opens on, the processors under their own
- * heading, the three that carry a gift out to the world with the model the donation page's chat
- * answers from after them, and the integrations under a heading of their own.
+ * heading, the three that carry a gift out to the world, and the integrations under a heading of
+ * their own.
  *
  * every label is the section's own row label, except the site list's: its row label is a sentence
  * (`FOLD_LABELS.sites`), which the page states under its name rather than a cell carrying it.
- *
- * **the model cell is no section, and is written out as the integration cell below is.** no job
- * waits on it: an unset model is the default one, which answers (packages/operator/src/ai-models.ts),
- * so its cell carries no status. its short word is one word, which is what the narrow band has room
- * for.
  *
  * **an integration cell is no section, so it is written out rather than made by `cell`** — that
  * helper is keyed to a `SectionId` and reads a set-up row, and there is no row here. the heading is
@@ -139,8 +133,7 @@ export function railGroups(
 			destinations: [
 				cell('sites', SITES_TITLE, 'globe', SITES_TITLE),
 				cell('smtp', FOLD_LABELS.smtp, 'mail'),
-				cell('notifications', FOLD_LABELS.notifications, 'bell'),
-				{ label: MODEL_TITLE, short: 'AI', href: MODEL_PAGE, mark: 'sparkles' }
+				cell('notifications', FOLD_LABELS.notifications, 'bell')
 			]
 		},
 		{

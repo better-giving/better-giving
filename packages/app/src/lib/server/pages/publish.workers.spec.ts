@@ -1,15 +1,15 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Page as PageDocument } from '../../page/catalog';
 import { defaultCampaign, defaultDonationPage } from '../../page/defaults';
 import { endOfDay } from '../../page/end-date';
 import { createDb, type Db } from '../db/client';
-import { chatTurn, form, page, program } from '../db/schema';
+import { form, page, program } from '../db/schema';
 import { readForm } from '../forms/queries';
+import { createImage, stored as imageStored } from '../images/image.testing';
 import { ensureDonationPage } from './donation-page';
-import { draftTurn } from './draft';
-import { answering, endAsItStands, insertPage, SETTINGS } from './page-row.testing';
+import { endAsItStands, heroShowing, insertPage, SETTINGS } from './page-row.testing';
 import { discardChanges, publishPage, undoPublish } from './publish';
 import { updateCampaignName } from './queries';
 
@@ -26,7 +26,6 @@ beforeAll(() => {
 
 beforeEach(async () => {
 	await env.DB.batch([
-		env.DB.prepare('delete from chat_turn'),
 		env.DB.prepare('delete from page'),
 		env.DB.prepare('delete from form'),
 		env.DB.prepare('delete from program')
@@ -618,43 +617,9 @@ describe('Undo', () => {
 	});
 });
 
-/** two turns of chat on the page, as the drafting chat leaves them. */
-async function chatOn(pageId: string) {
-	await db.insert(chatTurn).values([
-		{ pageId, seq: 1, author: 'operator', text: 'Make it about winter coats.' },
-		{ pageId, seq: 2, author: 'assistant', text: 'Done.', model: '@cf/meta/llama' }
-	]);
-}
-
-const turnsOn = async (pageId: string) =>
-	(await db.select().from(chatTurn).where(eq(chatTurn.pageId, pageId))).length;
-
-describe('the chat', () => {
-	it('is kept by Publish', async () => {
-		const pageId = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
-		await chatOn(pageId);
-		await draftAs(pageId, { ...LIVE_DONATION_PAGE, shareMessage: 'Warm coats.' });
-
-		const outcome = await publishPage(
-			db,
-			{ type: 'donation_page' },
-			(await stored(pageId)).updatedAt,
-			{
-				now: NOW
-			}
-		);
-
-		expect(outcome).toMatchObject({ kind: 'published' });
-		expect(await turnsOn(pageId)).toBe(2);
-	});
-});
-
 describe('Discard changes', () => {
-	it('returns the draft to the live page and empties the chat', async () => {
+	it('returns the draft to the live page', async () => {
 		const pageId = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
-		const other = await insertPage(db, 'campaign');
-		await chatOn(pageId);
-		await chatOn(other);
 		await draftAs(pageId, { ...LIVE_DONATION_PAGE, shareMessage: 'Warm coats.' });
 		const drawn = await stored(pageId);
 
@@ -664,13 +629,10 @@ describe('Discard changes', () => {
 		const after = await stored(pageId);
 		expect(after.draft).toBe(drawn.published);
 		expect(after.published).toBe(drawn.published);
-		expect(await turnsOn(pageId)).toBe(0);
-		expect(await turnsOn(other)).toBe(2);
 	});
 
 	it('is refused when the page has been written since the editor was drawn, and nothing moves', async () => {
 		const pageId = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
-		await chatOn(pageId);
 		const drawn = await stored(pageId);
 		await draftAs(pageId, { ...LIVE_DONATION_PAGE, shareMessage: 'Warm coats.' });
 		const written = await stored(pageId);
@@ -679,38 +641,68 @@ describe('Discard changes', () => {
 
 		expect(outcome).toEqual({ kind: 'stale' });
 		expect(await stored(pageId)).toEqual(written);
-		expect(await turnsOn(pageId)).toBe(2);
-	});
-
-	it('is refused when a chat turn has landed since the editor was drawn, and keeps it', async () => {
-		const pageId = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
-		await draftAs(pageId, { ...LIVE_DONATION_PAGE, shareMessage: 'Warm coats.' });
-		const drawn = await stored(pageId);
-		const neon = { say: 'Neon!', page: { kind: 'merge', doc: { palette: 'neon' } } };
-		const AI = answering(neon, neon);
-		vi.spyOn(console, 'warn').mockImplementation(() => {});
-		const refusedTurn = await draftTurn(
-			db,
-			{ ...env, AI },
-			{ pageId, message: 'make it neon', imageIds: [], timeZone: 'America/New_York', now: NOW }
-		);
-		expect(refusedTurn).toMatchObject({ ok: true, outcome: 'refused' });
-
-		const outcome = await discardChanges(db, { type: 'donation_page' }, drawn.updatedAt);
-
-		expect(outcome).toEqual({ kind: 'stale' });
-		expect(await turnsOn(pageId)).toBe(2);
 	});
 
 	it('is refused on a campaign never published, which has no live page to return to', async () => {
 		const pageId = await insertPage(db, 'campaign', CAMPAIGN);
-		await chatOn(pageId);
 		const drawn = await stored(pageId);
 
 		const outcome = await discardChanges(db, { type: 'campaign', id: pageId }, drawn.updatedAt);
 
 		expect(outcome).toEqual({ kind: 'nothing' });
 		expect(await stored(pageId)).toEqual(drawn);
-		expect(await turnsOn(pageId)).toBe(2);
+	});
+});
+
+describe('a photo the presses let go of', () => {
+	const upload = () =>
+		createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+			new Uint8Array([1, 2, 3])
+		);
+	const target = (pageId: string) => ({ type: 'campaign', id: pageId }) as const;
+	const publish = async (pageId: string) =>
+		publishPage(db, target(pageId), (await stored(pageId)).updatedAt, { now: NOW });
+
+	it('is kept by Publish while the page kept for Undo places it, and freed by the Publish after', async () => {
+		const first = await upload();
+		const second = await upload();
+		const pageId = await insertPage(db, 'campaign', heroShowing(second), heroShowing(first));
+
+		expect(await publish(pageId)).toEqual({ kind: 'published', undoable: true });
+		expect(await imageStored(db, first)).toEqual({ row: true, bytes: true });
+
+		await draftAs(pageId, heroShowing(await upload()));
+		expect(await publish(pageId)).toEqual({ kind: 'published', undoable: true });
+		expect(await imageStored(db, first)).toEqual({ row: false, bytes: false });
+		expect(await imageStored(db, second)).toEqual({ row: true, bytes: true });
+	});
+
+	it('is freed by Discard changes where only the draft placed it', async () => {
+		const live = await upload();
+		const drafted = await upload();
+		const pageId = await insertPage(db, 'campaign', heroShowing(drafted), heroShowing(live));
+
+		const outcome = await discardChanges(db, target(pageId), (await stored(pageId)).updatedAt);
+
+		expect(outcome).toEqual({ kind: 'discarded' });
+		expect(await imageStored(db, drafted)).toEqual({ row: false, bytes: false });
+		expect(await imageStored(db, live)).toEqual({ row: true, bytes: true });
+	});
+
+	it('is never one Undo lets go of, since it swaps the two pages the row keeps', async () => {
+		const first = await upload();
+		const second = await upload();
+		const pageId = await insertPage(db, 'campaign', heroShowing(second), heroShowing(first));
+		await publish(pageId);
+
+		const outcome = await undoPublish(db, target(pageId), (await stored(pageId)).updatedAt, {
+			now: NOW
+		});
+
+		expect(outcome).toEqual({ kind: 'undone' });
+		expect(await imageStored(db, first)).toEqual({ row: true, bytes: true });
+		expect(await imageStored(db, second)).toEqual({ row: true, bytes: true });
 	});
 });

@@ -727,6 +727,13 @@ describe('the route surface', () => {
 		expect(await statusAt('/admin/organisation')).toBe(404);
 	});
 
+	/** the page editor asks no model, so nothing answers a page's chat or its suggestions. */
+	it.each(['chat', 'suggest'])('serves nothing at a page’s /%s', async (leaf) => {
+		const address = `/admin/pages/0198c1d2-0000-7000-8000-000000000001/${leaf}`;
+		expect(await matchedFileAt(address)).toBeNull();
+		expect(await statusAt(address)).toBe(404);
+	});
+
 	it.each(['/winter-coat-drive', '/frm_something', '/.env'])(
 		'hands the single segment %s to the campaign route',
 		async (address) => {

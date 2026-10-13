@@ -55,9 +55,8 @@ import { PageRoot } from './page-root';
 // stands beside the name and says nothing of its own; the stored image's width and height decide.
 // with none, a badge of the name's initials stands beside the name, in the page's brand fill and
 // corner (./page.css), and like a narrower logo says nothing of its own.
-// a hero or image block marked as an AI illustration is captioned so, and a program's photo stands
-// on its chooser option. every image arrives by stored image id, drawn from the deployment's own
-// image route and never from an address a page carries.
+// a program's photo stands on its chooser option. every image arrives by stored image id, drawn
+// from the deployment's own image route and never from an address a page carries.
 
 export type PageLook = {
 	/** lowercase `#rrggbb`, or null for the form's own grey. */
@@ -108,7 +107,7 @@ export type PageViewProps = {
 	readonly className?: string;
 };
 
-/** a block's DOM id. stored ids are the drafting model's to choose, so each is kept in a namespace of its own. */
+/** a block's DOM id, in a namespace of its own, so a stored block id never meets another id on the page. */
 export const blockDomId = (id: string) => `blk-${id}`;
 
 /** blocks that travel into the box's column when listed directly before it. */

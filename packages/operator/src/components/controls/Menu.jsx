@@ -3,6 +3,7 @@ import { Mark } from '../status/Mark.jsx';
 import { Button } from './Button.jsx';
 
 /**
+ * @import { SyntheticEvent } from 'react'
  * @import { ButtonSize, ButtonVariant } from './Button.jsx'
  * @import { MarkName } from '../status/Mark.jsx'
  */
@@ -23,14 +24,23 @@ import { Button } from './Button.jsx';
 
 /**
  * @typedef {object} MenuProps
- * @property {string} label the press's accessible name. it is the press's only name — the press
- *   draws its mark alone — so it says what the menu holds, `More` and not `Open menu`.
+ * @property {string} label the press's name. it says what the menu holds, `More` and not `Open
+ *   menu`. the press draws its mark alone and this is its accessible name, unless `labelled`.
+ * @property {boolean | undefined} [labelled] `label` drawn as the press's words after its mark, and
+ *   then the press's name by being its text. for a menu that is a screen's way to make something —
+ *   `Add a block` over the kinds it may be — where a mark alone does not say which thing is made.
  * @property {readonly MenuItem[]} items
  * @property {MarkName | undefined} [mark] the press's mark, `ellipsis` unless stated.
  * @property {ButtonVariant | undefined} [variant]
  * @property {ButtonSize | undefined} [size]
  * @property {boolean | undefined} [open] the list held open whatever is pressed, Escape and a press
  *   outside included. a specimen's prop: a screen opens a menu by the press an operator makes on it.
+ * @property {boolean | undefined} [held] a write of the screen's is in flight and a line picked now
+ *   would be sent against what it is about to change: the press says it is unavailable with
+ *   `aria-disabled` and opens nothing until the caller lets go. it keeps the focus, which
+ *   `disabled` would drop.
+ * @property {string | undefined} [describedBy] the id of what the press is described by — the
+ *   refusal its last line came back with.
  */
 
 /* a press that opens a short list of actions. the machine is ark's menu and everything it answers
@@ -48,12 +58,42 @@ import { Button } from './Button.jsx';
    (../../styles/adm.css). an empty menu is a press that opens onto nothing, so a caller with no
    line to offer draws no menu. */
 /** @param {MenuProps} props */
-export function Menu({ label, items, mark = 'ellipsis', variant = 'default', size = 'md', open }) {
+export function Menu({
+	label,
+	labelled = false,
+	items,
+	mark = 'ellipsis',
+	variant = 'default',
+	size = 'md',
+	open,
+	held = false,
+	describedBy
+}) {
+	/* turned away on the way down, before the machine's own handlers on the press hear it: they
+	   skip an event already cancelled, and Tab is let through so the focus can still leave. */
+	/** @param {SyntheticEvent} event */
+	const refuse = (event) => {
+		if (!held) return;
+		if ('key' in event && event.key === 'Tab') return;
+		event.preventDefault();
+	};
 	return (
 		<div className="adm-menuwrap">
 			<ArkMenu.Root open={open}>
 				<ArkMenu.Trigger asChild>
-					<Button type="button" variant={variant} size={size} mark={mark} aria-label={label} />
+					<Button
+						type="button"
+						variant={variant}
+						size={size}
+						mark={mark}
+						aria-label={labelled ? undefined : label}
+						aria-disabled={held || undefined}
+						aria-describedby={describedBy}
+						onClickCapture={refuse}
+						onKeyDownCapture={refuse}
+					>
+						{labelled ? label : null}
+					</Button>
 				</ArkMenu.Trigger>
 				<ArkMenu.Positioner>
 					<ArkMenu.Content className="adm-menulist">

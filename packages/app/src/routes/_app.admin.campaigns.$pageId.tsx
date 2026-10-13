@@ -4,18 +4,22 @@ import { useCallback, useEffect, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
 import { AddressSheet } from '$lib/admin/editor/address-sheet';
-import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/block-edit';
-import { useEditorChat } from '$lib/admin/editor/chat-wiring';
+import { BlockEditSheet, isDonationBox } from '$lib/admin/editor/block-edit';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
-import { revalidatesAfter, suggestUrl } from '$lib/admin/editor/suggest-url';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
-import { EndDateSettingsSheet, GoalSettingsSheet } from '$lib/admin/editor/page-settings';
+import {
+	EndDateSettingsSheet,
+	GoalSettingsSheet,
+	ShareMessageSettingsSheet
+} from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
+import { useSettingsPresses } from '$lib/admin/editor/settings-presses';
 import { type FirstPublish, usePublishPresses } from '$lib/admin/editor/publish-wiring';
 import { SettingsSheet, type SettingsRow } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
+import { formPress } from '$lib/admin/unreached';
 import { resultFor } from '$lib/admin/use-admin-form';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { PROGRAM_MODE_LABELS } from '$lib/forms/program-modes';
@@ -38,9 +42,8 @@ import { checkSlug, type SlugCheck } from '$lib/page/slug';
 import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
-import { draftIllustrations, editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
+import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import {
-	type EditorPage,
 	editorPage,
 	readEditorSettings,
 	saveDraftSettings,
@@ -61,17 +64,16 @@ import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.campaigns.$pageId';
 
 // a campaign's editor, reached from the Campaigns list: its draft framed by the preview route, the
-// publish bar over it, the AI panel its AI press opens ($lib/admin/editor/chat-wiring.tsx, which
-// asks a page never drafted its opening questions), and the Settings sheet behind the bar's
-// Settings, while Edit is on. the parts are $lib/admin/editor/'s; what they read and the writes
-// behind them are here and in $lib/server/pages/queries.ts.
+// publish bar over it, and the Settings sheet behind the bar's Settings, while Edit is on. the
+// parts are $lib/admin/editor/'s; what they read and the writes behind them are here and in
+// $lib/server/pages/queries.ts.
 //
 // **the name** is edited in place in the bar and as Settings' Name row, one write: the row's `name`,
 // which the dashboard shows, its settings row's, which a gift's notices carry, and the draft's,
-// which donors see from the next Publish — the same write a chat turn's rename makes
-// ($lib/server/pages/queries.ts, `renaming`). until the first Publish an address not set by hand
-// follows it, to the next free one where another page holds the one the name suggests, and the
-// first Publish's confirm names the one it did not get (`addressAsked`).
+// which donors see from the next Publish ($lib/server/pages/queries.ts, `renaming`). until the
+// first Publish an address not set by hand follows it, to the next free one where another page
+// holds the one the name suggests, and the first Publish's confirm names the one it did not get
+// (`addressAsked`).
 //
 // **a draft the read rule refuses** ($lib/server/pages/document.ts) opens the editor on a notice
 // in the preview's place, with Discard changes where the live page reads: the one screen that can
@@ -85,8 +87,7 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
 // only at Publish; the Donation page's editor saves them the same way ($lib/server/pages/editor.ts).
-// so are the goal and the end date ($lib/server/pages/page-settings.ts). the shade, corners and
-// share message are set only through the chat ($lib/page/accept-reply.ts).
+// so are the goal and the end date ($lib/server/pages/page-settings.ts).
 //
 // **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, the presses and their
 // confirms mounted through $lib/admin/editor/publish-wiring.tsx.
@@ -94,11 +95,13 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 // **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
 // preview while Edit is on and by its row in Settings' block list alike, and the layout by
 // Settings' pictures; each writes the draft ($lib/server/pages/blocks.ts), as the Donation page's
-// editor does.
+// editor does. the look, the sharing and a block added, removed or moved are presses there too.
 // the donation box opens Donation settings, which are what it draws.
 //
 // every press is written against the version the editor was drawn at (`submittedVersion`), and the
 // preview is keyed on it, so the frame reloads on the render a landed write's revalidation brings.
+// the action below is the one writer; `clientAction` only answers, as its form's refusal, a press
+// whose request never reached it ($lib/admin/unreached.ts).
 
 export const handle: BareHandle = { frame: 'bare' };
 
@@ -163,8 +166,6 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	let row: Page | null;
 	let settings: SettingsSeed;
 	let asked: string | null;
-	let illustrations: ReadonlySet<string>;
-	let framed: EditorPage;
 	try {
 		row = await readPage(db, params.pageId);
 	} catch (e) {
@@ -181,19 +182,17 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const unreadable = unreadableEditor(row, now);
 	if (unreadable !== null) return { ...unreadable, ...named };
 	try {
-		[framed, settings, asked, illustrations] = await Promise.all([
-			editorPage(db, row, now),
+		[settings, asked] = await Promise.all([
 			readEditorSettings(db, context.get(platform).env, row, new URL(request.url).origin),
-			addressAsked(db, row),
-			draftIllustrations(db, row)
+			addressAsked(db, row)
 		]);
 	} catch (e) {
 		console.error(`loading campaign ${params.pageId}'s editor failed:`, e);
 		loadFailed('This campaign');
 	}
 	return {
-		...framed,
-		...editorDraft(row, settings.currency, illustrations),
+		...editorPage(row, now),
+		...editorDraft(row, settings.currency),
 		...named,
 		settings,
 		asked: asked === null ? null : `/${asked}`
@@ -215,9 +214,6 @@ function slugPredicate(refused: Exclude<SlugCheck, { ok: true }>): string {
 				: `clashes with ${refused.clashesWith}`;
 	}
 }
-
-// Write with AI's ask writes nothing, so the editor is not read again after one.
-export const shouldRevalidate = revalidatesAfter;
 
 export async function action({ context, params, request }: Route.ActionArgs) {
 	const body = await request.formData();
@@ -340,6 +336,10 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 	}
 }
 
+export function clientAction({ request, serverAction }: Route.ClientActionArgs) {
+	return formPress(request, serverAction);
+}
+
 type Answer = Route.ComponentProps['actionData'];
 
 /** the first message the last answer refused `form` with under `box` — `''` is the form's own. */
@@ -372,11 +372,11 @@ function giftsGoTo(settings: SettingsSeed): Pick<FirstPublish, 'programs' | 'pro
 
 type Loaded = Route.ComponentProps['loaderData'];
 
-export default function CampaignEditor({ loaderData, params }: Route.ComponentProps) {
+export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 	return loaderData.unreadable ? (
 		<UnreadableDraftEditor loaderData={loaderData} />
 	) : (
-		<DraftEditor loaderData={loaderData} suggest={suggestUrl(params.pageId)} />
+		<DraftEditor loaderData={loaderData} />
 	);
 }
 
@@ -453,11 +453,9 @@ function UnreadableDraftEditor({
 }
 
 function DraftEditor({
-	loaderData,
-	suggest
+	loaderData
 }: {
 	readonly loaderData: Extract<Loaded, { unreadable: false }>;
-	readonly suggest: string;
 }) {
 	const { name, address, state, version, preview, host, settings: donationSettings } = loaderData;
 
@@ -475,7 +473,6 @@ function DraftEditor({
 				: undefined
 	});
 	const naming = useRename(version);
-	const chat = useEditorChat(loaderData.chat, loaderData.drafted);
 	const addressFetcher = useFetcher<Answer>({ key: ADDRESS_EDIT.id });
 
 	const [settings, setSettings] = useState(false);
@@ -489,7 +486,14 @@ function DraftEditor({
 	const closeBlock = useCallback(() => setBlockId(null), []);
 	const openBlockSheet = (id: string) =>
 		isDonationBox(loaderData.blocks, id) ? setOpened('donation-settings') : setBlockId(id);
-	const layoutPick = useLayoutPick(loaderData.layout, version);
+	const settingsPresses = useSettingsPresses({
+		version,
+		layout: loaderData.layout,
+		look: loaderData.look,
+		share: loaderData.share,
+		addable: loaderData.addable,
+		onAdded: openBlockSheet
+	});
 
 	const { renamed, renaming, renamedIn } = naming;
 	const nameAnswer = naming.answer;
@@ -530,7 +534,6 @@ function DraftEditor({
 
 	return (
 		<EditorShell
-			undrafted={chat.undrafted}
 			bar={
 				<PublishBar
 					closeHref="/admin/campaigns"
@@ -539,10 +542,9 @@ function DraftEditor({
 					livePath={address ?? undefined}
 					{...presses.bar}
 					onSettings={() => {
-						layoutPick.startClean();
+						settingsPresses.startClean();
 						setSettings(true);
 					}}
-					onAi={chat.open}
 					report={presses.bar.report ?? naming.barReport}
 				/>
 			}
@@ -554,9 +556,7 @@ function DraftEditor({
 					onBlockClick={openBlockSheet}
 				/>
 			}
-			panel={chat.panel}
 		>
-			{chat.sheet}
 			{settings && opened !== 'address' ? (
 				<SettingsSheet
 					onDismiss={() => setSettings(false)}
@@ -570,7 +570,10 @@ function DraftEditor({
 					blocks={loaderData.blocks}
 					onOpenBlock={openBlockSheet}
 					layouts={loaderData.layouts}
-					{...layoutPick.sheet}
+					lookPictures={loaderData.lookPictures}
+					shareChannels={loaderData.shareChannels}
+					{...settingsPresses.sheet}
+					onShareMessage={() => setOpened('share-message')}
 					donationSettings={donationSettings.summary}
 					onOpen={setOpened}
 				/>
@@ -580,7 +583,6 @@ function DraftEditor({
 					key={openBlock.id}
 					block={openBlock}
 					version={version}
-					suggestUrl={suggest}
 					onDismiss={closeBlock}
 					onSaved={closeBlock}
 					stacked={settings}
@@ -594,7 +596,6 @@ function DraftEditor({
 					error={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, 'name') : null}
 					refusal={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, '') : null}
 					onDismiss={() => setOpened(null)}
-					suggestUrl={suggest}
 				/>
 			) : null}
 			{opened === 'goal' ? (
@@ -609,6 +610,14 @@ function DraftEditor({
 			{opened === 'end-date' ? (
 				<EndDateSettingsSheet
 					endDate={loaderData.endDate}
+					version={version}
+					onDismiss={() => setOpened(null)}
+					onSaved={() => setOpened(null)}
+				/>
+			) : null}
+			{opened === 'share-message' ? (
+				<ShareMessageSettingsSheet
+					message={loaderData.share.message}
 					version={version}
 					onDismiss={() => setOpened(null)}
 					onSaved={() => setOpened(null)}
@@ -631,6 +640,7 @@ function DraftEditor({
 					saving={saving}
 					saved={addressSaved}
 					error={refusal(addressAnswer, ADDRESS_EDIT, 'slug')}
+					refusal={refusal(addressAnswer, ADDRESS_EDIT, '')}
 					onDismiss={() => setOpened(null)}
 				/>
 			) : null}

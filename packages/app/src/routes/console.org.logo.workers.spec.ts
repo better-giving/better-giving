@@ -10,8 +10,7 @@ import {
 import { createDb, type Db } from '$lib/server/db/client';
 import { IMAGE_BYTES_MAX, image } from '$lib/server/db/schema';
 import { pngHeader } from '$lib/server/images/headers.testing';
-import { createImage } from '$lib/server/images/queries';
-import { setOrgProfileLogo } from '$lib/server/org/queries';
+import { putLogo } from '$lib/server/org/logo.testing';
 import { mountRoutes } from '../route-request.testing';
 import * as org from './console.org';
 import * as logo from './console.org.logo';
@@ -69,14 +68,11 @@ function racedBy(competing: () => Promise<unknown>): Env {
 
 /** another writer putting a logo of its own on, stored outside the request under test. */
 async function anotherLogo(): Promise<string> {
-	const theirs = createDb(env.DB);
-	const id = await createImage(
-		theirs,
-		{ kind: 'photo', contentType: 'image/png', width: 100, height: 100, alt: null },
+	return putLogo(
+		createDb(env.DB),
+		{ contentType: 'image/png', width: 100, height: 100 },
 		pngHeader(100, 100)
 	);
-	expect(await setOrgProfileLogo(theirs, id)).toBe('written');
-	return id;
 }
 
 function remove(on: Env = bindings): Promise<Response> {

@@ -114,6 +114,8 @@ describe('signing out', () => {
 		const response = await request(post(''), { env: DEPLOYED });
 
 		expect(response.status).toBe(303);
-		expect(response.headers.get('location')).toBe('/login?next=%2Fadmin%2Fsign-out');
+		// a write never returns to its own address after sign-in (`returnTo` in
+		// $lib/server/auth/gate.ts), and this one names no page it was pressed from.
+		expect(response.headers.get('location')).toBe('/login');
 	});
 });

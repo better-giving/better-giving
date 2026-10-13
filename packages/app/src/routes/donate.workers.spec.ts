@@ -18,8 +18,8 @@ import { readSetupState } from '$lib/server/config/setup-state';
 import { createDb } from '$lib/server/db/client';
 import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
-import { createImage } from '$lib/server/images/queries';
-import { setOrgProfileLogo } from '$lib/server/org/queries';
+import { createImage } from '$lib/server/images/image.testing';
+import { putLogo } from '$lib/server/org/logo.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { saveProfile } from '$lib/server/org/profile.testing';
 import { ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
@@ -278,12 +278,7 @@ function masthead(html: string): string {
 
 describe('the organisation’s logo on /donate', () => {
 	it('stands atop the page by its id, at its stored size, once one is set', async () => {
-		const id = await createImage(
-			db,
-			{ kind: 'photo', contentType: 'image/png', width: 640, height: 160, alt: null },
-			new Uint8Array([1])
-		);
-		expect(await setOrgProfileLogo(db, id)).toBe('written');
+		const id = await putLogo(db, { contentType: 'image/png', width: 640, height: 160 });
 
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
@@ -617,7 +612,7 @@ describe('/donate after the editor’s presses', () => {
 		return { draft: JSON.parse(row.draft), published: JSON.parse(row.published ?? 'null') };
 	}
 
-	/** the draft's share message, as the chat or its sheet leaves it. */
+	/** the draft's share message, as the editor's share message sheet leaves it. */
 	async function draftMessage(message: string) {
 		const [row] = await db.select().from(page);
 		if (!row) throw new Error('there is no Donation page to write');

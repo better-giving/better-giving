@@ -48,20 +48,15 @@ catalog:
   # so the peerDependencyRules entry below allows 8 for that one peer of that one package, rather
   # than loosening what any other package may peer on react-router.
   #
-  # `@json-render/core`, `@assistant-ui/react` and the `@tiptap/*` set earn their catalog entry on a
-  # different rule from the rest: packages/app alone declares them, but `@json-render/core` and
-  # `@assistant-ui/react` are both 0.x and release often, so the entry here is the upgrade gate —
-  # a bump is one reviewed line rather than a line buried in packages/app/package.json. the
-  # `@tiptap/*` set is one block: `@tiptap/core`, `@tiptap/pm` and `@tiptap/react` peer on each
+  # the `@tiptap/*` set earns its catalog entry on a different rule from the rest: packages/app
+  # alone declares it, but it is one block: `@tiptap/core`, `@tiptap/pm` and `@tiptap/react` peer on each
   # other at this exact version, and every `@tiptap/extension-*` package here peers on
   # `@tiptap/core` at the same exact version, so the set moves together or not at all. it is the
   # minimal set for bold, italic, bullet and numbered lists, and links — `@tiptap/extension-list`
   # carries `BulletList`, `OrderedList` and `ListItem`.
   '@ark-ui/react': 5.39.2
-  '@assistant-ui/react': 0.15.22
   '@conform-to/react': 1.21.1
   '@conform-to/zod': 1.21.1
-  '@json-render/core': 0.21.0
   '@react-router/dev': 8.3.0
   '@react-router/fs-routes': 8.3.0
   '@tiptap/core': 3.31.3

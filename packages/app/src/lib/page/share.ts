@@ -1,7 +1,6 @@
 // the share channels a donor page can offer, what each is called on a button, and where each sends
-// a donor. each page picks some of these and orders them (`shareChannels` in ./catalog.ts, set
-// through its editor's chat); the page's share block draws them in that order
-// ($lib/donate/blocks/share.tsx).
+// a donor. each page picks some of these and orders them (`shareChannels` in ./catalog.ts); the
+// page's share block draws them in that order ($lib/donate/blocks/share.tsx).
 //
 // pure and not under `$lib/server/**`, for the reason ./keys.ts gives: the rule that refuses an
 // off-list channel and the block that draws one read the same list.

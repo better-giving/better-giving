@@ -22,9 +22,8 @@ import type { DeployVarName } from '../api/types';
 // beside it (`PAYPAL_GROUP` in ./secret-groups.ts).
 //
 // it is a list rather than a remark in a header because ./secret-groups.spec.ts reads it: the
-// covering there is two-directional, so a name added to the enumeration lands in a group, on the
-// model page (`MODEL_VAR` in ./ai-model.ts), or here, and a name that lands in none is a value with
-// nowhere to be typed.
+// covering there is two-directional, so a name added to the enumeration lands in a group or here,
+// and a name that lands in none is a value with nowhere to be typed.
 
 export const UNGROUPED_VARS: readonly DeployVarName[] = [
 	'STRIPE_PUBLISHABLE_KEY',

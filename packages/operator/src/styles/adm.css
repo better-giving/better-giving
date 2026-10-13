@@ -385,15 +385,13 @@
 	   logo's two presses meet and never overlap (`.adm-logo__presses`), and a row's Remove and the
 	   brand colour's well each stand further off their box than their target reaches. where the
 	   neighbour is closer than the reach, the target is moved off it rather than shrunk under the
-	   floor: a press-to-open trigger leading a locked row's status (`.adm-rows__aside`), and the
-	   presses in a field's label row (`.adm-field__head`).
+	   floor: a press-to-open trigger leading a locked row's status (`.adm-rows__aside`).
 	   ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
 	   neighbours, so a control joining the list is named in that spec too.
 
 	   an `<input>` draws no `::before`, so the brand colour's well is aimed at through the label
 	   around it (`.adm-wellwrap`): a press on a label is a press on the control inside it. */
 	.adm-markbtn::before,
-	.adm-field__press::before,
 	.adm-logo__presses > .adm-btn::before,
 	.adm-rows__row > .adm-rows__remove::before,
 	.adm-wellwrap::before {
@@ -2040,7 +2038,6 @@
 
 	   only where a label is above it. a field named some other way draws none, and its sentence is
 	   then the first part of the field with nothing above it to belong to. */
-	.adm-field > .adm-field__head + .adm-hint,
 	.adm-field > .adm-field__label + .adm-hint {
 		margin-block-start: var(--admin-space-1);
 	}
@@ -2053,55 +2050,6 @@
 	.adm-field > .adm-field__label {
 		grid-row: 1;
 		justify-self: start;
-	}
-
-	/* the label's row with what stands at its end (`labelAside` in
-	   packages/operator/src/components/forms/Field.jsx): the label at the leading edge, a small press
-	   that writes the whole box and the word for where its value came from at the trailing one, the
-	   slab's label row (`.adm-slabhead`) on a field. as tall as the small control, so the label row
-	   is the same height whether the press stands in it alone or with its word. it wraps rather than
-	   squeezing the label, and what wraps stays at the trailing edge. the label inside still hugs its
-	   own words: a flex item is as wide as its content.
-
-	   the label stands at the row's end, not its middle: the row is taller than a line of the
-	   label, and the slack centring leaves under the label is added to the sentence's step below,
-	   which would stand the sentence as far off its label as the box stands off the sentence. */
-	.adm-field > .adm-field__head {
-		grid-row: 1;
-		display: flex;
-		flex-wrap: wrap;
-		align-items: end;
-		justify-content: space-between;
-		gap: var(--admin-space-5);
-		min-block-size: var(--admin-control-height-sm);
-	}
-
-	.adm-field__aside {
-		display: flex;
-		align-items: center;
-		gap: var(--admin-space-4);
-		margin-inline-start: auto;
-	}
-
-	/* a press in the label row — the one that writes the box, and the Undo that puts back what it
-	   replaced — draws its mark and a word, a small quiet button never narrower than the floor, so
-	   its target need reach past it in the block axis alone. */
-	.adm-field__press {
-		min-inline-size: var(--admin-touch-min);
-	}
-
-	/* its target (a target past the drawn edge, under the buttons) spans the press edge to edge, and
-	   would reach further under the head than the step down to the box, so it ends at that step
-	   instead and reaches up toward the field above, which stands a field's step off. */
-	.adm-field__head .adm-field__press::before {
-		inset-block-start: calc(
-			100% +
-			var(--admin-border-width) +
-			var(--admin-space-3) -
-			var(--admin-touch-min)
-		);
-		inset-inline-start: calc(-1 * var(--admin-border-width));
-		inline-size: calc(100% + 2 * var(--admin-border-width));
 	}
 
 	.adm-field > .adm-hint {
@@ -4154,9 +4102,9 @@
 	   field and the next, is wider than the step between one row and the next, so the second box
 	   would read as the next row's.
 
-	   the two stand side by side at every width, in shares of the rows' own width: the group is
-	   drawn in the floating AI panel at every desk width, where the rows are about as narrow as on
-	   a phone, so the viewport's width says nothing about a row's. the figure is the short one and
+	   the two stand side by side at every width, in shares of the rows' own width: in a sheet at a
+	   desk's width the rows are about as narrow as on a phone, so the viewport's width says nothing
+	   about a row's. the figure is the short one and
 	   the sentence the long one, so the sentence takes two shares to the figure's one. the columns'
 	   heads (`columns` in packages/operator/src/components/forms/RepeatingRows.jsx) stand in the
 	   same tracks over the first row, in the boxes' column alone, so each head starts on its box's
@@ -5612,8 +5560,17 @@
 		letter-spacing: var(--admin-section-track);
 	}
 
-	.adm-sheet__body,
-	.adm-aipanel__body {
+	/* what the sheet is doing, between the heading and its X: the head stays on screen while the
+	   body scrolls, so a pick made far down a phone's sheet is still answered where the eye can
+	   find it. empty, it is a box with no width. */
+	.adm-sheet__status {
+		flex: none;
+		font-size: var(--admin-hint-size);
+		line-height: var(--admin-hint-lh);
+		color: var(--admin-ink-2);
+	}
+
+	.adm-sheet__body {
 		flex: 1;
 		overflow: auto;
 		display: grid;
@@ -5624,8 +5581,7 @@
 
 	/* the foot keeps clear of the platform's own inset at the bottom of a phone, which the sheet is
 	   pinned against there. */
-	.adm-sheet__foot,
-	.adm-aipanel__foot {
+	.adm-sheet__foot {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
@@ -5636,9 +5592,8 @@
 			calc(var(--admin-space-5) + env(safe-area-inset-bottom, 0px));
 	}
 
-	/* a rule marks where the body scrolls under the foot. a foot holding the chat's composer draws
-	   none: the composer's own box is that edge, and a rule over it is a second line on it. */
-	.adm-sheet__foot:not(:has(> .adm-chat__foot)) {
+	/* a rule marks where the body scrolls under the foot. */
+	.adm-sheet__foot {
 		border-block-start: var(--admin-rule);
 	}
 
@@ -5743,313 +5698,12 @@
 		visibility: hidden;
 	}
 
-	/* ---------- the chat --------------------------------------------------------------
-
-	   a page's chat, in its sheet: the turns in the body, and under them in the foot the
-	   suggestions, the photo on its way in, the box and why a send did not go. the operator's
-	   words sit in a sunken bubble at the end edge and a reply is plain text at the start, so whose
-	   turn is whose is read from where it stands rather than from a label. inside a turn is a step
-	   apart and between turns is several, so a reply and the note under it read as one turn.
-	   packages/app/src/lib/admin/chat/ draws all of it. */
-	.adm-chat__log {
-		display: grid;
-		align-content: start;
-		gap: var(--admin-space-8);
-	}
-
-	/* a line break in a turn's words is kept: an operator's message keeps the lines it was typed
-	   in. */
-	.adm-chat__turn {
-		display: grid;
-		gap: var(--admin-space-3);
-		font-size: var(--admin-body-size);
-		line-height: var(--admin-body-lh);
-		white-space: pre-line;
-	}
-
-	.adm-chat__mine {
-		justify-self: end;
-		max-inline-size: 85%;
-		display: grid;
-		gap: var(--admin-space-3);
-		padding: var(--admin-space-4) var(--admin-space-5);
-		background: var(--admin-surface-sunken);
-		border-radius: var(--admin-radius);
-	}
-
-	/* a photo the operator sent, at the end edge above the words it came with. the fill is what
-	   stands there until the picture has loaded. */
-	.adm-chat__photo {
-		justify-self: end;
-		inline-size: var(--admin-space-12);
-		aspect-ratio: 4 / 3;
-		object-fit: cover;
-		background: var(--admin-surface-fill);
-		border-radius: var(--admin-radius);
-	}
-
-	/* the line under a reply the default model wrote. its mark keeps to the first line when the
-	   sentence wraps, as `.adm-momentary`'s does. */
-	.adm-chat__note {
-		display: flex;
-		align-items: start;
-		gap: var(--admin-space-3);
-		font-size: var(--admin-caption-size);
-		line-height: var(--admin-caption-lh);
-		color: var(--admin-ink-muted);
-	}
-
-	.adm-chat__note > .adm-mark {
-		flex: none;
-		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
-	}
-
-	.adm-chat__waiting {
-		display: flex;
-		align-items: center;
-		gap: var(--admin-space-4);
-		color: var(--admin-ink-2);
-	}
-
-	/* the sheet's foot lays its children in a row; this takes the whole of it. */
-	.adm-chat__foot {
-		display: grid;
-		gap: var(--admin-space-5);
-		inline-size: 100%;
-	}
-
-	.adm-chat__suggestions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--admin-space-3);
-	}
-
-	/* the box is the field, and the textarea inside it draws nothing of its own — the ring is the
-	   box's, as `.adm-coinbox`'s is, so Attach and Send stand inside what is focused. */
-	.adm-composer {
-		display: grid;
-		gap: var(--admin-space-3);
-		padding: var(--admin-space-3);
-		background: var(--admin-field-bg);
-		border: var(--admin-border-width) solid var(--admin-field-border);
-		border-radius: var(--admin-radius);
-	}
-
-	.adm-composer:has(.adm-composer__input:focus-visible),
-	.adm-composer:has(.adm-composer__input.is-focus) {
-		outline: var(--admin-focus-width) solid transparent;
-		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
-	}
-
-	/* two lines tall at rest, and taller as the words need it. */
-	.adm-composer__input {
-		min-block-size: calc(2lh + var(--admin-space-4));
-		padding: var(--admin-space-2) var(--admin-space-3);
-		font-size: var(--admin-field-size);
-		line-height: var(--admin-field-lh);
-		color: var(--admin-ink);
-		background: transparent;
-		border: 0;
-		outline: none;
-		resize: none;
-		field-sizing: content;
-	}
-
-	.adm-composer__input:focus-visible,
-	.adm-composer__input.is-focus {
-		outline: none;
-		box-shadow: none;
-	}
-
-	.adm-composer__input::placeholder {
-		color: var(--admin-field-placeholder);
-		opacity: 1;
-	}
-
-	.adm-composer__row {
-		display: flex;
-		align-items: center;
-		gap: var(--admin-space-4);
-	}
-
-	/* at the row's end whether or not an attach press stands at its start. */
-	.adm-composer__send {
-		margin-inline-start: auto;
-	}
-
-	/* why the last send did not go, under the box. the region is on the page before it has anything
-	   to say, so it is announced when it does; while it is empty the foot's gap above it is taken
-	   back, and it holds no room. */
-	.adm-chat__refusal:empty {
-		margin-block-start: calc(-1 * var(--admin-space-5));
-	}
-
-	/* a photo on its way into the chat: its thumbnail, its name, and where it stands. */
-	.adm-attachment {
-		display: flex;
-		align-items: center;
-		gap: var(--admin-space-4);
-		padding: var(--admin-space-3);
-		font-size: var(--admin-aside-size);
-		line-height: var(--admin-aside-lh);
-		background: var(--admin-surface-sunken);
-		border-radius: var(--admin-radius);
-	}
-
-	/* a picture when there is one to show and the image mark until then, in the one box. */
-	.adm-attachment__thumb {
-		flex: none;
-		display: grid;
-		place-items: center;
-		inline-size: var(--admin-thumb-size);
-		block-size: var(--admin-thumb-size);
-		object-fit: cover;
-		color: var(--admin-ink-muted);
-		background: var(--admin-surface-fill);
-		border-radius: var(--admin-radius);
-	}
-
-	.adm-attachment__text {
-		flex: 1;
-		min-inline-size: 0;
-		display: grid;
-		gap: var(--admin-space-1);
-	}
-
-	.adm-attachment__name {
-		overflow: hidden;
-		font-weight: var(--admin-label-weight);
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.adm-attachment__state {
-		display: flex;
-		align-items: start;
-		gap: var(--admin-space-3);
-		color: var(--admin-ink-2);
-	}
-
-	.adm-attachment__state > .adm-mark {
-		flex: none;
-		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
-	}
-
-	.adm-attachment--refused {
-		background: var(--admin-tone-blocker-tint);
-	}
-
-	.adm-attachment--refused .adm-attachment__state {
-		color: var(--admin-tone-blocker-ink);
-	}
-
-	/* the AI panel floating over the preview's end edge, from the wide breakpoint: the sheet's body
-	   and foot above, in a column at the panel's measure and the editor body's full height, standing
-	   where a sheet stands. it covers the page rather than taking room from it, so it takes the one
-	   shadow (`--admin-elevation-dialog` in ./tokens.css) and no line: the shadow is its edge, and a
-	   hairline under it would draw that edge twice. no scrim — the page beside it stays readable and
-	   reachable. it draws no head: its name is the landmark's, held by a heading drawn to a reader
-	   alone. below the breakpoint the panel is a sheet, and this is written there only for the panel
-	   drawn alone (`.adm-aipanel--alone`, below).
-	   packages/app/src/lib/admin/chat/ai-panel.tsx is the only thing that writes it. */
-	.adm-aipanel {
-		position: absolute;
-		inset-block: 0;
-		inset-inline-end: 0;
-		display: flex;
-		flex-direction: column;
-		inline-size: var(--admin-measure-panel);
-		min-block-size: 0;
-		color: var(--admin-ink);
-		background: var(--admin-surface);
-		box-shadow: var(--admin-elevation-dialog);
-	}
-
-	/* the panel as the whole editor, before the page's first draft: no preview under it, so it
-	   stands in the body's flow at every width, a column at the column's measure centred there, on
-	   the page's own ground and with no edge — nothing is under it to be held apart from. */
-	.adm-aipanel--alone {
-		position: static;
-		justify-self: center;
-		inline-size: 100%;
-		max-inline-size: var(--admin-measure-column);
-		background: transparent;
-		box-shadow: none;
-	}
-
-	/* the questions an asked turn puts, under its words: each question a field or a group of chips,
-	   a stack step apart so a question's own parts read as one, then the two presses. they stand in
-	   the panel itself, grouped by space alone — the boxes typed into are the only edges drawn.
-	   packages/app/src/lib/admin/chat/question-card.tsx writes it. */
-	.adm-questions {
-		display: grid;
-		gap: var(--admin-space-8);
-	}
-
-	/* a turn that asks stands its words a heading's step off the questions under them, wider than
-	   the step from a question's label to its box, so the words head the whole set rather than
-	   reading as the first question's. */
-	.adm-chat__turn:has(> .adm-questions) {
-		gap: var(--admin-space-5);
-	}
-
-	/* the page's usual questions say why above them on the notice's tint, which is its edge: a line
-	   round it would draw that edge twice. the border stays, unseen, for a forced-colours scheme,
-	   which takes the tint away. */
-	.adm-questions > .adm-banner {
-		border-color: transparent;
-	}
-
-	/* why the card's answers were not taken, under its presses. the region is on the card before it
-	   has anything to say, so it is announced when it does; while it is empty the card's gap above
-	   it is taken back, and it holds no room. */
-	.adm-questions__refusal:empty {
-		margin-block-start: calc(-1 * var(--admin-space-8));
-	}
-
-	/* what an operator turn answered, in place of its words: a quiet title, and each question's prompt
-	   beside its answer, the prompt a column of its own that gives way to the answer past half the
-	   width so a long prompt wraps rather than squeezing the answer it labels. it is the operator's
-	   turn, so it is set on the sunken ground their words are, with no line round it.
-	   packages/app/src/lib/admin/chat/chat-log.tsx writes it. */
-	.adm-answers {
-		display: grid;
-		gap: var(--admin-space-3);
-		padding: var(--admin-space-5);
-		background: var(--admin-surface-sunken);
-		border-radius: var(--admin-radius);
-	}
-
-	.adm-answers__title {
-		font-size: var(--admin-caption-size);
-		font-weight: var(--admin-label-weight-strong);
-		line-height: var(--admin-caption-lh);
-		color: var(--admin-ink-2);
-	}
-
-	.adm-answers__list {
-		display: grid;
-		/* raw-length-ok: a track bound rather than a measure — half the list, past which the prompt wraps */
-		grid-template-columns: fit-content(50%) minmax(0, 1fr);
-		gap: var(--admin-space-2) var(--admin-space-5);
-	}
-
-	.adm-answers__list > dt {
-		color: var(--admin-ink-2);
-	}
-
-	/* an answer is the operator's own words, an address or a long word among them. */
-	.adm-answers__list > dd {
-		overflow-wrap: anywhere;
-	}
-
 	/* ---------- the page editor ---------------------------------------------------------------
 
 	   a route of its own outside the rail, for the Donation page and a campaign alike: the publish
-	   bar across the top, and under it the page's own preview across the whole width, with the AI
-	   panel floating over its end edge from the wide breakpoint; below it the panel is `.adm-sheet`
-	   above, as everything a bar press opens is. every part in this section is drawn by
-	   packages/app/src/lib/admin/editor/ and packages/app/src/lib/admin/chat/.
+	   bar across the top, and under it the page's own preview across the whole width; what a bar
+	   press opens is `.adm-sheet` above. every part in this section is drawn by
+	   packages/app/src/lib/admin/editor/.
 
 	   space tiers, inside out: a picture's drawing space-2, a control group space-4, the bar's two
 	   halves space-6; in a sheet a part's heading to its rows space-5 and part to part the body's
@@ -6066,10 +5720,8 @@
 		background: var(--admin-page);
 	}
 
-	/* the preview, in one track at every width: the AI panel floats over it rather than taking a
-	   track, so nothing reflows as it comes and goes. the body is what the floating panel stands in. */
+	/* the preview, in one track at every width. */
 	.adm-editor__body {
-		position: relative;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		min-block-size: 0;
@@ -6188,26 +5840,6 @@
 	/* no quieter press to draw is no line for them. */
 	.adm-publishbar__quiet:empty {
 		display: none;
-	}
-
-	/* the AI press's mark for a turn that landed while the panel was closed: a dot in the accent at
-	   the press's end corner, inside its padding, so the press keeps its size and the bar does not
-	   move. it is the mark of a completed write, which is the accent's (./tokens.css).
-
-	   the dot is a border as thick as half of it as well as a ground. forced colours drop an
-	   author's ground and draw every border in the system's ink, a transparent one included, so the
-	   border is what keeps the dot on the press there; anywhere else it is transparent over the
-	   ground. */
-	.adm-publishbar__unread {
-		position: absolute;
-		inset-block-start: var(--admin-space-2);
-		inset-inline-end: var(--admin-space-2);
-		inline-size: var(--admin-space-4);
-		block-size: var(--admin-space-4);
-		/* raw-length-ok: 50% — a circle, which is a shape and not a step on the size scale. */
-		border-radius: 50%;
-		border: calc(var(--admin-space-4) / 2) solid transparent;
-		background: var(--admin-tone-done-mark);
 	}
 
 	/* Published and the Undo beside it, one pair, at the end of the line. */
@@ -6348,6 +5980,74 @@
 	.adm-openrow > .adm-mark {
 		flex: none;
 		color: var(--admin-ink-muted);
+	}
+
+	/* a block's row in the editor's block list (packages/app/src/lib/admin/editor/settings-sheet.tsx):
+	   the row that opens its sheet, then the presses that move it a step and take it off the page,
+	   each a mark alone. the row draws the rule the open row draws on its own, so the presses stand
+	   on the row rather than past its end.
+
+	   each press has a track of its own, and a press a block cannot use is left out rather than
+	   drawn closed, so its track stands empty: the first block's Move down stands under the second
+	   block's, not where the second's Move up is. each track is the touch floor square and so is the
+	   press, so the target is the drawn press and nothing reaches past it. Remove stands a step off
+	   Move down, in a track of its own, so a thumb aimed at a move does not land on the press that
+	   takes the block away.
+
+	   a refused press is said under its row, across every track, where the thumb that pressed it
+	   is. */
+	.adm-blockrow {
+		display: grid;
+		grid-template-columns:
+			minmax(0, 1fr) repeat(2, var(--admin-touch-min)) var(--admin-space-4)
+			var(--admin-touch-min);
+		align-items: center;
+		border-block-end: var(--admin-rule);
+	}
+
+	.adm-blockrow > .adm-openrow {
+		border-block-end: 0;
+	}
+
+	.adm-blockrow > .adm-btn {
+		inline-size: var(--admin-touch-min);
+		min-block-size: var(--admin-touch-min);
+		padding-inline: 0;
+		justify-content: center;
+	}
+
+	.adm-blockrow > .adm-blockrow__up {
+		grid-column: 2;
+	}
+
+	.adm-blockrow > .adm-blockrow__down {
+		grid-column: 3;
+	}
+
+	.adm-blockrow > .adm-blockrow__remove {
+		grid-column: 5;
+	}
+
+	.adm-blockrow > .adm-blockrow__refusal {
+		grid-column: 1 / -1;
+		padding-block-end: var(--admin-space-4);
+	}
+
+	/* Add a block under the list hugs its press: a grid item stretches across the part, and a press
+	   the part's width reads as a bar rather than as a control. */
+	.adm-openrow-list + .adm-menuwrap {
+		justify-self: start;
+	}
+
+	/* the presses a phone's sheet grows and shrinks a list by — Add a block under the block list,
+	   a tier's or a question's Add under the rows and each row's Remove — stand at the row's floor,
+	   whatever size their words are drawn at: they sit between rows a thumb aims at. */
+	.adm-openrow-list + .adm-menuwrap > .adm-btn {
+		min-block-size: var(--admin-touch-min);
+	}
+
+	.adm-btn.adm-rowpress {
+		min-block-size: var(--admin-touch-min);
 	}
 
 	/* a box with its unit or its address in front stated on the box itself, as `.adm-coinbox` is:

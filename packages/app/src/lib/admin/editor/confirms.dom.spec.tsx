@@ -1,10 +1,11 @@
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { FirstPublishConfirm } from './confirms';
+import { DiscardConfirm, FirstPublishConfirm, RemoveBlockConfirm, ResetConfirm } from './confirms';
 
-// the editor's questions as the card draws them: what a campaign's first Publish says of an address
-// it did not get. what the presses post is ./publish-wiring.dom.spec.tsx's.
+// the editor's questions as the card draws them: what Reset, Discard and a block's Remove say they
+// replace or take, and what a campaign's first Publish says of an address it did not get. what the
+// presses post is ./publish-wiring.dom.spec.tsx's, and a block's Remove ./block-list.dom.spec.tsx's.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -26,6 +27,34 @@ function card(root: HTMLElement): HTMLDialogElement {
 	if (found === null) throw new Error('no card was put up');
 	return found;
 }
+
+/** the label of each row the card lists. */
+const rows = (root: HTMLElement) =>
+	[...card(root).querySelectorAll('.adm-setting__label')].map((label) => label.textContent);
+
+describe('what Reset, Discard and a block’s Remove replace or take', () => {
+	it('Reset lists the draft and the published page, and nothing else', () => {
+		const root = mount(<ResetConfirm resetting={false} onReset={() => {}} onCancel={() => {}} />);
+		expect(rows(root)).toEqual(['Your draft', 'The published page at /donate']);
+		expect(card(root).textContent).not.toMatch(/chat/i);
+	});
+
+	it('Discard lists the draft, and nothing else', () => {
+		const root = mount(
+			<DiscardConfirm discarding={false} onDiscard={() => {}} onCancel={() => {}} />
+		);
+		expect(rows(root)).toEqual(['Your draft']);
+		expect(card(root).textContent).not.toMatch(/chat/i);
+	});
+
+	it('a block’s Remove asks about that block and lists it alone', () => {
+		const root = mount(
+			<RemoveBlockConfirm name="Story" removing={false} onRemove={() => {}} onCancel={() => {}} />
+		);
+		expect(card(root).querySelector('h2')?.textContent).toBe('Remove Story?');
+		expect(rows(root)).toEqual(['Story']);
+	});
+});
 
 describe('a campaign’s first Publish', () => {
 	const confirm = (asked?: string) =>

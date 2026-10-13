@@ -4,12 +4,13 @@ import { stateAt } from '../../page/ended';
 import { freeSlug, slugFromTitle } from '../../page/slug';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
-import { chatTurn, form, type Page, page } from '../db/schema';
+import { form, type Page, page } from '../db/schema';
+import { freeLetGoStatements } from '../images/free';
 import { MAX_FORM_NAME } from '../../forms/input-schema';
 import type { ParsedFormGiving, ParsedFormProgram } from '../forms/form-input';
 import { readForm, type StoredForm } from '../forms/queries';
 import { readActivePrograms } from '../programs/queries';
-import { readableDraft } from './document';
+import { documentsOf, placedPhotos, readableDraft } from './document';
 
 // one page read by its id, the one module that deletes a `page`, gated by ./sole-deleter.spec.ts,
 // where a live campaign ends, the editor's two writes that are not page content — a campaign's
@@ -29,20 +30,21 @@ export async function readPage(db: Db, pageId: string): Promise<Page | null> {
 }
 
 /**
- * deletes a never-published campaign, its chat and the donation-settings row it owns, in one
+ * deletes a never-published campaign and the donation-settings row it owns, in one
  * `batch()`, while the page is still the version it was drawn at. false when the page is missing,
  * is the donation page, has ever been live, or has been written since `version`.
  *
- * the read only finds which settings row the page owns; every statement carries its own guard, so
- * a campaign published between the read and the batch loses nothing. the settings row goes only
- * once no page owns it, and a gift already naming it fails the batch whole on its foreign key.
+ * the read only finds which settings row the page owns and which photos it places; every statement
+ * carries its own guard, so a campaign published between the read and the batch loses nothing. the
+ * settings row goes only once no page owns it, and a gift already naming it fails the batch whole on
+ * its foreign key. a photo goes only once nothing places it (../images/free.ts).
  */
 export async function deleteNeverPublishedCampaign(
 	db: Db,
 	pageId: string,
 	version: Date
 ): Promise<boolean> {
-	const [found] = await db.select({ formId: page.formId }).from(page).where(eq(page.id, pageId));
+	const [found] = await db.select().from(page).where(eq(page.id, pageId));
 	if (!found) return false;
 
 	const deletable = and(
@@ -51,10 +53,7 @@ export async function deleteNeverPublishedCampaign(
 		eq(page.state, 'never_published'),
 		eq(page.updatedAt, version)
 	);
-	const [, deleted] = await db.batch([
-		db
-			.delete(chatTurn)
-			.where(inArray(chatTurn.pageId, db.select({ id: page.id }).from(page).where(deletable))),
+	const [deleted] = await db.batch([
 		db.delete(page).where(deletable).returning({ id: page.id }),
 		db
 			.delete(form)
@@ -63,7 +62,8 @@ export async function deleteNeverPublishedCampaign(
 					eq(form.id, found.formId),
 					notExists(db.select({ id: page.id }).from(page).where(eq(page.formId, found.formId)))
 				)
-			)
+			),
+		...freeLetGoStatements(db, placedPhotos(found, documentsOf(found)), [])
 	]);
 	return deleted.length === 1;
 }

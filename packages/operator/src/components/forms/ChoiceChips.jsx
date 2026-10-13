@@ -3,7 +3,7 @@ import { Mark } from '../status/Mark.jsx';
 import { FieldMessage } from './FieldMessage.jsx';
 
 /**
- * @import { FocusEvent, ReactNode } from 'react'
+ * @import { ChangeEventHandler, FocusEvent, ReactNode } from 'react'
  * @import { PointerState } from '../closed-sets.js'
  */
 
@@ -19,6 +19,11 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   saying what the choice is for. it describes the control rather than naming it, for
  *   ./CheckboxGroup.jsx's reason: a name that is a sentence is one a voice user cannot say.
  * @property {boolean | undefined} [defaultChecked]
+ * @property {boolean | undefined} [checked] whether the chip is taken now, where the caller holds the
+ *   answer — a pick that applies the moment it is made, drawn as the caller says it stands — with
+ *   `onChange` beside it: the platform's own pair, as ./CheckboxGroup.jsx's items take it. a chip
+ *   states this or `defaultChecked`, never both.
+ * @property {ChangeEventHandler<HTMLInputElement> | undefined} [onChange]
  * @property {PointerState | undefined} [state] the state pinned on the chip without a pointer, which
  *   is what a specimen wants and no screen does. `focus` lands on the control inside the chip and
  *   the chip draws the ring off it, as a boxed row in ./CheckboxGroup.jsx does.
@@ -132,33 +137,40 @@ export function ChoiceChips({
 			) : null}
 			{cards ? refusal : null}
 			<div className={cards ? 'adm-choicechips adm-choicechips--cards' : 'adm-choicechips'}>
-				{options.map(({ value, label, description, defaultChecked, state }, at) => {
-					const words = `${id}-${at}`;
-					const line = description ? `${words}-desc` : undefined;
-					return (
-						<label key={value} className={`adm-choicechip${state === 'hover' ? ' is-hover' : ''}`}>
-							<input
-								type={type}
-								name={name}
-								value={value}
-								defaultChecked={defaultChecked}
-								className={state === 'focus' ? 'adm-vh is-focus' : 'adm-vh'}
-								aria-invalid={errorId ? 'true' : undefined}
-								aria-labelledby={line ? words : undefined}
-								aria-describedby={[groupLines, line].filter(Boolean).join(' ') || undefined}
-							/>
-							{tick}
-							<span className="adm-choicechip__label" id={line ? words : undefined}>
-								{label}
-							</span>
-							{description ? (
-								<span className="adm-choicechip__desc" id={line}>
-									{description}
+				{options.map(
+					({ value, label, description, defaultChecked, checked, onChange, state }, at) => {
+						const words = `${id}-${at}`;
+						const line = description ? `${words}-desc` : undefined;
+						return (
+							<label
+								key={value}
+								className={`adm-choicechip${state === 'hover' ? ' is-hover' : ''}`}
+							>
+								<input
+									type={type}
+									name={name}
+									value={value}
+									defaultChecked={defaultChecked}
+									checked={checked}
+									onChange={onChange}
+									className={state === 'focus' ? 'adm-vh is-focus' : 'adm-vh'}
+									aria-invalid={errorId ? 'true' : undefined}
+									aria-labelledby={line ? words : undefined}
+									aria-describedby={[groupLines, line].filter(Boolean).join(' ') || undefined}
+								/>
+								{tick}
+								<span className="adm-choicechip__label" id={line ? words : undefined}>
+									{label}
 								</span>
-							) : null}
-						</label>
-					);
-				})}
+								{description ? (
+									<span className="adm-choicechip__desc" id={line}>
+										{description}
+									</span>
+								) : null}
+							</label>
+						);
+					}
+				)}
 				{other ? (
 					<label className="adm-choicechip">
 						<input

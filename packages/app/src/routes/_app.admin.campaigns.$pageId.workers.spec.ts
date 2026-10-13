@@ -1,12 +1,13 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
 import { form, page, program } from '$lib/server/db/schema';
+import { createImage } from '$lib/server/images/image.testing';
 import { createCampaign, readServedCampaign } from '$lib/server/pages/campaign';
-import { draftTurn, openTurn } from '$lib/server/pages/draft';
-import { answering, insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
+import { defaultCampaign } from '$lib/page/defaults';
+import { insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -15,14 +16,6 @@ import * as editor from './_app.admin.campaigns.$pageId';
 
 // a workers spec because the editor reads a page and its presses write one. the chain is mounted,
 // for ../route-request.testing.ts's reason: the session gate is a `middleware` on ./_app.tsx.
-//
-// the set-up this screen is served on stores an EIN, which a chat's opening looks up: the lookup
-// finds nothing here, so no case reaches the live nonprofit API.
-
-vi.mock(import('$lib/server/nonprofits/filing'), async (importOriginal) => ({
-	...(await importOriginal()),
-	lookUpFiling: async () => null
-}));
 
 let db: Db;
 let request: RouteRequester;
@@ -39,7 +32,6 @@ beforeAll(async () => {
 
 beforeEach(async () => {
 	await env.DB.batch([
-		env.DB.prepare('delete from chat_turn'),
 		env.DB.prepare('delete from page'),
 		env.DB.prepare('delete from form'),
 		env.DB.prepare('delete from program')
@@ -355,26 +347,6 @@ describe('the name', () => {
 		expect((await stored(pageId)).slug).toBe('warm-hands-winter');
 	});
 
-	it('writes the name a chat turn gave back when the old one is typed again', async () => {
-		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
-		await draftTurn(
-			db,
-			{ ...env, AI: answering({ say: 'Done.', set: { name: 'Coats for Kids' } }) },
-			{ pageId, message: 'call it Coats for Kids', imageIds: [], timeZone: 'UTC', now: Date.now() }
-		);
-		expect(await (await open(pageId)).json()).toMatchObject({ name: 'Coats for Kids' });
-
-		const response = await rename(pageId, 'Winter coat drive');
-
-		expect(response.status).toBe(200);
-		const row = await stored(pageId);
-		expect([row.name, JSON.parse(row.draft).name, await ownedName(pageId)]).toEqual([
-			'Winter coat drive',
-			'Winter coat drive',
-			'Winter coat drive'
-		]);
-	});
-
 	it('refuses a rename drawn from an older version, keeping what was typed', async () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
 		const drawn = await version(pageId);
@@ -580,7 +552,7 @@ describe('the editor', () => {
 
 	/** a campaign made from the Campaigns list as `name`. */
 	async function created(name: string): Promise<string> {
-		const made = await createCampaign(db, { name, campaignType: 'year_end' });
+		const made = await createCampaign(db, { name });
 		return made.pageId;
 	}
 
@@ -811,58 +783,202 @@ describe('a block’s sheet and the layout pictures', () => {
 	});
 });
 
-describe('whether the campaign has been drafted', () => {
-	const drafted = async (pageId: string) =>
-		((await (await open(pageId)).json()) as { drafted: boolean }).drafted;
+describe('a campaign New campaign has just made', () => {
+	it('opens its editor on the default page, with no chat and no marks on its photo blocks', async () => {
+		const { pageId } = await createCampaign(db, { name: 'Winter coat drive' });
 
-	const made = async () =>
-		(await createCampaign(db, { name: 'Winter coat drive', campaignType: 'year_end' })).pageId;
+		const response = await open(pageId);
 
-	it('reads not drafted on a campaign New campaign has just made', async () => {
-		expect(await drafted(await made())).toBe(false);
+		expect(response.status).toBe(200);
+		const drawn = (await response.json()) as { blocks: { id: string; type: string }[] };
+		expect(drawn).toMatchObject({ state: 'unpublished', preview: `/preview/${pageId}` });
+		expect(drawn.blocks.map(({ id }) => id)).toEqual(defaultCampaign().blocks.map(({ id }) => id));
+		expect(drawn).not.toHaveProperty('chat');
+		expect(drawn).not.toHaveProperty('drafted');
+		expect(drawn.blocks.find(({ type }) => type === 'hero')).not.toHaveProperty('illustration');
 	});
+});
 
-	it('reads not drafted after the chat has asked its opening questions alone', async () => {
-		const pageId = await made();
-		const AI = answering({
-			say: 'First, a question.',
-			ask: [{ id: 'who', kind: 'text', prompt: 'Who do you help?' }]
+describe('every value a campaign’s page holds, by hand', () => {
+	/** a press drawn at `drawn`, or the version the row holds now; a field named twice is posted twice. */
+	async function press(pageId: string, which: string, fields: [string, string][], drawn?: string) {
+		const body = new FormData();
+		body.set(WHICH_FORM, which);
+		body.set(RECORD_VERSION, drawn ?? (await version(pageId)));
+		for (const [name, value] of fields) body.append(name, value);
+		return request(
+			new Request(`${ORIGIN}/admin/campaigns/${pageId}`, {
+				method: 'POST',
+				headers: { cookie: session },
+				body
+			}),
+			{ env: bindings }
+		);
+	}
+
+	type Drawn = {
+		state: string;
+		look: { shade: string; corners: string; palette: string };
+		share: { message: string; channels: string[] };
+		addable: { value: string }[];
+		blocks: { id: string; type: string; text: unknown }[];
+	};
+
+	async function drawn(pageId: string): Promise<Drawn> {
+		const response = await open(pageId);
+		expect(response.status).toBe(200);
+		return response.json();
+	}
+
+	function refused(answer: unknown, box = ''): string[] | undefined {
+		return (answer as { form: { result: { error: Record<string, string[]> } } }).form.result.error[
+			box
+		];
+	}
+
+	it('sets the look and the sharing on the draft, and the live page stays', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		const { published } = await stored(pageId);
+
+		for (const [which, fields] of [
+			['page-shade', [['shade', 'warm']]],
+			['page-corners', [['corners', 'square']]],
+			['page-palette', [['palette', 'duo']]],
+			['page-share-message', [['share_message', 'Coats before the first frost.']]],
+			[
+				'page-share-channels',
+				[
+					['share_channels', 'linkedin'],
+					['share_channels', 'copy-link']
+				]
+			]
+		] as [string, [string, string][]][]) {
+			const response = await press(pageId, which, fields);
+			expect(await response.json()).toEqual({ saved: which });
+		}
+
+		expect(await drawn(pageId)).toMatchObject({
+			state: 'changed',
+			look: { shade: 'warm', corners: 'square', palette: 'duo' },
+			share: { message: 'Coats before the first frost.', channels: ['linkedin', 'copy-link'] }
 		});
-		const asked = await openTurn(
+		expect((await stored(pageId)).published).toBe(published);
+	});
+
+	it('adds a goal bar above the organisation details, and refuses the Donation page’s program choice', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		expect((await drawn(pageId)).addable.map(({ value }) => value)).toEqual([
+			'title',
+			'story',
+			'impact-tiers',
+			'faq',
+			'about-us',
+			'org-info',
+			'share',
+			'hero',
+			'image',
+			'goal-bar'
+		]);
+
+		const added = await press(pageId, 'block-add', [['block_type', 'goal-bar']]);
+		expect(await added.json()).toEqual({ saved: 'block-add', blockId: 'goal-bar' });
+		expect((await drawn(pageId)).blocks.map(({ id }) => id).slice(-2)).toEqual([
+			'goal-bar',
+			'footer'
+		]);
+
+		const refusedAdd = await press(pageId, 'block-add', [['block_type', 'program-chooser']]);
+		expect(refusedAdd.status).toBe(400);
+		expect(refused(await refusedAdd.json(), 'block_type')).toEqual([
+			'"program-chooser" is no block a campaign can add; it adds title, story, impact-tiers, faq, about-us, org-info, share, hero, image or goal-bar'
+		]);
+	});
+
+	it('removes a block and moves another, and refuses removing the donation box', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+
+		expect((await press(pageId, 'block-remove', [['block_id', 'goal']])).status).toBe(200);
+		expect(
+			(
+				await press(pageId, 'block-move', [
+					['block_id', 'story'],
+					['direction', 'up']
+				])
+			).status
+		).toBe(200);
+		expect((await drawn(pageId)).blocks.map(({ id }) => id)).toEqual([
+			'hero',
+			'story',
+			'title',
+			'donate',
+			'share',
+			'footer'
+		]);
+
+		const box = await press(pageId, 'block-remove', [['block_id', 'donate']]);
+		expect(box.status).toBe(400);
+		expect(refused(await box.json())).toEqual([
+			'the donation box is on every page exactly once and cannot be removed'
+		]);
+	});
+
+	it('opens a photo sheet on a cover with no photo yet, and saves a first photo to it', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		const hero = async () => (await drawn(pageId)).blocks.find(({ id }) => id === 'hero')?.text;
+		expect(await hero()).toEqual({ kind: 'photo', imageId: null, alt: '' });
+		const imageId = await createImage(
 			db,
-			{ ...env, AI },
-			{ pageId, timeZone: 'UTC', now: Date.now(), origin: ORIGIN }
+			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+			new Uint8Array([1, 2, 3])
 		);
-		expect(asked).toMatchObject({ ok: true, outcome: 'asked' });
 
-		expect(await drafted(pageId)).toBe(false);
+		const response = await press(pageId, 'block-photo', [
+			['block_id', 'hero'],
+			['image_id', imageId],
+			['alt', 'Volunteers sorting coats']
+		]);
+
+		expect(response.status).toBe(200);
+		expect(await hero()).toEqual({ kind: 'photo', imageId, alt: 'Volunteers sorting coats' });
 	});
 
-	it('reads drafted once a chat turn has changed it, though only its name', async () => {
-		const pageId = await made();
-		const turned = await draftTurn(
-			db,
-			{ ...env, AI: answering({ say: 'Done.', set: { name: 'Coats for Kids' } }) },
-			{ pageId, message: 'call it Coats for Kids', imageIds: [], timeZone: 'UTC', now: Date.now() }
-		);
-		expect(turned).toMatchObject({ ok: true, outcome: 'accepted' });
+	it.each([
+		['page-shade', [['shade', 'warm']]],
+		['page-corners', [['corners', 'round']]],
+		['page-palette', [['palette', 'bold']]],
+		['page-share-message', [['share_message', 'Coats for all.']]],
+		['page-share-channels', [['share_channels', 'x']]],
+		['block-add', [['block_type', 'faq']]],
+		['block-remove', [['block_id', 'story']]],
+		[
+			'block-move',
+			[
+				['block_id', 'story'],
+				['direction', 'up']
+			]
+		],
+		[
+			'block-background',
+			[
+				['block_id', 'story'],
+				['background', 'soft']
+			]
+		]
+	] as [string, [string, string][]][])(
+		'refuses %s drawn before the page last moved at 409, writing nothing',
+		async (which, fields) => {
+			const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+			const drawnAt = await version(pageId);
+			await db
+				.update(page)
+				.set({ updatedAt: new Date(Number(drawnAt) + 1_000) })
+				.where(eq(page.id, pageId));
+			const { draft } = await stored(pageId);
 
-		expect(await drafted(pageId)).toBe(true);
-	});
+			const response = await press(pageId, which, fields, drawnAt);
 
-	it('reads drafted once a block is edited by hand', async () => {
-		const pageId = await made();
-		const saved = await post(pageId, 'block-variant', { block_id: 'story', variant: 'lede' });
-		expect(saved.status).toBe(200);
-
-		expect(await drafted(pageId)).toBe(true);
-	});
-
-	it('reads not drafted after a rename from the bar alone', async () => {
-		const pageId = await made();
-		const renamed = await post(pageId, 'campaign-name', { name: 'Warm hands winter' });
-		expect(renamed.status).toBe(200);
-
-		expect(await drafted(pageId)).toBe(false);
-	});
+			expect(response.status).toBe(409);
+			expect((await stored(pageId)).draft).toBe(draft);
+		}
+	);
 });
