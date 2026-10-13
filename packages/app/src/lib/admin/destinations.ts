@@ -120,6 +120,14 @@ export const DESTINATION_GROUPS = [
 				label: 'Webhooks',
 				short: 'Webhooks',
 				mark: 'webhook'
+			},
+			// the connections from Claude and ChatGPT through Better Giving's connector, each with
+			// Disconnect (../../routes/_app.admin.integrations.connector.tsx).
+			{
+				href: '/admin/integrations/connector',
+				label: 'Claude & ChatGPT',
+				short: 'AI apps',
+				mark: 'message-square'
 			}
 		]
 	},

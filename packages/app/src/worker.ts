@@ -3,6 +3,7 @@ import { createRequestHandler } from 'react-router';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
 import { pinnedOrigin, readAuthEnv } from '$lib/server/auth/env';
+import { sweepConnectorLeftovers } from '$lib/server/connector/keys';
 import { requestDb } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
@@ -60,7 +61,8 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 			now
 		),
 
-	'15 * * * *': (env, now) => owedRefundNotices(env, now),
+	'15 * * * *': (env, now) =>
+		allRun([owedRefundNotices(env, now), sweepConnectorLeftovers(requestDb(env), now)]),
 	'45 * * * *': (env, now) => owedRefundNotices(env, now),
 
 	'* * * * *': (env, now) => {

@@ -8,6 +8,7 @@ import {
 } from '$lib/server/accounting/connect-link';
 import { CONSOLE_BASE_PATH } from '$lib/server/console/surface';
 import { AGENT_PROMPT_PATH, OPENAPI_PATH } from '$lib/server/integrations/openapi';
+import { CONNECTOR_BASE_PATH } from '$lib/server/connector/surface';
 import { INTEGRATIONS_BASE_PATH } from '$lib/server/integrations/surface';
 import { ZAPIER_BASE_PATH } from '$lib/server/zapier/surface';
 import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
@@ -328,6 +329,12 @@ const ZAPIER_LAYOUT = 'routes/zapier.ts';
  */
 const INTEGRATIONS_LAYOUT = 'routes/integrations.v1.ts';
 
+/**
+ * the layout the connector key check is mounted on — the same mounting again, for Better Giving's
+ * central connector. src/routes/connector.v1.ts argues it.
+ */
+const CONNECTOR_LAYOUT = 'routes/connector.v1.ts';
+
 let routes: RouteRecord[];
 beforeAll(async () => {
 	routes = await routeManifest();
@@ -348,6 +355,21 @@ function integrationsRoute(route: RouteRecord): boolean {
 	return (
 		route.path === INTEGRATIONS_BASE_PATH || route.path.startsWith(`${INTEGRATIONS_BASE_PATH}/`)
 	);
+}
+
+/** whether a route is served on the surface Better Giving's connector calls. */
+function connectorRoute(route: RouteRecord): boolean {
+	return route.path === CONNECTOR_BASE_PATH || route.path.startsWith(`${CONNECTOR_BASE_PATH}/`);
+}
+
+/** every route on the connector surface that is not under the layout checking the key. */
+function uncheckedConnectorRoutes(manifest: readonly RouteRecord[]): string[] {
+	return manifest
+		.filter((route) => connectorRoute(route) && !under(route, CONNECTOR_LAYOUT))
+		.map(
+			(route) =>
+				`${route.file} is served at ${route.path} and is not under ${CONNECTOR_LAYOUT}, so nothing checks the connector key for it. Name it so it nests under that layout.`
+		);
 }
 
 /** whether a route is served on the public api. */
@@ -391,7 +413,8 @@ function ungatedRoutes(manifest: readonly RouteRecord[], allowed: readonly strin
 				!allowed.includes(route.file) &&
 				!consoleRoute(route) &&
 				!zapierRoute(route) &&
-				!integrationsRoute(route)
+				!integrationsRoute(route) &&
+				!connectorRoute(route)
 		)
 		.map(
 			(route) =>
@@ -665,6 +688,11 @@ describe('the route surface', () => {
 		expect(uncheckedIntegrationsRoutes(routes)).toEqual([]);
 	});
 
+	it('checks the key for every route it serves on the connector surface', () => {
+		expect(routes.map((r) => r.file)).toContain(CONNECTOR_LAYOUT);
+		expect(uncheckedConnectorRoutes(routes)).toEqual([]);
+	});
+
 	it('lists no console route as public', () => {
 		expect(consoleRoutesCalledPublic(routes, PUBLIC_ROUTE_FILES)).toEqual([]);
 	});
@@ -842,6 +870,7 @@ describe('where middleware is mounted', () => {
 				API_LAYOUT,
 				CONSOLE_LAYOUT,
 				INTEGRATIONS_LAYOUT,
+				CONNECTOR_LAYOUT,
 				PROTECTED_LAYOUT,
 				ZAPIER_LAYOUT,
 				PREVIEW_PAGE,
