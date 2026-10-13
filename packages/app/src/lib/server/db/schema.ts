@@ -3515,6 +3515,10 @@ export const photoLink = sqliteTable(
 	},
 	(t) => [
 		uniqueIndex('photo_link_token_hash_idx').on(t.tokenHash),
+		// each foreign key's own index: a page's deletion, a key's revocation and the sweep each
+		// find a parent's links by it.
+		index('photo_link_page_id_idx').on(t.pageId),
+		index('photo_link_connector_key_id_idx').on(t.connectorKeyId),
 		check(
 			'photo_link_token_hash_check',
 			sql`length(${t.tokenHash}) = 64 and ${t.tokenHash} not glob '*[^0-9a-f]*'`

@@ -32,7 +32,8 @@
 		"0026_org_presentation_dropped.sql",
 		"0027_page_look_legacy_keys.sql",
 		"0028_page_chat_and_illustrations_dropped.sql",
-		"0029_connector.sql"
+		"0029_connector.sql",
+		"0030_photo_link_foreign_key_indexes.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
