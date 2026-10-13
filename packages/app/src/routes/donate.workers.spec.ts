@@ -612,7 +612,7 @@ describe('/donate after the editor’s presses', () => {
 		return { draft: JSON.parse(row.draft), published: JSON.parse(row.published ?? 'null') };
 	}
 
-	/** the draft's share message, as the chat or its sheet leaves it. */
+	/** the draft's share message, as the editor's share message sheet leaves it. */
 	async function draftMessage(message: string) {
 		const [row] = await db.select().from(page);
 		if (!row) throw new Error('there is no Donation page to write');

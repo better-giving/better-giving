@@ -129,7 +129,8 @@ function isRead(request: Request): boolean {
  * the address the operator was going to.
  *
  * a write never returns to its own address. it was posted to an action — `/admin/images` answers
- * no GET at all, an editor's action is addressed `?index` — and landing there after signing in is
+ * no GET at all, and the Campaigns list's (src/routes/_app.admin.campaigns._index.tsx) is addressed
+ * `?index` — and landing there after signing in is
  * an error page where the operator's screen was. it returns to the page the press was made from,
  * read off `Referer`, which the dashboard's documents send whole to their own origin
  * (`Referrer-Policy: same-origin`, src/document-policy.ts). that page is honoured only when it is
@@ -154,8 +155,16 @@ function returnTo(request: Request, url: URL): string | null {
  * is anything but `same-origin`. `same-site` is the case that matters: a deployment on the
  * organisation's own domain shares a site with the organisation's website, the page the snippet
  * is pasted into, and the session cookie's `sameSite: 'lax'` (./index.ts) rides along on a POST
- * from any page on that site. a script there, stored in the website's own CMS, could otherwise
- * invite itself a member while an operator is signed in.
+ * from any page on that site.
+ *
+ * a route with a page is already covered there: react-router refuses a document or `.data` action
+ * whose `Origin` host is not the request's host (`throwIfPotentialCSRFAttack`, called from its
+ * server runtime's `handleDocumentRequest` and `singleFetchAction`), and a sibling subdomain is
+ * another host. a resource route is not — react-router runs that check on no endpoint, nor on a
+ * POST with no `Origin` at all. so what this adds is the endpoints beneath the gate, the ones with
+ * an action and no page: `src/routes/_app.admin.sign-out.ts` and `_app.admin.images.ts`. a script
+ * stored in the website's own CMS could otherwise sign an operator out or upload into their
+ * deployment.
  *
  * the browser sets the header and a page's script cannot (it is a forbidden request header,
  * https://fetch.spec.whatwg.org/#forbidden-request-header), and the check only ever refuses.
