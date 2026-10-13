@@ -50,12 +50,19 @@ export type RowList = {
 /** a row list plus the two things only the adapter drawing it does. */
 export type RowDrawer = RowList & {
 	/**
-	 * a row holding `content`, appended to the mount closed.
+	 * a row holding `content`, drawn closed — appended to the mount, or put in ahead of `before`
+	 * where that row stands.
 	 *
 	 * `toggled` hears the row open and close, whoever asked — the donor's press or ./surface.ts closing
 	 * it for a neighbour — for a row whose opening is itself the choice.
 	 */
-	draw(name: string, mark: RowMark, content: HTMLElement, toggled?: (open: boolean) => void): Row;
+	draw(
+		name: string,
+		mark: RowMark,
+		content: HTMLElement,
+		toggled?: (open: boolean) => void,
+		before?: Row
+	): Row;
 	/** the row taken off the page along with what it holds. */
 	erase(row: Row): void;
 };
@@ -198,7 +205,7 @@ export function createRows(mount: HTMLElement): RowDrawer {
 		watch(next) {
 			watcher = next;
 		},
-		draw(name, mark, content, toggled) {
+		draw(name, mark, content, toggled, before) {
 			const host = doc.createElement('div');
 			host.style.cssText = PINNED;
 			const root = host.attachShadow({ mode: 'open' });
@@ -255,8 +262,14 @@ export function createRows(mount: HTMLElement): RowDrawer {
 			};
 			head.addEventListener('click', () => (row.expanded ? row.collapse() : row.expand()));
 
-			mount.appendChild(host);
-			drawn.push({ row, host });
+			const at = drawn.findIndex((entry) => entry.row === before);
+			if (at === -1) {
+				mount.appendChild(host);
+				drawn.push({ row, host });
+			} else {
+				mount.insertBefore(host, drawn[at]?.host ?? null);
+				drawn.splice(at, 0, { row, host });
+			}
 			watcher?.changed();
 			return row;
 		},

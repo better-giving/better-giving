@@ -5,6 +5,7 @@ import { createAccountingProvider } from '$lib/server/accounting/factory';
 import { pinnedOrigin, readAuthEnv } from '$lib/server/auth/env';
 import { requestDb } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
+import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { INTEGRATIONS_BASE_PATH, readOnlyRefusal } from '$lib/server/integrations/surface';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -59,6 +60,9 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 			now
 		),
 
+	'15 * * * *': (env, now) => owedRefundNotices(env, now),
+	'45 * * * *': (env, now) => owedRefundNotices(env, now),
+
 	'* * * * *': (env, now) => {
 		// the three jobs below run in one invocation and spend its connections, subrequests and D1
 		// queries together; ./lib/server/outbox/budget.ts is each one's share, and a job added here
@@ -96,6 +100,10 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 		]);
 	}
 };
+
+function owedRefundNotices(env: Env, now: Date): Promise<void> {
+	return sendOwedRefundNotices({ db: requestDb(env), email: createEmailProvider(env) }, now);
+}
 
 /**
  * the methods react router's server runtime routes: any other it answers with its own 405 before

@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e1186462-1f24-4acf-8ba9-773e17cda3a1",
-  "prevId": "aa8f7f2c-7d0d-4c7b-a224-c35c15aefdc9",
+  "id": "aa8f7f2c-7d0d-4c7b-a224-c35c15aefdc9",
+  "prevId": "c1642d97-7eb7-4167-bb97-20dc68cdd297",
   "tables": {
     "account": {
       "name": "account",
@@ -1875,60 +1875,10 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "mission": {
-          "name": "mission",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "vision": {
-          "name": "vision",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "brand_colour": {
-          "name": "brand_colour",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "social_links": {
-          "name": "social_links",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'[]'"
-        },
-        "logo_image_id": {
-          "name": "logo_image_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "org_profile_logo_image_id_image_id_fk": {
-          "name": "org_profile_logo_image_id_image_id_fk",
-          "tableFrom": "org_profile",
-          "tableTo": "image",
-          "columnsFrom": [
-            "logo_image_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
@@ -1975,22 +1925,6 @@
         "org_profile_deductibility_statement_not_blank_check": {
           "name": "org_profile_deductibility_statement_not_blank_check",
           "value": "\"org_profile\".\"deductibility_statement\" is null or trim(\"org_profile\".\"deductibility_statement\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
-        },
-        "org_profile_mission_not_blank_check": {
-          "name": "org_profile_mission_not_blank_check",
-          "value": "\"org_profile\".\"mission\" is null or trim(\"org_profile\".\"mission\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
-        },
-        "org_profile_vision_not_blank_check": {
-          "name": "org_profile_vision_not_blank_check",
-          "value": "\"org_profile\".\"vision\" is null or trim(\"org_profile\".\"vision\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
-        },
-        "org_profile_brand_colour_check": {
-          "name": "org_profile_brand_colour_check",
-          "value": "\"org_profile\".\"brand_colour\" is null or \"org_profile\".\"brand_colour\" glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'"
-        },
-        "org_profile_social_links_array_check": {
-          "name": "org_profile_social_links_array_check",
-          "value": "json_valid(\"org_profile\".\"social_links\") and json_type(\"org_profile\".\"social_links\") = 'array'"
         }
       }
     },
@@ -2305,6 +2239,20 @@
         "provider_reference": {
           "name": "provider_reference",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notice_owed_since": {
+          "name": "notice_owed_since",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notice_maybe_sent_at": {
+          "name": "notice_maybe_sent_at",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

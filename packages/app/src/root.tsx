@@ -168,6 +168,22 @@ export function ErrorBoundary() {
 		);
 	}
 
+	// a donor can do nothing with the sentence a failure was thrown with or with the deployment's
+	// logs — both are staff's — so on the donor's page the face says only that the page did not load
+	// and what the donor can do about it.
+	if (onDonorPage) {
+		const title = 'This donation page couldn’t load';
+		return (
+			<>
+				{sheet}
+				{tab(title)}
+				<ErrorPanel code="500" title={title}>
+					Please try again in a moment.
+				</ErrorPanel>
+			</>
+		);
+	}
+
 	const title = 'This deployment could not answer';
 	return (
 		<>

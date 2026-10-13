@@ -174,6 +174,23 @@ describe('parseContact — blanks and whitespace', () => {
 		expect(contact.displayName).toBe('Ada Okafor');
 	});
 
+	it('folds a name sent across several lines onto one', () => {
+		const contact = parsed({
+			kind: 'individual',
+			first_name: 'Ann\r\nMarie',
+			last_name: 'Okafor\u0085X',
+			display_name: 'Ann\n\nOkafor'
+		});
+		expect(contact).toMatchObject({
+			firstName: 'Ann Marie',
+			lastName: 'Okafor X',
+			displayName: 'Ann Okafor'
+		});
+		expect(parsed({ kind: 'organization', legal_name: 'Kigali\nTrust' }).legalName).toBe(
+			'Kigali Trust'
+		);
+	});
+
 	it('stores an omitted optional as null, never an empty string', () => {
 		// `''` in a nullable column is a third state that every downstream `is null` check
 		// misses — the list would render an empty email as present.

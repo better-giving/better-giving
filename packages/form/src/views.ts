@@ -988,6 +988,14 @@ function oneTimeFrequency(state: State & { readonly step: 'give' }): 'monthly' |
 /** the id the payment box's header carries, which the box is named by while it stands. */
 const PAYMENT_HEADING = 'payment-heading';
 
+/**
+ * a sentence a moment on a numbered step said, rather than one the step says while it stands.
+ *
+ * `restating` names what it states that a later patch on the same step can make false — the total
+ * it read out, or the fields it asked for — and it is said no longer than that stands.
+ */
+type News = { readonly words: string; readonly restating?: 'total' | 'fields' };
+
 /** the whole card, and everything that patches it. */
 export type CardView = {
 	readonly root: HTMLElement;
@@ -1129,9 +1137,9 @@ export function createCard(
 	/**
 	 * whether the sentence this patch writes is one a press has just asked for again.
 	 *
-	 * the review step's refusal is the only one, and a second press is why: the words do not change,
-	 * so nothing about them says a donor pressed again. set by the press and spent by the patch it
-	 * asked for — see the Donate handler below and `say` above.
+	 * a refusal said again on a second press is why: the words do not change, so nothing about them
+	 * says a donor pressed again. set by the Continue and Donate handlers below and spent by the
+	 * patch they asked for — see `say` above.
 	 */
 	let repeated = false;
 	/**
@@ -1173,16 +1181,19 @@ export function createCard(
 	 */
 	let madeOneTime = false;
 	/**
-	 * the sentence the region is holding for the takeover heading it was said under, or nothing.
+	 * the sentence the region is holding for the heading it was said under, or nothing.
 	 *
-	 * two sentences are kept this way, the retitled heading and a Copy's outcome, each set where it is
-	 * said: either stays until the heading it was said under changes or another sentence replaces it,
-	 * and a new snapshot alone never clears it. every other sentence lasts the patch that chose it.
-	 * the address screen's reading loop is a new snapshot every few seconds with nothing to say, and
-	 * one landing in the same instant the address closes would otherwise empty the sentence as it is
-	 * written. `say` in `update` below is where it is spent.
+	 * the sentences a moment says are kept this way — the retitled heading, a Copy's outcome, and on
+	 * the numbered steps each `News` in `update` below: each stays until the heading it was said
+	 * under changes, another sentence replaces it, what it `restating` names moves or a press asks
+	 * for a repeat (`repeated`), and a new snapshot alone never clears it. a sentence the card says
+	 * while something stands — a refusal still unanswered, the wait — is said again by every patch
+	 * and needs no keeping. the address screen's reading loop is a new snapshot every few seconds
+	 * with nothing to say, and the provider's fields and the challenge widget report whenever they
+	 * finish; one landing in the same instant would otherwise empty the sentence as it is written.
+	 * `say` in `update` below is where it is spent.
 	 */
-	let held: { words: string; on: string } | null = null;
+	let held: (News & { on: string }) | null = null;
 	/** whether the last patch drew the offer of a one-time gift, which is what tells it arriving. */
 	let offerDrawn = false;
 	/** the screen on the card, which is what a busy flow stays on and what motion reports against. */
@@ -2965,18 +2976,16 @@ export function createCard(
 		// the amount step's two hang off a `<fieldset>` and the refused press puts the caret on a
 		// radio inside one — a group's description is not reliably announced from a descendant, so
 		// that refusal is on this channel however the press was made. the details step's are on the
-		// fields themselves and a field announces itself on arrival, so its sentence is here only
+		// fields themselves and a field announces itself on arrival, so its sentence is said only
 		// for the press that moved no caret and had no other channel — `unmoved`, decided by the
 		// press rather than by this patch.
 		//
 		// the note is not among them: its sentence is on the control itself, and the caret lands
 		// there where it is the decision the press was refused for. a copy here would be twice.
-		const askedFor = [
-			missingAmount ? spokenRefusal(entryLabel, amountProblem) : '',
-			unmoved ? missingFields : ''
-		]
-			.filter((sentence) => sentence !== '')
-			.join(', ');
+		//
+		// the details step's is among the `News` below rather than here: the amount step's is said by
+		// every patch while a decision is missing, and that one only by the press that moved no caret.
+		const askedFor = missingAmount ? spokenRefusal(entryLabel, amountProblem) : '';
 
 		for (const node of [continueButton, detailsContinue]) {
 			toggleAttribute(node, 'aria-busy', busy ? 'true' : null);
@@ -3016,26 +3025,41 @@ export function createCard(
 		// least likely to see the figure that moved.
 		//
 		// the retitled heading last: a screen's own sentence and the wait's both say more than its
-		// heading does. it and a Copy's outcome are `held` past the patch that said them.
-		const spoken =
+		// heading does. it, a Copy's outcome and every `News` are `held` past the patch that said them.
+		const standing =
 			screen.announce !== ''
 				? screen.announce
 				: askedFor !== ''
 					? askedFor
 					: refusedPayment
 						? PAYMENT_PROBLEM
-						: offerArrived !== ''
-							? offerArrived
-							: madeOneTime
-								? MADE_ONE_TIME
-								: flipped
-									? totalWords
-									: busy
-										? workingWords(api.state)
-										: '';
-		if (spoken !== '') held = null;
-		else if (retitled) held = { words: `${screen.heading}.`, on: screen.heading };
-		else if (held?.on !== screen.heading) held = null;
+						: '';
+		const news: News | null =
+			unmoved && missingFields !== ''
+				? { words: missingFields, restating: 'fields' }
+				: offerArrived !== ''
+					? { words: offerArrived }
+					: madeOneTime
+						? { words: MADE_ONE_TIME }
+						: flipped
+							? { words: totalWords, restating: 'total' }
+							: null;
+		const spoken =
+			standing !== '' ? standing : news !== null ? news.words : busy ? workingWords(api.state) : '';
+		const heading = headings[step].textContent ?? '';
+		const restated = { total: totalWords, fields: missingFields };
+		// a press asking for a repeat re-says only what it chose. a sentence kept from before it is
+		// spent here: said again beside the refusal the press put somewhere else — the coin list's —
+		// it is old news read out as the press's answer.
+		if (standing === '' && news !== null) held = { ...news, on: heading };
+		else if (spoken !== '' || repeated) held = null;
+		else if (retitled) held = { words: `${screen.heading}.`, on: heading };
+		else if (
+			held?.on !== heading ||
+			(held.restating !== undefined && restated[held.restating] !== held.words)
+		) {
+			held = null;
+		}
 		say(spoken !== '' ? spoken : (held?.words ?? ''), repeated);
 		repeated = false;
 		unmoved = false;
@@ -3203,6 +3227,10 @@ export function createCard(
 	 *
 	 * the refusal outranks the decline where both stand. the refusal names something the donor can
 	 * do next; the decline names what happened last.
+	 *
+	 * and the offer of a one-time gift ends it: the offer takes this box off the step
+	 * (`updateOneTimeOffer` below), so a refusal still standing would ask the donor for a rail in a
+	 * box they can no longer see, and outrank the offer that is the one thing they can do.
 	 */
 	function updatePayment(api: DomApi): boolean {
 		const { state } = api;
@@ -3210,7 +3238,11 @@ export function createCard(
 		// a crypto press is refused for its coin, and the coin list says so under itself instead
 		// (`updateCoins` below): the rail is chosen, so this box has nothing to say about it.
 		const refused =
-			pressed && state.step === 'give' && !state.payerComplete && state.method !== 'crypto';
+			pressed &&
+			state.step === 'give' &&
+			!state.payerComplete &&
+			state.method !== 'crypto' &&
+			!state.oneTimeInstead;
 		carryDecline(state);
 		// written only on the step this box is on. the node is inside the review step and every
 		// other screen hides that step, so a sentence written here off it is one kept quiet by the

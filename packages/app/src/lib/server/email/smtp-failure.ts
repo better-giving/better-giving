@@ -24,6 +24,8 @@ export interface SmtpFailure {
 	readonly detail: string;
 	/** see `SendResult` — whether the message may have been delivered anyway. */
 	readonly indeterminate: boolean;
+	/** see `SendResult` — the host refused the recipient's mailbox itself. */
+	readonly addressRefused?: true;
 }
 
 /**
@@ -179,13 +181,8 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 	}
 
 	const recipient = RECIPIENT_REFUSED.exec(message)?.[1];
-	if (recipient !== undefined) {
-		return {
-			reason: 'rejected',
-			detail: recipientRefusal(recipient, message),
-			indeterminate: false
-		};
-	}
+	if (recipient !== undefined)
+		return { reason: 'rejected', ...recipientRefusal(recipient, message) };
 
 	if (SENDER_REFUSED.test(message)) {
 		return {
@@ -270,26 +267,34 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 	};
 }
 
-function recipientRefusal(recipient: string, message: string): string {
+function recipientRefusal(
+	recipient: string,
+	message: string
+): Pick<SmtpFailure, 'detail' | 'indeterminate' | 'addressRefused'> {
 	const refused = `The mail host refused the recipient ${recipient}: ${message}. `;
 	const [, basic, enhanced] = RECIPIENT_REPLY.exec(message) ?? [];
 	if (enhanced !== undefined && POLICY_STATUS.test(enhanced)) {
-		return (
-			refused +
-			'The host will not carry mail to this address for this connection, so the address is ' +
-			'not what is wrong. Check that `SMTP_USERNAME` and `SMTP_PASSWORD` are set under SMTP on ' +
-			'the console, and that `MAIL_FROM` is an address that login may send as.'
-		);
+		return {
+			detail:
+				refused +
+				'The host will not carry mail to this address for this connection, so the address is ' +
+				'not what is wrong. Check that `SMTP_USERNAME` and `SMTP_PASSWORD` are set under SMTP on ' +
+				'the console, and that `MAIL_FROM` is an address that login may send as.',
+			indeterminate: false
+		};
 	}
 	if ((enhanced !== undefined && MAILBOX_STATUS.test(enhanced)) || basic === '553') {
-		return (
-			refused +
-			'Check that the address is spelled right and still exists. Many hosts refuse an address ' +
-			'with accented or non-Latin letters before the @ when this deployment sends to it. ' +
-			'Nothing in the mail settings needs changing for this.'
-		);
+		return {
+			detail:
+				refused +
+				'Check that the address is spelled right and still exists. Many hosts refuse an address ' +
+				'with accented or non-Latin letters before the @ when this deployment sends to it. ' +
+				'Nothing in the mail settings needs changing for this.',
+			indeterminate: false,
+			addressRefused: true
+		};
 	}
-	return `${refused}The host's reply says why.`;
+	return { detail: `${refused}The host's reply says why.`, indeterminate: false };
 }
 
 /**

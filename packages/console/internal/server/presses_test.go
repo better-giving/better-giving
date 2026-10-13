@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/stripe"
@@ -53,7 +54,16 @@ func TestTheProcessorSetupStillGoingIsNamedByTheStageItIsIn(t *testing.T) {
 	if !going || said != "the payments setup is still running (publishing)" {
 		t.Errorf("going = %q, %v, want the stage the press is in", said, going)
 	}
+
+	// the run holds the hangup until it ends, so it ends inside this case rather than after it.
 	close(gate)
+	deadline := time.Now().Add(3 * time.Second)
+	for _, going := stripeGoing(runs); going; _, going = stripeGoing(runs) {
+		if time.Now().After(deadline) {
+			t.Fatal("the press was let go and is still reported as going")
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // a stop is heard by every wait a press is making for the edge, and a second one is no panic.

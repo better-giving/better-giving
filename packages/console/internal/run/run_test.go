@@ -112,11 +112,19 @@ func TestTheNextPressClearsTheOutcomeTheLastOneLeft(t *testing.T) {
 		func(context.Context) ended { return ended{Kind: "stopped"} }, gone)
 	settle(t, holder)
 
-	going, started := holder.Start(context.Background(), where{Step: "afresh"},
-		func(context.Context) ended { return ended{Kind: "done"} }, gone)
-	if !started || going.Outcome != nil {
-		t.Errorf("going = %+v, started = %v, want the press that cleared the last outcome", going, started)
+	// the next chain is held, so the reading below is taken while it is going.
+	gate := make(chan struct{})
+	if _, started := holder.Start(context.Background(), where{Step: "afresh"},
+		func(context.Context) ended {
+			<-gate
+			return ended{Kind: "done"}
+		}, gone); !started {
+		t.Fatal("the next press started nothing")
 	}
+	if going := holder.Read(); going == nil || !going.Running || going.Outcome != nil {
+		t.Errorf("reading = %+v, want the press that cleared the last outcome", going)
+	}
+	close(gate)
 	settle(t, holder)
 	if landed := holder.Read(); landed.Outcome.Kind != "done" {
 		t.Errorf("landed = %+v", landed)

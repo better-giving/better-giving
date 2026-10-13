@@ -1,8 +1,8 @@
 {
-  "id": "2420382a-f3ec-4ea4-b8e0-39dd25e10246",
-  "prevId": "3094cd0d-980f-41a4-bcd7-e061183f6531",
   "version": "6",
   "dialect": "sqlite",
+  "id": "3094cd0d-980f-41a4-bcd7-e061183f6531",
+  "prevId": "e1186462-1f24-4acf-8ba9-773e17cda3a1",
   "tables": {
     "account": {
       "name": "account",
@@ -123,15 +123,15 @@
         "account_parent_id_account_id_fk": {
           "name": "account_parent_id_account_id_fk",
           "tableFrom": "account",
+          "tableTo": "account",
           "columnsFrom": [
             "parent_id"
           ],
-          "tableTo": "account",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -250,8 +250,8 @@
           "columns": [
             "kind"
           ],
-          "where": "\"api_key\".\"kind\" = 'zapier' and \"api_key\".\"revoked_at\" is null",
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"api_key\".\"kind\" = 'zapier' and \"api_key\".\"revoked_at\" is null"
         }
       },
       "foreignKeys": {},
@@ -380,15 +380,15 @@
         "chat_turn_page_id_page_id_fk": {
           "name": "chat_turn_page_id_page_id_fk",
           "tableFrom": "chat_turn",
+          "tableTo": "page",
           "columnsFrom": [
             "page_id"
           ],
-          "tableTo": "page",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -541,8 +541,8 @@
             "created_at",
             "id"
           ],
-          "where": "\"contact\".\"archived_at\" is null",
-          "isUnique": false
+          "isUnique": false,
+          "where": "\"contact\".\"archived_at\" is null"
         },
         "contact_unarchived_updated_at_idx": {
           "name": "contact_unarchived_updated_at_idx",
@@ -550,8 +550,8 @@
             "updated_at",
             "id"
           ],
-          "where": "\"contact\".\"archived_at\" is null",
-          "isUnique": false
+          "isUnique": false,
+          "where": "\"contact\".\"archived_at\" is null"
         }
       },
       "foreignKeys": {},
@@ -643,15 +643,15 @@
         "dispute_payment_id_payment_id_fk": {
           "name": "dispute_payment_id_payment_id_fk",
           "tableFrom": "dispute",
+          "tableTo": "payment",
           "columnsFrom": [
             "payment_id"
           ],
-          "tableTo": "payment",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -873,54 +873,54 @@
         "donation_contact_id_contact_id_fk": {
           "name": "donation_contact_id_contact_id_fk",
           "tableFrom": "donation",
+          "tableTo": "contact",
           "columnsFrom": [
             "contact_id"
           ],
-          "tableTo": "contact",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "donation_form_id_form_id_fk": {
           "name": "donation_form_id_form_id_fk",
           "tableFrom": "donation",
+          "tableTo": "form",
           "columnsFrom": [
             "form_id"
           ],
-          "tableTo": "form",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "donation_recurring_id_recurring_plan_id_fk": {
           "name": "donation_recurring_id_recurring_plan_id_fk",
           "tableFrom": "donation",
+          "tableTo": "recurring_plan",
           "columnsFrom": [
             "recurring_id"
           ],
-          "tableTo": "recurring_plan",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "donation_program_id_program_id_fk": {
           "name": "donation_program_id_program_id_fk",
           "tableFrom": "donation",
+          "tableTo": "program",
           "columnsFrom": [
             "program_id"
           ],
-          "tableTo": "program",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1179,30 +1179,30 @@
         "form_program_id_program_id_fk": {
           "name": "form_program_id_program_id_fk",
           "tableFrom": "form",
+          "tableTo": "program",
           "columnsFrom": [
             "program_id"
           ],
-          "tableTo": "program",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "form_revenue_account_id_revenue_account_is_postable_account_id_is_postable_fk": {
           "name": "form_revenue_account_id_revenue_account_is_postable_account_id_is_postable_fk",
           "tableFrom": "form",
+          "tableTo": "account",
           "columnsFrom": [
             "revenue_account_id",
             "revenue_account_is_postable"
           ],
-          "tableTo": "account",
           "columnsTo": [
             "id",
             "is_postable"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1379,15 +1379,15 @@
         "image_bytes_image_id_image_id_fk": {
           "name": "image_bytes_image_id_image_id_fk",
           "tableFrom": "image_bytes",
+          "tableTo": "image",
           "columnsFrom": [
             "image_id"
           ],
-          "tableTo": "image",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1459,30 +1459,30 @@
         "ledger_entry_entry_group_id_entry_group_id_fk": {
           "name": "ledger_entry_entry_group_id_entry_group_id_fk",
           "tableFrom": "ledger_entry",
+          "tableTo": "entry_group",
           "columnsFrom": [
             "entry_group_id"
           ],
-          "tableTo": "entry_group",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "ledger_entry_account_id_account_is_postable_account_id_is_postable_fk": {
           "name": "ledger_entry_account_id_account_is_postable_account_id_is_postable_fk",
           "tableFrom": "ledger_entry",
+          "tableTo": "account",
           "columnsFrom": [
             "account_id",
             "account_is_postable"
           ],
-          "tableTo": "account",
           "columnsTo": [
             "id",
             "is_postable"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1581,30 +1581,30 @@
         "line_item_donation_id_donation_id_fk": {
           "name": "line_item_donation_id_donation_id_fk",
           "tableFrom": "line_item",
+          "tableTo": "donation",
           "columnsFrom": [
             "donation_id"
           ],
-          "tableTo": "donation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "line_item_revenue_account_id_revenue_account_is_postable_account_id_is_postable_fk": {
           "name": "line_item_revenue_account_id_revenue_account_is_postable_account_id_is_postable_fk",
           "tableFrom": "line_item",
+          "tableTo": "account",
           "columnsFrom": [
             "revenue_account_id",
             "revenue_account_is_postable"
           ],
-          "tableTo": "account",
           "columnsTo": [
             "id",
             "is_postable"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1772,15 +1772,15 @@
         "org_profile_logo_image_id_image_id_fk": {
           "name": "org_profile_logo_image_id_image_id_fk",
           "tableFrom": "org_profile",
+          "tableTo": "image",
           "columnsFrom": [
             "logo_image_id"
           ],
-          "tableTo": "image",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1949,31 +1949,31 @@
           "columns": [
             "slug"
           ],
-          "where": "\"page\".\"slug\" is not null",
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"page\".\"slug\" is not null"
         },
         "page_one_donation_page_idx": {
           "name": "page_one_donation_page_idx",
           "columns": [
             "type"
           ],
-          "where": "\"page\".\"type\" = 'donation_page'",
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"page\".\"type\" = 'donation_page'"
         }
       },
       "foreignKeys": {
         "page_form_id_form_id_fk": {
           "name": "page_form_id_form_id_fk",
           "tableFrom": "page",
+          "tableTo": "form",
           "columnsFrom": [
             "form_id"
           ],
-          "tableTo": "form",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2162,6 +2162,20 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "notice_owed_since": {
+          "name": "notice_owed_since",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notice_maybe_sent_at": {
+          "name": "notice_maybe_sent_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -2185,8 +2199,8 @@
             "provider",
             "created_at"
           ],
-          "where": "\"payment\".\"method\" = 'crypto' and \"payment\".\"status\" = 'pending'",
-          "isUnique": false
+          "isUnique": false,
+          "where": "\"payment\".\"method\" = 'crypto' and \"payment\".\"status\" = 'pending'"
         },
         "payment_settled_gift_occurred_at_idx": {
           "name": "payment_settled_gift_occurred_at_idx",
@@ -2194,8 +2208,8 @@
             "occurred_at",
             "id"
           ],
-          "where": "\"payment\".\"status\" = 'succeeded' and \"payment\".\"direction\" = 'inbound'",
-          "isUnique": false
+          "isUnique": false,
+          "where": "\"payment\".\"status\" = 'succeeded' and \"payment\".\"direction\" = 'inbound'"
         },
         "payment_settled_gift_created_at_idx": {
           "name": "payment_settled_gift_created_at_idx",
@@ -2203,8 +2217,8 @@
             "created_at",
             "id"
           ],
-          "where": "\"payment\".\"status\" = 'succeeded' and \"payment\".\"direction\" = 'inbound'",
-          "isUnique": false
+          "isUnique": false,
+          "where": "\"payment\".\"status\" = 'succeeded' and \"payment\".\"direction\" = 'inbound'"
         },
         "payment_refund_created_at_idx": {
           "name": "payment_refund_created_at_idx",
@@ -2212,8 +2226,8 @@
             "created_at",
             "parent_payment_id"
           ],
-          "where": "\"payment\".\"direction\" = 'refund'",
-          "isUnique": false
+          "isUnique": false,
+          "where": "\"payment\".\"direction\" = 'refund'"
         },
         "payment_provider_txn_idx": {
           "name": "payment_provider_txn_idx",
@@ -2228,28 +2242,28 @@
         "payment_donation_id_donation_id_fk": {
           "name": "payment_donation_id_donation_id_fk",
           "tableFrom": "payment",
+          "tableTo": "donation",
           "columnsFrom": [
             "donation_id"
           ],
-          "tableTo": "donation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "payment_parent_payment_id_payment_id_fk": {
           "name": "payment_parent_payment_id_payment_id_fk",
           "tableFrom": "payment",
+          "tableTo": "payment",
           "columnsFrom": [
             "parent_payment_id"
           ],
-          "tableTo": "payment",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2399,15 +2413,15 @@
         "program_image_id_image_id_fk": {
           "name": "program_image_id_image_id_fk",
           "tableFrom": "program",
+          "tableTo": "image",
           "columnsFrom": [
             "image_id"
           ],
-          "tableTo": "image",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2808,15 +2822,15 @@
         "quickbooks_sync_entry_group_id_entry_group_id_fk": {
           "name": "quickbooks_sync_entry_group_id_entry_group_id_fk",
           "tableFrom": "quickbooks_sync",
+          "tableTo": "entry_group",
           "columnsFrom": [
             "entry_group_id"
           ],
-          "tableTo": "entry_group",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2990,28 +3004,28 @@
         "recurring_plan_contact_id_contact_id_fk": {
           "name": "recurring_plan_contact_id_contact_id_fk",
           "tableFrom": "recurring_plan",
+          "tableTo": "contact",
           "columnsFrom": [
             "contact_id"
           ],
-          "tableTo": "contact",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "recurring_plan_form_id_form_id_fk": {
           "name": "recurring_plan_form_id_form_id_fk",
           "tableFrom": "recurring_plan",
+          "tableTo": "form",
           "columnsFrom": [
             "form_id"
           ],
-          "tableTo": "form",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3263,15 +3277,15 @@
         "webhook_delivery_destination_id_webhook_destination_id_fk": {
           "name": "webhook_delivery_destination_id_webhook_destination_id_fk",
           "tableFrom": "webhook_delivery",
+          "tableTo": "webhook_destination",
           "columnsFrom": [
             "destination_id"
           ],
-          "tableTo": "webhook_destination",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3413,15 +3427,15 @@
         "webhook_destination_event_destination_id_webhook_destination_id_fk": {
           "name": "webhook_destination_event_destination_id_webhook_destination_id_fk",
           "tableFrom": "webhook_destination_event",
+          "tableTo": "webhook_destination",
           "columnsFrom": [
             "destination_id"
           ],
-          "tableTo": "webhook_destination",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -3541,28 +3555,28 @@
         "zapier_delivery_subscription_id_zapier_subscription_id_fk": {
           "name": "zapier_delivery_subscription_id_zapier_subscription_id_fk",
           "tableFrom": "zapier_delivery",
+          "tableTo": "zapier_subscription",
           "columnsFrom": [
             "subscription_id"
           ],
-          "tableTo": "zapier_subscription",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "zapier_delivery_payment_id_payment_id_fk": {
           "name": "zapier_delivery_payment_id_payment_id_fk",
           "tableFrom": "zapier_delivery",
+          "tableTo": "payment",
           "columnsFrom": [
             "payment_id"
           ],
-          "tableTo": "payment",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -3660,8 +3674,8 @@
           "columns": [
             "hook_url"
           ],
-          "where": "\"zapier_subscription\".\"ended_at\" is null",
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"zapier_subscription\".\"ended_at\" is null"
         }
       },
       "foreignKeys": {},
@@ -3794,15 +3808,15 @@
         "auth_account_user_id_auth_user_id_fk": {
           "name": "auth_account_user_id_auth_user_id_fk",
           "tableFrom": "auth_account",
+          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3972,15 +3986,15 @@
         "auth_session_user_id_auth_user_id_fk": {
           "name": "auth_session_user_id_auth_user_id_fk",
           "tableFrom": "auth_session",
+          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4160,9 +4174,9 @@
   "views": {},
   "enums": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
+    "tables": {},
+    "columns": {}
   },
   "internal": {
     "indexes": {

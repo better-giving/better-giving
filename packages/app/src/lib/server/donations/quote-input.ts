@@ -11,6 +11,7 @@ import { EMAIL, MAX_EMAIL, MAX_NAME } from '../../contacts/input-schema';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
 import {
 	parseContact,
+	WHITESPACE_RUN,
 	type ContactFormValues,
 	type ParsedContact
 } from '../contacts/contact-input';
@@ -391,12 +392,6 @@ const TRIBUTE_KIND = z.enum(TRIBUTE_KINDS, {
 });
 
 const TRIBUTE_KIND_FIX = `Send one of ${quoted(TRIBUTE_KINDS)} together with \`tributeHonoree\`, or leave every tribute field out.`;
-
-/**
- * every run of whitespace, line breaks included. `\s` is unicode-aware but leaves out U+0085, which
- * some mail and text tooling still reads as a line break.
- */
-const WHITESPACE_RUN = /[\s\u0085]+/g;
 
 /**
  * one submitted tribute string, bounded and trimmed, where `''` is a box the donor left alone.

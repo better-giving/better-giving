@@ -158,6 +158,22 @@ const cleanText = z
 	});
 
 /**
+ * every run of whitespace, line breaks included. `\s` is unicode-aware but leaves out U+0085, which
+ * some mail and text tooling still reads as a line break.
+ */
+export const WHITESPACE_RUN = /[\s\u0085]+/g;
+
+/**
+ * `cleanText` for a name, folded to one line first. a name is a single line on every surface that
+ * carries it — the receipt, an export, webhooks, Zapier, the integrations API — and a direct
+ * `/api/v1` caller can send a CR/LF no box on a form can type.
+ */
+const cleanName = z
+	.string()
+	.optional()
+	.transform((value) => cleanText.parse(value?.replace(WHITESPACE_RUN, ' ')));
+
+/**
  * the shape stage: every submitted field trimmed, with a blank already `null`.
  *
  * it cannot fail on a `ContactFormValues` — every key there is optional and `cleanText` reads an
@@ -169,10 +185,10 @@ const cleanText = z
  * one pass is the point (see "reports every bad field at once" in ./contact-input.spec.ts).
  */
 const CLEAN_FIELDS = z.object({
-	first_name: cleanText,
-	last_name: cleanText,
-	legal_name: cleanText,
-	display_name: cleanText,
+	first_name: cleanName,
+	last_name: cleanName,
+	legal_name: cleanName,
+	display_name: cleanName,
 	primary_email: cleanText,
 	primary_phone: cleanText
 });

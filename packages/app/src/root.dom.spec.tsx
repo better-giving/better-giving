@@ -186,7 +186,7 @@ describe.each(DONOR_PAGES)('on the donor page $at', (donorPage) => {
 		[
 			'a failure',
 			new Error('the database is not answering'),
-			'This deployment could not answer · Donate'
+			'This donation page couldn’t load · Donate'
 		]
 	])('titles the document after %s without the project name', async (_face, thrown, title) => {
 		await boundaryOver(thrown, donorPage);
@@ -222,3 +222,20 @@ it('draws a 5xx response as the deployment failing, with its sentence', async ()
 	expect(root.textContent).toContain('BETTER_AUTH_URL is not set.');
 	expect(root.querySelectorAll('a, button')).toHaveLength(0);
 });
+
+/** a donor is told the page did not load and what to do, never the deployment's words or its logs. */
+it.each(DONOR_PAGES)(
+	'tells a donor on $at the page could not load, with none of the sentence staff are told',
+	async (donorPage) => {
+		const root = await boundaryOver(
+			data('`BETTER_AUTH_URL` is not set.', { status: 503 }),
+			donorPage
+		);
+
+		expect(root.querySelector('h1')?.textContent).toBe('This donation page couldn’t load');
+		expect(root.textContent).toContain('Please try again in a moment.');
+		expect(root.textContent).not.toContain('BETTER_AUTH_URL');
+		expect(root.textContent).not.toContain('deployment');
+		expect(root.querySelectorAll('a, button')).toHaveLength(0);
+	}
+);

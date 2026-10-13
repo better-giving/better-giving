@@ -80,6 +80,8 @@ type Answers = {
 	readonly stripe?: (() => Promise<StripeLike | null>) | undefined;
 	readonly paypal?: (() => Promise<PaypalNamespaceLike | null>) | undefined;
 	readonly eligible?: readonly string[];
+	/** what PayPal's read for a repeating gift answers, where it differs from the one-time read. */
+	readonly eligibleToRepeat?: readonly string[];
 	readonly hasReturned?: boolean;
 };
 
@@ -127,6 +129,7 @@ function kit(answers: Answers = {}): Kit {
 	};
 
 	const eligible = answers.eligible ?? ['paypal', 'venmo'];
+	const eligibleToRepeat = answers.eligibleToRepeat ?? eligible;
 	const session = (options: SessionOptionsLike) => {
 		paypalSessions.push(options);
 		return {
@@ -141,12 +144,15 @@ function kit(answers: Answers = {}): Kit {
 		};
 	};
 	const sdk: PaypalSdkLike = {
-		findEligibleMethods: () =>
-			Promise.resolve({
-				isEligible: (method: string) => eligible.includes(method)
-			} satisfies EligibilityLike),
+		findEligibleMethods: (options) => {
+			const answer = options.paymentFlow === 'RECURRING_PAYMENT' ? eligibleToRepeat : eligible;
+			return Promise.resolve({
+				isEligible: (method: string) => answer.includes(method)
+			} satisfies EligibilityLike);
+		},
 		createPayPalOneTimePaymentSession: session,
-		createVenmoOneTimePaymentSession: session
+		createVenmoOneTimePaymentSession: session,
+		createPayPalSubscriptionPaymentSession: session
 	};
 	const namespace: PaypalNamespaceLike = { createInstance: () => Promise.resolve(sdk) };
 
@@ -341,6 +347,23 @@ describe('one payment surface over however many processors a config names', () =
 			surface.repeatingUnavailable(() => said.push(1));
 			expect(k.unavailable).toHaveLength(1);
 			expect(said).toHaveLength(0);
+		});
+
+		// PayPal is up and still takes the one-time gift, but its row is kept off a repeat it cannot
+		// start, so the box a donor on Monthly sees holds nothing to press.
+		it('says a repeating gift cannot be paid where PayPal, the only rail taking one, cannot start it', async () => {
+			const k = kit({ eligibleToRepeat: [] });
+			const surface = await composed(k, {
+				...CONFIG,
+				providers: [{ name: 'paypal', publishableKey: 'live_client_id' }],
+				frequencies: ['one_time', 'monthly'],
+				paymentMethods: ['paypal', 'venmo']
+			});
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const said: number[] = [];
+			surface.repeatingUnavailable(() => said.push(1));
+			expect(said).toHaveLength(1);
+			expect(k.unavailable).toHaveLength(0);
 		});
 
 		// a form offering no one-time gift has no gift these rails can take at all.

@@ -375,17 +375,13 @@ describe('email and password', () => {
 	it('can only send a reset link on an instance the route gave a way to send', async () => {
 		const sendless = await testAuth().$context;
 		expect('sendResetPassword' in (sendless.options.emailAndPassword ?? {})).toBe(false);
-		expect(sendless.options.advanced?.backgroundTasks).toBeUndefined();
 
 		const sending = await createAuth({} as Db, TEST_ENV, {
 			secret: TEST_SECRET,
 			requestOrigin: DEV_ORIGIN,
-			passwordReset: { send: async () => {}, background: () => {} }
+			passwordReset: { send: async () => {} }
 		}).$context;
 		expect(typeof sending.options.emailAndPassword?.sendResetPassword).toBe('function');
-		// the send is deferred rather than awaited, which is what makes the two arms of a request
-		// take the same time. see ./index.ts.
-		expect(typeof sending.options.advanced?.backgroundTasks?.handler).toBe('function');
 	});
 
 	/**

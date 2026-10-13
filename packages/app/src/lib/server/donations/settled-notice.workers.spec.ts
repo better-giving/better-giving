@@ -88,13 +88,13 @@ describe('sendSettledNotice()', () => {
 	it('carries the donor’s own note', async () => {
 		const text = await noticeFor({ note: 'For the new roof, with thanks.' });
 
-		expect(text).toContain('For the new roof, with thanks.');
+		expect(text).toContain('Message: For the new roof, with thanks.');
 	});
 
 	it('says neither where the gift carries neither', async () => {
 		const text = await noticeFor();
 
 		expect(text).not.toContain('Dedication');
-		expect(text).not.toContain('Note');
+		expect(text).not.toContain('Message');
 	});
 });

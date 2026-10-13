@@ -1,5 +1,5 @@
 -- a page document whose own look was saved by the dashboard's settings sheet, in the release that
--- shipped 0023, holds it as `{shade, corner, brandColour}`, `brandColour` always present as null or
+-- shipped 0024, holds it as `{shade, corner, brandColour}`, `brandColour` always present as null or
 -- a hex, and a look the earlier page rule took may be held as JSON null. the page rule now reads a
 -- look as a shade and a corner and nothing else, never null (`src/lib/page/catalog.ts`), so either
 -- document is refused on read: donors get the donation box alone, and a campaign whose draft and

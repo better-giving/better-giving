@@ -1,8 +1,13 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
-import { authAccount, authMemberInvitation, authUser } from '$lib/server/db/auth-schema';
+import {
+	authAccount,
+	authMemberInvitation,
+	authSession,
+	authUser
+} from '$lib/server/db/auth-schema';
 import type { Auth } from './index';
 import { createAuth } from './index';
 import {
@@ -68,6 +73,52 @@ async function seedStaffUser(): Promise<void> {
 		emailVerified: true,
 		createdAt: NOW,
 		updatedAt: NOW
+	});
+}
+
+/** the instance under test, with `between` run after its sign-up has written the account. */
+function signUpThen(between: () => Promise<unknown>): Auth {
+	return {
+		...auth,
+		api: {
+			...auth.api,
+			signUpEmail: (async (...args: Parameters<Auth['api']['signUpEmail']>) => {
+				const signedUp = await auth.api.signUpEmail(...args);
+				await between();
+				return signedUp;
+			}) as Auth['api']['signUpEmail']
+		}
+	};
+}
+
+/**
+ * the binding with one D1 hiccup in it: a user delete sent as a round trip of its own fails,
+ * while the same statement inside a `batch()` runs.
+ */
+function loneUserDeleteFails(d1: D1Database): D1Database {
+	return new Proxy(d1, {
+		get(target, key) {
+			if (key === 'prepare') {
+				return (query: string) => {
+					const statement = target.prepare(query);
+					return /^delete from "auth_user"/i.test(query) ? failingAlone(statement) : statement;
+				};
+			}
+			const value: unknown = Reflect.get(target, key, target);
+			return typeof value === 'function' ? value.bind(target) : value;
+		}
+	});
+}
+
+function failingAlone(statement: D1PreparedStatement): D1PreparedStatement {
+	const lost = () => Promise.reject(new Error('D1_ERROR: network connection lost'));
+	const bind = statement.bind.bind(statement);
+	return Object.assign(statement, {
+		bind: (...values: unknown[]) => failingAlone(bind(...values)),
+		run: lost,
+		all: lost,
+		raw: lost,
+		first: lost
 	});
 }
 
@@ -304,6 +355,91 @@ describe('redeemInvitation', () => {
 		expect(await redeem(revoked.token)).toEqual({ ok: false, reason: 'link' });
 
 		expect(await redeem('ab'.repeat(32))).toEqual({ ok: false, reason: 'link' });
+	});
+
+	/**
+	 * a revoke pressed while the colleague is on the form lands between the liveness read and the
+	 * stamp. the sign-up has already written the account by then, so the revoke only holds if the
+	 * redeem takes that account back out and answers as a revoked link does.
+	 */
+	it('takes the account back out when the link is revoked mid-redeem', async () => {
+		const { token } = await invite('priya@example.org');
+		const [row] = await rowsFor('priya@example.org');
+		if (!row) throw new Error('no invitation row');
+		const revokedMidRedeem = signUpThen(() => revokeInvitation(db, { id: row.id, now: NOW }));
+
+		const result = await redeemInvitation(db, revokedMidRedeem, {
+			token,
+			name: 'Priya',
+			password: PASSWORD,
+			headers: new Headers({ origin: ORIGIN }),
+			now: NOW
+		});
+
+		expect(result).toEqual({ ok: false, reason: 'link' });
+		expect(await db.select().from(authUser)).toHaveLength(0);
+		expect(await db.select().from(authAccount)).toHaveLength(0);
+		expect(await db.select().from(authSession)).toHaveLength(0);
+		const [after] = await rowsFor('priya@example.org');
+		expect(after?.acceptedAt).toBeNull();
+	});
+
+	/**
+	 * the other way the stamp can miss: the invitation was accepted in that window, so this account
+	 * is one nothing will ever be stamped for. it goes back out exactly as on a revoke, and the log
+	 * line is what tells an operator it happened.
+	 */
+	it('takes the account back out when the link is used mid-redeem, and logs it', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const { token } = await invite('priya@example.org');
+		const [row] = await rowsFor('priya@example.org');
+		if (!row) throw new Error('no invitation row');
+		const usedMidRedeem = signUpThen(() =>
+			db
+				.update(authMemberInvitation)
+				.set({ acceptedAt: NOW })
+				.where(eq(authMemberInvitation.id, row.id))
+		);
+
+		const result = await redeemInvitation(db, usedMidRedeem, {
+			token,
+			name: 'Priya',
+			password: PASSWORD,
+			headers: new Headers({ origin: ORIGIN }),
+			now: NOW
+		});
+
+		expect(result).toEqual({ ok: false, reason: 'link' });
+		expect(await db.select().from(authUser)).toHaveLength(0);
+		expect(warn.mock.calls).toEqual([
+			['an invitation could not be redeemed: revoked or used while it was redeemed']
+		]);
+	});
+
+	/**
+	 * the take-back rides in the stamp's own `batch()`. a delete sent as a round trip of its own
+	 * can fail after the stamp missed, and the account it should have removed would then sign in
+	 * behind a revoked link.
+	 */
+	it('takes the account back out even when a lone delete would have failed', async () => {
+		const { token } = await invite('priya@example.org');
+		const [row] = await rowsFor('priya@example.org');
+		if (!row) throw new Error('no invitation row');
+
+		const result = await redeemInvitation(
+			createDb(loneUserDeleteFails(env.DB)),
+			signUpThen(() => revokeInvitation(db, { id: row.id, now: NOW })),
+			{
+				token,
+				name: 'Priya',
+				password: PASSWORD,
+				headers: new Headers({ origin: ORIGIN }),
+				now: NOW
+			}
+		);
+
+		expect(result).toEqual({ ok: false, reason: 'link' });
+		expect(await db.select().from(authUser)).toHaveLength(0);
 	});
 
 	it('creates nothing when the link is dead', async () => {

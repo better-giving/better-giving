@@ -29,8 +29,8 @@ import { createDb } from './client';
 // `api_key` is one: `seedApiKeys` writes it in front of the file that rebuilds it, and
 // `webhook_delivery` another, which `seedWebhookDeliveries` writes in front of 0019 and
 // `seedPausedBacklog` in front of 0022, `org_presentation` a third, which `seedOrgPresentation`
-// writes in front of 0025, `page` a fourth, which `seedLegacyLooks` writes in front of 0026 on
-// the forms `seed` wrote for it, and `chat_turn` a fifth, which `seedChat` writes in front of 0027
+// writes in front of 0026, `page` a fourth, which `seedLegacyLooks` writes in front of 0027 on
+// the forms `seed` wrote for it, and `chat_turn` a fifth, which `seedChat` writes in front of 0028
 // beside the images and the page that place them, on the cause and profile `seed` wrote.
 
 const CONTACT_ID = '019fb300-0000-7000-8000-000000000001';
@@ -62,18 +62,18 @@ const WEBHOOK_DELIVERY_REBUILD = env.TEST_MIGRATIONS.findIndex(
 const OWED_ROWS_PARKED_BY = '0022_webhook_delivery_owed_index.sql';
 const OWED_ROWS_PARKING = env.TEST_MIGRATIONS.findIndex((m) => m.name === OWED_ROWS_PARKED_BY);
 
-const ORG_PRESENTATION_DROPPED_BY = '0025_org_presentation_dropped.sql';
+const ORG_PRESENTATION_DROPPED_BY = '0026_org_presentation_dropped.sql';
 const ORG_PRESENTATION_DROP = env.TEST_MIGRATIONS.findIndex(
 	(m) => m.name === ORG_PRESENTATION_DROPPED_BY
 );
-const PAGE_LOOK_REPAIRED_BY = '0026_page_look_legacy_keys.sql';
+const PAGE_LOOK_REPAIRED_BY = '0027_page_look_legacy_keys.sql';
 const PAGE_LOOK_REPAIR = env.TEST_MIGRATIONS.findIndex((m) => m.name === PAGE_LOOK_REPAIRED_BY);
 const LEGACY_LOOK_FORMS = ['frm_legacylookcampaign', 'frm_legacylookdonate'] as const;
 const LEGACY_LOOK_CAMPAIGN = '019fb300-0000-7000-8000-000000000301';
 const LEGACY_LOOK_DONATION_PAGE = '019fb300-0000-7000-8000-000000000302';
 const LEGACY_LOOK_UPDATED_AT = 1_790_000_000_500;
 
-const CHAT_DROPPED_BY = '0027_page_chat_and_illustrations_dropped.sql';
+const CHAT_DROPPED_BY = '0028_page_chat_and_illustrations_dropped.sql';
 const CHAT_DROP = env.TEST_MIGRATIONS.findIndex((m) => m.name === CHAT_DROPPED_BY);
 const CHAT_PAGE_FORM = 'frm_chatpage';
 const CHAT_PAGE = '019fb300-0000-7000-8000-000000000401';
@@ -361,7 +361,7 @@ async function seedOrgPresentation() {
 	]);
 }
 
-/** a page document as the settings sheet in front of 0024 saved it, around the look it was given. */
+/** a page document as the settings sheet in front of 0025 saved it, around the look it was given. */
 const legacyDocument = (look: unknown, rest: Record<string, unknown> = {}) => ({
 	layout: 'box-right',
 	palette: 'tint',
@@ -1022,9 +1022,9 @@ describe('0022 holds the backlog of a destination already paused out of the due 
 	);
 });
 
-// what 0025 is for: the dashboard's organisation page was `org_presentation`'s only reader and
+// what 0026 is for: the dashboard's organisation page was `org_presentation`'s only reader and
 // writer, and the organisation's story, brand colour and logo are `org_profile`'s, so the table goes.
-describe('0025 drops org_presentation', () => {
+describe('0026 drops org_presentation', () => {
 	let after: Map<string, Row[]>;
 	let orgPresentationBefore: Row[];
 	let overSeed: string[];
@@ -1061,9 +1061,9 @@ describe('0025 drops org_presentation', () => {
 	);
 });
 
-// what 0026 is for: a look the settings sheet in front of 0024 saved carries `brandColour`, and a
+// what 0027 is for: a look the settings sheet in front of 0025 saved carries `brandColour`, and a
 // look the earlier rule took may be null, and the page rule refuses both on read.
-describe('0026 reads a page whose look the earlier settings sheet saved', () => {
+describe('0027 reads a page whose look the earlier settings sheet saved', () => {
 	let after: Map<string, Row[]>;
 	let pagesBefore: Row[];
 	let overSeed: string[];
@@ -1088,7 +1088,7 @@ describe('0026 reads a page whose look the earlier settings sheet saved', () => 
 		for (const row of pagesBefore) {
 			expect(
 				read(row, 'draft'),
-				`the seed's ${String(row.type)} draft reads, so 0026 has nothing to repair`
+				`the seed's ${String(row.type)} draft reads, so 0027 has nothing to repair`
 			).toMatchObject({ ok: false, path: ['look'] });
 		}
 	});
@@ -1138,9 +1138,9 @@ describe('0026 reads a page whose look the earlier settings sheet saved', () => 
 	});
 });
 
-// what 0027 is for: the page chat is gone, and with it every image only a chat turn named, while an
+// what 0028 is for: the page chat is gone, and with it every image only a chat turn named, while an
 // image a page, a cause or the logo still draws stays, a photo whatever kind it was made as.
-describe('0027 drops the page chat and the illustration kind', () => {
+describe('0028 drops the page chat and the illustration kind', () => {
 	let after: Map<string, Row[]>;
 	let imagesBefore: Row[];
 	let overSeed: string[];
@@ -1218,4 +1218,27 @@ describe('0027 drops the page chat and the illustration kind', () => {
 			expect(page?.last_published).toContain(CHAT_IMAGES.lastPublished);
 		}
 	);
+});
+
+// what 0023 is for: a refund written before the column arrived was told to its donor on its own
+// delivery or never will be, so none is read as owing a notice (`sendOwedRefundNotices` in
+// ../donations/refund-notice.ts reads only the rows that do).
+describe('0023 owes no notice on a refund already written', () => {
+	let payments: Row[];
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		payments = (await migrateOverSeed()).after.get('payment') ?? [];
+	});
+
+	it.skipIf(nowhereToStop)('leaves every payment already written owing nothing', () => {
+		expect(payments.map((r) => [r.id, r.notice_owed_since, r.notice_maybe_sent_at])).toEqual([
+			['p-card', null, null],
+			['p-refund', null, null],
+			['p-venmo', null, null],
+			['p-daf', null, null],
+			['p-cash', null, null],
+			['p-unknown', null, null]
+		]);
+	});
 });

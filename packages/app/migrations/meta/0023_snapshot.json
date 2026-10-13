@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "aa8f7f2c-7d0d-4c7b-a224-c35c15aefdc9",
+  "id": "c1642d97-7eb7-4167-bb97-20dc68cdd297",
   "prevId": "880b5880-71d0-44fe-b9ea-8980d5955f45",
   "tables": {
     "account": {
@@ -281,146 +281,6 @@
         "api_key_archived_revoked_check": {
           "name": "api_key_archived_revoked_check",
           "value": "\"api_key\".\"archived_at\" is null or \"api_key\".\"revoked_at\" is not null"
-        }
-      }
-    },
-    "chat_turn": {
-      "name": "chat_turn",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "page_id": {
-          "name": "page_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "author": {
-          "name": "author",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "text": {
-          "name": "text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "image_ids": {
-          "name": "image_ids",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'[]'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "questions": {
-          "name": "questions",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "answers": {
-          "name": "answers",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "chat_turn_page_seq_idx": {
-          "name": "chat_turn_page_seq_idx",
-          "columns": [
-            "page_id",
-            "seq"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "chat_turn_page_id_page_id_fk": {
-          "name": "chat_turn_page_id_page_id_fk",
-          "tableFrom": "chat_turn",
-          "tableTo": "page",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "chat_turn_author_check": {
-          "name": "chat_turn_author_check",
-          "value": "\"chat_turn\".\"author\" in ('operator', 'assistant')"
-        },
-        "chat_turn_note_check": {
-          "name": "chat_turn_note_check",
-          "value": "\"chat_turn\".\"note\" is null or (\"chat_turn\".\"author\" = 'assistant' and \"chat_turn\".\"note\" in ('refused', 'fell-back', 'unanswered', 'starter'))"
-        },
-        "chat_turn_model_check": {
-          "name": "chat_turn_model_check",
-          "value": "(\"chat_turn\".\"model\" is not null) = (\"chat_turn\".\"author\" = 'assistant') and (\"chat_turn\".\"model\" is null or trim(\"chat_turn\".\"model\", char(32, 9, 10, 11, 12, 13, 160)) <> '')"
-        },
-        "chat_turn_image_ids_array_check": {
-          "name": "chat_turn_image_ids_array_check",
-          "value": "json_valid(\"chat_turn\".\"image_ids\") and json_type(\"chat_turn\".\"image_ids\") = 'array'"
-        },
-        "chat_turn_text_check": {
-          "name": "chat_turn_text_check",
-          "value": "trim(\"chat_turn\".\"text\", char(32, 9, 10, 11, 12, 13, 160)) <> '' or json_array_length(\"chat_turn\".\"image_ids\") > 0"
-        },
-        "chat_turn_questions_check": {
-          "name": "chat_turn_questions_check",
-          "value": "\"chat_turn\".\"questions\" is null or (\"chat_turn\".\"author\" = 'assistant' and json_valid(\"chat_turn\".\"questions\") and json_type(\"chat_turn\".\"questions\") = 'array' and json_array_length(\"chat_turn\".\"questions\") > 0)"
-        },
-        "chat_turn_answers_check": {
-          "name": "chat_turn_answers_check",
-          "value": "\"chat_turn\".\"answers\" is null or (\"chat_turn\".\"author\" = 'operator' and json_valid(\"chat_turn\".\"answers\") and json_type(\"chat_turn\".\"answers\") = 'array')"
         }
       }
     },
@@ -1266,139 +1126,6 @@
         }
       }
     },
-    "image": {
-      "name": "image",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "content_type": {
-          "name": "content_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "width": {
-          "name": "width",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "height": {
-          "name": "height",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "byte_size": {
-          "name": "byte_size",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "alt": {
-          "name": "alt",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "image_kind_check": {
-          "name": "image_kind_check",
-          "value": "\"image\".\"kind\" in ('photo', 'illustration')"
-        },
-        "image_content_type_check": {
-          "name": "image_content_type_check",
-          "value": "\"image\".\"content_type\" in ('image/webp', 'image/jpeg', 'image/png')"
-        },
-        "image_size_check": {
-          "name": "image_size_check",
-          "value": "\"image\".\"width\" > 0 and \"image\".\"height\" > 0 and \"image\".\"byte_size\" > 0"
-        },
-        "image_alt_check": {
-          "name": "image_alt_check",
-          "value": "\"image\".\"alt\" is null or trim(\"image\".\"alt\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
-        }
-      }
-    },
-    "image_bytes": {
-      "name": "image_bytes",
-      "columns": {
-        "image_id": {
-          "name": "image_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "bytes": {
-          "name": "bytes",
-          "type": "blob",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "image_bytes_image_id_image_id_fk": {
-          "name": "image_bytes_image_id_image_id_fk",
-          "tableFrom": "image_bytes",
-          "tableTo": "image",
-          "columnsFrom": [
-            "image_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "image_bytes_length_check": {
-          "name": "image_bytes_length_check",
-          "value": "length(\"image_bytes\".\"bytes\") between 1 and 1900000"
-        }
-      }
-    },
     "ledger_entry": {
       "name": "ledger_entry",
       "columns": {
@@ -1636,152 +1363,6 @@
         }
       }
     },
-    "org_presentation": {
-      "name": "org_presentation",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "story": {
-          "name": "story",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{}'"
-        },
-        "look": {
-          "name": "look",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{}'"
-        },
-        "sharing": {
-          "name": "sharing",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{}'"
-        },
-        "story_previous": {
-          "name": "story_previous",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "look_previous": {
-          "name": "look_previous",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sharing_previous": {
-          "name": "sharing_previous",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "logo_image_id": {
-          "name": "logo_image_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "logo_image_id_previous": {
-          "name": "logo_image_id_previous",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "org_presentation_logo_image_id_image_id_fk": {
-          "name": "org_presentation_logo_image_id_image_id_fk",
-          "tableFrom": "org_presentation",
-          "tableTo": "image",
-          "columnsFrom": [
-            "logo_image_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_presentation_logo_image_id_previous_image_id_fk": {
-          "name": "org_presentation_logo_image_id_previous_image_id_fk",
-          "tableFrom": "org_presentation",
-          "tableTo": "image",
-          "columnsFrom": [
-            "logo_image_id_previous"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "org_presentation_id_check": {
-          "name": "org_presentation_id_check",
-          "value": "\"org_presentation\".\"id\" = 'default'"
-        },
-        "org_presentation_story_object_check": {
-          "name": "org_presentation_story_object_check",
-          "value": "json_valid(\"org_presentation\".\"story\") and json_type(\"org_presentation\".\"story\") = 'object'"
-        },
-        "org_presentation_look_check": {
-          "name": "org_presentation_look_check",
-          "value": "json_valid(\"org_presentation\".\"look\") and json_type(\"org_presentation\".\"look\") = 'object' and (json_extract(\"org_presentation\".\"look\", '$.shade') is null or json_extract(\"org_presentation\".\"look\", '$.shade') in ('light', 'warm', 'cool')) and (json_extract(\"org_presentation\".\"look\", '$.corner') is null or json_extract(\"org_presentation\".\"look\", '$.corner') in ('square', 'soft', 'round')) and (json_extract(\"org_presentation\".\"look\", '$.brandColour') is null or json_extract(\"org_presentation\".\"look\", '$.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]')"
-        },
-        "org_presentation_sharing_object_check": {
-          "name": "org_presentation_sharing_object_check",
-          "value": "json_valid(\"org_presentation\".\"sharing\") and json_type(\"org_presentation\".\"sharing\") = 'object'"
-        },
-        "org_presentation_story_previous_object_check": {
-          "name": "org_presentation_story_previous_object_check",
-          "value": "\"org_presentation\".\"story_previous\" is null or (json_valid(\"org_presentation\".\"story_previous\") and json_type(\"org_presentation\".\"story_previous\") = 'object')"
-        },
-        "org_presentation_look_previous_check": {
-          "name": "org_presentation_look_previous_check",
-          "value": "\"org_presentation\".\"look_previous\" is null or (json_valid(\"org_presentation\".\"look_previous\") and json_type(\"org_presentation\".\"look_previous\") = 'object' and (json_extract(\"org_presentation\".\"look_previous\", '$.shade') is null or json_extract(\"org_presentation\".\"look_previous\", '$.shade') in ('light', 'warm', 'cool')) and (json_extract(\"org_presentation\".\"look_previous\", '$.corner') is null or json_extract(\"org_presentation\".\"look_previous\", '$.corner') in ('square', 'soft', 'round')) and (json_extract(\"org_presentation\".\"look_previous\", '$.brandColour') is null or json_extract(\"org_presentation\".\"look_previous\", '$.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
-        },
-        "org_presentation_sharing_previous_object_check": {
-          "name": "org_presentation_sharing_previous_object_check",
-          "value": "\"org_presentation\".\"sharing_previous\" is null or (json_valid(\"org_presentation\".\"sharing_previous\") and json_type(\"org_presentation\".\"sharing_previous\") = 'object')"
-        }
-      }
-    },
     "org_profile": {
       "name": "org_profile",
       "columns": {
@@ -1928,199 +1509,6 @@
         }
       }
     },
-    "page": {
-      "name": "page",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "slug": {
-          "name": "slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "form_id": {
-          "name": "form_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "draft": {
-          "name": "draft",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "published": {
-          "name": "published",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_published": {
-          "name": "last_published",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "campaign_type": {
-          "name": "campaign_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "page_form_id_idx": {
-          "name": "page_form_id_idx",
-          "columns": [
-            "form_id"
-          ],
-          "isUnique": true
-        },
-        "page_slug_idx": {
-          "name": "page_slug_idx",
-          "columns": [
-            "slug"
-          ],
-          "isUnique": true,
-          "where": "\"page\".\"slug\" is not null"
-        },
-        "page_one_donation_page_idx": {
-          "name": "page_one_donation_page_idx",
-          "columns": [
-            "type"
-          ],
-          "isUnique": true,
-          "where": "\"page\".\"type\" = 'donation_page'"
-        }
-      },
-      "foreignKeys": {
-        "page_form_id_form_id_fk": {
-          "name": "page_form_id_form_id_fk",
-          "tableFrom": "page",
-          "tableTo": "form",
-          "columnsFrom": [
-            "form_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "page_type_check": {
-          "name": "page_type_check",
-          "value": "\"page\".\"type\" in ('donation_page', 'campaign')"
-        },
-        "page_state_check": {
-          "name": "page_state_check",
-          "value": "\"page\".\"state\" in ('never_published', 'live', 'ended')"
-        },
-        "page_donation_page_live_check": {
-          "name": "page_donation_page_live_check",
-          "value": "\"page\".\"type\" <> 'donation_page' or \"page\".\"state\" = 'live'"
-        },
-        "page_name_check": {
-          "name": "page_name_check",
-          "value": "(\"page\".\"type\" <> 'donation_page' or \"page\".\"name\" is null) and (\"page\".\"type\" <> 'campaign' or (\"page\".\"name\" is not null and trim(\"page\".\"name\", char(32, 9, 10, 11, 12, 13, 160)) <> ''))"
-        },
-        "page_slug_check": {
-          "name": "page_slug_check",
-          "value": "(\"page\".\"type\" <> 'donation_page' or \"page\".\"slug\" is null) and (\"page\".\"type\" <> 'campaign' or \"page\".\"slug\" is not null or \"page\".\"state\" = 'ended')"
-        },
-        "page_published_check": {
-          "name": "page_published_check",
-          "value": "(\"page\".\"published\" is null) = (\"page\".\"state\" = 'never_published')"
-        },
-        "page_last_published_check": {
-          "name": "page_last_published_check",
-          "value": "\"page\".\"last_published\" is null or \"page\".\"published\" is not null"
-        },
-        "page_draft_object_check": {
-          "name": "page_draft_object_check",
-          "value": "json_valid(\"page\".\"draft\") and json_type(\"page\".\"draft\") = 'object'"
-        },
-        "page_published_object_check": {
-          "name": "page_published_object_check",
-          "value": "\"page\".\"published\" is null or (json_valid(\"page\".\"published\") and json_type(\"page\".\"published\") = 'object')"
-        },
-        "page_last_published_object_check": {
-          "name": "page_last_published_object_check",
-          "value": "\"page\".\"last_published\" is null or (json_valid(\"page\".\"last_published\") and json_type(\"page\".\"last_published\") = 'object')"
-        },
-        "page_draft_look_check": {
-          "name": "page_draft_look_check",
-          "value": "json_extract(\"page\".\"draft\", '$.look') is null or (json_type(\"page\".\"draft\", '$.look') = 'object' and (json_extract(\"page\".\"draft\", '$.look.shade') is null or json_extract(\"page\".\"draft\", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract(\"page\".\"draft\", '$.look.corner') is null or json_extract(\"page\".\"draft\", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract(\"page\".\"draft\", '$.look.brandColour') is null or json_extract(\"page\".\"draft\", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
-        },
-        "page_published_look_check": {
-          "name": "page_published_look_check",
-          "value": "json_extract(\"page\".\"published\", '$.look') is null or (json_type(\"page\".\"published\", '$.look') = 'object' and (json_extract(\"page\".\"published\", '$.look.shade') is null or json_extract(\"page\".\"published\", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract(\"page\".\"published\", '$.look.corner') is null or json_extract(\"page\".\"published\", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract(\"page\".\"published\", '$.look.brandColour') is null or json_extract(\"page\".\"published\", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
-        },
-        "page_last_published_look_check": {
-          "name": "page_last_published_look_check",
-          "value": "json_extract(\"page\".\"last_published\", '$.look') is null or (json_type(\"page\".\"last_published\", '$.look') = 'object' and (json_extract(\"page\".\"last_published\", '$.look.shade') is null or json_extract(\"page\".\"last_published\", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract(\"page\".\"last_published\", '$.look.corner') is null or json_extract(\"page\".\"last_published\", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract(\"page\".\"last_published\", '$.look.brandColour') is null or json_extract(\"page\".\"last_published\", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
-        },
-        "page_campaign_only_settings_check": {
-          "name": "page_campaign_only_settings_check",
-          "value": "\"page\".\"type\" <> 'donation_page' or (json_extract(\"page\".\"draft\", '$.goalMinor') is null and json_extract(\"page\".\"draft\", '$.endsAt') is null and json_extract(\"page\".\"published\", '$.goalMinor') is null and json_extract(\"page\".\"published\", '$.endsAt') is null and json_extract(\"page\".\"last_published\", '$.goalMinor') is null and json_extract(\"page\".\"last_published\", '$.endsAt') is null)"
-        },
-        "page_campaign_type_check": {
-          "name": "page_campaign_type_check",
-          "value": "\"page\".\"campaign_type\" is null or (\"page\".\"type\" = 'campaign' and \"page\".\"campaign_type\" in ('year_end', 'emergency', 'building', 'event', 'tribute', 'monthly', 'program', 'other'))"
-        }
-      }
-    },
     "payment": {
       "name": "payment",
       "columns": {
@@ -2239,6 +1627,20 @@
         "provider_reference": {
           "name": "provider_reference",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notice_owed_since": {
+          "name": "notice_owed_since",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notice_maybe_sent_at": {
+          "name": "notice_maybe_sent_at",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -2457,13 +1859,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "image_id": {
-          "name": "image_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {
@@ -2475,21 +1870,7 @@
           "isUnique": true
         }
       },
-      "foreignKeys": {
-        "program_image_id_image_id_fk": {
-          "name": "program_image_id_image_id_fk",
-          "tableFrom": "program",
-          "tableTo": "image",
-          "columnsFrom": [
-            "image_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
