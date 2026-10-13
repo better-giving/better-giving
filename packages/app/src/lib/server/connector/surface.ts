@@ -38,6 +38,10 @@ export const CONNECTOR_ACTIONS = [
 	'donation_page.update_blocks',
 	'donation_page.reset',
 	'blocks.catalog',
+	'forms.list',
+	'forms.get',
+	'forms.create',
+	'forms.update',
 	'photos.upload_link'
 ] as const;
 

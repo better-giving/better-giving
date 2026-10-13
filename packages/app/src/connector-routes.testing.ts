@@ -36,6 +36,7 @@ const WIPED = [
 	'connector_key',
 	'api_key',
 	'page',
+	'site',
 	'form',
 	'auth_member_invitation',
 	'auth_session',
