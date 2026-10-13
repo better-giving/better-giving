@@ -99,8 +99,8 @@ let unreadable: Extract<Drawn, { unreadable: true }> | null;
 let posted: Record<string, string>[];
 /** each body whole, for a box posted more than once. */
 let bodies: FormData[];
-/** what the action answers each post, in turn. */
-let answers: { body: unknown; status?: number }[];
+/** what the action answers each post, in turn, and the draft it leaves for the loader to draw. */
+let answers: { body: unknown; status?: number; drawn?: Loaded }[];
 /** the phone has lost its signal: every request rejects before it leaves, as `fetch` does. */
 let offline: boolean;
 /** what the server's action throws in place of answering, as it reaches the browser. */
@@ -164,6 +164,7 @@ async function screen() {
 						const answer = answers.shift();
 						if (answer === undefined)
 							throw new Error('the action was posted to with no answer ready');
+						if (answer.drawn !== undefined) drawn = answer.drawn;
 						return Response.json(answer.body, { status: answer.status ?? 200 });
 					}
 				} as never),
@@ -589,31 +590,39 @@ describe('Settings’ presses that apply at once', () => {
 		expect(channelsPosted()).toEqual([['x', 'facebook']]);
 	});
 
-	it('keeps the last pick made while a press is in flight, drawn picked, and sends it at the version the first moved to, the head saying so meanwhile', async () => {
-		answers = [{ body: { saved: 'block' } }, { body: { saved: 'page-corners' } }];
+	it('keeps a pick on each control made while a press is in flight, drawn picked, and sends them in turn, each at the version the one before moved to, the head saying so meanwhile', async () => {
+		const banner: Loaded = { ...drawn, version: 2, layout: 'banner' };
+		const cool: Loaded = { ...banner, version: 3, look: { ...banner.look, shade: 'cool' } };
+		const square: Loaded = { ...cool, version: 4, look: { ...cool.look, corners: 'square' } };
+		answers = [
+			{ body: { saved: 'page-layout' }, drawn: banner },
+			{ body: { saved: 'page-shade' }, drawn: cool },
+			{ body: { saved: 'page-corners' }, drawn: square }
+		];
 		const sheet = await settings();
-		const banner = sheet.querySelector<HTMLInputElement>('input[value="banner"]');
-		if (banner === null) throw new Error('no Banner layout');
+		const layout = sheet.querySelector<HTMLInputElement>('input[value="banner"]');
+		if (layout === null) throw new Error('no Banner layout');
 
-		drawn = { ...drawn, version: 2, layout: 'banner' };
 		act(() => {
-			banner.click();
+			layout.click();
 			(chips(sheet, 'Shade').get('Cool') as HTMLInputElement).click();
 			(chips(sheet, 'Corners').get('Square') as HTMLInputElement).click();
 		});
-		// the second pick is dropped for the third, which is drawn picked while it waits.
-		expect(taken(card('Settings'), 'Shade')).toEqual(['Light']);
+		// both picks wait, each drawn picked meanwhile.
+		expect(taken(card('Settings'), 'Shade')).toEqual(['Cool']);
 		expect(taken(card('Settings'), 'Corners')).toEqual(['Square']);
 		const status = () => card('Settings').querySelector('.adm-sheet__head [role="status"]');
 		expect(status()?.textContent).toBe('Saving your change…');
-		await settle();
-		await settle();
+		for (let round = 0; round < 6; round += 1) await settle();
 		expect(status()?.textContent).toBe('');
 
 		expect(posted).toEqual([
 			{ [WHICH_FORM]: 'page-layout', [RECORD_VERSION]: '1', layout: 'banner' },
-			{ [WHICH_FORM]: 'page-corners', [RECORD_VERSION]: '2', corners: 'square' }
+			{ [WHICH_FORM]: 'page-shade', [RECORD_VERSION]: '2', shade: 'cool' },
+			{ [WHICH_FORM]: 'page-corners', [RECORD_VERSION]: '3', corners: 'square' }
 		]);
+		expect(taken(card('Settings'), 'Shade')).toEqual(['Cool']);
+		expect(taken(card('Settings'), 'Corners')).toEqual(['Square']);
 	});
 
 	it('says a refused look pick under the look, and draws the page’s look again', async () => {
