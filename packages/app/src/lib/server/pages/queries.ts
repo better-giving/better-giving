@@ -5,7 +5,7 @@ import { stateAt } from '../../page/ended';
 import { freeSlug, slugFromTitle } from '../../page/slug';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
-import { form, type Page, page } from '../db/schema';
+import { form, type Page, page, photoLink } from '../db/schema';
 import { freeLetGoStatements } from '../images/free';
 import { MAX_FORM_NAME } from '../../forms/input-schema';
 import type { ParsedFormGiving, ParsedFormProgram } from '../forms/form-input';
@@ -54,7 +54,16 @@ export async function deleteNeverPublishedCampaign(
 		eq(page.state, 'never_published'),
 		eq(page.updatedAt, version)
 	);
-	const [deleted] = await db.batch([
+	// the page's photo links first, under the page's own guard: their foreign key is `NO ACTION`.
+	const [, deleted] = await db.batch([
+		db
+			.delete(photoLink)
+			.where(
+				and(
+					eq(photoLink.pageId, pageId),
+					exists(db.select({ id: page.id }).from(page).where(deletable))
+				)
+			),
 		db.delete(page).where(deletable).returning({ id: page.id }),
 		db
 			.delete(form)

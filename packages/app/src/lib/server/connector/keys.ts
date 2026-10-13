@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, desc, eq, gt, isNull, lt, or } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, or } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { type ConnectorKey, connectorCode, connectorKey, photoLink } from '../db/schema';
 
@@ -179,6 +179,18 @@ export async function sweepConnectorLeftovers(db: Db, now = new Date()): Promise
 				.delete(connectorCode)
 				.where(or(lt(connectorCode.expiresAt, before), lt(connectorCode.usedAt, before))),
 			db.delete(photoLink).where(or(lt(photoLink.expiresAt, before), lt(photoLink.usedAt, before))),
+			// a swept key's links go before it, whatever their age: their foreign key is `NO ACTION`.
+			db
+				.delete(photoLink)
+				.where(
+					inArray(
+						photoLink.connectorKeyId,
+						db
+							.select({ id: connectorKey.id })
+							.from(connectorKey)
+							.where(lt(connectorKey.revokedAt, revokedBefore))
+					)
+				),
 			db.delete(connectorKey).where(lt(connectorKey.revokedAt, revokedBefore))
 		]);
 	} catch (e) {

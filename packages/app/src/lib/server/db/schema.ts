@@ -3485,16 +3485,23 @@ export const photoLink = sqliteTable(
 	{
 		id: id(),
 		tokenHash: text('token_hash').notNull(),
-		/** the page the photo goes on. */
+		/**
+		 * the page the photo goes on. `NO ACTION`, as every domain foreign key is (the cascade rule at
+		 * the top of this file): `deleteNeverPublishedCampaign` in ../pages/queries.ts deletes a page's
+		 * links in the batch that deletes the page.
+		 */
 		pageId: text('page_id')
 			.notNull()
-			.references(() => page.id, { onDelete: 'cascade' }),
+			.references(() => page.id),
 		/** the photo block the photo fills, or null for the first empty one (or a new one). */
 		blockId: text('block_id'),
-		/** the connection that asked for it; its Disconnect ends the link too. */
+		/**
+		 * the connection that asked for it; its Disconnect ends the link too. `NO ACTION`:
+		 * `sweepConnectorLeftovers` in ../connector/keys.ts deletes a swept key's links before the key.
+		 */
 		connectorKeyId: text('connector_key_id')
 			.notNull()
-			.references(() => connectorKey.id, { onDelete: 'cascade' }),
+			.references(() => connectorKey.id),
 		createdAt: createdAt(),
 		expiresAt: at('expires_at').notNull(),
 		usedAt: at('used_at')

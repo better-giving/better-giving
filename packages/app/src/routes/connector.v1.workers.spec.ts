@@ -11,6 +11,7 @@ import {
 import { CONNECTOR_ACTIONS, CONNECTOR_RETURN } from '$lib/server/connector/surface';
 import { connectorCode, connectorKey, page, photoLink } from '$lib/server/db/schema';
 import { pngHeader } from '$lib/server/images/headers.testing';
+import { deleteNeverPublishedCampaign } from '$lib/server/pages/queries';
 import { mintApiKey } from '$lib/server/integrations/keys';
 import { connectorHarness, DEPLOYMENT, ORIGIN, under } from '../connector-routes.testing';
 import { mountRoutes } from '../route-request.testing';
@@ -298,6 +299,14 @@ describe('revoke and cleanup from the connector', () => {
 	it('sweeps a key a month after it was revoked, and never a live one', async () => {
 		const kept = await connect();
 		const cut = await connect();
+		const { id } = (await (
+			await call('campaigns', '/campaigns', { method: 'POST', key: cut, body: { title: 'Coats' } })
+		).json()) as { id: string };
+		await call('uploadLink', '/photos/upload-link', {
+			method: 'POST',
+			key: cut,
+			body: { target: { kind: 'campaign', id } }
+		});
 		await call('disconnect', '/disconnect', { method: 'POST', key: cut });
 
 		await sweepConnectorLeftovers(h.db, new Date(Date.now() + REVOKED_KEY_KEEP_MS - 60 * 60_000));
@@ -307,7 +316,27 @@ describe('revoke and cleanup from the connector', () => {
 		const left = await h.db.select().from(connectorKey);
 		expect(left).toHaveLength(1);
 		expect(left[0]?.revokedAt).toBeNull();
+		expect(await h.db.select().from(photoLink)).toEqual([]);
 		expect((await call('campaigns', '/campaigns', { key: kept })).status).toBe(200);
+	});
+
+	it('deletes a never-published campaign that a photo link still names, and the link with it', async () => {
+		const key = await connect();
+		const { id } = (await (
+			await call('campaigns', '/campaigns', { method: 'POST', key, body: { title: 'Coats' } })
+		).json()) as { id: string };
+		await call('uploadLink', '/photos/upload-link', {
+			method: 'POST',
+			key,
+			body: { target: { kind: 'campaign', id } }
+		});
+		const [drawn] = await h.db.select().from(page).where(eq(page.id, id));
+
+		expect(await deleteNeverPublishedCampaign(h.db, id, drawn?.updatedAt ?? new Date(0))).toBe(
+			true
+		);
+		expect(await h.db.select().from(page).where(eq(page.id, id))).toEqual([]);
+		expect(await h.db.select().from(photoLink)).toEqual([]);
 	});
 });
 
