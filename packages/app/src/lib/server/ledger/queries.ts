@@ -1,4 +1,4 @@
-import { and, between, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, between, desc, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { ROLLUPS } from '../db/accounts';
 import type { Db } from '../db/client';
@@ -424,4 +424,47 @@ export async function readRaisedThroughForm(
 		group by ${form.id}
 	`);
 	return row ?? null;
+}
+
+/**
+ * a span of business time: from `from` and up to, never including, `before`; either end open where
+ * it is null.
+ */
+export type TimeWindow = { readonly from: Date | null; readonly before: Date | null };
+
+/** `at`, an epoch-milliseconds expression, inside `window`; `undefined` where both ends are open. */
+export function withinWindow(at: SQLWrapper, window: TimeWindow): SQL | undefined {
+	return and(
+		window.from === null ? undefined : sql`${at} >= ${window.from.getTime()}`,
+		window.before === null ? undefined : sql`${at} < ${window.before.getTime()}`
+	);
+}
+
+/** what was raised through one form inside a window; `formId` null for gifts made through none. */
+export type RaisedByForm = { formId: string | null; raisedMinor: number };
+
+/**
+ * `readRaisedByMonth`'s figure over the entries whose business time falls inside `window`, split by
+ * the form each entry's gift was made through — `readRaisedThroughForm`'s join, from the entries
+ * out. the rows sum to the whole deployment's figure: a gift in hand names no form, and a hand
+ * correction matches no payment, so both land on the `null` row. a refund counts in the window its
+ * own entry is dated in, as it does in the dashboard's month.
+ */
+export async function readRaisedByFormWithin(db: Db, window: TimeWindow): Promise<RaisedByForm[]> {
+	const inside = withinWindow(entryGroup.occurredAt, window);
+	return db.all<RaisedByForm>(sql`
+		${DONATIONS_SUBTREE}
+		select
+			${donation.formId} as "formId",
+			-sum(${ledgerEntry.amountMinor}) as "raisedMinor"
+		from ${ledgerEntry}
+		join ${entryGroup} on ${entryGroup.id} = ${ledgerEntry.entryGroupId}
+		left join ${payment}
+			on ${payment.id} = ${entryGroup.sourceId}
+			and ${inArray(entryGroup.sourceType, PAYMENT_KEYED)}
+		left join ${donation} on ${donation.id} = ${payment.donationId}
+		where ${ledgerEntry.accountId} in (select id from donations)
+			${inside === undefined ? sql`` : sql`and ${inside}`}
+		group by ${donation.formId}
+	`);
 }

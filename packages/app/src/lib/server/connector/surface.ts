@@ -42,7 +42,13 @@ export const CONNECTOR_ACTIONS = [
 	'forms.get',
 	'forms.create',
 	'forms.update',
-	'photos.upload_link'
+	'photos.upload_link',
+	'results.summary',
+	'donations.list',
+	'donations.record',
+	'donors.list',
+	'donors.get',
+	'recurring.list'
 ] as const;
 
 /** the release `hello` answers: this build's, or `0.0.0` for a build that named none. */

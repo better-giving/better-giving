@@ -44,7 +44,13 @@ const WIPED = [
 	'org_profile'
 ];
 
-export type CallInit = { method?: string; key?: string; body?: unknown; metered?: boolean };
+export type CallInit = {
+	method?: string;
+	key?: string;
+	body?: unknown;
+	metered?: boolean;
+	headers?: Record<string, string>;
+};
 
 /**
  * registers the spec's hooks — the routes `mount` names mounted once, the tables wiped and the
@@ -103,6 +109,7 @@ export function connectorHarness<R extends Record<string, RouteRequester>>(mount
 		/** `path` under the surface, sent to the route mounted as `route`. */
 		call(route: keyof R | 'exchange', path: string, init: CallInit = {}): Promise<Response> {
 			const headers: Record<string, string> = {
+				...init.headers,
 				'cf-connecting-ip': ip(),
 				accept: 'application/json'
 			};

@@ -37,7 +37,11 @@ import { loadFailed } from '$lib/server/db/load-failure';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { findRecordedGift, type RecordedGift } from '$lib/server/donations/queries';
 import { sendReceipt } from '$lib/server/donations/receipt';
-import { recordGiftInHand, type InHandDonor } from '$lib/server/donations/record-in-hand';
+import {
+	holdsSubmittedGift,
+	recordGiftInHand,
+	type InHandDonor
+} from '$lib/server/donations/record-in-hand';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
 import { readActivePrograms } from '$lib/server/programs/queries';
 import { database, platform } from '../context';
@@ -151,45 +155,6 @@ type Answered = {
 
 function answered(over: Partial<Answered> = {}): Answered {
 	return { freshIds: null, releasedId: null, recordedAgain: null, ...over };
-}
-
-/**
- * whether the gift the database holds under a press's ids is the gift that press submitted.
- *
- * what a refused duplicate is checked against before it is answered as already recorded: the figure,
- * the day, how it arrived, the cause, the source and the donor. a new donor is compared the way
- * `resolveDonor` in `$lib/server/donations/donor.ts` files one — by address where one was given, since
- * an address on file files the gift under that contact whatever name was typed, and by name where
- * none was.
- */
-function isSubmitted(
-	found: RecordedGift,
-	submitted: {
-		readonly amountMinor: number;
-		readonly receivedAt: Date;
-		readonly method: InHandMethod;
-		readonly programId: string | null;
-		readonly source: string | null;
-		readonly donor:
-			| { readonly kind: 'existing'; readonly contactId: string }
-			| { readonly kind: 'new'; readonly email: string | null; readonly name: string };
-	}
-): boolean {
-	const { donor } = submitted;
-	const sameDonor =
-		donor.kind === 'existing'
-			? found.contactId === donor.contactId
-			: donor.email === null
-				? found.donorName === donor.name
-				: found.donorEmail?.toLowerCase() === donor.email.toLowerCase();
-	return (
-		sameDonor &&
-		found.totalMinor === submitted.amountMinor &&
-		found.receivedAt.getTime() === submitted.receivedAt.getTime() &&
-		found.method === submitted.method &&
-		found.programId === submitted.programId &&
-		found.source === submitted.source
-	);
 }
 
 export const handle = {
@@ -433,7 +398,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 						}
 					: { kind: 'existing' as const, contactId: gift.contact_id }
 		};
-		if (found === null || !isSubmitted(found, submitted)) {
+		if (found === null || !holdsSubmittedGift(found, submitted)) {
 			return invalid(
 				409,
 				submission.reject({ formErrors: [ID_HELD] }),

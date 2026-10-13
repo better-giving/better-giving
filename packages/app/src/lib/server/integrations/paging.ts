@@ -192,7 +192,8 @@ export function pastKeyset(
 	return sql`(${at}, ${id}) ${sql.raw(direction === 'asc' ? '>' : '<')} (${after.at}, ${after.id})`;
 }
 
-function encodeCursor(order: string, last: Keyset, since: Date | null): string {
+/** a cursor for the page after `last`, in the order named `order`; the header says what it holds. */
+export function encodeCursor(order: string, last: Keyset, since: Date | null): string {
 	const fields =
 		since === null ? [order, last.at, last.id] : [order, last.at, last.id, since.getTime()];
 	return btoa(JSON.stringify(fields)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
@@ -311,9 +312,9 @@ function isoInstant(raw: string): Date | null {
 
 /**
  * a cursor's fields: `since` in epoch milliseconds on one a walk of changes issued, and absent on
- * one the newest-first walk issued.
+ * one the newest-first walk issued. exported for `/connector/v1`, whose lists carry these cursors.
  */
-function decodeCursor(
+export function decodeCursor(
 	raw: string
 ): { order: string; keyset: Keyset; since: number | undefined } | null {
 	if (!/^[A-Za-z0-9_-]+$/.test(raw)) return null;

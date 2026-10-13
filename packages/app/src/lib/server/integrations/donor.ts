@@ -1,4 +1,4 @@
-import { and, isNull } from 'drizzle-orm';
+import { and, isNull, type SQL } from 'drizzle-orm';
 import { type ConsentState, consentState } from '../../contacts/consent';
 import type { Db } from '../db/client';
 import { contact } from '../db/schema';
@@ -50,11 +50,18 @@ export type ApiDonor = {
 /** the two orders donors are walked in, named as their cursors carry them (./paging.ts). */
 export const DONOR_ORDERS = { newest: 'donors.newest', changed: 'donors.changed' } as const;
 
-/** one page of donors in the order `query` names. */
-export async function readDonorPage(db: Db, query: PageQuery): Promise<PageOf<ApiDonor>> {
+/**
+ * one page of donors in the order `query` names, narrowed to those `matching` holds of where one
+ * is given — `/connector/v1`'s search; the read API names none.
+ */
+export async function readDonorPage(
+	db: Db,
+	query: PageQuery,
+	matching?: SQL
+): Promise<PageOf<ApiDonor>> {
 	const walk = storedTimesWalk(query, contact);
 	const rows = await selectDonors(db)
-		.where(and(isNull(contact.archivedAt), walk.where))
+		.where(and(isNull(contact.archivedAt), matching, walk.where))
 		.orderBy(...walk.orderBy)
 		.limit(query.limit + 1);
 	const page = pageOf(rows, query.limit, walk.keyOf);
