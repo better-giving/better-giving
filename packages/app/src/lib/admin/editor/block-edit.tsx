@@ -1,7 +1,7 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import { useFetcher } from 'react-router';
+import { type FetcherWithComponents, useFetcher } from 'react-router';
 import type { Resized } from '@better-giving/operator/images/resize';
 import { BLOCK_FORMS, BOXES, type BlockText, type EditorBlock, rowBox } from '$lib/page/block-edit';
 import { FAQ_MAX, TIERS_MAX } from '$lib/page/catalog';
@@ -48,10 +48,12 @@ import {
 // a placed photo's sheet is the replace press and its description (./replace-photo.tsx). a new
 // photo is posted to the images route as soon as it is resized (./photo-upload.ts) and drawn once
 // stored, and Done writes its id and the description to the block, as a text block's words are;
-// a sheet dismissed before Done leaves the block as it was. a refused description lands under its
-// box, with the caret moved there; what else the photo's rule refuses lands at Done. a hero or an
-// image with no photo yet opens on Add photo alone, and Done there posts nothing: it says at the
-// press that a photo is wanted and puts the focus on it.
+// a sheet dismissed before Done leaves the block as it was. while a new photo resizes or uploads,
+// Done is held as it is while a press is in flight, so it never writes the photo being replaced
+// nor says a photo is wanted. a refused description lands under its box, with the caret moved
+// there; what else the photo's rule refuses lands at Done. a hero or an image with no photo yet
+// opens on Add photo alone, and Done there posts nothing: it says at the press that a photo is
+// wanted and puts the focus on it.
 
 const TEXT_FORMS = {
 	title: BLOCK_FORMS.title,
@@ -86,6 +88,10 @@ export function BlockEditSheet({
 	const grounded = presses.sending(BLOCK_FORMS.background, BOXES.background)?.[0];
 	/** a photo block's Done found no photo, until one is chosen. */
 	const [photoWanted, setPhotoWanted] = useState(false);
+	/** a photo block's new photo, posted to the images route once resized. */
+	const upload = useFetcher<UploadAnswer>();
+	const [resizing, setResizing] = useState(false);
+	const photoLanding = resizing || upload.state !== 'idle';
 	const pressId = boxId(block.id, 'photo');
 	const textForm = block.text === null ? null : TEXT_FORMS[block.text.kind];
 	const saved = textForm !== null && presses.landed(textForm);
@@ -133,7 +139,7 @@ export function BlockEditSheet({
 									text={block.text}
 									error={(box) => presses.refused(textForm, box)}
 									posting={presses.flying(textForm)}
-									photo={{ pressId, wanted: photoWanted }}
+									photo={{ pressId, wanted: photoWanted, upload, onResizing: setResizing }}
 								/>
 							),
 							onDone: (form) => {
@@ -146,7 +152,7 @@ export function BlockEditSheet({
 								body.set(BOXES.blockId, block.id);
 								presses.press(textForm, body);
 							},
-							applying: presses.busy,
+							applying: presses.busy || photoLanding,
 							refusal: presses.refused(textForm, '')
 						}
 			}
@@ -163,8 +169,16 @@ type BlockFieldsProps = {
 	readonly error: (box: string) => string | null;
 	/** a Done is in flight. */
 	readonly posting: boolean;
-	/** a photo block's press, by its id, and whether a Done found no photo chosen. */
-	readonly photo: { readonly pressId: string; readonly wanted: boolean };
+	/**
+	 * a photo block's press, by its id; whether a Done found no photo chosen; the upload of a new
+	 * photo; and its resize starting and ending — the sheet holds Done on the last two.
+	 */
+	readonly photo: {
+		readonly pressId: string;
+		readonly wanted: boolean;
+		readonly upload: FetcherWithComponents<UploadAnswer>;
+		readonly onResizing: (resizing: boolean) => void;
+	};
 };
 
 /** the boxes a block's words are typed in, named as its form posts them. */
@@ -185,7 +199,7 @@ function PhotoFields({
 	error,
 	photo
 }: Omit<BlockFieldsProps, 'posting'> & { readonly text: PhotoText }) {
-	const upload = useFetcher<UploadAnswer>();
+	const { upload } = photo;
 	const [imageId, setImageId] = useState(text.imageId);
 	const [alt, setAlt] = useState(text.alt);
 	const [refused, setRefused] = useState<string | null>(null);
@@ -204,6 +218,7 @@ function PhotoFields({
 	}
 
 	const resized = (result: Resized) => {
+		photo.onResizing(false);
 		if (!result.ok) {
 			setRefused(replaceRefusal(result.reason));
 			return;
@@ -223,6 +238,7 @@ function PhotoFields({
 			<ReplacePhotoControl
 				imageSrc={imageId === null ? undefined : imageSrc(imageId)}
 				alt={alt}
+				onPicked={() => photo.onResizing(true)}
 				onResized={resized}
 				onAltChange={setAlt}
 				state={state}

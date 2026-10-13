@@ -10,11 +10,13 @@ import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 // the preview and redraws the part from the draft.
 //
 // a part's presses share the one fetcher, and a press made while another is in flight waits: sent
-// then, it would carry the version the first is about to move, and be refused as stale. the last
-// press made during the round trip is kept, and sent once the answer lands, at the version that
-// answer moved the page to; an earlier one kept is dropped for it, so a run of picks lands as the
-// last of them. what is kept, or else what is in flight, is readable (`sending`), so a picture or a
-// chip is drawn as the press asked until it is answered, and as the draft holds once it is.
+// then, it would carry the version the first is about to move, and be refused as stale. one press
+// per form is kept: a later press on a form replaces the one kept for it, so a run of picks on one
+// control lands as the last of them, and presses on different forms are all kept, in the order
+// their forms were first kept. once an answer lands the first kept is sent, at the version that
+// answer moved the page to, and the next waits for its answer in turn. what is kept for a form, or
+// else what is in flight for it, is readable (`sending`), so a picture or a chip is drawn as the
+// press asked until it is answered, and as the draft holds once it is.
 //
 // the fetcher is unkeyed, so an answer does not outlive the part that asked: a sheet reopened starts
 // with none. a part the editor holds for as long as it is up lets go of an answer with `startClean`.
@@ -29,19 +31,22 @@ export type DraftAnswer = AdminActionData & {
 /** a press's boxes, each posted in turn, so a box named twice posts twice. */
 export type PressBoxes = readonly (readonly [string, string])[] | FormData;
 
+/** a press waiting for the one in flight to land: its form, and its boxes. */
+type Kept = { readonly form: string; readonly body: FormData };
+
 export function useDraftPresses(version: number) {
 	const fetcher = useFetcher<DraftAnswer>();
 	/** the form the last press posted, which is the form the answer standing now is to. */
 	const [pressed, setPressed] = useState<string | null>(null);
-	/** the last press made while another was in flight, waiting for that one's answer. */
-	const [kept, setKept] = useState<{ readonly form: string; readonly body: FormData } | null>(null);
+	/** a press per form made while another was in flight, each waiting for the one before it to land. */
+	const [kept, setKept] = useState<readonly Kept[]>([]);
 	const busy = fetcher.state !== 'idle';
 	const sent = busy ? fetcher.formData : undefined;
 	const answer = busy ? undefined : fetcher.data;
 
 	// taken at the press and let go on the render its answer lands in — `busy` going out after it
 	// came in — so a second press made before the fetcher's state says it is busy waits too. that
-	// render holds the version the answer moved the page to, which is what a kept press goes at.
+	// render holds the version the answer moved the page to, which is what the next kept press goes at.
 	const held = useRef(false);
 	const wasBusy = useRef(false);
 
@@ -57,9 +62,10 @@ export function useDraftPresses(version: number) {
 
 	const land = useEffectEvent(() => {
 		held.current = false;
-		if (kept === null) return;
-		setKept(null);
-		send(kept.form, kept.body);
+		const [next, ...rest] = kept;
+		if (next === undefined) return;
+		setKept(rest);
+		send(next.form, next.body);
 	});
 	useEffect(() => {
 		if (busy) wasBusy.current = true;
@@ -76,7 +82,7 @@ export function useDraftPresses(version: number) {
 	return {
 		/** a press is in flight, and a press made now waits for its answer. */
 		busy,
-		/** posts `form` with its boxes and the version; kept until the answer to a press in flight lands. */
+		/** posts `form` with its boxes and the version; kept, in place of what `form` had kept, while a press is in flight. */
 		press(form: string, boxes: PressBoxes = []) {
 			if (!busy && !held.current) {
 				send(form, boxes);
@@ -84,11 +90,17 @@ export function useDraftPresses(version: number) {
 			}
 			const body = new FormData();
 			for (const [box, value] of boxes) body.append(box, value);
-			setKept({ form, body });
+			setKept((was) =>
+				was.some((one) => one.form === form)
+					? was.map((one) => (one.form === form ? { form, body } : one))
+					: [...was, { form, body }]
+			);
 		},
-		/** every value under `box` of the press kept, or else of the one in flight, while it is `form`'s; else null. */
+		/** every value under `box` of the press kept for `form`, or else of the one in flight while it is `form`'s; else null. */
 		sending(form: string, box: string): string[] | null {
-			const asking = kept?.form === form ? kept.body : sent?.get(WHICH_FORM) === form ? sent : null;
+			const asking =
+				kept.find((one) => one.form === form)?.body ??
+				(sent?.get(WHICH_FORM) === form ? sent : null);
 			if (asking == null) return null;
 			return asking.getAll(box).filter((value) => typeof value === 'string');
 		},

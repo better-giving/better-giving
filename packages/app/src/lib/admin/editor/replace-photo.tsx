@@ -29,6 +29,8 @@ type Description =
 export type ReplacePhotoControlProps = Description & {
 	/** the placed photo as it is served; absent while the block holds none. */
 	readonly imageSrc?: string | undefined;
+	/** a new photo was chosen, and its resize begins. */
+	readonly onPicked?: (() => void) | undefined;
 	/** a new photo, resized or refused. the route posts `blob` and moves `state`. */
 	readonly onResized: (result: Resized) => void;
 	/** `uploading` while the route posts; `refused` with the words to show at the press. */
@@ -57,6 +59,7 @@ export type ReplacePhotoControlProps = Description & {
 export function ReplacePhotoControl({
 	imageSrc,
 	alt,
+	onPicked,
 	onResized,
 	onAltChange,
 	state,
@@ -67,7 +70,7 @@ export function ReplacePhotoControl({
 	onRemove,
 	pressId
 }: ReplacePhotoControlProps) {
-	const picker = usePhotoPicker({ onResized });
+	const picker = usePhotoPicker({ onPicked, onResized });
 	const id = useId();
 	const pressRef = useRef<HTMLButtonElement>(null);
 	const removing = useRef(false);
