@@ -31,7 +31,8 @@
 		"0025_org_profile_story_brand_and_logo.sql",
 		"0026_org_presentation_dropped.sql",
 		"0027_page_look_legacy_keys.sql",
-		"0028_page_chat_and_illustrations_dropped.sql"
+		"0028_page_chat_and_illustrations_dropped.sql",
+		"0029_connector.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
@@ -40,5 +41,5 @@
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "5a63d64c4f28bd70b891a3868f8bb5adda1fad3a"
+	"commit": "c195cdf0c440ed39f21339baf0d3e2f8db78d37d"
 }
