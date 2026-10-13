@@ -22,6 +22,7 @@ describe('the rail', () => {
 			'/admin/integrations/zapier',
 			'/admin/integrations/api',
 			'/admin/integrations/webhooks',
+			'/admin/integrations/connector',
 			'/admin/books'
 		]);
 	});
@@ -31,7 +32,7 @@ describe('the rail', () => {
 			['Dashboard'],
 			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
 			['Members'],
-			['Zapier', 'API', 'Webhooks'],
+			['Zapier', 'API', 'Webhooks', 'Claude & ChatGPT'],
 			['Books']
 		]);
 	});
