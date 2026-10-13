@@ -66,7 +66,6 @@ function args(request: Request, deployed: typeof DEPLOYED = DEPLOYED): Route.Loa
 /** an instance for one request, with a way to send only where the caller wants the token back. */
 async function authInstance(passwordReset?: {
 	send(input: { email: string; token: string }): Promise<void>;
-	background(task: Promise<unknown>): void;
 }): Promise<Auth> {
 	const signingKey = await resolveAuthSecret(db, {});
 	if (!signingKey.ok) throw new Error(signingKey.cause);
@@ -107,19 +106,17 @@ async function makeMember(): Promise<void> {
  */
 async function liveToken(): Promise<string> {
 	let minted: string | null = null;
-	const backgrounded: Promise<unknown>[] = [];
+	const backgrounded: Promise<void>[] = [];
 	const auth = await authInstance({
 		send: async ({ token }) => {
 			minted = token;
-		},
-		// kept, as `waitUntil` keeps it: the send runs after the request has answered, behind the
-		// delete of the earlier links, so the token exists only once the task has settled.
-		background: (task) => {
-			backgrounded.push(task);
 		}
 	});
-	const requested = await requestPasswordReset(auth, { email: MEMBER });
-	if (!requested.ok) throw new Error(`the fixture could not request a reset: ${requested.reason}`);
+	// kept, as `waitUntil` keeps it: the request runs after the route has answered, so the token
+	// exists only once the task has settled.
+	requestPasswordReset(auth, { email: MEMBER }, (task) => {
+		backgrounded.push(task);
+	});
 	await Promise.all(backgrounded);
 	if (minted === null) throw new Error('the fixture was handed no token');
 	return minted;

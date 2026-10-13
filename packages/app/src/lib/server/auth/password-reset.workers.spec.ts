@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import type { Auth } from './index';
 import { createAuth, PASSWORD_RESET_LIFETIME_SECONDS } from './index';
@@ -37,8 +37,8 @@ let db: Db;
 let auth: Auth;
 /** what the route's mailer was handed, in order. */
 let sent: { email: string; token: string }[];
-/** what was handed to the Worker's `waitUntil`, in order. */
-let backgrounded: Promise<unknown>[];
+/** what `requestPasswordReset` handed to the background, as the route hands it to `waitUntil`. */
+let backgrounded: Promise<void>[];
 
 beforeAll(() => {
 	db = createDb(env.DB);
@@ -56,9 +56,6 @@ beforeEach(async () => {
 	auth = await createAuthWith({
 		send: async (input) => {
 			sent.push(input);
-		},
-		background: (task) => {
-			backgrounded.push(task);
 		}
 	});
 });
@@ -66,7 +63,6 @@ beforeEach(async () => {
 /** an instance for one request, with or without a way to send a link. */
 async function createAuthWith(passwordReset?: {
 	send(input: { email: string; token: string }): Promise<void>;
-	background(task: Promise<unknown>): void;
 }): Promise<Auth> {
 	const signingKey = await resolveAuthSecret(db, {});
 	if (!signingKey.ok) throw new Error(signingKey.cause);
@@ -135,12 +131,17 @@ async function insertResetRow(id: string, token: string, userId: string, created
 		.run();
 }
 
+/** a request for a link, and the work it left behind, settled — as `waitUntil` would see it through. */
+async function askedFor(email: string, using: Auth = auth): Promise<void> {
+	requestPasswordReset(using, { email }, (task) => {
+		backgrounded.push(task);
+	});
+	await Promise.all(backgrounded);
+}
+
 /** the link a member was mailed, or a failure saying none was. */
 async function tokenFor(email: string): Promise<string> {
-	const asked = await requestPasswordReset(auth, { email });
-	if (!asked.ok) throw new Error(`expected a request to be taken, got ${asked.reason}`);
-	// the send is handed to `background` rather than awaited, so nothing has settled yet.
-	await Promise.all(backgrounded);
+	await askedFor(email);
 	const token = sent.at(-1)?.token;
 	if (token === undefined) throw new Error('no reset link was sent');
 	return token;
@@ -150,51 +151,50 @@ describe('requestPasswordReset', () => {
 	it('hands the member’s address and a token to the mailer', async () => {
 		await member('priya@example.org');
 
-		expect(await requestPasswordReset(auth, { email: 'priya@example.org' })).toEqual({ ok: true });
-		await Promise.all(backgrounded);
+		await askedFor('priya@example.org');
 		expect(sent).toEqual([{ email: 'priya@example.org', token: expect.any(String) }]);
 	});
 
 	/**
-	 * the send is deferred rather than awaited, which is what makes a request for a real address
-	 * take the same time as one for an address nobody has. better-auth hands it to
-	 * `advanced.backgroundTasks.handler`, and the route puts the Worker's `ctx.waitUntil` there so
-	 * the isolate stays alive long enough to finish it.
+	 * the whole request is handed to the background rather than awaited, which is what makes a
+	 * request for a real address take the same time as one for an address nobody has: a member's
+	 * costs a write a stranger's does not. the route hands it to the Worker's `ctx.waitUntil`, so the
+	 * isolate stays alive long enough to finish it.
 	 */
-	it('gives the send to the background handler instead of awaiting it', async () => {
+	it('leaves the caller nothing to wait for, and sends once the background settles', async () => {
 		await member('priya@example.org');
 
-		await requestPasswordReset(auth, { email: 'priya@example.org' });
+		requestPasswordReset(auth, { email: 'priya@example.org' }, (task) => {
+			backgrounded.push(task);
+		});
 
 		expect(backgrounded).toHaveLength(1);
+		expect(sent).toEqual([]);
 		await expect(backgrounded[0]).resolves.toBeUndefined();
+		expect(sent.map((s) => s.email)).toEqual(['priya@example.org']);
 	});
 
 	// a colleague who types their address the way their mail client shows it still gets a link.
 	it('does not care how the address was capitalised', async () => {
 		await member('priya@example.org');
 
-		expect(await requestPasswordReset(auth, { email: '  Priya@Example.ORG ' })).toEqual({
-			ok: true
-		});
-		await Promise.all(backgrounded);
+		await askedFor('  Priya@Example.ORG ');
 		expect(sent.map((s) => s.email)).toEqual(['priya@example.org']);
 	});
 
 	/**
-	 * every refusal answers the same as a success, which is what stops this form being a way to ask
-	 * whether a given person works here — on a deployment whose donation page names the
-	 * organisation.
+	 * none of these mails anybody, and the caller cannot tell them from a member's request, because
+	 * there is no answer to read — which is what stops this form being a way to ask whether a given
+	 * person works here, on a deployment whose donation page names the organisation.
 	 */
 	it.each([
 		['an address nobody here has', 'nobody@example.org'],
 		['the deployer’s identifier', STAFF_USER_EMAIL],
 		['a value that is not an address', 'not-an-address']
-	])('answers ok and sends nothing for %s', async (_label, email) => {
+	])('sends nothing for %s', async (_label, email) => {
 		await member('priya@example.org');
 
-		expect(await requestPasswordReset(auth, { email })).toEqual({ ok: true });
-		await Promise.all(backgrounded);
+		await askedFor(email);
 		expect(sent).toEqual([]);
 	});
 
@@ -210,7 +210,7 @@ describe('requestPasswordReset', () => {
 		}>();
 		expect(rows?.n).toBe(0);
 
-		expect(await requestPasswordReset(auth, { email: STAFF_USER_EMAIL })).toEqual({ ok: true });
+		await askedFor(STAFF_USER_EMAIL);
 
 		const after = await env.DB.prepare('select count(*) as n from auth_verification').first<{
 			n: number;
@@ -234,12 +234,9 @@ describe('requestPasswordReset', () => {
 		).run();
 
 		try {
-			backgrounded = [];
-			await requestPasswordReset(auth, { email: 'priya@example.org' });
-			await Promise.allSettled(backgrounded);
+			await askedFor('priya@example.org');
 
 			expect(sent).toHaveLength(2);
-			await expect(backgrounded[0]).resolves.toBeUndefined();
 		} finally {
 			await env.DB.prepare('drop trigger refuse_earlier_delete').run();
 		}
@@ -248,17 +245,21 @@ describe('requestPasswordReset', () => {
 	/**
 	 * an instance built without a way to send refuses with `RESET_PASSWORD_DISABLED`, which is a
 	 * route that asked for a reset without wiring one rather than anything the person at the form
-	 * did. it is the only arm that does not answer `ok`.
+	 * did — so it is the log that says so, the request having been answered already.
 	 */
-	it('is unavailable on an instance the route gave no way to send', async () => {
+	it('logs a request made of an instance the route gave no way to send', async () => {
 		await member('priya@example.org');
 		const sendless = await createAuthWith();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-		expect(await requestPasswordReset(sendless, { email: 'priya@example.org' })).toEqual({
-			ok: false,
-			reason: 'unavailable'
-		});
-		expect(sent).toEqual([]);
+		try {
+			await askedFor('priya@example.org', sendless);
+
+			expect(logged.mock.calls.flat().join(' ')).toContain('an auth instance that cannot send');
+			expect(sent).toEqual([]);
+		} finally {
+			logged.mockRestore();
+		}
 	});
 });
 

@@ -3973,7 +3973,8 @@ const GIFT = {
 	currency: 'USD',
 	interval: 'monthly',
 	method: 'card',
-	idempotencyKey: 'gift-01932f7c'
+	idempotencyKey: 'gift-01932f7c',
+	donorPageUrl: 'https://give.example.org/frm_stripegift000001'
 } as const;
 
 /** the fields the adapter reads off a price it looked up or made. */

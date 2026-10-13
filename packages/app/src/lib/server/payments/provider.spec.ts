@@ -34,7 +34,8 @@ const GIFT = {
 	currency: 'USD',
 	interval: 'monthly',
 	method: 'card',
-	idempotencyKey: 'gift-1'
+	idempotencyKey: 'gift-1',
+	donorPageUrl: 'https://give.example.org/frm_refusedgift00001'
 } as const;
 
 /** a verified delivery about a repeating gift, for the arms that take one. */

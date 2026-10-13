@@ -156,7 +156,7 @@ function paymentProvider() {
 /** PayPal's hosted window, as a plain object, and the sessions this adapter opened on it. */
 function paypalProvider() {
 	const sessions: SessionOptionsLike[] = [];
-	const orders: Promise<{ orderId: string }>[] = [];
+	const orders: Promise<unknown>[] = [];
 	const session = (options: SessionOptionsLike): PaypalSessionLike => {
 		sessions.push(options);
 		return {

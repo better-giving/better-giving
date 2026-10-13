@@ -204,6 +204,20 @@ describe('a session that has run out', () => {
 		expect(access.ok === false && access.refusal.message).toContain(NOW.toISOString());
 	});
 
+	/**
+	 * the other side of 'is let through at the instant the session ends': the console's own reading
+	 * draws the line at the same instant (packages/console/internal/session/session_test.go), so a
+	 * session one second past it is over at both ends.
+	 */
+	it('is refused one second after the session ends', () => {
+		const access = consoleAccess(
+			{ CONSOLE_TOKEN: LIVE_TOKEN },
+			bearer(LIVE_TOKEN),
+			new Date(IN_AN_HOUR.getTime() + 1000)
+		);
+		expect(access).toMatchObject({ ok: false, refusal: { error: 'session_expired' } });
+	});
+
 	/** the expiry is refused before the compare, so a live token against a dead session is dead. */
 	it('is refused before the two values are compared at all', () => {
 		const expired = formatConsoleToken(AN_HOUR_AGO, RANDOM);

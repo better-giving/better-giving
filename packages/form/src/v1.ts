@@ -689,6 +689,13 @@ export const API_ERROR_CODES = [
 	'form_retired',
 	'form_unservable',
 	'org_profile_incomplete',
+	/**
+	 * the processor that settles the chosen rail holds no usable keys on this deployment.
+	 *
+	 * `message` is the donor's and sends them to another payment method, since no retry moves it;
+	 * the value an operator sets is named in `fix`, which no donor's card draws — a variable's name
+	 * there, never its value.
+	 */
 	'payments_not_configured',
 	/**
 	 * the processor could not be reached, or answered with a fault of its own.
@@ -728,7 +735,9 @@ export const API_ERROR_CODES = [
 	 *
 	 * `message` carries the fund's reason, because only the fund knows it and the donor settles it
 	 * with the fund or a different amount. neither a fresh approval nor a retry moves it, which is
-	 * what keeps it apart from `daf_authorization_expired` and `payments_unavailable`.
+	 * what keeps it apart from `daf_authorization_expired` and `payments_unavailable`. a refusal
+	 * that arrives with no reason is not the fund's and is not this member: it answers 500 with no
+	 * code, as a bug of ours does.
 	 */
 	'daf_grant_declined',
 	/**

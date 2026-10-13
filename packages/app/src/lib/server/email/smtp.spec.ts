@@ -100,6 +100,19 @@ describe('createSmtpProvider — nothing escapes as an exception', () => {
 		expect(result.reason).toBe('auth_failed');
 	});
 
+	it('reports a refused mailbox as one no later send to the address reaches', async () => {
+		const result = await send(async () =>
+			stubMailer(() =>
+				Promise.reject(
+					new Error('Invalid RCPT TO: <donor@example.org> 550 5.1.1 No such user here\r\n')
+				)
+			)
+		);
+		if (result.ok) throw new Error('a refused mailbox reported a send');
+		expect(result.reason).toBe('rejected');
+		expect(result.addressRefused).toBe(true);
+	});
+
 	it('reports a successful send as `ok` and nothing else', async () => {
 		expect(await send(async () => stubMailer(async () => {}))).toEqual({ ok: true });
 	});

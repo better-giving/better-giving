@@ -115,7 +115,7 @@ Sign in at `/` as `admin` with `ADMIN_PASSWORD`. Forms and their paste-ready sni
 
 The console's **Organisation details** page: registered name, EIN, address, mission, vision, brand colour, social links and logo, all rows on your deployment rather than Cloudflare values. **Registered name and EIN gate every form.** US 501(c)(3) only: the EIN is checked to the digit, stored `12-3456789`; another jurisdiction forks and changes the rule.
 
-On a deployment that ran migration `0025`, the mission, vision, logo and colour set on the dashboard's old organisation page were not carried over: enter them again on this page. Migration `0026` repairs donation pages and campaigns saved under the old look settings.
+On a deployment that ran migration `0026`, the mission, vision, logo and colour set on the dashboard's old organisation page were not carried over: enter them again on this page. Migration `0027` repairs donation pages and campaigns saved under the old look settings.
 
 Every form prints the standard receipt sentence, *"No goods or services were provided in exchange for this gift."* Gifts carrying a benefit (a gala ticket, member perks) make it wrong: edit `SUGGESTED_DEDUCTIBILITY_STATEMENT` in `packages/operator/src/deductibility.ts` and deploy, or write `org_profile.deductibility_statement` directly, where a non-empty value wins. Your organisation makes the claim; a tax professional reviews it.
 

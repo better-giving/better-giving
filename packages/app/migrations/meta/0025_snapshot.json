@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "3094cd0d-980f-41a4-bcd7-e061183f6531",
-  "prevId": "e1186462-1f24-4acf-8ba9-773e17cda3a1",
+  "id": "e1186462-1f24-4acf-8ba9-773e17cda3a1",
+  "prevId": "aa8f7f2c-7d0d-4c7b-a224-c35c15aefdc9",
   "tables": {
     "account": {
       "name": "account",
@@ -1636,6 +1636,152 @@
         }
       }
     },
+    "org_presentation": {
+      "name": "org_presentation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "story": {
+          "name": "story",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "look": {
+          "name": "look",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "sharing": {
+          "name": "sharing",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "story_previous": {
+          "name": "story_previous",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "look_previous": {
+          "name": "look_previous",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sharing_previous": {
+          "name": "sharing_previous",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "logo_image_id": {
+          "name": "logo_image_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "logo_image_id_previous": {
+          "name": "logo_image_id_previous",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "org_presentation_logo_image_id_image_id_fk": {
+          "name": "org_presentation_logo_image_id_image_id_fk",
+          "tableFrom": "org_presentation",
+          "tableTo": "image",
+          "columnsFrom": [
+            "logo_image_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_presentation_logo_image_id_previous_image_id_fk": {
+          "name": "org_presentation_logo_image_id_previous_image_id_fk",
+          "tableFrom": "org_presentation",
+          "tableTo": "image",
+          "columnsFrom": [
+            "logo_image_id_previous"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "org_presentation_id_check": {
+          "name": "org_presentation_id_check",
+          "value": "\"org_presentation\".\"id\" = 'default'"
+        },
+        "org_presentation_story_object_check": {
+          "name": "org_presentation_story_object_check",
+          "value": "json_valid(\"org_presentation\".\"story\") and json_type(\"org_presentation\".\"story\") = 'object'"
+        },
+        "org_presentation_look_check": {
+          "name": "org_presentation_look_check",
+          "value": "json_valid(\"org_presentation\".\"look\") and json_type(\"org_presentation\".\"look\") = 'object' and (json_extract(\"org_presentation\".\"look\", '$.shade') is null or json_extract(\"org_presentation\".\"look\", '$.shade') in ('light', 'warm', 'cool')) and (json_extract(\"org_presentation\".\"look\", '$.corner') is null or json_extract(\"org_presentation\".\"look\", '$.corner') in ('square', 'soft', 'round')) and (json_extract(\"org_presentation\".\"look\", '$.brandColour') is null or json_extract(\"org_presentation\".\"look\", '$.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]')"
+        },
+        "org_presentation_sharing_object_check": {
+          "name": "org_presentation_sharing_object_check",
+          "value": "json_valid(\"org_presentation\".\"sharing\") and json_type(\"org_presentation\".\"sharing\") = 'object'"
+        },
+        "org_presentation_story_previous_object_check": {
+          "name": "org_presentation_story_previous_object_check",
+          "value": "\"org_presentation\".\"story_previous\" is null or (json_valid(\"org_presentation\".\"story_previous\") and json_type(\"org_presentation\".\"story_previous\") = 'object')"
+        },
+        "org_presentation_look_previous_check": {
+          "name": "org_presentation_look_previous_check",
+          "value": "\"org_presentation\".\"look_previous\" is null or (json_valid(\"org_presentation\".\"look_previous\") and json_type(\"org_presentation\".\"look_previous\") = 'object' and (json_extract(\"org_presentation\".\"look_previous\", '$.shade') is null or json_extract(\"org_presentation\".\"look_previous\", '$.shade') in ('light', 'warm', 'cool')) and (json_extract(\"org_presentation\".\"look_previous\", '$.corner') is null or json_extract(\"org_presentation\".\"look_previous\", '$.corner') in ('square', 'soft', 'round')) and (json_extract(\"org_presentation\".\"look_previous\", '$.brandColour') is null or json_extract(\"org_presentation\".\"look_previous\", '$.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
+        },
+        "org_presentation_sharing_previous_object_check": {
+          "name": "org_presentation_sharing_previous_object_check",
+          "value": "\"org_presentation\".\"sharing_previous\" is null or (json_valid(\"org_presentation\".\"sharing_previous\") and json_type(\"org_presentation\".\"sharing_previous\") = 'object')"
+        }
+      }
+    },
     "org_profile": {
       "name": "org_profile",
       "columns": {
@@ -2159,6 +2305,20 @@
         "provider_reference": {
           "name": "provider_reference",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notice_owed_since": {
+          "name": "notice_owed_since",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notice_maybe_sent_at": {
+          "name": "notice_maybe_sent_at",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

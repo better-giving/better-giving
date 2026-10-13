@@ -821,7 +821,7 @@ describe('/donate after the editor’s presses', () => {
 		// a gift inside the bounds goes on to the challenge, which this env has no keys to verify.
 		const passedBounds = {
 			status: 503,
-			message: 'This deployment cannot verify a challenge, so no donation can be accepted.'
+			message: 'We couldn’t complete this gift, and nothing was charged. Try again in a moment.'
 		};
 		const outside = (amount: number, range: string) => ({
 			status: 400,

@@ -6,9 +6,9 @@ import { authVerification } from '$lib/server/db/auth-schema';
 // the one module that deletes a member's mailed reset links.
 //
 // better-auth writes a row per request and consumes only the row it was handed, so ending the
-// others is this app's job, at the three moments a link stops being the member's way in: a newer
-// one is minted, a reset lands, or the member changes the password while signed in. ./index.ts
-// calls it for the first two and ./members.ts for the third.
+// others is this app's job, at the four moments a link stops being the member's way in: a newer
+// one is minted, a reset lands, the member changes the password while signed in, or the member is
+// removed. ./index.ts calls it for the first two and ./members.ts for the last two.
 
 /** the prefix better-auth writes before every reset token in `auth_verification.identifier`. */
 export const RESET_IDENTIFIER_PREFIX = 'reset-password:';
@@ -35,9 +35,21 @@ const minted = alias(authVerification, 'minted');
 export async function deleteResetLinks(
 	db: Db,
 	userId: string,
-	{ olderThan }: { readonly olderThan?: string } = {}
+	options: { readonly olderThan?: string } = {}
 ): Promise<void> {
-	await db.delete(authVerification).where(
+	await resetLinksDeletion(db, userId, options);
+}
+
+/**
+ * `deleteResetLinks`'s statement, unexecuted, for a caller that has to run it inside a `batch()` of
+ * its own — `removeMember` in ./members.ts, beside the delete of the user the links point at.
+ */
+export function resetLinksDeletion(
+	db: Db,
+	userId: string,
+	{ olderThan }: { readonly olderThan?: string } = {}
+) {
+	return db.delete(authVerification).where(
 		and(
 			eq(authVerification.value, userId),
 			like(authVerification.identifier, `${RESET_IDENTIFIER_PREFIX}%`),

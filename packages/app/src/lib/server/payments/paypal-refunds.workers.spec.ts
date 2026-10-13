@@ -727,7 +727,7 @@ describe('a PayPal dispute holding a settled gift’s money', () => {
 			const alerts = toStaff();
 			expect(alerts).toHaveLength(1);
 			expect(alerts[0]?.text).toContain('USD 100.00');
-			expect(alerts[0]?.text).toContain(RESPOND_BY);
+			expect(alerts[0]?.text).toContain('Respond by: September 1, 2026 at 9:46 AM UTC');
 			expect(alerts[0]?.text).toContain('https://www.paypal.com/resolutioncenter');
 		}
 	);
@@ -760,7 +760,7 @@ describe('a PayPal dispute on one monthly charge', () => {
 		const plans = await db.select({ status: recurringPlan.status }).from(recurringPlan);
 		expect(plans).toEqual([{ status: 'cancelled' }]);
 		expect(toStaff()).toHaveLength(1);
-		expect(toStaff()[0]?.text).toContain('Stopped: no further charges');
+		expect(toStaff()[0]?.text).toContain('Stopped. No more payments will be taken.');
 	});
 });
 

@@ -182,6 +182,7 @@ describe('classifySmtpFailure', () => {
 		expect(failure.detail).toContain(message);
 		expect(failure.detail).not.toContain('MAIL_FROM');
 		expect(failure.detail).toContain('Nothing in the mail settings needs changing');
+		expect(failure.addressRefused).toBe(true);
 	});
 
 	/**
@@ -201,6 +202,7 @@ describe('classifySmtpFailure', () => {
 		expect(failure.detail).toContain('`MAIL_FROM`');
 		expect(failure.detail).not.toContain('Nothing in the mail settings needs changing');
 		expect(failure.detail).not.toContain('spelled right');
+		expect(failure.addressRefused).toBeUndefined();
 	});
 
 	// a refusal whose code is neither names the recipient and quotes the host, and blames nothing.
@@ -213,6 +215,7 @@ describe('classifySmtpFailure', () => {
 		expect(failure.detail).toContain(message.trimEnd());
 		expect(failure.detail).not.toContain('spelled right');
 		expect(failure.detail).not.toContain('`SMTP_USERNAME`');
+		expect(failure.addressRefused).toBeUndefined();
 	});
 
 	// the prefix is still worker-mailer's own, and a greeting that is not a 220 is still a

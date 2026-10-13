@@ -1510,11 +1510,12 @@ export type RecurringInterval = Exclude<Frequency, 'one_time'>;
  *   active  — collecting. the processor's own retry schedule running against a missed charge is
  *             still this, because the processor has not given up and neither has the commitment.
  *   lapsed  — the processor gave up. the charge never succeeded and it will not try again, which is
- *             what the dashboard shows against a gift that has quietly stopped. a gift the donor never
- *             confirmed lands here 23 hours after it was made
+ *             what the dashboard shows against a gift that has quietly stopped. on Stripe, a gift the
+ *             donor never confirmed lands here 23 hours after it was made
  *             (https://docs.stripe.com/billing/subscriptions/overview#subscription-statuses), which
- *             is why an unconfirmed commitment needs no cleaning up and cannot be resumed — a donor
- *             coming back later is a new gift.
+ *             is why an unconfirmed Stripe commitment needs no cleaning up and cannot be resumed — a
+ *             donor coming back later is a new gift. PayPal documents no expiry for a subscription
+ *             awaiting approval, so an unapproved PayPal commitment stays `pending` instead.
  *   ended   — cancelled, and nothing further will be collected. the only state this app puts a gift
  *             into itself, through `cancelRecurringGift`.
  *
@@ -1570,6 +1571,17 @@ export type RecurringGiftRequest = {
 	 * never a donor's details beyond what collecting the gift needs, the rule `IntentRequest` states.
 	 */
 	readonly metadata?: Readonly<Record<string, string>>;
+	/**
+	 * the form's donor page on this deployment — `/{form_id}` on `new URL(request.url).origin`
+	 * (packages/app/src/routes/$formId.tsx) — and never an address off the page the donor gave from,
+	 * which is a site this deployment does not own.
+	 *
+	 * PayPal reads it alone: a subscription's approval context requires a return and a cancel
+	 * address, and this is both — `createRecurringGift` in ./paypal.ts refuses a gift without it.
+	 * every other adapter ignores it, and it is required of every caller all the same, so a commitment
+	 * minted without it is a compile error rather than a PayPal refusal on a live page.
+	 */
+	readonly donorPageUrl: string;
 };
 
 /**
@@ -1600,9 +1612,10 @@ export type RecurringGift = {
 	 * what the donor's browser confirms this gift's first collection with, opaque here as
 	 * `Intent.paymentToken` is and named the same for the same reason.
 	 *
-	 * it is the same kind of value the one-off path already hands a browser, so a donation form
-	 * confirms a repeating gift with exactly the code that confirms a single one and no second way
-	 * of confirming exists anywhere in this app.
+	 * it travels in the same field the one-off path hands a browser, and the form's confirm step is
+	 * the same one; what differs is the window the processor's own client opens with it — PayPal
+	 * approves a subscription in a session of its own (`pressSession` in
+	 * packages/form/src/embed/paypal.ts).
 	 *
 	 * never stored and never logged: it authorises the collection it belongs to, and a commitment is
 	 * already identified by `providerGiftId`.
@@ -1822,10 +1835,10 @@ export interface PaymentProvider {
 	 * collection with. charges nothing itself.
 	 *
 	 * the same shape `createIntent` below has, and deliberately so: the commitment is created
-	 * awaiting payment, its first collection carries a `paymentToken`, and the donor's browser
-	 * confirms that token exactly as it confirms a one-off gift. a repeating gift therefore needs no
-	 * second way of confirming anywhere in this app — which is the whole reason it is built this way,
-	 * because the confirming code is the donation form's public contract.
+	 * awaiting payment, its first collection carries a `paymentToken`, and the donor's browser hands
+	 * that token to the form's one confirm step, the step a one-off gift goes through. the
+	 * processor's own client may open a different window with it — PayPal approves a subscription in
+	 * a session of its own — which `RecurringGift.paymentToken` above names.
 	 *
 	 * so it takes no standing permission to charge and mints none. what the donor confirms is this
 	 * gift's own first collection, and the processor keeps the method they used as the commitment's
@@ -1833,7 +1846,9 @@ export interface PaymentProvider {
 	 *
 	 * an answer comes back `pending`, and the caller may act on nothing until a settlement says
 	 * otherwise: nothing has been collected at the moment this returns. a commitment nobody confirms
-	 * is abandoned by the processor rather than left standing — see `RecurringGiftState` above.
+	 * is abandoned by Stripe rather than left standing — see `RecurringGiftState` above. PayPal
+	 * documents no expiry for a subscription nobody approves, so one of its commitments stays
+	 * `pending`.
 	 *
 	 * retried with the same `idempotencyKey` after any retryable failure, which is what makes a lost
 	 * answer safe. the arm makes several writes and every one of them is keyed off that value, so a

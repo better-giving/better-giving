@@ -2809,18 +2809,66 @@ describe('the review step', () => {
 		expect(card.text('[role="status"]')).toBe('');
 	});
 
-	// the sentence belongs to the press that asked for it and to no patch after it. carried, the
-	// total would be read out again on the next thing that happened to the card — here, the provider
-	// reporting the donor moved to another rail.
-	it('does not carry the total onto the next patch', async () => {
+	// the provider reports its rail on its own schedule rather than the donor's, so a reading with
+	// nothing to say can land in the instant the total is said. the sentence stays until the heading
+	// changes or another replaces it.
+	it('keeps the total it said through a reading that changes nothing it states', async () => {
 		const card = await atReview();
 		press(card.find('.row.fee [part~="checkbox"]'));
 		await settle();
 
+		card.rail('card');
+		await settle();
+
+		expect(card.text('[role="status"]')).toBe('Total today is $25.00.');
+	});
+
+	it('stops saying the total once the donor goes back a step', async () => {
+		const card = await atReview();
+		press(card.find('.row.fee [part~="checkbox"]'));
+		await settle();
+
+		dot(card, 2).click();
+		await settle();
+
+		expect(card.find('.step-details').hidden).toBe(false);
+		expect(card.text('[role="status"]')).toBe('');
+	});
+
+	// and no longer than the figure it names: a rail that reprices the total has left the sentence
+	// stating a total the card no longer charges, and the figure itself says the new one.
+	it('drops the total it said once a rail reprices it', async () => {
+		const card = await atReview();
+		press(card.find('.row.fee [part~="checkbox"]'));
+		press(card.find('.row.fee [part~="checkbox"]'));
+		await settle();
+		expect(card.text('[role="status"]')).toBe('Total today is $26.06.');
+
 		card.rail('ach');
 		await settle();
 
+		expect(card.find('[part~="submit"]').textContent).not.toContain('$26.06');
 		expect(card.text('[role="status"]')).toBe('');
+	});
+
+	// a press re-says what it chose, and a total kept from before it does not change what that is.
+	it('says the refusal a press chose again after a total it was keeping', async () => {
+		const card = await atReview();
+		card.rail(null);
+		press(card.find('.row.fee [part~="checkbox"]'));
+		await settle();
+		expect(card.text('[role="status"]')).toMatch(/^Total today is /);
+		card.find('[part~="submit"]').click();
+		await settle();
+		expect(card.text('[role="status"]')).toBe('Please select payment method');
+
+		card.find('[part~="submit"]').click();
+
+		expect(card.text('[role="status"]')).toBe('');
+
+		await settle();
+
+		expect(card.text('[role="status"]')).toBe('Please select payment method');
 	});
 
 	// the box is a form control inside the card's form, so Enter on it implicitly submits — and the
@@ -3767,6 +3815,23 @@ describe('the details step’s refusals', () => {
 		);
 		// and the words on the card stay the field's own, with no label repeated beside its box.
 		expect(card.text('#first-name-problem')).toBe('required');
+	});
+
+	// the challenge widget hands its token over whenever it finishes, which is as likely to be the
+	// instant the refusal is said as any other — and a reading that changes no field is no reason to
+	// stop saying it.
+	it('keeps saying the refusal through a reading that changes no field it named', async () => {
+		const card = await atDetailsStep();
+		proceed(card);
+		proceed(card);
+		await settle();
+
+		card.token('tok_from_the_widget');
+		await settle();
+
+		expect(card.text('[role="status"]')).toBe(
+			'Email: required for your receipt; First name: required; Last name: required'
+		);
 	});
 
 	// and it stops saying it the moment the donor does anything but press again. a region reading
@@ -4827,7 +4892,7 @@ describe('the stylesheets', () => {
 	// thought of walks straight past — `svh` beside the `dvh` these sheets already write, `vmin`,
 	// `cqw`, `pt` — and no such list ever closes. a list of what to let past does close, and
 	// anything outside it fails until somebody says why it should not.
-	const NUMBERED = /(?<![\w.#])-?\d*\.?\d+(%|[a-zA-Z]+)(?![\w-])/g;
+	const NUMBERED = /(?<![\w.#-])-?\d*\.?\d+(%|[a-zA-Z]+)(?![\w-])/g;
 	// `%`, `fr`, `cqi` and `lh` are each a share of something the rule already has — the box's own
 	// width, the grid's free space, the line's own height — rather than a size taken off a scale,
 	// which ./styles/parts.css's header states from the other side. `deg` is an angle and `s` and
@@ -4844,7 +4909,7 @@ describe('the stylesheets', () => {
 	// (./styles/tokens.css re-points `--_dur-*` under `reduce`), so a literal one is a rule that
 	// goes on moving for a reader who asked for none — which is a decision nobody gets to take at
 	// a single rule.
-	const DURATION = /(?<![\w.#])-?\d*\.?\d+m?s(?![\w-])/g;
+	const DURATION = /(?<![\w.#-])-?\d*\.?\d+m?s(?![\w-])/g;
 
 	const rawDurations = (name: string, sheet: string) =>
 		blanked(sheet)
@@ -4893,6 +4958,12 @@ describe('the stylesheets', () => {
 			return found.map(([value]) => `${name}:${i + 1} ${value} — ${line.trim()}`);
 		});
 	};
+
+	it('reads no length or duration inside a hyphenated name, and still reads a negative one', () => {
+		const sheet = '.a { gap: var(--gap-1px); transition: var(--fade-2s); margin: -4px; }';
+		expect(rawLengths('sheet', sheet)).toEqual([`sheet:1 -4px — ${sheet}`]);
+		expect(rawDurations('sheet', sheet)).toEqual([]);
+	});
 
 	// every absence below is checked against a non-empty string first. vitest replaces a CSS
 	// import with `''` unless `css: true` is set on the pool, and an assertion that a stylesheet
@@ -5704,6 +5775,35 @@ describe('where a payment provider paints', () => {
 			expect(card.find('[part~="submit"]').hidden).toBe(false);
 		});
 
+		// the offer arrives whenever the processors fail and nothing moves the caret to it, so the
+		// region is its one channel — and a reading landing a moment later says nothing to replace it.
+		it('keeps saying the offer through a reading that has nothing to say', async () => {
+			const card = await atMonthlyReview({ paymentMethods: ['card', 'daf'] });
+			card.repeatingUnavailable();
+			await settle();
+			expect(card.text('[role="status"]')).toBe(OFFER);
+
+			card.token('tok_from_the_widget');
+			await settle();
+
+			expect(card.text('[role="status"]')).toBe(OFFER);
+		});
+
+		// the press hands the provider's fields a new cadence, and the provider reports its rail on its
+		// own schedule — a reading that can land as the sentence is said, with nothing of its own.
+		it('keeps saying the gift is one-time through a reading that has nothing to say', async () => {
+			const card = await atMonthlyReview({ paymentMethods: ['card', 'daf'] });
+			card.repeatingUnavailable();
+			makeOneTime(card).click();
+			await settle();
+			expect(card.text('[role="status"]')).toBe('This is now a one-time gift.');
+
+			card.rail('card');
+			await settle();
+
+			expect(card.text('[role="status"]')).toBe('This is now a one-time gift.');
+		});
+
 		it('offers the crypto option once the gift is made one-time', async () => {
 			const cryptoOffers: boolean[] = [];
 			const coins = [
@@ -5719,6 +5819,39 @@ describe('where a payment provider paints', () => {
 			makeOneTime(card).click();
 
 			expect(cryptoOffers.at(-1)).toBe(true);
+		});
+
+		// a Donate press with no coin picked is answered by the coin list, where the caret lands; the
+		// sentence the offer's press said is not that answer and is not read out again beside it.
+		it('says nothing it was keeping on a crypto press with no coin picked', async () => {
+			const coins = [
+				{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
+			];
+			const card = await atMonthlyReview({ paymentMethods: ['card', 'crypto'], coins });
+			card.repeatingUnavailable();
+			makeOneTime(card).click();
+			card.rail('crypto');
+			await settle();
+			expect(card.text('[role="status"]')).toBe('This is now a one-time gift.');
+
+			card.find('[part~="submit"]').click();
+			await settle();
+
+			expect(card.text('[role="status"]')).toBe('');
+		});
+
+		// a Donate press with no rail is refused about the payment box, and the offer then takes that
+		// box off the step: the refusal is about nothing the donor can see, and the offer is what is said.
+		it('says the offer in place of a refusal about the box it took away', async () => {
+			const card = await atMonthlyReview({ paymentMethods: ['card', 'daf'] });
+			card.find('[part~="submit"]').click();
+			await settle();
+			expect(card.text('[role="status"]')).toBe('Please select payment method');
+
+			card.repeatingUnavailable();
+			await settle();
+
+			expect(card.text('[role="status"]')).toBe(OFFER);
 		});
 
 		it('names the cadence the donor chose', async () => {
@@ -6180,6 +6313,20 @@ describe('a crypto gift', () => {
 		expect(coins(card).getElementById('coin-problem')?.textContent).toBe('required');
 		expect(coins(card).activeElement).toBe(combobox(card));
 		expect(card.find('#payment-problem').hidden).toBe(true);
+	});
+
+	// the coin list states its own refusal where the caret lands, and the region says nothing that
+	// press chose — so the total a fee flip said before it is not the press's answer to read out again.
+	it('says no total it was keeping on a press with no coin picked', async () => {
+		const card = await onCrypto();
+		press(card.find('.row.fee [part~="checkbox"]'));
+		await settle();
+		expect(region(card)).toMatch(/^Total today is /);
+
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(region(card)).toBe('');
 	});
 
 	it('shows what is being sent and where, in the order a donor reads it', async () => {
@@ -6715,6 +6862,29 @@ describe('the events a host page hears', () => {
 		return details;
 	}
 
+	/** an element on a tag of its own, built the way a host's script builds it: named nothing yet. */
+	function unnamed(): HTMLElement {
+		const tag = `${DONATE_FORM_TAG}-unnamed-${(tags += 1)}`;
+		defineDonateForm(
+			{
+				loadConfig: async () => CONFIG,
+				checkout: (config) => ({
+					input: { config, ports: PORTS },
+					cadence: () => {},
+					offerFund: () => {},
+					offerCrypto: () => {},
+					offerVenmo: () => {},
+					rows: () => {},
+					repeatingUnavailable: () => {},
+					stop: () => {}
+				}),
+				challenge: () => ({ reset: () => {}, stop: () => {} })
+			},
+			tag
+		);
+		return document.createElement(tag);
+	}
+
 	it('says the form is ready, once, with the form it is for', async () => {
 		const ready = heard('bg-donate:ready');
 		const card = await mount();
@@ -6745,6 +6915,78 @@ describe('the events a host page hears', () => {
 			}
 		]);
 		expect(ready).toEqual([]);
+	});
+
+	// a host that builds the element from script may put it on the page before it names the form,
+	// and both in one task paints nothing in between — so there was no card for the host to hear of.
+	it('says nothing unavailable for a form named in the task it was put on the page', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		const ready = heard('bg-donate:ready');
+		const host = unnamed();
+		document.body.appendChild(host);
+		host.setAttribute('form', 'frm_a8x2k9');
+		await settle();
+
+		expect(unavailable).toEqual([]);
+		expect(ready).toEqual([{ formId: 'frm_a8x2k9' }]);
+	});
+
+	it('says it once for an element the host put on the page and never named', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		document.body.appendChild(unnamed());
+		await settle();
+		await settle();
+
+		expect(unavailable).toEqual([
+			{
+				message: 'This donation form was not told which form to render.',
+				fix: `Set the form attribute on <${DONATE_FORM_TAG}> to the id of the form to render.`
+			}
+		]);
+	});
+
+	// listened for on the element, because one off the page is no longer under the document.
+	it('says nothing for an element taken off the page in the task it arrived in', async () => {
+		const host = unnamed();
+		const unavailable: unknown[] = [];
+		host.addEventListener('bg-donate:unavailable', (event) => {
+			unavailable.push((event as CustomEvent).detail);
+		});
+		document.body.appendChild(host);
+		host.remove();
+		await settle();
+
+		expect(unavailable).toEqual([]);
+
+		document.body.appendChild(host);
+		await settle();
+
+		expect(unavailable).toHaveLength(1);
+	});
+
+	// the held-back card finds the element off the page, and the element is put back before its
+	// teardown runs: the connect has to boot it again, or it is blank for good and says nothing.
+	it('says it for an element put back on the page while its card was held back', async () => {
+		const host = unnamed();
+		const unavailable: unknown[] = [];
+		host.addEventListener('bg-donate:unavailable', (event) => {
+			unavailable.push((event as CustomEvent).detail);
+		});
+		document.body.appendChild(host);
+		const back = new Promise<void>((resolve) =>
+			setTimeout(() => {
+				document.body.appendChild(host);
+				resolve();
+			}, 0)
+		);
+		host.remove();
+		await back;
+		await settle();
+
+		expect(unavailable).toHaveLength(1);
+		expect(host.shadowRoot?.querySelector('.unavailable')?.textContent).toContain(
+			'not told which form'
+		);
 	});
 
 	it('says what it painted when the configuration read was refused', async () => {

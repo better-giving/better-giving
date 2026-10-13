@@ -115,13 +115,13 @@ export type SettledGift = {
 function seriesFact(repeating: Repeating): string {
 	switch (repeating) {
 		case 'none':
-			return 'no';
+			return 'No';
 		case 'first':
-			return 'yes, this is its first collection';
+			return 'Yes, first payment';
 		// unreachable: a later collection returns before any of this is composed. it is spelled out
 		// rather than defaulted so that a state added to `Repeating` stops the type check here.
 		case 'later':
-			return 'yes';
+			return 'Yes';
 	}
 }
 
@@ -134,24 +134,21 @@ function seriesFact(repeating: Repeating): string {
 export async function sendSettledNotice(deps: SettleDeps, gift: SettledGift): Promise<void> {
 	if (gift.repeating === 'later') return;
 
-	const sentence = [
-		'The gift is in the books. Open Gifts in /admin to see it with the donor and the payment ' +
-			'behind it.'
-	];
+	const sentence = ['It’s recorded on Gifts in your dashboard.'];
 	if (gift.receipt === 'no_address') {
-		sentence.push('The donor gave no email address, so no receipt was sent.');
+		sentence.push('The donor didn’t give an email address, so no receipt was sent.');
 	}
 
 	try {
 		await alert(deps, {
-			headline: `A gift of ${formatMoney(gift.amountMinor, gift.currency)} was received`,
+			headline: `You received a ${formatMoney(gift.amountMinor, gift.currency)} gift`,
 			body: sentence.join(' '),
 			facts: [
 				{ label: 'Amount', value: formatMoney(gift.amountMinor, gift.currency) },
-				{ label: 'Donor', value: gift.donorName ?? 'no name recorded' },
-				{ label: 'Donor email', value: gift.donorEmail ?? 'none given' },
-				{ label: 'Form', value: gift.formName ?? 'no form recorded' },
-				{ label: 'Repeating gift', value: seriesFact(gift.repeating) },
+				{ label: 'Donor', value: gift.donorName ?? 'No name given' },
+				{ label: 'Donor email', value: gift.donorEmail ?? 'None given' },
+				{ label: 'Form', value: gift.formName ?? 'No form' },
+				{ label: 'Recurring', value: seriesFact(gift.repeating) },
 				// only where the donor said something: an empty "Dedication:" row reads as a gift given
 				// for nobody in particular, which is a different statement from saying nothing.
 				...(gift.tribute === null
@@ -162,7 +159,7 @@ export async function sendSettledNotice(deps: SettleDeps, gift: SettledGift): Pr
 								value: `${TRIBUTE_KIND_LABELS[gift.tribute.kind]} ${gift.tribute.honoree}`
 							}
 						]),
-				...(gift.note === null ? [] : [{ label: 'Note', value: gift.note }])
+				...(gift.note === null ? [] : [{ label: 'Message', value: gift.note }])
 			],
 			action: null
 		});

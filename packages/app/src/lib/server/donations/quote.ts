@@ -142,7 +142,8 @@ export const QUOTE_REFUSALS = [
 	/**
 	 * a donor-advised fund gift the fund will not grant — below its minimum, above the donor's
 	 * balance — carrying Chariot's reason. nothing about the deployment is wrong; the donor gives a
-	 * different amount.
+	 * different amount. only a refusal Chariot gave its reason for lands here: a 4xx with none is
+	 * `internal_error` (`grantRefusal` below).
 	 */
 	'daf_grant_declined',
 	/**
@@ -345,21 +346,25 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 			// never into the body — see `TurnstileResult` in ../api/turnstile.ts.
 			console.error('a donation was refused by the challenge check:', challenge.operatorFix);
 		}
-		return challenge.reason === 'rejected'
-			? refuse(
-					form,
-					'challenge_failed',
-					challenge.detail,
-					'Reset the Turnstile widget and send the token it produces next as `turnstileToken`. ' +
-						'A token is valid once and for five minutes.'
-				)
-			: refuse(
-					form,
-					'challenge_unavailable',
-					challenge.detail,
-					'Nothing about the request is wrong and nothing was charged. Try again shortly; if it ' +
-						'persists, this deployment’s Turnstile keys need checking.'
-				);
+		if (challenge.reason === 'rejected') {
+			// the donor's own token, so its words are theirs to read.
+			return refuse(
+				form,
+				'challenge_failed',
+				challenge.detail,
+				'Reset the Turnstile widget and send the token it produces next as `turnstileToken`. ' +
+					'A token is valid once and for five minutes.'
+			);
+		}
+		// a transport's raw error, or a deployment holding no keys: staff's to read, not the donor's.
+		console.error('a donation could not be checked for a challenge:', challenge.detail);
+		return refuse(
+			form,
+			'challenge_unavailable',
+			CHALLENGE_UNAVAILABLE,
+			'Nothing about the request is wrong and nothing was charged. Try again shortly; if it ' +
+				'persists, this deployment’s Turnstile keys need checking, and the cause is in its logs.'
+		);
 	}
 
 	// a donor-advised fund gift has been authorized in the fund's window already, so its figures
@@ -437,6 +442,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	if (!intent.ok) {
 		return paymentRefusal(
 			form,
+			deps.processors,
 			submission.method,
 			submission.frequency,
 			intent.reason,
@@ -494,10 +500,11 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		// answer is complete and true. refusing instead would fail a donation that succeeded.
 		if (written.reason === 'duplicate_intent') return { ok: true, quote, form };
 
+		logWriteFailure(written.detail);
 		return refuse(
 			form,
 			'internal_error',
-			`The gift could not be recorded, so nothing will be charged: ${written.detail}`,
+			PROCESSOR_FAILED,
 			'This is a bug in this app or a fault in its database rather than anything about the ' +
 				'request. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
 				'`pnpm run logs` from a checkout).'
@@ -544,10 +551,9 @@ function coinAsShown(
 /**
  * the repeating half: the donor written, the commitment created at the processor, then the gift.
  *
- * it answers the same `Quote` the single branch does, carrying the same kind of token — a donation
- * form confirms a repeating gift with exactly the code that confirms a one-off one, and no second
- * way of confirming exists anywhere in this app (`RecurringGift.paymentToken` in
- * ../payments/provider.ts).
+ * it answers the same `Quote` the single branch does, the token in the same field — a donation form
+ * confirms a repeating gift at the same step it confirms a one-off one, in whichever window the
+ * processor's client opens for it (`RecurringGift.paymentToken` in ../payments/provider.ts).
  *
  * both figures are the server's, and the fee is the one the donor was already shown: a repeating
  * gift they chose to cover the fee on collects the grossed-up total every interval, which is the
@@ -587,10 +593,11 @@ async function mintCommitment(
 ): Promise<QuoteResult> {
 	const donor = await commitDonor(deps.db, submission.donor, submission.consentedToContact);
 	if (!donor.ok) {
+		logWriteFailure(donor.detail);
 		return refuse(
 			form,
 			'internal_error',
-			`The gift could not be set up, so nothing will be charged: ${donor.detail}`,
+			PROCESSOR_FAILED,
 			'This is a bug in this app or a fault in its database rather than anything about the ' +
 				'request. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
 				'`pnpm run logs` from a checkout).'
@@ -617,6 +624,9 @@ async function mintCommitment(
 		// choice again every interval rather than once.
 		method: submission.method,
 		idempotencyKey: donationId,
+		// the form's donor page on the address this request arrived on, never the giving page's own:
+		// an absolute path resolves against the request url's origin alone.
+		donorPageUrl: new URL(`/${form.id}`, attempt.request.url).href,
 		metadata: commitmentMetadata({
 			donationId,
 			interval,
@@ -627,7 +637,14 @@ async function mintCommitment(
 		})
 	});
 	if (!gift.ok) {
-		return paymentRefusal(form, submission.method, interval, gift.reason, gift.detail);
+		return paymentRefusal(
+			form,
+			deps.processors,
+			submission.method,
+			interval,
+			gift.reason,
+			gift.detail
+		);
 	}
 
 	const written = await recordAuthorizedGift(deps.db, {
@@ -653,13 +670,15 @@ async function mintCommitment(
 	if (!written.ok) {
 		// no duplicate arm, unlike the single branch: this write opens no `payment` row, so there is
 		// no transaction id for a second call to collide on and every refusal here is a fault. the
-		// commitment is live and nothing has been collected under it — the processor abandons an
-		// unconfirmed one within 23 hours (../payments/stripe.ts), so refusing the donor leaves
-		// nothing to clean up.
+		// commitment is live and nothing has been collected under it. Stripe abandons an unconfirmed
+		// one within 23 hours (../payments/stripe.ts), so on Stripe refusing the donor leaves nothing
+		// to clean up; PayPal documents no expiry for a subscription awaiting approval, so an
+		// unapproved PayPal one stays at PayPal, collecting nothing, with no gift here naming it.
+		logWriteFailure(written.detail);
 		return refuse(
 			form,
 			'internal_error',
-			`The gift could not be recorded, so nothing will be charged: ${written.detail}`,
+			PROCESSOR_FAILED,
 			'This is a bug in this app or a fault in its database rather than anything about the ' +
 				'request. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
 				'`pnpm run logs` from a checkout).'
@@ -754,27 +773,26 @@ async function mintGrant(
 			later(
 				deps,
 				alert(deps, {
-					headline:
-						'A donor-advised fund grant may have been created with no gift recorded against it',
+					headline: 'A donor-advised fund grant may be missing its gift',
 					body:
-						'Chariot did not say whether it created the grant, so the donor was asked to try again. ' +
-						'If they did, the gift is recorded and nothing more is needed. If not, the grant may ' +
-						'exist in Chariot, and when the fund pays it this deployment will not know which gift ' +
-						'it is.',
+						'Chariot didn’t confirm whether it created the grant, so the donor was asked to try ' +
+						'again. If they did, the gift is recorded and there’s nothing to do. If not, Chariot ' +
+						'may still have the grant, and when the fund pays it you won’t be able to tell which ' +
+						'gift it’s for.',
 					facts: [
-						{ label: 'Session', value: authorization.id },
+						{ label: 'Chariot session', value: authorization.id },
 						{ label: 'Amount', value: amount },
 						{ label: 'Reason', value: created.detail }
 					],
 					action:
-						'Look for a grant on this session in the Chariot dashboard. If one is there, look in ' +
-						`the dashboard here for a donor-advised fund gift of ${amount} from ${donor}, received ` +
-						`on or after ${receivedOn}. The list shows the newest gifts, and Export reaches older ` +
-						'ones. Record the gift by hand only if no such gift is there.'
+						'Look for a grant on this session in your Chariot dashboard. If there is one, check ' +
+						`Gifts in your dashboard for a donor-advised fund gift of ${amount} from ${donor}, ` +
+						`received on or after ${receivedOn}. Gifts shows the newest gifts; use Export for ` +
+						'older ones. Record the gift yourself only if it isn’t there.'
 				})
 			);
 		}
-		return grantRefusal(form, created);
+		return grantRefusal(form, deps.processors, created);
 	}
 
 	const quote: Quote = {
@@ -842,31 +860,32 @@ async function mintGrant(
 	later(
 		deps,
 		alert(deps, {
-			headline: 'A donor-advised fund grant was created with no gift recorded against it',
+			headline: 'A donor-advised fund grant has no gift recorded',
 			body:
-				'Chariot created the grant and the gift could not be written here, so the donor’s page ' +
-				'said it did not go through. A donor who saw that and tried again made a separate grant ' +
-				'with its own gift, which does not stand for this one. A donor whose page never said so ' +
-				'may have tried again and recorded this grant’s gift after all. Otherwise this grant has ' +
-				'no gift recorded here, and the fund will still pay it.',
+				'Chariot created a grant, but the gift couldn’t be saved, and the donor was told so. ' +
+				'The fund will still pay the grant, so it may arrive with no gift in your ' +
+				'records. If the donor tried again, that made a separate grant with its own gift, which ' +
+				'doesn’t cover this one.',
 			facts: [
-				{ label: 'Grant', value: created.value.providerTxnId },
+				{ label: 'Chariot grant ID', value: created.value.providerTxnId },
 				...(trackingId === undefined ? [] : [{ label: 'Tracking ID', value: trackingId }]),
 				{ label: 'Amount', value: formatMinor(total, 'USD') },
 				{ label: 'Reason', value: written.detail }
 			],
 			action:
 				(trackingId === undefined
-					? 'Find this grant in the Chariot dashboard by the grant ID above and note its tracking ' +
-						'ID. If a gift in the dashboard here shows that tracking ID, it is already recorded. '
-					: `If a gift in the dashboard here shows tracking ID ${trackingId}, it is already recorded. `) +
-				'Otherwise record the gift by hand, unless Chariot shows the grant cancelled.'
+					? 'Find this grant in your Chariot dashboard by the grant ID above and note its ' +
+						'tracking ID. If a gift on Gifts in your dashboard shows that tracking ID, it’s ' +
+						'already recorded. '
+					: `If a gift on Gifts in your dashboard shows tracking ID ${trackingId}, it’s already recorded. `) +
+				'Otherwise, record the gift yourself, unless Chariot shows the grant as cancelled.'
 		})
 	);
+	logWriteFailure(written.detail);
 	return refuse(
 		form,
 		'internal_error',
-		`The gift could not be recorded: ${written.detail}`,
+		GRANT_NOT_RECORDED,
 		'This is a fault in this deployment rather than anything about the request, and an operator ' +
 			'has been told. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
 			'`pnpm run logs` from a checkout).'
@@ -938,11 +957,19 @@ function splitGrant(
  * will not grant (`invalid_request`, carrying Chariot's reason — the adapter's own local refusals
  * cannot reach it, because the parser and the checks above refuse those figures first). every other
  * Chariot 4xx lands on `invalid_request` too, a 400 caused by this app's own parameters included, and
- * the copy on that arm reads to the donor as the fund's refusal in every one of them. a call whose
- * outcome is unknown (`unreachable`) is retryable, and never says nothing was given. everything else
+ * the status that would tell them apart does not reach this port. so the fund is named only where
+ * Chariot gave its words (`providerSaid`), which every refusal its API documents carries; a 4xx with
+ * none is nothing the fund said, and answers as our defect does — `internal_error`, which mints no
+ * code, because `daf_grant_declined` is the fund's own refusal alone (packages/form/src/v1.ts). a
+ * 400 of ours that Chariot did word still reads to the donor as the fund's. a call whose outcome is
+ * unknown (`unreachable`) is retryable, and its fix never says nothing was given. everything else
  * is what any single gift's processor failure answers.
  */
-function grantRefusal(form: FormRecord, failure: PaymentFailure): QuoteResult {
+function grantRefusal(
+	form: FormRecord,
+	processors: Processors,
+	failure: PaymentFailure
+): QuoteResult {
 	const { reason, detail } = failure;
 	if (reason === 'authorization_expired') {
 		return refuse(
@@ -962,26 +989,35 @@ function grantRefusal(form: FormRecord, failure: PaymentFailure): QuoteResult {
 		);
 	}
 	if (reason === 'unreachable') {
+		logProcessorFailure(reason, detail);
 		return refuse(
 			form,
 			'payments_unavailable',
-			detail,
-			'Your fund may already have the grant request. Try again in a moment — the same approval ' +
-				'sends it at most once.'
+			PROCESSOR_FAILED,
+			'Your fund may already have the grant request. Try again in a moment. The same approval ' +
+				`sends it at most once. ${LOGGED}.`
 		);
 	}
-	if (reason === 'invalid_request') {
+	if (reason === 'invalid_request' && failure.providerSaid !== undefined) {
 		return refuse(
 			form,
 			'daf_grant_declined',
-			failure.providerSaid === undefined
-				? 'Your fund didn’t approve this gift, so nothing was given.'
-				: `Your fund didn’t approve this gift: ${failure.providerSaid}`,
-			'Give an amount the fund allows — at least its minimum and no more than the balance ' +
-				'available — through the fund’s window.'
+			`Your fund didn’t approve this gift: ${failure.providerSaid}`,
+			'Give an amount the fund allows, at least its minimum and no more than the balance ' +
+				'available, through the fund’s window.'
 		);
 	}
-	return paymentRefusal(form, 'daf', 'one_time', reason, detail);
+	if (reason === 'invalid_request') {
+		logProcessorFailure(reason, detail);
+		return refuse(
+			form,
+			'internal_error',
+			PROCESSOR_FAILED,
+			'Nothing was given. Chariot refused the grant request without a reason, which most likely ' +
+				`means this app sent a request Chariot couldn’t read. ${LOGGED}.`
+		);
+	}
+	return paymentRefusal(form, processors, 'daf', 'one_time', reason, detail);
 }
 
 /**
@@ -1159,6 +1195,7 @@ function readTurnstileSiteKey(env: unknown): string | undefined {
  */
 function paymentRefusal(
 	form: FormRecord,
+	processors: Processors,
 	rail: QuotedRail,
 	frequency: Frequency,
 	reason: string,
@@ -1166,23 +1203,26 @@ function paymentRefusal(
 	minAmountMinor?: number
 ): QuoteResult {
 	if (reason === 'rate_limited' || reason === 'unreachable' || reason === 'provider_error') {
+		logProcessorFailure(reason, detail);
 		return refuse(
 			form,
 			'payments_unavailable',
-			detail,
-			'Nothing was charged. Try again in a moment — this is the payment processor rather than ' +
-				'anything about the request.'
+			PROCESSOR_FAILED,
+			'Nothing was charged. Try again in a moment. The fault is with the payment processor, not ' +
+				`the request. ${LOGGED}.`
 		);
 	}
 	if (reason === 'not_configured') {
+		logProcessorFailure(reason, detail);
+		// the processor that settles the rail the donor picked, and never the one this deployment
+		// happens to hold: a donor on a cached page may name a rail whose processor was cleared
+		// since, and the pair that is set is not the pair to go and re-check.
+		const processor = processorOf(rail);
 		return refuse(
 			form,
 			'payments_not_configured',
-			detail,
-			// the processor that settles the rail the donor picked, and never the one this deployment
-			// happens to hold: a donor on a cached page may name a rail whose processor was cleared
-			// since, and the pair that is set is not the pair to go and re-check.
-			processorSetupFix([processorOf(rail)])
+			NOT_CONFIGURED,
+			`${unsetSentence(processors.unset(processor))}${processorSetupFix([processor])}`
 		);
 	}
 	if (reason === 'coin_not_accepted' || reason === 'below_minimum' || reason === 'above_maximum') {
@@ -1190,26 +1230,92 @@ function paymentRefusal(
 		return minAmountMinor === undefined ? refused : { ...refused, minAmountMinor };
 	}
 	if (frequency !== 'one_time' && (reason === 'unsupported' || reason === 'not_found')) {
+		logProcessorFailure(reason, detail);
 		return refuse(
 			form,
 			'frequency_unsupported',
 			`A gift that repeats cannot be collected on ${PROCESSOR_LABELS[processorOf(rail)]} here, ` +
-				`and nothing was charged: ${detail}`,
-			// written for the donor reading it, who has no account to set up and no deployment to
+				'and nothing was charged.',
+			// read by whoever sent the request, who has no account to set up and no deployment to
 			// fix. a single gift needs nothing on the processor's account, so it is the one thing
 			// this deployment can always still take.
-			'Nothing was charged and nothing about the request is wrong. Give once instead.'
+			`Nothing was charged and nothing about the request is wrong. Give once instead. ${LOGGED}.`
 		);
 	}
+	logProcessorFailure(reason, detail);
 	return refuse(
 		form,
 		'internal_error',
-		`No payment could be started, and nothing was charged: ${detail}`,
+		PROCESSOR_FAILED,
 		'This is a bug in this app rather than anything about the request or the deployment. The ' +
 			'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
 			'checkout).'
 	);
 }
+
+/**
+ * what the donor reads when a processor shed load, did not answer or faulted, when a refusal is a
+ * defect of ours, and when the gift could not be recorded. the adapter's `detail` on those is
+ * written for the log (`PaymentFailure` in ../payments/provider.ts) and names env vars and a
+ * transport's raw error, and the writer's names a form id, so each goes to the log instead of
+ * `message`, which the card draws (packages/form/src/views.ts).
+ */
+const PROCESSOR_FAILED =
+	'We couldn’t complete this gift. Try again, or use another payment method.';
+
+/**
+ * what the donor reads when the rail's processor holds no usable keys here. no retry moves it
+ * (`payments_not_configured` in packages/form/src/v1.ts), so the donor is sent to another way to pay.
+ */
+const NOT_CONFIGURED =
+	'This form can’t take this payment method right now. Use another payment method.';
+
+/**
+ * which variables are unset, for a `fix` — names and never values, and drawn on no donor's card. a
+ * processor with every variable set refused the keys it was handed, and that answer is logged.
+ */
+function unsetSentence(unset: readonly string[]): string {
+	if (unset.length === 0)
+		return `The processor refused the keys this deployment holds. ${LOGGED}. `;
+	return `\`${unset.join('` and `')}\` ${unset.length === 1 ? 'is' : 'are'} not set. `;
+}
+
+/** where a processor's own answer went, for a `fix` whose `message` no longer carries it. */
+const LOGGED =
+	'The processor’s answer is in this deployment’s logs (the Cloudflare dashboard, or ' +
+	'`pnpm run logs` from a checkout)';
+
+/** the adapter's sentence, where staff read it. */
+function logProcessorFailure(reason: string, detail: string): void {
+	console.error(`a donation was refused by the payment processor (${reason}):`, detail);
+}
+
+/**
+ * the writer's sentence on a gift, or the donor it names, that could not be recorded, where staff
+ * read it. ./record.ts and ./donor.ts log only the fault they cannot name, so a refused foreign key
+ * or a malformed gift is logged here or nowhere — and ./record.ts's sentence names the form's id
+ * and what to re-read, which is staff's and never the card's.
+ */
+function logWriteFailure(detail: string): void {
+	console.error('a donation could not be recorded:', detail);
+}
+
+/**
+ * what the donor reads when a grant exists and its gift could not be recorded. the fund will pay
+ * the grant, so nothing here says nothing was given, and a second approval makes a second grant
+ * (the alert `mintGrant` sends says so to staff), so nothing invites one either.
+ */
+const GRANT_NOT_RECORDED =
+	'Your fund created the grant, but we couldn’t record this gift. Check with the organisation ' +
+	'before approving it again, because a second approval makes a second grant.';
+
+/**
+ * what the donor reads when the anti-abuse check could not be made at all: the challenge service
+ * did not answer, or this deployment holds no keys for it. a fresh token fixes neither, and any
+ * other payment method meets the same check, so the one thing offered is a later try.
+ */
+const CHALLENGE_UNAVAILABLE =
+	'We couldn’t complete this gift, and nothing was charged. Try again in a moment.';
 
 /**
  * what a donor does about a crypto refusal. the adapter's `detail` is the message and names the coin

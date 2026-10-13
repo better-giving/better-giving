@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readWranglerConfig } from './lib/server/wrangler-config.testing';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
+import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
@@ -24,11 +25,15 @@ import worker, { CRON_RUNS } from './worker';
 // the jobs are mocked, because what is under test is which ones an expression reaches and with
 // what time — their own behaviour is held by
 // $lib/server/donations/pending-crypto-read.workers.spec.ts,
+// $lib/server/donations/refund-notice.workers.spec.ts,
 // $lib/server/accounting/deliver.workers.spec.ts, $lib/server/zapier/deliver.workers.spec.ts and
 // $lib/server/webhooks/deliver.workers.spec.ts, against a real database.
 
 vi.mock('$lib/server/donations/pending-crypto-read', () => ({
 	readPendingCryptoGifts: vi.fn(async () => {})
+}));
+vi.mock('$lib/server/donations/refund-notice', () => ({
+	sendOwedRefundNotices: vi.fn(async () => {})
 }));
 vi.mock('$lib/server/accounting/deliver', () => ({
 	sendDueEntries: vi.fn(async () => {})
@@ -97,6 +102,7 @@ async function fires(cron: string, runEnv = env): Promise<Promise<unknown>[]> {
 /** every job a cron can reach, for the cases asserting on none of them or all. */
 const JOBS = [
 	readPendingCryptoGifts,
+	sendOwedRefundNotices,
 	sendDueEntries,
 	sendDueZapierEvents,
 	sendDueWebhooks
@@ -146,6 +152,20 @@ describe('which run an expression reaches', () => {
 		expect(readPendingCryptoGifts).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
 		expect(sendDueEntries).not.toHaveBeenCalled();
 	});
+
+	it.each(['15 * * * *', '45 * * * *'])(
+		'sends the refund notices still owed on %s, from the run’s own time',
+		async (cron) => {
+			await fires(cron);
+
+			expect(sendOwedRefundNotices).toHaveBeenCalledWith(
+				{ db: expect.anything(), email: expect.anything() },
+				SCHEDULED_AT
+			);
+			expect(readPendingCryptoGifts).not.toHaveBeenCalled();
+			expect(sendDueEntries).not.toHaveBeenCalled();
+		}
+	);
 
 	it('sends what the books, the Zaps and the destinations are owed every minute, from the run’s own time', async () => {
 		await fires('* * * * *');

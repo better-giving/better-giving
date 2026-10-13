@@ -2189,7 +2189,8 @@ describe('the arms a crypto payment has nothing behind', () => {
 					currency: 'USD',
 					interval: 'monthly',
 					method: RAIL,
-					idempotencyKey: 'gift-1'
+					idempotencyKey: 'gift-1',
+					donorPageUrl: 'https://give.example.org/frm_cryptogift000001'
 				})
 		],
 		['cancelRecurringGift', () => provider().cancelRecurringGift('5745459419')],

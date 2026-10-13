@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import { createDb, type Db } from '../db/client';
 import { contact, donation, entryGroup, lineItem, payment } from '../db/schema';
@@ -34,6 +34,25 @@ import { mintQuote, refusalCode, type QuoteDeps } from './quote';
 // src/routes/api.v1.forms.$id.donations.workers.spec.ts.
 
 const FORM_ID = 'frm_quotepath000001';
+
+/** what a donor reads when a processor could not take the gift and the reason is not theirs. */
+const PROCESSOR_FAILED =
+	'We couldn’t complete this gift. Try again, or use another payment method.';
+
+/**
+ * that a sentence the card draws carries nothing written for whoever runs the deployment: no
+ * command, no deploy-time variable, no form id, and no talk of the deployment itself.
+ */
+function expectDonorWords(message: string): void {
+	expect(message).not.toContain('pnpm');
+	expect(message).not.toContain('deployment');
+	expect(message).not.toMatch(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/);
+	expect(message).not.toContain('frm_');
+}
+
+/** where a `fix` says the processor's own words went, once `message` no longer carries them. */
+const LOGGED = 'The processor’s answer is in this deployment’s logs';
+
 const ALLOWED = 'https://acme.org';
 
 const STRIPE_ENV = {
@@ -666,8 +685,8 @@ describe('mintQuote() — a repeating gift', () => {
 	it('answers with the token the browser confirms and the server’s own numbers', async () => {
 		const result = await mint(deps(), { frequency: 'monthly' });
 
-		// the same shape the one-off branch answers with, carrying the same kind of value: a donation
-		// form confirms a repeating gift with exactly the code that confirms a single one
+		// the same shape the one-off branch answers with, the token in the same field: a donation form
+		// confirms a repeating gift at the same step it confirms a single one
 		// (`RecurringGift.paymentToken` in ../payments/provider.ts).
 		expect(result.ok).toBe(true);
 		expect(result.ok && result.quote).toEqual({
@@ -843,6 +862,16 @@ describe('mintQuote() — a repeating gift', () => {
 		expect(second?.idempotencyKey).not.toBe(first?.idempotencyKey);
 	});
 
+	// the donor page on this deployment's own address (src/routes/$formId.tsx), and never the page
+	// the donor gave from: that site is not this deployment's, and PayPal returns the donor to it.
+	it('hands the processor this deployment’s donor page for the form, never the giving page', async () => {
+		const port = provider();
+
+		await mint(deps({ provider: port.port }), { frequency: 'monthly' });
+
+		expect(port.gifts[0]?.donorPageUrl).toBe(`https://give.example.workers.dev/${FORM_ID}`);
+	});
+
 	it('records the gift and its line, and no payment and nothing in the books', async () => {
 		await mint(deps(), { frequency: 'monthly', amountMinor: 10_000 });
 
@@ -862,10 +891,10 @@ describe('mintQuote() — a repeating gift', () => {
 	it('leaves exactly one pending gift behind when the donor abandons the checkout', async () => {
 		await mint(deps(), { frequency: 'monthly' });
 
-		// nothing else happens to a commitment the donor never confirms: the processor abandons it
-		// within 23 hours, no collection ever arrives, and what is left is one gift with no attempt
-		// against it — which is what the gifts list reads as `Pending` and what makes contacting an
-		// unfinished repeating gift possible at all.
+		// nothing else happens to a commitment the donor never confirms: Stripe, whose port this is,
+		// abandons it within 23 hours, no collection ever arrives, and what is left is one gift with
+		// no attempt against it — which is what the gifts list reads as `Pending` and what makes
+		// contacting an unfinished repeating gift possible at all.
 		const gifts = await db.select().from(donation);
 		expect(gifts).toHaveLength(1);
 		const [paid] = await db.select({ n: sql<number>`count(*)` }).from(payment);
@@ -968,9 +997,13 @@ describe('mintQuote() — a repeating gift', () => {
 			const result = await mint(deps({ provider: port.port }), { frequency: 'monthly' });
 
 			expect(result.ok || result.reason).toBe('frequency_unsupported');
+			// the processor's own sentence is staff's, and goes to the log rather than the card.
+			expect(result.ok || result.message).not.toContain('the processor said');
 			// and never as our defect: the catch-all sends a donor to this deployment's logs, which
 			// is an errand they cannot run and a diagnosis that is wrong.
 			expect(result.ok || result.fix).not.toContain('bug in this app');
+			// and `fix`, read by whoever sent the request, says where the processor's words went.
+			expect(result.ok || result.fix).toContain(LOGGED);
 		}
 	);
 });
@@ -1044,6 +1077,24 @@ describe('mintQuote() — the challenge', () => {
 		}
 	);
 
+	// `detail` is the check's sentence for the log — a transport's raw error, or the deployment
+	// holding no keys — and the card draws `message`.
+	it.each(['misconfigured', 'unavailable'] as const)(
+		'tells the donor of a %s challenge in the app’s own words, and the log the cause',
+		async (reason) => {
+			const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const said = 'The Turnstile check could not reach Cloudflare (TypeError: fetch failed).';
+			const refused = challenge({ ok: false, reason, detail: said, operatorFix: null });
+
+			const result = await mint(deps({ verifyChallenge: refused.verify }));
+
+			const message = result.ok ? '' : result.message;
+			expectDonorWords(message);
+			expect(message).not.toContain('Turnstile');
+			expect(logged.mock.calls.flat().join(' ')).toContain(said);
+		}
+	);
+
 	it('keeps the operator’s sentence out of the body', async () => {
 		const refused = challenge({
 			ok: false,
@@ -1088,6 +1139,21 @@ describe('mintQuote() — the processor', () => {
 			const result = await mint(deps({ provider: provider([failure(reason)]).port }));
 
 			expect(result.ok || result.reason).toBe('payments_unavailable');
+			expect(result.ok || result.fix).toContain(LOGGED);
+		}
+	);
+
+	// `detail` is the adapter's sentence for the log — a transport's raw error, an env var's name —
+	// and the card draws `message` to the donor (packages/form/src/views.ts).
+	it.each(['rate_limited', 'unreachable', 'provider_error'] as const)(
+		'tells the donor of %s in the app’s own words, and the log the processor’s',
+		async (reason) => {
+			const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+			const result = await mint(deps({ provider: provider([failure(reason)]).port }));
+
+			expect(result.ok || result.message).toBe(PROCESSOR_FAILED);
+			expect(logged.mock.calls.flat().join(' ')).toContain(`the processor said ${reason}`);
 		}
 	);
 
@@ -1095,6 +1161,23 @@ describe('mintQuote() — the processor', () => {
 		const result = await mint(deps({ provider: provider([failure('not_configured')]).port }));
 
 		expect(result.ok || result.reason).toBe('payments_not_configured');
+	});
+
+	// packages/form/src/v1.ts: an operator has a value to set and no retry moves it, so the donor is
+	// sent to another way to pay rather than invited to press again.
+	it('tells the donor of unset credentials to pay another way, and never to try again', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const result = await mint(deps({ provider: provider([failure('not_configured')]).port }));
+
+		expect(result.ok || result.message).toBe(
+			'This form can’t take this payment method right now. Use another payment method.'
+		);
+		// every variable is set and the processor refused the keys, so `fix` names no variable as
+		// unset and says where its answer went.
+		expect(result.ok || result.fix).not.toContain('not set');
+		expect(result.ok || result.fix).toContain(LOGGED);
+		expect(logged.mock.calls.flat().join(' ')).toContain('the processor said not_configured');
 	});
 
 	/**
@@ -1114,12 +1197,23 @@ describe('mintQuote() — the processor', () => {
 		expect(result.ok || result.fix).not.toContain('Stripe');
 	});
 
+	// `fix` is read by whoever sent the request and drawn on no donor's card, so the names an
+	// operator sets are carried there — names only, and no value.
+	it('names the unset variables of the rail’s own processor in the fix', async () => {
+		const result = await mint(deps(), { method: 'paypal' });
+
+		expect(result.ok || result.fix).toContain('`PAYPAL_CLIENT_ID`');
+		expect(result.ok || result.fix).toContain('`PAYPAL_CLIENT_SECRET`');
+		expect(result.ok || result.message).not.toContain('PAYPAL_');
+	});
+
 	it.each(['invalid_request', 'internal_error', 'bad_signature', 'not_found'] as const)(
 		'reports %s as a defect of ours, with no code for a form to render',
 		async (reason) => {
 			const result = await mint(deps({ provider: provider([failure(reason)]).port }));
 
 			expect(result.ok || result.reason).toBe('internal_error');
+			expect(result.ok || result.message).toBe(PROCESSOR_FAILED);
 			expect(refusalCode('internal_error')).toBeNull();
 		}
 	);
@@ -1151,6 +1245,65 @@ describe('mintQuote() — an intent that already has a gift against it', () => {
 
 		const [gifts] = await db.select({ n: sql<number>`count(*)` }).from(donation);
 		expect(gifts?.n).toBe(1);
+	});
+});
+
+/**
+ * the gift's own write failing after the processor has answered — the form deleted between the read
+ * at the top of the request and the write at the bottom is the fault every case here drives, and
+ * the one record.ts logs nowhere itself.
+ */
+describe('mintQuote() — a gift that cannot be recorded', () => {
+	/** the scripted port, deleting the form before it answers. */
+	function formGoneDuringCall(): PaymentProvider {
+		const scripted = provider();
+		const dropForm = () => env.DB.prepare('delete from form').run();
+		return {
+			...scripted.port,
+			async createIntent(request) {
+				await dropForm();
+				return scripted.port.createIntent(request);
+			},
+			async createRecurringGift(request) {
+				await dropForm();
+				return scripted.port.createRecurringGift(request);
+			}
+		};
+	}
+
+	it.each(['one_time', 'monthly'] as const)(
+		'tells the donor of a %s gift that could not be recorded in the app’s own words, and the log why',
+		async (frequency) => {
+			const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+			const result = await mint(deps({ provider: formGoneDuringCall() }), { frequency });
+
+			expect(result.ok || result.reason).toBe('internal_error');
+			expect(result.ok || result.message).toBe(PROCESSOR_FAILED);
+			expectDonorWords(result.ok ? '' : result.message);
+			expect(logged.mock.calls.flat().join(' ')).toContain(FORM_ID);
+		}
+	);
+
+	it('tells the donor of a repeating gift whose donor could not be written in the app’s own words', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		// the donor's write is the one `batch()` in front of the commitment; a database that refuses
+		// it is the fault, and every read around it is the real D1.
+		const refusing = new Proxy(db, {
+			get: (target, key, receiver) =>
+				key === 'batch'
+					? async () => {
+							throw new Error('D1_ERROR: the database refused the write');
+						}
+					: Reflect.get(target, key, receiver)
+		});
+
+		const result = await mint(deps({ db: refusing }), { frequency: 'monthly' });
+
+		expect(result.ok || result.reason).toBe('internal_error');
+		expect(result.ok || result.message).toBe(PROCESSOR_FAILED);
+		expectDonorWords(result.ok ? '' : result.message);
+		expect(logged.mock.calls.flat().join(' ')).toContain('the donor could not be written');
 	});
 });
 
@@ -1593,21 +1746,21 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		);
 	});
 
-	it('tells the donor the fund declined, in plain words, where Chariot gave no reason', async () => {
-		const port = chariotProvider([
-			{
-				ok: false,
-				reason: 'invalid_request',
-				detail: 'Chariot did not create the grant. Chariot said: nothing this app could read'
-			}
-		]);
+	// every refusal Chariot documents carries its words, so a 4xx with none is nothing the fund said
+	// — a request of ours it would not read is the other cause — and neither the donor nor an
+	// integration is told the fund refused: `daf_grant_declined` is the fund's own refusal alone
+	// (packages/form/src/v1.ts), and this one answers as our defect does, with no code.
+	it('never blames the fund for a refusal Chariot gave no reason for', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const said = 'Chariot did not create the grant. Chariot said: nothing this app could read';
+		const port = chariotProvider([{ ok: false, reason: 'invalid_request', detail: said }]);
 
 		const result = await mint(chariotDeps(port.port), fundGift());
 
-		expect(result.ok || result.reason).toBe('daf_grant_declined');
-		expect(result.ok || result.message).toBe(
-			'Your fund didn’t approve this gift, so nothing was given.'
-		);
+		expect(result.ok || result.reason).toBe('internal_error');
+		expect(refusalCode('internal_error')).toBeNull();
+		expect(result.ok || result.message).toBe(PROCESSOR_FAILED);
+		expect(logged.mock.calls.flat().join(' ')).toContain(said);
 	});
 
 	it('reports a Chariot that did not answer as an outage the donor may retry', async () => {
@@ -1619,6 +1772,21 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		// the grant may exist, so the answer never says nothing was given.
 		expect(result.ok || result.fix).toContain('may already');
 		expect(result.ok || result.fix).not.toContain('Nothing was charged');
+		expect(result.ok || result.fix).toContain(LOGGED);
+	});
+
+	it('tells the donor of a Chariot that did not answer in the app’s own words, and staff Chariot’s', async () => {
+		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const mail = mailer();
+		const said = 'No answer came back from Chariot. The transport said: socket hang up';
+		const port = chariotProvider([{ ok: false, reason: 'unreachable', detail: said }]);
+
+		const result = await mint(chariotDeps(port.port, { email: mail.port }), fundGift());
+
+		expect(result.ok || result.message).toBe(PROCESSOR_FAILED);
+		expect(logged.mock.calls.flat().join(' ')).toContain(said);
+		expect(mail.sent[0]?.text.replace(/\s+/g, ' ')).toContain(said);
 	});
 
 	/**
@@ -1685,6 +1853,20 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		return { result, mail };
 	}
 
+	// the grant exists and the fund will pay it, so the donor is neither told nothing was given nor
+	// invited to approve a second one.
+	it('tells the donor of a grant whose gift could not be recorded in the app’s own words, and the log why', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const { result } = await mintGrantWithNoGift();
+
+		const message = result.ok ? '' : result.message;
+		expectDonorWords(message);
+		expect(message).not.toContain('Try again');
+		expect(message).not.toContain('charged');
+		expect(logged.mock.calls.flat().join(' ')).toContain(FORM_ID);
+	});
+
 	/**
 	 * a grant that exists with no gift recorded against it is visible nowhere else: the settlement path
 	 * answers an unknown grant quietly, so this press is the one place the loss can be reported.
@@ -1712,8 +1894,8 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		const action = text.slice(text.indexOf('What to do:'));
 		expect(action).toContain('tracking ID');
 		expect(action).toContain('already recorded');
-		expect(action.indexOf('tracking ID')).toBeLessThan(action.indexOf('by hand'));
-		expect(action).toContain('unless Chariot shows the grant cancelled');
+		expect(action.indexOf('tracking ID')).toBeLessThan(action.indexOf('record the gift yourself'));
+		expect(action).toContain('unless Chariot shows the grant as cancelled');
 		expect(action).not.toContain('on or after');
 		expect(text).not.toContain('Tracking ID:');
 	});
@@ -1729,9 +1911,9 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		const text = (mail.sent[0]?.text ?? '').replace(/\s+/g, ' ');
 		const action = text.slice(text.indexOf('What to do:'));
 		expect(text.slice(0, text.indexOf('What to do:'))).toContain(`Tracking ID: ${TRACKING_ID}`);
-		expect(action).toContain(`shows tracking ID ${TRACKING_ID}, it is already recorded`);
+		expect(action).toContain(`shows tracking ID ${TRACKING_ID}, it’s already recorded`);
 		expect(action).toContain(
-			'Otherwise record the gift by hand, unless Chariot shows the grant cancelled'
+			'Otherwise, record the gift yourself, unless Chariot shows the grant as cancelled'
 		);
 		expect(action).not.toContain('note its tracking ID');
 	});
