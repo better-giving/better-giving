@@ -227,7 +227,11 @@ describe('the donation page', () => {
 		expect(after.blocks.map((b) => b.type)).not.toContain('share');
 		expect(after.has_unpublished_changes).toBe(true);
 
-		const reset = await call('donationReset', '/donation-page/reset', { method: 'POST', key });
+		const reset = await call('donationReset', '/donation-page/reset', {
+			method: 'POST',
+			key,
+			body: { confirm: true }
+		});
 
 		expect(reset.status).toBe(200);
 		const back = (await reset.json()) as {
@@ -236,6 +240,60 @@ describe('the donation page', () => {
 		};
 		expect(back.blocks).toEqual(current);
 		expect(back.has_unpublished_changes).toBe(false);
+	});
+
+	it.each([
+		['no body', undefined],
+		['confirm false', { confirm: false }],
+		['confirm as the string "true"', { confirm: 'true' }]
+	] as const)(
+		'refuses a Reset with %s, asking the operator first, and changes nothing',
+		async (_, body) => {
+			const key = await connect();
+			await ensureDonationPage(h.db);
+			const { blocks: current } = (await (
+				await call('donationPage', '/donation-page', { key })
+			).json()) as { blocks: { type: string }[] };
+			await call('donationBlocks', '/donation-page/blocks', {
+				method: 'PATCH',
+				key,
+				body: { blocks: current.filter((b) => b.type !== 'share') }
+			});
+			const [before] = await h.db.select().from(page).where(eq(page.type, 'donation_page'));
+
+			const response = await call('donationReset', '/donation-page/reset', {
+				method: 'POST',
+				key,
+				body
+			});
+
+			expect(response.status).toBe(422);
+			const problem = (await response.json()) as {
+				code: string;
+				detail: string;
+				errors: { path: string }[];
+			};
+			expect(problem).toMatchObject({ code: 'invalid', errors: [{ path: 'confirm' }] });
+			expect(problem.detail).toContain('ask the operator');
+			const [after] = await h.db.select().from(page).where(eq(page.type, 'donation_page'));
+			expect(after?.draft).toBe(before?.draft);
+			expect(after?.published).toBe(before?.published);
+			expect(after?.updatedAt).toEqual(before?.updatedAt);
+		}
+	);
+
+	it('refuses a Reset whose body is not a JSON object', async () => {
+		const key = await connect();
+		await ensureDonationPage(h.db);
+
+		const response = await call('donationReset', '/donation-page/reset', {
+			method: 'POST',
+			key,
+			body: 'confirm'
+		});
+
+		expect(response.status).toBe(422);
+		expect(await response.json()).toMatchObject({ code: 'invalid', errors: [{ path: '' }] });
 	});
 
 	it('refuses blocks the page rule refuses, and a photo id no stored photo has', async () => {
@@ -277,17 +335,20 @@ describe('the donation page', () => {
 	});
 
 	it.each([
-		['donationBlocks', '/donation-page/blocks', 'PATCH'],
-		['donationReset', '/donation-page/reset', 'POST']
-	] as const)('answers %s not_found before the dashboard opens it', async (route, path, method) => {
-		const key = await connect();
+		['donationBlocks', '/donation-page/blocks', 'PATCH', { blocks: [] }],
+		['donationReset', '/donation-page/reset', 'POST', { confirm: true }]
+	] as const)(
+		'answers %s not_found before the dashboard opens it',
+		async (route, path, method, body) => {
+			const key = await connect();
 
-		const response = await call(route, path, { method, key, body: { blocks: [] } });
+			const response = await call(route, path, { method, key, body });
 
-		expect(response.status).toBe(404);
-		expect(await response.json()).toMatchObject({ code: 'not_found' });
-		expect(await h.db.select().from(page)).toEqual([]);
-	});
+			expect(response.status).toBe(404);
+			expect(await response.json()).toMatchObject({ code: 'not_found' });
+			expect(await h.db.select().from(page)).toEqual([]);
+		}
+	);
 });
 
 describe('blocks.catalog', () => {

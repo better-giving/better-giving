@@ -126,7 +126,7 @@ describe('forms.update', () => {
 		const response = await call('form', `/forms/${form.id}`, {
 			method: 'PATCH',
 			key,
-			body: { name: 'Spring appeal 2027', status: 'live' }
+			body: { name: 'Spring appeal 2027', status: 'live', confirm: true }
 		});
 
 		expect(response.status).toBe(200);
@@ -156,6 +156,107 @@ describe('forms.update', () => {
 			minimum: usd('1.00'),
 			maximum: usd('500.00')
 		});
+	});
+
+	it('changes a draft form’s amounts with no confirm, since no donor sees a draft', async () => {
+		const key = await connect();
+		const form = await made(key);
+
+		const response = await call('form', `/forms/${form.id}`, {
+			method: 'PATCH',
+			key,
+			body: { minimum: usd('5') }
+		});
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ status: 'draft', minimum: usd('5.00') });
+	});
+
+	it.each([
+		['its amounts', { suggested_amounts: [usd('15')] }, { suggested_amounts: [usd('15.00')] }],
+		['its sites', { allowed_origins: [] }, { allowed_origins: [] }],
+		['it to draft', { status: 'draft' }, { status: 'draft' }]
+	] as const)(
+		'refuses changing %s on a live form until confirm is true, then saves',
+		async (_, edit, saved) => {
+			const key = await connect();
+			await h.db.run(
+				sql`insert into site (id, origin, position, created_at, updated_at) values ('site-1', 'https://www.example.org', 0, 0, 0)`
+			);
+			const form = await made(key, {
+				status: 'live',
+				allowed_origins: ['https://www.example.org']
+			});
+			const before = await (await call('form', `/forms/${form.id}`, { key })).json();
+
+			const refused = await call('form', `/forms/${form.id}`, { method: 'PATCH', key, body: edit });
+
+			expect(refused.status).toBe(422);
+			const problem = (await refused.json()) as {
+				code: string;
+				detail: string;
+				errors: { path: string }[];
+			};
+			expect(problem).toMatchObject({ code: 'invalid', errors: [{ path: 'confirm' }] });
+			expect(problem.detail).toContain('ask the operator');
+			expect(await (await call('form', `/forms/${form.id}`, { key })).json()).toEqual(before);
+
+			const confirmed = await call('form', `/forms/${form.id}`, {
+				method: 'PATCH',
+				key,
+				body: { ...edit, confirm: true }
+			});
+
+			expect(confirmed.status).toBe(200);
+			expect(await confirmed.json()).toMatchObject(saved);
+		}
+	);
+
+	it('refuses setting a draft form live until confirm is true', async () => {
+		const key = await connect();
+		const form = await made(key);
+
+		const refused = await call('form', `/forms/${form.id}`, {
+			method: 'PATCH',
+			key,
+			body: { status: 'live' }
+		});
+
+		expect(refused.status).toBe(422);
+		expect(await refused.json()).toMatchObject({ code: 'invalid', errors: [{ path: 'confirm' }] });
+		const read = await call('form', `/forms/${form.id}`, { key });
+		expect(await read.json()).toMatchObject({ status: 'draft' });
+	});
+
+	it('renames a live form with no confirm, since a form’s name reaches no donor', async () => {
+		const key = await connect();
+		const form = await made(key, { status: 'live' });
+
+		const response = await call('form', `/forms/${form.id}`, {
+			method: 'PATCH',
+			key,
+			body: { name: 'Spring appeal 2027' }
+		});
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ name: 'Spring appeal 2027', status: 'live' });
+	});
+
+	it('refuses a body naming only confirm as naming no field to change', async () => {
+		const key = await connect();
+		const form = await made(key, { status: 'live' });
+
+		const response = await call('form', `/forms/${form.id}`, {
+			method: 'PATCH',
+			key,
+			body: { confirm: true }
+		});
+
+		expect(response.status).toBe(422);
+		const problem = (await response.json()) as { errors: { path: string; message: string }[] };
+		expect(problem.errors).toEqual([
+			{ path: '', message: expect.stringContaining('names no field') }
+		]);
 	});
 
 	it('sets the sites a form loads on, out of the deployment’s listed ones', async () => {

@@ -36,7 +36,8 @@ import type { Refused } from './campaigns';
 // and handed to the same parsers and writes — `parseFormInput` and the group parsers in
 // ../forms/form-input.ts, `createForm` and the group writes in ../forms/queries.ts — so a form the
 // connector makes or changes meets every rule a hand edit does, and the refusals come back keyed to
-// the wire's field names rather than the boxes'.
+// the wire's field names rather than the boxes'. an update donors would see at once also takes
+// `confirm: true` (`updateConnectorForm`).
 
 type Money = { readonly amount: string; readonly currency: string };
 
@@ -188,7 +189,7 @@ function boxesFrom(
 	const values: Record<string, unknown> = { ...base };
 	const groups = new Set<FormGroup>();
 	for (const key of Object.keys(input)) {
-		if (!(WRITABLE as readonly string[]).includes(key))
+		if (key !== 'confirm' && !(WRITABLE as readonly string[]).includes(key))
 			issues.push({
 				path: key,
 				message: `is not a field a form takes; the fields are ${WRITABLE.join(', ')}`
@@ -334,9 +335,47 @@ type GroupWrite = {
 };
 
 /**
+ * whether an edit changes what an embed already pasted serves at once: any field but `name` on a
+ * live form, or `status: 'live'` on any. a form has no draft, and its name reaches no donor — the
+ * served config carries none, and only the staff notice, Zapier and `/integrations/v1` do.
+ */
+function reachesDonors(stored: StoredForm, body: Record<string, unknown>): boolean {
+	if (body.status === 'live') return true;
+	return (
+		stored.status === 'live' &&
+		WRITABLE.some((field) => field !== 'name' && body[field] !== undefined)
+	);
+}
+
+/** the refusal of an edit `reachesDonors` names, sent without `confirm: true`. */
+function unconfirmed(stored: StoredForm): Refused {
+	const where =
+		stored.status === 'live'
+			? 'This form is live, so the edit reaches every site already embedding it'
+			: 'This edit sets the form live, so it starts serving on every site already embedding it';
+	return {
+		ok: false,
+		status: 422,
+		code: 'invalid',
+		detail: `Nothing was changed: ${where} at once, with no Publish step. First ask the operator, saying so, and send the edit again with confirm set to true only once they agree.`,
+		errors: [
+			{
+				path: 'confirm',
+				message:
+					'is true, sent once the operator has agreed to an edit donors see on the sites embedding this form'
+			}
+		]
+	};
+}
+
+/**
  * changes the fields the body names, through the dashboard's group writes and their parsers. a
  * field left out keeps what is stored, and a group is saved whole from the stored values with the
  * body's laid over them, as the editor saves it.
+ *
+ * an edit donors would see at once (`reachesDonors`) is refused unless the body holds
+ * `confirm: true`, the JSON boolean, which the chat sends only once the operator has said yes.
+ * `confirm` is no field of the form: elsewhere it is ignored, and it alone names nothing to change.
  *
  * every group the body touches is checked before any is written, so a refusal changes nothing.
  * the writes then run one group at a time, each guarded on the version the form was read at just
@@ -413,6 +452,8 @@ export async function updateConnectorForm(
 		}
 	}
 	if (issues.length > 0) return refusedFields('The edit', issues);
+	const edit = body as Record<string, unknown>;
+	if (reachesDonors(record, edit) && edit.confirm !== true) return unconfirmed(record);
 
 	let version = record.updatedAt;
 	let expected: Settings = record;

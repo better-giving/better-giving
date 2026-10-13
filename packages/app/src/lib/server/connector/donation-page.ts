@@ -22,7 +22,9 @@ import {
 //
 // a blocks edit is the draft only, as a campaign's is. Reset writes the draft and the live page
 // together (../pages/reset.ts), so donors see the default at once; on a page already the default
-// it writes nothing and answers the page as it stands.
+// it writes nothing and answers the page as it stands. with no Publish step between it and donors,
+// Reset takes `confirm: true` in its body, the JSON boolean and nothing else, which the chat sends
+// only once the operator has said yes; without it Reset is refused and writes nothing.
 
 /** the donation page as `donation_page.get` answers it. */
 export type DonationPage = {
@@ -103,8 +105,35 @@ export async function replaceDonationBlocks(
 	}
 }
 
-/** the donation page back to the default, draft and live page alike; its donation settings stay. */
-export async function resetToDefault(db: Db, origin: string, now: Date): Promise<Done | Refused> {
+const RESET_UNCONFIRMED: Refused = {
+	ok: false,
+	status: 422,
+	code: 'invalid',
+	detail:
+		'Nothing was reset: Reset replaces the live donation page donors see with the default, at once, with no Publish step. First ask the operator, saying so, and reset again with confirm set to true only once they agree.',
+	errors: [
+		{
+			path: 'confirm',
+			message:
+				'is true, sent once the operator has agreed to replace the live donation page with the default'
+		}
+	]
+};
+
+/**
+ * the donation page back to the default, draft and live page alike; its donation settings stay.
+ * `body` is a JSON object holding `confirm: true`, or Reset is refused.
+ */
+export async function resetToDefault(
+	db: Db,
+	origin: string,
+	now: Date,
+	body: unknown
+): Promise<Done | Refused> {
+	if (body !== undefined && (typeof body !== 'object' || body === null))
+		return invalid('', 'the body is a JSON object holding confirm');
+	if (body === undefined || (body as { confirm?: unknown }).confirm !== true)
+		return RESET_UNCONFIRMED;
 	const row = await readTarget(db, TARGET);
 	if (row === null) return NOT_OPENED;
 	const outcome = await resetDonationPage(db, row.updatedAt);
