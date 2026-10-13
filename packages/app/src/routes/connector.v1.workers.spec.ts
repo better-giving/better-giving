@@ -6,6 +6,7 @@ import {
 	issueCode,
 	LEFTOVER_KEEP_MS,
 	REVOKED_KEY_KEEP_MS,
+	redeemCode,
 	sweepConnectorLeftovers
 } from '$lib/server/connector/keys';
 import { CONNECTOR_ACTIONS, CONNECTOR_RETURN } from '$lib/server/connector/surface';
@@ -170,6 +171,17 @@ describe('the code exchange', () => {
 		expect(name).toBe('Riverbank Trust');
 		expect(second.status).toBe(400);
 		expect(await second.json()).toMatchObject({ code: 'code_invalid' });
+	});
+
+	it('mints one key between two redemptions of one code racing each other', async () => {
+		const code = await issueCode(h.db, 'staff');
+
+		const minted = await Promise.all([redeemCode(h.db, code), redeemCode(h.db, code)]);
+
+		expect(minted.filter((m) => m !== null)).toHaveLength(1);
+		const keys = await h.db.select().from(connectorKey);
+		expect(keys).toHaveLength(1);
+		expect(keys[0]?.allowedBy).toBe('staff');
 	});
 
 	it('refuses a code past its ten minutes', async () => {

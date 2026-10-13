@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, desc, eq, gt, inArray, isNull, lt, or } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
 import { type ConnectorKey, connectorCode, connectorKey, photoLink } from '../db/schema';
 
@@ -45,8 +46,9 @@ export type MintedConnectorKey = { readonly id: string; readonly key: string };
 
 /**
  * `code` redeemed for a new key, or `null` for a code that is not one the Allow screen issued, was
- * redeemed already, or has expired. the take is one guarded UPDATE, so two redemptions racing on one
- * code mint one key between them.
+ * redeemed already, or has expired. the take and the mint are one batch: the key is inserted from
+ * the code row while it is still unspent, then the code is spent, so two redemptions racing on one
+ * code mint one key between them, and a mint that fails leaves the code unspent.
  */
 export async function redeemCode(
 	db: Db,
@@ -54,31 +56,33 @@ export async function redeemCode(
 	now = new Date()
 ): Promise<MintedConnectorKey | null> {
 	if (!CODE_SHAPE.test(code)) return null;
-	const [taken] = await db
-		.update(connectorCode)
-		.set({ usedAt: now })
-		.where(
-			and(
-				eq(connectorCode.codeHash, hashOf(code)),
-				isNull(connectorCode.usedAt),
-				gt(connectorCode.expiresAt, now)
-			)
-		)
-		.returning({ allowedBy: connectorCode.allowedBy });
-	if (!taken) return null;
 	const key = `bgc_${randomToken()}`;
-	const [row] = await db
-		.insert(connectorKey)
-		.values({
-			keyHash: hashOf(key),
-			prefix: key.slice(0, 8),
-			lastFour: key.slice(-4),
-			allowedBy: taken.allowedBy,
-			createdAt: now
+	const unspent = and(
+		eq(connectorCode.codeHash, hashOf(code)),
+		isNull(connectorCode.usedAt),
+		gt(connectorCode.expiresAt, now)
+	);
+	// every column of `connectorKey`, in its order: an insert from a select takes no defaults.
+	const minted = db
+		.select({
+			id: sql<string>`${uuidv7()}`.as('id'),
+			keyHash: sql<string>`${hashOf(key)}`.as('key_hash'),
+			prefix: sql<string>`${key.slice(0, 8)}`.as('prefix'),
+			lastFour: sql<string>`${key.slice(-4)}`.as('last_four'),
+			allowedBy: connectorCode.allowedBy,
+			createdAt: sql<number>`${now.getTime()}`.as('created_at'),
+			lastUsedAt: sql`null`.as('last_used_at'),
+			revokedAt: sql`null`.as('revoked_at'),
+			revokedBy: sql`null`.as('revoked_by')
 		})
-		.returning({ id: connectorKey.id });
-	if (!row) throw new Error('inserting the connector key returned no row');
-	return { id: row.id, key };
+		.from(connectorCode)
+		.where(unspent);
+	const [inserted] = await db.batch([
+		db.insert(connectorKey).select(minted).returning({ id: connectorKey.id }),
+		db.update(connectorCode).set({ usedAt: now }).where(unspent)
+	]);
+	const [row] = inserted;
+	return row ? { id: row.id, key } : null;
 }
 
 /** the live connector key `presented` is, or `null` for any value that is not one. */
