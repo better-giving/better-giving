@@ -3425,9 +3425,15 @@ export const connectorKey = sqliteTable(
 		createdAt: createdAt(),
 		/** the last time a request presented this key; null until one has. */
 		lastUsedAt: at('last_used_at'),
-		/** from this moment the key admits nothing: Disconnect, or the connector letting it go. */
+		/**
+		 * from this moment the key admits nothing: Disconnect, the connector letting it go, or the sweep
+		 * once it has gone ninety days unused (`IDLE_KEY_REVOKE_MS` in ../connector/keys.ts).
+		 */
 		revokedAt: at('revoked_at'),
-		/** who revoked it: `dashboard` for Disconnect, `connector` for the connector's own let-go. */
+		/**
+		 * who revoked it: `dashboard` for Disconnect, `connector` for the connector's own let-go and for
+		 * the sweep revoking a key the connector has stopped using.
+		 */
 		revokedBy: text('revoked_by').$type<'dashboard' | 'connector'>()
 		// append new columns below this line — see rule 1 at the top of this file.
 	},

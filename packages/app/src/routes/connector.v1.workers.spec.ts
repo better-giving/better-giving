@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
 	CODE_TTL_MS,
 	CONNECTOR_KEY_SHAPE,
+	IDLE_KEY_REVOKE_MS,
 	issueCode,
 	LEFTOVER_KEEP_MS,
+	listConnections,
 	REVOKED_KEY_KEEP_MS,
 	redeemCode,
 	sweepConnectorLeftovers
@@ -30,9 +32,9 @@ import * as uploadLink from './connector.v1.photos.upload-link';
 import * as photo from './photo.$token';
 
 // the walk the central connector's end-to-end run takes against a deployment, from this side:
-// hello, the Allow screen, the code exchange, an action with the connected key, the key surviving
-// the connector's own token refresh, the connector letting its key go (revoke) and sweeping what is
-// left (cleanup), and Disconnect pressed on the dashboard — then the edits and the photo link.
+// hello, the Allow screen, the code exchange, an action with the connected key, the connector
+// letting its key go (revoke) and sweeping what is left (cleanup), and Disconnect pressed on the
+// dashboard — then the edits and the photo link.
 
 const h = connectorHarness(() => ({
 	hello: under('hello', hello),
@@ -256,7 +258,7 @@ describe('an action with the connected key', () => {
 		expect(published.data).toEqual([]);
 	});
 
-	it('keeps answering the same key call after call, as it does across the connector’s token refreshes', async () => {
+	it('answers one key call after call, and records when it was last used', async () => {
 		const key = await connect();
 		for (let at = 0; at < 3; at += 1) {
 			expect((await call('campaigns', '/campaigns', { key })).status).toBe(200);
@@ -361,6 +363,69 @@ describe('revoke and cleanup from the connector', () => {
 		expect(left[0]?.revokedAt).toBeNull();
 		expect(await h.db.select().from(photoLink)).toEqual([]);
 		expect((await call('campaigns', '/campaigns', { key: kept })).status).toBe(200);
+	});
+
+	it('keeps a key used within ninety days, measured from its last use', async () => {
+		const key = await connect();
+		await h.db
+			.update(connectorKey)
+			.set({ createdAt: new Date(Date.now() - 2 * IDLE_KEY_REVOKE_MS) });
+		expect((await call('campaigns', '/campaigns', { key })).status).toBe(200);
+		const [used] = await h.db.select().from(connectorKey);
+		const lastUsedAt = used?.lastUsedAt?.getTime() ?? 0;
+
+		await sweepConnectorLeftovers(h.db, new Date(lastUsedAt + IDLE_KEY_REVOKE_MS - 60 * 60_000));
+
+		expect((await h.db.select().from(connectorKey))[0]?.revokedAt).toBeNull();
+		expect((await call('campaigns', '/campaigns', { key })).status).toBe(200);
+		expect(await listConnections(h.db)).toHaveLength(1);
+	});
+
+	it('revokes a key unused for ninety days since its last use', async () => {
+		const key = await connect();
+		expect((await call('campaigns', '/campaigns', { key })).status).toBe(200);
+		const [used] = await h.db.select().from(connectorKey);
+		const lastUsedAt = used?.lastUsedAt?.getTime() ?? 0;
+
+		await sweepConnectorLeftovers(h.db, new Date(lastUsedAt + IDLE_KEY_REVOKE_MS + 60 * 60_000));
+
+		const refused = await call('campaigns', '/campaigns', { key });
+		expect(refused.status).toBe(401);
+		expect(await refused.json()).toMatchObject({ code: 'key_refused' });
+		expect(await listConnections(h.db)).toEqual([]);
+		expect((await h.db.select().from(connectorKey))[0]?.revokedBy).toBe('connector');
+	});
+
+	it('revokes a key never used ninety days after it was minted, and ends its open photo link', async () => {
+		const key = await connect();
+		const { id } = (await (
+			await call('campaigns', '/campaigns', { method: 'POST', key, body: { title: 'Coats' } })
+		).json()) as { id: string };
+		await call('uploadLink', '/photos/upload-link', {
+			method: 'POST',
+			key,
+			body: { target: { kind: 'campaign', id } }
+		});
+		const [minted] = await h.db.update(connectorKey).set({ lastUsedAt: null }).returning();
+		const idleFrom = minted?.createdAt.getTime() ?? 0;
+		const swept = new Date(idleFrom + IDLE_KEY_REVOKE_MS + 60 * 60_000);
+		// a link still open at the sweep, so the expired-link delete does not take it first
+		await h.db.update(photoLink).set({ expiresAt: new Date(swept.getTime() + 60 * 60_000) });
+
+		await sweepConnectorLeftovers(h.db, new Date(idleFrom + IDLE_KEY_REVOKE_MS - 60 * 60_000));
+		expect(await listConnections(h.db)).toHaveLength(1);
+
+		await sweepConnectorLeftovers(h.db, swept);
+
+		const refused = await call('campaigns', '/campaigns', { key });
+		expect(refused.status).toBe(401);
+		expect(await refused.json()).toMatchObject({ code: 'key_refused' });
+		expect(await listConnections(h.db)).toEqual([]);
+		const [row] = await h.db.select().from(connectorKey);
+		expect(row?.revokedBy).toBe('connector');
+		expect(row?.revokedAt).toEqual(swept);
+		const [link] = await h.db.select().from(photoLink);
+		expect(link?.usedAt).toEqual(swept);
 	});
 
 	it('deletes a never-published campaign that a photo link still names, and the link with it', async () => {

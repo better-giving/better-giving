@@ -8,7 +8,10 @@ import { type ConnectorKey, connectorCode, connectorKey, photoLink } from '../db
 // only by `redeemCode`, and only for a code the Allow screen issued (`issueCode`) within the last
 // `CODE_TTL_MS`; the code is single-use, so a code intercepted after the connector redeemed it is
 // worth nothing. every value is stored as its SHA-256 and compared by that hash, so nothing read
-// out of the database admits a request.
+// out of the database admits a request. a key ends by Disconnect, by the connector letting it go,
+// or by the hourly sweep once it has gone `IDLE_KEY_REVOKE_MS` unused: the connector drops a chat's
+// connection when its refresh token lapses after the same ninety days, and a key it no longer holds
+// would otherwise stay live, and listed as connected, forever.
 
 /** how long an Allow's code waits to be redeemed. */
 export const CODE_TTL_MS = 10 * 60_000;
@@ -168,17 +171,44 @@ export const LEFTOVER_KEEP_MS = 24 * 60 * 60_000;
 /** how long a revoked key's row is kept, as the trail of who allowed it and when it was cut. */
 export const REVOKED_KEY_KEEP_MS = 30 * 24 * 60 * 60_000;
 
+/** how long a live key goes unused, from its last use or else its minting, before the sweep revokes it. */
+export const IDLE_KEY_REVOKE_MS = 90 * 24 * 60 * 60_000;
+
 /**
- * deletes codes and photo links that have been spent or expired for `LEFTOVER_KEEP_MS`, and keys
- * revoked for `REVOKED_KEY_KEEP_MS`: none admits anything, and the rows are only a trail. a live key
- * is never swept — a connection lasts until Disconnect, however long the chat goes unused. never
- * rejects.
+ * revokes, as `connector`, every live key unused for `IDLE_KEY_REVOKE_MS` and ends the photo links it
+ * handed out, as `revokeConnectorKey` does; then deletes codes and photo links that have been spent
+ * or expired for `LEFTOVER_KEEP_MS`, and keys revoked for `REVOKED_KEY_KEEP_MS`: none admits
+ * anything, and the rows are only a trail. an idle key revoked here is deleted by a later sweep, a
+ * month on. `touchConnectorKey` records use at most once a minute, which is nothing against ninety
+ * days. one batch, and never rejects.
  */
 export async function sweepConnectorLeftovers(db: Db, now = new Date()): Promise<void> {
 	const before = new Date(now.getTime() - LEFTOVER_KEEP_MS);
 	const revokedBefore = new Date(now.getTime() - REVOKED_KEY_KEEP_MS);
+	const idleBefore = new Date(now.getTime() - IDLE_KEY_REVOKE_MS);
+	const idle = and(
+		isNull(connectorKey.revokedAt),
+		or(
+			lt(connectorKey.lastUsedAt, idleBefore),
+			and(isNull(connectorKey.lastUsedAt), lt(connectorKey.createdAt, idleBefore))
+		)
+	);
 	try {
 		await db.batch([
+			// the links first: once the key is revoked, `idle` no longer names it.
+			db
+				.update(photoLink)
+				.set({ usedAt: now })
+				.where(
+					and(
+						isNull(photoLink.usedAt),
+						inArray(
+							photoLink.connectorKeyId,
+							db.select({ id: connectorKey.id }).from(connectorKey).where(idle)
+						)
+					)
+				),
+			db.update(connectorKey).set({ revokedAt: now, revokedBy: 'connector' }).where(idle),
 			db
 				.delete(connectorCode)
 				.where(or(lt(connectorCode.expiresAt, before), lt(connectorCode.usedAt, before))),
@@ -198,6 +228,9 @@ export async function sweepConnectorLeftovers(db: Db, now = new Date()): Promise
 			db.delete(connectorKey).where(lt(connectorKey.revokedAt, revokedBefore))
 		]);
 	} catch (e) {
-		console.error('sweeping spent connector codes, photo links and revoked keys failed:', e);
+		console.error(
+			'sweeping idle connector keys, spent codes, photo links and revoked keys failed:',
+			e
+		);
 	}
 }
