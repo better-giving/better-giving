@@ -223,7 +223,9 @@ describe('the gate on the protected layout', () => {
 describe('a write arriving from another origin', () => {
 	it('refuses a same-site POST from a signed-in browser, naming the header', async () => {
 		// the org's own website on a sibling subdomain: same-site, so the lax session cookie rides
-		// along, and a script there could invite a member.
+		// along. the gate refuses it before any child runs, page route or endpoint alike — on an
+		// endpoint such as /admin/images it is the only check, because react-router's own origin
+		// check runs on no resource route.
 		const cookie = await signIn();
 		const beneath = screen();
 
