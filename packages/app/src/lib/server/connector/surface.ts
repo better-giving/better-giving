@@ -31,7 +31,8 @@ export const CONNECTOR_ACTIONS = [
 	'campaigns.get',
 	'campaigns.create',
 	'campaigns.update_blocks',
-	'campaigns.update_settings'
+	'campaigns.update_settings',
+	'photos.upload_link'
 ] as const;
 
 /** the release `hello` answers: this build's, or `0.0.0` for a build that named none. */

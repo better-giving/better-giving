@@ -253,7 +253,12 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// database, which is what makes it safe to serve to anyone and to cache publicly
 	// ($lib/server/integrations/openapi.ts).
 	'routes/integrations.openapi[.]json.ts',
-	'routes/integrations.agent-prompt[.]md.ts'
+	'routes/integrations.agent-prompt[.]md.ts',
+	// the page a chat's photo link opens, on the operator's phone with no dashboard session: the
+	// link's 256-bit token is the permission, good once, for half an hour, for one photo on one page,
+	// and only while the connection that asked for it stands ($lib/server/connector/photos.ts). its
+	// write lands in the page's draft alone, through the dashboard's own guarded writer.
+	'routes/photo.$token.tsx'
 ];
 
 /**
