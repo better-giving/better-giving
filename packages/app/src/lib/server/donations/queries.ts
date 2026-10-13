@@ -17,6 +17,7 @@ import {
 import { alias, type SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { readContactNames, readContactSummaries } from '../contacts/queries';
 import type { Db } from '../db/client';
+import { type TimeWindow, withinWindow } from '../ledger/queries';
 import { dispute, donation, payment, program, type Donation, type Payment } from '../db/schema';
 import type { DonationStatus } from '../../donations/statuses';
 import { projectTribute } from '../../donations/tributes';
@@ -604,7 +605,35 @@ export type GiftMonth = {
  * back every month: `overMonths` in ../months.ts is what cuts the run out of it.
  */
 export async function readGiftsByMonth(db: Db): Promise<GiftMonth[]> {
-	const collected = db
+	const collected = firstCollected(db);
+
+	const month = sql<string>`strftime('%Y-%m', ${collected.firstAt} / 1000, 'unixepoch')`;
+	return db
+		.select({ month: month.as('month'), gifts: count() })
+		.from(collected)
+		.groupBy(month);
+}
+
+/** how many gifts were collected through one form; `formId` null for gifts made through none. */
+export type GiftsByForm = { formId: string | null; gifts: number };
+
+/**
+ * `readGiftsByMonth`'s count — a gift counted once, at its first `succeeded` inbound attempt — over
+ * the gifts whose money first moved inside `window`, split by the form each was made through.
+ */
+export async function readGiftsByFormWithin(db: Db, window: TimeWindow): Promise<GiftsByForm[]> {
+	const collected = firstCollected(db);
+	return db
+		.select({ formId: donation.formId, gifts: count() })
+		.from(collected)
+		.innerJoin(donation, eq(donation.id, collected.donationId))
+		.where(withinWindow(collected.firstAt, window))
+		.groupBy(donation.formId);
+}
+
+/** each gift that has collected anything, and when its money first moved, in epoch milliseconds. */
+function firstCollected(db: Db) {
+	return db
 		.select({
 			donationId: payment.donationId,
 			firstAt: sql<number>`min(${payment.occurredAt})`.as('first_at')
@@ -613,12 +642,6 @@ export async function readGiftsByMonth(db: Db): Promise<GiftMonth[]> {
 		.where(and(eq(payment.direction, 'inbound'), eq(payment.status, 'succeeded')))
 		.groupBy(payment.donationId)
 		.as('collected');
-
-	const month = sql<string>`strftime('%Y-%m', ${collected.firstAt} / 1000, 'unixepoch')`;
-	return db
-		.select({ month: month.as('month'), gifts: count() })
-		.from(collected)
-		.groupBy(month);
 }
 
 /**

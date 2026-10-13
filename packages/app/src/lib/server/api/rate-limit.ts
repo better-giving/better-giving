@@ -201,6 +201,22 @@ export function integrationsCallerRateLimitKey(request: Request): string | null 
 }
 
 /**
+ * what one request on `/connector/v1` counts against before its key is read: the caller's `/64`,
+ * on `API_RATE_LIMITER` under a key of its own, as the read API's is; `null` for an unattributed
+ * caller. once admitted, a connector key is charged on `INTEGRATIONS_KEY_RATE_LIMITER` under
+ * `connectorKeyRateLimitKey`.
+ */
+export function connectorCallerRateLimitKey(request: Request): string | null {
+	const caller = attributedCaller(request, 64);
+	return caller === null ? null : `/connector/v1 ${caller}`;
+}
+
+/** what an admitted connector key's request counts against: its row id, apart from any api key's. */
+export function connectorKeyRateLimitKey(keyId: string): string {
+	return `/connector/v1 key ${keyId}`;
+}
+
+/**
  * what one request on `/integrations/v1` counts against once its key is admitted: the admitted
  * key's row id, charged against `INTEGRATIONS_KEY_RATE_LIMITER`.
  *

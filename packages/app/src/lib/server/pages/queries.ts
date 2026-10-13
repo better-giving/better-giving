@@ -1,10 +1,11 @@
+import { editPageDraft } from './draft-writer';
 import { and, eq, exists, inArray, isNotNull, ne, notExists, type SQL } from 'drizzle-orm';
-import { type Page as PageDocument, parsePage } from '../../page/catalog';
+import type { Page as PageDocument } from '../../page/catalog';
 import { stateAt } from '../../page/ended';
 import { freeSlug, slugFromTitle } from '../../page/slug';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
-import { form, type Page, page } from '../db/schema';
+import { form, type Page, page, photoLink } from '../db/schema';
 import { freeLetGoStatements } from '../images/free';
 import { MAX_FORM_NAME } from '../../forms/input-schema';
 import type { ParsedFormGiving, ParsedFormProgram } from '../forms/form-input';
@@ -53,7 +54,16 @@ export async function deleteNeverPublishedCampaign(
 		eq(page.state, 'never_published'),
 		eq(page.updatedAt, version)
 	);
-	const [deleted] = await db.batch([
+	// the page's photo links first, under the page's own guard: their foreign key is `NO ACTION`.
+	const [, deleted] = await db.batch([
+		db
+			.delete(photoLink)
+			.where(
+				and(
+					eq(photoLink.pageId, pageId),
+					exists(db.select({ id: page.id }).from(page).where(deletable))
+				)
+			),
 		db.delete(page).where(deletable).returning({ id: page.id }),
 		db
 			.delete(form)
@@ -445,13 +455,13 @@ export async function updateDraftSettings(
 		maxMinor: input.giving.maxMinor,
 		suggestedAmounts: [...input.giving.suggestedAmounts]
 	};
-	const draft = JSON.stringify({ ...JSON.parse(row.draft), settings, switches: input.switches });
-	const written = await db
-		.update(page)
-		.set({ draft })
-		.where(and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft)))
-		.returning({ id: page.id });
-	return written.length === 1 ? 'written' : 'stale';
+	const written = await editPageDraft(db, target, version, (draft) => ({
+		ok: true,
+		draft: { ...draft, settings, switches: input.switches }
+	}));
+	if (written.kind === 'refused')
+		throw new Error(`page ${row.id}'s draft would fail its rule: ${written.message}`);
+	return written.kind === 'written' ? 'written' : written.kind;
 }
 
 /** a page document's keys the Settings sheet sets one at a time; `undefined` removes a key. */
@@ -469,24 +479,14 @@ export async function updateDraftKeys(
 	version: Date,
 	keys: DraftKeys
 ): Promise<'written' | 'stale' | 'gone'> {
-	const [row] = await db
-		.select({ id: page.id, type: page.type, draft: page.draft })
-		.from(page)
-		.where(
-			target.type === 'campaign'
-				? and(eq(page.id, target.id), eq(page.type, 'campaign'))
-				: eq(page.type, 'donation_page')
-		);
-	if (!row) return 'gone';
-
-	const next = { ...JSON.parse(row.draft), ...keys };
-	const checked = parsePage(row.type, next);
-	if (!checked.ok)
-		throw new Error(`page ${row.id}'s draft would fail its rule: ${checked.message}`);
-	const written = await db
-		.update(page)
-		.set({ draft: JSON.stringify(next) })
-		.where(and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft)))
-		.returning({ id: page.id });
-	return written.length === 1 ? 'written' : 'stale';
+	const written = await editPageDraft(db, target, version, (draft) => ({
+		ok: true,
+		draft: { ...draft, ...keys }
+	}));
+	if (written.kind === 'refused')
+		throw new Error(`page ${pageOf(target)}'s draft would fail its rule: ${written.message}`);
+	return written.kind === 'written' ? 'written' : written.kind;
 }
+
+const pageOf = (target: SettingsTarget) =>
+	target.type === 'campaign' ? target.id : 'donation_page';

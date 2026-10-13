@@ -9,11 +9,13 @@ import {
 	inArray,
 	isNull,
 	or,
+	type SQL,
 	sql
 } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
+import { type TimeWindow, withinWindow } from '../ledger/queries';
 import { overMonths, type MonthlyRun } from '../months';
 import {
 	contact,
@@ -206,6 +208,41 @@ export type ContactPage = {
 };
 
 /**
+ * what each donor has given, as `listContacts` states it beside their name: `settled`, one row per
+ * gift that has been settled at all, to be joined on `contact.id`; and over its rows grouped by
+ * contact, `gifts` and `given`. `listContacts` argues the rule.
+ */
+function givingFigures(db: Db) {
+	// one row per gift that has been settled at all: what it collected, and what came back. the
+	// join is inner, so a gift with no attempt on it never reaches the outer grouping — it has
+	// collected nothing, which is the same answer the `> 0` test below gives it.
+	const settled = db
+		.select({
+			contactId: donation.contactId,
+			collected:
+				sql<number>`sum(case when ${payment.direction} = 'inbound' and ${payment.status} = 'succeeded' then ${payment.amountMinor} else 0 end)`.as(
+					'collected'
+				),
+			refunded:
+				sql<number>`sum(case when ${payment.direction} = 'refund' and ${payment.status} = 'succeeded' then ${payment.amountMinor} else 0 end)`.as(
+					'refunded'
+				)
+		})
+		.from(donation)
+		.innerJoin(payment, eq(payment.donationId, donation.id))
+		.groupBy(donation.id, donation.contactId)
+		.as('settled');
+
+	// `coalesce` because the join is outer: a donor with no settled gift matches no row, and
+	// `sum` over no rows is null rather than zero. the screen states exact figures, and a donor
+	// whose gifts column read `—` would be one a reader cannot tell from a donor nobody counted.
+	const gifts = sql<number>`coalesce(sum(case when ${settled.collected} > 0 then 1 else 0 end), 0)`;
+	const given = sql<number>`coalesce(sum(case when ${settled.collected} > 0 then ${settled.collected} - ${settled.refunded} else 0 end), 0)`;
+
+	return { settled, gifts, given };
+}
+
+/**
  * the donor file, one page of it, ordered by name or by what each donor has given.
  *
  * **the aggregates follow `projectStatus` in ../donations/queries.ts exactly, and have to.** a
@@ -256,31 +293,7 @@ export async function listContacts(db: Db, order: ContactOrder): Promise<Contact
 	const pages = Math.max(1, Math.ceil(total / CONTACT_LIST_LIMIT));
 	const page = Math.min(Math.max(1, order.page), pages);
 
-	// one row per gift that has been settled at all: what it collected, and what came back. the
-	// join is inner, so a gift with no attempt on it never reaches the outer grouping — it has
-	// collected nothing, which is the same answer the `> 0` test below gives it.
-	const settled = db
-		.select({
-			contactId: donation.contactId,
-			collected:
-				sql<number>`sum(case when ${payment.direction} = 'inbound' and ${payment.status} = 'succeeded' then ${payment.amountMinor} else 0 end)`.as(
-					'collected'
-				),
-			refunded:
-				sql<number>`sum(case when ${payment.direction} = 'refund' and ${payment.status} = 'succeeded' then ${payment.amountMinor} else 0 end)`.as(
-					'refunded'
-				)
-		})
-		.from(donation)
-		.innerJoin(payment, eq(payment.donationId, donation.id))
-		.groupBy(donation.id, donation.contactId)
-		.as('settled');
-
-	// `coalesce` because the join is outer: a donor with no settled gift matches no row, and
-	// `sum` over no rows is null rather than zero. the screen states exact figures, and a donor
-	// whose gifts column read `—` would be one a reader cannot tell from a donor nobody counted.
-	const gifts = sql<number>`coalesce(sum(case when ${settled.collected} > 0 then 1 else 0 end), 0)`;
-	const given = sql<number>`coalesce(sum(case when ${settled.collected} > 0 then ${settled.collected} - ${settled.refunded} else 0 end), 0)`;
+	const { gifts, given, settled } = givingFigures(db);
 
 	// `collate nocase` so the file reads as a list of names rather than as two lists, capitals
 	// then lowercase — sqlite's default `BINARY` sorts every uppercase letter before every
@@ -304,6 +317,64 @@ export async function listContacts(db: Db, order: ContactOrder): Promise<Contact
 		.offset((page - 1) * CONTACT_LIST_LIMIT);
 
 	return { contacts, total, page, pages };
+}
+
+/** what one donor has given, as the donor file states it: `ContactListRow`'s two figures. */
+export type DonorGiving = Pick<ContactListRow, 'gifts' | 'given'>;
+
+/**
+ * what each of `ids` has given, by id, on `listContacts`'s rule. an id with nothing settled is
+ * answered with zeros, and one naming no contact has no entry. bound one parameter per id, for the
+ * reason `readContactNames` states.
+ */
+export async function readDonorGiving(
+	db: Db,
+	ids: readonly string[]
+): Promise<Map<string, DonorGiving>> {
+	if (ids.length === 0) return new Map();
+	const { gifts, given, settled } = givingFigures(db);
+	const rows = await db
+		.select({ id: contact.id, gifts, given })
+		.from(contact)
+		.leftJoin(settled, eq(settled.contactId, contact.id))
+		.where(inArray(contact.id, [...new Set(ids)]))
+		.groupBy(contact.id);
+	return new Map(rows.map(({ id, ...giving }) => [id, giving]));
+}
+
+/**
+ * how many donors gave inside `window`: unarchived contacts with a gift whose money first moved in
+ * it — the gift counted at its first `succeeded` inbound attempt, as `readGiftsByFormWithin` in
+ * ../donations/queries.ts counts it — narrowed to gifts made through `formId` where one is named.
+ * archived contacts count nowhere, as in `readDonorSummary`.
+ */
+export async function countDonorsWithin(
+	db: Db,
+	window: TimeWindow,
+	formId: string | null
+): Promise<number> {
+	const collected = db
+		.select({
+			donationId: payment.donationId,
+			firstAt: sql<number>`min(${payment.occurredAt})`.as('first_at')
+		})
+		.from(payment)
+		.where(and(eq(payment.direction, 'inbound'), eq(payment.status, 'succeeded')))
+		.groupBy(payment.donationId)
+		.as('collected');
+	const [row] = await db
+		.select({ donors: sql<number>`count(distinct ${donation.contactId})` })
+		.from(collected)
+		.innerJoin(donation, eq(donation.id, collected.donationId))
+		.innerJoin(contact, eq(contact.id, donation.contactId))
+		.where(
+			and(
+				isNull(contact.archivedAt),
+				withinWindow(collected.firstAt, window),
+				formId === null ? undefined : eq(donation.formId, formId)
+			)
+		);
+	return row?.donors ?? 0;
 }
 
 /**
@@ -549,6 +620,18 @@ export const DONOR_SEARCH_LIMIT = 10;
 export type DonorMatch = Pick<Contact, 'id' | 'displayName' | 'primaryEmail'>;
 
 /**
+ * a contact whose name or primary email contains `typed`, folded as `searchDonors` folds it — the
+ * whole of that search's match, for a list that pages its matches rather than stopping at ten.
+ * `typed` is already trimmed and not blank.
+ */
+export function matchesDonorText(typed: string): SQL | undefined {
+	return or(
+		sql`instr(lower(${contact.displayName}), lower(${typed})) > 0`,
+		sql`instr(lower(${contact.primaryEmail}), lower(${typed})) > 0`
+	);
+}
+
+/**
  * the donors whose name or primary email contains what was typed, for choosing who a gift is filed
  * under.
  *
@@ -572,15 +655,7 @@ export async function searchDonors(db: Db, text: string): Promise<DonorMatch[]> 
 			primaryEmail: contact.primaryEmail
 		})
 		.from(contact)
-		.where(
-			and(
-				isNull(contact.archivedAt),
-				or(
-					sql`instr(lower(${contact.displayName}), lower(${typed})) > 0`,
-					sql`instr(lower(${contact.primaryEmail}), lower(${typed})) > 0`
-				)
-			)
-		)
+		.where(and(isNull(contact.archivedAt), matchesDonorText(typed)))
 		.orderBy(sql`${contact.displayName} collate nocase`, desc(contact.id))
 		.limit(DONOR_SEARCH_LIMIT);
 }

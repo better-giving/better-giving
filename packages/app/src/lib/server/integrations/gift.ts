@@ -1,5 +1,16 @@
 import type { Frequency, TributeKind } from '@better-giving/form/v1';
-import { and, asc, desc, eq, isNull, ne, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	inArray,
+	isNull,
+	ne,
+	type SQL,
+	type SQLWrapper,
+	sql
+} from 'drizzle-orm';
 import { alias, union, unionAll } from 'drizzle-orm/sqlite-core';
 import { projectTribute } from '../../donations/tributes';
 import { majorText } from '../../forms/amounts';
@@ -18,6 +29,7 @@ import {
 } from '../db/schema';
 import { refundStands } from '../donations/queries';
 import { inPage } from '../db/id-set';
+import { type TimeWindow, withinWindow } from '../ledger/queries';
 import { type Keyset, type PageOf, type PageQuery, pageOf, pastKeyset } from './paging';
 
 // one gift as a system outside this deployment is told of it: the `new_gift` event a Zap receives
@@ -181,13 +193,61 @@ const gift = alias(payment, 'gift');
 const isGift = (row: typeof payment | typeof gift) =>
 	and(eq(row.status, 'succeeded'), eq(row.direction, 'inbound'));
 
-async function newestKeys(db: Db, query: PageQuery): Promise<Keyset[]> {
+/**
+ * what a newest-first walk may be narrowed to: gifts made through one form, gifts from one donor,
+ * and gifts whose money moved inside a window. `/connector/v1` walks gifts this way; the read API
+ * walks them unnarrowed.
+ */
+export type GiftNarrowing = {
+	readonly formId?: string;
+	readonly contactId?: string;
+	readonly window?: TimeWindow;
+};
+
+/** one page of settled gifts newest first, narrowed to `narrowing`. */
+export async function readNarrowedGiftPage(
+	db: Db,
+	query: Pick<PageQuery, 'limit' | 'after'>,
+	narrowing: GiftNarrowing
+): Promise<PageOf<ApiGift>> {
+	const keys = await newestKeys(db, query, narrowing);
+	const page = pageOf(keys, query.limit, (key) => key);
+	const gifts = await readGifts(
+		db,
+		page.rows.map((key) => key.id)
+	);
+	return { ...page, rows: page.rows.flatMap((key) => gifts.get(key.id) ?? []) };
+}
+
+async function newestKeys(
+	db: Db,
+	query: Pick<PageQuery, 'limit' | 'after'>,
+	narrowing: GiftNarrowing = {}
+): Promise<Keyset[]> {
+	const { formId, contactId, window } = narrowing;
+	const throughDonation =
+		formId === undefined && contactId === undefined
+			? undefined
+			: inArray(
+					payment.donationId,
+					db
+						.select({ id: donation.id })
+						.from(donation)
+						.where(
+							and(
+								formId === undefined ? undefined : eq(donation.formId, formId),
+								contactId === undefined ? undefined : eq(donation.contactId, contactId)
+							)
+						)
+				);
 	const rows = await db
 		.select({ id: payment.id, at: payment.occurredAt })
 		.from(payment)
 		.where(
 			and(
 				isGift(payment),
+				throughDonation,
+				window === undefined ? undefined : withinWindow(payment.occurredAt, window),
 				query.after === null
 					? undefined
 					: pastKeyset('desc', payment.occurredAt, payment.id, query.after)

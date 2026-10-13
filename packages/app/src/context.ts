@@ -5,6 +5,7 @@ import type { Auth } from '$lib/server/auth';
 import type { ConsoleSession } from '$lib/server/console/access';
 import type { SetupState } from '$lib/server/config/setup-state';
 import type { Db } from '$lib/server/db/client';
+import type { ConnectorKey } from '$lib/server/db/schema';
 
 /**
  * the platform a request arrived on, as a react router request context.
@@ -118,3 +119,10 @@ export const overDonorPageLimit = createContext<boolean>();
  * it and the frame draws from it, so the two cannot disagree about the row they read.
  */
 export const setupState = createContext<SetupState | null>();
+
+/**
+ * the connector key a `/connector/v1` request presented, admitted by that surface's middleware
+ * (src/routes/connector.v1.ts) and read by the actions beneath it. unset on `hello` and `exchange`,
+ * which take no key.
+ */
+export const connection = createContext<ConnectorKey>();

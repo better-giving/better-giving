@@ -3397,6 +3397,139 @@ export const imageBytes = sqliteTable(
 	]
 );
 
+// ---------------------------------------------------------------------------
+// the connector: Better Giving's one central Claude and ChatGPT connector, reaching this deployment
+// on `/connector/v1` (src/routes/connector.v1.ts) with a key it was handed by the Allow screen. its
+// own tables rather than a third `api_key` kind: a connector key is refused on every other surface
+// by having no row any other surface reads, and the Allow screen, the code exchange and Disconnect
+// are the only writers. a deployment never needs any of it to work.
+// ---------------------------------------------------------------------------
+
+/**
+ * one connection from the central connector: the key it holds for this deployment, stored as its
+ * hash. minted only when `/connector/v1/exchange` redeems a code the Allow screen issued, and listed
+ * on Integrations with Disconnect, which revokes it at once.
+ */
+export const connectorKey = sqliteTable(
+	'connector_key',
+	{
+		id: id(),
+		/** the lowercase hex SHA-256 of the whole key string. */
+		keyHash: text('key_hash').notNull(),
+		/** the key's first 8 characters, `bgc_` and four more. */
+		prefix: text('prefix').notNull(),
+		/** the key's last 4 characters. */
+		lastFour: text('last_four').notNull(),
+		/** the staff member who pressed Allow, as better-auth names them. */
+		allowedBy: text('allowed_by').notNull(),
+		createdAt: createdAt(),
+		/** the last time a request presented this key; null until one has. */
+		lastUsedAt: at('last_used_at'),
+		/**
+		 * from this moment the key admits nothing: Disconnect, the connector letting it go, or the sweep
+		 * once it has gone ninety days unused (`IDLE_KEY_REVOKE_MS` in ../connector/keys.ts).
+		 */
+		revokedAt: at('revoked_at'),
+		/**
+		 * who revoked it: `dashboard` for Disconnect, `connector` for the connector's own let-go and for
+		 * the sweep revoking a key the connector has stopped using.
+		 */
+		revokedBy: text('revoked_by').$type<'dashboard' | 'connector'>()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		uniqueIndex('connector_key_key_hash_idx').on(t.keyHash),
+		check(
+			'connector_key_key_hash_check',
+			sql`length(${t.keyHash}) = 64 and ${t.keyHash} not glob '*[^0-9a-f]*'`
+		),
+		check('connector_key_prefix_check', sql`${t.prefix} glob 'bgc_*' and length(${t.prefix}) = 8`),
+		check('connector_key_last_four_check', sql`length(${t.lastFour}) = 4`),
+		check('connector_key_allowed_by_not_blank_check', notBlank(t.allowedBy)),
+		check(
+			'connector_key_revoked_by_check',
+			sql`(${t.revokedAt} is null and ${t.revokedBy} is null) or (${t.revokedAt} is not null and ${t.revokedBy} in ('dashboard', 'connector'))`
+		)
+	]
+);
+
+/**
+ * a single-use code the Allow screen hands the connector through the browser, redeemed server to
+ * server for a key. holds no key: the key is minted at redemption, so an Allow nobody finishes
+ * leaves nothing that admits a request.
+ */
+export const connectorCode = sqliteTable(
+	'connector_code',
+	{
+		id: id(),
+		/** the lowercase hex SHA-256 of the code. */
+		codeHash: text('code_hash').notNull(),
+		allowedBy: text('allowed_by').notNull(),
+		createdAt: createdAt(),
+		/** past this the code redeems nothing. */
+		expiresAt: at('expires_at').notNull(),
+		/** set by the one redemption that took it. */
+		usedAt: at('used_at')
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		uniqueIndex('connector_code_code_hash_idx').on(t.codeHash),
+		check(
+			'connector_code_code_hash_check',
+			sql`length(${t.codeHash}) = 64 and ${t.codeHash} not glob '*[^0-9a-f]*'`
+		),
+		check('connector_code_allowed_by_not_blank_check', notBlank(t.allowedBy))
+	]
+);
+
+/**
+ * a single-use, short-lived link the connector hands the chat, opened on the operator's phone to
+ * add one photo to one page. stored as its hash; the page it names is the only one it can touch.
+ */
+export const photoLink = sqliteTable(
+	'photo_link',
+	{
+		id: id(),
+		tokenHash: text('token_hash').notNull(),
+		/**
+		 * the page the photo goes on. `NO ACTION`, as every domain foreign key is (the cascade rule at
+		 * the top of this file): `deleteNeverPublishedCampaign` in ../pages/queries.ts deletes a page's
+		 * links in the batch that deletes the page.
+		 */
+		pageId: text('page_id')
+			.notNull()
+			.references(() => page.id),
+		/** the photo block the photo fills, or null for the first empty one (or a new one). */
+		blockId: text('block_id'),
+		/**
+		 * the connection that asked for it; its Disconnect ends the link too. `NO ACTION`:
+		 * `sweepConnectorLeftovers` in ../connector/keys.ts deletes a swept key's links before the key.
+		 */
+		connectorKeyId: text('connector_key_id')
+			.notNull()
+			.references(() => connectorKey.id),
+		createdAt: createdAt(),
+		expiresAt: at('expires_at').notNull(),
+		usedAt: at('used_at')
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		uniqueIndex('photo_link_token_hash_idx').on(t.tokenHash),
+		// each foreign key's own index: a page's deletion, a key's revocation and the sweep each
+		// find a parent's links by it.
+		index('photo_link_page_id_idx').on(t.pageId),
+		index('photo_link_connector_key_id_idx').on(t.connectorKeyId),
+		check(
+			'photo_link_token_hash_check',
+			sql`length(${t.tokenHash}) = 64 and ${t.tokenHash} not glob '*[^0-9a-f]*'`
+		)
+	]
+);
+
+export type ConnectorKey = typeof connectorKey.$inferSelect;
+export type ConnectorCode = typeof connectorCode.$inferSelect;
+export type PhotoLink = typeof photoLink.$inferSelect;
+
 export type Contact = typeof contact.$inferSelect;
 export type NewContact = typeof contact.$inferInsert;
 export type Account = typeof account.$inferSelect;

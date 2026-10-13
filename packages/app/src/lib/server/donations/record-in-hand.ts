@@ -15,6 +15,7 @@ import {
 	type NewPayment
 } from '../db/schema';
 import { type ResolvedDonor, resolveDonor } from './donor';
+import type { RecordedGift } from './queries';
 import { receivedInHandEntry } from './entries';
 
 // a gift an operator enters by hand — cash or a cheque that arrived in an envelope — written whole:
@@ -192,4 +193,44 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 		}
 		return { ok: false, reason: 'write_failed' };
 	}
+}
+
+/** a gift in hand as a press or a call submitted it, to compare with what its ids already hold. */
+export type SubmittedGiftInHand = {
+	readonly amountMinor: number;
+	readonly receivedAt: Date;
+	readonly method: InHandMethod;
+	readonly programId: string | null;
+	readonly source: string | null;
+	readonly donor:
+		| { readonly kind: 'existing'; readonly contactId: string }
+		| { readonly kind: 'new'; readonly email: string | null; readonly name: string };
+};
+
+/**
+ * whether the gift the database holds under a submission's ids is the gift that submission sent —
+ * the dashboard's second press of Add a donation, or a retry on `/connector/v1` under one
+ * idempotency key.
+ *
+ * what a refused duplicate is checked against before it is answered as already recorded: the figure,
+ * the day, how it arrived, the cause, the source and the donor. a new donor is compared the way
+ * `resolveDonor` in ./donor.ts files one — by address where one was given, since an address on file
+ * files the gift under that contact whatever name was typed, and by name where none was.
+ */
+export function holdsSubmittedGift(found: RecordedGift, submitted: SubmittedGiftInHand): boolean {
+	const { donor } = submitted;
+	const sameDonor =
+		donor.kind === 'existing'
+			? found.contactId === donor.contactId
+			: donor.email === null
+				? found.donorName === donor.name
+				: found.donorEmail?.toLowerCase() === donor.email.toLowerCase();
+	return (
+		sameDonor &&
+		found.totalMinor === submitted.amountMinor &&
+		found.receivedAt.getTime() === submitted.receivedAt.getTime() &&
+		found.method === submitted.method &&
+		found.programId === submitted.programId &&
+		found.source === submitted.source
+	);
 }

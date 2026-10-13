@@ -154,6 +154,7 @@ it('draws the deployer the Integrations group, headed, between Members and Books
 		'Zapier',
 		'API',
 		'Webhooks',
+		'Claude & ChatGPT',
 		'Books'
 	]);
 	// the one cell marked with a company's own image rather than a glyph.

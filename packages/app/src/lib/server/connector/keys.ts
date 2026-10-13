@@ -1,0 +1,236 @@
+import { createHash, randomBytes } from 'node:crypto';
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { uuidv7 } from 'uuidv7';
+import type { Db } from '../db/client';
+import { type ConnectorKey, connectorCode, connectorKey, photoLink } from '../db/schema';
+
+// the connector's key, the code that becomes it, and the end of both. a key is minted only here,
+// only by `redeemCode`, and only for a code the Allow screen issued (`issueCode`) within the last
+// `CODE_TTL_MS`; the code is single-use, so a code intercepted after the connector redeemed it is
+// worth nothing. every value is stored as its SHA-256 and compared by that hash, so nothing read
+// out of the database admits a request. a key ends by Disconnect, by the connector letting it go,
+// or by the hourly sweep once it has gone `IDLE_KEY_REVOKE_MS` unused: the connector drops a chat's
+// connection when its refresh token lapses after the same ninety days, and a key it no longer holds
+// would otherwise stay live, and listed as connected, forever.
+
+/** how long an Allow's code waits to be redeemed. */
+export const CODE_TTL_MS = 10 * 60_000;
+
+/** every connector key: `bgc_` and 43 base64url characters, 256 bits. */
+export const CONNECTOR_KEY_SHAPE = /^bgc_[A-Za-z0-9_-]{43}$/;
+
+/** every code the Allow screen issues: 43 base64url characters. */
+const CODE_SHAPE = /^[A-Za-z0-9_-]{43}$/;
+
+/** the lowercase hex SHA-256 of `value`. */
+export function hashOf(value: string): string {
+	return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+/** 32 random bytes as unpadded base64url. */
+export function randomToken(): string {
+	return randomBytes(32).toString('base64url');
+}
+
+/** a code for the connector to redeem, issued by the Allow press of the staff member `allowedBy`. */
+export async function issueCode(db: Db, allowedBy: string, now = new Date()): Promise<string> {
+	const code = randomToken();
+	await db.insert(connectorCode).values({
+		codeHash: hashOf(code),
+		allowedBy,
+		createdAt: now,
+		expiresAt: new Date(now.getTime() + CODE_TTL_MS)
+	});
+	return code;
+}
+
+/** a key minted for a redeemed code: the plaintext, which nothing gives again, and its row id. */
+export type MintedConnectorKey = { readonly id: string; readonly key: string };
+
+/**
+ * `code` redeemed for a new key, or `null` for a code that is not one the Allow screen issued, was
+ * redeemed already, or has expired. the take and the mint are one batch: the key is inserted from
+ * the code row while it is still unspent, then the code is spent, so two redemptions racing on one
+ * code mint one key between them, and a mint that fails leaves the code unspent.
+ */
+export async function redeemCode(
+	db: Db,
+	code: string,
+	now = new Date()
+): Promise<MintedConnectorKey | null> {
+	if (!CODE_SHAPE.test(code)) return null;
+	const key = `bgc_${randomToken()}`;
+	const unspent = and(
+		eq(connectorCode.codeHash, hashOf(code)),
+		isNull(connectorCode.usedAt),
+		gt(connectorCode.expiresAt, now)
+	);
+	// every column of `connectorKey`, in its order: an insert from a select takes no defaults.
+	const minted = db
+		.select({
+			id: sql<string>`${uuidv7()}`.as('id'),
+			keyHash: sql<string>`${hashOf(key)}`.as('key_hash'),
+			prefix: sql<string>`${key.slice(0, 8)}`.as('prefix'),
+			lastFour: sql<string>`${key.slice(-4)}`.as('last_four'),
+			allowedBy: connectorCode.allowedBy,
+			createdAt: sql<number>`${now.getTime()}`.as('created_at'),
+			lastUsedAt: sql`null`.as('last_used_at'),
+			revokedAt: sql`null`.as('revoked_at'),
+			revokedBy: sql`null`.as('revoked_by')
+		})
+		.from(connectorCode)
+		.where(unspent);
+	const [inserted] = await db.batch([
+		db.insert(connectorKey).select(minted).returning({ id: connectorKey.id }),
+		db.update(connectorCode).set({ usedAt: now }).where(unspent)
+	]);
+	const [row] = inserted;
+	return row ? { id: row.id, key } : null;
+}
+
+/** the live connector key `presented` is, or `null` for any value that is not one. */
+export async function findLiveKey(db: Db, presented: string): Promise<ConnectorKey | null> {
+	if (!CONNECTOR_KEY_SHAPE.test(presented)) return null;
+	const [row] = await db
+		.select()
+		.from(connectorKey)
+		.where(and(eq(connectorKey.keyHash, hashOf(presented)), isNull(connectorKey.revokedAt)));
+	return row ?? null;
+}
+
+/**
+ * revokes the key `id` — Disconnect on the dashboard, or the connector letting its own key go — and
+ * ends every photo link it handed out. `false` when there is no such live key.
+ */
+export async function revokeConnectorKey(
+	db: Db,
+	id: string,
+	by: 'dashboard' | 'connector',
+	now = new Date()
+): Promise<boolean> {
+	const [revoked] = await db.batch([
+		db
+			.update(connectorKey)
+			.set({ revokedAt: now, revokedBy: by })
+			.where(and(eq(connectorKey.id, id), isNull(connectorKey.revokedAt)))
+			.returning({ id: connectorKey.id }),
+		db
+			.update(photoLink)
+			.set({ usedAt: now })
+			.where(and(eq(photoLink.connectorKeyId, id), isNull(photoLink.usedAt)))
+	]);
+	return revoked.length > 0;
+}
+
+/** a connection as Integrations lists it. */
+export type ListedConnection = Pick<
+	ConnectorKey,
+	'id' | 'prefix' | 'lastFour' | 'allowedBy' | 'createdAt' | 'lastUsedAt'
+>;
+
+/** every live connection, newest first. */
+export async function listConnections(db: Db): Promise<ListedConnection[]> {
+	return db
+		.select({
+			id: connectorKey.id,
+			prefix: connectorKey.prefix,
+			lastFour: connectorKey.lastFour,
+			allowedBy: connectorKey.allowedBy,
+			createdAt: connectorKey.createdAt,
+			lastUsedAt: connectorKey.lastUsedAt
+		})
+		.from(connectorKey)
+		.where(isNull(connectorKey.revokedAt))
+		.orderBy(desc(connectorKey.createdAt), desc(connectorKey.id));
+}
+
+const LAST_USED_WINDOW_MS = 60_000;
+
+/** records that `key` was used, at most once a minute, and never rejects. */
+export async function touchConnectorKey(db: Db, key: ConnectorKey, now = new Date()) {
+	const staleBefore = new Date(now.getTime() - LAST_USED_WINDOW_MS);
+	if (key.lastUsedAt !== null && key.lastUsedAt >= staleBefore) return;
+	try {
+		await db
+			.update(connectorKey)
+			.set({ lastUsedAt: now })
+			.where(
+				and(
+					eq(connectorKey.id, key.id),
+					or(isNull(connectorKey.lastUsedAt), lt(connectorKey.lastUsedAt, staleBefore))
+				)
+			);
+	} catch (e) {
+		console.error(`recording when connector key ${key.id} was last used failed:`, e);
+	}
+}
+
+/** how long a spent or expired code or photo link is kept before the sweep deletes it. */
+export const LEFTOVER_KEEP_MS = 24 * 60 * 60_000;
+
+/** how long a revoked key's row is kept, as the trail of who allowed it and when it was cut. */
+export const REVOKED_KEY_KEEP_MS = 30 * 24 * 60 * 60_000;
+
+/** how long a live key goes unused, from its last use or else its minting, before the sweep revokes it. */
+export const IDLE_KEY_REVOKE_MS = 90 * 24 * 60 * 60_000;
+
+/**
+ * revokes, as `connector`, every live key unused for `IDLE_KEY_REVOKE_MS` and ends the photo links it
+ * handed out, as `revokeConnectorKey` does; then deletes codes and photo links that have been spent
+ * or expired for `LEFTOVER_KEEP_MS`, and keys revoked for `REVOKED_KEY_KEEP_MS`: none admits
+ * anything, and the rows are only a trail. an idle key revoked here is deleted by a later sweep, a
+ * month on. `touchConnectorKey` records use at most once a minute, which is nothing against ninety
+ * days. one batch, and never rejects.
+ */
+export async function sweepConnectorLeftovers(db: Db, now = new Date()): Promise<void> {
+	const before = new Date(now.getTime() - LEFTOVER_KEEP_MS);
+	const revokedBefore = new Date(now.getTime() - REVOKED_KEY_KEEP_MS);
+	const idleBefore = new Date(now.getTime() - IDLE_KEY_REVOKE_MS);
+	const idle = and(
+		isNull(connectorKey.revokedAt),
+		or(
+			lt(connectorKey.lastUsedAt, idleBefore),
+			and(isNull(connectorKey.lastUsedAt), lt(connectorKey.createdAt, idleBefore))
+		)
+	);
+	try {
+		await db.batch([
+			// the links first: once the key is revoked, `idle` no longer names it.
+			db
+				.update(photoLink)
+				.set({ usedAt: now })
+				.where(
+					and(
+						isNull(photoLink.usedAt),
+						inArray(
+							photoLink.connectorKeyId,
+							db.select({ id: connectorKey.id }).from(connectorKey).where(idle)
+						)
+					)
+				),
+			db.update(connectorKey).set({ revokedAt: now, revokedBy: 'connector' }).where(idle),
+			db
+				.delete(connectorCode)
+				.where(or(lt(connectorCode.expiresAt, before), lt(connectorCode.usedAt, before))),
+			db.delete(photoLink).where(or(lt(photoLink.expiresAt, before), lt(photoLink.usedAt, before))),
+			// a swept key's links go before it, whatever their age: their foreign key is `NO ACTION`.
+			db
+				.delete(photoLink)
+				.where(
+					inArray(
+						photoLink.connectorKeyId,
+						db
+							.select({ id: connectorKey.id })
+							.from(connectorKey)
+							.where(lt(connectorKey.revokedAt, revokedBefore))
+					)
+				),
+			db.delete(connectorKey).where(lt(connectorKey.revokedAt, revokedBefore))
+		]);
+	} catch (e) {
+		console.error(
+			'sweeping idle connector keys, spent codes, photo links and revoked keys failed:',
+			e
+		);
+	}
+}
