@@ -1,5 +1,5 @@
-import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { editPageDraft } from './draft-writer';
 import { readAmount } from '../../forms/amounts';
 import { defineForm, type FormRejection } from '../../forms/definition';
 import {
@@ -32,26 +32,17 @@ import {
 	rowBox,
 	shareChannelPictures
 } from '../../page/block-edit';
-import {
-	BLOCK_DATA,
-	type Block,
-	type BlockType,
-	PAGE_NAMES,
-	type Page,
-	parsePage
-} from '../../page/catalog';
+import { BLOCK_DATA, type Block, type BlockType, PAGE_NAMES, type Page } from '../../page/catalog';
 import { startingBlock } from '../../page/defaults';
-import { placedImageIds } from '../../page/image-src';
 import { LOOK_KEYS, type PageType } from '../../page/keys';
 import { listed } from '../../page/refusal';
 import { SHARE_CHANNELS } from '../../page/share';
 import { isEmptyDocument, parseRichText } from '../../rich-text/document';
 import { invalid, parseForm, type RejectionReasons, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
-import { type Page as PageRow, page } from '../db/schema';
-import { freeLetGoStatements } from '../images/free';
+import type { Page as PageRow } from '../db/schema';
 import { firstMissingImage } from '../images/queries';
-import { placedPhotos, readableDraft } from './document';
+import { readableDraft } from './document';
 import { draftSettingsOf, type SettingsTarget } from './queries';
 
 // the editor's hand edits to a page's draft, the Donation page's and a campaign's alike: a block's
@@ -630,40 +621,21 @@ async function editDraft(
 	boxOf: BoxOf,
 	edit: (draft: Page, row: PageRow) => Promise<DraftEdit>
 ): Promise<DraftWrite> {
-	const [row] = await db
-		.select()
-		.from(page)
-		.where(
-			target.type === 'campaign'
-				? and(eq(page.id, target.id), eq(page.type, 'campaign'))
-				: eq(page.type, 'donation_page')
-		);
-	if (!row) return { kind: 'gone' };
-	if (row.updatedAt.getTime() !== version.getTime()) return { kind: 'stale' };
-	const edited = await edit(readableDraft(row), row);
-	if (!edited.ok) return { kind: 'refused', refusal: edited.refusal };
-	const checked = parsePage(row.type, edited.draft);
-	if (!checked.ok) {
-		const box = boxOf(checked.path);
-		return {
-			kind: 'refused',
-			refusal:
-				box === null
-					? { formErrors: [checked.message] }
-					: { fieldErrors: { [box]: [checked.message.replace(BLOCK_NAMED, '')] } }
-		};
-	}
-	const [written] = await db.batch([
-		db
-			.update(page)
-			.set({ draft: JSON.stringify(checked.page) })
-			.where(and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft)))
-			.returning({ id: page.id }),
-		...freeLetGoStatements(
-			db,
-			placedPhotos(row, { draft: row.draft }),
-			placedImageIds(checked.page)
-		)
-	]);
-	return written.length === 1 ? { kind: 'written' } : { kind: 'stale' };
+	const own: { refusal?: RejectionReasons } = {};
+	const written = await editPageDraft(db, target, version, async (draft, row) => {
+		const edited = await edit(draft, row);
+		if (edited.ok) return edited;
+		own.refusal = edited.refusal;
+		return { ok: false, path: [], message: '' };
+	});
+	if (written.kind !== 'refused') return { kind: written.kind };
+	if (own.refusal !== undefined) return { kind: 'refused', refusal: own.refusal };
+	const box = boxOf(written.path);
+	return {
+		kind: 'refused',
+		refusal:
+			box === null
+				? { formErrors: [written.message] }
+				: { fieldErrors: { [box]: [written.message.replace(BLOCK_NAMED, '')] } }
+	};
 }
