@@ -1,0 +1,4 @@
+{
+	"name": "better-giving",
+	"install": "bash .cursor/install.sh"
+}
