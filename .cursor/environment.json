@@ -1,0 +1,5 @@
+{
+	"name": "better-giving",
+	"install": "bash .cursor/install.sh",
+	"start": "if [ -f .cursor/install.sh ]; then bash .cursor/install.sh; fi"
+}

@@ -1,0 +1,11 @@
+---
+description: Stack, commands, and deploy bans live in AGENTS.md
+alwaysApply: true
+---
+
+`AGENTS.md` at the repo root holds the project facts. If anything conflicts, `AGENTS.md` wins.
+
+- If `node_modules` is missing, follow the install fallback in `AGENTS.md`.
+- Before reporting done, the Commands section of `AGENTS.md` is green, including the Go tests' `TERM` and the form browser job.
+- Deploy, secrets, and migrations: the Never section of `AGENTS.md`.
+- Edit `.claude/` only when the task is agent setup.
