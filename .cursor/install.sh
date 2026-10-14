@@ -3,7 +3,10 @@
 #
 # Node: there is no .nvmrc. package.json engines is >=22, and CI's setup-node uses
 # node-version 22. @react-router/* 8.3.0 requires >=22.22.0 and .npmrc is engine-strict,
-# so a 22 below that fails `pnpm install`.
+# so a 22 below that fails `pnpm install`. The image puts /exec-daemon/node (v22.14) first
+# on PATH. nvm's Node 22 is later. This script makes nvm's Node the default and puts it
+# ahead of /exec-daemon for shells that source a profile, and links it into
+# /usr/local/cargo/bin, which the image PATH lists before /exec-daemon.
 # pnpm: package.json packageManager, exactly 10.19.0.
 # Go: packages/console/go.mod, exactly 1.24.2. The console tests need it; pnpm does not.
 set -euo pipefail
@@ -13,23 +16,45 @@ cd "$(dirname "$0")/.."
 NODE_FLOOR=22.22.0
 PNPM_VERSION=10.19.0
 GO_VERSION=1.24.2
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 
-node_meets_floor() {
-	command -v node >/dev/null 2>&1 || return 1
-	local current
-	current="$(node -p 'process.versions.node' 2>/dev/null || true)"
-	[ -n "$current" ] || return 1
-	[ "$(printf '%s\n%s\n' "$NODE_FLOOR" "$current" | sort -V | head -n1)" = "$NODE_FLOOR" ]
+# start (every boot) and an agent following AGENTS.md can run this at the same time.
+lock=/tmp/better-giving-install.lock
+exec 9>"$lock"
+flock 9
+
+version_ge() {
+	# $1 >= $2
+	[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]
 }
 
-# /usr/local/bin is not always first on PATH. Prefer a toolchain already installed there
-# before deciding the pinned versions are missing.
-if [ -x /usr/local/bin/node ] || [ -x /usr/local/bin/go ]; then
-	export PATH="/usr/local/bin:${PATH}"
-	hash -r || true
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+	# nvm.sh is not safe under set -e.
+	set +e
+	# shellcheck disable=SC1091
+	. "$NVM_DIR/nvm.sh"
+	set -e
 fi
 
-if ! node_meets_floor; then
+best=""
+if [ -d "$NVM_DIR/versions/node" ]; then
+	for dir in "$NVM_DIR/versions/node"/v*; do
+		[ -x "$dir/bin/node" ] || continue
+		ver="${dir##*/v}"
+		if version_ge "$ver" "$NODE_FLOOR"; then
+			best="$ver"
+		fi
+	done
+fi
+
+if [ -n "$best" ]; then
+	nvm alias default "$best" >/dev/null
+	nvm use "$best" >/dev/null || true
+elif [ -s "$NVM_DIR/nvm.sh" ]; then
+	nvm install 22
+	nvm alias default 22 >/dev/null
+	nvm use 22 >/dev/null || true
+else
 	sums="$(curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt)"
 	tarball="$(printf '%s\n' "$sums" | awk '/linux-x64\.tar\.xz$/ { print $2; exit }')"
 	[ -n "$tarball" ]
@@ -39,22 +64,66 @@ if ! node_meets_floor; then
 	echo "${expected}  ${tmp}" | sha256sum -c -
 	sudo tar -xJf "$tmp" -C /usr/local --strip-components=1
 	rm -f "$tmp"
-fi
-
-# /usr/local/bin is not always first on PATH. Prefer the node this script installed.
-if [ -x /usr/local/bin/node ]; then
-	export PATH="/usr/local/bin:${PATH}"
 	hash -r || true
 fi
 
-if ! node_meets_floor; then
-	echo "node $(node -p 'process.versions.node' 2>/dev/null || echo missing) is below ${NODE_FLOOR}" >&2
+if [ -n "${NVM_BIN:-}" ]; then
+	export PATH="$NVM_BIN:$PATH"
+elif [ -x /usr/local/bin/node ]; then
+	export PATH="/usr/local/bin:$PATH"
+fi
+hash -r || true
+
+current="$(node -p 'process.versions.node' 2>/dev/null || true)"
+if ! version_ge "$current" "$NODE_FLOOR"; then
+	echo "node ${current:-missing} is below ${NODE_FLOOR}" >&2
 	exit 1
 fi
+
+# Login shells (install and start run under bash -l) source /etc/profile and ~/.profile,
+# and ~/.profile sources ~/.bashrc. The agent command shell is non-interactive and sources
+# neither, so the symlink below is what puts node ahead of /exec-daemon for it.
+snippet="$HOME/.better-giving-node.sh"
+cat >"$snippet" <<'EOF'
+# Sourced from ~/.bashrc, ~/.profile, and /etc/profile.d. nvm's Node must precede
+# /exec-daemon/node, which is v22.14 and below the 22.22 floor this repo requires.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+	# shellcheck disable=SC1091
+	. "$NVM_DIR/nvm.sh" || true
+fi
+if [ -n "${NVM_BIN:-}" ]; then
+	PATH="$NVM_BIN:$PATH"
+	export PATH
+fi
+EOF
+
+source_line='[ -f "$HOME/.better-giving-node.sh" ] && . "$HOME/.better-giving-node.sh"'
+for rc in "$HOME/.bashrc" "$HOME/.profile"; do
+	if [ -f "$rc" ] && grep -q 'better-giving-node.sh' "$rc"; then
+		continue
+	fi
+	printf '\n%s\n' "$source_line" >>"$rc"
+done
+sudo tee /etc/profile.d/better-giving-node.sh >/dev/null <<'EOF'
+# Login shells. The agent command shell does not source this; see ~/.better-giving-node.sh.
+[ -f "$HOME/.better-giving-node.sh" ] && . "$HOME/.better-giving-node.sh"
+EOF
 
 if ! command -v pnpm >/dev/null 2>&1 || [ "$(pnpm --version)" != "$PNPM_VERSION" ]; then
 	npm install -g "pnpm@${PNPM_VERSION}"
 fi
+
+# /usr/local/cargo/bin is ahead of /exec-daemon on the image PATH. Linking here is what
+# makes `node` resolve to nvm's Node in a shell that sources no profile.
+link_bin="$(dirname "$(command -v node)")"
+sudo mkdir -p /usr/local/cargo/bin
+for cmd in node npm npx corepack pnpm; do
+	if [ -x "$link_bin/$cmd" ]; then
+		sudo ln -sfn "$link_bin/$cmd" "/usr/local/cargo/bin/$cmd"
+	fi
+done
+hash -r || true
 
 if ! go version 2>/dev/null | grep -q "go${GO_VERSION} "; then
 	tmp="$(mktemp)"

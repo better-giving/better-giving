@@ -6,6 +6,7 @@ alwaysApply: true
 The project facts (stack, commands, boundaries, never-do list) live in `AGENTS.md` at the
 repo root. Follow it; don't restate it here. If anything conflicts, `AGENTS.md` wins.
 
+- If `node_modules` is missing, run `bash .cursor/install.sh` from the repo root first. It is idempotent. See `AGENTS.md`.
 - Before reporting done, run the checks CI runs from the repo root: `pnpm exec biome format .`, `pnpm lint`, `pnpm check`, `pnpm test`, and `TERM=xterm-256color go test ./...` in `packages/console`. `pnpm test` takes several minutes. huh panics the console's prompt tests when `TERM=dumb`. `packages/form`'s browser specs are a separate CI job (`pnpm --filter @better-giving/form test:browser` after that package's Playwright Chromium install) and `pnpm test` never reaches them.
 - Tests need no production secrets. Don't add a real `packages/app/.dev.vars` or a Cloudflare token to make them pass.
 - Ignore `.claude/` unless the task is about agent setup. It's Claude Code / kru config.

@@ -61,6 +61,17 @@ Tests are hermetic. Workers specs run the committed migrations against D1 inside
 
 The console's prompt tests drive huh with keystrokes. huh treats `TERM=dumb` as its accessible mode, and that path panics on those keystrokes (`packages/console/internal/terminal`). A cloud shell often sets `TERM=dumb`. CI does not. Run the Go tests with `TERM=xterm-256color`.
 
+If `node_modules` is missing, run `bash .cursor/install.sh` from the repo root before lint, check, or test. It is idempotent and installs no production secrets.
+
+## Cursor cloud
+
+`.cursor/environment.json` has two commands, both `bash .cursor/install.sh` (start no-ops if that file is not there yet). `terminals` is not set: that field is for long-running processes, and this install must exit.
+
+- `install` runs when Cursor builds a snapshot. Builds use the default branch (`main`). Until this file is on `main` and a build succeeds, a snapshot does not contain this install. An agent that boots from that snapshot (`reuse_then_checkout`) checks the branch out on top and does not run `install` again.
+- `start` runs on every boot, after that checkout, including while the snapshot is still the one built from `main`. It is not waited on. If `node_modules` is still missing when you begin, run the script yourself.
+
+The image PATH lists `/exec-daemon` before nvm, and `/exec-daemon/node` is v22.14, below the 22.22 floor. nvm's default is Node 22 (22.23.3 on this image), which meets the floor. `install.sh` sets that default and writes `~/.better-giving-node.sh`, sourced from `~/.bashrc`, `~/.profile`, and `/etc/profile.d/better-giving-node.sh`, which prepends nvm's bin. Login shells, including `start`, source those. The agent command shell does not, so the script also links `node`, `npm`, `npx`, and `pnpm` into `/usr/local/cargo/bin`, which the image PATH lists before `/exec-daemon`. `command -v node` should then be that link, and `node -p process.versions.node` should be at least 22.22.0.
+
 ## Boundaries
 
 **Two operator surfaces.** The dashboard is `/admin` on a deployment. The console is the Go binary an operator runs on their own machine; it serves `packages/console-ui` and is never deployed (`packages/console-ui/src/never-deployed.spec.ts`). A sentence about both says operator screens. Neither word means a terminal window. The deploy is `better-giving start` / `better-giving update` in the terminal the operator typed them in, and no screen draws it.
