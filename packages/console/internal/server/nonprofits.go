@@ -24,8 +24,8 @@ import (
 // digit, which the API refuses as holding no word, or a path that is no EIN. a refusal of the API's
 // would read as `unavailable`, which says the API is down.
 //
-// every field of `organisation` is written in every state, empty unless found
-// (packages/console-ui/src/api/types.ts' header).
+// every field of `organisation` is written in every state, empty unless found.
+// deductible empty is null (packages/console-ui/src/api/types.ts' header).
 
 // the fewest characters a search is made on, which is what keeps a box being typed in from asking
 // the API per keystroke.

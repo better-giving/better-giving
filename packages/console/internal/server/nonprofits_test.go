@@ -143,7 +143,7 @@ func TestALookupThatFoundNothingStillWritesEveryFieldEmpty(t *testing.T) {
 				t.Errorf("organisation carries %q, want every field %q", got, organisationFields)
 			}
 			for field, value := range organisation {
-				if value != "" && value != false {
+				if value != nil && value != "" {
 					t.Errorf("%s = %v, want it empty", field, value)
 				}
 			}
@@ -181,6 +181,55 @@ func TestASearchIsAnsweredWithItsMatches(t *testing.T) {
 	if got := asked(); !slices.Equal(got, []string{"/v1/search?q=red+cross&limit=10"}) {
 		t.Errorf("asked %q, want one search", got)
 	}
+}
+
+// deductible reaches the console UI as true, false or null, and a search match carries the
+// revocation date the lookup path already would.
+func TestDeductibleAndRevocationAreWrittenAsTheUIReadsThem(t *testing.T) {
+	t.Run("lookup unknown", func(t *testing.T) {
+		body := strings.Replace(redCross, `"deductible": true`, `"deductible": null`, 1)
+		api, _ := nonprofitAPI(t, http.StatusOK, body)
+
+		status, read := found(t, finding(t, api), "/api/nonprofits/530196605")
+
+		organisation, _ := read["organisation"].(map[string]any)
+		if status != http.StatusOK || read["state"] != "found" || organisation["deductible"] != nil {
+			t.Fatalf("%d %v, want found with deductible null", status, read)
+		}
+		if _, ok := organisation["deductible"]; !ok {
+			t.Error("deductible was left off the organisation, want null")
+		}
+	})
+	t.Run("search", func(t *testing.T) {
+		api, _ := nonprofitAPI(t, http.StatusOK, `{"results": [
+			{"ein": "530196605", "name": "Listed", "city": "Washington", "state": "DC",
+				"deductible": true, "revoked": true, "revocationDate": "2019-05-15"},
+			{"ein": "131624241", "name": "Unlisted", "city": null, "state": null,
+				"deductible": false, "revoked": false, "revocationDate": "2019-05-15"},
+			{"ein": "999999999", "name": "Unknown", "city": "Austin", "state": "TX",
+				"deductible": null, "revoked": null, "revocationDate": null}
+		]}`)
+
+		status, read := found(t, finding(t, api), "/api/nonprofits/search?q=red+cross")
+
+		want := map[string]any{"state": "ok", "matches": []any{
+			map[string]any{
+				"ein": "530196605", "name": "Listed", "city": "Washington", "state": "DC",
+				"deductible": true, "revokedOn": "2019-05-15",
+			},
+			map[string]any{
+				"ein": "131624241", "name": "Unlisted", "city": "", "state": "",
+				"deductible": false, "revokedOn": "",
+			},
+			map[string]any{
+				"ein": "999999999", "name": "Unknown", "city": "Austin", "state": "TX",
+				"deductible": nil, "revokedOn": "",
+			},
+		}}
+		if status != http.StatusOK || !jsonEqual(read, want) {
+			t.Errorf("%d %v, want %v", status, read, want)
+		}
+	})
 }
 
 func TestASearchThatCouldNotBeMadeListsNothingRatherThanNull(t *testing.T) {

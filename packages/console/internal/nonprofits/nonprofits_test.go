@@ -105,7 +105,7 @@ func TestAFoundOrganisationIsAnsweredWithItsLegalDetails(t *testing.T) {
 		City:         "Washington",
 		Region:       "DC",
 		PostalCode:   "20006-5310",
-		Deductible:   true,
+		Deductible:   DeductibilityListed,
 		RevokedOn:    "",
 		Website:      "https://www.redcross.org",
 		Mission:      "Prevents and alleviates human suffering in the face of emergencies.",
@@ -312,6 +312,112 @@ func TestRevokedOnIsTheRevocationDateWhereTheAPISaysRevoked(t *testing.T) {
 	}
 }
 
+// deductible is tri-state on both doors. null is unknown, which is its own value beside listed
+// and not listed (https://nonprofits.better.giving).
+func TestDeductibleIsListedUnlistedOrUnknown(t *testing.T) {
+	for _, one := range []struct {
+		name string
+		raw  string
+		want Deductibility
+	}{
+		{"listed", "true", DeductibilityListed},
+		{"not listed", "false", DeductibilityUnlisted},
+		{"unknown", "null", DeductibilityUnknown},
+	} {
+		t.Run("lookup/"+one.name, func(t *testing.T) {
+			body := strings.Replace(redCross, `"deductible": true`, `"deductible": `+one.raw, 1)
+			client, _ := upstream(t, says(http.StatusOK, body))
+
+			looked := client.LookUp(t.Context(), "530196605")
+
+			if looked.State != Found || looked.Organisation.Deductible != one.want {
+				t.Errorf("looked up deductible %q in state %q, want found and %q",
+					looked.Organisation.Deductible, looked.State, one.want)
+			}
+		})
+		t.Run("search/"+one.name, func(t *testing.T) {
+			client, _ := upstream(t, says(http.StatusOK, `{"results": [`+
+				result("530196605", "Red Cross", one.raw, "false", "null")+`]}`))
+
+			searched := client.Search(t.Context(), "red cross")
+
+			if searched.State != Listed || len(searched.Matches) != 1 ||
+				searched.Matches[0].Deductible != one.want {
+				t.Errorf("searched %+v, want deductible %q", searched, one.want)
+			}
+		})
+	}
+}
+
+// one search result, with deductible, revoked and revocationDate as raw json.
+func result(ein, name, deductible, revoked, revocationDate string) string {
+	return fmt.Sprintf(`{"ein": %q, "name": %q, "city": "Washington", "state": "DC",
+		"deductible": %s, "revoked": %s, "revocationDate": %s}`,
+		ein, name, deductible, revoked, revocationDate)
+}
+
+// a name search carries revoked and revocationDate, read by the same rule as a lookup: the date
+// is shown where the API says revoked, and nowhere else. revoked null is not known-revoked.
+func TestASearchCarriesTheRevocationALookupDoes(t *testing.T) {
+	for _, one := range []struct {
+		name   string
+		status string
+		want   string
+	}{
+		{"never revoked", `"revoked": false, "revocationDate": null`, ""},
+		{"revoked", `"revoked": true, "revocationDate": "2019-05-15"`, "2019-05-15"},
+		{"reinstated since", `"revoked": false, "revocationDate": "2019-05-15"`, ""},
+		{"revocation list not yet read", `"revoked": null, "revocationDate": null`, ""},
+		{"revoked with no date to show", `"revoked": true, "revocationDate": null`, ""},
+		{"revoked on a date in another spelling", `"revoked": true, "revocationDate": "05/15/2019"`, ""},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			client, _ := upstream(t, says(http.StatusOK, `{"results": [
+				{"ein": "530196605", "name": "Red Cross", "city": "Washington", "state": "DC",
+				"deductible": true, `+one.status+`}
+			]}`))
+
+			searched := client.Search(t.Context(), "red cross")
+
+			if searched.State != Listed || len(searched.Matches) != 1 ||
+				searched.Matches[0].RevokedOn != one.want {
+				t.Errorf("searched %+v, want revoked on %q", searched, one.want)
+			}
+		})
+	}
+}
+
+// the console UI reads deductible as true, false or null, and a null is present rather than left
+// off the object.
+func TestDeductibleIsWrittenTrueFalseOrNull(t *testing.T) {
+	written, err := json.Marshal(Search{State: Listed, Matches: []Match{
+		{EIN: "111111111", Name: "Listed", Deductible: DeductibilityListed, RevokedOn: "2019-05-15"},
+		{EIN: "222222222", Name: "Unlisted", Deductible: DeductibilityUnlisted},
+		{EIN: "333333333", Name: "Unknown"},
+	}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var read struct {
+		Matches []struct {
+			Deductible json.RawMessage `json:"deductible"`
+			RevokedOn  string          `json:"revokedOn"`
+		} `json:"matches"`
+	}
+	if json.Unmarshal(written, &read) != nil || len(read.Matches) != 3 {
+		t.Fatalf("wrote %s, want three matches", written)
+	}
+	for i, want := range []string{"true", "false", "null"} {
+		if string(read.Matches[i].Deductible) != want {
+			t.Errorf("match %d deductible = %s, want %s", i, read.Matches[i].Deductible, want)
+		}
+	}
+	if read.Matches[0].RevokedOn != "2019-05-15" || read.Matches[2].RevokedOn != "" {
+		t.Errorf("revokedOn = %q and %q, want the date and empty",
+			read.Matches[0].RevokedOn, read.Matches[2].RevokedOn)
+	}
+}
+
 func TestAnEINLookedUpOnceIsNotAskedForAgainHoweverItIsTyped(t *testing.T) {
 	client, asked := upstream(t, says(http.StatusOK, redCross))
 
@@ -407,11 +513,10 @@ func TestASearchIsAnsweredWithTheMatchesTheAPIListed(t *testing.T) {
 	if got := asked(); !slices.Equal(got, []string{"/v1/search?q=red+cross&limit=10"}) {
 		t.Errorf("asked %q, want the query trimmed, folded and lowercased, for ten", got)
 	}
-	// search carries no revocation: a revoked organisation says so once it is looked up.
 	want := []Match{
 		{EIN: "530196605", Name: "American National Red Cross", City: "Washington", State: "DC",
-			Deductible: true},
-		{EIN: "131624241", Name: "Red Crescent"},
+			Deductible: DeductibilityListed},
+		{EIN: "131624241", Name: "Red Crescent", Deductible: DeductibilityUnknown},
 	}
 	if searched.State != Listed || !slices.Equal(searched.Matches, want) {
 		t.Errorf("searched %+v, want ok with %+v", searched, want)
@@ -503,7 +608,7 @@ func TestASearchForAnEINIsALookupAnsweredAsAList(t *testing.T) {
 		looked := client.LookUp(t.Context(), "530196605")
 
 		want := []Match{{EIN: "530196605", Name: "American National Red Cross", City: "Washington",
-			State: "DC", Deductible: true}}
+			State: "DC", Deductible: DeductibilityListed}}
 		if searched.State != Listed || !slices.Equal(searched.Matches, want) {
 			t.Errorf("searched %+v, want ok with %+v", searched, want)
 		}

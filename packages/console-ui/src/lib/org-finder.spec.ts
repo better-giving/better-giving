@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { NonprofitMatch } from '../api/types';
 import {
+	DEDUCTIBILITY_UNKNOWN_BADGE,
 	EIN_ONLY,
 	LOOKING_UP,
 	NO_MATCHES,
@@ -191,6 +192,26 @@ describe('the finder', () => {
 
 		expect(row).toContain(NOT_DEDUCTIBLE_BADGE);
 		expect(row).toContain('adm-state--attention');
+		expect(row).not.toContain(DEDUCTIBILITY_UNKNOWN_BADGE);
+	});
+
+	it('badges a match whose deductibility is not known, and not as not listed', () => {
+		const row = option(
+			drawn(showing([match({ ein: '111111111', name: 'Unknown Pantry', deductible: null })])),
+			'Unknown Pantry'
+		);
+
+		expect(row).toContain(DEDUCTIBILITY_UNKNOWN_BADGE);
+		expect(row).toContain('adm-state--unset');
+		expect(row).not.toContain(NOT_DEDUCTIBLE_BADGE);
+		expect(row).not.toContain('adm-state--attention');
+	});
+
+	it('badges a listed match with neither deductibility badge', () => {
+		const row = option(drawn(showing(MATCHES)), 'Riverside Community Food Bank');
+
+		expect(row).not.toContain(NOT_DEDUCTIBLE_BADGE);
+		expect(row).not.toContain(DEDUCTIBILITY_UNKNOWN_BADGE);
 	});
 
 	it('says when nothing matched', () => {

@@ -6,14 +6,15 @@ import type { NonprofitMatch, NonprofitSearch } from '../api/types';
 // view that comes back; nothing here touches a document, so ./org-search.spec.ts reads all of it.
 //
 // **the list's limits are why nothing is asked but at a press.** the API is keyless for set-up: a
-// request a minute and five a day, and the binary waits out a per-minute limit itself, so a press
-// can take a minute to answer. so typing asks nothing at all; Search or Enter asks once, a second
+// request a minute and twenty-five a day, and the binary waits out a per-minute limit itself, so a
+// press can take a minute to answer. so typing asks nothing at all; Search or Enter asks once, a second
 // press while one is out asks nothing, and a search answer is remembered for the
 // console's run — a query pressed again, in this finder or the next one, asks nothing. the binary
 // remembers its own answers as well (`packages/console/internal/nonprofits`).
 //
 // **a whole EIN is looked up, never searched**, and so is a match picked off the list: the lookup
-// is what carries the address, the mission and the revocation a search does not. the lookup is the
+// is what carries the address and the mission a search does not. a search carries the revocation a
+// lookup does, and the note under the EIN is still the lookup's. the lookup is the
 // fold's to make (`lockIn`), because what it answers is the number the screen locks in. a press is a
 // whole EIN when it is nine digits once its dashes and spaces are dropped, and anything else is a
 // name, typed digits and all: `211 LA County` is a search.

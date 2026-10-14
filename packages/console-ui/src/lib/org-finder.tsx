@@ -11,7 +11,7 @@ import {
 	useRef,
 	useState
 } from 'react';
-import type { NonprofitMatch, NonprofitSearch } from '../api/types';
+import type { NonprofitDeductible, NonprofitMatch, NonprofitSearch } from '../api/types';
 import {
 	type FinderView,
 	type FinderWatch,
@@ -49,9 +49,10 @@ import {
 // America"), so the box is never re-spelled as an EIN, and the press reads a number out of it
 // instead. the box's text is the machine's `inputValue`, held here, never written into the element.
 //
-// **the list is the IRS list's answer, unfiltered here**, in the API's order. a search carries no
-// revocation, so the one badge a match can carry is not being listed as tax-deductible; the
-// revocation is said under the EIN once the number is locked in (./ein-lookup.ts).
+// **the list is the IRS list's answer, unfiltered here**, in the API's order. a match not listed as
+// tax-deductible is badged as that, and one whose deductibility is not known is badged as unknown.
+// the revocation a match carries is said under the EIN once the number is locked in
+// (./ein-lookup.ts).
 
 export const FINDER_ID = 'org-find';
 export const FINDER_LABEL = 'Name or EIN';
@@ -61,6 +62,7 @@ export const SEARCH_LABEL = 'Search';
 export const NO_MATCHES = 'No matches.';
 export const SEARCH_UNANSWERED = "Couldn't search the IRS list. Search by EIN instead.";
 export const NOT_DEDUCTIBLE_BADGE = 'Not listed as tax-deductible';
+export const DEDUCTIBILITY_UNKNOWN_BADGE = 'Tax-deductible status not known';
 export const SEARCHING = 'Searching…';
 export const LOOKING_UP = 'Looking up…';
 export const TOO_SHORT = `Type at least ${SEARCH_FLOOR} characters.`;
@@ -268,9 +270,7 @@ export function OrgFinderCard({
 								<span className="adm-findrow__who">
 									<Combobox.ItemText className="adm-findrow__name">{match.name}</Combobox.ItemText>
 									<span className="adm-findrow__place">{placeOf(match)}</span>
-									{match.deductible ? null : (
-										<StatusWord tone="attention">{NOT_DEDUCTIBLE_BADGE}</StatusWord>
-									)}
+									{deductibilityBadge(match.deductible)}
 								</span>
 								<span className="adm-findrow__ein">
 									<span className="adm-findrow__einlabel">EIN</span>
@@ -291,3 +291,10 @@ export function OrgFinderCard({
 /** the city and the state on one line, as an address is read. */
 const placeOf = (match: NonprofitMatch): string =>
 	[match.city, match.state].filter((part) => part !== '').join(', ');
+
+/** the badge a match's deductibility draws. listed draws none. */
+function deductibilityBadge(deductible: NonprofitDeductible): ReactNode {
+	if (deductible === true) return null;
+	if (deductible === false) return <StatusWord tone="attention">{NOT_DEDUCTIBLE_BADGE}</StatusWord>;
+	return <StatusWord unset>{DEDUCTIBILITY_UNKNOWN_BADGE}</StatusWord>;
+}
