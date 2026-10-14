@@ -6401,13 +6401,18 @@ describe('a crypto gift', () => {
 			return card.find('.deposit .expiry');
 		};
 
+		// the line floors to a whole unit (`expiryLine` in ./deposit.ts) and is drawn from a
+		// second clock reading (`countDown` in ./deposit.ts, after `expiresIn` in ./connect.ts).
+		// a value on the boundary of its unit can already read as the unit below, so each sample
+		// sits inside the unit it names. the day is an hour inside; the hour and the minute are
+		// a second inside.
 		const day = await closing(25 * 60 * 60 * 1000);
 		expect(day.textContent).toBe('Expires in 1 day');
 		expect(day.title).toMatch(/^November \d{1,2}, 2023 at \d{1,2}:\d\d [AP]M$/);
 		// the short units the line is set in, which the spelled-out ones would be the longest thing on
 		// it at the card's small step.
-		expect((await closing(2 * 60 * 60 * 1000)).textContent).toBe('Expires in 2 hr');
-		expect((await closing(29 * 60 * 1000)).textContent).toBe('Expires in 29 min');
+		expect((await closing(2 * 60 * 60 * 1000 + 1000)).textContent).toBe('Expires in 2 hr');
+		expect((await closing(29 * 60 * 1000 + 1000)).textContent).toBe('Expires in 29 min');
 	});
 
 	it('sets the memo into the sentence, and puts both dangers behind the network’s mark', async () => {
