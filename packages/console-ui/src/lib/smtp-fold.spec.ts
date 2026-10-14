@@ -39,7 +39,8 @@ function drawn(pending: string | null): string {
 					secrets: null,
 					freed: null,
 					test: null,
-					pending
+					pending,
+					revalidating: false
 				})
 		}
 	]);
