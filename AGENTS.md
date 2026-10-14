@@ -48,7 +48,7 @@ Run from the repo root. These are the commands CI runs (`.github/workflows/ci.ym
 | checks | `pnpm exec biome format .` then `pnpm lint` then `pnpm check` |
 | test | `pnpm test` |
 | browser-test | in `packages/form`: `pnpm exec playwright install --with-deps chromium`, then `pnpm --filter @better-giving/form test:browser` |
-| go-test | `go test ./...` in `packages/console` |
+| go-test | `go test ./...` in `packages/console` (Go 1.24.2) |
 
 - Lint is `biome lint .`. Format a path with `pnpm exec biome format --write <paths>`. CI's format check does not write.
 - `pnpm check` is `pnpm -r --workspace-concurrency=1 check`: each package's `tsc --noEmit`, plus `react-router typegen` in `packages/app` and `packages/console-ui`.
@@ -58,6 +58,8 @@ Run from the repo root. These are the commands CI runs (`.github/workflows/ci.ym
 - Dev, when asked: `pnpm dev` on port 5321. It needs `packages/app/.dev.vars` (copy `.dev.vars.example`; `ADMIN_PASSWORD` at minimum) and a local D1 (`pnpm wrangler d1 migrations apply DB --local`, then `pnpm wrangler d1 execute DB --local --file scripts/seed-local.sql`). `pnpm dev` does not build the embed.
 
 Tests are hermetic. Workers specs run the committed migrations against D1 inside workerd. They need no production secret, no Cloudflare account, and no network to a processor.
+
+The console's prompt tests drive huh with keystrokes. huh treats `TERM=dumb` as its accessible mode, and that path panics on those keystrokes (`packages/console/internal/terminal`). A cloud shell often sets `TERM=dumb`. CI does not. Run the Go tests with `TERM=xterm-256color`.
 
 ## Boundaries
 
