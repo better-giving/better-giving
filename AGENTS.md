@@ -2,18 +2,17 @@
 
 Self-hosted donation forms for a single organisation. One deployment serves one org; a fork is how a second org gets one.
 
-This file is the source of truth for stack, layout, commands, boundaries, and what an agent must not do. File headers still hold the argument for a rule about that file. `.claude/CLAUDE.md` imports this file and keeps only the kru seat sheet.
+File headers still hold the argument for a rule about that file. `.claude/CLAUDE.md` imports this file and keeps only the kru seat sheet.
 
 ## Stack
 
-- Node 22. CI's `actions/setup-node` uses `node-version: 22`. There is no `.nvmrc`. `package.json` `engines` is `>=22`. `@react-router/*` 8.3.0 requires `>=22.22.0`, and `.npmrc` sets `engine-strict`, so a 22 below that fails install.
-- pnpm 10.19.0 (`packageManager`). No other package manager. No turbo.
-- TypeScript 6.0.3 (catalog). `pnpm check` is the typecheck: there is no `typecheck` script.
-- React 19.2.8, React Router 8.3.0 (framework mode), Vite 8.1.5, Vitest 4.1.10, Biome 2.5.9.
-- The worker: Wrangler 4.124.0, `@cloudflare/vite-plugin`, D1. Drizzle 0.45.2. Zod 4.4.3. better-auth 1.6.25.
-- The donation form: a custom element, xstate 5.32.5, `@stripe/stripe-js` 9.12.1, `@paypal/paypal-js` 11.0.1. Browser specs use Playwright 1.62.1.
-- The console binary: Go 1.24.2 (`packages/console/go.mod`), `net/http`, Bubble Tea 1.3.10.
-- Payments and books, each behind its own port: Stripe 22.4.0, `@paypal/paypal-server-sdk` 2.5.0, Chariot and NOWPayments and QuickBooks over `fetch` (no SDK), Zapier `zapier-platform-core` 19.1.0.
+- `package.json` `engines` is `>=22`. `@react-router/*` requires `>=22.22.0`, and `.npmrc` sets `engine-strict`, so a 22 below that fails install.
+- `package.json` `packageManager` pins pnpm.
+- `pnpm check` is the typecheck.
+- The donation form is a custom element. Browser specs use Playwright in `packages/form`.
+- The console binary is Go (`packages/console/go.mod`).
+- Payments and books each sit behind their own port. Chariot, NOWPayments, and QuickBooks use `fetch`.
+- Other package versions are the `pnpm-workspace.yaml` catalog.
 
 Dependencies are exact: no `^`, no `~`, in either block (`.npmrc` `save-exact`). The `wrangler` pin must equal the version `@cloudflare/vitest-pool-workers` depends on. Invoke Wrangler as `pnpm wrangler`, never global and never bare `npx`.
 
@@ -40,7 +39,7 @@ Operator commands run at the repo root. The root `package.json` forwards them in
 
 ## Commands
 
-Run from the repo root. These are the commands CI runs (`.github/workflows/ci.yml`). Done means the same four jobs are green. Nothing gates a local commit.
+Run from the repo root. These are the commands CI runs (`.github/workflows/ci.yml`). Done means the jobs in that workflow are green. Nothing gates a local commit.
 
 | CI job | command |
 | --- | --- |
@@ -48,14 +47,13 @@ Run from the repo root. These are the commands CI runs (`.github/workflows/ci.ym
 | checks | `pnpm exec biome format .` then `pnpm lint` then `pnpm check` |
 | test | `pnpm test` |
 | browser-test | in `packages/form`: `pnpm exec playwright install --with-deps chromium`, then `pnpm --filter @better-giving/form test:browser` |
-| go-test | `go test ./...` in `packages/console` (Go 1.24.2) |
+| go-test | `go test ./...` in `packages/console` (`packages/console/go.mod`) |
 
-- Lint is `biome lint .`. Format a path with `pnpm exec biome format --write <paths>`. CI's format check does not write.
-- `pnpm check` is `pnpm -r --workspace-concurrency=1 check`: each package's `tsc --noEmit`, plus `react-router typegen` in `packages/app` and `packages/console-ui`.
-- `pnpm test` is `pnpm -r --workspace-concurrency=1 test`. One package at a time, because parallel workerd suites oversubscribe the machine. It does not run `test:browser` and it cannot see the Go module.
-- A full `pnpm test` is about five minutes on a 4-core machine (measured 2026-09-24: 291 s wall, most of it `packages/app`). No single file's tests ran past 7 s. A one-file run is cheap: `pnpm --filter @better-giving/app exec vitest --run <path>`.
+- Format a path with `pnpm exec biome format --write <paths>`. CI's format check does not write.
+- `pnpm test` does not run `test:browser` and it cannot see the Go module.
+- A full `pnpm test` is about five minutes on a 4-core machine. A one-file run is `pnpm --filter @better-giving/app exec vitest --run <path>`.
 - `pnpm build` builds the worker: `packages/form` into its `dist/`, `packages/app/scripts/stage-embed.js` copies that into `packages/app/static/`, then `vite build`. Drop or reorder the middle step and the build stays green while `/embed.js` 404s. `packages/app/scripts/preflight-deploy.js` catches that by counting files.
-- Dev, when asked: `pnpm dev` on port 5321. It needs `packages/app/.dev.vars` (copy `.dev.vars.example`; `ADMIN_PASSWORD` at minimum) and a local D1 (`pnpm wrangler d1 migrations apply DB --local`, then `pnpm wrangler d1 execute DB --local --file scripts/seed-local.sql`). `pnpm dev` does not build the embed.
+- Dev, when asked: `CONTRIBUTING.md` → Setup.
 
 Tests are hermetic. Workers specs run the committed migrations against D1 inside workerd. They need no production secret, no Cloudflare account, and no network to a processor.
 
@@ -65,12 +63,12 @@ If `node_modules` is missing, run `bash .cursor/install.sh` from the repo root b
 
 ## Cursor cloud
 
-`.cursor/environment.json` has two commands, both `bash .cursor/install.sh` (start no-ops if that file is not there yet). `terminals` is not set: that field is for long-running processes, and this install must exit.
+`.cursor/environment.json` runs `bash .cursor/install.sh` for `install` and for `start` (start no-ops when that file is absent). The script has to exit.
 
 - `install` runs when Cursor builds a snapshot. Builds use the default branch (`main`). Until this file is on `main` and a build succeeds, a snapshot does not contain this install. An agent that boots from that snapshot (`reuse_then_checkout`) checks the branch out on top and does not run `install` again.
-- `start` runs on every boot, after that checkout, including while the snapshot is still the one built from `main`. It is not waited on. If `node_modules` is still missing when you begin, run the script yourself.
+- `start` runs on every boot, after that checkout, including while the snapshot is still the one built from `main`. It is not waited on. If `node_modules` is still missing when you begin, the fallback under Commands applies.
 
-The image PATH lists `/exec-daemon` before nvm, and `/exec-daemon/node` is v22.14, below the 22.22 floor. nvm's default is Node 22 (22.23.3 on this image), which meets the floor. `install.sh` sets that default and writes `~/.better-giving-node.sh`, sourced from `~/.bashrc`, `~/.profile`, and `/etc/profile.d/better-giving-node.sh`, which prepends nvm's bin. Login shells, including `start`, source those. The agent command shell does not, so the script also links `node`, `npm`, `npx`, and `pnpm` into `/usr/local/cargo/bin`, which the image PATH lists before `/exec-daemon`. `command -v node` should then be that link, and `node -p process.versions.node` should be at least 22.22.0.
+The image PATH lists `/exec-daemon/node` (v22.14, below the 22.22 floor) before nvm. `.cursor/install.sh` puts a Node that meets the floor ahead of it, including for the agent command shell, which sources no profile. `node -p process.versions.node` should be at least 22.22.0.
 
 ## Boundaries
 
@@ -92,7 +90,7 @@ The console holds the one true thing about this deployment and this organisation
 
 **Schema.** Single-tenant: no `org_id`. No mechanism may let an org add a column. Migrations are never an app-boot side effect. Two paths touch a production schema: the `deploy` script from a checkout, and `better-giving start` (`packages/console/internal/migrate`).
 
-The map of which file argues which rule is the table in `.claude/CLAUDE.md` as it stood before this split; the headers it names are still the arguments. The sections below are the rules an agent can break without opening those files.
+The sections below are the rules an agent can break without opening the file that argues each one.
 
 ## Never
 
@@ -117,13 +115,13 @@ A repeating gift's row is written by the first charge that settles, from `packag
 
 ## Permanent contracts
 
-Nothing here is deployed for real yet, and nobody has pasted the snippet. A contract below is permanent by decision. Weigh a fix on its own merits. Delete this paragraph the day a real organisation deploys.
+A contract below is permanent by decision. Weigh a fix on its own merits.
 
 - `v1`. Breaking changes ship as `v2` alongside.
 - The element's public style surface: `--donate-*` seeds and `::part()` names. Everything derived from a seed is `--_`-prefixed and private. `packages/form/custom-elements.json` ships in the same commit as any change to that list.
 - The element's public attributes stay primitive.
 - The resume stamp `bg_donate_form` (`RESUME_FORM_PARAM` in `packages/form/src/embed/resume.ts`).
-- `main` in `packages/app/wrangler.jsonc` is the worker entry's source, and there is no `assets` block. The environment is chosen at build time by `CLOUDFLARE_ENV`. `--env` on the deploy cannot change it. `pnpm run deploy:test` sets both, and `preflight-deploy.js` refuses the pair when they disagree. Do not run it.
+- `main` in `packages/app/wrangler.jsonc` is the worker entry's source, and there is no `assets` block. The environment is chosen at build time by `CLOUDFLARE_ENV`. `--env` on the deploy cannot change it. `pnpm run deploy:test` sets both, and `preflight-deploy.js` refuses the pair when they disagree.
 
 ## Product surface
 

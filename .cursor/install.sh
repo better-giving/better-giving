@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
-# Idempotent Cursor cloud-agent install. No secrets, no deploy, no remote migration.
+# Idempotent Cursor cloud-agent install.
 #
-# Node: there is no .nvmrc. package.json engines is >=22, and CI's setup-node uses
-# node-version 22. @react-router/* 8.3.0 requires >=22.22.0 and .npmrc is engine-strict,
-# so a 22 below that fails `pnpm install`. The image puts /exec-daemon/node (v22.14) first
-# on PATH. nvm's Node 22 is later. This script makes nvm's Node the default and puts it
-# ahead of /exec-daemon for shells that source a profile, and links it into
-# /usr/local/cargo/bin, which the image PATH lists before /exec-daemon.
-# pnpm: package.json packageManager, exactly 10.19.0.
-# Go: packages/console/go.mod, exactly 1.24.2. The console tests need it; pnpm does not.
+# NODE_FLOOR is the @react-router/* engines floor. Root package.json engines is
+# >=22, and .npmrc is engine-strict, so a 22 below the floor fails `pnpm install`.
+# The image PATH lists /exec-daemon/node (v22.14) first.
+# Console tests need the toolchain in packages/console/go.mod. pnpm does not install it.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -18,7 +14,7 @@ PNPM_VERSION=10.19.0
 GO_VERSION=1.24.2
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 
-# start (every boot) and an agent following AGENTS.md can run this at the same time.
+# install, start, and an agent can run this at the same time.
 lock=/tmp/better-giving-install.lock
 exec 9>"$lock"
 flock 9
@@ -80,9 +76,8 @@ if ! version_ge "$current" "$NODE_FLOOR"; then
 	exit 1
 fi
 
-# Login shells (install and start run under bash -l) source /etc/profile and ~/.profile,
-# and ~/.profile sources ~/.bashrc. The agent command shell is non-interactive and sources
-# neither, so the symlink below is what puts node ahead of /exec-daemon for it.
+# install and start run under bash -l, which sources /etc/profile and ~/.profile
+# (~/.profile sources ~/.bashrc).
 snippet="$HOME/.better-giving-node.sh"
 cat >"$snippet" <<'EOF'
 # Sourced from ~/.bashrc, ~/.profile, and /etc/profile.d. nvm's Node must precede
