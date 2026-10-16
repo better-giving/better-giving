@@ -3,12 +3,18 @@
  *
  * the page is dressed from the donation form's own token file,
  * packages/form/src/styles/tokens.css, and adds a layer of its own on top. every `--_` name read
- * here is declared there and none is declared here: the brand clamp, the neutral ladder, the type
- * steps, the space steps and the corners are the card's, and the blocks around the card read the
- * same ones, so the card and the page cannot come apart. what the card has no use for — display
- * type, a page's widths, the space between sections, the section grounds — is a `--page-*` name
- * declared in this file and nowhere else. the operator sheets are never linked beside it: they are
- * layered and these are not, so a document holding both would let every rule here outrank them.
+ * here is declared there. this sheet declares two of them, `--_font` and `--_font-mono`, and only
+ * to re-point them at the faces below: the card's own `[data-donate-root]` and every shadow host
+ * it mounts declare those two on themselves, so a value set on an ancestor never arrives. every
+ * other `--_` name is the card's and is not declared here. the brand clamp, the neutral ladder,
+ * the type steps, the space steps and the corners are the card's, and the blocks around the card
+ * read the same ones, so the card and the page cannot come apart. what the card has no use for —
+ * display type, a page's widths, the space between sections, the section grounds, and the three
+ * faces — is a `--page-*` name declared in this file and nowhere else. the operator's tokens, base
+ * and element sheets are never linked beside it: they are layered and these are not, so a document
+ * holding both would let every rule here outrank them. the faces are the exception, and
+ * packages/operator/src/styles/fonts.css holds why: a `@font-face` carries no cascading
+ * declaration, so linking that one sheet registers the faces and changes no rule.
  *
  * the page root is two nodes, and ./page-root.tsx draws both. the outer one carries
  * `data-donate-root` — the selector the form's file declares its layer on outside a shadow root —
@@ -35,6 +41,15 @@
  * line height and the two with a tracking. body text is the card's `--_t-md` at `--_lh-body`, and
  * prose held to `--page-measure` is `--page-lh-prose`. a heading-sized statement that runs to more
  * than a line is the card's `--_lh-tight`.
+ *
+ * faces. `--page-font-text` is the page and the card, `--page-font-display` the title, a section
+ * heading and the goal figure, `--page-font-mono` a string the card sets for a donor to check
+ * character by character. the three stacks are the operator screens' own, and the files behind
+ * them are the self-hosted faces that sheet registers — no font host. red hat mono ships 400 and
+ * 500 only, so a mono figure this page emphasises is `--_w-medium` rather than `--_w-bold`. the
+ * one italic file is red hat text at 400. a run marked both bold and italic has no file, and the
+ * browser's synthesis of that pairing is accepted. the embed links neither this sheet nor those
+ * faces, and its own `--_font` stays the platform stack.
  *
  * widths. `--page-width` bounds the page's content, `--page-box` is the donation box's column —
  * the card's widest shape starts at 26em in packages/form/src/styles/layout.css, and this is that
@@ -140,6 +155,26 @@ body {
 	min-block-size: 100dvh;
 }
 
+/* the card's root and every shadow host it mounts are divs, and each declares the form's two
+   type tokens on itself. a value on an ancestor does not arrive, so the re-point is on the div.
+   the code face redraws a dash beside a dash. an address is checked character by character, so
+   the alternates are off on the same node, as packages/operator/src/styles/base.css does for
+   these faces. `no-contextual` leaves the text face's common ligatures. the card's own
+   `font-variant: normal` would put them back, and this longhand outranks it. */
+.page div {
+	--_font: var(--page-font-text);
+	--_font-mono: var(--page-font-mono);
+	font-variant-ligatures: no-contextual;
+}
+
+/* red hat mono ships 400 and 500 and no 600 (packages/operator/src/styles/fonts.css). the crypto
+   total asks for `--_w-bold`, and a browser would synthesise 600 from the 500 file. the hosted
+   page sets the medium instead, which is a file. the embed keeps the form's own weight: it sets
+   no webfont, and 600 is a real step on the platform stack. */
+.page .entry.total .value.amount {
+	font-weight: var(--_w-medium);
+}
+
 .page > .page-ground {
 	--page-display: clamp(2rem, 1.25rem + 3.2cqi, 3.25rem);
 	--page-heading: clamp(1.375rem, 1.1rem + 1.1cqi, 1.75rem);
@@ -150,6 +185,10 @@ body {
 	--page-lh-prose: 1.6;
 	--page-tracking-display: -0.022em;
 	--page-tracking-heading: -0.012em;
+	--page-font-text: 'Red Hat Text', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+	--page-font-display: 'Red Hat Display', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+	--page-font-mono: 'Red Hat Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+	font-family: var(--page-font-text);
 
 	--page-measure: 34rem;
 	--page-measure-title: 18ch;
@@ -277,6 +316,7 @@ body {
 
 .ended h1 {
 	margin: 0;
+	font-family: var(--page-font-display);
 	font-size: var(--page-heading);
 	line-height: var(--page-lh-heading);
 	letter-spacing: var(--page-tracking-heading);
@@ -525,6 +565,7 @@ body {
 /* headings a block opens with. */
 .page-heading {
 	margin-block-end: var(--page-gap-group);
+	font-family: var(--page-font-display);
 	font-size: var(--page-heading);
 	line-height: var(--page-lh-heading);
 	letter-spacing: var(--page-tracking-heading);
@@ -579,6 +620,7 @@ body {
 .page-title-heading {
 	max-inline-size: var(--page-measure-title);
 	overflow-wrap: break-word;
+	font-family: var(--page-font-display);
 	font-size: var(--page-display);
 	line-height: var(--page-lh-display);
 	letter-spacing: var(--page-tracking-display);
@@ -1108,6 +1150,7 @@ body {
 }
 
 .page-goal-raised {
+	font-family: var(--page-font-display);
 	font-size: var(--page-heading);
 	line-height: var(--page-lh-heading);
 	font-weight: var(--_w-bold);
