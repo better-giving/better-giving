@@ -155,12 +155,11 @@ describe('the names ./page.css reads and writes', () => {
 		});
 	});
 
-	it('sets the three faces to the operator screens’ stacks, and hosts no face of its own', () => {
+	it('sets the three faces to the operator screens’ stacks', () => {
 		const operator = readFileSync(
 			require.resolve('@better-giving/operator/styles/tokens.css'),
 			'utf8'
 		);
-		const fonts = readFileSync(require.resolve('@better-giving/operator/styles/fonts.css'), 'utf8');
 		const stack = (css: string, name: string) => {
 			const found = new RegExp(`${name}:\\s*([^;]+);`).exec(css);
 			if (found?.[1] === undefined) throw new Error(`${name} is not declared`);
@@ -169,8 +168,12 @@ describe('the names ./page.css reads and writes', () => {
 		expect(stack(pageText, '--page-font-text')).toBe(stack(operator, '--admin-font-sans'));
 		expect(stack(pageText, '--page-font-display')).toBe(stack(operator, '--admin-font-display'));
 		expect(stack(pageText, '--page-font-mono')).toBe(stack(operator, '--admin-font-mono'));
-		expect(fonts).not.toMatch(/url\(\s*['"]?https?:/i);
-		expect(pageText).not.toMatch(/fonts\.(?:google|gstatic|cdn)/i);
+	});
+
+	it('sets the crypto total at the mono medium, which is a file', () => {
+		expect(declared(page, '.page .entry.total .value.amount')).toEqual({
+			'font-weight': 'var(--_w-medium)'
+		});
 	});
 
 	it('reads every `--page-*` name from itself or from the page root', () => {

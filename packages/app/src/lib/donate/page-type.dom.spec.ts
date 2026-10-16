@@ -3,12 +3,13 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-// the hosted page and the embed read one token file and come out in different faces.
+// the hosted page computes the self-hosted faces.
 //
 // /donate and a campaign link this sheet after the form's, and the card is in the document, so
-// the re-point in ./page.css reaches it. a nonprofit's page links neither sheet: the element
-// adopts the form's tokens into its shadow and the platform stack is what computes. both trees
-// are in this document so the assertion is the computed face, not a reading of the source.
+// the re-point in ./page.css reaches it. the coin list adopts the picker's own sheets (parts and
+// coins, not the token sheet) and inherits the re-point from its host. what the embed computes,
+// and that it requests none of these files, is packages/form/src/embed-faces.browser.spec.ts —
+// a stand-in shadow in this document would stay green if the element started asking for a face.
 
 const require = createRequire(import.meta.url);
 const formStyles = dirname(require.resolve('@better-giving/form/styles/tokens.css'));
@@ -29,13 +30,13 @@ function face(node: Element): string {
 	return getComputedStyle(node).fontFamily;
 }
 
-describe('the hosted page is set in Red Hat and the embed is not', () => {
+describe('the hosted page is set in Red Hat', () => {
 	afterEach(() => {
 		document.head.replaceChildren();
 		document.body.replaceChildren();
 	});
 
-	it('computes Red Hat on the page and the card, and the platform stack in the embed', () => {
+	it('computes Red Hat on the page and the card', () => {
 		adopt(document.head, tokens);
 		adopt(document.head, parts);
 		adopt(document.head, page);
@@ -59,20 +60,12 @@ describe('the hosted page is set in Red Hat and the embed is not', () => {
 		const pickerHost = document.createElement('div');
 		hosted.querySelector('.page-ground')?.appendChild(pickerHost);
 		const picker = pickerHost.attachShadow({ mode: 'open' });
-		adopt(picker, tokens);
+		adopt(picker, parts);
 		adopt(picker, coins);
 		const ticker = document.createElement('span');
 		ticker.className = 'coin-ticker';
 		ticker.textContent = 'BTC';
 		picker.appendChild(ticker);
-
-		const embed = document.createElement('div');
-		document.body.appendChild(embed);
-		const shadow = embed.attachShadow({ mode: 'open' });
-		adopt(shadow, tokens);
-		const word = document.createElement('p');
-		word.textContent = 'Donate';
-		shadow.appendChild(word);
 
 		expect(face(document.getElementById('prose') as Element)).toContain('Red Hat Text');
 		expect(face(document.getElementById('title') as Element)).toContain('Red Hat Display');
@@ -82,9 +75,5 @@ describe('the hosted page is set in Red Hat and the embed is not', () => {
 		const address = document.getElementById('address') as Element;
 		expect(face(address)).toContain('Red Hat Mono');
 		expect(face(ticker)).toContain('Red Hat Mono');
-
-		const embedded = face(word);
-		expect(embedded).toContain('system-ui');
-		expect(embedded).not.toContain('Red Hat');
 	});
 });

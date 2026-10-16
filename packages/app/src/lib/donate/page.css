@@ -45,8 +45,11 @@
  * faces. `--page-font-text` is the page and the card, `--page-font-display` the title, a section
  * heading and the goal figure, `--page-font-mono` a string the card sets for a donor to check
  * character by character. the three stacks are the operator screens' own, and the files behind
- * them are the self-hosted faces that sheet registers — no font host. the embed links neither
- * this sheet nor those faces, and its own `--_font` stays the platform stack.
+ * them are the self-hosted faces that sheet registers — no font host. red hat mono ships 400 and
+ * 500 only, so a mono figure this page emphasises is `--_w-medium` rather than `--_w-bold`. the
+ * one italic file is red hat text at 400. a run marked both bold and italic has no file, and the
+ * browser's synthesis of that pairing is accepted. the embed links neither this sheet nor those
+ * faces, and its own `--_font` stays the platform stack.
  *
  * widths. `--page-width` bounds the page's content, `--page-box` is the donation box's column —
  * the card's widest shape starts at 26em in packages/form/src/styles/layout.css, and this is that
@@ -162,6 +165,14 @@ body {
 	--_font: var(--page-font-text);
 	--_font-mono: var(--page-font-mono);
 	font-variant-ligatures: no-contextual;
+}
+
+/* red hat mono ships 400 and 500 and no 600 (packages/operator/src/styles/fonts.css). the crypto
+   total asks for `--_w-bold`, and a browser would synthesise 600 from the 500 file. the hosted
+   page sets the medium instead, which is a file. the embed keeps the form's own weight: it sets
+   no webfont, and 600 is a real step on the platform stack. */
+.page .entry.total .value.amount {
+	font-weight: var(--_w-medium);
 }
 
 .page > .page-ground {

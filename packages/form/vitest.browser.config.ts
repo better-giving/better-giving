@@ -1,5 +1,11 @@
-import { defineConfig } from 'vitest/config';
+import { resolve } from 'node:path';
 import { playwright } from '@vitest/browser-playwright';
+import { defineConfig } from 'vitest/config';
+
+// the href of the hosted face sheet, so a browser spec can link it without the form package
+// importing packages/operator. the sheet is what a hosted campaign links; the spec asserts the
+// element does not use it.
+const hostedFaces = `/@fs${resolve(import.meta.dirname, '../operator/src/styles/fonts.css')}`;
 
 // the pool that runs specs in a real Chromium, for what happy-dom (the `dom` project in
 // vitest.config.ts) cannot prove about the embeddable form's custom element. layout, `@container`
@@ -24,6 +30,8 @@ import { playwright } from '@vitest/browser-playwright';
 // about `deploy`'s gate, not about who runs the suite at all.
 
 export default defineConfig({
+	define: { __HOSTED_FACES__: JSON.stringify(hostedFaces) },
+	server: { fs: { allow: [resolve(import.meta.dirname, '../..')] } },
 	// pre-bundled up front: discovered mid-run, vite re-optimizes and reloads the page under the spec
 	// that imported them, which fails or repeats whatever that spec was doing.
 	optimizeDeps: { include: ['@zag-js/combobox', '@zag-js/select', '@zag-js/vanilla'] },
