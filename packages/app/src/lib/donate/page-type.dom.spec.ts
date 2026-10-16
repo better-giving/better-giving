@@ -19,7 +19,7 @@ const parts = readFileSync(join(formStyles, 'parts.css'), 'utf8');
 const coins = readFileSync(join(formStyles, 'coins.css'), 'utf8');
 const page = readFileSync(join(import.meta.dirname, 'page.css'), 'utf8');
 
-function adopt(root: ParentNode, css: string): void {
+function adopt(root: HTMLElement | ShadowRoot, css: string): void {
 	const style = document.createElement('style');
 	style.textContent = css;
 	root.appendChild(style);
