@@ -33,9 +33,10 @@ import { PageRoot } from './page-root';
 // the gate over ./page.css, which is the donor page's token layer and the rules beside it. the
 // sheet's header states what each half below holds it to.
 //
-// names: every `--_` name the sheet reads is one the form's token file declares, and the sheet
-// declares none of its own; every `--page-*` name read is declared here or set inline by the page
-// root; every `--donate-*` name written is a seed the form registers.
+// names: every `--_` name the sheet reads is one the form's token file declares. the sheet
+// re-points `--_font` and `--_font-mono` and declares no other `--_` name. every `--page-*` name
+// read is declared here or set inline by the page root; every `--donate-*` name written is a seed
+// the form registers.
 //
 // values: outside a custom property's own declaration no colour and no length is written, which is
 // the operator sweeps in packages/operator/src/styles/raw-values.ts handed a copy of the sheet with
@@ -145,8 +146,31 @@ describe('the names ./page.css reads and writes', () => {
 		expect(read.filter((name) => !formNames.has(name))).toEqual([]);
 	});
 
-	it('declares no `--_` name of its own', () => {
-		expect([...declares(pageText, '--_')]).toEqual([]);
+	it('re-points only the form’s two type tokens', () => {
+		expect([...declares(pageText, '--_')].sort()).toEqual(['--_font', '--_font-mono']);
+		expect(declared(page, '.page div')).toEqual({
+			'--_font': 'var(--page-font-text)',
+			'--_font-mono': 'var(--page-font-mono)',
+			'font-variant-ligatures': 'no-contextual'
+		});
+	});
+
+	it('sets the three faces to the operator screens’ stacks, and hosts no face of its own', () => {
+		const operator = readFileSync(
+			require.resolve('@better-giving/operator/styles/tokens.css'),
+			'utf8'
+		);
+		const fonts = readFileSync(require.resolve('@better-giving/operator/styles/fonts.css'), 'utf8');
+		const stack = (css: string, name: string) => {
+			const found = new RegExp(`${name}:\\s*([^;]+);`).exec(css);
+			if (found?.[1] === undefined) throw new Error(`${name} is not declared`);
+			return found[1].trim();
+		};
+		expect(stack(pageText, '--page-font-text')).toBe(stack(operator, '--admin-font-sans'));
+		expect(stack(pageText, '--page-font-display')).toBe(stack(operator, '--admin-font-display'));
+		expect(stack(pageText, '--page-font-mono')).toBe(stack(operator, '--admin-font-mono'));
+		expect(fonts).not.toMatch(/url\(\s*['"]?https?:/i);
+		expect(pageText).not.toMatch(/fonts\.(?:google|gstatic|cdn)/i);
 	});
 
 	it('reads every `--page-*` name from itself or from the page root', () => {
