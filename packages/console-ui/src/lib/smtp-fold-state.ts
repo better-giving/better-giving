@@ -11,17 +11,19 @@ import type { StatedForm } from './use-console-form';
 // expressions inside the fold — ../../vite.config.ts pins one node pool and no dom, so a rule about
 // that fold is holdable here and nowhere else in this package.
 //
-// **a block is closed by its own press and by no other.** the fold has two, and they write in two
+// **the test send is closed by its own press and by no other.** it and the credentials write in two
 // places over two doors: the credentials go into cloudflare
 // (`packages/console/internal/deployment/write.go`) and the test send goes to the deployment over
-// its own mail transport (../api/client.ts's `sendTestEmail`). neither reads what the other left,
-// so neither has anything to wait for. one reading of "the page is writing" across both greys five
-// credential boxes while a message is on its way to somebody's inbox, which is a fold that stops
-// taking edits for a press that cannot touch them.
+// its own mail transport (../api/client.ts's `sendTestEmail`). neither reads what the other left.
+// `useSavedFormState` (packages/operator/src/saved-form-state.react.ts) empties a form only when
+// that form's own write landed, so a press in the other block never takes away what was typed.
+// {@link sendState} is the send's own reading, and {@link ownPress} is how a credentials press is
+// kept out of it.
 //
-// nothing is lost by decoupling them: `useSavedFormState`
-// (packages/operator/src/saved-form-state.react.ts) empties a form only when that form's own write
-// landed, so a press in the other block never takes away what the operator typed.
+// **the credential boxes are not that reading.** a press is two router phases and the answer lands
+// between them (./stripe-press.ts), so {@link ownPress} stays true for the whole of the re-read the
+// press sets off — and that re-read is every reading of the deployment, which takes seconds.
+// {@link mailCredentialsPhase} is what those boxes are closed for.
 //
 // what is also here is each form's own rules, as the schema its press runs first — the five
 // credential boxes' ({@link mailForm}) and the destination's ({@link testSendForm}). they are
@@ -30,15 +32,58 @@ import type { StatedForm } from './use-console-form';
 // an element in them.
 
 /**
- * whether the press in flight is this block's own, which is the whole of what closes a block.
+ * whether the press in flight is this block's own.
  *
- * it is what a box states `disabled` on (../closed-while-writing.spec.ts is the gate that every box
- * states one), and it is both of the flags the credentials form hands the seam
- * (./use-console-form.ts) — the save-state half underneath it reads a press through `busy` and
- * `pending` and nothing else (packages/operator/src/saved-form-state.react.ts), so handing it this
- * twice is what leaves its button drawing off its own boxes while the other block is writing.
+ * it is what the test send is closed by ({@link sendState}), and what says a credentials press is
+ * the one in flight through both of its phases. it is not what the credential boxes state
+ * `disabled` on: that is {@link mailCredentialsPhase}, because this stays true for the re-read as
+ * well as the request (./stripe-press.ts).
+ *
+ * the save-state half reads a press through `busy` and `pending` and nothing else
+ * (packages/operator/src/saved-form-state.react.ts). handing it this for a press the block did not
+ * make is a button drawing Saving over boxes it is not writing.
  */
 export const ownPress = (pending: string | null, intent: string): boolean => pending === intent;
+
+/**
+ * where the mail credential boxes' press stands, and whether they are closed with it.
+ *
+ * **a press is two router phases and the answer lands between them** (./stripe-press.ts), so
+ * {@link ownPress} is true for the whole of the re-read that press sets off — and that re-read is
+ * every reading of the deployment, which takes seconds. what the phase adds is which half.
+ *
+ * **the one thing that does not close them is a press that stored nothing being re-read.** it
+ * began nothing on the deployment and what has to change is a box, so those seconds are seconds an
+ * operator spends in front of a sentence about a box they cannot type in — and it is the whole of
+ * why the answer can place focus at all, because a disabled box takes none and the move runs on the
+ * render the answer arrives in (`useConsoleForm` in ./use-console-form.ts).
+ *
+ * **a press that landed holds them closed until the boxes have been put back.** the put-back is a
+ * reset onto the reading that write left behind (./reseed.ts), so a box open in between is one
+ * whose contents are taken away under the hand typing them.
+ *
+ * **another press on the page closes them too.** a save while the boxes are shut posts none of
+ * them, and an omitted mail value is a removal (./secret-edits.ts).
+ *
+ * `busy` is the page's one flag for "something on this screen is writing" and is true of this
+ * form's own press as well, so what is taken from it is the rest of the page.
+ */
+export function mailCredentialsPhase(press: {
+	/** this form's own press is the one in flight, both phases of it. */
+	readonly own: boolean;
+	/** the router has the answer and is reading the page again over it. */
+	readonly revalidating: boolean;
+	/** a press anywhere on the page is in flight. */
+	readonly busy: boolean;
+	/** the answer stored the values (`VarsWritten` of kind `set`). */
+	readonly landed: boolean;
+	/** the reading after that press is on the screen, and the boxes have been put back. */
+	readonly spent: boolean;
+}): { readonly underway: boolean; readonly closed: boolean } {
+	const inFlight = press.own && !press.revalidating;
+	const underway = inFlight || (press.landed && !press.spent);
+	return { underway, closed: underway || (press.busy && !press.own) };
+}
 
 /**
  * whether the deployment holds nothing for a message to leave through.

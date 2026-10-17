@@ -11,6 +11,7 @@ import {
 	TEST_TO_FIELD,
 	TEST_TO_SAID,
 	mailAct,
+	mailCredentialsPhase,
 	mailForm,
 	mailGaps,
 	mailUnconfigured,
@@ -20,7 +21,9 @@ import {
 } from './smtp-fold-state';
 
 // the mail fold's two blocks held to the one property tsc cannot see: that a press in either of
-// them leaves the other alone.
+// them is not the other's own press. the credential boxes are a third reading
+// (`mailCredentialsPhase`): another press on the page closes them, because a save while they are
+// shut would omit them and an omitted mail value is a removal (./secret-edits.ts).
 //
 // this package has no DOM pool (../../vite.config.ts), so nothing here is a claim about what
 // ./smtp-fold.tsx draws. it is a claim about the values that fold draws from — which is why the
@@ -76,12 +79,12 @@ describe('the two blocks of the mail fold', () => {
 		expect(ownPress(null, STORE_INTENT)).toBe(false);
 	});
 
-	it('leaves the credentials open while the test send is in flight', () => {
-		// the whole of the first defect: this is both of the flags the credentials form hands the seam
-		// (packages/operator/src/saved-form-state.react.ts reads a press through `busy` and
-		// `pending` and nothing else), so a `false` here is that hook's `pending` and `disabled`
-		// arms unable to fire — its press draws off its own boxes, which is `idle` over a form
-		// holding an edit. it is also what the five boxes state `disabled` on.
+	it('leaves the credentials press idle while the test send is in flight', () => {
+		// the whole of the first defect: this is what the credentials form hands the seam as its own
+		// press (packages/operator/src/saved-form-state.react.ts reads a press through `busy` and
+		// `pending` and nothing else), so a `false` here is that hook's `pending` arm unable to fire —
+		// the button draws off its own boxes rather than Saving. what the five boxes state `disabled`
+		// on is `mailCredentialsPhase`, which does close them for this press.
 		expect(ownPress(TEST_INTENT, STORE_INTENT)).toBe(false);
 	});
 
@@ -128,6 +131,45 @@ describe('the two blocks of the mail fold', () => {
 		// and a box emptied while the tick stood goes back to having nothing to send to, rather than
 		// to a press that would send nowhere.
 		expect(sendState({ ...resting, sent: true, expired: true, empty: true })).toBe('disabled');
+	});
+});
+
+const phase = (over: Partial<Parameters<typeof mailCredentialsPhase>[0]> = {}) =>
+	mailCredentialsPhase({
+		own: false,
+		revalidating: false,
+		busy: false,
+		landed: false,
+		spent: false,
+		...over
+	});
+
+describe('where the mail credential boxes stand', () => {
+	it('leaves them open at rest', () => {
+		expect(phase()).toEqual({ underway: false, closed: false });
+	});
+
+	it('closes them while the press is sent', () => {
+		expect(phase({ own: true, busy: true })).toEqual({ underway: true, closed: true });
+	});
+
+	it('reopens them the moment a press that stored nothing is answered', () => {
+		// the page is read again over that answer for seconds, and a box closed then is one the
+		// focus move to a refused box cannot reach (./use-console-form.ts).
+		expect(phase({ own: true, busy: true, revalidating: true })).toEqual({
+			underway: false,
+			closed: false
+		});
+	});
+
+	it('keeps them closed over a press that landed until the reading behind it lands', () => {
+		expect(phase({ own: true, busy: true, revalidating: true, landed: true }).closed).toBe(true);
+		expect(phase({ landed: true }).closed).toBe(true);
+		expect(phase({ landed: true, spent: true }).closed).toBe(false);
+	});
+
+	it('closes them while another press on the page writes', () => {
+		expect(phase({ busy: true })).toEqual({ underway: false, closed: true });
 	});
 });
 
