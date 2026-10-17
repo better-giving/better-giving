@@ -7,7 +7,8 @@
 // `unavailable` rather than followed. a test builds a client on its own upstream with At.
 //
 // **keyless.** no key is sent and none is configured, so the console spends the allowance the API
-// keeps per calling address — one request a minute and five a day (https://nonprofits.better.giving).
+// keeps per calling address — one request a minute and twenty-five a day
+// (https://nonprofits.better.giving).
 // a refusal for the minute is the one the console waits out: once, for the `Retry-After` it names,
 // and then asked again. one naming a wait past longestWait, or none this client reads, says the
 // retry would be refused too, and is answered at once; so is any other refusal, or a second one.
@@ -92,21 +93,44 @@ const (
 
 // Organisation is one organisation's legal details as the Organisation details fold fills them,
 // under the names it gives its boxes (packages/console-ui/src/lib/org-fields.ts) where it fills
-// one. EIN is the nine digits with no dash; RevokedOn is the `YYYY-MM-DD` its tax-exempt status was
-// revoked on, empty where it is not revoked or was reinstated since; Mission is what the latest
-// filing states, trimmed and cut to MissionMax so the box it fills saves. every field is empty
-// unless Found.
+// one. EIN is the nine digits with no dash; Deductible is whether Publication 78 lists gifts to it
+// as tax-deductible, unknown where that is not known; RevokedOn is the `YYYY-MM-DD` its tax-exempt
+// status was revoked on, empty where it is not revoked, was reinstated since, or the revocation is
+// not known; Mission is what the latest filing states, trimmed and cut to MissionMax so the box it
+// fills saves. every field is empty unless Found, and Deductible empty is unknown.
 type Organisation struct {
-	EIN          string `json:"ein"`
-	Name         string `json:"name"`
-	AddressLine1 string `json:"address_line1"`
-	City         string `json:"city"`
-	Region       string `json:"region"`
-	PostalCode   string `json:"postal_code"`
-	Deductible   bool   `json:"deductible"`
-	RevokedOn    string `json:"revokedOn"`
-	Website      string `json:"website"`
-	Mission      string `json:"mission"`
+	EIN          string        `json:"ein"`
+	Name         string        `json:"name"`
+	AddressLine1 string        `json:"address_line1"`
+	City         string        `json:"city"`
+	Region       string        `json:"region"`
+	PostalCode   string        `json:"postal_code"`
+	Deductible   Deductibility `json:"deductible"`
+	RevokedOn    string        `json:"revokedOn"`
+	Website      string        `json:"website"`
+	Mission      string        `json:"mission"`
+}
+
+// Deductibility is whether IRS Publication 78 lists gifts to the organisation as tax-deductible.
+// unknown, the zero value, is written null; listed is true; not listed is false
+// (https://nonprofits.better.giving).
+type Deductibility string
+
+const (
+	DeductibilityUnknown  Deductibility = ""
+	DeductibilityListed   Deductibility = "listed"
+	DeductibilityUnlisted Deductibility = "unlisted"
+)
+
+func (d Deductibility) MarshalJSON() ([]byte, error) {
+	switch d {
+	case DeductibilityListed:
+		return []byte("true"), nil
+	case DeductibilityUnlisted:
+		return []byte("false"), nil
+	default:
+		return []byte("null"), nil
+	}
 }
 
 // Lookup is one lookup by EIN.
@@ -116,15 +140,14 @@ type Lookup struct {
 }
 
 // Match is one organisation a search listed, in the fields a pick is made by. State is the US
-// state, as Organisation's Region is. RevokedOn is empty on every match of a name search, whose
-// answer carries no revocation; the lookup a pick makes says it.
+// state, as Organisation's Region is. Deductible and RevokedOn are read as a lookup reads them.
 type Match struct {
-	EIN        string `json:"ein"`
-	Name       string `json:"name"`
-	City       string `json:"city"`
-	State      string `json:"state"`
-	Deductible bool   `json:"deductible"`
-	RevokedOn  string `json:"revokedOn"`
+	EIN        string        `json:"ein"`
+	Name       string        `json:"name"`
+	City       string        `json:"city"`
+	State      string        `json:"state"`
+	Deductible Deductibility `json:"deductible"`
+	RevokedOn  string        `json:"revokedOn"`
 }
 
 // Search is one search. Matches is never nil.
@@ -223,8 +246,8 @@ func (c *Client) Search(ctx context.Context, typed string) Search {
 	})
 }
 
-// `GET {API}/v1/orgs/{ein}`, as this console reads it. a fact the IRS files do not hold is null,
-// which decodes as empty or false.
+// `GET {API}/v1/orgs/{ein}`, as this console reads it. a fact the IRS files do not hold is null.
+// deductible null is unknown.
 type upstreamOrganisation struct {
 	EIN     string `json:"ein"`
 	Name    string `json:"name"`
@@ -234,21 +257,31 @@ type upstreamOrganisation struct {
 		State  string `json:"state"`
 		Zip    string `json:"zip"`
 	} `json:"address"`
-	Deductible     bool   `json:"deductible"`
-	Revoked        bool   `json:"revoked"`
-	RevocationDate string `json:"revocationDate"`
-	Website        string `json:"website"`
-	Mission        string `json:"mission"`
+	Deductible *bool `json:"deductible"`
+	upstreamRevocation
+	Website string `json:"website"`
+	Mission string `json:"mission"`
 }
 
-// `GET {API}/v1/search?q=&limit=`, as this console reads it. a result carries no revocation.
+// revoked and revocationDate as the API sends them on a lookup and on a search result. revoked is
+// the API's own reading — revoked and not reinstated since — and null, the list not imported yet,
+// decodes here as false, which is not known-revoked. the date is still returned after a
+// reinstatement.
+type upstreamRevocation struct {
+	Revoked        bool   `json:"revoked"`
+	RevocationDate string `json:"revocationDate"`
+}
+
+// `GET {API}/v1/search?q=&limit=`, as this console reads it. a result carries deductible, revoked
+// and revocationDate, read as a lookup reads them.
 type upstreamMatches struct {
 	Results []struct {
 		EIN        string `json:"ein"`
 		Name       string `json:"name"`
 		City       string `json:"city"`
 		State      string `json:"state"`
-		Deductible bool   `json:"deductible"`
+		Deductible *bool  `json:"deductible"`
+		upstreamRevocation
 	} `json:"results"`
 }
 
@@ -280,7 +313,7 @@ func (c *Client) lookUp(ctx context.Context, ein string, wanted func() bool) Loo
 		City:         read.Address.City,
 		Region:       read.Address.State,
 		PostalCode:   read.Address.Zip,
-		Deductible:   read.Deductible,
+		Deductible:   deductibility(read.Deductible),
 		RevokedOn:    read.revokedOn(),
 		Website:      read.Website,
 		Mission:      cut(strings.TrimSpace(read.Mission), MissionMax),
@@ -329,7 +362,8 @@ func (c *Client) search(ctx context.Context, query string, wanted func() bool) S
 			Name:       one.Name,
 			City:       one.City,
 			State:      one.State,
-			Deductible: one.Deductible,
+			Deductible: deductibility(one.Deductible),
+			RevokedOn:  one.revokedOn(),
 		})
 		if len(matches) == mostMatches {
 			break
@@ -339,12 +373,24 @@ func (c *Client) search(ctx context.Context, query string, wanted func() bool) S
 }
 
 // the revocation date where the API says revoked, which is its reading of revoked and not
-// reinstated since. a revocation with no readable date is no revocation this console can show.
-func (read upstreamOrganisation) revokedOn() string {
+// reinstated since. a null revoked, or a revocation with no readable date, is no revocation this
+// console can show.
+func (read upstreamRevocation) revokedOn() string {
 	if _, err := time.Parse(time.DateOnly, read.RevocationDate); !read.Revoked || err != nil {
 		return ""
 	}
 	return read.RevocationDate
+}
+
+// deductible as this console says it. null, and a member the answer left out, are unknown.
+func deductibility(read *bool) Deductibility {
+	if read == nil {
+		return DeductibilityUnknown
+	}
+	if *read {
+		return DeductibilityListed
+	}
+	return DeductibilityUnlisted
 }
 
 // said cut to at most limit UTF-16 code units at a character's edge, with the space a cut ends on

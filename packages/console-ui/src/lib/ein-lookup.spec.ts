@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { NonprofitLookup, NonprofitMatch, NonprofitOrganisation } from '../api/types';
 import {
+	DEDUCTIBILITY_UNKNOWN,
 	FILLED,
 	LOOKUP_UNANSWERED,
 	NOT_DEDUCTIBLE,
@@ -38,7 +39,7 @@ const EMPTY: NonprofitOrganisation = {
 	city: '',
 	region: '',
 	postal_code: '',
-	deductible: false,
+	deductible: null,
 	revokedOn: '',
 	website: '',
 	mission: ''
@@ -176,9 +177,28 @@ describe('what the answer says and fills', () => {
 		expect(fills).toHaveLength(1);
 	});
 
+	it('says deductibility is not known, which is its own note, and still fills', async () => {
+		const { watch, fills, note } = watched(async () => found({ deductible: null }));
+		watch.typed('12-3456789', '');
+		await settled();
+
+		expect(note()).toBe(DEDUCTIBILITY_UNKNOWN);
+		expect(fills).toHaveLength(1);
+	});
+
 	it('says when the status was revoked, ahead of not being deductible', async () => {
 		const { watch, note } = watched(async () =>
 			found({ deductible: false, revokedOn: '2023-05-15' })
+		);
+		watch.typed('12-3456789', '');
+		await settled();
+
+		expect(note()).toBe('Tax-exempt status revoked May 15, 2023.');
+	});
+
+	it('says when the status was revoked, ahead of deductibility not being known', async () => {
+		const { watch, note } = watched(async () =>
+			found({ deductible: null, revokedOn: '2023-05-15' })
 		);
 		watch.typed('12-3456789', '');
 		await settled();

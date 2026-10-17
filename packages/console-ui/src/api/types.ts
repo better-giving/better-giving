@@ -1318,19 +1318,28 @@ export type ConsoleVersion = {
 };
 
 /**
+ * whether IRS Publication 78 lists gifts to the organisation as tax-deductible
+ * (https://nonprofits.better.giving). `true` is listed, `false` is the publication imported and the
+ * organisation not listed, and `null` is unknown, for example when the publication has not been
+ * imported.
+ */
+export type NonprofitDeductible = boolean | null;
+
+/**
  * one organisation a search of the IRS nonprofit API listed
  * (`packages/console/internal/nonprofits`).
  *
- * `ein` is the nine digits with no dash. `state` is the US state the IRS lists it in, and `revokedOn`
- * is the `YYYY-MM-DD` its tax-exempt status was revoked on, `''` where it is not revoked or was
- * reinstated since.
+ * `ein` is the nine digits with no dash. `state` is the US state the IRS lists it in. `deductible`
+ * is {@link NonprofitDeductible}. `revokedOn` is the `YYYY-MM-DD` its tax-exempt status was revoked
+ * on, `''` where it is not revoked, was reinstated since, or the revocation is not known. a name
+ * search carries that date, read the same way a lookup reads it.
  */
 export type NonprofitMatch = {
 	ein: string;
 	name: string;
 	city: string;
 	state: string;
-	deductible: boolean;
+	deductible: NonprofitDeductible;
 	revokedOn: string;
 };
 
@@ -1349,8 +1358,9 @@ export type NonprofitSearch = {
  * the boxes it fills (`ORG_FIELDS` in ../lib/org-fields.ts) where it fills one.
  *
  * `ein` is the nine digits with no dash, which is not the spelling `tax_id` is stored in — the fold
- * spells it. `deductible` is the IRS listing gifts to it as tax-deductible; `mission` is what its
- * latest filing states, trimmed; `revokedOn`, `website` and `mission` are `''` where there is none.
+ * spells it. `deductible` is {@link NonprofitDeductible}; `mission` is what its latest filing
+ * states, trimmed; `revokedOn`, `website` and `mission` are `''` where there is none, and
+ * `deductible` empty is `null`.
  */
 export type NonprofitOrganisation = {
 	ein: string;
@@ -1359,7 +1369,7 @@ export type NonprofitOrganisation = {
 	city: string;
 	region: string;
 	postal_code: string;
-	deductible: boolean;
+	deductible: NonprofitDeductible;
 	revokedOn: string;
 	website: string;
 	mission: string;
@@ -1367,7 +1377,8 @@ export type NonprofitOrganisation = {
 
 /**
  * how one lookup by EIN went. `organisation` is written in every state and every field of it is
- * empty unless `found`; `unavailable` is never a refusal, for the reason a search's is not.
+ * empty unless `found`, with `deductible` empty as `null`. `unavailable` is never a refusal, for
+ * the reason a search's is not.
  */
 export type NonprofitLookup = {
 	state: 'found' | 'not_found' | 'unavailable';

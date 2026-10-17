@@ -45,6 +45,9 @@ import type { IdentityField } from './org-form';
 /** what a number not listed as eligible for tax-deductible gifts says under the box. */
 export const NOT_DEDUCTIBLE = 'Not listed as eligible for tax-deductible gifts.';
 
+/** what a number says when it is not known whether gifts to it are tax-deductible. */
+export const DEDUCTIBILITY_UNKNOWN = 'Not known whether gifts are tax-deductible.';
+
 /** what a number the list does not hold says under the box. */
 export const NOT_LISTED = 'Not on the IRS list.';
 
@@ -76,8 +79,9 @@ export type EinRead = { readonly note: string; readonly found: NonprofitOrganisa
 const UNANSWERED: EinRead = { note: LOOKUP_UNANSWERED, found: null };
 
 /**
- * the one note an answer says. revoked outranks not deductible, because a revocation is why an
- * organisation drops off the deductible list and the date is the fact worth having.
+ * the one note an answer says. revoked outranks deductibility, because a revocation is why an
+ * organisation drops off the deductible list and the date is the fact worth having. unknown
+ * deductibility is its own note.
  */
 function read(answer: NonprofitLookup): EinRead {
 	if (answer.state === 'unavailable') return UNANSWERED;
@@ -86,9 +90,11 @@ function read(answer: NonprofitLookup): EinRead {
 	const note =
 		organisation.revokedOn !== ''
 			? revokedNote(organisation.revokedOn)
-			: organisation.deductible
+			: organisation.deductible === true
 				? ''
-				: NOT_DEDUCTIBLE;
+				: organisation.deductible === false
+					? NOT_DEDUCTIBLE
+					: DEDUCTIBILITY_UNKNOWN;
 	return { note, found: organisation };
 }
 
