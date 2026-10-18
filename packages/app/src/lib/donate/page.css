@@ -3,11 +3,11 @@
  *
  * the page is dressed from the donation form's own token file,
  * packages/form/src/styles/tokens.css, and adds a layer of its own on top. every `--_` name read
- * here is declared there. this sheet re-points `--_font` and `--_font-mono` on `.page div`:
- * `[data-donate-root]` in packages/form/src/styles/tokens.css sets both on `.page`, and a div
- * under it would otherwise inherit that. a nested shadow host does not declare the two tokens;
- * it inherits them (packages/form/src/styles/coins.css). `--_w-sent` is declared on the same
- * div, which `.value.sent` reads and falls back from to `--_w-bold`
+ * here is declared there. this sheet re-points `--_font` and `--_font-mono` on `.page div`.
+ * the card root is its own `[data-donate-root]` div (./card.tsx), and `:host, [data-donate-root]`
+ * in packages/form/src/styles/tokens.css sets both tokens on that element, so an ancestor value
+ * does not reach it. `.page div` works because it outranks `[data-donate-root]`. `--_w-sent` is
+ * declared on the same div, which `.value.sent` reads and falls back from to `--_w-bold`
  * (packages/form/src/styles/parts.css). every other `--_` name is the card's and is not declared
  * here. the brand clamp, the neutral ladder,
  * the type steps, the space steps and the corners are the card's, and the blocks around the card
@@ -158,8 +158,9 @@ body {
 	min-block-size: 100dvh;
 }
 
-/* `[data-donate-root]` sets the form's two type tokens on `.page`
-   (packages/form/src/styles/tokens.css), so the re-point is on the div under it. `--_w-sent`
+/* the card root is its own `[data-donate-root]` div (./card.tsx), and
+   packages/form/src/styles/tokens.css sets `--_font` and `--_font-mono` on that element, so an
+   ancestor value does not reach it. `.page div` outranks `[data-donate-root]`. `--_w-sent`
    is set on the same node: the sent figure reads it and falls back to `--_w-bold`
    (packages/form/src/styles/parts.css), and red hat mono ships no 600
    (packages/operator/src/styles/fonts.css), so the weight is `--_w-medium`.
