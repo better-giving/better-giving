@@ -154,8 +154,8 @@ describe('where the mail credential boxes stand', () => {
 	});
 
 	it('reopens them the moment a press that stored nothing is answered', () => {
-		// the page is read again over that answer for seconds, and a box closed then is one the
-		// focus move to a refused box cannot reach (./use-console-form.ts).
+		// the page is read again over that answer for seconds, and the boxes stay open so the
+		// operator can type during the re-read.
 		expect(phase({ own: true, busy: true, revalidating: true })).toEqual({
 			underway: false,
 			closed: false
@@ -163,13 +163,23 @@ describe('where the mail credential boxes stand', () => {
 	});
 
 	it('keeps them closed over a press that landed until the reading behind it lands', () => {
-		expect(phase({ own: true, busy: true, revalidating: true, landed: true }).closed).toBe(true);
+		expect(phase({ own: true, busy: true, revalidating: true, landed: true })).toEqual({
+			underway: true,
+			closed: true
+		});
 		expect(phase({ landed: true }).closed).toBe(true);
 		expect(phase({ landed: true, spent: true }).closed).toBe(false);
 	});
 
 	it('closes them while another press on the page writes', () => {
 		expect(phase({ busy: true })).toEqual({ underway: false, closed: true });
+	});
+
+	it('leaves saving off while another press writes over a reading that has not arrived', () => {
+		expect(phase({ own: false, busy: true, landed: true, spent: false })).toEqual({
+			underway: false,
+			closed: true
+		});
 	});
 });
 

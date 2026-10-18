@@ -52,15 +52,15 @@ export const ownPress = (pending: string | null, intent: string): boolean => pen
  * {@link ownPress} is true for the whole of the re-read that press sets off — and that re-read is
  * every reading of the deployment, which takes seconds. what the phase adds is which half.
  *
- * **the one thing that does not close them is a press that stored nothing being re-read.** it
- * began nothing on the deployment and what has to change is a box, so those seconds are seconds an
- * operator spends in front of a sentence about a box they cannot type in — and it is the whole of
- * why the answer can place focus at all, because a disabled box takes none and the move runs on the
- * render the answer arrives in (`useConsoleForm` in ./use-console-form.ts).
+ * **the one thing that does not close them is a press that stored nothing being re-read.** the
+ * boxes stay open so the operator can type during the re-read.
  *
- * **a press that landed holds them closed until the boxes have been put back.** the put-back is a
- * reset onto the reading that write left behind (./reseed.ts), so a box open in between is one
- * whose contents are taken away under the hand typing them.
+ * **a press that landed holds them closed until the boxes have been put back**, whether or not this
+ * form is still the press in flight. the put-back is a reset onto the reading that write left
+ * behind (./reseed.ts), so a box open in between is one whose contents are taken away under the
+ * hand typing them. Saving is this form's own wait: the request, and the wait on that reading
+ * while the press is still this form's (./smtp-fold.tsx draws it from `underway`). another press
+ * keeps the boxes closed and does not draw it.
  *
  * **another press on the page closes them too.** a save while the boxes are shut posts none of
  * them, and an omitted mail value is a removal (./secret-edits.ts).
@@ -81,8 +81,9 @@ export function mailCredentialsPhase(press: {
 	readonly spent: boolean;
 }): { readonly underway: boolean; readonly closed: boolean } {
 	const inFlight = press.own && !press.revalidating;
-	const underway = inFlight || (press.landed && !press.spent);
-	return { underway, closed: underway || (press.busy && !press.own) };
+	const awaiting = press.landed && !press.spent;
+	const underway = inFlight || (awaiting && press.own);
+	return { underway, closed: inFlight || awaiting || (press.busy && !press.own) };
 }
 
 /**

@@ -907,7 +907,7 @@ function MailSettings({
 							// closed while this press is in flight or waiting to be put back, and while another
 							// press on the page writes ({@link mailCredentialsPhase},
 							// ../closed-while-writing.spec.ts). a press that stored nothing leaves them open
-							// over the re-read, which is the render the seam moves focus on.
+							// over the re-read, so the operator can type during it.
 							disabled={phase.closed}
 							/* the deployment's sentence about this box ended by the keystroke that changes it
 							   (./use-console-form.ts). */
