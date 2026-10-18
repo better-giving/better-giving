@@ -2168,7 +2168,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /* the figure inside the sentence, which is the same figure the account totals to. the weight is
-   `--_w-sent` where a host sets it and `--_w-bold` where none does. the hosted page sets the
+   `--_w-sent` where a page sets it and `--_w-bold` where none does. the hosted page sets the
    first (packages/app/src/lib/donate/page.css). */
 .value.sent {
 	font-weight: var(--_w-sent, var(--_w-bold));

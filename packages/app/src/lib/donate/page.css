@@ -3,10 +3,11 @@
  *
  * the page is dressed from the donation form's own token file,
  * packages/form/src/styles/tokens.css, and adds a layer of its own on top. every `--_` name read
- * here is declared there. this sheet declares `--_font` and `--_font-mono` to re-point them at
- * the faces below: the card's own `[data-donate-root]` and every shadow host it mounts declare
- * those two on themselves, so a value set on an ancestor never arrives. it declares `--_w-sent`
- * on that same div, which `.value.sent` reads and falls back from to `--_w-bold`
+ * here is declared there. this sheet re-points `--_font` and `--_font-mono` on `.page div`:
+ * `[data-donate-root]` in packages/form/src/styles/tokens.css sets both on `.page`, and a div
+ * under it would otherwise inherit that. a nested shadow host does not declare the two tokens;
+ * it inherits them (packages/form/src/styles/coins.css). `--_w-sent` is declared on the same
+ * div, which `.value.sent` reads and falls back from to `--_w-bold`
  * (packages/form/src/styles/parts.css). every other `--_` name is the card's and is not declared
  * here. the brand clamp, the neutral ladder,
  * the type steps, the space steps and the corners are the card's, and the blocks around the card
@@ -157,10 +158,10 @@ body {
 	min-block-size: 100dvh;
 }
 
-/* the card's root and every shadow host it mounts are divs, and each declares the form's two
-   type tokens on itself. a value on an ancestor does not arrive, so the re-point of those two
-   is on the div. `--_w-sent` is set on the same node: the sent figure reads it and falls back
-   to `--_w-bold` (packages/form/src/styles/parts.css), and red hat mono ships no 600
+/* `[data-donate-root]` sets the form's two type tokens on `.page`
+   (packages/form/src/styles/tokens.css), so the re-point is on the div under it. `--_w-sent`
+   is set on the same node: the sent figure reads it and falls back to `--_w-bold`
+   (packages/form/src/styles/parts.css), and red hat mono ships no 600
    (packages/operator/src/styles/fonts.css), so the weight is `--_w-medium`.
    the code face redraws a dash beside a dash. an address is checked character by character, so
    the alternates are off on the same node, as packages/operator/src/styles/base.css does for
