@@ -41,12 +41,13 @@ Operator commands run at the repo root. The root `package.json` forwards them in
 
 Run from the repo root. These are the commands CI runs (`.github/workflows/ci.yml`). Done means the jobs in that workflow are green. Nothing gates a local commit.
 
+`prepare` on that install generates route types and `worker-configuration.d.ts`.
+
 | CI job | command |
 | --- | --- |
-| install | `pnpm install --frozen-lockfile` (`prepare` generates route types and `worker-configuration.d.ts`) |
-| checks | `pnpm exec biome format .` then `pnpm lint` then `pnpm check` |
-| test | `pnpm test` |
-| browser-test | in `packages/form`: `pnpm exec playwright install --with-deps chromium`, then `pnpm --filter @better-giving/form test:browser` |
+| checks | `pnpm install --frozen-lockfile`, then `pnpm exec biome format .`, then `pnpm lint`, then `pnpm check` |
+| test | `pnpm install --frozen-lockfile`, then `pnpm test` |
+| browser-test | `pnpm install --frozen-lockfile`, then in `packages/form`: `pnpm exec playwright install --with-deps chromium`, then `pnpm --filter @better-giving/form test:browser` |
 | go-test | `go test ./...` in `packages/console` (`packages/console/go.mod`) |
 
 - Format a path with `pnpm exec biome format --write <paths>`. CI's format check does not write.
@@ -72,7 +73,7 @@ The image PATH lists `/exec-daemon/node` (v22.14, below the 22.22 floor) before 
 
 ## Boundaries
 
-**Two operator surfaces.** The dashboard is `/admin` on a deployment. The console is the Go binary an operator runs on their own machine; it serves `packages/console-ui` and is never deployed (`packages/console-ui/src/never-deployed.spec.ts`). A sentence about both says operator screens. Neither word means a terminal window. The deploy is `better-giving start` / `better-giving update` in the terminal the operator typed them in, and no screen draws it.
+**Two operator surfaces.** The dashboard is `/admin` on a deployment. The console is the Go binary an operator runs on their own machine; it serves `packages/console-ui` and is never deployed (`packages/console-ui/src/never-deployed.spec.ts`). A sentence about both says operator screens. Neither word means a terminal window. The deploy is `better-giving start`, in the terminal the operator typed it in, and no screen draws it. `better-giving update` installs the console binary and reaches no deployment (`packages/console/cmd/better-giving/update.go`).
 
 The console holds the one true thing about this deployment and this organisation (account, database, configuration values, processor keys, sites, organisation profile). The dashboard holds the records (forms, donations, donors, recurring gifts) and the pages donors read. The dashboard has no organisation screen, and it is not served until setup is finished. The five jobs are `packages/operator/src/setup-folds.ts`'s `SETUP_JOBS`. `FOLD_LABELS` names six folds; the sixth is not a job.
 
@@ -82,11 +83,13 @@ The console holds the one true thing about this deployment and this organisation
 
 **Secrets** live only under `packages/app/src/lib/server/**` and are deploy-time, never rows in a settings table. Two carve-outs: a key the app mints for itself, and a credential the app refreshes for itself (`quickbooksConnection` in `schema.ts`). Every configuration value `packages/operator/src/deploy-split.ts` lists is a plain Worker var, never a Worker secret. The console's session token is the one Worker secret, and it is on no enumeration.
 
-**Storage.** D1 is the database and there is no second one. `packages/app/src/lib/server/db/client.ts` is the only module that names it. Photos are D1's too. A page is a flat document in a D1 JSON column. D1 read replication stays `disabled`.
+**Storage.** D1 is the database and there is no second one. `packages/app/src/lib/server/db/client.ts` is the only module that names it. Photos are D1's too. A page is a flat document in a D1 JSON column. D1 read replication stays `disabled`. The edge cache in front of the served form config holds a capability, not a number, and is not a precedent for caching a total (`packages/app/src/lib/server/pages/goal.ts`).
 
-**Routes.** `/api/v1` is public, unauthenticated, and payment-initiating. `/integrations/v1` is the read API an organisation's own systems call: key-authenticated, read-only, no CORS, and never under `/api/v1`. `/connector/v1` is the surface Better Giving's central Claude and ChatGPT connector calls, beside `/integrations/v1` and never under `/api/v1`. A deployment never needs the connector to work. This deployment serves no auth HTTP API: better-auth's router is never mounted.
+**Routes.** `/api/v1` is public and unauthenticated. Rate limiting is charged for every route under it by the layout middleware (`packages/app/src/routes/api.v1.ts`). The prefix loader sends no CORS: the echo is one form's `allowed_origins`, and that address names no form. The config read owes CORS from the form's `allowed_origins` and owes no Turnstile (`packages/app/src/routes/api.v1.forms.$id.config.ts`). The crypto status poll owes CORS and owes neither Turnstile nor amount bounds (`packages/app/src/routes/api.v1.forms.$id.donations.$donationId.ts`). The submission owes CORS, Turnstile, and amount bounds re-read from the form record (`packages/app/src/routes/api.v1.forms.$id.donations.ts`). An `Origin` neither source names still gets the body: `Origin` is an attribution signal and never an authorization control (`packages/app/src/lib/server/api/cors.ts`). `/integrations/v1` is the read API an organisation's own systems call: key-authenticated, read-only, no CORS, and never under `/api/v1`. `/connector/v1` is the surface Better Giving's central Claude and ChatGPT connector calls, beside `/integrations/v1` and never under `/api/v1`. A deployment never needs the connector to work. This deployment serves no auth HTTP API: better-auth's router is never mounted.
 
-**Runtime.** Nothing built from a binding is a module-scope singleton. The request body is read exactly once, by the endpoint that owns it. Reads are loaders; writes are actions or endpoints.
+**Runtime.** Nothing built from a binding is a module-scope singleton. The request body is read exactly once, by the endpoint that owns it. Reads are loaders; writes are actions or endpoints. The donation page loader, and the donation page editor's loader, write the page on first need (`packages/app/src/lib/server/pages/donation-page.ts`).
+
+**Forms.** Every `/admin` action and every form-seeding loader parses through `packages/app/src/lib/server/conform.ts`. Every box a form states must arrive. An emptied repeater submits no key, and an unticked checkbox submits no key: for both, absence is the value. A body that nests a value is refused. Schemas stay flat.
 
 **Schema.** Single-tenant: no `org_id`. No mechanism may let an org add a column. Migrations are never an app-boot side effect. Two paths touch a production schema: the `deploy` script from a checkout, and `better-giving start` (`packages/console/internal/migrate`).
 
@@ -107,7 +110,7 @@ The sections below are the rules an agent can break without opening the file tha
 
 ## Ledger, gifts, and schema
 
-The ledger (`packages/app/src/lib/server/ledger/posting.ts`) is the only module that may insert, gated by `sole-writer.spec.ts`. Every total is a `SUM` at read time. Multi-row writes go in one atomic `batch()`. No invariant is enforced by an atomic read-then-write. A SQLite-backed Durable Object is not an escape hatch.
+The ledger (`packages/app/src/lib/server/ledger/posting.ts`) is the only module that may insert, gated by `sole-writer.spec.ts`. Every total is a `SUM` at read time, never a cached number (`packages/app/src/lib/server/pages/goal.ts`). Multi-row writes go in one atomic `batch()`. No invariant is enforced by an atomic read-then-write. A SQLite-backed Durable Object is not an escape hatch.
 
 A repeating gift's row is written by the first charge that settles, from `packages/app/src/lib/server/recurring/collect.ts`, the only module that may insert into `recurring_plan`. The gift itself is recorded at authorization. The first settled charge claims that row rather than inserting a second. No name a donor typed reaches the processor. The donation path never gates on the recurring capability.
 
@@ -125,7 +128,7 @@ A contract below is permanent by decision. Weigh a fix on its own merits.
 
 ## Product surface
 
-- Donor-facing pages are `/donate` and each live campaign at its own address. A gift there is a real gift on whatever keys the deployment holds. A form is pageless. A campaign address never shadows a route (`packages/app/src/lib/page/slug.ts`).
+- Donor-facing pages are `/donate` and each live campaign at its own address. A donor page is on no `site` row and on no form's `allowed_origins` (`packages/app/src/lib/server/pages/view.ts`). A gift there is a real gift on whatever keys the deployment holds. A form is pageless. A campaign address never shadows a route (`packages/app/src/lib/page/slug.ts`).
 - A page is arranged from a fixed set of blocks. `packages/app/src/lib/page/catalog.ts`'s `parsePage` is the only parser of a stored page.
 - A deployment calls no AI model and binds no AI service.
 - The repo contains no org-editable files.
