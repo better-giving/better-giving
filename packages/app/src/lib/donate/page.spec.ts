@@ -34,9 +34,9 @@ import { PageRoot } from './page-root';
 // sheet's header states what each half below holds it to.
 //
 // names: every `--_` name the sheet reads is one the form's token file declares. the sheet
-// re-points `--_font` and `--_font-mono` and declares no other `--_` name. every `--page-*` name
-// read is declared here or set inline by the page root; every `--donate-*` name written is a seed
-// the form registers.
+// re-points `--_font` and `--_font-mono`, declares `--_w-sent`, and declares no other `--_` name.
+// every `--page-*` name read is declared here or set inline by the page root; every `--donate-*`
+// name written is a seed the form registers.
 //
 // values: outside a custom property's own declaration no colour and no length is written, which is
 // the operator sweeps in packages/operator/src/styles/raw-values.ts handed a copy of the sheet with
@@ -146,11 +146,12 @@ describe('the names ./page.css reads and writes', () => {
 		expect(read.filter((name) => !formNames.has(name))).toEqual([]);
 	});
 
-	it('re-points only the form’s two type tokens', () => {
-		expect([...declares(pageText, '--_')].sort()).toEqual(['--_font', '--_font-mono']);
+	it('re-points the form’s two type tokens and the sent figure’s weight', () => {
+		expect([...declares(pageText, '--_')].sort()).toEqual(['--_font', '--_font-mono', '--_w-sent']);
 		expect(declared(page, '.page div')).toEqual({
 			'--_font': 'var(--page-font-text)',
 			'--_font-mono': 'var(--page-font-mono)',
+			'--_w-sent': 'var(--_w-medium)',
 			'font-variant-ligatures': 'no-contextual'
 		});
 	});
@@ -174,6 +175,10 @@ describe('the names ./page.css reads and writes', () => {
 		expect(declared(page, '.page .entry.total .value.amount')).toEqual({
 			'font-weight': 'var(--_w-medium)'
 		});
+	});
+
+	it('sets the sent figure at the mono medium, which is a file', () => {
+		expect(declared(page, '.page div')['--_w-sent']).toBe('var(--_w-medium)');
 	});
 
 	it('reads every `--page-*` name from itself or from the page root', () => {

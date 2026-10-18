@@ -19,6 +19,12 @@ const parts = readFileSync(join(formStyles, 'parts.css'), 'utf8');
 // beside the tokens, and the test reads that same file.
 const coins = readFileSync(join(formStyles, 'coins.css'), 'utf8');
 const page = readFileSync(join(import.meta.dirname, 'page.css'), 'utf8');
+// happy-dom skips a selector that starts with :host, so :host, [data-donate-root] in
+// packages/form/src/styles/tokens.css never sets these two. this sheet is that half.
+// happy-dom drops a selector that starts with `:host`, so `--_w-medium` and `--_w-bold` on
+// `:host, [data-donate-root]` in packages/form/src/styles/tokens.css never apply in this file.
+// this sheet is that half, and nothing else.
+const weights = '[data-donate-root] { --_w-medium: 500; --_w-bold: 600; }';
 
 function adopt(root: HTMLElement | ShadowRoot, css: string): void {
 	const style = document.createElement('style');
@@ -75,5 +81,29 @@ describe('the hosted page is set in Red Hat', () => {
 		const address = document.getElementById('address') as Element;
 		expect(face(address)).toContain('Red Hat Mono');
 		expect(face(ticker)).toContain('Red Hat Mono');
+	});
+
+	// the figure inside the send sentence. its weight is read off the element, because
+	// ./page.spec.ts parses ./page.css and stays green when .value.sent in
+	// packages/form/src/styles/parts.css asks for --_w-bold again.
+	it('computes the medium weight on the sent figure', () => {
+		adopt(document.head, tokens);
+		adopt(document.head, parts);
+		adopt(document.head, page);
+		adopt(document.head, weights);
+
+		const hosted = document.createElement('div');
+		hosted.className = 'page';
+		hosted.setAttribute('data-donate-root', '');
+		hosted.innerHTML = `
+			<div class="page-ground">
+				<div data-donate-root id="card">
+					<span class="value sent" id="sent">0.01 BTC</span>
+				</div>
+			</div>`;
+		document.body.appendChild(hosted);
+
+		const sent = document.getElementById('sent') as Element;
+		expect(getComputedStyle(sent).fontWeight).toBe('var(--_w-medium)');
 	});
 });
