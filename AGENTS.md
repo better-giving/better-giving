@@ -41,7 +41,7 @@ Operator commands run at the repo root. The root `package.json` forwards them in
 
 Run from the repo root. These are the commands CI runs (`.github/workflows/ci.yml`). Done means the jobs in that workflow are green. Nothing gates a local commit.
 
-There is no job named `install`. `pnpm install --frozen-lockfile` is a step in `checks`, `test`, and `browser-test`. `prepare` on that install generates route types and `worker-configuration.d.ts`. `go-test` does not run it.
+`prepare` on that install generates route types and `worker-configuration.d.ts`.
 
 | CI job | command |
 | --- | --- |
@@ -83,7 +83,7 @@ The console holds the one true thing about this deployment and this organisation
 
 **Secrets** live only under `packages/app/src/lib/server/**` and are deploy-time, never rows in a settings table. Two carve-outs: a key the app mints for itself, and a credential the app refreshes for itself (`quickbooksConnection` in `schema.ts`). Every configuration value `packages/operator/src/deploy-split.ts` lists is a plain Worker var, never a Worker secret. The console's session token is the one Worker secret, and it is on no enumeration.
 
-**Storage.** D1 is the database and there is no second one. `packages/app/src/lib/server/db/client.ts` is the only module that names it. Photos are D1's too. A page is a flat document in a D1 JSON column. D1 read replication stays `disabled`. The edge cache in front of the served form config holds a capability, not a number, and is not a precedent for caching a total.
+**Storage.** D1 is the database and there is no second one. `packages/app/src/lib/server/db/client.ts` is the only module that names it. Photos are D1's too. A page is a flat document in a D1 JSON column. D1 read replication stays `disabled`. The edge cache in front of the served form config holds a capability, not a number, and is not a precedent for caching a total (`packages/app/src/lib/server/pages/goal.ts`).
 
 **Routes.** `/api/v1` is public, unauthenticated, and payment-initiating. An endpoint there owes CORS from the form's `allowed_origins`, rate limiting, Turnstile, and amount bounds re-read from the form record (`packages/app/src/routes/api.v1.ts`). `Origin` is an attribution signal, never an authorization control. `/integrations/v1` is the read API an organisation's own systems call: key-authenticated, read-only, no CORS, and never under `/api/v1`. `/connector/v1` is the surface Better Giving's central Claude and ChatGPT connector calls, beside `/integrations/v1` and never under `/api/v1`. A deployment never needs the connector to work. This deployment serves no auth HTTP API: better-auth's router is never mounted.
 
