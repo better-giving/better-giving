@@ -50,6 +50,6 @@ try env SHELL=/bin/bash PNPM_VERSION=10.19.0 sh -c 'curl -fsSL https://get.pnpm.
 # chromium for packages/form's browser specs, at the playwright version packages/form pins
 try npx -y playwright@1.62.1 install --with-deps chromium
 
-node --version; "$HOME/.local/share/pnpm/.tools/pnpm-exe/10.19.0/pnpm" --version; go version; claude plugin list
+node --version; "$HOME/.local/share/pnpm/.tools/pnpm-exe/10.19.0/pnpm" --version; claude plugin list
 exit 0
 ```

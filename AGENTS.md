@@ -2,13 +2,11 @@
 
 Self-hosted donation forms for a single organisation. One deployment serves one org; a fork is how a second org gets one.
 
-File headers still hold the argument for a rule about that file. `.claude/CLAUDE.md` imports this file and keeps only the kru seat sheet.
+File headers still hold the argument for a rule about that file.
 
 ## Stack
 
 - `package.json` `engines` is `>=22`. `@react-router/*` requires `>=22.22.0`, and `.npmrc` sets `engine-strict`, so a 22 below that fails install.
-- `package.json` `packageManager` pins pnpm.
-- `pnpm check` is the typecheck.
 - The donation form is a custom element. Browser specs use Playwright in `packages/form`.
 - The app is a Node server (`packages/app/server/index.ts`) in one container (`Dockerfile`, `compose.yaml`) against one libSQL database file.
 - Payments and books each sit behind their own port. Chariot, NOWPayments, and QuickBooks use `fetch`.
@@ -38,7 +36,7 @@ Operator commands run at the repo root. The root `package.json` forwards them in
 
 ## Commands
 
-Run from the repo root. These are the commands CI runs (`.github/workflows/ci.yml`). Done means the jobs in that workflow are green. Nothing gates a local commit.
+Run from the repo root. These are the commands CI runs (`.github/workflows/ci.yml`). Done means the jobs in that workflow are green. A Claude Code commit runs `.claude/skills/verify/SKILL.md` first; nothing else gates a local commit.
 
 `prepare` on that install generates route types.
 
@@ -56,7 +54,7 @@ Run from the repo root. These are the commands CI runs (`.github/workflows/ci.ym
 - `pnpm db:migrate`, `pnpm db:seed` and `pnpm db:backup <file>` act on the file `DATABASE_URL` names. Run from the root, they read `packages/app/.env`.
 - Dev, when asked: `CONTRIBUTING.md` → Setup.
 
-Tests are hermetic. Database specs run the committed migrations against a temp libSQL file. They need no production secret and no network to a processor.
+Tests are hermetic. They need no production secret and no network to a processor.
 
 If `node_modules` is missing, run `bash .cursor/install.sh` from the repo root before lint, check, or test. It is idempotent and installs no production secrets.
 
@@ -90,8 +88,6 @@ The console holds the one true thing about this organisation (sites, organisatio
 **Forms.** Every `/admin` action and every form-seeding loader parses through `packages/app/src/lib/server/conform.ts`. Every box a form states must arrive. An emptied repeater submits no key, and an unticked checkbox submits no key: for both, absence is the value. A body that nests a value is refused. Schemas stay flat.
 
 **Schema.** Single-tenant: no `org_id`. No mechanism may let an org add a column. Migrations are never an app-boot side effect. One path touches a production schema: `packages/app/scripts/migrate.ts`, run as `pnpm db:migrate` or `docker compose run --rm migrate`.
-
-The sections below are the rules an agent can break without opening the file that argues each one.
 
 ## Never
 
