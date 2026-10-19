@@ -5,8 +5,8 @@ import type { EmailProvider } from '../email/provider';
 import type { Processors } from '../payments/factory';
 import { settleTransaction } from './settle';
 
-// the scheduled read that settles a crypto gift no IPN settled: src/worker.ts's `scheduled` handler,
-// on the cron `triggers` in wrangler.jsonc.
+// the scheduled read that settles a crypto gift no IPN settled: `*/30 * * * *` in
+// src/cron-runs.ts.
 //
 // NOWPayments sends an IPN on each status change and sends none once an address expires, and a
 // non-2xx IPN is sent again only the number of times set in its dashboard — so a gift whose address

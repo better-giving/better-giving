@@ -1,25 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { readWranglerConfig } from './lib/server/wrangler-config.testing';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
+import { parseCron } from '$lib/server/runtime/scheduler';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 import { CRON_RUNS } from './cron-runs';
 import type { Db } from '$lib/server/db/client';
 
-// the join between the schedule this deployment declares and the work ./cron-runs.ts runs for it.
+// the join between the schedule and the work ./cron-runs.ts runs for it.
 //
-// nothing in the language holds them together: ../wrangler.jsonc's `triggers.crons` are strings, and
-// a branch keyed on one that nobody declared is a branch that never runs, while an expression declared with no branch is a cron firing into
-// nothing, every time, with nothing anywhere saying so. so the config is read here rather than
-// restated, the way src/lib/server/api/rate-limit.config.spec.ts reads the same file for the
-// buckets.
-//
-// the same read is what notices a named environment declaring `triggers` of its own, which
-// replaces the top level's rather than adding to it — a rehearsal deployment that runs neither of
-// the two.
+// the table's keys are the schedule: the scheduler ($lib/server/runtime/scheduler.ts) fires each
+// key and nothing else, so a schedule with no job cannot be written. what can is a job behind a key
+// that never fires — one the scheduler's parser refuses, or one no minute matches — and that is
+// what the first block holds out.
 //
 // the jobs are mocked, because what is under test is which ones an expression reaches and with
 // what time — their own behaviour is held by
@@ -47,17 +42,13 @@ vi.mock('$lib/server/webhooks/paused-mail', () => ({
 	mailPause: vi.fn(() => async () => {})
 }));
 
-/** the fields this file reads. everything else in the config is somebody else's concern. */
-interface WranglerConfig {
-	readonly triggers?: { readonly crons?: string[] };
-	readonly env?: Readonly<
-		Record<string, { readonly triggers?: { readonly crons?: readonly unknown[] } } | undefined>
-	>;
-}
+const SCHEDULED = Object.keys(CRON_RUNS);
 
-const config = readWranglerConfig() as WranglerConfig;
-const DECLARED = config.triggers?.crons ?? [];
-const ENVIRONMENTS = Object.keys(config.env ?? {});
+/** every UTC minute of 2028, a leap year, so a February 29th schedule meets its day. */
+function* minutesOf2028(): Generator<Date> {
+	const end = Date.UTC(2029, 0, 1);
+	for (let at = Date.UTC(2028, 0, 1); at < end; at += 60_000) yield new Date(at);
+}
 
 const SCHEDULED_AT = new Date('2026-09-20T12:30:00.000Z');
 
@@ -67,7 +58,7 @@ const env = {} as Env;
 /** the database handle a run is handed, never read: every job is mocked. */
 const db = {} as Db;
 
-/** one cron firing, run to its end. an expression the table does not answer runs nothing. */
+/** one cron firing, run to its end. */
 async function fires(cron: string, runEnv = env): Promise<void> {
 	await CRON_RUNS[cron]?.(runEnv, db, SCHEDULED_AT);
 }
@@ -89,29 +80,28 @@ beforeEach(() => {
 	vi.mocked(mailPause).mockClear();
 });
 
-describe('the schedule this deployment declares', () => {
-	it('is answered expression for expression, with no branch for one nothing fires', () => {
-		// a guard on the guard: an unread config would make the comparison pass against nothing.
-		expect(DECLARED.length).toBeGreaterThan(0);
-		expect([...Object.keys(CRON_RUNS)].sort()).toEqual([...DECLARED].sort());
+describe('the schedule', () => {
+	it('has runs', () => {
+		expect(SCHEDULED.length).toBeGreaterThan(0);
 	});
 
-	it.each(DECLARED)('runs work on %s', async (cron) => {
+	it.each(SCHEDULED)('fires %s in a year', (cron) => {
+		const matches = parseCron(cron);
+		let fired = false;
+		for (const at of minutesOf2028()) {
+			if (matches(at)) {
+				fired = true;
+				break;
+			}
+		}
+
+		expect(fired).toBe(true);
+	});
+
+	it.each(SCHEDULED)('runs work on %s', async (cron) => {
 		await fires(cron);
 
 		expect(JOBS.some((job) => vi.mocked(job).mock.calls.length > 0)).toBe(true);
-	});
-
-	// the list below is read off the parsed config, so an empty one registers no test at all and the
-	// rule goes uncovered under a green file.
-	it('has environments to inherit it', () => {
-		expect(ENVIRONMENTS.length).toBeGreaterThan(0);
-	});
-
-	// an environment's own `triggers` replaces the top level's rather than adding to it, so a
-	// rehearsal deployment declaring one of its own runs neither of the two above.
-	it.each(ENVIRONMENTS)('is inherited by the %s environment', (name) => {
-		expect(config.env?.[name]?.triggers).toBeUndefined();
 	});
 });
 
@@ -231,14 +221,5 @@ describe('which run an expression reaches', () => {
 		const thrown = await fires('* * * * *').catch((error: unknown) => error);
 		expect(thrown).toBeInstanceOf(AggregateError);
 		expect((thrown as AggregateError).errors).toEqual([books, zaps, destinations]);
-	});
-
-	it('runs nothing at all on an expression it does not answer', async () => {
-		// a deployment's live schedule and the code it runs are put up by two calls rather than one
-		// (packages/console/internal/deploy/upload.go), so an expression being retired fires against
-		// a bundle that has already dropped it. running nothing is what that has to cost.
-		await fires('0 3 * * *');
-
-		for (const job of JOBS) expect(job).not.toHaveBeenCalled();
 	});
 });

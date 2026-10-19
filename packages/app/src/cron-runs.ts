@@ -12,12 +12,20 @@ import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 
 /**
- * the work each expression in ../wrangler.jsonc's `triggers` runs, keyed by that expression.
+ * this deployment's whole schedule: each expression, the work it runs, keyed by that expression.
+ * $lib/server/runtime/scheduler.ts fires each key on the UTC minutes it matches, and
+ * ./server/app.ts's `startCron` hands it this table.
  *
- * a table rather than a `switch`, for one reason: the set of expressions answered is readable, so
- * ./cron-runs.spec.ts holds it equal to the set that file declares. a schedule declared there with
- * nothing here fires into nothing every time it comes round, and a branch here for an expression
- * nobody declares never runs at all — neither reports itself anywhere else.
+ * every thirty minutes, the crypto gifts no IPN settled are read back. at a quarter past and a
+ * quarter to, in a run of their own, the donor notices of refunds that did not send are sent
+ * again. every minute, in one run, what this deployment owes is sent: the organisation's books, its
+ * Zaps and its webhook destinations — a minute because a gift is meant to arrive while it is still
+ * the thing somebody is looking at, and a run on a deployment owing nothing is an indexed read of
+ * each outbox and no call to anybody. what a row that has already failed waits is the backoff on
+ * the row rather than this interval.
+ *
+ * the keys are the schedule, so a schedule with no work cannot be written; ./cron-runs.spec.ts
+ * holds every key to one the scheduler reads and some minute matches.
  *
  * each run builds what it needs from the env and the database handle that run was handed, the way
  * a request's handles are built per request (./request-context.ts) — nothing built from

@@ -1,7 +1,11 @@
 import type { ServerBuild } from 'react-router';
 import { createRequestHandler } from 'react-router';
 import { INTEGRATIONS_BASE_PATH, readOnlyRefusal } from '$lib/server/integrations/surface';
+import { createDb } from '$lib/server/db/client';
 import { stampClientIp } from '$lib/server/runtime/client-ip';
+import { withForwardedProto } from '$lib/server/runtime/forwarded-proto';
+import { type Scheduler, startScheduler } from '$lib/server/runtime/scheduler';
+import { CRON_RUNS } from '../cron-runs';
 import { type Runtime, requestContext } from '../request-context';
 
 // the router half of the server: what every request ../../server/start.ts does not answer from a
@@ -31,14 +35,30 @@ export type App = (request: Request, peer: string | null) => Promise<Response>;
 
 /**
  * the app over `runtime`. `trustedProxyHeader` is `TRUSTED_PROXY_HEADER` as configured
- * ($lib/server/runtime/client-ip.ts states the rule it feeds).
+ * ($lib/server/runtime/client-ip.ts and forwarded-proto.ts state the rules it feeds).
  */
 export function createApp(runtime: Runtime, trustedProxyHeader: string | undefined): App {
-	return async (request, peer) => {
-		if (unroutedOnReadApi(request)) return readOnlyRefusal(request.method);
+	return async (arrived, peer) => {
+		if (unroutedOnReadApi(arrived)) return readOnlyRefusal(arrived.method);
+		const request = withForwardedProto(arrived, trustedProxyHeader);
 		stampClientIp(request, peer, trustedProxyHeader);
 		return handleRequest(request, requestContext(runtime));
 	};
+}
+
+/**
+ * fires ../cron-runs.ts's table on its schedule, each run on a database handle of its own and on
+ * `runtime`'s deferred-work tracker, so shutdown waits for a run in flight.
+ */
+export function startCron(runtime: Runtime): Scheduler {
+	const { env, deferred, client } = runtime;
+	const runs = Object.fromEntries(
+		Object.entries(CRON_RUNS).map(([expression, run]) => [
+			expression,
+			(now: Date) => run(env, createDb(client), now)
+		])
+	);
+	return startScheduler(runs, deferred);
 }
 
 /**

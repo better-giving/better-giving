@@ -3,7 +3,7 @@
  *
  * reads `DATABASE_URL` (a `file:` URL naming the database file), `PORT` and `HOST` (production
  * only; 3000 and every interface by default) and `TRUSTED_PROXY_HEADER`
- * (../src/lib/server/runtime/client-ip.ts), plus every name `Env` carries
+ * (../src/lib/server/runtime/client-ip.ts, forwarded-proto.ts), plus every name `Env` carries
  * (../src/lib/server/runtime/env.ts). migrations are not applied here: `pnpm db:migrate` runs them
  * before the server starts (AGENTS.md → Schema).
  *

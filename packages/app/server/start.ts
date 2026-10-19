@@ -15,6 +15,7 @@ import {
 	type RateLimit,
 	type RateLimiterName
 } from '../src/lib/server/runtime/rate-limiter.ts';
+import type { Scheduler } from '../src/lib/server/runtime/scheduler.ts';
 import type { App } from '../src/server/app.ts';
 import { type HeaderRule, headersFor, parseHeaders } from './static-headers.ts';
 
@@ -23,6 +24,9 @@ import { type HeaderRule, headersFor, parseHeaders } from './static-headers.ts';
 // in production the router is the built bundle at build/server/index.js and the static files are
 // build/client/. in development the router is loaded through vite on every request, so an edit is
 // the next request's code, and vite's own middleware serves the modules the browser asks for.
+//
+// the scheduled runs (`startCron`, from the same bundle) fire in production only. `pnpm dev` fires
+// none, so a contributor's database is written by nobody but them.
 
 export interface StartOptions {
 	/** this package's directory. */
@@ -44,8 +48,9 @@ export interface Started {
 	/** the address the server listens on, e.g. `http://127.0.0.1:5321`. */
 	readonly url: string;
 	/**
-	 * stops taking connections, lets every open request finish, waits for every piece of work
-	 * handed to `waitUntil`, then closes the database client.
+	 * stops the scheduled runs and taking connections, lets every open request finish, waits for
+	 * every piece of work handed to `waitUntil` (a scheduled run in flight included), then closes
+	 * the database client.
 	 */
 	shutdown(): Promise<void>;
 }
@@ -75,6 +80,7 @@ export async function startServer(options: StartOptions): Promise<Started> {
 	const server = createServer();
 	let vite: ViteDevServer | undefined;
 	let app: () => Promise<App>;
+	let startCron: (() => Scheduler) | undefined;
 
 	if (mode === 'development') {
 		const { createServer: createViteServer } = await import('vite');
@@ -96,6 +102,7 @@ export async function startServer(options: StartOptions): Promise<Started> {
 		)) as typeof import('../src/server/app.ts');
 		const once = built.createApp(runtime, trustedProxyHeader);
 		app = async () => once;
+		startCron = () => built.startCron(runtime);
 	}
 
 	const routed = createRequestListener(async (request, peer) =>
@@ -121,12 +128,14 @@ export async function startServer(options: StartOptions): Promise<Started> {
 			resolve();
 		});
 	});
+	const cron = startCron?.();
 	const { address, port } = server.address() as AddressInfo;
 	const host = address.includes(':') ? `[${address}]` : address;
 
 	return {
 		url: `http://${host}:${port}`,
 		async shutdown() {
+			cron?.stop();
 			const closed = new Promise<void>((resolve) => server.close(() => resolve()));
 			server.closeIdleConnections();
 			await closed;
