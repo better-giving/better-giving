@@ -12,34 +12,14 @@ import { client, run, stmt } from '$lib/server/db/database.testing';
 // statements have to satisfy are `org_profile`'s own (../db/schema.ts), and what passes here is
 // the one command a contributor runs to clear the set-up gate (../../../routes/_app.tsx).
 //
-// the file's own text, imported with `?raw`, so the assertion is about what a contributor runs.
+// the file's own text, imported with `?raw`, and sent the way the command sends it, so the assertion
+// is about what a contributor runs.
 
 /**
- * the file cut into the statements the spec sends one at a time.
- *
- * a comment line is skipped rather than scanned for the boundary, which is the whole of what this
- * has to get right: the header's second paragraph ends a clause with a semicolon, and a split on
- * `;` alone cuts the first statement in half there and sends a fragment.
+ * the seed as `pnpm db:seed` applies it (../../../../scripts/seed.ts): the whole file in one
+ * `executeMultiple`, comments and all.
  */
-function splitStatements(sql: string): string[] {
-	const statements: string[] = [];
-	let current: string[] = [];
-	for (const line of sql.split('\n')) {
-		current.push(line);
-		if (line.trimStart().startsWith('--')) continue;
-		if (!line.trimEnd().endsWith(';')) continue;
-		statements.push(current.join('\n').trim());
-		current = [];
-	}
-	return statements;
-}
-
-const seedStatements = splitStatements(seedSql);
-
-/** the seed as a contributor applies it: every statement in the file, in order, comments and all. */
-const applySeed = async () => {
-	for (const statement of seedStatements) await run(stmt(statement));
-};
+const applySeed = () => client.executeMultiple(seedSql);
 
 /**
  * every job's state, read the way both gated loaders read it (./setup-state.ts).

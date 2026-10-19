@@ -1,7 +1,6 @@
 /**
  * `pnpm run build`'s middle step — copies `packages/form/dist/` into `static/`, so `vite build`
- * (the step after this one) finds the embed there and folds it into the worker's assets the same
- * way it always has.
+ * (the step after this one) finds the embed there and folds it into the client build.
  *
  * why staging exists at all. `@better-giving/form` builds without knowing where its output is
  * served from — `packages/form/vite.embed.config.ts` writes both halves into its own `dist/`,
@@ -10,9 +9,8 @@
  * decision is made, and it is the one thing standing between `pnpm run build:embed` and
  * `vite build` in `pnpm run build`.
  *
- * `fs.cpSync` rather than a shell `cp`, so this runs the same way on every fork's machine —
- * CLAUDE.md's own reason for D1 migrations running through wrangler rather than a shell script
- * applies here too: a fork is not guaranteed to be on darwin.
+ * `fs.cpSync` rather than a shell `cp`, so this runs the same way on every fork's machine: a fork
+ * is not guaranteed to be on darwin.
  *
  * `static/embed/` is cleared before the copy, and only that subdirectory — never `static/`
  * itself, which holds committed files (`_headers`, `robots.txt`). `cpSync` is additive: the
@@ -84,6 +82,6 @@ export function main(root = process.cwd()) {
 	assertOneRuntime(runtimeDir, 'staging');
 }
 
-// `pnpm run build` runs this file and the spec beside it imports `main`, so the run is guarded —
-// see scripts/preflight-deploy.js for why an unconditional one would take the test process with it.
+// `pnpm run build` runs this file and the spec beside it imports `main`, so the run is guarded:
+// an unconditional one would take the test process with it.
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

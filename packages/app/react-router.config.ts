@@ -6,12 +6,11 @@ import type { Config } from '@react-router/dev/config';
 // already reads that name: `$lib` is src/lib (./tsconfig.json), every spec pool globs `src/**`
 // (./vitest.config.ts), and the styles chain enters at src/app.css.
 //
-// no preset is listed and none belongs. what runs this app on cloudflare is
-// `@cloudflare/vite-plugin` in ./vite.config.ts, which builds the worker entry ./wrangler.jsonc
-// names and serves it in workerd in dev as well as in the build.
+// no preset is listed and none belongs. the server entry is ./server/index.ts, which serves the
+// build ./vite.config.ts writes, and in dev runs vite in middleware mode over the same config.
 export default {
 	appDirectory: 'src',
-	// every screen reads D1 and the platform env through a loader, and none of that can run in a
+	// every screen reads the database and the server env through a loader, and none of that can run in a
 	// browser.
 	ssr: true
 } satisfies Config;

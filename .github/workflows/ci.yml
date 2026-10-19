@@ -1,14 +1,13 @@
 # the one gate: this workflow checks a push to `main` and every pull request, nothing checks a
-# commit on a contributor's own machine, and `.github/workflows/release.yml` runs on a tag and gates nothing.
+# commit on a contributor's own machine.
 #
 # no `paths`/`paths-ignore` on the triggers and no `if:` on the jobs below — every job fires on
 # every push to `main` and every pull request, so a required check always produces a run rather
 # than being silently skipped.
 #
-# five independent jobs, each its own check: `checks` (format, lint, typecheck), `test` (the pnpm
+# four independent jobs, each its own check: `checks` (format, lint, typecheck), `test` (the pnpm
 # suite across every package), `browser-test` (packages/form's real-chromium specs, which `test`
-# never reaches), `go-test` (the console's go module, which the pnpm suite cannot reach),
-# `docker-build` (the root Dockerfile builds). there is
+# never reaches), `docker-build` (the root Dockerfile builds). there is
 # no turbo here — this repository has none (`.claude/CLAUDE.md` → toolchain), so nothing is cached
 # or fanned out through a task graph; each job just runs the same command a contributor would run
 # locally.
@@ -24,9 +23,8 @@ permissions:
 # is the tag that sha was, for readability only — bumping means resolving the new tag to a sha, not
 # editing that comment.
 #
-# jobs run on blacksmith (blacksmith.sh) rather than github-hosted runners, the same swap
-# release.yml already made: the app is installed on the org and the runner label is the whole
-# integration, with no action to add or pin. blacksmith proxies the standard cache actions to its
+# jobs run on blacksmith (blacksmith.sh) rather than github-hosted runners: the app is installed
+# on the org and the runner label is the whole integration, with no action to add or pin. blacksmith proxies the standard cache actions to its
 # own colocated cache, so `cache: pnpm` below is accelerated as-is.
 
 jobs:
@@ -54,8 +52,8 @@ jobs:
       - run: pnpm run lint
 
       # `pnpm -r --workspace-concurrency=1 check` — route typegen plus `tsc --noEmit` per package.
-      # the typed `worker-configuration.d.ts` and react-router's generated types this depends on
-      # come from `prepare`, which `pnpm install` above already ran.
+      # the react-router generated types this depends on come from `prepare`, which
+      # `pnpm install` above already ran.
       - run: pnpm run check
 
   test:
@@ -74,8 +72,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # `pnpm -r --workspace-concurrency=1 test` — every package's own `test` script, one at a
-      # time (parallel workerd suites oversubscribe the runner the same way they would a
-      # contributor's machine). this never reaches packages/form's `test:browser`: that script is
+      # time (parallel suites oversubscribe the runner the same way they would a contributor's
+      # machine). this never reaches packages/form's `test:browser`: that script is
       # its own, separate from `test`, and vitest.browser.config.ts's own header says it
       # deliberately never runs from plain `vitest`/`pnpm test` — that suite runs in `browser-test`
       # below instead.
@@ -105,20 +103,6 @@ jobs:
       # vitest.browser.config.ts's header: this pool is not one of vitest.config.ts's `projects`,
       # so `pnpm run test` above never reaches it. this job is what runs it.
       - run: pnpm --filter @better-giving/form test:browser
-
-  go-test:
-    name: go-test
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: packages/console/go.mod
-          cache-dependency-path: packages/console/go.sum
-
-      - run: go test ./...
-        working-directory: packages/console
 
   # builds the image from the root Dockerfile and discards it: nothing is pushed and no registry
   # login exists. publishing is a separate workflow.

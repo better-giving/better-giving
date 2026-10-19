@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 // operator commands run at the repo root (CLAUDE.md), so `pnpm run x` written anywhere here means
 // the root's `x` — a script of that name in a package manifest is not what an operator standing in
 // the repository would reach, and pnpm does not fall back to the root for them either. the two
-// forms without `run` — `pnpm dev`, `pnpm wrangler` — resolve the same way and are matched here too.
+// forms without `run` — `pnpm dev`, `pnpm check` — resolve the same way and are matched here too.
 //
 // the sweep reaches out of this package to the root documents, which is where the other half of
 // these sentences are written: DEPLOY.md is read by an operator with a terminal open, and a command
@@ -33,6 +33,30 @@ const COMMANDS = [/\bpnpm run ([a-z][\w:-]*)/g, /`pnpm ([a-z][\w:-]*)`/g];
 // about that size: it is the vocabulary of the package manager and not an allowlist of names this
 // repository has decided to stop checking.
 const SUBCOMMANDS = new Set(['install', 'run']);
+
+// root scripts that left with the Cloudflare parts and the Go console. sentences that still name one
+// are reworded with the docs and the in-product messages, and this set is deleted with the last of
+// them; the case below keeps it from outliving a script that comes back under one of these names.
+const REMOVED = new Set([
+	'bundle',
+	'console',
+	'db:create',
+	'db:create:test',
+	'db:export',
+	'db:export:photos',
+	'db:info',
+	'db:restore:photos',
+	'deploy',
+	'deploy:test',
+	'deploy:vars',
+	'logs',
+	'preview',
+	'secret:delete',
+	'secret:list',
+	'start',
+	'turnstile:keys',
+	'wrangler'
+]);
 
 const files = [
 	...globSync('src/**/*.{ts,tsx}'),
@@ -86,7 +110,13 @@ describe('every command this repository names is one the root can run', () => {
 
 	it('names none the root package.json does not declare', () => {
 		expect(
-			named.filter((m) => !scripts.has(m.name)).map((m) => `${m.at} pnpm run ${m.name}`)
+			named
+				.filter((m) => !scripts.has(m.name) && !REMOVED.has(m.name))
+				.map((m) => `${m.at} pnpm run ${m.name}`)
 		).toEqual([]);
+	});
+
+	it('keeps no removed name that the root declares again', () => {
+		expect([...REMOVED].filter((name) => scripts.has(name))).toEqual([]);
 	});
 });

@@ -1,6 +1,6 @@
 # the build context. what is left out here is either rebuilt inside the image (node_modules, build
 # output, route typegen, the staged embed) or never belongs in it: a local database, a value file,
-# the go console, the design artboards.
+# the design artboards.
 
 .git
 **/node_modules
@@ -24,7 +24,6 @@ packages/app/static/embed/
 **/*.db-wal
 **/*.db-shm
 
-packages/console
 packages/design
 .design-work
 .claude

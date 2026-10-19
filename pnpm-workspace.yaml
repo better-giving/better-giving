@@ -26,11 +26,9 @@ catalog:
   # resolves the same compiler every package type-checks with rather than whatever happens to be on
   # the machine. the root declares nothing else of any package's: only what lints and formats.
   #
-  # @cloudflare/vitest-pool-workers and @vitest/browser-playwright are version-coupled to vitest too
-  # but stay pinned in one package.json each rather than promoted here — the pool in
-  # packages/app/package.json, which has the D1-backed tests, and the browser runner in
-  # packages/form/package.json, which has the browser specs. a single consumer has nothing to drift
-  # against, and an entry here would claim otherwise.
+  # @vitest/browser-playwright is version-coupled to vitest too but stays pinned in
+  # packages/form/package.json alone, which has the browser specs. a single consumer has nothing to
+  # drift against, and an entry here would claim otherwise.
   #
   # `xstate` is here on react's rule rather than on the count: two copies in one tree are two
   # runtimes, and an actor started on a copy other than the one the machine was built with is a flow
@@ -98,5 +96,9 @@ supportedArchitectures:
 # better-auth peers `next` as optional, and pnpm resolves an optional peer whenever some importer
 # holds a copy: `@react-email/ui` carries one. it is not ours at runtime, so it stays out of the
 # production install.
+#
+# `@react-router/dev` peers `wrangler` as optional, and pnpm resolves it whenever any package in the
+# graph carries a copy. nothing here runs wrangler, so it stays out of the install.
 overrides:
   'better-auth>next': '-'
+  '@react-router/dev>wrangler': '-'

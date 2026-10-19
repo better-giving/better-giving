@@ -5,9 +5,8 @@ import { versionDefine } from './version-define';
 
 // the spec pools, and a config of their own rather than a `test` block inside ./vite.config.ts.
 //
-// that file is the build: `@cloudflare/vite-plugin` and `reactRouter()` between them stand up a
-// worker runtime and a route manifest, and neither has anything to do with a spec that imports a
-// module and calls it. vitest reads this file in preference to that one, so the two never meet.
+// that file is the build: `reactRouter()` stands up a route manifest, and that has nothing to do
+// with a spec that imports a module and calls it. vitest reads this file in preference to that one, so the two never meet.
 //
 // three projects, split by what a spec needs.
 //

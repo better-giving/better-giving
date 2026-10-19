@@ -21,8 +21,7 @@ export default defineConfig({
 	define: versionDefine,
 	// static/ rather than vite's default public/: it is where scripts/stage-embed.js puts the
 	// donation form's embed, and vite copies this directory into the client build whole. the chain
-	// that reaches a pasted snippet runs through here — CLAUDE.md states its three steps and
-	// scripts/preflight-deploy.js counts what lands.
+	// that reaches a pasted snippet runs through here — AGENTS.md states its three steps.
 	publicDir: 'static',
 	resolve: {
 		// `$lib`, which most of src/ already imports through. declared here rather than left to a

@@ -10,18 +10,7 @@
 		// href="#" on a link that goes nowhere yet, a heading whose page has no <html> around
 		// it. formatting it is churn against files a generator rewrites. git ignores the
 		// directory as well (.gitignore), and the exclude here keeps the reason beside the rule.
-		//
-		// packages/console/internal/release/config.json is written by `go run ./cmd/bake` and
-		// compared against a fresh bake, byte for byte, by internal/release's own tests. the two
-		// formatters disagree on an array short enough to fit one line: bake keeps every entry on
-		// its own, biome collapses it under lineWidth. formatting it turns the next bake into a
-		// red go-test rather than a diff, so the generator owns the bytes.
-		"includes": [
-			"**",
-			"!packages/app/migrations/meta",
-			"!packages/console/internal/release/config.json",
-			"!packages/design"
-		]
+		"includes": ["**", "!packages/app/migrations/meta", "!packages/design"]
 	},
 	"formatter": {
 		"enabled": true,

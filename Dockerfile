@@ -41,7 +41,7 @@ COPY --from=build /repo/packages/app/build ./build
 COPY --from=build /repo/packages/app/server ./server
 COPY --from=build /repo/packages/app/src ./src
 COPY --from=build /repo/packages/app/migrations ./migrations
-COPY --from=build /repo/packages/app/scripts/migrate.ts ./scripts/
+COPY --from=build /repo/packages/app/scripts/migrate.ts /repo/packages/app/scripts/backup.ts ./scripts/
 USER node
 EXPOSE 3000
 # exec form: node is PID 1 and receives SIGTERM itself, which server/index.ts drains on.
