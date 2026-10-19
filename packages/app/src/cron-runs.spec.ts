@@ -6,14 +6,13 @@ import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
-import worker, { CRON_RUNS } from './worker';
+import { CRON_RUNS } from './cron-runs';
+import type { Db } from '$lib/server/db/client';
 
-// the join between the schedule this worker is deployed with and the work its `scheduled` handler
-// runs.
+// the join between the schedule this deployment declares and the work ./cron-runs.ts runs for it.
 //
-// nothing in the language holds them together: ./wrangler.jsonc's `triggers.crons` are strings
-// Cloudflare hands back on `controller.cron`, and a branch keyed on one that nobody declared is a
-// branch that never runs, while an expression declared with no branch is a cron firing into
+// nothing in the language holds them together: ../wrangler.jsonc's `triggers.crons` are strings, and
+// a branch keyed on one that nobody declared is a branch that never runs, while an expression declared with no branch is a cron firing into
 // nothing, every time, with nothing anywhere saying so. so the config is read here rather than
 // restated, the way src/lib/server/api/rate-limit.config.spec.ts reads the same file for the
 // buckets.
@@ -62,41 +61,15 @@ const ENVIRONMENTS = Object.keys(config.env ?? {});
 
 const SCHEDULED_AT = new Date('2026-09-20T12:30:00.000Z');
 
-type Scheduled = NonNullable<typeof worker.scheduled>;
+/** the env a run is handed. nothing below reaches configuration: every job is mocked. */
+const env = {} as Env;
 
-/** the platform env a run is handed. nothing below reaches a binding: every job is mocked. */
-const env = { DB: {} } as unknown as Parameters<Scheduled>[1];
+/** the database handle a run is handed, never read: every job is mocked. */
+const db = {} as Db;
 
-/**
- * one cron firing, run to the end of everything the handler put on `waitUntil`, and that list
- * handed back.
- *
- * it comes back because handing the run over is the one thing `scheduled` does that nothing else
- * in this file can see: the handler is not `async` and returns nothing, so a run started and left
- * off `waitUntil` is a run the invocation ends underneath — sends abandoned mid-call, and the rows
- * that run claimed sitting `pending` with `attempts` unincremented until the lease passes
- * ($lib/server/accounting/deliver.ts). a mock called is a mock called either way.
- */
-async function fires(cron: string, runEnv = env): Promise<Promise<unknown>[]> {
-	const waited: Promise<unknown>[] = [];
-	const ctx = {
-		waitUntil: (promise: Promise<unknown>) => waited.push(promise),
-		passThroughOnException: () => {},
-		props: {}
-	} as unknown as Parameters<Scheduled>[2];
-
-	await worker.scheduled(
-		{
-			cron,
-			scheduledTime: SCHEDULED_AT.getTime(),
-			type: 'scheduled',
-			noRetry: () => {}
-		} as unknown as Parameters<Scheduled>[0],
-		runEnv,
-		ctx
-	);
-	await Promise.all(waited);
-	return waited;
+/** one cron firing, run to its end. an expression the table does not answer runs nothing. */
+async function fires(cron: string, runEnv = env): Promise<void> {
+	await CRON_RUNS[cron]?.(runEnv, db, SCHEDULED_AT);
 }
 
 /** every job a cron can reach, for the cases asserting on none of them or all. */
@@ -116,7 +89,7 @@ beforeEach(() => {
 	vi.mocked(mailPause).mockClear();
 });
 
-describe('the schedule this worker is deployed with', () => {
+describe('the schedule this deployment declares', () => {
 	it('is answered expression for expression, with no branch for one nothing fires', () => {
 		// a guard on the guard: an unread config would make the comparison pass against nothing.
 		expect(DECLARED.length).toBeGreaterThan(0);
@@ -124,12 +97,9 @@ describe('the schedule this worker is deployed with', () => {
 	});
 
 	it.each(DECLARED)('runs work on %s', async (cron) => {
-		const waited = await fires(cron);
+		await fires(cron);
 
 		expect(JOBS.some((job) => vi.mocked(job).mock.calls.length > 0)).toBe(true);
-		// the run reached the runtime, which is what keeps the invocation open until it is done.
-		// `fires` awaited it on the way out, so a run that rejected never got this far.
-		expect(waited).toHaveLength(1);
 	});
 
 	// the list below is read off the parsed config, so an empty one registers no test at all and the
@@ -187,10 +157,7 @@ describe('which run an expression reaches', () => {
 	});
 
 	it('hands every feed the same deps on a deployment holding an unlisted var set to true', async () => {
-		await fires('* * * * *', {
-			DB: {},
-			SOME_OLD_VAR: 'true'
-		} as unknown as typeof env);
+		await fires('* * * * *', { SOME_OLD_VAR: 'true' } as unknown as typeof env);
 
 		// no pace rides in the deps, so each feed claims the one it declares (outbox/budget.ts).
 		expect(sendDueZapierEvents).toHaveBeenCalledWith(
@@ -213,10 +180,7 @@ describe('which run an expression reaches', () => {
 	}
 
 	it('mails a paused destination to the operator, linking the deployment’s pinned address', async () => {
-		await pauseTold({
-			DB: {},
-			BETTER_AUTH_URL: 'https://donate.example.org/'
-		} as unknown as typeof env);
+		await pauseTold({ BETTER_AUTH_URL: 'https://donate.example.org/' } as typeof env);
 
 		expect(mailPause).toHaveBeenCalledExactlyOnceWith({
 			db: expect.anything(),
@@ -232,10 +196,7 @@ describe('which run an expression reaches', () => {
 	});
 
 	it('runs every minute job where the pinned address does not parse', async () => {
-		await fires('* * * * *', {
-			DB: {},
-			BETTER_AUTH_URL: 'donate.example.org'
-		} as unknown as typeof env);
+		await fires('* * * * *', { BETTER_AUTH_URL: 'donate.example.org' } as typeof env);
 
 		for (const job of [sendDueEntries, sendDueZapierEvents, sendDueWebhooks]) {
 			expect(job).toHaveBeenCalledOnce();
@@ -279,32 +240,5 @@ describe('which run an expression reaches', () => {
 		await fires('0 3 * * *');
 
 		for (const job of JOBS) expect(job).not.toHaveBeenCalled();
-	});
-});
-
-describe('a method react router routes nowhere', () => {
-	type Fetch = typeof worker.fetch;
-	const ctx = {
-		waitUntil: () => {},
-		passThroughOnException: () => {},
-		props: {}
-	} as unknown as Parameters<Fetch>[2];
-	const asked = (method: string, path: string) =>
-		worker.fetch(
-			new Request(`https://donate.example.org${path}`, { method }) as Parameters<Fetch>[0],
-			env,
-			ctx
-		);
-
-	it.each([
-		['PROPFIND', '/integrations/v1/gifts'],
-		['QUERY', '/integrations/v1'],
-		['propfind', '/integrations/v1/donors']
-	])('is refused on the read API as its own read-only 405: %s %s', async (method, path) => {
-		const response = await asked(method, path);
-
-		expect(response.status).toBe(405);
-		expect(response.headers.get('allow')).toBe('GET, HEAD');
-		expect(await response.json()).toMatchObject({ error: 'method_not_allowed' });
 	});
 });

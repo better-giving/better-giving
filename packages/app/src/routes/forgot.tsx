@@ -50,8 +50,8 @@ import type { Route } from './+types/forgot';
 // password is a deploy-time var with no `auth_account` row behind it.
 //
 // **the reset runs in `waitUntil`, after the answer has left.** the lookup, the row a member's link
-// is written to and the mail are all handed to the request's `ctx.waitUntil` by
-// `requestPasswordReset`, so an address this deployment has is answered in the time one it does not
+// is written to and the mail are all handed to the request's deferred work (`platform.deferred` in
+// ../context.ts) by `requestPasswordReset`, so an address this deployment has is answered in the time one it does not
 // — the timing is the rest of what the answer withholds. it is also why a reset that fails is a
 // log line and never a banner here.
 //
@@ -156,7 +156,7 @@ export async function loader({ context }: Route.LoaderArgs) {
  * ($lib/server/auth/index.ts, `emailAndPassword`).
  */
 export async function action({ context, request, url }: Route.ActionArgs) {
-	const { env, ctx } = context.get(platform);
+	const { env, deferred } = context.get(platform);
 	const db = context.get(database);
 	const authEnv = readAuthEnv(env);
 
@@ -233,7 +233,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 		}
 	});
 
-	requestPasswordReset(auth, { email: submission.value.email }, (task) => ctx.waitUntil(task));
+	requestPasswordReset(auth, { email: submission.value.email }, (task) => deferred.waitUntil(task));
 	return { sent: true as const };
 }
 

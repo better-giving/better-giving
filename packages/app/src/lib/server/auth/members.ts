@@ -197,10 +197,11 @@ export async function signInMember(
  * **an address nobody here has is answered exactly as a member's is, and the answer waits on none
  * of the work.** the caller has nothing to wait for and nothing to read: the lookup, the row a
  * member's link is written to and the mail all run in the task handed to `background`, the
- * Worker's `waitUntil`. awaited, a member's request would pay an `auth_verification` INSERT where a
- * stranger's pays a SELECT (better-auth's `/request-password-reset`), and a stopwatch would say
- * which. telling the two apart would turn the form into a way to ask whether a given person works
- * here, on a deployment whose donation page names the organisation.
+ * request's `platform.deferred.waitUntil` (../../../context.ts). awaited, a member's request would
+ * pay an `auth_verification` INSERT where a stranger's pays a SELECT (better-auth's
+ * `/request-password-reset`), and a stopwatch would say which. telling the two apart would turn
+ * the form into a way to ask whether a given person works here, on a deployment whose donation page
+ * names the organisation.
  *
  * **so a failure is the deployment's to read, never the requester's.** the auth layer refusing, an
  * instance built without a way to send, a database missing a table: each is logged inside the task

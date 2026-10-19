@@ -1,7 +1,8 @@
 import type { PayableCoin } from '@better-giving/form/v1';
 import type { Processors } from '../payments/factory';
+import { responseCache } from '../runtime/response-cache';
 
-// the coins a crypto gift may be sent in, kept at the edge for a few minutes at a time.
+// the coins a crypto gift may be sent in, kept in the process's cache for a few minutes at a time.
 //
 // the same store, window and argument as ./rail-cache.ts, whose header states it in full: the
 // config boot is public and unauthenticated, and which coins an account takes is a capability and
@@ -24,7 +25,7 @@ const TTL_SECONDS = 300;
 const CACHE_PATH = '/__payable-coins';
 
 /**
- * the coins a donor may pick here, from the edge where there is an answer and from NOWPayments where
+ * the coins a donor may pick here, from the cache where there is an answer and from NOWPayments where
  * there is not — empty on a deployment holding no NOWPayments keys, and asked of nobody there.
  *
  * a read that failed answers `null` and is never stored, so crypto is withdrawn from the served
@@ -33,7 +34,7 @@ const CACHE_PATH = '/__payable-coins';
  * succeeded *is* stored: an account with no coin enabled is an answer, and asking again per boot
  * would be two outbound calls per donor for as long as it stays that way.
  *
- * never throws: the port is sealed, and a runtime with no cache reads straight through.
+ * never throws: the port is sealed.
  */
 export async function cachedCoins(
 	processors: Processors,
@@ -41,42 +42,31 @@ export async function cachedCoins(
 ): Promise<readonly PayableCoin[] | null> {
 	if (!processors.configured.includes('nowpayments')) return [];
 
-	const cache = edgeCache();
-	const key = cache === null ? null : new Request(new URL(CACHE_PATH, origin));
-	if (cache !== null && key !== null) {
-		const kept = await storedCoins(cache, key);
-		if (kept !== null) return kept;
-	}
+	const key = new Request(new URL(CACHE_PATH, origin));
+	const kept = await storedCoins(key);
+	if (kept !== null) return kept;
 
 	const read = await processors.for('nowpayments').listPayableCoins();
 	if (!read.ok) return null;
 
-	if (cache !== null && key !== null) {
-		await cache.put(
-			key,
-			new Response(JSON.stringify(read.value), {
-				headers: {
-					'content-type': 'application/json',
-					'cache-control': `max-age=${TTL_SECONDS}`
-				}
-			})
-		);
-	}
+	await responseCache.put(
+		key,
+		new Response(JSON.stringify(read.value), {
+			headers: {
+				'content-type': 'application/json',
+				'cache-control': `max-age=${TTL_SECONDS}`
+			}
+		})
+	);
 	return read.value;
 }
 
-/** the platform's cache, or `null` where the runtime has none (`edgeCache` in ./rail-cache.ts). */
-function edgeCache(): Cache | null {
-	const store = (globalThis as { caches?: { default?: Cache } }).caches;
-	return store?.default ?? null;
-}
-
 /**
- * a kept answer, or `null` for anything that is not one — failing closed, since the zone's store
+ * a kept answer, or `null` for anything that is not one — failing closed, since the shared store
  * hands back whatever is under the address. one malformed entry disqualifies the whole list.
  */
-async function storedCoins(cache: Cache, key: Request): Promise<readonly PayableCoin[] | null> {
-	const hit = await cache.match(key);
+async function storedCoins(key: Request): Promise<readonly PayableCoin[] | null> {
+	const hit = await responseCache.match(key);
 	if (hit === undefined) return null;
 
 	let decoded: unknown;

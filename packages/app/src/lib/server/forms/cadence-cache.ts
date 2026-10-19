@@ -1,9 +1,10 @@
 import { FREQUENCIES, type Frequency } from '@better-giving/form/v1';
 import type { Processors } from '../payments/factory';
+import { responseCache } from '../runtime/response-cache';
 import { readRecurringProvisions } from '../payments/recurring-provision';
 import { offeredCadences } from './offered-cadences';
 
-// the repeating-gifts read, kept at the edge for a few minutes at a time.
+// the repeating-gifts read, kept in the process's cache for a few minutes at a time.
 //
 // what it is in front of: `GET /api/v1/forms/:id/config` is what every embedded donation form boots
 // on, from a donor's browser on somebody else's website, and it is public and unauthenticated.
@@ -39,20 +40,19 @@ const TTL_SECONDS = 300;
 /**
  * the address an answer is kept under, on the request's own origin.
  *
- * `caches.default` is keyed by URL, and a visitor's request runs this worker before any cache
- * (https://developers.cloudflare.com/workers/reference/how-the-cache-works/), so an entry is read
- * only by a `cache.match` this app makes — and the one that reads this key is below. a path of its
- * own is what keeps that read from meeting an entry another module wrote.
+ * the process's cache (../runtime/response-cache.ts) is keyed by URL and read only by a `match`
+ * this app makes — and the one that reads this key is below. a path of its own is what keeps that
+ * read from meeting an entry another module wrote.
  */
 const CACHE_PATH = '/__recurring-cadences';
 
 /**
- * how often a gift may repeat here, from the edge where there is an answer and from the processor
+ * how often a gift may repeat here, from the cache where there is an answer and from the processor
  * where there is not.
  *
- * `origin` is the origin the request arrived on, so the entry sits inside the zone that asked for
- * it. it is taken as an argument rather than invented, because a synthetic hostname is one this
- * deployment does not own.
+ * `origin` is the origin the request arrived on, so the key names an address this deployment
+ * answers on. it is taken as an argument rather than invented, because a synthetic hostname is one
+ * this deployment does not own.
  *
  * a standing that could not be read is answered and never stored: a failure kept for five minutes
  * is a blip turned into a form that has stopped offering Monthly, with nothing on either side able
@@ -60,21 +60,16 @@ const CACHE_PATH = '/__recurring-cadences';
  * those are answers, and re-asking for them costs a donor the same wait as re-asking for a ready
  * one.
  *
- * never throws and never rejects: the read below turns every failing arm of the port into a state,
- * and a store with no cache in front of it — `vite dev` runs on node, which has none — reads
- * straight through.
+ * never throws and never rejects: the read below turns every failing arm of the port into a state.
  */
 export async function cachedCadences(
 	processors: Processors,
 	origin: string
 ): Promise<readonly Frequency[]> {
-	const cache = edgeCache();
-	const key = cache === null ? null : new Request(new URL(CACHE_PATH, origin));
+	const key = new Request(new URL(CACHE_PATH, origin));
 
-	if (cache !== null && key !== null) {
-		const kept = await storedCadences(cache, key);
-		if (kept !== null) return kept;
-	}
+	const kept = await storedCadences(key);
+	if (kept !== null) return kept;
 
 	const provisions = await readRecurringProvisions(processors);
 	const cadences = offeredCadences(provisions);
@@ -82,8 +77,8 @@ export async function cachedCadences(
 	// every configured processor answered, or nothing is kept: a failure kept for five minutes is a
 	// blip turned into a form that has stopped offering Monthly.
 	const readable = Object.values(provisions).every((reading) => reading.state !== 'unreadable');
-	if (cache !== null && key !== null && readable) {
-		await cache.put(
+	if (readable) {
+		await responseCache.put(
 			key,
 			new Response(JSON.stringify(cadences), {
 				headers: {
@@ -98,27 +93,16 @@ export async function cachedCadences(
 }
 
 /**
- * the platform's cache, or `null` where the runtime has none.
- *
- * `vite dev` runs this app on node, which has no `caches` at all, so the absence is a state rather
- * than a fault — `pnpm run preview` is where the cache is real, and so is every deployment.
- */
-function edgeCache(): Cache | null {
-	const store = (globalThis as { caches?: { default?: Cache } }).caches;
-	return store?.default ?? null;
-}
-
-/**
  * a kept answer, or `null` for anything that is not one.
  *
- * fails closed the way ./form-json.ts's decoders do and for a sharper reason: this store is the
- * zone's, so what comes back under an address is whatever is there. a body that is not a non-empty
+ * fails closed the way ./form-json.ts's decoders do and for a sharper reason: this store is
+ * shared, so what comes back under an address is whatever is there. a body that is not a non-empty
  * list of `v1` cadences is read past rather than served — an empty one would reach `readFormConfig`
  * in packages/form/src/config.ts, which drops the whole config, leaving a donation form that renders
  * nothing on a site nobody here can see.
  */
-async function storedCadences(cache: Cache, key: Request): Promise<readonly Frequency[] | null> {
-	const hit = await cache.match(key);
+async function storedCadences(key: Request): Promise<readonly Frequency[] | null> {
+	const hit = await responseCache.match(key);
 	if (hit === undefined) return null;
 
 	let decoded: unknown;

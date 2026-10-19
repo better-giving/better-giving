@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { callerRateLimitRefusal, keyRateLimitRefusal } from '../integrations/surface';
-import { readWranglerConfig } from '../wrangler-config.testing';
+import { RATE_LIMITS, type RateLimiterName } from '../runtime/rate-limiter';
 import {
 	donorPageRateLimitRefusal,
 	imageRateLimitRefusal,
@@ -9,63 +9,21 @@ import {
 	signInRateLimitMessage
 } from './rate-limit';
 
-// the join between this module's promises and the bindings that have to keep them.
+// the join between this module's promises and the limiters that have to keep them.
 //
-// `PERIOD_SECONDS` in ./rate-limit.ts and every `simple.period` in wrangler.jsonc are literals
-// that have to agree, and nothing in the language joins them: the number is what a refused caller
-// is told to wait, so if the deployment resets on ten seconds and the answer says sixty, every
-// refused donor is sent away for fifty seconds longer than the bucket held them. that is the
-// direction that costs gifts, and 10 is the only other value the binding accepts — so it is a
-// change somebody can plausibly make.
+// `PERIOD_SECONDS` in ./rate-limit.ts and every `period` in `RATE_LIMITS`
+// (../runtime/rate-limiter.ts) are literals that have to agree, and nothing in the language joins
+// them: the number is what a refused caller is told to wait, so if the limiter resets on ten seconds
+// and the answer says sixty, every refused donor is sent away for fifty seconds longer than the
+// bucket held them.
 //
 // asserting the constants against each other is not what this does. `rate-limit.spec.ts` already
-// reads the `Retry-After` a refusal carries; what is read here is the config file, and the
-// assertion is between the answer a caller actually receives and the period the deployment
-// actually enforces. the same read is what notices a binding going missing altogether — which for
-// API_RATE_LIMITER is the deployment `refuseIfRateLimited` refuses by name at runtime, and for the
-// others is a bucket that silently stops bounding anything, since those fail open. that
-// difference is why every one of them is named here rather than only the loud one: `test`
-// runs in ci.yml on every push and pull request, ahead of any deploy at all, so a missing binding of any
-// of them lands in front of whoever removed it rather than in production.
-//
-// every block the config declares is read, not the top level alone. a named environment inherits
-// no `ratelimits` at all — it holds only what it declares itself — so each one is a second full set
-// of bindings this same code is deployed against, and a deployment whose limiters this file never
-// read is a deployment none of the joins above hold. the blocks are taken off the config rather
-// than named here, so an environment added later arrives already covered.
+// reads the `Retry-After` a refusal carries; what is read here is the table the server builds its
+// limiters from, and the assertion is between the answer a caller actually receives and the period
+// the deployment actually enforces.
 
-/** the fields this file reads. everything else in the config is somebody else's concern. */
-interface WranglerConfig {
-	readonly ratelimits?: readonly Declared[];
-	readonly env?: Readonly<
-		Record<string, { readonly ratelimits?: readonly Declared[] } | undefined>
-	>;
-}
-
-interface Declared {
-	readonly name?: unknown;
-	readonly namespace_id?: unknown;
-	readonly simple?: { readonly limit?: unknown; readonly period?: unknown };
-}
-
-const config = readWranglerConfig() as WranglerConfig;
-
-/**
- * every set of limiters this app is deployed with: the top level, which a bare `pnpm run deploy`
- * uploads, and one per named environment, which a `--env` deploy uploads instead of it.
- */
-const BLOCKS = [
-	{ where: 'the top level', limiters: config.ratelimits },
-	...Object.entries(config.env ?? {}).map(([name, environment]) => ({
-		where: `env.${name}`,
-		limiters: environment?.ratelimits
-	}))
-];
-
-/** the entry declaring one binding in one block, by the name the code reads off the platform env. */
-function declared(limiters: readonly Declared[] | undefined, name: string): Declared | undefined {
-	return limiters?.find((entry) => entry.name === name);
-}
+/** one limiter's size, by the name the code reads off the platform env. */
+const size = (name: RateLimiterName) => RATE_LIMITS[name];
 
 /**
  * the limiters this app charges, and where each one's period is promised back to a caller.
@@ -74,10 +32,6 @@ function declared(limiters: readonly Declared[] | undefined, name: string): Decl
  * over the wire it is the body; for the sign-in it is the sentence itself, because the one site
  * that spends that bucket is a form action, which answers with data the page renders rather than
  * with a `Response`.
- *
- * one set of sentences against every block, because there is one deployed codebase: the answer a
- * rehearsal deployment gives a refused caller is this same string, so it has to match that
- * deployment's own period rather than the real one's.
  */
 const LIMITERS = [
 	{
@@ -93,46 +47,20 @@ const LIMITERS = [
 		name: 'INTEGRATIONS_KEY_RATE_LIMITER',
 		promised: async () => JSON.stringify(await keyRateLimitRefusal().json())
 	}
-] as const;
+] as const satisfies readonly { name: RateLimiterName; promised: () => Promise<string> }[];
 
-describe.each(BLOCKS)('the rate limit bindings $where is deployed with', ({ limiters }) => {
-	// the parse finding nothing would make every assertion below vacuous, and a config file that
-	// stopped holding the block is exactly what that looks like from here.
+describe('the rate limiters the server builds', () => {
 	it('declares one entry per limiter this app charges, and no more', () => {
-		expect(limiters).toHaveLength(LIMITERS.length);
-	});
-
-	/** the names the app reads off the platform env, spelled the same way. */
-	it.each(LIMITERS.map(({ name }) => name))('declares %s', (name) => {
-		expect(declared(limiters, name)?.name).toBe(name);
-	});
-
-	/**
-	 * a namespace is account-wide, so two bindings sharing one share a count: the login bucket
-	 * would be spent by donors reading a form, and a scanner on the public api would lock the only
-	 * admin out of the only login. one namespace per binding.
-	 */
-	it('counts each limiter under a namespace of its own', () => {
-		const namespaces = new Set(limiters?.map((entry) => entry.namespace_id));
-		expect(namespaces.size).toBe(LIMITERS.length);
-	});
-
-	/**
-	 * seconds, and the binding takes 10 or 60 and nothing else
-	 * (https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/). a third value
-	 * is a deploy that fails at `wrangler deploy`, after the one-way door at
-	 * `wrangler d1 migrations apply DB --remote` has already opened.
-	 */
-	it.each(LIMITERS.map(({ name }) => name))('gives %s a period the binding accepts', (name) => {
-		expect([10, 60]).toContain(declared(limiters, name)?.simple?.period);
+		expect(Object.keys(RATE_LIMITS).sort()).toEqual(LIMITERS.map(({ name }) => name).sort());
 	});
 
 	/** a count of requests, so a fraction or a zero is a limit that means something else. */
 	it.each(LIMITERS.map(({ name }) => name))(
-		'gives %s a positive whole number of requests',
+		'gives %s a positive whole number of requests and of seconds',
 		(name) => {
-			const limit = declared(limiters, name)?.simple?.limit;
-			expect(typeof limit === 'number' && Number.isInteger(limit) && limit > 0).toBe(true);
+			const { limit, period } = size(name);
+			expect(Number.isInteger(limit) && limit > 0).toBe(true);
+			expect(Number.isInteger(period) && period > 0).toBe(true);
 		}
 	);
 
@@ -143,7 +71,7 @@ describe.each(BLOCKS)('the rate limit bindings $where is deployed with', ({ limi
 	it.each(LIMITERS)(
 		'tells a caller refused by $name how long it really holds them',
 		async ({ name, promised }) => {
-			expect(await promised()).toContain(String(declared(limiters, name)?.simple?.period));
+			expect(await promised()).toContain(String(size(name).period));
 		}
 	);
 
@@ -152,37 +80,37 @@ describe.each(BLOCKS)('the rate limit bindings $where is deployed with', ({ limi
 	 * over the wire carries one. the sign-in is the one refusal with no header to write it on,
 	 * because its only site answers with data a page renders rather than with a `Response`.
 	 */
-	it('sets Retry-After on every wire refusal to the period that binding enforces', () => {
+	it('sets Retry-After on every wire refusal to the period that limiter enforces', () => {
 		expect(rateLimitRefusal().headers.get('retry-after')).toBe(
-			String(declared(limiters, 'API_RATE_LIMITER')?.simple?.period)
+			String(size('API_RATE_LIMITER').period)
 		);
 		expect(quoteRateLimitRefusal(new Headers()).headers.get('retry-after')).toBe(
-			String(declared(limiters, 'QUOTE_RATE_LIMITER')?.simple?.period)
+			String(size('QUOTE_RATE_LIMITER').period)
 		);
 		expect(keyRateLimitRefusal().headers.get('retry-after')).toBe(
-			String(declared(limiters, 'INTEGRATIONS_KEY_RATE_LIMITER')?.simple?.period)
+			String(size('INTEGRATIONS_KEY_RATE_LIMITER').period)
 		);
 		expect(callerRateLimitRefusal().headers.get('retry-after')).toBe(
-			String(declared(limiters, 'API_RATE_LIMITER')?.simple?.period)
+			String(size('API_RATE_LIMITER').period)
 		);
-		// the photo and donor page buckets are counted by the surface binding under keys of their own.
+		// the photo and donor page buckets are counted by the surface limiter under keys of their own.
 		expect(imageRateLimitRefusal().headers.get('retry-after')).toBe(
-			String(declared(limiters, 'API_RATE_LIMITER')?.simple?.period)
+			String(size('API_RATE_LIMITER').period)
 		);
 		expect(new Headers(donorPageRateLimitRefusal().init?.headers).get('retry-after')).toBe(
-			String(declared(limiters, 'API_RATE_LIMITER')?.simple?.period)
+			String(size('API_RATE_LIMITER').period)
 		);
 	});
 
 	/**
 	 * the read API's two refusals name their limits, because the reader is a system being paced: an
-	 * integrator sizes a sync loop by them, and a number that disagreed with the binding would pace
+	 * integrator sizes a sync loop by them, and a number that disagreed with the limiter would pace
 	 * that loop into refusals or leave the headroom unused. the per-address one names the key's
 	 * limit too, to say it is not the one that refused.
 	 */
 	it('tells a key refused by INTEGRATIONS_KEY_RATE_LIMITER the limit it really holds it to', async () => {
 		const { message } = (await keyRateLimitRefusal().json()) as { message: string };
-		const { limit, period } = declared(limiters, 'INTEGRATIONS_KEY_RATE_LIMITER')?.simple ?? {};
+		const { limit, period } = size('INTEGRATIONS_KEY_RATE_LIMITER');
 
 		expect(period).toBe(60);
 		expect(message).toContain(`${String(limit)} requests a minute`);
@@ -190,8 +118,8 @@ describe.each(BLOCKS)('the rate limit bindings $where is deployed with', ({ limi
 
 	it('tells an address refused on the read API the limits it really holds it to', async () => {
 		const { message, fix } = (await callerRateLimitRefusal().json()) as Record<string, string>;
-		const perAddress = declared(limiters, 'API_RATE_LIMITER')?.simple ?? {};
-		const perKey = declared(limiters, 'INTEGRATIONS_KEY_RATE_LIMITER')?.simple ?? {};
+		const perAddress = size('API_RATE_LIMITER');
+		const perKey = size('INTEGRATIONS_KEY_RATE_LIMITER');
 
 		expect(perAddress.period).toBe(60);
 		expect(message).toContain(`${String(perAddress.limit)} requests a minute`);
@@ -199,59 +127,28 @@ describe.each(BLOCKS)('the rate limit bindings $where is deployed with', ({ limi
 	});
 
 	/**
-	 * the read API charges every request to its address on the surface binding and then to its key,
+	 * the read API charges every request to its address on the surface limiter and then to its key,
 	 * so a key's budget above the address's could never be what refuses a key presented from one
 	 * address.
 	 */
 	it('sizes the per-key bucket below the surface bucket it is charged behind', () => {
-		expect(declared(limiters, 'INTEGRATIONS_KEY_RATE_LIMITER')?.simple?.limit).toBeLessThan(
-			declared(limiters, 'API_RATE_LIMITER')?.simple?.limit as number
+		expect(size('INTEGRATIONS_KEY_RATE_LIMITER').limit).toBeLessThan(
+			size('API_RATE_LIMITER').limit
 		);
 	});
 
 	/**
-	 * tighter than the surface is the whole justification these two carry in wrangler.jsonc, and
-	 * they are keyed on the same payer the surface bucket is (src/lib/server/api/rate-limit.ts), so
-	 * the comparison is a real one rather than two numbers side by side.
+	 * tighter than the surface is the whole justification these two carry, and they are keyed on
+	 * the same payer the surface bucket is (./rate-limit.ts), so the comparison is a real one rather
+	 * than two numbers side by side.
 	 *
 	 * it is load-bearing for the quote in particular, which is charged on a request that has
 	 * already spent the surface bucket: a quote limit above the surface limit could never refuse
 	 * anybody, because the surface always runs out first.
 	 */
 	it('sizes both tighter buckets below the surface bucket', () => {
-		const surface = declared(limiters, 'API_RATE_LIMITER')?.simple?.limit as number;
-		expect(declared(limiters, 'QUOTE_RATE_LIMITER')?.simple?.limit).toBeLessThan(surface);
-		expect(declared(limiters, 'SIGN_IN_RATE_LIMITER')?.simple?.limit).toBeLessThan(surface);
+		const surface = size('API_RATE_LIMITER').limit;
+		expect(size('QUOTE_RATE_LIMITER').limit).toBeLessThan(surface);
+		expect(size('SIGN_IN_RATE_LIMITER').limit).toBeLessThan(surface);
 	});
-});
-
-describe('the rate limit bindings across every environment this app is deployed with', () => {
-	/**
-	 * the one property no single block can hold, and the reason a second deployment declares
-	 * namespaces at all: a namespace is account-wide and shared across Workers by design, so a
-	 * second deployment reusing an id spends the first one's counters key for key — a load test
-	 * against a rehearsal refusing real donors, a scripted sign-in there holding the real
-	 * operator's login closed. two deployments in one account is the case this repo actually
-	 * produces, since `wrangler.jsonc` names the environment that stands one up.
-	 */
-	it('gives every binding in every block a namespace no other binding anywhere uses', () => {
-		const all = BLOCKS.flatMap(({ limiters }) => limiters ?? []).map((entry) => entry.namespace_id);
-
-		expect(new Set(all).size).toBe(all.length);
-	});
-
-	/**
-	 * and the property that makes a rehearsal a rehearsal: the numbers are copied where the
-	 * namespaces are not, so a deployment stood up to be exercised refuses exactly where the one
-	 * serving donors would. a limit changed on one side only is a rehearsal that stopped
-	 * rehearsing, and it is silent — nothing fails, the copy just meters something else.
-	 */
-	it.each(LIMITERS.map(({ name }) => name))(
-		'charges %s the same limit and period in every block',
-		(name) => {
-			const [top, ...rest] = BLOCKS.map(({ limiters }) => declared(limiters, name)?.simple);
-
-			for (const other of rest) expect(other).toEqual(top);
-		}
-	);
 });

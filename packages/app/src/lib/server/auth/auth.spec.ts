@@ -12,6 +12,7 @@ import {
 	authUser,
 	authVerification
 } from '$lib/server/db/auth-schema';
+import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { createAuth, MEMBER_PASSWORD_MIN_LENGTH, PASSWORD_RESET_LIFETIME_SECONDS } from './index';
 
 /**
@@ -27,7 +28,7 @@ import { createAuth, MEMBER_PASSWORD_MIN_LENGTH, PASSWORD_RESET_LIFETIME_SECONDS
 
 /**
  * one operator-facing variable. `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are both
- * optional overrides now — the signing key is a D1 row (./signing-key.ts) and the origin
+ * optional overrides now — the signing key is a database row (./signing-key.ts) and the origin
  * comes from the request — so the deployed shape of this env is one entry long.
  */
 const TEST_ENV = { ADMIN_PASSWORD: 'correct-horse-battery' } as const;
@@ -132,7 +133,7 @@ describe('createAuth configuration', () => {
 	 *
 	 * better-auth derives both the `Secure` attribute and the `__Secure-` cookie name
 	 * prefix from one value, and with no `baseURL` string to read a scheme off it falls
-	 * back to `NODE_ENV === 'production'` — which nothing sets in a deployed Worker. so
+	 * back to `NODE_ENV === 'production'` — which this server never sets itself. so
 	 * `advanced.useSecureCookies` is stated explicitly, and this is what proves it took.
 	 */
 	it('secures the session cookie off the request scheme, not NODE_ENV', async () => {
@@ -186,18 +187,17 @@ describe('client IP resolution', () => {
 		return getIp(new Headers(headers), ctx.options);
 	}
 
-	// `cf-connecting-ip` is set by Cloudflare on every request that reaches a Worker and
-	// is overwritten at the edge, so unlike `x-forwarded-for` it is single-valued and not
-	// caller-supplied. it is named here rather than left to the default because the
-	// default is `x-forwarded-for`, which Cloudflare appends to.
-	it('reads the client IP from the header Cloudflare controls', async () => {
+	// the server entry writes `CLIENT_IP_HEADER` over whatever a caller sent under that name
+	// (`stampClientIp` in ../runtime/client-ip.ts), so it is the one header here that is never the
+	// caller's to set.
+	it('reads the client IP from the header the server stamps', async () => {
 		const ctx = await testAuth().$context;
-		expect(ctx.options.advanced?.ipAddress?.ipAddressHeaders).toEqual(['cf-connecting-ip']);
+		expect(ctx.options.advanced?.ipAddress?.ipAddressHeaders).toEqual([CLIENT_IP_HEADER]);
 	});
 
 	it('gives two clients two buckets instead of one shared one', async () => {
-		const a = await resolveIp({ 'cf-connecting-ip': '203.0.113.7' });
-		const b = await resolveIp({ 'cf-connecting-ip': '198.51.100.9' });
+		const a = await resolveIp({ [CLIENT_IP_HEADER]: '203.0.113.7' });
+		const b = await resolveIp({ [CLIENT_IP_HEADER]: '198.51.100.9' });
 
 		expect(a).toBe('203.0.113.7');
 		expect(b).toBe('198.51.100.9');
@@ -205,16 +205,14 @@ describe('client IP resolution', () => {
 	});
 
 	/**
-	 * the DoS, precisely. on the default `x-forwarded-for`, better-auth refuses a
-	 * comma-separated chain outright unless `trustedProxies` is configured — and
-	 * Cloudflare appends the real client IP to whatever the caller already sent. so a
-	 * caller who sends any `x-forwarded-for` at all makes the header a two-token chain,
-	 * `getIp` returns null, and every client on the deployment lands in one bucket. reading
-	 * `cf-connecting-ip` first makes that unreachable: the value is not the caller's to set.
+	 * nothing on this server sets `cf-connecting-ip` or `x-forwarded-for`, so both are whatever the
+	 * caller typed. read, either would let a caller pick their own bucket — a fresh one per attempt,
+	 * or a forwarded chain `getIp` refuses outright, which collapses every caller into the shared one.
 	 */
-	it('cannot be pushed into the shared bucket by a caller-supplied forwarded chain', async () => {
+	it('ignores a caller-supplied cf-connecting-ip or forwarded chain', async () => {
 		const spoofed = await resolveIp({
-			'cf-connecting-ip': '203.0.113.7',
+			[CLIENT_IP_HEADER]: '203.0.113.7',
+			'cf-connecting-ip': '198.51.100.2',
 			'x-forwarded-for': '198.51.100.9, 203.0.113.7'
 		});
 		expect(spoofed).toBe('203.0.113.7');
@@ -223,10 +221,9 @@ describe('client IP resolution', () => {
 	/**
 	 * the property, end to end, through better-auth's own router.
 	 *
-	 * the two tests above prove the resolver reads the right header. this one proves what
-	 * that buys inside the router: one caller exhausting the `/sign-in/staff` budget must not
-	 * lock out anybody else. without the `ipAddressHeaders` setting the last assertion here
-	 * returns 429 — one caller spending every other caller's budget.
+	 * the tests above prove the resolver reads the right header. this one proves what that buys
+	 * inside the router: one caller exhausting the `/sign-in/staff` budget must not lock out anybody
+	 * else, however they vary the headers the server does not stamp.
 	 *
 	 * no route mounts that router (./index.ts), so this is a claim about the instance and not
 	 * about a surface this deployment answers. it is here because the setting it holds is
@@ -240,7 +237,7 @@ describe('client IP resolution', () => {
 	it('does not let one caller spend everybody else’s sign-in budget', async () => {
 		const auth = testAuth(TEST_ENV, DEPLOYED_ORIGIN);
 
-		const attempt = (ip: string) =>
+		const attempt = (ip: string, forged: string) =>
 			auth.handler(
 				// better-auth's default `basePath` plus the staff plugin's own path. written out
 				// rather than composed, because this app states neither: the base path was a
@@ -250,12 +247,9 @@ describe('client IP resolution', () => {
 					headers: {
 						'content-type': 'application/json',
 						origin: DEPLOYED_ORIGIN,
-						'cf-connecting-ip': ip,
-						// what Cloudflare actually forwards once a caller sends an
-						// `x-forwarded-for` of their own: it appends rather than replacing. on the
-						// default header this two-token chain is what collapsed every caller into
-						// one bucket.
-						'x-forwarded-for': `198.51.100.1, ${ip}`
+						[CLIENT_IP_HEADER]: ip,
+						'cf-connecting-ip': forged,
+						'x-forwarded-for': forged
 					},
 					body: JSON.stringify({ password: 'not-the-admin-password' })
 				})
@@ -263,14 +257,15 @@ describe('client IP resolution', () => {
 
 		const attacker = '203.0.113.7';
 		const statuses: number[] = [];
-		// the plugin's rule is 5 per 60s (./staff-plugin.ts), so the 6th is refused.
-		for (let i = 0; i < 6; i++) statuses.push((await attempt(attacker)).status);
+		// the plugin's rule is 5 per 60s (./staff-plugin.ts), so the 6th is refused — a forged
+		// address that changes every attempt buys no fresh bucket.
+		for (let i = 0; i < 6; i++) statuses.push((await attempt(attacker, `198.51.100.${i}`)).status);
 
 		expect(statuses.slice(0, 5)).toEqual([401, 401, 401, 401, 401]);
 		expect(statuses[5]).toBe(429);
 
-		// the operator, on a different address, is unaffected.
-		expect((await attempt('198.51.100.99')).status).toBe(401);
+		// the operator, on a different address, is unaffected — even forging the attacker's.
+		expect((await attempt('198.51.100.99', attacker)).status).toBe(401);
 	});
 });
 

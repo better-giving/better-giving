@@ -57,7 +57,7 @@ import type { Route } from './+types/api.v1.forms.$id.config';
 // how often a gift may repeat and which rails a donor is shown are the two things in the served
 // config that come off this deployment's processor account rather than out of D1, and this file is
 // where the way to find them out is assembled: one provider built per request from `platform.env` —
-// never a module-scope singleton (CLAUDE.md) — behind an edge cache each, because this route is the
+// never a module-scope singleton (CLAUDE.md) — behind the process's cache each, because this route is the
 // one every embedded form boots on and a donor should not wait on a processor for it. the reader calls
 // them only once a row has been found, so an id nothing matches costs no outbound call.
 //
@@ -65,9 +65,8 @@ import type { Route } from './+types/api.v1.forms.$id.config';
 // the same credentials. the two reads stay separate answers under separate keys: they expire
 // independently, and a blip on one does not evict the other.
 //
-// the request's own origin is spent as a cache key and nothing else: an entry in `caches.default`
-// belongs to the zone that asked for it, so the address it is kept under comes from the request
-// that arrived rather than from a hostname this deployment invented.
+// the request's own origin is spent as a cache key and nothing else, so the address an entry is kept
+// under comes from the request that arrived rather than from a hostname this deployment invented.
 // `$lib/server/forms/cadence-cache.ts` and `$lib/server/forms/rail-cache.ts` hold the rest of that.
 
 /**

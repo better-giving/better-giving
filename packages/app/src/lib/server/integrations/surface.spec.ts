@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { keyRateLimitRefusal, notFoundRefusal, readOnlyRefusal } from './surface';
 
 // what this surface's refusals tell a caller: a key over its limit, an address no list answers and
-// a method it does not take. the rate limit's numbers are held to the binding wrangler.jsonc
-// declares by `../api/rate-limit.config.spec.ts`; these cases hold the shape.
+// a method it does not take. the rate limit's numbers are held to `RATE_LIMITS`
+// (../runtime/rate-limiter.ts) by `../api/rate-limit.config.spec.ts`; these cases hold the shape.
 
 describe('what a key over its limit is told', () => {
 	it('is a 429 that says when to come back', () => {

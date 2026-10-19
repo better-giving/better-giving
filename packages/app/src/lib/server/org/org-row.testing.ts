@@ -33,7 +33,7 @@ export type OrgColumn =
  * the D1 handle is passed rather than imported, so this module names no binding and no pool.
  */
 export async function writeOrgRow(
-	database: D1Database,
+	database: Cloudflare.Env['DB'],
 	columns: Partial<Record<OrgColumn, string>> = {}
 ): Promise<void> {
 	const stated = Object.keys(columns) as OrgColumn[];

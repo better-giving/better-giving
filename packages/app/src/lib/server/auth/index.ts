@@ -5,6 +5,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { betterAuth } from 'better-auth/minimal';
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '$lib/server/db/client';
+import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { authAccount, authSession, authUser, authVerification } from '$lib/server/db/auth-schema';
 import { type AuthEnv, pinnedOrigin } from './env';
 import { MEMBER_PASSWORD_MIN_LENGTH } from './invitations';
@@ -110,8 +111,9 @@ export interface AuthRuntime {
 	 * in the mail, and in the recipient's address bar.
 	 *
 	 * the send is awaited by better-auth, inside the request for the link, and that whole request
-	 * runs after the answer has left: `requestPasswordReset` in ./members.ts hands it to the Worker's
-	 * `waitUntil`, which is what equalises a member's request with a stranger's.
+	 * runs after the answer has left: `requestPasswordReset` in ./members.ts hands it to the request's
+	 * deferred work (`platform.deferred`, ../../../context.ts), which is what equalises a member's
+	 * request with a stranger's.
 	 */
 	readonly passwordReset?: {
 		send(input: { readonly email: string; readonly token: string }): Promise<void>;
@@ -136,24 +138,25 @@ export type Auth = ReturnType<typeof createAuth>;
 /**
  * build the auth instance for one request.
  *
- * a factory, never a module-scope singleton. the D1 handle only exists on the bindings one
- * request arrived with, so the gate over the screens behind the login builds one per request
- * (./gate.ts) rather than importing an `auth`:
+ * a factory, never a module-scope singleton. the database handle is built per request from the
+ * client the server entry opened (`createDb` in db/client.ts), so the gate over the screens behind
+ * the login builds one per request (./gate.ts) rather than importing an `auth`:
  *
  *   const db = context.get(database);                      // src/context.ts
  *   const env = readAuthEnv(context.get(platform).env);
  *   const key = await resolveAuthSecret(db, env);          // ./signing-key.ts
  *   const auth = createAuth(db, env, { secret: key.secret, requestOrigin: url.origin });
  *
- * it takes `Db`, not `D1Database` — nothing outside `db/client.ts` names the driver —
- * and it takes the env explicitly rather than reading `process.env`, whose population
- * from Worker bindings is a compatibility-date-dependent shim.
+ * it takes `Db`, not the libSQL client — nothing outside `db/client.ts` and `db/open.ts` names
+ * the driver — and it takes the env explicitly rather than reading `process.env`, which holds
+ * every name the process inherited and not only the closed list `Env` admits
+ * (../runtime/env.ts).
  *
  * `env` and `runtime` are parameters rather than reads for two different reasons. the
  * staff credential is a deploy-time value that only exists on the platform env, and
  * reading it implicitly would make this module untestable and its failure modes
  * unreachable — see ./env.ts. `runtime` carries the two values that are resolved per
- * request rather than configured: the signing key, which is normally a D1 row and so
+ * request rather than configured: the signing key, which is normally a database row and so
  * cannot be read synchronously here, and the origin, which replaced the
  * `BETTER_AUTH_URL` var.
  */
@@ -168,8 +171,8 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		// silently: better-auth falls back to a built-in default when its own `secret` is
 		// falsy, and a default cookie-signing key in a public repo is a session-forgery kit
 		// identical in every fork. its guard against that default only throws when
-		// `NODE_ENV === 'production'`, which nothing sets on Workers, so nothing downstream
-		// would complain.
+		// `NODE_ENV === 'production'`, which this server never sets itself, so nothing downstream
+		// need complain.
 		throw new Error(
 			'createAuth was given an empty signing key. Resolve it with `resolveAuthSecret` ' +
 				'(src/lib/server/auth/signing-key.ts), which reports the operator-facing reason, ' +
@@ -243,8 +246,8 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 
 	return betterAuth({
 		// `better-auth/minimal` instead of `better-auth`: the default entry point bundles
-		// the built-in Kysely adapter, which this project never uses and which every
-		// Worker isolate would otherwise pay for at startup.
+		// the built-in Kysely adapter, which this project never uses and which the server
+		// would otherwise load at startup.
 		secret,
 		// undefined unless an operator pinned one. see the note above.
 		baseURL: configuredBaseURL,
@@ -252,7 +255,7 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		// with no `baseURL`, better-auth logs a warning about it at every context
 		// creation — which is once per request here. `error` keeps everything that
 		// reports an actual failure and drops that one line. it is the level knob, not
-		// `disabled`, so a real error still reaches `pnpm run logs`.
+		// `disabled`, so a real error still reaches the server's log.
 		logger: { level: 'error' },
 
 		database: drizzleAdapter(db, {
@@ -276,9 +279,9 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			 * than resolving to something else.
 			 *
 			 * `transaction` is left at its default of `false`. see the note on `Db` in
-			 * `db/client.ts`: D1 has no interactive transaction. at `false` the adapter
-			 * never calls `db.transaction()` and better-auth runs the callback against the
-			 * same non-transactional adapter, which is honest about what D1 provides. it is
+			 * `db/client.ts`: `batch()` is the only write that spans rows, and `transaction` is
+			 * not on the handle. at `false` the adapter never calls `db.transaction()` and
+			 * better-auth runs the callback against the same non-transactional adapter. it is
 			 * also why the sign-up ./invitations.ts performs cannot join the `batch()` that
 			 * stamps the invitation, and why that module orders the two the way it does.
 			 */
@@ -302,7 +305,7 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			// be able to find. seven days, refreshed at most once a day.
 			expiresIn: 60 * 60 * 24 * 7,
 			updateAge: 60 * 60 * 24
-			// `cookieCache` is deliberately not enabled. it would trade a D1 read per
+			// `cookieCache` is deliberately not enabled. it would trade a database read per
 			// request for a window in which a deleted session still authenticates. at one
 			// staff member's request volume the read is free and immediate revocation is
 			// worth more.
@@ -425,29 +428,26 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			 * an attacker spending them locks the operator out of the only login. that is a
 			 * denial of service on the one human surface, not a log line.
 			 *
-			 * the default header is `x-forwarded-for`, and it is the wrong one here
-			 * specifically. `getIp` refuses a comma-separated chain outright unless
-			 * `trustedProxies` is configured, because the leftmost token is caller-controlled
-			 * behind an appending proxy (`@better-auth/core/dist/utils/ip.mjs`) — and
-			 * Cloudflare appends to `x-forwarded-for` rather than replacing it. so any caller
-			 * who sends the header at all makes it a two-token chain and forces the shared
-			 * bucket on purpose.
+			 * the default header is `x-forwarded-for`, and on this server it is the caller's to
+			 * write: nothing in front is assumed to set it, and `getIp` refuses a comma-separated
+			 * chain outright unless `trustedProxies` is configured
+			 * (`@better-auth/core/dist/utils/ip.mjs`), so a caller who sends any chain forces the
+			 * shared bucket on purpose, and one who sends a single value picks their own.
 			 *
-			 * `cf-connecting-ip` is set by Cloudflare on every request into a Worker and
-			 * overwritten at the edge, so it is single-valued and never the caller's to set —
-			 * which is why it is named directly instead of listing proxies in
-			 * `trustedProxies`. there is no correct value for that option here: the trusted
-			 * hop is Cloudflare's edge, whose addresses are not a fixed list this repo could
-			 * pin.
+			 * `CLIENT_IP_HEADER` is the address the server entry decided — the TCP peer, or the
+			 * `TRUSTED_PROXY_HEADER` an operator named — written over any copy the caller sent
+			 * (`stampClientIp` in ../runtime/client-ip.ts, called by `packages/app/server/start.ts`).
+			 * it is single-valued and never the caller's to set, which is why it is named directly
+			 * instead of listing proxies in `trustedProxies`: the proxy rule is decided once, there.
 			 *
 			 * this does not make the limiter a control — see the `rateLimit` note below, which
 			 * also says why a knob for a router this deployment does not serve is stated at all.
-			 * the counters are still per-isolate and in-memory. it makes the friction per-caller
+			 * the counters are still in memory. it makes the friction per-caller
 			 * instead of global, which is the difference between throttling an attacker and
 			 * handing them a lockout.
 			 */
 			ipAddress: {
-				ipAddressHeaders: ['cf-connecting-ip']
+				ipAddressHeaders: [CLIENT_IP_HEADER]
 			},
 
 			/**
@@ -456,10 +456,10 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			 * better-auth derives both the `Secure` attribute and the `__Secure-` cookie
 			 * name prefix from one value, and with no `baseURL` string to read a scheme off
 			 * it falls back to `NODE_ENV === 'production'`
-			 * (`better-auth/dist/cookies/index.mjs`). nothing sets `NODE_ENV` in a deployed
-			 * Worker — not wrangler, and not the bundler, since better-auth reads it through
-			 * a proxy that no build-time replacement reaches. so dropping `BETTER_AUTH_URL`
-			 * without this line would silently ship a session cookie with no `Secure` flag.
+			 * (`better-auth/dist/cookies/index.mjs`). this server never sets `NODE_ENV`, and
+			 * better-auth reads it at runtime through a proxy that no build-time replacement
+			 * reaches, so it is whatever the process inherited. without this line, a deployment
+			 * started with no `NODE_ENV` would silently ship a session cookie with no `Secure` flag.
 			 *
 			 * `defaultCookieAttributes: { secure: true }` is not a substitute: it is spread
 			 * after the derived value so it wins for the attribute, but the name prefix
@@ -481,7 +481,7 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * `auth.handler`, which nothing mounts, or on a call passed a `request:`, which nothing
 		 * passes (the note above `configuredBaseURL`). it is stated for the day either changes,
 		 * and then it is what lets local development post from both loopback ports — `pnpm dev`
-		 * on 5321 (pinned in `packages/app/vite.config.ts`) and `pnpm preview`/`wrangler dev` on
+		 * on 5321 (`DEV_PORT` in `packages/app/server/index.ts`) and `pnpm preview`/`wrangler dev` on
 		 * 8787 — without a localhost entry on a deployed origin, which is never loopback.
 		 */
 		trustedOrigins: isLoopback ? ['http://localhost:5321', 'http://localhost:8787'] : [],
@@ -507,11 +507,11 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			// behaviour change this file does not pin.
 			//
 			// caveat worth knowing: this limiter is friction, not a control. counters live in
-			// memory, and on Workers that memory is per-isolate and short-lived — a worker
-			// restart resets it (also verified). better-auth additionally logs that
+			// the process's memory, and a restart resets them. better-auth additionally logs that
 			// enforcement is best-effort when the storage has no atomic `consume`, so
-			// concurrent requests can bypass the limit outright. what durably bounds the staff
-			// sign-in is the `SIGN_IN_RATE_LIMITER` binding, charged at the one site that
+			// concurrent requests can bypass the limit outright. what bounds the staff sign-in is
+			// `SIGN_IN_RATE_LIMITER` on `Env` (../runtime/rate-limiter.ts), one count per bucket
+			// for the whole process, charged at the one site that
 			// compares `ADMIN_PASSWORD` — `signInRateLimitKey` in ../api/rate-limit.ts, spent by
 			// the login's own action — with `ADMIN_PASSWORD`'s own length behind it (see
 			// ./credential.ts).

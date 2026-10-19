@@ -69,7 +69,7 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 	if (request.method !== 'POST') return methodNotAllowed(request.method);
 
 	const db = context.get(database);
-	const { env, ctx } = context.get(platform);
+	const { env, deferred } = context.get(platform);
 
 	// this endpoint's own bucket, charged before anything else runs.
 	//
@@ -106,7 +106,7 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 			processors: createPaymentProviders(env),
 			verifyChallenge: verifyTurnstile,
 			email: createEmailProvider(env),
-			defer: (task) => ctx.waitUntil(task)
+			defer: (task) => deferred.waitUntil(task)
 		},
 		{ formId: params.id, body: await readJsonBody(request), request }
 	);

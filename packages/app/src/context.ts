@@ -6,36 +6,38 @@ import type { ConsoleSession } from '$lib/server/console/access';
 import type { SetupState } from '$lib/server/config/setup-state';
 import type { Db } from '$lib/server/db/client';
 import type { ConnectorKey } from '$lib/server/db/schema';
+import type { Deferred } from '$lib/server/runtime/deferred';
 
 /**
  * the platform a request arrived on, as a react router request context.
  *
- * **this is how a loader or an action reaches a binding, and the only way.** src/worker.ts seeds
- * it once per request from the `fetch` handler's own arguments and hands it to
- * `createRequestHandler`; a loader takes it back with `context.get(platform)`. a handle built from
- * a binding — the D1 client, the auth instance, the stripe client — is constructed per request and
- * seeded into this same provider, never assigned at module scope: a module-scope value put into a
+ * **this is how a loader or an action reaches the configuration, and the only way.** the server
+ * entry (src/server/app.ts) seeds it once per request from what the process built at start and
+ * hands it to `createRequestHandler`; a loader takes it back with `context.get(platform)`. `env` is
+ * the configuration and the limiters, and `deferred` takes work that finishes after the response.
+ * a handle built from configuration — the database handle, the auth instance, the stripe client —
+ * is constructed per request and seeded into this same provider, never assigned at module scope: a module-scope value put into a
  * context satisfies the type and breaks the rule silently, because **the context is the delivery
  * mechanism and not the lifetime.** CLAUDE.md is where that ban is argued.
  *
  * a `RouterContext` rather than a plain object because that is the only shape a route
  * `middleware` can add to: middleware hands a resolved value down to the loaders beneath it with
  * `context.set(...)` on this same provider, and a seam of any other shape cannot be extended
- * without being rebuilt. that is also why the seeding is in the worker entry, above the router,
+ * without being rebuilt. that is also why the seeding is in the server entry, above the router,
  * rather than in a `middleware` on the root route — root middleware runs for every route,
  * including the payment processor's callback, whose body must be read exactly once by the handler
  * that owns it.
  */
 export const platform = createContext<{
 	readonly env: Env;
-	readonly ctx: ExecutionContext;
+	readonly deferred: Deferred;
 }>();
 
 /**
  * the database handle for this request, built once in src/request-context.ts.
  *
  * **it is set for every request this app answers, and no route builds one of its own.** the rule
- * it keeps is CLAUDE.md's: `db/client.ts` is the only module that names the binding, and a handle
+ * it keeps is CLAUDE.md's: `db/client.ts` is the only module that names the driver, and a handle
  * built per route is that name written once per route, on a growing number of routes.
  *
  * it is seeded in the entry beside `platform` rather than by a `middleware`, and that placement is

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import {
 	apiRateLimitKey,
 	donorPageRateLimitKey,
@@ -25,12 +26,12 @@ import {
 // end-to-end case: a bucket a caller can move between on demand is not a limit, and every case
 // below is a way of trying to move.
 
-/** a request as it arrives from Cloudflare's edge, which is what sets `cf-connecting-ip`. */
+/** a request as the server hands it to the router: stamped with the address it decided. */
 function request(url: string, headers: Record<string, string> = {}, method = 'GET'): Request {
 	return new Request(`https://give.example.workers.dev${url}`, { method, headers });
 }
 
-const FROM = { 'cf-connecting-ip': '203.0.113.7' };
+const FROM = { [CLIENT_IP_HEADER]: '203.0.113.7' };
 
 describe('what a public api request counts against', () => {
 	it('is the surface and the caller, and nothing else', () => {
@@ -69,11 +70,11 @@ describe('what a public api request counts against', () => {
 	 */
 	it('puts one ipv6 /64 in one bucket', () => {
 		const first = apiRateLimitKey(
-			request('/api/v1/forms/frm_abc/config', { 'cf-connecting-ip': '2001:db8:1:2::1' })
+			request('/api/v1/forms/frm_abc/config', { [CLIENT_IP_HEADER]: '2001:db8:1:2::1' })
 		);
 		const second = apiRateLimitKey(
 			request('/api/v1/forms/frm_abc/config', {
-				'cf-connecting-ip': '2001:db8:1:2:aaaa:bbbb:cccc:dddd'
+				[CLIENT_IP_HEADER]: '2001:db8:1:2:aaaa:bbbb:cccc:dddd'
 			})
 		);
 		expect(first).toBe(second);
@@ -87,10 +88,10 @@ describe('what a public api request counts against', () => {
 	 */
 	it('separates two ipv6 /64s', () => {
 		const first = apiRateLimitKey(
-			request('/api/v1/forms/frm_abc/config', { 'cf-connecting-ip': '2001:db8:1:2::1' })
+			request('/api/v1/forms/frm_abc/config', { [CLIENT_IP_HEADER]: '2001:db8:1:2::1' })
 		);
 		const second = apiRateLimitKey(
-			request('/api/v1/forms/frm_abc/config', { 'cf-connecting-ip': '2001:db8:1:3::1' })
+			request('/api/v1/forms/frm_abc/config', { [CLIENT_IP_HEADER]: '2001:db8:1:3::1' })
 		);
 		expect(first).not.toBe(second);
 	});
@@ -105,13 +106,13 @@ describe('what a public api request counts against', () => {
 	it('counts an ipv4-mapped address as the ipv4 address it holds', () => {
 		expect(
 			apiRateLimitKey(
-				request('/api/v1/forms/frm_abc/config', { 'cf-connecting-ip': '::ffff:203.0.113.7' })
+				request('/api/v1/forms/frm_abc/config', { [CLIENT_IP_HEADER]: '::ffff:203.0.113.7' })
 			)
 		).toBe(apiRateLimitKey(request('/api/v1/forms/frm_abc/config', FROM)));
 	});
 
 	/**
-	 * one address has several written forms and they are one bucket. the edge writes a canonical
+	 * one address has several written forms and they are one bucket. the proxy or socket writes a canonical
 	 * one, so this is not a caller moving between spellings — it is the reason nothing downstream
 	 * has to care which spelling arrives.
 	 */
@@ -123,7 +124,7 @@ describe('what a public api request counts against', () => {
 				'2001:0DB8:1:2::1',
 				'2001:db8:1:2::0.0.0.1'
 			].map((ip) =>
-				apiRateLimitKey(request('/api/v1/forms/frm_abc/config', { 'cf-connecting-ip': ip }))
+				apiRateLimitKey(request('/api/v1/forms/frm_abc/config', { [CLIENT_IP_HEADER]: ip }))
 			)
 		);
 		expect(keys.size).toBe(1);
@@ -137,7 +138,7 @@ describe('what a public api request counts against', () => {
 	it('does not move when an ipv4 address is spelled differently', () => {
 		const keys = new Set(
 			['203.0.113.7', '203.000.113.007', '::ffff:203.0.113.7', '::ffff:cb00:7107'].map((ip) =>
-				apiRateLimitKey(request('/api/v1/forms/frm_abc/config', { 'cf-connecting-ip': ip }))
+				apiRateLimitKey(request('/api/v1/forms/frm_abc/config', { [CLIENT_IP_HEADER]: ip }))
 			)
 		);
 		expect(keys.size).toBe(1);
@@ -147,15 +148,16 @@ describe('what a public api request counts against', () => {
 	it('separates two addresses', () => {
 		expect(apiRateLimitKey(request('/api/v1/forms/frm_abc/config', FROM))).not.toBe(
 			apiRateLimitKey(
-				request('/api/v1/forms/frm_abc/config', { 'cf-connecting-ip': '198.51.100.4' })
+				request('/api/v1/forms/frm_abc/config', { [CLIENT_IP_HEADER]: '198.51.100.4' })
 			)
 		);
 	});
 
 	/**
-	 * `cf-connecting-ip` is written by Cloudflare's edge on the way in and overwrites whatever
-	 * the caller sent, which is what makes it the one value here a caller cannot forge. no
-	 * other header is read, and `x-forwarded-for` in particular is a caller-supplied string.
+	 * `CLIENT_IP_HEADER` is written by the server on the way in and overwrites whatever the caller
+	 * sent ($lib/server/runtime/client-ip.ts), which is what makes it the one value here a caller
+	 * cannot forge. no other header is read, and `x-forwarded-for` in particular is a
+	 * caller-supplied string unless the operator named it as the proxy's.
 	 *
 	 * unforgeable is only half of it — a caller who holds a block of addresses still chooses which
 	 * one they send from, which is what the `/64` cases above answer.
@@ -168,9 +170,9 @@ describe('what a public api request counts against', () => {
 	});
 
 	/**
-	 * no address at all — `wrangler dev` on a loopback request, or a runtime that is not the
-	 * edge. every such caller shares one bucket rather than getting one each, so an absent
-	 * header is the most limited caller there is instead of the least.
+	 * no address at all — a socket that reported no peer. every such caller shares one bucket
+	 * rather than getting one each, so an absent address is the most limited caller there is
+	 * instead of the least.
 	 */
 	it('puts every caller it cannot attribute in one bucket', () => {
 		const first = apiRateLimitKey(request('/api/v1/forms/frm_abc/config'));
@@ -182,10 +184,8 @@ describe('what a public api request counts against', () => {
 	/**
 	 * a value that is not an address goes in that same bucket, rather than in one of its own.
 	 *
-	 * it is the only safe direction and it is reachable: on a subrequest from another Worker in
-	 * the same zone, Cloudflare's docs say `CF-Connecting-IP` takes the value of `x-real-ip`,
-	 * which that Worker's code may set to anything
-	 * (https://developers.cloudflare.com/fundamentals/reference/http-headers/). a fresh bucket per
+	 * it is the only safe direction and it is reachable: a `TRUSTED_PROXY_HEADER` the proxy in
+	 * front fills with something else hands its value through as written. a fresh bucket per
 	 * unparseable string would be an unlimited supply of them.
 	 */
 	it('cannot be given a bucket by writing something that is not an address', () => {
@@ -200,7 +200,7 @@ describe('what a public api request counts against', () => {
 			'2001:db8::1::2'
 		]) {
 			expect(
-				apiRateLimitKey(request('/api/v1/forms/frm_abc/config', { 'cf-connecting-ip': ip }))
+				apiRateLimitKey(request('/api/v1/forms/frm_abc/config', { [CLIENT_IP_HEADER]: ip }))
 			).toBe(shared);
 		}
 	});
@@ -248,23 +248,21 @@ describe('what a refused caller is told', () => {
 });
 
 /**
- * the two ways the binding itself can fail to answer, which are answered differently on purpose.
+ * the two ways the limiter itself can fail to answer, which are answered differently on purpose.
  *
- * a stand-in limiter, and it is the only way to reach either one: the real binding cannot be told
- * to throw, and a deployment with no binding at all is a config file rather than a runtime. what
- * is under test is this module's own two branches, not the binding's behaviour — that is held in
- * `src/routes/api.v1.workers.spec.ts` and `src/routes/login.workers.spec.ts` against the real one.
+ * a stand-in limiter, and it is the only way to reach either one: the real limiter does not throw,
+ * and the server builds every one at start. what is under test is this module's own two branches,
+ * not the limiter's behaviour — that is held in $lib/server/runtime/rate-limiter.spec.ts.
  */
-describe('when the binding does not answer', () => {
+describe('when the limiter does not answer', () => {
 	const asked = new Request('https://give.example.workers.dev/api/v1/forms/frm_abc/config', {
 		headers: FROM
 	});
 
 	/**
-	 * a rejected `limit()` is transient — Cloudflare documents the subsystem as permissive and
-	 * eventually consistent and says outright it is not an accounting system — so the request
-	 * carries on. what the limit bounds is one D1 read, and one unbounded second of those is a
-	 * smaller loss than one dark minute across every form embedded anywhere.
+	 * a rejected `limit()` is transient, so the request carries on. what the limit bounds is one
+	 * database read, and one unbounded second of those is a smaller loss than one dark minute
+	 * across every form embedded anywhere.
 	 */
 	it('lets the request through when limit() rejects', async () => {
 		const refusal = await refuseIfRateLimited(
@@ -275,22 +273,22 @@ describe('when the binding does not answer', () => {
 	});
 
 	/**
-	 * no binding at all is the opposite case and gets the opposite answer.
+	 * no limiter at all is the opposite case and gets the opposite answer.
 	 *
-	 * it is not transient: the `ratelimits` block was taken out of `wrangler.jsonc`, or the
-	 * deployed Worker predates it. serving on would be an unmetered public payment-initiating
+	 * it is not transient: an `Env` was built without the limiters the server builds. serving on
+	 * would be an unmetered public payment-initiating
 	 * surface that reads as working — the blessed-hole shape CLAUDE.md rejects for unconfigured
-	 * email, and the same answer applies. the body names the binding and the file, because the
+	 * email, and the same answer applies. the body names the limiter and the file, because the
 	 * only person who can fix it is holding the repository.
 	 */
-	it('refuses by name when there is no binding', async () => {
+	it('refuses by name when there is no limiter', async () => {
 		const refusal = await refuseIfRateLimited(undefined, asked);
 		expect(refusal?.status).toBe(500);
 		expect(refusal?.headers.get('cache-control')).toBe('no-store');
 		const body = await refusal?.json();
 		expect(body).toMatchObject({
 			message: expect.stringContaining('API_RATE_LIMITER'),
-			fix: expect.stringContaining('wrangler.jsonc')
+			fix: expect.stringContaining('RATE_LIMITS')
 		});
 		// the same reason the 429 mints none: `API_ERROR_CODES` in packages/form/src/v1.ts is a permanent
 		// wire vocabulary and every member of it names a screen that fixes it.
@@ -308,7 +306,7 @@ describe('when the binding does not answer', () => {
  */
 describe('what the tighter buckets count against', () => {
 	const from = (ip: string) =>
-		new Request('https://give.example.workers.dev/', { headers: { 'cf-connecting-ip': ip } });
+		new Request('https://give.example.workers.dev/', { headers: { [CLIENT_IP_HEADER]: ip } });
 
 	const TIGHT = [
 		['a sign-in attempt', signInRateLimitKey],
@@ -465,7 +463,7 @@ describe('what a request from Zapier counts against', () => {
 
 	it('puts every caller it cannot attribute in one bucket', () => {
 		expect(zapierRateLimitKey(request('/zapier/me'))).toBe(
-			zapierRateLimitKey(request('/zapier/hooks', { 'cf-connecting-ip': 'not-an-ip' }, 'POST'))
+			zapierRateLimitKey(request('/zapier/hooks', { [CLIENT_IP_HEADER]: 'not-an-ip' }, 'POST'))
 		);
 	});
 
@@ -493,7 +491,7 @@ describe('what a request on the read API counts against before its key is looked
 		expect(integrationsCallerRateLimitKey(request('/integrations/v1/gifts'))).toBeNull();
 		expect(
 			integrationsCallerRateLimitKey(
-				request('/integrations/v1/gifts', { 'cf-connecting-ip': 'not-an-ip' })
+				request('/integrations/v1/gifts', { [CLIENT_IP_HEADER]: 'not-an-ip' })
 			)
 		).toBeNull();
 	});
@@ -634,10 +632,9 @@ describe('what a refused donor and a refused sign-in are told', () => {
 	});
 
 	/**
-	 * and it claims no scope for the bound. the bucket is per address per Cloudflare location under
-	 * ordinary operation and per deployment under the header-stripping transform, so a sentence
-	 * naming any one of them is wrong somewhere — wrangler.jsonc carries the caveats for whoever
-	 * tunes the number, and the person reading this is trying to sign in.
+	 * and it claims no scope for the bound. the bucket is per address under ordinary operation and
+	 * per deployment under a misread proxy header, so a sentence naming either is wrong somewhere —
+	 * the person reading this is trying to sign in.
 	 */
 	it('promises the operator no bound it may not be', () => {
 		expect(signInRateLimitMessage().toLowerCase()).not.toContain('address');

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import {
 	SITEVERIFY_URL,
 	TURNSTILE_FAILURE_REASONS,
@@ -90,7 +91,7 @@ describe('verifyTurnstile() — the request', () => {
 		const calls = recording([solved()]);
 
 		const result = await verifyTurnstile(
-			check({ request: submission({ 'cf-connecting-ip': '203.0.113.7' }) })
+			check({ request: submission({ [CLIENT_IP_HEADER]: '203.0.113.7' }) })
 		);
 
 		expect(result.ok).toBe(true);
@@ -113,7 +114,7 @@ describe('verifyTurnstile() — the request', () => {
 	it('omits remoteip for a present-but-empty header', async () => {
 		const calls = recording([solved()]);
 
-		await verifyTurnstile(check({ request: submission({ 'cf-connecting-ip': '' }) }));
+		await verifyTurnstile(check({ request: submission({ [CLIENT_IP_HEADER]: '' }) }));
 
 		// `Headers.get` answers `''` rather than null for one of those, and `remoteip=` is a
 		// parameter this app sent with nothing in it.

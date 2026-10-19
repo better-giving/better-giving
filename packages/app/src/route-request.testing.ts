@@ -1,4 +1,3 @@
-import { createExecutionContext, env as poolEnv } from 'cloudflare:test';
 import {
 	createStaticHandler,
 	isRouteErrorResponse,
@@ -7,16 +6,19 @@ import {
 	type StaticHandler,
 	type StaticHandlerContext
 } from 'react-router';
+import { client } from '$lib/server/db/database.testing';
+import { createDeferredWork, type Deferred } from '$lib/server/runtime/deferred';
+import { readEnv } from '$lib/server/runtime/env';
+import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
 import { requestContext } from './request-context';
 
-// one request through a route module's own `loader`, `action` and `middleware`, inside workerd
-// against the real D1 the pool binds.
+// one request through a route module's own `loader`, `action` and `middleware`, against the real
+// libSQL file the spec file's db project opens ($lib/server/db/database.testing.ts).
 //
 // **this is the pattern every route spec in this app uses, and it lives here once because nothing
 // documents it.** react router documents testing a component with `createRoutesStub`
-// (react-router/docs/start/framework/testing.md) and `@cloudflare/vitest-pool-workers` documents
-// binding a runtime; neither says how to drive a server route inside the other, and the answer is
-// not the obvious one — calling the exported `loader` directly runs the route with no middleware
+// (react-router/docs/start/framework/testing.md), which says nothing of how to drive a server
+// route, and the answer is not the obvious one — calling the exported `loader` directly runs the route with no middleware
 // above it, which on this app's public api is the whole rate limit and on /admin is the whole
 // session gate. a spec written that way passes against an endpoint nothing meters.
 //
@@ -38,7 +40,7 @@ import { requestContext } from './request-context';
 //   loader call — which is why the endpoints on `/api/v1` branch on the method inside one.
 //
 // what this does not stand in for is the file-system routing above it: the chain a spec states
-// here is a list of modules, and nothing in workerd can read ./routes.ts to check it against the
+// here is a list of modules, and nothing here reads ./routes.ts to check it against the
 // tree (`flatRoutes` reads the filesystem). ./routes.spec.ts is what holds that half — every route
 // served under a surface is under that surface's layout — and the two together are the claim. a
 // chain stated here that no longer matches the tree fails there.
@@ -76,28 +78,34 @@ export interface MountedRoute {
 
 /**
  * sends one request into a mounted chain. `env` swaps the deploy-time values for that request;
- * `ctx` is the execution context it runs on, passed by a case that waits on what the route handed
- * to `waitUntil` (`waitOnExecutionContext` from `cloudflare:test`).
+ * `deferred` is the tracker its after-response work goes to, passed by a case that waits on what
+ * the route handed to `waitUntil` (`settled()` on `createDeferredWork`).
  */
 export type RouteRequester = (
 	request: Request,
-	options?: { readonly env?: Env; readonly ctx?: ExecutionContext }
+	options?: { readonly env?: Env; readonly deferred?: Deferred }
 ) => Promise<Response>;
 
 /**
  * mounts a chain of route modules, outermost first, and answers requests against it.
  *
- * the request context is `requestContext` — the same one src/worker.ts seeds — so a loader takes
- * its bindings and its D1 handle off the context exactly as it does in the deployment. `env`
- * defaults to the pool's own bindings; a case that needs a deploy-time value set or unset passes
- * its own.
+ * the request context is `requestContext` — the same one src/server/app.ts seeds — so a loader
+ * takes its configuration and its database handle off the context exactly as it does in the
+ * deployment. `env` defaults to no configuration and the spec limiters
+ * ($lib/server/runtime/rate-limiter.testing.ts), one set per chain; a case that needs a
+ * deploy-time value set or unset passes its own.
  */
 export function mountRoutes(chain: readonly MountedRoute[]): RouteRequester {
 	const routes = nest(chain);
+	const defaultEnv = readEnv({}, specRateLimiters());
 
 	return async (request, options = {}) => {
 		const handler = createStaticHandler(routes);
-		const context = requestContext(options.env ?? poolEnv, options.ctx ?? createExecutionContext());
+		const context = requestContext({
+			env: options.env ?? defaultEnv,
+			deferred: options.deferred ?? createDeferredWork(),
+			client
+		});
 
 		try {
 			return asResponse(

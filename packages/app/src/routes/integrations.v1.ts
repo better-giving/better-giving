@@ -66,7 +66,7 @@ const readOnly: Route.MiddlewareFunction = ({ request }, next) =>
 	request.method === 'GET' || request.method === 'HEAD' ? next() : readOnlyRefusal(request.method);
 
 const keyGate: Route.MiddlewareFunction = async ({ context, request }, next) => {
-	const { env, ctx } = context.get(platform);
+	const { env, deferred } = context.get(platform);
 	const db = context.get(database);
 	if (await isRateLimited(env.API_RATE_LIMITER, integrationsCallerRateLimitKey(request)))
 		return callerRateLimitRefusal();
@@ -77,7 +77,7 @@ const keyGate: Route.MiddlewareFunction = async ({ context, request }, next) => 
 	)
 		return keyRateLimitRefusal();
 	const answer = await next();
-	ctx.waitUntil(touchLastUsed(db, admitted));
+	deferred.waitUntil(touchLastUsed(db, admitted));
 	return answer;
 };
 

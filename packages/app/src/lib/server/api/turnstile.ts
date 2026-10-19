@@ -46,6 +46,7 @@
 // ---------------------------------------------------------------------------
 
 import { setCommand } from '@better-giving/operator/deploy-split';
+import { clientIp } from '../runtime/client-ip';
 
 /** the endpoint, exported so a spec can assert the call went to it rather than restate it. */
 export const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
@@ -314,9 +315,8 @@ export async function verifyTurnstile(check: TurnstileCheck): Promise<TurnstileR
 	}
 
 	const body = new URLSearchParams({ secret, response: token });
-	// `Headers.get` answers `''` rather than `null` for a header that is present and empty, and
-	// `remoteip=` is a parameter this app sent with nothing in it.
-	const address = check.request.headers.get('cf-connecting-ip')?.trim() ?? '';
+	// an empty address is no address: `remoteip=` is a parameter this app sent with nothing in it.
+	const address = clientIp(check.request)?.trim() ?? '';
 	if (address.length > 0) body.set('remoteip', address);
 
 	let response: Response;

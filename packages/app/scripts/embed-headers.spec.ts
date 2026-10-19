@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { LOADER_PATH, RUNTIME_PATH_PREFIX } from '@better-giving/form/embed/stamp';
+import { type HeaderRule, matches, parseHeaders } from '../server/static-headers.ts';
 
 // the cache tiers the embed is served under, read off the committed `_headers` rather than off a
 // deployment.
@@ -35,56 +36,8 @@ const SHORT_MAX_AGE = 300;
 /** the hashed tier, in seconds — one year, which is the longest `max-age` worth writing. */
 const IMMUTABLE_MAX_AGE = 31_536_000;
 
-type Rule = { readonly pattern: string; readonly headers: ReadonlyMap<string, string> };
-
-/**
- * `_headers` as rules: a pattern line, then indented `name: value` lines under it.
- *
- * enough of the format to answer what is asked here. names are lowercased because a header name is
- * case-insensitive and this file is hand-written.
- */
-function parseHeaders(text: string): Rule[] {
-	const rules: { pattern: string; headers: Map<string, string> }[] = [];
-	for (const raw of text.split('\n')) {
-		const line = raw.trim();
-		if (line.length === 0 || line.startsWith('#')) continue;
-		const indented = raw !== raw.trimStart();
-		const current = rules.at(-1);
-		if (!indented || current === undefined) {
-			rules.push({ pattern: line, headers: new Map() });
-			continue;
-		}
-		const colon = line.indexOf(':');
-		if (colon === -1) continue;
-		current.headers.set(line.slice(0, colon).trim().toLowerCase(), line.slice(colon + 1).trim());
-	}
-	return rules;
-}
-
-/**
- * whether a rule's pattern covers a path.
- *
- * `*` matches greedily and `:name` matches one path segment, which is the pattern language
- * documented at https://developers.cloudflare.com/workers/static-assets/headers/. an absolute-URL
- * pattern is reduced to its path, since the host is not what is being asked about here.
- */
-function matches(pattern: string, path: string): boolean {
-	const withoutHost = pattern.startsWith('https://')
-		? pattern.replace(/^https:\/\/[^/]*/, '') || '/'
-		: pattern;
-	const source = withoutHost
-		.split('')
-		.map((character) => {
-			if (character === '*') return '.*';
-			return /[a-zA-Z0-9/_-]/.test(character) ? character : `\\${character}`;
-		})
-		.join('')
-		.replace(/\\:[a-zA-Z]\w*/g, '[^/]+');
-	return new RegExp(`^${source}$`).test(path);
-}
-
 /** every header value a request for `path` would collect, joined the way `_headers` joins them. */
-function cacheControlFor(rules: readonly Rule[], path: string): string[] {
+function cacheControlFor(rules: readonly HeaderRule[], path: string): string[] {
 	return rules
 		.filter((rule) => matches(rule.pattern, path))
 		.map((rule) => rule.headers.get('cache-control'))
@@ -99,16 +52,16 @@ function maxAge(value: string): number | null {
 const HEADERS_PATH = resolve(ROOT, 'static/_headers');
 
 describe('the embed cache tiers', () => {
-	// the file is read from the public directory and from nowhere else. cloudflare reads `_headers`
-	// at the root of the assets it serves, and static/ is what vite copies there whole
-	// (../vite.config.ts) — a copy anywhere else is one the deployment never sees.
+	// the file is read from the public directory and from nowhere else. the server reads `_headers`
+	// at the root of the directory it serves (../server/static-headers.ts), and static/ is what vite
+	// copies there whole (../vite.config.ts) — a copy anywhere else is one the deployment never sees.
 	it('is a committed file in the public directory', () => {
 		expect(existsSync(resolve(ROOT, 'package.json'))).toBe(true);
 		expect(existsSync(HEADERS_PATH)).toBe(true);
 		expect(existsSync(resolve(ROOT, '_headers'))).toBe(false);
 	});
 
-	const rules = (): Rule[] => parseHeaders(readFileSync(HEADERS_PATH, 'utf8'));
+	const rules = (): HeaderRule[] => parseHeaders(readFileSync(HEADERS_PATH, 'utf8'));
 
 	it('caches the loader briefly, so an upgrade reaches a snippet nobody will touch again', () => {
 		const values = cacheControlFor(rules(), LOADER_PATH);
@@ -139,7 +92,7 @@ describe('the embed cache tiers', () => {
 		}
 	});
 
-	// both are static assets served before the worker runs, so this file is the whole of their
+	// both are static files served before the router runs, so this file is the whole of their
 	// headers, and the document policy src/document-policy.ts sets never reaches them. a policy or
 	// a framing header here governs nothing on the page that loads the script — that page's own
 	// policy does — so one arriving is a rule copied onto the wrong kind of answer.
@@ -153,7 +106,7 @@ describe('the embed cache tiers', () => {
 		}
 	});
 
-	// the pattern matcher above is what every assertion here rests on, so it is held to a case it
+	// the pattern matcher is what every assertion here rests on, so it is held to a case it
 	// would be useless without: a rule that covers the loader without naming it.
 	it('sees a rule that covers the loader without naming it', () => {
 		expect(matches('/*', LOADER_PATH)).toBe(true);

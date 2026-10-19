@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, expect } from 'vitest';
+import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client } from '$lib/server/db/database.testing';
 import { type MountedRoute, mountRoutes, type RouteRequester } from './route-request.testing';
@@ -110,7 +111,7 @@ export function connectorHarness<R extends Record<string, RouteRequester>>(mount
 		call(route: keyof R | 'exchange', path: string, init: CallInit = {}): Promise<Response> {
 			const headers: Record<string, string> = {
 				...init.headers,
-				'cf-connecting-ip': ip(),
+				[CLIENT_IP_HEADER]: ip(),
 				accept: 'application/json'
 			};
 			if (init.key !== undefined) headers.authorization = `Bearer ${init.key}`;

@@ -114,7 +114,7 @@ export const QUOTE_REFUSALS = [
 	 * configured processor's account can collect, so the ordinary donor never picks a cadence that
 	 * reaches this. what does reach it is a page served while the account still held what a
 	 * repeating gift is charged against, posted after it stopped — ../forms/cadence-cache.ts keeps
-	 * that answer at the edge for minutes, and the donation path deliberately does not gate on the
+	 * that answer in the process's cache for minutes, and the donation path deliberately does not gate on the
 	 * capability a second time (CLAUDE.md, *Bans* → **Repeating gifts**), so the submission is
 	 * carried to the processor and refused there rather than turned away here.
 	 *
@@ -251,7 +251,7 @@ export type QuoteDeps = {
 	 */
 	readonly email: EmailProvider;
 	/**
-	 * work that finishes after the answer: the Worker's `ctx.waitUntil`.
+	 * work that finishes after the answer: the request's `platform.deferred` (src/context.ts).
 	 *
 	 * the donor's notices and the operator's alerts go here, since slow mail would otherwise
 	 * count against the form's 30-second wait on a gift already recorded or already refused.
@@ -288,11 +288,11 @@ const LINE_LABEL = 'Donation';
  */
 export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise<QuoteResult> {
 	// how often a gift may repeat and which rails a donor is shown are both read off this
-	// deployment's processor accounts through the edge cache, and the port is `deps.processors` — the
-	// same injected one every other call here uses, so this reaches no network a spec did not ask
-	// for. the request's own origin is spent as a cache key — an entry in `caches.default` belongs to
-	// the zone that asked for it, see ../forms/cadence-cache.ts and ../forms/rail-cache.ts — and as the
-	// deployment origin an intent is minted with, never the `Origin` header.
+	// deployment's processor accounts through the process's cache, and the port is
+	// `deps.processors` — the same injected one every other call here uses, so this reaches no
+	// network a spec did not ask for. the request's own origin is spent as a cache key — see
+	// ../forms/cadence-cache.ts and ../forms/rail-cache.ts — and as the deployment origin an intent is
+	// minted with, never the `Origin` header.
 	//
 	// what comes back narrows what this path *offers* and never what it *accepts*, and two things
 	// hold that. `parseQuoteRequest` below reads both vocabularies whole rather than the served

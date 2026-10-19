@@ -55,13 +55,14 @@ export default defineConfig({
 				test: {
 					name: 'server',
 					environment: 'node',
-					// three roots, and each is a place a spec sits beside its subject: `src/` is the
-					// app, `scripts/` the operator scripts — plain node with no binding and no DOM
-					// under them — and the package root, where the config specs that read this
-					// package's own config files live (./form-rules.spec.ts).
+					// four roots, and each is a place a spec sits beside its subject: `src/` is the
+					// app, `scripts/` the operator scripts and `server/` the HTTP server — plain node
+					// with no DOM under either — and the package root, where the config specs that
+					// read this package's own config files live (./form-rules.spec.ts).
 					include: [
 						'src/**/*.{test,spec}.{js,ts}',
 						'scripts/**/*.{test,spec}.{js,ts}',
+						'server/**/*.{test,spec}.{js,ts}',
 						'*.{test,spec}.{js,ts}'
 					],
 					exclude: [
@@ -72,7 +73,8 @@ export default defineConfig({
 						// `document` being undefined.
 						'src/**/*.dom.{test,spec}.{js,ts}',
 						// and the db project these, so each runs once and against its own file.
-						'src/**/*.db.{test,spec}.{js,ts}'
+						'src/**/*.db.{test,spec}.{js,ts}',
+						'server/**/*.db.{test,spec}.{js,ts}'
 					]
 				}
 			},
@@ -87,7 +89,7 @@ export default defineConfig({
 					// scope, so it relies on vitest's default `isolate: true` — one module registry per
 					// spec file, so one database per spec file. turning isolation off would hand every
 					// file the first one's rows.
-					include: ['src/**/*.db.{test,spec}.ts']
+					include: ['src/**/*.db.{test,spec}.ts', 'server/**/*.db.{test,spec}.ts']
 				}
 			},
 			{

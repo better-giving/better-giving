@@ -8,9 +8,9 @@ import type { SendFailureReason } from './provider';
 // impossible to produce on demand from a real host.
 //
 // it matches on message text, which is a deliberate piece of fragility and is why the
-// default is the one that matters. `worker-mailer` throws plain `Error`s with no code, no
-// class and no SMTP reply code attached, and the socket errors underneath it come from
-// workerd as plain `Error`s too — so there is nothing structural to read. every pattern
+// default is the one that matters. the vocabulary is `worker-mailer`'s phrasing
+// (`Invalid RCPT TO: <…>`, `Failed to connect`, …), and `describeFailure` in ./smtp.ts renders
+// nodemailer's structured errors into it before they arrive here. every pattern
 // below is therefore a best effort that can go stale on an upgrade, and the fallback is
 // `rejected` with the original message carried through verbatim: a misclassified failure
 // still tells an operator what the server said, which is the part that gets it fixed.

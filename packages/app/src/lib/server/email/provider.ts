@@ -9,7 +9,7 @@
 //
 // this port is deep, not shallow. four fields and one method sit in front of an SMTP session,
 // a TLS handshake, an AUTH exchange, MIME assembly and a whole taxonomy of host refusals —
-// roughly eight hundred lines of `worker-mailer` plus the classification around it. that ratio
+// nodemailer's SMTP transport plus the classification around it. that ratio
 // is the argument for the port, not a reason to call it thin. what is true is that the seam is
 // hypothetical: one transport has ever been written against it, so nothing has yet pulled on
 // the interface.

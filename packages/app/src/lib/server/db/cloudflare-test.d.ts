@@ -8,12 +8,15 @@
 
 /// <reference types="@cloudflare/vitest-pool-workers/types" />
 
-// `env` from `cloudflare:test` is typed as `Cloudflare.Env` — the same interface
-// `wrangler types` generates from wrangler.jsonc — so the real bindings (`DB`) are
-// already there. only the test-only bindings need declaring, and they have to go on that
-// interface rather than on `ProvidedEnv`, which this version no longer reads.
+// `env` from `cloudflare:test` is typed as `Cloudflare.Env`: the app's own `Env`
+// (../runtime/env.ts) plus the D1 binding this pool runs every workers spec against. they go on
+// that interface rather than on `ProvidedEnv`, which this version no longer reads.
+type AppEnv = Env;
+
 declare namespace Cloudflare {
-	interface Env {
+	interface Env extends AppEnv {
+		/** the database ./d1.setup.ts migrates and every workers spec reads. */
+		DB: D1Database;
 		/** the committed `migrations/` files, read by `readD1Migrations` at config time. */
 		TEST_MIGRATIONS: import('cloudflare:test').D1Migration[];
 	}
