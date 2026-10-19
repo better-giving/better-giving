@@ -40,6 +40,10 @@ Email and Turnstile are required. A deployment that cannot send cannot give a do
 
 **Test keys are keys.** A deployment holding `sk_test_…` reads _ready_, serves forms and takes cards, all against Stripe's test account, where no money moves and no screen says so. A PayPal sandbox app's credentials do the same thing on that rail. To rehearse, see [`DEPLOY.md`](./DEPLOY.md)'s rehearsal deployment. Read its wallet paragraph before pasting any snippet it hands you.
 
+### On Cloudflare
+
+`v0.0.38-alpha.1` is the last release that deployed to Cloudflare Workers with the `better-giving` console binary, and this repository cuts no further `v0.0.x-alpha` release. Cloudflare deployments move to the Cloudflare flavor, kept apart from this repository.
+
 ## Embed the form
 
 Every deployment serves a Donation page of its own, at `/donate` on its own address, so an organisation with no website can take a gift the day it deploys.
