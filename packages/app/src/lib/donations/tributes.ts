@@ -18,7 +18,7 @@ import { TRIBUTE_KINDS, type TributeKind } from '@better-giving/form/v1';
  * the read-side counterpart to `parseTribute` in `$lib/server/donations/quote-input.ts` and to
  * `tributeOf` in `$lib/server/donations/collect.ts`, and it exists for the reason those two are the
  * whole of the constraint: `donation.tribute_kind` has no CHECK and cannot be given one, so
- * anything at all can be sitting in it (`$lib/server/db/donation-tribute.workers.spec.ts` asserts
+ * anything at all can be sitting in it (`$lib/server/db/donation-tribute.db.spec.ts` asserts
  * the database itself takes it). a kind outside the vocabulary, half a pair, or a name that is
  * blank is a row nothing this app writes and no sentence any surface can state, so it reads as no
  * dedication rather than as a broken one.

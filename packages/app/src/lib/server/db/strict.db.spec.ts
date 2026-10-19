@@ -1,5 +1,6 @@
-import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { run, first, all, stmt } from '../db/database.testing';
+import { rejectionCode } from './rejection.testing';
 
 // the guards on the two properties of the migrated schema that drizzle-kit cannot see and
 // therefore cannot report as drift: `STRICT` on every table, and `NO ACTION` on every foreign
@@ -29,10 +30,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 //
 // why these match the extended result code's name and not the prose. sqlite's extended
 // result code is the stable surface; the sentence in front of it is not, and a rewording
-// upstream would turn this suite red with no schema change. D1 does not expose a numeric
-// `errcode` — it flattens the error to a message — but it appends two symbolic names, the
-// primary code and then the extended one, so `SQLITE_CONSTRAINT_DATATYPE` is matchable and
-// is the same identifier 3091 names. the extended one is what these assert: the primary is
+// upstream would turn this suite red with no schema change. libSQL puts the primary code in
+// its message and the extended one beside it, and ./rejection.ts names 3091 as
+// `SQLITE_CONSTRAINT_DATATYPE` where libSQL's binding leaves it unnamed. the extended one is
+// what these assert: the primary is
 // `SQLITE_CONSTRAINT` for every constraint there is, and ./rejection.ts is where that pair
 // and the longest-match rule it forces are argued. the prose half of the message is never
 // asserted on.
@@ -41,20 +42,6 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const SQLITE_CONSTRAINT_DATATYPE = 'SQLITE_CONSTRAINT_DATATYPE';
 /** a check constraint, i.e. not the type system. */
 const SQLITE_CONSTRAINT_CHECK = 'SQLITE_CONSTRAINT_CHECK';
-
-/**
- * runs `fn`, requires D1 to have rejected it, and hands back the message. fails loudly
- * rather than returning a sentinel if the statement succeeded, so a probe that stops
- * being rejected cannot pass quietly.
- */
-async function rejection(fn: () => Promise<unknown>): Promise<string> {
-	try {
-		await fn();
-	} catch (e) {
-		return String((e as Error).message);
-	}
-	throw new Error('expected D1 to reject this statement, but it succeeded');
-}
 
 type TableRow = { name: string; strict: number };
 
@@ -67,20 +54,20 @@ type TableRow = { name: string; strict: number };
  * instead of pattern-matching `sqlite_master.sql`; a rebuild that drops the keyword is
  * caught by the same assertion however the SQL happens to be formatted.
  *
- * `d1_migrations` is the one exclusion, and it is not ours: wrangler creates it to track
- * which migrations have run, without `STRICT`, both here and on the real database. every
+ * `d1_migrations` is the one exclusion, and it is not ours: ./migrate.ts creates it in wrangler's
+ * own statement to track which migrations have run, without `STRICT`, both here and on the real
+ * database. every
  * column encoding this project uses (`text`, `integer`) is STRICT-legal, so there is no
  * shape of ours the rule cannot express and no other exclusion is needed.
  */
 async function appTables(): Promise<TableRow[]> {
-	const { results } = await env.DB.prepare(
-		`select name, "strict" from pragma_table_list
+	return all<TableRow>(
+		stmt(`select name, "strict" from pragma_table_list
 		 where schema = 'main' and type = 'table'
 		   and name not like 'sqlite_%' and name not like '\\_cf\\_%' escape '\\'
 		   and name <> 'd1_migrations'
-		 order by name`
-	).all<TableRow>();
-	return results;
+		 order by name`)
+	);
 }
 
 describe('every table is STRICT', () => {
@@ -134,16 +121,15 @@ type FkRow = { child: string; column: string; on_delete: string };
  * argument column and has to be quoted, since `table` is a keyword.
  */
 async function foreignKeys(): Promise<FkRow[]> {
-	const { results } = await env.DB.prepare(
-		`select t.name as child, f."from" as column, f.on_delete as on_delete
+	return all<FkRow>(
+		stmt(`select t.name as child, f."from" as column, f.on_delete as on_delete
 		 from pragma_table_list t
 		 join pragma_foreign_key_list(t.name) f
 		 where t.schema = 'main' and t.type = 'table'
 		   and t.name not like 'sqlite_%' and t.name not like '\\_cf\\_%' escape '\\'
 		   and t.name <> 'd1_migrations'
-		 order by t.name, f."from"`
-	).all<FkRow>();
-	return results;
+		 order by t.name, f."from"`)
+	);
 }
 
 // the guard on "only the allowlisted FKs in this schema carry a cascade".
@@ -206,23 +192,26 @@ describe('only the allowlisted foreign keys cascade on delete', () => {
 
 describe('STRICT rejects a non-integer written to an integer column', () => {
 	// these probes insert rows into `account`, which the catalogue enumeration above also
-	// reads. they never change its shape — only its contents — and the pool gives each
-	// spec file its own D1 storage, so nothing here reaches `accounts.workers.spec.ts`.
+	// reads. they never change its shape — only its contents — and each spec file gets a
+	// database of its own (./database.testing.ts), so nothing here reaches `accounts.db.spec.ts`.
 	beforeAll(async () => {
-		// touch the binding so a misconfigured pool fails here rather than inside a probe's
+		// touch the database so a misconfigured setup fails here rather than inside a probe's
 		// try/catch, where a missing table would read as a successful "rejection".
-		await env.DB.prepare('select 1').run();
+		await run(stmt('select 1'));
 	});
 
 	// `tax_rate_e8` is a rate scaled by 1e8 — the same integer encoding money uses, and
 	// the same float64 hazard.
 	const insertRate = (id: string, rate: number) =>
-		env.DB.prepare(
-			`insert into account (id, code, name, type, tax_rate_e8, created_at, updated_at)
-			 values (?, ?, 'probe', 'liability', ?, 0, 0)`
-		)
-			.bind(id, id, rate)
-			.run();
+		run(
+			stmt(
+				`insert into account (id, code, name, type, tax_rate_e8, created_at, updated_at)
+			 values (?, ?, 'probe', 'liability', ?, 0, 0)`,
+				id,
+				id,
+				rate
+			)
+		);
 
 	// `created_at` is the integer column carrying no check at all, which is what makes it
 	// the right place to probe text. on `tax_rate_e8` a text probe proves nothing about
@@ -231,21 +220,24 @@ describe('STRICT rejects a non-integer written to an integer column', () => {
 	// rejection is STRICT and only STRICT — drop the keyword and 'not-a-number' is stored,
 	// as text, in a column every `_at` reader treats as unix ms.
 	const insertCreatedAt = (id: string, at: string) =>
-		env.DB.prepare(
-			`insert into account (id, code, name, type, created_at, updated_at)
-			 values (?, ?, 'probe', 'liability', ?, 0)`
-		)
-			.bind(id, id, at)
-			.run();
+		run(
+			stmt(
+				`insert into account (id, code, name, type, created_at, updated_at)
+			 values (?, ?, 'probe', 'liability', ?, 0)`,
+				id,
+				id,
+				at
+			)
+		);
 
 	it('rejects a REAL that does not convert losslessly', async () => {
-		expect(await rejection(() => insertRate('probe-5.5', 5.5))).toContain(
+		expect(await rejectionCode(() => insertRate('probe-5.5', 5.5))).toContain(
 			SQLITE_CONSTRAINT_DATATYPE
 		);
 	});
 
 	it('rejects TEXT in a column with no CHECK to fall back on', async () => {
-		expect(await rejection(() => insertCreatedAt('probe-text', 'not-a-number'))).toContain(
+		expect(await rejectionCode(() => insertCreatedAt('probe-text', 'not-a-number'))).toContain(
 			SQLITE_CONSTRAINT_DATATYPE
 		);
 	});
@@ -256,11 +248,12 @@ describe('STRICT rejects a non-integer written to an integer column', () => {
 		// arrives as one — so a JS number that happens to be whole is not a false
 		// failure, while the 0.5 that would break a sum-to-zero group is.
 		await insertRate('probe-5.0', 5.0);
-		const row = await env.DB.prepare(
-			`select tax_rate_e8 as rate, typeof(tax_rate_e8) as t from account where id = ?`
-		)
-			.bind('probe-5.0')
-			.first();
+		const row = await first(
+			stmt(
+				`select tax_rate_e8 as rate, typeof(tax_rate_e8) as t from account where id = ?`,
+				'probe-5.0'
+			)
+		);
 		expect(row).toEqual({ rate: 5, t: 'integer' });
 	});
 
@@ -270,11 +263,11 @@ describe('STRICT rejects a non-integer written to an integer column', () => {
 		// alongside the code because the code alone says only "some check failed", and
 		// which one fired is the entire claim: `2` cleared STRICT INTEGER and was stopped
 		// by the boolean check. the name is ours (schema.ts mints it), not sqlite prose.
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into account (id, code, name, type, is_deductible, created_at, updated_at)
-				 values ('probe-bool', 'probe-bool', 'probe', 'liability', 2, 0, 0)`
-			).run()
+		const message = await rejectionCode(() =>
+			run(
+				stmt(`insert into account (id, code, name, type, is_deductible, created_at, updated_at)
+				 values ('probe-bool', 'probe-bool', 'probe', 'liability', 2, 0, 0)`)
+			)
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('account_is_deductible_bool_check');
@@ -285,15 +278,15 @@ describe('STRICT rejects a non-integer written to an integer column', () => {
 		// keyword literal, not the string 'false', so it survives STRICT INTEGER — but
 		// that is worth pinning rather than assuming, since a text default here would
 		// have failed at create-time in a way no other test covers.
-		await env.DB.prepare(
-			`insert into account (id, code, name, type, created_at, updated_at)
-			 values ('probe-defaults', 'probe-defaults', 'probe', 'liability', 0, 0)`
-		).run();
-		const row = await env.DB.prepare(
-			`select is_deductible as d, typeof(is_deductible) as dt,
+		await run(
+			stmt(`insert into account (id, code, name, type, created_at, updated_at)
+			 values ('probe-defaults', 'probe-defaults', 'probe', 'liability', 0, 0)`)
+		);
+		const row = await first(
+			stmt(`select is_deductible as d, typeof(is_deductible) as dt,
 			        is_postable as p, typeof(is_postable) as pt
-			 from account where id = 'probe-defaults'`
-		).first();
+			 from account where id = 'probe-defaults'`)
+		);
 		expect(row).toEqual({ d: 0, dt: 'integer', p: 1, pt: 'integer' });
 	});
 });

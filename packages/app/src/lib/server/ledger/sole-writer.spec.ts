@@ -153,7 +153,7 @@ describe('posting.ts is the only writer of the ledger', () => {
 	it('exempts posting.ts and specs, and nothing else in the ledger directory', () => {
 		const names = files.map((f) => relative(SRC, f));
 		expect(names).not.toContain('lib/server/ledger/posting.ts');
-		expect(names).not.toContain('lib/server/ledger/posting.workers.spec.ts');
+		expect(names).not.toContain('lib/server/ledger/posting.db.spec.ts');
 		expect(names).toContain('lib/server/ledger/queries.ts');
 		expect(names).toContain('lib/server/ledger/journal-file.ts');
 	});

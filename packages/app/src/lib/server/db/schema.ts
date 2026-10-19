@@ -162,7 +162,7 @@ import type { PostableAccountId } from './postable';
 //    (https://github.com/sqlite/sqlite/blob/master/src/pragma.c), so the commit checks
 //    nothing and a rebuild that left child rows pointing at nothing — a copy step skipped,
 //    a row not copied — commits with them orphaned. the guard is
-//    `newest-migration.workers.spec.ts`'s "leaves no foreign key pointing at nothing",
+//    `newest-migration.db.spec.ts`'s "leaves no foreign key pointing at nothing",
 //    which reads `pragma_foreign_key_check` after applying every migration the test
 //    deployment has not, file by file, over seeded rows. D1's docs
 //    (https://developers.cloudflare.com/d1/sql-api/foreign-keys/) say instead that `=off`
@@ -179,7 +179,7 @@ import type { PostableAccountId } from './postable';
 //    argued at its own declaration in ./auth-schema.ts — and no other may: a session or a
 //    credential is worthless without its user and no accounting record hangs off any of the
 //    three tables, so a silently fired cascade there costs a logged-out admin rather than
-//    books nobody can reconcile. every domain FK is `NO ACTION`, and `strict.workers.spec.ts`
+//    books nobody can reconcile. every domain FK is `NO ACTION`, and `strict.db.spec.ts`
 //    reads `pragma_foreign_key_list` over every table and fails on a third.
 //    this is why every constraint on `account` below landed in the first migration:
 //    adding one afterwards is this path.
@@ -206,7 +206,7 @@ import type { PostableAccountId } from './postable';
 //    no wrong-looking row in it.
 //    the trap is that drizzle cannot see the keyword either, so it reports no drift
 //    with or without it — and rule 2's rebuild recreates the table from the snapshot,
-//    i.e. without `STRICT`, silently. `strict.workers.spec.ts` reads
+//    i.e. without `STRICT`, silently. `strict.db.spec.ts` reads
 //    `pragma_table_list` after
 //    applying every migration and fails on any table that lost it; that spec is the
 //    only thing standing between a generated rebuild and a schema that quietly stopped
@@ -506,7 +506,7 @@ export const contact = sqliteTable(
 		 * what a missing bool check costs is stated at `boolCheck` above, and it costs more here
 		 * than anywhere: a `2` stores and reads back as `false`, i.e. as a refusal the donor never
 		 * gave, on the one column in this schema that exists to record what they said.
-		 * `./consent-check.workers.spec.ts` reads the constraint back off the migrated database
+		 * `./consent-check.db.spec.ts` reads the constraint back off the migrated database
 		 * rather than off this line.
 		 *
 		 * it permits NULL as well as 0 and 1, which is the column comment's third state and not
@@ -542,7 +542,7 @@ export const contact = sqliteTable(
  *
  * rows are seeded by `migrations/0000_initial_schema.sql` with fixed ids identical in every
  * deployment; `src/lib/server/db/accounts.ts` is the only place app code names one,
- * and `accounts.workers.spec.ts` is what stops the two from drifting. `code` is the stable
+ * and `accounts.db.spec.ts` is what stops the two from drifting. `code` is the stable
  * business key, `id` is the foreign-key target.
  */
 export const account = sqliteTable(

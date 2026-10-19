@@ -199,7 +199,7 @@ export const authAccount = sqliteTable(
  * identifier it was handed and this table is its shape, not ours.
  *
  * no foreign key on `value`, where a reader expects one: better-auth's own schema declares none,
- * and the cascade allowlist in `src/lib/server/db/strict.workers.spec.ts` stays at two. a link
+ * and the cascade allowlist in `src/lib/server/db/strict.db.spec.ts` stays at two. a link
  * outliving the member it names still sets no password — better-auth creates the credential row
  * it cannot find, and `auth_account.user_id`'s foreign key refuses an insert against a user who
  * is gone.

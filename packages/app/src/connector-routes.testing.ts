@@ -1,6 +1,6 @@
-import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, expect } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
+import { client } from '$lib/server/db/database.testing';
 import { type MountedRoute, mountRoutes, type RouteRequester } from './route-request.testing';
 import * as layout from './routes/_app';
 import * as allow from './routes/_app.admin.connector.allow';
@@ -64,7 +64,7 @@ export function connectorHarness<R extends Record<string, RouteRequester>>(mount
 	let calls = 0;
 
 	beforeAll(() => {
-		db = createDb(env.DB);
+		db = createDb(client);
 		routes = {
 			...mount(),
 			exchange: under('exchange', exchange),
@@ -76,11 +76,11 @@ export function connectorHarness<R extends Record<string, RouteRequester>>(mount
 	});
 
 	beforeEach(async () => {
-		for (const table of WIPED) await env.DB.prepare(`delete from ${table}`).run();
-		await env.DB.prepare(
+		for (const table of WIPED) await client.execute(`delete from ${table}`);
+		await client.execute(
 			`insert into org_profile (id, legal_name, tax_id, notification_email, created_at, updated_at)
 			 values ('default', 'Riverbank Trust', '12-3456789', 'alerts@example.org', 0, 0)`
-		).run();
+		);
 		deployer = await signInAsDeployer(harness.db, DEPLOYMENT);
 		caller += 1;
 	});

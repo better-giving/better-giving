@@ -1,9 +1,9 @@
-import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from './client';
 import { rejectionCode } from './rejection.testing';
 import { contact } from './schema';
+import { client, run, first, stmt } from '../db/database.testing';
 
 // the guard on `contact_consented_to_contact_bool_check`, and on the three checks beside it.
 //
@@ -23,35 +23,37 @@ import { contact } from './schema';
 // CHECK fails only on a false result and `NULL in (0, 1)` is NULL. never asked has to stay
 // distinguishable from said no — argued on the column in `./schema.ts`.
 
-/** a check constraint, i.e. not the type system. the name D1 appends to its own message. */
+/** a check constraint, i.e. not the type system. the extended code the database raises. */
 const SQLITE_CONSTRAINT_CHECK = 'SQLITE_CONSTRAINT_CHECK';
 
 let db: Db;
 beforeAll(() => {
-	db = createDb(env.DB);
+	db = createDb(client);
 });
 
-/** a contact row with no consent answer, written straight at D1 so no app rule is in the way. */
+/** a contact row with no consent answer, written straight at the database so no app rule is in the way. */
 const seedContact = (id: string, email: string) =>
-	env.DB.prepare(
+	stmt(
 		`insert into contact (id, kind, display_name, primary_email, created_at, updated_at)
-		 values (?, 'individual', 'Seeded Donor', ?, 0, 0)`
-	).bind(id, email);
+		 values (?, 'individual', 'Seeded Donor', ?, 0, 0)`,
+		id,
+		email
+	);
 
 describe('the check on contact.consented_to_contact', () => {
 	beforeEach(async () => {
 		// storage is isolated per file rather than per test, so rows written by one `it` are
 		// visible to the next.
-		await env.DB.prepare('delete from donation').run();
-		await env.DB.prepare('delete from contact').run();
+		await run(stmt('delete from donation'));
+		await run(stmt('delete from contact'));
 	});
 
 	it('refuses a 2, by extended result code and by the constraint that fired', async () => {
 		// through drizzle on purpose: a statement issued that way comes back as drizzle's own
-		// `Failed query: …` with D1's error demoted to `.cause`, so a match on the outermost
+		// `Failed query: …` with the driver's error demoted to `.cause`, so a match on the outermost
 		// message would pass against a constraint that never fired. `rejectionCode` walks the
 		// chain — see ./rejection.testing.ts. the raw `sql` is what a hand-run
-		// `wrangler d1 execute` looks like, which is the only writer that can produce a `2`:
+		// SQL statement looks like, which is the only writer that can produce a `2`:
 		// drizzle's `mode: 'boolean'` emits 0 or 1 and nothing else.
 		const chain = await rejectionCode(() =>
 			db.run(
@@ -98,9 +100,9 @@ describe('the check on contact.consented_to_contact', () => {
 
 describe('the rest of the table, off the applied migrations', () => {
 	beforeAll(async () => {
-		await env.DB.prepare('delete from donation').run();
-		await env.DB.prepare('delete from contact').run();
-		await env.DB.batch([
+		await run(stmt('delete from donation'));
+		await run(stmt('delete from contact'));
+		await client.batch([
 			seedContact('keep-1', 'one@example.org'),
 			seedContact('keep-2', 'two@example.org')
 		]);
@@ -111,13 +113,17 @@ describe('the rest of the table, off the applied migrations', () => {
 		// indexes with it and drizzle re-renders an expression index with the whole expression
 		// backticked, which makes it an identifier and fails `no such column`. the lookup below
 		// is the dedupe path, and it is the only index on the column.
-		const row = await env.DB.prepare(
-			`select count(*) as n from contact where lower(primary_email) = lower('ONE@example.org')`
-		).first<{ n: number }>();
+		const row = await first<{ n: number }>(
+			stmt(
+				`select count(*) as n from contact where lower(primary_email) = lower('ONE@example.org')`
+			)
+		);
 		expect(row?.n).toBe(1);
-		const idx = await env.DB.prepare(
-			`select name from pragma_index_list('contact') where name = 'contact_primary_email_lower_idx'`
-		).first<{ name: string }>();
+		const idx = await first<{ name: string }>(
+			stmt(
+				`select name from pragma_index_list('contact') where name = 'contact_primary_email_lower_idx'`
+			)
+		);
 		expect(idx?.name).toBe('contact_primary_email_lower_idx');
 	});
 

@@ -201,7 +201,7 @@ function journalNo(group: EntryGroupListRow): string {
 // file carrying the other's identifier imports as an unmatched account rather than failing.
 //
 // the fallback is unreachable — `ledger_entry`'s composite foreign key refuses a line naming
-// anything but an `is_postable = 1` account, and ../db/accounts.workers.spec.ts asserts that set is
+// anything but an `is_postable = 1` account, and ../db/accounts.db.spec.ts asserts that set is
 // exactly the seeded map. it hands back the id rather than a blank because an id fails the import
 // loudly in the target, where a blank posts the line to whatever the importer defaults to.
 

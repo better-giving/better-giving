@@ -1340,7 +1340,7 @@ export type StripeSeam = {
  *
  * never a module-scope singleton — the secret only exists on a request's `platform.env`
  * (CLAUDE.md), so a cached client is a cached copy of one deployment's environment. this is the
- * `createAuth(db, …)` shape ../auth/index.ts holds, and ../db/client.ts's `createDb(d1)`.
+ * `createAuth(db, …)` shape ../auth/index.ts holds, and ../db/client.ts's `createDb(client)`.
  *
  * two options make it work on workerd, and both are passed explicitly rather than left to the
  * SDK's platform detection, so that this module is correct whichever build of the package a

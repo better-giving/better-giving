@@ -15,7 +15,7 @@ import {
 import { createAuth, MEMBER_PASSWORD_MIN_LENGTH, PASSWORD_RESET_LIFETIME_SECONDS } from './index';
 
 /**
- * these tests exist for the same reason `db/accounts.workers.spec.ts` does: two independent
+ * these tests exist for the same reason `db/accounts.db.spec.ts` does: two independent
  * descriptions of the same thing are drifting apart the moment nobody checks. here the
  * two are better-auth's own declaration of the schema and endpoints it needs, read off
  * a live instance, and what this repo actually provides.

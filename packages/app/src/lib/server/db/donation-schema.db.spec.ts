@@ -1,19 +1,20 @@
-import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { POSTING_ACCOUNTS, ROLLUPS, postableId } from './accounts';
 import { createDb, type Db } from './client';
 import { lineItem } from './schema';
+import { client, run, first, all, stmt } from '../db/database.testing';
+import { rejectionCode } from './rejection.testing';
 
 // the constraints on `form` / `donation` / `line_item` / `payment` that are one-way.
 //
 // why this file exists and what it covers. sqlite cannot ALTER a check or a foreign key
-// in or out — either is the 12-step table rebuild, whose `DROP TABLE` D1 blocks the
+// in or out — either is the 12-step table rebuild, whose `DROP TABLE` the database blocks the
 // moment a child table holds rows (see the header of `migrations/0000_initial_schema.sql`
 // and rule 2 in schema.ts). so every constraint asserted below had to be right at birth —
 // all four tables are created in that one file — and the cost of one
 // being wrong is not a follow-up migration: it is a table that cannot be changed. these
-// probes run against the committed `migrations/` SQL applied to a real D1 — see
-// ./d1.setup.ts — so they test what deploys, not a schema rebuilt from a snapshot.
+// probes run against the committed `migrations/` SQL applied to a real database — see
+// ./database.testing.ts — so they test what deploys, not a schema rebuilt from a snapshot.
 //
 // what is not here, stated honestly. what is left out is two dozen CHECKs every bit as
 // one-way as the ones below. three groups of those are covered — the ordering check, the
@@ -52,16 +53,15 @@ import { lineItem } from './schema';
 //   could plausibly be off — enforcement is a per-connection pragma — and it is what the two
 //   composite-FK rejections below demonstrate. that each clause is present in the DDL is
 //   read from sqlite's own catalogue, exhaustively, by the `pragma_foreign_key_list` join in
-//   ./strict.workers.spec.ts, which enumerates every FK on every table rather than a list.
+//   ./strict.db.spec.ts, which enumerates every FK on every table rather than a list.
 //
 // that is a judgement about redundancy, not about cost. anything with its own body rather
 // than its own column belongs below — which is the rule that pulled `form_id_length_check`
 // out of this list: its `length(…) >= 12` is shared with nothing in the schema.
 //
-// why the extended result code's name and never the prose. D1 flattens an error to a
-// message and appends two symbolic codes, the primary one and then the extended one; the
-// sentence in front of them is upstream's to reword, and matching it would turn this suite
-// red with no schema change. there is no numeric `errcode` on a D1 error. what is asserted
+// why the extended result code's name and never the prose. the sentence the database
+// words a refusal in is upstream's to reword, and matching it would turn this suite red with
+// no schema change; the symbolic codes beside it are the stable part. what is asserted
 // below is the extended code, never the primary — `SQLITE_CONSTRAINT` is what every
 // constraint in the schema raises, so it separates none of these probes from each other,
 // and ./rejection.ts is where that pair is argued. where a check is what should have
@@ -78,27 +78,11 @@ import { lineItem } from './schema';
 // nothing in this file inserts into `ledger_entry` or `entry_group`, and it is not for want
 // of a probe: ../ledger/sole-writer.spec.ts scans the source tree and fails on either
 // pattern outside `src/lib/server/ledger/`. the ledger's own postable-account probes
-// therefore live in ../ledger/posting.workers.spec.ts, which is exempt.
+// therefore live in ../ledger/posting.db.spec.ts, which is exempt.
 
 const SQLITE_CONSTRAINT_CHECK = 'SQLITE_CONSTRAINT_CHECK';
 const SQLITE_CONSTRAINT_FOREIGNKEY = 'SQLITE_CONSTRAINT_FOREIGNKEY';
 const SQLITE_CONSTRAINT_UNIQUE = 'SQLITE_CONSTRAINT_UNIQUE';
-
-/**
- * runs `fn`, requires D1 to have rejected it, and hands back the message. throws rather
- * than returning a sentinel when the statement succeeds, so a probe that stops being
- * rejected fails loudly instead of passing quietly. (same helper as
- * ./strict.workers.spec.ts — duplicated rather than shared, because a spec helper that
- * travels between files is one more thing to keep in agreement than either file needs.)
- */
-async function rejection(fn: () => Promise<unknown>): Promise<string> {
-	try {
-		await fn();
-	} catch (e) {
-		return String((e as Error).message);
-	}
-	throw new Error('expected D1 to reject this statement, but it succeeded');
-}
 
 const CONTACT_ID = '019fb100-0000-7000-8000-000000000001';
 const DONATION_ID = '019fb100-0000-7000-8000-000000000002';
@@ -115,19 +99,22 @@ let db: Db;
 
 /** a payer and a gift for the child rows to hang off. the chart of accounts is seeded. */
 beforeAll(async () => {
-	db = createDb(env.DB);
-	await env.DB.prepare(
-		`insert into contact (id, kind, display_name, created_at, updated_at)
-		 values (?, 'individual', 'Probe Donor', 0, 0)`
-	)
-		.bind(CONTACT_ID)
-		.run();
-	await env.DB.prepare(
-		`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
-		 values (?, ?, 10000, 'USD', 0, 0)`
-	)
-		.bind(DONATION_ID, CONTACT_ID)
-		.run();
+	db = createDb(client);
+	await run(
+		stmt(
+			`insert into contact (id, kind, display_name, created_at, updated_at)
+		 values (?, 'individual', 'Probe Donor', 0, 0)`,
+			CONTACT_ID
+		)
+	);
+	await run(
+		stmt(
+			`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+		 values (?, ?, 10000, 'USD', 0, 0)`,
+			DONATION_ID,
+			CONTACT_ID
+		)
+	);
 });
 
 /**
@@ -137,35 +124,42 @@ beforeAll(async () => {
  * to 0" test exist at all.
  */
 const insertLineItem = (id: string, accountId: string, isPostable: number) =>
-	env.DB.prepare(
-		`insert into line_item
+	run(
+		stmt(
+			`insert into line_item
 		   (id, donation_id, label, quantity, unit_price_minor, line_total_minor,
 		    revenue_account_id, revenue_account_is_postable)
-		 values (?, ?, 'probe', 1, 10000, 10000, ?, ?)`
-	)
-		.bind(id, DONATION_ID, accountId, isPostable)
-		.run();
+		 values (?, ?, 'probe', 1, 10000, 10000, ?, ?)`,
+			id,
+			DONATION_ID,
+			accountId,
+			isPostable
+		)
+	);
 
 /**
  * the pin column left out of the column list, so sqlite supplies its `DEFAULT 1`.
  *
  * not the production path, which is what motivates the drizzle probe below: no writer in
  * this app builds SQL text, and drizzle never omits a column. what this probe covers is the
- * SQL-level default, which is a real and separate claim — a hand-run `wrangler d1 execute`
+ * SQL-level default, which is a real and separate claim — a hand-run SQL statement
  * and an import script both take it.
  */
 const insertLineItemDefaulted = (id: string, accountId: string) =>
-	env.DB.prepare(
-		`insert into line_item
+	run(
+		stmt(
+			`insert into line_item
 		   (id, donation_id, label, quantity, unit_price_minor, line_total_minor,
 		    revenue_account_id)
-		 values (?, ?, 'probe', 1, 10000, 10000, ?)`
-	)
-		.bind(id, DONATION_ID, accountId)
-		.run();
+		 values (?, ?, 'probe', 1, 10000, 10000, ?)`,
+			id,
+			DONATION_ID,
+			accountId
+		)
+	);
 
 /**
- * the actual production path: the same insert through `createDb(env.DB)`, with the pin
+ * the actual production path: the same insert through `createDb(client)`, with the pin
  * column omitted from the values object.
  *
  * it is a different claim from either raw-SQL probe above, and the one no test made. the
@@ -197,13 +191,13 @@ const insertLineItemThroughDrizzle = (id: string) =>
 
 describe("line_item cannot name a rollup account, and that is the database's doing", () => {
 	// the runtime twin of `PostableAccountId` in ./postable.ts. the brand stops a caller
-	// in the type checker; this stops a hand-written `wrangler d1 execute`, a CSV import,
+	// in the type checker; this stops a hand-written SQL statement, a CSV import,
 	// and any future writer that never sees the brand.
 	//
 	// three tables carry this shape. the double-counting hazard — one entry against a rollup
 	// makes every report over that subtree double-count, with no error anywhere — is
 	// `ledger_entry`'s, and all three are guarded:
-	//   `ledger_entry` — the double-counting one. probed in ../ledger/posting.workers.spec.ts,
+	//   `ledger_entry` — the double-counting one. probed in ../ledger/posting.db.spec.ts,
 	//                    because sole-writer.spec.ts forbids an insert into it from this file.
 	//   `form`         — the id every gift through a form inherits. probed below.
 	//   `line_item`    — mis-attributes what a gift was for. probed here.
@@ -213,25 +207,23 @@ describe("line_item cannot name a rollup account, and that is the database's doi
 		// would still pass against a composite FK that rejects everything — a typo in the
 		// parent index, say — and the constraint would look enforced while being useless.
 		await insertLineItem('li-postable', POSTING_ACCOUNTS.donationsDeductible.id, 1);
-		const row = await env.DB.prepare('select revenue_account_id as a from line_item where id = ?')
-			.bind('li-postable')
-			.first();
+		const row = await first(
+			stmt('select revenue_account_id as a from line_item where id = ?', 'li-postable')
+		);
 		expect(row).toEqual({ a: POSTING_ACCOUNTS.donationsDeductible.id });
 	});
 
 	it('resolves the foreign key with the pin column omitted, on its SQL DEFAULT 1', async () => {
-		// the migration's default, which is what a hand-run `wrangler d1 execute` or an import
+		// the migration's default, which is what a hand-run SQL statement or an import
 		// script takes. schema.ts says never to set `revenue_account_is_postable` at a call
 		// site, so the composite FK has to resolve against a value nobody supplied — a
 		// different claim from "it resolves when a probe binds 1 by hand". a schema that lost
 		// the default (or gained a `NULL` one) would keep every other test in this describe
 		// green and reject every insert that omits the column.
 		await insertLineItemDefaulted('li-defaulted', POSTING_ACCOUNTS.donationsDeductible.id);
-		const row = await env.DB.prepare(
-			'select revenue_account_is_postable as pin from line_item where id = ?'
-		)
-			.bind('li-defaulted')
-			.first();
+		const row = await first(
+			stmt('select revenue_account_is_postable as pin from line_item where id = ?', 'li-defaulted')
+		);
 		expect(row).toEqual({ pin: 1 });
 	});
 
@@ -242,11 +234,12 @@ describe("line_item cannot name a rollup account, and that is the database's doi
 		// probe above would stay green with the schema-level default deleted, and every real
 		// line-item insert in the app would then bind `null` and trip NOT NULL.
 		await insertLineItemThroughDrizzle('li-drizzle');
-		const row = await env.DB.prepare(
-			'select revenue_account_is_postable as pin, revenue_account_id as a from line_item where id = ?'
-		)
-			.bind('li-drizzle')
-			.first();
+		const row = await first(
+			stmt(
+				'select revenue_account_is_postable as pin, revenue_account_id as a from line_item where id = ?',
+				'li-drizzle'
+			)
+		);
 		expect(row).toEqual({ pin: 1, a: POSTING_ACCOUNTS.donationsDeductible.id });
 	});
 
@@ -255,7 +248,7 @@ describe("line_item cannot name a rollup account, and that is the database's doi
 		// `account(id)` would accept it happily. the pair `(id, is_postable)` is what does
 		// not resolve, because the rollup's `is_postable` is 0 and this column is pinned
 		// to 1. it costs no extra read: the unique index on the parent does the work.
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertLineItemDefaulted('li-rollup', ROLLUPS.donations.id)
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_FOREIGNKEY);
@@ -265,7 +258,7 @@ describe("line_item cannot name a rollup account, and that is the database's doi
 		// the loophole the check closes. matching `(4100, 0)` against the parent index
 		// would satisfy the foreign key perfectly — so the FK alone is not the constraint;
 		// the check holding this side at 1 is the other half of it.
-		const message = await rejection(() => insertLineItem('li-pin', ROLLUPS.donations.id, 0));
+		const message = await rejectionCode(() => insertLineItem('li-pin', ROLLUPS.donations.id, 0));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('line_item_revenue_account_postable_check');
 	});
@@ -281,28 +274,28 @@ describe('a form cannot name a rollup account either', () => {
 
 	/** the production shape: the pin column is not named, so it takes its `DEFAULT 1`. */
 	const insertFormDefaulted = (id: string, accountId: string) =>
-		env.DB.prepare(
-			`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
-			 values (?, 'probe', ?, 'USD', 0, 0)`
-		)
-			.bind(id, accountId)
-			.run();
+		run(
+			stmt(
+				`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
+			 values (?, 'probe', ?, 'USD', 0, 0)`,
+				id,
+				accountId
+			)
+		);
 
 	it('accepts a postable revenue account with the pin column omitted', async () => {
 		// positive control and the default-1 probe in one: no writer in the app names
 		// `revenue_account_is_postable`, so if the default were lost every form insert would
 		// fail while a probe that bound 1 by hand kept passing.
 		await insertFormDefaulted('frm_probepostable1', POSTING_ACCOUNTS.donationsDeductible.id);
-		const row = await env.DB.prepare(
-			'select revenue_account_is_postable as pin from form where id = ?'
-		)
-			.bind('frm_probepostable1')
-			.first();
+		const row = await first(
+			stmt('select revenue_account_is_postable as pin from form where id = ?', 'frm_probepostable1')
+		);
 		expect(row).toEqual({ pin: 1 });
 	});
 
 	it('refuses the 4100 rollup, on the composite foreign key', async () => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertFormDefaulted('frm_proberollup001', ROLLUPS.donations.id)
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_FOREIGNKEY);
@@ -311,15 +304,16 @@ describe('a form cannot name a rollup account either', () => {
 	it('refuses to let the pin be lowered to 0 to reach a rollup anyway', async () => {
 		// `(4100, 0)` matches the parent index perfectly, so the FK alone is not the
 		// constraint — the check pinning this side to 1 is the other half.
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into form
+		const message = await rejectionCode(() =>
+			run(
+				stmt(
+					`insert into form
 					   (id, name, revenue_account_id, revenue_account_is_postable,
 					    currency, created_at, updated_at)
-					 values ('frm_probepin000000', 'probe', ?, 0, 'USD', 0, 0)`
+					 values ('frm_probepin000000', 'probe', ?, 0, 'USD', 0, 0)`,
+					ROLLUPS.donations.id
+				)
 			)
-				.bind(ROLLUPS.donations.id)
-				.run()
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('form_revenue_account_postable_check');
@@ -341,77 +335,86 @@ describe('a form pins a program or it does not, and the two columns cannot disag
 	const PROGRAM_ID = '019fb100-0000-7000-8000-000000000101';
 
 	const insertForm = (id: string, mode: string, programId: string | null) =>
-		env.DB.prepare(
-			`insert into form (id, name, revenue_account_id, currency, program_mode, program_id,
+		run(
+			stmt(
+				`insert into form (id, name, revenue_account_id, currency, program_mode, program_id,
 			                   created_at, updated_at)
-			 values (?, 'probe', ?, 'USD', ?, ?, 0, 0)`
-		)
-			.bind(id, POSTING_ACCOUNTS.donationsDeductible.id, mode, programId)
-			.run();
+			 values (?, 'probe', ?, 'USD', ?, ?, 0, 0)`,
+				id,
+				POSTING_ACCOUNTS.donationsDeductible.id,
+				mode,
+				programId
+			)
+		);
 
 	beforeAll(async () => {
-		await env.DB.prepare(
-			`insert into program (id, name, status, created_at, updated_at)
-			 values (?, 'Probe Programme', 'active', 0, 0)`
-		)
-			.bind(PROGRAM_ID)
-			.run();
+		await run(
+			stmt(
+				`insert into program (id, name, status, created_at, updated_at)
+			 values (?, 'Probe Programme', 'active', 0, 0)`,
+				PROGRAM_ID
+			)
+		);
 	});
 
 	it('defaults to naming no programme at all, which is what an existing form is', async () => {
 		// the rebuild carried every form across without either column, so the SQL default is the
 		// value every form written before this migration holds. a default of anything else would
 		// have failed the copy at the one-way door.
-		await env.DB.prepare(
-			`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
-			 values ('frm_probemodedflt', 'probe', ?, 'USD', 0, 0)`
-		)
-			.bind(POSTING_ACCOUNTS.donationsDeductible.id)
-			.run();
-		const row = await env.DB.prepare(
-			'select program_mode as mode, program_id as program from form where id = ?'
-		)
-			.bind('frm_probemodedflt')
-			.first();
+		await run(
+			stmt(
+				`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
+			 values ('frm_probemodedflt', 'probe', ?, 'USD', 0, 0)`,
+				POSTING_ACCOUNTS.donationsDeductible.id
+			)
+		);
+		const row = await first(
+			stmt(
+				'select program_mode as mode, program_id as program from form where id = ?',
+				'frm_probemodedflt'
+			)
+		);
 		expect(row).toEqual({ mode: 'none', program: null });
 	});
 
 	it('accepts `pinned` with the cause it pins', async () => {
 		await insertForm('frm_probepinned001', 'pinned', PROGRAM_ID);
-		const row = await env.DB.prepare('select program_id as program from form where id = ?')
-			.bind('frm_probepinned001')
-			.first();
+		const row = await first(
+			stmt('select program_id as program from form where id = ?', 'frm_probepinned001')
+		);
 		expect(row).toEqual({ program: PROGRAM_ID });
 	});
 
 	it('accepts `choice` with none, which is the donor picking', async () => {
 		await insertForm('frm_probechoice001', 'choice', null);
-		const row = await env.DB.prepare('select program_mode as mode from form where id = ?')
-			.bind('frm_probechoice001')
-			.first();
+		const row = await first(
+			stmt('select program_mode as mode from form where id = ?', 'frm_probechoice001')
+		);
 		expect(row).toEqual({ mode: 'choice' });
 	});
 
 	it('refuses `pinned` naming nothing', async () => {
-		const message = await rejection(() => insertForm('frm_probepinbare01', 'pinned', null));
+		const message = await rejectionCode(() => insertForm('frm_probepinbare01', 'pinned', null));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('form_program_pinned_check');
 	});
 
 	it('refuses `none` still holding a cause', async () => {
-		const message = await rejection(() => insertForm('frm_probenoneheld1', 'none', PROGRAM_ID));
+		const message = await rejectionCode(() => insertForm('frm_probenoneheld1', 'none', PROGRAM_ID));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('form_program_pinned_check');
 	});
 
 	it('refuses `choice` still holding a cause, so the pairing is not just about `none`', async () => {
-		const message = await rejection(() => insertForm('frm_probechoiceheld', 'choice', PROGRAM_ID));
+		const message = await rejectionCode(() =>
+			insertForm('frm_probechoiceheld', 'choice', PROGRAM_ID)
+		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('form_program_pinned_check');
 	});
 
 	it('refuses a mode outside none/pinned/choice', async () => {
-		const message = await rejection(() => insertForm('frm_probemodebogus', 'every', null));
+		const message = await rejectionCode(() => insertForm('frm_probemodebogus', 'every', null));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('form_program_mode_check');
 	});
@@ -419,7 +422,7 @@ describe('a form pins a program or it does not, and the two columns cannot disag
 	it('refuses a cause no programme carries', async () => {
 		// the pairing check passes here — `pinned` with a non-null id — so what rejects the row is
 		// the foreign key, which is the half that makes the column a pointer rather than a string.
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertForm('frm_probeghostprg1', 'pinned', '019fb100-0000-7000-8000-0000000000ff')
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_FOREIGNKEY);
@@ -428,33 +431,41 @@ describe('a form pins a program or it does not, and the two columns cannot disag
 	it('records a gift against a cause, and against none at all', async () => {
 		// `donation.program_id` arrived by `ALTER TABLE ... ADD COLUMN`, so it carries a foreign key
 		// and no check: null is every gift entered by staff and every gift on a form pinning nothing.
-		await env.DB.prepare(
-			`insert into donation (id, contact_id, total_minor, currency, received_at, created_at,
+		await run(
+			stmt(
+				`insert into donation (id, contact_id, total_minor, currency, received_at, created_at,
 			                       program_id)
-			 values (?, ?, 5000, 'USD', 0, 0, ?)`
-		)
-			.bind('019fb100-0000-7000-8000-000000000102', CONTACT_ID, PROGRAM_ID)
-			.run();
-		const row = await env.DB.prepare('select program_id as program from donation where id = ?')
-			.bind('019fb100-0000-7000-8000-000000000102')
-			.first();
+			 values (?, ?, 5000, 'USD', 0, 0, ?)`,
+				'019fb100-0000-7000-8000-000000000102',
+				CONTACT_ID,
+				PROGRAM_ID
+			)
+		);
+		const row = await first(
+			stmt(
+				'select program_id as program from donation where id = ?',
+				'019fb100-0000-7000-8000-000000000102'
+			)
+		);
 		expect(row).toEqual({ program: PROGRAM_ID });
 		// the gift the file-level `beforeAll` wrote names no column of ours at all.
-		const bare = await env.DB.prepare('select program_id as program from donation where id = ?')
-			.bind(DONATION_ID)
-			.first();
+		const bare = await first(
+			stmt('select program_id as program from donation where id = ?', DONATION_ID)
+		);
 		expect(bare).toEqual({ program: null });
 	});
 
 	it('refuses a gift against a cause no programme carries', async () => {
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into donation (id, contact_id, total_minor, currency, received_at, created_at,
+		const message = await rejectionCode(() =>
+			run(
+				stmt(
+					`insert into donation (id, contact_id, total_minor, currency, received_at, created_at,
 				                       program_id)
-				 values (?, ?, 5000, 'USD', 0, 0, '019fb100-0000-7000-8000-0000000000ff')`
+				 values (?, ?, 5000, 'USD', 0, 0, '019fb100-0000-7000-8000-0000000000ff')`,
+					'019fb100-0000-7000-8000-000000000103',
+					CONTACT_ID
+				)
 			)
-				.bind('019fb100-0000-7000-8000-000000000103', CONTACT_ID)
-				.run()
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_FOREIGNKEY);
 	});
@@ -467,41 +478,44 @@ describe('currency is uppercase on every table that stores one', () => {
 	// so the four columns cannot drift apart; these are the proof that they have not.
 
 	it('refuses a lowercase currency on form', async () => {
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
-				 values ('frm_probelowercase', 'probe', ?, 'usd', 0, 0)`
+		const message = await rejectionCode(() =>
+			run(
+				stmt(
+					`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
+				 values ('frm_probelowercase', 'probe', ?, 'usd', 0, 0)`,
+					POSTING_ACCOUNTS.donationsDeductible.id
+				)
 			)
-				.bind(POSTING_ACCOUNTS.donationsDeductible.id)
-				.run()
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('form_currency_check');
 	});
 
 	it('refuses a lowercase currency on donation', async () => {
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
-				 values ('d-lowercase', ?, 10000, 'usd', 0, 0)`
+		const message = await rejectionCode(() =>
+			run(
+				stmt(
+					`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+				 values ('d-lowercase', ?, 10000, 'usd', 0, 0)`,
+					CONTACT_ID
+				)
 			)
-				.bind(CONTACT_ID)
-				.run()
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('donation_currency_check');
 	});
 
 	it('refuses a lowercase currency on payment', async () => {
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into payment
+		const message = await rejectionCode(() =>
+			run(
+				stmt(
+					`insert into payment
 				   (id, donation_id, amount_minor, currency, direction, method, status,
 				    occurred_at, created_at)
-				 values ('p-lowercase', ?, 10000, 'usd', 'inbound', 'cash', 'succeeded', 0, 0)`
+				 values ('p-lowercase', ?, 10000, 'usd', 'inbound', 'cash', 'succeeded', 0, 0)`,
+					DONATION_ID
+				)
 			)
-				.bind(DONATION_ID)
-				.run()
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('payment_currency_check');
@@ -514,28 +528,30 @@ describe('a gift has to be for some amount', () => {
 		// produces, and left to stand it posts an entry group of zero-amount lines that
 		// `ledger_entry_amount_minor_not_zero_check` rejects mid-batch — the whole gift
 		// rolled back, reported from the ledger, about a value this row let through.
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
-				 values ('d-zero', ?, 0, 'USD', 0, 0)`
+		const message = await rejectionCode(() =>
+			run(
+				stmt(
+					`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+				 values ('d-zero', ?, 0, 'USD', 0, 0)`,
+					CONTACT_ID
+				)
 			)
-				.bind(CONTACT_ID)
-				.run()
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('donation_total_minor_positive_check');
 	});
 
 	it('refuses amount_minor = 0 on payment', async () => {
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into payment
+		const message = await rejectionCode(() =>
+			run(
+				stmt(
+					`insert into payment
 				   (id, donation_id, amount_minor, currency, direction, method, status,
 				    occurred_at, created_at)
-				 values ('p-zero', ?, 0, 'USD', 'inbound', 'cash', 'succeeded', 0, 0)`
+				 values ('p-zero', ?, 0, 'USD', 'inbound', 'cash', 'succeeded', 0, 0)`,
+					DONATION_ID
+				)
 			)
-				.bind(DONATION_ID)
-				.run()
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('payment_amount_minor_positive_check');
@@ -556,16 +572,20 @@ describe('the ordering CHECK on a form’s amount bounds', () => {
 	// withdrawing it later would block `DROP COLUMN` on both.
 
 	const insertForm = (id: string, min: number | null, max: number | null) =>
-		env.DB.prepare(
-			`insert into form (id, name, revenue_account_id, currency, min_minor, max_minor,
+		run(
+			stmt(
+				`insert into form (id, name, revenue_account_id, currency, min_minor, max_minor,
 			                   created_at, updated_at)
-			 values (?, 'probe', ?, 'USD', ?, ?, 0, 0)`
-		)
-			.bind(id, POSTING_ACCOUNTS.donationsDeductible.id, min, max)
-			.run();
+			 values (?, 'probe', ?, 'USD', ?, ?, 0, 0)`,
+				id,
+				POSTING_ACCOUNTS.donationsDeductible.id,
+				min,
+				max
+			)
+		);
 
 	it('refuses an inverted pair', async () => {
-		const message = await rejection(() => insertForm('frm_probeinverted0', 5000, 1000));
+		const message = await rejectionCode(() => insertForm('frm_probeinverted0', 5000, 1000));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('form_min_max_minor_check');
 	});
@@ -574,11 +594,9 @@ describe('the ordering CHECK on a form’s amount bounds', () => {
 		// the boundary, pinned so nobody tightens `<=` into `<`. one appeal with a single
 		// permitted gift size is a real form, and it is the shape that would break silently.
 		await insertForm('frm_probeequalpair', 2500, 2500);
-		const row = await env.DB.prepare(
-			'select min_minor as lo, max_minor as hi from form where id = ?'
-		)
-			.bind('frm_probeequalpair')
-			.first();
+		const row = await first(
+			stmt('select min_minor as lo, max_minor as hi from form where id = ?', 'frm_probeequalpair')
+		);
 		expect(row).toEqual({ lo: 2500, hi: 2500 });
 	});
 
@@ -589,10 +607,10 @@ describe('the ordering CHECK on a form’s amount bounds', () => {
 		await insertForm('frm_probenobounds0', null, null);
 		await insertForm('frm_probeminonly00', 1000, null);
 		await insertForm('frm_probemaxonly00', null, 1000);
-		const { results } = await env.DB.prepare(
-			`select id from form where id in
-			   ('frm_probenobounds0', 'frm_probeminonly00', 'frm_probemaxonly00') order by id`
-		).all<{ id: string }>();
+		const results = await all<{ id: string }>(
+			stmt(`select id from form where id in
+			   ('frm_probenobounds0', 'frm_probeminonly00', 'frm_probemaxonly00') order by id`)
+		);
 		expect(results).toHaveLength(3);
 	});
 });
@@ -616,19 +634,21 @@ describe('the two CHECKs on a form’s public id', () => {
 	// the schema, so no other test in this file stands in for it.
 
 	const insertFormId = (id: string) =>
-		env.DB.prepare(
-			`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
-			 values (?, 'probe', ?, 'USD', 0, 0)`
-		)
-			.bind(id, POSTING_ACCOUNTS.donationsDeductible.id)
-			.run();
+		run(
+			stmt(
+				`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
+			 values (?, 'probe', ?, 'USD', 0, 0)`,
+				id,
+				POSTING_ACCOUNTS.donationsDeductible.id
+			)
+		);
 
 	it('refuses an id shorter than twelve characters', async () => {
 		// the entropy floor, and it is a security constraint rather than a formatting one:
 		// with the four-character `frm_` prefix, `>= 12` is what keeps at least eight
 		// characters of randomness in an id that addresses an endpoint with no auth in front
 		// of it. a minter that got shortened is the way this erodes.
-		const message = await rejection(() => insertFormId('frm_short'));
+		const message = await rejectionCode(() => insertFormId('frm_short'));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('form_id_length_check');
 	});
@@ -639,7 +659,7 @@ describe('the two CHECKs on a form’s public id', () => {
 		// form under a blank id is one no snippet can address and no screen can name.
 		// written as `repeat` rather than as twelve literal spaces, for the same reason the
 		// NBSP probes below are written as escapes — a run of spaces in a diff is a guess.
-		const message = await rejection(() => insertFormId(' '.repeat(12)));
+		const message = await rejectionCode(() => insertFormId(' '.repeat(12)));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('form_id_not_blank_check');
 	});
@@ -649,9 +669,7 @@ describe('the two CHECKs on a form’s public id', () => {
 		// produces exactly the minimum length is legal today; a later `> 12` would reject
 		// every id it makes, at form creation, long after the check stopped being read.
 		await insertFormId('frm_12chars0');
-		const row = await env.DB.prepare('select id from form where id = ?')
-			.bind('frm_12chars0')
-			.first();
+		const row = await first(stmt('select id from form where id = ?', 'frm_12chars0'));
 		expect(row).toEqual({ id: 'frm_12chars0' });
 	});
 });
@@ -668,7 +686,7 @@ describe('the enum CHECKs', () => {
 	// schema.ts, so what can go wrong is a whole constraint missing, not one member of it.
 
 	const rejects = async (label: string, sql: string, constraint: string) => {
-		const message = await rejection(() => env.DB.prepare(sql).run());
+		const message = await rejectionCode(() => run(stmt(sql)));
 		expect(message, label).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message, label).toContain(constraint);
 	};
@@ -713,18 +731,20 @@ describe('the enum CHECKs', () => {
 			// the positive control on the widened list, and the claim `PAYMENT_METHODS` makes: a
 			// gift through PayPal's window is not recorded as a card payment, and a Venmo one is
 			// told apart from a PayPal one on the row rather than only in the processor's console.
-			await env.DB.prepare(
-				`insert into payment (id, donation_id, amount_minor, currency, direction, method,
+			await run(
+				stmt(
+					`insert into payment (id, donation_id, amount_minor, currency, direction, method,
 				                      status, provider, provider_txn_id, occurred_at, created_at)
-				 values (?, ?, 10000, 'USD', 'inbound', ?, 'succeeded', 'paypal', ?, 0, 0)`
-			)
-				.bind(`p-${method}`, DONATION_ID, method, `pp_${method}`)
-				.run();
-			const row = await env.DB.prepare(
-				'select method as m, provider as p from payment where id = ?'
-			)
-				.bind(`p-${method}`)
-				.first();
+				 values (?, ?, 10000, 'USD', 'inbound', ?, 'succeeded', 'paypal', ?, 0, 0)`,
+					`p-${method}`,
+					DONATION_ID,
+					method,
+					`pp_${method}`
+				)
+			);
+			const row = await first(
+				stmt('select method as m, provider as p from payment where id = ?', `p-${method}`)
+			);
 			expect(row).toEqual({ m: method, p: 'paypal' });
 		}
 	);
@@ -732,18 +752,20 @@ describe('the enum CHECKs', () => {
 	it('admits daf carried by chariot, the grant id standing in the txn id column', async () => {
 		// a grant from a donor-advised fund is its own way money arrives, and chariot is the
 		// processor that carries it — the pair a DAF gift's row is written with.
-		await env.DB.prepare(
-			`insert into payment (id, donation_id, amount_minor, currency, direction, method,
+		await run(
+			stmt(
+				`insert into payment (id, donation_id, amount_minor, currency, direction, method,
 			                      status, provider, provider_txn_id, occurred_at, created_at)
-			 values ('p-daf', ?, 10000, 'USD', 'inbound', 'daf', 'pending', 'chariot', 'grant_1', 0, 0)`
-		)
-			.bind(DONATION_ID)
-			.run();
-		const row = await env.DB.prepare(
-			'select method as m, provider as p, provider_txn_id as t from payment where id = ?'
-		)
-			.bind('p-daf')
-			.first();
+			 values ('p-daf', ?, 10000, 'USD', 'inbound', 'daf', 'pending', 'chariot', 'grant_1', 0, 0)`,
+				DONATION_ID
+			)
+		);
+		const row = await first(
+			stmt(
+				'select method as m, provider as p, provider_txn_id as t from payment where id = ?',
+				'p-daf'
+			)
+		);
 		expect(row).toEqual({ m: 'daf', p: 'chariot', t: 'grant_1' });
 	});
 
@@ -771,16 +793,15 @@ describe('the enum CHECKs', () => {
 		);
 		// the half that must not be broken by it: `provider` is nullable and `null in (...)`
 		// evaluates to null, which a check accepts. staff entry depends on that.
-		await env.DB.prepare(
-			`insert into payment (id, donation_id, amount_minor, currency, direction, method,
+		await run(
+			stmt(
+				`insert into payment (id, donation_id, amount_minor, currency, direction, method,
 			                      status, occurred_at, created_at)
-			 values ('p-noprovider', ?, 10000, 'USD', 'inbound', 'cash', 'succeeded', 0, 0)`
-		)
-			.bind(DONATION_ID)
-			.run();
-		const row = await env.DB.prepare('select provider as p from payment where id = ?')
-			.bind('p-noprovider')
-			.first();
+			 values ('p-noprovider', ?, 10000, 'USD', 'inbound', 'cash', 'succeeded', 0, 0)`,
+				DONATION_ID
+			)
+		);
+		const row = await first(stmt('select provider as p from payment where id = ?', 'p-noprovider'));
 		expect(row).toEqual({ p: null });
 	});
 
@@ -789,14 +810,15 @@ describe('the enum CHECKs', () => {
 		// note on it in schema.ts. that is deliberate, and it is only safe if it really is
 		// enforced: a default silently added later would make every webhook that forgot to map
 		// the rail's outcome record a settlement that may not have happened.
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into payment (id, donation_id, amount_minor, currency, direction, method,
+		const message = await rejectionCode(() =>
+			run(
+				stmt(
+					`insert into payment (id, donation_id, amount_minor, currency, direction, method,
 				                      occurred_at, created_at)
-				 values ('p-nostatus', ?, 10000, 'USD', 'inbound', 'cash', 0, 0)`
+				 values ('p-nostatus', ?, 10000, 'USD', 'inbound', 'cash', 0, 0)`,
+					DONATION_ID
+				)
 			)
-				.bind(DONATION_ID)
-				.run()
 		);
 		expect(message).toContain('SQLITE_CONSTRAINT_NOTNULL');
 	});
@@ -807,17 +829,20 @@ describe('the enum CHECKs', () => {
 		// substrate — a failed charge writes no row and is indistinguishable from a gift
 		// nobody has paid yet.
 		for (const status of ['pending', 'succeeded', 'failed', 'cancelled']) {
-			await env.DB.prepare(
-				`insert into payment (id, donation_id, amount_minor, currency, direction, method,
+			await run(
+				stmt(
+					`insert into payment (id, donation_id, amount_minor, currency, direction, method,
 				                      status, occurred_at, created_at)
-				 values (?, ?, 10000, 'USD', 'inbound', 'card', ?, 0, 0)`
-			)
-				.bind(`p-status-${status}`, DONATION_ID, status)
-				.run();
+				 values (?, ?, 10000, 'USD', 'inbound', 'card', ?, 0, 0)`,
+					`p-status-${status}`,
+					DONATION_ID,
+					status
+				)
+			);
 		}
-		const { results } = await env.DB.prepare(
-			`select status from payment where id like 'p-status-%' order by status`
-		).all<{ status: string }>();
+		const results = await all<{ status: string }>(
+			stmt(`select status from payment where id like 'p-status-%' order by status`)
+		);
 		expect(results.map((r) => r.status)).toEqual(['cancelled', 'failed', 'pending', 'succeeded']);
 	});
 });
@@ -829,12 +854,15 @@ describe('a currency column holds three letters, not three bytes', () => {
 	// does while every row reads clean.
 
 	const insertFormCurrency = (id: string, currency: string) =>
-		env.DB.prepare(
-			`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
-			 values (?, 'probe', ?, ?, 0, 0)`
-		)
-			.bind(id, POSTING_ACCOUNTS.donationsDeductible.id, currency)
-			.run();
+		run(
+			stmt(
+				`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
+			 values (?, 'probe', ?, ?, 0, 0)`,
+				id,
+				POSTING_ACCOUNTS.donationsDeductible.id,
+				currency
+			)
+		);
 
 	it.each([
 		['digits', 'frm_ccydigits00000', '123'],
@@ -843,7 +871,7 @@ describe('a currency column holds three letters, not three bytes', () => {
 		['spaces', 'frm_ccyspaces00000', '   '],
 		['an accented letter, which equals its own upper()', 'frm_ccyaccent00000', 'ÉUR']
 	])('refuses %s', async (label, id, currency) => {
-		const message = await rejection(() => insertFormCurrency(id, currency));
+		const message = await rejectionCode(() => insertFormCurrency(id, currency));
 		expect(message, label).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message, label).toContain('form_currency_check');
 	});
@@ -852,9 +880,9 @@ describe('a currency column holds three letters, not three bytes', () => {
 		// the positive control. a `glob` typo — a missing bracket, a lowercase range — would
 		// reject everything, and every assertion above would still pass.
 		await insertFormCurrency('frm_probecurrency1', 'RWF');
-		const row = await env.DB.prepare('select currency as c from form where id = ?')
-			.bind('frm_probecurrency1')
-			.first();
+		const row = await first(
+			stmt('select currency as c from form where id = ?', 'frm_probecurrency1')
+		);
 		expect(row).toEqual({ c: 'RWF' });
 	});
 });
@@ -874,13 +902,16 @@ describe('a not-blank column rejects the whitespace a paste actually contains', 
 		['a non-breaking space (U+00A0)', 'frm_blanknbsp00000', '\u00a0'],
 		['NBSP mixed with ASCII whitespace', 'frm_blankmixed0000', ' \u00a0\t \n ']
 	])('refuses a form name that is %s', async (label, id, name) => {
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
-				 values (?, ?, ?, 'USD', 0, 0)`
+		const message = await rejectionCode(() =>
+			run(
+				stmt(
+					`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
+				 values (?, ?, ?, 'USD', 0, 0)`,
+					id,
+					name,
+					POSTING_ACCOUNTS.donationsDeductible.id
+				)
 			)
-				.bind(id, name, POSTING_ACCOUNTS.donationsDeductible.id)
-				.run()
 		);
 		expect(message, label).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message, label).toContain('form_name_not_blank_check');
@@ -892,29 +923,33 @@ describe('a not-blank column rejects the whitespace a paste actually contains', 
 		// what a paste of 'General Fund' carries — so the codepoint set must not turn that into
 		// a rejection. written as an escape, like the probes above.
 		const name = 'General\u00a0Fund';
-		await env.DB.prepare(
-			`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
-			 values ('frm_probenbspname', ?, ?, 'USD', 0, 0)`
-		)
-			.bind(name, POSTING_ACCOUNTS.donationsDeductible.id)
-			.run();
-		const row = await env.DB.prepare('select name as n from form where id = ?')
-			.bind('frm_probenbspname')
-			.first();
+		await run(
+			stmt(
+				`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
+			 values ('frm_probenbspname', ?, ?, 'USD', 0, 0)`,
+				name,
+				POSTING_ACCOUNTS.donationsDeductible.id
+			)
+		);
+		const row = await first(stmt('select name as n from form where id = ?', 'frm_probenbspname'));
 		expect(row).toEqual({ n: name });
 	});
 });
 
 describe('payment-grain idempotency', () => {
 	const insertPayment = (id: string, provider: string | null, txnId: string | null) =>
-		env.DB.prepare(
-			`insert into payment
+		run(
+			stmt(
+				`insert into payment
 			   (id, donation_id, amount_minor, currency, direction, method, status,
 			    provider, provider_txn_id, occurred_at, created_at)
-			 values (?, ?, 10000, 'USD', 'inbound', 'card', 'succeeded', ?, ?, 0, 0)`
-		)
-			.bind(id, DONATION_ID, provider, txnId)
-			.run();
+			 values (?, ?, 10000, 'USD', 'inbound', 'card', 'succeeded', ?, ?, 0, 0)`,
+				id,
+				DONATION_ID,
+				provider,
+				txnId
+			)
+		);
 
 	it('refuses a redelivered (provider, provider_txn_id)', async () => {
 		// this sits under `entry_group_source_idx`'s posting-grain idempotency, not beside
@@ -922,7 +957,7 @@ describe('payment-grain idempotency', () => {
 		// settlement event, by the database rather than by a read-then-write check that
 		// `batch()` cannot perform atomically anyway.
 		await insertPayment('p-stripe-1', 'stripe', 'ch_probe');
-		const message = await rejection(() => insertPayment('p-stripe-2', 'stripe', 'ch_probe'));
+		const message = await rejectionCode(() => insertPayment('p-stripe-2', 'stripe', 'ch_probe'));
 		expect(message).toContain(SQLITE_CONSTRAINT_UNIQUE);
 	});
 
@@ -937,10 +972,10 @@ describe('payment-grain idempotency', () => {
 		// scoped to these two ids, not to `provider is null` over the whole table: writes
 		// accumulate down this file (per-file storage), so the unscoped form was one
 		// successful probe away from failing for a reason that is not the schema's.
-		const { results } = await env.DB.prepare(
-			`select id from payment
-			 where provider is null and id in ('p-manual-1', 'p-manual-2') order by id`
-		).all<{ id: string }>();
+		const results = await all<{ id: string }>(
+			stmt(`select id from payment
+			 where provider is null and id in ('p-manual-1', 'p-manual-2') order by id`)
+		);
 		expect(results.map((r) => r.id)).toEqual(['p-manual-1', 'p-manual-2']);
 	});
 
@@ -956,7 +991,9 @@ describe('payment-grain idempotency', () => {
 			// charge, the exact outcome the index exists to prevent. it runs over every processor
 			// rather than over Stripe alone, which is the whole of what the check's generalised
 			// predicate claims.
-			const message = await rejection(() => insertPayment(`p-${provider}-notxn`, provider, null));
+			const message = await rejectionCode(() =>
+				insertPayment(`p-${provider}-notxn`, provider, null)
+			);
 			expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 			expect(message).toContain('payment_processor_needs_txn_id_check');
 		}
@@ -966,7 +1003,7 @@ describe('payment-grain idempotency', () => {
 		// without this check (null, 'ch_x') inserts twice — the same hole from the other side,
 		// and the shape a webhook handler produces when it reads the charge id but not the
 		// rail that sent it.
-		const message = await rejection(() => insertPayment('p-notprovider', null, 'ch_orphan'));
+		const message = await rejectionCode(() => insertPayment('p-notprovider', null, 'ch_orphan'));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('payment_txn_id_needs_provider_check');
 	});
@@ -976,7 +1013,7 @@ describe('payment-grain idempotency', () => {
 		// `''` is not null — so a boundary that normalises a missing id to the empty string
 		// refuses the second real payment as a redelivery. that loses a gift instead of
 		// double-counting one, and it looks like idempotency working.
-		const message = await rejection(() => insertPayment('p-blanktxn', 'stripe', ''));
+		const message = await rejectionCode(() => insertPayment('p-blanktxn', 'stripe', ''));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('payment_provider_txn_id_not_blank_check');
 	});
@@ -984,7 +1021,7 @@ describe('payment-grain idempotency', () => {
 	it('refuses a whitespace-only txn id, tab and newline included', async () => {
 		// `trim(x, char(32, 9, 10, 13))`, not the one-argument `trim(x)` that strips only
 		// U+0020 — a lone tab would otherwise satisfy the check and behave exactly like `''`.
-		const message = await rejection(() => insertPayment('p-wstxn', 'stripe', ' \t\n\r '));
+		const message = await rejectionCode(() => insertPayment('p-wstxn', 'stripe', ' \t\n\r '));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('payment_provider_txn_id_not_blank_check');
 	});
@@ -995,11 +1032,9 @@ describe('payment-grain idempotency', () => {
 		// is not null": staff entry of cash and checks is every gift in v0, and `('manual', NULL)`
 		// has to insert.
 		await insertPayment('p-manual-named', 'manual', null);
-		const row = await env.DB.prepare(
-			'select provider as p, provider_txn_id as t from payment where id = ?'
-		)
-			.bind('p-manual-named')
-			.first();
+		const row = await first(
+			stmt('select provider as p, provider_txn_id as t from payment where id = ?', 'p-manual-named')
+		);
 		expect(row).toEqual({ p: 'manual', t: null });
 	});
 });
@@ -1015,14 +1050,14 @@ describe('the shape `form` is in, off the applied migrations', () => {
 	// snapshot still agrees with and reports no drift over.
 	//
 	// `STRICT` and the `NO ACTION` on its foreign keys are not here: both are read exhaustively
-	// out of sqlite's own catalogue by ./strict.workers.spec.ts, over every table rather than a
+	// out of sqlite's own catalogue by ./strict.db.spec.ts, over every table rather than a
 	// list, so `form` is covered there the moment it exists in any shape.
 
 	/** the `CREATE TABLE` sqlite is holding, as the applied migrations left it. */
 	async function formDdl(): Promise<string> {
-		const row = await env.DB.prepare(
-			"select sql as ddl from sqlite_master where type = 'table' and name = 'form'"
-		).first<{ ddl: string }>();
+		const row = await first<{ ddl: string }>(
+			stmt("select sql as ddl from sqlite_master where type = 'table' and name = 'form'")
+		);
 		return row?.ddl ?? '';
 	}
 
@@ -1030,10 +1065,10 @@ describe('the shape `form` is in, off the applied migrations', () => {
 		// past drizzle and past `schema.ts` both: a `DROP COLUMN` sqlite refuses is a migration
 		// that fails loudly, but a rebuild that simply forgot to carry the drop through is one
 		// where every read still passes and the column quietly survives on the deployed database.
-		const columns = await env.DB.prepare("select name from pragma_table_info('form')").all<{
+		const columns = await all<{
 			name: string;
-		}>();
-		const names = columns.results.map((c) => c.name);
+		}>(stmt("select name from pragma_table_info('form')"));
+		const names = columns.map((c) => c.name);
 		expect(names).not.toContain('payment_methods');
 		expect(names).not.toContain('frequencies');
 	});
@@ -1075,13 +1110,15 @@ describe('the shape `form` is in, off the applied migrations', () => {
 		// tests write the `DEFAULT` literals through the checks and never a value that should be
 		// refused. one rejection each is what makes the survival of these two a claim.
 		for (const column of ['suggested_amounts', 'allowed_origins']) {
-			const message = await rejection(() =>
-				env.DB.prepare(
-					`insert into form (id, name, revenue_account_id, currency, ${column}, created_at, updated_at)
-					 values (?, 'probe', ?, 'USD', '"not an array"', 0, 0)`
+			const message = await rejectionCode(() =>
+				run(
+					stmt(
+						`insert into form (id, name, revenue_account_id, currency, ${column}, created_at, updated_at)
+					 values (?, 'probe', ?, 'USD', '"not an array"', 0, 0)`,
+						`frm_probearray${column.slice(0, 4)}`,
+						POSTING_ACCOUNTS.donationsDeductible.id
+					)
 				)
-					.bind(`frm_probearray${column.slice(0, 4)}`, POSTING_ACCOUNTS.donationsDeductible.id)
-					.run()
 			);
 			expect(message, column).toContain(SQLITE_CONSTRAINT_CHECK);
 			expect(message, column).toContain(`form_${column}_array_check`);
@@ -1092,10 +1129,10 @@ describe('the shape `form` is in, off the applied migrations', () => {
 		// the copy step SELECTs into a new table, so a primary key stated wrong there is a table
 		// that accepts two forms with one public id — which is two donation snippets pointing at
 		// each other's fund.
-		const columns = await env.DB.prepare("select name, pk from pragma_table_info('form')").all<{
+		const columns = await all<{
 			name: string;
 			pk: number;
-		}>();
-		expect(columns.results.filter((c) => c.pk > 0).map((c) => c.name)).toEqual(['id']);
+		}>(stmt("select name, pk from pragma_table_info('form')"));
+		expect(columns.filter((c) => c.pk > 0).map((c) => c.name)).toEqual(['id']);
 	});
 });

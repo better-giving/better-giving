@@ -6,7 +6,7 @@ import { journalFile } from './journal-file';
 // the two files an accountant downloads, and nothing about how they are served.
 //
 // a pure spec in the node pool: the shaping takes entries it is handed and returns text, so
-// nothing here touches D1 — the read that produces those entries is ./queries.workers.spec.ts's.
+// nothing here touches D1 — the read that produces those entries is ./queries.db.spec.ts's.
 //
 // the expected rows are written out as literals rather than assembled the way the module
 // assembles them. each vendor's header is a contract their importer either accepts or rejects,

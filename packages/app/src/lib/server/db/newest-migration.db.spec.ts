@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { applyD1Migrations, env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { parsePage } from '../../page/catalog';
 import type { PageType } from '../../page/keys';
@@ -8,17 +7,19 @@ import { post, postingStatements } from '../ledger/posting';
 import { HELD_UNTIL } from '../webhooks/events';
 import { donationRevenueAccount, POSTING_ACCOUNTS, postableId } from './accounts';
 import { createDb } from './client';
+import { MIGRATIONS, openUnmigrated, rawSql, stmt } from './database.testing';
+import { applyMigrations, type Migration } from './migrate';
 
 // every migration the test deployment has not applied, over a database that already holds gifts.
 //
-// every other workers spec runs against an empty schema the whole chain built at once, so a
+// every other database spec runs against an empty schema the whole chain built at once, so a
 // rebuild that drops rows, or a `DROP TABLE` whose deferral is missing, passes all of them: an
 // empty table copies clean. the deployment that matters is the one already taking gifts, and its
 // remote apply is a one-way door (CONTRIBUTING.md -> Migrations). so this file stops the chain on
-// `UNMIGRATED_DB` in front of `FIRST_UNAPPLIED`, seeds a row of every shape the payment,
-// recurring, Zapier and QuickBooks tables hold, applies each file from there as one batch with its
-// `d1_migrations` row — one file, one transaction, as both remote apply paths run it
-// (packages/console/internal/migrate/migrate.go) — and reads every table back.
+// a database of its own in front of `FIRST_UNAPPLIED`, seeds a row of every shape the payment,
+// recurring, Zapier and QuickBooks tables hold, applies each file from there with ./migrate.ts —
+// one file and its `d1_migrations` row in one transaction, as `pnpm db:migrate` runs it — and reads
+// every table back.
 //
 // `FIRST_UNAPPLIED` is the oldest file the test deployment's `d1_migrations` does not list. move it
 // forward once that deployment has applied it, never back: every file behind it has crossed the
@@ -46,35 +47,33 @@ const ENDED_ZAP = '019fb300-0000-7000-8000-000000000006';
 const REALM = '4620816365';
 
 const FIRST_UNAPPLIED = '0010_gift_refunded_trigger_and_dispute.sql';
-const STOP = env.TEST_MIGRATIONS.findIndex((m) => m.name === FIRST_UNAPPLIED);
+const STOP = MIGRATIONS.findIndex((m) => m.name === FIRST_UNAPPLIED);
 const nowhereToStop = STOP < 1;
 
 const API_KEY_REBUILT_BY = '0017_zapier_key_is_an_api_key.sql';
-const API_KEY_REBUILD = env.TEST_MIGRATIONS.findIndex((m) => m.name === API_KEY_REBUILT_BY);
+const API_KEY_REBUILD = MIGRATIONS.findIndex((m) => m.name === API_KEY_REBUILT_BY);
 
 const ZAPIER_KEY_DROPPED_BY = '0018_zapier_key_dropped.sql';
 
 const WEBHOOK_DELIVERY_REBUILT_BY = '0019_webhook_delivery_dropped_and_detail.sql';
-const WEBHOOK_DELIVERY_REBUILD = env.TEST_MIGRATIONS.findIndex(
+const WEBHOOK_DELIVERY_REBUILD = MIGRATIONS.findIndex(
 	(m) => m.name === WEBHOOK_DELIVERY_REBUILT_BY
 );
 
 const OWED_ROWS_PARKED_BY = '0022_webhook_delivery_owed_index.sql';
-const OWED_ROWS_PARKING = env.TEST_MIGRATIONS.findIndex((m) => m.name === OWED_ROWS_PARKED_BY);
+const OWED_ROWS_PARKING = MIGRATIONS.findIndex((m) => m.name === OWED_ROWS_PARKED_BY);
 
 const ORG_PRESENTATION_DROPPED_BY = '0026_org_presentation_dropped.sql';
-const ORG_PRESENTATION_DROP = env.TEST_MIGRATIONS.findIndex(
-	(m) => m.name === ORG_PRESENTATION_DROPPED_BY
-);
+const ORG_PRESENTATION_DROP = MIGRATIONS.findIndex((m) => m.name === ORG_PRESENTATION_DROPPED_BY);
 const PAGE_LOOK_REPAIRED_BY = '0027_page_look_legacy_keys.sql';
-const PAGE_LOOK_REPAIR = env.TEST_MIGRATIONS.findIndex((m) => m.name === PAGE_LOOK_REPAIRED_BY);
+const PAGE_LOOK_REPAIR = MIGRATIONS.findIndex((m) => m.name === PAGE_LOOK_REPAIRED_BY);
 const LEGACY_LOOK_FORMS = ['frm_legacylookcampaign', 'frm_legacylookdonate'] as const;
 const LEGACY_LOOK_CAMPAIGN = '019fb300-0000-7000-8000-000000000301';
 const LEGACY_LOOK_DONATION_PAGE = '019fb300-0000-7000-8000-000000000302';
 const LEGACY_LOOK_UPDATED_AT = 1_790_000_000_500;
 
 const CHAT_DROPPED_BY = '0028_page_chat_and_illustrations_dropped.sql';
-const CHAT_DROP = env.TEST_MIGRATIONS.findIndex((m) => m.name === CHAT_DROPPED_BY);
+const CHAT_DROP = MIGRATIONS.findIndex((m) => m.name === CHAT_DROPPED_BY);
 const CHAT_PAGE_FORM = 'frm_chatpage';
 const CHAT_PAGE = '019fb300-0000-7000-8000-000000000401';
 const CHAT_CAUSE = '019fb300-0000-7000-8000-000000000402';
@@ -103,28 +102,28 @@ const DROPPED: readonly string[] = ['zapier_key'];
 
 const sha256Hex = (value: string) => createHash('sha256').update(value).digest('hex');
 
-const db = () => env.UNMIGRATED_DB;
+/** a database of this file's own that nothing has migrated, so a case can stop the chain short. */
+const bare = await openUnmigrated();
+const { run, first, all } = rawSql(bare);
 
 type Row = Record<string, unknown>;
 
-/** every application table, from sqlite's own catalogue — the same filter strict.workers.spec.ts reads. */
+/** every application table, from sqlite's own catalogue — the same filter strict.db.spec.ts reads. */
 async function tableNames(): Promise<string[]> {
-	const { results } = await db()
-		.prepare(
-			`select name from pragma_table_list
+	const results = await all<{ name: string }>(
+		stmt(`select name from pragma_table_list
 			 where schema = 'main' and type = 'table'
 			   and name not like 'sqlite_%' and name not like '\\_cf\\_%' escape '\\'
 			   and name <> 'd1_migrations'
-			 order by name`
-		)
-		.all<{ name: string }>();
+			 order by name`)
+	);
 	return results.map((r) => r.name);
 }
 
 async function snapshot(): Promise<Map<string, Row[]>> {
 	const tables = new Map<string, Row[]>();
 	for (const name of await tableNames()) {
-		const { results } = await db().prepare(`select * from "${name}" order by rowid`).all<Row>();
+		const results = await all<Row>(stmt(`select * from "${name}" order by rowid`));
 		tables.set(name, results);
 	}
 	return tables;
@@ -136,83 +135,81 @@ const project = (row: Row, columns: readonly string[]): Row =>
 
 async function seed() {
 	const statements = [
-		db()
-			.prepare(
-				`insert into contact (id, kind, display_name, created_at, updated_at)
-				 values (?, 'individual', 'Probe Donor', 0, 0)`
-			)
-			.bind(CONTACT_ID),
-		db()
-			.prepare(
-				`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
+		stmt(
+			`insert into contact (id, kind, display_name, created_at, updated_at)
+				 values (?, 'individual', 'Probe Donor', 0, 0)`,
+			CONTACT_ID
+		),
+		stmt(
+			`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
 				 values (?, 'probe', ?, 'USD', 0, 0),
 				        (?, 'campaign page', ?, 'USD', 0, 0),
 				        (?, 'donation page', ?, 'USD', 0, 0),
-				        (?, 'chat page', ?, 'USD', 0, 0)`
-			)
-			.bind(
-				FORM_ID,
-				POSTING_ACCOUNTS.donationsDeductible.id,
-				LEGACY_LOOK_FORMS[0],
-				POSTING_ACCOUNTS.donationsDeductible.id,
-				LEGACY_LOOK_FORMS[1],
-				POSTING_ACCOUNTS.donationsDeductible.id,
-				CHAT_PAGE_FORM,
-				POSTING_ACCOUNTS.donationsDeductible.id
-			),
-		db()
-			.prepare(`insert into program (id, name, created_at, updated_at) values (?, 'Coats', 0, 0)`)
-			.bind(CHAT_CAUSE),
-		db().prepare(
-			`insert into org_profile (id, legal_name, created_at, updated_at)
-			 values ('default', 'Riverside Shelter', 0, 0)`
+				        (?, 'chat page', ?, 'USD', 0, 0)`,
+			FORM_ID,
+			POSTING_ACCOUNTS.donationsDeductible.id,
+			LEGACY_LOOK_FORMS[0],
+			POSTING_ACCOUNTS.donationsDeductible.id,
+			LEGACY_LOOK_FORMS[1],
+			POSTING_ACCOUNTS.donationsDeductible.id,
+			CHAT_PAGE_FORM,
+			POSTING_ACCOUNTS.donationsDeductible.id
 		),
-		db()
-			.prepare(
-				`insert into recurring_plan
+		stmt(
+			`insert into program (id, name, created_at, updated_at) values (?, 'Coats', 0, 0)`,
+			CHAT_CAUSE
+		),
+		stmt(`insert into org_profile (id, legal_name, created_at, updated_at)
+			 values ('default', 'Riverside Shelter', 0, 0)`),
+		stmt(
+			`insert into recurring_plan
 				   (id, contact_id, form_id, amount_minor, currency, "interval", status, provider,
 				    provider_subscription_id, provider_customer_id, started_at, created_at, updated_at)
-				 values (?, ?, ?, 2500, 'USD', 'monthly', 'active', 'stripe', 'sub_probe', 'cus_probe', 0, 0, 0)`
-			)
-			.bind(PLAN_ID, CONTACT_ID, FORM_ID),
-		db()
-			.prepare(
-				`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
-				 values (?, ?, 10000, 'USD', 0, 0)`
-			)
-			.bind(ONE_TIME_ID, CONTACT_ID),
-		db()
-			.prepare(
-				`insert into donation (id, contact_id, total_minor, currency, received_at, created_at,
+				 values (?, ?, ?, 2500, 'USD', 'monthly', 'active', 'stripe', 'sub_probe', 'cus_probe', 0, 0, 0)`,
+			PLAN_ID,
+			CONTACT_ID,
+			FORM_ID
+		),
+		stmt(
+			`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+				 values (?, ?, 10000, 'USD', 0, 0)`,
+			ONE_TIME_ID,
+			CONTACT_ID
+		),
+		stmt(
+			`insert into donation (id, contact_id, total_minor, currency, received_at, created_at,
 				                       recurring_id)
-				 values (?, ?, 2500, 'USD', 0, 0, ?)`
-			)
-			.bind(CHARGE_ID, CONTACT_ID, PLAN_ID),
-		db()
-			.prepare(
-				`insert into zapier_key (id, key_hash, key, created_at, updated_at)
-				 values ('zapier', ?, ?, ?, ?)`
-			)
-			.bind(sha256Hex(ZAPIER_KEY), ZAPIER_KEY, ZAPIER_KEY_MADE_AT, ZAPIER_KEY_MADE_AT),
-		db()
-			.prepare(
-				`insert into zapier_subscription
+				 values (?, ?, 2500, 'USD', 0, 0, ?)`,
+			CHARGE_ID,
+			CONTACT_ID,
+			PLAN_ID
+		),
+		stmt(
+			`insert into zapier_key (id, key_hash, key, created_at, updated_at)
+				 values ('zapier', ?, ?, ?, ?)`,
+			sha256Hex(ZAPIER_KEY),
+			ZAPIER_KEY,
+			ZAPIER_KEY_MADE_AT,
+			ZAPIER_KEY_MADE_AT
+		),
+		stmt(
+			`insert into zapier_subscription
 				   (id, "trigger", hook_url, ended_at, ended_reason, created_at, updated_at)
 				 values (?, 'new_gift', 'https://hooks.zapier.com/hooks/standard/1/open/', null, null, 0, 0),
-				        (?, 'new_donor', 'https://hooks.zapier.com/hooks/standard/1/ended/', 5, 'unsubscribed', 0, 5)`
-			)
-			.bind(OPEN_ZAP, ENDED_ZAP),
-		db()
-			.prepare(
-				`insert into quickbooks_connection
+				        (?, 'new_donor', 'https://hooks.zapier.com/hooks/standard/1/ended/', 5, 'unsubscribed', 0, 5)`,
+			OPEN_ZAP,
+			ENDED_ZAP
+		),
+		stmt(
+			`insert into quickbooks_connection
 			   (id, realm_id, company_name, access_token, access_token_expires_at, refresh_token,
 			    refresh_token_expires_at, income_account_id, income_account_name, fee_account_id,
 			    fee_account_name, stripe_balance_account_id, stripe_balance_account_name, start_at,
 			    created_at, updated_at)
 			 values ('quickbooks', ?, 'Riverside Shelter', 'acc', 3600000, 'ref', 7,
-			         '79', 'Donations', '80', 'Merchant fees', '36', 'Stripe balance', 6, 0, 0)`
-			)
-			.bind(REALM)
+			         '79', 'Donations', '80', 'Merchant fees', '36', 'Stripe balance', 6, 0, 0)`,
+			REALM
+		)
 	];
 	// a row of each nullable shape `payment` holds — a processor with its id, staff entry with and
 	// without a provider, a refund — so a rebuild's copy step has every combination to lose.
@@ -227,83 +224,94 @@ async function seed() {
 		];
 	for (const [id, donationId, amount, direction, method, status, provider, txn] of payments) {
 		statements.push(
-			db()
-				.prepare(
-					`insert into payment (id, donation_id, amount_minor, currency, direction, method,
+			stmt(
+				`insert into payment (id, donation_id, amount_minor, currency, direction, method,
 					                      status, provider, provider_txn_id, occurred_at, created_at)
-					 values (?, ?, ?, 'USD', ?, ?, ?, ?, ?, 1, 2)`
-				)
-				.bind(id, donationId, amount, direction, method, status, provider, txn)
+					 values (?, ?, ?, 'USD', ?, ?, ?, ?, ?, 1, 2)`,
+				id,
+				donationId,
+				amount,
+				direction,
+				method,
+				status,
+				provider,
+				txn
+			)
 		);
 	}
-	await db().batch(statements);
+	await bare.batch(statements);
 	// after the payments, which they point at. a pending and a sent row on the open Zap and a sent
 	// row on the ended one, so a rebuild of `zapier_subscription` has children under both kinds of
 	// parent to lose.
-	await db()
-		.prepare(
+	await run(
+		stmt(
 			`insert into zapier_delivery
 			   (subscription_id, event_id, payment_id, status, attempts, next_attempt_at, leased_until,
 			    created_at, updated_at)
 			 values (?, 'evt-probe', 'p-card', 'pending', 1, 3, 4, 0, 0),
 			        (?, 'evt-sent', 'p-card', 'sent', 1, 3, null, 0, 1),
-			        (?, 'evt-ended', 'p-cash', 'sent', 2, 3, null, 0, 2)`
+			        (?, 'evt-ended', 'p-cash', 'sent', 2, 3, null, 0, 2)`,
+			OPEN_ZAP,
+			OPEN_ZAP,
+			ENDED_ZAP
 		)
-		.bind(OPEN_ZAP, OPEN_ZAP, ENDED_ZAP)
-		.run();
+	);
 	// a QuickBooks delivery row in each state a run can leave one: sent, taken by a run and not
 	// sent (a send whose answer never came keeps its attempt), and never taken.
 	for (const shape of ['sent', 'tried', 'untaken'] as const) {
 		SYNC[shape] = await postEntryGroup(`don_qb_${shape}`);
 	}
-	await db()
-		.prepare(
+	await run(
+		stmt(
 			`insert into quickbooks_sync
 			   (entry_group_id, status, attempts, remote_id, created_at, updated_at)
 			 values (?, 'sent', 1, '1043', 0, 1),
 			        (?, 'pending', 2, null, 0, 1),
-			        (?, 'pending', 0, null, 0, 0)`
+			        (?, 'pending', 0, null, 0, 0)`,
+			SYNC.sent,
+			SYNC.tried,
+			SYNC.untaken
 		)
-		.bind(SYNC.sent, SYNC.tried, SYNC.untaken)
-		.run();
+	);
 }
 
 const SYNC = { sent: '', tried: '', untaken: '' };
 
 /** a live key that has been used and a revoked, archived one, in the shape 0013 made them. */
 async function seedApiKeys() {
-	await db()
-		.prepare(
+	await run(
+		stmt(
 			`insert into api_key
 			   (id, name, kind, key_hash, prefix, last_four, created_at, last_used_at, revoked_at,
 			    archived_at)
 			 values ('key-live', 'CRM sync', 'api', ?, 'bgk_7Qm2', 'wxyz', 1, 2, null, null),
-			        ('key-gone', 'warehouse', 'api', ?, 'bgk_Zz09', 'Ab12', 3, null, 4, 5)`
+			        ('key-gone', 'warehouse', 'api', ?, 'bgk_Zz09', 'Ab12', 3, null, 4, 5)`,
+			'b'.repeat(64),
+			'c'.repeat(64)
 		)
-		.bind('b'.repeat(64), 'c'.repeat(64))
-		.run();
+	);
 }
 
 /** a destination and a row in each state 0015 allows, one of them held by a run. */
 async function seedWebhookDeliveries() {
 	const msg = (n: number) => `msg_00000000-0000-4000-8000-00000000000${n}`;
-	await db().batch([
-		db()
-			.prepare(
-				`insert into webhook_destination (id, url, signing_secret, failing_since, created_at, updated_at)
-				 values ('dest-probe', 'https://crm.example.org/hooks', ?, 7, 1, 1)`
-			)
-			.bind(`whsec_${'A'.repeat(43)}=`),
-		db()
-			.prepare(
-				`insert into webhook_delivery
+	await bare.batch([
+		stmt(
+			`insert into webhook_destination (id, url, signing_secret, failing_since, created_at, updated_at)
+				 values ('dest-probe', 'https://crm.example.org/hooks', ?, 7, 1, 1)`,
+			`whsec_${'A'.repeat(43)}=`
+		),
+		stmt(
+			`insert into webhook_delivery
 				   (id, destination_id, event, subject_id, status, attempts, next_attempt_at, leased_until,
 				    last_status, last_error, delivered_at, created_at, updated_at)
 				 values (?, 'dest-probe', 'gift.made', 'p-card', 'pending', 2, 5, 6, 503, '503 Service Unavailable', null, 1, 2),
 				        (?, 'dest-probe', 'gift.made', 'p-venmo', 'delivered', 1, 3, null, 200, null, 4, 1, 4),
-				        (?, 'dest-probe', 'gift.refunded', 'p-refund', 'failed', 9, 8, null, null, 'TypeError: fetch failed', null, 1, 8)`
-			)
-			.bind(msg(1), msg(2), msg(3))
+				        (?, 'dest-probe', 'gift.refunded', 'p-refund', 'failed', 9, 8, null, null, 'TypeError: fetch failed', null, 1, 8)`,
+			msg(1),
+			msg(2),
+			msg(3)
+		)
 	]);
 }
 
@@ -315,49 +323,53 @@ const PAUSED_DESTINATIONS = ['dest-paused', 'dest-paused-archived'] as const;
  */
 async function seedPausedBacklog() {
 	const msg = (n: number) => `msg_00000000-0000-4000-8000-0000000002${String(n).padStart(2, '0')}`;
-	await db().batch([
-		db()
-			.prepare(
-				`insert into webhook_destination
+	await bare.batch([
+		stmt(
+			`insert into webhook_destination
 				   (id, url, signing_secret, paused_at, failing_since, archived_at, created_at, updated_at)
 				 values ('dest-paused', 'https://crm.example.org/paused', ?, 30, 10, null, 1, 30),
-				        ('dest-paused-archived', 'https://crm.example.org/gone', ?, 30, 10, 40, 1, 40)`
-			)
-			.bind(`whsec_${'B'.repeat(43)}=`, `whsec_${'C'.repeat(43)}=`),
-		db()
-			.prepare(
-				`insert into webhook_delivery
+				        ('dest-paused-archived', 'https://crm.example.org/gone', ?, 30, 10, 40, 1, 40)`,
+			`whsec_${'B'.repeat(43)}=`,
+			`whsec_${'C'.repeat(43)}=`
+		),
+		stmt(
+			`insert into webhook_delivery
 				   (id, destination_id, event, subject_id, status, attempts, next_attempt_at, leased_until,
 				    last_status, last_error, delivered_at, created_at, updated_at)
 				 values (?, 'dest-paused', 'gift.made', 'p-card', 'pending', 0, 31, null, null, null, null, 31, 31),
 				        (?, 'dest-paused', 'gift.refunded', 'p-refund', 'pending', 3, 32, 33, 503, '503 Service Unavailable', null, 20, 32),
 				        (?, 'dest-paused', 'gift.made', 'p-venmo', 'delivered', 1, 5, null, 200, null, 6, 1, 6),
-				        (?, 'dest-paused-archived', 'gift.made', 'p-card', 'pending', 0, 34, null, null, null, null, 34, 34)`
-			)
-			.bind(msg(1), msg(2), msg(3), msg(4))
+				        (?, 'dest-paused-archived', 'gift.made', 'p-card', 'pending', 0, 34, null, null, null, null, 34, 34)`,
+			msg(1),
+			msg(2),
+			msg(3),
+			msg(4)
+		)
 	]);
 }
 
 /** the one `org_presentation` row, its logo and its previous logo each naming an image with bytes. */
 async function seedOrgPresentation() {
 	const [logo, previous] = LOGO_IMAGES;
-	await db().batch([
-		db()
-			.prepare(
-				`insert into image (id, kind, content_type, width, height, byte_size, alt, created_at, updated_at)
+	await bare.batch([
+		stmt(
+			`insert into image (id, kind, content_type, width, height, byte_size, alt, created_at, updated_at)
 				 values (?, 'illustration', 'image/png', 64, 64, 3, null, 1, 1),
-				        (?, 'illustration', 'image/png', 32, 32, 3, null, 0, 0)`
-			)
-			.bind(logo, previous),
-		db()
-			.prepare(`insert into image_bytes (image_id, bytes) values (?, x'010203'), (?, x'040506')`)
-			.bind(logo, previous),
-		db()
-			.prepare(
-				`insert into org_presentation (id, created_at, updated_at, logo_image_id, logo_image_id_previous)
-				 values ('default', 0, 1, ?, ?)`
-			)
-			.bind(logo, previous)
+				        (?, 'illustration', 'image/png', 32, 32, 3, null, 0, 0)`,
+			logo,
+			previous
+		),
+		stmt(
+			`insert into image_bytes (image_id, bytes) values (?, x'010203'), (?, x'040506')`,
+			logo,
+			previous
+		),
+		stmt(
+			`insert into org_presentation (id, created_at, updated_at, logo_image_id, logo_image_id_previous)
+				 values ('default', 0, 1, ?, ?)`,
+			logo,
+			previous
+		)
 	]);
 }
 
@@ -393,14 +405,12 @@ const LEGACY_LOOK_DOCUMENTS = {
  */
 async function seedLegacyLooks() {
 	const { campaign, donationPage } = LEGACY_LOOK_DOCUMENTS;
-	await db()
-		.prepare(
+	await run(
+		stmt(
 			`insert into page
 			   (id, type, name, slug, state, form_id, draft, published, last_published, created_at, updated_at)
 			 values (?, 'campaign', 'Winter coat drive', 'legacy-look', 'live', ?, ?, ?, ?, 0, ?),
-			        (?, 'donation_page', null, null, 'live', ?, ?, ?, null, 0, ?)`
-		)
-		.bind(
+			        (?, 'donation_page', null, null, 'live', ?, ?, ?, null, 0, ?)`,
 			LEGACY_LOOK_CAMPAIGN,
 			LEGACY_LOOK_FORMS[0],
 			JSON.stringify(campaign.draft),
@@ -413,7 +423,7 @@ async function seedLegacyLooks() {
 			JSON.stringify(donationPage.published),
 			LEGACY_LOOK_UPDATED_AT
 		)
-		.run();
+	);
 }
 
 /**
@@ -433,45 +443,42 @@ async function seedChat() {
 		[chatOnlyTwice, 'photo']
 	];
 	const statements = kinds.flatMap(([id, kind], n) => [
-		db()
-			.prepare(
-				`insert into image (id, kind, content_type, width, height, byte_size, alt, created_at, updated_at)
-				 values (?, ?, 'image/webp', 640, 480, 2, ?, ?, ?)`
-			)
-			.bind(id, kind, n % 2 ? null : `probe ${n}`, 10 + n, 20 + n),
-		db().prepare(`insert into image_bytes (image_id, bytes) values (?, x'0a0b')`).bind(id)
+		stmt(
+			`insert into image (id, kind, content_type, width, height, byte_size, alt, created_at, updated_at)
+				 values (?, ?, 'image/webp', 640, 480, 2, ?, ?, ?)`,
+			id,
+			kind,
+			n % 2 ? null : `probe ${n}`,
+			10 + n,
+			20 + n
+		),
+		stmt(`insert into image_bytes (image_id, bytes) values (?, x'0a0b')`, id)
 	]);
 	const document = (imageId: string) =>
 		JSON.stringify({ blocks: [{ id: 'hero', type: 'hero', imageId }] });
-	await db().batch([
+	await bare.batch([
 		...statements,
-		db()
-			.prepare(
-				`insert into page
+		stmt(
+			`insert into page
 				   (id, type, name, slug, state, form_id, draft, published, last_published, created_at, updated_at)
-				 values (?, 'campaign', 'Spring appeal', 'spring-appeal', 'live', ?, ?, ?, ?, 0, 0)`
-			)
-			.bind(
-				CHAT_PAGE,
-				CHAT_PAGE_FORM,
-				document(draft),
-				document(published),
-				document(lastPublished)
-			),
-		db().prepare(`update program set image_id = ? where id = ?`).bind(cause, CHAT_CAUSE),
-		db().prepare(`update org_profile set logo_image_id = ?`).bind(logo),
-		db()
-			.prepare(
-				`insert into chat_turn (id, page_id, seq, author, text, model, image_ids, created_at, note)
+				 values (?, 'campaign', 'Spring appeal', 'spring-appeal', 'live', ?, ?, ?, ?, 0, 0)`,
+			CHAT_PAGE,
+			CHAT_PAGE_FORM,
+			document(draft),
+			document(published),
+			document(lastPublished)
+		),
+		stmt(`update program set image_id = ? where id = ?`, cause, CHAT_CAUSE),
+		stmt(`update org_profile set logo_image_id = ?`, logo),
+		stmt(
+			`insert into chat_turn (id, page_id, seq, author, text, model, image_ids, created_at, note)
 				 values ('turn-1', ?, 1, 'operator', 'our photos', null, ?, 0, null),
-				        ('turn-2', ?, 2, 'assistant', 'a page from them', '@cf/probe-model', ?, 1, 'refused')`
-			)
-			.bind(
-				CHAT_PAGE,
-				JSON.stringify([draft, chatOnly, chatOnlyTwice]),
-				CHAT_PAGE,
-				JSON.stringify([published, lastPublished, cause, logo, chatOnlyTwice])
-			)
+				        ('turn-2', ?, 2, 'assistant', 'a page from them', '@cf/probe-model', ?, 1, 'refused')`,
+			CHAT_PAGE,
+			JSON.stringify([draft, chatOnly, chatOnlyTwice]),
+			CHAT_PAGE,
+			JSON.stringify([published, lastPublished, cause, logo, chatOnlyTwice])
+		)
 	]);
 }
 
@@ -480,7 +487,7 @@ async function seedChat() {
  * refuses a direct write to the ledger tables anywhere outside the ledger module.
  */
 async function postEntryGroup(sourceId: string): Promise<string> {
-	const unmigrated = createDb(db());
+	const unmigrated = createDb(bare);
 	const posting = post({
 		sourceType: 'donation',
 		sourceId,
@@ -496,9 +503,7 @@ async function postEntryGroup(sourceId: string): Promise<string> {
 }
 
 async function recorded(): Promise<string[]> {
-	const { results } = await db()
-		.prepare('select name from d1_migrations order by id')
-		.all<{ name: string }>();
+	const results = await all<{ name: string }>(stmt('select name from d1_migrations order by id'));
 	return results.map((r) => r.name);
 }
 
@@ -519,66 +524,73 @@ let migrated:
 	| undefined;
 
 /**
+ * a migration's statements, split where drizzle-kit marks them (`--> statement-breakpoint`), each
+ * without the comments in front of it — for a case that runs one statement of a file again, alone.
+ */
+const statementsOf = (migration: Migration): string[] =>
+	migration.sql
+		.split('--> statement-breakpoint')
+		.map((chunk) => chunk.replace(/^(\s*--[^\n]*\n)*\s*/, '').trim())
+		.filter((statement) => statement !== '');
+
+/**
  * 0017's copy run again, alone, over the `zapier_key` row it left holding no key: the one moment
  * that table and a keyless row both exist, since 0018 drops it. a copy that read the keyless row
  * would write a row with no prefix, or a second zapier row, and fail on either.
  */
 async function recopyKeyless(): Promise<{ error: string | null; zapierRows: Row[] }> {
-	const copy = env.TEST_MIGRATIONS[API_KEY_REBUILD]!.queries.filter((q) =>
+	const copy = statementsOf(MIGRATIONS[API_KEY_REBUILD]!).filter((q) =>
 		q.startsWith('INSERT INTO `api_key`')
 	);
 	let error: string | null = null;
 	try {
 		if (copy.length !== 1) throw new Error(`0017 holds ${copy.length} copies into api_key, not 1`);
-		await db().batch(copy.map((q) => db().prepare(q)));
+		await bare.batch(copy.map((q) => stmt(q)));
 	} catch (e) {
 		error = String((e as Error).message);
 	}
-	const { results } = await db()
-		.prepare(`select * from api_key where kind = 'zapier' order by rowid`)
-		.all<Row>();
+	const results = await all<Row>(
+		stmt(`select * from api_key where kind = 'zapier' order by rowid`)
+	);
 	return { error, zapierRows: results };
 }
 
 /** the chain stopped in front of `FIRST_UNAPPLIED`, seeded, then finished — once, for every block here. */
 function migrateOverSeed() {
 	migrated ??= (async () => {
-		const chain = env.TEST_MIGRATIONS;
-		await applyD1Migrations(db(), chain.slice(0, STOP));
+		const chain = MIGRATIONS;
+		await applyMigrations(bare, chain.slice(0, STOP));
 		const underSeed = await recorded();
 		await seed();
 		const before = await snapshot();
-		await applyD1Migrations(db(), chain.slice(0, API_KEY_REBUILD));
+		await applyMigrations(bare, chain.slice(0, API_KEY_REBUILD));
 		await seedApiKeys();
 		await seedWebhookDeliveries();
-		const webhookDeliveriesBefore = (
-			await db().prepare('select * from webhook_delivery order by rowid').all<Row>()
-		).results;
-		const apiKeysBefore = (await db().prepare('select * from api_key order by rowid').all<Row>())
-			.results;
-		await applyD1Migrations(db(), chain.slice(0, API_KEY_REBUILD + 1));
+		const webhookDeliveriesBefore = await all<Row>(
+			stmt('select * from webhook_delivery order by rowid')
+		);
+		const apiKeysBefore = await all<Row>(stmt('select * from api_key order by rowid'));
+		await applyMigrations(bare, chain.slice(0, API_KEY_REBUILD + 1));
 		const atApiKeyMove = await snapshot();
 		const recopy = await recopyKeyless();
-		await applyD1Migrations(db(), chain.slice(0, OWED_ROWS_PARKING));
+		await applyMigrations(bare, chain.slice(0, OWED_ROWS_PARKING));
 		await seedPausedBacklog();
-		const pausedBacklogBefore = (
-			await db()
-				.prepare(`select * from webhook_delivery where destination_id in (?, ?) order by rowid`)
-				.bind(...PAUSED_DESTINATIONS)
-				.all<Row>()
-		).results;
-		await applyD1Migrations(db(), chain.slice(0, ORG_PRESENTATION_DROP));
+		const pausedBacklogBefore = await all<Row>(
+			stmt(
+				`select * from webhook_delivery where destination_id in (?, ?) order by rowid`,
+				...PAUSED_DESTINATIONS
+			)
+		);
+		await applyMigrations(bare, chain.slice(0, ORG_PRESENTATION_DROP));
 		await seedOrgPresentation();
-		const orgPresentationBefore = (await db().prepare('select * from org_presentation').all<Row>())
-			.results;
-		await applyD1Migrations(db(), chain.slice(0, PAGE_LOOK_REPAIR));
+		const orgPresentationBefore = await all<Row>(stmt('select * from org_presentation'));
+		await applyMigrations(bare, chain.slice(0, PAGE_LOOK_REPAIR));
 		await seedLegacyLooks();
-		const pagesBefore = (await db().prepare('select * from page order by rowid').all<Row>())
-			.results;
-		await applyD1Migrations(db(), chain.slice(0, CHAT_DROP));
+		const pagesBefore = await all<Row>(stmt('select * from page order by rowid'));
+		await applyMigrations(bare, chain.slice(0, CHAT_DROP));
 		await seedChat();
-		const imagesBefore = (await db().prepare('select * from image order by id').all<Row>()).results;
-		await applyD1Migrations(db(), chain);
+		const imagesBefore = await all<Row>(stmt('select * from image order by id'));
+		await applyMigrations(bare, chain);
 		const overSeed = (await recorded()).slice(underSeed.length);
 		return {
 			before,
@@ -598,7 +610,7 @@ function migrateOverSeed() {
 }
 
 describe('the migrations not yet applied keep every row the database already held', () => {
-	const chain = env.TEST_MIGRATIONS;
+	const chain = MIGRATIONS;
 	let before: Map<string, Row[]>;
 	let after: Map<string, Row[]>;
 	let overSeed: string[];
@@ -666,7 +678,7 @@ describe('the migrations not yet applied keep every row the database already hel
 	it.skipIf(nowhereToStop)(
 		'keeps a key already made admitting, and every Zap on it stays subscribed',
 		async () => {
-			expect(await findKeyByPresented(createDb(db()), ZAPIER_KEY, 'zapier')).toMatchObject({
+			expect(await findKeyByPresented(createDb(bare), ZAPIER_KEY, 'zapier')).toMatchObject({
 				kind: 'zapier',
 				revokedAt: null
 			});
@@ -683,7 +695,7 @@ describe('the migrations not yet applied keep every row the database already hel
 	);
 
 	it.skipIf(nowhereToStop)('leaves no foreign key pointing at nothing', async () => {
-		const { results } = await db().prepare('select * from pragma_foreign_key_check').all();
+		const results = await all(stmt('select * from pragma_foreign_key_check'));
 		expect(results).toEqual([]);
 	});
 });
@@ -700,34 +712,26 @@ describe('0010 takes a gift_refunded Zap and a dispute on a database already tak
 	it.skipIf(nowhereToStop)(
 		'subscribes a Zap to gift_refunded, and a delivery row resolves to it',
 		async () => {
-			await db().batch([
-				db().prepare(
-					`insert into zapier_subscription (id, "trigger", hook_url, created_at, updated_at)
-				 values ('zap-refunded', 'gift_refunded', 'https://hooks.zapier.com/hooks/standard/1/refunded/', 0, 0)`
-				),
-				db().prepare(
-					`insert into zapier_delivery
+			await bare.batch([
+				stmt(`insert into zapier_subscription (id, "trigger", hook_url, created_at, updated_at)
+				 values ('zap-refunded', 'gift_refunded', 'https://hooks.zapier.com/hooks/standard/1/refunded/', 0, 0)`),
+				stmt(`insert into zapier_delivery
 				   (subscription_id, event_id, payment_id, next_attempt_at, created_at, updated_at)
-				 values ('zap-refunded', 'p-refund', 'p-refund', 0, 0, 0)`
-				)
+				 values ('zap-refunded', 'p-refund', 'p-refund', 0, 0, 0)`)
 			]);
-			const { results } = await db()
-				.prepare(
-					`select subscription_id, event_id from zapier_delivery where event_id = 'p-refund'`
-				)
-				.all();
+			const results = await all(
+				stmt(`select subscription_id, event_id from zapier_delivery where event_id = 'p-refund'`)
+			);
 			expect(results).toEqual([{ subscription_id: 'zap-refunded', event_id: 'p-refund' }]);
 		}
 	);
 
 	it.skipIf(nowhereToStop)('records a dispute against the seeded refund row', async () => {
-		await db()
-			.prepare(
-				`insert into dispute (payment_id, reason, created_at, updated_at)
-				 values ('p-refund', 'fraudulent', 0, 0)`
-			)
-			.run();
-		const row = await db().prepare(`select outcome, closed_at from dispute`).first();
+		await run(
+			stmt(`insert into dispute (payment_id, reason, created_at, updated_at)
+				 values ('p-refund', 'fraudulent', 0, 0)`)
+		);
+		const row = await first(stmt(`select outcome, closed_at from dispute`));
 		expect(row).toEqual({ outcome: null, closed_at: null });
 	});
 });
@@ -784,12 +788,8 @@ describe('0012 gives a payment already written a place for its processor referen
 	});
 
 	it.skipIf(nowhereToStop)('stores a tracking ID on the seeded chariot row', async () => {
-		await db()
-			.prepare(`update payment set provider_reference = 'TRK-probe' where id = 'p-daf'`)
-			.run();
-		const row = await db()
-			.prepare(`select provider_reference as r from payment where id = 'p-daf'`)
-			.first();
+		await run(stmt(`update payment set provider_reference = 'TRK-probe' where id = 'p-daf'`));
+		const row = await first(stmt(`select provider_reference as r from payment where id = 'p-daf'`));
 		expect(row).toEqual({ r: 'TRK-probe' });
 	});
 });
@@ -885,7 +885,7 @@ describe('0018 drops zapier_key', () => {
 	});
 
 	it('is the file after 0017', () => {
-		expect(env.TEST_MIGRATIONS[API_KEY_REBUILD + 1]?.name).toBe(ZAPIER_KEY_DROPPED_BY);
+		expect(MIGRATIONS[API_KEY_REBUILD + 1]?.name).toBe(ZAPIER_KEY_DROPPED_BY);
 	});
 
 	it.skipIf(nowhereToStop)('leaves no zapier_key table', () => {
@@ -920,10 +920,7 @@ describe('0019 lets a webhook delivery be dropped and keep a detail, keeping eve
 		'takes a detail that is a JSON object, and refuses any other',
 		async () => {
 			const setDetail = (detail: string) =>
-				db()
-					.prepare(`update webhook_delivery set detail = ? where subject_id = 'p-venmo'`)
-					.bind(detail)
-					.run();
+				run(stmt(`update webhook_delivery set detail = ? where subject_id = 'p-venmo'`, detail));
 
 			await setDetail('{"attempt":2}');
 			for (const refused of ['not json', '[1]', '3', 'null']) {
@@ -933,15 +930,13 @@ describe('0019 lets a webhook delivery be dropped and keep a detail, keeping eve
 	);
 
 	it.skipIf(nowhereToStop)('takes a dropped row', async () => {
-		await db()
-			.prepare(
-				`update webhook_delivery set status = 'dropped', leased_until = null
-				 where subject_id = 'p-card'`
-			)
-			.run();
-		const row = await db()
-			.prepare(`select status from webhook_delivery where subject_id = 'p-card'`)
-			.first<{ status: string }>();
+		await run(
+			stmt(`update webhook_delivery set status = 'dropped', leased_until = null
+				 where subject_id = 'p-card'`)
+		);
+		const row = await first<{ status: string }>(
+			stmt(`select status from webhook_delivery where subject_id = 'p-card'`)
+		);
 		expect(row?.status).toBe('dropped');
 	});
 });
@@ -955,18 +950,16 @@ describe('0011 names no company on a sent row while the connection is moved', ()
 	beforeAll(async () => {
 		if (nowhereToStop) return;
 		await migrateOverSeed();
-		const backfill = env.TEST_MIGRATIONS.find(
-			(m) => m.name === '0011_quickbooks_sync_realm.sql'
-		)!.queries.filter((q) => q.startsWith('UPDATE'));
+		const backfill = statementsOf(
+			MIGRATIONS.find((m) => m.name === '0011_quickbooks_sync_realm.sql')!
+		).filter((q) => q.startsWith('UPDATE'));
 		expect(backfill).toHaveLength(1);
-		await db().batch([
-			db().prepare(`update quickbooks_connection set moved_at = 6`),
-			db().prepare(`update quickbooks_sync set realm_id = null`),
-			...backfill.map((q) => db().prepare(q))
+		await bare.batch([
+			stmt(`update quickbooks_connection set moved_at = 6`),
+			stmt(`update quickbooks_sync set realm_id = null`),
+			...backfill.map((q) => stmt(q))
 		]);
-		const { results } = await db()
-			.prepare(`select realm_id from quickbooks_sync order by rowid`)
-			.all<Row>();
+		const results = await all<Row>(stmt(`select realm_id from quickbooks_sync order by rowid`));
 		realms = results.map((r) => r.realm_id);
 	});
 
@@ -1035,7 +1028,7 @@ describe('0026 drops org_presentation', () => {
 	});
 
 	it('is in the chain', () => {
-		expect(env.TEST_MIGRATIONS.map((m) => m.name)).toContain(ORG_PRESENTATION_DROPPED_BY);
+		expect(MIGRATIONS.map((m) => m.name)).toContain(ORG_PRESENTATION_DROPPED_BY);
 	});
 
 	it.skipIf(nowhereToStop)('leaves no org_presentation table', () => {
@@ -1080,7 +1073,7 @@ describe('0027 reads a page whose look the earlier settings sheet saved', () => 
 	});
 
 	it('is in the chain', () => {
-		expect(env.TEST_MIGRATIONS.map((m) => m.name)).toContain(PAGE_LOOK_REPAIRED_BY);
+		expect(MIGRATIONS.map((m) => m.name)).toContain(PAGE_LOOK_REPAIRED_BY);
 	});
 
 	it.skipIf(nowhereToStop)('applies over pages the page rule refuses', () => {
@@ -1153,7 +1146,7 @@ describe('0028 drops the page chat and the illustration kind', () => {
 	});
 
 	it('is in the chain', () => {
-		expect(env.TEST_MIGRATIONS.map((m) => m.name)).toContain(CHAT_DROPPED_BY);
+		expect(MIGRATIONS.map((m) => m.name)).toContain(CHAT_DROPPED_BY);
 	});
 
 	it.skipIf(nowhereToStop)('applies over a chat whose turns attach images', () => {
@@ -1166,9 +1159,7 @@ describe('0028 drops the page chat and the illustration kind', () => {
 
 	it.skipIf(nowhereToStop)('leaves no chat_turn table and no index on it', async () => {
 		expect([...after.keys()]).not.toContain('chat_turn');
-		const { results } = await db()
-			.prepare(`select name from sqlite_master where tbl_name = 'chat_turn'`)
-			.all();
+		const results = await all(stmt(`select name from sqlite_master where tbl_name = 'chat_turn'`));
 		expect(results).toEqual([]);
 	});
 

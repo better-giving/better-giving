@@ -44,8 +44,8 @@ export const platform = createContext<{
  * processor's callback, the console wire surface. so a loader takes it with `context.get(database)`
  * whatever surface it is on.
  *
- * the cost is one drizzle wrapper allocated for a request that never reads: no binding call and no
- * I/O, which is what the D1 handle is — see `requestDb` in $lib/server/db/client.ts.
+ * the cost is one drizzle wrapper allocated for a request that never reads, and no I/O — see
+ * `createDb` in $lib/server/db/client.ts.
  */
 export const database = createContext<Db>();
 

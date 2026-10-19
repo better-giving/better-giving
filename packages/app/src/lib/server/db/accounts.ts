@@ -30,7 +30,7 @@ type SeededAccount<TId extends string = string> = {
 /**
  * the seeded chart of accounts, by semantic name. these ids are the ones hardcoded
  * in `migrations/0000_initial_schema.sql` and are identical in every
- * deployment; `accounts.workers.spec.ts` asserts the two sets are equal, which is the only
+ * deployment; `accounts.db.spec.ts` asserts the two sets are equal, which is the only
  * thing standing between a forgotten migration and an FK rejection on
  * `ledger_entry.account_id` in production on someone else's fork.
  *

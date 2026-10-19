@@ -1,11 +1,12 @@
-import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { client, run, first, stmt } from '../db/database.testing';
+import { rejectionCode } from './rejection.testing';
 
 // the constraints `dispute` carries, which are one-way for the reason
-// ./donation-schema.workers.spec.ts opens with: each is a rebuild of the table to change.
+// ./donation-schema.db.spec.ts opens with: each is a rebuild of the table to change.
 //
 // what is deliberately not here, on that file's redundancy rule: `STRICT` on the table and
-// `NO ACTION` on its one foreign key, both read off sqlite's catalogue by ./strict.workers.spec.ts,
+// `NO ACTION` on its one foreign key, both read off sqlite's catalogue by ./strict.db.spec.ts,
 // and the `optionalNotBlank` body on `reason` beyond the three blanks below (the shared helper,
 // pinned on `payment.provider_txn_id`).
 //
@@ -15,16 +16,6 @@ const SQLITE_CONSTRAINT_CHECK = 'SQLITE_CONSTRAINT_CHECK';
 const SQLITE_CONSTRAINT_PRIMARYKEY = 'SQLITE_CONSTRAINT_PRIMARYKEY';
 const SQLITE_CONSTRAINT_FOREIGNKEY = 'SQLITE_CONSTRAINT_FOREIGNKEY';
 
-/** runs `fn` and requires D1 to have rejected it; same helper as the sibling schema specs. */
-async function rejection(fn: () => Promise<unknown>): Promise<string> {
-	try {
-		await fn();
-	} catch (e) {
-		return String((e as Error).message);
-	}
-	throw new Error('expected D1 to reject this statement, but it succeeded');
-}
-
 const CONTACT_ID = '019fb700-0000-7000-8000-000000000001';
 const DONATION_ID = '019fb700-0000-7000-8000-000000000002';
 
@@ -33,21 +24,27 @@ const withdrawal = (n: number) => `019fb700-0000-7000-8001-${String(n).padStart(
 const WITHDRAWALS = 20;
 
 beforeAll(async () => {
-	await env.DB.batch([
-		env.DB.prepare(
+	await client.batch([
+		stmt(
 			`insert into contact (id, kind, display_name, created_at, updated_at)
-			 values (?, 'individual', 'Probe Donor', 0, 0)`
-		).bind(CONTACT_ID),
-		env.DB.prepare(
+			 values (?, 'individual', 'Probe Donor', 0, 0)`,
+			CONTACT_ID
+		),
+		stmt(
 			`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
-			 values (?, ?, 10000, 'USD', 0, 0)`
-		).bind(DONATION_ID, CONTACT_ID),
+			 values (?, ?, 10000, 'USD', 0, 0)`,
+			DONATION_ID,
+			CONTACT_ID
+		),
 		...Array.from({ length: WITHDRAWALS }, (_, i) =>
-			env.DB.prepare(
+			stmt(
 				`insert into payment (id, donation_id, amount_minor, currency, direction, method, status,
 				                      provider, provider_txn_id, occurred_at, created_at)
-				 values (?, ?, 10000, 'USD', 'refund', 'card', 'succeeded', 'stripe', ?, 0, 0)`
-			).bind(withdrawal(i), DONATION_ID, `du_probe_${i}`)
+				 values (?, ?, 10000, 'USD', 'refund', 'card', 'succeeded', 'stripe', ?, 0, 0)`,
+				withdrawal(i),
+				DONATION_ID,
+				`du_probe_${i}`
+			)
 		)
 	]);
 });
@@ -63,17 +60,24 @@ const insertDispute = (
 	paymentId: string,
 	opts: { outcome?: string | null; closedAt?: number | null; reason?: string | null } = {}
 ) =>
-	env.DB.prepare(
-		`insert into dispute (payment_id, outcome, respond_by, reason, closed_at, created_at, updated_at)
-		 values (?, ?, 5, ?, ?, 0, 0)`
-	)
-		.bind(paymentId, opts.outcome ?? null, opts.reason ?? null, opts.closedAt ?? null)
-		.run();
+	run(
+		stmt(
+			`insert into dispute (payment_id, outcome, respond_by, reason, closed_at, created_at, updated_at)
+		 values (?, ?, 5, ?, ?, 0, 0)`,
+			paymentId,
+			opts.outcome ?? null,
+			opts.reason ?? null,
+			opts.closedAt ?? null
+		)
+	);
 
 const disputeRow = (paymentId: string) =>
-	env.DB.prepare('select outcome, respond_by, reason, closed_at from dispute where payment_id = ?')
-		.bind(paymentId)
-		.first();
+	first(
+		stmt(
+			'select outcome, respond_by, reason, closed_at from dispute where payment_id = ?',
+			paymentId
+		)
+	);
 
 describe('a dispute belongs to one payment row that exists', () => {
 	it('opens against an existing payment row, with no outcome', async () => {
@@ -88,14 +92,16 @@ describe('a dispute belongs to one payment row that exists', () => {
 	});
 
 	it('refuses a payment id naming no payment', async () => {
-		const message = await rejection(() => insertDispute('019fb700-0000-7000-8000-00000000dead'));
+		const message = await rejectionCode(() =>
+			insertDispute('019fb700-0000-7000-8000-00000000dead')
+		);
 		expect(message).toContain(SQLITE_CONSTRAINT_FOREIGNKEY);
 	});
 
 	it('refuses a second dispute on the same payment row', async () => {
 		const id = freshWithdrawal();
 		await insertDispute(id);
-		const message = await rejection(() => insertDispute(id));
+		const message = await rejectionCode(() => insertDispute(id));
 		expect(message).toContain(SQLITE_CONSTRAINT_PRIMARYKEY);
 	});
 });
@@ -108,7 +114,7 @@ describe('a dispute closes won or lost, and only then', () => {
 	});
 
 	it.each(['WON', 'pending', 'withdrawn', ''])('refuses an outcome of %j', async (outcome) => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertDispute(freshWithdrawal(), { outcome, closedAt: 9 })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -119,7 +125,9 @@ describe('a dispute closes won or lost, and only then', () => {
 		['a close with no outcome', null, 9],
 		['an outcome with no close', 'lost', null]
 	])('refuses %s', async (_, outcome, closedAt) => {
-		const message = await rejection(() => insertDispute(freshWithdrawal(), { outcome, closedAt }));
+		const message = await rejectionCode(() =>
+			insertDispute(freshWithdrawal(), { outcome, closedAt })
+		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('dispute_closed_with_outcome_check');
 	});
@@ -127,11 +135,12 @@ describe('a dispute closes won or lost, and only then', () => {
 	it('closes an open dispute by setting both at once', async () => {
 		const id = freshWithdrawal();
 		await insertDispute(id);
-		await env.DB.prepare(
-			`update dispute set outcome = 'won', closed_at = 11 where payment_id = ? and outcome is null`
-		)
-			.bind(id)
-			.run();
+		await run(
+			stmt(
+				`update dispute set outcome = 'won', closed_at = 11 where payment_id = ? and outcome is null`,
+				id
+			)
+		);
 		expect(await disputeRow(id)).toMatchObject({ outcome: 'won', closed_at: 11 });
 	});
 });
@@ -142,7 +151,7 @@ describe("a dispute's reason is the processor's words or nothing", () => {
 		['a lone space', ' '],
 		['a non-breaking space', ' ']
 	])('refuses %s', async (_, reason) => {
-		const message = await rejection(() => insertDispute(freshWithdrawal(), { reason }));
+		const message = await rejectionCode(() => insertDispute(freshWithdrawal(), { reason }));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('dispute_reason_not_blank_check');
 	});

@@ -67,7 +67,7 @@ import {
 // multi-row writes go in one `batch()` and never in an interactive transaction. `Db` omits
 // `transaction` (../db/client.ts), so reaching for one is a compile error rather than a
 // review note. `batch()` really is atomic, and that is asserted rather than assumed:
-// ./posting.workers.spec.ts fails a statement mid-batch against a real D1 and checks that
+// ./posting.db.spec.ts fails a statement mid-batch against a real database and checks that
 // the rows the earlier statements wrote are gone.
 //
 // no invariant in this system is enforced by an atomic read-then-write, and a lost race is

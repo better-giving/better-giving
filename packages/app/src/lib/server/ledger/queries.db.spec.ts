@@ -1,4 +1,3 @@
-import { env } from 'cloudflare:test';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { donationRevenueAccount, POSTING_ACCOUNTS, postableId } from '../db/accounts';
@@ -12,11 +11,12 @@ import {
 	readEntryGroupsInRange,
 	readRaisedByMonth
 } from './queries';
+import { client, run, stmt } from '../db/database.testing';
 
-// the read half of the ledger, against a real D1.
+// the read half of the ledger, against a real database.
 //
-// it is a `*.workers.spec.ts` and not a pure one because everything worth asserting here is
-// D1's: the order rows come back in, that the cap is a `LIMIT` the database applied rather
+// it is a `*.db.spec.ts` and not a pure one because everything worth asserting here is
+// the database's: the order rows come back in, that the cap is a `LIMIT` the database applied rather
 // than a slice over everything, and that each group's lines arrive under the group they
 // belong to. a stand-in would only prove the stand-in.
 //
@@ -26,7 +26,7 @@ import {
 
 let db: Db;
 beforeAll(() => {
-	db = createDb(env.DB);
+	db = createDb(client);
 });
 
 /** a correction, balanced, at a business time the test chooses. */
@@ -57,8 +57,8 @@ describe('listEntryGroups()', () => {
 	beforeEach(async () => {
 		// storage is isolated per file rather than per test, so rows written by one `it` are
 		// visible to the next — and the cap cases below seed a full page of their own.
-		await env.DB.prepare('delete from ledger_entry').run();
-		await env.DB.prepare('delete from entry_group').run();
+		await run(stmt('delete from ledger_entry'));
+		await run(stmt('delete from entry_group'));
 	});
 
 	it('reads an empty ledger as an empty page with nothing beyond it', async () => {
@@ -162,8 +162,8 @@ describe('listEntryGroups()', () => {
 
 describe('findEntryGroup()', () => {
 	beforeEach(async () => {
-		await env.DB.prepare('delete from ledger_entry').run();
-		await env.DB.prepare('delete from entry_group').run();
+		await run(stmt('delete from ledger_entry'));
+		await run(stmt('delete from entry_group'));
 	});
 
 	it('finds an entry by the pair that identifies it, with its lines', async () => {
@@ -208,8 +208,8 @@ describe('findEntryGroup()', () => {
 
 describe('readRaisedByMonth()', () => {
 	beforeEach(async () => {
-		await env.DB.prepare('delete from ledger_entry').run();
-		await env.DB.prepare('delete from entry_group').run();
+		await run(stmt('delete from ledger_entry'));
+		await run(stmt('delete from entry_group'));
 	});
 
 	/** a gift of `amountMinor`, at the revenue account a deductible gift posts to. */
@@ -254,13 +254,15 @@ describe('readRaisedByMonth()', () => {
 		// counting the moment it was posted to — silently, because every row still reads clean.
 		// the walk is what makes this pass.
 		const id = uuidv7();
-		await env.DB.prepare(
-			`insert into account (id, code, name, type, is_deductible, is_tax, is_postable,
+		await run(
+			stmt(
+				`insert into account (id, code, name, type, is_deductible, is_tax, is_postable,
 			                      parent_id, created_at, updated_at)
-			 values (?, '4111', 'Clean water', 'revenue', 1, 0, 1, ?, 0, 0)`
-		)
-			.bind(id, POSTING_ACCOUNTS.donationsDeductible.id)
-			.run();
+			 values (?, '4111', 'Clean water', 'revenue', 1, 0, 1, ?, 0, 0)`,
+				id,
+				POSTING_ACCOUNTS.donationsDeductible.id
+			)
+		);
 		const program = postableFromAccount({ id, isPostable: true });
 		if (!program) throw new Error('the account seeded above reads as a rollup');
 
@@ -330,8 +332,8 @@ const ROOMY = 100;
 
 describe('readEntryGroupsInRange()', () => {
 	beforeEach(async () => {
-		await env.DB.prepare('delete from ledger_entry').run();
-		await env.DB.prepare('delete from entry_group').run();
+		await run(stmt('delete from ledger_entry'));
+		await run(stmt('delete from entry_group'));
 	});
 
 	it('takes both ends of the range and nothing outside it', async () => {
@@ -406,8 +408,8 @@ describe('readEntryGroupsInRange()', () => {
 
 describe('readEntryGroupsInRange() under its line bound', () => {
 	beforeEach(async () => {
-		await env.DB.prepare('delete from ledger_entry').run();
-		await env.DB.prepare('delete from entry_group').run();
+		await run(stmt('delete from ledger_entry'));
+		await run(stmt('delete from entry_group'));
 	});
 
 	it('stops one row past the bound and says the range holds more', async () => {

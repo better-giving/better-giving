@@ -725,7 +725,7 @@ const NO_WALLET_DOMAINS =
  * own credentials.
  *
  * never a module-scope singleton — the secret only exists on a request's `platform.env`
- * (CLAUDE.md) — which is the `createStripeProvider` shape in ./stripe.ts and `createDb(d1)`'s in
+ * (CLAUDE.md) — which is the `createStripeProvider` shape in ./stripe.ts and `createDb(client)`'s in
  * ../db/client.ts.
  *
  * the token comes back beside the client rather than being minted again by whoever needs a bearer

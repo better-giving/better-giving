@@ -1,8 +1,8 @@
-import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { POSTING_ACCOUNTS, ROLLUPS } from './accounts';
 import { postableFromAccount, type PostableCandidate } from './postable';
 import type { Account } from './schema';
+import { all, stmt } from '../db/database.testing';
 
 // the drift guard between `accounts.ts` and `migrations/0000_initial_schema.sql`.
 //
@@ -13,9 +13,9 @@ import type { Account } from './schema';
 // donor's money taken and the ledger write thrown, in production, on a fork we
 // cannot reach.
 //
-// it executes the real migration SQL against a real D1 rather than parsing it — see
-// ./d1.setup.ts, which applies the committed `migrations/` files the same way wrangler
-// does — so the check constraints, the FK on parent_id and the insert ordering are all
+// it executes the real migration SQL against a real database rather than parsing it — see
+// ./database.testing.ts, which applies the committed `migrations/` files the way
+// `pnpm db:migrate` does — so the check constraints, the FK on parent_id and the insert ordering are all
 // exercised too.
 
 type AccountRow = {
@@ -28,10 +28,9 @@ type AccountRow = {
 };
 
 async function seededAccounts(): Promise<AccountRow[]> {
-	const { results } = await env.DB.prepare(
-		'select id, code, name, type, is_postable, parent_id from account order by code'
-	).all<AccountRow>();
-	return results;
+	return all<AccountRow>(
+		stmt('select id, code, name, type, is_postable, parent_id from account order by code')
+	);
 }
 
 /**

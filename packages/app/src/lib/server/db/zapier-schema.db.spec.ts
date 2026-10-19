@@ -1,13 +1,15 @@
-import { env } from 'cloudflare:test';
+import type { InValue } from '@libsql/client';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { client, run, first, all, stmt } from '../db/database.testing';
+import { rejectionCode } from './rejection.testing';
 
 // the constraints the two Zapier tables carry, which are one-way for the reason
-// ./donation-schema.workers.spec.ts opens with: each is a rebuild of the table to change. Zapier's
-// key is a row of `api_key`, pinned in ./api-key-schema.workers.spec.ts.
+// ./donation-schema.db.spec.ts opens with: each is a rebuild of the table to change. Zapier's
+// key is a row of `api_key`, pinned in ./api-key-schema.db.spec.ts.
 //
 // what is deliberately not here, on that file's redundancy rule: `STRICT` on the two tables and
 // `NO ACTION` on the delivery's two foreign keys, both read off sqlite's catalogue by
-// ./strict.workers.spec.ts, and the `optionalNotBlank` body on `last_error` (the shared helper,
+// ./strict.db.spec.ts, and the `optionalNotBlank` body on `last_error` (the shared helper,
 // pinned on `payment.provider_txn_id`).
 //
 // every query below is scoped to its own rows — the pool gives per-file storage, not per-test.
@@ -15,16 +17,6 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const SQLITE_CONSTRAINT_CHECK = 'SQLITE_CONSTRAINT_CHECK';
 const SQLITE_CONSTRAINT_PRIMARYKEY = 'SQLITE_CONSTRAINT_PRIMARYKEY';
 const SQLITE_CONSTRAINT_FOREIGNKEY = 'SQLITE_CONSTRAINT_FOREIGNKEY';
-
-/** runs `fn` and requires D1 to have rejected it; same helper as the sibling schema specs. */
-async function rejection(fn: () => Promise<unknown>): Promise<string> {
-	try {
-		await fn();
-	} catch (e) {
-		return String((e as Error).message);
-	}
-	throw new Error('expected D1 to reject this statement, but it succeeded');
-}
 
 const HOOK = 'https://hooks.zapier.com/hooks/standard/1/abc/';
 
@@ -35,24 +27,21 @@ const insertSubscription = (opts: {
 	endedAt?: number | null;
 	endedReason?: string | null;
 }) =>
-	env.DB.prepare(
-		`insert into zapier_subscription
+	run(
+		stmt(
+			`insert into zapier_subscription
 		   (id, "trigger", hook_url, ended_at, ended_reason, created_at, updated_at)
-		 values (?, ?, ?, ?, ?, 0, 0)`
-	)
-		.bind(
+		 values (?, ?, ?, ?, ?, 0, 0)`,
 			opts.id,
 			opts.trigger ?? 'new_gift',
 			opts.hookUrl ?? `${HOOK}${opts.id}`,
 			opts.endedAt ?? null,
 			opts.endedReason ?? null
 		)
-		.run();
+	);
 
 const subscriptionRow = (id: string) =>
-	env.DB.prepare('select "trigger", ended_at, ended_reason from zapier_subscription where id = ?')
-		.bind(id)
-		.first();
+	first(stmt('select "trigger", ended_at, ended_reason from zapier_subscription where id = ?', id));
 
 describe('a subscription listens for one of the three triggers', () => {
 	it.each(['new_gift', 'new_donor', 'gift_refunded'])('accepts %s', async (trigger) => {
@@ -62,7 +51,7 @@ describe('a subscription listens for one of the three triggers', () => {
 	});
 
 	it.each(['new_payment', 'NEW_GIFT', 'gift_disputed', ''])('refuses %j', async (trigger) => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertSubscription({ id: `sub-trigger-bad-${trigger}`, trigger })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -78,7 +67,7 @@ describe('a hook url is https and nothing else', () => {
 		['no scheme', 'hooks.zapier.com/hooks/standard/1/abc/'],
 		['empty', '']
 	])('refuses %s', async (_, hookUrl) => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertSubscription({ id: `sub-url-${hookUrl}`, hookUrl })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -94,7 +83,7 @@ describe('a subscription ends with a when and a why, or not at all', () => {
 	});
 
 	it('refuses an end reason outside the three', async () => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertSubscription({ id: 'sub-ended-bad', endedAt: 1, endedReason: 'deleted' })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -105,7 +94,7 @@ describe('a subscription ends with a when and a why, or not at all', () => {
 		['a when with no why', 1, null],
 		['a why with no when', null, 'gone']
 	])('refuses %s', async (_, endedAt, endedReason) => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertSubscription({ id: `sub-half-${endedReason}`, endedAt, endedReason })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -118,7 +107,7 @@ describe('one open subscription per hook url', () => {
 
 	it('refuses a second open subscription to a hook that already has one', async () => {
 		await insertSubscription({ id: 'sub-open-1', hookUrl });
-		const message = await rejection(() => insertSubscription({ id: 'sub-open-2', hookUrl }));
+		const message = await rejectionCode(() => insertSubscription({ id: 'sub-open-2', hookUrl }));
 		expect(message).toContain('SQLITE_CONSTRAINT_UNIQUE');
 		expect(message).toContain('zapier_subscription.hook_url');
 	});
@@ -140,11 +129,9 @@ describe('one open subscription per hook url', () => {
 			endedReason: 'gone'
 		});
 		await insertSubscription({ id: 'sub-reopen-3', hookUrl: reopened });
-		const { results } = await env.DB.prepare(
-			'select id from zapier_subscription where hook_url = ? order by id'
-		)
-			.bind(reopened)
-			.all<{ id: string }>();
+		const results = await all<{ id: string }>(
+			stmt('select id from zapier_subscription where hook_url = ? order by id', reopened)
+		);
 		expect(results.map((r) => r.id)).toEqual(['sub-reopen-1', 'sub-reopen-2', 'sub-reopen-3']);
 	});
 });
@@ -155,20 +142,25 @@ const PAYMENT_ID = '019fb600-0000-7000-8000-000000000003';
 const DELIVERY_SUBSCRIPTION_ID = 'sub-delivery';
 
 beforeAll(async () => {
-	await env.DB.batch([
-		env.DB.prepare(
+	await client.batch([
+		stmt(
 			`insert into contact (id, kind, display_name, created_at, updated_at)
-			 values (?, 'individual', 'Probe Donor', 0, 0)`
-		).bind(CONTACT_ID),
-		env.DB.prepare(
+			 values (?, 'individual', 'Probe Donor', 0, 0)`,
+			CONTACT_ID
+		),
+		stmt(
 			`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
-			 values (?, ?, 10000, 'USD', 0, 0)`
-		).bind(DONATION_ID, CONTACT_ID),
-		env.DB.prepare(
+			 values (?, ?, 10000, 'USD', 0, 0)`,
+			DONATION_ID,
+			CONTACT_ID
+		),
+		stmt(
 			`insert into payment (id, donation_id, amount_minor, currency, direction, method, status,
 			                      provider, provider_txn_id, occurred_at, created_at)
-			 values (?, ?, 10000, 'USD', 'inbound', 'card', 'succeeded', 'stripe', 'pi_zapier', 0, 0)`
-		).bind(PAYMENT_ID, DONATION_ID)
+			 values (?, ?, 10000, 'USD', 'inbound', 'card', 'succeeded', 'stripe', 'pi_zapier', 0, 0)`,
+			PAYMENT_ID,
+			DONATION_ID
+		)
 	]);
 	await insertSubscription({ id: DELIVERY_SUBSCRIPTION_ID });
 });
@@ -176,39 +168,40 @@ beforeAll(async () => {
 /** a delivery row stating only what the builder always binds; `columns` adds the rest. */
 const insertDelivery = (
 	eventId: string,
-	extra: { subscriptionId?: string; paymentId?: string; columns?: Record<string, unknown> } = {}
+	extra: { subscriptionId?: string; paymentId?: string; columns?: Record<string, InValue> } = {}
 ) => {
 	const columns = extra.columns ?? {};
 	const names = Object.keys(columns);
-	return env.DB.prepare(
-		`insert into zapier_delivery
+	return run(
+		stmt(
+			`insert into zapier_delivery
 		   (subscription_id, event_id, payment_id, next_attempt_at, created_at, updated_at
 		    ${names.map((n) => `, ${n}`).join('')})
-		 values (?, ?, ?, 0, 0, 0 ${names.map(() => ', ?').join('')})`
-	)
-		.bind(
+		 values (?, ?, ?, 0, 0, 0 ${names.map(() => ', ?').join('')})`,
 			extra.subscriptionId ?? DELIVERY_SUBSCRIPTION_ID,
 			eventId,
 			extra.paymentId ?? PAYMENT_ID,
 			...Object.values(columns)
 		)
-		.run();
+	);
 };
 
 const deliveryRow = (eventId: string) =>
-	env.DB.prepare(
-		`select status, attempts, leased_until, last_error from zapier_delivery
-		 where subscription_id = ? and event_id = ?`
-	)
-		.bind(DELIVERY_SUBSCRIPTION_ID, eventId)
-		.first();
+	first(
+		stmt(
+			`select status, attempts, leased_until, last_error from zapier_delivery
+		 where subscription_id = ? and event_id = ?`,
+			DELIVERY_SUBSCRIPTION_ID,
+			eventId
+		)
+	);
 
 describe('an event reaches a subscription once', () => {
 	it('refuses a second delivery of one event to one subscription', async () => {
 		// the key the fan-out's `on conflict do nothing` lands on, and what holds "new donor" to
 		// one row per donor per Zap.
 		await insertDelivery('evt-once');
-		const message = await rejection(() => insertDelivery('evt-once'));
+		const message = await rejectionCode(() => insertDelivery('evt-once'));
 		expect(message).toContain(SQLITE_CONSTRAINT_PRIMARYKEY);
 	});
 
@@ -216,25 +209,26 @@ describe('an event reaches a subscription once', () => {
 		await insertSubscription({ id: 'sub-delivery-2' });
 		await insertDelivery('evt-twice', { subscriptionId: 'sub-delivery-2' });
 		await insertDelivery('evt-twice');
-		const { results } = await env.DB.prepare(
-			'select subscription_id as s from zapier_delivery where event_id = ? order by s'
-		)
-			.bind('evt-twice')
-			.all();
+		const results = await all(
+			stmt(
+				'select subscription_id as s from zapier_delivery where event_id = ? order by s',
+				'evt-twice'
+			)
+		);
 		expect(results).toEqual([{ s: DELIVERY_SUBSCRIPTION_ID }, { s: 'sub-delivery-2' }]);
 	});
 });
 
 describe('a delivery row points at a subscription and a gift that exist', () => {
 	it('refuses a subscription id naming no subscription', async () => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertDelivery('evt-no-sub', { subscriptionId: 'sub-missing' })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_FOREIGNKEY);
 	});
 
 	it('refuses a payment id naming no payment', async () => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertDelivery('evt-no-payment', { paymentId: '019fb600-0000-7000-8000-00000000dead' })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_FOREIGNKEY);
@@ -261,7 +255,7 @@ describe('a delivery row is in one of four states', () => {
 	});
 
 	it.each(['succeeded', 'SENT', 'ended', ''])('refuses %j', async (status) => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertDelivery(`evt-status-bad-${status}`, { columns: { status } })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -269,7 +263,7 @@ describe('a delivery row is in one of four states', () => {
 	});
 
 	it('refuses a negative attempt count', async () => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertDelivery('evt-attempts-negative', { columns: { attempts: -1 } })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -284,7 +278,7 @@ describe('a delivery row names the event it carries', () => {
 		['a lone space', ' '],
 		['a non-breaking space', '\u00a0']
 	])('refuses %s', async (_, eventId) => {
-		const message = await rejection(() => insertDelivery(eventId));
+		const message = await rejectionCode(() => insertDelivery(eventId));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('zapier_delivery_event_id_not_blank_check');
 	});

@@ -8,13 +8,15 @@ import { routeFiles } from './vite/route-files';
 // worker runtime and a route manifest, and neither has anything to do with a spec that imports a
 // module and calls it. vitest reads this file in preference to that one, so the two never meet.
 //
-// three pools, split by what a spec needs.
+// four projects, split by what a spec needs.
 //
-// `*.workers.spec.ts` runs inside workerd against a real D1 — anything that touches the database
+// `*.db.spec.ts` runs in node against a real libSQL file — anything that touches the database
 // belongs there, because the things worth asserting about it (STRICT rejects a float, `batch()`
-// rolls back, a UNIQUE index refuses a redelivery) are properties of D1 and cannot be proven
-// against a stand-in. ./vitest.workers.config.ts is that pool, and its header says why it is a
-// file rather than an entry here.
+// rolls back, a UNIQUE index refuses a redelivery) are properties of the database and cannot be
+// proven against a stand-in.
+//
+// `*.workers.spec.ts` runs inside workerd against D1. ./vitest.workers.config.ts is that pool,
+// and its header says why it is a file rather than an entry here.
 //
 // `*.dom.spec.*` runs in happy-dom, and what it is for is the one thing a server render cannot
 // reach: a state react router only ever puts a screen in while a navigation is in flight. a
@@ -68,8 +70,24 @@ export default defineConfig({
 						'src/**/*.workers.{test,spec}.{js,ts}',
 						// and the dom pool these; node would collect a `.ts` one and fail on
 						// `document` being undefined.
-						'src/**/*.dom.{test,spec}.{js,ts}'
+						'src/**/*.dom.{test,spec}.{js,ts}',
+						// and the db project these, so each runs once and against its own file.
+						'src/**/*.db.{test,spec}.{js,ts}'
 					]
+				}
+			},
+			{
+				extends: true,
+				resolve: { alias: { $lib: resolve(import.meta.dirname, 'src/lib') } },
+				test: {
+					name: 'db',
+					environment: 'node',
+					// a real libSQL file per spec file, with every committed migration applied
+					// (src/lib/server/db/database.testing.ts). that module holds the handle at module
+					// scope, so it relies on vitest's default `isolate: true` — one module registry per
+					// spec file, so one database per spec file. turning isolation off would hand every
+					// file the first one's rows.
+					include: ['src/**/*.db.{test,spec}.ts']
 				}
 			},
 			{

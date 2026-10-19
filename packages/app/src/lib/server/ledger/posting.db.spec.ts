@@ -1,9 +1,9 @@
-import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { POSTING_ACCOUNTS, ROLLUPS, donationRevenueAccount, postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
+import { client } from '../db/database.testing';
 import type { PostableAccountId } from '../db/postable';
 import { rejectionCode } from '../db/rejection.testing';
 import { entryGroup, type EntrySourceType, ledgerEntry } from '../db/schema';
@@ -13,13 +13,13 @@ import { PostingError, post, postingStatements, type PostingInput } from './post
 //
 // the first half of this file touches no database at all, which is the point of `post()`
 // being pure: "an entry group sums to exactly zero" is the one invariant the whole design
-// rests on, and it is provable here with no D1, no browser, no Stripe and no fixture.
+// rests on, and it is provable here with no database, no browser, no Stripe and no fixture.
 // the second half proves the statements it produces actually apply.
 //
 // the canonical fixture is the cash gift: $100 in hand, `+10_000` to 1010 Bank (debit
 // asset), `−10_000` to 4110 Tax-Deductible Donations (credit revenue). deliberately not
 // the card gift — a card charge is not cash and must debit 1020 Undeposited Funds, which
-// is two groups (recognition and fee) and is covered against a real D1 in
+// is two groups (recognition and fee) and is covered against a real database in
 // ../donations/settle.workers.spec.ts, not in the fixture that proves sums-to-zero.
 
 const CASH_GIFT: PostingInput = {
@@ -45,22 +45,6 @@ function rejection(fn: () => unknown): PostingError {
 		throw e;
 	}
 	throw new Error('expected post() to reject this input, but it returned a Posting');
-}
-
-/**
- * the same helper for a statement D1 must refuse: runs `fn`, requires a rejection, hands
- * back the message. throws rather than returning a sentinel when the statement succeeds,
- * so a probe that stops being rejected fails loudly instead of passing quietly. (the twin
- * of `rejection` in ../db/donation-schema.workers.spec.ts, duplicated for the same reason
- * that one gives.)
- */
-async function d1Rejection(fn: () => Promise<unknown>): Promise<string> {
-	try {
-		await fn();
-	} catch (e) {
-		return String((e as Error).message);
-	}
-	throw new Error('expected D1 to reject this statement, but it succeeded');
 }
 
 /**
@@ -234,17 +218,17 @@ describe('post() — what it refuses to build', () => {
 	});
 });
 
-describe('postingStatements() — applied to a real D1', () => {
+describe('postingStatements() — applied to a real database', () => {
 	// this suite proves the statements are real SQL that lands, that the account ids in
-	// accounts.ts resolve against the seeded chart, and — because the database here is
-	// D1 inside workerd rather than a stand-in — that a failing `batch()` leaves nothing
+	// accounts.ts resolve against the seeded chart, and — because the database here is a
+	// real libSQL file rather than a stand-in — that a failing `batch()` leaves nothing
 	// behind. that last claim is the reason the whole write path is shaped around
 	// `batch()`, and it is only assertable against the real thing.
 	//
-	// same `createDb` the request path uses. the binding differs, nothing else does.
+	// same `createDb` the request path uses. the file differs, nothing else does.
 	let db: Db;
 	beforeAll(() => {
-		db = createDb(env.DB);
+		db = createDb(client);
 	});
 
 	it('emits one statement per row, group first', () => {
@@ -276,7 +260,7 @@ describe('postingStatements() — applied to a real D1', () => {
 	});
 
 	it('resolves account_id against the seeded chart of accounts', async () => {
-		// the foreign key is the reason `accounts.workers.spec.ts` exists; this is the same claim
+		// the foreign key is the reason `../db/accounts.db.spec.ts` exists; this is the same claim
 		// from the other side. an id present in accounts.ts and absent from the migration
 		// fails right here instead of on a donor's gift.
 		const posting = post(gift({ sourceId: 'don_fk', sourceType: 'payment' }));
@@ -309,7 +293,7 @@ describe('postingStatements() — applied to a real D1', () => {
 
 	it('refuses a ledger entry against the 4100 rollup, at the database', async () => {
 		// the guard `PostableAccountId` could not provide. the brand makes a rollup a compile
-		// error in `post()`'s argument and nothing more — a hand-run `wrangler d1 execute`, a
+		// error in `post()`'s argument and nothing more — a hand-run SQL statement, a
 		// CSV import or any future writer that never sees the brand reaches this table
 		// directly, and one entry naming a rollup makes every report over that subtree
 		// double-count, silently and permanently: the ledger is append-only and the rollup
@@ -322,13 +306,12 @@ describe('postingStatements() — applied to a real D1', () => {
 		const posting = post(gift({ sourceId: 'don_rollup_probe', sourceType: 'payment' }));
 		await db.batch(postingStatements(db, posting));
 
-		const message = await d1Rejection(() =>
-			env.DB.prepare(
-				`insert into ledger_entry (id, entry_group_id, account_id, amount_minor)
-				 values ('le-rollup', ?, ?, 1)`
-			)
-				.bind(posting.group.id!, ROLLUPS.donations.id)
-				.run()
+		const message = await rejectionCode(() =>
+			client.execute({
+				sql: `insert into ledger_entry (id, entry_group_id, account_id, amount_minor)
+				      values ('le-rollup', ?, ?, 1)`,
+				args: [posting.group.id!, ROLLUPS.donations.id]
+			})
 		);
 		// the extended result code's name, never the prose in front of it.
 		expect(message).toContain('SQLITE_CONSTRAINT_FOREIGNKEY');
@@ -341,14 +324,13 @@ describe('postingStatements() — applied to a real D1', () => {
 		const posting = post(gift({ sourceId: 'don_pin_probe', sourceType: 'payment' }));
 		await db.batch(postingStatements(db, posting));
 
-		const message = await d1Rejection(() =>
-			env.DB.prepare(
-				`insert into ledger_entry
-				   (id, entry_group_id, account_id, account_is_postable, amount_minor)
-				 values ('le-pin', ?, ?, 0, 1)`
-			)
-				.bind(posting.group.id!, ROLLUPS.donations.id)
-				.run()
+		const message = await rejectionCode(() =>
+			client.execute({
+				sql: `insert into ledger_entry
+				        (id, entry_group_id, account_id, account_is_postable, amount_minor)
+				      values ('le-pin', ?, ?, 0, 1)`,
+				args: [posting.group.id!, ROLLUPS.donations.id]
+			})
 		);
 		expect(message).toContain('SQLITE_CONSTRAINT_CHECK');
 		expect(message).toContain('ledger_entry_account_postable_check');
@@ -364,9 +346,9 @@ describe('postingStatements() — applied to a real D1', () => {
 
 		const redelivery = post(gift({ sourceId: 'evt_redelivered', sourceType: 'payment' }));
 		// the extended result code's name, not the prose around it — same reasoning as
-		// ../db/strict.workers.spec.ts.
-		await expect(db.batch(postingStatements(db, redelivery))).rejects.toThrow(
-			/SQLITE_CONSTRAINT_UNIQUE/
+		// ../db/strict.db.spec.ts.
+		expect(await rejectionCode(() => db.batch(postingStatements(db, redelivery)))).toContain(
+			'SQLITE_CONSTRAINT_UNIQUE'
 		);
 	});
 
@@ -383,13 +365,12 @@ describe('postingStatements() — applied to a real D1', () => {
 
 	it('refuses a source type outside the vocabulary', async () => {
 		// `entry_group_source_type_check` is a constraint and not a comment. the writer that
-		// meets it is a redelivered webhook or a hand-run `wrangler d1 execute`, neither of which
+		// meets it is a redelivered webhook or a hand-run SQL statement, neither of which
 		// ever sees the TypeScript union, so the cast is what stands in for that writer.
 		//
-		// through `rejectionCode` rather than `toThrow`, because drizzle is in the path: it
-		// catches D1's error and rethrows `Failed query: …` with the code demoted to `cause`, so
-		// a plain `rejects.toThrow(/SQLITE_CONSTRAINT/)` here would pass whether the constraint
-		// fired or not.
+		// through `rejectionCode` rather than `toThrow`: the extended code is never in the
+		// outermost message, so a plain `rejects.toThrow(/SQLITE_CONSTRAINT/)` here would pass
+		// on whichever constraint fired.
 		const chain = await rejectionCode(() =>
 			db.batch(
 				postingStatements(
@@ -403,9 +384,9 @@ describe('postingStatements() — applied to a real D1', () => {
 	});
 
 	it('refuses a lowercase currency and a blank source id, which no posting can produce', async () => {
-		// `entry_group`'s other two checks, probed straight at D1 because `post()` refuses both
+		// `entry_group`'s other two checks, probed straight at the database because `post()` refuses both
 		// long before the database sees them. what they are there for is the writer that never
-		// meets `post()`: a hand-run `wrangler d1 execute`, a CSV import, a backfill.
+		// meets `post()`: a hand-run SQL statement, a CSV import, a backfill.
 		const currency = await rejectionCode(() =>
 			db.run(
 				sql`insert into entry_group (id, source_type, source_id, currency, occurred_at, created_at)
@@ -518,7 +499,7 @@ describe('postingStatements() — applied to a real D1', () => {
 		// would survive with no lines — an entry group summing to zero only because it is
 		// empty, which is the one corruption no check can catch.
 		//
-		// this is asserted against D1 in workerd. it is not assertable against a stand-in,
+		// this is asserted against a real libSQL file. it is not assertable against a stand-in,
 		// because a stand-in's rollback is whatever the stand-in implements.
 		const posting = post(gift({ sourceId: 'don_atomic', sourceType: 'donation' }));
 		const orphanLine = db.insert(ledgerEntry).values({
@@ -532,9 +513,9 @@ describe('postingStatements() — applied to a real D1', () => {
 			amountMinor: 1
 		});
 
-		await expect(db.batch([...postingStatements(db, posting), orphanLine])).rejects.toThrow(
-			/FOREIGN KEY|SQLITE_CONSTRAINT/
-		);
+		expect(
+			await rejectionCode(() => db.batch([...postingStatements(db, posting), orphanLine]))
+		).toContain('SQLITE_CONSTRAINT_FOREIGNKEY');
 
 		const groups = await db.select().from(entryGroup).where(eq(entryGroup.sourceId, 'don_atomic'));
 		expect(groups, 'the group survived a failed batch — batch() is not atomic').toEqual([]);

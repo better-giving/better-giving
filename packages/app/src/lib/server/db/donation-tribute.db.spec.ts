@@ -1,5 +1,5 @@
-import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { run, first, all, stmt } from '../db/database.testing';
 
 // the five tribute columns on `donation`, read off the applied migrations rather than off
 // schema.ts.
@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 // ../donations/quote-input.ts and `tributeOf` in ../donations/collect.ts — and a test asserting the
 // database refuses none of it is what stops the next reader assuming otherwise. nothing can be
 // added to them cheaply either: `donation` has children (`line_item`, `payment`), so a CHECK on any
-// of the five is a rebuild whose `DROP TABLE donation` D1 refuses.
+// of the five is a rebuild whose `DROP TABLE donation` the database refuses.
 //
 // column order is the other half. rule 1 in ./schema.ts is about where a column is appended, and a
 // column inserted anywhere but the end is the silent rebuild — so the position is read here rather
@@ -20,26 +20,30 @@ const PLAIN_ID = '019fb200-0000-7000-8000-000000000002';
 const TRIBUTE_ID = '019fb200-0000-7000-8000-000000000003';
 
 const insertDonation = (id: string, columns = '', values = '') =>
-	env.DB.prepare(
+	stmt(
 		`insert into donation (id, contact_id, total_minor, currency, received_at, created_at${columns})
-		 values (?, ?, 10000, 'USD', 0, 0${values})`
-	).bind(id, CONTACT_ID);
+		 values (?, ?, 10000, 'USD', 0, 0${values})`,
+		id,
+		CONTACT_ID
+	);
 
 beforeAll(async () => {
-	await env.DB.prepare(
-		`insert into contact (id, kind, display_name, created_at, updated_at)
-		 values (?, 'individual', 'Tribute Donor', 0, 0)`
-	)
-		.bind(CONTACT_ID)
-		.run();
+	await run(
+		stmt(
+			`insert into contact (id, kind, display_name, created_at, updated_at)
+		 values (?, 'individual', 'Tribute Donor', 0, 0)`,
+			CONTACT_ID
+		)
+	);
 });
 
 /** every column on `donation`, in the order sqlite holds them. */
 async function donationColumns() {
-	const columns = await env.DB.prepare(
-		"select name, type, `notnull` as required, dflt_value as fallback from pragma_table_info('donation')"
-	).all<{ name: string; type: string; required: number; fallback: string | null }>();
-	return columns.results;
+	return all<{ name: string; type: string; required: number; fallback: string | null }>(
+		stmt(
+			"select name, type, `notnull` as required, dflt_value as fallback from pragma_table_info('donation')"
+		)
+	);
 }
 
 const TRIBUTE_COLUMNS = [
@@ -73,7 +77,7 @@ describe('the tribute columns on `donation`', () => {
 
 	it('types the four strings TEXT and the stamp INTEGER', async () => {
 		// `tribute_notified_at` is unix milliseconds like every other `_at` column, and STRICT is
-		// what turns that INTEGER from an affinity into a constraint (./strict.workers.spec.ts).
+		// what turns that INTEGER from an affinity into a constraint (./strict.db.spec.ts).
 		// sqlite reports a STRICT column's type uppercased, whatever the migration typed.
 		const columns = await donationColumns();
 		const typeOf = (name: string) => columns.find((c) => c.name === name)?.type;
@@ -83,13 +87,11 @@ describe('the tribute columns on `donation`', () => {
 	});
 
 	it('writes null into all five for a gift that carries no tribute', async () => {
-		await insertDonation(PLAIN_ID).run();
+		await run(insertDonation(PLAIN_ID));
 
-		const row = await env.DB.prepare(
-			`select ${TRIBUTE_COLUMNS.join(', ')} from donation where id = ?`
-		)
-			.bind(PLAIN_ID)
-			.first();
+		const row = await first(
+			stmt(`select ${TRIBUTE_COLUMNS.join(', ')} from donation where id = ?`, PLAIN_ID)
+		);
 		expect(Object.values(row ?? {})).toEqual([null, null, null, null, null]);
 	});
 
@@ -99,15 +101,17 @@ describe('the tribute columns on `donation`', () => {
 		// boundaries named in the header are the only thing between a request and this column. a future
 		// change that adds the constraint after all turns this red, which is the point — it is a
 		// rebuild, and rebuilds are read before they ship (CONTRIBUTING.md -> Migrations).
-		await insertDonation(
-			TRIBUTE_ID,
-			', tribute_kind, tribute_honoree, tribute_notify_email',
-			", 'in loving memory of', '', 'not an address'"
-		).run();
+		await run(
+			insertDonation(
+				TRIBUTE_ID,
+				', tribute_kind, tribute_honoree, tribute_notify_email',
+				", 'in loving memory of', '', 'not an address'"
+			)
+		);
 
-		const row = await env.DB.prepare('select tribute_kind as k from donation where id = ?')
-			.bind(TRIBUTE_ID)
-			.first<{ k: string }>();
+		const row = await first<{ k: string }>(
+			stmt('select tribute_kind as k from donation where id = ?', TRIBUTE_ID)
+		);
 		expect(row?.k).toBe('in loving memory of');
 	});
 });

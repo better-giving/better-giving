@@ -30,10 +30,7 @@ export default defineConfig({
 			miniflare: {
 				compatibilityDate: '2026-07-22',
 				compatibilityFlags: ['nodejs_compat'],
-				// `UNMIGRATED_DB` is test-only and ./src/lib/server/db/d1.setup.ts leaves it empty, so a
-				// spec can stop the chain short and seed rows before the rest of it runs
-				// (src/lib/server/db/newest-migration.workers.spec.ts).
-				d1Databases: ['DB', 'UNMIGRATED_DB'],
+				d1Databases: ['DB'],
 				// the same binding `wrangler.jsonc` declares, with a much smaller bucket. what a
 				// spec can hold the hook to is that it refuses before it resolves and that the
 				// preflight is not exempt, and six hundred requests would prove neither of those

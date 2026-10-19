@@ -1,12 +1,13 @@
-import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { POSTING_ACCOUNTS } from './accounts';
+import { run, first, stmt } from '../db/database.testing';
+import { rejectionCode } from './rejection.testing';
 
 // the constraints `page` carries, each a table rebuild to change once shipped — the reason
-// ./donation-schema.workers.spec.ts opens with.
+// ./donation-schema.db.spec.ts opens with.
 //
 // `STRICT` on the table and `NO ACTION` on its foreign key are read off sqlite's catalogue by
-// ./strict.workers.spec.ts and not repeated here.
+// ./strict.db.spec.ts and not repeated here.
 //
 // the pool gives per-file storage, not per-test: every case starts with one Donation page, and a
 // case probing a Donation page row takes that slot through `refusedAsDonationPage` and puts it back.
@@ -14,28 +15,20 @@ import { POSTING_ACCOUNTS } from './accounts';
 const SQLITE_CONSTRAINT_CHECK = 'SQLITE_CONSTRAINT_CHECK';
 const SQLITE_CONSTRAINT_UNIQUE = 'SQLITE_CONSTRAINT_UNIQUE';
 
-/** runs `fn` and requires D1 to have rejected it; same helper as the sibling schema specs. */
-async function rejection(fn: () => Promise<unknown>): Promise<string> {
-	try {
-		await fn();
-	} catch (e) {
-		return String((e as Error).message);
-	}
-	throw new Error('expected D1 to reject this statement, but it succeeded');
-}
-
 let formSequence = 0;
 
 /** a donation-settings row for a page to own; every page owns its own. */
 async function settingsRow(): Promise<string> {
 	formSequence += 1;
 	const id = `frm_pageschema${String(formSequence).padStart(4, '0')}`;
-	await env.DB.prepare(
-		`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
-		 values (?, 'page settings', ?, 'USD', 0, 0)`
-	)
-		.bind(id, POSTING_ACCOUNTS.donationsDeductible.id)
-		.run();
+	await run(
+		stmt(
+			`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
+		 values (?, 'page settings', ?, 'USD', 0, 0)`,
+			id,
+			POSTING_ACCOUNTS.donationsDeductible.id
+		)
+	);
 	return id;
 }
 
@@ -66,12 +59,11 @@ let pageSequence = 0;
 async function insertPage(row: PageRow): Promise<string> {
 	pageSequence += 1;
 	const id = `019fc400-0000-7000-8000-${String(pageSequence).padStart(12, '0')}`;
-	await env.DB.prepare(
-		`insert into page (id, type, name, slug, state, form_id, draft, published, last_published,
+	await run(
+		stmt(
+			`insert into page (id, type, name, slug, state, form_id, draft, published, last_published,
 		                   campaign_type, created_at, updated_at)
-		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`
-	)
-		.bind(
+		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
 			id,
 			row.type,
 			row.name,
@@ -83,7 +75,7 @@ async function insertPage(row: PageRow): Promise<string> {
 			row.last_published,
 			row.campaign_type
 		)
-		.run();
+	);
 	return id;
 }
 
@@ -91,11 +83,11 @@ beforeAll(async () => {
 	await insertPage(DONATION_PAGE);
 });
 
-/** D1's refusal of `row` as the Donation page, tried with that slot emptied and refilled after. */
+/** the database's refusal of `row` as the Donation page, tried with that slot emptied and refilled after. */
 async function refusedAsDonationPage(row: PageRow): Promise<string> {
-	await env.DB.prepare(`delete from page where type = 'donation_page'`).run();
+	await run(stmt(`delete from page where type = 'donation_page'`));
 	try {
-		return await rejection(() => insertPage(row));
+		return await rejectionCode(() => insertPage(row));
 	} finally {
 		await insertPage(DONATION_PAGE);
 	}
@@ -103,7 +95,7 @@ async function refusedAsDonationPage(row: PageRow): Promise<string> {
 
 describe('one Donation page, held by the table', () => {
 	it('refuses a second Donation page', async () => {
-		const message = await rejection(() => insertPage(DONATION_PAGE));
+		const message = await rejectionCode(() => insertPage(DONATION_PAGE));
 		expect(message).toContain(SQLITE_CONSTRAINT_UNIQUE);
 		expect(message).toContain('page.type');
 	});
@@ -122,7 +114,7 @@ const CAMPAIGN: PageRow = {
 
 describe('a page is the Donation page or a campaign, and no other kind', () => {
 	it.each([['event'], ['Campaign'], ['']])('refuses the type %j', async (type) => {
-		const message = await rejection(() => insertPage({ ...CAMPAIGN, slug: null, type }));
+		const message = await rejectionCode(() => insertPage({ ...CAMPAIGN, slug: null, type }));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('page_type_check');
 	});
@@ -131,7 +123,7 @@ describe('a page is the Donation page or a campaign, and no other kind', () => {
 describe('a campaign slug is unique; the Donation page has none', () => {
 	it('refuses a second campaign at a slug another holds', async () => {
 		await insertPage({ ...CAMPAIGN, slug: 'spring-appeal' });
-		const message = await rejection(() => insertPage({ ...CAMPAIGN, slug: 'spring-appeal' }));
+		const message = await rejectionCode(() => insertPage({ ...CAMPAIGN, slug: 'spring-appeal' }));
 		expect(message).toContain(SQLITE_CONSTRAINT_UNIQUE);
 		expect(message).toContain('page.slug');
 	});
@@ -144,7 +136,7 @@ describe('a campaign slug is unique; the Donation page has none', () => {
 
 	it.each([['never_published'], ['live']])('refuses a %s campaign with no slug', async (state) => {
 		const published = state === 'live' ? CAMPAIGN.draft : null;
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertPage({ ...CAMPAIGN, slug: null, state, published })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -158,7 +150,7 @@ describe('a campaign slug is unique; the Donation page has none', () => {
 			state: 'ended',
 			published: CAMPAIGN.draft
 		});
-		const row = await env.DB.prepare(`select slug, state from page where id = ?`).bind(id).first();
+		const row = await first(stmt(`select slug, state from page where id = ?`, id));
 		expect(row).toEqual({ slug: null, state: 'ended' });
 	});
 });
@@ -169,7 +161,9 @@ describe('a campaign is named; the Donation page has no name of its own', () => 
 		['a lone NBSP', '\u00a0'],
 		['no name', null]
 	])('refuses a campaign with %s', async (_, name) => {
-		const message = await rejection(() => insertPage({ ...CAMPAIGN, slug: 'name-probe', name }));
+		const message = await rejectionCode(() =>
+			insertPage({ ...CAMPAIGN, slug: 'name-probe', name })
+		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('page_name_check');
 	});
@@ -183,7 +177,9 @@ describe('a campaign is named; the Donation page has no name of its own', () => 
 
 describe('a page is never published, live or ended', () => {
 	it.each([['draft'], ['published'], ['']])('refuses the state %j', async (state) => {
-		const message = await rejection(() => insertPage({ ...CAMPAIGN, slug: 'state-probe', state }));
+		const message = await rejectionCode(() =>
+			insertPage({ ...CAMPAIGN, slug: 'state-probe', state })
+		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('page_state_check');
 	});
@@ -197,7 +193,7 @@ describe('a page is never published, live or ended', () => {
 
 describe('a published page exists exactly when the page has been live', () => {
 	it('refuses a never-published campaign holding a published page', async () => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertPage({ ...CAMPAIGN, slug: 'published-probe', published: CAMPAIGN.draft })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -205,7 +201,7 @@ describe('a published page exists exactly when the page has been live', () => {
 	});
 
 	it.each([['live'], ['ended']])('refuses a %s campaign with no published page', async (state) => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertPage({ ...CAMPAIGN, slug: 'published-probe', state, published: null })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -213,7 +209,7 @@ describe('a published page exists exactly when the page has been live', () => {
 	});
 
 	it('refuses a last published page with no published page after it', async () => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertPage({ ...CAMPAIGN, slug: 'published-probe', last_published: CAMPAIGN.draft })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -232,7 +228,7 @@ describe('each page document is a JSON object', () => {
 		['last_published', '{"blocks":'],
 		['last_published', '42']
 	] as const)('refuses %s holding %j', async (column, value) => {
-		const message = await rejection(() => insertPage({ ...LIVE, [column]: value }));
+		const message = await rejectionCode(() => insertPage({ ...LIVE, [column]: value }));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain(`page_${column}_object_check`);
 	});
@@ -266,11 +262,9 @@ describe('a goal or an end date belongs to a campaign, never to the Donation pag
 			published: both,
 			last_published: both
 		});
-		const row = await env.DB.prepare(
-			`select json_extract(published, '$.goalMinor') as goal from page where id = ?`
-		)
-			.bind(id)
-			.first();
+		const row = await first(
+			stmt(`select json_extract(published, '$.goalMinor') as goal from page where id = ?`, id)
+		);
 		expect(row).toEqual({ goal: 1500000 });
 	});
 });
@@ -287,14 +281,14 @@ describe("a page's own look takes the closed sets", () => {
 			[column, 'the brand colour', { brandColour: 'red' }]
 		])
 	)('refuses %s holding an off-list look: %s', async (column, _, look) => {
-		const message = await rejection(() => insertPage({ ...LIVE, [column]: withLook(look) }));
+		const message = await rejectionCode(() => insertPage({ ...LIVE, [column]: withLook(look) }));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain(`page_${column}_look_check`);
 	});
 
 	it.each(DOCUMENTS)('refuses %s holding a look that is not an object', async (column) => {
 		const doc = JSON.stringify({ blocks: [], look: 'warm' });
-		const message = await rejection(() => insertPage({ ...LIVE, [column]: doc }));
+		const message = await rejectionCode(() => insertPage({ ...LIVE, [column]: doc }));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain(`page_${column}_look_check`);
 	});
@@ -302,11 +296,9 @@ describe("a page's own look takes the closed sets", () => {
 	it('accepts a page with its own look, and one with none', async () => {
 		const own = withLook({ shade: 'warm', corner: 'round' });
 		const id = await insertPage({ ...LIVE, draft: own, published: '{"look":null}' });
-		const row = await env.DB.prepare(
-			`select json_extract(draft, '$.look.shade') as shade from page where id = ?`
-		)
-			.bind(id)
-			.first();
+		const row = await first(
+			stmt(`select json_extract(draft, '$.look.shade') as shade from page where id = ?`, id)
+		);
 		expect(row).toEqual({ shade: 'warm' });
 	});
 });
@@ -319,7 +311,7 @@ describe("a campaign's type is one of the list, and the Donation page has none",
 	});
 
 	it.each([['year-end'], ['Year_end'], ['gala'], ['']])('refuses the type %j', async (type) => {
-		const message = await rejection(() =>
+		const message = await rejectionCode(() =>
 			insertPage({ ...CAMPAIGN, slug: 'type-probe', campaign_type: type })
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
@@ -332,26 +324,25 @@ describe("a campaign's type is one of the list, and the Donation page has none",
 		[null, 'type-none']
 	])('accepts a campaign of the type %j', async (type, slug) => {
 		const id = await insertPage({ ...CAMPAIGN, slug, campaign_type: type });
-		const row = await env.DB.prepare(`select campaign_type from page where id = ?`)
-			.bind(id)
-			.first();
+		const row = await first(stmt(`select campaign_type from page where id = ?`, id));
 		expect(row).toEqual({ campaign_type: type });
 	});
 });
 
 describe('every page owns its own donation-settings row', () => {
 	it('refuses a second page naming a settings row another page owns', async () => {
-		const owned = await env.DB.prepare(`select form_id from page where type = 'donation_page'`)
-			.first<{ form_id: string }>()
-			.then((row) => row?.form_id);
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into page (id, type, name, slug, state, form_id, draft, created_at, updated_at)
+		const owned = await first<{ form_id: string }>(
+			stmt(`select form_id from page where type = 'donation_page'`)
+		).then((row) => row?.form_id ?? null);
+		const message = await rejectionCode(() =>
+			run(
+				stmt(
+					`insert into page (id, type, name, slug, state, form_id, draft, created_at, updated_at)
 				 values ('019fc400-0000-7000-8000-00000000ffff', 'campaign', 'Borrowed', 'borrowed',
-				         'never_published', ?, '{}', 0, 0)`
+				         'never_published', ?, '{}', 0, 0)`,
+					owned
+				)
 			)
-				.bind(owned)
-				.run()
 		);
 		expect(message).toContain(SQLITE_CONSTRAINT_UNIQUE);
 		expect(message).toContain('page.form_id');

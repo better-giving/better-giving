@@ -16,7 +16,5 @@ declare namespace Cloudflare {
 	interface Env {
 		/** the committed `migrations/` files, read by `readD1Migrations` at config time. */
 		TEST_MIGRATIONS: import('cloudflare:test').D1Migration[];
-		/** a second D1 no setup file migrates, for a spec that applies the chain itself. */
-		UNMIGRATED_DB: D1Database;
 	}
 }
