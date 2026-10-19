@@ -15,6 +15,8 @@ docker compose up -d
 
 The app answers on the host's port 3000, or on `BETTER_GIVING_PORT` from `.env`. The database is `better-giving.db` on the named volume `data`, mounted at `/data`; it survives `docker compose down` and every rebuild, and `docker compose down -v` deletes it.
 
+Every push to `main` publishes a built image, `ghcr.io/better-giving/better-giving`, tagged `main` and by commit sha, for `linux/amd64` and `linux/arm64`. `compose.yaml` builds from your checkout instead; pull the image only if you run it without one.
+
 `migrate` applies every committed migration the database has not recorded, then exits. The server never runs one on start, so the migration is always a step you take. Safe to rerun: applied migrations skip.
 
 **One container, never scaled.** The rate limits on `/api/v1`, the read API at `/integrations/v1` and sign-in, the cache in front of the served form config and photos, and the scheduled runs all live in the one process. A second replica would double every limit, serve from a cache the first never cleared, and run every scheduled job twice.
