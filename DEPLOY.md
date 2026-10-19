@@ -2,79 +2,64 @@
 
 ## Requirements
 
-- **Node ≥ 22** and **pnpm** (`corepack enable`; version pinned in `package.json`)
-- **A Cloudflare account on a paid Workers plan** with its email verified. The Free plan runs it, but the rate limits on `/api/v1`, the read API at `/integrations/v1` and sign-in silently do not enforce. Deliveries to Zapier, webhook destinations and QuickBooks go at the paid plan's pace on every deployment (`PACE` in `packages/app/src/lib/server/outbox/budget.ts`), because nothing reports the plan to the deployment. On a Free account a burst of gifts, or the backlog a resumed webhook destination re-sends, overruns what the Free plan allows one run of the minute schedule: 50 outside requests and 50 database queries (https://developers.cloudflare.com/workers/platform/limits/, https://developers.cloudflare.com/d1/platform/limits/), and 10 ms of CPU. Past those limits a delivery can fail as though its receiver had, a QuickBooks delivery can raise a notice that QuickBooks could not be reached, and an event its receiver already took can be sent to it again, so a Zap can run twice for one gift. An unverified account works in the dashboard but refuses the first Worker deploy
+- **Docker with Compose**, on a machine whose disk is local. The database is one file in WAL mode, and WAL needs shared memory that a network filesystem does not provide
+- **An `https` address in front of the container.** The app serves plain HTTP on port 3000; a proxy you run ends TLS. PayPal, Chariot, NOWPayments and Intuit deliver to `https` only. [Behind a proxy](#behind-a-proxy) has the one setting it needs
 - **A payment processor account: Stripe, PayPal, Chariot, NOWPayments, or any mix.** Any one on its own finishes set-up: Stripe takes cards, bank debits and the wallets; PayPal takes PayPal and Venmo; Chariot takes one-time gifts from a donor-advised fund; NOWPayments takes one-time crypto gifts. A deployment holding more than one offers each to the donor
 - **An SMTP account on port 465**, for receipts. [Email](#email) has a provider table
 
 ```sh
-pnpm install
-pnpm run db:create        # once (the placement it takes is permanent)
-pnpm run deploy
+cp .env.example .env                 # then fill it in: section 1 below
+docker compose run --rm migrate      # before the first start, and after every upgrade
+docker compose up -d
 ```
 
-The script is `build && preflight && d1 migrations apply --remote && wrangler deploy`, in that order because the migration is the one-way door: everything able to fail runs in front of it. Safe to rerun: applied migrations skip.
+The app answers on the host's port 3000, or on `BETTER_GIVING_PORT` from `.env`. The database is `better-giving.db` on the named volume `data`, mounted at `/data`; it survives `docker compose down` and every rebuild, and `docker compose down -v` deletes it.
 
-`db:create` placement: take the default unless records must stay in a region. `pnpm run db:create --jurisdiction eu` gives a hard EU restriction. Cloudflare takes placement at creation and never again; getting it wrong means export, delete, recreate, import. **Leave read replication off.** Every figure this app shows is a `SUM` at read time, and a lagging replica hands staff a stale total.
+`migrate` applies every committed migration the database has not recorded, then exits. The server never runs one on start, so the migration is always a step you take. Safe to rerun: applied migrations skip.
 
-Run operator commands from the repo root, never raw `wrangler`: the scripts carry the flags that matter and pin the wrangler version. Appended flags reach wrangler: `pnpm run deploy --var …`, `pnpm run db:create --jurisdiction eu`.
+**One container, never scaled.** The rate limits on `/api/v1`, the read API at `/integrations/v1` and sign-in, the cache in front of the served form config and photos, and the scheduled runs all live in the one process. A second replica would double every limit, serve from a cache the first never cleared, and run every scheduled job twice.
+
+**Stopping is graceful.** `docker compose stop` (or `down`) sends `SIGTERM`: the scheduler stops, open requests finish, work still running after a response (a scheduled run included) settles, and the database closes. Compose waits 30 seconds before it kills the process.
+
+## Behind a proxy
+
+With `TRUSTED_PROXY_HEADER` unset, the client address is the TCP peer, which behind a proxy is the proxy: every donor shares one rate-limit bucket. Set it to the header your proxy writes the client address into, such as `x-forwarded-for` (its right-most entry is read), and the app also reads `x-forwarded-proto` for the scheme. Set it only when every request passes through that proxy: a header is only as trustworthy as whatever wrote it.
+
+Consider pinning `BETTER_AUTH_URL` to the public origin as well ([below](#1-configuration-values)).
 
 ## 1. Configuration values
 
-The configuration values are all plain Worker **vars**: readable on the Worker (**Workers & Pages → your Worker → Settings → Variables and Secrets**) and shown as values in the console, so you can check what you pasted. `packages/app/.dev.vars.example` describes every one.
+Every configuration value is an environment variable in `.env`, which is gitignored. `.env.example` names each one. A changed value takes effect when the container is recreated: `docker compose up -d --force-recreate app`.
 
-```sh
-# packages/app/.deploy.vars (gitignored, single-quote every value)
+| Name | What it is |
+| --- | --- |
+| `ADMIN_PASSWORD` | The operator's sign-in at `/login`, username `admin`. At least 12 characters: `openssl rand -base64 24` |
+| `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `MAIL_FROM` | Mail, below. `MAIL_FROM` is a bare address, not `Name <a@b>`: it is the envelope sender too |
+| `SMTP_PORT` | Optional. 465 is the only value accepted |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | The bot check in front of the donation form. The pair in `.env.example` is Cloudflare's published always-pass test pair, which `/admin` reports as unprotected |
+| `TRUSTED_PROXY_HEADER` | Optional. [Behind a proxy](#behind-a-proxy) |
+| `BETTER_AUTH_SECRET` | Optional. Overrides the session-signing key the database holds. Setting or changing it signs every session out at once |
+| `BETTER_AUTH_URL` | Optional. Pins one canonical origin. Unset, the origin is read off each request. Set, sign-out and the other cookie-bearing mutations succeed only from that origin, and it is the address QuickBooks is connected at |
+| `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | All three or none. The publishable key must start `pk_`: it is served to every browser |
+| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | One pair, from one app in PayPal's developer dashboard |
+| `PAYPAL_API_URL` | Optional. Unset is `https://api-m.paypal.com`; a sandbox app takes `https://api-m.sandbox.paypal.com` |
+| `PAYPAL_WEBHOOK_ID` | The id PayPal gives the listener ([section 2](#2-the-console-jobs)) |
+| `PAYPAL_CHARITY_RATE_APPROVED` | `true` only if PayPal has approved this organisation for its charity rate |
+| `CHARIOT_API_KEY`, `CHARIOT_CONNECT_ID`, `CHARIOT_WEBHOOK_SECRET` | Chariot, [section 2](#2-the-console-jobs) |
+| `CHARIOT_API_URL` | Optional. Unset is `https://api.givechariot.com`; sandbox keys take `https://sandboxapi.givechariot.com` |
+| `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`, `NOWPAYMENTS_OUTCOME_CURRENCY` | NOWPayments, [section 2](#2-the-console-jobs) |
+| `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_API_URL` | [Sending gifts to QuickBooks](#sending-gifts-to-quickbooks) |
 
-# at least 12 characters. below the floor is refused at the deployment's own
-# sign-in, and pnpm run doctor <your-url> asks directly, where a refusal is the
-# healthy answer
-ADMIN_PASSWORD='the value from openssl rand -base64 24'
-SMTP_HOST='smtp.resend.com'
-SMTP_USERNAME='resend'
-SMTP_PASSWORD='re_xxxxxxxx'
-MAIL_FROM='donations@example.org'
-# any one processor's block finishes the Payments job, and more than one may be
-# set. leave out the block for a processor this deployment does not take money on.
-# Chariot and NOWPayments have no block: their values are stored by each one's
-# console press, in step 2 below
-STRIPE_SECRET_KEY='sk_live_xxxxxxxx'
-STRIPE_PUBLISHABLE_KEY='pk_live_xxxxxxxx'
-STRIPE_WEBHOOK_SECRET='whsec_xxxxxxxx'
-# PAYPAL_WEBHOOK_ID is stored by the console's PayPal press, in step 2 below,
-# rather than being typed here
-PAYPAL_CLIENT_ID='the client id from PayPal'
-PAYPAL_CLIENT_SECRET='the secret from the same app in PayPal'
-TURNSTILE_SITE_KEY='0x4xxxxxxxx'
-TURNSTILE_SECRET_KEY='0x4xxxxxxxx'
-```
-
-```sh
-pnpm run deploy:vars      # one deploy, carrying every line of the file as a var
-```
-
-- One value on its own is `pnpm run deploy --var <NAME>:<value>`. It is the same deploy either way: a var arrives with the deploy carrying it and not before.
-- `ADMIN_PASSWORD` is the credential that opens `/admin` for you, the operator who set the deployment up: the username is `admin`, and the password comes from a password manager, because recovery is you and the Cloudflare account. Colleagues are invited from `/admin/members`, set their own, and reset a forgotten one from the sign-in page; that reset never reaches this credential. Change it later on the console's **Dashboard password** page.
-- **Take each processor's pair from one place too.** Stripe's two keys are one pair from one dashboard page, and PayPal's client id and secret are one pair from one app in PayPal's developer dashboard. A mismatched Stripe pair is refused by Stripe at the first charge; the console's PayPal **Save** tests PayPal's pair at the API address before it stores it. A [rehearsal deployment](#a-rehearsal-deployment) takes its PayPal pair from a sandbox app and sets `PAYPAL_API_URL` to PayPal's sandbox address, `https://api-m.sandbox.paypal.com`. Left unset, `PAYPAL_API_URL` is `https://api-m.paypal.com`.
-- **A restricted Stripe key (`rk_…`) needs read access to what a refund or a dispute is checked against**: PaymentIntents, Charges, Refunds, Disputes, Invoices and Balance. A read the key is not allowed is refused as a setting to fix: the delivery is answered as not taken, and Stripe sends it again for up to three days, so a permission granted inside that window records the refund or dispute by itself. That holds for every refund and dispute on the account, another integration's included, because each is read before it is known whose it is.
-- Single-quote every value: quoting keeps a `#` or backslash in a password from being read as syntax.
-- `wrangler.jsonc` carries `keep_vars: true`, so every value survives every later deploy. A deploy therefore cannot remove one. Clear it on the Variables and Secrets page, or set it to an empty string.
-- Anyone who can open this Cloudflare account can read every one of them, and that is the trade: the console shows you a stored processor key and a stored SMTP password rather than four dots, because it already runs on your Cloudflare session. Treat account access as credential access.
-- `.deploy.vars` is not `.dev.vars`, which feeds `pnpm dev` and is never uploaded.
-- `CONSOLE_TOKEN` sits on the same Worker and is not one of these values: a Worker secret holding the console's session, minted when a console connects, twelve hours, replaced by the next connect. `pnpm run secret:list` names it, and `pnpm run secret:delete CONSOLE_TOKEN` closes the console surface until a console connects again.
-- `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are escape hatches, not setup steps: the first revokes every session, the second pins a canonical origin (read the caveat in `.dev.vars.example` first). `SMTP_PORT` is a third configuration value usually left unset; the app refuses every port but 465.
+- `ADMIN_PASSWORD` is the credential that opens `/admin` for you, the operator who set the deployment up. Keep it in a password manager: recovery is whoever holds `.env`. Colleagues are invited from `/admin/members`, set their own, and reset a forgotten one from the sign-in page; that reset never reaches this credential. Change it in `.env`, or on the console's **Dashboard password** page once the console's screens are served.
+- **Take each processor's pair from one place.** Stripe's two keys are one pair from one dashboard page, and PayPal's client id and secret are one pair from one app. A mismatched Stripe pair is refused by Stripe at the first charge. A [rehearsal deployment](#a-rehearsal-deployment) takes its PayPal pair from a sandbox app and sets `PAYPAL_API_URL` to the sandbox address.
 
 ## 2. The console jobs
 
-These have no checkout command (the Stripe webhook, PayPal's webhook, Chariot's set-up, NOWPayments' set-up, the Turnstile widget, and the site list):
+These are jobs on the console's screens, which are served by the app in a later change.
 
-```sh
-pnpm console              # http://localhost:5322
-```
+**Stripe webhook**: saving both keys on the console's **Stripe** page registers the endpoint at the deployment's address and stores the signing secret Stripe returns exactly once, in the same run. **Without an endpoint, cards are charged and no gift reaches your books**, and that is invisible from the donation form. An endpoint switched off, or short of an event after an upgrade, is put right with **Repair** on the same page's Payment notices row: it switches the endpoint back on, subscribes it to every event and keeps its signing secret, so the press opens no gap of its own. A lost secret or a missing endpoint is repaired the first way: paste the secret key again, **Save**. An endpoint already there is deleted and recreated, so gifts settling in the gap are charged and not recorded; do it when nobody is giving. Repeating gifts ride the same press. A failed charge under a repeating gift is one of the events already subscribed, and needs no press: each failed attempt Stripe reports is sent to the webhook destinations subscribed to Recurring charge failed (a destination is set up in `/admin` under Integrations → Webhooks), and a repeating gift's own first charge failing on the donation form is not one.
 
-**Stripe webhook**: saving both keys on the console's **Stripe** page registers the endpoint at the Worker's address and stores the signing secret Stripe returns exactly once, in the same run. **Without an endpoint, cards are charged and no gift reaches your books**, and that is invisible from the donation form. An endpoint switched off, or short of an event after an upgrade, is put right with **Repair** on the same page's Payment notices row: it switches the endpoint back on, subscribes it to every event and keeps its signing secret, so the press opens no gap of its own. A lost secret or a missing endpoint is repaired the first way: paste the secret key again, **Save**. An endpoint already there is deleted and recreated, so gifts settling in the gap are charged and not recorded; do it when nobody is giving. Repeating gifts ride the same press. A failed charge under a repeating gift is one of the events already subscribed, and needs no press: each failed attempt Stripe reports is sent to the webhook destinations subscribed to Recurring charge failed (a destination is set up in `/admin` under Integrations → Webhooks), and a repeating gift's own first charge failing on the donation form is not one.
-
-**PayPal webhook**: saving the client id and secret on the console's **PayPal** page registers the listener at the Worker's address on the PayPal app those credentials belong to, subscribed to every event this deployment reads, and stores its id as `PAYPAL_WEBHOOK_ID` in the same run. **Without a listener, a donor is charged and no gift reaches your books**: `CHECKOUT.ORDER.APPROVED` is what the capture is made from, and a repeating gift is collected by PayPal on its own schedule whether this deployment hears about it or not. A listener already at this address is kept and its subscription brought level, so the same press is the repair after an upgrade adds an event. A failed payment under a repeating gift is one of the events already subscribed, and needs no press: each one under a repeating gift that has already collected is sent to the webhook destinations subscribed to Recurring charge failed. PayPal retries a failed payment on its own and, after three failed payments in a row, suspends the repeating gift, which then reads Payment failed. Two refusals need something from you: a Worker address that is not `https://` (PayPal delivers to nothing else), and an app already holding PayPal's cap of ten listeners: delete one you no longer use in PayPal's developer dashboard, or use another app's credentials.
+**PayPal webhook**: saving the client id and secret on the console's **PayPal** page registers the listener at the deployment's address on the PayPal app those credentials belong to, subscribed to every event this deployment reads, and stores its id as `PAYPAL_WEBHOOK_ID` in the same run. **Without a listener, a donor is charged and no gift reaches your books**: `CHECKOUT.ORDER.APPROVED` is what the capture is made from, and a repeating gift is collected by PayPal on its own schedule whether this deployment hears about it or not. A listener already at this address is kept and its subscription brought level, so the same press is the repair after an upgrade adds an event. A failed payment under a repeating gift is one of the events already subscribed, and needs no press: each one under a repeating gift that has already collected is sent to the webhook destinations subscribed to Recurring charge failed. PayPal retries a failed payment on its own and, after three failed payments in a row, suspends the repeating gift, which then reads Payment failed. Two refusals need something from you: a deployment address that is not `https://` (PayPal delivers to nothing else), and an app already holding PayPal's cap of ten listeners: delete one you no longer use in PayPal's developer dashboard, or use another app's credentials.
 
 **PayPal's charity rate**: PayPal reports on no call which rate an account is on, so the console's **PayPal** page asks. Answer yes only if PayPal has approved this organisation for that rate. Ticked wrongly, a donor covering fees is quoted less than the gift costs and the org nets less than the donor gave; left unticked on an approved account, the surplus reaches the org. Untick it and the answer goes back to unset.
 
@@ -91,15 +76,13 @@ Set these in NOWPayments' dashboard before the first gift. Its help pages call t
 - **The payout arrives net of NOWPayments' fee.** A donor sends the amount quoted and the account is charged, so a gift a donor did not choose to cover the fee on lands short by it. The rate quoted to a donor is NOWPayments' published rate (`NOWPAYMENTS_FEE_RULE` in `packages/app/src/lib/server/payments/fees.ts`); what was actually taken is read off each payment, and the chain's own fee for moving the coin to the payout wallet is on top of it and stated nowhere.
 - **Repeated deposits and wrong-asset deposits** work at any setting. A second deposit to a gift's address is recorded as its own gift at what arrived. A deposit in the wrong coin or on the wrong network is held by NOWPayments for you to process in its dashboard, and the gift reads pending until you do.
 
-**Let NOWPayments through the firewall.** Its notifications arrive at the deployment's own address, and a Cloudflare Bot Fight Mode or WAF rule on that zone drops them without any error here: donors send coins and no gift reaches your books. NOWPayments gives its sending addresses to allowlist on request, at partners@nowpayments.io.
+**Let NOWPayments through the firewall.** Its notifications arrive at the deployment's own address, and a bot or firewall rule in front of it drops them without any error here: donors send coins and no gift reaches your books. NOWPayments gives its sending addresses to allowlist on request, at partners@nowpayments.io.
 
-**A missed notification is caught up every thirty minutes**: the Worker reads each crypto gift still pending after half an hour, until a day after its address closes, and settles or closes it, so a gift whose notification never arrived still reaches the books. A payment the read finds already refunded is settled and refunded in the same pass ([Refunds and disputes](#refunds-and-disputes)). The one exception is a repeat deposit whose notification never arrived: nothing names that payment to read, so it appears in NOWPayments' dashboard and never in `/admin` until recorded by hand.
+**A missed notification is caught up every thirty minutes**: the deployment reads each crypto gift still pending after half an hour, until a day after its address closes, and settles or closes it, so a gift whose notification never arrived still reaches the books. A payment the read finds already refunded is settled and refunded in the same pass ([Refunds and disputes](#refunds-and-disputes)). The one exception is a repeat deposit whose notification never arrived: nothing names that payment to read, so it appears in NOWPayments' dashboard and never in `/admin` until recorded by hand.
 
 **Bank debits**: a donor whose bank could not be verified instantly is sent two small deposits, and Stripe itself emails them the link to confirm the amounts, at the address the form hands it. This deployment sends nothing for that step, so leave Stripe's customer emails switched on (dashboard.stripe.com → Settings → Emails); switched off, nobody tells the donor, and the gift expires unverified after ten days.
 
-**Turnstile widget**: created from the console's **Sites** page, both halves stored, site key published. **Made once, only once**: a second widget of the same name is a second key pair and live forms stop taking gifts. Lost keys: dash.cloudflare.com → Turnstile, or `pnpm run turnstile:keys` (read-only; prints both as `.deploy.vars` lines).
-
-**Sites**: saving the list levels the widget's hostname list in the same press. Until level, a site renders the form perfectly and refuses every gift, because Cloudflare will not issue a challenge pass on an unauthorised host.
+**Turnstile widget**: create one at dash.cloudflare.com → Turnstile and set both keys in `.env`. Its hostname list names the deployment's own hostname and every site on the console's **Sites** page. A host the widget does not list renders the form perfectly and refuses every gift, because Cloudflare will not issue a challenge pass on an unauthorised host.
 
 ## 3. Embed
 
@@ -112,11 +95,11 @@ Sign in at `/` as `admin` with `ADMIN_PASSWORD`. Forms and their paste-ready sni
 
 ## Your organisation's profile
 
-The console's **Organisation details** page: registered name, EIN, address, mission, vision, brand colour, social links and logo, all rows on your deployment rather than Cloudflare values. **Registered name and EIN gate every form.** US 501(c)(3) only: the EIN is checked to the digit, stored `12-3456789`; another jurisdiction forks and changes the rule.
+The console's **Organisation details** page: registered name, EIN, address, mission, vision, brand colour, social links and logo, all rows in the database rather than configuration values. **Registered name and EIN gate every form.** US 501(c)(3) only: the EIN is checked to the digit, stored `12-3456789`; another jurisdiction forks and changes the rule.
 
 On a deployment that ran migration `0026`, the mission, vision, logo and colour set on the dashboard's old organisation page were not carried over: enter them again on this page. Migration `0027` repairs donation pages and campaigns saved under the old look settings.
 
-Every form prints the standard receipt sentence, *"No goods or services were provided in exchange for this gift."* Gifts carrying a benefit (a gala ticket, member perks) make it wrong: edit `SUGGESTED_DEDUCTIBILITY_STATEMENT` in `packages/operator/src/deductibility.ts` and deploy, or write `org_profile.deductibility_statement` directly, where a non-empty value wins. Your organisation makes the claim; a tax professional reviews it.
+Every form prints the standard receipt sentence, *"No goods or services were provided in exchange for this gift."* Gifts carrying a benefit (a gala ticket, member perks) make it wrong: edit `SUGGESTED_DEDUCTIBILITY_STATEMENT` in `packages/operator/src/deductibility.ts` and rebuild the image, or write `org_profile.deductibility_statement` directly, where a non-empty value wins. Your organisation makes the claim; a tax professional reviews it.
 
 ## Sending gifts to QuickBooks
 
@@ -131,7 +114,7 @@ Optional, and not a processor: QuickBooks takes no money and finishes no set-up 
 Back on the same page, three things finish it:
 
 - **The three accounts** a gift is posted into (income, the processor's fee, and the account the money lands in), picked from the connected company's own chart. All three at once: a gift needs all of them and two saved alone would leave the books half told where to go.
-- **The start date**, which is how much of this deployment's history goes over. It is set at connect, and a reconnect keeps it. Moving it earlier sends the gifts it newly covers, including ones from before the company was connected; they go over in date order at the delivery pace under [Requirements](#requirements), so a long history takes a while to drain, and a gift that settles meanwhile goes ahead of it. Moving it later skips gifts before it that have not been sent yet. A gift already in QuickBooks stays there, and one the deployment has already started sending is not taken back. A refund or dispute moves with its gift: sent where the gift is sent, and skipped where the gift is.
+- **The start date**, which is how much of this deployment's history goes over. It is set at connect, and a reconnect keeps it. Moving it earlier sends the gifts it newly covers, including ones from before the company was connected; they go over in date order at the delivery pace under [Scheduled runs](#scheduled-runs), so a long history takes a while to drain, and a gift that settles meanwhile goes ahead of it. Moving it later skips gifts before it that have not been sent yet. A gift already in QuickBooks stays there, and one the deployment has already started sending is not taken back. A refund or dispute moves with its gift: sent where the gift is sent, and skipped where the gift is.
 - **Nothing else.** Gifts go over every minute from then on, and a page that says nothing about them is a page with nothing wrong.
 
 **A refund or dispute goes over only after its gift, and only to the company its gift went to.** A refund of a gift QuickBooks received is sent after that gift, whatever day the refund lands. One of a gift the connected company never got, because it was dated before the start date or went to a company since disconnected, is never sent: those books hold nothing for it to take back. A dispute goes over the same way: the money leaving, the money put back if it is won, and any fee or amount its close corrects, won or lost.
@@ -142,7 +125,7 @@ Back on the same page, three things finish it:
 
 ## Sending gifts to Zapier
 
-Optional, and not a set-up job. It starts a Zap on three events: a settled gift (each charge of a recurring gift included), a donor's first settled gift, and money from a gift going back to the donor, which is a refund or a dispute the organisation lost. A refund the processor reports as failed after its event was queued is dropped if that event has not gone out yet; one already sent has reached your Zaps, and no event follows to say the money came back. A gift refunded before its New Gift delivery went out is still delivered. Each reaches your Zaps within about a minute; a burst goes over at the delivery pace under [Requirements](#requirements).
+Optional, and not a set-up job. It starts a Zap on three events: a settled gift (each charge of a recurring gift included), a donor's first settled gift, and money from a gift going back to the donor, which is a refund or a dispute the organisation lost. A refund the processor reports as failed after its event was queued is dropped if that event has not gone out yet; one already sent has reached your Zaps, and no event follows to say the money came back. A gift refunded before its New Gift delivery went out is still delivered. Each reaches your Zaps within about a minute; a burst goes over at the delivery pace under [Scheduled runs](#scheduled-runs).
 
 **On your dashboard, under Integrations → Zapier, press Make key.** The page then shows the two things Zapier asks for: this deployment's address and the key. Copy the key then: it is shown once, and afterwards the page shows only its first and last characters. A key that is lost is replaced, never shown again.
 
@@ -168,14 +151,13 @@ What you do: answer the dispute in the processor's dashboard, at that link, befo
 
 Two more dispute cases arrive as alerts of their own. **A dispute of a gift that earlier refunds and disputes already took whole** has nothing left to withdraw: nothing is written, a monthly gift behind it is still stopped, and the alert says the books already hold none of the gift and asks you to post only the dispute fee, where one was charged, as a correction in `/admin/books`. It comes again with each delivery of that dispute, since nothing is written to say it was sent. **A dispute won whose opening never reached this deployment**, such as one opened before the endpoint was repaired, writes no money out or back, because the gift never left the books. Where the processor names the fee it kept and the books hold the gift, that fee is booked as a processor fee and the alert, sent once, names it. Otherwise nothing is written and the alert comes with each delivery: it says nothing needs booking where the processor kept no fee, where the fee could not be read it asks you to check it in the processor's dashboard and post what was kept as a correction in `/admin/books`, and where the books do not hold the gift it asks for that correction only if the gift was posted by hand.
 
-**Refunds and disputes arrive only on the events a deployment is subscribed to.** An endpoint or listener registered by an older release is short of them. On Stripe, the Payment notices row of the console's **Stripe** page says so: press **Repair**. On PayPal, press **Save** again on the console's **PayPal** page, from a console as new as the deployment (`better-giving update`), which brings the listener level. The PayPal app those credentials belong to also needs Disputes switched on in PayPal's developer dashboard, because PayPal refuses the disputes read without it. Until it is, a refund is recorded as the organisation's own, with a warning in the Worker's logs, since whether a dispute stands behind it cannot be read. A dispute, or a reversal PayPal made, is not recorded at all: the alert names the PayPal event, and the fix is to switch Disputes on and then have PayPal resend that event (PayPal's `POST /v1/notifications/webhooks-events/{event_id}/resend`), which records it in full. A correction in `/admin/books` in its place moves the books and nothing else: the gift's status, the donor's total and Zapier stay as they were.
+**Refunds and disputes arrive only on the events a deployment is subscribed to.** An endpoint or listener registered by an older release is short of them. On Stripe, the Payment notices row of the console's **Stripe** page says so: press **Repair**. On PayPal, press **Save** again on the console's **PayPal** page, which brings the listener level. The PayPal app those credentials belong to also needs Disputes switched on in PayPal's developer dashboard, because PayPal refuses the disputes read without it. Until it is, a refund is recorded as the organisation's own, with a warning in the app's logs, since whether a dispute stands behind it cannot be read. A dispute, or a reversal PayPal made, is not recorded at all: the alert names the PayPal event, and the fix is to switch Disputes on and then have PayPal resend that event (PayPal's `POST /v1/notifications/webhooks-events/{event_id}/resend`), which records it in full. A correction in `/admin/books` in its place moves the books and nothing else: the gift's status, the donor's total and Zapier stay as they were.
 
 ## Checking a deployment
 
 ```sh
-pnpm run doctor https://better-giving.<your-subdomain>.workers.dev
-pnpm run logs        # live tail; the Cloudflare dashboard has them too
-pnpm run db:info     # storage and row counts
+pnpm run doctor https://donate.example.org
+docker compose logs -f app
 ```
 
 `doctor` posts a deliberately wrong password to `/login` and reads the status, never touching your real one:
@@ -194,7 +176,7 @@ The login screen's *"Sign-in is unavailable"* is deliberately uninformative; the
 
 ## Email
 
-Five values: host, port, username, password, sender. **Port 465 and no other, 587 included**, which opens in the clear and upgrades only if a strippable `STARTTLS` offer survives the path; this app refuses every other port. Postmark documents no 465 and cannot be used.
+Five values: host, port, username, password, sender. **Port 465 and no other, 587 included**, which opens in the clear and upgrades only if a strippable `STARTTLS` offer survives the path; this app refuses every other port. Postmark documents no 465 and cannot be used. A local mail catcher cannot be used either: a host on `localhost` or a private network is refused by name. Paste a key or password exactly as the provider shows it: the four values are separate so that nothing in a credential needs escaping.
 
 | Provider     | `SMTP_HOST`                         | `SMTP_USERNAME`            | `SMTP_PASSWORD`                  |
 | ------------ | ----------------------------------- | -------------------------- | -------------------------------- |
@@ -205,81 +187,47 @@ Five values: host, port, username, password, sender. **Port 465 and no other, 58
 | ZeptoMail    | `smtp.zeptomail.com`                | `emailapikey`              | the Mail Agent's send-mail token |
 | your own MTA | `mail.example.org`                  | `user`                     | `password`                       |
 
-## A custom domain
+## Scheduled runs
 
-The zone must already be on your account. Once, either way: it survives every later deploy.
-
-```sh
-pnpm run deploy --domains donate.example.org
-```
-
-Or **Workers & Pages → your Worker → Settings → Domains & Routes**. Consider pinning `BETTER_AUTH_URL` to the same origin (`--var BETTER_AUTH_URL:https://donate.example.org`). The caveat is in `.dev.vars.example`.
+The server runs its own schedule, `CRON_RUNS` in `packages/app/src/cron-runs.ts`, on UTC minutes: every minute it sends what the deployment owes to QuickBooks, Zapier and webhook destinations; every thirty minutes it reads back crypto gifts no notification settled; at a quarter past and a quarter to it resends refund notices that did not send. A minute the process was down for is not replayed; the next run picks up whatever is still owed. Each minute's run sends up to 40 Zapier events, 40 webhook deliveries and 10 QuickBooks entries (`PACE` in `packages/app/src/lib/server/outbox/budget.ts`), so a backlog drains over several minutes.
 
 ## Backups
 
-D1 keeps a point-in-time restore window (Time Travel): 30 days. The one backup that survives your Cloudflare account is two halves, the books and the photos:
+The database is one file, and a backup is a copy of it: every table, the photos and the record of applied migrations. Taken while the app serves:
 
 ```sh
-pnpm run db:export --output ./backup.sql          # the books: every table, photos' bytes left out
-pnpm run db:export:photos --output ./photos       # one file per photo, named by its id
+docker compose exec app node scripts/backup.ts /data/backup.db
+docker compose cp app:/data/backup.db ./backup.db
+docker compose exec app rm /data/backup.db
 ```
 
-The photos are kept apart because a backup holding them as SQL could not be restored (`packages/app/scripts/db-export.js` says why). Both paths are relative to `packages/app`.
+From a checkout against a file on the same machine, `pnpm db:backup <file>` does the same; a relative `<file>` is relative to `packages/app`. Either refuses a target that already exists.
 
-Restore into an empty database, books first: a photo is stored only under an image the books already hold. Don't apply migrations to it first: the books carry the schema and the record of which migrations ran.
+**To restore, stop the app, then put the copy where `DATABASE_URL` points, with no `-wal` or `-shm` file left beside it.** A stale `-wal` beside a restored file is replayed over it. With compose:
 
 ```sh
-pnpm wrangler d1 execute better-giving --remote --file ./backup.sql
-pnpm run db:restore:photos --input ./photos      # safe to re-run; names any photo it refused
+docker compose stop app
+docker compose run --rm --no-deps -v "$PWD/backup.db:/restore.db:ro" --entrypoint sh migrate \
+  -c 'rm -f /data/better-giving.db-wal /data/better-giving.db-shm && cp /restore.db /data/better-giving.db'
+docker compose start app
 ```
 
-Take both before an upgrade with migrations. A bookkeeping mistake is corrected by a compensating entry, never a rollback: the restore window repairs a damaged schema, not a wrong figure.
+Take one before an upgrade with migrations. A bookkeeping mistake is corrected by a compensating entry, never a restore.
 
 ## A rehearsal deployment
 
-A second deployment on its own database, for trying an upgrade or a processor setting away from real donors. Checkout-only. Get live first, because nothing copies between deployments.
-
-```sh
-pnpm run db:create:test     # once, ever
-pnpm run deploy:test
-pnpm run deploy:test --var <NAME>:<value>
-```
-
-`deploy:test` sets `CLOUDFLARE_ENV=test` on the build, which is where the environment is decided; `--env test` on the upload alone cannot, which is why you run the script. Result: `better-giving-test` Worker and database, holding none of the configuration values. `deploy:vars` deploys the real one, so a rehearsal is configured a value at a time.
+A second deployment on its own database, for trying an upgrade or a processor setting away from real donors: a second checkout in a directory of its own, with its own `.env` and its own `BETTER_GIVING_PORT`. Compose names the volume after the directory, so the two never share a database file. Nothing copies between deployments.
 
 The app has no test mode and cannot tell which deployment it runs as. **Do not paste a rehearsal snippet where real donors reach**: a typed card declines loudly, but an Apple Pay / Google Pay gift *succeeds*: Stripe substitutes a test token by design, the success state renders, the receipt sends, and no money moved. Nothing in this repository guards that; you knowing is the guard.
-
-Taking it down, where **both are permanent** and the database is the books:
-
-```sh
-pnpm wrangler delete --name better-giving-test --env test
-pnpm wrangler d1 delete better-giving-test --env test
-```
-
-**Type both names out.** Without `--name`, wrangler resolves your *real* Worker from `wrangler.jsonc`, and `DB` in place of the database name resolves the same way.
 
 ## Upgrading
 
 ```sh
-git remote add upstream https://github.com/better-giving/better-giving.git
+git remote add upstream https://github.com/better-giving/better-giving.git   # once
 git fetch upstream && git merge upstream/main
-pnpm install
-pnpm run deploy
+docker compose build
+docker compose run --rm migrate
+docker compose up -d
 ```
 
-Upstream owns every file, so a clean fork merges fast-forward; a conflict means you edited a tracked file. **Read the diff of `packages/app/migrations/` before deploying**, the irreversible part. A release that squashed the chain shows that whole directory rewritten and applies nothing: wrangler skips `0000_initial_schema.sql` on a deployment that already ran it. Meet anything doubtful on a rehearsal first.
-
-## Without a checkout
-
-The console binary does the whole job (deploy, every configuration value, webhooks, widget, sites, org identity) for an operator who holds no source:
-
-```sh
-curl -fsSL https://github.com/better-giving/better-giving/releases/latest/download/install.sh | sh
-better-giving start
-```
-
-Typed again on a deployment behind this console's release, `start` offers to carry the release onto it, and applies its migrations only once you agree. Connecting signs out any other console connected to that deployment. Everything after that (the configuration values, Stripe, PayPal, Chariot, NOWPayments, the widget, the site list, the org identity) is a screen in that console.
-
-Three more you will want later. **`better-giving update`** brings this console binary up to the newest release and touches your deployment for nothing. `start` is the only command that carries code onto a deployment, and it offers you the newer console itself before it does anything else: a binary deploys the release it was built with, so an out-of-date console would otherwise carry out-of-date code onto your deployment. Accept and it installs that console and carries on as it; decline and it goes on with the binary you ran. **`better-giving login`** signs this machine in to Cloudflare in a browser and asks which account this deployment is in; `start` takes both itself, and the other commands send you here when this machine holds neither. **`better-giving logout`** gives that sign-in up, at Cloudflare and on this machine.
-
-macOS and Linux; installs to `~/.local/bin` (`BETTER_GIVING_INSTALL_DIR` overrides), verified against the release's checksums. **Leave the console running**: the program is the page. No browser on the machine: set `CLOUDFLARE_API_TOKEN` before starting it, which stands in for the sign-in. The questions `start` asks are still asked in the terminal, so it is not a way to run one unattended. When `start` offers a newer console and cannot install it (no console published for your platform, a download that did not arrive, a checksum that did not match, a file it may not write), it uploads nothing and sends you back to the install line above. A changed fork deploys from its checkout instead.
+Upstream owns every file, so a clean fork merges fast-forward; a conflict means you edited a tracked file. **Read the diff of `packages/app/migrations/` before migrating**, the irreversible part. A release that squashed the chain shows that whole directory rewritten and applies nothing: migrations are recorded by filename, so `0000_initial_schema.sql` is skipped on a database that already ran it. Meet anything doubtful on a rehearsal first.

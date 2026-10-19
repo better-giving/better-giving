@@ -62,7 +62,7 @@ const files = [
 	...globSync('src/**/*.{ts,tsx}'),
 	...globSync('scripts/**/*.js'),
 	...globSync('migrations/*.sql'),
-	'.dev.vars.example',
+	`${ROOT}/.env.example`,
 	...globSync(`${ROOT}/*.md`)
 ].filter((file) => !file.endsWith('commands.spec.ts'));
 

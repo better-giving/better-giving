@@ -43,7 +43,7 @@ import { CONFIG_VAR_NAMES } from './env';
  * packages/console-ui, and reading a file the way a sweep does is what every gate across package
  * lines in this repository already does.
  *
- * `.dev.vars.example` is the third document and the one most exposed to this rule: it is organised
+ * `.env.example` is the third document and the one most exposed to this rule: it is organised
  * value by value and says how each is set, so an instruction there stands directly beside the name
  * it would misfile.
  */
@@ -56,7 +56,7 @@ const SOURCES = [
 	...globSync('../console-ui/src/**/*.tsx'),
 	'../../README.md',
 	'../../DEPLOY.md',
-	'.dev.vars.example'
+	'../../.env.example'
 ];
 
 /**
@@ -121,7 +121,7 @@ describe('the command an operator is told to set a value with', () => {
 	it('reads the files it is guarding', () => {
 		expect(SOURCES.length).toBeGreaterThan(100);
 		expect(SOURCES).toContain('../../DEPLOY.md');
-		expect(SOURCES).toContain('.dev.vars.example');
+		expect(SOURCES).toContain('../../.env.example');
 		// the two packages the sweep was widened to. a glob that stopped matching would otherwise
 		// only ever show as a sweep that got quieter.
 		expect(SOURCES).toContain('../operator/src/deploy-split.ts');

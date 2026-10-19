@@ -19,14 +19,18 @@ build/
 # @better-giving/form's own build output, staged into static/ by packages/app/scripts/stage-embed.js.
 /packages/form/dist/
 
-# Secrets. Real deployments set these as Worker secrets; local dev uses
-# .dev.vars, which is never committed. Only the .example files are.
+# Secrets. A deployment and local dev both read .env, which is never committed. Only
+# .env.example is.
 .dev.vars
 .dev.vars.*
-!.dev.vars.example
 .env
 .env.*
 !.env.example
+
+# a database file and the -wal/-shm files SQLite keeps beside it (DATABASE_URL).
+*.db
+*.db-wal
+*.db-shm
 
 # Scratch notes for trying this deployment end to end — deployed hostnames, a form
 # id, test card numbers. Ignored rather than committed for the reason wrangler.jsonc

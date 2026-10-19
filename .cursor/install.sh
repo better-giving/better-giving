@@ -4,14 +4,12 @@
 # NODE_FLOOR is the @react-router/* engines floor. Root package.json engines is
 # >=22, and .npmrc is engine-strict, so a 22 below the floor fails `pnpm install`.
 # The image PATH lists /exec-daemon/node (v22.14) first.
-# Console tests need the toolchain in packages/console/go.mod. pnpm does not install it.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 NODE_FLOOR=22.22.0
 PNPM_VERSION=10.19.0
-GO_VERSION=1.24.2
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 
 # install, start, and an agent can run this at the same time.
@@ -119,21 +117,7 @@ for cmd in node npm npx corepack pnpm; do
 	fi
 done
 hash -r || true
-
-if ! go version 2>/dev/null | grep -q "go${GO_VERSION} "; then
-	tmp="$(mktemp)"
-	curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o "$tmp"
-	sudo rm -rf /usr/local/go
-	sudo tar -C /usr/local -xzf "$tmp"
-	rm -f "$tmp"
-	sudo ln -sfn /usr/local/go/bin/go /usr/local/bin/go
-	sudo ln -sfn /usr/local/go/bin/gofmt /usr/local/bin/gofmt
-fi
-
-hash -r || true
 node --version
 pnpm --version
-go version
 
 pnpm install --frozen-lockfile
-(cd packages/console && go mod download)
