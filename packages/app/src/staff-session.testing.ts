@@ -1,8 +1,12 @@
-import { env } from 'cloudflare:test';
 import { expect } from 'vitest';
 import { createAuth, inviteMember, readAuthEnv, redeemInvitation } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import type { Db } from '$lib/server/db/client';
+import { readEnv } from '$lib/server/runtime/env';
+import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
+
+/** the deploy-time values a request reads, with none set and the spec limiters. */
+const env = readEnv({}, specRateLimiters());
 
 // a real staff session for a route spec, through the same `auth.api` calls the login's action
 // makes. each caller states its own bindings, origin and password: the key and the pin are read

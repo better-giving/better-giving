@@ -4,7 +4,7 @@ import { rejectionCode } from './rejection.testing';
 
 // the checks `image` carries, each a table rebuild to change once shipped, and the key pointing at
 // an image from `program`. `STRICT` and `NO ACTION` on every key are read off sqlite's catalogue by
-// ./strict.db.spec.ts, and the bytes' length check is held by ../images/bytes.workers.spec.ts.
+// ./strict.db.spec.ts, and the bytes' length check is held by ../images/bytes.db.spec.ts.
 
 type ImageRow = {
 	kind: string;

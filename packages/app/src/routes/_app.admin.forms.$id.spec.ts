@@ -9,7 +9,7 @@ import { action } from './_app.admin.forms.$id';
 
 // a node spec, not a workers one, and the split is CLAUDE.md's: what is asserted here is the half
 // of a save that returns before the database is reached. everything past it lives in
-// `_app.admin.forms.$id.workers.spec.ts` beside this file.
+// `_app.admin.forms.$id.db.spec.ts` beside this file.
 //
 // the handle on the request context is deliberately absent — `NO_HANDLE` below — which does two
 // things at once: a submission the parser rejects that still reached a query would be the bug this
@@ -310,7 +310,7 @@ describe('/admin/forms/[id] the sites group — what never reaches the database'
 		// which is where it meets the database handle this spec deliberately does not have. a 500
 		// with no field error is the shape of "it got that far"; a refused group is a 400 with a
 		// sentence under the sites. what the read itself decides is
-		// `_app.admin.forms.$id.workers.spec.ts`'.
+		// `_app.admin.forms.$id.db.spec.ts`'.
 		const { status, data } = await post(ORIGINS_FORM, {
 			allowed_origins: ['https://acme.org']
 		});

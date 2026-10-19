@@ -18,10 +18,10 @@ import type { Db } from '$lib/server/db/client';
 //
 // the jobs are mocked, because what is under test is which ones an expression reaches and with
 // what time — their own behaviour is held by
-// $lib/server/donations/pending-crypto-read.workers.spec.ts,
-// $lib/server/donations/refund-notice.workers.spec.ts,
-// $lib/server/accounting/deliver.workers.spec.ts, $lib/server/zapier/deliver.workers.spec.ts and
-// $lib/server/webhooks/deliver.workers.spec.ts, against a real database.
+// $lib/server/donations/pending-crypto-read.db.spec.ts,
+// $lib/server/donations/refund-notice.db.spec.ts,
+// $lib/server/accounting/deliver.db.spec.ts, $lib/server/zapier/deliver.db.spec.ts and
+// $lib/server/webhooks/deliver.db.spec.ts, against a real database.
 
 vi.mock('$lib/server/donations/pending-crypto-read', () => ({
 	readPendingCryptoGifts: vi.fn(async () => {})

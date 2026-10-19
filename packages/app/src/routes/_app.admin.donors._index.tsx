@@ -39,7 +39,7 @@ import type { Route } from './+types/_app.admin.donors._index';
 // screen that is not a projection.** which order the file is in and which page of it is read are
 // facts about the address, so the loader parses them out of the request and hands back the
 // addresses a press leads to — the component renders links it is given and computes none. that is
-// what lets `./_app.admin.donors._index.workers.spec.ts` assert every one of them: this screen has
+// what lets `./_app.admin.donors._index.db.spec.ts` assert every one of them: this screen has
 // no `*.browser.spec.ts` and may not have one (CLAUDE.md → Two design systems), so an href built
 // in the component is an href nothing reads back.
 

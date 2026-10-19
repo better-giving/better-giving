@@ -8,8 +8,8 @@ import Books from './_app.admin.books';
 
 // the Books screen, drawn.
 //
-// what it covers is everything the workers spec beside it cannot reach. that file drives the
-// `loader` and the `action` through a real chain against a real D1, and never renders anything —
+// what it covers is everything the db spec beside it cannot reach. that file drives the
+// `loader` and the `action` through a real chain against a real database, and never renders anything —
 // so the markup this screen composes has no reader at all: which boxes exist, what the two pickers
 // open on, where a refusal is drawn, what the confirm states, where the answer lands and which id the
 // next press carries. this is the one screen on the dashboard whose button being wrong is a money

@@ -7,7 +7,7 @@ import Donations from './_app.admin.donations._index';
 // the dedication cell, drawn.
 //
 // what it covers: the one sentence this screen composes rather than looks up. every other cell is a
-// value the loader already turned into a string, and ./_app.admin.donations._index.workers.spec.ts is
+// value the loader already turned into a string, and ./_app.admin.donations._index.db.spec.ts is
 // where those are asserted — but `In memory of Margaret Chen` is the phrase and the honoree joined
 // here, in the page, and a join that lost the space or put the name first would ship with every
 // workers case green.
@@ -187,7 +187,7 @@ it('leaves the cell empty on a gift given for nobody', () => {
 
 it('prints the rail under the column headed for it', () => {
 	// the loader resolves the word, so what this reads is that the column and the cell agree on
-	// their key: a typo in either leaves a dashed column standing beside a green workers spec.
+	// their key: a typo in either leaves a dashed column standing beside a green db spec.
 	const root = screen([gift({ paidWith: 'Venmo' })]);
 	expect(cell(root, 'Paid with')).toBe('Venmo');
 });

@@ -29,7 +29,7 @@ import { readWebhookRegistration, repairWebhookRegistration } from './webhook-re
 // encoded by Stripe's own encoder.
 //
 // what this pool cannot see is whether the client production builds works at all, because every
-// case here injects one. ./stripe.workers.spec.ts is where that is covered, inside workerd.
+// case here injects one. ./stripe-default-client.spec.ts is where that is covered, inside workerd.
 //
 // nothing here imports `stripe`. that is the rule ./sole-importer.spec.ts enforces over the tree,
 // and it costs this file nothing: the stub is structural, and the one place a spec would

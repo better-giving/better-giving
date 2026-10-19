@@ -20,7 +20,7 @@ import { PostingError, post, postingStatements, type PostingInput } from './post
 // asset), `−10_000` to 4110 Tax-Deductible Donations (credit revenue). deliberately not
 // the card gift — a card charge is not cash and must debit 1020 Undeposited Funds, which
 // is two groups (recognition and fee) and is covered against a real database in
-// ../donations/settle.workers.spec.ts, not in the fixture that proves sums-to-zero.
+// ../donations/settle.db.spec.ts, not in the fixture that proves sums-to-zero.
 
 const CASH_GIFT: PostingInput = {
 	sourceType: 'donation',

@@ -9,7 +9,7 @@ import {
 
 // node pool, no database — the columns these read and write are plain text holding JSON, so
 // what is under test is decidable from a string alone. that the text a `CHECK` accepts is the
-// text these produce is ./queries.workers.spec.ts's claim, against a real D1.
+// text these produce is ./queries.db.spec.ts's claim, against a real database.
 
 describe('the JSON column seam', () => {
 	it('round-trips a parsed list through the column encoding', () => {
@@ -75,7 +75,7 @@ describe('the JSON column seam', () => {
 		// the same fail-closed posture as `decodeAllowedOrigins`, and the elements matter more
 		// here: `form_suggested_amounts_array_check` asks for an array and says nothing about
 		// what is in it, so a float, a negative or a string reaching this column is reachable
-		// through a hand-run `wrangler d1 execute`. a float in a money column is the failure
+		// through a hand-run statement. a float in a money column is the failure
 		// `STRICT` exists to stop one layer down, and it must not reach a tile a donor clicks.
 		expect(decodeSuggestedAmounts('not json')).toEqual([]);
 		expect(decodeSuggestedAmounts('{"a":1}')).toEqual([]);
@@ -87,7 +87,7 @@ describe('the JSON column seam', () => {
 		// `Number.isInteger(1e21)` is true — every float that large is a whole number, and none of
 		// them is the number anybody typed. the same floor `readAmount` puts under a submitted
 		// box belongs on the way back out, because the write that stores one of these is a
-		// hand-run `wrangler d1 execute` rather than a save.
+		// hand-run statement rather than a save.
 		expect(decodeSuggestedAmounts('[1e21]')).toEqual([]);
 		expect(decodeSuggestedAmounts(`[${Number.MAX_SAFE_INTEGER + 2}]`)).toEqual([]);
 		expect(decodeSuggestedAmounts(`[${Number.MAX_SAFE_INTEGER}]`)).toEqual([

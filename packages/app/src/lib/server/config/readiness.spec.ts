@@ -8,7 +8,7 @@ import { setupOutstanding, setupReadiness } from './readiness';
 // the five lines this deployment draws about its own set-up.
 //
 // every fact is handed in (./readiness.ts), so all of it is looked at with no database and no
-// platform env — which is what makes this a pure-value spec rather than a `*.workers.spec.ts`
+// platform env — which is what makes this a pure-value spec rather than a `*.db.spec.ts`
 // against D1 (CONTRIBUTING.md → Tests).
 //
 // **the words are asserted through the shared record and never spelled here.** a case quoting

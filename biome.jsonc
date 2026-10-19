@@ -541,7 +541,7 @@
 		// `!` is in a test asserting a value the test already knows is there, right after fetching or
 		// awaiting it.
 		{
-			// `*.spec.ts` alone covers `*.workers.spec.ts`, `*.dom.spec.ts` and `*.browser.spec.ts`
+			// `*.spec.ts` alone covers `*.db.spec.ts`, `*.dom.spec.ts` and `*.browser.spec.ts`
 			// too — a glob segment matches across dots, not just up to the first one.
 			"includes": ["**/*.spec.ts"],
 			"linter": { "rules": { "style": { "noNonNullAssertion": "off" } } }

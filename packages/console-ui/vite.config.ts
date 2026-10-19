@@ -86,7 +86,7 @@ export default defineConfig({
 		unstubGlobals: true,
 		// one pool and no second one. every spec in this package reads files off disk — the two
 		// gates in src/ are both sweeps over the tree, and the ledger's is a read of one screen —
-		// so there is nothing here that needs a DOM, and a `*.workers.spec.ts` is unrepresentable:
+		// so there is nothing here that needs a DOM, and a `*.db.spec.ts` is unrepresentable:
 		// this package binds nothing and touches no database.
 		environment: 'node',
 		include: ['src/**/*.{test,spec}.ts']

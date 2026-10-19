@@ -12,7 +12,7 @@ import DonationForm from './_app.admin.forms.$id';
 // record, and the router spends the redirect's `loading` phase reading it again with the pressed
 // control still on the screen. a press that re-armed there sends a second body carrying the version
 // the first one moved past — refused as stale, and that refusal cuts off the landing's revalidation
-// — or archives a form already archived. neither is visible to the workers spec beside this file,
+// — or archives a form already archived. neither is visible to the db spec beside this file,
 // which drives the action and renders nothing.
 //
 // mounted rather than rendered to a string, because the phase is the router's and exists only

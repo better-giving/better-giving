@@ -33,7 +33,7 @@ import {
 // test runs and no case leaks its script into another.
 //
 // what this pool cannot see is whether the transport works at all, because a stub answers every
-// call. ./paypal.workers.spec.ts is where that is covered, inside workerd.
+// call. ./paypal-token.spec.ts is where that is covered, inside workerd.
 
 /** one request the adapter made, as the assertions need to read it. */
 type Recorded = {

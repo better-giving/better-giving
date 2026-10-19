@@ -2,7 +2,7 @@ import { causeChain } from './rejection';
 
 // what a spec needs to read a constraint failure the database threw, raw or through drizzle.
 //
-// not a spec itself — no pool's `include` matches this name, which is what keeps it a module
+// not a spec itself — no project's `include` matches this name, which is what keeps it a module
 // two specs import rather than a third file of tests. nothing in the app imports it; it imports
 // the app's own walk, which is the direction that keeps the two from drifting — a private copy
 // here would go on passing after ./rejection.ts stopped finding a code.

@@ -134,8 +134,8 @@ it('draws an editor across the whole window, with no rail or band around it', as
 });
 
 // the rail's Integrations group is the deployer's alone: every page in it answers a member with
-// not-found, and ./_app.admin.integrations.api.workers.spec.ts and
-// ./_app.admin.integrations.zapier.workers.spec.ts hold the loaders' half.
+// not-found, and ./_app.admin.integrations.api.db.spec.ts and
+// ./_app.admin.integrations.zapier.db.spec.ts hold the loaders' half.
 
 /** the column's headings and the destinations it offers, in the order it draws them. */
 function rail(root: HTMLElement): string[] {

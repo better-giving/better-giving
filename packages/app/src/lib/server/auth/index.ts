@@ -210,7 +210,7 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 	 * `/login`, `/join`, `/forgot` and `/reset`, and not `/admin/sign-out`, a resource route the
 	 * check never runs on (../../../routes/_app.admin.sign-out.ts). it only ever refuses: a matching
 	 * `Origin` grants nothing, and the session is what authorizes (CLAUDE.md → Bans). the cases under
-	 * "a sign-in posted from another origin" in ../../../entry.server.workers.spec.ts hold it.
+	 * "a sign-in posted from another origin" in ../../../entry.server.db.spec.ts hold it.
 	 *
 	 * the second is `refuseWriteFromAnotherOrigin` (./gate.ts), which refuses any method but GET and
 	 * HEAD whose `Sec-Fetch-Site` is present and not `same-origin`. `staffGate` runs it for every

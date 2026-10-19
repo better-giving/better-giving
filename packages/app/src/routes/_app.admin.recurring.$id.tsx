@@ -68,7 +68,7 @@ import type { Route } from './+types/_app.admin.recurring.$id';
  * /admin/forms/[id]: a marker no button answers to is what keeps `savedSection` from lighting a
  * control over a record that has just lost its control.
  *
- * exported because `./_app.admin.recurring.$id.workers.spec.ts` writes them into its jar — a marker
+ * exported because `./_app.admin.recurring.$id.db.spec.ts` writes them into its jar — a marker
  * renamed here and left spelled out there would be a rename nothing fails over, on the pair of
  * strings this screen's outcome banner depends on agreeing.
  */

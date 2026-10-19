@@ -6,7 +6,7 @@ import Webhooks from './_app.admin.integrations.webhooks._index';
 
 // what the Webhooks list draws from its loader's answer: each destination by address as a link to
 // its page, a paused one said to be, the empty list, and the way to add one. the server half is
-// ./_app.admin.integrations.webhooks._index.workers.spec.ts.
+// ./_app.admin.integrations.webhooks._index.db.spec.ts.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

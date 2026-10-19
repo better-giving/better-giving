@@ -27,7 +27,7 @@
 // (https://developers.cloudflare.com/d1/worker-api/d1-database/#batch), and say only that the
 // per-query limits on size and length apply to each statement inside one
 // (https://developers.cloudflare.com/d1/platform/limits/); whether the queries-per-invocation row
-// counts the call or its statements they do not say. ./budget.workers.spec.ts counts on the same
+// counts the call or its statements they do not say. ./budget.db.spec.ts counts on the same
 // assumption. a post that is not a `fetch` — the SMTP connection a notice opens — is counted as an
 // external subrequest and as a connection.
 //
@@ -42,7 +42,7 @@
 // answer. the pace is what binds.
 //
 // **the claims are {@link PACE}, numbers the shares pay for and not a preference.**
-// ./budget.workers.spec.ts holds each feed's costliest run to exactly its {@link RunCost} at that
+// ./budget.db.spec.ts holds each feed's costliest run to exactly its {@link RunCost} at that
 // pace, and ./budget.spec.ts holds the table equal to the lesser of {@link claimsWithin} and
 // {@link paceOf}, so a feed whose run starts spending more per row fails until its cost here is
 // restated, and its number in the table with it where its share no longer pays for its pace.

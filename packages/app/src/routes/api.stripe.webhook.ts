@@ -31,7 +31,7 @@ import type { Route } from './+types/api.stripe.webhook';
 // with nothing anywhere reporting it. a `middleware` above this route is the way that happens, and
 // the two halves of the claim are asserted rather than left to the name — ../routes.spec.ts holds
 // that this route has no layout above it and that no route but the three surface layouts exports a
-// `middleware` at all, and ./api.stripe.webhook.workers.spec.ts holds that the bytes arrive unread
+// `middleware` at all, and ./api.stripe.webhook.db.spec.ts holds that the bytes arrive unread
 // and are read once.
 //
 // what is decided here and what is not. everything the delivery does is `settleDelivery`'s

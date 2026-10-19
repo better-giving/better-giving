@@ -15,9 +15,7 @@
 // `ReferenceError` on every console request rather than a type error.
 //
 // it is its own module because more than one config spreads it: ./vite.config.ts builds with it
-// and ./vitest.workers.config.ts defines it too, or the report's spec meets a name nothing declared.
-// the pools in ./vitest.config.ts define nothing, which holds while no spec outside the workers
-// pool reads the constant.
+// and ./vitest.config.ts defines it too, or a spec of the console surface meets a name nothing declared.
 
 declare global {
 	/** the release this worker was built from, or `null` where the build's environment named none. */

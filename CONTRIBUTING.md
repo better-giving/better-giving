@@ -70,7 +70,7 @@ Eight packages under `packages/`; commands run from the root:
 
 Which package may import which is enforced by `biome.jsonc`'s overrides (`CLAUDE.md` → *The map*). `pnpm run build` is three ordered steps, and `CLAUDE.md` holds the chain and what silently breaks when a step moves.
 
-`pnpm run check` and `pnpm test` fan out one package at a time (`--workspace-concurrency=1`, because parallel workerd suites oversubscribe the machine).
+`pnpm run check` and `pnpm test` fan out one package at a time (`--workspace-concurrency=1`, because parallel suites oversubscribe the machine).
 
 ## CI
 
@@ -78,9 +78,9 @@ Which package may import which is enforced by `biome.jsonc`'s overrides (`CLAUDE
 
 ## Tests
 
-- **Anything touching the database is a `*.workers.spec.ts`**, real D1 inside workerd, running the committed `migrations/`. Everything else: node pool, with one exception. `packages/app`'s `src/lib/server/email/render.workers.spec.ts` touches no database and is in the workers pool because what it asserts is that a template renders on workerd at all. `packages/app` also has a happy-dom pool for mounted-screen presses.
-- **NOWPayments' notifications never reach `pnpm dev`.** Each payment names its own callback address and NOWPayments posts to it from outside, so nothing arrives on localhost and there is no sandbox this app calls. The crypto settle path is tested only against signed fixture bodies (`api.nowpayments.webhook.workers.spec.ts`), and its first real notification is on a deployment.
-- **Never stand in for D1.** The properties worth asserting (STRICT rejects a float, `batch()` rolls back, UNIQUE refuses a redelivered webhook) are D1's own; a hand-rolled adapter only proves the adapter.
+- **Anything touching the database is a `*.db.spec.ts`**: a real libSQL file per spec file, in a temp directory, with the committed `migrations/` applied (`src/lib/server/db/database.testing.ts`). Everything else is a `*.spec.ts` in the node `server` project. `packages/app` also has a happy-dom `dom` project (`*.dom.spec.tsx`) for mounted-screen presses.
+- **NOWPayments' notifications never reach `pnpm dev`.** Each payment names its own callback address and NOWPayments posts to it from outside, so nothing arrives on localhost and there is no sandbox this app calls. The crypto settle path is tested only against signed fixture bodies (`api.nowpayments.webhook.db.spec.ts`), and its first real notification is on a deployment.
+- **Never stand in for the database.** The properties worth asserting (STRICT rejects a float, `batch()` rolls back, UNIQUE refuses a redelivered webhook) are the database's own; a hand-rolled adapter only proves the adapter.
 - **Assert the extended result code's name, never the prose, and through the error's `cause` when drizzle is in the path.** Drizzle rethrows with the real message demoted to `.cause`, so a bare `toThrowError(/SQLITE_CONSTRAINT_FOREIGNKEY/)` passes vacuously. Use `src/lib/server/db/rejection.testing.ts`.
 
 ## The design system

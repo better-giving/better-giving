@@ -4,7 +4,7 @@ import { projectTribute } from './tributes';
 // node pool, no database: the projection is a pure function over two columns, and the values it is
 // given here are written by hand precisely so a case can hold a shape no writer in this app can
 // produce — `donation.tribute_kind` carries no CHECK, and
-// `$lib/server/db/donation-tribute.db.spec.ts` is where that is asserted against real D1.
+// `$lib/server/db/donation-tribute.db.spec.ts` is where that is asserted against a real database.
 
 describe('the dedication projection', () => {
 	it('states the kind and the person it names, as the two columns hold them', () => {

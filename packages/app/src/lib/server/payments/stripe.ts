@@ -58,7 +58,7 @@ import type {
 // everything else takes `PaymentProvider` from ./provider.ts.
 //
 // it is written for workerd, which is what the constructor options are about — see
-// `createStripeProvider`, and ./stripe.workers.spec.ts, which is where that claim is actually
+// `createStripeProvider`, and ./stripe-default-client.spec.ts, which is where that claim is actually
 // exercised rather than asserted in prose.
 //
 // a dispute's money is read off its own balance transactions, and its fees off every balance
@@ -1325,7 +1325,7 @@ function messageOf(error: unknown): string {
  * the wire, and the only honest way to assert that is to let the real SDK encode a real request.
  * the same reason `createSmtpProvider` in ../email/smtp.ts takes a loader.
  *
- * `host` is what lets ./stripe.workers.spec.ts point the *default* client — the one production
+ * `host` is what lets ./stripe-default-client.spec.ts point the *default* client — the one production
  * builds — at an address that cannot answer, and check that the failure arrives as `unreachable`.
  * without it, every spec would inject `httpClient` and nothing would ever construct the client
  * this app actually ships.
@@ -1351,7 +1351,7 @@ export type StripeSeam = {
  *   - the crypto provider handed to `constructEventAsync` in `verifyEvent`, for the same reason
  *     the synchronous `constructEvent` is never called: it wants node's crypto and throws there.
  *
- * neither claim is left to this comment. ./stripe.workers.spec.ts builds a provider with no seam
+ * neither claim is left to this comment. ./stripe-default-client.spec.ts builds a provider with no seam
  * at all and exercises both inside workerd, which is the only place either can be observed —
  * under node both work whether or not they are the ones production would use.
  *

@@ -1,3 +1,4 @@
+import type { Client } from '@libsql/client';
 import {
 	createStaticHandler,
 	isRouteErrorResponse,
@@ -77,13 +78,14 @@ export interface MountedRoute {
 }
 
 /**
- * sends one request into a mounted chain. `env` swaps the deploy-time values for that request;
+ * sends one request into a mounted chain. `env` swaps the deploy-time values for that request,
+ * `client` the database handle (a spec's wrapper that counts or refuses statements);
  * `deferred` is the tracker its after-response work goes to, passed by a case that waits on what
  * the route handed to `waitUntil` (`settled()` on `createDeferredWork`).
  */
 export type RouteRequester = (
 	request: Request,
-	options?: { readonly env?: Env; readonly deferred?: Deferred }
+	options?: { readonly env?: Env; readonly deferred?: Deferred; readonly client?: Client }
 ) => Promise<Response>;
 
 /**
@@ -104,7 +106,7 @@ export function mountRoutes(chain: readonly MountedRoute[]): RouteRequester {
 		const context = requestContext({
 			env: options.env ?? defaultEnv,
 			deferred: options.deferred ?? createDeferredWork(),
-			client
+			client: options.client ?? client
 		});
 
 		try {

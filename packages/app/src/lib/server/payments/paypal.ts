@@ -740,7 +740,7 @@ const NO_WALLET_DOMAINS =
  *   - `fetchOptions.cache`. axios's fetch adapter otherwise sends `cache: 'default'`, which workerd
  *     rejects outright — every call throws `Unsupported cache mode: default` before it leaves.
  *
- * neither claim is left to this comment. ./paypal.workers.spec.ts builds a provider with no seam at
+ * neither claim is left to this comment. ./paypal-token.spec.ts builds a provider with no seam at
  * all and makes a request inside workerd, which is the only place either can be observed — under
  * node both settings work and a spec there would pass against a build that cannot make one request
  * in production.
@@ -809,7 +809,7 @@ function addressedTo(origin: string): typeof fetch {
  *
  * built from {@link paypalClient} exactly as the provider builds its own, so what a plan is resolved
  * through and what a gift is charged through cannot be configured differently — the two workerd
- * options on that client are the ones ./paypal.workers.spec.ts proves are needed.
+ * options on that client are the ones ./paypal-token.spec.ts proves are needed.
  */
 export function paypalSubscriptions(credentials: PaypalCredentials): SubscriptionsController {
 	const origin = paypalApiOrigin(credentials.apiUrl);

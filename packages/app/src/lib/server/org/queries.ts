@@ -85,7 +85,7 @@ export async function readOrgProfile(db: Db): Promise<OrgProfile | null> {
  * save and an upsert that refreshed it would erase when this deployment was set up.
  * `updated_at` is left out too, but for the opposite reason: it carries `$onUpdateFn`, and
  * drizzle's `buildUpdateSet` — which `onConflictDoUpdate` runs its `set` through — adds
- * every column that has one whether or not the caller named it. `queries.workers.spec.ts`
+ * every column that has one whether or not the caller named it. `queries.db.spec.ts`
  * pins both halves against a real D1 rather than trusting that.
  *
  * takes a `ParsedOrgProfile` rather than raw form values so that the "a saved row means at

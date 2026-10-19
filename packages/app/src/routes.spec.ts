@@ -741,7 +741,7 @@ describe('the route surface', () => {
 	 * cannot claim for itself.
 	 *
 	 * a single top-level segment is not one of those addresses: every one reaches a campaign's route,
-	 * whose loader refuses what no campaign holds (./routes/$slug.workers.spec.ts).
+	 * whose loader refuses what no campaign holds (./routes/$slug.db.spec.ts).
 	 */
 	it('answers an address matching no route with a 404, above every layout', async () => {
 		expect(await statusAt('/admin/not-a-screen')).toBe(404);
@@ -925,7 +925,7 @@ describe('where middleware is mounted', () => {
 	 * what breaks if it does is in each callback's own header and is invisible in every other
 	 * place: verification fails in production on every delivery, and the processor's own dashboard
 	 * is the only thing that reports it. the runtime half — that the bytes reach the handler unread
-	 * and are read once — is each route's own `.workers.spec.ts`.
+	 * and are read once — is each route's own `.db.spec.ts`.
 	 */
 	it.each(Object.entries(PROCESSOR_CALLBACKS))(
 		'is above no layout at all for %s',

@@ -146,7 +146,7 @@ it('offers the reset to a member whose password does not work', () => {
 
 /**
  * and what the screen says to somebody arriving straight off /reset. the loader publishes the flag;
- * whether the marker is there at all is $lib/server/flash.ts's and ./login.workers.spec.ts's.
+ * whether the marker is there at all is $lib/server/flash.ts's and ./login.db.spec.ts's.
  */
 it('says nothing about a password reset nobody just finished', () => {
 	expect(screen().root.textContent).not.toContain('Password changed');

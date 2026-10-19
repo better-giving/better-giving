@@ -11,10 +11,9 @@ import { offeredCadences, readOfferedCadences } from './offered-cadences';
 
 // how often a gift may repeat, away from anything that serves it.
 //
-// a node spec rather than a workers one because nothing here touches the database (CLAUDE.md splits
-// the pools by that), and the seam is the port, which is a value: a case that wants an account
-// holding a usable product just says so. ./cadence-cache.workers.spec.ts is the other half, and it
-// is a workers spec because the edge cache is workerd's.
+// a node spec rather than a db one because nothing here touches the database (CLAUDE.md splits
+// the projects by that), and the seam is the port, which is a value: a case that wants an account
+// holding a usable product just says so. ./cadence-cache.spec.ts is the other half, which reads the edge cache.
 
 /**
  * a port that answers the read arm from a script and refuses every other arm by name.

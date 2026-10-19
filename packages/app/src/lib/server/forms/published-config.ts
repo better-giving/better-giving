@@ -645,7 +645,7 @@ const SERVED_LOCALE = 'en-US';
  * their POST instead, and its `fix` sends a donor to /admin. the live way in is a capability the
  * processor flips to `pending` while it re-verifies an account: the read succeeds and answers no, so
  * `offeredRails` in ./offered-rails.ts does not widen it. `mintQuote() — a rail the account has
- * stopped offering` in ../donations/quote.workers.spec.ts is what fails if this is ever folded back.
+ * stopped offering` in ../donations/quote.db.spec.ts is what fails if this is ever folded back.
  *
  * a function over the result rather than a flag on the reader, because a flag is one boolean away
  * from being passed the other way by a caller who did not read this paragraph — and because the

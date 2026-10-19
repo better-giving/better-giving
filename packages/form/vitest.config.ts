@@ -24,7 +24,7 @@ export default defineConfig({
 					environment: 'node',
 					include: ['src/**/*.{test,spec}.{js,ts}'],
 					exclude: [
-						// no `*.workers.spec.ts` exists under this package today, deliberately: the form
+						// no `*.db.spec.ts` exists under this package today, deliberately: the form
 						// touches no database, and packages/form/tsconfig.json carries no ambient types
 						// for `cloudflare:test`, so one would fail typecheck before it ever mattered
 						// which pool ran it. excluded here rather than left to fall into this pool by

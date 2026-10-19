@@ -34,7 +34,7 @@ import type { Route } from './+types/api.paypal.webhook';
 // five headers it signed, and a body some hook above the route had already consumed reaches the
 // handler as an exception rather than as bytes. ../routes.spec.ts holds that this route has no
 // layout above it and that no route but the three surface layouts exports a `middleware` at all,
-// and ./api.paypal.webhook.workers.spec.ts holds that the bytes arrive unread and are read once.
+// and ./api.paypal.webhook.db.spec.ts holds that the bytes arrive unread and are read once.
 //
 // the console registers this address, and its id is what `PAYPAL_WEBHOOK_ID` holds. the path is
 // `PAYPAL_WEBHOOK_PATH` in packages/operator/src/paypal/webhook-listener.ts, which the binary's copy is

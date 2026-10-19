@@ -5,7 +5,7 @@ import { projectCoinReceived, projectRail, projectStatus, type SettlementAttempt
 // here are written by hand precisely so a case can hold a shape a fixture would have to work to
 // produce — a failed attempt recorded after the succeeded one, a refund that is still pending.
 //
-// what reads real rows out of a real D1 is ./queries.workers.spec.ts. this file is the states.
+// what reads real rows out of a real database is ./queries.db.spec.ts. this file is the states.
 
 let sequence = 0;
 

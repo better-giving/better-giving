@@ -629,8 +629,8 @@ const QUEUED_AS_SETTLED = sql`${quickbooksSync.createdAt} = ${entryGroup.created
  * filter only — the tier comes from the entry group, and the table has no column of its own that
  * carries it.
  *
- * exported for its query rather than its rows, so ./deliver.workers.spec.ts can read sqlite's plan
- * for this statement and ./outbox.workers.spec.ts the order a move leaves. a second copy of the
+ * exported for its query rather than its rows, so ./deliver.db.spec.ts can read sqlite's plan
+ * for this statement and ./outbox.db.spec.ts the order a move leaves. a second copy of the
  * query written there would be a second query.
  */
 export function dueRows(db: Db, now: Date, sends: number) {

@@ -7,7 +7,7 @@ import { sendTestEmail, testSendStatus } from './test-send';
 // no SMTP host and no platform, which is the whole reason the act is a module — the surface that
 // presses it builds its own provider per request from its own env, and what is worth asserting
 // here is the message and the reading of what the transport said rather than that wiring.
-// ../../../routes/console.workers.spec.ts is where the wiring and the destination's own rule are
+// ../../../routes/console.db.spec.ts is where the wiring and the destination's own rule are
 // asserted against a real request.
 
 /** a send that records what it was handed and reports it left. */

@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 import { routeFiles } from './vite/route-files';
+import { versionDefine } from './version-define';
 
 // the spec pools, and a config of their own rather than a `test` block inside ./vite.config.ts.
 //
@@ -8,15 +9,12 @@ import { routeFiles } from './vite/route-files';
 // worker runtime and a route manifest, and neither has anything to do with a spec that imports a
 // module and calls it. vitest reads this file in preference to that one, so the two never meet.
 //
-// four projects, split by what a spec needs.
+// three projects, split by what a spec needs.
 //
 // `*.db.spec.ts` runs in node against a real libSQL file — anything that touches the database
 // belongs there, because the things worth asserting about it (STRICT rejects a float, `batch()`
 // rolls back, a UNIQUE index refuses a redelivery) are properties of the database and cannot be
 // proven against a stand-in.
-//
-// `*.workers.spec.ts` runs inside workerd against D1. ./vitest.workers.config.ts is that pool,
-// and its header says why it is a file rather than an entry here.
 //
 // `*.dom.spec.*` runs in happy-dom, and what it is for is the one thing a server render cannot
 // reach: a state react router only ever puts a screen in while a navigation is in flight. a
@@ -32,6 +30,10 @@ import { routeFiles } from './vite/route-files';
 // everything else runs in node, which is faster to start and enough for pure logic.
 
 export default defineConfig({
+	// the same constant ./vite.config.ts builds with: a spec that mounts the console surface meets the
+	// name its report reads. the variable is unset when the suite runs, so what a spec reads is
+	// `null`, which is what a checkout build answers with too.
+	define: versionDefine,
 	// the "server" project below resolves src/lib/page/slug.ts, which imports `virtual:route-files`
 	// — the same plugin ./vite.config.ts registers for the build, so a spec sees the same route
 	// list a request does.
@@ -43,7 +45,6 @@ export default defineConfig({
 		// a stubbed global (fetch, and its kind) is restored before the next test runs too
 		unstubGlobals: true,
 		projects: [
-			'./vitest.workers.config.ts',
 			{
 				extends: true,
 				resolve: {
@@ -66,10 +67,7 @@ export default defineConfig({
 						'*.{test,spec}.{js,ts}'
 					],
 					exclude: [
-						// the workers pool owns these; without the exclusion node would collect them
-						// too and fail on the `cloudflare:test` import.
-						'src/**/*.workers.{test,spec}.{js,ts}',
-						// and the dom pool these; node would collect a `.ts` one and fail on
+						// the dom pool owns these; node would collect a `.ts` one and fail on
 						// `document` being undefined.
 						'src/**/*.dom.{test,spec}.{js,ts}',
 						// and the db project these, so each runs once and against its own file.

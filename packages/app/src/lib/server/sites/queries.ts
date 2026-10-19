@@ -52,7 +52,7 @@ type Writes = [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]];
  * same. 16 rows is 80, which leaves room for a sixth column to be appended to this table before
  * the arithmetic has to change at all.
  *
- * `queries.workers.spec.ts` saves a list at `MAX_ALLOWED_ORIGINS` so both caps are asserted
+ * `queries.db.spec.ts` saves a list at `MAX_ALLOWED_ORIGINS` so both caps are asserted
  * rather than trusted.
  */
 const SITES_PER_STATEMENT = 16;

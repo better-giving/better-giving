@@ -15,7 +15,7 @@ import { publishedConfig, renderableConfig, type PublishedConfigSources } from '
 import type { PayableCoin, PaymentMethod } from '@better-giving/form/v1';
 
 // the refusals, every one of them decidable without a database. the composer that reads the two
-// rows is in `published-config.workers.spec.ts`; everything here is the judgement it wraps.
+// rows is in `published-config.db.spec.ts`; everything here is the judgement it wraps.
 //
 // each case asserts its own `reason`, not merely that something was refused. `/api/v1` writes a
 // different 4xx body per reason and CLAUDE.md requires each to name the offending value and
@@ -532,7 +532,7 @@ describe('publishedConfig — the row it carries out', () => {
  * packages/form/src/config.ts drops a config offering no rail, so the route that hands a body to it refuses
  * rather than serving one — while the donation path, which shares `publishedConfig` above, goes on
  * charging. the donor half of that pin is `mintQuote() — a rail the account has stopped offering` in
- * ../donations/quote.workers.spec.ts.
+ * ../donations/quote.db.spec.ts.
  */
 describe('renderableConfig', () => {
 	/** the served config as the ladder answers it, before this rule is applied. */

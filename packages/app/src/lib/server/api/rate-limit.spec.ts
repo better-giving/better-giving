@@ -19,7 +19,7 @@ import {
 // the two halves of the limiter that decide nothing about the binding: what a request counts
 // against, and what it is told when it has counted too much. the wiring — that a route spends
 // this above the short-circuit, and that a refused request never reaches a route — is in
-// `src/routes/api.v1.workers.spec.ts` and `src/routes/login.workers.spec.ts`, against the real
+// `src/routes/api.v1.db.spec.ts` and `src/routes/login.db.spec.ts`, against the real
 // binding.
 //
 // the key is the whole security property, so it is stated here rather than left to the

@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 // packages/operator's own test pools, so that this package is exercised where it lives rather than
 // only through whichever surface happens to import it. it is a leaf: it mounts no route, binds
-// nothing and touches no database, so a `*.workers.spec.ts` is unrepresentable here.
+// nothing and touches no database, so a `*.db.spec.ts` is unrepresentable here.
 //
 // what it exists to run is the cases no consumer can write. the sweeps in src/styles/raw-values.ts
 // are called by each surface with globs of its own, and a caller can only ever assert that its own

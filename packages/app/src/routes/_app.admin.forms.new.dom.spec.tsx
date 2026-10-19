@@ -9,12 +9,12 @@ import NewDonationForm from './_app.admin.forms.new';
 // what it covers: adding and removing a suggested-amount row on the screen that makes a donation
 // form. the rows used to be three actions with their own workers cases behind them; they are now
 // form state — `form.insert` and `form.remove` over `fields.suggested_amounts.getFieldList()` —
-// which reaches no action and so is invisible to every workers spec in the tree. a row editor that
+// which reaches no action and so is invisible to every db spec in the tree. a row editor that
 // stopped inserting, or that dropped the row after the one pressed, would ship with the suite
 // green.
 //
 // and what the submit does to itself while its own write is in flight, which is invisible to a
-// workers spec for the same reason: the payload is unchanged either way, and what a native
+// db spec for the same reason: the payload is unchanged either way, and what a native
 // `disabled` costs is the focus of the operator standing on the button.
 //
 // mounted rather than rendered to a string, and that is why this file is in the dom pool: the

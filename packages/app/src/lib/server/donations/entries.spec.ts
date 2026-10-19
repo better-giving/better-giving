@@ -4,8 +4,8 @@ import type { PostingLine } from '../ledger/posting';
 import { reinstatementEntry, reversalEntry } from './entries';
 
 // the two entries a refund makes, as pure arithmetic over the gift's own posted lines. the writer
-// that reads those lines and commits the result is ./reverse.ts, and ./reverse.workers.spec.ts is
-// where the whole path is held against a real D1; this file is the rounding, which is where a
+// that reads those lines and commits the result is ./reverse.ts, and ./reverse.db.spec.ts is
+// where the whole path is held against a real database; this file is the rounding, which is where a
 // cent goes missing without anything reading wrong.
 
 const UNDEPOSITED = postableId('undepositedFunds');
