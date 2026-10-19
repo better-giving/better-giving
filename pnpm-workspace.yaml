@@ -88,3 +88,15 @@ catalog:
 peerDependencyRules:
   allowedVersions:
     'remix-client-cache>react-router': '8'
+# a machine installs the bindings for its own os and cpu, and only the glibc build of a native
+# package: the image is glibc, and a Mac or a Linux runner has no use for the musl variant that
+# otherwise comes with every prebuilt binary. the lockfile still lists every variant.
+supportedArchitectures:
+  os: [current]
+  cpu: [current]
+  libc: [glibc]
+# better-auth peers `next` as optional, and pnpm resolves an optional peer whenever some importer
+# holds a copy: `@react-email/ui` carries one. it is not ours at runtime, so it stays out of the
+# production install.
+overrides:
+  'better-auth>next': '-'

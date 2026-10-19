@@ -5,9 +5,10 @@
 # every push to `main` and every pull request, so a required check always produces a run rather
 # than being silently skipped.
 #
-# four independent jobs, each its own check: `checks` (format, lint, typecheck), `test` (the pnpm
+# five independent jobs, each its own check: `checks` (format, lint, typecheck), `test` (the pnpm
 # suite across every package), `browser-test` (packages/form's real-chromium specs, which `test`
-# never reaches), `go-test` (the console's go module, which the pnpm suite cannot reach). there is
+# never reaches), `go-test` (the console's go module, which the pnpm suite cannot reach),
+# `docker-build` (the root Dockerfile builds). there is
 # no turbo here — this repository has none (`.claude/CLAUDE.md` → toolchain), so nothing is cached
 # or fanned out through a task graph; each job just runs the same command a contributor would run
 # locally.
@@ -118,3 +119,20 @@ jobs:
 
       - run: go test ./...
         working-directory: packages/console
+
+  # builds the image from the root Dockerfile and discards it: nothing is pushed and no registry
+  # login exists. publishing is a separate workflow.
+  docker-build:
+    name: docker-build
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
