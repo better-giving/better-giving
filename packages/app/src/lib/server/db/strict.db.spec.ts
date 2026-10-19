@@ -54,8 +54,8 @@ type TableRow = { name: string; strict: number };
  * instead of pattern-matching `sqlite_master.sql`; a rebuild that drops the keyword is
  * caught by the same assertion however the SQL happens to be formatted.
  *
- * `d1_migrations` is the one exclusion, and it is not ours: ./migrate.ts creates it in wrangler's
- * own statement to track which migrations have run, without `STRICT`, both here and on the real
+ * `d1_migrations` is the one exclusion, and it is not ours: ./migrate.ts creates it in the
+ * Cloudflare flavor's own statement (README.md → On Cloudflare) to track which migrations have run, without `STRICT`, both here and on the real
  * database. every
  * column encoding this project uses (`text`, `integer`) is STRICT-legal, so there is no
  * shape of ours the rule cannot express and no other exclusion is needed.

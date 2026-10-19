@@ -90,15 +90,13 @@ export type StaffCredentialConfig =
  * the message is written for whoever is reading the 4xx/5xx body — increasingly an
  * agent, not a human at a terminal — per CLAUDE.md.
  *
- * where it names is the console and the fold the box is on, never a wrangler invocation
- * or the script wrapping one: the console is the operator's entire interface, so an error
+ * where it names is the console and the fold the box is on, never a command line: the console is the operator's entire interface, so an error
  * that reached for a terminal would hand a second vocabulary to someone who only knows
  * the first.
  */
 export function readStaffCredential(env: AuthEnv): StaffCredentialConfig {
 	// `AuthEnv` types this `string | undefined`, and the reader takes `unknown` for exactly the
-	// case that type is wrong about: a caller that builds one by hand, or a `wrangler types` `Env`
-	// declaring a binding as `string` when it is not one at runtime.
+	// case that type is wrong about: a caller that builds one by hand with a cast.
 	const reading = readAdminPassword(env.ADMIN_PASSWORD);
 
 	if (!reading.ok) {

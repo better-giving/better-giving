@@ -151,8 +151,8 @@ describe('cachedRails', () => {
 	/**
 	 * an entry nothing here wrote is read past rather than served.
 	 *
-	 * `caches.default` is the zone's own store, so what comes back under this address is whatever is
-	 * there — and a body that is not a list of rails must not reach a donation form's config.
+	 * the response cache (../runtime/response-cache.ts) is the process's one store, every reader's,
+	 * so what comes back under this address is whatever is there — and a body that is not a list of rails must not reach a donation form's config.
 	 */
 	it('ignores a stored body that is not a list of rails', async () => {
 		const origin = 'https://rails-garbled-entry.example';

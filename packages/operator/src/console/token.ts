@@ -34,8 +34,8 @@ export const CONSOLE_TOKEN_VERSION = 'bg1';
  * the shortest random part a deployment will read as one.
  *
  * 43 characters, which is what 32 bytes of base64url comes to with no padding. it is a length
- * check and not an alphabet check: what it is for is a value somebody set by hand at a
- * `wrangler secret put` prompt — `test` in the right shape is otherwise a credential — and 256
+ * check and not an alphabet check: what it is for is a value somebody set by hand in `.env` —
+ * `test` in the right shape is otherwise a credential — and 256
  * bits is what makes the difference between two refusals safe to tell apart (see the note on
  * `session_mismatch` in `packages/app/src/lib/server/console/access.ts`).
  */

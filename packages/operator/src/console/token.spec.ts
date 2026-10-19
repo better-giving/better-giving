@@ -60,7 +60,7 @@ describe('a value that is not a token', () => {
 		{ what: 'carrying another version prefix', value: `bg2.1755600000.${RANDOM}` },
 		{ what: 'one dot short', value: `${CONSOLE_TOKEN_VERSION}.${RANDOM}` },
 		{ what: 'one dot long', value: `${CONSOLE_TOKEN_VERSION}.1755600000.${RANDOM}.extra` },
-		// what somebody types at a `wrangler secret put` prompt to see whether the check works.
+		// what somebody sets by hand in `.env` to see whether the check works.
 		{ what: 'a word', value: 'test' }
 	])('is refused as malformed when it is $what', ({ value }) => {
 		expect(parseConsoleToken(value)).toStrictEqual({ ok: false, reason: 'malformed' });

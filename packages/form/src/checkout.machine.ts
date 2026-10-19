@@ -472,8 +472,8 @@ export const MICRODEPOSIT_WINDOW_MS = 10 * 24 * 60 * 60 * 1000;
  * how long the address screen waits between two readings of where the gift stands.
  *
  * the read is metered by the `/api/v1` bucket every endpoint there shares, per client IP
- * (`API_RATE_LIMITER` in packages/app/wrangler.jsonc), and a chain confirms in minutes rather than
- * seconds — so every few seconds is as soon as a donor could be told and still leaves the bucket to
+ * (`API_RATE_LIMITER` in packages/app/src/lib/server/runtime/rate-limiter.ts), and a chain
+ * confirms in minutes rather than seconds — so every few seconds is as soon as a donor could be told and still leaves the bucket to
  * the presses that spend it. exported for the reason `MICRODEPOSIT_WINDOW_MS` is.
  */
 export const DEPOSIT_POLL_MS = 5000;

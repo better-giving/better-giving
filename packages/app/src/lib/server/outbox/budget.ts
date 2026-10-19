@@ -56,8 +56,7 @@ export type Pace = Readonly<Record<Feed, number>>;
 /** one invocation's limits. */
 export type Limits = {
 	/**
-	 * external subrequests: Workers Paid's default, which a `limits.subrequests` block in
-	 * wrangler.jsonc would raise and this figure would have to follow.
+	 * external subrequests: Workers Paid's default (the header's table).
 	 */
 	readonly external: number;
 	/** D1 queries. */

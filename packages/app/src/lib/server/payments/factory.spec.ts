@@ -114,8 +114,8 @@ describe('the provider one processor resolves to', () => {
 	/**
 	 * a value that is not a string is not a credential.
 	 *
-	 * the platform env carries bindings as well as secrets, and a binding is an object however
-	 * `wrangler types` declares it. coerced with `String(...)`, one would become a plausible-looking
+	 * `Env` carries rate limiters beside its strings (../runtime/env.ts), and a limiter is an
+	 * object. coerced with `String(...)`, one would become a plausible-looking
 	 * key and the deployment would report itself configured — which is the one thing this must not
 	 * do.
 	 */

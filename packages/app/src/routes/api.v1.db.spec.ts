@@ -84,8 +84,8 @@ function config404(options?: { ip?: string; method?: string }): Promise<Answered
 
 /**
  * asks until refused rather than counting to a number: the bucket size is a deployment's policy
- * (`wrangler.jsonc`) and the spec's is deliberately smaller, so a case that knew the number would
- * be a case about the config file.
+ * (`RATE_LIMITS` in $lib/server/runtime/rate-limiter.ts) and the spec's is deliberately smaller,
+ * so a case that knew the number would be a case about that table.
  *
  * the cap is what makes a failure legible — a limiter that never refuses ends the loop rather than
  * hanging the suite.

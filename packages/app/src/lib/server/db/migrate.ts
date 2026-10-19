@@ -14,8 +14,8 @@ import type { Client } from '@libsql/client';
 // splits a file or reads a statement's shape: the file goes to the database whole.
 //
 // **a file is recorded by filename, and a recorded one is never sent again.** the table is
-// wrangler's `d1_migrations`, in the statement wrangler creates it with, so a database exported
-// from a D1 deployment arrives here with its applied list intact and resumes rather than replays.
+// `d1_migrations`, in the statement the Cloudflare flavor's wrangler creates it with (README.md →
+// On Cloudflare), so a database exported from a deployment of that flavor arrives here with its applied list intact and resumes rather than replays.
 // a file edited after it was applied therefore never re-runs (AGENTS.md → Never).
 //
 // **before the commit, `PRAGMA foreign_key_check` must come back empty.** a rebuild's closing
@@ -80,7 +80,10 @@ async function applyOne(client: Client, { name, sql }: Migration): Promise<void>
 	}
 }
 
-/** wrangler's `getCreateMigrationsTableQuery`, column order and quoting included. */
+/**
+ * the Cloudflare flavor's table, as wrangler's `getCreateMigrationsTableQuery` writes it, column
+ * order and quoting included.
+ */
 const BOOTSTRAP_SQL = `CREATE TABLE IF NOT EXISTS "d1_migrations"(
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
 		name       TEXT UNIQUE,

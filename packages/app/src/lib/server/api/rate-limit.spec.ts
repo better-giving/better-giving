@@ -390,8 +390,8 @@ describe('what the tighter buckets count against', () => {
 	});
 
 	/**
-	 * each key names what it bounds. the three bindings count in namespaces of their own
-	 * (wrangler.jsonc), so nothing depends on the names differing today — it is what keeps a
+	 * each key names what it bounds. the three limiters count in maps of their own
+	 * (`createRateLimiters` in ../runtime/rate-limiter.ts), so nothing depends on the names differing today — it is what keeps a
 	 * limiter that later meters a second thing from eating the first one's count, which is the same
 	 * reason the surface prefix is in the api key.
 	 */

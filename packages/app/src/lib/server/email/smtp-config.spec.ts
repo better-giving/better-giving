@@ -8,7 +8,7 @@ import {
 	type SmtpFields
 } from './smtp-config';
 
-// pure: no socket, no server, no `cloudflare:sockets`. this is the half of the SMTP
+// pure: no socket, no server, no nodemailer. this is the half of the SMTP
 // transport that can be tested at all, which is why it is a separate module — see the note
 // at the top of ./smtp.ts.
 

@@ -85,9 +85,8 @@ export type AdminPasswordReading =
 /**
  * whether a candidate is a dashboard password this deployment can authenticate against.
  *
- * `unknown` rather than `string`, because one caller reads a platform env. `wrangler types` folds
- * the keys of a gitignored `.dev.vars` into the generated `Env` as required `string`s, so a value
- * that is not one arrives typed as though it were; without the check it reaches `.length`, where
+ * `unknown` rather than `string`, so no caller's type stands in for the check: a value that is not
+ * a string is refused here, where without the check it would reach `.length`, where
  * `undefined < 12` is false and a truthy non-string passes as a credential nothing could ever match.
  *
  * absent, empty and whitespace-only are three sentences rather than one because they are three

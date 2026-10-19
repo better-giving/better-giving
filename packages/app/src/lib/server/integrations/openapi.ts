@@ -42,8 +42,8 @@ import {
 // `data` from ../webhooks/deliver.ts. what no constant carries is written here once: each object's
 // schema, which status each refusal code is answered with, and which record each event carries.
 // ./openapi.spec.ts holds the document to the OpenAPI 3.1 schema, to the route files and the
-// catalog, and each rate limit to wrangler.jsonc; ./openapi.db.spec.ts validates real rendered
-// objects against the schemas below and provokes every refusal against its documented status.
+// catalog, and each rate limit to `RATE_LIMITS` in ../runtime/rate-limiter.ts;
+// ./openapi.db.spec.ts validates real rendered objects against the schemas below and provokes every refusal against its documented status.
 //
 // **it and ./agent-prompt.ts are the only modules here that import ../webhooks/.** the document
 // describes both surfaces, so it reads both, while ../webhooks/payload.ts renders each post's

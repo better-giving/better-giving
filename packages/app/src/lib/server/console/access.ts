@@ -32,19 +32,13 @@ import {
 // it reads `platform.env` and one header, and touches no binding and no row — which is what the
 // absent rate limiter on this surface rests on. see ./surface.ts, where that is written down.
 //
-// **`CONSOLE_TOKEN` is a secret and never a var**, for three independent reasons: a deployed var's
-// value is readable back through the script-settings API and prints in `wrangler versions view`
-// and in the dashboard, so a var token is recoverable by read-only account access and lands in
-// screenshots; a secret survives `wrangler deploy` unconditionally where a var depends on
-// `keep_vars: true` in packages/app/wrangler.jsonc, and this check must not be coupled to that
-// flag; and only the console may ever hold this value.
+// **`CONSOLE_TOKEN` is an environment variable on no enumeration** (AGENTS.md → Secrets): it is in
+// `ENV_VAR_NAMES` (../runtime/env.ts) and on no list of configuration values, so nothing that
+// prints configuration can print it (`tokenSlot` below), and only the console may ever hold it.
 //
-// **the local-development exception, stated rather than left to be found.** against `wrangler dev`
-// the token arrives from `.dev.vars`, which puts it on disk — the one place in this design a
-// session credential is written to a file. it is scoped to a developer's own machine: `.dev.vars`
-// is gitignored, no command uploads it (see `.dev.vars.example`), and a deployment reads its own
-// secret and never that file. on a deployment there is no equivalent, because a Worker secret
-// cannot be read back at all.
+// **it is on disk wherever it is set.** the server reads it from the process environment, which
+// `compose.yaml` fills from `.env`: a file `.gitignore` keeps out of the repository and AGENTS.md →
+// Never forbids committing.
 //
 // every refusal is 401 and every one of them is about this deployment rather than about the
 // caller: not one sentence here quotes a value off the wire, because the only value on the wire is
@@ -266,11 +260,9 @@ type TokenSlot =
 /**
  * `CONSOLE_TOKEN` off the platform env, narrowed from `unknown` and keeping the three states apart.
  *
- * from `unknown` rather than from the generated `Env`, for the reason `readConfigEnv` in
- * ../config/env.ts is: `worker-configuration.d.ts` is written by `wrangler types` from whatever
- * happened to be set on the machine that ran it, and it is gitignored — so a type that claims this
- * is a `string` is a claim about one developer's machine. an env that is not an object at all is
- * `absent`, which is the truthful answer for a request that never had a platform env.
+ * from `unknown` rather than from `Env`, for the reason `readConfigEnv` in ../config/env.ts is:
+ * no caller's type stands in for the narrowing, so a value that is not a string is caught here
+ * whoever passed it. an env that is not an object at all is `absent`, which is the truthful answer for a request that never had a platform env.
  *
  * present-but-not-a-string is kept as its own state rather than folded into absent, because the
  * `typeof` is the whole finding: the slot is filled with something that is not a credential, which

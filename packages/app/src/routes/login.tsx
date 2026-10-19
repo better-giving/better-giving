@@ -156,14 +156,12 @@ const UNAVAILABLE =
 	'not read: the Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.';
 
 /**
- * what a member is told when the edge attributed no address to the request, so there is no
- * sign-in bucket to charge and the attempt is refused before their password is compared.
+ * what a member is told when the server attributed no address to the request (`clientIp` in
+ * $lib/server/runtime/client-ip.ts), so there is no sign-in bucket to charge and the attempt is
+ * refused before their password is compared.
  *
- * it is read by a colleague and acted on by whoever runs the deployment, so it names the cause and
- * the switch that usually produces it — the zone-level managed transform that strips
- * `CF-Connecting-IP` from every request, described on `apiRateLimitKey` in
- * $lib/server/api/rate-limit.ts. it says nothing about the account, because nothing about the
- * account was read.
+ * it is read by a colleague and acted on by whoever runs the deployment. it says nothing about the
+ * account, because nothing about the account was read.
  */
 const UNATTRIBUTED =
 	'Sign-in is unavailable. This deployment is not being told your connection’s IP address, so it ' +

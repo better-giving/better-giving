@@ -251,12 +251,13 @@ export const authVerification = sqliteTable(
  * grant.
  *
  * rotation logs the admin out, voids any unspent connect address, and does nothing
- * else:
- *   pnpm wrangler d1 execute better-giving --remote --command "UPDATE auth_signing_key set value = '$(openssl rand -hex 32)' where id = 'default'"
+ * else. it is one statement against the database file, with the value from
+ * `openssl rand -hex 32`:
+ *   UPDATE auth_signing_key SET value = '<64 hex characters>' WHERE id = 'default'
  *
  * that generates the replacement on the operator's machine on purpose. the migration mints
- * the first one with `randomblob(32)`, because it runs before any Worker exists and D1's
- * PRNG is the only source there — read the entropy note at the bottom of
+ * the first one with `randomblob(32)`, because it runs before the server exists and
+ * sqlite's PRNG is the only source there — read the entropy note at the bottom of
  * `migrations/0000_initial_schema.sql` before treating `randomblob` as a CSPRNG anywhere
  * else in this codebase.
  */

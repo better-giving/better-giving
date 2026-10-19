@@ -37,8 +37,9 @@ import type { Route } from './+types/integrations.v1';
 //   (`integrationsCallerRateLimitKey` in $lib/server/api/rate-limit.ts), ahead of the key lookup
 //   and whatever the request presents — so it bounds what one address costs before anything is
 //   known about it: the indexed read each well-formed key costs, and so guessing. it is sized
-//   above the per-key bucket (wrangler.jsonc has both numbers), so it reaches a real key only when
-//   one address runs several keys flat out. a caller the edge attributes no address to is not
+//   above the per-key bucket (`RATE_LIMITS` in $lib/server/runtime/rate-limiter.ts has both
+//   numbers), so it reaches a real key only when one address runs several keys flat out. a caller
+//   the server attributes no address to (`clientIp` in $lib/server/runtime/client-ip.ts) is not
 //   charged it at all, rather than pooled with every other such caller into one bucket anyone
 //   could hold closed on every integration: the 256-bit key and the per-key bucket still bound
 //   them.

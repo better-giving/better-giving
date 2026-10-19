@@ -33,8 +33,7 @@
 // operator documents beside them for a literal that spells one by hand as a secret, and holds this
 // list to the names the app actually reads — in both
 // directions, which is more than a `satisfies` could say, and this leaf can name no env type to
-// write one against anyway. `.../config/deploy-vars.config.spec.ts` is the other half:
-// `keep_vars` in wrangler.jsonc, without which a plain deploy deletes every one of them.
+// write one against anyway.
 //
 // `CONSOLE_TOKEN` is on no list here and is not a configuration value: the console mints it for its
 // own session and writes it as a Worker secret. ./console/token.ts and

@@ -134,9 +134,9 @@ describe('a deployment nobody has connected a console to', () => {
 	});
 
 	/**
-	 * `worker-configuration.d.ts` types a binding as whatever `wrangler types` last saw, so a
-	 * value that is present and is not a string reaches here typed as one. the `typeof` is in the
-	 * message because it is the whole finding — the slot is filled with something that is not a
+	 * `Env` carries the rate limiters beside its strings (../runtime/env.ts), so a value that is
+	 * present and is not a string is a real shape here — the case below is one. the `typeof` is in
+	 * the message because it is the whole finding — the slot is filled with something that is not a
 	 * credential.
 	 */
 	it('is refused when CONSOLE_TOKEN is present but not a string, naming what it is', () => {
@@ -145,7 +145,7 @@ describe('a deployment nobody has connected a console to', () => {
 		expect(access.ok === false && access.refusal.message).toContain('object');
 	});
 
-	/** what a blank paste into a `wrangler secret put` prompt leaves behind. */
+	/** what a value set blank, or to a pasted newline, leaves behind. */
 	it.each([
 		{ what: 'empty', value: '' },
 		{ what: 'only whitespace', value: '\n' }

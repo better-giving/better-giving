@@ -29,9 +29,9 @@ import { CONFIG_VAR_NAMES } from './env';
 // the stronger form of that check anyway, since it catches a name on the list that nothing reads as
 // well as a name read that the list does not hold.
 //
-// `secret:delete` and `secret:list` are deliberately not swept for. `CONSOLE_TOKEN` is a Worker
-// secret and is not a configuration value — the console mints it for its own session — so those two
-// commands, and prose about the `wrangler secret put` prompt it can be typed at, stay true.
+// `secret:delete` and `secret:list` are deliberately not swept for here. `CONSOLE_TOKEN` is not a
+// configuration value — the console mints it for its own session — and ../../../commands.spec.ts is
+// what refuses a mention of either removed script.
 
 /**
  * everything that could hold an instruction, plus the three documents beside it.
@@ -95,9 +95,8 @@ function setAsSecret(name: string): RegExp {
  * longer exists — which is how a deleted rule outlives its own deletion. the pattern above cannot
  * see one, because half of these never name a value at all.
  *
- * the bare wrangler form is deliberately not swept for here: `wrangler secret put` is still the way
- * `CONSOLE_TOKEN` is set by hand, and prose about that prompt is true. what would be wrong is a
- * name off `DEPLOY_VARS` after it, which the pattern above does catch.
+ * the bare command form is deliberately not swept for here: what would be wrong is a name off
+ * `DEPLOY_VARS` after it, which the pattern above does catch.
  */
 const SECRET_COMMANDS = new RegExp(SCRIPT_FORM, 'g');
 

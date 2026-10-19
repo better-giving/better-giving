@@ -480,9 +480,9 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * read by none of better-auth's checks on this deployment: they run only inside
 		 * `auth.handler`, which nothing mounts, or on a call passed a `request:`, which nothing
 		 * passes (the note above `configuredBaseURL`). it is stated for the day either changes,
-		 * and then it is what lets local development post from both loopback ports — `pnpm dev`
-		 * on 5321 (`DEV_PORT` in `packages/app/server/index.ts`) and `pnpm preview`/`wrangler dev` on
-		 * 8787 — without a localhost entry on a deployed origin, which is never loopback.
+		 * and then it is what lets local development post from loopback — `pnpm dev` on 5321
+		 * (`DEV_PORT` in `packages/app/server/index.ts`) — without a localhost entry on a
+		 * deployed origin, which is never loopback. nothing in this repo listens on 8787.
 		 */
 		trustedOrigins: isLoopback ? ['http://localhost:5321', 'http://localhost:8787'] : [],
 

@@ -208,14 +208,14 @@ export type TurnstileCheck = {
 	/**
 	 * the submission itself, for the visitor's address.
 	 *
-	 * the request rather than an address, so that `CF-Connecting-IP` is spelled in this folder and
-	 * not again in the route — `apiRateLimitKey` in ./rate-limit.ts reads the same header and argues
-	 * at length about which headers may stand in for it and which may not. asking a caller for the
-	 * address would put that decision one file away from its reasoning.
+	 * the request rather than an address, so that the address is read in this folder and not again
+	 * in the route — through `clientIp` in ../runtime/client-ip.ts, which `apiRateLimitKey` in
+	 * ./rate-limit.ts reads too and which argues which header may stand in for the TCP peer. asking a
+	 * caller for the address would put that decision one file away from its reasoning.
 	 *
 	 * the address is a signal Cloudflare scores the challenge against, never something this app
-	 * decides on. the header is set by the edge in front of the Worker; treating any address as an
-	 * authorization input would be the same mistake CLAUDE.md names for `Origin`.
+	 * decides on. the server entry decides it (../runtime/client-ip.ts); treating any address as an
+	 * authorization input would be the same mistake AGENTS.md names for `Origin`.
 	 */
 	readonly request: Request;
 };

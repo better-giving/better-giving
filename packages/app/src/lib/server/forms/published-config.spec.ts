@@ -191,8 +191,8 @@ describe('publishedConfig — refusals', () => {
 
 	/**
 	 * both bounds or nothing. the columns are nullable — `parseFormInput` refuses a blank on
-	 * either, so no /admin save produces one, but a row written by `wrangler d1 execute` or an
-	 * importer can — and `readFormConfig` in packages/form/src/config.ts refuses the same shape at the
+	 * either, so no /admin save produces one, but a row written by a statement run by hand or
+	 * an importer can — and `readFormConfig` in packages/form/src/config.ts refuses the same shape at the
 	 * far end. served, it would be a form that renders and then refuses every amount a donor
 	 * types, with nothing on the screen saying why.
 	 *

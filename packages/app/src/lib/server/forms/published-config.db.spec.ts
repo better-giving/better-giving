@@ -313,8 +313,9 @@ describe('readPublishedConfig', () => {
 	 * SMTP password sitting in a loader, one `return { env }` away from being serialized to a
 	 * browser.
 	 *
-	 * the case is a binding sitting where a string is expected, because that is the shape the
-	 * narrowing exists for (`readConfigEnv` in ../config/env.ts): a `D1Database` has no `.trim()`,
+	 * the case is the database client sitting where a string is expected, because that is the shape
+	 * the narrowing exists for (`readConfigEnv` in ../config/env.ts): the libSQL client
+	 * (../db/open.ts) has no `.trim()`,
 	 * so the judgement below would throw on it rather than treat it as unset.
 	 */
 	it('narrows the platform env itself, dropping a value that is not a string', async () => {

@@ -79,8 +79,8 @@ export type OrgProfileFieldErrors = Partial<
  *
  * those five being `string` rather than `string | null` is the whole promise: a saved row is one a
  * receipt can be printed from, so a template holding one of these has four fewer `??` in it than
- * the row does. the columns stay nullable, because a row written by `wrangler d1 execute` never
- * passed through here — see `missingForReceipt` in ./receipt-fields.ts and `identityMissing` in
+ * the row does. the columns stay nullable, because a row written by a statement run by hand
+ * never passed through here — see `missingForReceipt` in ./receipt-fields.ts and `identityMissing` in
  * ./identity.ts, which are what still report one.
  *
  * `deductibilityStatement` is not here and no screen posts one: `org_profile`'s column is a fork's
@@ -108,7 +108,7 @@ export type OrgProfileFieldErrors = Partial<
  *
  * it is not a substitute for `org_profile_legal_name_not_blank_check` on the column, and
  * the check is not a substitute for it — the brand stops a *caller*, the check stops a
- * hand-written `wrangler d1 execute` that never passes through TypeScript at all.
+ * statement written by hand against the database file, which never passes through TypeScript.
  */
 export type ParsedOrgProfile = {
 	readonly legalName: string;

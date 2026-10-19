@@ -87,8 +87,8 @@ describe('readStaffCredential', () => {
 	});
 
 	/**
-	 * a Worker binding is not a string, and `wrangler types` will still declare one as
-	 * `string`. reading one must not become a credential.
+	 * a value that is not a string must not become a credential, whatever the caller's type
+	 * said it was.
 	 *
 	 * without the `typeof` guard in `readStaffCredential` the value would reach `.length`,
 	 * where `undefined < 12` is false and a truthy non-string sails through as a credential

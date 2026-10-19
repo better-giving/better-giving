@@ -6,7 +6,7 @@
 // every rule here — which scheme, which port, what a missing credential means, what may go in
 // a `RCPT TO:` — is decidable with no socket and no server, so it is testable with neither. it
 // is also the half that must never be skipped, because the alternative to refusing a bad value
-// here is a `cloudflare:sockets` error four layers down that names none of it.
+// here is a nodemailer error four layers down that names none of it.
 //
 // the platform rules this encodes are cloudflare's, not preferences:
 //   - port 25 is prohibited outbound from a Worker (`Connections to port 25 are
@@ -105,11 +105,8 @@ function marked(names: readonly string[]): string {
  * the sentence rather than on the command line, because the command comes whole from `setCommand`
  * and carries a placeholder where the value goes.
  *
- * the clear half is the half most operators want, and it is not a command. absent means 465, and a
- * var is cleared on the Worker's Variables and Secrets page or by setting it to the empty string —
- * `readConfigEnv` in ../config/env.ts reads both as absent. a deploy cannot remove one: `keep_vars`
- * in wrangler.jsonc is what keeps the other twelve through every deploy after the one that set
- * them.
+ * the clear half is the half most operators want, and it is not a command. absent means 465, and
+ * `readConfigEnv` in ../config/env.ts reads a value set to the empty string as absent too.
  *
  * **it keeps its commands where {@link fix} above gave them up, and the reason is what the console
  * can do rather than what it draws.** that fold states 465 and asks for no port, so its press

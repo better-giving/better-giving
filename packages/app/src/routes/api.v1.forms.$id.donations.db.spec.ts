@@ -497,7 +497,8 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
  *
  * the surface limit bounds a caller against one database read; what a submission costs is a read, a
  * Turnstile verification and a payment intent minted at the processor, so this route carries a
- * limit of its own — sixty a minute against the surface's six hundred (wrangler.jsonc). the spec env
+ * limit of its own — sixty a minute against the surface's six hundred (`RATE_LIMITS` in
+ * $lib/server/runtime/rate-limiter.ts). the spec env
  * holds the same ordering with smaller numbers (`SPEC_RATE_LIMITS` in $lib/server/runtime/rate-limiter.testing.ts), which is what
  * lets a case here reach this bucket at all.
  *
@@ -516,8 +517,9 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
 describe('POST /api/v1/forms/:id/donations — the bucket this endpoint carries', () => {
 	/**
 	 * asked until refused rather than counted to a number: the bucket size is the deployment's
-	 * policy (wrangler.jsonc) and the spec's is deliberately smaller, so a case that knew the number
-	 * would be a case about the config file. `rate-limit.config.spec.ts` is what reads that file.
+	 * policy (`RATE_LIMITS` in $lib/server/runtime/rate-limiter.ts) and the spec's is deliberately
+	 * smaller, so a case that knew the number would be a case about that table.
+	 * `rate-limit.config.spec.ts` is what reads it.
 	 */
 	async function untilRefused(options: PostOptions): Promise<Response> {
 		for (let i = 0; i < 50; i++) {

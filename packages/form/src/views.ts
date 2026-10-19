@@ -141,14 +141,7 @@ export const DEFAULT_SHAPE = { frequencies: 3, amounts: 6 } as const;
 type Attributes = Record<string, string | number | boolean | undefined>;
 
 /**
- * appends children, through `appendChild` rather than `append`.
- *
- * `wrangler types` writes a global `interface Element` for HTMLRewriter into
- * `worker-configuration.d.ts`, and TypeScript merges it with the DOM's `Element`. a member
- * declared on an interface hides the one it inherits, so that file's
- * `append(content: string | ReadableStream | Response)` shadows `ParentNode.append` for every DOM
- * element in this project — a variadic call against it does not type-check and never will.
- * `appendChild` is declared on `Node`, which that file does not touch.
+ * appends children, each through `appendChild`.
  */
 export function put(doc: Document, parent: Node, children: readonly (Node | string)[]): void {
 	for (const child of children) {

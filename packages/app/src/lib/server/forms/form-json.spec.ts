@@ -39,8 +39,8 @@ describe('the JSON column seam', () => {
 
 	it('drops a repeated origin, keeping the first of them', () => {
 		// a repeat says nothing a CORS allowlist can act on — the check is membership — and the
-		// column's own `CHECK` asks for an array and nothing about what is in it, so a hand-run
-		// `wrangler d1 execute` is the way one gets in. dropped here rather than at either
+		// column's own `CHECK` asks for an array and nothing about what is in it, so a statement run
+		// by hand against the database file is the way one gets in. dropped here rather than at either
 		// consumer: `src/routes/_app.admin.forms._index.tsx` keys its site list by the origin,
 		// and react reuses one element across both records on a duplicate key rather than
 		// rendering the second — silently dropping a site from the list instead of loudly failing.

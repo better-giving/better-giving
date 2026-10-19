@@ -73,9 +73,10 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 
 	// this endpoint's own bucket, charged before anything else runs.
 	//
-	// the surface bucket above it is sized against a caller costing one D1 read. a submission costs
-	// a read, a Turnstile verification and a payment intent minted at the processor, so sixty a
-	// minute is what this one allows where the surface allows six hundred (wrangler.jsonc). both
+	// the surface bucket above it is sized against a caller costing one database read. a submission
+	// costs a read, a Turnstile verification and a payment intent minted at the processor, so sixty
+	// a minute is what this one allows where the surface allows six hundred (`RATE_LIMITS` in
+	// $lib/server/runtime/rate-limiter.ts). both
 	// numbers are sized against the same address, which is why this one is not tighter still: a
 	// carrier NAT or a campus puts many real donors behind one, and that does not change because
 	// the request costs more. Turnstile is the control on card testing; this is the ceiling on a

@@ -139,11 +139,9 @@ import type { PostableAccountId } from './postable';
 //
 // 2. if a generated migration rebuilds a table, hand-edit its pragmas.
 //    drizzle-kit wraps a rebuild in `PRAGMA foreign_keys=OFF` / `=ON`. sqlite documents
-//    that pragma as a no-op inside a transaction, and the whole migration runs in one on
-//    every apply path — wrangler's `--local` sends a file as one batch, and wrangler's
-//    `--remote` and `better-giving start` send it as one query request D1 runs as one
-//    implicit transaction (packages/console/internal/migrate/migrate.go). that is the
-//    mechanism, not "D1 ignores it". so the rebuild's
+//    that pragma as a no-op inside a transaction, and the whole migration runs in one:
+//    `applyMigrations` in ./migrate.ts sends each file whole inside one write transaction.
+//    so the rebuild's
 //    `DROP TABLE account` fails with FOREIGN KEY constraint failed. two ways in: a
 //    separate child table holding rows that point at the dropped table, and — the one
 //    live today — the self-reference, which fails specifically because drizzle renders
@@ -151,8 +149,8 @@ import type { PostableAccountId } from './postable';
 //    drop, leaving the copied 4110/4120 rows pointing at it. (a rebuild whose FK
 //    targeted `__new_account` instead would survive; drizzle does not emit that.)
 //    so this is live today, not a future problem. it aborts
-//    atomically, but it is the migration step of `deploy` that fails and `wrangler deploy`
-//    runs behind it, so a fork that hits it cannot deploy at all. replace the emitted pair with
+//    atomically, but it is `pnpm db:migrate` that fails, ahead of the server, so a fork
+//    that hits it cannot bring its database forward at all. replace the emitted pair with
 //        PRAGMA defer_foreign_keys=true;  ...rebuild...  PRAGMA defer_foreign_keys=false;
 //    which D1 honours: the `DROP` no longer fails on the rows pointing at the table, and
 //    the deferral lasts to the end of the file's transaction. the closing `=false` is not
@@ -225,10 +223,10 @@ import type { PostableAccountId } from './postable';
 //    `lower("primary_email")` and fails with `no such column`. the original migration
 //    wrote the same index unquoted and worked; only the rebuild path re-renders it.
 //    strip the outer backticks. this one is not silent — it errors — but it errors
-//    inside `deploy`'s `wrangler d1 migrations apply DB --remote`, and nothing upstream
-//    of that reads the emitted SQL: lint, check and the suite all ran at commit time and
-//    `build` ran first without looking at migrations/ at all. so the deploy dies at the
-//    one-way door with no gate having had a chance. `contact_primary_email_lower_idx`
+//    inside `pnpm db:migrate` against the deployment's file, and nothing upstream of that
+//    reads the emitted SQL: lint, check and the suite all ran at commit time and `build`
+//    ran first without looking at migrations/ at all. so the upgrade dies at the migration
+//    with no gate having had a chance. `contact_primary_email_lower_idx`
 //    is the only functional index today; every future one inherits this.
 //
 // 5. a rebuild's CHECK constraints keep naming the table it is about to stop being.
@@ -789,7 +787,7 @@ export const ledgerEntry = sqliteTable(
 		 *
 		 * `$type<PostableAccountId>()` carries the brand through the row type, which is what
 		 * makes `NewLedgerEntry` unbuildable from a plain `string` — see ./postable.ts. it is
-		 * documentation to a `wrangler d1 execute` and a real constraint to every writer that
+		 * documentation to a statement run by hand and a real constraint to every writer that
 		 * goes through drizzle, and it is the same brand `posting.ts` already takes on
 		 * `PostingLine.accountId`, so that value flows in here with no cast.
 		 */
@@ -813,8 +811,8 @@ export const ledgerEntry = sqliteTable(
 		 *
 		 * `PostableAccountId` in ./postable.ts brands the argument `posting.ts` takes, so a
 		 * rollup is a compile error at the call site — but that is a type-checker guard and
-		 * nothing else, which is precisely the gap this closes: a hand-written
-		 * `wrangler d1 execute`, a CSV import or a future writer that never sees the brand
+		 * nothing else, which is precisely the gap this closes: a statement written
+		 * by hand, a CSV import or a future writer that never sees the brand
 		 * reaches the table directly. paired with `ledger_entry_account_postable_check`
 		 * pinning this side to 1, the only `account` rows `account_id` can name are the ones
 		 * with `is_postable = 1`, at no extra read — `account_id_postable_idx` does the work.
@@ -1437,7 +1435,7 @@ export const lineItem = sqliteTable(
 		 * line item at the database level, and it costs zero extra reads: no lookup, no
 		 * round trip, the index does it. this is the runtime twin of `PostableAccountId` in
 		 * ./postable.ts, and the two are not redundant — the brand stops a caller in the
-		 * type checker, this stops a hand-written `wrangler d1 execute`, a CSV import and
+		 * type checker, this stops a statement written by hand, a CSV import and
 		 * any future writer that never sees the brand.
 		 *
 		 * the double-counting hazard belongs to `ledger_entry`, which carries the same pair
@@ -2394,7 +2392,7 @@ export const site = sqliteTable(
 		 * the scheme is the whole value of the column: `../api/cors.ts` compares a browser's
 		 * `Origin` header to this list literally, so an entry without one is an entry that can
 		 * never match. the parse refuses it in front of the operator who typed it; this is the
-		 * floor under a hand-run `wrangler d1 execute`, which predates and outlives any parser.
+		 * floor under a statement run by hand, which predates and outlives any parser.
 		 *
 		 * lower-case literals and not `lower(origin)`, because a stored value's scheme is already
 		 * lower case by construction: `readOriginList` accepts a line only when

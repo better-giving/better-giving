@@ -6,10 +6,8 @@ import type { SmtpFields } from '../email/smtp-config';
  *
  * every field is optional for the same reason `AuthEnv`'s are — see the long note on
  * `readAuthEnv` in `../auth/env.ts`, which this module deliberately mirrors rather than
- * restates. the short version: `worker-configuration.d.ts` is generated from whatever
- * `.dev.vars` happens to exist on the machine that ran `wrangler types`, and that file is
- * gitignored, so `Env` types these as required `string`s on one developer's machine and
- * omits them entirely on a fresh clone. a reader whose whole job is telling a set value from an
+ * restates. the short version: a variable nobody set is `undefined` at runtime, and a
+ * reader whose whole job is telling a set value from an
  * unset one cannot be built on a type that claims nothing ever is.
  */
 export interface ConfigEnv {
@@ -220,8 +218,8 @@ export const CONFIG_VAR_NAMES = [
 /**
  * platform env -> `ConfigEnv`, by structural narrowing from `unknown`.
  *
- * a value that is present but not a string is dropped rather than coerced. a binding is
- * not a string however `wrangler types` declares it, and `String(someBinding)` would
+ * a value that is present but not a string is dropped rather than coerced. a rate limiter
+ * `Env` carries (../runtime/env.ts) is not a string, and `String(someLimiter)` would
  * turn one into a plausible-looking configured value — which is the one thing an honest reader
  * may not do. absent is the truthful answer, and it is the state every caller already handles.
  *

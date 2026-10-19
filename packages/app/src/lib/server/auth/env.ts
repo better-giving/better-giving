@@ -40,19 +40,11 @@ export const AUTH_VAR_NAMES = [
 /**
  * platform env -> `AuthEnv`, by structural narrowing from `unknown`.
  *
- * this is not ceremony, and it is deliberately not `declare global { interface Env }`
- * or a cast. `wrangler types` folds the keys of **`.dev.vars`** into the generated
- * `Env` as required `string`s, and `.dev.vars` is gitignored — so `Env` has
- * `ADMIN_PASSWORD: string` on a machine that has a `.dev.vars` and no such property
- * at all in a fresh clone, or anywhere else with no `.dev.vars`. two consequences:
- *
- *   1. `env.ADMIN_PASSWORD` type-checks for one developer and is a compile error for
- *      the next one. reading through this function instead keeps `pnpm check` giving
- *      the same answer everywhere.
- *   2. the generated `string` is a lie in production anyway — a value nobody set on
- *      the deployment is `undefined` at runtime, whatever the type says.
- *      `AuthEnv` models that, so the missing-variable paths cannot be dropped as
- *      unreachable.
+ * not a cast of `Env` (../runtime/env.ts): narrowing from `unknown` means no caller's
+ * type stands in for the check, whether it hands over `Env` or a test's plain record.
+ * every field of `AuthEnv` is optional because a value nobody set on the deployment is
+ * `undefined` at runtime, so the missing-variable paths cannot be dropped as
+ * unreachable.
  *
  * a value that is present but not a string is treated as absent, which is the same
  * failure the caller already has to handle.

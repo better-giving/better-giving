@@ -46,8 +46,9 @@ import type { Route } from './+types/_app.admin.forms._index';
 // link that never gates, so nothing here asks whether they are saved.
 //
 // this file is deliberately thin. what reaches the database lives in
-// `$lib/server/forms/queries.ts`; the only job here is a projection. neither `D1Database` nor the
-// `form` table object is named anywhere in this route, and neither may be.
+// `$lib/server/forms/queries.ts`; the only job here is a projection. neither the database's
+// type (`Db` in $lib/server/db/client.ts) nor the `form` table object is named anywhere in this
+// route, and neither may be.
 
 /** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Donation forms';

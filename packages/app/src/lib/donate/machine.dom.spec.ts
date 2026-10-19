@@ -205,9 +205,6 @@ function boxes() {
 	const host = document.createElement('div');
 	const paymentMount = document.createElement('div');
 	const challengeMount = document.createElement('div');
-	// `appendChild` rather than `append`: `wrangler types` writes a global `interface Element` for
-	// HTMLRewriter that typescript merges with the DOM's, and its own `append` shadows
-	// `ParentNode.append` for every element in this project.
 	host.appendChild(paymentMount);
 	host.appendChild(challengeMount);
 	document.body.appendChild(host);
