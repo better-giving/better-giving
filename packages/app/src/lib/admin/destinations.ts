@@ -8,12 +8,13 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * what an operator opens on, and each record after it is a step further from the page or form that
  * produced it.
  *
- * the dashboard states figures and every other one is a collection. what a deployment or its
- * organisation holds one of — payments, mail, spam protection, the site list, the organisation's
- * profile with its mission, logo and brand colour — is set up on the operator console and is not a
- * destination here (CLAUDE.md → Two operator surfaces). the colleagues who may sign in are the one
- * thing about access that is a collection rather than a singleton, which is why Members is on this
- * rail and the sign-in password is not.
+ * the dashboard states figures and every other one but Settings is a collection. Settings holds
+ * what the organisation holds one of — its profile with its mission, logo and brand colour, and the
+ * address this deployment reaches it at — and shows the mail values it sends with. payments, spam
+ * protection and the site list are still set up on the operator console and are not destinations
+ * here (CLAUDE.md → Two operator surfaces). the colleagues who may sign in are the one thing about
+ * access that is a collection rather than a singleton, which is why Members is on this rail and the
+ * sign-in password is not.
  *
  * a `label` is the word a fundraiser says and a path is the word the domain uses, and the two need
  * not be one: `/admin/donations` is Gifts. CLAUDE.md → Product surface is the rule, and it is why a
@@ -44,18 +45,18 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * time.
  *
  * the rail's column draws the destinations in five groups: the dashboard alone, the one
- * destination stating figures; the records of giving; Members, who can open the rest and records
- * no gift; the integrations, the ways a system outside the deployment reaches it; and the books,
+ * destination stating figures; the records of giving; Members and Settings, who can open the rest
+ * and what the organisation is, neither recording a gift; the integrations, the ways a system outside the deployment reaches it; and the books,
  * which everything above writes into. a rule is the whole of the separation between the other
  * four. the integrations carry the one heading, because their
  * entries are named after a mechanism rather than a record — API — and that word in a run of
  * records says nothing about what it holds. the groups are the shape `AppShell` takes as `groups`,
  * and `DESTINATIONS` is the same entries flat, which is what a match against an address walks.
  *
- * `deployer: true` marks a group drawn for the deployer's session alone: every page in it answers
- * a member with not-found, and a cell leading there would be a way to a refusal.
- * `destinationGroupsFor` picks the groups for a session, and ../../routes/_app.tsx hands it the
- * same predicate the pages behind the group read.
+ * `deployer: true` marks a group, or one destination in a group, drawn for the deployer's session
+ * alone: every page behind it answers a member with not-found, and a cell leading there would be a
+ * way to a refusal. `destinationGroupsFor` picks the groups and cells for a session, and
+ * ../../routes/_app.tsx hands it the same predicate the pages behind them read.
  *
  * `mark` is the glyph the column draws beside a label — a name from
  * packages/operator/src/components/status/glyphs.js — or, for a destination named after another
@@ -98,10 +99,19 @@ export const DESTINATION_GROUPS = [
 	},
 	{
 		destinations: [
-			// who can open every destination on this rail, which is no record of giving. what a
-			// deployment holds one of is set up on the console, and this is neither — a colleague
+			// who can open every destination on this rail, which is no record of giving. a colleague
 			// is a row somebody adds and removes, which is what makes it a collection.
-			{ href: '/admin/members', label: 'Members', short: 'Members', mark: 'shield-check' }
+			{ href: '/admin/members', label: 'Members', short: 'Members', mark: 'shield-check' },
+			// the organisation's own details and where this deployment reaches it, beside who may
+			// sign in: both are about the deployment rather than about a gift
+			// (../../routes/_app.admin.settings.tsx).
+			{
+				href: '/admin/settings',
+				label: 'Settings',
+				short: 'Settings',
+				mark: 'settings',
+				deployer: true
+			}
 		]
 	},
 	{
@@ -147,11 +157,21 @@ export const DESTINATIONS: readonly Destination[] = DESTINATION_GROUPS.flatMap(
 	(group): readonly Destination[] => group.destinations
 );
 
-/** the rail drawn for a session: every group for the deployer, and none marked `deployer` for a member. */
-export function destinationGroupsFor(deployer: boolean): readonly DestinationGroup[] {
-	return deployer
-		? DESTINATION_GROUPS
-		: DESTINATION_GROUPS.filter((group) => !('deployer' in group));
+/** a group as the rail draws it for one session: the cells that session may open. */
+type DrawnGroup = Omit<DestinationGroup, 'destinations'> & {
+	readonly destinations: readonly Destination[];
+};
+
+/**
+ * the rail drawn for a session: every group for the deployer, and for a member none marked
+ * `deployer` and no cell marked so in the groups left.
+ */
+export function destinationGroupsFor(deployer: boolean): readonly DrawnGroup[] {
+	if (deployer) return DESTINATION_GROUPS;
+	return DESTINATION_GROUPS.filter((group) => !('deployer' in group)).map((group) => ({
+		...group,
+		destinations: group.destinations.filter((destination) => !('deployer' in destination))
+	}));
 }
 
 /** the staff surface's own address, which is the dashboard's and is under no other destination. */

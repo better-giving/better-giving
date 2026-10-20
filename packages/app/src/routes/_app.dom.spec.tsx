@@ -144,12 +144,13 @@ function rail(root: HTMLElement): string[] {
 	);
 }
 
-it('draws the deployer the Integrations group, headed, between Members and Books', async () => {
+it('draws the deployer Settings beside Members, and the Integrations group, headed, before Books', async () => {
 	const root = await frameAt('/admin/forms');
 	const drawn = rail(root);
 
 	expect(drawn.slice(drawn.indexOf('Members'))).toEqual([
 		'Members',
+		'Settings',
 		'Integrations',
 		'Zapier',
 		'API',
@@ -161,9 +162,10 @@ it('draws the deployer the Integrations group, headed, between Members and Books
 	expect(root.querySelector('a[href="/admin/integrations/zapier"] img')).not.toBeNull();
 });
 
-it('draws a member no Integrations group, and the rest of the rail as it is', async () => {
+it('draws a member no Settings cell and no Integrations group, and the rest of the rail as it is', async () => {
 	const drawn = rail(await frameAt('/admin/forms', false));
 
+	expect(drawn).not.toContain('Settings');
 	expect(drawn).not.toContain('Integrations');
 	expect(drawn).not.toContain('Zapier');
 	expect(drawn).not.toContain('API');

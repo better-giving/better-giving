@@ -129,6 +129,87 @@ export async function saveOrgProfile(db: Db, input: ParsedOrgProfile): Promise<O
 	return row;
 }
 
+/**
+ * a save that `updateOrgDetails` or `updateOrgNotificationEmail` made: `saved`, `stale` where the
+ * row moved since the page was drawn, and `no-profile` where there is no row for a column of its
+ * own to land on.
+ */
+export type OrgSave = 'saved' | 'stale' | 'no-profile';
+
+/**
+ * the version a page is drawn with: the row's `updated_at` in unix ms, and 0 where no profile is
+ * saved — a row is never written at 0, so a page drawn over no profile is stale once one exists.
+ */
+export function orgProfileVersion(row: OrgProfile | null): number {
+	return row?.updatedAt.getTime() ?? 0;
+}
+
+/**
+ * writes the organisation's details from the dashboard: every column `saveOrgProfile` names but the
+ * notification address, which has a save of its own (`updateOrgNotificationEmail` below), and only
+ * where the row still carries `version`.
+ *
+ * one statement, as `saveOrgProfile` is: the insert the first time, and the guarded update after
+ * it. the guard is the conflict arm's own `where`, so a tab drawn before another save is answered
+ * `stale` with no read in front of the write for a race to fall between. an insert leaves the
+ * notification address null, which is what a deployment with no profile holds.
+ */
+export async function updateOrgDetails(
+	db: Db,
+	version: Date,
+	input: ParsedOrgProfile
+): Promise<Exclude<OrgSave, 'no-profile'>> {
+	const columns = {
+		legalName: input.legalName,
+		taxId: input.taxId,
+		addressLine1: input.addressLine1,
+		addressLine2: input.addressLine2,
+		city: input.city,
+		region: input.region,
+		postalCode: input.postalCode,
+		country: input.country,
+		mission: input.mission,
+		vision: input.vision,
+		brandColour: input.brandColour,
+		socialLinks: input.socialLinks
+	};
+
+	const written = await db
+		.insert(orgProfile)
+		.values({ id: ORG_PROFILE_ID, ...columns })
+		.onConflictDoUpdate({
+			target: orgProfile.id,
+			set: columns,
+			setWhere: eq(orgProfile.updatedAt, version)
+		})
+		.returning({ id: orgProfile.id });
+
+	return written.length > 0 ? 'saved' : 'stale';
+}
+
+/**
+ * writes the address this deployment reaches the organisation at, and nothing beside it, where the
+ * row still carries `version`. `null` clears it.
+ *
+ * an update and never an insert: a row cannot exist without a legal name
+ * (`org_profile_legal_name_not_blank_check`), so an address saved ahead of the details has no row
+ * to land on and is answered `no-profile`. which of the two a write that matched nothing met is
+ * read after it, and picks the answer rather than guarding anything.
+ */
+export async function updateOrgNotificationEmail(
+	db: Db,
+	version: Date,
+	email: string | null
+): Promise<OrgSave> {
+	const written = await db
+		.update(orgProfile)
+		.set({ notificationEmail: email })
+		.where(and(eq(orgProfile.id, ORG_PROFILE_ID), eq(orgProfile.updatedAt, version)))
+		.returning({ id: orgProfile.id });
+	if (written.length > 0) return 'saved';
+	return (await readOrgProfile(db)) === null ? 'no-profile' : 'stale';
+}
+
 // ---------------------------------------------------------------------------
 // the profile's logo, `org_profile.logo_image_id`: a new photo put on or taken off, and the logo
 // it replaces freed in the same `batch()` where nothing else names it (../images/free.ts). no undo:

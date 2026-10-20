@@ -292,3 +292,40 @@ export function orgProfileValues(body: FormData): OrgProfileFormValues {
 	}
 	return values;
 }
+
+/**
+ * the notification address as its own save takes it: trimmed, a blank `null`, and otherwise held to
+ * the one rule `FIELD_LIMITS` holds it to in a whole-profile save.
+ */
+export function parseNotificationEmail(
+	value: string | undefined
+):
+	| { readonly ok: true; readonly value: string | null }
+	| { readonly ok: false; readonly error: string } {
+	const read = FIELD_LIMITS.shape.notification_email.safeParse(
+		CLEAN_FIELDS.shape.notification_email.parse(value)
+	);
+	return read.success
+		? { ok: true, value: read.data }
+		: { ok: false, error: read.error.issues.at(-1)?.message ?? read.error.message };
+}
+
+/**
+ * one row of the social links editor, as conform names it in a submitted body: `social_links[0]`
+ * is the one bracket a body may carry (`$lib/server/conform.ts` bounds the index).
+ */
+const SOCIAL_LINK_ROW = new RegExp(`^${SOCIAL_LINKS_FIELD}\\[(\\d+)\\]$`);
+
+/**
+ * the social links as the editor's rows were typed, in the order their indices name, for
+ * `parseOrgProfile` to read. a gap is an empty row, and no row at all is no links: an emptied
+ * editor submits no key.
+ */
+export function socialLinkRows(body: FormData): string[] {
+	const rows: string[] = [];
+	for (const [key, value] of body.entries()) {
+		const at = SOCIAL_LINK_ROW.exec(key);
+		if (at?.[1] !== undefined && typeof value === 'string') rows[Number(at[1])] = value;
+	}
+	return Array.from(rows, (row) => row ?? '');
+}
