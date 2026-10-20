@@ -100,7 +100,14 @@ async function mount(config: FormConfig = CONFIG, options: Mounting = {}): Promi
 					stop: () => {}
 				};
 			},
-			challenge: () => ({ reset: () => {}, stop: () => {} })
+			// the ordinary widget: a token as it is drawn and another on every reset, so a press is
+			// never held waiting for one.
+			challenge: (_config, _node, onToken) => {
+				let minted = 0;
+				const mint = () => queueMicrotask(() => onToken(`tk_widget_${(minted += 1)}`));
+				mint();
+				return { reset: mint, stop: () => {} };
+			}
 		},
 		tag
 	);

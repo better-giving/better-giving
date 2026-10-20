@@ -12,6 +12,9 @@
 		"db:migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
 		"db:seed": "node --env-file-if-exists=.env scripts/seed.ts",
 		"db:backup": "node --env-file-if-exists=.env scripts/backup.ts",
+		"setup-webhook:chariot": "node --env-file-if-exists=.env scripts/setup-webhook.ts chariot",
+		"setup-webhook:paypal": "node --env-file-if-exists=.env scripts/setup-webhook.ts paypal",
+		"setup-webhook:stripe": "node --env-file-if-exists=.env scripts/setup-webhook.ts stripe",
 		"prepare": "react-router typegen",
 		"check": "tsc -p scripts/tsconfig.json && react-router typegen && tsc --noEmit",
 		"test": "vitest --run"
@@ -50,6 +53,7 @@
 		"@tiptap/extension-text": "catalog:",
 		"@tiptap/pm": "catalog:",
 		"@tiptap/react": "catalog:",
+		"altcha-lib": "2.6.0",
 		"better-auth": "1.6.25",
 		"drizzle-orm": "0.45.2",
 		"nodemailer": "10.0.14",

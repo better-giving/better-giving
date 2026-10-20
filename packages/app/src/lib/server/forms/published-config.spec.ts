@@ -92,6 +92,11 @@ function orgProfile(overrides: Partial<OrgProfile> = {}): OrgProfile {
 }
 
 /** a deployment whose Stripe pair is set, each key in its own slot. */
+const TURNSTILE = {
+	TURNSTILE_SITE_KEY: '1x00000000000000000000AA',
+	TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA'
+};
+
 const STRIPE = {
 	STRIPE_SECRET_KEY: 'sk_test_abc',
 	STRIPE_PUBLISHABLE_KEY: 'pk_test_abc',
@@ -943,16 +948,25 @@ describe('publishedConfig — the config it serves', () => {
 	});
 
 	// the sitekey is public by design — it is rendered into the widget — and optional on the
-	// contract, so a deployment without one serves a config with no such field rather than a
+	// contract, so a deployment without the pair serves a config with no such field rather than a
 	// field holding an empty string, which `readFormConfig` would drop anyway.
-	it('passes the Turnstile sitekey through when this deployment has one', () => {
-		expect(
-			served({ env: { ...STRIPE, TURNSTILE_SITE_KEY: '1x00000000000000000000AA' } })
-		).toHaveProperty('turnstileSiteKey', '1x00000000000000000000AA');
+	it('passes the Turnstile sitekey through, and no ALTCHA address, where the pair is set', () => {
+		const config = served({ env: { ...STRIPE, ...TURNSTILE } });
+		expect(config).toHaveProperty('turnstileSiteKey', '1x00000000000000000000AA');
+		expect(config).not.toHaveProperty('altchaChallengeUrl');
 	});
 
-	it('omits the Turnstile sitekey entirely when it is unset', () => {
-		expect(served()).not.toHaveProperty('turnstileSiteKey');
+	it('serves the ALTCHA challenge address, and no sitekey, where the pair is unset', () => {
+		const config = served();
+		expect(config).not.toHaveProperty('turnstileSiteKey');
+		expect(config).toHaveProperty('altchaChallengeUrl', `/api/v1/forms/${FORM_ID}/challenge`);
+	});
+
+	// half a pair cannot verify a token, so the form is told to run the check that can.
+	it('serves ALTCHA where only the sitekey is set', () => {
+		const config = served({ env: { ...STRIPE, TURNSTILE_SITE_KEY: '1x00000000000000000000AA' } });
+		expect(config).not.toHaveProperty('turnstileSiteKey');
+		expect(config).toHaveProperty('altchaChallengeUrl');
 	});
 
 	/**
@@ -986,8 +1000,8 @@ describe('publishedConfig — the config it serves', () => {
 			sources: { form: formRecord({ suggestedAmounts: [] }) }
 		},
 		{
-			label: 'a deployment with a Turnstile sitekey',
-			sources: { env: { ...STRIPE, TURNSTILE_SITE_KEY: '1x00000000000000000000AA' } }
+			label: 'a deployment with a Turnstile pair',
+			sources: { env: { ...STRIPE, ...TURNSTILE } }
 		},
 		{
 			// the ordinary deployment, and the one the embed's reader would drop whole: it requires

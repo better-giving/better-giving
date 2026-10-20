@@ -9,6 +9,7 @@ import type {
 } from '@better-giving/form/v1';
 import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
+import { challengeKind } from '../api/challenge';
 import { readConfigEnv, type ConfigEnv } from '../config/env';
 import type { Db } from '../db/client';
 import type { OrgProfile } from '../db/schema';
@@ -524,7 +525,7 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 		);
 	}
 
-	const turnstileSiteKey = (sources.env.TURNSTILE_SITE_KEY ?? '').trim();
+	const challenge = challengeKind(sources.env);
 	const program = servedProgram(sources.program);
 	const coins = sources.coins ?? [];
 	const paymentMethods =
@@ -573,10 +574,12 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 			orgLegalName: legalName,
 			ein: taxId,
 			deductibilityStatement,
-			// omitted rather than sent empty where this deployment has no widget. the field is
-			// optional on the contract and `readFormConfig` drops a blank one anyway, so a key
-			// holding `''` would be a field that reads as configured and is not.
-			...(turnstileSiteKey === '' ? {} : { turnstileSiteKey }),
+			// exactly one of the two, by the check the donation endpoint will ask for
+			// (`challengeKind` in ../api/challenge.ts). a sitekey without its secret is not served:
+			// a widget whose token nothing here can verify is a form that fails at the last step.
+			...(challenge === 'turnstile'
+				? { turnstileSiteKey: (sources.env.TURNSTILE_SITE_KEY ?? '').trim() }
+				: { altchaChallengeUrl: `/api/v1/forms/${encodeURIComponent(form.id)}/challenge` }),
 			// omitted rather than sent empty, the same call the sitekey above takes: the field is
 			// optional on the contract and `readFormConfig` drops what `servedProgram` drops.
 			...(program === null ? {} : { program }),

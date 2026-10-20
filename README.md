@@ -100,7 +100,7 @@ Events and their details grow: ignore a `bg-donate:*` event you do not know, a `
 
 The form needs seven directives, and the one most often missing is your own deployment.
 
-Which vendor lines you need follows the processors your deployment holds: the Stripe lines matter to a deployment taking cards, the PayPal ones to a deployment taking PayPal or Venmo, the Chariot ones to a deployment taking gifts from a donor-advised fund, the NOWPayments one to a deployment taking crypto, and a deployment holding more than one needs each. Naming all of them is harmless on a deployment that uses one.
+Which vendor lines you need follows the processors your deployment holds: the Stripe lines matter to a deployment taking cards, the PayPal ones to a deployment taking PayPal or Venmo, the Chariot ones to a deployment taking gifts from a donor-advised fund, the NOWPayments one to a deployment taking crypto, the `challenges.cloudflare.com` ones to a deployment holding a Turnstile key pair, and a deployment holding more than one needs each. Naming all of them is harmless on a deployment that uses one.
 
 Write `<your deployment origin>` as the origin the snippet's `src` points at, scheme and host, no path.
 
@@ -145,6 +145,8 @@ style-src    'unsafe-inline'
 **`img-src https://nowpayments.io` is the crypto option's, and it is the one you can leave out.** Each coin in the list draws its logo from the crypto processor's own site, loaded when a donor opens the list. Left out, every row draws the round lettered mark it already draws for a coin the processor lists no logo for: a plainer list, and every coin still pickable. Only a deployment offering crypto loads them at all.
 
 **`connect-src https://api-m.paypal.com` is the one with the widest blast radius.** The form asks PayPal which methods this donor is eligible for before it draws anything, so a blocked read is not a missing Venmo button; it is no PayPal buttons at all, on every page load.
+
+**The spam check needs nothing of its own by default.** A deployment without a Turnstile key pair checks each gift with ALTCHA: the form reads a small puzzle from your deployment and solves it in the donor's browser while they fill the form in, through the `connect-src` your deployment origin already has. It starts no worker and loads nothing from anywhere else, so it needs no `worker-src`, no `'wasm-unsafe-eval'` and no further entry. Only a deployment holding a Turnstile pair needs the two `https://challenges.cloudflare.com` lines.
 
 **Chariot's lines are the fund option's alone.** Chariot's button loads from `https://cdn.givechariot.com`, writes its fonts and inline `<style>` into your page, and draws the fund's window in a frame on `https://secure.dafpay.com` or in a popup. Leave one out and the donor-advised fund option fails on that page while every other way to give keeps working.
 

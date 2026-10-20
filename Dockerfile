@@ -41,7 +41,13 @@ COPY --from=build /repo/packages/app/build ./build
 COPY --from=build /repo/packages/app/server ./server
 COPY --from=build /repo/packages/app/src ./src
 COPY --from=build /repo/packages/app/migrations ./migrations
-COPY --from=build /repo/packages/app/scripts/migrate.ts /repo/packages/app/scripts/backup.ts ./scripts/
+COPY --from=build /repo/packages/app/scripts/migrate.ts /repo/packages/app/scripts/backup.ts /repo/packages/app/scripts/setup-webhook.ts ./scripts/
+# the workspace packages setup-webhook.ts imports from source. node_modules links each by a
+# relative path to its package directory, which prod-deps leaves out.
+COPY --from=build /repo/packages/operator/package.json /repo/packages/operator/package.json
+COPY --from=build /repo/packages/operator/src /repo/packages/operator/src
+COPY --from=build /repo/packages/form/package.json /repo/packages/form/package.json
+COPY --from=build /repo/packages/form/src /repo/packages/form/src
 USER node
 EXPOSE 3000
 # exec form: node is PID 1 and receives SIGTERM itself, which server/index.ts drains on.

@@ -1,8 +1,8 @@
 import Stripe from 'stripe';
 import type { PaymentStatus } from '../db/schema';
-import { redact, redactPublicId } from '../../redact';
+import { redact, redactPublicId } from '../../redact.ts';
 import { isStripeRail, STRIPE_RAILS, type StripeRail } from '@better-giving/form/embed/rails';
-import { DONATION_METADATA_KEY, RAIL_CAPABILITY_STATES, WALLETS } from './provider';
+import { DONATION_METADATA_KEY, RAIL_CAPABILITY_STATES, WALLETS } from './provider.ts';
 import {
 	FINGERPRINT_METADATA_KEY,
 	secretFingerprint
@@ -49,7 +49,7 @@ import type {
 	WalletStanding,
 	WebhookDelivery,
 	WebhookEndpointSummary
-} from './provider';
+} from './provider.ts';
 
 // the Stripe adapter, and the only module in this repository that imports `stripe`.
 //

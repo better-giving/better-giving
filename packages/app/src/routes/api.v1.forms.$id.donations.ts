@@ -4,7 +4,7 @@ import {
 	quoteRateLimitKey,
 	quoteRateLimitRefusal
 } from '$lib/server/api/rate-limit';
-import { verifyTurnstile } from '$lib/server/api/turnstile';
+import { verifyChallenge } from '$lib/server/api/challenge';
 import { mintQuote, refusalCode, type QuoteRefusal } from '$lib/server/donations/quote';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { readFormOrigins } from '$lib/server/forms/queries';
@@ -38,7 +38,8 @@ import type { Route } from './+types/api.v1.forms.$id.donations';
 //                   that names this deployment's own donation page. a browser cannot read a 4xx
 //                   body without the header either, so a refusal handed back without the row is a
 //                   refusal the page that asked never sees.
-//   Turnstile     — inside `mintQuote`, before anything is minted at the processor.
+//   spam check    — inside `mintQuote`, before anything is minted at the processor: Turnstile where
+//                   both its keys are set, ALTCHA otherwise ($lib/server/api/challenge.ts).
 //   amount bounds — inside `mintQuote`, re-read from the form record. the amount in the body is an
 //                   input to look up, never a figure to charge.
 //
@@ -74,12 +75,12 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 	// this endpoint's own bucket, charged before anything else runs.
 	//
 	// the surface bucket above it is sized against a caller costing one database read. a submission
-	// costs a read, a Turnstile verification and a payment intent minted at the processor, so sixty
+	// costs a read, a spam check and a payment intent minted at the processor, so sixty
 	// a minute is what this one allows where the surface allows six hundred (`RATE_LIMITS` in
 	// $lib/server/runtime/rate-limiter.ts). both
 	// numbers are sized against the same address, which is why this one is not tighter still: a
 	// carrier NAT or a campus puts many real donors behind one, and that does not change because
-	// the request costs more. Turnstile is the control on card testing; this is the ceiling on a
+	// the request costs more. the spam check is the control on card testing; this is the ceiling on a
 	// minute in which the challenge is passing.
 	//
 	// the refusal carries CORS headers where the surface's refusal deliberately carries none, and
@@ -105,7 +106,7 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 			db,
 			env,
 			processors: createPaymentProviders(env),
-			verifyChallenge: verifyTurnstile,
+			verifyChallenge: (check) => verifyChallenge(check, env.ALTCHA),
 			email: createEmailProvider(env),
 			defer: (task) => deferred.waitUntil(task)
 		},

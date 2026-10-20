@@ -392,6 +392,14 @@ export type FormConfig = {
 	readonly ein: string;
 	readonly deductibilityStatement: string;
 	readonly turnstileSiteKey?: string;
+	/**
+	 * where a fresh ALTCHA challenge is read from, on a deployment whose spam check is ALTCHA.
+	 *
+	 * a path, resolved against the address this config was read from. a deployment serves exactly
+	 * one of this and `turnstileSiteKey`, and this is the one a deployment holding no Turnstile pair
+	 * serves; `createChallenge` in ./embed/challenge.ts is what reads which.
+	 */
+	readonly altchaChallengeUrl?: string;
 	readonly monthlyAsk?: MonthlyAsk;
 	/** the cause this form's gifts are credited to, absent where it has none. */
 	readonly program?: Program;
@@ -599,12 +607,10 @@ export type QuoteRequest = {
 	 * a default — so the requirement is unconditional and it is the endpoint's, because a
 	 * client-side check bounds nobody who is not using the client.
 	 *
-	 * `turnstileSiteKey` on `FormConfig` above is therefore which widget to render and never
-	 * whether to render one. what it does decide is who a missing token belongs to: served, an
-	 * absent token is the submission's and is refused `challenge_failed`, which a fresh challenge
-	 * fixes; unset, the page could render no widget at all, so it is the deployment's and answers
-	 * `challenge_unavailable` with an operator's sentence in the log
-	 * (`verifyTurnstile` in ../server/api/turnstile.ts).
+	 * `turnstileSiteKey` on `FormConfig` above is therefore which check to run and never whether
+	 * to run one: a deployment serves it or `altchaChallengeUrl`, and the endpoint verifies the
+	 * field its served config names — this one or `altchaPayload` below. an absent token is the
+	 * submission's and is refused `challenge_failed`, which a fresh challenge fixes.
 	 *
 	 * the field is on the contract from the first version because adding it later would be a
 	 * request shape a published snippet does not send. it stays optional here for the same reason
@@ -612,6 +618,14 @@ export type QuoteRequest = {
 	 * file exists to prevent.
 	 */
 	readonly turnstileToken?: string;
+	/**
+	 * the solved ALTCHA challenge, as the base64 payload ALTCHA's own widget submits, on a
+	 * deployment whose served config names `altchaChallengeUrl`.
+	 *
+	 * one challenge clears one submission, so it is spent the way a Turnstile token is. a request
+	 * carries this or `turnstileToken`, whichever check the served config names, and never both.
+	 */
+	readonly altchaPayload?: string;
 };
 
 /**

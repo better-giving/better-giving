@@ -10,9 +10,12 @@ import type {
 	PaymentResult,
 	RailSwitchboard,
 	ReversalEvent,
+	RegisteredWebhookEndpoint,
 	ReversalRead,
 	Settlement,
-	WebhookDelivery
+	WebhookDelivery,
+	WebhookEndpointRegistry,
+	WebhookEndpointSummary
 } from './provider';
 
 // the Chariot adapter: a gift from a donor-advised fund, taken as a grant through Chariot's DAFpay.
@@ -53,11 +56,17 @@ import type {
 // `readReversal` reads the same grant into the same refund, under the same id; `verifyEvent` names
 // no reversal, so no delivery reaches it.
 //
-// **it answers the one-off grant, the delivery, the reversal read and the account read, and refuses
-// everything else** as `unsupported`: a gift that repeats (one-time only — `takesRepeatingGifts` in
-// ./provider.ts keeps Chariot out of every repeating-gift read, cadences included), the listener
-// arms (the console's binary creates the event subscription with a secret it mints), and the wallet
-// arms (Chariot draws no wallet).
+// **it answers the one-off grant, the delivery, the reversal read, the account read and the event
+// subscription, and refuses everything else** as `unsupported`: a gift that repeats (one-time only —
+// `takesRepeatingGifts` in ./provider.ts keeps Chariot out of every repeating-gift read, cadences
+// included), the resubscribe (a subscription is replaced instead), and the wallet arms (Chariot
+// draws no wallet).
+//
+// **the event subscription is signed with a secret minted here, and a re-run replaces it.** Chariot
+// hands a subscription's signing secret back on no call and changes nothing on one but its status
+// (https://docs.givechariot.com/v2026-04-01/api/event-subscriptions/update), so a subscription
+// already at this deployment's address cannot be proved to sign with the `CHARIOT_WEBHOOK_SECRET` it
+// holds. `pnpm setup-webhook:chariot` (../../../../scripts/setup-webhook.ts) is what calls these arms.
 //
 // **the API takes no version header, so nothing is pinned on the wire.** request and response shapes
 // are the `2026-04-01` reference's (https://docs.givechariot.com/v2026-04-01/llms.txt, and
@@ -91,12 +100,21 @@ export type ChariotCredentials = {
 export const CHARIOT_LIVE_API_URL = 'https://api.givechariot.com';
 
 /**
- * the one event category this app acts on, and the one the console's subscription is created for.
+ * the one event category this app acts on, and the one `registerWebhookEndpoint` subscribes to.
  *
  * a status change arrives as `grant.updated`, and a grant this app created is already on its row by
  * the time any change could matter. every other category is answered `ignored`.
  */
 export const SETTLEMENT_CATEGORY = 'grant.updated';
+
+const SUBSCRIPTIONS_PATH = '/v1/event_subscriptions';
+
+/**
+ * the list's largest page (https://docs.givechariot.com/v2026-04-01/api/event-subscriptions/list),
+ * and how many are read before an account holding more is refused rather than looped over.
+ */
+const SUBSCRIPTIONS_PER_PAGE = 100;
+const SUBSCRIPTION_PAGES = 100;
 
 /** a donor is waiting on the answer: `TIMEOUT_MS` in ./paypal.ts argues the figure. */
 const TIMEOUT_MS = 12_000;
@@ -164,7 +182,7 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 
 	/** one call, answered with Chariot's status and body, or with the failure of never getting one. */
 	async function call(
-		method: 'GET' | 'POST',
+		method: 'GET' | 'POST' | 'PATCH',
 		path: string,
 		body?: unknown,
 		deadline?: AbortSignal
@@ -206,6 +224,91 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 			return classifyStatus(answer.status, answer.body, `Chariot did not return grant ${grantId}`);
 		}
 		return { ok: true, value: answer.body };
+	}
+
+	/**
+	 * every subscription on the account that is not deleted, over every page.
+	 *
+	 * a deleted subscription stays on the list and delivers nothing, so it is no endpoint: read as one,
+	 * a re-run would replace a subscription that is already gone.
+	 */
+	async function listSubscriptions(): Promise<PaymentResult<WebhookEndpointSummary[]>> {
+		const endpoints: WebhookEndpointSummary[] = [];
+		let cursor: string | null = null;
+		for (let page = 0; page < SUBSCRIPTION_PAGES; page++) {
+			const query = new URLSearchParams({ limit: String(SUBSCRIPTIONS_PER_PAGE) });
+			if (cursor !== null) query.set('cursor', cursor);
+			const answer = await call('GET', `${SUBSCRIPTIONS_PATH}?${query}`);
+			if ('ok' in answer) return answer;
+			if (answer.status !== 200) {
+				return classifyStatus(
+					answer.status,
+					answer.body,
+					'Chariot did not list this account’s event subscriptions'
+				);
+			}
+			const results = field(answer.body, 'results') ?? [];
+			if (!Array.isArray(results)) return unreadable('its event subscriptions');
+			for (const row of results) {
+				if (stringField(row, 'status') === 'deleted') continue;
+				const endpoint = subscriptionOf(row);
+				if (endpoint === null) return unreadable('its event subscriptions');
+				endpoints.push(endpoint);
+			}
+			cursor = stringField(answer.body, 'nextPageToken');
+			if (cursor === null || cursor === '') return { ok: true, value: endpoints };
+		}
+		return {
+			ok: false,
+			reason: 'provider_error',
+			detail: `Chariot listed more than ${SUBSCRIPTION_PAGES} pages of event subscriptions on this account, which is more than this app reads.`
+		};
+	}
+
+	/**
+	 * Create Event Subscription for `url`, signed with a secret minted here.
+	 *
+	 * minted rather than left to Chariot, which picks a random one when none is sent and hands it back
+	 * on no call (https://docs.givechariot.com/v2026-04-01/api/event-subscriptions/create): what is
+	 * sent under `signing_secret` is the only copy anyone will ever hold.
+	 */
+	async function createSubscription(
+		url: string
+	): Promise<PaymentResult<RegisteredWebhookEndpoint>> {
+		const secret = mintSigningSecret();
+		const answer = await call('POST', SUBSCRIPTIONS_PATH, {
+			url,
+			category: SETTLEMENT_CATEGORY,
+			signing_secret: secret
+		});
+		if ('ok' in answer) return answer;
+		if (answer.status !== 200 && answer.status !== 201) {
+			return classifyStatus(
+				answer.status,
+				answer.body,
+				'Chariot did not create the event subscription'
+			);
+		}
+		// the sandbox wraps the subscription in `event_subscription`; the reference shows it bare.
+		const endpoint = subscriptionOf(field(answer.body, 'event_subscription') ?? answer.body);
+		if (endpoint === null) return unreadable('the event subscription it created');
+		return { ok: true, value: { endpoint, verificationValue: secret } };
+	}
+
+	/** Update Event Subscription to `deleted`, which is the only way Chariot takes one down. */
+	async function retireSubscription(id: string): Promise<PaymentResult<null>> {
+		const answer = await call('PATCH', `${SUBSCRIPTIONS_PATH}/${encodeURIComponent(id)}`, {
+			status: 'deleted'
+		});
+		if ('ok' in answer) return answer;
+		if (answer.status !== 200) {
+			return classifyStatus(
+				answer.status,
+				answer.body,
+				`Chariot did not delete event subscription ${id}`
+			);
+		}
+		return { ok: true, value: null };
 	}
 
 	return {
@@ -337,8 +440,8 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 					detail:
 						'This deployment cannot check that a payment notification came from Chariot: ' +
 						'`CHARIOT_WEBHOOK_SECRET` is not set, so the delivery was refused and its body was ' +
-						'not read. Open the console (`better-giving start`) and set Chariot up under Donation ' +
-						'processor, which creates the subscription and stores its secret.'
+						'not read. Run `pnpm setup-webhook:chariot`, which creates the subscription and prints ' +
+						'the line to set in .env, then restart.'
 				};
 			}
 
@@ -452,10 +555,56 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 			const grant = await getGrant(event.providerNoticeId);
 			return grant.ok ? reversalOf(grant.value) : grant;
 		},
-		listWebhookEndpoints: async () => unsupported(NO_LISTENER_ARMS),
-		registerWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
-		resubscribeWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
-		replaceWebhookEndpoint: async () => unsupported(NO_LISTENER_ARMS),
+		async listWebhookEndpoints(): Promise<PaymentResult<WebhookEndpointRegistry>> {
+			const endpoints = await listSubscriptions();
+			if (!endpoints.ok) return endpoints;
+			return {
+				ok: true,
+				value: { endpoints: endpoints.value, requiredEventTypes: [SETTLEMENT_CATEGORY] }
+			};
+		},
+		async registerWebhookEndpoint(url: string): Promise<PaymentResult<RegisteredWebhookEndpoint>> {
+			const listed = await listSubscriptions();
+			if (!listed.ok) return listed;
+			const here = listed.value.find((endpoint) => endpoint.url === url);
+			if (here) {
+				return {
+					ok: false,
+					reason: 'invalid_request',
+					detail: `Chariot already holds event subscription ${here.id} at ${url}, so none was created.`
+				};
+			}
+			return createSubscription(url);
+		},
+		resubscribeWebhookEndpoint: async () => unsupported(NO_RESUBSCRIBE),
+		/**
+		 * created then deleted, the reverse of the port's order, because the secret here is minted on
+		 * this side and both are known throughout: a failed create leaves the old subscription
+		 * delivering under the secret the deployment holds, where delete-first would leave nothing
+		 * delivering at all.
+		 */
+		async replaceWebhookEndpoint(
+			id: string,
+			url: string
+		): Promise<PaymentResult<RegisteredWebhookEndpoint>> {
+			const created = await createSubscription(url);
+			if (!created.ok) return created;
+			const retired = await retireSubscription(id);
+			if (retired.ok) return created;
+
+			const newId = created.value.endpoint.id;
+			const undone = await retireSubscription(newId);
+			return {
+				...retired,
+				detail:
+					`${retired.detail} Subscription ${id} still delivers here, so the CHARIOT_WEBHOOK_SECRET ` +
+					'already set still verifies, and nothing needs changing. ' +
+					(undone.ok
+						? `The subscription made in its place, ${newId}, was deleted again.`
+						: `The subscription made in its place, ${newId}, signs with a secret nobody holds and ` +
+							'could not be deleted either: delete it in Chariot’s dashboard.')
+			};
+		},
 		listWalletDomains: async () => unsupported(NO_WALLETS),
 		registerWalletDomain: async () => unsupported(NO_WALLETS),
 		listPayableCoins: async () =>
@@ -467,11 +616,42 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 
 const NO_REPEATING_GRANTS =
 	'This release takes one-time grants through Chariot and no gift that repeats. Nothing was asked of Chariot.';
-const NO_LISTENER_ARMS =
-	'This deployment’s Chariot event subscription is created from the console (`better-giving start`), ' +
-	'not from here. Nothing was asked of Chariot.';
+const NO_RESUBSCRIBE =
+	'Chariot changes nothing on an event subscription but its status, so this deployment’s is replaced ' +
+	'rather than repaired: run `pnpm setup-webhook:chariot`. Nothing was asked of Chariot.';
 const NO_WALLETS =
 	'Chariot draws no wallet, so there is no hostname to register. Nothing was asked of Chariot.';
+
+/**
+ * a fresh signing secret: 32 random bytes as 64 hex — plain in an `.env` line, redacted by
+ * `CREDENTIAL_SHAPED` from any quote, and the text `verifies` keys its HMAC with.
+ */
+function mintSigningSecret(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(32));
+	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * one subscription off a list or a create, or `null` where it names no id or no url.
+ *
+ * a subscription has exactly one category, so that one is the whole of what it is subscribed to.
+ * Chariot pins no API version on one and hands its signing secret back on no call, so there is
+ * neither a version nor a stamp to carry.
+ */
+function subscriptionOf(row: unknown): WebhookEndpointSummary | null {
+	const id = stringField(row, 'id');
+	const url = stringField(row, 'url');
+	if (id === null || url === null) return null;
+	const category = stringField(row, 'category');
+	return {
+		id,
+		url,
+		enabled: stringField(row, 'status') === 'active',
+		eventTypes: category === null ? [] : [category],
+		apiVersion: null,
+		verificationStamp: null
+	};
+}
 
 /** a wait that ends early when `signal` aborts. */
 function pause(ms: number, signal: AbortSignal): Promise<void> {

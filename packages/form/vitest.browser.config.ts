@@ -34,7 +34,15 @@ export default defineConfig({
 	server: { fs: { allow: [resolve(import.meta.dirname, '../..')] } },
 	// pre-bundled up front: discovered mid-run, vite re-optimizes and reloads the page under the spec
 	// that imported them, which fails or repeats whatever that spec was doing.
-	optimizeDeps: { include: ['@zag-js/combobox', '@zag-js/select', '@zag-js/vanilla'] },
+	optimizeDeps: {
+		include: [
+			'@zag-js/combobox',
+			'@zag-js/select',
+			'@zag-js/vanilla',
+			'altcha-lib',
+			'altcha-lib/algorithms/web/pbkdf2'
+		]
+	},
 	test: {
 		name: 'browser',
 		expect: { requireAssertions: true },

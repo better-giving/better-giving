@@ -36,9 +36,9 @@ import {
 	SUBSCRIBED_EVENT_TYPES
 } from '@better-giving/operator/paypal/webhook-listener';
 import type { PaymentStatus } from '../db/schema';
-import { majorText, readPlainAmount } from '../../forms/amounts';
-import { redact, redactPublicId } from '../../redact';
-import { DONATION_METADATA_KEY, INTERVAL_METADATA_KEY, refusing } from './provider';
+import { majorText, readPlainAmount } from '../../forms/amounts.ts';
+import { redact, redactPublicId } from '../../redact.ts';
+import { DONATION_METADATA_KEY, INTERVAL_METADATA_KEY, refusing } from './provider.ts';
 import type {
 	AccountChargeability,
 	DeliveredAttempt,
@@ -69,7 +69,7 @@ import type {
 	WebhookEndpointRegistry,
 	WebhookEndpointSummary,
 	PaymentEvent
-} from './provider';
+} from './provider.ts';
 
 // the PayPal adapter, and the only module in this repository that imports
 // `@paypal/paypal-server-sdk`.
@@ -79,10 +79,10 @@ import type {
 // everything else takes `PaymentProvider` from ./provider.ts.
 //
 // **it answers the one-off gift, the repeating one, a refund or dispute of either and the listener
-// read, and refuses the listener repairs and the wallet arms** — `unsupported`, exactly as
-// ./factory.ts answers for a processor with no adapter at all, and argued at each of them. the
-// listener is registered by the console's binary (`packages/console/internal/paypal`), so the
-// repairs have no caller here (./webhook-registration.ts).
+// read, registration and resubscription, and refuses the listener replacement and the wallet arms**
+// — `unsupported`, exactly as ./factory.ts answers for a processor with no adapter at all, and
+// argued at each of them. the listener is registered from `.env` by `scripts/setup-webhook.ts`
+// (./webhook-setup.ts).
 //
 // a gift that repeats is three objects on PayPal's side. the catalog product is what
 // `prepareRecurringGifts` provisions and `readRecurringGiftProvision` reads; a plan is per amount
@@ -710,10 +710,10 @@ function unusableGift(request: RecurringGiftRequest): PaymentFailure | null {
  * one sentence per group rather than one per arm, because every arm in a group is refused for the
  * same reason and a reader who saw two wordings would go looking for the difference.
  */
-const NO_LISTENER_REPAIR =
-	'This deployment does not change its PayPal listener. The console registers it and brings its ' +
-	'subscription level in the press that saves PayPal\u2019s credentials (`better-giving start`, under ' +
-	'Donation processor), and stores its id as `PAYPAL_WEBHOOK_ID`.';
+const NO_LISTENER_REPLACEMENT =
+	'A PayPal listener is never replaced. What verifies its deliveries is its own id, which every ' +
+	'list hands back, so `pnpm setup-webhook:paypal` keeps the listener at this address and brings ' +
+	'its subscription level instead.';
 
 const NO_WALLET_DOMAINS =
 	'PayPal registers no hostname for wallets. Its funding sources are drawn inside PayPal\u2019s own ' +
@@ -848,7 +848,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 	 * redelivery would settle in seconds.
 	 */
 	async function call(
-		method: 'GET' | 'POST',
+		method: 'GET' | 'POST' | 'PATCH',
 		path: string,
 		sending?: { readonly body?: unknown; readonly requestId?: string }
 	): Promise<{ status: number; body: unknown }> {
@@ -863,6 +863,29 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 		return { status: answer.status, body: await answer.json().catch(() => null) };
+	}
+
+	async function listListeners(): Promise<PaymentResult<WebhookEndpointRegistry>> {
+		let answer: { status: number; body: unknown };
+		try {
+			answer = await call('GET', '/v1/notifications/webhooks');
+		} catch (error) {
+			return classify(error);
+		}
+		if (answer.status < 200 || answer.status >= 300) {
+			return classifyStatus(
+				answer.status,
+				answer.body,
+				'PayPal could not be asked which listeners this app holds'
+			);
+		}
+
+		const listed = json(answer.body)?.webhooks;
+		const endpoints = (Array.isArray(listed) ? listed : []).flatMap((one: unknown) => {
+			const summary = listenerSummary(one);
+			return summary === null ? [] : [summary];
+		});
+		return { ok: true, value: { endpoints, requiredEventTypes: SUBSCRIBED_EVENT_TYPES } };
 	}
 
 	/**
@@ -1661,9 +1684,8 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 					detail:
 						'This deployment cannot check that a payment notification came from PayPal: ' +
 						'`PAYPAL_WEBHOOK_ID` is not set, so the delivery was refused and nothing was read ' +
-						'out of it. Open the console (`better-giving start`) and save PayPal’s credentials under ' +
-						'Donation processor: that press registers the listener for this deployment’s address ' +
-						'and stores its id.'
+						'out of it. Run `pnpm setup-webhook:paypal`: it registers the listener for this ' +
+						'deployment’s address and prints the `PAYPAL_WEBHOOK_ID` line to set in .env.'
 				};
 			}
 
@@ -1743,8 +1765,8 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 					detail:
 						'PayPal did not vouch for this delivery, so its body was not read. If this ' +
 						'deployment’s own listener is failing, `PAYPAL_WEBHOOK_ID` is not the id of the ' +
-						'listener these deliveries are being sent to. Saving PayPal’s credentials again in ' +
-						'the console (`better-giving start`) finds that listener and stores its id.'
+						'listener these deliveries are being sent to. `pnpm setup-webhook:paypal` finds that ' +
+						'listener and prints its id as the `PAYPAL_WEBHOOK_ID` line to set in .env.'
 				};
 			}
 
@@ -2179,10 +2201,71 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		 * delivery is verified against — public, so nothing is digested (`VERIFICATION` in
 		 * ./webhook-secret.ts).
 		 */
-		async listWebhookEndpoints(): Promise<PaymentResult<WebhookEndpointRegistry>> {
+		listWebhookEndpoints: listListeners,
+
+		/**
+		 * a listener at `url`, subscribed to exactly {@link SUBSCRIBED_EVENT_TYPES}, whose id is the
+		 * value `PAYPAL_WEBHOOK_ID` takes.
+		 *
+		 * the list is read first and stands in for an idempotency key, because the create takes no
+		 * `PayPal-Request-Id` (`webhooks.post` in notifications_webhooks_v1.json): a create that went
+		 * unanswered may have landed, and the next run finds it at its url rather than adding a
+		 * second. PayPal's two refusals of a create — not https, and an app already holding ten
+		 * listeners (https://developer.paypal.com/docs/api/webhooks/v1/) — are made here first, in
+		 * sentences naming the fix.
+		 */
+		async registerWebhookEndpoint(url: string): Promise<PaymentResult<RegisteredWebhookEndpoint>> {
+			if (!url.startsWith('https://')) {
+				return refusedListener(`PayPal delivers only to an https address, and ${url} is not one.`);
+			}
+			const registry = await listListeners();
+			if (!registry.ok) return registry;
+			const listeners = registry.value.endpoints;
+			const here = listeners.find((listener) => listener.url === url);
+			if (here) {
+				return refusedListener(
+					`PayPal already holds listener ${here.id} at ${url}, so none was registered.`
+				);
+			}
+			if (listeners.length >= LISTENER_CAP) {
+				return refusedListener(
+					'This PayPal app already holds ten listeners, which is as many as PayPal allows. ' +
+						'Delete one in PayPal’s developer dashboard, then try again.'
+				);
+			}
+
 			let answer: { status: number; body: unknown };
 			try {
-				answer = await call('GET', '/v1/notifications/webhooks');
+				answer = await call('POST', '/v1/notifications/webhooks', {
+					body: { url, event_types: SUBSCRIBED_EVENT_TYPES.map((name) => ({ name })) }
+				});
+			} catch (error) {
+				return classify(error);
+			}
+			if (answer.status < 200 || answer.status >= 300) {
+				return classifyStatus(answer.status, answer.body, 'PayPal did not register the listener');
+			}
+			const endpoint = listenerSummary(answer.body);
+			if (endpoint === null) return unreadableListener();
+			return { ok: true, value: { endpoint, verificationValue: endpoint.id } };
+		},
+
+		/**
+		 * replaces listener `id`'s subscription with exactly {@link SUBSCRIBED_EVENT_TYPES}. the id is
+		 * unchanged, so the `PAYPAL_WEBHOOK_ID` a deployment holds goes on verifying across it.
+		 */
+		async resubscribeWebhookEndpoint(id: string): Promise<PaymentResult<WebhookEndpointSummary>> {
+			let answer: { status: number; body: unknown };
+			try {
+				answer = await call('PATCH', `/v1/notifications/webhooks/${encodeURIComponent(id)}`, {
+					body: [
+						{
+							op: 'replace',
+							path: '/event_types',
+							value: SUBSCRIBED_EVENT_TYPES.map((name) => ({ name }))
+						}
+					]
+				});
 			} catch (error) {
 				return classify(error);
 			}
@@ -2190,44 +2273,15 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 				return classifyStatus(
 					answer.status,
 					answer.body,
-					'PayPal could not be asked which listeners this app holds'
+					'PayPal did not change the listener’s subscription'
 				);
 			}
-
-			const listed = json(answer.body)?.webhooks;
-			const endpoints = (Array.isArray(listed) ? listed : []).flatMap(
-				(one: unknown): WebhookEndpointSummary[] => {
-					const listener = json(one);
-					if (typeof listener?.id !== 'string' || typeof listener.url !== 'string') return [];
-					const types = Array.isArray(listener.event_types) ? listener.event_types : [];
-					return [
-						{
-							id: listener.id,
-							url: listener.url,
-							enabled: true,
-							eventTypes: types.flatMap((type: unknown) => {
-								const name = json(type)?.name;
-								return typeof name === 'string' ? [name] : [];
-							}),
-							apiVersion: null,
-							verificationStamp: listener.id
-						}
-					];
-				}
-			);
-			return { ok: true, value: { endpoints, requiredEventTypes: SUBSCRIBED_EVENT_TYPES } };
-		},
-
-		async registerWebhookEndpoint(): Promise<PaymentResult<RegisteredWebhookEndpoint>> {
-			return unsupported(NO_LISTENER_REPAIR);
-		},
-
-		async resubscribeWebhookEndpoint(): Promise<PaymentResult<WebhookEndpointSummary>> {
-			return unsupported(NO_LISTENER_REPAIR);
+			const endpoint = listenerSummary(answer.body);
+			return endpoint === null ? unreadableListener() : { ok: true, value: endpoint };
 		},
 
 		async replaceWebhookEndpoint(): Promise<PaymentResult<RegisteredWebhookEndpoint>> {
-			return unsupported(NO_LISTENER_REPAIR);
+			return unsupported(NO_LISTENER_REPLACEMENT);
 		},
 
 		async listWalletDomains(): Promise<PaymentResult<readonly WalletDomain[]>> {
@@ -2822,6 +2876,45 @@ function unreadableRefund(refundId: string): PaymentFailure {
 			'scale and the currency is a 3-letter ISO-4217 code; find the refund in PayPal and correct ' +
 			'the gift in /admin/books by hand.'
 	);
+}
+
+/**
+ * one listener as PayPal answers it (`webhook` in notifications_webhooks_v1.json in
+ * https://github.com/paypal/paypal-rest-api-specifications), or null where it carries no id or url.
+ * `listWebhookEndpoints` argues why `enabled` is always true and the stamp is the id.
+ */
+function listenerSummary(one: unknown): WebhookEndpointSummary | null {
+	const listener = json(one);
+	if (typeof listener?.id !== 'string' || typeof listener.url !== 'string') return null;
+	const types = Array.isArray(listener.event_types) ? listener.event_types : [];
+	return {
+		id: listener.id,
+		url: listener.url,
+		enabled: true,
+		eventTypes: types.flatMap((type: unknown) => {
+			const name = json(type)?.name;
+			return typeof name === 'string' ? [name] : [];
+		}),
+		apiVersion: null,
+		verificationStamp: listener.id
+	};
+}
+
+/** how many listeners PayPal lets one app hold (https://developer.paypal.com/docs/api/webhooks/v1/). */
+const LISTENER_CAP = 10;
+
+function refusedListener(detail: string): PaymentFailure {
+	return { ok: false, reason: 'invalid_request', detail };
+}
+
+function unreadableListener(): PaymentFailure {
+	return {
+		ok: false,
+		reason: 'provider_error',
+		detail:
+			'PayPal answered with a listener carrying no id or url. Find this deployment’s listener in ' +
+			'PayPal’s developer dashboard before trying again.'
+	};
 }
 
 /** one dispute on a transaction, as PayPal lists it. */

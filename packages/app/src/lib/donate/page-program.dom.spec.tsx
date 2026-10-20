@@ -3,7 +3,8 @@ import type {
 	PaymentElementLike,
 	StripeLike
 } from '@better-giving/form/embed/stripe';
-import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/turnstile';
+import type { ChallengeSeams } from '@better-giving/form/embed/challenge';
+import type { TurnstileLike } from '@better-giving/form/embed/turnstile';
 import type { FeeRules, FormConfig } from '@better-giving/form/v1';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -59,12 +60,29 @@ const NO_PROGRAM: FormConfig = {
 
 const CONFIG: FormConfig = { ...NO_PROGRAM, program: { mode: 'choice', options: PROGRAMS } };
 
-const CHALLENGE: ChallengeSeam = {
-	load: async () => {
-		const api: TurnstileLike = { render: () => 'widget-1', reset: () => {}, remove: () => {} };
-		return api;
-	},
-	delay: () => () => {}
+/** the challenge widget, minting a token as soon as it is drawn and again on every reset. */
+const CHALLENGE: ChallengeSeams = {
+	turnstile: {
+		load: async () => {
+			let answer: (token: string) => void = () => {};
+			let minted = 0;
+			const mint = (): void => {
+				minted += 1;
+				answer(`tok_minted_${minted}`);
+			};
+			const api: TurnstileLike = {
+				render: (_node, options) => {
+					answer = options.callback ?? (() => {});
+					mint();
+					return 'widget-1';
+				},
+				reset: mint,
+				remove: () => {}
+			};
+			return api;
+		},
+		delay: () => () => {}
+	}
 };
 
 /** the card processor, as a plain object, with the one report the flow needs off it: the rail. */
@@ -197,9 +215,13 @@ function sent(): Record<string, unknown>[] {
 	return bodies;
 }
 
-function donate(root: HTMLElement, payment: { pick(type: string): void }): void {
+async function donate(root: HTMLElement, payment: { pick(type: string): void }): Promise<void> {
 	press(one(root, '.tiles > label:nth-of-type(2)'));
 	press(one(root, CONTINUE));
+	// the challenge is drawn on arrival at the details step, through a promise chain of its own.
+	await act(async () => {
+		for (let at = 0; at < 4; at += 1) await Promise.resolve();
+	});
 	type(root, '#email', 'donor@example.org');
 	type(root, '#first-name', 'Ada');
 	type(root, '#last-name', 'Lovelace');
@@ -223,7 +245,7 @@ describe('the Donation page where donors choose the program', () => {
 		const { root, payment } = await donationPage(CONFIG);
 		pickCard(root, 'Winter coats');
 		expect(chooserCard(root, 'Winter coats').checked).toBe(true);
-		donate(root, payment);
+		await donate(root, payment);
 		expect(bodies).toHaveLength(1);
 		expect(bodies[0]).toMatchObject({ programId: 'prog-coats' });
 	});
@@ -233,7 +255,7 @@ describe('the Donation page where donors choose the program', () => {
 		const { root, payment } = await donationPage(CONFIG);
 		pickCard(root, 'Winter coats');
 		pickCard(root, 'Food pantry');
-		donate(root, payment);
+		await donate(root, payment);
 		expect(bodies[0]).toMatchObject({ programId: 'prog-food' });
 	});
 
@@ -241,7 +263,7 @@ describe('the Donation page where donors choose the program', () => {
 		const bodies = sent();
 		const { root, payment } = await donationPage(CONFIG);
 		pickCard(root, 'Winter coats');
-		donate(root, payment);
+		await donate(root, payment);
 
 		const coats = chooserCard(root, 'Winter coats');
 		expect(coats.getAttribute('aria-disabled')).toBe('true');
@@ -270,7 +292,7 @@ describe('the Donation page drawing no chooser', () => {
 		});
 		expect(root.querySelector(CHOOSER)).toBeNull();
 		expect(root.querySelector('#program')).not.toBeNull();
-		donate(root, payment);
+		await donate(root, payment);
 		expect(bodies[0]).not.toHaveProperty('programId');
 	});
 });

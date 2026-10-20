@@ -1,5 +1,6 @@
 import type { PaymentElementLike, StripeLike } from '@better-giving/form/embed/stripe';
-import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/turnstile';
+import type { ChallengeSeams } from '@better-giving/form/embed/challenge';
+import type { TurnstileLike } from '@better-giving/form/embed/turnstile';
 import type { FeeRules, FormConfig } from '@better-giving/form/v1';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -90,12 +91,14 @@ function stripe(): StripeLike {
 	} as unknown as StripeLike;
 }
 
-const CHALLENGE: ChallengeSeam = {
-	load: async () => {
-		const api: TurnstileLike = { render: () => 'widget-1', reset: () => {}, remove: () => {} };
-		return api;
-	},
-	delay: () => () => {}
+const CHALLENGE: ChallengeSeams = {
+	turnstile: {
+		load: async () => {
+			const api: TurnstileLike = { render: () => 'widget-1', reset: () => {}, remove: () => {} };
+			return api;
+		},
+		delay: () => () => {}
+	}
 };
 
 async function card(): Promise<HTMLElement> {

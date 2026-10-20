@@ -326,6 +326,7 @@ export function readFormConfig(value: unknown): FormConfig | null {
 		.filter((amount): amount is number => amount !== null && amount <= maxAmountMinor);
 
 	const turnstileSiteKey = text(source.turnstileSiteKey);
+	const altchaChallengeUrl = text(source.altchaChallengeUrl);
 	// the one field whose unreadable state refuses the whole config rather than falling back, for
 	// the reason written on `program` above.
 	const cause = program(source.program);
@@ -348,6 +349,7 @@ export function readFormConfig(value: unknown): FormConfig | null {
 		deductibilityStatement,
 		...cause,
 		...(turnstileSiteKey === null ? {} : { turnstileSiteKey }),
+		...(altchaChallengeUrl === null ? {} : { altchaChallengeUrl }),
 		...(payableCoins.length === 0 ? {} : { coins: payableCoins })
 	};
 }

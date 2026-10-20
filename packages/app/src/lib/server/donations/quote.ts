@@ -4,7 +4,7 @@ import { estimateDeductedFee, estimateFee } from '@better-giving/form/fee';
 import type { ApiErrorCode, Deposit, FormConfig, Frequency, Quote } from '@better-giving/form/v1';
 import { formatMinor } from '../../donations/money';
 import { majorText } from '../../forms/amounts';
-import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
+import { type ChallengeCheck, type ChallengeResult, challengeKind } from '../api/challenge';
 import type { Db } from '../db/client';
 import { donation, payment } from '../db/schema';
 import type { EmailProvider } from '../email/provider';
@@ -122,10 +122,11 @@ export const QUOTE_REFUSALS = [
 	 * sent is wrong, and a single gift on the same rail still goes through.
 	 */
 	'frequency_unsupported',
-	/** the token was not one Cloudflare would honour. a fresh challenge is the answer. */
+	/** the token or the proof of work did not clear. a fresh challenge is the answer. */
 	'challenge_failed',
 	/**
-	 * the challenge could not be made at all — no credentials, or Cloudflare did not answer.
+	 * the challenge could not be made at all — Cloudflare refused the Turnstile secret or did not
+	 * answer. ALTCHA, checked in this process, never answers this.
 	 *
 	 * separate from `challenge_failed` because no new token fixes either one, and telling a donor to
 	 * solve another challenge would put them in a loop. `TurnstileResult`'s own split is what this
@@ -242,7 +243,7 @@ export type QuoteDeps = {
 	 * a default would make a spec that forgot to pass one reach Cloudflare over the network from
 	 * inside the test runner, which is a test that passes or fails on somebody else's uptime.
 	 */
-	readonly verifyChallenge: (check: TurnstileCheck) => Promise<TurnstileResult>;
+	readonly verifyChallenge: (check: ChallengeCheck) => Promise<ChallengeResult>;
 	/**
 	 * the mail transport, for the donor's notices sent at quote time — that a fund's grant request went
 	 * (./grant-requested.ts) and where to send a crypto gift (./crypto-pending.ts) — and the alerts for
@@ -336,6 +337,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		secretKey: readTurnstileSecret(deps.env),
 		siteKey: readTurnstileSiteKey(deps.env),
 		token: submission.turnstileToken,
+		altchaPayload: submission.altchaPayload,
 		allowedHostnames: acceptableHostnames(form.allowedOrigins, origin),
 		request: attempt.request
 	});
@@ -352,8 +354,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 				form,
 				'challenge_failed',
 				challenge.detail,
-				'Reset the Turnstile widget and send the token it produces next as `turnstileToken`. ' +
-					'A token is valid once and for five minutes.'
+				CHALLENGE_RETRY_FIX[challengeKind(readTurnstileKeys(deps.env))]
 			);
 		}
 		// a transport's raw error, or a deployment holding no keys: staff's to read, not the donor's.
@@ -1153,6 +1154,24 @@ function postsCrypto(body: unknown): boolean {
 	);
 }
 
+/** what a donor's page does about a refused challenge, by the check that refused it. */
+const CHALLENGE_RETRY_FIX = {
+	turnstile:
+		'Reset the Turnstile widget and send the token it produces next as `turnstileToken`. ' +
+		'A token is valid once and for five minutes.',
+	altcha:
+		'Solve a fresh challenge from `GET /api/v1/forms/{formId}/challenge` and send its payload ' +
+		'as `altchaPayload`. A challenge clears one submission.'
+} as const;
+
+/** both Turnstile keys off the platform env, for `challengeKind`. */
+function readTurnstileKeys(env: unknown) {
+	return {
+		TURNSTILE_SITE_KEY: readTurnstileSiteKey(env),
+		TURNSTILE_SECRET_KEY: readTurnstileSecret(env)
+	};
+}
+
 /** `TURNSTILE_SECRET_KEY` off the platform env, without narrowing anything else out of it. */
 function readTurnstileSecret(env: unknown): string | undefined {
 	if (typeof env !== 'object' || env === null) return undefined;
@@ -1311,7 +1330,7 @@ const GRANT_NOT_RECORDED =
 
 /**
  * what the donor reads when the anti-abuse check could not be made at all: the challenge service
- * did not answer, or this deployment holds no keys for it. a fresh token fixes neither, and any
+ * did not answer, or refused this deployment's keys. a fresh token fixes neither, and any
  * other payment method meets the same check, so the one thing offered is a later try.
  */
 const CHALLENGE_UNAVAILABLE =

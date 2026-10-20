@@ -197,11 +197,16 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// never seen. CORS from the form's own `allowed_origins`; the limit from the layout above it;
 	// no Turnstile and no amount bounds, because it takes no submission and initiates no payment.
 	'routes/api.v1.forms.$id.config.ts',
+	// the ALTCHA challenge that same form solves before it submits, where ALTCHA is the spam check.
+	// unauthenticated for the same reason; CORS from the form's own `allowed_origins` and the limit
+	// from the layout above it. a challenge initiates nothing: it is the work the submission below
+	// must show, and the submission is where it is checked.
+	'routes/api.v1.forms.$id.challenge.ts',
 	// the endpoint that takes the gift, submitted by a donor's browser on that same page. it is
 	// unauthenticated for the same reason and owes all four: CORS from the form's own
 	// `allowed_origins`, the limit from the layout above it plus a tighter bucket of its own, a
-	// Turnstile token checked before any intent is minted, and the amount re-read from the form
-	// record rather than taken from the body.
+	// spam check (Turnstile or ALTCHA) passed before any intent is minted, and the amount re-read
+	// from the form record rather than taken from the body.
 	'routes/api.v1.forms.$id.donations.ts',
 	// the standing of one crypto gift, polled by the donation form's waiting screen on that same
 	// page. CORS from the form's own `allowed_origins` and the limit from the layout above it; no

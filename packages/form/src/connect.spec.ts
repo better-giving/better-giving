@@ -88,6 +88,12 @@ function settle(): Promise<void> {
 
 /** the donor at the review step with everything a typed rail needs already filled in. */
 const readyToSubmit = (send: (event: never) => void) => {
+	reviewed(send);
+	send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' } as never);
+};
+
+/** the same donor before the challenge has minted a token. */
+const reviewed = (send: (event: never) => void) => {
 	send({ type: 'SET_AMOUNT', amountMinor: 2500 } as never);
 	send({ type: 'SET_FREQUENCY', frequency: 'one_time' } as never);
 	send({ type: 'CONTINUE' } as never);
@@ -149,6 +155,16 @@ describe('the state projection', () => {
 		const state = get().state;
 		if (state.step !== 'details') throw new Error(`expected the details step, got ${state.step}`);
 		expect(state.fv.amountMinor).toBe(2500);
+	});
+
+	// a press made before the challenge has answered stays on the review step, held, and the press
+	// itself is what reports it: the caret is on it and nothing else on the card has changed.
+	it('reports a press held for the challenge as busy on the review step', () => {
+		const { actor, get } = api(reviewed);
+		actor.send({ type: 'SUBMIT' });
+
+		expect(get().state.step).toBe('give');
+		expect(get().submitButton['aria-busy']).toBe(true);
 	});
 
 	it('names which beat of the press a busy flow is on, and says nothing else about it', async () => {
@@ -219,6 +235,7 @@ describe('the state projection', () => {
 				} as never);
 				send({ type: 'CONTINUE' } as never);
 				send({ type: 'SET_METHOD', method: 'ach' } as never);
+				send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' } as never);
 				send({ type: 'SUBMIT' } as never);
 			},
 			{

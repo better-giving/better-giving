@@ -11,7 +11,8 @@ import type {
 	StripeLike
 } from '@better-giving/form/embed/stripe';
 import { CHARIOT_TAG } from '@better-giving/form/embed/chariot';
-import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/turnstile';
+import type { ChallengeSeams } from '@better-giving/form/embed/challenge';
+import type { TurnstileLike } from '@better-giving/form/embed/turnstile';
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
 import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
@@ -212,26 +213,56 @@ function openFund(root: HTMLElement): StubConnect {
 	return button;
 }
 
-/** the callback the card last handed the challenge widget, which is what a token arrives through. */
-const widget = { answer: (_token: string): void => {} };
-
-const CHALLENGE: ChallengeSeam = {
-	load: async () => {
-		const api: TurnstileLike = {
-			render: (_node, options) => {
-				widget.answer = options.callback ?? (() => {});
-				return 'widget-1';
-			},
-			reset: () => {},
-			remove: () => {}
-		};
-		return api;
-	},
-	delay: () => () => {}
+/**
+ * the callbacks the card last handed the challenge widget, which is what a token arrives through and
+ * what says the widget is asking the donor to solve something; and every node it was drawn into.
+ */
+const widget = {
+	answer: (_token: string): void => {},
+	asks: (): void => {},
+	drawn: [] as HTMLElement[]
 };
 
+/**
+ * the challenge provider, minting a token as soon as it is drawn and again on every reset, which is
+ * what the real widget does in the mode that asks a donor nothing.
+ *
+ * `mints: false` is a widget that never answers on its own, for the spec that hands its token over
+ * late through `token` below.
+ */
+function challengeSeams({ mints }: { readonly mints: boolean }): ChallengeSeams {
+	widget.drawn = [];
+	let minted = 0;
+	const mint = (): void => {
+		minted += 1;
+		if (mints) widget.answer(`tok_minted_${minted}`);
+	};
+	return {
+		turnstile: {
+			load: async () => {
+				const api: TurnstileLike = {
+					render: (node, options) => {
+						widget.answer = options.callback ?? (() => {});
+						widget.asks = options['before-interactive-callback'] ?? (() => {});
+						widget.drawn.push(node);
+						mint();
+						return 'widget-1';
+					},
+					reset: mint,
+					remove: () => {}
+				};
+				return api;
+			},
+			delay: () => () => {}
+		}
+	};
+}
+
 /** every provider's seam, the payment one answered by `payment`. */
-function seamsOver(payment: ReturnType<typeof paymentProvider>): DonateCardProps['seams'] {
+function seamsOver(
+	payment: ReturnType<typeof paymentProvider>,
+	challenge: ChallengeSeams = challengeSeams({ mints: true })
+): DonateCardProps['seams'] {
 	const paypal = paypalProvider();
 	return {
 		payment: {
@@ -239,7 +270,7 @@ function seamsOver(payment: ReturnType<typeof paymentProvider>): DonateCardProps
 			paypal: { load: paypal.load, delay: () => () => {} },
 			chariot: { load: async () => true, delay: () => () => {} }
 		},
-		challenge: CHALLENGE
+		challenge
 	};
 }
 
@@ -271,6 +302,8 @@ async function card(
 		readonly strict?: boolean;
 		/** a boundary to suspend into, for the spec that has react discard a render (`regionHeld`). */
 		readonly boundary?: boolean;
+		/** whether the challenge widget mints a token on its own; see `challengeSeams`. */
+		readonly mints?: boolean;
 	} = {}
 ) {
 	const payment = paymentProvider(answers);
@@ -278,7 +311,7 @@ async function card(
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
 	// built once: a new seams object is a new checkout, and a re-render here is the page's pick moving.
-	const seams = seamsOver(payment);
+	const seams = seamsOver(payment, challengeSeams({ mints: page.mints ?? true }));
 	const draw = (pageProgram: string | null | undefined): void => {
 		const drawn = (
 			<DonateCard
@@ -395,9 +428,13 @@ async function held(during: () => Promise<void>): Promise<void> {
 const CONTINUE = 'section.step:not([hidden]) > button[part~="action"]';
 
 /** a gift decided and a payer given, which is what the review step is reached with. */
-function walkToGive(root: HTMLElement): void {
+async function walkToGive(root: HTMLElement): Promise<void> {
 	press(one(root, '.tiles > label:nth-of-type(2)'));
 	press(one(root, CONTINUE));
+	// the challenge is drawn on arrival at the details step, through a promise chain of its own.
+	await act(async () => {
+		for (let at = 0; at < 4; at += 1) await Promise.resolve();
+	});
 	type(input(root, '#email'), 'donor@example.org');
 	type(input(root, '#first-name'), 'Ada');
 	type(input(root, '#last-name'), 'Lovelace');
@@ -456,7 +493,7 @@ it('carries the cause a donor chose onto the review step', async () => {
 	expect(one(root, '#program').getAttribute('aria-expanded')).toBe('false');
 	expect(one(root, '#program [data-chosen]').textContent).toBe('Schools');
 
-	walkToGive(root);
+	await walkToGive(root);
 	expect(one(root, '.row.program .program-name').textContent).toBe('Schools');
 });
 
@@ -493,7 +530,7 @@ describe('a program the page picks', () => {
 	it('sends the program the page picked with the gift', async () => {
 		const bodies = sent();
 		const { root, payment } = await card(CONFIG, {}, { pageProgram: 'p2' });
-		walkToGive(root);
+		await walkToGive(root);
 		expect(programRow(root)).toBe('Schools');
 
 		donate(root, payment);
@@ -504,7 +541,7 @@ describe('a program the page picks', () => {
 	it('follows the page to another pick on the review step, keeping what the donor gave', async () => {
 		const bodies = sent();
 		const { root, payment, pagePicks } = await card(CONFIG, {}, { pageProgram: 'p1' });
-		walkToGive(root);
+		await walkToGive(root);
 		expect(programRow(root)).toBe('Clean water');
 
 		pagePicks('p2');
@@ -520,7 +557,7 @@ describe('a program the page picks', () => {
 		const bodies = sent();
 		const { root, payment, pagePicks } = await card(CONFIG, {}, { pageProgram: 'p1' });
 		pagePicks(null);
-		walkToGive(root);
+		await walkToGive(root);
 		expect(programRow(root)).toBe('Where it’s needed most');
 
 		donate(root, payment);
@@ -535,7 +572,7 @@ describe('a program the page picks', () => {
 		expect(root.querySelector('#program')).not.toBeNull();
 
 		await choose(root, 'program', 'Schools');
-		walkToGive(root);
+		await walkToGive(root);
 		expect(programRow(root)).toBe('Schools');
 		donate(root, payment);
 		expect(bodies[0]).toMatchObject({ programId: 'p2' });
@@ -554,7 +591,7 @@ describe('a program the page picks', () => {
 		pagePicks('p2');
 		expect(reports.at(-1)).toEqual(['p2', false]);
 
-		walkToGive(root);
+		await walkToGive(root);
 		donate(root, payment);
 		expect(reports.at(-1)).toEqual(['p2', true]);
 	});
@@ -572,7 +609,7 @@ describe('a program the page picks', () => {
 			})
 		);
 		const { root, payment, pagePicks } = await card(CONFIG, {}, { pageProgram: 'p1' });
-		walkToGive(root);
+		await walkToGive(root);
 		donate(root, payment);
 		expect(bodies[0]).toMatchObject({ programId: 'p1' });
 
@@ -978,7 +1015,7 @@ it('carries the cadence a donor picked onto the receipt', async () => {
 	const { root } = await card();
 
 	press(one(root, '.segment > label:nth-of-type(2)'));
-	walkToGive(root);
+	await walkToGive(root);
 
 	expect(one(root, '[part~="summary"] .row-label').textContent).toBe('Monthly gift');
 	// the repeat sentence states the total rather than the gift: it is what will be charged again.
@@ -1044,7 +1081,7 @@ describe('a page’s opening', () => {
 		const { root } = await card(MONTHLY_TOO, {}, { opening: { monthly: true } });
 
 		expect(start(root).cadence).toEqual(['monthly']);
-		walkToGive(root);
+		await walkToGive(root);
 		expect(one(root, '[part~="summary"] .row-label').textContent).toBe('Monthly gift');
 	});
 
@@ -1262,7 +1299,7 @@ it('says which of the two rules an address broke', async () => {
 
 it('moves the total and the control that spends it when the fee decision changes', async () => {
 	const { root } = await card();
-	walkToGive(root);
+	await walkToGive(root);
 
 	const total = one(root, 'output.figure');
 	const submit = one(root, 'button[part~="submit"] .action-label');
@@ -1282,7 +1319,7 @@ it('moves the total and the control that spends it when the fee decision changes
 // every commit, and the card's one region is where a total that moved is said.
 it('says a fee decision once, on the card’s region and never on the figure’s own', async () => {
 	const { root } = await card();
-	walkToGive(root);
+	await walkToGive(root);
 	const total = one(root, 'output.figure');
 	expect(total.getAttribute('aria-live')).toBe('off');
 
@@ -1297,7 +1334,7 @@ const WITH_BANK: FormConfig = { ...CONFIG, paymentMethods: ['card', 'ach'] };
 
 it('says a total a rail pick moved once, on the card’s region', async () => {
 	const { root, payment } = await card(WITH_BANK);
-	walkToGive(root);
+	await walkToGive(root);
 	payment.pick('card');
 	const total = one(root, 'output.figure');
 	const onCard = total.textContent;
@@ -1311,7 +1348,7 @@ it('says a total a rail pick moved once, on the card’s region', async () => {
 
 it('says nothing about the total when a rail pick leaves it where it was', async () => {
 	const { root, payment } = await card(WITH_BANK);
-	walkToGive(root);
+	await walkToGive(root);
 	payment.pick('card');
 	const total = one(root, 'output.figure').textContent;
 
@@ -1326,7 +1363,7 @@ it('says nothing about the total when a rail pick leaves it where it was', async
 // changes, another replaces it, or the total it names does.
 it('keeps saying the total through a reading that changes nothing it states', async () => {
 	const { root, payment } = await card();
-	walkToGive(root);
+	await walkToGive(root);
 	press(input(root, '.fee-decision input[type="checkbox"]'));
 	const total = one(root, 'output.figure').textContent;
 	expect(said(root)).toBe(`Total today is ${total}.`);
@@ -1340,7 +1377,7 @@ it('keeps saying the total through a reading that changes nothing it states', as
 
 it('says a total a rail repriced in place of the one it said before', async () => {
 	const { root, payment } = await card(WITH_BANK);
-	walkToGive(root);
+	await walkToGive(root);
 	payment.pick('card');
 	// off and back on, so the total said is one with a fee in it for the bank's rules to reprice.
 	press(input(root, '.fee-decision input[type="checkbox"]'));
@@ -1357,7 +1394,7 @@ it('says a total a rail repriced in place of the one it said before', async () =
 
 it('stops saying the total once the donor goes back a step', async () => {
 	const { root } = await card();
-	walkToGive(root);
+	await walkToGive(root);
 	press(input(root, '.fee-decision input[type="checkbox"]'));
 	expect(said(root)).not.toBe('');
 
@@ -1372,7 +1409,7 @@ it('stops saying the total once the donor goes back a step', async () => {
 // donor was last shown.
 it('decides a moved total on the render that commits, not on one react discards', async () => {
 	const { root, payment } = await card(CONFIG, {}, { boundary: true });
-	walkToGive(root);
+	await walkToGive(root);
 	const before = one(root, 'output.figure').textContent;
 
 	await held(async () => {
@@ -1390,7 +1427,7 @@ it('decides a moved total on the render that commits, not on one react discards'
 // and the next render writing it back says it again with nobody having pressed anything.
 it('keeps a standing refusal on the region through a total that moved under it, said once', async () => {
 	const { root, payment } = await card();
-	walkToGive(root);
+	await walkToGive(root);
 	press(one(root, 'button[part~="submit"]'));
 	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
 	const region = one(root, '[role="status"]');
@@ -1419,7 +1456,7 @@ it('keeps a standing refusal on the region through a total that moved under it, 
 // refusal standing over it clears, however many commits it waited.
 it('says a total that moved under a standing refusal once the refusal clears', async () => {
 	const { root, payment } = await card();
-	walkToGive(root);
+	await walkToGive(root);
 	press(one(root, 'button[part~="submit"]'));
 	press(input(root, '.fee-decision input[type="checkbox"]'));
 	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
@@ -1432,7 +1469,7 @@ it('says a total that moved under a standing refusal once the refusal clears', a
 
 it('refuses a press with no rail, and says so on the box and on the region', async () => {
 	const { root } = await card();
-	walkToGive(root);
+	await walkToGive(root);
 
 	press(one(root, 'button[part~="submit"]'));
 
@@ -1451,7 +1488,7 @@ it('takes the press once a rail is reported, and stays on the review screen whil
 		'fetch',
 		vi.fn(() => new Promise<Response>(() => {}))
 	);
-	walkToGive(root);
+	await walkToGive(root);
 	payment.pick('card');
 
 	press(one(root, 'button[part~="submit"]'));
@@ -1461,6 +1498,54 @@ it('takes the press once a rail is reported, and stays on the review screen whil
 	expect(one(root, 'form.card-body').getAttribute('aria-busy')).toBe('true');
 	expect(said(root)).toBe(copy.WORKING);
 	expect(one(root, '#payment-problem').hidden).toBe(true);
+});
+
+// the widget is drawn on the details step, which is hidden by the time a held press waits on it, so
+// a widget asking the donor to solve something is drawn again beside the press — outside the busy
+// flag, which would have assistive technology hold back everything inside it.
+it('draws a widget asking the donor beside a held press, and nowhere while no press is held', async () => {
+	const { root, payment } = await card(CONFIG, {}, { mints: false });
+	await walkToGive(root);
+	payment.pick('card');
+	const [details] = widget.drawn;
+
+	act(() => {
+		widget.asks();
+	});
+	expect(widget.drawn).toEqual([details]);
+
+	press(one(root, 'button[part~="submit"]'));
+
+	const beside = one(root, 'button[part~="submit"] + .challenge');
+	expect(widget.drawn).toEqual([details, beside]);
+	expect(beside.closest('[aria-busy="true"]')).toBeNull();
+	expect(one(root, 'button[part~="submit"]').getAttribute('aria-busy')).toBe('true');
+});
+
+// press is held, busy, and sent with the token once it lands rather than sent without one.
+it('holds a press made before the challenge answers, and sends it with the token that lands', async () => {
+	const bodies: Record<string, unknown>[] = [];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn((_url: string, init?: RequestInit) => {
+			bodies.push(JSON.parse(String(init?.body)));
+			return new Promise<Response>(() => {});
+		})
+	);
+	const { root, payment } = await card(CONFIG, {}, { mints: false });
+	await walkToGive(root);
+	payment.pick('card');
+
+	press(one(root, 'button[part~="submit"]'));
+
+	expect(bodies).toHaveLength(0);
+	expect(screen(root).className).toContain('step-give');
+	expect(one(root, 'form.card-body').getAttribute('aria-busy')).toBe('true');
+
+	token('tok_late');
+
+	expect(bodies).toHaveLength(1);
+	expect(bodies[0]).toMatchObject({ turnstileToken: 'tok_late' });
 });
 
 it('emits only part names the element publishes, and no control anywhere is disabled', async () => {
@@ -1489,7 +1574,7 @@ it('emits only part names the element publishes, and no control anywhere is disa
 			throw new Error('no network in this pool');
 		})
 	);
-	walkToGive(root);
+	await walkToGive(root);
 	collect();
 	payment.pick('card');
 	await act(async () => {
@@ -1513,7 +1598,7 @@ it('draws a way to pay on a config that offers only PayPal’s rails', async () 
 		providers: [{ name: 'paypal', publishableKey: 'live_client_id' }],
 		paymentMethods: ['paypal']
 	});
-	walkToGive(root);
+	await walkToGive(root);
 
 	const box = one(root, '[part~="payment"]');
 	expect(box.hidden).toBe(false);
@@ -1529,7 +1614,7 @@ it('draws both processors’ boxes where a deployment holds both', async () => {
 		],
 		paymentMethods: ['card', 'paypal']
 	});
-	walkToGive(root);
+	await walkToGive(root);
 
 	// one box on the card and a node inside it per processor, placed and ordered by the composer.
 	const box = one(root, '[part~="payment"]');
@@ -1539,7 +1624,7 @@ it('draws both processors’ boxes where a deployment holds both', async () => {
 
 it('draws no header over a box listing one option, and names the box itself', async () => {
 	const { root } = await card();
-	walkToGive(root);
+	await walkToGive(root);
 
 	const box = one(root, '[part~="payment"]');
 	expect(one(root, '#payment-heading').hidden).toBe(true);
@@ -1552,7 +1637,7 @@ it('draws no header over a box listing one option, and names the box itself', as
 // between the two leaves the line at the step's own rhythm between two blocks, reading as a third.
 it('stands the line saying where the receipt goes directly over the press', async () => {
 	const { root } = await card();
-	walkToGive(root);
+	await walkToGive(root);
 
 	const line = one(root, 'section.step-give > p.aside');
 	expect(line.hidden).toBe(false);
@@ -1562,7 +1647,7 @@ it('stands the line saying where the receipt goes directly over the press', asyn
 
 it('heads a box listing a choice, and names the box by the header', async () => {
 	const { root } = await card({ ...CONFIG, paymentMethods: ['card', 'ach'] });
-	walkToGive(root);
+	await walkToGive(root);
 
 	const heading = one(root, '#payment-heading');
 	const box = one(root, '[part~="payment"]');
@@ -1615,7 +1700,7 @@ it('names the rail in what it says out loud while the charge is in flight', asyn
 				)
 		)
 	);
-	walkToGive(root);
+	await walkToGive(root);
 	payment.pick('card');
 
 	await act(async () => {
@@ -1634,7 +1719,7 @@ it('names the rail in what it says out loud while the charge is in flight', asyn
 // — its window's endings are heard on that element, and a button taken down drops the approval.
 it('stays on the review step, unbusied, with the fund’s button standing while its window is open', async () => {
 	const { root } = await card(WITH_FUND);
-	walkToGive(root);
+	await walkToGive(root);
 
 	const button = openFund(root);
 
@@ -1655,7 +1740,7 @@ describe('a repeating gift no processor still up can take', () => {
 	async function atReview(cadence: 1 | 2 | 3 = 2) {
 		const reached = await card(WITH_FUND);
 		press(one(reached.root, `.segment > label:nth-of-type(${cadence})`));
-		walkToGive(reached.root);
+		await walkToGive(reached.root);
 		reached.payment.fail();
 		return reached;
 	}
@@ -1683,7 +1768,7 @@ describe('a repeating gift no processor still up can take', () => {
 	it('says the offer where a press had been refused for the rail before it', async () => {
 		const { root, payment } = await card(WITH_FUND);
 		press(one(root, '.segment > label:nth-of-type(2)'));
-		walkToGive(root);
+		await walkToGive(root);
 		press(one(root, 'button[part~="submit"]'));
 		expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
 
@@ -1787,7 +1872,7 @@ it('states the granted figures on the ending, not the ones the form showed', asy
 				})
 		)
 	);
-	walkToGive(root);
+	await walkToGive(root);
 	expect(one(root, '.row.total .figure').textContent).not.toBe('$52.00');
 
 	const button = openFund(root);
@@ -1851,7 +1936,7 @@ describe('where the caret goes when one takeover replaces another', () => {
 	async function donated(quote: unknown, answers: Answers = {}) {
 		quoting(quote);
 		const { root, payment } = await card(CONFIG, answers);
-		walkToGive(root);
+		await walkToGive(root);
 		payment.pick('card');
 		await pressHeld(one(root, 'button[part~="submit"]'));
 		return root;
@@ -2115,7 +2200,7 @@ describe('a resume drawn before the flow starts', () => {
 			paypal: { load: paypalProvider().load, delay: () => () => {} },
 			chariot: { load: async () => true, delay: () => () => {} }
 		},
-		challenge: CHALLENGE
+		challenge: challengeSeams({ mints: true })
 	};
 
 	/** the card's server markup, standing in a host on the page the way a document request leaves it. */
@@ -2474,7 +2559,7 @@ describe('a crypto gift', () => {
 	) {
 		const server = deployment(quote);
 		const { root } = await card(CRYPTO, {}, drawn);
-		walkToGive(root);
+		await walkToGive(root);
 		const head = row(root, 'Crypto');
 		if (head === null) throw new Error('no crypto option on the review step');
 		press(head);
@@ -2523,7 +2608,7 @@ describe('a crypto gift', () => {
 	it('offers crypto on a one-time gift and hides it on a repeating one', async () => {
 		deployment(() => json(USDT));
 		const { root } = await card(CRYPTO);
-		walkToGive(root);
+		await walkToGive(root);
 		expect(row(root, 'Crypto')).not.toBeNull();
 
 		press(every(root, '.step-give .step-dot')[0] as HTMLElement);
@@ -2579,7 +2664,7 @@ describe('a crypto gift', () => {
 		deployment(() => json(USDT));
 		const { root, payment } = await card(CRYPTO);
 		press(one(root, '.segment > label:nth-of-type(2)'));
-		walkToGive(root);
+		await walkToGive(root);
 		// no fee, so the crypto rail moves no figure and the one-time sentence is still held.
 		press(input(root, '.fee-decision input[type="checkbox"]'));
 		payment.fail();

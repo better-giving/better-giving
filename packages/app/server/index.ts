@@ -4,8 +4,9 @@
  * reads `DATABASE_URL` (a `file:` URL naming the database file), `PORT` and `HOST` (production
  * only; 3000 and every interface by default) and `TRUSTED_PROXY_HEADER`
  * (../src/lib/server/runtime/client-ip.ts, forwarded-proto.ts), plus every name `Env` carries
- * (../src/lib/server/runtime/env.ts). migrations are not applied here: `pnpm db:migrate` runs them
- * before the server starts (AGENTS.md → Schema).
+ * (../src/lib/server/runtime/env.ts), and refuses to start without `REQUIRED_ENV_VARS` there.
+ * migrations are not applied here: `pnpm db:migrate` runs them before the server starts
+ * (AGENTS.md → Schema).
  *
  * SIGTERM and SIGINT stop the server gracefully: open requests finish, deferred work settles, the
  * database closes, and the process exits.
@@ -13,6 +14,7 @@
 
 import { resolve } from 'node:path';
 import { openDatabase } from '../src/lib/server/db/open.ts';
+import { missingRequiredEnv } from '../src/lib/server/runtime/env.ts';
 import { startServer } from './start.ts';
 
 /**
@@ -26,6 +28,12 @@ const DEV_PORT = 5321;
 
 const dev = process.argv.includes('--dev');
 const root = resolve(import.meta.dirname, '..');
+
+const missing = missingRequiredEnv(process.env);
+if (missing.length > 0) {
+	for (const line of missing) console.error(line);
+	process.exit(1);
+}
 
 const url = process.env.DATABASE_URL;
 if (!url) {

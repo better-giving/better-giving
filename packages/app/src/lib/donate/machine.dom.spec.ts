@@ -1,4 +1,6 @@
 import { connect, toState } from '@better-giving/form/connect';
+import { createChallenge as issueChallenge } from 'altcha-lib';
+import { deriveKey } from 'altcha-lib/algorithms/web/pbkdf2';
 import type {
 	EligibilityLike,
 	PaypalNamespaceLike,
@@ -64,6 +66,13 @@ const CONFIG: FormConfig = {
 	ein: '12-3456789',
 	deductibilityStatement: 'Helping Hands is a 501(c)(3).',
 	turnstileSiteKey: '1x00000000000000000000AA'
+};
+
+/** the same deployment, holding no Turnstile pair, so ALTCHA is its check. */
+const { turnstileSiteKey: _sitekey, ...UNCHALLENGED } = CONFIG;
+const ALTCHA: FormConfig = {
+	...UNCHALLENGED,
+	altchaChallengeUrl: `/api/v1/forms/${CONFIG.formId}/challenge`
 };
 
 /** the same deployment, holding PayPal's keys and no card processor's. */
@@ -200,18 +209,20 @@ function challengeProvider() {
 	return { load: async () => api, rendered, resets, removals };
 }
 
-/** the two boxes a card hands over, on a document a provider can measure. */
+/** the boxes a card hands over, on a document a provider can measure. */
 function boxes() {
 	const host = document.createElement('div');
 	const paymentMount = document.createElement('div');
 	const challengeMount = document.createElement('div');
+	const heldChallengeMount = document.createElement('div');
 	host.appendChild(paymentMount);
 	host.appendChild(challengeMount);
+	host.appendChild(heldChallengeMount);
 	document.body.appendChild(host);
 	onTestFinished(() => {
 		host.remove();
 	});
-	return { paymentMount, challengeMount };
+	return { paymentMount, challengeMount, heldChallengeMount };
 }
 
 /** a tick long enough for both providers' own promise chains to settle. */
@@ -243,12 +254,13 @@ it('starts the live flow on the step and draft the served snapshot was read with
 
 	for (const opening of openings) {
 		const served = initialSnapshot(config, opening);
-		const { paymentMount, challengeMount } = boxes();
+		const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 		const checkout = startCheckout(
 			config,
 			{
 				paymentMount,
 				challengeMount,
+				heldChallengeMount,
 				resumeToken: null,
 				seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
 			},
@@ -273,7 +285,7 @@ it('reads monthly on a one-time-only config as no opening at all', () => {
 });
 
 it('mounts the payment provider into the box it was handed and draws no challenge yet', async () => {
-	const { paymentMount, challengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -281,10 +293,11 @@ it('mounts the payment provider into the box it was handed and draws no challeng
 	const checkout = startCheckout(CONFIG, {
 		paymentMount,
 		challengeMount,
+		heldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
-			challenge: { load: challenge.load, delay: timer.delay }
+			challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
 		}
 	});
 	onTestFinished(() => checkout.stop());
@@ -299,7 +312,7 @@ it('mounts the payment provider into the box it was handed and draws no challeng
 });
 
 it('draws the challenge on arrival at the details step and resets it on the way out of a busy flow', async () => {
-	const { paymentMount, challengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -315,10 +328,11 @@ it('draws the challenge on arrival at the details step and resets it on the way 
 	const checkout = startCheckout(CONFIG, {
 		paymentMount,
 		challengeMount,
+		heldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
-			challenge: { load: challenge.load, delay: timer.delay }
+			challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
 		}
 	});
 	onTestFinished(() => checkout.stop());
@@ -344,8 +358,69 @@ it('draws the challenge on arrival at the details step and resets it on the way 
 	expect(challenge.resets).toEqual(['widget-1']);
 });
 
+// a deployment holding no Turnstile pair serves the ALTCHA path instead, and this page reads its
+// config off its own address, so the path resolves against the page's.
+it('solves the ALTCHA challenge this deployment serves and posts it as the payload', async () => {
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const payment = paymentProvider();
+	const timer = clock();
+	const asked: string[] = [];
+	const endpoint = (async (input: RequestInfo | URL) => {
+		asked.push(String(input));
+		return Response.json(
+			await issueChallenge({
+				algorithm: 'PBKDF2/SHA-256',
+				cost: 10,
+				keyPrefix: '0',
+				deriveKey,
+				expiresAt: Math.floor(Date.now() / 1000) + 20 * 60,
+				hmacSignatureSecret: 'spec-secret'
+			})
+		);
+	}) as typeof fetch;
+	const posted: Record<string, unknown>[] = [];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (_url: string, init: RequestInit) => {
+			posted.push(JSON.parse(String(init.body)));
+			throw new Error('no network in this pool');
+		})
+	);
+
+	const checkout = startCheckout(ALTCHA, {
+		paymentMount,
+		challengeMount,
+		heldChallengeMount,
+		resumeToken: null,
+		seams: {
+			payment: { stripe: { load: payment.load, delay: timer.delay } },
+			challenge: { altcha: { fetch: endpoint, delay: timer.delay } }
+		}
+	});
+	onTestFinished(() => checkout.stop());
+	await settle();
+
+	const { actor } = checkout;
+	actor.send({ type: 'CONTINUE' });
+	await vi.waitFor(() => expect(actor.getSnapshot().context.turnstileToken).not.toBeNull());
+	const payload = actor.getSnapshot().context.turnstileToken;
+	expect(asked).toEqual([`${location.origin}/api/v1/forms/${ALTCHA.formId}/challenge`]);
+
+	actor.send({ type: 'SET_CONTACT', email: 'donor@example.org' });
+	actor.send({ type: 'SET_CONTACT', firstName: 'Ada' });
+	actor.send({ type: 'SET_CONTACT', lastName: 'Lovelace' });
+	actor.send({ type: 'CONTINUE' });
+	payment.pick('card');
+	actor.send({ type: 'SUBMIT' });
+	await settle();
+
+	expect(posted).toHaveLength(1);
+	expect(posted[0]?.altchaPayload).toBe(payload);
+	expect(posted[0]).not.toHaveProperty('turnstileToken');
+});
+
 it('stops without leaving a subscription, a widget or a deadline behind', async () => {
-	const { paymentMount, challengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -353,10 +428,11 @@ it('stops without leaving a subscription, a widget or a deadline behind', async 
 	const checkout = startCheckout(CONFIG, {
 		paymentMount,
 		challengeMount,
+		heldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
-			challenge: { load: challenge.load, delay: timer.delay }
+			challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
 		}
 	});
 	await settle();
@@ -380,10 +456,11 @@ it('tells a listener how many options the payment box lists', async () => {
 	const payment = paymentProvider();
 	const timer = clock();
 	const start = (config: FormConfig) => {
-		const { paymentMount, challengeMount } = boxes();
+		const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 		const checkout = startCheckout(config, {
 			paymentMount,
 			challengeMount,
+			heldChallengeMount,
 			resumeToken: null,
 			seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
 		});
@@ -405,7 +482,7 @@ it('tells a listener how many options the payment box lists', async () => {
 // no Venmo session can approve a subscription, so a repeating cadence takes Venmo off this page's
 // box as it does off the embed's (`venmoIsOffered` in packages/form/src/checkout.machine.ts).
 it('lists Venmo on a one-time gift only, with PayPal standing on every cadence', async () => {
-	const { paymentMount, challengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 	const paypal = paypalProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -419,10 +496,11 @@ it('lists Venmo on a one-time gift only, with PayPal standing on every cadence',
 		{
 			paymentMount,
 			challengeMount,
+			heldChallengeMount,
 			resumeToken: null,
 			seams: {
 				payment: { paypal: { load: paypal.load, delay: timer.delay } },
-				challenge: { load: challenge.load, delay: timer.delay }
+				challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
 			}
 		}
 	);
@@ -446,7 +524,7 @@ it('lists Venmo on a one-time gift only, with PayPal standing on every cadence',
 // the hole this page had until the surface it composes stopped being one processor's: a deployment
 // holding PayPal's keys and no card processor's drew a box nothing could be paid in.
 it('draws a payment surface for a config offering only PayPal’s rails, and confirms on one', async () => {
-	const { paymentMount, challengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 	const paypal = paypalProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -454,10 +532,11 @@ it('draws a payment surface for a config offering only PayPal’s rails, and con
 	const checkout = startCheckout(PAYPAL_ONLY, {
 		paymentMount,
 		challengeMount,
+		heldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { paypal: { load: paypal.load, delay: timer.delay } },
-			challenge: { load: challenge.load, delay: timer.delay }
+			challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
 		}
 	});
 	onTestFinished(() => checkout.stop());
@@ -505,7 +584,7 @@ it('draws a payment surface for a config offering only PayPal’s rails, and con
 });
 
 it('tells the flow the rail a donor pressed, on whichever processor’s box they pressed it in', async () => {
-	const { paymentMount, challengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const paypal = paypalProvider();
 	const challenge = challengeProvider();
@@ -520,13 +599,14 @@ it('tells the flow the rail a donor pressed, on whichever processor’s box they
 		{
 			paymentMount,
 			challengeMount,
+			heldChallengeMount,
 			resumeToken: null,
 			seams: {
 				payment: {
 					stripe: { load: payment.load, delay: timer.delay },
 					paypal: { load: paypal.load, delay: timer.delay }
 				},
-				challenge: { load: challenge.load, delay: timer.delay }
+				challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
 			}
 		}
 	);
@@ -551,7 +631,7 @@ it('tells the flow the rail a donor pressed, on whichever processor’s box they
 // endings are reports rather than a confirmation — so this page hands the surface a third kind of
 // report, and tells it on every reading whether the button stands.
 it('stands a fund’s button on the review step alone, and carries its window’s reports into the flow', async () => {
-	const { paymentMount, challengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -571,13 +651,14 @@ it('stands a fund’s button on the review step alone, and carries its window’
 	const checkout = startCheckout(WITH_FUND, {
 		paymentMount,
 		challengeMount,
+		heldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: {
 				stripe: { load: payment.load, delay: timer.delay },
 				chariot: { load: async () => true, delay: timer.delay }
 			},
-			challenge: { load: challenge.load, delay: timer.delay }
+			challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
 		}
 	});
 	onTestFinished(() => checkout.stop());
@@ -626,7 +707,7 @@ it('stands a fund’s button on the review step alone, and carries its window’
 });
 
 it('puts a donor who closed the fund’s window back on the review step with nothing sent', async () => {
-	const { paymentMount, challengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -636,13 +717,14 @@ it('puts a donor who closed the fund’s window back on the review step with not
 	const checkout = startCheckout(WITH_FUND, {
 		paymentMount,
 		challengeMount,
+		heldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: {
 				stripe: { load: payment.load, delay: timer.delay },
 				chariot: { load: async () => true, delay: timer.delay }
 			},
-			challenge: { load: challenge.load, delay: timer.delay }
+			challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
 		}
 	});
 	onTestFinished(() => checkout.stop());
@@ -703,13 +785,14 @@ afterEach(() => {
 });
 
 it('stands the coin list in the crypto option on a one-time gift, and takes it away on a repeating one', async () => {
-	const { paymentMount, challengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const timer = clock();
 
 	const checkout = startCheckout(WITH_CRYPTO, {
 		paymentMount,
 		challengeMount,
+		heldChallengeMount,
 		resumeToken: null,
 		seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
 	});
@@ -727,7 +810,7 @@ it('stands the coin list in the crypto option on a one-time gift, and takes it a
 
 it('reads a crypto gift at this deployment until it arrives', async () => {
 	vi.useFakeTimers({ shouldAdvanceTime: true });
-	const { paymentMount, challengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const timer = clock();
 	const reads: string[] = [];
@@ -753,10 +836,11 @@ it('reads a crypto gift at this deployment until it arrives', async () => {
 	const checkout = startCheckout(WITH_CRYPTO, {
 		paymentMount,
 		challengeMount,
+		heldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
-			challenge: { load: challenge.load, delay: timer.delay }
+			challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
 		}
 	});
 	onTestFinished(() => checkout.stop());

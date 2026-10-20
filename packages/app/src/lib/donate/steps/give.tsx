@@ -4,6 +4,7 @@ import { FREQUENCY_LABELS, NO_PROGRAM_LABEL, type FormConfig } from '@better-giv
 import type { ReactNode, RefObject } from 'react';
 import * as copy from '../copy';
 import type { ReactApi } from '../normalize';
+import { ChallengeBox } from '../challenge';
 import { PaymentBox } from '../payment';
 import type { Takeover } from '../takeover';
 
@@ -276,6 +277,8 @@ export type GiveStepProps = {
 	readonly receiptTo: string;
 	readonly submitLabel: string;
 	readonly paymentMount: RefObject<HTMLDivElement | null>;
+	/** the box a challenge asking for the donor is drawn into while a press is held on it. */
+	readonly heldChallengeMount: RefObject<HTMLDivElement | null>;
 	readonly paymentPrepared: boolean;
 	readonly paymentRows: number;
 	readonly paymentWords: string;
@@ -298,6 +301,7 @@ export function GiveStep({
 	receiptTo,
 	submitLabel,
 	paymentMount,
+	heldChallengeMount,
 	paymentPrepared,
 	paymentRows,
 	paymentWords,
@@ -340,6 +344,8 @@ export function GiveStep({
 				<span className="action-label">{submitLabel}</span>
 				<span className="spinner" aria-hidden="true" />
 			</button>
+			{/* after the press rather than before it: what it holds is what that press is waiting on. */}
+			<ChallengeBox mount={heldChallengeMount} />
 		</section>
 	);
 }

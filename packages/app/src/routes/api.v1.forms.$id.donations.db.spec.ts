@@ -1,3 +1,5 @@
+import { solveChallenge } from 'altcha-lib';
+import { deriveKey } from 'altcha-lib/algorithms/pbkdf2';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { edgeCache } from '$lib/server/edge-cache.testing';
@@ -33,11 +35,11 @@ const env = readEnv({}, specRateLimiters());
 // every case below but the fund refusals at the foot of the file stops before the network, and
 // that is a property of the fixtures rather than of a stub.
 //
-// this route builds its own payment provider and passes the real `verifyTurnstile`, which is the
-// point — those two lines are what a spec injecting both would never exercise. so the deployment
-// these cases describe holds no `TURNSTILE_SECRET_KEY`, which `verifyTurnstile` answers
-// `misconfigured` for without opening a connection, and no submission gets past it to the
-// processor. what that buys is the whole route wired as it deploys: the body read once, the form
+// this route builds its own payment provider and passes the real spam check, which is the point —
+// those two lines are what a spec injecting both would never exercise. so the deployment these
+// cases describe holds no Turnstile pair, which makes ALTCHA the check, and a body carrying no
+// `altchaPayload` is refused by it without opening a connection, so no submission gets past it to
+// the processor. what that buys is the whole route wired as it deploys: the body read once, the form
 // row read, the headers built from it, the status chosen.
 // ---------------------------------------------------------------------------
 
@@ -310,7 +312,7 @@ describe('POST /api/v1/forms/:id/donations — this deployment’s own origin', 
 
 		// the challenge, which is where every submission in this file ends. what is under test is
 		// who may read it, not what it says.
-		expect(response.status).toBe(503);
+		expect(response.status).toBe(403);
 		expect(response.headers.get('access-control-allow-origin')).toBe(OWN);
 	});
 
@@ -431,7 +433,7 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
 
 		// the challenge, which is where every submission in this file ends — so the amount was not
 		// what stopped it.
-		expect(response.status).toBe(503);
+		expect(response.status).toBe(403);
 	});
 
 	it('answers 400 for a body that left `consentedToContact` out', async () => {
@@ -448,11 +450,11 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
 	it('takes `consentedToContact: null` from an integrator who never asked', async () => {
 		const response = await post({ consentedToContact: null });
 
-		// past the body entirely: 503 is this deployment's challenge answer, which every submission
+		// past the body entirely: 403 is this deployment's challenge answer, which every submission
 		// this file makes ends at (see the note at the top). what it proves here is that `null` is
 		// not a 400 — the parse accepted it, and where the gift is written is
 		// $lib/server/donations/quote.db.spec.ts.
-		expect(response.status).toBe(503);
+		expect(response.status).toBe(403);
 	});
 
 	it('answers 400 for a body that is not JSON at all, readably', async () => {
@@ -467,20 +469,15 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
 		});
 	});
 
-	it('answers 503 when the deployment cannot make a challenge at all', async () => {
+	it('answers 403 naming the ALTCHA challenge where no proof of work came with the gift', async () => {
 		const response = await post();
 
-		// no `TURNSTILE_SECRET_KEY` on this deployment, so nothing can be verified. it is not the
-		// donor's fault and no fresh token fixes it, so it carries no code.
-		expect(response.status).toBe(503);
+		// no Turnstile pair on this deployment, so ALTCHA is the check and a fresh solve fixes it.
+		expect(response.status).toBe(403);
 		const answered = (await response.json()) as Record<string, unknown>;
-		expect(answered.error).toBeUndefined();
-		// the donor's sentence, not the operator's: `operatorFix` names the variable to set and is
-		// written for the deployment's log (../lib/server/api/turnstile.ts), and so is the check's
-		// own sentence. `fix`, which no donor's card draws, says where to look.
+		expect(answered.error).toBe('challenge_failed');
 		expect(answered.message).not.toContain('TURNSTILE_');
-		expect(answered.message).not.toContain('deployment');
-		expect(answered.fix).toContain('Turnstile keys');
+		expect(answered.fix).toContain('`altchaPayload`');
 	});
 
 	it('never publishes a deploy-time variable in the body', async () => {
@@ -798,10 +795,8 @@ describe('POST /api/v1/forms/:id/donations — the capability it does not gate o
 		try {
 			const response = await post({ method: 'card' });
 
-			expect(response.status).toBe(503);
-			const answered = (await response.json()) as Record<string, unknown>;
-			expect(answered.error).toBeUndefined();
-			expect(String(answered.fix)).toContain('Turnstile keys');
+			expect(response.status).toBe(403);
+			expect(await response.json()).toMatchObject({ error: 'challenge_failed' });
 		} finally {
 			// the entry is the zone's and outlives this case: left behind, every case after it would
 			// be served a rail list nothing else asked for.
@@ -815,10 +810,8 @@ describe('POST /api/v1/forms/:id/donations — the capability it does not gate o
 	it('charges a Venmo gift on a repeating cadence no form offers it on', async () => {
 		const response = await post({ method: 'venmo', frequency: 'monthly' });
 
-		expect(response.status).toBe(503);
-		const answered = (await response.json()) as Record<string, unknown>;
-		expect(answered.error).toBeUndefined();
-		expect(String(answered.fix)).toContain('Turnstile keys');
+		expect(response.status).toBe(403);
+		expect(await response.json()).toMatchObject({ error: 'challenge_failed' });
 	});
 });
 
@@ -880,6 +873,23 @@ describe('POST /api/v1/forms/:id/donations — a fund gift the fund refuses', ()
 		expect(response.status).toBe(422);
 		expect(await response.json()).toMatchObject({ error: 'daf_grant_declined' });
 		expect(response.headers.get('access-control-allow-origin')).toBe(ALLOWED);
+	});
+
+	// the same gift on a deployment holding no Turnstile pair: past the challenge on a solved ALTCHA
+	// payload, and refused by it on that payload a second time.
+	it('takes a solved ALTCHA challenge once, and refuses it the second time', async () => {
+		chariotAnswers(Response.json({ title: 'Gone' }, { status: 410 }));
+		const { TURNSTILE_SITE_KEY: _, TURNSTILE_SECRET_KEY: __, ...noTurnstile } = CHARIOT;
+		const issued = await env.ALTCHA.challenge();
+		const solution = await solveChallenge({ challenge: issued, deriveKey });
+		const altchaPayload = btoa(JSON.stringify({ challenge: issued, solution }));
+
+		const taken = await post({ ...fundGift, altchaPayload }, { vars: noTurnstile });
+		expect(taken.status).toBe(409);
+
+		const replayed = await post({ ...fundGift, altchaPayload }, { vars: noTurnstile });
+		expect(replayed.status).toBe(403);
+		expect(await replayed.json()).toMatchObject({ error: 'challenge_failed' });
 	});
 });
 

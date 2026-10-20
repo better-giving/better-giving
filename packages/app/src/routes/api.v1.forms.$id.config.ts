@@ -38,9 +38,10 @@ import type { Route } from './+types/api.v1.forms.$id.config';
 // above everything here — a request that has asked too often is answered 429 before this file
 // runs, so it never reads `form`. that is where it has to be: the read this endpoint cannot avoid
 // is the one for an id nothing matches, and by the time a route is chosen it has already happened.
-// Turnstile is not owed here and is not missing: this endpoint initiates no payment and reads
+// the spam check is not owed here and is not missing: this endpoint initiates no payment and reads
 // nothing a donor typed, so there is no submission for a token to accompany — the endpoint that
-// takes one is where that check belongs.
+// takes one is where that check belongs. what this answer does carry is which check that endpoint
+// will ask for (`challengeUrl` in $lib/server/forms/published-config.ts).
 //
 // 5xx is outside the readable-refusal contract below, and deliberately so. an exception in the
 // reader becomes a 500 with no CORS headers, so the page that asked cannot read it — giving it one

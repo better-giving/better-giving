@@ -82,6 +82,18 @@ describe('parseQuoteRequest() — a submission that is fine', () => {
 
 		expect(result.ok && result.value.turnstileToken).toBeUndefined();
 	});
+
+	it('carries the proof of work through untouched', () => {
+		const result = parseQuoteRequest(body({ altchaPayload: 'eyJ9' }), CONFIG);
+
+		expect(result.ok && result.value.altchaPayload).toBe('eyJ9');
+	});
+});
+
+describe('parseQuoteRequest() — the proof of work', () => {
+	it('refuses an `altchaPayload` that is not a string', () => {
+		expect(refusal({ altchaPayload: { challenge: {} } }).message).toContain('`altchaPayload`');
+	});
 });
 
 describe('parseQuoteRequest() — the amount', () => {

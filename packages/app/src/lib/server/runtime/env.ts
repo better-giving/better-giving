@@ -1,3 +1,4 @@
+import { type Altcha, createAltcha } from '../api/altcha.ts';
 import type { RateLimiters } from './rate-limiter';
 
 // `Env`: the configuration a request reads through `context.get(platform).env`, built once when the
@@ -46,9 +47,30 @@ export const ENV_VAR_NAMES = [
 
 export type EnvVarName = (typeof ENV_VAR_NAMES)[number];
 
+/**
+ * the names the server refuses to start without, each with what it is for. every other name is
+ * optional: what it switches on is simply not offered while it is unset.
+ */
+export const REQUIRED_ENV_VARS = {
+	ADMIN_PASSWORD: 'the deployer’s sign-in password for /admin',
+	BETTER_AUTH_SECRET: 'the key that signs sign-in sessions'
+} as const satisfies Partial<Record<EnvVarName, string>>;
+
+/** one line per required name `source` leaves unset or blank, naming it and never a value. */
+export function missingRequiredEnv(source: Readonly<Record<string, string | undefined>>): string[] {
+	return Object.entries(REQUIRED_ENV_VARS)
+		.filter(([name]) => (source[name]?.trim() ?? '') === '')
+		.map(([name, purpose]) => `${name} is not set — it is ${purpose}.`);
+}
+
 declare global {
-	/** the configuration and in-process limiters one request reads, built by `readEnv`. */
+	/**
+	 * the configuration, in-process limiters and ALTCHA issuer one request reads, built by
+	 * `readEnv`.
+	 */
 	interface Env extends RateLimiters {
+		/** the process's ALTCHA issuer and replay set (../api/altcha.ts). */
+		readonly ALTCHA: Altcha;
 		readonly BETTER_AUTH_SECRET?: string;
 		readonly BETTER_AUTH_URL?: string;
 		readonly ADMIN_PASSWORD?: string;
@@ -81,15 +103,16 @@ declare global {
 	}
 }
 
-/** `Env` from `source` — `process.env` in the server — and the process's limiters. */
+/** `Env` from `source` — `process.env` in the server — and the process's limiters and issuer. */
 export function readEnv(
 	source: Readonly<Record<string, string | undefined>>,
-	limiters: RateLimiters
+	limiters: RateLimiters,
+	altcha: Altcha = createAltcha()
 ): Env {
 	const vars: { -readonly [Name in EnvVarName]?: string } = {};
 	for (const name of ENV_VAR_NAMES) {
 		const value = source[name];
 		if (value !== undefined) vars[name] = value;
 	}
-	return { ...vars, ...limiters };
+	return { ...vars, ...limiters, ALTCHA: altcha };
 }

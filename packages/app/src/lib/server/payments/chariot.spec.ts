@@ -917,7 +917,6 @@ describe('the arms a one-time grant has nothing behind', () => {
 	it.each([
 		['readRecurringGiftProvision', (p: PaymentProvider) => p.readRecurringGiftProvision()],
 		['prepareRecurringGifts', (p: PaymentProvider) => p.prepareRecurringGifts()],
-		['listWebhookEndpoints', (p: PaymentProvider) => p.listWebhookEndpoints()],
 		['listWalletDomains', (p: PaymentProvider) => p.listWalletDomains()]
 	])('refuses %s as unsupported, asking Chariot nothing', async (_name, arm) => {
 		const calls = recording([]);
@@ -926,5 +925,220 @@ describe('the arms a one-time grant has nothing behind', () => {
 
 		expect(result.ok === false && result.reason).toBe('unsupported');
 		expect(calls).toHaveLength(0);
+	});
+});
+
+describe('the event subscription', () => {
+	const HERE = 'https://give.example.org/api/chariot/webhook';
+
+	function subscription(id: string, overrides: Record<string, unknown> = {}) {
+		return {
+			id,
+			url: HERE,
+			category: 'grant.updated',
+			status: 'active',
+			created_at: '2026-10-20T12:00:00Z',
+			...overrides
+		};
+	}
+
+	it('lists every live subscription on the account, every page, against the one category acted on', async () => {
+		const calls = recording([
+			{
+				status: 200,
+				json: {
+					results: [subscription('sub-1'), subscription('sub-gone', { status: 'deleted' })],
+					nextPageToken: 'page-2'
+				}
+			},
+			{
+				status: 200,
+				json: { results: [subscription('sub-2', { status: 'requires_attention' })] }
+			}
+		]);
+
+		const listed = await createChariotProvider(CREDENTIALS).listWebhookEndpoints();
+
+		expect(listed).toEqual({
+			ok: true,
+			value: {
+				requiredEventTypes: ['grant.updated'],
+				endpoints: [
+					{
+						id: 'sub-1',
+						url: HERE,
+						enabled: true,
+						eventTypes: ['grant.updated'],
+						apiVersion: null,
+						verificationStamp: null
+					},
+					{
+						id: 'sub-2',
+						url: HERE,
+						enabled: false,
+						eventTypes: ['grant.updated'],
+						apiVersion: null,
+						verificationStamp: null
+					}
+				]
+			}
+		});
+		expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+			'GET https://sandboxapi.givechariot.com/v1/event_subscriptions?limit=100',
+			'GET https://sandboxapi.givechariot.com/v1/event_subscriptions?limit=100&cursor=page-2'
+		]);
+	});
+
+	/**
+	 * the secret Chariot signs with is the one this app sent: no call hands one back, so the line the
+	 * setup prints is only worth pasting if the subscription was made with it under the member the
+	 * reference names — an unknown member is ignored for a random secret nobody holds.
+	 */
+	it('subscribes the address with a secret it mints, which then verifies a delivery signed with it', async () => {
+		const calls = recording([
+			{
+				status: 200,
+				json: { results: [subscription('sub-elsewhere', { url: 'https://other.example/x' })] }
+			},
+			{ status: 201, json: subscription('sub-new') }
+		]);
+
+		const registered = await createChariotProvider(CREDENTIALS).registerWebhookEndpoint(HERE);
+
+		if (!registered.ok) throw new Error(registered.detail);
+		const secret = registered.value.verificationValue;
+		expect(secret).toMatch(/^[0-9a-f]{64}$/);
+		expect(registered.value.endpoint).toMatchObject({ id: 'sub-new', url: HERE, enabled: true });
+		const made = calls[1];
+		expect(`${made?.method} ${made?.url}`).toBe(
+			'POST https://sandboxapi.givechariot.com/v1/event_subscriptions'
+		);
+		expect(JSON.parse(made?.body ?? '')).toEqual({
+			url: HERE,
+			category: 'grant.updated',
+			signing_secret: secret
+		});
+
+		const t = '2026-10-20T12:00:00Z';
+		const body = JSON.stringify({ id: 'event_1', category: 'grant.updated' });
+		const signature = createHmac('sha256', secret).update(`${t}.${body}`).digest('hex');
+		const verified = await createChariotProvider({
+			...CREDENTIALS,
+			webhookSecret: secret
+		}).verifyEvent({ body, headers: { 'chariot-webhook-signature': `t=${t},v1=${signature}` } });
+		expect(verified.ok).toBe(true);
+	});
+
+	it('mints a different secret on every subscription', async () => {
+		recording([
+			{ status: 200, json: { results: [] } },
+			{ status: 201, json: subscription('sub-a') },
+			{ status: 200, json: { results: [] } },
+			{ status: 201, json: subscription('sub-b') }
+		]);
+		const provider = createChariotProvider(CREDENTIALS);
+
+		const first = await provider.registerWebhookEndpoint(HERE);
+		const second = await provider.registerWebhookEndpoint(HERE);
+
+		expect(first.ok && second.ok && first.value.verificationValue).not.toBe(
+			second.ok && second.value.verificationValue
+		);
+	});
+
+	// the sandbox answers a create wrapped in `event_subscription`, where the reference shows the bare
+	// subscription.
+	it('reads a created subscription wrapped the way the sandbox answers', async () => {
+		recording([
+			{ status: 200, json: { results: [] } },
+			{ status: 200, json: { event_subscription: subscription('sub-wrapped') } }
+		]);
+
+		const registered = await createChariotProvider(CREDENTIALS).registerWebhookEndpoint(HERE);
+
+		expect(registered.ok && registered.value.endpoint.id).toBe('sub-wrapped');
+	});
+
+	it('subscribes nothing where the account already holds a subscription at the address', async () => {
+		const calls = recording([{ status: 200, json: { results: [subscription('sub-here')] } }]);
+
+		const registered = await createChariotProvider(CREDENTIALS).registerWebhookEndpoint(HERE);
+
+		expect(registered).toMatchObject({ ok: false, reason: 'invalid_request' });
+		expect(registered.ok ? '' : registered.detail).toContain('sub-here');
+		expect(calls).toHaveLength(1);
+	});
+
+	it('carries no minted secret in a refusal', async () => {
+		const calls = recording([
+			{ status: 200, json: { results: [] } },
+			{
+				status: 400,
+				json: { type: 'about:blank', title: 'API Error', status: 400, detail: 'bad url' }
+			}
+		]);
+
+		const registered = await createChariotProvider(CREDENTIALS).registerWebhookEndpoint(HERE);
+
+		const sent = JSON.parse(calls[1]?.body ?? '{}').signing_secret;
+		expect(registered).toMatchObject({ ok: false, reason: 'invalid_request' });
+		expect(JSON.stringify(registered)).not.toContain(sent);
+	});
+
+	/**
+	 * created before the old one is marked deleted, so the account is never without a subscription
+	 * here: the old secret goes on verifying until the run ends, and the new one is in the answer.
+	 */
+	it('replaces a subscription by creating the new one first, then marking the old one deleted', async () => {
+		const calls = recording([
+			{ status: 201, json: subscription('sub-new') },
+			{ status: 200, json: subscription('sub-old', { status: 'deleted' }) }
+		]);
+
+		const replaced = await createChariotProvider(CREDENTIALS).replaceWebhookEndpoint(
+			'sub-old',
+			HERE
+		);
+
+		expect(replaced.ok && replaced.value.endpoint.id).toBe('sub-new');
+		expect(calls.map((call) => `${call.method} ${call.url} ${call.body}`)).toEqual([
+			expect.stringMatching(/^POST .*\/v1\/event_subscriptions \{/),
+			'PATCH https://sandboxapi.givechariot.com/v1/event_subscriptions/sub-old {"status":"deleted"}'
+		]);
+	});
+
+	it('leaves the old subscription alone where the new one was not created', async () => {
+		const calls = recording([{ status: 500, json: { title: 'API Error', detail: 'down' } }]);
+
+		const replaced = await createChariotProvider(CREDENTIALS).replaceWebhookEndpoint(
+			'sub-old',
+			HERE
+		);
+
+		expect(replaced).toMatchObject({ ok: false, reason: 'provider_error' });
+		expect(calls).toHaveLength(1);
+	});
+
+	// a new secret handed back while the old subscription still delivers here would be a line that
+	// verifies half of what arrives, so the new one is taken back down and the old secret stands.
+	it('takes the new subscription back down where the old one could not be marked deleted', async () => {
+		const calls = recording([
+			{ status: 201, json: subscription('sub-new') },
+			{ status: 500, json: { title: 'API Error', detail: 'down' } },
+			{ status: 200, json: subscription('sub-new', { status: 'deleted' }) }
+		]);
+
+		const replaced = await createChariotProvider(CREDENTIALS).replaceWebhookEndpoint(
+			'sub-old',
+			HERE
+		);
+
+		expect(replaced).toMatchObject({ ok: false });
+		expect(replaced.ok ? '' : replaced.detail).toMatch(/CHARIOT_WEBHOOK_SECRET.*still/);
+		expect(calls.at(-1)).toMatchObject({
+			method: 'PATCH',
+			url: 'https://sandboxapi.givechariot.com/v1/event_subscriptions/sub-new',
+			body: '{"status":"deleted"}'
+		});
 	});
 });
