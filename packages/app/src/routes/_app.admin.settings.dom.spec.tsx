@@ -3,7 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { CropSquare } from '$lib/admin/settings/logo-crop';
+import type { NonprofitLookupAnswer, NonprofitSearchAnswer } from '$lib/org/nonprofit-answers';
 import Settings from './_app.admin.settings';
+import { shouldRevalidate as searchShouldRevalidate } from './_app.admin.settings_.nonprofits';
+import { shouldRevalidate as lookupShouldRevalidate } from './_app.admin.settings_.nonprofits_.$ein';
 
 // what the Settings screen says about the two things a deployment can be missing without any box
 // on it being wrong — the mail values, which are set in `.env`, and the notification address — and
@@ -78,18 +81,37 @@ type Drawn = {
 /** one request to the logo's address: its method, and the body it carried. */
 type Sent = { readonly method: string; readonly body: FormData | null };
 
+/** how the two organisation addresses answer: a name search by its query, a lookup by its EIN. */
+type Nonprofits = {
+	readonly search?: (q: string) => Promise<NonprofitSearchAnswer>;
+	readonly lookup?: (ein: string) => Promise<NonprofitLookupAnswer>;
+};
+
+/** what reached the screen's other addresses: the organisation calls in order, and the saves. */
+type Asked = { readonly calls: string[]; readonly saves: FormData[] };
+
+const UNANSWERED = () => new Promise<never>(() => {});
+
 /**
- * the screen, with the logo's address answering as `answer` says. every request that reaches the
- * address is recorded in `sent`.
+ * the screen, with the logo's address answering as `answer` says and the organisation addresses as
+ * `nonprofits` does — each with its own module's `shouldRevalidate`, as the app routes it. every
+ * request that reaches the logo's address is recorded in `sent`, every organisation call and every
+ * save of the screen's own in `asked`.
  */
 function screen(
 	{ details, logo, ...over }: Drawn,
-	answer: (request: Request) => Promise<unknown> = async () => ({ logo: null })
-): { readonly root: HTMLElement; readonly sent: Sent[] } {
+	answer: (request: Request) => Promise<unknown> = async () => ({ logo: null }),
+	{ search = UNANSWERED, lookup = UNANSWERED }: Nonprofits = {}
+): { readonly root: HTMLElement; readonly sent: Sent[]; readonly asked: Asked } {
 	const sent: Sent[] = [];
+	const asked: Asked = { calls: [], saves: [] };
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/settings',
+			action: async ({ request }) => {
+				asked.saves.push(await request.formData());
+				return null;
+			},
 			Component: () =>
 				createElement(Settings as never, {
 					loaderData: {
@@ -111,9 +133,30 @@ function screen(
 				sent.push({ method: request.method, body });
 				return answer(request);
 			}
+		},
+		{
+			path: '/admin/settings/nonprofits',
+			shouldRevalidate: searchShouldRevalidate,
+			loader: ({ request }) => {
+				const q = new URL(request.url).searchParams.get('q') ?? '';
+				asked.calls.push(`search ${q}`);
+				return search(q);
+			}
+		},
+		{
+			path: '/admin/settings/nonprofits/:ein',
+			shouldRevalidate: lookupShouldRevalidate,
+			loader: ({ params }) => {
+				asked.calls.push(`lookup ${params.ein}`);
+				return lookup(params.ein ?? '');
+			}
 		}
 	]);
-	return { root: mount(createElement(Stub, { initialEntries: ['/admin/settings'] })), sent };
+	return {
+		root: mount(createElement(Stub, { initialEntries: ['/admin/settings'] })),
+		sent,
+		asked
+	};
 }
 
 /** the card a heading names, which is what each assertion below is scoped to. */
@@ -411,5 +454,346 @@ describe('the logo', () => {
 		expect(remove?.textContent).toBe('Removing');
 		expect(remove?.getAttribute('aria-busy')).toBe('true');
 		expect(buttonNamed(logo(root), 'Replace logo')?.getAttribute('aria-disabled')).toBe('true');
+	});
+});
+
+describe('find your charity', () => {
+	/** a profile with no details saved yet: every box empty. */
+	const EMPTY = Object.fromEntries(
+		Object.entries(DETAILS).map(([box, value]) => [box, Array.isArray(value) ? [] : ''])
+	) as Partial<typeof DETAILS>;
+
+	const LISTED = { deductible: true, revoked: false, revocationDate: null } as const;
+
+	const FOUND: NonprofitLookupAnswer = {
+		kind: 'lookup',
+		outcome: 'found',
+		fields: {
+			legal_name: 'Riverside Community Food Bank',
+			tax_id: '95-1234567',
+			address_line1: '2950 Jefferson St',
+			city: 'Riverside',
+			region: 'CA',
+			postal_code: '92504',
+			country: 'United States'
+		},
+		...LISTED
+	};
+
+	const MATCHES: NonprofitSearchAnswer = {
+		kind: 'search',
+		outcome: 'found',
+		matches: [
+			{
+				ein: '95-1234567',
+				name: 'Riverside Community Food Bank',
+				city: 'Riverside',
+				state: 'CA',
+				...LISTED
+			},
+			{
+				ein: '31-7654321',
+				name: 'Riverside Food Network',
+				city: 'Dayton',
+				state: 'OH',
+				deductible: false,
+				revoked: false,
+				revocationDate: null
+			},
+			{
+				ein: '52-1111111',
+				name: 'Riverside Food Pantry',
+				city: 'Riverside',
+				state: 'CA',
+				deductible: false,
+				revoked: true,
+				revocationDate: '2023-05-15'
+			},
+			{
+				ein: '77-2222222',
+				name: 'Riverside Gleaners',
+				city: '',
+				state: 'IL',
+				deductible: null,
+				revoked: null,
+				revocationDate: null
+			}
+		]
+	};
+
+	const details = (root: HTMLElement) => card(root, 'Organisation details');
+	const finderBox = (root: HTMLElement) =>
+		details(root).querySelector<HTMLInputElement>('search input[role="combobox"]');
+	const buttonNamed = (within: ParentNode, words: string) =>
+		[...within.querySelectorAll('button')].find((button) => button.textContent === words);
+	const said = (root: HTMLElement) =>
+		details(root).querySelector('.adm-findorg__said')?.textContent ?? '<no finder>';
+	const note = (root: HTMLElement) => details(root).querySelector('.adm-findnote')?.textContent;
+	const boxValue = (root: HTMLElement, name: string) =>
+		details(root).querySelector<HTMLInputElement>(`input[name="${name}"]`)?.value;
+
+	/** `text` typed into the finder's box with the focus in it, then Search pressed. */
+	async function press(root: HTMLElement, text: string) {
+		const box = finderBox(root);
+		if (box === null) throw new Error('the finder is not drawn');
+		act(() => box.focus());
+		type(box, text);
+		// the machine hands the typed value on a microtask after the input event.
+		await act(async () => {});
+		await act(async () => buttonNamed(details(root), 'Search')?.click());
+	}
+
+	/** the option naming `name`, clicked as a pointer would. */
+	async function pick(root: HTMLElement, name: string) {
+		const option = [...details(root).querySelectorAll<HTMLElement>('[role="option"]')].find((row) =>
+			row.textContent?.includes(name)
+		);
+		if (option === undefined) throw new Error(`no match named ${name}`);
+		await act(async () => option.click());
+	}
+
+	it('is open on a profile with no details, above the boxes', () => {
+		const { root } = screen({ notificationEmail: null, mail: SET, details: EMPTY });
+
+		const search = details(root).querySelector('search');
+		expect(search?.querySelector('label')?.textContent).toBe('Find your charity');
+		expect(buttonNamed(details(root), 'Search')).toBeDefined();
+		expect(
+			search?.compareDocumentPosition(details(root).querySelector('input[name="tax_id"]') as Node)
+		).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+		expect(buttonNamed(details(root), 'Pick a different organisation')).toBeUndefined();
+	});
+
+	it('hides once details are saved, and opens at Pick a different organisation', async () => {
+		const { root } = screen({ notificationEmail: null, mail: SET });
+
+		expect(details(root).querySelector('search')).toBeNull();
+		const reopen = buttonNamed(details(root), 'Pick a different organisation');
+		expect(reopen?.getAttribute('type')).toBe('button');
+
+		await act(async () => reopen?.click());
+
+		expect(finderBox(root)).not.toBeNull();
+		expect(document.activeElement).toBe(finderBox(root));
+		expect(buttonNamed(details(root), 'Pick a different organisation')).toBeUndefined();
+	});
+
+	it('makes one lookup for an EIN press, and nothing else', async () => {
+		const { root, asked } = screen(
+			{ notificationEmail: null, mail: SET, details: EMPTY },
+			undefined,
+			{
+				lookup: async () => FOUND
+			}
+		);
+
+		await press(root, '951234567');
+
+		await vi.waitFor(() =>
+			expect(boxValue(root, 'legal_name')).toBe('Riverside Community Food Bank')
+		);
+		expect(asked.calls).toEqual(['lookup 95-1234567']);
+	});
+
+	it('makes one search for a name press, and lists what it found', async () => {
+		const { root, asked } = screen(
+			{ notificationEmail: null, mail: SET, details: EMPTY },
+			undefined,
+			{
+				search: async () => MATCHES
+			}
+		);
+
+		await press(root, 'riverside food');
+
+		await vi.waitFor(() => expect(said(root)).toBe('4 matches.'));
+		expect(asked.calls).toEqual(['search riverside food']);
+		const rows = [...details(root).querySelectorAll('[role="option"]')].map(
+			(row) => row.textContent
+		);
+		expect(rows[0]).toContain('Riverside Community Food Bank');
+		expect(rows[0]).toContain('Riverside, CA');
+		expect(rows[3]).toContain('IL');
+	});
+
+	it('asks nothing while typing, and holds a second press while the first is out', async () => {
+		const { root, asked } = screen({ notificationEmail: null, mail: SET, details: EMPTY });
+		const box = finderBox(root) as HTMLInputElement;
+
+		act(() => box.focus());
+		type(box, 'riv');
+		type(box, 'river');
+		await act(async () => {});
+		expect(asked.calls).toEqual([]);
+
+		await press(root, 'riverside');
+		await vi.waitFor(() => expect(said(root)).toBe('Searching…'));
+		const search = buttonNamed(details(root), 'Search');
+		expect(search?.getAttribute('aria-busy')).toBe('true');
+		expect(search?.getAttribute('aria-disabled')).toBe('true');
+		await act(async () => search?.click());
+		expect(asked.calls).toEqual(['search riverside']);
+	});
+
+	it('looks a picked match up once and fills the boxes, saving nothing', async () => {
+		const lookedUp: NonprofitLookupAnswer = { ...FOUND, deductible: false };
+		const { root, asked } = screen(
+			{ notificationEmail: null, mail: SET, details: { ...EMPTY, address_line2: 'Suite 4' } },
+			undefined,
+			{ search: async () => MATCHES, lookup: async () => lookedUp }
+		);
+		await press(root, 'riverside food');
+		await vi.waitFor(() => expect(said(root)).toBe('4 matches.'));
+
+		await pick(root, 'Riverside Community Food Bank');
+
+		await vi.waitFor(() => expect(boxValue(root, 'tax_id')).toBe('95-1234567'));
+		expect(asked.calls).toEqual(['search riverside food', 'lookup 95-1234567']);
+		expect({
+			legal_name: boxValue(root, 'legal_name'),
+			address_line1: boxValue(root, 'address_line1'),
+			address_line2: boxValue(root, 'address_line2'),
+			city: boxValue(root, 'city'),
+			region: boxValue(root, 'region'),
+			postal_code: boxValue(root, 'postal_code'),
+			country: boxValue(root, 'country')
+		}).toEqual({
+			legal_name: 'Riverside Community Food Bank',
+			address_line1: '2950 Jefferson St',
+			address_line2: 'Suite 4',
+			city: 'Riverside',
+			region: 'CA',
+			postal_code: '92504',
+			country: 'United States'
+		});
+		expect(note(root)).toBe('Filled from the IRS list. Not listed as tax-deductible');
+		expect(asked.saves).toEqual([]);
+		expect(buttonNamed(details(root), 'Save details')?.hasAttribute('disabled')).toBe(false);
+		// the list it was picked from stays drawn.
+		expect(details(root).querySelectorAll('[role="option"]')).toHaveLength(4);
+	});
+
+	it('asks the service nothing more when the filled details are saved', async () => {
+		const { root, asked } = screen(
+			{ notificationEmail: null, mail: SET, details: EMPTY },
+			undefined,
+			{
+				lookup: async () => FOUND
+			}
+		);
+		await press(root, '95-1234567');
+		await vi.waitFor(() =>
+			expect(boxValue(root, 'legal_name')).toBe('Riverside Community Food Bank')
+		);
+
+		await act(async () => buttonNamed(details(root), 'Save details')?.click());
+
+		await vi.waitFor(() => expect(asked.saves).toHaveLength(1));
+		expect(asked.saves[0]?.get('legal_name')).toBe('Riverside Community Food Bank');
+		await act(async () => {});
+		expect(asked.calls).toEqual(['lookup 95-1234567']);
+	});
+
+	it('says each match’s standing, a revocation over its deductibility', async () => {
+		const { root } = screen({ notificationEmail: null, mail: SET, details: EMPTY }, undefined, {
+			search: async () => MATCHES
+		});
+
+		await press(root, 'riverside');
+		await vi.waitFor(() => expect(said(root)).toBe('4 matches.'));
+
+		const words = [...details(root).querySelectorAll('[role="option"]')].map(
+			(row) =>
+				row.querySelector('.adm-findrow__who > :last-child:not(.adm-findrow__place)')
+					?.textContent ?? null
+		);
+		expect(words).toEqual([
+			null,
+			'Not listed as tax-deductible',
+			'Tax-exempt status revoked May 15, 2023.',
+			'Tax-deductible status not known'
+		]);
+	});
+
+	it('says the standing of the organisation the boxes were filled from', async () => {
+		const { root } = screen({ notificationEmail: null, mail: SET, details: EMPTY }, undefined, {
+			lookup: async () => ({ ...FOUND, revoked: true, revocationDate: '2023-05-15' })
+		});
+
+		await press(root, '95-1234567');
+
+		await vi.waitFor(() =>
+			expect(note(root)).toBe('Filled from the IRS list. Tax-exempt status revoked May 15, 2023.')
+		);
+		expect(said(root)).toBe('');
+	});
+
+	it('refuses a query under two characters on screen, and sends nothing', async () => {
+		const { root, asked } = screen({ notificationEmail: null, mail: SET, details: EMPTY });
+
+		await press(root, ' r ');
+
+		expect(said(root)).toBe('Type at least 2 characters.');
+		await act(async () => {});
+		expect(asked.calls).toEqual([]);
+	});
+
+	it.each([
+		[
+			'a lookup not on the list',
+			'95-1234567',
+			{ kind: 'lookup', outcome: 'not_found' },
+			'Not on the IRS list.'
+		],
+		[
+			'a lookup the service could not answer',
+			'95-1234567',
+			{ kind: 'lookup', outcome: 'unavailable' },
+			"Couldn't look this up. Fill in the details yourself."
+		],
+		[
+			'a search the service could not answer',
+			'riverside',
+			{ kind: 'search', outcome: 'unavailable' },
+			"Couldn't search the IRS list. Search by EIN instead."
+		],
+		[
+			'a search with no matches',
+			'riverside',
+			{ kind: 'search', outcome: 'found', matches: [] },
+			'No matches.'
+		],
+		[
+			'a lookup turned away for the rate limit',
+			'95-1234567',
+			{ kind: 'lookup', outcome: 'rate_limited', retryAfter: 42 },
+			'Too many lookups for now. Try again in 42 seconds.'
+		],
+		[
+			'a search turned away for the day',
+			'riverside',
+			{ kind: 'search', outcome: 'rate_limited', retryAfter: 3600 },
+			'Too many lookups for now. Try again in 60 minutes.'
+		]
+	] as const)('says what %s comes to, and fills nothing', async (_, typed, answer, words) => {
+		const { root } = screen({ notificationEmail: null, mail: SET, details: EMPTY }, undefined, {
+			search: async () => answer as NonprofitSearchAnswer,
+			lookup: async () => answer as NonprofitLookupAnswer
+		});
+
+		await press(root, typed);
+
+		await vi.waitFor(() => expect(said(root)).toBe(words));
+		expect(boxValue(root, 'legal_name')).toBe('');
+		expect(note(root)).toBe('');
+		expect(buttonNamed(details(root), 'Save details')).toBeDefined();
+	});
+
+	it('says it is looking up while a lookup is out', async () => {
+		const { root } = screen({ notificationEmail: null, mail: SET, details: EMPTY });
+
+		await press(root, '95-1234567');
+
+		await vi.waitFor(() => expect(said(root)).toBe('Looking up…'));
 	});
 });

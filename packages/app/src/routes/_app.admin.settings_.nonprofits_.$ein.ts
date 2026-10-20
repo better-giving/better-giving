@@ -21,6 +21,15 @@ const NOT_HERE =
 const NOT_AN_EIN =
 	'No organisation at this address: it ends in an EIN, nine digits written `12-3456789`.';
 
+/**
+ * never read again with the screen's loaders: react router reloads a fetcher's `load` after every
+ * action on the page, and each reload would be a call against the service's allowance that no
+ * press asked for.
+ */
+export function shouldRevalidate(): boolean {
+	return false;
+}
+
 export async function loader({ context, params }: Route.LoaderArgs) {
 	if (context.get(staff).id !== STAFF_USER_ID) notFound(NOT_HERE);
 	if (!EIN.test(params.ein)) notFound(NOT_AN_EIN);

@@ -24,6 +24,15 @@ const NOT_HERE =
 	'No organisation search for a member’s session. The organisation’s details are the ' +
 	'deployer’s: sign in with `ADMIN_PASSWORD` at /login.';
 
+/**
+ * never read again with the screen's loaders: react router reloads a fetcher's `load` after every
+ * action on the page, and each reload would be a call against the service's allowance that no
+ * press asked for.
+ */
+export function shouldRevalidate(): boolean {
+	return false;
+}
+
 export async function loader({ context, request }: Route.LoaderArgs) {
 	if (context.get(staff).id !== STAFF_USER_ID) notFound(NOT_HERE);
 	const key = context.get(platform).env.NONPROFITS_API_KEY;

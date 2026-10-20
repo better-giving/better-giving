@@ -21,7 +21,7 @@ import type { TestSendReport } from '@better-giving/operator/console/test-send';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { useId, useState } from 'react';
+import { useEffect, useEffectEvent, useId, useState } from 'react';
 import { data, Form, useFetcher, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { buttonState } from '$lib/admin/save-button-state';
@@ -30,6 +30,8 @@ import { screenTitle } from '$lib/admin/screen-title';
 import { BrandColourField } from '$lib/admin/settings/brand-colour-field';
 import { LogoPicker } from '$lib/admin/settings/logo-picker';
 import type { Squared } from '$lib/admin/settings/logo-square';
+import { FILLED, PICK_ANOTHER } from '$lib/admin/settings/nonprofit-finder';
+import { type FinderOut, OrgFinder, StandingWord } from '$lib/admin/settings/org-finder';
 import { useSocialLinkLeads } from '$lib/admin/settings/social-link-lead';
 import { formPress } from '$lib/admin/unreached';
 import {
@@ -44,6 +46,12 @@ import {
 	whichForm
 } from '$lib/admin/use-admin-form';
 import { defineForm, type FormRejection, WHICH_FORM } from '$lib/forms/definition';
+import type {
+	NonprofitFields,
+	NonprofitLookupAnswer,
+	NonprofitSearchAnswer,
+	NonprofitStanding
+} from '$lib/org/nonprofit-answers';
 import { imageSrc } from '$lib/page/image-src';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { readConfigEnv } from '$lib/server/config/env';
@@ -101,6 +109,23 @@ const SCREEN = '/admin/settings';
 
 /** where the logo is put on and taken off. */
 const LOGO_ADDRESS = `${SCREEN}/logo`;
+
+/**
+ * where "Find your charity" asks: `?q=` searches by name, and `/<ein>` looks one organisation up
+ * (./_app.admin.settings_.nonprofits.ts, ./_app.admin.settings_.nonprofits_.$ein.ts).
+ */
+const NONPROFITS_ADDRESS = `${SCREEN}/nonprofits`;
+
+/** the details boxes a found lookup fills; `address_line2` and the rest are left as they stand. */
+const FOUND_BOXES = [
+	'legal_name',
+	'tax_id',
+	'address_line1',
+	'city',
+	'region',
+	'postal_code',
+	'country'
+] as const satisfies readonly (keyof NonprofitFields & DetailsField)[];
 
 /** the body of a member's not-found. the panel ../root.tsx draws does not show it; an agent reads it. */
 const NOT_HERE =
@@ -232,7 +257,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const stored = profile === null ? {} : toFormValues(profile);
 	const details = Object.fromEntries(
 		Object.keys(DETAILS_BOXES.shape).map((box) => [box, stored[box as DetailsField] ?? ''])
-	);
+	) as Record<DetailsField, string>;
 	const config = readConfigEnv(context.get(platform).env);
 	const mailSet = lines.find((line) => line.id === 'smtp')?.state === 'ready';
 
@@ -456,6 +481,18 @@ function DetailsCard({
 	});
 	const links = fields[SOCIAL_LINKS_FIELD];
 	const linkLead = useSocialLinkLeads();
+	const finder = useOrgFinder(details.legal_name === '', version);
+
+	// a found lookup puts its values in the boxes as edits, which arm Save details and save nothing.
+	const fill = useEffectEvent((answer: NonprofitLookupAnswer | undefined) => {
+		if (answer?.outcome !== 'found') return;
+		for (const box of FOUND_BOXES)
+			form.update({ name: fields[box].name, value: answer.fields[box] });
+		finder.filledFrom(answer);
+	});
+	useEffect(() => {
+		fill(finder.lookup);
+	}, [finder.lookup]);
 
 	return (
 		<Form method="post" {...getFormProps(form)}>
@@ -467,6 +504,7 @@ function DetailsCard({
 					Every receipt carries these, as the tax authority has them. No form goes live until the
 					EIN and registered name are in.
 				</p>
+				{finder.open ? <OrgFinder {...finder.props} /> : null}
 				<div className="adm-pair adm-pair--side">
 					<Field
 						{...marked(fields.tax_id)}
@@ -515,6 +553,14 @@ function DetailsCard({
 						<Field {...marked(fields.country)} label="Country" placeholder="United States" />
 					</div>
 				</fieldset>
+				{/* mounted in every state, so the sentence arriving in it is a change a reader is told. */}
+				<p className="adm-hint adm-findnote" role="status">
+					{finder.filled === null ? null : (
+						<>
+							{FILLED} <StandingWord standing={finder.filled} />
+						</>
+					)}
+				</p>
 				<Field
 					{...marked(fields.mission)}
 					as="textarea"
@@ -558,10 +604,70 @@ function DetailsCard({
 				<FormRefusal errors={form.errors} />
 				<div className="adm-actions">
 					<SaveButton label="Save details" state={buttonState(save)} />
+					{finder.open ? null : (
+						<Button type="button" variant="quiet" onClick={finder.reopen}>
+							{PICK_ANOTHER}
+						</Button>
+					)}
 				</div>
 			</Section>
 		</Form>
 	);
+}
+
+/**
+ * "Find your charity" in the details card: whether it is drawn, the two calls it makes, and the
+ * standing of the organisation the boxes were last filled from.
+ *
+ * **one press is one call**, a fetcher's `load` each: the service's keyless allowance is a call a
+ * minute. a name search and a lookup are two fetchers, so the list a match was picked from stays
+ * drawn while its lookup is out; neither address is read again when the screen's loaders are
+ * (`shouldRevalidate` in each).
+ *
+ * it opens on a profile with no details yet, and otherwise only at "Pick a different
+ * organisation". a save that lands — the profile's version moving — puts it away and drops the
+ * fill's note, since the boxes then hold what was stored.
+ */
+function useOrgFinder(empty: boolean, version: number) {
+	const searched = useFetcher<NonprofitSearchAnswer>();
+	const looked = useFetcher<NonprofitLookupAnswer>();
+	const [open, setOpen] = useState(empty);
+	const [pressedOpen, setPressedOpen] = useState(false);
+	const [filled, setFilled] = useState<NonprofitStanding | null>(null);
+
+	const [drawnAt, setDrawnAt] = useState(version);
+	if (version !== drawnAt) {
+		setDrawnAt(version);
+		setFilled(null);
+		if (!empty) setOpen(false);
+	}
+
+	const out: FinderOut =
+		searched.state !== 'idle' ? 'search' : looked.state !== 'idle' ? 'lookup' : null;
+
+	return {
+		open,
+		filled,
+		lookup: looked.data,
+		filledFrom: ({ deductible, revoked, revocationDate }: NonprofitStanding) =>
+			setFilled({ deductible, revoked, revocationDate }),
+		reopen: () => {
+			setPressedOpen(true);
+			setOpen(true);
+		},
+		props: {
+			search: searched.data,
+			lookup: looked.data,
+			out,
+			autoFocus: pressedOpen,
+			onSearch: (q: string) => {
+				void searched.load(`${NONPROFITS_ADDRESS}?${new URLSearchParams({ q })}`);
+			},
+			onLookUp: (ein: string) => {
+				void looked.load(`${NONPROFITS_ADDRESS}/${ein}`);
+			}
+		}
+	};
 }
 
 /** what the logo's address answers: the logo it put on or took off, or why not. */
