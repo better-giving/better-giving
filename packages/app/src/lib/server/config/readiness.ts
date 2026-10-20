@@ -2,6 +2,7 @@ import type { SetupJobId, SetupJobState } from '@better-giving/operator/setup-fo
 import { FOLD_LABELS, JOB_NOTES, JOB_WORDS, SETUP_JOBS } from '@better-giving/operator/setup-folds';
 import { identityMissing } from '../org/identity';
 import type { OrgProfile } from '../db/schema';
+import type { ProcessorName } from '../payments/provider';
 import type { ConfigEnv } from './env';
 import { MAIL_SMTP_VARS } from './env';
 
@@ -94,12 +95,22 @@ const allSet = (config: ConfigEnv, names: readonly (keyof ConfigEnv)[]): boolean
  * a pair rather than a flat list of everything payments needs, because the four are alternatives:
  * an organisation on any one of them alone holds no key for the other three and is set up.
  */
-const CHARGE_PAIRS: readonly (readonly (keyof ConfigEnv)[])[] = [
-	['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'],
-	['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'],
-	['CHARIOT_API_KEY', 'CHARIOT_CONNECT_ID'],
-	['NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_OUTCOME_CURRENCY']
-];
+const CHARGE_PAIRS: Readonly<Record<ProcessorName, readonly (keyof ConfigEnv)[]>> = {
+	stripe: ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'],
+	paypal: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'],
+	chariot: ['CHARIOT_API_KEY', 'CHARIOT_CONNECT_ID'],
+	nowpayments: ['NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_OUTCOME_CURRENCY']
+};
+
+/**
+ * every processor whose charge pair is set, in `CHARGE_PAIRS`' order: the payments job here, and
+ * the processor line on the donation-form screens (../forms/readiness.ts).
+ */
+export function chargingProcessors(config: ConfigEnv): ProcessorName[] {
+	return (Object.keys(CHARGE_PAIRS) as ProcessorName[]).filter((processor) =>
+		allSet(config, CHARGE_PAIRS[processor])
+	);
+}
 
 /** whether each of the five is done, from the facts alone. */
 function states(facts: SetupFacts): Record<SetupJobId, boolean> {
@@ -110,7 +121,7 @@ function states(facts: SetupFacts): Record<SetupJobId, boolean> {
 		// (../forms/readiness.ts), so a deployment serving no form and a row reading `Incomplete`
 		// are one fact stated twice rather than two readings that can disagree.
 		organisation: identityMissing(profile).length === 0,
-		payments: CHARGE_PAIRS.some((pair) => allSet(facts.config, pair)),
+		payments: chargingProcessors(facts.config).length > 0,
 		smtp: allSet(facts.config, MAIL_SMTP_VARS),
 		// the column is nullable and carries a not-blank check when it is set
 		// (`org_profile_notification_email_not_blank_check` in ../db/schema.ts), so a row holding

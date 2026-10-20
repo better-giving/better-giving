@@ -45,7 +45,7 @@ import {
 	unlistedSites
 } from '$lib/forms/input-schema';
 import { PROGRAM_MODE_LABELS } from '$lib/forms/program-modes';
-import { anyBlocker } from '$lib/forms/readiness';
+import { anyBlocker, LIVE_WITHHELD } from '$lib/forms/readiness';
 import {
 	EDITABLE_FORM_STATUSES,
 	type EditableFormStatus,
@@ -54,6 +54,8 @@ import {
 } from '$lib/forms/statuses';
 import { formatMinor } from '$lib/donations/money';
 import { redactPublicId } from '$lib/redact';
+import { STAFF_USER_ID } from '$lib/server/auth';
+import { readConfigEnv } from '$lib/server/config/env';
 import { invalid, parseForm, submittedForm, submittedVersion, unread } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
@@ -81,7 +83,7 @@ import { formsReadiness } from '$lib/server/forms/readiness';
 import { readOrgProfile } from '$lib/server/org/queries';
 import { readActivePrograms, readProgram } from '$lib/server/programs/queries';
 import { readSites } from '$lib/server/sites/queries';
-import { database } from '../context';
+import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.forms.$id';
 
 // one donation form: read as a loader, written by the action below. no client-side mutation path,
@@ -185,21 +187,6 @@ const SAVED_SECTIONS = ['name', 'program', 'giving', 'origins'] as const;
  * lighting a button over a form that was retired.
  */
 const ARCHIVED = 'archived';
-
-/**
- * what to say when Live was posted while a blocker stands.
- *
- * the select does not offer Live in that state, so reaching this means a stale tab, a hand-built
- * body, or a blocker that arrived between the page being drawn and the save being pressed. a
- * filtered `<option>` list is not a control, and the enum is not enough on its own here: `live` is
- * a member of `EDITABLE_FORM_STATUSES` whatever the deployment is doing.
- *
- * it names the block above rather than a variable: the block says which line stands and what it
- * costs, and a second account of it inside a field message would be one to keep in step.
- */
-const LIVE_WITHHELD =
-	'This form cannot be set live while a blocker above stands: nothing would be served to a ' +
-	'donor. Clear it and choose Live again.';
 
 /**
  * what a save pinned to a cause this deployment no longer offers says, keyed to the program box.
@@ -518,16 +505,18 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 
 	// everything that stops this form serving, and the reason it is on this screen at all: this is
 	// where a form is set live, and every line in the block is true of the deployment rather than of
-	// this row — a config missing any of the three identity fields is refused by `readFormConfig`
-	// (packages/form/src/config.ts) for every form at once, silently, so an operator who publishes
-	// here would watch a Live form show nothing on their own site with no screen anywhere saying
-	// why. `$lib/server/forms/readiness.ts` is shared with ./_app.admin.forms.new.tsx so neither
-	// screen can say a different thing about one deployment.
+	// this row — a blank identity field or no processor's keys and `publishedConfig` serves no form
+	// at all, silently, so an operator who publishes here would watch a Live form show nothing on
+	// their own site with no screen anywhere saying why. `$lib/server/forms/readiness.ts` is shared
+	// with ./_app.admin.forms.new.tsx so neither screen can say a different thing about one
+	// deployment.
 	//
 	// nothing to say for an archived form: it cannot be published from here whatever those values
 	// hold, and a block about a state nobody reading this page can act on is the same question with
 	// one wrong answer that the archive confirmation below is kept from asking.
-	const readiness = archived ? null : formsReadiness(profile);
+	const readiness = archived
+		? null
+		: formsReadiness(profile, readConfigEnv(context.get(platform).env));
 
 	// the outcome of whichever write on this screen just redirected here, taken: read and cleared on
 	// this one response, so a reload reports nothing. `$lib/server/flash.ts` owns that.
@@ -583,6 +572,9 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// site — the name group's save re-checks this, because a filtered `<option>` list is not a
 			// control.
 			liveOffered: !archived && !anyBlocker(readiness),
+			// whether the viewer deployed the site, the predicate ./_app.tsx reads: the readiness block
+			// is worded for who can fix each line.
+			deployer: context.get(staff).id === STAFF_USER_ID,
 			// which group's save just landed here, so the confirmation is drawn on the button that did
 			// it rather than in a banner four buttons would share. `null` for a marker no group
 			// answers to; `$lib/admin/saved-section.ts` states why.
@@ -680,12 +672,12 @@ export async function action(args: Route.ActionArgs) {
 		const db = context.get(database);
 
 		if (parsed.value.status === 'live') {
-			// one thing stands between a form and Live, and it is read here rather than carried from the
-			// loader: what a page was drawn against is not what is true when the button is pressed. the
-			// select does not offer Live while a blocker stands, but a filtered `<option>` list is markup
-			// and markup is not what stops a POST.
+			// the readiness block's blockers stand between a form and Live, and they are read here rather
+			// than carried from the loader: what a page was drawn against is not what is true when the
+			// button is pressed. the select does not offer Live while a blocker stands, but a filtered
+			// `<option>` list is markup and markup is not what stops a POST.
 			//
-			// a form on no site is not the second thing. a form is made ahead of the site it goes on, so an
+			// a form on no site is not one of them. a form is made ahead of the site it goes on, so an
 			// empty list publishes and the form serves wherever a site is ticked later.
 			let profile: Awaited<ReturnType<typeof readOrgProfile>>;
 			try {
@@ -697,7 +689,7 @@ export async function action(args: Route.ActionArgs) {
 				return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 			}
 
-			if (anyBlocker(formsReadiness(profile))) {
+			if (anyBlocker(formsReadiness(profile, readConfigEnv(context.get(platform).env)))) {
 				return invalid(400, submission.reject({ fieldErrors: { status: [LIVE_WITHHELD] } }));
 			}
 		}

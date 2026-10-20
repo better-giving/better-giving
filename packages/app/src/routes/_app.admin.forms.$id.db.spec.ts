@@ -9,6 +9,7 @@ import { createDb, type Db } from '$lib/server/db/client';
 import { CREATED_FLASH, redirectWithFlash, SAVED_FLASH } from '$lib/server/flash';
 import { readForm } from '$lib/server/forms/queries';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { signInAsMember } from '../staff-session.testing';
 import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as editor from './_app.admin.forms.$id';
@@ -21,12 +22,9 @@ import { client, first, run, stmt } from '$lib/server/db/database.testing';
 // the chain is mounted rather than the loader called, which is ../route-request.testing.ts's
 // pattern: the session gate is a `middleware` on ./_app.tsx and the handle is on the request
 // context, so a loader called on its own is a loader with the gate above it never run.
-// the cases about a deployment whose set-up is unfinished mount the screen alone (`ungated`).
 //
-// the deploy-time values ride in a per-request `env`, and they are here for one property: nothing
-// this route does turns on them. the ledger and the Live gate are built out of rows, and what a
-// Stripe key can charge is read on the console when it is pasted
-// (`packages/console-ui/src/lib/stripe-edits.ts`).
+// the deploy-time values ride in a per-request `env`: whether any processor's keys are set is one
+// of the two things the Live gate turns on, and the organisation's row is the other.
 //
 // no case here is about adding or dropping a row. the amounts editor is the form layer's own list
 // field, so a row added or removed by the group's own controls is browser state that reaches no
@@ -56,15 +54,6 @@ const ARCHIVE_FORM = 'form-archive';
 
 let db: Db;
 let request: RouteRequester;
-/**
- * the editor with no layout above it, for the cases about a deployment whose set-up is unfinished.
- *
- * the layout's middleware refuses every screen under it on such a deployment (./_app.tsx), so a
- * screen's own answer to a blank identity or an unset key is reached only by calling its loader
- * and action on their own. nothing here reads the session or the set-up state off the context, so
- * what it is handed is the database and the bindings, as it is through the layout.
- */
-let direct: RouteRequester;
 /** the bindings of a deployment whose five set-up jobs are done: what `request` is sent with. */
 let bindings: Env;
 let session: string;
@@ -86,7 +75,6 @@ beforeAll(async () => {
 		{ path: undefined, module: layout },
 		{ path: 'admin/forms/:id', module: editor }
 	]);
-	direct = mountRoutes([{ path: 'admin/forms/:id', module: editor }]);
 	session = await signIn();
 
 	const row = await first<{ id: string }>(
@@ -210,10 +198,8 @@ async function withoutTable<T>(table: string, during: () => Promise<T>): Promise
 }
 
 /**
- * the deploy-time values a fully set-up deployment holds.
- *
- * nothing this route reads is among them, which is what the pair below is for: a deployment with
- * none of these set draws the same screen and refuses the same writes.
+ * the deploy-time values a fully set-up deployment holds: Stripe's keys and its notice secret
+ * among them, so nothing stands in the way of Live.
  */
 const READY: Record<string, string> = {
 	STRIPE_PUBLISHABLE_KEY: 'pk_test_publishable',
@@ -262,6 +248,7 @@ type Loaded = {
 	programMode: string;
 	pinnedProgram: string | null;
 	liveOffered: boolean;
+	deployer: boolean;
 	saved: 'name' | 'program' | 'giving' | 'origins' | null;
 	archivedJustNow: boolean;
 	confirmArchive: boolean;
@@ -270,22 +257,13 @@ type Loaded = {
 
 /** one visit to this screen, carrying the session and whatever the browser holds beside it. */
 function visit(
-	options: {
-		id?: string;
-		query?: string;
-		vars?: Record<string, string>;
-		flash?: string;
-		ungated?: boolean;
-	} = {}
+	options: { id?: string; query?: string; vars?: Record<string, string>; flash?: string } = {}
 ): Promise<Response> {
-	const { id = FORM_ID, query = '', vars = READY, flash = '', ungated = false } = options;
+	const { id = FORM_ID, query = '', vars = READY, flash = '' } = options;
 	const cookie = [session, flash].filter((value) => value !== '').join('; ');
-	return (ungated ? direct : request)(
-		new Request(`${ORIGIN}/admin/forms/${id}${query}`, { headers: { cookie } }),
-		{
-			env: envOf(vars)
-		}
-	);
+	return request(new Request(`${ORIGIN}/admin/forms/${id}${query}`, { headers: { cookie } }), {
+		env: envOf(vars)
+	});
 }
 
 async function runLoad(options: Parameters<typeof visit>[0] = {}): Promise<Loaded> {
@@ -307,14 +285,14 @@ async function boxes(options: Parameters<typeof visit>[0] = {}): Promise<EditorB
 }
 
 /**
- * the organisation line of the readiness block, or a failure naming what went missing.
+ * the line of the readiness block for `job`, or a failure naming what went missing.
  *
- * looked up by label rather than by position, so a line added to the block ahead of it does not
+ * looked up by job rather than by position, so a line added to the block ahead of it does not
  * quietly move these cases onto a different one.
  */
-function identityLine(loaded: Loaded): FormReadinessLine {
-	const found = loaded.readiness?.find((line) => line.label === 'Organisation details');
-	if (!found) throw new Error('the readiness block has no organisation line');
+function readinessLine(loaded: Loaded, job: FormReadinessLine['job']): FormReadinessLine {
+	const found = loaded.readiness?.find((line) => line.job === job);
+	if (!found) throw new Error(`the readiness block has no ${job} line`);
 	return found;
 }
 
@@ -415,9 +393,9 @@ async function post(
 	id: string,
 	fields: Record<string, string | string[]>,
 	vars: Record<string, string> = READY,
-	{ version, ungated = false }: { version?: string; ungated?: boolean } = {}
+	{ version }: { version?: string } = {}
 ): Promise<{ redirect?: Redirected; failure?: Failure }> {
-	const response = await (ungated ? direct : request)(
+	const response = await request(
 		new Request(`${ORIGIN}/admin/forms/${id}`, {
 			method: 'POST',
 			headers: { cookie: session },
@@ -676,29 +654,31 @@ describe('/admin/forms/[id] load', () => {
 		expect(body).toContain('/admin/forms');
 	});
 
-	it('names both identity fields on a deployment nobody has filled anything in on', async () => {
+	it('publishes the organisation blocker on a deployment nobody has filled anything in on', async () => {
 		// this is the screen that sets a form live, and `publishedConfig` in
-		// `$lib/server/forms/published-config.ts` refuses a config missing either of them —
-		// silently, as far as the operator's own site is concerned. without this an operator chooses
-		// Live here, saves, reads "Saved", and their own site shows nothing.
-		//
-		// both fields are named rather than the first, so filling them in is one trip rather than
-		// two.
+		// `$lib/server/forms/published-config.ts` refuses a config missing either identity field —
+		// silently, as far as the operator's own site is concerned. what each line means is asserted
+		// in `$lib/server/forms/readiness.spec.ts`; what this route owes is publishing the answer.
 		await clearOrgProfile();
-		const identity = identityLine(await runLoad({ ungated: true }));
-		expect(identity.severity).toBe('blocker');
-		expect(identity.detail).toContain('Registered name');
-		expect(identity.detail).toContain('EIN');
+		expect(readinessLine(await runLoad(), 'organisation').severity).toBe('blocker');
 	});
 
-	it('reports the one that is blank, not every one it could have named', async () => {
-		// the EIN is nullable and nothing seeds the row, so the state an operator is most often in is
-		// one box short — and a block that listed both over a row holding one of them would send them
-		// back to re-type what is already saved.
-		await saveIdentity({ taxId: null });
-		const identity = identityLine(await runLoad({ ungated: true }));
-		expect(identity.detail).toContain('EIN');
-		expect(identity.detail).not.toContain('Registered name');
+	it('publishes the processor blocker on a deployment holding no processor’s keys', async () => {
+		const loaded = await runLoad({ vars: NOTHING_SET });
+		expect(readinessLine(loaded, 'processor').severity).toBe('blocker');
+	});
+
+	it('publishes whether the viewer is the one who deployed the site', async () => {
+		// the block is worded for who is reading: the deployer can fix every line, a member can only
+		// ask them to.
+		expect((await runLoad()).deployer).toBe(true);
+		const member = await signInAsMember(db, { env: bindings, password: PASSWORD, origin: ORIGIN });
+		const response = await request(
+			new Request(`${ORIGIN}${EDITOR_PATH}`, { headers: { cookie: member } }),
+			{ env: envOf(READY) }
+		);
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as Loaded).deployer).toBe(false);
 	});
 
 	it('renders no block at all once every line is resolved', async () => {
@@ -714,7 +694,7 @@ describe('/admin/forms/[id] load', () => {
 		// that has no status box at all.
 		await clearOrgProfile();
 		await archiveInPlace();
-		const { archived, readiness } = await runLoad({ ungated: true });
+		const { archived, readiness } = await runLoad();
 		expect(archived).toBe(true);
 		expect(readiness).toBe(null);
 	});
@@ -732,7 +712,7 @@ describe('/admin/forms/[id] load', () => {
 		['a deployment set up in full', READY],
 		['a deployment set up with nothing', NOTHING_SET]
 	] as const)('hands the snippet over on %s', async (_case, vars) => {
-		const loaded = await runLoad({ vars, ungated: vars === NOTHING_SET });
+		const loaded = await runLoad({ vars });
 		expect(loaded.snippet).toContain(`form="${FORM_ID}"`);
 		// and the editor is drawn in full beside it: configuring a form was never gated on the keys.
 		expect(loaded.values.name).toBe('General Fund');
@@ -1078,20 +1058,27 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		// every config without those three columns — so publishing here would produce a form that
 		// renders nothing on the org's own site.
 		await clearOrgProfile();
-		expect((await runLoad({ ungated: true })).liveOffered).toBe(false);
+		expect((await runLoad()).liveOffered).toBe(false);
 	});
 
 	it('offers Live once nothing stands', async () => {
 		expect((await runLoad()).liveOffered).toBe(true);
 	});
 
-	it('offers Live on a deployment with no Stripe keys, because the gate is the rows', async () => {
-		// the deletion this control turns on. what a key can charge is settled on the console when it
-		// is pasted (`packages/console-ui/src/lib/stripe-edits.ts`), and a form set live over a
-		// key that cannot charge is a deployment to fix there rather than a form to withhold here.
-		const loaded = await runLoad({ vars: NOTHING_SET, ungated: true });
-		expect(loaded.liveOffered).toBe(true);
+	it('does not offer Live on a deployment holding no processor’s keys', async () => {
+		// `publishedConfig` serves no form a donor could pay through, so a form set live here would
+		// take nothing. the snippet is still handed over: configuring a form is not gated on keys.
+		const loaded = await runLoad({ vars: NOTHING_SET });
+		expect(loaded.liveOffered).toBe(false);
 		expect(loaded.snippet).toContain(`form="${FORM_ID}"`);
+	});
+
+	it('offers Live with a warning while a processor’s payment notices are unset', async () => {
+		// a gift is charged without them and never heard to settle, which is worth saying and not
+		// worth withholding Live over.
+		const loaded = await runLoad({ vars: { ...READY, STRIPE_WEBHOOK_SECRET: '' } });
+		expect(readinessLine(loaded, 'notices').severity).toBe('warning');
+		expect(loaded.liveOffered).toBe(true);
 	});
 
 	it('refuses a posted Live anyway, because a filtered option list is not a control', async () => {
@@ -1099,9 +1086,7 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		// the button being pressed. the check is read in the action rather than carried from the
 		// loader, so what it answers is the deployment as it stands at the moment of the write.
 		await clearOrgProfile();
-		const { failure, redirect } = await post(NAME_FORM, FORM_ID, submission(NAME_FORM), READY, {
-			ungated: true
-		});
+		const { failure, redirect } = await post(NAME_FORM, FORM_ID, submission(NAME_FORM));
 		expect(redirect).toBeUndefined();
 		expect(failure?.status).toBe(400);
 		// keyed to the status box, because that is the one an operator can change — and the sentence
@@ -1128,24 +1113,41 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		const { redirect } = await post(
 			NAME_FORM,
 			FORM_ID,
-			submission(NAME_FORM, { status: 'draft', name: 'Renamed while blocked' }),
-			READY,
-			{ ungated: true }
+			submission(NAME_FORM, { status: 'draft', name: 'Renamed while blocked' })
 		);
 		expect(redirect?.status).toBe(303);
 		expect((await readForm(db, FORM_ID))?.name).toBe('Renamed while blocked');
 	});
 
-	it('lets a posted Live through on a deployment with no Stripe keys', async () => {
-		// the action re-checks the same rows the select was filtered by and nothing else. a key that
-		// cannot charge is a deployment to fix on the console, not a publish to refuse here.
-		const { redirect } = await post(
+	it('refuses a posted Live on a deployment holding no processor’s keys', async () => {
+		const { failure, redirect } = await post(
 			NAME_FORM,
 			FORM_ID,
 			submission(NAME_FORM, { status: 'live' }),
-			NOTHING_SET,
-			{ ungated: true }
+			NOTHING_SET
 		);
+		expect(redirect).toBeUndefined();
+		expect(failure?.status).toBe(400);
+		expect(failure?.errors).toMatchObject({ status: [expect.any(String)] });
+		expect((await readForm(db, FORM_ID))?.status).toBe('draft');
+	});
+
+	it('accepts a posted Live once both blockers clear, and not before', async () => {
+		await clearOrgProfile();
+		const live = submission(NAME_FORM, { status: 'live' });
+		expect((await post(NAME_FORM, FORM_ID, live, NOTHING_SET)).failure?.status).toBe(400);
+		await saveIdentity();
+		expect((await post(NAME_FORM, FORM_ID, live, NOTHING_SET)).failure?.status).toBe(400);
+		const { redirect } = await post(NAME_FORM, FORM_ID, live);
+		expect(redirect?.status).toBe(303);
+		expect((await readForm(db, FORM_ID))?.status).toBe('live');
+	});
+
+	it('lets a posted Live through while only a processor’s payment notices are unset', async () => {
+		const { redirect } = await post(NAME_FORM, FORM_ID, submission(NAME_FORM, { status: 'live' }), {
+			...READY,
+			STRIPE_WEBHOOK_SECRET: ''
+		});
 		expect(redirect?.status).toBe(303);
 		expect((await readForm(db, FORM_ID))?.status).toBe('live');
 	});

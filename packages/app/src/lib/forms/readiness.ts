@@ -1,5 +1,5 @@
-// how bad a thing is for a donation form, in the one place both the judgement and the component
-// may import from.
+// what stands between a donation form and a donor and how bad it is, in the one place both the
+// judgement and the component may import from.
 //
 // not under `$lib/server/**`, for the reason `./offered-rails.ts` beside it is not: the union is
 // what `$lib/server/forms/readiness.ts` assigns and what the block on the donation-form screens
@@ -36,26 +36,34 @@ export const FORM_READINESS_LABELS: Record<FormReadinessSeverity, string> = {
 };
 
 /**
+ * what a line is about: the three things that stand between a donation form and a donor.
+ *
+ *   organisation — the registered name and the EIN a form states while asking.
+ *   processor    — the keys of at least one payment processor, without which no gift is charged.
+ *   notices      — the value a processor's payment notices are verified with, for each processor
+ *                  whose keys are set. without it a gift is charged and never heard to settle, so
+ *                  it warns and never blocks.
+ *
+ * a closed list, because the screens word each line by its job and by who is reading — the
+ * person who deployed the site can fix all three, and a member can only ask them — so the server
+ * sends no sentence for any of them.
+ */
+export const FORM_READINESS_JOBS = ['organisation', 'processor', 'notices'] as const;
+export type FormReadinessJob = (typeof FORM_READINESS_JOBS)[number];
+
+/**
  * one thing a donation form needs, and where this deployment stands on it.
  *
- * a name, a severity and what it costs — and no member saying where to go about it. every line is a
- * fact about a row this deployment holds, and the screen that writes that row is the one already
- * under the block, so a pointer would be a link from a screen to itself. what this deployment's own
- * capabilities are doing is not reported here at all: they are set and said back on the console
- * (`packages/console-ui/src/lib/stripe-section.tsx`).
+ * a job and a severity, and no member saying where to go about it or what it costs: both are the
+ * screen's to word, from the job (`FORM_READINESS_JOBS`).
  */
 export interface FormReadinessLine {
-	/** what the line is about, in the words the screen that writes the row calls it. */
-	readonly label: string;
-	readonly severity: FormReadinessSeverity;
+	readonly job: FormReadinessJob;
 	/**
-	 * what it costs on this screen, or `null` once there is nothing to say.
-	 *
-	 * a resolved line keeps its place in the list and loses its sentence: it is there so that a
-	 * list an operator is working through does not renumber itself as they fix things, and quiet
-	 * so that the ones still asking for something are the only ones carrying any weight.
+	 * a resolved line keeps its place in the list while a sibling is unresolved, so a list an
+	 * operator is working through does not renumber itself as they fix things.
 	 */
-	readonly detail: string | null;
+	readonly severity: FormReadinessSeverity;
 }
 
 /**
@@ -63,7 +71,7 @@ export interface FormReadinessLine {
  * on rather than only reports.
  *
  * a blocker means `publishedConfig` in `$lib/server/forms/published-config.ts` serves nothing, so
- * the status box on the screen that edits a form does not offer Live while one stands and the
+ * the status box on the screens that write a form does not offer Live while one stands and the
  * action behind it refuses one anyway. a warning never stops a write — that is the whole
  * difference between the two words.
  *
@@ -77,3 +85,19 @@ export interface FormReadinessLine {
 export function anyBlocker(lines: readonly FormReadinessLine[] | null): boolean {
 	return lines?.some((line) => line.severity === 'blocker') ?? false;
 }
+
+/**
+ * what to say when Live was posted while a blocker stands, keyed to the status box on both screens
+ * that write a form.
+ *
+ * the select does not offer Live in that state, so reaching this means a stale tab, a hand-built
+ * body, or a blocker that arrived between the page being drawn and the save being pressed. a
+ * filtered `<option>` list is not a control, and the enum is not enough on its own here: `live` is
+ * a member of `EDITABLE_FORM_STATUSES` whatever the deployment is doing.
+ *
+ * it names the block above rather than a job: the block says which line stands, and a second
+ * account of it inside a field message would be one to keep in step.
+ */
+export const LIVE_WITHHELD =
+	'This form cannot be set live while a blocker above stands: nothing would be served to a ' +
+	'donor. Clear it and choose Live again.';

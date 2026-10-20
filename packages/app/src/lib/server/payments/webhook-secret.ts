@@ -99,6 +99,14 @@ const VERIFICATION: Readonly<
 });
 
 /**
+ * the variable a processor's payment notices are verified with. its presence is what the notices
+ * line on the donation-form screens reads (../forms/readiness.ts).
+ */
+export function noticeVariable(processor: ProcessorName): keyof ConfigEnv {
+	return VERIFICATION[processor].variable;
+}
+
+/**
  * the comparison a row reporting the variable cannot make.
  *
  * such a row reads a variable, and the value it would have to be compared against is returned once

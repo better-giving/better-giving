@@ -2,9 +2,11 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb, type Db } from '$lib/server/db/client';
+import type { FormReadinessLine } from '$lib/forms/readiness';
 import { CREATED_FLASH, takeFlash } from '$lib/server/flash';
 import { readForm, readForms } from '$lib/server/forms/queries';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { signInAsMember } from '../staff-session.testing';
 import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as create from './_app.admin.forms.new';
@@ -17,7 +19,6 @@ import { client, first, run, stmt } from '$lib/server/db/database.testing';
 // the chain is mounted rather than the loader called, which is ../route-request.testing.ts's
 // pattern: the session gate is a `middleware` on ./_app.tsx and the handle is on the request
 // context, so a loader called on its own is a loader with the gate above it never run.
-// the cases about a deployment whose set-up is unfinished mount the screen alone (`ungated`).
 //
 // the deploy-time half is a per-request `env` rather than a value a case builds, so what a case
 // exercises is the deployment an operator can actually be in rather than a shape assembled here.
@@ -36,12 +37,6 @@ const PASSWORD = 'a-long-enough-password';
 
 let db: Db;
 let request: RouteRequester;
-/**
- * the screen with no layout above it, for the cases about a deployment whose set-up is unfinished:
- * the layout refuses every screen under it on one (./_app.tsx), and this screen reads nothing off
- * the session or the set-up state, only the database.
- */
-let direct: RouteRequester;
 /** the bindings of a deployment whose five set-up jobs are done: what `request` is sent with. */
 let bindings: Env;
 let session: string;
@@ -61,7 +56,6 @@ beforeAll(async () => {
 		{ path: undefined, module: layout },
 		{ path: 'admin/forms/new', module: create }
 	]);
-	direct = mountRoutes([{ path: 'admin/forms/new', module: create }]);
 	session = await signIn();
 
 	const row = await first<{ id: string }>(
@@ -112,9 +106,8 @@ async function signIn(): Promise<string> {
  * written past drizzle for the reason the form fixtures are: what the route reads is a column, and a
  * fixture going through the query that reads it would be testing itself.
  *
- * every case starts from a deployment whose forms could serve, because the ledger is the gate on
- * this screen — a blank identity is a blocker, and a blocker refuses the write. the cases about that
- * state say so themselves.
+ * every case starts from a deployment whose forms could serve, so the cases about a blocker are
+ * the only ones that say anything about it.
  */
 async function saveIdentity(): Promise<void> {
 	await run(stmt('delete from org_profile'));
@@ -159,10 +152,8 @@ async function insertProgram(id: string, name: string, archived = false): Promis
 }
 
 /**
- * the deploy-time values a fully set-up deployment holds.
- *
- * nothing this route reads is among them, and that is the point of the pair below: the ledger is
- * built out of rows, so a deployment with none of these set makes a form exactly as this one does.
+ * the deploy-time values a fully set-up deployment holds: Stripe's keys and its notice secret
+ * among them, so nothing stands in the way of Live.
  */
 const READY: Record<string, string> = {
 	STRIPE_PUBLISHABLE_KEY: 'pk_test_publishable',
@@ -188,18 +179,18 @@ function envOf(vars: Record<string, string>): Env {
 
 /** what the screen is handed. */
 type Loaded = {
-	readiness: { label: string; severity: string }[] | null;
+	readiness: FormReadinessLine[] | null;
+	deployer: boolean;
 	sites: string[];
 	programs: { value: string; label: string }[];
 	values: Record<string, unknown>;
 	currency: string;
 };
 
-async function load(vars: Record<string, string> = READY, ungated = false): Promise<Loaded> {
-	const response = await (ungated ? direct : request)(
-		new Request(`${ORIGIN}${NEW}`, { headers: { cookie: session } }),
-		{ env: envOf(vars) }
-	);
+async function load(vars: Record<string, string> = READY, cookie = session): Promise<Loaded> {
+	const response = await request(new Request(`${ORIGIN}${NEW}`, { headers: { cookie } }), {
+		env: envOf(vars)
+	});
 	expect(response.status).toBe(200);
 	return (await response.json()) as Loaded;
 }
@@ -264,12 +255,8 @@ type SaveRedirect = { status: number; location: string | null; cookie: string | 
  * things this route owes CLAUDE.md and calling the action directly would run it with the gate above
  * it never run.
  */
-async function save(
-	fields: Record<string, string[]>,
-	vars: Record<string, string> = READY,
-	ungated = false
-) {
-	const response = await (ungated ? direct : request)(
+async function save(fields: Record<string, string[]>, vars: Record<string, string> = READY) {
+	const response = await request(
 		new Request(`${ORIGIN}${NEW}`, {
 			method: 'POST',
 			headers: { cookie: session },
@@ -355,6 +342,7 @@ describe('/admin/forms/new load', () => {
 		// on a form they have not touched.
 		expect(Object.keys(await load()).sort()).toEqual([
 			'currency',
+			'deployer',
 			'programs',
 			'readiness',
 			'sites',
@@ -368,18 +356,25 @@ describe('/admin/forms/new load', () => {
 		// no screen saying why. what each line means is asserted in
 		// `$lib/server/forms/readiness.spec.ts`; what this route owes is publishing the answer.
 		await run(stmt('delete from org_profile'));
-		const { readiness } = await load(READY, true);
-		expect(readiness?.find((line) => line.label === 'Organisation details')?.severity).toBe(
-			'blocker'
-		);
+		const { readiness } = await load();
+		expect(readiness?.find((line) => line.job === 'organisation')?.severity).toBe('blocker');
 	});
 
-	it('reports nothing about the deployment on a deployment set up with nothing', async () => {
-		// the block is built out of rows and reads no deploy-time value at all: what a Stripe key can
-		// charge is settled on the console when it is pasted
-		// (`packages/console-ui/src/lib/stripe-edits.ts`), and this screen could only ever repeat
-		// it and point somewhere it is not.
-		expect((await load(NOTHING_SET, true)).readiness).toBe(null);
+	it('publishes the processor blocker on a deployment holding no processor’s keys', async () => {
+		const { readiness } = await load(NOTHING_SET);
+		expect(readiness?.find((line) => line.job === 'processor')?.severity).toBe('blocker');
+	});
+
+	it('publishes no block on a deployment with nothing standing', async () => {
+		expect((await load()).readiness).toBe(null);
+	});
+
+	it('publishes whether the viewer is the one who deployed the site', async () => {
+		// the block is worded for who is reading: the deployer can fix every line, a member can only
+		// ask them to.
+		expect((await load()).deployer).toBe(true);
+		const member = await signInAsMember(db, { env: bindings, password: PASSWORD, origin: ORIGIN });
+		expect((await load(READY, member)).deployer).toBe(false);
 	});
 
 	it('publishes every site this deployment has listed, in the operator’s own order', async () => {
@@ -495,34 +490,51 @@ describe('/admin/forms/new save', () => {
 		expect(stored && (await readForm(db, stored.id))).toMatchObject({ revenueAccountId });
 	});
 
-	it('refuses to make a form at all while a blocker stands, and writes nothing', async () => {
-		// the ledger is the gate on this screen rather than a heads-up: the page draws no boxes and a
-		// disabled button while a blocker stands, and this is the control behind that. a page drawn
-		// without a submit is markup, and markup is not what stops a POST — a stale tab, a hand-built
-		// body or a row emptied between the draw and the press all reach here.
-		await run(stmt('delete from org_profile'));
-		const { redirect, failure } = await save(submission(), READY, true);
-		// asserted before the failure is read, because it is the shape the failure takes: a save that
-		// went through redirects, and reading a status off `undefined` would report this as a
-		// `TypeError` rather than as a form having been made on a deployment that serves nothing.
-		expect(redirect).toBeUndefined();
-		expect(failure?.status).toBe(400);
-		// a banner and not a field error: no box on this form is what went wrong, and the block above
-		// it is where the offending line is already named.
-		expect(failure?.formErrors.at(-1)).toBeTypeOf('string');
-		expect(failure?.valid).toBe(false);
-		expect(failure?.errors).toEqual({});
-		expect(await readForms(db)).toEqual([]);
-	});
+	it.each([
+		['the organisation’s details are blank', READY, true],
+		['no processor’s keys are set', NOTHING_SET, false]
+	] as const)(
+		'saves a new form as a draft while %s, and lands on its page',
+		async (_case, vars, blankOrg) => {
+			// a form is worth making ahead of the deployment being able to serve it, so the blockers stop
+			// Live and nothing else. the form's own page is where the block says what still stands.
+			if (blankOrg) await run(stmt('delete from org_profile'));
+			const { redirect } = await save(submission({ status: 'draft' }), vars);
+			expect(redirect?.status).toBe(303);
+			const [stored] = await readForms(db);
+			expect(stored?.status).toBe('draft');
+			expect(redirect?.location).toBe(`${LIST}/${stored?.id}`);
+		}
+	);
 
-	it('makes a form on a deployment with no Stripe keys, because the gate is the rows', async () => {
-		// what the ledger gates on is the identity a form has to state while asking, which is a row.
-		// whether the deployment can charge is not asked here and is not this screen's to ask: it is
-		// settled on the console when the keys are pasted
-		// (`packages/console-ui/src/lib/stripe-edits.ts`).
-		const { redirect } = await save(submission(), NOTHING_SET, true);
-		expect(redirect?.status).toBe(303);
-		expect(await readForms(db)).toHaveLength(1);
+	it.each([
+		['the organisation’s details are blank', READY, true],
+		['no processor’s keys are set', NOTHING_SET, false]
+	] as const)(
+		'refuses a new form asking for Live while %s, and writes nothing',
+		async (_case, vars, blankOrg) => {
+			// the status box offers no Live while a blocker stands, and this is the control behind that:
+			// a filtered `<option>` list is markup, and markup is not what stops a POST.
+			if (blankOrg) await run(stmt('delete from org_profile'));
+			const { redirect, failure } = await save(submission({ status: 'live' }), vars);
+			// asserted before the failure is read, because it is the shape the failure takes: a save that
+			// went through redirects, and reading a status off `undefined` would report this as a
+			// `TypeError` rather than as a form having been made live on a deployment that serves nothing.
+			expect(redirect).toBeUndefined();
+			expect(failure?.status).toBe(400);
+			// keyed to the status box, because that is the one an operator can change.
+			expect(failure?.errors).toMatchObject({ status: [expect.any(String)] });
+			expect(await readForms(db)).toEqual([]);
+		}
+	);
+
+	it('makes a form live while only a processor’s payment notices are unset', async () => {
+		const { redirect } = await save(submission({ status: 'live' }), {
+			...READY,
+			STRIPE_WEBHOOK_SECRET: ''
+		});
+		expect(redirect?.location).toBe(LIST);
+		expect((await readForms(db))[0]?.status).toBe('live');
 	});
 });
 

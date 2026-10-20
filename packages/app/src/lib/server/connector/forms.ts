@@ -2,7 +2,6 @@ import { eq } from 'drizzle-orm';
 import { FORM_CURRENCY, majorText } from '../../forms/amounts';
 import type { FormInputField, FormInputFieldErrors, FormInputValues } from '../../forms/fields';
 import { NEW_FORM } from '../../forms/new-form';
-import { anyBlocker } from '../../forms/readiness';
 import { unlistedSiteProblem, unlistedSites } from '../../forms/input-schema';
 import type { ProgramMode } from '../../forms/program-modes';
 import type { Db } from '../db/client';
@@ -26,7 +25,7 @@ import {
 	updateFormOrigins,
 	updateFormProgram
 } from '../forms/queries';
-import { formsReadiness } from '../forms/readiness';
+import { identityMissing } from '../org/identity';
 import { readOrgProfile } from '../org/queries';
 import { readSites } from '../sites/queries';
 import type { Refused } from './campaigns';
@@ -273,7 +272,7 @@ async function unlistedIssue(db: Db, origins: readonly string[]): Promise<Issue 
 
 /** whether the organisation's details stand between this deployment and a serving form. */
 async function blocked(db: Db): Promise<boolean> {
-	return anyBlocker(formsReadiness(await readOrgProfile(db)));
+	return identityMissing(await readOrgProfile(db)).length > 0;
 }
 
 const NOT_READY =
