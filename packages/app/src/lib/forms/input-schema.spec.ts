@@ -6,7 +6,8 @@ import {
 	FORM_INPUT_FORM,
 	FORM_PROGRAM_INPUT,
 	INVERTED_BOUNDS,
-	REQUIRED
+	REQUIRED,
+	unlistedSiteProblem
 } from './input-schema';
 
 // what a donation form's boxes may hold, checked with no database and no browser — these are the
@@ -252,5 +253,18 @@ describe('the program group', () => {
 		});
 		expect(errors.program_id).toEqual([REQUIRED]);
 		expect(errors['suggested_amounts[0]']).toHaveLength(1);
+	});
+});
+
+describe('a ticked site this deployment no longer lists', () => {
+	it('names the site and the card on Donation forms where it is listed again', () => {
+		expect(unlistedSiteProblem(['https://acme.org'])).toBe(
+			'`https://acme.org` is no longer listed for this deployment. Untick it, or list it again ' +
+				'under Which sites your forms go on, on Donation forms.'
+		);
+	});
+
+	it('says nothing when every ticked site is listed', () => {
+		expect(unlistedSiteProblem([])).toBe(null);
 	});
 });

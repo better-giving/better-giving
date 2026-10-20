@@ -70,17 +70,36 @@ type Asked = {
 	site: string | null;
 };
 
+/** the sites card as the loader hands it over. */
+type SitesCard = {
+	donatePage: string;
+	listed: string[];
+	mayEdit: boolean;
+	saved: 'saved' | 'wallets_pending' | null;
+};
+
+/** the deployer's card over two sites, with nothing just saved. */
+const DEPLOYER_SITES: SitesCard = {
+	donatePage: 'https://give.riverbanktrust.org/donate',
+	listed: ['https://riverbanktrust.org', 'https://give.riverbanktrust.org'],
+	mayEdit: true,
+	saved: null
+};
+
 /** the screen as it stands over whatever forms the deployment has, and whatever the address asks. */
 function screen(
 	embedding: Asked | null = null,
-	forms: Projected[] = [GENERAL, APPEAL]
+	forms: Projected[] = [GENERAL, APPEAL],
+	sites: SitesCard = DEPLOYER_SITES,
+	actionData: unknown = undefined
 ): HTMLElement {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/forms',
 			Component: () =>
 				createElement(DonationForms as never, {
-					loaderData: { created: null, embedding, forms },
+					loaderData: { created: null, embedding, forms, sites },
+					actionData,
 					params: {},
 					matches: []
 				})
@@ -181,9 +200,9 @@ it('puts nothing over the list and no labelled value inside a card, on either re
 		// it would be two ways to the same screen a card apart. nothing stands over the records
 		// either: a draft's own pill says the state, and the screen that publishes says the rest.
 		expect(root.querySelector('.adm-pageheader')).toBe(null);
-		expect(root.querySelector('.adm-hint')).toBe(null);
+		expect(list(root).querySelector('.adm-hint')).toBe(null);
 		// the sites are presses at the foot of the record rather than a value read beside a label.
-		expect(root.textContent).not.toContain('Sites');
+		expect(list(root).textContent).not.toContain('Sites');
 		expect(root.textContent).not.toContain('View donation page');
 	}
 });
@@ -272,4 +291,91 @@ it('offers the way out and the page the sites are ticked on', () => {
 
 	expect(out).toContain('/admin/forms');
 	expect(out).toContain('/admin/forms/frm_general');
+});
+
+/** the card after the list, found by the address the form editor's hint links to. */
+function sitesCard(root: HTMLElement): HTMLElement {
+	const card = root.querySelector<HTMLElement>('#sites');
+	if (card === null) throw new Error('the screen drew no sites card');
+	return card;
+}
+
+it('draws the sites card after the list, titled with the question it answers', () => {
+	const root = screen();
+	const card = sitesCard(root);
+
+	expect([...root.querySelectorAll('.adm-list, #sites')]).toEqual([list(root), card]);
+	expect(card.querySelector('h2')?.textContent).toBe('Which sites your forms go on');
+});
+
+it('gives the deployer the donation page first and read-only, then a box per site', () => {
+	const card = sitesCard(screen());
+	const boxes = [...card.querySelectorAll<HTMLInputElement>('input:not([type="hidden"])')];
+
+	expect(boxes.map((box) => box.value)).toEqual([
+		'https://give.riverbanktrust.org/donate',
+		'https://riverbanktrust.org',
+		'https://give.riverbanktrust.org'
+	]);
+	// the donation page posts nothing and cannot be typed over; the sites are the list itself.
+	expect(boxes[0]?.readOnly).toBe(true);
+	expect(boxes[0]?.name).toBe('');
+	expect(boxes.slice(1).map((box) => box.name)).toEqual(['sites[0]', 'sites[1]']);
+	expect(card.textContent).toContain('Default');
+	expect(card.textContent).toContain('Add a site');
+	const presses = [...card.querySelectorAll('button')];
+	expect(
+		presses.filter((press) => press.type === 'submit').map((press) => press.textContent)
+	).toEqual(['Save sites']);
+});
+
+it('shows a member the same sites with no box and no press, and says who can change them', () => {
+	const card = sitesCard(screen(null, undefined, { ...DEPLOYER_SITES, mayEdit: false }));
+
+	expect(card.querySelector('input, button, form')).toBe(null);
+	expect([...card.querySelectorAll('li')].map((row) => row.textContent)).toEqual([
+		'https://give.riverbanktrust.org/donate Default',
+		'https://riverbanktrust.org',
+		'https://give.riverbanktrust.org'
+	]);
+	expect(card.textContent).toContain('Only the person who deployed this site can change the list.');
+});
+
+it('says a save landed and the wallet buttons are still to come, when Stripe did not register them', () => {
+	const card = sitesCard(screen(null, undefined, { ...DEPLOYER_SITES, saved: 'wallets_pending' }));
+
+	expect(card.querySelector('[role="status"]')?.textContent).toContain('Your sites were saved.');
+	expect(card.textContent).toContain(
+		'Stripe draws Apple Pay, Google Pay and Link only on sites registered on your account'
+	);
+});
+
+it('says nothing about the wallets after a save Stripe registered in full', () => {
+	const card = sitesCard(screen(null, undefined, { ...DEPLOYER_SITES, saved: 'saved' }));
+
+	expect(card.textContent).not.toContain('Apple Pay, Google Pay and Link only');
+});
+
+it('says at the press which forms stand in the way of a removal, and draws no tick over it', () => {
+	const refused = {
+		form: {
+			id: 'forms-sites',
+			result: {
+				status: 'error',
+				initialValue: { sites: ['https://give.riverbanktrust.org'] },
+				error: {
+					'': [
+						'Nothing was saved. A site you removed is still switched on for a donation form: ' +
+							'`https://riverbanktrust.org` (General Fund). Untick it on the forms named, then ' +
+							'save the list again.'
+					]
+				}
+			}
+		}
+	};
+	const card = sitesCard(screen(null, undefined, { ...DEPLOYER_SITES, saved: 'saved' }, refused));
+
+	expect(card.textContent).toContain('https://riverbanktrust.org (General Fund)');
+	expect(card.querySelector('code')?.textContent).toBe('https://riverbanktrust.org');
+	expect(card.textContent).not.toContain('Saved');
 });

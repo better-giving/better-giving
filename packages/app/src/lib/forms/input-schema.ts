@@ -137,7 +137,7 @@ export function unlistedSites(ticked: readonly string[], listed: readonly string
  * pass. `null` is nothing in the way, which is what the caller acts on.
  *
  * it names the two ways out, because either is a real answer: the site can be unticked here, or it
- * can be listed again on the console and stay on this form.
+ * can be listed again in the sites card on /admin/forms and stay on this form.
  */
 export function unlistedSiteProblem(unlisted: readonly string[]): string | null {
 	if (unlisted.length === 0) return null;
@@ -145,7 +145,7 @@ export function unlistedSiteProblem(unlisted: readonly string[]): string | null 
 		.map(
 			(origin) =>
 				`\`${origin}\` is no longer listed for this deployment. Untick it, or list it again ` +
-				'on the console.'
+				'under Which sites your forms go on, on Donation forms.'
 		)
 		.join(' ');
 }
