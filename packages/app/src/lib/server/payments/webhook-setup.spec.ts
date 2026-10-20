@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
 import { PAYPAL_WEBHOOK_PATH } from '@better-giving/operator/paypal/webhook-listener';
 import { STRIPE_WEBHOOK_PATH } from '@better-giving/operator/stripe/webhook-endpoint';
+import type { ChariotConnect, ChariotDirectory, ChariotOrganisation } from './chariot';
 import type {
 	PaymentProvider,
 	PaymentResult,
 	RegisteredWebhookEndpoint,
 	WebhookEndpointRegistry
 } from './provider';
-import { setupWebhook } from './webhook-setup';
+import { type ChariotOnboarding, setupWebhook } from './webhook-setup';
 
 // what `node scripts/setup-webhook.ts <name>` decides, away from the process it runs in. the port is
 // a value here, so every case runs with no network and no account.
@@ -93,7 +94,7 @@ describe('setupWebhook', () => {
 
 		const result = await setupWebhook(['stripe'], ENV, () => provider);
 
-		expect(result).toEqual({ ok: true, line: 'STRIPE_WEBHOOK_SECRET=whsec_new', notices: [] });
+		expect(result).toEqual({ ok: true, lines: ['STRIPE_WEBHOOK_SECRET=whsec_new'], notices: [] });
 		expect(calls.at(-1)).toBe(`register ${URL_HERE}`);
 	});
 
@@ -107,7 +108,7 @@ describe('setupWebhook', () => {
 
 		const result = await setupWebhook(['stripe'], ENV, () => provider);
 
-		expect(result).toMatchObject({ ok: true, line: 'STRIPE_WEBHOOK_SECRET=whsec_new' });
+		expect(result).toMatchObject({ ok: true, lines: ['STRIPE_WEBHOOK_SECRET=whsec_new'] });
 		expect(calls).not.toContain(`register ${URL_HERE}`);
 		expect(calls.at(-1)).toBe(`replace we_old ${URL_HERE}`);
 		const notices = result.ok ? result.notices.join('\n') : '';
@@ -200,7 +201,7 @@ describe('setupWebhook for PayPal', () => {
 
 		const result = await setupWebhook(['paypal'], PAYPAL_ENV, () => provider);
 
-		expect(result).toEqual({ ok: true, line: 'PAYPAL_WEBHOOK_ID=WH-NEW', notices: [] });
+		expect(result).toEqual({ ok: true, lines: ['PAYPAL_WEBHOOK_ID=WH-NEW'], notices: [] });
 		expect(calls.at(-1)).toBe(`register ${PAYPAL_HERE}`);
 	});
 
@@ -214,7 +215,7 @@ describe('setupWebhook for PayPal', () => {
 
 		const result = await setupWebhook(['paypal'], PAYPAL_ENV, () => provider);
 
-		expect(result).toMatchObject({ ok: true, line: 'PAYPAL_WEBHOOK_ID=WH-HERE' });
+		expect(result).toMatchObject({ ok: true, lines: ['PAYPAL_WEBHOOK_ID=WH-HERE'] });
 		expect(calls).toContain('resubscribe WH-HERE');
 		expect(calls.some((call) => call.startsWith('register') || call.startsWith('replace'))).toBe(
 			false
@@ -240,19 +241,192 @@ describe('setupWebhook for PayPal', () => {
 
 describe('setupWebhook for Chariot', () => {
 	const CHARIOT_HERE = `${ORIGIN}${CHARIOT_WEBHOOK_PATH}`;
-	const CHARIOT_ENV = { CHARIOT_API_KEY: 'notarealchariotkey', BETTER_AUTH_URL: ORIGIN };
+	const CHARIOT_ENV = {
+		CHARIOT_API_KEY: 'notarealchariotkey',
+		BETTER_AUTH_URL: ORIGIN,
+		DATABASE_URL: 'file:unused.db'
+	};
 	const MINTED = 'ab'.repeat(32);
+	const HOPE: ChariotOrganisation = {
+		id: 'org_01jpjenf5q6cawy43yxfcrxhct',
+		name: 'Hope Foundation',
+		city: 'Kigali',
+		state: null,
+		dafEligible: true
+	};
+	const CONNECTED: ChariotConnect = { id: 'live_connect-1', active: true, existing: false };
 
-	it('subscribes this deployment’s address and gives back the secret it signs with as the line', async () => {
+	/**
+	 * the organisation's side of a Chariot run: the profile it reads and the directory it asks, each
+	 * answering from a script and recording what it was asked.
+	 */
+	function organisation(
+		profile: { readonly ein: string | null; readonly notificationEmail: string | null } = {
+			ein: '12-3456789',
+			notificationEmail: 'alerts@example.org'
+		},
+		found: PaymentResult<readonly ChariotOrganisation[]> = { ok: true, value: [HOPE] },
+		connected: PaymentResult<ChariotConnect> = { ok: true, value: CONNECTED }
+	) {
+		const asked: string[] = [];
+		const directory: ChariotDirectory = {
+			async findOrganisations(ein) {
+				asked.push(`search ${ein}`);
+				return found;
+			},
+			async connect(organisationId, contactEmail) {
+				asked.push(`connect ${organisationId} ${contactEmail}`);
+				return connected;
+			}
+		};
+		const onboarding: ChariotOnboarding = {
+			readIdentity: async () => profile,
+			directory: () => directory
+		};
+		return { asked, onboarding };
+	}
+
+	it('connects the organisation found by its EIN and gives back the Connect id and the signing secret', async () => {
 		const { provider, calls } = port(holding(), {
 			ok: true,
 			value: { endpoint: summary('sub-new', CHARIOT_HERE), verificationValue: MINTED }
 		});
+		const { asked, onboarding } = organisation();
 
-		const result = await setupWebhook(['chariot'], CHARIOT_ENV, () => provider);
+		const result = await setupWebhook(['chariot'], CHARIOT_ENV, () => provider, onboarding);
 
-		expect(result).toEqual({ ok: true, line: `CHARIOT_WEBHOOK_SECRET=${MINTED}`, notices: [] });
+		expect(result).toEqual({
+			ok: true,
+			lines: ['CHARIOT_CONNECT_ID=live_connect-1', `CHARIOT_WEBHOOK_SECRET=${MINTED}`],
+			notices: []
+		});
+		expect(asked).toEqual([`search 123456789`, `connect ${HOPE.id} alerts@example.org`]);
 		expect(calls.at(-1)).toBe(`register ${CHARIOT_HERE}`);
+	});
+
+	/**
+	 * a re-run. Chariot answers a second Create Connect with the one it holds, so the Connect id is
+	 * the same one, and the deployer is told so beside the secret that did change.
+	 */
+	it('keeps the Connect Chariot already holds for the organisation and says its id is unchanged', async () => {
+		const { provider } = port(holding(summary('sub-old', CHARIOT_HERE)), {
+			ok: true,
+			value: { endpoint: summary('sub-new', CHARIOT_HERE), verificationValue: MINTED }
+		});
+		const { onboarding } = organisation(undefined, undefined, {
+			ok: true,
+			value: { ...CONNECTED, existing: true }
+		});
+
+		const result = await setupWebhook(['chariot'], CHARIOT_ENV, () => provider, onboarding);
+
+		expect(result).toMatchObject({
+			ok: true,
+			lines: ['CHARIOT_CONNECT_ID=live_connect-1', `CHARIOT_WEBHOOK_SECRET=${MINTED}`]
+		});
+		const notices = result.ok ? result.notices.join('\n') : '';
+		expect(notices).toMatch(/kept/i);
+		expect(notices).toMatch(/CHARIOT_CONNECT_ID.*unchanged/);
+	});
+
+	it('says where Chariot has not switched the Connect on yet', async () => {
+		const { provider } = port(holding(), {
+			ok: true,
+			value: { endpoint: summary('sub-new', CHARIOT_HERE), verificationValue: MINTED }
+		});
+		const { onboarding } = organisation(undefined, undefined, {
+			ok: true,
+			value: { ...CONNECTED, active: false }
+		});
+
+		const result = await setupWebhook(['chariot'], CHARIOT_ENV, () => provider, onboarding);
+
+		expect(result).toMatchObject({ ok: true });
+		expect(result.ok ? result.notices.join('\n') : '').toMatch(/hasn’t switched .*on/);
+	});
+
+	const NEAR: ChariotOrganisation = {
+		id: 'org_near',
+		name: 'Hope Foundation Trust',
+		city: null,
+		state: 'NY',
+		dafEligible: true
+	};
+
+	/**
+	 * every way the organisation's side stops a run. each is a sentence on stderr naming where the
+	 * fix is, and each stops before the subscription, so the one already delivering keeps delivering.
+	 */
+	it.each([
+		[
+			'no EIN saved',
+			organisation({ ein: null, notificationEmail: 'alerts@example.org' }),
+			/^No EIN is saved .*Add the EIN in Settings/,
+			[]
+		],
+		[
+			'no notification address saved',
+			organisation({ ein: '12-3456789', notificationEmail: null }),
+			/Add the notification address in Settings/,
+			[]
+		],
+		[
+			'an EIN not in Chariot’s directory',
+			organisation(undefined, { ok: true, value: [] }),
+			/12-3456789, isn’t in Chariot’s directory\. Check it in Settings/,
+			['search 123456789']
+		],
+		[
+			'more than one organisation carrying the EIN',
+			organisation(undefined, { ok: true, value: [HOPE, NEAR] }),
+			/more than one organisation .*Hope Foundation, Kigali; Hope Foundation Trust, NY/,
+			['search 123456789']
+		],
+		[
+			'an organisation Chariot takes no fund gift for',
+			organisation(undefined, { ok: true, value: [{ ...HOPE, dafEligible: false }] }),
+			/doesn’t accept fund gifts for Hope Foundation\. Check your EIN in Settings/,
+			['search 123456789']
+		],
+		[
+			'a Connect Chariot refused',
+			organisation(undefined, undefined, {
+				ok: false,
+				reason: 'invalid_request',
+				detail: 'Chariot did not connect the organisation. Chariot said: API Error: bad contact'
+			}),
+			/^Chariot did not connect the organisation/,
+			['search 123456789', `connect ${HOPE.id} alerts@example.org`]
+		]
+	])(
+		'refuses %s and leaves the subscription alone',
+		async (_, { asked, onboarding }, says, expected) => {
+			const { provider, calls } = port(holding(summary('sub-old', CHARIOT_HERE)));
+
+			const result = await setupWebhook(['chariot'], CHARIOT_ENV, () => provider, onboarding);
+
+			expect(result).toMatchObject({ ok: false, status: 1 });
+			expect(result.ok ? '' : result.message).toMatch(says);
+			expect(asked).toEqual(expected);
+			expect(calls).toEqual([]);
+		}
+	);
+
+	it('refuses a database it cannot read, naming DATABASE_URL, and asks Chariot nothing', async () => {
+		const { provider, calls } = port(holding());
+
+		const result = await setupWebhook(['chariot'], CHARIOT_ENV, () => provider, {
+			readIdentity: async () => {
+				throw new Error('SQLITE_ERROR: no such table: org_profile');
+			},
+			directory: () => {
+				throw new Error('asked Chariot with no EIN read');
+			}
+		});
+
+		expect(result).toMatchObject({ ok: false, status: 1 });
+		expect(result.ok ? '' : result.message).toMatch(/DATABASE_URL.*no such table: org_profile/);
+		expect(calls).toEqual([]);
 	});
 
 	/**
@@ -266,23 +440,43 @@ describe('setupWebhook for Chariot', () => {
 			value: { endpoint: summary('sub-new', CHARIOT_HERE), verificationValue: MINTED }
 		});
 
-		const result = await setupWebhook(['chariot'], CHARIOT_ENV, () => provider);
+		const result = await setupWebhook(
+			['chariot'],
+			CHARIOT_ENV,
+			() => provider,
+			organisation().onboarding
+		);
 
-		expect(result).toMatchObject({ ok: true, line: `CHARIOT_WEBHOOK_SECRET=${MINTED}` });
+		expect(result).toMatchObject({
+			ok: true,
+			lines: ['CHARIOT_CONNECT_ID=live_connect-1', `CHARIOT_WEBHOOK_SECRET=${MINTED}`]
+		});
 		expect(calls.at(-1)).toBe(`replace sub-old ${CHARIOT_HERE}`);
 		const notices = result.ok ? result.notices.join('\n') : '';
 		expect(notices).toMatch(/CHARIOT_WEBHOOK_SECRET stopped working/);
 	});
 
 	it.each([
-		['the API key', { BETTER_AUTH_URL: ORIGIN }, 'CHARIOT_API_KEY'],
-		['the public address', { CHARIOT_API_KEY: 'notarealchariotkey' }, 'BETTER_AUTH_URL']
+		['the API key', { ...CHARIOT_ENV, CHARIOT_API_KEY: undefined }, 'CHARIOT_API_KEY'],
+		['the public address', { ...CHARIOT_ENV, BETTER_AUTH_URL: undefined }, 'BETTER_AUTH_URL'],
+		['the database', { ...CHARIOT_ENV, DATABASE_URL: undefined }, 'DATABASE_URL']
 	])('refuses without %s, naming it, and asks Chariot nothing', async (_, env, named) => {
-		const result = await setupWebhook(['chariot'], env, () => {
-			throw new Error('connected with an input missing');
-		});
+		const result = await setupWebhook(
+			['chariot'],
+			env,
+			() => {
+				throw new Error('connected with an input missing');
+			},
+			{
+				readIdentity: async () => {
+					throw new Error('read the profile with an input missing');
+				},
+				directory: () => {
+					throw new Error('asked Chariot with an input missing');
+				}
+			}
+		);
 
-		expect(result).toMatchObject({ ok: false, status: 1 });
-		expect(result.ok ? '' : result.message).toContain(named);
+		expect(result).toEqual({ ok: false, status: 1, message: `${named} is not set in .env.` });
 	});
 });

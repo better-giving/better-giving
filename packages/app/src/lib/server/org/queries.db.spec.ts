@@ -18,8 +18,8 @@ import { client, first, run, stmt } from '$lib/server/db/database.testing';
 // a real database, over the committed migrations — so the singleton check, the
 // not-blank CHECKs and `STRICT` are all the deployed ones.
 //
-// the `org_profile` table object is deliberately not imported here: every read and write of
-// it lives in ./queries.ts, and the probes below reach past drizzle on purpose — a check is
+// the `org_profile` table object is deliberately not imported here: every drizzle read and write
+// of it lives in ./queries.ts, and the probes below reach past drizzle on purpose — a check is
 // a property of the database, so the statement that tests it should be the one a
 // hand-run statement would send.
 

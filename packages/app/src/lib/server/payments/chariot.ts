@@ -177,16 +177,17 @@ const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2}
 /** an answer Chariot gave, read as far as its status and its JSON. */
 type Answer = { readonly status: number; readonly body: unknown };
 
-export function createChariotProvider(credentials: ChariotCredentials): PaymentProvider {
-	const base = credentials.apiUrl.replace(/\/+$/, '');
+/** one call, answered with Chariot's status and body, or with the failure of never getting one. */
+type Call = (
+	method: 'GET' | 'POST' | 'PATCH',
+	path: string,
+	body?: unknown,
+	deadline?: AbortSignal
+) => Promise<Answer | PaymentFailure>;
 
-	/** one call, answered with Chariot's status and body, or with the failure of never getting one. */
-	async function call(
-		method: 'GET' | 'POST' | 'PATCH',
-		path: string,
-		body?: unknown,
-		deadline?: AbortSignal
-	): Promise<Answer | PaymentFailure> {
+function chariotCall(credentials: Pick<ChariotCredentials, 'apiKey' | 'apiUrl'>): Call {
+	const base = credentials.apiUrl.replace(/\/+$/, '');
+	return async (method, path, body, deadline) => {
 		let response: Response;
 		try {
 			response = await fetch(`${base}${path}`, {
@@ -214,7 +215,11 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 			parsed = null;
 		}
 		return { status: response.status, body: parsed };
-	}
+	};
+}
+
+export function createChariotProvider(credentials: ChariotCredentials): PaymentProvider {
+	const call = chariotCall(credentials);
 
 	/** Get Grant, answered with the grant's body as Chariot sent it. */
 	async function getGrant(grantId: string): Promise<PaymentResult<unknown>> {
@@ -611,6 +616,103 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 			unsupported(
 				'A grant is made in dollars, so there is no coin list to read. Nothing was asked of Chariot.'
 			)
+	};
+}
+
+/** an organisation in Chariot's directory, in the facts a deployer recognises it by. */
+export type ChariotOrganisation = {
+	readonly id: string;
+	readonly name: string;
+	readonly city: string | null;
+	readonly state: string | null;
+	/**
+	 * whether Chariot takes fund gifts to it. the reference leaves `daf_eligible` optional, so only
+	 * an explicit `false` reads as no.
+	 */
+	readonly dafEligible: boolean;
+};
+
+/** an organisation's Connect, whose `id` is the cid `<chariot-connect>` loads with. */
+export type ChariotConnect = {
+	readonly id: string;
+	/** `false` is a Connect Chariot processes no grant on yet. */
+	readonly active: boolean;
+	/** the one the organisation already had, which Create Connect answers with a 200 for a 201. */
+	readonly existing: boolean;
+};
+
+/** the two calls that find the organisation a deployment serves and give it a Connect. */
+export type ChariotDirectory = {
+	/** every organisation in Chariot's directory carrying `ein`, given as nine digits. */
+	findOrganisations(ein: string): Promise<PaymentResult<readonly ChariotOrganisation[]>>;
+	/** the organisation's Connect, made with `contactEmail` as its contact where it has none. */
+	connect(organisationId: string, contactEmail: string): Promise<PaymentResult<ChariotConnect>>;
+};
+
+/**
+ * Chariot's directory and Connects, which `pnpm setup-webhook:chariot` reaches and no request does.
+ *
+ * an EIN-shaped `q` is an exact lookup (https://docs.givechariot.com/v2026-04-01/api/organizations/search),
+ * but the answer is a list, so rows are held to the EIN rather than trusted to it. Create Connect
+ * makes at most one per organisation and answers a repeat with that one
+ * (https://docs.givechariot.com/v2026-04-01/api/connects/create), so asking again is the read.
+ */
+export function createChariotDirectory(
+	credentials: Pick<ChariotCredentials, 'apiKey' | 'apiUrl'>
+): ChariotDirectory {
+	const call = chariotCall(credentials);
+	return {
+		async findOrganisations(ein) {
+			const answer = await call(
+				'GET',
+				`/v1/organizations/search?${new URLSearchParams({ q: ein })}`
+			);
+			if ('ok' in answer) return answer;
+			if (answer.status !== 200) {
+				return classifyStatus(answer.status, answer.body, 'Chariot did not search its directory');
+			}
+			const results = field(answer.body, 'results') ?? [];
+			if (!Array.isArray(results)) return unreadable('a directory search');
+			const rows: ChariotOrganisation[] = [];
+			for (const row of results) {
+				if (stringField(row, 'ein')?.replaceAll('-', '') !== ein) continue;
+				const id = stringField(row, 'id');
+				if (id === null) return unreadable('a directory search');
+				rows.push({
+					id,
+					name: stringField(row, 'name') ?? id,
+					city: stringField(row, 'city'),
+					state: stringField(row, 'state'),
+					dafEligible: field(row, 'daf_eligible') !== false
+				});
+			}
+			return { ok: true, value: rows };
+		},
+
+		async connect(organisationId, contactEmail) {
+			const answer = await call('POST', '/v1/connects', {
+				organization_id: organisationId,
+				contact: { email: contactEmail }
+			});
+			if ('ok' in answer) return answer;
+			if (answer.status !== 200 && answer.status !== 201) {
+				return classifyStatus(
+					answer.status,
+					answer.body,
+					'Chariot did not connect the organisation'
+				);
+			}
+			const id = stringField(answer.body, 'id');
+			if (id === null) return unreadable('a Connect');
+			return {
+				ok: true,
+				value: {
+					id,
+					active: field(answer.body, 'active') !== false,
+					existing: answer.status === 200
+				}
+			};
+		}
 	};
 }
 

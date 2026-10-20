@@ -397,13 +397,13 @@ const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 		'In the org’s own PayPal developer dashboard, take the client id and the secret from the ' +
 		`same app, add \`${envLine('PAYPAL_CLIENT_ID')}\` and ` +
 		`\`${envLine('PAYPAL_CLIENT_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`,
-	// the key alone leaves no event subscription and no signing secret behind it, so the fix runs
-	// the script that creates both.
+	// the key alone leaves no Connect, no event subscription and no signing secret behind it, so the
+	// fix runs the script that makes all three.
 	chariot:
-		'Chariot issues the org’s API key and Connect id by email. Add ' +
-		`\`${envLine('CHARIOT_API_KEY')}\` and \`${envLine('CHARIOT_CONNECT_ID')}\` to \`.env\`, run ` +
-		`\`${setupWebhookCommand('chariot')}\`, add the line it prints to \`.env\`, then recreate the ` +
-		`app: \`${RECREATE_APP}\`.`,
+		'Chariot issues the org’s API key by email. Add ' +
+		`\`${envLine('CHARIOT_API_KEY')}\` to \`.env\`, check the EIN in Settings, run ` +
+		`\`${setupWebhookCommand('chariot')}\`, add the two lines it prints to \`.env\`, then recreate ` +
+		`the app: \`${RECREATE_APP}\`.`,
 	nowpayments:
 		'In the org’s own NOWPayments dashboard, take the API key, and the code of the coin set as ' +
 		`the payout wallet under Payment Settings (such as \`usdttrc20\`), then add ` +

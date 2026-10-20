@@ -7,7 +7,8 @@ import type { ParsedOrgProfile } from './org-input';
 
 // every read and write of `org_profile`, so the table object never leaves this module — the same
 // boundary `contacts/queries.ts` and `ledger/posting.ts` draw, and it is what makes "all the writes
-// are here" true rather than aspirational.
+// are here" true rather than aspirational. the one read elsewhere is ./directory-identity.ts, raw
+// SQL for a script that cannot load the table object.
 //
 // ---------------------------------------------------------------------------
 // execute, or return statements — the rule for every write added below.

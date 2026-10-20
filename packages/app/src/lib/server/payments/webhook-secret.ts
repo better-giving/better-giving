@@ -109,7 +109,7 @@ const VERIFICATION: Readonly<
 const REPAIR: Readonly<Record<ProcessorName, string>> = Object.freeze({
 	stripe: `run \`${setupWebhookCommand('stripe')}\`, add the line it prints to \`.env\``,
 	paypal: `run \`${setupWebhookCommand('paypal')}\`, add the line it prints to \`.env\``,
-	chariot: `run \`${setupWebhookCommand('chariot')}\`, add the line it prints to \`.env\``,
+	chariot: `run \`${setupWebhookCommand('chariot')}\`, add the two lines it prints to \`.env\``,
 	nowpayments:
 		'copy the IPN secret under Payment Settings in the NOWPayments dashboard into `.env` as ' +
 		'`NOWPAYMENTS_IPN_SECRET`'
