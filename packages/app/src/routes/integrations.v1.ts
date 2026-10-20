@@ -19,8 +19,8 @@ import type { Route } from './+types/integrations.v1';
 // checked.
 //
 // a route file named `integrations.v1.<anything>` nests beneath it and inherits both checks by
-// existing, the mounting ./zapier.ts and ./console.ts make for their own credentials and for the
-// same reason: a check each route called leaves the next route open the day it is written.
+// existing, the mounting ./zapier.ts makes for its own credential and for the same reason: a check
+// each route called leaves the next route open the day it is written.
 // ../routes.spec.ts holds that every route served under `/integrations/v1` is under this file.
 //
 // what the surface is and what every answer on it carries is $lib/server/integrations/surface.ts's

@@ -32,5 +32,5 @@ it('answers a write the database will not take with a sentence rather than a thr
 	// 500 with no body on a public payment endpoint, and a commitment created anyway would collect
 	// money against a donor row that is not here.
 	expect(committed.ok).toBe(false);
-	expect(committed.ok || committed.detail).toContain('pnpm run logs');
+	expect(committed.ok || committed.detail).toContain('`docker compose logs app`');
 });

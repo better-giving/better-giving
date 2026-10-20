@@ -314,7 +314,7 @@ describe('sendReceipt() — what the operator is told to do about a refusal', ()
 		);
 		// no screen edits the amount, so the operator is sent to none.
 		expect(text).toContain('changed outside the app and needs correcting there');
-		expect(text).not.toContain('go to Organisation');
+		expect(text).not.toContain(`under ${IDENTITY_FOLD}`);
 		expect(await stampOf()).toBeNull();
 	});
 
@@ -331,16 +331,16 @@ describe('sendReceipt() — what the operator is told to do about a refusal', ()
 		expect(text).toContain(
 			'This gift records a $30.00 processing fee that doesn’t fit its $25.00 payment.'
 		);
-		expect(text).not.toContain('go to Organisation');
+		expect(text).not.toContain(`under ${IDENTITY_FOLD}`);
 	});
 
-	it('sends an organisation missing a receipt detail to the console', async () => {
+	it('sends an organisation missing a receipt detail to Settings', async () => {
 		await run(stmt(`update org_profile set tax_id = null`));
 		const mail = mailer();
 		await sendReceipt(deps(mail.port), target());
 
 		expect(alertText(mail.sent)).toContain(
-			`Open the console (run \`better-giving start\`), go to ${IDENTITY_FOLD} and fill in what’s missing.`
+			`In Settings, fill in what’s missing under ${IDENTITY_FOLD}.`
 		);
 	});
 });

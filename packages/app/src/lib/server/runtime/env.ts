@@ -10,7 +10,7 @@ import type { RateLimiters } from './rate-limiter';
 // module copies and does not judge.
 
 /**
- * every name `Env` carries as a string: the ones .dev.vars.example lists, in its order.
+ * every name `Env` carries as a string. `.env.example` names each of them.
  */
 export const ENV_VAR_NAMES = [
 	'BETTER_AUTH_SECRET',

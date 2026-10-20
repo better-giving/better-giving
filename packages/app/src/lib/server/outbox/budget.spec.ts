@@ -20,7 +20,7 @@ const shares: readonly Share[] = Object.values(MINUTE_RUN);
 describe("the minute cron's shares", () => {
 	const total = (of: (share: Share) => number) => shares.reduce((sum, share) => sum + of(share), 0);
 
-	it('leave a connection free of posts for D1 and SMTP', () => {
+	it('leave a connection free of posts for the database and SMTP', () => {
 		expect(total((s) => s.lanes)).toBeLessThanOrEqual(CONNECTIONS_AT_ONCE - CONNECTIONS_KEPT);
 	});
 

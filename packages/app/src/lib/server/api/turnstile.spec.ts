@@ -342,7 +342,7 @@ describe('verifyTurnstile() — what a failure may say, and to whom', () => {
 		// public path would tell a stranger which knob is unset and that bot protection on a
 		// payment-initiating endpoint is currently unenforced.
 		expect(result.detail).not.toContain('TURNSTILE_SECRET_KEY');
-		expect(result.detail).not.toContain('--var');
+		expect(result.detail).not.toContain('.env');
 	});
 
 	it('puts the variable and the command where an operator reads them', async () => {
@@ -350,8 +350,8 @@ describe('verifyTurnstile() — what a failure may say, and to whom', () => {
 
 		const result = await refusal();
 
-		expect(result.operatorFix).toContain('TURNSTILE_SECRET_KEY');
-		expect(result.operatorFix).toContain('--var');
+		expect(result.operatorFix).toContain('`TURNSTILE_SECRET_KEY=<value>`');
+		expect(result.operatorFix).toContain('docker compose up -d --force-recreate app');
 	});
 
 	it('carries no operator fix for a refusal an operator cannot act on', async () => {

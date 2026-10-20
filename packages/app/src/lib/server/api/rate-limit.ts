@@ -503,7 +503,7 @@ function unboundSurface(): Response {
 			message:
 				'This deployment has no API_RATE_LIMITER, so requests to /api/v1 cannot be ' +
 				'metered and are refused. Nothing about the request is wrong.',
-			fix: 'Start the app with `pnpm start`, which builds every limiter in RATE_LIMITS (src/lib/server/runtime/rate-limiter.ts).'
+			fix: 'Start the app with `docker compose up -d app`, whose server entry (packages/app/server/index.ts) builds every limiter in RATE_LIMITS (src/lib/server/runtime/rate-limiter.ts).'
 		},
 		{ status: 500, headers: { 'cache-control': 'no-store' } }
 	);

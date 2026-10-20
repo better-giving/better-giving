@@ -23,10 +23,9 @@ import { EDITABLE_FORM_STATUSES } from './statuses';
 // imports from `$lib/server/**`.
 //
 // what a site allowed to embed a form may be is not in this folder at all, and sits one step
-// further out than that: `@better-giving/operator/origins` holds those rules, because the console
-// applies the same ones in front of the operator typing a site — before it levels a Turnstile
-// widget against a host this deployment would then refuse to serve. the constraint above is
-// unchanged by the move and is what the leaf package satisfies: it imports nothing of the app's, so
+// further out than that: `@better-giving/operator/origins` holds those rules, because the site list
+// under Donation forms applies the same ones in front of the operator typing a site. the
+// constraint above is what the leaf package satisfies: it imports nothing of the app's, so
 // the schema below still reaches the rules from a browser where `$lib/server/**` is closed to it.
 //
 // what is here is field-level with three stated exceptions. two are the giving group's: the

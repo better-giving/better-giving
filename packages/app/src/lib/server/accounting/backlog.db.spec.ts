@@ -187,7 +187,7 @@ async function settledUpOnGift(giftGroup: string): Promise<string> {
 	return id;
 }
 
-describe('the backlog the console reads', () => {
+describe('the backlog Books reads', () => {
 	it('counts what was given up on and dates the oldest gift still owed', async () => {
 		await queued({ status: 'failed', minutesAgo: 90 });
 		await queued({ status: 'pending', minutesAgo: 200 });

@@ -1205,7 +1205,7 @@ describe('the server tree and the browser bundle', () => {
 		for (const { file } of routes) {
 			expect(
 				reachesServerTree(file),
-				`${file} reaches $lib/server from an export react router ships to the browser, so D1, the stripe client and this deployment's credentials go into the bundle a visitor downloads. Keep the server import to \`loader\`, \`action\`, \`middleware\` or \`headers\`, and hand the component serializable props.`
+				`${file} reaches $lib/server from an export react router ships to the browser, so the database client, the stripe client and this deployment's credentials go into the bundle a visitor downloads. Keep the server import to \`loader\`, \`action\`, \`middleware\` or \`headers\`, and hand the component serializable props.`
 			).toEqual([]);
 		}
 	});

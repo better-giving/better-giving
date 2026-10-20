@@ -3,9 +3,9 @@
 // **an unguarded start address is a stranger's company connected to this deployment.** whoever
 // opens `/quickbooks/connect` is sent to Intuit and comes back with a company connected — so left
 // open, an outsider connects *their* books and every gift this organisation takes is posted into
-// them. the deployer's Books screen and the console are each already behind a credential, so they
-// are what mint the address; this module is where that address is minted and read, so the two halves cannot come to disagree about what is
-// signed.
+// them. the deployer's Books screen is already behind a credential, so it is what mints the
+// address; this module is where that address is minted and read, so the two halves cannot come to
+// disagree about what is signed.
 //
 // **two different values, doing two different jobs.**
 //
@@ -39,12 +39,12 @@ export const QUICKBOOKS_CALLBACK_PATH = '/quickbooks/callback';
 /**
  * the address this deployment answers on, as every spelling of those two paths is built from.
  *
- * Intuit compares every one of them byte for byte against what is registered: Books and the console
- * mint the start address and print the callback for an operator to register there
- * (`src/routes/_app.admin.books.tsx`, `src/routes/console.quickbooks.ts`),
+ * Intuit compares every one of them byte for byte against what is registered: Books mints the start
+ * address and prints the callback for an operator to register there
+ * (`src/routes/_app.admin.books.tsx`),
  * `src/routes/quickbooks.connect.tsx` sends a `redirect_uri`
  * with the consent screen, and `src/routes/quickbooks.callback.tsx` sends the same one again on the
- * exchange. a deployment reachable on both workers.dev and a custom domain derives a different
+ * exchange. a deployment reachable on two hostnames derives a different
  * answer per request, and what reports the disagreement is Intuit's own sentence about a mismatch
  * rather than one of ours naming a host.
  *

@@ -11,6 +11,7 @@ import { APIError } from 'better-auth/api';
 import { data, Form, Link, redirect, useFormAction, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { operatorLinks } from '$lib/admin/operator-links';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
 import {
@@ -140,15 +141,13 @@ const WRONG_CREDENTIAL =
  *
  * the messages the auth layer produces are about the deployment — among them the 500 for an
  * unconfigured staff credential, whose message says what is wrong with `ADMIN_PASSWORD` and where
- * it is set. that is written for an agent reading a status body and belongs on the surfaces an
- * operator controls: the console says whether that var is set and is where it is set again, and the
- * running deployment's logs carry the withheld detail. an anonymous POST to this form must not
- * read it back, so what it gets is the pointer rather than the answer.
+ * it is set. that is written for an agent reading a status body and belongs in the app's log, which
+ * carries the withheld detail. an anonymous POST to this form must not read it back, so what it
+ * gets is the pointer rather than the answer.
  */
 const UNAVAILABLE =
-	'Sign-in is unavailable. The console (`better-giving start`) says whether this deployment’s ' +
-	'sign-in password is set. The exact cause is in the deployment’s logs, which the console does ' +
-	'not read: the Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.';
+	'Sign-in is unavailable. Whoever set up this site can fix it: check that `ADMIN_PASSWORD` is ' +
+	`set in \`.env\`, then recreate the app. ${LOGS_SAY_WHY}`;
 
 /**
  * what a member is told when the server attributed no address to the request (`clientIp` in
@@ -159,10 +158,9 @@ const UNAVAILABLE =
  * account, because nothing about the account was read.
  */
 const UNATTRIBUTED =
-	'Sign-in is unavailable. This deployment is not being told your connection’s IP address, so it ' +
-	'cannot limit password guesses and refuses member sign-ins until it is. The usual cause is ' +
-	'Cloudflare’s “Remove visitor IP headers” setting being switched on for this site; whoever runs ' +
-	'this deployment can switch it off in the Cloudflare dashboard.';
+	'Sign-in is unavailable. This site could not tell your connection’s IP address, so it cannot ' +
+	'limit password guesses and refuses member sign-ins until it can. Try again, and if this keeps ' +
+	'happening, tell whoever set up this site.';
 
 export const links = operatorLinks;
 
@@ -261,11 +259,9 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// charges it, and the better-auth HTTP endpoint that would spend the same key is a 404 on
 	// this deployment (CLAUDE.md).
 	//
-	// 429 rather than a 200 carrying a message, and the status is the whole of the deployment's
-	// visibility into this: a rate limiting binding appears nowhere in the Cloudflare dashboard, so
-	// what a refusal leaves behind is the status the Worker answered with, in `pnpm run logs`
-	// (https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/). a throttled
-	// sign-in reads as 429 there and a wrong password as the 401 below — two different lines.
+	// 429 rather than a 200 carrying a message, and the status is the whole of what a refusal leaves
+	// behind: the limiter is in-process and reports nothing. a throttled sign-in reads as 429 and a
+	// wrong password as the 401 below — two different statuses to whatever reads them.
 	//
 	// the rejection is built from the statement and not from the request, which is what keeps the
 	// charge ahead of the body: a refusal that had already read it would be a refusal that spent
@@ -300,12 +296,12 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// is hashed. members are many, each password chosen by a person, and every guess is an scrypt run
 	// this deployment pays for, so no bucket would mean unbounded guessing at all of them. the deployer
 	// is let through the same gap, unbounded: refusing them too would shut every way into the
-	// dashboard at once, and their one `ADMIN_PASSWORD` is minted by the console unless the operator
-	// typed their own. `signInRateLimitKey` in $lib/server/api/rate-limit.ts states both halves.
+	// dashboard at once, and their one `ADMIN_PASSWORD` is held to the minimum length
+	// `@better-giving/operator/admin-password` sets. `signInRateLimitKey` in
+	// $lib/server/api/rate-limit.ts states both halves.
 	//
 	// 403 because nothing typed is wrong and no wait fixes it: the attempt is refused until the
-	// deployment is told the address. in `pnpm run logs` it is a line of its own beside the 429, the
-	// 401 and the 500.
+	// deployment is told the address. it is a status of its own beside the 429, the 401 and the 500.
 	if (!asStaff && bucket === null) {
 		return invalid(403, submission.reject({ formErrors: [UNATTRIBUTED] }));
 	}
@@ -525,7 +521,7 @@ function SignInScreen({
 					    it is not offered to the deployer and is not withheld from them either —
 					    their password is a deploy-time var and `requestPasswordReset` refuses
 					    their identifier by name, so what they get from /forgot is the same sentence
-					    everybody gets. the console is where that var is set. */}
+					    everybody gets. `.env` is where that var is set. */}
 					<p className="adm-caption">
 						<Link to="/forgot">Forgot your password?</Link>
 					</p>

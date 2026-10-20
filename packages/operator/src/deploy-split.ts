@@ -1,22 +1,22 @@
-// the deploy-time values an operator configures a deployment with, and the one command that sets
-// one. every instruction a deployment prints or logs is built from here: a refusal's fix
-// sentence, a log line's `operatorFix`.
+// the deploy-time values an operator configures a deployment with, the `.env` line that sets one,
+// and the command that makes a changed `.env` take effect. every instruction a deployment prints or
+// logs is built from here: a refusal's fix sentence, a log line's `operatorFix`.
 //
 // one list, and every value on it is an environment variable, set in `.env` (`.env.example` names
 // them). no screen writes one (AGENTS.md → Boundaries).
 //
 // **it is here rather than beside the readers because it is one enumeration.** the deployment reads
 // every name below and builds the instruction beside each one, and a second list anywhere would be
-// a name too many, a missing name, or a command spelled the other way round, with nothing able to
-// see the disagreement. DEPLOY.md's "Configuration values" section is this list written for an
+// a name too many, a missing name, or a line spelled the other way round, with nothing able to see
+// the disagreement. DEPLOY.md's "Configuration values" section is this list written for an
 // operator.
 //
 // the rule is asserted rather than reviewed:
-// `packages/app/src/lib/server/config/deploy-split.spec.ts` checks the command built for every
-// name, sweeps the sources of `packages/app` and this package and the operator documents beside
-// them for a literal that spells one by hand as a secret, and holds this list to the names the app
-// actually reads — in both directions, which is more than a `satisfies` could say, and this leaf
-// can name no env type to write one against anyway.
+// `packages/app/src/lib/server/config/deploy-split.spec.ts` checks the line built for every name,
+// sweeps the sources of `packages/app` and this package and the operator documents beside them for
+// a literal that spells one by hand as a secret, and holds this list to the names the app actually
+// reads — in both directions, which is more than a `satisfies` could say, and this leaf can name no
+// env type to write one against anyway.
 //
 // QuickBooks put three names on the list: the two keys, for the reason every other processor's
 // keys are there, and `QUICKBOOKS_API_URL` beside them for the reason `CHARIOT_API_URL` is —
@@ -75,22 +75,26 @@ export const DEPLOY_VARS = [
 export type DeployValueName = (typeof DEPLOY_VARS)[number];
 
 /**
- * the command that puts a value in `name` on this deployment, as an operator pastes it.
+ * the `.env` line that puts a value in `name`, as an operator pastes it.
  *
  * a whole literal and never a fragment, because that is what the surfaces do with it: a refusal
- * prints it inside one marked span.
- *
- * `--var NAME:value` is the flag, so the value is on the line and `<value>` is what says an
- * operator has to replace it. the flag reaches `wrangler deploy` intact because it is the last
- * command in that script's chain, which is also when the value lands: a var arrives with the deploy
- * carrying it and not before.
- *
- * `pnpm run` and never a bare `wrangler` (CLAUDE.md, Permanent contracts): the scripts are
- * forwarded from the repo root, so the operator never changes directory into packages/app and the
- * command resolves the wrangler version this app was tested against. `pnpm run` does not walk up to
- * the workspace root, so from inside a package directory the spelling is `pnpm -w run`, which pnpm
- * itself says when it lists the root's commands.
+ * prints it inside one marked span. `<value>` is what says an operator has to replace it.
  */
-export function setCommand(name: DeployValueName): string {
-	return `pnpm run deploy --var ${name}:<value>`;
+export function envLine(name: DeployValueName): string {
+	return `${name}=<value>`;
+}
+
+/**
+ * what makes a changed `.env` take effect. compose reads `.env` when it creates the container, so a
+ * restart keeps the old values and only a recreate picks up the new ones (`compose.yaml`).
+ */
+export const RECREATE_APP = 'docker compose up -d --force-recreate app';
+
+/**
+ * the command that registers one processor's payment notices on its account and prints the line
+ * `.env` takes for them (`packages/app/scripts/setup-webhook.ts`). NOWPayments is not one: its IPN
+ * secret is copied from its own dashboard.
+ */
+export function setupWebhookCommand(processor: 'stripe' | 'paypal' | 'chariot'): string {
+	return `docker compose exec app node scripts/setup-webhook.ts ${processor}`;
 }

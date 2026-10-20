@@ -341,7 +341,9 @@ describe('POST /admin/members — inviting a colleague', () => {
 		});
 
 		expect(answer.status).toBe(500);
-		expect(await underTheBox(answer)).toEqual([expect.stringContaining('better-giving start')]);
+		expect(await underTheBox(answer)).toEqual([
+			expect.stringContaining('In Settings, go to Mail and press Send test email')
+		]);
 		// the row survives the failure, which is what makes pressing again the whole repair.
 		expect(await liveInvitations()).toBe(1);
 	});

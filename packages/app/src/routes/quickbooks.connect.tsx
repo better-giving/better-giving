@@ -1,4 +1,5 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
+import { RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { CodeSlab, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { Banner } from '@better-giving/operator/components/status/Banner';
@@ -22,10 +23,9 @@ import type { Route } from './+types/quickbooks.connect';
 // where connecting a QuickBooks company begins: the operator's browser lands here and is sent on to
 // Intuit's consent screen.
 //
-// **it is public, and the guard is on the address rather than on the surface.** two surfaces start
-// the trip behind two different credentials — the deployer's press on ./_app.admin.books.tsx, and
-// the console, whose credential is a bearer header a browser attaches to nothing — so each mints a
-// short-lived signed address behind its own and this route checks it
+// **it is public, and the guard is on the address rather than on the surface.** the deployer's
+// press on ./_app.admin.books.tsx starts the trip behind the deployer's session, so it mints a
+// short-lived signed address and this route checks it
 // ($lib/server/accounting/connect-link.ts), and ../routes.spec.ts holds the file on the public list
 // with that reason beside it.
 //
@@ -34,8 +34,9 @@ import type { Route } from './+types/quickbooks.connect';
 // this organisation's gifts would be posted into them.
 //
 // **the `state` is minted here and not by the press that minted the address.** it has to be in a
-// cookie on the browser that is about to travel, and the console is not that browser. a replayed
-// start address therefore mints a fresh one, which is exactly what makes replaying it worth nothing.
+// cookie on the browser that is about to travel, and only this route knows which browser that is.
+// a replayed start address therefore mints a fresh one, which is exactly what makes replaying it
+// worth nothing.
 //
 // **the `redirect_uri` sent to Intuit is the deployment's own address rather than this request's
 // host.** it has to be the one registered with them, byte for byte, or the round trip is refused at
@@ -127,7 +128,7 @@ export default function QuickbooksConnect({ loaderData }: Route.ComponentProps) 
 								address Books shows to its redirect URIs, put its client ID and secret in{' '}
 								<InlineCode>.env</InlineCode> (DEPLOY.md, QuickBooks), and recreate the app:
 							</p>
-							<CodeSlab oneline content={RECREATE} copyable copyLabel="Copy the command" />
+							<CodeSlab oneline content={RECREATE_APP} copyable copyLabel="Copy the command" />
 						</>
 					}
 				>
@@ -150,9 +151,6 @@ export default function QuickbooksConnect({ loaderData }: Route.ComponentProps) 
 
 /** where an operator creates the Intuit app whose keys go in `.env`. */
 const INTUIT_DEVELOPER = 'https://developer.intuit.com/';
-
-/** what recreating the app is, wherever `.env` changed. */
-const RECREATE = 'docker compose up -d --force-recreate app';
 
 /**
  * the one control every page of the round trip carries: a whole-document load, since this page

@@ -296,7 +296,7 @@ describe('saving the organisation’s details', () => {
 		expect((await storedProfile())?.legal_name).toBe('Riverbank Trust');
 	});
 
-	it('refuses an EIN that is not nine digits, in the words the console used', async () => {
+	it('refuses an EIN that is not nine digits, in the words the shared EIN rule uses', async () => {
 		const response = await saveDetails({ tax_id: '12-34' });
 
 		expect((await refusal(response)).tax_id).toEqual([

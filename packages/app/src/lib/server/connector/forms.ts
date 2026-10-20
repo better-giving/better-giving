@@ -266,7 +266,7 @@ async function unlistedIssue(db: Db, origins: readonly string[]): Promise<Issue 
 		? null
 		: {
 				path: 'allowed_origins',
-				message: `${problem} Sites are listed by the operator in the console.`
+				message: `${problem} The operator lists sites under Donation forms → Which sites your forms go on.`
 			};
 }
 
@@ -276,7 +276,7 @@ async function blocked(db: Db): Promise<boolean> {
 }
 
 const NOT_READY =
-	'the organisation’s details are not finished, and a form serves no donor until they are; the operator fills them in on the console';
+	'the organisation’s details are not finished, and a form serves no donor until they are; the operator fills them in under Organisation details in Settings';
 
 /**
  * makes a form, through the rules and the defaults of the dashboard's Add a donation form: what the

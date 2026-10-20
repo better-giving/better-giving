@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
 import { Form, Link, redirect, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { operatorLinks } from '$lib/admin/operator-links';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
 import {
@@ -115,13 +116,12 @@ const ALREADY_A_MEMBER = 'This address is already a member here. Sign in instead
  * what a refusal that is about the deployment says.
  *
  * the same shape ./login.tsx's is and for the same reason: the auth layer's own message is written
- * for an agent reading a status body and belongs on the surfaces an operator controls, so what an
- * anonymous POST gets is the pointer rather than the answer.
+ * for an agent reading a status body and belongs in the app's log, so what an anonymous POST gets
+ * is the pointer rather than the answer.
  */
 const UNAVAILABLE =
 	'Your password could not be set: something is wrong with this deployment rather than with ' +
-	'what you typed. Ask whoever invited you to check the console (`better-giving start`); the ' +
-	'exact cause is in the deployment’s logs, which the console does not read.';
+	`what you typed. Tell whoever invited you. ${LOGS_SAY_WHY}`;
 
 export const links = operatorLinks;
 

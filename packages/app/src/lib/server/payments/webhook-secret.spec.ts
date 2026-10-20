@@ -54,8 +54,9 @@ describe('webhookSecretStanding', () => {
 			registered('362db036820ee774')
 		);
 		expect(standing.state).toBe('stale');
-		expect(standing.detail).toContain('better-giving start');
-		expect(standing.detail).toContain('Donation processor');
+		expect(standing.detail).toContain(
+			'docker compose exec app node scripts/setup-webhook.ts stripe'
+		);
 	});
 
 	/**

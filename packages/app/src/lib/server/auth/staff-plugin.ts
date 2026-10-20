@@ -35,8 +35,7 @@ export const STAFF_USER_ID = '019fb1c4-3a51-7c9e-9f2a-6f0b7e5d84c1';
  * deployment can send mail.
  *
  * the value is `ADMIN_USERNAME` from `@better-giving/operator/admin-password`, which is
- * also what the deployer types into the sign-in box and what the console prints beside the
- * password box that sets the credential — one export behind all three. the two names are
+ * also what the deployer types into the sign-in box — one export behind both. the two names are
  * one value with two readings: this one is the staff row's identifier, and that one is the
  * word somebody types.
  *
@@ -194,7 +193,7 @@ async function upsertStaffUser(db: Db): Promise<AuthUser> {
 		throw new APIError('INTERNAL_SERVER_ERROR', {
 			code: 'STAFF_USER_UPSERT_FAILED',
 			message:
-				'Signed in, but the auth_user row could not be written. Check that migrations have been applied to this database: the console (`better-giving start`) applies them to the deployed D1 when it updates this deployment, and `pnpm wrangler d1 migrations apply DB --local` applies them to a local one.'
+				'Signed in, but the auth_user row could not be written, which usually means the database is behind. Update the database: `docker compose run --rm migrate`.'
 		});
 	}
 	return user;

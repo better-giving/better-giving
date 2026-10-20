@@ -30,7 +30,7 @@ export interface AuthEnv {
 	readonly ADMIN_PASSWORD?: string;
 }
 
-/** the variable names this module reads, in the order they appear in .dev.vars.example. */
+/** the variable names this module reads. */
 export const AUTH_VAR_NAMES = [
 	'BETTER_AUTH_SECRET',
 	'BETTER_AUTH_URL',
@@ -73,9 +73,9 @@ export type PinReading =
  * `.origin` and never the value as typed: an operator pastes the pin, and a trailing slash or a
  * path on it is not part of it. a pin that names no http(s) origin is refused, naming the value:
  * `localhost:8787` parses as a scheme called `localhost` whose `.origin` is the string "null", and
- * better-auth refuses such a `baseURL` itself — reading it off the Worker's `process.env` when it
+ * better-auth refuses such a `baseURL` itself — reading it off `process.env` when it
  * is passed none — so no caller may read it as unset. the message quotes the value and marks names
- * with backticks for the console's QuickBooks section, which draws it; a caller who may be anonymous
+ * with backticks for the QuickBooks part of Books, which draws it; a caller who may be anonymous
  * is answered `PIN_UNUSABLE` (./pin.ts) and the message is logged.
  */
 export function readPin(env: AuthEnv): PinReading {
@@ -88,7 +88,7 @@ export function readPin(env: AuthEnv): PinReading {
 			message:
 				`\`BETTER_AUTH_URL\` is \`${pinned}\`, which names no http(s) origin. Set it to the ` +
 				'address the deployment answers on, scheme included (`https://donate.example.org`), or ' +
-				'unset it so the origin is read off each request (DEPLOY.md, .dev.vars.example).'
+				'unset it so the origin is read off each request (DEPLOY.md, .env.example).'
 		};
 	}
 	return { ok: true, origin: url.origin };

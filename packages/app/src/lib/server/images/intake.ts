@@ -4,8 +4,9 @@ import { type NewImageStatements, newImageStatements } from './queries';
 import { sniffImage } from './sniff';
 
 // a photo posted as `multipart/form-data` with the photo in `file`, stored — the one intake every
-// route taking a photo runs (src/routes/_app.admin.images.ts from the dashboard,
-// src/routes/console.org.logo.ts from the console), so the bounds are written once.
+// route taking a photo runs (src/routes/_app.admin.images.ts for a page's photo,
+// src/routes/_app.admin.settings_.logo.ts for the organisation's logo), so the bounds are written
+// once.
 //
 // the photo is resized in the browser first (`@better-giving/operator/images/resize`), which is why
 // everything here is a refusal rather than a repair. each bound is checked again because a route

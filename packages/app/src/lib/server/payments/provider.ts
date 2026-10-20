@@ -5,6 +5,7 @@ import {
 	isStripeRail
 } from '@better-giving/form/embed/rails';
 import type { Frequency, PaymentMethod as QuotedRail } from '@better-giving/form/v1';
+import { LOGS_SAY_WHY } from '../../deployment-logs.ts';
 import type {
 	PaymentMethod as SettledRail,
 	PaymentProviderName,
@@ -64,7 +65,7 @@ export type ProcessorName = (typeof PROCESSOR_NAMES)[number];
  * what an operator-facing sentence calls each processor.
  *
  * an operator reads these sentences, and no name is spelled the way the row's value is: the
- * console's boxes say PayPal and Stripe.
+ * Payments screen says PayPal and Stripe.
  *
  * it is up here beside the names rather than with the refusals that were its first reader, because
  * the two sides that produce those sentences stand differently to a processor and must not spell it
@@ -1277,7 +1278,7 @@ export type WebhookEndpointSummary = {
 	 * the reason it exists is the same either way. what a delivery is verified against is returned
 	 * once at creation and by no read afterwards — see `RegisteredWebhookEndpoint` below — so a
 	 * deployment holding a stale value reads exactly like a deployment holding the right one, and
-	 * that is a console saying the payments line is fine while every delivery fails verification.
+	 * that is a screen saying the payments line is fine while every delivery fails verification.
 	 * ./webhook-secret.ts is where the two halves meet and which stamp is which is decided.
 	 *
 	 * null is a third answer and not a mismatch: an endpoint registered in a dashboard or by
@@ -1818,8 +1819,8 @@ export interface PaymentProvider {
 	 *
 	 * the read beside the find-or-create above, and the two are not interchangeable: `prepare` makes
 	 * the thing where the account holds none, so a screen drawn from it would provision an operator's
-	 * account as a side effect of them looking at it. this one is what the console asks, and it
-	 * is safe to call on every view of that page for exactly that reason.
+	 * account as a side effect of them looking at it. this one is what the Payments screen asks, and
+	 * it is safe to call on every view of that page for exactly that reason.
 	 *
 	 * it answers with a standing rather than a boolean, because an archived one is a third state an
 	 * operator needs a different sentence for — see `RecurringGiftStanding` above.
@@ -2170,7 +2171,7 @@ async function guard<T>(call: () => Promise<PaymentResult<T>>): Promise<PaymentR
 			detail:
 				'The payment provider failed in a way it is not supposed to be able to: it threw ' +
 				'instead of reporting. Nothing about the deployment fixes this. It is a bug in this ' +
-				'app, and the cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a checkout).'
+				`app. ${LOGS_SAY_WHY}`
 		};
 	}
 }

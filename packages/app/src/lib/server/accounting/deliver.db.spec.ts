@@ -810,9 +810,9 @@ describe('the failure notice', () => {
 
 		// Try these again stands beside gifts given up on, and there are none.
 		expect(mail.sent[0]?.text).toContain(
-			'What to do: If the latest reason asks you to fix something, open the console (run ' +
-				'`better-giving start`), go to QuickBooks and fix it. Otherwise there’s nothing to do: ' +
-				'these gifts are tried again automatically.'
+			'What to do: If the latest reason asks you to fix something, go to QuickBooks under ' +
+				'Books and fix it. Otherwise there’s nothing to do: these gifts are tried again ' +
+				'automatically.'
 		);
 	});
 
@@ -828,8 +828,8 @@ describe('the failure notice', () => {
 		// the press retries the given-up gifts alone, so their reason is the one to fix first.
 		expect(mail.sent[0]?.text).toMatch(/^Latest reason: Intuit refused the payload\.$/m);
 		expect(mail.sent[0]?.text).toContain(
-			'What to do: Open the console (run `better-giving start`) and go to QuickBooks. Fix what ' +
-				'the latest reason says, then press Try these again.'
+			'What to do: Go to QuickBooks under Books. Fix what the latest reason says, then press ' +
+				'Try these again.'
 		);
 	});
 
@@ -977,8 +977,7 @@ describe('the notice for a run that could not send anything', () => {
 		expect(mail.sent[0]?.text).toContain('The refresh token was rejected.');
 		expect(mail.sent[0]?.text).toContain('Gifts waiting: 2');
 		expect(mail.sent[0]?.text).toContain(
-			'What to do: Open the console (run `better-giving start`), go to QuickBooks and press ' +
-				'Sign in again.'
+			'What to do: Go to QuickBooks under Books and press Sign in again.'
 		);
 		for (const entryGroupId of [first, second]) {
 			// the row the run never reached is stamped with the one it did: what is being reported is
@@ -1003,8 +1002,7 @@ describe('the notice for a run that could not send anything', () => {
 		expect(mail.sent).toHaveLength(1);
 		expect(mail.sent[0]?.text).toContain('No account is chosen for a gift’s income.');
 		expect(mail.sent[0]?.text).toContain(
-			'What to do: Open the console (run `better-giving start`), go to QuickBooks and choose ' +
-				'every account under Accounts.'
+			'What to do: Go to QuickBooks under Books and choose every account under Accounts.'
 		);
 		expect((await row(entryGroupId)).notifiedAt).toEqual(NOW);
 	});

@@ -494,7 +494,7 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			// this app actually performs.
 			//
 			// stated explicitly because the default is "production only", and a fork
-			// running `pnpm preview` against real secrets should behave the same.
+			// running `pnpm dev` against real secrets should behave the same.
 			//
 			// `window`/`max` below are the general limit and do not govern sign-in. any path
 			// starting with `/sign-in` is covered by better-auth's own built-in special rule

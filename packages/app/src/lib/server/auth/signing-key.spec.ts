@@ -77,8 +77,7 @@ describe('resolveAuthSecret', () => {
 		if (result.ok) return;
 		expect(result.cause).toContain('auth_signing_key');
 		expect(result.cause).toContain('no `default` row exists');
-		expect(result.cause).toContain('pnpm wrangler d1 migrations apply DB --local');
-		expect(result.cause).toContain('better-giving start');
+		expect(result.cause).toContain('`docker compose run --rm migrate`');
 		expect(result.cause).toContain('BETTER_AUTH_SECRET');
 	});
 
@@ -89,7 +88,7 @@ describe('resolveAuthSecret', () => {
 		expect(result.cause).toContain('the `default` row is empty');
 	});
 
-	// the value crosses D1's serialization boundary, so a row whose column is null is
+	// the value crosses the driver's serialization boundary, so a row whose column is null is
 	// representable at runtime whatever the type says. it must refuse, not TypeError.
 	it('refuses a row whose value is not a string', async () => {
 		const result = await resolveAuthSecret(stubDb({ rows: [{ value: null }] }), {});
@@ -111,7 +110,7 @@ describe('resolveAuthSecret', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.cause).toContain('no such table: auth_signing_key');
-		expect(result.cause).toContain('pnpm wrangler d1 migrations apply DB --local');
+		expect(result.cause).toContain('`docker compose run --rm migrate`');
 	});
 
 	it('describes a non-Error rejection without throwing', async () => {
@@ -129,9 +128,9 @@ describe('resolveAuthSecret', () => {
  */
 describe('the public reply for a key that cannot be read', () => {
 	it('names the fix and points at the logs', () => {
-		expect(SIGNING_KEY_UNREADABLE).toContain('migrations');
-		expect(SIGNING_KEY_UNREADABLE).toContain('better-giving start');
-		expect(SIGNING_KEY_UNREADABLE).toContain('pnpm wrangler d1 migrations apply DB --local');
+		expect(SIGNING_KEY_UNREADABLE).toContain(
+			'Update the database: `docker compose run --rm migrate`.'
+		);
 		expect(SIGNING_KEY_UNREADABLE.endsWith(LOGS_SAY_WHY)).toBe(true);
 	});
 });

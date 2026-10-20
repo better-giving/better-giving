@@ -498,8 +498,7 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 			`This deployment has not saved the identity a gift is solicited under: ` +
 				`${absent.join(' and ')} ${absent.length === 1 ? 'is' : 'are'} not set. A form that ` +
 				'asks for a tax-deductible gift may not omit them.',
-			'Open the console (`better-giving start`). The registered name and the EIN are under ' +
-				`${IDENTITY_FOLD}.`
+			`The registered name and the EIN are under ${IDENTITY_FOLD} in Settings.`
 		);
 	}
 
@@ -657,7 +656,7 @@ const SERVED_LOCALE = 'en-US';
  *
  * a rail processor nobody could read never reaches this: that arm answers with its rails whole, so
  * an empty list is an account that answered and said no to every rail — the fix is on the
- * processor's own dashboard, and the console is where a standing per rail is already drawn. crypto
+ * processor's own dashboard, and Payments is where a standing per rail is already drawn. crypto
  * is the exception, because it is withdrawn for want of a coin rather than for a standing
  * (`PublishedConfigSources.coins`): a coin list that could not be read is NOWPayments not
  * answering, and the sentence says to try again rather than sending anyone to fix a value that is
@@ -695,8 +694,8 @@ export function renderableConfig(result: PublishedConfigResult): PublishedConfig
 				`${one ? 'it settles' : 'they settle'} (${rails.join(', ')})`
 		);
 		fixes.push(
-			'Open the console (`better-giving start`), read the standing shown against each rail, and ' +
-				'clear it where the processor’s own dashboard says to. A rail switched off there is one ' +
+			'Under Payments, read the standing shown against each rail, and clear it where the ' +
+				'processor’s own dashboard says to. A rail switched off there is one ' +
 				'switch; a capability never requested has to be asked for.'
 		);
 	}

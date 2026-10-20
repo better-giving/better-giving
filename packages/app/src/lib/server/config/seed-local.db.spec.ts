@@ -24,7 +24,7 @@ const applySeed = () => client.executeMultiple(seedSql);
 /**
  * every job's state, as ./setup-state.ts reads it.
  *
- * the deployment env is empty, which is a checkout holding no `.dev.vars` — so what a line says
+ * the deployment env is empty, which is a checkout holding no `.env` — so what a line says
  * here is what the seed alone settled.
  */
 async function jobStates(db: Db): Promise<Record<string, string>> {
@@ -53,7 +53,7 @@ describe('the local seed', () => {
 		expect(profile?.notificationEmail).not.toBeNull();
 	});
 
-	it('finishes the two jobs that are rows and leaves payments to `.dev.vars`', async () => {
+	it('finishes the two jobs that are rows and leaves payments to `.env`', async () => {
 		await applySeed();
 
 		await expect(jobStates(db)).resolves.toMatchObject({

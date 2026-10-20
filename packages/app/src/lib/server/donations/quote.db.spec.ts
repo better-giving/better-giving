@@ -51,7 +51,7 @@ function expectDonorWords(message: string): void {
 }
 
 /** where a `fix` says the processor's own words went, once `message` no longer carries them. */
-const LOGGED = 'The processor’s answer is in this deployment’s logs';
+const LOGGED = 'The processor’s answer is in the app’s log (`docker compose logs app`)';
 
 const ALLOWED = 'https://acme.org';
 
@@ -1103,7 +1103,7 @@ describe('mintQuote() — the challenge', () => {
 			ok: false,
 			reason: 'misconfigured',
 			detail: 'This deployment cannot verify a challenge.',
-			operatorFix: 'TURNSTILE_SECRET_KEY is not set. Run `pnpm run deploy --var …`.'
+			operatorFix: 'TURNSTILE_SECRET_KEY is not set. Add it to `.env`, then recreate the app.'
 		});
 
 		const result = await mint(deps({ verifyChallenge: refused.verify }));

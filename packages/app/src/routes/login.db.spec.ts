@@ -511,15 +511,15 @@ describe('POST /login — what the browser gets back', () => {
 	 * every other status is about the deployment, and the unconfigured credential is the one that
 	 * matters: its message states the configured `ADMIN_PASSWORD`'s length, which is written for an
 	 * agent reading a status body on a surface an operator controls. an anonymous POST to this form
-	 * must not read it back, so it gets the pointer at the console instead.
+	 * must not read it back, so it gets the pointer at `.env` instead.
 	 */
-	it('points an unconfigured deployment at the console rather than reading its credential back', async () => {
+	it('points an unconfigured deployment at `.env` rather than reading its credential back', async () => {
 		const answer = await refused(typed(PASSWORD), {
 			deployed: { ...DEPLOYED, ADMIN_PASSWORD: 'short' }
 		});
 
 		expect(answer.init?.status).toBe(500);
-		expect(banner(answer)).toContain('better-giving start');
+		expect(banner(answer)).toContain('check that `ADMIN_PASSWORD` is set in `.env`');
 		expect(JSON.stringify(answer.data)).not.toContain('ADMIN_PASSWORD is shorter');
 		expect(JSON.stringify(answer.data)).not.toContain('(it is 5)');
 	});
@@ -908,11 +908,10 @@ describe('the limit on POST /login — a member the edge did not attribute', () 
 	});
 
 	/**
-	 * the person who can fix it is whoever runs the deployment, and nothing on their side says why
-	 * every colleague stopped being able to sign in. so the sentence carries the cause and the usual
-	 * switch behind it, in the page's own voice rather than as a status for a log line.
+	 * the person who can fix it is whoever runs the deployment, so the sentence carries the cause and
+	 * who to tell, in the page's own voice rather than as a status for a log line.
 	 */
-	it('says the deployment is not being told the visitor’s address, and names the usual cause', async () => {
+	it('says the deployment could not tell the visitor’s address, and who to tell', async () => {
 		await makeMember('nadia@riverbanktrust.org');
 
 		const answer = await refused(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), {
@@ -921,7 +920,7 @@ describe('the limit on POST /login — a member the edge did not attribute', () 
 
 		expect(banner(answer)).toMatch(/^Sign-in is unavailable\./);
 		expect(banner(answer)).toContain('address');
-		expect(banner(answer)).toContain('Remove visitor IP headers');
+		expect(banner(answer)).toContain('tell whoever set up this site');
 		expect(identifierHeld(answer)).toBe('nadia@riverbanktrust.org');
 	});
 

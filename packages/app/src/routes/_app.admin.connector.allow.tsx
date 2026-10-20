@@ -96,8 +96,8 @@ export default function ConnectorAllow({ loaderData, actionData }: Route.Compone
 						<li>add a photo to a page through a link it gives you</li>
 					</ul>
 					<p>
-						It can’t refund a gift, change a donor’s monthly gift, or touch anything set up in the
-						console. You can disconnect it at any time under Integrations.
+						It can’t refund a gift, change a donor’s monthly gift, or change Settings, Payments or
+						Books. You can disconnect it at any time under Integrations.
 					</p>
 					<Form method="post" className="adm-actions">
 						<Button variant="primary" name="intent" value="allow">

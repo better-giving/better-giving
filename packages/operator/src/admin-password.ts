@@ -39,8 +39,8 @@
  * of a compare. refusing a short one is worth more than accepting it politely.
  *
  * it is also the app's entire credential entropy — there is no second value to guess, so the nominal
- * search space is the password alone. `packages/app/.dev.vars.example` tells the operator to
- * generate the value rather than choose it.
+ * search space is the password alone. the root `.env.example` tells the operator to generate the
+ * value rather than choose it.
  *
  * exported so every reader asserts the boundary rather than a number copied out of this file, which
  * is how a minimum silently stops being tested when it is raised.

@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import type { PaymentStatus } from '../db/schema';
 import { redact, redactPublicId } from '../../redact.ts';
+import { setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { isStripeRail, STRIPE_RAILS, type StripeRail } from '@better-giving/form/embed/rails';
 import { DONATION_METADATA_KEY, RAIL_CAPABILITY_STATES, WALLETS } from './provider.ts';
 import {
@@ -2108,9 +2109,9 @@ export function createStripeProvider(
 					detail:
 						'This deployment cannot check that a payment notification came from Stripe: ' +
 						'`STRIPE_WEBHOOK_SECRET` is not set, so the delivery was refused and its body was not ' +
-						'read. The value is minted by registering this deployment’s endpoint — set payment ' +
-						'notifications up on the console (`better-giving start`), which stores it in the same ' +
-						'press.'
+						'read. The value is minted by registering this deployment’s endpoint: run ' +
+						`\`${setupWebhookCommand('stripe')}\`, add the line it prints to \`.env\`, then ` +
+						'recreate the app.'
 				};
 			}
 

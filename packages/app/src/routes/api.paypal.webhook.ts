@@ -1,3 +1,4 @@
+import { RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { settleDelivery } from '$lib/server/donations/settle';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -101,7 +102,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a PayPal delivery by POST. ${method} is not a method it answers.`,
-			fix: 'PayPal posts deliveries here. Saving PayPal’s credentials in the console (`better-giving start`, under Donation processor) registers this address as the listener and stores its id as PAYPAL_WEBHOOK_ID.'
+			fix: `PayPal posts deliveries here. Run \`${setupWebhookCommand('paypal')}\` to register this address as the listener, add the \`PAYPAL_WEBHOOK_ID\` line it prints to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

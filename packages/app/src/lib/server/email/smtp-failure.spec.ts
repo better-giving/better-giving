@@ -14,8 +14,8 @@ describe('classifySmtpFailure', () => {
 	 * waiting.
 	 *
 	 * nothing can produce this string today and the case is here to pin a backstop rather than a
-	 * live path: `parseSmtpEndpoint` refuses port 25 before a socket exists, so Cloudflare never gets
-	 * to say so. the reachable half of this arm is the case below it.
+	 * live path: `parseSmtpEndpoint` refuses port 25 before a socket exists, so nothing dials it. the
+	 * reachable half of this arm is the case below it.
 	 */
 	it('reads a prohibited port as a misconfiguration, not an outage', () => {
 		const failure = classifySmtpFailure(

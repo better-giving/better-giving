@@ -525,15 +525,15 @@ describe('the limit on POST /forgot — a caller the edge did not attribute', ()
 
 	/**
 	 * the person who can fix it is whoever runs the deployment, so the sentence carries the cause and
-	 * the usual switch behind it — and nothing about the address typed, which was never read.
+	 * who to tell — and nothing about the address typed, which was never read.
 	 */
-	it('says the deployment is not being told the visitor’s address, and names the usual cause', async () => {
+	it('says the deployment could not tell the visitor’s address, and who to tell', async () => {
 		const answer = await refused(typed('nadia@riverbanktrust.org'), { ip: null });
 
 		expect(banner(answer)).toMatch(/^A reset link could not be sent\./);
 		// the only box on this page is an email address, so "your address" alone reads as that.
 		expect(banner(answer)).toContain('your connection’s IP address');
-		expect(banner(answer)).toContain('Remove visitor IP headers');
+		expect(banner(answer)).toContain('tell whoever set up this site');
 	});
 
 	/**

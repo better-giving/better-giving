@@ -29,13 +29,13 @@ export interface SmtpFailure {
 }
 
 /**
- * the platform refusing the connection outright. checked first because these messages also
- * contain the words the connect patterns match, and "Cloudflare will never allow this" is a
- * different instruction from "the host was unreachable just now".
+ * a connection to port 25 refused outright. checked first because these messages also contain
+ * the words the connect patterns match, and "this port will never work" is a different
+ * instruction from "the host was unreachable just now".
  *
- * it cannot fire today, and is kept as a backstop. Cloudflare's refusal is about port 25, and
- * `parseSmtpEndpoint` refuses port 25 before a socket exists — so nothing dials it and the platform
- * never gets to say so. this arm is what would catch it if that parser were ever loosened.
+ * it cannot fire today, and is kept as a backstop: `parseSmtpEndpoint` refuses port 25 before a
+ * socket exists, so nothing dials it. this arm is what would catch it if that parser were ever
+ * loosened.
  *
  * anchored on the platform's own shape, never a bare `prohibited`: `550 5.7.1 Relaying
  * prohibited` is a host refusing a message over a connection that works, so matching that word
@@ -174,8 +174,9 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 		return {
 			reason: 'not_configured',
 			detail:
-				`The mail host refused the connection at the platform level: ${message}. ` +
-				'Cloudflare Workers prohibit outbound port 25. Leave `SMTP_PORT` unset, which is 465.',
+				`The connection to the mail host was refused on port 25: ${message}. ` +
+				'This app sends on port 465 only. Remove `SMTP_PORT` from `.env`, which leaves it at ' +
+				'465, then recreate the app.',
 			indeterminate
 		};
 	}
@@ -220,7 +221,7 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 			reason: 'auth_failed',
 			detail:
 				`The mail host refused the credential: ${message}. ` +
-				'Check `SMTP_USERNAME` and `SMTP_PASSWORD` under SMTP on the console. For a provider ' +
+				'Check `SMTP_USERNAME` and `SMTP_PASSWORD` in `.env`. For a provider ' +
 				'whose credential is an API key, the key goes in `SMTP_PASSWORD`, and it is offered to ' +
 				'the host exactly as you typed it, so nothing in it needs escaping.',
 			indeterminate
@@ -278,8 +279,8 @@ function recipientRefusal(
 			detail:
 				refused +
 				'The host will not carry mail to this address for this connection, so the address is ' +
-				'not what is wrong. Check that `SMTP_USERNAME` and `SMTP_PASSWORD` are set under SMTP on ' +
-				'the console, and that `MAIL_FROM` is an address that login may send as.',
+				'not what is wrong. Check that `SMTP_USERNAME` and `SMTP_PASSWORD` are set in `.env`, ' +
+				'and that `MAIL_FROM` is an address that login may send as.',
 			indeterminate: false
 		};
 	}

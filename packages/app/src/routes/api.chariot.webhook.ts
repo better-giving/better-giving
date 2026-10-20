@@ -1,3 +1,4 @@
+import { RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { settleDelivery } from '$lib/server/donations/settle';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -65,7 +66,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a Chariot delivery by POST. ${method} is not a method it answers.`,
-			fix: 'Chariot posts grant updates here. Setting Chariot up in the console (`better-giving start`, under Donation processor) creates the subscription for this address and stores its secret as CHARIOT_WEBHOOK_SECRET.'
+			fix: `Chariot posts grant updates here. Run \`${setupWebhookCommand('chariot')}\` to create the subscription for this address, add the \`CHARIOT_WEBHOOK_SECRET\` line it prints to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

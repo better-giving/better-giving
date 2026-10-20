@@ -240,7 +240,7 @@ describe('sendRefundNotice()', () => {
 		expect(said).toContain(
 			'It will be sent again automatically. If it still can’t be sent, you’ll get another email saying so.'
 		);
-		expect(said).toContain('go to SMTP and press Send test email');
+		expect(said).toContain('In Settings, go to Mail and press Send test email.');
 	});
 
 	/**
@@ -748,7 +748,7 @@ describe('sendOwedRefundNotices()', () => {
 
 		expect(before.sent).toEqual([]);
 		expect(headline).toBe('A donor wasn’t told about their refund:');
-		expect(facts).toContain('fill in your organisation details under Organisation');
+		expect(facts).toContain('Add its registered name under Organisation details in Settings.');
 		expect(after.sent.map((m) => m.to)).toEqual(['ada@example.org']);
 	});
 });

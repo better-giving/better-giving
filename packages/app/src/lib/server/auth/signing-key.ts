@@ -19,12 +19,12 @@ import type { AuthEnv } from './env';
  * for itself — rather than a breach of it. see the note above `authSigningKey` in
  * `db/auth-schema.ts`.
  *
- * **what it signs is worth more than cookie integrity, and reading it out of D1 is not
- * inert.** over a session cookie it is a tamper check on a token whose authority is the
+ * **what it signs is worth more than cookie integrity, and reading it out of the database is
+ * not inert.** over a session cookie it is a tamper check on a token whose authority is the
  * `auth_session` row it names. but it also signs the short-lived address that begins a
  * QuickBooks connection, under a purpose label of its own so the two can never be read
  * as each other (`$lib/server/accounting/connect-link.ts`), and that address is minted
- * on the console — behind a credential no session token holds. whoever can forge one
+ * on Books for the deployer's session alone. whoever can forge one
  * connects **their own** company, and every gift this organisation takes is posted into
  * books they control. signing in at Intuit is not a second gate: the person signing in
  * is the one who forged the address. so the carve-out above is about where the value
@@ -57,21 +57,19 @@ export type AuthSecretResolution =
  *
  * it is written to be true of every arm that sends it, a database that throws before the key is
  * read included (src/routes/login.tsx), so it names what to do rather than what failed. like
- * `notConfiguredMessage`, and for the reason its comment gives, it names the two ways migrations
- * are applied and no filename.
+ * `notConfiguredMessage`, and for the reason its comment gives, it names the command that applies
+ * migrations and no filename.
  */
 export const SIGNING_KEY_UNREADABLE =
 	'This deployment’s database is not ready, so no one can be signed in and no signed link can ' +
-	'be checked. If the deployment is new, apply its migrations: the console ' +
-	'(`better-giving start`) applies them to the deployed D1 when it updates this deployment, and ' +
-	'`pnpm wrangler d1 migrations apply DB --local` applies them to a local one. ' +
+	'be checked. Update the database: `docker compose run --rm migrate`. ' +
 	LOGS_SAY_WHY;
 
 /**
  * `BETTER_AUTH_SECRET` if set, else the `auth_signing_key` row, else a refusal whose cause
  * names the fix.
  *
- * one D1 read, and only when the env override is absent. it is a read per request
+ * one database read, and only when the env override is absent. it is a read per request
  * because nothing built from a binding may be a module-scope singleton (CLAUDE.md) —
  * the row is immutable in practice, but caching it across requests would mean caching
  * it across deployments and databases too.
@@ -95,7 +93,7 @@ export async function resolveAuthSecret(db: Db, env: AuthEnv): Promise<AuthSecre
 		return { ok: false, cause: notConfiguredMessage(`the query failed (${describe(cause)})`) };
 	}
 
-	// `typeof` rather than trusting the declared type: the value crosses D1's serialization
+	// `typeof` rather than trusting the declared type: the value crosses the driver's serialization
 	// boundary, so the declared `string` is a claim about the schema, not about what came
 	// back — a column that is somehow null or numeric arrives as one. the failure mode of
 	// trusting it is a `TypeError` on the auth hot path instead of the message below.
@@ -128,22 +126,20 @@ export async function resolveAuthSecret(db: Db, env: AuthEnv): Promise<AuthSecre
  * squash-mutable — the chain under `migrations/` has been squashed before — and a stale
  * one does worse than dangle: the index it named is now a different, real file,
  * so the message sends its reader somewhere confidently wrong. what it names instead are
- * the two ways migrations are applied: the console's update press for a deployed database,
- * which applies them as it deploys, and the raw wrangler invocation for a local one, spelled
- * out of `wrangler.jsonc`'s own binding name and `migrations_dir`. `CONTRIBUTING.md` is where
- * the symptom ("every route 500s") is diagnosed.
+ * the two ways migrations are applied (AGENTS.md → Schema): the migrate service for a
+ * deployment, and `pnpm db:migrate` from a checkout. `CONTRIBUTING.md` is where the symptom
+ * ("every route 500s") is diagnosed.
  */
 function notConfiguredMessage(reason: string): string {
 	return (
 		`No session-cookie signing key is available: \`auth_signing_key\` could not be read because ${reason}. ` +
 		`The row is minted by an idempotent migration, so the fix is almost always to apply ` +
-		`migrations to this database: the console (\`better-giving start\`) applies them to the ` +
-		`deployed D1 when it updates this deployment, and ` +
-		`\`pnpm wrangler d1 migrations apply DB --local\` applies them to a local one. ` +
-		`As an override you can instead set the \`BETTER_AUTH_SECRET\` var, which takes precedence ` +
-		`over the row — see \`.dev.vars.example\`. ` +
+		`migrations to this database: \`docker compose run --rm migrate\` for a deployment, or ` +
+		`\`pnpm db:migrate\` from a checkout. ` +
+		`As an override you can instead set \`BETTER_AUTH_SECRET\` in \`.env\`, which takes ` +
+		`precedence over the row — see \`.env.example\`. ` +
 		`If EVERY route is failing this way, see "Every route 500s" in \`CONTRIBUTING.md\`: the usual ` +
-		`local cause is a changed \`database_id\` pointing \`--local\` at an empty database.`
+		`local cause is a \`DATABASE_URL\` naming a different file from the one you migrated.`
 	);
 }
 

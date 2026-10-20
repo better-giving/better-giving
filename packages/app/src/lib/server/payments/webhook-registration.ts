@@ -8,11 +8,11 @@ import type {
 // what a caller asks the payment port about this deployment's own webhook endpoint, and the two
 // repairs it can ask for.
 //
-// **the read and both repairs have callers.** `src/routes/console.payments.ts` reads the registration so that
+// **the read and both repairs have callers.** ./processor-cards.ts reads the registration so that
 // `webhookSecretStanding` in ./webhook-secret.ts can compare the fingerprint stamped on the endpoint
-// against the signing secret this deployment holds — made here rather than in the console because
-// the value that verifies a delivery is the one the running version holds, and the account can be
-// ahead of it for as long as a new version takes to roll. ./webhook-setup.ts, behind
+// against the signing secret this deployment holds — made in the app because the value that
+// verifies a delivery is the one the running process holds, and the account can be ahead of it
+// until the app is recreated. ./webhook-setup.ts, behind
 // `scripts/setup-webhook.ts`, reads and then replaces (Stripe) or resubscribes (PayPal) when it
 // registers from `.env`; its header argues which processor takes which.
 //

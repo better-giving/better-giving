@@ -1,3 +1,4 @@
+import { RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { settleDelivery } from '$lib/server/donations/settle';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { cachedCoins } from '$lib/server/forms/coin-cache';
@@ -60,7 +61,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a NOWPayments payment notification by POST. ${method} is not a method it answers.`,
-			fix: 'NOWPayments posts here for every crypto payment this deployment creates. Its IPN secret, under Payment Settings in the NOWPayments dashboard, is stored in the console (`better-giving start`) as NOWPAYMENTS_IPN_SECRET.'
+			fix: `NOWPayments posts here for every crypto payment this deployment creates. Copy the IPN secret under Payment Settings in the NOWPayments dashboard into \`.env\` as \`NOWPAYMENTS_IPN_SECRET\`, then recreate the app: \`${RECREATE_APP}\`.`
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

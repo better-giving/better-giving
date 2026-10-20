@@ -11,6 +11,7 @@ import { data, Form, redirect, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
@@ -143,8 +144,7 @@ const WRONG_CURRENT = 'does not match your password';
  */
 const NOT_A_MEMBER =
 	'The deployer’s sign-in password is a deploy-time var rather than an account on this ' +
-	'deployment, and is not changed here. Open the console (`better-giving start`) and set ' +
-	'`ADMIN_PASSWORD`.';
+	'deployment, and is not changed here. Set `ADMIN_PASSWORD` in `.env`, then recreate the app.';
 
 /**
  * what a refusal that is about the deployment says.
@@ -155,8 +155,7 @@ const NOT_A_MEMBER =
  */
 const UNAVAILABLE =
 	'Your password could not be changed: something is wrong with this deployment rather than with ' +
-	'what you typed. The exact cause is in the deployment’s logs: the Cloudflare dashboard has ' +
-	'them, and `pnpm run logs` reads them from a checkout.';
+	`what you typed. Ask whoever set up this site to look into it. ${LOGS_SAY_WHY}`;
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];

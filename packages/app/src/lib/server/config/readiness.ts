@@ -8,25 +8,22 @@ import { MAIL_SMTP_VARS } from './env';
 
 // how far this deployment's own set-up has got, as a reading and never as a control.
 //
-// **it reports and repairs nothing, and that is the whole of what makes it allowed here.** every
-// one of the five is settled on the operator console, fold by fold, beside the press that finishes
-// it — this says which of them are done in the console's own words and sends the reader there. a
-// screen that could repair one of these would be the console built twice, and the second copy is
-// the one that goes stale.
+// **it reports and repairs nothing.** every one of the five is settled where its value lives — a
+// row on Settings, or a line in `.env` — and this says which of them are done, in the fold labels
+// `@better-giving/operator/setup-folds` spells.
 //
 // **the jobs are `SETUP_JOBS`'s and the words are `@better-giving/operator/setup-folds`'s, and none
-// of either is spelled here.** the operator meets these five on the console first, and a deployment
-// calling the same job something else is a reader working out whether they are two jobs or one.
+// of either is spelled here.** a deployment calling the same job two things is a reader working out
+// whether they are two jobs or one.
 //
-// **the site list is a fold on the console and no job here.** this deployment takes gifts on the
-// donation page it serves at `/donate` on its own address whether or not an organisation has a
-// website of its own, so a line waiting on a typed site would call a deployment that is taking
-// gifts unfinished. the fold stays where an operator who does have a website types one
-// (packages/console-ui/src/lib/home-sections.ts); nothing on this side reads it.
+// **the site list is no job here.** this deployment takes gifts on the donation page it serves at
+// `/donate` on its own address whether or not an organisation has a website of its own, so a line
+// waiting on a typed site would call a deployment that is taking gifts unfinished. an operator who
+// does have a website lists it under Donation forms; nothing on this side reads it.
 //
 // **every fact is read on this deployment, from the values it was started with and its own rows.**
-// nothing here reaches Stripe, dials a mail host or asks Cloudflare anything: a page that made five
-// network calls to say five words would take seconds to draw and would report a third party's bad
+// nothing here reaches Stripe, dials a mail host or asks any third party anything: a page that made
+// five network calls to say five words would take seconds to draw and would report a third party's bad
 // afternoon as this deployment's fault. so what it answers is whether a job has been set up, which
 // is what an operator can act on, and never whether the third party behind it is up right now.
 //
@@ -82,7 +79,7 @@ const allSet = (config: ConfigEnv, names: readonly (keyof ConfigEnv)[]): boolean
  * **no webhook value is on a pair, and that is the distinction this list is about rather than an
  * omission.** without one a settled charge is never heard about, which is what stops a recurring
  * gift being written down — but a one-off gift is still charged, and this line answers whether one
- * can be. the console's payments fold is where the difference between the two is drawn and acted
+ * can be. the Payments screen is where the difference between the two is drawn and acted
  * on. `PAYPAL_CHARITY_RATE_APPROVED` is off them for a reason of its own: it picks which published
  * fee table a donor covering fees is quoted from (../payments/fees.ts), and unset is an answer
  * rather than a gap. `CHARIOT_API_URL` and `PAYPAL_API_URL` are off for the same reason: unset is

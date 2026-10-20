@@ -143,12 +143,12 @@ const INVITE_REFUSALS = {
  *
  * the invitation row is written before the send and stays written when the send fails, which is
  * the right way round: the operator can press again on the same address — the second invitation
- * supersedes the first — or take the pending row off the list. the sentence points at the console
- * because that is where this deployment's mail settings are typed and where the send test is.
+ * supersedes the first — or take the pending row off the list. the sentence points at Settings →
+ * Mail because that is where the send test is.
  */
 const SEND_FAILED =
-	'The invitation could not be sent. Open the console (`better-giving start`) and check this ' +
-	'deployment’s mail settings, then send it again.';
+	'The invitation could not be sent. In Settings, go to Mail and press Send test email, then ' +
+	'send the invitation again.';
 
 /**
  * what a POST from a member's session is answered with.
@@ -167,7 +167,7 @@ const NOT_THE_DEPLOYER =
 /** what a body aimed at the deployer's own row is answered with, for the same reason. */
 const STAFF_KEPT =
 	'The deployer is the deployment rather than a member and cannot be removed. The sign-in ' +
-	'password is set on the console (`better-giving start`).';
+	'password is `ADMIN_PASSWORD` in `.env`.';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];

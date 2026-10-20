@@ -11,6 +11,7 @@ import { Column, Section } from '@better-giving/operator/components/shell/Layout
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import {
 	STRIPE_WEBHOOK_PATH,
@@ -184,13 +185,6 @@ const TAKES: Record<Processor, string> = {
 /** where DEPLOY.md says how a processor's keys go into `.env`. */
 const HOW_TO_ADD = 'https://github.com/better-giving/better-giving/blob/main/DEPLOY.md#payments';
 
-/** what recreating the app is, wherever `.env` changed. */
-const RECREATE = 'docker compose up -d --force-recreate app';
-
-/** the script that registers a processor's notices and prints the line `.env` takes. */
-const setupWebhook = (processor: Processor) =>
-	`docker compose exec app node scripts/setup-webhook.ts ${processor}`;
-
 /**
  * what a rail's standing is called and how loudly it is said: named for approval and never for a
  * rail working, since an approved rail can still fail a gift on its amount or currency
@@ -209,9 +203,9 @@ const STANDING: Record<
 };
 
 /** the server half of a notices banner, for a processor `scripts/setup-webhook.ts` registers. */
-const scripted = (processor: Processor) => ({
+const scripted = (processor: Parameters<typeof setupWebhookCommand>[0]) => ({
 	says: 'Run this, put the line it prints in `.env`, and recreate the app:',
-	commands: [setupWebhook(processor), RECREATE]
+	commands: [setupWebhookCommand(processor), RECREATE_APP]
 });
 
 /**
@@ -224,7 +218,7 @@ const NOTICES_STEPS: Record<Processor, { says: string; commands: readonly string
 	chariot: scripted('chariot'),
 	nowpayments: {
 		says: 'Copy the IPN secret from your NOWPayments dashboard into `.env` as `NOWPAYMENTS_IPN_SECRET`, then recreate the app:',
-		commands: [RECREATE]
+		commands: [RECREATE_APP]
 	}
 };
 
@@ -248,7 +242,7 @@ function NoProcessor() {
 			body={
 				<ServerSteps
 					says="Add one processor’s keys to `.env` (DEPLOY.md, Payments), register its payment notices, put the line that prints in `.env`, and recreate the app:"
-					commands={[setupWebhook('stripe'), RECREATE]}
+					commands={[setupWebhookCommand('stripe'), RECREATE_APP]}
 				/>
 			}
 		>

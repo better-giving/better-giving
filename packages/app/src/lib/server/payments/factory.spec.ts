@@ -47,10 +47,10 @@ describe('the provider one processor resolves to', () => {
 	 * to be able to serve `/admin` while it is in that state. a factory that threw would take the
 	 * whole app down over a deployment that is merely not configured yet.
 	 *
-	 * it is the only variable that refuses every arm, and the refusal names it and the command that
-	 * sets it. what a deployment is short of beyond this one is not in the sentence: the console
-	 * draws a box for each of the three and reports each of them, and a refusal that listed the
-	 * others would be this module answering a question nobody asked it.
+	 * it is the only variable that refuses every arm, and the refusal names it and the `.env` line
+	 * that sets it. what a deployment is short of beyond this one is not in the sentence: the
+	 * Payments screen reports each of them, and a refusal that listed the others would be this
+	 * module answering a question nobody asked it.
 	 */
 	it('refuses every arm with the secret key named when it is unset', async () => {
 		const result = await anyCall({});
@@ -58,8 +58,7 @@ describe('the provider one processor resolves to', () => {
 		expect(result.ok === false && result.reason).toBe('not_configured');
 		const detail = result.ok === false ? result.detail : '';
 		expect(detail).toContain('STRIPE_SECRET_KEY');
-		expect(detail).toContain('better-giving start');
-		expect(detail).toContain('Donation processor');
+		expect(detail).toContain('Add `STRIPE_SECRET_KEY=<value>` to `.env`, then recreate the app.');
 	});
 
 	/**
@@ -89,7 +88,7 @@ describe('the provider one processor resolves to', () => {
 		expect(result.ok === false && result.reason).toBe('not_configured');
 		const detail = result.ok === false ? result.detail : '';
 		expect(detail).toContain('STRIPE_WEBHOOK_SECRET');
-		expect(detail).toContain('better-giving start');
+		expect(detail).toContain('docker compose exec app node scripts/setup-webhook.ts stripe');
 	});
 
 	/**
@@ -516,13 +515,12 @@ describe('Chariot', () => {
 		expect(fix).not.toContain('Stripe');
 	});
 
-	// the console refuses Chariot's values by command, since a key set that way holds no event
-	// subscription and no signing secret; the fix sends an operator to the page that makes both.
-	it('sends an operator setting Chariot up to the console, and names no command', () => {
+	// a key alone holds no event subscription and no signing secret; the fix sends an operator to
+	// the script that makes both.
+	it('sends an operator setting Chariot up to the script that registers its notices', () => {
 		const fix = servedProcessors({ CHARIOT_API_KEY: 'notarealchariotkey' }).fix;
 
-		expect(fix).toContain('better-giving start');
-		expect(fix).not.toContain('pnpm run deploy --var');
+		expect(fix).toContain('docker compose exec app node scripts/setup-webhook.ts chariot');
 	});
 });
 

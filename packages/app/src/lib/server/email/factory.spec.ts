@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { setCommand, type DeployValueName } from '@better-giving/operator/deploy-split';
+import type { DeployValueName } from '@better-giving/operator/deploy-split';
 import { createEmailProvider } from './factory';
 import type { EmailMessage } from './provider';
 import type { SMTPTransportOptions } from 'nodemailer';
@@ -77,13 +77,13 @@ describe('createEmailProvider', () => {
 		{ absent: ['MAIL_FROM'] as DeployValueName[], env: { ...MAIL, MAIL_FROM: '' } },
 		{ absent: ['SMTP_PASSWORD'] as DeployValueName[], env: { ...MAIL, SMTP_PASSWORD: '  ' } }
 	])(
-		'refuses with $absent missing, naming it and the command that sets it',
+		'refuses with $absent missing, naming it and the `.env` line that sets it',
 		async ({ absent, env }) => {
 			const result = await send(env);
 			expect(result.reason).toBe('not_configured');
 			for (const name of absent) {
 				expect(result.detail).toContain(name);
-				expect(result.detail).toContain(setCommand(name));
+				expect(result.detail).toContain(`\`${name}=<value>\``);
 			}
 		}
 	);
@@ -97,7 +97,7 @@ describe('createEmailProvider', () => {
 		const result = await send({ ...MAIL, SMTP_PORT: '25' });
 		expect(result.reason).toBe('not_configured');
 		expect(result.detail).toContain('25');
-		expect(result.detail).toContain('prohibit');
+		expect(result.detail).toContain('relay');
 	});
 
 	// the config is validated inside `send`, not at construction, so a bad value arrives in
@@ -162,7 +162,7 @@ describe('createEmailProvider', () => {
 	/**
 	 * the seal covers construction too. `sealed(build(source))` evaluates `build` before the seal
 	 * exists, so a throw in there — reading the env, or any transport somebody adds an arm for
-	 * later — would leave as an exception on the caller's path, which for the console's test send
+	 * later — would leave as an exception on the caller's path, which for the test send on Settings
 	 * is the one channel this port exists to close. no build path throws today; the
 	 * guarantee is that none can.
 	 */

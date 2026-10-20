@@ -1,3 +1,4 @@
+import { RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { settleDelivery } from '$lib/server/donations/settle';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -95,7 +96,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a Stripe delivery by POST. ${method} is not a method it answers.`,
-			fix: 'Stripe posts deliveries here. Saving Stripe’s keys in the console (`better-giving start`, under Donation processor) registers this address as the endpoint.'
+			fix: `Stripe posts deliveries here. Run \`${setupWebhookCommand('stripe')}\` to register this address as the endpoint, add the line it prints to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

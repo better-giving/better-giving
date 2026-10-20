@@ -7,8 +7,8 @@ import type { Route } from './+types/zapier';
 // the layout every route Zapier's servers call sits under, and the one place the key is checked.
 //
 // a route file named `zapier.<anything>` nests beneath it and inherits the check by existing, the
-// same mounting src/routes/console.ts makes for the console's credential and for the same reason:
-// a check each route called leaves the next route open the day it is written. ../routes.spec.ts
+// same mounting ./integrations.v1.ts makes for its key and for the same reason: a check each route
+// called leaves the next route open the day it is written. ../routes.spec.ts
 // holds that every route served under `/zapier` is under this file.
 //
 // only a failed check is charged. Zapier's egress addresses are shared by every Zapier user, so

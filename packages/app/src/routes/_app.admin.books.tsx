@@ -1,4 +1,5 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
+import { RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { CodeSlab, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
@@ -1112,9 +1113,6 @@ const QUICKBOOKS_ID = 'quickbooks';
 /** where an operator creates the Intuit app whose keys go in `.env`. */
 const INTUIT_DEVELOPER = 'https://developer.intuit.com/';
 
-/** what recreating the app is, wherever `.env` changed. */
-const RECREATE = 'docker compose up -d --force-recreate app';
-
 /** what each picker is called. */
 const PICK_LABEL: Record<Role, string> = {
 	income: 'Income',
@@ -1345,7 +1343,7 @@ function ServerSteps() {
 					its redirect URIs, put its client ID and secret in <InlineCode>.env</InlineCode>{' '}
 					(DEPLOY.md, QuickBooks), and recreate the app:
 				</p>
-				<CodeSlab oneline content={RECREATE} copyable copyLabel="Copy the command" />
+				<CodeSlab oneline content={RECREATE_APP} copyable copyLabel="Copy the command" />
 			</div>
 		</>
 	);

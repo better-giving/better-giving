@@ -14,17 +14,17 @@ import { z } from 'zod';
 // split from ./queries.ts for the same reason `contacts/contact-input.ts` is: every rule
 // about what an org profile may be — which fields the row cannot exist without, what counts
 // as an email, what a blank means — is decidable from the submitted values alone. keeping
-// the parse here means it is testable with no D1 and no browser, and it means the endpoint
-// that takes a profile over the wire (../../../routes/console.org.ts) stays a translation layer
-// rather than the place the rules live.
+// the parse here means it is testable with no database and no browser, and it means the action
+// that takes a profile over the wire (../../../routes/_app.admin.settings.tsx) stays a translation
+// layer rather than the place the rules live.
 //
 // how the rules are stated. every rule an org profile has is a property of a single value —
 // trim, blank becomes `null`, the length caps, the fields that must be filled in, the
 // email pattern — so all of them are zod schemas and nothing is left as a hand-written check
 // underneath. they are stated in `@better-giving/operator/console/org-rules` rather than here,
-// along with what is deliberately not checked and why, because the console's Organisation details fold
-// runs the same rules in the browser in front of the person typing — and that package is a leaf
-// this app and the console can both reach, where `$lib/server/**` is closed to a component
+// along with what is deliberately not checked and why, because the Organisation details form on
+// Settings runs the same rules in the browser in front of the person typing — and that package is
+// a leaf a component can reach, where `$lib/server/**` is closed to one
 // (`packages/app/form-rules.spec.ts`). what this file adds to them is `.nullable()`.
 // `contacts/contact-input.ts` keeps a block of plain typescript below its schemas for the rules
 // that read more than one field at a time; there are none of those here, which is why the whole
@@ -48,7 +48,7 @@ import { z } from 'zod';
  * markup, in the error map and in the table, while the message itself is a sentence a
  * fundraiser reads under the input.
  *
- * re-exported rather than written out again: the console draws a box per name and this side
+ * re-exported rather than written out again: Settings draws a box per name and this side
  * states them in a save, so a list spelled on each side is a field one half stops sending while
  * the other goes on drawing a box for it (`@better-giving/operator/console/org`'s header).
  */
@@ -139,8 +139,8 @@ export type OrgProfileParseResult =
  * `parseOrgProfile` takes this rather than `FormData` so a test states its input as an
  * object literal — `{ legal_name: 'Hope Foundation' }` is the case being made, where the
  * `FormData` that builds it is four lines of noise around it. it is also what keeps a wire format
- * off this parser entirely: `orgValues` in ../../../routes/console.org.ts reads the console's
- * posted body onto this shape and `toFormValues` in ./form-values.ts projects a stored row back
+ * off this parser entirely: `orgProfileValues` in ../../../routes/_app.admin.settings.tsx reads
+ * the posted body onto this shape and `toFormValues` in ./form-values.ts projects a stored row back
  * onto the same one to seed the boxes, so what reaches here is never a body.
  */
 export type OrgProfileFormValues = Partial<Record<OrgProfileField, string>>;

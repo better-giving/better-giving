@@ -17,6 +17,8 @@
 // nothing here imports a transport, a binding or a template. `./factory.ts` is what turns
 // a deployment's config into one of these, per request.
 
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
+
 /** subject line and both body arms — what a template produces, before it has a recipient. */
 export interface RenderedEmail {
 	readonly subject: string;
@@ -181,8 +183,7 @@ export function sealed(provider: EmailProvider): EmailProvider {
 					detail:
 						'The email transport failed in a way it is not supposed to be able to: it threw ' +
 						'instead of reporting. Nothing about the deployment fixes this. It is a bug in ' +
-						'this app, and the cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a checkout). Whether the ' +
-						'message went out is unknown.',
+						`this app. Whether the message went out is unknown. ${LOGS_SAY_WHY}`,
 					indeterminate: true
 				};
 			}

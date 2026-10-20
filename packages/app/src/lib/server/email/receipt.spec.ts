@@ -76,7 +76,7 @@ describe('renderReceipt — when it refuses', () => {
 			throw new Error('a receipt was rendered with no organisation profile');
 		}
 		expect(result.missing).toEqual(RECEIPT_FIELDS);
-		expect(result.detail).toContain('better-giving start');
+		expect(result.detail).toContain('under Organisation details in Settings');
 	});
 
 	/**

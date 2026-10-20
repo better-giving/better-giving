@@ -79,7 +79,7 @@ describe('a deployment with all five done', () => {
 		expect(lines.map((one) => one.id)).toEqual([...SETUP_JOBS]);
 	});
 
-	it('names each of them in the words the console uses', () => {
+	it('names each of them by its fold label', () => {
 		expect(lines.map((one) => one.label)).toEqual(SETUP_JOBS.map((id) => FOLD_LABELS[id]));
 	});
 
@@ -160,8 +160,8 @@ describe('one job at a time left undone', () => {
 
 	// a deployment with no website of its own gives on the donation page it serves on its own
 	// address, so there is no site to wait on and nothing here reads the `site` table at all
-	// (./setup-state.ts). the fold stays on the console for the operator who does have one.
-	it('draws no line for the site list, which is a fold on the console and no job here', () => {
+	// (./setup-state.ts). the site list stays under Donation forms for the operator who has one.
+	it('draws no line for the site list, which is no job here', () => {
 		expect(setupReadiness(facts()).map((one) => one.id)).not.toContain('sites');
 	});
 

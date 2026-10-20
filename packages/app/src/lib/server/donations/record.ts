@@ -728,8 +728,8 @@ function refusalFor(
 				reason: 'write_failed',
 				detail:
 					'the gift could not be written, and nothing about it was stored. this is a fault in ' +
-					'this app or in the database rather than anything about the donation; the cause is in ' +
-					'this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a checkout).'
+					'this app or in the database rather than anything about the donation; the app’s log has ' +
+					'the cause: `docker compose logs app`.'
 			};
 	}
 }

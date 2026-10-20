@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { secretEquals } from './secret-compare';
 
-// the compare both credentialled surfaces run: the staff sign-in and the console check.
+// the compare every credential check runs: the staff sign-in and the QuickBooks start address.
 //
 // it lives beside the function rather than beside either caller, which is the point of the
 // module — a second copy of these cases would be a second copy of the compare waiting to happen.
