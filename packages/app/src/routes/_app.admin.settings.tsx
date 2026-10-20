@@ -18,17 +18,19 @@ import {
 } from '@better-giving/operator/console/org-rules';
 import { readSocialLinks } from '@better-giving/operator/console/social-links';
 import type { TestSendReport } from '@better-giving/operator/console/test-send';
-import type { Resized } from '@better-giving/operator/images/resize';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
 import { useId, useState } from 'react';
 import { data, Form, useFetcher, useNavigation } from 'react-router';
 import { z } from 'zod';
-import { ReplacePhotoControl, replaceRefusal } from '$lib/admin/editor/replace-photo';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
+import { BrandColourField } from '$lib/admin/settings/brand-colour-field';
+import { LogoPicker } from '$lib/admin/settings/logo-picker';
+import type { Squared } from '$lib/admin/settings/logo-square';
+import { useSocialLinkLeads } from '$lib/admin/settings/social-link-lead';
 import { formPress } from '$lib/admin/unreached';
 import {
 	type AdminActionData,
@@ -453,6 +455,7 @@ function DetailsCard({
 		pending: useSubmitting(DETAILS_FORM)
 	});
 	const links = fields[SOCIAL_LINKS_FIELD];
+	const linkLead = useSocialLinkLeads();
 
 	return (
 		<Form method="post" {...getFormProps(form)}>
@@ -525,8 +528,9 @@ function DetailsCard({
 					optional
 					placeholder="A world where giving costs the giver nothing extra."
 				/>
-				<Field
+				<BrandColourField
 					{...marked(fields.brand_colour)}
+					defaultValue={fields.brand_colour.defaultValue ?? ''}
 					label="Brand colour"
 					optional
 					hint="A # and six hex digits, like #1f6feb."
@@ -542,6 +546,7 @@ function DetailsCard({
 					}
 					rows={links.getFieldList().map((row, index) => ({
 						...marked(row),
+						...linkLead(row.key ?? row.id, row.defaultValue),
 						key: row.key,
 						remove: rowPress(form.remove.getButtonProps({ name: links.name, index }), hydrated)
 					}))}
@@ -565,11 +570,12 @@ type LogoAnswer =
 	| { readonly error: string; readonly reason?: 'failed' };
 
 /**
- * the logo, put on as soon as it is resized and taken off at Remove, each a fetcher to its own
- * address: neither is part of Save details, and the screen's loaders are read again after either.
+ * the logo, put on as soon as its crop is saved and resized, and taken off at Remove, each a fetcher
+ * to its own address: neither is part of Save details, and the screen's loaders are read again
+ * after either.
  *
- * the refusal at the press is the latest answer's — a resize or an upload that failed — and a new
- * pick clears it.
+ * the refusal at the press is the latest answer's — a crop, a resize or an upload that failed — and
+ * a crop that comes through clears it.
  */
 function LogoControl({ logo }: { readonly logo: LoaderData['logo'] }) {
 	const hintId = `${useId()}-hint`;
@@ -588,9 +594,9 @@ function LogoControl({ logo }: { readonly logo: LoaderData['logo'] }) {
 		}
 	}
 
-	const resized = (result: Resized) => {
+	const squared = (result: Squared) => {
 		if (!result.ok) {
-			setRefused(replaceRefusal(result.reason));
+			setRefused(result.refused);
 			return;
 		}
 		setRefused(null);
@@ -605,17 +611,17 @@ function LogoControl({ logo }: { readonly logo: LoaderData['logo'] }) {
 			<p className="adm-hint" id={hintId}>
 				On each receipt.
 			</p>
-			<ReplacePhotoControl
-				imageSrc={logo?.src}
-				describe={false}
-				frame="square"
-				onResized={resized}
+			<LogoPicker
+				src={logo?.src}
+				onSquared={squared}
 				state={
-					fetcher.state !== 'idle' && fetcher.formMethod === 'POST'
-						? 'uploading'
-						: refused === null
+					fetcher.state === 'idle'
+						? refused === null
 							? undefined
 							: { refused }
+						: fetcher.formMethod === 'DELETE'
+							? 'removing'
+							: 'uploading'
 				}
 				onRemove={() => {
 					setRefused(null);
@@ -683,27 +689,32 @@ function MailCard({ mail, to }: { readonly mail: LoaderData['mail']; readonly to
 }
 
 /**
- * the card with no mail values, in two parts for two readers: the staff sentence in the banner, and
+ * the card with no mail values, one banner in two parts for two readers: the staff sentence, and
  * under it the steps for whoever runs the server, since no box on this screen sets a mail value.
  */
 function MailUnset() {
 	return (
-		<>
-			<Banner tone="attention" word="Receipts aren’t being sent">
-				Donors get no receipt and you get no notice of their gifts until mail is set up. Ask whoever
-				set up this site to add it. The steps below are for them.
-			</Banner>
-			<h3>For whoever runs the server</h3>
-			<p className="adm-prose">
-				<MarkedText text="Add the mail values to `.env` (DEPLOY.md, Mail), then recreate the app:" />
-			</p>
-			<CodeSlab
-				oneline
-				content="docker compose up -d --force-recreate app"
-				copyable
-				copyLabel="Copy the command"
-			/>
-		</>
+		<Banner
+			tone="attention"
+			word="Receipts aren’t being sent"
+			body={
+				<>
+					<h3 className="adm-banner__head">For whoever runs the server</h3>
+					<p>
+						<MarkedText text="Add the mail values to `.env` (DEPLOY.md, Mail), then recreate the app:" />
+					</p>
+					<CodeSlab
+						oneline
+						content="docker compose up -d --force-recreate app"
+						copyable
+						copyLabel="Copy the command"
+					/>
+				</>
+			}
+		>
+			Donors get no receipt and you get no notice of their gifts until mail is set up. Ask whoever
+			set up this site to add it. The steps below are for them.
+		</Banner>
 	);
 }
 

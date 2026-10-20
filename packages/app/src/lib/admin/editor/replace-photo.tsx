@@ -3,7 +3,7 @@ import { Field } from '@better-giving/operator/components/forms/Field';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { useEffect, useId, useRef } from 'react';
 import type { Resized, ResizeRefusal } from '@better-giving/operator/images/resize';
-import { usePhotoPicker } from '../photo-picker';
+import { type PhotoPickerOptions, usePhotoPicker } from '../photo-picker';
 
 /** the box that describes the photo, or none for an image whose words stand beside it. */
 type Description =
@@ -26,26 +26,55 @@ type Description =
 			readonly altError?: undefined;
 	  };
 
-export type ReplacePhotoControlProps = Description & {
-	/** the placed photo as it is served; absent while the block holds none. */
-	readonly imageSrc?: string | undefined;
-	/** a new photo was chosen, and its resize begins. */
-	readonly onPicked?: (() => void) | undefined;
-	/** a new photo, resized or refused. the route posts `blob` and moves `state`. */
-	readonly onResized: (result: Resized) => void;
-	/** `uploading` while the route posts; `refused` with the words to show at the press. */
-	readonly state?: 'uploading' | { readonly refused: string } | undefined;
-	/** how the art is framed: absent, cropped to the sheet's frame; `square`, cropped as the
-	 *  program chooser crops a program's photo. */
-	readonly frame?: 'square' | undefined;
-	/** Remove beside the press while an image is placed; absent, no Remove is drawn. */
-	readonly onRemove?: (() => void) | undefined;
-	/** the press's id, for a caller that moves the focus to it. */
-	readonly pressId?: string | undefined;
-};
+/**
+ * what a pick is handed to: resized here and reported through `onResized`, or, with `onChosen`,
+ * handed over as chosen for a step the caller runs before its own resize (`resizing` in `state`).
+ */
+type Picked =
+	| {
+			/** a new photo was chosen, and its resize begins. */
+			readonly onPicked?: (() => void) | undefined;
+			/** a new photo, resized or refused. the route posts `blob` and moves `state`. */
+			readonly onResized: (result: Resized) => void;
+			readonly onChosen?: undefined;
+			readonly accept?: undefined;
+	  }
+	| {
+			readonly onChosen: (file: File) => void;
+			/** the file chooser's `accept`. */
+			readonly accept: string;
+			readonly onPicked?: undefined;
+			readonly onResized?: undefined;
+	  };
+
+export type ReplacePhotoControlProps = Description &
+	Picked & {
+		/** the placed photo as it is served; absent while the block holds none. */
+		readonly imageSrc?: string | undefined;
+		/** what the presses name: `Add photo`, `Replace photo`, `Remove the photo`. */
+		readonly noun?: 'photo' | 'logo' | undefined;
+		/**
+		 * `resizing` while a caller's own step after an `onChosen` pick runs; `uploading` while the
+		 * route posts; `removing` while it takes the image off; `refused` with the words to show at the
+		 * press.
+		 */
+		readonly state?:
+			| 'resizing'
+			| 'uploading'
+			| 'removing'
+			| { readonly refused: string }
+			| undefined;
+		/** how the art is framed: absent, cropped to the sheet's frame; `square`, cropped as the
+		 *  program chooser crops a program's photo. */
+		readonly frame?: 'square' | undefined;
+		/** Remove beside the press while an image is placed; absent, no Remove is drawn. */
+		readonly onRemove?: (() => void) | undefined;
+		/** the press's id, for a caller that moves the focus to it. */
+		readonly pressId?: string | undefined;
+	};
 
 /* a placed image and the press that swaps it: a block's photo in its edit sheet, a program's
-   photo. a new image is resized here and reported; the route uploads it and hands back `state`.
+   photo, the organisation's logo. a new image is resized here and reported; the route uploads it and hands back `state`.
    none placed yet draws the press alone, as Add photo, on the same path; the box that describes a
    photo comes with the photo, unless the caller leaves it off.
 
@@ -54,28 +83,30 @@ export type ReplacePhotoControlProps = Description & {
    by it. the refusal's region is mounted before it speaks and is out of sight while it is empty.
 
    Remove stands beside the press while an image is placed and nothing is in flight, named for what
-   it takes away. the image it removed goes with it, so the focus is handed to the press, which then
-   reads Add. */
-export function ReplacePhotoControl({
-	imageSrc,
-	alt,
-	onPicked,
-	onResized,
-	onAltChange,
-	state,
-	altId,
-	altError,
-	describe = true,
-	frame,
-	onRemove,
-	pressId
-}: ReplacePhotoControlProps) {
-	const picker = usePhotoPicker({ onPicked, onResized });
+   it takes away, and stays through its own removal saying so. the image it removed goes with it,
+   so the focus is handed to the press, which then reads Add. */
+export function ReplacePhotoControl(props: ReplacePhotoControlProps) {
+	const {
+		imageSrc,
+		alt,
+		noun = 'photo',
+		onAltChange,
+		state,
+		altId,
+		altError,
+		describe = true,
+		frame,
+		onRemove,
+		pressId
+	} = props;
+	const picker = usePhotoPicker(pickerOptions(props));
 	const id = useId();
 	const pressRef = useRef<HTMLButtonElement>(null);
 	const removing = useRef(false);
+	const resizing = picker.resizing || state === 'resizing';
 	const uploading = state === 'uploading';
-	const busy = picker.resizing || uploading;
+	const taking = state === 'removing';
+	const busy = resizing || uploading || taking;
 	const refusal = typeof state === 'object' && !picker.resizing ? state.refused : '';
 	const refusalId = `${id}-refused`;
 	const placed = imageSrc !== undefined;
@@ -112,26 +143,31 @@ export function ReplacePhotoControl({
 							if (!busy) picker.open();
 						}}
 					>
-						{picker.resizing
+						{resizing
 							? 'Resizing'
 							: uploading
 								? 'Uploading'
 								: placed
-									? 'Replace photo'
-									: 'Add photo'}
+									? `Replace ${noun}`
+									: `Add ${noun}`}
 					</Button>
-					{onRemove === undefined || !placed || busy ? null : (
+					{/* drawn on through its own removal, as the same element, so the focus a press left
+					    on it stays there while it says so. */}
+					{onRemove === undefined || !placed || (busy && !taking) ? null : (
 						<Button
 							type="button"
 							variant="quiet"
 							mark="trash-2"
-							aria-label="Remove the photo"
+							aria-label={taking ? `Removing the ${noun}` : `Remove the ${noun}`}
+							aria-busy={taking || undefined}
+							aria-disabled={taking || undefined}
 							onClick={() => {
+								if (taking) return;
 								removing.current = true;
 								onRemove();
 							}}
 						>
-							Remove
+							{taking ? 'Removing' : 'Remove'}
 						</Button>
 					)}
 					{picker.field}
@@ -162,6 +198,13 @@ export function ReplacePhotoControl({
 			)}
 		</>
 	);
+}
+
+/** the picker's options from the control's own props, narrowed to the one way a pick is taken. */
+function pickerOptions(picked: Picked): PhotoPickerOptions {
+	return picked.onChosen === undefined
+		? { onPicked: picked.onPicked, onResized: picked.onResized }
+		: { onChosen: picked.onChosen, accept: picked.accept };
 }
 
 const REFUSED: Record<ResizeRefusal, string> = {

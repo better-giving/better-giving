@@ -1944,6 +1944,36 @@
 		max-inline-size: var(--admin-measure-prose);
 	}
 
+	/* the blocks under the sentence (`body` in packages/operator/src/components/status/Banner.jsx):
+	   the sentence's own type and measure, stacked. they stand further off the sentence than the
+	   sentence does off the word, since they start a second part of the band. */
+	.adm-banner__body {
+		display: flex;
+		flex-direction: column;
+		gap: var(--admin-space-4);
+		min-inline-size: 0;
+		font-size: var(--admin-body-size);
+		color: var(--admin-ink-2);
+		max-inline-size: var(--admin-measure-prose);
+	}
+
+	.adm-banner__word + .adm-banner__body {
+		margin-block-start: var(--admin-space-2);
+	}
+
+	.adm-banner__text + .adm-banner__body {
+		margin-block-start: var(--admin-space-5);
+	}
+
+	/* the name of the body's second part, a label rather than a heading rank: it is a line inside
+	   the band, and the band's word above it outranks it. */
+	.adm-banner__head {
+		font-family: var(--admin-font-sans);
+		font-size: var(--admin-label-size);
+		font-weight: var(--admin-label-weight-strong);
+		color: var(--admin-ink);
+	}
+
 	.adm-banner--blocker {
 		background: var(--admin-tone-blocker-tint);
 		border-color: var(--admin-tone-blocker-line);
@@ -5599,8 +5629,9 @@
 
 	/* ---------- the brand colour's well ---------------------------------------------------
 
-	   packages/console-ui/src/lib/org-fold.tsx writes these on the brand colour's `<input
-	   type="color">`. the colour it holds fills it edge to edge inside its border; its focus ring is
+	   packages/console-ui/src/lib/org-fold.tsx and
+	   packages/app/src/lib/admin/settings/brand-colour-field.tsx write these on the brand colour's
+	   `<input type="color">`. the colour it holds fills it edge to edge inside its border; its focus ring is
 	   ./base.css's `:focus-visible`. */
 	.adm-swatch {
 		display: inline-flex;
@@ -6432,7 +6463,8 @@
 		padding-inline: 0;
 	}
 
-	/* the crop the logo dialog draws (packages/console-ui/src/lib/logo-crop-dialog.tsx): the image
+	/* the crop the logo dialog draws (packages/console-ui/src/lib/logo-crop-dialog.tsx, and
+	   packages/app/src/lib/admin/settings/logo-crop-dialog.tsx on /admin): the image
 	   whole, at its own shape, with the square over it. the box the square is dragged in is the
 	   image's own box — the crop converts between the two by that alone — so the box hugs the image
 	   and the image is capped rather than stretched: no wider than the card, and no taller than a
