@@ -820,11 +820,9 @@ describe('/donate after the editor’s presses', () => {
 		await visit();
 		await saveSettings();
 		// $50 is inside the live $1–$10,000 and under the draft's $200; $15,000 the other way round.
-		// a gift inside the bounds goes on to the challenge, which this env has no keys to verify.
-		const passedBounds = {
-			status: 503,
-			message: 'We couldn’t complete this gift, and nothing was charged. Try again in a moment.'
-		};
+		// a gift inside the bounds goes on to the spam check, which refuses it: this env sets no
+		// turnstile keys, so the check is ALTCHA, and the gift carries no solution.
+		const passedBounds = { status: 403, message: expect.stringContaining('`altchaPayload`') };
 		const outside = (amount: number, range: string) => ({
 			status: 400,
 			message: `\`amountMinor\` is ${amount}, outside this form's range of ${range} minor units.`
