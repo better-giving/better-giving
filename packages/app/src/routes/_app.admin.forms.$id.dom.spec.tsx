@@ -45,8 +45,11 @@ const RECORD = `/admin/forms/${FORM_ID}`;
 
 type Loaded = Parameters<typeof DonationForm>[0]['loaderData'];
 
-/** a draft form on a deployment ready to publish it, with nothing just landed. */
-function record(confirmArchive: boolean): Loaded {
+/**
+ * a draft form with nothing just landed, on a deployment ready to publish it — or, `blocked`, on
+ * one with no organisation identity, which withholds Live.
+ */
+function record(confirmArchive: boolean, blocked = false): Loaded {
 	const values = {
 		name: 'Spring appeal',
 		status: 'draft',
@@ -71,13 +74,14 @@ function record(confirmArchive: boolean): Loaded {
 		},
 		values,
 		snippet: '<script src="https://example.org/embed.js"></script>',
-		readiness: null,
+		readiness: blocked ? [{ job: 'organisation', severity: 'blocker' }] : null,
+		deployer: true,
 		sites: ['https://example.org'],
 		programs: [],
 		retiredProgram: null,
 		programMode: 'none',
 		pinnedProgram: null,
-		liveOffered: true,
+		liveOffered: !blocked,
 		saved: null,
 		archivedJustNow: false,
 		confirmArchive,
@@ -92,7 +96,10 @@ function record(confirmArchive: boolean): Loaded {
  *
  * `posted` is the form each body named, in the order the action received them.
  */
-function screen({ confirmArchive = false } = {}): { root: HTMLElement; posted: string[] } {
+function screen({ confirmArchive = false, blocked = false } = {}): {
+	root: HTMLElement;
+	posted: string[];
+} {
 	const posted: string[] = [];
 	const Stub = createRoutesStub([
 		{
@@ -101,7 +108,7 @@ function screen({ confirmArchive = false } = {}): { root: HTMLElement; posted: s
 			loader: () => new Promise<never>(() => {}),
 			Component: () =>
 				createElement(DonationForm as never, {
-					loaderData: record(confirmArchive),
+					loaderData: record(confirmArchive, blocked),
 					actionData: undefined,
 					params: { id: FORM_ID },
 					matches: []
@@ -189,3 +196,33 @@ it('holds the archive through the redirect’s loading, and a second press posts
 	await press(archive);
 	expect(posted).toEqual(['form-archive']);
 });
+
+it('says under the heading why the form cannot go live, and at the status box why Live is missing', () => {
+	const { root } = screen({ blocked: true });
+
+	const band = root.querySelector('[role="alert"]');
+	expect(band?.querySelector('.adm-banner__word')?.textContent).toBe('This form can’t go live yet');
+	expect(band?.querySelector('a')?.getAttribute('href')).toBe('/admin/settings');
+
+	// read through the box's own description, so the hint is the one a reader meets on the box.
+	const status = document.getElementById(statusBoxId(root));
+	const hints = (status?.getAttribute('aria-describedby') ?? '')
+		.split(' ')
+		.map((id) => document.getElementById(id)?.textContent);
+	expect(hints).toContain('Live is unavailable until the items above are done.');
+});
+
+it('draws no readiness band and no status hint on a deployment ready to publish', () => {
+	const { root } = screen();
+
+	expect(root.querySelector('[role="alert"]')).toBe(null);
+	expect(root.textContent).not.toContain('Live is unavailable');
+});
+
+/** the id of the status box, which its label names. */
+function statusBoxId(root: HTMLElement): string {
+	const label = [...root.querySelectorAll('label')].find((it) => it.textContent === 'Status');
+	const id = label?.getAttribute('for');
+	if (!id) throw new Error('the screen drew no status box');
+	return id;
+}

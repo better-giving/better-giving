@@ -321,7 +321,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 // none of them is given a footer — the single submit sits at the foot of all four, which is still
 // the foot of the form it submits.
 export default function NewDonationForm({ loaderData, actionData }: Route.ComponentProps) {
-	const { readiness, sites, programs, values, currency } = loaderData;
+	const { readiness, deployer, sites, programs, values, currency } = loaderData;
 	const [form, fields] = useAdminForm(FORM_CREATE, actionData, { defaultValue: values });
 	const navigation = useNavigation();
 	// the whole navigation this form started, and not its `submitting` half: the action answers with
@@ -357,7 +357,7 @@ export default function NewDonationForm({ loaderData, actionData }: Route.Compon
 			    a form that renders nothing on the org's own site or takes money that is not real.
 			    below the heading and not above it, so the h1 is the first heading on the page and a
 			    reader who jumps to it lands in front of this block rather than past it. */}
-			<FormsReadiness lines={readiness} />
+			<FormsReadiness lines={readiness} deployer={deployer} context="new" />
 
 			{/* no `action` attribute, so this posts to the current url. conform's `getFormProps` puts
 			    the form's own id on the element, which is what its focus move looks the form up by —
@@ -452,7 +452,9 @@ export default function NewDonationForm({ loaderData, actionData }: Route.Compon
 							if (adding) event.preventDefault();
 						}}
 					>
-						Add donation form
+						{/* while a blocker stands the status box offers Draft alone, so the press says what
+						    it will make. */}
+						{blocked ? 'Save as draft' : 'Add donation form'}
 					</Button>
 					{/* a link rather than a button, because it writes nothing: it leaves. */}
 					<Link to={href('/admin/forms')}>Cancel</Link>

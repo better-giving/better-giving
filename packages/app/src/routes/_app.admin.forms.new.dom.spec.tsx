@@ -92,7 +92,7 @@ const FILLED_FORM = {
  * the screen as a deployment that is ready to make a form serves it, opened on `values`.
  *
  * one site, which is the least that leaves the submit pressable: no site only switches it off.
- * nothing here is a blocker, so the form is drawn rather than replaced by the disabled button.
+ * nothing here is a blocker unless `readiness` says so, which turns the form into a draft.
  *
  * `answer` is what the action returns once it has counted the press. by default it never settles,
  * so a press that did reach the action leaves the screen mid-flight rather than re-rendering over
@@ -102,7 +102,8 @@ const FILLED_FORM = {
  */
 function screen(
 	values: Record<string, unknown> = EMPTY_FORM,
-	answer: () => unknown = () => new Promise<never>(() => {})
+	answer: () => unknown = () => new Promise<never>(() => {}),
+	readiness: unknown = null
 ): {
 	root: HTMLElement;
 	posted: string[];
@@ -114,7 +115,8 @@ function screen(
 			Component: () =>
 				createElement(NewDonationForm as never, {
 					loaderData: {
-						readiness: null,
+						readiness,
+						deployer: true,
 						sites: ['https://example.org'],
 						programs: [],
 						values,
@@ -426,4 +428,33 @@ it('submits the amounts under their indexed names, in the order and with the fig
 		['suggested_amounts[1]', '50'],
 		['suggested_amounts[2]', '100']
 	]);
+});
+
+it('says the form will be saved as a draft while a blocker stands, and its submit says so', () => {
+	const { root } = screen(EMPTY_FORM, undefined, [
+		{ job: 'organisation', severity: 'blocker' },
+		{ job: 'processor', severity: 'resolved' }
+	]);
+
+	const band = root.querySelector('[role="status"] .adm-banner__word');
+	expect(band?.textContent).toBe('This form will be saved as a draft');
+	expect(root.textContent).toContain('It can go live once the items above are done.');
+	// every group is still drawn: the screen loses nothing but Live.
+	expect([...root.querySelectorAll('h2')].map((heading) => heading.textContent)).toEqual([
+		'Name and status',
+		'Program',
+		'What a donor may give',
+		'Where it may be used'
+	]);
+	const submits = [...root.querySelectorAll('button')].filter((b) => b.type === 'submit');
+	expect(submits.map((b) => b.textContent)).toContain('Save as draft');
+	expect(submits.map((b) => b.textContent)).not.toContain('Add donation form');
+});
+
+it('keeps its own submit on a deployment ready to publish', () => {
+	const { root } = screen();
+
+	expect(root.textContent).not.toContain('saved as a draft');
+	const submits = [...root.querySelectorAll('button')].filter((b) => b.type === 'submit');
+	expect(submits.map((b) => b.textContent)).toContain('Add donation form');
 });

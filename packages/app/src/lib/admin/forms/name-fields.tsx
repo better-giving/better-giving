@@ -68,7 +68,7 @@ export function FormNameFields({ boxes, liveOffered = true, footer }: FormNameFi
 
 	// the two statuses this select offers. `EDITABLE_FORM_STATUSES` is the pair an operator may
 	// choose between; while a blocker stands, publishing would produce a form that serves nothing,
-	// so Live comes off the list and a note under the box says why.
+	// so Live comes off the list and a hint over the box says why.
 	const statuses = (
 		liveOffered ? EDITABLE_FORM_STATUSES : EDITABLE_FORM_STATUSES.filter((it) => it !== 'live')
 	).map((status) => ({ value: status, label: FORM_STATUS_LABELS[status] }));
@@ -100,17 +100,18 @@ export function FormNameFields({ boxes, liveOffered = true, footer }: FormNameFi
 				    fact, and a box that wrote only the first would leave a form that reads archived and
 				    behaves live.
 
-				    the note is what says why Live is not among the options while a blocker stands. it
-				    is a standing consequence rather than a complaint about this submission, so it takes
-				    the library's note register and the error register is left to whatever the last save
-				    refused — both are reachable from the box at once. */}
+				    the hint is what says why Live is not among the options while a blocker stands. it
+				    is read before choosing and points at the readiness block above
+				    (./readiness.tsx), which says what to do; it is not a complaint about this
+				    submission, so the error register is left to whatever the last save refused — both
+				    are reachable from the box at once. */}
 				<SelectWithNote
 					id={boxes.status.id}
 					name={boxes.status.name}
 					label={FORM_FIELD_LABELS.status}
 					defaultValue={boxes.status.defaultValue}
 					options={statuses}
-					note={liveOffered ? undefined : 'Live is not offered while a blocker stands.'}
+					hint={liveOffered ? undefined : 'Live is unavailable until the items above are done.'}
 					error={statusError === undefined ? undefined : <MarkedText text={statusError} />}
 				/>
 			</div>

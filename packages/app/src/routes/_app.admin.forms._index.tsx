@@ -810,16 +810,17 @@ function SitesRead({ sites }: { readonly sites: Sites }) {
 			<p className="adm-hint">
 				{SITES_LEAD} {DEPLOYER_ONLY}
 			</p>
+			{/* the donation page leads, on the sunken ground, as the deployer's card leads with it as
+			    a locked box: it is on no `site` row and no save takes it away. */}
 			{/* biome-ignore lint/a11y/noRedundantRoles: base.css takes the marker off every list, which
 			    stops a browser reporting one as a list. */}
-			<ul role="list" className="adm-stack adm-stack--tight">
-				<li>
-					<code className="adm-chip">{sites.donatePage}</code>{' '}
-					<StatusWord secondary>Default</StatusWord>
+			<ul role="list" className="adm-literals">
+				<li className="adm-literals__fixed">
+					<code>{sites.donatePage}</code> <span className="adm-literals__aside">Default</span>
 				</li>
 				{sites.listed.map((site) => (
 					<li key={site}>
-						<code className="adm-chip">{site}</code>
+						<code>{site}</code>
 					</li>
 				))}
 			</ul>

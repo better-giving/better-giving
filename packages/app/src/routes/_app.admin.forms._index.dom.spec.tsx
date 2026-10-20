@@ -338,6 +338,12 @@ it('shows a member the same sites with no box and no press, and says who can cha
 		'https://riverbanktrust.org',
 		'https://give.riverbanktrust.org'
 	]);
+	// each row's address is the literal alone, and the donation page's word stands outside it.
+	expect([...card.querySelectorAll('li code')].map((literal) => literal.textContent)).toEqual([
+		'https://give.riverbanktrust.org/donate',
+		'https://riverbanktrust.org',
+		'https://give.riverbanktrust.org'
+	]);
 	expect(card.textContent).toContain('Only the person who deployed this site can change the list.');
 });
 

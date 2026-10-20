@@ -911,7 +911,8 @@ function screen(id: string): string {
 // renders as a record rather than as an editable screen.
 
 export default function DonationForm({ loaderData, actionData }: Route.ComponentProps) {
-	const { archived, archivedJustNow, editor, id, name, readiness, snippet, status } = loaderData;
+	const { archived, archivedJustNow, deployer, editor, id, name, readiness, snippet, status } =
+		loaderData;
 
 	// whether the archive's own outcome is on the screen. the banner reporting it is the only thing
 	// the archive leaves behind — there is no control left for it to report on — so it is where focus
@@ -1023,7 +1024,7 @@ export default function DonationForm({ loaderData, actionData }: Route.Component
 
 			    below the heading and below the write banners: it is a standing condition rather than
 			    the outcome of anything just submitted. */}
-			<FormsReadiness lines={readiness} />
+			<FormsReadiness lines={readiness} deployer={deployer} context="form" />
 
 			{/* the sentence under the heading block, which the header row itself has no room for: what
 			    the status word beside the title costs. what a blocker costs this form is said at the

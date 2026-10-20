@@ -1965,6 +1965,16 @@
 		margin-block-start: var(--admin-space-5);
 	}
 
+	/* the things a banner's word is about, one per item, at the body's own step. bulleted rather
+	   than numbered: they are done in any order, and an `ol` would say otherwise. */
+	.adm-banner__list {
+		display: flex;
+		flex-direction: column;
+		gap: var(--admin-space-4);
+		list-style-type: disc;
+		padding-inline-start: var(--admin-space-7);
+	}
+
 	/* the name of the body's second part, a label rather than a heading rank: it is a line inside
 	   the band, and the band's word above it outranks it. */
 	.adm-banner__head {
@@ -2780,6 +2790,13 @@
 	   above it is taken back, so it holds no room — `.adm-dialog__refusal:empty`'s arrangement. */
 	.adm-findorg__said:empty {
 		margin-block-start: calc(-1 * var(--admin-space-3));
+	}
+
+	/* what a found organisation's fill says under the details boxes it filled
+	   (packages/app/src/routes/_app.admin.settings.tsx), a row of the card's own. it is there before
+	   it speaks, and while empty the card's gap above it is taken back, so it holds no room. */
+	.adm-findnote:empty {
+		margin-block-start: calc(-1 * var(--admin-space-5));
 	}
 
 	/* the matches. ruled as a box of its own, the height of four and a half rows at the row's floor
@@ -4298,6 +4315,49 @@
 	.adm-press__arrow {
 		inline-size: 0.75em;
 		block-size: 0.75em;
+	}
+
+	/* ---------- a read-only list of literals ----------------------------------------------
+
+	   literals a reader checks and cannot change, one per row inside one hairline box, a rule
+	   between rows: the sites a member reads on the forms list
+	   (packages/app/src/routes/_app.admin.forms._index.tsx). each row is a bare `<code>` rather
+	   than a chip, because the box and the rules already set one literal off the next and a chip's
+	   ground inside a ruled row is a box drawn inside a box.
+
+	   the fixed row is one the deployment holds rather than the list — the donation page — and it
+	   leads on the sunken ground with its word at the far end, as the deployer's editable list leads
+	   with it as a locked box. it wraps at any glyph for `.adm-chip`'s reason above. */
+	.adm-literals {
+		display: grid;
+		border: var(--admin-hairline);
+		border-radius: var(--admin-radius);
+		overflow: hidden;
+	}
+
+	.adm-literals > li {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--admin-space-4);
+		padding: var(--admin-space-4) var(--admin-space-5);
+		font-size: var(--admin-code-size);
+		overflow-wrap: anywhere;
+	}
+
+	.adm-literals > li + li {
+		border-block-start: var(--admin-rule);
+	}
+
+	.adm-literals__fixed {
+		background: var(--admin-surface-sunken);
+	}
+
+	.adm-literals__aside {
+		flex: none;
+		font-size: var(--admin-caption-size);
+		font-weight: var(--admin-aside-weight);
+		color: var(--admin-ink-2);
 	}
 
 	/* ---------- the command row --------------------------------------------------------
@@ -7776,10 +7836,11 @@
 		gap: var(--admin-space-5);
 	}
 
-	/* a sequence a reader follows in order, and the one list an operator screen draws its own
-	   markers on. ./base.css takes `list-style` off every list in the document, so an `ol` whose order
-	   is the point has to say so again here — and the numerals are the step's own ink rather than a
-	   colour of theirs, because a marker inherits it and nothing here overrides it.
+	/* a sequence a reader follows in order, and one of the two lists an operator screen draws its
+	   own markers on — the other is `.adm-banner__list`. ./base.css takes `list-style` off every list
+	   in the document, so an `ol` whose order is the point has to say so again here — and the
+	   numerals are the step's own ink rather than a colour of theirs, because a marker inherits it
+	   and nothing here overrides it.
 
 	   the step between one item and the next is `.adm-stack` above and never this rule's: a step
 	   whose body is a block of its own carries its spacing already. */
