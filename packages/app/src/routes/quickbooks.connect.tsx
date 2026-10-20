@@ -1,4 +1,7 @@
+import { Button } from '@better-giving/operator/components/controls/Button';
+import { CodeSlab, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
+import { Banner } from '@better-giving/operator/components/status/Banner';
 import { data, redirect } from 'react-router';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { APP_NAME } from '$lib/admin/screen-title';
@@ -19,11 +22,10 @@ import type { Route } from './+types/quickbooks.connect';
 // where connecting a QuickBooks company begins: the operator's browser lands here and is sent on to
 // Intuit's consent screen.
 //
-// **it is public, and the guard is on the address rather than on the surface.** it cannot sit
-// behind the dashboard's login — the operator is holding the console, which is a different sign-in
-// — and it cannot sit on the console's own wire surface, because what has to happen here is a
-// browser redirect and the console's credential is a bearer header a browser attaches to nothing.
-// so the console mints a short-lived signed address and this route checks it
+// **it is public, and the guard is on the address rather than on the surface.** two surfaces start
+// the trip behind two different credentials — the deployer's press on ./_app.admin.books.tsx, and
+// the console, whose credential is a bearer header a browser attaches to nothing — so each mints a
+// short-lived signed address behind its own and this route checks it
 // ($lib/server/accounting/connect-link.ts), and ../routes.spec.ts holds the file on the public list
 // with that reason beside it.
 //
@@ -31,9 +33,9 @@ import type { Route } from './+types/quickbooks.connect';
 // Intuit and comes back with a company connected, so a stranger would connect *their* books and
 // this organisation's gifts would be posted into them.
 //
-// **the `state` is minted here and not on the console.** it has to be in a cookie on the browser
-// that is about to travel, and the console is not that browser. a replayed start address therefore
-// mints a fresh one, which is exactly what makes replaying it worth nothing.
+// **the `state` is minted here and not by the press that minted the address.** it has to be in a
+// cookie on the browser that is about to travel, and the console is not that browser. a replayed
+// start address therefore mints a fresh one, which is exactly what makes replaying it worth nothing.
 //
 // **the `redirect_uri` sent to Intuit is the deployment's own address rather than this request's
 // host.** it has to be the one registered with them, byte for byte, or the round trip is refused at
@@ -103,21 +105,36 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	return redirect(started.value, { headers: { 'set-cookie': connectStateCookie(state) } });
 }
 
+/** where every page of the round trip leads back to: the Books screen, at its QuickBooks half. */
+const BOOKS = '/admin/books#quickbooks';
+
 /**
- * the page a browser that was not sent on is left looking at.
- *
- * it draws no control, and that is the shape rather than an omission: what repairs either arm is on
- * the console, on the machine the operator opened this from, and a press here could only be a
- * second start address minted by the thing that already refused this one.
+ * the page a browser that was not sent on is left looking at, and the way back to Books — where
+ * the press that starts the trip is.
  */
 export default function QuickbooksConnect({ loaderData }: Route.ComponentProps) {
 	if (loaderData.refusal === 'setup') {
 		return (
 			<PanelRoute>
-				<h1>This deployment has no QuickBooks credentials</h1>
-				<p className="adm-prose">
-					Put your Intuit app’s credentials in on the console, then try again.
-				</p>
+				<h1>This deployment has no QuickBooks keys</h1>
+				<Banner
+					word="Needs an Intuit app’s keys on the server"
+					body={
+						<>
+							<h2 className="adm-banner__head">For whoever runs the server</h2>
+							<p>
+								Create an app at <a href={INTUIT_DEVELOPER}>Intuit Developer</a>, add the redirect
+								address Books shows to its redirect URIs, put its client ID and secret in{' '}
+								<InlineCode>.env</InlineCode> (DEPLOY.md, QuickBooks), and recreate the app:
+							</p>
+							<CodeSlab oneline content={RECREATE} copyable copyLabel="Copy the command" />
+						</>
+					}
+				>
+					To send gifts to QuickBooks, this site needs an Intuit app. Ask whoever set up this site
+					to add it. The steps below are for them.
+				</Banner>
+				<BackToBooks />
 			</PanelRoute>
 		);
 	}
@@ -125,7 +142,28 @@ export default function QuickbooksConnect({ loaderData }: Route.ComponentProps) 
 	return (
 		<PanelRoute>
 			<h1>This link has expired</h1>
-			<p className="adm-prose">Go back to the console for a new one.</p>
+			<p className="adm-prose">Start again from Books.</p>
+			<BackToBooks />
 		</PanelRoute>
+	);
+}
+
+/** where an operator creates the Intuit app whose keys go in `.env`. */
+const INTUIT_DEVELOPER = 'https://developer.intuit.com/';
+
+/** what recreating the app is, wherever `.env` changed. */
+const RECREATE = 'docker compose up -d --force-recreate app';
+
+/**
+ * the one control every page of the round trip carries: a whole-document load, since this page
+ * stands outside the dashboard's layout and its session.
+ */
+function BackToBooks() {
+	return (
+		<div className="adm-actions">
+			<Button as="a" href={BOOKS}>
+				Back to Books
+			</Button>
+		</div>
 	);
 }

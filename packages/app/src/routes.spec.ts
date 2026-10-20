@@ -221,12 +221,12 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// is parsed — which is also why none is under a layout at all, held below.
 	...Object.keys(PROCESSOR_CALLBACKS),
 	// where connecting a QuickBooks company begins, opened by the operator's own browser from an
-	// address the console handed them. it cannot sit behind the dashboard's login — the operator is
-	// holding the console, which is a different sign-in — and it cannot sit on the console's wire
-	// surface, because what has to happen is a browser redirect and that surface's credential is a
-	// bearer header a browser attaches to nothing. what stops an outsider connecting their own books
-	// and taking this organisation's gifts into them is the console's own credential, on the press
-	// that mints the address; the signature is only how that check reaches a route no credential can
+	// address a press minted: the deployer's on Books, or the console's. it cannot sit behind the
+	// dashboard's login, since the console is a different sign-in, and it cannot sit on the console's
+	// wire surface, because what has to happen is a browser redirect and that surface's credential is
+	// a bearer header a browser attaches to nothing. what stops an outsider connecting their own books
+	// and taking this organisation's gifts into them is the credential on the press that mints the
+	// address; the signature is only how that check reaches a route no credential can
 	// be presented to ($lib/server/accounting/connect-link.ts). nothing downstream adds a second one
 	// — whoever opens the address is whoever signs in at Intuit.
 	'routes/quickbooks.connect.tsx',

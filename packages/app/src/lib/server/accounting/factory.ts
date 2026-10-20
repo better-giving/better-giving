@@ -34,6 +34,12 @@ const REQUIRED = [
 	'QUICKBOOKS_API_URL'
 ] as const satisfies readonly (keyof ConfigEnv)[];
 
+/** whether every variable in {@link REQUIRED} is set, which is what reaching Intuit at all takes. */
+export function quickbooksKeysHeld(source: unknown): boolean {
+	const env = readConfigEnv(source);
+	return REQUIRED.every((name) => env[name] !== undefined);
+}
+
 /**
  * the provider this deployment sends its books to.
  *
@@ -60,7 +66,7 @@ export function createAccountingProvider(source: unknown, db: Db): AccountingPro
  *
  * `not_connected` rather than a reason of its own, and it is the same answer a deployment whose
  * boxes are full but whose company nobody has connected gives. that is not a conflation: both are
- * "there are no books to send to yet", both are a person's to fix on the console, and ./deliver.ts
+ * "there are no books to send to yet", both are a person's to fix, and ./deliver.ts
  * reads the reason to decide that the whole backlog is behind it — so the run ends with no row
  * marked and no email sent. a deployment that will never connect QuickBooks is the common case, and
  * a delivery that mailed about it every minute would be this app reporting a deliberate absence as
@@ -71,8 +77,8 @@ function unconfigured(unset: readonly (keyof ConfigEnv)[]): AccountingProvider {
 	const refusal = failed(
 		'not_connected',
 		`This deployment cannot reach QuickBooks: \`${unset.join('` and `')}\` ` +
-			`${one ? 'is' : 'are'} not set. Open the console (\`better-giving start\`) and set ` +
-			`${one ? 'it' : 'them'} under Sending gifts to QuickBooks.`
+			`${one ? 'is' : 'are'} not set. Put ${one ? 'it' : 'them'} in \`.env\` (DEPLOY.md, ` +
+			'QuickBooks) and recreate the app.'
 	);
 	return {
 		readCompany: async () => refusal,

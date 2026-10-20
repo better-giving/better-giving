@@ -96,6 +96,7 @@ function loaderData(over: Partial<LoaderData> = {}): LoaderData {
 		entries: [],
 		limit: 50,
 		hasMore: false,
+		quickbooks: null,
 		...over
 	} as LoaderData;
 }

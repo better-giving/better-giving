@@ -1,3 +1,4 @@
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { data } from 'react-router';
 import { operatorLinks } from '$lib/admin/operator-links';
@@ -51,9 +52,9 @@ import type { Route } from './+types/quickbooks.callback';
 // **the accounts are filled from the company's own chart, afterwards and on the same terms.** an
 // operator connecting books has nothing picked, and a connection with nothing picked sends nothing;
 // so each role the chart names an account for ($lib/server/accounting/quickbooks-accounts.ts) is
-// saved and the console's pickers open on it, and each processor this deployment takes gifts
+// saved and the pickers on Books open on it, and each processor this deployment takes gifts
 // through whose holding the chart names none for is given one ($lib/server/accounting/connection.ts).
-// a role left unpicked holds the gifts that need it until the operator picks it on the console. a
+// a role left unpicked holds the gifts that need it until the operator picks it on Books. a
 // chart that could not be read, or a fault anywhere in the fill, leaves every role unpicked and logs
 // why. a reconnect to the same company keeps what was picked before, and nothing overwrites it.
 //
@@ -62,20 +63,19 @@ import type { Route } from './+types/quickbooks.callback';
 // and addresses among them — out of books nobody has yet said are the right ones. filling them from
 // the new chart would release that backlog within a minute of a wrong pick in Intuit's company
 // list. so the move is stored, the page names both companies, and sending waits for an operator
-// to choose on the console — across every reconnect in between, since the move is written on the
+// to choose on Books — across every reconnect in between, since the move is written on the
 // row and only an operator's save clears it. a reconnect while it stands draws the same page, with
 // no previous company to name.
 //
-// **it ends on a page rather than a redirect into either operator surface.** Intuit cannot be
-// pointed at a console running on somebody's laptop, and /admin is a different sign-in from the one
-// the operator is holding — so the honest end of this trip is a page saying what happened and that
-// the tab can be closed.
+// **it ends on a page rather than a redirect into Books.** what happened at Intuit — a different
+// company, a cancel, a refusal — is said once, here, where the trip ended, and every arm leads back
+// to Books, where whatever is left to do is.
 
 export const links = operatorLinks;
 
 /**
- * the outcome, because this is the one page of the trip anybody reads and an operator may have it
- * open beside the console and the consent tab it came from.
+ * the outcome, because this is the one page of the trip anybody reads, and it is read in a strip of
+ * tabs as often as on its own.
  *
  * the company is not named even where it is known: a tab title is read in a strip of them, and the
  * one thing worth telling apart there is whether the trip worked.
@@ -185,11 +185,12 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	return data({ outcome: 'connected' as const, companyName }, { headers: spent });
 }
 
+/** where every page of the round trip leads back to: the Books screen, at its QuickBooks half. */
+const BOOKS = '/admin/books#quickbooks';
+
 /**
- * the end of the trip, and the only page in this flow anybody reads on the way through.
- *
- * no control and no link onward, which is the shape rather than an omission: everything left to do
- * is on the console, which is already open on the machine this tab was opened from.
+ * the end of the trip, and the only page in this flow anybody reads on the way through. every arm
+ * leads back to Books, where the trip began and where what is left to do is.
  */
 export default function QuickbooksCallback({ loaderData }: Route.ComponentProps) {
 	if (loaderData.outcome === 'connected') {
@@ -200,7 +201,7 @@ export default function QuickbooksCallback({ loaderData }: Route.ComponentProps)
 						? 'QuickBooks is connected'
 						: `${loaderData.companyName} is connected`}
 				</h1>
-				<p className="adm-prose">You can close this tab.</p>
+				<BackToBooks />
 			</PanelRoute>
 		);
 	}
@@ -213,9 +214,9 @@ export default function QuickbooksCallback({ loaderData }: Route.ComponentProps)
 					{`The connection moved from ${loaderData.previousCompanyName ?? 'the company connected before'} to ${loaderData.companyName ?? 'a company QuickBooks hasn’t named yet'}.`}
 				</p>
 				<p className="adm-prose">
-					Go back to the console and choose the accounts again. Nothing is sent to QuickBooks until
-					you do.
+					Go to Books and choose the accounts again. Nothing is sent to QuickBooks until you do.
 				</p>
+				<BackToBooks />
 			</PanelRoute>
 		);
 	}
@@ -224,7 +225,8 @@ export default function QuickbooksCallback({ loaderData }: Route.ComponentProps)
 		return (
 			<PanelRoute>
 				<h1>This link has already been used or has expired</h1>
-				<p className="adm-prose">Go back to the console for a new one.</p>
+				<p className="adm-prose">Start again from Books.</p>
+				<BackToBooks />
 			</PanelRoute>
 		);
 	}
@@ -234,7 +236,8 @@ export default function QuickbooksCallback({ loaderData }: Route.ComponentProps)
 			<PanelRoute>
 				<h1>QuickBooks isn’t connected</h1>
 				<p className="adm-prose">Intuit is having trouble.</p>
-				<p className="adm-prose">Go back to the console and try again in a few minutes.</p>
+				<p className="adm-prose">Try again from Books in a few minutes.</p>
+				<BackToBooks />
 			</PanelRoute>
 		);
 	}
@@ -247,7 +250,22 @@ export default function QuickbooksCallback({ loaderData }: Route.ComponentProps)
 					? 'You cancelled at Intuit.'
 					: 'Intuit turned the connection down.'}
 			</p>
-			<p className="adm-prose">Go back to the console to try again.</p>
+			<p className="adm-prose">Try again from Books.</p>
+			<BackToBooks />
 		</PanelRoute>
+	);
+}
+
+/**
+ * the one control every page of the round trip carries: a whole-document load, since this page
+ * stands outside the dashboard's layout and its session.
+ */
+function BackToBooks() {
+	return (
+		<div className="adm-actions">
+			<Button as="a" href={BOOKS}>
+				Back to Books
+			</Button>
+		</div>
 	);
 }

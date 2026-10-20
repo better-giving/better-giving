@@ -3,16 +3,16 @@
 // **an unguarded start address is a stranger's company connected to this deployment.** whoever
 // opens `/quickbooks/connect` is sent to Intuit and comes back with a company connected — so left
 // open, an outsider connects *their* books and every gift this organisation takes is posted into
-// them. the console is already behind a credential, so it is what mints the address; this module is
-// where that address is minted and read, so the two halves cannot come to disagree about what is
+// them. the deployer's Books screen and the console are each already behind a credential, so they
+// are what mint the address; this module is where that address is minted and read, so the two halves cannot come to disagree about what is
 // signed.
 //
 // **two different values, doing two different jobs.**
 //
 //   - the **start address** is the guard on who may begin, and it is the only guard there is. it
 //     carries an expiry and a signature over it, and nothing else: there is no caller's identity to
-//     carry, because what the signature stands in for is the console's own credential on the press
-//     that minted it. signing in at Intuit afterwards checks nothing on this deployment's behalf —
+//     carry, because what the signature stands in for is the credential on the press that minted
+//     it. signing in at Intuit afterwards checks nothing on this deployment's behalf —
 //     whoever opened the address is the one signing in, and the company they pick is theirs.
 //   - the **OAuth `state`** is the check that the browser coming back is the one that went. it is
 //     minted per start, set in a cookie, and compared against what Intuit hands back
@@ -39,9 +39,10 @@ export const QUICKBOOKS_CALLBACK_PATH = '/quickbooks/callback';
 /**
  * the address this deployment answers on, as every spelling of those two paths is built from.
  *
- * Intuit compares every one of them byte for byte against what is registered: the console mints the
- * start address and prints the callback for an operator to register there
- * (`src/routes/console.quickbooks.ts`), `src/routes/quickbooks.connect.tsx` sends a `redirect_uri`
+ * Intuit compares every one of them byte for byte against what is registered: Books and the console
+ * mint the start address and print the callback for an operator to register there
+ * (`src/routes/_app.admin.books.tsx`, `src/routes/console.quickbooks.ts`),
+ * `src/routes/quickbooks.connect.tsx` sends a `redirect_uri`
  * with the consent screen, and `src/routes/quickbooks.callback.tsx` sends the same one again on the
  * exchange. a deployment reachable on both workers.dev and a custom domain derives a different
  * answer per request, and what reports the disagreement is Intuit's own sentence about a mismatch
@@ -63,7 +64,7 @@ export function connectFlowOrigin(env: AuthEnv, requestUrl: URL): string {
 /**
  * how long a start address is good for, and how long the cookie beside it lives.
  *
- * ten minutes: the operator presses Connect on the console and the browser opens immediately, so
+ * ten minutes: the operator presses Connect and the browser opens the address immediately, so
  * the only thing this length has to survive is one consent screen at Intuit. a fresh address is one
  * press, which is what makes the short life cost nothing.
  */
@@ -116,7 +117,7 @@ export function carriesConnectLink(url: URL): boolean {
  * whether an address is one this deployment minted and is still good for.
  *
  * one bit, deliberately. absent, altered and expired are the same answer to whoever is holding it —
- * go back to the console and start again — and telling an altered signature apart from an expired
+ * start again from Books — and telling an altered signature apart from an expired
  * one in the answer would be this deployment reporting on a forgery attempt to the forger.
  */
 export async function readConnectLink(input: {

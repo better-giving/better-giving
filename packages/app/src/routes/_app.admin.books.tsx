@@ -1,28 +1,67 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { Button } from '@better-giving/operator/components/controls/Button';
+import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
+import { CodeSlab, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Field } from '@better-giving/operator/components/forms/Field';
+import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { SelectWithNote } from '@better-giving/operator/components/forms/SelectWithNote';
+import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
 import { Column, Section, Stack } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
+import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
-import { Form, useNavigation } from 'react-router';
+import {
+	type ChangeEvent,
+	type FormEvent,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useId,
+	useRef,
+	useState
+} from 'react';
+import { Form, redirectDocument, useFetcher, useNavigation } from 'react-router';
 import { uuidv7 } from 'uuidv7';
+import { z } from 'zod';
 import { screenTitle } from '$lib/admin/screen-title';
-import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
+import { buttonState } from '$lib/admin/save-button-state';
+import { formPress } from '$lib/admin/unreached';
+import { boxProps, resultFor, useAdminForm, whichForm } from '$lib/admin/use-admin-form';
 import { formatMinor } from '$lib/donations/money';
 import { FORM_CURRENCY, readAmount } from '$lib/forms/amounts';
-import { defineForm } from '$lib/forms/definition';
+import { defineForm, type FormRejection, WHICH_FORM } from '$lib/forms/definition';
 import {
 	CORRECTION_FIELD_LABELS,
 	CORRECTION_INPUT,
 	readAccountingDate
 } from '$lib/ledger/input-schema';
 import { ENTRY_SOURCE_LABELS } from '$lib/ledger/sources';
-import { invalid, parseForm } from '$lib/server/conform';
+import { retryFailedEntries } from '$lib/server/accounting/backlog';
+import { connectFlowOrigin, mintConnectLink } from '$lib/server/accounting/connect-link';
+import {
+	type ChosenAccount,
+	disconnectQuickbooks,
+	readQuickbooksConnection,
+	saveQuickbooksAccounts
+} from '$lib/server/accounting/connection';
+import { createAccountingProvider } from '$lib/server/accounting/factory';
+import { moveQuickbooksStartAt, previewQuickbooksStartAt } from '$lib/server/accounting/outbox';
+import { ACCOUNT_ROLES, type AccountRole } from '$lib/server/accounting/provider';
+import { fitsRole } from '$lib/server/accounting/quickbooks-accounts';
+import {
+	dayOf,
+	type QuickbooksScreen,
+	readQuickbooksScreen,
+	type StartDateAsk,
+	startDateAsk
+} from '$lib/server/accounting/quickbooks-screen';
+import { readAuthEnv, STAFF_USER_ID } from '$lib/server/auth';
+import { invalid, parseForm, submittedForm } from '$lib/server/conform';
 import { pickableAccounts, postableIdFromSubmitted } from '$lib/server/db/accounts';
+import { notFound } from '$lib/server/db/load-failure';
 import { postCorrection } from '$lib/server/books/correct';
 import {
 	ENTRY_GROUP_LIST_LIMIT,
@@ -31,7 +70,7 @@ import {
 	findEntryGroup,
 	listEntryGroups
 } from '$lib/server/ledger/queries';
-import { database } from '../context';
+import { auth, database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.books';
 
 // the books: the journal entries a deployment has posted, and the one way a human posts one.
@@ -68,16 +107,73 @@ import type { Route } from './+types/_app.admin.books';
 // every other write route on this dashboard is under (`createContact`, `createForm`), and it is
 // what keeps a second poster — a backfill, a repair run from the console — from copying the sign
 // convention out of a screen.
+//
+// **below the books, the deployer's way to QuickBooks** — keys, connect, accounts and sync, as four
+// steps. a member's Books is the ledger alone: the loader reads none of it for them and every
+// QuickBooks press answers them not-found, while a correction posts for both. the keys are
+// `.env`'s and no box here takes one; what this half reads is
+// `$lib/server/accounting/quickbooks-screen.ts`, and the round trip to Intuit leaves from a press
+// here and comes back through ./quickbooks.connect.tsx and ./quickbooks.callback.tsx.
+
+/** each form's id, as the literal a body names itself with. */
+const CORRECTION_ID = 'correction';
+const CONNECT_ID = 'quickbooks-connect';
+const DISCONNECT_ID = 'quickbooks-disconnect';
+const RETRY_ID = 'quickbooks-retry';
+const ACCOUNTS_ID = 'quickbooks-accounts';
+const START_PREVIEW_ID = 'quickbooks-start-date-preview';
+const START_ID = 'quickbooks-start-date';
+const SCREEN_FORMS = [
+	CORRECTION_ID,
+	CONNECT_ID,
+	DISCONNECT_ID,
+	RETRY_ID,
+	ACCOUNTS_ID,
+	START_PREVIEW_ID,
+	START_ID
+] as const;
 
 /**
  * the correction form, stated once for the action that reads a body against it and the screen that
- * submits to it.
- *
- * the id is a literal and never derived — see `$lib/server/conform.ts`'s header. this screen
- * carries one form and states it anyway, because the rule is what makes the statement readable
- * rather than the count.
+ * submits to it. the id is a literal and never derived — see `$lib/server/conform.ts`'s header.
  */
-const CORRECTION_FORM = defineForm({ id: 'correction', schema: CORRECTION_INPUT });
+const CORRECTION_FORM = defineForm({ id: CORRECTION_ID, schema: CORRECTION_INPUT });
+
+/** the presses over QuickBooks, which state nothing a body could choose: the company is the row's. */
+const CONNECT_FORM = defineForm({ id: CONNECT_ID, schema: z.object({}) });
+const DISCONNECT_FORM = defineForm({ id: DISCONNECT_ID, schema: z.object({}) });
+const RETRY_FORM = defineForm({ id: RETRY_ID, schema: z.object({}) });
+
+/**
+ * every role's account, by id: income and fees one each, and each holding one or none. every role
+ * is in the body — a holding the screen draws no picker for rides as a hidden box holding what is
+ * stored — so a save is the operator's whole answer and never clears a role by leaving it out.
+ */
+const pick = z.string({ error: 'required' });
+const holding = z.string().optional();
+const ACCOUNTS_FORM = defineForm({
+	id: ACCOUNTS_ID,
+	schema: z.object({
+		income: pick,
+		fee: pick,
+		stripeBalance: holding,
+		paypalBalance: holding,
+		chariotBalance: holding,
+		nowpaymentsBalance: holding,
+		undepositedFunds: holding
+	})
+});
+
+/** the earliest day a gift is sent from, read as that day's first instant in UTC. */
+const startOn = z.string({ error: 'required' }).superRefine((text, ctx) => {
+	const { problem } = readAccountingDate(text);
+	if (problem !== null) ctx.addIssue({ code: 'custom', message: problem });
+});
+const START_PREVIEW_FORM = defineForm({
+	id: START_PREVIEW_ID,
+	schema: z.object({ start_on: startOn })
+});
+const START_FORM = defineForm({ id: START_ID, schema: z.object({ start_on: startOn }) });
 
 /** the address this screen answers on, and the one its form posts to. */
 const SCREEN = '/admin/books';
@@ -114,6 +210,26 @@ const ID_HELD =
  */
 const NO_SUCH_ACCOUNT =
 	'That account is not one this deployment can post to. Reload the page and choose again.';
+
+/** what a member's session is told about a QuickBooks press, which is the deployer's alone. */
+const NOT_HERE =
+	`No QuickBooks press at ${SCREEN} for a member’s session. Where the books sync is the ` +
+	'deployer’s: sign in with `ADMIN_PASSWORD` at /login.';
+
+/** what a press that needs a company is told where none is connected. */
+const NOT_CONNECTED = 'No QuickBooks company is connected. Connect one, then try again.';
+
+/** what a pick the company's chart no longer holds is told. */
+const NOT_IN_CHART = 'isn’t in the company’s chart of accounts any more. Choose again.';
+
+/**
+ * what a pick whose type does not fit its role is told, completing the picker's label. the pickers
+ * offer only what fits, so the one way here is a chart that changed at Intuit after the page drew it.
+ */
+const misfitSays = (role: AccountRole): string =>
+	role === 'income' || role === 'fee'
+		? 'pick another account from this list'
+		: 'pick an Other Current Asset account, never a bank account';
 
 /** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Books';
@@ -261,7 +377,7 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
 
-export async function loader({ context }: Route.LoaderArgs) {
+export async function loader({ context, request }: Route.LoaderArgs) {
 	const db = context.get(database);
 
 	// derived from the seeded chart with no read, so the pickers stand whether or not the list
@@ -307,137 +423,321 @@ export async function loader({ context }: Route.LoaderArgs) {
 		limit: ENTRY_GROUP_LIST_LIMIT,
 		// exact, and not computed here: `listEntryGroups` fetches one row past the cap and reports
 		// whether it came back, then returns at most the cap.
-		hasMore: page?.hasMore ?? false
+		hasMore: page?.hasMore ?? false,
+		// the deployer's alone: a member's Books is the ledger, and the company it syncs to is not
+		// theirs to see or change.
+		quickbooks: context.get(staff).id === STAFF_USER_ID ? await quickbooks() : null
 	};
+
+	// a half that could not be read is said rather than failing the page, for the list's reason:
+	// the corrections above it post without it.
+	async function quickbooks(): Promise<QuickbooksScreen | 'unreadable'> {
+		try {
+			return await readQuickbooksScreen(context.get(platform).env, db, request.url, new Date());
+		} catch (e) {
+			console.error('reading where the books stand at QuickBooks failed:', e);
+			return 'unreadable';
+		}
+	}
 }
 
 /**
- * post one correcting entry.
+ * a correction, which every member may post, or one of the deployer's QuickBooks presses.
  *
  * **the request body is read exactly once, here, by the action that owns it** — `parseForm` is
  * what reads what it returns, and nothing above this route may.
  */
 export async function action({ context, request }: Route.ActionArgs) {
 	const body = await request.formData();
+	const pressed = submittedForm(body, SCREEN_FORMS);
+	if (pressed === CORRECTION_ID) return correct(body);
 
-	// every box this form states has to arrive, and the two sharp ones are the pickers: absent, a
-	// `<select>`'s value would be whatever the schema stood in, and a correction would move money
-	// between two accounts nobody chose. `$lib/server/conform.ts`'s header is where that is argued.
-	const submission = parseForm(body, CORRECTION_FORM);
-	if (!submission.ok) return invalid(400, submission.reject());
+	// a member is answered as if the presses were not here, which for them they are not.
+	if (context.get(staff).id !== STAFF_USER_ID) notFound(NOT_HERE);
+	switch (pressed) {
+		case CONNECT_ID:
+			return startConnect(body);
+		case DISCONNECT_ID:
+			return disconnect(body);
+		case RETRY_ID:
+			return retry(body);
+		case ACCOUNTS_ID:
+			return saveAccounts(body);
+		case START_PREVIEW_ID:
+			return previewStart(body);
+		case START_ID:
+			return moveStart(body);
+	}
 
-	// the door an account id off the wire goes through, and there is no other — `$lib/server/db/postable.ts`
-	// enumerates the ways to the brand. it is what stops a rollup reaching `post()`, which would make
-	// every report over that subtree double-count silently and permanently, because the ledger is
-	// append-only.
-	const outOf = postableIdFromSubmitted(submission.value.out_of);
-	const into = postableIdFromSubmitted(submission.value.into);
-	if (outOf === null || into === null) {
-		// both boxes at once where both are stale, so a reload is one round trip rather than two.
-		return invalid(
-			400,
-			submission.reject({
-				fieldErrors: {
-					...(outOf === null ? { out_of: [NO_SUCH_ACCOUNT] } : {}),
-					...(into === null ? { into: [NO_SUCH_ACCOUNT] } : {})
-				}
+	// the arms are declared inside the action because react router strips the `action` export from
+	// the browser bundle and nothing else: a module-scope helper reaching `$lib/server/**` would ship
+	// it (../routes.spec.ts holds that over the module graph).
+
+	/**
+	 * the trip to Intuit's consent screen, which leaves this page for good: a document redirect to
+	 * the signed start address ./quickbooks.connect.tsx checks, which mints the `state` and sends the
+	 * browser on. the address is minted behind this deployer's session, which is the guard that
+	 * keeps a stranger from connecting their own books ($lib/server/accounting/connect-link.ts).
+	 */
+	async function startConnect(body: FormData) {
+		const submission = parseForm(body, CONNECT_FORM);
+		if (!submission.ok) return invalid(400, submission.reject());
+		// the key the gate already resolved for this request, off the auth instance it built with it:
+		// a second read here would be a second resolve the gate exists to make once
+		// (../routes.spec.ts). an instance from the gate always holds one: $lib/server/auth/index.ts
+		// refuses to build one over an empty key.
+		const secret = context.get(auth).options.secret;
+		if (secret === undefined) throw new Error('the gate built an auth instance with no secret');
+		return redirectDocument(
+			await mintConnectLink({
+				secret,
+				origin: connectFlowOrigin(readAuthEnv(context.get(platform).env), new URL(request.url)),
+				now: new Date()
 			})
 		);
 	}
 
-	// the figure and the day come out of the same two calls the schema's checks already made, read
-	// for the value this time instead of for the sentence — the arrangement `parseFormGiving` in
-	// `$lib/server/forms/form-input.ts` is under, and the reason neither rule is spelled twice.
-	const money = readAmount(submission.value.amount, FORM_CURRENCY);
-	const dated = readAccountingDate(submission.value.occurred_on);
-	if (money.minor === null || dated.at === null) {
-		// unreachable past the schema, whose checks abort on exactly these two reads. it is the
-		// narrowing rather than a second rule, and it answers with the sentences those checks
-		// produced — so a path added above this line that *can* reach it cannot answer with a form
-		// marked refused and nothing written under any box.
-		return invalid(
-			400,
-			submission.reject({
-				fieldErrors: {
-					...(money.problem === null ? {} : { amount: [money.problem] }),
-					...(dated.problem === null ? {} : { occurred_on: [dated.problem] })
-				}
-			})
-		);
+	/**
+	 * the credential revoked at Intuit and the connection forgotten here, whatever the revoke
+	 * answered: a row kept over a failed revoke is a connection nothing can use. a revoke Intuit did
+	 * not confirm is said, because a grant left live there is only ended from Intuit's side.
+	 */
+	async function disconnect(body: FormData) {
+		const submission = parseForm(body, DISCONNECT_FORM);
+		if (!submission.ok) return invalid(400, submission.reject());
+		const db = context.get(database);
+		const revoked = await createAccountingProvider(context.get(platform).env, db).revokeTokens();
+		await disconnectQuickbooks(db);
+		return {
+			disconnected: revoked.ok
+				? { revoked: true as const }
+				: { revoked: false as const, detail: revoked.detail }
+		};
 	}
 
-	// the handle is taken here rather than at the top of the action: nothing above this line needs
-	// a database, so a submission the rules refused is answered without one being reached for.
-	const db = context.get(database);
-	const sourceId = submission.value.source_id;
-
-	let posted: Awaited<ReturnType<typeof postCorrection>>;
-	try {
-		posted = await postCorrection(db, {
-			sourceId,
-			occurredAt: dated.at,
-			amountMinor: money.minor,
-			outOf,
-			into,
-			note: submission.value.note
-		});
-	} catch (e) {
-		// nothing here is a user error — every rule has passed and both accounts are the chart's own
-		// — so this is the write itself failing. the cause goes to the log; the page gets a fixed
-		// string, keyed to no box, because a write that failed is not something an operator can fix
-		// by editing an input.
-		console.error('posting a correction failed:', e);
-		// a fresh id rides back beside it for a press whose boxes have changed by then: a `batch()`
-		// that commits and then loses the connection is indistinguishable from one that never ran, so
-		// the id this write was sent under may already stand for it. an unchanged press keeps that id
-		// and is refusable as a duplicate.
-		return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }), { freshId: uuidv7() });
-	}
-
-	if (!posted.ok) {
-		// logged because it is the only signal anywhere that the guard fired: a run of these is a
-		// screen re-submitting, which is a thing to read in a log.
-		console.info('a correction was presented twice under one id:', sourceId);
-	}
-
-	// what the books now hold under this id, read back by its pair rather than rebuilt from the
-	// body: on `already_posted` the entry is the earlier press's, and the press is told what is in
-	// the books rather than what it asked for. a read that fails here costs the lines and not the
-	// answer — the write has already landed or already been there, and a 500 would say it had not.
-	let found: EntryGroupListRow | null = null;
-	try {
-		found = await findEntryGroup(db, 'adjustment', sourceId);
-	} catch (e) {
-		console.error('reading back a posted correction failed:', e);
-	}
-
-	// the id is the screen's to hold only while the boxes hold what it was sent under, and a press
-	// that presents it over a different correction is refused rather than answered as already
-	// posted — which would tell the operator a correction is in the books that nothing wrote.
-	if (
-		!posted.ok &&
-		found !== null &&
-		!isSubmitted(found, {
-			occurredAt: dated.at,
-			amountMinor: money.minor,
-			outOf,
-			into,
-			note: submission.value.note
-		})
-	) {
-		return invalid(409, submission.reject({ formErrors: [ID_HELD] }), {
-			freshId: uuidv7(),
-			releasedId: sourceId
-		});
-	}
-
-	return {
-		outcome: {
-			kind: posted.ok ? ('posted' as const) : ('already_posted' as const),
-			sourceId,
-			movement: found === null ? null : movementOf(found, labelsOf(pickableAccounts()))
+	/** every gift given up on, queued again — for a company that is there to take them. */
+	async function retry(body: FormData) {
+		const submission = parseForm(body, RETRY_FORM);
+		if (!submission.ok) return invalid(400, submission.reject());
+		const db = context.get(database);
+		if ((await readQuickbooksConnection(db)) === null) {
+			return invalid(409, submission.reject({ formErrors: [NOT_CONNECTED] }));
 		}
-	};
+		return { retried: await retryFailedEntries(db) };
+	}
+
+	/** what moving the start date would queue and drop, written nowhere, and what to ask first. */
+	async function previewStart(body: FormData) {
+		const submission = parseForm(body, START_PREVIEW_FORM);
+		if (!submission.ok) return invalid(400, submission.reject());
+		const db = context.get(database);
+		const connection = await readQuickbooksConnection(db);
+		if (connection === null) {
+			return invalid(409, submission.reject({ formErrors: [NOT_CONNECTED] }));
+		}
+		// the schema's own read, taken again for the instant rather than the sentence.
+		const to = readAccountingDate(submission.value.start_on).at;
+		if (to === null) return invalid(400, submission.reject());
+		const move = await previewQuickbooksStartAt(db, to, new Date());
+		return {
+			preview: {
+				startOn: submission.value.start_on,
+				ask: startDateAsk(
+					move,
+					dayOf(connection.startAt),
+					submission.value.start_on,
+					connection.companyName ?? connection.realmId
+				)
+			}
+		};
+	}
+
+	async function moveStart(body: FormData) {
+		const submission = parseForm(body, START_FORM);
+		if (!submission.ok) return invalid(400, submission.reject());
+		const db = context.get(database);
+		if ((await readQuickbooksConnection(db)) === null) {
+			return invalid(409, submission.reject({ formErrors: [NOT_CONNECTED] }));
+		}
+		const to = readAccountingDate(submission.value.start_on).at;
+		if (to === null) return invalid(400, submission.reject());
+		await moveQuickbooksStartAt(db, to, new Date());
+		return { moved: submission.value.start_on };
+	}
+
+	/**
+	 * every role's account, each id checked against the company's own chart and the role it is
+	 * picked for before anything is stored, and stored under the chart's name for it rather than one
+	 * a body could send.
+	 */
+	async function saveAccounts(body: FormData) {
+		const submission = parseForm(body, ACCOUNTS_FORM);
+		if (!submission.ok) return invalid(400, submission.reject());
+		const db = context.get(database);
+		if ((await readQuickbooksConnection(db)) === null) {
+			return invalid(409, submission.reject({ formErrors: [NOT_CONNECTED] }));
+		}
+		const chart = await createAccountingProvider(context.get(platform).env, db).listAccounts();
+		if (!chart.ok) return invalid(500, submission.reject({ formErrors: [chart.detail] }));
+
+		const refused: Record<string, string[]> = {};
+		const chosen: Partial<Record<AccountRole, ChosenAccount | null>> = {};
+		for (const role of ACCOUNT_ROLES) {
+			const id = submission.value[role];
+			if (id === undefined) {
+				chosen[role] = null;
+				continue;
+			}
+			const account = chart.value.find((entry) => entry.id === id);
+			if (account === undefined) refused[role] = [NOT_IN_CHART];
+			else if (!fitsRole(account, role)) refused[role] = [misfitSays(role)];
+			else chosen[role] = { id: account.id, name: account.name };
+		}
+		const { income, fee } = chosen;
+		if (Object.keys(refused).length > 0 || income == null || fee == null) {
+			return invalid(400, submission.reject({ fieldErrors: refused }));
+		}
+		await saveQuickbooksAccounts(db, {
+			income,
+			fee,
+			stripeBalance: chosen.stripeBalance ?? null,
+			paypalBalance: chosen.paypalBalance ?? null,
+			chariotBalance: chosen.chariotBalance ?? null,
+			nowpaymentsBalance: chosen.nowpaymentsBalance ?? null,
+			undepositedFunds: chosen.undepositedFunds ?? null
+		});
+		return { saved: true as const };
+	}
+
+	/** post one correcting entry. */
+	async function correct(body: FormData) {
+		// every box this form states has to arrive, and the two sharp ones are the pickers: absent, a
+		// `<select>`'s value would be whatever the schema stood in, and a correction would move money
+		// between two accounts nobody chose. `$lib/server/conform.ts`'s header is where that is argued.
+		const submission = parseForm(body, CORRECTION_FORM);
+		if (!submission.ok) return invalid(400, submission.reject());
+
+		// the door an account id off the wire goes through, and there is no other — `$lib/server/db/postable.ts`
+		// enumerates the ways to the brand. it is what stops a rollup reaching `post()`, which would make
+		// every report over that subtree double-count silently and permanently, because the ledger is
+		// append-only.
+		const outOf = postableIdFromSubmitted(submission.value.out_of);
+		const into = postableIdFromSubmitted(submission.value.into);
+		if (outOf === null || into === null) {
+			// both boxes at once where both are stale, so a reload is one round trip rather than two.
+			return invalid(
+				400,
+				submission.reject({
+					fieldErrors: {
+						...(outOf === null ? { out_of: [NO_SUCH_ACCOUNT] } : {}),
+						...(into === null ? { into: [NO_SUCH_ACCOUNT] } : {})
+					}
+				})
+			);
+		}
+
+		// the figure and the day come out of the same two calls the schema's checks already made, read
+		// for the value this time instead of for the sentence — the arrangement `parseFormGiving` in
+		// `$lib/server/forms/form-input.ts` is under, and the reason neither rule is spelled twice.
+		const money = readAmount(submission.value.amount, FORM_CURRENCY);
+		const dated = readAccountingDate(submission.value.occurred_on);
+		if (money.minor === null || dated.at === null) {
+			// unreachable past the schema, whose checks abort on exactly these two reads. it is the
+			// narrowing rather than a second rule, and it answers with the sentences those checks
+			// produced — so a path added above this line that *can* reach it cannot answer with a form
+			// marked refused and nothing written under any box.
+			return invalid(
+				400,
+				submission.reject({
+					fieldErrors: {
+						...(money.problem === null ? {} : { amount: [money.problem] }),
+						...(dated.problem === null ? {} : { occurred_on: [dated.problem] })
+					}
+				})
+			);
+		}
+
+		// the handle is taken here rather than at the top of the action: nothing above this line needs
+		// a database, so a submission the rules refused is answered without one being reached for.
+		const db = context.get(database);
+		const sourceId = submission.value.source_id;
+
+		let posted: Awaited<ReturnType<typeof postCorrection>>;
+		try {
+			posted = await postCorrection(db, {
+				sourceId,
+				occurredAt: dated.at,
+				amountMinor: money.minor,
+				outOf,
+				into,
+				note: submission.value.note
+			});
+		} catch (e) {
+			// nothing here is a user error — every rule has passed and both accounts are the chart's own
+			// — so this is the write itself failing. the cause goes to the log; the page gets a fixed
+			// string, keyed to no box, because a write that failed is not something an operator can fix
+			// by editing an input.
+			console.error('posting a correction failed:', e);
+			// a fresh id rides back beside it for a press whose boxes have changed by then: a `batch()`
+			// that commits and then loses the connection is indistinguishable from one that never ran, so
+			// the id this write was sent under may already stand for it. an unchanged press keeps that id
+			// and is refusable as a duplicate.
+			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }), { freshId: uuidv7() });
+		}
+
+		if (!posted.ok) {
+			// logged because it is the only signal anywhere that the guard fired: a run of these is a
+			// screen re-submitting, which is a thing to read in a log.
+			console.info('a correction was presented twice under one id:', sourceId);
+		}
+
+		// what the books now hold under this id, read back by its pair rather than rebuilt from the
+		// body: on `already_posted` the entry is the earlier press's, and the press is told what is in
+		// the books rather than what it asked for. a read that fails here costs the lines and not the
+		// answer — the write has already landed or already been there, and a 500 would say it had not.
+		let found: EntryGroupListRow | null = null;
+		try {
+			found = await findEntryGroup(db, 'adjustment', sourceId);
+		} catch (e) {
+			console.error('reading back a posted correction failed:', e);
+		}
+
+		// the id is the screen's to hold only while the boxes hold what it was sent under, and a press
+		// that presents it over a different correction is refused rather than answered as already
+		// posted — which would tell the operator a correction is in the books that nothing wrote.
+		if (
+			!posted.ok &&
+			found !== null &&
+			!isSubmitted(found, {
+				occurredAt: dated.at,
+				amountMinor: money.minor,
+				outOf,
+				into,
+				note: submission.value.note
+			})
+		) {
+			return invalid(409, submission.reject({ formErrors: [ID_HELD] }), {
+				freshId: uuidv7(),
+				releasedId: sourceId
+			});
+		}
+
+		return {
+			outcome: {
+				kind: posted.ok ? ('posted' as const) : ('already_posted' as const),
+				sourceId,
+				movement: found === null ? null : movementOf(found, labelsOf(pickableAccounts()))
+			}
+		};
+	}
+}
+
+/**
+ * a press whose request never reached the server, answered in the browser as the refusal of the
+ * form that was pressed rather than with the error boundary ($lib/admin/unreached.ts).
+ */
+export function clientAction({ request, serverAction }: Route.ClientActionArgs) {
+	return formPress(request, serverAction);
 }
 
 /** what the confirm dialog states, read off the boxes at the press that opened it. */
@@ -587,6 +887,7 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 						    follows it: an uncontrolled input keeps whatever it mounted with, and this box
 						    is on a screen that never remounts its form. */}
 						<input type="hidden" name={fields.source_id.name} value={postingId} />
+						<input {...whichForm(CORRECTION_FORM.id)} />
 
 						{/* the day and the figure pair up once there is room: both hold one short
 						    value, and the accounting date is what the amount is dated. */}
@@ -768,6 +1069,743 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 					empty="Nothing has been posted to the books yet."
 				/>
 			)}
+
+			{loaderData.quickbooks === 'unreadable' ? (
+				<Section>
+					<h2 id={QUICKBOOKS_ID}>QuickBooks</h2>
+					<Banner tone="attention" word="Where the books stand at QuickBooks could not be read" />
+				</Section>
+			) : loaderData.quickbooks === null ? null : (
+				<Quickbooks screen={loaderData.quickbooks} />
+			)}
 		</Column>
+	);
+}
+
+type LoaderData = Route.ComponentProps['loaderData'];
+type QuickbooksRead = Exclude<LoaderData['quickbooks'], null | 'unreadable'>;
+type Company = NonNullable<QuickbooksRead['company']>;
+type Role = keyof Company['picks'];
+type Holding = QuickbooksRead['holdings'][number];
+
+/** a press's answer where the server refused it, or where it never reached the server. */
+type Refused = { readonly form?: FormRejection };
+type DisconnectAnswer = Refused & {
+	readonly disconnected?:
+		| { readonly revoked: true }
+		| { readonly revoked: false; readonly detail: string };
+};
+type RetryAnswer = Refused & { readonly retried?: number };
+type AccountsAnswer = Refused & { readonly saved?: true };
+type PreviewAnswer = Refused & {
+	readonly preview?: { readonly startOn: string; readonly ask: StartDateAsk | null };
+};
+type MoveAnswer = Refused & { readonly moved?: string };
+
+/** what a press's form-wide refusal says, or nothing. */
+const formRefusal = (form: { readonly id: string }, answer: Refused | undefined) =>
+	resultFor(form, answer)?.error?.['']?.[0];
+
+/** the address the QuickBooks half is reached at from the round trip's pages. */
+const QUICKBOOKS_ID = 'quickbooks';
+
+/** where an operator creates the Intuit app whose keys go in `.env`. */
+const INTUIT_DEVELOPER = 'https://developer.intuit.com/';
+
+/** what recreating the app is, wherever `.env` changed. */
+const RECREATE = 'docker compose up -d --force-recreate app';
+
+/** what each picker is called. */
+const PICK_LABEL: Record<Role, string> = {
+	income: 'Income',
+	fee: 'Processing fees',
+	stripeBalance: 'Stripe balance',
+	paypalBalance: 'PayPal balance',
+	chariotBalance: 'Chariot balance',
+	nowpaymentsBalance: 'NOWPayments balance',
+	undepositedFunds: 'Gifts recorded by hand'
+};
+
+/**
+ * the line over each holding's picker: what the bookkeeper does when the money moves on. this
+ * deployment hears no payout, so the money leaving a holding is recorded off the bank feed.
+ */
+const HOLDING_HINT: Record<Holding, string> = {
+	stripeBalance: payoutHint('Stripe'),
+	paypalBalance: payoutHint('PayPal'),
+	chariotBalance: payoutHint('Chariot'),
+	nowpaymentsBalance: payoutHint('NOWPayments'),
+	undepositedFunds: 'Record each deposit from your bank feed as a transfer out of this account.'
+};
+
+function payoutHint(processor: string): string {
+	return `Record each ${processor} payout from your bank feed as a transfer out of this account.`;
+}
+
+const PICK_ROLES = [
+	'income',
+	'fee',
+	'stripeBalance',
+	'paypalBalance',
+	'chariotBalance',
+	'nowpaymentsBalance',
+	'undepositedFunds'
+] as const satisfies readonly Role[];
+
+/** the four parts of connecting the books, in the order the code takes them. */
+type StepName = 'setup' | 'connect' | 'accounts' | 'sync';
+
+type Standing = {
+	readonly done: boolean;
+	readonly trouble: boolean;
+	readonly locked: boolean;
+	readonly open: boolean;
+};
+
+/**
+ * where each step stands. Connect is locked until the keys are on the server, Accounts until a
+ * company is connected, and Sync is drawn only once income and fees are picked and a moved
+ * connection's accounts saved, since nothing is sent before. the first unfinished step is open, a
+ * finished one shut, and trouble opens its step — Sync's is a gift that did not sync.
+ */
+function stepsStand(screen: QuickbooksRead): Readonly<Record<StepName, Standing>> & {
+	readonly synced: boolean;
+} {
+	const { company, chart } = screen;
+	const lapsed = chart?.state === 'unreadable' && chart.recourse === 'reconnect';
+	const setup = screen.keys;
+	const connect = company !== null;
+	const accounts =
+		company !== null &&
+		!company.awaitingAccounts &&
+		company.picks.income !== null &&
+		company.picks.fee !== null;
+	// sync is never the step to take next: once drawn it is done, or in trouble over a gift.
+	const done = { setup, connect, accounts, sync: setup && connect && accounts };
+	const trouble = {
+		setup: false,
+		connect: lapsed,
+		accounts: chart?.state === 'unreadable' && !lapsed,
+		sync: screen.backlog !== null
+	};
+	const locked = { setup: false, connect: !done.setup, accounts: !done.connect, sync: false };
+	const current = (['setup', 'connect', 'accounts'] as const).find((name) => !done[name]);
+	const step = (name: StepName): Standing => ({
+		done: done[name],
+		trouble: trouble[name],
+		locked: locked[name],
+		open: !locked[name] && (name === current || trouble[name])
+	});
+	return {
+		setup: step('setup'),
+		connect: step('connect'),
+		accounts: step('accounts'),
+		sync: step('sync'),
+		synced: done.sync
+	};
+}
+
+/** what a chart that could not be read says, by what the operator does about it. */
+function chartSays(recourse: 'reconnect' | 'wait' | null): string {
+	if (recourse === 'reconnect') return 'QuickBooks turned this connection down.';
+	if (recourse === 'wait')
+		return 'QuickBooks can’t be reached right now. This deployment keeps trying.';
+	return 'This deployment couldn’t read your chart of accounts.';
+}
+
+/** one step: its word, its line, its mark, and what it opens onto. */
+function Step({
+	name,
+	label,
+	note,
+	standing,
+	children
+}: {
+	readonly name: StepName;
+	readonly label: string;
+	readonly note?: string | undefined;
+	readonly standing: Standing;
+	readonly children: ReactNode;
+}) {
+	return (
+		<StatusLine
+			id={`quickbooks-${name}`}
+			label={label}
+			note={note}
+			word={standing.trouble ? 'Needs attention' : standing.done ? 'Done' : 'To do'}
+			wordOnMark
+			labelAs="h3"
+			tone={standing.trouble ? 'blocker' : standing.done ? 'done' : 'note'}
+			// a step not yet done is the unfilled outline, which the note tone would draw as `info`.
+			mark={standing.trouble || standing.done ? undefined : 'circle-dashed'}
+			locked={standing.locked}
+			open={standing.open}
+			openFor={standing.open ? ['current'] : []}
+			beneath={children}
+		/>
+	);
+}
+
+/** the deployer's half of Books: the books' way to QuickBooks, as four steps. */
+function Quickbooks({ screen }: { readonly screen: QuickbooksRead }) {
+	const { company, chart } = screen;
+	const steps = stepsStand(screen);
+	return (
+		<Section>
+			<div className="adm-record__head">
+				<h2 id={QUICKBOOKS_ID}>QuickBooks</h2>
+				{company === null ? (
+					<StatusWord secondary>Not connected</StatusWord>
+				) : (
+					<StatusWord tone="done">Connected to {company.name}</StatusWord>
+				)}
+			</div>
+			<StatusLedger sections>
+				<Step
+					name="setup"
+					label="Setup"
+					note={
+						screen.keys
+							? 'Your Intuit app’s keys are on the server.'
+							: 'Needs an Intuit app’s keys on the server'
+					}
+					standing={steps.setup}
+				>
+					<Stack>
+						{screen.keys ? null : <ServerSteps />}
+						<RedirectAddress address={screen.callback} />
+					</Stack>
+				</Step>
+				<Step
+					name="connect"
+					label="Connect"
+					note={company === null ? 'Connect to your app' : `Connected to ${company.name}`}
+					standing={steps.connect}
+				>
+					{company === null ? (
+						<NotConnected />
+					) : (
+						<Connected
+							company={company}
+							lapsed={chart?.state === 'unreadable' && chart.recourse === 'reconnect'}
+						/>
+					)}
+				</Step>
+				<Step
+					name="accounts"
+					label="Accounts"
+					note={
+						company === null
+							? undefined
+							: 'What a gift is recorded as, and where money waits before it reaches your bank'
+					}
+					standing={steps.accounts}
+				>
+					{company === null || chart === null ? (
+						// locked until a company is connected, so never opened; a fold with nothing
+						// beneath it draws no caret and no lock.
+						<Stack />
+					) : (
+						<Accounts company={company} chart={chart} holdings={screen.holdings} />
+					)}
+				</Step>
+				{steps.synced && company !== null ? (
+					<Step
+						name="sync"
+						label="Sync"
+						note="Sync gifts from a date you pick"
+						standing={steps.sync}
+					>
+						<Stack>
+							<Backlog backlog={screen.backlog} />
+							<StartDate company={company} />
+						</Stack>
+					</Step>
+				) : null}
+			</StatusLedger>
+		</Section>
+	);
+}
+
+/**
+ * the setup a deployment short of Intuit's keys needs, in two parts for two readers: the staff
+ * sentence, and under it the steps for whoever runs the server, since no box here sets a key.
+ */
+function ServerSteps() {
+	return (
+		<>
+			<p className="adm-prose">
+				To send gifts to QuickBooks, this site needs an Intuit app. Ask whoever set up this site to
+				add it. The steps below are for them.
+			</p>
+			<div className="adm-named">
+				<h4>For whoever runs the server</h4>
+				<p className="adm-prose">
+					Create an app at <a href={INTUIT_DEVELOPER}>Intuit Developer</a>, add the address below to
+					its redirect URIs, put its client ID and secret in <InlineCode>.env</InlineCode>{' '}
+					(DEPLOY.md, QuickBooks), and recreate the app:
+				</p>
+				<CodeSlab oneline content={RECREATE} copyable copyLabel="Copy the command" />
+			</div>
+		</>
+	);
+}
+
+/** the address to register at Intuit, copied out from here. */
+function RedirectAddress({ address }: { readonly address: string }) {
+	const caption = `${useId()}-redirect`;
+	return (
+		<div className="adm-stated adm-break">
+			<span className="adm-field__label" id={caption}>
+				Add this to your Intuit app’s redirect URIs
+			</span>
+			<CodeSlab oneline copyable content={address} copyLabel="Copy address" labelledBy={caption} />
+		</div>
+	);
+}
+
+/**
+ * the press that leaves for Intuit's consent screen. the answer is a whole-document redirect, so a
+ * press that landed is never drawn here: Intuit's page replaces this one, and the page the trip
+ * ends on leads back.
+ */
+function ConnectPress({ label }: { readonly label: string }) {
+	const fetcher = useFetcher<Refused>({ key: CONNECT_FORM.id });
+	const busy = fetcher.state !== 'idle';
+	const refused = busy ? undefined : formRefusal(CONNECT_FORM, fetcher.data);
+	return (
+		<fetcher.Form method="post" className="adm-stack">
+			<input {...whichForm(CONNECT_FORM.id)} />
+			<div className="adm-actions">
+				<HeldButton busy={busy} variant="primary">
+					{label}
+				</HeldButton>
+			</div>
+			<p className="adm-hint">You’ll sign in at Intuit and choose the company there.</p>
+			{refused === undefined ? null : <FieldMessage>{refused}</FieldMessage>}
+		</fetcher.Form>
+	);
+}
+
+/**
+ * the way in, under what the last disconnect could not confirm: a revoke Intuit did not take leaves
+ * the app among the company's connected apps, which is somewhere this screen cannot show.
+ */
+function NotConnected() {
+	const { data } = useFetcher<DisconnectAnswer>({ key: DISCONNECT_FORM.id });
+	const unrevoked = data?.disconnected?.revoked === false ? data.disconnected : null;
+	return (
+		<Stack tight>
+			{unrevoked === null ? null : (
+				<>
+					<FieldMessage>Intuit didn’t confirm the disconnect.</FieldMessage>
+					<p className="adm-prose">{unrevoked.detail}</p>
+					<p className="adm-prose">
+						This deployment no longer holds the connection, but Intuit may still list the app as
+						connected. In QuickBooks Online, open Apps, then My Apps, and disconnect it there.
+					</p>
+				</>
+			)}
+			<ConnectPress label="Choose a company" />
+		</Stack>
+	);
+}
+
+/** the company gifts sync to, the way back in where its credential lapsed, and the way out. */
+function Connected({ company, lapsed }: { readonly company: Company; readonly lapsed: boolean }) {
+	const fetcher = useFetcher<DisconnectAnswer>({ key: DISCONNECT_FORM.id });
+	const busy = fetcher.state !== 'idle';
+	const refused = busy ? undefined : formRefusal(DISCONNECT_FORM, fetcher.data);
+	const [asking, setAsking] = useState(false);
+	// set by the confirm's own press on its way to the submit it causes, the one not asked again.
+	const confirmed = useRef(false);
+	return (
+		<Stack>
+			<p className="adm-prose">Gifts sync to {company.name}.</p>
+			{lapsed ? (
+				<Stack tight>
+					<FieldMessage>{chartSays('reconnect')}</FieldMessage>
+					<ConnectPress label="Sign in again" />
+				</Stack>
+			) : null}
+			<fetcher.Form
+				method="post"
+				onSubmit={(event) => {
+					if (confirmed.current) {
+						confirmed.current = false;
+						setAsking(false);
+						return;
+					}
+					event.preventDefault();
+					setAsking(true);
+				}}
+			>
+				<input {...whichForm(DISCONNECT_FORM.id)} />
+				<div className="adm-actions">
+					<HeldButton busy={busy}>Disconnect</HeldButton>
+				</div>
+				{refused === undefined ? null : <FieldMessage>{refused}</FieldMessage>}
+				{asking ? (
+					<Modal
+						title={`Disconnect ${company.name}?`}
+						onDismiss={() => setAsking(false)}
+						danger="Disconnect"
+						dangerProps={{
+							type: 'submit' as const,
+							onClick: () => {
+								confirmed.current = true;
+							}
+						}}
+						cancel="Go back"
+						cancelProps={{ type: 'button' as const, onClick: () => setAsking(false) }}
+					>
+						<Stack tight>
+							<p className="adm-prose">{stopped(`Gifts stop syncing to ${company.name}`)}</p>
+							<p className="adm-prose">
+								This deployment forgets the company, its accounts and the day gifts sync from.
+							</p>
+						</Stack>
+					</Modal>
+				) : null}
+			</fetcher.Form>
+		</Stack>
+	);
+}
+
+/** a sentence ending on a name that already ends in a stop takes no second one. */
+const stopped = (text: string): string => (text.endsWith('.') ? text : `${text}.`);
+
+/** where a gift is posted, picked out of the company's own chart. */
+function Accounts({
+	company,
+	chart,
+	holdings
+}: {
+	readonly company: Company;
+	readonly chart: NonNullable<QuickbooksRead['chart']>;
+	readonly holdings: readonly Holding[];
+}) {
+	const moved = company.awaitingAccounts ? (
+		<FieldMessage tone="needed">
+			This connection moved to {company.name}, and nothing is sent to QuickBooks until its accounts
+			are saved.
+		</FieldMessage>
+	) : null;
+
+	if (chart.state === 'unreadable') {
+		// what is wrong is said at the step it blocks: a lapsed credential at Connect, anything else
+		// here. the picks stand as stored, and no box takes an id typed by hand.
+		return (
+			<Stack>
+				{moved}
+				{(['income', 'fee', ...holdings] as const).map((role) => (
+					<StatedValue
+						key={role}
+						label={PICK_LABEL[role]}
+						value={
+							company.picks[role]?.name ??
+							(role === 'income' || role === 'fee' ? 'Not picked' : 'None')
+						}
+					/>
+				))}
+				{chart.recourse === 'reconnect' ? null : (
+					<FieldMessage>{chartSays(chart.recourse)}</FieldMessage>
+				)}
+			</Stack>
+		);
+	}
+
+	return (
+		<Stack>
+			{moved}
+			{/* keyed on what is stored, so the read after a save remounts the pickers on it. */}
+			<AccountsForm
+				key={PICK_ROLES.map((role) => company.picks[role]?.id ?? '').join('|')}
+				company={company}
+				chart={chart.accounts}
+				holdings={holdings}
+			/>
+		</Stack>
+	);
+}
+
+function AccountsForm({
+	company,
+	chart,
+	holdings
+}: {
+	readonly company: Company;
+	readonly chart: readonly {
+		readonly id: string;
+		readonly label: string;
+		readonly roles: readonly Role[];
+	}[];
+	readonly holdings: readonly Holding[];
+}) {
+	const fetcher = useFetcher<AccountsAnswer>();
+	const busy = fetcher.state !== 'idle';
+	const answer = busy ? undefined : fetcher.data;
+	const stored = Object.fromEntries(
+		PICK_ROLES.map((role) => [role, company.picks[role]?.id ?? ''])
+	) as Record<Role, string>;
+	const [picks, setPicks] = useState(stored);
+	const changed =
+		company.awaitingAccounts || PICK_ROLES.some((role) => picks[role] !== stored[role]);
+	const save = useSaveState({ landed: answer?.saved === true, changed, pending: busy });
+	const refused = formRefusal(ACCOUNTS_FORM, answer);
+	const boxError = (role: Role) => resultFor(ACCOUNTS_FORM, answer)?.error?.[role]?.[0];
+	const id = useId();
+
+	/**
+	 * one picker over the chart, offering only the accounts that fit it. a stored pick the chart no
+	 * longer offers stays shown, retired, until another is chosen, so the screen never silently
+	 * moves where gifts are posted. income and fees open on a blank while nothing is chosen; a
+	 * holding offers None always, since it holds that processor's gifts and nothing else.
+	 */
+	const picker = (role: Role, hint?: string) => {
+		const options = chart
+			.filter((account) => account.roles.includes(role))
+			.map((account) => ({ value: account.id, label: account.label }));
+		const showing = picks[role];
+		const holding = role !== 'income' && role !== 'fee';
+		const empty = holding
+			? [{ value: '', label: 'None' }]
+			: stored[role] === '' || showing === ''
+				? [{ value: '', label: 'Choose an account' }]
+				: [];
+		const offered = showing === '' || options.some((option) => option.value === showing);
+		return (
+			<SelectWithNote
+				key={role}
+				id={`${id}-${role}`}
+				name={role}
+				label={PICK_LABEL[role]}
+				hint={hint}
+				options={[...empty, ...options]}
+				retired={
+					offered
+						? undefined
+						: {
+								value: showing,
+								label:
+									chart.find((account) => account.id === showing)?.label ??
+									company.picks[role]?.name ??
+									showing
+							}
+				}
+				value={showing}
+				onValueChange={(value) => setPicks({ ...picks, [role]: value })}
+				error={boxError(role)}
+			/>
+		);
+	};
+
+	return (
+		<fetcher.Form method="post" className="adm-stack">
+			<input {...whichForm(ACCOUNTS_FORM.id)} />
+			{/* every role rides every save, so a holding with no picker carries what is stored. */}
+			{PICK_ROLES.filter(
+				(role) => role !== 'income' && role !== 'fee' && !holdings.includes(role)
+			).map((role) => (
+				<input key={role} type="hidden" name={role} value={stored[role]} />
+			))}
+			<fieldset className="adm-fieldset">
+				<legend className="adm-fieldset__legend">What a gift is recorded as</legend>
+				<div className="adm-pair adm-pair--side">
+					{picker('income')}
+					{picker('fee')}
+				</div>
+			</fieldset>
+			<fieldset className="adm-fieldset">
+				<legend className="adm-fieldset__legend">
+					Where money waits before it reaches your bank
+				</legend>
+				{holdings.map((role) => picker(role, HOLDING_HINT[role]))}
+			</fieldset>
+			{refused === undefined ? null : <FieldMessage>{refused}</FieldMessage>}
+			<div className="adm-actions">
+				<SaveButton type="submit" state={buttonState(save)} label="Save accounts" elsewhere="" />
+			</div>
+		</fetcher.Form>
+	);
+}
+
+/**
+ * the gifts that were given up on, the refunds waiting behind them, and the press that queues the
+ * gifts again — which reports what it queued beside itself.
+ */
+function Backlog({ backlog }: { readonly backlog: QuickbooksRead['backlog'] }) {
+	const fetcher = useFetcher<RetryAnswer>({ key: RETRY_FORM.id });
+	const busy = fetcher.state !== 'idle';
+	const answer = busy ? undefined : fetcher.data;
+	const refused = formRefusal(RETRY_FORM, answer);
+	const retried = answer?.retried;
+	if (backlog === null && retried === undefined && refused === undefined) return null;
+	return (
+		<fetcher.Form method="post" className="adm-stack">
+			<input {...whichForm(RETRY_FORM.id)} />
+			{backlog === null ? null : (
+				<FieldMessage tone="needed">
+					{backlog.failed === 1 ? '1 gift didn’t sync' : `${backlog.failed} gifts didn’t sync`}.
+					{backlog.behind === null ? null : ` QuickBooks is ${backlog.behind} behind.`}
+				</FieldMessage>
+			)}
+			{backlog?.held == null ? null : (
+				<FieldMessage tone="needed">{heldSays(backlog.held)}</FieldMessage>
+			)}
+			<div className="adm-actions">
+				{backlog === null ? null : <HeldButton busy={busy}>Try these again</HeldButton>}
+				{/* mounted in every state, so the sentence arriving in it is announced. */}
+				<span className="adm-hint" role="status">
+					{retried === undefined
+						? null
+						: retried === 0
+							? 'Nothing was left to send.'
+							: `${retried} retrying.`}
+				</span>
+			</div>
+			{refused === undefined ? null : <FieldMessage>{refused}</FieldMessage>}
+		</fetcher.Form>
+	);
+}
+
+/**
+ * the refunds waiting behind a gift given up on. a held refund is tried only once its gift is sent,
+ * so a gift recorded in QuickBooks by hand rather than tried again sends none of its refunds.
+ */
+function heldSays({
+	refunds,
+	gifts
+}: {
+	readonly refunds: number;
+	readonly gifts: number;
+}): string {
+	const waiting = refunds === 1 ? '1 refund is waiting' : `${refunds} refunds are waiting`;
+	const on = gifts === 1 ? 'a gift' : 'gifts';
+	const which = gifts === 1 ? 'that gift' : 'one of those gifts';
+	const its = refunds === 1 ? 'its refund' : 'its refunds';
+	return `${waiting} on ${on} that didn’t sync. If you record ${which} in QuickBooks by hand, record ${its} there by hand too.`;
+}
+
+/**
+ * the earliest date a gift may carry to reach the books.
+ *
+ * **the save asks the deployment what the move touches before it makes it.** a move earlier queues
+ * every gift owed from the new day on and a move later skips the unsent ones before it, so the
+ * press previews first, and moves straight away where the preview found nothing to agree to and
+ * behind a confirm naming what it sends or skips where it did.
+ */
+function StartDate({ company }: { readonly company: Company }) {
+	const preview = useFetcher<PreviewAnswer>({ key: START_PREVIEW_FORM.id });
+	const move = useFetcher<MoveAnswer>({ key: START_FORM.id });
+	const busy = preview.state !== 'idle' || move.state !== 'idle';
+	const [day, setDay] = useState(company.startOn);
+	// the preview this form is waiting on, by the day it asked about, until it is answered.
+	const [asked, setAsked] = useState<string | null>(null);
+	const answered =
+		asked !== null && preview.state === 'idle' && preview.data?.preview?.startOn === asked
+			? preview.data.preview
+			: null;
+	const ask = answered?.ask ?? null;
+
+	const submitMove = useCallback(
+		(to: string) => {
+			setAsked(null);
+			move.submit({ [WHICH_FORM]: START_FORM.id, start_on: to }, { method: 'post' });
+		},
+		[move.submit]
+	);
+	useEffect(() => {
+		if (answered !== null && answered.ask === null) submitMove(answered.startOn);
+	}, [answered, submitMove]);
+
+	const landed = move.state === 'idle' && move.data?.moved === company.startOn;
+	const save = useSaveState({
+		landed,
+		changed: day !== '' && day !== company.startOn,
+		pending: busy
+	});
+	const refused =
+		formRefusal(START_PREVIEW_FORM, preview.data) ?? formRefusal(START_FORM, move.data);
+	const boxError =
+		resultFor(START_PREVIEW_FORM, preview.data)?.error?.start_on?.[0] ??
+		resultFor(START_FORM, move.data)?.error?.start_on?.[0];
+	const id = useId();
+
+	return (
+		<preview.Form method="post" className="adm-stack adm-break" onSubmit={() => setAsked(day)}>
+			<input {...whichForm(START_PREVIEW_FORM.id)} />
+			<Field
+				id={`${id}-start`}
+				name="start_on"
+				type="date"
+				label="Sync gifts from"
+				value={day}
+				onChange={(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+					setDay(event.currentTarget.value)
+				}
+				error={boxError}
+			/>
+			<div className="adm-actions">
+				<SaveButton type="submit" state={buttonState(save)} elsewhere="" />
+			</div>
+			{refused === undefined ? null : <FieldMessage>{refused}</FieldMessage>}
+			{ask === null || answered === null ? null : (
+				<Modal
+					title={ask.title}
+					onDismiss={() => setAsked(null)}
+					{...(ask.rank === 'exit'
+						? {
+								exit: ask.press,
+								exitProps: { type: 'button' as const, onClick: () => submitMove(answered.startOn) }
+							}
+						: {
+								danger: ask.press,
+								dangerProps: {
+									type: 'button' as const,
+									onClick: () => submitMove(answered.startOn)
+								}
+							})}
+					cancel="Go back"
+					cancelProps={{ type: 'button' as const, onClick: () => setAsked(null) }}
+				>
+					<Stack tight>
+						{ask.lines.map((line) => (
+							<p key={line} className="adm-prose">
+								{line}
+							</p>
+						))}
+					</Stack>
+				</Modal>
+			)}
+		</preview.Form>
+	);
+}
+
+/**
+ * a press held with `aria-disabled` and turned away in its own handler while its request is out,
+ * never closed by `disabled`, which would drop the focus standing on it.
+ */
+function HeldButton({
+	busy,
+	variant,
+	children
+}: {
+	readonly busy: boolean;
+	readonly variant?: 'primary';
+	readonly children: ReactNode;
+}) {
+	return (
+		<Button
+			type="submit"
+			{...(variant === undefined ? {} : { variant })}
+			aria-busy={busy || undefined}
+			aria-disabled={busy || undefined}
+			onClick={(event) => {
+				if (busy) event.preventDefault();
+			}}
+		>
+			{children}
+		</Button>
 	);
 }
