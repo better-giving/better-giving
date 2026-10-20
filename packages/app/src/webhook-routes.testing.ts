@@ -52,7 +52,7 @@ export async function freshDeployment(): Promise<void> {
 
 /**
  * a deployment whose five set-up jobs are done, for a spec that mounts a screen under the layout
- * and asserts on the screen rather than on the set-up gate (../routes/_app.tsx).
+ * and wants an organisation, processor keys and mail in place (../routes/_app.tsx).
  *
  * answers the bindings to send each request with, `password` being the staff password the spec
  * signs in with, and writes the one row the jobs are read off: the registered name and EIN and the

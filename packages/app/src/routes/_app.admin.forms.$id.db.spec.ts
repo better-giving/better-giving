@@ -21,8 +21,7 @@ import { client, first, run, stmt } from '$lib/server/db/database.testing';
 // the chain is mounted rather than the loader called, which is ../route-request.testing.ts's
 // pattern: the session gate is a `middleware` on ./_app.tsx and the handle is on the request
 // context, so a loader called on its own is a loader with the gate above it never run.
-// the cases about a deployment whose set-up is unfinished mount the screen alone (`ungated`),
-// since the layout's set-up gate would answer them before the screen did.
+// the cases about a deployment whose set-up is unfinished mount the screen alone (`ungated`).
 //
 // the deploy-time values ride in a per-request `env`, and they are here for one property: nothing
 // this route does turns on them. the ledger and the Live gate are built out of rows, and what a

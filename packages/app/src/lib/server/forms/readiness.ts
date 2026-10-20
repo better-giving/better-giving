@@ -19,12 +19,8 @@ import { identityMissing } from '../org/identity';
 // above are. it decides what the line says and never how it is repaired: the line stops at the
 // consequence.
 //
-// **the set-up gate now stands in front of this and the block is what is left behind it.** the
-// dashboard is not served while any of the five jobs is unfinished, the organisation's identity
-// among them (`../config/readiness.ts`), so a screen reaching this function is a screen on a
-// deployment whose identity is already filled in and the block draws nothing. it is kept as the
-// deployment's own answer at the point a form is written rather than as the gate's, which is what
-// keeps `publishedConfig` in ./published-config.ts and this line agreeing about one row.
+// it is the deployment's own answer at the point a form is written, which is what keeps
+// `publishedConfig` in ./published-config.ts and this line agreeing about one row.
 
 /**
  * what this line is called on screen — a fundraiser's word, never the table's.

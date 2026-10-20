@@ -1,9 +1,9 @@
 import { opening } from '@better-giving/operator/progress-bar';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, data, Link } from 'react-router';
+import { createRoutesStub, Link } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
-import ProtectedLayout, { ErrorBoundary as AppErrorBoundary, clientMiddleware } from './_app';
+import ProtectedLayout, { clientMiddleware } from './_app';
 import { handle as donationPageHandle } from './_app.admin.donation-page';
 import { handle as formHandle } from './_app.admin.forms.$id';
 
@@ -154,7 +154,7 @@ it('draws the deployer the Integrations group, headed, between Members and Books
 		'Zapier',
 		'API',
 		'Webhooks',
-		'Claude & ChatGPT',
+		'AI',
 		'Books'
 	]);
 	// the one cell marked with a company's own image rather than a glyph.
@@ -350,52 +350,4 @@ it('says the opening label on one region over a move, and empties it when the mo
 	expect(bar(root)).toBe(null);
 	expect(regions(root)).toEqual([standing]);
 	expect(standing?.textContent).toBe('');
-});
-
-// the set-up gate is answered by the layout's middleware before any loader runs, so there is no
-// loader data to draw a frame from: the layout's boundary draws the gate from the answer itself,
-// and anything else thrown beneath the layout is drawn as the root's page.
-
-/** the five as an unfinished deployment reads them, two still open. */
-const OPEN_LINES = [
-	{ id: 'password', label: 'Dashboard password', state: 'ready', word: 'Configured', note: null },
-	{ id: 'organisation', label: 'Organisation', state: 'todo', word: 'Incomplete', note: null },
-	{ id: 'payments', label: 'Payments', state: 'ready', word: 'Configured', note: null },
-	{ id: 'smtp', label: 'Email delivery', state: 'ready', word: 'Configured', note: null },
-	{ id: 'notifications', label: 'Notifications', state: 'todo', word: 'Incomplete', note: null }
-];
-
-/** the layout's boundary over a screen whose read throws `thrown`. */
-function boundaryOver(thrown: unknown): Promise<HTMLElement> {
-	const Stub = createRoutesStub([
-		{
-			id: 'app',
-			Component: () => <p>the frame</p>,
-			ErrorBoundary: AppErrorBoundary as never,
-			loader: () => {
-				throw thrown;
-			},
-			children: [{ path: '/admin/forms', Component: () => <p>the list</p> }]
-		}
-	]);
-	return mount(<Stub initialEntries={['/admin/forms']} />);
-}
-
-it('draws the set-up gate in place of the frame when the layout answers with it', async () => {
-	const root = await boundaryOver(data({ shape: 'setup', lines: OPEN_LINES }, { status: 503 }));
-
-	expect(root.querySelector('h1')?.textContent).toBe('Finish setting up this deployment');
-	expect(root.textContent).not.toContain('the frame');
-});
-
-it('titles the document after the set-up gate', async () => {
-	await boundaryOver(data({ shape: 'setup', lines: OPEN_LINES }, { status: 503 }));
-
-	expect(document.title).toBe('Finish setting up this deployment · Better Giving');
-});
-
-it('hands any other failure to the root page', async () => {
-	const root = await boundaryOver(data('`BETTER_AUTH_URL` names no address.', { status: 500 }));
-
-	expect(root.querySelector('h1')?.textContent).toBe('This deployment could not answer');
 });

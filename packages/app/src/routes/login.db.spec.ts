@@ -45,23 +45,10 @@ const MISSING = 'required';
 const PASSWORD = 'a-very-long-random-staff-password';
 
 /**
- * the deploy-time env every request here carries: the staff credential, and the values the five
- * set-up jobs are read off ($lib/server/config/setup-state.ts).
- *
- * the five are here because this screen is gated on them — an unfinished deployment serves the
- * set-up list in place of the password box — so a spec about signing in has to be a spec about a
- * deployment somebody finished setting up. the row the same reading needs is `finished()` below.
+ * the deploy-time env every request here carries: the staff credential and nothing else, since
+ * signing in reads no processor key and no mail host.
  */
-const DEPLOYED = {
-	...env,
-	ADMIN_PASSWORD: PASSWORD,
-	STRIPE_SECRET_KEY: 'sk_test_x',
-	STRIPE_PUBLISHABLE_KEY: 'pk_test_x',
-	SMTP_HOST: 'smtp.example.org',
-	SMTP_USERNAME: 'apikey',
-	SMTP_PASSWORD: 'mail-secret',
-	MAIL_FROM: 'giving@example.org'
-};
+const DEPLOYED = { ...env, ADMIN_PASSWORD: PASSWORD };
 
 /** a deployment whose `BETTER_AUTH_URL` pin names no address. */
 const PINNED_NOWHERE = { ...DEPLOYED, BETTER_AUTH_URL: 'localhost:8787' };
@@ -130,22 +117,6 @@ function get(search = '', cookie = ''): Request {
 	});
 }
 
-/**
- * the one row the five are read off, so this deployment reads as finished.
- *
- * no site is listed and none is wanted: the site list is a fold on the console and no set-up job,
- * because a deployment with no website of its own gives on the donation page it serves at its own
- * address ($lib/server/config/readiness.ts).
- */
-async function finished(legalName = 'Acme Foundation'): Promise<void> {
-	// both identity fields, because the organisation job is `identityMissing`'s answer and it asks
-	// for the registered name and the EIN ($lib/server/org/identity.ts).
-	await saveOrg(legalName, '12-3456789');
-	await run(
-		stmt(`update org_profile set notification_email = 'alerts@example.org' where id = 'default'`)
-	);
-}
-
 /** the loader's answer, or the redirect it threw instead of answering. */
 async function visit(
 	search = '',
@@ -195,15 +166,12 @@ describe('GET /login — a visitor who is already signed in', () => {
 
 	/** and an anonymous visitor is left to sign in, which is what the page is for. */
 	it('is not what an anonymous visitor is, so the page renders for them', async () => {
-		await finished();
-
 		const answer = await visit('?next=%2Fadmin%2Fdonors');
 
 		expect(answer).not.toBeInstanceOf(Response);
 	});
 
 	it('names a pin that names no address, and logs its value rather than sending it', async () => {
-		await finished();
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 		try {
 			await expect(loader(args(get(), PINNED_NOWHERE))).rejects.toMatchObject(PIN_REFUSAL);
@@ -216,50 +184,25 @@ describe('GET /login — a visitor who is already signed in', () => {
 
 describe('GET /login — which deployment this is', () => {
 	it('names the organisation this deployment was set up as', async () => {
-		await finished('Acme Foundation');
+		await saveOrg('Acme Foundation');
 
-		expect(await served()).toEqual({
-			shape: 'sign-in',
-			orgName: 'Acme Foundation',
-			passwordReset: false
-		});
+		expect(await served()).toEqual({ orgName: 'Acme Foundation', passwordReset: false });
 	});
 
-	it('serves the set-up list in place of the password box while a job is unfinished', async () => {
-		// a fresh fork has no row at all, so there is no organisation and no address to alert — and a
-		// password typed here would buy nothing but the same list one screen later (./_app.tsx).
-		const answer = (await visit()) as Extract<
-			Awaited<ReturnType<typeof loader>>,
-			{ shape: 'setup' }
-		>;
-
-		expect(answer.shape).toBe('setup');
-		expect(answer.lines.filter((line) => line.state === 'todo').map((line) => line.id)).toEqual([
-			'organisation',
-			'notifications'
-		]);
-	});
-
-	it('goes back to serving the password box once the last job is done', async () => {
-		await finished();
-
-		expect(await served()).toEqual({
-			shape: 'sign-in',
-			orgName: 'Acme Foundation',
-			passwordReset: false
-		});
+	it('serves the password box on a deployment nobody has set up', async () => {
+		// a fresh fork has no row at all, and the deployer signs in to set it up.
+		expect(await served()).toEqual({ orgName: null, passwordReset: false });
 	});
 
 	it('publishes the name and nothing else about the organisation', async () => {
 		// this page is served to anyone who asks for it. the rest of that row — the EIN,
 		// the address, where receipts come from — is what a deployment tells its donors after a
 		// gift, not what it tells an anonymous visitor at a password box.
-		// `finished()` stores the EIN, which is exactly the field this case is about.
-		await finished();
+		await saveOrg('Acme Foundation', '12-3456789');
 
 		const answer = await served();
 
-		expect(Object.keys(answer)).toEqual(['shape', 'orgName', 'passwordReset']);
+		expect(Object.keys(answer)).toEqual(['orgName', 'passwordReset']);
 		expect(JSON.stringify(answer)).not.toContain('12-3456789');
 	});
 
@@ -275,9 +218,7 @@ describe('GET /login — which deployment this is', () => {
 	it('renders the sign-in box when the organisation’s name cannot be read', async () => {
 		const answer = await loader(args(get(), DEPLOYED, unreachableClient()));
 
-		// and no set-up list either: a read that did not land found no job undone, so the gate stays
-		// out of the way of the one screen that still works ($lib/server/config/setup-state.ts).
-		expect(published(answer)).toEqual({ shape: 'sign-in', orgName: null, passwordReset: false });
+		expect(published(answer)).toEqual({ orgName: null, passwordReset: false });
 	});
 
 	/**
@@ -289,19 +230,18 @@ describe('GET /login — which deployment this is', () => {
 	 * exists to prevent.
 	 */
 	it('reports a finished password reset once, and burns the marker on the same response', async () => {
-		await finished();
 		const marker = await resetMarker();
 
 		const landed = await loader(args(get('', marker)));
 		const reloaded = await loader(args(get('', marker.replace(/=.*/, '='))));
 
-		expect(published(landed)).toMatchObject({ shape: 'sign-in', passwordReset: true });
+		expect(published(landed)).toMatchObject({ passwordReset: true });
 		expect(headerOf(landed)).toContain('Max-Age=0');
 		expect(published(reloaded)).toMatchObject({ passwordReset: false });
 	});
 });
 
-/** the sign-in shape as the loader publishes it, past the `data()` the clearing header rides on. */
+/** the sign-in screen as the loader publishes it, past the `data()` the clearing header rides on. */
 async function served(): Promise<Record<string, unknown>> {
 	const answer = await visit();
 	if (answer instanceof Response) throw new Error('the loader redirected instead of answering');

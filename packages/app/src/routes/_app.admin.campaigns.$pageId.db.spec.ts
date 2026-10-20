@@ -125,7 +125,7 @@ async function slugError(response: Response): Promise<unknown> {
 	return answer.form?.result?.error?.slug;
 }
 
-/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+/** a deployment whose set-up is finished. */
 let bindings: Env;
 
 beforeEach(async () => {

@@ -14,7 +14,6 @@ import { NO_FORM, RESUMING_HEADING, STEP_HEADINGS } from '$lib/donate/copy';
 import { shownStep } from '$lib/donate/shown-step.testing';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { defaultDonationPage } from '$lib/page/defaults';
-import { readSetupState } from '$lib/server/config/setup-state';
 import { createDb } from '$lib/server/db/client';
 import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
@@ -535,29 +534,10 @@ describe('/donate where the served config refuses', () => {
 });
 
 describe('a deployment with no website', () => {
-	/** every value the five set-up jobs read, with a password the sign-in path accepts. */
-	const FINISHED = {
-		...STRIPE,
-		ADMIN_PASSWORD: 'a-long-enough-password',
-		SMTP_HOST: 'smtp.example.org',
-		SMTP_USERNAME: 'mailer',
-		SMTP_PASSWORD: 'mail-secret',
-		MAIL_FROM: 'gifts@example.org'
-	};
-
-	it('finishes set-up and answers /donate with no site row', async () => {
+	it('answers /donate with no site row', async () => {
 		await run(stmt('delete from site'));
-		await run(stmt(`update org_profile set notification_email = 'ops@example.org'`));
 
-		const state = await readSetupState(db, envWith(FINISHED));
-		expect(state?.lines.map((line) => [line.id, line.state])).toEqual([
-			['password', 'ready'],
-			['organisation', 'ready'],
-			['payments', 'ready'],
-			['smtp', 'ready'],
-			['notifications', 'ready']
-		]);
-		expect((await visit(FINISHED)).status).toBe(200);
+		expect((await visit()).status).toBe(200);
 	});
 });
 
@@ -572,7 +552,7 @@ describe('/donate after the editor’s presses', () => {
 		{ path: 'forms/:id/donations', module: gifts }
 	]);
 	let session: string;
-	/** a deployment whose set-up is finished, which the layout above the editor serves alone. */
+	/** the deployment the editor is pressed on: the organisation's row, processor keys and mail. */
 	let finished: Env;
 
 	beforeAll(async () => {

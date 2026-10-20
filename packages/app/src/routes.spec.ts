@@ -900,9 +900,9 @@ describe('where middleware is mounted', () => {
 
 	// the preview is one of the exceptions above, and what it mounts is the layout's own session gate
 	// and nothing else — a gate of its own would be a second one to keep true.
-	it('is the session gate alone on the preview, the one the protected layout mounts first', () => {
+	it('is the session gate alone on the preview, as it is on the protected layout', () => {
 		expect(readFromDisk(PROTECTED_LAYOUT) ?? '').toMatch(
-			/export const middleware: Route\.MiddlewareFunction\[\] = \[\s*staffGate,/
+			/export const middleware: Route\.MiddlewareFunction\[\] = \[staffGate\];/
 		);
 		expect(readFromDisk(PREVIEW_PAGE) ?? '').toMatch(
 			/export const middleware: Route\.MiddlewareFunction\[\] = \[staffGate\];/

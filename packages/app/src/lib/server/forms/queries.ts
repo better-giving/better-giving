@@ -127,6 +127,16 @@ export async function readForms(db: Db): Promise<FormListRow[]> {
 	}));
 }
 
+/** whether `readForms` would list anything, on its own predicate and with one row read. */
+export async function holdsAnyForm(db: Db): Promise<boolean> {
+	const rows = await db
+		.select({ id: form.id })
+		.from(form)
+		.where(and(isNull(form.archivedAt), ownedByNoPage(db)))
+		.limit(1);
+	return rows.length > 0;
+}
+
 // ---------------------------------------------------------------------------
 // one form, whole: making it, reading it back to edit, editing it and retiring it.
 //

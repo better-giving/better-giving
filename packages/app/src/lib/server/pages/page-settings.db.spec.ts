@@ -75,7 +75,7 @@ function donationPage(): Promise<string> {
 	return insertPage(db, 'donation_page', { ...defaultDonationPage(), settings: SETTINGS });
 }
 
-/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+/** a deployment whose set-up is finished. */
 let bindings: Env;
 
 beforeEach(async () => {

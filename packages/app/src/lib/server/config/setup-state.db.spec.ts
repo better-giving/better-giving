@@ -25,10 +25,8 @@ describe('the dashboard-password set-up line', () => {
 		await expect(passwordState(db, { ADMIN_PASSWORD: password })).resolves.toBe('ready');
 	});
 
-	// the defect this line exists for: a stored value short enough that `readStaffCredential`
-	// refuses it used to tick the job, which stood the set-up gate aside and drew a sign-in screen
-	// whose every attempt came back unavailable — with the console reporting the password
-	// configured and no way out of the loop from inside the product.
+	// a stored value short enough that `readStaffCredential` refuses it is a sign-in screen whose
+	// every attempt comes back unavailable, so the line must not read as done.
 	it('is unfinished for a password the sign-in path would refuse', async () => {
 		const tooShort = 'x'.repeat(MIN_ADMIN_PASSWORD_LENGTH - 1);
 		await expect(passwordState(db, { ADMIN_PASSWORD: tooShort })).resolves.toBe('todo');

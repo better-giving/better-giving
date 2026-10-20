@@ -269,7 +269,7 @@ export default function Join({ loaderData, actionData }: Route.ComponentProps) {
  *
  * no rail and no identity band — the colleague holds no session and there is nothing under them to
  * navigate to — and the organisation's name is a caption above the heading, which is the shape
- * ./login.tsx's sign-in screen takes and $lib/admin/setup-gate.tsx argues.
+ * ./login.tsx's sign-in screen takes.
  */
 function Panel({ orgName, children }: { readonly orgName: string | null; children: ReactNode }) {
 	return (

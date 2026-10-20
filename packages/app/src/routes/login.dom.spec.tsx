@@ -55,7 +55,7 @@ function screen(
 			path: '/login',
 			Component: () =>
 				createElement(Login as never, {
-					loaderData: { shape: 'sign-in', orgName: null, passwordReset },
+					loaderData: { orgName: null, passwordReset },
 					actionData: undefined,
 					params: {},
 					matches: []
@@ -132,6 +132,24 @@ it('names one box for both ways in, and marks neither optional', () => {
 
 	expect(labelOf(root, 'input[name="identifier"]')).toBe('Username or email address');
 	expect(labelOf(root, 'input[type="password"]')).toBe('Password');
+});
+
+/**
+ * the deployer's username is a constant nobody types anywhere else, so the box says it under itself
+ * rather than leaving the deployer to have been told.
+ */
+it('names the deployer’s username under the box that takes it, drawn as code', () => {
+	const { root } = screen();
+	const described = box(root, 'input[name="identifier"]').getAttribute('aria-describedby') ?? '';
+	const hint = described
+		.split(' ')
+		.map((id) => document.getElementById(id))
+		.find((element) => element?.textContent?.startsWith('The person'));
+
+	expect(hint?.textContent).toBe(
+		'The person who deployed this site signs in as admin. Everyone else uses their email address.'
+	);
+	expect(hint?.querySelector('code')?.textContent).toBe('admin');
 });
 
 /**

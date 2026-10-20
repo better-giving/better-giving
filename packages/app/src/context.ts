@@ -3,7 +3,6 @@ import { createContext } from 'react-router';
 // own tsconfig sets `verbatimModuleSyntax`, which makes `import type` erase verbatim.
 import type { Auth } from '$lib/server/auth';
 import type { ConsoleSession } from '$lib/server/console/access';
-import type { SetupState } from '$lib/server/config/setup-state';
 import type { Db } from '$lib/server/db/client';
 import type { ConnectorKey } from '$lib/server/db/schema';
 import type { Deferred } from '$lib/server/runtime/deferred';
@@ -112,15 +111,6 @@ export const zapierKeyHash = createContext<string>();
  * reads this on a route the meter is not mounted on throws rather than serving unmetered.
  */
 export const overDonorPageLimit = createContext<boolean>();
-
-/**
- * the set-up reading the protected layout took for this request, `null` where the read threw.
- *
- * set by the set-up gate in src/routes/_app.tsx's `middleware`, after the session gate, and read by
- * that layout's loader for the organisation's name. one reading per request: the gate decides on
- * it and the frame draws from it, so the two cannot disagree about the row they read.
- */
-export const setupState = createContext<SetupState | null>();
 
 /**
  * the connector key a `/connector/v1` request presented, admitted by that surface's middleware

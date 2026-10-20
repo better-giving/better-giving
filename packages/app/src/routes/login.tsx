@@ -1,4 +1,6 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
+import { ADMIN_USERNAME } from '@better-giving/operator/admin-password';
+import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { Stack } from '@better-giving/operator/components/shell/Layout';
@@ -32,8 +34,6 @@ import { PIN_UNUSABLE } from '$lib/server/auth/pin';
 import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { PASSWORD_RESET_FLASH, takeFlash } from '$lib/server/flash';
-import { SetupGate } from '$lib/admin/setup-gate';
-import { setupOutstanding } from '$lib/server/config/readiness';
 import { readSetupState } from '$lib/server/config/setup-state';
 import { database, platform } from '../context';
 import type { Route } from './+types/login';
@@ -144,11 +144,6 @@ const WRONG_CREDENTIAL =
  * operator controls: the console says whether that var is set and is where it is set again, and the
  * running deployment's logs carry the withheld detail. an anonymous POST to this form must not
  * read it back, so what it gets is the pointer rather than the answer.
- *
- * a password this deployment would refuse draws the set-up gate in place of the box instead — the
- * loader reads the same authority the sign-in path does ($lib/server/config/setup-state.ts) — so
- * what still reaches this arm is a value changed out from under a form already drawn, or a set-up
- * reading that did not land.
  */
 const UNAVAILABLE =
 	'Sign-in is unavailable. The console (`better-giving start`) says whether this deployment’s ' +
@@ -214,27 +209,11 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	// a failure is swallowed to a null name, exactly as ./_app.tsx's read is and for a reason that
 	// is sharper here — this is the screen someone reaches to fix a deployment whose database is
 	// not answering, and throwing would replace the password box with a bare error on precisely
-	// that deployment. it is the same call that reads the five ($lib/server/config/setup-state.ts).
+	// that deployment ($lib/server/config/setup-state.ts).
 	const state = await readSetupState(db, env);
 
-	// **an unfinished deployment serves this in place of the password box.** the five are what the
-	// dashboard behind this screen is gated on (./_app.tsx), so a password typed here would buy
-	// nothing but the same list one screen later — and one of the five is whether a password is set
-	// at all, which is a sign-in nobody can complete.
-	//
-	// **it is drawn to a caller with no session, which is a decision and not an oversight.** what it
-	// tells a stranger is which of five jobs this deployment has not finished — no value, no address,
-	// no key, and nothing about the organisation the page does not already name. that is the cost of
-	// the operator meeting it at all: they arrive here holding no session by definition, and a list
-	// kept on the far side of the password box is a list they see only once it can no longer tell
-	// them anything they did not just prove. it stops being served the moment the last job is done.
-	if (state !== null && setupOutstanding(state.lines) > 0) {
-		return { shape: 'setup' as const, lines: state.lines };
-	}
-
 	// the reset that just finished, taken: read and cleared on this one response, so a reload
-	// reports nothing ($lib/server/flash.ts owns that). it is taken after the gate above rather
-	// than before it, so a marker is never burnt by a screen that would not have drawn it.
+	// reports nothing ($lib/server/flash.ts owns that).
 	//
 	// what it carries is that a password changed and never whose — the marker is written by
 	// ./reset.tsx, which mints no session and knows the member only as the account a token named.
@@ -242,7 +221,6 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 
 	return data(
 		{
-			shape: 'sign-in' as const,
 			orgName: state?.profile?.legalName ?? null,
 			passwordReset: landed !== null
 		},
@@ -432,10 +410,6 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 }
 
 export default function Login({ loaderData, actionData }: Route.ComponentProps) {
-	// the gate stands in place of the password box, because a deployment that is not finished has
-	// nothing behind one ($lib/admin/setup-gate.tsx).
-	if (loaderData.shape === 'setup') return <SetupGate lines={loaderData.lines} />;
-
 	return (
 		<SignInScreen
 			orgName={loaderData.orgName}
@@ -509,10 +483,8 @@ function SignInScreen({
 					    apart. plain text rather than `type="email"` because a username is not one
 					    and a browser that refused to submit one would close that way in.
 
-					    it says nothing about what that username is. the console prints it beside the
-					    password box that sets the credential
-					    (packages/console-ui/src/lib/password-fold.tsx), which is where somebody who
-					    has not been told it is standing.
+					    the hint names the deployer's username, which is a constant and no secret: the
+					    password is the credential.
 
 					    an ordinary box in every other respect — it comes back holding what was
 					    typed, so a refused attempt is one the reader corrects rather than retypes. */}
@@ -520,6 +492,12 @@ function SignInScreen({
 						id={fields.identifier.id}
 						name={fields.identifier.name}
 						label="Username or email address"
+						hint={
+							<>
+								The person who deployed this site signs in as{' '}
+								<InlineCode>{ADMIN_USERNAME}</InlineCode>. Everyone else uses their email address.
+							</>
+						}
 						autoComplete="username"
 						required
 						defaultValue={fields.identifier.defaultValue}

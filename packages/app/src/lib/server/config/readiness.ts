@@ -19,9 +19,9 @@ import { MAIL_SMTP_VARS } from './env';
 //
 // **the site list is a fold on the console and no job here.** this deployment takes gifts on the
 // donation page it serves at `/donate` on its own address whether or not an organisation has a
-// website of its own, so a gate waiting on a typed site would hold the dashboard shut on a
-// deployment that is taking gifts. the fold stays where an operator who does have a website types
-// one (packages/console-ui/src/lib/home-sections.ts); nothing on this side reads it.
+// website of its own, so a line waiting on a typed site would call a deployment that is taking
+// gifts unfinished. the fold stays where an operator who does have a website types one
+// (packages/console-ui/src/lib/home-sections.ts); nothing on this side reads it.
 //
 // **every fact is read on this deployment, from the values it was started with and its own rows.**
 // nothing here reaches Stripe, dials a mail host or asks Cloudflare anything: a page that made five
@@ -58,12 +58,8 @@ export type SetupFacts = {
 	 * usability rather than presence, and it is the one job read past presence: what the paragraph
 	 * above refuses is spending a network call, and this costs none — the rule is
 	 * `@better-giving/operator/admin-password`'s and the reading is local. a value the sign-in path
-	 * refuses is an unfinished job, because a line calling it done stands the gate aside for a
-	 * password box that can never succeed.
-	 *
-	 * it is always true on a screen behind the sign-in, because reaching one means having typed it.
-	 * the line is drawn anyway: the five are the five the console reports on, and a list that
-	 * quietly holds four is a list an operator has to count.
+	 * refuses is an unfinished job, because a line calling it done reports a password box that can
+	 * never succeed as set up.
 	 */
 	readonly password: boolean;
 	readonly profile: OrgProfile | null;
@@ -144,7 +140,3 @@ export function setupReadiness(facts: SetupFacts): SetupLine[] {
 		};
 	});
 }
-
-/** whether anything on the list is still outstanding, which is what a screen leads with. */
-export const setupOutstanding = (lines: readonly SetupLine[]): number =>
-	lines.filter((line) => line.state === 'todo').length;

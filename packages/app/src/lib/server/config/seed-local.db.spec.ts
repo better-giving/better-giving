@@ -10,7 +10,7 @@ import { client, run, stmt } from '$lib/server/db/database.testing';
 
 // the committed seed file, run against a real database over the committed migrations: the checks its
 // statements have to satisfy are `org_profile`'s own (../db/schema.ts), and what passes here is
-// the one command a contributor runs to clear the set-up gate (../../../routes/_app.tsx).
+// the one command a contributor runs to fill the organisation's row on a checkout.
 //
 // the file's own text, imported with `?raw`, and sent the way the command sends it, so the assertion
 // is about what a contributor runs.
@@ -22,7 +22,7 @@ import { client, run, stmt } from '$lib/server/db/database.testing';
 const applySeed = () => client.executeMultiple(seedSql);
 
 /**
- * every job's state, read the way both gated loaders read it (./setup-state.ts).
+ * every job's state, as ./setup-state.ts reads it.
  *
  * the deployment env is empty, which is a checkout holding no `.dev.vars` — so what a line says
  * here is what the seed alone settled.

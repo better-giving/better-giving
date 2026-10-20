@@ -49,7 +49,7 @@ const PHOTOS = [
 	{ type: 'image/png', bytes: pngHeader(1600, 1067) }
 ] as const;
 
-/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+/** a deployment whose set-up is finished. */
 let bindings: Env;
 
 beforeEach(async () => {

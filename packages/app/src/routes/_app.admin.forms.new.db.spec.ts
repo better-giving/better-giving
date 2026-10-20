@@ -17,8 +17,7 @@ import { client, first, run, stmt } from '$lib/server/db/database.testing';
 // the chain is mounted rather than the loader called, which is ../route-request.testing.ts's
 // pattern: the session gate is a `middleware` on ./_app.tsx and the handle is on the request
 // context, so a loader called on its own is a loader with the gate above it never run.
-// the cases about a deployment whose set-up is unfinished mount the screen alone (`ungated`),
-// since the layout's set-up gate would answer them before the screen did.
+// the cases about a deployment whose set-up is unfinished mount the screen alone (`ungated`).
 //
 // the deploy-time half is a per-request `env` rather than a value a case builds, so what a case
 // exercises is the deployment an operator can actually be in rather than a shape assembled here.

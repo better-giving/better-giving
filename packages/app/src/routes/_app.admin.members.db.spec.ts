@@ -54,8 +54,7 @@ const MAIL_CONFIGURED = {
  *
  * it is what a send that fails looks like without a socket: `parseSmtpEndpoint` refuses a
  * private-network host before anything is dialled ($lib/server/email/smtp-config.ts), so the
- * refused arm below is reached in the same millisecond as every other case. the set-up gate above
- * this screen only asks whether the four are set, so this deployment still reads as finished.
+ * refused arm below is reached in the same millisecond as every other case.
  */
 const MAIL_UNREACHABLE = { ...MAIL_CONFIGURED, SMTP_HOST: 'localhost' };
 

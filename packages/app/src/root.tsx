@@ -73,9 +73,7 @@ const DONOR_PAGE_ROUTE_IDS: ReadonlySet<string> = new Set(['routes/donate', 'rou
 
 /**
  * the app's one error page, and it is on the root rather than on the protected layout
- * deliberately. the layout's own boundary draws the set-up gate and renders this for everything
- * else (`ErrorBoundary` in ./routes/_app.tsx), so a failure behind the login reads the same as one
- * anywhere.
+ * deliberately, so a failure behind the login reads the same as one anywhere.
  *
  * an address matching no route matches nothing under `./routes/_app.tsx` either, so the gate never
  * runs for it and there is no session in the answer at all — which is what makes this reachable on

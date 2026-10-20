@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { OrgProfile } from '../db/schema';
 import type { ConfigEnv } from './env';
 import type { SetupFacts } from './readiness';
-import { setupOutstanding, setupReadiness } from './readiness';
+import { setupReadiness } from './readiness';
 
 // the five lines this deployment draws about its own set-up.
 //
@@ -84,7 +84,7 @@ describe('a deployment with all five done', () => {
 	});
 
 	it('has nothing outstanding and so draws no sentence on any line', () => {
-		expect(setupOutstanding(lines)).toBe(0);
+		expect(lines.every((one) => one.state === 'ready')).toBe(true);
 		expect(lines.every((one) => one.word === JOB_WORDS.ready)).toBe(true);
 		expect(lines.map((one) => one.note)).toEqual([null, null, null, null, null]);
 	});
@@ -182,7 +182,7 @@ describe('one job at a time left undone', () => {
 
 	it('holds every one of the five incomplete on a deployment set up for nothing', () => {
 		const nothing = setupReadiness({ password: false, profile: null, config: {} });
-		expect(setupOutstanding(nothing)).toBe(5);
+		expect(nothing.every((one) => one.state === 'todo')).toBe(true);
 		// a sentence is what a row adds where its label cannot say what the job is for, which is
 		// `SMTP` and `Notifications` and nothing else: three rows saying `Incomplete` over a
 		// sentence saying so would be the word spelled twice.
