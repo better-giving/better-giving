@@ -123,7 +123,7 @@ export default function DataCodeSlabPreview() {
 				The order a deploy runs in is <InlineCode>package.json</InlineCode>&rsquo;s.
 			</p>
 			<p>
-				The door a deploy goes through is <InlineCode>wrangler deploy</InlineCode>.
+				The door a deploy goes through is <InlineCode>docker compose up -d</InlineCode>.
 			</p>
 			{/* the address as a link's own text, where the chip's ground would be a box in a row. */}
 			<p>
