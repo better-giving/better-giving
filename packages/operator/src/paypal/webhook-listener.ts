@@ -1,20 +1,17 @@
 // what this deployment's PayPal listener is: where it answers and what it is subscribed to.
 //
-// **here because two ends spell it.** the console registers the listener on the PayPal app and
-// stores the id PayPal mints; the deployment serves the address and reads what arrives. the address
-// joined differently at the two ends is a listener that reads as absent to the deployment and one
+// **one spelling, because two ends read it.** the PayPal adapter
+// (`packages/app/src/lib/server/payments/paypal.ts`) registers the listener on the PayPal app; the
+// deployment serves the address and reads what arrives. the address joined differently at the two
+// ends is a listener that reads as absent to the deployment and one
 // press away from a second listener, and a delivery the listener was never subscribed to is a gift
 // nothing reports as missing — an approved PayPal order is never captured without its delivery
 // (`packages/app/src/routes/api.paypal.webhook.ts`).
 //
-// `packages/console/internal/release/config.go` holds the binary's copy, and its config_test.go
-// gates that copy against `PAYPAL_WEBHOOK_PATH` and `SUBSCRIBED_EVENT_TYPES`, read through every
-// spread in it, so each list it spreads is gated too. what is served at the address is
-// `packages/app/src/routes/api.paypal.webhook.ts`, whose path comes from its own name, and
-// `packages/app/src/routes.spec.ts` pins that path.
+// what is served at the address is `packages/app/src/routes/api.paypal.webhook.ts`, whose path
+// comes from its own name, and `packages/app/src/routes.spec.ts` pins that path.
 //
-// it imports nothing and names no SDK, so it is as reachable from the binary's gate as from the
-// adapter that talks to PayPal.
+// it imports nothing and names no SDK.
 
 /**
  * the path this deployment answers PayPal's deliveries on.
@@ -139,10 +136,10 @@ export const REVERSAL_EVENT_TYPES = [
  * everything the listener subscribes to, which is exactly what the deployment acts on.
  *
  * everything outside it verifies, reports `ignored`, and is answered — a listener subscribed to more
- * than this is noisy rather than broken. it is what the console brings a listener's `event_types`
- * to, and what the deployment reports as `requiredEventTypes` when it reads the app back — so the day
- * a member is added here every registered listener reads as incomplete until the console's press is
- * made again.
+ * than this is noisy rather than broken. it is what the create hands a listener as its
+ * `event_types`, and what the deployment reports as `requiredEventTypes` when it reads the app back —
+ * so the day a member is added here every registered listener reads as incomplete until it is
+ * registered again.
  */
 export const SUBSCRIBED_EVENT_TYPES = [
 	...SETTLEMENT_EVENT_TYPES,

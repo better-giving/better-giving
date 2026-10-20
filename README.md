@@ -4,10 +4,9 @@ A donation app for a **single** nonprofit, run anywhere Docker runs. One deploym
 
 **Bring your own processor.** Charges go directly to the org's own account at Stripe, PayPal, Chariot (gifts from a donor-advised fund), NOWPayments (crypto), or any mix: the app holds their keys and never custodies funds.
 
-## Two operator surfaces
+## The dashboard
 
-- **The dashboard** is `/admin` on a deployment. Donation forms, donations, donors, recurring gifts. The only thing a staff member opens.
-- **The console** is the operator's set-up screens: the site list, the org's legal identity, the notification address. Served by the app in a later change.
+`/admin` on a deployment is the only screen anybody opens. Donation forms, donations, donors, recurring gifts and the books, for every staff member. Settings (the org's legal identity, logo, notification address, mail), Payments, the sites forms go on, and QuickBooks, for the person who deployed it. Keys and passwords live in `.env`, never on a screen: [`DEPLOY.md`](./DEPLOY.md) is the setup.
 
 ## Get started
 
@@ -65,11 +64,11 @@ To put the form on your own site as well, or instead:
 
 **Pasting into a CMS content block? Put the rule in your theme's stylesheet** and paste only the script tag and the element. `<style>` is not valid inside `<body>` and CMS sanitizers strip it silently, leaving the reflow with nothing on screen to say why. The rule works from anywhere on the page.
 
-`/admin → Donation forms` generates that snippet with the real form id, built from the address you are reading it at. A form loads only on sites listed on the console _and_ ticked on the form. Anywhere else is refused. List a site before pasting a snippet into it.
+`/admin → Donation forms` generates that snippet with the real form id, built from the address you are reading it at. A form loads only on sites listed under Donation forms → Which sites your forms go on _and_ ticked on the form. Anywhere else is refused. List a site before pasting a snippet into it.
 
-**List the same site on the Turnstile widget too.** Cloudflare will not issue a challenge pass on a host the widget does not authorise: a site missing from the widget renders the form normally and then refuses every gift. See [`DEPLOY.md`](./DEPLOY.md).
+**Using Turnstile? List the same site on its widget too.** Cloudflare will not issue a challenge pass on a host the widget does not authorise: a site missing from the widget renders the form normally and then refuses every gift. See [`DEPLOY.md`](./DEPLOY.md).
 
-A form refuses to serve until the org profile carries a **registered name** and an **EIN**, because the card makes a tax-status claim. This product is for US 501(c)(3) organisations: the EIN is checked to the digit and stored as `12-3456789`. The **deductibility statement** is not a third gate: it falls back to a suggested sentence, never blank, never blocking. Changing it means editing the constant in this repository or writing the column directly, with no control on either operator screen. [`DEPLOY.md`](./DEPLOY.md) has the details. A charity in another jurisdiction forks this repository and changes those rules. **Editing any of this later takes the console, not the dashboard**, the deductibility statement and a fork besides. That is what lets dashboard access go to someone who reads donations without handing them the legal identity every receipt prints.
+A form refuses to serve until the org profile carries a **registered name** and an **EIN**, because the card makes a tax-status claim. This product is for US 501(c)(3) organisations: the EIN is checked to the digit and stored as `12-3456789`. The **deductibility statement** is not a third gate: it falls back to a suggested sentence, never blank, never blocking. Changing it means editing the constant in this repository or writing the column directly, with no control on any screen. [`DEPLOY.md`](./DEPLOY.md) has the details. A charity in another jurisdiction forks this repository and changes those rules. **Editing any of this later takes Settings, which only the deployer sees**, the deductibility statement and a fork besides. That is what lets dashboard access go to someone who reads donations without handing them the legal identity every receipt prints.
 
 A child carrying `slot="loading"` (`<p slot="loading">Loading…</p>`, or a block of your own) shows until the form's configuration is read; it renders before the element upgrades and is kept afterwards, over the form's own skeleton. Write the attribute on your own element, not a literal `<slot>` tag: a pasted `<slot>` shows its contents before the upgrade and disappears at it.
 

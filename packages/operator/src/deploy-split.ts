@@ -2,50 +2,29 @@
 // one. every instruction a deployment prints or logs is built from here: a refusal's fix
 // sentence, a log line's `operatorFix`.
 //
-// one list, and every value on it is a plain Worker var. a var's value is handed back by the
-// account, so the console draws a stored Stripe key and a stored SMTP password in their boxes as
-// values and an operator can check what they pasted — which is the one thing they opened the fold
-// to do. the console writes them over the Worker's settings endpoint
-// (`packages/console/internal/deployment/write.go`), and from a checkout `setCommand` below builds
-// the one form that sets one.
+// one list, and every value on it is an environment variable, set in `.env` (`.env.example` names
+// them). no screen writes one (AGENTS.md → Boundaries).
 //
-// what that costs is worth stating rather than hiding: a var is readable by anyone who can open the
-// Cloudflare account this deployment lives in. the console runs on the operator's own machine
-// against a Cloudflare session they hold and will not open without one, so the reader was already
-// the account holder. storing a credential as a secret protected nobody against that reader and
-// cost the operator the ability to verify it, because Cloudflare never returns a secret's value.
+// **it is here rather than beside the readers because it is one enumeration.** the deployment reads
+// every name below and builds the instruction beside each one, and a second list anywhere would be
+// a name too many, a missing name, or a command spelled the other way round, with nothing able to
+// see the disagreement. DEPLOY.md's "Configuration values" section is this list written for an
+// operator.
 //
-// **it is here rather than beside the readers because both ends need it.** the deployment reads
-// every name below off `platform.env` and builds the instruction beside each one, and the operator
-// console reads the same list back off the Worker — one enumeration, in the leaf package the two
-// already share, for the reason ./console/report.ts is here. a second list on the console side
-// would be a name too many, a missing name, or a command spelled the other way round, with
-// nothing able to see the disagreement. DEPLOY.md's "Configuration values" section is this list
-// written for an operator.
-//
-// nothing that *reads* one of these can tell how it was stored: a var and a secret both arrive on
-// `platform.env`, and `packages/app/src/lib/server/config/env.ts` and `.../auth/env.ts` read every
-// one of them the same way. that is exactly why a wrong instruction here is silent — an operator
-// who stores a value as a secret holds a working deployment whose console cannot show them what
-// they set. so the rule is asserted rather than reviewed:
+// the rule is asserted rather than reviewed:
 // `packages/app/src/lib/server/config/deploy-split.spec.ts` checks the command built for every
-// name, sweeps the sources of `packages/app`, this package and `packages/console-ui` and the
-// operator documents beside them for a literal that spells one by hand as a secret, and holds this
-// list to the names the app actually reads — in both
-// directions, which is more than a `satisfies` could say, and this leaf can name no env type to
-// write one against anyway.
-//
-// `CONSOLE_TOKEN` is on no list here and is not a configuration value: the console mints it for its
-// own session and writes it as a Worker secret. ./console/token.ts and
-// `packages/app/src/lib/server/console/access.ts` are where that one is argued.
+// name, sweeps the sources of `packages/app` and this package and the operator documents beside
+// them for a literal that spells one by hand as a secret, and holds this list to the names the app
+// actually reads — in both directions, which is more than a `satisfies` could say, and this leaf
+// can name no env type to write one against anyway.
 //
 // QuickBooks put three names on the list: the two keys, for the reason every other processor's
 // keys are there, and `QUICKBOOKS_API_URL` beside them for the reason `CHARIOT_API_URL` is —
 // which of Intuit's two addresses this deployment talks to is typed, because nothing here reads
-// which deployment it is. off the list is the sign-in token the worker holds for a connected
-// company: Intuit rotates that one on every refresh, so the worker rewrites its own copy — which a
-// var cannot be, since editing one takes a key able to edit the worker itself. it is a row
-// instead, and `quickbooksConnection` in `packages/app/src/lib/server/db/schema.ts` argues it.
+// which deployment it is. off the list is the sign-in token the deployment holds for a connected
+// company: Intuit rotates that one on every refresh, so the deployment rewrites its own copy, which
+// an environment variable cannot be. it is a row instead, and `quickbooksConnection` in
+// `packages/app/src/lib/server/db/schema.ts` argues it.
 
 /**
  * every name, in the order the app reads them — `CONFIG_VAR_NAMES` in

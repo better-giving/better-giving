@@ -23,19 +23,6 @@ export const FORM_READINESS_SEVERITIES = ['blocker', 'warning', 'resolved'] as c
 export type FormReadinessSeverity = (typeof FORM_READINESS_SEVERITIES)[number];
 
 /**
- * what a severity is called on screen.
- *
- * words, never a colour or an icon standing in for them: an operator who learns to read the colour
- * stops reading the sentence beside it. keyed by the union, so a fourth severity is a type error
- * here rather than a blank word.
- */
-export const FORM_READINESS_LABELS: Record<FormReadinessSeverity, string> = {
-	blocker: 'Blocker',
-	warning: 'Warning',
-	resolved: 'Done'
-};
-
-/**
  * what a line is about: the three things that stand between a donation form and a donor.
  *
  *   organisation — the registered name and the EIN a form states while asking.

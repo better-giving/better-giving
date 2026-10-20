@@ -5,9 +5,10 @@ import { MAX_SOCIAL_LINK } from './org-rules';
 // of both, in the one module every surface reads them from.
 //
 // it is here for ./org-rules.ts's reason: the deployment parses every list it is sent
-// (`parseOrgProfile` in `packages/app/src/lib/server/org/org-input.ts`) and the console reads the
-// same boxes in front of the person typing, so a copy at either end is a link one half takes and
-// the other refuses. the deployment stays the authority. the donor pages name each platform off
+// (`parseOrgProfile` in `packages/app/src/lib/server/org/org-input.ts`) and the settings screen
+// reads the same boxes in front of the person typing
+// (`packages/app/src/lib/admin/settings/social-link-lead.tsx`), so a copy at either end is a link
+// one half takes and the other refuses. the deployment stays the authority. the donor pages name each platform off
 // `SOCIAL_PLATFORM_NAMES` too, so a link reads the same wherever it is drawn.
 
 /** each platform as a fundraiser writes it. */

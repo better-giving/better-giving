@@ -151,8 +151,8 @@ describe('the groups a rail is divided into', () => {
 	});
 
 	it('stands a headed group under its heading, spaced from the groups either side as any is', () => {
-		// the console's rail. the step before the heading is the one any group takes, and so is the
-		// step after the headed group's last entry.
+		// the step before the heading is the one any group takes, and so is the step after the headed
+		// group's last entry.
 		const root = render(AppShell, {
 			org: ORG,
 			groups: [
@@ -293,13 +293,13 @@ describe('the way out a shell draws', () => {
 			groups: GROUPS,
 			wayOut: (
 				<a className="adm-signout" href="/close">
-					Close console
+					Sign out
 				</a>
 			),
-			foot: <div className="adm-footaccount">Riverbank Trust's Account</div>
+			foot: <div>Riverbank Trust's Account</div>
 		});
 
-		expect(root.querySelector('.adm-identity > .adm-signout')?.textContent).toBe('Close console');
+		expect(root.querySelector('.adm-identity > .adm-signout')?.textContent).toBe('Sign out');
 		expect(root.querySelector('.adm-rail__foot')?.textContent).toBe("Riverbank Trust's Account");
 	});
 
@@ -343,8 +343,8 @@ describe('the identity a shell draws', () => {
 	});
 
 	it('leads the name with a same-tab link through the handed link where the site is on this surface', () => {
-		// the dashboard's globe: somewhere in-app, named for where it goes. a new tab or the
-		// console's name would be the outside address's reading of a place the reader is already on.
+		// the dashboard's globe: somewhere in-app, named for where it goes. a new tab, or the name an
+		// outside address is read out by, would treat a place the reader is already on as elsewhere.
 		const Handed = ({ children, ...rest }: DestinationLinkProps) => (
 			<a {...rest} data-handed="yes">
 				{children}
@@ -612,7 +612,7 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 	});
 
 	it('draws no More and hides nothing where no destination is on the bar', () => {
-		// the console's rail and every specimen that states no `bar`: one tab per destination.
+		// every rail that states no `bar`: one tab per destination.
 		const root = render(AppShell, { org: ORG, groups: GROUPS });
 
 		expect(root.querySelector('.adm-rail__more')).toBeNull();

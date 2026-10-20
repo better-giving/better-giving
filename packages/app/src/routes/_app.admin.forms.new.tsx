@@ -367,9 +367,12 @@ export default function NewDonationForm({ loaderData, actionData }: Route.Compon
 				    and its footer and nothing around them: the frame is the mounting screen's, and
 				    this screen's four divisions are one form read down. */}
 				<Section>
+					{/* no note on the status box: the draft banner's hint above
+					    ($lib/admin/forms/readiness.tsx) already says Live waits on those items. */}
 					<FormNameFields
 						boxes={{ name: fields.name, status: fields.status }}
 						liveOffered={!blocked}
+						liveNote={false}
 					/>
 				</Section>
 				<Section>

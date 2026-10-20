@@ -1,16 +1,15 @@
 /* the `--admin-*` namespace: the operator surfaces' token layer.
 
    "admin" names the audience, not the url prefix. this dresses every operator screen — the
-   dashboard's, /login included, and the local console's — and /login is a flat top-level
-   route rather than one under /admin.
+   dashboard's, /login included — and /login is a flat top-level route rather than one under
+   /admin.
 
    complete and closed, and that is a claim about the tree rather than an intention: no scoped
    style block on either operator surface spells a colour, a length, a type bundle, a radius, a
    duration or an easing of its own. a gate holds the first four of those and the last two are
    read off the tree rather than held: each surface keeps its own gate over its own screens —
    packages/app/src/lib/admin/styles/raw-color.spec.ts and styles/conformance.spec.ts are the
-   dashboard's, packages/console-ui/src/raw-values.spec.ts the console's,
-   packages/operator/src/components/raw-values.spec.ts the shared components',
+   dashboard's, packages/operator/src/components/raw-values.spec.ts the shared components',
    packages/emails/src/raw-values.spec.ts the mail templates' and
    packages/gallery/src/raw-values.spec.ts the gallery's previews' — and each hands
    its file list to the one assertion in ./raw-values.ts. the duration and the curve are swept in
@@ -138,9 +137,9 @@
 
    the same capability word takes different tones on different screens, and that is the rule
    rather than an inconsistency: the tone is chosen by the consequence on the screen it is read
-   on, not by the capability. "payments are not set up" is attention on the console, where the
-   sentence is that no donation can be charged, and blocker on the form-writing screen, where
-   the sentence is that this form cannot go live. each surface maps its own — the form block at
+   on, not by the capability. "payments are not set up" is attention where the sentence is that
+   no donation can be charged, and blocker on the form-writing screen, where the sentence is that
+   this form cannot go live. each screen maps its own — the form block at
    packages/app/src/lib/admin/forms/readiness.tsx's `TONES`, exhaustive over
    packages/app/src/lib/forms/readiness.ts's severities, so a new one is a type error rather
    than a line that quietly reads as the wrong tone.
@@ -454,56 +453,6 @@
 		--admin-tone-resolved-ink: var(--admin-neutral-11);
 		--admin-tone-resolved-mark: var(--admin-neutral-10);
 
-		/* ---- the network palette ------------------------------------------------------
-
-		   six anonymous entries a network's pill is painted from, and the whole reason there are
-		   six rather than one per chain: the pill's entry is picked by ../network-tint.ts, a hash
-		   of the network's own words modulo six, so a chain NOWPayments lists tomorrow is painted
-		   with nobody editing this file. a network-to-colour table is a list somebody has to
-		   maintain, and the entry it is missing paints every chain added after it the default.
-
-		   so no entry matches any chain's brand, and two networks may land on one. both are
-		   intended: the pill carries the network's words as well, so the colour is a scanning aid
-		   and never the identifier, and a collision costs an operator nothing they can read.
-
-		   **this is not a tone and takes none of the status vocabulary.** the four tones above say
-		   where a record stands on its own ladder, and a chain's name is not a standing — so the
-		   pill is authored as its own band rather than as a fifth tone, and the hues below step
-		   around none of the three this system already speaks in: the blocker's 27, the
-		   attention's 75 and the accent's 247.3. they also skip the green band entirely, which is
-		   the no-green rule at the top of this file holding rather than an exception to it: an
-		   operator who learns to scan for green stops reading the words.
-
-		   one lightness and one chroma across all six, so no entry reads louder than another. the
-		   chroma is the most the hue that can carry least holds at that lightness inside sRGB —
-		   0.044 at 280 for the tint and 0.077 at 205 for the ink — so nothing here is gamut-mapped
-		   by the browser into a colour this file did not author. the ink is stated at the same hue
-		   as its tint, one band down.
-
-		   measured as a pair, like everything else here: the ink reads 5.58:1 on its own pill at
-		   the worst of the six, which is the floor across the palette rather than its best hue.
-		   the tint holds no floor against what it stands on, for the reason the four tone tints
-		   hold none — 1.27:1 on `--admin-surface` and 1.17:1 on `--admin-neutral-3`, which is what
-		   keeps it reading as a tint rather than as a block. the words are legible on both from the
-		   ink alone, which reaches 7.07:1 on the surface at its worst.
-
-		   packages/form/src/styles/tokens.css authors a palette of the same shape for the donation
-		   form. the two are separate systems that never meet, so the entries are not the same
-		   values, the hash that indexes them is a separate module, and the same network is not
-		   expected to be the same colour on a donation page and on an operator screen. */
-		--admin-net-0-tint: oklch(0.91 0.04 205);
-		--admin-net-1-tint: oklch(0.91 0.04 230);
-		--admin-net-2-tint: oklch(0.91 0.04 280);
-		--admin-net-3-tint: oklch(0.91 0.04 305);
-		--admin-net-4-tint: oklch(0.91 0.04 330);
-		--admin-net-5-tint: oklch(0.91 0.04 355);
-		--admin-net-0-ink: oklch(0.45 0.074 205);
-		--admin-net-1-ink: oklch(0.45 0.074 230);
-		--admin-net-2-ink: oklch(0.45 0.074 280);
-		--admin-net-3-ink: oklch(0.45 0.074 305);
-		--admin-net-4-ink: oklch(0.45 0.074 330);
-		--admin-net-5-ink: oklch(0.45 0.074 355);
-
 		/* ---- the state ladder ---------------------------------------------------------
 
 		   rest, hover, active, disabled and focus on every interactive element, expressed as
@@ -639,8 +588,7 @@
 		   a quiet block on the light ladder, and every rung it takes is one the page already
 		   spends: the sunken band's ground, the border rung's edge, the page's own ink. it is
 		   named rather than reaching those aliases so that re-cutting a band or a border moves
-		   the slab only when someone says it should. the edge is what tells a slab from the
-		   `.adm-cmd--oneline` row, which stands on the same ground with none. */
+		   the slab only when someone says it should. */
 		--admin-slab-bg: var(--admin-neutral-3);
 		--admin-slab-border: var(--admin-neutral-7);
 		--admin-slab-ink: var(--admin-neutral-12);
@@ -848,11 +796,10 @@
 		/* `--admin-field-size` is what a box a control's own text sits in is read at, and 16px
 		   is a floor rather than a size choice: under it iOS zooms the page when a field takes
 		   focus, and a page that jumps when a field is entered is one an operator has to scroll
-		   back from. the floor binds wherever a soft keyboard can open over the screen, which
-		   is the dashboard — it is served on a deployment and gets opened on a phone. the
-		   console is a binary the operator runs on their own machine and reads in a desktop
-		   browser, so no keyboard opens over it and its boxes are read at the body size like
-		   the type around them. the `pointer: fine` block below is where the two part, and
+		   back from. the floor binds wherever a soft keyboard can open over the screen — the
+		   dashboard is served on a deployment and gets opened on a phone. a screen read with a
+		   fine pointer has no keyboard opening over it, and its boxes are read at the body size
+		   like the type around them. the `pointer: fine` block below is where the two part, and
 		   ./adm.css names this one token and knows nothing about pointers. */
 
 		/* ---- measures -----------------------------------------------------------------
@@ -921,7 +868,7 @@
 		--admin-rule: var(--admin-border-width) solid var(--admin-divider);
 		--admin-hairline: var(--admin-border-width) solid var(--admin-border);
 		/* the band a landed save and a card whose run is going carry at one edge, the strip over a
-		   rail tab's word, and at half, the console's line over a move to another page. it is the same number
+		   rail tab's word, and at half, the line over a move to another page. it is the same number
 		   as `--admin-focus-bleed` below and means a different thing, so neither points at the
 		   other. */
 		--admin-edge: 3px;
@@ -1015,8 +962,8 @@
 		             dot's whole cycle, which is also the circuit: ./adm.css delays each dot by
 		             a sixth of it, so a re-pointing here moves the stagger with the loop and
 		             the dots cannot come to lap each other.
-		   braille-bar - the console's progress bar: twenty braille cells on its start-up screen,
-		             the way a terminal draws a bar, and a line along the viewport's top edge over a
+		   braille-bar - the progress bar: twenty braille cells as the document's own waiting
+		             face, the way a terminal draws a bar, and a line along the viewport's top edge over a
 		             move to another page while the destination reads. both fill fast to a third,
 		             slower to two thirds, then crawl to nine tenths and hold,
 		             because nothing is measured — it says only that the screen is still on its way.
@@ -1058,8 +1005,8 @@
 		   which is discrete and interpolates for nothing, so a curve here decides when each whole
 		   string swaps rather than how the bar moves: under the default easing the swap lands
 		   halfway along its interval and every stop shifts by half its gap, and this puts each swap
-		   on the percentage that wrote it. ./adm.css states it at `adm-braille-bar`. the console's
-		   start-up bar and its rush out to all twenty read it. */
+		   on the percentage that wrote it. ./adm.css states it at `adm-braille-bar`. the cells and
+		   their rush out to all twenty read it. */
 		--admin-ease-cell: step-end;
 		--admin-transition-state:
 			background-color var(--admin-dur-state) var(--admin-ease-state),
@@ -1085,7 +1032,7 @@
 
 	   the two loops and the progress bar slow rather than stopping. dots standing still over a
 	   control that is still working, a still ledger under a deployment that is still deploying, or
-	   a bar that has stopped filling while the console is still reading, is a lie about what is
+	   a bar that has stopped filling while the screen is still reading, is a lie about what is
 	   happening.
 
 	   the dwell is restated at its own value, which is the one entry here that does not move. a

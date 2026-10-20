@@ -398,8 +398,8 @@ describe('a select with a note under a form layer watching the document', () => 
 	it('hands the form layer the named element, already holding the choice', async () => {
 		// conform's `useForm` listens for `input` on the document and reads the event's target: a
 		// control of its form, by name, whose form data it validates on the spot
-		// (`shouldRevalidate: 'onInput'` in packages/app/src/lib/admin/use-admin-form.ts and
-		// packages/console-ui/src/lib/use-console-form.ts). so a refused box re-checks on the choice
+		// (`shouldRevalidate: 'onInput'` in packages/app/src/lib/admin/use-admin-form.ts). so a
+		// refused box re-checks on the choice
 		// that follows only if the event arrives on the element carrying the name, with the value on
 		// it already.
 		const read: [string, string | null][] = [];

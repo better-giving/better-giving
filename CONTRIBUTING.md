@@ -31,23 +31,14 @@ Before changing code, read [`CLAUDE.md`](./.claude/CLAUDE.md) for the invariants
 
 **Gallery**: real components against the real stylesheets. A component's preview lands in the same change as the component: `packages/gallery/src/previews/` is globbed, so registration is the file existing.
 
-The console's screens (`packages/console-ui`) are served by the app in a later change. The `/console` routes under `pnpm dev` take a bearer token (`CONSOLE_TOKEN` in `packages/app/.env`):
-
-```sh
-TOKEN="bg1.$(( $(date +%s) + 43200 )).$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
-echo "CONSOLE_TOKEN=$TOKEN" >> packages/app/.env     # restart pnpm dev
-curl -s -H "Authorization: Bearer $TOKEN" http://localhost:5321/console
-```
-
 ## The workspace
 
 Seven packages under `packages/`; commands run from the root:
 
-- `packages/app` is the deployed server: React Router on Node, the database code, `/admin`, `/console` routes, the Donation page at `/donate`, and the scheduled runs.
+- `packages/app` is the deployed server: React Router on Node, the database code, `/admin`, the Donation page at `/donate`, and the scheduled runs.
 - `packages/form` is the embeddable element and its flow logic, a permanent public contract; the donation page draws the same flow in React off the same machine.
 - `packages/emails` is the mail templates, rendered to strings by the app at send time; `packages/emails-preview` is their preview page, dev-only.
-- `packages/operator` is the leaf both operator surfaces consume: components, stylesheets, shared vocabulary.
-- `packages/console-ui` is the console's screens; client-only React, served by the app in a later change.
+- `packages/operator` is what `/admin` and the gallery consume: components, stylesheets, shared vocabulary.
 - `packages/gallery` is the component gallery, dev-only.
 - `packages/zapier` is the Zapier integration, pushed with its own CLI; it reaches no other package and none reaches it.
 

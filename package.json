@@ -22,7 +22,7 @@
 		"setup-webhook:chariot": "pnpm --silent --filter @better-giving/app setup-webhook:chariot",
 		"setup-webhook:paypal": "pnpm --silent --filter @better-giving/app setup-webhook:paypal",
 		"setup-webhook:stripe": "pnpm --silent --filter @better-giving/app setup-webhook:stripe",
-		"prepare": "pnpm --filter @better-giving/app prepare && pnpm --filter @better-giving/console-ui prepare",
+		"prepare": "pnpm --filter @better-giving/app prepare",
 		"check": "pnpm -r --workspace-concurrency=1 check",
 		"lint": "biome lint .",
 		"format": "biome format --write .",

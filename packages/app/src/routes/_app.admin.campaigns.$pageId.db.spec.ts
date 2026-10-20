@@ -135,8 +135,7 @@ beforeEach(async () => {
 describe('the address', () => {
 	it.each([
 		['admin', '/admin'],
-		['api', '/api'],
-		['console', '/console']
+		['api', '/api']
 	])('refuses %s, naming the route it clashes with, and moves nothing', async (slug, route) => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
 

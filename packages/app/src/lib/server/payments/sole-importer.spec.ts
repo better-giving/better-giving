@@ -95,9 +95,7 @@ const GUARDED: { specifier: string; adapter: string; imported: boolean }[] = [
  *
  * `home` is the adapter, the module that calls the host. `vocabulary` is every other file that
  * states the address without calling it, which is not speaking: a comment documenting the
- * `CHARIOT_API_URL` default (config/env.ts) and the console's placeholder for the address box
- * (packages/console-ui/src/lib/chariot-setup.ts, which makes no call of its own). any other file
- * naming a host is a second speaker. the sandbox hosts and the marketing, documentation and CDN
+ * `CHARIOT_API_URL` default (config/env.ts). any other file naming a host is a second speaker. the sandbox hosts and the marketing, documentation and CDN
  * hosts (`cdn.givechariot.com`, `nowpayments.io`) are deliberately absent: the adapters call only
  * these two, and a rule that flagged a logo url or a doc link would be a rule people delete.
  */
@@ -105,10 +103,7 @@ const GUARDED_HOSTS: { host: string; home: string; vocabulary: string[] }[] = [
 	{
 		host: 'api.givechariot.com',
 		home: resolve(import.meta.dirname, 'chariot.ts'),
-		vocabulary: [
-			resolve(import.meta.dirname, '../config/env.ts'),
-			resolve(ROOT, 'packages/console-ui/src/lib/chariot-setup.ts')
-		]
+		vocabulary: [resolve(import.meta.dirname, '../config/env.ts')]
 	},
 	{
 		host: 'api.nowpayments.io',

@@ -6,12 +6,11 @@ import type { RateLimiters } from './rate-limiter';
 //
 // a closed list of names, read from `process.env` and nothing else. a name off the list never reaches
 // a loader, whatever the process environment holds. the readers narrow these values further
-// themselves — ../config/env.ts's `readConfigEnv`, ../auth/env.ts's `readAuthEnv`, and
-// ../console/access.ts for `CONSOLE_TOKEN` — so this module copies and does not judge.
+// themselves — ../config/env.ts's `readConfigEnv` and ../auth/env.ts's `readAuthEnv` — so this
+// module copies and does not judge.
 
 /**
- * every name `Env` carries as a string: the ones .dev.vars.example lists, in its order, then the
- * console's session token, which nothing in that file sets (../console/access.ts).
+ * every name `Env` carries as a string: the ones .dev.vars.example lists, in its order.
  */
 export const ENV_VAR_NAMES = [
 	'BETTER_AUTH_SECRET',
@@ -42,8 +41,7 @@ export const ENV_VAR_NAMES = [
 	'QUICKBOOKS_CLIENT_ID',
 	'QUICKBOOKS_CLIENT_SECRET',
 	'QUICKBOOKS_API_URL',
-	'NONPROFITS_API_KEY',
-	'CONSOLE_TOKEN'
+	'NONPROFITS_API_KEY'
 ] as const;
 
 export type EnvVarName = (typeof ENV_VAR_NAMES)[number];
@@ -101,7 +99,6 @@ declare global {
 		readonly QUICKBOOKS_CLIENT_SECRET?: string;
 		readonly QUICKBOOKS_API_URL?: string;
 		readonly NONPROFITS_API_KEY?: string;
-		readonly CONSOLE_TOKEN?: string;
 	}
 }
 

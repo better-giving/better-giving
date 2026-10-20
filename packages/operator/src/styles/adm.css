@@ -21,7 +21,7 @@
    above it.
 
    no colour is spelled here either, and no length that is a measure. what a rule may still
-   write is a shape — a caret's geometry, a coin's circle, a textarea's floor, a
+   write is a shape — a caret's geometry, a dot's circle, a textarea's floor, a
    grid track's bound — because a token per shape is a scale nobody counts along; each one
    carries a `raw-length-ok:` note at its line. packages/app/src/lib/admin/styles/raw-color.spec.ts reads this file by name.
 
@@ -312,9 +312,9 @@
 	}
 
 	/* the soft button is a control whose boundary is its ground. it is for a press standing on a
-	   band beside the value it acts on — packages/console-ui/src/lib/head-strip.tsx's — where a
-	   mark and a word on the bare band read as two loose marks rather than as one control, and a
-	   bordered box on a band that carries no other box reads as louder than the value it is beside.
+	   band beside the value it acts on, where a mark and a word on the bare band read as two loose
+	   marks rather than as one control, and a bordered box on a band that carries no other box reads
+	   as louder than the value it is beside.
 
 	   it cancels every border rung for the quiet rank's reason: a rank whose boundary is a fill has
 	   no border to appear under a pointer. it steps where that rank steps and never onto its rungs
@@ -372,8 +372,8 @@
 	   a control drawn smaller than `--admin-touch-min` is still aimed at at that floor: a transparent
 	   `::before`, `--admin-touch-min` square and centred on the control, out of flow, so the drawn
 	   size and the row it stands in stay what they were. a control joins this list rather than
-	   growing a target of its own. the holder is `position: relative`, as `.adm-btn`, `.adm-markbtn`
-	   and `.adm-wellwrap` are.
+	   growing a target of its own. the holder is `position: relative`, as `.adm-btn` and
+	   `.adm-wellwrap` are.
 
 	   the box is sized outright and centred off `100%`: an absolute box is placed against the
 	   holder's padding box, which a bordered control draws inside its border, so a size stated
@@ -381,18 +381,13 @@
 	   centre is the border box's.
 
 	   a target's reach past the drawn edge is half the floor less the drawn size, and whatever
-	   stands beside one is set at least that far off it, so no target lies over another control: the
-	   logo's two presses meet and never overlap (`.adm-logo__presses`), and a row's Remove and the
-	   brand colour's well each stand further off their box than their target reaches. where the
-	   neighbour is closer than the reach, the target is moved off it rather than shrunk under the
-	   floor: a press-to-open trigger leading a locked row's status (`.adm-rows__aside`).
-	   ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
+	   stands beside one is set at least that far off it, so no target lies over another control: a
+	   row's Remove and the brand colour's well each stand further off their box than their target
+	   reaches. ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
 	   neighbours, so a control joining the list is named in that spec too.
 
 	   an `<input>` draws no `::before`, so the brand colour's well is aimed at through the label
 	   around it (`.adm-wellwrap`): a press on a label is a press on the control inside it. */
-	.adm-markbtn::before,
-	.adm-logo__presses > .adm-btn::before,
 	.adm-rows__row > .adm-rows__remove::before,
 	.adm-wellwrap::before {
 		content: '';
@@ -510,9 +505,9 @@
 
 	/* a save in flight is closed to a second press and holds the primary rank's active band while it
 	   writes, which is the rule the busy twins above state for every rank. what this rule is for is
-	   a save press that is not on that rank: packages/console-ui/src/lib/smtp-fold.tsx draws one by
-	   hand as a bare `.adm-btn` wearing `.adm-save`, and the band is what makes it read as the same
-	   control as ../components/controls/SaveButton.jsx's. that button reaches
+	   a save press that is not on that rank — a bare `.adm-btn` wearing `.adm-save` — and the band is
+	   what makes it read as the same control as ../components/controls/SaveButton.jsx's. that button
+	   reaches
 	   `.adm-btn--primary[aria-busy='true'][aria-disabled='true']` above on its own, which carries these same
 	   three values by carrying the same rank's rung.
 
@@ -715,9 +710,8 @@
 
 	   **it exists to be waited on, and `adm-dwell` is the name that is waited for.** the animation
 	   fires an `animationend` whose `animationName` is this string, and that event is what says the
-	   screen may go: packages/console-ui/src/root.tsx holds the start-up screen and a page being
-	   left on it, and packages/console-ui/src/lib/run-bar.tsx hands a finished run over on it. renaming it is a
-	   change to both of those files in the same commit. */
+	   screen may go: packages/operator/src/components/status/ProgressBar.jsx lands the bar on it.
+	   renaming it is a change to that file in the same commit. */
 	@keyframes adm-dwell {
 		from {
 		}
@@ -757,8 +751,8 @@
 	   because every step on the page outside a line is wider.
 
 	   **a line carrying more than its own head is not a statement in that run, and takes the
-	   boundary step instead.** a consequence sentence, a way on, a run of steps or an attached
-	   block makes the entry three to eight lines tall, and the mark returning to the gutter is then
+	   boundary step instead.** a consequence sentence, a way on or a run of steps makes the entry
+	   three to eight lines tall, and the mark returning to the gutter is then
 	   too far down the page to be seen doing it — at the narrowest step the distance between two
 	   such entries is the distance between two of one entry's own steps, and nothing says where one
 	   ends. the wider step is taken by both lines of such a pair, so the boundary is one size
@@ -770,9 +764,8 @@
 
 	/* the boundary between block-shaped entries. the value on the line is one step down from what
 	   the boundary costs, because the run's own gap stands under it: `--admin-space-6` over
-	   `--admin-space-4` is the `--admin-space-8` that `.adm-status__attach + .adm-status__attach`
-	   below spends on the same job, so a ledger and a stack of attachments agree on what a block
-	   boundary is worth.
+	   `--admin-space-4` is the `--admin-space-8` that `* + .adm-named` below spends on the same job,
+	   so a ledger and a run of named blocks agree on what a block boundary is worth.
 
 	   it reads what a line drew rather than what a screen passed, which is why it is stated here
 	   and not in packages/operator/src/components/status/StatusLine.jsx: that component folds a
@@ -780,14 +773,9 @@
 	   in any case. `.adm-ledger--sections` is out because its entries are boxes and a box says its
 	   own bounds however tall it grows. */
 	.adm-ledger:not(.adm-ledger--sections)
-	> li:not(:first-child):has(
-		.adm-status__note,
-		.adm-status__fix,
-		.adm-status__steps,
-		.adm-status__attach
-	),
+	> li:not(:first-child):has(.adm-status__note, .adm-status__fix, .adm-status__steps),
 	.adm-ledger:not(.adm-ledger--sections)
-		> li:has(.adm-status__note, .adm-status__fix, .adm-status__steps, .adm-status__attach)
+		> li:has(.adm-status__note, .adm-status__fix, .adm-status__steps)
 		+ li {
 		margin-block-start: var(--admin-space-6);
 	}
@@ -989,88 +977,6 @@
 		max-inline-size: var(--admin-measure-prose);
 	}
 
-	.adm-status__attach {
-		margin-block-start: var(--admin-space-4);
-	}
-
-	/* the step above joins a block to the sentence it hangs from, and there is exactly one block
-	   that job applies to: the first. every attachment after it is following a peer rather than
-	   joining anything, and stands apart from the one before it. it keys on adjacency and never on
-	   the heading a block opens with — a titled block can be the first under a line, where the join
-	   is right.
-
-	   the size is what makes it a boundary. `.adm-stack` gaps its own children by
-	   `--admin-space-6`, so a step at or below that reads as part of the block it follows instead of
-	   as the start of the next one. `.adm-ledger` above spends this same distance between two
-	   entries that are blocks rather than statements, made of a smaller step on the line over the
-	   run's own gap: a boundary between one block and the next is one size wherever it stands.
-
-	   three levels and each is told apart by kind rather than by measuring one inset against
-	   another: two entries of `.adm-ledger--sections` above are two boxes with a gap between them,
-	   two blocks inside one entry are divided by this space alone, and a block that names itself
-	   draws its name below — `.adm-named` where it already stands inside a box and `.adm-group`,
-	   a hairline with its heading in a band, where it does not. neither is ever the divider: they
-	   are what a block wears when it has a name, and this step is what stands between one block
-	   and the next whether or not either wears one. */
-	.adm-status__attach + .adm-status__attach {
-		margin-block-start: var(--admin-space-8);
-	}
-
-	/* the bar packages/operator/src/components/status/LedgerSkeleton.jsx draws in place of a mark, a
-	   heading, a label or a sentence that has not arrived. it is set in the classes of the part it
-	   stands in for, so each bar is as tall as the type there and is centred in that type's line box:
-	   the leading around it is the line's own, and the row it stands in takes the room the resolved
-	   row will.
-
-	   the widths are borrowed measures rather than a scale of their own: the rail's for a heading
-	   and a label, which is about the length of the headings these blocks carry, and the sentence's
-	   own measure for a note, which `.adm-status__note` above already caps. */
-	.adm-skeleton {
-		display: block;
-		max-inline-size: 100%;
-		background: var(--admin-surface-sunken);
-		border-radius: var(--admin-radius);
-	}
-
-	.adm-skeleton--mark {
-		display: inline-block;
-		vertical-align: baseline;
-		inline-size: var(--admin-mark-size);
-		block-size: var(--admin-mark-size);
-	}
-
-	.adm-skeleton--heading {
-		inline-size: var(--admin-measure-rail);
-		block-size: var(--admin-subhead-size);
-		margin-block: calc(
-			(var(--admin-subhead-size) * var(--admin-subhead-lh) - var(--admin-subhead-size)) /
-			2
-		);
-	}
-
-	.adm-skeleton--label {
-		inline-size: var(--admin-measure-rail);
-		block-size: var(--admin-body-size);
-		margin-block: calc(
-			(var(--admin-body-size) * var(--admin-lh-snug) - var(--admin-body-size)) /
-			2
-		);
-	}
-
-	/* the bar's top margin would collapse into the note's own step and the line would come up short
-	   of a resolved one; a formatting root on the host keeps the two apart. */
-	.adm-status__note:has(> .adm-skeleton--note) {
-		display: flow-root;
-	}
-
-	.adm-skeleton--note {
-		block-size: var(--admin-hint-size);
-		margin-block: calc(
-			(var(--admin-hint-size) * var(--admin-hint-lh) - var(--admin-hint-size)) /
-			2
-		);
-	}
-
 	/* the same capability word takes a different tone on a different screen, chosen by the
 	   consequence there rather than by the capability. the mark takes the word's own ink on a
 	   line, because a line stands on the page rather than on a tint. */
@@ -1081,8 +987,7 @@
 	   literal. both are derived from `tone` in
 	   packages/operator/src/components/status/StatusLine.jsx, which is where every tone a line can
 	   take is spelled, and `note` is that component's default.
-	   carried-ok: .adm-status--done — derived the same way, and the console's /payments passes it
-	   on the two lines that report what stripe already allows this account.
+	   carried-ok: .adm-status--done — derived the same way.
 	   carried-ok: .adm-status--running — derived the same way, for a line whose subject is still
 	   happening. */
 	.adm-status--blocker .adm-status__mark,
@@ -1184,9 +1089,9 @@
 		animation-delay: calc(var(--admin-dur-dots) / 6 * 5);
 	}
 
-	/* the console's progress bar on its start-up screen, before the app bundle has read anything;
-	   over a page being left while the next is read the same bar is a line instead
-	   (`.adm-navigation-bar` below). it is twenty braille cells in the mono face, full `⣿` and empty
+	/* the progress bar as the document's own waiting face, before anything has been read; over a
+	   page being left while the next is read the same bar is a line instead (`.adm-navigation-bar`
+	   below). it is twenty braille cells in the mono face, full `⣿` and empty
 	   `⣀`, the way a terminal draws a bar, and one ink for both because a terminal bar is one colour
 	   — no second
 	   element and nothing in the accent. the fill is `adm-braille-bar` above and the pace is that
@@ -1206,7 +1111,7 @@
 	   on Linux. every cell falls to the same font, so the bar stays one width and one weight.
 
 	   it slows under reduced motion rather than stopping, for the reason ./tokens.css gives every
-	   loop: a bar that stopped filling while the console is still reading is a lie about what is
+	   loop: a bar that stopped filling while the screen is still reading is a lie about what is
 	   happening. ./tokens.css re-points `--admin-dur-braille-bar` there. */
 	.adm-braille-bar {
 		font-family: var(--admin-font-mono);
@@ -1220,10 +1125,10 @@
 		animation: adm-braille-bar var(--admin-dur-braille-bar) var(--admin-ease-cell) forwards;
 	}
 
-	/* carried-ok: .is-finishing — packages/console-ui/src/root.tsx puts it on the span once the
-	   reading the bar stands for has landed, and holds the screen until the dwell ends. it stands
-	   in no component's union, so packages/operator/src/components/closed-sets.spec.ts carries it
-	   as a name of its own.
+	/* carried-ok: .is-finishing — packages/operator/src/components/status/ProgressBar.jsx puts it on
+	   the span once the reading the bar stands for has landed, and the screen is held until the
+	   dwell ends. it stands in no component's union, so
+	   packages/operator/src/components/closed-sets.spec.ts carries it as a name of its own.
 
 	   two animations on the one pseudo-element, run in sequence: the dwell's delay is the rush's
 	   own duration, so it opens at the instant the rush arrives at twenty cells. it sets no
@@ -1235,7 +1140,7 @@
 	}
 
 	/* the bar over a move to another page, drawn from the press until the destination has read.
-	   packages/console-ui/src/root.tsx and packages/app/src/routes/_app.tsx draw it: a line along
+	   packages/app/src/routes/_app.tsx draws it: a line along
 	   the top edge of the viewport, and the label naming what is loading is in the tree for a
 	   reader of it (`.adm-vh`) and nowhere on the screen.
 
@@ -1359,9 +1264,7 @@
 	   behind the reader, and muted while its subject does not exist yet.
 
 	   the step off the sentence above is the wider one and the step between two of them is the
-	   narrower, because a run of sentences under a sentence is not told from it by kind. an
-	   attachment is: `.adm-status__attach` above joins a form or a titled block to the line at the
-	   narrower step and needs no more, since the block reads as a second thing on its own terms. */
+	   narrower, because a run of sentences under a sentence is not told from it by kind. */
 	.adm-status__steps {
 		grid-column: 1 / -1;
 		margin-block-start: var(--admin-space-5);
@@ -1483,8 +1386,7 @@
 	/* ---------- the line that folds ---------------------------------------------------
 
 	   the same line, in a `details` instead of a div, for the ledger whose entries are several
-	   screenfuls each: the console's settings screen is five capabilities and everything that
-	   repairs them, and a page that long is read from its headings before it is read at all.
+	   screenfuls each: a page that long is read from its headings before it is read at all.
 
 	   a native `details`, which is what packages/operator/src/components/data/Disclosure.jsx
 	   writes: it is keyboard-operable with no handler written for it and it announces its own
@@ -1669,7 +1571,7 @@
 	   in a band takes neither — the list of what a capability read is that block, and a bare
 	   hairline around it would be a boundary naming nothing, drawn a step outside a run of lines
 	   that draws no boundary at all. what separates a block like that from the one beside it is
-	   `.adm-status__attach`'s step above.
+	   `* + .adm-break`'s step below.
 
 	   the band's type is the h3 rank ../styles/base.css draws and not the legend bundle
 	   `.adm-fieldset__legend` takes: these headings sit in the document outline under a
@@ -1677,9 +1579,8 @@
 	   one above it. a legend over form controls is a different job and keeps that bundle. */
 	/* the heading and what it names, and the step between them is the whole device. it is the close
 	   step a run of lines takes above, and the boundary below is four to five times it, which is
-	   what makes two of them read as two blocks rather than as one run — the same argument
-	   `.adm-status__attach`'s step makes for a boundary, one size down because this is a join
-	   rather than a break. */
+	   what makes two of them read as two blocks rather than as one run — the same argument the
+	   boundary below makes, one size down because this is a join rather than a break. */
 	.adm-named {
 		display: grid;
 		gap: var(--admin-space-4);
@@ -1687,24 +1588,22 @@
 
 	/* a named block standing under anything at all is told apart from it by the space between them
 	   and by nothing else, neither having an edge to draw. so that space has to exceed the one the
-	   container already gives every child by enough to survive a squint, and the step is
-	   `.adm-status__attach`'s own boundary above: three times the close step on its own, and four
-	   to five times it once the container's gap is under it. a step that merely clears that gap is
-	   a boundary nobody sees.
+	   container already gives every child by enough to survive a squint, and the step is the
+	   boundary `.adm-ledger` above spends between block-shaped entries: three times the close step
+	   on its own, and four to five times it once the container's gap is under it. a step that
+	   merely clears that gap is a boundary nobody sees.
 
 	   it keys on whatever precedes rather than on a second named block, because the heading is what
 	   opens the subject and it opens one whichever kind of sibling stands above — two named blocks
 	   in a `.adm-stack`, and a named block following a form in an `.adm-section`, are the same
-	   boundary. it stands later than `.adm-status__attach`'s join step at the same specificity and
-	   so takes it, which is right: an attachment carrying a heading opens a subject rather than
-	   continuing the sentence it hangs from. */
+	   boundary. */
 	* + .adm-named {
 		margin-block-start: var(--admin-space-8);
 	}
 
 	/* the same boundary where the named block opens a form of its own rather than standing beside
-	   what precedes it. a block whose press posts an intent is wrapped in the form that press submits
-	   (packages/console-ui/src/lib/paypal-section.tsx), which leaves it first in its parent with no
+	   what precedes it. a block whose press posts an intent is wrapped in the form that press submits,
+	   which leaves it first in its parent with no
 	   sibling for the rule above to key on — and the heading then sits the container's gap under the
 	   block before it, closer than two lines of that block's ledger sit to each other. */
 	* + form > .adm-named:first-child {
@@ -2248,8 +2147,7 @@
 	}
 
 	/* the select: ark's select machine (packages/operator/src/components/forms/SelectWithNote.jsx),
-	   read off the `data-*` attributes it writes on its own parts, and ./CoinPicker.jsx's family —
-	   the list and its rows below are drawn with the coin picker's.
+	   read off the `data-*` attributes it writes on its own parts.
 
 	   the wrapper is the machine's root. it is what stands in the field's row, and it is positioned
 	   so the list's positioner has something to place against. */
@@ -2290,7 +2188,7 @@
 	   corner — and square-cornered for the reason ./tokens.css keeps the round corner to the status
 	   word. it is drawn at the 24px that clears 2.5.8's minimum, and the target a finger lands on is
 	   grown from it in the block axis alone: `--admin-touch-min` tall and centred on it, the thumb's
-	   own width across, drawn out of flow on `::before` as `.adm-markbtn` draws its own. the drawn
+	   own width across, drawn out of flow on `::before`. the drawn
 	   thumb and the row it runs along keep their size, and a press on the target is a press on the
 	   thumb. it is never wider than the thumb, because two thumbs a stop apart on a narrow panel stand
 	   closer than the floor, and a target reaching sideways would lie over its neighbour's drawn body
@@ -2370,165 +2268,7 @@
 		color: var(--admin-ink-muted);
 	}
 
-	/* ---------- the coin picker --------------------------------------------------------
-
-	   the box a payout coin is chosen in and the list it narrows
-	   (packages/operator/src/components/forms/CoinPicker.jsx). it is a searchable list rather than a
-	   `.adm-select` because what it holds is two hundred coins an operator is matching one of
-	   against their NOWPayments dashboard, and a native select over that is a scroll with no search
-	   in it.
-
-	   the machine is ark's combobox, so the open state, the highlight and the refusal all arrive as
-	   `data-*` attributes on its own parts and nothing here reads a class for them. the parts are
-	   named by scope where the rule is about the machine's own element and by class where it is
-	   about something this repository drew inside one. */
-	.adm-coinwrap {
-		position: relative;
-		display: block;
-		inline-size: 100%;
-	}
-
-	/* the box's row in the field, stated here rather than added to the `:is()` list above, which is
-	   copied verbatim into the artboards packages/design holds and reports drift against
-	   (./design-copy.spec.ts). the row is the same one every other box takes. */
-	.adm-field > .adm-coinwrap {
-		grid-row: 3;
-	}
-
-	/* the box: a mark at its start, the words, and the caret at its end. the search field and the
-	   chosen coin share the middle cell, so the box keeps one height whichever of the two is up. */
-	.adm-coinbox {
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr) auto;
-		align-items: center;
-		gap: var(--admin-space-3);
-		inline-size: 100%;
-		min-block-size: var(--admin-field-height);
-		padding: var(--admin-space-3) var(--admin-space-4);
-		font-size: var(--admin-field-size);
-		color: var(--admin-ink);
-		background: var(--admin-field-bg);
-		border: var(--admin-border-width) solid var(--admin-field-border);
-		border-radius: var(--admin-radius);
-		cursor: text;
-		transition: var(--admin-transition-state);
-	}
-
-	.adm-coinbox:hover,
-	.adm-coinbox.is-hover {
-		border-color: var(--admin-field-border-hover);
-	}
-
-	/* the ring is the box's and never the input's: the field here is the whole box, and a ring
-	   drawn round the input inside it would be a rectangle inside a rectangle. the input's own is
-	   taken back below rather than left to paint under this one. */
-	.adm-coinbox:has(input:focus-visible),
-	.adm-coinbox:has(input.is-focus) {
-		outline: var(--admin-focus-width) solid transparent;
-		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
-	}
-
-	/* refused, as `.adm-select[data-invalid]` is: the machine writes `data-invalid` onto its own
-	   control part off the `invalid` the component states, so there is no modifier class to
-	   assemble. the hover twin is named with it so the refusal outranks the hover rung, which on
-	   touch stays on a box after a tap, and the second pixel comes out of the padding for that
-	   rule's reason. */
-	.adm-coinbox[data-invalid],
-	.adm-coinbox[data-invalid]:hover,
-	.adm-coinbox[data-invalid].is-hover {
-		border-color: var(--admin-field-border-invalid);
-		border-width: var(--admin-border-width-strong);
-		padding: calc(
-				var(--admin-space-3) -
-				var(--admin-border-width-strong) +
-				var(--admin-border-width)
-			)
-			calc(var(--admin-space-4) - var(--admin-border-width-strong) + var(--admin-border-width));
-	}
-
-	.adm-coinbox[data-disabled] {
-		background: var(--admin-field-bg-disabled);
-		border-color: var(--admin-control-border-disabled);
-		color: var(--admin-ink-disabled);
-		cursor: not-allowed;
-	}
-
-	/* the search field draws nothing of its own: the box around it is the field, and where the
-	   caret is standing is the box's ring above. its face, its size and its ink are the box's, which
-	   is ./base.css's reset handing a form control the type it stands in. */
-	.adm-coinbox__input {
-		grid-area: 1 / 1;
-		inline-size: 100%;
-		min-inline-size: 0;
-		padding: 0;
-		border: 0;
-		outline: none;
-	}
-
-	.adm-coinbox__input:focus-visible,
-	.adm-coinbox__input.is-focus {
-		outline: none;
-		box-shadow: none;
-	}
-
-	.adm-coinbox__input::placeholder {
-		color: var(--admin-field-placeholder);
-		opacity: 1;
-	}
-
-	/* the two share one cell, so the box is one height whichever is showing. */
-	.adm-coinbox__words {
-		display: grid;
-		grid-column: 2;
-		min-inline-size: 0;
-	}
-
-	/* the chosen coin, read along one line over the empty search field. a network longer than the
-	   box is cut at its end, never in the middle of the ticker before it. */
-	.adm-coinbox__chosen {
-		grid-area: 1 / 1;
-		min-inline-size: 0;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-		pointer-events: none;
-	}
-
-	/* the box leads with the chosen coin's own mark while closed and with a search glyph while
-	   open, which is the one thing that says what typing into it will do. both are drawn and the
-	   machine's own state attribute picks between them, so neither is a render this component has
-	   to hold a flag for.
-
-	   they share one cell at the coin mark's own size, so the words beside them start at one x
-	   whichever is up and whether or not a coin is chosen — an empty lead would let the box shuffle
-	   sideways on the first choice. raw-length-ok: the mark's circle again, at `.adm-coinmark`. */
-	.adm-coinbox__lead {
-		display: grid;
-		place-items: center;
-		grid-column: 1;
-		inline-size: 1.5rem;
-		block-size: 1.5rem;
-	}
-
-	.adm-coinbox__lead > * {
-		grid-area: 1 / 1;
-	}
-
-	.adm-coinbox[data-state='open'] .adm-coinbox__lead .adm-coinmark,
-	.adm-coinbox[data-state='open'] .adm-coinbox__chosen,
-	.adm-coinbox[data-state='closed'] .adm-coinbox__search {
-		display: none;
-	}
-
-	.adm-coinbox__glyph {
-		color: var(--admin-ink-2);
-	}
-
-	/* the caret. here it is the machine's own toggle and is out of the tab order — the box beside it
-	   is what the keyboard reaches — so it is drawn as a mark inside the box rather than as a control
-	   of its own, which is what the select's is: that one is the machine's indicator, inside the
-	   box that is its trigger. */
-	.adm-coinbox__caret,
+	/* the select's caret: the machine's indicator, inside the box that is its trigger. */
 	.adm-select__caret {
 		display: grid;
 		place-items: center;
@@ -2539,14 +2279,12 @@
 		cursor: pointer;
 	}
 
-	.adm-coinbox[data-disabled] .adm-coinbox__glyph,
-	.adm-coinbox[data-disabled] .adm-coinbox__caret,
 	.adm-select__caret[data-disabled] {
 		color: var(--admin-ink-disabled);
 	}
 
-	/* the list, over whatever follows the box. a field's own box is positioned — this wrapper, the
-	   select's and the masked box's all are — so an open list would otherwise be painted over by
+	/* the list, over whatever follows the box. a field's own box is positioned — the select's
+	   wrapper and the masked box both are — so an open list would otherwise be painted over by
 	   every box under it on the form, in document order. the step is one rung under the rail's, on
 	   the ladder stated at `.adm-rail`.
 
@@ -2556,9 +2294,8 @@
 	   step can be set on it from a sheet at all. the wrapper is the first thing outside the
 	   positioner's own stacking context and is the element this file can still reach.
 
-	   it is taken while the list is open and not held, so a picker resting on a form stacks in
+	   it is taken while the list is open and not held, so a select resting on a form stacks in
 	   document order like every other box on it. */
-	.adm-coinwrap:has(.adm-coinlist[data-state='open']),
 	.adm-selectwrap:has(.adm-selectlist[data-state='open']),
 	.adm-menuwrap:has(.adm-menulist[data-state='open']) {
 		z-index: 1;
@@ -2567,13 +2304,11 @@
 	/* the positioner is `pointer-events: none`, so that the ground beside a floating list stays
 	   live; the list takes them back at its own rule below. */
 
-	/* the list is the select's and the menu's as well as this one's: one surface, one height, one
-	   highlighted row. its height is four and a half rows at the row's floor, `--admin-touch-min`, and
-	   the list's own padding and border at both ends, so a list of four rows stands whole and a longer
-	   one shows half of its fifth, which says there is more to scroll to. no token names a list's height; every term
-	   it adds up is a token's. a coin row stands taller than the floor, so the coin picker shows
-	   fewer rows in the same height. */
-	.adm-coinlist,
+	/* the list is the select's and the menu's: one surface, one height, one highlighted row. its
+	   height is four and a half rows at the row's floor, `--admin-touch-min`, and the list's own
+	   padding and border at both ends, so a list of four rows stands whole and a longer one shows
+	   half of its fifth, which says there is more to scroll to. no token names a list's height;
+	   every term it adds up is a token's. */
 	.adm-menulist,
 	.adm-selectlist {
 		display: grid;
@@ -2593,18 +2328,11 @@
 		pointer-events: auto;
 	}
 
-	/* it is also the grid every row is laid out on, which is why the three columns are declared
-	   here and not on the row: the mark, the words and the tick. a row takes them with `subgrid`
-	   below, so the words start at one x down the whole list — sized once against the widest mark
-	   any row drew rather than against each row's own. */
-	.adm-coinlist {
-		grid-template-columns: auto minmax(0, 1fr) auto;
-	}
-
 	/* the select's list: the line and the tick. it is at least as wide as the box it opens from and
 	   never wider than the viewport beside it — `--reference-width` and `--available-width` are the
 	   positioner's, written per placement, and read with a stated fallback for the frame before the
-	   first one, for `.adm-anchored`'s reason below.
+	   first one: a bare `var()` would resolve to nothing and the list would reach past the 375px
+	   floor with the page scrolling sideways under it.
 
 	   the list takes focus while it is open and the row the keys stand on is what says where it
 	   is, so it draws no ring of its own: the shadow above is in a layer after ./base.css's
@@ -2650,32 +2378,9 @@
 		cursor: pointer;
 	}
 
-	/* a row: the mark, and beside it the ticker on one line with the network's pill under it. three
-	   block tracks, because a coin the list has come back without says so on a third line under the
-	   pill — a track that is empty, and so no height at all, on every other row, which is why there
-	   is no row gap to leave behind on those.
-
-	   a row is a finger's target and takes the row's floor, `--admin-touch-min`, which its two lines
-	   and padding come to less than. the rows of a list abut, so the floor is the row's own height
-	   rather than a target drawn past it into its neighbours; the type, the padding and the mark keep
-	   their size and stand centred in it. */
-	.adm-coinrow {
-		display: grid;
-		grid-column: 1 / -1;
-		grid-template-columns: subgrid;
-		grid-template-rows: auto auto auto;
-		align-content: center;
-		column-gap: var(--admin-space-3);
-		min-block-size: var(--admin-touch-min);
-		padding: var(--admin-space-2) var(--admin-space-3);
-		border-radius: var(--admin-radius);
-		cursor: pointer;
-	}
-
 	/* the option the arrow keys stand on, and the one a pointer is over: ground alone, never
 	   weight. the machine writes `data-highlighted` for both, so there is one rung here and no
 	   `:hover` beside it. */
-	.adm-coinrow[data-highlighted],
 	.adm-selectrow[data-highlighted],
 	.adm-menurow[data-highlighted],
 	.adm-findrow[data-highlighted] {
@@ -2685,7 +2390,10 @@
 	/* a row of the select's list: the line, and the tick on the one chosen. one line of words at the
 	   box's own size, so the list reads as the box's lines rather than as a second kind of text.
 
-	   it takes the row's floor for `.adm-coinrow`'s reason above, and the line stands centred in it. */
+	   a row is a finger's target and takes the row's floor, `--admin-touch-min`, which its line and
+	   padding come to less than. the rows of a list abut, so the floor is the row's own height
+	   rather than a target drawn past it into its neighbours; the type and the padding keep their
+	   size and the line stands centred in it. */
 	.adm-selectrow {
 		display: grid;
 		grid-column: 1 / -1;
@@ -2700,57 +2408,6 @@
 		cursor: pointer;
 	}
 
-	/* the mark and the tick stand on the middle of the two lines rather than on the first of them:
-	   the pair is a fixed two lines whatever the coin, so there is no wrap for a mark to drift away
-	   from, and a third line is left out of the span so that drawing it moves neither of them. */
-	.adm-coinrow .adm-coinmark,
-	.adm-coinrow__tick {
-		grid-row: 1 / 3;
-		align-self: center;
-	}
-
-	.adm-coinrow .adm-coinmark {
-		grid-column: 1;
-	}
-
-	/* the two lines, on the row's own block tracks rather than on tracks of their own: the ticker
-	   and the pill keep their positions down the list, and a network of any length settles on the
-	   second line without moving the ticker above it. */
-	.adm-coinrow__words {
-		display: grid;
-		grid-column: 2;
-		grid-row: 1 / 3;
-		grid-template-rows: subgrid;
-		justify-items: start;
-		min-inline-size: 0;
-		overflow-wrap: anywhere;
-	}
-
-	/* the ticker is the coin as the operator's own NOWPayments dashboard names it, so it is drawn
-	   the way every value this surface expects to be held up against another window is: the mono
-	   face at the code size, and no slab — `.adm-code`'s ground is for a literal standing in prose,
-	   and a ground per row would be a second grid drawn inside the list. */
-	.adm-coinrow__ticker,
-	.adm-coinbox__ticker {
-		font-family: var(--admin-font-mono);
-		font-size: var(--admin-code-size);
-		color: var(--admin-ink);
-	}
-
-	/* what a coin the account no longer lists says under its own pill. it keeps the sentence out of
-	   the row's own two lines for the reason the block tracks above are three. */
-	.adm-coinrow__note {
-		grid-column: 2;
-		grid-row: 3;
-		font-size: var(--admin-caption-size);
-		color: var(--admin-ink-muted);
-	}
-
-	.adm-coinrow__tick {
-		grid-column: 3;
-	}
-
-	.adm-coinrow__tick,
 	.adm-selectrow__tick {
 		color: var(--admin-accent-ink);
 	}
@@ -2763,21 +2420,13 @@
 		block-size: 1lh;
 	}
 
-	/* what the list says when a search matches no coin. it is the machine's own empty part, so it
-	   is drawn only while there is nothing to draw instead. */
-	.adm-coinempty {
-		padding: var(--admin-space-2) var(--admin-space-3);
-		font-size: var(--admin-caption-size);
-		color: var(--admin-ink-muted);
-	}
-
 	/* ---------- the organisation finder ---------------------------------------------
 
 	   the box an organisation is searched for by name or EIN, its Search press on the box's own row
-	   (`.adm-actions`), and the IRS list's matches under it (packages/console-ui/src/lib/org-finder.tsx).
-	   the machine is ark's combobox, as the coin picker's is, but the list stands in the screen's own
-	   flow rather than floating over what follows: on a fresh set-up the finder is the whole screen,
-	   and above the form the matches push the form down rather than covering its first boxes.
+	   (`.adm-actions`), and the IRS list's matches under it
+	   (packages/app/src/lib/admin/settings/org-finder.tsx). the machine is ark's combobox, but the
+	   list stands in the screen's own flow rather than floating over what follows: above the form the
+	   matches push the form down rather than covering its first boxes.
 
 	   the label, the box's row and the region saying how the search went stand one field step apart,
 	   as the parts of a `.adm-field` do. */
@@ -2800,7 +2449,7 @@
 	}
 
 	/* the matches. ruled as a box of its own, the height of four and a half rows at the row's floor
-	   for `.adm-coinlist`'s reason — a longer list shows half of its fifth row — and no shadow: it
+	   for `.adm-selectlist`'s reason — a longer list shows half of its fifth row — and no shadow: it
 	   is part of the screen, not a layer over it. */
 	.adm-findlist {
 		display: grid;
@@ -2865,107 +2514,6 @@
 		color: var(--admin-ink-muted);
 	}
 
-	/* a coin's mark: the round shape a logo stands in, holding the first letter of the coin's name.
-	   raw-length-ok: the circle is a shape rather than a measure, and `--admin-mark-size` is not
-	   it — that one is reserved for state and this is a picture. raw-length-ok: 50% — a circle. */
-	.adm-coinmark {
-		display: grid;
-		place-items: center;
-		flex: none;
-		inline-size: 1.5rem;
-		block-size: 1.5rem;
-		border-radius: 50%;
-		background: var(--admin-surface-fill);
-		color: var(--admin-ink-muted);
-	}
-
-	/* the letter and the image share the one cell, so the mark is one size whichever of them is
-	   up. */
-	.adm-coinmark > * {
-		grid-area: 1 / 1;
-	}
-
-	.adm-coinmark__initial {
-		font-size: var(--admin-caption-size);
-		font-weight: var(--admin-value-weight);
-	}
-
-	/* the processor's own logo for the coin, filling the mark it stands in. sized by this rule
-	   rather than by the file, so a row stands at one height before its image arrives, after it
-	   arrives, and on a row whose image never arrives at all. raw-length-ok: 50% — a circle, as
-	   above. */
-	.adm-coinmark__logo {
-		inline-size: 100%;
-		block-size: 100%;
-		border-radius: 50%;
-		object-fit: contain;
-	}
-
-	/* the letter shows wherever no image is standing on the mark: a coin whose entry carries no
-	   path, and a coin whose image failed — the component takes the `<img>` out on `error`, so this
-	   selector stops matching and the letter comes back with nothing else to do. hidden rather than
-	   dropped, because a logo drawn on its own transparency over a visible letter is two marks in
-	   one circle. */
-	.adm-coinmark:has(img) .adm-coinmark__initial {
-		visibility: hidden;
-	}
-
-	/* the network's pill, after the ticker in the closed box and under it in a row.
-
-	   its colour is the six-entry palette in ./tokens.css, and which entry is `networkTint`
-	   (packages/operator/src/network-tint.ts) written onto the node as `data-tint` — so a network
-	   NOWPayments lists tomorrow is painted without a rule being added here. there is no rule for a
-	   network by name and there is not to be one.
-
-	   inline-block, which keeps the ticker and the pill one run of inline content in the closed box:
-	   `.adm-coinbox__chosen` above cuts that run with an ellipsis, and an ellipsis is only ever
-	   applied to inline content. the pill itself never breaks across two lines in either place. */
-	.adm-netpill {
-		display: inline-block;
-		padding-inline: var(--admin-space-2);
-		border-radius: var(--admin-radius-pill);
-		font-size: var(--admin-caption-size);
-		font-weight: var(--admin-value-weight);
-		line-height: var(--admin-caption-lh);
-		white-space: nowrap;
-	}
-
-	/* the pill's step from the ticker is the inline gap in the box and the line between them in a
-	   row, never both. */
-	.adm-coinbox__chosen .adm-netpill {
-		margin-inline-start: var(--admin-space-2);
-	}
-
-	.adm-netpill[data-tint='0'] {
-		background: var(--admin-net-0-tint);
-		color: var(--admin-net-0-ink);
-	}
-
-	.adm-netpill[data-tint='1'] {
-		background: var(--admin-net-1-tint);
-		color: var(--admin-net-1-ink);
-	}
-
-	.adm-netpill[data-tint='2'] {
-		background: var(--admin-net-2-tint);
-		color: var(--admin-net-2-ink);
-	}
-
-	.adm-netpill[data-tint='3'] {
-		background: var(--admin-net-3-tint);
-		color: var(--admin-net-3-ink);
-	}
-
-	.adm-netpill[data-tint='4'] {
-		background: var(--admin-net-4-tint);
-		color: var(--admin-net-4-ink);
-	}
-
-	.adm-netpill[data-tint='5'] {
-		background: var(--admin-net-5-tint);
-		color: var(--admin-net-5-ink);
-	}
-
 	/* ---------- the date field ---------------------------------------------------------
 
 	   a day written into a box whose label stands inside it and rises onto its top edge
@@ -2994,10 +2542,9 @@
 		inline-size: 100%;
 	}
 
-	/* the box's row in the field, stated here rather than added to the `:is()` list above, for
-	   `.adm-field > .adm-coinwrap`'s reason: that list is copied verbatim into the artboards
-	   packages/design holds and reports drift against (./design-copy.spec.ts). the row is the same
-	   one every other box takes. */
+	/* the box's row in the field, stated here rather than added to the `:is()` list above, which is
+	   copied verbatim into the artboards packages/design holds and reports drift against
+	   (./design-copy.spec.ts). the row is the same one every other box takes. */
 	.adm-field > .adm-datefield {
 		grid-row: 3;
 	}
@@ -3006,8 +2553,7 @@
 
 	   the block padding is even and the minimum is `.adm-input`'s own: the floated label stands on
 	   this box's top edge rather than inside it, so there is no band over the words for it to rise
-	   into and nothing here to reserve one. `cursor: text` because the whole box is the field, as
-	   it is on the coin picker above.
+	   into and nothing here to reserve one. `cursor: text` because the whole box is the field.
 
 	   the row's items are left to fill it, which is the grid's own default and is what hands the
 	   cell below a height to centre the line in. the press at the end takes itself back out of that
@@ -3039,9 +2585,9 @@
 		border-color: var(--admin-field-border-hover);
 	}
 
-	/* the ring is the box's and never a chunk's, for `.adm-coinbox`'s reason above: the field here is
-	   the whole box, and a ring round the chunk holding the caret would be a rectangle inside a
-	   rectangle. which chunk that is, is said by the band below instead. */
+	/* the ring is the box's and never a chunk's: the field here is the whole box, and a ring round
+	   the chunk holding the caret would be a rectangle inside a rectangle. which chunk that is, is
+	   said by the band below instead. */
 	.adm-datebox:has(.adm-datebox__chunk:focus-visible),
 	.adm-datebox:has(.adm-datebox__chunk.is-focus) {
 		outline: var(--admin-focus-width) solid transparent;
@@ -3317,8 +2863,7 @@
 
 	/* the press that opens the calendar. it is a real control — it is in the tab order and it is
 	   what the keyboard opens the calendar with — so it draws the quiet rank's own hover rung where
-	   it stands, unlike the coin picker's caret, which the machine keeps out of the tab order
-	   because the box beside it already opens that list. */
+	   it stands. */
 	.adm-datebox__open {
 		display: grid;
 		place-items: center;
@@ -3350,10 +2895,9 @@
 	   panel a press while it was still standing at the corner of the page.
 
 	   it is portalled out of the field (../components/forms/DateField.jsx and DateRangeField.jsx),
-	   so it stands over the shell by its step, the anchored panel's 3 on the ladder stated at
-	   `.adm-rail`. the step is on the content part for `.adm-anchored`'s reason: the positioner
-	   copies the content's computed `z-index` onto itself inline, and that is the only way a sheet
-	   reaches it. */
+	   so it stands over the shell by its step, 3 on the ladder stated at `.adm-rail`. the step is on
+	   the content part because the positioner copies the content's computed `z-index` onto itself
+	   inline, and that is the only way a sheet reaches it. */
 	.adm-cal {
 		z-index: 3;
 		padding: var(--admin-space-3);
@@ -4196,14 +3740,6 @@
 		line-height: var(--admin-aside-lh);
 	}
 
-	/* a press-to-open trigger leading the status hugs a mark, so a target centred on it would reach
-	   further toward the box than the column step, the trailing item's border and its padding stand
-	   the mark off it. the target starts at the trailing item's own edge instead, and lies over the
-	   status's word rather than the box. */
-	.adm-rows__row > :not(.adm-field) > .adm-markbtn::before {
-		inset-inline-start: calc(-1 * (var(--admin-border-width) + var(--admin-space-4)));
-	}
-
 	/* the Remove beside a row's box: the `x` mark and no word, in a square as tall as the box. it is
 	   the box's height rather than the small control's, because a press shorter than the thing it
 	   drops reads as a control that missed the line — the rule `.adm-field > .adm-actions > .adm-btn`
@@ -4360,106 +3896,6 @@
 		color: var(--admin-ink-2);
 	}
 
-	/* ---------- the command row --------------------------------------------------------
-
-	   a literal an operator runs, on the page's own ground. the slab below is a bounded block
-	   and is a different object: this is a line of the page, written for a stack of rows
-	   where the rule is what separates one from the next and the column is what makes a stack
-	   of them align at one x.
-
-	   the row states its own type role, and that is what makes the first track readable
-	   rather than being about the face: `1lh` is the line box of the element it is written
-	   on, so the track is the command's own line and the copy control sits centred in it
-	   however far the command wraps beneath. the control does not shrink — the command's
-	   track is the one that gives width back, so a long literal wraps rather than taking the
-	   width out of a finger target. */
-
-	.adm-cmd {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		grid-template-rows: 1lh auto;
-		align-items: start;
-		column-gap: var(--admin-space-4);
-		padding-block: var(--admin-space-3);
-		border-block-start: var(--admin-rule);
-		font-family: var(--admin-font-mono);
-		font-size: var(--admin-code-size);
-		line-height: var(--admin-code-lh);
-		color: var(--admin-ink);
-	}
-
-	.adm-cmd code {
-		grid-column: 1;
-		grid-row: 1 / span 2;
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
-	}
-
-	.adm-cmd .adm-btn {
-		grid-column: 2;
-		grid-row: 1;
-		align-self: center;
-	}
-
-	/* the row's modifiers, and they are modifiers rather than rows of their own: the geometry
-	   above is what each of them needs and what none of them may spell a second time.
-
-	   `--kept` is the one-shot value
-	   the signing-secret handover holds, and it takes the band and the slab's radius: the
-	   thing on the screen that cannot be got back is drawn as a block rather than as a line
-	   of the page.
-
-	   `--oneline` below is a block as well, and the two are not told apart by a reader
-	   measuring a radius — this says which is which rather than claiming the eye does it.
-	   what they share is that neither is prose, and what `--kept` is alone in is being
-	   one-shot; that is the fact, and the surface is what carries it rather than proves it.
-
-	   carried-ok: .adm-cmd--kept — no screen writes it. it is the one-shot ground `--oneline`
-	   is told apart from, kept so a surface handing over a value that cannot be shown again has
-	   a shape to take; nothing checks the pair against this sheet as a closed set. */
-	.adm-cmd--kept {
-		border-block-start: 0;
-		padding: var(--admin-space-4) var(--admin-space-5);
-		background: var(--admin-surface-sunken);
-		border-radius: var(--admin-radius);
-	}
-
-	/* the third is on another axis from those two: not which ground the literal stands on, but
-	   how much of it is drawn. `--oneline` is the row whose literal nobody reads — a three-stage
-	   pipeline exists to be copied, and drawn in full it wraps into a paragraph of shell that is
-	   the largest thing on the surface holding it. so it holds one line and runs off the end,
-	   and what is cut off stays reachable the way the slab below keeps it reachable: the element
-	   scrolls and takes focus, which is this console's one way of cutting a literal. never an
-	   ellipsis — a mark saying text was cut, on a box with no way back to the text, is the cut
-	   without the reach.
-
-	   one row rather than the two above it, because there is no second line to reserve room
-	   under: the command's own line and the control beside it are one band, and both sit centred
-	   in it.
-
-	   the ground is the code face's own — `--admin-code-bg` at `--admin-radius`, which is what
-	   the `.adm-chip` above is drawn on. a literal set in mono on the page's
-	   own ground is a run of small grey words and nothing says it is a literal at all, which is
-	   what a dialog leaves it as: there is no rule above it there and no column of rows beside it
-	   to read it against. so the chip's ground scales to a block, and the sentence above one of
-	   these rows can mark a host in the same ink on the same ground without the two disagreeing.
-	   it takes no ink of its own: `.adm-cmd` sets `--admin-ink`, which is a step darker on this
-	   ground than the chip's own and is the ink every other command in the console is read in. */
-	.adm-cmd--oneline {
-		grid-template-rows: auto;
-		align-items: center;
-		border-block-start: 0;
-		padding: var(--admin-space-3) var(--admin-space-4);
-		background: var(--admin-code-bg);
-		border-radius: var(--admin-radius);
-	}
-
-	.adm-cmd--oneline code {
-		grid-row: 1;
-		white-space: pre;
-		overflow-x: auto;
-	}
-
 	/* ---------- the code slab ----------------------------------------------------------
 
 	   a quiet block with an edge of its own. it scrolls sideways rather than wrapping — a snippet
@@ -4544,14 +3980,11 @@
 	   takes none of it back; the control is the later child and is drawn over the code for that
 	   reason alone, with no `z-index` on either — document order is what stacks two things in a
 	   cell. the head above is not drawn at all here, so nothing in this form carries a caption:
-	   the sentence over the box is what names the value, the way it names the literal in
-	   `.adm-cmd--oneline` above.
+	   the sentence over the box is what names the value.
 
-	   that rule is the system's other answer to a line that runs off the end, and what it
-	   decides holds here: the line is never wrapped, never ellipsed, and what is cut off stays
-	   reachable because the element scrolls and takes focus. what this form has and that one
-	   does not is a control standing on the line, and the fade below is the whole of the
-	   difference. */
+	   the line is never wrapped, never ellipsed, and what is cut off stays reachable because the
+	   element scrolls and takes focus. a control stands on the line, and the fade below is what
+	   keeps the line from being read through it. */
 
 	.adm-slab--oneline {
 		padding: var(--admin-space-4) var(--admin-space-5);
@@ -4971,61 +4404,9 @@
 	   and never by centring the label: a label wraps to two lines at the floor, and a mark centred
 	   against two wrapped lines hangs between them. no size or leading is stated for it, unlike the
 	   marks in the ledger above: the mark is a child of the element holding the text, so `1lh` is
-	   already that text's line box.
-
-	   a press-to-open trigger takes the same offset for the same reason: it is as tall as the mark
-	   it hugs, so it stands where the mark would have. it is the label that scopes it and not the
-	   trigger's own rule below, because that is the one place the trigger is a flex item — and a
-	   flex item's `vertical-align` is inert, so this offset is the only thing putting it on the
-	   first line. everywhere else the trigger is inline and `vertical-align: middle` is the whole
-	   of the centring; the two together would centre it and then push it down again. */
-	.adm-setting__label > :is(.adm-mark, .adm-markbtn) {
+	   already that text's line box. */
+	.adm-setting__label > .adm-mark {
 		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
-	}
-
-	/* press-to-open. a bare mark on a line exists for the device with no pointer: what a hover
-	   would have said about the thing it stands beside is one press away instead. so the trigger
-	   reports open in the ink hover is drawn in, and `aria-expanded` is what says which one is
-	   open — a mark that changed only under a pointer would be a state a touch reader never sees.
-
-	   the trigger hugs its mark and the finger's floor is drawn over it out of flow (a target past
-	   the drawn edge, under the buttons), so a line stays as tall as its own ink whatever marks it
-	   carries. it takes no box: two marks on one line, each inside its own, read as a pair of chips
-	   rather than as two things to press.
-
-	   `vertical-align: middle` is the whole of the centring, and it answers the case this rule is
-	   written for: a trigger standing in a heading or in a running sentence, which is inline. the
-	   other case is a trigger inside a setting row's label, where it is a flex item and
-	   `vertical-align` does nothing at all — the first-line offset above is what places it there,
-	   and it is scoped to that label so that it is never drawn on top of the centring here.
-
-	   the class is what makes it a shape rather than a place: the trigger stands beside a setting
-	   row's label and beside a section heading, and a rule scoped to the row left the second one
-	   with no rule at all. what stays scoped is the tone below and the offset above, each of which
-	   is the label's rather than the trigger's.
-	   packages/operator/src/behaviour/AnchoredCard.tsx writes the class, and it is every trigger of
-	   this shape either surface draws. */
-	.adm-markbtn {
-		position: relative;
-		display: inline-grid;
-		place-items: center;
-		vertical-align: middle;
-		border: 0;
-		background: none;
-		color: inherit;
-		cursor: pointer;
-	}
-
-	.adm-setting__label [aria-expanded] .adm-mark {
-		transition: var(--admin-transition-state);
-	}
-
-	.adm-setting__label [aria-expanded]:hover .adm-mark,
-	.adm-setting__label [aria-expanded].is-hover .adm-mark,
-	.adm-setting__label [aria-expanded]:focus-visible .adm-mark,
-	.adm-setting__label [aria-expanded].is-focus .adm-mark,
-	.adm-setting__label [aria-expanded='true'] .adm-mark {
-		color: var(--admin-tone-blocker-deep);
 	}
 
 	/* ---------- table -------------------------------------------------------------------
@@ -5355,7 +4736,7 @@
 		max-inline-size: var(--admin-measure-prose);
 	}
 
-	/* ---------- disclosure, anchored card, dialog --------------------------------------- */
+	/* ---------- disclosure, dialog ------------------------------------------------------ */
 
 	.adm-disclosure {
 		border-block-end: var(--admin-rule);
@@ -5414,63 +4795,6 @@
 			opacity: 1;
 			transform: none;
 		}
-	}
-
-	/* the card a positioner places beside the thing it explains. it is a band inside a hairline
-	   and no corner past the radius every other box wears — depth here is rules, bands and a
-	   change of surface.
-
-	   the shadow is the exception the arrangement forces. this card is placed over the page
-	   rather than in it, and at the 375px floor it covers what it was opened from: a band and a
-	   hairline the same weight as every box under it reads as those boxes having been replaced,
-	   not covered. so it takes `--admin-elevation-dialog`, which
-	   packages/operator/src/styles/tokens.css states is the system's one shadow and spends on the
-	   top layer — a card floating over the page is what that value is, and a second shadow
-	   authored for this one would be the drift. the modifiers below take it with it: each is this
-	   card on a different ground, and every one of them floats.
-
-	   `--available-width` is the one property here that is not a token and not one this file
-	   may declare: the positioner writes it per placement, as the distance from the card's
-	   own edge to the edge of the viewport. it is read with `--admin-measure-panel` as its
-	   fallback so the cap is a stated value in every state including the frame before the
-	   first placement — a bare `var()` would resolve to nothing and the card would reach past
-	   the 375px floor with the page scrolling sideways under it. */
-	.adm-anchored {
-		display: grid;
-		gap: var(--admin-space-4);
-		padding: var(--admin-space-5);
-		max-inline-size: min(
-			var(--admin-measure-panel),
-			var(--available-width, var(--admin-measure-panel))
-		);
-		font-size: var(--admin-aside-size);
-		line-height: var(--admin-aside-lh);
-		color: var(--admin-ink);
-		background: var(--admin-surface-sunken);
-		border: var(--admin-hairline);
-		border-radius: var(--admin-radius);
-		box-shadow: var(--admin-elevation-dialog);
-	}
-
-	/* the panel a labelled press opens. it stands on the surface instead of the band because
-	   there are controls inside this one, and a control drawing a ground of its own against the
-	   band is a box inside a box. */
-	.adm-anchored--panel {
-		background: var(--admin-surface);
-	}
-
-	/* both cards are portalled to the document body, so what settles whether one stands over the
-	   shell is the step and not the order of the markup. they take 3, over the rail's 2, and the
-	   whole ladder is stated at `.adm-rail` below. one step for the two: neither is ever opened
-	   over the other, and a second step would be a rung with nothing on either side of it.
-
-	   the step is stated on the machine's content part and not on the card, because the element
-	   that carries it is the positioner: that one is `isolation: isolate`, which makes it a
-	   stacking context the card cannot reach out of, and it writes its own `z-index` inline from
-	   the content's computed one — so this is the one place a sheet can put a step. one scope for
-	   the two: both are opened by a press, so both are the popover's. */
-	[data-scope='popover'][data-part='content']:has(> .adm-anchored) {
-		z-index: 3;
 	}
 
 	/* the card a question is asked in, and there is one destructive grammar on these surfaces
@@ -5689,10 +5013,9 @@
 
 	/* ---------- the brand colour's well ---------------------------------------------------
 
-	   packages/console-ui/src/lib/org-fold.tsx and
-	   packages/app/src/lib/admin/settings/brand-colour-field.tsx write these on the brand colour's
-	   `<input type="color">`. the colour it holds fills it edge to edge inside its border; its focus ring is
-	   ./base.css's `:focus-visible`. */
+	   packages/app/src/lib/admin/settings/brand-colour-field.tsx writes these on the brand colour's
+	   `<input type="color">`. the colour it holds fills it edge to edge inside its border; its focus
+	   ring is ./base.css's `:focus-visible`. */
 	.adm-swatch {
 		display: inline-flex;
 		align-items: center;
@@ -6141,8 +5464,8 @@
 		min-block-size: var(--admin-touch-min);
 	}
 
-	/* a box with its unit or its address in front stated on the box itself, as `.adm-coinbox` is:
-	   the box is the field, and the ring and the refusal are the box's rather than the input's. */
+	/* a box with its unit or its address in front stated on the box itself: the box is the field,
+	   and the ring and the refusal are the box's rather than the input's. */
 	.adm-field > .adm-affixed {
 		grid-row: 3;
 	}
@@ -6415,117 +5738,8 @@
 		max-inline-size: var(--admin-measure-rail);
 	}
 
-	/* ---------- the organisation's logo ---------------------------------------------------
-
-	   packages/console-ui/src/lib/org-fold.tsx draws it: one square that is the logo and the press
-	   that replaces it, the two presses on its corner that crop it again and take it off, and what
-	   the last press reported under it. the square is the size a program's photo is drawn at
-	   (`.adm-placed__art--square` above), and the art fills it edge to edge and stands in it whole —
-	   a logo is cropped by its own crop and never by its frame, so an older logo that is not square
-	   is drawn whole across the square's width or its height. only a square showing a word keeps an
-	   inner step, which is the room it stands in.
-
-	   with no logo the square holds the mark and the word that say what a press does, and its edge is
-	   dashed, for `.adm-create`'s reason: the dashes are what say it holds nothing. one holding a
-	   logo keeps its solid edge while a press on it saves, though the word stands in for the art
-	   then, and while the logo is being removed, though the word stands under the art then: what
-	   it holds is stated by `data-logo`, which the fold sets, and never read off the art being
-	   drawn. a file dragged over it draws the edge in the ring's ink on the accent's tint, because
-	   the square is what will take it. */
-	.adm-logo {
-		display: grid;
-		justify-items: start;
-		gap: var(--admin-space-3);
-	}
-
-	.adm-logo__frame {
-		position: relative;
-		inline-size: min(100%, var(--admin-measure-rail));
-	}
-
-	.adm-logo__square {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: var(--admin-space-3);
-		inline-size: 100%;
-		aspect-ratio: 1;
-		padding: var(--admin-space-5);
-		font-size: var(--admin-control-size);
-		font-weight: var(--admin-control-weight);
-		line-height: var(--admin-control-lh);
-		color: var(--admin-ink-2);
-		background: var(--admin-surface-fill);
-		border: var(--admin-border-width) dashed var(--admin-control-border);
-		border-radius: var(--admin-radius);
-		cursor: pointer;
-		transition: var(--admin-transition-state);
-	}
-
-	/* clipped to its own corner, so the art's square corners stay inside the rounded edge. */
-	.adm-logo__square[data-logo] {
-		overflow: hidden;
-		border-style: solid;
-	}
-
-	.adm-logo__square[data-logo='shown'] {
-		padding: 0;
-	}
-
-	.adm-logo__square:hover,
-	.adm-logo__square.is-hover {
-		border-color: var(--admin-control-border-hover);
-		color: var(--admin-ink);
-	}
-
-	.adm-logo__square:active,
-	.adm-logo__square.is-active {
-		border-color: var(--admin-control-border-active);
-	}
-
-	.adm-logo__square[data-dragging] {
-		color: var(--admin-accent-ink);
-		background: var(--admin-accent-tint);
-		border-color: var(--admin-focus-ring);
-	}
-
-	/* closed while the page writes, by `aria-disabled` so a reader standing on it keeps the focus. */
-	.adm-logo__square[aria-disabled='true'] {
-		color: var(--admin-ink-disabled);
-		border-color: var(--admin-control-border-disabled);
-		cursor: not-allowed;
-	}
-
-	/* the logo fills the square inside its border and is drawn whole in it. */
-	.adm-logo__art {
-		flex: 1 1 0;
-		min-block-size: 0;
-		inline-size: 100%;
-		object-fit: contain;
-	}
-
-	/* the two presses on the square's corner, each the small control's square with a mark and no
-	   word, standing on the logo in the control's own ground. each is aimed at as a touch target,
-	   `--admin-touch-min` square about its centre (a target past the drawn edge, under the buttons):
-	   the gap between the two is exactly their two reaches, so the targets meet and never overlap,
-	   and the corner inset is one reach, so a target reaches the square's edge and no further. */
-	.adm-logo__presses {
-		position: absolute;
-		inset-block-start: var(--admin-space-4);
-		inset-inline-end: var(--admin-space-4);
-		display: flex;
-		gap: calc(var(--admin-touch-min) - var(--admin-control-height-sm));
-	}
-
-	.adm-logo__presses > .adm-btn {
-		inline-size: var(--admin-control-height-sm);
-		padding-inline: 0;
-	}
-
-	/* the crop the logo dialog draws (packages/console-ui/src/lib/logo-crop-dialog.tsx, and
-	   packages/app/src/lib/admin/settings/logo-crop-dialog.tsx on /admin): the image
-	   whole, at its own shape, with the square over it. the box the square is dragged in is the
+	/* the crop the logo dialog draws (packages/app/src/lib/admin/settings/logo-crop-dialog.tsx): the
+	   image whole, at its own shape, with the square over it. the box the square is dragged in is the
 	   image's own box — the crop converts between the two by that alone — so the box hugs the image
 	   and the image is capped rather than stretched: no wider than the card, and no taller than a
 	   panel is wide, so a tall image leaves the card's presses in view. outside the square the image
@@ -6640,7 +5854,7 @@
 	   a box an operator writes formatted words in: the formatting presses in a bar along its top,
 	   the words under them, and the address row along its foot while a link is being made.
 	   packages/app/src/lib/admin/rich-text/ draws it. the box is the field, so the ring is the
-	   box's, as `.adm-coinbox`'s is, and the editable region inside it draws none of its own. */
+	   box's, and the editable region inside it draws none of its own. */
 	.adm-field > .adm-rte {
 		grid-row: 3;
 	}
@@ -6751,17 +5965,6 @@
 		background: var(--admin-page);
 	}
 
-	/* a third track, and only for the shell that can carry a strip at its foot: the page keeps the
-	   leftover height and the strip takes what it reads at, so a short screen still fills the window
-	   and the strip stands at the bottom of it rather than under the block. it is stated off the
-	   strip's own presence rather than on the modifier, because a track for a strip that was not
-	   handed in is a row at the foot of the page with nothing in it. `.adm-shell` with a rail takes
-	   no foot and its two tracks must not move — the rail is out of the flow below the wide
-	   breakpoint and its own column above, and neither is a row this list could hold. */
-	.adm-shell--bare:has(> .adm-footstrip) {
-		grid-template-rows: auto 1fr auto;
-	}
-
 	/* `--_bar-reserve` is the strip at the foot the bar stands in, and the page's end is held back by
 	   it (`.adm-rail ~ .adm-main`). the terms are the tab's: the floor it is never shorter than, its
 	   taller top step, the step it pads itself by at each end, and whatever the platform holds back
@@ -6795,8 +5998,7 @@
 	}
 
 	/* the shell with a rail stands on a tinted ground and the page is a full-bleed panel on it
-	   (`.adm-rail ~ .adm-main` below). the bare shell keeps the page's own ground: it has no panel
-	   for the tint to set off. */
+	   (`.adm-rail ~ .adm-main` below). */
 	.adm-shell:has(> .adm-rail) {
 		background: var(--admin-surface-sunken);
 	}
@@ -6833,9 +6035,8 @@
 		letter-spacing: var(--admin-track-tight);
 	}
 
-	/* the mark leading a row of the rail's head or foot — the site's globe, the account's logo, the
-	   source link — in a box one small icon-only button wide, so a logo standing where a button
-	   would sits in the same column. */
+	/* the mark leading a row of the rail's head — the site's globe — in a box one small icon-only
+	   button wide, so it sits in the column a button's mark would. */
 	.adm-rail__lead {
 		display: flex;
 		align-items: center;
@@ -6847,191 +6048,6 @@
 		);
 	}
 
-	/* a logo is no button, so it is set in by the button's border and padding to stand where a
-	   button's mark does. raw-length-ok: the logo sized to the letters it stands with, as
-	   `.adm-headstrip__who > .adm-brand` argues. */
-	.adm-rail__lead > .adm-brand {
-		margin-inline-start: calc(var(--admin-border-width) + var(--admin-space-4));
-		block-size: 0.55em;
-	}
-
-	/* the other head a shell can carry, and it is not a rail: a run of stated facts — a label and
-	   the value beside it — divided by hairlines, with one control at the far end. it stands
-	   beside `.adm-identity` rather than in place of it, because the two say different things:
-	   the band says who is operating, and this says what the screen is operating on.
-
-	   no `grid-area` and none to take: the shell above tracks its rows and places nothing by
-	   name, so the bar is the first row for the same reason the identity band is — it is written
-	   first.
-
-	   a slot's two parts share a baseline rather than a box, so the label and the value read as
-	   one line of type. a value that must stay whole takes the mono face. the control is pushed
-	   to the end by its own margin, so a bar carrying one fact puts it where a bar carrying three
-	   does. packages/operator/src/components/shell/TopBar.jsx is what writes all of this.
-
-	   **it is a stack until the wide breakpoint, and past that a row that cannot wrap.** an address
-	   is the widest thing a fact states and the one thing that may not be cut, and the facts this
-	   bar carries no longer fit on one line at the middle breakpoint — a fact's own control stands
-	   inline beside its value, so the run is wider than the two words it used to be. `nowrap` is
-	   what holds the rest of it: a row that wrapped would strand the divider at the end of the line
-	   above and leave the fact's own control hanging beside the middle of a value, and no length of
-	   address can do that to a row with nowhere to break. past the room it has, a slot narrows and
-	   its value breaks inside it — which the divider stretches to and the control stays on the
-	   first line of. facts down a stack read in the order they read across. */
-	.adm-topbar {
-		display: flex;
-		flex-direction: column;
-		align-items: start;
-		gap: var(--admin-space-4);
-		/* the same step every way round. the tallest thing on the bar is a 28px control, and at the
-		   step under this one it sits nearer the hairline below it than the words it stands beside
-		   sit to each other — the first thing on every screen of this surface, reading pinched. one
-		   step up is the room it wants and no more: past it the facts stop reading as a line the
-		   page is headed by and start reading as a block of their own. */
-		padding: var(--admin-space-6);
-		background: var(--admin-surface);
-		border-block-end: var(--admin-hairline);
-	}
-
-	@media (min-width: 64rem) {
-		.adm-topbar {
-			flex-direction: row;
-			/* the slots share the baseline of their words rather than the middle of their boxes: a
-			   fact carrying a control is a taller slot than one that does not, and centring each
-			   slot against the row drops the shorter one's line of type below the taller one's. */
-			align-items: baseline;
-			gap: var(--admin-space-5);
-		}
-	}
-
-	/* **the slot wraps on the stack and never on the row.** a fact is a caption and up to three
-	   values beside it, and on a phone the two that carry text are both floored at their own
-	   min-content — so a row that cannot wrap narrows every one of them at once and breaks a name
-	   mid-word beside an id broken mid-string, two ragged columns where there was room for one
-	   whole line each. wrapped, the fact reads down: the name against the caption that leads it,
-	   and the id on the line under them. the row past 64rem keeps the nowrap the bar's own comment
-	   argues for — there the divider stretches to a narrowed slot, and a value moved onto a second
-	   line inside one slot would leave that divider spanning a fact and a half. */
-	.adm-topbar__slot {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: var(--admin-space-4);
-		min-inline-size: 0;
-	}
-
-	@media (min-width: 64rem) {
-		.adm-topbar__slot {
-			flex-wrap: nowrap;
-		}
-	}
-
-	.adm-topbar__what {
-		font-size: var(--admin-caption-size);
-		font-weight: var(--admin-label-weight-strong);
-		letter-spacing: var(--admin-label-track);
-		color: var(--admin-ink-muted);
-	}
-
-	/* the shape a fact is led by where its caption word is not drawn — a mark, or the one logo
-	   ./base.css draws. both stand the same way and are one rule for that reason: they are the same
-	   height, so the arithmetic below is the same arithmetic.
-
-	   the offset idiom and not the one-line box `.adm-topbar__beside` takes below, because a mark has
-	   a size of its own and there is nothing to centre inside a box — a wrapper of `block-size: 1lh`
-	   around a fixed square is the same arithmetic with an element added to do it. `1lh` here is the
-	   slot's inherited line box rather than the value's own, and they are the same box: base.css sets
-	   the document to `--admin-body-size` and `.adm-topbar__name` restates it, which is the assumption
-	   `.adm-topbar__beside` already makes on this slot.
-
-	   `align-self` because the slot aligns on the baseline and neither of these has any text in it to
-	   have one — left in that group each hangs by its bottom edge on the value's first line. */
-	.adm-topbar__mark,
-	.adm-topbar__brand {
-		align-self: start;
-		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
-	}
-
-	/* the mark takes the caption's own ink, because it is the caption: it names the value beside it
-	   and must not read as loud as the value it names. the logo is in colours of its own and takes
-	   none, which is the whole of why the two part company here. */
-	.adm-topbar__mark {
-		color: var(--admin-ink-muted);
-	}
-
-	.adm-topbar__name {
-		font-size: var(--admin-body-size);
-		font-weight: var(--admin-value-weight);
-		color: var(--admin-ink);
-	}
-
-	/* a value that must stay whole is also the one thing on the bar with no break point of its own,
-	   and a flex item is floored at its own min-content: left alone it pushes the bar past the
-	   viewport rather than narrow. breaking at any character is what keeps the whole of it on the
-	   bar at the narrow end — it is broken across lines and never cut. */
-	.adm-topbar__name--code {
-		font-family: var(--admin-font-mono);
-		overflow-wrap: anywhere;
-	}
-
-	/* the second value a fact carries, and it is pitched at the fact's own caption rather than at
-	   the value beside it: what identifies the fact is the name, and this is read after it or not
-	   at all. the mono face and the any-glyph break for `.adm-topbar__name--code`'s reasons — what
-	   stands here is an id, copied and compared rather than read, and it has no break point of its
-	   own to narrow the slot at. */
-	.adm-topbar__note {
-		font-family: var(--admin-font-mono);
-		font-size: var(--admin-caption-size);
-		color: var(--admin-ink-muted);
-		overflow-wrap: anywhere;
-	}
-
-	/* the one control a fact carries. the slot sits its text on a shared baseline, and a control
-	   is a flex box whose own baseline is its bottom edge — left to the slot it would hang with
-	   that edge resting on the words. centred on the first line of the value instead, which is the
-	   rule every mark beside wrappable text in this sheet takes: `1lh` is the line box of the text
-	   it stands in, so a value breaking across three lines keeps its control beside the first of
-	   them rather than floating against the middle of the slot.
-
-	   the box is one line tall, so what stands in it is one line: a label left to wrap makes a
-	   control half again the height of the box it is centred in, which reaches over the line above
-	   it and under the one below. */
-	.adm-topbar__beside {
-		align-self: start;
-		display: flex;
-		align-items: center;
-		block-size: 1lh;
-		white-space: nowrap;
-	}
-
-	/* the divider between two facts, and an element rather than a border on the slot beside it:
-	   it stretches to the tallest slot on the row, where a border would stop at the height of
-	   whichever slot carried it. it is drawn only where there is a row to divide: on the stack each
-	   fact is already its own line, and a vertical rule between two of them would point across a
-	   gap nothing spans. */
-	.adm-topbar__rule {
-		display: none;
-	}
-
-	@media (min-width: 64rem) {
-		.adm-topbar__rule {
-			display: block;
-			align-self: stretch;
-			inline-size: var(--admin-border-width);
-			background: var(--admin-divider);
-		}
-
-		/* the control against the row it stands in, and both halves of that belong to the row: the
-		   bar is a stack below this breakpoint, where the cross axis is the inline one — so a
-		   centred control there is centred across the bar rather than against anything, standing
-		   alone under a run of facts every one of which begins at the start edge. on the stack it
-		   takes the bar's own `align-items: start` and lines up with them. */
-		.adm-topbar__end {
-			align-self: center;
-			margin-inline-start: auto;
-		}
-	}
-
 	/* the rail: every destination the dashboard has, shown at once. a bar fixed to the foot of the
 	   viewport until the wide breakpoint stands it up as a column beside the page. how many there
 	   are is packages/app/src/lib/admin/destinations.ts's; how they arrange is here.
@@ -7039,11 +6055,11 @@
 	   it paints over whatever scrolls beneath it, and the step is what settles that rather than
 	   the order of the markup: a pinned table column takes `z-index: 1` in this sheet and stands
 	   later in the document, so a bar at the same step would pass under the first column of every
-	   table. the whole ladder is that column at 1, this bar and the console's `.adm-navigation-bar`
-	   at 2, and the anchored panel and note, a date field's calendar, the shell's skip link and a
-	   question the server drew before the script lifts it (`.adm-dialog--inline`) at 3 — each of
-	   those is drawn over the bar, and the panel, the note and the calendar are portalled to the
-	   body, so they too are settled by their step and not by where they stand in the document. a
+	   table. the whole ladder is that column at 1, this bar and `.adm-navigation-bar` at 2, and a
+	   date field's calendar, the shell's skip link and a question the server drew before the script
+	   lifts it (`.adm-dialog--inline`) at 3 — each of those is drawn over the bar, and the calendar
+	   is portalled to the body, so it too is settled by its step and not by where it stands in the
+	   document. a
 	   modal is in the top layer and is over all three without asking for a step at all. the bar's
 	   More sheet and its scrim are the one pair that stand at the bar's own step, 2, and it is the
 	   order that settles them: packages/operator/src/components/shell/AppShell.jsx writes both
@@ -7160,7 +6176,7 @@
 	}
 
 	/* the machine's positioner is the element that stands the card, and it carries no class of
-	   ours: matched by its part, as the anchored cards' step is above. */
+	   ours, so it is matched by its part. */
 	[data-scope='dialog'][data-part='positioner']:has(> .adm-moresheet) {
 		position: fixed;
 		inset-inline: 0;
@@ -7342,8 +6358,8 @@
 
 	/* a way out carrying both a mark and a word shows the word, and only the icon rail trades it
 	   for the mark (the collapsed rules at the wide breakpoint). one node either way, so the
-	   control keeps one name. a way out that is a mark alone — the console's close — wears no word
-	   and keeps its mark everywhere. AppShell.jsx's specimen way out is the shape. */
+	   control keeps one name. a way out that is a mark alone wears no word and keeps its mark
+	   everywhere. AppShell.jsx's specimen way out is the shape. */
 	.adm-signout:has(.adm-signout__word) .adm-mark {
 		display: none;
 	}
@@ -7359,9 +6375,9 @@
 
 	/* the page of the shell with a rail: a panel running edge to edge across the window, its head
 	   and body padded from one inset. below the wide breakpoint the document is its scroller, and
-	   its one edge is the hairline under the identity band. it is matched off the rail beside it
-	   because `.adm-main` is also the bare shell's page, which has no panel. two classes of weight,
-	   so the `.adm-main` padding the two widths below restate for the bare shell never reaches it.
+	   its one edge is the hairline under the identity band. it is matched off the rail beside it,
+	   two classes of weight, so the `.adm-main` padding the two widths below restate never reaches
+	   it.
 
 	   the page reserves the strip the bar stands in, `--_bar-reserve` on the root above, because
 	   below the wide breakpoint the bar is out of the flow and would otherwise be laid over the end
@@ -7377,7 +6393,7 @@
 	}
 
 	/* the panel's head is a line over the page and no band: no rule closes it and it pads no block
-	   end, so the global `.adm-head` below keeps both for the bare shell and the panel route alone.
+	   end, so the global `.adm-head` below keeps both for the panel route alone.
 	   it stands the panel inset's step from the top, and what parts it from the page is the body's
 	   own top step, `.adm-head + .adm-panelbody` below. */
 	.adm-rail ~ .adm-main > .adm-head {
@@ -7426,17 +6442,6 @@
 		color: var(--admin-ink);
 	}
 
-	/* a bare shell's page pads no block end: what may stand under it is `.adm-footstrip`, a row of
-	   the shell's own grid rather than anything laid over the page, so there is nothing to clear.
-	   the modifier sits in `:where()` so it weighs what `.adm-main` weighs and the two widths below
-	   still decide on source order — given its class's own weight it would beat the wide width's
-	   `padding` shorthand, and a bare page would end flush against the foot of the window at the
-	   width where it has the most room. packages/operator/src/components/shell/BareShell.jsx writes
-	   the class. */
-	:where(.adm-shell--bare) .adm-main {
-		padding-block-end: 0;
-	}
-
 	/* a screen that is one short block, standing in the middle of the space the page already
 	   occupies rather than at the top-left of a column that is otherwise empty. what it is for is a
 	   screen that is waiting: nothing has arrived yet and there is nothing on it to act on. the
@@ -7444,9 +6449,10 @@
 	   like is stated.
 
 	   the modifier is the page's and not the column's, and the axis is what decides that: the page
-	   is the shell's `1fr` row (or, in the shell with a rail, `.adm-panelbody` growing into its
-	   panel) and is therefore the only element here that has been given a height, where a column is as tall as whatever it holds and could centre nothing in the vertical. a
-	   modifier on the column would answer half the question and read as if it had answered both.
+	   is the shell's `1fr` row (or `.adm-panelbody` growing into its panel) and is therefore the
+	   only element here that has been given a height, where a column is as tall as whatever it holds
+	   and could centre nothing in the vertical. a modifier on the column would answer half the
+	   question and read as if it had answered both.
 
 	   `.adm-panelroute` below is not this and cannot be: it measures itself against the viewport,
 	   so under a bar it stands a bar's height past the foot of the window and the page grows a
@@ -7456,7 +6462,7 @@
 	   the width, which are two different properties because they are two different jobs: the
 	   block is one row in a full-width track, and a track told to shrink to its content is a
 	   measured column that stops being measured.
-	   packages/operator/src/components/shell/BareShell.jsx and AppShell.jsx write the class. */
+	   packages/operator/src/components/shell/AppShell.jsx writes the class. */
 	.adm-main--centred {
 		display: grid;
 		align-content: center;
@@ -7472,24 +6478,6 @@
 
 	.adm-column--wide {
 		max-inline-size: var(--admin-measure-column-wide);
-	}
-
-	/* a page with no rail stands its column in the middle of the width it was given.
-
-	   the rail is what decides it. a shell that has one hangs its column off the rail's inside edge,
-	   and the two together are the balance the page is read in; a bare shell has nothing on either
-	   side, so a measured column left where a block falls sits hard against one edge with the whole
-	   of the rest of a wide window empty beside it.
-
-	   it is horizontal alone and not `.adm-main--centred`, which is a different question and says so
-	   in its own comment above: that one is for a screen that is waiting, with nothing on it to act
-	   on, and it centres in the height as well. a screen read from the top keeps its top.
-
-	   the ancestor sits in `:where()` so the rule weighs what a bare `.adm-column` does — the two
-	   measures above are the only other thing that writes to this element, and neither of them
-	   states a margin. */
-	:where(.adm-shell--bare) .adm-column {
-		margin-inline: auto;
 	}
 
 	/* the page's name, what qualifies it, and space under it. nothing draws a line there: what
@@ -7801,14 +6789,6 @@
 		margin-block-start: var(--admin-space-4);
 	}
 
-	/* a stack whose items stand on one centre rather than on one leading edge. it is for a stack
-	   that is the whole of a screen — a page that is waiting, where a heading and the mark under it
-	   are all there is — and never for a stack of content: a run of fields, rows or paragraphs
-	   centred that way loses the edge a reader's eye returns to on every line. */
-	.adm-stack--centred {
-		justify-items: center;
-	}
-
 	/* the tier between a stack's items and a section's rule, for a page that is one section of a
 	   few groups with no heading over any of them — the API page's form and the list of keys it
 	   makes, the Zapier page's two sentences and what each opens onto. `.adm-grouped` holds one
@@ -7933,9 +6913,9 @@
 	   **the inset at the two sides belongs to the children and never to this rule.** a strip spans
 	   the window and its rule is the edge of a band, not a line under some content — written here,
 	   the padding that holds a strip's leading end off the glass stops that rule short of both
-	   sides. each child spends `--admin-space-6` at its own two sides instead — the head on each line that
-	   stands on its band rather than on the band — which is the shape `.adm-topbar` above already
-	   takes: a band pads itself and what is around it does not. */
+	   sides. each child spends `--admin-space-6` at its own two sides instead — the head on each line
+	   that stands on its band rather than on the band: a band pads itself and what is around it does
+	   not. */
 	.adm-panelroute {
 		min-block-size: 100dvh;
 		display: grid;
@@ -7955,10 +6935,7 @@
 		border-radius: var(--admin-radius);
 	}
 
-	/* the panel's share of the route's inset, and it is stated on the route rather than on the panel
-	   because the panel is also a card a screen inside the shell draws — the console stands four of
-	   them on one page — and those stand in a column that is inset already. it is a bound and not a
-	   margin: the box is `inline-size: 100%` of the row it is centred in, and a margin on that is a
+	/* the panel's share of the route's inset. it is a bound and not a margin: the box is `inline-size: 100%` of the row it is centred in, and a margin on that is a
 	   box wider than the track it stands in. */
 	.adm-panelroute > .adm-panel {
 		max-inline-size: min(var(--admin-measure-panel), 100% - 2 * var(--admin-space-6));
@@ -7988,9 +6965,9 @@
 	}
 
 	/* the strips a route may carry at its two edges, and the tracks that keep the panel centred
-	   between them. both are stood by both shells and neither is this route's own: the head is
-	   `.adm-head` below, and the foot is `.adm-footstrip` under it — each is written as a block of
-	   its own for that reason.
+	   between them. neither is this route's own: the head is `.adm-head` below, which the shell
+	   stands over its page as well, and the foot is `.adm-footstrip` under it — each is written as a
+	   block of its own for that reason.
 
 	   the route is one row until a strip is handed in, so a strip's own presence is what states the
 	   tracks: a track list written on the rule above would drop a lone panel into the first of two
@@ -8017,9 +6994,7 @@
 	   strip's own and is written on the side the rule is: the other side is this route's padding, so
 	   a step there would be a step counted twice.
 
-	   the head is a slot and the surface fills it: `.adm-topbar` above is the other head this system
-	   has — a run of stated facts — and a surface takes one or the other. what stands in this one is
-	   the calling surface's, and the console's is packages/console-ui/src/lib/head-strip.tsx.
+	   the head is a slot and the surface fills it: what stands in it is the calling surface's.
 
 	   `justify-self` because the route centres what it holds and a strip is the one thing in it that
 	   spans the width. both strips stand their ends apart, so a surface handing two nodes gets one
@@ -8030,14 +7005,9 @@
 	   of each other either way, so centring costs the text pair nothing and is the only thing that
 	   holds a picture on the line.
 
-	   both can wrap and neither does at the 375px floor: the head's ends are an identity that takes
-	   the line the press leaves and wraps inside itself, and the foot's are a line of small print
-	   and one mark in a box a hand can hit — so each pair still shares a line there. wrapped, the
-	   two ends would be two rows starting at the same edge, which is a strip somebody arranged
-	   rather than a line that ran out.
-	   packages/operator/src/components/shell/AppShell.jsx's `PanelRoute` and
-	   packages/operator/src/components/shell/BareShell.jsx write the head's class and what stands
-	   inside it is the caller's. */
+	   both can wrap, and wrapped the two ends are two rows starting at the same edge.
+	   packages/operator/src/components/shell/AppShell.jsx's `AppShell` and `PanelRoute` write the
+	   head's class and what stands inside it is the caller's. */
 	.adm-panelroute:has(> .adm-head) {
 		grid-template-rows: auto 1fr;
 	}
@@ -8050,15 +7020,9 @@
 		grid-template-rows: auto 1fr auto;
 	}
 
-	/* the head as a whole: the strip, and whatever a surface stands under it on the same band. it is
-	   a block rather than the strip itself because those lines are the head's and not one of its two
-	   ends — the console states two of them, each true of this machine rather than of anything on
-	   the screen (packages/console-ui/src/lib/head-strip.tsx) — so they stand across the band under
-	   the strip and inside the rule that closes it. a head with nothing under it is the strip and
-	   this box around it, which draws the same band.
-
-	   the rule and the step are here for that reason: they belong to the bottom of the head, and a
-	   strip carrying them would draw the band's edge above lines that are still inside it. */
+	/* the head as a whole: the band the strip stands on, and the rule and the step that close it.
+	   they belong to the bottom of the head rather than to the strip, which holds its two ends and
+	   nothing else. */
 	.adm-head {
 		display: grid;
 		gap: var(--admin-space-5);
@@ -8067,16 +7031,8 @@
 		border-block-end: var(--admin-rule);
 	}
 
-	/* the step the shell owes the head, which the panel route pays out of its own padding — the same
-	   arrangement `:where(.adm-shell--bare) > .adm-footstrip` below takes at the other edge, and the
-	   modifier sits in `:where()` for the reason written there. */
-	:where(.adm-shell--bare) > .adm-head {
-		padding-block-start: var(--admin-space-6);
-	}
-
-	/* the head's own line: two ends and nothing between them — who the surface is signed in as at
-	   the leading end, and the one press it offers at the trailing one. what stands in either is the
-	   caller's, and packages/console-ui/src/lib/head-strip.tsx is what the console stands there. */
+	/* the head's own line: two ends and nothing between them. what stands in either is the
+	   caller's — the dashboard's trail of pages on a nested screen. */
 	.adm-headstrip {
 		display: flex;
 		flex-wrap: wrap;
@@ -8088,10 +7044,8 @@
 		padding-inline: var(--admin-space-6);
 	}
 
-	/* a press on this strip takes the box a hand has to find — the same floor
-	   `.adm-footstrip__social` below gives the mark in the foot, and **on both axes**. the press
-	   here is its mark and no word (packages/console-ui/src/lib/head-strip.tsx), so neither axis is
-	   given its size by anything inside it: the small soft rank is sized for a word, and left to
+	/* a press on this strip takes the box a hand has to find, **on both axes**. a press that is its
+	   mark and no word is given its size by nothing inside it on either axis: the small soft rank is sized for a word, and left to
 	   itself it is a line of small print tall and two insets around a glyph wide. the floor is what
 	   makes the box square, and it is stated on the inline axis for that reason — a press carrying
 	   a word is wider than the floor on its own and never needed it.
@@ -8104,114 +7058,15 @@
 		min-inline-size: var(--admin-touch-min);
 	}
 
-	/* the strip's leading end: the company's mark, the name, the separator and the id, in that order
-	   on one line. it is one block and not four items on the strip, because the strip stands what it
-	   holds at its two ends — four ends is four things spread across the band — and because all four
-	   are the one identity: what this machine is signed in as, and what that is resolved by.
-
-	   **it is the end that wraps, and it wraps inside itself.** it takes the line the press leaves
-	   rather than the width of what it holds, which is what keeps the two ends on one row at every
-	   width: a flex line is broken on what its items ask for before any of them is shrunk, so an
-	   identity asking for its whole content is a press on a row of its own at the 375px floor. the
-	   press is a fixed box a hand can hit, this is what is left, and the wrapping happens between
-	   the four runs inside it. the id breaks inside itself under that, which is
-	   `.adm-headstrip__note` below.
-
-	   the step between the runs is a rung over the step between the rows they wrap onto: the mark is
-	   a picture with no sidebearing of its own and butts against the first character at anything
-	   less, and wrapped the block still has to read as one value rather than as a stack of them. */
-	.adm-headstrip__who {
-		display: flex;
-		flex: 1;
-		flex-wrap: wrap;
-		/* the mark and the letters share the line's baseline, which is what stands the cloud on the
-		   line the name stands on. it takes both of them to say it: a lone item asking for a
-		   baseline has none to meet and falls back to the top of its line. */
-		align-items: baseline;
-		column-gap: var(--admin-space-3);
-		row-gap: var(--admin-space-1);
-		min-inline-size: 0;
-	}
-
-	/* raw-length-ok: the logo is sized to the text it stands with rather than to `--admin-mark-size`,
-	   which is an icon in a control and is taller than the letters here. stated in `em` so it
-	   follows whatever size the block's text is set at, and cut under the cap height of that
-	   text: the picture is solid ink edge to edge and a capital letter is not, so one
-	   drawn at the cap height reads as the larger of the two, and a wide mark drawn that size takes
-	   the line the name is read on. what the logo says is whose account the name is held with, and
-	   the name is what is read — so it is drawn under the letters it stands in front of.
-
-	   it sits on the line's baseline, which for a box holding no text is its own bottom edge — so
-	   the cloud stands on the line the letters stand on rather than floating over it. */
-	.adm-headstrip__who > .adm-brand {
-		block-size: 0.55em;
-	}
-
-	/* what the identity is called — an account's name, an address. it takes the strip's inherited
-	   size: the head is the first thing on the page and this is the one value on it. */
-	.adm-headstrip__name {
-		font-weight: var(--admin-value-weight);
-		color: var(--admin-ink);
-	}
-
-	/* what stands between the two values, and it is drawn rather than ruled: a border or a
-	   pseudo-element would be a line this strip has to hold on the baseline of type that wraps, and
-	   what is wanted is punctuation. it is the muted ink because it is neither of the two values it
-	   parts. */
-	.adm-headstrip__sep {
-		color: var(--admin-ink-muted);
-	}
-
-	/* the second value on the same identity, pitched a rung under the caption at the fine-print
-	   rank: the name is what a reader recognises the identity by and this is what they check it
-	   against something off the screen. the mono face and the any-glyph break are
-	   `.adm-topbar__note`'s reasons above — an id is copied and compared rather than read, and has
-	   no break point of its own to narrow the end at. */
-	.adm-headstrip__note {
-		font-family: var(--admin-font-mono);
-		font-size: var(--admin-fineprint-size);
-		color: var(--admin-ink-muted);
-		overflow-wrap: anywhere;
-	}
-
-	/* a line the head states under its strip: a standing condition nothing on the screen is blocked
-	   by, which is `.adm-field__needed` above in every part but where it stands — so it is that row
-	   at the band's own inset. it is small print with a mark and not a banner: a box around it would
-	   read as something stopping the operator, and neither of the console's two stops anything this
-	   session. */
-	.adm-headnote {
-		display: flex;
-		align-items: flex-start;
-		gap: var(--admin-space-3);
-		padding-inline: var(--admin-space-6);
-		font-size: var(--admin-hint-size);
-		line-height: var(--admin-hint-lh);
-		color: var(--admin-tone-attention-ink);
-	}
-
-	/* the mark centres on the line it stands beside rather than on the box those lines make, which
-	   is `.adm-field__needed .adm-mark`'s reason above: these sentences wrap at the narrow widths,
-	   and an icon aligned to the top of a two-line box sits above the first line rather than beside
-	   it. */
-	.adm-headnote .adm-mark {
-		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
-	}
-
-	/* the strip of small print at the foot of a page: which product and which release of it this is
-	   at one end, and where that product's source is at the other.
-
-	   **it carries no shell's name because it stands under both of them.** the panel route above
-	   hands it its last row and packages/operator/src/components/shell/BareShell.jsx hands it the
-	   row under the page, and a name taken from either would be a lie on the other.
-	   packages/console-ui/src/lib/product-foot.tsx is what writes the names below it.
+	/* the strip of small print at the foot of a route: two ends, and what stands in either is the
+	   caller's.
 
 	   the caption size is the strip's own rather than a class its children wear, because some of
 	   the children are links and every type utility in ./base.css carries an ink with its size —
 	   `.adm-caption` on an anchor takes the muted ink with it and the link stops looking like one.
 
-	   the step above it is its own, beside the rule it draws. the step under it is whatever it is
-	   standing in: the route spends its own padding there, and the shell spends none — so the rule
-	   below is what keeps the strip off the foot of the window. */
+	   the step above it is its own, beside the rule it draws. the step under it is the route's own
+	   padding. */
 	.adm-footstrip {
 		display: flex;
 		flex-wrap: wrap;
@@ -8223,44 +7078,6 @@
 		padding-block-start: var(--admin-space-6);
 		border-block-start: var(--admin-rule);
 		font-size: var(--admin-caption-size);
-	}
-
-	/* the step the shell owes the strip, which the panel route pays out of its own padding. the
-	   modifier sits in `:where()` so the rule weighs exactly what the block above weighs and wins on
-	   being written after it — the same arrangement `:where(.adm-shell--bare) .adm-main` takes. */
-	:where(.adm-shell--bare) > .adm-footstrip {
-		padding-block-end: var(--admin-space-6);
-	}
-
-	/* the one mark the trailing end is, and the box a hand hits around it. the picture is the whole
-	   of the control, so its accessible name is the image's own and never a word beside it:
-	   ../components/status/Brand.jsx states when a logo may go without one, and this does not
-	   qualify — there is no text on this line for the name to already be in.
-
-	   it is the end itself rather than one of a run: a strip's step falls between its two ends, so a
-	   single mark handed in loose is the end it stands at and needs nothing around it.
-
-	   the target is `--admin-touch-min` square while the picture inside it is a fifth of that: what
-	   a finger has to find is the box, so the box grows and the mark stays the size it reads at. no
-	   underline — ./base.css draws one under every link at rest, and under a picture it is a rule
-	   drawn beneath the glyph rather than a link's own line. what a keyboard leaves on it is that
-	   sheet's treatment, landing on this box, which is the mark's own edge. */
-	.adm-footstrip__social {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-inline-size: var(--admin-touch-min);
-		min-block-size: var(--admin-touch-min);
-		text-decoration: none;
-	}
-
-	.adm-footstrip__social > img {
-		display: block;
-		/* raw-length-ok: a glyph's optical box is not a step of the spacing scale. the mark fills its
-		   file corner to corner, so the rung above this one is more ink than the small print across
-		   the strip from it and the rung below is a mark nobody sees. */
-		inline-size: 1.125rem;
-		block-size: auto;
 	}
 
 	/* a write and the way out of it on one row, wrapping at the floor rather than shrinking:
@@ -8421,31 +7238,6 @@
 
 		.adm-shell > .adm-identity {
 			display: none;
-		}
-
-		/* the shell with no rail in it, and it is written here and nowhere else because this is the
-		   only width at which the shell has tracks for one. below it the shell is two rows and a
-		   bare shell wants exactly that; here the block above turns it into the rail's column and
-		   the page's, and names `nav main` so the page lands in the second — so the modifier takes
-		   both back rather than declaring a set of its own, and what it restates is what the shell
-		   is below this width. one column, and the rows returned to the head and the page.
-
-		   the areas are named because `.adm-main` above keeps its `grid-area: main`, and a name it
-		   can land on is the only way it lands in the second row. nothing is placed in `top` or in
-		   `foot`: the bar falls into the first by being written first and the strip into the last by
-		   being written last, the way the identity band does in the shell below this width. the pair
-		   restates what the shell is below this width, the strip's track included — a modifier that
-		   took back the columns and left the rows would put the page and the strip in one row.
-		   packages/operator/src/components/shell/BareShell.jsx writes the class. */
-		.adm-shell--bare {
-			grid-template-rows: auto 1fr;
-			grid-template-columns: minmax(0, 1fr);
-			grid-template-areas: 'top' 'main';
-		}
-
-		.adm-shell--bare:has(> .adm-footstrip) {
-			grid-template-rows: auto 1fr auto;
-			grid-template-areas: 'top' 'main' 'foot';
 		}
 
 		/* the shell with a rail is the window's height and the panel is its one scroller, so the
@@ -8642,70 +7434,6 @@
 			border-block-start: var(--admin-rule);
 		}
 
-		/* the console's rail foot, handed to AppShell's `foot` by packages/console-ui. two rows on
-		   the head's columns: the account's logo, its name cut to one line and the way out; then the
-		   source link and the release. the logo and the name are a label and open nothing
-		   (../components/shell/AccountRow.jsx). */
-		.adm-footaccount {
-			display: flex;
-			align-items: center;
-			gap: var(--admin-space-4);
-			min-inline-size: 0;
-			font-size: var(--admin-body-size);
-			line-height: var(--admin-lh-snug);
-		}
-
-		.adm-footaccount__out {
-			display: flex;
-			flex: none;
-			margin-inline-start: auto;
-		}
-
-		/* the logo and the name share the label, so the name is what gives way. it is as tall as the
-		   small press at the row's end, so the row keeps one height whatever it is handed. */
-		.adm-footaccount__label {
-			display: flex;
-			align-items: center;
-			gap: var(--admin-space-2);
-			min-inline-size: 0;
-			min-block-size: var(--admin-control-height-sm);
-		}
-
-		/* the logo stands off the name as the head's lead does off the name beside it: the label's
-		   gap is taken back out of the lead's end margin. */
-		.adm-footaccount__label > .adm-rail__lead {
-			margin-inline-end: calc(var(--admin-focus-width) - var(--admin-space-2));
-		}
-
-		.adm-footaccount__name {
-			min-inline-size: 0;
-			overflow: hidden;
-			white-space: nowrap;
-			text-overflow: ellipsis;
-			font-weight: var(--admin-value-weight);
-		}
-
-		.adm-footline {
-			display: flex;
-			align-items: center;
-			gap: var(--admin-space-4);
-			font-size: var(--admin-caption-size);
-			line-height: var(--admin-caption-lh);
-			color: var(--admin-ink-muted);
-		}
-
-		/* the source mark, drawn in its button's ink and a mark's size. the picture is the caller's:
-		   `--_source-mark` is a `url()` the surface sets, because this package owns no such asset. */
-		.adm-footline__source {
-			display: block;
-			inline-size: var(--admin-mark-size);
-			block-size: var(--admin-mark-size);
-			flex: none;
-			color: inherit;
-			background-color: currentColor;
-			mask: var(--_source-mark) center / contain no-repeat;
-		}
-
 		.adm-main {
 			grid-area: main;
 			padding: var(--admin-space-9) var(--admin-space-10);
@@ -8740,36 +7468,13 @@
 
 		.adm-shell--collapsed .adm-rail__lead,
 		.adm-shell--collapsed .adm-identity__name,
-		.adm-shell--collapsed .adm-rail__heading,
-		.adm-shell--collapsed .adm-rail__foot .adm-footline {
+		.adm-shell--collapsed .adm-rail__heading {
 			display: none;
 		}
 
-		/* the account's label keeps its logo, so the rail still says whose account this is: a square
-		   one cell wide, the logo in the middle. the row stacks it over the way out, since the two do
-		   not fit abreast in one cell's width. */
-		.adm-shell--collapsed .adm-footaccount__label {
-			justify-content: center;
-			inline-size: var(--admin-touch-min);
-			min-block-size: var(--admin-touch-min);
-		}
-
-		.adm-shell--collapsed .adm-footaccount__label > .adm-rail__lead {
-			display: flex;
-			justify-content: center;
-			inline-size: auto;
-			margin-inline: 0;
-		}
-
-		.adm-shell--collapsed .adm-footaccount__label .adm-brand {
-			margin-inline-start: 0;
-		}
-
 		/* `.adm-vh` in ./base.css, restated: the names and the sign-out word leave the screen and
-		   are still read — a cell's and the way out's as the control's name, the account's after the
-		   logo's label. */
+		   are still read as the control's name. */
 		.adm-shell--collapsed .adm-rail__cells .adm-dest > .adm-dest__full,
-		.adm-shell--collapsed .adm-footaccount__name,
 		.adm-shell--collapsed .adm-rail__foot .adm-signout__word {
 			position: absolute;
 			inline-size: 1px; /* raw-length-ok: as `.adm-vh`. */
@@ -8816,12 +7521,6 @@
 			display: none;
 		}
 
-		.adm-shell--collapsed .adm-footaccount {
-			flex-direction: column;
-			justify-content: center;
-		}
-
-		.adm-shell--collapsed .adm-footaccount__out,
 		.adm-shell--collapsed .adm-rail__foot .adm-signout {
 			margin-inline: 0;
 		}

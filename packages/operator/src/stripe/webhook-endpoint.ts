@@ -2,9 +2,10 @@
 // version its deliveries are serialised in.
 //
 // **the three facts are here together because an endpoint is registered from all of them at once,
-// and because two ends now spell them.** the operator console creates the endpoint on the Stripe
-// account and stores the signing secret the create returns; the deployment serves that address and
-// reads what arrives. every one of these spelled differently at the two ends is a deployment that
+// and served against all of them.** the Stripe adapter
+// (`packages/app/src/lib/server/payments/stripe.ts`) creates the endpoint on the Stripe account and
+// stores the signing secret the create returns; the deployment serves that address and reads what
+// arrives. every one of these spelled differently at the two ends is a deployment that
 // looks set up and takes nothing:
 //
 //   - the address — an endpoint registered at a URL one end joins differently reads as absent to
@@ -16,12 +17,9 @@
 //     parameter for `api_version`, so an endpoint on the wrong version is a replacement and a new
 //     secret.
 //
-// it is in this package for the reason `./../deploy-split.ts` is: one enumeration in the leaf both
-// surfaces already share, rather than a second list on the console side that is a missing member, a
-// URL joined the other way, or a version behind — with nothing able to see the disagreement.
-//
-// it imports nothing and names no SDK, so it is as reachable from a console screen as from the
-// adapter that talks to Stripe.
+// it is one enumeration for the reason `../deploy-split.ts` is: a second list is a missing member, a
+// URL joined the other way, or a version behind — with nothing able to see the disagreement. it
+// imports nothing and names no SDK.
 //
 // what is served at the address is `packages/app/src/routes/api.stripe.webhook.ts`, whose path
 // comes from its own name, and `packages/app/src/routes.spec.ts` is what pins that path — so the
@@ -38,11 +36,10 @@ export const STRIPE_WEBHOOK_PATH = '/api/stripe/webhook';
 /**
  * the address this deployment answers the processor on, built from an origin.
  *
- * no hostname is committed to this repository (CLAUDE.md), so neither end holds one: the deployment
- * learns its own address from a request that reached it, and the console derives it from the
- * cloudflare account. a default would be a wrong answer wearing a right one.
+ * no hostname is committed to this repository (AGENTS.md → Never), so the deployment learns its own
+ * address from a request that reached it. a default would be a wrong answer wearing a right one.
  *
- * one function because three callers spell it and all three must agree exactly — the console
+ * one function because three callers spell it and all three must agree exactly — the create
  * registers it, the deployment matches the account's endpoints against it, and the repair calls
  * find the endpoint by it. a joining mistake made in one of them is an endpoint that is registered
  * and reads as absent.
@@ -61,9 +58,8 @@ export function webhookEndpointUrl(origin: string): string {
  * it is the version the installed `stripe` package's types describe, and the two have to agree:
  * those types only reflect one version, so a different string here type-checks against fields that
  * may not be there. read it off the installed package before changing it, never from memory — the
- * package is `packages/app`'s dependency even though the value is stated here, because the console
- * sends the same string to `POST /v1/webhook_endpoints` and no endpoint may be pinned to a version
- * its reader does not hold types for.
+ * package is `packages/app`'s dependency even though the value is stated here, and no endpoint may
+ * be pinned to a version its reader does not hold types for.
  *
  * it does not govern a delivery's own shape after the fact. an event is serialised in the version
  * the *account* was on when it happened, so a replayed old delivery can carry an older shape than
@@ -205,12 +201,11 @@ export const DISPUTE_EVENT_TYPES = [
  * handles are the same sentence. everything outside it verifies, reports `ignored`, and is
  * answered — an endpoint subscribed to more than this is noisy rather than broken.
  *
- * it is what the console sends as `enabled_events` when it registers the endpoint, and what the
+ * it is what the create sends as `enabled_events` when it registers the endpoint, and what the
  * deployment reports as `requiredEventTypes` when it reads the account back — so the day a member
- * is added here every already-registered endpoint reads as incomplete, and the console's payment
- * notices row offers the repair (packages/console-ui/src/lib/notices-standing.ts), which
- * resubscribes the endpoint to this list and leaves its signing secret alone
- * (packages/app/src/routes/console.webhook-repair.ts).
+ * is added here every already-registered endpoint reads as incomplete until the repair resubscribes
+ * it to this list, which leaves its signing secret alone
+ * (packages/app/src/lib/server/payments/stripe.ts).
  */
 export const SUBSCRIBED_EVENT_TYPES = [
 	...SETTLEMENT_EVENT_TYPES,

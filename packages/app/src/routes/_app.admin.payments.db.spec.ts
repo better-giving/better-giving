@@ -28,9 +28,8 @@ import * as screen from './_app.admin.payments';
 //
 // the processors are stood in for at the port and nowhere nearer: a route builds its own providers
 // from the request's env (`createPaymentProviders` in $lib/server/payments/factory.ts), so the
-// factory is wrapped and the real one delegated to, the way ./console.db.spec.ts does it. a
-// processor left out of `stub.ports` meets its real adapter, which is what the cases about
-// variables that are not set rely on.
+// factory is wrapped and the real one delegated to. a processor left out of `stub.ports` meets its
+// real adapter, which is what the cases about variables that are not set rely on.
 
 const ORIGIN = 'https://give.example';
 const SCREEN = '/admin/payments';
@@ -305,6 +304,31 @@ describe('a deployment set up on Stripe', () => {
 		expect(stripe?.link).toBe('everywhere');
 		expect(stripe?.notices).toBe('working');
 		expect(stripe?.recurring).toBe('ready');
+	});
+
+	/**
+	 * the signing secret's standing is computed from a digest that stays on the server
+	 * (`packages/operator/src/stripe/secret-fingerprint.ts`), so neither credential, whole or cut,
+	 * reaches the page.
+	 */
+	it('carries neither Stripe credential in its answer', async () => {
+		const secretKey = 'sk_live_51SomethingSecretAndLong';
+		stub.ports.stripe = await stripeAccount();
+
+		const response = await get(
+			deployer,
+			deployed({ STRIPE_SECRET_KEY: secretKey, STRIPE_WEBHOOK_SECRET })
+		);
+		const said = await response.text();
+
+		expect(response.status).toBe(200);
+		expect((JSON.parse(said) as PaymentsScreen).cards.map((card) => card.processor)).toEqual([
+			'stripe'
+		]);
+		expect(said).not.toContain(secretKey);
+		expect(said).not.toContain(STRIPE_WEBHOOK_SECRET);
+		expect(said).not.toContain('sk_live');
+		expect(said).not.toContain('whsec_');
 	});
 });
 

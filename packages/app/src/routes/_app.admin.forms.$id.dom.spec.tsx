@@ -204,15 +204,15 @@ it('says under the heading why the form cannot go live, and at the status box wh
 	expect(band?.querySelector('.adm-banner__word')?.textContent).toBe('This form can’t go live yet');
 	expect(band?.querySelector('a')?.getAttribute('href')).toBe('/admin/settings');
 
-	// read through the box's own description, so the hint is the one a reader meets on the box.
+	// read through the box's own description, so the note is the one a reader meets on the box.
 	const status = document.getElementById(statusBoxId(root));
-	const hints = (status?.getAttribute('aria-describedby') ?? '')
-		.split(' ')
-		.map((id) => document.getElementById(id)?.textContent);
-	expect(hints).toContain('Live is unavailable until the items above are done.');
+	const described = (status?.getAttribute('aria-describedby') ?? '').split(' ');
+	const note = document.getElementById(`${status?.id}-note`);
+	expect(described).toContain(note?.id);
+	expect(note?.textContent).toBe('Live is unavailable until the items above are done.');
 });
 
-it('draws no readiness band and no status hint on a deployment ready to publish', () => {
+it('draws no readiness band and no status note on a deployment ready to publish', () => {
 	const { root } = screen();
 
 	expect(root.querySelector('[role="alert"]')).toBe(null);

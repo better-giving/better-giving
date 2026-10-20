@@ -1,35 +1,29 @@
 /**
- * the folds both operator surfaces name, and the five of them a deployment's set-up is read as.
+ * the names of the six set-up folds an operator meets, and the five of them a deployment's set-up
+ * is read as.
  *
- * it is here rather than in either surface because two of them say these words. the console draws
- * a fold per id with the control that finishes it
- * (packages/console-ui/src/lib/home-sections.ts); the deployment draws the jobs among them as a
- * reading and offers no control at all (packages/app/src/lib/server/config/readiness.ts). a second
- * spelling is how the two would come to disagree about what a job is called while both were right
- * about its state.
+ * one spelling, so the place an operator is sent to and the sentence sending them there call it
+ * the same thing: packages/app/src/lib/server/config/readiness.ts reads the five as a reading and
+ * offers no control, and the mail and form refusals under packages/app/src/lib/server/ name
+ * {@link IDENTITY_FOLD}.
  *
  * **the folds and the jobs are two lists, and {@link SETUP_JOBS} is the shorter one.** a fold is
- * somewhere an operator opens and edits; a job is something the dashboard is not served until it is
- * done. `sites` is a fold and no job: a deployment with no website of its own still takes gifts, on
- * the donation page it serves at /donate (CLAUDE.md → Product surface), and the spam widget
- * is registered against the deployment's own host by a first deploy that asks for no site at all
- * (packages/console/internal/first). so an empty list is a list nobody has added to rather
- * than set-up left unfinished, and a gate waiting on one would hold a working deployment's
- * dashboard shut for as long as the organisation has no website. reaching for the six where the
- * five are meant is exactly that gate.
+ * somewhere an operator opens and edits; a job is something a deployment's set-up is read as
+ * unfinished without. `sites` is a fold and no job: a deployment with no website of its own still
+ * takes gifts, on the donation page it serves at /donate (AGENTS.md → Product surface). so an empty
+ * list is a list nobody has added to rather than set-up left unfinished, and reaching for the six
+ * where the five are meant reads a working deployment as unfinished for as long as the
+ * organisation has no website.
  *
- * what is not here is how either surface finds a job's state out. the console reads cloudflare over
- * a credential on the operator's own machine; the deployment reads the values it was started with
- * and its own rows. the two answer the same question from different facts, and neither reading is
- * the other's to borrow — which is why this module holds the vocabulary and no logic.
+ * what is not here is how a job's state is found out: the deployment reads the values it was
+ * started with and its own rows. this module holds the vocabulary and no logic.
  */
 
 /**
- * one of the six folds, in the order the console draws them.
+ * one of the six folds.
  *
- * an id is a slot in that order rather than a label. the console names its own module per id
- * (packages/console-ui/src/lib/home-sections.ts); the deployment draws one row for each of
- * {@link SETUP_JOBS} and names none.
+ * an id is a slot rather than a label: the deployment reads one line for each of
+ * {@link SETUP_JOBS} and takes each line's label from {@link FOLD_LABELS}.
  */
 export type SetupFoldId =
 	| 'password'
@@ -40,11 +34,10 @@ export type SetupFoldId =
 	| 'notifications';
 
 /**
- * the jobs the dashboard is not served until every one of them is done, in the order both surfaces
- * read them.
+ * the five jobs a deployment's set-up is read as, in the order it reads them.
  *
  * a list rather than a subtraction from {@link SetupFoldId}, because the order is what the
- * deployment draws its rows in and a union carries none. `satisfies` is what holds the two lists
+ * deployment reads its lines in and a union carries none. `satisfies` is what holds the two lists
  * level: a job that is no fold has no label to be drawn under, and fails here.
  */
 export const SETUP_JOBS = [
@@ -59,20 +52,20 @@ export const SETUP_JOBS = [
 export type SetupJobId = (typeof SETUP_JOBS)[number];
 
 /**
- * what a surface found out about one job.
+ * what the deployment found out about one job.
  *
- * there is no third member on either side. a read that did not land is not a job found undone: the
- * console blocks its whole page on one, and the deployment reads nothing that can fail to answer.
+ * there is no third member. a read that did not land is not a job found undone, and the deployment
+ * reads nothing that can fail to answer.
  */
 export type SetupJobState = 'ready' | 'todo';
 
 /**
- * the ledger row an operator opens to find one of the organisation profile's boxes, in the words
- * that row carries.
+ * the fold an operator opens to find one of the organisation profile's boxes, in the words that
+ * fold carries.
  *
  * two names rather than two entries in the record below, because a refusal on a profile box names
- * the row to go and open — packages/console-ui/src/lib/org-fields.ts's `boxFold` — and a row called
- * one thing on the ledger and another in the sentence sending somebody to it is a scavenger hunt.
+ * the fold to go and open, and a fold called one thing where it stands and another in the sentence
+ * sending somebody to it is a scavenger hunt.
  */
 export const IDENTITY_FOLD = 'Organisation details';
 export const NOTIFICATIONS_FOLD = 'Notifications';
@@ -80,12 +73,8 @@ export const NOTIFICATIONS_FOLD = 'Notifications';
 /**
  * what each fold is called wherever it is drawn.
  *
- * all six, because the console draws all six — the deployment reads its rows off
+ * all six, so a fold that is no job still has its one spelling. the deployment reads its lines off
  * {@link SETUP_JOBS} and takes each label from here.
- *
- * DEPLOY.md sends an operator to two of these names, as the console's rail pages, and
- * packages/console-ui/src/every-page-named.spec.ts holds those two spellings together — reading the
- * labels off this record rather than off any file's text.
  */
 export const FOLD_LABELS: Record<SetupFoldId, string> = {
 	password: 'Dashboard password',
@@ -120,13 +109,11 @@ export const JOB_NOTES: Partial<Record<SetupJobId, string>> = {
 /**
  * the word one job's state is read under: two words for two states, and not a word per job.
  *
- * **a status word has to read standing on its own.** on the console the row is a shut fold and on
- * the deployment it is one line of a list, and an operator lands on either without the other four
- * in front of them. `Not yet` and `None yet` only say anything while a reader is scanning top to
- * bottom and can see they are the odd ones out; alone beside a label, they are a word to work out
- * rather than a state to act on. `Configured` and `Incomplete` each say the whole thing on their
- * own line, and being the same two words on both surfaces is what lets an operator who has met one
- * of them read the other without learning it twice.
+ * **a status word has to read standing on its own.** a job's line is read on its own, and an
+ * operator lands on it without the other four in front of them. `Not yet` and `None yet` only say
+ * anything while a reader is scanning top to bottom and can see they are the odd ones out; alone
+ * beside a label, they are a word to work out rather than a state to act on. `Configured` and
+ * `Incomplete` each say the whole thing on their own line.
  */
 export const JOB_WORDS: Record<SetupJobState, string> = {
 	ready: 'Configured',

@@ -387,7 +387,7 @@
 	   padding puts the tint's edge between the last glyph and that mark — which is read as a
 	   space somebody typed rather than as room around a box. the tint is kept: a literal set in
 	   mono on the page's own ground is a run of small grey words with nothing saying it is a
-	   literal, which is the case `.adm-cmd--oneline` in ./adm.css makes at length. the block
+	   literal. the block
 	   padding is kept as well, because a sentence runs up against a literal on either side of
 	   it and never above or below.
 
@@ -467,9 +467,8 @@
 
 	   the height is the mark box's and the width follows the picture. each `aspect-ratio` is that
 	   file's own pixel dimensions rather than a value from ./tokens.css, and no token could hold
-	   one: it is a fact about a binary somebody else drew, and squaring Cloudflare's 246 × 111
-	   wordmark would squash it. the two `1 / 1`s beside it are their files' shape as well, not a
-	   default a square-looking logo falls back to. what
+	   one: it is a fact about a binary somebody else drew. the two `1 / 1`s are their files' shape,
+	   not a default a square-looking logo falls back to. what
 	   packages/operator/src/components/status/Brand.jsx says about the trademarks is the rest of
 	   these rules' reason for existing.
 
@@ -484,11 +483,6 @@
 		background-position: center;
 		background-size: contain;
 		flex: none;
-	}
-
-	.adm-brand--cloudflare {
-		aspect-ratio: 246 / 111;
-		background-image: url('./brand/cloudflare.png');
 	}
 
 	.adm-brand--quickbooks {

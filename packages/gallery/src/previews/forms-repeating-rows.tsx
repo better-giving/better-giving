@@ -1,4 +1,3 @@
-import { AnchoredNote } from '@better-giving/operator/behaviour/AnchoredCard';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { RepeatingRows } from '@better-giving/operator/components/forms/RepeatingRows';
 import type {
@@ -293,16 +292,7 @@ export default function FormsRepeatingRowsPreview() {
 					id: 'forms-rows-fixed-locked',
 					label: 'Your donation page',
 					value: 'https://better-giving-donate.workers.dev',
-					aside: (
-						<>
-							<AnchoredNote mark="info" label="Why this row is always listed">
-								<p>
-									The deployment puts this page up itself, and it is served whatever else is listed.
-								</p>
-							</AnchoredNote>
-							Default
-						</>
-					)
+					aside: 'Default'
 				}}
 				rows={[
 					{

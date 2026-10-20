@@ -36,12 +36,12 @@ import { defineForm, WHICH_FORM } from '$lib/forms/definition';
 import { FORM_STATUS_LABELS } from '$lib/forms/statuses';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm } from '$lib/server/conform';
-import { walletHosts } from '$lib/server/console/wallet-hosts';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import { CREATED_FLASH, redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
 import { readForms } from '$lib/server/forms/queries';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { levelWalletDomains } from '$lib/server/payments/wallet-domains';
+import { walletHosts } from '$lib/server/payments/wallet-hosts';
 import { readSites, readSitesInUse, replaceSites } from '$lib/server/sites/queries';
 import { parseSites } from '$lib/server/sites/site-input';
 import { database, platform, staff } from '../context';
@@ -357,7 +357,7 @@ export async function action(args: Route.ActionArgs) {
 	 * after the write and never in front of it: the list is saved whatever Stripe says, and what did
 	 * not land is reported on the card rather than undoing the save. the hostnames are the request's
 	 * own and the rows just stored, never anything the body named — `walletHosts` in
-	 * $lib/server/console/wallet-hosts.ts argues why — and `levelWalletDomains` leaves a finished
+	 * $lib/server/payments/wallet-hosts.ts argues why — and `levelWalletDomains` leaves a finished
 	 * hostname untouched, so a save that changed nothing spends one read of the account.
 	 */
 	async function levelWallets(

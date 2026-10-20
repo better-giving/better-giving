@@ -15,12 +15,11 @@
 export const CHARIOT_WEBHOOK_PATH = '/api/chariot/webhook';
 
 /**
- * the one event category this deployment's subscription is created for, as the console draws it.
+ * the one event category this deployment's subscription is created for, as
+ * packages/app/src/routes/_app.admin.payments.tsx draws it.
  *
- * a third spelling of one value: it matches `SETTLEMENT_CATEGORY` in
- * `packages/app/src/lib/server/payments/chariot.ts`, which the webhook settles on, and
- * `ChariotEventCategory` in `packages/console/internal/release/config.go`, which the binary subscribes
- * with. `TestTheSubscriptionIsSpelledTheWayBothEndsSpellIt` in that module's `config_test.go` holds
- * all three level.
+ * a second spelling of one value: it matches `SETTLEMENT_CATEGORY` in
+ * `packages/app/src/lib/server/payments/chariot.ts`, which the webhook settles on and the
+ * subscription is created with.
  */
 export const CHARIOT_EVENT_CATEGORY = 'grant.updated';

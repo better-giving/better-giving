@@ -21,14 +21,11 @@ import * as layout from './_app';
 import * as forms from './_app.admin.forms._index';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 
-// the deployment's list of sites, saved from the card at the foot of /admin/forms. the cases that
-// were the console's site list (./console.db.spec.ts) are carried over here with the body a browser
-// posts rather than the JSON the console sent, plus the two this screen adds: who may save, and the
-// wallet registrations a save brings level on Stripe.
+// the deployment's list of sites, saved from the card at the foot of /admin/forms: what a save
+// stores and refuses, who may save, and the wallet registrations a save brings level on Stripe.
 //
-// the payment port is mounted over the factory rather than passed in, for the reason
-// ./console.db.spec.ts gives: the action builds its provider from the request's env, so nothing on
-// the wire can hand one through. the real module is delegated to, so `configured` stays the
+// the payment port is mounted over the factory rather than passed in: the action builds its
+// provider from the request's env, so nothing on the wire can hand one through. the real module is delegated to, so `configured` stays the
 // deployment's own answer about which keys are set.
 
 const stub = vi.hoisted(() => ({

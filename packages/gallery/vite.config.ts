@@ -9,7 +9,7 @@ import { defineConfig } from 'vitest/config';
 //
 // the port is pinned so `pnpm run gallery` opens the same address every time, and `strictPort` is
 // what makes a second copy fail loudly rather than move itself to a port the first one's tab is not
-// on. 5321 is packages/app's dev server and 5322 is packages/console-ui's (see each package's own
+// on. 5321 is packages/app's dev server and 5324 is packages/form's (see each package's own
 // vite.config.ts), so all three run side by side.
 const DEV_PORT = 5323;
 

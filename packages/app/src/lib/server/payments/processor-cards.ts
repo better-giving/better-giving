@@ -2,8 +2,6 @@ import { PAYMENT_METHOD_LABELS } from '@better-giving/form/v1';
 import { OFFERED_PAYMENT_METHODS } from '$lib/forms/offered-rails';
 import { type ConfigEnv, readConfigEnv } from '../config/env';
 import { chargingProcessors } from '../config/readiness';
-import { keepsWebhookEndpoint } from '../console/processors';
-import { walletHosts } from '../console/wallet-hosts';
 import type { Db } from '../db/client';
 import { railNotes } from '../forms/rail-notes';
 import { createPaymentProviders } from './factory';
@@ -24,6 +22,7 @@ import {
 } from './rail-chargeability';
 import { readRecurringProvision } from './recurring-provision';
 import { readWalletDomains, type WalletDomainsReading } from './wallet-domains';
+import { walletHosts } from './wallet-hosts';
 import { webhookAddress } from './webhook-address';
 import { readWebhookRegistration, type WebhookRegistration } from './webhook-registration';
 import { type WebhookSecretStanding, webhookSecretStanding } from './webhook-secret';
@@ -224,12 +223,28 @@ function linkStanding(domains: WalletDomainsReading): LinkStanding | null {
 }
 
 /**
+ * whether the processor keeps an endpoint on the account that deliveries go to.
+ *
+ * NOWPayments keeps none: every payment carries its own callback address (./nowpayments.ts), so an
+ * endpoint reading for it has no object.
+ *
+ * total over `ProcessorName`, so a processor added without an entry is a compile error rather than
+ * a card reading a missing endpoint as a fault.
+ */
+const KEEPS_WEBHOOK_ENDPOINT: Readonly<Record<ProcessorName, boolean>> = {
+	stripe: true,
+	paypal: true,
+	chariot: true,
+	nowpayments: false
+};
+
+/**
  * the notices standing, most basic fault first, or `null` where the account could not be read —
  * which the card says once among the reads it lost.
  *
  * an unset value is answered before anything on the account is looked at, because no endpoint makes
- * up for it. a processor that keeps no endpoint (`keepsWebhookEndpoint` in ../console/processors.ts)
- * has only the value to go on, so a set one is working.
+ * up for it. a processor that keeps no endpoint (`KEEPS_WEBHOOK_ENDPOINT` above) has only the value
+ * to go on, so a set one is working.
  */
 function noticesStanding(
 	processor: ProcessorName,
@@ -237,7 +252,7 @@ function noticesStanding(
 	registration: WebhookRegistration
 ): NoticesStanding | null {
 	if (secret.state === 'unset') return 'unset';
-	if (!keepsWebhookEndpoint(processor)) return 'working';
+	if (!KEEPS_WEBHOOK_ENDPOINT[processor]) return 'working';
 	if (registration.state === 'unreadable') return null;
 	if (registration.state === 'unregistered') return 'failing';
 	if (secret.state === 'stale' || !registration.complete) return 'failing';

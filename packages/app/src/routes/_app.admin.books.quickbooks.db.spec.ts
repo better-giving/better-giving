@@ -12,7 +12,7 @@ import { connectQuickbooks, readQuickbooksConnection } from '$lib/server/account
 import { postableId } from '$lib/server/db/accounts';
 import { readAuthEnv, resolveAuthSecret } from '$lib/server/auth';
 import { createDb, type Db } from '$lib/server/db/client';
-import { quickbooksSync } from '$lib/server/db/schema';
+import { contact, donation, payment, quickbooksSync } from '$lib/server/db/schema';
 import { post, postingStatements } from '$lib/server/ledger/posting';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -23,12 +23,11 @@ import * as books from './_app.admin.books';
 import * as connectStart from './quickbooks.connect';
 
 // the QuickBooks half of the Books screen, against a real database and through the protected
-// layout, since who is signed in is what decides whether the half is there at all. the cases are
-// ./console.quickbooks.db.spec.ts's, moved to the deployer's own session.
+// layout, since who is signed in is what decides whether the half is there at all.
 //
-// Intuit is stood in for at the port and nowhere nearer, the way that spec does it: a refusal is
-// the port's own `failed(...)`. the arms a case does not script delegate to the real adapter, which
-// is what lets the connect case follow the round trip as far as Intuit's own address.
+// Intuit is stood in for at the port and nowhere nearer: a refusal is the port's own `failed(...)`.
+// the arms a case does not script delegate to the real adapter, which is what lets the connect case
+// follow the round trip as far as Intuit's own address.
 
 const ORIGIN = 'https://give.example';
 const SCREEN = '/admin/books';
@@ -229,6 +228,72 @@ async function givenUp(): Promise<void> {
 	]);
 }
 
+/**
+ * a gift given up on, refunded in full, and the refund queued behind it: the payment rows written
+ * the way the settlement and the refund write them, since a refund is found by its parent payment.
+ */
+async function refundBehindGivenUp(): Promise<void> {
+	const at = new Date('2026-02-01T00:00:00.000Z');
+	const contactId = crypto.randomUUID();
+	const donationId = crypto.randomUUID();
+	const giftId = crypto.randomUUID();
+	const refundId = crypto.randomUUID();
+	const moved = (sourceType: 'payment' | 'refund', sourceId: string, sign: 1 | -1) =>
+		post({
+			sourceType,
+			sourceId,
+			currency: 'USD',
+			occurredAt: at,
+			memo: null,
+			lines: [
+				{ accountId: postableId('undepositedFunds'), amountMinor: sign * 10_000 },
+				{ accountId: postableId('donationsDeductible'), amountMinor: -sign * 10_000 }
+			]
+		});
+	const gift = moved('payment', giftId, 1);
+	const refund = moved('refund', refundId, -1);
+	const giftGroup = gift.group.id;
+	const refundGroup = refund.group.id;
+	if (giftGroup === undefined || refundGroup === undefined)
+		throw new Error('post() minted no entry group id');
+	const paid = {
+		donationId,
+		amountMinor: 10_000,
+		currency: 'USD',
+		method: 'card',
+		status: 'succeeded',
+		provider: 'stripe',
+		occurredAt: at
+	} as const;
+	await db.batch([
+		db.insert(contact).values({ id: contactId, kind: 'individual', displayName: 'Ada Lovelace' }),
+		db
+			.insert(donation)
+			.values({ id: donationId, contactId, totalMinor: 10_000, currency: 'USD', receivedAt: at }),
+		db
+			.insert(payment)
+			.values({ ...paid, id: giftId, direction: 'inbound', providerTxnId: `pi_${giftId}` }),
+		db.insert(payment).values({
+			...paid,
+			id: refundId,
+			direction: 'refund',
+			parentPaymentId: giftId,
+			providerTxnId: `re_${refundId}`
+		}),
+		...postingStatements(db, gift),
+		...postingStatements(db, refund),
+		db.insert(quickbooksSync).values({
+			entryGroupId: giftGroup,
+			status: 'failed',
+			attempts: 3,
+			lastError: 'Intuit refused the payload.',
+			createdAt: at,
+			updatedAt: at
+		}),
+		db.insert(quickbooksSync).values({ entryGroupId: refundGroup, createdAt: at, updatedAt: at })
+	]);
+}
+
 describe('a connected company', () => {
 	it('is drawn beside the chart its accounts are picked from, each account with the roles it fits', async () => {
 		await connect();
@@ -318,6 +383,16 @@ describe('a connected company', () => {
 		expect(alone).toBeNull();
 		expect(backlog).toMatchObject({ failed: 1, held: null });
 		expect(backlog?.behind).toMatch(/days$/);
+	});
+
+	it('counts the refunds held behind a gift that did not sync, and the gifts they wait on', async () => {
+		await refundBehindGivenUp();
+		await connect();
+		stub.accounts = { ok: true, value: CHART };
+
+		const backlog = (await drawn()).quickbooks?.backlog;
+
+		expect(backlog).toMatchObject({ failed: 1, held: { refunds: 1, gifts: 1 } });
 	});
 });
 

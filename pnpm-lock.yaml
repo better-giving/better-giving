@@ -81,9 +81,6 @@ catalogs:
     react-router:
       specifier: 8.3.0
       version: 8.3.0
-    remix-client-cache:
-      specifier: 3.0.0
-      version: 3.0.0
     typescript:
       specifier: 6.0.3
       version: 6.0.3
@@ -241,61 +238,6 @@ importers:
       happy-dom:
         specifier: 'catalog:'
         version: 20.11.1
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vite:
-        specifier: 'catalog:'
-        version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.12)
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.10(@types/node@24.13.3)(@vitest/browser-playwright@4.1.10)(happy-dom@20.11.1)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.12))
-
-  packages/console-ui:
-    dependencies:
-      '@ark-ui/react':
-        specifier: 'catalog:'
-        version: 5.39.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@better-giving/operator':
-        specifier: workspace:*
-        version: link:../operator
-      '@conform-to/react':
-        specifier: 'catalog:'
-        version: 1.21.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@conform-to/zod':
-        specifier: 'catalog:'
-        version: 1.21.1(zod@4.4.3)
-      remix-client-cache:
-        specifier: 'catalog:'
-        version: 3.0.0(react-dom@19.2.8(react@19.2.8))(react-router@8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
-    devDependencies:
-      '@react-router/dev':
-        specifier: 'catalog:'
-        version: 8.3.0(react-router@8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(typescript@6.0.3)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.12))
-      '@react-router/fs-routes':
-        specifier: 'catalog:'
-        version: 8.3.0(@react-router/dev@8.3.0(react-router@8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(typescript@6.0.3)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.12)))(typescript@6.0.3)
-      '@types/node':
-        specifier: 'catalog:'
-        version: 24.13.3
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.4(@types/react@19.2.18)
-      react:
-        specifier: 'catalog:'
-        version: 19.2.8
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.8(react@19.2.8)
-      react-router:
-        specifier: 'catalog:'
-        version: 8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -5804,13 +5746,6 @@ packages:
   registry-url@6.0.1:
     resolution: {integrity: sha512-+crtS5QjFRqFCoQmvGduwYWEBng99ZvmFvF+cUJkGYF1L1BfU8C6Zp9T7f5vPAwyLkUExpvK+ANVZmGU49qi4Q==}
     engines: {node: '>=12'}
-
-  remix-client-cache@3.0.0:
-    resolution: {integrity: sha512-lSQIBbCVtuHtPfNy+iU3xLbklB7BmtmQLoEhP/ZSTNm4HLelp8UIPEqcIpNM53goVyuFf11fyrjj+lUSXafd2A==}
-    peerDependencies:
-      react: ^18.2.0 || ^19.0.0
-      react-dom: ^18.2.0 || ^19.0.0
-      react-router: ^7.0.0
 
   remove-trailing-separator@1.1.0:
     resolution: {integrity: sha512-/hS+Y0u3aOfIETiaiirUFwDBDzmXPvO+jAfKTitUngIPzdKc6Z0LoFjM/CK5PL4C+eKwHohlHAb6H0VFfmmUsw==}
@@ -12241,12 +12176,6 @@ snapshots:
   registry-url@6.0.1:
     dependencies:
       rc: 1.2.8
-
-  remix-client-cache@3.0.0(react-dom@19.2.8(react@19.2.8))(react-router@8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8):
-    dependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      react-router: 8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
 
   remove-trailing-separator@1.1.0: {}
 

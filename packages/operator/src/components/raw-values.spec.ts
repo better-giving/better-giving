@@ -13,9 +13,9 @@ import { rawColourViolations, rawLengthViolations } from '../styles/raw-values';
 // `.jsx`. a gate that reached the components and silently stopped reaching the shells would read
 // exactly like this one passing.
 //
-// this is one of five callers, each its own surface's: packages/app/src/lib/admin/styles/raw-color.spec.ts
-// and .../conformance.spec.ts are the dashboard's two, packages/console-ui/src/raw-values.spec.ts is
-// the console's, packages/emails/src/raw-values.spec.ts is the mail templates', and this file is
+// this is one of several callers, each its own surface's: packages/app/src/lib/admin/styles/raw-color.spec.ts
+// and .../conformance.spec.ts are the dashboard's two, packages/emails/src/raw-values.spec.ts is the
+// mail templates', packages/gallery/src/raw-values.spec.ts is the gallery's, and this file is
 // operator's own, over the components beside it. each glob is its own caller's, for the reason
 // ../styles/raw-values.spec.ts states about every caller's: a glob that quietly stops matching
 // reads as a passing gate forever, and only the surface that wrote it knows what it was meant to

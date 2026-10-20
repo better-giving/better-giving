@@ -32,7 +32,7 @@ import {
  * that second run stands in `.adm-panel` because the question it answers is a bounded one: whether
  * two boxes a step apart read as two blocks depends on how wide each box is, and every screen that
  * draws this run is a gate bounded at `--admin-measure-panel` — packages/app/src/routes/login.tsx
- * and packages/app/src/lib/admin/setup-gate.tsx among them, each through `PanelRoute` in
+ * among them, each through `PanelRoute` in
  * packages/operator/src/components/shell/AppShell.jsx. `.adm-main` caps nothing, so left on the
  * page the boxes run the window less its gutter, the steps between them read against a width no
  * screen in this system is ever read at, and the specimen answers a question nobody asked. the box

@@ -89,9 +89,8 @@ function choiceEvent() {
  * that stays selected until another is chosen.
  *
  * the machine is ark's select, and everything it answers for is left to it: the listbox roles, the
- * arrow keys, typeahead, Escape and the dismissal. it is ./CoinPicker.jsx's family — the same box,
- * the same list over whatever follows it, the same highlighted row — without the search, because a
- * list this short is read rather than searched.
+ * arrow keys, typeahead, Escape and the dismissal. there is no search, because a list this short is
+ * read rather than searched.
  *
  * **the choice is submitted by the machine's own hidden `<select>`, which is the one element here
  * carrying the name.** so `name`, `form`, `required` and `disabled` reach the payload the way they
@@ -99,10 +98,10 @@ function choiceEvent() {
  * a refusal's focus move by name lands on that element, and the machine hands focus on to the box.
  *
  * that element is made to say it changed, which is what a native select did for free. the machine
- * dispatches `change` alone, and both layers reading these forms count `input` — the one that arms
- * the save button (`useSavedFormState` in packages/operator/src/saved-form-state.react.ts) and
- * conform's own listener under it — so a choice that stayed silent would be a stored value under a
- * button nothing could press, and a refused box nothing re-checks. the value is put on the element
+ * dispatches `change` alone, and conform's own listener counts `input` — the save button's dirty
+ * reading is conform's (`useAdminForm` in packages/app/src/lib/admin/use-admin-form.ts) — so a
+ * choice that stayed silent would be a stored value under a button nothing could press, and a
+ * refused box nothing re-checks. the value is put on the element
  * before the event rather than waited for, because a listener reads the element it was handed and
  * react has not re-rendered yet.
  *

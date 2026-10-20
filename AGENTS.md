@@ -16,13 +16,12 @@ Dependencies are exact: no `^`, no `~`, in either block (`.npmrc` `save-exact`).
 
 ## Workspace
 
-Seven packages under `packages/*`, and the graph is `app → operator ← console-ui`, with `gallery → operator`, `emails → operator`, `app → form` and `app → emails ← emails-preview` beside them. `zapier` reaches no package and none reaches it. Biome's `noRestrictedImports` overrides refuse a relative import that crosses that graph. A module arrives in `packages/operator` by being promoted, never by being copied.
+Seven packages under `packages/*`, and the graph is `app → operator`, with `gallery → operator`, `emails → operator`, `app → form` and `app → emails ← emails-preview` beside them. `zapier` reaches no package and none reaches it. Biome's `noRestrictedImports` overrides refuse a relative import that crosses that graph. A module arrives in `packages/operator` by being promoted, never by being copied.
 
 | path | what it is |
 | --- | --- |
-| `packages/app` | The deployed server. React Router, `ssr: true`: `/admin`, `/donate`, `/{slug}`, `/api/v1`, `/console`, sign-in. Database, ledger, payments, mail send, scheduled runs. |
-| `packages/console-ui` | The console's screens. React Router, `ssr: false`. Client loaders and actions only. Served by the app in a later change. |
-| `packages/operator` | Shared operator components, tokens, and the setup folds. Leaf of both operator surfaces. |
+| `packages/app` | The deployed server. React Router, `ssr: true`: `/admin`, `/donate`, `/{slug}`, `/api/v1`, sign-in. Database, ledger, payments, mail send, scheduled runs. |
+| `packages/operator` | Shared operator components and tokens, for `/admin` and the gallery. |
 | `packages/form` | The embeddable donation element. A permanent public contract. |
 | `packages/emails` | Mail templates, rendered to strings by the app. |
 | `packages/emails-preview` | Dev-only preview of those templates. |
@@ -69,15 +68,15 @@ The image PATH lists `/exec-daemon/node` (v22.14, below the 22.22 floor) before 
 
 ## Boundaries
 
-**Two operator surfaces.** The dashboard is `/admin` on a deployment. The console is `packages/console-ui`'s screens, served by the app in a later change. A sentence about both says operator screens. Neither word means a terminal window.
+**One operator surface.** The dashboard is `/admin` on a deployment. It always opens: no screen gates on setup and none lists setup steps. A screen speaks only where something can't work, such as a donation form that can't go live (`packages/app/src/lib/server/forms/readiness.ts`).
 
-The console holds the one true thing about this organisation (sites, organisation profile, notification address). Configuration values and processor keys are environment variables. The dashboard holds the records (forms, donations, donors, recurring gifts) and the pages donors read. The dashboard has no organisation screen, and it is not served until setup is finished. The five jobs are `packages/operator/src/setup-folds.ts`'s `SETUP_JOBS`. `FOLD_LABELS` names six folds; the sixth is not a job.
+Configuration values and processor keys are environment variables, set in `.env`, and no screen writes one. Settings (organisation profile, notification address, mail), Payments, the sites list on Donation forms and the QuickBooks part of Books are the deployer's to change; each route gates its own loader and action on `STAFF_USER_ID`, and `packages/app/src/lib/admin/destinations.ts` hides them from members. Where a fix lives in `.env`, a screen says what to ask whoever runs the server and gives that person the command.
 
 **Design systems never meet.** The donation form dresses from `packages/form/src/styles/tokens.css` (`custom-elements.json` is what an integrator may set). Operator surfaces dress from `packages/operator/src/styles/tokens.css`, `base.css`, and `adm.css`. `/admin` derives no colour from a `--donate-*` seed or a `::part()` name. No `/admin` screen gets a `*.browser.spec.ts`. A value a screen needs that the token file cannot express is a gap to report. A deliberate exception is a `raw-colour-ok:`, `raw-length-ok:`, or `type-ok:` note on the line, never a change to the gate.
 
 **Payments** go through the `PaymentProvider` port, never a processor SDK directly (`sole-importer.spec.ts`). **Email** goes through the `EmailProvider` port. SMTP is the interface, on port 465 only (`packages/app/src/lib/server/email/smtp-config.ts`). Nothing selects a transport.
 
-**Secrets** live only under `packages/app/src/lib/server/**` and are deploy-time, never rows in a settings table. Two carve-outs: a key the app mints for itself, and a credential the app refreshes for itself (`quickbooksConnection` in `schema.ts`). Every configuration value is an environment variable, set in `.env` (`.env.example` names them). The console's session token, `CONSOLE_TOKEN`, is one too, and it is on no enumeration.
+**Secrets** live only under `packages/app/src/lib/server/**` and are deploy-time, never rows in a settings table. Two carve-outs: a key the app mints for itself, and a credential the app refreshes for itself (`quickbooksConnection` in `schema.ts`). Every configuration value is an environment variable, set in `.env` (`.env.example` names them).
 
 **Storage.** One libSQL file is the database and there is no second one. `packages/app/src/lib/server/db/client.ts` and `open.ts` are the only modules that name the driver. Photos are the database's too. A page is a flat document in a JSON column. One container serves a deployment and is never scaled: the rate limiters, the response cache and the scheduler are in-process, and correct only while one process runs (`compose.yaml`). The response cache holds a capability or immutable bytes, never a total (`packages/app/src/lib/server/runtime/response-cache.ts`, `packages/app/src/lib/server/pages/goal.ts`).
 

@@ -38,9 +38,7 @@ import { Mark } from './Mark.jsx';
  * @property {ReactNode} [fixLabel] what that link is called. `Fix this` is the default and reads as
  *   an instruction on a line that needs none, so a screen linking away from a step already done
  *   states its own word.
- * @property {ReactNode} [children] the blocks attached under the line, each one carrying
- *   `adm-status__attach` itself: packages/operator/src/styles/adm.css steps the first one off the
- *   sentence and every one after it off its peer, which one wrapper around all of them cannot say.
+ * @property {ReactNode} [children] what is drawn under the line, after its sentence and its link.
  * @property {ReactNode} [steps] the line opened into the steps its subject is made of, as a run of
  *   `StatusStep`s. it is drawn in the line's own two tracks rather than inside the body, which is
  *   what puts a step's mark in the line's mark gutter and a step's sentence on the label's edge —

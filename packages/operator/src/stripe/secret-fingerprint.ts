@@ -10,12 +10,12 @@
 // and compared against the stored value by `webhookSecretStanding` in
 // `packages/app/src/lib/server/payments/webhook-secret.ts`.
 //
-// **it is here rather than beside either writer because both ends stamp and read the stamp.** the
-// operator console registers an endpoint and stamps the secret it stored on it, and the deployment
-// reads the stamp back off the endpoint to say whether what it holds is still the right secret. a
-// second spelling of the key or of the digest is a stamp one end writes and the other cannot find,
-// which reads exactly like the missing secret this exists to detect — the reason `./../
-// deploy-split.ts` is in this package, applied to a value rather than to a name.
+// **one spelling, because the stamp is written in one place and read in another.** the create
+// (`packages/app/src/lib/server/payments/stripe.ts`) stamps the secret it stored on the endpoint,
+// and `webhookSecretStanding` reads the stamp back off the endpoint to say whether what the
+// deployment holds is still the right secret. a second spelling of the key or of the digest is a
+// stamp one end writes and the other cannot find, which reads exactly like the missing secret this
+// exists to detect.
 //
 // a digest and never the secret. Stripe already holds the secret, so what this puts on the account
 // tells its dashboard nothing it does not have; the secret itself written there would be a
@@ -38,12 +38,11 @@ const KEPT = 16;
  * the fingerprint of a signing secret, or `null` for a value that is not one.
  *
  * `null` rather than the digest of an empty string, because an unset variable and a set one must not
- * produce comparable values: two deployments with nothing set would otherwise agree, and a console
+ * produce comparable values: two deployments with nothing set would otherwise agree, and a screen
  * would report a match over a deployment that verifies nothing.
  *
- * `crypto.subtle` rather than a node import. it is the platform primitive on both sides of this
- * module — the deployment runs inside workerd, and the console runs on node, where the same global
- * is what a bare import would reach anyway.
+ * `crypto.subtle` rather than a node import: it is the platform primitive, and on node the same
+ * global is what a bare import would reach anyway.
  */
 export async function secretFingerprint(secret: string | null | undefined): Promise<string | null> {
 	if (typeof secret !== 'string' || secret.trim() === '') return null;

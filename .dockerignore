@@ -14,12 +14,6 @@ packages/app/static/embed/
 .env
 .env.*
 !.env.example
-**/.dev.vars
-**/.dev.vars.*
-**/.deploy.vars
-**/.deploy.vars.*
-**/.console
-**/.wrangler
 **/*.db
 **/*.db-wal
 **/*.db-shm

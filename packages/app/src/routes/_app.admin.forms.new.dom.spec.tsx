@@ -439,6 +439,8 @@ it('says the form will be saved as a draft while a blocker stands, and its submi
 	const band = root.querySelector('[role="status"] .adm-banner__word');
 	expect(band?.textContent).toBe('This form will be saved as a draft');
 	expect(root.textContent).toContain('It can go live once the items above are done.');
+	// the hint under the band is the one place that says it: the status box draws no note of its own.
+	expect(root.textContent).not.toContain('Live is unavailable');
 	// every group is still drawn: the screen loses nothing but Live.
 	expect([...root.querySelectorAll('h2')].map((heading) => heading.textContent)).toEqual([
 		'Name and status',

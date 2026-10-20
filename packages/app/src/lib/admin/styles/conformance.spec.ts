@@ -162,21 +162,16 @@ const defined = new Set(
 const reads = sources.flatMap(referenced);
 const readNames = new Set(reads.map((r) => r.token));
 
-// every class this repository's markup writes onto an element, from every screen on both operator
-// surfaces. built once: the question a stylesheet asks is whether anything anywhere carries a
-// name, so the answer is one set rather than one per sheet.
+// every class this repository's markup writes onto an element, from every operator screen. built
+// once: the question a stylesheet asks is whether anything anywhere carries a name, so the answer
+// is one set rather than one per sheet.
 //
-// the console's screens are in it as well as this surface's, and that is not the same boundary the
-// raw-value sweeps keep. those ask something of a screen, so each surface hands its own list. this
-// asks whether a rule in a shared sheet is dead — and packages/operator/src/styles/adm.css is read
-// by both operator surfaces, so a class only the console wears is a class something wears. globbed
-// across the package line the way the sheets themselves are above; nothing here imports from there.
-//
-// packages/operator/src/components/** and .../behaviour/** are in it for the same reason as the
-// console: a mark, a banner, a save button and the trigger that opens an anchored card are drawn
-// once there and mounted by both surfaces, so a class only one of those shared modules writes is
-// still a class something wears. it is the same package as the sheets above, which is why a class
-// that lives only in a component reads as worn here.
+// packages/operator/src/components/** and .../behaviour/** are in it as well as this surface's
+// screens: a mark, a banner, a save button and the trigger that opens an anchored card are drawn
+// once there and mounted here, so a class only one of those shared modules writes is still a class
+// something wears. it is the same package as the sheets above, which is why a class that lives only
+// in a component reads as worn here. globbed across the package line the way the sheets themselves
+// are above; nothing here imports from there.
 //
 // packages/gallery/src/** is deliberately not in it, and that absence is the gate rather than a
 // glob somebody forgot. this asks whether a rule is dead, and a preview is a specimen rather than
@@ -185,7 +180,6 @@ const readNames = new Set(reads.map((r) => r.token));
 const worn = new Set(
 	[
 		...screens,
-		...globSync('../console-ui/src/**/*.tsx'),
 		...globSync('../operator/src/components/**/*.jsx'),
 		// the specs beside them are filtered out rather than globbed around: a case is not a screen,
 		// so a class worn only by one is worn by nothing — the same finding the gallery's absence
@@ -700,9 +694,8 @@ describe('the --admin-* token layer is what /admin is drawn from', () => {
 
 describe('no raw length in a scoped style block in /admin', () => {
 	it('writes none into a screen', () => {
-		// the screens are handed over as a list rather than globbed by the sweep, so the console's
-		// screens reach the same sweep from the console's own spec. what this file still owns is
-		// which files are in the list, and the `finds the files it is meant to be guarding` case
+		// the screens are handed over as a list rather than globbed by the sweep. what this file
+		// owns is which files are in the list, and the `finds the files it is meant to be guarding` case
 		// that says the glob reaching them matched something and that more than a handful of the
 		// files it matched carry a block at all.
 		expect(rawLengthViolations(screens)).toEqual([]);

@@ -51,7 +51,7 @@ describe('the reserved segments this app answers today', () => {
 	it('are read off the route files themselves', () => {
 		// `quickbooks`, `zapier` and `image` are named in no rule: only the route files say they are taken
 		expect([...RESERVED_SEGMENTS]).toEqual(
-			expect.arrayContaining(['admin', 'api', 'console', 'login', 'quickbooks', 'zapier', 'image'])
+			expect.arrayContaining(['admin', 'api', 'login', 'quickbooks', 'zapier', 'image'])
 		);
 	});
 
@@ -68,7 +68,6 @@ describe('a campaign address', () => {
 	it.each([
 		['admin', '/admin'],
 		['api', '/api'],
-		['console', '/console'],
 		['donate', '/donate'],
 		['login', '/login'],
 		['assets', '/assets']

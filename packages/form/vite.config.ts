@@ -12,8 +12,8 @@ import { defineConfig } from 'vite';
 //
 // the port is pinned so `pnpm run form` opens the same address every time, and `strictPort` is what
 // makes a second copy fail loudly rather than move itself to a port the first one's tab is not on.
-// 5321 is packages/app's dev server (packages/app/server/index.ts), 5322 packages/console-ui's and
-// 5323 packages/gallery's (each package's own vite.config.ts), so all four run side by side.
+// 5321 is packages/app's dev server (packages/app/server/index.ts) and 5323 is packages/gallery's
+// (each package's own vite.config.ts), so all three run side by side.
 const DEV_PORT = 5324;
 
 export default defineConfig({

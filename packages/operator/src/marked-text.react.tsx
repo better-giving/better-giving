@@ -11,12 +11,10 @@ import { InlineCode } from './components/data/CodeSlab.jsx';
 // operator a pair of backticks, and the strings interpolate values somebody typed, so nothing here
 // may reach a screen through an html render.
 //
-// it is here rather than beside one of its callers because both operator surfaces print those
-// sentences. the dashboard draws the parsers' field messages
-// (`./origins.ts`, `packages/app/src/lib/forms/input-schema.ts`) and the
-// readiness block's consequence lines (`packages/app/src/lib/server/forms/readiness.ts`); the
-// console draws the deployment's own refusals off the wire, along with the report a test send
-// comes back with.
+// it is here rather than beside one of its callers because several print those sentences: the
+// dashboard draws the parsers' field messages (`./origins.ts`,
+// `packages/app/src/lib/forms/input-schema.ts`) and the readiness block's consequence lines
+// (`packages/app/src/lib/server/forms/readiness.ts`).
 //
 // it is not one of the ports in ./components/**: what this takes is a string only a running
 // deployment produces, never the literal jsx a screen composes a port from, so it holds no place

@@ -2,7 +2,6 @@ import { createContext } from 'react-router';
 // types and nothing else, so no server module is pulled into a bundle by this import — the app's
 // own tsconfig sets `verbatimModuleSyntax`, which makes `import type` erase verbatim.
 import type { Auth } from '$lib/server/auth';
-import type { ConsoleSession } from '$lib/server/console/access';
 import type { Db } from '$lib/server/db/client';
 import type { ConnectorKey } from '$lib/server/db/schema';
 import type { Deferred } from '$lib/server/runtime/deferred';
@@ -41,9 +40,8 @@ export const platform = createContext<{
  *
  * it is seeded in the entry beside `platform` rather than by a `middleware`, and that placement is
  * the whole of it: a middleware sets nothing for a route outside the layout it is mounted on, and
- * the surfaces needing a handle most sit outside every layout there is — the public api, the
- * processor's callback, the console wire surface. so a loader takes it with `context.get(database)`
- * whatever surface it is on.
+ * the surfaces needing a handle most sit outside every layout there is — the public api and the
+ * processor's callback. so a loader takes it with `context.get(database)` whatever surface it is on.
  *
  * the cost is one drizzle wrapper allocated for a request that never reads, and no I/O — see
  * `createDb` in $lib/server/db/client.ts.
@@ -75,21 +73,6 @@ export const staff = createContext<Auth['$Infer']['Session']['user']>();
  * for.
  */
 export const auth = createContext<Auth>();
-
-/**
- * what a caller on the console surface proved, resolved once by the check on that surface.
- *
- * set by `consoleGate` in src/lib/server/console/gate.ts and read by the three routes beneath it.
- * it carries when the session ends and nothing else — **the token itself never leaves the gate**,
- * so no route can compare it, log it or answer with it, and a route added beside them inherits
- * that by taking this value.
- *
- * no `null` case, for the reason `staff` above has none: a route on that surface cannot be reached
- * by a caller the check refused. it is a separate context from `staff` rather than a widening of
- * it because the two are different proofs — a session cookie against a bearer credential — and a
- * screen that could narrow one into the other is a screen able to be entered by the wrong one.
- */
-export const consoleSession = createContext<ConsoleSession>();
 
 /**
  * the hash of the Zapier key a caller on `/zapier` presented, set by the key check on that

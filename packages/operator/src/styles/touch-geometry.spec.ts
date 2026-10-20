@@ -21,7 +21,6 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 // fails.
 
 const css = sheet('adm.css');
-const base = sheet('base.css');
 const tokens = sheet('tokens.css');
 
 /** the `var()` names and `env()` calls a value adds up, in the order it spells them. */
@@ -36,9 +35,8 @@ describe("a row a finger aims at takes the row's floor", () => {
 		['.adm-moresheet__close'],
 		// the foot of a plane something can be added to, as wide as the plane.
 		['.adm-table__add'],
-		// an option in a select's list and in the coin picker's: padding and a line or two of type.
-		['.adm-selectrow'],
-		['.adm-coinrow']
+		// an option in a select's list: padding and a line or two of type.
+		['.adm-selectrow']
 	])('%s', (selector) => {
 		expect(ruleOf(css, selector).get('min-block-size')).toBe('var(--admin-touch-min)');
 	});
@@ -165,8 +163,6 @@ describe("the range slider's thumb is drawn small and aimed at at the floor", ()
 });
 
 describe("a select's list counts the row's floor", () => {
-	// the rule the coin picker's list shares, which is the first to name the select's on a line of
-	// its own.
 	const list = ruleOf(css, '.adm-selectlist');
 
 	// four and a half rows of the floor, and the list's own padding and border at both ends on top,
@@ -252,14 +248,12 @@ type Target = {
 
 /**
  * one member of the shared rule: the rule that makes the control the box its target is placed
- * against, the control as drawn, any rule placing its target differently where it stands, and each
- * neighbour as what it is, how far the target reaches toward it and the room the control stands
+ * against, the control as drawn, and each neighbour as what it is, how far the target reaches toward it and the room the control stands
  * off it by.
  */
 type Member = {
 	readonly holder: string;
 	readonly drawn: () => Drawn;
-	readonly contexts?: readonly string[];
 	readonly neighbours: () => readonly (readonly [string, number, number])[];
 };
 
@@ -269,65 +263,8 @@ const widthOf = (border: string | undefined) =>
 
 const BUTTON_BORDER = () => widthOf(ruleOf(css, '.adm-btn').get('border'));
 const ROW_REMOVE = '.adm-rows__row > .adm-rows__remove';
-const LOCKED_TRIGGER = '.adm-rows__row > :not(.adm-field) > .adm-markbtn';
 
 const MEMBERS: Record<string, Member> = {
-	// a press-to-open trigger hugs its mark. its neighbours are where the one row carrying it beside
-	// a box puts it: in a locked row's status, one column step, the trailing item's border and its
-	// padding off the box, and over the next row's Remove.
-	'.adm-markbtn': {
-		holder: '.adm-markbtn',
-		drawn: () => {
-			const mark = evaluate(ruleOf(base, '.adm-mark').get('inline-size'));
-			return {
-				inline: mark,
-				block: mark,
-				border: widthOf(ruleOf(css, '.adm-markbtn').get('border'))
-			};
-		},
-		contexts: [LOCKED_TRIGGER],
-		neighbours: () => {
-			const at = target('.adm-markbtn', LOCKED_TRIGGER);
-			const [rowStep, boxStep] = terms(ruleOf(css, '.adm-rows').get('gap'));
-			const trailing = ruleOf(css, '.adm-rows__row > :not(.adm-field, .adm-pair)');
-			const trailingBorder = ruleOf(css, ':where(.adm-rows__row > :not(.adm-field, .adm-pair))');
-			// the trigger is centred on a row as tall as the box beside it.
-			const row = evaluate(ruleOf(css, ROW_REMOVE).get('min-block-size'));
-			const mark = evaluate(ruleOf(base, '.adm-mark').get('block-size'));
-			return [
-				[
-					"the locked row's box",
-					at.inlineStart,
-					px(boxStep ?? '') +
-						widthOf(trailingBorder.get('border-inline')) +
-						evaluate(trailing.get('padding-inline'))
-				],
-				[
-					"the next row's Remove",
-					at.blockEnd - (row - mark) / 2 + target(ROW_REMOVE).blockStart,
-					px(rowStep ?? '')
-				]
-			];
-		}
-	},
-	// the logo's two presses on the square's corner, the small control's square each.
-	'.adm-logo__presses > .adm-btn': {
-		holder: '.adm-btn',
-		drawn: () => ({
-			inline: evaluate(ruleOf(css, '.adm-logo__presses > .adm-btn').get('inline-size')),
-			block: evaluate(ruleOf(css, '.adm-btn--sm').get('min-block-size')),
-			border: BUTTON_BORDER()
-		}),
-		neighbours: () => {
-			const at = target('.adm-logo__presses > .adm-btn');
-			const presses = ruleOf(css, '.adm-logo__presses');
-			return [
-				['the other press', at.inlineEnd + at.inlineStart, evaluate(presses.get('gap'))],
-				["the square's inline edge", at.inlineEnd, evaluate(presses.get('inset-inline-end'))],
-				["the square's block edge", at.blockStart, evaluate(presses.get('inset-block-start'))]
-			];
-		}
-	},
 	// a row's Remove is a button (../components/controls/Button.jsx draws `.adm-btn`), the box's
 	// height and square.
 	[ROW_REMOVE]: {
@@ -371,18 +308,14 @@ const MEMBERS: Record<string, Member> = {
 };
 
 /**
- * the target the shared rule draws on a member, with the rule a context adds over it. a size and an
- * inset are measured from the holder's padding box, so `100%` is the drawn size less the border and
+ * the target the shared rule draws on a member. a size and an inset are measured from the holder's padding box, so `100%` is the drawn size less the border and
  * the border is added back to place the target against the border box.
  */
-function target(member: string, context?: string): Target {
+function target(member: string): Target {
 	const entry = MEMBERS[member];
 	if (entry === undefined) throw new Error(`${member} is not a member named in this spec`);
 	const drawn = entry.drawn();
-	const stated = new Map([
-		...(floorRules[0]?.stated ?? []),
-		...(context === undefined ? [] : ruleOf(css, `${context}::before`))
-	]);
+	const stated = new Map(floorRules[0]?.stated ?? []);
 	const inline = evaluate(stated.get('inline-size'), drawn.inline - 2 * drawn.border);
 	const block = evaluate(stated.get('block-size'), drawn.block - 2 * drawn.border);
 	const inlineStart =
@@ -423,13 +356,11 @@ describe('a control drawn under the floor takes a target at it', () => {
 	});
 
 	it.each(members)('%s reaches the floor and covers the whole control', (member) => {
-		const contexts = MEMBERS[member]?.contexts ?? [];
-		for (const at of [target(member), ...contexts.map((context) => target(member, context))]) {
-			expect(at.inline).toBeGreaterThanOrEqual(px('--admin-touch-min'));
-			expect(at.block).toBeGreaterThanOrEqual(px('--admin-touch-min'));
-			for (const reach of [at.inlineStart, at.inlineEnd, at.blockStart, at.blockEnd]) {
-				expect(reach).toBeGreaterThanOrEqual(0);
-			}
+		const at = target(member);
+		expect(at.inline).toBeGreaterThanOrEqual(px('--admin-touch-min'));
+		expect(at.block).toBeGreaterThanOrEqual(px('--admin-touch-min'));
+		for (const reach of [at.inlineStart, at.inlineEnd, at.blockStart, at.blockEnd]) {
+			expect(reach).toBeGreaterThanOrEqual(0);
 		}
 	});
 

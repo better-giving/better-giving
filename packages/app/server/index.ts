@@ -21,8 +21,8 @@ import { startServer } from './start.ts';
  * the port `pnpm dev` serves on, pinned rather than taken from `PORT` because the app spells the dev
  * address out: `trustedOrigins` in src/lib/server/auth/index.ts lists it, and better-auth refuses a
  * sign-in POST from an origin that is not in that list. a collision fails at `listen` instead of
- * moving the server to a port nothing expects. 5322 is packages/console-ui's dev server and 5323 is
- * packages/gallery's (each package's own vite.config.ts), so all three run side by side.
+ * moving the server to a port nothing expects. 5323 is packages/gallery's and 5324 is packages/form's
+ * (each package's own vite.config.ts), so all three run side by side.
  */
 const DEV_PORT = 5321;
 

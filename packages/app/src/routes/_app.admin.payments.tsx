@@ -25,7 +25,6 @@ import { resultFor, whichForm } from '$lib/admin/use-admin-form';
 import { defineForm, type FormRejection } from '$lib/forms/definition';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm } from '$lib/server/conform';
-import { walletHosts } from '$lib/server/console/wallet-hosts';
 import { notFound } from '$lib/server/db/load-failure';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { readPaymentsScreen } from '$lib/server/payments/processor-cards';
@@ -36,6 +35,7 @@ import {
 } from '$lib/server/payments/provider';
 import { setUpRecurringGifts } from '$lib/server/payments/recurring-provision';
 import { levelWalletDomains } from '$lib/server/payments/wallet-domains';
+import { walletHosts } from '$lib/server/payments/wallet-hosts';
 import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.payments';
 
@@ -63,7 +63,7 @@ const RECURRING_FORM = defineForm({
 
 /**
  * Register all sites, which states nothing: the hostnames are this request's own address and the
- * deployment's `site` rows, never a value a body could name ($lib/server/console/wallet-hosts.ts).
+ * deployment's `site` rows, never a value a body could name ($lib/server/payments/wallet-hosts.ts).
  */
 const WALLETS_FORM = defineForm({ id: WALLETS_FORM_ID, schema: z.object({}) });
 

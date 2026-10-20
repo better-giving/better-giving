@@ -19,9 +19,9 @@ import { progressBarFinishing, progressBarLanded, subscribeProgressBar } from '.
  *
  * it is apart from the line because the line is mounted only while a move runs, and a live region
  * that arrives with a move is one a reader commonly has not registered by the time its words land —
- * ../controls/SaveButton.jsx keeps its region mounted for its whole life for the same reason. so
- * both callers mount this beside the line, always (packages/console-ui/src/root.tsx,
- * packages/app/src/routes/_app.tsx), and the line says nothing of its own.
+ * ../controls/SaveButton.jsx keeps its region mounted for its whole life for the same reason. so a
+ * caller mounts this beside the line, always (packages/app/src/routes/_app.tsx does), and the line
+ * says nothing of its own.
  *
  * `.adm-vh` from ../../styles/base.css: drawn to a reader and not on the screen.
  *
@@ -46,8 +46,7 @@ export function MoveStatus({ label }) {
  * ../../progress-bar.ts is the signal between this and the loader waiting on it, because the screen
  * the reading is for has not rendered and there are no props between them.
  *
- * **it finishes, and is seen full, before the page changes.** the console's document mounts it
- * (packages/console-ui/src/root.tsx), and so does the dashboard's frame
+ * **it finishes, and is seen full, before the page changes.** the dashboard's frame mounts it
  * (packages/app/src/routes/_app.tsx).
  *
  * @param {ProgressBarProps} props
@@ -56,8 +55,8 @@ export function ProgressBar({ label, overMove }) {
 	const finishing = useSyncExternalStore(
 		subscribeProgressBar,
 		progressBarFinishing,
-		// a document rendered ahead of any reading has nothing read and nothing finished — the
-		// console's build rendering index.html once (packages/console-ui/vite.config.ts).
+		// a document rendered ahead of any reading has nothing read and nothing finished — a server
+		// render is one.
 		progressBarFinishing
 	);
 	const bar = useRef(/** @type {HTMLSpanElement | null} */ (null));
@@ -66,9 +65,8 @@ export function ProgressBar({ label, overMove }) {
 	// reports a change to its contents and never its own arrival, so one that arrived holding its
 	// words would be announced by nobody. ../controls/SaveButton.jsx writes its region the same way.
 	//
-	// a task is enough only because the cells are prerendered with the document: the console's
-	// `HydrateFallback` (packages/console-ui/src/root.tsx) is in the index.html its build writes, so
-	// the region is on the page, empty, before the client hydrates and writes into it. the cells
+	// a task is enough only where the cells are prerendered with the document, so the region is on
+	// the page, empty, before the client hydrates and writes into it. the cells
 	// mounted later than the document — into a page already drawn — are a region arriving a task
 	// before its words, which a reader commonly has not registered; a caller that needs that mounts
 	// {@link MoveStatus} for the life of the document instead, as the line over a move does.

@@ -50,11 +50,18 @@ type FormNameFieldsProps = {
 	/**
 	 * whether Live may be chosen at all.
 	 *
-	 * `false` while a blocker stands, in which case the select offers Draft alone and says why. a
-	 * filtered `<option>` list is not a control — the action behind this re-checks the same
-	 * condition against the deployment as it stands when the button is pressed.
+	 * `false` while a blocker stands, in which case the select offers Draft alone. a filtered
+	 * `<option>` list is not a control — the action behind this re-checks the same condition
+	 * against the deployment as it stands when the button is pressed.
 	 */
 	readonly liveOffered?: boolean;
+	/**
+	 * whether the select says why Live is missing while it is withheld.
+	 *
+	 * `false` where the screen already says it above the group, which the create screen's draft
+	 * banner does.
+	 */
+	readonly liveNote?: boolean;
 	/**
 	 * the group's own submit, at the foot of the group it saves.
 	 *
@@ -63,12 +70,17 @@ type FormNameFieldsProps = {
 	readonly footer?: ReactNode;
 };
 
-export function FormNameFields({ boxes, liveOffered = true, footer }: FormNameFieldsProps) {
+export function FormNameFields({
+	boxes,
+	liveOffered = true,
+	liveNote = true,
+	footer
+}: FormNameFieldsProps) {
 	const statusError = boxes.status.errors?.[0];
 
 	// the two statuses this select offers. `EDITABLE_FORM_STATUSES` is the pair an operator may
 	// choose between; while a blocker stands, publishing would produce a form that serves nothing,
-	// so Live comes off the list and a hint over the box says why.
+	// so Live comes off the list and a note under the box says why.
 	const statuses = (
 		liveOffered ? EDITABLE_FORM_STATUSES : EDITABLE_FORM_STATUSES.filter((it) => it !== 'live')
 	).map((status) => ({ value: status, label: FORM_STATUS_LABELS[status] }));
@@ -100,18 +112,21 @@ export function FormNameFields({ boxes, liveOffered = true, footer }: FormNameFi
 				    fact, and a box that wrote only the first would leave a form that reads archived and
 				    behaves live.
 
-				    the hint is what says why Live is not among the options while a blocker stands. it
-				    is read before choosing and points at the readiness block above
-				    (./readiness.tsx), which says what to do; it is not a complaint about this
-				    submission, so the error register is left to whatever the last save refused — both
-				    are reachable from the box at once. */}
+				    the note is what says why Live is not among the options while a blocker stands. it
+				    points at the readiness block above (./readiness.tsx), which says what to do; it is
+				    not a complaint about this submission, so the error register is left to whatever the
+				    last save refused — both are reachable from the box at once. */}
 				<SelectWithNote
 					id={boxes.status.id}
 					name={boxes.status.name}
 					label={FORM_FIELD_LABELS.status}
 					defaultValue={boxes.status.defaultValue}
 					options={statuses}
-					hint={liveOffered ? undefined : 'Live is unavailable until the items above are done.'}
+					note={
+						liveOffered || !liveNote
+							? undefined
+							: 'Live is unavailable until the items above are done.'
+					}
 					error={statusError === undefined ? undefined : <MarkedText text={statusError} />}
 				/>
 			</div>

@@ -53,7 +53,8 @@ import { Mark } from '../status/Mark.jsx';
  * @property {ComponentType<DestinationLinkProps> | undefined} [link] what the cell is drawn as.
  *   unstated, a plain `<a>` — a router's link imported here would look for a context that is not
  *   there. **a mounted rail states one.** this package declares no router and
- *   cannot (CLAUDE.md: the graph is `app → operator ← console`, and the leaf reaches neither), so
+ *   cannot (AGENTS.md → Workspace: the graph is `app → operator`, and the leaf reaches nothing
+ *   above it), so
  *   the surface that has one hands it in — and a bare anchor to an internal address takes the
  *   whole document with it, which is a rail of full page loads that renders identically.
  */

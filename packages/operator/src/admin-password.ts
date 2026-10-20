@@ -3,20 +3,13 @@
 //
 // **the rule is here because `ADMIN_PASSWORD` passes through no deployment save at all.** every
 // other value an operator types crosses a parse on the deployment that can refuse it and answer
-// with a sentence; this one the console writes straight to the cloudflare account, and the
-// deployment first meets it when somebody tries to sign in. so a rule stated only on the deployment
-// is a rule the operator learns by being locked out: the console reports the value stored, the
-// set-up check counts the job done, and the sign-in screen refuses every attempt with nothing on
-// either surface saying why.
+// with a sentence; this one is set in `.env`, and the deployment first meets it when somebody tries
+// to sign in. so the reading below is what says why a value cannot be signed in with, rather than
+// a sign-in screen refusing every attempt with nothing saying why.
 //
-// this is the reading and not only the number. a console holding the constant alone would write its
-// own sentence, and the sentence is the half that has to match — an operator refused by one end in
-// words the other never uses is being told about two rules.
-//
-// **the deployment stays the authority for whether a sign-in happens.**
-// `packages/app/src/lib/server/auth/credential.ts` reads what its worker was started with and is
-// what the sign-in path asks; the console reading a typed value first is what stops an unusable one
-// being stored in the first place.
+// **the deployment is the authority for whether a sign-in happens.**
+// `packages/app/src/lib/server/auth/credential.ts` reads what the deployment was started with and
+// is what the sign-in path asks.
 //
 // **the value is never echoed and never measured.** it is the whole of this app's credential
 // entropy and the sentence is printed under a box somebody is typing into, so neither the value nor
@@ -31,16 +24,9 @@
 // needs beyond either — which variable, and where to set it — its own wrapper states
 // (`readStaffCredential` in `packages/app/src/lib/server/auth/credential.ts`).
 //
-// **the length rule is stated over the box as well as under it.** a screen that first mentions a
-// rule in a refusal is a screen an operator submits, corrects and submits again to find out what it
-// wanted; the console's two password boxes carry the minimum as a hint before anything is typed
-// (`packages/console-ui/src/routes/_index.tsx` and `packages/console-ui/src/lib/password-fold.tsx`),
-// and the sentence below is what that same rule sounds like when it has been broken.
-//
-// this package is a leaf and imports nothing of the app's, which is what makes it the only place
-// both ends can reach. it is plain typescript rather than zod: the checks below are a sequence where
-// the first failure is the only message worth showing, and a schema reports every check that failed
-// in no guaranteed order.
+// this package is a leaf and imports nothing of the app's. it is plain typescript rather than zod:
+// the checks below are a sequence where the first failure is the only message worth showing, and a
+// schema reports every check that failed in no guaranteed order.
 
 /**
  * shortest `ADMIN_PASSWORD` a deployment will authenticate against.
@@ -56,19 +42,16 @@
  * search space is the password alone. `packages/app/.dev.vars.example` tells the operator to
  * generate the value rather than choose it.
  *
- * exported so both ends assert the boundary rather than a number copied out of this file, which is
- * how a minimum silently stops being tested when it is raised.
+ * exported so every reader asserts the boundary rather than a number copied out of this file, which
+ * is how a minimum silently stops being tested when it is raised.
  */
 export const MIN_ADMIN_PASSWORD_LENGTH = 12;
 
 /**
  * the username the dashboard password signs in as.
  *
- * a constant and not a value an operator picks, which is what lets the console state it beside the
- * password box before the deployment has ever run. `packages/app/src/lib/server/auth/staff-plugin.ts`
- * stores it as the one staff row's identifier and argues why a username sits in an email column; it
- * is declared here for the reason the length rule is — both surfaces read one value, and a console
- * typing the word itself is a hint that lies the day the identifier moves.
+ * a constant and not a value an operator picks. `packages/app/src/lib/server/auth/staff-plugin.ts`
+ * stores it as the one staff row's identifier and argues why a username sits in an email column.
  */
 export const ADMIN_USERNAME = 'admin';
 

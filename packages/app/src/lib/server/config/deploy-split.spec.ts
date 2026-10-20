@@ -29,19 +29,15 @@ import { CONFIG_VAR_NAMES } from './env';
 // the stronger form of that check anyway, since it catches a name on the list that nothing reads as
 // well as a name read that the list does not hold.
 //
-// `secret:delete` and `secret:list` are deliberately not swept for here. `CONSOLE_TOKEN` is not a
-// configuration value — the console mints it for its own session — and ../../../commands.spec.ts is
-// what refuses a mention of either removed script.
+// `secret:delete` and `secret:list` are deliberately not swept for here: ../../../commands.spec.ts
+// is what refuses a mention of either removed script.
 
 /**
  * everything that could hold an instruction, plus the three documents beside it.
  *
- * three packages rather than this one, because an instruction is spelled wherever an operator is
- * read to. the list itself lives in packages/operator now, and packages/console-ui is the surface
- * an operator reads while looking at a deployment from outside — a sweep of this package alone
- * would pass over both. read by path and never imported: biome.jsonc refuses a *module* from here into
- * packages/console-ui, and reading a file the way a sweep does is what every gate across package
- * lines in this repository already does.
+ * two packages rather than this one, because an instruction is spelled wherever an operator is
+ * read to, and the list itself lives in packages/operator — a sweep of this package alone would
+ * pass over it. read by path, the way every gate across package lines in this repository reads.
  *
  * `.env.example` is the third document and the one most exposed to this rule: it is organised
  * value by value and says how each is set, so an instruction there stands directly beside the name
@@ -52,8 +48,6 @@ const SOURCES = [
 	...globSync('src/**/*.tsx'),
 	...globSync('scripts/*.js'),
 	...globSync('../operator/src/**/*.ts'),
-	...globSync('../console-ui/src/**/*.ts'),
-	...globSync('../console-ui/src/**/*.tsx'),
 	'../../README.md',
 	'../../DEPLOY.md',
 	'../../.env.example'
@@ -121,10 +115,9 @@ describe('the command an operator is told to set a value with', () => {
 		expect(SOURCES.length).toBeGreaterThan(100);
 		expect(SOURCES).toContain('../../DEPLOY.md');
 		expect(SOURCES).toContain('../../.env.example');
-		// the two packages the sweep was widened to. a glob that stopped matching would otherwise
-		// only ever show as a sweep that got quieter.
+		// the package the sweep was widened to. a glob that stopped matching would otherwise only
+		// ever show as a sweep that got quieter.
 		expect(SOURCES).toContain('../operator/src/deploy-split.ts');
-		expect(SOURCES).toContain('../console-ui/src/lib/secret-groups.ts');
 		expect(sites(/pnpm run deploy --var/g).length).toBeGreaterThan(0);
 	});
 

@@ -16,17 +16,16 @@ import { describe, expect, it } from 'vitest';
 // and every one of them has one home.
 //
 // **speaking is what the rule is about, and vocabulary is not speaking.** the production host is
-// stated in packages/operator/src/console/quickbooks.ts, which the deployment and the operator
-// console both read and which holds no `fetch` and makes no call of its own; the sandbox host and
+// stated in packages/operator/src/console/quickbooks.ts, which holds no `fetch` and makes no call of
+// its own; the sandbox host and
 // the three OAuth addresses are stated in ./quickbooks.ts. so a host is swept against the file that
 // holds it rather than against one file for all five.
 //
 // **a name is guarded where the address would have been.** a host reachable by import is a host a
 // route can `fetch` with nothing left in it for the sweep above to catch, so who may take
-// `QUICKBOOKS_PRODUCTION_URL` out of that module is swept as well. two modules may: ./quickbooks.ts,
-// which calls Intuit, and packages/console-ui/src/lib/quickbooks-section.tsx, which draws it as the
-// example an empty box stands on. everything else in this app takes it from ./quickbooks.ts, which
-// re-exports it.
+// `QUICKBOOKS_PRODUCTION_URL` out of that module is swept as well. one module may: ./quickbooks.ts,
+// which calls Intuit. everything else in this app takes it from ./quickbooks.ts, which re-exports
+// it.
 //
 // **a provider is guarded before its SDK exists.** neither package below is installed, and both are
 // swept anyway: the shortcut is taken on the day somebody is standing something up, so the entry
@@ -50,14 +49,11 @@ const ADAPTER = resolve(import.meta.dirname, 'quickbooks.ts');
 const VOCABULARY = resolve(ROOT, 'packages/operator/src/console/quickbooks.ts');
 const VOCABULARY_SPECIFIER = '@better-giving/operator/console/quickbooks';
 
-/** the console section that draws the production address as a placeholder example. */
-const SECTION = resolve(ROOT, 'packages/console-ui/src/lib/quickbooks-section.tsx');
-
 /** the name {@link VOCABULARY} states that host under. */
 const HOST_NAME = 'QUICKBOOKS_PRODUCTION_URL';
 
-/** the two modules that may take {@link HOST_NAME} straight out of {@link VOCABULARY}. */
-const HOST_NAME_READERS = [ADAPTER, SECTION];
+/** the one module that may take {@link HOST_NAME} straight out of {@link VOCABULARY}. */
+const HOST_NAME_READERS = [ADAPTER];
 
 /**
  * the QuickBooks packages the tree is swept for.
@@ -278,7 +274,7 @@ describe('one module speaks to QuickBooks and nothing else does', () => {
 		expect(production.test('https://quickbooks.api.intuit.com/v3/company/1/query')).toBe(true);
 	});
 
-	it(`finds no module but those two taking \`${HOST_NAME}\` out of the vocabulary`, () => {
+	it(`finds no module but the adapter taking \`${HOST_NAME}\` out of the vocabulary`, () => {
 		const offenders = files
 			.filter((file) => !HOST_NAME_READERS.includes(file))
 			.filter((file) => takesHostName(readFileSync(file, 'utf8')))
@@ -309,8 +305,7 @@ describe('one module speaks to QuickBooks and nothing else does', () => {
 			expect(takesHostName(line), `no pattern matched: ${line}`).toBe(true);
 		}
 		// the module states more than that one name, and a reader of the rest is not a second
-		// speaker: packages/console-ui/src/lib/quickbooks-standing.ts takes its types and
-		// `QUICKBOOKS_RECOURSES` from it and reaches no host by doing so.
+		// speaker: taking its types or `QUICKBOOKS_RECOURSES` reaches no host.
 		expect(takesHostName(`import { QUICKBOOKS_RECOURSES } from '${VOCABULARY_SPECIFIER}';`)).toBe(
 			false
 		);

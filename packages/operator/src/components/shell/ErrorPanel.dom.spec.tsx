@@ -11,10 +11,9 @@ import { ErrorPanel } from './ErrorPanel.jsx';
 // follow — so the case below reads the wrapper off both and compares them rather than restating
 // what either draws.
 //
-// the second thing held here is that this part names no surface's route table. it is a leaf both
-// the dashboard and the console consume, and an address written into it is an address the other
-// surface can only work around — which is what sent both surfaces off to hand-draw an
-// error state of their own.
+// the second thing held here is that this part names no surface's route table. it is a leaf, and an
+// address written into it is an address any other mount can only work around — which is what
+// sends a surface off to hand-draw an error state of its own.
 //
 // a component spec is `.tsx` and both pools collect either extension — ../forms/Field.dom.spec.tsx
 // says why.
@@ -126,10 +125,9 @@ describe('an error panel arriving in front of a reader', () => {
 describe('the error panel as a module', () => {
 	// two claims a rendered tree cannot make. the first is that the panel is reached rather than
 	// redrawn: two wrappers carrying the same classes render identically and stay identical only
-	// until one of them is changed. the second is that no address is written into a part both the
-	// dashboard and the console mount — that one line is what sent both of them off to
-	// hand-draw an error state of their own, and it left the repository's last `as="a"` on the
-	// dashboard's 404 face taking the whole document with it.
+	// until one of them is changed. the second is that no address is written into a part the
+	// dashboard mounts — an address there is what sends a surface off to hand-draw an error state
+	// of its own, and an `as="a"` on the dashboard's 404 face takes the whole document with it.
 	const source = readFileSync('src/components/shell/ErrorPanel.jsx', 'utf8').replace(
 		/\/\*[\s\S]*?\*\//g,
 		' '
