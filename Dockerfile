@@ -15,6 +15,25 @@ FROM base AS build
 COPY . .
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store \
 	pnpm install --frozen-lockfile --store-dir /pnpm-store
+# setup-webhook.ts as one module, the workspace packages it imports inlined from source, so the
+# runtime stage carries no workspace package but the app. a package packages/app resolves stays a
+# bare import for the runtime stage's node_modules to answer; one only a workspace package declares
+# is inlined too. configFile: false because vite.config.ts builds the react-router app.
+RUN cd packages/app && node --input-type=module <<'EOF'
+import { build } from 'vite';
+await build({
+	configFile: false,
+	publicDir: false,
+	logLevel: 'warn',
+	ssr: { noExternal: [/^@better-giving\//] },
+	build: {
+		ssr: 'scripts/setup-webhook.ts',
+		target: 'node22',
+		outDir: '/setup-webhook',
+		emptyOutDir: true
+	}
+});
+EOF
 # empty unless the image build passes one; version-define.ts reads it into the bundle.
 ARG BETTER_GIVING_VERSION
 RUN pnpm build
@@ -41,13 +60,13 @@ COPY --from=build /repo/packages/app/build ./build
 COPY --from=build /repo/packages/app/server ./server
 COPY --from=build /repo/packages/app/src ./src
 COPY --from=build /repo/packages/app/migrations ./migrations
-COPY --from=build /repo/packages/app/scripts/migrate.ts /repo/packages/app/scripts/backup.ts /repo/packages/app/scripts/setup-webhook.ts ./scripts/
-# the workspace packages setup-webhook.ts imports from source. node_modules links each by a
-# relative path to its package directory, which prod-deps leaves out.
-COPY --from=build /repo/packages/operator/package.json /repo/packages/operator/package.json
-COPY --from=build /repo/packages/operator/src /repo/packages/operator/src
-COPY --from=build /repo/packages/form/package.json /repo/packages/form/package.json
-COPY --from=build /repo/packages/form/src /repo/packages/form/src
+COPY --from=build /repo/packages/app/scripts/migrate.ts /repo/packages/app/scripts/backup.ts ./scripts/
+# javascript under the .ts name DEPLOY.md and the Payments screen print; node finds no types to
+# strip.
+COPY --from=build /setup-webhook/setup-webhook.js ./scripts/setup-webhook.ts
+# loads the bundle against this stage's node_modules, so an import nothing here answers fails the
+# build (exit 1) rather than an operator's run. with no name the script prints its usage, exit 2.
+RUN node scripts/setup-webhook.ts || [ $? -eq 2 ]
 USER node
 EXPOSE 3000
 # exec form: node is PID 1 and receives SIGTERM itself, which server/index.ts drains on.
