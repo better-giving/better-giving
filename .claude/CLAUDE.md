@@ -27,8 +27,6 @@ team works.
 | **skills**                           | `drizzle` · `zod` · `conform` · `xstate` · `react-email` · `vitest` · `api-design` | `drizzle-orm` 0.45.2; `zod` 4.4.3 and `@conform-to/react` 1.21.1 from the catalog, declared by `packages/app` and `packages/console-ui` alike; `xstate` 5.32.5 from the catalog, declared by `packages/form` and `packages/app`; `react-email` 6.9.3 in `packages/emails-preview` and `@react-email/render` 2.1.0 in `packages/emails`; `vitest` 4.1.10 in every package that tests, and `@vitest/browser-playwright` 4.1.10 in `packages/form` alone, so the skill's v4 forks are the ones that apply; `api-design` for `/api/v1`, the Zapier key the app mints and the hooks it posts to |
 | **mcp**                              | `context7` · `better-auth`                          | `.mcp.json`, enabled in `.claude/settings.local.json`; no Turso plugin, since the database is a local file and that plugin's value is Turso Cloud state |
 
-**project seats** — `/reset` and `/release` (`.claude/skills/`) are the user's to type, never invoked by a seat.
-
 **test** — `packages/app/node_modules/.vite/vitest/*/results.json` (vitest 4.1.10's run of 2026-10-20) puts `db` at ≥145s over 155 spec files (slowest 18s, `server/start.db.spec.ts`), `dom` at ≥139s over 60 (slowest 43s, `src/lib/donate/card.dom.spec.tsx`), and `server` at ≥50s over 154, test time only; `test:browser` drives one chromium for `packages/form`'s 11 browser specs. Scope a run to the file the slice touched.
 
 A slice reaching a stack no seat above covers is a question for the user, naming the seat it would
