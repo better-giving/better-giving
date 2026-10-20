@@ -10,9 +10,10 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  *
  * the dashboard states figures and every other one but Settings is a collection. Settings holds
  * what the organisation holds one of — its profile with its mission, logo and brand colour, and the
- * address this deployment reaches it at — and shows the mail values it sends with. payments, spam
- * protection and the site list are still set up on the operator console and are not destinations
- * here (CLAUDE.md → Two operator surfaces). the colleagues who may sign in are the one thing about
+ * address this deployment reaches it at — and shows the mail values it sends with. Payments reads
+ * where each processor's account stands and never holds a key. spam protection and the site list
+ * are still set up on the operator console and are not destinations here (CLAUDE.md → Two operator
+ * surfaces). the colleagues who may sign in are the one thing about
  * access that is a collection rather than a singleton, which is why Members is on this rail and the
  * sign-in password is not.
  *
@@ -45,8 +46,8 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * time.
  *
  * the rail's column draws the destinations in five groups: the dashboard alone, the one
- * destination stating figures; the records of giving; Members and Settings, who can open the rest
- * and what the organisation is, neither recording a gift; the integrations, the ways a system outside the deployment reaches it; and the books,
+ * destination stating figures; the records of giving; Members, Settings and Payments, who can
+ * open the rest, what the organisation is and what it takes gifts through, none recording a gift; the integrations, the ways a system outside the deployment reaches it; and the books,
  * which everything above writes into. a rule is the whole of the separation between the other
  * four. the integrations carry the one heading, because their
  * entries are named after a mechanism rather than a record — API — and that word in a run of
@@ -110,6 +111,15 @@ export const DESTINATION_GROUPS = [
 				label: 'Settings',
 				short: 'Settings',
 				mark: 'settings',
+				deployer: true
+			},
+			// where each payment processor the deployment holds keys for stands, and the two presses
+			// that act on its account (../../routes/_app.admin.payments.tsx).
+			{
+				href: '/admin/payments',
+				label: 'Payments',
+				short: 'Payments',
+				mark: 'credit-card',
 				deployer: true
 			}
 		]

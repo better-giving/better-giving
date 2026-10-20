@@ -47,9 +47,8 @@ const BLOCKED: Record<FormsReadinessContext, { tone: 'blocker' | 'attention'; ti
 	new: { tone: 'attention', title: 'This form will be saved as a draft' }
 };
 
-// the page that says what to ask whoever set up this site for. not a route yet, so it is spelled
-// out rather than built with `href()`, which only accepts an address a route module declares.
-const PAYMENTS = '/admin/payments';
+// the page that says what to ask whoever set up this site for.
+const PAYMENTS = href('/admin/payments');
 
 /**
  * each job's sentence, worded for who is reading.
