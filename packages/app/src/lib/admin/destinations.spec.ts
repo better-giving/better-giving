@@ -32,7 +32,7 @@ describe('the rail', () => {
 			['Dashboard'],
 			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
 			['Members'],
-			['Zapier', 'API', 'Webhooks', 'Claude & ChatGPT'],
+			['Zapier', 'API', 'Webhooks', 'AI'],
 			['Books']
 		]);
 	});

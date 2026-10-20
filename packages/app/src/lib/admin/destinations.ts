@@ -125,9 +125,9 @@ export const DESTINATION_GROUPS = [
 			// Disconnect (../../routes/_app.admin.integrations.connector.tsx).
 			{
 				href: '/admin/integrations/connector',
-				label: 'Claude & ChatGPT',
-				short: 'AI apps',
-				mark: 'message-square'
+				label: 'AI',
+				short: 'AI',
+				mark: 'sparkles'
 			}
 		]
 	},

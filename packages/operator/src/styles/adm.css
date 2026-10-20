@@ -6970,32 +6970,31 @@
 		padding-block-end: env(safe-area-inset-bottom);
 	}
 
-	/* the bar is flat: a tab is a word, so the marks, the rules between groups, a group's heading
+	/* the bar is flat: a tab is a word, so the marks, the space between groups, a group's heading
 	   and a destination's status mark are the column's alone, and a group's entries stand as tabs
 	   of their own. the status is still read out, off the cell's `.adm-vh` word. */
 	.adm-rail__identity,
 	.adm-rail__foot,
 	.adm-rail__cells .adm-dest > .adm-mark,
-	.adm-rail__rule,
+	.adm-rail__gap,
 	.adm-rail__heading,
 	.adm-dest__status {
 		display: none;
 	}
 
-	/* the rule and the heading as the column and the More sheet both draw them. hidden in the bar
-	   by the rule above, and each arrangement that stands one says so with `display` alone. */
-	.adm-rail__rule {
-		margin: var(--admin-space-4);
+	/* the space between groups and a group's heading, as the column and the More sheet both draw
+	   them. hidden in the bar by the rule above, and each arrangement that stands one says so with
+	   `display` alone.
+
+	   groups are told apart by space alone, a headed group's as well as a plain one's. the break
+	   draws no line: it is one item in the run of cells, so the run's own gap stands on either side
+	   of it, and the whole space between two groups is this step and two of that gap. */
+	.adm-rail__gap {
+		block-size: var(--admin-space-6);
 		border: 0;
-		border-block-start: var(--admin-rule);
 	}
 
-	/* a group stands apart: a step of space above its rule and after its last entry, the heading
-	   tight to its first. the heading is small print, not a destination. */
-	.adm-rail__rule--group {
-		margin-block-start: var(--admin-space-6);
-	}
-
+	/* the heading is small print, not a destination, and stands tight to the group's first entry. */
 	.adm-rail__heading {
 		padding: 0 var(--admin-space-4) var(--admin-space-2);
 		font-size: var(--admin-caption-size);
@@ -7053,7 +7052,8 @@
 	}
 
 	/* the bar's More sheet: a modal card standing on the top edge of the bar, holding the rail's
-	   other destinations as the column draws them — the name, the mark, the rules and the headings —
+	   other destinations as the column draws them — the name, the mark, the space between groups and
+	   the headings —
 	   at the height a finger needs. it is only ever open below the wide breakpoint, because
 	   AppShell.jsx closes it the moment More stops being drawn.
 
@@ -7108,11 +7108,7 @@
 		color: inherit;
 	}
 
-	.adm-moresheet__cells .adm-dest--groupend {
-		margin-block-end: var(--admin-space-6);
-	}
-
-	.adm-moresheet__cells :is(.adm-rail__rule, .adm-rail__heading),
+	.adm-moresheet__cells :is(.adm-rail__gap, .adm-rail__heading),
 	.adm-moresheet__cells .adm-dest__full {
 		display: block;
 	}
@@ -8526,14 +8522,9 @@
 			color: var(--admin-tone-attention-mark);
 		}
 
-		.adm-rail__rule,
+		.adm-rail__gap,
 		.adm-rail__heading {
 			display: block;
-		}
-
-		/* carried-ok: .adm-dest--groupend — in DestinationCell.jsx's derived class list, as `.adm-dest`. */
-		.adm-rail__cells .adm-dest--groupend {
-			margin-block-end: var(--admin-space-6);
 		}
 
 		/* the column draws every destination, so the bar's split is undone and More is not drawn. */
@@ -8721,14 +8712,6 @@
 			inset-block-start: var(--admin-space-1);
 			inset-inline-end: var(--admin-space-1);
 			block-size: auto;
-		}
-
-		.adm-shell--collapsed .adm-rail__rule {
-			margin-inline: var(--admin-space-2);
-		}
-
-		.adm-shell--collapsed .adm-rail__rule--group {
-			margin-block: var(--admin-space-6);
 		}
 
 		/* the foot keeps only the way out, and a foot with none is not drawn. */

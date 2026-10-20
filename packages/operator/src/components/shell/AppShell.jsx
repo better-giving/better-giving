@@ -25,9 +25,8 @@ import { Button } from '../controls/Button.jsx';
  */
 
 /**
- * a run of destinations the rail draws together. a rule separates one group from the next; a
- * group with a `heading` stands a step apart, under its heading, and the group after it draws no
- * rule of its own. the heading names the group and goes nowhere.
+ * a run of destinations the rail draws together. a step of space separates one group from the
+ * next, and a group with a `heading` stands under it. the heading names the group and goes nowhere.
  *
  * @typedef {object} DestinationGroup
  * @property {string | undefined} [heading]
@@ -123,7 +122,7 @@ const RAIL_STORAGE_KEY = 'bg-operator-rail';
    an equal share of the width whatever the count, so what bounds how many the bar holds is the
    share each is left with at the 375px floor rather than a number written anywhere. a rail whose
    destinations state `bar` puts those on it and ends it with More, which opens a sheet holding the
-   rest in the column's order, under the column's rules and headings; a rail stating none has a tab
+   rest in the column's order, spaced and headed as the column is; a rail stating none has a tab
    per destination. the bar itself is flat: groups, marks and headings are the column's and the
    sheet's. above it: a left column with the identity and the collapse toggle at its head, the
    grouped destinations, and the foot; the page is a panel filling the rest of the window beside
@@ -303,7 +302,7 @@ export function AppShell({
 					<RailGroup
 						key={group.heading ?? `group-${index}`}
 						group={group}
-						rule={ruleBefore(group, groups[index - 1])}
+						apart={index > 0}
 						at={at}
 						link={link}
 						collapsed={collapsed}
@@ -371,7 +370,7 @@ export function AppShell({
 									<RailGroup
 										key={group.heading ?? `group-${index}`}
 										group={group}
-										rule={ruleBefore(group, sheet[index - 1])}
+										apart={index > 0}
 										at={at}
 										link={link}
 										collapsed={false}
@@ -409,24 +408,8 @@ export function AppShell({
 }
 
 /**
- * what stands before a group: nothing before the first, the headed rule before a headed group,
- * nothing after a headed group (its last entry already stands a step apart), and a plain rule
- * between any other two.
- *
- * @param {DestinationGroup} group
- * @param {DestinationGroup | undefined} previous
- * @returns {'none' | 'plain' | 'group'}
- */
-function ruleBefore(group, previous) {
-	if (previous === undefined) return 'none';
-	if (group.heading !== undefined) return 'group';
-	if (previous.heading !== undefined) return 'none';
-	return 'plain';
-}
-
-/**
  * the rail's groups with every bar destination taken out, and a group left with none dropped: what
- * the sheet stands, rules and headings still decided by `ruleBefore` over what remains.
+ * the sheet stands, each group after the first spaced from the one before it as in the column.
  *
  * @param {readonly DestinationGroup[]} groups
  * @returns {DestinationGroup[]}
@@ -440,7 +423,8 @@ function offBar(groups) {
 /**
  * @typedef {object} RailGroupProps
  * @property {DestinationGroup} group
- * @property {'none' | 'plain' | 'group'} rule
+ * @property {boolean} apart a group after the first, which stands a step of space below the one
+ *   before it.
  * @property {Whereabouts | undefined} at
  * @property {ComponentType<DestinationLinkProps> | undefined} link
  * @property {boolean} collapsed
@@ -465,10 +449,10 @@ function offBar(groups) {
    out of the layout and not out of the tree, so it would stand on the bar as a named group
    holding nothing. */
 /** @param {RailGroupProps} props */
-function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
+function RailGroup({ group, apart, at, link, collapsed, barred, onChoose }) {
 	const { heading, destinations } = group;
 	const headingId = useId();
-	const cells = destinations.map((d, i) => (
+	const cells = destinations.map((d) => (
 		<DestinationCell
 			key={d.label}
 			short={d.short}
@@ -476,7 +460,6 @@ function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
 			mark={d.mark}
 			status={d.status}
 			title={collapsed ? d.label : undefined}
-			groupEnd={heading !== undefined && i === destinations.length - 1}
 			offBar={barred && !d.bar}
 			onClick={onChoose}
 			link={link}
@@ -487,8 +470,7 @@ function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
 	));
 	return (
 		<>
-			{rule === 'plain' ? <hr className="adm-rail__rule" /> : null}
-			{rule === 'group' ? <hr className="adm-rail__rule adm-rail__rule--group" /> : null}
+			{apart ? <hr className="adm-rail__gap" /> : null}
 			{heading === undefined ? (
 				cells
 			) : (

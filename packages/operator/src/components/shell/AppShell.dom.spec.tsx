@@ -49,10 +49,7 @@ function laidOut(run: Element | null): Element[] {
 /** the rail's children in order, each as its first class and, for a cell, its full word. */
 function railRun(root: HTMLElement): string[] {
 	return laidOut(root.querySelector('.adm-rail__cells')).map((node) => {
-		if (node.matches('a')) {
-			const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
-			return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
-		}
+		if (node.matches('a')) return node.querySelector('.adm-dest__full')?.textContent ?? '';
 		if (node.matches('hr')) return node.className;
 		return `${node.className}: ${node.textContent}`;
 	});
@@ -133,7 +130,7 @@ describe('a rail mounted into a document', () => {
 });
 
 describe('the groups a rail is divided into', () => {
-	it('rules between plain groups, and draws nothing before the first', () => {
+	it('spaces plain groups apart, and draws nothing before the first', () => {
 		const root = render(AppShell, {
 			org: ORG,
 			groups: [
@@ -145,17 +142,17 @@ describe('the groups a rail is divided into', () => {
 
 		expect(railRun(root)).toEqual([
 			'Dashboard',
-			'adm-rail__rule',
+			'adm-rail__gap',
 			'Donation forms',
 			'Donors',
-			'adm-rail__rule',
+			'adm-rail__gap',
 			'Members'
 		]);
 	});
 
-	it('stands a headed group under its heading, ends it, and rules nothing after it', () => {
-		// the console's rail: the headed group's last entry carries the step, so the group after
-		// it needs no rule of its own.
+	it('stands a headed group under its heading, spaced from the groups either side as any is', () => {
+		// the console's rail. the step before the heading is the one any group takes, and so is the
+		// step after the headed group's last entry.
 		const root = render(AppShell, {
 			org: ORG,
 			groups: [
@@ -171,10 +168,11 @@ describe('the groups a rail is divided into', () => {
 		expect(railRun(root)).toEqual([
 			'Dashboard password',
 			'Organisation',
-			'adm-rail__rule adm-rail__rule--group',
+			'adm-rail__gap',
 			'adm-rail__heading: Donation processor',
 			'Stripe',
-			'PayPal (end)',
+			'PayPal',
+			'adm-rail__gap',
 			'Sites',
 			'SMTP'
 		]);
@@ -567,10 +565,7 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 	/** the sheet's run of entries, spelled as `railRun` spells the rail's. */
 	function sheetRun(dialog: HTMLElement): string[] {
 		return laidOut(dialog.querySelector('.adm-moresheet__cells')).map((node) => {
-			if (node.matches('a')) {
-				const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
-				return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
-			}
+			if (node.matches('a')) return node.querySelector('.adm-dest__full')?.textContent ?? '';
 			if (node.matches('hr')) return node.className;
 			return `${node.className}: ${node.textContent}`;
 		});
@@ -638,7 +633,7 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 		expect(group?.contains(named ? document.getElementById(named) : null)).toBe(true);
 	});
 
-	it('opens a sheet holding the rest, each a link, with the rail rules and headings', async () => {
+	it('opens a sheet holding the rest, each a link, spaced and headed as the rail is', async () => {
 		const root = render(AppShell, { org: ORG, groups: BARRED });
 		const dialog = await open(root);
 
@@ -648,13 +643,14 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 		expect(sheetRun(dialog)).toEqual([
 			'Programs',
 			'Recurring gifts',
-			'adm-rail__rule',
+			'adm-rail__gap',
 			'Members',
-			'adm-rail__rule adm-rail__rule--group',
+			'adm-rail__gap',
 			'adm-rail__heading: Integrations',
 			'Zapier',
 			'API',
-			'Webhooks (end)',
+			'Webhooks',
+			'adm-rail__gap',
 			'Books'
 		]);
 		expect(
