@@ -42,6 +42,7 @@ export const ENV_VAR_NAMES = [
 	'QUICKBOOKS_CLIENT_ID',
 	'QUICKBOOKS_CLIENT_SECRET',
 	'QUICKBOOKS_API_URL',
+	'NONPROFITS_API_KEY',
 	'CONSOLE_TOKEN'
 ] as const;
 
@@ -99,6 +100,7 @@ declare global {
 		readonly QUICKBOOKS_CLIENT_ID?: string;
 		readonly QUICKBOOKS_CLIENT_SECRET?: string;
 		readonly QUICKBOOKS_API_URL?: string;
+		readonly NONPROFITS_API_KEY?: string;
 		readonly CONSOLE_TOKEN?: string;
 	}
 }

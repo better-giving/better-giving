@@ -51,6 +51,7 @@ Every configuration value is an environment variable in `.env`, which is gitigno
 | `CHARIOT_API_URL` | Optional. Unset is `https://api.givechariot.com`; sandbox keys take `https://sandboxapi.givechariot.com` |
 | `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`, `NOWPAYMENTS_OUTCOME_CURRENCY` | NOWPayments, [section 2](#2-the-console-jobs) |
 | `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_API_URL` | [Sending gifts to QuickBooks](#sending-gifts-to-quickbooks) |
+| `NONPROFITS_API_KEY` | Optional. A key for Better Giving's nonprofit lookup, which fills the organisation's details in Settings from the IRS files. Unset, lookups go keyless, at a request a minute and 25 a day |
 
 - `ADMIN_PASSWORD` is the credential that opens `/admin` for you, the operator who set the deployment up. Keep it in a password manager: recovery is whoever holds `.env`. Colleagues are invited from `/admin/members`, set their own, and reset a forgotten one from the sign-in page; that reset never reaches this credential. Change it in `.env`, or on the console's **Dashboard password** page once the console's screens are served.
 - **Take each processor's pair from one place.** Stripe's two keys are one pair from one dashboard page, and PayPal's client id and secret are one pair from one app. A mismatched Stripe pair is refused by Stripe at the first charge. A [rehearsal deployment](#a-rehearsal-deployment) takes its PayPal pair from a sandbox app and sets `PAYPAL_API_URL` to the sandbox address.
