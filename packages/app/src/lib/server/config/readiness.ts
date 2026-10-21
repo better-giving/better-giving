@@ -101,7 +101,7 @@ const CHARGE_PAIRS: Readonly<Record<ProcessorName, readonly (keyof ConfigEnv)[]>
 
 /**
  * every processor whose charge pair is set, in `CHARGE_PAIRS`' order: the payments job here, and
- * the processor line on the donation-form screens (../forms/readiness.ts).
+ * which processors the notices line on the donation-form screens asks about (../forms/readiness.ts).
  */
 export function chargingProcessors(config: ConfigEnv): ProcessorName[] {
 	return (Object.keys(CHARGE_PAIRS) as ProcessorName[]).filter((processor) =>

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FORM_READINESS_JOBS, FORM_READINESS_SEVERITIES } from '$lib/forms/readiness';
 import type { ConfigEnv } from '../config/env';
 import type { OrgProfile } from '../db/schema';
+import { servedProcessors } from '../payments/factory';
 import { formsReadiness } from './readiness';
 
 // a node spec: this module reads a row and the deploy-time values handed to it and issues no
@@ -96,6 +97,63 @@ describe('formsReadiness', () => {
 		expect(formsReadiness(profile(), config)).toBe(null);
 	});
 
+	it('blocks on the processor while PayPal’s address is set in a shape no call can use', () => {
+		const lines = formsReadiness(profile(), {
+			PAYPAL_CLIENT_ID: 'AX',
+			PAYPAL_CLIENT_SECRET: 'EC',
+			PAYPAL_WEBHOOK_ID: 'WH',
+			PAYPAL_API_URL: 'api-m.paypal.com/v2'
+		});
+		expect(line(lines, 'processor').severity).toBe('blocker');
+		// the notices line is about a processor that can charge, and this one cannot.
+		expect(lines?.map((l) => l.job)).toEqual(['organisation', 'processor']);
+	});
+
+	/**
+	 * the processor line is a blocker exactly where `publishedConfig` in ./published-config.ts would
+	 * refuse every form with `payments_not_configured`, which reads `servedProcessors` in
+	 * ../payments/factory.ts. a deployment told Live is fine while no form is served is the failure
+	 * the line exists to prevent.
+	 */
+	it.each([
+		['nothing set', {}],
+		['Stripe', STRIPE],
+		['Stripe’s secret key alone', { STRIPE_SECRET_KEY: 'sk' }],
+		['Stripe’s publishable key alone', { STRIPE_PUBLISHABLE_KEY: 'pk' }],
+		['PayPal', { PAYPAL_CLIENT_ID: 'AX', PAYPAL_CLIENT_SECRET: 'EC' }],
+		['PayPal’s client id alone', { PAYPAL_CLIENT_ID: 'AX' }],
+		['PayPal’s secret alone', { PAYPAL_CLIENT_SECRET: 'EC' }],
+		[
+			'PayPal at its sandbox address',
+			{
+				PAYPAL_CLIENT_ID: 'AX',
+				PAYPAL_CLIENT_SECRET: 'EC',
+				PAYPAL_API_URL: 'https://api-m.sandbox.paypal.com'
+			}
+		],
+		[
+			'PayPal at an address with a path',
+			{ PAYPAL_CLIENT_ID: 'AX', PAYPAL_CLIENT_SECRET: 'EC', PAYPAL_API_URL: 'https://x.test/v2' }
+		],
+		['Chariot', { CHARIOT_API_KEY: 'key', CHARIOT_CONNECT_ID: 'live_x' }],
+		['Chariot’s key alone', { CHARIOT_API_KEY: 'key' }],
+		['Chariot’s connect id alone', { CHARIOT_CONNECT_ID: 'live_x' }],
+		['NOWPayments', { NOWPAYMENTS_API_KEY: 'key', NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20' }],
+		['NOWPayments’ key alone', { NOWPAYMENTS_API_KEY: 'key' }],
+		['NOWPayments’ outcome currency alone', { NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20' }],
+		[
+			'Stripe beside PayPal at an unusable address',
+			{ ...STRIPE, PAYPAL_CLIENT_ID: 'AX', PAYPAL_CLIENT_SECRET: 'EC', PAYPAL_API_URL: 'nope' }
+		]
+	] as const satisfies readonly (readonly [string, ConfigEnv])[])(
+		'blocks on the processor exactly where no form is served, with %s',
+		(_name, config) => {
+			const lines = formsReadiness(profile(), config);
+			const blocks = lines?.find((l) => l.job === 'processor')?.severity === 'blocker';
+			expect(blocks).toBe(!servedProcessors(config).serves);
+		}
+	);
+
 	it('warns about payment notices when Stripe’s keys are set and its webhook secret is not', () => {
 		const { STRIPE_WEBHOOK_SECRET: _unset, ...keysOnly } = STRIPE;
 		const lines = formsReadiness(profile(), keysOnly);
@@ -110,6 +168,16 @@ describe('formsReadiness', () => {
 			PAYPAL_CLIENT_SECRET: 'EC'
 		});
 		expect(line(lines, 'notices').severity).toBe('warning');
+	});
+
+	it('asks no notice value of a processor whose values no form can be served on', () => {
+		const lines = formsReadiness(profile(), {
+			...STRIPE,
+			PAYPAL_CLIENT_ID: 'AX',
+			PAYPAL_CLIENT_SECRET: 'EC',
+			PAYPAL_API_URL: 'api-m.paypal.com/v2'
+		});
+		expect(lines).toBe(null);
 	});
 
 	it('says nothing about notices while no processor is set, which the processor line covers', () => {

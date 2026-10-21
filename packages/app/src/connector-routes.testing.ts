@@ -51,6 +51,8 @@ export type CallInit = {
 	body?: unknown;
 	metered?: boolean;
 	headers?: Record<string, string>;
+	/** variables laid over the deployment's bindings for this call alone; `undefined` unsets one. */
+	env?: Record<string, string | undefined>;
 };
 
 /**
@@ -122,7 +124,12 @@ export function connectorHarness<R extends Record<string, RouteRequester>>(mount
 					headers,
 					...(init.body === undefined ? {} : { body: JSON.stringify(init.body) })
 				}),
-				{ env: init.metered === true ? DEPLOYMENT.env : UNMETERED }
+				{
+					env: {
+						...(init.metered === true ? DEPLOYMENT.env : UNMETERED),
+						...init.env
+					} as unknown as Env
+				}
 			);
 		},
 
