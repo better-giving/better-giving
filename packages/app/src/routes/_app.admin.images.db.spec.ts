@@ -49,7 +49,7 @@ const PHOTOS = [
 	{ type: 'image/png', bytes: pngHeader(1600, 1067) }
 ] as const;
 
-/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+/** a deployment whose set-up is finished. */
 let bindings: Env;
 
 beforeEach(async () => {
@@ -171,7 +171,7 @@ describe('a post the images route refuses', () => {
 				method: 'POST',
 				headers: { cookie: session, 'content-type': 'multipart/form-data; boundary=x' },
 				body,
-				// node's Request refuses a streamed body without it; workerd's did not need it
+				// node's Request refuses a streamed body without it
 				duplex: 'half'
 			} as RequestInit),
 			{ env: bindings }

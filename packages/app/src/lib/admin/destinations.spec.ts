@@ -19,6 +19,8 @@ describe('the rail', () => {
 			'/admin/donations',
 			'/admin/recurring',
 			'/admin/members',
+			'/admin/settings',
+			'/admin/payments',
 			'/admin/integrations/zapier',
 			'/admin/integrations/api',
 			'/admin/integrations/webhooks',
@@ -27,12 +29,12 @@ describe('the rail', () => {
 		]);
 	});
 
-	it('stands the dashboard alone, then the records of giving, then who can sign in, then the integrations, then the books', () => {
+	it('stands the dashboard alone, then the records of giving, then who can sign in, the settings and the payments, then the integrations, then the books', () => {
 		expect(DESTINATION_GROUPS.map((group) => group.destinations.map((d) => d.label))).toEqual([
 			['Dashboard'],
 			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
-			['Members'],
-			['Zapier', 'API', 'Webhooks', 'Claude & ChatGPT'],
+			['Members', 'Settings', 'Payments'],
+			['Zapier', 'API', 'Webhooks', 'AI'],
 			['Books']
 		]);
 	});
@@ -53,7 +55,7 @@ describe('who the rail is drawn for', () => {
 		expect(destinationGroupsFor(true)).toEqual(DESTINATION_GROUPS);
 	});
 
-	it('leaves the integrations out for a member, and nothing else', () => {
+	it('leaves the integrations, the settings and the payments out for a member, and nothing else', () => {
 		expect(
 			destinationGroupsFor(false).map((group) => group.destinations.map((d) => d.label))
 		).toEqual([

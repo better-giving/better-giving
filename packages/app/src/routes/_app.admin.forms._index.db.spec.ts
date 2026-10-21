@@ -9,15 +9,11 @@ import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as forms from './_app.admin.forms._index';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
-import { readEnv } from '$lib/server/runtime/env';
-import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
-
-/** the deploy-time values a request reads, with none set and the spec limiters. */
-const env = readEnv({}, specRateLimiters());
 
 // a db spec rather than a node one because every case here reads a row, and CLAUDE.md splits
-// the pools by what a spec needs. this route has no action of its own: a form's sites, its status
-// and its retirement are written on the screens under `new` and `[id]`, each with a spec of its own.
+// the pools by what a spec needs. a form's sites, its status and its retirement are written on the
+// screens under `new` and `[id]`, each with a spec of its own. the one write this route takes, the
+// deployment's site list, is ./_app.admin.forms._index.sites.db.spec.ts's.
 //
 // the chain is mounted rather than the loader called, which is ../route-request.testing.ts's
 // pattern: the session gate is a `middleware` on ./_app.tsx and the handle is on the request
@@ -25,8 +21,7 @@ const env = readEnv({}, specRateLimiters());
 //
 // the Stripe keys ride in a per-request `env` rather than in a value a case builds, and they are
 // here for one assertion: this screen hands out a snippet whatever is in those slots. what a key
-// can charge is read on the console when it is pasted
-// (`packages/console-ui/src/lib/stripe-edits.ts`), and no screen in /admin asks again.
+// can charge is read on Payments, and no other screen in /admin asks.
 
 /** the origin every request in this file arrives on. not loopback, so the cookie is `__Secure-`. */
 const ORIGIN = 'https://donations.example.workers.dev';
@@ -48,12 +43,6 @@ const FORM_ID = 'frm_adminformstest1';
 
 let db: Db;
 let request: RouteRequester;
-/**
- * the list with no layout above it, for the cases about a deployment whose set-up is unfinished:
- * the layout refuses every screen under it on one (./_app.tsx), and this screen reads nothing off
- * the session or the set-up state, only the database.
- */
-let direct: RouteRequester;
 /** the bindings of a deployment whose five set-up jobs are done. */
 let bindings: Env;
 let session: string;
@@ -73,7 +62,6 @@ beforeAll(async () => {
 		{ path: undefined, module: layout },
 		{ path: 'admin/forms', module: forms }
 	]);
-	direct = mountRoutes([{ path: 'admin/forms', module: forms }]);
 	session = await signIn();
 
 	const row = await first<{ id: string }>(
@@ -155,13 +143,17 @@ async function signIn(): Promise<string> {
  * than spelling three variables per visit.
  *
  * the keys and not a reading of them: what this screen has to go on doing over every one of them is
- * hand out the snippet. `keys-unset` is the spec env — no Stripe variable is set anywhere — so
- * it is stated as the empty set rather than by leaving them out.
+ * hand out the snippet. `keys-unset` takes the three back off the set-up deployment's bindings, so
+ * each is stated as unset rather than left to whatever those bindings hold.
  */
 type StripeSlots = 'keys-unset' | 'publishable-slot-wrong' | 'secret-slot-wrong' | 'configured';
 
-const STRIPE_KEYS: Record<StripeSlots, Record<string, string>> = {
-	'keys-unset': {},
+const STRIPE_KEYS: Record<StripeSlots, Record<string, string | undefined>> = {
+	'keys-unset': {
+		STRIPE_PUBLISHABLE_KEY: undefined,
+		STRIPE_SECRET_KEY: undefined,
+		STRIPE_WEBHOOK_SECRET: undefined
+	},
 	// a secret key in the slot the donation form is handed, which is the one value that leaves the
 	// deployment.
 	'publishable-slot-wrong': {
@@ -207,19 +199,11 @@ type Loaded = {
  * case that opens the embed card visits the same address a press on the card's control navigates
  * to rather than calling anything of its own.
  */
-function visit(
-	reason: StripeSlots = 'configured',
-	flash = '',
-	search = '',
-	ungated = false
-): Promise<Response> {
+function visit(reason: StripeSlots = 'configured', flash = '', search = ''): Promise<Response> {
 	const cookie = [session, flash].filter((value) => value !== '').join('; ');
-	// no Stripe keys is a set-up job undone, so that deployment is reached without the layout.
-	const unfinished = ungated || reason === 'keys-unset';
-	return (unfinished ? direct : request)(
-		new Request(`${ORIGIN}${LIST}${search}`, { headers: { cookie } }),
-		{ env: { ...(unfinished ? env : bindings), ...STRIPE_KEYS[reason] } as Env }
-	);
+	return request(new Request(`${ORIGIN}${LIST}${search}`, { headers: { cookie } }), {
+		env: { ...bindings, ...STRIPE_KEYS[reason] } as Env
+	});
 }
 
 async function payload(response: Response): Promise<Loaded> {
@@ -231,10 +215,9 @@ async function payload(response: Response): Promise<Loaded> {
 async function runLoad(
 	reason: StripeSlots = 'configured',
 	flash = '',
-	search = '',
-	ungated = false
+	search = ''
 ): Promise<Loaded> {
-	return payload(await visit(reason, flash, search, ungated));
+	return payload(await visit(reason, flash, search));
 }
 
 /**
@@ -287,10 +270,8 @@ describe('/admin/forms load — the snippet', () => {
 	 * slots hold, including the two that cannot take a donor's money.
 	 *
 	 * a case per state rather than one per status word, because what a slot holds is what a
-	 * deployment holds. every one of them is refused at the box it is pasted into —
-	 * `stripeKeyEdits` in `packages/console-ui/src/lib/stripe-edits.ts` — so a screen here that
-	 * withheld the snippet would be checking forever for a mistake caught once, and could only ever
-	 * point at a screen it is not.
+	 * deployment holds. what a key can charge is read on Payments, so a screen here that withheld
+	 * the snippet could only ever point at a screen it is not.
 	 */
 	it.each(['keys-unset', 'publishable-slot-wrong', 'secret-slot-wrong', 'configured'] as const)(
 		'hands every snippet over on %s',
@@ -345,12 +326,13 @@ describe('/admin/forms load', () => {
 		expect(Object.keys(form ?? {}).sort()).toEqual(['id', 'name', 'origins', 'status']);
 	});
 
-	it('publishes the forms, the create outcome and the embed question, and nothing else', async () => {
-		// the whole contract this screen publishes. nothing about the deployment's own state crosses:
-		// the status ledger is not rendered here and the header action is never disabled here, so a
-		// readiness key would have no consumer, and what the Stripe keys can charge is the console's
-		// to say. asserted as the whole key set, so it is refused whatever puts one back.
-		expect(Object.keys(await runLoad()).sort()).toEqual(['created', 'embedding', 'forms']);
+	it('publishes the forms, the create outcome, the embed question and the sites card, and nothing else', async () => {
+		// the whole contract this screen publishes. nothing about the deployment's own state crosses
+		// but its site list: the status ledger is not rendered here and the header action is never
+		// disabled here, so a readiness key would have no consumer, and what the Stripe keys can
+		// charge is Payments' to say. asserted as the whole key set, so it is refused whatever
+		// puts one back.
+		expect(Object.keys(await runLoad()).sort()).toEqual(['created', 'embedding', 'forms', 'sites']);
 	});
 
 	it('lists the forms on a deployment with no organisation details saved at all', async () => {
@@ -359,7 +341,7 @@ describe('/admin/forms load', () => {
 		// on the screens that make and publish a form. so an empty `org_profile` is not an error here
 		// and not a blank sentence either; it changes nothing about this screen.
 		await run(stmt('delete from org_profile'));
-		expect((await runLoad('configured', '', '', true)).forms.map((f) => f.id)).toEqual([FORM_ID]);
+		expect((await runLoad()).forms.map((f) => f.id)).toEqual([FORM_ID]);
 	});
 
 	it('hands back an empty list on a deployment that has no forms yet', async () => {

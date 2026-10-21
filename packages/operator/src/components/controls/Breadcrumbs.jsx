@@ -22,10 +22,10 @@ import { Mark } from '../status/Mark.jsx';
  * @property {ComponentType<BreadcrumbsAnchorProps> | undefined} [link] what each link is drawn as.
  *   unstated, a plain `<a>` — a router's link imported here would look for a context that is not
  *   there, and a specimen wants the plain one. **a trail on a mounted screen states one.** this
- *   package declares no router and cannot (CLAUDE.md: the graph is `app → operator ← console-ui`,
- *   and the leaf reaches neither), so the surface that has one hands it in — and a bare anchor to an
- *   internal address takes the whole document with it, which is the running application thrown away
- *   and the section fetched again on every press up the trail.
+ *   package declares no router and cannot (AGENTS.md → Workspace: the graph is `app → operator`,
+ *   and the leaf reaches nothing above it), so the surface that has one hands it in — and a bare
+ *   anchor to an internal address takes the whole document with it, which is the running
+ *   application thrown away and the section fetched again on every press up the trail.
  */
 
 /* the pages above this one, root first, and this one last as words rather than a link: pressing

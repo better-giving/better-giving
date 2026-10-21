@@ -10,7 +10,7 @@ import { ProgressBar } from '@better-giving/operator/components/status/ProgressB
  */
 export default function StatusProgressBarPreview() {
 	return (
-		<div className="adm-stack adm-stack--tight adm-stack--centred">
+		<div className="adm-stack adm-stack--tight">
 			<ProgressBar label="Starting" overMove={false} />
 		</div>
 	);

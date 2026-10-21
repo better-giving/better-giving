@@ -1021,7 +1021,7 @@ describe('settleDelivery() — what the donor’s message cannot do', () => {
 		await settleDelivery(deps({ email: mail.port, provider: failedAch }), DELIVERY);
 
 		expect(mail.sent[1]?.text).toContain(
-			'Fix whatever the test reports. The email won’t be resent, so contact whoever it was for ' +
+			'ask whoever set up this site to send the test and fix what it reports. The email won’t be resent, so contact whoever it was for ' +
 				'if they need it.'
 		);
 	});
@@ -1524,11 +1524,10 @@ describe('settleDelivery() — a send that faults after the delivery was dealt w
 
 		await settleDelivery(deps({ email: mail.port, provider: failedAch() }), DELIVERY);
 
-		// `pnpm run logs` is a live tail, which never shows a fault that has already happened.
 		const report = mail.sent.find((m) => m.subject.includes('Emails about a payment failed'));
 		expect(report?.text).toContain(
-			'If the test works, send this email to whoever set up your donations app. The cause is ' +
-				'in its Workers logs on the Cloudflare dashboard.'
+			'If the test works, send this email to whoever set up this site. The app’s log has the ' +
+				'cause: `docker compose logs app`.'
 		);
 		expect(report?.text).not.toContain('pnpm');
 	});
@@ -1604,7 +1603,7 @@ describe('settleDelivery() — a settled charge whose fee is unknown', () => {
 });
 
 describe('settleDelivery() — the notice that a gift settled', () => {
-	/** the operational mail, which is every message that went to the address the console names. */
+	/** the operational mail, which is every message that went to the notification address. */
 	const noticesIn = (sent: readonly EmailMessage[]) =>
 		sent.filter((m) => m.to === 'ops@hope.example');
 

@@ -48,7 +48,7 @@ export type ResolvedDonor = {
  * nothing in the books depends on it either. no ledger entry references `contact`, so a duplicate
  * costs the donor file its tidiness and costs the accounts nothing. this is the case CLAUDE.md
  * describes: a lost race is settled by a correcting entry — here, a merge — and never by a
- * rollback. do not reach for a transaction (`Db` has none, and D1 has none to give it), and do not
+ * rollback. do not reach for a transaction (`Db` has none: ../db/client.ts), and do not
  * add a unique index.
  * ---------------------------------------------------------------------------
  *
@@ -171,8 +171,8 @@ export async function commitDonor(
 			ok: false,
 			detail:
 				'the donor could not be written, and nothing about them was stored. this is a fault in ' +
-				'this app or in the database rather than anything about the donation; the cause is in ' +
-				'this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a checkout).'
+				'this app or in the database rather than anything about the donation; the app’s log has ' +
+				'the cause: `docker compose logs app`.'
 		};
 	}
 }

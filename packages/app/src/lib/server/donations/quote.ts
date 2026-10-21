@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { estimateDeductedFee, estimateFee } from '@better-giving/form/fee';
 import type { ApiErrorCode, Deposit, FormConfig, Frequency, Quote } from '@better-giving/form/v1';
+import { LOGS_SAY_WHY } from '../../deployment-logs';
 import { formatMinor } from '../../donations/money';
 import { majorText } from '../../forms/amounts';
 import { type ChallengeCheck, type ChallengeResult, challengeKind } from '../api/challenge';
@@ -385,9 +386,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 			form,
 			'internal_error',
 			'The processing fee for this gift could not be computed, so nothing was charged.',
-			'This is a bug in this app rather than anything about the request or the deployment. The ' +
-				'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
-				'checkout).'
+			`This is a bug in this app rather than anything about the request or the deployment. ${LOGS_SAY_WHY}`
 		);
 	}
 
@@ -507,8 +506,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 			'internal_error',
 			PROCESSOR_FAILED,
 			'This is a bug in this app or a fault in its database rather than anything about the ' +
-				'request. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
-				'`pnpm run logs` from a checkout).'
+				`request. ${LOGS_SAY_WHY}`
 		);
 	}
 
@@ -600,8 +598,7 @@ async function mintCommitment(
 			'internal_error',
 			PROCESSOR_FAILED,
 			'This is a bug in this app or a fault in its database rather than anything about the ' +
-				'request. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
-				'`pnpm run logs` from a checkout).'
+				`request. ${LOGS_SAY_WHY}`
 		);
 	}
 
@@ -681,8 +678,7 @@ async function mintCommitment(
 			'internal_error',
 			PROCESSOR_FAILED,
 			'This is a bug in this app or a fault in its database rather than anything about the ' +
-				'request. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
-				'`pnpm run logs` from a checkout).'
+				`request. ${LOGS_SAY_WHY}`
 		);
 	}
 
@@ -847,8 +843,7 @@ async function mintGrant(
 			form,
 			'internal_error',
 			'The gift for this grant is recorded and could not be read back.',
-			'This is a fault in this deployment rather than anything about the request. The cause is in ' +
-				'this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a checkout).'
+			`This is a fault in this deployment rather than anything about the request. ${LOGS_SAY_WHY}`
 		);
 	}
 
@@ -888,8 +883,7 @@ async function mintGrant(
 		'internal_error',
 		GRANT_NOT_RECORDED,
 		'This is a fault in this deployment rather than anything about the request, and an operator ' +
-			'has been told. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
-			'`pnpm run logs` from a checkout).'
+			`has been told. ${LOGS_SAY_WHY}`
 	);
 }
 
@@ -1105,7 +1099,7 @@ function leastGiftCharging(
  * this deployment's own host is accepted on every form and is not something an operator ticks —
  * every form served here loads on this deployment's own donation page, which is on no `site` row.
  * it comes off the request rather than off anything stored: the host a request arrived on is one
- * this worker answers on. so a form ticked onto no site at all still has an acceptable host and can
+ * this server answers on. so a form ticked onto no site at all still has an acceptable host and can
  * be given to, which is what lets an organisation with no website of its own finish setting up and
  * take a gift, and the list is never empty.
  */
@@ -1266,9 +1260,7 @@ function paymentRefusal(
 		form,
 		'internal_error',
 		PROCESSOR_FAILED,
-		'This is a bug in this app rather than anything about the request or the deployment. The ' +
-			'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
-			'checkout).'
+		`This is a bug in this app rather than anything about the request or the deployment. ${LOGS_SAY_WHY}`
 	);
 }
 
@@ -1300,9 +1292,7 @@ function unsetSentence(unset: readonly string[]): string {
 }
 
 /** where a processor's own answer went, for a `fix` whose `message` no longer carries it. */
-const LOGGED =
-	'The processor’s answer is in this deployment’s logs (the Cloudflare dashboard, or ' +
-	'`pnpm run logs` from a checkout)';
+const LOGGED = 'The processor’s answer is in the app’s log (`docker compose logs app`)';
 
 /** the adapter's sentence, where staff read it. */
 function logProcessorFailure(reason: string, detail: string): void {

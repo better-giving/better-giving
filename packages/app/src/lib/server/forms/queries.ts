@@ -44,7 +44,7 @@ import {
 // the four group writes and `archiveForm` below do. a write that must land atomically with a row in
 // another table may not: it would split into a row-building half and a statement-building half
 // and splice the statement into the one `batch()` that owns the whole write, as
-// `../contacts/queries.ts` does. `Db` has no `transaction` (D1 has none — see ../db/client.ts),
+// `../contacts/queries.ts` does. `Db` has no `transaction` (../db/client.ts),
 // so a single `batch()` is the only atomic unit there is.
 //
 // the one statement half is `ownedFormInsert`: a page's settings row, which lands in the same
@@ -125,6 +125,16 @@ export async function readForms(db: Db): Promise<FormListRow[]> {
 		...row,
 		allowedOrigins: decodeAllowedOrigins(row.allowedOrigins)
 	}));
+}
+
+/** whether `readForms` would list anything, on its own predicate and with one row read. */
+export async function holdsAnyForm(db: Db): Promise<boolean> {
+	const rows = await db
+		.select({ id: form.id })
+		.from(form)
+		.where(and(isNull(form.archivedAt), ownedByNoPage(db)))
+		.limit(1);
+	return rows.length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -208,7 +218,7 @@ function toColumns(input: ParsedForm) {
  * ../programs/queries.ts gives: `archiveProgram` writes both in one statement and the timestamp is
  * the one no other write can reach.
  *
- * a read in front of a write, and D1 has no transaction to put the pair inside — so a cause
+ * a read in front of a write, and `Db` has no transaction to put the pair inside — so a cause
  * retired between the two lands a form pinned to it anyway. that is the state this deployment
  * already lives with and not a hole: a form pinned before its cause was retired keeps the pin, and
  * a cause retired one millisecond either side of the write is the same form either way. what the
@@ -230,7 +240,7 @@ async function offersProgram(db: Db, id: string): Promise<boolean> {
  * the id is not an argument and never will be: `form.id` is the one public primary key in
  * this schema, and its 80 random bits are minted by the column's own `$defaultFn` — see
  * `formId` in ../db/schema.ts. read off `returning()` rather than by a select afterwards,
- * which D1 could not make atomic with the insert anyway.
+ * which `Db` could not make atomic with the insert anyway.
  *
  * `currency` is written here rather than parsed, because it is not an input: v0 is USD-only
  * by decision (see `FORM_CURRENCY` in `$lib/forms/amounts.ts`), so there is no field for an
@@ -391,7 +401,7 @@ export async function readFormOrigins(db: Db, id: string): Promise<readonly stri
 // not have.
 //
 // the answer comes off the update's own `returning()` rather than a select in front of it, because
-// D1 has no transaction and a check-then-write would be two commits with a race between them.
+// `Db` has no transaction and a check-then-write would be two commits with a race between them.
 //
 // each is also a compare-and-set on `updated_at`: a save lands only on the version the caller's
 // page was drawn from, so a tab drawn before a colleague's save is answered `stale` rather than
@@ -559,7 +569,7 @@ export async function updateFormProgram(
 /**
  * retires a form: the status and the timestamp move together, in one statement.
  *
- * they have to. `FORM_STATUSES` and `archived_at` are two representations of one fact, D1 has
+ * they have to. `FORM_STATUSES` and `archived_at` are two representations of one fact, `Db` has
  * no interactive transaction to put two statements inside, and a form left holding one
  * without the other reads archived on a screen and live to `readForms`. one `set` is what
  * makes that unrepresentable rather than merely unlikely — no `batch()` is needed, because

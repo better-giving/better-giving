@@ -2282,7 +2282,7 @@ describe('settleDelivery() — the notice that a repeating gift started', () => 
 		await authorizeGift();
 	});
 
-	/** the operational mail, which is every message that went to the address the console names. */
+	/** the operational mail, which is every message that went to the notification address. */
 	const noticesIn = (sent: readonly EmailMessage[]) =>
 		sent.filter((m) => m.to === 'ops@hope.example');
 

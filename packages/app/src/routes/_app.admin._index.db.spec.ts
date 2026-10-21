@@ -69,6 +69,7 @@ beforeEach(async () => {
 	await run(stmt('delete from donation'));
 	await run(stmt('delete from recurring_plan'));
 	await run(stmt('delete from contact'));
+	await run(stmt('delete from page'));
 	await run(stmt('delete from form'));
 });
 
@@ -102,6 +103,7 @@ type Loaded = {
 	recurringActive: number | null;
 	series: { points: number[]; first: string; last: string };
 	donors: { total: number; thisMonth: number };
+	hasForms: boolean;
 };
 
 /** the loader's answer, off one request through the chain the deployment serves it under. */
@@ -210,6 +212,23 @@ async function commitment(status: 'active' | 'cancelled' | 'lapsed'): Promise<vo
 	);
 }
 
+/** a donation form, archived or not; its id. */
+async function donationForm(archived = false): Promise<string> {
+	const id = nextId();
+	await run(
+		stmt(
+			`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+		                   suggested_amounts, allowed_origins, created_at, updated_at, archived_at)
+		 values (?, 'General Fund', ?, ?, 'USD', 500, 1000000, '[]', '[]', 0, 0, ?)`,
+			id,
+			archived ? 'archived' : 'draft',
+			revenueAccountId,
+			archived ? 0 : null
+		)
+	);
+	return id;
+}
+
 /** the first instant of the month the deployment's clock is in, and of one `offset` from it. */
 function monthAt(offset: number): Date {
 	const now = new Date();
@@ -300,5 +319,43 @@ describe('/admin load — a read that fails on its own', () => {
 		} finally {
 			await run(stmt('alter table recurring_plan_hidden rename to recurring_plan'));
 		}
+	});
+});
+
+describe('/admin load — whether the deployment has a donation form', () => {
+	it('says it has none on a deployment nobody has made one on', async () => {
+		expect((await runLoad()).hasForms).toBe(false);
+	});
+
+	it('says it has one once a form is made', async () => {
+		await donationForm();
+
+		expect((await runLoad()).hasForms).toBe(true);
+	});
+
+	it('does not count a form that was archived', async () => {
+		await donationForm(true);
+
+		expect((await runLoad()).hasForms).toBe(false);
+	});
+
+	it('does not count a form a page owns, and counts one beside it that no page owns', async () => {
+		// a campaign's donation settings are a form row the forms list leaves out, so a deployment
+		// whose only form is one has none to show and the lead to make one stays.
+		const owned = await donationForm();
+		await run(
+			stmt(
+				`insert into page (id, type, state, form_id, draft, published, created_at, updated_at)
+			 values (?, 'donation_page', 'live', ?, '{}', '{}', 0, 0)`,
+				nextId(),
+				owned
+			)
+		);
+
+		expect((await runLoad()).hasForms).toBe(false);
+
+		await donationForm();
+
+		expect((await runLoad()).hasForms).toBe(true);
 	});
 });

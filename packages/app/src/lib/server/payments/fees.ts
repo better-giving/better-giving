@@ -112,7 +112,7 @@ export const PAYPAL_US_FEE_RULES_STANDARD: Readonly<Record<PaypalRail, FeeRule>>
  *
  * `PAYPAL_CHARITY_RATE_APPROVED` is the whole of the answer, because PayPal reports on no call
  * which rate an account is on — so nothing can check this value against the account, and the one
- * spelling that sets it is `true` (.dev.vars.example documents the same word).
+ * spelling that sets it is `true` (DEPLOY.md → PayPal documents the same word).
  *
  * every other value is the standard rate, `false` and `yes` and `1` alike, and the two directions
  * of a misreading are why the word is exact. read as approved, a donor covering the fee is quoted

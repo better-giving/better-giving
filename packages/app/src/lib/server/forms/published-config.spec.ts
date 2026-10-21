@@ -308,7 +308,7 @@ describe('publishedConfig — refusals', () => {
 		if (result.ok) return;
 		expect(result.reason).toBe('org_profile_incomplete');
 		expect(result.error.message).toContain(names);
-		expect(result.error.fix).toContain('better-giving start');
+		expect(result.error.fix).toContain('under Organisation details in Settings');
 	});
 
 	/**
@@ -559,7 +559,7 @@ describe('renderableConfig', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('payments_not_configured');
-		expect(result.error.fix).toContain('better-giving start');
+		expect(result.error.fix).toContain('Under Payments, read the standing shown against each rail');
 		// the row still comes back: the endpoint answers this 4xx with CORS headers taken from
 		// `allowed_origins`, and a body a browser cannot read is a refusal that reaches nobody.
 		expect(result.form?.allowedOrigins).toEqual(['https://acme.org']);

@@ -314,7 +314,7 @@ describe('GET /quickbooks/callback', () => {
 		// the accounts are filled from the chart on the way through, so the page sends nobody to pick them.
 		const page = markup(answered.data);
 		expect(page).toContain('Hope Foundation is connected');
-		expect(page).toContain('You can close this tab.');
+		expect(page).toContain('Back to Books');
 		expect(page).not.toContain('choose which accounts');
 	});
 
@@ -589,7 +589,7 @@ describe('GET /quickbooks/callback', () => {
 		const page = markup(answered.data);
 		// the same page a refreshed success tab draws, since the cookie is spent by then.
 		expect(page).toContain('This link has already been used or has expired');
-		expect(page).toContain('Go back to the console for a new one.');
+		expect(page).toContain('Start again from Books.');
 		expect(stub.exchanges).toBe(0);
 		expect(await readQuickbooksConnection(db)).toBeNull();
 	});
@@ -649,7 +649,7 @@ describe('GET /quickbooks/callback', () => {
 		expect(answered.data).toMatchObject({ outcome: 'refused', refusal: 'cancelled' });
 		const page = markup(answered.data);
 		expect(page).toContain('You cancelled at Intuit.');
-		expect(page).toContain('Go back to the console to try again.');
+		expect(page).toContain('Try again from Books.');
 		expect(stub.exchanges).toBe(0);
 	});
 
@@ -677,7 +677,7 @@ describe('GET /quickbooks/callback', () => {
 			expect(answered.data).toEqual({ outcome: 'refused', refusal: 'unavailable' });
 			const page = markup(answered.data);
 			expect(page).toContain('Intuit is having trouble.');
-			expect(page).toContain('Go back to the console and try again in a few minutes.');
+			expect(page).toContain('Try again from Books in a few minutes.');
 			expect(stub.exchanges).toBe(0);
 		}
 	);

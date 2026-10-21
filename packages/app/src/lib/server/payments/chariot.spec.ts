@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createChariotProvider } from './chariot';
+import { createChariotDirectory, createChariotProvider } from './chariot';
 import { isRetryable, type IntentRequest, type PaymentProvider } from './provider';
 
 afterEach(() => {
@@ -1140,5 +1140,102 @@ describe('the event subscription', () => {
 			url: 'https://sandboxapi.givechariot.com/v1/event_subscriptions/sub-new',
 			body: '{"status":"deleted"}'
 		});
+	});
+});
+
+describe('the organisation’s Connect', () => {
+	const HOPE = {
+		id: 'org_01jpjenf5q6cawy43yxfcrxhct',
+		ein: '123456789',
+		name: 'Hope Foundation',
+		daf_eligible: true,
+		city: 'Kigali',
+		state: 'KG'
+	};
+
+	it('looks the EIN up in Chariot’s directory, keeping only the rows that carry it', async () => {
+		const calls = recording([
+			{
+				status: 200,
+				json: { results: [HOPE, { ...HOPE, id: 'org_near', ein: '123456780' }] }
+			}
+		]);
+
+		const found = await createChariotDirectory(CREDENTIALS).findOrganisations('123456789');
+
+		expect(found).toEqual({
+			ok: true,
+			value: [
+				{
+					id: HOPE.id,
+					name: 'Hope Foundation',
+					city: 'Kigali',
+					state: 'KG',
+					dafEligible: true
+				}
+			]
+		});
+		expect(calls[0]).toMatchObject({
+			method: 'GET',
+			url: 'https://sandboxapi.givechariot.com/v1/organizations/search?q=123456789',
+			headers: { authorization: 'Bearer notarealchariotkey' }
+		});
+	});
+
+	it('reads an organisation Chariot marks ineligible for fund gifts as ineligible', async () => {
+		recording([{ status: 200, json: { results: [{ ...HOPE, daf_eligible: false }] } }]);
+
+		const found = await createChariotDirectory(CREDENTIALS).findOrganisations('123456789');
+
+		expect(found).toMatchObject({ ok: true, value: [{ dafEligible: false }] });
+	});
+
+	it('makes the Connect for the organisation with the contact it is given', async () => {
+		const calls = recording([{ status: 201, json: { id: 'test_connect-1', active: true } }]);
+
+		const connected = await createChariotDirectory(CREDENTIALS).connect(
+			HOPE.id,
+			'alerts@example.org'
+		);
+
+		expect(connected).toEqual({
+			ok: true,
+			value: { id: 'test_connect-1', active: true, existing: false }
+		});
+		expect(calls[0]).toMatchObject({
+			method: 'POST',
+			url: 'https://sandboxapi.givechariot.com/v1/connects'
+		});
+		expect(JSON.parse(calls[0]?.body ?? '')).toEqual({
+			organization_id: HOPE.id,
+			contact: { email: 'alerts@example.org' }
+		});
+	});
+
+	/** Create Connect answers 200 with the organisation's own where it already has one. */
+	it('reads a Connect the organisation already had as existing, and one Chariot has not switched on as inactive', async () => {
+		recording([{ status: 200, json: { id: 'test_connect-1', active: false } }]);
+
+		const connected = await createChariotDirectory(CREDENTIALS).connect(
+			HOPE.id,
+			'alerts@example.org'
+		);
+
+		expect(connected).toEqual({
+			ok: true,
+			value: { id: 'test_connect-1', active: false, existing: true }
+		});
+	});
+
+	it('refuses a Connect Chariot refused, naming the key where the address turned it down', async () => {
+		recording([{ status: 401, json: { title: 'API Error', detail: 'unauthorized' } }]);
+
+		const connected = await createChariotDirectory(CREDENTIALS).connect(
+			HOPE.id,
+			'alerts@example.org'
+		);
+
+		expect(connected).toMatchObject({ ok: false, reason: 'not_configured' });
+		expect(connected.ok ? '' : connected.detail).toContain('CHARIOT_API_KEY');
 	});
 });

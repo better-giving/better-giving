@@ -92,15 +92,13 @@ describe('parseSmtpEndpoint', () => {
 	});
 
 	/**
-	 * port 25 keeps its own sentence. it is prohibited outbound by the platform — refused
-	 * before the connection reaches the mail host, so nothing an operator changes on their
-	 * server can fix it — which is a different instruction from "this app will not use that
-	 * port".
+	 * port 25 keeps its own sentence: it is the relay port, which an operator copies from a
+	 * relay's docs, and the sentence says so rather than only that 465 is the rule.
 	 */
-	it('refuses SMTP_PORT=25 as a platform prohibition, naming the port that works', () => {
+	it('refuses SMTP_PORT=25 as the relay port, naming the port that works', () => {
 		const detail = refusal({ port: '25' });
 		expect(detail).toContain('25');
-		expect(detail).toContain('prohibit');
+		expect(detail).toContain('relay');
 		expect(detail).toContain('465');
 	});
 
@@ -217,8 +215,8 @@ describe('parseSmtpEndpoint', () => {
 		{ form: 'bracketed loopback, as copied out of a config', host: '[::1]' },
 		{ form: 'bracketed unique-local', host: '[fd00::1]' },
 		{ form: 'bracketed link-local', host: '[fe80::1]' }
-	])('refuses $form ($host), which a Worker cannot reach', ({ host }) => {
-		expect(refusal({ host })).toContain('cannot reach');
+	])('refuses $form ($host), which this app does not dial', ({ host }) => {
+		expect(refusal({ host })).toContain('does not send mail to');
 	});
 
 	// and a routable IPv6 address is still routable, bracketed or not — the blocklist is the
@@ -250,7 +248,7 @@ describe('parseSmtpEndpoint', () => {
 	});
 
 	/**
-	 * an open relay a Worker can reach is not a shape worth supporting, and "there is no
+	 * an open relay is not a shape worth supporting, and "there is no
 	 * password" is a far better message than the AUTH failure it would otherwise become.
 	 *
 	 * an absent field arrives here rather than being caught upstream because this function has
@@ -265,36 +263,32 @@ describe('parseSmtpEndpoint', () => {
 		expect(refusal(fields)).toContain(label);
 	});
 
-	// every refusal names the variable and where it is put right — CLAUDE.md's rule that an
-	// operator-facing message names the offending value and where to fix it.
-	//
-	// where is the operator console for every value that fold has a box for, and a command for the
-	// port alone: that fold states 465 and its press carries no value for `SMTP_PORT`, so a
-	// terminal is the whole of the way out of a stored one (`PORT_FIX` in ./smtp-config.ts).
+	// every refusal names the variable and where it is put right: its line in `.env`, and for the
+	// port, removing that line (`PORT_FIX` in ./smtp-config.ts).
 	it.each([
 		{
 			label: 'port 25',
 			fields: { port: '25' },
 			names: 'SMTP_PORT',
-			where: 'pnpm run deploy --var SMTP_PORT'
+			where: 'Remove its line from `.env`'
 		},
 		{
 			label: 'port 587',
 			fields: { port: '587' },
 			names: 'SMTP_PORT',
-			where: 'pnpm run deploy --var SMTP_PORT'
+			where: 'Remove its line from `.env`'
 		},
 		{
 			label: 'an unreachable host',
 			fields: { host: 'localhost' },
 			names: 'SMTP_HOST',
-			where: 'under SMTP on the console'
+			where: 'Add `SMTP_HOST=<value>` to `.env`'
 		},
 		{
 			label: 'no password',
 			fields: { password: undefined },
 			names: 'SMTP_PASSWORD',
-			where: 'under SMTP on the console'
+			where: 'Add `SMTP_PASSWORD=<value>` to `.env`'
 		}
 	])('names $names and where it is put right when refusing $label', ({ fields, names, where }) => {
 		const detail = refusal(fields);
@@ -303,19 +297,15 @@ describe('parseSmtpEndpoint', () => {
 	});
 
 	/**
-	 * the console draws every one of these sentences — as the email capability's own line and
-	 * beside the send-test button — and its SMTP fold has a box for each of these three values. a
-	 * command here sends an operator to a terminal for something they are looking at, which is
-	 * what CLAUDE.md's two operator surfaces rules out: neither of them ever means a terminal.
-	 *
-	 * the port is the exception and is not on this list, for the reason `PORT_FIX` states.
+	 * a mail value is a line in `.env` and nothing else sets one, so a refusal names that line and
+	 * no `pnpm` script. the case above is the one proving each names the line.
 	 */
 	it.each([
 		{ label: 'an unreachable host', fields: { host: 'localhost' } },
 		{ label: 'a host that is not a hostname', fields: { host: 'smtp://user:pw@a.example:465' } },
 		{ label: 'no password', fields: { password: undefined } },
 		{ label: 'no username', fields: { username: undefined } }
-	])('names no command for a value the console has a box for, refusing $label', ({ fields }) => {
+	])('names no pnpm script, refusing $label', ({ fields }) => {
 		expect(refusal(fields)).not.toContain('pnpm');
 	});
 });
@@ -398,7 +388,7 @@ describe('parseHeaderValue', () => {
 		const result = parseHeaderValue('subject line', value);
 		if (result.ok) throw new Error('a subject with a line break was accepted');
 		expect(result.detail).toContain('subject line');
-		expect(result.detail).toContain('the console');
+		expect(result.detail).toContain('Organisation details in Settings');
 	});
 
 	// it refuses rather than stripping. a stripped subject sends a quietly mangled receipt and

@@ -697,7 +697,8 @@ describe('sending a reversal', () => {
 			{
 				db,
 				provider: createAccountingProvider(CONFIGURED, db),
-				email: quietMail
+				email: quietMail,
+				origin: null
 			},
 			new Date(Date.now() + 60_000)
 		);

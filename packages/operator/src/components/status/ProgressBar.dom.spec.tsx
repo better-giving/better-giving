@@ -7,10 +7,9 @@ import { MoveStatus, ProgressBar } from './ProgressBar.jsx';
 // what a reader of the tree is told when a bar appears. a live region announces a change to its own
 // contents, never its name and never its arrival, and a region inserted a moment before its words
 // is one a reader commonly has not registered yet. so over a move the region stands for the whole
-// life of the document and only its words change (`MoveStatus`, which both callers mount beside
-// the line: packages/console-ui/src/root.tsx, packages/app/src/routes/_app.tsx); the document's own
-// cells are prerendered into the document (the console's `HydrateFallback`) and write their words a
-// task after it hydrates.
+// life of the document and only its words change (`MoveStatus`, which
+// packages/app/src/routes/_app.tsx mounts beside the line); the document's own cells are
+// prerendered into the document and write their words a task after it hydrates.
 //
 // a component spec is `.tsx` and both pools collect either extension — ../forms/Field.dom.spec.tsx
 // says why.

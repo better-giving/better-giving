@@ -170,6 +170,11 @@ export function embedConfig({ mode }: { readonly mode: string }): UserConfig {
 		plugins: runtime
 			? [refuseUndeclaredImports()]
 			: [refuseUndeclaredImports(), stampRuntimePath()],
+		// library mode leaves `process.env.*` for a consumer's bundler (vite.dev/guide/build →
+		// library mode), and these scripts have none: they run as-is on a page where `process` is
+		// undefined, so a dependency's dev check — `@zag-js/store`'s, reached through the select and
+		// combobox — throws a ReferenceError there. src/embed/build-output.spec.ts reads the output.
+		define: { 'process.env.NODE_ENV': JSON.stringify('production') },
 		build: {
 			outDir: runtime ? RUNTIME_DIR : 'dist',
 			// the runtime build owns its directory and clears it, so the previous build's hash cannot

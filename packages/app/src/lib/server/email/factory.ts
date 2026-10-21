@@ -1,4 +1,5 @@
-import { setCommand } from '@better-giving/operator/deploy-split';
+import { envLine } from '@better-giving/operator/deploy-split';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { MAIL_SMTP_VARS, readConfigEnv, smtpFields } from '../config/env';
 import { logProviderFault, refusing, sealed, type EmailProvider } from './provider';
 import type { SMTPTransportOptions } from 'nodemailer';
@@ -7,7 +8,7 @@ import { createSmtpProvider, type MailTransport } from './smtp';
 // the one place a deployment's configuration becomes an `EmailProvider`.
 //
 // built per request from `platform.env`, never a module-scope singleton — the same rule the
-// D1 handle, the Better Auth instance and the Stripe client follow (CLAUDE.md), and for the
+// Better Auth instance and the Stripe client follow (AGENTS.md → Runtime), and for the
 // same reason: the secrets only exist on a request's platform env, so a cached provider is a
 // cached copy of one deployment's environment. `createAuth(db, …)` in ../auth/index.ts, built per
 // request at the gate over the screens behind the login (../auth/gate.ts), is that shape.
@@ -15,7 +16,7 @@ import { createSmtpProvider, type MailTransport } from './smtp';
 // it is deliberately not seeded onto the request context. what belongs there is what every surface
 // may need and nothing that costs a read (src/request-context.ts); a provider is built only by
 // the call sites that send — the scheduled runs in src/cron-runs.ts, `/forgot`, each processor's
-// webhook route, the console's test send (src/routes/console.test-email.ts), `/api/v1`'s
+// webhook route, the test send on Settings (src/routes/_app.admin.settings.tsx), `/api/v1`'s
 // donations endpoint and the dashboard routes that record a gift or invite a member. putting it
 // on every request would construct something for thousands of page views that never send
 // anything.
@@ -44,7 +45,7 @@ import { createSmtpProvider, type MailTransport } from './smtp';
  * the seal covers building a provider as well as sending with one, which is why the `try`
  * wraps the call rather than the expression: in `sealed(build(source))` the argument is
  * evaluated before the seal exists, so a throw inside `build` goes straight to the caller —
- * the console's test-send action, which is the exact channel the port exists to close.
+ * the test-send action on Settings, which is the exact channel the port exists to close.
  * nothing in `build` throws today; what is guaranteed here is that nothing added to it can. a
  * construction failure is `internal_error` for the reason ./provider.ts gives that reason: it
  * is a bug in this app, not a network to wait for and not a secret to re-enter.
@@ -68,7 +69,7 @@ export function createEmailProvider(
 			'internal_error',
 			'The email transport could not be built at all, which is not a state this app is ' +
 				'supposed to be able to reach. Nothing about the deployment fixes it. It is a bug in ' +
-				'this app, and the cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a checkout). No message was sent.'
+				`this app. No message was sent. ${LOGS_SAY_WHY}`
 		);
 	}
 }
@@ -83,9 +84,8 @@ function build(
 	// authorised by the same provider that issued the SMTP credential, so an operator who set
 	// some and not the others has done part of a single task.
 	//
-	// each command comes from `setCommand` in `@better-giving/operator/deploy-split` rather than
-	// from a literal, so a name that moves from one side of the split to the other moves this
-	// sentence with it.
+	// each `.env` line comes from `envLine` in `@better-giving/operator/deploy-split` rather than
+	// from a literal, so the spelling of a line is one module's.
 	//
 	// nothing selects a transport here and nothing may. the only question this function asks is
 	// whether the deployment can send, and these four variables are the whole answer — see the
@@ -95,8 +95,9 @@ function build(
 		return refusing(
 			'not_configured',
 			`This deployment is not set up to send email: ${absent.map((name) => `\`${name}\``).join(' and ')} ` +
-				`${absent.length === 1 ? 'is' : 'are'} not set, so no message can be sent. Run ` +
-				`${absent.map((name) => `\`${setCommand(name)}\``).join(' and ')}.`
+				`${absent.length === 1 ? 'is' : 'are'} not set, so no message can be sent. Add ` +
+				`${absent.map((name) => `\`${envLine(name)}\``).join(' and ')} to \`.env\`, then ` +
+				'recreate the app.'
 		);
 	}
 

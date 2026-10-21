@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import type { PaymentStatus } from '../db/schema';
 import { redact, redactPublicId } from '../../redact.ts';
+import { envLine, RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { isStripeRail, STRIPE_RAILS, type StripeRail } from '@better-giving/form/embed/rails';
 import { DONATION_METADATA_KEY, RAIL_CAPABILITY_STATES, WALLETS } from './provider.ts';
 import {
@@ -54,12 +55,12 @@ import type {
 // the Stripe adapter, and the only module in this repository that imports `stripe`.
 //
 // that is the rule ./sole-importer.spec.ts enforces, and it is the same shape ../db/client.ts
-// holds over D1 for the same stated reason: so the contract has exactly one place to be stated.
-// everything else takes `PaymentProvider` from ./provider.ts.
+// holds over the libSQL driver for the same stated reason: so the contract has exactly one place
+// to be stated. everything else takes `PaymentProvider` from ./provider.ts.
 //
-// it is written for workerd, which is what the constructor options are about — see
-// `createStripeProvider`, and ./stripe-default-client.spec.ts, which is where that claim is actually
-// exercised rather than asserted in prose.
+// the HTTP client and the crypto provider are passed explicitly rather than left to the SDK's
+// platform detection — see `createStripeProvider`, and ./stripe-default-client.spec.ts, which
+// builds the client production uses.
 //
 // a dispute's money is read off its own balance transactions, and its fees off every balance
 // transaction booked against it, so what is booked is what Stripe moved rather than what its policy
@@ -145,9 +146,8 @@ const TIMEOUT_MS = 12_000;
  * inside the delivery Stripe is already waiting on, and `fee_not_ready` in ./provider.ts carries the
  * long tail into a redelivery.
  *
- * the budget is bounded by what the processor will wait for rather than by this runtime. a Worker
- * has no wall-clock limit while its client stays connected and a timer costs it no CPU time
- * (https://developers.cloudflare.com/workers/platform/limits/), so the four seconds are the
+ * the budget is bounded by what the processor will wait for rather than by this runtime. the app
+ * is one Node process, and a timer there costs nothing while it waits, so the four seconds are the
  * processor's patience being spent and nothing else's.
  *
  * **nothing caps the read as a whole, and that is the same argument rather than a gap in it.** the
@@ -1342,18 +1342,14 @@ export type StripeSeam = {
  * (CLAUDE.md), so a cached client is a cached copy of one deployment's environment. this is the
  * `createAuth(db, …)` shape ../auth/index.ts holds, and ../db/client.ts's `createDb(client)`.
  *
- * two options make it work on workerd, and both are passed explicitly rather than left to the
- * SDK's platform detection, so that this module is correct whichever build of the package a
- * bundler resolves:
+ * two options are passed explicitly rather than left to the SDK's platform detection, so that
+ * this module is the same whichever build of the package a bundler resolves:
  *
- *   - `httpClient` — the fetch client, which is what workerd has. a client built on node's
- *     `http`/`https` modules constructs happily here and throws on every call in production.
- *   - the crypto provider handed to `constructEventAsync` in `verifyEvent`, for the same reason
- *     the synchronous `constructEvent` is never called: it wants node's crypto and throws there.
+ *   - `httpClient` — the fetch client.
+ *   - the crypto provider handed to `constructEventAsync` in `verifyEvent`, WebCrypto's.
  *
- * neither claim is left to this comment. ./stripe-default-client.spec.ts builds a provider with no seam
- * at all and exercises both inside workerd, which is the only place either can be observed —
- * under node both work whether or not they are the ones production would use.
+ * ./stripe-default-client.spec.ts builds a provider with no seam at all and reaches the network
+ * through the default client.
  *
  * `maxNetworkRetries: 0`, deliberately. the SDK's own retry cannot know whether the caller wants
  * one, and every retry that matters here is the caller's to make under the same
@@ -1400,9 +1396,9 @@ export function createStripeProvider(
 				return {
 					ok: false,
 					reason: 'provider_error',
-					// the endpoint exists at this point, and saying so is the whole of the message: an
-					// operator who reads this and presses the button again is refused for a URL that is
-					// already registered, with no way left to reach the secret of the thing they made.
+					// the endpoint exists at this point, and saying so is the whole of the message: its
+					// secret is out of reach for good, and running the setup again replaces it (`rerun`
+					// in ./webhook-setup.ts) with one whose secret is printed.
 					detail:
 						`Stripe registered webhook endpoint ${redactPublicId(created.id)} and returned no ` +
 						'signing secret, so there is nothing to set `STRIPE_WEBHOOK_SECRET` to and no way to ' +
@@ -1411,16 +1407,16 @@ export function createStripeProvider(
 				};
 			}
 
-			// the stamp that lets a console tell this deployment's stored secret from the one before
-			// it — `packages/operator/src/stripe/secret-fingerprint.ts`'s header is the whole of why. it is a second call because
-			// the value being stamped does not exist until the create above answers, and Stripe
-			// accepts no caller-chosen secret to stamp in advance.
+			// the stamp that lets the Payments screen tell this deployment's stored secret from the one
+			// before it — `packages/operator/src/stripe/secret-fingerprint.ts`'s header is the whole of
+			// why. it is a second call because the value being stamped does not exist until the create
+			// above answers, and Stripe accepts no caller-chosen secret to stamp in advance.
 			//
 			// a stamp that could not be written is swallowed, and that is the direction to be wrong
 			// in: the caller is holding the only copy of a signing secret there will ever be, so a
-			// refusal here takes it off the operator's screen over a value whose only job is telling
-			// them later whether they set it. unstamped, the endpoint reads as one the console cannot
-			// confirm — where every hand-registered endpoint already sits.
+			// refusal here loses it before the setup script prints it, over a value whose only job is
+			// telling the operator later whether they set it. unstamped, the endpoint reads as one the
+			// Payments screen cannot confirm — where every hand-registered endpoint already sits.
 			const stamped = await stampFingerprint(created.id, created.secret);
 
 			return {
@@ -1464,7 +1460,7 @@ export function createStripeProvider(
 	 * asked. reported as `absent` it would draw a setup button over an account nobody can reach — and
 	 * creating a product on the strength of a rejected key is how an account acquires one per outage.
 	 *
-	 * both arms below are built on this, so what the console reads and what a donor's first
+	 * both arms below are built on this, so what the Payments screen reads and what a donor's first
 	 * repeating gift finds are one call with one interpretation. the difference is only in what each
 	 * does about an answer.
 	 */
@@ -1617,13 +1613,13 @@ export function createStripeProvider(
 	/**
 	 * one collection, resolved to the commitment it belongs to and the transaction it was paid on.
 	 *
-	 * one round trip for both facts, and both of them are asked for. this runs on workerd, where
-	 * every delivery is answered inside a request budget, so the whole answer is one retrieve with two
-	 * expansions on it rather than a walk from invoice to subscription to charge.
+	 * one round trip for both facts, and both of them are asked for. every delivery is answered while
+	 * Stripe waits on it, so the whole answer is one retrieve with two expansions on it rather than a
+	 * walk from invoice to subscription to charge.
 	 *
 	 * the subscription is expanded rather than read as an id and retrieved, because the id alone is
 	 * not the answer: what a caller needs is the state the commitment is in now, and a second
-	 * retrieve to learn it would be a second subrequest for something the first can carry.
+	 * retrieve to learn it would be a second round trip for something the first can carry.
 	 *
 	 * `payments` is expanded because it is an *includable* property rather than an included one —
 	 * Stripe's own word for a sub-list that arrives only when the request asks for it
@@ -2101,6 +2097,11 @@ export function createStripeProvider(
 			// ./provider.ts), so the webhook route answers 5xx and Stripe brings the delivery back across
 			// the three-day window — which is the window an operator sets this value inside, having just
 			// registered the endpoint that minted it.
+			//
+			// the fix never names `setupWebhookCommand`: a delivery reaching this address means an
+			// endpoint is registered for it, and re-running setup deletes that endpoint along with the
+			// retries it is holding (https://docs.stripe.com/webhooks#automatic-retries). Stripe returns
+			// an endpoint's secret only at creation, so the dashboard is where the existing one is read.
 			if (credentials.webhookSecret === null) {
 				return {
 					ok: false,
@@ -2108,9 +2109,12 @@ export function createStripeProvider(
 					detail:
 						'This deployment cannot check that a payment notification came from Stripe: ' +
 						'`STRIPE_WEBHOOK_SECRET` is not set, so the delivery was refused and its body was not ' +
-						'read. The value is minted by registering this deployment’s endpoint — set payment ' +
-						'notifications up on the console (`better-giving start`), which stores it in the same ' +
-						'press.'
+						'read. Stripe is posting to an endpoint already registered for this address, and the ' +
+						'value is that endpoint’s signing secret: in Stripe’s dashboard open Workbench → ' +
+						'Webhooks, select the endpoint for this address and reveal its signing secret, put it ' +
+						`in \`.env\` as \`${envLine('STRIPE_WEBHOOK_SECRET')}\`, then recreate the app: ` +
+						`\`${RECREATE_APP}\`. Keep that endpoint: Stripe redelivers this notification only ` +
+						'while it exists. A local `stripe listen` prints its own secret instead.'
 				};
 			}
 
@@ -2128,10 +2132,7 @@ export function createStripeProvider(
 
 			let event: Stripe.Event;
 			try {
-				// the async form, and the crypto provider passed explicitly. the synchronous
-				// `constructEvent` reaches for node's crypto and throws on workerd, which is the
-				// runtime this app deploys to — and it would do so only in production, since a node
-				// test pool has that crypto and would pass either way.
+				// the async form, with the crypto provider `createStripeProvider` passes explicitly.
 				//
 				// verified against the raw body string exactly as it arrived. a body that has been
 				// parsed and re-serialised is a different byte sequence and verifies against nothing,

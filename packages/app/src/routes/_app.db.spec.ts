@@ -1,52 +1,64 @@
 import type { Client, InStatement } from '@libsql/client';
+import {
+	createStaticHandler,
+	type LoaderFunction,
+	type MiddlewareFunction,
+	type StaticHandlerContext
+} from 'react-router';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
-import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { createDeferredWork } from '$lib/server/runtime/deferred';
+import { readEnv } from '$lib/server/runtime/env';
+import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
+import { requestContext } from '../request-context';
+import { mountRoutes, queryDocument, type RouteRequester } from '../route-request.testing';
 import { deployedBindings, signInAsDeployer } from '../staff-session.testing';
 import * as layout from './_app';
-import * as signOut from './_app.admin.sign-out';
-import { client, first, run, stmt } from '$lib/server/db/database.testing';
+import { client, run, stmt } from '$lib/server/db/database.testing';
 
-// the set-up gate on the protected layout: while any of the five jobs is outstanding no screen
-// beneath it reads or writes, and the one way out still works.
+// the protected layout serves its screens on any deployment a session reaches, set up or not, and
+// names the organisation in the identity band where there is a row to name it from.
 //
 // the child is a stand-in that counts its own calls, because what is asserted is that the layout
-// let it run or did not — a real screen would answer the same question through its own rows.
+// let it run — a real screen would answer the same question through its own rows.
 
 const ORIGIN = 'https://give.example';
 const PASSWORD = 'a-very-long-random-staff-password';
 const DEPLOYMENT = { env: deployedBindings(PASSWORD), password: PASSWORD, origin: ORIGIN };
 
-/** the bindings of a deployment whose values are all set; the org row decides the rest. */
-const bindings = (): Env => deployedBindings(PASSWORD);
+/** the staff password and nothing else: no processor, no mail host. */
+const unconfigured = (): Env => readEnv({ ADMIN_PASSWORD: PASSWORD }, specRateLimiters());
 
 let db: Db;
 let request: RouteRequester;
-let signOutRequest: RouteRequester;
 const ran = { loader: 0, action: 0 };
+
+const screen = {
+	loader: () => {
+		ran.loader += 1;
+		return { screen: true };
+	},
+	action: () => {
+		ran.action += 1;
+		return { saved: true };
+	}
+};
+
+/** the layout over the stand-in, as react router's own route objects for a document request. */
+const handler = createStaticHandler([
+	{
+		id: 'app',
+		middleware: layout.middleware as unknown as MiddlewareFunction[],
+		loader: layout.loader as unknown as LoaderFunction,
+		children: [{ id: 'screen', path: 'admin/screen', loader: screen.loader }]
+	}
+]);
 
 beforeAll(() => {
 	db = createDb(client);
-	// a chain is one line of nesting (../route-request.testing.ts), so the way out is its own.
-	signOutRequest = mountRoutes([
-		{ path: undefined, module: layout },
-		{ path: 'admin/sign-out', module: signOut }
-	]);
 	request = mountRoutes([
 		{ path: undefined, module: layout },
-		{
-			path: 'admin/screen',
-			module: {
-				loader: () => {
-					ran.loader += 1;
-					return { screen: true };
-				},
-				action: () => {
-					ran.action += 1;
-					return { saved: true };
-				}
-			}
-		}
+		{ path: 'admin/screen', module: screen }
 	]);
 });
 
@@ -58,30 +70,30 @@ beforeEach(async () => {
 	}
 });
 
-/** the organisation's identity and alert address saved, which finishes the last two jobs. */
-async function finishSetUp(): Promise<void> {
-	await run(
-		stmt(`insert into org_profile (id, legal_name, tax_id, notification_email, created_at, updated_at)
-		 values ('default', 'Riverbank Trust', '12-3456789', 'alerts@example.org', 0, 0)`)
-	);
-}
-
-const post = (cookie: string, at = '/admin/screen', to = request) =>
-	to(
-		new Request(`${ORIGIN}${at}`, {
+const post = (cookie: string) =>
+	request(
+		new Request(`${ORIGIN}/admin/screen`, {
 			method: 'POST',
 			headers: { cookie, origin: ORIGIN },
 			body: new FormData()
 		}),
-		{ env: bindings() }
+		{ env: unconfigured() }
 	);
 
-const get = (cookie: string, at = '/admin/screen', on: Client = client) =>
-	request(new Request(`${ORIGIN}${at}`, { headers: { cookie } }), { env: bindings(), client: on });
+const get = (cookie: string) =>
+	request(new Request(`${ORIGIN}/admin/screen`, { headers: { cookie } }), { env: unconfigured() });
+
+/** the page as a document request draws it: the status and each route's loader data. */
+const drawn = (cookie: string, on: Client = client): Promise<StaticHandlerContext> =>
+	queryDocument(
+		handler,
+		new Request(`${ORIGIN}/admin/screen`, { headers: { cookie } }),
+		requestContext({ env: unconfigured(), deferred: createDeferredWork(), client: on })
+	);
 
 /**
  * a database that refuses the organisation's row and answers everything else, so the session gate
- * resolves and only the set-up reading fails.
+ * resolves and only the organisation's name is lost.
  */
 function profileUnreadable(): Client {
 	const refuses = (statement: InStatement) =>
@@ -100,52 +112,8 @@ function profileUnreadable(): Client {
 	});
 }
 
-describe('while a set-up job is outstanding', () => {
-	it('answers a read with the gate and runs no screen beneath it', async () => {
-		const cookie = await signInAsDeployer(db, DEPLOYMENT);
-
-		const response = await get(cookie);
-
-		expect(ran.loader).toBe(0);
-		expect(response.status).toBe(503);
-		const body = (await response.json()) as {
-			shape: string;
-			lines: { id: string; state: string }[];
-		};
-		expect(body.shape).toBe('setup');
-		expect(body.lines.filter((line) => line.state === 'todo').map((line) => line.id)).toEqual([
-			'organisation',
-			'notifications'
-		]);
-	});
-
-	it('refuses a write without running it and sends the browser back to the same address', async () => {
-		const cookie = await signInAsDeployer(db, DEPLOYMENT);
-
-		const response = await post(cookie, '/admin/screen?tab=plans');
-
-		expect(ran.action).toBe(0);
-		expect(response.status).toBe(303);
-		expect(response.headers.get('location')).toBe('/admin/screen?tab=plans');
-	});
-
-	it('still signs a stale tab out', async () => {
-		const cookie = await signInAsDeployer(db, DEPLOYMENT);
-
-		const response = await post(cookie, '/admin/sign-out', signOutRequest);
-
-		expect(response.status).toBe(303);
-		expect(response.headers.get('location')).toBe('/login');
-		const row = await first<{
-			n: number;
-		}>(stmt('select count(*) as n from auth_session'));
-		expect(row?.n).toBe(0);
-	});
-});
-
-describe('once set-up is finished', () => {
-	it('runs the screen it was asked for', async () => {
-		await finishSetUp();
+describe('on a deployment nobody has set up', () => {
+	it('runs the screen it was asked for, with no organisation row and no processor keys', async () => {
 		const cookie = await signInAsDeployer(db, DEPLOYMENT);
 
 		const response = await get(cookie);
@@ -156,7 +124,6 @@ describe('once set-up is finished', () => {
 	});
 
 	it('runs the write it was sent', async () => {
-		await finishSetUp();
 		const cookie = await signInAsDeployer(db, DEPLOYMENT);
 
 		const response = await post(cookie);
@@ -165,17 +132,38 @@ describe('once set-up is finished', () => {
 		expect(await response.json()).toEqual({ saved: true });
 		expect(ran.action).toBe(1);
 	});
+
+	it('draws the frame with no name in the identity band', async () => {
+		const cookie = await signInAsDeployer(db, DEPLOYMENT);
+
+		const page = await drawn(cookie);
+
+		expect(page.statusCode).toBe(200);
+		expect(page.loaderData.app).toEqual({ orgName: null, deployer: true });
+	});
 });
 
-describe('when the set-up reading does not land', () => {
-	it('gates nothing, so the screen still runs', async () => {
+describe('the identity band', () => {
+	it('names the organisation off its registered name', async () => {
+		await run(
+			stmt(`insert into org_profile (id, legal_name, created_at, updated_at)
+			 values ('default', 'Riverbank Trust', 0, 0)`)
+		);
+		const cookie = await signInAsDeployer(db, DEPLOYMENT);
+
+		const page = await drawn(cookie);
+
+		expect(page.loaderData.app).toEqual({ orgName: 'Riverbank Trust', deployer: true });
+	});
+
+	it('loses the name and not the page when the row cannot be read', async () => {
 		const cookie = await signInAsDeployer(db, DEPLOYMENT);
 		const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-		const response = await get(cookie, '/admin/screen', profileUnreadable());
+		const page = await drawn(cookie, profileUnreadable());
 
-		expect(response.status).toBe(200);
-		expect(ran.loader).toBe(1);
+		expect(page.statusCode).toBe(200);
+		expect(page.loaderData.app).toEqual({ orgName: null, deployer: true });
 		expect(errors).toHaveBeenCalledOnce();
 	});
 });

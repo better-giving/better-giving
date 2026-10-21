@@ -1,4 +1,5 @@
 import { MIN_ADMIN_PASSWORD_LENGTH } from '@better-giving/operator/admin-password';
+import { RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { describe, expect, it } from 'vitest';
 import { readStaffCredential, staffCredentialMatches } from './credential';
 
@@ -19,34 +20,26 @@ describe('readStaffCredential', () => {
 	// the load-bearing case: a fork that deploys without ever setting ADMIN_PASSWORD.
 	// this must never authenticate anyone, and the message has to say what to do.
 	//
-	// where is asserted, not just its presence: the console is the operator's whole interface, so a
-	// message that handed back a raw `wrangler` command would be a second vocabulary for someone who
-	// only knows the first.
+	// where is asserted, not just its presence: the value is a line in `.env`.
 	it('refuses when ADMIN_PASSWORD is absent, naming the variable and the fix', () => {
 		const result = readStaffCredential({});
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.message).toContain('ADMIN_PASSWORD is not set');
-		expect(result.message).toContain('better-giving start');
-		expect(result.message).toContain('Dashboard password');
-		expect(result.message).not.toContain('wrangler');
-		expect(result.message).toContain('.dev.vars');
+		expect(result.message).toContain('Set `ADMIN_PASSWORD` in `.env`');
 	});
 
-	// a value set from the console takes effect on its own, which scripts/doctor.js says in both of
-	// its own advice lines. telling an operator to redeploy here would send them through
-	// `pnpm run deploy`, which drags its one-way `d1 migrations apply --remote` along with it — a
-	// schema migration run for a password change.
-	it('tells the operator the value applies immediately, and never to redeploy', () => {
+	// compose reads `.env` when it creates the container, so a restart keeps the old value
+	// (`RECREATE_APP` in packages/operator/src/deploy-split.ts).
+	it('tells the operator to recreate the app with its command, never to restart it', () => {
 		const result = readStaffCredential({});
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
-		expect(result.message).toContain('immediately');
-		expect(result.message).not.toContain('redeploy');
+		expect(result.message).toContain(`then recreate the app: \`${RECREATE_APP}\`.`);
+		expect(result.message).not.toContain('restart');
 	});
 
-	// a plain Worker var, as every value `packages/operator/src/deploy-split.ts` lists is (CLAUDE.md).
-	// an operator told it is a secret goes looking for a Worker secret the console never stores.
+	// a plain line in `.env`, as every value `packages/operator/src/deploy-split.ts` lists is.
 	it('calls ADMIN_PASSWORD the var it is, never a secret', () => {
 		const result = readStaffCredential({});
 		expect(result.ok).toBe(false);
@@ -111,7 +104,7 @@ describe('readStaffCredential', () => {
 
 	/**
 	 * an identifier is no part of the credential, so a stray one left in a fork's
-	 * `.dev.vars` must not become one by accident — and its absence must not be a reason to
+	 * `.env` must not become one by accident — and its absence must not be a reason to
 	 * refuse.
 	 */
 	it('ignores any identifier left in the env', () => {

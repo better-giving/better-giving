@@ -104,6 +104,8 @@ type Answer = {
 /** posts a body at the screen and reports what it answered with. */
 async function post(fields: Record<string, string>) {
 	const body = new FormData();
+	// the screen carries the QuickBooks presses beside this form, so a body names the one it is.
+	body.append('__form_id__', 'correction');
 	for (const [field, value] of Object.entries(fields)) body.append(field, value);
 
 	const response = await request(
@@ -139,6 +141,7 @@ async function visit() {
 		sourceId: string;
 		entries: { datedOn: string; source: string; movement: string[]; memo: string | null }[] | null;
 		hasMore: boolean;
+		quickbooks: unknown;
 	};
 }
 
@@ -342,5 +345,7 @@ describe('the screen as it is served', () => {
 
 		expect(served.entries).toBe(null);
 		expect(served.accounts).toHaveLength(9);
+		// the deployer's QuickBooks half reads the same table, and says so rather than failing the page.
+		expect(served.quickbooks).toBe('unreadable');
 	});
 });

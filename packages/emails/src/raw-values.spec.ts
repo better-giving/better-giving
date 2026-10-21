@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 //
 // this is one of five callers, each its own surface's: packages/app/src/lib/admin/styles/raw-color.spec.ts
 // and .../conformance.spec.ts are the dashboard's two, packages/operator/src/components/raw-values.spec.ts
-// is the shared components', packages/console-ui/src/raw-values.spec.ts is the console's, and this
+// is the shared components', packages/gallery/src/raw-values.spec.ts is the gallery's, and this
 // file is the mail templates'. each glob is its own caller's, for the reason that shared file states
 // about every caller's: a glob that quietly stops matching reads as a passing gate forever, and only
 // the surface that wrote it knows what it was meant to reach.

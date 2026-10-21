@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MOTION_CAP_MS } from './motion-end';
 
 // the signal between an operator screen's one progress bar and the reading that replaces the
-// screen it stands over. the pathnames are the console's.
+// screen it stands over.
 //
 // every case takes the module again: what it holds is per-page rather than per-call — the page on
 // the screen, and the one bar standing over it — so a case running against the state the case
@@ -135,8 +135,7 @@ describe('the bar a reading is taken behind', () => {
 	});
 
 	it('leaves the pass of the same move standing when one of its readings reads nothing', async () => {
-		// the console's sections layout and the page under it are two loaders of one move, run side
-		// by side.
+		// a layout and the page under it are two loaders of one move, run side by side.
 		const bar = await fresh();
 		bar.pageDrawn('/');
 		const layout = bar.holdBar('/payments/stripe');

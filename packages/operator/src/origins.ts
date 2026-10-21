@@ -1,22 +1,21 @@
 // what a site allowed to embed a donation form may look like, and the host name inside one — the
 // whole of both, in the one module every surface reads them from.
 //
-// **the rules are here because two surfaces apply them to the same list.** the deployment parses
+// **the rules are here because two readers apply them to the same list.** the deployment parses
 // what it is sent (`packages/app/src/lib/forms/input-schema.ts`,
-// `packages/app/src/lib/server/sites/site-input.ts`) and the console applies them in front of the
-// person typing, under the box holding each offending row, through the schema its fold validates
-// against (`packages/console-ui/src/lib/sites.ts`). a copy in the console would be the cheaper
+// `packages/app/src/lib/server/sites/site-input.ts`) and the sites list on the donation forms
+// screen applies them in front of the person typing, under the box holding each offending row
+// (`packages/app/src/routes/_app.admin.forms._index.tsx`). a copy in the screen would be the cheaper
 // answer and is exactly how the two come to disagree: one end reading `acme.org` as the site the
-// operator meant and storing `https://acme.org`, and the other refusing the list, is a setup run
-// that dies after doing work nobody can take back. one module is what makes both ends agree.
+// operator meant and storing `https://acme.org`, and the other refusing the list. one module is
+// what makes both ends agree.
 //
-// **the deployment's parse stays the authority.** the console reading the list first is a courtesy
-// to the operator and never a replacement for the boundary: `/console/sites` is reachable by
-// anything holding a session, so the worker parses every list it is sent whatever asked it to.
+// **the deployment's parse stays the authority.** the screen reading the list first is a courtesy
+// to the operator and never a replacement for the boundary: the action is reachable by anything
+// holding a session, so the deployment parses every list it is sent whatever asked it to.
 //
-// this package is a leaf and imports nothing of the app's, which is what makes it the only place
-// both can reach: everything below reads a string with the platform's own `URL` and reaches for
-// nothing else.
+// this package is a leaf and imports nothing of the app's: everything below reads a string with
+// the platform's own `URL` and reaches for nothing else.
 //
 // **a row is repaired where it can be and refused where it cannot.** a browser's address bar hands
 // out `https://acme.org/donate?x=1` and a fundraiser types `acme.org`, and neither is a mistake to
@@ -50,8 +49,8 @@
 // `http://x.example` and `https://x.example:8443` are four lines and one site to the fundraiser
 // typing them, so the second and every one after it is named as a repeat and the first is stored as
 // whatever it normalised to. the trade is deliberate and the cost of the other way round is what
-// decides it: everything downstream keys on the host ({@link hostsOf} feeds the Turnstile widget
-// and Stripe's wallet domains), so a list keyed on the whole origin takes both, collapses them to
+// decides it: everything downstream keys on the host ({@link hostsOf} feeds Stripe's wallet
+// domains), so a list keyed on the whole origin takes both, collapses them to
 // one host on the save, and the operator watches an entry they typed evaporate with nothing said
 // about it.
 //
@@ -169,7 +168,7 @@ export function readOriginList(rows: readonly string[]): {
  *
  * the reading a surface that draws one box per site takes, where {@link readOriginList} is the
  * reading a surface that stores the list takes. both are the same rules over the same rows, which
- * is the whole reason they are one module: a console marking a row its own deployment would accept
+ * is the whole reason they are one module: a screen marking a row its own deployment would accept
  * is the same disagreement a copy causes, arrived at from the other side.
  *
  * **`rows` comes back at the length it was handed**, at the same positions, so a caller keys a
@@ -215,7 +214,7 @@ export function readOriginRows(rows: readonly string[]): {
  * what two rows have to share to be the same site, which is the host name and not the line.
  *
  * the one statement of the rule this file's header argues, read by both readings above so that a
- * box the console marks as a repeat is a box the deployment would have refused.
+ * box the screen marks as a repeat is a box the deployment would have refused.
  *
  * it is taken off the normalised row rather than off the text, which is what makes `acme.org` and
  * `https://acme.org` the one site they are to the person typing them. a row nothing can be read out
@@ -336,26 +335,19 @@ function isLoopbackHttp(url: URL): boolean {
 /**
  * the host name inside one origin, or `null` where there is no host to read.
  *
- * the reader every surface that draws a site list uses. the console's binary takes the same host
- * out of the same origin for the domains a Turnstile widget is created and levelled with, in go
- * (`Hosts` in `packages/console/internal/widget`); this is beside the rules above because the host
- * it takes is only ever taken out of a line those rules accepted, and the two must keep agreeing —
- * a host read one way here and another there is a widget covering a site the deployment serves
- * under a different name. `./origins.hosts.json` is what holds them equal rather than the two
- * doc comments: `./origins.spec.ts` reads it and so does
- * `packages/console/internal/widget/widget_test.go`, so a row either side reads differently is a
- * red suite.
+ * the reader that turns a stored site list into host names — the wallet domains a processor is
+ * registered with (`packages/app/src/lib/server/payments/wallet-hosts.ts`). it is beside the rules
+ * above because the host it takes is only ever taken out of a line those rules accepted.
+ * `./origins.hosts.json` holds the rows it must read each way, and `./origins.spec.ts` reads it.
  *
  * `hostname` and not `host`, so the port comes off with the scheme. an origin may carry one —
  * `https://give.example.org:8443` is stored with it — and nothing that takes a host name takes a
  * port on the end of it.
  *
- * **an IPv6 literal comes back bare, and the brackets are what this side gives up to keep the two
- * in step.** `url.hostname` hands one back bracketed and go's `Hostname()` does not, so `[::1]` and
- * `::1` were the same stored origin read two ways. what both lists are handed decides it: a
- * Turnstile widget's domains and Stripe's wallet domains are domain fields, and a domain field
- * takes a host name rather than url syntax — the brackets belong to the address the host was read
- * out of. the row reader above keeps them, because {@link LOOPBACK_HOSTNAMES} is matched against
+ * **an IPv6 literal comes back bare.** `url.hostname` hands one back bracketed, and what the list
+ * is handed to decides it: Stripe's wallet domains are a domain field, and a domain field takes a
+ * host name rather than url syntax — the brackets belong to the address the host was read out of.
+ * the row reader above keeps them, because {@link LOOPBACK_HOSTNAMES} is matched against
  * `url.hostname` and reads a row rather than a stored origin.
  *
  * it reads a stored origin rather than a typed row, so nothing is repaired on the way: `null`
@@ -382,7 +374,7 @@ export function hostOf(origin: string): string | null {
  *
  * the repeats come out even though {@link siteKey} is what makes a list holding two of them
  * refusable: this takes whatever list it is handed — a stored one, a form's ticked subset — and a
- * widget carrying one host twice is a list Cloudflare and this repository would describe
+ * domain list carrying one host twice is a list the processor and this repository would describe
  * differently.
  */
 export function hostsOf(origins: readonly string[]): string[] {

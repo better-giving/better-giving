@@ -157,7 +157,7 @@ export function quoteRateLimitKey(request: Request): string | null {
  * it through would be unbounded guessing at all of them. the deployer's attempt is let through
  * uncounted, because refusing it would shut every way into the dashboard at once — under the
  * misread proxy header `attributedCaller` describes that is every caller of the deployment — and one secret,
- * minted by the console unless the operator typed their own, is the cost that leaves unbounded.
+ * `ADMIN_PASSWORD` in `.env`, is the cost that leaves unbounded.
  *
  * `src/routes/forgot.tsx`'s action answers it by refusing every request, before the body is read:
  * the deployer's password is never reset from there, so a refusal shuts nobody out of the
@@ -503,7 +503,7 @@ function unboundSurface(): Response {
 			message:
 				'This deployment has no API_RATE_LIMITER, so requests to /api/v1 cannot be ' +
 				'metered and are refused. Nothing about the request is wrong.',
-			fix: 'Start the app with `pnpm start`, which builds every limiter in RATE_LIMITS (src/lib/server/runtime/rate-limiter.ts).'
+			fix: 'Start the app with `docker compose up -d app`, whose server entry (packages/app/server/index.ts) builds every limiter in RATE_LIMITS (src/lib/server/runtime/rate-limiter.ts).'
 		},
 		{ status: 500, headers: { 'cache-control': 'no-store' } }
 	);

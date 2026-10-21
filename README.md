@@ -4,10 +4,9 @@ A donation app for a **single** nonprofit, run anywhere Docker runs. One deploym
 
 **Bring your own processor.** Charges go directly to the org's own account at Stripe, PayPal, Chariot (gifts from a donor-advised fund), NOWPayments (crypto), or any mix: the app holds their keys and never custodies funds.
 
-## Two operator surfaces
+## The dashboard
 
-- **The dashboard** is `/admin` on a deployment. Donation forms, donations, donors, recurring gifts. The only thing a staff member opens.
-- **The console** is the operator's set-up screens: the site list, the org's legal identity, the notification address. Served by the app in a later change.
+`/admin` on a deployment is the only screen anybody opens. Donation forms, donations, donors, recurring gifts and the books, for every staff member. Settings (the org's legal identity, logo, notification address, mail), Payments, the sites forms go on, and QuickBooks, for the person who deployed it. Keys and passwords live in `.env`, never on a screen: [`DEPLOY.md`](./DEPLOY.md) is the setup.
 
 ## Get started
 
@@ -19,16 +18,16 @@ A donation app for a **single** nonprofit, run anywhere Docker runs. One deploym
 ### Run it
 
 ```sh
-cp .env.example .env                 # fill in ADMIN_PASSWORD at minimum
+cp .env.example .env                 # set ADMIN_PASSWORD and BETTER_AUTH_SECRET
 docker compose run --rm migrate      # applies the migrations to the database file
 docker compose up -d
 ```
 
-Sign in at `/login` on `http://localhost:3000` (or `BETTER_GIVING_PORT`) as `admin`, with the `ADMIN_PASSWORD` from `.env`. The mail and Turnstile values in `.env.example` are fake-but-valid, so the app runs with no account created anywhere. The database lives on the named volume `data` and survives `docker compose down`.
+Sign in at `/login` on `http://localhost:3000` (or `BETTER_GIVING_PORT`) as `admin`, with the `ADMIN_PASSWORD` from `.env`. The mail values in `.env.example` are placeholders that send nowhere, so the app runs with no account created anywhere. The database lives on the named volume `data` and survives `docker compose down`.
 
-The dashboard is not served until set-up reads finished (`packages/app/src/lib/server/config/readiness.ts`): the organisation's registered name and EIN, the notification address, mail, the password, and a processor's keys.
+The dashboard opens at once. A donation form goes live once Settings holds the organisation's registered name and EIN and one processor's keys are in `.env` (`packages/app/src/lib/server/forms/readiness.ts`).
 
-**A donation cannot complete out of the box**: every processor key is commented out, and the published Turnstile pair passes every visitor and then has its submission refused. The app serves its own Donation page, made the first time it is asked for, at `/donate`.
+**A donation cannot complete out of the box**: every processor key is commented out. The app serves its own Donation page at `/donate`, made the first time it is asked for, and answers 404 there until a form could go live.
 
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) is running it from a checkout, with a seeded database, and how migrations work.
 
@@ -36,13 +35,13 @@ The dashboard is not served until set-up reads finished (`packages/app/src/lib/s
 
 The same three lines on a machine of your own, behind an `https` proxy. **One container, never scaled**: the rate limits, the cache and the scheduled runs are in-process. [`DEPLOY.md`](./DEPLOY.md) is the operator's file and walks all of it, in order: the configuration values, the proxy header, processor webhooks, backups and restores, rehearsal deployments, and upgrades.
 
-Email and Turnstile are required. A deployment that cannot send cannot give a donor the receipt they file with a tax authority, and `/api/v1` is an unauthenticated, cross-origin, payment-initiating endpoint, exactly what card-testing bots hunt, and the org eats the disputes.
+Set mail before taking gifts: a deployment that cannot send cannot give a donor the receipt they file with a tax authority. Every gift passes a spam check, ALTCHA unless both Turnstile keys are set, because `/api/v1` is an unauthenticated, cross-origin, payment-initiating endpoint, exactly what card-testing bots hunt, and the org eats the disputes.
 
-**Test keys are keys.** A deployment holding `sk_test_…` reads _ready_, serves forms and takes cards, all against Stripe's test account, where no money moves and no screen says so. A PayPal sandbox app's credentials do the same thing on that rail. To rehearse, see [`DEPLOY.md`](./DEPLOY.md)'s rehearsal deployment. Read its wallet paragraph before pasting any snippet it hands you.
+**Test keys are keys.** A deployment holding `sk_test_…` reads set up on Payments, serves forms and takes cards, all against Stripe's test account, where no money moves and no screen says so. A PayPal sandbox app's credentials do the same thing on that rail. To rehearse, see [`DEPLOY.md`](./DEPLOY.md)'s rehearsal deployment. Read its wallet paragraph before pasting any snippet it hands you.
 
 ### On Cloudflare
 
-`v0.0.38-alpha.1` is the last release that deployed to Cloudflare Workers with the `better-giving` console binary, and this repository cuts no further `v0.0.x-alpha` release. Cloudflare deployments move to the Cloudflare flavor, kept apart from this repository.
+`v0.0.38-alpha.1` is the last release that deployed to Cloudflare Workers with the `better-giving` console binary, and this repository cuts no further `v0.0.x-alpha` release. Cloudflare deployments move to the Cloudflare flavor, kept apart from this repository. The container's releases start at `v0.1.0-alpha.1`, each published as an image tagged by its name ([`DEPLOY.md`](./DEPLOY.md)).
 
 ## Embed the form
 
@@ -65,11 +64,11 @@ To put the form on your own site as well, or instead:
 
 **Pasting into a CMS content block? Put the rule in your theme's stylesheet** and paste only the script tag and the element. `<style>` is not valid inside `<body>` and CMS sanitizers strip it silently, leaving the reflow with nothing on screen to say why. The rule works from anywhere on the page.
 
-`/admin → Donation forms` generates that snippet with the real form id, built from the address you are reading it at. A form loads only on sites listed on the console _and_ ticked on the form. Anywhere else is refused. List a site before pasting a snippet into it.
+`/admin → Donation forms` generates that snippet with the real form id, built from the address you are reading it at. A form loads only on sites listed under Donation forms → Which sites your forms go on _and_ ticked on the form. Anywhere else is refused. List a site before pasting a snippet into it.
 
-**List the same site on the Turnstile widget too.** Cloudflare will not issue a challenge pass on a host the widget does not authorise: a site missing from the widget renders the form normally and then refuses every gift. See [`DEPLOY.md`](./DEPLOY.md).
+**Using Turnstile? List the same site on its widget too.** Cloudflare will not issue a challenge pass on a host the widget does not authorise: a site missing from the widget renders the form normally and then refuses every gift. See [`DEPLOY.md`](./DEPLOY.md).
 
-A form refuses to serve until the org profile carries a **registered name** and an **EIN**, because the card makes a tax-status claim. This product is for US 501(c)(3) organisations: the EIN is checked to the digit and stored as `12-3456789`. The **deductibility statement** is not a third gate: it falls back to a suggested sentence, never blank, never blocking. Changing it means editing the constant in this repository or writing the column directly, with no control on either operator screen. [`DEPLOY.md`](./DEPLOY.md) has the details. A charity in another jurisdiction forks this repository and changes those rules. **Editing any of this later takes the console, not the dashboard**, the deductibility statement and a fork besides. That is what lets dashboard access go to someone who reads donations without handing them the legal identity every receipt prints.
+A form refuses to serve until the org profile carries a **registered name** and an **EIN**, because the card makes a tax-status claim. This product is for US 501(c)(3) organisations: the EIN is checked to the digit and stored as `12-3456789`. The **deductibility statement** is not a third gate: it falls back to a suggested sentence, never blank, never blocking. Changing it means editing the constant in this repository or writing the column directly, with no control on any screen. [`DEPLOY.md`](./DEPLOY.md) has the details. A charity in another jurisdiction forks this repository and changes those rules. **Editing any of this later takes Settings, which only the deployer sees**, the deductibility statement and a fork besides. That is what lets dashboard access go to someone who reads donations without handing them the legal identity every receipt prints.
 
 A child carrying `slot="loading"` (`<p slot="loading">Loading…</p>`, or a block of your own) shows until the form's configuration is read; it renders before the element upgrades and is kept afterwards, over the form's own skeleton. Write the attribute on your own element, not a literal `<slot>` tag: a pasted `<slot>` shows its contents before the upgrade and disappears at it.
 

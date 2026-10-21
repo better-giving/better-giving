@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { payment } from '../db/schema';
+import { entryGroup, payment } from '../db/schema';
 import type { EmailProvider } from '../email/provider';
 import type { Processors } from '../payments/factory';
 import { settleTransaction } from './settle';
@@ -18,10 +18,10 @@ import { settleTransaction } from './settle';
 // ../db/schema.ts refuse the second write, and nothing here locks.
 //
 // a payment NOWPayments does not find — the key replaced with another account's since it was minted —
-// stays pending and is logged, never alerted, and nothing on the console surfaces it; a day after its
+// stays pending and is logged, never alerted, and nothing in /admin surfaces it; a day after its
 // address closed it is no longer read. any other refusal alerts an operator, as an IPN's does. a read
 // NOWPayments did not answer — unreachable, rate limited, or a key it refuses outright, which the
-// console's NOWPayments page reports — is logged and ends the run, and what is left is read on the
+// NOWPayments card on Payments reports — is logged and ends the run, and what is left is read on the
 // next one.
 //
 // a later deposit to an expired address sends no IPN and has no row to read; the organisation enters
@@ -40,18 +40,17 @@ const READ_AFTER_CLOSE_MS = 24 * 60 * 60_000;
 
 /**
  * payments read per run, one after another, closed addresses first and then open ones, each oldest
- * first. a read costs a status call, an estimate where no dollar value came with it, a handful of D1
- * statements and the mail a settlement sends — far inside the paid plan's 10,000 subrequests per
- * invocation. what bounds a run is time rather than count: see `RUN_DEADLINE_MS`.
+ * first. a read costs a status call, an estimate where no dollar value came with it, a handful of
+ * database statements and the mail a settlement sends. what bounds a run is time rather than count:
+ * see `RUN_DEADLINE_MS`.
  */
 const READS_PER_RUN = 100;
 
 /**
- * no read starts this long after the run's scheduled time. a cron invocation is killed at fifteen
- * minutes of wall clock, and one read can wait out NOWPayments' timeout twice and SMTP's on each
- * message, so the margin is for the read already under way. CPU is the other limit — thirty seconds
- * for a cron under an hourly interval (https://developers.cloudflare.com/workers/platform/limits/) —
- * and a run spends it on little but awaiting I/O.
+ * no read starts this long after the run's scheduled time. the in-process scheduler
+ * (../runtime/scheduler.ts) starts the next run thirty minutes on whether or not this one has ended,
+ * and one read can wait out NOWPayments' timeout twice and SMTP's on each message, so the margin is
+ * for the read already under way.
  */
 const RUN_DEADLINE_MS = 10 * 60_000;
 
@@ -128,6 +127,33 @@ export async function readPendingCryptoGifts(
 			report(`reading payment ${providerTxnId} faulted:`, error);
 		}
 	}
+}
+
+/**
+ * whether a verified IPN has settled a crypto gift on this deployment.
+ *
+ * no row says which path settled a gift: an IPN and this read write through the same
+ * `settleTransaction`. time tells them apart. this read reaches a payment only `IPN_GRACE_MS` after
+ * it was minted, so a posting made sooner than that was an IPN's, and `settleDelivery` in
+ * ./settle.ts acts on an IPN only once `x-nowpayments-sig` verifies. a gift an IPN settled later
+ * proves nothing, since this read could have posted it.
+ */
+export async function ipnHasSettledAGift(db: Db): Promise<boolean> {
+	const [settled] = await db
+		.select({ id: payment.id })
+		.from(payment)
+		.innerJoin(
+			entryGroup,
+			and(eq(entryGroup.sourceType, 'payment'), eq(entryGroup.sourceId, payment.id))
+		)
+		.where(
+			and(
+				eq(payment.provider, 'nowpayments'),
+				sql`${entryGroup.createdAt} < ${payment.createdAt} + ${IPN_GRACE_MS}`
+			)
+		)
+		.limit(1);
+	return settled !== undefined;
 }
 
 function report(message: string, detail: unknown): void {

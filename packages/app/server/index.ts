@@ -4,7 +4,8 @@
  * reads `DATABASE_URL` (a `file:` URL naming the database file), `PORT` and `HOST` (production
  * only; 3000 and every interface by default) and `TRUSTED_PROXY_HEADER`
  * (../src/lib/server/runtime/client-ip.ts, forwarded-proto.ts), plus every name `Env` carries
- * (../src/lib/server/runtime/env.ts), and refuses to start without `REQUIRED_ENV_VARS` there.
+ * (../src/lib/server/runtime/env.ts), and refuses to start without `REQUIRED_ENV_VARS` there, or
+ * on an env the built app refuses (`startRefusal` in ../src/server/app.ts).
  * migrations are not applied here: `pnpm db:migrate` runs them before the server starts
  * (AGENTS.md → Schema).
  *
@@ -15,14 +16,14 @@
 import { resolve } from 'node:path';
 import { openDatabase } from '../src/lib/server/db/open.ts';
 import { missingRequiredEnv } from '../src/lib/server/runtime/env.ts';
-import { startServer } from './start.ts';
+import { StartRefused, startServer } from './start.ts';
 
 /**
  * the port `pnpm dev` serves on, pinned rather than taken from `PORT` because the app spells the dev
  * address out: `trustedOrigins` in src/lib/server/auth/index.ts lists it, and better-auth refuses a
  * sign-in POST from an origin that is not in that list. a collision fails at `listen` instead of
- * moving the server to a port nothing expects. 5322 is packages/console-ui's dev server and 5323 is
- * packages/gallery's (each package's own vite.config.ts), so all three run side by side.
+ * moving the server to a port nothing expects. 5323 is packages/gallery's and 5324 is packages/form's
+ * (each package's own vite.config.ts), so all three run side by side.
  */
 const DEV_PORT = 5321;
 
@@ -50,6 +51,10 @@ const started = await startServer({
 	staticDir: resolve(root, dev ? 'static' : 'build/client'),
 	client,
 	source: process.env
+}).catch((error: unknown) => {
+	if (!(error instanceof StartRefused)) throw error;
+	console.error(error.message);
+	process.exit(1);
 });
 console.log(`listening on ${started.url}`);
 

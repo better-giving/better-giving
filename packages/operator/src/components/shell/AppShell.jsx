@@ -25,9 +25,8 @@ import { Button } from '../controls/Button.jsx';
  */
 
 /**
- * a run of destinations the rail draws together. a rule separates one group from the next; a
- * group with a `heading` stands a step apart, under its heading, and the group after it draws no
- * rule of its own. the heading names the group and goes nowhere.
+ * a run of destinations the rail draws together. a step of space separates one group from the
+ * next, and a group with a `heading` stands under it. the heading names the group and goes nowhere.
  *
  * @typedef {object} DestinationGroup
  * @property {string | undefined} [heading]
@@ -61,10 +60,9 @@ import { Button } from '../controls/Button.jsx';
  * default, and neither has `groups`: a shell that filled either in would put a fictional
  * organisation and its rail on a real deployment whose surface forgot to state its own.
  * @property {string | SiteLink | undefined} [site] the globe leading the name, in the narrow band and
- * the rail's head alike. an address is somewhere off this surface — the console hands its
- * deployment's dashboard — and opens in a new tab, named "Open dashboard", with the address as its
- * `title` and never printed. a `SiteLink` is somewhere on it, drawn as `link` in the same tab under
- * its own name. absent, no globe.
+ * the rail's head alike. an address is somewhere off this surface and opens in a new tab, named
+ * "Open dashboard", with the address as its `title` and never printed. a `SiteLink` is somewhere
+ * on it, drawn as `link` in the same tab under its own name. absent, no globe.
  * @property {string | Whereabouts | undefined} [current] the destination the reader is in: a bare
  * word is the `label`, and the page itself. absent, the reader is in none of them and no cell is
  * marked — which is what a surface hands for an address under no destination, and is the only
@@ -79,14 +77,13 @@ import { Button } from '../controls/Button.jsx';
  * waiting — nothing has arrived and there is nothing on it to act on — and a screen with anything
  * to do on it is read from the top. ../../styles/adm.css's `.adm-main--centred` is the rule and
  * holds why the page rather than the column carries it.
- * @property {ReactNode} [wayOut] the way out: the dashboard's sign-out, the console's close. drawn
- * in the narrow band, and in the rail's foot when no `foot` is handed. unstated, it is the quiet
+ * @property {ReactNode} [wayOut] the way out: the dashboard's sign-out. drawn in the narrow band,
+ * and in the rail's foot when no `foot` is handed. unstated, it is the quiet
  * button a specimen shows; `null` is none. absence cannot say that: a slot with a default of its
  * own reads nothing stated as a request for the default. a way out carrying a mark and a word
  * wraps the word in `.adm-signout__word`, so the icon rail can show the mark alone.
- * @property {ReactNode} [foot] what the rail's foot holds in place of `wayOut` — the console's
- * account and release lines, which carry its close. absent, the foot holds `wayOut`; a foot that
- * comes to `null` either way is not drawn.
+ * @property {ReactNode} [foot] what the rail's foot holds in place of `wayOut`. absent, the foot
+ * holds `wayOut`; a foot that comes to `null` either way is not drawn.
  * @property {ReactNode} [head] the panel's strip, over the page: `.adm-headstrip`, holding what the
  * caller hands it — the dashboard's trail of pages on a nested screen. absent, no strip: a screen
  * named by its tab title and its marked rail cell has nothing for one to add.
@@ -96,22 +93,17 @@ import { Button } from '../controls/Button.jsx';
  * @property {ReactNode} [bar] a strip across the top of the route, carrying whatever the surface
  * puts in it. the slot positions and composes nothing: two children land at the two ends of the
  * strip and what they are is the caller's. absent, the route is the panel alone and no strip is
- * drawn. it is the same `.adm-head` ./BareShell.jsx stands over its page, so a surface drawing one
- * head on the route and the shell alike hands the same ends to both — which the console does, from
- * packages/console-ui/src/lib/head-strip.tsx. what it does not take is the run of stated facts:
- * ./TopBar.jsx is the other head this system has and only ./BareShell.jsx stands it.
+ * drawn. it is the same `.adm-head` `AppShell` stands over its page, so a surface drawing one head
+ * on the route and the shell alike hands the same ends to both.
  * @property {ReactNode} [foot] the same strip at the other edge and the same arrangement — two
- * children, one at each end. the console hands the release it was built as, and the organisation's
- * own links. it wraps the same way the head does: a line too narrow for both ends puts them on two
- * rows starting at the same edge. absent, no strip is drawn,
- * for the same reason the head's absence draws none. it is `.adm-footstrip` and not this route's
- * own class, because ./BareShell.jsx takes the same slot and stands the same strip.
+ * children, one at each end. it wraps the same way the head does: a line too narrow for both ends
+ * puts them on two rows starting at the same edge. absent, no strip is drawn, for the same reason
+ * the head's absence draws none.
  * @property {boolean | undefined} [bare] the route stands its children on the page's own ground
  * with no panel around them. what qualifies is a route with nothing for a box to hold together:
- * one control, and no second thing on the page — the console's signed-out face is the whole of it.
- * a route carrying a heading, prose, a group of boxes or a run of controls has two things the panel
- * is what gathers, and takes it. the same word as ./BareShell.jsx's, and the same relation: the
- * chrome that would hold nothing is left off rather than drawn empty.
+ * one control, and no second thing on the page. a route carrying a heading, prose, a group of boxes
+ * or a run of controls has two things the panel is what gathers, and takes it: the chrome that
+ * would hold nothing is left off rather than drawn empty.
  * @property {ReactNode} [children]
  */
 
@@ -123,7 +115,7 @@ const RAIL_STORAGE_KEY = 'bg-operator-rail';
    an equal share of the width whatever the count, so what bounds how many the bar holds is the
    share each is left with at the 375px floor rather than a number written anywhere. a rail whose
    destinations state `bar` puts those on it and ends it with More, which opens a sheet holding the
-   rest in the column's order, under the column's rules and headings; a rail stating none has a tab
+   rest in the column's order, spaced and headed as the column is; a rail stating none has a tab
    per destination. the bar itself is flat: groups, marks and headings are the column's and the
    sheet's. above it: a left column with the identity and the collapse toggle at its head, the
    grouped destinations, and the foot; the page is a panel filling the rest of the window beside
@@ -303,7 +295,7 @@ export function AppShell({
 					<RailGroup
 						key={group.heading ?? `group-${index}`}
 						group={group}
-						rule={ruleBefore(group, groups[index - 1])}
+						apart={index > 0}
 						at={at}
 						link={link}
 						collapsed={collapsed}
@@ -371,7 +363,7 @@ export function AppShell({
 									<RailGroup
 										key={group.heading ?? `group-${index}`}
 										group={group}
-										rule={ruleBefore(group, sheet[index - 1])}
+										apart={index > 0}
 										at={at}
 										link={link}
 										collapsed={false}
@@ -409,24 +401,8 @@ export function AppShell({
 }
 
 /**
- * what stands before a group: nothing before the first, the headed rule before a headed group,
- * nothing after a headed group (its last entry already stands a step apart), and a plain rule
- * between any other two.
- *
- * @param {DestinationGroup} group
- * @param {DestinationGroup | undefined} previous
- * @returns {'none' | 'plain' | 'group'}
- */
-function ruleBefore(group, previous) {
-	if (previous === undefined) return 'none';
-	if (group.heading !== undefined) return 'group';
-	if (previous.heading !== undefined) return 'none';
-	return 'plain';
-}
-
-/**
  * the rail's groups with every bar destination taken out, and a group left with none dropped: what
- * the sheet stands, rules and headings still decided by `ruleBefore` over what remains.
+ * the sheet stands, each group after the first spaced from the one before it as in the column.
  *
  * @param {readonly DestinationGroup[]} groups
  * @returns {DestinationGroup[]}
@@ -440,7 +416,8 @@ function offBar(groups) {
 /**
  * @typedef {object} RailGroupProps
  * @property {DestinationGroup} group
- * @property {'none' | 'plain' | 'group'} rule
+ * @property {boolean} apart a group after the first, which stands a step of space below the one
+ *   before it.
  * @property {Whereabouts | undefined} at
  * @property {ComponentType<DestinationLinkProps> | undefined} link
  * @property {boolean} collapsed
@@ -465,10 +442,10 @@ function offBar(groups) {
    out of the layout and not out of the tree, so it would stand on the bar as a named group
    holding nothing. */
 /** @param {RailGroupProps} props */
-function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
+function RailGroup({ group, apart, at, link, collapsed, barred, onChoose }) {
 	const { heading, destinations } = group;
 	const headingId = useId();
-	const cells = destinations.map((d, i) => (
+	const cells = destinations.map((d) => (
 		<DestinationCell
 			key={d.label}
 			short={d.short}
@@ -476,7 +453,6 @@ function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
 			mark={d.mark}
 			status={d.status}
 			title={collapsed ? d.label : undefined}
-			groupEnd={heading !== undefined && i === destinations.length - 1}
 			offBar={barred && !d.bar}
 			onClick={onChoose}
 			link={link}
@@ -487,8 +463,7 @@ function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
 	));
 	return (
 		<>
-			{rule === 'plain' ? <hr className="adm-rail__rule" /> : null}
-			{rule === 'group' ? <hr className="adm-rail__rule adm-rail__rule--group" /> : null}
+			{apart ? <hr className="adm-rail__gap" /> : null}
 			{heading === undefined ? (
 				cells
 			) : (
@@ -527,20 +502,19 @@ function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
 export function PanelRoute({ bar, foot, bare = false, children }) {
 	return (
 		<div className="adm-panelroute">
-			{/* each strip is the row it is written in — ../../styles/adm.css places nothing by name, the
-			    same way ./BareShell.jsx's bar is that shell's first row — so the head stands before the
-			    panel and the foot after it. a route handed no strip draws none rather than an empty one:
-			    the row would stand at that edge with nothing in it, and the panel would centre in what
-			    is left beside a strip nobody can see. the sheet tracks all three combinations that carry
-			    one, so a route with a foot and no head is a panel centred over its foot rather than one
-			    dropped into the top row. */}
+			{/* each strip is the row it is written in — ../../styles/adm.css places nothing by name —
+			    so the head stands before the panel and the foot after it. a route handed no strip draws
+			    none rather than an empty one: the row would stand at that edge with nothing in it, and
+			    the panel would centre in what is left beside a strip nobody can see. the sheet tracks
+			    all three combinations that carry one, so a route with a foot and no head is a panel
+			    centred over its foot rather than one dropped into the top row. */}
 			{bar === undefined ? null : (
 				<div className="adm-head">
 					<div className="adm-headstrip">{bar}</div>
 				</div>
 			)}
 			{/* the page is the main region whichever way it stands, so a reader can jump past the
-			    strips to it — ./BareShell.jsx's `main` is the same landmark. */}
+			    strips to it. */}
 			{bare ? (
 				<main className="adm-panelroute__bare">{children}</main>
 			) : (

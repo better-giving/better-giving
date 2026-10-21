@@ -116,6 +116,37 @@ describe('forms.create', () => {
 		const list = await call('forms', '/forms', { key });
 		expect(((await list.json()) as { data: unknown[] }).data).toEqual([]);
 	});
+	it('makes a draft while the organisation’s EIN is missing, as Add a donation form saves one', async () => {
+		const key = await connect();
+		await h.db.run(sql`update org_profile set tax_id = null`);
+
+		const response = await call('forms', '/forms', {
+			method: 'POST',
+			key,
+			body: { name: 'Spring appeal' }
+		});
+
+		expect(response.status).toBe(201);
+		expect(await response.json()).toMatchObject({ name: 'Spring appeal', status: 'draft' });
+	});
+
+	it('refuses a live form while the organisation’s EIN is missing, and makes nothing', async () => {
+		const key = await connect();
+		await h.db.run(sql`update org_profile set tax_id = null`);
+
+		const response = await call('forms', '/forms', {
+			method: 'POST',
+			key,
+			body: { name: 'Spring appeal', status: 'live' }
+		});
+
+		expect(response.status).toBe(409);
+		const problem = (await response.json()) as { code: string; detail: string };
+		expect(problem.code).toBe('not_ready');
+		expect(problem.detail).toMatch(/Organisation details in Settings/);
+		const list = await call('forms', '/forms', { key });
+		expect(((await list.json()) as { data: unknown[] }).data).toEqual([]);
+	});
 });
 
 describe('forms.update', () => {
@@ -224,6 +255,29 @@ describe('forms.update', () => {
 
 		expect(refused.status).toBe(422);
 		expect(await refused.json()).toMatchObject({ code: 'invalid', errors: [{ path: 'confirm' }] });
+		const read = await call('form', `/forms/${form.id}`, { key });
+		expect(await read.json()).toMatchObject({ status: 'draft' });
+	});
+
+	it('refuses setting a form live while no processor is set up, changing nothing', async () => {
+		const key = await connect();
+		const form = await made(key);
+
+		const refused = await call('form', `/forms/${form.id}`, {
+			method: 'PATCH',
+			key,
+			body: { status: 'live', confirm: true },
+			env: { STRIPE_SECRET_KEY: undefined, STRIPE_PUBLISHABLE_KEY: undefined }
+		});
+
+		expect(refused.status).toBe(422);
+		const problem = (await refused.json()) as {
+			code: string;
+			errors: { path: string; message: string }[];
+		};
+		expect(problem.code).toBe('invalid');
+		expect(problem.errors.map((e) => e.path)).toEqual(['status']);
+		expect(problem.errors[0]?.message).toMatch(/no payment processor/);
 		const read = await call('form', `/forms/${form.id}`, { key });
 		expect(await read.json()).toMatchObject({ status: 'draft' });
 	});

@@ -159,7 +159,20 @@ describe('which run an expression reaches', () => {
 			SCHEDULED_AT
 		);
 		const booksDeps = vi.mocked(sendDueEntries).mock.calls[0]?.[0] ?? {};
-		expect(Object.keys(booksDeps).sort()).toEqual(['db', 'email', 'provider']);
+		expect(Object.keys(booksDeps).sort()).toEqual(['db', 'email', 'origin', 'provider']);
+	});
+
+	it.each([
+		['the pinned address', 'https://donate.example.org/', 'https://donate.example.org'],
+		['no address where none is pinned', undefined, null],
+		['no address where the pin does not parse', 'donate.example.org', null]
+	] as const)('hands the books %s to link its notice to', async (_, pin, origin) => {
+		await fires('* * * * *', { BETTER_AUTH_URL: pin } as unknown as typeof env);
+
+		expect(sendDueEntries).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ origin }),
+			SCHEDULED_AT
+		);
 	});
 
 	/** the `onPaused` the minute run handed the destinations' delivery, told of one pause. */

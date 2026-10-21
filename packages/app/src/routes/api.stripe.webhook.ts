@@ -1,3 +1,4 @@
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { settleDelivery } from '$lib/server/donations/settle';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -39,8 +40,9 @@ import type { Route } from './+types/api.stripe.webhook';
 // this file owns which status each outcome answers with, which is the one decision the processor
 // actually reads.
 //
-// nothing here is a module-scope singleton. the D1 handle arrives on the request context, which
-// ../request-context.ts seeds per request, and both ports are built from that env on the call.
+// nothing here is a module-scope singleton. the database handle arrives on the request context,
+// which ../request-context.ts seeds per request, and both ports are built from that env on the
+// call.
 
 /**
  * one delivery from the processor.
@@ -95,7 +97,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a Stripe delivery by POST. ${method} is not a method it answers.`,
-			fix: 'Stripe posts deliveries here. Saving Stripe’s keys in the console (`better-giving start`, under Donation processor) registers this address as the endpoint.'
+			fix: `Stripe posts deliveries here. If Stripe’s dashboard already lists an endpoint for this address under Workbench → Webhooks, keep it: reveal its signing secret, put it in \`.env\` as \`${envLine('STRIPE_WEBHOOK_SECRET')}\`, then recreate the app: \`${RECREATE_APP}\`. Only if no endpoint is listed, run \`${setupWebhookCommand('stripe')}\`, add the line it prints to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

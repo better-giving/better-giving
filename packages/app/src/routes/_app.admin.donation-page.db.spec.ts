@@ -63,7 +63,7 @@ async function donationPage() {
 	return row ?? null;
 }
 
-/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+/** a deployment whose set-up is finished. */
 let bindings: Env;
 
 beforeEach(async () => {

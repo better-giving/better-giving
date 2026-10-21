@@ -37,7 +37,7 @@ const PASSWORD = 'a-very-long-random-staff-password';
 const MEMBER_PASSWORD = 'a-colleagues-own-password';
 
 /**
- * a deployment whose mail settings this Worker could dial.
+ * a deployment whose mail settings this server could dial.
  *
  * `smtp.example.org` is a hostname `parseSmtpEndpoint` accepts, so a send gets as far as opening a
  * socket — which is why no case below sends with it.
@@ -50,12 +50,11 @@ const MAIL_CONFIGURED = {
 };
 
 /**
- * the same four set, and a host a Worker is not allowed to reach.
+ * the same four set, and a host this deployment refuses to reach.
  *
  * it is what a send that fails looks like without a socket: `parseSmtpEndpoint` refuses a
  * private-network host before anything is dialled ($lib/server/email/smtp-config.ts), so the
- * refused arm below is reached in the same millisecond as every other case. the set-up gate above
- * this screen only asks whether the four are set, so this deployment still reads as finished.
+ * refused arm below is reached in the same millisecond as every other case.
  */
 const MAIL_UNREACHABLE = { ...MAIL_CONFIGURED, SMTP_HOST: 'localhost' };
 
@@ -342,7 +341,9 @@ describe('POST /admin/members — inviting a colleague', () => {
 		});
 
 		expect(answer.status).toBe(500);
-		expect(await underTheBox(answer)).toEqual([expect.stringContaining('better-giving start')]);
+		expect(await underTheBox(answer)).toEqual([
+			expect.stringContaining('In Settings, go to Mail and press Send test email')
+		]);
 		// the row survives the failure, which is what makes pressing again the whole repair.
 		expect(await liveInvitations()).toBe(1);
 	});

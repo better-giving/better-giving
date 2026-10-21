@@ -17,6 +17,8 @@
 // nothing here imports a transport, a binding or a template. `./factory.ts` is what turns
 // a deployment's config into one of these, per request.
 
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
+
 /** subject line and both body arms — what a template produces, before it has a recipient. */
 export interface RenderedEmail {
 	readonly subject: string;
@@ -50,7 +52,7 @@ export interface EmailMessage extends RenderedEmail {
  *
  * no reason may mean "this deployment chose not to send", and the absence is a decision.
  * mail is a requirement, so a deployment that cannot send is `not_configured` — a hole the
- * console's mail fold reports. a reason meaning "working as configured" is an invitation to a
+ * test send under Mail in Settings reports. a reason meaning "working as configured" is an invitation to a
  * caller to stay quiet about receipts that never leave, which is the one failure nobody would
  * notice.
  *
@@ -130,9 +132,9 @@ export interface EmailProvider {
 	 *
 	 * this is load-bearing and it is about the ledger, not about tidiness. the caller that
 	 * sends a receipt has already committed a `batch()` — the gift is posted, the books
-	 * balance, and D1 has no interactive transaction to take that back (CLAUDE.md). if this
-	 * method threw, the natural shape of that caller becomes one `try` around the posting and
-	 * the send, and then an SMTP host being down is an exception on the write path of the
+	 * balance, and `Db` has no interactive transaction to take that back (AGENTS.md → Ledger,
+	 * gifts, and schema). if this method threw, the natural shape of that caller becomes one
+	 * `try` around the posting and the send, and then an SMTP host being down is an exception on the write path of the
 	 * books: at best the gift is reported as failed after it landed, at worst somebody adds a
 	 * compensating write to "undo" it. mail I/O must not be able to steer the ledger, and the
 	 * cheapest way to guarantee that is to give it no channel that can.
@@ -181,8 +183,7 @@ export function sealed(provider: EmailProvider): EmailProvider {
 					detail:
 						'The email transport failed in a way it is not supposed to be able to: it threw ' +
 						'instead of reporting. Nothing about the deployment fixes this. It is a bug in ' +
-						'this app, and the cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a checkout). Whether the ' +
-						'message went out is unknown.',
+						`this app. Whether the message went out is unknown. ${LOGS_SAY_WHY}`,
 					indeterminate: true
 				};
 			}

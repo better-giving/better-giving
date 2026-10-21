@@ -8,24 +8,16 @@
 // is also the half that must never be skipped, because the alternative to refusing a bad value
 // here is a nodemailer error four layers down that names none of it.
 //
-// the platform rules this encodes are cloudflare's, not preferences:
-//   - port 25 is prohibited outbound from a Worker (`Connections to port 25 are
-//     prohibited`). 465 is not.
-//   - localhost, private-network addresses and Cloudflare's own IP ranges are unreachable
-//     (`proxy request failed, cannot connect to the specified address`).
-// each fails at connect time as an opaque socket error, which is exactly the failure an
-// operator cannot act on — so the port and the address classes below are refused here, by
-// name, with the fix in the message.
-//
-// cloudflare's own ranges are the one class not enumerated, deliberately: they are a
-// published list that changes, so a copy here would rot into refusing a host that works —
-// the failure this module cannot afford, since a refusal is final and a missed one only
-// falls through to the connect error everything else already handles. an operator does not
-// type a Cloudflare IP as their mail host; they type `localhost`, which is covered.
+// two rules about where mail may go, each refused here by name with the fix in the message
+// rather than left to fail at connect time as a socket error an operator cannot act on:
+//   - port 465 only (`parseSmtpEndpoint`). 25 gets its own sentence, since it is the port an
+//     operator copies from a relay's docs.
+//   - no loopback, private-network or link-local host (`isUnreachableHost`): mail leaves through
+//     a real submission host.
 
 import { mailFromFault } from '@better-giving/operator/console/mail-from';
 import { EMAIL } from '@better-giving/operator/console/org-rules';
-import { setCommand, type DeployValueName } from '@better-giving/operator/deploy-split';
+import { envLine, type DeployValueName } from '@better-giving/operator/deploy-split';
 import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { redact } from '../../redact';
 
@@ -72,19 +64,9 @@ export type SmtpConfigResult<T> =
  */
 const IMPLICIT_TLS_PORT = 465;
 
-/**
- * where one of the connection variables is set, named by the caller.
- *
- * the fold and not a command. every sentence built on this is drawn on the operator console — as
- * the email capability's own line and beside the send-test button — and that screen has a box for
- * each of these four values, so a command here would send an operator to a terminal for something
- * they are looking at. the console's SMTP fold is where they are typed and stored.
- *
- * `names` is still taken, and it is still what {@link marked} above names in the sentence before
- * this one: which values are wrong is the part a fold cannot say.
- */
+/** where the connection variables named by the caller are set: a line each in `.env`. */
 function fix(...names: readonly DeployValueName[]): string {
-	return `Set ${names.length === 1 ? 'it' : 'them'} under SMTP on the console.`;
+	return `Add ${marked(names.map(envLine))} to \`.env\`, then recreate the app.`;
 }
 
 /**
@@ -100,24 +82,11 @@ function marked(names: readonly string[]): string {
 
 /**
  * how to fix `SMTP_PORT`, which is the one variable whose right answer is usually to remove it.
- *
- * both halves are built from the name rather than spelling it twice, and the set half names 465 in
- * the sentence rather than on the command line, because the command comes whole from `setCommand`
- * and carries a placeholder where the value goes.
- *
- * the clear half is the half most operators want, and it is not a command. absent means 465, and
- * `readConfigEnv` in ../config/env.ts reads a value set to the empty string as absent too.
- *
- * **it keeps its commands where {@link fix} above gave them up, and the reason is what the console
- * can do rather than what it draws.** that fold states 465 and asks for no port, so its press
- * carries no value for this name at all (`STATED_VALUES` in
- * `packages/console-ui/src/lib/secret-groups.ts`) — a stored port is neither set nor cleared from any
- * screen, and this is the one mail value a terminal is still the whole of the way out of.
+ * absent means 465, and `readConfigEnv` in ../config/env.ts reads a value set to the empty string
+ * as absent too.
  */
 const PORT_NAME = 'SMTP_PORT' satisfies DeployValueName;
-const PORT_FIX =
-	`Set it to 465 with \`${setCommand(PORT_NAME)}\`, or clear it on the Worker's Variables and ` +
-	'Secrets page and let it default.';
+const PORT_FIX = `Remove its line from \`.env\`, or set \`${PORT_NAME}=465\`, then recreate the app.`;
 
 /**
  * `SMTP_PORT` as a number, or `null` if it is not one.
@@ -169,8 +138,8 @@ function parsePort(value: string): number | null {
  * DEPLOY.md says so out loud rather than leaving an operator to discover it.
  */
 export function parseSmtpEndpoint(fields: SmtpFields): SmtpConfigResult<SmtpEndpoint> {
-	// total, though both callers filter for absent variables first. an open relay a Worker can
-	// reach is not a deployment shape worth supporting, and "SMTP_PASSWORD is not set" is a far
+	// total, though both callers filter for absent variables first. an open relay is not a
+	// deployment shape worth supporting, and "SMTP_PASSWORD is not set" is a far
 	// better message than the AUTH failure it would otherwise become — so this refuses rather
 	// than trusting the two lists upstream to stay in step with this one.
 	const absent: DeployValueName[] = [
@@ -193,10 +162,9 @@ export function parseSmtpEndpoint(fields: SmtpFields): SmtpConfigResult<SmtpEndp
 		return {
 			ok: false,
 			detail:
-				`\`SMTP_HOST\` is \`${redact(host)}\`, which a Worker cannot reach: Cloudflare blocks ` +
-				'outbound connections to localhost, private-network addresses and its own IP ranges. ' +
-				'A local mail catcher (MailHog, Mailpit) cannot be used from `wrangler dev` for the ' +
-				`same reason. Use a real submission host. ${fix('SMTP_HOST')}`
+				`\`SMTP_HOST\` is \`${redact(host)}\`, a loopback, private-network or link-local ` +
+				'address, which this app does not send mail to. Use a real submission host, such as ' +
+				`\`smtp.resend.com\`, on port 465. ${fix('SMTP_HOST')}`
 		};
 	}
 
@@ -239,9 +207,9 @@ export function parseSmtpEndpoint(fields: SmtpFields): SmtpConfigResult<SmtpEndp
 		return {
 			ok: false,
 			detail:
-				'`SMTP_PORT` is 25, which Cloudflare Workers prohibit outbound: the connection is ' +
-				'refused by the platform before it reaches your mail host, so no setting on the host ' +
-				`can fix it. Use 465, which is TLS from the first byte. ${PORT_FIX}`
+				'`SMTP_PORT` is 25, the port mail servers relay to each other on, and this app dials ' +
+				'port 465 and nothing else. Use 465, which is TLS from the first byte. ' +
+				PORT_FIX
 		};
 	}
 
@@ -272,14 +240,14 @@ export function parseSmtpEndpoint(fields: SmtpFields): SmtpConfigResult<SmtpEndp
 }
 
 // ---------------------------------------------------------------------------
-// which hosts a worker cannot reach.
+// which hosts this app refuses to dial.
 //
 // a class of address, decoded — never a list of spellings. an address has many spellings and a
 // shortlist only ever holds the ones somebody thought of: `127.1`, `2130706433`, `0x7f000001`
 // and `127.0.0.1.` are all `127.0.0.1`, and `0:0:0:0:0:0:0:1` is `::1`. every spelling this
-// misses is dialled, fails as the opaque `proxy request failed` this module exists to pre-empt,
-// and is then read by `./smtp-failure.ts` as `connect_failed` — "transient, waiting will help"
-// — which is the wrong instruction for an address that will never work.
+// misses is dialled, and a connect error from it is read by `./smtp-failure.ts` as
+// `connect_failed` — "transient, waiting will help" — which is the wrong instruction for an
+// address this app refuses.
 //
 // `SMTP_HOST` is a bare environment string and nothing normalises it on the way in. no URL
 // parser stands in front of it, so what the operator typed is what arrives: IPv4 in any
@@ -289,7 +257,7 @@ export function parseSmtpEndpoint(fields: SmtpFields): SmtpConfigResult<SmtpEndp
 // every legal spelling of one address compares equal.
 // ---------------------------------------------------------------------------
 
-/** IPv4 ranges a Worker's outbound connection cannot leave for, as `[network, prefix bits]`. */
+/** IPv4 ranges this app refuses to dial, as `[network, prefix bits]`. */
 const BLOCKED_IPV4: readonly (readonly [number, number])[] = [
 	[0x00000000, 8], // 0.0.0.0/8 — "this network"; 0.0.0.0 itself is the common spelling
 	[0x0a000000, 8], // 10/8 — private
@@ -449,7 +417,7 @@ function parseIpv6(host: string): number[] | null {
 }
 
 /**
- * the IPv6 classes a Worker cannot reach, decided on the expanded address.
+ * the IPv6 classes this app refuses to dial, decided on the expanded address.
  *
  * `::ffff:*` is refused wholesale rather than decoded back into its IPv4 half. a v4-mapped
  * literal is not how anybody names a mail host, so the only thing lost is a spelling nobody
@@ -470,18 +438,15 @@ function isUnreachableIpv6(hextets: readonly number[]): boolean {
 	return (first & 0xffc0) === 0xfe80;
 }
 
-const FROM_FIX = 'Set it under SMTP on the console.';
+const FROM_FIX = `Correct its line in \`.env\`, then recreate the app.`;
 
 /**
  * validates `MAIL_FROM` — the donor-facing From address.
  *
  * **what makes a value wrong is `mailFromFault`'s and what is said about it is this
- * function's.** the same two arms are read at the box the operator types the address into
- * (`packages/console-ui/src/lib/smtp-fold-state.ts`), and the reason a display name is refused
- * at all is written where that reading is. the sentences stay here because they are written
- * for a deployment log — they name the variable, quote the value through {@link redact} and
- * say where to set it — and the console says the same two things to a person standing at a
- * labelled box.
+ * function's.** the reason a display name is refused at all is written at `mailFromFault`.
+ * the sentences are written for a deployment log — they name the variable, quote the value
+ * through {@link redact} and say where to set it.
  *
  * it is a deploy-time var and not a settings row, even though it carries no credential.
  * the address is authorised by the same third party that issued the SMTP password — the SPF
@@ -587,7 +552,7 @@ export function parseHeaderValue(label: string, value: string): SmtpConfigResult
 				`The ${label} contains a line break (\`${JSON.stringify(value)}\`), which cannot go into ` +
 				'an email header: a header ends at the newline, so everything after it would become ' +
 				'a header of its own. This usually means a saved value has a stray newline in it: ' +
-				`check your organisation details on the console, under ${IDENTITY_FOLD}.`
+				`check ${IDENTITY_FOLD} in Settings.`
 		};
 	}
 

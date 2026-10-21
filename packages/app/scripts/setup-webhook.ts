@@ -1,10 +1,11 @@
 /**
  * `pnpm setup-webhook:<name>` — registers this deployment's payment-notice endpoint on one
  * processor's account, using the keys in `.env` and the address in `BETTER_AUTH_URL`, and prints the
- * one line `.env` takes. needs no running server. what it registers, and why a re-run replaces, is
- * ../src/lib/server/payments/webhook-setup.ts's header.
+ * lines `.env` takes, one per line. needs no running server; `chariot` reads the organisation's EIN
+ * from the database at `DATABASE_URL`. what it registers, and what a re-run does to an endpoint
+ * already registered, is ../src/lib/server/payments/webhook-setup.ts's header.
  *
- * the line is the only thing on stdout, and pnpm adds its own banner there unless run as `pnpm -s`;
+ * those lines are the only thing on stdout, and pnpm adds its own banner there unless run as `pnpm -s`;
  * everything else is on stderr. exit status 1 is a missing value or a refusal, 2 an invocation it
  * does not read.
  */
@@ -14,7 +15,7 @@ import { setupWebhook } from '../src/lib/server/payments/webhook-setup.ts';
 const result = await setupWebhook(process.argv.slice(2), process.env);
 if (result.ok) {
 	for (const notice of result.notices) console.error(notice);
-	console.log(result.line);
+	for (const line of result.lines) console.log(line);
 } else {
 	console.error(result.message);
 	process.exitCode = result.status;

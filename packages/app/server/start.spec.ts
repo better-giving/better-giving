@@ -1,13 +1,14 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createClient } from '@libsql/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { startServer } from './start.ts';
+import { StartRefused, startServer } from './start.ts';
 
 // the production half of the server, over a stand-in for build/server/index.js: what is under test
 // is the order shutdown takes the scheduler, the deferred work and the database in, and a real
-// build is a vite build no test run orders ahead of itself. the stand-in exports the two names
+// build is a vite build no test run orders ahead of itself. the stand-in exports the three names
 // ./start.ts reads from the bundle, and ../src/server/app.spec.ts holds the real entry to them.
 
 interface CronProbe {
@@ -20,6 +21,9 @@ declare global {
 }
 
 const BUNDLE = `
+export function startRefusal(env) {
+	return env.ADMIN_PASSWORD === 'refuse me' ? 'the stand-in refuses this env' : null;
+}
 export function createApp() {
 	return async () => new Response('stand-in');
 }
@@ -76,5 +80,27 @@ describe('shutdown', () => {
 		finish();
 		await stopping;
 		expect(order).toEqual(['scheduler stopped', 'run ended', 'database closed']);
+	});
+});
+
+describe('a bundle that refuses the env', () => {
+	it('rejects with its refusal before the server listens', async () => {
+		const listen = vi.spyOn(Server.prototype, 'listen');
+		const client = createClient({ url: ':memory:' });
+
+		const starting = startServer({
+			root,
+			mode: 'production',
+			port: 0,
+			host: '127.0.0.1',
+			staticDir: join(root, 'build/client'),
+			client,
+			source: { ADMIN_PASSWORD: 'refuse me' }
+		});
+
+		await expect(starting).rejects.toThrow(new StartRefused('the stand-in refuses this env'));
+		await expect(starting).rejects.toBeInstanceOf(StartRefused);
+		expect(listen).not.toHaveBeenCalled();
+		client.close();
 	});
 });

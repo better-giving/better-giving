@@ -45,23 +45,10 @@ const MISSING = 'required';
 const PASSWORD = 'a-very-long-random-staff-password';
 
 /**
- * the deploy-time env every request here carries: the staff credential, and the values the five
- * set-up jobs are read off ($lib/server/config/setup-state.ts).
- *
- * the five are here because this screen is gated on them — an unfinished deployment serves the
- * set-up list in place of the password box — so a spec about signing in has to be a spec about a
- * deployment somebody finished setting up. the row the same reading needs is `finished()` below.
+ * the deploy-time env every request here carries: the staff credential and nothing else, since
+ * signing in reads no processor key and no mail host.
  */
-const DEPLOYED = {
-	...env,
-	ADMIN_PASSWORD: PASSWORD,
-	STRIPE_SECRET_KEY: 'sk_test_x',
-	STRIPE_PUBLISHABLE_KEY: 'pk_test_x',
-	SMTP_HOST: 'smtp.example.org',
-	SMTP_USERNAME: 'apikey',
-	SMTP_PASSWORD: 'mail-secret',
-	MAIL_FROM: 'giving@example.org'
-};
+const DEPLOYED = { ...env, ADMIN_PASSWORD: PASSWORD };
 
 /** a deployment whose `BETTER_AUTH_URL` pin names no address. */
 const PINNED_NOWHERE = { ...DEPLOYED, BETTER_AUTH_URL: 'localhost:8787' };
@@ -72,7 +59,7 @@ const PINNED_NOWHERE = { ...DEPLOYED, BETTER_AUTH_URL: 'localhost:8787' };
  */
 const PIN_REFUSAL = { data: PIN_UNUSABLE, init: { status: 500 } };
 
-/** what react router hands a handler, built the way src/worker.ts builds it for a real request. */
+/** what react router hands a handler, built as src/server/app.ts builds it for a real request. */
 function args(
 	request: Request,
 	deployed: typeof DEPLOYED = DEPLOYED,
@@ -130,22 +117,6 @@ function get(search = '', cookie = ''): Request {
 	});
 }
 
-/**
- * the one row the five are read off, so this deployment reads as finished.
- *
- * no site is listed and none is wanted: the site list is a fold on the console and no set-up job,
- * because a deployment with no website of its own gives on the donation page it serves at its own
- * address ($lib/server/config/readiness.ts).
- */
-async function finished(legalName = 'Acme Foundation'): Promise<void> {
-	// both identity fields, because the organisation job is `identityMissing`'s answer and it asks
-	// for the registered name and the EIN ($lib/server/org/identity.ts).
-	await saveOrg(legalName, '12-3456789');
-	await run(
-		stmt(`update org_profile set notification_email = 'alerts@example.org' where id = 'default'`)
-	);
-}
-
 /** the loader's answer, or the redirect it threw instead of answering. */
 async function visit(
 	search = '',
@@ -195,15 +166,12 @@ describe('GET /login — a visitor who is already signed in', () => {
 
 	/** and an anonymous visitor is left to sign in, which is what the page is for. */
 	it('is not what an anonymous visitor is, so the page renders for them', async () => {
-		await finished();
-
 		const answer = await visit('?next=%2Fadmin%2Fdonors');
 
 		expect(answer).not.toBeInstanceOf(Response);
 	});
 
 	it('names a pin that names no address, and logs its value rather than sending it', async () => {
-		await finished();
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 		try {
 			await expect(loader(args(get(), PINNED_NOWHERE))).rejects.toMatchObject(PIN_REFUSAL);
@@ -216,50 +184,25 @@ describe('GET /login — a visitor who is already signed in', () => {
 
 describe('GET /login — which deployment this is', () => {
 	it('names the organisation this deployment was set up as', async () => {
-		await finished('Acme Foundation');
+		await saveOrg('Acme Foundation');
 
-		expect(await served()).toEqual({
-			shape: 'sign-in',
-			orgName: 'Acme Foundation',
-			passwordReset: false
-		});
+		expect(await served()).toEqual({ orgName: 'Acme Foundation', passwordReset: false });
 	});
 
-	it('serves the set-up list in place of the password box while a job is unfinished', async () => {
-		// a fresh fork has no row at all, so there is no organisation and no address to alert — and a
-		// password typed here would buy nothing but the same list one screen later (./_app.tsx).
-		const answer = (await visit()) as Extract<
-			Awaited<ReturnType<typeof loader>>,
-			{ shape: 'setup' }
-		>;
-
-		expect(answer.shape).toBe('setup');
-		expect(answer.lines.filter((line) => line.state === 'todo').map((line) => line.id)).toEqual([
-			'organisation',
-			'notifications'
-		]);
-	});
-
-	it('goes back to serving the password box once the last job is done', async () => {
-		await finished();
-
-		expect(await served()).toEqual({
-			shape: 'sign-in',
-			orgName: 'Acme Foundation',
-			passwordReset: false
-		});
+	it('serves the password box on a deployment nobody has set up', async () => {
+		// a fresh fork has no row at all, and the deployer signs in to set it up.
+		expect(await served()).toEqual({ orgName: null, passwordReset: false });
 	});
 
 	it('publishes the name and nothing else about the organisation', async () => {
 		// this page is served to anyone who asks for it. the rest of that row — the EIN,
 		// the address, where receipts come from — is what a deployment tells its donors after a
 		// gift, not what it tells an anonymous visitor at a password box.
-		// `finished()` stores the EIN, which is exactly the field this case is about.
-		await finished();
+		await saveOrg('Acme Foundation', '12-3456789');
 
 		const answer = await served();
 
-		expect(Object.keys(answer)).toEqual(['shape', 'orgName', 'passwordReset']);
+		expect(Object.keys(answer)).toEqual(['orgName', 'passwordReset']);
 		expect(JSON.stringify(answer)).not.toContain('12-3456789');
 	});
 
@@ -275,9 +218,7 @@ describe('GET /login — which deployment this is', () => {
 	it('renders the sign-in box when the organisation’s name cannot be read', async () => {
 		const answer = await loader(args(get(), DEPLOYED, unreachableClient()));
 
-		// and no set-up list either: a read that did not land found no job undone, so the gate stays
-		// out of the way of the one screen that still works ($lib/server/config/setup-state.ts).
-		expect(published(answer)).toEqual({ shape: 'sign-in', orgName: null, passwordReset: false });
+		expect(published(answer)).toEqual({ orgName: null, passwordReset: false });
 	});
 
 	/**
@@ -289,19 +230,18 @@ describe('GET /login — which deployment this is', () => {
 	 * exists to prevent.
 	 */
 	it('reports a finished password reset once, and burns the marker on the same response', async () => {
-		await finished();
 		const marker = await resetMarker();
 
 		const landed = await loader(args(get('', marker)));
 		const reloaded = await loader(args(get('', marker.replace(/=.*/, '='))));
 
-		expect(published(landed)).toMatchObject({ shape: 'sign-in', passwordReset: true });
+		expect(published(landed)).toMatchObject({ passwordReset: true });
 		expect(headerOf(landed)).toContain('Max-Age=0');
 		expect(published(reloaded)).toMatchObject({ passwordReset: false });
 	});
 });
 
-/** the sign-in shape as the loader publishes it, past the `data()` the clearing header rides on. */
+/** the sign-in screen as the loader publishes it, past the `data()` the clearing header rides on. */
 async function served(): Promise<Record<string, unknown>> {
 	const answer = await visit();
 	if (answer instanceof Response) throw new Error('the loader redirected instead of answering');
@@ -355,9 +295,9 @@ async function sessions(): Promise<number> {
 /**
  * the staff path as the form submits it: the deployer's username in the identifier box.
  *
- * the constant rather than the word, because the console prints it beside its own password box off
- * that same export (packages/console-ui/src/lib/password-fold.tsx) — a literal here would keep
- * passing the day the identifier moves and the two surfaces disagree.
+ * the constant rather than the word, because the box's hint on ./login.tsx prints it off that same
+ * export — a literal here would keep passing the day the identifier moves and the hint names the
+ * old one. ./login.dom.spec.tsx pins the word itself.
  */
 function typed(password: string): FormData {
 	return typedAs(ADMIN_USERNAME, password);
@@ -378,7 +318,7 @@ let callersMinted = 0;
  * the form submitted from `ip`, which is the address the server entry stamps (`CLIENT_IP_HEADER`).
  *
  * left out, the caller is a new address every call, which is what production looks like — every
- * caller attributed — without one case spending another's bucket. `null` is a caller the edge did
+ * caller attributed — without one case spending another's bucket. `null` is a caller the server did
  * not attribute: no header at all.
  */
 function post(
@@ -571,15 +511,15 @@ describe('POST /login — what the browser gets back', () => {
 	 * every other status is about the deployment, and the unconfigured credential is the one that
 	 * matters: its message states the configured `ADMIN_PASSWORD`'s length, which is written for an
 	 * agent reading a status body on a surface an operator controls. an anonymous POST to this form
-	 * must not read it back, so it gets the pointer at the console instead.
+	 * must not read it back, so it gets the pointer at `.env` instead.
 	 */
-	it('points an unconfigured deployment at the console rather than reading its credential back', async () => {
+	it('points an unconfigured deployment at `.env` rather than reading its credential back', async () => {
 		const answer = await refused(typed(PASSWORD), {
 			deployed: { ...DEPLOYED, ADMIN_PASSWORD: 'short' }
 		});
 
 		expect(answer.init?.status).toBe(500);
-		expect(banner(answer)).toContain('better-giving start');
+		expect(banner(answer)).toContain('check `ADMIN_PASSWORD` in `.env`');
 		expect(JSON.stringify(answer.data)).not.toContain('ADMIN_PASSWORD is shorter');
 		expect(JSON.stringify(answer.data)).not.toContain('(it is 5)');
 	});
@@ -630,7 +570,7 @@ describe('POST /login — what the browser gets back', () => {
 // the bound on the write. the spec env holds a real `SIGN_IN_RATE_LIMITER`, so what is under test is
 // the charge as it deploys rather than a description of it.
 //
-// the case worth stating twice is the one below about a missing binding, because it is the opposite
+// the case worth stating twice is the one below about a missing limiter, because it is the opposite
 // answer to the one `refuseIfRateLimited` gives on the public surface. serving on with no limiter is
 // the decision, and a comment saying so is not coverage — flipping the call site to refuse instead
 // has to turn this file red.
@@ -722,19 +662,19 @@ describe('the limit on POST /login', () => {
 	});
 
 	/**
-	 * a deployment with no binding signs staff in, which is the decision and not an oversight —
+	 * a deployment with no limiter signs staff in, which is the decision and not an oversight —
 	 * `isRateLimited` in $lib/server/api/rate-limit.ts is where it is argued, along with what it
 	 * leaves unbounded.
 	 *
-	 * the address is spent against the real binding first, and that half is what makes the case
+	 * the address is spent against the real limiter first, and that half is what makes the case
 	 * discriminating rather than decorative: without it, a call site that never charged anything
 	 * would pass this identically.
 	 */
 	it('signs staff in on a deployment that has no limiter at all', async () => {
 		await untilRefused('203.0.113.33');
 		const signedInWhenRefused = await sessions();
-		// a deployment whose `ratelimits` block does not name this binding — a fork that edited it
-		// out, a Worker deployed before it existed, an account where the binding is not there.
+		// a runtime handed no sign-in limiter: the server entry builds every limiter at start, so this
+		// is a fork that dropped it.
 		const unbound = { ...DEPLOYED, SIGN_IN_RATE_LIMITER: undefined } as unknown as typeof DEPLOYED;
 
 		for (let i = 0; i < 8; i++) {
@@ -743,17 +683,17 @@ describe('the limit on POST /login', () => {
 			);
 		}
 
-		// every one of them, not just the first: an absent binding is not an empty bucket either.
+		// every one of them, not just the first: an absent limiter is not an empty bucket either.
 		expect(await sessions()).toBe(signedInWhenRefused + 8);
 	});
 
 	/**
-	 * and the same for a caller the edge attributed no address to, which under the zone-level
-	 * "Remove visitor IP headers" managed transform is every caller of the deployment at once. the
-	 * binding is bound here and refusing this address is exactly what it must not do — otherwise
-	 * one guesser holds the only login closed on the operator, which is worse than the guessing.
-	 * a member in the same position is refused instead: 'a member the edge did not attribute',
-	 * below.
+	 * and the same for a caller the server attributed no address to, which under a misread
+	 * `TRUSTED_PROXY_HEADER` ($lib/server/runtime/client-ip.ts) is every caller of the deployment at
+	 * once. the limiter is present here and refusing this address is exactly what it must not do —
+	 * otherwise one guesser holds the only login closed on the operator, which is worse than the
+	 * guessing. a member in the same position is refused instead: 'a member the edge did not
+	 * attribute', below.
 	 */
 	it('signs staff in when the edge attributed no address at all', async () => {
 		for (let i = 0; i < 8; i++) {
@@ -968,11 +908,10 @@ describe('the limit on POST /login — a member the edge did not attribute', () 
 	});
 
 	/**
-	 * the person who can fix it is whoever runs the deployment, and nothing on their side says why
-	 * every colleague stopped being able to sign in. so the sentence carries the cause and the usual
-	 * switch behind it, in the page's own voice rather than as a status for a log line.
+	 * the person who can fix it is whoever runs the deployment, so the sentence carries the cause and
+	 * who to tell, in the page's own voice rather than as a status for a log line.
 	 */
-	it('says the deployment is not being told the visitor’s address, and names the usual cause', async () => {
+	it('says the deployment could not tell the visitor’s address, and who to tell', async () => {
 		await makeMember('nadia@riverbanktrust.org');
 
 		const answer = await refused(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), {
@@ -981,7 +920,7 @@ describe('the limit on POST /login — a member the edge did not attribute', () 
 
 		expect(banner(answer)).toMatch(/^Sign-in is unavailable\./);
 		expect(banner(answer)).toContain('address');
-		expect(banner(answer)).toContain('Remove visitor IP headers');
+		expect(banner(answer)).toContain('tell whoever set up this site');
 		expect(identifierHeld(answer)).toBe('nadia@riverbanktrust.org');
 	});
 

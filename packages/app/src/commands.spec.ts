@@ -34,30 +34,6 @@ const COMMANDS = [/\bpnpm run ([a-z][\w:-]*)/g, /`pnpm ([a-z][\w:-]*)`/g];
 // repository has decided to stop checking.
 const SUBCOMMANDS = new Set(['install', 'run']);
 
-// root scripts that left with the Cloudflare parts and the Go console. sentences that still name one
-// are reworded with the docs and the in-product messages, and this set is deleted with the last of
-// them; the case below keeps it from outliving a script that comes back under one of these names.
-const REMOVED = new Set([
-	'bundle',
-	'console',
-	'db:create',
-	'db:create:test',
-	'db:export',
-	'db:export:photos',
-	'db:info',
-	'db:restore:photos',
-	'deploy',
-	'deploy:test',
-	'deploy:vars',
-	'logs',
-	'preview',
-	'secret:delete',
-	'secret:list',
-	'start',
-	'turnstile:keys',
-	'wrangler'
-]);
-
 const files = [
 	...globSync('src/**/*.{ts,tsx}'),
 	...globSync('scripts/**/*.js'),
@@ -110,13 +86,7 @@ describe('every command this repository names is one the root can run', () => {
 
 	it('names none the root package.json does not declare', () => {
 		expect(
-			named
-				.filter((m) => !scripts.has(m.name) && !REMOVED.has(m.name))
-				.map((m) => `${m.at} pnpm run ${m.name}`)
+			named.filter((m) => !scripts.has(m.name)).map((m) => `${m.at} pnpm run ${m.name}`)
 		).toEqual([]);
-	});
-
-	it('keeps no removed name that the root declares again', () => {
-		expect([...REMOVED].filter((name) => scripts.has(name))).toEqual([]);
 	});
 });

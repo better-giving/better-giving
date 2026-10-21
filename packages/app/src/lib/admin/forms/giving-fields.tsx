@@ -146,9 +146,8 @@ function textIn(within: HTMLFormElement | HTMLFieldSetElement | null, name: stri
  *
  * the value goes through the platform's own setter rather than `box.value =`, because react keeps
  * its own copy of an input's last value and an assignment updates that copy too — react would then
- * see no change and the box's `onChange` would never fire. conform and the save button's dirty
- * reading (`useSavedFormState` in packages/operator/src/saved-form-state.react.ts) both count the
- * bubbling `input`.
+ * see no change and the box's `onChange` would never fire. conform counts the bubbling `input`,
+ * and the save button's dirty reading is conform's own (`useAdminForm` in ../use-admin-form.ts).
  */
 function typeInto(box: HTMLInputElement, text: string): void {
 	Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, text);

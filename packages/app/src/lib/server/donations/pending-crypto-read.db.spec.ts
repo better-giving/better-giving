@@ -9,7 +9,7 @@ import type { EmailMessage, EmailProvider } from '../email/provider';
 import { createPaymentProviders } from '../payments/factory';
 import { soleProcessor } from '../payments/processors.testing';
 import type { PaymentProvider } from '../payments/provider';
-import { readPendingCryptoGifts } from './pending-crypto-read';
+import { ipnHasSettledAGift, readPendingCryptoGifts } from './pending-crypto-read';
 import { recordDonation } from './record';
 import { settleDelivery } from './settle';
 import { CRON_RUNS } from '../../../cron-runs';
@@ -215,6 +215,27 @@ const NOWPAYMENTS_ENV = {
 	NOWPAYMENTS_IPN_SECRET: 'notarealipnsecret'
 };
 
+/** `body` as NOWPayments posts it: signed over its keys sorted, under the IPN secret. */
+function signedIpn(body: Record<string, unknown>) {
+	const sorted = Object.fromEntries(Object.entries(body).sort(([a], [b]) => (a < b ? -1 : 1)));
+	return {
+		body: JSON.stringify(body),
+		headers: {
+			'x-nowpayments-sig': createHmac('sha512', NOWPAYMENTS_ENV.NOWPAYMENTS_IPN_SECRET)
+				.update(JSON.stringify(sorted))
+				.digest('hex')
+		}
+	};
+}
+
+/** one IPN delivered as the webhook route hands it over. */
+function deliver(on: ReturnType<typeof deps>, ipn: ReturnType<typeof signedIpn>) {
+	return settleDelivery(
+		{ db, provider: on.processors.for('nowpayments'), processors: on.processors, email: on.email },
+		ipn
+	);
+}
+
 function mailer() {
 	const sent: EmailMessage[] = [];
 	const port: EmailProvider = {
@@ -326,30 +347,11 @@ describe('readPendingCryptoGifts()', () => {
 			actually_paid_at_fiat: 25
 		};
 		serving({ [PAYMENT_ID]: { status: 200, json: finished } });
-		const sorted = Object.fromEntries(
-			Object.entries(finished).sort(([a], [b]) => (a < b ? -1 : 1))
-		);
-		const ipn = {
-			body: JSON.stringify(finished),
-			headers: {
-				'x-nowpayments-sig': createHmac('sha512', NOWPAYMENTS_ENV.NOWPAYMENTS_IPN_SECRET)
-					.update(JSON.stringify(sorted))
-					.digest('hex')
-			}
-		};
 		const mail = mailer();
 		const both = deps(NOWPAYMENTS_ENV, mail.port);
 
 		const [delivered] = await Promise.all([
-			settleDelivery(
-				{
-					db,
-					provider: both.processors.for('nowpayments'),
-					processors: both.processors,
-					email: both.email
-				},
-				ipn
-			),
+			deliver(both, signedIpn(finished)),
 			readPendingCryptoGifts(both, NOW)
 		]);
 
@@ -492,6 +494,35 @@ describe('readPendingCryptoGifts()', () => {
 
 		expect(await statusOf(faulting.paymentId)).toBe('pending');
 		expect(await statusOf(next.paymentId)).toBe('cancelled');
+	});
+});
+
+describe('ipnHasSettledAGift()', () => {
+	const finished = (donationId: string) =>
+		read(donationId, {
+			payment_status: 'finished',
+			actually_paid: 19.36121163,
+			actually_paid_at_fiat: 25
+		}).json as Record<string, unknown>;
+
+	it('reads no IPN where the scheduled read settled the only crypto gift', async () => {
+		const gift = await pendingCrypto({ ageMinutes: 60 });
+		serving({ [PAYMENT_ID]: { status: 200, json: finished(gift.donationId) } });
+
+		await readPendingCryptoGifts(deps(), NOW);
+
+		expect(await statusOf(gift.paymentId)).toBe('succeeded');
+		expect(await ipnHasSettledAGift(db)).toBe(false);
+	});
+
+	it('reads an IPN once one settled a gift sooner than the scheduled read could reach it', async () => {
+		const gift = await pendingCrypto({ ageMinutes: 5 });
+		serving({ [PAYMENT_ID]: { status: 200, json: finished(gift.donationId) } });
+
+		const delivered = await deliver(deps(), signedIpn(finished(gift.donationId)));
+
+		expect(delivered.ok).toBe(true);
+		expect(await ipnHasSettledAGift(db)).toBe(true);
 	});
 });
 

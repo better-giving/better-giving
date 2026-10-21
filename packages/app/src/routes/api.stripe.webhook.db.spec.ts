@@ -1,3 +1,4 @@
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import type { MiddlewareFunction } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseContact } from '$lib/server/contacts/contact-input';
@@ -163,6 +164,17 @@ describe('POST /api/stripe/webhook', () => {
 
 		expect(response.status).toBe(405);
 		expect(response.headers.get('allow')).toBe('POST');
+		const { fix } = (await response.json()) as { fix: string };
+		const keep = fix.indexOf(
+			`keep it: reveal its signing secret, put it in \`.env\` as \`${envLine('STRIPE_WEBHOOK_SECRET')}\``
+		);
+		const register = fix.indexOf(
+			`Only if no endpoint is listed, run \`${setupWebhookCommand('stripe')}\``
+		);
+		expect(fix).toContain('If Stripe’s dashboard already lists an endpoint for this address');
+		expect(keep).toBeGreaterThan(-1);
+		expect(register).toBeGreaterThan(keep);
+		expect(fix).toContain(`recreate the app: \`${RECREATE_APP}\``);
 		expect(request.reads).toBe(0);
 	});
 });

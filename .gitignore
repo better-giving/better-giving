@@ -1,10 +1,8 @@
 node_modules
 
 # Build output
-# `react-router typegen` output, written by each package's `prepare` and `check` scripts. the
-# console's own build is never deployed (packages/console-ui/src/never-deployed.spec.ts).
+# `react-router typegen` output, written by the package's `prepare` and `check` scripts.
 /packages/app/.react-router
-/packages/console-ui/.react-router
 # unanchored: a build directory is ignored wherever it appears.
 build/
 .output
@@ -33,9 +31,9 @@ build/
 *.db-shm
 
 # Scratch notes for trying this deployment end to end — deployed hostnames, a form
-# id, test card numbers. Ignored rather than committed for the reason wrangler.jsonc
-# holds no `database_id`: a fork inherits what is committed, and every line of it
-# points at a resource the fork cannot reach.
+# id, test card numbers. Ignored rather than committed (AGENTS.md → Never): a fork
+# inherits what is committed, and every line of it points at a resource the fork
+# cannot reach.
 /testing.md
 
 # OS

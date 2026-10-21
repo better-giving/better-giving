@@ -112,19 +112,17 @@ const SENT =
 	'once and for an hour.';
 
 /**
- * what a caller is told when the edge attributed no address to the request, so there is no
- * sign-in bucket to charge and nothing is sent.
+ * what a caller is told when the server attributed no address to the request (`clientIp` in
+ * $lib/server/runtime/client-ip.ts), so there is no sign-in bucket to charge and nothing is sent.
  *
- * ./login.tsx's `UNATTRIBUTED` in this screen's words, and argued there: it names the cause and the
- * switch that usually produces it, for whoever runs the deployment. it says nothing about the email
- * address typed, because the body was never read, and it names the IP address in full because
- * "your address" on a page whose one box is an email address reads as that box.
+ * ./login.tsx's `UNATTRIBUTED` in this screen's words. it says nothing about the email address
+ * typed, because the body was never read, and it names the IP address in full because "your
+ * address" on a page whose one box is an email address reads as that box.
  */
 const UNATTRIBUTED =
-	'A reset link could not be sent. This deployment is not being told your connection’s IP ' +
-	'address, so it cannot limit how many links are requested and refuses every request until it ' +
-	'is. The usual cause is Cloudflare’s “Remove visitor IP headers” setting being switched on for ' +
-	'this site; whoever runs this deployment can switch it off in the Cloudflare dashboard.';
+	'A reset link could not be sent. This site could not tell your connection’s IP address, so it ' +
+	'cannot limit how many links are requested and refuses every request until it can. Try again, ' +
+	'and if this keeps happening, tell whoever set up this site.';
 
 export const links = operatorLinks;
 
@@ -168,7 +166,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// charge ahead of the body: a refusal that had already read it would be a refusal that spent
 	// the parse it exists to save.
 	//
-	// a deployment with no binding sends on, and a caller the edge attributed no address to is not
+	// a deployment with no limiter sends on, and a caller the server attributed no address to is not
 	// counted at all. both are `isRateLimited`'s decisions and are argued in
 	// $lib/server/api/rate-limit.ts.
 	const bucket = signInRateLimitKey(request);
@@ -196,8 +194,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	}
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and
-	// the cookie `Secure` policy from it, so a deployment answers correctly on workers.dev and on a
-	// custom domain without a deploy-time variable naming either.
+	// the cookie `Secure` policy from it, so a deployment answers correctly on `localhost` and behind
+	// its https proxy without a deploy-time variable naming either.
 	//
 	// this is the one instance in the app built with a way to send. everywhere else `passwordReset`
 	// is absent and better-auth refuses a reset request outright, which is what keeps this flow to

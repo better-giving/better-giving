@@ -1,24 +1,19 @@
 // the one signal between an operator screen's progress bar and the reading that replaces the screen
 // it stands over.
 //
-// ./components/status/ProgressBar.jsx is that bar, and both operator surfaces draw it. the console's
-// packages/console-ui/src/root.tsx draws it as the document's own waiting face while the app starts
-// and over the page being left while a navigation reads the next one, and holds it in its
-// `clientLoader`s; the dashboard's packages/app/src/routes/_app.tsx draws it over a move between
-// the screens it frames, and holds it in its `clientMiddleware`. the hold is what knows the reading
-// has landed. the two share nothing: a fallback stands in for a route that has not rendered, and a
-// pending navigation's page has not rendered either, so there are no props between them and no
-// component above both. this module is the seam — the bar subscribes, the hold flips it and waits
-// for the bar to land.
+// ./components/status/ProgressBar.jsx is that bar. the dashboard's packages/app/src/routes/_app.tsx
+// draws it over a move between the screens it frames, and holds it in its `clientMiddleware`. the
+// hold is what knows the reading has landed. the two share nothing: a pending navigation's page has
+// not rendered, so there are no props between them and no component above both. this module is
+// the seam — the bar subscribes, the hold flips it and waits for the bar to land.
 //
 // **the bar finishes, and is seen full, before the page changes.** a bar taken away part full
 // reports that the screen gave up on the reading rather than that it arrived.
 //
 // **it is module state because there is one bar and one page on the screen.** a reading taken for
 // the page already drawn is a revalidation under that page, with no bar over it, so it finishes
-// nothing and waits for nothing. the state is a module-scope singleton, and one per surface: each
-// surface bundles its own copy of this package, so the console's watchers and drawn page are never
-// the dashboard's.
+// nothing and waits for nothing. the state is a module-scope singleton, one per bundle that
+// draws the bar.
 
 import { MOTION_CAP_MS } from './motion-end';
 
@@ -83,10 +78,9 @@ export function isDrawn(pathname: string): boolean {
 /**
  * whether a reading of `to` stands behind the bar, with `on` the pathname drawn now.
  *
- * the pathname and never the whole address: a search parameter on the console opens or drops a
- * dialog over the page it is on (packages/console-ui/src/lib/dialog-params.ts), and a press re-reads
- * that page and reports at its own control. before anything is drawn, every reading is behind the
- * bar the document draws.
+ * the pathname and never the whole address: a search parameter changes what is over the page it
+ * is on rather than the page, and a press re-reads that page and reports at its own control.
+ * before anything is drawn, every reading is behind the bar the document draws.
  */
 export function movesPage(to: string, on: string | null): boolean {
 	return on === null || to !== on;
@@ -147,8 +141,7 @@ export function holdBar(to: string): BarPass {
 
 /**
  * the loader's side, for a reading of `to` that takes no pass at all — one answered from memory,
- * reaching nothing (packages/console-ui/src/lib/processor-cache.ts on the console), which is over
- * before the bar could be drawn.
+ * reaching nothing, which is over before the bar could be drawn.
  *
  * **a pass an earlier move took is put down**, as `holdBar` puts it down: that move's reading is
  * thrown away and its finish would rush a bar over nothing. **the pass of this same move stands** —

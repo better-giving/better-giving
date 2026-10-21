@@ -1,6 +1,6 @@
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
-import { pinnedOrigin, readAuthEnv } from '$lib/server/auth/env';
+import { pinnedOrigin, readAuthEnv, readPin } from '$lib/server/auth/env';
 import { sweepConnectorLeftovers } from '$lib/server/connector/keys';
 import type { Db } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
@@ -47,9 +47,9 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, db: Db, now: Date) =>
 	'45 * * * *': (env, db, now) => owedRefundNotices(env, db, now),
 
 	'* * * * *': (env, db, now) => {
-		// the three jobs below run in one invocation and spend its connections, subrequests and D1
-		// queries together; ./lib/server/outbox/budget.ts is each one's share, and a job added here
-		// takes a share there.
+		// the three jobs below share one run and spend its connections, outbound requests and
+		// database queries together; ./lib/server/outbox/budget.ts is each one's share, and a job
+		// added here takes a share there.
 		//
 		// one handle, shared by every delivery and by the connection the accounting provider reads
 		// its tokens through: the store the factory builds is over this same database.
@@ -58,7 +58,8 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, db: Db, now: Date) =>
 				{
 					db,
 					provider: createAccountingProvider(env, db),
-					email: createEmailProvider(env)
+					email: createEmailProvider(env),
+					origin: booksOrigin(env)
 				},
 				now
 			),
@@ -82,6 +83,16 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, db: Db, now: Date) =>
 		]);
 	}
 };
+
+/**
+ * the address the books' failure notice links to. a pin that names no origin costs that link and
+ * not the notice, which names the page by its path instead: Books shows the deployer the pin's own
+ * refusal (`readPin` in $lib/server/auth/env.ts).
+ */
+function booksOrigin(env: Env): string | null {
+	const pin = readPin(readAuthEnv(env));
+	return pin.ok ? pin.origin : null;
+}
 
 function owedRefundNotices(env: Env, db: Db, now: Date): Promise<void> {
 	return sendOwedRefundNotices({ db, email: createEmailProvider(env) }, now);

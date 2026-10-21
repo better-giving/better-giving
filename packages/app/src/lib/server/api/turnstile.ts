@@ -45,7 +45,7 @@
 // is the code the most common non-success on the whole surface will carry.
 // ---------------------------------------------------------------------------
 
-import { setCommand } from '@better-giving/operator/deploy-split';
+import { envLine, RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { clientIp } from '../runtime/client-ip';
 
 /** the endpoint, exported so a spec can assert the call went to it rather than restate it. */
@@ -56,22 +56,18 @@ export const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/si
  *
  * for the logs, and only for them: the two `operatorFix` sentences below are read by whoever is
  * looking at a live deployment refusing donations, with no screen in front of them and no row to
- * read a command off. so this states both commands as well as where the pair is minted.
+ * read a command off. so this states both `.env` lines and the command as well as where the
+ * pair is minted.
  *
- * it names the dashboard rather than a `pnpm` script for the first half because minting the pair is
- * the step no command in this repository can do — the widget is created in the operator's own
- * Cloudflare account, and the two calls after it are the part a script owns. both come from
- * `setCommand` in `@better-giving/operator/deploy-split`, one `--var` each: the secret key is a
- * credential, but like the sitekey it is a plain var an operator can read back.
- *
- * the console says the same things and no longer says them from here. that screen draws a box per
- * key with the command beside it (`packages/console-ui/src/lib/secret-groups.ts`). the overlap is
- * deliberate: a log line and a box are read by the same person at different moments, and neither
- * can point at the other.
+ * it names the dashboard for the first half because minting the pair is the step nothing in this
+ * repository can do — the widget is created in the operator's own Cloudflare account. both `.env`
+ * lines come from `envLine` in `@better-giving/operator/deploy-split`, and the recreate after them
+ * is what makes them take effect.
  */
 export const TURNSTILE_FIX =
-	'Create a widget at dash.cloudflare.com > Turnstile, then run ' +
-	`\`${setCommand('TURNSTILE_SITE_KEY')}\` and \`${setCommand('TURNSTILE_SECRET_KEY')}\`.`;
+	'Create a widget at dash.cloudflare.com > Turnstile, add ' +
+	`\`${envLine('TURNSTILE_SITE_KEY')}\` and \`${envLine('TURNSTILE_SECRET_KEY')}\` to \`.env\`, ` +
+	`then recreate the app: \`${RECREATE_APP}\`.`;
 
 /**
  * how long siteverify may take before it is reported as unanswered.
@@ -232,7 +228,7 @@ export type TurnstileCheck = {
  * deployment with no secret cannot verify anything, a deployment with no sitekey served a page that
  * could render no widget, and a token that is absent or over the documented length cannot verify
  * either. the last is the one that matters most — it is a stranger's field, so answering it from
- * here means an unauthenticated caller cannot make this Worker open a connection at all.
+ * here means an unauthenticated caller cannot make this server open a connection at all.
  *
  * ---------------------------------------------------------------------------
  * the two keys are checked before the token, and the order is the whole point of the sitekey being

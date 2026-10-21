@@ -125,7 +125,7 @@ async function slugError(response: Response): Promise<unknown> {
 	return answer.form?.result?.error?.slug;
 }
 
-/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+/** a deployment whose set-up is finished. */
 let bindings: Env;
 
 beforeEach(async () => {
@@ -135,8 +135,7 @@ beforeEach(async () => {
 describe('the address', () => {
 	it.each([
 		['admin', '/admin'],
-		['api', '/api'],
-		['console', '/console']
+		['api', '/api']
 	])('refuses %s, naming the route it clashes with, and moves nothing', async (slug, route) => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
 

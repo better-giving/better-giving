@@ -1,3 +1,4 @@
+import { envLine, RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { settleDelivery } from '$lib/server/donations/settle';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { cachedCoins } from '$lib/server/forms/coin-cache';
@@ -21,8 +22,9 @@ import type { Route } from './+types/api.nowpayments.webhook';
 // everything the delivery does is `settleDelivery`'s ($lib/server/donations/settle.ts); this file owns
 // which status each outcome answers with, and the served coin list a receipt names its coin from.
 //
-// nothing here is a module-scope singleton: the D1 handle arrives on the request context, which
-// ../request-context.ts seeds per request, and both ports are built from that env on the call.
+// nothing here is a module-scope singleton: the database handle arrives on the request context,
+// which ../request-context.ts seeds per request, and both ports are built from that env on the
+// call.
 
 /**
  * one IPN from NOWPayments.
@@ -60,7 +62,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a NOWPayments payment notification by POST. ${method} is not a method it answers.`,
-			fix: 'NOWPayments posts here for every crypto payment this deployment creates. Its IPN secret, under Payment Settings in the NOWPayments dashboard, is stored in the console (`better-giving start`) as NOWPAYMENTS_IPN_SECRET.'
+			fix: `NOWPayments posts here for every crypto payment this deployment creates. If \`.env\` already holds \`NOWPAYMENTS_IPN_SECRET\`, keep it: generating a new one replaces the old. Only if it holds none, generate an IPN secret under Payment Settings in the NOWPayments dashboard (NOWPayments shows it once), put it in \`.env\` as \`${envLine('NOWPAYMENTS_IPN_SECRET')}\`, then recreate the app: \`${RECREATE_APP}\`.`
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

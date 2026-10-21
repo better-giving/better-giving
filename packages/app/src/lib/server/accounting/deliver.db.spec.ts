@@ -152,8 +152,12 @@ async function connected(realmId = REALM): Promise<void> {
 }
 
 /** a run's needs. its pace sends every row a case queues in one run. */
-function deps(port: AccountingProvider, email: EmailProvider = mailer().port) {
-	return { db, provider: port, email } as const;
+function deps(
+	port: AccountingProvider,
+	email: EmailProvider = mailer().port,
+	origin: string | null = 'https://donate.example.org'
+) {
+	return { db, provider: port, email, origin } as const;
 }
 
 /** the postings committed the way every poster commits them, with a queue row for each of `owed`. */
@@ -810,9 +814,10 @@ describe('the failure notice', () => {
 
 		// Try these again stands beside gifts given up on, and there are none.
 		expect(mail.sent[0]?.text).toContain(
-			'What to do: If the latest reason asks you to fix something, open the console (run ' +
-				'`better-giving start`), go to QuickBooks and fix it. Otherwise there’s nothing to do: ' +
-				'these gifts are tried again automatically.'
+			'What to do: There’s nothing to do unless the latest reason asks you to fix something: ' +
+				'these gifts are tried again automatically. If it does, go to QuickBooks under Books, at ' +
+				'https://donate.example.org/admin/books#quickbooks, and fix it. Only whoever set up this ' +
+				'site can open that section, so if you can’t see it, forward this email to them.'
 		);
 	});
 
@@ -828,8 +833,10 @@ describe('the failure notice', () => {
 		// the press retries the given-up gifts alone, so their reason is the one to fix first.
 		expect(mail.sent[0]?.text).toMatch(/^Latest reason: Intuit refused the payload\.$/m);
 		expect(mail.sent[0]?.text).toContain(
-			'What to do: Open the console (run `better-giving start`) and go to QuickBooks. Fix what ' +
-				'the latest reason says, then press Try these again.'
+			'What to do: Go to QuickBooks under Books, at ' +
+				'https://donate.example.org/admin/books#quickbooks. Fix what the latest reason says, ' +
+				'then press Try these again. Only whoever set up this site can open that section, so if ' +
+				'you can’t see it, forward this email to them.'
 		);
 	});
 
@@ -976,9 +983,13 @@ describe('the notice for a run that could not send anything', () => {
 		expect(mail.sent).toHaveLength(1);
 		expect(mail.sent[0]?.text).toContain('The refresh token was rejected.');
 		expect(mail.sent[0]?.text).toContain('Gifts waiting: 2');
+		// the notification address is one a member may read, and a member's Books has no QuickBooks
+		// section: the address is absolute because a mail client cannot resolve a path.
 		expect(mail.sent[0]?.text).toContain(
-			'What to do: Open the console (run `better-giving start`), go to QuickBooks and press ' +
-				'Sign in again.'
+			'What to do: Go to QuickBooks under Books, at ' +
+				'https://donate.example.org/admin/books#quickbooks, and press Sign in again. Only ' +
+				'whoever set up this site can open that section, so if you can’t see it, forward this ' +
+				'email to them.'
 		);
 		for (const entryGroupId of [first, second]) {
 			// the row the run never reached is stamped with the one it did: what is being reported is
@@ -989,6 +1000,19 @@ describe('the notice for a run that could not send anything', () => {
 				updatedAt: QUEUED_AT
 			});
 		}
+	});
+
+	it('names the QuickBooks section by its path where the deployment’s address is unknown', async () => {
+		await queuedGift();
+		const mail = mailer();
+
+		await sendDueEntries(deps(provider(DEAD).port, mail.port, null), NOW);
+
+		expect(mail.sent[0]?.text).toContain(
+			'What to do: Go to QuickBooks under Books, at /admin/books#quickbooks on your dashboard, ' +
+				'and press Sign in again.'
+		);
+		expect(mail.sent[0]?.text).not.toContain('http');
 	});
 
 	it('tells an operator as soon as the accounts are unpicked with a backlog behind them', async () => {
@@ -1003,8 +1027,10 @@ describe('the notice for a run that could not send anything', () => {
 		expect(mail.sent).toHaveLength(1);
 		expect(mail.sent[0]?.text).toContain('No account is chosen for a gift’s income.');
 		expect(mail.sent[0]?.text).toContain(
-			'What to do: Open the console (run `better-giving start`), go to QuickBooks and choose ' +
-				'every account under Accounts.'
+			'What to do: Go to QuickBooks under Books, at ' +
+				'https://donate.example.org/admin/books#quickbooks, and choose every account under ' +
+				'Accounts. Only whoever set up this site can open that section, so if you can’t see it, ' +
+				'forward this email to them.'
 		);
 		expect((await row(entryGroupId)).notifiedAt).toEqual(NOW);
 	});
@@ -1127,7 +1153,7 @@ describe('the notice for a run that could not send anything', () => {
 
 		await sendDueEntries(deps(qb.port, mail.port), NOW);
 
-		// disconnecting is something somebody did, and the console's connection screen shows it.
+		// disconnecting is something somebody did, and the QuickBooks part of Books shows it.
 		expect(mail.sent).toEqual([]);
 		expect((await row(entryGroupId)).notifiedAt).toBeNull();
 	});

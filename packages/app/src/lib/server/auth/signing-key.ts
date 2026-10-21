@@ -7,40 +7,36 @@ import type { AuthEnv } from './env';
 /**
  * where the session-cookie signing key comes from, and in what order.
  *
- * the point of this module is that a one-click deploy asks the operator for
- * `ADMIN_PASSWORD` and nothing else. the signing key is machine-minted by
- * `migrations/0000_initial_schema.sql` into `auth_signing_key`, so there is no second
- * value for a fork to generate, paste or lose.
+ * `BETTER_AUTH_SECRET` is the key a running server signs with: it refuses to start
+ * without it (`REQUIRED_ENV_VARS` in ../runtime/env.ts). behind it is a key
+ * machine-minted by `migrations/0000_initial_schema.sql` into `auth_signing_key`, read
+ * only where the env a caller hands in holds none.
  *
- * it is a row rather than a deploy-time var because there is nothing for anybody to set
- * and no moment to set it in: a deploy-time value is one an operator pastes, and the
- * migration that mints this one runs before a Worker exists to hold a var. that is what makes
- * it the carve-out in CLAUDE.md's "secrets are deploy-time" rule — a key the app mints
- * for itself — rather than a breach of it. see the note above `authSigningKey` in
+ * that row is the carve-out in AGENTS.md's "secrets are deploy-time" rule — a key the app
+ * mints for itself — rather than a breach of it. see the note above `authSigningKey` in
  * `db/auth-schema.ts`.
  *
- * **what it signs is worth more than cookie integrity, and reading it out of D1 is not
- * inert.** over a session cookie it is a tamper check on a token whose authority is the
+ * **what it signs is worth more than cookie integrity, and reading it out of the database is
+ * not inert.** over a session cookie it is a tamper check on a token whose authority is the
  * `auth_session` row it names. but it also signs the short-lived address that begins a
  * QuickBooks connection, under a purpose label of its own so the two can never be read
  * as each other (`$lib/server/accounting/connect-link.ts`), and that address is minted
- * on the console — behind a credential no session token holds. whoever can forge one
+ * on Books for the deployer's session alone. whoever can forge one
  * connects **their own** company, and every gift this organisation takes is posted into
  * books they control. signing in at Intuit is not a second gate: the person signing in
  * is the one who forged the address. so the carve-out above is about where the value
  * comes from and never about the value being inert, and a change that widens what this
  * key signs widens what reading this database is worth.
  *
- * the ordering — env first — makes `BETTER_AUTH_SECRET` an emergency lever: setting or
- * changing it revokes every live session at once, and voids every unspent connect
+ * the ordering — env first — makes `BETTER_AUTH_SECRET` an emergency lever: changing it
+ * revokes every live session at once, and voids every unspent connect
  * address with them, without touching the database.
  *
- * not derived from `ADMIN_PASSWORD`. deriving it (HKDF, or any single-pass KDF that
- * fits the 10 ms CPU cap) would make every signed session cookie an offline oracle for
- * the password: an attacker holding one cookie has a `(token, HMAC(key, token))` pair
- * and can test candidate passwords at two hash operations each. today `ADMIN_PASSWORD`
- * is only attackable online, which is the entire premise of ./credential.ts, and no
- * work factor can be added back inside 10 ms.
+ * not derived from `ADMIN_PASSWORD`. deriving it would make every signed session cookie
+ * an offline oracle for the password: an attacker holding one cookie has a
+ * `(token, HMAC(key, token))` pair and can test candidate passwords against it offline.
+ * today `ADMIN_PASSWORD` is only attackable online, which is the entire premise of
+ * ./credential.ts.
  */
 
 /** the single row's primary key. the table's check constraint permits no other. */
@@ -57,24 +53,23 @@ export type AuthSecretResolution =
  *
  * it is written to be true of every arm that sends it, a database that throws before the key is
  * read included (src/routes/login.tsx), so it names what to do rather than what failed. like
- * `notConfiguredMessage`, and for the reason its comment gives, it names the two ways migrations
- * are applied and no filename.
+ * `notConfiguredMessage`, and for the reason its comment gives, it names the commands that apply
+ * migrations and no filename.
  */
 export const SIGNING_KEY_UNREADABLE =
 	'This deployment’s database is not ready, so no one can be signed in and no signed link can ' +
-	'be checked. If the deployment is new, apply its migrations: the console ' +
-	'(`better-giving start`) applies them to the deployed D1 when it updates this deployment, and ' +
-	'`pnpm wrangler d1 migrations apply DB --local` applies them to a local one. ' +
+	'be checked. Update the database: `docker compose run --rm migrate`, or `pnpm db:migrate` from ' +
+	'a checkout. ' +
 	LOGS_SAY_WHY;
 
 /**
  * `BETTER_AUTH_SECRET` if set, else the `auth_signing_key` row, else a refusal whose cause
  * names the fix.
  *
- * one D1 read, and only when the env override is absent. it is a read per request
- * because nothing built from a binding may be a module-scope singleton (CLAUDE.md) —
- * the row is immutable in practice, but caching it across requests would mean caching
- * it across deployments and databases too.
+ * one database read, and only when the env override is absent. it is a read per request
+ * because nothing built from configuration may be a module-scope singleton (AGENTS.md →
+ * Runtime) — the row is immutable in practice, but caching it across requests would mean
+ * caching it across deployments and databases too.
  */
 export async function resolveAuthSecret(db: Db, env: AuthEnv): Promise<AuthSecretResolution> {
 	const fromEnv = env.BETTER_AUTH_SECRET?.trim();
@@ -95,7 +90,7 @@ export async function resolveAuthSecret(db: Db, env: AuthEnv): Promise<AuthSecre
 		return { ok: false, cause: notConfiguredMessage(`the query failed (${describe(cause)})`) };
 	}
 
-	// `typeof` rather than trusting the declared type: the value crosses D1's serialization
+	// `typeof` rather than trusting the declared type: the value crosses the driver's serialization
 	// boundary, so the declared `string` is a claim about the schema, not about what came
 	// back — a column that is somehow null or numeric arrives as one. the failure mode of
 	// trusting it is a `TypeError` on the auth hot path instead of the message below.
@@ -128,22 +123,20 @@ export async function resolveAuthSecret(db: Db, env: AuthEnv): Promise<AuthSecre
  * squash-mutable — the chain under `migrations/` has been squashed before — and a stale
  * one does worse than dangle: the index it named is now a different, real file,
  * so the message sends its reader somewhere confidently wrong. what it names instead are
- * the two ways migrations are applied: the console's update press for a deployed database,
- * which applies them as it deploys, and the raw wrangler invocation for a local one, spelled
- * out of `wrangler.jsonc`'s own binding name and `migrations_dir`. `CONTRIBUTING.md` is where
- * the symptom ("every route 500s") is diagnosed.
+ * the two ways migrations are applied (AGENTS.md → Schema): the migrate service for a
+ * deployment, and `pnpm db:migrate` from a checkout. `CONTRIBUTING.md` → Troubleshooting is where
+ * a local database the migrations never reached is diagnosed.
  */
 function notConfiguredMessage(reason: string): string {
 	return (
 		`No session-cookie signing key is available: \`auth_signing_key\` could not be read because ${reason}. ` +
 		`The row is minted by an idempotent migration, so the fix is almost always to apply ` +
-		`migrations to this database: the console (\`better-giving start\`) applies them to the ` +
-		`deployed D1 when it updates this deployment, and ` +
-		`\`pnpm wrangler d1 migrations apply DB --local\` applies them to a local one. ` +
-		`As an override you can instead set the \`BETTER_AUTH_SECRET\` var, which takes precedence ` +
-		`over the row — see \`.dev.vars.example\`. ` +
-		`If EVERY route is failing this way, see "Every route 500s" in \`CONTRIBUTING.md\`: the usual ` +
-		`local cause is a changed \`database_id\` pointing \`--local\` at an empty database.`
+		`migrations to this database: \`docker compose run --rm migrate\` for a deployment, or ` +
+		`\`pnpm db:migrate\` from a checkout. ` +
+		`As an override you can instead set \`BETTER_AUTH_SECRET\` in \`.env\`, which takes ` +
+		`precedence over the row (see \`.env.example\`). ` +
+		`On a checkout, see Troubleshooting in \`CONTRIBUTING.md\`: the usual local cause is a ` +
+		`\`DATABASE_URL\` naming a different file from the one you migrated.`
 	);
 }
 

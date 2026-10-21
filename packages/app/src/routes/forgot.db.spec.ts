@@ -75,8 +75,7 @@ const PASSWORD = 'a-very-long-random-staff-password';
 const MEMBER_PASSWORD = 'a-colleagues-own-password';
 
 /**
- * the deploy-time env every request here carries: the staff credential, and the values the five
- * set-up jobs are read off ($lib/server/config/setup-state.ts).
+ * the deploy-time env every request here carries.
  *
  * the mail variables are set because this screen's whole job is to send a message, and the stub
  * above is what stands in for the socket.
@@ -95,7 +94,7 @@ const DEPLOYED = {
 /** the execution context the last call was made with, so the deferred send can be waited on. */
 let running: DeferredWork;
 
-/** what react router hands a handler, built the way src/worker.ts builds it for a real request. */
+/** what react router hands a handler, built as src/server/app.ts builds it for a real request. */
 function args(
 	request: Request,
 	deployed: typeof DEPLOYED = DEPLOYED,
@@ -198,7 +197,7 @@ let callersMinted = 0;
  * the form submitted from `ip`, which is the address the server entry stamps (`CLIENT_IP_HEADER`).
  *
  * left out, the caller is a new address every call, which is what production looks like — every
- * caller attributed — without one case spending another's bucket. `null` is a caller the edge did
+ * caller attributed — without one case spending another's bucket. `null` is a caller the server did
  * not attribute: no header at all.
  */
 async function post(
@@ -525,15 +524,15 @@ describe('the limit on POST /forgot — a caller the edge did not attribute', ()
 
 	/**
 	 * the person who can fix it is whoever runs the deployment, so the sentence carries the cause and
-	 * the usual switch behind it — and nothing about the address typed, which was never read.
+	 * who to tell — and nothing about the address typed, which was never read.
 	 */
-	it('says the deployment is not being told the visitor’s address, and names the usual cause', async () => {
+	it('says the deployment could not tell the visitor’s address, and who to tell', async () => {
 		const answer = await refused(typed('nadia@riverbanktrust.org'), { ip: null });
 
 		expect(banner(answer)).toMatch(/^A reset link could not be sent\./);
 		// the only box on this page is an email address, so "your address" alone reads as that.
 		expect(banner(answer)).toContain('your connection’s IP address');
-		expect(banner(answer)).toContain('Remove visitor IP headers');
+		expect(banner(answer)).toContain('tell whoever set up this site');
 	});
 
 	/**

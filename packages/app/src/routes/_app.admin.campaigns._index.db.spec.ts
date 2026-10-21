@@ -151,7 +151,7 @@ async function listed(name: string): Promise<Row> {
 const DAY = 86_400_000;
 const NOW = Date.now();
 
-/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+/** a deployment whose set-up is finished. */
 let bindings: Env;
 
 beforeEach(async () => {

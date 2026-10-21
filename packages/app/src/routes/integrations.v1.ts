@@ -19,8 +19,8 @@ import type { Route } from './+types/integrations.v1';
 // checked.
 //
 // a route file named `integrations.v1.<anything>` nests beneath it and inherits both checks by
-// existing, the mounting ./zapier.ts and ./console.ts make for their own credentials and for the
-// same reason: a check each route called leaves the next route open the day it is written.
+// existing, the mounting ./zapier.ts makes for its own credential and for the same reason: a check
+// each route called leaves the next route open the day it is written.
 // ../routes.spec.ts holds that every route served under `/integrations/v1` is under this file.
 //
 // what the surface is and what every answer on it carries is $lib/server/integrations/surface.ts's
@@ -51,16 +51,17 @@ import type { Route } from './+types/integrations.v1';
 // both fail open, as `isRateLimited` argues.
 //
 // when the key was last used is recorded once the route beneath has answered, through
-// `waitUntil`, so its write never queues ahead of the route's own reads on D1 — at most once a
-// minute per key, decided on the row the lookup already read, so a key used within the minute
-// costs no statement (`touchLastUsed` in $lib/server/integrations/keys.ts).
+// `deferred.waitUntil` ($lib/server/runtime/deferred.ts), so its write never queues ahead of the
+// route's own reads on the database — at most once a minute per key, decided on the row the
+// lookup already read, so a key used within the minute costs no statement (`touchLastUsed` in
+// $lib/server/integrations/keys.ts).
 
 /**
  * GET and HEAD, and nothing else. react router hands OPTIONS to a loader and POST, PUT, PATCH and
  * DELETE to an action, so without this a route with no action would answer a write with the
  * framework's own 405 and no `Allow`, and a keyed OPTIONS would read the loader. a method outside
  * those seven — PROPFIND, QUERY — never reaches this: react router's server runtime would answer
- * it with its own 405 before any middleware runs, so ../worker.ts answers it with this same
+ * it with its own 405 before any middleware runs, so ../server/app.ts answers it with this same
  * refusal before the request reaches react router at all.
  */
 const readOnly: Route.MiddlewareFunction = ({ request }, next) =>

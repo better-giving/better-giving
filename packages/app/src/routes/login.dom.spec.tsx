@@ -55,7 +55,7 @@ function screen(
 			path: '/login',
 			Component: () =>
 				createElement(Login as never, {
-					loaderData: { shape: 'sign-in', orgName: null, passwordReset },
+					loaderData: { orgName: null, passwordReset },
 					actionData: undefined,
 					params: {},
 					matches: []
@@ -135,6 +135,24 @@ it('names one box for both ways in, and marks neither optional', () => {
 });
 
 /**
+ * the deployer's username is a constant nobody types anywhere else, so the box says it under itself
+ * rather than leaving the deployer to have been told.
+ */
+it('names the deployer’s username under the box that takes it, drawn as code', () => {
+	const { root } = screen();
+	const described = box(root, 'input[name="identifier"]').getAttribute('aria-describedby') ?? '';
+	const hint = described
+		.split(' ')
+		.map((id) => document.getElementById(id))
+		.find((element) => element?.textContent?.startsWith('The person'));
+
+	expect(hint?.textContent).toBe(
+		'The person who deployed this site signs in as admin. Everyone else uses their email address.'
+	);
+	expect(hint?.querySelector('code')?.textContent).toBe('admin');
+});
+
+/**
  * the way out for a member who cannot get in. it is on the sign-in screen because that is where
  * they find out they cannot, and nowhere else on this deployment says so.
  */
@@ -174,7 +192,7 @@ it('stays reachable while it is busy, so the press that started it keeps its foc
 	await signIn(root);
 
 	// a disabled control leaves the tab order, and `aria-busy` on something nothing can reach
-	// announces to nobody. packages/console-ui/src/routes/_index.tsx's submits are the same shape.
+	// announces to nobody.
 	expect(submit(root).disabled).toBe(false);
 });
 

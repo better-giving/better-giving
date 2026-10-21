@@ -10,11 +10,11 @@ import type { ProcessorName } from './provider';
 // approved for, and another reports every rail active because its processor publishes no such read
 // to a merchant holding only its own credentials — the argument is at `readAccountChargeability` in
 // ./paypal.ts, where the assertion is made. read off the answer alone the two are identical, so a
-// console draws a green row over an account that may never have enabled the rail beside it.
+// screen draws a green row over an account that may never have enabled the rail beside it.
 //
 // a table here rather than a field on the port's answer, and the two readers are why: the sentence
-// an operator is shown (../forms/rail-notes.ts) and the fact the console switches on
-// (`src/routes/console.payments.ts`) have to be the same call. a caller deciding either by naming a
+// an operator is shown (../forms/rail-notes.ts) and the fact the Payments screen switches on
+// (./processor-cards.ts) have to be the same call. a caller deciding either by naming a
 // processor would be the copy that stops matching the day an adapter starts reading approvals.
 //
 // nothing here says whether a rail can be charged. that is ./rail-chargeability.ts's, and this only
@@ -27,8 +27,8 @@ import type { ProcessorName } from './provider';
  * one whose standings are drawn as approvals nobody read.
  *
  * `credentials_only` is the safe member to be wrong in only one direction: a processor that starts
- * publishing approvals and is left on it has a console under-claiming, where the other way round is
- * a console telling an operator a way of paying is on when nothing said so.
+ * publishing approvals and is left on it has a screen under-claiming, where the other way round is
+ * a screen telling an operator a way of paying is on when nothing said so.
  */
 const EVIDENCE: Readonly<Record<ProcessorName, RailEvidence>> = Object.freeze({
 	stripe: 'per_rail_approval',

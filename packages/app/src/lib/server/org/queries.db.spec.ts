@@ -18,8 +18,8 @@ import { client, first, run, stmt } from '$lib/server/db/database.testing';
 // a real database, over the committed migrations — so the singleton check, the
 // not-blank CHECKs and `STRICT` are all the deployed ones.
 //
-// the `org_profile` table object is deliberately not imported here: every read and write of
-// it lives in ./queries.ts, and the probes below reach past drizzle on purpose — a check is
+// the `org_profile` table object is deliberately not imported here: every drizzle read and write
+// of it lives in ./queries.ts, and the probes below reach past drizzle on purpose — a check is
 // a property of the database, so the statement that tests it should be the one a
 // hand-run statement would send.
 
@@ -176,8 +176,8 @@ describe('saveOrgProfile', () => {
 });
 
 /**
- * a parsed `FULL` with the four values the console's widened save states beside the nine. the
- * parse that fills them from a submission is not ./org-input.ts's yet, so the spec mints them.
+ * a parsed `FULL` with the four values the Settings save states beside the nine, set over the
+ * parse rather than through it so each case states them directly.
  */
 async function saveWithPresence(presence: {
 	mission: string | null;
@@ -375,7 +375,7 @@ describe('the profile logo', () => {
 		alt: null
 	} as const;
 
-	/** a new photo put on as the logo, as the console's upload puts one: its id and the answer. */
+	/** a new photo put on as the logo, as the Settings logo upload puts one: its id and the answer. */
 	async function putLogo() {
 		const photo = newImageStatements(db, PHOTO, BYTES);
 		return { id: photo.id, written: await putNewOrgProfileLogo(db, photo) };
