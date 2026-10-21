@@ -4738,7 +4738,9 @@
 
 	/* ---------- disclosure, dialog ------------------------------------------------------ */
 
-	.adm-disclosure {
+	/* the rule closes what the summary opened, so a folded disclosure draws none: it is there only
+	   while there is a body above it to end, as `.adm-status--section[open] > summary` is. */
+	.adm-disclosure[open] {
 		border-block-end: var(--admin-rule);
 	}
 
