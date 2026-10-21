@@ -78,7 +78,7 @@ type Asked =
 type Failure = NonprofitsRateLimited | NonprofitsUnavailable | { readonly outcome: 'not_found' };
 
 /** words a title leaves lowercase, except as the first or last word. a one-letter word stays capitals. */
-const TITLE_SMALL = new Set(['a', 'an', 'and', 'of', 'the', 'for', 'in', 'on', 'at', 'to']);
+const TITLE_SMALL = new Set(['an', 'and', 'of', 'the', 'for', 'in', 'on', 'at', 'to']);
 
 /** acronyms that stay in capitals. */
 const TITLE_ACRONYMS = new Set([
@@ -105,7 +105,10 @@ const TITLE_ACRONYMS = new Set([
 	'YMHA',
 	'JCC',
 	'AA',
-	'NA'
+	'NA',
+	'DBA',
+	'AFB',
+	'MS'
 ]);
 
 /** roman numerals that stay in capitals. */
@@ -121,7 +124,6 @@ const TITLE_ABBREVIATIONS = new Set([
 	'SR',
 	'MR',
 	'MRS',
-	'MS',
 	'RD',
 	'BLVD',
 	'LN',
@@ -133,6 +135,35 @@ const TITLE_ABBREVIATIONS = new Set([
 	'FL',
 	'PKWY',
 	'HWY'
+]);
+
+/** IRS short forms on a name or a street, rendered like St, ahead of the no-vowel rule. */
+const TITLE_SHORT_FORMS = new Set([
+	'CTR',
+	'CNTR',
+	'SVCS',
+	'SVC',
+	'FDN',
+	'FNDTN',
+	'TR',
+	'LTD',
+	'MFG',
+	'ASSN',
+	'ASSOC',
+	'DEPT',
+	'CMNTY',
+	'NATL',
+	'INTL',
+	'HLTH',
+	'SCH',
+	'SCHS',
+	'BRK',
+	'HLS',
+	'FLS',
+	'RVR',
+	'SPGS',
+	'MTN',
+	'PRK'
 ]);
 
 /**
@@ -179,6 +210,15 @@ const APOSTROPHE = /['\u2019]/;
  * middle initial, and PO Box.
  */
 function titleCaseName(name: string): string {
+	return titleCaseWords(name, 'name');
+}
+
+/** IRS city files abbreviate ordinary place words, so a vowelless city word is still a title. */
+function titleCaseCity(name: string): string {
+	return titleCaseWords(name, 'city');
+}
+
+function titleCaseWords(name: string, surface: 'name' | 'city'): string {
 	const words = name
 		.trim()
 		.split(/\s+/)
@@ -195,7 +235,7 @@ function titleCaseName(name: string): string {
 			const lower = word.toLowerCase();
 			const edge = index === 0 || index === words.length - 1;
 			if (!edge && TITLE_SMALL.has(lower)) return lower;
-			return titleCaseToken(word);
+			return titleCaseToken(word, surface);
 		})
 		.join(' ');
 }
@@ -206,22 +246,22 @@ function titleCaseWord(token: string): string {
 }
 
 /** each hyphen segment is titled, so the segment after `-` is not left lowercase. */
-function titleCaseToken(token: string): string {
-	if (!token.includes('-')) return titleCaseSegment(token);
+function titleCaseToken(token: string, surface: 'name' | 'city'): string {
+	if (!token.includes('-')) return titleCaseSegment(token, surface);
 	return token
 		.split('-')
-		.map((segment) => titleCaseSegment(segment))
+		.map((segment) => titleCaseSegment(segment, surface))
 		.join('-');
 }
 
-function titleCaseSegment(token: string): string {
+function titleCaseSegment(token: string, surface: 'name' | 'city'): string {
 	const kept =
 		acronym(token) ??
 		compass(token) ??
 		ampersandInitials(token) ??
 		romanNumeral(token) ??
 		titleAbbreviation(token) ??
-		vowellessCapitals(token);
+		(surface === 'name' ? (shortForm(token) ?? vowellessCapitals(token)) : null);
 	if (kept !== null) return kept;
 	const named = apostropheName(token) ?? mcName(token) ?? macName(token);
 	if (named !== null) return named;
@@ -243,6 +283,14 @@ function capitalsWhenListed(token: string, list: ReadonlySet<string>): string | 
 	return `${prefix}${upper}${suffix}`;
 }
 
+function titledWhenListed(token: string, list: ReadonlySet<string>): string | null {
+	const wrapped = wrappedLetters(token);
+	if (wrapped === null) return null;
+	const [prefix, letters, suffix] = wrapped;
+	if (!list.has(letters.toUpperCase())) return null;
+	return `${prefix}${titleCaseWord(letters)}${suffix}`;
+}
+
 function stateCode(token: string, previous: string | undefined): string | null {
 	if (previous === undefined || !previous.endsWith(',')) return null;
 	return capitalsWhenListed(token, STATE_CODES);
@@ -260,7 +308,7 @@ function romanNumeral(token: string): string | null {
 	return capitalsWhenListed(token, ROMAN_NUMERALS);
 }
 
-/** one letter stays in capitals. runs before `TITLE_SMALL`, where `a` would be lowercase. */
+/** one letter stays in capitals. */
 function singleLetter(token: string): string | null {
 	const wrapped = wrappedLetters(token);
 	if (wrapped === null) return null;
@@ -284,11 +332,11 @@ function poBox(token: string, next: string | undefined): string | null {
 /** a glued digit is an ordinal: 3RD is 3rd, not 3Rd. */
 function titleAbbreviation(token: string): string | null {
 	if (/\d/.test(token)) return null;
-	const wrapped = wrappedLetters(token);
-	if (wrapped === null) return null;
-	const [prefix, letters, suffix] = wrapped;
-	if (!TITLE_ABBREVIATIONS.has(letters.toUpperCase())) return null;
-	return `${prefix}${titleCaseWord(letters)}${suffix}`;
+	return titledWhenListed(token, TITLE_ABBREVIATIONS);
+}
+
+function shortForm(token: string): string | null {
+	return titledWhenListed(token, TITLE_SHORT_FORMS);
 }
 
 /** letters with none of A E I O U Y, and no digit in the token, stay in capitals. */
@@ -397,7 +445,7 @@ export async function lookUpNonprofit(
 		legal_name: titleCaseName(org.name ?? ''),
 		tax_id: einAsPrinted(org.ein),
 		address_line1: titleCaseName(org.address.street ?? ''),
-		city: titleCaseName(org.address.city ?? ''),
+		city: titleCaseCity(org.address.city ?? ''),
 		region: org.address.state ?? '',
 		postal_code: org.address.zip ?? '',
 		country: US_COUNTRY
@@ -434,7 +482,7 @@ export async function searchNonprofits(
 		matches: read.data.results.map((match) => ({
 			ein: einAsPrinted(match.ein),
 			name: titleCaseName(match.name),
-			city: titleCaseName(match.city ?? ''),
+			city: titleCaseCity(match.city ?? ''),
 			state: match.state ?? '',
 			deductible: match.deductible,
 			revoked: match.revoked,

@@ -84,6 +84,20 @@ describe('an IRS name stored in capitals', () => {
 		expect(answer).toMatchObject({ outcome: 'found', fields: { address_line1: titled } });
 	});
 
+	it.each([
+		['COLORADO SPGS', 'Colorado Spgs'],
+		['BLMNG PRAIRIE', 'Blmng Prairie']
+	])('titles the city %s', async (sent, titled) => {
+		serviceAnswers({
+			...organisation(null),
+			address: { street: '1 MAIN ST', city: sent, state: 'CO', zip: '80903' }
+		});
+
+		const answer = await lookUpNonprofit('53-0196605', undefined);
+
+		expect(answer).toMatchObject({ outcome: 'found', fields: { city: titled } });
+	});
+
 	it('titles the street and leaves the region and the postal code', async () => {
 		serviceAnswers({
 			...organisation(null),
@@ -132,7 +146,14 @@ describe('an IRS name stored in capitals', () => {
 		['COMMUNITY HOUSING CORP', 'Community Housing Corp'],
 		['MOUNT ZION BAPTIST', 'Mount Zion Baptist'],
 		['MIAMI, FL', 'Miami, FL'],
-		['SPRINGFIELD, CT', 'Springfield, CT']
+		['SPRINGFIELD, CT', 'Springfield, CT'],
+		['BANDON COMMUNITY HEALTH CTR', 'Bandon Community Health Ctr'],
+		['METHODIST HOSPITAL FDN', 'Methodist Hospital Fdn'],
+		['BROMLEY CHARITABLE TR', 'Bromley Charitable Tr'],
+		['WALNUT RIDGE LAND TRUST III LTD', 'Walnut Ridge Land Trust III Ltd'],
+		['ARIZOU DBA BASTA', 'Arizou DBA Basta'],
+		['KEESLER AFB', 'Keesler AFB'],
+		['GULF MS CHAPTER', 'Gulf MS Chapter']
 	])('titles %s on a lookup', async (sent, titled) => {
 		serviceAnswers({ ...organisation(null), name: sent });
 
