@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { STRIPE_RAILS } from '@better-giving/form/embed/rails';
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import {
 	isRetryable,
 	type DeliveredAttempt,
@@ -598,6 +599,30 @@ describe('verifyEvent', () => {
 		});
 
 		expect(result.ok === false && result.reason).toBe('bad_signature');
+	});
+
+	/**
+	 * a delivery arriving at all is Stripe posting to an endpoint registered for this address, so
+	 * the fix is that endpoint's existing secret. the setup command replaces the endpoint, and a
+	 * deleted endpoint gets no further retries (https://docs.stripe.com/webhooks#automatic-retries).
+	 */
+	it('sends an unset secret to the existing endpoint’s secret, never to re-registering', async () => {
+		const body = eventBody('payment_intent.succeeded');
+		const { httpClient } = recording([]);
+
+		const result = await createStripeProvider(
+			{ ...CREDENTIALS, webhookSecret: null },
+			{ httpClient }
+		).verifyEvent({
+			body,
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) }
+		});
+
+		expect(result.ok === false && result.reason).toBe('not_configured');
+		const detail = result.ok === false ? result.detail : '';
+		expect(detail).toContain(envLine('STRIPE_WEBHOOK_SECRET'));
+		expect(detail).toContain(RECREATE_APP);
+		expect(detail).not.toContain(setupWebhookCommand('stripe'));
 	});
 
 	/**

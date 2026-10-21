@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import type { PaymentStatus } from '../db/schema';
 import { redact, redactPublicId } from '../../redact.ts';
-import { setupWebhookCommand } from '@better-giving/operator/deploy-split';
+import { envLine, RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { isStripeRail, STRIPE_RAILS, type StripeRail } from '@better-giving/form/embed/rails';
 import { DONATION_METADATA_KEY, RAIL_CAPABILITY_STATES, WALLETS } from './provider.ts';
 import {
@@ -2102,6 +2102,11 @@ export function createStripeProvider(
 			// ./provider.ts), so the webhook route answers 5xx and Stripe brings the delivery back across
 			// the three-day window — which is the window an operator sets this value inside, having just
 			// registered the endpoint that minted it.
+			//
+			// the fix never names `setupWebhookCommand`: a delivery reaching this address means an
+			// endpoint is registered for it, and re-running setup deletes that endpoint along with the
+			// retries it is holding (https://docs.stripe.com/webhooks#automatic-retries). Stripe returns
+			// an endpoint's secret only at creation, so the dashboard is where the existing one is read.
 			if (credentials.webhookSecret === null) {
 				return {
 					ok: false,
@@ -2109,9 +2114,12 @@ export function createStripeProvider(
 					detail:
 						'This deployment cannot check that a payment notification came from Stripe: ' +
 						'`STRIPE_WEBHOOK_SECRET` is not set, so the delivery was refused and its body was not ' +
-						'read. The value is minted by registering this deployment’s endpoint: run ' +
-						`\`${setupWebhookCommand('stripe')}\`, add the line it prints to \`.env\`, then ` +
-						'recreate the app.'
+						'read. Stripe is posting to an endpoint already registered for this address, and the ' +
+						'value is that endpoint’s signing secret: in Stripe’s dashboard open Workbench → ' +
+						'Webhooks, select the endpoint for this address and reveal its signing secret, put it ' +
+						`in \`.env\` as \`${envLine('STRIPE_WEBHOOK_SECRET')}\`, then recreate the app: ` +
+						`\`${RECREATE_APP}\`. Keep that endpoint: Stripe redelivers this notification only ` +
+						'while it exists. A local `stripe listen` prints its own secret instead.'
 				};
 			}
 
