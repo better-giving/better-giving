@@ -6,8 +6,9 @@
 # glibc slim rather than alpine: @libsql/client loads a prebuilt native binding, and node's own
 # musl builds are experimental on amd64 and untested on arm64.
 #
-# both bases pinned by digest, the tag beside it for the reader; bump the two together, since the
-# runtime stage runs this image's node binary on that debian.
+# both bases pinned by digest, the tag beside it for the reader. the two tags name one debian
+# release, since the runtime stage runs this image's node binary on that debian; the digests are
+# snapshots of their own tags and move independently.
 
 FROM node:22.23.3-trixie-slim@sha256:28d03803f09ba76560e273af33beb7eda4ed68fa0698bc9bd15e9a6e35693923 AS base
 # corepack runs the pnpm that package.json's `packageManager` pins.

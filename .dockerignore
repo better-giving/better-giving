@@ -11,9 +11,9 @@ packages/app/static/embed.js
 packages/app/static/embed/
 
 # a value file must never reach a layer: compose hands .env to the container at run time.
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 **/*.db
 **/*.db-wal
 **/*.db-shm
