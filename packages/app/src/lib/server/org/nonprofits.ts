@@ -32,7 +32,12 @@ const US_COUNTRY = 'United States';
 const STANDING = {
 	deductible: z.boolean().nullable(),
 	revoked: z.boolean().nullable(),
-	revocationDate: z.string().nullable()
+	// a date `Date` cannot read is no date: Settings formats this one (`standingNote` in
+	// $lib/admin/settings/nonprofit-finder.ts), and an invalid date throws while it renders.
+	revocationDate: z
+		.string()
+		.nullable()
+		.transform((on) => (on === null || Number.isNaN(Date.parse(on)) ? null : on))
 };
 
 /** the part of `GET /v1/orgs/{ein}`'s answer the details boxes take. */
