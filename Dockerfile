@@ -5,8 +5,11 @@
 #
 # glibc slim rather than alpine: @libsql/client loads a prebuilt native binding, and node's own
 # musl builds are experimental on amd64 and untested on arm64.
+#
+# both bases pinned by digest, the tag beside it for the reader; bump the two together, since the
+# runtime stage runs this image's node binary on that debian.
 
-FROM node:22.23.3-trixie-slim AS base
+FROM node:22.23.3-trixie-slim@sha256:28d03803f09ba76560e273af33beb7eda4ed68fa0698bc9bd15e9a6e35693923 AS base
 # corepack runs the pnpm that package.json's `packageManager` pins.
 RUN corepack enable
 WORKDIR /repo
@@ -42,16 +45,26 @@ RUN pnpm build
 # the devDependencies in node_modules/.pnpm. --ignore-scripts because the root `prepare` runs
 # react-router typegen, which is a devDependency.
 FROM base AS prod-deps
-COPY --parents package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc packages/*/package.json ./
+# .pnpmfile.cjs because the lockfile records its checksum, and a frozen install without it fails.
+COPY --parents package.json pnpm-lock.yaml .pnpmfile.cjs pnpm-workspace.yaml .npmrc packages/*/package.json ./
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store \
 	pnpm install --prod --frozen-lockfile --ignore-scripts --store-dir /pnpm-store \
 	--filter @better-giving/app
 
-FROM node:22.23.3-trixie-slim AS runtime
+# the node image's binary alone, on the debian that image is built from, so npm, yarn and corepack
+# never reach this stage (docker-node docs/BestPractices.md). trixie-slim carries the libraries it
+# links (glibc, libstdc++, libgcc_s), and node verifies TLS against its own bundled roots, so no
+# ca-certificates.
+FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS runtime
+COPY --from=base /usr/local/bin/node /usr/local/bin/
 ENV NODE_ENV=production \
 	DATABASE_URL=file:/data/better-giving.db
-# created here and owned by `node` so a fresh named volume mounted over it copies that ownership.
-RUN mkdir /data && chown node:node /data
+# uid and gid 1000, the node image's own, so a volume an earlier image wrote stays this user's.
+# /data is created here and owned by `node` so a fresh named volume mounted over it copies that
+# ownership.
+RUN groupadd --gid 1000 node \
+	&& useradd --uid 1000 --gid node --shell /bin/bash --create-home node \
+	&& mkdir /data && chown node:node /data
 WORKDIR /repo/packages/app
 COPY --from=prod-deps /repo/node_modules /repo/node_modules
 COPY --from=prod-deps /repo/packages/app/node_modules ./node_modules
@@ -69,5 +82,6 @@ COPY --from=build /setup-webhook/setup-webhook.js ./scripts/setup-webhook.ts
 RUN node scripts/setup-webhook.ts || [ $? -eq 2 ]
 USER node
 EXPOSE 3000
-# exec form: node is PID 1 and receives SIGTERM itself, which server/index.ts drains on.
+# exec form: no shell sits in front of node, so the SIGTERM compose's init forwards reaches node,
+# which server/index.ts drains on.
 CMD ["node", "server/index.ts"]

@@ -12,6 +12,9 @@ services:
   app:
     build: .
     image: better-giving
+    # an init as PID 1 forwards signals and reaps children; node is not built to be PID 1
+    # (docker-node docs/BestPractices.md).
+    init: true
     env_file: .env
     # set here, over anything .env says: the port the published mapping reaches and the file on the
     # volume are the container's, not the operator's.
@@ -32,6 +35,7 @@ services:
     build: .
     image: better-giving
     profiles: [migrate]
+    init: true
     volumes:
       - data:/data
     command: ["node", "scripts/migrate.ts"]

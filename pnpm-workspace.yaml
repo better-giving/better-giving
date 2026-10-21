@@ -76,13 +76,17 @@ catalog:
   vitest: 4.1.10
   xstate: 5.32.5
   zod: 4.4.3
-# a machine installs the bindings for its own os and cpu, and only the glibc build of a native
-# package: the image is glibc, and a Mac or a Linux runner has no use for the musl variant that
-# otherwise comes with every prebuilt binary. the lockfile still lists every variant.
+# a machine installs the bindings for its own os and cpu. `libc: [glibc]` filters only packages
+# that declare a `libc` field, and @libsql's musl bindings declare none, so `ignoredOptionalDependencies`
+# below is what keeps them out of the glibc image. the lockfile still lists every other variant.
 supportedArchitectures:
   os: [current]
   cpu: [current]
   libc: [glibc]
+ignoredOptionalDependencies:
+  - '@libsql/linux-x64-musl'
+  - '@libsql/linux-arm64-musl'
+  - '@libsql/linux-arm-musleabihf'
 # better-auth peers `next` as optional, and pnpm resolves an optional peer whenever some importer
 # holds a copy: `@react-email/ui` carries one. it is not ours at runtime, so it stays out of the
 # production install.
