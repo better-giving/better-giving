@@ -9,16 +9,20 @@ describe('loadFailure', () => {
 	});
 
 	/**
-	 * the errand is the whole reason this sentence is long: an unapplied migration is what a fresh
-	 * deployment actually hits, and the reader of an /admin screen is not the one who can run it.
+	 * the errand is the whole reason this sentence is long: an unapplied migration is what a site hits
+	 * after an update that skipped `migrate` (DEPLOY.md → Upgrading), and the server never migrates on
+	 * start (AGENTS.md → Schema).
 	 */
-	it('names who to ask, the migrate command and where the log is, whatever the screen', () => {
-		for (const subject of ['This page', 'This recurring gift']) {
-			const sentence = loadFailure(subject);
-			expect(sentence).toContain('ask whoever set up this site');
-			expect(sentence).toContain('`docker compose run --rm migrate`');
-			expect(sentence).toContain('`docker compose logs app`');
-		}
+	it('covers a site just set up or just updated', () => {
+		expect(loadFailure('This page')).toContain('If this site was just set up or updated');
+	});
+
+	it('names who runs the fix, both migrate commands and where the log is', () => {
+		const sentence = loadFailure('This page');
+		expect(sentence).toContain('whoever runs the server');
+		expect(sentence).toContain('`docker compose run --rm migrate`');
+		expect(sentence).toContain('`pnpm db:migrate`');
+		expect(sentence).toContain('`docker compose logs app`');
 	});
 
 	it('says the same thing after the subject on every screen', () => {
