@@ -61,7 +61,8 @@ export async function sendTestEmail(inputs: {
  *
  * a refusal from the mail host is a 500 rather than a 4xx: no box on any screen fixes it. the one
  * thing a caller can get wrong is the destination, and that is refused before a send is attempted
- * (../../../routes/console.test-email.ts) rather than reported as an outcome here.
+ * (`TEST_EMAIL_FORM` in ../../../routes/_app.admin.settings.tsx) rather than reported as an outcome
+ * here.
  */
 export function testSendStatus(outcome: TestSendOutcome): 200 | RejectionStatus {
 	switch (outcome) {

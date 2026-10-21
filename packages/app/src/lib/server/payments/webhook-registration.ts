@@ -137,7 +137,8 @@ export async function readWebhookRegistration(
  * the repair for a registration that is the right one and is not yet working, which is every
  * `registered` state whose `complete` is false. it is not a replacement, and the difference is the
  * whole reason this exists: a replacement mints a new signing secret and kills the one the operator
- * has already set and redeployed with, and nothing about a missing subscription is worth that.
+ * has already set and recreated the app with, and nothing about a missing subscription is worth
+ * that.
  *
  * the endpoint is found here rather than named by the caller, so the id never leaves this side.
  */

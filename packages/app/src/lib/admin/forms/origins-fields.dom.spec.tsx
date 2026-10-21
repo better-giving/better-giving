@@ -97,10 +97,10 @@ it('links where a site comes from to the sites card on the forms list', () => {
 	expect(link?.getAttribute('href')).toBe('/admin/forms#sites');
 });
 
-it('tells a member to ask whoever set up this site, with no link to a card they cannot open', () => {
+it('tells a member to ask the person who deployed this site, with no link to a card they cannot open', () => {
 	const root = group({ sites: ['https://example.org'], deployer: false });
 	expect(hint(root)).toBe(
-		'Not on any site yet. Tick the sites you’ll paste this form on. To use a site that is not here, ask whoever set up this site to add it.'
+		'Not on any site yet. Tick the sites you’ll paste this form on. To use a site that is not here, ask the person who deployed this site to add it.'
 	);
 	expect(root.querySelector('#origins-hint a')).toBeNull();
 });

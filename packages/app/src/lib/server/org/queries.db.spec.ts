@@ -176,8 +176,8 @@ describe('saveOrgProfile', () => {
 });
 
 /**
- * a parsed `FULL` with the four values the console's widened save states beside the nine. the
- * parse that fills them from a submission is not ./org-input.ts's yet, so the spec mints them.
+ * a parsed `FULL` with the four values the Settings save states beside the nine, set over the
+ * parse rather than through it so each case states them directly.
  */
 async function saveWithPresence(presence: {
 	mission: string | null;
@@ -375,7 +375,7 @@ describe('the profile logo', () => {
 		alt: null
 	} as const;
 
-	/** a new photo put on as the logo, as the console's upload puts one: its id and the answer. */
+	/** a new photo put on as the logo, as the Settings logo upload puts one: its id and the answer. */
 	async function putLogo() {
 		const photo = newImageStatements(db, PHOTO, BYTES);
 		return { id: photo.id, written: await putNewOrgProfileLogo(db, photo) };

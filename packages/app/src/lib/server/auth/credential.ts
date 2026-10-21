@@ -7,15 +7,9 @@ import type { AuthEnv } from './env';
  * the v0 staff credential: one deploy-time var, compared in constant time.
  *
  * no password hash is ever written, no KDF ever runs, and no row stores a
- * credential. that is a constraint of the target, not a shortcut:
- *
- *   - Workers Free is 10 ms CPU per invocation, hard (Paid defaults to 30 s). scrypt
- *     at better-auth's defaults costs far more than that, and a KDF tuned down to fit
- *     10 ms is one an attacker brute-forces trivially. so the credential cannot be
- *     verified with a KDF on the free tier at all.
- *   - a seeded default credential is also out. a migration is SQL and cannot compute
- *     a hash, so shipping one would mean a literal hash committed to a public repo,
- *     byte-identical in every fork.
+ * credential: the value is a line in `.env`, compared as it stands. a seeded default
+ * credential is out too. a migration is SQL and cannot compute a hash, so shipping one
+ * would mean a literal hash committed to a public repo, byte-identical in every fork.
  *
  * rotation is therefore a new `ADMIN_PASSWORD` line in `.env`, which takes effect when the app
  * is recreated.
@@ -28,7 +22,7 @@ import type { AuthEnv } from './env';
  *
  *   - there is nothing to reset against. the credential is a deploy-time var, not a
  *     row. a reset flow writes a new value somewhere, and the only somewhere is the database —
- *     which is the password hash the bullets above explain cannot exist here.
+ *     which is the stored password hash this module never writes.
  *   - there is no account to identify. one credential, no username (see below), and the
  *     one staff row is a fixed constant — so a reset link would be addressed to whatever
  *     mailbox happened to be typed, which is an unauthenticated way to mint a session.

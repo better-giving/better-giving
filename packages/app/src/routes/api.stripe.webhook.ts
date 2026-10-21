@@ -40,8 +40,9 @@ import type { Route } from './+types/api.stripe.webhook';
 // this file owns which status each outcome answers with, which is the one decision the processor
 // actually reads.
 //
-// nothing here is a module-scope singleton. the D1 handle arrives on the request context, which
-// ../request-context.ts seeds per request, and both ports are built from that env on the call.
+// nothing here is a module-scope singleton. the database handle arrives on the request context,
+// which ../request-context.ts seeds per request, and both ports are built from that env on the
+// call.
 
 /**
  * one delivery from the processor.

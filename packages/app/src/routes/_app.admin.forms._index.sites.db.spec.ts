@@ -25,8 +25,8 @@ import { client, run, stmt } from '$lib/server/db/database.testing';
 // stores and refuses, who may save, and the wallet registrations a save brings level on Stripe.
 //
 // the payment port is mounted over the factory rather than passed in: the action builds its
-// provider from the request's env, so nothing on the wire can hand one through. the real module is delegated to, so `configured` stays the
-// deployment's own answer about which keys are set.
+// provider from the request's env, so nothing on the wire can hand one through. the real module is
+// delegated to, so `configured` stays the deployment's own answer about which keys are set.
 
 const stub = vi.hoisted(() => ({
 	ports: {} as Partial<Record<ProcessorName, PaymentProvider>>,
@@ -205,8 +205,8 @@ describe('saving the site list', () => {
 	});
 
 	/**
-	 * carried over from the console: a removal that would leave a live form pointing at a site this
-	 * deployment no longer lists is refused, naming every form in the way.
+	 * a removal that would leave a form that is not archived pointing at a site this deployment no
+	 * longer lists is refused, naming every form in the way.
 	 */
 	it('refuses to remove a site a form still uses, naming the forms', async () => {
 		await post(deployer, sitesBody(['https://acme.org', 'https://give.acme.org']));

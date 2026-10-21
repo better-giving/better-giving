@@ -37,7 +37,7 @@ export interface SmtpFailure {
  * socket exists, so nothing dials it. this arm is what would catch it if that parser were ever
  * loosened.
  *
- * anchored on the platform's own shape, never a bare `prohibited`: `550 5.7.1 Relaying
+ * anchored on the port-25 refusal's own shape, never a bare `prohibited`: `550 5.7.1 Relaying
  * prohibited` is a host refusing a message over a connection that works, so matching that word
  * alone answers it with "use port 465" — advice the operator has already taken, pointing at the
  * one setting that is right.

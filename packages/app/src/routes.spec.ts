@@ -96,9 +96,10 @@ const ROOT_ROUTE = 'root.tsx';
  * the request would break verification in production and nowhere else. they are named here so the
  * case at the foot of `where middleware is mounted` can hold that none has a layout above it.
  *
- * the address is here beside the file rather than left to the name, because it is what an operator
- * pastes into a processor's dashboard: Stripe's is registered by this app and PayPal's is typed in
- * by hand. NOWPayments' is named on each payment this app creates.
+ * the address is here beside the file rather than left to the name, because it is what a
+ * processor's dashboard holds: Stripe's, PayPal's and Chariot's are registered by this app
+ * (`setupWebhook` in $lib/server/payments/webhook-setup.ts), and NOWPayments' is named on each
+ * payment this app creates.
  *
  * each address is the constant the rest of the tree builds from rather than a second spelling of
  * it, which is what makes this the pin: a route file renamed changes the path react router resolves
@@ -603,7 +604,8 @@ describe('the route surface', () => {
 	 * route is added.
 	 *
 	 * `/embed.js` is not here because it is not a route at all — static/ is copied whole into the
-	 * client build and the worker serves it as an asset before routing (CLAUDE.md, ../vite.config.ts).
+	 * client build and the Node server serves it as a static file before routing (../server/start.ts,
+	 * ../vite.config.ts).
 	 */
 	it.each([
 		{ address: '/login', file: 'routes/login.tsx' },
@@ -888,7 +890,7 @@ describe('the auth API this deployment does not serve', () => {
  * the address `scripts/doctor.js` posts its probe to, read off the script rather than spelled a
  * second time here.
  *
- * that script asks a deployed worker whether it can sign staff in, and the way it goes wrong
+ * that script asks a running deployment whether it can sign staff in, and the way it goes wrong
  * without anything failing is the address: a probe at an address this app does not serve answers
  * 404 for a healthy deployment and a broken one alike, so its whole report becomes a sentence
  * about the wrong thing. it posted to the retired prefix above for as long as that surface was

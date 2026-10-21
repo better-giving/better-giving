@@ -53,10 +53,11 @@ const PAYMENTS = href('/admin/payments');
 /**
  * each job's sentence, worded for who is reading.
  *
- * the person who deployed the site can fix all three, so theirs links to where; a member can only
- * ask, so theirs names who to ask and links nowhere — a link to a screen that refuses them is a
- * press with one answer. a processor's keys and its notices secret are environment variables
- * (AGENTS.md → Boundaries), so the Payments page says what to ask for rather than holding a box.
+ * the person who deployed the site can open the page each one is settled from, so theirs links
+ * there; a member can open neither, so theirs names who to ask and links nowhere — a link to a
+ * screen that refuses them is a press with one answer. a processor's keys and its notices secret
+ * are environment variables (AGENTS.md → Boundaries), so the Payments page says what to ask for
+ * rather than holding a box.
  */
 const SENTENCES: Record<FormReadinessJob, (deployer: boolean) => ReactNode> = {
 	organisation: (deployer) =>

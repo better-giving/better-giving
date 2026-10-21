@@ -1,7 +1,7 @@
 // the release a build was cut from, as a constant the bundle carries.
 //
-// `.github/workflows/publish-image.yml` passes `BETTER_GIVING_VERSION` to the image build as a
-// build argument (the root `Dockerfile`), and this is where that becomes a value inside the app.
+// `.github/workflows/publish-image.yml` passes the commit it builds as `BETTER_GIVING_VERSION`, a
+// build argument of the root `Dockerfile`, and this is where that becomes a value inside the app.
 // every other build leaves the variable unset and gets `null`: a checkout, and the suite.
 //
 // what reads it is the connector's `hello` (`connectorRelease` in

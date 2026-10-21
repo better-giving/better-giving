@@ -121,7 +121,8 @@ async function saveIdentity(): Promise<void> {
  * the deployment's own list of sites, which the tick boxes are drawn from.
  *
  * written past drizzle for the reason the identity fixture is: what the route reads is a table, and
- * a fixture going through `replaceSites` would be testing the write that the console owns.
+ * a fixture going through `replaceSites` would be testing the write that the sites card on
+ * Donation forms owns (./_app.admin.forms._index.tsx).
  */
 async function listSites(...origins: string[]): Promise<void> {
 	await run(stmt('delete from site'));

@@ -166,7 +166,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// charge ahead of the body: a refusal that had already read it would be a refusal that spent
 	// the parse it exists to save.
 	//
-	// a deployment with no binding sends on, and a caller the edge attributed no address to is not
+	// a deployment with no limiter sends on, and a caller the server attributed no address to is not
 	// counted at all. both are `isRateLimited`'s decisions and are argued in
 	// $lib/server/api/rate-limit.ts.
 	const bucket = signInRateLimitKey(request);
@@ -194,8 +194,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	}
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and
-	// the cookie `Secure` policy from it, so a deployment answers correctly on workers.dev and on a
-	// custom domain without a deploy-time variable naming either.
+	// the cookie `Secure` policy from it, so a deployment answers correctly on `localhost` and behind
+	// its https proxy without a deploy-time variable naming either.
 	//
 	// this is the one instance in the app built with a way to send. everywhere else `passwordReset`
 	// is absent and better-auth refuses a reset request outright, which is what keeps this flow to

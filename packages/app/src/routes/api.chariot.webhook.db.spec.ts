@@ -370,7 +370,7 @@ describe('POST /api/chariot/webhook', () => {
 		expect(response.headers.get('allow')).toBe('POST');
 		const { fix } = (await response.json()) as { fix: string };
 		const settled = fix.indexOf(
-			'If Payments shows Chariot’s payment notices working, nothing needs doing: a re-run replaces the subscription and its secret.'
+			'If Payments shows Chariot’s payment notices working, nothing needs doing, and a re-run would replace the subscription and its secret.'
 		);
 		const register = fix.indexOf(`Otherwise run \`${setupWebhookCommand('chariot')}\``);
 		expect(settled).toBeGreaterThan(-1);

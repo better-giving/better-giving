@@ -62,7 +62,7 @@ const solved = (over: Record<string, unknown> = {}) =>
 const SECRET = '0x4AAAAAAABBBBBBBBCCCCCCCCDD';
 const SITE_KEY = '0x4AAAAAAABBBBBBBBCCCCCCCCEE';
 
-/** the donor's submission, as the Worker received it. */
+/** the donor's submission, as the server received it. */
 const submission = (headers: Record<string, string> = {}): Request =>
 	new Request('https://donations.example.workers.dev/api/v1/forms/frm_x/donations', {
 		method: 'POST',

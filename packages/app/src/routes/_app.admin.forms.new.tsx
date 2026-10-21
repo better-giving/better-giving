@@ -140,7 +140,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 		// three independent reads, so they go together: none is an input to another, and awaiting
 		// them in turn pays three round trips for one screen. both are this deployment's own database —
 		// nothing on this screen leaves the deployment, because neither of the two values that would
-		// need the processor is a form's to answer and both are the console's.
+		// need the processor is a form's to answer and both are the deployment's.
 		//
 		// the second is the deployment's own list of sites, which the tick boxes are drawn from. an
 		// empty one gates nothing: a form made ahead of the site it goes on is ordinary.
@@ -163,10 +163,10 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 	return {
 		// what stops the form about to be made from serving, in the same block the screen that edits
-		// one carries. the forms list carries none — it writes nothing, so it gates nothing.
+		// one carries. the forms list carries none — it makes no form, so it gates nothing.
 		//
-		// a blocker withholds Live and nothing else: the form is still made, as a draft, because a
-		// form made on a deployment missing any of these renders nothing on the org's own site.
+		// a blocker withholds Live and nothing else, because a live form on a deployment missing any
+		// of these renders nothing on the org's own site. the form is still made, as a draft.
 		//
 		// `null` when there is nothing to say, which is what keeps the condition in one place rather
 		// than in each page's markup.

@@ -249,8 +249,9 @@ export async function action(args: Route.ActionArgs) {
 
 	// the two arms are declared inside the action rather than beside it, and it is not a style
 	// choice: react router strips a route's `action` from the bundle it ships and strips nothing
-	// else, so a module-scope helper reaching `$lib/server/**` puts D1 and this deployment's
-	// secrets into the browser — with the export that used it dropped and the helper still there.
+	// else, so a module-scope helper reaching `$lib/server/**` puts the database driver and this
+	// deployment's secrets into the browser — with the export that used it dropped and the helper
+	// still there.
 	// ../routes.spec.ts is what holds that, over the module graph rather than over a rule.
 
 	/**
@@ -304,8 +305,8 @@ export async function action(args: Route.ActionArgs) {
 
 		if (!sent.ok) {
 			// the detail names the value to fix and is written for an operator holding a log line;
-			// what the screen gets is the pointer at the console, because this box is not where an
-			// SMTP credential is repaired.
+			// what the screen gets is the pointer at Settings' test send, because this box is not where
+			// an SMTP credential is repaired.
 			console.error('an invitation could not be sent:', sent.reason, sent.detail);
 			return invalid(500, submission.reject({ fieldErrors: { email: [SEND_FAILED] } }));
 		}
@@ -356,7 +357,7 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
 			) : (
 				// a member is offered one control on this screen and it is about themselves, in the
 				// place the deployer is offered the invite. the deployer is offered neither: their
-				// password is a deploy-time var set on the console, and that screen refuses their
+				// password is a deploy-time var set in `.env`, and that screen refuses their
 				// session (./_app.admin.members_.password.tsx).
 				<Section>
 					<div className="adm-actions">

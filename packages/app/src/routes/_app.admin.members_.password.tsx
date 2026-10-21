@@ -37,8 +37,8 @@ import type { Route } from './+types/_app.admin.members_.password';
 // STAFF_USER_ID` sends their `GET` back to /admin/members and answers their `POST` 403 — the
 // loader's half so nothing is offered that would then be refused, the action's so a hand-written
 // body is refused too. their password is a deploy-time var with no `auth_account` row behind it
-// ($lib/server/auth/credential.ts), so there is nothing at this address to change and the console
-// is where it is changed. `changeMemberPassword` refuses them by name as well, and that arm stays
+// ($lib/server/auth/credential.ts), so there is nothing at this address to change and `.env` is
+// where it is changed. `changeMemberPassword` refuses them by name as well, and that arm stays
 // reachable only through a session this route did not gate.
 //
 // **it charges the sign-in bucket before it reads anything.** a wrong current password is a guess

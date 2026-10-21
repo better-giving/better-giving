@@ -35,8 +35,6 @@ describe("the minute cron's shares", () => {
 		expect(total((s) => s.queries)).toBeLessThanOrEqual(unspent(LIMITS.queries));
 	});
 
-	// a D1 query is a subrequest to an internal service, drawn from the same per-invocation pool as
-	// the external ones (https://developers.cloudflare.com/workers/platform/limits/, "Subrequests").
 	it('spend no more of the subrequest pool, queries and external together, less the headroom', () => {
 		expect(total((s) => s.external + s.queries)).toBeLessThanOrEqual(unspent(LIMITS.external));
 	});

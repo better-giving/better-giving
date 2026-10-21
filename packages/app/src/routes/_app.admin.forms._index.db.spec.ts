@@ -21,8 +21,7 @@ import { client, first, run, stmt } from '$lib/server/db/database.testing';
 //
 // the Stripe keys ride in a per-request `env` rather than in a value a case builds, and they are
 // here for one assertion: this screen hands out a snippet whatever is in those slots. what a key
-// can charge is read on the console when it is pasted
-// (`packages/console-ui/src/lib/stripe-edits.ts`), and no screen in /admin asks again.
+// can charge is read on Payments, and no other screen in /admin asks.
 
 /** the origin every request in this file arrives on. not loopback, so the cookie is `__Secure-`. */
 const ORIGIN = 'https://donations.example.workers.dev';
@@ -271,10 +270,8 @@ describe('/admin/forms load — the snippet', () => {
 	 * slots hold, including the two that cannot take a donor's money.
 	 *
 	 * a case per state rather than one per status word, because what a slot holds is what a
-	 * deployment holds. every one of them is refused at the box it is pasted into —
-	 * `stripeKeyEdits` in `packages/console-ui/src/lib/stripe-edits.ts` — so a screen here that
-	 * withheld the snippet would be checking forever for a mistake caught once, and could only ever
-	 * point at a screen it is not.
+	 * deployment holds. what a key can charge is read on Payments, so a screen here that withheld
+	 * the snippet could only ever point at a screen it is not.
 	 */
 	it.each(['keys-unset', 'publishable-slot-wrong', 'secret-slot-wrong', 'configured'] as const)(
 		'hands every snippet over on %s',
@@ -333,7 +330,7 @@ describe('/admin/forms load', () => {
 		// the whole contract this screen publishes. nothing about the deployment's own state crosses
 		// but its site list: the status ledger is not rendered here and the header action is never
 		// disabled here, so a readiness key would have no consumer, and what the Stripe keys can
-		// charge is the console's to say. asserted as the whole key set, so it is refused whatever
+		// charge is Payments' to say. asserted as the whole key set, so it is refused whatever
 		// puts one back.
 		expect(Object.keys(await runLoad()).sort()).toEqual(['created', 'embedding', 'forms', 'sites']);
 	});

@@ -74,9 +74,10 @@ export type ReplacePhotoControlProps = Description &
 	};
 
 /* a placed image and the press that swaps it: a block's photo in its edit sheet, a program's
-   photo, the organisation's logo. a new image is resized here and reported; the route uploads it and hands back `state`.
-   none placed yet draws the press alone, as Add photo, on the same path; the box that describes a
-   photo comes with the photo, unless the caller leaves it off.
+   photo, the organisation's logo. a new image is resized here and reported, or, with `onChosen`,
+   handed over for the caller's own step first (`Picked`); the route uploads it and hands back
+   `state`. none placed yet draws the press alone, as Add, on the same path; the box that
+   describes a photo comes with the photo, unless the caller leaves it off.
 
    the press reports its own outcome. while the image resizes or uploads it says so, held with
    `aria-disabled` so the focus stays on it; a refusal stands under it and the press is described

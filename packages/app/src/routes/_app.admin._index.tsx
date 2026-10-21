@@ -44,7 +44,7 @@ const SCREEN_TITLE = 'Dashboard';
  * the month the headline names, spelled out — 'September'.
  *
  * formatted in the loader for the reason every other value here is: an `Intl` call in the page runs
- * once on the Worker and again in the browser, in two different locales and time zones, which is a
+ * once on the server and again in the browser, in two different locales and time zones, which is a
  * hydration mismatch as well as a lie about whose month it is. `UTC` because the buckets are UTC
  * calendar months ($lib/server/months.ts), and a name formatted in another zone would name a month
  * the figure beneath it is not of.
@@ -81,7 +81,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 		holdsAnyForm(db)
 	]);
 	// guarded on its own, and the handler is attached in the same turn the read is started so the
-	// rejection is never an unhandled one when the three above throw first.
+	// rejection is never an unhandled one when the four above throw first.
 	const commitments = readActiveRecurringCount(db).then(
 		(active) => active,
 		(e) => {

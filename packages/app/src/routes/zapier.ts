@@ -8,8 +8,8 @@ import type { Route } from './+types/zapier';
 //
 // a route file named `zapier.<anything>` nests beneath it and inherits the check by existing, the
 // same mounting ./integrations.v1.ts makes for its key and for the same reason: a check each route
-// called leaves the next route open the day it is written. ../routes.spec.ts
-// holds that every route served under `/zapier` is under this file.
+// called leaves the next route open the day it is written. ../routes.spec.ts holds that every route
+// served under `/zapier` is under this file.
 //
 // only a failed check is charged. Zapier's egress addresses are shared by every Zapier user, so
 // charging every request would let a stranger's keyless loop spend this organisation's own calls;

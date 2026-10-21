@@ -369,9 +369,8 @@ const QUOTED_RAIL_METHODS: Readonly<Record<QuotedRail, SettledRail>> = Object.fr
  * writes one gift, atomically, and hands back the ids it wrote under.
  *
  * the statements go in one `batch()` in foreign-key order — contact, donation, lines, payment —
- * one statement per row and never a multi-row `INSERT`, because D1 caps a query at 100 bound
- * parameters (https://developers.cloudflare.com/d1/platform/limits/). `Db` has no `transaction`
- * and D1 has none, so this batch is the only atomic unit available and everything the gift is made
+ * one statement per row and never a multi-row `INSERT`. `Db` has no `transaction`
+ * (../db/client.ts), so this batch is the only atomic unit available and everything the gift is made
  * of has to be inside it: a donation with no payment, or a contact with no gift, is a state nothing
  * in the schema detects.
  *
@@ -452,7 +451,7 @@ export async function recordAuthorizedGift(
 		return { ok: true };
 	} catch (error) {
 		// nothing on this write sits under a unique index, so the one collision it can meet is the
-		// gift's own primary key — a UUIDv7 minted moments earlier, which D1 reports as
+		// gift's own primary key — a UUIDv7 minted moments earlier, which libSQL reports as
 		// `SQLITE_CONSTRAINT_PRIMARYKEY`. that is a defect rather than the retry `duplicate_intent`
 		// names, and calling it one would tell a caller the gift is already recorded when it is not.
 		return refusalFor(error, input.formId, {
@@ -691,7 +690,7 @@ function depositProblem(input: RecordDonationInput): string | null {
  *
  * `collision` is the caller's, because the two writers collide on different keys: one opens a
  * `payment` row under `payment_provider_txn_idx`, a unique index, and the other opens none and can
- * only meet the gift's primary key — which D1 reports as `SQLITE_CONSTRAINT_PRIMARYKEY`, never as
+ * only meet the gift's primary key — which libSQL reports as `SQLITE_CONSTRAINT_PRIMARYKEY`, never as
  * `SQLITE_CONSTRAINT_UNIQUE`. each names the code its collision raises and what it means for the
  * rows it writes.
  */

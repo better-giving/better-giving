@@ -268,14 +268,14 @@ async function unlistedIssue(db: Db, origins: readonly string[]): Promise<Issue 
 		? null
 		: {
 				path: 'allowed_origins',
-				message: `${problem} The operator lists sites under Donation forms → Which sites your forms go on.`
+				message: `${problem} Whoever runs the server lists sites under Donation forms → Which sites your forms go on.`
 			};
 }
 
 /** what a refusal of Live says of each line of the dashboard's block, by its job. */
 const WITHHELD_BY: Readonly<Record<FormReadinessJob, string>> = {
 	organisation:
-		'the organisation’s details are not finished, and a form serves no donor until they are; the operator fills them in under Organisation details in Settings',
+		'the organisation’s details are not finished, and a form serves no donor until they are; whoever runs the server fills them in under Organisation details in Settings',
 	processor:
 		'no payment processor is set up in a shape a form can be served on, so no gift can be charged; whoever runs the server sets one processor’s keys in `.env`, and the Payments screen in the dashboard says what is missing',
 	notices:

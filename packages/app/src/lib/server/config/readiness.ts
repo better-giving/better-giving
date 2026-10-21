@@ -22,10 +22,11 @@ import { MAIL_SMTP_VARS } from './env';
 // does have a website lists it under Donation forms; nothing on this side reads it.
 //
 // **every fact is read on this deployment, from the values it was started with and its own rows.**
-// nothing here reaches Stripe, dials a mail host or asks any third party anything: a page that made
-// five network calls to say five words would take seconds to draw and would report a third party's bad
-// afternoon as this deployment's fault. so what it answers is whether a job has been set up, which
-// is what an operator can act on, and never whether the third party behind it is up right now.
+// nothing here reaches Stripe, dials a mail host or asks any third party anything: a page that
+// made five network calls to say five words would take seconds to draw and would report a third
+// party's bad afternoon as this deployment's fault. so what it answers is whether a job has been
+// set up, which is what an operator can act on, and never whether the third party behind it is up
+// right now.
 //
 // **presence, and nothing past it.** a value that is set but wrong — a live Stripe key where a test
 // one was meant, a mail password since rotated — reads as configured here, because the only way to
@@ -37,7 +38,7 @@ export type SetupLine = {
 	readonly id: SetupJobId;
 	readonly label: string;
 	readonly state: SetupJobState;
-	/** the state as a word, which is `Configured` or `Incomplete` on both operator surfaces. */
+	/** the state as a word, which is `Configured` or `Incomplete`. */
 	readonly word: string;
 	/** the one thing the label cannot say for itself, and `null` wherever it can. */
 	readonly note: string | null;

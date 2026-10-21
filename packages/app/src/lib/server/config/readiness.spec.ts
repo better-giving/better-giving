@@ -9,11 +9,10 @@ import { setupReadiness } from './readiness';
 //
 // every fact is handed in (./readiness.ts), so all of it is looked at with no database and no
 // platform env — which is what makes this a pure-value spec rather than a `*.db.spec.ts`
-// against D1 (CONTRIBUTING.md → Tests).
+// against a database file (CONTRIBUTING.md → Tests).
 //
 // **the words are asserted through the shared record and never spelled here.** a case quoting
-// `Configured` would pass while the console said something else, which is the one drift promoting
-// those words to `@better-giving/operator/setup-folds` exists to close.
+// `Configured` would pass while `@better-giving/operator/setup-folds` said something else.
 
 /** a profile with both identity fields filled in and no address to reach anyone at. */
 const filledIn = {

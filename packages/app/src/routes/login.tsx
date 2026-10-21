@@ -60,8 +60,8 @@ const SCREEN_TITLE = 'Sign in';
  * cap on what one anonymous POST here can ask to be hashed.
  *
  * there is no request-body limit worth relying on here, and every attempt is SHA-256'd by
- * `secretEquals` under a 10 ms CPU budget on the Workers free tier. this bounds the hash, and sits
- * far above any real credential.
+ * `secretEquals` on the one process that serves every request. this bounds the hash, and sits far
+ * above any real credential.
  */
 const MAX_PASSWORD_LENGTH = 256;
 
@@ -146,8 +146,8 @@ const WRONG_CREDENTIAL =
  * gets is the pointer rather than the answer.
  */
 const UNAVAILABLE =
-	'Sign-in is unavailable. Whoever set up this site can fix it: check that `ADMIN_PASSWORD` is ' +
-	`set in \`.env\`, then recreate the app. ${LOGS_SAY_WHY}`;
+	'Sign-in is unavailable. Whoever set up this site can check `ADMIN_PASSWORD` in `.env`, then ' +
+	`recreate the app. ${LOGS_SAY_WHY}`;
 
 /**
  * what a member is told when the server attributed no address to the request (`clientIp` in
@@ -207,7 +207,7 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	// a failure is swallowed to a null name, exactly as ./_app.tsx's read is and for a reason that
 	// is sharper here — this is the screen someone reaches to fix a deployment whose database is
 	// not answering, and throwing would replace the password box with a bare error on precisely
-	// that deployment ($lib/server/config/setup-state.ts).
+	// that deployment. `readSetupState` ($lib/server/config/setup-state.ts) answers `null` for it.
 	const state = await readSetupState(db, env);
 
 	// the reset that just finished, taken: read and cleared on this one response, so a reload
@@ -268,10 +268,10 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// the parse it exists to save. it carries no values and no field errors, so the banner is the
 	// whole of it.
 	//
-	// a deployment with no binding is not counted at all, and neither is a caller the edge attributed
-	// no address to — both are `isRateLimited`'s decisions, argued in $lib/server/api/rate-limit.ts.
-	// the second is not the end of it for a member: that caller is refused below, once the box has
-	// said which way in this is.
+	// a deployment with no limiter is not counted at all, and neither is a caller the server
+	// attributed no address to — both are `isRateLimited`'s decisions, argued in
+	// $lib/server/api/rate-limit.ts. the second is not the end of it for a member: that caller is
+	// refused below, once the box has said which way in this is.
 	const bucket = signInRateLimitKey(request);
 	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, bucket)) {
 		return invalid(429, unread(LOGIN_FORM, signInRateLimitMessage()));
@@ -322,8 +322,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	}
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and
-	// the cookie `Secure` policy from it, so a deployment answers correctly on workers.dev and on a
-	// custom domain without a deploy-time variable naming either.
+	// the cookie `Secure` policy from it, so a deployment answers correctly on `localhost` and behind
+	// its https proxy without a deploy-time variable naming either.
 	const auth = createAuth(db, authEnv, {
 		secret: signingKey.secret,
 		requestOrigin: url.origin

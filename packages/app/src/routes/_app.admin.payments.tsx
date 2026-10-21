@@ -575,7 +575,7 @@ function RecurringDonations({ card }: { readonly card: Card }) {
 				<p className="adm-prose">
 					Recurring gifts are collected against one item on your account, and it has to exist before
 					the first one is. Yours is archived, so nothing can be collected against it. Unarchive it
-					in the {card.label} dashboard, under Product catalogue.
+					in the {card.label} dashboard, under Product catalog.
 				</p>
 			) : null}
 			{absent ? (
@@ -648,7 +648,7 @@ function CharityRate({ approved }: { readonly approved: boolean | null }) {
 						label="Standard rate"
 						tone="note"
 						note={
-							<MarkedText text="A donor covering the fee is quoted PayPal’s standard rate. Once PayPal approves this organisation for its charity rate, ask whoever set up this site to set `PAYPAL_CHARITY_RATE_APPROVED` to `true` in `.env`." />
+							<MarkedText text="A donor covering the fee is quoted PayPal’s standard rate. Once PayPal approves this organisation for its charity rate, ask whoever set up this site to set `PAYPAL_CHARITY_RATE_APPROVED` to `true` in `.env` and recreate the app." />
 						}
 					/>
 				)}

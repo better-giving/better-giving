@@ -14,7 +14,7 @@ import { LogoCropDialog } from './logo-crop-dialog';
 // of box from a `ResizeObserver`. each is played here in the order a browser plays it, with the
 // box and image a case names, and nothing in the cropper or ./logo-crop.ts is stood in for.
 //
-// it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
+// it is not the browser spec AGENTS.md bans over an /admin screen: nothing here reads a computed
 // style or a class's paint. what is asserted is the figures said to a reader.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.

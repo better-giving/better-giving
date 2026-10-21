@@ -228,7 +228,7 @@ export type TurnstileCheck = {
  * deployment with no secret cannot verify anything, a deployment with no sitekey served a page that
  * could render no widget, and a token that is absent or over the documented length cannot verify
  * either. the last is the one that matters most — it is a stranger's field, so answering it from
- * here means an unauthenticated caller cannot make this Worker open a connection at all.
+ * here means an unauthenticated caller cannot make this server open a connection at all.
  *
  * ---------------------------------------------------------------------------
  * the two keys are checked before the token, and the order is the whole point of the sitekey being

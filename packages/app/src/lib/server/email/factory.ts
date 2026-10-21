@@ -8,7 +8,7 @@ import { createSmtpProvider, type MailTransport } from './smtp';
 // the one place a deployment's configuration becomes an `EmailProvider`.
 //
 // built per request from `platform.env`, never a module-scope singleton — the same rule the
-// D1 handle, the Better Auth instance and the Stripe client follow (CLAUDE.md), and for the
+// Better Auth instance and the Stripe client follow (AGENTS.md → Runtime), and for the
 // same reason: the secrets only exist on a request's platform env, so a cached provider is a
 // cached copy of one deployment's environment. `createAuth(db, …)` in ../auth/index.ts, built per
 // request at the gate over the screens behind the login (../auth/gate.ts), is that shape.

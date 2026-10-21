@@ -112,7 +112,7 @@ import type { Route } from './+types/_app.admin.books';
 // `$lib/server/books/correct.ts`, and what the entries are is `$lib/server/ledger/queries.ts`; the
 // only job here is turning a request into one and a failure into the other. that split is the one
 // every other write route on this dashboard is under (`createContact`, `createForm`), and it is
-// what keeps a second poster — a backfill, a repair run from the console — from copying the sign
+// what keeps a second poster — a backfill, a repair script — from copying the sign
 // convention out of a screen.
 //
 // **below the books, the deployer's way to QuickBooks** — keys, connect, accounts and sync, as four
@@ -220,7 +220,7 @@ const NO_SUCH_ACCOUNT =
 
 /** what a member's session is told about a QuickBooks press, which is the deployer's alone. */
 const NOT_HERE =
-	`No QuickBooks press at ${SCREEN} for a member’s session. Where the books sync is the ` +
+	`No QuickBooks press at ${SCREEN} for a member’s session. Where the books sync to is the ` +
 	'deployer’s: sign in with `ADMIN_PASSWORD` at /login.';
 
 /** what a press that needs a company is told where none is connected. */
@@ -416,7 +416,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 				: page.groups.map((g) => ({
 						id: g.id,
 						// the date only, ISO, formatted here rather than in the page: an
-						// `Intl.DateTimeFormat` in a component would run once on the Worker during ssr and
+						// `Intl.DateTimeFormat` in a component would run once on the server during ssr and
 						// again in the browser, in two different locales and time zones.
 						datedOn: g.occurredAt.toISOString().slice(0, 10),
 						// the value, not the word. `ENTRY_SOURCE_LABELS` in `$lib/ledger/sources.ts` is
@@ -777,8 +777,8 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 	const { accounts, sourceId, entries, limit, hasMore } = loaderData;
 
 	// the operator's own day, filled in once the page is in the browser. the server renders the box
-	// empty rather than with a day of its own: the Worker's clock is UTC and knows nothing of the
-	// operator's zone, and a different day on the first client pass would not hydrate.
+	// empty rather than with a day of its own: the server's clock knows nothing of the operator's
+	// zone, and a different day on the first client pass would not hydrate.
 	const [today, setToday] = useState('');
 	useEffect(() => setToday(localDay(new Date())), []);
 
@@ -1682,7 +1682,7 @@ function Backlog({ backlog }: { readonly backlog: QuickbooksRead['backlog'] }) {
 						? null
 						: retried === 0
 							? 'Nothing was left to send.'
-							: `${retried} retrying.`}
+							: `${retried} queued to sync again.`}
 				</span>
 			</div>
 			{refused === undefined ? null : <FieldMessage>{refused}</FieldMessage>}

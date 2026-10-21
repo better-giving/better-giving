@@ -42,11 +42,11 @@ import {
 // has no `name`, so the details save never carries it and conform never reads it.
 //
 // **the box is ark's combobox, held open while there are matches and run with no layer of its
-// own** — the arrangement packages/console-ui/src/lib/org-finder.tsx argues: the list stands in the
-// card's flow, the machine records no selection (`value` is held empty, so a match can be picked
-// again), and a typed value is the deployer's own (`allowCustomValue`). the machine moves focus into
-// the box whenever the list opens, so an answer opens it only while focus is still inside the
-// finder, and otherwise the list waits for the box to be focused.
+// own**: the list stands in the card's flow, the machine records no selection (`value` is held
+// empty, so a match can be picked again), and a typed value is the deployer's own
+// (`allowCustomValue`). the machine moves focus into the box whenever the list opens, so an answer
+// opens it only while focus is still inside the finder, and otherwise the list waits for the box to
+// be focused.
 //
 // **ark runs a handler passed to a part before its own**, so Enter is the press only where no
 // open list has a match highlighted: over one, the event is left to the machine, which picks it.

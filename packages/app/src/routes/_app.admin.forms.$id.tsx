@@ -113,8 +113,8 @@ import type { Route } from './+types/_app.admin.forms.$id';
 //
 // a form screen carries only what that form decides. how often a gift may repeat and what a donor
 // may pay by are the deployment's — neither is read here and neither is drawn — and so is the list
-// of sites a form may be ticked against, which this screen reads and never writes: the console is
-// where that list is typed.
+// of sites a form may be ticked against, which this screen reads and never writes: the sites card
+// on Donation forms (./_app.admin.forms._index.tsx) is where that list is typed.
 //
 // this screen reports the writes its own buttons performed and no others. a create is not one of
 // them and this screen never takes the create's marker: ./_app.admin.forms.new.tsx redirects to the
@@ -231,8 +231,8 @@ function pageOwnedRefusal(owner: OwningPage): string {
  * `where`, and the page never offers a save for either — so this is a tab that was open when the
  * form was archived, or a bookmark to one that is gone. it is a rejected save an operator can read
  * rather than an error page, and it is answered by the update's own `returning()` rather than by a
- * select ahead of it: D1 has no transaction, so a check-then-write would be two commits with a race
- * between them, and the write already knows.
+ * select ahead of it: `Db` has no `transaction()`, so a check-then-write would be two commits with a
+ * race between them, and the write already knows.
  */
 const ROW_GONE =
 	'Nothing was saved: this form has been archived, or it no longer exists. Reload the page to ' +
@@ -423,7 +423,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		// five independent reads, so they go together: none is an input to another, and awaiting them
 		// in turn pays five round trips for one screen. every one of them is this deployment's own
 		// database — nothing on this screen leaves the deployment, because neither of the two values
-		// that would need the processor is a form's to answer and both are the console's.
+		// that would need the processor is a form's to answer and both are the deployment's.
 		//
 		// archived rows come back, deliberately. "this form was retired" and "there is no such form"
 		// are different sentences on a screen, and a lookup that hid the first would collapse them
@@ -505,8 +505,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 
 	// everything that stops this form serving, and the reason it is on this screen at all: this is
 	// where a form is set live, and every line in the block is true of the deployment rather than of
-	// this row — a blank identity field or no processor's keys and `publishedConfig` serves no form
-	// at all, silently, so an operator who publishes here would watch a Live form show nothing on
+	// this row — with a blank identity field, or no processor's keys, `publishedConfig` serves no
+	// form at all, silently, so an operator who publishes here would watch a Live form show nothing on
 	// their own site with no screen anywhere saying why. `$lib/server/forms/readiness.ts` is shared
 	// with ./_app.admin.forms.new.tsx so neither screen can say a different thing about one
 	// deployment.
@@ -541,8 +541,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// editor's own schemas have no value for.
 			values,
 			// every form gets one, whatever this deployment can charge: what stands behind the key is
-			// read at the console when the keys are pasted, and ./_app.admin.forms._index.tsx's header
-			// states that in full.
+			// read on Payments, and ./_app.admin.forms._index.tsx's header states that in full.
 			snippet: formSnippet(url.origin, record.id),
 			readiness,
 			// every site this deployment has listed, in the operator's own order — one tick box each,
@@ -635,8 +634,9 @@ export async function action(args: Route.ActionArgs) {
 
 	// the four arms are declared inside the action rather than beside it, and it is not a style
 	// choice: react router strips a route's `action` from the bundle it ships and strips nothing
-	// else, so a module-scope helper reaching `$lib/server/**` puts D1 and this deployment's secrets
-	// into the browser — with the export that used it dropped and the helper still there.
+	// else, so a module-scope helper reaching `$lib/server/**` puts the database driver and this
+	// deployment's secrets into the browser — with the export that used it dropped and the helper
+	// still there.
 	// ../routes.spec.ts is what holds that, over the module graph rather than over a rule.
 	//
 	// each still states what it takes rather than closing over it, so an arm reads as the write it

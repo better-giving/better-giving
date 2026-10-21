@@ -57,7 +57,7 @@ const WHERE_A_SITE_COMES_FROM = (
 	</>
 );
 const WHOM_A_MEMBER_ASKS =
-	'To use a site that is not here, ask whoever set up this site to add it.';
+	'To use a site that is not here, ask the person who deployed this site to add it.';
 
 type OriginsBox = {
 	/** the group's own id, which the message under it is named from. */
@@ -102,7 +102,7 @@ export function FormOriginsFields({ box, sites, deployer, footer }: FormOriginsF
 	 * the sites this form holds that the deployment no longer lists.
 	 *
 	 * a real state rather than a guard: both invariants over these two lists are read-then-write and
-	 * D1 has no interactive transaction, so a site can leave the shared list between this page being
+	 * `Db` has no interactive transaction, so a site can leave the shared list between this page being
 	 * drawn and its save being pressed. the residue is benign on the public path — `corsHeaders` in
 	 * `$lib/server/api/cors.ts` reads the form's own column — and has to be visible and clearable.
 	 *

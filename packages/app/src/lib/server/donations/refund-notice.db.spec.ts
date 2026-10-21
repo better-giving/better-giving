@@ -464,7 +464,7 @@ describe('sendOwedRefundNotices()', () => {
 		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
 	});
 
-	/** a worker from before the column records a refund it has already told the donor of. */
+	/** a release from before the column records a refund it has already told the donor of. */
 	it('owes nothing on a refund written without the column', async () => {
 		await orgProfile();
 		await withdrawal(REFUND_ID, 2_500);

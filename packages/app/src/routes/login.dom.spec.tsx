@@ -192,7 +192,7 @@ it('stays reachable while it is busy, so the press that started it keeps its foc
 	await signIn(root);
 
 	// a disabled control leaves the tab order, and `aria-busy` on something nothing can reach
-	// announces to nobody. packages/console-ui/src/routes/_index.tsx's submits are the same shape.
+	// announces to nobody.
 	expect(submit(root).disabled).toBe(false);
 });
 

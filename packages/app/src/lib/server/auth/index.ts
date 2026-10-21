@@ -73,8 +73,8 @@ export { STAFF_USER_EMAIL, STAFF_USER_ID } from './staff-plugin';
 //
 // the deployer's credential is outside all of it. it is a deploy-time var with no hash and no
 // row (./credential.ts), so there is nothing for a reset to write and nothing for a link to
-// address — ./members.ts refuses that identifier by name before the auth layer is asked, and the
-// console is where the value is changed.
+// address — ./members.ts refuses that identifier by name before the auth layer is asked, and
+// `.env` is where the value is changed.
 //
 // two ways in and one gate behind them. a member's session row is a session row like the
 // deployer's, so ./gate.ts resolves it with no branch and every screen under `src/routes/_app.tsx`
@@ -320,15 +320,10 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * the members' way in. the deployer's is `signInStaff` and does not pass through any of
 		 * this — one bucket bounds both, at the login's own action (CLAUDE.md).
 		 *
-		 * **the hashing is better-auth's own scrypt at its own parameters, and it needs the paid
-		 * Workers plan.** ./credential.ts argues that a KDF cannot run inside 10 ms of CPU and
-		 * that a KDF tuned to fit is one an attacker brute-forces trivially; that is the **free**
-		 * plan's budget and it binds the staff credential, which is why that one is still a
-		 * deploy-time var with no hash anywhere. paid is 30 s per invocation, which scrypt at
-		 * N=16384, r=16 fits with room to spare — so a member's password is hashed properly
-		 * rather than at a cost chosen to fit a limit. tuning it down here would be the failure
-		 * that argument describes, not a saving. DEPLOY.md is where a fork reads which plan a
-		 * deployment is on.
+		 * **the hashing is better-auth's own scrypt at its own parameters.** a member's password is
+		 * a row, so it is hashed at N=16384, r=16 rather than at a cost chosen to fit a limit; a
+		 * KDF tuned down is one an attacker brute-forces trivially. the staff credential is the
+		 * other shape: a deploy-time var with no hash anywhere (./credential.ts).
 		 *
 		 * `autoSignIn` is left at its default of `true`: accepting an invitation is one press,
 		 * and a colleague who has just chosen a password should not be asked for it immediately.
@@ -456,10 +451,11 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			 * better-auth derives both the `Secure` attribute and the `__Secure-` cookie
 			 * name prefix from one value, and with no `baseURL` string to read a scheme off
 			 * it falls back to `NODE_ENV === 'production'`
-			 * (`better-auth/dist/cookies/index.mjs`). this server never sets `NODE_ENV`, and
-			 * better-auth reads it at runtime through a proxy that no build-time replacement
-			 * reaches, so it is whatever the process inherited. without this line, a deployment
-			 * started with no `NODE_ENV` would silently ship a session cookie with no `Secure` flag.
+			 * (`better-auth/dist/cookies/index.mjs`). better-auth reads it at runtime through a
+			 * proxy that no build-time replacement reaches, so it is whatever the process
+			 * inherited: the image sets it (`Dockerfile`), and `pnpm dev` or any other start may
+			 * not. without this line, a deployment started with no `NODE_ENV` would silently ship
+			 * a session cookie with no `Secure` flag.
 			 *
 			 * `defaultCookieAttributes: { secure: true }` is not a substitute: it is spread
 			 * after the derived value so it wins for the attribute, but the name prefix

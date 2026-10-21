@@ -157,7 +157,7 @@ export function quoteRateLimitKey(request: Request): string | null {
  * it through would be unbounded guessing at all of them. the deployer's attempt is let through
  * uncounted, because refusing it would shut every way into the dashboard at once — under the
  * misread proxy header `attributedCaller` describes that is every caller of the deployment — and one secret,
- * minted by the console unless the operator typed their own, is the cost that leaves unbounded.
+ * `ADMIN_PASSWORD` in `.env`, is the cost that leaves unbounded.
  *
  * `src/routes/forgot.tsx`'s action answers it by refusing every request, before the body is read:
  * the deployer's password is never reset from there, so a refusal shuts nobody out of the

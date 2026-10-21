@@ -22,9 +22,6 @@ import { handle as formHandle } from './_app.admin.forms.$id';
 
 /**
  * mounts `tree` into a document that lives as long as the case, and hands back its root element.
- *
- * `appendChild` rather than `append`: worker-configuration.d.ts declares HTMLRewriter's `Element`,
- * which merges into the DOM's and brings an `append(content, options)` that wins here.
  */
 async function mount(tree: ReactNode): Promise<HTMLElement> {
 	const root = document.createElement('div');

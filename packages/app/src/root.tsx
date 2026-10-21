@@ -36,8 +36,8 @@ import operatorSheet from './app.css?url';
 // declared rather than left to the filename convention, so the tag is in the document the server
 // renders instead of a request the browser makes on its own for an address no route claims.
 // ../static/favicon.ico is where the file is: static/ is this package's public directory
-// (../vite.config.ts), which vite copies whole into the client build — the assets directory the
-// deployed worker serves.
+// (../vite.config.ts), which vite copies whole into the client build — the directory the Node
+// server serves static files from (../server/start.ts).
 export function links(): Route.LinkDescriptors {
 	return [{ rel: 'icon', href: '/favicon.ico', type: 'image/x-icon' }];
 }

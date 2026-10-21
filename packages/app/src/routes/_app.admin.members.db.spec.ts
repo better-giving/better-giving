@@ -37,7 +37,7 @@ const PASSWORD = 'a-very-long-random-staff-password';
 const MEMBER_PASSWORD = 'a-colleagues-own-password';
 
 /**
- * a deployment whose mail settings this Worker could dial.
+ * a deployment whose mail settings this server could dial.
  *
  * `smtp.example.org` is a hostname `parseSmtpEndpoint` accepts, so a send gets as far as opening a
  * socket — which is why no case below sends with it.
@@ -50,7 +50,7 @@ const MAIL_CONFIGURED = {
 };
 
 /**
- * the same four set, and a host a Worker is not allowed to reach.
+ * the same four set, and a host this deployment refuses to reach.
  *
  * it is what a send that fails looks like without a socket: `parseSmtpEndpoint` refuses a
  * private-network host before anything is dialled ($lib/server/email/smtp-config.ts), so the

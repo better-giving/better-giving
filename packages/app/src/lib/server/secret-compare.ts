@@ -2,8 +2,8 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 
 // the one constant-time compare in this repository, and there is exactly one on purpose.
 //
-// several secrets are checked over HTTP through it — among them `ADMIN_PASSWORD` at the staff
-// sign-in (./auth/credential.ts) and the signed QuickBooks start address
+// two secrets are checked over HTTP through it — `ADMIN_PASSWORD` at the staff sign-in
+// (./auth/credential.ts) and the signature on the QuickBooks start address
 // (./accounting/connect-link.ts) — and a second implementation is how one of them ends up with an
 // early `return` in it. the hazard is not obvious at a call site: `timingSafeEqual` throws unless
 // both buffers are the same length, so the natural fix is a length check in front of it, and that

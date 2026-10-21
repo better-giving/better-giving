@@ -46,7 +46,7 @@ describe('parseSites', () => {
 
 	it('refuses two spellings of one host, which is the reading Donation forms marks a box on', async () => {
 		// the two ends read one module and a repeat is the host rather than the line
-		// (`@better-giving/operator/origins`), so a list Donation forms turns down at the second box is
+		// (`@better-giving/operator/origins`), so a sites list Donation forms turns down at the second box is
 		// a list this endpoint turns down too.
 		const result = parseSites(['https://give.example.org', 'https://give.example.org:8443']);
 

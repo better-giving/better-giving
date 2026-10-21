@@ -171,7 +171,7 @@ describe('a post the images route refuses', () => {
 				method: 'POST',
 				headers: { cookie: session, 'content-type': 'multipart/form-data; boundary=x' },
 				body,
-				// node's Request refuses a streamed body without it; workerd's did not need it
+				// node's Request refuses a streamed body without it
 				duplex: 'half'
 			} as RequestInit),
 			{ env: bindings }

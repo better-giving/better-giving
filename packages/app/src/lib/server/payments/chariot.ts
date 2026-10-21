@@ -446,7 +446,7 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 						'This deployment cannot check that a payment notification came from Chariot: ' +
 						'`CHARIOT_WEBHOOK_SECRET` is not set, so the delivery was refused and its body was ' +
 						'not read. Run `pnpm setup-webhook:chariot`, which creates the subscription and prints ' +
-						'the line to set in .env, then restart.'
+						'the line to set in .env, then recreate the app.'
 				};
 			}
 

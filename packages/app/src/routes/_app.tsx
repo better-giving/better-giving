@@ -22,8 +22,8 @@ import type { Route } from './+types/_app';
 // pathless: the `_` prefix keeps the segment out of the URL, so /admin is /admin and this file is
 // what decides that reaching it needs a session. **being under this route is what makes a route
 // gated** — there is no group id and no naming convention standing in for it — and
-// ../routes.spec.ts holds every route in the app to that: under this layout, the preview, on the
-// public allow-list with the reason typed beside it, or on the console surface.
+// ../routes.spec.ts holds every route in the app to that: under this layout, the preview, or on the
+// public allow-list with the reason typed beside it.
 //
 // the gate is here rather than on ../root.tsx because middleware on the root runs for every route,
 // the payment processor's callback included, and its body must be read exactly once by the handler
@@ -146,7 +146,7 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 		<>
 			{progress}
 			<AppShell
-				// before anyone has saved the organisation's details on the console there is no name to
+				// before anyone has saved the organisation's details in Settings there is no name to
 				// show, so it says what the software is rather than printing an empty band. the word is
 				// shared with every screen's tab title, which falls back to the same one
 				// ($lib/admin/screen-title.ts).

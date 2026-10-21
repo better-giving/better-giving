@@ -8,8 +8,8 @@ import { classifySmtpFailure } from './smtp-failure';
 
 describe('classifySmtpFailure', () => {
 	/**
-	 * the platform refusal is checked first and is `not_configured`, not `connect_failed`.
-	 * "Cloudflare will never allow this" and "the host did not answer just now" are different
+	 * a refused port 25 is checked first and is `not_configured`, not `connect_failed`.
+	 * "this port will never work" and "the host did not answer just now" are different
 	 * instructions to the person reading the message: one is a settings edit, the other is
 	 * waiting.
 	 *

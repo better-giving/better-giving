@@ -74,8 +74,7 @@ import type { Route } from './+types/quickbooks.callback';
 export const links = operatorLinks;
 
 /**
- * the outcome, because this is the one page of the trip anybody reads, and it is read in a strip of
- * tabs as often as on its own.
+ * the outcome, because this is the one page of the trip anybody reads.
  *
  * the company is not named even where it is known: a tab title is read in a strip of them, and the
  * one thing worth telling apart there is whether the trip worked.

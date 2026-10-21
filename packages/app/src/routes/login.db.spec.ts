@@ -59,7 +59,7 @@ const PINNED_NOWHERE = { ...DEPLOYED, BETTER_AUTH_URL: 'localhost:8787' };
  */
 const PIN_REFUSAL = { data: PIN_UNUSABLE, init: { status: 500 } };
 
-/** what react router hands a handler, built the way src/worker.ts builds it for a real request. */
+/** what react router hands a handler, built as src/server/app.ts builds it for a real request. */
 function args(
 	request: Request,
 	deployed: typeof DEPLOYED = DEPLOYED,
@@ -295,9 +295,9 @@ async function sessions(): Promise<number> {
 /**
  * the staff path as the form submits it: the deployer's username in the identifier box.
  *
- * the constant rather than the word, because the console prints it beside its own password box off
- * that same export (packages/console-ui/src/lib/password-fold.tsx) — a literal here would keep
- * passing the day the identifier moves and the two surfaces disagree.
+ * the constant rather than the word, because the box's hint on ./login.tsx prints it off that same
+ * export — a literal here would keep passing the day the identifier moves and the hint names the
+ * old one. ./login.dom.spec.tsx pins the word itself.
  */
 function typed(password: string): FormData {
 	return typedAs(ADMIN_USERNAME, password);
@@ -318,7 +318,7 @@ let callersMinted = 0;
  * the form submitted from `ip`, which is the address the server entry stamps (`CLIENT_IP_HEADER`).
  *
  * left out, the caller is a new address every call, which is what production looks like — every
- * caller attributed — without one case spending another's bucket. `null` is a caller the edge did
+ * caller attributed — without one case spending another's bucket. `null` is a caller the server did
  * not attribute: no header at all.
  */
 function post(
@@ -519,7 +519,7 @@ describe('POST /login — what the browser gets back', () => {
 		});
 
 		expect(answer.init?.status).toBe(500);
-		expect(banner(answer)).toContain('check that `ADMIN_PASSWORD` is set in `.env`');
+		expect(banner(answer)).toContain('check `ADMIN_PASSWORD` in `.env`');
 		expect(JSON.stringify(answer.data)).not.toContain('ADMIN_PASSWORD is shorter');
 		expect(JSON.stringify(answer.data)).not.toContain('(it is 5)');
 	});
@@ -570,7 +570,7 @@ describe('POST /login — what the browser gets back', () => {
 // the bound on the write. the spec env holds a real `SIGN_IN_RATE_LIMITER`, so what is under test is
 // the charge as it deploys rather than a description of it.
 //
-// the case worth stating twice is the one below about a missing binding, because it is the opposite
+// the case worth stating twice is the one below about a missing limiter, because it is the opposite
 // answer to the one `refuseIfRateLimited` gives on the public surface. serving on with no limiter is
 // the decision, and a comment saying so is not coverage — flipping the call site to refuse instead
 // has to turn this file red.
@@ -662,19 +662,19 @@ describe('the limit on POST /login', () => {
 	});
 
 	/**
-	 * a deployment with no binding signs staff in, which is the decision and not an oversight —
+	 * a deployment with no limiter signs staff in, which is the decision and not an oversight —
 	 * `isRateLimited` in $lib/server/api/rate-limit.ts is where it is argued, along with what it
 	 * leaves unbounded.
 	 *
-	 * the address is spent against the real binding first, and that half is what makes the case
+	 * the address is spent against the real limiter first, and that half is what makes the case
 	 * discriminating rather than decorative: without it, a call site that never charged anything
 	 * would pass this identically.
 	 */
 	it('signs staff in on a deployment that has no limiter at all', async () => {
 		await untilRefused('203.0.113.33');
 		const signedInWhenRefused = await sessions();
-		// a deployment whose `ratelimits` block does not name this binding — a fork that edited it
-		// out, a Worker deployed before it existed, an account where the binding is not there.
+		// a runtime handed no sign-in limiter: the server entry builds every limiter at start, so this
+		// is a fork that dropped it.
 		const unbound = { ...DEPLOYED, SIGN_IN_RATE_LIMITER: undefined } as unknown as typeof DEPLOYED;
 
 		for (let i = 0; i < 8; i++) {
@@ -683,17 +683,17 @@ describe('the limit on POST /login', () => {
 			);
 		}
 
-		// every one of them, not just the first: an absent binding is not an empty bucket either.
+		// every one of them, not just the first: an absent limiter is not an empty bucket either.
 		expect(await sessions()).toBe(signedInWhenRefused + 8);
 	});
 
 	/**
-	 * and the same for a caller the edge attributed no address to, which under the zone-level
-	 * "Remove visitor IP headers" managed transform is every caller of the deployment at once. the
-	 * binding is bound here and refusing this address is exactly what it must not do — otherwise
-	 * one guesser holds the only login closed on the operator, which is worse than the guessing.
-	 * a member in the same position is refused instead: 'a member the edge did not attribute',
-	 * below.
+	 * and the same for a caller the server attributed no address to, which under a misread
+	 * `TRUSTED_PROXY_HEADER` ($lib/server/runtime/client-ip.ts) is every caller of the deployment at
+	 * once. the limiter is present here and refusing this address is exactly what it must not do —
+	 * otherwise one guesser holds the only login closed on the operator, which is worse than the
+	 * guessing. a member in the same position is refused instead: 'a member the edge did not
+	 * attribute', below.
 	 */
 	it('signs staff in when the edge attributed no address at all', async () => {
 		for (let i = 0; i < 8; i++) {

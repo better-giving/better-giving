@@ -16,10 +16,9 @@ import { describe, expect, it } from 'vitest';
 // and every one of them has one home.
 //
 // **speaking is what the rule is about, and vocabulary is not speaking.** the production host is
-// stated in packages/operator/src/console/quickbooks.ts, which holds no `fetch` and makes no call of
-// its own; the sandbox host and
-// the three OAuth addresses are stated in ./quickbooks.ts. so a host is swept against the file that
-// holds it rather than against one file for all five.
+// stated in packages/operator/src/console/quickbooks.ts, which holds no `fetch` and makes no call
+// of its own; the sandbox host and the three OAuth addresses are stated in ./quickbooks.ts. so a
+// host is swept against the file that holds it rather than against one file for all five.
 //
 // **a name is guarded where the address would have been.** a host reachable by import is a host a
 // route can `fetch` with nothing left in it for the sweep above to catch, so who may take

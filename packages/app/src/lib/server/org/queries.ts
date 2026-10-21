@@ -17,8 +17,8 @@ import type { ParsedOrgProfile } from './org-input';
 // `saveOrgProfile` does. a write that must land atomically with a row in another table may
 // not: it would split into a row-building half and a statement-building half and splice the
 // statement into the one `batch()` that owns the whole write, as `contacts/queries.ts` does
-// with `newContactRow` / `contactInsertStatement`. `Db` has no `transaction` (D1 has none —
-// see ../db/client.ts), so a single `batch()` is the only atomic unit there is.
+// with `newContactRow` / `contactInsertStatement`. `Db` has no `transaction`
+// (../db/client.ts), so a single `batch()` is the only atomic unit there is.
 //
 // ---------------------------------------------------------------------------
 // why no seeded row, and why the save is therefore an upsert.
@@ -32,7 +32,7 @@ import type { ParsedOrgProfile } from './org-input';
 //
 // so the first save has nothing to update and later saves have nothing to insert, and one
 // `onConflictDoUpdate` against the fixed id is both — one statement, so it needs no
-// `batch()` and no read-then-write, which D1 could not do atomically anyway.
+// `batch()` and no read-then-write, which `Db` could not do atomically anyway.
 // ---------------------------------------------------------------------------
 
 /**
@@ -46,9 +46,8 @@ const ORG_PROFILE_ID = 'default';
 /**
  * the organization's own details, or `null` when nobody has saved them yet.
  *
- * `null` is a real answer and not an error: a fresh deployment has no profile, the organisation
- * section of the console says so, and a receipt template that finds none must not render a
- * blank one.
+ * `null` is a real answer and not an error: a fresh deployment has no profile, and a receipt
+ * template that finds none must not render a blank one.
  *
  * no ordering and no `limit`, deliberately: `id` is the primary key and the check pins it to
  * one literal, so this is a point lookup on `sqlite_autoindex_org_profile_1` and "which
@@ -87,7 +86,7 @@ export async function readOrgProfile(db: Db): Promise<OrgProfile | null> {
  * `updated_at` is left out too, but for the opposite reason: it carries `$onUpdateFn`, and
  * drizzle's `buildUpdateSet` — which `onConflictDoUpdate` runs its `set` through — adds
  * every column that has one whether or not the caller named it. `queries.db.spec.ts`
- * pins both halves against a real D1 rather than trusting that.
+ * pins both halves against a real database rather than trusting that.
  *
  * takes a `ParsedOrgProfile` rather than raw form values so that the "a saved row means at
  * minimum a legal name" promise cannot be bypassed by a caller that skipped

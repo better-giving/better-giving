@@ -1042,7 +1042,7 @@ describe('mintQuote() — the challenge', () => {
 		const checked = challenge();
 
 		// the header is the caller's to write and is an attribution signal only (CLAUDE.md); the url
-		// is the host this worker answered on, which is the whole reason nothing is stored.
+		// is the host this server answered on, which is the whole reason nothing is stored.
 		await mint(deps({ verifyChallenge: checked.verify }), {}, 'https://spoofed.test');
 
 		expect(checked.checks[0]?.allowedHostnames).toEqual(['acme.org', 'give.example.workers.dev']);

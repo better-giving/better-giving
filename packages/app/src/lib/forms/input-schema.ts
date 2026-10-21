@@ -109,7 +109,7 @@ export function amountBound() {
  * differently.
  *
  * it is a real state rather than a guard against one. both invariants over these two lists are
- * read-then-write and D1 has no interactive transaction (see `$lib/server/db/client.ts`), so a site
+ * read-then-write and `Db` has no interactive transaction (see `$lib/server/db/client.ts`), so a site
  * can leave the shared list between a form screen being drawn and its save being pressed. the
  * residue is a form holding a site the list no longer has, which is harmless on the public path —
  * `corsHeaders` in `$lib/server/api/cors.ts` reads the form's own column and knows nothing about the

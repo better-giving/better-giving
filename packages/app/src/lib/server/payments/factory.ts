@@ -243,8 +243,8 @@ export function requiredCredentials(name: ProcessorName): readonly (keyof Config
  * one variable per processor and separate from {@link PROCESSORS}'s `requires`, because the two
  * halves are short in different ways and fix differently. a deployment holding the server half and
  * not this one can charge and cannot serve a form — the Payments screen reports it, and
- * `publishedConfig` in ../forms/published-config.ts refuses over it — while one holding this and not the server half
- * serves a form that fails at the last step.
+ * `publishedConfig` in ../forms/published-config.ts refuses over it — while one holding this and
+ * not the server half serves a form that fails at the last step.
  *
  * PayPal's is its client id, which is on its `requires` as well: the pair authenticates a server
  * call and the id alone starts the SDK, so the one variable is short in both ways at once.
@@ -401,7 +401,7 @@ const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 	// fix runs the script that makes all three.
 	chariot:
 		'Chariot issues the org’s API key by email. Add ' +
-		`\`${envLine('CHARIOT_API_KEY')}\` to \`.env\`, check the EIN in Settings, run ` +
+		`\`${envLine('CHARIOT_API_KEY')}\` to \`.env\`, check the EIN and the notification address in Settings, run ` +
 		`\`${setupWebhookCommand('chariot')}\`, add the two lines it prints to \`.env\`, then recreate ` +
 		`the app: \`${RECREATE_APP}\`.`,
 	nowpayments:

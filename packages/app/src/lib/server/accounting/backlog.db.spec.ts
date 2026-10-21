@@ -15,7 +15,7 @@ import { post, postingStatements } from '../ledger/posting';
 import { readQuickbooksBacklog, retryFailedEntries } from './backlog';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 
-// what the console says about the queue, and the one press that acts on it — against a real database,
+// what Books says about the queue, and the one press that acts on it — against a real database,
 // because both are `quickbooks_sync` and standing in for it would prove the stand-in (CLAUDE.md).
 //
 // nothing here sends anything: ./deliver.db.spec.ts is the run. what is asserted is the

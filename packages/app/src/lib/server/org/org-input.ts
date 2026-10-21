@@ -185,7 +185,7 @@ const CLEAN_FIELDS = z.object({
  *
  * the keys are the form field names, which is what makes `issue.path[0]` an error key with
  * nothing to translate. every rule is `ORG_PROFILE_FIELD_RULES` in
- * `@better-giving/operator/console/org-rules`, which the console's Organisation details fold runs too —
+ * `@better-giving/operator/console/org-rules`, which the Organisation details form on Settings runs too —
  * the only thing this stage adds is `.nullable()`, because a blank is already `null` by the time
  * it runs where a submitted box is `''`.
  *
@@ -194,7 +194,7 @@ const CLEAN_FIELDS = z.object({
  * no donation form is served without all fail the string check on `null` and come back with their
  * own sentence. a nullable wrapper over one of those rules would answer `null` without ever
  * running the rule underneath, which is how this stage would come to accept a submission the
- * console's fold refuses — the drift the header of `@better-giving/operator/console/org-rules`
+ * form on Settings refuses — the drift the header of `@better-giving/operator/console/org-rules`
  * exists to prevent. so a rule added there refusing a blank has to lose its `.nullable()` here in
  * the same edit. it is
  * also what makes this stage's output the value stored, since it is where those five stop being
@@ -217,8 +217,8 @@ const FIELD_LIMITS = z.object({
 
 /**
  * validates a submitted org profile, and its social links as the boxes were typed — read by
- * `readSocialLinks` in `@better-giving/operator/console/social-links`, the same reading the console
- * gives them. the list is stated on every call, because none sent is none stored.
+ * `readSocialLinks` in `@better-giving/operator/console/social-links`, the same reading the form on
+ * Settings gives them. the list is stated on every call, because none sent is none stored.
  *
  * returns every field error at once rather than the first: a form that reports one problem
  * per round trip is how a ten-field save takes ten submissions. the links are one more key on

@@ -245,9 +245,9 @@ export function parseSmtpEndpoint(fields: SmtpFields): SmtpConfigResult<SmtpEndp
 // a class of address, decoded — never a list of spellings. an address has many spellings and a
 // shortlist only ever holds the ones somebody thought of: `127.1`, `2130706433`, `0x7f000001`
 // and `127.0.0.1.` are all `127.0.0.1`, and `0:0:0:0:0:0:0:1` is `::1`. every spelling this
-// misses is dialled, fails as the opaque `proxy request failed` this module exists to pre-empt,
-// and is then read by `./smtp-failure.ts` as `connect_failed` — "transient, waiting will help"
-// — which is the wrong instruction for an address that will never work.
+// misses is dialled, and a connect error from it is read by `./smtp-failure.ts` as
+// `connect_failed` — "transient, waiting will help" — which is the wrong instruction for an
+// address this app refuses.
 //
 // `SMTP_HOST` is a bare environment string and nothing normalises it on the way in. no URL
 // parser stands in front of it, so what the operator typed is what arrives: IPv4 in any
@@ -444,7 +444,7 @@ const FROM_FIX = `Correct its line in \`.env\`, then recreate the app.`;
  * validates `MAIL_FROM` — the donor-facing From address.
  *
  * **what makes a value wrong is `mailFromFault`'s and what is said about it is this
- * function's.** the reason a display name is refused at all is written where that reading is.
+ * function's.** the reason a display name is refused at all is written at `mailFromFault`.
  * the sentences are written for a deployment log — they name the variable, quote the value
  * through {@link redact} and say where to set it.
  *

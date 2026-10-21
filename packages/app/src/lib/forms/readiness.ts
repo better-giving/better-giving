@@ -34,8 +34,8 @@ export type FormReadinessSeverity = (typeof FORM_READINESS_SEVERITIES)[number];
  *                  it warns and never blocks.
  *
  * a closed list, because the screens word each line by its job and by who is reading — the
- * person who deployed the site can fix all three, and a member can only ask them — so the server
- * sends no sentence for any of them.
+ * person who deployed the site is sent to the page each one is settled from, and a member is told
+ * whom to ask — so the server sends no sentence for any of them.
  */
 export const FORM_READINESS_JOBS = ['organisation', 'processor', 'notices'] as const;
 export type FormReadinessJob = (typeof FORM_READINESS_JOBS)[number];
@@ -60,9 +60,9 @@ export interface FormReadinessLine {
  * on rather than only reports.
  *
  * a blocker means `publishedConfig` in `$lib/server/forms/published-config.ts` serves nothing, so
- * the status box on the screens that write a form does not offer a draft Live while one stands and
- * the action behind it refuses one anyway (`liveOffered`). a warning never stops a write — that is
- * the whole difference between the two words.
+ * the status box on the screens that write a form does not offer Live to a form not yet live while
+ * one stands, and the action behind it refuses that move anyway (`liveOffered`). a warning never
+ * stops a write — that is the whole difference between the two words.
  *
  * `null` is the resolved deployment: `formsReadiness` answers `null` once every line is done, so
  * the absence of a block is the absence of a blocker.
@@ -83,7 +83,7 @@ export function anyBlocker(lines: readonly FormReadinessLine[] | null): boolean 
  * the stored status, and a box seeded `live` with no Live option draws Draft — so withholding the
  * option from a live form makes every save of its group an unpublish that outlasts the blocker.
  *
- * read by the editor's `load` for what the select offers and by its action against the status the
+ * read by the editor's loader for what the select offers and by its action against the status the
  * submitted version was drawn from.
  */
 export function liveOffered(
@@ -106,5 +106,5 @@ export function liveOffered(
  * account of it inside a field message would be one to keep in step.
  */
 export const LIVE_WITHHELD =
-	'This form cannot be set live while a blocker above stands: nothing would be served to a ' +
-	'donor. Clear it and choose Live again.';
+	'This form can’t go live until the items above are done. ' +
+	'Finish them, then choose Live again.';

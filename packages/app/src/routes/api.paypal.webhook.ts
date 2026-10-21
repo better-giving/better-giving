@@ -37,17 +37,19 @@ import type { Route } from './+types/api.paypal.webhook';
 // layout above it and that no route but the three surface layouts exports a `middleware` at all,
 // and ./api.paypal.webhook.db.spec.ts holds that the bytes arrive unread and are read once.
 //
-// the console registers this address, and its id is what `PAYPAL_WEBHOOK_ID` holds. the path is
-// `PAYPAL_WEBHOOK_PATH` in packages/operator/src/paypal/webhook-listener.ts, which the binary's copy is
-// gated against, and ../routes.spec.ts pins this file's name to it.
+// `scripts/setup-webhook.ts paypal` registers this address, and its id is what `PAYPAL_WEBHOOK_ID`
+// holds. the path is `PAYPAL_WEBHOOK_PATH` in packages/operator/src/paypal/webhook-listener.ts,
+// which $lib/server/payments/webhook-address.ts builds the registered address from, and
+// ../routes.spec.ts pins this file's name to it.
 //
 // what is decided here and what is not. everything the delivery does is `settleDelivery`'s
 // ($lib/server/donations/settle.ts, and $lib/server/donations/reverse.ts for a refund or a dispute);
 // this file owns which status each outcome answers with, which is the one decision the processor
 // actually reads.
 //
-// nothing here is a module-scope singleton. the D1 handle arrives on the request context, which
-// ../request-context.ts seeds per request, and both ports are built from that env on the call.
+// nothing here is a module-scope singleton. the database handle arrives on the request context,
+// which ../request-context.ts seeds per request, and both ports are built from that env on the
+// call.
 
 /**
  * one delivery from PayPal.

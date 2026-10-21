@@ -54,24 +54,21 @@ import type { Route } from './+types/_app.admin.forms._index';
 //
 // **every form on this list gets its snippet, and none is withheld over what this deployment can
 // charge.** a snippet is markup naming a form id; whether the key behind it can take a card is a
-// fact about the deployment, and that is read once, at the console, in the press that stores the
-// keys — `stripeKeyEdits` in `packages/console-ui/src/lib/stripe-edits.ts` refuses a `whsec_`
-// or a publishable key in the secret slot, a value that is not a Stripe key at all, and a live key
-// paired with a test one, each at the box it was pasted into, and the screen names the Stripe
-// account back. checking once where the mistake is made beats checking forever on screens that
-// cannot repair it: a screen here could only ever withhold the snippet and point somewhere else,
-// and the pointer is the half that goes stale.
+// fact about the deployment, and Payments is where it is read: each processor's card asks the
+// account with the deployment's own keys and says which read failed (`unreadable` in
+// $lib/server/payments/processor-cards.ts). a screen here could only ever withhold the snippet and
+// point somewhere else, and the pointer is the half that goes stale.
 //
 // the residue is accepted rather than overlooked. a deployment whose payments are misconfigured
-// hands out a snippet that looks right and says nothing on the org's own site — which is the cost
-// of the split throughout: a broken deployment is quiet on the live site, and the console is where
-// you find out.
+// hands out a snippet that looks right and says nothing on the org's own site: a broken deployment
+// is quiet on the live site, and Payments is where you find out.
 //
 // what stands between this deployment and a donor giving is not read here, and that is a decision
 // rather than an omission: the status ledger is rendered on the screens that write — the create,
-// which refuses to make a form while a blocker stands, and the editor, which refuses to publish one
-// — and a second telling on a screen that writes no form would be a second place to read the same
-// thing. `$lib/server/forms/readiness.ts` is where it lives and those two routes are its callers.
+// which saves a form as a draft while a blocker stands, and the editor, which refuses to publish
+// one — and a second telling on a screen that writes no form would be a second place to read the
+// same thing. `$lib/server/forms/readiness.ts` is where it lives and those two routes are its
+// callers.
 // the organisation's own details go with it, for the same reason: the card that leads the list is a
 // link that never gates, so nothing here asks whether they are saved.
 //
@@ -303,8 +300,7 @@ export async function action(args: Route.ActionArgs) {
 	 * store the list, then bring Stripe's wallet registrations level behind it.
 	 *
 	 * the whole list, never one row: `replaceSites` deletes and inserts in one `batch()`, so a
-	 * removal cannot half-happen, and two saves at once is a lost write settled by saving again —
-	 * the bargain ./console.sites.ts states.
+	 * removal cannot half-happen, and two saves at once is a lost write settled by saving again.
 	 *
 	 * **a site still ticked on a form is not removed**, and the refusal names every form in the way.
 	 * asked in front of the write rather than inside it, because `replaceSites` deliberately does not
@@ -425,11 +421,10 @@ const SAMPLE = (
 // and both are a value somebody takes away rather than one they read down a list.
 //
 // because it writes no form, it gates nothing and reports nothing about the deployment's own state.
-// the status ledger is on the screens under `new` and `[id]`, which are the ones that refuse a
-// write while a blocker stands, and the card that leads the list is a plain link that is never
+// the status ledger is on the screens under `new` and `[id]`, which are the ones that withhold
+// Live while a blocker stands, and the card that leads the list is a plain link that is never
 // switched off — a second telling here would be a second place to read the same thing, and the
-// place an operator would have to act is the console's Organisation details fold either way
-// (`packages/console-ui/src/lib/org-fold.tsx`), which is not on this deployment at all.
+// place an operator would have to act is Settings or Payments either way.
 //
 // that reaches the wording of a value as well as the presence of a block, and it is the rule a
 // record here is written to: a value a form has not been given is stated as a fact about that form
@@ -683,13 +678,14 @@ const SITES_LEAD =
 const DEPLOYER_ONLY = 'Only the person who deployed this site can change the list.';
 
 /**
- * what a save says when the list landed and Stripe did not register every hostname on it,
- * `WALLET_LEAD` in packages/console-ui/src/lib/wallet-level.ts. it names the consequence rather than
- * the mechanism: an operator who has just pressed Save sites is not thinking about a registration.
+ * what a save says when the list landed and Stripe did not register every hostname on it. it names
+ * the consequence rather than the mechanism: an operator who has just pressed Save sites is not
+ * thinking about a registration.
  */
 const WALLETS_PENDING =
 	'Stripe draws Apple Pay, Google Pay and Link only on sites registered on your account, so a ' +
-	'donor on a site you have just added is offered none of them until it is registered.';
+	'donor on a site you have just added is offered none of them until it is registered. To try ' +
+	'again, press Register all sites on Payments.';
 
 type Sites = Route.ComponentProps['loaderData']['sites'];
 

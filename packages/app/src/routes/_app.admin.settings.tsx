@@ -244,7 +244,7 @@ const NOTIFICATIONS_FORM = defineForm({
 	})
 });
 
-/** what a test destination that is not one address is told, in the console's words. */
+/** what a test destination that is not one address is told. */
 const NOT_AN_ADDRESS = 'That is not an address this deployment can send to. Nothing was sent.';
 
 /**
@@ -915,14 +915,12 @@ function MailSet({
 			</fetcher.Form>
 			{/* mounted in every state, so the sentence arriving in it is a change a reader is told. */}
 			<p className="adm-hint" role="status">
-				{report?.outcome === 'sent'
-					? 'Sent. Nothing was recorded and no donor hears about it.'
-					: null}
+				{report?.outcome === 'sent' ? 'Sent. Check that inbox for it.' : null}
 			</p>
 			{report?.outcome === 'failed' ? (
 				<>
 					<Banner tone="blocker" word="Nothing was sent">
-						This deployment could not hand the message to a mail host.
+						This deployment could not hand the message to its mail host.
 					</Banner>
 					{report.detail === null ? null : (
 						<p className="adm-prose">

@@ -48,7 +48,7 @@ export type ResolvedDonor = {
  * nothing in the books depends on it either. no ledger entry references `contact`, so a duplicate
  * costs the donor file its tidiness and costs the accounts nothing. this is the case CLAUDE.md
  * describes: a lost race is settled by a correcting entry — here, a merge — and never by a
- * rollback. do not reach for a transaction (`Db` has none, and D1 has none to give it), and do not
+ * rollback. do not reach for a transaction (`Db` has none: ../db/client.ts), and do not
  * add a unique index.
  * ---------------------------------------------------------------------------
  *

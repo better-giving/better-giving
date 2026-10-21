@@ -30,7 +30,7 @@ import { readWebhookRegistration, repairWebhookRegistration } from './webhook-re
 // encoded by Stripe's own encoder.
 //
 // what this pool cannot see is whether the client production builds works at all, because every
-// case here injects one. ./stripe-default-client.spec.ts is where that is covered, inside workerd.
+// case here injects one. ./stripe-default-client.spec.ts is where that is covered.
 //
 // nothing here imports `stripe`. that is the rule ./sole-importer.spec.ts enforces over the tree,
 // and it costs this file nothing: the stub is structural, and the one place a spec would
@@ -3030,11 +3030,11 @@ describe('listWebhookEndpoints', () => {
 	/**
 	 * the fingerprint an endpoint was stamped with comes back out of a read, and nothing else does.
 	 *
-	 * it is what lets the console compare the secret this deployment holds against the endpoint
-	 * Stripe is signing with — the comparison the secret itself cannot be used for, because no read
-	 * carries one. an endpoint carrying no stamp reports `null` rather than an empty string: it was
-	 * registered in the dashboard or by `stripe listen`, which is "cannot confirm" and not "does not
-	 * match".
+	 * it is what lets the Payments screen compare the secret this deployment holds against the
+	 * endpoint Stripe is signing with — the comparison the secret itself cannot be used for, because
+	 * no read carries one. an endpoint carrying no stamp reports `null` rather than an empty string:
+	 * it was registered in the dashboard or by `stripe listen`, which is "cannot confirm" and not
+	 * "does not match".
 	 */
 	it('carries the stamped fingerprint out of a read, and null where there is none', async () => {
 		const { httpClient } = recording([
@@ -3178,10 +3178,10 @@ describe('registerWebhookEndpoint', () => {
 	/**
 	 * a stamp that could not be written leaves the endpoint registered and the secret returned.
 	 *
-	 * the operator is looking at a dialog carrying the only copy of a signing secret there will ever
-	 * be. refusing here would take it off the screen over a value whose whole job is telling them
-	 * later whether they set it — so the stamp is lost and the console reads the endpoint as one it
-	 * cannot confirm, which is where a hand-registered endpoint already sits.
+	 * the setup script is about to print the only copy of a signing secret there will ever be.
+	 * refusing here would lose it over a value whose whole job is telling the operator later whether
+	 * they set it — so the stamp is lost and the Payments screen reads the endpoint as one it cannot
+	 * confirm, which is where a hand-registered endpoint already sits.
 	 */
 	it('returns the secret even where the fingerprint could not be stamped', async () => {
 		const { httpClient } = recording([
@@ -3276,9 +3276,9 @@ describe('resubscribeWebhookEndpoint', () => {
 	 * nothing about this call touches the endpoint's signing secret, and the assertion is that it
 	 * never sends one and never carries one back.
 	 *
-	 * that is the whole reason this arm exists rather than the operator pressing Replace: the
-	 * deployment is already holding a `STRIPE_WEBHOOK_SECRET` that verifies, and a repair that rolled
-	 * it would take a working deployment down until somebody set a new one and redeployed. the update
+	 * that is the whole reason this arm exists rather than a replacement: the deployment is already
+	 * holding a `STRIPE_WEBHOOK_SECRET` that verifies, and a repair that rolled it would take a
+	 * working deployment down until somebody set a new one and recreated the app. the update
 	 * response carries no `secret` field (https://docs.stripe.com/api/webhook_endpoints/update), and
 	 * the fixture below hands one back anyway — the shape a mapper written as a spread would produce
 	 * — so this is what fails if anyone writes it that way.
@@ -3913,7 +3913,7 @@ describe('prepareRecurringGifts', () => {
 });
 
 /**
- * the read arm beside the find-or-create one, which the console draws its screen from.
+ * the read arm beside the find-or-create one, which the Payments screen is drawn from.
  *
  * what separates the two is the write: `prepareRecurringGifts` above makes the product where the
  * account holds none, so a page that drew itself from it would provision an operator's account as a
@@ -4783,8 +4783,8 @@ describe('readRecurringGift', () => {
 	 * donation — the invoice is the only thing that leads back to the commitment, and the commitment
 	 * is what a `recurring_plan` row is found by (`migrations/0000_initial_schema.sql`).
 	 *
-	 * one round trip is asserted rather than assumed. this runs on workerd, where a request budget is
-	 * spent per delivery, and every fact here is reachable from one retrieve: the commitment through
+	 * one round trip is asserted rather than assumed. every delivery is answered while Stripe waits
+	 * on it, and every fact here is reachable from one retrieve: the commitment through
 	 * an `expand`, the transaction off the invoice's own list of attempts.
 	 */
 	it('resolves a collection to its commitment and its transaction in one read', async () => {

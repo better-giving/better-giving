@@ -112,8 +112,8 @@ describe('the command an operator is told to set a value with', () => {
 		expect(SOURCES.length).toBeGreaterThan(100);
 		expect(SOURCES).toContain('../../DEPLOY.md');
 		expect(SOURCES).toContain('../../.env.example');
-		// the package the sweep was widened to. a glob that stopped matching would otherwise only
-		// ever show as a sweep that got quieter.
+		// the package outside this one the sweep reads, and the document most exposed to it. a glob
+		// that stopped matching would otherwise only ever show as a sweep that got quieter.
 		expect(SOURCES).toContain('../operator/src/deploy-split.ts');
 		expect(sites(/\bSTRIPE_SECRET_KEY=/g)).toContainEqual(
 			expect.stringMatching(/^\.\.\/\.\.\/\.env\.example:/)

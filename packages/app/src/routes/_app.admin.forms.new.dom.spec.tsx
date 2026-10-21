@@ -7,11 +7,10 @@ import NewDonationForm from './_app.admin.forms.new';
 // the amount row editor and the submit, pressed.
 //
 // what it covers: adding and removing a suggested-amount row on the screen that makes a donation
-// form. the rows used to be three actions with their own workers cases behind them; they are now
-// form state — `form.insert` and `form.remove` over `fields.suggested_amounts.getFieldList()` —
-// which reaches no action and so is invisible to every db spec in the tree. a row editor that
-// stopped inserting, or that dropped the row after the one pressed, would ship with the suite
-// green.
+// form. the rows are form state — `form.insert` and `form.remove` over
+// `fields.suggested_amounts.getFieldList()` — which reaches no action and so is invisible to every
+// db spec in the tree. a row editor that stopped inserting, or that dropped the row after the one
+// pressed, would ship with the suite green.
 //
 // and what the submit does to itself while its own write is in flight, which is invisible to a
 // db spec for the same reason: the payload is unchanged either way, and what a native
@@ -39,9 +38,6 @@ import NewDonationForm from './_app.admin.forms.new';
 
 /**
  * mounts `tree` into a document that lives as long as the case, and hands back its root element.
- *
- * `appendChild` rather than `append`: worker-configuration.d.ts declares HTMLRewriter's `Element`,
- * which merges into the DOM's and brings an `append(content, options)` that wins here.
  */
 function mount(tree: ReactNode): HTMLElement {
 	const root = document.createElement('div');

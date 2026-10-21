@@ -75,8 +75,7 @@ const PASSWORD = 'a-very-long-random-staff-password';
 const MEMBER_PASSWORD = 'a-colleagues-own-password';
 
 /**
- * the deploy-time env every request here carries: the staff credential, and the values the five
- * set-up jobs are read off ($lib/server/config/setup-state.ts).
+ * the deploy-time env every request here carries.
  *
  * the mail variables are set because this screen's whole job is to send a message, and the stub
  * above is what stands in for the socket.
@@ -95,7 +94,7 @@ const DEPLOYED = {
 /** the execution context the last call was made with, so the deferred send can be waited on. */
 let running: DeferredWork;
 
-/** what react router hands a handler, built the way src/worker.ts builds it for a real request. */
+/** what react router hands a handler, built as src/server/app.ts builds it for a real request. */
 function args(
 	request: Request,
 	deployed: typeof DEPLOYED = DEPLOYED,
@@ -198,7 +197,7 @@ let callersMinted = 0;
  * the form submitted from `ip`, which is the address the server entry stamps (`CLIENT_IP_HEADER`).
  *
  * left out, the caller is a new address every call, which is what production looks like — every
- * caller attributed — without one case spending another's bucket. `null` is a caller the edge did
+ * caller attributed — without one case spending another's bucket. `null` is a caller the server did
  * not attribute: no header at all.
  */
 async function post(

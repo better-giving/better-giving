@@ -47,9 +47,9 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, db: Db, now: Date) =>
 	'45 * * * *': (env, db, now) => owedRefundNotices(env, db, now),
 
 	'* * * * *': (env, db, now) => {
-		// the three jobs below run in one invocation and spend its connections, subrequests and D1
-		// queries together; ./lib/server/outbox/budget.ts is each one's share, and a job added here
-		// takes a share there.
+		// the three jobs below share one run and spend its connections, outbound requests and
+		// database queries together; ./lib/server/outbox/budget.ts is each one's share, and a job
+		// added here takes a share there.
 		//
 		// one handle, shared by every delivery and by the connection the accounting provider reads
 		// its tokens through: the store the factory builds is over this same database.

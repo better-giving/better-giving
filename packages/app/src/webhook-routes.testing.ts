@@ -51,8 +51,9 @@ export async function freshDeployment(): Promise<void> {
 }
 
 /**
- * a deployment whose five set-up jobs are done, for a spec that mounts a screen under the layout
- * and wants an organisation, processor keys and mail in place (../routes/_app.tsx).
+ * a deployment whose five set-up jobs are done (`SETUP_JOBS` in
+ * `@better-giving/operator/setup-folds`), for a spec that mounts a screen under the layout and
+ * wants an organisation, processor keys and mail in place.
  *
  * answers the bindings to send each request with, `password` being the staff password the spec
  * signs in with, and writes the one row the jobs are read off: the registered name and EIN and the

@@ -73,7 +73,7 @@ describe('the local seed', () => {
 		expect(profile?.notificationEmail).toBe('gifts@example.org');
 	});
 
-	// a row the console wrote: the legal name it requires, every other box left empty.
+	// a row written before the seed: the legal name it requires, every other box left empty.
 	it('fills only what a row already there is missing', async () => {
 		await writeOrgRow(client, { notification_email: 'gifts@example.org' });
 

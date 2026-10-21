@@ -135,7 +135,7 @@ export function staffCredentialPlugin(deps: { readonly db: Db; readonly env: Aut
 				// better-auth's own limiter, over a router this deployment does not serve —
 				// ./index.ts says why the knob is stated anyway, and why nothing here bounds
 				// the sign-in this app performs. what does is the `SIGN_IN_RATE_LIMITER`
-				// binding, charged by the login's action.
+				// limiter (../runtime/rate-limiter.ts), charged by the login's action.
 				pathMatcher: (path: string) => path === STAFF_SIGN_IN_PATH,
 				window: 60,
 				max: 5
@@ -156,8 +156,8 @@ export function staffCredentialPlugin(deps: { readonly db: Db; readonly env: Aut
  *
  *   - better-auth's `create` refuses a caller-supplied `id`, so it cannot honour the
  *     fixed `STAFF_USER_ID` that makes this row a singleton.
- *   - find-then-create is two D1 round trips on a path that runs on every sign-in; an
- *     upsert is one, and D1 supports `RETURNING`.
+ *   - find-then-create is two database round trips on a path that runs on every sign-in;
+ *     an upsert is one, and SQLite supports `RETURNING`.
  *   - there are no `databaseHooks` on `user` in this app, so nothing is being skipped.
  *
  * the cost of bypassing better-auth is that a column it adds to `user` in a future

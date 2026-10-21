@@ -22,8 +22,9 @@ import type { Route } from './+types/api.nowpayments.webhook';
 // everything the delivery does is `settleDelivery`'s ($lib/server/donations/settle.ts); this file owns
 // which status each outcome answers with, and the served coin list a receipt names its coin from.
 //
-// nothing here is a module-scope singleton: the D1 handle arrives on the request context, which
-// ../request-context.ts seeds per request, and both ports are built from that env on the call.
+// nothing here is a module-scope singleton: the database handle arrives on the request context,
+// which ../request-context.ts seeds per request, and both ports are built from that env on the
+// call.
 
 /**
  * one IPN from NOWPayments.

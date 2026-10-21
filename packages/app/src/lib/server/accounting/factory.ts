@@ -14,8 +14,8 @@ import { createQuickbooksProvider } from './quickbooks';
 // built per run from the env that run was handed, never a module-scope singleton (CLAUDE.md), and
 // the store is built over the `Db` that run built too: an adapter takes a `ConnectionStore` rather
 // than a database (./provider.ts argues why), so joining the two is somebody's job and this is
-// where it is done. ../../../worker.ts names neither the adapter nor the store, which is what keeps
-// ./sole-importer.spec.ts's rule cheap to keep.
+// where it is done. its callers (../../../cron-runs.ts and the QuickBooks routes) name neither the
+// adapter nor the store, which is what keeps ./sole-importer.spec.ts's rule cheap to keep.
 
 /**
  * the variables no call to the books can be made without.

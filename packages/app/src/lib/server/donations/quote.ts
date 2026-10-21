@@ -1099,7 +1099,7 @@ function leastGiftCharging(
  * this deployment's own host is accepted on every form and is not something an operator ticks —
  * every form served here loads on this deployment's own donation page, which is on no `site` row.
  * it comes off the request rather than off anything stored: the host a request arrived on is one
- * this worker answers on. so a form ticked onto no site at all still has an acceptable host and can
+ * this server answers on. so a form ticked onto no site at all still has an acceptable host and can
  * be given to, which is what lets an organisation with no website of its own finish setting up and
  * take a gift, and the list is never empty.
  */

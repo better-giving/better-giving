@@ -36,7 +36,7 @@ import { readForm, readOwningPage, type OwningPage } from './queries';
 // same judgement in front of a 4xx body that names the value and the screen that changes it.
 //
 // `publishedConfig` reads no database and asks no processor. the two rows and the cadences arrive
-// already read, so every refusal it can return is decidable in the node pool with no D1 and no
+// already read, so every refusal it can return is decidable in the node pool with no database and no
 // network in sight — the same split ./form-input.ts draws against ./queries.ts, and for the same
 // reason. `readPublishedConfig` below is the other half of that split and is the only thing here
 // that issues a query or leaves the deployment.
@@ -125,7 +125,7 @@ export interface PublishedConfigSources {
 	/**
 	 * how often a gift may repeat on this deployment, already read.
 	 *
-	 * a value rather than a read, so every refusal below stays decidable with no D1 and no
+	 * a value rather than a read, so every refusal below stays decidable with no database and no
 	 * processor in sight — the same split the two rows are carried in under. what produces it is
 	 * `offeredCadences` in ./offered-cadences.ts, which is total over the port's standings and
 	 * never answers with an empty list.
@@ -171,7 +171,7 @@ export interface PublishedConfigSources {
  * the config for one form, read from this deployment.
  *
  * the thin half: the reads and the judgement below, kept apart so that every refusal is testable
- * with no D1 and the endpoint has one call to make. the form is read first and alone, because
+ * with no database and the endpoint has one call to make. the form is read first and alone, because
  * `publishedConfig` refuses on it before it looks at anything else — and a second query issued for
  * an id that does not exist is a query a public, unauthenticated endpoint runs for anyone who
  * asks. the profile and the repeating-gifts standing go together after it: neither is an input to
@@ -210,7 +210,7 @@ export interface PublishedConfigSources {
  *
  * the pure half keeps its `ConfigEnv` and its already-read cadences (see
  * `PublishedConfigSources`), because a judgement stated against values is what makes every
- * refusal decidable with no D1 in sight.
+ * refusal decidable with no database in sight.
  *
  * `now` is the instant a campaign's end date is read against (`readOwningPage`): a campaign ended
  * by its end date has its row read as End leaves it (`asEnded` below), so the two refuse alike.

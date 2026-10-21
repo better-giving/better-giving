@@ -703,10 +703,8 @@ describe('/admin/forms/[id] load', () => {
 	 * the deletion this screen turns on: the snippet is handed over whatever the deployment's
 	 * Stripe slots hold.
 	 *
-	 * every one of the wrong-slot mistakes is refused at the box it is pasted into —
-	 * `stripeKeyEdits` in `packages/console-ui/src/lib/stripe-edits.ts` — so a screen here that
-	 * withheld it would be checking forever for a mistake caught once, on a screen that could only
-	 * ever point somewhere it is not.
+	 * what the keys can charge is read on Payments, so a screen here that withheld it could only ever
+	 * point somewhere it is not (./_app.admin.forms._index.tsx's header).
 	 */
 	it.each([
 		['a deployment set up in full', READY],

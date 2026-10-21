@@ -1153,7 +1153,7 @@ describe('the notice for a run that could not send anything', () => {
 
 		await sendDueEntries(deps(qb.port, mail.port), NOW);
 
-		// disconnecting is something somebody did, and the console's connection screen shows it.
+		// disconnecting is something somebody did, and the QuickBooks part of Books shows it.
 		expect(mail.sent).toEqual([]);
 		expect((await row(entryGroupId)).notifiedAt).toBeNull();
 	});

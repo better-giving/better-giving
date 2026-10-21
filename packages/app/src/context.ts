@@ -64,10 +64,10 @@ export const staff = createContext<Auth['$Infer']['Session']['user']>();
  * has to ask auth to do: end the session.
  *
  * it rides the same hand-down as `staff` above and for the same reason. building one takes the
- * signing key, which is normally a D1 row ($lib/server/auth/signing-key.ts), and the gate has
- * already read it and already constructed the instance — so a route that built its own would pay
- * for the row twice and would also be resolving auth of its own, which `src/routes.spec.ts`
- * refuses for every route under the layout.
+ * signing key ($lib/server/auth/signing-key.ts), and the gate has already resolved it and already
+ * constructed the instance — so a route that built its own would resolve the key twice and would
+ * also be resolving auth of its own, which `src/routes.spec.ts` refuses for every route under the
+ * layout.
  *
  * there is no `null` case here either: the only routes that can reach it are the ones the gate ran
  * for.

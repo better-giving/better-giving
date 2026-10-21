@@ -194,8 +194,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	}
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and
-	// the cookie `Secure` policy from it, so a deployment answers correctly on workers.dev and on a
-	// custom domain without a deploy-time variable naming either.
+	// the cookie `Secure` policy from it, so a deployment answers correctly on `localhost` and behind
+	// its https proxy without a deploy-time variable naming either.
 	const auth = createAuth(db, authEnv, {
 		secret: signingKey.secret,
 		requestOrigin: url.origin
