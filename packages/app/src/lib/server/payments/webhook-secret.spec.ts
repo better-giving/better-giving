@@ -55,7 +55,7 @@ describe('webhookSecretStanding', () => {
 		);
 		expect(standing.state).toBe('stale');
 		expect(standing.detail).toContain(
-			'docker compose exec app node scripts/setup-webhook.ts stripe'
+			'docker compose run --rm app node scripts/setup-webhook.ts stripe'
 		);
 	});
 

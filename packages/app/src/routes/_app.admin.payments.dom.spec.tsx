@@ -92,7 +92,7 @@ describe('a deployment with no processor set up', () => {
 		const body = banner?.querySelector<HTMLElement>('.adm-banner__body');
 		expect(body?.querySelector('h3')?.textContent).toBe('For whoever runs the server');
 		expect([...(body?.querySelectorAll('pre') ?? [])].map((slab) => slab.textContent)).toEqual([
-			'docker compose exec app node scripts/setup-webhook.ts stripe',
+			'docker compose run --rm app node scripts/setup-webhook.ts stripe',
 			'docker compose up -d --force-recreate app'
 		]);
 	});
@@ -245,7 +245,7 @@ describe('payment notices', () => {
 			'Gifts are charged, but none is marked paid here until Stripe can tell this site about it.'
 		);
 		expect([...(banner?.querySelectorAll('pre') ?? [])].map((slab) => slab.textContent)).toEqual([
-			'docker compose exec app node scripts/setup-webhook.ts stripe',
+			'docker compose run --rm app node scripts/setup-webhook.ts stripe',
 			'docker compose up -d --force-recreate app'
 		]);
 	});

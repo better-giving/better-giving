@@ -1,4 +1,4 @@
-import { DEPLOY_VARS, envLine } from '@better-giving/operator/deploy-split';
+import { DEPLOY_VARS, envLine, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { globSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { AUTH_VAR_NAMES } from '../auth/env';
@@ -149,4 +149,18 @@ describe('the command an operator is told to set a value with', () => {
 	it('points at no command that sets a secret from a checkout', () => {
 		expect(sites(SECRET_COMMANDS)).toEqual([]);
 	});
+
+	/**
+	 * `run --rm` and never `exec`: the script runs right after the keys go into `.env`, and `exec`
+	 * reads the environment the running container started with, so it misses them and exits 1
+	 * (DEPLOY.md → Payments).
+	 */
+	it.each(['stripe', 'paypal', 'chariot'] as const)(
+		'registers %s payment notices in a container that reads `.env` as it is now',
+		(processor) => {
+			expect(setupWebhookCommand(processor)).toBe(
+				`docker compose run --rm app node scripts/setup-webhook.ts ${processor}`
+			);
+		}
+	);
 });

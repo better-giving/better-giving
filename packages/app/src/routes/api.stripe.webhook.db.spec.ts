@@ -164,7 +164,7 @@ describe('POST /api/stripe/webhook', () => {
 		expect(response.status).toBe(405);
 		expect(response.headers.get('allow')).toBe('POST');
 		const { fix } = (await response.json()) as { fix: string };
-		expect(fix).toContain('docker compose exec app node scripts/setup-webhook.ts stripe');
+		expect(fix).toContain('docker compose run --rm app node scripts/setup-webhook.ts stripe');
 		expect(request.reads).toBe(0);
 	});
 });

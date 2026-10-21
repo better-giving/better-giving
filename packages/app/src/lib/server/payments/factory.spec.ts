@@ -88,7 +88,7 @@ describe('the provider one processor resolves to', () => {
 		expect(result.ok === false && result.reason).toBe('not_configured');
 		const detail = result.ok === false ? result.detail : '';
 		expect(detail).toContain('STRIPE_WEBHOOK_SECRET');
-		expect(detail).toContain('docker compose exec app node scripts/setup-webhook.ts stripe');
+		expect(detail).toContain('docker compose run --rm app node scripts/setup-webhook.ts stripe');
 	});
 
 	/**
@@ -520,7 +520,7 @@ describe('Chariot', () => {
 	it('sends an operator setting Chariot up to the script that registers its notices', () => {
 		const fix = servedProcessors({ CHARIOT_API_KEY: 'notarealchariotkey' }).fix;
 
-		expect(fix).toContain('docker compose exec app node scripts/setup-webhook.ts chariot');
+		expect(fix).toContain('docker compose run --rm app node scripts/setup-webhook.ts chariot');
 	});
 });
 

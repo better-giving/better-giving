@@ -94,7 +94,11 @@ export const RECREATE_APP = 'docker compose up -d --force-recreate app';
  * the command that registers one processor's payment notices on its account and prints the line
  * `.env` takes for them (`packages/app/scripts/setup-webhook.ts`). NOWPayments is not one: its IPN
  * secret is copied from its own dashboard.
+ *
+ * `run --rm` and never `exec`: it runs right after the processor's keys go into `.env`, and `exec`
+ * reads the environment the running container started with, so the new keys are missing and the
+ * script exits 1. a fresh container reads `.env` as it is now (DEPLOY.md → Payments).
  */
 export function setupWebhookCommand(processor: 'stripe' | 'paypal' | 'chariot'): string {
-	return `docker compose exec app node scripts/setup-webhook.ts ${processor}`;
+	return `docker compose run --rm app node scripts/setup-webhook.ts ${processor}`;
 }

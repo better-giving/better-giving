@@ -368,7 +368,7 @@ describe('POST /api/chariot/webhook', () => {
 		expect(response.status).toBe(405);
 		expect(response.headers.get('allow')).toBe('POST');
 		const { fix } = (await response.json()) as { fix: string };
-		expect(fix).toContain('docker compose exec app node scripts/setup-webhook.ts chariot');
+		expect(fix).toContain('docker compose run --rm app node scripts/setup-webhook.ts chariot');
 		expect(chariot.reads).toEqual([]);
 	});
 
