@@ -33,7 +33,7 @@ The dashboard opens at once. A donation form goes live once Settings holds the o
 
 ### Deploy it
 
-The same three lines on a machine of your own, behind an `https` proxy. **One container, never scaled**: the rate limits, the cache and the scheduled runs are in-process. [`DEPLOY.md`](./DEPLOY.md) is the operator's file and walks all of it, in order: the configuration values, the proxy header, processor webhooks, backups and restores, rehearsal deployments, and upgrades.
+The same three lines on a machine of your own, behind an `https` proxy. **One container, never scaled**: the rate limits, the cache and the scheduled runs are in-process. [`DEPLOY.md`](./DEPLOY.md) is the operator's file and walks all of it, in order: the configuration values, the proxy header, processor webhooks, backups and restores, rehearsal deployments, and upgrades. On Fly.io that container is one Machine and one volume: [Fly.io](./DEPLOY.md#flyio).
 
 Set mail before taking gifts: a deployment that cannot send cannot give a donor the receipt they file with a tax authority. Every gift passes a spam check, ALTCHA unless both Turnstile keys are set, because `/api/v1` is an unauthenticated, cross-origin, payment-initiating endpoint, exactly what card-testing bots hunt, and the org eats the disputes.
 

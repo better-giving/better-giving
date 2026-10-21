@@ -13,6 +13,91 @@ Set up is in steps, each one usable on its own: the dashboard opens after the fi
 docker compose up -d --force-recreate app
 ```
 
+## Fly.io
+
+These commands run this repo on Fly.io from a checkout, in the directory that holds `fly.toml`. The screens from [3. Your organisation](#3-your-organisation) on are the same ones. `fly.toml` names no app, so each command takes `-a <app-name>`. `fly apps create` without `--save` leaves the file as it is. `--save` writes the name into it.
+
+```sh
+fly auth login
+fly orgs list
+fly apps create <app-name> --org <org>
+```
+
+`<org>` is one of the names `fly orgs list` printed. The server refuses to start without `ADMIN_PASSWORD` and `BETTER_AUTH_SECRET` ([1. Start it](#1-start-it)), so the first deploy has to already hold them or its check fails. `--stage` stores the two without starting a Machine. You type both values.
+
+```sh
+fly secrets set ADMIN_PASSWORD='<password>' BETTER_AUTH_SECRET='<secret>' -a <app-name> --stage
+fly platform regions
+fly deploy --ha=false --now --region <region> -a <app-name>
+```
+
+`<region>` is one of the codes `fly platform regions` printed. `fly deploy` builds the root `Dockerfile` and creates the volume `better_giving_data`, mounted at `/data`. The size and the 14-day snapshot retention are `initial_size` and `snapshot_retention` in `fly.toml`. `--ha=false` is the first deploy: a volume attaches to one Machine, and `fly scale count` above 1 creates another Machine with an empty volume. Leave the count at 1. A second process would split the rate limits, the cache and the scheduled runs, as [1. Start it](#1-start-it) describes.
+
+The Machine stays up. `auto_stop_machines` is `off` and `min_machines_running` is 1 in `fly.toml`, because the scheduled runs are in-process ([Scheduled runs](#scheduled-runs)). A minute the process was down for is not replayed.
+
+On each start the Machine applies migrations, then replaces that process with the server, so `SIGTERM` reaches the drain in `packages/app/server/index.ts`. A release command runs in a temporary Machine with no volume, so it cannot migrate this file. A migration that fails exits before the server listens, and the deploy's check fails. The check is `GET /login`, with `grace_period` of 30 seconds for that migration. When a deploy fails the check while migrations are still applying, raise `grace_period` on that check in `fly.toml`.
+
+A deploy stops the old Machine with `SIGTERM` and waits the `kill_timeout` of 30 seconds. `fly machine stop` defaults to `SIGINT` and a shorter wait, so a stop you take yourself names both:
+
+```sh
+fly machine list -q -a <app-name>
+fly machine stop <machine-id> -a <app-name> --signal SIGTERM --timeout 30
+```
+
+Sign in at `https://<app-name>.fly.dev/login` as `admin`. Then set the public origin. `fly secrets set` restarts the Machine with the new value:
+
+```sh
+fly secrets set BETTER_AUTH_URL='https://<app-name>.fly.dev' -a <app-name>
+```
+
+For a hostname of your own, `fly certs add <hostname> -a <app-name>` prints the DNS records to add, and `BETTER_AUTH_URL` is `https://<hostname>`.
+
+`TRUSTED_PROXY_HEADER` is `fly-client-ip` in `fly.toml`. On Fly the right-most `X-Forwarded-For` entry is the app's own address, which would put every donor in one rate-limit bucket ([Behind a proxy](#behind-a-proxy)).
+
+Every other name is in [Every configuration value](#every-configuration-value). Set one with `fly secrets set <NAME>='<value>' -a <app-name>`. Mail is [4. Mail](#4-mail); the restart that `fly secrets set` performs is the point a changed value takes effect.
+
+Payment notices, once the processor keys and `BETTER_AUTH_URL` are set. The command reads the deployed environment and prints the line to add with `fly secrets set`, the same line [5. Payments](#5-payments) puts in `.env`:
+
+```sh
+fly ssh console -a <app-name> -C "node scripts/setup-webhook.ts stripe"   # or paypal, chariot
+```
+
+To deploy a published image instead of building the Dockerfile, the package has to be public. `ghcr.io/better-giving/better-giving` is published private. Until that package is public, `fly deploy` above is the command that can run:
+
+```sh
+fly deploy --image ghcr.io/better-giving/better-giving:<tag> --ha=false --now -a <app-name>
+```
+
+### Backups on Fly
+
+The volume's daily snapshots are kept for the 14 days `snapshot_retention` sets. A copy you hold:
+
+```sh
+fly ssh console -a <app-name> -C "node scripts/backup.ts /data/backup.db"
+fly ssh sftp get /data/backup.db ./backup.db -a <app-name>
+fly ssh console -a <app-name> -C "rm /data/backup.db"
+```
+
+**To restore, stop the server, then put the copy where `DATABASE_URL` points, with no `-wal` or `-shm` file left beside it.** A stale `-wal` beside a restored file is replayed over it. SSH reaches a running Machine, so the stand-in command keeps the volume mounted while the server is not the process holding the file. `fly ssh` runs as root and the server runs as uid 1000, so the restored file is given to that user. The sleep update skips the health check: `GET /login` cannot pass while that command is the process. The last update puts the server back and waits for the check.
+
+```sh
+fly machine stop <machine-id> -a <app-name> --signal SIGTERM --timeout 30
+fly machine update <machine-id> -a <app-name> --command "sleep infinity" --skip-health-checks --yes
+fly ssh sftp put ./backup.db /data/restore.db -a <app-name>
+fly ssh console -a <app-name> -C "sh -c 'rm -f /data/better-giving.db /data/better-giving.db-wal /data/better-giving.db-shm && cp /data/restore.db /data/better-giving.db && chown 1000:1000 /data/better-giving.db && rm /data/restore.db'"
+fly machine update <machine-id> -a <app-name> --command 'sh -c "node scripts/migrate.ts && exec node server/index.ts"' --yes
+```
+
+### Upgrading on Fly
+
+```sh
+git remote add upstream https://github.com/better-giving/better-giving.git   # once
+git fetch upstream && git merge upstream/main
+fly deploy --ha=false --now -a <app-name>
+```
+
+Migrations apply on the next start. **Read the diff of `packages/app/migrations/` before deploying.** What that diff means is [Upgrading](#upgrading). Once the package is public, the image form is `fly deploy --image ghcr.io/better-giving/better-giving:<tag> --ha=false --now -a <app-name>`.
+
 ## 1. Start it
 
 Two values, then three commands:
