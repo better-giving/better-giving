@@ -1,6 +1,6 @@
 import type { Tone } from '@better-giving/operator/components/closed-sets';
 import type { DonationStatus } from '$lib/donations/statuses';
-import type { FormStatus } from '$lib/forms/statuses';
+import { FORM_STATUS_LABELS, type FormStatus } from '$lib/forms/statuses';
 import type { ProgramStatus } from '$lib/programs/statuses';
 import type { RecurringPlanStatus } from '$lib/recurring/statuses';
 
@@ -32,6 +32,21 @@ export const FORM_STATUS_TONES: Record<FormStatus, Tone> = {
 	live: 'done',
 	archived: 'note'
 };
+
+// the word and tone a form's status pill takes.
+//
+// a form stored `live` while `giftsBlocked` is true is not taking gifts: `anyBlocker` in
+// `$lib/forms/readiness.ts` is that boolean, and `publishedConfig` in
+// `$lib/server/forms/published-config.ts` serves nothing while it holds. Live would say the form
+// is taking gifts. draft and archived keep their own words. the forms list's sample card is not a
+// stored form and does not call this.
+export function formStatusWord(
+	status: FormStatus,
+	giftsBlocked: boolean
+): { readonly word: string; readonly tone: Tone } {
+	if (status === 'live' && giftsBlocked) return { word: 'Not taking gifts', tone: 'attention' };
+	return { word: FORM_STATUS_LABELS[status], tone: FORM_STATUS_TONES[status] };
+}
 
 // `cancelled` is the operator's own deliberate end and `lapsed` is the rail giving up on a card
 // that kept failing. they read alike down a list and are not the same fact, which is the whole of

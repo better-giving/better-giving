@@ -254,22 +254,18 @@ function noticesSteps(card: Card): ServerStepsProps {
 }
 
 /**
- * what a processor's unset notices cost, said to the person who reads the screen. NOWPayments' is
- * smaller than the rest: the half-hourly read settles a pending crypto gift without the IPN secret
- * ($lib/server/donations/pending-crypto-read.ts), and only an IPN records a refund of a settled gift
- * or a second deposit.
+ * what unset notices cost, on every processor. a processor missing its notice value is not served
+ * (`settlementReady` in $lib/server/payments/factory.ts), so no donor is charged.
  */
-const UNSET_COST: Record<Processor, (label: string) => string> = {
-	stripe: chargedNeverSettled,
-	paypal: chargedNeverSettled,
-	chariot: chargedNeverSettled,
-	nowpayments: () =>
-		'Crypto gifts are marked paid up to half an hour late, and a refund or a second deposit ' +
-		'NOWPayments reports is not recorded here.'
-};
+function unsetNotices(label: string): string {
+	return `Donation forms stay offline until ${label} can tell this site about payments. No donor can give through ${label} yet.`;
+}
 
-function chargedNeverSettled(label: string): string {
-	return `Gifts are charged, but none is marked paid here until ${label} can tell this site about it.`;
+/** unset notices are not served, so the header says gifts are not taken. every other standing is set up. */
+function cardHeader(notices: Card['notices']): { readonly word: string; readonly tone: Tone } {
+	return notices === 'unset'
+		? { word: 'Not taking gifts', tone: 'attention' }
+		: { word: 'Set up', tone: 'done' };
 }
 
 /** where each processor that keeps an endpoint reports to this site, and what it reports. */
@@ -342,11 +338,12 @@ function NotSetUp({ others }: { readonly others: LoaderData['others'] }) {
 
 /** one processor's card, each reading under its own heading in the order a donor meets them. */
 function ProcessorCard({ card }: { readonly card: Card }) {
+	const header = cardHeader(card.notices);
 	return (
 		<Section card>
 			<div className="adm-record__head">
 				<h2>{card.label}</h2>
-				<StatusWord tone="done">Set up</StatusWord>
+				<StatusWord tone={header.tone}>{header.word}</StatusWord>
 			</div>
 			{card.rails === null && card.link === null ? (
 				<p className="adm-hint">{TAKES[card.processor]}</p>
@@ -521,7 +518,7 @@ function PaymentNotices({ card }: { readonly card: Card }) {
 					body={<ServerSteps says={steps.says} commands={steps.commands} />}
 				>
 					{card.notices === 'unset'
-						? `${UNSET_COST[card.processor](card.label)} Ask whoever set up this site to set it up. The steps below are for them.`
+						? `${unsetNotices(card.label)} Ask whoever set up this site to set it up. The steps below are for them.`
 						: `Donors are being charged, but their gifts stay pending here until ${card.label} confirms them. Ask whoever set up this site to fix it. The steps below are for them.`}
 				</Banner>
 			)}

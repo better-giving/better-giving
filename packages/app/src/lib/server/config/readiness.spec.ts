@@ -152,7 +152,9 @@ describe('one job at a time left undone', () => {
 		expect(line({ config: halves }, 'payments').state).toBe('todo');
 	});
 
-	it('does not hold payments on the webhook secret, which no one-off charge needs', () => {
+	it('reads the payments job done without the webhook secret, so the Payments screen still draws the card', () => {
+		// the card is where an operator is told the notice value is unset. a form is not served
+		// on that deployment (`servedProcessors` in ../payments/factory.ts).
 		const { STRIPE_WEBHOOK_SECRET: _hook, ...noHook } = allSet;
 		expect(line({ config: noHook }, 'payments').state).toBe('ready');
 	});

@@ -289,6 +289,40 @@ describe('/admin load — the figures a month is read for', () => {
 		expect((await runLoad()).recurringActive).toBe(1);
 	});
 
+	it('counts an unarchived contact whose gift has not settled, and not as new this month', async () => {
+		// total is every unarchived contact, the donors screen's All donors count. new this
+		// month is a first settled gift, and a pending one has not settled.
+		const contactId = nextId();
+		await run(
+			stmt(
+				`insert into contact (id, kind, display_name, attributes, created_at, updated_at)
+			 values (?, 'individual', 'Ada Okafor', '{}', 0, 0)`,
+				contactId
+			)
+		);
+		const donationId = nextId();
+		await run(
+			stmt(
+				`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+			 values (?, ?, 10000, 'USD', 0, 0)`,
+				donationId,
+				contactId
+			)
+		);
+		await run(
+			stmt(
+				`insert into payment (id, donation_id, amount_minor, currency, direction, method, status,
+			                      occurred_at, created_at)
+			 values (?, ?, 10000, 'USD', 'inbound', 'card', 'pending', ?, 0)`,
+				nextId(),
+				donationId,
+				Date.now()
+			)
+		);
+
+		expect((await runLoad()).donors).toEqual({ total: 1, thisMonth: 0 });
+	});
+
 	it('reads a deployment that has taken nothing as noughts rather than blanks', async () => {
 		// every figure is a real zero and the run is twelve empty months. a blank beside a label is
 		// a read that did not land; nought is a figure, and it is what keeps the screen the same

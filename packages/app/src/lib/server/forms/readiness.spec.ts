@@ -154,20 +154,37 @@ describe('formsReadiness', () => {
 		}
 	);
 
-	it('warns about payment notices when Stripe’s keys are set and its webhook secret is not', () => {
-		const { STRIPE_WEBHOOK_SECRET: _unset, ...keysOnly } = STRIPE;
-		const lines = formsReadiness(profile(), keysOnly);
-		expect(line(lines, 'notices').severity).toBe('warning');
-		expect(line(lines, 'processor').severity).toBe('resolved');
-	});
+	it.each([
+		[
+			'Stripe',
+			'STRIPE_WEBHOOK_SECRET',
+			{ STRIPE_SECRET_KEY: 'sk_test_secret', STRIPE_PUBLISHABLE_KEY: 'pk_test_publishable' }
+		],
+		['PayPal', 'PAYPAL_WEBHOOK_ID', { PAYPAL_CLIENT_ID: 'AX', PAYPAL_CLIENT_SECRET: 'EC' }],
+		['Chariot', 'CHARIOT_WEBHOOK_SECRET', { CHARIOT_API_KEY: 'key', CHARIOT_CONNECT_ID: 'live_x' }],
+		[
+			'NOWPayments',
+			'NOWPAYMENTS_IPN_SECRET',
+			{ NOWPAYMENTS_API_KEY: 'key', NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20' }
+		]
+	] as const)(
+		'blocks on the processor and on notices when %s’s keys are set and %s is not',
+		(_name, _variable, config) => {
+			const lines = formsReadiness(profile(), config);
+			expect(line(lines, 'processor').severity).toBe('blocker');
+			expect(line(lines, 'notices').severity).toBe('blocker');
+			expect(servedProcessors(config).serves).toBe(false);
+		}
+	);
 
-	it('warns about the processor that lacks its notice value, whichever else is complete', () => {
+	it('blocks on notices for the processor that lacks its notice value, whichever else can settle', () => {
 		const lines = formsReadiness(profile(), {
 			...STRIPE,
 			PAYPAL_CLIENT_ID: 'AX',
 			PAYPAL_CLIENT_SECRET: 'EC'
 		});
-		expect(line(lines, 'notices').severity).toBe('warning');
+		expect(line(lines, 'processor').severity).toBe('resolved');
+		expect(line(lines, 'notices').severity).toBe('blocker');
 	});
 
 	it('asks no notice value of a processor whose values no form can be served on', () => {

@@ -6,7 +6,8 @@ import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '@better-giving/form/v
 // one file, so a wording is changed in one place and a screen cannot come to say two things about
 // the same decision. nothing here reads the flow: a sentence that needed a predicate would be that
 // predicate held twice, and `connect` in @better-giving/form/connect is where it is already held.
-// what the builders below take is a figure or a name, already decided by whoever calls them.
+// what the builders below take is a figure, a name, or a decision already made, from whoever calls
+// them.
 //
 // the same screens are drawn by packages/form/src/views.ts for the embedded element, and the words
 // there are its own. that duplication is deliberate and bounded: the element's copy is a permanent
@@ -174,8 +175,17 @@ export function donateLabel(total: string): string {
 	return `Donate ${total}`;
 }
 
-export function receiptTo(email: string): string {
-	return `Receipt to ${email}`;
+/**
+ * the line over the press that spends the money.
+ *
+ * an empty address keeps the line blank. when a receipt was promised the line is
+ * `Receipt to ${email}`. otherwise it is `No email will be sent.` promised is
+ * `config.receipts === true`, and absent is none (`receipts` on `FormConfig` in
+ * @better-giving/form/v1).
+ */
+export function receiptTo(email: string, sendsReceipt: boolean): string {
+	if (email === '') return '';
+	return sendsReceipt ? `Receipt to ${email}` : 'No email will be sent.';
 }
 
 /**
@@ -511,13 +521,17 @@ export const DEPOSIT_EXPIRED_BODY =
 
 /** the thank-you. */
 export const SUCCESS_HEADING = 'Thank you';
-export function successBody(org: string): string {
-	return `A receipt is on its way to your email. ${org} has your gift.`;
+export function successBody(org: string, sendsReceipt: boolean): string {
+	const held = `${org} has your gift.`;
+	return sendsReceipt ? `A receipt is on its way to your email. ${held}` : held;
 }
 export const SUCCESS_ANNOUNCE = 'Your gift went through.';
-/** the thank-you on a crypto gift, which names no figure: the emailed receipt names what arrived. */
-export function arrivedBody(org: string): string {
-	return `Your gift arrived. A receipt is on its way to your email. ${org} has your gift.`;
+/** the thank-you on a crypto gift, which names no figure: the card does not hold what arrived. */
+export function arrivedBody(org: string, sendsReceipt: boolean): string {
+	const held = `${org} has your gift.`;
+	return sendsReceipt
+		? `Your gift arrived. A receipt is on its way to your email. ${held}`
+		: `Your gift arrived. ${held}`;
 }
 export const ARRIVED_ANNOUNCE = 'Your gift arrived.';
 /** the label names its destination, because a bare "back" beside a charged figure reads as undoing it. */

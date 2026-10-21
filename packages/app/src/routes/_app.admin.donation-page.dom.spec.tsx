@@ -67,7 +67,8 @@ function edited(): Loaded {
 			switches: { open_on_monthly: false, dedication_on: false },
 			monthlyOffered: true
 		},
-		hasEdits: true
+		hasEdits: true,
+		takingGifts: true
 	};
 }
 
@@ -107,13 +108,13 @@ function Editor() {
 /** a round of the event loop, so the router's promises settle. */
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
-async function screen() {
+async function screen(loaded: Loaded = edited()) {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/donation-page',
 			loader: () => {
 				unreachable();
-				return edited();
+				return loaded;
 			},
 			action: (args) =>
 				clientAction({
@@ -160,6 +161,22 @@ const said = (within: Element) =>
 	[...within.querySelectorAll('[role="status"]')].map((one) => one.textContent).join(' ');
 
 const bar = () => document.querySelector('.adm-publishbar') ?? document.body;
+
+/** the bar's state word, the span the status lives in. */
+const stateWord = () => document.querySelector('.adm-publishbar__state');
+
+it('does not present Live when a published Donation page is not taking gifts', async () => {
+	await screen({ ...edited(), state: 'live', hasEdits: false, takingGifts: false });
+
+	expect(stateWord()?.textContent).toBe('Not taking gifts');
+	expect(stateWord()?.textContent).not.toContain('Live');
+});
+
+it('presents Live when a published Donation page is taking gifts', async () => {
+	await screen({ ...edited(), state: 'live', hasEdits: false, takingGifts: true });
+
+	expect(stateWord()?.textContent).toBe('Live');
+});
 
 it('leaves a block’s sheet open, holding what was typed, and says so at Done', async () => {
 	await screen();

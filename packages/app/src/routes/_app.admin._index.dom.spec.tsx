@@ -53,7 +53,7 @@ function dashboard(hasForms: boolean): HTMLElement {
 /** the anchor that leads to the new-form screen, or `null` where none is drawn. */
 const toNewForm = (root: HTMLElement) => root.querySelector('a[href="/admin/forms/new"]');
 
-it('says there is no donation form yet and leads to making one', () => {
+it('says there is no form for the organisation’s own site yet and leads to making one', () => {
 	const root = dashboard(false);
 	const link = toNewForm(root);
 

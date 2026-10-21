@@ -30,6 +30,7 @@ import { loadFailed } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
 import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
+import { loadPageView } from '$lib/server/pages/view';
 import {
 	editorPage,
 	readEditorSettings,
@@ -99,12 +100,32 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const { env } = context.get(platform);
 	let row: Page;
 	let settings: SettingsSeed;
+	let takingGifts: boolean;
 	const now = Date.now();
 	try {
 		row = await ensureDonationPage(db);
+		// the donor page's own refusal (`loadPageView` in $lib/server/pages/view.ts), on the
+		// published document. a fresh page is stored live (`makeDonationPage` in
+		// $lib/server/pages/donation-page.ts) even when that read refuses, and the bar would
+		// otherwise say Live over the sentence donors are shown.
+		const view = await loadPageView(
+			db,
+			env,
+			{
+				id: row.id,
+				type: 'donation_page',
+				formId: row.formId,
+				name: null,
+				document: row.published,
+				address: '/donate'
+			},
+			request,
+			{ now }
+		);
+		takingGifts = view.kind !== 'refused';
 		const unreadable = unreadableEditor(row, now);
 		// a draft the rule refuses is itself an edit Reset puts back (`hasEditsToReset`).
-		if (unreadable !== null) return { ...unreadable, hasEdits: true };
+		if (unreadable !== null) return { ...unreadable, hasEdits: true, takingGifts };
 		settings = await readEditorSettings(db, env, row, new URL(request.url).origin);
 	} catch (e) {
 		console.error('loading the Donation page editor failed:', e);
@@ -114,7 +135,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		...editorPage(row, now),
 		...editorDraft(row, settings.currency),
 		settings,
-		hasEdits: hasEditsToReset(row)
+		hasEdits: hasEditsToReset(row),
+		takingGifts
 	};
 }
 
@@ -175,6 +197,7 @@ function UnreadableDraftEditor({
 					closeHref="/admin"
 					page={{ kind: 'donation' }}
 					state={state}
+					takingGifts={loaderData.takingGifts}
 					livePath="/donate"
 					{...presses.bar}
 					onPublish={undefined}
@@ -228,6 +251,7 @@ function DraftEditor({
 					closeHref="/admin"
 					page={{ kind: 'donation' }}
 					state={state}
+					takingGifts={loaderData.takingGifts}
 					livePath="/donate"
 					{...presses.bar}
 					onSettings={() => {

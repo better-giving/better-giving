@@ -63,14 +63,14 @@ const QUOTE: Quote = { paymentToken: 'pi_1', feeMinor: 106, totalMinor: 2606 };
  * and a state built without it is the cold return this page boots into with a payment token and
  * nothing else, which is the reading every screen has to be right in.
  */
-function draw(state: State): HTMLElement {
+function draw(state: State, config: FormConfig = CONFIG): HTMLElement {
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
 	act(() => {
 		mounted.render(
 			<TakeoverScreen
-				screen={takeoverFor(state, CONFIG, money)}
+				screen={takeoverFor(state, config, money)}
 				hidden={false}
 				busy={false}
 				receipt={null}
@@ -281,13 +281,21 @@ it('offers a start-over where the verification window closed', () => {
 });
 
 it('thanks the donor with a quiet way back and no loud one', () => {
-	const root = draw({ step: 'success' });
+	const withReceipt = { ...CONFIG, receipts: true };
+	const root = draw({ step: 'success' }, withReceipt);
 
 	expect(heading(root)).toBe(copy.SUCCESS_HEADING);
-	expect(shown(root, '.prose')).toBe(copy.successBody('Helping Hands'));
+	expect(shown(root, '.prose')).toBe(copy.successBody('Helping Hands', true));
 	expect(controls(root)).toEqual([copy.BACK_TO_START]);
 	// no failure survives onto this screen: the render is total over the descriptor.
 	expect(shown(root, '.message')).toBe('');
+});
+
+it('thanks the donor without promising a receipt where the config says nothing about one', () => {
+	const root = draw({ step: 'success' });
+
+	expect(shown(root, '.prose')).toBe('Helping Hands has your gift.');
+	expect(root.textContent).not.toContain('A receipt is on its way');
 });
 
 // a gift sent from the donor's own wallet: the address screen, its closed reading, the expired ending
@@ -430,11 +438,12 @@ it('tells a donor whose address closed not to send to it, and offers a new one',
 });
 
 it('thanks a crypto donor for a gift that arrived, stating no figure', () => {
-	const screen = takeoverFor({ step: 'success', method: 'crypto' }, COINS, money);
+	const withReceipt = { ...COINS, receipts: true };
+	const screen = takeoverFor({ step: 'success', method: 'crypto' }, withReceipt, money);
 	expect(screen.receipt).toBe('none');
 	expect(screen.announce).toBe('Your gift arrived.');
 
-	const root = draw({ step: 'success', method: 'crypto' });
+	const root = draw({ step: 'success', method: 'crypto' }, withReceipt);
 	expect(heading(root)).toBe(copy.SUCCESS_HEADING);
 	expect(shown(root, '.prose')).toBe(
 		'Your gift arrived. A receipt is on its way to your email. Helping Hands has your gift.'

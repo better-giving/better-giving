@@ -87,6 +87,7 @@ function record(
 		programMode: 'none',
 		pinnedProgram: null,
 		liveOffered: liveOffered(status, readiness),
+		giftsBlocked: blocked,
 		saved: null,
 		archivedJustNow: false,
 		confirmArchive,
@@ -221,15 +222,51 @@ it('says under the heading why the form cannot go live, and at the status box wh
 	expect(hint?.textContent).toBe('Live is unavailable until the items above are done.');
 });
 
+it('says a live form is not taking gifts while a blocker stands', () => {
+	const { root } = screen({ blocked: true, status: 'live' });
+	const word = root.querySelector('.adm-pageheader .adm-state');
+
+	expect(word?.textContent).toBe('Not taking gifts');
+	expect(word?.classList.contains('adm-state--attention')).toBe(true);
+	expect(root.querySelector('.adm-pageheader .adm-state--done')).toBeNull();
+});
+
+it('keeps Live on a live form while nothing blocks', () => {
+	const word = screen({ status: 'live' }).root.querySelector('.adm-pageheader .adm-state');
+
+	expect(word?.textContent).toBe('Live');
+	expect(word?.classList.contains('adm-state--done')).toBe(true);
+});
+
 it('opens a live form under a blocker with Live chosen and its group holding nothing to save', () => {
 	const { root } = screen({ blocked: true, status: 'live' });
 
-	// what the box shows and what its group would post.
-	expect(document.getElementById(statusBoxId(root))?.textContent).toBe('Live');
+	// what the box shows and what its group would post. the option stays `live`; the closed
+	// control reads the same word as the badge.
+	const status = document.getElementById(statusBoxId(root));
+	expect(status?.textContent).toBe('Not taking gifts');
 	expect(root.querySelector<HTMLSelectElement>('select[name="status"]')?.value).toBe('live');
+	const described = (status?.getAttribute('aria-describedby') ?? '').split(' ');
+	const hint = document.getElementById(`${status?.id}-hint`);
+	expect(described).toContain(hint?.id);
+	expect(hint?.textContent).toBe(
+		'Saved as live. Donors cannot give through it until the items above are done.'
+	);
 	expect(root.textContent).not.toContain('Live is unavailable');
 	// a box drawn holding something other than its seed arms the save, and the press posts it.
 	expect(buttonReading(root, 'Save name and status').getAttribute('aria-disabled')).toBe('true');
+});
+
+it('shows Live in the status box of a live form while nothing blocks', () => {
+	const { root } = screen({ status: 'live' });
+	const status = document.getElementById(statusBoxId(root));
+
+	expect(status?.textContent).toBe('Live');
+	expect(root.querySelector<HTMLSelectElement>('select[name="status"]')?.value).toBe('live');
+	expect(document.getElementById(`${status?.id}-hint`)).toBeNull();
+	expect(root.textContent).not.toContain(
+		'Saved as live. Donors cannot give through it until the items above are done.'
+	);
 });
 
 it('draws no readiness band and no status note on a deployment ready to publish', () => {

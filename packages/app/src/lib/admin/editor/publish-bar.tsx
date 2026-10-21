@@ -76,6 +76,9 @@ const STATE_WORDS = {
 	ended: { word: 'Ended', tone: 'note' }
 } as const;
 
+/** live and not taking gifts. the tone is attention, as for unpublished and changed. */
+const NOT_TAKING_GIFTS = { word: 'Not taking gifts', tone: 'attention' } as const;
+
 const DONATION_PAGE = 'Donation page';
 
 /** what the bar's own region says while Edit is on. */
@@ -113,6 +116,8 @@ type PublishBarProps = {
 	/** the Donation page, which has no name to edit, or a campaign and its name. */
 	readonly page: PublishBarPage;
 	readonly state: PublishState;
+	/** omitted means the page is taking gifts. a live page that is not reads Not taking gifts. */
+	readonly takingGifts?: boolean | undefined;
 	/** the live page's address — `/donate`, `/winter-coat-drive` — More's Open while it is live. */
 	readonly livePath?: string | undefined;
 	/** a Publish is in flight. */
@@ -142,6 +147,7 @@ export function PublishBar({
 	onSettings,
 	page,
 	state,
+	takingGifts = true,
 	livePath,
 	publishing,
 	republished,
@@ -159,7 +165,8 @@ export function PublishBar({
 	const describe = (press: BarPress) => (report?.press === press ? reportId : undefined);
 	const held = onPublish === undefined;
 	const heldReason = held && publishHeld ? publishHeld : null;
-	const { word, tone } = STATE_WORDS[state];
+	const { word, tone } =
+		state === 'live' && takingGifts === false ? NOT_TAKING_GIFTS : STATE_WORDS[state];
 	const live = state === 'changed' || state === 'live';
 	const middle = useMiddle();
 	const editing = useEditing();

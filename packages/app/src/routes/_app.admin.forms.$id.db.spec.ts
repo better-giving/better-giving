@@ -248,6 +248,7 @@ type Loaded = {
 	programMode: string;
 	pinnedProgram: string | null;
 	liveOffered: boolean;
+	giftsBlocked: boolean;
 	deployer: boolean;
 	saved: 'name' | 'program' | 'giving' | 'origins' | null;
 	archivedJustNow: boolean;
@@ -1056,11 +1057,15 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		// every config without those three columns — so publishing here would produce a form that
 		// renders nothing on the org's own site.
 		await clearOrgProfile();
-		expect((await runLoad()).liveOffered).toBe(false);
+		const loaded = await runLoad();
+		expect(loaded.liveOffered).toBe(false);
+		expect(loaded.giftsBlocked).toBe(true);
 	});
 
 	it('offers Live once nothing stands', async () => {
-		expect((await runLoad()).liveOffered).toBe(true);
+		const loaded = await runLoad();
+		expect(loaded.liveOffered).toBe(true);
+		expect(loaded.giftsBlocked).toBe(false);
 	});
 
 	it('does not offer Live on a deployment holding no processor’s keys', async () => {
@@ -1080,12 +1085,13 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		expect((await runLoad()).liveOffered).toBe(true);
 	});
 
-	it('offers Live with a warning while a processor’s payment notices are unset', async () => {
-		// a gift is charged without them and never heard to settle, which is worth saying and not
-		// worth withholding Live over.
+	it('does not offer Live while a processor’s payment notices are unset', async () => {
+		// Live is withheld the same way it is while no processor can take a gift.
+		// `formsReadiness` in $lib/server/forms/readiness.ts.
 		const loaded = await runLoad({ vars: { ...READY, STRIPE_WEBHOOK_SECRET: '' } });
-		expect(readinessLine(loaded, 'notices').severity).toBe('warning');
-		expect(loaded.liveOffered).toBe(true);
+		expect(readinessLine(loaded, 'notices').severity).toBe('blocker');
+		expect(readinessLine(loaded, 'processor').severity).toBe('blocker');
+		expect(loaded.liveOffered).toBe(false);
 	});
 
 	it('refuses a posted Live anyway, because a filtered option list is not a control', async () => {
@@ -1167,13 +1173,20 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		expect((await readForm(db, FORM_ID))?.status).toBe('live');
 	});
 
-	it('lets a posted Live through while only a processor’s payment notices are unset', async () => {
-		const { redirect } = await post(NAME_FORM, FORM_ID, submission(NAME_FORM, { status: 'live' }), {
-			...READY,
-			STRIPE_WEBHOOK_SECRET: ''
-		});
-		expect(redirect?.status).toBe(303);
-		expect((await readForm(db, FORM_ID))?.status).toBe('live');
+	it('refuses a posted Live while only a processor’s payment notices are unset', async () => {
+		const { failure, redirect } = await post(
+			NAME_FORM,
+			FORM_ID,
+			submission(NAME_FORM, { status: 'live' }),
+			{
+				...READY,
+				STRIPE_WEBHOOK_SECRET: ''
+			}
+		);
+		expect(redirect).toBeUndefined();
+		expect(failure?.status).toBe(400);
+		expect(failure?.errors).toMatchObject({ status: [expect.any(String)] });
+		expect((await readForm(db, FORM_ID))?.status).toBe('draft');
 	});
 });
 

@@ -347,6 +347,9 @@ export function readFormConfig(value: unknown): FormConfig | null {
 		orgLegalName,
 		ein,
 		deductibilityStatement,
+		// boolean true only. false, a missing field, and any other value promise no receipt, and
+		// the config still parses (./views.ts reads this on the thank-you).
+		...(source.receipts === true ? { receipts: true } : {}),
 		...cause,
 		...(turnstileSiteKey === null ? {} : { turnstileSiteKey }),
 		...(altchaChallengeUrl === null ? {} : { altchaChallengeUrl }),

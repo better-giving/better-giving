@@ -194,6 +194,29 @@ describe('a post the images route refuses', () => {
 	});
 });
 
+describe('a GET to the images route', () => {
+	it('answers a signed-in GET with 405', async () => {
+		const response = await request(
+			new Request(`${ORIGIN}/admin/images`, { headers: { cookie: session } }),
+			{ env: bindings }
+		);
+
+		expect(response.status).toBe(405);
+		expect(response.headers.get('allow')).toBe('POST');
+		expect(await response.text()).toBe('This address takes a photo by POST.');
+	});
+
+	it('sends an anonymous GET to sign in', async () => {
+		const response = await request(new Request(`${ORIGIN}/admin/images`), { env: bindings });
+
+		// a read returns to its own address (`returnTo` in $lib/server/auth/gate.ts).
+		expect([response.status, response.headers.get('Location')]).toEqual([
+			303,
+			'/login?next=%2Fadmin%2Fimages'
+		]);
+	});
+});
+
 it('sends a photo from someone signed out to sign in, and stores nothing', async () => {
 	const before = await db.$count(image);
 

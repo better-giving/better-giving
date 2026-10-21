@@ -169,15 +169,13 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		`${screen}?sort=${sort}&dir=${dir}${viewParam(order.view)}`;
 
 	return {
-		// the three figures over the list. they count donors whose money has actually moved, and
-		// the list beneath counts contact rows — a contact typed into the create form is on the
-		// list and is nobody's donor until a gift settles, so the two are meant to disagree
-		// ($lib/server/contacts/queries.ts argues which is which).
-		//
-		// the two ends of the run cross as words rather than as instants, on the same terms as
-		// every other formatted value here: `MONTH_LABEL` above states why.
+		// total is every unarchived contact, the same figure the All donors tab states
+		// (`views.all`) and the same figure the dashboard states (./_app.admin._index.tsx).
+		// new this month is donors whose first settled gift falls in the month
+		// (`readDonorSummary` in $lib/server/contacts/queries.ts). the run beside it is that
+		// settled arrival, and its two ends cross as words: `MONTH_LABEL` above states why.
 		summary: {
-			total: donors.total,
+			total: views.all,
 			thisMonth: donors.thisMonth,
 			points: donors.points,
 			first: MONTH_LABEL.format(donors.firstMonth),

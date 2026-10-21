@@ -7,7 +7,7 @@ import { href, Link } from 'react-router';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinor } from '$lib/donations/money';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
-import { readDonorSummary } from '$lib/server/contacts/queries';
+import { readDonorSummary, readUnarchivedContactCount } from '$lib/server/contacts/queries';
 import { loadFailed } from '$lib/server/db/load-failure';
 import { readGiftsByMonth } from '$lib/server/donations/queries';
 import { holdsAnyForm } from '$lib/server/forms/queries';
@@ -30,12 +30,13 @@ import type { Route } from './+types/_app.admin._index';
 // figure is a `SUM` or a `COUNT` taken on the request — no column, no cache, no stored total
 // (CLAUDE.md → Bans).
 //
-// five reads and two failure modes, which is the one thing on this screen that is not a
-// projection. four of them are the screen: the money, the gifts, the donors and whether any form
-// exists fail as one and land the reader on the error boundary, because a card of noughts over a
-// deployment that has taken gifts is a figure an operator would act on. the commitments are a count over a table of
-// their own and are guarded alone — that read failing costs one figure, and the screen says which
-// rather than drawing a nought in its place.
+// six reads and two failure modes, which is the one thing on this screen that is not a
+// projection. five of them are the screen: the money, the gifts, the donor summary, the donor
+// count and whether any form exists fail as one and land the reader on the error boundary,
+// because a card of noughts over a deployment that has taken gifts is a figure an operator would
+// act on. the commitments are a count over a table of their own and are guarded alone — that
+// read failing costs one figure, and the screen says which rather than drawing a nought in its
+// place.
 
 /** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Dashboard';
@@ -78,10 +79,11 @@ export async function loader({ context }: Route.LoaderArgs) {
 		readRaisedByMonth(db),
 		readGiftsByMonth(db),
 		readDonorSummary(db, now),
+		readUnarchivedContactCount(db),
 		holdsAnyForm(db)
 	]);
 	// guarded on its own, and the handler is attached in the same turn the read is started so the
-	// rejection is never an unhandled one when the four above throw first.
+	// rejection is never an unhandled one when the five above throw first.
 	const commitments = readActiveRecurringCount(db).then(
 		(active) => active,
 		(e) => {
@@ -93,9 +95,10 @@ export async function loader({ context }: Route.LoaderArgs) {
 	let raised: Awaited<ReturnType<typeof readRaisedByMonth>>;
 	let gifts: Awaited<ReturnType<typeof readGiftsByMonth>>;
 	let donors: Awaited<ReturnType<typeof readDonorSummary>>;
+	let donorCount: number;
 	let hasForms: boolean;
 	try {
-		[raised, gifts, donors, hasForms] = await screen;
+		[raised, gifts, donors, donorCount, hasForms] = await screen;
 	} catch (e) {
 		console.error('loading the dashboard failed:', e);
 		loadFailed('The dashboard');
@@ -131,9 +134,12 @@ export async function loader({ context }: Route.LoaderArgs) {
 			first: MONTH_LABEL.format(money.firstMonth),
 			last: MONTH_LABEL.format(money.lastMonth)
 		},
-		// the donor file's own two figures, to the number: the dashboard and the donors page never
-		// state a different count of the same thing.
-		donors: { total: donors.total, thisMonth: donors.thisMonth },
+		// total is every unarchived contact, the donors screen's All donors count
+		// (`readDonorViewCounts` in $lib/server/contacts/queries.ts; `readUnarchivedContactCount`
+		// is that figure without reading `recurring_plan`). the two screens never state a
+		// different count of the same thing (./_app.admin.donors._index.tsx). new this month
+		// is donors whose first settled gift falls in the month (`readDonorSummary`).
+		donors: { total: donorCount, thisMonth: donors.thisMonth },
 		// the Donation forms list's own rows: an archived form, and the one a page owns, count for
 		// nothing here as they are listed nowhere there.
 		hasForms

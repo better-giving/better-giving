@@ -23,10 +23,12 @@ import type { FormReadinessJob, FormReadinessLine } from '$lib/forms/readiness';
 // processor's keys `publishedConfig` serves no form at all. that is why one block can say this on
 // both screens without either of them wording it for itself.
 //
-// **every blocker is one band, and the warning is a band of its own.** the blockers are one
-// question — can a donor give through this form — so they are one list under one title. a warning is a
-// different answer to that question (a gift is charged, and nobody here hears that it settled), so
-// it is never folded into the blockers' band, and it is drawn whether or not a blocker stands.
+// **every blocker is one band.** the blockers are one question — can a donor give through this
+// form — so they are one list under one title. a missing notice value blocks. where the processor
+// line blocks too, no form is served (`servedProcessors` in `$lib/server/payments/factory.ts`
+// requires the notice value as well as the charge keys) and a gift is not charged. the processor
+// sentence names the deployment with no charge keys. those keys are set when the notices line
+// blocks, so that sentence is not drawn beside it.
 //
 // a resolved line is not drawn. `$lib/server/forms/readiness.ts` keeps it in the list beside an
 // unresolved one, and answers `null` once every line is resolved, so this renders nothing when there
@@ -83,12 +85,13 @@ const SENTENCES: Record<FormReadinessJob, (deployer: boolean) => ReactNode> = {
 	notices: (deployer) =>
 		deployer ? (
 			<>
-				Gifts will be charged, but none is marked paid here until the processor can tell this site
-				about it. <Link to={PAYMENTS}>Payments</Link> says what to ask whoever set up this site.
+				{'Payment notices aren’t set up, so a gift couldn’t be marked paid. The form stays offline ' +
+					'until they are. '}
+				<Link to={PAYMENTS}>Payments</Link> says what to ask whoever set up this site.
 			</>
 		) : (
-			'Gifts will be charged, but none is marked paid here until the processor can tell this site ' +
-			'about it. Ask whoever set up this site to set it up.'
+			'Payment notices aren’t set up, so a gift couldn’t be marked paid. The form stays offline ' +
+			'until they are. Ask whoever set up this site to set it up.'
 		)
 };
 
@@ -109,20 +112,20 @@ export function FormsReadiness({ lines, deployer, context }: FormsReadinessProps
 	if (!lines) return null;
 
 	const blockers = lines.filter((line) => line.severity === 'blocker');
-	// the one line that warns rather than blocks (`FORM_READINESS_JOBS` in `$lib/forms/readiness.ts`),
-	// which is why its band's title names it.
-	const notices = lines.find((line) => line.job === 'notices' && line.severity === 'warning');
+	const drawn = blockers.some((line) => line.job === 'notices')
+		? blockers.filter((line) => line.job !== 'processor')
+		: blockers;
 	const blocked = BLOCKED[context];
 
 	return (
 		<>
-			{blockers.length > 0 ? (
+			{drawn.length > 0 ? (
 				<Banner
 					tone={blocked.tone}
 					word={blocked.title}
 					body={
 						<ul className="adm-banner__list">
-							{blockers.map((line) => (
+							{drawn.map((line) => (
 								<li key={line.job}>{SENTENCES[line.job](deployer)}</li>
 							))}
 						</ul>
@@ -131,13 +134,8 @@ export function FormsReadiness({ lines, deployer, context }: FormsReadinessProps
 			) : null}
 			{/* outside the band rather than in it: it is what the screen does about the band, which
 			    the status box below already acts on by offering Draft alone. */}
-			{blockers.length > 0 && context === 'new' ? (
+			{drawn.length > 0 && context === 'new' ? (
 				<p className="adm-hint">It can go live once the items above are done.</p>
-			) : null}
-			{notices ? (
-				<Banner tone="attention" word="Payment notices aren’t set up">
-					{SENTENCES.notices(deployer)}
-				</Banner>
 			) : null}
 		</>
 	);

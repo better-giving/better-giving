@@ -719,8 +719,7 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 		case 'indeterminate':
 			// an ending with nothing to press, and the copy claims nothing. the flow is here because
 			// a confirmation went unanswered, so the money may already have moved and may not — the
-			// webhook settles which (`src/routes/api.stripe.webhook.ts`), and it is what
-			// sends the receipt. weaker than `success` below on purpose: nothing here knows the
+			// webhook settles which (`src/routes/api.stripe.webhook.ts`). nothing here knows the
 			// charge landed, so nothing here says a receipt is on its way.
 			return {
 				...BLANK,
@@ -787,13 +786,16 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 			};
 
 		// a gift sent from the donor's own wallet is valued on arrival, so no figure the card holds is
-		// what arrived: the emailed receipt names that, and this screen draws no receipt at all.
-		case 'success':
+		// what arrived, and the crypto arm draws no receipt figures.
+		case 'success': {
 			if (state.method === 'crypto') {
 				return {
 					...BLANK,
 					heading: 'Thank you',
-					body: `Your gift arrived. A receipt is on its way to your email. ${org} has your gift.`,
+					body:
+						config.receipts === true
+							? `Your gift arrived. A receipt is on its way to your email. ${org} has your gift.`
+							: `Your gift arrived. ${org} has your gift.`,
 					announce: 'Your gift arrived.',
 					secondary: { label: 'Back to start' }
 				};
@@ -804,7 +806,10 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				receipt: 'charged',
 				totalLabel: 'Charged today',
 				receiptNote: '',
-				body: `A receipt is on its way to your email. ${org} has your gift.`,
+				body:
+					config.receipts === true
+						? `A receipt is on its way to your email. ${org} has your gift.`
+						: `${org} has your gift.`,
 				announce: 'Your gift went through.',
 				// the quiet control rather than the primary the two recovery screens use. this donor
 				// is owed no act — a gift was made — and a loud control over a thank-you asks for
@@ -817,6 +822,7 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				// beside a figure that has just been charged reads as undoing the charge.
 				secondary: { label: 'Back to start' }
 			};
+		}
 
 		// `state.fix` is not among what this screen says. it names a publishable key, an env var or a
 		// screen in /admin, and it is addressed to whoever administers the deployment rather than to
@@ -2327,13 +2333,15 @@ export function createCard(
 	});
 
 	// the line that closes the gap the split opens: the step that takes the money shows no field
-	// the donor filled in, so it states where the receipt is going and leaves the step head's mark
-	// for the details step as the way to change it. it reuses the aside role rather than naming a
-	// surface of its own.
+	// the donor filled in. an empty address leaves it empty and hidden. `config.receipts === true`
+	// (present only when the served config set it, ./v1.ts) names the address the receipt is going
+	// to; otherwise the line says no email will be sent, so a deployment that cannot mail one does
+	// not promise it. the step head's mark for the details step is the way to change the address.
+	// it reuses the aside role rather than naming a surface of its own.
 	//
-	// it stands directly over the button: the last thing a donor takes in before the press is where
-	// the receipt is going, and a line standing at the step's own rhythm between two blocks reads as
-	// a third block rather than as part of either. the sheet closes the gap on that pair by
+	// it stands directly over the button: the last thing a donor takes in before the press is this
+	// line, and a line standing at the step's own rhythm between two blocks reads as a third block
+	// rather than as part of either. the sheet closes the gap on that pair by
 	// adjacency (`.aside:has(+ [part~='submit'])` in ./styles/layout.css), so the order here is what
 	// that rule is written against and nothing may stand between the two.
 	const receiptTo = make(doc, 'p', { class: 'aside', hidden: true });
@@ -3605,12 +3613,18 @@ export function createCard(
 		// the control that spends the money restates it.
 		setText(submitLabel, `Donate ${money(totalMinor)}`);
 
-		// where the receipt is going, on the one step that shows nothing else the donor typed. the
-		// step head's mark for the details step is the way to change it, which is why the line names
-		// the address rather than offering a control of its own.
+		// an empty address stays empty and hidden. `receipts === true` names the address the receipt
+		// is going to. otherwise the line says no email will be sent, so the step does not promise
+		// a receipt this deployment cannot send.
 		const email = api.emailField.value.trim();
-		setText(receiptTo, email === '' ? '' : `Receipt to ${email}`);
-		setHidden(receiptTo, email === '');
+		const receiptLine =
+			email === ''
+				? ''
+				: config.receipts === true
+					? `Receipt to ${email}`
+					: 'No email will be sent.';
+		setText(receiptTo, receiptLine);
+		setHidden(receiptTo, receiptLine === '');
 
 		return `${totalName} is ${money(totalMinor)}.`;
 	}

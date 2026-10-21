@@ -1635,13 +1635,26 @@ it('draws no header over a box listing one option, and names the box itself', as
 // the sheet both surfaces share closes the gap on this pair by adjacency
 // (`.aside:has(+ [part~='submit'])` in packages/form/src/styles/layout.css), so anything standing
 // between the two leaves the line at the step's own rhythm between two blocks, reading as a third.
+// the line names a receipt only when the served config promised one (`receipts` on FormConfig in
+// @better-giving/form/v1). absent, it says no email will be sent.
 it('stands the line saying where the receipt goes directly over the press', async () => {
+	const { root } = await card({ ...CONFIG, receipts: true });
+	await walkToGive(root);
+
+	const line = one(root, 'section.step-give > p.aside');
+	expect(line.hidden).toBe(false);
+	expect(line.textContent).toBe('Receipt to donor@example.org');
+	expect(line.nextElementSibling).toBe(one(root, 'button[part~="submit"]'));
+});
+
+it('says no email will be sent when the config promised no receipt', async () => {
 	const { root } = await card();
 	await walkToGive(root);
 
 	const line = one(root, 'section.step-give > p.aside');
 	expect(line.hidden).toBe(false);
-	expect(line.textContent).toBe(copy.receiptTo('donor@example.org'));
+	expect(line.textContent).toBe('No email will be sent.');
+	expect(line.textContent).not.toContain('Receipt to');
 	expect(line.nextElementSibling).toBe(one(root, 'button[part~="submit"]'));
 });
 
@@ -2555,10 +2568,11 @@ describe('a crypto gift', () => {
 	/** the review step of a one-time gift with the crypto option open. */
 	async function onCrypto(
 		quote: () => Response = () => json(USDT),
-		drawn: Parameters<typeof card>[2] = {}
+		drawn: Parameters<typeof card>[2] = {},
+		config: FormConfig = CRYPTO
 	) {
 		const server = deployment(quote);
-		const { root } = await card(CRYPTO, {}, drawn);
+		const { root } = await card(config, {}, drawn);
 		await walkToGive(root);
 		const head = row(root, 'Crypto');
 		if (head === null) throw new Error('no crypto option on the review step');
@@ -2576,8 +2590,8 @@ describe('a crypto gift', () => {
 	}
 
 	/** the address screen, for a USDT gift. */
-	async function atAddress(drawn: Parameters<typeof card>[2] = {}) {
-		const reached = await onCrypto(undefined, drawn);
+	async function atAddress(drawn: Parameters<typeof card>[2] = {}, config: FormConfig = CRYPTO) {
+		const reached = await onCrypto(undefined, drawn, config);
 		await pick(reached.root, 'USDT');
 		await donate(reached.root);
 		return reached;
@@ -2734,7 +2748,8 @@ describe('a crypto gift', () => {
 
 	it('turns to the thank-you once the gift arrives, with no receipt figures', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
-		const { root, server } = await atAddress();
+		const withReceipt = { ...CRYPTO, receipts: true };
+		const { root, server } = await atAddress({}, withReceipt);
 
 		await tick(DEPOSIT_POLL_MS);
 		expect(server.reads).toBe(1);
@@ -2747,7 +2762,7 @@ describe('a crypto gift', () => {
 
 		const ending = screen(root);
 		expect(one(ending, 'h2').textContent).toBe(copy.SUCCESS_HEADING);
-		expect(one(ending, '.prose').textContent).toBe(copy.arrivedBody('Helping Hands'));
+		expect(one(ending, '.prose').textContent).toBe(copy.arrivedBody('Helping Hands', true));
 		expect(one(ending, '.receipt-slot').hidden).toBe(true);
 		expect(one(ending, '.deposit').hidden).toBe(true);
 		expect(document.activeElement).toBe(one(ending, 'h2'));

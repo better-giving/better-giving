@@ -150,6 +150,19 @@ function activeCommitment(db: Db) {
 }
 
 /**
+ * every unarchived contact: `readDonorViewCounts`'s `all`, without its recurring figure.
+ *
+ * the dashboard states this count and does not draw the recurring one. calling
+ * `readDonorViewCounts` for it would read `recurring_plan`, and a failure of that table is the
+ * commitments figure, guarded on its own in routes/_app.admin._index.tsx. the `where` is the
+ * same predicate as that function's `all`.
+ */
+export async function readUnarchivedContactCount(db: Db): Promise<number> {
+	const [row] = await db.select({ all: count() }).from(contact).where(isNull(contact.archivedAt));
+	return row?.all ?? 0;
+}
+
+/**
  * how many donors each view of the file holds.
  *
  * both figures in one statement, over one `where`: the two views are two readings of the same

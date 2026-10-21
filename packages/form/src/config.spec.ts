@@ -108,6 +108,18 @@ describe('reading a usable response', () => {
 			'altchaChallengeUrl'
 		);
 	});
+
+	it('promises a receipt only when the response says true', () => {
+		// missing, false, and anything that is not boolean true still parse. the thank-you is what
+		// reads this, and a dropped config would be a form that never renders.
+		expect(readFormConfig({ ...RESPONSE, receipts: true })).toEqual({
+			...RESPONSE,
+			receipts: true
+		});
+		for (const value of [undefined, false, 'true', 1, null]) {
+			expect(readFormConfig(withField('receipts', value))).toEqual(RESPONSE);
+		}
+	});
 });
 
 describe('a response the form cannot solicit a gift on', () => {

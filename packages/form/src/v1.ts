@@ -391,6 +391,15 @@ export type FormConfig = {
 	readonly orgLegalName: string;
 	readonly ein: string;
 	readonly deductibilityStatement: string;
+	/**
+	 * whether a gift that landed is followed by an emailed receipt.
+	 *
+	 * present only when the response's `receipts` is boolean true (`readFormConfig` in ./config.ts).
+	 * absent, the thank-you in ./views.ts names who has the gift and does not say a receipt is on
+	 * its way. the review step names the address only when this is true. when the donor gave an
+	 * address and this is not true, that step says no email will be sent.
+	 */
+	readonly receipts?: boolean;
 	readonly turnstileSiteKey?: string;
 	/**
 	 * where a fresh ALTCHA challenge is read from, on a deployment whose spam check is ALTCHA.

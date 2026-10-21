@@ -24,6 +24,7 @@ Two values, then three commands:
 
 ```sh
 cp .env.example .env                 # set the two values above
+docker compose build                 # once, and again after an upgrade; `up` does not rebuild
 docker compose run --rm migrate      # before the first start, and after every upgrade
 docker compose up -d
 ```
@@ -32,7 +33,7 @@ The server refuses to start without either value, or on a password under 12 char
 
 `ADMIN_PASSWORD` is the deployer's credential. Keep it in a password manager: recovery is whoever holds `.env`. Colleagues are invited from `/admin/members`, set their own, and reset a forgotten one from the sign-in page; that reset never reaches this credential. A colleague sees forms, gifts, donors and the books; Settings, Payments, the sites list and QuickBooks are the deployer's alone.
 
-Every push to `main` publishes a built image, `ghcr.io/better-giving/better-giving`, tagged `main` and by commit sha, for `linux/amd64` and `linux/arm64`; each release tag, such as `v0.1.0-alpha.1`, publishes one tagged by its name, which `:main` never moves. `compose.yaml` builds from your checkout instead; pull the image only if you run it without one.
+Build on the machine that runs it. `compose.yaml` builds from your checkout and does not pull an image; that is the path to use. A push to `main`, and each release tag, also publishes `ghcr.io/better-giving/better-giving` (on `main`, tagged `main` and by commit sha; a release tag such as `v0.1.0-alpha.1` tagged by its name, and a tag push never moves `:main`). The package is private, so `docker pull` from a machine that is not signed in to GHCR with access to it is refused.
 
 `migrate` applies every committed migration the database has not recorded, then exits. With Compose the server never runs one on start, so the migration is always a step you take. On Fly it does, on each start ([Fly.io](#flyio)). Safe to rerun: applied migrations skip.
 
@@ -69,7 +70,7 @@ docker compose up -d --force-recreate app                            # after add
 
 The command reads `.env` and `BETTER_AUTH_URL`, registers this deployment's notice address on that processor's account, and prints the line `.env` takes (two on Chariot's first run); everything else it says goes to stderr. It exits 1 on a missing value or a refusal, and 2 on a name it does not know. `run --rm` reads `.env` as it is now; `docker compose exec app …` reads what the running container started with, so it needs a recreate first. From a checkout, `pnpm -s setup-webhook:<name>` does the same against `packages/app/.env`, never the root `.env` compose reads.
 
-Then, under **Payments**, press **Set up recurring gifts** on each processor that takes them, if its rows read Not set up. A form can go live once one processor's keys are set.
+Then, under **Payments**, press **Set up recurring gifts** on each processor that takes them, if its rows read Not set up. A form can go live once one processor can settle a gift: its keys and its payment-notice value (Stripe's secret, publishable key, and webhook secret; PayPal's client id, secret, and webhook id; Chariot's API key, connect id, and webhook secret; NOWPayments' API key, outcome currency, and IPN secret). Keys alone leave the form offline.
 
 ### Stripe
 
@@ -200,11 +201,12 @@ Two more dispute cases arrive as alerts of their own. **A dispute of a gift that
 ## Checking a deployment
 
 ```sh
+pnpm install   # once, in a checkout of this repository
 pnpm run doctor https://donate.example.org
 docker compose logs -f app
 ```
 
-`doctor` posts a deliberately wrong password to `/login` and reads the status, never touching your real one:
+`pnpm run doctor` runs from that checkout. It is not in the container image, and Compose does not provide it. It posts a deliberately wrong password to `/login` and reads the status, never touching your real one:
 
 | It says                  | What is true                                                                   |
 | ------------------------ | ------------------------------------------------------------------------------ |
@@ -274,7 +276,7 @@ docker compose run --rm migrate
 docker compose up -d
 ```
 
-Upstream owns every file, so a clean fork merges fast-forward; a conflict means you edited a tracked file. **Read the diff of `packages/app/migrations/` before migrating**, the irreversible part. A release that squashed the chain shows that whole directory rewritten and applies nothing: migrations are recorded by filename, so `0000_initial_schema.sql` is skipped on a database that already ran it. Meet anything doubtful on a rehearsal first.
+Upstream owns every file, so a clean fork merges fast-forward; a conflict means you edited a tracked file. **After this upgrade, a processor without its notice value stops serving forms.** Keys that used to leave a form live now leave it offline until `STRIPE_WEBHOOK_SECRET`, `PAYPAL_WEBHOOK_ID`, `CHARIOT_WEBHOOK_SECRET`, or `NOWPAYMENTS_IPN_SECRET` is set for each processor whose keys are set ([5. Payments](#5-payments)). A form already marked Live shows Not taking gifts until that value is in `.env` and the app is recreated. **Read the diff of `packages/app/migrations/` before migrating**, the irreversible part. A release that squashed the chain shows that whole directory rewritten and applies nothing: migrations are recorded by filename, so `0000_initial_schema.sql` is skipped on a database that already ran it. Meet anything doubtful on a rehearsal first.
 
 ## Fly.io
 

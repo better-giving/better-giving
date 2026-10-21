@@ -75,20 +75,18 @@ const allSet = (config: ConfigEnv, names: readonly (keyof ConfigEnv)[]): boolean
 	names.every((name) => config[name] !== undefined);
 
 /**
- * the pair of keys each processor charges on, and a deployment holding either pair can take a gift.
+ * the pair of keys each processor charges on. the Payments screen draws a card for each processor
+ * whose pair is set (`readProcessorCards` in ../payments/processor-cards.ts), including one whose
+ * notice variable is unset, so that screen can say notices are unset.
  *
- * **no webhook value is on a pair, and that is the distinction this list is about rather than an
- * omission.** without one a settled charge is never heard about, which is what stops a recurring
- * gift being written down — but a one-off gift is still charged, and this line answers whether one
- * can be. the Payments screen is where the difference between the two is drawn and acted
- * on. `PAYPAL_CHARITY_RATE_APPROVED` is off them for a reason of its own: it picks which published
- * fee table a donor covering fees is quoted from (../payments/fees.ts), and unset is an answer
- * rather than a gap. `CHARIOT_API_URL` and `PAYPAL_API_URL` are off for the same reason: unset is
- * each processor's own default address.
- * `NOWPAYMENTS_IPN_SECRET` is off by the webhook rule, though the IPN is the only way a crypto
- * payment is ever heard to settle: the payment is still created without it. NOWPayments' second member is its outcome currency rather than a
- * browser half, which it has none of: a coin's minimum is quoted against it, so no payment can be
- * offered without it.
+ * **no webhook value is on a pair.** a form is served only once that variable is set as well
+ * (`servedProcessors` in ../payments/factory.ts). this job answers whether the card is drawn, not
+ * whether a form may go live. `PAYPAL_CHARITY_RATE_APPROVED` is off them for a reason of its own:
+ * it picks which published fee table a donor covering fees is quoted from (../payments/fees.ts),
+ * and unset is an answer rather than a gap. `CHARIOT_API_URL` and `PAYPAL_API_URL` are off for the
+ * same reason: unset is each processor's own default address. NOWPayments' second member is its
+ * outcome currency rather than a browser half, which it has none of: a coin's minimum is quoted
+ * against it, so no payment can be offered without it.
  *
  * a pair rather than a flat list of everything payments needs, because the four are alternatives:
  * an organisation on any one of them alone holds no key for the other three and is set up.
