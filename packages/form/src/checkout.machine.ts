@@ -269,6 +269,12 @@ export type CheckoutContext = {
 	readonly reconciliation: Reconciliation | null;
 	readonly mandateAccepted: boolean;
 	readonly turnstileToken: string | null;
+	/**
+	 * whether the challenge is asking the visitor to solve something, from its widget entering
+	 * interactive mode until it leaves it or mints a token. a press held on it waits as long as
+	 * that lasts (`holding`).
+	 */
+	readonly challengeInteractive: boolean;
 	readonly verificationDeadline: number | null;
 	readonly failure: Failure | null;
 	/**
@@ -432,6 +438,8 @@ export type CheckoutEvent =
 	| { readonly type: 'TOGGLE_FEE_COVERAGE' }
 	| { readonly type: 'SET_CONSENT'; readonly consented: boolean }
 	| { readonly type: 'SET_TURNSTILE_TOKEN'; readonly token: string }
+	/** the challenge entering interactive mode, or leaving it, as its widget reports. */
+	| { readonly type: 'SET_CHALLENGE_INTERACTIVE'; readonly interactive: boolean }
 	| { readonly type: 'SUBMIT' }
 	/**
 	 * the donor pressing a fund's own button, which opens the fund's window in the same task.
@@ -472,8 +480,8 @@ export const MICRODEPOSIT_WINDOW_MS = 10 * 24 * 60 * 60 * 1000;
  * how long the address screen waits between two readings of where the gift stands.
  *
  * the read is metered by the `/api/v1` bucket every endpoint there shares, per client IP
- * (`API_RATE_LIMITER` in packages/app/wrangler.jsonc), and a chain confirms in minutes rather than
- * seconds — so every few seconds is as soon as a donor could be told and still leaves the bucket to
+ * (`API_RATE_LIMITER` in packages/app/src/lib/server/runtime/rate-limiter.ts), and a chain
+ * confirms in minutes rather than seconds — so every few seconds is as soon as a donor could be told and still leaves the bucket to
  * the presses that spend it. exported for the reason `MICRODEPOSIT_WINDOW_MS` is.
  */
 export const DEPOSIT_POLL_MS = 5000;
@@ -498,6 +506,10 @@ const EARLIEST_PLAUSIBLE_DEADLINE_MS = 1_000_000_000_000;
  * `indeterminate`, never `failed`.
  */
 export const PORT_TIMEOUT_MS = 30_000;
+
+/** what a donor is told when a press waited on the security check and it never answered. */
+const CHECK_UNFINISHED =
+	'This donation form’s security check did not finish, so nothing was charged. Try again.';
 
 /**
  * what the donor is told when a port failed without saying anything usable.
@@ -627,8 +639,24 @@ function quoteRequest(context: CheckoutContext, payer: Payer): QuoteRequest {
 					authorizationId: context.authorization.authorizationId,
 					authorizedMinor: context.authorization.authorizedMinor
 				}),
-		...(context.turnstileToken === null ? {} : { turnstileToken: context.turnstileToken })
+		...challengeField(context)
 	};
+}
+
+/**
+ * the challenge token under the name the served config's own check reads it by, or nothing.
+ *
+ * one slot holds either kind, because the flow treats them alike: each is valid once and is
+ * replaced by the challenge on its own (./embed/challenge.ts). only the wire tells them apart.
+ */
+function challengeField(
+	context: CheckoutContext
+): Pick<QuoteRequest, 'turnstileToken' | 'altchaPayload'> {
+	const token = context.turnstileToken;
+	if (token === null) return {};
+	return context.config.altchaChallengeUrl === undefined
+		? { turnstileToken: token }
+		: { altchaPayload: token };
 }
 
 /**
@@ -803,7 +831,7 @@ export function fundIsOffered(snapshot: {
 }): boolean {
 	const { context, value } = snapshot;
 	return (
-		(value === 'give' || value === 'authorizing') &&
+		(value === 'give' || value === 'holding' || value === 'authorizing') &&
 		context.fv?.frequency === 'one_time' &&
 		context.config.paymentMethods.some(isChariotRail)
 	);
@@ -850,7 +878,10 @@ export function oneTimeIsOfferedInstead(snapshot: {
 	readonly context: CheckoutContext;
 	readonly value: unknown;
 }): boolean {
-	return snapshot.value === 'give' && repeatingIsRefused(snapshot.context);
+	return (
+		(snapshot.value === 'give' || snapshot.value === 'holding') &&
+		repeatingIsRefused(snapshot.context)
+	);
 }
 
 /** a repeating gift committed to that no processor still up can take. */
@@ -1121,6 +1152,9 @@ export const checkoutMachine = setup({
 		tokenIsFresh: ({ context }) =>
 			context.turnstileToken !== null && context.turnstileToken !== context.sentToken,
 
+		/** the challenge is asking the visitor to solve something. */
+		challengeIsInteractive: ({ context }) => context.challengeInteractive,
+
 		/** a challenge report is waiting for a state that can answer it, and this is one. */
 		challengeIsHeld: ({ context }) => context.heldChallenge !== null,
 
@@ -1362,6 +1396,7 @@ export const checkoutMachine = setup({
 		reconciliation: null,
 		mandateAccepted: false,
 		turnstileToken: null,
+		challengeInteractive: false,
 		verificationDeadline: null,
 		failure: null,
 		authorization: null,
@@ -1376,7 +1411,10 @@ export const checkoutMachine = setup({
 	// flow and none moves it from here, so all four are accepted wherever the machine happens to be.
 	on: {
 		SET_TURNSTILE_TOKEN: {
-			actions: assign({ turnstileToken: ({ event }) => event.token })
+			actions: assign({ turnstileToken: ({ event }) => event.token, challengeInteractive: false })
+		},
+		SET_CHALLENGE_INTERACTIVE: {
+			actions: assign({ challengeInteractive: ({ event }) => event.interactive })
 		},
 		/**
 		 * the anti-abuse challenge reporting that it will never mint a token.
@@ -1705,8 +1743,9 @@ export const checkoutMachine = setup({
 				},
 				// `payerIsComplete` refuses a rail this form may not charge — see `completePayer` in
 				// ./value.ts. the typed fields it also asks for were settled on the step before, so
-				// the only thing this press can be refused for here is the rail.
-				SUBMIT: { guard: 'payerIsComplete', target: 'quoting', actions: 'commitPayer' },
+				// the only thing this press can be refused for here is the rail. a press taken goes
+				// through `holding`, which a held token passes straight through.
+				SUBMIT: { guard: 'payerIsComplete', target: 'holding' },
 				OPEN_FUND: { guard: 'fundCanOpen', target: 'authorizing', actions: 'chooseFund' },
 				/**
 				 * the donor taking the offer of a one-time gift in place of the repeating one no
@@ -1743,6 +1782,58 @@ export const checkoutMachine = setup({
 						target: 'details'
 					}
 				],
+				PAYMENT_UNAVAILABLE: {
+					target: 'failed',
+					actions: assign({ failure: ({ event }) => event.failure })
+				}
+			}
+		},
+
+		/**
+		 * a press taken on the review step, waiting on a challenge token it may spend.
+		 *
+		 * the widget and the ALTCHA solve both answer in the background, and a donor quicker than
+		 * either would otherwise send no token, or the one the last send spent, and be refused
+		 * `challenge_failed` for nothing they did. so the press waits here on the review step, busy,
+		 * and is sent the moment a fresh token lands — in the same breath where one already has, so
+		 * the ordinary press never stands here at all.
+		 *
+		 * the payer is committed on the way out rather than on the press, so the request carries
+		 * what the card shows when it is sent. a rail the payment surface withdrew in the meantime
+		 * is a press it would have refused, and goes back to the step to be made again.
+		 *
+		 * nothing has been sent, so every way this ends short of a token is safe to end on `failed`:
+		 * a challenge reporting it will never mint one, and a wait long enough to be one that is not
+		 * coming — a solve that stalled. a widget asking the visitor to interact is no such wait: the
+		 * element draws it beside the press (`#start` in ./element.ts) and the wait is off for as long
+		 * as they are solving it.
+		 */
+		holding: {
+			always: [
+				{ guard: 'challengeIsHeld', target: 'failed', actions: 'deliverChallenge' },
+				{ guard: not('payerIsComplete'), target: 'give' },
+				{ guard: 'tokenIsFresh', target: 'quoting', actions: 'commitPayer' }
+			],
+			after: {
+				portTimeout: {
+					guard: not('challengeIsInteractive'),
+					target: 'failed',
+					actions: assign({
+						failure: (): Failure => ({
+							message: CHECK_UNFINISHED,
+							fix: `No fresh challenge token arrived within ${PORT_TIMEOUT_MS}ms of the press, so nothing was sent.`
+						})
+					})
+				}
+			},
+			on: {
+				// re-entered so the wait runs again from here: a puzzle put away without a token
+				// is the wait starting over, and one being solved is no wait at all.
+				SET_CHALLENGE_INTERACTIVE: {
+					target: 'holding',
+					reenter: true,
+					actions: assign({ challengeInteractive: ({ event }) => event.interactive })
+				},
 				PAYMENT_UNAVAILABLE: {
 					target: 'failed',
 					actions: assign({ failure: ({ event }) => event.failure })

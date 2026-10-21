@@ -6,10 +6,8 @@ import type { SmtpFields } from '../email/smtp-config';
  *
  * every field is optional for the same reason `AuthEnv`'s are — see the long note on
  * `readAuthEnv` in `../auth/env.ts`, which this module deliberately mirrors rather than
- * restates. the short version: `worker-configuration.d.ts` is generated from whatever
- * `.dev.vars` happens to exist on the machine that ran `wrangler types`, and that file is
- * gitignored, so `Env` types these as required `string`s on one developer's machine and
- * omits them entirely on a fresh clone. a reader whose whole job is telling a set value from an
+ * restates. the short version: a variable nobody set is `undefined` at runtime, and a
+ * reader whose whole job is telling a set value from an
  * unset one cannot be built on a type that claims nothing ever is.
  */
 export interface ConfigEnv {
@@ -20,9 +18,8 @@ export interface ConfigEnv {
 	 *
 	 * not a credential: it is designed to sit in public HTML, and `/api/v1/forms/:id/config`
 	 * serves it to any browser that asks. the secret key beside it is a credential, and both are
-	 * plain Worker vars an operator can read back on the console all the same
-	 * (`packages/operator/src/deploy-split.ts`). either arrives here as a string on the platform
-	 * env, which is why nothing below this line distinguishes them.
+	 * plain lines in `.env` all the same (`packages/operator/src/deploy-split.ts`). either arrives
+	 * here as a string on the env, which is why nothing below this line distinguishes them.
 	 */
 	readonly STRIPE_PUBLISHABLE_KEY?: string;
 	/** the signing secret of the org's own webhook endpoint. */
@@ -181,13 +178,10 @@ export function smtpFields(env: ConfigEnv): SmtpFields {
 }
 
 /**
- * the variable names this module reads, in the order they appear in .dev.vars.example.
+ * the variable names this module reads.
  *
- * a closed list, and that is what keeps the console's session token out of every surface built on
- * `ConfigEnv`: `CONSOLE_TOKEN` is deliberately not here, so `readConfigEnv` below never copies it
- * out of the platform env and no reader of `ConfigEnv` can report it. adding it would make a
- * credential the console holds into a value the deployment prints back — see the header on
- * ../console/access.ts for why reporting it would be worse than useless anyway.
+ * a closed list, so `readConfigEnv` below copies nothing else out of the env and no reader of
+ * `ConfigEnv` can report a value that is not on it.
  */
 export const CONFIG_VAR_NAMES = [
 	'SMTP_HOST',
@@ -220,8 +214,8 @@ export const CONFIG_VAR_NAMES = [
 /**
  * platform env -> `ConfigEnv`, by structural narrowing from `unknown`.
  *
- * a value that is present but not a string is dropped rather than coerced. a binding is
- * not a string however `wrangler types` declares it, and `String(someBinding)` would
+ * a value that is present but not a string is dropped rather than coerced. a rate limiter
+ * `Env` carries (../runtime/env.ts) is not a string, and `String(someLimiter)` would
  * turn one into a plausible-looking configured value — which is the one thing an honest reader
  * may not do. absent is the truthful answer, and it is the state every caller already handles.
  *

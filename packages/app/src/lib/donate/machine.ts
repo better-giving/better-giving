@@ -10,7 +10,7 @@ import type { CheckoutEvent, CheckoutInput, Failure } from '@better-giving/form/
 import { toState, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
 import type { CheckoutPorts, FundReports } from '@better-giving/form/ports';
 import { createPaymentSurface, type PaymentSeams } from '@better-giving/form/embed/surface';
-import { createChallenge, type ChallengeSeam } from '@better-giving/form/embed/turnstile';
+import { createChallenge, type ChallengeSeams } from '@better-giving/form/embed/challenge';
 import type { FormConfig, PaymentMethod } from '@better-giving/form/v1';
 import { createActor, type Actor } from 'xstate';
 import { deploymentPorts } from './ports';
@@ -31,7 +31,7 @@ import { deploymentPorts } from './ports';
 // own is the box each is mounted into: its markup, its part names, whether it is on screen, and
 // what a refused press says about it.
 //
-// no react and no document global. the two mount nodes arrive as arguments, which is what keeps
+// no react and no document global. the mount nodes arrive as arguments, which is what keeps
 // this module testable with a plain object for each seam.
 
 export type { CheckoutSnapshot };
@@ -82,6 +82,11 @@ export type CheckoutMounts = {
 	readonly paymentMount: HTMLElement;
 	/** the node the anti-abuse challenge is drawn in. */
 	readonly challengeMount: HTMLElement;
+	/**
+	 * the review step's node for the same challenge, beside the press, which it is drawn afresh into
+	 * only while a press is held on it and it is asking the donor to solve something.
+	 */
+	readonly heldChallengeMount: HTMLElement;
 	/** the payment this page was sent back to, where it was sent anywhere. */
 	readonly resumeToken: string | null;
 	/**
@@ -90,7 +95,7 @@ export type CheckoutMounts = {
 	 * `payment` is one entry per processor rather than one seam, because the composer this page
 	 * builds its surface through is in between the two adapters rather than in front of them.
 	 */
-	readonly seams?: { readonly payment?: PaymentSeams; readonly challenge?: ChallengeSeam };
+	readonly seams?: { readonly payment?: PaymentSeams; readonly challenge?: ChallengeSeams };
 };
 
 export type Checkout = {
@@ -152,7 +157,7 @@ export function startCheckout(
 	mounts: CheckoutMounts,
 	opening?: Opening
 ): Checkout {
-	const { paymentMount, challengeMount, resumeToken, seams } = mounts;
+	const { paymentMount, challengeMount, heldChallengeMount, resumeToken, seams } = mounts;
 
 	// through holders rather than straight at the actor: both surfaces are handed their callbacks
 	// while the actor is still being constructed, and every real report arrives with a provider's
@@ -194,7 +199,7 @@ export function startCheckout(
 	// at the actor rather than through a holder: the surface replays a report made before this.
 	surface.repeatingUnavailable(() => actor.send({ type: 'REPEATING_UNAVAILABLE' }));
 
-	let challenge: { reset(): void; stop(): void } | null = null;
+	let challenge: ReturnType<typeof createChallenge> | null = null;
 	/** the step the last reading was on, which is what makes a reading a transition. */
 	let previous: State['step'] | null = null;
 
@@ -214,8 +219,21 @@ export function startCheckout(
 				challengeMount,
 				(token) => actor.send({ type: 'SET_TURNSTILE_TOKEN', token }),
 				(failure) => actor.send({ type: 'CHALLENGE_UNAVAILABLE', failure }),
-				seams?.challenge
+				{
+					// the config arrived with this page, so its address is the page's own.
+					configUrl: challengeMount.ownerDocument.URL,
+					onInteractive: (needed) =>
+						actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: needed }),
+					...(seams?.challenge === undefined ? {} : { seam: seams.challenge })
+				}
 			);
+		}
+
+		// the details step's node is hidden by the time a press is held, and a widget asking for the
+		// donor inside a node with no box is one they cannot answer. a redraw into the node it is
+		// already in does nothing, so this is said on every reading of that state.
+		if (snapshot.value === 'holding' && snapshot.context.challengeInteractive) {
+			challenge?.redraw?.(heldChallengeMount);
 		}
 
 		if (previous === 'working' && state.step !== 'working') challenge?.reset();

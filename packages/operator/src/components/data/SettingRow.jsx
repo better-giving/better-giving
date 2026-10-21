@@ -28,10 +28,8 @@
    the row is at fault and gives a reader no way to find out why. it stands after the label, because
    the row is read and then the note saying it is the one at fault.
 
-   nothing stands after the value. a second slot there held the mark that opened a card naming the
-   terminal command that sets the row — a shape the console argues against, since an operator uses
-   it instead of a terminal, and a screen that cannot avoid naming one draws it in its own flow
-   rather than hiding it behind a mark somebody has to find.
+   nothing stands after the value: a screen that has to name the command that sets a row draws it
+   in its own flow rather than hiding it behind a mark somebody has to find.
 
    what opens a card is the screen's and not this part's — a part here carries no machine of its
    own. no suite renders every export in this package to check that; packages/gallery draws them

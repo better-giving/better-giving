@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 // operator commands run at the repo root (CLAUDE.md), so `pnpm run x` written anywhere here means
 // the root's `x` — a script of that name in a package manifest is not what an operator standing in
 // the repository would reach, and pnpm does not fall back to the root for them either. the two
-// forms without `run` — `pnpm dev`, `pnpm wrangler` — resolve the same way and are matched here too.
+// forms without `run` — `pnpm dev`, `pnpm check` — resolve the same way and are matched here too.
 //
 // the sweep reaches out of this package to the root documents, which is where the other half of
 // these sentences are written: DEPLOY.md is read by an operator with a terminal open, and a command
@@ -38,7 +38,7 @@ const files = [
 	...globSync('src/**/*.{ts,tsx}'),
 	...globSync('scripts/**/*.js'),
 	...globSync('migrations/*.sql'),
-	'.dev.vars.example',
+	`${ROOT}/.env.example`,
 	...globSync(`${ROOT}/*.md`)
 ].filter((file) => !file.endsWith('commands.spec.ts'));
 

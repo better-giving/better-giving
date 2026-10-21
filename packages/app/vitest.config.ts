@@ -1,20 +1,19 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 import { routeFiles } from './vite/route-files';
+import { versionDefine } from './version-define';
 
 // the spec pools, and a config of their own rather than a `test` block inside ./vite.config.ts.
 //
-// that file is the build: `@cloudflare/vite-plugin` and `reactRouter()` between them stand up a
-// worker runtime and a route manifest, and neither has anything to do with a spec that imports a
-// module and calls it. vitest reads this file in preference to that one, so the two never meet.
+// that file is the build: `reactRouter()` stands up a route manifest, and that has nothing to do
+// with a spec that imports a module and calls it. vitest reads this file in preference to that one, so the two never meet.
 //
-// three pools, split by what a spec needs.
+// three projects, split by what a spec needs.
 //
-// `*.workers.spec.ts` runs inside workerd against a real D1 — anything that touches the database
+// `*.db.spec.ts` runs in node against a real libSQL file — anything that touches the database
 // belongs there, because the things worth asserting about it (STRICT rejects a float, `batch()`
-// rolls back, a UNIQUE index refuses a redelivery) are properties of D1 and cannot be proven
-// against a stand-in. ./vitest.workers.config.ts is that pool, and its header says why it is a
-// file rather than an entry here.
+// rolls back, a UNIQUE index refuses a redelivery) are properties of the database and cannot be
+// proven against a stand-in.
 //
 // `*.dom.spec.*` runs in happy-dom, and what it is for is the one thing a server render cannot
 // reach: a state react router only ever puts a screen in while a navigation is in flight. a
@@ -30,6 +29,10 @@ import { routeFiles } from './vite/route-files';
 // everything else runs in node, which is faster to start and enough for pure logic.
 
 export default defineConfig({
+	// the same constant ./vite.config.ts builds with: a spec that mounts the console surface meets the
+	// name its report reads. the variable is unset when the suite runs, so what a spec reads is
+	// `null`, which is what a checkout build answers with too.
+	define: versionDefine,
 	// the "server" project below resolves src/lib/page/slug.ts, which imports `virtual:route-files`
 	// — the same plugin ./vite.config.ts registers for the build, so a spec sees the same route
 	// list a request does.
@@ -41,7 +44,6 @@ export default defineConfig({
 		// a stubbed global (fetch, and its kind) is restored before the next test runs too
 		unstubGlobals: true,
 		projects: [
-			'./vitest.workers.config.ts',
 			{
 				extends: true,
 				resolve: {
@@ -53,23 +55,38 @@ export default defineConfig({
 				test: {
 					name: 'server',
 					environment: 'node',
-					// three roots, and each is a place a spec sits beside its subject: `src/` is the
-					// app, `scripts/` the operator scripts — plain node with no binding and no DOM
-					// under them — and the package root, where the config specs that read this
-					// package's own config files live (./form-rules.spec.ts).
+					// four roots, and each is a place a spec sits beside its subject: `src/` is the
+					// app, `scripts/` the operator scripts and `server/` the HTTP server — plain node
+					// with no DOM under either — and the package root, where the config specs that
+					// read this package's own config files live (./form-rules.spec.ts).
 					include: [
 						'src/**/*.{test,spec}.{js,ts}',
 						'scripts/**/*.{test,spec}.{js,ts}',
+						'server/**/*.{test,spec}.{js,ts}',
 						'*.{test,spec}.{js,ts}'
 					],
 					exclude: [
-						// the workers pool owns these; without the exclusion node would collect them
-						// too and fail on the `cloudflare:test` import.
-						'src/**/*.workers.{test,spec}.{js,ts}',
-						// and the dom pool these; node would collect a `.ts` one and fail on
+						// the dom pool owns these; node would collect a `.ts` one and fail on
 						// `document` being undefined.
-						'src/**/*.dom.{test,spec}.{js,ts}'
+						'src/**/*.dom.{test,spec}.{js,ts}',
+						// and the db project these, so each runs once and against its own file.
+						'src/**/*.db.{test,spec}.{js,ts}',
+						'server/**/*.db.{test,spec}.{js,ts}'
 					]
+				}
+			},
+			{
+				extends: true,
+				resolve: { alias: { $lib: resolve(import.meta.dirname, 'src/lib') } },
+				test: {
+					name: 'db',
+					environment: 'node',
+					// a real libSQL file per spec file, with every committed migration applied
+					// (src/lib/server/db/database.testing.ts). that module holds the handle at module
+					// scope, so it relies on vitest's default `isolate: true` — one module registry per
+					// spec file, so one database per spec file. turning isolation off would hand every
+					// file the first one's rows.
+					include: ['src/**/*.db.{test,spec}.ts', 'server/**/*.db.{test,spec}.ts']
 				}
 			},
 			{

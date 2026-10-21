@@ -19,9 +19,8 @@
 /**
  * what the widget is called on the Cloudflare account it is created in.
  *
- * the Worker's own name, as `wrangler.jsonc` spells it. that is not a deployment artifact under
- * the no-artifacts rule in CLAUDE.md — a fork keeps the name and renames it when it renames the
- * Worker — and one name across both is what makes a second widget on the same account obviously a
- * second one. `packages/console/internal/release/config_test.go` holds the two equal.
+ * the app's own name. that is not a deployment artifact under the no-artifacts rule in AGENTS.md →
+ * Never — a fork keeps the name and renames it when it renames the app — and one name across both
+ * is what makes a second widget on the same account obviously a second one.
  */
 export const TURNSTILE_WIDGET_NAME = 'better-giving';

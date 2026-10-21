@@ -1,3 +1,4 @@
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { data, redirect } from 'react-router';
 import { operatorLinks } from '$lib/admin/operator-links';
@@ -19,11 +20,9 @@ import type { Route } from './+types/quickbooks.connect';
 // where connecting a QuickBooks company begins: the operator's browser lands here and is sent on to
 // Intuit's consent screen.
 //
-// **it is public, and the guard is on the address rather than on the surface.** it cannot sit
-// behind the dashboard's login — the operator is holding the console, which is a different sign-in
-// — and it cannot sit on the console's own wire surface, because what has to happen here is a
-// browser redirect and the console's credential is a bearer header a browser attaches to nothing.
-// so the console mints a short-lived signed address and this route checks it
+// **it is public, and the guard is on the address rather than on the surface.** the deployer's
+// press on ./_app.admin.books.tsx starts the trip behind the deployer's session, so it mints a
+// short-lived signed address and this route checks it
 // ($lib/server/accounting/connect-link.ts), and ../routes.spec.ts holds the file on the public list
 // with that reason beside it.
 //
@@ -31,9 +30,10 @@ import type { Route } from './+types/quickbooks.connect';
 // Intuit and comes back with a company connected, so a stranger would connect *their* books and
 // this organisation's gifts would be posted into them.
 //
-// **the `state` is minted here and not on the console.** it has to be in a cookie on the browser
-// that is about to travel, and the console is not that browser. a replayed start address therefore
-// mints a fresh one, which is exactly what makes replaying it worth nothing.
+// **the `state` is minted here and not by the press that minted the address.** it has to be in a
+// cookie on the browser that is about to travel, and only this route knows which browser that is.
+// a replayed start address therefore mints a fresh one, which is exactly what makes replaying it
+// worth nothing.
 //
 // **the `redirect_uri` sent to Intuit is the deployment's own address rather than this request's
 // host.** it has to be the one registered with them, byte for byte, or the round trip is refused at
@@ -103,21 +103,24 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	return redirect(started.value, { headers: { 'set-cookie': connectStateCookie(state) } });
 }
 
+/** where every page of the round trip leads back to: the Books screen, at its QuickBooks half. */
+const BOOKS = '/admin/books#quickbooks';
+
 /**
- * the page a browser that was not sent on is left looking at.
- *
- * it draws no control, and that is the shape rather than an omission: what repairs either arm is on
- * the console, on the machine the operator opened this from, and a press here could only be a
- * second start address minted by the thing that already refused this one.
+ * the page a browser that was not sent on is left looking at, and the way back to Books — where
+ * the press that starts the trip is.
  */
 export default function QuickbooksConnect({ loaderData }: Route.ComponentProps) {
 	if (loaderData.refusal === 'setup') {
+		// reached only where the keys left the server within a start link's life: the press that
+		// mints one is drawn once they are held, and Books is where the server steps are.
 		return (
 			<PanelRoute>
-				<h1>This deployment has no QuickBooks credentials</h1>
+				<h1>QuickBooks can’t be connected</h1>
 				<p className="adm-prose">
-					Put your Intuit app’s credentials in on the console, then try again.
+					The server no longer holds the Intuit app’s keys, and Books says which ones to add.
 				</p>
+				<BackToBooks />
 			</PanelRoute>
 		);
 	}
@@ -125,7 +128,22 @@ export default function QuickbooksConnect({ loaderData }: Route.ComponentProps) 
 	return (
 		<PanelRoute>
 			<h1>This link has expired</h1>
-			<p className="adm-prose">Go back to the console for a new one.</p>
+			<p className="adm-prose">Start again from Books.</p>
+			<BackToBooks />
 		</PanelRoute>
+	);
+}
+
+/**
+ * the one control every page of the round trip carries: a whole-document load, since this page
+ * stands outside the dashboard's layout and its session.
+ */
+function BackToBooks() {
+	return (
+		<div className="adm-actions">
+			<Button as="a" href={BOOKS}>
+				Back to Books
+			</Button>
+		</div>
 	);
 }

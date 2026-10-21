@@ -45,7 +45,7 @@ const PROBE_PASSWORD = 'doctor-probe-not-a-real-password';
 const TIMEOUT_MS = 15_000;
 
 /** where a password is put right, in the words the console draws it under. */
-const FIX = 'the console (`better-giving start`), under Dashboard password';
+const FIX = 'the console, under Dashboard password';
 
 process.exit(await main());
 
@@ -136,9 +136,8 @@ async function main() {
 	console.error(`FAILED: ${endpoint} could not sign anyone in (${res.status}).`);
 	console.error(`  either ADMIN_PASSWORD is unusable — set it again on ${FIX},`);
 	console.error('  it applies immediately — or migrations have not reached the database this');
-	console.error('  deployment is bound to, which the console applies when it updates a');
-	console.error('  deployment. the logs name which: the Cloudflare dashboard has them, and');
-	console.error('  `pnpm run logs` reads them from a checkout.');
+	console.error('  deployment reads, which `pnpm run db:migrate` applies. the container’s logs');
+	console.error('  name which.');
 	return 1;
 }
 

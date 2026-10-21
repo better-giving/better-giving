@@ -11,7 +11,7 @@ import {
 	WEBHOOK_RETRY_SCHEDULE_MS
 } from '../webhooks/deliver';
 import { signedHeaders } from '../webhooks/sign';
-import { readWranglerConfig } from '../wrangler-config.testing';
+import { RATE_LIMITS } from '../runtime/rate-limiter';
 import officialSchema from './oas-3.1-schema.testing.json';
 import { openApiDocument, spokenDuration } from './openapi';
 import { componentValidator } from './openapi.testing';
@@ -27,7 +27,7 @@ import { INTEGRATIONS_BASE_PATH, INTEGRATIONS_LISTS, INTEGRATIONS_REFUSALS } fro
 // component and webhook schema is compiled here as JSON Schema 2020-12 as well.
 //
 // and it is held to what it describes: the list routes that exist, the event catalog, the retry
-// schedule and pause the delivery run reads, and the limits wrangler.jsonc binds. each of those
+// schedule and pause the delivery run reads, and the limits the server builds (`RATE_LIMITS` in ../runtime/rate-limiter.ts). each of those
 // changed on one side only is a case below that fails.
 //
 // ajv 8 resolves the schema's `$dynamicRef: "#meta"` against the whole document rather than the
@@ -83,24 +83,6 @@ function servedPaths(): string[] {
 		)
 		.sort();
 }
-
-/**
- * every block of limiters wrangler.jsonc declares, read the way ../api/rate-limit.config.spec.ts
- * reads them.
- */
-type Limiter = { name?: unknown; simple?: { limit?: unknown; period?: unknown } };
-type Wrangler = {
-	ratelimits?: Limiter[];
-	env?: Record<string, { ratelimits?: Limiter[] } | undefined>;
-};
-const wrangler = readWranglerConfig() as Wrangler;
-const LIMITER_BLOCKS = [
-	{ where: 'the top level', limiters: wrangler.ratelimits },
-	...Object.entries(wrangler.env ?? {}).map(([name, environment]) => ({
-		where: `env.${name}`,
-		limiters: environment?.ratelimits
-	}))
-];
 
 describe('openApiDocument() against what it describes', () => {
 	it('names this request’s own origin as the server, at the read API’s prefix', () => {
@@ -212,17 +194,16 @@ describe('openApiDocument() against what it describes', () => {
 		expect([...documented].sort()).toEqual([...INTEGRATIONS_REFUSALS].sort());
 	});
 
-	it.each(LIMITER_BLOCKS)('publishes the rate limits $where binds', ({ limiters }) => {
-		const bound = (name: string) => limiters?.find((entry) => entry.name === name)?.simple;
+	it('publishes the rate limits the server builds', () => {
 		const limits = document['x-rate-limits'];
 
 		expect({ limit: limits.per_key.requests, period: limits.per_key.period_seconds }).toEqual(
-			bound('INTEGRATIONS_KEY_RATE_LIMITER')
+			RATE_LIMITS.INTEGRATIONS_KEY_RATE_LIMITER
 		);
 		expect({
 			limit: limits.per_address.requests,
 			period: limits.per_address.period_seconds
-		}).toEqual(bound('API_RATE_LIMITER'));
+		}).toEqual(RATE_LIMITS.API_RATE_LIMITER);
 	});
 });
 

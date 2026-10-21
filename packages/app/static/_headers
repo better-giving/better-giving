@@ -5,8 +5,8 @@
 # never edited again, so /embed.js is the only request an already-pasted snippet repeats. cache it
 # long and an upgrade arrives nowhere: there is no version to bump on the org's page and nobody to
 # ask. it is re-read every few minutes instead, and each read already carries the path of the
-# runtime it should load. Cloudflare attaches an ETag to a static asset by default, so a re-read
-# that finds nothing new costs a 304 rather than the file.
+# runtime it should load. the server attaches an ETag to every static file, so a re-read that finds
+# nothing new costs a 304 rather than the file.
 #
 # the runtime under /embed is named by the hash of its own contents, so a new build is a new URL
 # and that tier is never revalidated.
@@ -16,8 +16,8 @@
 # whose pattern matches.
 #
 # this file is in static/ because that is the public directory (../vite.config.ts): vite copies it
-# whole into build/client/, which is the assets directory the built worker uploads, and cloudflare
-# reads a `_headers` file at the root of the assets it is serving.
+# whole into build/client/, the directory the server serves, and the server reads a `_headers` file
+# at the root of that directory (../server/static-headers.ts) and never serves the file itself.
 
 /embed.js
 	Cache-Control: public, max-age=300, must-revalidate

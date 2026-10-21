@@ -37,7 +37,7 @@ vi.mock('@better-giving/operator/images/resize', async (actual) => ({
 // the loader and the server's action are stand-ins, one drawing the fixture below and the other
 // recording each body and answering what the case scripts, or rejecting the way a browser's
 // `fetch` does when the request never left; what the real ones do is
-// ./_app.admin.campaigns.$pageId.workers.spec.ts's. every press goes through the route's own
+// ./_app.admin.campaigns.$pageId.db.spec.ts's. every press goes through the route's own
 // `clientAction`, as it does in a browser.
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed

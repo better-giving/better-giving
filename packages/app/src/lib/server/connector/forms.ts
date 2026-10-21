@@ -2,9 +2,10 @@ import { eq } from 'drizzle-orm';
 import { FORM_CURRENCY, majorText } from '../../forms/amounts';
 import type { FormInputField, FormInputFieldErrors, FormInputValues } from '../../forms/fields';
 import { NEW_FORM } from '../../forms/new-form';
-import { anyBlocker } from '../../forms/readiness';
 import { unlistedSiteProblem, unlistedSites } from '../../forms/input-schema';
 import type { ProgramMode } from '../../forms/program-modes';
+import { anyBlocker, type FormReadinessJob } from '../../forms/readiness';
+import type { ConfigEnv } from '../config/env';
 import type { Db } from '../db/client';
 import { page } from '../db/schema';
 import {
@@ -267,33 +268,55 @@ async function unlistedIssue(db: Db, origins: readonly string[]): Promise<Issue 
 		? null
 		: {
 				path: 'allowed_origins',
-				message: `${problem} Sites are listed by the operator in the console.`
+				message: `${problem} Whoever runs the server lists sites under Donation forms → Which sites your forms go on.`
 			};
 }
 
-/** whether the organisation's details stand between this deployment and a serving form. */
-async function blocked(db: Db): Promise<boolean> {
-	return anyBlocker(formsReadiness(await readOrgProfile(db)));
-}
+/** what a refusal of Live says of each line of the dashboard's block, by its job. */
+const WITHHELD_BY: Readonly<Record<FormReadinessJob, string>> = {
+	organisation:
+		'the organisation’s details are not finished, and a form serves no donor until they are; whoever runs the server fills them in under Organisation details in Settings',
+	processor:
+		'no payment processor is set up in a shape a form can be served on, so no gift can be charged; whoever runs the server sets one processor’s keys in `.env`, and the Payments screen in the dashboard says what is missing',
+	notices:
+		'a processor’s payment notices are not verified, so a settled charge is never heard about; whoever runs the server sets its webhook value in `.env`'
+};
 
-const NOT_READY =
-	'the organisation’s details are not finished, and a form serves no donor until they are; the operator fills them in on the console';
+/**
+ * why a form cannot be live on this deployment yet, or `null` where it can: the gate the
+ * dashboard's two form screens hold Live behind (`formsReadiness`, `anyBlocker`), worded for the
+ * chat by the lines that block.
+ */
+async function liveWithheld(db: Db, config: ConfigEnv): Promise<string | null> {
+	const lines = formsReadiness(await readOrgProfile(db), config);
+	if (lines === null || !anyBlocker(lines)) return null;
+	return lines
+		.filter((line) => line.severity === 'blocker')
+		.map((line) => WITHHELD_BY[line.job])
+		.join('; and ');
+}
 
 /**
  * makes a form, through the rules and the defaults of the dashboard's Add a donation form: what the
- * body leaves out is what that screen opens on (`NEW_FORM`).
+ * body leaves out is what that screen opens on (`NEW_FORM`). a draft is made whatever the
+ * deployment lacks, as that screen saves one; a live one only where nothing withholds Live.
  */
-export async function createConnectorForm(db: Db, body: unknown): Promise<Done | Refused> {
+export async function createConnectorForm(
+	db: Db,
+	config: ConfigEnv,
+	body: unknown
+): Promise<Done | Refused> {
 	const boxes = boxesFrom(body, NEW_FORM);
 	if ('issues' in boxes) return refusedFields('The form', boxes.issues);
 	const parsed = parseFormInput(boxes.values);
 	if (!parsed.ok) return refusedFields('The form', issuesOf(parsed.errors));
-	if (await blocked(db))
+	const withheld = parsed.value.status === 'live' ? await liveWithheld(db, config) : null;
+	if (withheld !== null)
 		return {
 			ok: false,
 			status: 409,
 			code: 'not_ready',
-			detail: `No form was made: ${NOT_READY}.`
+			detail: `No form was made: ${withheld}.`
 		};
 	const unlisted = await unlistedIssue(db, parsed.value.allowedOrigins);
 	if (unlisted !== null) return refusedFields('The form', [unlisted]);
@@ -386,6 +409,7 @@ function unconfirmed(stored: StoredForm): Refused {
  */
 export async function updateConnectorForm(
 	db: Db,
+	config: ConfigEnv,
 	id: string,
 	body: unknown
 ): Promise<Done | Refused> {
@@ -441,9 +465,10 @@ export async function updateConnectorForm(
 		const parsed = parseFormName(values);
 		if (!parsed.ok) issues.push(...issuesOf(parsed.errors));
 		else {
-			// the editor's one refusal no box states: Live while the organisation's details stand.
-			if (parsed.value.status === 'live' && (await blocked(db)))
-				issues.push({ path: 'status', message: `cannot be live yet: ${NOT_READY}` });
+			// the editor's one refusal no box states: Live while a line of its block is a blocker.
+			const withheld = parsed.value.status === 'live' ? await liveWithheld(db, config) : null;
+			if (withheld !== null)
+				issues.push({ path: 'status', message: `cannot be live yet: ${withheld}` });
 			writes.push({
 				fields: 'name and status',
 				columns: parsed.value,

@@ -14,7 +14,7 @@ import ExportEntries from './_app.admin.donations.export';
 
 // the Export screen, drawn.
 //
-// what it covers is everything the workers spec beside it cannot reach. that file drives the
+// what it covers is everything the db spec beside it cannot reach. that file drives the
 // `loader` and renders nothing — so the markup this screen composes has no reader at all: which
 // boxes exist, which presses are drawn, what each press carries, where a refusal lands, how long
 // it stands there, and how long the press that caused it is held.

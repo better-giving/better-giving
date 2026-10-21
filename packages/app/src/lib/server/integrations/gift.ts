@@ -188,7 +188,7 @@ const gift = alias(payment, 'gift');
 /**
  * a gift. `payment_settled_gift_occurred_at_idx` and `payment_settled_gift_created_at_idx` in
  * ../db/schema.ts are partial on these values, so each walk reads its index only while the two
- * agree (./list-pages.plan.workers.spec.ts).
+ * agree (./list-pages.plan.db.spec.ts).
  */
 const isGift = (row: typeof payment | typeof gift) =>
 	and(eq(row.status, 'succeeded'), eq(row.direction, 'inbound'));

@@ -12,6 +12,7 @@ import {
 	paypalSdkUrl,
 	paypalSubscriptions
 } from './paypal';
+import { SUBSCRIBED_EVENT_TYPES } from '@better-giving/operator/paypal/webhook-listener';
 
 // the adapter, exercised through a recording `fetch` rather than a stubbed SDK.
 //
@@ -33,7 +34,7 @@ import {
 // test runs and no case leaks its script into another.
 //
 // what this pool cannot see is whether the transport works at all, because a stub answers every
-// call. ./paypal.workers.spec.ts is where that is covered, inside workerd.
+// call. ./paypal-token.spec.ts is where that is covered, inside workerd.
 
 /** one request the adapter made, as the assertions need to read it. */
 type Recorded = {
@@ -4166,6 +4167,96 @@ describe('the listeners the app holds', () => {
 	});
 });
 
+describe('registering this deployment’s listener', () => {
+	const HERE = 'https://give.example.org/api/paypal/webhook';
+	const listener = (
+		id: string,
+		url: string,
+		names: readonly string[] = SUBSCRIBED_EVENT_TYPES
+	) => ({
+		id,
+		url,
+		event_types: names.map((name) => ({ name, description: 'x', status: 'ENABLED' }))
+	});
+
+	/** the listener's own id is what `PAYPAL_WEBHOOK_ID` takes, so it is the verification value. */
+	it('creates a listener at the address, subscribed to what the listener route reads', async () => {
+		const { calls } = recording([
+			{ status: 200, json: { webhooks: [listener('WH-OTHER', 'https://other.example/x')] } },
+			{ status: 201, json: listener('WH-NEW', HERE) }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).registerWebhookEndpoint(HERE);
+
+		const create = apiCall(calls, 1);
+		expect(create?.method).toBe('POST');
+		expect(path(create)).toBe('/v1/notifications/webhooks');
+		expect(sent(create)).toEqual({
+			url: HERE,
+			event_types: SUBSCRIBED_EVENT_TYPES.map((name) => ({ name }))
+		});
+		expect(result.ok && result.value.verificationValue).toBe('WH-NEW');
+		expect(result.ok && result.value.endpoint.id).toBe('WH-NEW');
+	});
+
+	/** the list is the idempotency guard: a create that landed unanswered is found, never doubled. */
+	it('refuses where a listener is already at the address, naming its id, and creates nothing', async () => {
+		const { calls } = recording([{ status: 200, json: { webhooks: [listener('WH-HERE', HERE)] } }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).registerWebhookEndpoint(HERE);
+
+		expect(result.ok === false && result.reason).toBe('invalid_request');
+		expect(result.ok === false && result.detail).toContain('WH-HERE');
+		expect(apiCall(calls, 1)).toBeUndefined();
+	});
+
+	it('refuses an app already holding ten listeners, before any create', async () => {
+		const full = Array.from({ length: 10 }, (_, n) =>
+			listener(`WH-${n}`, `https://f${n}.example/x`)
+		);
+		const { calls } = recording([{ status: 200, json: { webhooks: full } }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).registerWebhookEndpoint(HERE);
+
+		expect(result.ok === false && result.reason).toBe('invalid_request');
+		expect(result.ok === false && result.detail).toMatch(/ten listeners/);
+		expect(apiCall(calls, 1)).toBeUndefined();
+	});
+
+	it('refuses an address that is not https, asking PayPal nothing', async () => {
+		const { calls } = recording([]);
+
+		const result = await createPaypalProvider(CREDENTIALS).registerWebhookEndpoint(
+			'http://localhost:5173/api/paypal/webhook'
+		);
+
+		expect(result.ok === false && result.reason).toBe('invalid_request');
+		expect(result.ok === false && result.detail).toMatch(/https/);
+		expect(calls).toEqual([]);
+	});
+
+	/** its id is unchanged by the patch, so `PAYPAL_WEBHOOK_ID` goes on verifying across it. */
+	it('brings a listener’s subscription to exactly what the listener route reads, keeping its id', async () => {
+		const { calls } = recording([
+			{ status: 200, json: listener('WH-HERE', HERE, SUBSCRIBED_EVENT_TYPES) }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).resubscribeWebhookEndpoint('WH-HERE');
+
+		const patch = apiCall(calls);
+		expect(patch?.method).toBe('PATCH');
+		expect(path(patch)).toBe('/v1/notifications/webhooks/WH-HERE');
+		expect(JSON.parse(patch?.body ?? 'null')).toEqual([
+			{
+				op: 'replace',
+				path: '/event_types',
+				value: SUBSCRIBED_EVENT_TYPES.map((name) => ({ name }))
+			}
+		]);
+		expect(result.ok && result.value.id).toBe('WH-HERE');
+	});
+});
+
 describe('the arms this release does not build', () => {
 	/**
 	 * every unbuilt arm refuses with a member of the closed set, and none of them throws.
@@ -4176,8 +4267,6 @@ describe('the arms this release does not build', () => {
 	 * operator to set a value would send them somewhere that changes nothing.
 	 */
 	it.each([
-		['registerWebhookEndpoint', (p: PaymentProvider) => p.registerWebhookEndpoint('https://x.org')],
-		['resubscribeWebhookEndpoint', (p: PaymentProvider) => p.resubscribeWebhookEndpoint('WH-1')],
 		[
 			'replaceWebhookEndpoint',
 			(p: PaymentProvider) => p.replaceWebhookEndpoint('WH-1', 'https://x.org')

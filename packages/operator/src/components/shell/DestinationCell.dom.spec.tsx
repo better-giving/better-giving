@@ -124,14 +124,6 @@ describe('what a destination cell draws beside its name', () => {
 		expect(cell(root).querySelector(':scope > .adm-vh')?.textContent).toBe(', Not set up');
 	});
 
-	it('ends a headed group only where told to', () => {
-		const end = render(DestinationCell, { children: 'PayPal', groupEnd: true });
-		const middle = render(DestinationCell, { children: 'Stripe' });
-
-		expect(cell(end).classList.contains('adm-dest--groupend')).toBe(true);
-		expect(cell(middle).classList.contains('adm-dest--groupend')).toBe(false);
-	});
-
 	it('hands the pointer hint to the link', () => {
 		const root = render(DestinationCell, { children: 'Stripe', title: 'Stripe', link: Handed });
 

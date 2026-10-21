@@ -23,10 +23,9 @@ import { EDITABLE_FORM_STATUSES } from './statuses';
 // imports from `$lib/server/**`.
 //
 // what a site allowed to embed a form may be is not in this folder at all, and sits one step
-// further out than that: `@better-giving/operator/origins` holds those rules, because the console
-// applies the same ones in front of the operator typing a site — before it levels a Turnstile
-// widget against a host this deployment would then refuse to serve. the constraint above is
-// unchanged by the move and is what the leaf package satisfies: it imports nothing of the app's, so
+// further out than that: `@better-giving/operator/origins` holds those rules, because the site list
+// under Donation forms applies the same ones in front of the operator typing a site. the
+// constraint above is what the leaf package satisfies: it imports nothing of the app's, so
 // the schema below still reaches the rules from a browser where `$lib/server/**` is closed to it.
 //
 // what is here is field-level with three stated exceptions. two are the giving group's: the
@@ -110,7 +109,7 @@ export function amountBound() {
  * differently.
  *
  * it is a real state rather than a guard against one. both invariants over these two lists are
- * read-then-write and D1 has no interactive transaction (see `$lib/server/db/client.ts`), so a site
+ * read-then-write and `Db` has no interactive transaction (see `$lib/server/db/client.ts`), so a site
  * can leave the shared list between a form screen being drawn and its save being pressed. the
  * residue is a form holding a site the list no longer has, which is harmless on the public path —
  * `corsHeaders` in `$lib/server/api/cors.ts` reads the form's own column and knows nothing about the
@@ -137,7 +136,7 @@ export function unlistedSites(ticked: readonly string[], listed: readonly string
  * pass. `null` is nothing in the way, which is what the caller acts on.
  *
  * it names the two ways out, because either is a real answer: the site can be unticked here, or it
- * can be listed again on the console and stay on this form.
+ * can be listed again in the sites card on /admin/forms and stay on this form.
  */
 export function unlistedSiteProblem(unlisted: readonly string[]): string | null {
 	if (unlisted.length === 0) return null;
@@ -145,7 +144,7 @@ export function unlistedSiteProblem(unlisted: readonly string[]): string | null 
 		.map(
 			(origin) =>
 				`\`${origin}\` is no longer listed for this deployment. Untick it, or list it again ` +
-				'on the console.'
+				'under Which sites your forms go on, on Donation forms.'
 		)
 		.join(' ');
 }

@@ -24,8 +24,8 @@
  * a screen and not, which is a policy this codebase keeps rather than a boundary it defends.
  *
  * one home, because the policy cannot be true of some messages only. a sentence written by
- * `./server/email/smtp-config.ts` is answered verbatim by the console's send-test
- * (`../routes/console.test-email.ts`), so a second copy of this rule anywhere is a
+ * `./server/email/smtp-config.ts` is answered verbatim by the send test on Settings
+ * (`../routes/_app.admin.settings.tsx`), so a second copy of this rule anywhere is a
  * surface that quotes a credential in full while the module beside it does not. every message in
  * this app that names an offending value comes through here.
  */

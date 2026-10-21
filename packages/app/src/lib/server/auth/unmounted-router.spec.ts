@@ -75,11 +75,11 @@ describe("better-auth's router is mounted by nothing", () => {
 
 	it('finds source files to scan at all', () => {
 		// a guard on the guard: an empty list would make the assertion below pass vacuously, and a
-		// wrong `SRC` is exactly how that happens. the route tree and the worker entry are named
+		// wrong `SRC` is exactly how that happens. the route tree and the server entry are named
 		// because they are where a mounting would go.
 		const names = files.map((f) => relative(SRC, f));
 		expect(names).toContain('routes.ts');
-		expect(names).toContain('worker.ts');
+		expect(names).toContain('server/app.ts');
 		expect(names).toContain('routes/login.tsx');
 		expect(names.length).toBeGreaterThan(10);
 	});

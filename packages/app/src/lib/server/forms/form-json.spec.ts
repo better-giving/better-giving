@@ -9,7 +9,7 @@ import {
 
 // node pool, no database — the columns these read and write are plain text holding JSON, so
 // what is under test is decidable from a string alone. that the text a `CHECK` accepts is the
-// text these produce is ./queries.workers.spec.ts's claim, against a real D1.
+// text these produce is ./queries.db.spec.ts's claim, against a real database.
 
 describe('the JSON column seam', () => {
 	it('round-trips a parsed list through the column encoding', () => {
@@ -39,8 +39,8 @@ describe('the JSON column seam', () => {
 
 	it('drops a repeated origin, keeping the first of them', () => {
 		// a repeat says nothing a CORS allowlist can act on — the check is membership — and the
-		// column's own `CHECK` asks for an array and nothing about what is in it, so a hand-run
-		// `wrangler d1 execute` is the way one gets in. dropped here rather than at either
+		// column's own `CHECK` asks for an array and nothing about what is in it, so a statement run
+		// by hand against the database file is the way one gets in. dropped here rather than at either
 		// consumer: `src/routes/_app.admin.forms._index.tsx` keys its site list by the origin,
 		// and react reuses one element across both records on a duplicate key rather than
 		// rendering the second — silently dropping a site from the list instead of loudly failing.
@@ -75,7 +75,7 @@ describe('the JSON column seam', () => {
 		// the same fail-closed posture as `decodeAllowedOrigins`, and the elements matter more
 		// here: `form_suggested_amounts_array_check` asks for an array and says nothing about
 		// what is in it, so a float, a negative or a string reaching this column is reachable
-		// through a hand-run `wrangler d1 execute`. a float in a money column is the failure
+		// through a hand-run statement. a float in a money column is the failure
 		// `STRICT` exists to stop one layer down, and it must not reach a tile a donor clicks.
 		expect(decodeSuggestedAmounts('not json')).toEqual([]);
 		expect(decodeSuggestedAmounts('{"a":1}')).toEqual([]);
@@ -87,7 +87,7 @@ describe('the JSON column seam', () => {
 		// `Number.isInteger(1e21)` is true — every float that large is a whole number, and none of
 		// them is the number anybody typed. the same floor `readAmount` puts under a submitted
 		// box belongs on the way back out, because the write that stores one of these is a
-		// hand-run `wrangler d1 execute` rather than a save.
+		// hand-run statement rather than a save.
 		expect(decodeSuggestedAmounts('[1e21]')).toEqual([]);
 		expect(decodeSuggestedAmounts(`[${Number.MAX_SAFE_INTEGER + 2}]`)).toEqual([]);
 		expect(decodeSuggestedAmounts(`[${Number.MAX_SAFE_INTEGER}]`)).toEqual([

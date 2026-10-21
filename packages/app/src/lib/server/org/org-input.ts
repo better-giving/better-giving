@@ -14,17 +14,17 @@ import { z } from 'zod';
 // split from ./queries.ts for the same reason `contacts/contact-input.ts` is: every rule
 // about what an org profile may be — which fields the row cannot exist without, what counts
 // as an email, what a blank means — is decidable from the submitted values alone. keeping
-// the parse here means it is testable with no D1 and no browser, and it means the endpoint
-// that takes a profile over the wire (../../../routes/console.org.ts) stays a translation layer
-// rather than the place the rules live.
+// the parse here means it is testable with no database and no browser, and it means the action
+// that takes a profile over the wire (../../../routes/_app.admin.settings.tsx) stays a translation
+// layer rather than the place the rules live.
 //
 // how the rules are stated. every rule an org profile has is a property of a single value —
 // trim, blank becomes `null`, the length caps, the fields that must be filled in, the
 // email pattern — so all of them are zod schemas and nothing is left as a hand-written check
 // underneath. they are stated in `@better-giving/operator/console/org-rules` rather than here,
-// along with what is deliberately not checked and why, because the console's Organisation details fold
-// runs the same rules in the browser in front of the person typing — and that package is a leaf
-// this app and the console can both reach, where `$lib/server/**` is closed to a component
+// along with what is deliberately not checked and why, because the Organisation details form on
+// Settings runs the same rules in the browser in front of the person typing — and that package is
+// a leaf a component can reach, where `$lib/server/**` is closed to one
 // (`packages/app/form-rules.spec.ts`). what this file adds to them is `.nullable()`.
 // `contacts/contact-input.ts` keeps a block of plain typescript below its schemas for the rules
 // that read more than one field at a time; there are none of those here, which is why the whole
@@ -48,7 +48,7 @@ import { z } from 'zod';
  * markup, in the error map and in the table, while the message itself is a sentence a
  * fundraiser reads under the input.
  *
- * re-exported rather than written out again: the console draws a box per name and this side
+ * re-exported rather than written out again: Settings draws a box per name and this side
  * states them in a save, so a list spelled on each side is a field one half stops sending while
  * the other goes on drawing a box for it (`@better-giving/operator/console/org`'s header).
  */
@@ -79,8 +79,8 @@ export type OrgProfileFieldErrors = Partial<
  *
  * those five being `string` rather than `string | null` is the whole promise: a saved row is one a
  * receipt can be printed from, so a template holding one of these has four fewer `??` in it than
- * the row does. the columns stay nullable, because a row written by `wrangler d1 execute` never
- * passed through here — see `missingForReceipt` in ./receipt-fields.ts and `identityMissing` in
+ * the row does. the columns stay nullable, because a row written by a statement run by hand
+ * never passed through here — see `missingForReceipt` in ./receipt-fields.ts and `identityMissing` in
  * ./identity.ts, which are what still report one.
  *
  * `deductibilityStatement` is not here and no screen posts one: `org_profile`'s column is a fork's
@@ -108,7 +108,7 @@ export type OrgProfileFieldErrors = Partial<
  *
  * it is not a substitute for `org_profile_legal_name_not_blank_check` on the column, and
  * the check is not a substitute for it — the brand stops a *caller*, the check stops a
- * hand-written `wrangler d1 execute` that never passes through TypeScript at all.
+ * statement written by hand against the database file, which never passes through TypeScript.
  */
 export type ParsedOrgProfile = {
 	readonly legalName: string;
@@ -139,8 +139,8 @@ export type OrgProfileParseResult =
  * `parseOrgProfile` takes this rather than `FormData` so a test states its input as an
  * object literal — `{ legal_name: 'Hope Foundation' }` is the case being made, where the
  * `FormData` that builds it is four lines of noise around it. it is also what keeps a wire format
- * off this parser entirely: `orgValues` in ../../../routes/console.org.ts reads the console's
- * posted body onto this shape and `toFormValues` in ./form-values.ts projects a stored row back
+ * off this parser entirely: `orgProfileValues` in ../../../routes/_app.admin.settings.tsx reads
+ * the posted body onto this shape and `toFormValues` in ./form-values.ts projects a stored row back
  * onto the same one to seed the boxes, so what reaches here is never a body.
  */
 export type OrgProfileFormValues = Partial<Record<OrgProfileField, string>>;
@@ -185,7 +185,7 @@ const CLEAN_FIELDS = z.object({
  *
  * the keys are the form field names, which is what makes `issue.path[0]` an error key with
  * nothing to translate. every rule is `ORG_PROFILE_FIELD_RULES` in
- * `@better-giving/operator/console/org-rules`, which the console's Organisation details fold runs too —
+ * `@better-giving/operator/console/org-rules`, which the Organisation details form on Settings runs too —
  * the only thing this stage adds is `.nullable()`, because a blank is already `null` by the time
  * it runs where a submitted box is `''`.
  *
@@ -194,7 +194,7 @@ const CLEAN_FIELDS = z.object({
  * no donation form is served without all fail the string check on `null` and come back with their
  * own sentence. a nullable wrapper over one of those rules would answer `null` without ever
  * running the rule underneath, which is how this stage would come to accept a submission the
- * console's fold refuses — the drift the header of `@better-giving/operator/console/org-rules`
+ * form on Settings refuses — the drift the header of `@better-giving/operator/console/org-rules`
  * exists to prevent. so a rule added there refusing a blank has to lose its `.nullable()` here in
  * the same edit. it is
  * also what makes this stage's output the value stored, since it is where those five stop being
@@ -217,8 +217,8 @@ const FIELD_LIMITS = z.object({
 
 /**
  * validates a submitted org profile, and its social links as the boxes were typed — read by
- * `readSocialLinks` in `@better-giving/operator/console/social-links`, the same reading the console
- * gives them. the list is stated on every call, because none sent is none stored.
+ * `readSocialLinks` in `@better-giving/operator/console/social-links`, the same reading the form on
+ * Settings gives them. the list is stated on every call, because none sent is none stored.
  *
  * returns every field error at once rather than the first: a form that reports one problem
  * per round trip is how a ten-field save takes ten submissions. the links are one more key on
@@ -291,4 +291,41 @@ export function orgProfileValues(body: FormData): OrgProfileFormValues {
 		if (typeof value === 'string') values[field] = value;
 	}
 	return values;
+}
+
+/**
+ * the notification address as its own save takes it: trimmed, a blank `null`, and otherwise held to
+ * the one rule `FIELD_LIMITS` holds it to in a whole-profile save.
+ */
+export function parseNotificationEmail(
+	value: string | undefined
+):
+	| { readonly ok: true; readonly value: string | null }
+	| { readonly ok: false; readonly error: string } {
+	const read = FIELD_LIMITS.shape.notification_email.safeParse(
+		CLEAN_FIELDS.shape.notification_email.parse(value)
+	);
+	return read.success
+		? { ok: true, value: read.data }
+		: { ok: false, error: read.error.issues.at(-1)?.message ?? read.error.message };
+}
+
+/**
+ * one row of the social links editor, as conform names it in a submitted body: `social_links[0]`
+ * is the one bracket a body may carry (`$lib/server/conform.ts` bounds the index).
+ */
+const SOCIAL_LINK_ROW = new RegExp(`^${SOCIAL_LINKS_FIELD}\\[(\\d+)\\]$`);
+
+/**
+ * the social links as the editor's rows were typed, in the order their indices name, for
+ * `parseOrgProfile` to read. a gap is an empty row, and no row at all is no links: an emptied
+ * editor submits no key.
+ */
+export function socialLinkRows(body: FormData): string[] {
+	const rows: string[] = [];
+	for (const [key, value] of body.entries()) {
+		const at = SOCIAL_LINK_ROW.exec(key);
+		if (at?.[1] !== undefined && typeof value === 'string') rows[Number(at[1])] = value;
+	}
+	return Array.from(rows, (row) => row ?? '');
 }

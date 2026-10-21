@@ -2,9 +2,10 @@ import { and, eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { estimateDeductedFee, estimateFee } from '@better-giving/form/fee';
 import type { ApiErrorCode, Deposit, FormConfig, Frequency, Quote } from '@better-giving/form/v1';
+import { LOGS_SAY_WHY } from '../../deployment-logs';
 import { formatMinor } from '../../donations/money';
 import { majorText } from '../../forms/amounts';
-import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
+import { type ChallengeCheck, type ChallengeResult, challengeKind } from '../api/challenge';
 import type { Db } from '../db/client';
 import { donation, payment } from '../db/schema';
 import type { EmailProvider } from '../email/provider';
@@ -114,7 +115,7 @@ export const QUOTE_REFUSALS = [
 	 * configured processor's account can collect, so the ordinary donor never picks a cadence that
 	 * reaches this. what does reach it is a page served while the account still held what a
 	 * repeating gift is charged against, posted after it stopped — ../forms/cadence-cache.ts keeps
-	 * that answer at the edge for minutes, and the donation path deliberately does not gate on the
+	 * that answer in the process's cache for minutes, and the donation path deliberately does not gate on the
 	 * capability a second time (CLAUDE.md, *Bans* → **Repeating gifts**), so the submission is
 	 * carried to the processor and refused there rather than turned away here.
 	 *
@@ -122,10 +123,11 @@ export const QUOTE_REFUSALS = [
 	 * sent is wrong, and a single gift on the same rail still goes through.
 	 */
 	'frequency_unsupported',
-	/** the token was not one Cloudflare would honour. a fresh challenge is the answer. */
+	/** the token or the proof of work did not clear. a fresh challenge is the answer. */
 	'challenge_failed',
 	/**
-	 * the challenge could not be made at all — no credentials, or Cloudflare did not answer.
+	 * the challenge could not be made at all — Cloudflare refused the Turnstile secret or did not
+	 * answer. ALTCHA, checked in this process, never answers this.
 	 *
 	 * separate from `challenge_failed` because no new token fixes either one, and telling a donor to
 	 * solve another challenge would put them in a loop. `TurnstileResult`'s own split is what this
@@ -242,7 +244,7 @@ export type QuoteDeps = {
 	 * a default would make a spec that forgot to pass one reach Cloudflare over the network from
 	 * inside the test runner, which is a test that passes or fails on somebody else's uptime.
 	 */
-	readonly verifyChallenge: (check: TurnstileCheck) => Promise<TurnstileResult>;
+	readonly verifyChallenge: (check: ChallengeCheck) => Promise<ChallengeResult>;
 	/**
 	 * the mail transport, for the donor's notices sent at quote time — that a fund's grant request went
 	 * (./grant-requested.ts) and where to send a crypto gift (./crypto-pending.ts) — and the alerts for
@@ -251,7 +253,7 @@ export type QuoteDeps = {
 	 */
 	readonly email: EmailProvider;
 	/**
-	 * work that finishes after the answer: the Worker's `ctx.waitUntil`.
+	 * work that finishes after the answer: the request's `platform.deferred` (src/context.ts).
 	 *
 	 * the donor's notices and the operator's alerts go here, since slow mail would otherwise
 	 * count against the form's 30-second wait on a gift already recorded or already refused.
@@ -288,11 +290,11 @@ const LINE_LABEL = 'Donation';
  */
 export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise<QuoteResult> {
 	// how often a gift may repeat and which rails a donor is shown are both read off this
-	// deployment's processor accounts through the edge cache, and the port is `deps.processors` — the
-	// same injected one every other call here uses, so this reaches no network a spec did not ask
-	// for. the request's own origin is spent as a cache key — an entry in `caches.default` belongs to
-	// the zone that asked for it, see ../forms/cadence-cache.ts and ../forms/rail-cache.ts — and as the
-	// deployment origin an intent is minted with, never the `Origin` header.
+	// deployment's processor accounts through the process's cache, and the port is
+	// `deps.processors` — the same injected one every other call here uses, so this reaches no
+	// network a spec did not ask for. the request's own origin is spent as a cache key — see
+	// ../forms/cadence-cache.ts and ../forms/rail-cache.ts — and as the deployment origin an intent is
+	// minted with, never the `Origin` header.
 	//
 	// what comes back narrows what this path *offers* and never what it *accepts*, and two things
 	// hold that. `parseQuoteRequest` below reads both vocabularies whole rather than the served
@@ -336,6 +338,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		secretKey: readTurnstileSecret(deps.env),
 		siteKey: readTurnstileSiteKey(deps.env),
 		token: submission.turnstileToken,
+		altchaPayload: submission.altchaPayload,
 		allowedHostnames: acceptableHostnames(form.allowedOrigins, origin),
 		request: attempt.request
 	});
@@ -352,8 +355,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 				form,
 				'challenge_failed',
 				challenge.detail,
-				'Reset the Turnstile widget and send the token it produces next as `turnstileToken`. ' +
-					'A token is valid once and for five minutes.'
+				CHALLENGE_RETRY_FIX[challengeKind(readTurnstileKeys(deps.env))]
 			);
 		}
 		// a transport's raw error, or a deployment holding no keys: staff's to read, not the donor's.
@@ -384,9 +386,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 			form,
 			'internal_error',
 			'The processing fee for this gift could not be computed, so nothing was charged.',
-			'This is a bug in this app rather than anything about the request or the deployment. The ' +
-				'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
-				'checkout).'
+			`This is a bug in this app rather than anything about the request or the deployment. ${LOGS_SAY_WHY}`
 		);
 	}
 
@@ -506,8 +506,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 			'internal_error',
 			PROCESSOR_FAILED,
 			'This is a bug in this app or a fault in its database rather than anything about the ' +
-				'request. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
-				'`pnpm run logs` from a checkout).'
+				`request. ${LOGS_SAY_WHY}`
 		);
 	}
 
@@ -599,8 +598,7 @@ async function mintCommitment(
 			'internal_error',
 			PROCESSOR_FAILED,
 			'This is a bug in this app or a fault in its database rather than anything about the ' +
-				'request. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
-				'`pnpm run logs` from a checkout).'
+				`request. ${LOGS_SAY_WHY}`
 		);
 	}
 
@@ -680,8 +678,7 @@ async function mintCommitment(
 			'internal_error',
 			PROCESSOR_FAILED,
 			'This is a bug in this app or a fault in its database rather than anything about the ' +
-				'request. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
-				'`pnpm run logs` from a checkout).'
+				`request. ${LOGS_SAY_WHY}`
 		);
 	}
 
@@ -846,8 +843,7 @@ async function mintGrant(
 			form,
 			'internal_error',
 			'The gift for this grant is recorded and could not be read back.',
-			'This is a fault in this deployment rather than anything about the request. The cause is in ' +
-				'this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a checkout).'
+			`This is a fault in this deployment rather than anything about the request. ${LOGS_SAY_WHY}`
 		);
 	}
 
@@ -887,8 +883,7 @@ async function mintGrant(
 		'internal_error',
 		GRANT_NOT_RECORDED,
 		'This is a fault in this deployment rather than anything about the request, and an operator ' +
-			'has been told. The cause is in this deployment’s logs (the Cloudflare dashboard, or ' +
-			'`pnpm run logs` from a checkout).'
+			`has been told. ${LOGS_SAY_WHY}`
 	);
 }
 
@@ -1104,7 +1099,7 @@ function leastGiftCharging(
  * this deployment's own host is accepted on every form and is not something an operator ticks —
  * every form served here loads on this deployment's own donation page, which is on no `site` row.
  * it comes off the request rather than off anything stored: the host a request arrived on is one
- * this worker answers on. so a form ticked onto no site at all still has an acceptable host and can
+ * this server answers on. so a form ticked onto no site at all still has an acceptable host and can
  * be given to, which is what lets an organisation with no website of its own finish setting up and
  * take a gift, and the list is never empty.
  */
@@ -1151,6 +1146,24 @@ function postsCrypto(body: unknown): boolean {
 	return (
 		typeof body === 'object' && body !== null && (body as { method?: unknown }).method === 'crypto'
 	);
+}
+
+/** what a donor's page does about a refused challenge, by the check that refused it. */
+const CHALLENGE_RETRY_FIX = {
+	turnstile:
+		'Reset the Turnstile widget and send the token it produces next as `turnstileToken`. ' +
+		'A token is valid once and for five minutes.',
+	altcha:
+		'Solve a fresh challenge from `GET /api/v1/forms/{formId}/challenge` and send its payload ' +
+		'as `altchaPayload`. A challenge clears one submission.'
+} as const;
+
+/** both Turnstile keys off the platform env, for `challengeKind`. */
+function readTurnstileKeys(env: unknown) {
+	return {
+		TURNSTILE_SITE_KEY: readTurnstileSiteKey(env),
+		TURNSTILE_SECRET_KEY: readTurnstileSecret(env)
+	};
 }
 
 /** `TURNSTILE_SECRET_KEY` off the platform env, without narrowing anything else out of it. */
@@ -1247,9 +1260,7 @@ function paymentRefusal(
 		form,
 		'internal_error',
 		PROCESSOR_FAILED,
-		'This is a bug in this app rather than anything about the request or the deployment. The ' +
-			'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
-			'checkout).'
+		`This is a bug in this app rather than anything about the request or the deployment. ${LOGS_SAY_WHY}`
 	);
 }
 
@@ -1281,9 +1292,7 @@ function unsetSentence(unset: readonly string[]): string {
 }
 
 /** where a processor's own answer went, for a `fix` whose `message` no longer carries it. */
-const LOGGED =
-	'The processor’s answer is in this deployment’s logs (the Cloudflare dashboard, or ' +
-	'`pnpm run logs` from a checkout)';
+const LOGGED = 'The processor’s answer is in the app’s log (`docker compose logs app`)';
 
 /** the adapter's sentence, where staff read it. */
 function logProcessorFailure(reason: string, detail: string): void {
@@ -1311,7 +1320,7 @@ const GRANT_NOT_RECORDED =
 
 /**
  * what the donor reads when the anti-abuse check could not be made at all: the challenge service
- * did not answer, or this deployment holds no keys for it. a fresh token fixes neither, and any
+ * did not answer, or refused this deployment's keys. a fresh token fixes neither, and any
  * other payment method meets the same check, so the one thing offered is a later try.
  */
 const CHALLENGE_UNAVAILABLE =

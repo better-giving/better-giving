@@ -1,8 +1,8 @@
 import { Layout, Paragraph } from '../components/layout';
 import type { EmailTemplate } from '../template';
 
-// the message that answers whether mail leaves this deployment at all, as one act the console
-// presses.
+// the message that answers whether mail leaves this deployment at all, as one act the Send test
+// email button on Settings → Mail presses.
 //
 // **it is a plain test and carries nothing else.** no gift, no receipt, no detail read off the
 // organisation row — the question is whether this deployment can hand a message to a mail host and

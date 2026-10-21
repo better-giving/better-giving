@@ -5,7 +5,7 @@ import { API_KEY_VARIABLE, agentPromptFor, WEBHOOK_SECRET_VARIABLE } from './age
 import { WEBHOOK_EVENT_DATA } from './openapi';
 
 // the prompt an organisation's developer pastes into an AI coding agent, held to the deployment it
-// names. src/routes/integrations.openapi[.]json.workers.spec.ts follows its instructions against a
+// names. src/routes/integrations.openapi[.]json.db.spec.ts follows its instructions against a
 // real key.
 
 const ORIGIN = 'https://give.example.org';

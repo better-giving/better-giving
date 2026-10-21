@@ -7,12 +7,12 @@ import { donation, form, lineItem, payment } from '../db/schema';
 import type { Tribute } from '../donations/quote-input';
 import { recordDonation, type RecordDonationInput } from '../donations/record';
 
-// the claim ./owned-settings-gift.workers.spec.ts makes, for any spec holding a page's owned
+// the claim ./owned-settings-gift.db.spec.ts makes, for any spec holding a page's owned
 // settings row: a gift against it records exactly as a gift through a plain form. nothing in
 // `donation`, `line_item` or `payment` knows a page exists, so the two gifts differ in their form
 // and their own ids and in nothing else they store.
 //
-// the `.testing.ts` suffix matches no pool's `include` glob (CONTRIBUTING.md → Tests).
+// the `.testing.ts` suffix matches no project's `include` glob (CONTRIBUTING.md → Tests).
 
 const FUND = postableId('donationsDeductible');
 

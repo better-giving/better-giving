@@ -8,8 +8,8 @@ import Books from './_app.admin.books';
 
 // the Books screen, drawn.
 //
-// what it covers is everything the workers spec beside it cannot reach. that file drives the
-// `loader` and the `action` through a real chain against a real D1, and never renders anything —
+// what it covers is everything the db spec beside it cannot reach. that file drives the
+// `loader` and the `action` through a real chain against a real database, and never renders anything —
 // so the markup this screen composes has no reader at all: which boxes exist, what the two pickers
 // open on, where a refusal is drawn, what the confirm states, where the answer lands and which id the
 // next press carries. this is the one screen on the dashboard whose button being wrong is a money
@@ -34,9 +34,6 @@ const STUB_ROUTE = 'books';
 
 /**
  * mounts `tree` into a document that lives as long as the case, and hands back its root element.
- *
- * `appendChild` rather than `append`: worker-configuration.d.ts declares HTMLRewriter's `Element`,
- * which merges into the DOM's and brings an `append(content, options)` that wins here.
  */
 function mount(tree: ReactNode): HTMLElement {
 	const root = document.createElement('div');
@@ -96,6 +93,7 @@ function loaderData(over: Partial<LoaderData> = {}): LoaderData {
 		entries: [],
 		limit: 50,
 		hasMore: false,
+		quickbooks: null,
 		...over
 	} as LoaderData;
 }
@@ -141,9 +139,7 @@ function screen(over: Partial<LoaderData> = {}): { root: HTMLElement; posted: Fo
 /**
  * the control named by `name`, whichever kind of box it is.
  *
- * unconstrained, and the double assertion is what that costs: worker-configuration.d.ts declares
- * HTMLRewriter's own `Element`, whose `remove()` answers an element where the DOM's answers
- * nothing — so the two merge into a type no `HTMLSelectElement` satisfies.
+ * unconstrained: the caller names the box's type, and the double assertion is what that costs.
  */
 function box<T = HTMLElement>(root: HTMLElement, name: string): T {
 	const found = root.querySelector(`form [name="${name}"]`);
@@ -327,7 +323,7 @@ it('opens the date box on the operator’s own calendar day', () => {
 
 it('renders no clock into the server’s markup, so hydration has nothing to disagree with', () => {
 	// the server's zone is not the operator's, so the day is filled in once the page is in the
-	// browser. a day rendered on the server would be the Worker's UTC one, and a different day
+	// browser. a day rendered on the server would be the server's own, and a different day
 	// rendered on the first client pass would be a hydration mismatch.
 	const Stub = createRoutesStub([
 		{

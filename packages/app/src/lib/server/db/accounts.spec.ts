@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { POSTING_ACCOUNTS, pickableAccounts, postableIdFromSubmitted, ROLLUPS } from './accounts';
 
 // the account picker and the door a submitted pick comes back through. both are derived from the
-// constant map rather than read from `account`; ./accounts.workers.spec.ts is what holds that map to
+// constant map rather than read from `account`; ./accounts.db.spec.ts is what holds that map to
 // the seed, so these assert against the map and against literals from the seed alike.
 
 describe('pickableAccounts()', () => {

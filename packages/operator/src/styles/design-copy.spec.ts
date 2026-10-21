@@ -22,9 +22,9 @@ import { ruleCopyDrift, tokenCopyDrift } from './design-copy';
 // contributes nothing to either half, which is the right answer for a board dressed from the
 // donation form's own system.
 //
-// the three sheets handed to the rule half are the chain each console copy states it holds, in the
-// order packages/console-ui/src/app.css declares — ./fonts.css is the fourth and is the one no copy
-// carries, because its `src:` urls are relative to this directory.
+// the three sheets handed to the rule half are the chain an artboard copy holds, in cascade order —
+// ./fonts.css is the fourth and is the one no copy carries, because its `src:` urls are relative to
+// this directory.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tokens = join(here, 'tokens.css');

@@ -39,7 +39,7 @@ const NOT_SENT =
 // `loading` phase reading it again with the pressed control still on the screen. a save that
 // re-armed there sends a second body carrying the version the first one moved past, refused as
 // stale; an archive that re-armed archives a program already archived. neither is visible to the
-// workers spec beside this file, which drives the action and renders nothing.
+// db spec beside this file, which drives the action and renders nothing.
 //
 // and a press whose request never reaches the server — a save, an upload — leaves the screen up
 // with what was typed and says so where that press reports; every press goes through the route's

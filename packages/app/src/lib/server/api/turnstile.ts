@@ -45,7 +45,8 @@
 // is the code the most common non-success on the whole surface will carry.
 // ---------------------------------------------------------------------------
 
-import { setCommand } from '@better-giving/operator/deploy-split';
+import { envLine, RECREATE_APP } from '@better-giving/operator/deploy-split';
+import { clientIp } from '../runtime/client-ip';
 
 /** the endpoint, exported so a spec can assert the call went to it rather than restate it. */
 export const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
@@ -55,22 +56,18 @@ export const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/si
  *
  * for the logs, and only for them: the two `operatorFix` sentences below are read by whoever is
  * looking at a live deployment refusing donations, with no screen in front of them and no row to
- * read a command off. so this states both commands as well as where the pair is minted.
+ * read a command off. so this states both `.env` lines and the command as well as where the
+ * pair is minted.
  *
- * it names the dashboard rather than a `pnpm` script for the first half because minting the pair is
- * the step no command in this repository can do — the widget is created in the operator's own
- * Cloudflare account, and the two calls after it are the part a script owns. both come from
- * `setCommand` in `@better-giving/operator/deploy-split`, one `--var` each: the secret key is a
- * credential, but like the sitekey it is a plain var an operator can read back.
- *
- * the console says the same things and no longer says them from here. that screen draws a box per
- * key with the command beside it (`packages/console-ui/src/lib/secret-groups.ts`). the overlap is
- * deliberate: a log line and a box are read by the same person at different moments, and neither
- * can point at the other.
+ * it names the dashboard for the first half because minting the pair is the step nothing in this
+ * repository can do — the widget is created in the operator's own Cloudflare account. both `.env`
+ * lines come from `envLine` in `@better-giving/operator/deploy-split`, and the recreate after them
+ * is what makes them take effect.
  */
 export const TURNSTILE_FIX =
-	'Create a widget at dash.cloudflare.com > Turnstile, then run ' +
-	`\`${setCommand('TURNSTILE_SITE_KEY')}\` and \`${setCommand('TURNSTILE_SECRET_KEY')}\`.`;
+	'Create a widget at dash.cloudflare.com > Turnstile, add ' +
+	`\`${envLine('TURNSTILE_SITE_KEY')}\` and \`${envLine('TURNSTILE_SECRET_KEY')}\` to \`.env\`, ` +
+	`then recreate the app: \`${RECREATE_APP}\`.`;
 
 /**
  * how long siteverify may take before it is reported as unanswered.
@@ -207,14 +204,14 @@ export type TurnstileCheck = {
 	/**
 	 * the submission itself, for the visitor's address.
 	 *
-	 * the request rather than an address, so that `CF-Connecting-IP` is spelled in this folder and
-	 * not again in the route — `apiRateLimitKey` in ./rate-limit.ts reads the same header and argues
-	 * at length about which headers may stand in for it and which may not. asking a caller for the
-	 * address would put that decision one file away from its reasoning.
+	 * the request rather than an address, so that the address is read in this folder and not again
+	 * in the route — through `clientIp` in ../runtime/client-ip.ts, which `apiRateLimitKey` in
+	 * ./rate-limit.ts reads too and which argues which header may stand in for the TCP peer. asking a
+	 * caller for the address would put that decision one file away from its reasoning.
 	 *
 	 * the address is a signal Cloudflare scores the challenge against, never something this app
-	 * decides on. the header is set by the edge in front of the Worker; treating any address as an
-	 * authorization input would be the same mistake CLAUDE.md names for `Origin`.
+	 * decides on. the server entry decides it (../runtime/client-ip.ts); treating any address as an
+	 * authorization input would be the same mistake AGENTS.md names for `Origin`.
 	 */
 	readonly request: Request;
 };
@@ -231,7 +228,7 @@ export type TurnstileCheck = {
  * deployment with no secret cannot verify anything, a deployment with no sitekey served a page that
  * could render no widget, and a token that is absent or over the documented length cannot verify
  * either. the last is the one that matters most — it is a stranger's field, so answering it from
- * here means an unauthenticated caller cannot make this Worker open a connection at all.
+ * here means an unauthenticated caller cannot make this server open a connection at all.
  *
  * ---------------------------------------------------------------------------
  * the two keys are checked before the token, and the order is the whole point of the sitekey being
@@ -314,9 +311,8 @@ export async function verifyTurnstile(check: TurnstileCheck): Promise<TurnstileR
 	}
 
 	const body = new URLSearchParams({ secret, response: token });
-	// `Headers.get` answers `''` rather than `null` for a header that is present and empty, and
-	// `remoteip=` is a parameter this app sent with nothing in it.
-	const address = check.request.headers.get('cf-connecting-ip')?.trim() ?? '';
+	// an empty address is no address: `remoteip=` is a parameter this app sent with nothing in it.
+	const address = clientIp(check.request)?.trim() ?? '';
 	if (address.length > 0) body.set('remoteip', address);
 
 	let response: Response;

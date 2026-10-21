@@ -379,8 +379,8 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 					detail:
 						'This deployment cannot check that a payment notification came from NOWPayments: ' +
 						'`NOWPAYMENTS_IPN_SECRET` is not set, so the delivery was refused and its body was not ' +
-						'read. Generate the IPN secret under Payment Settings in the NOWPayments dashboard and ' +
-						'store it in the console (`better-giving start`).'
+						'read. Generate the IPN secret under Payment Settings in the NOWPayments dashboard, add ' +
+						'it to `.env` as `NOWPAYMENTS_IPN_SECRET`, then recreate the app.'
 				};
 			}
 			const signature = delivery.headers[SIGNATURE_HEADER];

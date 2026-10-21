@@ -1,70 +1,47 @@
 # better-giving
 
-A donation app for a **single** nonprofit, deployed to your own Cloudflare account. One deployment, one org: a donation form embedded on their own site, a staff back office, donor records, and an append-only double-entry ledger underneath. React Router on Workers, D1 for storage.
+A donation app for a **single** nonprofit, run anywhere Docker runs. One deployment, one org: a donation form embedded on their own site, a staff back office, donor records, and an append-only double-entry ledger underneath. React Router on Node in one container, against one SQLite database file.
 
 **Bring your own processor.** Charges go directly to the org's own account at Stripe, PayPal, Chariot (gifts from a donor-advised fund), NOWPayments (crypto), or any mix: the app holds their keys and never custodies funds.
 
-## Two operator surfaces
+## The dashboard
 
-- **The dashboard** is `/admin` on a deployment. Donation forms, donations, donors, recurring gifts. The only thing a staff member opens.
-- **The console** is a program the operator runs on their own machine: `better-giving start` puts this release on the deployment from the terminal, then serves the console's screens at `http://127.0.0.1:5320`. Never deployed; the screens are built into the binary. Between the terminal half and the screens it sets the deployment up: the Cloudflare account, the D1 database, every configuration value, the payment processor keys, the site list, the org's legal identity.
+`/admin` on a deployment is the only screen anybody opens. Donation forms, donations, donors, recurring gifts and the books, for every staff member. Settings (the org's legal identity, logo, notification address, mail), Payments, the sites forms go on, and QuickBooks, for the person who deployed it. Keys and passwords live in `.env`, never on a screen: [`DEPLOY.md`](./DEPLOY.md) is the setup.
 
 ## Get started
 
 ### Requirements
 
-- **Node ≥ 22** and **pnpm** (`corepack enable`), for running locally and for the checkout deploy
-- **a Cloudflare account on a paid Workers plan** (the Free plan runs it, but its rate limits on the public donation endpoint silently do not enforce), **a Stripe, PayPal, Chariot or NOWPayments account** (any one alone is enough, and more than one may be set), **an SMTP account on port 465**, for deploying and taking money. [`DEPLOY.md`](./DEPLOY.md) has the details
+- **Docker with Compose** to run it, and **Node ≥ 22** with **pnpm** (`corepack enable`) to work on it
+- **a Stripe, PayPal, Chariot or NOWPayments account** (any one alone is enough, and more than one may be set) and **an SMTP account on port 465**, for taking money. [`DEPLOY.md`](./DEPLOY.md) has the details
 
-### Run it locally
-
-No Cloudflare account needed:
+### Run it
 
 ```sh
-pnpm install
-cp packages/app/.dev.vars.example packages/app/.dev.vars   # fill in ADMIN_PASSWORD at minimum
-pnpm wrangler d1 migrations apply DB --local               # applies the migrations to the local D1
-pnpm wrangler d1 execute DB --local --file scripts/seed-local.sql  # the organisation row the dashboard is gated on
-pnpm dev
+cp .env.example .env                 # set ADMIN_PASSWORD and BETTER_AUTH_SECRET
+docker compose run --rm migrate      # applies the migrations to the database file
+docker compose up -d
 ```
 
-Sign in at `/login` on `http://localhost:5321` as `admin`, with the `ADMIN_PASSWORD` from `packages/app/.dev.vars`. The mail and Turnstile values in `packages/app/.dev.vars.example` are fake-but-valid, so the app runs with no account created anywhere.
+Sign in at `/login` on `http://localhost:3000` (or `BETTER_GIVING_PORT`) as `admin`, with the `ADMIN_PASSWORD` from `.env`. The mail values in `.env.example` are placeholders that send nowhere, so the app runs with no account created anywhere. The database lives on the named volume `data` and survives `docker compose down`.
 
-The dashboard is not served until set-up reads finished (`packages/app/src/lib/server/config/readiness.ts`). The seed above settles the two jobs that are rows (the organisation's registered name and EIN, and the notification address); the example file settles mail; Payments waits on a processor's keys, and both processors' blocks are commented out at the foot of that file.
+The dashboard opens at once. A donation form goes live once Settings holds the organisation's registered name and EIN and one processor's keys are in `.env` (`packages/app/src/lib/server/forms/readiness.ts`).
 
-**A donation cannot complete locally out of the box**: every processor key is commented out, and the published Turnstile pair passes every visitor and then has its submission refused. The seed lists no site and none is needed: the app serves its own Donation page, made the first time it is asked for, at `http://localhost:5321/donate`; every site is typed on the console.
+**A donation cannot complete out of the box**: every processor key is commented out. The app serves its own Donation page at `/donate`, made the first time it is asked for, and answers 404 there until a form could go live.
 
-[`CONTRIBUTING.md`](./CONTRIBUTING.md) is the rest: what the commit hook gates, how migrations work, how to reach the console surface against a local dev server.
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) is running it from a checkout, with a seeded database, and how migrations work.
 
 ### Deploy it
 
-Your Cloudflare account, your D1, your processor keys. Two lines, no checkout:
+The same three lines on a machine of your own, behind an `https` proxy. **One container, never scaled**: the rate limits, the cache and the scheduled runs are in-process. [`DEPLOY.md`](./DEPLOY.md) is the operator's file and walks all of it, in order: the configuration values, the proxy header, processor webhooks, backups and restores, rehearsal deployments, and upgrades.
 
-```sh
-curl -fsSL https://github.com/better-giving/better-giving/releases/latest/download/install.sh | sh
-better-giving start
-```
+Set mail before taking gifts: a deployment that cannot send cannot give a donor the receipt they file with a tax authority. Every gift passes a spam check, ALTCHA unless both Turnstile keys are set, because `/api/v1` is an unauthenticated, cross-origin, payment-initiating endpoint, exactly what card-testing bots hunt, and the org eats the disputes.
 
-macOS and Linux, both architectures; Windows is out of scope. Sign-in is Cloudflare's own page; the credential stays on your machine, renewed automatically, never shown, never typed. `better-giving update` is the other terminal command: it brings the console binary up to the newest release and leaves your deployment alone. `start` typed again is what carries that release onto a deployment you already have, and it names the migrations it would apply before it applies them.
+**Test keys are keys.** A deployment holding `sk_test_…` reads set up on Payments, serves forms and takes cards, all against Stripe's test account, where no money moves and no screen says so. A PayPal sandbox app's credentials do the same thing on that rail. To rehearse, see [`DEPLOY.md`](./DEPLOY.md)'s rehearsal deployment. Read its wallet paragraph before pasting any snippet it hands you.
 
-Setting a var writes to the Worker's settings in place, taking effect without a build or an upload.
+### On Cloudflare
 
-Email and Turnstile are required. A deployment that cannot send cannot give a donor the receipt they file with a tax authority, and `/api/v1` is an unauthenticated, cross-origin, payment-initiating endpoint, exactly what card-testing bots hunt, and the org eats the disputes.
-
-**Test keys are keys.** A deployment holding `sk_test_…` reads _ready_, serves forms and takes cards, all against Stripe's test account, where no money moves and no screen says so. A local clone on the published `.dev.vars.example` keys does exactly this. A PayPal sandbox app's credentials do the same thing on that rail. To rehearse, see [`DEPLOY.md`](./DEPLOY.md)'s rehearsal deployment. Read its wallet paragraph before pasting any snippet it hands you.
-
-[`DEPLOY.md`](./DEPLOY.md) also covers the two `d1 create` placement flags you can never change afterwards, custom domains, backups, rehearsal deployments, and upgrades.
-
-The console deploys this repository's release as published: the program and the Worker bundle are cut from the same release. A fork that **changed the source** deploys its own build from a checkout instead:
-
-```sh
-gh repo fork better-giving/better-giving --clone && cd better-giving
-pnpm install
-pnpm run db:create        # once (placement flags in DEPLOY.md)
-pnpm run deploy
-```
-
-Then the values in `packages/app/.deploy.vars`, deployed in one press with `pnpm run deploy:vars`, and the console screens (the Stripe webhook, PayPal's webhook, Chariot's set-up, the Turnstile widget, the site list) served from the checkout by `pnpm console`. [`DEPLOY.md`](./DEPLOY.md) is the operator's file and walks all of it, in order.
+`v0.0.38-alpha.1` is the last release that deployed to Cloudflare Workers with the `better-giving` console binary, and this repository cuts no further `v0.0.x-alpha` release. Cloudflare deployments move to the Cloudflare flavor, kept apart from this repository. The container's releases start at `v0.1.0-alpha.1`, each published as an image tagged by its name ([`DEPLOY.md`](./DEPLOY.md)).
 
 ## Embed the form
 
@@ -87,11 +64,11 @@ To put the form on your own site as well, or instead:
 
 **Pasting into a CMS content block? Put the rule in your theme's stylesheet** and paste only the script tag and the element. `<style>` is not valid inside `<body>` and CMS sanitizers strip it silently, leaving the reflow with nothing on screen to say why. The rule works from anywhere on the page.
 
-`/admin → Donation forms` generates that snippet with the real form id, built from the address you are reading it at. A form loads only on sites listed on the console _and_ ticked on the form. Anywhere else is refused. List a site before pasting a snippet into it.
+`/admin → Donation forms` generates that snippet with the real form id, built from the address you are reading it at. A form loads only on sites listed under Donation forms → Which sites your forms go on _and_ ticked on the form. Anywhere else is refused. List a site before pasting a snippet into it.
 
-**Saving that list is the whole errand**: the same press brings the Turnstile widget's own hostname list level with it. Cloudflare will not issue a challenge pass on a host the widget does not authorise: a site missing from the widget renders the form normally and then refuses every gift. See [`DEPLOY.md`](./DEPLOY.md).
+**Using Turnstile? List the same site on its widget too.** Cloudflare will not issue a challenge pass on a host the widget does not authorise: a site missing from the widget renders the form normally and then refuses every gift. See [`DEPLOY.md`](./DEPLOY.md).
 
-A form refuses to serve until the org profile carries a **registered name** and an **EIN**, because the card makes a tax-status claim. This product is for US 501(c)(3) organisations: the EIN is checked to the digit and stored as `12-3456789`. The **deductibility statement** is not a third gate: it falls back to a suggested sentence, never blank, never blocking. Changing it means editing the constant in this repository or writing the column directly, with no control on either operator screen. [`DEPLOY.md`](./DEPLOY.md) has the details. A charity in another jurisdiction forks this repository and changes those rules. **Editing any of this later takes the console on a machine holding a Cloudflare sign-in, not a browser and a staff password**, the deductibility statement and a fork besides. That is what lets dashboard access go to someone who reads donations without handing them the legal identity every receipt prints.
+A form refuses to serve until the org profile carries a **registered name** and an **EIN**, because the card makes a tax-status claim. This product is for US 501(c)(3) organisations: the EIN is checked to the digit and stored as `12-3456789`. The **deductibility statement** is not a third gate: it falls back to a suggested sentence, never blank, never blocking. Changing it means editing the constant in this repository or writing the column directly, with no control on any screen. [`DEPLOY.md`](./DEPLOY.md) has the details. A charity in another jurisdiction forks this repository and changes those rules. **Editing any of this later takes Settings, which only the deployer sees**, the deductibility statement and a fork besides. That is what lets dashboard access go to someone who reads donations without handing them the legal identity every receipt prints.
 
 A child carrying `slot="loading"` (`<p slot="loading">Loading…</p>`, or a block of your own) shows until the form's configuration is read; it renders before the element upgrades and is kept afterwards, over the form's own skeleton. Write the attribute on your own element, not a literal `<slot>` tag: a pasted `<slot>` shows its contents before the upgrade and disappears at it.
 
@@ -122,7 +99,7 @@ Events and their details grow: ignore a `bg-donate:*` event you do not know, a `
 
 The form needs seven directives, and the one most often missing is your own deployment.
 
-Which vendor lines you need follows the processors your deployment holds: the Stripe lines matter to a deployment taking cards, the PayPal ones to a deployment taking PayPal or Venmo, the Chariot ones to a deployment taking gifts from a donor-advised fund, the NOWPayments one to a deployment taking crypto, and a deployment holding more than one needs each. Naming all of them is harmless on a deployment that uses one.
+Which vendor lines you need follows the processors your deployment holds: the Stripe lines matter to a deployment taking cards, the PayPal ones to a deployment taking PayPal or Venmo, the Chariot ones to a deployment taking gifts from a donor-advised fund, the NOWPayments one to a deployment taking crypto, the `challenges.cloudflare.com` ones to a deployment holding a Turnstile key pair, and a deployment holding more than one needs each. Naming all of them is harmless on a deployment that uses one.
 
 Write `<your deployment origin>` as the origin the snippet's `src` points at, scheme and host, no path.
 
@@ -168,6 +145,8 @@ style-src    'unsafe-inline'
 
 **`connect-src https://api-m.paypal.com` is the one with the widest blast radius.** The form asks PayPal which methods this donor is eligible for before it draws anything, so a blocked read is not a missing Venmo button; it is no PayPal buttons at all, on every page load.
 
+**The spam check needs nothing of its own by default.** A deployment without a Turnstile key pair checks each gift with ALTCHA: the form reads a small puzzle from your deployment and solves it in the donor's browser while they fill the form in, through the `connect-src` your deployment origin already has. It starts no worker and loads nothing from anywhere else, so it needs no `worker-src`, no `'wasm-unsafe-eval'` and no further entry. Only a deployment holding a Turnstile pair needs the two `https://challenges.cloudflare.com` lines.
+
 **Chariot's lines are the fund option's alone.** Chariot's button loads from `https://cdn.givechariot.com`, writes its fonts and inline `<style>` into your page, and draws the fund's window in a frame on `https://secure.dafpay.com` or in a popup. Leave one out and the donor-advised fund option fails on that page while every other way to give keeps working.
 
 `style-src 'unsafe-inline'`: the form writes inline styles while it measures your page's colors and builds its card. This is the form's own doing rather than a vendor requirement.
@@ -196,19 +175,17 @@ Three custom properties, set on the element or anything above it:
 
 ## Operate it
 
-From a checkout, the root commands operate a deployment. All run from any directory, because the root `package.json` forwards each into `packages/app`; `pnpm run` on its own lists them. Use them over raw `wrangler`: they carry the flags that matter, like `db:create`'s `--no-update-config`, and resolve the exact wrangler version this app was tested against. Anything you append still reaches wrangler.
+From a checkout, the root commands act on the database file `DATABASE_URL` names: `pnpm db:migrate`, `pnpm db:seed` (a contributor's fixture, never a deployment's) and `pnpm db:backup <file>`. All run from any directory, because the root `package.json` forwards each into `packages/app`; `pnpm run` on its own lists them. In the container, `docker compose run --rm migrate` is the migration.
 
-The console covers the same jobs without a checkout: every credential, every var, the site list, the org identity.
+An append-only ledger is corrected by posting a compensating entry rather than by restoring. A backup is a copy of the one database file; [`DEPLOY.md`](./DEPLOY.md) has taking one and putting it back.
 
-An append-only ledger is corrected by posting a compensating entry rather than by restoring. Tearing a rehearsal deployment down is two raw wrangler commands; [`DEPLOY.md`](./DEPLOY.md) gives them in full.
-
-Every configuration value is a plain Worker var, stored from the console and read back there as a value. The console runs on your own Cloudflare session, so masking a credential from the person holding the account bought nothing and cost them the ability to check it. Deleting a Worker deletes every one of them; from a checkout `pnpm run deploy:vars` re-arms them from a local gitignored `.deploy.vars` in one deploy. [`DEPLOY.md`](./DEPLOY.md) has the file's shape and its one escaping trap. The Worker's Variables and Secrets page is the other place to read or change one.
+Every configuration value is an environment variable in `.env`, gitignored, read when the container starts. [`DEPLOY.md`](./DEPLOY.md) says what each one is.
 
 ## Contributing
 
 [`CLAUDE.md`](./.claude/CLAUDE.md) holds the invariants, several non-obvious. Ask before changing a rule rather than inferring intent from the code.
 
-[`CONTRIBUTING.md`](./CONTRIBUTING.md) is how to run it, how migrations work, what the commit hook gates, and the failure modes whose obvious diagnosis is the wrong one, including the one where every route 500s and the database is not the one you think it is.
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) is how to run it, how migrations work, and what CI gates.
 
 ## License
 

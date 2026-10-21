@@ -30,7 +30,7 @@ const tooMany = () =>
 	);
 
 const gate: Route.MiddlewareFunction = async ({ context, request }, next) => {
-	const { env, ctx } = context.get(platform);
+	const { env, deferred } = context.get(platform);
 	const db = context.get(database);
 	if (await isRateLimited(env.API_RATE_LIMITER, connectorCallerRateLimitKey(request)))
 		return tooMany();
@@ -44,7 +44,7 @@ const gate: Route.MiddlewareFunction = async ({ context, request }, next) => {
 		return tooMany();
 	context.set(connection, admitted);
 	const answer = await next();
-	ctx.waitUntil(touchConnectorKey(db, admitted));
+	deferred.waitUntil(touchConnectorKey(db, admitted));
 	return answer;
 };
 

@@ -9,7 +9,7 @@ import Campaigns from './_app.admin.campaigns._index';
 // what New campaign, End, Delete and Publish post — each press held from its post through the
 // redirect's load. the loader and the action are stand-ins, one drawing the rows below and the
 // dialog its address asks for, the other recording each body and answering what the case scripts;
-// what the real ones do is ./_app.admin.campaigns._index.workers.spec.ts's.
+// what the real ones do is ./_app.admin.campaigns._index.db.spec.ts's.
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
 // style, and the classes named below are read as structure.

@@ -15,7 +15,7 @@ import { publishedConfig, renderableConfig, type PublishedConfigSources } from '
 import type { PayableCoin, PaymentMethod } from '@better-giving/form/v1';
 
 // the refusals, every one of them decidable without a database. the composer that reads the two
-// rows is in `published-config.workers.spec.ts`; everything here is the judgement it wraps.
+// rows is in `published-config.db.spec.ts`; everything here is the judgement it wraps.
 //
 // each case asserts its own `reason`, not merely that something was refused. `/api/v1` writes a
 // different 4xx body per reason and CLAUDE.md requires each to name the offending value and
@@ -92,6 +92,11 @@ function orgProfile(overrides: Partial<OrgProfile> = {}): OrgProfile {
 }
 
 /** a deployment whose Stripe pair is set, each key in its own slot. */
+const TURNSTILE = {
+	TURNSTILE_SITE_KEY: '1x00000000000000000000AA',
+	TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA'
+};
+
 const STRIPE = {
 	STRIPE_SECRET_KEY: 'sk_test_abc',
 	STRIPE_PUBLISHABLE_KEY: 'pk_test_abc',
@@ -191,8 +196,8 @@ describe('publishedConfig — refusals', () => {
 
 	/**
 	 * both bounds or nothing. the columns are nullable — `parseFormInput` refuses a blank on
-	 * either, so no /admin save produces one, but a row written by `wrangler d1 execute` or an
-	 * importer can — and `readFormConfig` in packages/form/src/config.ts refuses the same shape at the
+	 * either, so no /admin save produces one, but a row written by a statement run by hand or
+	 * an importer can — and `readFormConfig` in packages/form/src/config.ts refuses the same shape at the
 	 * far end. served, it would be a form that renders and then refuses every amount a donor
 	 * types, with nothing on the screen saying why.
 	 *
@@ -303,7 +308,7 @@ describe('publishedConfig — refusals', () => {
 		if (result.ok) return;
 		expect(result.reason).toBe('org_profile_incomplete');
 		expect(result.error.message).toContain(names);
-		expect(result.error.fix).toContain('better-giving start');
+		expect(result.error.fix).toContain('under Organisation details in Settings');
 	});
 
 	/**
@@ -532,7 +537,7 @@ describe('publishedConfig — the row it carries out', () => {
  * packages/form/src/config.ts drops a config offering no rail, so the route that hands a body to it refuses
  * rather than serving one — while the donation path, which shares `publishedConfig` above, goes on
  * charging. the donor half of that pin is `mintQuote() — a rail the account has stopped offering` in
- * ../donations/quote.workers.spec.ts.
+ * ../donations/quote.db.spec.ts.
  */
 describe('renderableConfig', () => {
 	/** the served config as the ladder answers it, before this rule is applied. */
@@ -554,7 +559,7 @@ describe('renderableConfig', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('payments_not_configured');
-		expect(result.error.fix).toContain('better-giving start');
+		expect(result.error.fix).toContain('Under Payments, read the standing shown against each rail');
 		// the row still comes back: the endpoint answers this 4xx with CORS headers taken from
 		// `allowed_origins`, and a body a browser cannot read is a refusal that reaches nobody.
 		expect(result.form?.allowedOrigins).toEqual(['https://acme.org']);
@@ -943,16 +948,25 @@ describe('publishedConfig — the config it serves', () => {
 	});
 
 	// the sitekey is public by design — it is rendered into the widget — and optional on the
-	// contract, so a deployment without one serves a config with no such field rather than a
+	// contract, so a deployment without the pair serves a config with no such field rather than a
 	// field holding an empty string, which `readFormConfig` would drop anyway.
-	it('passes the Turnstile sitekey through when this deployment has one', () => {
-		expect(
-			served({ env: { ...STRIPE, TURNSTILE_SITE_KEY: '1x00000000000000000000AA' } })
-		).toHaveProperty('turnstileSiteKey', '1x00000000000000000000AA');
+	it('passes the Turnstile sitekey through, and no ALTCHA address, where the pair is set', () => {
+		const config = served({ env: { ...STRIPE, ...TURNSTILE } });
+		expect(config).toHaveProperty('turnstileSiteKey', '1x00000000000000000000AA');
+		expect(config).not.toHaveProperty('altchaChallengeUrl');
 	});
 
-	it('omits the Turnstile sitekey entirely when it is unset', () => {
-		expect(served()).not.toHaveProperty('turnstileSiteKey');
+	it('serves the ALTCHA challenge address, and no sitekey, where the pair is unset', () => {
+		const config = served();
+		expect(config).not.toHaveProperty('turnstileSiteKey');
+		expect(config).toHaveProperty('altchaChallengeUrl', `/api/v1/forms/${FORM_ID}/challenge`);
+	});
+
+	// half a pair cannot verify a token, so the form is told to run the check that can.
+	it('serves ALTCHA where only the sitekey is set', () => {
+		const config = served({ env: { ...STRIPE, TURNSTILE_SITE_KEY: '1x00000000000000000000AA' } });
+		expect(config).not.toHaveProperty('turnstileSiteKey');
+		expect(config).toHaveProperty('altchaChallengeUrl');
 	});
 
 	/**
@@ -986,8 +1000,8 @@ describe('publishedConfig — the config it serves', () => {
 			sources: { form: formRecord({ suggestedAmounts: [] }) }
 		},
 		{
-			label: 'a deployment with a Turnstile sitekey',
-			sources: { env: { ...STRIPE, TURNSTILE_SITE_KEY: '1x00000000000000000000AA' } }
+			label: 'a deployment with a Turnstile pair',
+			sources: { env: { ...STRIPE, ...TURNSTILE } }
 		},
 		{
 			// the ordinary deployment, and the one the embed's reader would drop whole: it requires

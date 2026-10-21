@@ -3,31 +3,31 @@
 // **an unguarded start address is a stranger's company connected to this deployment.** whoever
 // opens `/quickbooks/connect` is sent to Intuit and comes back with a company connected — so left
 // open, an outsider connects *their* books and every gift this organisation takes is posted into
-// them. the console is already behind a credential, so it is what mints the address; this module is
-// where that address is minted and read, so the two halves cannot come to disagree about what is
-// signed.
+// them. the deployer's Books screen is already behind a credential, so it is what mints the
+// address; this module is where that address is minted and read, so the two halves cannot come to
+// disagree about what is signed.
 //
 // **two different values, doing two different jobs.**
 //
 //   - the **start address** is the guard on who may begin, and it is the only guard there is. it
 //     carries an expiry and a signature over it, and nothing else: there is no caller's identity to
-//     carry, because what the signature stands in for is the console's own credential on the press
-//     that minted it. signing in at Intuit afterwards checks nothing on this deployment's behalf —
+//     carry, because what the signature stands in for is the credential on the press that minted
+//     it. signing in at Intuit afterwards checks nothing on this deployment's behalf —
 //     whoever opened the address is the one signing in, and the company they pick is theirs.
 //   - the **OAuth `state`** is the check that the browser coming back is the one that went. it is
 //     minted per start, set in a cookie, and compared against what Intuit hands back
 //     (`authorizeUrl` in ./provider.ts states that it is the caller's to mint and to check).
 //
 // **single use belongs to the cookie rather than to the link.** nothing is spendable-once without
-// storage, and the only store here is D1 — a table for a value with a ten-minute life is a
-// migration for a row nobody reads. so a replayed start address only ever mints a fresh `state`,
-// and the cookie is what makes the round trip itself unrepeatable: the callback clears it.
+// storage, and the only store here is the database — a table for a value with a ten-minute life
+// is a migration for a row nobody reads. so a replayed start address only ever mints a fresh
+// `state`, and the cookie is what makes the round trip itself unrepeatable: the callback clears it.
 //
 // **the key is the one ../auth/signing-key.ts resolves, under a purpose label of its own.** the
 // message signed below opens with {@link PURPOSE}, which no session token can contain — so a
 // signature minted here can never be read as a cookie's and a cookie's can never be read as one of
-// these. what reading that key out of D1 would let somebody do is this flow, and that module's
-// header states it.
+// these. what reading that key out of the database would let somebody do is this flow, and that
+// module's header states it.
 
 import { type AuthEnv, pinnedOrigin } from '../auth/env';
 import { secretEquals } from '../secret-compare';
@@ -35,17 +35,19 @@ import { secretEquals } from '../secret-compare';
 /** where a browser begins, and where Intuit sends it back. both are addresses on this deployment. */
 export const QUICKBOOKS_CONNECT_PATH = '/quickbooks/connect';
 export const QUICKBOOKS_CALLBACK_PATH = '/quickbooks/callback';
+/** the QuickBooks part of Books, drawn for the deployer alone (../../../routes/_app.admin.books.tsx). */
+export const QUICKBOOKS_SECTION_PATH = '/admin/books#quickbooks';
 
 /**
  * the address this deployment answers on, as every spelling of those two paths is built from.
  *
- * Intuit compares every one of them byte for byte against what is registered: the console mints the
- * start address and prints the callback for an operator to register there
- * (`src/routes/console.quickbooks.ts`), `src/routes/quickbooks.connect.tsx` sends a `redirect_uri`
+ * Intuit compares every one of them byte for byte against what is registered: Books mints the start
+ * address and prints the callback for an operator to register there
+ * (`src/routes/_app.admin.books.tsx`), `src/routes/quickbooks.connect.tsx` sends a `redirect_uri`
  * with the consent screen, and `src/routes/quickbooks.callback.tsx` sends the same one again on the
- * exchange. a deployment reachable on both workers.dev and a custom domain derives a different
- * answer per request, and what reports the disagreement is Intuit's own sentence about a mismatch
- * rather than one of ours naming a host.
+ * exchange. a deployment reachable on two hostnames derives a different answer per request, and
+ * what reports the disagreement is Intuit's own sentence about a mismatch rather than one of ours
+ * naming a host.
  *
  * so the pin decides where an operator set one — `BETTER_AUTH_URL` is where this deployment answers
  * (../auth/env.ts), and the same value decides better-auth's `baseURL` (../auth/index.ts). where
@@ -63,9 +65,9 @@ export function connectFlowOrigin(env: AuthEnv, requestUrl: URL): string {
 /**
  * how long a start address is good for, and how long the cookie beside it lives.
  *
- * ten minutes: the operator presses Connect on the console and the browser opens immediately, so
- * the only thing this length has to survive is one consent screen at Intuit. a fresh address is one
- * press, which is what makes the short life cost nothing.
+ * ten minutes: the operator presses Choose a company on Books and the browser opens the address
+ * immediately, so the only thing this length has to survive is one consent screen at Intuit. a
+ * fresh address is one press, which is what makes the short life cost nothing.
  */
 export const CONNECT_LINK_LIFETIME_MS = 10 * 60_000;
 
@@ -116,7 +118,7 @@ export function carriesConnectLink(url: URL): boolean {
  * whether an address is one this deployment minted and is still good for.
  *
  * one bit, deliberately. absent, altered and expired are the same answer to whoever is holding it —
- * go back to the console and start again — and telling an altered signature apart from an expired
+ * start again from Books — and telling an altered signature apart from an expired
  * one in the answer would be this deployment reporting on a forgery attempt to the forger.
  */
 export async function readConnectLink(input: {

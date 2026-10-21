@@ -26,6 +26,7 @@ import type {
 	SendAttempt,
 	Sendable
 } from './provider';
+import { QUICKBOOKS_SECTION_PATH } from './connect-link';
 import { awaitingWhatItAnswers, CONNECTED_REALM } from './outbox';
 import { readSendable } from './record';
 
@@ -69,7 +70,7 @@ import { readSendable } from './record';
 // the three statuses, and every one a *run* writes is written here.
 //
 // the one other writer is ./backlog.ts, and it writes one transition: `failed` back to `pending`,
-// when an operator presses retry on the console. so a status moves by a run or by a person and by
+// when an operator presses retry on Books. so a status moves by a run or by a person and by
 // nothing else. moving the start date (./outbox.ts) adds `pending` rows and removes rows no run
 // has ever sent, a connect adds the reversals it owes (`queueOwedReversals` there), and neither
 // changes the status of any.
@@ -80,7 +81,7 @@ import { readSendable } from './record';
 //             with nothing to point at; a row holding one is never sent again, whatever an
 //             accountant does to that record afterwards (../db/schema.ts).
 //   failed  — given up on, and reached only from a row-level terminal refusal. it is what the
-//             console counts, and a retry there is that row put back to `pending`.
+//             Books screen counts, and a retry there is that row put back to `pending`.
 //
 // ---------------------------------------------------------------------------
 // where a refusal lands, and it is not `retryable` alone.
@@ -132,7 +133,7 @@ import { readSendable } from './record';
 // three of the six reasons say nothing here: a throttled provider clears itself within a run or
 // two, a credential that could not be stored is renewed again by the next run while the one held
 // still renews — and once it stops, that refusal is a dead credential, which says so at once —
-// and a deployment nobody has connected is a deliberate act the console's connection screen
+// and a deployment nobody has connected is a deliberate act the QuickBooks part of Books
 // already shows. a provider that could not be reached waits an hour, so a blip between two runs
 // costs no email.
 //
@@ -145,6 +146,11 @@ export type AccountingDeliveryDeps = {
 	readonly provider: AccountingProvider;
 	/** the mail transport the failure notice rides. its failures are reported, never raised. */
 	readonly email: EmailProvider;
+	/**
+	 * where this deployment answers, or null where nothing states it — a cron run has no request to
+	 * read one off — and the notice then names the QuickBooks part of Books by its path.
+	 */
+	readonly origin: string | null;
 };
 
 /**
@@ -313,7 +319,7 @@ export function landingOf(reason: AccountingFailureReason): FailureLanding {
  *                   backlog nobody will otherwise notice.
  *   after_a_while — worth an email only once the oldest gift has waited out {@link BLIP_GRACE_MS}.
  *   never         — a throttled provider comes back on its own, and a deployment nobody has
- *                   connected is a deliberate act the console's connection screen shows.
+ *                   connected is a deliberate act the QuickBooks part of Books shows.
  */
 export type BlockedNotice = 'at_once' | 'after_a_while' | 'never';
 
@@ -347,22 +353,37 @@ export function blockedNoticeOf(reason: AccountingFailureReason): BlockedNotice 
 /**
  * what an operator does about a run stopped by `reason`, for the three reasons
  * {@link BLOCKED_NOTICE_OF} emails about — a reason moved off `never` there needs its own line here.
- * the press and the step are named as the QuickBooks page names them:
- * packages/console-ui/src/lib/quickbooks-section.tsx, and `STEP_LABEL` in quickbooks-standing.ts.
+ * the press and the step are named as the QuickBooks part of Books names them
+ * (../../../routes/_app.admin.books.tsx).
  */
-function blockedAction(reason: AccountingFailureReason): string {
+function blockedAction(reason: AccountingFailureReason, origin: string | null): string {
 	switch (reason) {
 		case 'reconnect_needed':
-			return 'Open the console (run `better-giving start`), go to QuickBooks and press Sign in again.';
+			return `Go to QuickBooks under Books, at ${quickbooksSection(origin)}, and press Sign in again.${FORWARD_IF_HIDDEN}`;
 		case 'accounts_not_chosen':
-			return (
-				'Open the console (run `better-giving start`), go to QuickBooks and choose every ' +
-				'account under Accounts.'
-			);
+			return `Go to QuickBooks under Books, at ${quickbooksSection(origin)}, and choose every account under Accounts.${FORWARD_IF_HIDDEN}`;
 		default:
 			return 'Nothing. Gifts sync once QuickBooks can be reached again.';
 	}
 }
+
+/**
+ * where the QuickBooks part of Books is, absolute where the origin is known. with none it is named
+ * by its path, since a relative address is broken in every inbox.
+ */
+function quickbooksSection(origin: string | null): string {
+	return origin === null
+		? `${QUICKBOOKS_SECTION_PATH} on your dashboard`
+		: `${origin}${QUICKBOOKS_SECTION_PATH}`;
+}
+
+/**
+ * the notice goes to the notification address, which a member may read, and a member's Books has
+ * no QuickBooks part (`STAFF_USER_ID`, AGENTS.md → Boundaries) — so it says who can act on it.
+ */
+const FORWARD_IF_HIDDEN =
+	' Only whoever set up this site can open that section, so if you can’t see it, forward this ' +
+	'email to them.';
 
 /**
  * what one queued entry group came to, and what it asks of the caller.
@@ -392,7 +413,7 @@ export type QueuedEntryResult =
  * `now` is the run's scheduled time and is what the row's `updated_at` is set to, so the backoff is
  * measured against the clock the next run reads rather than against whenever the write landed.
  *
- * the sweep below is what calls it. a retry on the console does not: ./backlog.ts puts every
+ * the sweep below is what calls it. a retry on Books does not: ./backlog.ts puts every
  * given-up row back to `pending`, and the next sweep is what sends them.
  */
 export async function sendQueuedEntry(
@@ -629,8 +650,8 @@ const QUEUED_AS_SETTLED = sql`${quickbooksSync.createdAt} = ${entryGroup.created
  * filter only — the tier comes from the entry group, and the table has no column of its own that
  * carries it.
  *
- * exported for its query rather than its rows, so ./deliver.workers.spec.ts can read sqlite's plan
- * for this statement and ./outbox.workers.spec.ts the order a move leaves. a second copy of the
+ * exported for its query rather than its rows, so ./deliver.db.spec.ts can read sqlite's plan
+ * for this statement and ./outbox.db.spec.ts the order a move leaves. a second copy of the
  * query written there would be a second query.
  */
 export function dueRows(db: Db, now: Date, sends: number) {
@@ -687,11 +708,11 @@ async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<v
 		],
 		action:
 			tally.givenUp > 0
-				? 'Open the console (run `better-giving start`) and go to QuickBooks. Fix what the ' +
-					'latest reason says, then press Try these again.'
-				: 'If the latest reason asks you to fix something, open the console (run ' +
-					'`better-giving start`), go to QuickBooks and fix it. Otherwise there’s nothing to ' +
-					'do: these gifts are tried again automatically.'
+				? `Go to QuickBooks under Books, at ${quickbooksSection(deps.origin)}. Fix what the ` +
+					`latest reason says, then press Try these again.${FORWARD_IF_HIDDEN}`
+				: 'There’s nothing to do unless the latest reason asks you to fix something: these ' +
+					'gifts are tried again automatically. If it does, go to QuickBooks under Books, at ' +
+					`${quickbooksSection(deps.origin)}, and fix it.${FORWARD_IF_HIDDEN}`
 	});
 
 	await stamp(deps.db, failing(now), now);
@@ -736,7 +757,7 @@ async function notifyBlocked(
 			{ label: 'Gifts waiting', value: String(backlog.waiting) },
 			{ label: 'Oldest waiting for', value: waited(now.getTime() - backlog.oldest) }
 		],
-		action: blockedAction(failure.reason)
+		action: blockedAction(failure.reason, deps.origin)
 	});
 
 	await stamp(deps.db, UNFINISHED, now);

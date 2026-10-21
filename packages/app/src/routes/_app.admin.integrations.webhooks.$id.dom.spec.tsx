@@ -7,7 +7,7 @@ import Destination, { shouldRevalidate } from './_app.admin.integrations.webhook
 // what a destination's page does with its loader's answer and its presses: its recent deliveries
 // listed, the secret masked with its two presses, a paused destination said to be, the resume
 // asked, answered and reported at the header, and a test reported there too. the server half is
-// ./_app.admin.integrations.webhooks.$id.workers.spec.ts.
+// ./_app.admin.integrations.webhooks.$id.db.spec.ts.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

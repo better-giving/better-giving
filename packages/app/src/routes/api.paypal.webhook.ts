@@ -1,3 +1,4 @@
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { settleDelivery } from '$lib/server/donations/settle';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -34,19 +35,21 @@ import type { Route } from './+types/api.paypal.webhook';
 // five headers it signed, and a body some hook above the route had already consumed reaches the
 // handler as an exception rather than as bytes. ../routes.spec.ts holds that this route has no
 // layout above it and that no route but the three surface layouts exports a `middleware` at all,
-// and ./api.paypal.webhook.workers.spec.ts holds that the bytes arrive unread and are read once.
+// and ./api.paypal.webhook.db.spec.ts holds that the bytes arrive unread and are read once.
 //
-// the console registers this address, and its id is what `PAYPAL_WEBHOOK_ID` holds. the path is
-// `PAYPAL_WEBHOOK_PATH` in packages/operator/src/paypal/webhook-listener.ts, which the binary's copy is
-// gated against, and ../routes.spec.ts pins this file's name to it.
+// `scripts/setup-webhook.ts paypal` registers this address, and its id is what `PAYPAL_WEBHOOK_ID`
+// holds. the path is `PAYPAL_WEBHOOK_PATH` in packages/operator/src/paypal/webhook-listener.ts,
+// which $lib/server/payments/webhook-address.ts builds the registered address from, and
+// ../routes.spec.ts pins this file's name to it.
 //
 // what is decided here and what is not. everything the delivery does is `settleDelivery`'s
 // ($lib/server/donations/settle.ts, and $lib/server/donations/reverse.ts for a refund or a dispute);
 // this file owns which status each outcome answers with, which is the one decision the processor
 // actually reads.
 //
-// nothing here is a module-scope singleton. the D1 handle arrives on the request context, which
-// ../request-context.ts seeds per request, and both ports are built from that env on the call.
+// nothing here is a module-scope singleton. the database handle arrives on the request context,
+// which ../request-context.ts seeds per request, and both ports are built from that env on the
+// call.
 
 /**
  * one delivery from PayPal.
@@ -101,7 +104,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a PayPal delivery by POST. ${method} is not a method it answers.`,
-			fix: 'PayPal posts deliveries here. Saving PayPal’s credentials in the console (`better-giving start`, under Donation processor) registers this address as the listener and stores its id as PAYPAL_WEBHOOK_ID.'
+			fix: `PayPal posts deliveries here. If PayPal’s developer dashboard already lists a listener for this address and \`.env\` holds its id as \`${envLine('PAYPAL_WEBHOOK_ID')}\`, nothing needs doing. Otherwise run \`${setupWebhookCommand('paypal')}\` (a re-run keeps a listener already at this address and prints its id), add the \`PAYPAL_WEBHOOK_ID\` line it prints to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

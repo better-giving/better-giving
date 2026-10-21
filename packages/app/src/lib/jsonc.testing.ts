@@ -1,11 +1,6 @@
 /**
  * a jsonc document parsed, for the specs that hold this app's code to the config files it is
- * built and deployed with.
- *
- * two of them read one — `$lib/server/wrangler-config.testing.ts` for wrangler.jsonc, and
- * `form-rules.spec.ts` at the package root for tsconfig.json. the reader lives here rather than
- * in either of them because a second hand-written copy of the comment stripper below is a parser
- * that fixes a bug on one side only.
+ * built with (`form-rules.spec.ts` at the package root reads tsconfig.json through it).
  *
  * `unknown` on the way out, deliberately: each caller narrows to the handful of fields it actually
  * reads, and a shared shape would grow every field any of them ever wants.
@@ -26,9 +21,8 @@ export function readJsonc(path: string): unknown {
 /**
  * the same document without its comments or its trailing commas.
  *
- * one pass rather than a regex, because the two things a regex confuses are both in wrangler.jsonc:
- * a comment holding a double quote (`"Couldn't find a D1 DB named 'better-giving'"`) and a string
- * holding what looks like the start of a comment. inside a string literal nothing is a comment,
+ * one pass rather than a regex, because the two things a regex confuses are a comment
+ * holding a double quote and a string holding what looks like the start of a comment. inside a string literal nothing is a comment,
  * and inside a comment nothing opens a string.
  */
 function withoutJsoncExtras(text: string): string {

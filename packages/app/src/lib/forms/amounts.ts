@@ -1,6 +1,11 @@
 import { z } from 'zod';
-import { digitGrouping, formatMinor, formatMinorBrief, minorUnitDigits } from '../donations/money';
-import { redact } from '../redact';
+import {
+	digitGrouping,
+	formatMinor,
+	formatMinorBrief,
+	minorUnitDigits
+} from '../donations/money.ts';
+import { redact } from '../redact.ts';
 
 // what an operator writes in an amount box, and the integer it is stored as, in the one place a
 // server parser and a browser may both import from.

@@ -5,7 +5,7 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * every company logo an operator surface draws, in both of the shapes each of them has.
  *
  * there is no set to read off here the way src/previews/status-mark.tsx reads `MARK_NAMES`:
- * `BrandName` is closed on purpose, so this page draws its three members and a fourth brand arrives
+ * `BrandName` is closed on purpose, so this page draws its two members and a third brand arrives
  * with a line in this file beside the ones it takes in the component and the sheet.
  *
  * the two shapes look identical and that is why both are drawn. with a label the logo is
@@ -18,23 +18,17 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * packages/operator/src/styles/adm.css, and the logo takes the mark box `.adm-brand` gives it in
  * packages/operator/src/styles/base.css.
  *
- * the three do not share a width, and this page is where that is visible: every rule spends the one
- * mark height and takes its width from its own file, so Cloudflare's wide wordmark runs several
- * times the width of the two square marks standing at the same height beside it.
+ * every rule spends the one mark height and takes its width from its own file, so a brand whose
+ * file is not square stands wider than these two at the same height.
  */
 export default function StatusBrandPreview() {
 	return (
 		<div className="adm-stack">
 			<p>
-				<Brand name="cloudflare" label="Cloudflare" />{' '}
-				<Brand name="quickbooks" label="QuickBooks" /> <Brand name="xero" label="Xero" /> Three
+				<Brand name="quickbooks" label="QuickBooks" /> <Brand name="xero" label="Xero" /> Two
 				labelled logos, each an image carrying its company's name.
 			</p>
 			<div className="adm-actions">
-				<Button>
-					<Brand name="cloudflare" />
-					Connect to Cloudflare
-				</Button>
 				<Button>
 					<Brand name="quickbooks" />
 					Connect to QuickBooks

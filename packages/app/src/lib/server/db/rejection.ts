@@ -1,11 +1,12 @@
 // how app code reads a rejection the database produced, without matching on prose.
 //
-// D1 flattens an error to a message and appends sqlite's symbolic extended result code
-// (`SQLITE_CONSTRAINT_UNIQUE`); the sentence in front of it is upstream's to reword and there is
-// no numeric `errcode` on a D1 error. so the code's name is the only stable thing to read, and
+// sqlite's symbolic extended result code (`SQLITE_CONSTRAINT_UNIQUE`) is the stable thing to read;
+// the sentence beside it is upstream's to reword. libSQL keeps it out of the message — a
+// `LibsqlError` reads `SQLITE_CONSTRAINT: UNIQUE constraint failed: …`, the primary code only, and
+// carries the extended one in its `extendedCode` field (D1 instead appends it to the message). and
 // reading it means walking `cause`: a statement issued through drizzle comes back as drizzle's own
-// `Failed query: insert into …` with D1's error demoted to `.cause`, so the outermost message
-// never carries the code and a match against it fails silently rather than loudly.
+// `Failed query: insert into …` with the driver's error demoted to `.cause`, so the outermost
+// message never carries the code and a match against it fails silently rather than loudly.
 //
 // this is the app-side twin of ./rejection.testing.ts, which does the same walk for a spec that
 // asserts on the whole chain as text. that file imports the walk from here rather than keeping a
@@ -17,7 +18,8 @@
 // knows which of its statements could have failed, which is never this module.
 
 /**
- * every message in an error's cause chain, outermost first.
+ * every message in an error's cause chain, outermost first, each followed by the link's extended
+ * code where the driver carries one beside the message (`extendedCodeOf`).
  *
  * it stops at the first link that is not an `Error`, which is what a `cause` set to a string or to
  * a plain object produces. a non-`Error` throw is therefore an empty chain rather than a coerced
@@ -28,6 +30,8 @@ export function causeChain(error: unknown): string[] {
 	const chain: string[] = [];
 	for (let current: unknown = error; current instanceof Error; current = current.cause) {
 		chain.push(current.message);
+		const extended = extendedCodeOf(current);
+		if (extended !== null) chain.push(extended);
 	}
 	return chain;
 }
@@ -44,11 +48,12 @@ export function causeChain(error: unknown): string[] {
  * one message carries two codes, and taking the first one is the trap this function exists to
  * close.
  *
- * a foreign key rejection reads:
+ * a foreign key rejection reads, on libSQL and on D1:
  *
+ *   SQLITE_CONSTRAINT: FOREIGN KEY constraint failed   (extendedCode: SQLITE_CONSTRAINT_FOREIGNKEY)
  *   D1_ERROR: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_FOREIGNKEY)
  *
- * — the primary code, then the extended one. a caller wants the extended one, because the primary
+ * — the primary code, and the extended one beside it. a caller wants the extended one, because the primary
  * is shared by every constraint there is: `SQLITE_CONSTRAINT` cannot tell a duplicate key from a
  * missing parent row, so a mapping built on it collapses every refusal into one. and it fails
  * quietly rather than loudly, since `SQLITE_CONSTRAINT` is itself a real code and reads like a
@@ -79,3 +84,23 @@ export function sqliteResultCode(error: unknown): string | null {
  * parsing a sentence upstream is free to rewrite.
  */
 const SQLITE_CODE = /\bSQLITE_[A-Z]+(?:_[A-Z]+)*\b/g;
+
+/**
+ * a libSQL error's extended code, by name, or `null` for a link that carries none.
+ *
+ * libSQL's native binding names most codes in `extendedCode` but not the ones newer than its own
+ * table: a STRICT refusal arrives as `UNKNOWN_SQLITE_ERROR_3091` beside a `rawCode` of 3091. a
+ * name that is not a result code is read from `rawCode` instead, against sqlite's own numbering
+ * (https://sqlite.org/rescode.html), and dropped where that has no entry either.
+ */
+function extendedCodeOf(link: Error): string | null {
+	const { extendedCode, rawCode } = link as { extendedCode?: unknown; rawCode?: unknown };
+	if (typeof extendedCode !== 'string') return null;
+	if (extendedCode.startsWith('SQLITE_')) return extendedCode;
+	return typeof rawCode === 'number' ? (NAMED_BY_NUMBER.get(rawCode) ?? null) : null;
+}
+
+/** the extended codes libSQL's binding leaves unnamed, by sqlite's number for each. */
+const NAMED_BY_NUMBER: ReadonlyMap<number, string> = new Map([
+	[3091, 'SQLITE_CONSTRAINT_DATATYPE']
+]);

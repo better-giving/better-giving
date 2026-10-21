@@ -41,8 +41,6 @@ import { Mark } from '../status/Mark.jsx';
  * @property {DestinationStatus | undefined} [status]
  * @property {string | undefined} [title] the pointer's hint, for the icon rail where the name is
  *   off the screen.
- * @property {boolean | undefined} [groupEnd] the last entry of a headed group in the rail, which
- *   the column stands a step apart from what follows.
  * @property {boolean | undefined} [offBar] a destination the phone's bar leaves to its More sheet:
  *   drawn in the column at the wide width and hidden from the bar below it.
  * @property {MouseEventHandler<HTMLAnchorElement> | undefined} [onClick] a press on the cell, before
@@ -54,10 +52,10 @@ import { Mark } from '../status/Mark.jsx';
  * @property {PointerState | undefined} [state]
  * @property {ComponentType<DestinationLinkProps> | undefined} [link] what the cell is drawn as.
  *   unstated, a plain `<a>` — a router's link imported here would look for a context that is not
- *   there. **a mounted rail states one.** this package declares no router and
- *   cannot (CLAUDE.md: the graph is `app → operator ← console`, and the leaf reaches neither), so
- *   the surface that has one hands it in — and a bare anchor to an internal address takes the
- *   whole document with it, which is a rail of full page loads that renders identically.
+ *   there. **a mounted rail states one.** this package declares no router and cannot (AGENTS.md →
+ *   Workspace: the graph is `app → operator`, and the leaf reaches nothing above it), so the
+ *   surface that has one hands it in — and a bare anchor to an internal address takes the whole
+ *   document with it, which is a rail of full page loads that renders identically.
  */
 
 /* five states: rest, hover, focus, current, current-and-hover.
@@ -84,7 +82,6 @@ export function DestinationCell({
 	mark,
 	status,
 	title,
-	groupEnd = false,
 	offBar = false,
 	current,
 	state,
@@ -93,7 +90,6 @@ export function DestinationCell({
 }) {
 	const cls = [
 		'adm-dest',
-		groupEnd ? 'adm-dest--groupend' : '',
 		offBar ? 'adm-dest--offbar' : '',
 		current ? 'is-current' : '',
 		state ? `is-${state}` : ''

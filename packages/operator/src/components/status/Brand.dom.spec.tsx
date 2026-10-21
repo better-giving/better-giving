@@ -25,7 +25,6 @@ import { Brand } from './Brand.jsx';
 
 /** every brand and the modifier it is drawn with, which is the pairing both halves below read. */
 const BRANDS = [
-	['cloudflare', 'adm-brand--cloudflare'],
 	['quickbooks', 'adm-brand--quickbooks'],
 	['xero', 'adm-brand--xero']
 ] as const;

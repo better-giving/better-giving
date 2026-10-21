@@ -5,7 +5,7 @@
 
    the src urls below are relative on purpose, and it is what lets every surface read this sheet.
    a root-absolute /fonts/… would need each one to serve a public directory holding the same ten
-   files — the dashboard has one, the console and the component gallery serve no assets at all — so
+   files — the dashboard has one, the component gallery serves no assets at all — so
    the faces would be a second copy of a binary or a surface set in a fallback stack. a relative
    url is resolved against this file instead, and each surface's bundler emits the faces into its
    own output from the one copy here. the binaries are in this package for the reason the sheets
@@ -13,7 +13,7 @@
 
    three roles, three faces of one family. red hat text is drawn for interface text at small
    sizes, which is the job these screens do — dense forms, labels that have to be unambiguous at
-   the 13px `--admin-label-size` sets, and long hints and standfirsts, of which this console has
+   the 13px `--admin-label-size` sets, and long hints and standfirsts, of which these screens have
    more than most admin screens. red hat display is the same design cut for headings: the same cap
    height on a narrower body and a narrower word space, which is the fit a title at
    `--admin-text-2xl` wants and a face drawn for 13px does not have. the pairing is the family's own

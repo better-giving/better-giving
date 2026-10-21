@@ -1,4 +1,6 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
+import { ADMIN_USERNAME } from '@better-giving/operator/admin-password';
+import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { Stack } from '@better-giving/operator/components/shell/Layout';
@@ -9,6 +11,7 @@ import { APIError } from 'better-auth/api';
 import { data, Form, Link, redirect, useFormAction, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { operatorLinks } from '$lib/admin/operator-links';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
 import {
@@ -32,8 +35,6 @@ import { PIN_UNUSABLE } from '$lib/server/auth/pin';
 import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { PASSWORD_RESET_FLASH, takeFlash } from '$lib/server/flash';
-import { SetupGate } from '$lib/admin/setup-gate';
-import { setupOutstanding } from '$lib/server/config/readiness';
 import { readSetupState } from '$lib/server/config/setup-state';
 import { database, platform } from '../context';
 import type { Route } from './+types/login';
@@ -59,8 +60,8 @@ const SCREEN_TITLE = 'Sign in';
  * cap on what one anonymous POST here can ask to be hashed.
  *
  * there is no request-body limit worth relying on here, and every attempt is SHA-256'd by
- * `secretEquals` under a 10 ms CPU budget on the Workers free tier. this bounds the hash, and sits
- * far above any real credential.
+ * `secretEquals` on the one process that serves every request. this bounds the hash, and sits far
+ * above any real credential.
  */
 const MAX_PASSWORD_LENGTH = 256;
 
@@ -140,36 +141,26 @@ const WRONG_CREDENTIAL =
  *
  * the messages the auth layer produces are about the deployment — among them the 500 for an
  * unconfigured staff credential, whose message says what is wrong with `ADMIN_PASSWORD` and where
- * it is set. that is written for an agent reading a status body and belongs on the surfaces an
- * operator controls: the console says whether that var is set and is where it is set again, and the
- * running deployment's logs carry the withheld detail. an anonymous POST to this form must not
- * read it back, so what it gets is the pointer rather than the answer.
- *
- * a password this deployment would refuse draws the set-up gate in place of the box instead — the
- * loader reads the same authority the sign-in path does ($lib/server/config/setup-state.ts) — so
- * what still reaches this arm is a value changed out from under a form already drawn, or a set-up
- * reading that did not land.
+ * it is set. that is written for an agent reading a status body and belongs in the app's log, which
+ * carries the withheld detail. an anonymous POST to this form must not read it back, so what it
+ * gets is the pointer rather than the answer.
  */
 const UNAVAILABLE =
-	'Sign-in is unavailable. The console (`better-giving start`) says whether this deployment’s ' +
-	'sign-in password is set. The exact cause is in the deployment’s logs, which the console does ' +
-	'not read: the Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.';
+	'Sign-in is unavailable. Whoever set up this site can check `ADMIN_PASSWORD` in `.env`, then ' +
+	`recreate the app. ${LOGS_SAY_WHY}`;
 
 /**
- * what a member is told when the edge attributed no address to the request, so there is no
- * sign-in bucket to charge and the attempt is refused before their password is compared.
+ * what a member is told when the server attributed no address to the request (`clientIp` in
+ * $lib/server/runtime/client-ip.ts), so there is no sign-in bucket to charge and the attempt is
+ * refused before their password is compared.
  *
- * it is read by a colleague and acted on by whoever runs the deployment, so it names the cause and
- * the switch that usually produces it — the zone-level managed transform that strips
- * `CF-Connecting-IP` from every request, described on `apiRateLimitKey` in
- * $lib/server/api/rate-limit.ts. it says nothing about the account, because nothing about the
- * account was read.
+ * it is read by a colleague and acted on by whoever runs the deployment. it says nothing about the
+ * account, because nothing about the account was read.
  */
 const UNATTRIBUTED =
-	'Sign-in is unavailable. This deployment is not being told your connection’s IP address, so it ' +
-	'cannot limit password guesses and refuses member sign-ins until it is. The usual cause is ' +
-	'Cloudflare’s “Remove visitor IP headers” setting being switched on for this site; whoever runs ' +
-	'this deployment can switch it off in the Cloudflare dashboard.';
+	'Sign-in is unavailable. This site could not tell your connection’s IP address, so it cannot ' +
+	'limit password guesses and refuses member sign-ins until it can. Try again, and if this keeps ' +
+	'happening, tell whoever set up this site.';
 
 export const links = operatorLinks;
 
@@ -216,27 +207,11 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	// a failure is swallowed to a null name, exactly as ./_app.tsx's read is and for a reason that
 	// is sharper here — this is the screen someone reaches to fix a deployment whose database is
 	// not answering, and throwing would replace the password box with a bare error on precisely
-	// that deployment. it is the same call that reads the five ($lib/server/config/setup-state.ts).
+	// that deployment. `readSetupState` ($lib/server/config/setup-state.ts) answers `null` for it.
 	const state = await readSetupState(db, env);
 
-	// **an unfinished deployment serves this in place of the password box.** the five are what the
-	// dashboard behind this screen is gated on (./_app.tsx), so a password typed here would buy
-	// nothing but the same list one screen later — and one of the five is whether a password is set
-	// at all, which is a sign-in nobody can complete.
-	//
-	// **it is drawn to a caller with no session, which is a decision and not an oversight.** what it
-	// tells a stranger is which of five jobs this deployment has not finished — no value, no address,
-	// no key, and nothing about the organisation the page does not already name. that is the cost of
-	// the operator meeting it at all: they arrive here holding no session by definition, and a list
-	// kept on the far side of the password box is a list they see only once it can no longer tell
-	// them anything they did not just prove. it stops being served the moment the last job is done.
-	if (state !== null && setupOutstanding(state.lines) > 0) {
-		return { shape: 'setup' as const, lines: state.lines };
-	}
-
 	// the reset that just finished, taken: read and cleared on this one response, so a reload
-	// reports nothing ($lib/server/flash.ts owns that). it is taken after the gate above rather
-	// than before it, so a marker is never burnt by a screen that would not have drawn it.
+	// reports nothing ($lib/server/flash.ts owns that).
 	//
 	// what it carries is that a password changed and never whose — the marker is written by
 	// ./reset.tsx, which mints no session and knows the member only as the account a token named.
@@ -244,7 +219,6 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 
 	return data(
 		{
-			shape: 'sign-in' as const,
 			orgName: state?.profile?.legalName ?? null,
 			passwordReset: landed !== null
 		},
@@ -285,21 +259,19 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// charges it, and the better-auth HTTP endpoint that would spend the same key is a 404 on
 	// this deployment (CLAUDE.md).
 	//
-	// 429 rather than a 200 carrying a message, and the status is the whole of the deployment's
-	// visibility into this: a rate limiting binding appears nowhere in the Cloudflare dashboard, so
-	// what a refusal leaves behind is the status the Worker answered with, in `pnpm run logs`
-	// (https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/). a throttled
-	// sign-in reads as 429 there and a wrong password as the 401 below — two different lines.
+	// 429 rather than a 200 carrying a message, and the status is the whole of what a refusal leaves
+	// behind: the limiter is in-process and reports nothing. a throttled sign-in reads as 429 and a
+	// wrong password as the 401 below — two different statuses to whatever reads them.
 	//
 	// the rejection is built from the statement and not from the request, which is what keeps the
 	// charge ahead of the body: a refusal that had already read it would be a refusal that spent
 	// the parse it exists to save. it carries no values and no field errors, so the banner is the
 	// whole of it.
 	//
-	// a deployment with no binding is not counted at all, and neither is a caller the edge attributed
-	// no address to — both are `isRateLimited`'s decisions, argued in $lib/server/api/rate-limit.ts.
-	// the second is not the end of it for a member: that caller is refused below, once the box has
-	// said which way in this is.
+	// a deployment with no limiter is not counted at all, and neither is a caller the server
+	// attributed no address to — both are `isRateLimited`'s decisions, argued in
+	// $lib/server/api/rate-limit.ts. the second is not the end of it for a member: that caller is
+	// refused below, once the box has said which way in this is.
 	const bucket = signInRateLimitKey(request);
 	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, bucket)) {
 		return invalid(429, unread(LOGIN_FORM, signInRateLimitMessage()));
@@ -324,12 +296,12 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// is hashed. members are many, each password chosen by a person, and every guess is an scrypt run
 	// this deployment pays for, so no bucket would mean unbounded guessing at all of them. the deployer
 	// is let through the same gap, unbounded: refusing them too would shut every way into the
-	// dashboard at once, and their one `ADMIN_PASSWORD` is minted by the console unless the operator
-	// typed their own. `signInRateLimitKey` in $lib/server/api/rate-limit.ts states both halves.
+	// dashboard at once, and their one `ADMIN_PASSWORD` is held to the minimum length
+	// `@better-giving/operator/admin-password` sets. `signInRateLimitKey` in
+	// $lib/server/api/rate-limit.ts states both halves.
 	//
 	// 403 because nothing typed is wrong and no wait fixes it: the attempt is refused until the
-	// deployment is told the address. in `pnpm run logs` it is a line of its own beside the 429, the
-	// 401 and the 500.
+	// deployment is told the address. it is a status of its own beside the 429, the 401 and the 500.
 	if (!asStaff && bucket === null) {
 		return invalid(403, submission.reject({ formErrors: [UNATTRIBUTED] }));
 	}
@@ -350,8 +322,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	}
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and
-	// the cookie `Secure` policy from it, so a deployment answers correctly on workers.dev and on a
-	// custom domain without a deploy-time variable naming either.
+	// the cookie `Secure` policy from it, so a deployment answers correctly on `localhost` and behind
+	// its https proxy without a deploy-time variable naming either.
 	const auth = createAuth(db, authEnv, {
 		secret: signingKey.secret,
 		requestOrigin: url.origin
@@ -434,10 +406,6 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 }
 
 export default function Login({ loaderData, actionData }: Route.ComponentProps) {
-	// the gate stands in place of the password box, because a deployment that is not finished has
-	// nothing behind one ($lib/admin/setup-gate.tsx).
-	if (loaderData.shape === 'setup') return <SetupGate lines={loaderData.lines} />;
-
 	return (
 		<SignInScreen
 			orgName={loaderData.orgName}
@@ -511,10 +479,8 @@ function SignInScreen({
 					    apart. plain text rather than `type="email"` because a username is not one
 					    and a browser that refused to submit one would close that way in.
 
-					    it says nothing about what that username is. the console prints it beside the
-					    password box that sets the credential
-					    (packages/console-ui/src/lib/password-fold.tsx), which is where somebody who
-					    has not been told it is standing.
+					    the hint names the deployer's username, which is a constant and no secret: the
+					    password is the credential.
 
 					    an ordinary box in every other respect — it comes back holding what was
 					    typed, so a refused attempt is one the reader corrects rather than retypes. */}
@@ -522,6 +488,12 @@ function SignInScreen({
 						id={fields.identifier.id}
 						name={fields.identifier.name}
 						label="Username or email address"
+						hint={
+							<>
+								The person who deployed this site signs in as{' '}
+								<InlineCode>{ADMIN_USERNAME}</InlineCode>. Everyone else uses their email address.
+							</>
+						}
 						autoComplete="username"
 						required
 						defaultValue={fields.identifier.defaultValue}
@@ -549,7 +521,7 @@ function SignInScreen({
 					    it is not offered to the deployer and is not withheld from them either —
 					    their password is a deploy-time var and `requestPasswordReset` refuses
 					    their identifier by name, so what they get from /forgot is the same sentence
-					    everybody gets. the console is where that var is set. */}
+					    everybody gets. `.env` is where that var is set. */}
 					<p className="adm-caption">
 						<Link to="/forgot">Forgot your password?</Link>
 					</p>

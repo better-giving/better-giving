@@ -230,6 +230,12 @@ export type State =
 			 * `oneTimeButton` below is the press that takes the offer.
 			 */
 			readonly oneTimeInstead: boolean;
+			/**
+			 * whether a press is held on this step while the challenge asks the donor to solve
+			 * something (`holding` in ./checkout.machine.ts), which is the one wait the donor is
+			 * the answer to rather than an audience of.
+			 */
+			readonly solving: boolean;
 	  }
 	| {
 			readonly step: 'confirm';
@@ -420,6 +426,7 @@ export const TOP_LEVEL_STATES = [
 	'amount',
 	'details',
 	'give',
+	'holding',
 	'authorizing',
 	'resending',
 	'quoting',
@@ -535,6 +542,8 @@ export function toState(snapshot: CheckoutSnapshot): State {
 				? working('quoting')
 				: { step: 'details', fv, missing: missingPayerFields(context.payerDraft) };
 		case 'give':
+		// a press held for the challenge token is still the review step, with its press busy.
+		case 'holding':
 			return fv === null
 				? working('quoting')
 				: {
@@ -543,6 +552,7 @@ export function toState(snapshot: CheckoutSnapshot): State {
 						payable: methodIsChargeable(context.payerDraft, context.config),
 						payerComplete: payerIsComplete(context),
 						oneTimeInstead: oneTimeIsOfferedInstead(snapshot),
+						solving: step === 'holding' && context.challengeInteractive,
 						...(context.payerDraft.method === undefined
 							? {}
 							: { method: context.payerDraft.method })
@@ -591,7 +601,8 @@ export function toState(snapshot: CheckoutSnapshot): State {
  * this asks about are the three the machine moves between.
  */
 function numberedStepOf(snapshot: CheckoutSnapshot): NumberedStep | null {
-	const step = topLevelStateOf(snapshot);
+	const top = topLevelStateOf(snapshot);
+	const step = top === 'holding' ? 'give' : top;
 	return (NUMBERED_STEPS as readonly string[]).includes(step) ? (step as NumberedStep) : null;
 }
 
@@ -622,6 +633,7 @@ function isWorking(snapshot: CheckoutSnapshot): boolean {
 	const step = topLevelStateOf(snapshot);
 	return (
 		step === 'boot' ||
+		step === 'holding' ||
 		step === 'quoting' ||
 		step === 'quoted' ||
 		step === 'confirming' ||

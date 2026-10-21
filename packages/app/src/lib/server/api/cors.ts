@@ -113,8 +113,8 @@ export type PreflightGrant = {
  * in `vite dev` none of this is observable: Vite's own middleware adds
  * `Access-Control-Allow-Origin` and `Access-Control-Allow-Methods` to an OPTIONS response, so a
  * preflight this app refused still reads as granted there
- * (https://vite.dev/config/server-options.html#server-cors). `pnpm preview`, which runs the built
- * worker under wrangler, is where the refusal is real.
+ * (https://vite.dev/config/server-options.html#server-cors). the container (`compose.yaml`), which
+ * serves the built app with no vite in front, is where the refusal is real.
  */
 export function preflightResponse(
 	request: Request,

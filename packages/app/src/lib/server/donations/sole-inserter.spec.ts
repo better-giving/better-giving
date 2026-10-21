@@ -96,10 +96,10 @@ describe('collect.ts is the only inserter of recurring_plan', () => {
 
 	it('scans no spec, so the fixture rows the suite seeds are not read as writers', () => {
 		// the scope line, asserted rather than described: `isTest` narrow enough to let a real
-		// module through would report every workers spec that seeds a plan, and the gate would be
+		// module through would report every db spec that seeds a plan, and the gate would be
 		// turned off rather than fixed.
 		const names = files.map((f) => relative(SRC, f));
-		expect(names).not.toContain('lib/server/donations/collect.workers.spec.ts');
+		expect(names).not.toContain('lib/server/donations/collect.db.spec.ts');
 		expect(names).not.toContain('lib/server/db/rejection.testing.ts');
 		expect(names.some((n) => /\.(?:spec|test)\./.test(n))).toBe(false);
 	});

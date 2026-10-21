@@ -106,7 +106,7 @@ export type ContactFieldErrors = Partial<Record<ContactField, string>>;
  *
  * it is not a substitute for `contact_display_name_not_blank_check` on the column, and the
  * check is not a substitute for it — the brand stops a *caller*, the check stops a
- * hand-written `wrangler d1 execute` that never passes through TypeScript at all.
+ * statement written by hand against the database file, which never passes through TypeScript.
  */
 export type ParsedContact = {
 	readonly kind: ContactKind;

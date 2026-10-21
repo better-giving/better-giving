@@ -1,3 +1,4 @@
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { settleDelivery } from '$lib/server/donations/settle';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -27,8 +28,9 @@ import type { Route } from './+types/api.chariot.webhook';
 // $lib/server/donations/reverse.ts for the refund of a grant cancelled after it was received); this
 // file owns which status each outcome answers with, which is the one thing Chariot reads.
 //
-// nothing here is a module-scope singleton: the D1 handle arrives on the request context, which
-// ../request-context.ts seeds per request, and both ports are built from that env on the call.
+// nothing here is a module-scope singleton: the database handle arrives on the request context,
+// which ../request-context.ts seeds per request, and both ports are built from that env on the
+// call.
 
 /**
  * one delivery from Chariot.
@@ -65,7 +67,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a Chariot delivery by POST. ${method} is not a method it answers.`,
-			fix: 'Chariot posts grant updates here. Setting Chariot up in the console (`better-giving start`, under Donation processor) creates the subscription for this address and stores its secret as CHARIOT_WEBHOOK_SECRET.'
+			fix: `Chariot posts grant updates here. If Payments shows Chariot’s payment notices working, nothing needs doing, and a re-run would replace the subscription and its secret. Otherwise run \`${setupWebhookCommand('chariot')}\` and add every line it prints to \`.env\`: \`${envLine('CHARIOT_CONNECT_ID')}\` and \`${envLine('CHARIOT_WEBHOOK_SECRET')}\` on a first run, \`${envLine('CHARIOT_WEBHOOK_SECRET')}\` alone once \`CHARIOT_CONNECT_ID\` is set. Then recreate the app: \`${RECREATE_APP}\`.`
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

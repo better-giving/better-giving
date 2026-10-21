@@ -20,7 +20,7 @@ const shares: readonly Share[] = Object.values(MINUTE_RUN);
 describe("the minute cron's shares", () => {
 	const total = (of: (share: Share) => number) => shares.reduce((sum, share) => sum + of(share), 0);
 
-	it('leave a connection free of posts for D1 and SMTP', () => {
+	it('leave a connection free of posts for the database and SMTP', () => {
 		expect(total((s) => s.lanes)).toBeLessThanOrEqual(CONNECTIONS_AT_ONCE - CONNECTIONS_KEPT);
 	});
 
@@ -35,8 +35,6 @@ describe("the minute cron's shares", () => {
 		expect(total((s) => s.queries)).toBeLessThanOrEqual(unspent(LIMITS.queries));
 	});
 
-	// a D1 query is a subrequest to an internal service, drawn from the same per-invocation pool as
-	// the external ones (https://developers.cloudflare.com/workers/platform/limits/, "Subrequests").
 	it('spend no more of the subrequest pool, queries and external together, less the headroom', () => {
 		expect(total((s) => s.external + s.queries)).toBeLessThanOrEqual(unspent(LIMITS.external));
 	});

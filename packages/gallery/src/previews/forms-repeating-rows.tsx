@@ -1,4 +1,3 @@
-import { AnchoredNote } from '@better-giving/operator/behaviour/AnchoredCard';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { RepeatingRows } from '@better-giving/operator/components/forms/RepeatingRows';
 import type {
@@ -37,9 +36,9 @@ import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-li
  *
  * the group with a fixed row is the one state a screen cannot draw for itself: the locked row
  * stands in the list's own geometry, holds a value nobody may edit and carries no name, so what a
- * press posts is the rows under it and nothing else. what stands where its Remove would is a mark
- * and a word the caller hands over bare, and it is a status rather than a control: the group is
- * what stands the two of them in the trailing track as one item, on the presses' own step.
+ * press posts is the rows under it and nothing else. what stands where its Remove would is a word
+ * the caller hands over bare, and it is a status rather than a control: the group stands it in the
+ * trailing track, on the presses' own step.
  *
  * the group with a mark at the start of each box is the one whose rows say what each holds: a
  * network's own mark in front of an address on it, and the muted globe in front of one no network
@@ -293,16 +292,7 @@ export default function FormsRepeatingRowsPreview() {
 					id: 'forms-rows-fixed-locked',
 					label: 'Your donation page',
 					value: 'https://better-giving-donate.workers.dev',
-					aside: (
-						<>
-							<AnchoredNote mark="info" label="Why this row is always listed">
-								<p>
-									The deployment puts this page up itself, and it is served whatever else is listed.
-								</p>
-							</AnchoredNote>
-							Default
-						</>
-					)
+					aside: 'Default'
 				}}
 				rows={[
 					{

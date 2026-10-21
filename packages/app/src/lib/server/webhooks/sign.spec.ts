@@ -4,7 +4,7 @@ import { signedHeaders } from './sign';
 // the signature against a vector the Standard Webhooks reference library signs, so a receiver's
 // library verifies what this module sends. the vector is `test_sign_function` in
 // https://github.com/standard-webhooks/standard-webhooks/blob/main/libraries/python/tests/test_webhooks.py.
-// ./deliver.workers.spec.ts verifies a whole post against the spec's algorithm, written there
+// ./deliver.db.spec.ts verifies a whole post against the spec's algorithm, written there
 // without this module.
 
 describe('signedHeaders()', () => {

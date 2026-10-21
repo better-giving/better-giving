@@ -20,14 +20,14 @@ import type { Route } from './+types/image.$id';
 // no gate: a page's photos are drawn by a donor's `<img>`, which carries no session, and knowing
 // the id is the permission (../routes.spec.ts argues it).
 //
-// only a view the edge does not hold is charged: the meter protects D1, and a view answered from the
-// edge cache never reaches it. so a caller over the limit is still drawn every photo already kept in
-// their data centre, and is refused only the read.
+// only a view the cache does not hold is charged: the meter protects the database, and a view
+// answered from the process's cache never reaches it. so a caller over the limit is still drawn
+// every photo already kept, and is refused only the read.
 export async function loader({ context, params, request }: Route.LoaderArgs): Promise<Response> {
-	const { env, ctx } = context.get(platform);
+	const { env, deferred } = context.get(platform);
 	return servedImage(
 		d1BytesPort(context.get(database)),
-		ctx,
+		deferred,
 		{ origin: new URL(request.url).origin, id: params.id },
 		{
 			beforeRead: async () =>

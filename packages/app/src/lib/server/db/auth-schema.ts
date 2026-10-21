@@ -199,7 +199,7 @@ export const authAccount = sqliteTable(
  * identifier it was handed and this table is its shape, not ours.
  *
  * no foreign key on `value`, where a reader expects one: better-auth's own schema declares none,
- * and the cascade allowlist in `src/lib/server/db/strict.workers.spec.ts` stays at two. a link
+ * and the cascade allowlist in `src/lib/server/db/strict.db.spec.ts` stays at two. a link
  * outliving the member it names still sets no password — better-auth creates the credential row
  * it cannot find, and `auth_account.user_id`'s foreign key refuses an insert against a user who
  * is gone.
@@ -251,12 +251,13 @@ export const authVerification = sqliteTable(
  * grant.
  *
  * rotation logs the admin out, voids any unspent connect address, and does nothing
- * else:
- *   pnpm wrangler d1 execute better-giving --remote --command "UPDATE auth_signing_key set value = '$(openssl rand -hex 32)' where id = 'default'"
+ * else. it is one statement against the database file, with the value from
+ * `openssl rand -hex 32`:
+ *   UPDATE auth_signing_key SET value = '<64 hex characters>' WHERE id = 'default'
  *
  * that generates the replacement on the operator's machine on purpose. the migration mints
- * the first one with `randomblob(32)`, because it runs before any Worker exists and D1's
- * PRNG is the only source there — read the entropy note at the bottom of
+ * the first one with `randomblob(32)`, because it runs before the server exists and
+ * sqlite's PRNG is the only source there — read the entropy note at the bottom of
  * `migrations/0000_initial_schema.sql` before treating `randomblob` as a CSPRNG anywhere
  * else in this codebase.
  */

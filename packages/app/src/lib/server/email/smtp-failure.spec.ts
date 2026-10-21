@@ -8,14 +8,14 @@ import { classifySmtpFailure } from './smtp-failure';
 
 describe('classifySmtpFailure', () => {
 	/**
-	 * the platform refusal is checked first and is `not_configured`, not `connect_failed`.
-	 * "Cloudflare will never allow this" and "the host did not answer just now" are different
+	 * a refused port 25 is checked first and is `not_configured`, not `connect_failed`.
+	 * "this port will never work" and "the host did not answer just now" are different
 	 * instructions to the person reading the message: one is a settings edit, the other is
 	 * waiting.
 	 *
 	 * nothing can produce this string today and the case is here to pin a backstop rather than a
-	 * live path: `parseSmtpEndpoint` refuses port 25 before a socket exists, so Cloudflare never gets
-	 * to say so. the reachable half of this arm is the case below it.
+	 * live path: `parseSmtpEndpoint` refuses port 25 before a socket exists, so nothing dials it. the
+	 * reachable half of this arm is the case below it.
 	 */
 	it('reads a prohibited port as a misconfiguration, not an outage', () => {
 		const failure = classifySmtpFailure(

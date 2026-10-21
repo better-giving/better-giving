@@ -141,14 +141,7 @@ export const DEFAULT_SHAPE = { frequencies: 3, amounts: 6 } as const;
 type Attributes = Record<string, string | number | boolean | undefined>;
 
 /**
- * appends children, through `appendChild` rather than `append`.
- *
- * `wrangler types` writes a global `interface Element` for HTMLRewriter into
- * `worker-configuration.d.ts`, and TypeScript merges it with the DOM's `Element`. a member
- * declared on an interface hides the one it inherits, so that file's
- * `append(content: string | ReadableStream | Response)` shadows `ParentNode.append` for every DOM
- * element in this project — a variadic call against it does not type-check and never will.
- * `appendChild` is declared on `Node`, which that file does not touch.
+ * appends children, each through `appendChild`.
  */
 export function put(doc: Document, parent: Node, children: readonly (Node | string)[]): void {
 	for (const child of children) {
@@ -1024,6 +1017,13 @@ export type CardView = {
 	 * where that comparison is written down.
 	 */
 	readonly challenge: HTMLElement;
+	/**
+	 * the review step's box for the same widget, beside the press, which the widget is drawn afresh
+	 * into only where a press is held on it and it is asking the donor to solve something
+	 * (`FormChallenge.redraw` in ./element.ts). empty otherwise, and costing no space for the reason
+	 * `challenge` above costs none.
+	 */
+	readonly heldChallenge: HTMLElement;
 	/**
 	 * the coin list a `crypto` gift is chosen in, handed out for the reason `payment` above is.
 	 *
@@ -2306,8 +2306,10 @@ export function createCard(
 		// as `working` on both sides, and reading that as a refusal marks a card mid-transaction
 		// and takes the caret off whatever the donor was looking at. that press is dropped by the
 		// flow's shape (`quoting` has no `SUBMIT` handler, ./checkout.machine.ts) and needs no
-		// message, because the donor has already been told something is happening.
-		if (pressedOn !== 'give' || after.step !== 'give') return;
+		// message, because the donor has already been told something is happening. so is a press
+		// the flow took and holds on this step for the challenge token (`holding` in
+		// ./checkout.machine.ts), which reports itself busy on this control.
+		if (pressedOn !== 'give' || after.step !== 'give' || now().submitButton['aria-busy']) return;
 		pressed = true;
 		// said on every press rather than on a press that moved the caret. two ways it does not move
 		// and neither is knowable from the press: a host page's own `::part(payment)` rule outranks
@@ -2336,6 +2338,10 @@ export function createCard(
 	// that rule is written against and nothing may stand between the two.
 	const receiptTo = make(doc, 'p', { class: 'aside', hidden: true });
 
+	// after the press rather than before it, for the reason `challenge` is last on its own step,
+	// and because what it holds is the thing that press is waiting on.
+	const heldChallenge = make(doc, 'div', { class: 'challenge' });
+
 	const giveHead = stepHead();
 	const giveStep = make(doc, 'section', { class: 'step step-give', hidden: true }, [
 		giveHead.head,
@@ -2344,7 +2350,8 @@ export function createCard(
 		oneTimeGroup,
 		paymentMessage,
 		receiptTo,
-		submitButton
+		submitButton,
+		heldChallenge
 	]);
 
 	// ── the takeover screens ───────────────────────────────────────────────────────────────────
@@ -2840,7 +2847,12 @@ export function createCard(
 		// announcer's ancestor, the one thing a donor who cannot see the spinner has is silenced by
 		// the flag meant to tell them. the interior is also what is actually working — the identity
 		// block under it never is.
-		toggleAttribute(body, 'aria-busy', busy ? 'true' : null);
+		//
+		// except while a held press waits on the donor solving the challenge drawn beside it: that
+		// puzzle is in the interior and is what they must act on now, so the flag stays on the press
+		// alone, which is what is waiting.
+		const solving = api.state.step === 'give' && api.state.solving;
+		toggleAttribute(body, 'aria-busy', busy && !solving ? 'true' : null);
 
 		paintTakeover(screen, busy);
 
@@ -3607,6 +3619,7 @@ export function createCard(
 		root,
 		payment,
 		challenge,
+		heldChallenge,
 		coins: coinPicker.host,
 		focus() {
 			headings[shown].focus();

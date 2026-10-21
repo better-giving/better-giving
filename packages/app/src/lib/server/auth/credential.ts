@@ -1,4 +1,5 @@
 import { readAdminPassword } from '@better-giving/operator/admin-password';
+import { RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { secretEquals } from '../secret-compare';
 import type { AuthEnv } from './env';
 
@@ -6,18 +7,12 @@ import type { AuthEnv } from './env';
  * the v0 staff credential: one deploy-time var, compared in constant time.
  *
  * no password hash is ever written, no KDF ever runs, and no row stores a
- * credential. that is a constraint of the target, not a shortcut:
+ * credential: the value is a line in `.env`, compared as it stands. a seeded default
+ * credential is out too. a migration is SQL and cannot compute a hash, so shipping one
+ * would mean a literal hash committed to a public repo, byte-identical in every fork.
  *
- *   - Workers Free is 10 ms CPU per invocation, hard (Paid defaults to 30 s). scrypt
- *     at better-auth's defaults costs far more than that, and a KDF tuned down to fit
- *     10 ms is one an attacker brute-forces trivially. so the credential cannot be
- *     verified with a KDF on the free tier at all.
- *   - a seeded default credential is also out. a migration is SQL and cannot compute
- *     a hash, so shipping one would mean a literal hash committed to a public repo,
- *     byte-identical in every fork.
- *
- * rotation is therefore a new value on the console's dashboard-password fold, which takes
- * effect on this deployment the moment it is stored.
+ * rotation is therefore a new `ADMIN_PASSWORD` line in `.env`, which takes effect when the app
+ * is recreated.
  *
  * for this credential there is deliberately no in-app change-password and no reset
  * flow, and a working mailer is not what decides that. a member has both — mail is
@@ -26,8 +21,8 @@ import type { AuthEnv } from './env';
  * rests on three reasons, none of which is the transport:
  *
  *   - there is nothing to reset against. the credential is a deploy-time var, not a
- *     row. a reset flow writes a new value somewhere, and the only somewhere is D1 —
- *     which is the password hash the bullets above explain cannot exist here.
+ *     row. a reset flow writes a new value somewhere, and the only somewhere is the database —
+ *     which is the stored password hash this module never writes.
  *   - there is no account to identify. one credential, no username (see below), and the
  *     one staff row is a fixed constant — so a reset link would be addressed to whatever
  *     mailbox happened to be typed, which is an unauthenticated way to mint a session.
@@ -55,11 +50,10 @@ import type { AuthEnv } from './env';
  * see ./staff-plugin.ts.
  *
  * what a usable value looks like is not decided here. the length minimum and the sentence
- * about a value under it are `@better-giving/operator/admin-password`'s, because the console
- * writes this value straight to the Cloudflare account and there is no save on this
- * deployment for a rule stated only here to be applied at — that file argues it. this module
- * stays what the sign-in path asks: it reads the value the worker was started with, through
- * that reader, and decides what matching means.
+ * about a value under it are `@better-giving/operator/admin-password`'s, because the value is
+ * typed into `.env` and there is no save on this deployment for a rule stated only here to be
+ * applied at. this module stays what the sign-in path asks: it reads the value the app was
+ * started with, through that reader, and decides what matching means.
  */
 
 /** the configured staff credential. only ever held in memory, for one request. */
@@ -90,30 +84,21 @@ export type StaffCredentialConfig =
  * the message is written for whoever is reading the 4xx/5xx body — increasingly an
  * agent, not a human at a terminal — per CLAUDE.md.
  *
- * where it names is the console and the fold the box is on, never a wrangler invocation
- * or the script wrapping one: the console is the operator's entire interface, so an error
- * that reached for a terminal would hand a second vocabulary to someone who only knows
- * the first.
+ * where it names is the `.env` line, and the recreate that makes it take effect.
  */
 export function readStaffCredential(env: AuthEnv): StaffCredentialConfig {
 	// `AuthEnv` types this `string | undefined`, and the reader takes `unknown` for exactly the
-	// case that type is wrong about: a caller that builds one by hand, or a `wrangler types` `Env`
-	// declaring a binding as `string` when it is not one at runtime.
+	// case that type is wrong about: a caller that builds one by hand with a cast.
 	const reading = readAdminPassword(env.ADMIN_PASSWORD);
 
 	if (!reading.ok) {
 		const problem = reading.problem.endsWith('.') ? reading.problem : `${reading.problem}.`;
-		// the advice never asks for a redeploy, the same way scripts/doctor.js's does not: a value set
-		// from the console takes effect on its own, and a deploy would drag its one-way
-		// `d1 migrations apply --remote` along with it.
 		return {
 			ok: false,
 			message:
 				`Staff sign-in is refused because this deployment is misconfigured: ${problem} ` +
-				`ADMIN_PASSWORD is a deploy-time var, not a settings row: open the console ` +
-				`(\`better-giving start\`) and set it under Dashboard password, which takes effect ` +
-				`immediately on this deployment, or add it to \`.dev.vars\` ` +
-				`for local development (copy \`.dev.vars.example\`). There is no default credential, ` +
+				'ADMIN_PASSWORD is a deploy-time var, not a settings row. Set `ADMIN_PASSWORD` in ' +
+				`\`.env\`, then recreate the app: \`${RECREATE_APP}\`. There is no default credential, ` +
 				`an empty password never matches, and no password is stored anywhere in the database.`
 		};
 	}

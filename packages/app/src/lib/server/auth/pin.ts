@@ -10,7 +10,7 @@ import { type AuthEnv, readPin } from './env';
 export const PIN_UNUSABLE =
 	'`BETTER_AUTH_URL` names no http(s) origin, so no one can be signed in. Set it to the address ' +
 	'the deployment answers on, scheme included (`https://donate.example.org`), or unset it so the ' +
-	`origin is read off each request (DEPLOY.md, .dev.vars.example). ${LOGS_SAY_WHY}`;
+	`origin is read off each request (DEPLOY.md, .env.example). ${LOGS_SAY_WHY}`;
 
 /**
  * the pinned origin, or null where none is pinned — thrown as a 500 where the pin names no

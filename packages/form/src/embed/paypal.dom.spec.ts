@@ -1186,6 +1186,7 @@ describe('the Donate press with PayPal chosen', () => {
 		});
 		actor.send({ type: 'CONTINUE' });
 		actor.send({ type: 'SET_METHOD', method });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
 		return { k, actor, quote };
 	}
 

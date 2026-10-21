@@ -76,7 +76,7 @@ describe('renderReceipt — when it refuses', () => {
 			throw new Error('a receipt was rendered with no organisation profile');
 		}
 		expect(result.missing).toEqual(RECEIPT_FIELDS);
-		expect(result.detail).toContain('better-giving start');
+		expect(result.detail).toContain('under Organisation details in Settings');
 	});
 
 	/**
@@ -111,7 +111,7 @@ describe('renderReceipt — when it refuses', () => {
 
 	/**
 	 * a blank is not a null, so a check testing only for `null` is not enough. a row written by
-	 * `wrangler d1 execute` or an importer can hold `tax_id = ''` — the column allows it and
+	 * a statement run by hand against the database file, or by an importer, can hold `tax_id = ''` — the column allows it and
 	 * `parseOrgProfile` is not on that path — which would pass as complete and print the empty
 	 * field this refusal exists to prevent.
 	 */

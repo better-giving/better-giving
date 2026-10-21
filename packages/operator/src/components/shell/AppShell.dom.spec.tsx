@@ -49,10 +49,7 @@ function laidOut(run: Element | null): Element[] {
 /** the rail's children in order, each as its first class and, for a cell, its full word. */
 function railRun(root: HTMLElement): string[] {
 	return laidOut(root.querySelector('.adm-rail__cells')).map((node) => {
-		if (node.matches('a')) {
-			const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
-			return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
-		}
+		if (node.matches('a')) return node.querySelector('.adm-dest__full')?.textContent ?? '';
 		if (node.matches('hr')) return node.className;
 		return `${node.className}: ${node.textContent}`;
 	});
@@ -133,7 +130,7 @@ describe('a rail mounted into a document', () => {
 });
 
 describe('the groups a rail is divided into', () => {
-	it('rules between plain groups, and draws nothing before the first', () => {
+	it('spaces plain groups apart, and draws nothing before the first', () => {
 		const root = render(AppShell, {
 			org: ORG,
 			groups: [
@@ -145,17 +142,17 @@ describe('the groups a rail is divided into', () => {
 
 		expect(railRun(root)).toEqual([
 			'Dashboard',
-			'adm-rail__rule',
+			'adm-rail__gap',
 			'Donation forms',
 			'Donors',
-			'adm-rail__rule',
+			'adm-rail__gap',
 			'Members'
 		]);
 	});
 
-	it('stands a headed group under its heading, ends it, and rules nothing after it', () => {
-		// the console's rail: the headed group's last entry carries the step, so the group after
-		// it needs no rule of its own.
+	it('stands a headed group under its heading, spaced from the groups either side as any is', () => {
+		// the step before the heading is the one any group takes, and so is the step after the headed
+		// group's last entry.
 		const root = render(AppShell, {
 			org: ORG,
 			groups: [
@@ -171,10 +168,11 @@ describe('the groups a rail is divided into', () => {
 		expect(railRun(root)).toEqual([
 			'Dashboard password',
 			'Organisation',
-			'adm-rail__rule adm-rail__rule--group',
+			'adm-rail__gap',
 			'adm-rail__heading: Donation processor',
 			'Stripe',
-			'PayPal (end)',
+			'PayPal',
+			'adm-rail__gap',
 			'Sites',
 			'SMTP'
 		]);
@@ -295,13 +293,13 @@ describe('the way out a shell draws', () => {
 			groups: GROUPS,
 			wayOut: (
 				<a className="adm-signout" href="/close">
-					Close console
+					Sign out
 				</a>
 			),
-			foot: <div className="adm-footaccount">Riverbank Trust's Account</div>
+			foot: <div>Riverbank Trust's Account</div>
 		});
 
-		expect(root.querySelector('.adm-identity > .adm-signout')?.textContent).toBe('Close console');
+		expect(root.querySelector('.adm-identity > .adm-signout')?.textContent).toBe('Sign out');
 		expect(root.querySelector('.adm-rail__foot')?.textContent).toBe("Riverbank Trust's Account");
 	});
 
@@ -345,8 +343,8 @@ describe('the identity a shell draws', () => {
 	});
 
 	it('leads the name with a same-tab link through the handed link where the site is on this surface', () => {
-		// the dashboard's globe: somewhere in-app, named for where it goes. a new tab or the
-		// console's name would be the outside address's reading of a place the reader is already on.
+		// the dashboard's globe: somewhere in-app, named for where it goes. a new tab, or the name an
+		// outside address is read out by, would treat a place the reader is already on as elsewhere.
 		const Handed = ({ children, ...rest }: DestinationLinkProps) => (
 			<a {...rest} data-handed="yes">
 				{children}
@@ -567,10 +565,7 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 	/** the sheet's run of entries, spelled as `railRun` spells the rail's. */
 	function sheetRun(dialog: HTMLElement): string[] {
 		return laidOut(dialog.querySelector('.adm-moresheet__cells')).map((node) => {
-			if (node.matches('a')) {
-				const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
-				return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
-			}
+			if (node.matches('a')) return node.querySelector('.adm-dest__full')?.textContent ?? '';
 			if (node.matches('hr')) return node.className;
 			return `${node.className}: ${node.textContent}`;
 		});
@@ -617,7 +612,7 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 	});
 
 	it('draws no More and hides nothing where no destination is on the bar', () => {
-		// the console's rail and every specimen that states no `bar`: one tab per destination.
+		// every rail that states no `bar`: one tab per destination.
 		const root = render(AppShell, { org: ORG, groups: GROUPS });
 
 		expect(root.querySelector('.adm-rail__more')).toBeNull();
@@ -638,7 +633,7 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 		expect(group?.contains(named ? document.getElementById(named) : null)).toBe(true);
 	});
 
-	it('opens a sheet holding the rest, each a link, with the rail rules and headings', async () => {
+	it('opens a sheet holding the rest, each a link, spaced and headed as the rail is', async () => {
 		const root = render(AppShell, { org: ORG, groups: BARRED });
 		const dialog = await open(root);
 
@@ -648,13 +643,14 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 		expect(sheetRun(dialog)).toEqual([
 			'Programs',
 			'Recurring gifts',
-			'adm-rail__rule',
+			'adm-rail__gap',
 			'Members',
-			'adm-rail__rule adm-rail__rule--group',
+			'adm-rail__gap',
 			'adm-rail__heading: Integrations',
 			'Zapier',
 			'API',
-			'Webhooks (end)',
+			'Webhooks',
+			'adm-rail__gap',
 			'Books'
 		]);
 		expect(
@@ -867,12 +863,12 @@ describe('the strips a panel route can carry', () => {
 
 	it('draws what a surface hands it, on the strip inside the head and above the panel', () => {
 		// the head is the first row because it is written first — ../../styles/adm.css places
-		// nothing by name, the same way the head is the bare shell's first row. a strip written
-		// after the panel is the panel centred against the wrong half of the window.
+		// nothing by name. a strip written after the panel is the panel centred against the wrong
+		// half of the window.
 		//
 		// the two ends land on the strip and not on the band around it: the band is what a surface
-		// stands a line under (./BareShell.jsx's `head` takes both), so ends handed straight into it
-		// would be two more of those lines rather than the two ends of a row.
+		// stands a line under, so ends handed straight into it would be two more of those lines
+		// rather than the two ends of a row.
 		const root = render(PanelRoute, {
 			bar: (
 				<>

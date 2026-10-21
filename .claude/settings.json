@@ -2,7 +2,7 @@
 	"$schema": "https://json.schemastore.org/claude-code-settings.json",
 	"env": {
 		"CLAUDE_CODE_ENABLE_TODO_TOOLS": "1",
-		"KRU_PROJECT": "better-giving-oss"
+		"KRU_PROJECT": "better-giving-docker"
 	},
 	"extraKnownMarketplaces": {
 		"kru": {
@@ -21,7 +21,7 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+						"command": "bash \"$CLAUDE_PROJECT_DIR/.claude/cloud-install.sh\""
 					}
 				],
 				"matcher": "startup|resume"

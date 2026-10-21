@@ -28,7 +28,7 @@ import { defineDonateForm, type FormBoot, type FormRuntime } from '../element';
 import { apiWords, createQuote, createStatusRead, EmbedFailure, readJson } from './api';
 import { createPaymentSurface, quoteThrough } from './surface';
 import { takeResumeToken } from './resume';
-import { createChallenge } from './turnstile';
+import { createChallenge } from './challenge';
 import {
 	currentScriptIfOurs,
 	isRuntimePath,
@@ -214,12 +214,18 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 			};
 		},
 		// the anti-abuse challenge, passed straight through. nothing is decided here for the same
-		// reason nothing is decided about the payment surface: ./turnstile.ts owns which widget this
-		// deployment draws, what a failure of it says to a donor, and whether a configuration naming
-		// no sitekey draws anything at all. ../element.ts is what turns each token it mints into an
-		// event the flow accepts.
-		challenge: (config, mount, onToken, onUnavailable) =>
-			createChallenge(config, mount, onToken, onUnavailable)
+		// reason nothing is decided about the payment surface: ./challenge.ts owns which check this
+		// deployment runs, and each adapter behind it what a failure of it says to a donor.
+		// ../element.ts is what turns each token it mints into an event the flow accepts. the
+		// address handed over is the read the config came from, which a served ALTCHA path is
+		// resolved against.
+		challenge: (config, mount, onToken, onUnavailable, onInteractive) => {
+			if (origin === null) throw new Error('unreachable: no config is read without an origin');
+			return createChallenge(config, mount, onToken, onUnavailable, {
+				configUrl: configUrl(origin, config.formId),
+				onInteractive
+			});
+		}
 	};
 }
 

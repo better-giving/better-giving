@@ -26,6 +26,7 @@
 		"./embed/chariot": "./src/embed/chariot.ts",
 		"./embed/surface": "./src/embed/surface.ts",
 		"./embed/turnstile": "./src/embed/turnstile.ts",
+		"./embed/challenge": "./src/embed/challenge.ts",
 		"./embed/resume": "./src/embed/resume.ts",
 		"./styles/tokens.css": "./src/styles/tokens.css",
 		"./styles/parts.css": "./src/styles/parts.css",
@@ -45,6 +46,7 @@
 		"@zag-js/combobox": "catalog:",
 		"@zag-js/select": "catalog:",
 		"@zag-js/vanilla": "catalog:",
+		"altcha-lib": "2.6.0",
 		"xstate": "catalog:"
 	},
 	"devDependencies": {

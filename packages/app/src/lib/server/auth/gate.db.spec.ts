@@ -1,0 +1,414 @@
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createDb, type Db } from '$lib/server/db/client';
+import { staff } from '../../../context';
+import { requestContext } from '../../../request-context';
+import { staffGate } from './gate';
+import { createAuth, STAFF_USER_EMAIL } from './index';
+import { signInDestination } from './next';
+import { PIN_UNUSABLE } from './pin';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from './signing-key';
+import { withSigningKeyUnreadable } from './signing-key.testing';
+import { client, run, stmt } from '$lib/server/db/database.testing';
+import { createDeferredWork } from '$lib/server/runtime/deferred';
+import { readEnv } from '$lib/server/runtime/env';
+import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
+
+/** the deploy-time values a request reads, with none set and the spec limiters. */
+const env = readEnv({}, specRateLimiters());
+
+// a db spec because the gate reads the database twice on every request it lets through: the signing key
+// row and the session row. CLAUDE.md refuses a stand-in for either — what is worth asserting here
+// is that a real session cookie against a real `auth_session` row resolves, and a fixture would
+// only prove the fixture.
+
+/** the origin every request in this file arrives on. not loopback, so the cookie is `__Secure-`. */
+const ORIGIN = 'https://give.example';
+
+/** the deployment's staff password, long enough for `readStaffCredential` to accept it. */
+const PASSWORD = 'a-long-enough-password';
+
+let db: Db;
+beforeAll(() => {
+	db = createDb(client);
+});
+
+beforeEach(async () => {
+	await run(stmt('delete from auth_session'));
+	await run(stmt('delete from auth_user'));
+});
+
+/**
+ * the middleware args react router hands a route `middleware`, for one request.
+ *
+ * `url` and `request.url` are separate parameters because react router keeps them separate: the
+ * first is the address the app is navigating to, the second is the request that carried it, and on
+ * a client-side navigation those differ. `sentTo` is how a case says so.
+ *
+ * the context is the deployment's own — `requestContext` is what src/worker.ts seeds — so the gate
+ * reads the same the database handle here that it reads in the worker.
+ */
+function args(
+	url: string,
+	options: { headers?: HeadersInit; sentTo?: string; method?: string } = {}
+) {
+	const context = requestContext({ env, deferred: createDeferredWork(), client });
+	return {
+		request: new Request(options.sentTo ?? url, {
+			method: options.method ?? 'GET',
+			...(options.headers ? { headers: options.headers } : {})
+		}),
+		url: new URL(url),
+		pattern: '/*',
+		params: {},
+		context
+	};
+}
+
+/** what runs beneath the gate, and whether it ran at all. */
+function screen() {
+	const state = { ran: false };
+	return {
+		state,
+		next: async () => {
+			state.ran = true;
+			return new Response('the screen');
+		}
+	};
+}
+
+/**
+ * a real session, signed in through better-auth against the real `auth_session` table, as the
+ * `Cookie` header a browser would send back.
+ *
+ * a second auth instance rather than the gate's, because the two agree on the only thing that
+ * matters: both resolve the signing key from the same `auth_signing_key` row, so a cookie one
+ * signs is one the other verifies. it is also where `ADMIN_PASSWORD` enters — the spec env declares no
+ * such variable, and the gate itself never reads one.
+ */
+async function signIn(): Promise<string> {
+	const signingKey = await resolveAuthSecret(db, {});
+	if (!signingKey.ok) throw new Error(signingKey.cause);
+
+	const auth = createAuth(
+		db,
+		{ ADMIN_PASSWORD: PASSWORD },
+		{ secret: signingKey.secret, requestOrigin: ORIGIN }
+	);
+	const { headers } = await auth.api.signInStaff({
+		body: { password: PASSWORD },
+		headers: new Headers({ origin: ORIGIN }),
+		returnHeaders: true
+	});
+
+	const cookies = headers.getSetCookie().map((value) => value.split(';', 1)[0]);
+	expect(cookies.length).toBeGreaterThan(0);
+	return cookies.join('; ');
+}
+
+/** the response the gate threw, or a failure naming what came back instead. */
+async function refusal(promise: Promise<Response>): Promise<Response> {
+	const thrown = await promise.then(
+		(response) => response,
+		(error: unknown) => error
+	);
+	expect(thrown).toBeInstanceOf(Response);
+	return thrown as Response;
+}
+
+describe('the gate on the protected layout', () => {
+	it('turns an anonymous request away to the login, carrying where it was going', async () => {
+		const beneath = screen();
+
+		const redirect = await refusal(staffGate(args(`${ORIGIN}/admin/forms?tab=live`), beneath.next));
+
+		expect(redirect.status).toBe(303);
+		// the whole request target, percent-encoded into one parameter: a deep link into /admin
+		// names a tab or a filter in its query as often as not.
+		expect(redirect.headers.get('location')).toBe('/login?next=%2Fadmin%2Fforms%3Ftab%3Dlive');
+		// nothing beneath the layout ran, which is the whole of what a gate is.
+		expect(beneath.state.ran).toBe(false);
+	});
+
+	it('names where the browser was going, not the data request that was made for it', async () => {
+		// after the first navigation react router asks for a screen at `<path>.data`, and it is
+		// that request the gate sees. sending the operator back to a `.data` address would hand
+		// them a serialized payload where the screen belongs.
+		const redirect = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/forms?tab=live`, {
+					sentTo: `${ORIGIN}/admin/forms.data?tab=live&_routes=routes%2F_app`
+				}),
+				screen().next
+			)
+		);
+
+		expect(redirect.headers.get('location')).toBe('/login?next=%2Fadmin%2Fforms%3Ftab%3Dlive');
+	});
+
+	it('names a pin that names no address, and logs its value rather than sending it', async () => {
+		const beneath = screen();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const pinnedNowhere = {
+			...args(`${ORIGIN}/admin/forms`),
+			context: requestContext({
+				env: { ...env, BETTER_AUTH_URL: 'localhost:8787' } as unknown as Env,
+				deferred: createDeferredWork(),
+				client
+			})
+		};
+
+		// the sentence as a 500's data, which is what src/root.tsx's boundary draws; a bare error is
+		// replaced by react router's own words outside development. no session has been read yet,
+		// so the caller is as likely anonymous as staff and the value itself goes to the logs.
+		try {
+			await expect(staffGate(pinnedNowhere, beneath.next)).rejects.toMatchObject({
+				data: PIN_UNUSABLE,
+				init: { status: 500 }
+			});
+			expect(logged.mock.calls.flat().join(' ')).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+			expect(beneath.state.ran).toBe(false);
+		} finally {
+			logged.mockRestore();
+		}
+	});
+
+	/**
+	 * the key is read before any session is, so whoever meets this refusal is as likely anonymous as
+	 * staff. the database's own error text stays in the logs, where an operator reads it; the
+	 * caller gets a sentence that names no table and quotes no driver.
+	 */
+	it('answers a signing key it cannot read with a fixed sentence, and logs the cause', async () => {
+		const beneath = screen();
+		await withSigningKeyUnreadable(async (logged) => {
+			const thrown = await staffGate(args(`${ORIGIN}/admin/forms`), beneath.next).then(
+				() => undefined,
+				(error: unknown) => error as { data: unknown; init: { status: number } }
+			);
+
+			expect(thrown?.init.status).toBe(500);
+			expect(thrown?.data).toBe(SIGNING_KEY_UNREADABLE);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+			expect(beneath.state.ran).toBe(false);
+		});
+	});
+
+	it('hands the session it resolved to the loaders beneath it', async () => {
+		const cookie = await signIn();
+		const passed = args(`${ORIGIN}/admin/forms`, { headers: { cookie } });
+
+		const response = await staffGate(passed, screen().next);
+
+		expect(await response.text()).toBe('the screen');
+		// read off the router context, which is how a loader beneath the layout takes it — no
+		// loader resolves a session of its own.
+		expect(passed.context.get(staff).email).toBe(STAFF_USER_EMAIL);
+	});
+
+	it('carries the rolled-forward session cookie out on the response', async () => {
+		const cookie = await signIn();
+		// past `updateAge` (./index.ts), which is what makes better-auth write a fresh expiry and
+		// a fresh cookie on the next read. both columns move together: the row stays valid, it is
+		// only older than a day.
+		const twoDays = 2 * 24 * 60 * 60 * 1000;
+		await run(
+			stmt(
+				'update auth_session set updated_at = updated_at - ?1, expires_at = expires_at - ?1',
+				twoDays
+			)
+		);
+
+		const response = await staffGate(
+			args(`${ORIGIN}/admin/forms`, { headers: { cookie } }),
+			screen().next
+		);
+
+		// nothing else copies better-auth's cookies onto the response, so what a missing one looks
+		// like is an operator signed out seven days after signing in, however much they used the
+		// app in between.
+		expect(response.headers.getSetCookie().length).toBeGreaterThan(0);
+	});
+});
+
+describe('a write arriving from another origin', () => {
+	it('refuses a same-site POST from a signed-in browser, naming the header', async () => {
+		// the org's own website on a sibling subdomain: same-site, so the lax session cookie rides
+		// along. the gate refuses it before any child runs, page route or endpoint alike — on an
+		// endpoint such as /admin/images it is the only check, because react-router's own origin
+		// check runs on no resource route.
+		const cookie = await signIn();
+		const beneath = screen();
+
+		const response = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/members`, {
+					method: 'POST',
+					headers: { cookie, 'sec-fetch-site': 'same-site' }
+				}),
+				beneath.next
+			)
+		);
+
+		expect(response.status).toBe(403);
+		expect(await response.text()).toMatch(/Sec-Fetch-Site.*same-site/);
+		expect(beneath.state.ran).toBe(false);
+	});
+
+	it('refuses a cross-site POST', async () => {
+		const cookie = await signIn();
+		const beneath = screen();
+
+		const response = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/images`, {
+					method: 'POST',
+					headers: { cookie, 'sec-fetch-site': 'cross-site' }
+				}),
+				beneath.next
+			)
+		);
+
+		expect(response.status).toBe(403);
+		expect(beneath.state.ran).toBe(false);
+	});
+
+	it('lets a same-origin POST through to the action', async () => {
+		const cookie = await signIn();
+		const beneath = screen();
+
+		const response = await staffGate(
+			args(`${ORIGIN}/admin/members`, {
+				method: 'POST',
+				headers: { cookie, 'sec-fetch-site': 'same-origin' }
+			}),
+			beneath.next
+		);
+
+		expect(await response.text()).toBe('the screen');
+	});
+
+	it('lets a POST with no Sec-Fetch-Site through to the checks it had before', async () => {
+		// an older browser, or a server-side client: nothing to read, so the session decides.
+		const cookie = await signIn();
+
+		const response = await staffGate(
+			args(`${ORIGIN}/admin/members`, { method: 'POST', headers: { cookie } }),
+			screen().next
+		);
+
+		expect(await response.text()).toBe('the screen');
+	});
+
+	it('lets a cross-site GET through, which is a link followed into /admin', async () => {
+		const cookie = await signIn();
+
+		const response = await staffGate(
+			args(`${ORIGIN}/admin/forms`, { headers: { cookie, 'sec-fetch-site': 'cross-site' } }),
+			screen().next
+		);
+
+		expect(await response.text()).toBe('the screen');
+	});
+});
+
+/**
+ * where the sign-in a refusal sends the operator to puts them afterwards: the login reads the
+ * gate's `next` back through `signInDestination` (src/routes/login.tsx), so this is the address the
+ * browser lands on once the password is in.
+ */
+function afterSignIn(redirect: Response): string {
+	return signInDestination(new URL(redirect.headers.get('location') ?? '', ORIGIN));
+}
+
+describe('where a lapsed session returns once the operator signs in', () => {
+	// a GET is for the screen itself, so it returns there and not to the page that linked to it.
+	it('returns a read to its own address, whichever page it was followed from', async () => {
+		const redirect = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/forms?tab=live`, {
+					headers: { referer: `${ORIGIN}/admin/donations` }
+				}),
+				screen().next
+			)
+		);
+
+		expect(afterSignIn(redirect)).toBe('/admin/forms?tab=live');
+	});
+
+	// the press was made on a screen, and the screen is what answers a GET. the address the write
+	// was posted to may answer none — `/admin/images` is an action alone — so landing there after
+	// signing in is an error page where the operator's screen was.
+	it('returns to the page the press was made from', async () => {
+		const redirect = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/images`, {
+					method: 'POST',
+					headers: { referer: `${ORIGIN}/admin/campaigns/abc?tab=photos` }
+				}),
+				screen().next
+			)
+		);
+
+		expect(redirect.status).toBe(303);
+		expect(afterSignIn(redirect)).toBe('/admin/campaigns/abc?tab=photos');
+	});
+
+	// `/` is the app's entrance, which forwards to the dashboard home (src/routes/_app._index.tsx).
+	it('returns to the dashboard home when the browser named no page', async () => {
+		const redirect = await refusal(
+			staffGate(args(`${ORIGIN}/admin/images`, { method: 'POST' }), screen().next)
+		);
+
+		expect(redirect.status).toBe(303);
+		expect(afterSignIn(redirect)).toBe('/');
+	});
+
+	// the page a browser names is a convenience for where to land, and only a page of this
+	// deployment's is one: a path read off another site's address would be a path on this one
+	// nobody pressed anything on.
+	it('returns to the dashboard home when the page named is on another origin', async () => {
+		const redirect = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/images`, {
+					method: 'POST',
+					headers: { referer: 'https://evil.example/admin/campaigns/abc' }
+				}),
+				screen().next
+			)
+		);
+
+		expect(afterSignIn(redirect)).toBe('/');
+	});
+
+	// returning to the sign-in page would put the operator back at the form they just cleared. the
+	// login refuses that `next` as well (./next.ts), so what is held here is that the gate mints
+	// none to be refused.
+	it('mints no destination when the page named is the sign-in itself', async () => {
+		const redirect = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/images`, {
+					method: 'POST',
+					headers: { referer: `${ORIGIN}/login?next=%2Fadmin` }
+				}),
+				screen().next
+			)
+		);
+
+		expect(redirect.headers.get('location')).toBe('/login');
+	});
+
+	// an editor's own action is addressed `?index`, a routing parameter react router reads and no
+	// screen answers a GET at. the page pressed on is what the operator returns to, whole.
+	it('carries none of the action address into the destination', async () => {
+		const redirect = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/campaigns/abc?index`, {
+					method: 'POST',
+					headers: { referer: `${ORIGIN}/admin/campaigns/abc` }
+				}),
+				screen().next
+			)
+		);
+
+		expect(redirect.headers.get('location')).toBe('/login?next=%2Fadmin%2Fcampaigns%2Fabc');
+	});
+});

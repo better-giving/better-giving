@@ -1,13 +1,15 @@
+import type { Client } from '@libsql/client';
+
 // a profile row put straight into the table, for the states no save can produce.
 //
-// not a spec itself — no pool's `include` matches this name, which is what keeps it a module two
+// not a spec itself — no project's `include` matches this name, which is what keeps it a module two
 // specs import rather than a third file of tests, the same arrangement `../db/rejection.testing.ts`
 // describes. nothing in the app imports it.
 //
 // it exists because `parseOrgProfile` (./org-input.ts) refuses a blank in six of the ten boxes, so
 // the console can no longer save a profile that is missing one — while `missingForReceipt`
 // (./receipt-fields.ts) and `identityMissing` (./identity.ts) both still have an arm for a row that
-// is. that arm is not dead: a row can arrive from an importer or a `wrangler d1 execute` without
+// is. that arm is not dead: a row can arrive from an importer or hand-run SQL without
 // ever passing through TypeScript, and a reader that stopped reporting one would be reporting the
 // console's rules rather than the database's contents. this is how a spec reaches it.
 
@@ -30,18 +32,16 @@ export type OrgColumn =
  * have no defaults in SQL — `$onUpdateFn` is drizzle's and this does not go through drizzle at
  * all. an unstated column is left null, which is the shape being reached for.
  *
- * the D1 handle is passed rather than imported, so this module names no binding and no pool.
+ * the client is passed rather than imported, so this module names no database file.
  */
 export async function writeOrgRow(
-	database: D1Database,
+	database: Client,
 	columns: Partial<Record<OrgColumn, string>> = {}
 ): Promise<void> {
 	const stated = Object.keys(columns) as OrgColumn[];
-	await database
-		.prepare(
-			`insert into org_profile (id, legal_name, created_at, updated_at${stated.map((column) => `, ${column}`).join('')})
-			 values ('default', 'Hope Foundation', 0, 0${stated.map(() => ', ?').join('')})`
-		)
-		.bind(...stated.map((column) => columns[column]))
-		.run();
+	await database.execute({
+		sql: `insert into org_profile (id, legal_name, created_at, updated_at${stated.map((column) => `, ${column}`).join('')})
+			 values ('default', 'Hope Foundation', 0, 0${stated.map(() => ', ?').join('')})`,
+		args: stated.map((column) => columns[column] ?? null)
+	});
 }

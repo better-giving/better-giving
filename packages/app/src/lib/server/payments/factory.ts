@@ -1,5 +1,6 @@
 import type { Provider, PaymentMethod as QuotedRail } from '@better-giving/form/v1';
-import { setCommand } from '@better-giving/operator/deploy-split';
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { readConfigEnv, type ConfigEnv } from '../config/env';
 import {
 	PROCESSOR_LABELS,
@@ -26,11 +27,11 @@ import type { StripeUnreadableReason } from '@better-giving/operator/console/str
 //
 // two facts live here and are stated exactly once: which variables each processor cannot be called
 // without, and what a processor answers where one of them is short. left to callers, the donation
-// path writes its own rail map, the served config writes its own configured list and the console
-// writes a third — and the first disagreement is silent, a donor offered a rail nothing can mint an
-// order on.
+// path writes its own rail map, the served config writes its own configured list and the Payments
+// screen writes a third — and the first disagreement is silent, a donor offered a rail nothing can
+// mint an order on.
 //
-// built per request from `platform.env`, never a module-scope singleton — the same rule the D1
+// built per request from the env, never a module-scope singleton — the same rule the database
 // handle and the Better Auth instance follow (CLAUDE.md), and for the same reason: the secrets
 // only exist on a request's platform env, so a cached client is a cached copy of one deployment's
 // environment. `createAuth(db, …)` in ../auth/index.ts, built per request at the gate over the
@@ -111,12 +112,12 @@ type Processor = {
  * ./stripe.ts refuses that arm without it — where the refusal belongs, since that is the only arm
  * that cannot be answered. required here, it would refuse every outbound call as well, including the
  * one that registers this deployment's endpoint — and registering an endpoint is the only thing that
- * mints a signing secret. a deployment would be refused for a value it had no way to obtain, and the
- * setup button on the console could never be pressed.
+ * mints a signing secret. a deployment would be refused for a value it had no way to obtain, and
+ * `scripts/setup-webhook.ts` could never run.
  *
  * neither omission makes a deployment ready to take donations, and neither is this module's claim
- * that it is. what a deployment is short of beyond this one is the console's to report, beside the
- * boxes those values are pasted into (`packages/console-ui/src/lib/stripe-section.tsx`).
+ * that it is. what a deployment is short of beyond this one is the Payments screen's to report
+ * (`packages/app/src/routes/_app.admin.payments.tsx`).
  *
  * total over `ProcessorName`, so a processor named at the port without a credential list here is a
  * compile error rather than one this module reports as configured on a deployment holding nothing.
@@ -202,8 +203,8 @@ const PROCESSORS: Readonly<Record<ProcessorName, Processor>> = Object.freeze({
 });
 
 /**
- * why a read this deployment made against its Stripe account could not be made, for the console
- * surface to carry beside the sentence.
+ * why a read this deployment made against its Stripe account could not be made, for an operator
+ * screen to carry beside the sentence.
  *
  * here rather than in the route that answers with it, because the fact it states is this
  * module's: `no_key` has to mean exactly the deployment {@link Processors.for} refuses for want of
@@ -212,13 +213,10 @@ const PROCESSORS: Readonly<Record<ProcessorName, Processor>> = Object.freeze({
  * this module required a second value the two would part company with nothing failing.
  *
  * a key that is a publishable one is `failed` and not `no_key`, which is the right side for it: the
- * slot is filled, so the boxes an operator is looking at say a key is set, and a console drawing
- * nothing there would leave the one screen that could tell them silent.
+ * value is set, and a screen saying nothing there would leave the operator no way to tell.
  *
- * Stripe's alone, because the one answer that carries it is a press Stripe's account alone takes —
- * the wallet hostnames (../../../routes/console.wallet-domains.ts). `STRIPE_UNREADABLE_REASONS` in
- * `packages/operator/src/console/stripe-read.ts` is the union it answers in and its members are
- * worded for that account.
+ * Stripe's alone. `STRIPE_UNREADABLE_REASONS` in `packages/operator/src/console/stripe-read.ts` is
+ * the union it answers in and its members are worded for that account.
  *
  * `source` is the raw platform env, the same entry point {@link createPaymentProviders} takes.
  */
@@ -244,9 +242,9 @@ export function requiredCredentials(name: ProcessorName): readonly (keyof Config
  *
  * one variable per processor and separate from {@link PROCESSORS}'s `requires`, because the two
  * halves are short in different ways and fix differently. a deployment holding the server half and
- * not this one can charge and cannot serve a form — the console reports it, and `publishedConfig`
- * in ../forms/published-config.ts refuses over it — while one holding this and not the server half
- * serves a form that fails at the last step.
+ * not this one can charge and cannot serve a form — the Payments screen reports it, and
+ * `publishedConfig` in ../forms/published-config.ts refuses over it — while one holding this and
+ * not the server half serves a form that fails at the last step.
  *
  * PayPal's is its client id, which is on its `requires` as well: the pair authenticates a server
  * call and the id alone starts the SDK, so the one variable is short in both ways at once.
@@ -393,23 +391,24 @@ function setupVars(name: ProcessorName): readonly (keyof ConfigEnv)[] {
 const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 	stripe:
 		'In the org’s own Stripe dashboard, take the secret key and the publishable key from the ' +
-		`same screen, then run \`${setCommand('STRIPE_SECRET_KEY')}\` and ` +
-		`\`${setCommand('STRIPE_PUBLISHABLE_KEY')}\` against this deployment.`,
+		`same screen, add \`${envLine('STRIPE_SECRET_KEY')}\` and ` +
+		`\`${envLine('STRIPE_PUBLISHABLE_KEY')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`,
 	paypal:
 		'In the org’s own PayPal developer dashboard, take the client id and the secret from the ' +
-		`same app, then run \`${setCommand('PAYPAL_CLIENT_ID')}\` and ` +
-		`\`${setCommand('PAYPAL_CLIENT_SECRET')}\` against this deployment.`,
-	// no commands: the console refuses Chariot's values one at a time, because a key set that way
-	// leaves no event subscription and no signing secret behind it.
+		`same app, add \`${envLine('PAYPAL_CLIENT_ID')}\` and ` +
+		`\`${envLine('PAYPAL_CLIENT_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`,
+	// the key alone leaves no Connect, no event subscription and no signing secret behind it, so the
+	// fix runs the script that makes all three.
 	chariot:
-		'Chariot issues the org’s API key by email. Open the console (`better-giving start`) and set ' +
-		'Chariot up on its page under Donation processor, which stores the key, fetches the Connect ' +
-		'id and creates the event subscription with its secret.',
+		'Chariot issues the org’s API key by email. Add ' +
+		`\`${envLine('CHARIOT_API_KEY')}\` to \`.env\`, check the EIN and the notification address in Settings, run ` +
+		`\`${setupWebhookCommand('chariot')}\`, add the two lines it prints to \`.env\`, then recreate ` +
+		`the app: \`${RECREATE_APP}\`.`,
 	nowpayments:
 		'In the org’s own NOWPayments dashboard, take the API key, and the code of the coin set as ' +
-		`the payout wallet under Payment Settings (such as \`usdttrc20\`), then run ` +
-		`\`${setCommand('NOWPAYMENTS_API_KEY')}\` and \`${setCommand('NOWPAYMENTS_OUTCOME_CURRENCY')}\` ` +
-		'against this deployment.'
+		`the payout wallet under Payment Settings (such as \`usdttrc20\`), then add ` +
+		`\`${envLine('NOWPAYMENTS_API_KEY')}\` and \`${envLine('NOWPAYMENTS_OUTCOME_CURRENCY')}\` ` +
+		`to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 });
 
 /**
@@ -483,16 +482,14 @@ export type Processors = {
 	 * the variables this deployment would have to set before it could call this processor at all, in
 	 * {@link PROCESSORS}' own order and empty for one it can already call.
 	 *
-	 * the complement of `configured` above and the answer to the question that follows it: a console
-	 * drawing a processor this deployment holds no keys for needs to say which boxes are empty, and
-	 * which variables a processor cannot be called without is this module's fact. derived on the
-	 * console side it would be a second copy that stops matching the day a processor needs another
-	 * one.
+	 * the complement of `configured` above and the answer to the question that follows it: a refusal
+	 * for a processor this deployment holds no keys for needs to say which values are missing, and
+	 * which variables a processor cannot be called without is this module's fact. derived anywhere
+	 * else it would be a second copy that stops matching the day a processor needs another one.
 	 *
-	 * a value held in a shape no call can be made with is on it too, after the empty ones: it is a box
-	 * the operator has to fill again, and a console reading an unconfigured processor with nothing
-	 * named has nothing to send them to. why it was refused is `shortfall`'s and the refusal's
-	 * sentence; the console's payments report carries names alone.
+	 * a value held in a shape no call can be made with is on it too, after the empty ones: it is a
+	 * line the operator has to write again. why it was refused is `shortfall`'s and the refusal's
+	 * sentence.
 	 *
 	 * names only, and there is nothing else it could be: a value never leaves this module.
 	 */
@@ -584,7 +581,7 @@ function unbuildable(name: ProcessorName): PaymentProvider {
 		'internal_error',
 		'The payment provider could not be built at all, which is not a state this app is ' +
 			'supposed to be able to reach. Nothing about the deployment fixes it. It is a bug in ' +
-			'this app, and the cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a checkout). No payment was taken.'
+			`this app. No payment was taken. ${LOGS_SAY_WHY}`
 	);
 }
 
@@ -596,23 +593,23 @@ function build(env: ConfigEnv, name: ProcessorName): PaymentProvider {
 			name,
 			'not_configured',
 			`This deployment cannot take a payment through ${PROCESSOR_LABELS[name]}: ${refused.clause}. ` +
-				'Open the console (`better-giving start`) and correct it under Donation processor.'
+				'Correct it in `.env`, then recreate the app.'
 		);
 	}
 	const built = adapter(env);
 	if (built !== null) return built;
 
 	// the variables this call cannot be made without, and nothing about the rest of the setup: what
-	// a deployment is short of beyond these is the console's to report, beside the boxes they are
-	// pasted into.
+	// a deployment is short of beyond these is the Payments screen's to report.
 	const unset = requires.filter((variable) => !env[variable]);
 	const one = unset.length === 1;
 	return refusing(
 		name,
 		'not_configured',
 		`This deployment cannot take a payment through ${PROCESSOR_LABELS[name]}: ` +
-			`\`${unset.join('` and `')}\` ${one ? 'is' : 'are'} not set. Open the console ` +
-			`(\`better-giving start\`) and set ${one ? 'it' : 'them'} under Donation processor.`
+			`\`${unset.join('` and `')}\` ${one ? 'is' : 'are'} not set. Add ` +
+			`${unset.map((variable) => `\`${envLine(variable)}\``).join(' and ')} to \`.env\`, then ` +
+			'recreate the app.'
 	);
 }
 

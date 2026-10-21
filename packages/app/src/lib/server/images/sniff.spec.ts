@@ -3,7 +3,7 @@ import { jpegHeader, pngHeader, type WebpVariant, webpHeader } from './headers.t
 import { sniffImage } from './sniff';
 
 // what a posted file's own header says it is. what the upload route does with the answer is
-// src/routes/_app.admin.images.workers.spec.ts's.
+// src/routes/_app.admin.images.db.spec.ts's.
 
 describe('sniffImage()', () => {
 	it('reads a jpeg’s size from its start-of-frame, past the segments before it', () => {

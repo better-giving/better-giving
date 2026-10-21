@@ -38,8 +38,8 @@ export function encodeAllowedOrigins(origins: readonly string[]): string {
  * the column as an origin list.
  *
  * total, and it fails closed. the check makes invalid JSON and a non-array unreachable
- * through SQL, but it says nothing about what is in the array, and a hand-run
- * `wrangler d1 execute` predates any of this code. none of those is worth a 500 on a staff
+ * through SQL, but it says nothing about what is in the array, and a statement run by
+ * hand against the database file predates any of this code. none of those is worth a 500 on a staff
  * page — and an entry that is not a usable origin read as "no site may embed" is the
  * direction a CORS allowlist has to fail in.
  *
@@ -50,7 +50,7 @@ export function encodeAllowedOrigins(origins: readonly string[]): string {
  * duplicate key react reuses one element across rather than rendering the second — silently
  * dropping a site from the list instead of loudly failing. `readOriginList` in
  * `@better-giving/operator/origins` drops them on the way in for the same reason; this is the same
- * rule on the way out, where a hand-run `wrangler d1 execute` is what the parse never saw.
+ * rule on the way out, where a statement run by hand is what the parse never saw.
  */
 export function decodeAllowedOrigins(stored: string): string[] {
 	const origins = storedArray(stored).filter((entry): entry is string => typeof entry === 'string');

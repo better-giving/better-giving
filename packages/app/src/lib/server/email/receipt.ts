@@ -159,8 +159,7 @@ export async function renderReceipt(input: ReceiptInput): Promise<ReceiptResult>
 			detail:
 				`No receipt was rendered: the organisation's ${listFields(profile.missing)} ` +
 				`${profile.missing.length === 1 ? 'is' : 'are'} not saved, and a receipt must carry ` +
-				'them. Open the console (`better-giving start`) and fill in your organisation details ' +
-				`under ${IDENTITY_FOLD}.`
+				`them. Fill in what’s missing under ${IDENTITY_FOLD} in Settings.`
 		};
 	}
 

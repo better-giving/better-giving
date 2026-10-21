@@ -12,12 +12,11 @@ import {
 // node pool, no database and no browser: every rule here is decidable from the submitted text, and
 // the whole module reads a string with the platform's own `URL`.
 //
-// it is asserted here rather than only through a caller because both surfaces call it. the app's
-// own specs put these rules through the parsers that wrap them
+// it is asserted here rather than only through a caller because two readers call it. the app's
+// specs put these rules through the parsers that wrap them
 // (`packages/app/src/lib/server/forms/form-input.spec.ts`,
-// `packages/app/src/lib/server/sites/site-input.spec.ts`) and the console's put them through the
-// press that stops in front of them (`packages/console-ui/src/lib/sites.spec.ts`) — so a
-// rule that changed shape would be answerable in either package and stated in neither.
+// `packages/app/src/lib/server/sites/site-input.spec.ts`) — so a rule that changed shape would be
+// answerable through a caller and stated in neither.
 
 describe('a list of typed rows, read', () => {
 	it('takes a whole origin as it was written', () => {
@@ -245,7 +244,7 @@ describe('the same list read one row at a time', () => {
 	});
 
 	it('marks the second spelling of one host at its own box, before the shape is read', () => {
-		// the pair a console operator meets: `http://` is refused everywhere but the loopback, and
+		// the pair an operator meets: `http://` is refused everywhere but the loopback, and
 		// the repeat is the sentence that stands, because deleting the box is the whole of the fix.
 		const { rows } = readOriginRows(['https://x.example', 'http://x.example']);
 
@@ -336,12 +335,9 @@ describe('the host inside an origin', () => {
 	});
 });
 
-// the rule is implemented twice — here and as `Hosts` in packages/console/internal/widget/widget.go
-// — and this is what holds the two equal. both read `./origins.hosts.json`, so a row either side
-// reads differently is a red suite rather than a widget covering a site the deployment serves under
-// a different name. a row that belongs to one language's parser and not to the rule belongs in the
-// block above instead: this one is only ever the fixture.
-describe('the reading the console binary takes over the same origins', () => {
+// the rows `./origins.hosts.json` pins. a row that belongs to the parser and not to the rule
+// belongs in the block above instead: this one is only ever the fixture.
+describe('the stored origins the fixture pins, read as hosts', () => {
 	it.each(fixture.rows)('reads a stored $origin as its host', ({ origin, host, why }) => {
 		expect(hostOf(origin), why).toBe(host);
 	});

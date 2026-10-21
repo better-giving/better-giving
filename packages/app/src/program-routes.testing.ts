@@ -1,6 +1,11 @@
-import { env } from 'cloudflare:test';
 import type { Db } from '$lib/server/db/client';
 import { signInAsDeployer } from './staff-session.testing';
+import { run, stmt } from '$lib/server/db/database.testing';
+import { readEnv } from '$lib/server/runtime/env';
+import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
+
+/** the deploy-time values a request reads, with none set and the spec limiters. */
+const env = readEnv({}, specRateLimiters());
 
 // what the three program route specs share, and nothing else: a real staff session, and the two
 // writes that put a cause in the table past the queries under test.
@@ -37,11 +42,16 @@ export async function insertProgram(options: {
 	archived?: boolean;
 }): Promise<string> {
 	const { id, name, description = null, archived = false } = options;
-	await env.DB.prepare(
-		`insert into program (id, name, description, status, created_at, updated_at, archived_at)
-		 values (?, ?, ?, ?, 0, 0, ?)`
-	)
-		.bind(id, name, description, archived ? 'archived' : 'active', archived ? 0 : null)
-		.run();
+	await run(
+		stmt(
+			`insert into program (id, name, description, status, created_at, updated_at, archived_at)
+		 values (?, ?, ?, ?, 0, 0, ?)`,
+			id,
+			name,
+			description,
+			archived ? 'archived' : 'active',
+			archived ? 0 : null
+		)
+	);
 	return id;
 }

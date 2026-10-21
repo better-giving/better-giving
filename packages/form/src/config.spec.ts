@@ -96,6 +96,18 @@ describe('reading a usable response', () => {
 			'turnstileSiteKey'
 		);
 	});
+
+	it('keeps the ALTCHA challenge address exactly as served, and drops an empty one', () => {
+		const config = readFormConfig({
+			...RESPONSE,
+			altchaChallengeUrl: '/api/v1/forms/form_123/challenge'
+		});
+
+		expect(config?.altchaChallengeUrl).toBe('/api/v1/forms/form_123/challenge');
+		expect(readFormConfig(withField('altchaChallengeUrl', ' '))).not.toHaveProperty(
+			'altchaChallengeUrl'
+		);
+	});
 });
 
 describe('a response the form cannot solicit a gift on', () => {

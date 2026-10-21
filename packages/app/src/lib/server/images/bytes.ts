@@ -48,7 +48,7 @@ export function d1BytesPort(db: Db): BytesPort {
 	return {
 		async put(id, bytes, contentType) {
 			const result = await putBytes(db, id, bytes, contentType);
-			if (result.meta.changes !== 1) {
+			if (result.rowsAffected !== 1) {
 				throw new Error(`no ${contentType} image ${id} to put bytes under`);
 			}
 		},

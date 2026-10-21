@@ -185,7 +185,18 @@ function atDetails(options: HarnessOptions = {}) {
 }
 
 /** the review step, with the details behind it filled in and the rail reported. */
+/**
+ * the donor on the review step with a rail chosen and a challenge token already minted, which is
+ * the ordinary press: the widget or the solve answers while the details step is being filled in.
+ */
 function readyToSubmit(options: HarnessOptions = {}) {
+	const h = reviewed(options);
+	h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
+	return h;
+}
+
+/** the same donor before the challenge has answered. */
+function reviewed(options: HarnessOptions = {}) {
 	const h = atDetails(options);
 	h.actor.send({
 		type: 'SET_CONTACT',
@@ -489,6 +500,7 @@ describe('a flow the page opens preset', () => {
 		});
 		actor.send({ type: 'CONTINUE' });
 		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
 		actor.send({ type: 'SUBMIT' });
 		await settle();
 
@@ -686,7 +698,8 @@ describe('the press that spends the money', () => {
 			email: 'donor@example.org',
 			firstName: 'Ada',
 			lastName: 'Lovelace',
-			consentedToContact: false
+			consentedToContact: false,
+			turnstileToken: 'tk_ready'
 		});
 	});
 
@@ -743,6 +756,7 @@ describe('the press that spends the money', () => {
 		expect(actor.getSnapshot().context.draft.programId).toBe('prg_school');
 
 		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
 		actor.send({ type: 'SUBMIT' });
 		await settle();
 		expect(calls.quote[0]).toMatchObject({ programId: 'prg_school' });
@@ -923,6 +937,8 @@ describe('a press over fields the donor has not finished', () => {
 		});
 		actor.send({ type: 'SUBMIT' });
 		await settle();
+		// the challenge resets on the way out of the attempt, and mints the token the next spends.
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_next' });
 		actor.send({ type: 'SUBMIT' });
 		await settle();
 
@@ -1427,6 +1443,7 @@ describe('backing out of the correction screen', () => {
 		actor.send({ type: 'BACK' });
 		expect(actor.getSnapshot().context.quote).toBeNull();
 
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_next' });
 		actor.send({ type: 'SUBMIT' });
 		await settle();
 		actor.send({ type: 'CONFIRM' });
@@ -1500,6 +1517,7 @@ describe('a retried gift', () => {
 		actor.send({ type: 'RETRY' });
 		expect(actor.getSnapshot().value).toBe('give');
 		actor.send({ type: 'SET_METHOD', method: 'ach' });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_next' });
 		actor.send({ type: 'SUBMIT' });
 		await settle();
 		expect(calls.confirm).toHaveLength(2);
@@ -1547,6 +1565,7 @@ const EVERY_EVENT: readonly CheckoutEvent[] = Object.values({
 	TOGGLE_FEE_COVERAGE: { type: 'TOGGLE_FEE_COVERAGE' },
 	SET_CONSENT: { type: 'SET_CONSENT', consented: true },
 	SET_TURNSTILE_TOKEN: { type: 'SET_TURNSTILE_TOKEN', token: 'tk_x' },
+	SET_CHALLENGE_INTERACTIVE: { type: 'SET_CHALLENGE_INTERACTIVE', interactive: true },
 	SUBMIT: { type: 'SUBMIT' },
 	OPEN_FUND: { type: 'OPEN_FUND' },
 	FUND_APPROVED: { type: 'FUND_APPROVED', authorizationId: 'wfs_x', authorizedMinor: 2500 },
@@ -1931,6 +1950,131 @@ describe('where a Try again lands', () => {
 
 		expect(actor.getSnapshot().value).toBe('give');
 		expect(actor.getSnapshot().context.payerDraft.email).toBe('donor@example.org');
+	});
+});
+
+describe('a press made before the challenge has minted a token', () => {
+	// the solve and the widget both answer in the background, and a donor quicker than either would
+	// otherwise send no token and be refused `challenge_failed` for nothing they did.
+	it('holds the press on the review step and sends it once a token lands', async () => {
+		const { actor, calls } = reviewed();
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(actor.getSnapshot().matches('holding')).toBe(true);
+		expect(calls.quote).toHaveLength(0);
+
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_late' });
+		await settle();
+
+		expect(calls.quote).toHaveLength(1);
+		expect(calls.quote[0]?.turnstileToken).toBe('tk_late');
+	});
+
+	it('sends at once where a token is already held', async () => {
+		const { actor, calls } = reviewed();
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_x' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote).toHaveLength(1);
+	});
+
+	// a token is valid once, so the one a refused send carried is no token for the next press.
+	it('holds a press whose only token was spent by the send before it', async () => {
+		const { actor, calls } = reviewed({
+			quote: () => Promise.reject(Object.assign(new Error('x'), { code: 'challenge_failed' }))
+		});
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_spent' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		actor.send({ type: 'RETRY' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote).toHaveLength(1);
+		expect(actor.getSnapshot().matches('holding')).toBe(true);
+	});
+
+	it('ends on the failure the challenge reports while the press is held', () => {
+		const { actor, calls } = reviewed();
+		actor.send({ type: 'SUBMIT' });
+		actor.send({
+			type: 'CHALLENGE_UNAVAILABLE',
+			failure: { message: 'The security check could not be shown.', fix: 'Check the sitekey.' }
+		});
+
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.failure?.message).toBe(
+			'The security check could not be shown.'
+		);
+		expect(calls.quote).toHaveLength(0);
+	});
+
+	// a visitor solving a puzzle takes as long as it takes, so the wait does not run out under them;
+	// it runs again from when the puzzle is put away without a token.
+	it('waits as long as the donor is solving an interactive challenge, then sends', async () => {
+		const { actor, calls, clock } = reviewed();
+		actor.send({ type: 'SUBMIT' });
+		actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: true });
+		clock.advance(PORT_TIMEOUT_MS * 3);
+
+		expect(actor.getSnapshot().value).toBe('holding');
+		expect(actor.getSnapshot().context.challengeInteractive).toBe(true);
+
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_solved' });
+		await settle();
+
+		expect(calls.quote[0]?.turnstileToken).toBe('tk_solved');
+		expect(actor.getSnapshot().context.challengeInteractive).toBe(false);
+	});
+
+	it('runs the wait again from when the challenge leaves interactive mode without a token', () => {
+		const { actor, clock } = reviewed();
+		actor.send({ type: 'SUBMIT' });
+		actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: true });
+		clock.advance(PORT_TIMEOUT_MS * 2);
+		actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: false });
+		clock.advance(PORT_TIMEOUT_MS - 1);
+		expect(actor.getSnapshot().value).toBe('holding');
+
+		clock.advance(1);
+		expect(actor.getSnapshot().value).toBe('failed');
+	});
+
+	it('ends on a failure, with nothing sent, where no token arrives in time', () => {
+		const { actor, calls, clock } = reviewed();
+		actor.send({ type: 'SUBMIT' });
+		clock.advance(PORT_TIMEOUT_MS);
+
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.failure?.message).toMatch(/nothing was charged/i);
+		expect(calls.quote).toHaveLength(0);
+	});
+});
+
+describe('the field a challenge token travels in', () => {
+	it('sends it as `turnstileToken` where the config serves a sitekey', async () => {
+		const { actor, calls } = readyToSubmit({ config: { ...CONFIG, turnstileSiteKey: '0x4AAA' } });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_x' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote[0]?.turnstileToken).toBe('tk_x');
+		expect(calls.quote[0]).not.toHaveProperty('altchaPayload');
+	});
+
+	// the endpoint verifies the field its own check reads and refuses the submission without it, so
+	// a solved payload sent under the other name is a gift refused `challenge_failed`.
+	it('sends it as `altchaPayload` where the config serves an ALTCHA challenge address', async () => {
+		const config = { ...CONFIG, altchaChallengeUrl: '/api/v1/forms/form_123/challenge' };
+		const { actor, calls } = readyToSubmit({ config });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'eyJjaGFsbGVuZ2UiOnt9fQ==' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote[0]?.altchaPayload).toBe('eyJjaGFsbGVuZ2UiOnt9fQ==');
+		expect(calls.quote[0]).not.toHaveProperty('turnstileToken');
 	});
 });
 
@@ -2665,6 +2809,7 @@ describe('a crypto gift', () => {
 
 			actor.send({ type: 'SET_COIN', coin: 'btc' });
 			expect(actor.getSnapshot().context.coinRefusal).toBeNull();
+			actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_next' });
 			actor.send({ type: 'SUBMIT' });
 
 			expect(actor.getSnapshot().value).toBe('quoting');

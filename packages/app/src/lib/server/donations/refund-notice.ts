@@ -73,7 +73,7 @@ const GIVE_UP_READ_MS = 24 * 60 * 60_000;
 
 /**
  * notices sent per run, oldest first, one after another. a run has its invocation to itself
- * (wrangler.jsonc's `triggers`), and a notice costs one SMTP connection and six D1 queries — the
+ * (src/cron-runs.ts), and a notice costs one SMTP connection and six D1 queries — the
  * donor, the organisation, the gift's figures and the clear or stamp — so fifty is a few hundred of
  * Workers Paid's 1,000 queries an invocation (../outbox/budget.ts's `LIMITS`) and one connection
  * at a time.

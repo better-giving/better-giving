@@ -1,4 +1,3 @@
-import { env } from 'cloudflare:test';
 import { parseContact } from '../contacts/contact-input';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
@@ -17,11 +16,12 @@ import {
 	type Settlement
 } from '../payments/provider';
 import { soleProcessor } from '../payments/processors.testing';
+import { run, stmt } from '$lib/server/db/database.testing';
 
 // gifts through a form, put in the books by the path production writes them by — quoted by
 // `recordDonation`, settled by `settleTransaction`, refunded by `recordReversal`, collected by
 // `settleDelivery` — for a spec that reads what those writers post. every gift is in USD and needs
-// an `org_profile` row, which its receipt reads. not a spec itself: no pool's `include` matches
+// an `org_profile` row, which its receipt reads. not a spec itself: no project's `include` matches
 // this name.
 
 const SETTLED_AT = new Date('2026-09-10T12:00:00.000Z');
@@ -136,12 +136,13 @@ export async function repeatingGift(
 ): Promise<void> {
 	sequence += 1;
 	const contactId = crypto.randomUUID();
-	await env.DB.prepare(
-		`insert into contact (id, kind, display_name, primary_email, created_at, updated_at)
-		 values (?, 'individual', 'Ada Okafor', 'ada@example.org', 0, 0)`
-	)
-		.bind(contactId)
-		.run();
+	await run(
+		stmt(
+			`insert into contact (id, kind, display_name, primary_email, created_at, updated_at)
+		 values (?, 'individual', 'Ada Okafor', 'ada@example.org', 0, 0)`,
+			contactId
+		)
+	);
 	const authorized = crypto.randomUUID();
 	const written = await recordAuthorizedGift(db, {
 		donationId: authorized,

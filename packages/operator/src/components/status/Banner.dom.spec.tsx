@@ -48,4 +48,30 @@ describe('a banner mounted into a document', () => {
 		expect(root.querySelector('.adm-banner__mark')).not.toBeNull();
 		expect(root.querySelector('.adm-banner')?.getAttribute('role')).toBe('status');
 	});
+
+	it('draws the blocks of a body under the sentence, inside the band', () => {
+		const root = render(Banner, {
+			tone: 'attention',
+			word: 'Receipts aren’t being sent',
+			children: 'Ask whoever set up this site to add it.',
+			body: (
+				<>
+					<h3 className="adm-banner__head">For whoever runs the server</h3>
+					<p>Add the mail values, then recreate the app.</p>
+				</>
+			)
+		});
+		const band = root.querySelector('.adm-banner');
+		const body = band?.querySelector('.adm-banner__body');
+
+		expect(rows(root)).toEqual(['adm-banner__word', 'adm-banner__text', null]);
+		expect(body?.querySelector('h3')?.textContent).toBe('For whoever runs the server');
+		expect(body?.previousElementSibling?.className).toBe('adm-banner__text');
+	});
+
+	it('draws no body where it was given none', () => {
+		const root = render(Banner, { tone: 'note', children: 'A fact.' });
+
+		expect(root.querySelector('.adm-banner__body')).toBeNull();
+	});
 });

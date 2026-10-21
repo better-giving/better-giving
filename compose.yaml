@@ -1,0 +1,46 @@
+# one container and one database file. the in-process rate limiter, cache and scheduler are correct
+# only while exactly one replica runs, so `app` is never scaled.
+#
+#   cp .env.example .env                 # then fill it in
+#   docker compose run --rm migrate      # before the first start and after every upgrade
+#   docker compose up -d
+#
+# migrations never run on the server's start (AGENTS.md → Schema), so `migrate` sits behind its own
+# profile and `up` leaves it alone.
+
+services:
+  app:
+    build: .
+    image: better-giving
+    # an init as PID 1 forwards signals and reaps children; node is not built to be PID 1
+    # (docker-node docs/BestPractices.md).
+    init: true
+    env_file: .env
+    # set here, over anything .env says: the port the published mapping reaches and the file on the
+    # volume are the container's, not the operator's.
+    environment:
+      PORT: "3000"
+      HOST: 0.0.0.0
+      DATABASE_URL: file:/data/better-giving.db
+    # the host side is BETTER_GIVING_PORT from .env, 3000 when unset.
+    ports:
+      - "${BETTER_GIVING_PORT:-3000}:3000"
+    volumes:
+      - data:/data
+    restart: unless-stopped
+    # SIGTERM drains the scheduler, open requests, deferred work, then the database (server/start.ts).
+    stop_grace_period: 30s
+
+  migrate:
+    build: .
+    image: better-giving
+    profiles: [migrate]
+    init: true
+    volumes:
+      - data:/data
+    command: ["node", "scripts/migrate.ts"]
+
+# one file, not replicated. back it up by copying better-giving.db with its -wal and -shm beside it
+# while `app` is stopped.
+volumes:
+  data:

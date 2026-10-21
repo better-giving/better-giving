@@ -6,7 +6,7 @@ import Api from './_app.admin.integrations.api';
 
 // what the API page does with the answers its action gives: the key shown once in the card, and a
 // refused name reported at the box with the caret put there. the server half is
-// ./_app.admin.integrations.api.workers.spec.ts; what is asserted here is words, focus and which
+// ./_app.admin.integrations.api.db.spec.ts; what is asserted here is words, focus and which
 // element is on the page, never a class or a computed style.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
@@ -192,7 +192,7 @@ it('names the empty table API keys', () => {
 /**
  * the page over a loader and an action standing in for the route's own, so a press runs the whole
  * round: the make answers its key, and the revoke takes the row away and redirects to a load that
- * names it — which is what the route's server half does (the workers spec beside this one).
+ * names it — which is what the route's server half does (the db spec beside this one).
  */
 async function flow(at: string): Promise<HTMLElement> {
 	let keys = [LISTED];

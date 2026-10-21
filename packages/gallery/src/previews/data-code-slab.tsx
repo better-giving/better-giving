@@ -44,7 +44,7 @@ import {
  * glyph of a value be scrolled clear of the fade. the short one is the same form with nothing to
  * fade, which is what says the fade is drawn from the end of the box and not from the end of the
  * text. the third has no control, and no fade with it: the fade is the control's, so a one-line
- * slab that offers nothing to press runs its line to the edge the way `.adm-cmd--oneline` does.
+ * slab that offers nothing to press runs its line to the edge.
  *
  * a caption is not among the one-line states, and its absence is structural rather than unexercised:
  * the form draws no head, and packages/operator/src/components/data/CodeSlab.jsx's type refuses the
@@ -123,7 +123,7 @@ export default function DataCodeSlabPreview() {
 				The order a deploy runs in is <InlineCode>package.json</InlineCode>&rsquo;s.
 			</p>
 			<p>
-				The door a deploy goes through is <InlineCode>wrangler deploy</InlineCode>.
+				The door a deploy goes through is <InlineCode>docker compose up -d</InlineCode>.
 			</p>
 			{/* the address as a link's own text, where the chip's ground would be a box in a row. */}
 			<p>

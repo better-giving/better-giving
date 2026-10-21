@@ -26,11 +26,9 @@ catalog:
   # resolves the same compiler every package type-checks with rather than whatever happens to be on
   # the machine. the root declares nothing else of any package's: only what lints and formats.
   #
-  # @cloudflare/vitest-pool-workers and @vitest/browser-playwright are version-coupled to vitest too
-  # but stay pinned in one package.json each rather than promoted here — the pool in
-  # packages/app/package.json, which has the D1-backed tests, and the browser runner in
-  # packages/form/package.json, which has the browser specs. a single consumer has nothing to drift
-  # against, and an entry here would claim otherwise.
+  # @vitest/browser-playwright is version-coupled to vitest too but stays pinned in
+  # packages/form/package.json alone, which has the browser specs. a single consumer has nothing to
+  # drift against, and an entry here would claim otherwise.
   #
   # `xstate` is here on react's rule rather than on the count: two copies in one tree are two
   # runtimes, and an actor started on a copy other than the one the machine was built with is a flow
@@ -40,13 +38,7 @@ catalog:
   #
   # `zod` and the `@conform-to/*` pair carry a coupling worth stating: `@conform-to/zod` is
   # version-locked to `@conform-to/react`, and both are read against the `zod` major — packages/app
-  # and packages/console-ui declaring them is what makes the deployment's form layer and the
-  # console's the same validator rather than two.
-  #
-  # `remix-client-cache` peers `react-router: ^7.0.0`; this workspace is on 8.3.0. its published
-  # dist imports only `Await`, `useLoaderData`, `useNavigate` from `react-router`, all present in 8,
-  # so the peerDependencyRules entry below allows 8 for that one peer of that one package, rather
-  # than loosening what any other package may peer on react-router.
+  # alone declares them today; they stay catalogued so the pair and the `zod` major move together.
   #
   # the `@tiptap/*` set earns its catalog entry on a different rule from the rest: packages/app
   # alone declares it, but it is one block: `@tiptap/core`, `@tiptap/pm` and `@tiptap/react` peer on each
@@ -79,12 +71,30 @@ catalog:
   react: 19.2.8
   react-dom: 19.2.8
   react-router: 8.3.0
-  remix-client-cache: 3.0.0
   typescript: 6.0.3
   vite: 8.1.5
   vitest: 4.1.10
   xstate: 5.32.5
   zod: 4.4.3
-peerDependencyRules:
-  allowedVersions:
-    'remix-client-cache>react-router': '8'
+# a machine installs the bindings for its own os and cpu. `libc: [glibc]` filters only packages
+# that declare a `libc` field, and @libsql's musl bindings declare none, so
+# `ignoredOptionalDependencies` below is what keeps them out of the glibc image. it applies to every
+# install, so a musl machine (alpine) gets no libsql binding at all. the lockfile still lists every
+# other variant.
+supportedArchitectures:
+  os: [current]
+  cpu: [current]
+  libc: [glibc]
+ignoredOptionalDependencies:
+  - '@libsql/linux-x64-musl'
+  - '@libsql/linux-arm64-musl'
+  - '@libsql/linux-arm-musleabihf'
+# better-auth peers `next` as optional, and pnpm resolves an optional peer whenever some importer
+# holds a copy: `@react-email/ui` carries one. it is not ours at runtime, so it stays out of the
+# production install.
+#
+# `@react-router/dev` peers `wrangler` as optional, and pnpm resolves it whenever any package in the
+# graph carries a copy. nothing here runs wrangler, so it stays out of the install.
+overrides:
+  'better-auth>next': '-'
+  '@react-router/dev>wrangler': '-'

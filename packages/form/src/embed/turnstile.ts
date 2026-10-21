@@ -1,5 +1,5 @@
-// the anti-abuse adapter: Cloudflare Turnstile behind `FormRuntime.challenge` in ../element.ts,
-// and the only module in `packages/form/src/**` that knows a challenge provider exists.
+// the anti-abuse adapter for a deployment holding a Turnstile pair: Cloudflare Turnstile behind
+// `FormRuntime.challenge` in ../element.ts. ./challenge.ts picks between this and ./altcha.ts.
 //
 // the same shape ./stripe.ts holds for the payment provider — one file imports the vendor,
 // everything above it takes types this repository defines. this one imports nothing at all: the
@@ -80,6 +80,8 @@ export type RenderOptions = {
 	readonly callback?: (token: string) => void;
 	readonly 'error-callback'?: (code: string) => void;
 	readonly 'timeout-callback'?: () => void;
+	readonly 'before-interactive-callback'?: () => void;
+	readonly 'after-interactive-callback'?: () => void;
 };
 
 /**
@@ -104,8 +106,8 @@ export type ChallengeSeam = {
 	readonly delay?: Delay;
 };
 
-/** what a donor is told when the challenge in front of this form cannot be run. */
-const UNCHALLENGEABLE =
+/** what a donor is told when the challenge in front of this form cannot be run, by either check. */
+export const UNCHALLENGEABLE =
 	'This donation form could not run its security check, and nothing was charged. Reload the page ' +
 	'to try again.';
 
@@ -344,7 +346,8 @@ export function createChallenge(
 	mount: HTMLElement,
 	onToken: (token: string) => void,
 	onUnavailable: (failure: Failure) => void,
-	seam?: ChallengeSeam
+	seam?: ChallengeSeam,
+	onInteractive?: (needed: boolean) => void
 ): FormChallenge {
 	/**
 	 * the report that no token is coming, made every time there is one to make.
@@ -374,12 +377,70 @@ export function createChallenge(
 	/** how many retryable failures the widget has reported, counted for `RETRYABLE_FAILURE_LIMIT`. */
 	let failures = 0;
 
-	/** the widget once it exists, held only for the two calls that name it by id. */
-	let widget: { readonly api: TurnstileLike; readonly id: string } | null = null;
+	/** the widget once it exists and the box it is drawn in, held for the calls that name it by id. */
+	let widget: {
+		readonly api: TurnstileLike;
+		readonly id: string;
+		readonly node: HTMLElement;
+	} | null = null;
 	/** whether the element has taken this challenge off the page already. */
 	let stopped = false;
 
 	const load = seam?.load ?? (() => installTurnstile(mount.ownerDocument, seam?.delay));
+
+	/** the render options, the same for the first draw and for every redraw. */
+	const renderOptions = (): RenderOptions => ({
+		sitekey,
+		// draws nothing at all unless this visitor is actually being asked to solve
+		// something, which is what lets the card reserve no space for it.
+		appearance: 'interaction-only',
+		// the form is light only — the card's greys are fixed near-white literals in
+		// ../styles/tokens.css and no seed reaches them — so the widget's own `auto` would
+		// paint a dark box on a white card for a visitor whose system asks for one.
+		theme: 'light',
+		// the card is 375px wide at its floor and every width above that is the host's — it
+		// may be a narrow sidebar or the full width of a page — so a widget with a fixed
+		// width would either overflow the step it draws in or sit marooned in it.
+		size: 'flexible',
+		// stated rather than inherited from the provider's default: a token expires after
+		// five minutes, a donor may take longer than that over a card number, and this is
+		// what replaces it under them without anything being pressed.
+		'refresh-expired': 'auto',
+		callback: (token) => {
+			// a widget that answered is not a widget that is failing, whatever it reported on
+			// the way here. the count below runs from this token rather than from the render,
+			// so a blip an hour on a card a donor is slow over never adds up to a report.
+			failures = 0;
+			onToken(token);
+		},
+		'error-callback': (code) => {
+			const reported = String(code);
+			if (reported === UNAUTHORIZED_DOMAIN) {
+				unavailable(UNAUTHORIZED_DOMAIN_FIX);
+			} else if (UNRECOVERABLE_CODES.includes(reported)) {
+				unavailable(
+					`The security check reported error ${code}, which Cloudflare documents as not ` +
+						'retryable. Check the sitekey and the hostnames on the widget at ' +
+						'dash.cloudflare.com > Turnstile: this page must be served from one of them.'
+				);
+			} else {
+				// everything else is a row Cloudflare marks retryable and the widget retries by
+				// itself, so the first one is passed over on purpose — see `UNRECOVERABLE_CODES`.
+				// what is counted is how many have come back without a token between them, which
+				// is the one thing that tells a widget retrying apart from one that has retried
+				// and gone on failing. see `RETRYABLE_FAILURE_LIMIT`.
+				failures += 1;
+				if (failures >= RETRYABLE_FAILURE_LIMIT) unavailable(repeatedFailureFix(reported));
+			}
+		},
+		// the interactive challenge expired with the donor still looking at it, which the
+		// provider's own troubleshooting answers with exactly this call.
+		'timeout-callback': () => widget?.api.reset(widget.id),
+		// a visitor being asked to solve something, said so the element can bring the box they
+		// solve it in onto the screen they are on (`redraw` below).
+		'before-interactive-callback': () => onInteractive?.(true),
+		'after-interactive-callback': () => onInteractive?.(false)
+	});
 
 	void load()
 		.then((api) => {
@@ -391,64 +452,27 @@ export function createChallenge(
 				unavailable(SCRIPT_FIX);
 				return;
 			}
-			const id = api.render(mount, {
-				sitekey,
-				// draws nothing at all unless this visitor is actually being asked to solve
-				// something, which is what lets the card reserve no space for it.
-				appearance: 'interaction-only',
-				// the form is light only — the card's greys are fixed near-white literals in
-				// ../styles/tokens.css and no seed reaches them — so the widget's own `auto` would
-				// paint a dark box on a white card for a visitor whose system asks for one.
-				theme: 'light',
-				// the card is 375px wide at its floor and every width above that is the host's — it
-				// may be a narrow sidebar or the full width of a page — so a widget with a fixed
-				// width would either overflow the step it draws in or sit marooned in it.
-				size: 'flexible',
-				// stated rather than inherited from the provider's default: a token expires after
-				// five minutes, a donor may take longer than that over a card number, and this is
-				// what replaces it under them without anything being pressed.
-				'refresh-expired': 'auto',
-				callback: (token) => {
-					// a widget that answered is not a widget that is failing, whatever it reported on
-					// the way here. the count below runs from this token rather than from the render,
-					// so a blip an hour on a card a donor is slow over never adds up to a report.
-					failures = 0;
-					onToken(token);
-				},
-				'error-callback': (code) => {
-					const reported = String(code);
-					if (reported === UNAUTHORIZED_DOMAIN) {
-						unavailable(UNAUTHORIZED_DOMAIN_FIX);
-					} else if (UNRECOVERABLE_CODES.includes(reported)) {
-						unavailable(
-							`The security check reported error ${code}, which Cloudflare documents as not ` +
-								'retryable. Check the sitekey and the hostnames on the widget at ' +
-								'dash.cloudflare.com > Turnstile: this page must be served from one of them.'
-						);
-					} else {
-						// everything else is a row Cloudflare marks retryable and the widget retries by
-						// itself, so the first one is passed over on purpose — see `UNRECOVERABLE_CODES`.
-						// what is counted is how many have come back without a token between them, which
-						// is the one thing that tells a widget retrying apart from one that has retried
-						// and gone on failing. see `RETRYABLE_FAILURE_LIMIT`.
-						failures += 1;
-						if (failures >= RETRYABLE_FAILURE_LIMIT) unavailable(repeatedFailureFix(reported));
-					}
-				},
-				// the interactive challenge expired with the donor still looking at it, which the
-				// provider's own troubleshooting answers with exactly this call.
-				'timeout-callback': () => widget?.api.reset(widget.id)
-			});
+			const id = api.render(mount, renderOptions());
 			if (id === undefined) {
 				unavailable(SCRIPT_FIX);
 				return;
 			}
-			widget = { api, id };
+			widget = { api, id, node: mount };
 		})
 		.catch(() => unavailable(SCRIPT_FIX));
 
 	return {
 		reset: () => widget?.api.reset(widget.id),
+		// a new render rather than a move: the widget draws in a frame of its own, and a frame whose
+		// node is moved reloads, losing the challenge in it.
+		redraw: (node) => {
+			if (widget === null || widget.node === node) return;
+			const { api } = widget;
+			api.remove(widget.id);
+			const id = api.render(node, renderOptions());
+			widget = id === undefined ? null : { api, id, node };
+			if (id === undefined) unavailable(SCRIPT_FIX);
+		},
 		stop: () => {
 			stopped = true;
 			widget?.api.remove(widget.id);
