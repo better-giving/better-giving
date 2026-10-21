@@ -182,6 +182,26 @@ describe('saving the notification address', () => {
 		expect((await storedProfile())?.notification_email).toBe('new@example.org');
 	});
 
+	it('refuses a second press of a page already saved from, and keeps the first save’s address', async () => {
+		const drawn = await drawnVersion();
+		const press = (address: string) =>
+			post(
+				deployer,
+				bodyOf('settings-notifications', { notification_email: address, __version__: drawn })
+			);
+
+		expect((await press('first@example.org')).status).toBe(303);
+		const second = await press('second@example.org');
+
+		expect(second.status).toBe(409);
+		expect(await refusal(second)).toEqual({
+			'': [
+				'The organisation’s details changed since this page was opened. Reload it and save again.'
+			]
+		});
+		expect((await storedProfile())?.notification_email).toBe('first@example.org');
+	});
+
 	it('asks for the organisation’s details first where none are saved', async () => {
 		await run(stmt('delete from org_profile'));
 
@@ -317,6 +337,21 @@ describe('saving the organisation’s details', () => {
 			]
 		});
 		expect((await storedProfile())?.legal_name).toBe('Riverbank Trust Ltd');
+	});
+
+	it('refuses a second press of a page already saved from, and keeps the first save’s details', async () => {
+		const drawn = await drawnVersion();
+
+		expect((await saveDetails({ legal_name: 'First Name Trust' }, drawn)).status).toBe(303);
+		const second = await saveDetails({ legal_name: 'Second Name Trust' }, drawn);
+
+		expect(second.status).toBe(409);
+		expect(await refusal(second)).toEqual({
+			'': [
+				'The organisation’s details changed since this page was opened. Reload it and save again.'
+			]
+		});
+		expect((await storedProfile())?.legal_name).toBe('First Name Trust');
 	});
 
 	it('makes the profile on a deployment that has none', async () => {
