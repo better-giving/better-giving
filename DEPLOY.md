@@ -32,7 +32,7 @@ The server refuses to start without either value, or on a password under 12 char
 
 `ADMIN_PASSWORD` is the deployer's credential. Keep it in a password manager: recovery is whoever holds `.env`. Colleagues are invited from `/admin/members`, set their own, and reset a forgotten one from the sign-in page; that reset never reaches this credential. A colleague sees forms, gifts, donors and the books; Settings, Payments, the sites list and QuickBooks are the deployer's alone.
 
-Every push to `main` publishes a built image, `ghcr.io/better-giving/better-giving`, tagged `main` and by commit sha, for `linux/amd64` and `linux/arm64`. `compose.yaml` builds from your checkout instead; pull the image only if you run it without one.
+Every push to `main` publishes a built image, `ghcr.io/better-giving/better-giving`, tagged `main` and by commit sha, for `linux/amd64` and `linux/arm64`; each release tag, such as `v0.1.0-alpha.1`, publishes one tagged by its name, which `:main` never moves. `compose.yaml` builds from your checkout instead; pull the image only if you run it without one.
 
 `migrate` applies every committed migration the database has not recorded, then exits. The server never runs one on start, so the migration is always a step you take. Safe to rerun: applied migrations skip.
 
