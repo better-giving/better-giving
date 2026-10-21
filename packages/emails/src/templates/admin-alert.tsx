@@ -4,7 +4,7 @@ import { Divider, Heading, Layout, Paragraph, SmallPrint } from '../components/l
 import type { EmailTemplate } from '../template';
 
 // operational mail to the people who run this deployment — a webhook that stopped arriving,
-// a send that failed, the "does email work" test from the console, and a gift that
+// a send that failed, the "does email work" test from Settings, and a gift that
 // reached the books.
 //
 // the last of those is not a fault, and the shape holds for it because nothing here assumes

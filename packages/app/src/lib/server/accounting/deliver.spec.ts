@@ -11,8 +11,8 @@ import { ACCOUNTING_FAILURE_REASONS, isRetryable, type AccountingFailureReason }
 // the two rules the delivery makes with no database in front of it: how long a row waits before it
 // is tried again, and where a refusal lands.
 //
-// they are here rather than in ./deliver.workers.spec.ts because neither reads a row. what the
-// workers spec holds is that a due row is read and a waiting one is not; what this holds is the
+// they are here rather than in ./deliver.db.spec.ts because neither reads a row. what the
+// db spec holds is that a due row is read and a waiting one is not; what this holds is the
 // ladder that decides which is which, at every rung including the ones a real backlog takes a day
 // to reach.
 

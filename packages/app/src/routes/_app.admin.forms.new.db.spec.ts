@@ -1,0 +1,648 @@
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createAuth } from '$lib/server/auth';
+import { resolveAuthSecret } from '$lib/server/auth/signing-key';
+import { createDb, type Db } from '$lib/server/db/client';
+import type { FormReadinessLine } from '$lib/forms/readiness';
+import { CREATED_FLASH, takeFlash } from '$lib/server/flash';
+import { readForm, readForms } from '$lib/server/forms/queries';
+import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { signInAsMember } from '../staff-session.testing';
+import { finishSetup } from '../webhook-routes.testing';
+import * as layout from './_app';
+import * as create from './_app.admin.forms.new';
+import { client, first, run, stmt } from '$lib/server/db/database.testing';
+
+// a db spec because making a form writes a row. the half of this route that never reaches
+// the database — a submission the parser rejects — is in `_app.admin.forms.new.spec.ts` beside
+// this file.
+//
+// the chain is mounted rather than the loader called, which is ../route-request.testing.ts's
+// pattern: the session gate is a `middleware` on ./_app.tsx and the handle is on the request
+// context, so a loader called on its own is a loader with the gate above it never run.
+//
+// the deploy-time half is a per-request `env` rather than a value a case builds, so what a case
+// exercises is the deployment an operator can actually be in rather than a shape assembled here.
+
+/** the origin every request in this file arrives on. not loopback, so the cookie is `__Secure-`. */
+const ORIGIN = 'https://donations.example.workers.dev';
+
+/** the address the create answers on. */
+const NEW = '/admin/forms/new';
+
+/** the address the create sends an operator to, which is also where it leaves its marker. */
+const LIST = '/admin/forms';
+
+/** the deployment's staff password, long enough for `readStaffCredential` to accept it. */
+const PASSWORD = 'a-long-enough-password';
+
+let db: Db;
+let request: RouteRequester;
+/** the bindings of a deployment whose five set-up jobs are done: what `request` is sent with. */
+let bindings: Env;
+let session: string;
+
+/**
+ * the fund every form is pointed at, read out of the seeded chart rather than written down.
+ *
+ * it is no box on this screen: the account is `createForm`'s own decision
+ * (`$lib/server/forms/queries.ts`), so what a case here asserts is the column the write landed on
+ * rather than anything a submission said.
+ */
+let revenueAccountId: string;
+
+beforeAll(async () => {
+	db = createDb(client);
+	request = mountRoutes([
+		{ path: undefined, module: layout },
+		{ path: 'admin/forms/new', module: create }
+	]);
+	session = await signIn();
+
+	const row = await first<{ id: string }>(
+		stmt(`select id from account where is_postable = 1 and code = '4110'`)
+	);
+	if (!row)
+		throw new Error(
+			'no 4110 account — has the chart of accounts in migrations/0000_initial_schema.sql moved?'
+		);
+	revenueAccountId = row.id;
+});
+
+beforeEach(async () => {
+	await run(stmt('delete from form'));
+	// after the forms, because `form.program_id` points here and nothing carries an ON DELETE.
+	await run(stmt('delete from program'));
+	await saveIdentity();
+	// every case starts from a deployment with sites to tick; the cases about a deployment that lists
+	// none say so themselves.
+	await listSites('https://acme.org', 'https://give.acme.org');
+	bindings = await finishSetup(PASSWORD);
+});
+
+/** a real session, as the `Cookie` header a browser would send back. */
+async function signIn(): Promise<string> {
+	const signingKey = await resolveAuthSecret(db, {});
+	if (!signingKey.ok) throw new Error(signingKey.cause);
+
+	const auth = createAuth(
+		db,
+		{ ADMIN_PASSWORD: PASSWORD },
+		{ secret: signingKey.secret, requestOrigin: ORIGIN }
+	);
+	const { headers } = await auth.api.signInStaff({
+		body: { password: PASSWORD },
+		headers: new Headers({ origin: ORIGIN }),
+		returnHeaders: true
+	});
+
+	const cookies = headers.getSetCookie().map((value) => value.split(';', 1)[0]);
+	expect(cookies.length).toBeGreaterThan(0);
+	return cookies.join('; ');
+}
+
+/**
+ * the organisation's details as a deployment that has been set up holds them.
+ *
+ * written past drizzle for the reason the form fixtures are: what the route reads is a column, and a
+ * fixture going through the query that reads it would be testing itself.
+ *
+ * every case starts from a deployment whose forms could serve, so the cases about a blocker are
+ * the only ones that say anything about it.
+ */
+async function saveIdentity(): Promise<void> {
+	await run(stmt('delete from org_profile'));
+	await run(
+		stmt(`insert into org_profile (id, legal_name, tax_id, deductibility_statement, created_at, updated_at)
+		 values ('default', 'Acme Foundation', '12-3456789', 'No goods or services were provided for this gift.', 0, 0)`)
+	);
+}
+
+/**
+ * the deployment's own list of sites, which the tick boxes are drawn from.
+ *
+ * written past drizzle for the reason the identity fixture is: what the route reads is a table, and
+ * a fixture going through `replaceSites` would be testing the write that the sites card on
+ * Donation forms owns (./_app.admin.forms._index.tsx).
+ */
+async function listSites(...origins: string[]): Promise<void> {
+	await run(stmt('delete from site'));
+	for (const [position, origin] of origins.entries()) {
+		await run(
+			stmt(
+				`insert into site (id, origin, position, created_at, updated_at) values (?, ?, ?, 0, 0)`,
+				`ste_test${position}`,
+				origin,
+				position
+			)
+		);
+	}
+}
+
+/** a cause, written past drizzle so a fixture is not also exercising the queries under test. */
+async function insertProgram(id: string, name: string, archived = false): Promise<void> {
+	await run(
+		stmt(
+			`insert into program (id, name, status, created_at, updated_at, archived_at)
+		 values (?, ?, ?, 0, 0, ?)`,
+			id,
+			name,
+			archived ? 'archived' : 'active',
+			archived ? 0 : null
+		)
+	);
+}
+
+/**
+ * the deploy-time values a fully set-up deployment holds: Stripe's keys and its notice secret
+ * among them, so nothing stands in the way of Live.
+ */
+const READY: Record<string, string> = {
+	STRIPE_PUBLISHABLE_KEY: 'pk_test_publishable',
+	STRIPE_SECRET_KEY: 'sk_test_secret',
+	STRIPE_WEBHOOK_SECRET: 'whsec_signing',
+	SMTP_HOST: 'smtp.hopefoundation.org',
+	SMTP_PORT: '465',
+	SMTP_USERNAME: 'mailer',
+	SMTP_PASSWORD: 'a-mail-password',
+	MAIL_FROM: 'donations@hopefoundation.org',
+	TURNSTILE_SITE_KEY: '0x4AAAAAAAAAAAAAAAAAAAAA',
+	TURNSTILE_SECRET_KEY: '0x4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+};
+
+/** a deployment set up with nothing: no keys, no mail, no spam protection. */
+const NOTHING_SET: Record<string, string> = Object.fromEntries(
+	Object.keys(READY).map((name) => [name, ''])
+);
+
+function envOf(vars: Record<string, string>): Env {
+	return { ...bindings, ...vars } as Env;
+}
+
+/** what the screen is handed. */
+type Loaded = {
+	readiness: FormReadinessLine[] | null;
+	deployer: boolean;
+	sites: string[];
+	programs: { value: string; label: string }[];
+	values: Record<string, unknown>;
+	currency: string;
+};
+
+async function load(vars: Record<string, string> = READY, cookie = session): Promise<Loaded> {
+	const response = await request(new Request(`${ORIGIN}${NEW}`, { headers: { cookie } }), {
+		env: envOf(vars)
+	});
+	expect(response.status).toBe(200);
+	return (await response.json()) as Loaded;
+}
+
+/**
+ * a body as this screen's markup writes it: one indexed name per amount row, one repeat per ticked
+ * site.
+ */
+function bodyOf(fields: Record<string, string[]>): FormData {
+	const body = new FormData();
+	for (const [field, values] of Object.entries(fields)) {
+		if (field === 'suggested_amounts') {
+			values.forEach((row, index) => {
+				body.append(`suggested_amounts[${index}]`, row);
+			});
+			continue;
+		}
+		for (const value of values) body.append(field, value);
+	}
+	return body;
+}
+
+/** a submission that parses, so each case states only what it is about. */
+function submission(over: Record<string, string | string[]> = {}): Record<string, string[]> {
+	const values: Record<string, string | string[]> = {
+		name: 'Gala 2026',
+		status: 'live',
+		suggested_amounts: ['25.00', '50.00'],
+		min_minor: '5.00',
+		max_minor: '10000.00',
+		allowed_origins: 'https://acme.org',
+		program_mode: 'none',
+		program_id: '',
+		...over
+	};
+	return Object.fromEntries(
+		Object.entries(values).map(([field, value]) => [
+			field,
+			typeof value === 'string' ? [value] : value
+		])
+	);
+}
+
+/** what a rejected save hands back, off the response the deployment would send. */
+type SaveFailure = {
+	status: number;
+	valid: boolean;
+	errors: Record<string, string[]>;
+	formErrors: string[];
+	/** the boxes as the rejection hands them back, which is what the screen re-renders them from. */
+	typed: Record<string, unknown>;
+};
+
+/** what a save that went through hands back: a redirect and the marker riding on it. */
+type SaveRedirect = { status: number; location: string | null; cookie: string | null };
+
+/**
+ * posts a body at the create and hands back whatever it did — a redirect or a rejection, and the
+ * caller says which it wanted.
+ *
+ * a real request through the mounted chain, because reading the body exactly once is one of the
+ * things this route owes CLAUDE.md and calling the action directly would run it with the gate above
+ * it never run.
+ */
+async function save(fields: Record<string, string[]>, vars: Record<string, string> = READY) {
+	const response = await request(
+		new Request(`${ORIGIN}${NEW}`, {
+			method: 'POST',
+			headers: { cookie: session },
+			body: bodyOf(fields)
+		}),
+		{ env: envOf(vars) }
+	);
+
+	if (response.status === 303) {
+		return {
+			redirect: {
+				status: response.status,
+				location: response.headers.get('Location'),
+				cookie: response.headers.get('Set-Cookie')
+			} satisfies SaveRedirect
+		};
+	}
+
+	const body = (await response.json()) as {
+		form: {
+			result: {
+				status?: string;
+				error?: Record<string, string[]>;
+				initialValue?: Record<string, unknown>;
+			};
+		};
+	};
+	const keyed = body.form.result.error ?? {};
+	return {
+		failure: {
+			status: response.status,
+			valid: body.form.result.status !== 'error',
+			errors: Object.fromEntries(Object.entries(keyed).filter(([field]) => field !== '')),
+			formErrors: keyed[''] ?? [],
+			typed: body.form.result.initialValue ?? {}
+		} satisfies SaveFailure
+	};
+}
+
+describe('/admin/forms/new load', () => {
+	it('starts a form as a draft that could serve, with the amounts already suggested', async () => {
+		// a form is born `draft` — going live in the click that creates it means nobody looked at it.
+		// the bounds are seeded rather than blank, so a form works before anyone edits them.
+		//
+		// read off the values this screen publishes, which is what the boxes are seeded from. every
+		// box is stated rather than left absent, because a box the form layer was handed no value for
+		// is a box with nothing to bind to.
+		const { values, currency } = await load();
+		// and the currency is stated rather than left off: it is not an input, and an operator who
+		// cannot see it cannot tell what their form charges in.
+		expect(currency).toBe('USD');
+		expect(values.status).toBe('draft');
+		// starting figures rather than a floor: the seed is editable and blocks nothing, and what a
+		// save refuses below is `MIN_AMOUNT_MINOR` in `$lib/server/forms/form-input.ts`.
+		expect(values.min_minor).toBe('1.00');
+		expect(values.max_minor).toBe('10000.00');
+		// three suggestions in the amounts row editor, which is what the form's tray shows before
+		// anyone decides otherwise; the operator edits or clears them.
+		expect(values.suggested_amounts).toEqual(['25', '50', '100']);
+		// and no blank site, because a tick box has nothing to type into: a new form is ticked against
+		// none of the deployment's list, which is the empty list rather than one blank entry.
+		expect(values.allowed_origins).toEqual([]);
+	});
+
+	it('opens asking about no cause, with every one this deployment still offers to pick from', async () => {
+		// a new form asks about none, which is what the column defaults to as well — a form pinned in
+		// the click that creates it is one nobody chose a cause for. the retired ones are out: a form
+		// that does not exist yet is on none, so there is nothing for it to be holding.
+		await insertProgram('prg_cleanwatertest01', 'Clean Water');
+		await insertProgram('prg_galatest000001', 'Gala 2024', true);
+
+		const loaded = await load();
+		expect(loaded.values.program_mode).toBe('none');
+		expect(loaded.values.program_id).toBe('');
+		expect(loaded.programs).toEqual([{ value: 'prg_cleanwatertest01', label: 'Clean Water' }]);
+	});
+
+	it('opens with no message under any box, on a form nobody has typed into', async () => {
+		// a form seeded from values still reports no error until it is submitted, and the seam is what
+		// gives it: errors reach a form only through the result an action returned
+		// (`$lib/admin/use-admin-form.ts`). so this screen publishes values and no error channel at
+		// all — without that a create screen would open telling an operator to set the smallest gift
+		// on a form they have not touched.
+		expect(Object.keys(await load()).sort()).toEqual([
+			'currency',
+			'deployer',
+			'programs',
+			'readiness',
+			'sites',
+			'values'
+		]);
+	});
+
+	it('publishes the readiness block, because this screen can publish a form as it makes it', async () => {
+		// the status box on this screen offers Live, so a form can go live in the click that creates
+		// it — on a deployment whose identity columns are blank that is a form serving nothing, with
+		// no screen saying why. what each line means is asserted in
+		// `$lib/server/forms/readiness.spec.ts`; what this route owes is publishing the answer.
+		await run(stmt('delete from org_profile'));
+		const { readiness } = await load();
+		expect(readiness?.find((line) => line.job === 'organisation')?.severity).toBe('blocker');
+	});
+
+	it('publishes the processor blocker on a deployment holding no processor’s keys', async () => {
+		const { readiness } = await load(NOTHING_SET);
+		expect(readiness?.find((line) => line.job === 'processor')?.severity).toBe('blocker');
+	});
+
+	it('publishes no block on a deployment with nothing standing', async () => {
+		expect((await load()).readiness).toBe(null);
+	});
+
+	it('publishes whether the viewer is the one who deployed the site', async () => {
+		// the block is worded for who is reading: the deployer can fix every line, a member can only
+		// ask them to.
+		expect((await load()).deployer).toBe(true);
+		const member = await signInAsMember(db, { env: bindings, password: PASSWORD, origin: ORIGIN });
+		expect((await load(READY, member)).deployer).toBe(false);
+	});
+
+	it('publishes every site this deployment has listed, in the operator’s own order', async () => {
+		// the whole list, with none of them ticked: a form that does not exist yet is on no site, and
+		// what the operator is choosing from is everything this deployment can serve on.
+		expect((await load()).sites).toEqual(['https://acme.org', 'https://give.acme.org']);
+	});
+
+	it('draws the group on a deployment with no site listed rather than hiding it', async () => {
+		// the empty list is a real state and it is what the group says something about — the boxes are
+		// still where the operator will come back and tick one.
+		await listSites();
+		expect((await load()).sites).toEqual([]);
+	});
+});
+
+/**
+ * runs `during` with `table` out of reach, and puts it back whatever happens.
+ *
+ * renamed rather than dropped, so the migrations' own constraints and the rows around it survive —
+ * the shape ./_app.admin.books.db.spec.ts takes for a read that could not be answered.
+ */
+async function withoutTable<T>(table: string, during: () => Promise<T>): Promise<T> {
+	await run(stmt(`alter table ${table} rename to ${table}_hidden`));
+	try {
+		return await during();
+	} finally {
+		await run(stmt(`alter table ${table}_hidden rename to ${table}`));
+	}
+}
+
+describe('/admin/forms/new save', () => {
+	it('answers a read it could not make with its own sentence, keeping what was typed', async () => {
+		// the two reads in front of the create, either one out of reach.
+		for (const table of ['org_profile', 'site']) {
+			const { failure } = await withoutTable(table, () => save(submission()));
+			expect(failure?.status, table).toBe(500);
+			expect(failure?.formErrors, table).toEqual([
+				'Making this form failed and nothing was saved. Try again.'
+			]);
+			expect(failure?.typed, table).toMatchObject({ name: 'Gala 2026', status: 'live' });
+		}
+		expect(await readForms(db)).toEqual([]);
+	});
+
+	it('stores the form as it was configured', async () => {
+		await save(submission());
+		const [stored] = await readForms(db);
+		const made = stored && (await readForm(db, stored.id));
+		expect(made).toMatchObject({
+			name: 'Gala 2026',
+			status: 'live',
+			revenueAccountId,
+			suggestedAmounts: [2500, 5000],
+			minMinor: 500,
+			maxMinor: 1000000,
+			currency: 'USD',
+			allowedOrigins: ['https://acme.org']
+		});
+	});
+
+	it('redirects to the forms list, so a reload does not make a second', async () => {
+		// POST-redirect-GET: a re-post of a create is not an overwrite, it is another row, which is the
+		// worse half of the same hazard.
+		const { redirect } = await save(submission());
+		expect(redirect?.status).toBe(303);
+		// the address carries nothing: a save reports on the button that did it, and the button
+		// pressed here is on a page that no longer exists, so this reports as a banner where the
+		// operator lands and the id that names the row travels in a one-shot cookie rather than in
+		// the address bar.
+		expect(redirect?.location).toBe(LIST);
+	});
+
+	it('leaves the new form’s id for the list, once, at the list’s own address', async () => {
+		// the id comes off the write's own `returning()`, and the list looks it up against its rows
+		// rather than printing it — so what has to arrive is exactly the id that was written. taking
+		// it is what clears it: a second GET of the list announces nothing.
+		const { redirect } = await save(submission());
+		expect(redirect?.status).toBe(303);
+		const [stored] = await readForms(db);
+
+		const held = redirect?.cookie?.split(';')[0] ?? '';
+		const landing = new Request(`${ORIGIN}${LIST}`, { headers: { cookie: held } });
+		const taken = await takeFlash(landing, CREATED_FLASH);
+		expect(taken?.marker).toBe(stored?.id);
+
+		// and the header that came back with it is what burns it: a browser that applied the clearing
+		// carries nothing on the next request.
+		expect(taken?.clear).toMatch(/max-age=0\b/i);
+	});
+
+	it('leaves nothing behind when the create was refused', async () => {
+		// no row, so no banner. the marker is written on the redirect and a refusal never reaches one —
+		// worth pinning because a marker set before the write would survive a rejection and announce a
+		// form nobody made.
+		const { redirect, failure } = await save(submission({ name: [''] }));
+		expect(redirect).toBeUndefined();
+		expect(failure?.status).toBe(400);
+		expect(await readForms(db)).toEqual([]);
+	});
+
+	it('ignores a fund a body names, because the column is no box on this screen', async () => {
+		// the account is not an input, so a hand-built body naming one is neither honoured nor
+		// refused: it is a key the parser does not read, and the write files the gift against 4110
+		// like every other form. a rollup is the sharp case — `4100 Donations` is a real account no
+		// gift may name, because its children already sum into it.
+		const rollup = await first<{ id: string }>(
+			stmt(`select id from account where is_postable = 0 and code = '4100'`)
+		);
+
+		await save(submission({ revenue_account_id: rollup?.id ?? '' }));
+		const [stored] = await readForms(db);
+		expect(stored && (await readForm(db, stored.id))).toMatchObject({ revenueAccountId });
+	});
+
+	it.each([
+		['the organisation’s details are blank', READY, true],
+		['no processor’s keys are set', NOTHING_SET, false]
+	] as const)(
+		'saves a new form as a draft while %s, and lands on its page',
+		async (_case, vars, blankOrg) => {
+			// a form is worth making ahead of the deployment being able to serve it, so the blockers stop
+			// Live and nothing else. the form's own page is where the block says what still stands.
+			if (blankOrg) await run(stmt('delete from org_profile'));
+			const { redirect } = await save(submission({ status: 'draft' }), vars);
+			expect(redirect?.status).toBe(303);
+			const [stored] = await readForms(db);
+			expect(stored?.status).toBe('draft');
+			expect(redirect?.location).toBe(`${LIST}/${stored?.id}`);
+		}
+	);
+
+	it.each([
+		['the organisation’s details are blank', READY, true],
+		['no processor’s keys are set', NOTHING_SET, false]
+	] as const)(
+		'refuses a new form asking for Live while %s, and writes nothing',
+		async (_case, vars, blankOrg) => {
+			// the status box offers no Live while a blocker stands, and this is the control behind that:
+			// a filtered `<option>` list is markup, and markup is not what stops a POST.
+			if (blankOrg) await run(stmt('delete from org_profile'));
+			const { redirect, failure } = await save(submission({ status: 'live' }), vars);
+			// asserted before the failure is read, because it is the shape the failure takes: a save that
+			// went through redirects, and reading a status off `undefined` would report this as a
+			// `TypeError` rather than as a form having been made live on a deployment that serves nothing.
+			expect(redirect).toBeUndefined();
+			expect(failure?.status).toBe(400);
+			// keyed to the status box, because that is the one an operator can change.
+			expect(failure?.errors).toMatchObject({ status: [expect.any(String)] });
+			expect(await readForms(db)).toEqual([]);
+		}
+	);
+
+	it('makes a form live while only a processor’s payment notices are unset', async () => {
+		const { redirect } = await save(submission({ status: 'live' }), {
+			...READY,
+			STRIPE_WEBHOOK_SECRET: ''
+		});
+		expect(redirect?.location).toBe(LIST);
+		expect((await readForms(db))[0]?.status).toBe('live');
+	});
+});
+
+describe('/admin/forms/new — the sites tick boxes', () => {
+	it('stores every ticked site and nothing else', async () => {
+		await save(submission({ allowed_origins: ['https://acme.org', 'https://give.acme.org'] }));
+		const [stored] = await readForms(db);
+		expect(stored?.allowedOrigins).toEqual(['https://acme.org', 'https://give.acme.org']);
+	});
+
+	it('makes a form with no site ticked, ahead of the site it goes on', async () => {
+		// the group with nothing ticked submits no key at all, which is the body a drawn page actually
+		// sends — `.prefault([])` is what feeds that absence through the rule, and the rule has nothing
+		// to say about it. a form is made ahead of the site it goes on, so a form on no site is an
+		// ordinary form.
+		const withoutSites = submission();
+		delete withoutSites.allowed_origins;
+		const { redirect, failure } = await save(withoutSites);
+		expect(failure).toBeUndefined();
+		expect(redirect?.status).toBe(303);
+		const [stored] = await readForms(db);
+		expect(stored?.allowedOrigins).toEqual([]);
+	});
+
+	it('makes a form on a deployment that lists no site at all', async () => {
+		// the deployment set-up may finish in: nothing to tick yet. a form is made ahead of the site it
+		// goes on, so this must be a state a form can be made in.
+		await listSites();
+
+		const empty = submission();
+		delete empty.allowed_origins;
+		const { redirect, failure } = await save(empty);
+		expect(failure).toBeUndefined();
+		expect(redirect?.status).toBe(303);
+		expect(await readForms(db)).toHaveLength(1);
+	});
+
+	it('still refuses a body naming a site a deployment that lists none does not have', async () => {
+		// the rule that survives: a set of tick boxes is markup, so a stale tab or a hand-built body
+		// still reaches the action carrying an address the deployment stopped listing.
+		await listSites();
+
+		const stale = await save(submission());
+		expect(stale.redirect).toBeUndefined();
+		expect(stale.failure?.errors.allowed_origins?.at(-1)).toContain('`https://acme.org`');
+		expect(await readForms(db)).toEqual([]);
+	});
+
+	it('refuses a site this deployment has never listed, and makes nothing', async () => {
+		// unreachable from a drawn page — every box carries a listed value — so this is a stale tab or
+		// a hand-built body. the list is re-read in the action, because a set of tick boxes is markup
+		// and markup is not what stops a POST.
+		const { redirect, failure } = await save(
+			submission({ allowed_origins: ['https://acme.org', 'https://elsewhere.example'] })
+		);
+		expect(redirect).toBeUndefined();
+		expect(failure?.status).toBe(400);
+		const message = failure?.errors.allowed_origins?.at(-1);
+		expect(message).toContain('`https://elsewhere.example`');
+		expect(message).not.toContain('`https://acme.org`');
+		expect(await readForms(db)).toEqual([]);
+	});
+});
+
+describe('/admin/forms/new — pinning a new form to a cause', () => {
+	const WATER = 'prg_cleanwatertest01';
+	const GALA = 'prg_galatest000001';
+
+	it('stores the cause a pinned form names', async () => {
+		await insertProgram(WATER, 'Clean Water');
+		await save(submission({ program_mode: 'pinned', program_id: WATER }));
+
+		const [stored] = await readForms(db);
+		expect(stored && (await readForm(db, stored.id))).toMatchObject({
+			programMode: 'pinned',
+			programId: WATER
+		});
+	});
+
+	it('refuses a pin to a cause this deployment has retired, and writes nothing', async () => {
+		// only ever a stale tab or a hand-built body on this screen — the select is drawn from the
+		// active list — and the foreign key cannot answer it: a retired cause is still a row.
+		await insertProgram(GALA, 'Gala 2024', true);
+		const { failure } = await save(submission({ program_mode: 'pinned', program_id: GALA }));
+		expect(failure?.status).toBe(400);
+		expect(failure?.errors.program_id?.at(-1)).toBe('Choose an active program.');
+		expect(await readForms(db)).toEqual([]);
+	});
+
+	it('refuses a pinned form that names no cause, under the box that has to be filled in', async () => {
+		const { failure } = await save(submission({ program_mode: 'pinned', program_id: '' }));
+		expect(failure?.status).toBe(400);
+		expect(failure?.errors.program_id).toHaveLength(1);
+		expect(await readForms(db)).toEqual([]);
+	});
+
+	it('records no cause for the two modes that name none, whatever the hidden box carried', async () => {
+		// the box stays in the tree in every mode, so a form moved off `pinned` submits the id it
+		// was drawn with — and stored, it would credit every gift to a cause the form stopped
+		// offering.
+		await insertProgram(WATER, 'Clean Water');
+		await save(submission({ program_mode: 'choice', program_id: WATER }));
+
+		const [stored] = await readForms(db);
+		expect(stored && (await readForm(db, stored.id))).toMatchObject({
+			programMode: 'choice',
+			programId: null
+		});
+	});
+});

@@ -227,7 +227,7 @@ describe('the table a config is served', () => {
 
 describe('the PayPal table a deployment is priced at', () => {
 	/**
-	 * the one value that picks the charity rate, spelled as .dev.vars.example documents it.
+	 * the one value that picks the charity rate, spelled as DEPLOY.md → PayPal documents it.
 	 *
 	 * PayPal reports on no call which rate an account is on, so this variable is the whole of the
 	 * answer and nothing can check it against the account.

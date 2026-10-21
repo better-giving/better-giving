@@ -1,16 +1,12 @@
 {
 	// ../../tsconfig.base.json is the repository's strictness and this file adds only what a react
-	// router app on the workers runtime needs on top of it.
+	// router app on node needs on top of it.
 	//
 	// `.react-router/types` is written by `react-router typegen`, which the `check` and `prepare`
 	// scripts both run. `rootDirs` is what lets a route module import its own generated types as a
 	// relative sibling — `./+types/root` resolves into that directory rather than beside the screen.
 	//
-	// worker-configuration.d.ts is named in `include` because it declares globals (`Env`,
-	// `D1Database`) rather than exporting them, so there is nothing to import and nothing else pulls
-	// it in — and `skipLibCheck` would swallow the resulting "cannot find name 'Env'" and leave every
-	// binding `any`. it is gitignored and written by `wrangler types`, which the `prepare` script
-	// runs; if it is missing, run `pnpm wrangler types`.
+	// `Env` is a global declared in src/lib/server/runtime/env.ts, which `src/**` already includes.
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
 		"module": "esnext",
@@ -18,9 +14,8 @@
 		"lib": ["esnext", "dom", "dom.iterable"],
 		"types": ["node", "vite/client"],
 		"jsx": "react-jsx",
-		// nothing this program holds is authored in JS, and what `allowJs` lets in is generated:
-		// worker-configuration.d.ts's `mainModule` reference reaches the worker entry, and a build's
-		// output is not this program's to check. the operator scripts are authored in JS and are
+		// nothing this program holds is authored in JS, and what `allowJs` lets in is generated: a
+		// build's output is not this program's to check. the operator scripts are authored in JS and are
 		// checked — they are ./scripts/tsconfig.json's, which `check` runs first.
 		"checkJs": false,
 		"verbatimModuleSyntax": true,
@@ -38,7 +33,7 @@
 		"*.ts",
 		"vite/**/*.ts",
 		"vite/**/*.d.ts",
-		"worker-configuration.d.ts",
+		"server/**/*.ts",
 		".react-router/types/**/*"
 	]
 }

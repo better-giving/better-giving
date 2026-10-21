@@ -1,53 +1,81 @@
 import { elementSnippet, runtimeSnippet } from '@better-giving/form/embed/snippet';
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
+import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { CodeSlab, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { CreateCard } from '@better-giving/operator/components/data/CreateCard';
 import { Press } from '@better-giving/operator/components/data/Press';
+import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
+import {
+	type RowControl,
+	RepeatingRows
+} from '@better-giving/operator/components/forms/RepeatingRows';
 import { Column, List } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { MarkedText } from '@better-giving/operator/marked-text.react';
+import { readOriginRows } from '@better-giving/operator/origins';
+import { useSaveState } from '@better-giving/operator/save-state.react';
+import { getFormProps } from '@conform-to/react';
 import { FORM_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
-import { data, href, Link, useNavigate } from 'react-router';
+import { data, Form, href, Link, useFormAction, useNavigate, useNavigation } from 'react-router';
+import { z } from 'zod';
+import { buttonState } from '$lib/admin/save-button-state';
 import { screenTitle } from '$lib/admin/screen-title';
+import {
+	type AdminActionData,
+	boxProps,
+	insertWhenValid,
+	listPress,
+	useAdminForm,
+	useHydrated,
+	whichForm
+} from '$lib/admin/use-admin-form';
+import { defineForm, WHICH_FORM } from '$lib/forms/definition';
 import { FORM_STATUS_LABELS } from '$lib/forms/statuses';
-import { loadFailed } from '$lib/server/db/load-failure';
-import { CREATED_FLASH, takeFlash } from '$lib/server/flash';
+import { STAFF_USER_ID } from '$lib/server/auth';
+import { invalid, parseForm, submittedForm } from '$lib/server/conform';
+import { loadFailed, notFound } from '$lib/server/db/load-failure';
+import { CREATED_FLASH, redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
 import { readForms } from '$lib/server/forms/queries';
-import { database } from '../context';
+import { createPaymentProviders } from '$lib/server/payments/factory';
+import { levelWalletDomains } from '$lib/server/payments/wallet-domains';
+import { walletHosts } from '$lib/server/payments/wallet-hosts';
+import { readSites, readSitesInUse, replaceSites } from '$lib/server/sites/queries';
+import { parseSites } from '$lib/server/sites/site-input';
+import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.forms._index';
 
-// the forms a deployment has and the snippet an operator pastes into their own site. read as a
-// loader and nothing else: this route has no action, because everything about a form is written on
-// the screens under `new` and `[id]`.
+// the forms a deployment has, the snippet an operator pastes into their own site, and the list of
+// sites those forms may go on. nothing about a form is written here — that is the screens under
+// `new` and `[id]` — and the one write this route's action makes is the site list, from the card
+// after the forms.
 //
 // **every form on this list gets its snippet, and none is withheld over what this deployment can
 // charge.** a snippet is markup naming a form id; whether the key behind it can take a card is a
-// fact about the deployment, and that is read once, at the console, in the press that stores the
-// keys — `stripeKeyEdits` in `packages/console-ui/src/lib/stripe-edits.ts` refuses a `whsec_`
-// or a publishable key in the secret slot, a value that is not a Stripe key at all, and a live key
-// paired with a test one, each at the box it was pasted into, and the screen names the Stripe
-// account back. checking once where the mistake is made beats checking forever on screens that
-// cannot repair it: a screen here could only ever withhold the snippet and point somewhere else,
-// and the pointer is the half that goes stale.
+// fact about the deployment, and Payments is where it is read: each processor's card asks the
+// account with the deployment's own keys and says which read failed (`unreadable` in
+// $lib/server/payments/processor-cards.ts). a screen here could only ever withhold the snippet and
+// point somewhere else, and the pointer is the half that goes stale.
 //
 // the residue is accepted rather than overlooked. a deployment whose payments are misconfigured
-// hands out a snippet that looks right and says nothing on the org's own site — which is the cost
-// of the split throughout: a broken deployment is quiet on the live site, and the console is where
-// you find out.
+// hands out a snippet that looks right and says nothing on the org's own site: a broken deployment
+// is quiet on the live site, and Payments is where you find out.
 //
 // what stands between this deployment and a donor giving is not read here, and that is a decision
 // rather than an omission: the status ledger is rendered on the screens that write — the create,
-// which refuses to make a form while a blocker stands, and the editor, which refuses to publish one
-// — and a second telling on a screen that writes nothing would be a second place to read the same
-// thing. `$lib/server/forms/readiness.ts` is where it lives and those two routes are its callers.
+// which saves a form as a draft while a blocker stands, and the editor, which refuses to publish
+// one — and a second telling on a screen that writes no form would be a second place to read the
+// same thing. `$lib/server/forms/readiness.ts` is where it lives and those two routes are its
+// callers.
 // the organisation's own details go with it, for the same reason: the card that leads the list is a
 // link that never gates, so nothing here asks whether they are saved.
 //
 // this file is deliberately thin. what reaches the database lives in
-// `$lib/server/forms/queries.ts`; the only job here is a projection. neither `D1Database` nor the
-// `form` table object is named anywhere in this route, and neither may be.
+// `$lib/server/forms/queries.ts`; the only job here is a projection. neither the database's
+// type (`Db` in $lib/server/db/client.ts) nor the `form` table object is named anywhere in this
+// route, and neither may be.
 
 /** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Donation forms';
@@ -59,13 +87,77 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
 
+/** the sites card's form, as the literal a body names itself with. */
+const SITES_FORM_ID = 'forms-sites';
+const SCREEN_FORMS = [SITES_FORM_ID] as const;
+
+/** the list field every row of the sites card belongs to, each row indexed under it. */
+const SITE_FIELD = 'sites';
+
+/** what a box left blank is told, under the box: the group's legend already names it. */
+const REQUIRED = 'required';
+
+/**
+ * the deployment's list of sites, as the card states it.
+ *
+ * the rules are `readOriginRows` in `@better-giving/operator/origins` and none is stated here: the
+ * trim, the dedupe, the count cap and the repair are the same ones `parseSites` stores by. what this
+ * adds is the shape conform reads them through — a row's sentence keyed to that row's own box, and
+ * the cap keyed to the bare field because it is about no one row.
+ *
+ * the one rule of its own is that a box holds something. conform drops an empty string before the
+ * schema sees it, so a row nobody typed into arrives as `undefined` and is refused here rather than
+ * quietly skipped. an emptied editor submits no key at all, and `.prefault([])` reads that as the
+ * empty list it is (AGENTS.md → Forms).
+ */
+const SITES_FORM = defineForm({
+	id: SITES_FORM_ID,
+	schema: z.object({
+		[SITE_FIELD]: z
+			.array(z.string().optional())
+			.prefault([])
+			.superRefine((rows, ctx) => {
+				const lines = rows.map((row) => row ?? '');
+				lines.forEach((line, at) => {
+					if (line.trim().length === 0)
+						ctx.addIssue({ code: 'custom', message: REQUIRED, path: [at] });
+				});
+				const read = readOriginRows(lines);
+				if (read.problem !== null) {
+					ctx.addIssue({ code: 'custom', message: read.problem });
+					return;
+				}
+				read.rows.forEach((problem, at) => {
+					if (problem !== null) ctx.addIssue({ code: 'custom', message: problem, path: [at] });
+				});
+			})
+	})
+});
+
+/**
+ * the two ways a save can land, as the marker its redirect carries.
+ *
+ * `wallets_pending` is a list that saved while Stripe did not register every hostname on it, so the
+ * card says the second half did not happen. a deployment holding no Stripe key lands on `saved`:
+ * it draws no wallet button anywhere, so there is nothing for a new site to be short of.
+ */
+const SITES_OUTCOMES = ['saved', 'wallets_pending'] as const;
+type SitesOutcome = (typeof SITES_OUTCOMES)[number];
+
+/** the body of a member's not-found. the panel ../root.tsx draws does not show it; an agent reads it. */
+const NOT_HERE =
+	`No write at ${SCREEN} for a member’s session. The list of sites is changed from the ` +
+	'deployer’s session: sign in with `ADMIN_PASSWORD` at /login.';
+
 export async function loader({ context, request, url }: Route.LoaderArgs) {
-	// one read, and it is the only one this page makes. the cause itself is logged, and the
-	// diagnostic is about the database rather than about the table, because what a fresh deployment
-	// actually hits here is a schema that was never migrated.
+	// the forms and the deployment's sites, the only two reads this page makes. the cause itself is
+	// logged, and the diagnostic is about the database rather than about the table, because what a
+	// fresh deployment actually hits here is a schema that was never migrated.
+	const db = context.get(database);
 	let forms: Awaited<ReturnType<typeof readForms>>;
+	let sites: string[];
 	try {
-		forms = await readForms(context.get(database));
+		[forms, sites] = await Promise.all([readForms(db), readSites(db)]);
 	} catch (e) {
 		console.error('loading the donation forms page failed:', e);
 		loadFailed('This page');
@@ -84,6 +176,16 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	// is off this list and reports nothing for the same reason.
 	const landed = await takeFlash(request, CREATED_FLASH);
 	const created = landed === null ? null : (forms.find((f) => f.id === landed.marker) ?? null);
+
+	// the site-list save this page's own action redirected from, burned the same way. the marker is
+	// one of the two outcomes the action writes and is matched rather than rendered, so a cookie
+	// naming anything else reports nothing.
+	const savedSites = await takeFlash(request, SAVED_FLASH);
+	const saved = SITES_OUTCOMES.find((outcome) => outcome === savedSites?.marker) ?? null;
+	const burned = new Headers();
+	for (const flash of [landed, savedSites]) {
+		if (flash !== null) burned.append('Set-Cookie', flash.clear);
+	}
 
 	const origin = new URL(request.url).origin;
 
@@ -152,14 +254,136 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 				// names the form's list instead.
 				site
 			},
-			forms: listed
+			forms: listed,
+			// the card after the list. the deployer edits it and a member reads it, and the
+			// predicate is the one the action refuses a member's POST by.
+			sites: {
+				// the donation page this deployment serves at its own address, which is on no `site`
+				// row and which no save can take away (AGENTS.md → Product surface).
+				donatePage: new URL(href('/donate'), request.url).href,
+				listed: sites,
+				mayEdit: context.get(staff).id === STAFF_USER_ID,
+				saved
+			}
 		},
-		// the header that burns the marker rides on the response that publishes it, so a reload of
+		// the headers that burn the markers ride on the response that publishes them, so a reload of
 		// this list announces nothing. a `Set-Cookie` from a loader is sent without this route
 		// exporting `headers` — react router preserves that one header on its own
 		// (react-router/docs/how-to/headers.md).
-		landed === null ? {} : { headers: { 'Set-Cookie': landed.clear } }
+		{ headers: burned }
 	);
+}
+
+/**
+ * the one write this screen takes: the deployment's list of sites, replaced whole.
+ *
+ * **the deployer's session and no other**, the predicate the integrations screens gate on
+ * (./_app.admin.integrations.api.tsx). a member is drawn the list with no control on it, so a POST
+ * from one is a body this app's markup could not have sent, and it gets the not-found those
+ * screens answer with rather than a refusal naming a box. it is read before the body, so a member's
+ * POST costs no parse.
+ *
+ * **the request body is read exactly once, here**, and the arm below is declared inside the action
+ * for ./_app.admin.members.tsx's reason: react router strips `action` from the browser bundle and
+ * nothing else, so a module-scope helper reaching `$lib/server/**` would ship it.
+ */
+export async function action(args: Route.ActionArgs) {
+	if (args.context.get(staff).id !== STAFF_USER_ID) notFound(NOT_HERE);
+
+	const body = await args.request.formData();
+	switch (submittedForm(body, SCREEN_FORMS)) {
+		case SITES_FORM_ID:
+			return saveSites(args, body);
+	}
+
+	/**
+	 * store the list, then bring Stripe's wallet registrations level behind it.
+	 *
+	 * the whole list, never one row: `replaceSites` deletes and inserts in one `batch()`, so a
+	 * removal cannot half-happen, and two saves at once is a lost write settled by saving again.
+	 *
+	 * **a site still ticked on a form is not removed**, and the refusal names every form in the way.
+	 * asked in front of the write rather than inside it, because `replaceSites` deliberately does not
+	 * ask; an archived form never blocks, because `readSitesInUse` reads through `readForms`, which
+	 * leaves one out.
+	 */
+	async function saveSites({ context, request }: Route.ActionArgs, body: FormData) {
+		const submission = parseForm(body, SITES_FORM);
+		if (!submission.ok) return invalid(400, submission.reject());
+
+		// the parse that brands the list for `replaceSites`. the schema ran the same rules, so a
+		// refusal here is the cap or a row read differently by a later release of those rules, and
+		// both are about the list rather than a box.
+		const listed = parseSites(submission.value[SITE_FIELD].map((row) => row ?? ''));
+		if (!listed.ok) {
+			return invalid(400, submission.reject({ fieldErrors: { [SITE_FIELD]: [listed.problem] } }));
+		}
+
+		const db = context.get(database);
+		const removals = (await readSites(db)).filter((site) => !listed.value.sites.includes(site));
+		const inUse = await readSitesInUse(db, removals);
+		if (inUse.length > 0) {
+			const one = inUse.length === 1;
+			const named = inUse
+				.map((entry) => `\`${entry.site}\` (${entry.forms.map((form) => form.name).join(', ')})`)
+				.join('; ');
+			return invalid(
+				409,
+				submission.reject({
+					formErrors: [
+						`Nothing was saved. ${one ? 'A site you removed is' : 'Sites you removed are'} still ` +
+							`switched on for a donation form: ${named}. Untick ${one ? 'it' : 'each one'} on ` +
+							'the forms named, then save the list again.'
+					]
+				})
+			);
+		}
+
+		await replaceSites(db, listed.value);
+
+		// POST-redirect-GET, so a reload does not save the list twice. the marker says how the wallet
+		// half went, and the loader turns it back into the card's outcome.
+		return redirectWithFlash(request, SAVED_FLASH, SCREEN, await levelWallets(context, request));
+	}
+
+	/**
+	 * register every hostname this deployment serves on Stripe, so a donor on a site just added is
+	 * offered Apple Pay, Google Pay and Link.
+	 *
+	 * after the write and never in front of it: the list is saved whatever Stripe says, and what did
+	 * not land is reported on the card rather than undoing the save. the hostnames are the request's
+	 * own and the rows just stored, never anything the body named — `walletHosts` in
+	 * $lib/server/payments/wallet-hosts.ts argues why — and `levelWalletDomains` leaves a finished
+	 * hostname untouched, so a save that changed nothing spends one read of the account.
+	 */
+	async function levelWallets(
+		context: Route.ActionArgs['context'],
+		request: Request
+	): Promise<SitesOutcome> {
+		const processors = createPaymentProviders(context.get(platform).env);
+		if (!processors.configured.includes('stripe')) return 'saved';
+
+		const asked = await walletHosts(context.get(database), request.url);
+		const levelled = await levelWalletDomains(processors.for('stripe'), asked.hosts);
+		if (levelled.state === 'unreadable') {
+			console.error('the site list saved and Stripe could not be read:', levelled.detail);
+			return 'wallets_pending';
+		}
+
+		const short = levelled.hosts.filter(
+			(host) => !(host.standing.state === 'registered' && host.standing.complete)
+		);
+		if (short.length === 0) return 'saved';
+		// the card names no hostname, so each one short and the port's own sentence about it go to
+		// the logs for the operator reading them.
+		for (const host of short) {
+			console.warn(
+				`\`${host.standing.host}\` draws no wallet yet:`,
+				host.detail ?? host.standing.state
+			);
+		}
+		return 'wallets_pending';
+	}
 }
 
 /* the shape a form takes on this list, drawn hidden inside the create card so that card stands as
@@ -185,8 +409,9 @@ const SAMPLE = (
 );
 
 // what this page owes is the forms this deployment has, the snippet an operator pastes into their
-// own site, and a way to reach the screen that configures one. it writes nothing: every change to a
-// form happens on its own page.
+// own site, and a way to reach the screen that configures one. it writes no form: every change to a
+// form happens on its own page. the sites card after the list is the deployment's, and
+// `SitesCard` below says what it owes.
 //
 // each record ends in the sites an operator has ticked for that form, and every one of them is a
 // press. a site's press opens the embed card aimed at that site, because what an operator came for
@@ -195,20 +420,19 @@ const SAMPLE = (
 // element, wherever the form appears — because that is the instruction an integrator is following,
 // and both are a value somebody takes away rather than one they read down a list.
 //
-// because it writes nothing, it gates nothing and reports nothing about the deployment's own state.
-// the status ledger is on the screens under `new` and `[id]`, which are the ones that refuse a
-// write while a blocker stands, and the card that leads the list is a plain link that is never
+// because it writes no form, it gates nothing and reports nothing about the deployment's own state.
+// the status ledger is on the screens under `new` and `[id]`, which are the ones that withhold
+// Live while a blocker stands, and the card that leads the list is a plain link that is never
 // switched off — a second telling here would be a second place to read the same thing, and the
-// place an operator would have to act is the console's Organisation details fold either way
-// (`packages/console-ui/src/lib/org-fold.tsx`), which is not on this deployment at all.
+// place an operator would have to act is Settings or Payments either way.
 //
 // that reaches the wording of a value as well as the presence of a block, and it is the rule a
 // record here is written to: a value a form has not been given is stated as a fact about that form
 // and never as a warning about it. a form nobody has ticked a site on has no foot and no sentence
 // about it, because a line that reads as a blocker on the one screen that cannot act on
 // one sends an operator looking for the button that clears it.
-export default function DonationForms({ loaderData }: Route.ComponentProps) {
-	const { created, embedding, forms } = loaderData;
+export default function DonationForms({ loaderData, actionData }: Route.ComponentProps) {
+	const { created, embedding, forms, sites } = loaderData;
 
 	// the notice arrives already holding its text, and a live region that arrives carrying its own
 	// text is one insertion rather than a change: no reader announces it, and focus is still on
@@ -233,15 +457,15 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
 		// own, so one that is not rendered leaves no space behind it.
 		<Column>
 			{/* the outcome of the create next door, which redirected here with the new form's id. it
-			    is the only outcome this page reports and the only one it can: this page writes
-			    nothing, so every other thing that happens to a form is reported on the screen that
-			    did it.
+			    is the only outcome about a form this page reports and the only one it can: this page
+			    writes no form, so every other thing that happens to one is reported on the screen
+			    that did it.
 
 			    one word and one name: what is worth saying about a form that has just been made is
 			    that it is made and which one it is. the record below says everything else.
 
-			    no guard against a rejected write sitting under it, and none is needed: this route has
-			    no action, so nothing on this page can come back refused on top of the banner. */}
+			    no guard against a rejected write sitting under it, and none is needed: the one write
+			    this route takes is the site list's, and its refusal is drawn in that card. */}
 			{created ? (
 				<div ref={notice} tabIndex={-1}>
 					<Banner tone="done" word="Added">
@@ -342,6 +566,14 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
 				))}
 			</List>
 
+			{/* after the forms rather than over them: the list is what an operator comes here for, and
+			    the sites are the deployment's, set once and revisited when a site is added. */}
+			{sites.mayEdit ? (
+				<SitesEditor sites={sites} actionData={actionData} />
+			) : (
+				<SitesRead sites={sites} />
+			)}
+
 			{embedding ? <EmbedCard form={embedding} /> : null}
 		</Column>
 	);
@@ -370,11 +602,11 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
  * `elementSnippet` in `@better-giving/form/embed/snippet`, which is where the pasted block lives
  * because it is a permanent contract three surfaces agree on.
  *
- * no `<form>` around it — nothing on this screen posts, and the way out is a link back to the
+ * no `<form>` around it — nothing in this card posts, and the way out is a link back to the
  * address the card was opened from.
  *
  * the requirement is stated rather than checked: the snippet loads on the sites the form lists, and
- * this screen writes nothing, so the sentence points at the page that does.
+ * this card writes nothing, so the sentence points at the page that does.
  *
  * the site is named in that sentence when the press that opened the card carried one, and the
  * loader keeps it only when the form lists it: a card telling an operator to paste into a page the
@@ -428,5 +660,166 @@ function EmbedCard({
 			<CodeSlab label="element" record={form.name} content={form.element} copyable />
 			<p className="adm-prose">{closing}</p>
 		</Modal>
+	);
+}
+
+/** the card's name, which is also how the form editor's hint names where a site is added. */
+const SITES_TITLE = 'Which sites your forms go on';
+
+/** the card's id, which the form editor's hint links to as `/admin/forms#sites`. */
+const SITES_ID = 'sites';
+const SITES_HEADING_ID = 'sites-heading';
+
+/** what the list is for, said once under the card's name. */
+const SITES_LEAD =
+	'A form loads only on the sites listed here, and Apple Pay and Google Pay show only on them.';
+
+/** why a member is drawn the list with nothing to press. */
+const DEPLOYER_ONLY = 'Only the person who deployed this site can change the list.';
+
+/**
+ * what a save says when the list landed and Stripe did not register every hostname on it. it names
+ * the consequence rather than the mechanism: an operator who has just pressed Save sites is not
+ * thinking about a registration.
+ */
+const WALLETS_PENDING =
+	'Stripe draws Apple Pay, Google Pay and Link only on sites registered on your account, so a ' +
+	'donor on a site you have just added is offered none of them until it is registered. To try ' +
+	'again, press Register all sites on Payments.';
+
+type Sites = Route.ComponentProps['loaderData']['sites'];
+
+/** a row press as conform states it: its four attributes, and the guard `insertWhenValid` adds. */
+type RowPress = RowControl & { readonly form: string; readonly formNoValidate: boolean };
+
+/**
+ * the deployment's list of sites, as the deployer edits it.
+ *
+ * the donation page leads and is read-only: it is served at this deployment's own address and is
+ * on no `site` row, so nothing on this list can take it down and the row posts nothing (`fixed` in
+ * `@better-giving/operator/components/forms/RepeatingRows`). every site under it carries a Remove,
+ * the last one included — emptying the list is a save like any other, and the donation page is what
+ * keeps the group from being an Add over nothing.
+ *
+ * adding and dropping a row are the form's own list intents, applied in the browser and posted
+ * nowhere; Save sites is the one press that writes. its outcome is reported at the press: the tick on
+ * the button for a save that landed, the banner under it for one whose wallet half did not, and the
+ * sentence under it for one that was refused.
+ */
+function SitesEditor({
+	sites,
+	actionData
+}: {
+	readonly sites: Sites;
+	readonly actionData: AdminActionData;
+}) {
+	const [form, fields] = useAdminForm(SITES_FORM, actionData, {
+		defaultValue: { [SITE_FIELD]: sites.listed }
+	});
+	const hydrated = useHydrated();
+
+	// held from the press until the redirect it answers with has rendered, so the button cannot be
+	// pressed again across the revalidation that follows the write.
+	const navigation = useNavigation();
+	const here = useFormAction();
+	const saving =
+		navigation.state !== 'idle' &&
+		navigation.formAction === here &&
+		navigation.formData?.get(WHICH_FORM) === SITES_FORM.id;
+
+	// `!actionData` for the reason ./_app.admin.members.tsx gives: a refused save is answered with a
+	// rejection rather than a redirect, so a tick over it would be two answers to one press.
+	const save = useSaveState({
+		landed: sites.saved !== null && !actionData,
+		changed: form.dirty,
+		pending: saving
+	});
+
+	const field = fields[SITE_FIELD];
+	const rows = field.getFieldList();
+	// what the press was refused for that belongs to no row: the cap on how many sites there may be,
+	// and a site still switched on for a form. conform's focus move finds no box for either, so both
+	// are said where the press was made.
+	const refusal = field.errors?.[0] ?? form.errors?.[0];
+
+	const drawn = (press: RowPress) => {
+		const as = listPress(press, hydrated);
+		return as.type === 'submit' ? { ...press, type: as.type } : { ...press, ...as };
+	};
+
+	return (
+		<Form method="post" preventScrollReset {...getFormProps(form)}>
+			<input {...whichForm(SITES_FORM.id)} />
+			<section id={SITES_ID} className="adm-card" aria-labelledby={SITES_HEADING_ID}>
+				<h2 id={SITES_HEADING_ID}>{SITES_TITLE}</h2>
+				<p className="adm-hint">{SITES_LEAD}</p>
+				<RepeatingRows
+					id={field.id}
+					// stated and not drawn: the card's heading names the list, and every box and every
+					// Remove takes its accessible name from this.
+					legend="Site"
+					legendHidden
+					addLabel="Add a site"
+					placeholder="https://example.org"
+					code
+					add={drawn(insertWhenValid(form, SITES_FORM, field.name))}
+					fixed={{
+						id: `${field.id}-donate-page`,
+						label: 'Your donation page',
+						value: sites.donatePage,
+						aside: 'Default'
+					}}
+					rows={rows.map((row, at) => ({
+						...boxProps(row),
+						key: row.key,
+						inputMode: 'url',
+						error: row.errors?.[0] === undefined ? undefined : <MarkedText text={row.errors[0]} />,
+						remove: drawn(form.remove.getButtonProps({ name: field.name, index: at }))
+					}))}
+				/>
+				<div className="adm-actions">
+					<SaveButton label="Save sites" doneLabel="Saved" state={buttonState(save)} />
+				</div>
+				{refusal === undefined ? null : (
+					<FieldMessage>
+						<MarkedText text={refusal} />
+					</FieldMessage>
+				)}
+				{sites.saved === 'wallets_pending' && !actionData && !saving ? (
+					<Banner tone="attention">Your sites were saved. {WALLETS_PENDING}</Banner>
+				) : null}
+			</section>
+		</Form>
+	);
+}
+
+/**
+ * the same list as a member reads it: every row the deployer's card draws, and nothing to press.
+ *
+ * the action refuses a member's POST, so a box or a button here would be a control with one answer.
+ * the sentence under the name says whose list it is instead.
+ */
+function SitesRead({ sites }: { readonly sites: Sites }) {
+	return (
+		<section id={SITES_ID} className="adm-card" aria-labelledby={SITES_HEADING_ID}>
+			<h2 id={SITES_HEADING_ID}>{SITES_TITLE}</h2>
+			<p className="adm-hint">
+				{SITES_LEAD} {DEPLOYER_ONLY}
+			</p>
+			{/* the donation page leads, on the sunken ground, as the deployer's card leads with it as
+			    a locked box: it is on no `site` row and no save takes it away. */}
+			{/* biome-ignore lint/a11y/noRedundantRoles: base.css takes the marker off every list, which
+			    stops a browser reporting one as a list. */}
+			<ul role="list" className="adm-literals">
+				<li className="adm-literals__fixed">
+					<code>{sites.donatePage}</code> <span className="adm-literals__aside">Default</span>
+				</li>
+				{sites.listed.map((site) => (
+					<li key={site}>
+						<code>{site}</code>
+					</li>
+				))}
+			</ul>
+		</section>
 	);
 }

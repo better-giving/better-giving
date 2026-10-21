@@ -1,6 +1,7 @@
 import type { Db } from '../db/client';
 import type { ApiKey } from '../db/schema';
 import { API_KEY_SHAPE, findKeyByPresented, parseBearer, ZAPIER_KEY_SHAPE } from './keys';
+import { RATE_LIMITS } from '../runtime/rate-limiter';
 
 // the read API an organisation's own systems call — a CRM, a warehouse, a script — to read the
 // organisation's records: what "under `/integrations/v1`" means and what every answer on it
@@ -14,7 +15,7 @@ import { API_KEY_SHAPE, findKeyByPresented, parseBearer, ZAPIER_KEY_SHAPE } from
 //
 // **read-only.** every route answers GET and HEAD, and any other method is refused with a 405
 // before the key is read: by the layout's `readOnly` (src/routes/integrations.v1.ts), or, for a
-// method react router does not route, by src/worker.ts before the request reaches it. writes
+// method react router does not route, by src/server/app.ts before the request reaches it. writes
 // through this surface would touch the books, and none exists.
 //
 // **server to server, so no CORS.** no `Access-Control-*` header is sent and there is no preflight
@@ -118,13 +119,19 @@ export function readOnlyRefusal(method: string): Response {
  * each bucket a request on this surface is charged against: `INTEGRATIONS_KEY_RATE_LIMITER` per
  * key, and `API_RATE_LIMITER` per address ahead of the key lookup.
  *
- * literals because the bindings' are, in wrangler.jsonc, and nothing in the language joins them:
- * `../api/rate-limit.config.spec.ts` holds both refusals below to the limit and period every block
- * there declares, and `./openapi.spec.ts` holds the published document to the same. `requests` is
- * per minute in every sentence that names it, which that spec holds the period to.
+ * read from `RATE_LIMITS` in ../runtime/rate-limiter.ts, the sizes the server builds its limiters
+ * at. `requests` is per minute in every sentence that names it, which
+ * `../api/rate-limit.config.spec.ts` holds the period to, and `./openapi.spec.ts` holds the
+ * published document to the same.
  */
-export const KEY_RATE_LIMIT = { requests: 120, periodSeconds: 60 } as const;
-export const ADDRESS_RATE_LIMIT = { requests: 600, periodSeconds: 60 } as const;
+export const KEY_RATE_LIMIT = {
+	requests: RATE_LIMITS.INTEGRATIONS_KEY_RATE_LIMITER.limit,
+	periodSeconds: RATE_LIMITS.INTEGRATIONS_KEY_RATE_LIMITER.period
+} as const;
+export const ADDRESS_RATE_LIMIT = {
+	requests: RATE_LIMITS.API_RATE_LIMITER.limit,
+	periodSeconds: RATE_LIMITS.API_RATE_LIMITER.period
+} as const;
 
 /**
  * the 429 a key that has spent its own bucket is answered with, charged per key against

@@ -50,7 +50,7 @@ const MINTS = ['lib/server/db/accounts.ts', 'lib/server/db/postable.ts'];
 
 /**
  * spec files are excluded, deliberately and not incidentally. a negative test has to be able
- * to mint a bad value: ../ledger/posting.workers.spec.ts casts the literal `'no-such-account'`
+ * to mint a bad value: ../ledger/posting.db.spec.ts casts the literal `'no-such-account'`
  * to prove the composite FK rejects an id no `account` row carries, and that probe is only
  * writable through a cast. a spec cannot post to the real ledger — sole-writer.spec.ts pins
  * `posting.ts` as the only writer — so a cast inside one reaches the database only through a
@@ -103,7 +103,7 @@ describe('PostableAccountId is minted in exactly two files', () => {
 		// stated as an assertion rather than left to the reader of `sourceFiles`, because the
 		// exclusion is a decision (see `isSpec`) and an incidental one would be a hole.
 		const names = files.map((f) => relative(SRC, f));
-		expect(names).not.toContain('lib/server/ledger/posting.workers.spec.ts');
+		expect(names).not.toContain('lib/server/ledger/posting.db.spec.ts');
 		expect(names).not.toContain('lib/server/ledger/sole-writer.spec.ts');
 	});
 

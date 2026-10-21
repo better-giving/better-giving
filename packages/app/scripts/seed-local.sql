@@ -1,13 +1,13 @@
--- the one row a contributor's local D1 needs before the dashboard is served and a donation form
--- can be added, applied by hand and only ever with `--local`.
+-- the one row a contributor's local database needs before the dashboard is served and a donation form
+-- can be added, applied by hand with `pnpm db:seed` (./seed.ts).
 --
 -- **not a migration, and it runs on no deployment.** migrations/ is applied by the two paths
 -- CLAUDE.md → Bans names and this is neither of them; the values below are invented, so a
 -- deployment that took them would be soliciting gifts under a registration that does not exist.
 -- it is also not a file an organisation edits — CLAUDE.md → Product surface keeps the repository
 -- free of those, and what makes this one exempt is that it is a fixture for a database that is a
--- cache: the local sqlite file is deleted and rebuilt whenever the state goes stale
--- (CONTRIBUTING.md → Troubleshooting), and this is what fills it again.
+-- cache: the local database file is deleted and rebuilt whenever the state goes stale, and this is
+-- what fills it again.
 --
 -- **it finishes two of the five set-up jobs, both of them rows on `org_profile`**
 -- (src/lib/server/config/readiness.ts): `organisation`, which is the registered name and the EIN
@@ -16,7 +16,7 @@
 -- screen until all five read done.
 --
 -- **the other three are nothing this file could write.** `payments` and `smtp` are deploy-time
--- values a contributor puts in `.dev.vars` (src/lib/server/config/env.ts) and never rows, and
+-- values a contributor puts in `.env` (src/lib/server/config/env.ts) and never rows, and
 -- `password` is one too. so a checkout that has run this still meets the gate on those three, and
 -- that is the whole of what is left.
 --
@@ -31,7 +31,7 @@
 --
 -- run it from the repository root, after the migrations:
 --
---   pnpm wrangler d1 execute DB --local --file scripts/seed-local.sql
+--   pnpm db:migrate && pnpm db:seed
 
 insert into org_profile (id, legal_name, tax_id, notification_email, created_at, updated_at)
 values (

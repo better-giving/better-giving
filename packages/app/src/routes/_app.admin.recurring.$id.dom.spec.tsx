@@ -7,7 +7,7 @@ import RecurringGift from './_app.admin.recurring.$id';
 // every sentence on this screen that names a processor, drawn, and the card they are read in.
 //
 // what it covers: the copy the page composes rather than the loader, which is invisible to
-// ./_app.admin.recurring.$id.workers.spec.ts — that file reads the json a loader publishes, and the
+// ./_app.admin.recurring.$id.db.spec.ts — that file reads the json a loader publishes, and the
 // term over the subscription id, the landing banner and the confirmation's consequence are built
 // in the component out of it. a screen that named Stripe over a gift PayPal collected would ship
 // with every workers case green.

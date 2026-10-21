@@ -5,18 +5,17 @@ import { z } from 'zod';
 // each is stored in — the whole of it, in the one module every surface reads them from. which
 // platform a social link is on is ./social-links.ts's.
 //
-// **the rules are here because two surfaces apply them to the same values.** the deployment
-// parses every profile it is sent (`packages/app/src/lib/server/org/org-input.ts`) and the console
-// applies them in front of the person typing, at the boxes ./org.ts names
-// (`packages/console-ui/src/lib/org-fold.tsx`). a copy in the console would be the cheaper answer
-// and is exactly how the two come to disagree: one end takes eight digits for an EIN and the other
+// **the rules are here because two readers apply them to the same values.** the deployment
+// parses every profile it is sent (`packages/app/src/lib/server/org/org-input.ts`) and the settings
+// screen's boxes read some of them in front of the person typing
+// (`packages/app/src/lib/admin/settings/`). a copy at either end is exactly how the two come to
+// disagree: one end takes eight digits for an EIN and the other
 // refuses the save, which is an operator told a value is fine and then told it is not, with
 // nothing on either screen saying which half was right. one module is what makes both ends agree.
 //
-// **the deployment's parse stays the authority.** the console reading a profile first is a
-// courtesy to the operator and never a replacement for the boundary: `/console/org` is reachable
-// by anything holding a console session, so the worker parses every profile it is sent whatever
-// asked it to.
+// **the deployment's parse stays the authority.** a screen reading a profile first is a courtesy
+// to the operator and never a replacement for the boundary: the action is reachable by anything
+// holding a session, so the deployment parses every profile it is sent whatever asked it to.
 //
 // **a surface reading these ahead of a press reads the issues and never the output.** `tax_id`'s
 // rule rewrites what it stores, and that rewrite is the deployment's to make — a screen asks what

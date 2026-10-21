@@ -98,15 +98,14 @@ export function tokenCopyDrift(copies: string[], tokens: string) {
 // conditions are keyed, with one asymmetry a board makes necessary. a rule the copy carries inside
 // a `@media` or `@supports` answers to the sheets' rule under that same condition and no other. a
 // rule the copy states unconditionally answers to every value the sheets state for that selector,
-// conditioned or not: an artboard is one fixed width with no viewport, so
-// packages/design/console-cloudflare/_shared.css resolves the sheets' `(min-width: 64rem)` branch
-// into the rule rather than carrying the condition, and every value it takes that way is still a
+// conditioned or not: an artboard is one fixed width with no viewport, so a board's
+// `_shared.css` may resolve the sheets' `(min-width: 64rem)` branch into the rule rather than
+// carrying the condition, and every value it takes that way is still a
 // value this system states. what that allowance costs is a board taking a narrow value under a
 // wide condition, which a board of one width cannot mean.
 //
-// `@layer` is transparent on both sides: the two console copies keep the wrappers their surface's
-// packages/console-ui/src/app.css declares and the cloudflare copy inlines the sheets flattened, and
-// a rule is the same rule either way.
+// `@layer` is transparent on both sides: a copy may keep the sheets' `@layer` wrappers or inline the
+// sheets flattened, and a rule is the same rule either way.
 //
 // a `--admin-*` declaration is left to the half above, which reads it by name wherever it is
 // written and so reaches rules this half never keys.

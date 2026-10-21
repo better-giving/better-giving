@@ -1,6 +1,6 @@
 #!/bin/bash
-# readies a claude code on the web session: workspace deps, the console's go module, and the
-# local D1 that CONTRIBUTING.md → Setup builds. local only — nothing here reaches a deployment.
+# readies a claude code on the web session: workspace deps and the local database file that
+# CONTRIBUTING.md → Setup builds. local only — nothing here reaches a deployment.
 # the kru plugin is not installed here: skills load before this hook runs, so it belongs in the
 # environment's setup script instead. registered in .claude/settings.json as a SessionStart hook on
 # `startup|resume`.
@@ -18,7 +18,7 @@ exe="$home/.tools/pnpm-exe/$ver/pnpm"
 
 # the installer's `pnpm` is a wrapper that finds its binary beside its own path, so a symlink to it
 # breaks and the binary itself is linked. it goes in a dir holding nothing else: /usr/local/bin
-# carries a node 20 that would shadow the image's 22, and wrangler refuses 20. pnpm 12's installer
+# carries a node 20 that would shadow the image's 22, which package.json's `engines` needs. pnpm 12's installer
 # lays down no .tools binary, so its wrapper's own directory goes on PATH whole.
 if [ -x "$exe" ]; then
   bin="$HOME/.kru-bin"
@@ -37,7 +37,6 @@ fi
 
 pnpm install --frozen-lockfile
 
-(cd packages/console && go mod download)
-
-pnpm wrangler d1 migrations apply DB --local
-pnpm wrangler d1 execute DB --local --file scripts/seed-local.sql
+# the file CONTRIBUTING.md → Setup names, relative to packages/app.
+DATABASE_URL="file:local.db" pnpm db:migrate
+DATABASE_URL="file:local.db" pnpm db:seed

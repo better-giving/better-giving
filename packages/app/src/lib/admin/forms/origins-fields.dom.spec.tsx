@@ -1,5 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { createRoutesStub } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { FormOriginsFields } from './origins-fields';
 
@@ -10,7 +11,8 @@ import { FormOriginsFields } from './origins-fields';
 // page of its own, so no address is stated beside the boxes.
 //
 // in the dom pool because what is asserted is which boxes exist beside what the group says, and
-// which boxes the sentence describes.
+// which boxes the sentence describes. the sentence carries a react router link, so the group is
+// mounted under a router.
 //
 // nothing here reads a class or asks how any of it looks, which is what keeps it clear of
 // CLAUDE.md's ban on a browser spec over a dashboard screen.
@@ -30,14 +32,20 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-/** the group as a form screen mounts it, with nothing refused. */
-function group(options: { sites: string[]; ticked?: string[] }): HTMLElement {
-	return mount(
-		createElement(FormOriginsFields, {
-			box: { id: 'origins', name: 'allowed_origins', ticked: options.ticked ?? [] },
-			sites: options.sites
-		})
-	);
+/** the group as a form screen mounts it, with nothing refused, for the deployer unless said. */
+function group(options: { sites: string[]; ticked?: string[]; deployer?: boolean }): HTMLElement {
+	const Stub = createRoutesStub([
+		{
+			path: '/admin/forms/f1',
+			Component: () =>
+				createElement(FormOriginsFields, {
+					box: { id: 'origins', name: 'allowed_origins', ticked: options.ticked ?? [] },
+					sites: options.sites,
+					deployer: options.deployer ?? true
+				})
+		}
+	]);
+	return mount(createElement(Stub, { initialEntries: ['/admin/forms/f1'] }));
 }
 
 /** every value a box would submit. */
@@ -52,7 +60,8 @@ function hint(root: HTMLElement): string {
 	return root.querySelector('#origins-hint')?.textContent ?? '';
 }
 
-const WHERE_A_SITE_COMES_FROM = 'A site that is not here is listed on the console.';
+const WHERE_A_SITE_COMES_FROM =
+	'A site that is not here is added under Which sites your forms go on.';
 
 it('says a form with nothing ticked is on no site, and asks for a tick', () => {
 	const root = group({ sites: ['https://example.org'] });
@@ -79,4 +88,19 @@ it('says only where a site comes from once one is ticked', () => {
 it('states no donation page beside the sites', () => {
 	const root = group({ sites: ['https://example.org'] });
 	expect(root.textContent ?? '').not.toContain('Donation page');
+});
+
+it('links where a site comes from to the sites card on the forms list', () => {
+	const root = group({ sites: ['https://example.org'] });
+	const link = root.querySelector('#origins-hint a');
+	expect(link?.textContent).toBe('Which sites your forms go on');
+	expect(link?.getAttribute('href')).toBe('/admin/forms#sites');
+});
+
+it('tells a member to ask the person who deployed this site, with no link to a card they cannot open', () => {
+	const root = group({ sites: ['https://example.org'], deployer: false });
+	expect(hint(root)).toBe(
+		'Not on any site yet. Tick the sites you’ll paste this form on. To use a site that is not here, ask the person who deployed this site to add it.'
+	);
+	expect(root.querySelector('#origins-hint a')).toBeNull();
 });

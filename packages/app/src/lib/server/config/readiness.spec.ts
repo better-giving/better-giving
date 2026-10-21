@@ -3,17 +3,16 @@ import { describe, expect, it } from 'vitest';
 import type { OrgProfile } from '../db/schema';
 import type { ConfigEnv } from './env';
 import type { SetupFacts } from './readiness';
-import { setupOutstanding, setupReadiness } from './readiness';
+import { setupReadiness } from './readiness';
 
 // the five lines this deployment draws about its own set-up.
 //
 // every fact is handed in (./readiness.ts), so all of it is looked at with no database and no
-// platform env — which is what makes this a pure-value spec rather than a `*.workers.spec.ts`
-// against D1 (CONTRIBUTING.md → Tests).
+// platform env — which is what makes this a pure-value spec rather than a `*.db.spec.ts`
+// against a database file (CONTRIBUTING.md → Tests).
 //
 // **the words are asserted through the shared record and never spelled here.** a case quoting
-// `Configured` would pass while the console said something else, which is the one drift promoting
-// those words to `@better-giving/operator/setup-folds` exists to close.
+// `Configured` would pass while `@better-giving/operator/setup-folds` said something else.
 
 /** a profile with both identity fields filled in and no address to reach anyone at. */
 const filledIn = {
@@ -79,12 +78,12 @@ describe('a deployment with all five done', () => {
 		expect(lines.map((one) => one.id)).toEqual([...SETUP_JOBS]);
 	});
 
-	it('names each of them in the words the console uses', () => {
+	it('names each of them by its fold label', () => {
 		expect(lines.map((one) => one.label)).toEqual(SETUP_JOBS.map((id) => FOLD_LABELS[id]));
 	});
 
 	it('has nothing outstanding and so draws no sentence on any line', () => {
-		expect(setupOutstanding(lines)).toBe(0);
+		expect(lines.every((one) => one.state === 'ready')).toBe(true);
 		expect(lines.every((one) => one.word === JOB_WORDS.ready)).toBe(true);
 		expect(lines.map((one) => one.note)).toEqual([null, null, null, null, null]);
 	});
@@ -160,8 +159,8 @@ describe('one job at a time left undone', () => {
 
 	// a deployment with no website of its own gives on the donation page it serves on its own
 	// address, so there is no site to wait on and nothing here reads the `site` table at all
-	// (./setup-state.ts). the fold stays on the console for the operator who does have one.
-	it('draws no line for the site list, which is a fold on the console and no job here', () => {
+	// (./setup-state.ts). the site list stays under Donation forms for the operator who has one.
+	it('draws no line for the site list, which is no job here', () => {
 		expect(setupReadiness(facts()).map((one) => one.id)).not.toContain('sites');
 	});
 
@@ -182,7 +181,7 @@ describe('one job at a time left undone', () => {
 
 	it('holds every one of the five incomplete on a deployment set up for nothing', () => {
 		const nothing = setupReadiness({ password: false, profile: null, config: {} });
-		expect(setupOutstanding(nothing)).toBe(5);
+		expect(nothing.every((one) => one.state === 'todo')).toBe(true);
 		// a sentence is what a row adds where its label cannot say what the job is for, which is
 		// `SMTP` and `Notifications` and nothing else: three rows saying `Incomplete` over a
 		// sentence saying so would be the word spelled twice.

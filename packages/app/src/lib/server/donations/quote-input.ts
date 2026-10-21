@@ -76,6 +76,8 @@ export type ParsedQuoteRequest = {
 	readonly programId: string | undefined;
 	/** whatever was presented as a challenge token, checked by nothing here. */
 	readonly turnstileToken: string | undefined;
+	/** whatever was presented as a solved ALTCHA challenge, checked by nothing here either. */
+	readonly altchaPayload: string | undefined;
 	/**
 	 * what the fund's window handed back, on a donor-advised fund gift and on no other rail.
 	 *
@@ -602,6 +604,13 @@ const TURNSTILE_TOKEN = z
 	})
 	.optional();
 
+/** the solved proof of work, carried and never touched for the same reason as the token above. */
+const ALTCHA_PAYLOAD = z
+	.string({
+		error: (issue) => `\`altchaPayload\` is ${describe(issue.input)}, which is not a string.`
+	})
+	.optional();
+
 /**
  * a submitted body as a quotable request, or a sentence naming what to change.
  *
@@ -710,6 +719,14 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 		);
 	}
 
+	const altchaPayload = ALTCHA_PAYLOAD.safeParse(posted.altchaPayload);
+	if (!altchaPayload.success) {
+		return refusal(
+			first(altchaPayload.error),
+			'Send the payload the ALTCHA widget produced, unmodified.'
+		);
+	}
+
 	// the donor goes through the same parser /admin's create form uses, so `display_name` is derived
 	// by the one function that derives it and the branded `ParsedContact` a write needs cannot be
 	// assembled any other way. `kind` is not on the wire and is not a donor's decision: a donation
@@ -757,6 +774,7 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 			tribute: tribute.value,
 			programId: program.value,
 			turnstileToken: turnstileToken.data,
+			altchaPayload: altchaPayload.data,
 			authorization: authorization.value,
 			coin: coin.value
 		}

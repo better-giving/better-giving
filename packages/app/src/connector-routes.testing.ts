@@ -1,6 +1,7 @@
-import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, expect } from 'vitest';
+import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { createDb, type Db } from '$lib/server/db/client';
+import { client } from '$lib/server/db/database.testing';
 import { type MountedRoute, mountRoutes, type RouteRequester } from './route-request.testing';
 import * as layout from './routes/_app';
 import * as allow from './routes/_app.admin.connector.allow';
@@ -50,6 +51,8 @@ export type CallInit = {
 	body?: unknown;
 	metered?: boolean;
 	headers?: Record<string, string>;
+	/** variables laid over the deployment's bindings for this call alone; `undefined` unsets one. */
+	env?: Record<string, string | undefined>;
 };
 
 /**
@@ -64,7 +67,7 @@ export function connectorHarness<R extends Record<string, RouteRequester>>(mount
 	let calls = 0;
 
 	beforeAll(() => {
-		db = createDb(env.DB);
+		db = createDb(client);
 		routes = {
 			...mount(),
 			exchange: under('exchange', exchange),
@@ -76,11 +79,11 @@ export function connectorHarness<R extends Record<string, RouteRequester>>(mount
 	});
 
 	beforeEach(async () => {
-		for (const table of WIPED) await env.DB.prepare(`delete from ${table}`).run();
-		await env.DB.prepare(
+		for (const table of WIPED) await client.execute(`delete from ${table}`);
+		await client.execute(
 			`insert into org_profile (id, legal_name, tax_id, notification_email, created_at, updated_at)
 			 values ('default', 'Riverbank Trust', '12-3456789', 'alerts@example.org', 0, 0)`
-		).run();
+		);
 		deployer = await signInAsDeployer(harness.db, DEPLOYMENT);
 		caller += 1;
 	});
@@ -110,7 +113,7 @@ export function connectorHarness<R extends Record<string, RouteRequester>>(mount
 		call(route: keyof R | 'exchange', path: string, init: CallInit = {}): Promise<Response> {
 			const headers: Record<string, string> = {
 				...init.headers,
-				'cf-connecting-ip': ip(),
+				[CLIENT_IP_HEADER]: ip(),
 				accept: 'application/json'
 			};
 			if (init.key !== undefined) headers.authorization = `Bearer ${init.key}`;
@@ -121,7 +124,12 @@ export function connectorHarness<R extends Record<string, RouteRequester>>(mount
 					headers,
 					...(init.body === undefined ? {} : { body: JSON.stringify(init.body) })
 				}),
-				{ env: init.metered === true ? DEPLOYMENT.env : UNMETERED }
+				{
+					env: {
+						...(init.metered === true ? DEPLOYMENT.env : UNMETERED),
+						...init.env
+					} as unknown as Env
+				}
 			);
 		},
 

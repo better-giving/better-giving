@@ -8,16 +8,13 @@ import type {
 // what a caller asks the payment port about this deployment's own webhook endpoint, and the two
 // repairs it can ask for.
 //
-// **only the read has a caller.** `src/routes/console.payments.ts` reads the registration so that
+// **the read and both repairs have callers.** ./processor-cards.ts reads the registration so that
 // `webhookSecretStanding` in ./webhook-secret.ts can compare the fingerprint stamped on the endpoint
-// against the signing secret this deployment holds — made here rather than in the console because
-// the value that verifies a delivery is the one the running version holds, and the account can be
-// ahead of it for as long as a new version takes to roll. the two repairs stand and are called by
-// nothing: the console registers each processor's endpoint itself, in one press that also stores what
-// verifies it (`packages/console/internal/stripe`, whose header argues why it registers afresh rather
-// than repairing one in place, and `packages/console/internal/paypal`). they stand because whether
-// this deployment goes on answering for its own endpoint is a question about its surface rather
-// than about the screen that used to ask.
+// against the signing secret this deployment holds — made in the app because the value that
+// verifies a delivery is the one the running process holds, and the account can be ahead of it
+// until the app is recreated. ./webhook-setup.ts, behind
+// `scripts/setup-webhook.ts`, reads and then replaces (Stripe) or resubscribes (PayPal) when it
+// registers from `.env`; its header argues which processor takes which.
 //
 // a module rather than four calls in a caller: what lives here is the part with a decision in it —
 // which endpoint on the account is this deployment's, whether it is doing the job, and which of the
@@ -140,7 +137,8 @@ export async function readWebhookRegistration(
  * the repair for a registration that is the right one and is not yet working, which is every
  * `registered` state whose `complete` is false. it is not a replacement, and the difference is the
  * whole reason this exists: a replacement mints a new signing secret and kills the one the operator
- * has already set and redeployed with, and nothing about a missing subscription is worth that.
+ * has already set and recreated the app with, and nothing about a missing subscription is worth
+ * that.
  *
  * the endpoint is found here rather than named by the caller, so the id never leaves this side.
  */

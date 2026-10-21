@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { createRoutesStub, redirect } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { WHICH_FORM } from '$lib/forms/definition';
+import { type FormReadinessLine, liveOffered } from '$lib/forms/readiness';
 import DonationForm from './_app.admin.forms.$id';
 
 // a donation form's record, pressed through the redirect every write on it answers with.
@@ -12,7 +13,7 @@ import DonationForm from './_app.admin.forms.$id';
 // record, and the router spends the redirect's `loading` phase reading it again with the pressed
 // control still on the screen. a press that re-armed there sends a second body carrying the version
 // the first one moved past — refused as stale, and that refusal cuts off the landing's revalidation
-// — or archives a form already archived. neither is visible to the workers spec beside this file,
+// — or archives a form already archived. neither is visible to the db spec beside this file,
 // which drives the action and renders nothing.
 //
 // mounted rather than rendered to a string, because the phase is the router's and exists only
@@ -24,9 +25,6 @@ import DonationForm from './_app.admin.forms.$id';
 
 /**
  * mounts `tree` into a document that lives as long as the case, and hands back its root element.
- *
- * `appendChild` rather than `append`: worker-configuration.d.ts declares HTMLRewriter's `Element`,
- * which merges into the DOM's and brings an `append(content, options)` that wins here.
  */
 function mount(tree: ReactNode): HTMLElement {
 	const root = document.createElement('div');
@@ -45,11 +43,21 @@ const RECORD = `/admin/forms/${FORM_ID}`;
 
 type Loaded = Parameters<typeof DonationForm>[0]['loaderData'];
 
-/** a draft form on a deployment ready to publish it, with nothing just landed. */
-function record(confirmArchive: boolean): Loaded {
+/**
+ * a form stored as `status` with nothing just landed, on a deployment ready to publish it — or,
+ * `blocked`, on one with no organisation identity, which withholds Live from a draft.
+ */
+function record(
+	confirmArchive: boolean,
+	blocked = false,
+	status: 'draft' | 'live' = 'draft'
+): Loaded {
+	const readiness: FormReadinessLine[] | null = blocked
+		? [{ job: 'organisation', severity: 'blocker' }]
+		: null;
 	const values = {
 		name: 'Spring appeal',
-		status: 'draft',
+		status,
 		program_mode: 'none',
 		program_id: '',
 		min_minor: '5',
@@ -60,24 +68,25 @@ function record(confirmArchive: boolean): Loaded {
 	return {
 		id: FORM_ID,
 		name: values.name,
-		status: 'draft',
+		status,
 		currency: 'USD',
 		archived: false,
 		editor: {
-			nameBoxes: { name: values.name, status: 'draft' },
+			nameBoxes: { name: values.name, status },
 			programBoxes: { program_mode: 'none', program_id: '' },
 			givingBoxes: { min_minor: '5', max_minor: '100', suggested_amounts: ['25'] },
 			originsBoxes: { allowed_origins: ['https://example.org'] }
 		},
 		values,
 		snippet: '<script src="https://example.org/embed.js"></script>',
-		readiness: null,
+		readiness,
+		deployer: true,
 		sites: ['https://example.org'],
 		programs: [],
 		retiredProgram: null,
 		programMode: 'none',
 		pinnedProgram: null,
-		liveOffered: true,
+		liveOffered: liveOffered(status, readiness),
 		saved: null,
 		archivedJustNow: false,
 		confirmArchive,
@@ -92,7 +101,14 @@ function record(confirmArchive: boolean): Loaded {
  *
  * `posted` is the form each body named, in the order the action received them.
  */
-function screen({ confirmArchive = false } = {}): { root: HTMLElement; posted: string[] } {
+function screen({
+	confirmArchive = false,
+	blocked = false,
+	status = 'draft' as 'draft' | 'live'
+} = {}): {
+	root: HTMLElement;
+	posted: string[];
+} {
 	const posted: string[] = [];
 	const Stub = createRoutesStub([
 		{
@@ -101,7 +117,7 @@ function screen({ confirmArchive = false } = {}): { root: HTMLElement; posted: s
 			loader: () => new Promise<never>(() => {}),
 			Component: () =>
 				createElement(DonationForm as never, {
-					loaderData: record(confirmArchive),
+					loaderData: record(confirmArchive, blocked, status),
 					actionData: undefined,
 					params: { id: FORM_ID },
 					matches: []
@@ -189,3 +205,44 @@ it('holds the archive through the redirect’s loading, and a second press posts
 	await press(archive);
 	expect(posted).toEqual(['form-archive']);
 });
+
+it('says under the heading why the form cannot go live, and at the status box why Live is missing', () => {
+	const { root } = screen({ blocked: true });
+
+	const band = root.querySelector('[role="alert"]');
+	expect(band?.querySelector('.adm-banner__word')?.textContent).toBe('This form can’t go live yet');
+	expect(band?.querySelector('a')?.getAttribute('href')).toBe('/admin/settings');
+
+	// read through the box's own description, so the hint is the one a reader meets on the box.
+	const status = document.getElementById(statusBoxId(root));
+	const described = (status?.getAttribute('aria-describedby') ?? '').split(' ');
+	const hint = document.getElementById(`${status?.id}-hint`);
+	expect(described).toContain(hint?.id);
+	expect(hint?.textContent).toBe('Live is unavailable until the items above are done.');
+});
+
+it('opens a live form under a blocker with Live chosen and its group holding nothing to save', () => {
+	const { root } = screen({ blocked: true, status: 'live' });
+
+	// what the box shows and what its group would post.
+	expect(document.getElementById(statusBoxId(root))?.textContent).toBe('Live');
+	expect(root.querySelector<HTMLSelectElement>('select[name="status"]')?.value).toBe('live');
+	expect(root.textContent).not.toContain('Live is unavailable');
+	// a box drawn holding something other than its seed arms the save, and the press posts it.
+	expect(buttonReading(root, 'Save name and status').getAttribute('aria-disabled')).toBe('true');
+});
+
+it('draws no readiness band and no status note on a deployment ready to publish', () => {
+	const { root } = screen();
+
+	expect(root.querySelector('[role="alert"]')).toBe(null);
+	expect(root.textContent).not.toContain('Live is unavailable');
+});
+
+/** the id of the status box, which its label names. */
+function statusBoxId(root: HTMLElement): string {
+	const label = [...root.querySelectorAll('label')].find((it) => it.textContent === 'Status');
+	const id = label?.getAttribute('for');
+	if (!id) throw new Error('the screen drew no status box');
+	return id;
+}

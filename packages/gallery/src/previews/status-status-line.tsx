@@ -1,4 +1,3 @@
-import { AnchoredPanel } from '@better-giving/operator/behaviour/AnchoredPanel';
 import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import {
@@ -36,11 +35,9 @@ import {
  * is invisible on the page and reachable only by reading the line out, so the specimen carrying one
  * is marked in its own copy.
  *
- * the second ledger is the same lines with blocks attached. one `adm-status__attach` joins its
- * block to the sentence and every one after it stands apart from its peer, so a line with two of
- * them is the only place that difference is visible — a single attachment cannot show it. the steps
- * run is beside them: `done`, `running` and `waiting`, which is what a line reports about a subject
- * being made, and it is drawn in the line's own two tracks rather than inset.
+ * the second ledger carries the steps run: `done`, `running` and `waiting`, which is what a line
+ * reports about a subject being made, and it is drawn in the line's own two tracks rather than
+ * inset.
  *
  * the two lines after it are what a running line does when it has no run to open into. one is
  * handed nothing and one is handed a single step, and both draw the same thing — no list, and the
@@ -62,22 +59,19 @@ import {
  * after, which is the only way to see that what qualifies a line for `wordOnMark` is its label and
  * not its being finished.
  *
- * the two running lines are where the `aside` slot is drawn in a plain head. it is the caller's own
+ * the first running line is where the `aside` slot is drawn in a plain head. it is the caller's own
  * element, standing last on the head so that it begins on the label's inline edge and set by
- * whatever class that caller wears — this system holds none of its own for it — and the two
- * specimens are the two shapes that reach it: a caption, which has a baseline of its own, and a
- * press carrying a mark and no word, which has none. the press stands on a label long enough to
- * wrap the moment the window is narrow, which is what shows where each of them goes: the mark and
- * the press are placed off the label's first line and never off the head, and the head being a
- * wrapping row is what then puts the press under a label that has taken the whole of one.
+ * whatever class that caller wears — this system holds none of its own for it. the second running
+ * line is a label long enough to wrap the moment the window is narrow, and the mark is placed off
+ * its first line and never off the head.
  *
  * the fifth ledger is `aligned`, the reading a run takes when its rows are read down rather than
  * across: the mark, the label, the status word and the aside each hold one column for the whole
  * run. it is the one specimen here that needs more than one line to show anything at all — a row
- * cannot be out of line with itself — so it is six rows with four of them carrying an aside, three
- * captions and the press the console draws there, two of them putting their word on the mark and
- * leaving that column standing empty, and one carrying a sentence, which is where the sentence
- * taking the whole row under the head rather than the label's own column is visible. below the
+ * cannot be out of line with itself — so it is six rows with three of them carrying a caption as
+ * their aside, two of them putting their word on the mark and leaving that column standing empty,
+ * and one carrying a sentence, which is where the sentence taking the whole row under the head
+ * rather than the label's own column is visible. below the
  * floor packages/operator/src/styles/adm.css states, the run falls back to the wrapping head every
  * ledger above it draws, so narrowing the window is how that half is seen.
  *
@@ -202,31 +196,14 @@ export default function StatusStatusLinePreview() {
 					word="Ready"
 					tone="done"
 					note="Paste this into every page the form should appear on."
-				>
-					<div className="adm-status__attach">
-						<CodeSlab
-							label="snippet"
-							copyable
-							content={`<script src="https://give.riverside-shelter.org/embed.js" defer></script>\n<bg-donate-form form="winter-appeal"></bg-donate-form>`}
-						/>
-					</div>
-				</StatusLine>
+				/>
 				<StatusLine
 					labelAs="h3"
 					label="Stripe keys"
 					word="One is missing"
 					tone="blocker"
 					note="The publishable key is set and the secret key is not."
-				>
-					<div className="adm-status__attach">
-						<p>The first block joins the sentence above it.</p>
-					</div>
-					<div className="adm-status__attach">
-						<p>
-							The second stands apart from its peer, which is the only difference this pair shows.
-						</p>
-					</div>
-				</StatusLine>
+				/>
 				<StatusLine
 					labelAs="h3"
 					label="Deployment"
@@ -338,14 +315,6 @@ export default function StatusStatusLinePreview() {
 					word="Working"
 					wordOnMark
 					tone="running"
-					aside={
-						<AnchoredPanel mark="info" label="Where these hostnames come from">
-							<p className="adm-prose">
-								The aside as a press with no word in it, on a label long enough to wrap. The mark
-								and the press both stand on the label's first line.
-							</p>
-						</AnchoredPanel>
-					}
 				/>
 				<StatusLine
 					labelAs="span"
@@ -386,13 +355,6 @@ export default function StatusStatusLinePreview() {
 					label="Cash App Pay"
 					word="Not showing everywhere"
 					tone="attention"
-					aside={
-						<AnchoredPanel mark="info" label="Where Cash App Pay shows">
-							<p className="adm-prose">
-								The press in the aside column, which is what the console draws there.
-							</p>
-						</AnchoredPanel>
-					}
 				/>
 				<StatusLine
 					labelAs="span"

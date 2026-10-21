@@ -4,10 +4,10 @@ import type { FormInputField } from '$lib/forms/fields';
 import { action } from './_app.admin.forms.new';
 
 // a node spec, not a workers one, and the split is CLAUDE.md's: what is asserted here is the half
-// of the save that returns before the database is reached, so there is nothing for a real D1 to
+// of the save that returns before the database is reached, so there is nothing for a real database to
 // prove. the request context below is deliberately empty — a submission the parser rejects that
 // still reached for a handle would be the bug this file catches, and reaching for one on an empty
-// context throws. everything past the parser lives in `_app.admin.forms.new.workers.spec.ts` beside
+// context throws. everything past the parser lives in `_app.admin.forms.new.db.spec.ts` beside
 // it.
 //
 // every case reads its refusal off one shape, reconciled once in `save` below. three of the four

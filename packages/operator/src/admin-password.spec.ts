@@ -86,8 +86,8 @@ describe('a candidate dashboard password, read', () => {
 		expect(result.problem).toContain('is not a string');
 	});
 
-	// the sentence is printed under a box on the console and inside a 5xx body on the deployment,
-	// and neither is a place to read a credential back.
+	// the sentence is printed inside a 5xx body on the deployment, which is no place to read a
+	// credential back.
 	it('never quotes the candidate in the sentence', () => {
 		const result = readAdminPassword('hunter2');
 		expect(result.ok).toBe(false);

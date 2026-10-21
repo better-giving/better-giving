@@ -7,7 +7,7 @@ import { rawColourViolations, rawLengthViolations } from './raw-values';
 // the escape hatches, opened against a fixture rather than against this repository's own css.
 //
 // the reason this file is not simply another caller's case. a surface's gate — the dashboard's two
-// in packages/app/src/lib/admin/styles/, the console's in packages/console-ui/src/ — can assert only
+// in packages/app/src/lib/admin/styles/ — can assert only
 // that its own files come back clean, and a clean answer is what a working sweep and a blind one
 // both give. `raw-colour-ok:` and `raw-length-ok:` are the half of the bargain nothing else
 // exercises: no caller hands ./tokens.css to the colour sweep and none hands ./adm.css to the

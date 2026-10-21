@@ -8,8 +8,8 @@ import AddDonation from './_app.admin.donations.new';
 
 // the Add a donation screen, drawn.
 //
-// what it covers is what the workers spec beside it cannot reach: that file drives the loader and the
-// action against a real D1 and renders nothing. which arm of the donor region is showing, when the
+// what it covers is what the db spec beside it cannot reach: that file drives the loader and the
+// action against a real database and renders nothing. which arm of the donor region is showing, when the
 // receipt box is held and why, where a refusal is marked, what the confirm itemises and what the
 // button says once a gift lands are all markup, and they are read here.
 //

@@ -18,8 +18,8 @@ vi.mock('@better-giving/operator/images/resize', async (actual) => ({
 // a placed photo's sheet as the editor routes mount it: a new photo is resized, posted to the images
 // route, drawn once stored, and written to the block by Done with what describes it; and the sheet of
 // a block with no photo yet, whose Done posts nothing until one is chosen. both routes are
-// stand-ins; what the real ones store is src/routes/_app.admin.images.workers.spec.ts's and
-// $lib/server/pages/blocks.workers.spec.ts's.
+// stand-ins; what the real ones store is src/routes/_app.admin.images.db.spec.ts's and
+// $lib/server/pages/blocks.db.spec.ts's.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

@@ -1,9 +1,10 @@
 import { PAYMENT_METHODS, type PaymentMethod } from '@better-giving/form/v1';
 import type { Processors } from '../payments/factory';
+import { responseCache } from '../runtime/response-cache';
 import { readRailChargeabilities } from '../payments/rail-chargeability';
 import { offeredRails } from './offered-rails';
 
-// the rail-chargeability read, kept at the edge for a few minutes at a time.
+// the rail-chargeability read, kept in the process's cache for a few minutes at a time.
 //
 // the same store, the same window and the same reasoning as ./cadence-cache.ts, whose header states
 // it in full: `GET /api/v1/forms/:id/config` is what every embedded donation form boots on, from a
@@ -54,20 +55,19 @@ const TTL_SECONDS = 300;
 /**
  * the address an answer is kept under, on the request's own origin.
  *
- * `caches.default` is keyed by URL, and a visitor's request runs this worker before any cache
- * (https://developers.cloudflare.com/workers/reference/how-the-cache-works/), so an entry is read
- * only by a `cache.match` this app makes — and the one that reads this key is below. a path of its
- * own is what keeps that read from meeting an entry another module wrote.
+ * the process's cache (../runtime/response-cache.ts) is keyed by URL and read only by a `match`
+ * this app makes — and the one that reads this key is below. a path of its own is what keeps that
+ * read from meeting an entry another module wrote.
  */
 const CACHE_PATH = '/__offered-rails';
 
 /**
- * which rails a donor may be shown here, from the edge where there is an answer and from the
+ * which rails a donor may be shown here, from the cache where there is an answer and from the
  * processor where there is not.
  *
- * `origin` is the origin the request arrived on, so the entry sits inside the zone that asked for
- * it. it is taken as an argument rather than invented, because a synthetic hostname is one this
- * deployment does not own.
+ * `origin` is the origin the request arrived on, so the key names an address this deployment
+ * answers on. it is taken as an argument rather than invented, because a synthetic hostname is one
+ * this deployment does not own.
  *
  * a chargeability that could not be read is answered and never stored. the answer on that arm is that
  * processor's rails whole (`offeredRails` in ./offered-rails.ts), so keeping it would turn a
@@ -79,21 +79,16 @@ const CACHE_PATH = '/__offered-rails';
  * outbound call per donor for as long as the account stayed that way. what stops it reaching a
  * donation form is `publishedConfig`'s refusal in ./published-config.ts.
  *
- * never throws and never rejects: the read below turns every failing arm of the port into a state,
- * and a store with no cache in front of it — `vite dev` runs on node, which has none — reads
- * straight through.
+ * never throws and never rejects: the read below turns every failing arm of the port into a state.
  */
 export async function cachedRails(
 	processors: Processors,
 	origin: string
 ): Promise<readonly PaymentMethod[]> {
-	const cache = edgeCache();
-	const key = cache === null ? null : new Request(new URL(CACHE_PATH, origin));
+	const key = new Request(new URL(CACHE_PATH, origin));
 
-	if (cache !== null && key !== null) {
-		const kept = await storedRails(cache, key);
-		if (kept !== null) return kept;
-	}
+	const kept = await storedRails(key);
+	if (kept !== null) return kept;
 
 	const readings = await readRailChargeabilities(processors);
 	const rails = offeredRails(readings);
@@ -102,8 +97,8 @@ export async function cachedRails(
 	// rails (`offeredRails` in ./offered-rails.ts), and storing that would hold the widening open
 	// for the whole window with nothing on either side able to clear it early.
 	const readable = Object.values(readings).every((reading) => reading.state !== 'unreadable');
-	if (cache !== null && key !== null && readable) {
-		await cache.put(
+	if (readable) {
+		await responseCache.put(
 			key,
 			new Response(JSON.stringify(rails), {
 				headers: {
@@ -118,26 +113,15 @@ export async function cachedRails(
 }
 
 /**
- * the platform's cache, or `null` where the runtime has none.
- *
- * `vite dev` runs this app on node, which has no `caches` at all, so the absence is a state rather
- * than a fault — `pnpm run preview` is where the cache is real, and so is every deployment.
- */
-function edgeCache(): Cache | null {
-	const store = (globalThis as { caches?: { default?: Cache } }).caches;
-	return store?.default ?? null;
-}
-
-/**
  * a kept answer, or `null` for anything that is not one.
  *
  * fails closed the way ./form-json.ts's decoders do and for the reason ./cadence-cache.ts states:
- * this store is the zone's, so what comes back under an address is whatever is there. an empty list
+ * this store is shared, so what comes back under an address is whatever is there. an empty list
  * is the one difference from that reader — here it is an answer rather than a body to read past, so
  * emptiness is not what disqualifies an entry. a member outside `PAYMENT_METHODS` still does.
  */
-async function storedRails(cache: Cache, key: Request): Promise<readonly PaymentMethod[] | null> {
-	const hit = await cache.match(key);
+async function storedRails(key: Request): Promise<readonly PaymentMethod[] | null> {
+	const hit = await responseCache.match(key);
 	if (hit === undefined) return null;
 
 	let decoded: unknown;

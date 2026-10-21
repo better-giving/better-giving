@@ -1,0 +1,256 @@
+import { eq } from 'drizzle-orm';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
+import { PAGE_END_DATE_FORM_ID, PAGE_GOAL_FORM_ID } from '$lib/page/page-settings-form';
+import { createDb, type Db } from '$lib/server/db/client';
+import { page } from '$lib/server/db/schema';
+import { insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
+import { ORIGIN, signIn } from '../../../program-routes.testing';
+import { finishedDeployment } from '../../../page-routes.testing';
+import { mountRoutes, type RouteRequester } from '../../../route-request.testing';
+import * as layout from '../../../routes/_app';
+import * as campaignEditor from '../../../routes/_app.admin.campaigns.$pageId';
+import * as donationEditor from '../../../routes/_app.admin.donation-page';
+import { client, stmt } from '$lib/server/db/database.testing';
+
+// the Settings sheet's goal and end date, posted to both editors' actions as
+// the sheets post them. a db spec because each press writes a page's draft; the chain is
+// mounted for ../../../route-request.testing.ts's reason: the session gate is a `middleware` on
+// ../../../routes/_app.tsx.
+
+let db: Db;
+/** each editor's chain: a mounted chain is one route inside the next, so one per editor. */
+let campaignRequest: RouteRequester;
+let donationRequest: RouteRequester;
+let session: string;
+
+beforeAll(async () => {
+	db = createDb(client);
+	campaignRequest = mountRoutes([
+		{ path: undefined, module: layout },
+		{ path: 'admin/campaigns/:pageId', module: campaignEditor }
+	]);
+	donationRequest = mountRoutes([
+		{ path: undefined, module: layout },
+		{ path: 'admin/donation-page', module: donationEditor }
+	]);
+	session = await signIn(db);
+});
+
+beforeEach(async () => {
+	await client.batch([stmt('delete from page'), stmt('delete from form')]);
+});
+
+async function stored(pageId: string) {
+	const [row] = await db.select().from(page).where(eq(page.id, pageId));
+	if (!row) throw new Error(`no page ${pageId}`);
+	return row;
+}
+
+async function draftOf(pageId: string): Promise<Record<string, unknown>> {
+	return JSON.parse((await stored(pageId)).draft);
+}
+
+/** a press on the page's editor, drawn at the version the row holds now unless `drawn` says. */
+async function post(pageId: string, form: string, fields: Record<string, string>, drawn?: number) {
+	const body = new FormData();
+	body.set(WHICH_FORM, form);
+	const row = await stored(pageId);
+	body.set(RECORD_VERSION, String(drawn ?? row.updatedAt.getTime()));
+	for (const [name, value] of Object.entries(fields)) body.set(name, value);
+	const campaign = row.type === 'campaign';
+	return (campaign ? campaignRequest : donationRequest)(
+		new Request(`${ORIGIN}${campaign ? `/admin/campaigns/${pageId}` : '/admin/donation-page'}`, {
+			method: 'POST',
+			headers: { cookie: session },
+			body
+		}),
+		{ env: bindings }
+	);
+}
+
+/** the one Donation page, live as it always is. */
+function donationPage(): Promise<string> {
+	return insertPage(db, 'donation_page', { ...defaultDonationPage(), settings: SETTINGS });
+}
+
+/** a deployment whose set-up is finished. */
+let bindings: Env;
+
+beforeEach(async () => {
+	bindings = await finishedDeployment();
+});
+
+/** a campaign donors can see: its draft published as it stands. */
+async function liveCampaign(): Promise<string> {
+	const pageId = await insertPage(db, 'campaign');
+	const { draft } = await stored(pageId);
+	await db.update(page).set({ state: 'live', published: draft }).where(eq(page.id, pageId));
+	return pageId;
+}
+
+describe('the goal', () => {
+	it('is saved to the draft, and the live campaign is unchanged until Publish', async () => {
+		const pageId = await liveCampaign();
+		const before = await stored(pageId);
+
+		const response = await post(pageId, PAGE_GOAL_FORM_ID, { goal_minor: '5000000' });
+
+		expect(response.status).toBe(200);
+		expect((await draftOf(pageId)).goalMinor).toBe(5_000_000);
+		const after = await stored(pageId);
+		expect(after.published).toBe(before.published);
+		expect(after.formId).toBe(before.formId);
+	});
+
+	it('is removed by an emptied box', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		await post(pageId, PAGE_GOAL_FORM_ID, { goal_minor: '5000000' });
+
+		const response = await post(pageId, PAGE_GOAL_FORM_ID, { goal_minor: '' });
+
+		expect(response.status).toBe(200);
+		expect(await draftOf(pageId)).not.toHaveProperty('goalMinor');
+	});
+
+	it.each(['0', '-500', '12.5', 'lots', '1000000000000000'])(
+		'refuses %s naming it, and writes nothing',
+		async (sent) => {
+			const pageId = await insertPage(db, 'campaign');
+			const before = await stored(pageId);
+
+			const response = await post(pageId, PAGE_GOAL_FORM_ID, { goal_minor: sent });
+
+			expect(response.status).toBe(400);
+			const answer = (await response.json()) as {
+				form: { result: { error: { goal_minor: string[] } } };
+			};
+			expect(answer.form.result.error.goal_minor[0]).toContain(JSON.stringify(sent));
+			expect((await stored(pageId)).draft).toBe(before.draft);
+		}
+	);
+
+	it('is refused on the Donation page, which has none', async () => {
+		const pageId = await donationPage();
+		const before = await stored(pageId);
+
+		const response = await post(pageId, PAGE_GOAL_FORM_ID, { goal_minor: '5000000' });
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({
+			form: { result: { error: { '': ['the Donation page has no goal; only a campaign does'] } } }
+		});
+		expect((await stored(pageId)).draft).toBe(before.draft);
+	});
+});
+
+describe('the end date', () => {
+	const DAY = { end_date: '2099-12-31', time_zone: 'America/New_York' };
+
+	it('stores the end of the day in the zone it was chosen in, on the draft only', async () => {
+		const pageId = await liveCampaign();
+		const before = await stored(pageId);
+
+		const response = await post(pageId, PAGE_END_DATE_FORM_ID, DAY);
+
+		expect(response.status).toBe(200);
+		const draft = await draftOf(pageId);
+		expect(draft.endsAt).toBe(Date.parse('2100-01-01T05:00:00Z') - 1);
+		expect(draft.endsZone).toBe('America/New_York');
+		expect((await stored(pageId)).published).toBe(before.published);
+	});
+
+	it('is removed whole by an emptied day', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		await post(pageId, PAGE_END_DATE_FORM_ID, DAY);
+
+		const response = await post(pageId, PAGE_END_DATE_FORM_ID, { end_date: '', time_zone: '' });
+
+		expect(response.status).toBe(200);
+		const draft = await draftOf(pageId);
+		expect(draft).not.toHaveProperty('endsAt');
+		expect(draft).not.toHaveProperty('endsZone');
+	});
+
+	it.each([
+		[{ end_date: '2020-01-01' }, 'end_date', 'today or later; Jan 1, 2020 is already over'],
+		[
+			{ end_date: '2099-02-30' },
+			'end_date',
+			'"2099-02-30" is not a day; an end date is written YYYY-MM-DD'
+		],
+		[{ time_zone: 'Mars/Olympus' }, 'time_zone', '"Mars/Olympus" is not a time zone']
+	])('refuses %j naming it, and writes nothing', async (sent, box, sentence) => {
+		const pageId = await insertPage(db, 'campaign');
+		const before = await stored(pageId);
+
+		const response = await post(pageId, PAGE_END_DATE_FORM_ID, { ...DAY, ...sent });
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({
+			form: { result: { error: { [box]: [sentence] } } }
+		});
+		expect((await stored(pageId)).draft).toBe(before.draft);
+	});
+
+	it('is refused on the Donation page, which has none', async () => {
+		const pageId = await donationPage();
+		const before = await stored(pageId);
+
+		const response = await post(pageId, PAGE_END_DATE_FORM_ID, DAY);
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({
+			form: {
+				result: { error: { '': ['the Donation page has no end date; only a campaign does'] } }
+			}
+		});
+		expect((await stored(pageId)).draft).toBe(before.draft);
+	});
+});
+
+describe('a press drawn before another save', () => {
+	it.each([
+		[PAGE_GOAL_FORM_ID, { goal_minor: '5000000' }],
+		[PAGE_END_DATE_FORM_ID, { end_date: '2099-12-31', time_zone: 'America/New_York' }]
+	])('%s is refused at 409 and writes nothing', async (form, fields) => {
+		const pageId = await insertPage(db, 'campaign');
+		const drawn = (await stored(pageId)).updatedAt.getTime();
+		await post(pageId, PAGE_GOAL_FORM_ID, { goal_minor: '100000' });
+		const before = await stored(pageId);
+
+		const response = await post(pageId, form, fields, drawn);
+
+		expect(response.status).toBe(409);
+		expect(await response.json()).toMatchObject({
+			form: { id: form, result: { error: { '': [expect.stringMatching(/^Nothing was changed/)] } } }
+		});
+		expect((await stored(pageId)).draft).toBe(before.draft);
+	});
+});
+
+describe('what the editor is drawn with', () => {
+	async function open(pageId: string): Promise<Record<string, unknown>> {
+		const response = await campaignRequest(
+			new Request(`${ORIGIN}/admin/campaigns/${pageId}`, { headers: { cookie: session } }),
+			{ env: bindings }
+		);
+		expect(response.status).toBe(200);
+		return response.json();
+	}
+
+	it('draws no look or share message of the page’s to edit by hand', async () => {
+		const pageId = await insertPage(db, 'campaign', {
+			...defaultCampaign(),
+			look: { shade: 'warm', corner: 'round' },
+			shareMessage: 'Join me?'
+		});
+
+		const drawn = await open(pageId);
+
+		expect(drawn).toMatchObject({ unreadable: false, goalMinor: null });
+		expect(Object.keys(drawn)).not.toEqual(expect.arrayContaining(['pageSettings']));
+		expect(Object.keys(drawn)).not.toEqual(expect.arrayContaining(['shareMessage']));
+	});
+});

@@ -86,7 +86,7 @@ export function reservedSegments(routeFiles: readonly string[]): ReadonlySet<str
 // the route files' names alone, from `../../../vite/route-files.ts`'s plugin, so nothing here is an
 // import edge into a route module. the plugin leaves out the files src/routes.ts's
 // `ignoredRouteFiles` leaves out, by the one pattern the plugin module exports: a spec is not an
-// address, and one handed to the build would pull `cloudflare:test` into it.
+// address, and one handed to the build would pull vitest into it.
 const ROUTE_FILES: readonly string[] = routeFiles;
 
 /**

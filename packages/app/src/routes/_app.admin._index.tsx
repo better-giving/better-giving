@@ -10,6 +10,7 @@ import { FORM_CURRENCY } from '$lib/forms/amounts';
 import { readDonorSummary } from '$lib/server/contacts/queries';
 import { loadFailed } from '$lib/server/db/load-failure';
 import { readGiftsByMonth } from '$lib/server/donations/queries';
+import { holdsAnyForm } from '$lib/server/forms/queries';
 import { readRaisedByMonth } from '$lib/server/ledger/queries';
 import { overMonths } from '$lib/server/months';
 import { readActiveRecurringCount } from '$lib/server/recurring/queries';
@@ -29,10 +30,10 @@ import type { Route } from './+types/_app.admin._index';
 // figure is a `SUM` or a `COUNT` taken on the request — no column, no cache, no stored total
 // (CLAUDE.md → Bans).
 //
-// four reads and two failure modes, which is the one thing on this screen that is not a
-// projection. three of them are the screen: the money, the gifts and the donors fail as one and
-// land the reader on the error boundary, because a card of noughts over a deployment that has
-// taken gifts is a figure an operator would act on. the commitments are a count over a table of
+// five reads and two failure modes, which is the one thing on this screen that is not a
+// projection. four of them are the screen: the money, the gifts, the donors and whether any form
+// exists fail as one and land the reader on the error boundary, because a card of noughts over a
+// deployment that has taken gifts is a figure an operator would act on. the commitments are a count over a table of
 // their own and are guarded alone — that read failing costs one figure, and the screen says which
 // rather than drawing a nought in its place.
 
@@ -43,7 +44,7 @@ const SCREEN_TITLE = 'Dashboard';
  * the month the headline names, spelled out — 'September'.
  *
  * formatted in the loader for the reason every other value here is: an `Intl` call in the page runs
- * once on the Worker and again in the browser, in two different locales and time zones, which is a
+ * once on the server and again in the browser, in two different locales and time zones, which is a
  * hydration mismatch as well as a lie about whose month it is. `UTC` because the buckets are UTC
  * calendar months ($lib/server/months.ts), and a name formatted in another zone would name a month
  * the figure beneath it is not of.
@@ -76,10 +77,11 @@ export async function loader({ context }: Route.LoaderArgs) {
 	const screen = Promise.all([
 		readRaisedByMonth(db),
 		readGiftsByMonth(db),
-		readDonorSummary(db, now)
+		readDonorSummary(db, now),
+		holdsAnyForm(db)
 	]);
 	// guarded on its own, and the handler is attached in the same turn the read is started so the
-	// rejection is never an unhandled one when the three above throw first.
+	// rejection is never an unhandled one when the four above throw first.
 	const commitments = readActiveRecurringCount(db).then(
 		(active) => active,
 		(e) => {
@@ -91,8 +93,9 @@ export async function loader({ context }: Route.LoaderArgs) {
 	let raised: Awaited<ReturnType<typeof readRaisedByMonth>>;
 	let gifts: Awaited<ReturnType<typeof readGiftsByMonth>>;
 	let donors: Awaited<ReturnType<typeof readDonorSummary>>;
+	let hasForms: boolean;
 	try {
-		[raised, gifts, donors] = await screen;
+		[raised, gifts, donors, hasForms] = await screen;
 	} catch (e) {
 		console.error('loading the dashboard failed:', e);
 		loadFailed('The dashboard');
@@ -130,14 +133,18 @@ export async function loader({ context }: Route.LoaderArgs) {
 		},
 		// the donor file's own two figures, to the number: the dashboard and the donors page never
 		// state a different count of the same thing.
-		donors: { total: donors.total, thisMonth: donors.thisMonth }
+		donors: { total: donors.total, thisMonth: donors.thisMonth },
+		// the Donation forms list's own rows: an archived form, and the one a page owns, count for
+		// nothing here as they are listed nowhere there.
+		hasForms
 	};
 }
 
 // what this page owes is that an operator opening the deployment can see how giving stands without
 // pressing anything.
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
-	const { month, raisedMonth, raisedAll, giftsMonth, recurringActive, series, donors } = loaderData;
+	const { month, raisedMonth, raisedAll, giftsMonth, recurringActive, series, donors, hasForms } =
+		loaderData;
 
 	return (
 		// one column and the column is what spaces it: every block below carries no margin of its
@@ -149,6 +156,12 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
 			{recurringActive === null ? (
 				<Banner tone="attention" word="Recurring gifts could not be read" />
 			) : null}
+
+			{hasForms ? null : (
+				<p>
+					No donation forms yet. <Link to={href('/admin/forms/new')}>Create a donation form</Link>
+				</p>
+			)}
 
 			{/* the headline card. the cards are composed here rather than mounted: `.adm-headline`
 			    is a modifier on the record card and that card's own part draws a head, which three

@@ -1,13 +1,7 @@
-import { Button } from '@better-giving/operator/components/controls/Button';
-import {
-	AnchoredCard,
-	AnchoredPanelCard,
-	Disclosure
-} from '@better-giving/operator/components/data/Disclosure';
+import { Disclosure } from '@better-giving/operator/components/data/Disclosure';
 
 /*
- * the three things this module publishes: the summary that opens in place, and the two cards a
- * positioner puts beside something.
+ * the summary that opens in place.
  *
  * a collapsible is worth nothing shut, so it is drawn both ways — and the open one is the only
  * specimen that shows the caret turned and `.adm-disclosure__body` at all.
@@ -18,11 +12,6 @@ import {
  *
  * `summary` and `children` may each be absent. the empty-bodied one is the state a screen ships
  * when the thing it was going to reveal turned out to be nothing: a caret that opens onto a gap.
- *
- * the cards have no intrinsic size and no position of their own — ../../behaviour/AnchoredCard.tsx
- * and ../../behaviour/AnchoredPanel.tsx place them and write `--available-width` per placement.
- * unplaced they draw at the `--admin-measure-panel` fallback the sheet reads as its cap, which is
- * what these two specimens are: the box itself, on the page, at its widest.
  */
 export default function DataDisclosurePreview() {
 	return (
@@ -54,19 +43,6 @@ export default function DataDisclosurePreview() {
 			</Disclosure>
 			<Disclosure summary="hover" state="hover" />
 			<Disclosure summary="focus" state="focus" />
-			<AnchoredCard>
-				<p>
-					The signing secret is set with a command and never stored here. Stripe shows it once, when
-					the endpoint is created.
-				</p>
-			</AnchoredCard>
-			<AnchoredPanelCard>
-				<p>Replace the Stripe secret key. The old key stops working the moment this deploys.</p>
-				<div className="adm-dialog__actions">
-					<Button variant="danger">Replace the key</Button>
-					<Button variant="quiet">Keep it</Button>
-				</div>
-			</AnchoredPanelCard>
 		</div>
 	);
 }

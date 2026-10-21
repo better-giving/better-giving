@@ -11,33 +11,18 @@
 		"dev": "pnpm --filter @better-giving/app dev",
 		"build:embed": "pnpm --filter @better-giving/app build:embed",
 		"build": "pnpm --filter @better-giving/app build",
-		"bundle": "node scripts/pack-bundle.mjs",
-		"start": "sh scripts/console-start.sh",
-		"preview": "pnpm --filter @better-giving/app preview",
-		"console": "sh scripts/console.sh",
-
 		"gallery": "pnpm --filter @better-giving/gallery dev",
 		"emails": "pnpm --filter @better-giving/emails-preview dev",
 		"form": "pnpm --filter @better-giving/form dev",
-		"deploy": "pnpm --filter @better-giving/app run deploy",
-		"deploy:test": "pnpm --filter @better-giving/app run deploy:test",
-		"deploy:vars": "pnpm --filter @better-giving/app run deploy:vars",
-		"login": "pnpm --filter @better-giving/app login",
-		"whoami": "pnpm --filter @better-giving/app whoami",
 		"doctor": "pnpm --filter @better-giving/app run doctor",
-		"wrangler": "pnpm --filter @better-giving/app exec wrangler",
 		"drizzle-kit": "pnpm --filter @better-giving/app exec drizzle-kit",
-		"logs": "pnpm --filter @better-giving/app logs",
-		"secret:delete": "pnpm --filter @better-giving/app secret:delete",
-		"secret:list": "pnpm --filter @better-giving/app secret:list",
-		"turnstile:keys": "pnpm --filter @better-giving/app turnstile:keys",
-		"db:create": "pnpm --filter @better-giving/app db:create",
-		"db:create:test": "pnpm --filter @better-giving/app db:create:test",
-		"db:info": "pnpm --filter @better-giving/app db:info",
-		"db:export": "pnpm --filter @better-giving/app db:export",
-		"db:export:photos": "pnpm --filter @better-giving/app db:export:photos",
-		"db:restore:photos": "pnpm --filter @better-giving/app db:restore:photos",
-		"prepare": "pnpm --filter @better-giving/app prepare && pnpm --filter @better-giving/console-ui prepare",
+		"db:migrate": "pnpm --filter @better-giving/app db:migrate",
+		"db:seed": "pnpm --filter @better-giving/app db:seed",
+		"db:backup": "pnpm --filter @better-giving/app db:backup",
+		"setup-webhook:chariot": "pnpm --silent --filter @better-giving/app setup-webhook:chariot",
+		"setup-webhook:paypal": "pnpm --silent --filter @better-giving/app setup-webhook:paypal",
+		"setup-webhook:stripe": "pnpm --silent --filter @better-giving/app setup-webhook:stripe",
+		"prepare": "pnpm --filter @better-giving/app prepare",
 		"check": "pnpm -r --workspace-concurrency=1 check",
 		"lint": "biome lint .",
 		"format": "biome format --write .",
@@ -50,8 +35,7 @@
 	},
 	"pnpm": {
 		"onlyBuiltDependencies": [
-			"esbuild",
-			"workerd"
+			"esbuild"
 		]
 	}
 }

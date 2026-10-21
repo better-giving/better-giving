@@ -5,6 +5,7 @@ import {
 	isStripeRail
 } from '@better-giving/form/embed/rails';
 import type { Frequency, PaymentMethod as QuotedRail } from '@better-giving/form/v1';
+import { LOGS_SAY_WHY } from '../../deployment-logs.ts';
 import type {
 	PaymentMethod as SettledRail,
 	PaymentProviderName,
@@ -18,8 +19,8 @@ import type {
 // each SDK and no other may — ./stripe.ts for `stripe` and ./paypal.ts for
 // `@paypal/paypal-server-sdk`, gated by ./sole-importer.spec.ts; ./chariot.ts and ./nowpayments.ts
 // import none and speak their processors' APIs over `fetch` — which is the same shape
-// ../db/client.ts holds over D1, and for the same stated reason: so the contract has one place to be
-// stated rather than one per call site.
+// ../db/client.ts holds over the libSQL driver, and for the same stated reason: so the contract has
+// one place to be stated rather than one per call site.
 //
 // **the port names every processor in `PROCESSOR_NAMES`, and no adapter answers every arm.** an
 // adapter this release ships refuses the arms its processor has nothing behind — a gift that
@@ -33,7 +34,7 @@ import type {
 // fields that are sometimes id strings — stops at one file, and everything above it takes types
 // this repository defines and can construct in a test with no network and no account.
 //
-// nothing here imports an SDK, a binding or a route. ./factory.ts is what turns a deployment's
+// nothing here imports an SDK, the database or a route. ./factory.ts is what turns a deployment's
 // configuration into one of these, per request.
 //
 // this file also holds the processor vocabulary below, because it lives beside the fee table
@@ -64,7 +65,7 @@ export type ProcessorName = (typeof PROCESSOR_NAMES)[number];
  * what an operator-facing sentence calls each processor.
  *
  * an operator reads these sentences, and no name is spelled the way the row's value is: the
- * console's boxes say PayPal and Stripe.
+ * Payments screen says PayPal and Stripe.
  *
  * it is up here beside the names rather than with the refusals that were its first reader, because
  * the two sides that produce those sentences stand differently to a processor and must not spell it
@@ -567,8 +568,9 @@ export type IntentRequest = {
  *
  * text and never a JS number past the adapter that read it, because a coin carries more precision
  * than a double keeps (a wei is 1e-18 of an ether) and the figure is shown to a donor and receipted —
- * a digit lost in a float is an address paid the wrong amount. never `REAL` in D1, and never summed
- * or compared in SQL: the books stay in USD minor units, and this is a fact about what moved.
+ * a digit lost in a float is an address paid the wrong amount. never `REAL` in the database, and
+ * never summed or compared in SQL: the books stay in USD minor units, and this is a fact about
+ * what moved.
  */
 export type CoinAmount = string;
 
@@ -1137,7 +1139,7 @@ export type WebhookDelivery = {
  *                 every rail past the ones an account is opened with.
  *
  * `Rail` in the name and not for length: `RailStanding` in
- * `@better-giving/operator/console/payments` is what a console draws off one of these and is a
+ * `@better-giving/operator/console/payments` is what a screen draws off one of these and is a
  * different word entirely. unqualified, the two are one grep and an import line that does not say
  * which arrived.
  */
@@ -1277,7 +1279,7 @@ export type WebhookEndpointSummary = {
 	 * the reason it exists is the same either way. what a delivery is verified against is returned
 	 * once at creation and by no read afterwards — see `RegisteredWebhookEndpoint` below — so a
 	 * deployment holding a stale value reads exactly like a deployment holding the right one, and
-	 * that is a console saying the payments line is fine while every delivery fails verification.
+	 * that is a screen saying the payments line is fine while every delivery fails verification.
 	 * ./webhook-secret.ts is where the two halves meet and which stamp is which is decided.
 	 *
 	 * null is a third answer and not a mismatch: an endpoint registered in a dashboard or by
@@ -1818,8 +1820,8 @@ export interface PaymentProvider {
 	 *
 	 * the read beside the find-or-create above, and the two are not interchangeable: `prepare` makes
 	 * the thing where the account holds none, so a screen drawn from it would provision an operator's
-	 * account as a side effect of them looking at it. this one is what the console asks, and it
-	 * is safe to call on every view of that page for exactly that reason.
+	 * account as a side effect of them looking at it. this one is what the Payments screen asks, and
+	 * it is safe to call on every view of that page for exactly that reason.
 	 *
 	 * it answers with a standing rather than a boolean, because an archived one is a third state an
 	 * operator needs a different sentence for — see `RecurringGiftStanding` above.
@@ -2018,10 +2020,10 @@ export interface PaymentProvider {
 	 *
 	 * it exists so that repairing one is not replacing one. `replaceWebhookEndpoint` below is a
 	 * delete and a create, which mints a new secret and kills the one an operator has already set and
-	 * redeployed with; nothing about a missing subscription justifies that. the processor's update
-	 * operation edits the subscription list and the enabled state and returns the endpoint with no
-	 * `secret` on it (https://docs.stripe.com/api/webhook_endpoints/update), so the deployment's
-	 * `STRIPE_WEBHOOK_SECRET` goes on verifying across this call.
+	 * recreated the app with; nothing about a missing subscription justifies that. the processor's
+	 * update operation edits the subscription list and the enabled state and returns the endpoint
+	 * with no `secret` on it (https://docs.stripe.com/api/webhook_endpoints/update), so the
+	 * deployment's `STRIPE_WEBHOOK_SECRET` goes on verifying across this call.
 	 *
 	 * it takes no event list, for the reason `registerWebhookEndpoint` takes none: what a usable
 	 * endpoint is subscribed to is the adapter's own fact — the same list `listWebhookEndpoints`
@@ -2170,7 +2172,7 @@ async function guard<T>(call: () => Promise<PaymentResult<T>>): Promise<PaymentR
 			detail:
 				'The payment provider failed in a way it is not supposed to be able to: it threw ' +
 				'instead of reporting. Nothing about the deployment fixes this. It is a bug in this ' +
-				'app, and the cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a checkout).'
+				`app. ${LOGS_SAY_WHY}`
 		};
 	}
 }

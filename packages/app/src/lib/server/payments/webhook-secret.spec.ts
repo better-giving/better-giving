@@ -1,3 +1,4 @@
+import { envLine, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { describe, expect, it } from 'vitest';
 import type { WebhookRegistration } from './webhook-registration';
 import { webhookSecretStanding } from './webhook-secret';
@@ -42,10 +43,10 @@ describe('webhookSecretStanding', () => {
 	/**
 	 * the defect, named: a secret is stored and it is not the one this endpoint signs with.
 	 *
-	 * the sequence is one button and one omission. the operator presses Replace, Stripe mints a new
-	 * endpoint with a new secret, the dialog shows it once — and the deployment goes on holding the
-	 * old one until the console registers the endpoint again. everything else on the screen is green
-	 * throughout.
+	 * the sequence is one command and one omission. the operator re-runs the setup script, Stripe
+	 * mints a new endpoint with a new secret, the script prints it once — and the deployment goes on
+	 * holding the old one until that line is in `.env` and the app is recreated. everything else on
+	 * the screen is green throughout.
 	 */
 	it('reports a stored secret from a replaced endpoint as stale', async () => {
 		const standing = await webhookSecretStanding(
@@ -54,8 +55,11 @@ describe('webhookSecretStanding', () => {
 			registered('362db036820ee774')
 		);
 		expect(standing.state).toBe('stale');
-		expect(standing.detail).toContain('better-giving start');
-		expect(standing.detail).toContain('Donation processor');
+		// the endpoint is there, and a re-run of the script would replace it (webhook-setup.ts).
+		expect(standing.detail).toContain(
+			`reveal the signing secret of the endpoint Stripe’s dashboard lists for this address under Workbench → Webhooks, put it in \`.env\` as \`${envLine('STRIPE_WEBHOOK_SECRET')}\``
+		);
+		expect(standing.detail).not.toContain(setupWebhookCommand('stripe'));
 	});
 
 	/**

@@ -132,6 +132,54 @@ function settle(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+describe('a widget that asks the visitor to interact', () => {
+	it('says when it enters interactive mode and when it leaves it', async () => {
+		const kit = recorder();
+		const interactive: boolean[] = [];
+		createChallenge(
+			CONFIG,
+			box(),
+			() => {},
+			() => {},
+			{ load: async () => kit.turnstile },
+			(needed) => interactive.push(needed)
+		);
+		await settle();
+
+		kit.rendered.at(-1)?.options['before-interactive-callback']?.();
+		kit.rendered.at(-1)?.options['after-interactive-callback']?.();
+
+		expect(interactive).toEqual([true, false]);
+	});
+
+	// the widget's frame reloads if its node is moved, so a widget asking for a visitor inside a box
+	// they cannot see is drawn afresh in one they can, and the one in the hidden box taken down.
+	it('draws itself afresh into another box, taking the first one down', async () => {
+		const kit = recorder();
+		const challenge = challengeOn(kit);
+		await settle();
+		const visible = box();
+
+		challenge.redraw?.(visible);
+
+		expect(kit.removed).toEqual(['cf-chl-widget-1']);
+		expect(kit.rendered.map((entry) => entry.node).at(-1)).toBe(visible);
+		expect(kit.rendered).toHaveLength(2);
+	});
+
+	it('draws nothing again into the box it is already in', async () => {
+		const kit = recorder();
+		const challenge = challengeOn(kit);
+		await settle();
+		const visible = box();
+		challenge.redraw?.(visible);
+
+		challenge.redraw?.(visible);
+
+		expect(kit.rendered).toHaveLength(2);
+	});
+});
+
 describe('the widget this adapter asks for', () => {
 	// the mode is the decision, not a preference. `interaction-only` draws nothing at all for a
 	// visitor who is not being asked to solve anything, which is what lets the card reserve no

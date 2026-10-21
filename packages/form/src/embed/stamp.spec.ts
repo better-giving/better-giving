@@ -4,8 +4,7 @@ import { RUNTIME_PATH_PLACEHOLDER, runtimeAssetPath, stampLoader } from './stamp
 // the build's two pure steps, asserted here rather than through a build.
 //
 // `test` runs at commit time with no build ordered ahead of it, so at the moment these run there
-// is no bundle on disk to look at — the same reason vitest.workers.config.ts declares its bindings
-// instead of pointing at wrangler.jsonc's `main`. so the work worth asserting is lifted out of the
+// is no bundle on disk to look at. so the work worth asserting is lifted out of the
 // build script into functions that take strings and return strings, and the build calls them.
 
 describe('the runtime path', () => {

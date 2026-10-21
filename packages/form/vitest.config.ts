@@ -24,12 +24,10 @@ export default defineConfig({
 					environment: 'node',
 					include: ['src/**/*.{test,spec}.{js,ts}'],
 					exclude: [
-						// no `*.workers.spec.ts` exists under this package today, deliberately: the form
-						// touches no database, and packages/form/tsconfig.json carries no ambient types
-						// for `cloudflare:test`, so one would fail typecheck before it ever mattered
-						// which pool ran it. excluded here rather than left to fall into this pool by
-						// omission, so the naming convention still means the same thing everywhere in
-						// the repo.
+						// no pool anywhere in the repo collects a `*.workers.spec.ts`: database specs
+						// are `*.db.spec.ts` (AGENTS.md → Tests), and the form touches no database.
+						// excluded here rather than left to fall into this pool by omission, so a file
+						// under that name is never collected as a plain node spec.
 						'src/**/*.workers.{test,spec}.{js,ts}',
 						// the dom pool owns these; without the exclusion node would collect them too
 						// and fail on `document`/`customElements` being undefined.

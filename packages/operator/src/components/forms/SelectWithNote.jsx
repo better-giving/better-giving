@@ -89,9 +89,8 @@ function choiceEvent() {
  * that stays selected until another is chosen.
  *
  * the machine is ark's select, and everything it answers for is left to it: the listbox roles, the
- * arrow keys, typeahead, Escape and the dismissal. it is ./CoinPicker.jsx's family — the same box,
- * the same list over whatever follows it, the same highlighted row — without the search, because a
- * list this short is read rather than searched.
+ * arrow keys, typeahead, Escape and the dismissal. there is no search, because a list this short is
+ * read rather than searched.
  *
  * **the choice is submitted by the machine's own hidden `<select>`, which is the one element here
  * carrying the name.** so `name`, `form`, `required` and `disabled` reach the payload the way they
@@ -99,12 +98,12 @@ function choiceEvent() {
  * a refusal's focus move by name lands on that element, and the machine hands focus on to the box.
  *
  * that element is made to say it changed, which is what a native select did for free. the machine
- * dispatches `change` alone, and both layers reading these forms count `input` — the one that arms
- * the save button (`useSavedFormState` in packages/operator/src/saved-form-state.react.ts) and
- * conform's own listener under it — so a choice that stayed silent would be a stored value under a
- * button nothing could press, and a refused box nothing re-checks. the value is put on the element
- * before the event rather than waited for, because a listener reads the element it was handed and
- * react has not re-rendered yet.
+ * dispatches `change` alone, and conform's own listener counts `input` — the save button's dirty
+ * reading is conform's (`useAdminForm` in packages/app/src/lib/admin/use-admin-form.ts) — so a
+ * choice that stayed silent would be a stored value under a button nothing could press, and a
+ * refused box nothing re-checks. the value is put on the element before the event rather than
+ * waited for, because a listener reads the element it was handed and react has not re-rendered
+ * yet.
  *
  * the box always holds an option, as a native select does: a choice the list does not carry — or no
  * choice at all — shows and submits the first line.
@@ -157,7 +156,7 @@ export function SelectWithNote({
 	const [held, setHeld] = useState(defaultValue);
 	/* the seed the control was last drawn against. a form seeded from a reading is redrawn with a new
 	   one whenever a write lands, and the choice on screen follows it there rather than standing as
-	   whatever was picked against the reading before it — ./CoinPicker.jsx's rule. the machine is
+	   whatever was picked against the reading before it. the machine is
 	   drawn afresh with each seed as well, because what a form reset puts back is the choice the
 	   machine was first drawn with, and that has to be the reading on screen rather than the one
 	   the page opened on. */

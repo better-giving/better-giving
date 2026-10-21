@@ -10,7 +10,7 @@ import { readRecurringPlan, stopRecurringPlan } from './queries';
 // is one: the route turns a request into a call and an outcome into a screen, and what lives here
 // is the part with decisions in it — which failures are told apart, in what order the two writes
 // happen, and which non-write is a success. it is here because it is testable as a value, the port
-// being an argument: ./stop.workers.spec.ts covers every arm against a real D1 with no platform to
+// being an argument: ./stop.db.spec.ts covers every arm against a real D1 with no platform to
 // stand in for.
 //
 // no copy is in this file. every sentence an operator reads is written in the route that draws it,

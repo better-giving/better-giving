@@ -188,6 +188,11 @@ export type FormChallenge = {
 	readonly reset: () => void;
 	/** takes the widget off the page, which the shadow tree being replaced does not do. */
 	readonly stop: () => void;
+	/**
+	 * draws the widget afresh in `mount`, for a widget asking a visitor to interact inside a box
+	 * they cannot see. absent on a challenge that draws nothing.
+	 */
+	readonly redraw?: (mount: HTMLElement) => void;
 };
 
 /**
@@ -283,12 +288,16 @@ export type FormRuntime = {
 	 * a configuration naming no challenge is a runtime that draws nothing and reports nothing — the
 	 * decision belongs beside the vendor rather than here, and the endpoint refuses that deployment
 	 * either way.
+	 *
+	 * `onInteractive` is the widget entering interactive mode and leaving it. a press held for a
+	 * token while the widget is asking for the donor is where `FormChallenge.redraw` is called.
 	 */
 	readonly challenge: (
 		config: FormConfig,
 		mount: HTMLElement,
 		onToken: (token: string) => void,
-		onUnavailable: (failure: Failure) => void
+		onUnavailable: (failure: Failure) => void,
+		onInteractive: (needed: boolean) => void
 	) => FormChallenge;
 };
 
@@ -1151,6 +1160,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			let stop: (failure: Failure) => void = () => {};
 			let minted: (token: string) => void = () => {};
 			let unchallengeable: (failure: Failure) => void = () => {};
+			let interacting: (needed: boolean) => void = () => {};
 			let fundSays: (event: CheckoutEvent) => void = () => {};
 			let opened: FundReports['opened'] = () => null;
 			// the boot this element is on, said once and latched here: from this call on, every boot
@@ -1185,6 +1195,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			minted = (token) =>
 				connect(actor.getSnapshot(), actor.send, domPropTypes).setTurnstileToken(token);
 			unchallengeable = (failure) => actor.send({ type: 'CHALLENGE_UNAVAILABLE', failure });
+			interacting = (needed) =>
+				actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: needed });
 			fundSays = (event) => actor.send(event);
 			opened = () => openFund(actor);
 
@@ -1219,8 +1231,17 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 						config,
 						view.challenge,
 						(token) => minted(token),
-						(failure) => unchallengeable(failure)
+						(failure) => unchallengeable(failure),
+						(needed) => interacting(needed)
 					);
+				}
+
+				// a press held for a token while the widget asks the donor to solve something. the
+				// widget is in the details step's box, which is hidden here, so it is drawn afresh in
+				// the review step's, beside the press. a redraw into the box it is already in does
+				// nothing, so this is said on every reading of that state.
+				if (snapshot.value === 'holding' && snapshot.context.challengeInteractive) {
+					this.#challenge?.redraw?.(view.heldChallenge);
 				}
 
 				// the token is spent by the press that leaves `working`, and spent is spent: it is

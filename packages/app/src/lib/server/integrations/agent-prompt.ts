@@ -23,7 +23,7 @@ import { ADDRESS_RATE_LIMIT, INTEGRATIONS_BASE_PATH, KEY_RATE_LIMIT } from './su
 // it is ./openapi.ts's document said as instructions, for a reader that acts on each sentence:
 // short, imperative, and naming this deployment's own origin in every address, so an agent given
 // nothing else can read a page of gifts with a key —
-// src/routes/integrations.openapi[.]json.workers.spec.ts does exactly that with the curl line
+// src/routes/integrations.openapi[.]json.db.spec.ts does exactly that with the curl line
 // below. every number is read from the module that enforces it, as the document's are, and the
 // document stays the contract: the prompt sends the agent there first.
 //

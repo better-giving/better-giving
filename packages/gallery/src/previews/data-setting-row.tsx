@@ -1,4 +1,3 @@
-import { AnchoredCard } from '@better-giving/operator/components/data/Disclosure';
 import { SettingRow } from '@better-giving/operator/components/data/SettingRow';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 
@@ -18,9 +17,7 @@ import { Mark } from '@better-giving/operator/components/status/Mark';
  * (packages/operator/src/components/data/SettingRow.jsx says why).
  *
  * a mark handed a `label` is the whole of what says which row is at fault to anyone not looking at
- * it, so every mark here carries one. the card it opens is the screen's own machine and not this
- * part's — nothing here presses anything, so the card is drawn beside the rows rather than from
- * them.
+ * it, so every mark here carries one.
  *
  * lengths last: an operator's own string lands in the value and both halves wrap, which is what the
  * mark is aligned to the first line against.
@@ -50,9 +47,6 @@ export default function DataSettingRowPreview() {
 				reading="literal"
 				value="https://donate.riverside-shelter-and-community-kitchen.example.org.uk:8443"
 			/>
-			<AnchoredCard>
-				<p>Receipts are not sent until a verified sender address is set.</p>
-			</AnchoredCard>
 		</div>
 	);
 }

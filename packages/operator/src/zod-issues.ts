@@ -2,14 +2,12 @@ import type { ZodError } from 'zod';
 
 // the one walk from a refused parse to the map a form renders, for every surface that renders one.
 //
-// **it is in this package because the rules it reads issues from are.** the deployment's three
-// parsers each name their form fields in a tuple whose members are their schema's own keys
-// (`packages/app/src/lib/server/contacts/contact-input.ts`, `.../org/org-input.ts`,
-// `.../forms/form-input.ts`), so the walk is the same in all three and only the tuple differs — and
-// a console fold running the promoted rules in ./console/org-rules.ts in front of a press has to
-// key its sentences the same way. one module is what makes both ends agree: an issue filed under
-// one key by the deployment and another by the console is one schema and two answers about which
-// box a sentence lands under, which renders as a sentence under nothing.
+// the deployment's three parsers each name their form fields in a tuple whose members are their
+// schema's own keys (`packages/app/src/lib/server/contacts/contact-input.ts`,
+// `.../org/org-input.ts`, `.../forms/form-input.ts`), so the walk is the same in all three and only
+// the tuple differs. one walk is what keeps them agreeing: an issue filed under one key by one
+// parser and another by the next is one schema and two answers about which box a sentence lands
+// under, which renders as a sentence under nothing.
 //
 // `packages/app/src/lib/server/donations/quote-input.ts` is not one of its callers and must not
 // become one: `/api/v1` reports a single refusal rather than a map, and its `firstReported` is that

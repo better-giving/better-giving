@@ -6,7 +6,6 @@ import {
 	QUICKBOOKS_CALLBACK_PATH,
 	QUICKBOOKS_CONNECT_PATH
 } from '$lib/server/accounting/connect-link';
-import { CONSOLE_BASE_PATH } from '$lib/server/console/surface';
 import { AGENT_PROMPT_PATH, OPENAPI_PATH } from '$lib/server/integrations/openapi';
 import { CONNECTOR_BASE_PATH } from '$lib/server/connector/surface';
 import { INTEGRATIONS_BASE_PATH } from '$lib/server/integrations/surface';
@@ -35,38 +34,27 @@ import {
 // is the name it was given, which is exactly the kind of fact that gets decided by whichever file
 // was already open.
 //
-// what is at stake is not only the record screens. `GET /console` enumerates by name the
-// deploy-time values a deployment has not set, in front of a public payment-initiating
-// `/api/v1` — so that surface answered without its credential is reconnaissance against this
-// deployment, which is why it is a category of its own below rather than a route somebody excused
-// as public.
-//
 // how it works: the app's own route config, run. ./routes.testing.ts imports ./routes.ts and
 // resolves it, so what is swept is what react router will serve rather than a spec's idea of which
 // files are addresses. a runtime probe would only cover the paths a test happens to request, and
 // the route that matters is the one nobody wrote a test for.
 //
-// every route is in one of three categories, and a name that no longer matches a file fails too,
+// every route is in one of two categories, and a name that no longer matches a file fails too,
 // so a list cannot rot into permission for a route that was moved or deleted.
 //
-// the three, and the third is not a kind of public. a route is under the protected layout, or is
-// the preview that mounts the same gate itself, in which case the gate redirects an anonymous
-// caller to the login; or it is on PUBLIC_ROUTE_FILES below, which is a decision somebody typed
-// next to the reason; or it is on the console surface, which is neither. `/console` is checked by
-// a credential rather than by a session ($lib/server/console/access.ts), so it may not sit under
-// the layout, where the gate would answer a wire caller with a 303 to an HTML login, and it may not
-// be listed as public, which would be a lie this file then blesses.
+// the two: a route is under the protected layout, or is the preview that mounts the same gate
+// itself, in which case the gate redirects an anonymous caller to the login; or it is on
+// PUBLIC_ROUTE_FILES below, which is a decision somebody typed next to the reason.
 //
-// and it holds two more mountings on the same principle, one category over each. being public is a
-// line somebody typed on the list below; being *metered* is not a decision and must not become
-// one, so every route served under `/api/v1` is held to sitting under the layout that charges that
-// surface's rate limit, and none of them may charge it again. the console's credential is held the
-// same way, under the layout that checks it. the three rules are one rule about three surfaces:
-// what a request owes is decided where the surface is, never per endpoint.
+// and it holds one more mounting on the same principle, one category over. being public is a line
+// somebody typed on the list below; being *metered* is not a decision and must not become one, so
+// every route served under `/api/v1` is held to sitting under the layout that charges that
+// surface's rate limit, and none of them may charge it again. the two rules are one rule about two
+// surfaces: what a request owes is decided where the surface is, never per endpoint.
 //
-// `/zapier` is the console's shape one credential over: Zapier's servers present the deployment's
-// Zapier key ($lib/server/zapier/key.ts), checked by the layout's middleware, so every route
-// served there is held to sitting under that layout and is none of the three categories above.
+// `/zapier` is a surface checked by a credential rather than a session: Zapier's servers present
+// the deployment's Zapier key ($lib/server/zapier/key.ts), checked by the layout's middleware, so
+// every route served there is held to sitting under that layout and is in neither category above.
 // `/integrations/v1` is the same shape again: an organisation's own systems present an API key
 // ($lib/server/integrations/surface.ts), checked by that surface's layout.
 
@@ -108,10 +96,10 @@ const ROOT_ROUTE = 'root.tsx';
  * the request would break verification in production and nowhere else. they are named here so the
  * case at the foot of `where middleware is mounted` can hold that none has a layout above it.
  *
- * the address is here beside the file rather than left to the name, because it is what an operator
- * pastes into a processor's dashboard: Stripe's is registered by this app and PayPal's is typed in
- * by hand, and the deployment tells an operator PayPal's over the console wire
- * (`src/routes/console.payments.ts`). NOWPayments' is named on each payment this app creates.
+ * the address is here beside the file rather than left to the name, because it is what a
+ * processor's dashboard holds: Stripe's, PayPal's and Chariot's are registered by this app
+ * (`setupWebhook` in $lib/server/payments/webhook-setup.ts), and NOWPayments' is named on each
+ * payment this app creates.
  *
  * each address is the constant the rest of the tree builds from rather than a second spelling of
  * it, which is what makes this the pin: a route file renamed changes the path react router resolves
@@ -197,11 +185,16 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// never seen. CORS from the form's own `allowed_origins`; the limit from the layout above it;
 	// no Turnstile and no amount bounds, because it takes no submission and initiates no payment.
 	'routes/api.v1.forms.$id.config.ts',
+	// the ALTCHA challenge that same form solves before it submits, where ALTCHA is the spam check.
+	// unauthenticated for the same reason; CORS from the form's own `allowed_origins` and the limit
+	// from the layout above it. a challenge initiates nothing: it is the work the submission below
+	// must show, and the submission is where it is checked.
+	'routes/api.v1.forms.$id.challenge.ts',
 	// the endpoint that takes the gift, submitted by a donor's browser on that same page. it is
 	// unauthenticated for the same reason and owes all four: CORS from the form's own
 	// `allowed_origins`, the limit from the layout above it plus a tighter bucket of its own, a
-	// Turnstile token checked before any intent is minted, and the amount re-read from the form
-	// record rather than taken from the body.
+	// spam check (Turnstile or ALTCHA) passed before any intent is minted, and the amount re-read
+	// from the form record rather than taken from the body.
 	'routes/api.v1.forms.$id.donations.ts',
 	// the standing of one crypto gift, polled by the donation form's waiting screen on that same
 	// page. CORS from the form's own `allowed_origins` and the limit from the layout above it; no
@@ -215,15 +208,12 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// in for all of it is the delivery being verified against the raw body, checked before anything
 	// is parsed — which is also why none is under a layout at all, held below.
 	...Object.keys(PROCESSOR_CALLBACKS),
-	// where connecting a QuickBooks company begins, opened by the operator's own browser from an
-	// address the console handed them. it cannot sit behind the dashboard's login — the operator is
-	// holding the console, which is a different sign-in — and it cannot sit on the console's wire
-	// surface, because what has to happen is a browser redirect and that surface's credential is a
-	// bearer header a browser attaches to nothing. what stops an outsider connecting their own books
-	// and taking this organisation's gifts into them is the console's own credential, on the press
-	// that mints the address; the signature is only how that check reaches a route no credential can
-	// be presented to ($lib/server/accounting/connect-link.ts). nothing downstream adds a second one
-	// — whoever opens the address is whoever signs in at Intuit.
+	// where connecting a QuickBooks company begins, opened by the deployer's own browser from an
+	// address the Connect press on Books minted. what stops an outsider connecting their own books
+	// and taking this organisation's gifts into them is the session on the press that mints the
+	// address; the signature is how that check reaches this route
+	// ($lib/server/accounting/connect-link.ts). nothing downstream adds a second one — whoever opens
+	// the address is whoever signs in at Intuit.
 	'routes/quickbooks.connect.tsx',
 	// where Intuit sends that browser back. it is unauthenticated for the same reason, and what
 	// stands in for a session is the `state` that went out with it, in a cookie on that same browser
@@ -262,67 +252,6 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 ];
 
 /**
- * every route file on the operator console's surface.
- *
- * the category is decided by the path a route is served at and this list is the cross-check: a
- * route under `/console` that nobody put here is a route somebody added to a credentialled surface
- * without saying so, and a name here with no route behind it is permission left lying around.
- *
- * what this surface is, and what it owes instead of a session, is written where it is enforced:
- * $lib/server/console/surface.ts for the headers it sends and the limiter it does not have,
- * $lib/server/console/access.ts for what the credential proves.
- */
-const CONSOLE_ROUTE_FILES: readonly string[] = [
-	// the surface's own layout, and its own address as well. the credential check is mounted on
-	// this file for the whole surface at once, and `GET /console` is the deployment's report on
-	// itself — the read both writes below answer with too.
-	'routes/console.ts',
-	// the list of sites this deployment's donation forms may be used on, written whole.
-	'routes/console.sites.ts',
-	// the organisation's legal identity, written whole.
-	'routes/console.org.ts',
-	// the organisation's logo, put on from a posted photo or taken off.
-	'routes/console.org.logo.ts',
-	// a test message, sent over this deployment's own transport with its own SMTP credentials.
-	// no row moves, so it answers with a report of the press rather than with the deployment's.
-	'routes/console.test-email.ts',
-	// what a repeating gift is charged against on this deployment's own processor account: a read
-	// that changes nothing, and the one press that provisions it. it answers on its own address, so
-	// it is not in the report.
-	'routes/console.recurring.ts',
-	// which ways of paying each processor account this deployment holds keys for can charge, whether
-	// what verifies its deliveries is what its endpoint was registered with, and what that endpoint is
-	// subscribed to. readings of somebody else's accounts, all of them facts only this deployment can
-	// state, and the press for the third is the file below.
-	'routes/console.payments.ts',
-	// the repair for the endpoint that reading reports on: subscribed to everything this app acts
-	// on and switched back on, keeping the signing secret it has. a press and no read — where the
-	// endpoint stands is the file above — and Stripe's alone, for the reason its own header states.
-	'routes/console.webhook-repair.ts',
-	// registering this deployment's own address and every site it lists on the processor account,
-	// so a donor is drawn the wallet buttons. a press and no read — which hostnames the account
-	// holds is on the payments reading two files above, and the hostnames are settled here rather
-	// than sent, so nothing a caller says registers anything.
-	'routes/console.wallet-domains.ts',
-	// where this deployment's books stand and every press an operator has over them: the company,
-	// the chart the three accounts are picked out of, how far behind the queue is, and the signed
-	// address that begins a connection. the connection's tokens are this deployment's own rows, so
-	// no console can read any of it.
-	'routes/console.quickbooks.ts'
-];
-
-/**
- * the layout the console's credential check is mounted on, and being under it is what makes a
- * route on that surface checked.
- *
- * the third mounting of the same shape, and the reason all three are held rather than trusted: a
- * check each route called is allow-by-default, so the route somebody writes without the call is
- * served on a credentialled surface to anyone. $lib/server/console/gate.ts argues it; the sweeps
- * at the foot of this file are what hold it.
- */
-const CONSOLE_LAYOUT = 'routes/console.ts';
-
-/**
  * the layout the Zapier key check and that surface's rate limit are mounted on — one more
  * mounting of the same shape. src/routes/zapier.ts argues it.
  */
@@ -344,11 +273,6 @@ let routes: RouteRecord[];
 beforeAll(async () => {
 	routes = await routeManifest();
 });
-
-/** whether a route is served on the operator console's wire surface rather than as a screen. */
-function consoleRoute(route: RouteRecord): boolean {
-	return route.path === CONSOLE_BASE_PATH || route.path.startsWith(`${CONSOLE_BASE_PATH}/`);
-}
 
 /** whether a route is served on the surface Zapier's servers call. */
 function zapierRoute(route: RouteRecord): boolean {
@@ -402,8 +326,7 @@ function unmeteredApiRoutes(manifest: readonly RouteRecord[]): string[] {
 }
 
 /**
- * every route that is in none of the three categories, as the message somebody reads when they
- * added one.
+ * every route that is in neither category, as the message somebody reads when they added one.
  *
  * a function over a manifest rather than a loop over the real tree, so the rule can be shown to
  * fail: the tree this app has today is small enough that a sweep over it alone would pass whether
@@ -416,7 +339,6 @@ function ungatedRoutes(manifest: readonly RouteRecord[], allowed: readonly strin
 				!under(route, PROTECTED_LAYOUT) &&
 				route.file !== PREVIEW_PAGE &&
 				!allowed.includes(route.file) &&
-				!consoleRoute(route) &&
 				!zapierRoute(route) &&
 				!integrationsRoute(route) &&
 				!connectorRoute(route)
@@ -461,34 +383,6 @@ function absentFromTree(named: readonly string[], manifest: readonly RouteRecord
 	return named.filter((file) => !present.has(file));
 }
 
-/** every console route somebody excused as public instead of leaving it to the credential. */
-function consoleRoutesCalledPublic(
-	manifest: readonly RouteRecord[],
-	allowed: readonly string[]
-): string[] {
-	return manifest
-		.filter((route) => consoleRoute(route) && allowed.includes(route.file))
-		.map((route) => route.file);
-}
-
-/**
- * every route on the console surface that is not under the layout carrying its credential check,
- * as the message somebody reads when they added one.
- *
- * the same shape as `unmeteredApiRoutes` above and for the graver reason: a route file whose name
- * opts out of the layout — react router's flat convention spells that with a trailing underscore
- * on a segment — is served at the same address with nothing checking who asked, and the only
- * difference a reader would see is one character in a file name.
- */
-function uncheckedConsoleRoutes(manifest: readonly RouteRecord[]): string[] {
-	return manifest
-		.filter((route) => consoleRoute(route) && !under(route, CONSOLE_LAYOUT))
-		.map(
-			(route) =>
-				`${route.file} is served at ${route.path} and is not under ${CONSOLE_LAYOUT}, so nothing checks the console credential for it. Name it so it nests under that layout — see $lib/server/console/gate.ts.`
-		);
-}
-
 /** every route on the Zapier surface that is not under the layout checking the key. */
 function uncheckedZapierRoutes(manifest: readonly RouteRecord[]): string[] {
 	return manifest
@@ -507,16 +401,6 @@ function uncheckedIntegrationsRoutes(manifest: readonly RouteRecord[]): string[]
 			(route) =>
 				`${route.file} is served at ${route.path} and is not under ${INTEGRATIONS_LAYOUT}, so nothing checks the API key for it. Name it so it nests under that layout.`
 		);
-}
-
-/** every console route nobody named. */
-function unnamedConsoleRoutes(
-	manifest: readonly RouteRecord[],
-	named: readonly string[]
-): string[] {
-	return manifest
-		.filter((route) => consoleRoute(route) && !named.includes(route.file))
-		.map((route) => route.file);
 }
 
 /** a manifest a case composes, for showing that a rule above can fail. */
@@ -548,13 +432,6 @@ describe('the rules the sweep runs on', () => {
 		expect(absentFromTree(['routes/login.tsx'], manifest)).toEqual([]);
 	});
 
-	it('reports a console route listed as public', () => {
-		const manifest = [route('routes/console.sites.tsx', '/console/sites')];
-		expect(consoleRoutesCalledPublic(manifest, ['routes/console.sites.tsx'])).toEqual([
-			'routes/console.sites.tsx'
-		]);
-	});
-
 	it('reports a route on the public api that sits outside the metered layout', () => {
 		// the flat-route spelling that does it: a trailing underscore on a segment opts a file out
 		// of its parent layout while leaving the URL alone.
@@ -572,23 +449,6 @@ describe('the rules the sweep runs on', () => {
 			route('routes/api.v1.forms.$id.donations.ts', '/api/v1/forms/:id/donations', [API_LAYOUT])
 		];
 		expect(unmeteredApiRoutes(manifest)).toEqual([]);
-	});
-
-	it('reports a console route nobody named, and takes the credential as the gate', () => {
-		const manifest = [route('routes/console.sites.tsx', '/console/sites')];
-		expect(unnamedConsoleRoutes(manifest, [])).toEqual(['routes/console.sites.tsx']);
-		// on the list it is a category of its own: neither gated nor public.
-		expect(unnamedConsoleRoutes(manifest, ['routes/console.sites.tsx'])).toEqual([]);
-		expect(ungatedRoutes(manifest, [])).toEqual([]);
-	});
-
-	it('reports a console route that sits outside the checked layout', () => {
-		// the same flat-route spelling that unmeters an api route: a trailing underscore on a
-		// segment opts a file out of its parent layout while leaving the URL alone.
-		const manifest = [route('routes/console_.sites.ts', '/console/sites')];
-		expect(uncheckedConsoleRoutes(manifest)).toEqual([
-			expect.stringContaining('routes/console_.sites.ts is served at')
-		]);
 	});
 
 	it('reports a Zapier route that sits outside the checked layout', () => {
@@ -617,14 +477,6 @@ describe('the rules the sweep runs on', () => {
 			route('routes/integrations.v1.gifts.ts', '/integrations/v1/gifts', [INTEGRATIONS_LAYOUT])
 		];
 		expect(uncheckedIntegrationsRoutes(manifest)).toEqual([]);
-	});
-
-	it('passes a console route that is under it, and the layout itself', () => {
-		const manifest = [
-			route(CONSOLE_LAYOUT, '/console'),
-			route('routes/console.sites.ts', '/console/sites', [CONSOLE_LAYOUT])
-		];
-		expect(uncheckedConsoleRoutes(manifest)).toEqual([]);
 	});
 });
 
@@ -664,23 +516,6 @@ describe('the route surface', () => {
 
 	it('names no route that is not there', () => {
 		expect(absentFromTree(PUBLIC_ROUTE_FILES, routes)).toEqual([]);
-		expect(absentFromTree(CONSOLE_ROUTE_FILES, routes)).toEqual([]);
-	});
-
-	// the sweep finding nothing would make the two cases below vacuous, the same way an empty route
-	// tree would make the whole file vacuous — and a renamed console layout is exactly how that
-	// happens.
-	it('has a console surface, with its checked layout in it', () => {
-		expect(routes.filter(consoleRoute).length).toBeGreaterThan(0);
-		expect(routes.map((r) => r.file)).toContain(CONSOLE_LAYOUT);
-	});
-
-	it('checks the credential for every route it serves on the console surface', () => {
-		expect(uncheckedConsoleRoutes(routes)).toEqual([]);
-	});
-
-	it('names every route on the console surface', () => {
-		expect(unnamedConsoleRoutes(routes, CONSOLE_ROUTE_FILES)).toEqual([]);
 	});
 
 	it('checks the key for every route it serves on the Zapier surface', () => {
@@ -696,10 +531,6 @@ describe('the route surface', () => {
 	it('checks the key for every route it serves on the connector surface', () => {
 		expect(routes.map((r) => r.file)).toContain(CONNECTOR_LAYOUT);
 		expect(uncheckedConnectorRoutes(routes)).toEqual([]);
-	});
-
-	it('lists no console route as public', () => {
-		expect(consoleRoutesCalledPublic(routes, PUBLIC_ROUTE_FILES)).toEqual([]);
 	});
 
 	// the home page is behind the login though all it does is forward to the first screen. stated
@@ -741,23 +572,13 @@ describe('the route surface', () => {
 	 * cannot claim for itself.
 	 *
 	 * a single top-level segment is not one of those addresses: every one reaches a campaign's route,
-	 * whose loader refuses what no campaign holds (./routes/$slug.workers.spec.ts).
+	 * whose loader refuses what no campaign holds (./routes/$slug.db.spec.ts).
 	 */
 	it('answers an address matching no route with a 404, above every layout', async () => {
 		expect(await statusAt('/admin/not-a-screen')).toBe(404);
 		expect(await statusAt('/a/b')).toBe(404);
 		expect(await statusAt('/winter-coat-drive/extra')).toBe(404);
 		expect(routes.filter((r) => r.path === '/admin/not-a-screen' || r.path === '/a/b')).toEqual([]);
-	});
-
-	/**
-	 * the organisation's profile, logo, colour, mission, vision and links are the console's
-	 * (CLAUDE.md → Two operator surfaces), so the dashboard serves no screen for them. two segments,
-	 * so no campaign's address catches it either: the matcher finds nothing and the gate never runs.
-	 */
-	it('serves no dashboard screen for the organisation', async () => {
-		expect(await matchedFileAt('/admin/organisation')).toBeNull();
-		expect(await statusAt('/admin/organisation')).toBe(404);
 	});
 
 	/** the page editor asks no model, so nothing answers a page's chat or its suggestions. */
@@ -783,7 +604,8 @@ describe('the route surface', () => {
 	 * route is added.
 	 *
 	 * `/embed.js` is not here because it is not a route at all — static/ is copied whole into the
-	 * client build and the worker serves it as an asset before routing (CLAUDE.md, ../vite.config.ts).
+	 * client build and the Node server serves it as a static file before routing (../server/start.ts,
+	 * ../vite.config.ts).
 	 */
 	it.each([
 		{ address: '/login', file: 'routes/login.tsx' },
@@ -793,8 +615,7 @@ describe('the route surface', () => {
 		{ address: '/admin', file: 'routes/_app.admin._index.tsx' },
 		{ address: '/donate', file: DONOR_PAGE },
 		{ address: '/preview/0198c1d2-0000-7000-8000-000000000001', file: PREVIEW_PAGE },
-		{ address: API_BASE_PATH, file: API_LAYOUT },
-		{ address: CONSOLE_BASE_PATH, file: CONSOLE_LAYOUT }
+		{ address: API_BASE_PATH, file: API_LAYOUT }
 	])('keeps $address on $file', async ({ address, file }) => {
 		expect(await matchedFileAt(address)).toBe(file);
 	});
@@ -804,11 +625,11 @@ describe('the route surface', () => {
 	 * builds them from rather than to the file names.
 	 *
 	 * the same pin `PROCESSOR_CALLBACKS` above is, and for a failure of the same shape: the address
-	 * the console hands the operator and the `redirect_uri` sent to Intuit are both built from those
-	 * constants, and the one registered in Intuit's developer dashboard is typed from them too. a
-	 * route file renamed changes the path react router resolves and nothing else, so the constants
-	 * would go on naming an address that is now a 404 — and what reports it is Intuit refusing the
-	 * round trip on a deployment, with nothing here having gone red.
+	 * the Connect press sends the deployer to and the `redirect_uri` sent to Intuit are both built
+	 * from those constants, and the one registered in Intuit's developer dashboard is typed from them
+	 * too. a route file renamed changes the path react router resolves and nothing else, so the
+	 * constants would go on naming an address that is now a 404 — and what reports it is Intuit
+	 * refusing the round trip on a deployment, with nothing here having gone red.
 	 */
 	it.each([
 		{ address: QUICKBOOKS_CONNECT_PATH, file: 'routes/quickbooks.connect.tsx' },
@@ -853,18 +674,12 @@ describe('reaching for middleware', () => {
 
 describe('where middleware is mounted', () => {
 	// the surface layouts, each covering one surface: the session gate over every screen behind the
-	// login, the meter over every route on the public api, the credential check over every route on
-	// the operator console, and a key check over every route Zapier calls and another over every
-	// route of the read API. any other name here is a route that took a decision one of those makes
-	// for a whole surface, which is the shape they all exist to remove — but for the preview and the
-	// two donor pages, which sit under no layout that could carry what they owe, and are held to it
-	// by the cases below.
-	//
-	// the console's is not the session gate and must never be confused for one. it reads a bearer
-	// header against a value only an account holder could have written
-	// ($lib/server/console/access.ts) and sets no session — so a caller it refuses gets a JSON 401
-	// rather than the 303 to an HTML login the gate on the protected layout answers with, which is
-	// the whole reason that surface may not sit under that layout.
+	// login, the meter over every route on the public api, and a key check over every route Zapier
+	// calls, another over every route of the read API and another over every route the connector
+	// calls. any other name here is a route that took a decision one of those makes for a whole
+	// surface, which is the shape they all exist to remove — but for the preview and the two donor
+	// pages, which sit under no layout that could carry what they owe, and are held to it by the
+	// cases below.
 	it('is the surface layouts, and no other route', () => {
 		const mounted = routes
 			.filter((r) => exportsMiddleware(readFromDisk(r.file) ?? ''))
@@ -873,7 +688,6 @@ describe('where middleware is mounted', () => {
 		expect(mounted).toEqual(
 			[
 				API_LAYOUT,
-				CONSOLE_LAYOUT,
 				INTEGRATIONS_LAYOUT,
 				CONNECTOR_LAYOUT,
 				PROTECTED_LAYOUT,
@@ -895,9 +709,9 @@ describe('where middleware is mounted', () => {
 
 	// the preview is one of the exceptions above, and what it mounts is the layout's own session gate
 	// and nothing else — a gate of its own would be a second one to keep true.
-	it('is the session gate alone on the preview, the one the protected layout mounts first', () => {
+	it('is the session gate alone on the preview, as it is on the protected layout', () => {
 		expect(readFromDisk(PROTECTED_LAYOUT) ?? '').toMatch(
-			/export const middleware: Route\.MiddlewareFunction\[\] = \[\s*staffGate,/
+			/export const middleware: Route\.MiddlewareFunction\[\] = \[staffGate\];/
 		);
 		expect(readFromDisk(PREVIEW_PAGE) ?? '').toMatch(
 			/export const middleware: Route\.MiddlewareFunction\[\] = \[staffGate\];/
@@ -925,7 +739,7 @@ describe('where middleware is mounted', () => {
 	 * what breaks if it does is in each callback's own header and is invisible in every other
 	 * place: verification fails in production on every delivery, and the processor's own dashboard
 	 * is the only thing that reports it. the runtime half — that the bytes reach the handler unread
-	 * and are read once — is each route's own `.workers.spec.ts`.
+	 * and are read once — is each route's own `.db.spec.ts`.
 	 */
 	it.each(Object.entries(PROCESSOR_CALLBACKS))(
 		'is above no layout at all for %s',
@@ -939,8 +753,8 @@ describe('where middleware is mounted', () => {
 
 /**
  * whether a route module renders anything at all, which is what makes it a screen rather than a
- * wire endpoint. every route on `/api/v1` and every route on the console surface answers with a
- * `Response` and has no default export, so there is nothing on either for a stylesheet to dress.
+ * wire endpoint. every route on `/api/v1` answers with a `Response` and has no default export, so
+ * there is nothing on it for a stylesheet to dress.
  */
 function drawsAScreen(source: string): boolean {
 	return /\bexport\s+default\b/.test(source);
@@ -992,7 +806,7 @@ describe('the stylesheet a screen outside the layout carries', () => {
 	});
 
 	it('passes a route that renders nothing, which has no screen to dress', () => {
-		const manifest = [route('routes/console.sites.ts', '/console/sites')];
+		const manifest = [route('routes/api.v1.forms.$id.donations.ts', '/api/v1/forms/:id/donations')];
 		expect(undressedRoutes(manifest, () => 'export async function action() {}')).toEqual([]);
 	});
 
@@ -1076,7 +890,7 @@ describe('the auth API this deployment does not serve', () => {
  * the address `scripts/doctor.js` posts its probe to, read off the script rather than spelled a
  * second time here.
  *
- * that script asks a deployed worker whether it can sign staff in, and the way it goes wrong
+ * that script asks a running deployment whether it can sign staff in, and the way it goes wrong
  * without anything failing is the address: a probe at an address this app does not serve answers
  * 404 for a healthy deployment and a broken one alike, so its whole report becomes a sentence
  * about the wrong thing. it posted to the retired prefix above for as long as that surface was
@@ -1155,55 +969,6 @@ describe('the limit the layout charged', () => {
 			offenders,
 			`${offenders.join(', ')} charges the /api/v1 rate limit itself, but the meter on ${API_LAYOUT} already charged it for this request — and a limit an endpoint opts into is a limit the next endpoint forgets ($lib/server/api/meter.ts).`
 		).toEqual([]);
-	});
-});
-
-/**
- * the two things a route on the console surface may not do, as a sweep over its own source.
- *
- * both are absences, and an absence is what a spec over responses can only ever assert for the
- * routes it thought to ask about. what makes them properties of the surface is that they are swept
- * for: the credential is a bearer header, so a browser attaches it to nothing by itself and CSRF
- * is unrepresentable here rather than defended against — and that holds only while no route reads
- * a cookie. granting a preflight is the other half of the same decision: a page in a browser must
- * not be able to read an answer that names which of this deployment's configuration values are
- * set, and the way to make sure of that is to hand it no header that would let it
- * ($lib/server/console/surface.ts).
- *
- * identifiers and header names rather than English, because a sweep over source cannot tell a
- * comment from code and both of these are things the headers on this surface talk about.
- */
-function grantsAPreflight(source: string): boolean {
-	return /\bpreflightResponse\b|\bcorsHeaders\b|access-control-/i.test(source);
-}
-
-function readsACookie(source: string): boolean {
-	return /\bgetSetCookie\b|['"`]set-cookie['"`]|['"`]cookie['"`]/i.test(source);
-}
-
-describe('what the console surface does not do', () => {
-	it('is what the sweeps below look for, proven against the modules that do', () => {
-		// without these, a typo'd pattern that matches nothing anywhere would report a clean
-		// surface forever. the public api's CORS module grants preflights and the session gate
-		// carries cookies, and each is the one module that must match.
-		expect(grantsAPreflight(readFromDisk('lib/server/api/cors.ts') ?? '')).toBe(true);
-		expect(readsACookie(readFromDisk('lib/server/auth/gate.ts') ?? '')).toBe(true);
-	});
-
-	it('answers no preflight and reads no cookie, on any route it serves', () => {
-		const surface = routes.filter(consoleRoute);
-		expect(surface.length).toBeGreaterThan(0);
-		for (const { file } of surface) {
-			const source = readFromDisk(file) ?? '';
-			expect(
-				grantsAPreflight(source),
-				`${file} is on the console surface and hands a browser a CORS header, so a page on somebody's website could read which of this deployment's configuration values are set ($lib/server/console/surface.ts).`
-			).toBe(false);
-			expect(
-				readsACookie(source),
-				`${file} is on the console surface and reads a cookie, but the credential here is a bearer header — a route that takes a cookie is a route a browser can be made to call on somebody's behalf ($lib/server/console/access.ts).`
-			).toBe(false);
-		}
 	});
 });
 
@@ -1442,7 +1207,7 @@ describe('the server tree and the browser bundle', () => {
 		for (const { file } of routes) {
 			expect(
 				reachesServerTree(file),
-				`${file} reaches $lib/server from an export react router ships to the browser, so D1, the stripe client and this deployment's credentials go into the bundle a visitor downloads. Keep the server import to \`loader\`, \`action\`, \`middleware\` or \`headers\`, and hand the component serializable props.`
+				`${file} reaches $lib/server from an export react router ships to the browser, so the database client, the stripe client and this deployment's credentials go into the bundle a visitor downloads. Keep the server import to \`loader\`, \`action\`, \`middleware\` or \`headers\`, and hand the component serializable props.`
 			).toEqual([]);
 		}
 	});

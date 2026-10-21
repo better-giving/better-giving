@@ -1,5 +1,7 @@
 import { data } from 'react-router';
 import { INTEGRATIONS_BASE_PATH } from '../integrations/surface';
+import { clientIp } from '../runtime/client-ip';
+import type { RateLimiter } from '../runtime/rate-limiter';
 import { ZAPIER_BASE_PATH } from '../zapier/surface';
 import { API_BASE_PATH } from './surface';
 
@@ -32,33 +34,34 @@ import { API_BASE_PATH } from './surface';
 // can key on a whole ipv6 `/128` and hand one caller an address per request. the sign-in is not on
 // this surface and reaches across for exactly that: the key is the shared thing, not the surface.
 //
-// `/zapier` is a second surface charged through the same binding under its own key
+// `/zapier` is a second surface charged through the same limiter under its own key
 // (`zapierRateLimitKey`), in `src/routes/zapier.ts`'s middleware, and so are a photo view at
 // `/image/:id` (`imageRateLimitKey`) and a view of a donor page (`donorPageRateLimitKey`).
 // `/integrations/v1` is a further surface, with two buckets, both spent in
-// `src/routes/integrations.v1.ts`'s middleware: the caller's on that same binding for every
+// `src/routes/integrations.v1.ts`'s middleware: the caller's on that same limiter for every
 // request, ahead of the key lookup (`integrationsCallerRateLimitKey`), and the key's own on
 // `INTEGRATIONS_KEY_RATE_LIMITER` once it is admitted (`integrationsKeyRateLimitKey`).
 //
-// the buckets are not answered alike when the binding is missing, and not answered alike for a
-// caller the edge did not attribute. both differences are written down once, at the foot of this
+// the buckets are not answered alike when the limiter is missing, and not answered alike for a
+// caller the server did not attribute. both differences are written down once, at the foot of this
 // file on `refuseIfRateLimited` and `isRateLimited`, and the call sites point here rather than
-// restate them. `./rate-limit.config.spec.ts` holds every binding to wrangler.jsonc, so none of
-// them can go missing through `pnpm run deploy` in the first place.
+// restate them. the limiters themselves are `RATE_LIMITS` in ../runtime/rate-limiter.ts, which the
+// server builds every one of at start, and `./rate-limit.config.spec.ts` holds this module's
+// promises to the sizes declared there.
 
 /**
- * how long a refused caller is told to wait, in seconds — and every binding's own period, which
+ * how long a refused caller is told to wait, in seconds — and every limiter's own period, which
  * is the longest a bucket can hold them.
  *
- * the binding accepts 10 or 60 and `wrangler.jsonc` sets 60 on every one. the numbers have to
- * agree, because this one is a promise about when the same request works — a bucket that reset
- * forty seconds ago while the answer says to keep waiting is a donor sent away for nothing.
- * nothing in the language joins them, so `./rate-limit.config.spec.ts` reads the config file and
- * holds every answer this module produces to the period declared for the binding that refused it.
+ * `RATE_LIMITS` in ../runtime/rate-limiter.ts sets 60 on every one. the numbers have to agree,
+ * because this one is a promise about when the same request works — a bucket that reset forty
+ * seconds ago while the answer says to keep waiting is a donor sent away for nothing. nothing in
+ * the language joins them, so `./rate-limit.config.spec.ts` holds every answer this module produces
+ * to the period declared for the limiter that refused it.
  */
 const PERIOD_SECONDS = 60;
 
-/** every caller the edge did not attribute, sharing one bucket. */
+/** every caller the server did not attribute, sharing one bucket. */
 const UNATTRIBUTED = 'unattributed';
 
 /**
@@ -66,13 +69,13 @@ const UNATTRIBUTED = 'unattributed';
  *
  * the surface plus the caller, and nothing the caller writes. that exclusion is the whole
  * property: a form id in the key would give an id-scanner a fresh bucket per id it invents, and
- * the scanner is exactly the caller a per-form limit cannot see — `form_not_found` costs a D1
+ * the scanner is exactly the caller a per-form limit cannot see — `form_not_found` costs a database
  * read and arrives with no valid form to bucket on. the path, the query and the method are out
  * for the same reason.
  *
- * the address comes from `cf-connecting-ip`, which Cloudflare's edge writes on the way in and
- * overwrites whatever the caller sent, so a caller on the open internet cannot forge it.
- * `x-forwarded-for` is a caller-supplied string and is never read.
+ * the address is the one the server decided (`clientIp` in ../runtime/client-ip.ts): the TCP peer,
+ * or the header a configured fronting proxy writes, and never a header the caller chose — so a
+ * caller on the open internet cannot forge it.
  *
  * cannot forge it is not cannot choose among it, and the granularity is what answers the
  * difference. a caller holding a routed ipv6 `/64` — the standard delegation from any vps host —
@@ -90,26 +93,24 @@ const UNATTRIBUTED = 'unattributed';
  * and keying wider would put every donor on an office's or a campus's network in one bucket.
  *
  * an address shared by many people is the accepted cost, and it is what the generous limit in
- * `wrangler.jsonc` is sized against: a mobile carrier puts thousands of real donors behind one
+ * `RATE_LIMITS` is sized against: a mobile carrier puts thousands of real donors behind one
  * address, so the number has to clear a busy campaign on one NAT before it clears a scanner.
  *
  * anything that is not an address shares one bucket rather than getting one each, so an
- * unattributable caller is the most limited there is instead of the least. that covers a missing
- * header and a value that does not parse, and both are reachable through Cloudflare rather than
- * only on `wrangler dev`: the zone-level "Remove visitor IP headers" managed transform strips
- * `CF-Connecting-IP` outright, and on a subrequest from another Worker in the same zone the
- * header carries the value of `x-real-ip`, which that Worker's code may write
- * (https://developers.cloudflare.com/fundamentals/reference/http-headers/). the transform is the
- * operator-side footgun of the two, and it is a plausible thing to switch on for privacy: with it
- * on, every request to this deployment counts in one bucket and the per-address limit becomes a
- * single tap that one caller can hold closed on every donor at once.
+ * unattributable caller is the most limited there is instead of the least. that covers no address
+ * at all and a value that does not parse — a `TRUSTED_PROXY_HEADER` naming a header the proxy in
+ * front fills with something other than an address is the operator-side way to reach it, and with
+ * it every request to this deployment counts in one bucket and the per-address limit becomes a
+ * single tap that one caller can hold closed on every donor at once. a proxy in front with
+ * `TRUSTED_PROXY_HEADER` unset reaches the same place by another road: every caller is the proxy's
+ * address.
  *
  * this key and `zapierRateLimitKey` accept that and the other keys below do not —
  * `attributedCaller` is where that split is argued, and it is a split about which bucket is the
  * only meter on its surface rather than about how an address is read.
  *
  * the surface prefix is a constant today and is in the key anyway: the counter is named after
- * what it bounds, so a second public surface metered through this binding gets its own count
+ * what it bounds, so a second public surface metered through this limiter gets its own count
  * instead of eating this one's.
  */
 export function apiRateLimitKey(request: Request): string {
@@ -155,8 +156,8 @@ export function quoteRateLimitKey(request: Request): string | null {
  * password chosen by a person, and every guess an scrypt run this deployment pays for, so letting
  * it through would be unbounded guessing at all of them. the deployer's attempt is let through
  * uncounted, because refusing it would shut every way into the dashboard at once — under the
- * transform `attributedCaller` describes that is every caller of the deployment — and one secret,
- * minted by the console unless the operator typed their own, is the cost that leaves unbounded.
+ * misread proxy header `attributedCaller` describes that is every caller of the deployment — and one secret,
+ * `ADMIN_PASSWORD` in `.env`, is the cost that leaves unbounded.
  *
  * `src/routes/forgot.tsx`'s action answers it by refusing every request, before the body is read:
  * the deployer's password is never reset from there, so a refusal shuts nobody out of the
@@ -169,7 +170,7 @@ export function signInRateLimitKey(request: Request): string | null {
 
 /**
  * what one request on `/zapier` that failed the key check counts against: that surface and the
- * caller, charged against the surface binding in `src/routes/zapier.ts`'s middleware.
+ * caller, charged against the surface limiter in `src/routes/zapier.ts`'s middleware.
  *
  * the same shape as `apiRateLimitKey` — its own prefix, so Zapier's calls never spend a donation
  * form's count, and an unattributed caller in one shared bucket. a caller holding the key is never
@@ -184,7 +185,7 @@ export function zapierRateLimitKey(request: Request): string {
 /**
  * what one request on `/integrations/v1` counts against before its key is looked up, and `null`
  * for a caller with no bucket at all: that surface and the caller, charged against the surface
- * binding on every request, keyed or not.
+ * limiter on every request, keyed or not.
  *
  * it bounds what one address costs before anything is known about it — how many presented keys it
  * has checked in a minute, and so the indexed read each well-formed one costs. the 256-bit key is
@@ -221,21 +222,20 @@ export function connectorKeyRateLimitKey(keyId: string): string {
  * key's row id, charged against `INTEGRATIONS_KEY_RATE_LIMITER`.
  *
  * the key is the payer here: two systems calling from one host hold two keys and two budgets, and
- * one busy or leaked key spends only its own, from however many addresses in one Cloudflare
- * location it is presented. what the limit bounds is how fast one key can read the database.
+ * one busy or leaked key spends only its own, from however many addresses it is presented. what the limit bounds is how fast one key can read the database.
  */
 export function integrationsKeyRateLimitKey(keyId: string): string {
 	return `${INTEGRATIONS_BASE_PATH} key ${keyId}`;
 }
 
 /**
- * what one view of a photo at `/image/:id` that the edge does not hold counts against, and `null`
- * for a caller with no bucket at all — charged against the surface binding in
+ * what one view of a photo at `/image/:id` that the cache does not hold counts against, and `null`
+ * for a caller with no bucket at all — charged against the surface limiter in
  * `src/routes/image.$id.ts`'s loader.
  *
  * a prefix of its own, so a page's photos never spend the donation box's count on `/api/v1` and a
- * burst on `/api/v1` never blanks a page's photos. a caller the edge did not attribute is not
- * counted, as on the tighter keys above and for their reason: under the header-stripping transform
+ * burst on `/api/v1` never blanks a page's photos. a caller the server did not attribute is not
+ * counted, as on the tighter keys above and for their reason: under the misread proxy header
  * `attributedCaller` below describes, that is every donor at once, and one bucket for all of them
  * is every photo on every page refused together.
  */
@@ -246,7 +246,7 @@ export function imageRateLimitKey(request: Request): string | null {
 
 /**
  * what one view of a donor page — `/donate` or a campaign's address — counts against, and `null`
- * for a caller with no bucket at all: charged against the surface binding by
+ * for a caller with no bucket at all: charged against the surface limiter by
  * `meterDonorPage` in ./meter.ts, under a prefix of its own for the reason `imageRateLimitKey`
  * above has one, and unattributed callers uncounted for the same reason.
  */
@@ -257,7 +257,7 @@ export function donorPageRateLimitKey(request: Request): string | null {
 
 /** the caller half of every key here: one payer, however they spelled their address. */
 function caller(request: Request, block: Ipv6Block): string {
-	const address = request.headers.get('cf-connecting-ip');
+	const address = clientIp(request);
 	return address === null ? UNATTRIBUTED : payer(address, block);
 }
 
@@ -265,12 +265,12 @@ function caller(request: Request, block: Ipv6Block): string {
  * the same caller, and `null` where this deployment has no bucket to put them in.
  *
  * the quote's, the sign-in's, the read API's per-address key and the two view keys are built from
- * this and the surface key is not, and the split is the "Remove visitor IP headers" managed
- * transform described on `apiRateLimitKey` above. with that transform on, every caller collapses
+ * this and the surface key is not, and the split is the misread proxy header described on
+ * `apiRateLimitKey` above. with that header misread, every caller collapses
  * into one bucket — which turns a per-address limit into a deployment-wide tap: every donor there
  * sharing one address's worth of gifts a minute, one guesser able to hold the login closed on the
  * operator, and one caller able to hold every integration closed. so these buckets bound an
- * address or they bound nobody, and an operator who switches that transform on gets the behaviour
+ * address or they bound nobody, and an operator who misconfigures that header gets the behaviour
  * these limits were added to, rather than a dark donation form. the surface bucket keeps counting
  * them, because it is the only meter `/api/v1` has — `refuseIfRateLimited` below is where that
  * side is argued. the sign-in's `null` is not let through for every identity: a member's attempt and
@@ -472,10 +472,9 @@ export function quoteRateLimitRefusal(headers: Headers): Response {
  * an oracle that says "that guess was worth refusing".
  *
  * it also claims no scope for the bound, and the omission is deliberate: the bucket is per address
- * per Cloudflare location under ordinary operation, and per deployment under the header-stripping
- * transform `attributedCaller` above describes, so any of the three would be wrong somewhere.
- * wrangler.jsonc carries the caveats for whoever tunes the number; the person reading this
- * sentence is trying to sign in.
+ * under ordinary operation, and per deployment under the misread proxy header `attributedCaller`
+ * above describes, so either would be wrong somewhere. the person reading this sentence is trying
+ * to sign in.
  */
 export function signInRateLimitMessage(): string {
 	return (
@@ -488,12 +487,12 @@ export function signInRateLimitMessage(): string {
  * the answer when this deployment has no limiter to charge.
  *
  * the opposite answer to a `limit()` that rejects, and deliberately: this is not a transient
- * fault, it is a deployment that shipped without a binding `/api/v1` is required to have. serving
+ * fault, it is a server started without a limiter `/api/v1` is required to have. serving
  * on would leave a public, unauthenticated, payment-initiating surface unmetered while every
  * screen reads as working — the shape CLAUDE.md rejects for unconfigured email, refused here for
  * the same reason.
  *
- * it names the binding and the file because the only person who can fix it is holding the
+ * it names the limiter and the file because the only person who can fix it is holding the
  * repository, and 500 because nothing about the request is wrong. no `error` code, for the same
  * reason the 429 mints none — `API_ERROR_CODES` in `packages/form/src/v1.ts` is a permanent wire
  * vocabulary whose members each name the screen that fixes them, and no screen fixes this.
@@ -502,9 +501,9 @@ function unboundSurface(): Response {
 	return Response.json(
 		{
 			message:
-				'This deployment has no API_RATE_LIMITER binding, so requests to /api/v1 cannot be ' +
+				'This deployment has no API_RATE_LIMITER, so requests to /api/v1 cannot be ' +
 				'metered and are refused. Nothing about the request is wrong.',
-			fix: 'Restore the `ratelimits` block naming API_RATE_LIMITER in wrangler.jsonc and deploy again.'
+			fix: 'Start the app with `docker compose up -d app`, whose server entry (packages/app/server/index.ts) builds every limiter in RATE_LIMITS (src/lib/server/runtime/rate-limiter.ts).'
 		},
 		{ status: 500, headers: { 'cache-control': 'no-store' } }
 	);
@@ -513,30 +512,29 @@ function unboundSurface(): Response {
 /**
  * charges one request against the caller's bucket, and answers for it if there is nothing left.
  *
- * `null` means carry on, which is the shape a middleware can spend in one line. the binding is
+ * `null` means carry on, which is the shape a middleware can spend in one line. the limiter is
  * passed rather than reached for: it lives on the platform env, and this module never names one —
  * the call site does, which for this one is `src/routes/api.v1.ts`.
  *
- * the outcome is `{ success }` and there is nothing else to read — the limiter is permissive and
- * eventually consistent by design, counts per Cloudflare location rather than globally, and is
- * not an accounting system. that is the right shape for what it guards: the cost of a wrong
- * answer here is one extra D1 read, or one donor asked to reload.
+ * the outcome is `{ success }` and there is nothing else to read. that is the right shape for what
+ * it guards: the cost of a wrong answer here is one extra database read, or one donor asked to
+ * reload.
  *
  * the two ways it can fail to answer at all are answered opposite ways, and the difference is
  * whether waiting fixes it: a rejected `limit()` is transient and the request carries on
- * uncounted, while a missing binding is a deployment that shipped wrong and is refused by name
- * (`unboundSurface` above). the missing binding is unreachable through `pnpm run deploy` anyway,
- * because `scripts/preflight-deploy.js` refuses a config without the block ahead of the migration
- * — which is what makes refusing the cheap choice there.
+ * uncounted, while a missing limiter is a server built wrong and is refused by name
+ * (`unboundSurface` above). the server entry builds every limiter at start
+ * (../../../../server/start.ts), so the missing one is a hand-built `Env` and nothing a deployment
+ * reaches — which is what makes refusing the cheap choice there.
  *
- * a caller the edge did not attribute is counted here rather than let past, which is the opposite
+ * a caller the server did not attribute is counted here rather than let past, which is the opposite
  * of what the buckets built on `attributedCaller` above do with one. this bucket is the only
  * meter `/api/v1` has, so exempting anybody from it leaves the surface unmetered for exactly the
  * caller nothing can identify — and `apiRateLimitKey` puts them all in one bucket, which makes
  * them the most limited caller there is rather than the least.
  */
 export async function refuseIfRateLimited(
-	limiter: RateLimit | undefined,
+	limiter: RateLimiter | undefined,
 	request: Request
 ): Promise<Response | null> {
 	if (!limiter) return unboundSurface();
@@ -546,13 +544,9 @@ export async function refuseIfRateLimited(
 	} catch {
 		// the charge did not happen, and the request carries on uncounted.
 		//
-		// fail open because of what is on each side of it. what this bounds is one D1 read, so a
-		// stretch of unbounded ones costs a fraction of a cent; refusing instead takes every
-		// donation form embedded anywhere dark for as long as the fault lasts, and each of those
-		// is a gift. the subsystem is documented as permissive and eventually consistent and as
-		// explicitly not an accounting system, so a fault here is a transient one to ride out
-		// rather than a signal about the deployment
-		// (https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
+		// fail open because of what is on each side of it. what this bounds is one database read, so
+		// a stretch of unbounded ones costs next to nothing; refusing instead takes every donation
+		// form embedded anywhere dark for as long as the fault lasts, and each of those is a gift.
 		return null;
 	}
 }
@@ -562,7 +556,7 @@ export async function refuseIfRateLimited(
  *
  * `true` means this caller has nothing left. every other outcome is `false` and the request
  * carries on uncounted: a caller with no bucket at all (`key` is `null`, from `attributedCaller`
- * above), a binding that is not there, a `limit()` that threw.
+ * above), a limiter that is not there, a `limit()` that threw.
  *
  * this is the one place the fail-open decision is written down. its call sites point here rather
  * than restate it, and each carries only what is local to itself.
@@ -575,24 +569,22 @@ export async function refuseIfRateLimited(
  * its 256-bit keys, which bound who reads at all where the buckets bound only how fast — so what
  * absence costs there is the tighter bound rather than the bound.
  *
- * the sign-in's bucket is the only bound on guessing a password, so a missing binding leaves every
+ * the sign-in's bucket is the only bound on guessing a password, so a missing limiter leaves every
  * credential here unbounded, a member's included. it is served on anyway because of which
- * deployment reaches this: one running with no such binding would be refused by its own login, and
+ * deployment reaches this: one running with no such limiter would be refused by its own login, and
  * everything an operator could act on sits behind that login, so a bricked one has nothing in front
- * of anybody. `pnpm run deploy` cannot produce it: `scripts/preflight-deploy.js` refuses it. a
- * caller with no bucket on a bound deployment is a different case, refused for members and for
+ * of anybody. the server entry cannot produce it: it builds every limiter at start. a caller with
+ * no bucket on a deployment with its limiters is a different case, refused for members and for
  * every reset request at the call sites (`signInRateLimitKey`).
  *
- * the `catch` guards a failure nothing promises either way — the binding's documentation states no
- * error conditions, so `limit()` throwing is neither a documented outcome nor one to rule out
- * (https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/). carrying on is
- * the same answer `refuseIfRateLimited` gives for the same unpromised case.
+ * the `catch` guards a failure the `RateLimiter` shape does not rule out: carrying on is the same
+ * answer `refuseIfRateLimited` gives for the same case.
  *
  * the key is passed rather than derived, because which bucket a request counts against is the call
  * site's decision and the keys above are not interchangeable.
  */
 export async function isRateLimited(
-	limiter: RateLimit | undefined,
+	limiter: RateLimiter | undefined,
 	key: string | null
 ): Promise<boolean> {
 	if (key === null || !limiter) return false;

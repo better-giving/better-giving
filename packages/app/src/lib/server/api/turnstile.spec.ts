@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import {
 	SITEVERIFY_URL,
 	TURNSTILE_FAILURE_REASONS,
@@ -61,7 +62,7 @@ const solved = (over: Record<string, unknown> = {}) =>
 const SECRET = '0x4AAAAAAABBBBBBBBCCCCCCCCDD';
 const SITE_KEY = '0x4AAAAAAABBBBBBBBCCCCCCCCEE';
 
-/** the donor's submission, as the Worker received it. */
+/** the donor's submission, as the server received it. */
 const submission = (headers: Record<string, string> = {}): Request =>
 	new Request('https://donations.example.workers.dev/api/v1/forms/frm_x/donations', {
 		method: 'POST',
@@ -90,7 +91,7 @@ describe('verifyTurnstile() — the request', () => {
 		const calls = recording([solved()]);
 
 		const result = await verifyTurnstile(
-			check({ request: submission({ 'cf-connecting-ip': '203.0.113.7' }) })
+			check({ request: submission({ [CLIENT_IP_HEADER]: '203.0.113.7' }) })
 		);
 
 		expect(result.ok).toBe(true);
@@ -113,7 +114,7 @@ describe('verifyTurnstile() — the request', () => {
 	it('omits remoteip for a present-but-empty header', async () => {
 		const calls = recording([solved()]);
 
-		await verifyTurnstile(check({ request: submission({ 'cf-connecting-ip': '' }) }));
+		await verifyTurnstile(check({ request: submission({ [CLIENT_IP_HEADER]: '' }) }));
 
 		// `Headers.get` answers `''` rather than null for one of those, and `remoteip=` is a
 		// parameter this app sent with nothing in it.
@@ -341,7 +342,7 @@ describe('verifyTurnstile() — what a failure may say, and to whom', () => {
 		// public path would tell a stranger which knob is unset and that bot protection on a
 		// payment-initiating endpoint is currently unenforced.
 		expect(result.detail).not.toContain('TURNSTILE_SECRET_KEY');
-		expect(result.detail).not.toContain('--var');
+		expect(result.detail).not.toContain('.env');
 	});
 
 	it('puts the variable and the command where an operator reads them', async () => {
@@ -349,8 +350,8 @@ describe('verifyTurnstile() — what a failure may say, and to whom', () => {
 
 		const result = await refusal();
 
-		expect(result.operatorFix).toContain('TURNSTILE_SECRET_KEY');
-		expect(result.operatorFix).toContain('--var');
+		expect(result.operatorFix).toContain('`TURNSTILE_SECRET_KEY=<value>`');
+		expect(result.operatorFix).toContain('docker compose up -d --force-recreate app');
 	});
 
 	it('carries no operator fix for a refusal an operator cannot act on', async () => {

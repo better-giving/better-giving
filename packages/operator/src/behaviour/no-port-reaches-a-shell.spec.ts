@@ -42,7 +42,7 @@ describe('the behaviour shells', () => {
 	});
 
 	it('are each named by an entry in this package exports', () => {
-		// the shells are reached by the app and the console and by nothing else, and a package with
+		// the shells are reached by the app and the gallery and by nothing else, and a package with
 		// no wildcard in its `exports` is what makes that a resolution failure rather than a rule.
 		const manifest = JSON.parse(readFileSync('package.json', 'utf8')) as {
 			exports: Record<string, string>;

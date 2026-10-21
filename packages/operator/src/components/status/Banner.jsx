@@ -8,7 +8,10 @@ import { Mark } from './Mark.jsx';
  * @typedef {object} BannerProps
  * @property {Tone | undefined} [tone]
  * @property {ReactNode} [word]
- * @property {ReactNode} [children]
+ * @property {ReactNode} [children] the one sentence, drawn as a paragraph.
+ * @property {ReactNode} [body] blocks under the sentence and still inside the band — a heading of
+ *   its own, a further paragraph, a code box — each the caller's element, stacked at the band's
+ *   step. `children` is wrapped in a `<p>` and so holds no block.
  * @property {ReactNode} [actions] the controls, which sit beneath the banner rather than inside it.
  */
 
@@ -30,7 +33,7 @@ const MARKS = {
    pair away from a state that announces itself as information, and an operator screen draws eleven
    of them. */
 /** @param {BannerProps} props */
-export function Banner({ tone = 'note', word, children, actions }) {
+export function Banner({ tone = 'note', word, children, body, actions }) {
 	return (
 		<div
 			className={`adm-banner${tone === 'note' ? '' : ` adm-banner--${tone}`}`}
@@ -45,6 +48,7 @@ export function Banner({ tone = 'note', word, children, actions }) {
 				    nothing at a sentence's height, and a band holding two of them says nothing at all. */}
 				{word ? <p className="adm-banner__word">{word}</p> : null}
 				{children ? <p className="adm-banner__text">{children}</p> : null}
+				{body ? <div className="adm-banner__body">{body}</div> : null}
 				{actions ? <div className="adm-dialog__actions">{actions}</div> : null}
 			</div>
 		</div>

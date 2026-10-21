@@ -158,8 +158,7 @@ export function SaveButton({
 				</span>
 				{/* the dots say a write is going and never how far it has got: this button carries one
 				    write, which is a moment with no named steps to be part of the way through. a press
-				    that starts a run of them reports at the card it stands in instead, which is
-				    packages/console-ui/src/lib/run-bar.tsx. */}
+				    that starts a run of them reports at the card it stands in instead. */}
 				{busy ? <BusyDots /> : null}
 			</button>
 			{/* the live region stands beside the press and is never the press itself, nor anything

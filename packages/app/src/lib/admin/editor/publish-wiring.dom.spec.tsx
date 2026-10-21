@@ -8,8 +8,8 @@ import { type FirstPublish, usePublishPresses } from './publish-wiring';
 
 // what the editor's Publish, Undo, Discard changes and Reset to default post, and what the bar and
 // the confirms do with each answer. the editor's action here is a stand-in that records each body and
-// answers what the case scripts; what the real one does is $lib/server/pages/publish.workers.spec.ts's
-// and reset.workers.spec.ts's.
+// answers what the case scripts; what the real one does is $lib/server/pages/publish.db.spec.ts's
+// and reset.db.spec.ts's.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

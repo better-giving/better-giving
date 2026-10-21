@@ -9,7 +9,7 @@ import {
 import ts from 'typescript';
 
 // what ./routes.spec.ts needs to ask questions of the route tree, kept out of the spec so the
-// rules there read as rules. the `.testing.ts` suffix matches no pool's `include` glob
+// rules there read as rules. the `.testing.ts` suffix matches no project's `include` glob
 // (CONTRIBUTING.md → Tests), so this is a module one spec imports rather than a second file of
 // tests — and it sits beside ./routes.ts, which is its subject, rather than under ./routes/, where
 // every file is an address.
@@ -63,9 +63,9 @@ async function routeConfig(): Promise<readonly RouteConfigEntry[]> {
  * claim.
  *
  * no handlers are mounted, because none are needed for that: a route module's `loader` cannot run
- * in this pool at all (`cloudflare:test`, D1, the deploy-time env), and a match with no loader is
- * already distinguishable from no match — the framework answers the first 400 and the second 404.
- * ./route-request.testing.ts is where a route's own handlers are run, inside workerd.
+ * here without a database and the deploy-time env, and a match with no loader is already
+ * distinguishable from no match — the framework answers the first 400 and the second 404.
+ * ./route-request.testing.ts is where a route's own handlers are run.
  */
 export async function statusAt(pathname: string): Promise<number> {
 	const handler = createStaticHandler(asRouteObjects(await routeConfig()));
@@ -172,7 +172,7 @@ export const readFromDisk: ReadModule = (file) => {
  * client build and tree-shakes what only they used, so a route module may import `$lib/server/**`
  * for its loader and ship nothing of it to the browser. what the build does *not* do is tell
  * anyone when that stops being true — a component that reaches for a server module compiles, and
- * on this app's server tree that means D1, the stripe client and this deployment's credentials in
+ * on this app's server tree that means the database, the stripe client and this deployment's credentials in
  * the bundle a browser downloads.
  *
  * how it decides. every top-level statement in the route module is a root except the exported

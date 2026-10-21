@@ -21,7 +21,7 @@ import type { EmailProvider, SendResult } from './provider';
 export type MailDeps = { readonly db: Db; readonly email: EmailProvider };
 
 /**
- * one operational alert, to the address the console names.
+ * one operational alert, to the notification address saved in Settings.
  *
  * silent where no address is saved, because there is nowhere to send it — `notification_email` is
  * nullable and a fresh deployment has none. the sentence still reaches the logs either way, which
@@ -37,28 +37,34 @@ export async function alert(deps: MailDeps, input: adminAlert.AdminAlertData): P
 	await mailOperator(deps, adminAlert.template(input));
 }
 
+// an alert goes to the notification address, which members read, and only the deployer can open
+// Settings (`STAFF_USER_ID`, AGENTS.md → Boundaries), so each action that starts there says who a
+// member asks.
+
 /** an alert's action where only the organisation's saved details fix what went wrong. */
-export const FILL_IN_ORG_DETAILS = `Open the console (run \`better-giving start\`), go to ${IDENTITY_FOLD} and fill in what’s missing.`;
+export const FILL_IN_ORG_DETAILS =
+	`In Settings, fill in what’s missing under ${IDENTITY_FOLD}. If you can’t open Settings, ask ` +
+	'whoever set up this site to fill it in.';
 
 /** an alert's action where an email did not send. */
 export const TEST_THE_SMTP_SETTINGS =
-	'Open the console (run `better-giving start`), go to SMTP and press Send test email. Fix ' +
-	'whatever the test reports.';
+	'In Settings, go to Mail and press Send test email. If you can’t open Settings, ask whoever ' +
+	'set up this site to send the test and fix what it reports.';
 
 /**
  * what follows {@link TEST_THE_SMTP_SETTINGS} where the send threw rather than answering: the cause
- * is in the worker's logs, which the person reading the alert may not be the one able to open.
+ * is in the app's log, which the person reading the alert may not be the one able to read.
  */
 export const SEND_THIS_TO_WHOEVER_SET_IT_UP =
-	' If the test works, send this email to whoever set up your donations app. The cause is in its ' +
-	'Workers logs on the Cloudflare dashboard.';
+	' If the test works, send this email to whoever set up this site. The app’s log has the cause: ' +
+	'`docker compose logs app`.';
 
 /** how an action ends where an email did not go and nothing sends it again. */
 export const NO_RESEND =
 	' The email won’t be resent, so contact whoever it was for if they need it.';
 
 /**
- * one message to the address the console names for operational mail, which every alert goes to.
+ * one message to the notification address saved in Settings, which every alert goes to.
  * `no_address` where none is saved — `notification_email` is nullable and a fresh deployment has
  * none. what to do about a message that did not go is the caller's.
  */

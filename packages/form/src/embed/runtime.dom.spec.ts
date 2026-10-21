@@ -242,6 +242,25 @@ describe('reading a form configuration', () => {
 	});
 });
 
+describe('the anti-abuse challenge', () => {
+	// the served path is relative, and the page it would otherwise resolve against is the host's.
+	it('reads an ALTCHA challenge from the deployment, not the page the form is embedded in', async () => {
+		const fetched = vi.fn((_input: RequestInfo | URL) => new Promise<Response>(() => {}));
+		vi.stubGlobal('fetch', fetched);
+		const challenge = createFormRuntime(DEPLOYMENT, document).challenge(
+			{ formId: 'frm_a8x2k9', altchaChallengeUrl: '/api/v1/forms/frm_a8x2k9/challenge' } as never,
+			document.createElement('div'),
+			() => {},
+			() => {},
+			() => {}
+		);
+		await settle();
+		challenge.stop();
+
+		expect(fetched.mock.calls[0]?.[0]).toBe(`${DEPLOYMENT}/api/v1/forms/frm_a8x2k9/challenge`);
+	});
+});
+
 describe('the clock the shipped ports read', () => {
 	// the clock is a port so a ten-day window can be asserted in a millisecond, but the shipped
 	// one has to be the real clock or every deadline the flow reads is wrong.

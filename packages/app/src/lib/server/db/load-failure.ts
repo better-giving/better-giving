@@ -1,28 +1,29 @@
 import { data } from 'react-router';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 
 /**
  * what a `load` that could not read the database tells an operator, in the one place every
  * /admin screen reads it from.
  *
  * it was eight independent copies of one sentence before this module: a screen's own subject,
- * then an errand identical on all of them. the errand is what has to stay identical — two of the
- * three commands are the fix for a state a fresh deployment is in, and a copy that drifted would
- * send one screen's reader to a command the others do not name.
+ * then an errand identical on all of them. the errand is what has to stay identical — the migrate
+ * command is the fix for a site just set up or just updated whose `migrate` step was skipped
+ * (DEPLOY.md → Upgrading), and a copy that drifted would send one screen's reader somewhere the
+ * others do not.
  *
  * the subject is the caller's because it is the one part that is not shared: a reader who landed
  * on a 500 is told which screen failed rather than that "a page" did.
  *
- * the console's update press and not a wrangler invocation for the deployed database: the console
- * applies migrations as it deploys, and a wrangler invocation against a deployed D1 is a one-way
- * door taken outside the press that reports it.
+ * the fix is on the server, so the sentence names whoever runs the server and gives them the command
+ * (AGENTS.md → Boundaries): the compose form migrates the `data` volume's file, and a checkout's
+ * dev server reads `packages/app/.env`'s `DATABASE_URL`, which only `pnpm db:migrate` reaches.
  */
 export function loadFailure(subject: string): string {
 	return (
-		`${subject} could not be loaded. If this deployment is new, check that migrations have been ` +
-		'applied to its database: the console (`better-giving start`) applies them to the deployed D1 ' +
-		'when it updates this deployment, and `pnpm wrangler d1 migrations apply DB --local` applies ' +
-		'them to a local one. Then check this deployment’s logs (the Cloudflare dashboard, or ' +
-		'`pnpm run logs` from a checkout).'
+		`${subject} could not be loaded. If this site was just set up or updated, its database may ` +
+		'be behind: whoever runs the server updates it with `docker compose run --rm migrate`, or ' +
+		'`pnpm db:migrate` from a checkout. ' +
+		LOGS_SAY_WHY
 	);
 }
 

@@ -4,7 +4,7 @@ import { PageHeader } from '@better-giving/operator/components/shell/PageHeader'
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { getFormProps } from '@conform-to/react';
 import type { MouseEvent } from 'react';
-import { Form, href, Link, useNavigation } from 'react-router';
+import { Form, href, Link, redirect, useNavigation } from 'react-router';
 import { FormGivingFields } from '$lib/admin/forms/giving-fields';
 import { FormNameFields } from '$lib/admin/forms/name-fields';
 import { FormOriginsFields } from '$lib/admin/forms/origins-fields';
@@ -19,7 +19,9 @@ import { defineForm } from '$lib/forms/definition';
 import { FORM_TEXT_FIELDS } from '$lib/forms/fields';
 import { FORM_INPUT_FORM, unlistedSiteProblem, unlistedSites } from '$lib/forms/input-schema';
 import { NEW_FORM } from '$lib/forms/new-form';
-import { anyBlocker } from '$lib/forms/readiness';
+import { anyBlocker, LIVE_WITHHELD } from '$lib/forms/readiness';
+import { STAFF_USER_ID } from '$lib/server/auth';
+import { readConfigEnv } from '$lib/server/config/env';
 import { invalid, parseForm } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
 import { CREATED_FLASH, redirectWithFlash } from '$lib/server/flash';
@@ -29,7 +31,7 @@ import { formsReadiness } from '$lib/server/forms/readiness';
 import { readOrgProfile } from '$lib/server/org/queries';
 import { readActivePrograms } from '$lib/server/programs/queries';
 import { readSites } from '$lib/server/sites/queries';
-import { database } from '../context';
+import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.forms.new';
 
 // making a donation form: read as a loader, written by an action. no client-side mutation path,
@@ -76,11 +78,6 @@ const WRITE_FAILED = 'Making this form failed and nothing was saved. Try again.'
  * one state two ways.
  */
 const NO_SUCH_PROGRAM = 'Choose an active program.';
-
-/** what a create refused by the ledger says, keyed to no box. */
-const BLOCKED =
-	'No form was made. Something above has to be cleared first: while it stands, a form ' +
-	'made here would serve nothing to a donor.';
 
 /**
  * the ticked sites, as conform holds them after a submission.
@@ -143,7 +140,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 		// three independent reads, so they go together: none is an input to another, and awaiting
 		// them in turn pays three round trips for one screen. both are this deployment's own database —
 		// nothing on this screen leaves the deployment, because neither of the two values that would
-		// need the processor is a form's to answer and both are the console's.
+		// need the processor is a form's to answer and both are the deployment's.
 		//
 		// the second is the deployment's own list of sites, which the tick boxes are drawn from. an
 		// empty one gates nothing: a form made ahead of the site it goes on is ordinary.
@@ -166,15 +163,17 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 	return {
 		// what stops the form about to be made from serving, in the same block the screen that edits
-		// one carries. the forms list carries none — it writes nothing, so it gates nothing.
+		// one carries. the forms list carries none — it makes no form, so it gates nothing.
 		//
-		// on this screen the block is the gate rather than a heads-up: a blocker means the boxes are
-		// not drawn at all and the write is refused, because a form made on a deployment missing any
-		// of these renders nothing on the org's own site with no screen saying why.
+		// a blocker withholds Live and nothing else, because a live form on a deployment missing any
+		// of these renders nothing on the org's own site. the form is still made, as a draft.
 		//
 		// `null` when there is nothing to say, which is what keeps the condition in one place rather
 		// than in each page's markup.
-		readiness: formsReadiness(profile),
+		readiness: formsReadiness(profile, readConfigEnv(context.get(platform).env)),
+		// whether the viewer deployed the site, the predicate ./_app.tsx reads: the readiness block
+		// is worded for who can fix each line.
+		deployer: context.get(staff).id === STAFF_USER_ID,
 		// every site this deployment has listed, in the operator's own order — one tick box each,
 		// with none of them ticked on a form that does not exist yet. the values and not row ids,
 		// because `form.allowed_origins` holds the addresses themselves and there is deliberately no
@@ -242,10 +241,9 @@ export async function action({ context, request }: Route.ActionArgs) {
 
 	const db = context.get(database);
 
-	// the ledger gates this screen, and this is the control behind the gate: the page draws no boxes
-	// and a disabled button while a blocker stands, and markup is not what stops a POST. read here
-	// rather than carried from the loader, because what a page was drawn against is not what is true
-	// when the button is pressed — a row can be emptied in between.
+	// the readiness block withholds Live, and this is the control behind it: markup is not what
+	// stops a POST. read here rather than carried from the loader, because what a page was drawn
+	// against is not what is true when the button is pressed — a row can be emptied in between.
 	let profile: Awaited<ReturnType<typeof readOrgProfile>>;
 	let listed: string[];
 	try {
@@ -257,10 +255,11 @@ export async function action({ context, request }: Route.ActionArgs) {
 		return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 	}
 
-	if (anyBlocker(formsReadiness(profile))) {
-		// keyed to no box, deliberately: no box on this form is what went wrong, and the block above
-		// the form is where the offending line is already named.
-		return invalid(400, submission.reject({ formErrors: [BLOCKED] }));
+	const blocked = anyBlocker(formsReadiness(profile, readConfigEnv(context.get(platform).env)));
+	if (blocked && parsed.value.status === 'live') {
+		// keyed to the status box, which is the one an operator can change: the same form saves as a
+		// draft.
+		return invalid(400, submission.reject({ fieldErrors: { status: [LIVE_WITHHELD] } }));
 	}
 
 	// a site this deployment does not list, which on this screen is only ever a stale tab or a
@@ -306,6 +305,10 @@ export async function action({ context, request }: Route.ActionArgs) {
 	// is one that gets bookmarked, shared and read back by an operator who never asked to see one,
 	// and the banner would re-announce itself on every reload. `$lib/server/flash.ts` is what makes
 	// it reach exactly the GET that lands.
+	//
+	// a form made while a blocker stands lands on its own page instead, which carries the same block:
+	// the list's banner would hand over a snippet for a form that serves nothing yet.
+	if (blocked) return redirect(href('/admin/forms/:id', { id: record.id }), 303);
 	return redirectWithFlash(request, CREATED_FLASH, href('/admin/forms'), record.id);
 }
 
@@ -318,7 +321,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 // none of them is given a footer — the single submit sits at the foot of all four, which is still
 // the foot of the form it submits.
 export default function NewDonationForm({ loaderData, actionData }: Route.ComponentProps) {
-	const { readiness, sites, programs, values, currency } = loaderData;
+	const { readiness, deployer, sites, programs, values, currency } = loaderData;
 	const [form, fields] = useAdminForm(FORM_CREATE, actionData, { defaultValue: values });
 	const navigation = useNavigation();
 	// the whole navigation this form started, and not its `submitting` half: the action answers with
@@ -328,15 +331,9 @@ export default function NewDonationForm({ loaderData, actionData }: Route.Compon
 	// navigation through the loading phase the redirect starts.
 	const adding = navigation.state !== 'idle' && navigation.formAction === href('/admin/forms/new');
 
-	// the ledger is the gate on this screen and not a heads-up, which is the one place in /admin
-	// where that block stops a write. a blocker means `publishedConfig` serves nothing, so a form
-	// made here would be one that renders nothing on the org's own site from the moment it is
-	// published — and unlike the screen that edits a form, there is nothing on this one worth keeping
-	// while that stands: no row exists yet. so the boxes are not drawn at all and the write is a
-	// disabled button, with the ledger above saying which line to clear.
-	//
-	// the action re-checks the same condition. a page drawn without a submit is markup, and markup is
-	// not what stops a POST.
+	// a blocker means `publishedConfig` serves nothing, so the status box withholds Live while one
+	// stands and the form is made as a draft. the action re-checks the same condition: a filtered
+	// `<option>` list is markup, and markup is not what stops a POST.
 	const blocked = anyBlocker(readiness);
 
 	// the amount boxes as conform holds them: one field per row, each with a name of its own, and the
@@ -360,124 +357,113 @@ export default function NewDonationForm({ loaderData, actionData }: Route.Compon
 			    a form that renders nothing on the org's own site or takes money that is not real.
 			    below the heading and not above it, so the h1 is the first heading on the page and a
 			    reader who jumps to it lands in front of this block rather than past it. */}
-			<FormsReadiness lines={readiness} />
+			<FormsReadiness lines={readiness} deployer={deployer} context="new" />
 
-			{blocked ? (
-				// the write, drawn and switched off. a disabled button rather than no button at all,
-				// because what an operator came here to do is the thing this page has to keep naming: a
-				// screen carrying a ledger and nothing else does not say that clearing it is what makes
-				// a form possible.
-				//
-				// the same label the enabled one carries below, and it has to be: two branches of one
-				// screen are one button an operator meets in two states, and a second wording for it
-				// reads as a second thing to press.
+			{/* no `action` attribute, so this posts to the current url. conform's `getFormProps` puts
+			    the form's own id on the element, which is what its focus move looks the form up by —
+			    see the header of `$lib/admin/use-admin-form.ts`. */}
+			<Form method="post" {...getFormProps(form)}>
+				{/* a plain section around each group, because a group draws its heading, its boxes
+				    and its footer and nothing around them: the frame is the mounting screen's, and
+				    this screen's four divisions are one form read down. */}
+				<Section>
+					{/* no note on the status box: the draft banner's hint above
+					    ($lib/admin/forms/readiness.tsx) already says Live waits on those items. */}
+					<FormNameFields
+						boxes={{ name: fields.name, status: fields.status }}
+						liveOffered={!blocked}
+						liveNote={false}
+					/>
+				</Section>
+				<Section>
+					{/* between the name and what a donor may give, because it is a fact about the form
+					    rather than about a gift: it is the second thing an operator decides and the
+					    first thing that is not the form's own name. no `retired` prop — a form that
+					    does not exist yet is pinned to nothing, so there is no retired cause it could
+					    be holding. */}
+					<FormProgramFields
+						boxes={{ program_mode: fields.program_mode, program_id: fields.program_id }}
+						programs={programs}
+					/>
+				</Section>
+				<Section>
+					<FormGivingFields
+						boxes={{ min_minor: fields.min_minor, max_minor: fields.max_minor }}
+						amounts={{
+							id: fields.suggested_amounts.id,
+							errors: fields.suggested_amounts.errors,
+							rows: amountRows,
+							add: insertWhenValid(form, FORM_CREATE, fields.suggested_amounts.name),
+							remove: (index) =>
+								form.remove.getButtonProps({ name: fields.suggested_amounts.name, index })
+						}}
+						currency={currency}
+					/>
+				</Section>
+				<Section>
+					<FormOriginsFields
+						box={{
+							id: fields.allowed_origins.id,
+							name: fields.allowed_origins.name,
+							errors: fields.allowed_origins.errors,
+							// a repeated input's value arrives as a list, and as the bare string where exactly
+							// one box was ticked — so it is read back as a list either way rather than
+							// asserted to be one.
+							ticked: tickedSites(fields.allowed_origins.initialValue)
+						}}
+						sites={sites}
+						deployer={deployer}
+					/>
+				</Section>
+
+				{/* keyed to no field, deliberately: a write that failed is not something an operator
+				    can fix by editing an input, and rendering it under one tells them the input is
+				    wrong. it stands with the submit rather than at the top of the page: four
+				    groups' worth of boxes lie between the two, so a refusal up there is a page that
+				    looks unchanged from where the operator is standing and a button that went
+				    quiet.
+
+				    rendered through `MarkedText` rather than printed, because a sentence written in
+				    this file marks what an operator has to act on with backticks. */}
+				{refusal ? (
+					<Banner tone="blocker" word="Not added">
+						<MarkedText text={refusal} />
+					</Banner>
+				) : null}
+
+				{/* no hint under the submit — the readiness block above names the blocker where the
+				    operator can act.
+
+				    the row takes no step of its own: each group is a `.adm-section`, whose own block
+				    padding is what sets the submit off the last question above it. */}
 				<div className="adm-actions">
-					<Button variant="primary" disabled>
-						Add donation form
+					{/* the write being in flight is not a gate, and `disabled` for it would be wrong:
+					    a disabled control is not focusable, so the attribute takes focus off the
+					    button an operator has this moment pressed and drops it on `<body>` for the
+					    whole of the write — and the dots underneath, which are what say the press
+					    was heard, are then a change nobody is standing on to hear
+					    (WCAG 2.4.3).
+
+					    the press is closed in the handler instead, which is what `aria-disabled`
+					    stops doing once it is only advisory: a second press while the first
+					    navigation is still going is one operator intent and two donation forms
+					    made. */}
+					<Button
+						variant="primary"
+						aria-disabled={adding}
+						aria-busy={adding}
+						onClick={(event: MouseEvent<HTMLButtonElement>) => {
+							if (adding) event.preventDefault();
+						}}
+					>
+						{/* while a blocker stands the status box offers Draft alone, so the press says what
+						    it will make. */}
+						{blocked ? 'Save as draft' : 'Add donation form'}
 					</Button>
+					{/* a link rather than a button, because it writes nothing: it leaves. */}
+					<Link to={href('/admin/forms')}>Cancel</Link>
 				</div>
-			) : (
-				// no `action` attribute, so this posts to the current url. conform's `getFormProps` puts
-				// the form's own id on the element, which is what its focus move looks the form up by —
-				// see the header of `$lib/admin/use-admin-form.ts`.
-				<Form method="post" {...getFormProps(form)}>
-					{/* a plain section around each group, because a group draws its heading, its boxes
-					    and its footer and nothing around them: the frame is the mounting screen's, and
-					    this screen's four divisions are one form read down. */}
-					<Section>
-						{/* no `liveOffered` prop, and its default is the honest value here: this branch is
-						    only reached with no blocker standing, so Live is always one of the two. */}
-						<FormNameFields boxes={{ name: fields.name, status: fields.status }} />
-					</Section>
-					<Section>
-						{/* between the name and what a donor may give, because it is a fact about the form
-						    rather than about a gift: it is the second thing an operator decides and the
-						    first thing that is not the form's own name. no `retired` prop — a form that
-						    does not exist yet is pinned to nothing, so there is no retired cause it could
-						    be holding. */}
-						<FormProgramFields
-							boxes={{ program_mode: fields.program_mode, program_id: fields.program_id }}
-							programs={programs}
-						/>
-					</Section>
-					<Section>
-						<FormGivingFields
-							boxes={{ min_minor: fields.min_minor, max_minor: fields.max_minor }}
-							amounts={{
-								id: fields.suggested_amounts.id,
-								errors: fields.suggested_amounts.errors,
-								rows: amountRows,
-								add: insertWhenValid(form, FORM_CREATE, fields.suggested_amounts.name),
-								remove: (index) =>
-									form.remove.getButtonProps({ name: fields.suggested_amounts.name, index })
-							}}
-							currency={currency}
-						/>
-					</Section>
-					<Section>
-						<FormOriginsFields
-							box={{
-								id: fields.allowed_origins.id,
-								name: fields.allowed_origins.name,
-								errors: fields.allowed_origins.errors,
-								// a repeated input's value arrives as a list, and as the bare string where exactly
-								// one box was ticked — so it is read back as a list either way rather than
-								// asserted to be one.
-								ticked: tickedSites(fields.allowed_origins.initialValue)
-							}}
-							sites={sites}
-						/>
-					</Section>
-
-					{/* keyed to no field, deliberately: a write that failed is not something an operator
-					    can fix by editing an input, and rendering it under one tells them the input is
-					    wrong. it stands with the submit rather than at the top of the page: four
-					    groups' worth of boxes lie between the two, so a refusal up there is a page that
-					    looks unchanged from where the operator is standing and a button that went
-					    quiet.
-
-					    rendered through `MarkedText` rather than printed, because a sentence written in
-					    this file marks what an operator has to act on with backticks. */}
-					{refusal ? (
-						<Banner tone="blocker" word="Not added">
-							<MarkedText text={refusal} />
-						</Banner>
-					) : null}
-
-					{/* the same label whether or not it can be pressed, and it has to be: two branches of
-					    one screen are one button an operator meets in two states, and a second wording
-					    reads as a second thing to press. no hint under it either — the readiness block
-					    above names the blocker where the operator can act.
-
-					    the row takes no step of its own: each group is a `.adm-section`, whose own block
-					    padding is what sets the submit off the last question above it. */}
-					<div className="adm-actions">
-						{/* the write being in flight is not a gate, and `disabled` for it would be wrong:
-						    a disabled control is not focusable, so the attribute takes focus off the
-						    button an operator has this moment pressed and drops it on `<body>` for the
-						    whole of the write — and the dots underneath, which are what say the press
-						    was heard, are then a change nobody is standing on to hear
-						    (WCAG 2.4.3).
-
-						    the press is closed in the handler instead, which is what `aria-disabled`
-						    stops doing once it is only advisory: a second press while the first
-						    navigation is still going is one operator intent and two donation forms
-						    made. */}
-						<Button
-							variant="primary"
-							aria-disabled={adding}
-							aria-busy={adding}
-							onClick={(event: MouseEvent<HTMLButtonElement>) => {
-								if (adding) event.preventDefault();
-							}}
-						>
-							Add donation form
-						</Button>
-						{/* a link rather than a button, because it writes nothing: it leaves. */}
-						<Link to={href('/admin/forms')}>Cancel</Link>
-					</div>
-				</Form>
-			)}
+			</Form>
 		</Column>
 	);
 }

@@ -14,8 +14,8 @@ import { createQuickbooksProvider } from './quickbooks';
 // built per run from the env that run was handed, never a module-scope singleton (CLAUDE.md), and
 // the store is built over the `Db` that run built too: an adapter takes a `ConnectionStore` rather
 // than a database (./provider.ts argues why), so joining the two is somebody's job and this is
-// where it is done. ../../../worker.ts names neither the adapter nor the store, which is what keeps
-// ./sole-importer.spec.ts's rule cheap to keep.
+// where it is done. its callers (../../../cron-runs.ts and the QuickBooks routes) name neither the
+// adapter nor the store, which is what keeps ./sole-importer.spec.ts's rule cheap to keep.
 
 /**
  * the variables no call to the books can be made without.
@@ -33,6 +33,18 @@ const REQUIRED = [
 	'QUICKBOOKS_CLIENT_SECRET',
 	'QUICKBOOKS_API_URL'
 ] as const satisfies readonly (keyof ConfigEnv)[];
+
+/** a variable in {@link REQUIRED}. */
+export type QuickbooksKeyName = (typeof REQUIRED)[number];
+
+/**
+ * the variables in {@link REQUIRED} that are not set, in that order. none is what reaching Intuit
+ * at all takes.
+ */
+export function unsetQuickbooksKeys(source: unknown): readonly QuickbooksKeyName[] {
+	const env = readConfigEnv(source);
+	return REQUIRED.filter((name) => env[name] === undefined);
+}
 
 /**
  * the provider this deployment sends its books to.
@@ -60,7 +72,7 @@ export function createAccountingProvider(source: unknown, db: Db): AccountingPro
  *
  * `not_connected` rather than a reason of its own, and it is the same answer a deployment whose
  * boxes are full but whose company nobody has connected gives. that is not a conflation: both are
- * "there are no books to send to yet", both are a person's to fix on the console, and ./deliver.ts
+ * "there are no books to send to yet", both are a person's to fix, and ./deliver.ts
  * reads the reason to decide that the whole backlog is behind it — so the run ends with no row
  * marked and no email sent. a deployment that will never connect QuickBooks is the common case, and
  * a delivery that mailed about it every minute would be this app reporting a deliberate absence as
@@ -71,8 +83,8 @@ function unconfigured(unset: readonly (keyof ConfigEnv)[]): AccountingProvider {
 	const refusal = failed(
 		'not_connected',
 		`This deployment cannot reach QuickBooks: \`${unset.join('` and `')}\` ` +
-			`${one ? 'is' : 'are'} not set. Open the console (\`better-giving start\`) and set ` +
-			`${one ? 'it' : 'them'} under Sending gifts to QuickBooks.`
+			`${one ? 'is' : 'are'} not set. Put ${one ? 'it' : 'them'} in \`.env\` (DEPLOY.md, ` +
+			'QuickBooks) and recreate the app.'
 	);
 	return {
 		readCompany: async () => refusal,

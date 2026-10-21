@@ -98,6 +98,8 @@ type Mounted = {
 	token(value: string): void;
 	/** the challenge widget reporting that it will never mint one. */
 	challengeUnavailable(failure: Failure): void;
+	/** the challenge widget entering interactive mode, or leaving it. */
+	interactive(needed: boolean): void;
 	/** what a donor-advised fund's window reports, as the runtime was handed it. */
 	fund(): FundReports;
 	/** the payment surface saying how many options its box now lists. */
@@ -114,6 +116,7 @@ function view(
 	| 'unavailable'
 	| 'token'
 	| 'challengeUnavailable'
+	| 'interactive'
 	| 'fund'
 	| 'rows'
 	| 'repeatingUnavailable'
@@ -164,6 +167,14 @@ type Options = {
 	readonly resets?: () => void;
 	/** one entry per widget the element took off the page. */
 	readonly stopped?: () => void;
+	/**
+	 * whether the challenge widget mints a token of its own as it is drawn and again on every reset,
+	 * which is the ordinary widget; a case about a token arriving late says `false` and hands each
+	 * one over with `token` itself.
+	 */
+	readonly mints?: boolean;
+	/** one entry per box the element asked the challenge widget to draw itself afresh in. */
+	readonly redraws?: (node: HTMLElement) => void;
 	/** every cadence the card reported to the payment surface, in the order it reported them. */
 	readonly cadences?: (frequency: Frequency | undefined) => void;
 	/** every reading of whether a fund is offered, in the order the card told the payment surface. */
@@ -204,19 +215,33 @@ async function mount(options: Options = {}): Promise<Mounted> {
 	let stop: (failure: Failure) => void = () => {};
 	let minted: (token: string) => void = () => {};
 	let unchallengeable: (failure: Failure) => void = () => {};
+	let interacting: (needed: boolean) => void = () => {};
 	let reports: FundReports | null = null;
 	let counted: (count: number) => void = () => {};
 	let repeating: () => void = () => {};
 	defineDonateForm(
 		{
 			loadConfig: options.loadConfig ?? (async () => options.config ?? CONFIG),
-			challenge: (_config, node, onToken, onUnavailable) => {
+			challenge: (_config, node, onToken, onUnavailable, onInteractive) => {
 				options.challenged?.(node);
 				minted = onToken;
 				unchallengeable = onUnavailable;
+				interacting = onInteractive;
+				let minting = 0;
+				const mint = () => {
+					if (options.mints === false) return;
+					minting += 1;
+					const token = `tk_widget_${minting}`;
+					queueMicrotask(() => onToken(token));
+				};
+				mint();
 				return {
-					reset: () => options.resets?.(),
-					stop: () => options.stopped?.()
+					reset: () => {
+						options.resets?.();
+						mint();
+					},
+					stop: () => options.stopped?.(),
+					redraw: (node) => options.redraws?.(node)
 				};
 			},
 			checkout: (config, mount, onRail, onUnavailable, boot, fund, coins) => {
@@ -264,6 +289,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
 		unavailable: (failure) => stop(failure),
 		token: (value) => minted(value),
 		challengeUnavailable: (failure) => unchallengeable(failure),
+		interactive: (needed) => interacting(needed),
 		fund: () => {
 			if (reports === null) throw new Error('the runtime was never asked for a checkout');
 			return reports;
@@ -5920,6 +5946,120 @@ describe('where a payment provider paints', () => {
 		press(card.all('[part~="frequency-option"] input')[2] as HTMLElement);
 
 		expect(reported.every((frequency) => frequency === undefined)).toBe(true);
+	});
+});
+
+describe('a press made before the challenge has answered', () => {
+	// the press is taken and held on the review step until a token lands, and the control the donor
+	// pressed is where that is said: no banner, no screen change, the caret left where it was.
+	it('keeps the review step up with the press busy, the caret on it and the wait announced', async () => {
+		const quotes: QuoteRequest[] = [];
+		const card = await atReview({
+			mints: false,
+			ports: { quote: (request) => (quotes.push(request), new Promise(() => {})) }
+		});
+		const press = card.find('[part~="submit"]');
+		press.focus();
+
+		press.click();
+		await settle();
+
+		expect(quotes).toEqual([]);
+		expect(card.find('.step-give').hidden).toBe(false);
+		expect(press.hidden).toBe(false);
+		expect(press.getAttribute('aria-busy')).toBe('true');
+		expect(press.getAttribute('part')).toContain('busy');
+		expect(card.shadow.activeElement).toBe(press);
+		expect(card.text('[role="status"]')).toBe('Working on your gift.');
+	});
+
+	it('sends the gift the moment the token lands, carrying it', async () => {
+		const quotes: QuoteRequest[] = [];
+		const card = await atReview({
+			mints: false,
+			ports: { quote: (request) => (quotes.push(request), new Promise(() => {})) }
+		});
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		card.token('tk_late');
+		await settle();
+
+		expect(quotes).toHaveLength(1);
+		expect(quotes[0]?.turnstileToken).toBe('tk_late');
+	});
+
+	// the widget sits on the details step, which is hidden here, so one asking the donor to solve
+	// something is drawn afresh beside the press they made, where they can.
+	it('draws a widget asking for the donor beside the held press, on the review step', async () => {
+		const drawn: HTMLElement[] = [];
+		const card = await atReview({ mints: false, redraws: (node) => void drawn.push(node) });
+		card.interactive(true);
+		await settle();
+		expect(drawn).toEqual([]);
+
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(drawn).toHaveLength(1);
+		expect(card.find('.step-give').contains(drawn[0] ?? null)).toBe(true);
+		expect(drawn[0]?.closest('[hidden]')).toBeNull();
+		expect(drawn[0]?.previousElementSibling).toBe(card.find('[part~="submit"]'));
+	});
+
+	// `aria-busy` over a subtree tells assistive technology to hold its changes back, and the puzzle
+	// drawn beside the press is the one thing in it the donor has to act on now. the press keeps the
+	// flag, because the press is what is waiting.
+	it('takes the busy flag off the card interior while the donor is solving, leaving it on the press', async () => {
+		const card = await atReview({ mints: false });
+		card.find('[part~="submit"]').click();
+		await settle();
+		expect(card.find('.card-body').getAttribute('aria-busy')).toBe('true');
+
+		card.interactive(true);
+		await settle();
+
+		expect(card.find('.card-body').hasAttribute('aria-busy')).toBe(false);
+		expect(card.find('[part~="submit"]').getAttribute('aria-busy')).toBe('true');
+
+		card.interactive(false);
+		await settle();
+
+		expect(card.find('.card-body').getAttribute('aria-busy')).toBe('true');
+	});
+
+	it('redraws nothing for a held press whose challenge is not asking for the donor', async () => {
+		const drawn: HTMLElement[] = [];
+		const card = await atReview({ mints: false, redraws: (node) => void drawn.push(node) });
+
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(drawn).toEqual([]);
+	});
+
+	it('redraws nothing for a press that already holds a token, whatever the widget says', async () => {
+		const drawn: HTMLElement[] = [];
+		const card = await atReview({ redraws: (node) => void drawn.push(node) });
+		await settle();
+		card.interactive(true);
+
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(drawn).toEqual([]);
+	});
+
+	it('shows the challenge’s own unavailable message where it reports while the press is held', async () => {
+		const card = await atReview({ mints: false });
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		card.challengeUnavailable({ message: 'This form could not run its security check.' });
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).not.toBe('');
+		expect(card.shadow.textContent).toContain('This form could not run its security check.');
 	});
 });
 

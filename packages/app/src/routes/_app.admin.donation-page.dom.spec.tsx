@@ -20,7 +20,7 @@ import DonationPageEditor, { clientAction } from './_app.admin.donation-page';
 // press reports. the loader and the server's action are stand-ins that reject the way a
 // browser's `fetch` does while `offline`; every press goes through the route's own `clientAction`,
 // as it does in a browser. what the real action writes is
-// ./_app.admin.donation-page.workers.spec.ts's, and the editor's other presses are the campaign
+// ./_app.admin.donation-page.db.spec.ts's, and the editor's other presses are the campaign
 // editor's spec beside this one, over the same parts.
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed

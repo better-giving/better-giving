@@ -4,7 +4,7 @@ import { requiredCredentials, type Processors } from './factory';
 // what a spec needs to hand a `Processors` to something that takes one, when the thing it is
 // actually driving is a single port.
 //
-// not a spec itself — no pool's `include` matches this name, which is what keeps it a module the
+// not a spec itself — no project's `include` matches this name, which is what keeps it a module the
 // specs import rather than a third file of tests. it builds nothing a deployment would build:
 // `createPaymentProviders` in ./factory.ts reads the platform env and decides what a deployment can
 // charge on, and that decision is what ./factory.spec.ts covers. what is here is the other half —

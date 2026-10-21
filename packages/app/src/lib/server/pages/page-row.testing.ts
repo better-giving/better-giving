@@ -1,4 +1,3 @@
-import { env } from 'cloudflare:test';
 import type { Page } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
 import type { PageType } from '../../page/keys';
@@ -6,9 +5,10 @@ import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
 import { form, page } from '../db/schema';
 import { endCampaign, readPage } from './queries';
+import { run, stmt } from '$lib/server/db/database.testing';
 
 // a page and its owned settings row, put in for a spec that needs one. not a spec itself — no
-// pool's `include` matches this name — and nothing in the app imports it.
+// project's `include` matches this name — and nothing in the app imports it.
 
 export const SETTINGS = {
 	revenueAccountId: postableId('donationsDeductible'),
@@ -45,7 +45,7 @@ export async function insertPage(
 	live: Page | null = type === 'donation_page' ? draft : null
 ): Promise<string> {
 	if (type === 'donation_page') {
-		await env.DB.prepare("delete from page where type = 'donation_page'").run();
+		await run(stmt("delete from page where type = 'donation_page'"));
 	}
 	sequence += 1;
 	const [owned] = await db
@@ -82,11 +82,10 @@ export async function campaignOwning(
 	formId: string,
 	state: 'never_published' | 'ended'
 ): Promise<void> {
-	await env.DB.prepare(
-		`insert into page (id, type, name, slug, state, form_id, draft, published, created_at, updated_at)
-		 values (?, 'campaign', ?, ?, ?, ?, '{}', ?, 0, 0)`
-	)
-		.bind(
+	await run(
+		stmt(
+			`insert into page (id, type, name, slug, state, form_id, draft, published, created_at, updated_at)
+		 values (?, 'campaign', ?, ?, ?, ?, '{}', ?, 0, 0)`,
 			crypto.randomUUID(),
 			CAMPAIGN_NAME,
 			`winter-coats-${(sequence += 1)}`,
@@ -94,7 +93,7 @@ export async function campaignOwning(
 			formId,
 			state === 'ended' ? '{}' : null
 		)
-		.run();
+	);
 }
 
 /** ends the live campaign `pageId` as End does, at the version it stands at; throws where it did not. */

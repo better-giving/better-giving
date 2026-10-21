@@ -6,11 +6,9 @@
 // `packages/app/src/lib/server/email/smtp-config.ts` marks a variable name and an echoed value
 // that way — so a screen either renders the marks or shows an operator a literal backtick.
 //
-// it is in this package because both operator surfaces read one of those sentences: the dashboard
-// draws them from a `load`, and the console reads the same sentences off the wire (./console/
-// report.ts). a second parser is two answers to what a backtick means, and the one that drifts is
-// the one nobody is looking at — see CLAUDE.md, which is where the rule for promoting a module
-// into this package is written.
+// the dashboard draws those sentences from a `load`, through ./marked-text.react.tsx. a second
+// parser is two answers to what a backtick means, and the one that drifts is the one nobody is
+// looking at.
 //
 // it returns segments rather than a string of html, and that is the point of the module: the
 // strings it is handed interpolate values an operator set, so nothing here may reach a screen as

@@ -6,7 +6,7 @@ import { main } from './stage-embed.js';
 
 /**
  * every case runs against a temp directory and never against this checkout's own
- * `packages/form/dist/` or `static/` — see scripts/preflight-deploy.spec.js for the same reason.
+ * `packages/form/dist/` or `static/`.
  */
 const roots: string[] = [];
 

@@ -7,7 +7,8 @@ import type { ParsedOrgProfile } from './org-input';
 
 // every read and write of `org_profile`, so the table object never leaves this module — the same
 // boundary `contacts/queries.ts` and `ledger/posting.ts` draw, and it is what makes "all the writes
-// are here" true rather than aspirational.
+// are here" true rather than aspirational. the one read elsewhere is ./directory-identity.ts, raw
+// SQL for a script that cannot load the table object.
 //
 // ---------------------------------------------------------------------------
 // execute, or return statements — the rule for every write added below.
@@ -16,8 +17,8 @@ import type { ParsedOrgProfile } from './org-input';
 // `saveOrgProfile` does. a write that must land atomically with a row in another table may
 // not: it would split into a row-building half and a statement-building half and splice the
 // statement into the one `batch()` that owns the whole write, as `contacts/queries.ts` does
-// with `newContactRow` / `contactInsertStatement`. `Db` has no `transaction` (D1 has none —
-// see ../db/client.ts), so a single `batch()` is the only atomic unit there is.
+// with `newContactRow` / `contactInsertStatement`. `Db` has no `transaction`
+// (../db/client.ts), so a single `batch()` is the only atomic unit there is.
 //
 // ---------------------------------------------------------------------------
 // why no seeded row, and why the save is therefore an upsert.
@@ -31,7 +32,7 @@ import type { ParsedOrgProfile } from './org-input';
 //
 // so the first save has nothing to update and later saves have nothing to insert, and one
 // `onConflictDoUpdate` against the fixed id is both — one statement, so it needs no
-// `batch()` and no read-then-write, which D1 could not do atomically anyway.
+// `batch()` and no read-then-write, which `Db` could not do atomically anyway.
 // ---------------------------------------------------------------------------
 
 /**
@@ -45,9 +46,8 @@ const ORG_PROFILE_ID = 'default';
 /**
  * the organization's own details, or `null` when nobody has saved them yet.
  *
- * `null` is a real answer and not an error: a fresh deployment has no profile, the organisation
- * section of the console says so, and a receipt template that finds none must not render a
- * blank one.
+ * `null` is a real answer and not an error: a fresh deployment has no profile, and a receipt
+ * template that finds none must not render a blank one.
  *
  * no ordering and no `limit`, deliberately: `id` is the primary key and the check pins it to
  * one literal, so this is a point lookup on `sqlite_autoindex_org_profile_1` and "which
@@ -85,8 +85,8 @@ export async function readOrgProfile(db: Db): Promise<OrgProfile | null> {
  * save and an upsert that refreshed it would erase when this deployment was set up.
  * `updated_at` is left out too, but for the opposite reason: it carries `$onUpdateFn`, and
  * drizzle's `buildUpdateSet` — which `onConflictDoUpdate` runs its `set` through — adds
- * every column that has one whether or not the caller named it. `queries.workers.spec.ts`
- * pins both halves against a real D1 rather than trusting that.
+ * every column that has one whether or not the caller named it. `queries.db.spec.ts`
+ * pins both halves against a real database rather than trusting that.
  *
  * takes a `ParsedOrgProfile` rather than raw form values so that the "a saved row means at
  * minimum a legal name" promise cannot be bypassed by a caller that skipped
@@ -127,6 +127,87 @@ export async function saveOrgProfile(db: Db, input: ParsedOrgProfile): Promise<O
 		throw new Error('upserting into `org_profile` returned no row');
 	}
 	return row;
+}
+
+/**
+ * a save that `updateOrgDetails` or `updateOrgNotificationEmail` made: `saved`, `stale` where the
+ * row moved since the page was drawn, and `no-profile` where there is no row for a column of its
+ * own to land on.
+ */
+export type OrgSave = 'saved' | 'stale' | 'no-profile';
+
+/**
+ * the version a page is drawn with: the row's `updated_at` in unix ms, and 0 where no profile is
+ * saved — a row is never written at 0, so a page drawn over no profile is stale once one exists.
+ */
+export function orgProfileVersion(row: OrgProfile | null): number {
+	return row?.updatedAt.getTime() ?? 0;
+}
+
+/**
+ * writes the organisation's details from the dashboard: every column `saveOrgProfile` names but the
+ * notification address, which has a save of its own (`updateOrgNotificationEmail` below), and only
+ * where the row still carries `version`.
+ *
+ * one statement, as `saveOrgProfile` is: the insert the first time, and the guarded update after
+ * it. the guard is the conflict arm's own `where`, so a tab drawn before another save is answered
+ * `stale` with no read in front of the write for a race to fall between. an insert leaves the
+ * notification address null, which is what a deployment with no profile holds.
+ */
+export async function updateOrgDetails(
+	db: Db,
+	version: Date,
+	input: ParsedOrgProfile
+): Promise<Exclude<OrgSave, 'no-profile'>> {
+	const columns = {
+		legalName: input.legalName,
+		taxId: input.taxId,
+		addressLine1: input.addressLine1,
+		addressLine2: input.addressLine2,
+		city: input.city,
+		region: input.region,
+		postalCode: input.postalCode,
+		country: input.country,
+		mission: input.mission,
+		vision: input.vision,
+		brandColour: input.brandColour,
+		socialLinks: input.socialLinks
+	};
+
+	const written = await db
+		.insert(orgProfile)
+		.values({ id: ORG_PROFILE_ID, ...columns })
+		.onConflictDoUpdate({
+			target: orgProfile.id,
+			set: columns,
+			setWhere: eq(orgProfile.updatedAt, version)
+		})
+		.returning({ id: orgProfile.id });
+
+	return written.length > 0 ? 'saved' : 'stale';
+}
+
+/**
+ * writes the address this deployment reaches the organisation at, and nothing beside it, where the
+ * row still carries `version`. `null` clears it.
+ *
+ * an update and never an insert: a row cannot exist without a legal name
+ * (`org_profile_legal_name_not_blank_check`), so an address saved ahead of the details has no row
+ * to land on and is answered `no-profile`. which of the two a write that matched nothing met is
+ * read after it, and picks the answer rather than guarding anything.
+ */
+export async function updateOrgNotificationEmail(
+	db: Db,
+	version: Date,
+	email: string | null
+): Promise<OrgSave> {
+	const written = await db
+		.update(orgProfile)
+		.set({ notificationEmail: email })
+		.where(and(eq(orgProfile.id, ORG_PROFILE_ID), eq(orgProfile.updatedAt, version)))
+		.returning({ id: orgProfile.id });
+	if (written.length > 0) return 'saved';
+	return (await readOrgProfile(db)) === null ? 'no-profile' : 'stale';
 }
 
 // ---------------------------------------------------------------------------

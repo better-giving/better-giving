@@ -3,7 +3,7 @@ import { CREATED_FLASH, redirectWithFlash, SAVED_FLASH, takeFlash } from './flas
 
 // a node spec, not a workers one: nothing here reaches the database. what is under test is the
 // transport — a marker written on a redirect, read once at the address it landed on, and gone.
-// the routes that set and take these markers have their own coverage against a real D1.
+// the routes that set and take these markers have their own coverage against a real database.
 //
 // no cookie jar stands between the two halves any more. the cookie is written at `/`, so a
 // browser sends it to every address and nothing about path matching decides who reads it: the

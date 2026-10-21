@@ -125,8 +125,8 @@ describe('a field mounted into a document', () => {
 	});
 
 	it('holds a masked box as dots until the press shows it, and hides it again', () => {
-		// the whole of the reveal: the value is in the box either way — a console box is seeded with
-		// what the deployment is holding — and what the press changes is whether it is legible to
+		// the whole of the reveal: the value is in the box either way — a box may be seeded with what
+		// the deployment is holding — and what the press changes is whether it is legible to
 		// everybody else in the room.
 		const root = render(Field, {
 			id: 'set-ADMIN_PASSWORD',

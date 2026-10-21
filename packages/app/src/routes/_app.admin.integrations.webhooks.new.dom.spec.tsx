@@ -5,7 +5,7 @@ import { expect, it, onTestFinished } from 'vitest';
 import NewDestination from './_app.admin.integrations.webhooks.new';
 
 // what the add screen does with a press: a refusal said at its box, and the caret put there. the
-// server half is ./_app.admin.integrations.webhooks.new.workers.spec.ts; what is asserted here is
+// server half is ./_app.admin.integrations.webhooks.new.db.spec.ts; what is asserted here is
 // words, focus and which element is refused, never a class.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

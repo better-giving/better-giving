@@ -35,8 +35,7 @@ export const STAFF_USER_ID = '019fb1c4-3a51-7c9e-9f2a-6f0b7e5d84c1';
  * deployment can send mail.
  *
  * the value is `ADMIN_USERNAME` from `@better-giving/operator/admin-password`, which is
- * also what the deployer types into the sign-in box and what the console prints beside the
- * password box that sets the credential — one export behind all three. the two names are
+ * also what the deployer types into the sign-in box — one export behind both. the two names are
  * one value with two readings: this one is the staff row's identifier, and that one is the
  * word somebody types.
  *
@@ -136,7 +135,7 @@ export function staffCredentialPlugin(deps: { readonly db: Db; readonly env: Aut
 				// better-auth's own limiter, over a router this deployment does not serve —
 				// ./index.ts says why the knob is stated anyway, and why nothing here bounds
 				// the sign-in this app performs. what does is the `SIGN_IN_RATE_LIMITER`
-				// binding, charged by the login's action.
+				// limiter (../runtime/rate-limiter.ts), charged by the login's action.
 				pathMatcher: (path: string) => path === STAFF_SIGN_IN_PATH,
 				window: 60,
 				max: 5
@@ -157,8 +156,8 @@ export function staffCredentialPlugin(deps: { readonly db: Db; readonly env: Aut
  *
  *   - better-auth's `create` refuses a caller-supplied `id`, so it cannot honour the
  *     fixed `STAFF_USER_ID` that makes this row a singleton.
- *   - find-then-create is two D1 round trips on a path that runs on every sign-in; an
- *     upsert is one, and D1 supports `RETURNING`.
+ *   - find-then-create is two database round trips on a path that runs on every sign-in;
+ *     an upsert is one, and SQLite supports `RETURNING`.
  *   - there are no `databaseHooks` on `user` in this app, so nothing is being skipped.
  *
  * the cost of bypassing better-auth is that a column it adds to `user` in a future
@@ -194,7 +193,7 @@ async function upsertStaffUser(db: Db): Promise<AuthUser> {
 		throw new APIError('INTERNAL_SERVER_ERROR', {
 			code: 'STAFF_USER_UPSERT_FAILED',
 			message:
-				'Signed in, but the auth_user row could not be written. Check that migrations have been applied to this database: the console (`better-giving start`) applies them to the deployed D1 when it updates this deployment, and `pnpm wrangler d1 migrations apply DB --local` applies them to a local one.'
+				'Signed in, but the auth_user row could not be written. Update the database: `docker compose run --rm migrate`.'
 		});
 	}
 	return user;

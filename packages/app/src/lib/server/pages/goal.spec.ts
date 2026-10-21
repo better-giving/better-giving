@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 // the guard on "a campaign's raised figure is a `SUM` at read time, never stored and never cached"
 // (./goal.ts's header, CLAUDE.md → Bans → the ledger and → Storage). a source scan over the read and
 // the module that hands it to the page: a cache or a stored total added to either would still pass
-// every case in ./goal.workers.spec.ts, because a fresh isolate reads through any cache the first
+// every case in ./goal.db.spec.ts, because a fresh isolate reads through any cache the first
 // time.
 
 const GOAL = readFileSync(resolve(import.meta.dirname, 'goal.ts'), 'utf8');

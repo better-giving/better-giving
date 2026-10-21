@@ -1,7 +1,7 @@
 // what a spec needs to drive the Stripe adapter with no network: an HTTP client that answers from a
 // script and records what the SDK sent, and a delivery signature computed the way Stripe computes one.
 //
-// not a spec itself — no pool's `include` matches this name. it imports nothing from `stripe`
+// not a spec itself — no project's `include` matches this name. it imports nothing from `stripe`
 // (./sole-importer.spec.ts): the client is structural, and the SDK it is handed is the real one, so
 // the request under assertion is the one Stripe would receive, encoded by Stripe's own encoder.
 

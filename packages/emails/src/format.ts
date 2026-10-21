@@ -13,9 +13,9 @@ const CURRENCY = /^[A-Z]{3}$/;
  *
  * an email has no `Accept-Language` and this app stores no locale for anyone, so there is
  * nothing to negotiate — the choice is between one pinned locale and a formatter that
- * silently follows whatever the Worker's default resolves to. pinned wins: a receipt is a
+ * silently follows whatever the process's default resolves to. pinned wins: a receipt is a
  * document two people (a donor and their tax authority) read later, and a figure that
- * formats differently depending on which isolate rendered it is the kind of difference
+ * formats differently depending on which machine rendered it is the kind of difference
  * nobody notices until it matters.
  */
 const LOCALE = 'en-US';

@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
 import { Form, Link, redirect, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { operatorLinks } from '$lib/admin/operator-links';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
 import {
@@ -115,13 +116,12 @@ const ALREADY_A_MEMBER = 'This address is already a member here. Sign in instead
  * what a refusal that is about the deployment says.
  *
  * the same shape ./login.tsx's is and for the same reason: the auth layer's own message is written
- * for an agent reading a status body and belongs on the surfaces an operator controls, so what an
- * anonymous POST gets is the pointer rather than the answer.
+ * for an agent reading a status body and belongs in the app's log, so what an anonymous POST gets
+ * is the pointer rather than the answer.
  */
 const UNAVAILABLE =
 	'Your password could not be set: something is wrong with this deployment rather than with ' +
-	'what you typed. Ask whoever invited you to check the console (`better-giving start`); the ' +
-	'exact cause is in the deployment’s logs, which the console does not read.';
+	`what you typed. Tell whoever invited you. ${LOGS_SAY_WHY}`;
 
 export const links = operatorLinks;
 
@@ -194,8 +194,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	}
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and
-	// the cookie `Secure` policy from it, so a deployment answers correctly on workers.dev and on a
-	// custom domain without a deploy-time variable naming either.
+	// the cookie `Secure` policy from it, so a deployment answers correctly on `localhost` and behind
+	// its https proxy without a deploy-time variable naming either.
 	const auth = createAuth(db, authEnv, {
 		secret: signingKey.secret,
 		requestOrigin: url.origin
@@ -269,7 +269,7 @@ export default function Join({ loaderData, actionData }: Route.ComponentProps) {
  *
  * no rail and no identity band — the colleague holds no session and there is nothing under them to
  * navigate to — and the organisation's name is a caption above the heading, which is the shape
- * ./login.tsx's sign-in screen takes and $lib/admin/setup-gate.tsx argues.
+ * ./login.tsx's sign-in screen takes.
  */
 function Panel({ orgName, children }: { readonly orgName: string | null; children: ReactNode }) {
 	return (

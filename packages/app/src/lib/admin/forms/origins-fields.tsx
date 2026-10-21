@@ -1,6 +1,7 @@
 import { CodeChip } from '@better-giving/operator/components/data/CodeSlab';
 import { CheckboxGroup } from '@better-giving/operator/components/forms/CheckboxGroup';
 import { type ReactNode, useId } from 'react';
+import { href, Link } from 'react-router';
 import { FORM_FIELD_LABELS } from '$lib/forms/fields';
 import { unlistedSites } from '$lib/forms/input-schema';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
@@ -17,7 +18,7 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 // a form.
 //
 // a form screen carries only what that form decides, and which sites exist is not one of those
-// things: the list is the deployment's and is typed on the console. so nothing here adds,
+// things: the list is the deployment's and is typed on the forms list. so nothing here adds,
 // removes or edits an address — there is no Add, no Remove and no round trip, and a browser submits
 // the ticked boxes and nothing else. a group with nothing ticked submits no key at all, which
 // `.prefault([])` in `$lib/forms/input-schema.ts` is what stands in for.
@@ -38,9 +39,10 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 // what each box names is built from what is on the screen, because an `aria-describedby` naming a
 // hint that was not rendered describes nothing.
 //
-// that sentence is not a link, and may not be. a form screen names the console's Sites fold
-// (packages/console-ui/src/lib/sites-fold.tsx) as the place a site is listed and stops: it is not on
-// this deployment at all, so there is no address here to link to.
+// for the deployer, that sentence links to the card the list is typed on — `SITES_ID` in
+// ../../../routes/_app.admin.forms._index.tsx is the fragment it lands on. that card is the
+// deployer's to change and a member's to read (its `sites` in the same file's loader), so a member
+// is told whom to ask instead, with no link.
 //
 // the fieldset is this file's and the group inside it is the library's: the legend is written here
 // and `CheckboxGroup` is mounted without one, which is the shape that component states for a group
@@ -48,7 +50,14 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 
 const NOT_ON_ANY_SITE = 'Not on any site yet.';
 const TICK_THE_SITES = 'Tick the sites you’ll paste this form on.';
-const WHERE_A_SITE_COMES_FROM = 'A site that is not here is listed on the console.';
+const WHERE_A_SITE_COMES_FROM = (
+	<>
+		A site that is not here is added under{' '}
+		<Link to={`${href('/admin/forms')}#sites`}>Which sites your forms go on</Link>.
+	</>
+);
+const WHOM_A_MEMBER_ASKS =
+	'To use a site that is not here, ask the person who deployed this site to add it.';
 
 type OriginsBox = {
 	/** the group's own id, which the message under it is named from. */
@@ -71,6 +80,8 @@ type FormOriginsFieldsProps = {
 	 * the ones it is not on, and an empty list is a state this group says something about.
 	 */
 	readonly sites: readonly string[];
+	/** whether the viewer deployed the site, and so can add a site to the list. */
+	readonly deployer: boolean;
 	/**
 	 * the group's own submit, at the foot of the group it saves. absent on the create screen, which
 	 * has one submit for all four groups.
@@ -78,7 +89,7 @@ type FormOriginsFieldsProps = {
 	readonly footer?: ReactNode;
 };
 
-export function FormOriginsFields({ box, sites, footer }: FormOriginsFieldsProps) {
+export function FormOriginsFields({ box, sites, deployer, footer }: FormOriginsFieldsProps) {
 	const originsError = box.errors?.[0];
 
 	// what makes a dropped site's box distinct from the listed box of the same address, and what
@@ -91,7 +102,7 @@ export function FormOriginsFields({ box, sites, footer }: FormOriginsFieldsProps
 	 * the sites this form holds that the deployment no longer lists.
 	 *
 	 * a real state rather than a guard: both invariants over these two lists are read-then-write and
-	 * D1 has no interactive transaction, so a site can leave the shared list between this page being
+	 * `Db` has no interactive transaction, so a site can leave the shared list between this page being
 	 * drawn and its save being pressed. the residue is benign on the public path — `corsHeaders` in
 	 * `$lib/server/api/cors.ts` reads the form's own column — and has to be visible and clearable.
 	 *
@@ -136,13 +147,18 @@ export function FormOriginsFields({ box, sites, footer }: FormOriginsFieldsProps
 	];
 
 	const onNoSite = box.ticked.length === 0;
-	const hint = [
+	const lead = [
 		onNoSite ? NOT_ON_ANY_SITE : null,
-		onNoSite && sites.length > 0 ? TICK_THE_SITES : null,
-		WHERE_A_SITE_COMES_FROM
+		onNoSite && sites.length > 0 ? TICK_THE_SITES : null
 	]
 		.filter(Boolean)
 		.join(' ');
+	const hint = (
+		<>
+			{lead ? `${lead} ` : null}
+			{deployer ? WHERE_A_SITE_COMES_FROM : WHOM_A_MEMBER_ASKS}
+		</>
+	);
 
 	return (
 		<>

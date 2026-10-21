@@ -3,8 +3,7 @@ import { ORIGIN, PASSWORD } from './program-routes.testing';
 import { finishSetup } from './webhook-routes.testing';
 
 // what the page editors' route specs share beyond ./program-routes.testing.ts: a deployment whose
-// set-up is finished, which the protected layout's set-up gate serves its screens on alone
-// (./routes/_app.tsx).
+// set-up is finished (`finishSetup` in ./webhook-routes.testing.ts).
 //
 // here rather than beside the routes for ./program-routes.testing.ts's reason: every file directly
 // under ./routes/ is an address to `flatRoutes`, bar a spec.

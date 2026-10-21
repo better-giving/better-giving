@@ -536,7 +536,11 @@ async function disputeHolding(
 	paymentId: string,
 	refundedAt: Date
 ): Promise<Payment | null> {
-	const closedByThis = and(eq(dispute.outcome, 'lost'), eq(dispute.closedAt, refundedAt));
+	// a refund with no usable time closed nothing, and libSQL refuses to bind an invalid date, so it
+	// finds an open dispute only; the refund itself is refused further on (`recordReversal`).
+	const closedByThis = Number.isNaN(refundedAt.getTime())
+		? undefined
+		: and(eq(dispute.outcome, 'lost'), eq(dispute.closedAt, refundedAt));
 	const [row] = await db
 		.select({ payment })
 		.from(payment)

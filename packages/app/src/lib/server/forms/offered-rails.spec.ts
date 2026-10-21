@@ -10,10 +10,9 @@ import { offeredRails } from './offered-rails';
 
 // which rails a donation form offers, away from anything that serves it.
 //
-// a node spec rather than a workers one because nothing here touches the database (CLAUDE.md splits
-// the pools by that), and the seam is a value: a case that wants an account approved for one rail
-// and not the other just says so. ./rail-cache.workers.spec.ts is the other half, and it is a
-// workers spec because the edge cache is workerd's.
+// a node spec rather than a db one because nothing here touches the database (CLAUDE.md splits
+// the projects by that), and the seam is a value: a case that wants an account approved for one rail
+// and not the other just says so. ./rail-cache.spec.ts is the other half, which reads the edge cache.
 
 /**
  * an account that answered, with every rail it settles at the standing named and the rest approved.

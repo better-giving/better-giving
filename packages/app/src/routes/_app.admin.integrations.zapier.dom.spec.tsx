@@ -6,7 +6,7 @@ import Zapier, { shouldRevalidate } from './_app.admin.integrations.zapier';
 
 // what the Zapier page draws from its reading and does with the answers its presses get: the key
 // shown once in the card, a refusal said under the key, the question a replace asks and the strip
-// over a feed that stopped. the server half is ./_app.admin.integrations.zapier.workers.spec.ts;
+// over a feed that stopped. the server half is ./_app.admin.integrations.zapier.db.spec.ts;
 // what is asserted here is words, focus and which element is on the page, never a class or a
 // computed style.
 
@@ -136,7 +136,7 @@ let posted: FormData[] = [];
 
 /**
  * the page over a loader and an action standing in for the route's own, so a press runs the whole
- * round — which is what the route's server half does (the workers spec beside this one). the stub
+ * round — which is what the route's server half does (the db spec beside this one). the stub
  * takes the route's own `shouldRevalidate`, which is what decides whether a refusal re-reads.
  */
 async function flow(

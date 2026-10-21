@@ -3,12 +3,10 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import type { DestinationLinkProps } from '@better-giving/operator/components/shell/DestinationCell';
-import { AccountBand, AccountRow } from '@better-giving/operator/components/shell/AccountRow';
 import { AppShell, PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { Column, Group, Section } from '@better-giving/operator/components/shell/Layout';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { Banner } from '@better-giving/operator/components/status/Banner';
-import { Brand } from '@better-giving/operator/components/status/Brand';
 
 /*
  * the shell a surface with a rail takes, and the panel route that stands outside it.
@@ -44,9 +42,9 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * marked, which is the only honest rail to draw there and is what the centred specimen has.
  *
  * `groups` has no default and is always handed: drawn as a short rail of four with marks, as the
- * dashboard's three groups with marks, as the console's run with a headed group, logos and status
- * marks, as one entry, as none, and as the dashboard's with four entries stating `bar` and a headed
- * integrations group on the sheet. the empty rail is a `nav` with no cells in it, which below the
+ * dashboard's three groups with marks, as a run with a headed group and status marks, as one
+ * entry, as none, and as the dashboard's with four entries stating `bar` and a headed integrations
+ * group on the sheet. the empty rail is a `nav` with no cells in it, which below the
  * wide breakpoint is an empty strip across the foot of the window. a tab is an equal share of the
  * width whatever the count, and the bar is flat: a headed group's entries stand as tabs of their
  * own.
@@ -55,27 +53,23 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * so every specimen on this page follows it once the page is reloaded.
  *
  * `wayOut` reads absence as a request for the component's own quiet button and `null` as none.
- * `foot` stands in the rail in its place, which is the console's shape: its account and close in
- * the band, and in the foot the account's logo and name as a label that opens nothing — the real
- * AccountRow and AccountBand as packages/console-ui/src/lib/cloudflare-account.tsx hands them
- * (./shell-account-row.tsx has them out of the shell). `null` for both drops the rail's foot rather
- * than standing an empty one.
+ * `foot`, handed, stands in the rail's foot in its place, and `null` for both drops the rail's foot
+ * rather than standing an empty one.
  *
  * every shell's first stop is its skip link, off the screen until it takes focus: Tab once into
  * any specimen and it stands over the top corner of the window, and pressing it puts focus on that
  * shell's page past the whole rail. the page draws no ring when it lands there.
  *
  * `head` is the strip across the top of the panel, and `site` is the globe leading the
- * organisation's name, drawn both ways: an address — the console's link to its deployment's
- * dashboard, a new tab — and an in-app destination with its own name, the dashboard's, drawn as the
- * handed link in the same tab.
+ * organisation's name, drawn both ways: an address off the surface, opened in a new tab, and an
+ * in-app destination with its own name, the dashboard's, drawn as the handed link in the same tab.
  *
  * the dashboard's rail marks its four tabs `bar`, as the dashboard does: the column is unchanged,
  * and below 64rem the bar holds those four and ends in a More tab whose sheet holds the rest. the
  * reader is in Donors there, a tab; press More to see the sheet.
  *
  * `link` is what every cell is drawn as. a mounted rail states one — this package declares no
- * router and cannot (CLAUDE.md: the graph is `app → operator ← console`) — so the second shell
+ * router and cannot (AGENTS.md → Workspace: the graph is `app → operator`) — so the second shell
  * hands one in and the first takes the plain anchors that render identically.
  *
  * `PanelRoute` is published from this module and is the composition a route outside the shell is:
@@ -83,9 +77,8 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * specimen here is the signing-in one, which nothing else in the gallery draws.
  *
  * its two strips are drawn both ways, and neither is this route's own — the head is `.adm-head` and
- * the foot `.adm-footstrip`, the two strips ./shell-bare-shell.tsx stands over and under a page. the
- * pair is what says a strip does not move the panel:
- * absent, the route is one row and the panel is centred in the window; with a strip at each edge the
+ * the foot `.adm-footstrip`. the pair is what says a strip does not move the panel: absent, the
+ * route is one row and the panel is centred in the window; with a strip at each edge the
  * panel is centred in what they leave. the two panels stand at different heights on the page and both
  * are in the middle of the space they were given — which is invisible in either one alone. the second
  * specimen carries both, because the strips are tracked together and a route showing one of them says
@@ -102,24 +95,6 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
 function StandInLink({ children, ...rest }: DestinationLinkProps) {
 	return <a {...rest}>{children}</a>;
 }
-
-/* the console's account, as packages/console-ui/src/lib/cloudflare-account.tsx hands it to both
-   faces, and the close it stands beside. */
-const ACCOUNT = {
-	name: "Riverside Shelter's Account",
-	brand: 'cloudflare',
-	whose: 'Cloudflare account'
-} as const;
-
-const CLOSE = (
-	<Button
-		variant="quiet"
-		size="sm"
-		mark="unplug"
-		className="adm-signout"
-		aria-label="Close console"
-	/>
-);
 
 export default function ShellAppShellPreview() {
 	return (
@@ -219,15 +194,13 @@ export default function ShellAppShellPreview() {
 				</Column>
 			</AppShell>
 
-			{/* the console's rail: a headed group of processors drawn with pictures, a status mark on
-			    every entry, the site's globe before the name, the close in the band and an account in
-			    the foot. the strip names the page, so its header states no title and the standfirst
-			    opens the page alone, at the column's start, the shape the console's sites screen draws.
-			    collapsed, the logo alone stands for the account, a label still and nothing to press. */}
+			{/* a headed group, a status mark on every entry, and the globe before the name as an
+			    address off the surface. the strip names the page, so its header states no title and
+			    the standfirst opens the page alone, at the column's start. */}
 			<AppShell
 				org="Riverside Shelter"
 				current="Sites"
-				site="https://better-giving.riverside.workers.dev/admin"
+				site="https://riverside-shelter.org"
 				groups={[
 					{
 						destinations: [
@@ -273,13 +246,6 @@ export default function ShellAppShellPreview() {
 						]
 					}
 				]}
-				wayOut={
-					<>
-						<AccountBand {...ACCOUNT} />
-						{CLOSE}
-					</>
-				}
-				foot={<AccountRow {...ACCOUNT} out={CLOSE} />}
 				head={<span className="adm-headstrip__title">Sites</span>}
 			>
 				<Column>
@@ -377,28 +343,16 @@ export default function ShellAppShellPreview() {
 
 			{/* the same route carrying both strips: two nodes at the two ends of each, and the panel
 			    centred in what they leave rather than in the window. what stands in either is the
-			    caller's — the console hands who is signed in with the one press it offers above, and
-			    the release with a mark below, where plain text is what a specimen wants.
+			    caller's, and plain text is what a specimen wants.
 
-			    **narrow the window to the 375px floor and the head's leading end wraps inside itself
-			    rather than dropping the press to a row of its own.** the run at the foot's trailing
-			    end is one node rather than three, because a strip's step falls between its two ends —
-			    three links handed in loose are three ends spread across the line. */}
+			    the run at the foot's trailing end is one node rather than three, because a strip's
+			    step falls between its two ends — three links handed in loose are three ends spread
+			    across the line. */}
 			<PanelRoute
 				bar={
 					<>
-						{/* the head's two ends as both of the console's screens draw them
-						    (packages/console-ui/src/lib/head-strip.tsx): the identity on one line, and the
-						    press across from it carrying its mark and no word. it is drawn here rather than
-						    described because packages/operator/src/styles/adm.css squares that press on the
-						    box a hand has to find, which is a shape nothing else on this page wears. one
-						    value in the identity, because a sign-in is held under an address and has no id
-						    beside it. */}
-						<span className="adm-headstrip__who">
-							<Brand name="cloudflare" label="Cloudflare" />
-							<span className="adm-headstrip__name">someone@example.org</span>
-						</span>
-						<Button variant="soft" size="sm" mark="log-out" aria-label="Sign out of Cloudflare" />
+						<span>someone@example.org</span>
+						<Button variant="soft" size="sm" mark="log-out" aria-label="Sign out" />
 					</>
 				}
 				foot={

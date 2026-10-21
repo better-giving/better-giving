@@ -19,8 +19,7 @@ import { Modal } from './Dialog';
 // ./Dialog.tsx rather than left to the browser: the element is unmounted while it is still in the
 // top layer, so the restoration `close()` would have done never runs. a dialog arriving open in the
 // server's markup has no opener to go back to and that case asserts nothing; the one below is the
-// other kind, a card a control on the page put up — packages/console-ui/src/lib/smtp-fold.tsx's
-// confirm, and packages/console-ui/src/routes/_index.tsx's close confirm.
+// other kind, a card a control on the page put up.
 
 /** the element the shell put on the page. */
 function dialogIn(root: HTMLElement): HTMLDialogElement {
@@ -159,9 +158,8 @@ describe('the shell over the dialog', () => {
 	});
 
 	/**
-	 * a card a control on the page put up and either dismissal takes away again, which is what every
-	 * confirm on the console is: the press is what mounts the dialog, and answering it unmounts the
-	 * same element rather than closing it.
+	 * a card a control on the page put up and either dismissal takes away again: the press is what
+	 * mounts the dialog, and answering it unmounts the same element rather than closing it.
 	 */
 	function Confirming() {
 		const [up, setUp] = useState(false);

@@ -1,0 +1,995 @@
+import type { Client } from '@libsql/client';
+import { ADMIN_USERNAME } from '@better-giving/operator/admin-password';
+import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { signInRateLimitMessage } from '$lib/server/api/rate-limit';
+import { createAuth, inviteMember, redeemInvitation } from '$lib/server/auth';
+import { PIN_UNUSABLE } from '$lib/server/auth/pin';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
+import { withSigningKeyUnreadable } from '$lib/server/auth/signing-key.testing';
+import { createDb } from '$lib/server/db/client';
+import { PASSWORD_RESET_FLASH, redirectWithFlash } from '$lib/server/flash';
+import { requestContext } from '../request-context';
+import { action, loader } from './login';
+import type { Route } from './+types/login';
+import { unreachableClient } from '$lib/server/db/unreachable-client.testing';
+import { client, first, run, stmt } from '$lib/server/db/database.testing';
+import { createDeferredWork } from '$lib/server/runtime/deferred';
+import { readEnv } from '$lib/server/runtime/env';
+import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
+
+/** the deploy-time values a request reads, with none set and the spec limiters. */
+const env = readEnv({}, specRateLimiters());
+
+// the sign-in screen's server half, against a real database.
+//
+// a db spec and not a node one: this route is outside every layout there is — that is what
+// makes it reachable without a session — so it resolves its own signing key and builds its own auth
+// instance, and both are the database reads. a stand-in for those would only prove the stand-in (CLAUDE.md).
+//
+// **the handlers are called rather than mounted, which is the one place this file departs from
+// ../route-request.testing.ts.** two reasons, and both are local to this route. no `middleware`
+// sits above it, so a mounted chain would run nothing a direct call misses — the limiter this
+// screen owes is charged inside the action rather than by a layout. and `queryRoute` hands back a
+// handler's value with a `data()`'s status dropped, which is the whole of what a form rejection
+// carries: every refusal below would read as 200. ../routes.spec.ts is what holds the other half —
+// that this file is served at `/login`, outside the protected layout, on the public allow-list.
+
+/** the origin every request in this file arrives on. not loopback, so the cookie is `__Secure-`. */
+const ORIGIN = 'https://give.example';
+
+/** what an empty box and a box the request did not carry are both told, quoted rather than imported. */
+const MISSING = 'required';
+
+/** the deployment's staff password, long enough for `readStaffCredential` to accept it. */
+const PASSWORD = 'a-very-long-random-staff-password';
+
+/**
+ * the deploy-time env every request here carries: the staff credential and nothing else, since
+ * signing in reads no processor key and no mail host.
+ */
+const DEPLOYED = { ...env, ADMIN_PASSWORD: PASSWORD };
+
+/** a deployment whose `BETTER_AUTH_URL` pin names no address. */
+const PINNED_NOWHERE = { ...DEPLOYED, BETTER_AUTH_URL: 'localhost:8787' };
+
+/**
+ * what that deployment throws: the sentence as a 500's data, which the error boundary draws. the
+ * caller is anonymous, so it names the variable and the fix and never the value.
+ */
+const PIN_REFUSAL = { data: PIN_UNUSABLE, init: { status: 500 } };
+
+/** what react router hands a handler, built as src/server/app.ts builds it for a real request. */
+function args(
+	request: Request,
+	deployed: typeof DEPLOYED = DEPLOYED,
+	on: Client = client
+): Route.LoaderArgs {
+	return {
+		request,
+		// the normalised url, which is what react router passes a handler: after the first
+		// navigation the browser asks for `<path>.data`, and the `?next=` this route reads is on
+		// the address the operator was going to rather than on that payload's own url.
+		url: new URL(request.url),
+		params: {},
+		pattern: '/login',
+		context: requestContext({ env: deployed, deferred: createDeferredWork(), client: on })
+	};
+}
+
+/** a real session, as the `Cookie` header a browser would send back. */
+async function signIn(): Promise<string> {
+	const db = createDb(client);
+	const signingKey = await resolveAuthSecret(db, {});
+	if (!signingKey.ok) throw new Error(signingKey.cause);
+
+	const auth = createAuth(
+		db,
+		{ ADMIN_PASSWORD: PASSWORD },
+		{ secret: signingKey.secret, requestOrigin: ORIGIN }
+	);
+	const { headers } = await auth.api.signInStaff({
+		body: { password: PASSWORD },
+		headers: new Headers({ origin: ORIGIN }),
+		returnHeaders: true
+	});
+
+	const cookies = headers.getSetCookie().map((value) => value.split(';', 1)[0]);
+	expect(cookies.length).toBeGreaterThan(0);
+	return cookies.join('; ');
+}
+
+/** the organisation's own row, written past drizzle: what this page reads is a column. */
+async function saveOrg(legalName: string, taxId: string | null = null): Promise<void> {
+	await run(
+		stmt(
+			`insert into org_profile (id, legal_name, tax_id, created_at, updated_at)
+		 values ('default', ?, ?, 0, 0)`,
+			legalName,
+			taxId
+		)
+	);
+}
+
+function get(search = '', cookie = ''): Request {
+	return new Request(`${ORIGIN}/login${search}`, {
+		headers: cookie ? { cookie } : {}
+	});
+}
+
+/** the loader's answer, or the redirect it threw instead of answering. */
+async function visit(
+	search = '',
+	cookie = ''
+): Promise<Response | Awaited<ReturnType<typeof loader>>> {
+	try {
+		return await loader(args(get(search, cookie)));
+	} catch (thrown) {
+		if (thrown instanceof Response) return thrown;
+		throw thrown;
+	}
+}
+
+beforeEach(async () => {
+	await run(stmt('delete from auth_member_invitation'));
+	await run(stmt('delete from auth_session'));
+	await run(stmt('delete from auth_user'));
+	await run(stmt('delete from org_profile'));
+	await run(stmt('delete from site'));
+});
+
+describe('GET /login — a visitor who is already signed in', () => {
+	/**
+	 * the second tab. one browser can hold this page open twice — the gate mints a `/login?next=…`
+	 * per turned-away request — so the tab that did not sign in is a page with nothing to do and a
+	 * destination still on its url.
+	 */
+	it('is sent on to their destination', async () => {
+		const answer = await visit('?next=%2Fadmin%2Fdonors', await signIn());
+
+		expect(answer).toBeInstanceOf(Response);
+		expect((answer as Response).status).toBe(303);
+		expect((answer as Response).headers.get('location')).toBe('/admin/donors');
+	});
+
+	it("is sent to the app's entrance when there is no destination, or it does not validate", async () => {
+		const cookie = await signIn();
+
+		const bare = await visit('', cookie);
+		const hostile = await visit('?next=%2F%2Fevil.example', cookie);
+
+		expect((bare as Response).headers.get('location')).toBe('/');
+		// silently. an attacker composes the url this parameter arrives on, so a message quoting
+		// the value it refused would be their page, one click further away ($lib/server/auth/next.ts).
+		expect((hostile as Response).headers.get('location')).toBe('/');
+	});
+
+	/** and an anonymous visitor is left to sign in, which is what the page is for. */
+	it('is not what an anonymous visitor is, so the page renders for them', async () => {
+		const answer = await visit('?next=%2Fadmin%2Fdonors');
+
+		expect(answer).not.toBeInstanceOf(Response);
+	});
+
+	it('names a pin that names no address, and logs its value rather than sending it', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			await expect(loader(args(get(), PINNED_NOWHERE))).rejects.toMatchObject(PIN_REFUSAL);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+		} finally {
+			logged.mockRestore();
+		}
+	});
+});
+
+describe('GET /login — which deployment this is', () => {
+	it('names the organisation this deployment was set up as', async () => {
+		await saveOrg('Acme Foundation');
+
+		expect(await served()).toEqual({ orgName: 'Acme Foundation', passwordReset: false });
+	});
+
+	it('serves the password box on a deployment nobody has set up', async () => {
+		// a fresh fork has no row at all, and the deployer signs in to set it up.
+		expect(await served()).toEqual({ orgName: null, passwordReset: false });
+	});
+
+	it('publishes the name and nothing else about the organisation', async () => {
+		// this page is served to anyone who asks for it. the rest of that row — the EIN,
+		// the address, where receipts come from — is what a deployment tells its donors after a
+		// gift, not what it tells an anonymous visitor at a password box.
+		await saveOrg('Acme Foundation', '12-3456789');
+
+		const answer = await served();
+
+		expect(Object.keys(answer)).toEqual(['orgName', 'passwordReset']);
+		expect(JSON.stringify(answer)).not.toContain('12-3456789');
+	});
+
+	/**
+	 * the deployment whose database is not answering, which is the one this page has to keep
+	 * working on: every screen that reports a broken deployment is behind this password box, so a
+	 * name that could not be read has to cost the name and nothing else.
+	 *
+	 * a client whose every statement fails, the shape of a deployment whose database this server
+	 * cannot reach. the session read fails the same way and for the same reason, and it costs the
+	 * bounce rather than the page.
+	 */
+	it('renders the sign-in box when the organisation’s name cannot be read', async () => {
+		const answer = await loader(args(get(), DEPLOYED, unreachableClient()));
+
+		expect(published(answer)).toEqual({ orgName: null, passwordReset: false });
+	});
+
+	/**
+	 * the marker /reset leaves behind, which is what turns "your password is changed" into a
+	 * sentence on the screen the member lands on rather than one that route had to render itself.
+	 *
+	 * the clearing rides the same response that publishes it, so a reload reports nothing —
+	 * $lib/server/flash.ts is where that is argued, and being shown twice is what the transport
+	 * exists to prevent.
+	 */
+	it('reports a finished password reset once, and burns the marker on the same response', async () => {
+		const marker = await resetMarker();
+
+		const landed = await loader(args(get('', marker)));
+		const reloaded = await loader(args(get('', marker.replace(/=.*/, '='))));
+
+		expect(published(landed)).toMatchObject({ passwordReset: true });
+		expect(headerOf(landed)).toContain('Max-Age=0');
+		expect(published(reloaded)).toMatchObject({ passwordReset: false });
+	});
+});
+
+/** the sign-in screen as the loader publishes it, past the `data()` the clearing header rides on. */
+async function served(): Promise<Record<string, unknown>> {
+	const answer = await visit();
+	if (answer instanceof Response) throw new Error('the loader redirected instead of answering');
+	return published(answer) as Record<string, unknown>;
+}
+
+/** the payload of a loader answer, whether or not it was wrapped to carry a header. */
+function published(answer: unknown): unknown {
+	return answer !== null && typeof answer === 'object' && 'data' in answer
+		? (answer as { data: unknown }).data
+		: answer;
+}
+
+/** the `Set-Cookie` a wrapped loader answer carries, if it carries one. */
+function headerOf(answer: unknown): string {
+	const init = (answer as { init?: ResponseInit }).init;
+	return String(new Headers(init?.headers).get('set-cookie'));
+}
+
+/**
+ * the cookie a finished reset leaves in the browser, as the browser would send it back.
+ *
+ * written by the real transport rather than by hand: what makes this marker land is the
+ * destination inside the value matching the address the load runs for, and a hand-built cookie
+ * would be a fixture that agreed with itself ($lib/server/flash.ts).
+ */
+async function resetMarker(): Promise<string> {
+	const response = await redirectWithFlash(
+		new Request(`${ORIGIN}/reset`),
+		PASSWORD_RESET_FLASH,
+		'/login',
+		'reset'
+	);
+	const written = response.headers.get('set-cookie');
+	if (written === null) throw new Error('the flash wrote no cookie');
+	return written.split(';', 1)[0] ?? '';
+}
+
+// ---------------------------------------------------------------------------
+// the write, which is the one this deployment serves to a caller with no session.
+
+/** what the action answers with when it refuses: `invalid()`'s data, with the status on it. */
+type Refused = Exclude<Awaited<ReturnType<typeof action>>, Response>;
+
+/** how many sessions this deployment is holding. */
+async function sessions(): Promise<number> {
+	const row = await first<{ n: number }>(stmt('select count(*) as n from auth_session'));
+	return row?.n ?? 0;
+}
+
+/**
+ * the staff path as the form submits it: the deployer's username in the identifier box.
+ *
+ * the constant rather than the word, because the box's hint on ./login.tsx prints it off that same
+ * export — a literal here would keep passing the day the identifier moves and the hint names the
+ * old one. ./login.dom.spec.tsx pins the word itself.
+ */
+function typed(password: string): FormData {
+	return typedAs(ADMIN_USERNAME, password);
+}
+
+/** whatever was typed in the two boxes, which is the whole of what this form carries. */
+function typedAs(identifier: string, password: string): FormData {
+	const body = new FormData();
+	body.set('identifier', identifier);
+	body.set('password', password);
+	return body;
+}
+
+/** how many callers `post` has made up, so each is its own `/48` and its own fresh bucket. */
+let callersMinted = 0;
+
+/**
+ * the form submitted from `ip`, which is the address the server entry stamps (`CLIENT_IP_HEADER`).
+ *
+ * left out, the caller is a new address every call, which is what production looks like — every
+ * caller attributed — without one case spending another's bucket. `null` is a caller the server did
+ * not attribute: no header at all.
+ */
+function post(
+	body: FormData,
+	{
+		search = '',
+		ip = `2001:db8:${(0x1000 + callersMinted++).toString(16)}::1`,
+		site,
+		deployed = DEPLOYED
+	}: { search?: string; ip?: string | null; site?: string; deployed?: typeof DEPLOYED } = {}
+) {
+	const headers = new Headers({ origin: ORIGIN });
+	if (ip !== null) headers.set(CLIENT_IP_HEADER, ip);
+	if (site) headers.set('sec-fetch-site', site);
+	return action(
+		args(new Request(`${ORIGIN}/login${search}`, { method: 'POST', headers, body }), deployed)
+	);
+}
+
+/** the refusal, or a loud failure rather than a case that silently asserted nothing. */
+async function refused(...call: Parameters<typeof post>): Promise<Refused> {
+	const answer = await post(...call);
+	if (answer instanceof Response)
+		throw new Error(`the sign-in answered ${answer.status} instead of refusing`);
+	return answer;
+}
+
+/** the form-level sentence a refusal carries, which is what the banner renders. */
+function banner(answer: Refused): string | undefined {
+	return answer.data.form.result.error?.['']?.[0];
+}
+
+/** the sentence under the password box. */
+function underTheBox(answer: Refused): string[] | null | undefined {
+	return answer.data.form.result.error?.password;
+}
+
+/** and the one under the box above it. */
+function underTheIdentifier(answer: Refused): string[] | null | undefined {
+	return answer.data.form.result.error?.identifier;
+}
+
+describe('POST /login — where a sign-in ends up', () => {
+	/**
+	 * the destination rides on the page's own url rather than in a field, which is what makes this
+	 * work with nothing for the page to render: a `<Form method="post">` with no `action` posts to
+	 * the current url, query string and all, so the action reads the parameter the gate minted
+	 * straight off `url`.
+	 */
+	it('returns to the destination the gate turned away', async () => {
+		const answer = await post(typed(PASSWORD), {
+			search: '?next=%2Fadmin%2Fforms%2Fabc%2Fsettings%3Ftab%3Dx'
+		});
+
+		expect(answer).toBeInstanceOf(Response);
+		expect((answer as Response).status).toBe(303);
+		expect((answer as Response).headers.get('location')).toBe('/admin/forms/abc/settings?tab=x');
+	});
+
+	/** the ordinary sign-in, which nobody was redirected into: the app's entrance at `/`. */
+	it("lands on the app's entrance when there is no destination", async () => {
+		const answer = await post(typed(PASSWORD));
+
+		expect((answer as Response).headers.get('location')).toBe('/');
+	});
+
+	/**
+	 * and a destination that does not validate is the same as none — silently. an attacker composes
+	 * the url this parameter arrives on, so the one thing this must not do is hand the operator a
+	 * page of theirs off the back of a sign-in that worked, and the second thing is say a word
+	 * about it: a message quoting the value is the same page, one click further away.
+	 *
+	 * `safeNext` in $lib/server/auth/next.ts is where the rule lives and where its spellings are
+	 * enumerated; what is asserted here is that this route spends it at all.
+	 */
+	it("lands on the app's entrance when the destination names another origin", async () => {
+		for (const hostile of ['https://evil.example', '//evil.example', '/\\evil.example']) {
+			const answer = await post(typed(PASSWORD), {
+				search: `?next=${encodeURIComponent(hostile)}`
+			});
+
+			expect((answer as Response).headers.get('location')).toBe('/');
+		}
+	});
+
+	/**
+	 * and the browser leaves holding the session, which is the half a redirect cannot claim for
+	 * itself. better-auth builds its `set-cookie` on the response for the HTTP surface this
+	 * deployment does not serve, and nothing copies it onto ours — dropped, a sign-in that
+	 * worked lands the operator back at this page with the gate turning them away again.
+	 */
+	it('sets the session cookie on the redirect it answers with', async () => {
+		const answer = (await post(typed(PASSWORD))) as Response;
+
+		expect(await sessions()).toBe(1);
+		expect(answer.headers.getSetCookie().some((value) => value.includes('session'))).toBe(true);
+	});
+});
+
+describe('POST /login — what the browser gets back', () => {
+	/**
+	 * the empty POST, which is what `mustArrive` refuses before the schema is allowed to fill the
+	 * box in. `curl -X POST` is the caller, and it meets the same sentence under the box that an
+	 * operator who tabbed past it meets.
+	 */
+	it('refuses a body with no password, without hashing anything', async () => {
+		const answer = await refused(new FormData());
+
+		expect(answer.init?.status).toBe(400);
+		expect(underTheBox(answer)).toEqual([MISSING]);
+		expect(await sessions()).toBe(0);
+	});
+
+	/** and a blank box says the same thing, because it is the same problem. */
+	it('refuses a blank password with the sentence an empty body gets', async () => {
+		const answer = await refused(typed(''));
+
+		expect(underTheBox(answer)).toEqual([MISSING]);
+		// the box carried its key, so nothing about the body was incomplete and there is no
+		// banner: the sentence belongs under the input.
+		expect(banner(answer)).toBeUndefined();
+		expect(await sessions()).toBe(0);
+	});
+
+	/**
+	 * and the box above it, which is stated the same way: a body that names no identity is refused
+	 * where an absent key is refused, and a box submitted blank meets the same sentence.
+	 */
+	it('refuses a body that names no identity, and a blank box with it', async () => {
+		const absent = new FormData();
+		absent.set('password', PASSWORD);
+
+		const missing = await refused(absent);
+		const blank = await refused(typedAs('', PASSWORD));
+
+		expect(missing.init?.status).toBe(400);
+		expect(underTheIdentifier(missing)).toEqual([MISSING]);
+		expect(underTheIdentifier(blank)).toEqual([MISSING]);
+		// the sentence belongs under the input, so there is nothing for the banner to say.
+		expect(banner(blank)).toBeUndefined();
+		expect(await sessions()).toBe(0);
+	});
+
+	/**
+	 * rejected before it is hashed, which is the point of the cap — and the case is discriminating
+	 * because the password it sends is the deployment's own with padding on the end. an attempt
+	 * that reached the auth layer at all would have been compared, not signed in; one that reached
+	 * it after the cap was raised would be the 257-character secret this deployment does have.
+	 */
+	it('refuses an over-long password before the auth layer sees it', async () => {
+		const overCap = 'x'.repeat(257);
+		const answer = await refused(typed(overCap), {
+			deployed: { ...DEPLOYED, ADMIN_PASSWORD: overCap }
+		});
+
+		expect(answer.init?.status).toBe(400);
+		expect(underTheBox(answer)?.at(-1)).toBe('must be at most 256 characters');
+		expect(await sessions()).toBe(0);
+	});
+
+	it('names a pin that names no address, and logs its value rather than sending it', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const answer = await refused(typed(PASSWORD), { deployed: PINNED_NOWHERE });
+
+			expect(answer.init?.status).toBe(500);
+			expect(banner(answer)).toBe(PIN_UNUSABLE);
+			expect(JSON.stringify(answer.data)).not.toContain('localhost:8787');
+			expect(logged.mock.calls.flat().join(' ')).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+		} finally {
+			logged.mockRestore();
+		}
+		expect(await sessions()).toBe(0);
+	});
+
+	/**
+	 * 401 is the only status whose message is repeated back to the caller, because it is the only
+	 * one about what they sent — and with one secret and one account there is nothing it could
+	 * disambiguate.
+	 */
+	it('says a wrong password is a wrong password', async () => {
+		const answer = await refused(typed('not-the-staff-password'));
+
+		expect(answer.init?.status).toBe(401);
+		expect(banner(answer)).toBe('Invalid password.');
+		expect(await sessions()).toBe(0);
+	});
+
+	/**
+	 * every other status is about the deployment, and the unconfigured credential is the one that
+	 * matters: its message states the configured `ADMIN_PASSWORD`'s length, which is written for an
+	 * agent reading a status body on a surface an operator controls. an anonymous POST to this form
+	 * must not read it back, so it gets the pointer at `.env` instead.
+	 */
+	it('points an unconfigured deployment at `.env` rather than reading its credential back', async () => {
+		const answer = await refused(typed(PASSWORD), {
+			deployed: { ...DEPLOYED, ADMIN_PASSWORD: 'short' }
+		});
+
+		expect(answer.init?.status).toBe(500);
+		expect(banner(answer)).toContain('check `ADMIN_PASSWORD` in `.env`');
+		expect(JSON.stringify(answer.data)).not.toContain('ADMIN_PASSWORD is shorter');
+		expect(JSON.stringify(answer.data)).not.toContain('(it is 5)');
+	});
+
+	/**
+	 * and the deployment whose schema is not there, which is what a fresh fork hits: no
+	 * `auth_signing_key` table to sign a cookie with. the caller is anonymous, so the database's
+	 * own words go to the logs and the banner is the one reply every surface gives.
+	 */
+	it('tells a deployment with no schema to apply its migrations, and logs the cause', async () => {
+		await withSigningKeyUnreadable(async (logged) => {
+			const answer = await refused(typed(PASSWORD));
+
+			expect(answer.init?.status).toBe(500);
+			expect(banner(answer)).toBe(SIGNING_KEY_UNREADABLE);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+		});
+	});
+
+	/**
+	 * the one this whole route is careful about. every rejection sends the submitted values back so
+	 * the boxes keep what was typed, and this box holds the staff credential — without the form
+	 * withholding it, it would come back inside the page and be rendered into a `value=` attribute.
+	 *
+	 * asserted on every failing arm rather than on one, because the leak is per-return.
+	 */
+	it('never sends the password back, on any arm that fails', async () => {
+		const wrong = await refused(typed(PASSWORD.toUpperCase()));
+		expect(wrong.init?.status).toBe(401);
+		expect(JSON.stringify(wrong.data)).not.toContain(PASSWORD.toUpperCase());
+
+		const unconfigured = await refused(typed(PASSWORD), {
+			deployed: { ...DEPLOYED, ADMIN_PASSWORD: 'short' }
+		});
+		expect(unconfigured.init?.status).toBe(500);
+		expect(JSON.stringify(unconfigured.data)).not.toContain(PASSWORD);
+
+		// and the arm where the schema itself refused, which is the one that carries what was typed
+		// by construction — a rejection replies with the payload it parsed.
+		const tooLong = `${PASSWORD}${'x'.repeat(300)}`;
+		const overCap = await refused(typed(tooLong));
+		expect(overCap.init?.status).toBe(400);
+		expect(JSON.stringify(overCap.data)).not.toContain(PASSWORD);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// the bound on the write. the spec env holds a real `SIGN_IN_RATE_LIMITER`, so what is under test is
+// the charge as it deploys rather than a description of it.
+//
+// the case worth stating twice is the one below about a missing limiter, because it is the opposite
+// answer to the one `refuseIfRateLimited` gives on the public surface. serving on with no limiter is
+// the decision, and a comment saying so is not coverage — flipping the call site to refuse instead
+// has to turn this file red.
+
+/** submits the deployment's own password until the limiter refuses, or fails loudly. */
+async function untilRefused(ip: string): Promise<Refused> {
+	for (let i = 0; i < 50; i++) {
+		const answer = await post(typed(PASSWORD), { ip });
+		if (!(answer instanceof Response) && answer.init?.status === 429) return answer;
+	}
+	throw new Error(`50 sign-in attempts from ${ip} and the limiter refused none of them`);
+}
+
+describe('the limit on POST /login', () => {
+	/**
+	 * the gap this closes on this path. the action calls `auth.api.signInStaff` directly, so
+	 * better-auth's own rule on `/sign-in/staff` — declared in $lib/server/auth/staff-plugin.ts —
+	 * never runs: it is bound to an HTTP router this deployment does not mount. unbounded, this is
+	 * a single `ADMIN_PASSWORD` on a public URL.
+	 */
+	it('refuses a caller who has attempted too often, before the password is compared', async () => {
+		const refusal = await untilRefused('203.0.113.30');
+		const signedInWhenRefused = await sessions();
+
+		await post(typed(PASSWORD), { ip: '203.0.113.30' });
+
+		expect(refusal.init?.status).toBe(429);
+		// the status alone would pass against an action that refused after hashing. what is being
+		// bounded is the work an anonymous POST can buy, so the assertion is that the attempt did
+		// not happen at all — a correct password that reached the auth layer would have signed in.
+		expect(await sessions()).toBe(signedInWhenRefused);
+	});
+
+	/** the earlier attempts were served, or the limiter is refusing everything and proves nothing. */
+	it('serves the attempts before that one', async () => {
+		await untilRefused('203.0.113.31');
+
+		expect(await sessions()).toBeGreaterThan(0);
+	});
+
+	/**
+	 * the refusal is the page's own shape — a form rejection the banner renders — and not the JSON
+	 * `Response` the public api answers with. a `Response` returned from this action is a
+	 * navigation, not something the screen can draw.
+	 */
+	it('answers in the shape this page renders, and says nothing about the password', async () => {
+		const refusal = await untilRefused('203.0.113.32');
+
+		expect(banner(refusal)).toBe(signInRateLimitMessage());
+		// it is answered before the credential is compared, so it has no outcome to leak — and the
+		// sentence must stay that way, or a limit on this form becomes an oracle.
+		expect(banner(refusal)?.toLowerCase()).not.toContain('invalid password');
+		// the form it answers with is built from the statement rather than from the request, so the
+		// body was never read — which is the whole reason the charge sits ahead of `parseForm`.
+		// no sentence under the box either: there is nothing wrong with what was typed.
+		expect(underTheBox(refusal)).toBeUndefined();
+		expect(JSON.stringify(refusal.data)).not.toContain(PASSWORD);
+	});
+
+	/**
+	 * the bucket is per caller, on the same `payer` normalisation the public api's key uses
+	 * ($lib/server/api/rate-limit.ts), keyed on an ipv6 caller's `/48`. that is the security
+	 * property: a caller holding a `/48` — the block one subscriber is commonly handed — holds
+	 * 65,536 `/64`s and binds a source address in a fresh one per request, so a bucket keyed on
+	 * anything narrower would hand them a budget of guesses each.
+	 */
+	it('holds one ipv6 /48 to one bucket', async () => {
+		await untilRefused('2001:db8:a:1::1');
+		const signedInWhenRefused = await sessions();
+
+		const neighbour = await post(typed(PASSWORD), { ip: '2001:db8:a:ffff:ffff:ffff:ffff:ffff' });
+
+		expect(neighbour instanceof Response ? 0 : neighbour.init?.status).toBe(429);
+		expect(await sessions()).toBe(signedInWhenRefused);
+	});
+
+	/**
+	 * and the other half: the block is `/48` and not something wider. otherwise one guesser closes
+	 * the login on every other subscriber of their isp — including the operator.
+	 */
+	it('leaves another /48 alone', async () => {
+		await untilRefused('2001:db8:b:1::1');
+		const signedInWhenRefused = await sessions();
+
+		const elsewhere = await post(typed(PASSWORD), { ip: '2001:db8:c:1::1' });
+
+		expect(elsewhere).toBeInstanceOf(Response);
+		expect(await sessions()).toBe(signedInWhenRefused + 1);
+	});
+
+	/**
+	 * a deployment with no limiter signs staff in, which is the decision and not an oversight —
+	 * `isRateLimited` in $lib/server/api/rate-limit.ts is where it is argued, along with what it
+	 * leaves unbounded.
+	 *
+	 * the address is spent against the real limiter first, and that half is what makes the case
+	 * discriminating rather than decorative: without it, a call site that never charged anything
+	 * would pass this identically.
+	 */
+	it('signs staff in on a deployment that has no limiter at all', async () => {
+		await untilRefused('203.0.113.33');
+		const signedInWhenRefused = await sessions();
+		// a runtime handed no sign-in limiter: the server entry builds every limiter at start, so this
+		// is a fork that dropped it.
+		const unbound = { ...DEPLOYED, SIGN_IN_RATE_LIMITER: undefined } as unknown as typeof DEPLOYED;
+
+		for (let i = 0; i < 8; i++) {
+			expect(await post(typed(PASSWORD), { ip: '203.0.113.33', deployed: unbound })).toBeInstanceOf(
+				Response
+			);
+		}
+
+		// every one of them, not just the first: an absent limiter is not an empty bucket either.
+		expect(await sessions()).toBe(signedInWhenRefused + 8);
+	});
+
+	/**
+	 * and the same for a caller the server attributed no address to, which under a misread
+	 * `TRUSTED_PROXY_HEADER` ($lib/server/runtime/client-ip.ts) is every caller of the deployment at
+	 * once. the limiter is present here and refusing this address is exactly what it must not do —
+	 * otherwise one guesser holds the only login closed on the operator, which is worse than the
+	 * guessing. a member in the same position is refused instead: 'a member the edge did not
+	 * attribute', below.
+	 */
+	it('signs staff in when the edge attributed no address at all', async () => {
+		for (let i = 0; i < 8; i++) {
+			expect(await post(typed(PASSWORD), { ip: 'not-an-address' })).toBeInstanceOf(Response);
+		}
+
+		expect(await sessions()).toBe(8);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// the two identities, at one pair of boxes. a member signs in with the address they were invited at
+// and the password they chose; the deployer types the username the constant holds. one screen, one
+// action, one bucket.
+
+/** what a colleague chooses when they accept, long enough for better-auth to accept it. */
+const MEMBER_PASSWORD = 'a-colleagues-own-password';
+
+/** a colleague who accepted an invitation, made the way /join makes one. */
+async function makeMember(email: string): Promise<void> {
+	const db = createDb(client);
+	const signingKey = await resolveAuthSecret(db, {});
+	if (!signingKey.ok) throw new Error(signingKey.cause);
+	const auth = createAuth(
+		db,
+		{ ADMIN_PASSWORD: PASSWORD },
+		{ secret: signingKey.secret, requestOrigin: ORIGIN }
+	);
+
+	const invited = await inviteMember(db, { email, now: new Date(), invitedBy: null });
+	if (!invited.ok) throw new Error(`the fixture could not invite ${email}: ${invited.reason}`);
+	const redeemed = await redeemInvitation(db, auth, {
+		token: invited.token,
+		name: 'Nadia Hart',
+		password: MEMBER_PASSWORD,
+		headers: new Headers({ origin: ORIGIN }),
+		now: new Date()
+	});
+	if (!redeemed.ok) throw new Error(`the fixture could not redeem ${email}: ${redeemed.reason}`);
+	await run(stmt('delete from auth_session'));
+}
+
+/** the value in the identifier box after a refusal, which is an ordinary box and comes back filled. */
+function identifierHeld(answer: Refused): unknown {
+	return (answer.data.form.result.initialValue as Record<string, unknown> | undefined)?.identifier;
+}
+
+describe('POST /login — which identity the boxes name', () => {
+	it('signs in with the address they were invited at and the password they chose', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const answer = (await post(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD))) as Response;
+
+		expect(answer.status).toBe(303);
+		expect(await sessions()).toBe(1);
+		expect(answer.headers.getSetCookie().some((value) => value.includes('session'))).toBe(true);
+	});
+
+	/**
+	 * an unknown address and a wrong password are one refusal, which is better-auth's own behaviour
+	 * and is kept: telling them apart would turn this form into a way to ask whether a given person
+	 * works here, on a deployment whose donation page names the organisation.
+	 */
+	it('says one thing about a wrong password and an address nobody here has', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const wrong = await refused(typedAs('nadia@riverbanktrust.org', 'not-her-password'));
+		const stranger = await refused(typedAs('nobody@riverbanktrust.org', MEMBER_PASSWORD));
+
+		expect(wrong.init?.status).toBe(401);
+		expect(banner(wrong)).toBe(banner(stranger));
+		// and the sentence covers both boxes without telling the two ways in apart: a refusal
+		// naming only an address would say that a username is the other kind of identity.
+		expect(banner(wrong)).toBe(
+			'That username or email address and password do not match a member of this organisation.'
+		);
+		expect(await sessions()).toBe(0);
+	});
+
+	/** and a value that is not an address at all joins them rather than reading as a broken deployment. */
+	it('says the same thing about a value that is not an address', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const nonsense = await refused(typedAs('not-an-address', MEMBER_PASSWORD));
+
+		expect(nonsense.init?.status).toBe(401);
+		expect(await sessions()).toBe(0);
+	});
+
+	/**
+	 * the identifier box is an ordinary box and comes back holding what was typed; the password box
+	 * is withheld and comes back empty. one form, one echo policy, and the credential half of it is
+	 * what `withheld` states.
+	 */
+	it('gives the identifier back on a refusal and never the password', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const answer = await refused(typedAs('nadia@riverbanktrust.org', 'not-her-password'));
+
+		expect(identifierHeld(answer)).toBe('nadia@riverbanktrust.org');
+		expect(JSON.stringify(answer.data)).not.toContain('not-her-password');
+	});
+
+	/**
+	 * the deployer's own way in through the same two boxes, which is the whole of how one form
+	 * serves two identities: the identifier is what chooses, and the constant is what it is
+	 * compared against.
+	 */
+	it('signs the deployer in on the username, beside a member at the same boxes', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const staff = (await post(typed(PASSWORD))) as Response;
+
+		expect(staff.status).toBe(303);
+		expect(await sessions()).toBe(1);
+		expect(staff.headers.getSetCookie().some((value) => value.includes('session'))).toBe(true);
+	});
+
+	/**
+	 * and the deployer typing it the way anybody types a name into a box. the identifier is trimmed
+	 * and lower-cased before anything is compared, so a capital and the space a paste carries reach
+	 * the same branch rather than being sent to the member path to be refused there.
+	 */
+	it('reaches the deployer through a capital and a trailing space', async () => {
+		const staff = (await post(typedAs('Admin ', PASSWORD))) as Response;
+
+		expect(staff.status).toBe(303);
+		expect(await sessions()).toBe(1);
+	});
+
+	/**
+	 * an empty box was the deployer's way in and is now nobody's. it is asserted here rather than
+	 * only under the box, because what changed is the branch: a blank identifier must not fall
+	 * through to the deployment's own password.
+	 */
+	it('does not take an empty identifier for the deployer', async () => {
+		const answer = await refused(typedAs('', PASSWORD));
+
+		expect(answer.init?.status).toBe(400);
+		expect(await sessions()).toBe(0);
+	});
+
+	/** and the deployer's password does not sign a member in, nor theirs the deployer. */
+	it('does not let either password stand in for the other', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const crossed = await refused(typedAs('nadia@riverbanktrust.org', PASSWORD));
+		const staffAsMember = await refused(typed(MEMBER_PASSWORD));
+
+		expect(crossed.init?.status).toBe(401);
+		expect(staffAsMember.init?.status).toBe(401);
+		expect(await sessions()).toBe(0);
+	});
+});
+
+describe('the limit on POST /login — one bucket for both ways in', () => {
+	/**
+	 * the charge is the action's and sits ahead of both paths, so a guesser cannot buy a fresh
+	 * bucket by putting an address in the box. `signInRateLimitKey` is keyed on the caller and never
+	 * on the path, which is what makes this one payer rather than two.
+	 */
+	it('refuses a member attempt on a bucket the deployer’s attempts spent', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+		await untilRefused('203.0.113.40');
+		const signedInWhenRefused = await sessions();
+
+		const asMember = await post(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), {
+			ip: '203.0.113.40'
+		});
+
+		expect(asMember instanceof Response ? 0 : asMember.init?.status).toBe(429);
+		expect(await sessions()).toBe(signedInWhenRefused);
+	});
+
+	/** and the other way round: a member's failed attempts spend the deployer's bucket too. */
+	it('charges a member attempt on the same bucket', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+		for (let i = 0; i < 12; i++) {
+			const answer = await post(typedAs('nadia@riverbanktrust.org', 'wrong'), {
+				ip: '203.0.113.41'
+			});
+			if (!(answer instanceof Response) && answer.init?.status === 429) break;
+		}
+
+		const asStaff = await post(typed(PASSWORD), { ip: '203.0.113.41' });
+
+		expect(asStaff instanceof Response ? 0 : asStaff.init?.status).toBe(429);
+		expect(await sessions()).toBe(0);
+	});
+});
+
+describe('the limit on POST /login — a member the edge did not attribute', () => {
+	/**
+	 * a member's password is one of many and was chosen by a person, so a caller with no bucket
+	 * would be guessing at them without limit, each guess a hash this deployment pays for. the
+	 * correct password is the case that discriminates: refused without signing in is a refusal made
+	 * before the credential was compared, where a wrong password would be refused either way.
+	 */
+	it.each([
+		['with no address header', null],
+		['with a header that is not an address', 'not-an-address']
+	])('refuses a member %s, before the password is compared', async (_, ip) => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const answer = await refused(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), { ip });
+
+		expect(answer.init?.status).toBe(403);
+		expect(banner(answer)).not.toBe(
+			'That username or email address and password do not match a member of this organisation.'
+		);
+		expect(await sessions()).toBe(0);
+	});
+
+	/**
+	 * the person who can fix it is whoever runs the deployment, so the sentence carries the cause and
+	 * who to tell, in the page's own voice rather than as a status for a log line.
+	 */
+	it('says the deployment could not tell the visitor’s address, and who to tell', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const answer = await refused(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), {
+			ip: null
+		});
+
+		expect(banner(answer)).toMatch(/^Sign-in is unavailable\./);
+		expect(banner(answer)).toContain('address');
+		expect(banner(answer)).toContain('tell whoever set up this site');
+		expect(identifierHeld(answer)).toBe('nadia@riverbanktrust.org');
+	});
+
+	/**
+	 * and the other half, so the refusal above is about the missing address and not about members:
+	 * one attributed address signs the same member in with the same password, and keeps doing so
+	 * until its bucket is spent.
+	 */
+	it('signs an attributed member in, and charges every sign-in to their address', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+		const statuses: number[] = [];
+		for (let i = 0; i < 50 && statuses.at(-1) !== 429; i++) {
+			const answer = await post(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), {
+				ip: '203.0.113.50'
+			});
+			statuses.push(answer instanceof Response ? answer.status : (answer.init?.status ?? 200));
+		}
+
+		expect(statuses[0]).toBe(303);
+		expect(statuses.at(-1)).toBe(429);
+		expect(await sessions()).toBe(statuses.length - 1);
+	});
+});
+
+/** what a call answered with, or the `Response` it threw — a refused write is thrown. */
+async function thrownOrAnswered<T>(call: Promise<T>): Promise<T | Response> {
+	try {
+		return await call;
+	} catch (thrown) {
+		if (thrown instanceof Response) return thrown;
+		throw thrown;
+	}
+}
+
+describe('POST /login from a page on another origin', () => {
+	// the browser writes `Sec-Fetch-Site` and a page's script cannot, so `same-site` is a page on the
+	// organisation's own domain posting here with the operator's cookie riding along
+	// ($lib/server/auth/gate.ts, `refuseWriteFromAnotherOrigin`).
+	it('refuses a same-site post before the body is read', async () => {
+		const answer = await thrownOrAnswered(
+			post(typed(PASSWORD), { ip: '203.0.113.53', site: 'same-site' })
+		);
+
+		expect(answer instanceof Response ? answer.status : answer.init?.status).toBe(403);
+		expect(await sessions()).toBe(0);
+	});
+
+	it.each([
+		['from a page on this origin', 'same-origin'],
+		['with no Sec-Fetch-Site at all', undefined]
+	])('reaches the form %s', async (_, site) => {
+		const answer = await thrownOrAnswered(
+			post(new FormData(), { ip: '203.0.113.51', ...(site ? { site } : {}) })
+		);
+
+		expect(answer instanceof Response ? answer.status : answer.init?.status).toBe(400);
+	});
+
+	// a refusal that cost nothing would be a free probe; it is charged on the sign-in bucket first.
+	it('spends the sign-in bucket on every refused post', async () => {
+		const statuses: (number | undefined)[] = [];
+		for (let i = 0; i < 12 && statuses.at(-1) !== 429; i++) {
+			const answer = await thrownOrAnswered(
+				post(typed('a wrong guess'), { ip: '203.0.113.52', site: 'same-site' })
+			);
+			statuses.push(answer instanceof Response ? answer.status : answer.init?.status);
+		}
+
+		expect(statuses.at(-1)).toBe(429);
+		expect(new Set(statuses.slice(0, -1))).toEqual(new Set([403]));
+	});
+});

@@ -9,20 +9,20 @@ describe('loadFailure', () => {
 	});
 
 	/**
-	 * the errand is the whole reason this sentence is long, and it is the half that was written
-	 * out once per `load` before this module existed: an unapplied migration is what a fresh
-	 * deployment actually hits, and the two ways are not the same one — a local D1 is migrated by
-	 * wrangler, and the deployed one by the console's update press, which applies migrations as it
-	 * deploys.
+	 * the errand is the whole reason this sentence is long: an unapplied migration is what a site hits
+	 * after an update that skipped `migrate` (DEPLOY.md → Upgrading), and the server never migrates on
+	 * start (AGENTS.md → Schema).
 	 */
-	it('names both ways to migrate and where the logs are, whatever the screen', () => {
-		for (const subject of ['This page', 'This recurring gift']) {
-			const sentence = loadFailure(subject);
-			expect(sentence).toContain('pnpm wrangler d1 migrations apply DB --local');
-			expect(sentence).toContain('better-giving start');
-			expect(sentence).toContain('Cloudflare dashboard');
-			expect(sentence).toContain('pnpm run logs');
-		}
+	it('covers a site just set up or just updated', () => {
+		expect(loadFailure('This page')).toContain('If this site was just set up or updated');
+	});
+
+	it('names who runs the fix, both migrate commands and where the log is', () => {
+		const sentence = loadFailure('This page');
+		expect(sentence).toContain('whoever runs the server');
+		expect(sentence).toContain('`docker compose run --rm migrate`');
+		expect(sentence).toContain('`pnpm db:migrate`');
+		expect(sentence).toContain('`docker compose logs app`');
 	});
 
 	it('says the same thing after the subject on every screen', () => {

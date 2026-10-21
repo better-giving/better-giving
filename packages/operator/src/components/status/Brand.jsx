@@ -1,9 +1,9 @@
 /**
- * every brand an operator surface may draw. three members, and that is the point of the type: a
- * screen cannot reach for a fourth brand without this name gaining one, which is a diff somebody
+ * every brand an operator screen may draw. two members, and that is the point of the type: a
+ * screen cannot reach for a third brand without this name gaining one, which is a diff somebody
  * reads.
  *
- * @typedef {'cloudflare' | 'quickbooks' | 'xero'} BrandName
+ * @typedef {'quickbooks' | 'xero'} BrandName
  */
 
 /**
@@ -13,18 +13,15 @@
  *   tree, and the bar for leaving it out is higher here than on ./Mark.jsx's: a mark is a shape and
  *   a logo is a name, so a logo standing where the company's name would have stood is never
  *   decoration and always takes one. what may leave it out is a logo standing *beside the company's
- *   own name* in the text it is drawn with — the console's press reading `Connect to Cloudflare` is
- *   the case — where a label is the company announced twice in one control. standing beside text
- *   that names something else is not that and takes a label: the console's head sets this logo in
- *   front of the account an operator is working in, and `Riverside Shelter` never says whose account
- *   it is.
+ *   own name* in the text it is drawn with — a press reading `Connect to QuickBooks` is the case —
+ *   where a label is the company announced twice in one control. standing beside text that names
+ *   something else is not that and takes a label.
  * @property {string | undefined} [className]
  */
 
 /* a company's own mark, drawn from an image.
 
    the files are in packages/operator/src/styles/brand/, each taken from the company's own site:
-   cloudflare.png from Cloudflare's brand download at https://www.cloudflare.com/logo/,
    quickbooks.png from https://quickbooks.intuit.com and xero.png from https://xero.com. each is
    that company's trademark and is used here to name that company's own thing and nothing else —
    an account, a set of books — not as decoration, not as a tone, and not to say that anything on
@@ -58,13 +55,6 @@ export function Brand({ name, label, className = '' }) {
 	   it unconditionally, and what a reader meets on the decorative one is a bare `span` carrying a
 	   property no role of its supports. */
 	const named = {
-		cloudflare: (
-			<span
-				className={`adm-brand adm-brand--cloudflare ${className}`}
-				role="img"
-				aria-label={label}
-			/>
-		),
 		quickbooks: (
 			<span
 				className={`adm-brand adm-brand--quickbooks ${className}`}
@@ -77,9 +67,6 @@ export function Brand({ name, label, className = '' }) {
 		)
 	};
 	const decoration = {
-		cloudflare: (
-			<span className={`adm-brand adm-brand--cloudflare ${className}`} aria-hidden="true" />
-		),
 		quickbooks: (
 			<span className={`adm-brand adm-brand--quickbooks ${className}`} aria-hidden="true" />
 		),

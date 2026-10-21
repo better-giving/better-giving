@@ -69,7 +69,7 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //     the takeover.
 //   - what is said out loud, on one channel, decided in one place.
 //
-// the two mount nodes are the card's and the checkout's between them: this file renders them and
+// the mount nodes are the card's and the checkout's between them: this file renders them and
 // hands them over, and `startCheckout` in ./machine.ts is what mounts into each. the payment one
 // takes a node per processor the served config offers, placed and ordered by the composer in
 // @better-giving/form/embed/surface — so this file draws one box however many a deployment holds.
@@ -267,6 +267,7 @@ function CheckoutCard({
 
 	const paymentMount = useRef<HTMLDivElement | null>(null);
 	const challengeMount = useRef<HTMLDivElement | null>(null);
+	const heldChallengeMount = useRef<HTMLDivElement | null>(null);
 	/**
 	 * the return this card claimed, by the form it was claimed for. the claim scrubs the token off
 	 * the url, and strict mode runs the effect below twice on one mount, so a second run reuses the
@@ -277,7 +278,8 @@ function CheckoutCard({
 	useEffect(() => {
 		const payment = paymentMount.current;
 		const challenge = challengeMount.current;
-		if (payment === null || challenge === null) return () => {};
+		const heldChallenge = heldChallengeMount.current;
+		if (payment === null || challenge === null || heldChallenge === null) return () => {};
 		// the token rewrites the URL and is claimed once, so it is taken here rather than in a render:
 		// a page holding two cards for one form would otherwise both claim it.
 		if (claimed.current?.formId !== config.formId) {
@@ -288,6 +290,7 @@ function CheckoutCard({
 			{
 				paymentMount: payment,
 				challengeMount: challenge,
+				heldChallengeMount: heldChallenge,
 				resumeToken: claimed.current.token,
 				...(seams === undefined ? {} : { seams })
 			},
@@ -1014,6 +1017,9 @@ function CheckoutCard({
 		.join(', ');
 
 	const busy = api.continueButton['aria-busy'];
+	// a press held on a challenge that is asking the donor to solve something: the puzzle is in the
+	// review step's box, and `aria-busy` over it would have assistive technology hold it back.
+	const asking = snapshot.value === 'holding' && snapshot.context.challengeInteractive;
 	// the takeover's own words first: a screen that has taken the whole card is not one a numbered step
 	// is still asking anything on. the review step's refusal stands ahead of every `News`, a moved
 	// total included, as `standing` in @better-giving/form's views.ts ranks it: it is a thing the donor
@@ -1132,7 +1138,7 @@ function CheckoutCard({
 				<form
 					className="card-body"
 					noValidate
-					aria-busy={busy ? true : undefined}
+					aria-busy={busy && !asking ? true : undefined}
 					onSubmit={(event) => event.preventDefault()}
 				>
 					<AmountStep
@@ -1177,6 +1183,7 @@ function CheckoutCard({
 						receiptTo={reading?.receiptTo ?? ''}
 						submitLabel={reading?.submitLabel ?? ''}
 						paymentMount={paymentMount}
+						heldChallengeMount={heldChallengeMount}
 						paymentPrepared={live !== null}
 						paymentRows={paymentRows}
 						paymentWords={paymentWords}

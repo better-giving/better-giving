@@ -1,3 +1,4 @@
+import type { Resized } from '@better-giving/operator/images/resize';
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
@@ -29,8 +30,11 @@ function mount(node: ReactElement) {
 
 const ALT = 'Children at Eastside School trying on new winter coats';
 
+/** a pick resized by the control itself, which every caller but the logo's is. */
+type Resizing = { readonly onResized: (result: Resized) => void };
+
 /** the control with its description box, as a block's sheet draws it. */
-type Described = Extract<ReplacePhotoControlProps, { readonly alt: string }>;
+type Described = Extract<ReplacePhotoControlProps, { readonly alt: string } & Resizing>;
 
 function props(over: Partial<Described> = {}): Described {
 	return {
@@ -182,7 +186,9 @@ describe('a block with no photo yet', () => {
 });
 
 /** the control with no description box, as a program's photo draws it. */
-const bare = (over: Partial<Extract<ReplacePhotoControlProps, { describe: false }>> = {}) =>
+const bare = (
+	over: Partial<Extract<ReplacePhotoControlProps, { describe: false } & Resizing>> = {}
+) =>
 	({
 		imageSrc: '/image/0192a4c1',
 		describe: false,
@@ -242,5 +248,79 @@ describe('Remove', () => {
 
 		expect(document.activeElement).toBe(press(host));
 		expect(press(host).textContent).toBe('Add photo');
+	});
+
+	it('stays through its own removal, saying so, and takes no second press', () => {
+		const onRemove = vi.fn();
+		const { host, redraw } = mount(<ReplacePhotoControl {...bare({ onRemove })} />);
+		const button = remove(host);
+		act(() => {
+			button?.focus();
+			button?.click();
+		});
+		redraw(<ReplacePhotoControl {...bare({ onRemove, state: 'removing' })} />);
+		const removing = [...host.querySelectorAll('button')].find(
+			(found) => found.textContent === 'Removing'
+		);
+
+		expect(removing).toBe(button);
+		expect(document.activeElement).toBe(button);
+		expect(removing?.getAttribute('aria-busy')).toBe('true');
+		expect(removing?.getAttribute('aria-disabled')).toBe('true');
+		expect(removing?.getAttribute('aria-label')).toBe('Removing the photo');
+		expect(press(host).getAttribute('aria-disabled')).toBe('true');
+		act(() => removing?.click());
+		expect(onRemove).toHaveBeenCalledOnce();
+	});
+});
+
+describe('a control named for a logo', () => {
+	it('names its presses for the logo', () => {
+		const { host, redraw } = mount(
+			<ReplacePhotoControl {...bare({ noun: 'logo', onRemove: () => {} })} />
+		);
+
+		expect(press(host).textContent).toBe('Replace logo');
+		expect(host.querySelector('button[aria-label="Remove the logo"]')).not.toBeNull();
+		redraw(<ReplacePhotoControl {...bare({ noun: 'logo', imageSrc: undefined })} />);
+		expect(press(host).textContent).toBe('Add logo');
+	});
+
+	it('hands a chosen file over as chosen, of the types it offers, and resizes nothing', async () => {
+		const onChosen = vi.fn();
+		const { host } = mount(
+			<ReplacePhotoControl
+				noun="logo"
+				describe={false}
+				accept="image/png,image/jpeg,image/webp"
+				onChosen={onChosen}
+			/>
+		);
+		const input = one<HTMLInputElement>(host, 'input[type="file"]');
+		const file = new File(['png'], 'logo.png', { type: 'image/png' });
+		Object.defineProperty(input, 'files', { value: [file] });
+
+		await act(async () => {
+			input.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+
+		expect(input.accept).toBe('image/png,image/jpeg,image/webp');
+		expect(onChosen).toHaveBeenCalledExactlyOnceWith(file);
+		expect(press(host).textContent).toBe('Add logo');
+		expect(press(host).getAttribute('aria-busy')).toBeNull();
+	});
+
+	it('says it is resizing while the caller’s own step after the pick runs', () => {
+		const { host } = mount(
+			<ReplacePhotoControl
+				describe={false}
+				accept="image/png"
+				onChosen={() => {}}
+				state="resizing"
+			/>
+		);
+
+		expect(press(host).textContent).toBe('Resizing');
+		expect(press(host).getAttribute('aria-disabled')).toBe('true');
 	});
 });

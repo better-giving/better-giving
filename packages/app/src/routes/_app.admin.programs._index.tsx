@@ -24,8 +24,8 @@ import type { Route } from './+types/_app.admin.programs._index';
 // already recorded against it still name it and this is the only screen that says so.
 //
 // this file is deliberately thin. what reaches the database lives in
-// `$lib/server/programs/queries.ts`; the only job here is a projection. neither `D1Database` nor
-// the `program` table object is named anywhere in this route, and neither may be.
+// `$lib/server/programs/queries.ts`; the only job here is a projection. neither the
+// database's type (`Db` in $lib/server/db/client.ts) nor the `program` table object is named anywhere in this route, and neither may be.
 
 /** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Programs';

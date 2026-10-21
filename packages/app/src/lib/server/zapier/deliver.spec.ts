@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { backoffMs } from './deliver';
 
 // the wait between tries, at the rungs a real outage takes hours to reach. that a waiting row is
-// left alone and a due one posted is ./deliver.workers.spec.ts's.
+// left alone and a due one posted is ./deliver.db.spec.ts's.
 
 const MINUTE = 60_000;
 

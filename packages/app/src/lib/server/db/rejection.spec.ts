@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { causeChain, sqliteResultCode } from './rejection';
 
-// the walk, exercised on the shape drizzle and D1 actually produce.
+// the walk, exercised on the shapes drizzle over D1 and over libSQL produce.
 //
-// pure string work, so it runs in the node pool. that the shape below is what comes back from a
-// real D1 is asserted where it can be — ../donations/record.workers.spec.ts drives genuine
-// constraint failures through `recordDonation` and reads the reasons this module's output
-// produces, inside workerd.
+// pure string work, so it runs in the node pool. that libSQL's shape is what a real file throws is
+// ./rejection.db.spec.ts's claim.
 
 /** an error with a cause, as drizzle rethrows one. */
 const wrapped = (outer: string, inner: string): Error =>

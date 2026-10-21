@@ -11,8 +11,8 @@ import { describe, expect, it } from 'vitest';
 // directly (CLAUDE.md), and until this file that was enforced by nothing — a convention, which is a
 // code review somebody has to remember to do. it is the same guard ../ledger/sole-writer.spec.ts
 // holds over `INSERT`, written the same way, and the rule it protects is the one ../db/client.ts
-// states about D1: everything else takes the interface, so the contract has exactly one place to be
-// stated.
+// states about the driver: everything else takes the interface, so the contract has exactly one
+// place to be stated.
 //
 // what the rule buys, concretely. the SDK's vocabulary — seven PaymentIntent states, sixteen
 // error classes, unix seconds, lowercase currencies, expandable fields that are sometimes id
@@ -95,20 +95,16 @@ const GUARDED: { specifier: string; adapter: string; imported: boolean }[] = [
  *
  * `home` is the adapter, the module that calls the host. `vocabulary` is every other file that
  * states the address without calling it, which is not speaking: a comment documenting the
- * `CHARIOT_API_URL` default (config/env.ts) and the console's placeholder for the address box
- * (packages/console-ui/src/lib/chariot-setup.ts, which makes no call of its own). any other file
- * naming a host is a second speaker. the sandbox hosts and the marketing, documentation and CDN
- * hosts (`cdn.givechariot.com`, `nowpayments.io`) are deliberately absent: the adapters call only
- * these two, and a rule that flagged a logo url or a doc link would be a rule people delete.
+ * `CHARIOT_API_URL` default (config/env.ts). any other file naming a host is a second speaker.
+ * the sandbox hosts and the marketing, documentation and CDN hosts (`cdn.givechariot.com`,
+ * `nowpayments.io`) are deliberately absent: the adapters call only these two, and a rule that
+ * flagged a logo url or a doc link would be a rule people delete.
  */
 const GUARDED_HOSTS: { host: string; home: string; vocabulary: string[] }[] = [
 	{
 		host: 'api.givechariot.com',
 		home: resolve(import.meta.dirname, 'chariot.ts'),
-		vocabulary: [
-			resolve(import.meta.dirname, '../config/env.ts'),
-			resolve(ROOT, 'packages/console-ui/src/lib/chariot-setup.ts')
-		]
+		vocabulary: [resolve(import.meta.dirname, '../config/env.ts')]
 	},
 	{
 		host: 'api.nowpayments.io',

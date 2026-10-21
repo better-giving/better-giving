@@ -1,3 +1,4 @@
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { secretFingerprint } from '@better-giving/operator/stripe/secret-fingerprint';
 import { readConfigEnv, type ConfigEnv } from '../config/env';
 import type { ProcessorName } from './provider';
@@ -6,11 +7,10 @@ import type { WebhookRegistration } from './webhook-registration';
 // whether what this deployment holds is what its own webhook endpoint is verified against, which
 // is a comparison only this deployment can make.
 //
-// no read on a processor's API hands a signing secret back (https://docs.stripe.com/api/webhook_endpoints/list)
-// and no read on Cloudflare hands a stored one back either, so a console outside the worker can
-// only report that a slot is filled — which is what reads as fine over a deployment verifying
-// nothing. the worker holds both halves: the variable, and the stamp the adapter put on the
-// endpoint it created (`WebhookEndpointSummary.verificationStamp` in ./provider.ts).
+// no read on a processor's API hands a signing secret back (https://docs.stripe.com/api/webhook_endpoints/list),
+// so a presence check can only report that a value is set — which is what reads as fine over a
+// deployment verifying nothing. the app holds both halves: the variable, and the stamp the adapter
+// put on the endpoint it created (`WebhookEndpointSummary.verificationStamp` in ./provider.ts).
 //
 // **what is compared is one processor's fact and the table below is where that lives.** Stripe
 // signs a delivery with a secret, so the comparison is between two digests of it and the stored
@@ -23,7 +23,7 @@ import type { WebhookRegistration } from './webhook-registration';
 // it sits beside ./webhook-registration.ts rather than inside it because that module reads no
 // deploy-time variable at all — it asks the payment port about somebody else's account and carries
 // the stamp out untouched. this is where the stamp and the variable meet, and its one caller is
-// `src/routes/console.payments.ts`.
+// ./processor-cards.ts.
 
 /**
  * whether what is stored is what the processor is verifying against, as a closed set.
@@ -99,6 +99,36 @@ const VERIFICATION: Readonly<
 });
 
 /**
+ * how the right value gets into `.env` once a stored one is stale, which is an endpoint at this
+ * address that was created with another value.
+ *
+ * Stripe's endpoint is kept and its secret revealed in the dashboard: a re-run of the setup script
+ * replaces it (`rerun` in ./webhook-setup.ts), and a deleted endpoint's queued deliveries are never
+ * retried. PayPal's re-run keeps its listener and prints the id. Chariot's subscription secret is
+ * handed over once, in the answer that creates it, so registering again is the only way to it.
+ * NOWPayments generates its IPN secret in its dashboard and shows it once.
+ */
+const REPAIR: Readonly<Record<ProcessorName, string>> = Object.freeze({
+	stripe:
+		'reveal the signing secret of the endpoint Stripe’s dashboard lists for this address under ' +
+		`Workbench → Webhooks, put it in \`.env\` as \`${envLine('STRIPE_WEBHOOK_SECRET')}\``,
+	paypal: `run \`${setupWebhookCommand('paypal')}\`, add the line it prints to \`.env\``,
+	chariot: `run \`${setupWebhookCommand('chariot')}\`, add the two lines it prints to \`.env\``,
+	nowpayments:
+		'generate an IPN secret under Payment Settings in the NOWPayments dashboard, which shows it ' +
+		'once and replaces the old one, and put it in `.env` as ' +
+		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\``
+});
+
+/**
+ * the variable a processor's payment notices are verified with. its presence is what the notices
+ * line on the donation-form screens reads (../forms/readiness.ts).
+ */
+export function noticeVariable(processor: ProcessorName): keyof ConfigEnv {
+	return VERIFICATION[processor].variable;
+}
+
+/**
  * the comparison a row reporting the variable cannot make.
  *
  * such a row reads a variable, and the value it would have to be compared against is returned once
@@ -143,14 +173,9 @@ export async function webhookSecretStanding(
 
 	return {
 		state: 'stale',
-		// the press rather than a value to type: this value is handed over once, in the answer that
-		// registers the endpoint, and is readable from no call afterwards — so the press that
-		// registers is the only thing that can store the right one.
 		detail:
 			`The stored \`${variable}\` is not the one this deployment’s webhook endpoint was created ` +
 			'with, so the processor’s deliveries are failing verification and no gift is reaching the ' +
-			'books. Open the console (`better-giving start`) and set the processor up again under ' +
-			'Donation processor: that press registers the endpoint and stores what it is handed, ' +
-			'which is the only moment the value is readable.'
+			`books. To fix it, ${REPAIR[processor]}, then recreate the app: \`${RECREATE_APP}\`.`
 	};
 }
