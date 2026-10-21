@@ -7,12 +7,13 @@ pnpm install
 cp .env.example packages/app/.env                       # fill in ADMIN_PASSWORD at minimum
 echo 'DATABASE_URL="file:local.db"' >> packages/app/.env
 pnpm db:migrate
-pnpm db:seed          # the organisation row the dashboard is gated on
+pnpm db:seed          # the registered name, EIN and notification address a live form needs
 pnpm dev              # http://localhost:5321
 ```
 
 - `pnpm dev` and the `db:*` commands run inside `packages/app` and read `packages/app/.env` (`node --env-file-if-exists=.env`). The root `.env` is compose's, and `pnpm dev` never reads it. A relative `file:` URL is relative to `packages/app`.
 - `pnpm dev` fires no scheduled runs, so the local database is written by nobody but you.
+- A glibc host only. `pnpm-workspace.yaml`'s `ignoredOptionalDependencies` skips the libSQL musl bindings everywhere, so on Alpine or another musl Linux the driver has no native binding and the first database open fails.
 - `pnpm install` runs `prepare`: route typegen.
 - `pnpm dev` does not build the embed: `/embed.js` 404s until `pnpm run build` has run once.
 - `docker compose up` runs the image instead, against the root `.env` ([`DEPLOY.md`](./DEPLOY.md)).
@@ -78,7 +79,7 @@ A migration reaches a database only through `pnpm db:migrate` or compose's `migr
 
 ## Troubleshooting
 
-**Every route 500s, everything else green.** The auth middleware reads the signing key out of the database, so a database the migrations never reached fails every request. Usually `DATABASE_URL` names a different file from the one you migrated. Fix:
+**`/admin` screens 500, everything else green.** A database the migrations never reached fails every loader that reads a table, typically after pulling a branch with a new migration, or when `DATABASE_URL` names a different file from the one you migrated. Fix:
 
 ```sh
 pnpm db:migrate
