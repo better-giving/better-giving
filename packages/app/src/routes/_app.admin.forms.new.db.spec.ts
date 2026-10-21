@@ -529,13 +529,15 @@ describe('/admin/forms/new save', () => {
 		}
 	);
 
-	it('makes a form live while only a processor’s payment notices are unset', async () => {
-		const { redirect } = await save(submission({ status: 'live' }), {
+	it('refuses a new form asking for Live while a processor’s payment notices are unset, and writes nothing', async () => {
+		const { redirect, failure } = await save(submission({ status: 'live' }), {
 			...READY,
 			STRIPE_WEBHOOK_SECRET: ''
 		});
-		expect(redirect?.location).toBe(LIST);
-		expect((await readForms(db))[0]?.status).toBe('live');
+		expect(redirect).toBeUndefined();
+		expect(failure?.status).toBe(400);
+		expect(failure?.errors).toMatchObject({ status: [expect.any(String)] });
+		expect(await readForms(db)).toEqual([]);
 	});
 });
 

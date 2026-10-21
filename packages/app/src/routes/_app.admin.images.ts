@@ -17,6 +17,20 @@ import type { Route } from './+types/_app.admin.images';
 // takes the editor with it. an upload that never reached the server is answered in the browser
 // the same way, by `clientAction` ($lib/admin/unreached.ts); the action is still the one writer.
 
+/**
+ * a GET, a HEAD or an OPTIONS, which react router sends to a route's `loader`.
+ *
+ * written rather than left out: a route module with no `loader` answers a GET with the
+ * framework's own 400. `Allow` is required on a 405
+ * (https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/405).
+ */
+export function loader(): Response {
+	return new Response('This address takes a photo by POST.', {
+		status: 405,
+		headers: { allow: 'POST', 'content-type': 'text/plain; charset=utf-8' }
+	});
+}
+
 export async function action({ context, request }: Route.ActionArgs) {
 	const taken = await takePostedPhoto(context.get(database), request);
 	if (taken.ok) return { id: taken.id, width: taken.width, height: taken.height };

@@ -21,6 +21,7 @@ import {
 	unusablePaypalAddress
 } from './paypal';
 import { createStripeProvider } from './stripe';
+import { noticeVariable } from './webhook-secret';
 import type { StripeUnreadableReason } from '@better-giving/operator/console/stripe-read';
 
 // the one place a deployment's configuration becomes a `PaymentProvider`.
@@ -264,8 +265,12 @@ const BROWSER_VARS: Readonly<Record<ProcessorName, keyof ConfigEnv | null>> = Ob
 /** which processors a donation form may be served on here, and what to say where there are none. */
 export type ServedProcessors = {
 	/**
-	 * one entry per processor this deployment can both charge on and start an SDK for, in
-	 * `PROCESSOR_NAMES` order.
+	 * one entry per processor this deployment can charge on, start an SDK for, and settle a gift
+	 * through, in `PROCESSOR_NAMES` order.
+	 *
+	 * settlement is the notice variable as well as the two halves (`settlementReady`). a processor
+	 * whose charge keys are set and whose notice variable is not is not named here: a donor would
+	 * be charged and the gift would stay pending.
 	 *
 	 * `Provider` in packages/form/src/v1.ts is a set on the wire, so a deployment holding a second
 	 * processor names it beside the first rather than replacing it, and each adapter on the donor's
@@ -278,12 +283,14 @@ export type ServedProcessors = {
 	 */
 	readonly configured: readonly ProcessorName[];
 	/**
-	 * whether any processor can take a gift on a form served here: an entry in `providers`, or a
-	 * processor with no browser half whose credentials are set.
+	 * whether any processor can settle a gift on a form served here.
 	 *
-	 * the answer a refusal turns on, rather than `providers` being empty. a processor with no browser
+	 * an entry in `providers`, or a processor with no browser half that is settlement-ready. the
+	 * answer a refusal turns on, rather than `providers` being empty. a processor with no browser
 	 * half is never in `providers` (see {@link BROWSER_VARS}), so read off that list a deployment
-	 * holding NOWPayments' values alone would be refused and told to set what it already holds.
+	 * holding NOWPayments' values and its IPN secret would be refused and told to set what it
+	 * already holds. keys without the notice variable are not enough: the gift would be charged
+	 * and never marked paid.
 	 */
 	readonly serves: boolean;
 	/**
@@ -330,13 +337,13 @@ export function servedProcessors(source: unknown): ServedProcessors {
 		if (browserVar === null) return [];
 		const publishableKey = env[browserVar];
 		if (publishableKey === undefined) return [];
-		if (!configuredFor(env, name)) return [];
+		if (!settlementReady(env, name)) return [];
 		const sdkUrl = PROCESSORS[name].sdkUrl?.(env) ?? null;
 		return [sdkUrl === null ? { name, publishableKey } : { name, publishableKey, sdkUrl }];
 	});
 
 	const configured = PROCESSOR_NAMES.filter((name) => configuredFor(env, name));
-	const serves = providers.length > 0 || configured.some((name) => BROWSER_VARS[name] === null);
+	const serves = PROCESSOR_NAMES.some((name) => settlementReady(env, name));
 	return {
 		providers,
 		configured,
@@ -363,18 +370,36 @@ function startedOn(env: ConfigEnv): readonly ProcessorName[] {
 }
 
 /**
- * every variable a processor cannot serve a form without: its credentials and the half the browser
- * is handed.
+ * every variable a processor cannot serve a form without: its credentials, the half the browser
+ * is handed, and the notice variable (`noticeVariable` in ./webhook-secret.ts).
  *
- * deduplicated, because PayPal's client id is both — the pair authenticates a server call and the
- * id alone starts the SDK, so naming it twice would be one variable an operator is asked to set two
- * ways.
+ * deduplicated, because PayPal's client id is both a credential and the browser half — the pair
+ * authenticates a server call and the id alone starts the SDK, so naming it twice would be one
+ * variable an operator is asked to set two ways. the notice name is not restated here: that
+ * function is the one table.
  */
 function setupVars(name: ProcessorName): readonly (keyof ConfigEnv)[] {
 	const browserVar = BROWSER_VARS[name];
 	const vars =
-		browserVar === null ? PROCESSORS[name].requires : [...PROCESSORS[name].requires, browserVar];
+		browserVar === null
+			? [...PROCESSORS[name].requires, noticeVariable(name)]
+			: [...PROCESSORS[name].requires, browserVar, noticeVariable(name)];
 	return [...new Set(vars)];
+}
+
+/**
+ * whether this processor can settle a gift on a form served here.
+ *
+ * the charge credentials `configuredFor` already requires, the browser half {@link BROWSER_VARS}
+ * already requires (none, where it is null), and the notice variable set. `PROCESSORS.requires`
+ * stays the charge credentials alone: `scripts/setup-webhook.ts` registers the endpoint that mints
+ * Stripe's signing secret, and a builder that refused without it could never be asked to.
+ */
+function settlementReady(env: ConfigEnv, name: ProcessorName): boolean {
+	if (!configuredFor(env, name)) return false;
+	const browserVar = BROWSER_VARS[name];
+	if (browserVar !== null && env[browserVar] === undefined) return false;
+	return env[noticeVariable(name)] !== undefined;
 }
 
 /**
@@ -384,19 +409,25 @@ function setupVars(name: ProcessorName): readonly (keyof ConfigEnv)[] {
  * cannot be assembled and a quote whose processor refused — and a sentence written twice is one
  * that names the dashboard a variable moved away from.
  *
- * each pair comes off one screen, and saying so is the part an operator acts on: a secret key
- * beside a publishable key from a different account is valid on both halves and refused at the
- * first charge.
+ * the charge keys of one processor come off one screen, and saying so is the part an operator
+ * acts on: a secret key beside a publishable key from a different account is valid on both halves
+ * and refused at the first charge. the notice value is named in the same sentence.
+ * `settlementReady` withholds a form until it is set (DEPLOY.md, "All three or none"), so the
+ * charge-key pair on its own does not finish the job.
  */
 const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 	stripe:
 		'In the org’s own Stripe dashboard, take the secret key and the publishable key from the ' +
 		`same screen, add \`${envLine('STRIPE_SECRET_KEY')}\` and ` +
-		`\`${envLine('STRIPE_PUBLISHABLE_KEY')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`,
+		`\`${envLine('STRIPE_PUBLISHABLE_KEY')}\` to \`.env\`, run ` +
+		`\`${setupWebhookCommand('stripe')}\`, add the \`STRIPE_WEBHOOK_SECRET\` line it prints, ` +
+		`then recreate the app: \`${RECREATE_APP}\`.`,
 	paypal:
 		'In the org’s own PayPal developer dashboard, take the client id and the secret from the ' +
 		`same app, add \`${envLine('PAYPAL_CLIENT_ID')}\` and ` +
-		`\`${envLine('PAYPAL_CLIENT_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`,
+		`\`${envLine('PAYPAL_CLIENT_SECRET')}\` to \`.env\`, run ` +
+		`\`${setupWebhookCommand('paypal')}\`, add the \`PAYPAL_WEBHOOK_ID\` line it prints, ` +
+		`then recreate the app: \`${RECREATE_APP}\`.`,
 	// the key alone leaves no Connect, no event subscription and no signing secret behind it, so the
 	// fix runs the script that makes all three.
 	chariot:
@@ -406,9 +437,10 @@ const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 		`the app: \`${RECREATE_APP}\`.`,
 	nowpayments:
 		'In the org’s own NOWPayments dashboard, take the API key, and the code of the coin set as ' +
-		`the payout wallet under Payment Settings (such as \`usdttrc20\`), then add ` +
-		`\`${envLine('NOWPAYMENTS_API_KEY')}\` and \`${envLine('NOWPAYMENTS_OUTCOME_CURRENCY')}\` ` +
-		`to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
+		'the payout wallet under Payment Settings (such as `usdttrc20`). Generate ' +
+		'`NOWPAYMENTS_IPN_SECRET` once under Payment Settings in the NOWPayments dashboard, then add ' +
+		`\`${envLine('NOWPAYMENTS_API_KEY')}\`, \`${envLine('NOWPAYMENTS_OUTCOME_CURRENCY')}\`, and ` +
+		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 });
 
 /**

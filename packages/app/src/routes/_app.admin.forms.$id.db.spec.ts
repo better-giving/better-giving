@@ -1080,12 +1080,13 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		expect((await runLoad()).liveOffered).toBe(true);
 	});
 
-	it('offers Live with a warning while a processor’s payment notices are unset', async () => {
-		// a gift is charged without them and never heard to settle, which is worth saying and not
-		// worth withholding Live over.
+	it('does not offer Live while a processor’s payment notices are unset', async () => {
+		// a gift is charged without them and never heard to settle, so Live is withheld the same
+		// way it is while no processor can take a gift.
 		const loaded = await runLoad({ vars: { ...READY, STRIPE_WEBHOOK_SECRET: '' } });
-		expect(readinessLine(loaded, 'notices').severity).toBe('warning');
-		expect(loaded.liveOffered).toBe(true);
+		expect(readinessLine(loaded, 'notices').severity).toBe('blocker');
+		expect(readinessLine(loaded, 'processor').severity).toBe('blocker');
+		expect(loaded.liveOffered).toBe(false);
 	});
 
 	it('refuses a posted Live anyway, because a filtered option list is not a control', async () => {
@@ -1167,13 +1168,20 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		expect((await readForm(db, FORM_ID))?.status).toBe('live');
 	});
 
-	it('lets a posted Live through while only a processor’s payment notices are unset', async () => {
-		const { redirect } = await post(NAME_FORM, FORM_ID, submission(NAME_FORM, { status: 'live' }), {
-			...READY,
-			STRIPE_WEBHOOK_SECRET: ''
-		});
-		expect(redirect?.status).toBe(303);
-		expect((await readForm(db, FORM_ID))?.status).toBe('live');
+	it('refuses a posted Live while only a processor’s payment notices are unset', async () => {
+		const { failure, redirect } = await post(
+			NAME_FORM,
+			FORM_ID,
+			submission(NAME_FORM, { status: 'live' }),
+			{
+				...READY,
+				STRIPE_WEBHOOK_SECRET: ''
+			}
+		);
+		expect(redirect).toBeUndefined();
+		expect(failure?.status).toBe(400);
+		expect(failure?.errors).toMatchObject({ status: [expect.any(String)] });
+		expect((await readForm(db, FORM_ID))?.status).toBe('draft');
 	});
 });
 

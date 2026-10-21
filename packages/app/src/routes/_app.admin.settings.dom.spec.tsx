@@ -70,7 +70,11 @@ const DETAILS = {
 
 type Drawn = {
 	readonly notificationEmail: string | null;
-	readonly mail: { readonly from: string; readonly host: string } | null;
+	readonly mail: {
+		readonly from: string;
+		readonly host: string;
+		readonly delivers: boolean;
+	} | null;
 	readonly details?: Partial<typeof DETAILS> | undefined;
 	readonly logo?: { readonly id: string; readonly src: string } | null | undefined;
 };
@@ -165,7 +169,11 @@ function card(root: HTMLElement, heading: string): HTMLElement {
 	return found;
 }
 
-const SET = { from: 'giving@riverbanktrust.org', host: 'smtp.riverbanktrust.org' };
+const SET = {
+	from: 'giving@riverbanktrust.org',
+	host: 'smtp.riverbanktrust.org',
+	delivers: true
+};
 
 describe('the mail card', () => {
 	it('says receipts are not going out, and what the server runner does about it, with no mail set', () => {
@@ -180,6 +188,35 @@ describe('the mail card', () => {
 		expect(mail.textContent).toContain('For whoever runs the server');
 		expect(mail.textContent).toContain('docker compose up -d --force-recreate app');
 		expect(mail.querySelector('input[name="to"]')).toBeNull();
+	});
+
+	it('says receipts are not going out when the mail values are still the placeholders from .env.example', () => {
+		const mail = card(
+			screen({
+				notificationEmail: 'ops@riverbanktrust.org',
+				mail: {
+					from: 'donations@example.org',
+					host: 'smtp.example.org',
+					delivers: false
+				}
+			}).root,
+			'Mail'
+		);
+		const banner = mail.querySelector<HTMLElement>('.adm-banner');
+
+		expect(banner?.querySelector('.adm-banner__word')?.textContent).toBe(
+			'Receipts aren’t being sent'
+		);
+		expect(banner?.textContent).toContain('placeholders from .env.example');
+		expect(banner?.textContent).toContain(
+			'Nothing is delivered until they are replaced and the app is recreated.'
+		);
+		expect(banner?.querySelector('pre')?.textContent).toBe(
+			'docker compose up -d --force-recreate app'
+		);
+		expect(banner?.nextElementSibling?.textContent).toContain('donations@example.org');
+		expect(banner?.nextElementSibling?.textContent).toContain('smtp.example.org');
+		expect(mail.textContent).not.toContain('go out from this address');
 	});
 
 	it('holds the steps for whoever runs the server inside the banner, under the staff sentence', () => {

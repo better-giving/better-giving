@@ -828,6 +828,7 @@ describe('POST /api/v1/forms/:id/donations — a fund gift the fund refuses', ()
 	const CHARIOT = {
 		CHARIOT_API_KEY: 'notarealchariotkey',
 		CHARIOT_CONNECT_ID: 'notarealconnectid',
+		CHARIOT_WEBHOOK_SECRET: 'notarealsigningsecret',
 		TURNSTILE_SITE_KEY: '0xSITE',
 		TURNSTILE_SECRET_KEY: '0xSECRET'
 	};
@@ -902,6 +903,7 @@ describe('POST /api/v1/forms/:id/donations — a crypto gift NOWPayments will no
 	const NOWPAYMENTS = {
 		NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
 		NOWPAYMENTS_OUTCOME_CURRENCY: 'btc',
+		NOWPAYMENTS_IPN_SECRET: 'notarealipnsecret',
 		TURNSTILE_SITE_KEY: '0xSITE',
 		TURNSTILE_SECRET_KEY: '0xSECRET'
 	};

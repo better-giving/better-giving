@@ -4454,12 +4454,32 @@ describe('the endings', () => {
 		const card = await atSubmitted();
 
 		expect(card.text('.takeover [part~="heading"]')).toBe('Thank you');
+		expect(card.text('.takeover .prose')).toBe('Acme Relief Fund has your gift.');
+		expect(card.text('.takeover .prose')).not.toContain('A receipt is on its way');
 		expect(card.find('.receipt-slot').hidden).toBe(false);
 		expect(card.text('.row.total .row-label')).toBe('Charged today');
 		// the only ending with a way back to the first step. it is the quiet control, because this
 		// donor is owed no act — the loud one on the two recovery screens is a repair.
 		expect(shows(card, '.takeover > .foot > [part~="action-quiet"]')).toBe('Back to start');
 		expect(primary(card).hidden).toBe(true);
+	});
+
+	it('promises no receipt when the config says false', async () => {
+		const card = await atSubmitted({ config: { ...CONFIG, receipts: false } });
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Thank you');
+		expect(card.text('.takeover .prose')).toBe('Acme Relief Fund has your gift.');
+		expect(card.text('.takeover .prose')).not.toContain('A receipt is on its way');
+	});
+
+	it('says a receipt is on its way when the config promises one', async () => {
+		const card = await atSubmitted({ config: { ...CONFIG, receipts: true } });
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Thank you');
+		expect(card.text('.takeover .prose')).toBe(
+			'A receipt is on its way to your email. Acme Relief Fund has your gift.'
+		);
+		expect(card.text('[role="status"]')).toBe('Your gift went through.');
 	});
 
 	it('starts a second gift on an empty form rather than on the last one', async () => {
@@ -4605,9 +4625,8 @@ describe('the endings', () => {
 	});
 
 	it('claims no receipt on a gift nothing here knows landed', async () => {
-		// deliberately weaker than the success screen, which says a receipt is on its way. nothing
-		// on this path read an outcome, so the copy names what was sent and who will write, and
-		// makes no claim that the money moved.
+		// deliberately weaker than a gift that landed. nothing on this path read an outcome, so the
+		// copy names what was sent and who will write, and makes no claim that the money moved.
 		const card = await atSubmitted({
 			ports: {
 				confirm: async () => ({ kind: 'indeterminate' as const }),
@@ -6659,11 +6678,29 @@ describe('a crypto gift', () => {
 
 		expect(heading(card)).toBe('Thank you');
 		expect(card.text('.takeover .prose')).toBe(
-			'Your gift arrived. A receipt is on its way to your email. Acme Relief Fund has your gift.'
+			'Your gift arrived. Acme Relief Fund has your gift.'
 		);
+		expect(card.text('.takeover .prose')).not.toContain('A receipt is on its way');
 		expect(card.find('.receipt-slot').hidden).toBe(true);
 		expect(card.find('.deposit').hidden).toBe(true);
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+	});
+
+	it('says a receipt is on its way when the config promises one', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		let state: 'waiting' | 'received' = 'waiting';
+		const { card } = await atAddress(USDT, 'USDT', {
+			config: { ...CRYPTO, receipts: true },
+			ports: { status: async () => ({ state }) }
+		});
+		state = 'received';
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(heading(card)).toBe('Thank you');
+		expect(card.text('.takeover .prose')).toBe(
+			'Your gift arrived. A receipt is on its way to your email. Acme Relief Fund has your gift.'
+		);
+		expect(region(card)).toBe('Your gift arrived.');
 	});
 
 	// valued at what arrived, which may be short of the quote: the host page is told no figure, as

@@ -103,16 +103,18 @@ const STRIPE = {
 	STRIPE_WEBHOOK_SECRET: 'whsec_abc'
 };
 
-/** a deployment holding PayPal's pair and no Stripe key at all. */
+/** a deployment holding PayPal's pair, its listener id, and no Stripe key at all. */
 const PAYPAL = {
 	PAYPAL_CLIENT_ID: 'notarealclientid',
-	PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
+	PAYPAL_CLIENT_SECRET: 'notarealclientsecret',
+	PAYPAL_WEBHOOK_ID: 'WH-notareallistener'
 };
 
-/** a deployment holding NOWPayments' values and no other processor's. */
+/** a deployment holding NOWPayments' values, its IPN secret, and no other processor's. */
 const NOWPAYMENTS = {
 	NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
-	NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20'
+	NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20',
+	NOWPAYMENTS_IPN_SECRET: 'notarealipnsecret'
 };
 
 describe('publishedConfig — refusals', () => {
@@ -679,6 +681,28 @@ const USDT = {
 
 /** the config a live form on a fully configured deployment produces. */
 
+/** the four placeholders `.env.example` ships. */
+const PLACEHOLDER_MAIL = {
+	SMTP_HOST: 'smtp.example.org',
+	SMTP_USERNAME: 'REPLACE_ME',
+	SMTP_PASSWORD: 'REPLACE_ME',
+	MAIL_FROM: 'donations@example.org'
+};
+
+/** a host, login, password and from-address that are not those placeholders. */
+const DELIVERING_MAIL = {
+	SMTP_HOST: 'mail.example.org',
+	SMTP_USERNAME: 'apikey',
+	SMTP_PASSWORD: 'pw',
+	MAIL_FROM: 'giving@riverbanktrust.org'
+};
+
+/** the served config without `receipts`, which the donation form's reader does not copy. */
+function withoutReceipts(value: object): object {
+	const { receipts: _receipts, ...rest } = value as { receipts?: unknown };
+	return rest;
+}
+
 function served(sources: Partial<PublishedConfigSources> = {}) {
 	const result = publishedConfig({
 		id: FORM_ID,
@@ -832,14 +856,14 @@ describe('publishedConfig — the config it serves', () => {
 	});
 
 	/**
-	 * a deployment holding PayPal's credentials alone is served on PayPal, not refused.
+	 * a deployment holding PayPal's credentials and its listener id is served on PayPal.
 	 *
 	 * PayPal's client id is the browser half as well as part of the server pair, so one variable
-	 * short is a form that cannot be drawn and two variables set is a form that can. the key handed
-	 * over is that client id — it is the half that is public, and the secret never crosses to a
-	 * browser (CLAUDE.md).
+	 * short is a form that cannot be drawn. the key handed over is that client id — it is the half
+	 * that is public, and the secret never crosses to a browser (CLAUDE.md). the listener id is
+	 * what hears a payment settle; without it the form is refused below.
 	 */
-	it('serves a deployment holding PayPal’s credentials alone', () => {
+	it('serves a deployment holding PayPal’s credentials and PAYPAL_WEBHOOK_ID', () => {
 		const result = publishedConfig({
 			id: FORM_ID,
 			cadences: SERVED_CADENCES,
@@ -849,10 +873,7 @@ describe('publishedConfig — the config it serves', () => {
 			form: formRecord(),
 			owner: null,
 			profile: orgProfile(),
-			env: {
-				PAYPAL_CLIENT_ID: 'notarealclientid',
-				PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
-			}
+			env: PAYPAL
 		});
 
 		expect(result.ok && result.config.providers).toEqual([
@@ -864,14 +885,8 @@ describe('publishedConfig — the config it serves', () => {
 		]);
 	});
 
-	/**
-	 * a deployment holding NOWPayments' values alone is served, with no provider named.
-	 *
-	 * a crypto gift starts no script on the donor's page, so nothing is owed to `providers`: the
-	 * deployment can take a gift from its server half alone, and refusing it would send an operator to
-	 * set values they have already set.
-	 */
-	it('serves a deployment holding NOWPayments’ values alone', () => {
+	it('does not serve a form on PayPal without PAYPAL_WEBHOOK_ID', () => {
+		const { PAYPAL_WEBHOOK_ID: _, ...keys } = PAYPAL;
 		const result = publishedConfig({
 			id: FORM_ID,
 			cadences: SERVED_CADENCES,
@@ -881,13 +896,95 @@ describe('publishedConfig — the config it serves', () => {
 			form: formRecord(),
 			owner: null,
 			profile: orgProfile(),
-			env: {
-				NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
-				NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20'
-			}
+			env: keys
+		});
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('payments_not_configured');
+		expect(result.error.message).toContain('PAYPAL_WEBHOOK_ID');
+	});
+
+	/**
+	 * a deployment holding NOWPayments' values and its IPN secret is served, with no provider named.
+	 *
+	 * a crypto gift starts no script on the donor's page, so nothing is owed to `providers`: the
+	 * deployment can settle a gift from its server half and the IPN secret, and refusing it would
+	 * send an operator to set values they have already set.
+	 */
+	it('serves a deployment holding NOWPayments’ values and NOWPAYMENTS_IPN_SECRET', () => {
+		const result = publishedConfig({
+			id: FORM_ID,
+			cadences: SERVED_CADENCES,
+			program: null,
+			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
+			form: formRecord(),
+			owner: null,
+			profile: orgProfile(),
+			env: NOWPAYMENTS
 		});
 
 		expect(result.ok && result.config.providers).toEqual([]);
+	});
+
+	it('does not serve a form on NOWPayments without NOWPAYMENTS_IPN_SECRET', () => {
+		const { NOWPAYMENTS_IPN_SECRET: _, ...keys } = NOWPAYMENTS;
+		const result = publishedConfig({
+			id: FORM_ID,
+			cadences: SERVED_CADENCES,
+			program: null,
+			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
+			form: formRecord(),
+			owner: null,
+			profile: orgProfile(),
+			env: keys
+		});
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('payments_not_configured');
+		expect(result.error.message).toContain('NOWPAYMENTS_IPN_SECRET');
+	});
+
+	it('does not serve a form on Stripe keys without STRIPE_WEBHOOK_SECRET', () => {
+		const { STRIPE_WEBHOOK_SECRET: _, ...keys } = STRIPE;
+		const result = publishedConfig({
+			id: FORM_ID,
+			cadences: SERVED_CADENCES,
+			program: null,
+			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
+			form: formRecord(),
+			owner: null,
+			profile: orgProfile(),
+			env: keys
+		});
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('payments_not_configured');
+		expect(result.error.message).toContain('STRIPE_WEBHOOK_SECRET');
+	});
+
+	it('does not serve a form on Chariot without CHARIOT_WEBHOOK_SECRET', () => {
+		const result = publishedConfig({
+			id: FORM_ID,
+			cadences: SERVED_CADENCES,
+			program: null,
+			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
+			form: formRecord(),
+			owner: null,
+			profile: orgProfile(),
+			env: { CHARIOT_API_KEY: 'notarealchariotkey', CHARIOT_CONNECT_ID: 'notarealconnectid' }
+		});
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('payments_not_configured');
+		expect(result.error.message).toContain('CHARIOT_WEBHOOK_SECRET');
 	});
 
 	/**
@@ -1026,7 +1123,20 @@ describe('publishedConfig — the config it serves', () => {
 	])('produces a config the donation form’s own reader accepts, with $label', ({ sources }) => {
 		const config = served(sources);
 		const read = readFormConfig(JSON.parse(JSON.stringify(config)));
-		expect(read).toEqual(config);
+		expect(read).not.toBeNull();
+		if (read === null) return;
+		// `readFormConfig` keeps `receipts` only when it is boolean true
+		// (packages/form/src/config.ts) and drops a false, so the comparison is over the fields
+		// it rebuilds either way.
+		expect(withoutReceipts(read)).toEqual(withoutReceipts(config));
+	});
+
+	it('serves receipts as false when mail is still the placeholders', () => {
+		expect(served({ env: { ...STRIPE, ...PLACEHOLDER_MAIL } })).toMatchObject({ receipts: false });
+	});
+
+	it('serves receipts as true when mail is a real host, login, password and from-address', () => {
+		expect(served({ env: { ...STRIPE, ...DELIVERING_MAIL } })).toMatchObject({ receipts: true });
 	});
 
 	/**

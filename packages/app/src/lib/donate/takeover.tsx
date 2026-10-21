@@ -141,6 +141,15 @@ function depositScreen(
 }
 
 /**
+ * a receipt is promised only where the served config says one will be sent.
+ *
+ * absent is none (`receipts` on `FormConfig` in @better-giving/form/v1).
+ */
+function sendsReceipt(config: FormConfig): boolean {
+	return config.receipts === true;
+}
+
+/**
  * the screen, as the words a donor on this rail reads.
  *
  * the rail is the state's own and there is no other reading of it here: `State`
@@ -285,13 +294,13 @@ export function takeoverFor(
 			};
 
 		// a gift sent from the donor's own wallet is valued on arrival, so no figure the card holds is
-		// what arrived: the emailed receipt names that, and this screen draws no receipt at all.
+		// what arrived, and this screen draws no receipt at all.
 		case 'success':
 			if (state.method === 'crypto') {
 				return {
 					...BLANK,
 					heading: copy.SUCCESS_HEADING,
-					body: copy.arrivedBody(org),
+					body: copy.arrivedBody(org, sendsReceipt(config)),
 					announce: copy.ARRIVED_ANNOUNCE,
 					secondary: { label: copy.BACK_TO_START }
 				};
@@ -301,7 +310,7 @@ export function takeoverFor(
 				heading: copy.SUCCESS_HEADING,
 				receipt: 'charged',
 				totalLabel: copy.CHARGED_TODAY,
-				body: copy.successBody(org),
+				body: copy.successBody(org, sendsReceipt(config)),
 				announce: copy.SUCCESS_ANNOUNCE,
 				// the quiet control rather than the primary the two recovery screens use. this donor is
 				// owed no act — a gift was made — and a loud control over a thank-you asks for one.

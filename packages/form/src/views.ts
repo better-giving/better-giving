@@ -719,8 +719,7 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 		case 'indeterminate':
 			// an ending with nothing to press, and the copy claims nothing. the flow is here because
 			// a confirmation went unanswered, so the money may already have moved and may not — the
-			// webhook settles which (`src/routes/api.stripe.webhook.ts`), and it is what
-			// sends the receipt. weaker than `success` below on purpose: nothing here knows the
+			// webhook settles which (`src/routes/api.stripe.webhook.ts`). nothing here knows the
 			// charge landed, so nothing here says a receipt is on its way.
 			return {
 				...BLANK,
@@ -787,13 +786,16 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 			};
 
 		// a gift sent from the donor's own wallet is valued on arrival, so no figure the card holds is
-		// what arrived: the emailed receipt names that, and this screen draws no receipt at all.
-		case 'success':
+		// what arrived, and the crypto arm draws no receipt figures.
+		case 'success': {
 			if (state.method === 'crypto') {
 				return {
 					...BLANK,
 					heading: 'Thank you',
-					body: `Your gift arrived. A receipt is on its way to your email. ${org} has your gift.`,
+					body:
+						config.receipts === true
+							? `Your gift arrived. A receipt is on its way to your email. ${org} has your gift.`
+							: `Your gift arrived. ${org} has your gift.`,
 					announce: 'Your gift arrived.',
 					secondary: { label: 'Back to start' }
 				};
@@ -804,7 +806,10 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				receipt: 'charged',
 				totalLabel: 'Charged today',
 				receiptNote: '',
-				body: `A receipt is on its way to your email. ${org} has your gift.`,
+				body:
+					config.receipts === true
+						? `A receipt is on its way to your email. ${org} has your gift.`
+						: `${org} has your gift.`,
 				announce: 'Your gift went through.',
 				// the quiet control rather than the primary the two recovery screens use. this donor
 				// is owed no act — a gift was made — and a loud control over a thank-you asks for
@@ -817,6 +822,7 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				// beside a figure that has just been charged reads as undoing the charge.
 				secondary: { label: 'Back to start' }
 			};
+		}
 
 		// `state.fix` is not among what this screen says. it names a publishable key, an env var or a
 		// screen in /admin, and it is addressed to whoever administers the deployment rather than to

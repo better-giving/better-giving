@@ -12,6 +12,8 @@ services:
   app:
     build: .
     image: better-giving
+    # `image` together with `build` pulls before it builds, and `better-giving` is not in a registry.
+    pull_policy: build
     # an init as PID 1 forwards signals and reaps children; node is not built to be PID 1
     # (docker-node docs/BestPractices.md).
     init: true
@@ -34,6 +36,8 @@ services:
   migrate:
     build: .
     image: better-giving
+    # `image` together with `build` pulls before it builds, and `better-giving` is not in a registry.
+    pull_policy: build
     profiles: [migrate]
     init: true
     volumes:

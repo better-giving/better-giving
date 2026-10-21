@@ -47,7 +47,9 @@ function block(
 
 const ORGANISATION: FormReadinessLine = { job: 'organisation', severity: 'blocker' };
 const PROCESSOR: FormReadinessLine = { job: 'processor', severity: 'blocker' };
-const NOTICES: FormReadinessLine = { job: 'notices', severity: 'warning' };
+const NOTICES: FormReadinessLine = { job: 'notices', severity: 'blocker' };
+const NOTICES_SENTENCE =
+	'Payment notices aren’t set up, so a gift couldn’t be marked paid. The form stays offline until they are.';
 
 /** each band's title and the sentences under it, in the order drawn. */
 function bands(root: HTMLElement) {
@@ -101,44 +103,39 @@ it('draws only the unresolved lines', () => {
 	]);
 });
 
-it('draws the notices warning in its own band when nothing blocks', () => {
-	const root = block(
-		[
-			{ job: 'organisation', severity: 'resolved' },
-			{ job: 'processor', severity: 'resolved' },
-			NOTICES
-		],
-		{ deployer: true }
-	);
+it('draws the notices sentence in the blocker band, and not the processor sentence', () => {
+	const root = block([{ job: 'organisation', severity: 'resolved' }, PROCESSOR, NOTICES], {
+		deployer: true
+	});
 
 	expect(bands(root)).toEqual([
 		{
-			role: 'status',
-			title: 'Payment notices aren’t set up',
-			lines: [],
-			text: 'Gifts will be charged, but none is marked paid here until the processor can tell this site about it. Payments says what to ask whoever set up this site.'
+			role: 'alert',
+			title: 'This form can’t go live yet',
+			lines: [`${NOTICES_SENTENCE} Payments says what to ask whoever set up this site.`],
+			text: undefined
 		}
 	]);
 	expect(links(root)).toEqual(['/admin/payments']);
 });
 
-it('words the notices warning for a member with no link', () => {
-	const root = block([NOTICES], { deployer: false });
+it('words the notices blocker for a member, and links nowhere', () => {
+	const root = block([PROCESSOR, NOTICES], { deployer: false });
 
-	expect(bands(root)[0]?.text).toBe(
-		'Gifts will be charged, but none is marked paid here until the processor can tell this site about it. Ask whoever set up this site to set it up.'
-	);
+	expect(bands(root)[0]?.lines).toEqual([
+		`${NOTICES_SENTENCE} Ask whoever set up this site to set it up.`
+	]);
 	expect(links(root)).toEqual([]);
 });
 
-it('keeps the warning out of the blocker band beside a blocker', () => {
-	const root = block([ORGANISATION, NOTICES], { deployer: true });
+it('keeps another blocker beside the notices sentence', () => {
+	const root = block([ORGANISATION, PROCESSOR, NOTICES], { deployer: true });
 
-	expect(bands(root).map((band) => band.title)).toEqual([
-		'This form can’t go live yet',
-		'Payment notices aren’t set up'
+	expect(bands(root).map((band) => band.title)).toEqual(['This form can’t go live yet']);
+	expect(bands(root)[0]?.lines).toEqual([
+		'Receipts need the organisation’s EIN and registered name. Add them in Settings.',
+		`${NOTICES_SENTENCE} Payments says what to ask whoever set up this site.`
 	]);
-	expect(bands(root)[0]?.lines).toHaveLength(1);
 });
 
 it('says on the new form that it will be saved as a draft, and when it can go live', () => {
@@ -154,11 +151,18 @@ it('says on the new form that it will be saved as a draft, and when it can go li
 	);
 });
 
-it('says nothing about going live on the new form when only the warning stands', () => {
-	const root = block([NOTICES], { deployer: true, context: 'new' });
+it('says on the new form that missing notices keep it a draft', () => {
+	const root = block([PROCESSOR, NOTICES], { deployer: true, context: 'new' });
 
-	expect(bands(root).map((band) => band.title)).toEqual(['Payment notices aren’t set up']);
-	expect(root.textContent).not.toContain('It can go live');
+	const [band] = bands(root);
+	expect(band?.role).toBe('status');
+	expect(band?.title).toBe('This form will be saved as a draft');
+	expect(band?.lines).toEqual([
+		`${NOTICES_SENTENCE} Payments says what to ask whoever set up this site.`
+	]);
+	expect(root.querySelector('.adm-hint')?.textContent).toBe(
+		'It can go live once the items above are done.'
+	);
 });
 
 it('renders nothing for a deployment with nothing outstanding', () => {

@@ -369,3 +369,52 @@ describe('Reset to default', () => {
 		expect(document.activeElement).not.toBe(stateWord());
 	});
 });
+
+describe('a donation page’s state word', () => {
+	async function mountBar(props: { state?: PublishState; takingGifts?: boolean } = {}) {
+		const Stub = createRoutesStub([
+			{
+				path: '/admin/donation-page',
+				HydrateFallback: () => null,
+				Component: () => (
+					<PublishBar
+						closeHref="/admin"
+						page={{ kind: 'donation' }}
+						state={props.state ?? 'live'}
+						publishing={false}
+						republished={false}
+						undoing={false}
+						onPublish={() => {}}
+						{...(props.takingGifts === undefined ? {} : { takingGifts: props.takingGifts })}
+					/>
+				)
+			}
+		]);
+		mount(createElement(Stub, { initialEntries: ['/admin/donation-page'] }));
+		await settle();
+	}
+
+	it('reads Not taking gifts, and not Live, when a live page is not taking gifts', async () => {
+		await mountBar({ takingGifts: false });
+
+		const status = stateWord();
+		expect(status?.textContent).toBe('Not taking gifts');
+		expect(status?.textContent).not.toContain('Live');
+		expect(status?.querySelector('.adm-state--attention')).not.toBeNull();
+		// a live page has nothing to publish, whether or not it is taking gifts.
+		expect(button('Publish', bar()).getAttribute('aria-disabled')).toBe('true');
+	});
+
+	it('reads Live when taking gifts is left unsaid', async () => {
+		await mountBar();
+
+		expect(stateWord()?.textContent).toBe('Live');
+	});
+
+	it('keeps Changes not published when the draft differs and gifts are off', async () => {
+		await mountBar({ state: 'changed', takingGifts: false });
+
+		expect(stateWord()?.textContent).toBe('Changes not published');
+		expect(button('Publish', bar()).hasAttribute('aria-disabled')).toBe(false);
+	});
+});

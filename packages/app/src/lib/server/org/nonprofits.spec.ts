@@ -42,6 +42,56 @@ const search = (revocationDate: string | null) => ({
 	]
 });
 
+describe('an IRS name stored in capitals', () => {
+	it.each([
+		['AMERICAN NATIONAL RED CROSS', 'American National Red Cross'],
+		['SOCIETY OF ST VINCENT', 'Society of St Vincent']
+	])('titles %s on a lookup and leaves the address', async (sent, titled) => {
+		serviceAnswers({
+			...organisation(null),
+			name: sent,
+			address: { street: '431 18TH ST NW', city: 'WASHINGTON', state: 'DC', zip: '20006' }
+		});
+
+		const answer = await lookUpNonprofit('53-0196605', undefined);
+
+		expect(answer).toMatchObject({
+			outcome: 'found',
+			fields: {
+				legal_name: titled,
+				address_line1: '431 18TH ST NW',
+				city: 'WASHINGTON',
+				region: 'DC'
+			}
+		});
+	});
+
+	it.each([
+		['AMERICAN NATIONAL RED CROSS', 'American National Red Cross'],
+		['SOCIETY OF ST VINCENT', 'Society of St Vincent']
+	])('titles %s on a search match and leaves the city', async (sent, titled) => {
+		serviceAnswers({
+			results: [
+				{
+					ein: '530196605',
+					name: sent,
+					city: 'WASHINGTON',
+					state: 'DC',
+					...REVOKED,
+					revocationDate: null
+				}
+			]
+		});
+
+		const answer = await searchNonprofits('red cross', undefined);
+
+		expect(answer).toMatchObject({
+			outcome: 'found',
+			matches: [{ name: titled, city: 'WASHINGTON', state: 'DC' }]
+		});
+	});
+});
+
 describe('a revocation date the service sends', () => {
 	it.each(['', 'not a date'])('reads %j as no date on a lookup', async (sent) => {
 		serviceAnswers(organisation(sent));

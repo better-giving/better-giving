@@ -158,7 +158,7 @@ describe('a query of a name', () => {
 			matches: [
 				{
 					ein: '53-0196605',
-					name: 'AMERICAN NATIONAL RED CROSS',
+					name: 'American National Red Cross',
 					city: 'WASHINGTON',
 					state: 'DC',
 					deductible: true,
@@ -167,7 +167,7 @@ describe('a query of a name', () => {
 				},
 				{
 					ein: '23-7069110',
-					name: 'RED CROSS OF NOWHERE',
+					name: 'Red Cross of Nowhere',
 					city: 'SPRINGFIELD',
 					state: 'IL',
 					deductible: null,
@@ -204,7 +204,7 @@ describe('the address of one EIN', () => {
 			kind: 'lookup',
 			outcome: 'found',
 			fields: {
-				legal_name: 'AMERICAN NATIONAL RED CROSS',
+				legal_name: 'American National Red Cross',
 				tax_id: '53-0196605',
 				address_line1: '431 18TH ST NW',
 				city: 'WASHINGTON',

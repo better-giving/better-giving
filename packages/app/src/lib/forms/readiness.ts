@@ -28,10 +28,12 @@ export type FormReadinessSeverity = (typeof FORM_READINESS_SEVERITIES)[number];
  * what a line is about: the three things that stand between a donation form and a donor.
  *
  *   organisation — the registered name and the EIN a form states while asking.
- *   processor    — the keys of at least one payment processor, without which no gift is charged.
- *   notices      — the value a processor's payment notices are verified with, for each processor
- *                  whose keys are set. without it a gift is charged and never heard to settle, so
- *                  it warns and never blocks.
+ *   processor    — at least one payment processor that can settle a gift, without which no form
+ *                  is served.
+ *   notices      — the notice variable for each processor whose charge keys are set. Live is
+ *                  withheld while any is missing. a served form names only a processor that has
+ *                  it (`servedProcessors` in `$lib/server/payments/factory.ts`). a gift already
+ *                  sent on a processor missing it is charged and never marked paid.
  *
  * a closed list, because the screens word each line by its job and by who is reading — the
  * person who deployed the site is sent to the page each one is settled from, and a member is told
@@ -59,9 +61,11 @@ export interface FormReadinessLine {
  * whether any line in the block is a blocker, which is the one thing about it a control depends
  * on rather than only reports.
  *
- * a blocker means `publishedConfig` in `$lib/server/forms/published-config.ts` serves nothing, so
- * the status box on the screens that write a form does not offer Live to a form not yet live while
- * one stands, and the action behind it refuses that move anyway (`liveOffered`). a warning never
+ * a blocker withholds Live on the screens that write a form, and the action behind that select
+ * refuses the move anyway (`liveOffered`). the processor line is where `publishedConfig` in
+ * `$lib/server/forms/published-config.ts` serves nothing. the notices line is where a processor's
+ * keys are set and its notice variable is not: Live is withheld, and a served form does not name
+ * that processor. a gift already sent on it is charged and never marked paid. a warning never
  * stops a write — that is the whole difference between the two words.
  *
  * `null` is the resolved deployment: `formsReadiness` answers `null` once every line is done, so

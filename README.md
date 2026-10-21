@@ -12,8 +12,8 @@ A donation app for a **single** nonprofit, run anywhere Docker runs. One deploym
 
 ### Requirements
 
-- **Docker with Compose** to run it, and **Node ≥ 22** with **pnpm** (`corepack enable`) to work on it
-- **a Stripe, PayPal, Chariot or NOWPayments account** (any one alone is enough, and more than one may be set) and **an SMTP account on port 465**, for taking money. [`DEPLOY.md`](./DEPLOY.md) has the details
+- **Docker with Compose** to run it, and **Node ≥ 22** with **pnpm** (`corepack enable`) to work on a checkout. `pnpm run doctor` is one of those checkout commands: it needs this repository and `pnpm install`, and it is not a command inside the container
+- **a Stripe, PayPal, Chariot or NOWPayments account** (one is enough, and more than one may be set) and **an SMTP account on port 465**, for taking money. A processor's keys alone do not finish it: the payment-notice value [`DEPLOY.md`](./DEPLOY.md) lists for that processor has to be set too, or a donor is charged and the gift never settles. [`DEPLOY.md`](./DEPLOY.md) has the details
 
 ### Run it
 
@@ -25,7 +25,7 @@ docker compose up -d
 
 Sign in at `/login` on `http://localhost:3000` (or `BETTER_GIVING_PORT`) as `admin`, with the `ADMIN_PASSWORD` from `.env`. The mail values in `.env.example` are placeholders that send nowhere, so the app runs with no account created anywhere. The database lives on the named volume `data` and survives `docker compose down`.
 
-The dashboard opens at once. A donation form goes live once Settings holds the organisation's registered name and EIN and one processor's keys are in `.env` (`packages/app/src/lib/server/forms/readiness.ts`).
+The dashboard opens at once. A donation form goes live once Settings holds the organisation's registered name and EIN and one processor can settle a gift: its keys and its payment-notice value, both in `.env` (`packages/app/src/lib/server/forms/readiness.ts`).
 
 **A donation cannot complete out of the box**: every processor key is commented out. The app serves its own Donation page at `/donate`, made the first time it is asked for, and answers 404 there until a form could go live.
 

@@ -18,7 +18,15 @@ import { deployedBindings, signInAsDeployer } from './staff-session.testing';
 
 export const ORIGIN = 'https://give.example';
 const PASSWORD = 'a-very-long-random-staff-password';
-export const DEPLOYMENT = { env: deployedBindings(PASSWORD), password: PASSWORD, origin: ORIGIN };
+// the notice secret is what hears a Stripe charge settle. `deployedBindings` leaves it unset so
+// the Payments screen can still say notices are unset (`_app.admin.payments.db.spec.ts`); a form
+// is not served without it (`servedProcessors` in $lib/server/payments/factory.ts), so publishing
+// one live from here needs the value the other specs' `READY` fixtures carry.
+export const DEPLOYMENT = {
+	env: { ...deployedBindings(PASSWORD), STRIPE_WEBHOOK_SECRET: 'whsec_signing' } as Env,
+	password: PASSWORD,
+	origin: ORIGIN
+};
 
 /** the bindings with no per-key bucket, which the test pool sizes at three calls a minute. */
 const UNMETERED = { ...DEPLOYMENT.env, INTEGRATIONS_KEY_RATE_LIMITER: undefined } as unknown as Env;

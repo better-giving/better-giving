@@ -11,6 +11,7 @@ import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
 import { challengeKind } from '../api/challenge';
 import { readConfigEnv, type ConfigEnv } from '../config/env';
+import { mailDelivers } from '../email/delivers';
 import type { Db } from '../db/client';
 import type { OrgProfile } from '../db/schema';
 import { servedDeductibilityStatement } from '../org/deductibility';
@@ -530,64 +531,68 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	const paymentMethods =
 		coins.length > 0 ? sources.rails : sources.rails.filter((rail) => rail !== 'crypto');
 
+	const config = {
+		formId: form.id,
+		// every processor this deployment can both charge on and start an SDK for, in the port's
+		// own order. `providers` is a set (`FormConfig` in packages/form/src/v1.ts) and each
+		// adapter on the donor's page takes its own entry by name, so a deployment holding a
+		// second processor names it beside the first rather than replacing it.
+		providers: processors.providers,
+		currency: form.currency,
+		suggestedAmountsMinor: form.suggestedAmounts,
+		minAmountMinor: minMinor,
+		maxAmountMinor: maxMinor,
+		// the deployment's own answer and never this row's. `frequencies` stays on the wire — it is
+		// a permanent contract (`FormConfig` in packages/form/src/v1.ts) — and the value comes from
+		// whether this deployment's processor account can collect a repeating gift, read by
+		// `offeredCadences` in ./offered-cadences.ts.
+		//
+		// narrower than what a gift is accepted on, and `paymentMethods` below is narrower under
+		// the same rule: `parseQuoteRequest` in ../donations/quote-input.ts reads `FREQUENCIES` in
+		// packages/form/src/v1.ts and `OFFERED_PAYMENT_METHODS` in ../../forms/offered-rails.ts
+		// whole, so a cadence or a rail this list has stopped offering is still charged rather than
+		// refused. the served config is cached and reaches pages this deployment cannot recall
+		// (CLAUDE.md), so refusing either would be a donor on a page we published being turned away
+		// at the last step.
+		frequencies: sources.cadences,
+		// the deployment's own answer and never this row's, the same as `frequencies` above and
+		// under the same rule: which of the rails this repository has a form for the processor
+		// account is approved for, read by `offeredRails` in ./offered-rails.ts.
+		// crypto only beside a coin to pick — see `PublishedConfigSources.coins`.
+		paymentMethods,
+		feeCoverage: SERVED_FEE_COVERAGE,
+		// every rail the vocabulary holds, composed from each processor's own table
+		// (`servedFeeRules` in ../payments/fees.ts). which of the two PayPal tables is the one thing
+		// about that processor's pricing this deployment cannot read off the account, so it comes off
+		// a deploy-time answer (`paypalFeeRules` beside it).
+		feeRules: servedFeeRules(paypalFeeRules(sources.env)),
+		locale: SERVED_LOCALE,
+		orgLegalName: legalName,
+		ein: taxId,
+		deductibilityStatement,
+		// exactly one of the two, by the check the donation endpoint will ask for
+		// (`challengeKind` in ../api/challenge.ts). a sitekey without its secret is not served:
+		// a widget whose token nothing here can verify is a form that fails at the last step.
+		...(challenge === 'turnstile'
+			? { turnstileSiteKey: (sources.env.TURNSTILE_SITE_KEY ?? '').trim() }
+			: { altchaChallengeUrl: `/api/v1/forms/${encodeURIComponent(form.id)}/challenge` }),
+		// omitted rather than sent empty, the same call the sitekey above takes: the field is
+		// optional on the contract and `readFormConfig` drops what `servedProgram` drops.
+		...(program === null ? {} : { program }),
+		// omitted rather than sent empty, and only beside the rail that reads it.
+		...(paymentMethods.includes('crypto') ? { coins } : {}),
+		// true only when this deployment can deliver mail (`mailDelivers` in ../email/delivers.ts).
+		// the placeholders `.env.example` ships count as set and still do not deliver.
+		receipts: mailDelivers(sources.env)
+		// `monthlyAsk` stays declared on the contract in packages/form/src/v1.ts because `v1` is
+		// add-never-rename (CLAUDE.md), and nothing on either side touches it: no code here
+		// sets it and no code in packages/form/src/ reads it.
+	} satisfies FormConfig;
 	return {
 		ok: true,
 		form,
 		served: { processors: processors.configured, coinsRead: sources.coins !== null },
-		config: {
-			formId: form.id,
-			// every processor this deployment can both charge on and start an SDK for, in the port's
-			// own order. `providers` is a set (`FormConfig` in packages/form/src/v1.ts) and each
-			// adapter on the donor's page takes its own entry by name, so a deployment holding a
-			// second processor names it beside the first rather than replacing it.
-			providers: processors.providers,
-			currency: form.currency,
-			suggestedAmountsMinor: form.suggestedAmounts,
-			minAmountMinor: minMinor,
-			maxAmountMinor: maxMinor,
-			// the deployment's own answer and never this row's. `frequencies` stays on the wire — it is
-			// a permanent contract (`FormConfig` in packages/form/src/v1.ts) — and the value comes from
-			// whether this deployment's processor account can collect a repeating gift, read by
-			// `offeredCadences` in ./offered-cadences.ts.
-			//
-			// narrower than what a gift is accepted on, and `paymentMethods` below is narrower under
-			// the same rule: `parseQuoteRequest` in ../donations/quote-input.ts reads `FREQUENCIES` in
-			// packages/form/src/v1.ts and `OFFERED_PAYMENT_METHODS` in ../../forms/offered-rails.ts
-			// whole, so a cadence or a rail this list has stopped offering is still charged rather than
-			// refused. the served config is cached and reaches pages this deployment cannot recall
-			// (CLAUDE.md), so refusing either would be a donor on a page we published being turned away
-			// at the last step.
-			frequencies: sources.cadences,
-			// the deployment's own answer and never this row's, the same as `frequencies` above and
-			// under the same rule: which of the rails this repository has a form for the processor
-			// account is approved for, read by `offeredRails` in ./offered-rails.ts.
-			// crypto only beside a coin to pick — see `PublishedConfigSources.coins`.
-			paymentMethods,
-			feeCoverage: SERVED_FEE_COVERAGE,
-			// every rail the vocabulary holds, composed from each processor's own table
-			// (`servedFeeRules` in ../payments/fees.ts). which of the two PayPal tables is the one thing
-			// about that processor's pricing this deployment cannot read off the account, so it comes off
-			// a deploy-time answer (`paypalFeeRules` beside it).
-			feeRules: servedFeeRules(paypalFeeRules(sources.env)),
-			locale: SERVED_LOCALE,
-			orgLegalName: legalName,
-			ein: taxId,
-			deductibilityStatement,
-			// exactly one of the two, by the check the donation endpoint will ask for
-			// (`challengeKind` in ../api/challenge.ts). a sitekey without its secret is not served:
-			// a widget whose token nothing here can verify is a form that fails at the last step.
-			...(challenge === 'turnstile'
-				? { turnstileSiteKey: (sources.env.TURNSTILE_SITE_KEY ?? '').trim() }
-				: { altchaChallengeUrl: `/api/v1/forms/${encodeURIComponent(form.id)}/challenge` }),
-			// omitted rather than sent empty, the same call the sitekey above takes: the field is
-			// optional on the contract and `readFormConfig` drops what `servedProgram` drops.
-			...(program === null ? {} : { program }),
-			// omitted rather than sent empty, and only beside the rail that reads it.
-			...(paymentMethods.includes('crypto') ? { coins } : {})
-			// `monthlyAsk` stays declared on the contract in packages/form/src/v1.ts because `v1` is
-			// add-never-rename (CLAUDE.md), and nothing on either side touches it: no code here
-			// sets it and no code in packages/form/src/ reads it.
-		}
+		config
 	};
 }
 

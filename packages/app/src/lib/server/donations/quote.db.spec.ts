@@ -66,6 +66,7 @@ const STRIPE_ENV = {
 const PAYPAL_ENV = {
 	PAYPAL_CLIENT_ID: 'notarealclientid',
 	PAYPAL_CLIENT_SECRET: 'notarealclientsecret',
+	PAYPAL_WEBHOOK_ID: 'WH-notareallistener',
 	TURNSTILE_SECRET_KEY: '0xSECRET'
 };
 
@@ -1547,6 +1548,7 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 	const CHARIOT_ENV = {
 		CHARIOT_API_KEY: 'notarealchariotkey',
 		CHARIOT_CONNECT_ID: 'notarealconnectid',
+		CHARIOT_WEBHOOK_SECRET: 'notarealsigningsecret',
 		TURNSTILE_SECRET_KEY: '0xSECRET'
 	};
 	const SESSION = 'cfe09e64-6a74-4dab-a565-361185a6f248';
@@ -2025,6 +2027,7 @@ describe('mintQuote() — a gift sent in crypto', () => {
 	const NOWPAYMENTS_ENV = {
 		NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
 		NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20',
+		NOWPAYMENTS_IPN_SECRET: 'notarealipnsecret',
 		TURNSTILE_SECRET_KEY: '0xSECRET'
 	};
 	const PAYMENT_ID = '5745459419';

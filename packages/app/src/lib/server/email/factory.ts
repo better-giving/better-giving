@@ -110,3 +110,5 @@ function build(
 		? createSmtpProvider({ ...smtpFields(env), from: env.MAIL_FROM ?? '' }, connect)
 		: createSmtpProvider({ ...smtpFields(env), from: env.MAIL_FROM ?? '' });
 }
+
+export { mailDelivers } from './delivers';

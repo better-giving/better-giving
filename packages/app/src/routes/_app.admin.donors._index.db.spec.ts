@@ -300,16 +300,17 @@ describe('/admin/donors load — the summary over the list', () => {
 		expect(summary.last).toMatch(/^[A-Z][a-z]{2} \d{4}$/);
 	});
 
-	it('counts no donor for a contact whose only gift is pending, and still lists them', async () => {
-		// the two figures answer different questions and are meant to disagree: the list is every
-		// contact this deployment holds, and the summary is the ones whose money has moved.
+	it('counts a contact whose only gift is pending, and not as new this month', async () => {
+		// total is every unarchived contact, the same figure All donors states. new this month
+		// is a first settled gift, and a pending one has not settled.
 		const id = '019fb400-0000-7000-8000-000000000031';
 		await donor(id, 'Ada Okafor', null);
 		await settled(await gift(id), 'inbound', 'pending', 10_000, Date.now());
 
 		const loaded = await runLoad();
 		expect(loaded.contacts).toHaveLength(1);
-		expect(loaded.summary).toMatchObject({ total: 0, thisMonth: 0 });
+		expect(loaded.summary).toMatchObject({ total: 1, thisMonth: 0 });
+		expect(loaded.summary.total).toBe(loaded.views.all);
 		expect(loaded.summary.points).toEqual(Array(12).fill(0));
 	});
 });

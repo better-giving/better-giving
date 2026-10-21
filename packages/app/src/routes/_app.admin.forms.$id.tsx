@@ -566,10 +566,11 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// `PROGRAM_MODE_LABELS` is keyed by the mode and a box holds a string.
 			programMode: record.programMode,
 			pinnedProgram: pinned?.name ?? null,
-			// whether the status box may offer Live at all. a blocker means `publishedConfig` serves
-			// nothing, so publishing here would produce a form that renders nothing on the org's own
-			// site — the name group's save re-checks this, because a filtered `<option>` list is not a
-			// control. a form already live keeps the option, which `liveOffered` argues.
+			// whether the status box may offer Live at all. a blocker withholds it: `publishedConfig`
+			// serves nothing while the processor line stands, and a notice variable left unset would
+			// charge a gift that is never marked paid. the name group's save re-checks this, because a
+			// filtered `<option>` list is not a control. a form already live keeps the option, which
+			// `liveOffered` argues.
 			liveOffered: !archived && liveOffered(record.status, readiness),
 			// whether the viewer deployed the site, the predicate ./_app.tsx reads: the readiness block
 			// is worded for who can fix each line.

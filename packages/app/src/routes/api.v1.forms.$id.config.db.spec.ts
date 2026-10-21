@@ -450,7 +450,8 @@ describe('GET /api/v1/forms/:id/config', () => {
 describe('GET /api/v1/forms/:id/config — crypto', () => {
 	const NOWPAYMENTS = {
 		NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
-		NOWPAYMENTS_OUTCOME_CURRENCY: 'btc'
+		NOWPAYMENTS_OUTCOME_CURRENCY: 'btc',
+		NOWPAYMENTS_IPN_SECRET: 'notarealipnsecret'
 	};
 	const BTC = {
 		code: 'BTC',

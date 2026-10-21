@@ -59,6 +59,7 @@ import { readConfigEnv } from '$lib/server/config/env';
 import { readSetupState } from '$lib/server/config/setup-state';
 import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
+import { mailDelivers } from '$lib/server/email/delivers';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { sendTestEmail } from '$lib/server/email/test-send';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
@@ -94,9 +95,11 @@ import type { Route } from './+types/_app.admin.settings';
 // ($lib/server/org/queries.ts), so a press on one leaves what is typed in the other alone.
 //
 // **mail is the deployment's `.env` and nothing here writes it.** the card states the sender and the
-// host, never the username or the password, and whether mail is set up is the setup reading's
-// `smtp` line ($lib/server/config/readiness.ts). the test send answers on this screen through a
-// fetcher, since it writes nothing and an outcome is all it has to report.
+// host, never the username or the password. values present is the setup reading's `smtp` line
+// ($lib/server/config/readiness.ts); whether anything is delivered is `mailDelivers`
+// ($lib/server/email/delivers.ts), which is false for the placeholders `.env.example` ships.
+// the test send answers on this screen through a fetcher, since it writes nothing and an outcome
+// is all it has to report.
 //
 // three submissions and one `action`, told apart by the box `whichForm` writes into each `<form>`
 // ($lib/server/conform.ts argues the mechanism). each save reports at its own button and survives
@@ -281,6 +284,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	) as Record<DetailsField, string>;
 	const config = readConfigEnv(context.get(platform).env);
 	const mailSet = lines.find((line) => line.id === 'smtp')?.state === 'ready';
+	const delivers = mailDelivers(context.get(platform).env);
 
 	// the save that just redirected here, taken: read and cleared on this one response.
 	const landed = await takeFlash(request, SAVED_FLASH);
@@ -295,7 +299,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 					? null
 					: { id: profile.logoImageId, src: imageSrc(profile.logoImageId) },
 			notificationEmail: profile?.notificationEmail ?? null,
-			mail: mailSet ? { from: config.MAIL_FROM ?? '', host: config.SMTP_HOST ?? '' } : null,
+			mail: mailSet
+				? { from: config.MAIL_FROM ?? '', host: config.SMTP_HOST ?? '', delivers }
+				: null,
 			saved: savedSection(landed?.marker ?? null, SAVED_SECTIONS),
 			// the version both saves are written against, carried back in each `<form>`.
 			version: orgProfileVersion(profile)
@@ -823,12 +829,22 @@ function NotificationsCard({
 	);
 }
 
+/** the command both mail banners hand whoever runs the server. */
+const RECREATE_APP = 'docker compose up -d --force-recreate app';
+
 /** the mail card: what the deployment sends with, or what it takes to send at all. */
 function MailCard({ mail, to }: { readonly mail: LoaderData['mail']; readonly to: string | null }) {
 	return (
 		<Section card>
 			<h2>Mail</h2>
-			{mail === null ? <MailUnset /> : <MailSet mail={mail} to={to} />}
+			{mail === null ? (
+				<MailUnset />
+			) : (
+				<>
+					{mail.delivers ? null : <MailPlaceholders />}
+					<MailSet mail={mail} to={to} />
+				</>
+			)}
 		</Section>
 	);
 }
@@ -848,17 +864,36 @@ function MailUnset() {
 					<p>
 						<MarkedText text="Add the mail values to `.env` (DEPLOY.md, Mail), then recreate the app:" />
 					</p>
-					<CodeSlab
-						oneline
-						content="docker compose up -d --force-recreate app"
-						copyable
-						copyLabel="Copy the command"
-					/>
+					<CodeSlab oneline content={RECREATE_APP} copyable copyLabel="Copy the command" />
 				</>
 			}
 		>
 			Donors get no receipt and you get no notice of their gifts until mail is set up. Ask whoever
 			set up this site to add it. The steps below are for them.
+		</Banner>
+	);
+}
+
+/**
+ * the banner when the mail values are still the placeholders `.env.example` ships. the pair under
+ * it stays, so the operator can see the values; nothing is delivered until they are replaced.
+ */
+function MailPlaceholders() {
+	return (
+		<Banner
+			tone="attention"
+			word="Receipts aren’t being sent"
+			body={
+				<>
+					<h3 className="adm-banner__head">For whoever runs the server</h3>
+					<p>
+						<MarkedText text="Replace the placeholders from `.env.example`, then recreate the app:" />
+					</p>
+					<CodeSlab oneline content={RECREATE_APP} copyable copyLabel="Copy the command" />
+				</>
+			}
+		>
+			<MarkedText text="These are still the placeholders from `.env.example`. Nothing is delivered until they are replaced and the app is recreated." />
 		</Banner>
 	);
 }
@@ -889,7 +924,9 @@ function MailSet({
 				<StatedValue label="Sends from" value={mail.from} />
 				<StatedValue label="Mail host" value={mail.host} />
 			</div>
-			<p className="adm-hint">Receipts to donors and notices to you go out from this address.</p>
+			{mail.delivers ? (
+				<p className="adm-hint">Receipts to donors and notices to you go out from this address.</p>
+			) : null}
 			<fetcher.Form method="post" {...getFormProps(form)}>
 				<input {...whichForm(TEST_EMAIL_FORM.id)} />
 				<Field

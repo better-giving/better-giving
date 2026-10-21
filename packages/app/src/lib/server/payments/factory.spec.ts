@@ -8,7 +8,8 @@ afterEach(() => {
 
 const PAYPAL_CONFIGURED = {
 	PAYPAL_CLIENT_ID: 'notarealclientid',
-	PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
+	PAYPAL_CLIENT_SECRET: 'notarealclientsecret',
+	PAYPAL_WEBHOOK_ID: 'WH-notareallistener'
 };
 
 const CHARIOT_HELD = {
@@ -543,6 +544,7 @@ describe('servedProcessors — the fix', () => {
 
 		expect(fix).toContain('PayPal');
 		expect(fix).toContain('PAYPAL_CLIENT_SECRET');
+		expect(fix).toContain('PAYPAL_WEBHOOK_ID');
 		expect(fix).not.toContain('Stripe');
 	});
 
@@ -551,11 +553,13 @@ describe('servedProcessors — the fix', () => {
 
 		expect(fix).toContain('Stripe');
 		expect(fix).toContain('STRIPE_PUBLISHABLE_KEY');
+		expect(fix).toContain('STRIPE_WEBHOOK_SECRET');
+		expect(fix).toContain(setupWebhookCommand('stripe'));
 		expect(fix).not.toContain('PayPal');
 	});
 
 	// a fresh fork holds nothing, so there is no processor an operator has chosen and picking one
-	// for them would be inventing the answer. either pair finishes the job on its own, and the
+	// for them would be inventing the answer. any one processor is enough on its own, and the
 	// sentence says so.
 	it('names both for a deployment that has started on neither', () => {
 		const fix = servedProcessors({}).fix;
@@ -650,7 +654,64 @@ describe('NOWPayments', () => {
 		const served = servedProcessors({ NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey' });
 
 		expect(served.fix).toContain('NOWPayments');
+		expect(served.fix).toContain('NOWPAYMENTS_IPN_SECRET');
 		expect(served.fix).not.toContain('Stripe');
 		expect(served.shortfall).toContain('NOWPAYMENTS_OUTCOME_CURRENCY');
+	});
+});
+
+/**
+ * a processor is served only when it can settle a gift: the charge credentials, the browser half,
+ * and the notice variable. keys alone charge a donor and leave the gift pending.
+ */
+describe('a form is served only on a processor that can settle', () => {
+	const STRIPE_KEYS = {
+		STRIPE_SECRET_KEY: 'sk_test_notarealkey',
+		STRIPE_PUBLISHABLE_KEY: 'pk_test_notarealkey'
+	};
+
+	it('does not serve a form on Stripe keys without STRIPE_WEBHOOK_SECRET', () => {
+		const served = servedProcessors(STRIPE_KEYS);
+
+		expect(served.serves).toBe(false);
+		expect(served.providers).toEqual([]);
+		expect(served.shortfall).toContain('STRIPE_WEBHOOK_SECRET');
+	});
+
+	it('serves a form on the same Stripe keys with STRIPE_WEBHOOK_SECRET set', () => {
+		const served = servedProcessors({
+			...STRIPE_KEYS,
+			STRIPE_WEBHOOK_SECRET: 'whsec_notarealsecret'
+		});
+
+		expect(served.serves).toBe(true);
+		expect(served.providers).toEqual([{ name: 'stripe', publishableKey: 'pk_test_notarealkey' }]);
+	});
+
+	it('does not serve a form on PayPal without PAYPAL_WEBHOOK_ID', () => {
+		const served = servedProcessors({
+			PAYPAL_CLIENT_ID: 'notarealclientid',
+			PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
+		});
+
+		expect(served.serves).toBe(false);
+		expect(served.providers).toEqual([]);
+		expect(served.shortfall).toContain('PAYPAL_WEBHOOK_ID');
+	});
+
+	it('does not serve a form on Chariot without CHARIOT_WEBHOOK_SECRET', () => {
+		const { CHARIOT_WEBHOOK_SECRET: _, ...keys } = CHARIOT_HELD;
+		const served = servedProcessors(keys);
+
+		expect(served.serves).toBe(false);
+		expect(served.providers).toEqual([]);
+		expect(served.shortfall).toContain('CHARIOT_WEBHOOK_SECRET');
+	});
+
+	it('does not serve a form on NOWPayments without NOWPAYMENTS_IPN_SECRET', () => {
+		const { NOWPAYMENTS_IPN_SECRET: _, ...keys } = NOWPAYMENTS_HELD;
+
+		expect(servedProcessors(keys).serves).toBe(false);
+		expect(servedProcessors(NOWPAYMENTS_HELD).serves).toBe(true);
 	});
 });

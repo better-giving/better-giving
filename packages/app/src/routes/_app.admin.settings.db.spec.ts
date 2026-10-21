@@ -480,7 +480,7 @@ type Drawn = {
 	details: Record<string, string | string[]>;
 	logo: { id: string; src: string } | null;
 	notificationEmail: string | null;
-	mail: { from: string; host: string } | null;
+	mail: { from: string; host: string; delivers: boolean } | null;
 	saved: string | null;
 };
 
@@ -495,12 +495,25 @@ describe('what the screen is drawn from', () => {
 		const response = await get(deployer);
 		const text = await response.clone().text();
 
+		// `smtp.example.org` is the placeholder `.env.example` ships, so the values are drawn
+		// and nothing is delivered (`mailDelivers` in $lib/server/email/delivers.ts).
 		expect(((await response.json()) as Drawn).mail).toEqual({
 			from: 'giving@example.org',
-			host: 'smtp.example.org'
+			host: 'smtp.example.org',
+			delivers: false
 		});
 		expect(text).not.toContain('mail-secret');
 		expect(text).not.toContain('apikey');
+	});
+
+	it('states that mail delivers when the values are not the placeholders', async () => {
+		const env = { ...deployed(), SMTP_HOST: 'mail.example.org' } as Env;
+
+		expect((await drawn(env)).mail).toEqual({
+			from: 'giving@example.org',
+			host: 'mail.example.org',
+			delivers: true
+		});
 	});
 
 	it('states no mail where its values are not all set', async () => {

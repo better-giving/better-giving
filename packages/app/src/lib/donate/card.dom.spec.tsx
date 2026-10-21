@@ -2555,10 +2555,11 @@ describe('a crypto gift', () => {
 	/** the review step of a one-time gift with the crypto option open. */
 	async function onCrypto(
 		quote: () => Response = () => json(USDT),
-		drawn: Parameters<typeof card>[2] = {}
+		drawn: Parameters<typeof card>[2] = {},
+		config: FormConfig = CRYPTO
 	) {
 		const server = deployment(quote);
-		const { root } = await card(CRYPTO, {}, drawn);
+		const { root } = await card(config, {}, drawn);
 		await walkToGive(root);
 		const head = row(root, 'Crypto');
 		if (head === null) throw new Error('no crypto option on the review step');
@@ -2576,8 +2577,8 @@ describe('a crypto gift', () => {
 	}
 
 	/** the address screen, for a USDT gift. */
-	async function atAddress(drawn: Parameters<typeof card>[2] = {}) {
-		const reached = await onCrypto(undefined, drawn);
+	async function atAddress(drawn: Parameters<typeof card>[2] = {}, config: FormConfig = CRYPTO) {
+		const reached = await onCrypto(undefined, drawn, config);
 		await pick(reached.root, 'USDT');
 		await donate(reached.root);
 		return reached;
@@ -2734,7 +2735,8 @@ describe('a crypto gift', () => {
 
 	it('turns to the thank-you once the gift arrives, with no receipt figures', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
-		const { root, server } = await atAddress();
+		const withReceipt = { ...CRYPTO, receipts: true };
+		const { root, server } = await atAddress({}, withReceipt);
 
 		await tick(DEPOSIT_POLL_MS);
 		expect(server.reads).toBe(1);
@@ -2747,7 +2749,7 @@ describe('a crypto gift', () => {
 
 		const ending = screen(root);
 		expect(one(ending, 'h2').textContent).toBe(copy.SUCCESS_HEADING);
-		expect(one(ending, '.prose').textContent).toBe(copy.arrivedBody('Helping Hands'));
+		expect(one(ending, '.prose').textContent).toBe(copy.arrivedBody('Helping Hands', true));
 		expect(one(ending, '.receipt-slot').hidden).toBe(true);
 		expect(one(ending, '.deposit').hidden).toBe(true);
 		expect(document.activeElement).toBe(one(ending, 'h2'));

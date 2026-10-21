@@ -77,6 +77,31 @@ type Asked =
 
 type Failure = NonprofitsRateLimited | NonprofitsUnavailable | { readonly outcome: 'not_found' };
 
+/** words a title leaves lowercase, except as the first or last word. */
+const TITLE_SMALL = new Set(['a', 'an', 'and', 'of', 'the', 'for', 'in', 'on', 'at', 'to']);
+
+/**
+ * an IRS name, which the files store in capitals, as a title.
+ *
+ * trim, split on whitespace, lowercase each word, capitalize its first letter. a word in
+ * `TITLE_SMALL` stays lowercase unless it is the first or last word. an ampersand stays `&`.
+ */
+function titleCaseName(name: string): string {
+	const words = name
+		.trim()
+		.split(/\s+/)
+		.filter((word) => word !== '');
+	return words
+		.map((word, index) => {
+			if (word === '&') return '&';
+			const lower = word.toLowerCase();
+			const edge = index === 0 || index === words.length - 1;
+			if (!edge && TITLE_SMALL.has(lower)) return lower;
+			return lower.charAt(0).toUpperCase() + lower.slice(1);
+		})
+		.join(' ');
+}
+
 /** whole seconds, the form the service writes `Retry-After` in. */
 const SECONDS = /^\d+$/;
 
@@ -134,7 +159,7 @@ export async function lookUpNonprofit(
 	if (!read.success) return { kind: 'lookup', ...unreadable(path) };
 	const org = read.data;
 	const fields: NonprofitFields = {
-		legal_name: org.name ?? '',
+		legal_name: titleCaseName(org.name ?? ''),
 		tax_id: einAsPrinted(org.ein),
 		address_line1: org.address.street ?? '',
 		city: org.address.city ?? '',
@@ -173,7 +198,7 @@ export async function searchNonprofits(
 		outcome: 'found',
 		matches: read.data.results.map((match) => ({
 			ein: einAsPrinted(match.ein),
-			name: match.name,
+			name: titleCaseName(match.name),
 			city: match.city ?? '',
 			state: match.state ?? '',
 			deductible: match.deductible,

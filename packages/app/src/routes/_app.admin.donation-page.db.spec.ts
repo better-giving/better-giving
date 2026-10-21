@@ -38,6 +38,7 @@ type Drawn = {
 	state: string;
 	preview: string;
 	version: number;
+	takingGifts: boolean;
 	blocks: Record<string, unknown>[];
 	settings: {
 		summary: string;
@@ -66,8 +67,35 @@ async function donationPage() {
 /** a deployment whose set-up is finished. */
 let bindings: Env;
 
+/** the rails the served config reads, so the editor's page view does not ask Stripe. */
+async function rails(methods: readonly string[]) {
+	await edgeCache().put(
+		new Request(`${ORIGIN}/__offered-rails`),
+		new Response(JSON.stringify(methods), {
+			headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
+		})
+	);
+}
+
 beforeEach(async () => {
-	bindings = await finishedDeployment();
+	// the webhook secret is what `servedProcessors` requires before a published page is drawn
+	// (`settlementReady` in $lib/server/payments/factory.ts). finishedDeployment does not set it.
+	bindings = { ...(await finishedDeployment()), STRIPE_WEBHOOK_SECRET: 'whsec_spec' };
+	await rails(['card']);
+});
+
+describe('whether the published Donation page is taking gifts', () => {
+	it('is taking gifts while the published page would be drawn', async () => {
+		expect(await open()).toMatchObject({ state: 'live', takingGifts: true });
+	});
+
+	it('is not taking gifts while the published page would be refused', async () => {
+		// an account approved for no rail is the served-config refusal `loadPageView` returns
+		// (`renderableConfig` in $lib/server/forms/published-config.ts). the page row is still live.
+		await rails([]);
+
+		expect(await open()).toMatchObject({ state: 'live', takingGifts: false });
+	});
 });
 
 describe('the Donation page editor', () => {
