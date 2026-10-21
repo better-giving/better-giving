@@ -80,13 +80,41 @@ type Failure = NonprofitsRateLimited | NonprofitsUnavailable | { readonly outcom
 /** words a title leaves lowercase, except as the first or last word. */
 const TITLE_SMALL = new Set(['a', 'an', 'and', 'of', 'the', 'for', 'in', 'on', 'at', 'to']);
 
+/** acronyms that stay in capitals. */
+const TITLE_ACRONYMS = new Set(['YMCA', 'YWCA', 'USA', 'NAACP', 'PTA', 'UNICEF']);
+
+/**
+ * postal abbreviations of the states and the territories. a token keeps one in capitals only when
+ * the previous word ends in a comma.
+ */
+const STATE_CODES = new Set([
+	...'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO'.split(' '),
+	...'MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY PR GU VI AS MP'.split(
+		' '
+	)
+]);
+
+/** whole words that match the Mac pattern and take ordinary title case. */
+const MAC_ORDINARY = new Set(['MACHINE', 'MACE', 'MACRO']);
+
+/** one letter-run with any punctuation only before or after it. */
+const WRAPPED_LETTERS = /^([^A-Za-z]*)([A-Za-z]+)([^A-Za-z]*)$/;
+
+/** a straight apostrophe or a curly one (U+2019). */
+const APOSTROPHE = /['\u2019]/;
+
 /**
  * an IRS name or place, which the files store in capitals, as a title.
  *
- * trim, split on whitespace. a word in `TITLE_SMALL` stays lowercase unless it is the first or
- * last word. before that capitalization, a token whose letters are all capitals and whose letter
- * count is 1 to 4 stays as the IRS wrote it, digits included (`YMCA`, `18TH`). every other word
- * is lowercased and its first letter capitalized. an ampersand stays `&`.
+ * trim, split on whitespace. a code in `STATE_CODES` stays in capitals when the previous word
+ * ends in a comma, even when that code is also in `TITLE_SMALL`. any other word in `TITLE_SMALL`
+ * that is neither first nor last stays lowercase. a word stays in capitals when its letters are
+ * in `TITLE_ACRONYMS`. an all-caps token whose letters are `MC` plus one or more letters
+ * becomes `Mc` plus the remainder title-cased, and punctuation around those letters stays. an
+ * all-caps token whose letters are `MAC` plus three or more letters becomes `Mac` plus the
+ * remainder title-cased, except a word in `MAC_ORDINARY`. a token that contains `'` or `’` is
+ * title-cased on each side of the apostrophe. an ampersand stays `&`. every other word is
+ * lowercased and its first character capitalized.
  */
 function titleCaseName(name: string): string {
 	const words = name
@@ -96,20 +124,74 @@ function titleCaseName(name: string): string {
 	return words
 		.map((word, index) => {
 			if (word === '&') return '&';
+			const state = stateCode(word, words[index - 1]);
+			if (state !== null) return state;
 			const lower = word.toLowerCase();
 			const edge = index === 0 || index === words.length - 1;
 			if (!edge && TITLE_SMALL.has(lower)) return lower;
-			if (staysAsWritten(word)) return word;
-			return lower.charAt(0).toUpperCase() + lower.slice(1);
+			const kept = acronym(word);
+			if (kept !== null) return kept;
+			const named = apostropheName(word) ?? mcName(word) ?? macName(word);
+			if (named !== null) return named;
+			return titleCaseWord(word);
 		})
 		.join(' ');
 }
 
-/** 1 to 4 letters, every one a capital. a lowercase letter, or any other count, goes to title case. */
-function staysAsWritten(token: string): boolean {
-	const letters = token.match(/[A-Za-z]/g);
-	if (letters === null || letters.length < 1 || letters.length > 4) return false;
-	return letters.every((letter) => letter >= 'A' && letter <= 'Z');
+function titleCaseWord(token: string): string {
+	const lower = token.toLowerCase();
+	return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function wrappedLetters(token: string): [string, string, string] | null {
+	const match = WRAPPED_LETTERS.exec(token);
+	if (match === null) return null;
+	return [match[1] ?? '', match[2] ?? '', match[3] ?? ''];
+}
+
+function capitalsWhenListed(token: string, list: ReadonlySet<string>): string | null {
+	const wrapped = wrappedLetters(token);
+	if (wrapped === null) return null;
+	const [prefix, letters, suffix] = wrapped;
+	const upper = letters.toUpperCase();
+	if (!list.has(upper)) return null;
+	return `${prefix}${upper}${suffix}`;
+}
+
+function stateCode(token: string, previous: string | undefined): string | null {
+	if (previous === undefined || !previous.endsWith(',')) return null;
+	return capitalsWhenListed(token, STATE_CODES);
+}
+
+function acronym(token: string): string | null {
+	return capitalsWhenListed(token, TITLE_ACRONYMS);
+}
+
+function apostropheName(token: string): string | null {
+	if (!APOSTROPHE.test(token)) return null;
+	return token
+		.split(/(['\u2019])/)
+		.map((part) => (part === "'" || part === '\u2019' ? part : titleCaseWord(part)))
+		.join('');
+}
+
+function mcName(token: string): string | null {
+	const wrapped = wrappedLetters(token);
+	if (wrapped === null) return null;
+	const [prefix, letters, suffix] = wrapped;
+	const rest = /^MC([A-Z]+)$/.exec(letters);
+	if (rest === null) return null;
+	return `${prefix}Mc${titleCaseWord(rest[1] ?? '')}${suffix}`;
+}
+
+function macName(token: string): string | null {
+	const wrapped = wrappedLetters(token);
+	if (wrapped === null) return null;
+	const [prefix, letters, suffix] = wrapped;
+	if (MAC_ORDINARY.has(letters)) return null;
+	const rest = /^MAC([A-Z]{3,})$/.exec(letters);
+	if (rest === null) return null;
+	return `${prefix}Mac${titleCaseWord(rest[1] ?? '')}${suffix}`;
 }
 
 /** whole seconds, the form the service writes `Retry-After` in. */
