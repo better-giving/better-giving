@@ -68,6 +68,22 @@ describe('an IRS name stored in capitals', () => {
 		});
 	});
 
+	it.each([
+		['431 18TH ST NW', '431 18th St NW'],
+		['601 E ST NW', '601 E St NW'],
+		['12 3RD ST NW', '12 3rd St NW'],
+		['PO BOX 1018', 'PO Box 1018']
+	])('titles the street %s', async (sent, titled) => {
+		serviceAnswers({
+			...organisation(null),
+			address: { street: sent, city: 'WASHINGTON', state: 'DC', zip: '20006' }
+		});
+
+		const answer = await lookUpNonprofit('53-0196605', undefined);
+
+		expect(answer).toMatchObject({ outcome: 'found', fields: { address_line1: titled } });
+	});
+
 	it('titles the street and leaves the region and the postal code', async () => {
 		serviceAnswers({
 			...organisation(null),
@@ -102,7 +118,21 @@ describe('an IRS name stored in capitals', () => {
 		['WINSTON-SALEM FOUNDATION', 'Winston-Salem Foundation'],
 		['GREATER MACEDONIA', 'Greater Macedonia'],
 		['MACEDONIA CDC', 'Macedonia CDC'],
-		['E&K TRITES TRUST FBO', 'E&K Trites Trust FBO']
+		['E&K TRITES TRUST FBO', 'E&K Trites Trust FBO'],
+		['VFW POST 4884', 'VFW Post 4884'],
+		['LANCASTER SPCA', 'Lancaster SPCA'],
+		['SOUTHSIDE PTO', 'Southside PTO'],
+		['WESLEY AME ZION CHURCH', 'Wesley AME Zion Church'],
+		['AARP FOUNDATION', 'AARP Foundation'],
+		['CHRIST THE KING LUTHERAN SCHOOL LLC', 'Christ the King Lutheran School LLC'],
+		['HENRY FORD II FUND', 'Henry Ford II Fund'],
+		['EUGENE EDGE III CHARITABLE TRUST', 'Eugene Edge III Charitable Trust'],
+		['AUGUST A BUSCH III CHARITABLE TRUST', 'August A Busch III Charitable Trust'],
+		['ST MARYS CHURCH', 'St Marys Church'],
+		['COMMUNITY HOUSING CORP', 'Community Housing Corp'],
+		['MOUNT ZION BAPTIST', 'Mount Zion Baptist'],
+		['MIAMI, FL', 'Miami, FL'],
+		['SPRINGFIELD, CT', 'Springfield, CT']
 	])('titles %s on a lookup', async (sent, titled) => {
 		serviceAnswers({ ...organisation(null), name: sent });
 

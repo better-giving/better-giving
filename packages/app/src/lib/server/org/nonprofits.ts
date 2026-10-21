@@ -77,11 +77,63 @@ type Asked =
 
 type Failure = NonprofitsRateLimited | NonprofitsUnavailable | { readonly outcome: 'not_found' };
 
-/** words a title leaves lowercase, except as the first or last word. */
+/** words a title leaves lowercase, except as the first or last word. a one-letter word stays capitals. */
 const TITLE_SMALL = new Set(['a', 'an', 'and', 'of', 'the', 'for', 'in', 'on', 'at', 'to']);
 
 /** acronyms that stay in capitals. */
-const TITLE_ACRONYMS = new Set(['YMCA', 'YWCA', 'USA', 'NAACP', 'PTA', 'UNICEF', 'CDC', 'FBO']);
+const TITLE_ACRONYMS = new Set([
+	'YMCA',
+	'YWCA',
+	'USA',
+	'NAACP',
+	'PTA',
+	'UNICEF',
+	'CDC',
+	'FBO',
+	'SPCA',
+	'AARP',
+	'PTO',
+	'PTSA',
+	'AME',
+	'UMC',
+	'NAMI',
+	'USO',
+	'ACLU',
+	'HOA',
+	'BSA',
+	'VFW',
+	'YMHA',
+	'JCC',
+	'AA',
+	'NA'
+]);
+
+/** roman numerals that stay in capitals. */
+const ROMAN_NUMERALS = new Set(['II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']);
+
+/** street and personal titles rendered in title case. */
+const TITLE_ABBREVIATIONS = new Set([
+	'ST',
+	'MT',
+	'FT',
+	'DR',
+	'JR',
+	'SR',
+	'MR',
+	'MRS',
+	'MS',
+	'RD',
+	'BLVD',
+	'LN',
+	'CT',
+	'PL',
+	'SQ',
+	'STE',
+	'BLDG',
+	'FL',
+	'PKWY',
+	'HWY'
+]);
 
 /**
  * compass points that stay in capitals when the word's letters, or a hyphen segment's letters, are
@@ -90,8 +142,8 @@ const TITLE_ACRONYMS = new Set(['YMCA', 'YWCA', 'USA', 'NAACP', 'PTA', 'UNICEF',
 const COMPASS = new Set(['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW']);
 
 /**
- * postal abbreviations of the states and the territories. a token keeps one in capitals only when
- * the previous word ends in a comma.
+ * postal abbreviations of the states and the territories. after a comma, the token stays in
+ * capitals.
  */
 const STATE_CODES = new Set([
 	...'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO'.split(' '),
@@ -122,20 +174,9 @@ const AMPERSAND_INITIALS = /^([^A-Za-z&]*)([A-Za-z]{1,2}(?:&[A-Za-z]{1,2})+)([^A
 const APOSTROPHE = /['\u2019]/;
 
 /**
- * an IRS name or place, which the files store in capitals, as a title.
- *
- * trim, split on whitespace. a code in `STATE_CODES` stays in capitals when the previous word
- * ends in a comma, even when that code is also in `TITLE_SMALL`. any other word in `TITLE_SMALL`
- * that is neither first nor last stays lowercase. a lone `&` stays `&`. a word that contains `-`
- * is titled on each hyphen segment and rejoined with `-`, so the segment after a hyphen is
- * capitalized too. on a word, and on each hyphen segment: letters in `TITLE_ACRONYMS` stay in
- * capitals; a compass point in `COMPASS` stays in capitals when its letters are exactly that
- * point; letter groups of one or two letters joined by `&` stay in capitals, including the `&`,
- * and punctuation before or after those groups stays; an all-caps token whose letters are `MC`
- * plus one or more letters becomes `Mc` plus the remainder title-cased; an all-caps letter body
- * in `MAC_NAMES` is rendered `Mac` plus the remainder title-cased; a token that contains `'` or
- * `’` is title-cased on each side of the apostrophe. punctuation around the `MC` and `MAC_NAMES`
- * letters stays. every other word is lowercased and its first character capitalized.
+ * an IRS name or place, which the files store in capitals, as a title. a closed list of charity
+ * acronyms misses the classes that reach a receipt: a word with no vowels, a roman numeral, a
+ * middle initial, and PO Box.
  */
 function titleCaseName(name: string): string {
 	const words = name
@@ -147,6 +188,10 @@ function titleCaseName(name: string): string {
 			if (word === '&') return '&';
 			const state = stateCode(word, words[index - 1]);
 			if (state !== null) return state;
+			const initial = singleLetter(word);
+			if (initial !== null) return initial;
+			const postOffice = poBox(word, words[index + 1]);
+			if (postOffice !== null) return postOffice;
 			const lower = word.toLowerCase();
 			const edge = index === 0 || index === words.length - 1;
 			if (!edge && TITLE_SMALL.has(lower)) return lower;
@@ -170,7 +215,13 @@ function titleCaseToken(token: string): string {
 }
 
 function titleCaseSegment(token: string): string {
-	const kept = acronym(token) ?? compass(token) ?? ampersandInitials(token);
+	const kept =
+		acronym(token) ??
+		compass(token) ??
+		ampersandInitials(token) ??
+		romanNumeral(token) ??
+		titleAbbreviation(token) ??
+		vowellessCapitals(token);
 	if (kept !== null) return kept;
 	const named = apostropheName(token) ?? mcName(token) ?? macName(token);
 	if (named !== null) return named;
@@ -203,6 +254,52 @@ function acronym(token: string): string | null {
 
 function compass(token: string): string | null {
 	return capitalsWhenListed(token, COMPASS);
+}
+
+function romanNumeral(token: string): string | null {
+	return capitalsWhenListed(token, ROMAN_NUMERALS);
+}
+
+/** one letter stays in capitals. runs before `TITLE_SMALL`, where `a` would be lowercase. */
+function singleLetter(token: string): string | null {
+	const wrapped = wrappedLetters(token);
+	if (wrapped === null) return null;
+	const [prefix, letters, suffix] = wrapped;
+	if (letters.length !== 1) return null;
+	return `${prefix}${letters.toUpperCase()}${suffix}`;
+}
+
+/** the word PO stays PO when the next word is BOX. */
+function poBox(token: string, next: string | undefined): string | null {
+	if (next === undefined) return null;
+	const wrapped = wrappedLetters(token);
+	if (wrapped === null) return null;
+	const [prefix, letters, suffix] = wrapped;
+	if (letters.toUpperCase() !== 'PO') return null;
+	const nextLetters = wrappedLetters(next)?.[1];
+	if (nextLetters?.toUpperCase() !== 'BOX') return null;
+	return `${prefix}PO${suffix}`;
+}
+
+/** a glued digit is an ordinal: 3RD is 3rd, not 3Rd. */
+function titleAbbreviation(token: string): string | null {
+	if (/\d/.test(token)) return null;
+	const wrapped = wrappedLetters(token);
+	if (wrapped === null) return null;
+	const [prefix, letters, suffix] = wrapped;
+	if (!TITLE_ABBREVIATIONS.has(letters.toUpperCase())) return null;
+	return `${prefix}${titleCaseWord(letters)}${suffix}`;
+}
+
+/** letters with none of A E I O U Y, and no digit in the token, stay in capitals. */
+function vowellessCapitals(token: string): string | null {
+	if (/\d/.test(token)) return null;
+	const wrapped = wrappedLetters(token);
+	if (wrapped === null) return null;
+	const [prefix, letters, suffix] = wrapped;
+	const upper = letters.toUpperCase();
+	if (/[AEIOUY]/.test(upper)) return null;
+	return `${prefix}${upper}${suffix}`;
 }
 
 function ampersandInitials(token: string): string | null {
