@@ -877,7 +877,7 @@ function MailUnset() {
 /**
  * the banner when the mail values are still the placeholders `.env.example` ships. the pair under
  * it stays, so the operator can see the values; nothing is delivered until they are replaced.
- * the ask line is the one `MailUnset` shows: the steps are for whoever set the site up.
+ * the steps below are for whoever set the site up.
  */
 function MailPlaceholders() {
 	return (
@@ -895,7 +895,7 @@ function MailPlaceholders() {
 			}
 		>
 			<MarkedText text="These are still the placeholders from `.env.example`. Nothing is delivered until they are replaced and the app is recreated." />{' '}
-			Ask whoever set up this site to add it. The steps below are for them.
+			Ask whoever set up this site to replace them. The steps below are for them.
 		</Banner>
 	);
 }

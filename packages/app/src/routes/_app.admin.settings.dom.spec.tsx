@@ -212,7 +212,7 @@ describe('the mail card', () => {
 			'Nothing is delivered until they are replaced and the app is recreated.'
 		);
 		expect(banner?.querySelector('.adm-banner__text')?.textContent).toContain(
-			'Ask whoever set up this site to add it. The steps below are for them.'
+			'Ask whoever set up this site to replace them. The steps below are for them.'
 		);
 		expect(banner?.querySelector('pre')?.textContent).toBe(
 			'docker compose up -d --force-recreate app'

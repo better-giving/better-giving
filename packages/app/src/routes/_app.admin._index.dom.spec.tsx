@@ -58,14 +58,12 @@ it('says there is no form for the organisation’s own site yet and leads to mak
 	const link = toNewForm(root);
 
 	expect(link?.textContent).toBe('Create a donation form');
-	expect(link?.parentElement?.textContent).toBe(
-		'No forms for your own site yet. Create a donation form'
-	);
+	expect(link?.parentElement?.textContent).toBe('No donation forms yet. Create a donation form');
 });
 
 it('says nothing about forms once the deployment holds one', () => {
 	const root = dashboard(true);
 
 	expect(toNewForm(root)).toBe(null);
-	expect(root.textContent).not.toContain('No forms for your own site yet.');
+	expect(root.textContent).not.toContain('No donation forms yet.');
 });

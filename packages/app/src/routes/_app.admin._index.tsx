@@ -165,8 +165,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
 
 			{hasForms ? null : (
 				<p>
-					No forms for your own site yet.{' '}
-					<Link to={href('/admin/forms/new')}>Create a donation form</Link>
+					No donation forms yet. <Link to={href('/admin/forms/new')}>Create a donation form</Link>
 				</p>
 			)}
 
