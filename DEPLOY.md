@@ -23,43 +23,58 @@ fly orgs list
 fly apps create <app-name> --org <org>
 ```
 
-`<org>` is one of the names `fly orgs list` printed. The server refuses to start without `ADMIN_PASSWORD` and `BETTER_AUTH_SECRET` ([1. Start it](#1-start-it)), so the first deploy has to already hold them or its check fails. `--stage` stores the two without starting a Machine. You type both values.
+`<org>` is one of the names `fly orgs list` printed. The server refuses to start without `ADMIN_PASSWORD` and `BETTER_AUTH_SECRET` ([1. Start it](#1-start-it)), so the first deploy has to already hold them or its check fails. Generate both and keep them in a password manager. `fly secrets list` shows the names only:
 
 ```sh
-fly secrets set ADMIN_PASSWORD='<password>' BETTER_AUTH_SECRET='<secret>' -a <app-name> --stage
+openssl rand -base64 24   # ADMIN_PASSWORD, at least 12 characters
+openssl rand -base64 32   # BETTER_AUTH_SECRET
+```
+
+Stage those two together with `BETTER_AUTH_URL` set to `https://<app-name>.fly.dev`, so the first start already serves that origin. `fly secrets import` reads `NAME=VALUE` lines on standard input, and `--stage` stores them without starting a Machine:
+
+```sh
+fly secrets import --stage -a <app-name> <<'EOF'
+ADMIN_PASSWORD=<the first value>
+BETTER_AUTH_SECRET=<the second value>
+BETTER_AUTH_URL=https://<app-name>.fly.dev
+EOF
 fly platform regions
 fly deploy --ha=false --now --primary-region <region> -a <app-name>
 ```
 
-`<region>` is one of the codes `fly platform regions` printed. `--primary-region` places the first Machine and its volume; it does not write `fly.toml`. `fly deploy` builds the root `Dockerfile` and creates the volume `better_giving_data`, mounted at `/data`. The volume is one disk: a second Machine does not receive a copy. The size and the 14-day snapshot retention are `initial_size` and `snapshot_retention` in `fly.toml`. `--ha=false` is the first deploy: a volume attaches to one Machine, and `fly scale count` above 1 creates another Machine with an empty volume. Leave the count at 1. A second process would split the rate limits, the cache and the scheduled runs, as [1. Start it](#1-start-it) describes.
+`<region>` is one of the codes `fly platform regions` printed. `--primary-region` places the first Machine and its volume; it does not write `fly.toml`. A plain `fly deploy` builds the root `Dockerfile` on Fly's remote builder. The command above is that, plus the flags this first Machine needs. When the remote build fails, `fly deploy --local-only` with those same flags builds on this machine, which needs Docker installed. The deploy creates the volume `better_giving_data`, mounted at `/data`. The volume is one disk: a second Machine does not receive a copy. The size and the 14-day snapshot retention are `initial_size` and `snapshot_retention` in `fly.toml`. `--ha=false` is the first deploy: a volume attaches to one Machine, and `fly scale count` above 1 creates another Machine with an empty volume. Leave the count at 1. A second process would split the rate limits, the cache and the scheduled runs, as [1. Start it](#1-start-it) describes. Deploy prints `WARN DATABASE_URL may be a potentially sensitive environment variable` because that name sits in `[env]`. The value in `fly.toml` is the file path `file:/data/better-giving.db`, and the warning is harmless.
 
 The Machine stays up. `auto_stop_machines` is `off` and `min_machines_running` is 1 in `fly.toml`, because the scheduled runs are in-process ([Scheduled runs](#scheduled-runs)). A minute the process was down for is not replayed.
 
 On each start the Machine applies migrations, then replaces that process with the server, so `SIGTERM` reaches the drain in `packages/app/server/index.ts`. A release command runs in a temporary Machine with no volume, so it cannot migrate this file. A migration that fails exits before the server listens, and the deploy's check fails. The check is `GET /login`, with `grace_period` of 30 seconds for that migration. When a deploy fails the check while migrations are still applying, raise `grace_period` on that check in `fly.toml`.
 
-A deploy stops the old Machine with `SIGTERM` and waits the `kill_timeout` of 30 seconds. `fly machine stop` defaults to `SIGINT` and a shorter wait, so a stop you take yourself names both:
+A deploy stops the old Machine with `SIGTERM` and waits the `kill_timeout` of 30 seconds. `fly machine stop` and `fly machine restart` default to `SIGINT` and a shorter wait, so a stop or restart you take yourself names the signal and the 30 seconds. `restart` takes `--time` where `stop` takes `--timeout`:
 
 ```sh
 fly machine list -q -a <app-name>
 fly machine stop <machine-id> -a <app-name> --signal SIGTERM --timeout 30
+fly machine restart <machine-id> -a <app-name> --signal SIGTERM --time 30
 ```
 
-Sign in at `https://<app-name>.fly.dev/login` as `admin`. Then set the public origin. `fly secrets set` restarts the Machine with the new value:
-
-```sh
-fly secrets set BETTER_AUTH_URL='https://<app-name>.fly.dev' -a <app-name>
-```
-
-For a hostname of your own, `fly certs add <hostname> -a <app-name>` prints the DNS records to add, and `BETTER_AUTH_URL` is `https://<hostname>`.
+Sign in at `https://<app-name>.fly.dev/login` as `admin`. For a hostname of your own, `fly certs add <hostname> -a <app-name>` prints the DNS records to add, and `BETTER_AUTH_URL` becomes `https://<hostname>`. Import that one line the same way, without `--stage`. The Machine restarts, and that origin is the one it serves afterwards.
 
 `TRUSTED_PROXY_HEADER` is `fly-client-ip` in `fly.toml`. On Fly the right-most `X-Forwarded-For` entry is the app's own address, which would put every donor in one rate-limit bucket ([Behind a proxy](#behind-a-proxy)).
 
-Every other name is in [Every configuration value](#every-configuration-value). Set one with `fly secrets set <NAME>='<value>' -a <app-name>`. Mail is [4. Mail](#4-mail); the restart that `fly secrets set` performs is the point a changed value takes effect.
+Every other name is in [Every configuration value](#every-configuration-value). Import `NAME=VALUE` lines with `fly secrets import -a <app-name>`, the same way as the first three, and leave `--stage` off. Mail is [4. Mail](#4-mail); the restart that import performs is the point a changed value takes effect.
 
-Payment notices, once the processor keys and `BETTER_AUTH_URL` are set. The command reads the deployed environment and prints the line to add with `fly secrets set`, the same line [5. Payments](#5-payments) puts in `.env`:
+For Stripe, import `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY` ([Stripe](#stripe)) before registering payment notices. PayPal and Chariot keys, from [5. Payments](#5-payments), go in the same way before their own name below. The import restarts the Machine, and the next command reads the new environment:
 
 ```sh
-fly ssh console -a <app-name> -C "node scripts/setup-webhook.ts stripe"   # or paypal, chariot
+fly secrets import -a <app-name> <<'EOF'
+STRIPE_SECRET_KEY=<secret key>
+STRIPE_PUBLISHABLE_KEY=<publishable key>
+EOF
+```
+
+Payment notices, once those keys and `BETTER_AUTH_URL` are set. The command reads the deployed environment and prints an `.env` line on standard output, `STRIPE_WEBHOOK_SECRET=...`, the same line [5. Payments](#5-payments) puts in `.env`. PayPal prints `PAYPAL_WEBHOOK_ID=...`, and Chariot's first run prints two lines. Anything else the script says stays on the terminal. The pipe strips the carriage return `fly ssh` appends and imports the line without echoing it. Then, under **Payments**, press **Set up recurring gifts** on each processor that takes them, if its rows read Not set up ([5. Payments](#5-payments)).
+
+```sh
+fly ssh console -a <app-name> -C "node scripts/setup-webhook.ts stripe" | tr -d '\r' | fly secrets import -a <app-name>   # or paypal, chariot
 ```
 
 To deploy a published image instead of building the Dockerfile, the package has to be public. `ghcr.io/better-giving/better-giving` is published private. Until that package is public, `fly deploy` above is the command that can run:
@@ -104,7 +119,7 @@ git fetch upstream && git merge upstream/main
 fly deploy --ha=false --now -a <app-name>
 ```
 
-Migrations apply on the next start. **Read the diff of `packages/app/migrations/` before deploying.** What that diff means is [Upgrading](#upgrading). Once the package is public, the image form is `fly deploy --image ghcr.io/better-giving/better-giving:<tag> --ha=false --now -a <app-name>`.
+Migrations apply on the next start. **Read the diff of `packages/app/migrations/` before deploying.** What that diff means is [Upgrading](#upgrading). A plain `fly deploy` builds on Fly's remote builder; when that build fails, `--local-only` on the same command builds on this machine and needs Docker installed. Once the package is public, the image form is `fly deploy --image ghcr.io/better-giving/better-giving:<tag> --ha=false --now -a <app-name>`.
 
 ## 1. Start it
 
@@ -117,7 +132,7 @@ Two values, then three commands:
 
 ```sh
 cp .env.example .env                 # set the two values above
-docker compose run --rm migrate      # before the first start, and after every upgrade
+docker compose run --rm migrate      # before the first start, and after every upgrade. On Fly the Machine applies migrations on start
 docker compose up -d
 ```
 
@@ -127,7 +142,7 @@ The server refuses to start without either value, or on a password under 12 char
 
 Every push to `main` publishes a built image, `ghcr.io/better-giving/better-giving`, tagged `main` and by commit sha, for `linux/amd64` and `linux/arm64`; each release tag, such as `v0.1.0-alpha.1`, publishes one tagged by its name, which `:main` never moves. `compose.yaml` builds from your checkout instead; pull the image only if you run it without one.
 
-`migrate` applies every committed migration the database has not recorded, then exits. The server never runs one on start, so the migration is always a step you take. Safe to rerun: applied migrations skip.
+`migrate` applies every committed migration the database has not recorded, then exits. With Compose the server never runs one on start, so the migration is always a step you take. On Fly it does, on each start ([Fly.io](#flyio)). Safe to rerun: applied migrations skip.
 
 **One container, never scaled.** The rate limits on `/api/v1`, the read API at `/integrations/v1` and sign-in, the cache in front of the served form config and photos, and the scheduled runs all live in the one process. A second replica would double every limit, serve from a cache the first never cleared, and run every scheduled job twice.
 
