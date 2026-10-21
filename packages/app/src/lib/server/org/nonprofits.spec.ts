@@ -60,7 +60,7 @@ describe('an IRS name stored in capitals', () => {
 			outcome: 'found',
 			fields: {
 				legal_name: titled,
-				address_line1: '431 18th St Nw',
+				address_line1: '431 18th St NW',
 				city: 'Washington',
 				region: 'DC',
 				postal_code: '20006'
@@ -81,7 +81,7 @@ describe('an IRS name stored in capitals', () => {
 			outcome: 'found',
 			fields: {
 				legal_name: 'YMCA of the USA',
-				address_line1: '431 18th Street Nw',
+				address_line1: '431 18th Street NW',
 				city: 'Washington',
 				region: 'DC',
 				postal_code: '20006'
@@ -98,7 +98,11 @@ describe('an IRS name stored in capitals', () => {
 		['METROWEST YMCA', 'Metrowest YMCA'],
 		["O'BRIEN", "O'Brien"],
 		['MACDONALD', 'MacDonald'],
-		['MACHINE', 'Machine']
+		['MACHINE', 'Machine'],
+		['WINSTON-SALEM FOUNDATION', 'Winston-Salem Foundation'],
+		['GREATER MACEDONIA', 'Greater Macedonia'],
+		['MACEDONIA CDC', 'Macedonia CDC'],
+		['E&K TRITES TRUST FBO', 'E&K Trites Trust FBO']
 	])('titles %s on a lookup', async (sent, titled) => {
 		serviceAnswers({ ...organisation(null), name: sent });
 

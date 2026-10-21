@@ -206,7 +206,7 @@ describe('the address of one EIN', () => {
 			fields: {
 				legal_name: 'American National Red Cross',
 				tax_id: '53-0196605',
-				address_line1: '431 18th St Nw',
+				address_line1: '431 18th St NW',
 				city: 'Washington',
 				region: 'DC',
 				postal_code: '20006-5310',

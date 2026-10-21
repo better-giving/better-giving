@@ -81,7 +81,13 @@ type Failure = NonprofitsRateLimited | NonprofitsUnavailable | { readonly outcom
 const TITLE_SMALL = new Set(['a', 'an', 'and', 'of', 'the', 'for', 'in', 'on', 'at', 'to']);
 
 /** acronyms that stay in capitals. */
-const TITLE_ACRONYMS = new Set(['YMCA', 'YWCA', 'USA', 'NAACP', 'PTA', 'UNICEF']);
+const TITLE_ACRONYMS = new Set(['YMCA', 'YWCA', 'USA', 'NAACP', 'PTA', 'UNICEF', 'CDC', 'FBO']);
+
+/**
+ * compass points that stay in capitals when the word's letters, or a hyphen segment's letters, are
+ * exactly that point. ST is not one of them.
+ */
+const COMPASS = new Set(['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW']);
 
 /**
  * postal abbreviations of the states and the territories. a token keeps one in capitals only when
@@ -94,11 +100,23 @@ const STATE_CODES = new Set([
 	)
 ]);
 
-/** whole words that match the Mac pattern and take ordinary title case. */
-const MAC_ORDINARY = new Set(['MACHINE', 'MACE', 'MACRO']);
+/**
+ * letter bodies rendered `Mac` plus the remainder title-cased. any other word is ordinary title
+ * case, including one that only begins with MAC.
+ */
+const MAC_NAMES = new Map([
+	['MACDONALD', 'MacDonald'],
+	['MACARTHUR', 'MacArthur'],
+	['MACKENZIE', 'MacKenzie'],
+	['MACLEOD', 'MacLeod'],
+	['MACGREGOR', 'MacGregor']
+]);
 
 /** one letter-run with any punctuation only before or after it. */
 const WRAPPED_LETTERS = /^([^A-Za-z]*)([A-Za-z]+)([^A-Za-z]*)$/;
+
+/** letter groups of one or two letters joined by `&`, kept in capitals including the `&`. */
+const AMPERSAND_INITIALS = /^([^A-Za-z&]*)([A-Za-z]{1,2}(?:&[A-Za-z]{1,2})+)([^A-Za-z&]*)$/;
 
 /** a straight apostrophe or a curly one (U+2019). */
 const APOSTROPHE = /['\u2019]/;
@@ -108,13 +126,16 @@ const APOSTROPHE = /['\u2019]/;
  *
  * trim, split on whitespace. a code in `STATE_CODES` stays in capitals when the previous word
  * ends in a comma, even when that code is also in `TITLE_SMALL`. any other word in `TITLE_SMALL`
- * that is neither first nor last stays lowercase. a word stays in capitals when its letters are
- * in `TITLE_ACRONYMS`. an all-caps token whose letters are `MC` plus one or more letters
- * becomes `Mc` plus the remainder title-cased, and punctuation around those letters stays. an
- * all-caps token whose letters are `MAC` plus three or more letters becomes `Mac` plus the
- * remainder title-cased, except a word in `MAC_ORDINARY`. a token that contains `'` or `’` is
- * title-cased on each side of the apostrophe. an ampersand stays `&`. every other word is
- * lowercased and its first character capitalized.
+ * that is neither first nor last stays lowercase. a lone `&` stays `&`. a word that contains `-`
+ * is titled on each hyphen segment and rejoined with `-`, so the segment after a hyphen is
+ * capitalized too. on a word, and on each hyphen segment: letters in `TITLE_ACRONYMS` stay in
+ * capitals; a compass point in `COMPASS` stays in capitals when its letters are exactly that
+ * point; letter groups of one or two letters joined by `&` stay in capitals, including the `&`,
+ * and punctuation before or after those groups stays; an all-caps token whose letters are `MC`
+ * plus one or more letters becomes `Mc` plus the remainder title-cased; an all-caps letter body
+ * in `MAC_NAMES` is rendered `Mac` plus the remainder title-cased; a token that contains `'` or
+ * `’` is title-cased on each side of the apostrophe. punctuation around the `MC` and `MAC_NAMES`
+ * letters stays. every other word is lowercased and its first character capitalized.
  */
 function titleCaseName(name: string): string {
 	const words = name
@@ -129,11 +150,7 @@ function titleCaseName(name: string): string {
 			const lower = word.toLowerCase();
 			const edge = index === 0 || index === words.length - 1;
 			if (!edge && TITLE_SMALL.has(lower)) return lower;
-			const kept = acronym(word);
-			if (kept !== null) return kept;
-			const named = apostropheName(word) ?? mcName(word) ?? macName(word);
-			if (named !== null) return named;
-			return titleCaseWord(word);
+			return titleCaseToken(word);
 		})
 		.join(' ');
 }
@@ -141,6 +158,23 @@ function titleCaseName(name: string): string {
 function titleCaseWord(token: string): string {
 	const lower = token.toLowerCase();
 	return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/** each hyphen segment is titled, so the segment after `-` is not left lowercase. */
+function titleCaseToken(token: string): string {
+	if (!token.includes('-')) return titleCaseSegment(token);
+	return token
+		.split('-')
+		.map((segment) => titleCaseSegment(segment))
+		.join('-');
+}
+
+function titleCaseSegment(token: string): string {
+	const kept = acronym(token) ?? compass(token) ?? ampersandInitials(token);
+	if (kept !== null) return kept;
+	const named = apostropheName(token) ?? mcName(token) ?? macName(token);
+	if (named !== null) return named;
+	return titleCaseWord(token);
 }
 
 function wrappedLetters(token: string): [string, string, string] | null {
@@ -167,6 +201,19 @@ function acronym(token: string): string | null {
 	return capitalsWhenListed(token, TITLE_ACRONYMS);
 }
 
+function compass(token: string): string | null {
+	return capitalsWhenListed(token, COMPASS);
+}
+
+function ampersandInitials(token: string): string | null {
+	const match = AMPERSAND_INITIALS.exec(token);
+	if (match === null) return null;
+	const prefix = match[1] ?? '';
+	const body = match[2] ?? '';
+	const suffix = match[3] ?? '';
+	return `${prefix}${body.toUpperCase()}${suffix}`;
+}
+
 function apostropheName(token: string): string | null {
 	if (!APOSTROPHE.test(token)) return null;
 	return token
@@ -188,10 +235,9 @@ function macName(token: string): string | null {
 	const wrapped = wrappedLetters(token);
 	if (wrapped === null) return null;
 	const [prefix, letters, suffix] = wrapped;
-	if (MAC_ORDINARY.has(letters)) return null;
-	const rest = /^MAC([A-Z]{3,})$/.exec(letters);
-	if (rest === null) return null;
-	return `${prefix}Mac${titleCaseWord(rest[1] ?? '')}${suffix}`;
+	const rendered = MAC_NAMES.get(letters);
+	if (rendered === undefined) return null;
+	return `${prefix}${rendered}${suffix}`;
 }
 
 /** whole seconds, the form the service writes `Retry-After` in. */
