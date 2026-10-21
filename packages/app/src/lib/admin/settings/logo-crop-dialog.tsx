@@ -145,6 +145,17 @@ function useImageSource(file: File): string | null {
 	return made;
 }
 
+/**
+ * what a cropper has measured of its image, as the card states it: the square kept, and the image's
+ * own size.
+ */
+type CropReading = {
+	/** the image the reading is of. */
+	readonly src: string;
+	readonly square: CropSquare | null;
+	readonly natural: Size | null;
+};
+
 export function LogoCropDialog({
 	file,
 	onSave,
@@ -160,6 +171,40 @@ export function LogoCropDialog({
 		: failed?.file === file
 			? 'unreadable'
 			: null;
+	/* a reading is the image's it was taken from, so a dropped image states nothing until its own
+	   cropper has measured it. */
+	const [reading, setReading] = useState<CropReading | null>(null);
+	const current = reading?.src === src ? reading : null;
+
+	return (
+		<LogoCropCard
+			square={current?.square ?? null}
+			refusal={cropRefusal(current?.natural ?? null, refused)}
+			onSave={onSave}
+			onCancel={onCancel}
+			onSwap={onSwap}
+			fallbackFocus={fallbackFocus}
+		>
+			{/* a cropper for each image, so a dropped one is measured and opens on its own square as the
+			    first does: the machine keeps the box it measured, and scales the square it holds into a
+			    box that changes shape rather than placing a new one. */}
+			{src === null || refused !== null ? null : (
+				<LogoCropper key={src} src={src} onRead={setReading} onError={() => setFailed({ file })} />
+			)}
+		</LogoCropCard>
+	);
+}
+
+type LogoCropperProps = {
+	readonly src: string;
+	/** the square kept and the image's own size, each time either changes. */
+	readonly onRead: (reading: CropReading) => void;
+	/** the image would not open. */
+	readonly onError: () => void;
+};
+
+/** ark's cropper over one image, opening on its largest centred square. */
+function LogoCropper({ src, onRead, onError }: LogoCropperProps): ReactNode {
 	/* the two measures the square's limits are stated from, as the last render's machine reported
 	   them: the limits are props of the machine, so they are read from a render before its own. */
 	const [measures, setMeasures] = useState<{ shown: Size; natural: Size } | null>(null);
@@ -197,12 +242,12 @@ export function LogoCropDialog({
 
 	/* the square the crop opens on is the largest centred one, put there once the limits are stated
 	   from the box it is drawn in: the machine's own opening square is a share of the box, and the
-	   reset is what reads `initialCrop` again. keyed to the image whose limits landed, which a card
-	   holds one of. */
+	   reset is what reads `initialCrop` again. keyed to the image whose limits landed, which a
+	   cropper holds one of. */
 	const centredOn = useRef<string | null>(null);
 	const centre = useEffectEvent(() => cropper.reset());
 	useEffect(() => {
-		if (src === null || measures === null || centredOn.current === src) return;
+		if (measures === null || centredOn.current === src) return;
 		centredOn.current = src;
 		centre();
 	}, [src, measures]);
@@ -211,48 +256,44 @@ export function LogoCropDialog({
 		shown !== null && natural !== null && measured(cropper.crop)
 			? naturalSquare(cropper.crop, shown, natural)
 			: null;
+	const [squareX, squareY, squareSize] = [square?.x, square?.y, square?.size];
+	const read = useEffectEvent(onRead);
+	useEffect(() => {
+		read({
+			src,
+			square:
+				squareX === undefined || squareY === undefined || squareSize === undefined
+					? null
+					: { x: squareX, y: squareY, size: squareSize },
+			natural: naturalWide === 0 ? null : { width: naturalWide, height: naturalTall }
+		});
+	}, [src, squareX, squareY, squareSize, naturalWide, naturalTall]);
 
 	return (
-		<LogoCropCard
-			square={square}
-			refusal={cropRefusal(natural, refused)}
-			onSave={onSave}
-			onCancel={onCancel}
-			onSwap={onSwap}
-			fallbackFocus={fallbackFocus}
-		>
-			{src === null || refused !== null ? null : (
-				<ImageCropper.RootProvider value={cropper} className="adm-cropper">
-					<ImageCropper.Viewport className="adm-cropper__viewport">
-						<ImageCropper.Image
-							className="adm-cropper__image"
-							src={src}
-							alt=""
-							onError={() => setFailed({ file })}
+		<ImageCropper.RootProvider value={cropper} className="adm-cropper">
+			<ImageCropper.Viewport className="adm-cropper__viewport">
+				<ImageCropper.Image className="adm-cropper__image" src={src} alt="" onError={onError} />
+				<ImageCropper.Selection
+					className="adm-cropper__selection"
+					aria-valuetext={squareWords(square)}
+					// runs before the machine's own handler, which passes over a press already taken.
+					onKeyDown={(event) => {
+						const change = squareResize(event);
+						if (change === null) return;
+						event.preventDefault();
+						cropper.resize(resizeCorner(cropper.crop, cropper.viewportRect, change), change);
+					}}
+				>
+					{ImageCropper.handles.map((position) => (
+						<ImageCropper.Handle
+							key={position}
+							position={position}
+							className="adm-cropper__handle"
 						/>
-						<ImageCropper.Selection
-							className="adm-cropper__selection"
-							aria-valuetext={squareWords(square)}
-							// runs before the machine's own handler, which passes over a press already taken.
-							onKeyDown={(event) => {
-								const change = squareResize(event);
-								if (change === null) return;
-								event.preventDefault();
-								cropper.resize(resizeCorner(cropper.crop, cropper.viewportRect, change), change);
-							}}
-						>
-							{ImageCropper.handles.map((position) => (
-								<ImageCropper.Handle
-									key={position}
-									position={position}
-									className="adm-cropper__handle"
-								/>
-							))}
-						</ImageCropper.Selection>
-					</ImageCropper.Viewport>
-				</ImageCropper.RootProvider>
-			)}
-		</LogoCropCard>
+					))}
+				</ImageCropper.Selection>
+			</ImageCropper.Viewport>
+		</ImageCropper.RootProvider>
 	);
 }
 
