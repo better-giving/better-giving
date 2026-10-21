@@ -34,7 +34,7 @@ The server refuses to start without either value, or on a password under 12 char
 
 Every push to `main` publishes a built image, `ghcr.io/better-giving/better-giving`, tagged `main` and by commit sha, for `linux/amd64` and `linux/arm64`; each release tag, such as `v0.1.0-alpha.1`, publishes one tagged by its name, which `:main` never moves. `compose.yaml` builds from your checkout instead; pull the image only if you run it without one.
 
-`migrate` applies every committed migration the database has not recorded, then exits. The server never runs one on start, so the migration is always a step you take. Safe to rerun: applied migrations skip.
+`migrate` applies every committed migration the database has not recorded, then exits. With Compose the server never runs one on start, so the migration is always a step you take. On Fly it does, on each start ([Fly.io](#flyio)). Safe to rerun: applied migrations skip.
 
 **One container, never scaled.** The rate limits on `/api/v1`, the read API at `/integrations/v1` and sign-in, the cache in front of the served form config and photos, and the scheduled runs all live in the one process. A second replica would double every limit, serve from a cache the first never cleared, and run every scheduled job twice.
 
@@ -275,3 +275,131 @@ docker compose up -d
 ```
 
 Upstream owns every file, so a clean fork merges fast-forward; a conflict means you edited a tracked file. **Read the diff of `packages/app/migrations/` before migrating**, the irreversible part. A release that squashed the chain shows that whole directory rewritten and applies nothing: migrations are recorded by filename, so `0000_initial_schema.sql` is skipped on a database that already ran it. Meet anything doubtful on a rehearsal first.
+
+## Fly.io
+
+These commands run this repo on Fly.io from a checkout, in the directory that holds `fly.toml`. The screens from [3. Your organisation](#3-your-organisation) on are the same ones. `fly.toml` names no app, so each command takes `-a <app-name>`. Leave `--save` off `fly apps create`: it writes the app name into `fly.toml`.
+
+```sh
+fly auth login
+fly orgs list
+fly apps create <app-name> --org <org>
+```
+
+`<org>` is one of the names `fly orgs list` printed. The server refuses to start without `ADMIN_PASSWORD` and `BETTER_AUTH_SECRET` ([1. Start it](#1-start-it)), so the first deploy has to already hold them or its check fails. Generate both and keep them in a password manager. `fly secrets list` shows the names only:
+
+```sh
+openssl rand -base64 24   # ADMIN_PASSWORD, at least 12 characters
+openssl rand -base64 32   # BETTER_AUTH_SECRET
+```
+
+Stage those two together with `BETTER_AUTH_URL` set to `https://<app-name>.fly.dev`, so the first start already serves that origin. `fly secrets import` reads `NAME=VALUE` lines on standard input, and `--stage` stores them without starting a Machine. Bash saves a heredoc in the shell history, so run `set +o history` before and `set -o history` after:
+
+```sh
+set +o history
+fly secrets import --stage -a <app-name> <<'EOF'
+ADMIN_PASSWORD=<the first value>
+BETTER_AUTH_SECRET=<the second value>
+BETTER_AUTH_URL=https://<app-name>.fly.dev
+EOF
+set -o history
+fly platform regions
+fly deploy --ha=false --now --primary-region <region> -a <app-name>
+```
+
+`<region>` is one of the codes `fly platform regions` printed. `--primary-region` places the first Machine and its volume; it does not write `fly.toml`.
+
+A plain `fly deploy` builds the root `Dockerfile` on Fly's remote builder. The command above is that, plus the flags this first Machine needs. When the remote build fails, `fly deploy --local-only` with those same flags builds on this machine, which needs Docker installed.
+
+The deploy creates the volume `better_giving_data`, mounted at `/data`. The size and the 14-day snapshot retention are `initial_size` and `snapshot_retention` in `fly.toml`. `--ha=false` keeps the first deploy to one Machine: a volume attaches to one Machine, and `fly scale count` above 1 creates another Machine with an empty volume. Leave the count at 1. A second process would split the rate limits, the cache and the scheduled runs, as [1. Start it](#1-start-it) describes.
+
+Deploy prints `WARN DATABASE_URL may be a potentially sensitive environment variable` because that name sits in `[env]`. The value in `fly.toml` is the file path `file:/data/better-giving.db`, and the warning is harmless.
+
+The Machine stays up. `auto_stop_machines` is `off` and `min_machines_running` is 1 in `fly.toml`, because the scheduled runs are in-process ([Scheduled runs](#scheduled-runs)). A minute the process was down for is not replayed.
+
+On each start the Machine applies migrations, then replaces that process with the server, so `SIGTERM` reaches the drain in `packages/app/server/index.ts`. A release command runs in a temporary Machine with no volume, so it cannot migrate this file. A migration that fails exits before the server listens, and the deploy's check fails. The check is `GET /login`, with `grace_period` of 30 seconds for that migration. When a deploy fails the check while migrations are still applying, raise `grace_period` on that check in `fly.toml`.
+
+A deploy stops the old Machine with `SIGTERM` and waits the `kill_timeout` of 30 seconds. Name the signal and the 30 seconds on a stop or restart you take yourself, so it drains like a deploy. `restart` takes `--time` where `stop` takes `--timeout`:
+
+```sh
+fly machine list -q -a <app-name>
+fly machine stop <machine-id> -a <app-name> --signal SIGTERM --timeout 30
+fly machine restart <machine-id> -a <app-name> --signal SIGTERM --time 30
+```
+
+Sign in at `https://<app-name>.fly.dev/login` as `admin`. For a hostname of your own, `fly certs add <hostname> -a <app-name>` prints the DNS records to add, and `BETTER_AUTH_URL` becomes `https://<hostname>`. Import that one line the same way, without `--stage`. The Machine restarts, and that origin is the one it serves afterwards.
+
+`TRUSTED_PROXY_HEADER` is `fly-client-ip` in `fly.toml`. On Fly the right-most `X-Forwarded-For` entry is the app's own address, which would put every donor in one rate-limit bucket ([Behind a proxy](#behind-a-proxy)).
+
+Every other name is in [Every configuration value](#every-configuration-value). Import `NAME=VALUE` lines with `fly secrets import -a <app-name>`, the same way as the first three, and leave `--stage` off. Mail's values are in [4. Mail](#4-mail). Each import restarts the Machine, and a changed value takes effect on that restart.
+
+For Stripe, import `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY` ([Stripe](#stripe)) before registering payment notices. PayPal and Chariot keys, from [5. Payments](#5-payments), go in the same way before their own name below. The import restarts the Machine, and the next command reads the new environment. Bash saves this heredoc in the shell history too, so turn history off around it:
+
+```sh
+set +o history
+fly secrets import -a <app-name> <<'EOF'
+STRIPE_SECRET_KEY=<secret key>
+STRIPE_PUBLISHABLE_KEY=<publishable key>
+EOF
+set -o history
+```
+
+Register payment notices once those keys and `BETTER_AUTH_URL` are set. The command reads the deployed environment and prints an `.env` line on standard output, `STRIPE_WEBHOOK_SECRET=...`, the same line [5. Payments](#5-payments) puts in `.env`. PayPal prints `PAYPAL_WEBHOOK_ID=...`, and Chariot's first run prints two lines. Anything else the script says stays on the terminal. The pipe strips the carriage return `fly ssh` appends and imports the line without echoing it. If the script prints an error, nothing was imported; fix it and run the line again. Then, under **Payments**, press **Set up recurring gifts** on each processor that takes them, if its rows read Not set up ([5. Payments](#5-payments)).
+
+```sh
+fly ssh console -a <app-name> -C "node scripts/setup-webhook.ts stripe" | tr -d '\r' | fly secrets import -a <app-name>   # or paypal, chariot
+```
+
+To deploy a published image instead of building the Dockerfile, the package has to be public. `ghcr.io/better-giving/better-giving` is published private. Until that package is public, `fly deploy` above is the command that can run:
+
+```sh
+fly deploy --image ghcr.io/better-giving/better-giving:<tag> --ha=false --now --primary-region <region> -a <app-name>
+```
+
+### Backups on Fly
+
+Fly keeps the volume's daily snapshots for the 14 days `snapshot_retention` sets. To keep a copy of your own, off Fly:
+
+```sh
+fly ssh console -a <app-name> -C "node scripts/backup.ts /data/backup.db"
+fly ssh sftp get /data/backup.db ./backup.db -a <app-name>
+fly ssh console -a <app-name> -C "rm /data/backup.db"
+```
+
+**To restore, stop the server, then put the copy where `DATABASE_URL` points, with no `-wal` or `-shm` file left beside it.** A stale `-wal` beside a restored file is replayed over it. SSH reaches a running Machine, so the stand-in command keeps the volume mounted while the server is not the process holding the file. `fly ssh` runs as root and the server runs as uid 1000, so the restored file is given to that user. The sleep update skips the health check: `GET /login` cannot pass while that command is the process. The last update puts the server back and waits for the check.
+
+```sh
+fly machine stop <machine-id> -a <app-name> --signal SIGTERM --timeout 30
+fly machine update <machine-id> -a <app-name> --command "sleep infinity" --skip-health-checks --yes
+fly ssh sftp put ./backup.db /data/restore.db -a <app-name>
+fly ssh console -a <app-name> -C "sh -c 'rm -f /data/better-giving.db /data/better-giving.db-wal /data/better-giving.db-shm && cp /data/restore.db /data/better-giving.db && chown 1000:1000 /data/better-giving.db && rm /data/restore.db'"
+fly machine update <machine-id> -a <app-name> --command 'sh -c "node scripts/migrate.ts && exec node server/index.ts"' --yes
+```
+
+When the disk itself is gone, a snapshot becomes a new volume. `fly volumes list --all -a <app-name>` shows the id, a destroyed volume included, and that id is what `fly volumes snapshots list` takes. `--snapshot-retention 14` matches `fly.toml`. `fly volumes create` otherwise keeps snapshots for 5 days.
+
+```sh
+fly volumes list --all -a <app-name>
+fly volumes snapshots list <volume-id> -a <app-name>
+fly volumes create better_giving_data --snapshot-id <snapshot-id> --region <region> --snapshot-retention 14 -a <app-name>
+```
+
+The new volume stays unattached until a deploy with no Machine left attaches it. Destroy the Machine first. If the old volume still exists, destroy it next. A volume still attached to a Machine cannot be destroyed. Left in place, the Machine stays on the next deploy, and the old volume is what that deploy attaches.
+
+```sh
+fly machine destroy <machine-id> --force -a <app-name>
+fly volumes destroy <old-volume-id> -a <app-name>   # when that volume still exists
+fly deploy --ha=false --now --primary-region <region> -a <app-name>
+```
+
+`<region>` is the region of the restored volume. A new Machine placed in any other region gets a new empty volume, and the site comes back with no data.
+
+### Upgrading on Fly
+
+```sh
+git remote add upstream https://github.com/better-giving/better-giving.git   # once
+git fetch upstream && git merge upstream/main
+fly deploy --ha=false --now -a <app-name>
+```
+
+Migrations apply on the next start. **Read the diff of `packages/app/migrations/` before deploying.** What that diff means is [Upgrading](#upgrading). A plain `fly deploy` builds on Fly's remote builder; when that build fails, `--local-only` on the same command builds on this machine and needs Docker installed. Once the package is public, the image form is `fly deploy --image ghcr.io/better-giving/better-giving:<tag> --ha=false --now -a <app-name>`.
