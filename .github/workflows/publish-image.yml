@@ -1,13 +1,10 @@
-# publishes the root Dockerfile's image to ghcr.io/better-giving/better-giving. this is the only
-# workflow that holds `packages: write`, so it triggers on a push to main or a `v*` tag alone: a pull
-# request or a fork never reaches a registry login (ci.yml's docker-build builds the same image and
-# discards it).
+# publishes the root Dockerfile's image to ghcr.io/better-giving/better-giving for linux/amd64 and
+# linux/arm64. this is the only workflow that holds `packages: write`, so it triggers on a push to
+# main or a `v*` tag alone: a pull request or a fork never reaches a registry login (ci.yml's
+# docker-build builds the same image and discards it).
 #
-# amd64 and arm64 are separate jobs, and neither `needs` the other. arm64 under qemu on the amd64
-# runner hung past two hours (bbe0912), so this workflow builds arm64 on a native runner.
-# publish-amd64 pushes the tags itself: an arm64 failure or timeout leaves them in place and still
-# fails the workflow. publish-manifest runs only after both pushes and points those same tags at an
-# index of both architectures; it is not the first push.
+# each platform builds natively on its own runner and pushes `:<sha>-<arch>`; `manifest` then joins
+# the two into the multi-platform tags. arm64 is never emulated: under QEMU the build ran past 2h.
 name: publish-image
 
 on:
@@ -19,8 +16,7 @@ permissions:
   contents: read
   packages: write
 
-# two pushes must not race to move `:main`. the group covers the whole workflow, including
-# publish-manifest, so a later push waits until the earlier one has finished retagging.
+# two pushes must not race to move `:main`; the later one waits for the earlier.
 concurrency:
   group: publish-image
   cancel-in-progress: false
@@ -29,27 +25,16 @@ env:
   IMAGE: ghcr.io/better-giving/better-giving
 
 jobs:
-  publish-amd64:
-    name: publish-amd64
+  # a push to main publishes `:main` and `:<sha>`, versioned by the sha. a tag push publishes
+  # `:<tag>` and `:<sha>`, versioned by the tag, and never moves `:main`; no tag gets `:latest`.
+  # the ref name reaches the shell through env, never interpolated into the script.
+  tags:
+    name: image tags
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 30
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      version: ${{ steps.meta.outputs.version }}
       tags: ${{ steps.meta.outputs.tags }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # a push to main publishes `:main` and `:<sha>`, versioned by the sha. a tag push publishes
-      # `:<tag>` and `:<sha>`, versioned by the tag, and never moves `:main`; no tag gets `:latest`.
-      # the ref name reaches the shell through env, never interpolated into the script.
       - name: image tags
         id: meta
         env:
@@ -78,33 +63,56 @@ jobs:
             echo "TAGS_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: build and push amd64
-        id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+  build:
+    name: build ${{ matrix.arch }}
+    needs: tags
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: blacksmith-4vcpu-ubuntu-2404
+          - platform: linux/arm64
+            arch: arm64
+            runner: blacksmith-4vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          # the per-arch tag is the hand-off to `manifest`; it is not a published name.
+          tags: ${{ env.IMAGE }}:${{ github.sha }}-${{ matrix.arch }}
           build-args: |
-            BETTER_GIVING_VERSION=${{ steps.meta.outputs.version }}
+            BETTER_GIVING_VERSION=${{ needs.tags.outputs.version }}
           # `source` is what makes ghcr list the package under the repository.
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-          # its own scope: ci.yml's docker-build is single-arch and would otherwise share this cache.
-          cache-from: type=gha,scope=publish-image
-          cache-to: type=gha,scope=publish-image,mode=max
+          # one scope per arch: ci.yml's docker-build is amd64 and would otherwise share this cache,
+          # and the two halves must not overwrite each other's.
+          cache-from: type=gha,scope=publish-image-${{ matrix.arch }}
+          cache-to: type=gha,scope=publish-image-${{ matrix.arch }},mode=max
 
-  publish-arm64:
-    name: publish-arm64
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    outputs:
-      digest: ${{ steps.build.outputs.digest }}
+  # joins the two per-arch images (already in the registry) under each final tag. `imagetools
+  # create` takes one `--tag` per call, so it runs once per tag.
+  manifest:
+    name: manifest
+    needs: [tags, build]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -113,92 +121,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # same tag rule as publish-amd64's image tags step. repeated because this job must not `needs`
-      # that one, and the build still needs `version` from it.
-      - name: image tags
-        id: meta
+      - name: join platforms
         env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
+          TAGS: ${{ needs.tags.outputs.tags }}
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ "$REF_TYPE" = tag ]; then
-            # a git tag may hold characters a docker tag refuses (`/`); fail here, before the build.
-            if ! printf '%s' "$REF_NAME" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'; then
-              echo "tag '$REF_NAME' is not a valid image tag" >&2
-              exit 1
-            fi
-            version=$REF_NAME
-            first=$REF_NAME
-          else
-            version=$SHA
-            first=main
-          fi
-          {
-            echo "version=$version"
-            echo "tags<<TAGS_EOF"
-            echo "$IMAGE:$first"
-            echo "$IMAGE:$SHA"
-            echo "TAGS_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      # digest only. a tag on this push would replace publish-amd64's tags when this job finished
-      # last. publish-manifest is what adds this digest to those tags, after both exist.
-      - name: build and push arm64
-        id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          platforms: linux/arm64
-          build-args: |
-            BETTER_GIVING_VERSION=${{ steps.meta.outputs.version }}
-          # `source` is what makes ghcr list the package under the repository.
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
-          # not `publish-image` (publish-amd64 writes that scope concurrently) and not the default
-          # `buildkit` scope ci.yml's docker-build uses.
-          cache-from: type=gha,scope=publish-image-arm64
-          cache-to: type=gha,scope=publish-image-arm64,mode=max
-
-  publish-manifest:
-    name: publish-manifest
-    needs: [publish-amd64, publish-arm64]
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 30
-    steps:
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # retags the names publish-amd64 already pushed. skipped when arm64 fails, which leaves
-      # those tags on the amd64 image. the failed arm64 job still fails the workflow.
-      - name: multi-arch manifest
-        env:
-          DIGEST_AMD64: ${{ needs.publish-amd64.outputs.digest }}
-          DIGEST_ARM64: ${{ needs.publish-arm64.outputs.digest }}
-          TAGS: ${{ needs.publish-amd64.outputs.tags }}
-        run: |
-          set -euo pipefail
-          if [ -z "${DIGEST_AMD64}" ] || [ -z "${DIGEST_ARM64}" ] || [ -z "${TAGS}" ]; then
-            echo "missing digest or tags" >&2
-            exit 1
-          fi
-          args=()
           while IFS= read -r tag; do
             [ -n "$tag" ] || continue
-            args+=(-t "$tag")
+            docker buildx imagetools create --tag "$tag" "$IMAGE:$SHA-amd64" "$IMAGE:$SHA-arm64"
           done <<< "$TAGS"
-          if [ "${#args[@]}" -eq 0 ]; then
-            echo "no image tags" >&2
-            exit 1
-          fi
-          docker buildx imagetools create "${args[@]}" \
-            "$IMAGE@$DIGEST_AMD64" \
-            "$IMAGE@$DIGEST_ARM64"
