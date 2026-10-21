@@ -44,9 +44,10 @@ const search = (revocationDate: string | null) => ({
 
 describe('an IRS name stored in capitals', () => {
 	it.each([
-		['AMERICAN NATIONAL RED CROSS', 'American National Red Cross'],
-		['SOCIETY OF ST VINCENT', 'Society of St Vincent']
-	])('titles %s on a lookup and leaves the address', async (sent, titled) => {
+		['AMERICAN NATIONAL RED CROSS', 'American National RED Cross'],
+		['SOCIETY OF ST VINCENT', 'Society of ST Vincent'],
+		['YMCA OF THE USA', 'YMCA of the USA']
+	])('titles %s on a lookup and keeps a short street token', async (sent, titled) => {
 		serviceAnswers({
 			...organisation(null),
 			name: sent,
@@ -60,16 +61,39 @@ describe('an IRS name stored in capitals', () => {
 			fields: {
 				legal_name: titled,
 				address_line1: '431 18TH ST NW',
-				city: 'WASHINGTON',
-				region: 'DC'
+				city: 'Washington',
+				region: 'DC',
+				postal_code: '20006'
+			}
+		});
+	});
+
+	it('titles a long street word and leaves the region and the postal code', async () => {
+		serviceAnswers({
+			...organisation(null),
+			name: 'YMCA OF THE USA',
+			address: { street: '431 18TH STREET NW', city: 'WASHINGTON', state: 'DC', zip: '20006' }
+		});
+
+		const answer = await lookUpNonprofit('53-0196605', undefined);
+
+		expect(answer).toMatchObject({
+			outcome: 'found',
+			fields: {
+				legal_name: 'YMCA of the USA',
+				address_line1: '431 18TH Street NW',
+				city: 'Washington',
+				region: 'DC',
+				postal_code: '20006'
 			}
 		});
 	});
 
 	it.each([
-		['AMERICAN NATIONAL RED CROSS', 'American National Red Cross'],
-		['SOCIETY OF ST VINCENT', 'Society of St Vincent']
-	])('titles %s on a search match and leaves the city', async (sent, titled) => {
+		['AMERICAN NATIONAL RED CROSS', 'American National RED Cross'],
+		['SOCIETY OF ST VINCENT', 'Society of ST Vincent'],
+		['YMCA OF THE USA', 'YMCA of the USA']
+	])('titles %s on a search match and titles the city', async (sent, titled) => {
 		serviceAnswers({
 			results: [
 				{
@@ -87,7 +111,7 @@ describe('an IRS name stored in capitals', () => {
 
 		expect(answer).toMatchObject({
 			outcome: 'found',
-			matches: [{ name: titled, city: 'WASHINGTON', state: 'DC' }]
+			matches: [{ name: titled, city: 'Washington', state: 'DC' }]
 		});
 	});
 });

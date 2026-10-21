@@ -2,6 +2,7 @@
 # only while exactly one replica runs, so `app` is never scaled.
 #
 #   cp .env.example .env                 # then fill it in
+#   docker compose build                 # a checkout with no local image
 #   docker compose run --rm migrate      # before the first start and after every upgrade
 #   docker compose up -d
 #
@@ -12,8 +13,9 @@ services:
   app:
     build: .
     image: better-giving
-    # `image` together with `build` pulls before it builds, and `better-giving` is not in a registry.
-    pull_policy: build
+    # `never` does not pull `better-giving` and does not rebuild an image that is already on the machine.
+    # a checkout with no local image builds first.
+    pull_policy: never
     # an init as PID 1 forwards signals and reaps children; node is not built to be PID 1
     # (docker-node docs/BestPractices.md).
     init: true
@@ -36,8 +38,9 @@ services:
   migrate:
     build: .
     image: better-giving
-    # `image` together with `build` pulls before it builds, and `better-giving` is not in a registry.
-    pull_policy: build
+    # `never` does not pull `better-giving` and does not rebuild an image that is already on the machine.
+    # a checkout with no local image builds first.
+    pull_policy: never
     profiles: [migrate]
     init: true
     volumes:

@@ -5,7 +5,7 @@ import { CodeChip, CodeSlab } from '@better-giving/operator/components/data/Code
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { FORM_STATUS_TONES } from '$lib/admin/status-tones';
+import { formStatusWord } from '$lib/admin/status-tones';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
 import { type ReactNode, useEffect, useRef } from 'react';
@@ -45,11 +45,10 @@ import {
 	unlistedSites
 } from '$lib/forms/input-schema';
 import { PROGRAM_MODE_LABELS } from '$lib/forms/program-modes';
-import { LIVE_WITHHELD, liveOffered } from '$lib/forms/readiness';
+import { anyBlocker, LIVE_WITHHELD, liveOffered } from '$lib/forms/readiness';
 import {
 	EDITABLE_FORM_STATUSES,
 	type EditableFormStatus,
-	FORM_STATUS_LABELS,
 	FORM_STATUS_NOTES
 } from '$lib/forms/statuses';
 import { formatMinor } from '$lib/donations/money';
@@ -511,12 +510,13 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	// with ./_app.admin.forms.new.tsx so neither screen can say a different thing about one
 	// deployment.
 	//
-	// nothing to say for an archived form: it cannot be published from here whatever those values
-	// hold, and a block about a state nobody reading this page can act on is the same question with
-	// one wrong answer that the archive confirmation below is kept from asking.
-	const readiness = archived
-		? null
-		: formsReadiness(profile, readConfigEnv(context.get(platform).env));
+	// nothing to say in the block for an archived form: it cannot be published from here whatever
+	// those values hold, and a block about a state nobody reading this page can act on is the same
+	// question with one wrong answer that the archive confirmation below is kept from asking.
+	// the boolean is the deployment's either way. a stored live form says Not taking gifts while
+	// `anyBlocker` holds, and an archived form's word does not read it.
+	const lines = formsReadiness(profile, readConfigEnv(context.get(platform).env));
+	const readiness = archived ? null : lines;
 
 	// the outcome of whichever write on this screen just redirected here, taken: read and cleared on
 	// this one response, so a reload reports nothing. `$lib/server/flash.ts` owns that.
@@ -567,11 +567,14 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			programMode: record.programMode,
 			pinnedProgram: pinned?.name ?? null,
 			// whether the status box may offer Live at all. a blocker withholds it: `publishedConfig`
-			// serves nothing while the processor line stands, and a notice variable left unset would
-			// charge a gift that is never marked paid. the name group's save re-checks this, because a
-			// filtered `<option>` list is not a control. a form already live keeps the option, which
-			// `liveOffered` argues.
+			// serves nothing while the processor line stands, and a notice variable left unset is the
+			// case `formsReadiness` in `$lib/server/forms/readiness.ts` states. the name group's save
+			// re-checks this, because a filtered `<option>` list is not a control. a form already live
+			// keeps the option, which `liveOffered` argues.
 			liveOffered: !archived && liveOffered(record.status, readiness),
+			// the same `anyBlocker` the Live option is withheld by. the status word reads it; the
+			// select does not, so a live form keeps Live chosen (`liveOffered`).
+			giftsBlocked: anyBlocker(lines),
 			// whether the viewer deployed the site, the predicate ./_app.tsx reads: the readiness block
 			// is worded for who can fix each line.
 			deployer: context.get(staff).id === STAFF_USER_ID,
@@ -920,8 +923,18 @@ function screen(id: string): string {
 // renders as a record rather than as an editable screen.
 
 export default function DonationForm({ loaderData, actionData }: Route.ComponentProps) {
-	const { archived, archivedJustNow, deployer, editor, id, name, readiness, snippet, status } =
-		loaderData;
+	const {
+		archived,
+		archivedJustNow,
+		deployer,
+		editor,
+		giftsBlocked,
+		id,
+		name,
+		readiness,
+		snippet,
+		status
+	} = loaderData;
 
 	// whether the archive's own outcome is on the screen. the banner reporting it is the only thing
 	// the archive leaves behind — there is no control left for it to report on — so it is where focus
@@ -970,6 +983,7 @@ export default function DonationForm({ loaderData, actionData }: Route.Component
 	const asking = !archived && loaderData.confirmArchive;
 
 	const note = FORM_STATUS_NOTES[status];
+	const standing = formStatusWord(status, giftsBlocked);
 
 	return (
 		// one column and the column is what spaces it: every block below carries no margin of its
@@ -1016,12 +1030,13 @@ export default function DonationForm({ loaderData, actionData }: Route.Component
 			    nothing new is drawn and no value is stated.
 
 			    an archived form's word is the hueless one: the `note` tone is for a status that has
-			    run its course, which is exactly what archived is. $lib/admin/status-tones.ts maps the
-			    three. */}
+			    run its course, which is exactly what archived is. a form stored live while this
+			    deployment has a blocker says Not taking gifts (`formStatusWord` in
+			    $lib/admin/status-tones.ts). */}
 			<header className="adm-pageheader">
 				<div className="adm-pageheader__row">
 					<h1>{name}</h1>
-					<StatusWord tone={FORM_STATUS_TONES[status]}>{FORM_STATUS_LABELS[status]}</StatusWord>
+					<StatusWord tone={standing.tone}>{standing.word}</StatusWord>
 				</div>
 			</header>
 

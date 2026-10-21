@@ -211,6 +211,9 @@ describe('the mail card', () => {
 		expect(banner?.textContent).toContain(
 			'Nothing is delivered until they are replaced and the app is recreated.'
 		);
+		expect(banner?.querySelector('.adm-banner__text')?.textContent).toContain(
+			'Ask whoever set up this site to add it. The steps below are for them.'
+		);
 		expect(banner?.querySelector('pre')?.textContent).toBe(
 			'docker compose up -d --force-recreate app'
 		);
@@ -292,6 +295,19 @@ function type(input: HTMLInputElement, value: string) {
 		input.dispatchEvent(new Event('input', { bubbles: true }));
 	});
 }
+
+describe('the organisation details card', () => {
+	it('says every receipt carries these, and no form goes live until the EIN and registered name are in', () => {
+		const details = card(
+			screen({ notificationEmail: null, mail: SET }).root,
+			'Organisation details'
+		);
+
+		expect(details.querySelector('h2 + p.adm-hint')?.textContent).toBe(
+			'Every receipt carries these. Filled from the IRS list; check the name’s capitals. No form goes live until the EIN and registered name are in.'
+		);
+	});
+});
 
 describe('the brand colour', () => {
 	const details = (root: HTMLElement) => card(root, 'Organisation details');

@@ -158,8 +158,8 @@ describe('a query of a name', () => {
 			matches: [
 				{
 					ein: '53-0196605',
-					name: 'American National Red Cross',
-					city: 'WASHINGTON',
+					name: 'American National RED Cross',
+					city: 'Washington',
 					state: 'DC',
 					deductible: true,
 					revoked: false,
@@ -167,8 +167,8 @@ describe('a query of a name', () => {
 				},
 				{
 					ein: '23-7069110',
-					name: 'Red Cross of Nowhere',
-					city: 'SPRINGFIELD',
+					name: 'RED Cross of Nowhere',
+					city: 'Springfield',
 					state: 'IL',
 					deductible: null,
 					revoked: true,
@@ -204,10 +204,10 @@ describe('the address of one EIN', () => {
 			kind: 'lookup',
 			outcome: 'found',
 			fields: {
-				legal_name: 'American National Red Cross',
+				legal_name: 'American National RED Cross',
 				tax_id: '53-0196605',
 				address_line1: '431 18TH ST NW',
-				city: 'WASHINGTON',
+				city: 'Washington',
 				region: 'DC',
 				postal_code: '20006-5310',
 				country: 'United States'
@@ -232,7 +232,7 @@ describe('the address of one EIN', () => {
 		const found = await (await get('/admin/settings/nonprofits/530196605')).json();
 
 		expect(found).toMatchObject({
-			fields: { legal_name: '', address_line1: '', city: 'WASHINGTON', postal_code: '' },
+			fields: { legal_name: '', address_line1: '', city: 'Washington', postal_code: '' },
 			deductible: null,
 			revoked: null
 		});

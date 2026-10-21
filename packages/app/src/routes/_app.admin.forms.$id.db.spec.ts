@@ -248,6 +248,7 @@ type Loaded = {
 	programMode: string;
 	pinnedProgram: string | null;
 	liveOffered: boolean;
+	giftsBlocked: boolean;
 	deployer: boolean;
 	saved: 'name' | 'program' | 'giving' | 'origins' | null;
 	archivedJustNow: boolean;
@@ -1056,11 +1057,15 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		// every config without those three columns — so publishing here would produce a form that
 		// renders nothing on the org's own site.
 		await clearOrgProfile();
-		expect((await runLoad()).liveOffered).toBe(false);
+		const loaded = await runLoad();
+		expect(loaded.liveOffered).toBe(false);
+		expect(loaded.giftsBlocked).toBe(true);
 	});
 
 	it('offers Live once nothing stands', async () => {
-		expect((await runLoad()).liveOffered).toBe(true);
+		const loaded = await runLoad();
+		expect(loaded.liveOffered).toBe(true);
+		expect(loaded.giftsBlocked).toBe(false);
 	});
 
 	it('does not offer Live on a deployment holding no processor’s keys', async () => {
@@ -1081,8 +1086,8 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 	});
 
 	it('does not offer Live while a processor’s payment notices are unset', async () => {
-		// a gift is charged without them and never heard to settle, so Live is withheld the same
-		// way it is while no processor can take a gift.
+		// Live is withheld the same way it is while no processor can take a gift.
+		// `formsReadiness` in $lib/server/forms/readiness.ts.
 		const loaded = await runLoad({ vars: { ...READY, STRIPE_WEBHOOK_SECRET: '' } });
 		expect(readinessLine(loaded, 'notices').severity).toBe('blocker');
 		expect(readinessLine(loaded, 'processor').severity).toBe('blocker');

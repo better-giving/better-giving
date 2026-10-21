@@ -24,6 +24,7 @@ Two values, then three commands:
 
 ```sh
 cp .env.example .env                 # set the two values above
+docker compose build                 # once, and again after an upgrade; `up` does not rebuild
 docker compose run --rm migrate      # before the first start, and after every upgrade
 docker compose up -d
 ```
@@ -275,4 +276,4 @@ docker compose run --rm migrate
 docker compose up -d
 ```
 
-Upstream owns every file, so a clean fork merges fast-forward; a conflict means you edited a tracked file. **Read the diff of `packages/app/migrations/` before migrating**, the irreversible part. A release that squashed the chain shows that whole directory rewritten and applies nothing: migrations are recorded by filename, so `0000_initial_schema.sql` is skipped on a database that already ran it. Meet anything doubtful on a rehearsal first.
+Upstream owns every file, so a clean fork merges fast-forward; a conflict means you edited a tracked file. **After this upgrade, a processor without its notice value stops serving forms.** Keys that used to leave a form live now leave it offline until `STRIPE_WEBHOOK_SECRET`, `PAYPAL_WEBHOOK_ID`, `CHARIOT_WEBHOOK_SECRET`, or `NOWPAYMENTS_IPN_SECRET` is set for each processor whose keys are set ([5. Payments](#5-payments)). A form already marked Live shows Not taking gifts until that value is in `.env` and the app is recreated. **Read the diff of `packages/app/migrations/` before migrating**, the irreversible part. A release that squashed the chain shows that whole directory rewritten and applies nothing: migrations are recorded by filename, so `0000_initial_schema.sql` is skipped on a database that already ran it. Meet anything doubtful on a rehearsal first.

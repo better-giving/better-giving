@@ -81,10 +81,12 @@ type Failure = NonprofitsRateLimited | NonprofitsUnavailable | { readonly outcom
 const TITLE_SMALL = new Set(['a', 'an', 'and', 'of', 'the', 'for', 'in', 'on', 'at', 'to']);
 
 /**
- * an IRS name, which the files store in capitals, as a title.
+ * an IRS name or place, which the files store in capitals, as a title.
  *
- * trim, split on whitespace, lowercase each word, capitalize its first letter. a word in
- * `TITLE_SMALL` stays lowercase unless it is the first or last word. an ampersand stays `&`.
+ * trim, split on whitespace. a word in `TITLE_SMALL` stays lowercase unless it is the first or
+ * last word. before that capitalization, a token whose letters are all capitals and whose letter
+ * count is 1 to 4 stays as the IRS wrote it, digits included (`YMCA`, `18TH`). every other word
+ * is lowercased and its first letter capitalized. an ampersand stays `&`.
  */
 function titleCaseName(name: string): string {
 	const words = name
@@ -97,9 +99,17 @@ function titleCaseName(name: string): string {
 			const lower = word.toLowerCase();
 			const edge = index === 0 || index === words.length - 1;
 			if (!edge && TITLE_SMALL.has(lower)) return lower;
+			if (staysAsWritten(word)) return word;
 			return lower.charAt(0).toUpperCase() + lower.slice(1);
 		})
 		.join(' ');
+}
+
+/** 1 to 4 letters, every one a capital. a lowercase letter, or any other count, goes to title case. */
+function staysAsWritten(token: string): boolean {
+	const letters = token.match(/[A-Za-z]/g);
+	if (letters === null || letters.length < 1 || letters.length > 4) return false;
+	return letters.every((letter) => letter >= 'A' && letter <= 'Z');
 }
 
 /** whole seconds, the form the service writes `Retry-After` in. */
@@ -161,8 +171,8 @@ export async function lookUpNonprofit(
 	const fields: NonprofitFields = {
 		legal_name: titleCaseName(org.name ?? ''),
 		tax_id: einAsPrinted(org.ein),
-		address_line1: org.address.street ?? '',
-		city: org.address.city ?? '',
+		address_line1: titleCaseName(org.address.street ?? ''),
+		city: titleCaseName(org.address.city ?? ''),
 		region: org.address.state ?? '',
 		postal_code: org.address.zip ?? '',
 		country: US_COUNTRY
@@ -199,7 +209,7 @@ export async function searchNonprofits(
 		matches: read.data.results.map((match) => ({
 			ein: einAsPrinted(match.ein),
 			name: titleCaseName(match.name),
-			city: match.city ?? '',
+			city: titleCaseName(match.city ?? ''),
 			state: match.state ?? '',
 			deductible: match.deductible,
 			revoked: match.revoked,

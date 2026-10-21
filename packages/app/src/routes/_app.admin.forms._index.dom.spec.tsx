@@ -88,14 +88,15 @@ function screen(
 	embedding: Asked | null = null,
 	forms: Projected[] = [GENERAL, APPEAL],
 	sites: SitesCard = DEPLOYER_SITES,
-	actionData: unknown = undefined
+	actionData: unknown = undefined,
+	giftsBlocked = false
 ): HTMLElement {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/forms',
 			Component: () =>
 				createElement(DonationForms as never, {
-					loaderData: { created: null, embedding, forms, sites },
+					loaderData: { created: null, embedding, forms, sites, giftsBlocked },
 					actionData,
 					params: {},
 					matches: []
@@ -147,6 +148,26 @@ it('draws the create card and nothing else while the deployment has no forms', (
 	expect(records(root)).toHaveLength(0);
 	expect(list(root).childElementCount).toBe(1);
 	expect(root.querySelector('.adm-empty')).toBe(null);
+});
+
+it('says a live form is not taking gifts while a blocker stands, and the sample stays Live', () => {
+	const root = screen(null, [GENERAL, APPEAL], DEPLOYER_SITES, undefined, true);
+	const live = records(root)[0]?.querySelector('.adm-state');
+	const draft = records(root)[1]?.querySelector('.adm-state');
+
+	expect(live?.textContent).toBe('Not taking gifts');
+	expect(live?.classList.contains('adm-state--attention')).toBe(true);
+	expect(live?.classList.contains('adm-state--done')).toBe(false);
+	expect(draft?.textContent).toBe('Draft');
+	// the sample inside the create card is not a stored form.
+	expect(list(root).querySelector('[aria-hidden="true"] .adm-state')?.textContent).toBe('Live');
+});
+
+it('keeps Live on a live form while nothing blocks', () => {
+	const word = records(screen())[0]?.querySelector('.adm-state');
+
+	expect(word?.textContent).toBe('Live');
+	expect(word?.classList.contains('adm-state--done')).toBe(true);
 });
 
 it('carries a form’s mark on the line its name is on, with its status word', () => {

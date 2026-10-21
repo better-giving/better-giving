@@ -12,13 +12,14 @@ A donation app for a **single** nonprofit, run anywhere Docker runs. One deploym
 
 ### Requirements
 
-- **Docker with Compose** to run it, and **Node ≥ 22** with **pnpm** (`corepack enable`) to work on a checkout. `pnpm run doctor` is one of those checkout commands: it needs this repository and `pnpm install`, and it is not a command inside the container
-- **a Stripe, PayPal, Chariot or NOWPayments account** (one is enough, and more than one may be set) and **an SMTP account on port 465**, for taking money. A processor's keys alone do not finish it: the payment-notice value [`DEPLOY.md`](./DEPLOY.md) lists for that processor has to be set too, or a donor is charged and the gift never settles. [`DEPLOY.md`](./DEPLOY.md) has the details
+- **Docker with Compose** to run it, and **Node ≥ 22** with **pnpm** (`corepack enable`) to work on a checkout
+- **a Stripe, PayPal, Chariot or NOWPayments account** (one is enough, and more than one may be set) and **an SMTP account on port 465**, for taking money. A processor's keys alone do not finish it: the payment-notice value [`DEPLOY.md`](./DEPLOY.md) lists for that processor has to be set too, or no form goes live. [`DEPLOY.md`](./DEPLOY.md) has the details
 
 ### Run it
 
 ```sh
 cp .env.example .env                 # set ADMIN_PASSWORD and BETTER_AUTH_SECRET
+docker compose build                 # the image is not pulled; later `up` reuses this build
 docker compose run --rm migrate      # applies the migrations to the database file
 docker compose up -d
 ```
@@ -33,7 +34,7 @@ The dashboard opens at once. A donation form goes live once Settings holds the o
 
 ### Deploy it
 
-The same three lines on a machine of your own, behind an `https` proxy. **One container, never scaled**: the rate limits, the cache and the scheduled runs are in-process. [`DEPLOY.md`](./DEPLOY.md) is the operator's file and walks all of it, in order: the configuration values, the proxy header, processor webhooks, backups and restores, rehearsal deployments, and upgrades.
+The same lines on a machine of your own, behind an `https` proxy. **One container, never scaled**: the rate limits, the cache and the scheduled runs are in-process. [`DEPLOY.md`](./DEPLOY.md) is the operator's file and walks all of it, in order: the configuration values, the proxy header, processor webhooks, backups and restores, rehearsal deployments, and upgrades.
 
 Set mail before taking gifts: a deployment that cannot send cannot give a donor the receipt they file with a tax authority. Every gift passes a spam check, ALTCHA unless both Turnstile keys are set, because `/api/v1` is an unauthenticated, cross-origin, payment-initiating endpoint, exactly what card-testing bots hunt, and the org eats the disputes.
 
@@ -176,6 +177,8 @@ Three custom properties, set on the element or anything above it:
 ## Operate it
 
 From a checkout, the root commands act on the database file `DATABASE_URL` names: `pnpm db:migrate`, `pnpm db:seed` (a contributor's fixture, never a deployment's) and `pnpm db:backup <file>`. All run from any directory, because the root `package.json` forwards each into `packages/app`; `pnpm run` on its own lists them. In the container, `docker compose run --rm migrate` is the migration.
+
+`pnpm run doctor` is one of those checkout commands. It needs this repository and `pnpm install`, and it is not a command inside the container. [`DEPLOY.md`](./DEPLOY.md) says what it reports.
 
 An append-only ledger is corrected by posting a compensating entry rather than by restoring. A backup is a copy of the one database file; [`DEPLOY.md`](./DEPLOY.md) has taking one and putting it back.
 

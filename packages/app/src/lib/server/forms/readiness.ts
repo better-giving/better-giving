@@ -8,8 +8,10 @@ import { noticeVariable } from '../payments/webhook-secret';
 
 // what stands between this deployment and a donor giving through one of its forms, as the block
 // at the top of the two screens that write a form renders it — the one that makes one and the one
-// that publishes one. the forms list writes nothing and carries no block, so it does not call
-// this; those two routes and the Live check behind them are its callers.
+// that publishes one. the forms list writes nothing and carries no block. it calls this for one
+// boolean, whether a stored live form is taking gifts (`giftsBlocked` on
+// `src/routes/_app.admin.forms._index.tsx`). those two routes, that list, and the Live check
+// behind the screens that write are its callers.
 //
 // presence of a row's columns and of deploy-time values, and the shape a processor's values have
 // to take, and nothing past it: no processor is asked anything, for the reason `setupReadiness` in
@@ -22,8 +24,8 @@ import { noticeVariable } from '../payments/webhook-secret';
 // shape no call can use (an unparseable `PAYPAL_API_URL`) blocks Live rather than being accepted
 // and serving nothing. the notices line blocks as well, including where another processor can
 // still settle. Live is withheld while any keys-present processor is missing its notice variable,
-// and a served form does not name that processor. a gift already sent on it is charged and never
-// marked paid.
+// and a served form does not name that processor. what a gift already sent on it costs is
+// `formsReadiness` below.
 
 /**
  * the organisation's identity: `identityMissing` in ../org/identity.ts, the same list of fields the
@@ -44,11 +46,12 @@ function organisationLine(profile: OrgProfile | null): FormReadinessLine {
  * `FormReadinessLine`.
  *
  * the notices line is drawn once a processor's charge pair is set in a shape a call can use, and
- * it blocks while any of those is missing the variable `noticeVariable` names. a gift on that
- * processor is charged and never heard to settle, so Live is withheld. before a charge pair is
- * set the processor line already stands and the notices line is not asked. a processor whose
- * charge pair is set is not yet one a form is served on: `servedProcessors` in
- * ../payments/factory.ts also requires the notice variable.
+ * it blocks while any of those is missing the variable `noticeVariable` names. a gift already
+ * sent on that processor is charged and never marked paid. before a charge pair is set the
+ * processor line
+ * already stands and the notices line is not asked. a processor whose charge pair is set is not
+ * yet one a form is served on: `servedProcessors` in ../payments/factory.ts also requires the
+ * notice variable.
  */
 export function formsReadiness(
 	profile: OrgProfile | null,

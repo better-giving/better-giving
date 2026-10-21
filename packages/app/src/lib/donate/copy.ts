@@ -175,8 +175,17 @@ export function donateLabel(total: string): string {
 	return `Donate ${total}`;
 }
 
-export function receiptTo(email: string): string {
-	return `Receipt to ${email}`;
+/**
+ * the line over the press that spends the money.
+ *
+ * an empty address keeps the line blank. when a receipt was promised the line is
+ * `Receipt to ${email}`. otherwise it is `No email will be sent.` promised is
+ * `config.receipts === true`, and absent is none (`receipts` on `FormConfig` in
+ * @better-giving/form/v1).
+ */
+export function receiptTo(email: string, sendsReceipt: boolean): string {
+	if (email === '') return '';
+	return sendsReceipt ? `Receipt to ${email}` : 'No email will be sent.';
 }
 
 /**

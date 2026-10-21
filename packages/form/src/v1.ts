@@ -396,7 +396,8 @@ export type FormConfig = {
 	 *
 	 * present only when the response's `receipts` is boolean true (`readFormConfig` in ./config.ts).
 	 * absent, the thank-you in ./views.ts names who has the gift and does not say a receipt is on
-	 * its way.
+	 * its way. the review step names the address only when this is true. when the donor gave an
+	 * address and this is not true, that step says no email will be sent.
 	 */
 	readonly receipts?: boolean;
 	readonly turnstileSiteKey?: string;

@@ -32,8 +32,9 @@ export type FormReadinessSeverity = (typeof FORM_READINESS_SEVERITIES)[number];
  *                  is served.
  *   notices      — the notice variable for each processor whose charge keys are set. Live is
  *                  withheld while any is missing. a served form names only a processor that has
- *                  it (`servedProcessors` in `$lib/server/payments/factory.ts`). a gift already
- *                  sent on a processor missing it is charged and never marked paid.
+ *                  it (`servedProcessors` in `$lib/server/payments/factory.ts`). what a gift
+ *                  already sent on a processor missing it costs is `formsReadiness` in
+ *                  `$lib/server/forms/readiness.ts`.
  *
  * a closed list, because the screens word each line by its job and by who is reading — the
  * person who deployed the site is sent to the page each one is settled from, and a member is told
@@ -65,8 +66,9 @@ export interface FormReadinessLine {
  * refuses the move anyway (`liveOffered`). the processor line is where `publishedConfig` in
  * `$lib/server/forms/published-config.ts` serves nothing. the notices line is where a processor's
  * keys are set and its notice variable is not: Live is withheld, and a served form does not name
- * that processor. a gift already sent on it is charged and never marked paid. a warning never
- * stops a write — that is the whole difference between the two words.
+ * that processor. what a gift already sent on it costs is `formsReadiness` in
+ * `$lib/server/forms/readiness.ts`. a warning never stops a write — that is the whole difference
+ * between the two words.
  *
  * `null` is the resolved deployment: `formsReadiness` answers `null` once every line is done, so
  * the absence of a block is the absence of a blocker.

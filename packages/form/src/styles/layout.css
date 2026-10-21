@@ -203,7 +203,7 @@ form {
 }
 
 /*
- * the line saying where the receipt goes belongs to the control that spends the money: it is the
+ * the line under the review step belongs to the control that spends the money: it is the
  * last thing a donor reads before pressing, and the step's full rhythm on both sides of it stands
  * it as far from the payment box above as from the press below — a line equidistant from two
  * blocks reads as a third. it takes close to the receipt's own row gap under it instead, the way

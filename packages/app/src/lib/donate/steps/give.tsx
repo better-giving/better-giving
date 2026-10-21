@@ -12,8 +12,8 @@ import type { Takeover } from '../takeover';
 // money.
 //
 // this step shows nothing the donor typed. what closes that gap is the line standing over the
-// control that spends the money, stating where the receipt is going, with the step head's mark for
-// the details step as the way to change it — a control here would be a second way to edit an
+// control that spends the money (`receiptTo` in ../copy.ts), with the step head's mark for the
+// details step as the way to change the address — a control here would be a second way to edit an
 // address the step behind this one owns. the sheet both surfaces share closes the gap on that pair
 // by adjacency (`.aside:has(+ [part~='submit'])` in packages/form/src/styles/layout.css), so the
 // order below is what that rule is written against and nothing may stand between the two.
@@ -66,8 +66,7 @@ export function readReceipt(
 ): ReceiptReading | null {
 	const { state } = api;
 	const money = (minor: number) => formatMinor(minor, config.locale, config.currency);
-	const email = api.emailField.box.value.trim();
-	const receiptTo = email === '' ? '' : copy.receiptTo(email);
+	const receiptTo = copy.receiptTo(api.emailField.box.value.trim(), config.receipts === true);
 
 	const fv = 'fv' in state ? state.fv : undefined;
 	if (fv === undefined) {

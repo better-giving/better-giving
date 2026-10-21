@@ -17,7 +17,7 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { readOriginRows } from '@better-giving/operator/origins';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { FORM_STATUS_TONES } from '$lib/admin/status-tones';
+import { formStatusWord } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
 import { data, Form, href, Link, useFormAction, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
@@ -33,12 +33,15 @@ import {
 	whichForm
 } from '$lib/admin/use-admin-form';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
-import { FORM_STATUS_LABELS } from '$lib/forms/statuses';
+import { anyBlocker } from '$lib/forms/readiness';
 import { STAFF_USER_ID } from '$lib/server/auth';
+import { readConfigEnv } from '$lib/server/config/env';
 import { invalid, parseForm, submittedForm } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import { CREATED_FLASH, redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
 import { readForms } from '$lib/server/forms/queries';
+import { formsReadiness } from '$lib/server/forms/readiness';
+import { readOrgProfile } from '$lib/server/org/queries';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { levelWalletDomains } from '$lib/server/payments/wallet-domains';
 import { walletHosts } from '$lib/server/payments/wallet-hosts';
@@ -63,14 +66,12 @@ import type { Route } from './+types/_app.admin.forms._index';
 // hands out a snippet that looks right and says nothing on the org's own site: a broken deployment
 // is quiet on the live site, and Payments is where you find out.
 //
-// what stands between this deployment and a donor giving is not read here, and that is a decision
-// rather than an omission: the status ledger is rendered on the screens that write — the create,
-// which saves a form as a draft while a blocker stands, and the editor, which refuses to publish
-// one — and a second telling on a screen that writes no form would be a second place to read the
-// same thing. `$lib/server/forms/readiness.ts` is where it lives and those two routes are its
-// callers.
-// the organisation's own details go with it, for the same reason: the card that leads the list is a
-// link that never gates, so nothing here asks whether they are saved.
+// a form stored `live` while `anyBlocker` is true says Not taking gifts. `publishedConfig` in
+// `$lib/server/forms/published-config.ts` serves nothing in that state, and Live would say the
+// form is taking gifts. the boolean is `formsReadiness` in `$lib/server/forms/readiness.ts` read
+// through `anyBlocker` in `$lib/forms/readiness.ts`, and it is the only reading of that block this
+// list publishes. the block itself stays on the screens that write a form: this list writes none,
+// gates none, and withholds no snippet. the card that leads the list is a link that never gates.
 //
 // this file is deliberately thin. what reaches the database lives in
 // `$lib/server/forms/queries.ts`; the only job here is a projection. neither the database's
@@ -150,14 +151,16 @@ const NOT_HERE =
 	'deployer’s session: sign in with `ADMIN_PASSWORD` at /login.';
 
 export async function loader({ context, request, url }: Route.LoaderArgs) {
-	// the forms and the deployment's sites, the only two reads this page makes. the cause itself is
-	// logged, and the diagnostic is about the database rather than about the table, because what a
+	// the forms, the sites, and the organisation row `formsReadiness` reads for the status word.
+	// a missing row is a blocker, not a failed load: `readOrgProfile` answers null. the cause itself
+	// is logged, and the diagnostic is about the database rather than about the table, because what a
 	// fresh deployment actually hits here is a schema that was never migrated.
 	const db = context.get(database);
 	let forms: Awaited<ReturnType<typeof readForms>>;
 	let sites: string[];
+	let profile: Awaited<ReturnType<typeof readOrgProfile>>;
 	try {
-		[forms, sites] = await Promise.all([readForms(db), readSites(db)]);
+		[forms, sites, profile] = await Promise.all([readForms(db), readSites(db), readOrgProfile(db)]);
 	} catch (e) {
 		console.error('loading the donation forms page failed:', e);
 		loadFailed('This page');
@@ -264,7 +267,10 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 				listed: sites,
 				mayEdit: context.get(staff).id === STAFF_USER_ID,
 				saved
-			}
+			},
+			// one boolean for the list: a stored live form says Not taking gifts while this holds.
+			// `anyBlocker` is the ladder the screens that write a form already use.
+			giftsBlocked: anyBlocker(formsReadiness(profile, readConfigEnv(context.get(platform).env)))
 		},
 		// the headers that burn the markers ride on the response that publishes them, so a reload of
 		// this list announces nothing. a `Set-Cookie` from a loader is sent without this route
@@ -420,19 +426,17 @@ const SAMPLE = (
 // element, wherever the form appears — because that is the instruction an integrator is following,
 // and both are a value somebody takes away rather than one they read down a list.
 //
-// because it writes no form, it gates nothing and reports nothing about the deployment's own state.
-// the status ledger is on the screens under `new` and `[id]`, which are the ones that withhold
-// Live while a blocker stands, and the card that leads the list is a plain link that is never
-// switched off — a second telling here would be a second place to read the same thing, and the
-// place an operator would have to act is Settings or Payments either way.
+// because it writes no form, it gates nothing. a live form whose deployment has a blocker says
+// Not taking gifts beside its name, which is the one report this list makes of that state. the
+// block that says which line stands stays on the screens under `new` and `[id]`, and the card
+// that leads the list is a plain link that is never switched off.
 //
-// that reaches the wording of a value as well as the presence of a block, and it is the rule a
-// record here is written to: a value a form has not been given is stated as a fact about that form
-// and never as a warning about it. a form nobody has ticked a site on has no foot and no sentence
-// about it, because a line that reads as a blocker on the one screen that cannot act on
-// one sends an operator looking for the button that clears it.
+// a value a form has not been given is stated as a fact about that form and never as a warning
+// about it. a form nobody has ticked a site on has no foot and no sentence about it, because a
+// line that reads as a blocker on the one screen that cannot act on one sends an operator looking
+// for the button that clears it.
 export default function DonationForms({ loaderData, actionData }: Route.ComponentProps) {
-	const { created, embedding, forms, sites } = loaderData;
+	const { created, embedding, forms, giftsBlocked, sites } = loaderData;
 
 	// the notice arrives already holding its text, and a live region that arrives carrying its own
 	// text is one insertion rather than a change: no reader announces it, and focus is still on
@@ -488,46 +492,46 @@ export default function DonationForms({ loaderData, actionData }: Route.Componen
 					Create donation form
 				</CreateCard>
 
-				{forms.map((form) => (
-					// a form is a record rather than a run of paragraphs: its name and its status on one
-					// baseline, then the places it is used, each one a press.
-					//
-					// the record is written out of the classes packages/operator/src/styles/adm.css
-					// already draws rather than mounted from the library's `RecordCard`, which draws all
-					// of this: the level is the caller's, the status word takes its tone, the mark is a
-					// name from the closed set, and the origins are a foot of presses. adopting it is a
-					// screen's change rather than a part's.
-					//
-					// the id is not a value on the card and must not become one. every press is already
-					// built from it — the name links to the form's own page, and the foot carries it in
-					// the addresses it points at — so a row printing it would be one string said again
-					// with no job.
-					<section className="adm-record" key={form.id}>
-						<div className="adm-record__head adm-record__head--marked">
-							{/* the glyph the rail carries for Donation forms ($lib/admin/destinations.ts),
+				{forms.map((form) => {
+					const standing = formStatusWord(form.status, giftsBlocked);
+					return (
+						// a form is a record rather than a run of paragraphs: its name and its status on one
+						// baseline, then the places it is used, each one a press.
+						//
+						// the record is written out of the classes packages/operator/src/styles/adm.css
+						// already draws rather than mounted from the library's `RecordCard`, which draws all
+						// of this: the level is the caller's, the status word takes its tone, the mark is a
+						// name from the closed set, and the origins are a foot of presses. adopting it is a
+						// screen's change rather than a part's.
+						//
+						// the id is not a value on the card and must not become one. every press is already
+						// built from it — the name links to the form's own page, and the foot carries it in
+						// the addresses it points at — so a row printing it would be one string said again
+						// with no job.
+						<section className="adm-record" key={form.id}>
+							<div className="adm-record__head adm-record__head--marked">
+								{/* the glyph the rail carries for Donation forms ($lib/admin/destinations.ts),
 							    so a card and the destination that reached it agree on sight. */}
-							<span className="adm-record__mark">
-								<Mark name="form" />
-							</span>
-							{/* the name is a plain link and takes the title's own type role, rather than
+								<span className="adm-record__mark">
+									<Mark name="form" />
+								</span>
+								{/* the name is a plain link and takes the title's own type role, rather than
 							    arriving at a button's and being pushed back out of it.
 
 							    level 2, because a record on this list stands directly under the page's
 							    `<h1>`, which the frame draws hidden, and nothing sits between them. how
 							    loud the words are is `.adm-record__title`'s to say. */}
-							<h2 className="adm-record__title">
-								<Link to={href('/admin/forms/:id', { id: form.id })}>{form.name}</Link>
-							</h2>
-							{/* the tone is what tells the two apart down a list: Live is the accent and
-							    Draft is the ochre of a form still waiting on somebody. there are only ever
-							    those two here — `readForms` leaves an archived form out of the list
-							    entirely — and $lib/admin/status-tones.ts maps all three. */}
-							<StatusWord tone={FORM_STATUS_TONES[form.status]}>
-								{FORM_STATUS_LABELS[form.status]}
-							</StatusWord>
-						</div>
+								<h2 className="adm-record__title">
+									<Link to={href('/admin/forms/:id', { id: form.id })}>{form.name}</Link>
+								</h2>
+								{/* Live is the accent and Draft is the ochre of a form still waiting. a live
+							    form this deployment cannot serve says Not taking gifts.
+							    `formStatusWord` in $lib/admin/status-tones.ts. `readForms` leaves an
+							    archived form off this list. */}
+								<StatusWord tone={standing.tone}>{standing.word}</StatusWord>
+							</div>
 
-						{/* the foot: the sites an operator ticked, in the form's own order.
+							{/* the foot: the sites an operator ticked, in the form's own order.
 
 						    `Press` draws its own `<li>`, so the items are the part's and a screen
 						    assembling them itself is a screen that can drop the element a browser reports
@@ -540,30 +544,31 @@ export default function DonationForms({ loaderData, actionData }: Route.Componen
 						    the role is stated for the reason `RecordCard` states it on the foot it draws:
 						    no marker and a flex row, either of which stops a browser reporting this as a
 						    list. removing the attribute re-opens the defect. */}
-						{form.origins.length === 0 ? null : (
-							// biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as above.
-							<ul role="list" className="adm-record__origins adm-record__foot">
-								{form.origins.map((origin) => (
-									// the site is what is pressed and the card it opens is aimed at it, so the
-									// snippet an operator is about to paste names the page it is going into.
-									//
-									// named for the record it acts on, for the reason the members list names its
-									// per-row control: a screenful of presses all reading as the same act is a
-									// list a reader has to walk to reach the one they came for. the site is in
-									// the name as well as in the press, so what is read out holds what is seen.
-									<Press
-										key={origin}
-										as={Link}
-										to={`${SCREEN}?embed=${encodeURIComponent(form.id)}&site=${encodeURIComponent(origin)}`}
-										aria-label={`Embed ${form.name} on ${origin}`}
-									>
-										{origin}
-									</Press>
-								))}
-							</ul>
-						)}
-					</section>
-				))}
+							{form.origins.length === 0 ? null : (
+								// biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as above.
+								<ul role="list" className="adm-record__origins adm-record__foot">
+									{form.origins.map((origin) => (
+										// the site is what is pressed and the card it opens is aimed at it, so the
+										// snippet an operator is about to paste names the page it is going into.
+										//
+										// named for the record it acts on, for the reason the members list names its
+										// per-row control: a screenful of presses all reading as the same act is a
+										// list a reader has to walk to reach the one they came for. the site is in
+										// the name as well as in the press, so what is read out holds what is seen.
+										<Press
+											key={origin}
+											as={Link}
+											to={`${SCREEN}?embed=${encodeURIComponent(form.id)}&site=${encodeURIComponent(origin)}`}
+											aria-label={`Embed ${form.name} on ${origin}`}
+										>
+											{origin}
+										</Press>
+									))}
+								</ul>
+							)}
+						</section>
+					);
+				})}
 			</List>
 
 			{/* after the forms rather than over them: the list is what an operator comes here for, and

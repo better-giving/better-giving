@@ -2333,13 +2333,15 @@ export function createCard(
 	});
 
 	// the line that closes the gap the split opens: the step that takes the money shows no field
-	// the donor filled in, so it states where the receipt is going and leaves the step head's mark
-	// for the details step as the way to change it. it reuses the aside role rather than naming a
-	// surface of its own.
+	// the donor filled in. an empty address leaves it empty and hidden. `config.receipts === true`
+	// (present only when the served config set it, ./v1.ts) names the address the receipt is going
+	// to; otherwise the line says no email will be sent, so a deployment that cannot mail one does
+	// not promise it. the step head's mark for the details step is the way to change the address.
+	// it reuses the aside role rather than naming a surface of its own.
 	//
-	// it stands directly over the button: the last thing a donor takes in before the press is where
-	// the receipt is going, and a line standing at the step's own rhythm between two blocks reads as
-	// a third block rather than as part of either. the sheet closes the gap on that pair by
+	// it stands directly over the button: the last thing a donor takes in before the press is this
+	// line, and a line standing at the step's own rhythm between two blocks reads as a third block
+	// rather than as part of either. the sheet closes the gap on that pair by
 	// adjacency (`.aside:has(+ [part~='submit'])` in ./styles/layout.css), so the order here is what
 	// that rule is written against and nothing may stand between the two.
 	const receiptTo = make(doc, 'p', { class: 'aside', hidden: true });
@@ -3611,12 +3613,18 @@ export function createCard(
 		// the control that spends the money restates it.
 		setText(submitLabel, `Donate ${money(totalMinor)}`);
 
-		// where the receipt is going, on the one step that shows nothing else the donor typed. the
-		// step head's mark for the details step is the way to change it, which is why the line names
-		// the address rather than offering a control of its own.
+		// an empty address stays empty and hidden. `receipts === true` names the address the receipt
+		// is going to. otherwise the line says no email will be sent, so the step does not promise
+		// a receipt this deployment cannot send.
 		const email = api.emailField.value.trim();
-		setText(receiptTo, email === '' ? '' : `Receipt to ${email}`);
-		setHidden(receiptTo, email === '');
+		const receiptLine =
+			email === ''
+				? ''
+				: config.receipts === true
+					? `Receipt to ${email}`
+					: 'No email will be sent.';
+		setText(receiptTo, receiptLine);
+		setHidden(receiptTo, receiptLine === '');
 
 		return `${totalName} is ${money(totalMinor)}.`;
 	}

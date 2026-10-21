@@ -163,11 +163,13 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 	return {
 		// what stops the form about to be made from serving, in the same block the screen that edits
-		// one carries. the forms list carries none — it makes no form, so it gates nothing.
+		// one carries. the forms list carries none of this block — it makes no form, so it gates
+		// nothing, and a live row there says Not taking gifts while a blocker stands.
 		//
 		// a blocker withholds Live and nothing else. a missing identity or a processor that cannot
-		// settle leaves `publishedConfig` serving nothing; a notice variable left unset leaves a gift
-		// charged and never marked paid. the form is still made, as a draft.
+		// settle leaves `publishedConfig` serving nothing. a notice variable left unset is the case
+		// `formsReadiness` in `$lib/server/forms/readiness.ts` states. the form is still made, as a
+		// draft.
 		//
 		// `null` when there is nothing to say, which is what keeps the condition in one place rather
 		// than in each page's markup.

@@ -2613,16 +2613,26 @@ describe('the review step', () => {
 		expect(card.text('[part~="submit"]')).toBe('Donate $26.06');
 	});
 
-	// the step shows nothing else the donor typed, so it says where the receipt is going and leaves
-	// the mark for the details step as the way to change it.
+	// the step shows nothing else the donor typed. `receipts: true` is the served config promising
+	// mail (./v1.ts), so the line names the address and the mark for the details step is the way
+	// to change it.
 	it('names the address the receipt is going to', async () => {
-		const card = await atReview();
+		const card = await atReview({ config: { ...CONFIG, receipts: true } });
 
 		expect(shows(card, '.step-give .aside')).toBe('Receipt to donor@example.org');
 	});
 
+	// absent `receipts`, the served config did not set it (./v1.ts). the line says no email will
+	// be sent, and it does not name a receipt.
+	it('says no email will be sent when the config does not promise a receipt', async () => {
+		const card = await atReview();
+
+		expect(shows(card, '.step-give .aside')).toBe('No email will be sent.');
+		expect(card.text('.step-give .aside')).not.toContain('Receipt to');
+	});
+
 	// and it stands against the control it is about, so the last thing read before the press is
-	// where the receipt is going. the sheet closes the gap on that pair by adjacency
+	// that line. the sheet closes the gap on that pair by adjacency
 	// (`.aside:has(+ [part~='submit'])` in ./styles/layout.css), so a step assembled in any other
 	// order leaves the rule matching nothing and the line standing as a block of its own — which is
 	// a defect no sheet can see and this pool can.

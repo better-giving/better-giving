@@ -1635,13 +1635,26 @@ it('draws no header over a box listing one option, and names the box itself', as
 // the sheet both surfaces share closes the gap on this pair by adjacency
 // (`.aside:has(+ [part~='submit'])` in packages/form/src/styles/layout.css), so anything standing
 // between the two leaves the line at the step's own rhythm between two blocks, reading as a third.
+// the line names a receipt only when the served config promised one (`receipts` on FormConfig in
+// @better-giving/form/v1). absent, it says no email will be sent.
 it('stands the line saying where the receipt goes directly over the press', async () => {
+	const { root } = await card({ ...CONFIG, receipts: true });
+	await walkToGive(root);
+
+	const line = one(root, 'section.step-give > p.aside');
+	expect(line.hidden).toBe(false);
+	expect(line.textContent).toBe('Receipt to donor@example.org');
+	expect(line.nextElementSibling).toBe(one(root, 'button[part~="submit"]'));
+});
+
+it('says no email will be sent when the config promised no receipt', async () => {
 	const { root } = await card();
 	await walkToGive(root);
 
 	const line = one(root, 'section.step-give > p.aside');
 	expect(line.hidden).toBe(false);
-	expect(line.textContent).toBe(copy.receiptTo('donor@example.org'));
+	expect(line.textContent).toBe('No email will be sent.');
+	expect(line.textContent).not.toContain('Receipt to');
 	expect(line.nextElementSibling).toBe(one(root, 'button[part~="submit"]'));
 });
 

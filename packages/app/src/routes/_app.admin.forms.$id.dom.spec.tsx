@@ -87,6 +87,7 @@ function record(
 		programMode: 'none',
 		pinnedProgram: null,
 		liveOffered: liveOffered(status, readiness),
+		giftsBlocked: blocked,
 		saved: null,
 		archivedJustNow: false,
 		confirmArchive,
@@ -219,6 +220,22 @@ it('says under the heading why the form cannot go live, and at the status box wh
 	const hint = document.getElementById(`${status?.id}-hint`);
 	expect(described).toContain(hint?.id);
 	expect(hint?.textContent).toBe('Live is unavailable until the items above are done.');
+});
+
+it('says a live form is not taking gifts while a blocker stands', () => {
+	const { root } = screen({ blocked: true, status: 'live' });
+	const word = root.querySelector('.adm-pageheader .adm-state');
+
+	expect(word?.textContent).toBe('Not taking gifts');
+	expect(word?.classList.contains('adm-state--attention')).toBe(true);
+	expect(root.querySelector('.adm-pageheader .adm-state--done')).toBeNull();
+});
+
+it('keeps Live on a live form while nothing blocks', () => {
+	const word = screen({ status: 'live' }).root.querySelector('.adm-pageheader .adm-state');
+
+	expect(word?.textContent).toBe('Live');
+	expect(word?.classList.contains('adm-state--done')).toBe(true);
 });
 
 it('opens a live form under a blocker with Live chosen and its group holding nothing to save', () => {

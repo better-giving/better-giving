@@ -138,13 +138,13 @@ async function signIn(): Promise<string> {
 }
 
 /**
- * the four states a deployment's Stripe slots can be in, named here because this screen reads none
- * of them: the names are this file's own, so a case says which deployment it is standing in rather
- * than spelling three variables per visit.
+ * the four states a deployment's Stripe slots can be in. the names are this file's own, so a case
+ * says which deployment it is standing in rather than spelling three variables per visit.
  *
- * the keys and not a reading of them: what this screen has to go on doing over every one of them is
- * hand out the snippet. `keys-unset` takes the three back off the set-up deployment's bindings, so
- * each is stated as unset rather than left to whatever those bindings hold.
+ * the snippet is handed out in every one of them. `giftsBlocked` is the one reading of those slots
+ * this list publishes, and these cases do not assert it. `keys-unset` takes the three back off the
+ * set-up deployment's bindings, so each is stated as unset rather than left to whatever those
+ * bindings hold.
  */
 type StripeSlots = 'keys-unset' | 'publishable-slot-wrong' | 'secret-slot-wrong' | 'configured';
 
@@ -190,6 +190,7 @@ type Loaded = {
 		status: string;
 		origins: string[];
 	}[];
+	giftsBlocked: boolean;
 };
 
 /**
@@ -326,22 +327,30 @@ describe('/admin/forms load', () => {
 		expect(Object.keys(form ?? {}).sort()).toEqual(['id', 'name', 'origins', 'status']);
 	});
 
-	it('publishes the forms, the create outcome, the embed question and the sites card, and nothing else', async () => {
-		// the whole contract this screen publishes. nothing about the deployment's own state crosses
-		// but its site list: the status ledger is not rendered here and the header action is never
-		// disabled here, so a readiness key would have no consumer, and what the Stripe keys can
-		// charge is Payments' to say. asserted as the whole key set, so it is refused whatever
-		// puts one back.
-		expect(Object.keys(await runLoad()).sort()).toEqual(['created', 'embedding', 'forms', 'sites']);
+	it('publishes the forms, the create outcome, the embed question, the sites card and whether gifts are blocked, and nothing else', async () => {
+		// the whole contract this screen publishes. the status ledger is not rendered here, so no
+		// readiness lines cross: `giftsBlocked` is the one boolean the status word reads, from
+		// `anyBlocker` over `formsReadiness`. a set-up deployment blocks nothing. asserted as the
+		// whole key set, so it is refused whatever puts one back.
+		const loaded = await runLoad();
+		expect(Object.keys(loaded).sort()).toEqual([
+			'created',
+			'embedding',
+			'forms',
+			'giftsBlocked',
+			'sites'
+		]);
+		expect(loaded.giftsBlocked).toBe(false);
 	});
 
 	it('lists the forms on a deployment with no organisation details saved at all', async () => {
-		// what a fresh deployment is: no `org_profile` row. this page does not read that table — what
-		// the missing identity fields cost is `$lib/server/forms/readiness.ts`'s to say, and it is said
-		// on the screens that make and publish a form. so an empty `org_profile` is not an error here
-		// and not a blank sentence either; it changes nothing about this screen.
+		// what a fresh deployment is: no `org_profile` row. `readOrgProfile` answers null, which is
+		// a blocker and not a failed load, so the list still draws and a live form on it is not
+		// taking gifts.
 		await run(stmt('delete from org_profile'));
-		expect((await runLoad()).forms.map((f) => f.id)).toEqual([FORM_ID]);
+		const loaded = await runLoad();
+		expect(loaded.forms.map((f) => f.id)).toEqual([FORM_ID]);
+		expect(loaded.giftsBlocked).toBe(true);
 	});
 
 	it('hands back an empty list on a deployment that has no forms yet', async () => {

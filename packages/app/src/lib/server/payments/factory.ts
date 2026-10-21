@@ -289,8 +289,8 @@ export type ServedProcessors = {
 	 * answer a refusal turns on, rather than `providers` being empty. a processor with no browser
 	 * half is never in `providers` (see {@link BROWSER_VARS}), so read off that list a deployment
 	 * holding NOWPayments' values and its IPN secret would be refused and told to set what it
-	 * already holds. keys without the notice variable are not enough: the gift would be charged
-	 * and never marked paid.
+	 * already holds. keys without the notice variable are not enough. what a gift already sent
+	 * on that processor costs is `formsReadiness` in ../forms/readiness.ts.
 	 */
 	readonly serves: boolean;
 	/**
@@ -307,7 +307,8 @@ export type ServedProcessors = {
 	 *
 	 * the companion to `shortfall` above and read on the same arm. it is the half that can send an
 	 * operator to a dashboard they hold no account on, so it names whichever processors this
-	 * deployment has evidently started on — see {@link startedOn}.
+	 * deployment has evidently started on — see {@link startedOn}. a processor that already holds
+	 * some of its setup variables is told only what is still unset.
 	 */
 	readonly fix: string;
 };
@@ -349,7 +350,7 @@ export function servedProcessors(source: unknown): ServedProcessors {
 		configured,
 		serves,
 		shortfall: shortfall(env),
-		fix: processorSetupFix(startedOn(env))
+		fix: processorSetupFix(startedOn(env), env)
 	};
 }
 
@@ -403,7 +404,7 @@ function settlementReady(env: ConfigEnv, name: ProcessorName): boolean {
 }
 
 /**
- * where each processor's values come from and what sets them, as one sentence per processor.
+ * where each processor's values come from and what sets them, when every setup variable is unset.
  *
  * stated here rather than at the refusals, because the two that read it are a served config that
  * cannot be assembled and a quote whose processor refused — and a sentence written twice is one
@@ -413,7 +414,8 @@ function settlementReady(env: ConfigEnv, name: ProcessorName): boolean {
  * acts on: a secret key beside a publishable key from a different account is valid on both halves
  * and refused at the first charge. the notice value is named in the same sentence.
  * `settlementReady` withholds a form until it is set (DEPLOY.md, "All three or none"), so the
- * charge-key pair on its own does not finish the job.
+ * charge-key pair on its own does not finish the job. {@link setupSentence} hands this out only
+ * when every setup variable is unset, or when the caller holds no env to tell them apart.
  */
 const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 	stripe:
@@ -428,8 +430,8 @@ const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 		`\`${envLine('PAYPAL_CLIENT_SECRET')}\` to \`.env\`, run ` +
 		`\`${setupWebhookCommand('paypal')}\`, add the \`PAYPAL_WEBHOOK_ID\` line it prints, ` +
 		`then recreate the app: \`${RECREATE_APP}\`.`,
-	// the key alone leaves no Connect, no event subscription and no signing secret behind it, so the
-	// fix runs the script that makes all three.
+	// the api key leaves no connect id and no signing secret, so this sentence — every setup
+	// variable unset — runs the script that prints both.
 	chariot:
 		'Chariot issues the org’s API key by email. Add ' +
 		`\`${envLine('CHARIOT_API_KEY')}\` to \`.env\`, check the EIN and the notification address in Settings, run ` +
@@ -444,14 +446,64 @@ const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 });
 
 /**
+ * the notice step alone, once the charge keys and the browser half are set.
+ *
+ * chariot's script prints the connect id and the signing secret, and the connect id is already in
+ * `.env` on this arm, so the sentence asks for the printed line or lines that are still missing.
+ * nowpayments has no script: the IPN secret is generated under Payment Settings.
+ */
+const NOTICE_ONLY: Readonly<Record<ProcessorName, string>> = Object.freeze({
+	stripe:
+		`Run \`${setupWebhookCommand('stripe')}\`, add the \`STRIPE_WEBHOOK_SECRET\` line it prints, ` +
+		`then recreate the app: \`${RECREATE_APP}\`.`,
+	paypal:
+		`Run \`${setupWebhookCommand('paypal')}\`, add the \`PAYPAL_WEBHOOK_ID\` line it prints, ` +
+		`then recreate the app: \`${RECREATE_APP}\`.`,
+	chariot:
+		`Run \`${setupWebhookCommand('chariot')}\`, add the printed line or lines that are still missing ` +
+		`to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`,
+	nowpayments:
+		'Generate `NOWPAYMENTS_IPN_SECRET` under Payment Settings in the NOWPayments dashboard, add ' +
+		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
+});
+
+/**
+ * the sentence for one processor, naming only the setup variables this deployment does not hold.
+ *
+ * every variable unset keeps {@link SETUP_FIXES}. the notice variable alone, with the charge keys
+ * and the browser half set, keeps {@link NOTICE_ONLY}. any other gap lists the unset names and the
+ * recreate, and does not name a variable that is already set. nothing unset keeps {@link SETUP_FIXES}:
+ * the gap is not a missing setup variable (`unusable` on {@link PROCESSORS}).
+ *
+ * a caller that passes no env cannot tell a set variable from an unset one, so it is handed the
+ * whole sentence (`mintQuote` in ../donations/quote.ts).
+ */
+function setupSentence(env: ConfigEnv | null, name: ProcessorName): string {
+	if (env === null) return SETUP_FIXES[name];
+	const vars = setupVars(name);
+	const unset = vars.filter((variable) => env[variable] === undefined);
+	if (unset.length === vars.length || unset.length === 0) return SETUP_FIXES[name];
+	const notice = noticeVariable(name);
+	if (unset.length === 1 && unset[0] === notice) return NOTICE_ONLY[name];
+	const lines = unset.map((variable) => `\`${envLine(variable)}\``).join(' and ');
+	return (
+		`${PROCESSOR_LABELS[name]}: add ${lines} to \`.env\`, then recreate the app: ` +
+		`\`${RECREATE_APP}\`.`
+	);
+}
+
+/**
  * the sentence naming where these processors are set up from.
  *
  * more than one is prefaced rather than merely concatenated: two sets of instructions with nothing
  * between them read as several things to do, and any one set on its own is what actually finishes
  * the job.
  */
-export function processorSetupFix(names: readonly ProcessorName[]): string {
-	const fixes = names.map((name) => SETUP_FIXES[name]);
+export function processorSetupFix(
+	names: readonly ProcessorName[],
+	env: ConfigEnv | null = null
+): string {
+	const fixes = names.map((name) => setupSentence(env, name));
 	return fixes.length > 1
 		? `Any one processor is enough on its own. ${fixes.join(' ')}`
 		: fixes.join(' ');

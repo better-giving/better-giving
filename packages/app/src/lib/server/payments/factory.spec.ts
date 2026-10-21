@@ -516,15 +516,29 @@ describe('Chariot', () => {
 		const fix = servedProcessors({ CHARIOT_API_KEY: 'notarealchariotkey' }).fix;
 
 		expect(fix).toContain('Chariot');
+		expect(fix).toContain('CHARIOT_CONNECT_ID');
+		expect(fix).toContain('CHARIOT_WEBHOOK_SECRET');
+		expect(fix).toContain(RECREATE_APP);
+		expect(fix).not.toContain('CHARIOT_API_KEY');
+		expect(fix).not.toContain(setupWebhookCommand('chariot'));
 		expect(fix).not.toContain('Stripe');
 	});
 
-	// a key alone holds no event subscription and no signing secret; the fix sends an operator to
-	// the script that makes both.
-	it('sends an operator setting Chariot up to the script that registers its notices', () => {
-		const fix = servedProcessors({ CHARIOT_API_KEY: 'notarealchariotkey' }).fix;
+	// the script is the notice step. it is named when the api key and the connect id are set and the
+	// signing secret is the only gap, and a line the script prints that is already in .env is not
+	// asked for again.
+	it('sends an operator whose only Chariot gap is the signing secret to the script', () => {
+		const fix = servedProcessors({
+			CHARIOT_API_KEY: 'notarealchariotkey',
+			CHARIOT_CONNECT_ID: 'notarealconnectid'
+		}).fix;
 
-		expect(fix).toContain('docker compose run --rm app node scripts/setup-webhook.ts chariot');
+		expect(fix).toContain(setupWebhookCommand('chariot'));
+		expect(fix).toContain(RECREATE_APP);
+		expect(fix).toContain('still missing');
+		expect(fix).not.toContain('CHARIOT_API_KEY');
+		expect(fix).not.toContain('CHARIOT_CONNECT_ID');
+		expect(fix).not.toContain('issues the org’s API key');
 	});
 });
 
@@ -545,7 +559,10 @@ describe('servedProcessors — the fix', () => {
 		expect(fix).toContain('PayPal');
 		expect(fix).toContain('PAYPAL_CLIENT_SECRET');
 		expect(fix).toContain('PAYPAL_WEBHOOK_ID');
+		expect(fix).not.toContain('PAYPAL_CLIENT_ID');
+		expect(fix).not.toContain(setupWebhookCommand('paypal'));
 		expect(fix).not.toContain('Stripe');
+		expect(fix).not.toContain('Any one processor is enough on its own.');
 	});
 
 	it('names Stripe for a deployment part-way through Stripe’s pair', () => {
@@ -554,19 +571,56 @@ describe('servedProcessors — the fix', () => {
 		expect(fix).toContain('Stripe');
 		expect(fix).toContain('STRIPE_PUBLISHABLE_KEY');
 		expect(fix).toContain('STRIPE_WEBHOOK_SECRET');
-		expect(fix).toContain(setupWebhookCommand('stripe'));
+		expect(fix).not.toContain('STRIPE_SECRET_KEY');
+		expect(fix).not.toContain(setupWebhookCommand('stripe'));
+		expect(fix).not.toContain('take the secret key');
 		expect(fix).not.toContain('PayPal');
+	});
+
+	// both charge keys are set, so the sentence is the notice step alone. telling an operator to
+	// take the secret key and the publishable key from the dashboard sends them to copy values
+	// this deployment already holds.
+	it('names only the webhook step when Stripe’s keys are set and STRIPE_WEBHOOK_SECRET is not', () => {
+		const fix = servedProcessors({
+			STRIPE_SECRET_KEY: 'sk_test_notarealkey',
+			STRIPE_PUBLISHABLE_KEY: 'pk_test_notarealkey'
+		}).fix;
+
+		expect(fix).toContain(setupWebhookCommand('stripe'));
+		expect(fix).toContain('STRIPE_WEBHOOK_SECRET');
+		expect(fix).toContain(RECREATE_APP);
+		expect(fix).not.toContain('take the secret key');
+		expect(fix).not.toContain('publishable key');
+		expect(fix).not.toContain('STRIPE_SECRET_KEY');
+		expect(fix).not.toContain('STRIPE_PUBLISHABLE_KEY');
+	});
+
+	it('names only the listener step when PayPal’s keys are set and PAYPAL_WEBHOOK_ID is not', () => {
+		const fix = servedProcessors({
+			PAYPAL_CLIENT_ID: 'notarealclientid',
+			PAYPAL_CLIENT_SECRET: 'notarealclientsecret'
+		}).fix;
+
+		expect(fix).toContain(setupWebhookCommand('paypal'));
+		expect(fix).toContain('PAYPAL_WEBHOOK_ID');
+		expect(fix).toContain(RECREATE_APP);
+		expect(fix).not.toContain('take the client id');
+		expect(fix).not.toContain('PAYPAL_CLIENT_ID');
+		expect(fix).not.toContain('PAYPAL_CLIENT_SECRET');
 	});
 
 	// a fresh fork holds nothing, so there is no processor an operator has chosen and picking one
 	// for them would be inventing the answer. any one processor is enough on its own, and the
-	// sentence says so.
+	// sentence says so — and it still says where the keys come from, because none are set.
 	it('names both for a deployment that has started on neither', () => {
 		const fix = servedProcessors({}).fix;
 
 		expect(fix).toContain('Stripe');
 		expect(fix).toContain('PayPal');
 		expect(fix).toContain('Any one processor is enough on its own.');
+		expect(fix).toContain('take the secret key and the publishable key');
+		expect(fix).toContain(setupWebhookCommand('stripe'));
+		expect(fix).toContain(setupWebhookCommand('paypal'));
 	});
 });
 
@@ -654,9 +708,26 @@ describe('NOWPayments', () => {
 		const served = servedProcessors({ NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey' });
 
 		expect(served.fix).toContain('NOWPayments');
+		expect(served.fix).toContain('NOWPAYMENTS_OUTCOME_CURRENCY');
 		expect(served.fix).toContain('NOWPAYMENTS_IPN_SECRET');
+		expect(served.fix).not.toContain('NOWPAYMENTS_API_KEY');
+		expect(served.fix).not.toContain('take the API key');
 		expect(served.fix).not.toContain('Stripe');
 		expect(served.shortfall).toContain('NOWPAYMENTS_OUTCOME_CURRENCY');
+	});
+
+	it('names only the IPN secret when NOWPayments’ charge keys are set and NOWPAYMENTS_IPN_SECRET is not', () => {
+		const fix = servedProcessors({
+			NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',
+			NOWPAYMENTS_OUTCOME_CURRENCY: 'usdttrc20'
+		}).fix;
+
+		expect(fix).toContain(envLine('NOWPAYMENTS_IPN_SECRET'));
+		expect(fix).toContain('Payment Settings');
+		expect(fix).toContain(RECREATE_APP);
+		expect(fix).not.toContain('NOWPAYMENTS_API_KEY');
+		expect(fix).not.toContain('NOWPAYMENTS_OUTCOME_CURRENCY');
+		expect(fix).not.toContain('take the API key');
 	});
 });
 

@@ -535,8 +535,8 @@ function DetailsCard({
 			<Section card>
 				<h2>Organisation details</h2>
 				<p className="adm-hint">
-					Every receipt carries these, as the tax authority has them. No form goes live until the
-					EIN and registered name are in.
+					Every receipt carries these. Filled from the IRS list; check the name’s capitals. No form
+					goes live until the EIN and registered name are in.
 				</p>
 				{finder.open ? <OrgFinder {...finder.props} onPick={pick} /> : null}
 				<div className="adm-pair adm-pair--side">
@@ -877,6 +877,7 @@ function MailUnset() {
 /**
  * the banner when the mail values are still the placeholders `.env.example` ships. the pair under
  * it stays, so the operator can see the values; nothing is delivered until they are replaced.
+ * the ask line is the one `MailUnset` shows: the steps are for whoever set the site up.
  */
 function MailPlaceholders() {
 	return (
@@ -893,7 +894,8 @@ function MailPlaceholders() {
 				</>
 			}
 		>
-			<MarkedText text="These are still the placeholders from `.env.example`. Nothing is delivered until they are replaced and the app is recreated." />
+			<MarkedText text="These are still the placeholders from `.env.example`. Nothing is delivered until they are replaced and the app is recreated." />{' '}
+			Ask whoever set up this site to add it. The steps below are for them.
 		</Banner>
 	);
 }
