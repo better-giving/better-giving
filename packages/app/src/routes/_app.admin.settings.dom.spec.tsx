@@ -673,6 +673,98 @@ describe('find your charity', () => {
 		expect(details(root).querySelectorAll('[role="option"]')).toHaveLength(4);
 	});
 
+	it('fills the boxes a picked match carries at once, while its address is still being looked up', async () => {
+		const { root, asked } = screen(
+			{ notificationEmail: null, mail: SET, details: EMPTY },
+			undefined,
+			{ search: async () => MATCHES }
+		);
+		await press(root, 'riverside food');
+		await vi.waitFor(() => expect(said(root)).toBe('4 matches.'));
+
+		await pick(root, 'Riverside Food Network');
+
+		expect({
+			tax_id: boxValue(root, 'tax_id'),
+			legal_name: boxValue(root, 'legal_name'),
+			city: boxValue(root, 'city'),
+			region: boxValue(root, 'region'),
+			address_line1: boxValue(root, 'address_line1'),
+			postal_code: boxValue(root, 'postal_code')
+		}).toEqual({
+			tax_id: '31-7654321',
+			legal_name: 'Riverside Food Network',
+			city: 'Dayton',
+			region: 'OH',
+			address_line1: '',
+			postal_code: ''
+		});
+		expect(note(root)).toBe('Filled from the IRS list. Not listed as tax-deductible');
+		expect(said(root)).toBe('Looking up…');
+		expect(asked.calls).toEqual(['search riverside food', 'lookup 31-7654321']);
+	});
+
+	it('keeps what a pick filled when its address lookup is turned away, and fetches it once the wait is over', async () => {
+		let lookups = 0;
+		const { root, asked } = screen(
+			{ notificationEmail: null, mail: SET, details: EMPTY },
+			undefined,
+			{
+				search: async () => MATCHES,
+				lookup: async () =>
+					lookups++ === 0 ? { kind: 'lookup', outcome: 'rate_limited', retryAfter: 1 } : FOUND
+			}
+		);
+		await press(root, 'riverside food');
+		await vi.waitFor(() => expect(said(root)).toBe('4 matches.'));
+
+		await pick(root, 'Riverside Community Food Bank');
+
+		await vi.waitFor(() =>
+			expect(said(root)).toBe(
+				'Too many lookups for now. The street address and postal code can be fetched in 1 second.'
+			)
+		);
+		expect(boxValue(root, 'legal_name')).toBe('Riverside Community Food Bank');
+		expect(boxValue(root, 'tax_id')).toBe('95-1234567');
+		const fetch = buttonNamed(details(root), 'Fetch the address');
+		expect(fetch?.getAttribute('type')).toBe('button');
+		expect(fetch?.getAttribute('aria-disabled')).toBe('true');
+		await act(async () => fetch?.click());
+		expect(asked.calls).toEqual(['search riverside food', 'lookup 95-1234567']);
+
+		// an edit made during the wait is the deployer's, and the address alone is fetched over it.
+		type(
+			details(root).querySelector<HTMLInputElement>('input[name="legal_name"]') as HTMLInputElement,
+			'Riverside Food Bank'
+		);
+		await vi.waitFor(
+			() => expect(said(root)).toBe('The street address and postal code can be fetched now.'),
+			{ timeout: 3000 }
+		);
+		expect(buttonNamed(details(root), 'Fetch the address')?.hasAttribute('aria-disabled')).toBe(
+			false
+		);
+
+		const ready = buttonNamed(details(root), 'Fetch the address');
+		act(() => ready?.focus());
+		await act(async () => ready?.click());
+
+		await vi.waitFor(() => expect(boxValue(root, 'address_line1')).toBe('2950 Jefferson St'));
+		expect(asked.calls).toEqual([
+			'search riverside food',
+			'lookup 95-1234567',
+			'lookup 95-1234567'
+		]);
+		expect(boxValue(root, 'postal_code')).toBe('92504');
+		expect(boxValue(root, 'country')).toBe('United States');
+		expect(boxValue(root, 'legal_name')).toBe('Riverside Food Bank');
+		expect(said(root)).toBe('');
+		// the press goes with the refusal, and the focus it held goes back to the finder's box.
+		expect(buttonNamed(details(root), 'Fetch the address')).toBeUndefined();
+		expect(document.activeElement).toBe(finderBox(root));
+	});
+
 	it('asks the service nothing more when the filled details are saved', async () => {
 		const { root, asked } = screen(
 			{ notificationEmail: null, mail: SET, details: EMPTY },

@@ -49,6 +49,7 @@ import { defineForm, type FormRejection, WHICH_FORM } from '$lib/forms/definitio
 import type {
 	NonprofitFields,
 	NonprofitLookupAnswer,
+	NonprofitMatch,
 	NonprofitSearchAnswer,
 	NonprofitStanding
 } from '$lib/org/nonprofit-answers';
@@ -116,16 +117,36 @@ const LOGO_ADDRESS = `${SCREEN}/logo`;
  */
 const NONPROFITS_ADDRESS = `${SCREEN}/nonprofits`;
 
-/** the details boxes a found lookup fills; `address_line2` and the rest are left as they stand. */
-const FOUND_BOXES = [
+/** the details boxes a match picked off the finder's list fills at once, from what it lists. */
+const MATCH_BOXES = [
 	'legal_name',
 	'tax_id',
-	'address_line1',
 	'city',
-	'region',
+	'region'
+] as const satisfies readonly (keyof NonprofitFields & DetailsField)[];
+
+/** the details boxes only a lookup carries, which a pick's own lookup fills after it. */
+const ADDRESS_BOXES = [
+	'address_line1',
 	'postal_code',
 	'country'
 ] as const satisfies readonly (keyof NonprofitFields & DetailsField)[];
+
+/**
+ * the details boxes a found lookup of a typed EIN fills; `address_line2` and the rest are left as
+ * they stand.
+ */
+const FOUND_BOXES = [...MATCH_BOXES, ...ADDRESS_BOXES] as const;
+
+/** what a picked match puts in the boxes it fills. */
+const matchFields = (
+	match: NonprofitMatch
+): Pick<NonprofitFields, (typeof MATCH_BOXES)[number]> => ({
+	legal_name: match.name,
+	tax_id: match.ein,
+	city: match.city,
+	region: match.state
+});
 
 /** the body of a member's not-found. the panel ../root.tsx draws does not show it; an agent reads it. */
 const NOT_HERE =
@@ -483,10 +504,17 @@ function DetailsCard({
 	const linkLead = useSocialLinkLeads();
 	const finder = useOrgFinder(details.legal_name === '', version);
 
-	// a found lookup puts its values in the boxes as edits, which arm Save details and save nothing.
+	// a pick and a found lookup put their values in the boxes as edits, which arm Save details and
+	// save nothing.
+	const pick = (match: NonprofitMatch) => {
+		const values = matchFields(match);
+		for (const box of MATCH_BOXES) form.update({ name: fields[box].name, value: values[box] });
+		finder.filledFrom(match);
+		finder.props.onFetchAddress(match.ein);
+	};
 	const fill = useEffectEvent((answer: NonprofitLookupAnswer | undefined) => {
 		if (answer?.outcome !== 'found') return;
-		for (const box of FOUND_BOXES)
+		for (const box of finder.fills)
 			form.update({ name: fields[box].name, value: answer.fields[box] });
 		finder.filledFrom(answer);
 	});
@@ -504,7 +532,7 @@ function DetailsCard({
 					Every receipt carries these, as the tax authority has them. No form goes live until the
 					EIN and registered name are in.
 				</p>
-				{finder.open ? <OrgFinder {...finder.props} /> : null}
+				{finder.open ? <OrgFinder {...finder.props} onPick={pick} /> : null}
 				<div className="adm-pair adm-pair--side">
 					<Field
 						{...marked(fields.tax_id)}
@@ -624,6 +652,9 @@ function DetailsCard({
  * drawn while its lookup is out; neither address is read again when the screen's loaders are
  * (`shouldRevalidate` in each).
  *
+ * a typed EIN's lookup fills every box it carries. a picked match has filled its own boxes already,
+ * so its lookup fills the address alone, and an edit made to a picked value while it was out stands.
+ *
  * it opens on a profile with no details yet, and otherwise only at "Pick a different
  * organisation". a save that lands — the profile's version moving — puts it away and drops the
  * fill's note, since the boxes then hold what was stored.
@@ -634,6 +665,8 @@ function useOrgFinder(empty: boolean, version: number) {
 	const [open, setOpen] = useState(empty);
 	const [pressedOpen, setPressedOpen] = useState(false);
 	const [filled, setFilled] = useState<NonprofitStanding | null>(null);
+	/** the boxes the lookup out, or last answered, fills. */
+	const [fills, setFills] = useState<readonly (typeof FOUND_BOXES)[number][]>(FOUND_BOXES);
 
 	const [drawnAt, setDrawnAt] = useState(version);
 	if (version !== drawnAt) {
@@ -648,6 +681,7 @@ function useOrgFinder(empty: boolean, version: number) {
 	return {
 		open,
 		filled,
+		fills,
 		lookup: looked.data,
 		filledFrom: ({ deductible, revoked, revocationDate }: NonprofitStanding) =>
 			setFilled({ deductible, revoked, revocationDate }),
@@ -664,6 +698,11 @@ function useOrgFinder(empty: boolean, version: number) {
 				void searched.load(`${NONPROFITS_ADDRESS}?${new URLSearchParams({ q })}`);
 			},
 			onLookUp: (ein: string) => {
+				setFills(FOUND_BOXES);
+				void looked.load(`${NONPROFITS_ADDRESS}/${ein}`);
+			},
+			onFetchAddress: (ein: string) => {
+				setFills(ADDRESS_BOXES);
 				void looked.load(`${NONPROFITS_ADDRESS}/${ein}`);
 			}
 		}

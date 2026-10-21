@@ -1,7 +1,7 @@
 import { Combobox, createListCollection } from '@ark-ui/react/combobox';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useEffectEvent, useId, useMemo, useRef, useState } from 'react';
 import type {
 	NonprofitLookupAnswer,
 	NonprofitMatch,
@@ -9,6 +9,9 @@ import type {
 	NonprofitStanding
 } from '$lib/org/nonprofit-answers';
 import {
+	ADDRESS_READY,
+	addressWait,
+	FETCH_ADDRESS,
 	FINDER_HINT,
 	FINDER_LABEL,
 	finderAsk,
@@ -27,8 +30,12 @@ import {
 // Settings' "Find your charity": one box over the IRS list by name or EIN, a Search press beside
 // it, and the matches under it, inside the Organisation details card above its boxes. the screen
 // (packages/app/src/routes/_app.admin.settings.tsx) makes the calls and fills the boxes from a
-// found lookup; this draws the box, the list and what the last press came to. what a press asks
-// is ./nonprofit-finder.ts's.
+// picked match and from a found lookup; this draws the box, the list and what the last press came
+// to. what a press asks is ./nonprofit-finder.ts's.
+//
+// **a pick's address lookup turned away for the rate limit keeps what the pick filled**, says when
+// the address can be fetched, and offers the press that fetches it, held until then: a press inside
+// the wait is a call the service refuses again.
 //
 // **it stands inside the details `<form>`, so it is no form of its own**: the press is a plain
 // button, and Enter in the box is the press rather than the details form's implicit submit. the box
@@ -56,36 +63,45 @@ export type OrgFinderProps = {
 	readonly out: FinderOut;
 	/** a name to search, trimmed. */
 	readonly onSearch: (query: string) => void;
-	/** an EIN to look up, in its stored spelling `XX-XXXXXXX`. */
+	/** an EIN typed whole, to look up, in its stored spelling `XX-XXXXXXX`. */
 	readonly onLookUp: (ein: string) => void;
+	/** a match picked off the list: the boxes it carries are filled, and its address looked up. */
+	readonly onPick: (match: NonprofitMatch) => void;
+	/** the EIN of the last pick, to look its address up again once a refusal's wait is over. */
+	readonly onFetchAddress: (ein: string) => void;
 	/** whether the box takes the focus as it is drawn: true where a press opened the finder. */
 	readonly autoFocus?: boolean | undefined;
 };
 
 /** which press the region under the box answers: the last one made in this finder. */
-type Pressed = 'search' | 'lookup' | 'short' | null;
+type Pressed = 'search' | 'lookup' | 'pick' | 'short' | null;
 
 const NO_MATCHES: readonly NonprofitMatch[] = [];
 
 /** the machine's selection, which is never anything: see the header. */
 const NO_VALUE: string[] = [];
 
-/** what the region under the box says about the last press. a found lookup says nothing here. */
+/**
+ * what the region under the box says about the last press. a found lookup says nothing here.
+ * `waited` is whether a refused address lookup's wait is over.
+ */
 function said(
 	out: FinderOut,
 	pressed: Pressed,
 	search: NonprofitSearchAnswer | undefined,
-	lookup: NonprofitLookupAnswer | undefined
+	lookup: NonprofitLookupAnswer | undefined,
+	waited: boolean
 ): string {
 	if (out === 'search') return SEARCHING;
 	if (out === 'lookup') return LOOKING_UP;
 	if (pressed === 'short') return TOO_SHORT;
-	const answer = pressed === 'search' ? search : pressed === 'lookup' ? lookup : undefined;
+	const answer = pressed === 'search' ? search : pressed === null ? undefined : lookup;
 	switch (answer?.outcome) {
 		case undefined:
 			return '';
 		case 'rate_limited':
-			return tooManyLookups(answer.retryAfter);
+			if (pressed !== 'pick') return tooManyLookups(answer.retryAfter);
+			return waited ? ADDRESS_READY : addressWait(answer.retryAfter);
 		case 'unavailable':
 			return answer.kind === 'search' ? SEARCH_UNAVAILABLE : LOOKUP_UNAVAILABLE;
 		case 'not_found':
@@ -101,6 +117,8 @@ export function OrgFinder({
 	out,
 	onSearch,
 	onLookUp,
+	onPick,
+	onFetchAddress,
 	autoFocus = false
 }: OrgFinderProps): ReactNode {
 	const hintId = `${useId()}-hint`;
@@ -108,6 +126,10 @@ export function OrgFinder({
 	const [pressed, setPressed] = useState<Pressed>(null);
 	/** whether the matches are drawn as an open list: decided as each answer lands, by where focus is. */
 	const [listed, setListed] = useState(false);
+	/** the EIN of the last match picked, whose address a refused lookup leaves to fetch. */
+	const [picked, setPicked] = useState<string | null>(null);
+	/** whether the last press was Fetch the address, so its answer can hand the focus back. */
+	const [fetchPressed, setFetchPressed] = useState(false);
 	const finder = useRef<HTMLElement>(null);
 	const box = useRef<HTMLInputElement>(null);
 
@@ -121,6 +143,28 @@ export function OrgFinder({
 		if (search === undefined) return;
 		setListed(finder.current?.contains(document.activeElement) ?? false);
 	}, [search]);
+
+	/** the last pick's address lookup, where the service turned it away for the rate limit. */
+	const refused = pressed === 'pick' && lookup?.outcome === 'rate_limited' ? lookup : null;
+	const [waitedOn, setWaitedOn] = useState<NonprofitLookupAnswer | null>(null);
+	// keyed to the refusal that landed, so each one's own wait is what releases the press.
+	useEffect(() => {
+		if (refused === null) return;
+		const timer = setTimeout(() => setWaitedOn(refused), refused.retryAfter * 1000);
+		return () => clearTimeout(timer);
+	}, [refused]);
+	const waited = refused !== null && waitedOn === refused;
+
+	// the press is drawn only over a refusal, so an answer that is not one takes it away from under
+	// the focus: a focus it dropped goes back to the box.
+	const handBack = useEffectEvent((answer: NonprofitLookupAnswer | undefined) => {
+		if (answer === undefined || answer.outcome === 'rate_limited' || !fetchPressed) return;
+		setFetchPressed(false);
+		if (document.activeElement === document.body) box.current?.focus();
+	});
+	useEffect(() => {
+		handBack(lookup);
+	}, [lookup]);
 
 	const matches = search?.outcome === 'found' ? search.matches : NO_MATCHES;
 	const held = out !== null;
@@ -144,6 +188,12 @@ export function OrgFinder({
 		if (ask.kind === 'search') onSearch(ask.query);
 	};
 
+	const fetchAddress = () => {
+		if (held || !waited || picked === null) return;
+		setFetchPressed(true);
+		onFetchAddress(picked);
+	};
+
 	return (
 		<search ref={finder}>
 			<Combobox.Root
@@ -159,8 +209,9 @@ export function OrgFinder({
 				onValueChange={(details) => {
 					const match = details.items[0];
 					if (match === undefined) return;
-					setPressed('lookup');
-					onLookUp(match.ein);
+					setPressed('pick');
+					setPicked(match.ein);
+					onPick(match);
 				}}
 			>
 				<Combobox.Label className="adm-field__label">{FINDER_LABEL}</Combobox.Label>
@@ -209,8 +260,19 @@ export function OrgFinder({
 					))}
 				</Combobox.Content>
 				<p className="adm-hint adm-findorg__said" role="status">
-					{said(out, pressed, search, lookup)}
+					{said(out, pressed, search, lookup, waited)}
 				</p>
+				{/* held with `aria-disabled` through the wait and the call, as Search is. */}
+				{refused === null ? null : (
+					<Button
+						type="button"
+						aria-busy={held || undefined}
+						aria-disabled={held || !waited || undefined}
+						onClick={fetchAddress}
+					>
+						{FETCH_ADDRESS}
+					</Button>
+				)}
 			</Combobox.Root>
 		</search>
 	);

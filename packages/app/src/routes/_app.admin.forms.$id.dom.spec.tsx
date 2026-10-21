@@ -216,12 +216,12 @@ it('says under the heading why the form cannot go live, and at the status box wh
 	expect(band?.querySelector('.adm-banner__word')?.textContent).toBe('This form can’t go live yet');
 	expect(band?.querySelector('a')?.getAttribute('href')).toBe('/admin/settings');
 
-	// read through the box's own description, so the note is the one a reader meets on the box.
+	// read through the box's own description, so the hint is the one a reader meets on the box.
 	const status = document.getElementById(statusBoxId(root));
 	const described = (status?.getAttribute('aria-describedby') ?? '').split(' ');
-	const note = document.getElementById(`${status?.id}-note`);
-	expect(described).toContain(note?.id);
-	expect(note?.textContent).toBe('Live is unavailable until the items above are done.');
+	const hint = document.getElementById(`${status?.id}-hint`);
+	expect(described).toContain(hint?.id);
+	expect(hint?.textContent).toBe('Live is unavailable until the items above are done.');
 });
 
 it('opens a live form under a blocker with Live chosen and its group holding nothing to save', () => {

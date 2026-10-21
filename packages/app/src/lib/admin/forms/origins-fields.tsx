@@ -39,8 +39,10 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 // what each box names is built from what is on the screen, because an `aria-describedby` naming a
 // hint that was not rendered describes nothing.
 //
-// that sentence links to the card the list is typed on — `SITES_ID` in
-// ../../../routes/_app.admin.forms._index.tsx is the fragment it lands on.
+// for the deployer, that sentence links to the card the list is typed on — `SITES_ID` in
+// ../../../routes/_app.admin.forms._index.tsx is the fragment it lands on. that card is the
+// deployer's to change and a member's to read (its `sites` in the same file's loader), so a member
+// is told whom to ask instead, with no link.
 //
 // the fieldset is this file's and the group inside it is the library's: the legend is written here
 // and `CheckboxGroup` is mounted without one, which is the shape that component states for a group
@@ -54,6 +56,8 @@ const WHERE_A_SITE_COMES_FROM = (
 		<Link to={`${href('/admin/forms')}#sites`}>Which sites your forms go on</Link>.
 	</>
 );
+const WHOM_A_MEMBER_ASKS =
+	'To use a site that is not here, ask whoever set up this site to add it.';
 
 type OriginsBox = {
 	/** the group's own id, which the message under it is named from. */
@@ -76,6 +80,8 @@ type FormOriginsFieldsProps = {
 	 * the ones it is not on, and an empty list is a state this group says something about.
 	 */
 	readonly sites: readonly string[];
+	/** whether the viewer deployed the site, and so can add a site to the list. */
+	readonly deployer: boolean;
 	/**
 	 * the group's own submit, at the foot of the group it saves. absent on the create screen, which
 	 * has one submit for all four groups.
@@ -83,7 +89,7 @@ type FormOriginsFieldsProps = {
 	readonly footer?: ReactNode;
 };
 
-export function FormOriginsFields({ box, sites, footer }: FormOriginsFieldsProps) {
+export function FormOriginsFields({ box, sites, deployer, footer }: FormOriginsFieldsProps) {
 	const originsError = box.errors?.[0];
 
 	// what makes a dropped site's box distinct from the listed box of the same address, and what
@@ -150,7 +156,7 @@ export function FormOriginsFields({ box, sites, footer }: FormOriginsFieldsProps
 	const hint = (
 		<>
 			{lead ? `${lead} ` : null}
-			{WHERE_A_SITE_COMES_FROM}
+			{deployer ? WHERE_A_SITE_COMES_FROM : WHOM_A_MEMBER_ASKS}
 		</>
 	);
 

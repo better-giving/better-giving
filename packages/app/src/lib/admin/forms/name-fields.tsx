@@ -50,9 +50,10 @@ type FormNameFieldsProps = {
 	/**
 	 * whether Live may be chosen at all.
 	 *
-	 * `false` while a blocker stands, in which case the select offers Draft alone. a filtered
-	 * `<option>` list is not a control — the action behind this re-checks the same condition
-	 * against the deployment as it stands when the button is pressed.
+	 * `false` where `liveOffered` in `$lib/forms/readiness.ts` withholds it — a form not yet live
+	 * while a blocker stands; a live form keeps Live — in which case the select offers Draft alone.
+	 * a filtered `<option>` list is not a control — the action behind this re-checks the same
+	 * condition against the deployment as it stands when the button is pressed.
 	 */
 	readonly liveOffered?: boolean;
 	/**
@@ -79,8 +80,8 @@ export function FormNameFields({
 	const statusError = boxes.status.errors?.[0];
 
 	// the two statuses this select offers. `EDITABLE_FORM_STATUSES` is the pair an operator may
-	// choose between; while a blocker stands, publishing would produce a form that serves nothing,
-	// so Live comes off the list and a note under the box says why.
+	// choose between. publishing while a blocker stands would produce a form that serves nothing, so
+	// where `liveOffered` is false Live comes off the list and the hint over the box says why.
 	const statuses = (
 		liveOffered ? EDITABLE_FORM_STATUSES : EDITABLE_FORM_STATUSES.filter((it) => it !== 'live')
 	).map((status) => ({ value: status, label: FORM_STATUS_LABELS[status] }));
@@ -112,17 +113,18 @@ export function FormNameFields({
 				    fact, and a box that wrote only the first would leave a form that reads archived and
 				    behaves live.
 
-				    the note is what says why Live is not among the options while a blocker stands. it
-				    points at the readiness block above (./readiness.tsx), which says what to do; it is
-				    not a complaint about this submission, so the error register is left to whatever the
-				    last save refused — both are reachable from the box at once. */}
+				    the hint is what says why Live is not among the options, over the box in the quiet
+				    register, since it is read before choosing. it points at the readiness block above
+				    (./readiness.tsx), which says what to do; it is not a complaint about this
+				    submission, so the error register is left to whatever the last save refused — both
+				    are reachable from the box at once. */}
 				<SelectWithNote
 					id={boxes.status.id}
 					name={boxes.status.name}
 					label={FORM_FIELD_LABELS.status}
 					defaultValue={boxes.status.defaultValue}
 					options={statuses}
-					note={
+					hint={
 						liveOffered || !liveNote
 							? undefined
 							: 'Live is unavailable until the items above are done.'

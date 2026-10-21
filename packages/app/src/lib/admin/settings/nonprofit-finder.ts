@@ -6,10 +6,11 @@ import type { NonprofitStanding } from '$lib/org/nonprofit-answers';
 // so ./nonprofit-finder.spec.ts reads all of it.
 //
 // **the service's keyless allowance is one call a minute, so one press is one call.** typing asks
-// nothing; a press asks once. a whole EIN is looked up, never searched, and so is a match picked
-// off the list: the lookup is what carries the address the details boxes take. a press is a whole
-// EIN when it is nine digits once its dashes and spaces are dropped, and anything else is a name,
-// typed digits and all: `211 LA County` is a search.
+// nothing; a press asks once. a whole EIN is looked up, never searched. a match picked off the list
+// fills the boxes it carries with no call, and its EIN is then looked up for the street address and
+// postal code, which only a lookup carries. a press is a whole EIN when it is nine digits once its
+// dashes and spaces are dropped, and anything else is a name, typed digits and all: `211 LA County`
+// is a search.
 
 /** the fewest characters a name is searched with. */
 export const SEARCH_FLOOR = 2;
@@ -18,6 +19,7 @@ export const FINDER_LABEL = 'Find your charity';
 export const FINDER_HINT = 'Name or EIN';
 export const SEARCH_LABEL = 'Search';
 export const PICK_ANOTHER = 'Pick a different organisation';
+export const FETCH_ADDRESS = 'Fetch the address';
 
 export const SEARCHING = 'Searching…';
 export const LOOKING_UP = 'Looking up…';
@@ -27,6 +29,7 @@ export const SEARCH_UNAVAILABLE = "Couldn't search the IRS list. Search by EIN i
 export const NOT_LISTED = 'Not on the IRS list.';
 export const LOOKUP_UNAVAILABLE = "Couldn't look this up. Fill in the details yourself.";
 export const FILLED = 'Filled from the IRS list.';
+export const ADDRESS_READY = 'The street address and postal code can be fetched now.';
 export const NOT_DEDUCTIBLE = 'Not listed as tax-deductible';
 export const DEDUCTIBILITY_UNKNOWN = 'Tax-deductible status not known';
 
@@ -51,16 +54,21 @@ export function finderAsk(text: string): FinderAsk {
 /** a minute is said in seconds; from two minutes on, the wait is said in whole minutes, rounded up. */
 const MINUTES_FROM = 120;
 
+/** a wait of `retryAfter` seconds, as a sentence says it after "in". */
+const waitWords = (retryAfter: number): string =>
+	retryAfter >= MINUTES_FROM
+		? `${Math.ceil(retryAfter / 60)} minutes`
+		: retryAfter === 1
+			? '1 second'
+			: `${retryAfter} seconds`;
+
 /** what a call the service turned away for its rate limit says, `retryAfter` seconds from now. */
-export function tooManyLookups(retryAfter: number): string {
-	const wait =
-		retryAfter >= MINUTES_FROM
-			? `${Math.ceil(retryAfter / 60)} minutes`
-			: retryAfter === 1
-				? '1 second'
-				: `${retryAfter} seconds`;
-	return `Too many lookups for now. Try again in ${wait}.`;
-}
+export const tooManyLookups = (retryAfter: number): string =>
+	`Too many lookups for now. Try again in ${waitWords(retryAfter)}.`;
+
+/** what a picked match's address lookup turned away for the rate limit says, until the wait is over. */
+export const addressWait = (retryAfter: number): string =>
+	`Too many lookups for now. The street address and postal code can be fetched in ${waitWords(retryAfter)}.`;
 
 /** a day the service hands over as `YYYY-MM-DD`, said in utc, where the day was written. */
 const DAY_WORDS = new Intl.DateTimeFormat('en-US', {

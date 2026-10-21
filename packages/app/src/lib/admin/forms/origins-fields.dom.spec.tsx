@@ -32,15 +32,16 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-/** the group as a form screen mounts it, with nothing refused. */
-function group(options: { sites: string[]; ticked?: string[] }): HTMLElement {
+/** the group as a form screen mounts it, with nothing refused, for the deployer unless said. */
+function group(options: { sites: string[]; ticked?: string[]; deployer?: boolean }): HTMLElement {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/forms/f1',
 			Component: () =>
 				createElement(FormOriginsFields, {
 					box: { id: 'origins', name: 'allowed_origins', ticked: options.ticked ?? [] },
-					sites: options.sites
+					sites: options.sites,
+					deployer: options.deployer ?? true
 				})
 		}
 	]);
@@ -94,4 +95,12 @@ it('links where a site comes from to the sites card on the forms list', () => {
 	const link = root.querySelector('#origins-hint a');
 	expect(link?.textContent).toBe('Which sites your forms go on');
 	expect(link?.getAttribute('href')).toBe('/admin/forms#sites');
+});
+
+it('tells a member to ask whoever set up this site, with no link to a card they cannot open', () => {
+	const root = group({ sites: ['https://example.org'], deployer: false });
+	expect(hint(root)).toBe(
+		'Not on any site yet. Tick the sites you’ll paste this form on. To use a site that is not here, ask whoever set up this site to add it.'
+	);
+	expect(root.querySelector('#origins-hint a')).toBeNull();
 });

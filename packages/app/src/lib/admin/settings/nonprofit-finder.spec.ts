@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	addressWait,
 	DEDUCTIBILITY_UNKNOWN,
 	finderAsk,
 	matchCount,
@@ -41,6 +42,15 @@ describe('the wait a rate limit names', () => {
 	it('is in whole minutes, rounded up, from two minutes on', () => {
 		expect(tooManyLookups(120)).toBe('Too many lookups for now. Try again in 2 minutes.');
 		expect(tooManyLookups(121)).toBe('Too many lookups for now. Try again in 3 minutes.');
+	});
+
+	it('says when a picked match’s address can be fetched, in the same wait', () => {
+		expect(addressWait(42)).toBe(
+			'Too many lookups for now. The street address and postal code can be fetched in 42 seconds.'
+		);
+		expect(addressWait(3600)).toBe(
+			'Too many lookups for now. The street address and postal code can be fetched in 60 minutes.'
+		);
 	});
 });
 

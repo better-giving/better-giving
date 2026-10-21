@@ -412,6 +412,7 @@ export default function NewDonationForm({ loaderData, actionData }: Route.Compon
 							ticked: tickedSites(fields.allowed_origins.initialValue)
 						}}
 						sites={sites}
+						deployer={deployer}
 					/>
 				</Section>
 

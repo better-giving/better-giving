@@ -1264,6 +1264,7 @@ function Editor({
 							ticked: tickedSites(originsFields.allowed_origins.initialValue)
 						}}
 						sites={data.sites}
+						deployer={data.deployer}
 						footer={
 							<SaveButton
 								label="Save where it may be used"
