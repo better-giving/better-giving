@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
+import { RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { PAYPAL_WEBHOOK_PATH } from '@better-giving/operator/paypal/webhook-listener';
 import { STRIPE_WEBHOOK_PATH } from '@better-giving/operator/stripe/webhook-endpoint';
 import type { ChariotConnect, ChariotDirectory, ChariotOrganisation } from './chariot';
@@ -454,6 +455,50 @@ describe('setupWebhook for Chariot', () => {
 		expect(calls.at(-1)).toBe(`replace sub-old ${CHARIOT_HERE}`);
 		const notices = result.ok ? result.notices.join('\n') : '';
 		expect(notices).toMatch(/CHARIOT_WEBHOOK_SECRET stopped working/);
+	});
+
+	/**
+	 * compose reads `.env` when it creates the container, so a restart would keep the secret that was
+	 * just deleted and every delivery after it would be refused.
+	 */
+	it('tells the operator to recreate the app once the new secret is in .env', async () => {
+		const { provider } = port(holding(summary('sub-old', CHARIOT_HERE)), {
+			ok: true,
+			value: { endpoint: summary('sub-new', CHARIOT_HERE), verificationValue: MINTED }
+		});
+
+		const result = await setupWebhook(
+			['chariot'],
+			CHARIOT_ENV,
+			() => provider,
+			organisation().onboarding
+		);
+
+		expect(result.ok ? result.notices.join('\n') : '').toContain(RECREATE_APP);
+	});
+
+	/**
+	 * the repair for a subscription that stopped delivering, on a deployment that already holds its
+	 * Connect. nothing on the organisation's side bears on the subscription, so a profile with no EIN
+	 * left in it does not stand in the way.
+	 */
+	it('replaces the subscription without asking the directory where CHARIOT_CONNECT_ID is set', async () => {
+		const { provider, calls } = port(holding(summary('sub-old', CHARIOT_HERE)), {
+			ok: true,
+			value: { endpoint: summary('sub-new', CHARIOT_HERE), verificationValue: MINTED }
+		});
+		const { asked, onboarding } = organisation({ ein: null, notificationEmail: null });
+
+		const result = await setupWebhook(
+			['chariot'],
+			{ ...CHARIOT_ENV, CHARIOT_CONNECT_ID: 'live_connect-1' },
+			() => provider,
+			onboarding
+		);
+
+		expect(result).toMatchObject({ ok: true, lines: [`CHARIOT_WEBHOOK_SECRET=${MINTED}`] });
+		expect(asked).toEqual([]);
+		expect(calls.at(-1)).toBe(`replace sub-old ${CHARIOT_HERE}`);
 	});
 
 	it.each([

@@ -1,4 +1,5 @@
 import { parseArgs } from 'node:util';
+import { RECREATE_APP } from '@better-giving/operator/deploy-split';
 import type { ConfigEnv } from '../config/env';
 import { openDatabase } from '../db/open.ts';
 import { type DirectoryIdentity, readDirectoryIdentity } from '../org/directory-identity.ts';
@@ -23,7 +24,8 @@ import {
 // prints them; ./webhook-setup.spec.ts drives it with the port as a value.
 //
 // Chariot's run first connects the organisation, which is `connectOrganisation` below, and answers
-// `CHARIOT_CONNECT_ID` beside the secret.
+// `CHARIOT_CONNECT_ID` beside the secret — unless `.env` already holds `CHARIOT_CONNECT_ID`, when it
+// goes straight to the subscription and answers the secret alone.
 //
 // what the endpoint is — its address, its events, its stamp — is the adapter's, reached through
 // ./webhook-registration.ts and `registerWebhookEndpoint` in ./provider.ts; nothing here restates it.
@@ -35,7 +37,7 @@ import {
 // listener's own id, which every list hands back, so it keeps the listener and brings its
 // subscription level, and the deployment is never without one. Chariot's is a secret minted for the
 // subscription, which no call hands back and none can change, so it replaces as Stripe does; its
-// Connect is kept, since Chariot holds one per organisation and hands it back on every run.
+// Connect is never replaced, since Chariot holds one per organisation and hands it back on a create.
 //
 // relative imports here and in what they reach at runtime carry `.ts`, because node runs the script
 // straight from source and resolves no extensionless path.
@@ -291,8 +293,11 @@ export async function setupWebhook(
 	if (!address.ok) return { ok: false, status: 1, message: address.message };
 	const url = webhookAddress(name, address.origin);
 
-	// before the subscription, so a refusal here leaves the one already delivering untouched.
-	const before = name === 'chariot' ? await connectOrganisation(env, chariot) : null;
+	// before the subscription, so a refusal here leaves the one already delivering untouched. a
+	// deployment that holds its Connect skips it: the profile and the directory bear on the Connect,
+	// never on the subscription, and a re-run is the repair for a subscription (DEPLOY.md).
+	const connectsFirst = name === 'chariot' && !env.CHARIOT_CONNECT_ID?.trim();
+	const before = connectsFirst ? await connectOrganisation(env, chariot) : null;
 	if (before?.ok === false) return { ok: false, status: 1, message: before.message };
 	const answer = (line: string, notices: readonly string[]): WebhookSetupResult => ({
 		ok: true,
@@ -327,7 +332,7 @@ export async function setupWebhook(
 	if (!replaced.ok) return { ok: false, status: 1, message: replaced.detail };
 	return answer(`${setup.variable}=${replaced.value.verificationValue}`, [
 		`Replaced the endpoint already registered at ${url}. Its ${setup.variable} stopped ` +
-			'working when it was deleted: set the line below in .env and restart, or every ' +
-			'delivery is refused.'
+			`working when it was deleted: set the ${setup.variable} line below in .env, then recreate ` +
+			`the app: \`${RECREATE_APP}\`. Until then every delivery is refused.`
 	]);
 }
