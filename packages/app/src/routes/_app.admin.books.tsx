@@ -1,5 +1,5 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
-import { RECREATE_APP } from '@better-giving/operator/deploy-split';
+import { envLine, RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { CodeSlab, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
@@ -24,7 +24,13 @@ import {
 	useRef,
 	useState
 } from 'react';
-import { Form, redirectDocument, useFetcher, useNavigation } from 'react-router';
+import {
+	Form,
+	redirectDocument,
+	type ShouldRevalidateFunctionArgs,
+	useFetcher,
+	useNavigation
+} from 'react-router';
 import { uuidv7 } from 'uuidv7';
 import { z } from 'zod';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -434,7 +440,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	// the corrections above it post without it.
 	async function quickbooks(): Promise<QuickbooksScreen | 'unreadable'> {
 		try {
-			return await readQuickbooksScreen(context.get(platform).env, db, request.url, new Date());
+			const { env, deferred } = context.get(platform);
+			return await readQuickbooksScreen(env, db, deferred, request.url, new Date());
 		} catch (e) {
 			console.error('reading where the books stand at QuickBooks failed:', e);
 			return 'unreadable';
@@ -739,6 +746,20 @@ export async function action({ context, request }: Route.ActionArgs) {
  */
 export function clientAction({ request, serverAction }: Route.ClientActionArgs) {
 	return formPress(request, serverAction);
+}
+
+/**
+ * the loader is read again after every press but the start-date preview, which writes nothing: a
+ * read after it would be a metered call to Intuit for the chart, and a wait on it, for the same
+ * page. every other press wrote something the loader reads — a correction its entry and the next
+ * posting id, a QuickBooks press the connection or the backlog — and a refused one is already left
+ * unread by the router's own default.
+ */
+export function shouldRevalidate({
+	formData,
+	defaultShouldRevalidate
+}: ShouldRevalidateFunctionArgs) {
+	return formData?.get(WHICH_FORM) === START_PREVIEW_ID ? false : defaultShouldRevalidate;
 }
 
 /** what the confirm dialog states, read off the boxes at the press that opened it. */
@@ -1171,7 +1192,7 @@ function stepsStand(screen: QuickbooksRead): Readonly<Record<StepName, Standing>
 } {
 	const { company, chart } = screen;
 	const lapsed = chart?.state === 'unreadable' && chart.recourse === 'reconnect';
-	const setup = screen.keys;
+	const setup = screen.unsetKeys.length === 0;
 	const connect = company !== null;
 	const accounts =
 		company !== null &&
@@ -1263,14 +1284,14 @@ function Quickbooks({ screen }: { readonly screen: QuickbooksRead }) {
 					name="setup"
 					label="Setup"
 					note={
-						screen.keys
+						steps.setup.done
 							? 'Your Intuit app’s keys are on the server.'
 							: 'Needs an Intuit app’s keys on the server'
 					}
 					standing={steps.setup}
 				>
 					<Stack>
-						{screen.keys ? null : <ServerSteps />}
+						{steps.setup.done ? null : <ServerSteps unset={screen.unsetKeys} />}
 						<RedirectAddress address={screen.callback} />
 					</Stack>
 				</Step>
@@ -1327,9 +1348,10 @@ function Quickbooks({ screen }: { readonly screen: QuickbooksRead }) {
 
 /**
  * the setup a deployment short of Intuit's keys needs, in two parts for two readers: the staff
- * sentence, and under it the steps for whoever runs the server, since no box here sets a key.
+ * sentence, and under it the steps for whoever runs the server, since no box here sets a key. the
+ * `.env` lines are the unset keys' alone, so a deployment short of one is told that one.
  */
-function ServerSteps() {
+function ServerSteps({ unset }: { readonly unset: QuickbooksRead['unsetKeys'] }) {
 	return (
 		<>
 			<p className="adm-prose">
@@ -1339,10 +1361,11 @@ function ServerSteps() {
 			<div className="adm-named">
 				<h4>For whoever runs the server</h4>
 				<p className="adm-prose">
-					Create an app at <a href={INTUIT_DEVELOPER}>Intuit Developer</a>, add the address below to
-					its redirect URIs, put its client ID and secret in <InlineCode>.env</InlineCode>{' '}
-					(DEPLOY.md, QuickBooks), and recreate the app:
+					Create an app at <a href={INTUIT_DEVELOPER}>Intuit Developer</a> and add the address below
+					to its redirect URIs. Add {unset.length === 1 ? 'this line' : 'these lines'} to{' '}
+					<InlineCode>.env</InlineCode> (DEPLOY.md, QuickBooks), then recreate the app:
 				</p>
+				<CodeSlab label=".env" content={unset.map(envLine).join('\n')} copyable />
 				<CodeSlab oneline content={RECREATE_APP} copyable copyLabel="Copy the command" />
 			</div>
 		</>

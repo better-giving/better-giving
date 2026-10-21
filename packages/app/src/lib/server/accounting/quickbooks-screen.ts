@@ -1,18 +1,22 @@
 import { readAuthEnv } from '../auth/env';
 import type { Db } from '../db/client';
 import { servedProcessors } from '../payments/factory';
+import type { Deferred } from '../runtime/deferred';
 import { readQuickbooksBacklog } from './backlog';
 import { connectFlowOrigin, QUICKBOOKS_CALLBACK_PATH } from './connect-link';
 import { type ChosenAccount, readQuickbooksConnection } from './connection';
-import { createAccountingProvider, quickbooksKeysHeld } from './factory';
+import { createAccountingProvider, type QuickbooksKeyName, unsetQuickbooksKeys } from './factory';
 import type { StartAtMoveSide } from './outbox';
 import {
 	ACCOUNT_ROLES,
 	type AccountingFailureReason,
+	type AccountingResult,
 	type AccountRole,
+	failed,
 	HOLDING_OF,
 	HOLDING_ROLES,
-	type HoldingRole
+	type HoldingRole,
+	type LedgerAccount
 } from './provider';
 import { fitsRole } from './quickbooks-accounts';
 
@@ -40,8 +44,8 @@ type ChartLine = {
 type ChartRecourse = 'reconnect' | 'wait' | null;
 
 export type QuickbooksScreen = {
-	/** all three of `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET` and `QUICKBOOKS_API_URL`. */
-	readonly keys: boolean;
+	/** the variables Intuit cannot be reached without that are not set, and none once all are. */
+	readonly unsetKeys: readonly QuickbooksKeyName[];
 	/**
 	 * the redirect address to register at Intuit, at the address the round trip is made against. a
 	 * pin naming no address never gets this far: the dashboard's gate refuses it first
@@ -82,9 +86,44 @@ type QuickbooksBacklogLine = {
 	readonly held: { readonly refunds: number; readonly gifts: number } | null;
 };
 
+/**
+ * how long the screen waits on Intuit for the chart before it draws the "can't be reached" state.
+ * the adapter gives each call 20 seconds (`TIMEOUT_MS` in ./quickbooks.ts), and a read that renews
+ * the credential first is two calls; the Books loader that waits on this also draws the ledger,
+ * which needs nothing from Intuit.
+ */
+const CHART_WAIT_MS = 5_000;
+
+/**
+ * the chart, or `unreachable` once {@link CHART_WAIT_MS} has passed without it. the read is not
+ * abandoned: a renewal inside it rotates the stored credential, so it runs to its end on
+ * `deferred`, which shutdown waits for.
+ */
+async function chartWithin(
+	read: Promise<AccountingResult<readonly LedgerAccount[]>>,
+	deferred: Deferred
+): Promise<AccountingResult<readonly LedgerAccount[]>> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<null>((resolve) => {
+		timer = setTimeout(() => resolve(null), CHART_WAIT_MS);
+	});
+	try {
+		const chart = await Promise.race([read, late]);
+		if (chart !== null) return chart;
+		deferred.waitUntil(read);
+		return failed(
+			'unreachable',
+			`QuickBooks did not answer within ${CHART_WAIT_MS / 1000} seconds.`
+		);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 export async function readQuickbooksScreen(
 	env: unknown,
 	db: Db,
+	deferred: Deferred,
 	requestUrl: string,
 	now: Date
 ): Promise<QuickbooksScreen> {
@@ -96,7 +135,7 @@ export async function readQuickbooksScreen(
 
 	if (connection === null) {
 		return {
-			keys: quickbooksKeysHeld(env),
+			unsetKeys: unsetQuickbooksKeys(env),
 			callback,
 			company: null,
 			chart: null,
@@ -106,10 +145,10 @@ export async function readQuickbooksScreen(
 		};
 	}
 
-	const chart = await createAccountingProvider(env, db).listAccounts();
+	const chart = await chartWithin(createAccountingProvider(env, db).listAccounts(), deferred);
 	const taken = new Set(servedProcessors(env).configured.map((name) => HOLDING_OF[name]));
 	return {
-		keys: quickbooksKeysHeld(env),
+		unsetKeys: unsetQuickbooksKeys(env),
 		callback,
 		company: {
 			name: connection.companyName ?? connection.realmId,

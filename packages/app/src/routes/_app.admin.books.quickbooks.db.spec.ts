@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { QUICKBOOKS_PRODUCTION_URL } from '$lib/server/accounting/quickbooks';
 import type { QuickbooksScreen } from '$lib/server/accounting/quickbooks-screen';
 import {
@@ -15,6 +15,7 @@ import { createDb, type Db } from '$lib/server/db/client';
 import { contact, donation, payment, quickbooksSync } from '$lib/server/db/schema';
 import { post, postingStatements } from '$lib/server/ledger/posting';
 import { client, run, stmt } from '$lib/server/db/database.testing';
+import { createDeferredWork, type Deferred } from '$lib/server/runtime/deferred';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import { signInAsDeployer, signInAsMember } from '../staff-session.testing';
 import { finishSetup } from '../webhook-routes.testing';
@@ -42,7 +43,10 @@ const KEYS = {
 };
 
 const stub = vi.hoisted(() => ({
-	accounts: null as AccountingResult<readonly LedgerAccount[]> | null,
+	accounts: null as
+		| AccountingResult<readonly LedgerAccount[]>
+		| Promise<AccountingResult<readonly LedgerAccount[]>>
+		| null,
 	revoked: null as AccountingResult<null> | null
 }));
 
@@ -56,7 +60,7 @@ vi.mock('$lib/server/accounting/factory', async (importOriginal) => {
 				...real,
 				// null hands the read to the real adapter, which only a case without Intuit's keys
 				// does: with none it answers without reaching anywhere.
-				listAccounts: async () => stub.accounts ?? real.listAccounts(),
+				listAccounts: async () => (await stub.accounts) ?? real.listAccounts(),
 				revokeTokens: async () => stub.revoked ?? failed('internal_error', 'no case set a revoke')
 			};
 		}
@@ -103,8 +107,12 @@ beforeEach(async () => {
 const envWith = (vars: Record<string, string | undefined> = {}): Env =>
 	({ ...bindings, ...vars }) as Env;
 
-function get(cookie: string, env: Env = envWith(KEYS)): Promise<Response> {
-	return request(new Request(`${ORIGIN}${SCREEN}`, { headers: { cookie } }), { env });
+function get(
+	cookie: string,
+	env: Env = envWith(KEYS),
+	deferred: Deferred = createDeferredWork()
+): Promise<Response> {
+	return request(new Request(`${ORIGIN}${SCREEN}`, { headers: { cookie } }), { env, deferred });
 }
 
 /** the screen's loader data as it crosses the wire. */
@@ -137,7 +145,7 @@ describe('the setup step', () => {
 		const screen = await drawn(deployer, envWith());
 
 		expect(screen.quickbooks).toMatchObject({
-			keys: false,
+			unsetKeys: ['QUICKBOOKS_CLIENT_ID', 'QUICKBOOKS_CLIENT_SECRET', 'QUICKBOOKS_API_URL'],
 			callback: `${ORIGIN}/quickbooks/callback`,
 			company: null
 		});
@@ -152,11 +160,11 @@ describe('the setup step', () => {
 		expect(screen.quickbooks?.callback).toBe('https://donate.example.org/quickbooks/callback');
 	});
 
-	it('says the keys are there once all three are set', async () => {
-		expect((await drawn()).quickbooks?.keys).toBe(true);
+	it('names no key once all three are set, and the one that is not where one is short', async () => {
+		expect((await drawn()).quickbooks?.unsetKeys).toEqual([]);
 		expect(
-			(await drawn(deployer, envWith({ ...KEYS, QUICKBOOKS_API_URL: '' }))).quickbooks?.keys
-		).toBe(false);
+			(await drawn(deployer, envWith({ ...KEYS, QUICKBOOKS_API_URL: '' }))).quickbooks?.unsetKeys
+		).toEqual(['QUICKBOOKS_API_URL']);
 	});
 });
 
@@ -358,6 +366,30 @@ describe('a connected company', () => {
 			detail: 'The stored credential was refused.'
 		});
 		expect(away).toMatchObject({ state: 'unreadable', recourse: 'wait' });
+	});
+
+	it('says a chart Intuit has not answered for within five seconds is one to wait on, and finishes the read after', async () => {
+		await connect();
+		let answer: (chart: AccountingResult<readonly LedgerAccount[]>) => void = () => {};
+		stub.accounts = new Promise((resolve) => {
+			answer = resolve;
+		});
+		const deferred = createDeferredWork();
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+
+		const response = get(deployer, envWith(KEYS), deferred);
+		while (vi.getTimerCount() === 0) await new Promise((next) => setImmediate(next));
+		await vi.advanceTimersByTimeAsync(5_000);
+		const chart = ((await (await response).json()) as Screen).quickbooks?.chart;
+
+		expect(chart).toMatchObject({ state: 'unreadable', recourse: 'wait' });
+		expect(deferred.pending()).toBe(1);
+		answer({ ok: true, value: CHART });
+		await deferred.settled();
+		expect(deferred.pending()).toBe(0);
 	});
 
 	it('says the keys a connected company is short of go in `.env`, never on a console', async () => {

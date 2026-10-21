@@ -30,7 +30,7 @@ const NOTHING_PICKED = {
 
 /** a deployment holding Intuit's keys and no company. */
 const UNCONNECTED: QuickbooksScreen = {
-	keys: true,
+	unsetKeys: [],
 	callback: CALLBACK,
 	company: null,
 	chart: null,
@@ -40,7 +40,7 @@ const UNCONNECTED: QuickbooksScreen = {
 
 /** a company connected, its chart read, and every account it needs picked. */
 const SYNCING: QuickbooksScreen = {
-	keys: true,
+	unsetKeys: [],
 	callback: CALLBACK,
 	company: {
 		name: 'Riverbank Trust',
@@ -142,7 +142,10 @@ it('draws no QuickBooks for a member’s session', () => {
 });
 
 it('gives a deployment without Intuit’s keys the server steps and the address to register', () => {
-	const { root } = screen({ ...UNCONNECTED, keys: false });
+	const { root } = screen({
+		...UNCONNECTED,
+		unsetKeys: ['QUICKBOOKS_CLIENT_ID', 'QUICKBOOKS_CLIENT_SECRET', 'QUICKBOOKS_API_URL']
+	});
 	const setup = step(root, 'Setup');
 
 	expect(root.querySelector('#quickbooks')?.textContent).toBe('QuickBooks');
@@ -153,6 +156,16 @@ it('gives a deployment without Intuit’s keys the server steps and the address 
 	expect(setup.textContent).toContain('Add this to your Intuit app’s redirect URIs');
 	expect(setup.textContent).toContain(CALLBACK);
 	expect(root.textContent).toContain('Not connected');
+});
+
+it('names the `.env` line of each key the server is short of, and none it holds', () => {
+	const { root } = screen({ ...UNCONNECTED, unsetKeys: ['QUICKBOOKS_API_URL'] });
+	const setup = step(root, 'Setup');
+
+	expect(setup.textContent).toContain('QUICKBOOKS_API_URL=<value>');
+	expect(setup.textContent).not.toContain('QUICKBOOKS_CLIENT_ID');
+	expect(setup.textContent).not.toContain('QUICKBOOKS_CLIENT_SECRET');
+	expect(setup.textContent).toContain('docker compose up -d --force-recreate app');
 });
 
 it('says the keys are on the server, and stands nothing else in Setup’s place', () => {

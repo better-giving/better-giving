@@ -1,8 +1,5 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
-import { RECREATE_APP } from '@better-giving/operator/deploy-split';
-import { CodeSlab, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
-import { Banner } from '@better-giving/operator/components/status/Banner';
 import { data, redirect } from 'react-router';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { APP_NAME } from '$lib/admin/screen-title';
@@ -115,26 +112,14 @@ const BOOKS = '/admin/books#quickbooks';
  */
 export default function QuickbooksConnect({ loaderData }: Route.ComponentProps) {
 	if (loaderData.refusal === 'setup') {
+		// reached only where the keys left the server within a start link's life: the press that
+		// mints one is drawn once they are held, and Books is where the server steps are.
 		return (
 			<PanelRoute>
-				<h1>This deployment has no QuickBooks keys</h1>
-				<Banner
-					word="Needs an Intuit app’s keys on the server"
-					body={
-						<>
-							<h2 className="adm-banner__head">For whoever runs the server</h2>
-							<p>
-								Create an app at <a href={INTUIT_DEVELOPER}>Intuit Developer</a>, add the redirect
-								address Books shows to its redirect URIs, put its client ID and secret in{' '}
-								<InlineCode>.env</InlineCode> (DEPLOY.md, QuickBooks), and recreate the app:
-							</p>
-							<CodeSlab oneline content={RECREATE_APP} copyable copyLabel="Copy the command" />
-						</>
-					}
-				>
-					To send gifts to QuickBooks, this site needs an Intuit app. Ask whoever set up this site
-					to add it. The steps below are for them.
-				</Banner>
+				<h1>QuickBooks can’t be connected</h1>
+				<p className="adm-prose">
+					The server no longer holds the Intuit app’s keys, and Books says which ones to add.
+				</p>
 				<BackToBooks />
 			</PanelRoute>
 		);
@@ -148,9 +133,6 @@ export default function QuickbooksConnect({ loaderData }: Route.ComponentProps) 
 		</PanelRoute>
 	);
 }
-
-/** where an operator creates the Intuit app whose keys go in `.env`. */
-const INTUIT_DEVELOPER = 'https://developer.intuit.com/';
 
 /**
  * the one control every page of the round trip carries: a whole-document load, since this page

@@ -34,10 +34,16 @@ const REQUIRED = [
 	'QUICKBOOKS_API_URL'
 ] as const satisfies readonly (keyof ConfigEnv)[];
 
-/** whether every variable in {@link REQUIRED} is set, which is what reaching Intuit at all takes. */
-export function quickbooksKeysHeld(source: unknown): boolean {
+/** a variable in {@link REQUIRED}. */
+export type QuickbooksKeyName = (typeof REQUIRED)[number];
+
+/**
+ * the variables in {@link REQUIRED} that are not set, in that order. none is what reaching Intuit
+ * at all takes.
+ */
+export function unsetQuickbooksKeys(source: unknown): readonly QuickbooksKeyName[] {
 	const env = readConfigEnv(source);
-	return REQUIRED.every((name) => env[name] !== undefined);
+	return REQUIRED.filter((name) => env[name] === undefined);
 }
 
 /**

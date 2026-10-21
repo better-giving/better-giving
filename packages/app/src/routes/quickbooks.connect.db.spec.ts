@@ -168,15 +168,15 @@ describe('GET /quickbooks/connect', () => {
 		});
 	});
 
-	it('names the value to set where this deployment holds no Intuit client id', async () => {
+	it('sends a deployment that no longer holds an Intuit client id back to Books', async () => {
 		const answered = await open(link, { ...INTUIT, QUICKBOOKS_CLIENT_ID: undefined });
 		if ('redirect' in answered) throw new Error('a deployment with no client id redirected');
 
 		expect(answered.status).toBe(409);
 		expect(answered.data.refusal).toBe('setup');
 		const page = markup(answered.data);
-		expect(page).toContain('This deployment has no QuickBooks keys');
-		expect(page).toContain('For whoever runs the server');
+		expect(page).toContain('The server no longer holds the Intuit app’s keys');
+		expect(page).toContain('href="/admin/books#quickbooks"');
 	});
 
 	/**

@@ -52,9 +52,12 @@ it.each([['link'], ['setup']])(
 	}
 );
 
-it('tells a deployment short of Intuit’s keys what whoever runs the server does', () => {
+it('says the server no longer holds Intuit’s keys in one sentence, and leaves the steps to Books', () => {
 	const held = page(QuickbooksConnect as ComponentType<never>, { refusal: 'setup' });
 
-	expect(held.textContent).toContain('For whoever runs the server');
-	expect(held.textContent).toContain('docker compose up -d --force-recreate app');
+	expect([...held.querySelectorAll('p')].map((p) => p.textContent)).toEqual([
+		'The server no longer holds the Intuit app’s keys, and Books says which ones to add.'
+	]);
+	expect(backToBooks(held)?.getAttribute('href')).toBe('/admin/books#quickbooks');
+	expect(held.textContent).not.toContain('For whoever runs the server');
 });
