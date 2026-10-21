@@ -1,3 +1,4 @@
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPaymentProviders, servedProcessors } from './factory';
 
@@ -88,7 +89,9 @@ describe('the provider one processor resolves to', () => {
 		expect(result.ok === false && result.reason).toBe('not_configured');
 		const detail = result.ok === false ? result.detail : '';
 		expect(detail).toContain('STRIPE_WEBHOOK_SECRET');
-		expect(detail).toContain('docker compose run --rm app node scripts/setup-webhook.ts stripe');
+		expect(detail).toContain(envLine('STRIPE_WEBHOOK_SECRET'));
+		expect(detail).toContain(RECREATE_APP);
+		expect(detail).not.toContain(setupWebhookCommand('stripe'));
 	});
 
 	/**
