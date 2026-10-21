@@ -11,7 +11,7 @@ import { Column, Section } from '@better-giving/operator/components/shell/Layout
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import {
 	STRIPE_WEBHOOK_PATH,
@@ -208,19 +208,69 @@ const scripted = (processor: Parameters<typeof setupWebhookCommand>[0]) => ({
 	commands: [setupWebhookCommand(processor), RECREATE_APP]
 });
 
+type ServerStepsProps = { readonly says: string; readonly commands: readonly string[] };
+
+/** where Stripe's dashboard keeps an endpoint's signing secret. */
+const STRIPE_SECRET_AT =
+	'Stripe’s dashboard lists an endpoint for this address under Workbench → Webhooks';
+
 /**
- * the server half of each processor's notices banner. NOWPayments has no listener to register: its
- * IPN secret is copied from its own dashboard.
+ * Stripe's server steps, by whether its account lists an endpoint at this address. a re-run of the
+ * script replaces the endpoint (`rerun` in $lib/server/payments/webhook-setup.ts), and a deleted
+ * endpoint's queued deliveries are never retried, so an endpoint that is there is kept and its
+ * secret revealed.
  */
-const NOTICES_STEPS: Record<Processor, { says: string; commands: readonly string[] }> = {
-	stripe: scripted('stripe'),
-	paypal: scripted('paypal'),
-	chariot: scripted('chariot'),
-	nowpayments: {
-		says: 'Copy the IPN secret from your NOWPayments dashboard into `.env` as `NOWPAYMENTS_IPN_SECRET`, then recreate the app:',
+const STRIPE_STEPS: Record<'listed' | 'none' | 'unknown', ServerStepsProps> = {
+	listed: {
+		says: `${STRIPE_SECRET_AT}. Keep it: switch it on there if it is off, reveal its signing secret, put it in \`.env\` as \`${envLine('STRIPE_WEBHOOK_SECRET')}\`, then recreate the app:`,
 		commands: [RECREATE_APP]
+	},
+	none: scripted('stripe'),
+	unknown: {
+		says: `If ${STRIPE_SECRET_AT}, keep it: reveal its signing secret, put it in \`.env\` as \`${envLine('STRIPE_WEBHOOK_SECRET')}\`, then recreate the app. Only if none is listed, run the first command below, put the line it prints in \`.env\`, then recreate the app:`,
+		commands: [setupWebhookCommand('stripe'), RECREATE_APP]
 	}
 };
+
+/**
+ * the server half of each processor's notices banner. NOWPayments has no listener to register: its
+ * IPN secret is generated in its own dashboard.
+ */
+function noticesSteps(card: Card): ServerStepsProps {
+	switch (card.processor) {
+		case 'stripe':
+			return STRIPE_STEPS[
+				card.endpointListed === null ? 'unknown' : card.endpointListed ? 'listed' : 'none'
+			];
+		case 'paypal':
+		case 'chariot':
+			return scripted(card.processor);
+		case 'nowpayments':
+			return {
+				says: `Generate an IPN secret under Payment Settings in your NOWPayments dashboard and put it in \`.env\` as \`${envLine('NOWPAYMENTS_IPN_SECRET')}\`. NOWPayments shows it once, and generating a new one replaces the old. Then recreate the app:`,
+				commands: [RECREATE_APP]
+			};
+	}
+}
+
+/**
+ * what a processor's unset notices cost, said to the person who reads the screen. NOWPayments' is
+ * smaller than the rest: the half-hourly read settles a pending crypto gift without the IPN secret
+ * ($lib/server/donations/pending-crypto-read.ts), and only an IPN records a refund of a settled gift
+ * or a second deposit.
+ */
+const UNSET_COST: Record<Processor, (label: string) => string> = {
+	stripe: chargedNeverSettled,
+	paypal: chargedNeverSettled,
+	chariot: chargedNeverSettled,
+	nowpayments: () =>
+		'Crypto gifts are marked paid up to half an hour late, and a refund or a second deposit ' +
+		'NOWPayments reports is not recorded here.'
+};
+
+function chargedNeverSettled(label: string): string {
+	return `Gifts are charged, but none is marked paid here until ${label} can tell this site about it.`;
+}
 
 /** where each processor that keeps an endpoint reports to this site, and what it reports. */
 const WEBHOOKS: Partial<Record<Processor, { path: string; events: readonly string[] }>> = {
@@ -253,13 +303,7 @@ function NoProcessor() {
 }
 
 /** the part of a banner for whoever runs the server: what to do, then each command to copy. */
-function ServerSteps({
-	says,
-	commands
-}: {
-	readonly says: string;
-	readonly commands: readonly string[];
-}) {
+function ServerSteps({ says, commands }: ServerStepsProps) {
 	return (
 		<>
 			<h3 className="adm-banner__head">For whoever runs the server</h3>
@@ -441,7 +485,7 @@ function WalletsOutcome({ answer }: { readonly answer: WalletsAnswer | undefined
  */
 function PaymentNotices({ card }: { readonly card: Card }) {
 	if (card.notices === null) return null;
-	const steps = NOTICES_STEPS[card.processor];
+	const steps = noticesSteps(card);
 	return (
 		<div className="adm-named">
 			<h3>Payment notices</h3>
@@ -456,6 +500,16 @@ function PaymentNotices({ card }: { readonly card: Card }) {
 						note={`${card.label} tells this site each time a gift is paid.`}
 					/>
 				</StatusLedger>
+			) : card.notices === 'unconfirmed' ? (
+				<StatusLedger>
+					<StatusLine
+						labelAs="span"
+						label="Payment notices"
+						word="Not confirmed yet"
+						tone="note"
+						note={`The IPN secret is set. It’s confirmed the first time ${card.label} tells this site a crypto gift was paid within half an hour of the donor starting it.`}
+					/>
+				</StatusLedger>
 			) : (
 				<Banner
 					tone="attention"
@@ -467,7 +521,7 @@ function PaymentNotices({ card }: { readonly card: Card }) {
 					body={<ServerSteps says={steps.says} commands={steps.commands} />}
 				>
 					{card.notices === 'unset'
-						? `Gifts are charged, but none is marked paid here until ${card.label} can tell this site about it. Ask whoever set up this site to set it up. The steps below are for them.`
+						? `${UNSET_COST[card.processor](card.label)} Ask whoever set up this site to set it up. The steps below are for them.`
 						: `Donors are being charged, but their gifts stay pending here until ${card.label} confirms them. Ask whoever set up this site to fix it. The steps below are for them.`}
 				</Banner>
 			)}

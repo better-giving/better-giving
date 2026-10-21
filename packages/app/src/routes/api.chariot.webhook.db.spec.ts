@@ -1,3 +1,4 @@
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseContact } from '$lib/server/contacts/contact-input';
 import { createDb } from '$lib/server/db/client';
@@ -368,7 +369,16 @@ describe('POST /api/chariot/webhook', () => {
 		expect(response.status).toBe(405);
 		expect(response.headers.get('allow')).toBe('POST');
 		const { fix } = (await response.json()) as { fix: string };
-		expect(fix).toContain('docker compose run --rm app node scripts/setup-webhook.ts chariot');
+		const settled = fix.indexOf(
+			'If Payments shows Chariot’s payment notices working, nothing needs doing: a re-run replaces the subscription and its secret.'
+		);
+		const register = fix.indexOf(`Otherwise run \`${setupWebhookCommand('chariot')}\``);
+		expect(settled).toBeGreaterThan(-1);
+		expect(register).toBeGreaterThan(settled);
+		expect(fix).toContain(
+			`\`${envLine('CHARIOT_CONNECT_ID')}\` and \`${envLine('CHARIOT_WEBHOOK_SECRET')}\` on a first run`
+		);
+		expect(fix).toContain(`recreate the app: \`${RECREATE_APP}\``);
 		expect(chariot.reads).toEqual([]);
 	});
 

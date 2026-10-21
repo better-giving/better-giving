@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { payment } from '../db/schema';
+import { entryGroup, payment } from '../db/schema';
 import type { EmailProvider } from '../email/provider';
 import type { Processors } from '../payments/factory';
 import { settleTransaction } from './settle';
@@ -128,6 +128,33 @@ export async function readPendingCryptoGifts(
 			report(`reading payment ${providerTxnId} faulted:`, error);
 		}
 	}
+}
+
+/**
+ * whether a verified IPN has settled a crypto gift on this deployment.
+ *
+ * no row says which path settled a gift: an IPN and this read write through the same
+ * `settleTransaction`. time tells them apart. this read reaches a payment only `IPN_GRACE_MS` after
+ * it was minted, so a posting made sooner than that was an IPN's, and `settleDelivery` in
+ * ./settle.ts acts on an IPN only once `x-nowpayments-sig` verifies. a gift an IPN settled later
+ * proves nothing, since this read could have posted it.
+ */
+export async function ipnHasSettledAGift(db: Db): Promise<boolean> {
+	const [settled] = await db
+		.select({ id: payment.id })
+		.from(payment)
+		.innerJoin(
+			entryGroup,
+			and(eq(entryGroup.sourceType, 'payment'), eq(entryGroup.sourceId, payment.id))
+		)
+		.where(
+			and(
+				eq(payment.provider, 'nowpayments'),
+				sql`${entryGroup.createdAt} < ${payment.createdAt} + ${IPN_GRACE_MS}`
+			)
+		)
+		.limit(1);
+	return settled !== undefined;
 }
 
 function report(message: string, detail: unknown): void {

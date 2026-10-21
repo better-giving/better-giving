@@ -1,4 +1,4 @@
-import { RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { secretFingerprint } from '@better-giving/operator/stripe/secret-fingerprint';
 import { readConfigEnv, type ConfigEnv } from '../config/env';
 import type { ProcessorName } from './provider';
@@ -99,20 +99,25 @@ const VERIFICATION: Readonly<
 });
 
 /**
- * how the right value gets into `.env`: the setup script for a processor this app registers an
- * endpoint on, and NOWPayments' dashboard for its IPN secret.
+ * how the right value gets into `.env` once a stored one is stale, which is an endpoint at this
+ * address that was created with another value.
  *
- * the script rather than a value to type: a registered endpoint's value is handed over once, in the
- * answer that registers it, and is readable from no call afterwards — so registering again is the
- * only way to the right one.
+ * Stripe's endpoint is kept and its secret revealed in the dashboard: a re-run of the setup script
+ * replaces it (`rerun` in ./webhook-setup.ts), and a deleted endpoint's queued deliveries are never
+ * retried. PayPal's re-run keeps its listener and prints the id. Chariot's subscription secret is
+ * handed over once, in the answer that creates it, so registering again is the only way to it.
+ * NOWPayments generates its IPN secret in its dashboard and shows it once.
  */
 const REPAIR: Readonly<Record<ProcessorName, string>> = Object.freeze({
-	stripe: `run \`${setupWebhookCommand('stripe')}\`, add the line it prints to \`.env\``,
+	stripe:
+		'reveal the signing secret of the endpoint Stripe’s dashboard lists for this address under ' +
+		`Workbench → Webhooks, put it in \`.env\` as \`${envLine('STRIPE_WEBHOOK_SECRET')}\``,
 	paypal: `run \`${setupWebhookCommand('paypal')}\`, add the line it prints to \`.env\``,
 	chariot: `run \`${setupWebhookCommand('chariot')}\`, add the two lines it prints to \`.env\``,
 	nowpayments:
-		'copy the IPN secret under Payment Settings in the NOWPayments dashboard into `.env` as ' +
-		'`NOWPAYMENTS_IPN_SECRET`'
+		'generate an IPN secret under Payment Settings in the NOWPayments dashboard, which shows it ' +
+		'once and replaces the old one, and put it in `.env` as ' +
+		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\``
 });
 
 /**

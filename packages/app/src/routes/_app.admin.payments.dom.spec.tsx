@@ -1,6 +1,7 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import Payments from './_app.admin.payments';
 
@@ -45,6 +46,7 @@ const STRIPE: Card = {
 	],
 	link: 'everywhere',
 	notices: 'working',
+	endpointListed: true,
 	recurring: 'ready',
 	charityRate: null
 };
@@ -231,9 +233,16 @@ async function press(within: HTMLElement | undefined, name: string): Promise<voi
 }
 
 describe('payment notices', () => {
+	/** the commands a banner under Payment notices hands whoever runs the server. */
+	const commands = (notices: HTMLElement | null | undefined) =>
+		[...(notices?.querySelectorAll('pre') ?? [])].map((slab) => slab.textContent);
+
 	it('says notices aren’t set up where the value is not in .env, with the setup script', () => {
 		const notices = block(
-			card(screen({ cards: [{ ...STRIPE, notices: 'unset' }] }).root, 'Stripe'),
+			card(
+				screen({ cards: [{ ...STRIPE, notices: 'unset', endpointListed: false }] }).root,
+				'Stripe'
+			),
 			'Payment notices'
 		);
 		const banner = notices?.querySelector<HTMLElement>('.adm-banner');
@@ -244,15 +253,45 @@ describe('payment notices', () => {
 		expect(banner?.textContent).toContain(
 			'Gifts are charged, but none is marked paid here until Stripe can tell this site about it.'
 		);
-		expect([...(banner?.querySelectorAll('pre') ?? [])].map((slab) => slab.textContent)).toEqual([
-			'docker compose run --rm app node scripts/setup-webhook.ts stripe',
-			'docker compose up -d --force-recreate app'
-		]);
+		expect(commands(banner)).toEqual([setupWebhookCommand('stripe'), RECREATE_APP]);
+	});
+
+	it('keeps an endpoint Stripe already lists, sending the deployer to its secret and not the script', () => {
+		const notices = block(
+			card(
+				screen({ cards: [{ ...STRIPE, notices: 'unset', endpointListed: true }] }).root,
+				'Stripe'
+			),
+			'Payment notices'
+		);
+
+		expect(notices?.querySelector('.adm-banner__body')?.textContent).toContain(
+			`Stripe’s dashboard lists an endpoint for this address under Workbench → Webhooks. Keep it: switch it on there if it is off, reveal its signing secret, put it in .env as ${envLine('STRIPE_WEBHOOK_SECRET')}, then recreate the app:`
+		);
+		expect(commands(notices)).toEqual([RECREATE_APP]);
+	});
+
+	it('offers the script only where Stripe lists no endpoint, where the account could not say', () => {
+		const notices = block(
+			card(
+				screen({ cards: [{ ...STRIPE, notices: 'unset', endpointListed: null }] }).root,
+				'Stripe'
+			),
+			'Payment notices'
+		);
+
+		expect(notices?.querySelector('.adm-banner__body')?.textContent).toContain(
+			`If Stripe’s dashboard lists an endpoint for this address under Workbench → Webhooks, keep it: reveal its signing secret, put it in .env as ${envLine('STRIPE_WEBHOOK_SECRET')}, then recreate the app. Only if none is listed, run the first command below, put the line it prints in .env, then recreate the app:`
+		);
+		expect(commands(notices)).toEqual([setupWebhookCommand('stripe'), RECREATE_APP]);
 	});
 
 	it('says notices are not arriving where they fail at the processor', () => {
 		const notices = block(
-			card(screen({ cards: [{ ...STRIPE, notices: 'failing' }] }).root, 'Stripe'),
+			card(
+				screen({ cards: [{ ...STRIPE, notices: 'failing', endpointListed: false }] }).root,
+				'Stripe'
+			),
 			'Payment notices'
 		);
 
@@ -267,32 +306,45 @@ describe('payment notices', () => {
 		);
 	});
 
-	it('sends NOWPayments’ server steps to its IPN secret, since it has no script', () => {
+	const NOWPAYMENTS: Card = {
+		...STRIPE,
+		processor: 'nowpayments',
+		label: 'NOWPayments',
+		rails: null,
+		link: null,
+		recurring: null,
+		endpointListed: null
+	};
+
+	it('says what an unset IPN secret costs crypto gifts, and sends the deployer to generate one', () => {
 		const nowpayments = card(
-			screen({
-				cards: [
-					{
-						...STRIPE,
-						processor: 'nowpayments',
-						label: 'NOWPayments',
-						rails: null,
-						link: null,
-						recurring: null,
-						notices: 'unset'
-					}
-				]
-			}).root,
+			screen({ cards: [{ ...NOWPAYMENTS, notices: 'unset' }] }).root,
 			'NOWPayments'
 		);
-		const body = nowpayments.querySelector<HTMLElement>('.adm-banner__body');
+		const notices = block(nowpayments, 'Payment notices');
 
-		expect(body?.textContent).toContain(
-			'Copy the IPN secret from your NOWPayments dashboard into .env as NOWPAYMENTS_IPN_SECRET, then recreate the app:'
+		expect(notices?.querySelector('.adm-banner')?.textContent).toContain(
+			'Crypto gifts are marked paid up to half an hour late, and a refund or a second deposit NOWPayments reports is not recorded here.'
 		);
-		expect([...(body?.querySelectorAll('pre') ?? [])].map((slab) => slab.textContent)).toEqual([
-			'docker compose up -d --force-recreate app'
-		]);
+		expect(notices?.textContent).not.toContain('none is marked paid');
+		expect(notices?.querySelector('.adm-banner__body')?.textContent).toContain(
+			`Generate an IPN secret under Payment Settings in your NOWPayments dashboard and put it in .env as ${envLine('NOWPAYMENTS_IPN_SECRET')}. NOWPayments shows it once, and generating a new one replaces the old. Then recreate the app:`
+		);
+		expect(commands(notices)).toEqual([RECREATE_APP]);
 		expect(nowpayments.querySelector('.adm-hint')?.textContent).toBe('Crypto');
+	});
+
+	it('draws a set IPN secret no notice has confirmed as a note, not a warning', () => {
+		const notices = block(
+			card(screen({ cards: [{ ...NOWPAYMENTS, notices: 'unconfirmed' }] }).root, 'NOWPayments'),
+			'Payment notices'
+		);
+
+		expect(notices?.querySelector('.adm-banner')).toBeNull();
+		expect(notices?.querySelector('.adm-status__word')?.textContent).toBe('Not confirmed yet');
+		expect(notices?.textContent).toContain(
+			'The IPN secret is set. It’s confirmed the first time NOWPayments tells this site a crypto gift was paid within half an hour of the donor starting it.'
+		);
 	});
 });
 

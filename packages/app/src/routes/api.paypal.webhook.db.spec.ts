@@ -1,3 +1,4 @@
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import type { MiddlewareFunction } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseContact } from '$lib/server/contacts/contact-input';
@@ -230,7 +231,14 @@ describe('POST /api/paypal/webhook', () => {
 		expect(response.status).toBe(405);
 		expect(response.headers.get('allow')).toBe('POST');
 		const { fix } = (await response.json()) as { fix: string };
-		expect(fix).toContain('docker compose run --rm app node scripts/setup-webhook.ts paypal');
+		const settled = fix.indexOf(
+			`If PayPal’s developer dashboard already lists a listener for this address and \`.env\` holds its id as \`${envLine('PAYPAL_WEBHOOK_ID')}\`, nothing needs doing.`
+		);
+		const register = fix.indexOf(`Otherwise run \`${setupWebhookCommand('paypal')}\``);
+		expect(settled).toBeGreaterThan(-1);
+		expect(register).toBeGreaterThan(settled);
+		expect(fix).toContain('a re-run keeps a listener already at this address and prints its id');
+		expect(fix).toContain(`recreate the app: \`${RECREATE_APP}\``);
 		expect(request.reads).toBe(0);
 	});
 });

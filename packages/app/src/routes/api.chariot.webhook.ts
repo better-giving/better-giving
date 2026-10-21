@@ -1,4 +1,4 @@
-import { RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { settleDelivery } from '$lib/server/donations/settle';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -66,7 +66,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a Chariot delivery by POST. ${method} is not a method it answers.`,
-			fix: `Chariot posts grant updates here. Run \`${setupWebhookCommand('chariot')}\` to create the subscription for this address, add the \`CHARIOT_WEBHOOK_SECRET\` line it prints to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
+			fix: `Chariot posts grant updates here. If Payments shows Chariot’s payment notices working, nothing needs doing: a re-run replaces the subscription and its secret. Otherwise run \`${setupWebhookCommand('chariot')}\` and add every line it prints to \`.env\`: \`${envLine('CHARIOT_CONNECT_ID')}\` and \`${envLine('CHARIOT_WEBHOOK_SECRET')}\` on a first run, \`${envLine('CHARIOT_WEBHOOK_SECRET')}\` alone once \`CHARIOT_CONNECT_ID\` is set. Then recreate the app: \`${RECREATE_APP}\`.`
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

@@ -3,6 +3,7 @@ import { OFFERED_PAYMENT_METHODS } from '$lib/forms/offered-rails';
 import { type ConfigEnv, readConfigEnv } from '../config/env';
 import { chargingProcessors } from '../config/readiness';
 import type { Db } from '../db/client';
+import { ipnHasSettledAGift } from '../donations/pending-crypto-read';
 import { railNotes } from '../forms/rail-notes';
 import { createPaymentProviders } from './factory';
 import { PAYPAL_US_FEE_RULES_CHARITY, paypalFeeRules } from './fees';
@@ -55,14 +56,19 @@ export type RailRow = {
 /**
  * whether the processor is telling this deployment a gift was paid.
  *
- *   working — the value that verifies a notice is in `.env`, and nothing read off the account says
- *             a notice is not arriving.
- *   unset   — that value is not in `.env`, so every notice is turned away whatever the account
- *             holds.
- *   failing — the value is set and the account holds no endpoint at this address, holds one that
- *             is switched off or short of an event, or holds one created with another secret.
+ *   working     — the value that verifies a notice is in `.env`, and nothing read off the account
+ *                 says a notice is not arriving. on a processor that keeps no endpoint, a notice
+ *                 that value verified has settled a gift here.
+ *   unconfirmed — the value is set on a processor that keeps no endpoint, and no notice it
+ *                 verified has settled a gift here yet: nothing on the account says whether it is
+ *                 the one the processor signs with.
+ *   unset       — that value is not in `.env`, so every notice is turned away whatever the
+ *                 account holds.
+ *   failing     — the value is set and the account holds no endpoint at this address, holds one
+ *                 that is switched off or short of an event, or holds one created with another
+ *                 secret.
  */
-export type NoticesStanding = 'working' | 'unset' | 'failing';
+export type NoticesStanding = 'working' | 'unconfirmed' | 'unset' | 'failing';
 
 /** whether Link is drawn on every hostname this deployment wants wallet buttons on. */
 export type LinkStanding = 'everywhere' | 'not_everywhere';
@@ -84,6 +90,12 @@ export type ProcessorCard = {
 	readonly rails: readonly RailRow[] | null;
 	readonly link: LinkStanding | null;
 	readonly notices: NoticesStanding | null;
+	/**
+	 * whether the account lists an endpoint at this deployment's address, which is what decides
+	 * whether a repair keeps the endpoint or registers one. `null` on a processor that keeps none, and
+	 * where the account could not be read.
+	 */
+	readonly endpointListed: boolean | null;
 	/** what repeating gifts are collected against. `null` for a processor that takes none. */
 	readonly recurring: RecurringGiftStanding | null;
 	/**
@@ -124,7 +136,9 @@ export async function readPaymentsScreen(
 
 	return {
 		cards: await Promise.all(
-			charging.map((name) => readCard(env, config, name, processors.for(name), origin, asked.hosts))
+			charging.map((name) =>
+				readCard(env, config, db, name, processors.for(name), origin, asked.hosts)
+			)
 		),
 		others: PROCESSOR_NAMES.filter((name) => !charging.includes(name)).map((processor) => ({
 			processor,
@@ -136,23 +150,26 @@ export async function readPaymentsScreen(
 async function readCard(
 	env: unknown,
 	config: ConfigEnv,
+	db: Db,
 	processor: ProcessorName,
 	provider: PaymentProvider,
 	origin: string,
 	hosts: readonly string[]
 ): Promise<ProcessorCard> {
-	const [chargeability, registration, domains, recurring] = await Promise.all([
+	const confirmation = NOTICES_CONFIRMED_BY[processor];
+	const [chargeability, registration, domains, recurring, confirmed] = await Promise.all([
 		readRailChargeability(provider),
 		readWebhookRegistration(provider, webhookAddress(processor, origin)),
 		readWalletDomains(provider, hosts),
-		takesRepeatingGifts(processor) ? readRecurringProvision(provider) : null
+		takesRepeatingGifts(processor) ? readRecurringProvision(provider) : null,
+		confirmation === 'endpoint' ? null : confirmation(db)
 	]);
 	const secret = await webhookSecretStanding(env, processor, registration);
 
 	const rails = chargeability.state === 'read' ? railRows(processor, chargeability) : [];
 
 	const label = PROCESSOR_LABELS[processor];
-	const notices = noticesStanding(processor, secret, registration);
+	const notices = noticesStanding(secret, registration, confirmed);
 
 	// in the order the card draws them, so the sentence names them as a reader meets them.
 	const lost: { says: string; detail: string }[] = [];
@@ -183,6 +200,10 @@ async function readCard(
 		rails: rails.length === 0 ? null : rails,
 		link: linkStanding(domains),
 		notices,
+		endpointListed:
+			confirmation !== 'endpoint' || registration.state === 'unreadable'
+				? null
+				: registration.state === 'registered',
 		recurring: recurring === null || recurring.state === 'unreadable' ? null : recurring.state,
 		charityRate:
 			processor === 'paypal' ? paypalFeeRules(config) === PAYPAL_US_FEE_RULES_CHARITY : null
@@ -223,19 +244,24 @@ function linkStanding(domains: WalletDomainsReading): LinkStanding | null {
 }
 
 /**
- * whether the processor keeps an endpoint on the account that deliveries go to.
+ * what says the processor's notices reach this deployment: the endpoint read off the account, or,
+ * for a processor that keeps none, a read of this deployment's own rows for a notice that verified.
  *
  * NOWPayments keeps none: every payment carries its own callback address (./nowpayments.ts), so an
- * endpoint reading for it has no object.
+ * endpoint reading for it has no object, and no read of the account hands back the IPN secret to
+ * compare. a gift a verified IPN settled is the proof (`ipnHasSettledAGift` in
+ * ../donations/pending-crypto-read.ts).
  *
  * total over `ProcessorName`, so a processor added without an entry is a compile error rather than
- * a card reading a missing endpoint as a fault.
+ * a card reading a missing endpoint as a fault, or a set value as working.
  */
-const KEEPS_WEBHOOK_ENDPOINT: Readonly<Record<ProcessorName, boolean>> = {
-	stripe: true,
-	paypal: true,
-	chariot: true,
-	nowpayments: false
+const NOTICES_CONFIRMED_BY: Readonly<
+	Record<ProcessorName, 'endpoint' | ((db: Db) => Promise<boolean>)>
+> = {
+	stripe: 'endpoint',
+	paypal: 'endpoint',
+	chariot: 'endpoint',
+	nowpayments: ipnHasSettledAGift
 };
 
 /**
@@ -243,16 +269,16 @@ const KEEPS_WEBHOOK_ENDPOINT: Readonly<Record<ProcessorName, boolean>> = {
  * which the card says once among the reads it lost.
  *
  * an unset value is answered before anything on the account is looked at, because no endpoint makes
- * up for it. a processor that keeps no endpoint (`KEEPS_WEBHOOK_ENDPOINT` above) has only the value
- * to go on, so a set one is working.
+ * up for it. `confirmed` is the read of this deployment's rows on a processor that keeps no
+ * endpoint (`NOTICES_CONFIRMED_BY` above), and `null` on every other.
  */
 function noticesStanding(
-	processor: ProcessorName,
 	secret: WebhookSecretStanding,
-	registration: WebhookRegistration
+	registration: WebhookRegistration,
+	confirmed: boolean | null
 ): NoticesStanding | null {
 	if (secret.state === 'unset') return 'unset';
-	if (!KEEPS_WEBHOOK_ENDPOINT[processor]) return 'working';
+	if (confirmed !== null) return confirmed ? 'working' : 'unconfirmed';
 	if (registration.state === 'unreadable') return null;
 	if (registration.state === 'unregistered') return 'failing';
 	if (secret.state === 'stale' || !registration.complete) return 'failing';

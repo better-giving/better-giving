@@ -1,4 +1,4 @@
-import { RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
+import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { settleDelivery } from '$lib/server/donations/settle';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -102,7 +102,7 @@ function methodNotAllowed(method: string): Response {
 	return Response.json(
 		{
 			message: `This endpoint takes a PayPal delivery by POST. ${method} is not a method it answers.`,
-			fix: `PayPal posts deliveries here. Run \`${setupWebhookCommand('paypal')}\` to register this address as the listener, add the \`PAYPAL_WEBHOOK_ID\` line it prints to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
+			fix: `PayPal posts deliveries here. If PayPal’s developer dashboard already lists a listener for this address and \`.env\` holds its id as \`${envLine('PAYPAL_WEBHOOK_ID')}\`, nothing needs doing. Otherwise run \`${setupWebhookCommand('paypal')}\` (a re-run keeps a listener already at this address and prints its id), add the \`PAYPAL_WEBHOOK_ID\` line it prints to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 		},
 		{ status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } }
 	);

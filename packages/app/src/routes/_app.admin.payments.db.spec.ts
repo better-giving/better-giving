@@ -1,6 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { parseContact } from '$lib/server/contacts/contact-input';
 import { createDb, type Db } from '$lib/server/db/client';
-import { client, run, stmt } from '$lib/server/db/database.testing';
+import { client, first, run, stmt } from '$lib/server/db/database.testing';
+import type { PostableAccountId } from '$lib/server/db/postable';
+import { recordDonation } from '$lib/server/donations/record';
 import { SUBSCRIBED_EVENT_TYPES as PAYPAL_EVENTS } from '@better-giving/operator/paypal/webhook-listener';
 import { secretFingerprint } from '@better-giving/operator/stripe/secret-fingerprint';
 import { SUBSCRIBED_EVENT_TYPES as STRIPE_EVENTS } from '@better-giving/operator/stripe/webhook-endpoint';
@@ -373,6 +376,14 @@ describe('whether payment notices reach this deployment', () => {
 
 		expect((await cardOf('stripe')).notices).toBe('working');
 	});
+
+	it('says whether the account lists an endpoint here, which a repair keeps', async () => {
+		stub.ports.stripe = await stripeAccount();
+		expect((await cardOf('stripe', deployed())).endpointListed).toBe(true);
+
+		stub.ports.stripe = await stripeAccount({ endpoint: null });
+		expect((await cardOf('stripe', deployed())).endpointListed).toBe(false);
+	});
 });
 
 describe('a Stripe account this deployment could not read', () => {
@@ -540,16 +551,93 @@ describe('a deployment set up on NOWPayments', () => {
 		stub.ports.nowpayments = nowpaymentsAccount();
 	});
 
-	it('reads notices off the IPN secret alone, since each payment names its own callback', async () => {
+	const IPN_SET = deployed({
+		...NO_STRIPE,
+		...NOWPAYMENTS_VALUES,
+		NOWPAYMENTS_IPN_SECRET: 'notarealipn'
+	});
+
+	/**
+	 * a crypto gift whose posting landed `minutesAfter` its payment was minted — sooner than half an
+	 * hour only an IPN can post it ($lib/server/donations/pending-crypto-read.ts).
+	 */
+	async function settledCryptoGift(minutesAfter: number): Promise<void> {
+		const revenue = await first<{ id: string }>(
+			stmt(`select id from account where is_postable = 1 and code = '4110'`)
+		);
+		if (!revenue) throw new Error('no 4110 account in migrations/0000_initial_schema.sql');
+		await run(
+			stmt(
+				`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+			                   suggested_amounts, allowed_origins, created_at, updated_at)
+			 values ('frm_paymentscrypto1', 'General Fund', 'live', ?, 'USD', 500, 1000000, '[]', '[]', 0, 0)`,
+				revenue.id
+			)
+		);
+		const donor = parseContact({
+			kind: 'individual',
+			first_name: 'Ada',
+			last_name: 'Okafor',
+			primary_email: 'ada@example.org'
+		});
+		if (!donor.ok) throw new Error('the fixture donor did not parse');
+		const minted = Date.parse('2026-10-01T12:00:00.000Z');
+		const recorded = await recordDonation(db, {
+			donationId: crypto.randomUUID(),
+			donor: donor.value,
+			formId: 'frm_paymentscrypto1',
+			origin: 'https://acme.org',
+			currency: 'USD',
+			processor: 'nowpayments',
+			totalMinor: 2_500,
+			feeMinor: 0,
+			lines: [
+				{ label: 'Donation', revenueAccountId: revenue.id as PostableAccountId, amountMinor: 2_500 }
+			],
+			method: 'crypto',
+			providerTxnId: '5745459419',
+			deposit: { coin: 'xrp', network: 'xrp', validUntil: new Date(minted + 20 * 60_000) },
+			occurredAt: new Date(minted),
+			consentedToContact: false,
+			note: undefined,
+			tribute: null,
+			programId: null
+		});
+		if (!recorded.ok) throw new Error(`the fixture gift was not recorded: ${recorded.detail}`);
+		const { paymentId } = recorded.value;
+		await run(stmt('update payment set created_at = ? where id = ?', minted, paymentId));
+		await run(
+			stmt(
+				`insert into entry_group (id, source_type, source_id, currency, occurred_at, created_at)
+			 values (?, 'payment', ?, 'USD', ?, ?)`,
+				crypto.randomUUID(),
+				paymentId,
+				minted,
+				minted + minutesAfter * 60_000
+			)
+		);
+	}
+
+	beforeEach(async () => {
+		for (const table of ['entry_group', 'payment', 'line_item', 'donation', 'contact', 'form']) {
+			await run(stmt(`delete from ${table}`));
+		}
+	});
+
+	it('reads notices as unset where the IPN secret is not in .env', async () => {
 		expect((await cardOf('nowpayments', NOWPAYMENTS_ONLY)).notices).toBe('unset');
-		expect(
-			(
-				await cardOf(
-					'nowpayments',
-					deployed({ ...NO_STRIPE, ...NOWPAYMENTS_VALUES, NOWPAYMENTS_IPN_SECRET: 'notarealipn' })
-				)
-			).notices
-		).toBe('working');
+	});
+
+	it('reads a set IPN secret as unconfirmed until a notice has settled a gift here', async () => {
+		await settledCryptoGift(45);
+
+		expect((await cardOf('nowpayments', IPN_SET)).notices).toBe('unconfirmed');
+	});
+
+	it('reads a set IPN secret as working once a notice has settled a gift here', async () => {
+		await settledCryptoGift(5);
+
+		expect((await cardOf('nowpayments', IPN_SET)).notices).toBe('working');
 	});
 
 	it('draws no ledger, no Link and no repeating gifts where the account has a coin', async () => {

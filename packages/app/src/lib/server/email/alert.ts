@@ -37,13 +37,19 @@ export async function alert(deps: MailDeps, input: adminAlert.AdminAlertData): P
 	await mailOperator(deps, adminAlert.template(input));
 }
 
+// an alert goes to the notification address, which members read, and only the deployer can open
+// Settings (`STAFF_USER_ID`, AGENTS.md → Boundaries), so each action that starts there says who a
+// member asks.
+
 /** an alert's action where only the organisation's saved details fix what went wrong. */
-export const FILL_IN_ORG_DETAILS = `In Settings, fill in what’s missing under ${IDENTITY_FOLD}.`;
+export const FILL_IN_ORG_DETAILS =
+	`In Settings, fill in what’s missing under ${IDENTITY_FOLD}. If you can’t open Settings, ask ` +
+	'whoever set up this site to fill it in.';
 
 /** an alert's action where an email did not send. */
 export const TEST_THE_SMTP_SETTINGS =
-	'In Settings, go to Mail and press Send test email. If the test fails, ask whoever set up ' +
-	'this site to fix what it reports.';
+	'In Settings, go to Mail and press Send test email. If you can’t open Settings, ask whoever ' +
+	'set up this site to send the test and fix what it reports.';
 
 /**
  * what follows {@link TEST_THE_SMTP_SETTINGS} where the send threw rather than answering: the cause

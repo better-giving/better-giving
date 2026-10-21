@@ -1,3 +1,4 @@
+import { envLine, RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { NOWPAYMENTS_IPN_PATH } from '@better-giving/operator/nowpayments/ipn-callback';
@@ -561,6 +562,26 @@ async function giftStatus(donationId = DONATION_ID): Promise<string | undefined>
 	const { donations } = await listDonations(createDb(client));
 	return donations.find((gift) => gift.id === donationId)?.status;
 }
+
+describe('GET /api/nowpayments/webhook', () => {
+	it('tells a browser what the address takes, keeping a secret .env already holds', async () => {
+		const response = await callback(new Request(ADDRESS), { env: envWith(CONFIGURED) });
+
+		expect(response.status).toBe(405);
+		expect(response.headers.get('allow')).toBe('POST');
+		const { fix } = (await response.json()) as { fix: string };
+		const keep = fix.indexOf(
+			'If `.env` already holds `NOWPAYMENTS_IPN_SECRET`, keep it: generating a new one replaces the old.'
+		);
+		const generate = fix.indexOf(
+			'Only if it holds none, generate an IPN secret under Payment Settings in the NOWPayments dashboard (NOWPayments shows it once)'
+		);
+		expect(keep).toBeGreaterThan(-1);
+		expect(generate).toBeGreaterThan(keep);
+		expect(fix).toContain(`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\``);
+		expect(fix).toContain(`recreate the app: \`${RECREATE_APP}\``);
+	});
+});
 
 describe('POST /api/nowpayments/webhook — a refunded payment', () => {
 	it('reverses a settled gift at the value it was booked at, and the gift reads refunded', async () => {

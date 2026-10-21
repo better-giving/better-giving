@@ -1,3 +1,4 @@
+import { envLine, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { describe, expect, it } from 'vitest';
 import type { WebhookRegistration } from './webhook-registration';
 import { webhookSecretStanding } from './webhook-secret';
@@ -54,9 +55,11 @@ describe('webhookSecretStanding', () => {
 			registered('362db036820ee774')
 		);
 		expect(standing.state).toBe('stale');
+		// the endpoint is there, and a re-run of the script would replace it (webhook-setup.ts).
 		expect(standing.detail).toContain(
-			'docker compose run --rm app node scripts/setup-webhook.ts stripe'
+			`reveal the signing secret of the endpoint Stripe’s dashboard lists for this address under Workbench → Webhooks, put it in \`.env\` as \`${envLine('STRIPE_WEBHOOK_SECRET')}\``
 		);
+		expect(standing.detail).not.toContain(setupWebhookCommand('stripe'));
 	});
 
 	/**
