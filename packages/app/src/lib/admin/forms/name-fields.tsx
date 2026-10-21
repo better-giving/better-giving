@@ -64,6 +64,14 @@ type FormNameFieldsProps = {
 	 */
 	readonly liveNote?: boolean;
 	/**
+	 * whether the live option's visible label is Not taking gifts.
+	 *
+	 * the editor passes this when the stored status is `live` and `giftsBlocked` is true. the
+	 * option's value stays `live`, and draft's label stays Draft. the create screen does not
+	 * pass it: a new form is not stored live.
+	 */
+	readonly notTakingGifts?: boolean;
+	/**
 	 * the group's own submit, at the foot of the group it saves.
 	 *
 	 * absent on the create screen, which has one submit for all four groups.
@@ -75,6 +83,7 @@ export function FormNameFields({
 	boxes,
 	liveOffered = true,
 	liveNote = true,
+	notTakingGifts = false,
 	footer
 }: FormNameFieldsProps) {
 	const statusError = boxes.status.errors?.[0];
@@ -82,9 +91,14 @@ export function FormNameFields({
 	// the two statuses this select offers. `EDITABLE_FORM_STATUSES` is the pair an operator may
 	// choose between. publishing while a blocker stands would produce a form that serves nothing, so
 	// where `liveOffered` is false Live comes off the list and the hint over the box says why.
+	// where `notTakingGifts` is true that option's label is the word `formStatusWord` in
+	// `$lib/admin/status-tones.ts` puts on the badge.
 	const statuses = (
 		liveOffered ? EDITABLE_FORM_STATUSES : EDITABLE_FORM_STATUSES.filter((it) => it !== 'live')
-	).map((status) => ({ value: status, label: FORM_STATUS_LABELS[status] }));
+	).map((status) => ({
+		value: status,
+		label: status === 'live' && notTakingGifts ? 'Not taking gifts' : FORM_STATUS_LABELS[status]
+	}));
 
 	return (
 		<>
@@ -113,9 +127,11 @@ export function FormNameFields({
 				    fact, and a box that wrote only the first would leave a form that reads archived and
 				    behaves live.
 
-				    the hint is what says why Live is not among the options, over the box in the quiet
-				    register, since it is read before choosing. it points at the readiness block above
-				    (./readiness.tsx), which says what to do; it is not a complaint about this
+				    the hint says why Live is not among the options, or, when the form is stored live
+				    and not taking gifts, that donors cannot give until the items above are done.
+				    one sentence: the two are never both shown. it sits over the box in the quiet
+				    register, since it is read before choosing, and it points at the readiness block
+				    above (./readiness.tsx), which says what to do. it is not a complaint about this
 				    submission, so the error register is left to whatever the last save refused — both
 				    are reachable from the box at once. */}
 				<SelectWithNote
@@ -125,9 +141,11 @@ export function FormNameFields({
 					defaultValue={boxes.status.defaultValue}
 					options={statuses}
 					hint={
-						liveOffered || !liveNote
-							? undefined
-							: 'Live is unavailable until the items above are done.'
+						notTakingGifts
+							? 'Saved as live. Donors cannot give through it until the items above are done.'
+							: liveOffered || !liveNote
+								? undefined
+								: 'Live is unavailable until the items above are done.'
 					}
 					error={statusError === undefined ? undefined : <MarkedText text={statusError} />}
 				/>

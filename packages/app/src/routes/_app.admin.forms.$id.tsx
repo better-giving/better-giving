@@ -572,8 +572,9 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// re-checks this, because a filtered `<option>` list is not a control. a form already live
 			// keeps the option, which `liveOffered` argues.
 			liveOffered: !archived && liveOffered(record.status, readiness),
-			// the same `anyBlocker` the Live option is withheld by. the status word reads it; the
-			// select does not, so a live form keeps Live chosen (`liveOffered`).
+			// the same `anyBlocker` the Live option is withheld by. the status word reads it, and the
+			// name group passes it as `notTakingGifts` when this form is stored live, so the live
+			// option is labelled Not taking gifts while its value stays `live`.
 			giftsBlocked: anyBlocker(lines),
 			// whether the viewer deployed the site, the predicate ./_app.tsx reads: the readiness block
 			// is worded for who can fix each line.
@@ -1196,6 +1197,7 @@ function Editor({
 					<FormNameFields
 						boxes={{ name: nameFields.name, status: nameFields.status }}
 						liveOffered={data.liveOffered}
+						notTakingGifts={data.status === 'live' && data.giftsBlocked}
 						footer={
 							<SaveButton
 								label="Save name and status"
