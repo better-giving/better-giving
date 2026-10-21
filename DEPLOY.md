@@ -28,7 +28,7 @@ docker compose run --rm migrate      # before the first start, and after every u
 docker compose up -d
 ```
 
-The server refuses to start without either value and says which. The app answers on the host's port 3000, or on `BETTER_GIVING_PORT` from `.env`. Sign in at `/login` as `admin`: the dashboard opens at once. Until step 2's `https` address is up, sign in at `http://localhost:3000`, on the host itself or through `ssh -L 3000:localhost:3000 <host>` from your machine: over plain `http` at any other address the browser drops the session cookie, and sign-in returns to the form without an error. The database is `better-giving.db` on the named volume `data`, mounted at `/data`; it survives `docker compose down` and every rebuild, and `docker compose down -v` deletes it.
+The server refuses to start without either value, or on a password under 12 characters, and says why. The app answers on the host's port 3000, or on `BETTER_GIVING_PORT` from `.env`. Sign in at `/login` as `admin`: the dashboard opens at once. Until step 2's `https` address is up, sign in at `http://localhost:3000`, on the host itself or through `ssh -L 3000:localhost:3000 <host>` from your machine: over plain `http` at any other address the browser drops the session cookie, and sign-in returns to the form without an error. The database is `better-giving.db` on the named volume `data`, mounted at `/data`; it survives `docker compose down` and every rebuild, and `docker compose down -v` deletes it.
 
 `ADMIN_PASSWORD` is the deployer's credential. Keep it in a password manager: recovery is whoever holds `.env`. Colleagues are invited from `/admin/members`, set their own, and reset a forgotten one from the sign-in page; that reset never reaches this credential. A colleague sees forms, gifts, donors and the books; Settings, Payments, the sites list and QuickBooks are the deployer's alone.
 
@@ -73,7 +73,7 @@ Then, under **Payments**, press **Set up recurring gifts** on each processor tha
 
 ### Stripe
 
-`STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY`, both from one page of one dashboard (Developers → API keys): a mismatched pair is refused by Stripe at the first charge, and the publishable key must start `pk_` because it is served to every browser. `setup-webhook stripe` prints `STRIPE_WEBHOOK_SECRET`. A re-run deletes and recreates the endpoint, so gifts settling in the gap are charged and not recorded: do it when nobody is giving. It is also the repair for an endpoint switched off, short of an event after an upgrade, or whose secret was lost. A failed charge under a repeating gift is one of the events already subscribed: each failed attempt Stripe reports is sent to the webhook destinations subscribed to Recurring charge failed (Integrations → Webhooks), and a repeating gift's own first charge failing on the donation form is not one.
+`STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY`, both from one page of one dashboard (Developers → API keys): a mismatched pair is refused by Stripe at the first charge, and the publishable key must start `pk_` because it is served to every browser. `setup-webhook stripe` prints `STRIPE_WEBHOOK_SECRET`. A re-run deletes and recreates the endpoint, so gifts settling in the gap are charged and not recorded: do it when nobody is giving. It is also the repair for an endpoint short of an event after an upgrade. An endpoint switched off is switched back on in Stripe's dashboard, and a lost secret is read there too (Workbench → Webhooks, the endpoint, reveal its signing secret), so neither needs a re-run. A failed charge under a repeating gift is one of the events already subscribed: each failed attempt Stripe reports is sent to the webhook destinations subscribed to Recurring charge failed (Integrations → Webhooks), and a repeating gift's own first charge failing on the donation form is not one.
 
 **Bank debits**: a donor whose bank could not be verified instantly is sent two small deposits, and Stripe itself emails them the link to confirm the amounts, at the address the form hands it. This deployment sends nothing for that step, so leave Stripe's customer emails switched on (dashboard.stripe.com → Settings → Emails); switched off, nobody tells the donor, and the gift expires unverified after ten days.
 
@@ -214,7 +214,7 @@ docker compose logs -f app
 
 The login screen's *"Sign-in is unavailable"* is deliberately uninformative; the cause comes off the logs.
 
-**Payments shows whether notices are set and whether the processor still has them registered**, but not whether the last delivery got through: Stripe returns the signing secret exactly once and will not confirm it afterwards, so re-running `setup-webhook stripe` is the answer on doubt.
+**Payments shows whether notices are set and whether the processor still has them registered**, but not whether the last delivery got through: on doubt, compare `STRIPE_WEBHOOK_SECRET` with the signing secret Stripe's dashboard reveals for this address's endpoint (Workbench → Webhooks).
 
 **Nothing shows a refused PayPal delivery either.** PayPal's own developer dashboard lists the deliveries it attempted, and that list is where a refused or unanswered one is visible; re-running `setup-webhook paypal` is the answer on doubt.
 
