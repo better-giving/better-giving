@@ -1,4 +1,5 @@
 import { MIN_ADMIN_PASSWORD_LENGTH } from '@better-giving/operator/admin-password';
+import { RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { describe, expect, it } from 'vitest';
 import { readStaffCredential, staffCredentialMatches } from './credential';
 
@@ -30,11 +31,11 @@ describe('readStaffCredential', () => {
 
 	// compose reads `.env` when it creates the container, so a restart keeps the old value
 	// (`RECREATE_APP` in packages/operator/src/deploy-split.ts).
-	it('tells the operator to recreate the app, never to restart it', () => {
+	it('tells the operator to recreate the app with its command, never to restart it', () => {
 		const result = readStaffCredential({});
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
-		expect(result.message).toContain('then recreate the app');
+		expect(result.message).toContain(`then recreate the app: \`${RECREATE_APP}\`.`);
 		expect(result.message).not.toContain('restart');
 	});
 

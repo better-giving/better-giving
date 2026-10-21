@@ -57,12 +57,13 @@ export type AuthSecretResolution =
  *
  * it is written to be true of every arm that sends it, a database that throws before the key is
  * read included (src/routes/login.tsx), so it names what to do rather than what failed. like
- * `notConfiguredMessage`, and for the reason its comment gives, it names the command that applies
+ * `notConfiguredMessage`, and for the reason its comment gives, it names the commands that apply
  * migrations and no filename.
  */
 export const SIGNING_KEY_UNREADABLE =
 	'This deployment’s database is not ready, so no one can be signed in and no signed link can ' +
-	'be checked. Update the database: `docker compose run --rm migrate`. ' +
+	'be checked. Update the database: `docker compose run --rm migrate`, or `pnpm db:migrate` from ' +
+	'a checkout. ' +
 	LOGS_SAY_WHY;
 
 /**

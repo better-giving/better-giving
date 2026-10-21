@@ -193,7 +193,7 @@ async function upsertStaffUser(db: Db): Promise<AuthUser> {
 		throw new APIError('INTERNAL_SERVER_ERROR', {
 			code: 'STAFF_USER_UPSERT_FAILED',
 			message:
-				'Signed in, but the auth_user row could not be written, which usually means the database is behind. Update the database: `docker compose run --rm migrate`.'
+				'Signed in, but the auth_user row could not be written. Update the database: `docker compose run --rm migrate`.'
 		});
 	}
 	return user;

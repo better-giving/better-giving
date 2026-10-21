@@ -129,7 +129,7 @@ describe('resolveAuthSecret', () => {
 describe('the public reply for a key that cannot be read', () => {
 	it('names the fix and points at the logs', () => {
 		expect(SIGNING_KEY_UNREADABLE).toContain(
-			'Update the database: `docker compose run --rm migrate`.'
+			'Update the database: `docker compose run --rm migrate`, or `pnpm db:migrate` from a checkout.'
 		);
 		expect(SIGNING_KEY_UNREADABLE.endsWith(LOGS_SAY_WHY)).toBe(true);
 	});

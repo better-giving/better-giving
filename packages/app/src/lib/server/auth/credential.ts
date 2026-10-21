@@ -1,4 +1,5 @@
 import { readAdminPassword } from '@better-giving/operator/admin-password';
+import { RECREATE_APP } from '@better-giving/operator/deploy-split';
 import { secretEquals } from '../secret-compare';
 import type { AuthEnv } from './env';
 
@@ -103,7 +104,7 @@ export function readStaffCredential(env: AuthEnv): StaffCredentialConfig {
 			message:
 				`Staff sign-in is refused because this deployment is misconfigured: ${problem} ` +
 				'ADMIN_PASSWORD is a deploy-time var, not a settings row. Set `ADMIN_PASSWORD` in ' +
-				'`.env`, then recreate the app. There is no default credential, ' +
+				`\`.env\`, then recreate the app: \`${RECREATE_APP}\`. There is no default credential, ` +
 				`an empty password never matches, and no password is stored anywhere in the database.`
 		};
 	}
