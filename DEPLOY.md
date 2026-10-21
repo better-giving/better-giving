@@ -28,10 +28,10 @@ fly apps create <app-name> --org <org>
 ```sh
 fly secrets set ADMIN_PASSWORD='<password>' BETTER_AUTH_SECRET='<secret>' -a <app-name> --stage
 fly platform regions
-fly deploy --ha=false --now --region <region> -a <app-name>
+fly deploy --ha=false --now --primary-region <region> -a <app-name>
 ```
 
-`<region>` is one of the codes `fly platform regions` printed. `fly deploy` builds the root `Dockerfile` and creates the volume `better_giving_data`, mounted at `/data`. The size and the 14-day snapshot retention are `initial_size` and `snapshot_retention` in `fly.toml`. `--ha=false` is the first deploy: a volume attaches to one Machine, and `fly scale count` above 1 creates another Machine with an empty volume. Leave the count at 1. A second process would split the rate limits, the cache and the scheduled runs, as [1. Start it](#1-start-it) describes.
+`<region>` is one of the codes `fly platform regions` printed. `--primary-region` places the first Machine and its volume; it does not write `fly.toml`. `fly deploy` builds the root `Dockerfile` and creates the volume `better_giving_data`, mounted at `/data`. The volume is one disk: a second Machine does not receive a copy. The size and the 14-day snapshot retention are `initial_size` and `snapshot_retention` in `fly.toml`. `--ha=false` is the first deploy: a volume attaches to one Machine, and `fly scale count` above 1 creates another Machine with an empty volume. Leave the count at 1. A second process would split the rate limits, the cache and the scheduled runs, as [1. Start it](#1-start-it) describes.
 
 The Machine stays up. `auto_stop_machines` is `off` and `min_machines_running` is 1 in `fly.toml`, because the scheduled runs are in-process ([Scheduled runs](#scheduled-runs)). A minute the process was down for is not replayed.
 
@@ -65,12 +65,12 @@ fly ssh console -a <app-name> -C "node scripts/setup-webhook.ts stripe"   # or p
 To deploy a published image instead of building the Dockerfile, the package has to be public. `ghcr.io/better-giving/better-giving` is published private. Until that package is public, `fly deploy` above is the command that can run:
 
 ```sh
-fly deploy --image ghcr.io/better-giving/better-giving:<tag> --ha=false --now -a <app-name>
+fly deploy --image ghcr.io/better-giving/better-giving:<tag> --ha=false --now --primary-region <region> -a <app-name>
 ```
 
 ### Backups on Fly
 
-The volume's daily snapshots are kept for the 14 days `snapshot_retention` sets. A copy you hold:
+The volume's daily snapshots are kept for the 14 days `snapshot_retention` sets. They are copies of that one disk, not a second Machine. A copy you hold:
 
 ```sh
 fly ssh console -a <app-name> -C "node scripts/backup.ts /data/backup.db"
@@ -86,6 +86,14 @@ fly machine update <machine-id> -a <app-name> --command "sleep infinity" --skip-
 fly ssh sftp put ./backup.db /data/restore.db -a <app-name>
 fly ssh console -a <app-name> -C "sh -c 'rm -f /data/better-giving.db /data/better-giving.db-wal /data/better-giving.db-shm && cp /data/restore.db /data/better-giving.db && chown 1000:1000 /data/better-giving.db && rm /data/restore.db'"
 fly machine update <machine-id> -a <app-name> --command 'sh -c "node scripts/migrate.ts && exec node server/index.ts"' --yes
+```
+
+When the disk itself is gone, a snapshot becomes a new volume. `fly volumes list -a <app-name>` shows the id while the volume still exists. The new volume stays unattached until a deploy with no Machine left attaches a `better_giving_data` volume instead of creating an empty one. `--snapshot-retention 14` matches `fly.toml`. `fly volumes create` otherwise keeps snapshots for 5 days.
+
+```sh
+fly volumes snapshots list <volume-id> -a <app-name>
+fly volumes create better_giving_data --snapshot-id <snapshot-id> --region <region> --snapshot-retention 14 -a <app-name>
+fly deploy --ha=false --now -a <app-name>
 ```
 
 ### Upgrading on Fly
