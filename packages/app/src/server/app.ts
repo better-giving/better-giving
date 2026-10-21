@@ -1,5 +1,7 @@
 import type { ServerBuild } from 'react-router';
 import { createRequestHandler } from 'react-router';
+import { readStaffCredential } from '$lib/server/auth/credential';
+import { readAuthEnv } from '$lib/server/auth/env';
 import { INTEGRATIONS_BASE_PATH, readOnlyRefusal } from '$lib/server/integrations/surface';
 import { createDb } from '$lib/server/db/client';
 import { stampClientIp } from '$lib/server/runtime/client-ip';
@@ -44,6 +46,17 @@ export function createApp(runtime: Runtime, trustedProxyHeader: string | undefin
 		stampClientIp(request, peer, trustedProxyHeader);
 		return handleRequest(request, requestContext(runtime));
 	};
+}
+
+/**
+ * why the process must not serve on `env`, or `null`: a set `ADMIN_PASSWORD` sign-in would refuse
+ * (`readStaffCredential` in $lib/server/auth/credential.ts). read here rather than in
+ * ../../server/index.ts because the entry runs from source and the root `Dockerfile`'s runtime
+ * stage copies no workspace package, while the bundle inlines the ones this reads.
+ */
+export function startRefusal(env: Env): string | null {
+	const staff = readStaffCredential(readAuthEnv(env));
+	return staff.ok ? null : staff.message;
 }
 
 /**

@@ -55,6 +55,14 @@ export interface Started {
 	shutdown(): Promise<void>;
 }
 
+/**
+ * the bundle's refusal of the env it was started on (`startRefusal` in ../src/server/app.ts), its
+ * message the sentence for the operator.
+ */
+export class StartRefused extends Error {
+	override readonly name = 'StartRefused';
+}
+
 /** where the header rules sit in the static directory. */
 const RULES_PATH = '/_headers';
 
@@ -100,6 +108,8 @@ export async function startServer(options: StartOptions): Promise<Started> {
 		const built = (await import(
 			pathToFileURL(join(root, 'build/server/index.js')).href
 		)) as typeof import('../src/server/app.ts');
+		const refusal = built.startRefusal(runtime.env);
+		if (refusal !== null) throw new StartRefused(refusal);
 		const once = built.createApp(runtime, trustedProxyHeader);
 		app = async () => once;
 		startCron = () => built.startCron(runtime);
