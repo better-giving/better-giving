@@ -8,8 +8,8 @@ import { MAX_SOCIAL_LINK } from './org-rules';
 // (`parseOrgProfile` in `packages/app/src/lib/server/org/org-input.ts`) and the settings screen
 // reads the same boxes in front of the person typing
 // (`packages/app/src/lib/admin/settings/social-link-lead.tsx`), so a copy at either end is a link
-// one half takes and the other refuses. the deployment stays the authority. the donor pages name each platform off
-// `SOCIAL_PLATFORM_NAMES` too, so a link reads the same wherever it is drawn.
+// one half takes and the other refuses. the deployment stays the authority. the donor pages name
+// each platform off `SOCIAL_PLATFORM_NAMES` too, so a link reads the same wherever it is drawn.
 
 /** each platform as a fundraiser writes it. */
 export const SOCIAL_PLATFORM_NAMES: Readonly<Record<SocialPlatform, string>> = {

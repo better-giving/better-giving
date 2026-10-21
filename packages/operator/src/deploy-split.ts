@@ -8,10 +8,10 @@
 // **it is here rather than beside the readers because it is one enumeration.** the deployment reads
 // every name below and builds the instruction beside each one, and a second list anywhere would be
 // a name too many, a missing name, or a line spelled the other way round, with nothing able to see
-// the disagreement. DEPLOY.md's "Configuration values" section is this list written for an
+// the disagreement. DEPLOY.md's "Every configuration value" section is this list written for an
 // operator.
 //
-// the rule is asserted rather than reviewed:
+// the list is asserted rather than reviewed:
 // `packages/app/src/lib/server/config/deploy-split.spec.ts` checks the line built for every name,
 // sweeps the sources of `packages/app` and this package and the operator documents beside them for
 // a literal that spells one by hand as a secret, and holds this list to the names the app actually

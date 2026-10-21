@@ -11,8 +11,9 @@ describe('webhookEndpointUrl', () => {
 	 *
 	 * no hostname is committed to this repository (AGENTS.md → Never), so the origin comes off a
 	 * request that reached the deployment — and the string this builds is what the endpoint is
-	 * registered at and what the account's endpoints are matched on. a joining mistake here is an endpoint that is registered and reads as
-	 * absent, one press away from a second one nobody can hold the secret for.
+	 * registered at and what the account's endpoints are matched on. a joining mistake here is an
+	 * endpoint that is registered and reads as absent, one press away from a second one nobody can
+	 * hold the secret for.
 	 */
 	it('joins an origin to the path the deployment serves the endpoint at', () => {
 		expect(webhookEndpointUrl('https://give.example.org')).toBe(
@@ -23,8 +24,9 @@ describe('webhookEndpointUrl', () => {
 	/**
 	 * no second slash and no missing one, whichever way the origin arrives.
 	 *
-	 * a request origin is spelled without a trailing slash, and this is what says the join does not quietly repair one that has it — a URL with a doubled
-	 * slash is a different endpoint to Stripe and reads as absent to the deployment.
+	 * a request origin is spelled without a trailing slash, and this is what says the join does not
+	 * quietly repair one that has it — a URL with a doubled slash is a different endpoint to Stripe
+	 * and reads as absent to the deployment.
 	 */
 	it('leaves the origin exactly as it was handed', () => {
 		expect(webhookEndpointUrl('https://better-giving.hound.workers.dev')).toBe(

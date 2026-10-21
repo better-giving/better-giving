@@ -55,8 +55,8 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {boolean | undefined} [legendHidden] the legend is in the tree and not on the screen
  *   (`.adm-vh` in ../../styles/base.css). what earns it is a group already named by a heading the
  *   reader can see, where a legend would draw that same word a second time on the line beneath it.
- *   it is not a group without a name: a reader who cannot
- *   see the heading still meets one, which is why the legend is hidden rather than dropped.
+ *   it is not a group without a name: a reader who cannot see the heading still meets one, which
+ *   is why the legend is hidden rather than dropped.
  *   ../../styles/adm.css takes the step off what follows a legend nobody sees.
  * @property {ReactNode} [hint]
  * @property {ReactNode} [error] the group's, never a single box's.

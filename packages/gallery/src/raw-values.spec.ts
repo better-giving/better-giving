@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 // `raw-colour-ok:` / `raw-length-ok:` bargain are packages/operator/src/styles/raw-values.ts's — one
 // rule wherever a screen lives, called here with globs of this surface rather than copied.
 // packages/app/src/lib/admin/styles/raw-color.spec.ts and .../conformance.spec.ts are the
-// dashboard's two.
+// dashboard's two halves of the same arrangement.
 //
 // the four sheets are swept there and not here, and that is the boundary rather than an oversight:
 // they live in packages/operator and one surface reading them twice proves nothing the first

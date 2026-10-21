@@ -77,8 +77,10 @@ catalog:
   xstate: 5.32.5
   zod: 4.4.3
 # a machine installs the bindings for its own os and cpu. `libc: [glibc]` filters only packages
-# that declare a `libc` field, and @libsql's musl bindings declare none, so `ignoredOptionalDependencies`
-# below is what keeps them out of the glibc image. the lockfile still lists every other variant.
+# that declare a `libc` field, and @libsql's musl bindings declare none, so
+# `ignoredOptionalDependencies` below is what keeps them out of the glibc image. it applies to every
+# install, so a musl machine (alpine) gets no libsql binding at all. the lockfile still lists every
+# other variant.
 supportedArchitectures:
   os: [current]
   cpu: [current]

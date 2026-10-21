@@ -66,10 +66,10 @@ export function ProgressBar({ label, overMove }) {
 	// words would be announced by nobody. ../controls/SaveButton.jsx writes its region the same way.
 	//
 	// a task is enough only where the cells are prerendered with the document, so the region is on
-	// the page, empty, before the client hydrates and writes into it. the cells
-	// mounted later than the document — into a page already drawn — are a region arriving a task
-	// before its words, which a reader commonly has not registered; a caller that needs that mounts
-	// {@link MoveStatus} for the life of the document instead, as the line over a move does.
+	// the page, empty, before the client hydrates and writes into it. the cells mounted later than
+	// the document — into a page already drawn — are a region arriving a task before its words,
+	// which a reader commonly has not registered; a caller that needs that mounts {@link MoveStatus}
+	// for the life of the document instead, as the line over a move does.
 	const [said, setSaid] = useState('');
 	useEffect(() => {
 		const say = setTimeout(() => setSaid(label ?? ''), 0);

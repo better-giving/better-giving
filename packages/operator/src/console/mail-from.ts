@@ -1,13 +1,13 @@
 import { EMAIL } from './org-rules';
 
-// what the From address a deployment sends under may be, as one reading of it.
+// what the From address a deployment sends under may be.
 //
 // the deployment refuses a `MAIL_FROM` it cannot send under before it opens a socket
 // (`parseMailFrom` in `packages/app/src/lib/server/email/smtp-config.ts`).
 //
-// **what crosses is the reading and not the sentence.** the deployment's words name the variable,
+// **this returns the reading and not the sentence.** the deployment's words name the variable,
 // quote the value through a redaction helper and say where to set it, which is what a 5xx body's
-// reader needs. so what is shared is which of the two things is wrong, and the caller says it in
+// reader needs. so what this returns is which of the two things is wrong, and the caller says it in
 // its own words.
 //
 // **what a mail host may be is not here and must not come here.** `parseSmtpEndpoint`, beside

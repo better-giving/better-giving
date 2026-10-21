@@ -128,8 +128,8 @@
 			// off that list. a relative path into any package's `src/` answers to neither manifest
 			// and resolves in both tsc and Vite with nothing objecting to it. this rule is the one
 			// place that escape is caught, for every package the app does depend on and for the ones it
-			// depends on not at all (packages/gallery, packages/emails-preview,
-			// packages/zapier) — a bare specifier for those fails for want of the dependency alone.
+			// depends on not at all (packages/gallery, packages/emails-preview, packages/zapier) — a
+			// bare specifier for those fails for want of the dependency alone.
 			"includes": [
 				"packages/app/src/**/*.ts",
 				"packages/app/src/**/*.tsx",
@@ -179,19 +179,18 @@
 				}
 			}
 		},
-		// packages/operator is a leaf the dashboard and the component gallery
-		// all import from: app → operator, with gallery → operator beside it and no
-		// app-like package reaching another directly. packages/emails is the one leaf-side package
+		// packages/operator is a leaf the dashboard and the component gallery both import from:
+		// app → operator, with gallery → operator beside it and no app-like package reaching
+		// another directly. packages/emails is the one leaf-side package
 		// that reaches operator — for its tokens only: app → emails ← emails-preview, with emails →
 		// operator beside it. the overrides below hold that shape, each at the one place its
 		// own escape is caught.
 		//
 		// none of these has a resolve-time twin the way packages/form's boundary does
 		// (packages/form/vite.embed.config.ts): that gate exists because the embed ships into a
-		// stranger's page and `lint` never runs in `build` or `deploy`. none of packages/operator,
-		// packages/gallery and packages/emails-preview is ever built or
-		// deployed, so lint-in-ci (ci.yml) is the whole gate and is proportionate to what
-		// each package actually reaches.
+		// stranger's page and `lint` never runs in `build`. none of packages/operator,
+		// packages/gallery and packages/emails-preview is ever built or deployed, so lint-in-ci
+		// (ci.yml) is the whole gate and is proportionate to what each package actually reaches.
 		{
 			// packages/operator is the leaf: it may reach into no app-like package, and it
 			// carries no $lib alias of its own — it is consumed by several of them (app, gallery,
@@ -243,11 +242,12 @@
 			}
 		},
 		{
-			// packages/gallery is a second consumer of the leaf, alongside packages/app: it declares @better-giving/operator as its one workspace:*
-			// dependency and reaches it only through that package's exports map. it declares no
-			// dependency on packages/app, and packages/app exposes no bare
-			// specifier for the graph to resolve one against — the graph refuses a bare specifier
-			// for want of a dependency, in tsc and Vite alike, before lint ever runs. what it
+			// packages/gallery is a consumer of the leaf, alongside packages/app and packages/emails:
+			// it declares @better-giving/operator as its one workspace:* dependency and reaches it
+			// only through that package's exports map. it declares no dependency on packages/app,
+			// and packages/app exposes no bare specifier for the graph to resolve one against — the
+			// graph refuses a bare specifier for want of a dependency, in tsc and Vite alike, before
+			// lint ever runs. what it
 			// cannot catch is a relative path — it carries no specifier and no alias to be absent,
 			// so it resolves silently regardless of either manifest. this rule is the one place
 			// that escape is caught.

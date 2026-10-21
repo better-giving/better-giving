@@ -248,8 +248,8 @@ type Target = {
 
 /**
  * one member of the shared rule: the rule that makes the control the box its target is placed
- * against, the control as drawn, and each neighbour as what it is, how far the target reaches toward it and the room the control stands
- * off it by.
+ * against, the control as drawn, and each neighbour as what it is, how far the target reaches
+ * toward it and the room the control stands off it by.
  */
 type Member = {
 	readonly holder: string;
@@ -308,8 +308,9 @@ const MEMBERS: Record<string, Member> = {
 };
 
 /**
- * the target the shared rule draws on a member. a size and an inset are measured from the holder's padding box, so `100%` is the drawn size less the border and
- * the border is added back to place the target against the border box.
+ * the target the shared rule draws on a member. a size and an inset are measured from the holder's
+ * padding box, so `100%` is the drawn size less the border and the border is added back to place
+ * the target against the border box.
  */
 function target(member: string): Target {
 	const entry = MEMBERS[member];

@@ -3,9 +3,9 @@
 // **one spelling, because two ends read it.** the PayPal adapter
 // (`packages/app/src/lib/server/payments/paypal.ts`) registers the listener on the PayPal app; the
 // deployment serves the address and reads what arrives. the address joined differently at the two
-// ends is a listener that reads as absent to the deployment and one
-// press away from a second listener, and a delivery the listener was never subscribed to is a gift
-// nothing reports as missing — an approved PayPal order is never captured without its delivery
+// ends is a listener that reads as absent to the deployment and one press away from a second
+// listener, and a delivery the listener was never subscribed to is a gift nothing reports as
+// missing — an approved PayPal order is never captured without its delivery
 // (`packages/app/src/routes/api.paypal.webhook.ts`).
 //
 // what is served at the address is `packages/app/src/routes/api.paypal.webhook.ts`, whose path
@@ -137,9 +137,10 @@ export const REVERSAL_EVENT_TYPES = [
  *
  * everything outside it verifies, reports `ignored`, and is answered — a listener subscribed to more
  * than this is noisy rather than broken. it is what the create hands a listener as its
- * `event_types`, and what the deployment reports as `requiredEventTypes` when it reads the app back —
- * so the day a member is added here every registered listener reads as incomplete until it is
- * registered again.
+ * `event_types`, and what the deployment reports as `requiredEventTypes` when it reads the app
+ * back — so the day a member is added here every registered listener reads as incomplete until it
+ * is resubscribed to this list, which keeps its id (`resubscribeWebhookEndpoint` in
+ * `packages/app/src/lib/server/payments/paypal.ts`).
  */
 export const SUBSCRIBED_EVENT_TYPES = [
 	...SETTLEMENT_EVENT_TYPES,

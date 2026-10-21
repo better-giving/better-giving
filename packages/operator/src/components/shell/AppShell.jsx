@@ -77,14 +77,13 @@ import { Button } from '../controls/Button.jsx';
  * waiting — nothing has arrived and there is nothing on it to act on — and a screen with anything
  * to do on it is read from the top. ../../styles/adm.css's `.adm-main--centred` is the rule and
  * holds why the page rather than the column carries it.
- * @property {ReactNode} [wayOut] the way out: the dashboard's sign-out. drawn
- * in the narrow band, and in the rail's foot when no `foot` is handed. unstated, it is the quiet
+ * @property {ReactNode} [wayOut] the way out: the dashboard's sign-out. drawn in the narrow band,
+ * and in the rail's foot when no `foot` is handed. unstated, it is the quiet
  * button a specimen shows; `null` is none. absence cannot say that: a slot with a default of its
  * own reads nothing stated as a request for the default. a way out carrying a mark and a word
  * wraps the word in `.adm-signout__word`, so the icon rail can show the mark alone.
  * @property {ReactNode} [foot] what the rail's foot holds in place of `wayOut`. absent, the foot
- * holds `wayOut`; a foot that
- * comes to `null` either way is not drawn.
+ * holds `wayOut`; a foot that comes to `null` either way is not drawn.
  * @property {ReactNode} [head] the panel's strip, over the page: `.adm-headstrip`, holding what the
  * caller hands it — the dashboard's trail of pages on a nested screen. absent, no strip: a screen
  * named by its tab title and its marked rail cell has nothing for one to add.
@@ -506,9 +505,9 @@ export function PanelRoute({ bar, foot, bare = false, children }) {
 			{/* each strip is the row it is written in — ../../styles/adm.css places nothing by name —
 			    so the head stands before the panel and the foot after it. a route handed no strip draws
 			    none rather than an empty one: the row would stand at that edge with nothing in it, and
-			    the panel would centre in what is left beside a strip nobody can see. the sheet tracks all three combinations that carry
-			    one, so a route with a foot and no head is a panel centred over its foot rather than one
-			    dropped into the top row. */}
+			    the panel would centre in what is left beside a strip nobody can see. the sheet tracks
+			    all three combinations that carry one, so a route with a foot and no head is a panel
+			    centred over its foot rather than one dropped into the top row. */}
 			{bar === undefined ? null : (
 				<div className="adm-head">
 					<div className="adm-headstrip">{bar}</div>

@@ -73,8 +73,8 @@ function Stated(props: { rows: readonly RepeatingRow[] }) {
  * the rows as a list named by position draws them: the box's id is its place in the list and the
  * identity that keys it is the row's own.
  *
- * the site list on the donation forms screen is one — a row may be blank and two rows may hold the same
- * text while an operator is mid-edit, so nothing in a row's *value* names it. what the form layer
+ * the site list on the donation forms screen is one — a row may be blank and two rows may hold the
+ * same text while an operator is mid-edit, so nothing in a row's *value* names it. what the form layer
  * mints per row is what does.
  */
 function byPosition(rows: readonly string[]): RepeatingRow[] {

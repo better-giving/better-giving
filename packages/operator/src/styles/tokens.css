@@ -5,7 +5,7 @@
    /admin.
 
    complete and closed, and that is a claim about the tree rather than an intention: no scoped
-   style block on either operator surface spells a colour, a length, a type bundle, a radius, a
+   style block on any operator screen spells a colour, a length, a type bundle, a radius, a
    duration or an easing of its own. a gate holds the first four of those and the last two are
    read off the tree rather than held: each surface keeps its own gate over its own screens —
    packages/app/src/lib/admin/styles/raw-color.spec.ts and styles/conformance.spec.ts are the
@@ -23,8 +23,8 @@
    every number by hand.
 
    one reader cannot read any of this, and it is ./tokens.ts. a mail is a set of inline style
-   attributes rendered by clients that resolve no custom property, and a worker has no file system
-   at send time, so packages/emails reads a copy of the values it needs as plain strings — resolved
+   attributes rendered by clients that resolve no custom property, so packages/emails reads a
+   copy of the values it needs as plain strings — resolved
    through their `var()` chains, converted to hex and pixels at packages/emails/src/tokens.ts, and
    held to this file by ./tokens.spec.ts. changing a value copied there fails that spec until the
    copy follows, which is the whole of what stops a mail from sending last month's colour.
@@ -137,12 +137,12 @@
 
    the same capability word takes different tones on different screens, and that is the rule
    rather than an inconsistency: the tone is chosen by the consequence on the screen it is read
-   on, not by the capability. "payments are not set up" is attention where the sentence is that
-   no donation can be charged, and blocker on the form-writing screen, where the sentence is that
-   this form cannot go live. each screen maps its own — the form block at
-   packages/app/src/lib/admin/forms/readiness.tsx's `TONES`, exhaustive over
-   packages/app/src/lib/forms/readiness.ts's severities, so a new one is a type error rather
-   than a line that quietly reads as the wrong tone.
+   on, not by the capability. the blockers a form has are blocker on that form's page, where the
+   sentence is that this form cannot go live, and attention on the new form, where the sentence
+   is that it will be saved as a draft. each screen maps its own — the form block at
+   packages/app/src/lib/admin/forms/readiness.tsx's `BLOCKED`, exhaustive over the screens it is
+   drawn on, so a new one is a type error rather than a band that quietly reads as the wrong
+   tone.
 
    ---------- the twelve rungs, and what each number means ----------
 
@@ -867,10 +867,9 @@
 		--admin-border-width-strong: 2px;
 		--admin-rule: var(--admin-border-width) solid var(--admin-divider);
 		--admin-hairline: var(--admin-border-width) solid var(--admin-border);
-		/* the band a landed save and a card whose run is going carry at one edge, the strip over a
-		   rail tab's word, and at half, the line over a move to another page. it is the same number
-		   as `--admin-focus-bleed` below and means a different thing, so neither points at the
-		   other. */
+		/* the strip over a rail tab's word, and at half, the line over a move to another page. it
+		   is the same number as `--admin-focus-bleed` below and means a different thing, so neither
+		   points at the other. */
 		--admin-edge: 3px;
 
 		/* the ring is a band outside the control's own edge rather than a weight on it, so it is
@@ -947,9 +946,7 @@
 		   move, which is why it is the one entry here that does not collapse below.
 
 		   state   - a control's fill answering something and its border with it: the pointer, so a
-		             dense page feels alive under the hand, and the step of a run landing under the
-		             card reporting it, which at this length is the fill arriving rather than a
-		             second bar being painted.
+		             dense page feels alive under the hand.
 		   reveal  - a disclosure body and the dialog's entrance; a body that appears with no
 		             movement reads as a repaint rather than as an opening.
 		   confirm - the save button's swap to saved. the only motion that reports an outcome
@@ -963,8 +960,8 @@
 		             a sixth of it, so a re-pointing here moves the stagger with the loop and
 		             the dots cannot come to lap each other.
 		   braille-bar - the progress bar: twenty braille cells as the document's own waiting
-		             face, the way a terminal draws a bar, and a line along the viewport's top edge over a
-		             move to another page while the destination reads. both fill fast to a third,
+		             face, the way a terminal draws a bar, and a line along the viewport's top edge
+		             over a move to another page while the destination reads. both fill fast to a third,
 		             slower to two thirds, then crawl to nine tenths and hold,
 		             because nothing is measured — it says only that the screen is still on its way.
 		             the last tenth is the state duration's, not this one's: ./adm.css rushes
@@ -972,9 +969,8 @@
 		             below, and the screen waits for the hold rather than for the rush.
 		   dwell   - the beat a finished thing is seen for before the screen it stands on is
 		             replaced. every progress bar in /admin completes and is seen complete: the
-		             full state of the rush above begins at the rush's last instant and the run
-		             bar's fill is full only at the instant its transition ends, so without this
-		             the bar is on screen full for about one frame. ./adm.css spends it as
+		             full state of the rush above begins at the rush's last instant, so without
+		             this the bar is on screen full for about one frame. ./adm.css spends it as
 		             `adm-dwell`, a keyframe list that changes nothing and exists to be waited
 		             on. */
 		--admin-dur-state: 80ms;
@@ -983,9 +979,9 @@
 		--admin-dur-pulse: 1.4s;
 		--admin-dur-dots: 720ms;
 		--admin-dur-braille-bar: 6s;
-		/* three of `--admin-dur-state`, which is a quarter of a second and is the length of both
-		   moves this holds after — the bar's rush and the run bar's fill each run at that step, so
-		   the hold is three times the move it follows. the arithmetic is stated and not spelled:
+		/* three of `--admin-dur-state`, which is a quarter of a second, and the move this holds
+		   after — the bar's rush — runs at that step, so the hold is three times the move it
+		   follows. the arithmetic is stated and not spelled:
 		   that step collapses to nothing under reduced motion and this must not. */
 		--admin-dur-dwell: 240ms;
 		--admin-ease-state: cubic-bezier(0.2, 0, 0, 1);

@@ -4,7 +4,7 @@ import { defineConfig } from 'vite';
 //
 // ./package.json's `build` names ./vite.embed.config.ts explicitly on both of its two passes, so
 // this file is reached only by a bare `vite` — which is what `dev` runs and what nothing else
-// runs. the embed the worker serves is built by that other config and staged into packages/app by
+// runs. the embed the app serves is built by that other config and staged into packages/app by
 // packages/app/scripts/stage-embed.js, and neither step reads this file or ./index.html.
 //
 // no `test` block either: vitest resolves ./vitest.config.ts ahead of this file and does not merge

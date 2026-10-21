@@ -16,10 +16,10 @@
 // this module's — ./save-state.react.ts names no form layer of its own. the dashboard answers it
 // with the form layer's own reading of its values against the values it was seeded with
 // (`useAdminForm` in packages/app/src/lib/admin/use-admin-form.ts): it is derived rather than
-// sampled, so a group
-// whose rows are added and dropped by a control that changes the payload and posts nothing moves it
-// with no event to read at. the one group whose arming is not that comparison — the program group on
-// /admin/forms/[id] — hands in a reading of its own and says there why.
+// sampled, so a group whose rows are added and dropped by a control that changes the payload and
+// posts nothing moves it with no event to read at. the one group whose arming is not that
+// comparison — the program group on /admin/forms/[id] — hands in a reading of its own and says
+// there why.
 //
 // the third is that a confirmation ends. both halves of what draws one are durable — the marker a
 // redirect published stands until the next `load`, and a form nobody is touching stays untainted —

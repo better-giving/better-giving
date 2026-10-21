@@ -12,17 +12,14 @@
 // is what the sign-in path asks.
 //
 // **the value is never echoed and never measured.** it is the whole of this app's credential
-// entropy and the sentence is printed under a box somebody is typing into, so neither the value nor
-// its length is in one — a refusal read over a shoulder is a refusal that gave something away.
+// entropy and the sentence is printed inside a 5xx body, so neither the value nor its length is in
+// one — a refusal that carries either is a refusal that gave something away.
 //
-// **the sentences a typed value is refused by are the operator's own words; the ones about a
-// variable's shape keep the variable's name.** what an operator can reach by typing is a value too
-// short and a value that is only spaces, and both are answered in the words of the box they are
-// standing at — a fundraiser who typed six characters is not being told about an environment
-// variable. absent, empty and not-a-string are reachable only from a deployment's env, where the
-// reader is an agent holding a 5xx body (CLAUDE.md) and the name is the useful half. what that body
-// needs beyond either — which variable, and where to set it — its own wrapper states
-// (`readStaffCredential` in `packages/app/src/lib/server/auth/credential.ts`).
+// **the sentences about the variable's shape name it; the ones about its value do not.** absent,
+// empty and not-a-string name `ADMIN_PASSWORD`, and a value too short or only spaces is described
+// without it. every one reaches its reader inside the sentence its wrapper states
+// (`readStaffCredential` in `packages/app/src/lib/server/auth/credential.ts`), which names the
+// variable and where to set it, for a reader who is often an agent holding a 5xx body (CLAUDE.md).
 //
 // this package is a leaf and imports nothing of the app's. it is plain typescript rather than zod:
 // the checks below are a sequence where the first failure is the only message worth showing, and a
@@ -34,7 +31,8 @@
  * this is the credential standing in front of `/admin`. there is no KDF to make guessing expensive —
  * `packages/app/src/lib/server/auth/credential.ts` argues why there can be none — so a short
  * password is guessable online rather than merely offline, and what bounds the rate is the
- * `SIGN_IN_RATE_LIMITER` binding: `signInRateLimitKey` in
+ * in-process `SIGN_IN_RATE_LIMITER` (`packages/app/src/lib/server/runtime/rate-limiter.ts`):
+ * `signInRateLimitKey` in
  * `packages/app/src/lib/server/api/rate-limit.ts`, charged on the sign-in path, rather than the cost
  * of a compare. refusing a short one is worth more than accepting it politely.
  *
@@ -73,9 +71,9 @@ export type AdminPasswordReading =
  * `undefined < 12` is false and a truthy non-string passes as a credential nothing could ever match.
  *
  * absent, empty and whitespace-only are three sentences rather than one because they are three
- * different mistakes: a variable nobody set, a box submitted blank, and a value somebody meant that
- * carries nothing to compare. the first two name the variable and the third does not, for the
- * reason the header gives: only the third is a thing an operator can type.
+ * different mistakes: a variable nobody set, a variable set to nothing, and a value somebody meant
+ * that carries nothing to compare. the first two name the variable and the third does not, for the
+ * reason the header gives: only the third is about the value.
  *
  * nothing is trimmed. whitespace is a legal password character and trimming would change the
  * credential, so a leading space is kept and a value that is only whitespace is refused outright.

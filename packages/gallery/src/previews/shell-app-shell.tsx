@@ -42,8 +42,9 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
  * marked, which is the only honest rail to draw there and is what the centred specimen has.
  *
  * `groups` has no default and is always handed: drawn as a short rail of four with marks, as the
- * dashboard's three groups with marks, as a run with a headed group and status marks, as one entry, as none, and as the dashboard's with four entries stating `bar` and a headed
- * integrations group on the sheet. the empty rail is a `nav` with no cells in it, which below the
+ * dashboard's three groups with marks, as a run with a headed group and status marks, as one
+ * entry, as none, and as the dashboard's with four entries stating `bar` and a headed integrations
+ * group on the sheet. the empty rail is a `nav` with no cells in it, which below the
  * wide breakpoint is an empty strip across the foot of the window. a tab is an equal share of the
  * width whatever the count, and the bar is flat: a headed group's entries stand as tabs of their
  * own.
@@ -76,8 +77,8 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
  * specimen here is the signing-in one, which nothing else in the gallery draws.
  *
  * its two strips are drawn both ways, and neither is this route's own — the head is `.adm-head` and
- * the foot `.adm-footstrip`. the pair is what says a strip does not move the panel:
- * absent, the route is one row and the panel is centred in the window; with a strip at each edge the
+ * the foot `.adm-footstrip`. the pair is what says a strip does not move the panel: absent, the
+ * route is one row and the panel is centred in the window; with a strip at each edge the
  * panel is centred in what they leave. the two panels stand at different heights on the page and both
  * are in the middle of the space they were given — which is invisible in either one alone. the second
  * specimen carries both, because the strips are tracked together and a route showing one of them says

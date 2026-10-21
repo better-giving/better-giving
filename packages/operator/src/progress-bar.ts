@@ -3,10 +3,9 @@
 //
 // ./components/status/ProgressBar.jsx is that bar. the dashboard's packages/app/src/routes/_app.tsx
 // draws it over a move between the screens it frames, and holds it in its `clientMiddleware`. the
-// hold is what knows the reading has landed. the two share nothing: a fallback stands in for a route that has not rendered, and a
-// pending navigation's page has not rendered either, so there are no props between them and no
-// component above both. this module is the seam — the bar subscribes, the hold flips it and waits
-// for the bar to land.
+// hold is what knows the reading has landed. the two share nothing: a pending navigation's page has
+// not rendered, so there are no props between them and no component above both. this module is
+// the seam — the bar subscribes, the hold flips it and waits for the bar to land.
 //
 // **the bar finishes, and is seen full, before the page changes.** a bar taken away part full
 // reports that the screen gave up on the reading rather than that it arrived.
@@ -80,8 +79,8 @@ export function isDrawn(pathname: string): boolean {
  * whether a reading of `to` stands behind the bar, with `on` the pathname drawn now.
  *
  * the pathname and never the whole address: a search parameter changes what is over the page it
- * is on rather than the page, and a press re-reads that page and reports at its own control. before anything is drawn, every reading is behind the
- * bar the document draws.
+ * is on rather than the page, and a press re-reads that page and reports at its own control.
+ * before anything is drawn, every reading is behind the bar the document draws.
  */
 export function movesPage(to: string, on: string | null): boolean {
 	return on === null || to !== on;

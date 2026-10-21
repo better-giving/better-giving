@@ -863,12 +863,12 @@ describe('the strips a panel route can carry', () => {
 
 	it('draws what a surface hands it, on the strip inside the head and above the panel', () => {
 		// the head is the first row because it is written first — ../../styles/adm.css places
-		// nothing by name, the same way the head is the bare shell's first row. a strip written
-		// after the panel is the panel centred against the wrong half of the window.
+		// nothing by name. a strip written after the panel is the panel centred against the wrong
+		// half of the window.
 		//
 		// the two ends land on the strip and not on the band around it: the band is what a surface
-		// stands a line under (./BareShell.jsx's `head` takes both), so ends handed straight into it
-		// would be two more of those lines rather than the two ends of a row.
+		// stands a line under, so ends handed straight into it would be two more of those lines
+		// rather than the two ends of a row.
 		const root = render(PanelRoute, {
 			bar: (
 				<>

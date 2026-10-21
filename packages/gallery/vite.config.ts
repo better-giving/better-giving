@@ -3,9 +3,9 @@ import { defineConfig } from 'vitest/config';
 
 // the gallery's dev server and its test pool, and nothing that produces an artifact.
 //
-// no `build` script names a command in ./package.json, and the root package.json's `build` and
-// `deploy` scripts filter to @better-giving/app alone — CLAUDE.md's permanent-contracts section on
-// operator commands is what those forwards follow, and neither forward names this package.
+// no `build` script names a command in ./package.json, and the root package.json's `build` script
+// filters to @better-giving/app alone — the forward AGENTS.md → Workspace describes for operator
+// commands, and it names no other package.
 //
 // the port is pinned so `pnpm run gallery` opens the same address every time, and `strictPort` is
 // what makes a second copy fail loudly rather than move itself to a port the first one's tab is not

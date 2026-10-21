@@ -35,8 +35,9 @@ import {
  * is invisible on the page and reachable only by reading the line out, so the specimen carrying one
  * is marked in its own copy.
  *
- * the second ledger is the steps run: `done`, `running` and `waiting`, which is what a line reports
- * about a subject being made, and it is drawn in the line's own two tracks rather than inset.
+ * the second ledger carries the steps run: `done`, `running` and `waiting`, which is what a line
+ * reports about a subject being made, and it is drawn in the line's own two tracks rather than
+ * inset.
  *
  * the two lines after it are what a running line does when it has no run to open into. one is
  * handed nothing and one is handed a single step, and both draw the same thing — no list, and the
@@ -68,9 +69,9 @@ import {
  * across: the mark, the label, the status word and the aside each hold one column for the whole
  * run. it is the one specimen here that needs more than one line to show anything at all — a row
  * cannot be out of line with itself — so it is six rows with three of them carrying a caption as
- * their aside, two of them putting their word on the mark and
- * leaving that column standing empty, and one carrying a sentence, which is where the sentence
- * taking the whole row under the head rather than the label's own column is visible. below the
+ * their aside, two of them putting their word on the mark and leaving that column standing empty,
+ * and one carrying a sentence, which is where the sentence taking the whole row under the head
+ * rather than the label's own column is visible. below the
  * floor packages/operator/src/styles/adm.css states, the run falls back to the wrapping head every
  * ledger above it draws, so narrowing the window is how that half is seen.
  *

@@ -31,9 +31,9 @@ build/
 *.db-shm
 
 # Scratch notes for trying this deployment end to end — deployed hostnames, a form
-# id, test card numbers. Ignored rather than committed for the reason wrangler.jsonc
-# holds no `database_id`: a fork inherits what is committed, and every line of it
-# points at a resource the fork cannot reach.
+# id, test card numbers. Ignored rather than committed (AGENTS.md → Never): a fork
+# inherits what is committed, and every line of it points at a resource the fork
+# cannot reach.
 /testing.md
 
 # OS

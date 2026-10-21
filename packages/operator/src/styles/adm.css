@@ -507,9 +507,8 @@
 	   writes, which is the rule the busy twins above state for every rank. what this rule is for is
 	   a save press that is not on that rank — a bare `.adm-btn` wearing `.adm-save` — and the band is
 	   what makes it read as the same control as ../components/controls/SaveButton.jsx's. that button
-	   reaches
-	   `.adm-btn--primary[aria-busy='true'][aria-disabled='true']` above on its own, which carries these same
-	   three values by carrying the same rank's rung.
+	   reaches `.adm-btn--primary[aria-busy='true'][aria-disabled='true']` above on its own, which
+	   carries these same three values by carrying the same rank's rung.
 
 	   the cursor is this rule's alone and reaches both: it is under the pointer only and never for a
 	   keyboard, and a closed press would otherwise take the closed rung's.
@@ -752,8 +751,8 @@
 
 	   **a line carrying more than its own head is not a statement in that run, and takes the
 	   boundary step instead.** a consequence sentence, a way on or a run of steps makes the entry
-	   three to eight lines tall, and the mark returning to the gutter is then
-	   too far down the page to be seen doing it — at the narrowest step the distance between two
+	   three to eight lines tall, and the mark returning to the gutter is then too far down the page
+	   to be seen doing it — at the narrowest step the distance between two
 	   such entries is the distance between two of one entry's own steps, and nothing says where one
 	   ends. the wider step is taken by both lines of such a pair, so the boundary is one size
 	   whichever of the two grew. */
@@ -1140,9 +1139,9 @@
 	}
 
 	/* the bar over a move to another page, drawn from the press until the destination has read.
-	   packages/app/src/routes/_app.tsx draws it: a line along
-	   the top edge of the viewport, and the label naming what is loading is in the tree for a
-	   reader of it (`.adm-vh`) and nowhere on the screen.
+	   packages/app/src/routes/_app.tsx draws it: a line along the top edge of the viewport, and the
+	   label naming what is loading is in the tree for a reader of it (`.adm-vh`) and nowhere on the
+	   screen.
 
 	   fixed to the top of the viewport and out of the flow, so the page being left beneath it does
 	   not shift as it appears and again as it goes. no ground, no rule and no padding: it is the
@@ -1602,10 +1601,10 @@
 	}
 
 	/* the same boundary where the named block opens a form of its own rather than standing beside
-	   what precedes it. a block whose press posts an intent is wrapped in the form that press submits,
-	   which leaves it first in its parent with no
-	   sibling for the rule above to key on — and the heading then sits the container's gap under the
-	   block before it, closer than two lines of that block's ledger sit to each other. */
+	   what precedes it. a block whose press posts an intent is wrapped in the form that press
+	   submits, which leaves it first in its parent with no sibling for the rule above to key on —
+	   and the heading then sits the container's gap under the block before it, closer than two lines
+	   of that block's ledger sit to each other. */
 	* + form > .adm-named:first-child {
 		margin-block-start: var(--admin-space-8);
 	}
@@ -2188,11 +2187,11 @@
 	   corner — and square-cornered for the reason ./tokens.css keeps the round corner to the status
 	   word. it is drawn at the 24px that clears 2.5.8's minimum, and the target a finger lands on is
 	   grown from it in the block axis alone: `--admin-touch-min` tall and centred on it, the thumb's
-	   own width across, drawn out of flow on `::before`. the drawn
-	   thumb and the row it runs along keep their size, and a press on the target is a press on the
-	   thumb. it is never wider than the thumb, because two thumbs a stop apart on a narrow panel stand
-	   closer than the floor, and a target reaching sideways would lie over its neighbour's drawn body
-	   and take the press meant for it — and would overhang the track's ends past the inset below.
+	   own width across, drawn out of flow on `::before`. the drawn thumb and the row it runs along
+	   keep their size, and a press on the target is a press on the thumb. it is never wider than
+	   the thumb, because two thumbs a stop apart on a narrow panel stand closer than the floor, and
+	   a target reaching sideways would lie over its neighbour's drawn body and take the press meant
+	   for it — and would overhang the track's ends past the inset below.
 
 	   the track is a fill with no border, so under forced colours it would vanish with its ground;
 	   the transparent outline is what that scheme paints instead, as ./base.css's ring does. */
@@ -6061,12 +6060,11 @@
 	   date field's calendar, the shell's skip link and a question the server drew before the script
 	   lifts it (`.adm-dialog--inline`) at 3 — each of those is drawn over the bar, and the calendar
 	   is portalled to the body, so it too is settled by its step and not by where it stands in the
-	   document. a
-	   modal is in the top layer and is over all three without asking for a step at all. the bar's
-	   More sheet and its scrim are the one pair that stand at the bar's own step, 2, and it is the
-	   order that settles them: packages/operator/src/components/shell/AppShell.jsx writes both
-	   before the bar, so the bar draws over them and stays undimmed while the sheet is open — and
-	   live, which that file's `persistentElements` is what keeps it.
+	   document. a modal is in the top layer and is over all three without asking for a step at all.
+	   the bar's More sheet and its scrim are the one pair that stand at the bar's own step, 2, and
+	   it is the order that settles them: packages/operator/src/components/shell/AppShell.jsx writes
+	   both before the bar, so the bar draws over them and stays undimmed while the sheet is open —
+	   and live, which that file's `persistentElements` is what keeps it.
 
 	   the platform's own inset at the foot of the screen sits under the tabs rather than inside
 	   them, so a tab keeps the whole of its height wherever it is drawn. */
@@ -6162,10 +6160,9 @@
 	}
 
 	/* the bar's More sheet: a modal card standing on the top edge of the bar, holding the rail's
-	   other destinations as the column draws them — the name, the mark, the space between groups and
-	   the headings —
-	   at the height a finger needs. it is only ever open below the wide breakpoint, because
-	   AppShell.jsx closes it the moment More stops being drawn.
+	   other destinations as the column draws them — the name, the mark, the space between groups
+	   and the headings — at the height a finger needs. it is only ever open below the wide
+	   breakpoint, because AppShell.jsx closes it the moment More stops being drawn.
 
 	   what it stands on is `--_bar-height`, the bar as it is drawn, and the card is capped to what
 	   is left above it, scrolling inside itself on a short landscape screen rather than running off
@@ -6395,8 +6392,8 @@
 	}
 
 	/* the panel's head is a line over the page and no band: no rule closes it and it pads no block
-	   end, so the global `.adm-head` below keeps both for the panel route alone.
-	   it stands the panel inset's step from the top, and what parts it from the page is the body's
+	   end, so the global `.adm-head` below keeps both for the panel route alone. it stands the panel
+	   inset's step from the top, and what parts it from the page is the body's
 	   own top step, `.adm-head + .adm-panelbody` below. */
 	.adm-rail ~ .adm-main > .adm-head {
 		padding-block: var(--admin-space-6) 0;
@@ -6937,8 +6934,9 @@
 		border-radius: var(--admin-radius);
 	}
 
-	/* the panel's share of the route's inset. it is a bound and not a margin: the box is `inline-size: 100%` of the row it is centred in, and a margin on that is a
-	   box wider than the track it stands in. */
+	/* the panel's share of the route's inset. it is a bound and not a margin: the box is
+	   `inline-size: 100%` of the row it is centred in, and a margin on that is a box wider than the
+	   track it stands in. */
 	.adm-panelroute > .adm-panel {
 		max-inline-size: min(var(--admin-measure-panel), 100% - 2 * var(--admin-space-6));
 	}
@@ -6992,8 +6990,8 @@
 	   identity and a line of small print read as loose items on the page rather than as the edges of
 	   the route. `--admin-rule` is what this sheet divides one ground with — `.adm-section +
 	   .adm-section` and `.adm-rail__foot` are the same case — and `--admin-hairline` is a box's own
-	   edge and belongs to the panel. the block step is the
-	   strip's own and is written on the side the rule is: the other side is this route's padding, so
+	   edge and belongs to the panel. the block step is the strip's own and is written on the side
+	   the rule is: the other side is this route's padding, so
 	   a step there would be a step counted twice.
 
 	   the head is a slot and the surface fills it: what stands in it is the calling surface's.
@@ -7001,11 +6999,10 @@
 	   `justify-self` because the route centres what it holds and a strip is the one thing in it that
 	   spans the width. both strips stand their ends apart, so a surface handing two nodes gets one
 	   at each, and they are centred against each other rather than stood on a baseline: an end may
-	   be a picture in a box of its own — the mark at the foot's trailing end is one — and a picture
-	   has no baseline, so flex synthesises one from its bottom edge and stands the box that much
-	   above the words across from it. two runs of type at the sizes a strip sets sit within a pixel
-	   of each other either way, so centring costs the text pair nothing and is the only thing that
-	   holds a picture on the line.
+	   be a picture in a box of its own, and a picture has no baseline, so flex synthesises one from
+	   its bottom edge and stands the box that much above the words across from it. two runs of type
+	   at the sizes a strip sets sit within a pixel of each other either way, so centring costs the
+	   text pair nothing and is the only thing that holds a picture on the line.
 
 	   both can wrap, and wrapped the two ends are two rows starting at the same edge.
 	   packages/operator/src/components/shell/AppShell.jsx's `AppShell` and `PanelRoute` write the
@@ -7047,10 +7044,10 @@
 	}
 
 	/* a press on this strip takes the box a hand has to find, **on both axes**. a press that is its
-	   mark and no word is given its size by nothing inside it on either axis: the small soft rank is sized for a word, and left to
-	   itself it is a line of small print tall and two insets around a glyph wide. the floor is what
-	   makes the box square, and it is stated on the inline axis for that reason — a press carrying
-	   a word is wider than the floor on its own and never needed it.
+	   mark and no word is given its size by nothing inside it on either axis: the small soft rank is
+	   sized for a word, and left to itself it is a line of small print tall and two insets around a
+	   glyph wide. the floor is what makes the box square, and it is stated on the inline axis for
+	   that reason — a press carrying a word is wider than the floor on its own and never needed it.
 
 	   the rank is the soft one because the press stands on the band with nothing around it: the
 	   fill is the whole of its boundary, one step down the neutral ramp from the page, and a

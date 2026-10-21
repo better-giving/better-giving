@@ -20,6 +20,7 @@ export const CHARIOT_WEBHOOK_PATH = '/api/chariot/webhook';
  *
  * a second spelling of one value: it matches `SETTLEMENT_CATEGORY` in
  * `packages/app/src/lib/server/payments/chariot.ts`, which the webhook settles on and the
- * subscription is created with.
+ * subscription is created with. no spec holds the two level, so a change to one is a change to the
+ * other in the same commit.
  */
 export const CHARIOT_EVENT_CATEGORY = 'grant.updated';
