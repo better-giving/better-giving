@@ -7,7 +7,9 @@
 // mean the words being re-declared in a component with nothing tying the two lists together.
 //
 // the dependency runs server -> shared and never back: the judgement imports this, this imports
-// nothing.
+// nothing but the status union beside it.
+
+import type { FormStatus } from './statuses';
 
 /**
  * what one unresolved thing costs on a donation-form screen.
@@ -58,9 +60,9 @@ export interface FormReadinessLine {
  * on rather than only reports.
  *
  * a blocker means `publishedConfig` in `$lib/server/forms/published-config.ts` serves nothing, so
- * the status box on the screens that write a form does not offer Live while one stands and the
- * action behind it refuses one anyway. a warning never stops a write — that is the whole
- * difference between the two words.
+ * the status box on the screens that write a form does not offer a draft Live while one stands and
+ * the action behind it refuses one anyway (`liveOffered`). a warning never stops a write — that is
+ * the whole difference between the two words.
  *
  * `null` is the resolved deployment: `formsReadiness` answers `null` once every line is done, so
  * the absence of a block is the absence of a blocker.
@@ -71,6 +73,24 @@ export interface FormReadinessLine {
  */
 export function anyBlocker(lines: readonly FormReadinessLine[] | null): boolean {
 	return lines?.some((line) => line.severity === 'blocker') ?? false;
+}
+
+/**
+ * whether a form stored as `stored` may be saved Live against this block: always for a form that
+ * is already live, and otherwise only while nothing blocks.
+ *
+ * a blocker withholds the move to Live and never takes Live away. the status box is seeded with
+ * the stored status, and a box seeded `live` with no Live option draws Draft — so withholding the
+ * option from a live form makes every save of its group an unpublish that outlasts the blocker.
+ *
+ * read by the editor's `load` for what the select offers and by its action against the status the
+ * submitted version was drawn from.
+ */
+export function liveOffered(
+	stored: FormStatus,
+	lines: readonly FormReadinessLine[] | null
+): boolean {
+	return stored === 'live' || !anyBlocker(lines);
 }
 
 /**

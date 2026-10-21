@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { createRoutesStub, redirect } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { WHICH_FORM } from '$lib/forms/definition';
+import { type FormReadinessLine, liveOffered } from '$lib/forms/readiness';
 import DonationForm from './_app.admin.forms.$id';
 
 // a donation form's record, pressed through the redirect every write on it answers with.
@@ -46,13 +47,20 @@ const RECORD = `/admin/forms/${FORM_ID}`;
 type Loaded = Parameters<typeof DonationForm>[0]['loaderData'];
 
 /**
- * a draft form with nothing just landed, on a deployment ready to publish it — or, `blocked`, on
- * one with no organisation identity, which withholds Live.
+ * a form stored as `status` with nothing just landed, on a deployment ready to publish it — or,
+ * `blocked`, on one with no organisation identity, which withholds Live from a draft.
  */
-function record(confirmArchive: boolean, blocked = false): Loaded {
+function record(
+	confirmArchive: boolean,
+	blocked = false,
+	status: 'draft' | 'live' = 'draft'
+): Loaded {
+	const readiness: FormReadinessLine[] | null = blocked
+		? [{ job: 'organisation', severity: 'blocker' }]
+		: null;
 	const values = {
 		name: 'Spring appeal',
-		status: 'draft',
+		status,
 		program_mode: 'none',
 		program_id: '',
 		min_minor: '5',
@@ -63,25 +71,25 @@ function record(confirmArchive: boolean, blocked = false): Loaded {
 	return {
 		id: FORM_ID,
 		name: values.name,
-		status: 'draft',
+		status,
 		currency: 'USD',
 		archived: false,
 		editor: {
-			nameBoxes: { name: values.name, status: 'draft' },
+			nameBoxes: { name: values.name, status },
 			programBoxes: { program_mode: 'none', program_id: '' },
 			givingBoxes: { min_minor: '5', max_minor: '100', suggested_amounts: ['25'] },
 			originsBoxes: { allowed_origins: ['https://example.org'] }
 		},
 		values,
 		snippet: '<script src="https://example.org/embed.js"></script>',
-		readiness: blocked ? [{ job: 'organisation', severity: 'blocker' }] : null,
+		readiness,
 		deployer: true,
 		sites: ['https://example.org'],
 		programs: [],
 		retiredProgram: null,
 		programMode: 'none',
 		pinnedProgram: null,
-		liveOffered: !blocked,
+		liveOffered: liveOffered(status, readiness),
 		saved: null,
 		archivedJustNow: false,
 		confirmArchive,
@@ -96,7 +104,11 @@ function record(confirmArchive: boolean, blocked = false): Loaded {
  *
  * `posted` is the form each body named, in the order the action received them.
  */
-function screen({ confirmArchive = false, blocked = false } = {}): {
+function screen({
+	confirmArchive = false,
+	blocked = false,
+	status = 'draft' as 'draft' | 'live'
+} = {}): {
 	root: HTMLElement;
 	posted: string[];
 } {
@@ -108,7 +120,7 @@ function screen({ confirmArchive = false, blocked = false } = {}): {
 			loader: () => new Promise<never>(() => {}),
 			Component: () =>
 				createElement(DonationForm as never, {
-					loaderData: record(confirmArchive, blocked),
+					loaderData: record(confirmArchive, blocked, status),
 					actionData: undefined,
 					params: { id: FORM_ID },
 					matches: []
@@ -210,6 +222,17 @@ it('says under the heading why the form cannot go live, and at the status box wh
 	const note = document.getElementById(`${status?.id}-note`);
 	expect(described).toContain(note?.id);
 	expect(note?.textContent).toBe('Live is unavailable until the items above are done.');
+});
+
+it('opens a live form under a blocker with Live chosen and its group holding nothing to save', () => {
+	const { root } = screen({ blocked: true, status: 'live' });
+
+	// what the box shows and what its group would post.
+	expect(document.getElementById(statusBoxId(root))?.textContent).toBe('Live');
+	expect(root.querySelector<HTMLSelectElement>('select[name="status"]')?.value).toBe('live');
+	expect(root.textContent).not.toContain('Live is unavailable');
+	// a box drawn holding something other than its seed arms the save, and the press posts it.
+	expect(buttonReading(root, 'Save name and status').getAttribute('aria-disabled')).toBe('true');
 });
 
 it('draws no readiness band and no status note on a deployment ready to publish', () => {

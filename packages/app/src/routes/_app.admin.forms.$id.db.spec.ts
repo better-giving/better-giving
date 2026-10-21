@@ -1073,6 +1073,15 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		expect(loaded.snippet).toContain(`form="${FORM_ID}"`);
 	});
 
+	it('keeps Live offered on a form that is already live while a blocker stands', async () => {
+		// a select seeded `live` with no Live option draws Draft, so the next save of the group would
+		// unpublish the form and leave it a draft once the blocker clears.
+		await goLive();
+		expect((await runLoad({ vars: NOTHING_SET })).liveOffered).toBe(true);
+		await clearOrgProfile();
+		expect((await runLoad()).liveOffered).toBe(true);
+	});
+
 	it('offers Live with a warning while a processor’s payment notices are unset', async () => {
 		// a gift is charged without them and never heard to settle, which is worth saying and not
 		// worth withholding Live over.
@@ -1117,6 +1126,23 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		);
 		expect(redirect?.status).toBe(303);
 		expect((await readForm(db, FORM_ID))?.name).toBe('Renamed while blocked');
+	});
+
+	it('renames a form that is already live while a blocker stands, and it stays live', async () => {
+		// the box was seeded `live` and offered it, so the save posts `live` back. a blocker
+		// withholds the move to Live; it never takes Live away from a form that has it.
+		await goLive();
+		const { redirect } = await post(
+			NAME_FORM,
+			FORM_ID,
+			submission(NAME_FORM, { name: 'Renamed while blocked', status: 'live' }),
+			NOTHING_SET
+		);
+		expect(redirect?.status).toBe(303);
+		expect(await readForm(db, FORM_ID)).toMatchObject({
+			name: 'Renamed while blocked',
+			status: 'live'
+		});
 	});
 
 	it('refuses a posted Live on a deployment holding no processor’s keys', async () => {

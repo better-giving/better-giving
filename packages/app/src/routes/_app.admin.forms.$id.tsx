@@ -45,7 +45,7 @@ import {
 	unlistedSites
 } from '$lib/forms/input-schema';
 import { PROGRAM_MODE_LABELS } from '$lib/forms/program-modes';
-import { anyBlocker, LIVE_WITHHELD } from '$lib/forms/readiness';
+import { LIVE_WITHHELD, liveOffered } from '$lib/forms/readiness';
 import {
 	EDITABLE_FORM_STATUSES,
 	type EditableFormStatus,
@@ -570,8 +570,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// whether the status box may offer Live at all. a blocker means `publishedConfig` serves
 			// nothing, so publishing here would produce a form that renders nothing on the org's own
 			// site — the name group's save re-checks this, because a filtered `<option>` list is not a
-			// control.
-			liveOffered: !archived && !anyBlocker(readiness),
+			// control. a form already live keeps the option, which `liveOffered` argues.
+			liveOffered: !archived && liveOffered(record.status, readiness),
 			// whether the viewer deployed the site, the predicate ./_app.tsx reads: the readiness block
 			// is worded for who can fix each line.
 			deployer: context.get(staff).id === STAFF_USER_ID,
@@ -647,7 +647,7 @@ export async function action(args: Route.ActionArgs) {
 	 *
 	 * the id comes from the route rather than from a field, so there is nothing here for a stale tab to
 	 * aim at a different form. this is the only group that can be refused for a reason no box states,
-	 * which is Live while a blocker stands.
+	 * which is a draft set Live while a blocker stands.
 	 */
 	async function saveName({ context, params, request }: Route.ActionArgs, body: FormData) {
 		const id = params.id;
@@ -674,22 +674,30 @@ export async function action(args: Route.ActionArgs) {
 		if (parsed.value.status === 'live') {
 			// the readiness block's blockers stand between a form and Live, and they are read here rather
 			// than carried from the loader: what a page was drawn against is not what is true when the
-			// button is pressed. the select does not offer Live while a blocker stands, but a filtered
-			// `<option>` list is markup and markup is not what stops a POST.
+			// button is pressed. the select does not offer a draft Live while a blocker stands, but a
+			// filtered `<option>` list is markup and markup is not what stops a POST.
 			//
 			// a form on no site is not one of them. a form is made ahead of the site it goes on, so an
 			// empty list publishes and the form serves wherever a site is ticked later.
+			//
+			// they withhold the move to Live and not Live itself, so the row's stored status is read
+			// beside them. that read can stand in for the status the submitted version was drawn
+			// from: `updateFormName` is a compare-and-set on that version, so a status that has moved
+			// since has moved the version too and the write below is refused as stale.
 			let profile: Awaited<ReturnType<typeof readOrgProfile>>;
+			let stored: Awaited<ReturnType<typeof readForm>>;
 			try {
-				profile = await readOrgProfile(db);
+				[profile, stored] = await Promise.all([readOrgProfile(db), readForm(db, id)]);
 			} catch (e) {
 				// the same banner a failed write gets, and it is the truthful one: nothing was saved and
 				// nothing an operator can do to a box would change that.
-				console.error('reading the organisation details for the Live check failed:', e);
+				console.error('reading the organisation details or the form for the Live check failed:', e);
 				return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 			}
 
-			if (anyBlocker(formsReadiness(profile, readConfigEnv(context.get(platform).env)))) {
+			// a missing row is left to the write below, which answers it as gone.
+			const readiness = formsReadiness(profile, readConfigEnv(context.get(platform).env));
+			if (stored !== null && !liveOffered(stored.status, readiness)) {
 				return invalid(400, submission.reject({ fieldErrors: { status: [LIVE_WITHHELD] } }));
 			}
 		}
