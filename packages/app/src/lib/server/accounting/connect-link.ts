@@ -35,6 +35,8 @@ import { secretEquals } from '../secret-compare';
 /** where a browser begins, and where Intuit sends it back. both are addresses on this deployment. */
 export const QUICKBOOKS_CONNECT_PATH = '/quickbooks/connect';
 export const QUICKBOOKS_CALLBACK_PATH = '/quickbooks/callback';
+/** the QuickBooks part of Books, drawn for the deployer alone (../../../routes/_app.admin.books.tsx). */
+export const QUICKBOOKS_SECTION_PATH = '/admin/books#quickbooks';
 
 /**
  * the address this deployment answers on, as every spelling of those two paths is built from.

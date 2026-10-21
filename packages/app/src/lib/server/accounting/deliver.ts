@@ -26,6 +26,7 @@ import type {
 	SendAttempt,
 	Sendable
 } from './provider';
+import { QUICKBOOKS_SECTION_PATH } from './connect-link';
 import { awaitingWhatItAnswers, CONNECTED_REALM } from './outbox';
 import { readSendable } from './record';
 
@@ -145,6 +146,11 @@ export type AccountingDeliveryDeps = {
 	readonly provider: AccountingProvider;
 	/** the mail transport the failure notice rides. its failures are reported, never raised. */
 	readonly email: EmailProvider;
+	/**
+	 * where this deployment answers, or null where nothing states it — a cron run has no request to
+	 * read one off — and the notice then names the QuickBooks part of Books by its path.
+	 */
+	readonly origin: string | null;
 };
 
 /**
@@ -350,16 +356,34 @@ export function blockedNoticeOf(reason: AccountingFailureReason): BlockedNotice 
  * the press and the step are named as the QuickBooks part of Books names them
  * (../../../routes/_app.admin.books.tsx).
  */
-function blockedAction(reason: AccountingFailureReason): string {
+function blockedAction(reason: AccountingFailureReason, origin: string | null): string {
 	switch (reason) {
 		case 'reconnect_needed':
-			return 'Go to QuickBooks under Books and press Sign in again.';
+			return `Go to QuickBooks under Books, at ${quickbooksSection(origin)}, and press Sign in again.${FORWARD_IF_HIDDEN}`;
 		case 'accounts_not_chosen':
-			return 'Go to QuickBooks under Books and choose every account under Accounts.';
+			return `Go to QuickBooks under Books, at ${quickbooksSection(origin)}, and choose every account under Accounts.${FORWARD_IF_HIDDEN}`;
 		default:
 			return 'Nothing. Gifts sync once QuickBooks can be reached again.';
 	}
 }
+
+/**
+ * where the QuickBooks part of Books is, absolute where the origin is known. with none it is named
+ * by its path, since a relative address is broken in every inbox.
+ */
+function quickbooksSection(origin: string | null): string {
+	return origin === null
+		? `${QUICKBOOKS_SECTION_PATH} on your dashboard`
+		: `${origin}${QUICKBOOKS_SECTION_PATH}`;
+}
+
+/**
+ * the notice goes to the notification address, which a member may read, and a member's Books has
+ * no QuickBooks part (`STAFF_USER_ID`, AGENTS.md → Boundaries) — so it says who can act on it.
+ */
+const FORWARD_IF_HIDDEN =
+	' Only whoever set up this site can open that section, so if you can’t see it, forward this ' +
+	'email to them.';
 
 /**
  * what one queued entry group came to, and what it asks of the caller.
@@ -684,10 +708,11 @@ async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<v
 		],
 		action:
 			tally.givenUp > 0
-				? 'Go to QuickBooks under Books. Fix what the latest reason says, then press Try these ' +
-					'again.'
-				: 'If the latest reason asks you to fix something, go to QuickBooks under Books and fix ' +
-					'it. Otherwise there’s nothing to do: these gifts are tried again automatically.'
+				? `Go to QuickBooks under Books, at ${quickbooksSection(deps.origin)}. Fix what the ` +
+					`latest reason says, then press Try these again.${FORWARD_IF_HIDDEN}`
+				: 'There’s nothing to do unless the latest reason asks you to fix something: these ' +
+					'gifts are tried again automatically. If it does, go to QuickBooks under Books, at ' +
+					`${quickbooksSection(deps.origin)}, and fix it.${FORWARD_IF_HIDDEN}`
 	});
 
 	await stamp(deps.db, failing(now), now);
@@ -732,7 +757,7 @@ async function notifyBlocked(
 			{ label: 'Gifts waiting', value: String(backlog.waiting) },
 			{ label: 'Oldest waiting for', value: waited(now.getTime() - backlog.oldest) }
 		],
-		action: blockedAction(failure.reason)
+		action: blockedAction(failure.reason, deps.origin)
 	});
 
 	await stamp(deps.db, UNFINISHED, now);
