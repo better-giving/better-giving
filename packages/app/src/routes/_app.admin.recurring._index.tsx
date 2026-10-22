@@ -4,6 +4,7 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { CalendarDay } from '$lib/admin/local-day';
 import { RECURRING_STATUS_TONES } from '$lib/admin/status-tones';
+import { viewerZone } from '$lib/admin/viewer-zone';
 import { href, Link } from 'react-router';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinor } from '$lib/donations/money';
@@ -59,7 +60,7 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
 
-export async function loader({ context }: Route.LoaderArgs) {
+export async function loader({ context, request }: Route.LoaderArgs) {
 	let plans: Awaited<ReturnType<typeof listRecurringPlans>>['plans'];
 	let hasMore: boolean;
 	try {
@@ -73,6 +74,9 @@ export async function loader({ context }: Route.LoaderArgs) {
 	}
 
 	return {
+		// the browser zone when `tz` validated (`viewerZone` in `$lib/admin/viewer-zone.ts`).
+		// null leaves the day to the empty server markup.
+		viewerZone: viewerZone(request),
 		// an explicit projection rather than the row. the read already narrows `recurring_plan` to
 		// the columns a list needs; this narrows again to what a browser is given. the amount is the
 		// one value formatted here; the instant crosses for `CalendarDay` to format.
@@ -93,8 +97,9 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// the value, not the word. `RECURRING_STATUS_LABELS` in `$lib/recurring/statuses.ts` is
 			// what the page renders it with, and a state with no label there is a type error.
 			status: p.status,
-			// the instant, not a sliced day. the loader does not know the browser zone, so it crosses
-			// and `CalendarDay` in `$lib/admin/local-day.tsx` formats the day.
+			// the instant, not a sliced day. the loader knows the browser zone when `tz` validated,
+			// and it still does not slice the day: `CalendarDay` in `$lib/admin/local-day.tsx`
+			// formats it.
 			//
 			// `null` travels as `null`, because it means "none expected" and covers both an ended
 			// commitment and one whose rail has not yet said — two different sentences on the
@@ -117,7 +122,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 // there is no action here and no create either. a recurring gift is made by a donor on a donation
 // form, and stopping one happens on the screen that shows the gift being stopped.
 export default function RecurringGifts({ loaderData }: Route.ComponentProps) {
-	const { plans, limit, hasMore } = loaderData;
+	const { plans, limit, hasMore, viewerZone: zone } = loaderData;
 	const count = plans.length;
 
 	return (
@@ -181,7 +186,10 @@ export default function RecurringGifts({ loaderData }: Route.ComponentProps) {
 						// never wraps is the reading for a date, and applied to a sentence it sets
 						// it in figures and holds the column open to its full length.
 						next: plan.nextChargeAt ? (
-							<CalendarDay at={plan.nextChargeAt} />
+							<CalendarDay
+								at={plan.nextChargeAt}
+								{...(typeof zone === 'string' ? { timeZone: zone } : {})}
+							/>
 						) : plan.status === 'active' ? (
 							{ reading: 'prose' as const, value: <StatusWord>Not scheduled yet</StatusWord> }
 						) : null

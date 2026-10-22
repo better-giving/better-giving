@@ -1,7 +1,7 @@
 // the calendar day an instant falls on in a named zone, zero-padded `YYYY-MM-DD`.
 //
-// the parts are joined year, month, day, so the locale's own order never decides the string.
-// `en-CA` pins latin digits. a sliced `format()` would follow that locale's order.
+// `en-CA` is the locale because its digits are 0-9. year, month, and day are taken from the
+// parts and joined, because one formatted string would follow the locale's own order.
 
 export function calendarDay(at: Date, timeZone: string): string {
 	const parts = new Intl.DateTimeFormat('en-CA', {

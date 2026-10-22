@@ -329,7 +329,8 @@ describe('/admin/recurring/[id] load', () => {
 			'startedAt',
 			'status',
 			'stopLanded',
-			'subscriptionId'
+			'subscriptionId',
+			'viewerZone'
 		]);
 	});
 

@@ -5,6 +5,7 @@ import { Column, Section } from '@better-giving/operator/components/shell/Layout
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { CalendarDay } from '$lib/admin/local-day';
+import { viewerZone } from '$lib/admin/viewer-zone';
 import { RECURRING_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
 import { data, Form, href, Link, useFormAction, useNavigate, useNavigation } from 'react-router';
@@ -214,6 +215,9 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 
 	return data(
 		{
+			// the browser zone when `tz` validated (`viewerZone` in `$lib/admin/viewer-zone.ts`).
+			// null leaves each day to the empty server markup. these are instants, not a typed day.
+			viewerZone: viewerZone(request),
 			id: plan.id,
 			// unreachable — `contact_id` is NOT NULL and its foreign key is `NO ACTION` — and answered
 			// rather than asserted away, because a heading with no name on the screen whose whole job is
@@ -229,8 +233,9 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// the value, not the word: `RECURRING_STATUS_LABELS` and `recurringStatusNote` in
 			// `$lib/recurring/statuses.ts` are what the page renders it with.
 			status: plan.status,
-			// the instants, not sliced days. the loader does not know the browser zone, so each one
-			// crosses and `CalendarDay` in `$lib/admin/local-day.tsx` formats the day.
+			// the instants, not sliced days. the loader knows the browser zone when `tz` validated,
+			// and it still does not slice the day: `CalendarDay` in `$lib/admin/local-day.tsx`
+			// formats it.
 			startedAt: plan.startedAt.toISOString(),
 			// `null` travels as `null`, because it means "none expected" and covers both an ended
 			// commitment and one whose rail has not yet said — two different sentences on the screen.
@@ -406,6 +411,7 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 		nextChargeAt,
 		processor,
 		startedAt,
+		viewerZone: zone,
 		status,
 		stopLanded,
 		subscriptionId
@@ -580,7 +586,10 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 					<div className="adm-setting">
 						<dt className="adm-setting__label">Started</dt>
 						<dd className="adm-setting__value">
-							<CalendarDay at={startedAt} />
+							<CalendarDay
+								at={startedAt}
+								{...(typeof zone === 'string' ? { timeZone: zone } : {})}
+							/>
 						</dd>
 					</div>
 
@@ -593,7 +602,10 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 						<dt className="adm-setting__label">Next charge</dt>
 						{nextChargeAt ? (
 							<dd className="adm-setting__value">
-								<CalendarDay at={nextChargeAt} />
+								<CalendarDay
+									at={nextChargeAt}
+									{...(typeof zone === 'string' ? { timeZone: zone } : {})}
+								/>
 							</dd>
 						) : status === 'active' ? (
 							<dd className="adm-setting__value">
@@ -615,7 +627,10 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 								{status === 'lapsed' ? 'Stopped collecting' : 'Stopped'}
 							</dt>
 							<dd className="adm-setting__value">
-								<CalendarDay at={endedAt} />
+								<CalendarDay
+									at={endedAt}
+									{...(typeof zone === 'string' ? { timeZone: zone } : {})}
+								/>
 							</dd>
 						</div>
 					) : null}

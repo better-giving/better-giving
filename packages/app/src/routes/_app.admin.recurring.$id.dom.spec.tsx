@@ -72,6 +72,7 @@ function commitment(over: Partial<Loaded> = {}): Loaded {
 		subscriptionId: 'sub_detailtest1',
 		stopLanded: null,
 		confirmStop: false,
+		viewerZone: null,
 		...over
 	};
 }
