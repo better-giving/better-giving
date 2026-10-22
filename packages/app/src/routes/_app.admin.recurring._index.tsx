@@ -2,6 +2,7 @@ import { FREQUENCY_LABELS } from '@better-giving/form/v1';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { CalendarDay } from '$lib/admin/local-day';
 import { RECURRING_STATUS_TONES } from '$lib/admin/status-tones';
 import { href, Link } from 'react-router';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -73,8 +74,8 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 	return {
 		// an explicit projection rather than the row. the read already narrows `recurring_plan` to
-		// the columns a list needs; this narrows again to what a browser is given, and turns the two
-		// values that must not be formatted in a component into strings.
+		// the columns a list needs; this narrows again to what a browser is given. the amount is the
+		// one value formatted here; the instant crosses for `CalendarDay` to format.
 		plans: plans.map((p) => ({
 			id: p.id,
 			donorName: p.donorName,
@@ -92,15 +93,13 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// the value, not the word. `RECURRING_STATUS_LABELS` in `$lib/recurring/statuses.ts` is
 			// what the page renders it with, and a state with no label there is a type error.
 			status: p.status,
-			// the date only, ISO, formatted here for the reason /admin/donations formats
-			// `receivedOn` here: an `Intl.DateTimeFormat` in the page would run once on the Worker
-			// during ssr and again in the browser, in two different locales and time zones, which is
-			// a hydration mismatch as well as a lie about whose "today" it is.
+			// the instant, not a sliced day. the loader does not know the browser zone, so it crosses
+			// and `CalendarDay` in `$lib/admin/local-day.tsx` formats the day.
 			//
 			// `null` travels as `null`, because it means "none expected" and covers both an ended
 			// commitment and one whose rail has not yet said — two different sentences on the
 			// screen, and neither is reachable from a date chosen here.
-			nextChargeOn: p.nextChargeAt === null ? null : p.nextChargeAt.toISOString().slice(0, 10)
+			nextChargeAt: p.nextChargeAt === null ? null : p.nextChargeAt.toISOString()
 		})),
 		// so the page can say the list is capped rather than silently showing a prefix.
 		limit: RECURRING_LIST_LIMIT,
@@ -181,8 +180,8 @@ export default function RecurringGifts({ loaderData }: Route.ComponentProps) {
 						// is in it is a sentence rather than a date: the muted tabular face that
 						// never wraps is the reading for a date, and applied to a sentence it sets
 						// it in figures and holds the column open to its full length.
-						next: plan.nextChargeOn ? (
-							<time dateTime={plan.nextChargeOn}>{plan.nextChargeOn}</time>
+						next: plan.nextChargeAt ? (
+							<CalendarDay at={plan.nextChargeAt} />
 						) : plan.status === 'active' ? (
 							{ reading: 'prose' as const, value: <StatusWord>Not scheduled yet</StatusWord> }
 						) : null

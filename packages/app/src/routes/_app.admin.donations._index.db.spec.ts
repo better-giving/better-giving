@@ -280,7 +280,8 @@ async function runLoad(configEnv?: Env) {
 			id: string;
 			donorName: string;
 			amount: string;
-			receivedOn: string;
+			receivedAt: string;
+			timeZone?: 'UTC';
 			source: string | null;
 			note: string | null;
 			status: string;
@@ -303,13 +304,44 @@ describe('/admin/donations load', () => {
 		expect(donations[0]?.amount).toBe('$123.45');
 	});
 
-	it('formats the business date server-side, to the day', async () => {
-		// an `Intl.DateTimeFormat` in the page would run once on the server and again in the
-		// browser, in two different locales and time zones — a hydration mismatch as well as a lie
-		// about whose "today" it is.
+	it('crosses the received instant and leaves the day to the page', async () => {
+		// the loader does not know the browser zone, so the instant crosses and the page formats
+		// the day. a sliced UTC day is the defect: 23:30Z is already the next calendar day east of UTC.
 		await gift();
 		const { donations } = await runLoad();
-		expect(donations[0]?.receivedOn).toBe('2026-07-04');
+		const row = donations[0];
+		expect(row?.receivedAt).toBe('2026-07-04T23:30:00.000Z');
+		expect(row).not.toHaveProperty('timeZone');
+	});
+
+	it('passes UTC on a cheque and no zone on a card at the same midnight', async () => {
+		// the day an operator typed is stored as UTC midnight by `readAccountingDate` in
+		// packages/app/src/lib/ledger/input-schema.ts, so a cheque crosses with `UTC`. a card at
+		// that same midnight does not: the signal is the rail, not the clock.
+		const cheque = await gift({
+			id: '019fb300-0000-7000-8000-000000000021',
+			receivedAt: Date.UTC(2026, 9, 22)
+		});
+		await attempt(cheque, {
+			id: '019fb300-0000-7000-8000-000000000022',
+			method: 'check',
+			provider: null
+		});
+		const card = await gift({
+			id: '019fb300-0000-7000-8000-000000000023',
+			receivedAt: Date.UTC(2026, 9, 22)
+		});
+		await attempt(card, {
+			id: '019fb300-0000-7000-8000-000000000024',
+			method: 'card'
+		});
+		const { donations } = await runLoad();
+		const chequeRow = donations.find((row) => row.id === cheque);
+		const cardRow = donations.find((row) => row.id === card);
+		expect(chequeRow?.receivedAt).toBe('2026-10-22T00:00:00.000Z');
+		expect(chequeRow?.timeZone).toBe('UTC');
+		expect(cardRow?.receivedAt).toBe('2026-10-22T00:00:00.000Z');
+		expect(cardRow).not.toHaveProperty('timeZone');
 	});
 
 	it('hands the state over as a value, for the page to put a word to', async () => {
@@ -350,7 +382,7 @@ describe('/admin/donations load', () => {
 			'note',
 			'paidWith',
 			'program',
-			'receivedOn',
+			'receivedAt',
 			'repeating',
 			'source',
 			'status',

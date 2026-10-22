@@ -4,6 +4,7 @@ import { CodeChip } from '@better-giving/operator/components/data/CodeSlab';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { CalendarDay } from '$lib/admin/local-day';
 import { RECURRING_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
 import { data, Form, href, Link, useFormAction, useNavigate, useNavigation } from 'react-router';
@@ -228,16 +229,13 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// the value, not the word: `RECURRING_STATUS_LABELS` and `recurringStatusNote` in
 			// `$lib/recurring/statuses.ts` are what the page renders it with.
 			status: plan.status,
-			// the dates only, ISO, formatted here for the reason /admin/donations formats its own here:
-			// an `Intl.DateTimeFormat` in the page would run once on the Worker during ssr and again in
-			// the browser, in two different locales and time zones — a hydration mismatch as well as a
-			// lie about whose "today" it is.
-			startedOn: plan.startedAt.toISOString().slice(0, 10),
+			// the instants, not sliced days. the loader does not know the browser zone, so each one
+			// crosses and `CalendarDay` in `$lib/admin/local-day.tsx` formats the day.
+			startedAt: plan.startedAt.toISOString(),
 			// `null` travels as `null`, because it means "none expected" and covers both an ended
 			// commitment and one whose rail has not yet said — two different sentences on the screen.
-			nextChargeOn:
-				plan.nextChargeAt === null ? null : plan.nextChargeAt.toISOString().slice(0, 10),
-			endedOn: plan.endedAt === null ? null : plan.endedAt.toISOString().slice(0, 10),
+			nextChargeAt: plan.nextChargeAt === null ? null : plan.nextChargeAt.toISOString(),
+			endedAt: plan.endedAt === null ? null : plan.endedAt.toISOString(),
 			formId: plan.formId,
 			// the form's name and never the fund it posts to. `writeAgainstPlan` reads the fund off the
 			// form at the moment each charge settles ($lib/server/donations/collect.ts), so a fund
@@ -400,14 +398,14 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 		confirmStop,
 		donorEmail,
 		donorName,
-		endedOn,
+		endedAt,
 		formId,
 		formName,
 		id,
 		interval,
-		nextChargeOn,
+		nextChargeAt,
 		processor,
-		startedOn,
+		startedAt,
 		status,
 		stopLanded,
 		subscriptionId
@@ -582,7 +580,7 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 					<div className="adm-setting">
 						<dt className="adm-setting__label">Started</dt>
 						<dd className="adm-setting__value">
-							<time dateTime={startedOn}>{startedOn}</time>
+							<CalendarDay at={startedAt} />
 						</dd>
 					</div>
 
@@ -593,9 +591,9 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 					    the dash. */}
 					<div className="adm-setting">
 						<dt className="adm-setting__label">Next charge</dt>
-						{nextChargeOn ? (
+						{nextChargeAt ? (
 							<dd className="adm-setting__value">
-								<time dateTime={nextChargeOn}>{nextChargeOn}</time>
+								<CalendarDay at={nextChargeAt} />
 							</dd>
 						) : status === 'active' ? (
 							<dd className="adm-setting__value">
@@ -611,13 +609,13 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 					    gift the rail gave up on that is the day the payments stopped going through
 					    rather than the day somebody pressed a button. so on that gift the row says
 					    `Stopped collecting` — the rail gave up, nobody stopped it. */}
-					{endedOn ? (
+					{endedAt ? (
 						<div className="adm-setting">
 							<dt className="adm-setting__label">
 								{status === 'lapsed' ? 'Stopped collecting' : 'Stopped'}
 							</dt>
 							<dd className="adm-setting__value">
-								<time dateTime={endedOn}>{endedOn}</time>
+								<CalendarDay at={endedAt} />
 							</dd>
 						</div>
 					) : null}
