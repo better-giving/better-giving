@@ -152,9 +152,9 @@ type Loaded = {
 	amount: string;
 	interval: string;
 	status: RecurringPlanStatus;
-	startedOn: string;
-	nextChargeOn: string | null;
-	endedOn: string | null;
+	startedAt: string;
+	nextChargeAt: string | null;
+	endedAt: string | null;
 	formId: string;
 	formName: string;
 	processor: string | null;
@@ -253,9 +253,9 @@ describe('/admin/recurring/[id] load', () => {
 			amount: '$123.45',
 			interval: 'monthly',
 			status: 'active',
-			startedOn: '2026-06-01',
-			nextChargeOn: '2026-09-04',
-			endedOn: null,
+			startedAt: '2026-06-01T08:00:00.000Z',
+			nextChargeAt: '2026-09-04T23:30:00.000Z',
+			endedAt: null,
 			formId: FORM_ID,
 			formName: 'Spring appeal',
 			processor: 'Stripe',
@@ -295,8 +295,8 @@ describe('/admin/recurring/[id] load', () => {
 		await plan('cancelled');
 		const loaded = await runLoad();
 		expect(loaded.status).toBe('cancelled');
-		expect(loaded.endedOn).toBe('2026-07-01');
-		expect(loaded.nextChargeOn).toBeNull();
+		expect(loaded.endedAt).toBe('2026-07-01T10:00:00.000Z');
+		expect(loaded.nextChargeAt).toBeNull();
 	});
 
 	it('names the donation form rather than the fund it posts to', async () => {
@@ -319,17 +319,18 @@ describe('/admin/recurring/[id] load', () => {
 			'confirmStop',
 			'donorEmail',
 			'donorName',
-			'endedOn',
+			'endedAt',
 			'formId',
 			'formName',
 			'id',
 			'interval',
-			'nextChargeOn',
+			'nextChargeAt',
 			'processor',
-			'startedOn',
+			'startedAt',
 			'status',
 			'stopLanded',
-			'subscriptionId'
+			'subscriptionId',
+			'viewerZone'
 		]);
 	});
 

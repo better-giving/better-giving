@@ -3,10 +3,12 @@ import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { CalendarDay } from '$lib/admin/local-day';
+import { screenTitle } from '$lib/admin/screen-title';
+import { viewerZone } from '$lib/admin/viewer-zone';
 import { DONATION_STATUS_TONES } from '$lib/admin/status-tones';
 import { href, Link } from 'react-router';
-import { screenTitle } from '$lib/admin/screen-title';
-import { IN_HAND_METHOD_LABELS } from '$lib/donations/methods';
+import { IN_HAND_METHOD_LABELS, IN_HAND_METHODS } from '$lib/donations/methods';
 import { formatMinor } from '$lib/donations/money';
 import { DONATION_STATUS_LABELS } from '$lib/donations/statuses';
 import { loadFailed } from '$lib/server/db/load-failure';
@@ -124,7 +126,7 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
 
-export async function loader({ context }: Route.LoaderArgs) {
+export async function loader({ context, request }: Route.LoaderArgs) {
 	let donations: Awaited<ReturnType<typeof listDonations>>['donations'];
 	let hasMore: boolean;
 	try {
@@ -142,9 +144,13 @@ export async function loader({ context }: Route.LoaderArgs) {
 	);
 
 	return {
+		// the browser zone when `tz` validated (`viewerZone` in `$lib/admin/viewer-zone.ts`).
+		// null leaves an online gift's day to the empty server markup. one value for the page,
+		// not a copy on each row.
+		viewerZone: viewerZone(request),
 		// an explicit projection rather than the row. the read already narrows `donation` to the
-		// columns a list needs; this narrows again to what a browser is given, and turns the two
-		// values that must not be formatted in a component into strings.
+		// columns a list needs; this narrows again to what a browser is given. the amount stays
+		// formatted here; the instant crosses for `CalendarDay` to format.
 		donations: donations.map((d) => ({
 			id: d.id,
 			donorName: d.donorName,
@@ -152,11 +158,15 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// goes and the stored value is an integer number of minor units, so a component
 			// rendering `totalMinor` renders a gift a hundred times its size.
 			amount: formatMinor(d.totalMinor, d.currency),
-			// the date only, ISO, formatted here for the reason /admin/donors formats `createdOn`
-			// here: an `Intl.DateTimeFormat` in the page would run once on the Worker during ssr and
-			// again in the browser, in two different locales and time zones, which is a hydration
-			// mismatch as well as a lie about whose "today" it is.
-			receivedOn: d.receivedAt.toISOString().slice(0, 10),
+			// the instant, not a sliced day. the loader knows the browser zone when `tz` validated,
+			// and it still does not slice the day: `CalendarDay` in `$lib/admin/local-day.tsx`
+			// formats it. a cash or cheque gift passes `UTC`, because `readAccountingDate` in
+			// packages/app/src/lib/ledger/input-schema.ts stored the typed day as UTC midnight,
+			// and that zone wins over the cookie.
+			receivedAt: d.receivedAt.toISOString(),
+			...((IN_HAND_METHODS as readonly string[]).includes(d.rail?.method ?? '')
+				? { timeZone: 'UTC' as const }
+				: {}),
 			source: d.source,
 			// whole, never truncated. a donor wrote it to be read, and a message stored where
 			// nobody can read it is the same loss as not having stored it.
@@ -218,7 +228,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 // what this page owes is that every gift a deployment has taken can be read: who gave, how much,
 // when, what state it is in, and what they wrote.
 export default function Donations({ loaderData }: Route.ComponentProps) {
-	const { donations, limit, hasMore } = loaderData;
+	const { donations, limit, hasMore, viewerZone: zone } = loaderData;
 	const count = donations.length;
 
 	return (
@@ -268,7 +278,18 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 					// hands two rows that swap places each other's cells.
 					id: d.id,
 					cells: {
-						received: <time dateTime={d.receivedOn}>{d.receivedOn}</time>,
+						// an unset zone is omitted: `exactOptionalPropertyTypes` in tsconfig.base.json
+						// refuses a prop passed as `undefined`. the row's `UTC` wins over the cookie.
+						received: (
+							<CalendarDay
+								at={d.receivedAt}
+								{...(d.timeZone !== undefined
+									? { timeZone: d.timeZone }
+									: typeof zone === 'string'
+										? { timeZone: zone }
+										: {})}
+							/>
+						),
 						donor: d.donorName,
 						// the word sits after the figure and inside the money cell, because it is a
 						// fact about the money and belongs beside the number a scanner is already
