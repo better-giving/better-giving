@@ -389,6 +389,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 			method: gift.method,
 			programId,
 			source,
+			// Add a donation has no note box (`GiftInHand` in $lib/server/donations/record-in-hand.ts).
+			note: null,
 			donor:
 				contact?.ok === true
 					? {

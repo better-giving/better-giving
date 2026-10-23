@@ -111,13 +111,23 @@ function ownedByNoPage(db: Db) {
  * contacts and for a stronger reason: forms archive rather than delete (see FORM_STATUSES in
  * ../../forms/statuses.ts), so an archived row still has an id and a snippet — and listing it would
  * hand an operator something to paste into a site plus a live box that writes an allowlist for
- * a form staff have already retired. a page's own row is left out too (`ownedByNoPage` above).
+ * a form staff have already retired. a page's own row is left out too (`ownedByNoPage` above),
+ * unless `pageRows` is `include`: the Forms screen and the site list cannot edit that row
+ * (`readSitesInUse` in ../sites/queries.ts), and `/connector/v1` `forms.list` answers every form
+ * a gift can name, the donation page's and a campaign's included.
  */
-export async function readForms(db: Db): Promise<FormListRow[]> {
+export async function readForms(
+	db: Db,
+	pageRows: 'omit' | 'include' = 'omit'
+): Promise<FormListRow[]> {
 	const rows = await db
 		.select(FORM_COLUMNS)
 		.from(form)
-		.where(and(isNull(form.archivedAt), ownedByNoPage(db)))
+		.where(
+			pageRows === 'include'
+				? isNull(form.archivedAt)
+				: and(isNull(form.archivedAt), ownedByNoPage(db))
+		)
 		// `created_at` orders the list without being selected — it is a fact about the rows, not
 		// one this page renders.
 		.orderBy(asc(form.createdAt), asc(form.id));
