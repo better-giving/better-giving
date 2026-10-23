@@ -1,6 +1,6 @@
 # better-giving
 
-Self-hosted donation forms for a single organisation. One deployment serves one org; a fork is how a second org gets one.
+Self-hosted donation platform. One deployment serves one organisation; a fork is how a second organisation gets one.
 
 File headers still hold the argument for a rule about that file.
 
