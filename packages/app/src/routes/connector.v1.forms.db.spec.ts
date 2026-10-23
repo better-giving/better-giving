@@ -39,18 +39,30 @@ async function campaignForm(): Promise<{ formId: string; campaignId: string }> {
 }
 
 describe('forms.list and forms.get', () => {
-	it('lists the forms oldest first, a page at a time, without a campaign’s own', async () => {
+	it('lists the forms oldest first, a page at a time, including a page’s own', async () => {
 		const key = await connect();
 		const first = await made(key, { name: 'Spring appeal' });
 		const second = await made(key, { name: 'Year-end' });
-		await campaignForm();
+		const { formId, campaignId } = await campaignForm();
 
 		const one = await call('forms', '/forms?limit=1', { key });
 		expect(one.status).toBe(200);
 		const page1 = (await one.json()) as { data: { id: string }[]; next_cursor: string | null };
 		expect(page1.data).toEqual([first]);
 		const two = await call('forms', `/forms?limit=1&cursor=${page1.next_cursor}`, { key });
-		expect(await two.json()).toEqual({ data: [second], next_cursor: null });
+		const page2 = (await two.json()) as { data: { id: string }[]; next_cursor: string | null };
+		expect(page2.data).toEqual([second]);
+		const rest = await call('forms', `/forms?cursor=${page2.next_cursor}`, { key });
+		const tail = (await rest.json()) as {
+			data: { id: string; name: string; campaign_id: string | null }[];
+			next_cursor: string | null;
+		};
+		expect(tail.next_cursor).toBeNull();
+		expect(tail.data.map((form) => [form.name, form.campaign_id])).toEqual([
+			['Donation page', null],
+			['Winter coats', campaignId]
+		]);
+		expect(tail.data.map((form) => form.id)).toContain(formId);
 	});
 
 	it('answers one form by id, and a campaign’s own with its campaign_id', async () => {
