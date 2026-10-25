@@ -1165,6 +1165,35 @@ describe('confirming', () => {
 		expect(reported.mock.calls[0]?.[0]).toContain('do not match the expected value');
 	});
 
+	// a bank that could not verify the card is the donor's to read. reported, it is an application
+	// fault on every host page, which is what `invalid_request_error` is for every other code.
+	it('tells the donor their bank could not verify the card, and reports nothing', async () => {
+		const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const kit = recorder({
+			confirm: async () => ({
+				error: {
+					type: 'invalid_request_error',
+					code: 'payment_intent_authentication_failure',
+					message: 'We are unable to authenticate your payment method.'
+				}
+			})
+		});
+		const surface = surfaceOn(box(), kit);
+		await settle();
+
+		const outcome = await surface.confirm({
+			paymentToken: 'pi_1_secret_x',
+			method: 'card',
+			mandateAccepted: false
+		});
+
+		expect(outcome).toEqual({
+			kind: 'declined',
+			message: "Your bank couldn't verify this card. Try again or use another card."
+		});
+		expect(reported).not.toHaveBeenCalled();
+	});
+
 	// a refusal by the issuer is the donor's to read and the one path that works reaching the
 	// console on every host page it is embedded in would bury the faults this reporting exists for.
 	it('says nothing in the console about a rail that simply refused', async () => {

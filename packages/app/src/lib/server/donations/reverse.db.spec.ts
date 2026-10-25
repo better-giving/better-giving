@@ -1671,6 +1671,19 @@ async function groupCount() {
 	return row?.n;
 }
 
+/** every ledger line, so a later write can be checked to have left these rows as they were. */
+async function ledgerRows() {
+	return db
+		.select({
+			id: ledgerEntry.id,
+			entryGroupId: ledgerEntry.entryGroupId,
+			accountId: ledgerEntry.accountId,
+			amountMinor: ledgerEntry.amountMinor
+		})
+		.from(ledgerEntry)
+		.orderBy(ledgerEntry.id);
+}
+
 describe('recordReversal() — a dispute lost after it opened', () => {
 	it('closes the dispute lost and moves no money, leaving the gift reversed', async () => {
 		const gift = await settledGift();
@@ -2199,21 +2212,94 @@ describe('recordReversal() — a dispute lost with no opening recorded', () => {
 });
 
 describe('recordReversal() — a dispute won after it was lost', () => {
-	it('answers it with a 200, changes nothing, and tells staff', async () => {
+	it('puts the money back in a new group, closes the dispute won, and leaves the loss’s lines', async () => {
 		const gift = await settledGift();
 		await recordReversal(deps(), opened(), 'evt_d1');
 		await recordReversal(deps(), lost(), 'evt_d2');
+		const [row] = await refundRows();
+		const taken = await linesOf('refund', row?.id ?? '');
+		const written = await ledgerRows();
 		const groups = await groupCount();
 		const mail = mailer();
 
 		const result = await recordReversal(deps({ email: mail.port }), won(), 'evt_d3');
 
-		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
-		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'lost' })]);
-		expect(await groupCount()).toBe(groups);
-		expect((await asAdminReads(gift.donationId)).given).toBe(0);
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		expect(await disputeRows()).toEqual([
+			expect.objectContaining({ outcome: 'won', closedAt: new Date('2026-09-20T10:00:00.000Z') })
+		]);
+		expect((await refundRows()).map((r) => r.status)).toEqual(['cancelled']);
+		expect(await linesOf('refund', row?.id ?? '')).toEqual(taken);
+		expect(await linesOf('payment', row?.id ?? '')).toEqual(
+			[
+				[postableId('undepositedFunds'), 10_000],
+				[fund, -10_000]
+			].sort()
+		);
+		expect(await groupCount()).toBe((groups ?? 0) + 1);
+		for (const line of written) expect(await ledgerRows()).toContainEqual(line);
+		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'completed', given: 10_000 });
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toContain('dp_1');
+		expect(mail.sent[0]?.text).toContain('a new one puts it back');
+		expect(mail.sent[0]?.subject).toMatch(/marked lost is now reported won/i);
+	});
+
+	it('cancels the row and posts nothing where the loss was never in the books', async () => {
+		await settledGift({ settledMinor: 9_000 });
+		await recordReversal(deps(), lost({ amountMinor: 9_000 }), 'evt_d1');
+		const groups = await groupCount();
+		const mail = mailer();
+
+		const result = await recordReversal(deps({ email: mail.port }), won(), 'evt_d2');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'updated' });
+		expect((await refundRows()).map((r) => r.status)).toEqual(['cancelled']);
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'won' })]);
+		expect(await linesOf('payment', (await refundRows())[0]?.id ?? '')).toBeNull();
+		expect(await groupCount()).toBe(groups);
+		expect(mail.sent).toHaveLength(1);
+		expect(mail.sent[0]?.text).toContain('never held the money it took');
+		expect(mail.sent[0]?.text).not.toContain('puts it back');
+	});
+
+	it('puts the money back where the loss arrived with no opening before it', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), lost(), 'evt_d1');
+
+		const result = await recordReversal(deps(), won(), 'evt_d2');
+
+		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
+		const [row] = await refundRows();
+		expect(row?.status).toBe('cancelled');
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'won' })]);
+		expect(await linesOf('refund', row?.id ?? '')).not.toBeNull();
+		expect(await linesOf('payment', row?.id ?? '')).toEqual(
+			[
+				[postableId('undepositedFunds'), 10_000],
+				[fund, -10_000]
+			].sort()
+		);
+		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'completed', given: 10_000 });
+	});
+
+	it('answers the win delivered again as already posted, and writes nothing more', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+		await recordReversal(deps(), lost(), 'evt_d2');
+		const mail = mailer();
+		await recordReversal(deps({ email: mail.port }), won(), 'evt_d3');
+		const groups = await groupCount();
+		const written = await ledgerRows();
+
+		const again = await recordReversal(deps({ email: mail.port }), won(), 'evt_d4');
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(await groupCount()).toBe(groups);
+		expect(await ledgerRows()).toEqual(written);
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'won' })]);
+		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'completed', given: 10_000 });
+		expect(mail.sent).toHaveLength(1);
 	});
 });
 
