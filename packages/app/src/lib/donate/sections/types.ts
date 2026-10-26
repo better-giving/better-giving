@@ -1,14 +1,9 @@
 import type { SocialLink } from '@better-giving/operator/console/org';
-import type { Block } from '../../page/catalog';
-import type { ShareChannel } from '../../page/share';
 
-// what the page's blocks are handed beside their own stored values: the organisation, its
+// what the page's sections are handed beside the page's own content: the organisation, its
 // sharing, the campaign's goal and the programs, each read by the route and passed down.
 
-/** one stored block of the named type. */
-export type BlockOf<T extends Block['type']> = Extract<Block, { type: T }>;
-
-/** the legal identity the org-info block states, already worded for a donor to read. */
+/** the legal identity the organisation footer states, already worded for a donor to read. */
 export type OrgInfo = {
 	readonly legalName: string;
 	/** the EIN as printed, `12-3456789`; null draws no line for it. */
@@ -30,8 +25,6 @@ export type PageOrg = {
 };
 
 export type PageSharing = {
-	/** the channels to offer, in the order the buttons stand. */
-	readonly channels: readonly ShareChannel[];
 	/** the page's own share message, or else the page's title; empty sends the address alone. */
 	readonly message: string;
 	/** the page's public address. */

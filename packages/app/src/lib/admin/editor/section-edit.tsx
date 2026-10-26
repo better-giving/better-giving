@@ -3,13 +3,18 @@ import { Field } from '@better-giving/operator/components/forms/Field';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { type FetcherWithComponents, useFetcher } from 'react-router';
 import type { Resized } from '@better-giving/operator/images/resize';
-import { BLOCK_FORMS, BOXES, type BlockText, type EditorBlock, rowBox } from '$lib/page/block-edit';
+import {
+	BOXES,
+	CONTENT_FORMS,
+	type EditorSection,
+	rowBox,
+	type SectionText
+} from '$lib/page/content-edit';
 import { FAQ_MAX, TIERS_MAX } from '$lib/page/catalog';
 import { imageSrc } from '$lib/page/image-src';
 import type { RichTextDocument } from '$lib/rich-text/document';
 import { RichTextEditor } from '../rich-text/rich-text-editor';
-import { BlockSheet } from './block-sheet';
-import { useFocusOnRefusal } from './done-sheet';
+import { DoneSheet, useFocusOnRefusal } from './done-sheet';
 import { useDraftPresses } from './draft-presses';
 import { MoneyField } from './money-field';
 import { postPhoto, type UploadAnswer } from './photo-upload';
@@ -19,159 +24,141 @@ import {
 	replaceRefusal
 } from './replace-photo';
 
-// a block's sheet as both editors open it — from a click on the block in the preview and from its
-// row in Settings' block list alike, the donation box's being the Donation settings sheet — each
-// press posted to the editor route's action through ./draft-presses.ts.
+// a section's sheet as both editors open it — from a click on the section in the preview and from
+// its row in Settings' content list alike — each press posted to the editor route's action through
+// ./draft-presses.ts. a sheet holds the section's words and photos and nothing that says how they are
+// drawn: the page picks its layout from what the content holds ($lib/page/shape.ts).
 //
-// the words are the boxes' own, uncontrolled: a refused Done leaves them holding what was typed,
-// the refusal under the box the catalog's rule names, and the caret moved there. a variant picture
-// or a background applies on pick and is drawn picked while its write is in flight; a refused one
-// goes back to the draft's, with its refusal under the picks and never at Done. the picks and Done
-// are one owner's presses, so a pick made while another press is in flight waits for its answer,
-// drawn picked meanwhile, and Done is held, since either would carry the version the first is about
-// to move.
+// the words are the boxes' own, uncontrolled: a refused Done leaves them holding what was typed, the
+// refusal under the box the catalog's rule names, and the caret moved there.
 //
 // the tiers and the questions are repeating rows: each row a pair of boxes whose legend, read to a
 // screen reader and not drawn, names it by its place — Tier 2 — and the rows a stack, so one row
-// stands off the next further than the two boxes inside it stand apart, and nearer than the
-// pictures stand off the rows. a tier's amount carries its currency on the box and groups its
-// digits as typed (./money-field.tsx), as the goal's does. a row is added under the rows, up to the
-// catalog's cap, and dropped by its own Remove while another row stands; a block holding none opens
-// on one empty row, and the save leaves out a row emptied of both its boxes. each row is keyed by an
-// identity of its own, so a half-typed row keeps its words as rows above it go, and the focus moves
-// into the row added, or onto the row above the one dropped. a refused Done names a row by the place
-// it stood in when Done posted, and the refusal is read back to the row that stood there: it stays
-// on that row as rows above it go, goes with it when it is dropped, and is never on a row added
-// since. the caret is moved to the first refused box when the refusal arrives, and not again as rows
-// come and go. Add and Remove stand at the touch floor.
+// stands off the next further than the two boxes inside it stand apart. a tier's amount carries its
+// currency on the box and groups its digits as typed (./money-field.tsx), as the goal's does. a row
+// is added under the rows, up to the catalog's cap, and dropped by its own Remove while another row
+// stands; a section holding none opens on one empty row, and the save leaves out a row emptied of
+// both its boxes. each row is keyed by an identity of its own, so a half-typed row keeps its words
+// as rows above it go, and the focus moves into the row added, or onto the row above the one
+// dropped. a refused Done names a row by the place it stood in when Done posted, and the refusal is
+// read back to the row that stood there: it stays on that row as rows above it go, goes with it when
+// it is dropped, and is never on a row added since. the caret is moved to the first refused box when
+// the refusal arrives, and not again as rows come and go. Add and Remove stand at the touch floor.
 //
-// a placed photo's sheet is the replace press and its description (./replace-photo.tsx). a new
-// photo is posted to the images route as soon as it is resized (./photo-upload.ts) and drawn once
-// stored, and Done writes its id and the description to the block, as a text block's words are;
-// a sheet dismissed before Done leaves the block as it was. while a new photo resizes or uploads,
-// Done is held as it is while a press is in flight, so it never writes the photo being replaced
-// nor says a photo is wanted. a refused description lands under its box, with the caret moved
-// there; what else the photo's rule refuses lands at Done. a hero or an image with no photo yet
-// opens on Add photo alone, and Done there posts nothing: it says at the press that a photo is
-// wanted and puts the focus on it.
+// a placed photo's sheet is the replace press, its description and Remove photo
+// (./replace-photo.tsx). a new photo is posted to the images route as soon as it is resized
+// (./photo-upload.ts) and drawn once stored, and Done writes its id and the description into the
+// photo's slot — the cover, a photo's place, or a new one after the rest — as a section's words are;
+// a sheet dismissed before Done leaves the page as it was. while a new photo resizes or uploads,
+// Done is held as it is while a press is in flight, so it never writes the photo being replaced nor
+// says a photo is wanted. a refused description lands under its box, with the caret moved there;
+// what else the photo's rule refuses lands at Done. a slot with no photo yet opens on Add photo
+// alone, and Done there posts nothing: it says at the press that a photo is wanted and puts the
+// focus on it. Remove photo takes the photo off the page at once, and the cover's falls back to the
+// organisation's logo where it has one.
 
 const TEXT_FORMS = {
-	title: BLOCK_FORMS.title,
-	story: BLOCK_FORMS.story,
-	'impact-tiers': BLOCK_FORMS.impactTiers,
-	faq: BLOCK_FORMS.faq,
-	photo: BLOCK_FORMS.photo
+	title: CONTENT_FORMS.title,
+	story: CONTENT_FORMS.story,
+	tiers: CONTENT_FORMS.tiers,
+	faq: CONTENT_FORMS.faq,
+	photo: CONTENT_FORMS.photo
 } as const;
 
-type BlockEditSheetProps = {
-	/** the block as the editor reads it. */
-	readonly block: EditorBlock;
+type SectionEditSheetProps = {
+	/** the section as the editor reads it. */
+	readonly section: EditorSection;
 	/** the page's version as the editor holds it now. */
 	readonly version: number;
 	/** X or Escape. */
 	readonly onDismiss: () => void;
-	/** a Done landed: the draft holds the words. */
+	/** a Done or a Remove photo landed: the draft holds the change. */
 	readonly onSaved: () => void;
-	/** opened from Settings' block list, and standing over it. */
+	/** opened from Settings' content list, and standing over it. */
 	readonly stacked?: boolean | undefined;
 };
 
-export function BlockEditSheet({
-	block,
+export function SectionEditSheet({
+	section,
 	version,
 	onDismiss,
 	onSaved,
 	stacked = false
-}: BlockEditSheetProps) {
+}: SectionEditSheetProps) {
 	const presses = useDraftPresses(version);
-	const picked = presses.sending(BLOCK_FORMS.variant, BOXES.variant)?.[0];
-	const grounded = presses.sending(BLOCK_FORMS.background, BOXES.background)?.[0];
-	/** a photo block's Done found no photo, until one is chosen. */
+	/** a photo's Done found no photo, until one is chosen. */
 	const [photoWanted, setPhotoWanted] = useState(false);
-	/** a photo block's new photo, posted to the images route once resized. */
+	/** a new photo, posted to the images route once resized. */
 	const upload = useFetcher<UploadAnswer>();
 	const [resizing, setResizing] = useState(false);
 	const photoLanding = resizing || upload.state !== 'idle';
-	const pressId = boxId(block.id, 'photo');
-	const textForm = block.text === null ? null : TEXT_FORMS[block.text.kind];
-	const saved = textForm !== null && presses.landed(textForm);
+	const pressId = boxId(section.id, 'photo');
+	const { text } = section;
+	const form = TEXT_FORMS[text.kind];
+	const saved = presses.landed(form) || presses.landed(CONTENT_FORMS.photoRemove);
 
 	useEffect(() => {
 		if (saved) onSaved();
 	}, [saved, onSaved]);
 
-	const pick = (form: string, box: string, value: string) =>
-		presses.press(form, [
-			[BOXES.blockId, block.id],
-			[box, value]
-		]);
+	const remove =
+		text.kind === 'photo' && text.removable ? (
+			<Button
+				type="button"
+				variant="quiet"
+				aria-busy={presses.flying(CONTENT_FORMS.photoRemove) || undefined}
+				aria-disabled={presses.busy || undefined}
+				onClick={() => {
+					if (!presses.busy) presses.press(CONTENT_FORMS.photoRemove, [[BOXES.slot, text.slot]]);
+				}}
+			>
+				Remove photo
+			</Button>
+		) : undefined;
 
 	return (
-		<BlockSheet
-			title={block.label}
-			block={block.type}
+		<DoneSheet
+			title={section.label}
 			stacked={stacked}
-			variants={
-				block.variant === null
-					? undefined
-					: {
-							options: block.variants,
-							value: picked ?? block.variant,
-							onPick: (variant) => pick(BLOCK_FORMS.variant, BOXES.variant, variant)
-						}
-			}
-			backgrounds={{
-				options: block.backgrounds,
-				value: grounded ?? block.background,
-				onPick: (background) => pick(BLOCK_FORMS.background, BOXES.background, background)
+			onDone={(element) => {
+				const body = new FormData(element);
+				if (text.kind === 'photo') {
+					if (body.get(BOXES.imageId) === '') {
+						setPhotoWanted(true);
+						document.getElementById(pressId)?.focus();
+						return;
+					}
+					body.set(BOXES.slot, text.slot);
+				}
+				presses.press(form, body);
 			}}
-			pickRefusal={
-				presses.said(BLOCK_FORMS.variant, BOXES.variant) ??
-				presses.said(BLOCK_FORMS.background, BOXES.background)
-			}
-			text={
-				block.text === null || textForm === null
-					? undefined
-					: {
-							fields: (
-								<BlockFields
-									id={block.id}
-									text={block.text}
-									error={(box) => presses.refused(textForm, box)}
-									posting={presses.flying(textForm)}
-									photo={{ pressId, wanted: photoWanted, upload, onResizing: setResizing }}
-								/>
-							),
-							onDone: (form) => {
-								const body = new FormData(form);
-								if (block.text?.kind === 'photo' && body.get(BOXES.imageId) === '') {
-									setPhotoWanted(true);
-									document.getElementById(pressId)?.focus();
-									return;
-								}
-								body.set(BOXES.blockId, block.id);
-								presses.press(textForm, body);
-							},
-							applying: presses.busy || photoLanding,
-							refusal: presses.refused(textForm, '')
-						}
-			}
+			applying={presses.busy || photoLanding}
+			refusal={presses.refused(form, '') ?? presses.refused(CONTENT_FORMS.photoRemove, '')}
+			aside={remove}
 			onDismiss={onDismiss}
-		/>
+		>
+			<SectionFields
+				id={section.id}
+				text={text}
+				error={(box) => presses.refused(form, box)}
+				posting={presses.flying(form)}
+				photo={{ pressId, wanted: photoWanted, upload, onResizing: setResizing }}
+			/>
+		</DoneSheet>
 	);
 }
 
-type BlockFieldsProps = {
-	/** the block's id, which every box's id is made from. */
+type SectionFieldsProps = {
+	/** the section's id, which every box's id is made from. */
 	readonly id: string;
-	readonly text: BlockText;
+	readonly text: SectionText;
 	/** the last Done's refusal under `box`. */
 	readonly error: (box: string) => string | null;
 	/** a Done is in flight. */
 	readonly posting: boolean;
 	/**
-	 * a photo block's press, by its id; whether a Done found no photo chosen; the upload of a new
-	 * photo; and its resize starting and ending — the sheet holds Done on the last two.
+	 * a photo's press, by its id; whether a Done found no photo chosen; the upload of a new photo;
+	 * and its resize starting and ending — the sheet holds Done on the last two.
 	 */
 	readonly photo: {
 		readonly pressId: string;
@@ -181,8 +168,8 @@ type BlockFieldsProps = {
 	};
 };
 
-/** the boxes a block's words are typed in, named as its form posts them. */
-function BlockFields({ id, text, error, posting, photo }: BlockFieldsProps) {
+/** the boxes a section's words are typed in, named as its form posts them. */
+function SectionFields({ id, text, error, posting, photo }: SectionFieldsProps) {
 	if (text.kind === 'photo') return <PhotoFields id={id} text={text} error={error} photo={photo} />;
 	return <WordFields id={id} text={text} error={error} posting={posting} />;
 }
@@ -190,7 +177,7 @@ function BlockFields({ id, text, error, posting, photo }: BlockFieldsProps) {
 /** what the press says to a Done that found no photo chosen. */
 const PHOTO_WANTED = 'Add a photo first. The page doesn’t change until you do.';
 
-type PhotoText = Extract<BlockText, { kind: 'photo' }>;
+type PhotoText = Extract<SectionText, { kind: 'photo' }>;
 
 /** the photo Done writes, and what describes it, each posted from a hidden box. */
 function PhotoFields({
@@ -198,7 +185,7 @@ function PhotoFields({
 	text,
 	error,
 	photo
-}: Omit<BlockFieldsProps, 'posting'> & { readonly text: PhotoText }) {
+}: Omit<SectionFieldsProps, 'posting'> & { readonly text: PhotoText }) {
 	const { upload } = photo;
 	const [imageId, setImageId] = useState(text.imageId);
 	const [alt, setAlt] = useState(text.alt);
@@ -252,27 +239,26 @@ function PhotoFields({
 	);
 }
 
-type WordsText = Exclude<BlockText, PhotoText>;
-type WordsProps<K extends WordsText['kind']> = Pick<BlockFieldsProps, 'id' | 'error'> & {
+type WordsText = Exclude<SectionText, PhotoText>;
+type WordsProps<K extends WordsText['kind']> = Pick<SectionFieldsProps, 'id' | 'error'> & {
 	readonly text: Extract<WordsText, { kind: K }>;
 };
 /** a list's rows take the Done in flight as well, which is when their keys are taken. */
-type RowsProps<K extends 'impact-tiers' | 'faq'> = WordsProps<K> &
-	Pick<BlockFieldsProps, 'posting'>;
+type RowsProps<K extends 'tiers' | 'faq'> = WordsProps<K> & Pick<SectionFieldsProps, 'posting'>;
 
-/** the boxes of a block whose words are typed. */
+/** the boxes of a section whose words are typed. */
 function WordFields({
 	id,
 	text,
 	error,
 	posting
-}: Omit<BlockFieldsProps, 'photo'> & { readonly text: WordsText }) {
+}: Omit<SectionFieldsProps, 'photo'> & { readonly text: WordsText }) {
 	switch (text.kind) {
 		case 'title':
 			return <TitleFields id={id} text={text} error={error} />;
 		case 'story':
 			return <StoryFields id={id} text={text} error={error} />;
-		case 'impact-tiers':
+		case 'tiers':
 			return <TierRows id={id} text={text} error={error} posting={posting} />;
 		case 'faq':
 			return <QuestionRows id={id} text={text} error={error} posting={posting} />;
@@ -305,15 +291,17 @@ function TitleFields({ id, text, error }: WordsProps<'title'>) {
 				defaultValue={text.heading}
 				error={error(BOXES.heading)}
 			/>
-			<Field
-				id={boxId(id, BOXES.lede)}
-				name={BOXES.lede}
-				label="Lead-in"
-				optional
-				as="textarea"
-				defaultValue={text.lede}
-				error={error(BOXES.lede)}
-			/>
+			{text.lede === null ? null : (
+				<Field
+					id={boxId(id, BOXES.lede)}
+					name={BOXES.lede}
+					label="Lead-in"
+					optional
+					as="textarea"
+					defaultValue={text.lede}
+					error={error(BOXES.lede)}
+				/>
+			)}
 		</>
 	);
 }
@@ -335,8 +323,8 @@ function StoryFields({ id, text, error }: WordsProps<'story'>) {
 type Keyed<T> = { readonly key: string; readonly row: T };
 
 /**
- * the rows a block's list holds as the sheet draws them: the block's own, or one empty row where it
- * holds none. `first(at)` is the id of the box the focus goes to in the row at `at`.
+ * the rows a section's list holds as the sheet draws them: its own, or one empty row where it holds
+ * none. `first(at)` is the id of the box the focus goes to in the row at `at`.
  */
 function useRows<T>(seed: readonly T[], blank: T, first: (at: number) => string) {
 	const minted = useRef(0);
@@ -375,7 +363,7 @@ function useRowRefusals<T>(
 	id: string,
 	rows: readonly Keyed<T>[],
 	boxes: readonly string[],
-	{ error, posting }: Pick<BlockFieldsProps, 'error' | 'posting'>
+	{ error, posting }: Pick<SectionFieldsProps, 'error' | 'posting'>
 ) {
 	const keys = rows.map((one) => one.key);
 	const [posted, setPosted] = useState(keys);
@@ -405,7 +393,7 @@ function useRowRefusals<T>(
 }
 
 type RowPressesProps = {
-	/** how many rows stand, and how many the catalog lets the block hold. */
+	/** how many rows stand, and how many the catalog lets the section hold. */
 	readonly count: number;
 	readonly max: number;
 	/** Add's words — `Add a tier` — and what stands in its place once the list is full. */
@@ -446,7 +434,7 @@ function RemoveRow({ name, onRemove }: { readonly name: string; readonly onRemov
 	);
 }
 
-function TierRows({ id, text, error, posting }: RowsProps<'impact-tiers'>) {
+function TierRows({ id, text, error, posting }: RowsProps<'tiers'>) {
 	const list = useRows(text.tiers, { amount: '', buys: '' }, (at) =>
 		boxId(id, rowBox(BOXES.tierAmount, at))
 	);
@@ -489,7 +477,7 @@ function TierRows({ id, text, error, posting }: RowsProps<'impact-tiers'>) {
 				count={list.rows.length}
 				max={TIERS_MAX}
 				add="Add a tier"
-				full={`A block holds ${TIERS_MAX} tiers at most.`}
+				full={`A campaign holds ${TIERS_MAX} tiers at most.`}
 				onAdd={list.add}
 			/>
 		</div>
@@ -540,21 +528,13 @@ function QuestionRows({ id, text, error, posting }: RowsProps<'faq'>) {
 				count={list.rows.length}
 				max={FAQ_MAX}
 				add="Add a question"
-				full={`A block holds ${FAQ_MAX} questions at most.`}
+				full={`A campaign holds ${FAQ_MAX} questions at most.`}
 				onAdd={list.add}
 			/>
 		</div>
 	);
 }
 
-function boxId(block: string, box: string): string {
-	return `block-${block}-${box.replace(/[[\]]/g, '-')}`;
-}
-
-/**
- * the donation box has no sheet of its own: what it draws is the page's donation settings, so a
- * click on it, or its row in the block list, opens the Donation settings sheet instead.
- */
-export function isDonationBox(blocks: readonly EditorBlock[], id: string): boolean {
-	return blocks.some((block) => block.id === id && block.type === 'donation-box');
+function boxId(section: string, box: string): string {
+	return `section-${section}-${box.replace(/[[\]]/g, '-')}`;
 }

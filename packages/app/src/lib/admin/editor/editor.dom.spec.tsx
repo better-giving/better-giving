@@ -2,28 +2,25 @@ import { type ReactNode, act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { editorBlocks } from '$lib/page/block-edit';
-import { BLOCK_TYPES, type Block, type Page } from '$lib/page/catalog';
-import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
+import { defaultCampaign } from '$lib/page/defaults';
 import { PageView } from '$lib/donate/page-view';
 import { AddressSheet } from './address-sheet';
-import { BlockSheet } from './block-sheet';
 import { EditorShell } from './editor-shell';
 import { GoalSheet } from './goal-sheet';
 import { InPlaceName } from './in-place-name';
-import { PicturePicker } from './pictures';
+import { SECTION_MESSAGE } from '$lib/page/preview-message';
 import { PreviewFrame } from './preview-frame';
 import { PublishBar } from './publish-bar';
 import { SettingsSheet } from './settings-sheet';
 
 // the editor's parts, mounted so what a reader meets is looked at: the sheet each bar press opens
-// and the ways out of it, the groups Settings draws only when handed, the names a picture and the
-// name box carry and a drawing for every variant the catalog offers, what More holds and when,
+// and the ways out of it, the groups Settings draws only when handed and that none of them lays the page out
+// or dresses it, the name box's name, what More holds and when,
 // which presses the bar draws without a handler and in what order at each width, the address's
 // save and its refusal at Save, the goal's figure in and out, which messages the preview frame
 // listens to, and what the bar's own region says as Edit turns.
-// a class is read only to find a part, such as whether a picture holds a drawing, and never to ask
-// how anything looks — how the editor looks is left to a person looking at it.
+// a class is read only to find a part, and never to ask how anything looks — how the editor looks
+// is left to a person looking at it.
 //
 // the tab ring kept inside a sheet and the page made inert behind it are the top layer's, which
 // happy-dom does not have; what is asserted is that the sheet is shown as a modal and takes the
@@ -109,11 +106,8 @@ describe('the Settings sheet opened from Settings while Edit is on', () => {
 				{open ? (
 					<SettingsSheet
 						onDismiss={() => setOpen(false)}
-						blocks={[{ id: 'b1', label: 'Story', summary: 'Last winter…' }]}
-						onOpenBlock={() => {}}
-						layouts={[{ value: 'box-right', label: 'Box on the right' }]}
-						layout="box-right"
-						onLayout={() => {}}
+						sections={[{ id: 'story', label: 'Story', summary: 'Last winter…', empty: false }]}
+						onOpenSection={() => {}}
 						donationSettings="Donor chooses"
 						onOpen={() => {}}
 					/>
@@ -164,6 +158,7 @@ describe('the settings sheet', () => {
 		[...root.querySelectorAll('dialog button[aria-haspopup="dialog"]')].map(
 			(one) => one.textContent
 		);
+	const story = { id: 'story', label: 'Story', summary: 'Last winter…', empty: false };
 
 	it('draws every group it is handed', () => {
 		const root = mount(
@@ -176,40 +171,35 @@ describe('the settings sheet', () => {
 					currency: 'USD',
 					endDate: null
 				}}
-				blocks={[{ id: 'b1', label: 'Story', summary: 'Last winter…' }]}
-				onOpenBlock={() => {}}
-				layouts={[{ value: 'box-right', label: 'Box on the right' }]}
-				layout="box-right"
-				onLayout={() => {}}
+				sections={[story]}
+				onOpenSection={() => {}}
+				shareMessage=""
+				onShareMessage={() => {}}
 				donationSettings="Donor chooses"
 				onOpen={() => {}}
 			/>
 		);
-		expect(headings(root)).toEqual(['Blocks', 'Layout', 'Goal and end date', 'Gifts']);
+		expect(headings(root)).toEqual(['Page content', 'Goal and end date', 'Sharing', 'Gifts']);
 		expect(rows(root)).toEqual([
 			'NameWinter coat drive',
 			'Address/winter-coat-drive',
 			'StoryLast winter…',
 			'GoalNone',
 			'End dateNone',
+			'Share messageThe page’s title',
 			'Donation settingsDonor chooses'
 		]);
 	});
 
 	it('draws no group it is not handed, and no heading over nothing', () => {
-		const onOpenBlock = vi.fn();
+		const onOpenSection = vi.fn();
 		const root = mount(
-			<SettingsSheet
-				onDismiss={() => {}}
-				blocks={[{ id: 'b1', label: 'Story', summary: 'Last winter…' }]}
-				onOpenBlock={onOpenBlock}
-			/>
+			<SettingsSheet onDismiss={() => {}} sections={[story]} onOpenSection={onOpenSection} />
 		);
-		expect(headings(root)).toEqual(['Blocks']);
+		expect(headings(root)).toEqual(['Page content']);
 		expect(rows(root)).toEqual(['StoryLast winter…']);
-		expect(root.querySelector('[role="radiogroup"]')).toBeNull();
 		act(() => button(root, 'StoryLast winter…').click());
-		expect(onOpenBlock).toHaveBeenCalledWith('b1');
+		expect(onOpenSection).toHaveBeenCalledWith('story');
 	});
 
 	it('draws only the rows of a group it is handed', () => {
@@ -231,162 +221,54 @@ describe('the settings sheet', () => {
 		act(() => button(root, 'Address/winter-coat-drive').click());
 		expect(onOpen).toHaveBeenCalledWith('address');
 	});
-});
 
-describe('the pictures', () => {
-	const layouts = [
-		{ value: 'box-right', label: 'Box on the right' },
-		{ value: 'banner', label: 'Banner' },
-		{ value: 'column', label: 'One column' },
-		{ value: 'cover', label: 'Cover photo' }
-	];
-
-	it('name every picture by its label, in one named group', () => {
+	it('hands the share message row on, reading the page’s title where none is set', () => {
+		const onShareMessage = vi.fn();
 		const root = mount(
-			<PicturePicker
-				legend="Layout"
-				name="layout"
-				set="layout"
-				options={layouts}
-				value="banner"
-				onPick={() => {}}
-			/>
+			<SettingsSheet onDismiss={() => {}} shareMessage="" onShareMessage={onShareMessage} />
 		);
-		const group = root.querySelector('[role="radiogroup"]');
-		expect(group?.getAttribute('aria-label')).toBe('Layout');
-		const radios = [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
-		expect(radios.map((radio) => radio.closest('label')?.textContent)).toEqual(
-			layouts.map((layout) => layout.label)
-		);
-		expect(radios.filter((radio) => radio.checked).map((radio) => radio.value)).toEqual(['banner']);
+		expect(headings(root)).toEqual(['Sharing']);
+		act(() => button(root, 'Share messageThe page’s title').click());
+		expect(onShareMessage).toHaveBeenCalledTimes(1);
 	});
 
-	it('draw each of the four layouts', () => {
+	it('draws only content: nothing that lays the page out, dresses it, or places a section', () => {
 		const root = mount(
-			<PicturePicker
-				legend="Layout"
-				name="layout"
-				set="layout"
-				options={layouts}
-				value="banner"
-				onPick={() => {}}
-			/>
-		);
-		const drawn = [...root.querySelectorAll('.adm-picture__art')].map(
-			(art) => art.childElementCount > 0
-		);
-		expect(drawn).toEqual([true, true, true, true]);
-	});
-
-	/** a draft holding one block of every type the catalog has, so every variant is offered. */
-	function everyBlock(): Page {
-		const placed: Block[] = [
-			...defaultCampaign().blocks,
-			...defaultDonationPage().blocks,
-			{ id: 'tiers', type: 'impact-tiers', variant: 'cards', background: 'none', tiers: [] },
-			{ id: 'faq', type: 'faq', variant: 'accordion', background: 'none', items: [] },
-			{
-				id: 'photo',
-				type: 'image',
-				variant: 'column',
-				background: 'none',
-				imageId: null,
-				alt: null
-			}
-		];
-		const blocks = BLOCK_TYPES.map((type) => {
-			const found = placed.find((block) => block.type === type);
-			if (found === undefined) throw new Error(`no ${type} block in the case's draft; add one`);
-			return found;
-		});
-		return { ...defaultCampaign(), blocks };
-	}
-
-	it('draw every variant the catalog gives a block, each under its label', () => {
-		const undrawn: string[] = [];
-		for (const block of editorBlocks(everyBlock(), 'USD')) {
-			if (block.variant === null) continue;
-			const root = mount(
-				<PicturePicker
-					legend={block.label}
-					name={block.id}
-					set={{ block: block.type }}
-					options={block.variants}
-					value={block.variant}
-					onPick={() => {}}
-				/>
-			);
-			const faces = [...root.querySelectorAll('label')];
-			expect(faces.map((face) => face.textContent)).toEqual(
-				block.variants.map((variant) => variant.label)
-			);
-			faces.forEach((face, at) => {
-				if ((face.querySelector('.adm-picture__art')?.childElementCount ?? 0) === 0) {
-					undrawn.push(`${block.type}:${block.variants[at]?.value}`);
-				}
-			});
-		}
-		expect(undrawn).toEqual([]);
-	});
-
-	it('hand a pick to the caller, and a block sheet posts its words without it', () => {
-		const onPick = vi.fn();
-		const onDone = vi.fn();
-		const root = mount(
-			<BlockSheet
-				title="Story"
-				block="story"
-				variants={{
-					options: [
-						{ value: 'plain', label: 'Plain' },
-						{ value: 'lede', label: 'Lede' }
-					],
-					value: 'plain',
-					onPick
-				}}
-				text={{
-					fields: <input name="heading" defaultValue="Why coats, why now" />,
-					onDone,
-					applying: false
-				}}
+			<SettingsSheet
 				onDismiss={() => {}}
+				campaign={{
+					name: 'Winter coat drive',
+					address: '/winter-coat-drive',
+					goalMinor: 1500000,
+					currency: 'USD',
+					endDate: '2027-12-31'
+				}}
+				sections={[
+					story,
+					{ id: 'cover', label: 'Cover photo', summary: 'No photo yet', empty: true }
+				]}
+				onOpenSection={() => {}}
+				onAddPhoto={() => {}}
+				shareMessage="Help us get every kid a coat."
+				onShareMessage={() => {}}
+				donationSettings="Donor chooses"
+				onOpen={() => {}}
 			/>
 		);
-		act(() => root.querySelector<HTMLInputElement>('input[value="lede"]')?.click());
-		expect(onPick).toHaveBeenCalledWith('lede');
-
-		act(() => button(root, 'Done').click());
-		const [form] = onDone.mock.calls[0] ?? [];
-		expect([...new FormData(form).entries()]).toEqual([['heading', 'Why coats, why now']]);
-	});
-});
-
-describe('a block with nothing typed in it', () => {
-	const sheet = (refusal: string | null) => (
-		<BlockSheet
-			title="Share buttons"
-			block="share"
-			variants={{
-				options: [
-					{ value: 'buttons', label: 'Buttons' },
-					{ value: 'icons', label: 'Icons' }
-				],
-				value: 'buttons',
-				onPick: () => {}
-			}}
-			pickRefusal={refusal}
-			onDismiss={() => {}}
-		/>
-	);
-
-	it('reports a refused pick under its pictures, from a region there before it', () => {
-		const { root, redraw } = mountable(sheet(null));
-		expect(root.querySelector('button[type="submit"]')).toBeNull();
-		const region = () => root.querySelector('dialog [role="status"]');
-		expect(region()?.textContent).toBe('');
-
-		redraw(sheet('The page changed while this was open. Reload to see it.'));
-		expect(region()?.textContent).toBe('The page changed while this was open. Reload to see it.');
+		const named = [
+			...root.querySelectorAll('dialog h3, dialog legend, dialog label, dialog button'),
+			...root.querySelectorAll('dialog [role="radiogroup"], dialog [role="radio"]')
+		].map((one) => one.getAttribute('aria-label') ?? one.textContent ?? '');
+		expect(named.length).toBeGreaterThan(8);
+		expect(
+			named.filter((name) =>
+				/layout|look|colou?r|palette|shade|corner|style|variant|background|share buttons|\bmove\b|add a block|remove/i.test(
+					name
+				)
+			)
+		).toEqual([]);
+		expect(root.querySelector('dialog input[type="radio"]')).toBeNull();
+		expect(root.querySelector('dialog [aria-haspopup="menu"]')).toBeNull();
 	});
 });
 
@@ -722,7 +604,9 @@ describe('what the bar says to a reader', () => {
 		expect(region(root)).toBe(said);
 		expect(edit.hasAttribute('aria-pressed')).toBe(false);
 		expect(edit.textContent).toBe('Done');
-		expect(said.textContent).toBe('Edit is on: choose a block, or open Settings for the list');
+		expect(said.textContent).toBe(
+			'Edit is on: choose a part of the page, or open Settings for the list'
+		);
 
 		act(() => edit.click());
 		expect(edit.textContent).toBe('Edit');
@@ -852,7 +736,7 @@ describe('the goal', () => {
 
 describe('the preview frame', () => {
 	/** the frame in the editor, under the bar whose Edit turns it. */
-	function framed(onBlockClick: (id: string) => void) {
+	function framed(onSectionClick: (id: string) => void) {
 		const root = routed(
 			<EditorShell
 				bar={<Bar onSettings={() => {}} />}
@@ -860,7 +744,7 @@ describe('the preview frame', () => {
 					<PreviewFrame
 						src="about:blank"
 						title="Preview of Winter coat drive"
-						onBlockClick={onBlockClick}
+						onSectionClick={onSectionClick}
 					/>
 				}
 			/>
@@ -884,7 +768,7 @@ describe('the preview frame', () => {
 			window.dispatchEvent(new MessageEvent('message', { data, origin, source }));
 		});
 
-	it('is the preview’s one tab stop, named, and no block in the page it frames is one', () => {
+	it('is the preview’s one tab stop, named, and no section in the page it frames is one', () => {
 		// the page mounted first: its sweep takes every stop in the document it runs in out of the
 		// order, which in the editor is the frame's own document and never the host's.
 		const page = mount(
@@ -904,9 +788,8 @@ describe('the preview frame', () => {
 						socialLinks: []
 					}
 				}}
-				look={{ brandColour: '#1d6b4f', shade: 'warm', corner: 'round' }}
+				look={{ brandColour: '#1d6b4f' }}
 				sharing={{
-					channels: ['facebook', 'copy-link'],
 					message: 'Help us get every kid a coat.',
 					url: 'https://give.example.org/coats'
 				}}
@@ -929,26 +812,26 @@ describe('the preview frame', () => {
 		expect(stops.filter((stop) => stop.tabIndex !== -1)).toEqual([]);
 	});
 
-	it('hands on a block id its own page posted, and nothing else on the channel', () => {
-		const onBlockClick = vi.fn();
-		const frame = framed(onBlockClick);
+	it('hands on a section id its own page posted, and nothing else on the channel', () => {
+		const onSectionClick = vi.fn();
+		const frame = framed(onSectionClick);
 		turnEdit();
 		const own = window.location.origin;
-		const message = { type: 'bg-page-block', id: 'b1' };
+		const message = { type: SECTION_MESSAGE, id: 'story' };
 
 		post(message, 'https://elsewhere.example', frame.contentWindow);
 		post(message, own, window);
-		post({ type: 'something-else', id: 'b1' }, own, frame.contentWindow);
+		post({ type: 'something-else', id: 'story' }, own, frame.contentWindow);
 		post(message, own, frame.contentWindow);
 
-		expect(onBlockClick.mock.calls).toEqual([['b1']]);
+		expect(onSectionClick.mock.calls).toEqual([['story']]);
 	});
 
 	it('hands on a click only while Edit is on, the preview being just the page with it off', () => {
-		const onBlockClick = vi.fn();
-		const frame = framed(onBlockClick);
+		const onSectionClick = vi.fn();
+		const frame = framed(onSectionClick);
 		const clicked = (id: string) =>
-			post({ type: 'bg-page-block', id }, window.location.origin, frame.contentWindow);
+			post({ type: SECTION_MESSAGE, id }, window.location.origin, frame.contentWindow);
 
 		clicked('off-before');
 		turnEdit();
@@ -956,7 +839,7 @@ describe('the preview frame', () => {
 		turnEdit();
 		clicked('off-after');
 
-		expect(onBlockClick.mock.calls).toEqual([['on']]);
+		expect(onSectionClick.mock.calls).toEqual([['on']]);
 	});
 
 	it('tells the page whether Edit is on at each press, and again when the page says it is ready', () => {

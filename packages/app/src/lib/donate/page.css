@@ -9,41 +9,40 @@
  * does not reach it. `.page div` works because it outranks `[data-donate-root]`. `--_w-sent` is
  * declared on the same div, which `.value.sent` reads and falls back from to `--_w-bold`
  * (packages/form/src/styles/parts.css). every other `--_` name is the card's and is not declared
- * here. the brand clamp, the neutral ladder,
- * the type steps, the space steps and the corners are the card's, and the blocks around the card
- * read the same ones, so the card and the page cannot come apart. what the card has no use for —
- * display type, a page's widths, the space between sections, the section grounds, and the three
- * faces — is a `--page-*` name declared in this file and nowhere else. the operator's tokens, base
- * and element sheets are never linked beside it: they are layered and these are not, so a document
- * holding both would let every rule here outrank them. the faces are the exception, and
+ * here. the brand clamp, the neutral ladder, the type steps, the space steps and the corners are
+ * the card's, and the sections around the card read the same ones, so the card and the page cannot
+ * come apart. what the card has no use for — display type, a page's widths, the space between
+ * sections, the cover's heights, the about band's ground, and the three faces — is a `--page-*`
+ * name declared in this file and nowhere else. the operator's tokens, base and element sheets are
+ * never linked beside it: they are layered and these are not, so a document holding both would let
+ * every rule here outrank them. the faces are the exception, and
  * packages/operator/src/styles/fonts.css holds why: a `@font-face` carries no cascading
  * declaration, so linking that one sheet registers the faces and changes no rule.
  *
  * the page root is two nodes, and ./page-root.tsx draws both. the outer one carries
  * `data-donate-root` — the selector the form's file declares its layer on outside a shadow root —
- * and the four axes as attributes: `data-shade`, `data-corner`, `data-palette`, `data-layout`. the
- * rules below turn the first two into the form's `--donate-shade` and `--donate-corner` seeds, and
- * the root sets `--donate-primary` inline from the brand colour, so the card inside and every block
- * take the same preset. no other `--donate-*` name is written here, and a palette that needed one
- * would be a new public seed on the embed, which is the form's decision and not this file's. the
- * inner node, `.page-ground`, is where every token below is declared and the ground is painted:
- * the form declares its ladder one node under `[data-donate-root]` so the shade's container query
- * can reach it, and a token that reads a rung has to be declared at or under that node, or it reads
- * a ladder that is not there.
+ * and `data-layout`, the whole layout the page is drawn in: `card`, `letter` or `feature` for a
+ * campaign ($lib/page/shape.ts), `donation` for the Donation page, `plain` for the box alone. the
+ * root sets `--donate-primary` inline from the brand colour, the page's one accent, so the card
+ * inside and every section take the same brand. no other `--donate-*` name is written here. the
+ * shade and the corners are the form's own defaults. the inner node, `.page-ground`, is where every
+ * token below is declared and the ground is painted: the form declares its ladder one node under
+ * `[data-donate-root]`, and a token that reads a rung has to be declared at or under that node, or
+ * it reads a ladder that is not there.
  *
  * the outer node is a `page` inline-size container, and every fluid token below is in `cqi` off it.
- * those tokens are unregistered, so `cqi` resolves where a rule spends the token: a block that
- * makes itself a size container moves what they read inside it. a block's layout changes at three
- * container widths and no others, `@container page (min-width: 30rem)`, `48rem` and `60rem`: a
- * condition cannot read a custom property, so those three are the one place a length is written at
- * its call site. this layer is `rem` where the card is `em`: the page is the host document, not a
- * guest in one, and its sizes follow the reader's root.
+ * those tokens are unregistered, so `cqi` resolves where a rule spends the token. a section's layout
+ * changes at three container widths and no others, `@container page (min-width: 30rem)`, `48rem`
+ * and `60rem`: a condition cannot read a custom property, so those three are the one place a length
+ * is written at its call site. this layer is `rem` where the card is `em`: the page is the host
+ * document, not a guest in one, and its sizes follow the reader's root.
  *
- * type. `--page-display` is the page's title and a campaign's goal figure, `--page-heading` a
- * section's heading, `--page-lede` a title's lede and a story's first paragraph, each with its
- * line height and the two with a tracking. body text is the card's `--_t-md` at `--_lh-body`, and
- * prose held to `--page-measure` is `--page-lh-prose`. a heading-sized statement that runs to more
- * than a line is the card's `--_lh-tight`.
+ * type. `--page-display` is the page's title, `--page-heading` a section's heading and the goal
+ * figure, `--page-lede` the lede, each with its line height and the two with a tracking.
+ * `--page-display-long` is a title past `TITLE_LONG` (./page-view.tsx) below 60rem, at the display
+ * line height and tracking, and never larger than the display size's floor. body text is the
+ * card's `--_t-md` at `--_lh-body`, and prose held to `--page-measure` is `--page-lh-prose`.
+ * a heading-sized statement that runs to more than a line is the card's `--_lh-tight`.
  *
  * faces. `--page-font-text` is the page and the card, `--page-font-display` the title, a section
  * heading and the goal figure, `--page-font-mono` a string the card sets for a donor to check
@@ -54,101 +53,57 @@
  * browser's synthesis of that pairing is accepted. the embed links neither this sheet nor those
  * faces, and its own `--_font` stays the platform stack.
  *
- * widths. `--page-width` bounds the page's content, `--page-box` is the donation box's column —
- * the card's widest shape starts at 26em in packages/form/src/styles/layout.css, and this is that
- * column in the page's units — and `--page-measure` holds prose inside a wider column. the three
- * `ch` measures hold a line of type at its own size: `--page-measure-title` the title,
- * `--page-measure-heading` a compact title, `--page-measure-lede` a lede and an about-us statement.
+ * widths. `--page-width` bounds the page's content and `--page-narrow` the card's and the Donation
+ * page's, `--page-box` is the donation box's column — the card's widest shape starts at 26em in
+ * packages/form/src/styles/layout.css, and this is that column in the page's units — and
+ * `--page-measure` holds prose inside a wider column. the `ch` measures hold a line of type at its
+ * own size: `--page-measure-title` the title, `--page-measure-lede` a lede and an about-us statement.
  *
- * space, in five tiers and no adjacent two sharing a step. inside an item — a label and its value,
- * an option's inset, the gap between a row's parts — the card's `--_sp1` to `--_sp5` and nothing
- * else. `--page-gap-item` stands items of one group apart when they are read one by one (questions
- * with their answers, about-us's parts); `--page-gap-group` is a heading to its content and a
- * companion to the box; `--page-gap-lead` is the masthead to the first block; `--page-gap-section`
- * is block to block; `--page-band-inset` is the inset of a section drawn on a ground of its own;
- * `--page-col-gap` is between two columns and `--page-gutter` the page's side margin. the cover
- * stands its title `--page-cover-run` under the top of its scrim and `--page-cover-end` off the
- * photo's lower edge, a step shorter from the widest breakpoint.
+ * the first screen. the donation box is the page's purpose, so every layout stands all of it on the
+ * first screen of a 390 × 844 phone and a 1280 × 800 laptop: ahead of it stand only the masthead,
+ * the cover and the title, and on a laptop the goal and the lede beside them. the cover's heights
+ * and the title's sizes on a phone, `--page-display` and the smaller `--page-display-long`, are
+ * the budget that keeps it so —
+ * `--page-cover-card` and `--page-cover-letter` above the box on a phone, `--page-hero-narrow` the
+ * feature's cover on a phone and `--page-hero` on a laptop, where the box stands over the cover's
+ * right side `--page-gap-lead` off its top. the feature's cover is at least `--page-hero` and grows
+ * with the words on it, and a cover the words have grown carries the box down with it.
  *
- * grounds. the page ground is `--_n2`. a section sets `data-background` to stand on another —
- * `soft`, `tint` or `strong` — and the palette on the root says what each of those is. every
- * palette is a relation to the brand rather than a colour of its own, so an unbranded page, whose
- * seed is the form's grey at chroma 0, draws greys under every palette by construction:
+ * space, in five tiers and no adjacent two sharing a step. inside an item the card's `--_sp1` to
+ * `--_sp5` and nothing else. `--page-gap-item` stands items of one group apart; `--page-gap-group` is
+ * a heading to its content and one section of a column to the next; `--page-gap-lead` is the
+ * masthead to the first section; `--page-gap-section` is section to section down the page;
+ * `--page-band-inset` is the inset of a section drawn on a ground of its own; `--page-col-gap` is
+ * between two columns and `--page-gutter` the page's side margin.
  *
- *   plain   soft `--_n3`, tint `--_n4`, strong `--_n12` under `--_n1`
- *   tint    soft and tint off `--_p` at 0.972 and 0.94 lightness, chroma held to 0.022 and 0.045,
- *           at `--page-hue`; strong the fill itself under `--_on-p`
- *   duo     as tint, with the tint ground at `--page-hue-2`
- *   bright  soft at 0.965, tint at 0.92, chroma 0.4 and 0.6 of the brand's held to 0.04 and 0.075,
- *           and strong the fill's lightness and chroma — all three at `--page-hue-2`
- *   bold    soft `--_n3`, tint as tint, strong `--_p-press` under `--_on-p`
- *
- * the two hues are set inline on the root by the server render (../page/palette.ts): `--page-hue`
- * is the brand's own, and `--page-hue-2` the brand's plus 150 on duo and plus 60 on bright. either
- * moves to 115° when it lands from 2° to 105°, the window holding the form's error red and warning
- * amber, where a ground reads as a refusal or a caution band. a page with no brand colour sets
- * neither, and each ground falls back to the seed's own hue, which its zero chroma never shows.
- *
- * a strong ground carries one ink and no quiet one: `--page-quiet` on it is its ink.
+ * grounds. the page ground is `--_n2`, the card's panel and every card on it `--_n1`, and About us
+ * stands on `--page-band`, `--_n3`. the brand is a ground in one place, a cover with no photo — the
+ * logo's cover, the logo on its own `--_n1` plate, and the feature's empty cover, its words in
+ * `--_on-p` from 60rem. otherwise the brand fills the action, the goal's progress and the badge,
+ * and is the ink of a link and a tier's amount.
  *
  * the measured pairs. `./page.spec.ts` works each one out from this file and the form's, across
  * brand colours around the wheel at full strength, dark and muted and the unbranded grey, under
- * every palette and every shade, and holds the lowest reading against its floor. the numbers below
- * are those lowest readings, the three shades within 0.03 of each other:
+ * every shade, and holds the lowest reading against its floor:
  *
- *   `--page-quiet` — `--_n10` on the page ground, 4.85:1; `--_n11` on a soft ground, 5.41:1 at
- *   bright's and 5.65:1 or more at the rest; on a tint ground, 4.58:1 at bright's and 5.06:1 or more
- *   at the rest. text, held to 4.5:1.
+ *   `--page-quiet` — `--_n10` on the page ground and on `--_n1`, `--_n11` on the about band. text,
+ *   held to 4.5:1.
  *
- *   `--page-on-strong` on a strong ground — 4.79:1 at bright, 4.81:1 at tint and duo, 7.26:1 at bold,
- *   14.82:1 at plain. text, held to 4.5:1. the same ink is the focus ring there (`--page-ring`
- *   below), and the spec holds it to 3:1 as a boundary as well.
+ *   `--_p` as ink — a link or a tier's amount — on the page ground and on `--_n1`. text, held to
+ *   4.5:1.
  *
- *   `--_p` as ink — a link or a tier's amount — on the page ground 4.82:1, on a soft ground 4.51:1 at
- *   bright's and 4.53:1 or more at the rest. text, held to 4.5:1. on a tint ground it reads 3.92:1 at
- *   bright's and 4.13:1 to 4.28:1 at the rest, so the primary is never a word on a tint ground.
+ *   the goal track — `--page-track`, `--_n4` — holds the bar's `--_p` fill apart, held to 3:1, since
+ *   the fill is what the bar is read by.
  *
- *   the goal track — `--page-track`, `--_n4` on the page ground and `--_n6` on a soft or tint one —
- *   holds the bar's `--_p` fill apart by 4.18:1 on the page ground and 3.47:1 on the others, held to
- *   3:1, since the fill is what the bar is read by. the track against the ground under it is a look
- *   and states no floor, 1.15:1 on the page ground and 1.06:1 at its closest, on bright's tint.
- *
- *   `--page-scrim` is the one translucent colour here, laid under the cover's title over a photo the
- *   page cannot see, and carries the note that says so. it is solid at its darkest stop from the
- *   cover's lower edge to where the title starts, and fades out only across `--page-cover-run`, the
- *   run above the title that `.page-hero-over` pads by the same token, so the title's whole box
- *   stands on the darkest stop however many lines it and its lede run to. `--_n1` there on a white
- *   photo reads 9.33:1, held to 4.5:1 at the top of the title's first line, and the same ink is the
- *   ring there (`--page-ring` below).
+ *   `--page-scrim` is the one translucent colour here, laid over the feature's cover photo, which the
+ *   page cannot see, and carries the note that says so. it is at its darkest from the cover's left
+ *   edge across the 58% the words stand in, and fades over the rest, under the box. `--_n1` on it
+ *   over a white photo is held to 4.5:1, and the same ink is the ring there.
  */
 
 body {
 	margin: 0;
 	-webkit-text-size-adjust: 100%;
-}
-
-.page[data-shade='light'] {
-	--donate-shade: light;
-}
-
-.page[data-shade='warm'] {
-	--donate-shade: warm;
-}
-
-.page[data-shade='cool'] {
-	--donate-shade: cool;
-}
-
-.page[data-corner='square'] {
-	--donate-corner: square;
-}
-
-.page[data-corner='soft'] {
-	--donate-corner: soft;
-}
-
-.page[data-corner='round'] {
-	--donate-corner: round;
 }
 
 .page {
@@ -184,9 +139,10 @@ body {
 }
 
 .page > .page-ground {
-	--page-display: clamp(2rem, 1.25rem + 3.2cqi, 3.25rem);
+	--page-display: clamp(1.625rem, 1.2rem + 2.4cqi, 3rem);
+	--page-display-long: clamp(1.1875rem, 0.7rem + 2cqi, 1.625rem);
 	--page-heading: clamp(1.375rem, 1.1rem + 1.1cqi, 1.75rem);
-	--page-lede: clamp(1.125rem, 1rem + 0.5cqi, 1.3125rem);
+	--page-lede: clamp(1.0625rem, 1rem + 0.4cqi, 1.25rem);
 	--page-lh-display: 1.08;
 	--page-lh-heading: 1.2;
 	--page-lh-lede: 1.45;
@@ -200,33 +156,41 @@ body {
 
 	--page-measure: 34rem;
 	--page-measure-title: 18ch;
-	--page-measure-heading: 26ch;
 	--page-measure-lede: 32ch;
 	--page-width: 72rem;
+	--page-narrow: 65rem;
 	--page-box: 26rem;
+
+	--page-cover-card: 8.5rem;
+	--page-cover-letter: 7rem;
+	--page-hero-narrow: 9rem;
+	--page-hero: 28.75rem;
+	--page-card-inset: 1.75rem;
+	--page-cover-logo: 5rem;
 
 	--page-gutter: clamp(1rem, 0.5rem + 2.5cqi, 2.5rem);
 	--page-gap-group: 1.25rem;
 	--page-gap-item: 1.5rem;
-	--page-gap-lead: 2rem;
-	--page-gap-section: clamp(3rem, 2rem + 4cqi, 5.5rem);
+	--page-gap-lead: 1.5rem;
+	--page-gap-section: clamp(3rem, 2rem + 4cqi, 5rem);
 	--page-band-inset: clamp(2.25rem, 1.5rem + 3cqi, 4rem);
-	--page-col-gap: clamp(2rem, 1rem + 4cqi, 5rem);
-	--page-cover-run: 5rem;
-	--page-cover-end: 2rem;
+	--page-col-gap: clamp(2rem, 1rem + 4cqi, 4rem);
 
-	/* the drawn height of a third-party brand mark, held to LinkedIn's 21px minimum: 1.4 × the
-	   card's clamped root, whose 15px floor makes it 21px. */
+	/* the drawn height of a third-party brand mark: 1.4 × the card's clamped root, whose 15px
+	   floor makes it 21px. */
 	--page-brand-mark: calc(var(--_root-size) * 1.4);
 
 	--page-ground: var(--_n2);
+	--page-band: var(--_n3);
 	--page-quiet: var(--_n10);
 	--page-track: var(--_n4);
+	--page-accent: var(--_p);
+	--page-ring: var(--_focus-ring);
 	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header measures it */
 	--page-scrim: linear-gradient(
-		to top,
-		oklch(0.18 0.01 260 / 0.78) calc(100% - var(--page-cover-run)),
-		oklch(0.18 0.01 260 / 0)
+		to right,
+		oklch(0.18 0.01 260 / 0.72) 58%,
+		oklch(0.18 0.01 260 / 0.2)
 	);
 
 	flex: 1 0 auto;
@@ -235,57 +199,11 @@ body {
 	line-height: var(--_lh-body);
 }
 
-.page[data-palette='plain'] > .page-ground {
-	--page-bg-soft: var(--_n3);
-	--page-bg-tint: var(--_n4);
-	--page-bg-strong: var(--_n12);
-	--page-on-strong: var(--_n1);
-}
-
-.page[data-palette='tint'] > .page-ground {
-	--page-bg-soft: oklch(from var(--_p) 0.972 min(c, 0.022) var(--page-hue, h));
-	--page-bg-tint: oklch(from var(--_p) 0.94 min(c, 0.045) var(--page-hue, h));
-	--page-bg-strong: var(--_p);
-	--page-on-strong: var(--_on-p);
-}
-
-.page[data-palette='duo'] > .page-ground {
-	--page-bg-soft: oklch(from var(--_p) 0.972 min(c, 0.022) var(--page-hue, h));
-	--page-bg-tint: oklch(from var(--_p) 0.94 min(c, 0.045) var(--page-hue-2, h));
-	--page-bg-strong: var(--_p);
-	--page-on-strong: var(--_on-p);
-}
-
-.page[data-palette='bright'] > .page-ground {
-	--page-bg-soft: oklch(from var(--_p) 0.965 min(calc(c * 0.4), 0.04) var(--page-hue-2, h));
-	--page-bg-tint: oklch(from var(--_p) 0.92 min(calc(c * 0.6), 0.075) var(--page-hue-2, h));
-	--page-bg-strong: oklch(from var(--_p) l c var(--page-hue-2, h));
-	--page-on-strong: var(--_on-p);
-}
-
-.page[data-palette='bold'] > .page-ground {
-	--page-bg-soft: var(--_n3);
-	--page-bg-tint: oklch(from var(--_p) 0.94 min(c, 0.045) var(--page-hue, h));
-	--page-bg-strong: var(--_p-press);
-	--page-on-strong: var(--_on-p);
-}
-
-.page-ground [data-background='soft'] {
-	--page-quiet: var(--_n11);
-	--page-track: var(--_n6);
-	background: var(--page-bg-soft);
-}
-
-.page-ground [data-background='tint'] {
-	--page-quiet: var(--_n11);
-	--page-track: var(--_n6);
-	background: var(--page-bg-tint);
-}
-
-.page-ground [data-background='strong'] {
-	--page-quiet: var(--page-on-strong);
-	background: var(--page-bg-strong);
-	color: var(--page-on-strong);
+@container page (min-width: 60rem) {
+	.page > .page-ground {
+		--page-cover-card: 10rem;
+		--page-cover-letter: 20rem;
+	}
 }
 
 /* the plain page: the card alone, in the box's own column ($lib/donate/plain-page.tsx). the card
@@ -343,76 +261,49 @@ body {
 }
 
 /*
- * ── the donor page's blocks ───────────────────────────────────────────────────────────────────
+ * ── the donor page's sections ─────────────────────────────────────────────────────────────────
  *
- * ./page-view.tsx draws a page as a masthead, a body and a footer under the root, and each block as
- * a `.page-block` section carrying `data-block` and `data-background`, its content inside a
- * `.page-in` that holds it to the page's width and gutter. the donation box is a `.page-box` beside
- * them, never inside one, and no rule below gives the box or any ancestor of it a clip, a position
- * or a transform. a block's own class names start `page-`, and its states are attributes.
+ * ./page-view.tsx draws a page as a masthead, a body and a footer under the root. a page's sections
+ * stand in `.page-layout`, each carrying `data-area` for the rules below to place it by, in the order
+ * a phone reads them; from `@container page (min-width: 60rem)` each layout moves them into its
+ * columns. the donation box is a `.page-box` among them, never inside another section, and no rule
+ * below gives the box or any ancestor of it a clip, a position or a transform. neither rail is
+ * sticky: a box that a later step grows past the screen's height scrolls with the page, so its
+ * lower edge and what stands under it can always be reached.
  *
- * layouts. `.page-flow` stacks blocks full width, each grounded one as a band edge to edge. a
- * `.page-split` is the box's column beside the rest: on a phone it is the list order —
- * `.page-lead`, then `.page-aside` holding the box and its companions, then `.page-rest` — and from
- * the widest breakpoint the aside stands in the second column across both rows. a grounded block
- * inside a split is a panel with the card's corner rather than a band. `.page-band` is the banner's
- * ground behind its split.
- *
- * ink. `--page-accent` is what a link and a listed tier's amount are drawn in: the primary, but the
- * ground's own ink on a tint ground, where the primary is never a word (the measured pairs above),
- * and on a strong one, which carries one ink. `--page-ring` is the focus ring, the one ink on a
- * strong ground and on the cover's scrim. a card drawn on `--_n1` inside a block — a tier, the
- * org-info card, a program option, a share press — sets its own ink, so a strong ground's ink never
- * reaches it.
+ * ink. `--page-accent` is what a link and a listed tier's amount are drawn in, the primary.
+ * `--page-ring` is the focus ring, `--_n1` on the feature's scrim and the form's elsewhere. a card
+ * drawn on `--_n1` — a tier, a program option, a share press — sets its own ink.
  */
 
-.page-block :where(h1, h2, h3, p, ul, ol) {
-	margin: 0;
-}
-
-.page-block {
-	--page-accent: var(--_p);
-	--page-ring: var(--_focus-ring);
-}
-
-.page-block[data-background='tint'],
-.page-block[data-background='strong'],
-.page-band[data-background='tint'] .page-block,
-.page-band[data-background='strong'] .page-block {
-	--page-accent: currentColor;
-}
-
-.page-block[data-background='strong'],
-.page-band[data-background='strong'] .page-block {
-	--page-ring: var(--page-on-strong);
-}
-
-.page-block a {
-	color: var(--page-accent);
-	text-underline-offset: var(--_underline-offset);
-}
-
-.page-block a:focus-visible,
-.page-faq-question:focus-visible {
-	outline: var(--_focus-width) solid transparent;
-	box-shadow: 0 0 0 var(--_focus-width) var(--page-ring);
-}
-
-/* the editor's preview while its Edit is on (`usePreviewReport` in ./page-view.tsx): every block is
+/* the editor's preview while its Edit is on (`usePreviewReport` in ./page-view.tsx): every section is
    drawn as a thing to click, by the pointer and by its edge in the focus ring's ink — dashed at
    rest, so a finger with no hover sees it too, and solid under the pointer. drawn inside the
-   block's own edge, so a block on the page's gutter keeps all of it. the donation box's wrapper is
-   no `.page-block` and declares no ring of its own, so it reads the form's. the cover's title is
-   a block inside the hero's, and a click opens the innermost block under it (`closest` in
-   ./page-view.tsx), so only that one turns solid. */
-:root[data-editing] [data-block-id] {
+   section's own edge, so a section on the page's gutter keeps all of it. a click opens the
+   innermost section under it (`closest` in ./page-view.tsx), so only that one turns solid. */
+:root[data-editing] [data-section] {
 	cursor: pointer;
 	outline: var(--_border) dashed var(--page-ring, var(--_focus-ring));
 	outline-offset: calc(-1 * var(--_border));
 }
 
-:root[data-editing] [data-block-id]:hover:not(:has([data-block-id]:hover)) {
+:root[data-editing] [data-section]:hover:not(:has([data-section]:hover)) {
 	outline-style: solid;
+}
+
+.page-ground :where(h1, h2, h3, p, ul, ol, figure) {
+	margin: 0;
+}
+
+.page-ground a {
+	color: var(--page-accent);
+	text-underline-offset: var(--_underline-offset);
+}
+
+.page-ground a:focus-visible,
+.page-faq-question:focus-visible {
+	outline: var(--_focus-width) solid transparent;
+	box-shadow: 0 0 0 var(--_focus-width) var(--page-ring);
 }
 
 .page-in {
@@ -422,12 +313,19 @@ body {
 	padding-inline: var(--page-gutter);
 }
 
-.page[data-layout='column'] .page-in {
-	max-inline-size: calc(var(--page-measure) + 2 * var(--page-gutter));
+.page[data-layout='card'] .page-in,
+.page[data-layout='donation'] .page-in {
+	max-inline-size: var(--page-narrow);
 }
 
 .page-mast {
-	padding-block-start: var(--_sp5);
+	padding-block-start: var(--_sp3);
+}
+
+@container page (min-width: 60rem) {
+	.page-mast {
+		padding-block-start: var(--_sp5);
+	}
 }
 
 /* a name with no space in it wraps inside the column rather than widening the document: `anywhere`
@@ -442,14 +340,11 @@ body {
 /* the organisation's logo, the masthead's one row. a logo at least twice as wide as it is tall
    stands in for the name and carries it as its alt; a narrower one stands beside the name and says
    nothing of its own (./page-view.tsx decides which, off the stored image's width and height). it
-   is one row tall, `--_row-min`, the height of the card's own rows, on every shade and at every
-   width, and it is drawn whole, never cropped. it keeps its own pixels, so a logo on a white ground
-   shows that ground on a warm or cool page: nothing here paints behind it.
-   with no logo, the badge of the name's initials stands where a narrower one would, a row square:
-   the brand fill under the one ink the form draws on it, `--_on-p` on `--_p`, 4.79:1 at the fill
-   band's worst corner (packages/form/src/styles/tokens.css), and the corner of the page's other
-   row-high boxes, the share presses. a page with no brand colour fills it with the form's
-   registered grey. */
+   is one row tall, `--_row-min`, the height of the card's own rows, and it is drawn whole, never
+   cropped. with no logo, the badge of the name's initials stands where a narrower one would, a row
+   square: the brand fill under the one ink the form draws on it, `--_on-p` on `--_p`, 4.79:1 at the
+   fill band's worst corner (packages/form/src/styles/tokens.css). a page with no brand colour fills
+   it with the form's registered grey. */
 .page-mast-in {
 	display: flex;
 	align-items: center;
@@ -486,91 +381,396 @@ body {
 	padding-block: var(--page-gap-lead) var(--page-gap-section);
 }
 
-.page-foot {
-	padding-block-end: var(--page-gap-section);
-}
+/* ── the layouts ── */
 
-.page-flow,
-.page-split,
-.page-lead,
-.page-rest {
-	display: flex;
-	flex-direction: column;
-	gap: var(--page-gap-section);
-	min-inline-size: 0;
-}
-
-.page-aside {
+.page-layout {
 	display: flex;
 	flex-direction: column;
 	gap: var(--page-gap-group);
 	min-inline-size: 0;
 }
 
-.page-flow > .page-block:not([data-background='none']) {
-	padding-block: var(--page-band-inset);
+.page-layout > * {
+	min-inline-size: 0;
 }
 
-.page-split {
-	box-sizing: border-box;
-	max-inline-size: var(--page-width);
-	margin-inline: auto;
-	padding-inline: var(--page-gutter);
+/* on a phone the letter's rail is `display: contents`, so a section in it is spaced as the layout's own. */
+.page-layout > .page-section,
+.page-layout > .page-rail > .page-section {
+	margin-block-start: calc(var(--page-gap-section) - var(--page-gap-group));
 }
 
-.page-split .page-in {
-	max-inline-size: none;
-	padding-inline: 0;
-}
-
-.page-split .page-block:not([data-background='none']) {
-	padding: var(--page-band-inset) var(--page-gutter);
-	border-radius: var(--_r);
-}
-
-.page-band {
-	padding-block: var(--page-band-inset);
-}
-
-.page-band + .page-flow {
-	padding-block-start: var(--page-gap-section);
-}
-
-/* the card holds its own column's width in a flow, and fills a column layout's measure. */
-.page-box > .page-in > * {
+.page-box > div > * {
 	max-inline-size: var(--page-box);
 }
 
-.page[data-layout='column'] .page-box > .page-in > * {
-	max-inline-size: none;
+/* the card. on a phone its cover runs edge to edge under the masthead. wide, the page is one panel
+   on `--_n1`: the cover across its top, and under it the words beside the box. */
+.page[data-layout='card'] [data-area='cover'] {
+	margin-inline: calc(-1 * var(--page-gutter));
+	margin-block-start: calc(-1 * var(--page-gap-lead));
+}
+
+.page[data-layout='card'] [data-area='cover'] .page-cover {
+	block-size: var(--page-cover-card);
+}
+
+/* on a phone the box stands straight after the cover and the title, and the goal after it. */
+:is(.page[data-layout='card'], .page[data-layout='feature'])
+:is([data-area='goal'], [data-area='lede'], [data-area='story'], .page-section) {
+	order: 1;
 }
 
 @container page (min-width: 60rem) {
-	.page-split {
+	.page[data-layout='card'] .page-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) var(--page-box);
+		grid-template-areas:
+			'cover cover'
+			'title box'
+			'lede box'
+			'goal box'
+			'story box';
+		grid-template-rows: auto auto auto auto 1fr;
+		column-gap: var(--page-col-gap);
+		row-gap: var(--page-gap-group);
+		align-items: start;
+		padding: 0 var(--page-card-inset) var(--page-card-inset);
+		background: var(--_n1);
+		border: var(--_border) solid var(--_n6);
+		border-radius: var(--_r);
+	}
+
+	/* the panel keeps the page's gutter until the container is wider than the panel, and the masthead
+	   and footer, gutter and all, stand in the panel's width. */
+	.page[data-layout='card'] .page-in:not(.page-layout) {
+		max-inline-size: calc(var(--page-narrow) + 2 * var(--page-gutter));
+	}
+
+	.page[data-layout='card'] .page-layout {
+		max-inline-size: min(var(--page-narrow), 100% - 2 * var(--page-gutter));
+	}
+
+	.page[data-layout='card'] [data-area='cover'] {
+		grid-area: cover;
+		margin: 0 calc(-1 * var(--page-card-inset)) var(--_sp3);
+	}
+
+	.page[data-layout='card'] [data-area='cover'] .page-cover {
+		border-radius: var(--_r) var(--_r) 0 0;
+	}
+
+	.page[data-layout='card'] [data-area='cover'] ~ [data-area='title'],
+	.page[data-layout='card'] [data-area='cover'] ~ [data-area='box'] {
+		margin-block-start: 0;
+	}
+
+	.page[data-layout='card'] [data-area='title'] {
+		grid-area: title;
+		margin-block-start: var(--page-card-inset);
+	}
+
+	.page[data-layout='card'] [data-area='lede'] {
+		grid-area: lede;
+	}
+
+	.page[data-layout='card'] [data-area='goal'] {
+		grid-area: goal;
+	}
+
+	.page[data-layout='card'] [data-area='story'] {
+		grid-area: story;
+	}
+
+	.page[data-layout='card'] [data-area='box'] {
+		grid-area: box;
+		margin-block-start: var(--page-card-inset);
+	}
+}
+
+/* the letter. on a phone the rail's box follows the title, its goal falls in after the box with the
+   lede, and its tiers after those; wide, the rail is a column beside the reading column. */
+.page[data-layout='letter'] [data-area='cover'] {
+	padding: var(--_sp2);
+	background: var(--_n1);
+	border: var(--_border) solid var(--_n6);
+	border-radius: var(--_r);
+}
+
+.page[data-layout='letter'] [data-area='cover'] .page-cover {
+	block-size: var(--page-cover-letter);
+	border-radius: var(--_r-in);
+}
+
+.page[data-layout='letter'] .page-rail {
+	display: contents;
+}
+
+.page[data-layout='letter'] :is([data-area='goal'], [data-area='lede']) {
+	order: 1;
+}
+
+.page[data-layout='letter']
+	:is([data-area='tiers'], [data-area='story'], [data-area='photos'], [data-area='faq']) {
+	order: 2;
+}
+
+@container page (min-width: 60rem) {
+	/* a row for each of the reading column's six areas — cover, title, lede, story, photos, questions —
+	   and a last flexible row. the rail spans them all, and a rail taller than the reading column puts
+	   its extra height in that last row alone, since an item that crosses a flexible row sizes only
+	   that row. the column is spaced by margins rather than a row gap, so a row left empty adds
+	   nothing. */
+	.page[data-layout='letter'] .page-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) var(--page-box);
+		grid-template-rows: repeat(6, auto) 1fr;
+		column-gap: var(--page-col-gap);
+		row-gap: 0;
+		align-items: start;
+	}
+
+	.page[data-layout='letter'] .page-layout > * {
+		grid-column: 1;
+		max-inline-size: var(--page-measure);
+	}
+
+	.page[data-layout='letter'] .page-layout > :not(:first-child, .page-rail) {
+		margin-block-start: var(--page-gap-group);
+	}
+
+	.page[data-layout='letter'] .page-layout > .page-section {
+		margin-block-start: var(--page-gap-section);
+	}
+
+	.page[data-layout='letter'] .page-layout > [data-area='cover'] {
+		max-inline-size: none;
+	}
+
+	.page[data-layout='letter'] .page-rail {
+		display: flex;
+		flex-direction: column;
+		gap: var(--page-gap-group);
+		grid-column: 2;
+		grid-row: 1 / -1;
+		max-inline-size: none;
+	}
+
+	.page[data-layout='letter'] .page-layout > *,
+	.page[data-layout='letter'] .page-rail > * {
+		order: 0;
+	}
+
+	.page[data-layout='letter'] .page-rail > .page-section {
+		margin-block-start: var(--_sp3);
+	}
+}
+
+/* the feature. on a phone it reads as the card does, its cover taller. wide, one grid stands the
+   cover across the page's width under the title, lede and goal, on the scrim, with the box over its
+   right side `--page-gap-lead` off its top, the story beside the box under the cover, and the tiers,
+   the photos and the questions across both columns below. the cover's row is at least `--page-hero`
+   and grows with the words, and the rail spans it and the story's row, which is flexible, so a box
+   taller than the cover lengthens the story's row and never the cover. a cover with no photo is the
+   brand's own ground, the logo on it where there is one. */
+.page[data-layout='feature'] .page-layout {
+	box-sizing: border-box;
+	padding-inline: var(--page-gutter);
+}
+
+.page[data-layout='feature'] [data-area='cover'] {
+	margin-inline: calc(-1 * var(--page-gutter));
+	margin-block-start: calc(-1 * var(--page-gap-lead));
+}
+
+.page[data-layout='feature'] [data-area='cover'] .page-cover,
+.page[data-layout='feature'] .page-cover-area:empty {
+	block-size: var(--page-hero-narrow);
+}
+
+.page[data-layout='feature'] .page-cover-area:empty {
+	background: var(--_p);
+}
+
+.page[data-layout='feature'] .page-hero-words {
+	display: contents;
+}
+
+.page[data-layout='feature'] .page-about-area {
+	margin-block-start: var(--page-gap-section);
+	padding-block: var(--page-band-inset);
+	background: var(--page-band);
+	--page-quiet: var(--_n11);
+}
+
+@container page (min-width: 60rem) {
+	.page[data-layout='feature'] .page-layout {
+		display: grid;
+		grid-template-columns:
+			[full-start] minmax(var(--page-gutter), 1fr)
+			[main-start] minmax(
+				0,
+				calc(var(--page-width) - var(--page-box) - var(--page-col-gap) - 2 * var(--page-gutter))
+			)
+			[main-end] var(--page-col-gap) [rail-start] var(--page-box) [rail-end]
+			minmax(var(--page-gutter), 1fr) [full-end];
+		grid-template-rows: minmax(var(--page-hero), auto) 1fr;
+		row-gap: 0;
+		column-gap: 0;
+		padding-inline: 0;
+	}
+
+	.page[data-layout='feature'] .page-layout > * {
+		grid-column: main-start / rail-end;
+	}
+
+	.page[data-layout='feature'] [data-area='cover'] {
+		--page-ring: var(--_n1);
+
+		position: relative;
+		grid-column: full-start / full-end;
+		grid-row: 1;
+		margin: 0;
+	}
+
+	.page[data-layout='feature'] [data-area='cover'] .page-cover {
+		block-size: 100%;
+	}
+
+	/* the logo in the cover's place stands over the words' column, at its start. */
+	.page[data-layout='feature'] .page-layout[data-cover='logo'] .page-cover {
+		place-items: start;
+		box-sizing: border-box;
+		padding-block-start: var(--page-gap-lead);
+		padding-inline-start: max(
+			var(--page-gutter),
+			calc((100% - var(--page-width)) / 2 + var(--page-gutter))
+		);
+	}
+
+	.page[data-layout='feature'] .page-layout[data-cover='logo'] .page-cover-logo {
+		max-block-size: var(--page-cover-logo);
+	}
+
+	.page[data-layout='feature'] [data-area='cover']::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: var(--page-scrim);
+	}
+
+	.page[data-layout='feature'] .page-layout[data-cover='logo'] [data-area='cover']::after,
+	.page[data-layout='feature'] .page-layout[data-cover='none'] [data-area='cover']::after {
+		background: none;
+	}
+
+	/* the title, lede and goal, on the cover's lower edge in the scrim's one ink. the inset above them
+	   is what a cover they grow keeps over the heading; over a logo, the logo's height too. */
+	.page[data-layout='feature'] .page-hero-words {
+		--page-ring: var(--_n1);
+		--page-quiet: var(--_n1);
+
+		z-index: 1;
+		display: flex;
+		flex-direction: column;
+		gap: var(--_sp4);
+		grid-column: main-start / main-end;
+		grid-row: 1;
+		align-self: end;
+		padding-block: var(--page-band-inset);
+		color: var(--_n1);
+	}
+
+	.page[data-layout='feature'] .page-layout[data-cover='logo'] .page-hero-words {
+		padding-block-start: calc(
+			var(--page-gap-lead) +
+			var(--page-cover-logo) +
+			2 *
+			var(--_sp3) +
+			var(--page-gap-group)
+		);
+	}
+
+	.page[data-layout='feature'] .page-layout[data-cover='logo'] .page-hero-words,
+	.page[data-layout='feature'] .page-layout[data-cover='none'] .page-hero-words {
+		--page-quiet: var(--_on-p);
+
+		color: var(--_on-p);
+	}
+
+	.page[data-layout='feature'] .page-hero-words .page-goal {
+		max-inline-size: var(--page-measure);
+	}
+
+	.page[data-layout='feature'] .page-hero-words .page-goal-track {
+		background: var(--_n8);
+	}
+
+	.page[data-layout='feature'] .page-hero-words .page-goal-fill {
+		background: var(--_n1);
+	}
+
+	/* the rail starts on the cover's row, `--page-gap-lead` below its top, and stands over the cover
+	   whatever height the words give it. */
+	.page[data-layout='feature'] .page-rail {
+		z-index: 2;
+		grid-column: rail-start / rail-end;
+		grid-row: 1 / 3;
+		align-self: start;
+		margin-block-start: var(--page-gap-lead);
+	}
+
+	.page[data-layout='feature'] [data-area='story'] {
+		grid-column: main-start / main-end;
+		grid-row: 2;
+		padding-block-start: var(--page-gap-section);
+	}
+
+	.page[data-layout='feature'] .page-layout > .page-section {
+		margin-block-start: var(--page-gap-section);
+	}
+}
+
+/* the Donation page: the title and the program chooser, then the box; wide, the box beside them. */
+@container page (min-width: 60rem) {
+	.page[data-layout='donation'] .page-layout {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) var(--page-box);
 		grid-template-rows: auto 1fr;
 		column-gap: var(--page-col-gap);
-		row-gap: var(--page-gap-section);
+		row-gap: var(--page-gap-item);
 		align-items: start;
 	}
 
-	.page-lead,
-	.page-rest {
+	.page[data-layout='donation'] [data-area='title'],
+	.page[data-layout='donation'] [data-area='chooser'] {
 		grid-column: 1;
 	}
 
-	.page-aside {
+	.page[data-layout='donation'] [data-area='box'] {
 		grid-column: 2;
 		grid-row: 1 / span 2;
 	}
-
-	.page-band .page-split {
-		align-items: center;
-	}
 }
 
-/* headings a block opens with. */
+.page[data-layout='donation'] .page-about-area {
+	margin-block-start: var(--page-gap-section);
+	padding-block: var(--page-band-inset);
+	background: var(--page-band);
+	--page-quiet: var(--_n11);
+}
+
+.page-foot {
+	padding-block-end: var(--page-gap-section);
+}
+
+.page-end {
+	padding-block: var(--page-gap-section) var(--page-gap-item);
+}
+
+/* ── the sections ── */
+
+/* headings a section opens with. */
 .page-heading {
 	margin-block-end: var(--page-gap-group);
 	font-family: var(--page-font-display);
@@ -598,35 +798,19 @@ body {
 	color: var(--page-quiet);
 }
 
-/* rich text, and the plain text about-us draws, inside a block: paragraphs and lists a step apart. */
-:is(
-	.page-prose,
-	.page-story-lead,
-	.page-about-words,
-	.page-about-statement,
-	.page-about-beneath,
-	.page-faq-answer
-) {
+/* rich text, and the plain text about-us draws: paragraphs and lists a step apart. */
+:is(.page-prose, .page-about-statement, .page-about-beneath, .page-faq-answer) {
 	display: flex;
 	flex-direction: column;
 	gap: var(--_sp4);
 }
 
-:is(
-		.page-prose,
-		.page-story-lead,
-		.page-about-words,
-		.page-about-statement,
-		.page-about-beneath,
-		.page-faq-answer
-	)
-	:where(ul, ol) {
+:is(.page-prose, .page-about-statement, .page-about-beneath, .page-faq-answer) :where(ul, ol) {
 	padding-inline-start: var(--_sp5);
 }
 
-/* title */
-.page-title-heading {
-	max-inline-size: var(--page-measure-title);
+/* title and lede */
+.page-title {
 	overflow-wrap: break-word;
 	font-family: var(--page-font-display);
 	font-size: var(--page-display);
@@ -636,34 +820,31 @@ body {
 	text-wrap: balance;
 }
 
-.page-title-lede {
-	margin-block-start: var(--_sp4);
+/* a title past `TITLE_LONG` characters (./page-view.tsx) is a step smaller below 60rem, where the
+   box stands under it. */
+.page-title[data-long] {
+	font-size: var(--page-display-long);
+}
+
+/* the title's measure holds from 60rem, where a column is wider than the measure; on a phone the
+   column is narrower, and the title takes all of it. from 60rem the box stands beside or over the
+   title, and a long title is drawn at the display size. */
+@container page (min-width: 60rem) {
+	.page-title {
+		max-inline-size: var(--page-measure-title);
+	}
+
+	.page-title[data-long] {
+		font-size: var(--page-display);
+	}
+}
+
+.page-lede {
 	max-inline-size: var(--page-measure-lede);
 	font-size: var(--page-lede);
 	line-height: var(--page-lh-lede);
 	color: var(--page-quiet);
 	text-wrap: pretty;
-}
-
-.page-title[data-variant='center'] {
-	text-align: center;
-}
-
-.page-title[data-variant='center'] > * {
-	margin-inline: auto;
-}
-
-.page-title[data-variant='compact'] .page-title-heading {
-	max-inline-size: var(--page-measure-heading);
-	font-size: var(--page-heading);
-	line-height: var(--page-lh-heading);
-	letter-spacing: var(--page-tracking-heading);
-}
-
-.page-title[data-variant='compact'] .page-title-lede {
-	margin-block-start: var(--_sp2);
-	font-size: var(--_t-md);
-	line-height: var(--_lh-body);
 }
 
 /* story */
@@ -672,27 +853,70 @@ body {
 	line-height: var(--page-lh-prose);
 }
 
-.page-story[data-variant='lede'] .page-prose > p:first-child,
-.page-story-lead {
-	font-size: var(--page-lede);
-	line-height: var(--page-lh-lede);
+/* cover and photos: a stored photo cropped to its frame, so the frame holds its place before the
+   bytes arrive and a photo of any shape fills it. the logo stands whole on the brand's ground in
+   a cover's place. */
+.page-photo {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
 }
 
-.page-story-lead {
-	max-inline-size: var(--page-measure-lede);
+.page-cover {
+	overflow: hidden;
+	background: var(--_n4);
 }
 
-.page-story[data-variant='split'] {
+.page-cover[data-source='logo'] {
+	display: grid;
+	place-items: center;
+	background: var(--_p);
+}
+
+.page-cover-logo {
+	display: block;
+	max-inline-size: 40%;
+	max-block-size: 50%;
+	padding: var(--_sp3);
+	background: var(--_n1);
+	border-radius: var(--_r);
+	object-fit: contain;
+}
+
+.page-photos[data-shape='column'] {
 	display: flex;
 	flex-direction: column;
 	gap: var(--page-gap-group);
 }
 
-@container page (min-width: 60rem) {
-	.page-story[data-variant='split'] {
+.page-photos[data-shape='column'] .page-photo {
+	aspect-ratio: 3 / 2;
+	border-radius: var(--_r);
+}
+
+.page-photos[data-shape='strip'] {
+	display: flex;
+	gap: var(--_sp3);
+	overflow-x: auto;
+	padding-block-end: var(--_sp2);
+}
+
+.page-photos[data-shape='strip'] .page-photos-item {
+	flex: 0 0 70%;
+}
+
+.page-photos[data-shape='strip'] .page-photo {
+	aspect-ratio: 4 / 3;
+	border-radius: var(--_r);
+}
+
+@container page (min-width: 48rem) {
+	.page-photos[data-shape='strip'] {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-		column-gap: var(--page-col-gap);
+		grid-auto-columns: minmax(0, 1fr);
+		grid-auto-flow: column;
+		overflow: visible;
 	}
 }
 
@@ -707,23 +931,23 @@ body {
 	font-variant-numeric: tabular-nums;
 }
 
-.page-tiers[data-variant='cards'] .page-tiers-list {
+.page-tiers[data-shape='cards'] .page-tiers-list {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr);
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: var(--_sp4);
 }
 
-@container page (min-width: 48rem) {
-	.page-tiers[data-variant='cards'] .page-tiers-list[data-columns='2'] {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
+.page-tiers[data-shape='cards'] .page-tiers-list[data-columns='1'] {
+	grid-template-columns: minmax(0, 1fr);
+}
 
-	.page-tiers[data-variant='cards'] .page-tiers-list[data-columns='3'] {
+@container page (min-width: 48rem) {
+	.page-tiers[data-shape='cards'] .page-tiers-list[data-columns='3'] {
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
 }
 
-.page-tiers[data-variant='cards'] .page-tier {
+.page-tiers[data-shape='cards'] .page-tier {
 	display: flex;
 	flex-direction: column;
 	gap: var(--_sp2);
@@ -734,53 +958,51 @@ body {
 	border-radius: var(--_r);
 }
 
-.page-tiers[data-variant='cards'] .page-tier-amount {
+.page-tiers[data-shape='cards'] .page-tier-amount {
+	font-family: var(--page-font-display);
 	font-size: var(--page-heading);
 	line-height: var(--page-lh-heading);
 	color: var(--_p);
 }
 
-.page-tiers[data-variant='list'] .page-tiers-list {
-	max-inline-size: var(--page-measure);
+/* the amount column is as wide as the list's widest amount, every row's words starting together. */
+.page-tiers[data-shape='list'] .page-tiers-list {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	column-gap: var(--_sp4);
 }
 
-.page-tiers[data-variant='list'] .page-tier {
+.page-tiers[data-shape='list'] .page-tier {
 	display: grid;
-	grid-template-columns: 5rem minmax(0, 1fr); /* raw-length-ok: the amount column, a shape */
-	column-gap: var(--_sp5);
+	grid-column: 1 / -1;
+	grid-template-columns: subgrid;
 	align-items: baseline;
-	padding-block: var(--_sp4);
+	padding-block: var(--_sp3);
 	border-block-start: var(--_border) solid var(--_n6);
 }
 
-.page-tiers[data-variant='list'] .page-tier:last-child {
-	border-block-end: var(--_border) solid var(--_n6);
-}
-
-.page-tiers[data-variant='list'] .page-tier-amount {
-	font-size: var(--_t-lg);
-	text-align: end;
+.page-tiers[data-shape='list'] .page-tier-amount {
 	color: var(--page-accent);
 }
 
-.page-tiers[data-variant='list'] .page-tier-buys {
+.page-tiers[data-shape='list'] .page-tier-buys {
 	color: var(--page-quiet);
 }
 
-/* faq: the mark stands on the question's first line, however many lines the question takes. */
+/* questions: the mark stands on the question's first line, however many lines the question takes. */
 .page-faq-items {
 	max-inline-size: var(--page-measure);
 }
 
-.page-faq[data-variant='accordion'] .page-faq-item {
+.page-faq[data-folded] .page-faq-item {
 	border-block-start: var(--_border) solid var(--_n6);
 }
 
-.page-faq[data-variant='accordion'] .page-faq-item:last-child {
+.page-faq[data-folded] .page-faq-item:last-child {
 	border-block-end: var(--_border) solid var(--_n6);
 }
 
-.page-faq[data-variant='accordion'] .page-faq-question {
+.page-faq[data-folded] .page-faq-question {
 	display: flex;
 	align-items: start;
 	justify-content: space-between;
@@ -808,65 +1030,34 @@ body {
 	rotate: 180deg;
 }
 
-.page-faq[data-variant='accordion'] .page-faq-answer {
+.page-faq[data-folded] .page-faq-answer {
 	padding-block-end: var(--_sp5);
 	color: var(--page-quiet);
 }
 
-.page-faq[data-variant='open'] .page-faq-items {
+.page-faq:not([data-folded]) .page-faq-items {
 	display: flex;
 	flex-direction: column;
 	gap: var(--page-gap-item);
 }
 
-.page-faq[data-variant='open'] .page-faq-question {
+.page-faq:not([data-folded]) .page-faq-question {
 	margin-block-end: var(--_sp2);
 	font-size: var(--_t-md);
 	font-weight: var(--_w-bold);
 }
 
-.page-faq[data-variant='open'] .page-faq-answer {
+.page-faq:not([data-folded]) .page-faq-answer {
 	color: var(--page-quiet);
 }
 
-@container page (min-width: 60rem) {
-	.page-flow .page-faq[data-variant='open'] .page-faq-items {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: var(--page-gap-item) var(--page-col-gap);
-		max-inline-size: none;
-	}
-}
-
-/* about us */
-.page-about-parts {
-	display: flex;
-	flex-direction: column;
-	gap: var(--page-gap-item);
-	max-inline-size: var(--page-measure);
-}
-
-/* the organisation's own words, an address or a long word among them, broken where they must be
-   rather than run out of the block, as `.page-mast-name` is. */
-:is(.page-about-words, .page-about-statement, .page-about-beneath) {
+/* about us: the organisation's own words, an address or a long word among them, broken where they
+   must be rather than run out of the section, as `.page-mast-name` is. */
+:is(.page-about-statement, .page-about-beneath) {
 	overflow-wrap: anywhere;
 }
 
-.page-about-words {
-	font-size: var(--_t-lg);
-	line-height: var(--page-lh-lede);
-}
-
-@container page (min-width: 48rem) {
-	.page-about[data-variant='side-by-side'] .page-about-parts {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		column-gap: var(--page-col-gap);
-		max-inline-size: none;
-	}
-}
-
-.page-about[data-variant='statement'] .page-label {
+.page-about .page-label {
 	margin-block-end: var(--_sp4);
 }
 
@@ -885,10 +1076,60 @@ body {
 	color: var(--page-quiet);
 }
 
-/* org info */
-.page-org {
+/* goal bar */
+.page-goal-figures {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	column-gap: var(--_sp2);
+}
+
+.page-goal-raised {
+	font-family: var(--page-font-display);
+	font-size: var(--page-heading);
+	line-height: var(--page-lh-heading);
+	font-weight: var(--_w-bold);
+	font-variant-numeric: tabular-nums;
+}
+
+.page-goal-of {
+	color: var(--page-quiet);
+	font-variant-numeric: tabular-nums;
+}
+
+.page-goal-track {
+	block-size: 0.625rem; /* raw-length-ok: the goal track's thickness, a shape */
+	margin-block: var(--_sp2);
+	overflow: hidden;
+	background: var(--page-track);
+	border-radius: var(--_r-in);
+}
+
+.page-goal-fill {
+	block-size: 100%;
+	background: var(--_p);
+}
+
+.page-goal-meta {
 	font-size: var(--_t-sm);
 	color: var(--page-quiet);
+}
+
+/* org footer */
+.page-org {
+	display: grid;
+	gap: var(--_sp4);
+	padding-block-start: var(--_sp5);
+	border-block-start: var(--_border) solid var(--_n6);
+	font-size: var(--_t-sm);
+	color: var(--page-quiet);
+}
+
+@container page (min-width: 48rem) {
+	.page-org {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		column-gap: var(--page-col-gap);
+	}
 }
 
 .page-org-name {
@@ -900,10 +1141,9 @@ body {
 	display: block;
 }
 
-/* a platform's mark alone, centred in a `--_row-min` square like the icon-only share press, and the
-   row pulled back by the slack between the square and a square mark, so a square first mark's edge
-   lines up with the words above it. the mark is the network's own file and is sized by its height
-   alone, so a mark that is not square keeps its own shape. */
+/* a platform's mark alone, centred in a `--_row-min` square, and the row pulled back by the slack
+   between the square and a square mark, so a square first mark's edge lines up with the words
+   above it. the mark is the network's own file and is sized by its height alone. */
 .page-org-links {
 	display: flex;
 	flex-wrap: wrap;
@@ -919,39 +1159,6 @@ body {
 
 .page-org-mark {
 	block-size: var(--page-brand-mark);
-}
-
-.page-org[data-variant='footer'] {
-	display: grid;
-	gap: var(--_sp4);
-	padding-block-start: var(--_sp5);
-	border-block-start: var(--_border) solid var(--_n6);
-}
-
-@container page (min-width: 48rem) {
-	.page-org[data-variant='footer'] {
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		column-gap: var(--page-col-gap);
-	}
-}
-
-.page-org[data-variant='card'] {
-	display: flex;
-	flex-direction: column;
-	gap: var(--_sp2);
-	max-inline-size: var(--page-measure);
-	padding: var(--_sp5);
-	background: var(--_n1);
-	color: var(--_n10);
-	border: var(--_border) solid var(--_n6);
-	border-radius: var(--_r);
-}
-
-.page-org[data-variant='card'] .page-org-name {
-	margin-block-end: var(--_sp1);
-	font-size: var(--_t-lg);
-	line-height: var(--_lh-tight);
-	color: var(--_n12);
 }
 
 /* share */
@@ -981,16 +1188,10 @@ body {
 	border-color: var(--_n11);
 }
 
-/* a channel's press is a link, and a link in a block takes the block's accent: the press is a card
-   on `--_n1` and keeps its own ink, as Copy link's button does. */
-.page-block a.page-share-button {
+/* a channel's press is a link, and a link takes the page's accent: the press is a card on `--_n1`
+   and keeps its own ink, as Copy link's button does. */
+.page-ground a.page-share-button {
 	color: var(--_n12);
-}
-
-.page-share-button[data-shape='icon'] {
-	justify-content: center;
-	inline-size: var(--_row-min);
-	padding: 0;
 }
 
 .page-share-button[data-state='copied'] {
@@ -1034,174 +1235,6 @@ body {
 	visibility: visible;
 }
 
-/* hero and image: a stored photo cropped to its block's frame, so the frame holds its place before
-   the bytes arrive and a photo of any shape fills it. on a phone a `wide` photo runs edge to edge,
-   and a hero opening the page meets the masthead. from the widest breakpoint a wide hero in a flow
-   runs the page's full width, one in the box's split keeps to its column with the card's corner,
-   and a wide image in a flow stands out past the column. the cover is the hero under the cover
-   layout, its title over the photo's lower edge on `--page-scrim` in the one ink the header
-   measures there. */
-.page-photo {
-	display: block;
-	inline-size: 100%;
-	block-size: auto;
-	object-fit: cover;
-}
-
-.page-hero[data-variant='wide'] .page-photo {
-	aspect-ratio: 4 / 3;
-}
-
-.page-hero[data-variant='framed'] .page-photo,
-.page-image .page-photo {
-	aspect-ratio: 3 / 2;
-	border-radius: var(--_r);
-}
-
-.page-hero[data-variant='wide'],
-.page-image[data-variant='wide'] {
-	margin-inline: calc(-1 * var(--page-gutter));
-}
-
-.page-image[data-variant='wide'] .page-photo {
-	border-radius: 0;
-}
-
-.page-body > .page-flow:first-child > .page-block[data-block='hero']:first-child,
-.page-body > .page-split > .page-lead:first-child > .page-block[data-block='hero']:first-child {
-	margin-block-start: calc(-1 * var(--page-gap-lead));
-}
-
-/* the cover opens the body at every width, so it meets the masthead and stands the lead's gap off
-   the page under it. */
-.page-body > .page-block[data-block='hero'] {
-	margin-block: calc(-1 * var(--page-gap-lead)) var(--page-gap-lead);
-}
-
-.page-hero[data-variant='cover'] {
-	position: relative;
-}
-
-.page-hero[data-variant='cover'] .page-photo {
-	aspect-ratio: 4 / 3;
-	min-block-size: 26rem; /* raw-length-ok: the cover's height, a shape */
-}
-
-.page-hero-over {
-	--page-ring: var(--_n1);
-
-	position: absolute;
-	inset: auto 0 0;
-	padding-block: var(--page-cover-run) var(--page-cover-end);
-	background: var(--page-scrim);
-	color: var(--_n1);
-}
-
-.page-hero-over .page-title-lede {
-	color: var(--_n1);
-}
-
-@container page (min-width: 60rem) {
-	.page > .page-ground {
-		--page-cover-end: 1.5rem;
-	}
-
-	.page-flow > .page-block[data-block='hero'] > .page-in:has(> .page-hero[data-variant='wide']) {
-		max-inline-size: none;
-	}
-
-	.page-flow > .page-block[data-block='hero'] .page-hero[data-variant='wide'] .page-photo {
-		aspect-ratio: 21 / 8;
-	}
-
-	.page-split .page-hero[data-variant='wide'],
-	.page-image[data-variant='wide'] {
-		margin-inline: 0;
-	}
-
-	.page-split .page-hero[data-variant='wide'] .page-photo {
-		aspect-ratio: 16 / 9;
-	}
-
-	.page-split .page-hero .page-photo,
-	.page-image[data-variant='wide'] .page-photo {
-		border-radius: var(--_r);
-	}
-
-	.page-flow > .page-block[data-block='image'] > .page-in:has(> .page-image[data-variant='wide']) {
-		max-inline-size: calc(
-			var(--page-width) +
-			8rem /* raw-length-ok: the wide image's overhang, a shape */
-		);
-	}
-
-	.page-body > .page-split > .page-lead:first-child > .page-block[data-block='hero']:first-child {
-		margin-block-start: 0;
-	}
-
-	.page-hero[data-variant='cover'] .page-photo {
-		aspect-ratio: 21 / 8;
-		min-block-size: 30rem; /* raw-length-ok: the cover's height, a shape */
-	}
-
-	.page-hero-over .page-in {
-		padding-inline-end: calc(var(--page-box) + var(--page-col-gap) + var(--page-gutter));
-	}
-}
-
-/* goal bar */
-.page-goal-figures {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
-	column-gap: var(--_sp2);
-}
-
-.page-goal-raised {
-	font-family: var(--page-font-display);
-	font-size: var(--page-heading);
-	line-height: var(--page-lh-heading);
-	font-weight: var(--_w-bold);
-	font-variant-numeric: tabular-nums;
-}
-
-.page-goal-of {
-	color: var(--page-quiet);
-	font-variant-numeric: tabular-nums;
-}
-
-.page-goal-track {
-	block-size: 0.625rem; /* raw-length-ok: the goal track's thickness, a shape */
-	margin-block: var(--_sp3) var(--_sp2);
-	overflow: hidden;
-	background: var(--page-track);
-	border-radius: var(--_r-in);
-}
-
-.page-goal-fill {
-	block-size: 100%;
-	background: var(--_p);
-}
-
-.page-goal-meta {
-	font-size: var(--_t-sm);
-	color: var(--page-quiet);
-}
-
-.page-goal[data-variant='figure'] .page-goal-raised {
-	font-size: var(--page-display);
-	line-height: var(--page-lh-display);
-	letter-spacing: var(--page-tracking-display);
-}
-
-.page-goal[data-variant='figure'] .page-goal-of {
-	margin-block-start: var(--_sp1);
-}
-
-.page-goal[data-variant='figure'] .page-goal-track {
-	block-size: 0.375rem; /* raw-length-ok: the figure's thinner track, a shape */
-}
-
 /* program chooser: a set the donor picks from, marked the way the box marks a chosen tile. the
    mark stands on the name's first line, however many lines the name takes. */
 .page-choose {
@@ -1219,20 +1252,33 @@ body {
 	font-weight: var(--_w-bold);
 }
 
+/* on a phone the options are one row, scrolled sideways, each its name alone, so the box under them
+   stays on the first screen; from 30rem they are cards two abreast, photo and description with them. */
 .page-choose-options {
-	display: grid;
+	display: flex;
 	gap: var(--_sp2);
+	overflow-x: auto;
+	padding-block-end: var(--_sp1);
+}
+
+.page-choose-option {
+	flex: none;
+}
+
+.page-choose :is(.page-choose-description, .page-choose-thumb) {
+	display: none;
 }
 
 @container page (min-width: 30rem) {
-	.page-choose[data-variant='cards'] .page-choose-options {
+	.page-choose-options {
+		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
+		overflow: visible;
+		padding-block-end: 0;
 	}
-}
 
-@container page (min-width: 60rem) {
-	.page-aside .page-choose[data-variant='cards'] .page-choose-options {
-		grid-template-columns: minmax(0, 1fr);
+	.page-choose :is(.page-choose-description, .page-choose-thumb) {
+		display: block;
 	}
 }
 
@@ -1290,12 +1336,11 @@ body {
 	color: var(--_p);
 }
 
-.page-choose[data-variant='cards']
-	.page-choose-option:hover:not(:has(:checked, [aria-disabled='true'])) {
+.page-choose .page-choose-option:hover:not(:has(:checked, [aria-disabled='true'])) {
 	border-color: var(--_n11);
 }
 
-.page-choose[data-variant='cards'] .page-choose-option:has(:checked) {
+.page-choose .page-choose-option:has(:checked) {
 	border-color: var(--_p);
 	box-shadow: inset 0 0 0 var(--_border) var(--_p);
 }
@@ -1308,50 +1353,11 @@ body {
 		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
 }
 
-.page-choose[data-variant='cards'] .page-choose-option:has(:checked:focus-visible) {
+.page-choose .page-choose-option:has(:checked:focus-visible) {
 	box-shadow:
 		inset 0 0 0 var(--_border) var(--_p),
 		0 0 0 var(--_border) var(--_n1),
 		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
-}
-
-.page-choose[data-variant='list'] .page-choose-options {
-	gap: 0;
-	background: var(--_n1);
-	border: var(--_border) solid var(--_edge-control);
-	border-radius: var(--_r);
-}
-
-.page-choose[data-variant='list'] .page-choose-option {
-	grid-template-columns: auto minmax(0, 1fr);
-	background: none;
-	border: 0;
-	border-radius: 0;
-}
-
-.page-choose[data-variant='list'] .page-choose-option + .page-choose-option {
-	border-block-start: var(--_border) solid var(--_n6);
-}
-
-.page-choose[data-variant='list'] .page-choose-mark {
-	grid-column: 1;
-}
-
-.page-choose[data-variant='list'] :is(.page-choose-name, .page-choose-description) {
-	grid-column: 2;
-}
-
-.page-choose[data-variant='list'] .page-choose-mark::before {
-	content: '';
-	box-sizing: border-box;
-	inline-size: var(--_box);
-	block-size: var(--_box);
-	border: var(--_border) solid var(--_edge-control);
-	border-radius: 50%;
-}
-
-.page-choose[data-variant='list'] .page-choose-option:has(:checked) .page-choose-mark::before {
-	border: calc(var(--_box) * 0.3125) solid var(--_p);
 }
 
 /* a program's photo: a square at the option's start, cropped to the option's own row height, with
@@ -1368,37 +1374,22 @@ body {
 	border-radius: var(--_r-in);
 }
 
-.page-choose[data-variant='cards'] .page-choose-option:has(> .page-choose-thumb) {
+.page-choose .page-choose-option:has(> .page-choose-thumb) {
 	grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
-.page-choose[data-variant='cards'] .page-choose-option > .page-choose-thumb {
+.page-choose .page-choose-option > .page-choose-thumb {
 	grid-column: 1;
 	grid-row: 1;
 }
 
-.page-choose[data-variant='cards']
+.page-choose
 	.page-choose-option:has(> .page-choose-thumb)
 	:is(.page-choose-name, .page-choose-description) {
 	grid-column: 2;
 }
 
-.page-choose[data-variant='cards'] .page-choose-option:has(> .page-choose-thumb) .page-choose-mark {
-	grid-column: 3;
-}
-
-.page-choose[data-variant='list'] .page-choose-option:has(> .page-choose-thumb) {
-	grid-template-columns: auto auto minmax(0, 1fr);
-}
-
-.page-choose[data-variant='list'] .page-choose-option > .page-choose-thumb {
-	grid-column: 2;
-	grid-row: 1;
-}
-
-.page-choose[data-variant='list']
-	.page-choose-option:has(> .page-choose-thumb)
-	:is(.page-choose-name, .page-choose-description) {
+.page-choose .page-choose-option:has(> .page-choose-thumb) .page-choose-mark {
 	grid-column: 3;
 }
 
@@ -1409,7 +1400,7 @@ body {
 /* locked, from the press on Donate until the donor is back on a step they edit (./card.tsx). the
    pick standing keeps its mark, and every other option is drawn the way the form draws a control a
    donor cannot reach yet: its boundary in `--_edge-unavailable`, dashed, as `.step-mark` in
-   packages/form/src/styles/parts.css is — the card's, and the list's radio ring — and its name in
+   packages/form/src/styles/parts.css is, and its name in
    the description's quiet ink. the dash is a pattern rather than a colour, so it still says so under
    forced-colors. each radio is `aria-disabled` and still focusable, so the ring a focus draws stays;
    what goes is the pointer and the hover step, because no press is answered. */
@@ -1421,10 +1412,7 @@ body {
 	color: var(--_n10);
 }
 
-.page-choose[data-variant='cards'] .page-choose-option:has([aria-disabled='true']:not(:checked)),
-.page-choose[data-variant='list']
-	.page-choose-option:has([aria-disabled='true']:not(:checked))
-	.page-choose-mark::before {
+.page-choose-option:has([aria-disabled='true']:not(:checked)) {
 	border-color: var(--_edge-unavailable);
 	border-style: dashed;
 }

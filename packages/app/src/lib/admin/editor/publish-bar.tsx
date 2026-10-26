@@ -16,13 +16,13 @@ import { useMiddle } from './wide';
 // which a heading cannot hold. the Donation page's drawn word is hidden from a screen reader for
 // that reason, so the name is not read twice.
 //
-// **Edit turns the editor's Edit on** (`useEditing` in ./editor-shell.tsx): the preview's blocks
+// **Edit turns the editor's Edit on** (`useEditing` in ./editor-shell.tsx): the preview's sections
 // are drawn as clickable, each opening its own sheet, and the press reads Done, which turns it off
 // again. it is one press whose words change, so the focus stays on it through both; it states no
 // pressed state, since its name is the state and Done read as pressed reads wrong, and the bar's
-// region says "Edit is on: choose a block, or open Settings for the list" as it turns on. while it
-// is on, Settings stands beside it and opens the Settings sheet (./settings-sheet.tsx), whose block
-// list is the keyboard's way to a block.
+// region says "Edit is on: choose a part of the page, or open Settings for the list" as it turns on.
+// while it is on, Settings stands beside it and opens the Settings sheet (./settings-sheet.tsx),
+// whose content list is the keyboard's way to a part of the page.
 //
 // **Publish reports at itself.** it is `SaveButton`, so a press in flight holds its focus and draws
 // its dots, and a republish reads "Published" with Undo beside it for as long as the caller says the
@@ -54,7 +54,7 @@ import { useMiddle } from './wide';
 //
 // **nothing pressable does nothing.** a caller with no handler for Settings, Undo or Discard
 // changes gets no such press drawn, and with no Settings no Edit either — the editor over a draft
-// it cannot read has no blocks to click, nor Settings to open. Publish is the bar's one press that
+// it cannot read has no sections to click, nor Settings to open. Publish is the bar's one press that
 // is always there, so without `onPublish` it is drawn held — `aria-disabled`, the press turned
 // away — and described by `publishHeld`, which stands in the report region beside any refusal.
 
@@ -82,7 +82,7 @@ const NOT_TAKING_GIFTS = { word: 'Not taking gifts', tone: 'attention' } as cons
 const DONATION_PAGE = 'Donation page';
 
 /** what the bar's own region says while Edit is on. */
-const EDIT_ON_SAID = 'Edit is on: choose a block, or open Settings for the list';
+const EDIT_ON_SAID = 'Edit is on: choose a part of the page, or open Settings for the list';
 
 /** which press a refusal answers. */
 export type BarPress = 'publish' | 'undo' | 'name';

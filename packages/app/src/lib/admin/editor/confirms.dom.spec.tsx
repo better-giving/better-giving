@@ -1,7 +1,7 @@
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { DiscardConfirm, FirstPublishConfirm, RemoveBlockConfirm, ResetConfirm } from './confirms';
+import { DiscardConfirm, FirstPublishConfirm, ResetConfirm } from './confirms';
 
 // the editor's questions as the card draws them: what Reset, Discard and a block's Remove say they
 // replace or take, and what a campaign's first Publish says of an address it did not get. what the
@@ -32,7 +32,7 @@ function card(root: HTMLElement): HTMLDialogElement {
 const rows = (root: HTMLElement) =>
 	[...card(root).querySelectorAll('.adm-setting__label')].map((label) => label.textContent);
 
-describe('what Reset, Discard and a block’s Remove replace or take', () => {
+describe('what Reset and Discard replace', () => {
 	it('Reset lists the draft and the published page, and nothing else', () => {
 		const root = mount(<ResetConfirm resetting={false} onReset={() => {}} onCancel={() => {}} />);
 		expect(rows(root)).toEqual(['Your draft', 'The published page at /donate']);
@@ -45,14 +45,6 @@ describe('what Reset, Discard and a block’s Remove replace or take', () => {
 		);
 		expect(rows(root)).toEqual(['Your draft']);
 		expect(card(root).textContent).not.toMatch(/chat/i);
-	});
-
-	it('a block’s Remove asks about that block and lists it alone', () => {
-		const root = mount(
-			<RemoveBlockConfirm name="Story" removing={false} onRemove={() => {}} onCancel={() => {}} />
-		);
-		expect(card(root).querySelector('h2')?.textContent).toBe('Remove Story?');
-		expect(rows(root)).toEqual(['Story']);
 	});
 });
 

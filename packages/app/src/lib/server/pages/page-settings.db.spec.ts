@@ -240,17 +240,18 @@ describe('what the editor is drawn with', () => {
 		return response.json();
 	}
 
-	it('draws no look or share message of the page’s to edit by hand', async () => {
+	it('draws the draft’s sections and share message to edit by hand', async () => {
 		const pageId = await insertPage(db, 'campaign', {
 			...defaultCampaign(),
-			look: { shade: 'warm', corner: 'round' },
+			heading: 'Coats',
 			shareMessage: 'Join me?'
 		});
 
 		const drawn = await open(pageId);
 
-		expect(drawn).toMatchObject({ unreadable: false, goalMinor: null });
-		expect(Object.keys(drawn)).not.toEqual(expect.arrayContaining(['pageSettings']));
-		expect(Object.keys(drawn)).not.toEqual(expect.arrayContaining(['shareMessage']));
+		expect(drawn).toMatchObject({ unreadable: false, goalMinor: null, shareMessage: 'Join me?' });
+		expect(drawn.sections).toEqual(
+			expect.arrayContaining([expect.objectContaining({ id: 'title', summary: 'Coats' })])
+		);
 	});
 });

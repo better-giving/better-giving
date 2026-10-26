@@ -1,8 +1,9 @@
 import { and, eq, gt, isNull } from 'drizzle-orm';
-import type { Page as PageDocument } from '../../page/catalog';
-import { startingBlock } from '../../page/defaults';
+import { PHOTOS_MAX, type Page as PageDocument } from '../../page/catalog';
+import { parseSlot } from '../../page/content-edit';
+import { readDocument } from '../pages/document';
 import type { Db } from '../db/client';
-import { connectorKey, page, photoLink, type PhotoLink } from '../db/schema';
+import { connectorKey, photoLink, type PhotoLink } from '../db/schema';
 import { freeImageStatements } from '../images/free';
 import { readPostedPhoto } from '../images/intake';
 import { editPageDraft } from '../pages/draft-writer';
@@ -13,17 +14,16 @@ import { hashOf, randomToken } from './keys';
 // file. `photos.upload_link` makes a single-use link for one photo on one page; the operator opens
 // it on their phone (src/routes/photo.$token.tsx), which needs no dashboard session — the link is
 // the permission, and it is good for `PHOTO_LINK_TTL_MS`, for one upload, while the connection that
-// asked for it stands. the photo lands in the draft only, through `editPageDraft`.
+// asked for it stands. the photo lands in the draft only, through `editPageDraft`. only a campaign
+// holds photos: the donation page draws one fixed layout with none.
 
 export const PHOTO_LINK_TTL_MS = 30 * 60_000;
 
 /** the address a photo link opens, under this deployment's own origin. */
 export const PHOTO_LINK_PATH = '/photo';
 
-/** what `photos.upload_link` is asked: the page, and optionally the photo block it fills. */
-export type PhotoTarget =
-	| { readonly kind: 'campaign'; readonly id: string }
-	| { readonly kind: 'donation_page' };
+/** what `photos.upload_link` is asked: the campaign, and optionally the slot the photo fills. */
+export type PhotoTarget = { readonly kind: 'campaign'; readonly id: string };
 
 export type MadeLink =
 	| { readonly ok: true; readonly url: string; readonly expiresAt: Date }
@@ -47,52 +47,64 @@ export async function makePhotoLink(
 		slot?: unknown;
 	};
 	const kind = input.target?.kind;
-	let pageId: string | null = null;
-	if (kind === 'campaign' && typeof input.target?.id === 'string') {
-		const row = await readPage(db, input.target.id);
-		if (row === null || row.type !== 'campaign') {
-			return {
-				ok: false,
-				status: 404,
-				code: 'not_found',
-				detail: `Campaign ${input.target.id} does not exist on this deployment.`
-			};
-		}
-		pageId = row.id;
-	} else if (kind === 'donation_page') {
-		const [row] = await db.select({ id: page.id }).from(page).where(eq(page.type, 'donation_page'));
-		if (!row)
-			return {
-				ok: false,
-				status: 404,
-				code: 'not_found',
-				detail: 'This deployment has no donation page yet.'
-			};
-		pageId = row.id;
-	} else {
+	if (kind === 'donation_page') {
 		return {
 			ok: false,
 			status: 422,
 			code: 'invalid',
 			detail:
-				'target is { "kind": "campaign", "id": "<campaign id>" } or { "kind": "donation_page" }.'
+				'The donation page holds no photos: it draws one fixed layout. A photo goes on a campaign, as its cover or beside it.'
 		};
 	}
-	if (input.slot !== undefined && typeof input.slot !== 'string') {
+	if (kind !== 'campaign' || typeof input.target?.id !== 'string') {
+		return {
+			ok: false,
+			status: 422,
+			code: 'invalid',
+			detail: 'target is { "kind": "campaign", "id": "<campaign id>" }.'
+		};
+	}
+	const row = await readPage(db, input.target.id);
+	if (row === null || row.type !== 'campaign') {
+		return {
+			ok: false,
+			status: 404,
+			code: 'not_found',
+			detail: `Campaign ${input.target.id} does not exist on this deployment.`
+		};
+	}
+	if (
+		input.slot !== undefined &&
+		(typeof input.slot !== 'string' || parseSlot(input.slot) === null)
+	) {
 		return {
 			ok: false,
 			status: 422,
 			code: 'invalid',
 			detail:
-				'slot is the id of the hero or image block the photo fills; leave it out for the first empty one.'
+				'slot is "cover" for the cover photo, "new" for a photo after the rest, or the place of a photo beside the cover to replace, "0" for the first; leave it out to fill the cover where there is none, or add a photo after the rest.'
+		};
+	}
+	const slot = typeof input.slot === 'string' ? input.slot : null;
+	const draft = readDocument(row, 'draft', row.draft);
+	if (
+		draft.ok &&
+		placeOf(draft.page, slot) === 'added' &&
+		(draft.page.photos ?? []).length >= PHOTOS_MAX
+	) {
+		return {
+			ok: false,
+			status: 422,
+			code: 'invalid',
+			detail: `This campaign already holds ${PHOTOS_MAX} photos beside its cover, the most it can, so a new photo has no place. Ask the operator which photo it replaces, and make the link with that slot: "cover", or the place of a photo beside it, "0" for the first.`
 		};
 	}
 	const token = randomToken();
 	const expiresAt = new Date(now.getTime() + PHOTO_LINK_TTL_MS);
 	await db.insert(photoLink).values({
 		tokenHash: hashOf(token),
-		pageId,
-		blockId: typeof input.slot === 'string' ? input.slot : null,
+		pageId: row.id,
+		slot,
 		connectorKeyId: keyId,
 		createdAt: now,
 		expiresAt
@@ -130,8 +142,8 @@ export type PhotoPlaced =
 	  };
 
 /**
- * the photo `request` posts, placed on the link's page: in the block the link names, or the first
- * hero or image block with no photo, or a new image block above the donation box. the link is taken
+ * the photo `request` posts, placed on the link's campaign: in the slot the link names, or the cover
+ * where there is none, or after the photos beside it. the link is taken
  * first, by one guarded UPDATE, so two uploads racing on it place one photo between them.
  */
 export async function placePostedPhoto(
@@ -172,7 +184,7 @@ export async function placePostedPhoto(
 		db,
 		target.type === 'campaign' ? { type: 'campaign', id: target.id } : { type: 'donation_page' },
 		'current',
-		(draft) => ({ ok: true, draft: withPhoto(draft, link.blockId, photo.id) })
+		(draft) => ({ ok: true, draft: withPhoto(draft, link.slot, photo.id) })
 	);
 	if (written.kind === 'written') return { ok: true };
 	console.error(`placing photo ${photo.id} from link ${link.id} failed: ${written.kind}`);
@@ -186,35 +198,28 @@ export async function placePostedPhoto(
 	};
 }
 
-/** `draft` with `imageId` in the block `blockId`, the first empty photo block, or a new one. */
-export function withPhoto(
-	draft: PageDocument,
-	blockId: string | null,
-	imageId: string
-): PageDocument {
-	const isPhoto = (block: PageDocument['blocks'][number]) =>
-		block.type === 'hero' || block.type === 'image';
-	const at =
-		blockId !== null
-			? draft.blocks.findIndex((block) => block.id === blockId && isPhoto(block))
-			: draft.blocks.findIndex(
-					(block) => isPhoto(block) && 'imageId' in block && block.imageId === null
-				);
-	if (at !== -1) {
-		return {
-			...draft,
-			blocks: draft.blocks.map((block, index) => (index === at ? { ...block, imageId } : block))
-		};
-	}
-	const taken = new Set(draft.blocks.map((block) => block.id));
-	let n = 1;
-	while (taken.has(`photo-${n}`)) n += 1;
-	const added = {
-		...startingBlock('image', `photo-${n}`),
-		imageId
-	} as PageDocument['blocks'][number];
-	const box = draft.blocks.findIndex((block) => block.type === 'donation-box');
-	const blocks = [...draft.blocks];
-	blocks.splice(box === -1 ? blocks.length : box, 0, added);
-	return { ...draft, blocks };
+type Place = 'cover' | { readonly replaces: number } | 'added';
+
+/**
+ * where a photo for `slot` lands on `draft`: the cover, or the place of a photo beside it where the
+ * draft holds one; `new` after the rest; with none named, or a place it does not hold, the cover
+ * where there is none, else after the rest. a slot read as nothing — a link made before slots,
+ * naming a block — is none named.
+ */
+function placeOf(draft: PageDocument, slot: string | null): Place {
+	const read = slot === null ? null : parseSlot(slot);
+	if (read?.kind === 'cover') return 'cover';
+	if (read?.kind === 'new') return 'added';
+	if (read?.kind === 'photo' && read.at < (draft.photos ?? []).length) return { replaces: read.at };
+	return draft.hero === undefined ? 'cover' : 'added';
+}
+
+/** `draft` with `imageId` where `placeOf` puts a photo for `slot`. */
+export function withPhoto(draft: PageDocument, slot: string | null, imageId: string): PageDocument {
+	const photo = { imageId, alt: null };
+	const photos = draft.photos ?? [];
+	const place = placeOf(draft, slot);
+	if (place === 'cover') return { ...draft, hero: photo };
+	if (place === 'added') return { ...draft, photos: [...photos, photo] };
+	return { ...draft, photos: photos.map((one, at) => (at === place.replaces ? photo : one)) };
 }

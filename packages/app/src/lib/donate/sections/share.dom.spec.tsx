@@ -3,10 +3,9 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { SHARE_CHANNELS } from '../../page/share';
-import { ShareBlock } from './share';
-import type { BlockOf } from './types';
+import { Share } from './share';
 
-// the share block's marks, mounted in both variants: each network is drawn as its own official file
+// the share buttons' marks, mounted: each network is drawn as its own official file
 // and never as a letter or a lookalike standing in for one.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -23,33 +22,23 @@ function mount(node: ReactNode) {
 	return host;
 }
 
-/** the file packages/operator draws for a network, which is the one the block has to draw. */
+/** the file packages/operator draws for a network, which is the one the page has to draw. */
 function fileOf(platform: Parameters<typeof BrandMark>[0]['platform']) {
 	return mount(<BrandMark platform={platform} className="page-share-brand" />)
 		.querySelector('img')
 		?.getAttribute('src');
 }
 
-const block = (variant: 'buttons' | 'icons'): BlockOf<'share'> => ({
-	id: `b-${variant}`,
-	type: 'share',
-	variant,
-	background: 'none'
-});
-
 const sharing = {
-	channels: SHARE_CHANNELS,
 	message: 'Help us get every kid a coat.',
 	url: 'https://give.example.org/coats'
 };
 
-const NETWORKS = ['facebook', 'whatsapp', 'linkedin', 'x'] as const;
+const NETWORKS = ['facebook', 'whatsapp'] as const;
 
-describe.each(['buttons', 'icons'] as const)('share, %s', (variant) => {
+describe('share', () => {
 	const presses = () => {
-		const host = mount(
-			<ShareBlock block={block(variant)} sharing={sharing} heading="Share this campaign" />
-		);
+		const host = mount(<Share sharing={sharing} heading="Share this campaign" />);
 		return [...host.querySelectorAll<HTMLElement>('.page-share-button')];
 	};
 

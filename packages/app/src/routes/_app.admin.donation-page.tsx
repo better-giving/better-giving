@@ -1,17 +1,16 @@
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { useCallback, useState } from 'react';
-import { BlockEditSheet, isDonationBox } from '$lib/admin/editor/block-edit';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
 import { ShareMessageSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
-import { useSettingsPresses } from '$lib/admin/editor/settings-presses';
 import { usePublishPresses } from '$lib/admin/editor/publish-wiring';
+import { SectionEditSheet } from '$lib/admin/editor/section-edit';
 import { SettingsSheet } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formPress } from '$lib/admin/unreached';
-import { BLOCK_FORM_IDS } from '$lib/page/block-edit';
+import { CONTENT_FORM_IDS } from '$lib/page/content-edit';
 import {
 	PAGE_END_DATE_FORM_ID,
 	PAGE_GOAL_FORM_ID,
@@ -28,7 +27,7 @@ import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-for
 import { submittedForm } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
-import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
+import { editorDraft, saveContentForm } from '$lib/server/pages/content';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { loadPageView } from '$lib/server/pages/view';
 import {
@@ -68,11 +67,12 @@ import type { Route } from './+types/_app.admin.donation-page';
 // $lib/server/pages/reset.ts's, which also says when the page has edits to reset; the presses and
 // their confirms are mounted through $lib/admin/editor/publish-wiring.tsx.
 //
-// **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
-// preview while Edit is on and by its row in Settings' block list alike, and the layout by
-// Settings' pictures; each writes the draft ($lib/server/pages/blocks.ts), as a campaign's editor
-// does. the look, the sharing and a block added, removed or moved are presses there too.
-// the donation box opens Donation settings, which are what it draws.
+// **the title** is edited in its sheet, opened by a click on it in the preview while Edit is on and
+// by its row in Settings alike, and the share message by its own; each writes the draft
+// ($lib/server/pages/content.ts), as a campaign's editor does. the page is one fixed layout — the
+// title, the program chooser, the donation box, About us, the share buttons and the footer — and
+// nothing here lays it out. a click on the donation box or the chooser opens Donation settings,
+// which are what they draw, and on the share buttons the share message.
 //
 // the action below is the one writer; `clientAction` only answers, as its form's refusal, a press
 // whose request never reached it ($lib/admin/unreached.ts).
@@ -84,7 +84,7 @@ const SCREEN_TITLE = 'Donation page';
 const SCREEN_FORMS = [
 	PAGE_SETTINGS_FORM_ID,
 	...PAGE_SETTING_FORM_IDS,
-	...BLOCK_FORM_IDS,
+	...CONTENT_FORM_IDS,
 	...PUBLISH_FORMS,
 	RESET_FORM_ID
 ] as const;
@@ -158,7 +158,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 		case PAGE_END_DATE_FORM_ID:
 			return savePageSetting(db, { type: 'donation_page' }, pressed, body, NO_DONATION_PAGE);
 		default:
-			return saveBlockForm(db, { type: 'donation_page' }, pressed, body, NO_DONATION_PAGE);
+			return saveContentForm(db, { type: 'donation_page' }, pressed, body, NO_DONATION_PAGE);
 	}
 }
 
@@ -230,19 +230,15 @@ function DraftEditor({
 	const [donationSettings, setDonationSettings] = useState(false);
 	const [shareMessage, setShareMessage] = useState(false);
 	const presses = usePublishPresses({ version, state, reset: { hasEdits } });
-	const [blockId, setBlockId] = useState<string | null>(null);
-	const openBlock = loaderData.blocks.find((block) => block.id === blockId) ?? null;
-	const closeBlock = useCallback(() => setBlockId(null), []);
-	const openBlockSheet = (id: string) =>
-		isDonationBox(loaderData.blocks, id) ? setDonationSettings(true) : setBlockId(id);
-	const settingsPresses = useSettingsPresses({
-		version,
-		layout: loaderData.layout,
-		look: loaderData.look,
-		share: loaderData.share,
-		addable: loaderData.addable,
-		onAdded: openBlockSheet
-	});
+	const [sectionId, setSectionId] = useState<string | null>(null);
+	const openSection = loaderData.sections.find((section) => section.id === sectionId) ?? null;
+	const closeSection = useCallback(() => setSectionId(null), []);
+	/** a click in the preview, or a row in Settings: the title's sheet, or the sheet for what it draws. */
+	const open = (id: string) => {
+		if (id === 'donate') setDonationSettings(true);
+		else if (id === 'share') setShareMessage(true);
+		else setSectionId(id);
+	};
 
 	return (
 		<EditorShell
@@ -254,10 +250,7 @@ function DraftEditor({
 					takingGifts={loaderData.takingGifts}
 					livePath="/donate"
 					{...presses.bar}
-					onSettings={() => {
-						settingsPresses.startClean();
-						setSettings(true);
-					}}
+					onSettings={() => setSettings(true)}
 				/>
 			}
 			preview={
@@ -265,19 +258,16 @@ function DraftEditor({
 					key={version}
 					src={preview}
 					title="Preview of the Donation page"
-					onBlockClick={openBlockSheet}
+					onSectionClick={open}
 				/>
 			}
 		>
 			{settings ? (
 				<SettingsSheet
 					onDismiss={() => setSettings(false)}
-					blocks={loaderData.blocks}
-					onOpenBlock={openBlockSheet}
-					layouts={loaderData.layouts}
-					lookPictures={loaderData.lookPictures}
-					shareChannels={loaderData.shareChannels}
-					{...settingsPresses.sheet}
+					sections={loaderData.sections}
+					onOpenSection={open}
+					shareMessage={loaderData.shareMessage}
 					onShareMessage={() => setShareMessage(true)}
 					donationSettings={loaderData.settings.summary}
 					onOpen={(row) => {
@@ -285,19 +275,19 @@ function DraftEditor({
 					}}
 				/>
 			) : null}
-			{openBlock === null ? null : (
-				<BlockEditSheet
-					key={openBlock.id}
-					block={openBlock}
+			{openSection === null ? null : (
+				<SectionEditSheet
+					key={openSection.id}
+					section={openSection}
 					version={version}
-					onDismiss={closeBlock}
-					onSaved={closeBlock}
+					onDismiss={closeSection}
+					onSaved={closeSection}
 					stacked={settings}
 				/>
 			)}
 			{shareMessage ? (
 				<ShareMessageSettingsSheet
-					message={loaderData.share.message}
+					message={loaderData.shareMessage}
 					version={version}
 					onDismiss={() => setShareMessage(false)}
 					onSaved={() => setShareMessage(false)}

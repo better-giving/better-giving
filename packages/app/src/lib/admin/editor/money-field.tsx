@@ -3,7 +3,7 @@ import { drawAmountEntry, isComposing, keyInAmountBox, regroupAmountBox } from '
 import { AffixedField, type AffixedFieldProps } from './affixed-field';
 
 // every box on the page editor an operator types a sum of money in: the goal (./goal-sheet.tsx)
-// and a tier's amount (./block-edit.tsx). an affixed box (./affixed-field.tsx) that groups its
+// and a tier's amount (./section-edit.tsx). an affixed box (./affixed-field.tsx) that groups its
 // digits as they are typed and hands on the text with the box's own separators taken out, as
 // ../amount-box.ts states for every money box. an example figure in the box is grouped as well.
 //

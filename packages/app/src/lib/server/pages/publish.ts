@@ -99,10 +99,9 @@ const refused = (why: string) => ({
 	text: `Nothing was published: ${why}.`
 });
 
-/** the page rule's refusal, with where it lands unless the message already names the block. */
+/** the page rule's refusal, with where it lands. */
 function ruleRefusal(refusal: PageRefusal): string {
-	const [root] = refusal.path;
-	return root === undefined || root === 'blocks'
+	return refusal.path.length === 0
 		? refusal.message
 		: `${refusal.message} (at ${refusal.path.join('.')})`;
 }

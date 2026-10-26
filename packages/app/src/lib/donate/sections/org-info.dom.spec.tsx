@@ -4,10 +4,10 @@ import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-li
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { OrgInfoBlock } from './org-info';
-import type { BlockOf, OrgInfo } from './types';
+import { OrgInfo } from './org-info';
+import type { OrgInfo as OrgInfoValues } from './types';
 
-// the org-info block's social links, mounted in both variants: each is its platform's own official
+// the organisation footer's social links, mounted: each is its platform's own official
 // file, named for the platform and the new tab it opens in, and opens the address the organisation
 // stored.
 
@@ -25,7 +25,7 @@ function mount(node: ReactNode) {
 	return host;
 }
 
-/** the file packages/operator draws for a network, which is the one the block has to draw. */
+/** the file packages/operator draws for a network, which is the one the page has to draw. */
 function fileOf(platform: Parameters<typeof BrandMark>[0]['platform']) {
 	return mount(<BrandMark platform={platform} className="page-org-mark" />)
 		.querySelector('img')
@@ -41,7 +41,7 @@ const HREFS: Record<SocialLink['platform'], string> = {
 	x: 'https://x.com/northside'
 };
 
-const info = (socialLinks: readonly SocialLink[]): OrgInfo => ({
+const info = (socialLinks: readonly SocialLink[]): OrgInfoValues => ({
 	legalName: 'Northside Neighbors',
 	ein: '84-2913377',
 	addressLines: ['40 Elm Street', 'Easton, PA 18042'],
@@ -49,20 +49,13 @@ const info = (socialLinks: readonly SocialLink[]): OrgInfo => ({
 	socialLinks
 });
 
-const block = (variant: 'footer' | 'card'): BlockOf<'org-info'> => ({
-	id: `b-${variant}`,
-	type: 'org-info',
-	variant,
-	background: 'none'
-});
-
-describe.each(['footer', 'card'] as const)('org info, %s', (variant) => {
+describe('org info', () => {
 	const links = SOCIAL_PLATFORMS.map((platform) => ({ platform, href: HREFS[platform] }));
 
 	it.each(SOCIAL_PLATFORMS)(
 		'draws %s as its mark, named for the platform and the new tab',
 		(platform) => {
-			const host = mount(<OrgInfoBlock block={block(variant)} info={info(links)} />);
+			const host = mount(<OrgInfo info={info(links)} />);
 			const link = host.querySelector<HTMLAnchorElement>(`a[href="${HREFS[platform]}"]`);
 
 			expect(link?.getAttribute('aria-label')).toBe(
@@ -79,7 +72,7 @@ describe.each(['footer', 'card'] as const)('org info, %s', (variant) => {
 	);
 
 	it('keeps the links in the order the organisation holds them', () => {
-		const host = mount(<OrgInfoBlock block={block(variant)} info={info([...links].reverse())} />);
+		const host = mount(<OrgInfo info={info([...links].reverse())} />);
 		expect(
 			[...host.querySelectorAll('.page-org-links a')].map((a) => a.getAttribute('aria-label'))
 		).toEqual(
@@ -90,7 +83,7 @@ describe.each(['footer', 'card'] as const)('org info, %s', (variant) => {
 	});
 
 	it('draws no row of links with none stored', () => {
-		const host = mount(<OrgInfoBlock block={block(variant)} info={info([])} />);
+		const host = mount(<OrgInfo info={info([])} />);
 		expect(host.querySelector('.page-org-links')).toBeNull();
 	});
 });

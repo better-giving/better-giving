@@ -1,23 +1,25 @@
+import type { Page } from '../../page/catalog';
 import { RichText } from '../../rich-text/render';
 import { Glyph } from './glyph';
-import type { BlockOf } from './types';
 
-// questions a donor asks before giving. `accordion` opens one answer at a time, the first to begin
-// with; `open` states them all.
+// questions a donor asks before giving. folded, one answer opens at a time, the first to begin
+// with; open, every answer is stated under its question.
 
-export function FaqBlock({
-	block,
-	domId
+export function Faq({
+	items,
+	domId,
+	folded
 }: {
-	readonly block: BlockOf<'faq'>;
+	readonly items: NonNullable<Page['faq']>;
 	readonly domId: string;
+	readonly folded: boolean;
 }) {
 	return (
-		<div className="page-faq" data-variant={block.variant}>
+		<div className="page-faq" data-folded={folded ? '' : undefined}>
 			<h2 className="page-heading">Questions</h2>
 			<div className="page-faq-items">
-				{block.items.map((item, index) =>
-					block.variant === 'accordion' ? (
+				{items.map((item, index) =>
+					folded ? (
 						<details className="page-faq-item" name={`${domId}-faq`} open={index === 0} key={index}>
 							<summary className="page-faq-question">
 								<span>{item.question}</span>

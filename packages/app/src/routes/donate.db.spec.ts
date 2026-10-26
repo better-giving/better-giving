@@ -129,10 +129,12 @@ function markup(loaderData: LoaderData): string {
 	);
 }
 
-/** one block's section, by the block type the renderer stamps on it. */
-function block(html: string, type: string): string {
-	const found = new RegExp(`<section[^>]*data-block="${type}"[\\s\\S]*?</section>`).exec(html);
-	return found?.[0] ?? '';
+/** one area of the page, from its opening tag to the next area's, by the name the renderer stamps on it. */
+function area(html: string, name: string): string {
+	const start = html.indexOf(`data-area="${name}"`);
+	if (start === -1) return '';
+	const next = html.indexOf('data-area=', start + 1);
+	return html.slice(start, next === -1 ? undefined : next);
 }
 
 async function activePrograms(...names: string[]): Promise<void> {
@@ -154,19 +156,19 @@ describe('GET /donate on a fresh deployment', () => {
 		const answered = await visit();
 		expect(answered.status).toBe(200);
 		const html = markup(answered.data);
-		expect(block(html, 'title')).toContain('Donate to Hope Foundation');
-		expect(block(html, 'about-us')).toContain(MISSION);
-		expect(block(html, 'program-chooser')).toContain('Food bank');
-		expect(block(html, 'program-chooser')).toContain('Winter shelter');
+		expect(area(html, 'title')).toContain('Donate to Hope Foundation');
+		expect(area(html, 'about')).toContain(MISSION);
+		expect(area(html, 'chooser')).toContain('Food bank');
+		expect(area(html, 'chooser')).toContain('Winter shelter');
 		expect(await donationPageRows()).toBe(1);
 	});
 
 	it('draws the chooser once two programs are active, on a page made before any was', async () => {
-		expect(block(markup((await visit()).data), 'program-chooser')).toBe('');
+		expect(area(markup((await visit()).data), 'chooser')).toBe('');
 
 		await activePrograms('Food bank', 'Winter shelter');
 
-		const chooser = block(markup((await visit()).data), 'program-chooser');
+		const chooser = area(markup((await visit()).data), 'chooser');
 		expect(chooser).toContain('Food bank');
 		expect(chooser).toContain('Winter shelter');
 	});
@@ -182,7 +184,7 @@ describe('the organisation’s mission and vision on /donate', () => {
 			mission: MISSION,
 			vision: 'No family on Elm Street goes hungry.'
 		});
-		const about = block(markup(answered.data), 'about-us');
+		const about = area(markup(answered.data), 'about');
 		expect(about).toContain(MISSION);
 		expect(about).toContain('No family on Elm Street goes hungry.');
 	});
@@ -193,7 +195,7 @@ describe('the organisation’s mission and vision on /donate', () => {
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.view.org).toMatchObject({ mission: MISSION, vision: null });
-		expect(block(markup(answered.data), 'about-us')).not.toContain('Our vision');
+		expect(area(markup(answered.data), 'about')).not.toContain('Our vision');
 	});
 
 	it('draw no About us where the profile holds neither', async () => {
@@ -202,7 +204,7 @@ describe('the organisation’s mission and vision on /donate', () => {
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.view.org).toMatchObject({ mission: null, vision: null });
-		expect(block(markup(answered.data), 'about-us')).toBe('');
+		expect(area(markup(answered.data), 'about')).toBe('');
 	});
 });
 
@@ -212,51 +214,22 @@ describe('the page /donate draws', () => {
 		await visit();
 		await run(stmt(`update org_profile set legal_name = 'Hope Foundation of Easton'`));
 		const html = markup((await visit()).data);
-		expect(block(html, 'title')).toContain('Donate to Hope Foundation of Easton');
+		expect(area(html, 'title')).toContain('Donate to Hope Foundation of Easton');
 	});
 
 	it('shares its own address on this deployment, with the page title as the message', async () => {
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.view.sharing).toEqual({
-			channels: ['facebook', 'email', 'copy-link'],
 			message: 'Donate to Hope Foundation',
 			url: `${OWN}/donate`
 		});
 	});
 
-	it('names the organisation in the tab', async () => {
+	it('names the organisation in the tab, and shares no image', async () => {
 		const answered = await visit();
 		expect(donatePage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
 			{ title: 'Donate to Hope Foundation' }
-		]);
-	});
-
-	it('names its cover photo, by id, as its share image once it has one', async () => {
-		const photo = '0192a4c1-0000-7000-8000-000000000001';
-		await visit();
-		const withHero = {
-			...defaultDonationPage(),
-			blocks: [
-				{
-					id: 'hero',
-					type: 'hero',
-					variant: 'wide',
-					background: 'none',
-					imageId: photo,
-					alt: null
-				},
-				...defaultDonationPage().blocks
-			]
-		};
-		await run(
-			stmt(`update page set published = ? where type = 'donation_page'`, JSON.stringify(withHero))
-		);
-
-		const answered = await visit();
-		expect(donatePage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
-			{ title: 'Donate to Hope Foundation' },
-			{ property: 'og:image', content: `${OWN}/image/${photo}` }
 		]);
 	});
 
@@ -316,7 +289,7 @@ describe('program photos on the /donate chooser', () => {
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.view.programPhotos).toEqual({ [food?.id ?? '']: photo });
-		const chooser = block(markup(answered.data), 'program-chooser');
+		const chooser = area(markup(answered.data), 'chooser');
 		expect(chooser.match(/<img[^>]*src="\/image\/[^"]*"/g)).toEqual([
 			expect.stringContaining(`src="/image/${photo}"`)
 		]);
@@ -338,42 +311,9 @@ describe('program photos on the /donate chooser', () => {
 
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
-		expect(block(markup(answered.data), 'program-chooser')).toContain('Winter shelter');
+		expect(area(markup(answered.data), 'chooser')).toContain('Winter shelter');
 		expect(answered.data.view.programPhotos).toEqual({});
 		expect(markup(answered.data)).not.toContain(photo);
-	});
-});
-
-describe('the share buttons /donate draws', () => {
-	/** the published Donation page with its share channels set to `channels`. */
-	async function publishChannels(channels: readonly string[]): Promise<void> {
-		await visit();
-		const row = await first<{ published: string | null }>(
-			stmt(`select published from page where type = 'donation_page'`)
-		);
-		if (!row?.published) throw new Error('the Donation page was not published');
-		await run(
-			stmt(
-				`update page set published = ? where type = 'donation_page'`,
-				JSON.stringify({ ...JSON.parse(row.published), shareChannels: channels })
-			)
-		);
-	}
-
-	async function channelsDrawn() {
-		const answered = await visit();
-		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
-		return answered.data.view.sharing.channels;
-	}
-
-	it('draws the page’s own channels, in its order', async () => {
-		await publishChannels(['copy-link', 'facebook']);
-		expect(await channelsDrawn()).toEqual(['copy-link', 'facebook']);
-	});
-
-	it('draws none where the page chose none', async () => {
-		await publishChannels([]);
-		expect(await channelsDrawn()).toEqual([]);
 	});
 });
 
@@ -390,7 +330,8 @@ describe('the organisation’s social links on /donate', () => {
 			{ platform: 'instagram', href: 'https://instagram.com/hopefoundation' },
 			{ platform: 'facebook', href: 'https://facebook.com/hope' }
 		]);
-		const info = block(markup(answered.data), 'org-info');
+		const html = markup(answered.data);
+		const info = html.slice(html.indexOf('<footer'));
 		expect(info.indexOf('instagram.com/hopefoundation')).toBeLessThan(
 			info.indexOf('facebook.com/hope')
 		);
@@ -422,51 +363,21 @@ describe('the share message /donate sends', () => {
 	});
 });
 
-/** the seeds the page root sets, read off the drawn page as the browser receives them. */
-function seeds(html: string) {
+/** the brand colour the page root sets, read off the drawn page as the browser receives it. */
+function brandColour(html: string): string | null {
 	const root = /<div[^>]*data-donate-root[^>]*>/.exec(html)?.[0];
 	if (root === undefined) throw new Error('the page drew no root');
-	return {
-		shade: /data-shade="([^"]*)"/.exec(root)?.[1],
-		corner: /data-corner="([^"]*)"/.exec(root)?.[1],
-		brandColour: /--donate-primary:([^;"]*)/.exec(root)?.[1] ?? null
-	};
+	return /--donate-primary:([^;"]*)/.exec(root)?.[1] ?? null;
 }
 
-describe('the look /donate is drawn in', () => {
-	it('is the form’s own where neither the profile nor the page holds one', async () => {
-		expect(seeds(markup((await visit()).data))).toEqual({
-			shade: 'light',
-			corner: 'soft',
-			brandColour: null
-		});
+describe('the colour /donate is drawn in', () => {
+	it('is the form’s own where the profile holds none', async () => {
+		expect(brandColour(markup((await visit()).data))).toBeNull();
 	});
 
-	it('is light and soft in the profile’s brand colour while the page holds no look of its own', async () => {
+	it('is the profile’s brand colour', async () => {
 		await saveProfile(db, { brand_colour: '#1d6b4f' });
-		expect(seeds(markup((await visit()).data))).toEqual({
-			shade: 'light',
-			corner: 'soft',
-			brandColour: '#1d6b4f'
-		});
-	});
-
-	it('is the page’s own shade and corners, in the profile’s brand colour', async () => {
-		await visit();
-		await run(
-			stmt(
-				`update page set published = ? where type = 'donation_page'`,
-				JSON.stringify({ ...defaultDonationPage(), look: { shade: 'cool', corner: 'square' } })
-			)
-		);
-
-		await saveProfile(db, { brand_colour: '#1d6b4f' });
-
-		expect(seeds(markup((await visit()).data))).toEqual({
-			shade: 'cool',
-			corner: 'square',
-			brandColour: '#1d6b4f'
-		});
+		expect(brandColour(markup((await visit()).data))).toBe('#1d6b4f');
 	});
 });
 
@@ -491,14 +402,8 @@ describe('a published Donation page the read rule refuses', () => {
 	it.each([
 		{ why: 'missing its shape', document: {} },
 		{
-			why: 'naming a block its type forbids',
-			document: {
-				...defaultDonationPage(),
-				blocks: [
-					...defaultDonationPage().blocks,
-					{ id: 'goal', type: 'goal-bar', variant: 'bar', background: 'none' }
-				]
-			}
+			why: 'holding a lede its type forbids',
+			document: { ...defaultDonationPage(), lede: 'only a campaign has a lede' }
 		}
 	])('draws the donation box alone when $why, and logs it', async ({ document }) => {
 		const formId = await publish(document);
@@ -510,7 +415,7 @@ describe('a published Donation page the read rule refuses', () => {
 		expect(answered.data.config.formId).toBe(formId);
 		const html = markup(answered.data);
 		expect(html).toContain('$25');
-		expect(html).not.toContain('data-block=');
+		expect(html).not.toContain('data-area="title"');
 		expect(log).toHaveBeenCalledWith(
 			expect.stringContaining('fails the read rule'),
 			expect.any(String)
@@ -684,28 +589,22 @@ describe('/donate after the editor’s presses', () => {
 		);
 	}
 
-	it('shows the draft’s look in the preview, and on /donate only once published', async () => {
+	it('shows the draft’s heading in the preview, and on /donate only once published', async () => {
 		await visit();
-		const today = { shade: 'light', corner: 'soft', brandColour: null };
-		const picked = { shade: 'warm', corner: 'round', brandColour: null };
-
 		const [row] = await db.select().from(page);
 		if (!row) throw new Error('there is no Donation page to write');
 		await db
 			.update(page)
 			.set({
-				draft: JSON.stringify({
-					...JSON.parse(row.draft),
-					look: { shade: 'warm', corner: 'round' }
-				}),
+				draft: JSON.stringify({ ...JSON.parse(row.draft), heading: 'Give to Elm Street' }),
 				updatedAt: new Date(row.updatedAt.getTime() + 1_000)
 			})
 			.where(eq(page.id, row.id));
-		expect(seeds(await previewed())).toEqual(picked);
-		expect(seeds(markup((await visit()).data))).toEqual(today);
+		expect(area(await previewed(), 'title')).toContain('Give to Elm Street');
+		expect(area(markup((await visit()).data), 'title')).toContain('Donate to Hope Foundation');
 
 		await press('page-publish');
-		expect(seeds(markup((await visit()).data))).toEqual(picked);
+		expect(area(markup((await visit()).data), 'title')).toContain('Give to Elm Street');
 	});
 
 	it('keeps drawing the published page through Discard changes', async () => {
@@ -733,7 +632,7 @@ describe('/donate after the editor’s presses', () => {
 		expect((await drawn()).config).toEqual(opened);
 	});
 
-	it('draws the current default, light and soft and sharing its title, after Reset', async () => {
+	it('draws the current default, with no heading of its own and sharing its title, after Reset', async () => {
 		await saveProfile(db, { brand_colour: '#225588' });
 		await visit();
 		const [row] = await db.select().from(page);
@@ -743,27 +642,21 @@ describe('/donate after the editor’s presses', () => {
 			.set({
 				draft: JSON.stringify({
 					...JSON.parse(row.draft),
-					palette: 'bold',
-					look: { shade: 'warm', corner: 'round' },
-					shareMessage: 'Keep Elm Street warm this winter.',
-					blocks: defaultDonationPage().blocks.filter((block) => block.type !== 'about-us')
+					heading: 'Give to Elm Street',
+					shareMessage: 'Keep Elm Street warm this winter.'
 				}),
 				updatedAt: new Date(row.updatedAt.getTime() + 1_000)
 			})
 			.where(eq(page.id, row.id));
 		await press('page-publish');
-		expect((await drawn()).look).toEqual({
-			brandColour: '#225588',
-			shade: 'warm',
-			corner: 'round'
-		});
+		expect((await drawn()).page.heading).toBe('Give to Elm Street');
+		expect((await drawn()).sharing.message).toBe('Keep Elm Street warm this winter.');
 
 		await press('page-reset');
 
 		const view = await drawn();
-		expect(view.page.blocks).toEqual(defaultDonationPage().blocks);
-		expect(view.page.palette).toBe(defaultDonationPage().palette);
-		expect(view.look).toEqual({ brandColour: '#225588', shade: 'light', corner: 'soft' });
+		expect(view.page.heading).toBe(defaultDonationPage().heading);
+		expect(view.look).toEqual({ brandColour: '#225588' });
 		expect(view.sharing.message).toBe('Donate to Hope Foundation');
 	});
 

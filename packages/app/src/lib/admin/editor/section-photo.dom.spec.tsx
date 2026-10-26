@@ -2,10 +2,10 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, data } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { WHICH_FORM } from '$lib/forms/definition';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import type { Resized } from '@better-giving/operator/images/resize';
-import { BLOCK_FORMS, type EditorBlock } from '$lib/page/block-edit';
-import { BlockEditSheet } from './block-edit';
+import { CONTENT_FORMS, type EditorSection, SLOTS } from '$lib/page/content-edit';
+import { SectionEditSheet } from './section-edit';
 
 // happy-dom decodes no image, so the resize is the boundary stood in for: each pick waits in
 // `resizes` until the case hands it a result.
@@ -16,10 +16,10 @@ vi.mock('@better-giving/operator/images/resize', async (actual) => ({
 }));
 
 // a placed photo's sheet as the editor routes mount it: a new photo is resized, posted to the images
-// route, drawn once stored, and written to the block by Done with what describes it; and the sheet of
-// a block with no photo yet, whose Done posts nothing until one is chosen. both routes are
-// stand-ins; what the real ones store is src/routes/_app.admin.images.db.spec.ts's and
-// $lib/server/pages/blocks.db.spec.ts's.
+// route, drawn once stored, and written to the photo's slot by Done with what describes it; Remove
+// photo posts the slot at once; and the sheet of a slot with no photo yet, whose Done posts nothing
+// until one is chosen. both routes are stand-ins; what the real ones store is
+// src/routes/_app.admin.images.db.spec.ts's and $lib/server/pages/content.db.spec.ts's.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -35,36 +35,26 @@ let uploadsHeld: ((answer: { body: unknown; status: number }) => void)[];
 
 beforeEach(() => {
 	saves = [];
-	saveAnswer = { body: { saved: 'block' }, status: 200 };
+	saveAnswer = { body: { saved: 'content' }, status: 200 };
 	uploads = [];
 	uploadsHeld = [];
 	resizes.length = 0;
 });
 
-const hero: EditorBlock = {
-	id: 'hero',
-	type: 'hero',
+const hero: EditorSection = {
+	id: 'cover',
 	label: 'Cover photo',
 	summary: 'Volunteers',
-	variant: 'wide',
-	variants: [
-		{ value: 'wide', label: 'Wide' },
-		{ value: 'framed', label: 'Framed' }
-	],
-	background: 'none',
-	backgrounds: [{ value: 'none', label: 'None' }],
-	removable: true,
-	movesUp: false,
-	movesDown: true,
-	text: { kind: 'photo', imageId: PLACED, alt: 'Volunteers' }
+	empty: false,
+	text: { kind: 'photo', slot: SLOTS.cover, imageId: PLACED, alt: 'Volunteers', removable: true }
 };
 
-function editor(block: EditorBlock = hero) {
+function editor(section: EditorSection = hero) {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/campaigns/:pageId',
 			Component: () => (
-				<BlockEditSheet block={block} version={3} onDismiss={() => {}} onSaved={() => {}} />
+				<SectionEditSheet section={section} version={3} onDismiss={() => {}} onSaved={() => {}} />
 			),
 			action: async ({ request }) => {
 				saves.push(
@@ -166,8 +156,8 @@ describe('a placed photo’s sheet', () => {
 
 		expect(saves).toEqual([
 			expect.objectContaining({
-				[WHICH_FORM]: BLOCK_FORMS.photo,
-				block_id: 'hero',
+				[WHICH_FORM]: CONTENT_FORMS.photo,
+				slot: SLOTS.cover,
 				image_id: STORED,
 				alt: 'Coats on a rack'
 			})
@@ -203,7 +193,7 @@ describe('a placed photo’s sheet', () => {
 		const words = 'a photo’s description holds at most 250 characters';
 		saveAnswer = {
 			body: {
-				form: { id: BLOCK_FORMS.photo, result: { status: 'error', error: { alt: [words] } } }
+				form: { id: CONTENT_FORMS.photo, result: { status: 'error', error: { alt: [words] } } }
 			},
 			status: 400
 		};
@@ -212,7 +202,7 @@ describe('a placed photo’s sheet', () => {
 
 		await done(root);
 
-		const box = root.querySelector<HTMLInputElement>('#block-hero-alt');
+		const box = root.querySelector<HTMLInputElement>('#section-cover-alt');
 		expect(box).not.toBeNull();
 		expect(document.activeElement).toBe(box);
 		const said = box?.getAttribute('aria-describedby')?.split(' ') ?? [];
@@ -253,11 +243,12 @@ describe('a placed photo’s sheet', () => {
 	});
 });
 
-describe('the sheet of a block with no photo yet', () => {
-	const bare: EditorBlock = {
+describe('the sheet of a slot with no photo yet', () => {
+	const bare: EditorSection = {
 		...hero,
 		summary: 'No photo yet',
-		text: { kind: 'photo', imageId: null, alt: '' }
+		empty: true,
+		text: { kind: 'photo', slot: SLOTS.cover, imageId: null, alt: '', removable: false }
 	};
 
 	it('offers Add photo alone, and Done posts nothing but says a photo is wanted at the press', async () => {
@@ -319,11 +310,52 @@ describe('the sheet of a block with no photo yet', () => {
 
 		expect(saves).toEqual([
 			expect.objectContaining({
-				[WHICH_FORM]: BLOCK_FORMS.photo,
-				block_id: 'hero',
+				[WHICH_FORM]: CONTENT_FORMS.photo,
+				slot: SLOTS.cover,
 				image_id: STORED,
 				alt: 'Coats on a rack'
 			})
 		]);
+	});
+});
+
+describe('Remove photo', () => {
+	it('posts the photo’s slot at once, with the version, and Done is not needed', async () => {
+		const root = editor();
+		const remove = [...root.querySelectorAll('button')].find(
+			(one) => one.textContent === 'Remove photo'
+		);
+		await act(async () => remove?.click());
+		await settle();
+		expect(saves).toEqual([
+			{ [WHICH_FORM]: CONTENT_FORMS.photoRemove, [RECORD_VERSION]: '3', slot: SLOTS.cover }
+		]);
+	});
+
+	it('names the slot of a photo beside the cover', async () => {
+		const root = editor({
+			...hero,
+			id: 'photo-1',
+			label: 'Photo 2',
+			text: { kind: 'photo', slot: '1', imageId: PLACED, alt: '', removable: true }
+		});
+		const remove = [...root.querySelectorAll('button')].find(
+			(one) => one.textContent === 'Remove photo'
+		);
+		await act(async () => remove?.click());
+		await settle();
+		expect(saves.map((body) => [body[WHICH_FORM], body.slot])).toEqual([
+			[CONTENT_FORMS.photoRemove, '1']
+		]);
+	});
+
+	it('is not offered where no photo is placed yet', () => {
+		const root = editor({
+			...hero,
+			text: { kind: 'photo', slot: SLOTS.added, imageId: null, alt: '', removable: false }
+		});
+		expect([...root.querySelectorAll('button')].map((one) => one.textContent)).not.toContain(
+			'Remove photo'
+		);
 	});
 });

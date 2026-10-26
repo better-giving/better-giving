@@ -19,10 +19,8 @@ import {
 // the form holds the sheet's boxes and nothing else, and Done in the foot is its submit through the
 // `form` attribute, so Enter in a box presses Done — as long as no submit button sits inside the
 // form ahead of it, because the platform's default button is the first in tree order (a row
-// editor's Add and Remove answer that in ../forms/giving-fields.tsx). what is handed in as `lead`
-// stands in the body above the form and outside it — a block's variant pictures, which apply on
-// pick and are never posted with the words. the form draws no box of its own (`.adm-sheet__form`),
-// so its boxes are spaced as the body's own parts.
+// editor's Add and Remove answer that in ../forms/giving-fields.tsx). the form draws no box of its
+// own (`.adm-sheet__form`), so its boxes are spaced as the body's own parts.
 //
 // the sheet reads its form one of two ways. handed `onDone`, it keeps the submit and passes the
 // form over. handed `formProps` — a form library's own (conform's `getFormProps`, with its id and
@@ -57,8 +55,6 @@ type Submits =
 
 type DoneSheetProps = Submits & {
 	readonly title: string;
-	/** what stands above the boxes and is not posted with them. */
-	readonly lead?: ReactNode;
 	/** the boxes Done applies. */
 	readonly children: ReactNode;
 	/** X or Escape. */
@@ -76,7 +72,6 @@ type DoneSheetProps = Submits & {
 
 export function DoneSheet({
 	title,
-	lead,
 	children,
 	onDismiss,
 	onDone,
@@ -134,7 +129,6 @@ export function DoneSheet({
 				</>
 			}
 		>
-			{lead}
 			<form noValidate {...formProps} id={form} className="adm-sheet__form" onSubmit={submit}>
 				{children}
 			</form>

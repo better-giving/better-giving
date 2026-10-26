@@ -5,7 +5,6 @@ import { defaultDonationPage } from '../../page/defaults';
 import { createDb, type Db } from '../db/client';
 import { donation, page } from '../db/schema';
 import { readForm } from '../forms/queries';
-import { createImage, stored as imageStored } from '../images/image.testing';
 import { expectRecordedAsAForm } from './owned-settings-gift.testing';
 import { insertPage, SETTINGS } from './page-row.testing';
 import { resetDonationPage } from './reset';
@@ -41,11 +40,8 @@ const documentOf = (text: string | null): PageDocument => JSON.parse(text ?? 'nu
 /** a Donation page edited every way Reset puts back, published, with an earlier page kept for Undo. */
 const EDITED: PageDocument = {
 	...defaultDonationPage(),
-	palette: 'bold',
-	layout: 'banner',
-	look: { shade: 'warm', corner: 'round' },
+	heading: 'Keep Elm Street warm',
 	shareMessage: 'Keep Elm Street warm.',
-	blocks: defaultDonationPage().blocks.filter((block) => block.type !== 'about-us'),
 	settings: SETTINGS
 };
 
@@ -64,7 +60,7 @@ async function publishedEdits(edited: PageDocument = EDITED) {
 }
 
 describe('Reset to default', () => {
-	it('puts the current default in the draft and the live page, with no look or share message of its own and nothing to undo', async () => {
+	it('puts the current default in the draft and the live page, with no heading or share message of its own and nothing to undo', async () => {
 		const pageId = await publishedEdits();
 
 		const outcome = await resetDonationPage(db, (await stored(pageId)).updatedAt);
@@ -177,19 +173,31 @@ describe('a Donation page’s edits', () => {
 		const outcome = await resetDonationPage(db, (await stored(pageId)).updatedAt);
 
 		expect(outcome).toEqual({ kind: 'reset' });
-		expect(documentOf((await stored(pageId)).published).palette).toBe('tint');
+		expect(documentOf((await stored(pageId)).published).heading).toBe('');
 	});
 
-	it('include share buttons a page chose, on a page that is otherwise the default', async () => {
+	it('include a share message a page chose, on a page that is otherwise the default', async () => {
 		const pageId = await insertPage(db, 'donation_page', {
 			...defaultDonationPage(),
-			shareChannels: ['copy-link']
+			shareMessage: 'Join me?'
 		});
 
 		const outcome = await resetDonationPage(db, (await stored(pageId)).updatedAt);
 
 		expect(outcome).toEqual({ kind: 'reset' });
-		expect(documentOf((await stored(pageId)).draft).shareChannels).toBeUndefined();
+		expect(documentOf((await stored(pageId)).draft).shareMessage).toBeUndefined();
+	});
+
+	it('include a heading a page chose, on a page that is otherwise the default', async () => {
+		const pageId = await insertPage(db, 'donation_page', {
+			...defaultDonationPage(),
+			heading: 'Give to Elm Street'
+		});
+
+		const outcome = await resetDonationPage(db, (await stored(pageId)).updatedAt);
+
+		expect(outcome).toEqual({ kind: 'reset' });
+		expect(documentOf((await stored(pageId)).draft).heading).toBe('');
 	});
 
 	it('leave out a settings or switch change alone, which Discard changes answers', async () => {
@@ -210,43 +218,5 @@ describe('a Donation page’s edits', () => {
 		const outcome = await resetDonationPage(db, (await stored(pageId)).updatedAt);
 
 		expect(outcome).toEqual({ kind: 'nothing' });
-	});
-});
-
-describe('a photo Reset lets go of', () => {
-	const upload = () =>
-		createImage(
-			db,
-			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
-			new Uint8Array([1, 2, 3])
-		);
-
-	/** the edited page with a hero placing `imageId` at its top. */
-	const showing = (imageId: string): PageDocument => ({
-		...EDITED,
-		blocks: [
-			{ id: 'hero', type: 'hero', variant: 'wide', background: 'none', imageId, alt: null },
-			...EDITED.blocks
-		]
-	});
-
-	it('is freed from the draft, the live page and the page kept for Undo alike', async () => {
-		const [drafted, live, earlier] = [await upload(), await upload(), await upload()];
-		const pageId = await insertPage(db, 'donation_page', showing(drafted), showing(live));
-		const was = (await stored(pageId)).updatedAt.getTime();
-		await db
-			.update(page)
-			.set({
-				lastPublished: JSON.stringify(showing(earlier)),
-				updatedAt: new Date(was + 1_000)
-			})
-			.where(eq(page.id, pageId));
-
-		expect(await resetDonationPage(db, (await stored(pageId)).updatedAt)).toEqual({
-			kind: 'reset'
-		});
-		for (const id of [drafted, live, earlier]) {
-			expect(await imageStored(db, id)).toEqual({ row: false, bytes: false });
-		}
 	});
 });

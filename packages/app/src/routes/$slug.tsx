@@ -16,8 +16,7 @@ import { meterDonorPage } from '$lib/server/api/meter';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
 import { readOrgProfile, readOrgProfileLogo } from '$lib/server/org/queries';
 import { readServedCampaign } from '$lib/server/pages/campaign';
-import { readDocument } from '$lib/server/pages/document';
-import { donorLook, loadPageView, refusedPage } from '$lib/server/pages/view';
+import { loadPageView, refusedPage } from '$lib/server/pages/view';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/$slug';
@@ -43,9 +42,9 @@ import type { Route } from './+types/$slug';
 // an `ended` campaign — ended by End, or live and past its published end date, which reads the same
 // ($lib/page/ended.ts) — still holds its address, so the address answers 200 with the ended screen:
 // the organisation's name and logo atop it, the campaign's name, that it has ended, and the way on
-// to /donate — in its own published look ($lib/server/pages/view.ts's `donorLook`), with none of its
-// blocks and no donation box, since its owned settings row is out of service (`endCampaign` in
-// $lib/server/pages/queries.ts, and read so past the end date by `readPublishedConfig`).
+// to /donate — in the organisation's brand colour, with none of its content and no donation box,
+// since its owned settings row is out of service (`endCampaign` in $lib/server/pages/queries.ts,
+// and read so past the end date by `readPublishedConfig`).
 // `no-store`, because publishing it again puts it back live at the same address.
 //
 // one never published, one deleted and a slug nobody holds are the same 404 with the same body, so
@@ -67,16 +66,12 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	if (campaign === null) return refusedPage();
 	if (campaign.state === 'ended') {
 		const [profile, logo] = await Promise.all([readOrgProfile(db), readOrgProfileLogo(db)]);
-		const published = readDocument(campaign, 'published', campaign.published);
 		return data(
 			{
 				kind: 'ended',
 				name: campaign.name,
 				orgName: profile?.legalName ?? null,
-				look: donorLook(
-					published.ok ? published.page.look : undefined,
-					profile?.brandColour ?? null
-				),
+				look: { brandColour: profile?.brandColour ?? null },
 				logo
 			} as const,
 			{ headers: { 'cache-control': 'no-store' } }

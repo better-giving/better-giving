@@ -1,17 +1,16 @@
-import { act, type ReactNode, useState } from 'react';
+import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
-import { BLOCK_FORMS, type EditorBlock } from '$lib/page/block-edit';
 import { FAQ_MAX, TIERS_MAX } from '$lib/page/catalog';
-import { BlockEditSheet } from './block-edit';
-import { useSettingsPresses } from './settings-presses';
-import { SettingsSheet } from './settings-sheet';
+import { CONTENT_FORMS, type EditorSection } from '$lib/page/content-edit';
+import { SectionEditSheet } from './section-edit';
 
-// a block's sheet and the layout pictures as the editor routes mount them, each press posted
-// through a fetcher to a stubbed action: where a refused pick is reported, what a tier's row and a
-// background pick post, and that a sheet opened over Settings stands over it.
+// a section's sheet as the editor routes mount it, each press posted through a fetcher to a stubbed
+// action: what a tier's row posts, how rows come and go, where a refusal lands, that a sheet opened
+// over Settings stands over it, and that the sheet draws the section's words and photo and nothing
+// that says how the page draws them.
 //
 // `stacked` has one output, the class packages/operator/src/components/shell/Sheet.jsx writes for
 // it, and that file's own spec holds what the class is; the one case reading it here asks only
@@ -19,6 +18,11 @@ import { SettingsSheet } from './settings-sheet';
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// a control's name that only a layout, a look, a background or a section's place would carry.
+// `\bmove` keeps a row's own Remove out of it.
+const NOT_CONTENT =
+	/layout|look|colou?r|palette|shade|corner|style|variant|background|share buttons|\bmove\b|add a block|remove block/i;
 
 const STALE = 'The page changed while this was open. Reload to see it.';
 
@@ -42,7 +46,7 @@ function editor(
 				const form = body.get(WHICH_FORM);
 				return form === refusing
 					? { form: { id: form, result: { status: 'error', error } } }
-					: { saved: 'block' };
+					: { saved: 'content' };
 			}
 		}
 	]);
@@ -74,45 +78,21 @@ function done(root: Element): HTMLButtonElement {
 	return found;
 }
 
-/** every report region in the open sheet, in tree order: the pictures' first, Done's after it. */
-const reports = (root: Element) =>
-	[...root.querySelectorAll('dialog [role="status"]')].map((one) => one.textContent);
-
-const title: EditorBlock = {
-	id: 'b1',
-	type: 'title',
+const title: EditorSection = {
+	id: 'title',
 	label: 'Title',
 	summary: 'Keep 300 kids warm this winter',
-	variant: 'left',
-	variants: [
-		{ value: 'left', label: 'Left' },
-		{ value: 'center', label: 'Centred' }
-	],
-	background: 'none',
-	backgrounds: [{ value: 'none', label: 'None' }],
-	removable: true,
-	movesUp: false,
-	movesDown: true,
-	text: { kind: 'title', heading: 'Keep 300 kids warm this winter', lede: '' }
+	empty: false,
+	text: { kind: 'title', heading: 'Keep 300 kids warm this winter', lede: 'Coats for every child' }
 };
 
-const tiers: EditorBlock = {
-	id: 'b2',
-	type: 'impact-tiers',
+const tiers: EditorSection = {
+	id: 'tiers',
 	label: 'Impact tiers',
-	summary: '$40 buys one winter coat',
-	variant: 'cards',
-	variants: [
-		{ value: 'cards', label: 'Cards' },
-		{ value: 'list', label: 'List' }
-	],
-	background: 'none',
-	backgrounds: [{ value: 'none', label: 'None' }],
-	removable: true,
-	movesUp: false,
-	movesDown: true,
+	summary: '$40, $120',
+	empty: false,
 	text: {
-		kind: 'impact-tiers',
+		kind: 'tiers',
 		currency: 'USD',
 		tiers: [
 			{ amount: '40.00', buys: 'one winter coat' },
@@ -121,9 +101,9 @@ const tiers: EditorBlock = {
 	}
 };
 
-const sheet = (block: EditorBlock, stacked?: boolean) => (
-	<BlockEditSheet
-		block={block}
+const sheet = (section: EditorSection, stacked?: boolean) => (
+	<SectionEditSheet
+		section={section}
 		version={3}
 		onDismiss={() => {}}
 		onSaved={() => {}}
@@ -131,7 +111,7 @@ const sheet = (block: EditorBlock, stacked?: boolean) => (
 	/>
 );
 
-describe('a block sheet', () => {
+describe('a section sheet', () => {
 	it('stands over Settings only when it is opened from there', () => {
 		const over = editor(sheet(title, true), '').root.querySelector('dialog');
 		expect(over?.classList.contains('adm-sheet--stacked')).toBe(true);
@@ -139,65 +119,40 @@ describe('a block sheet', () => {
 		expect(alone?.classList.contains('adm-sheet--stacked')).toBe(false);
 	});
 
-	it('reports a refused style under the pictures, from a region there before it, and not at Done', async () => {
-		const { root, posted } = editor(sheet(title), BLOCK_FORMS.variant);
-		expect(reports(root)).toEqual(['', '']);
-
-		await press(root.querySelector<HTMLInputElement>('input[value="center"]'));
-		expect(posted.map((body) => body.get('variant'))).toEqual(['center']);
-		expect(reports(root)).toEqual([STALE, '']);
-		expect(root.querySelector<HTMLInputElement>('input[value="left"]')?.checked).toBe(true);
-	});
-
-	it('reports a refused Done at Done, and nothing under the pictures', async () => {
-		const { root } = editor(sheet(title), BLOCK_FORMS.title);
+	it('posts the title’s words with the version and the section’s form, and nothing else', async () => {
+		const { root, posted } = editor(sheet(title), '');
 		await press(done(root));
-		expect(reports(root)).toEqual(['', STALE]);
-	});
-});
-
-describe('a block’s background', () => {
-	const grounded: EditorBlock = {
-		...title,
-		background: 'soft',
-		backgrounds: [
-			{ value: 'none', label: 'None' },
-			{ value: 'soft', label: 'Soft' },
-			{ value: 'tint', label: 'Tinted' }
-		]
-	};
-	const legends = (root: Element) =>
-		[...root.querySelectorAll('dialog legend')].map((one) => one.textContent);
-	const chip = (root: Element, words: string) =>
-		[...root.querySelectorAll<HTMLLabelElement>('dialog label')]
-			.find((one) => one.textContent === words)
-			?.querySelector('input') ?? null;
-
-	it('is offered only where the block may stand on more than one, the one it stands on picked', () => {
-		expect(legends(editor(sheet(title), '').root)).not.toContain('Background');
-		const { root } = editor(sheet(grounded), '');
-		expect(legends(root)).toContain('Background');
-		expect(chip(root, 'Soft')?.checked).toBe(true);
-	});
-
-	it('posts the block and the ground picked with the version, and nothing else', async () => {
-		const { root, posted } = editor(sheet(grounded), '');
-		await press(chip(root, 'Tinted'));
 		expect(posted.map((body) => [...body.entries()])).toEqual([
 			[
-				[WHICH_FORM, BLOCK_FORMS.background],
+				[WHICH_FORM, CONTENT_FORMS.title],
 				[RECORD_VERSION, '3'],
-				['block_id', 'b1'],
-				['background', 'tint']
+				['heading', 'Keep 300 kids warm this winter'],
+				['lede', 'Coats for every child']
 			]
 		]);
 	});
 
-	it('reports a refused pick under the picks, and draws the block’s ground again', async () => {
-		const { root } = editor(sheet(grounded), BLOCK_FORMS.background);
-		await press(chip(root, 'Tinted'));
-		expect(reports(root)).toEqual([STALE, '']);
-		expect(chip(root, 'Soft')?.checked).toBe(true);
+	it('reports a refused Done at Done', async () => {
+		const { root } = editor(sheet(title), CONTENT_FORMS.title);
+		await press(done(root));
+		expect(
+			[...root.querySelectorAll('dialog [role="status"]')].map((one) => one.textContent)
+		).toContain(STALE);
+	});
+
+	it('draws no control for how the page is laid out or dressed, whichever section it opens', () => {
+		const { root: titled } = editor(sheet(title), '');
+		const { root: tiered } = editor(sheet(tiers), '');
+		for (const root of [titled, tiered]) {
+			const names = [
+				...root.querySelectorAll(
+					'dialog legend, dialog label, dialog button, dialog [role="radio"]'
+				)
+			].map((one) => one.getAttribute('aria-label') ?? one.textContent ?? '');
+			expect(names.length).toBeGreaterThan(2);
+			expect(names.filter((name) => NOT_CONTENT.test(name))).toEqual([]);
+			expect(root.querySelector('dialog input[type="radio"]')).toBeNull();
+		}
 	});
 });
 
@@ -254,21 +209,18 @@ describe('the tiers', () => {
 });
 
 describe('a list’s rows', () => {
-	const empty = (kind: 'tiers' | 'faq'): EditorBlock =>
+	const empty = (kind: 'tiers' | 'faq'): EditorSection =>
 		kind === 'tiers'
-			? { ...tiers, text: { kind: 'impact-tiers', currency: 'USD', tiers: [] } }
+			? { ...tiers, text: { kind: 'tiers', currency: 'USD', tiers: [] } }
 			: {
 					...tiers,
-					id: 'b3',
-					type: 'faq',
+					id: 'faq',
 					label: 'Questions',
-					variant: 'accordion',
-					variants: [{ value: 'accordion', label: 'Folded' }],
 					text: { kind: 'faq', items: [] }
 				};
-	const full = (kind: 'tiers' | 'faq', count: number): EditorBlock => {
+	const full = (kind: 'tiers' | 'faq', count: number): EditorSection => {
 		const block = empty(kind);
-		if (block.text?.kind === 'impact-tiers')
+		if (block.text.kind === 'tiers')
 			return {
 				...block,
 				text: {
@@ -302,7 +254,7 @@ describe('a list’s rows', () => {
 			(one) => (one.getAttribute('aria-label') ?? one.textContent) === name
 		) ?? null;
 
-	it('offer an empty tiers block a first row, and post it', async () => {
+	it('offer an empty tiers section a first row, and post it', async () => {
 		const { root, posted } = editor(sheet(empty('tiers')), '');
 		expect(rows(root)).toBe(1);
 		expect(named(root, 'Remove tier 1')).toBeNull();
@@ -318,7 +270,7 @@ describe('a list’s rows', () => {
 		expect(posted[0]?.getAll('tier_buys[0]')).toEqual(['a pair of gloves']);
 	});
 
-	it('offer an empty questions block a first row, and post it', async () => {
+	it('offer an empty questions section a first row, and post it', async () => {
 		const { root, posted } = editor(sheet(empty('faq')), '');
 		expect(rows(root)).toBe(1);
 
@@ -328,7 +280,7 @@ describe('a list’s rows', () => {
 		);
 		await press(done(root));
 
-		expect(posted[0]?.get(WHICH_FORM)).toBe(BLOCK_FORMS.faq);
+		expect(posted[0]?.get(WHICH_FORM)).toBe(CONTENT_FORMS.faq);
 		expect(posted[0]?.getAll('question[0]')).toEqual(['Where do coats go?']);
 		expect(posted[0]?.getAll('answer[0]')).toHaveLength(1);
 	});
@@ -348,10 +300,10 @@ describe('a list’s rows', () => {
 	});
 
 	it('keep a refusal on the row it was said of as rows come and go, with the caret where Remove put it', async () => {
-		const three: EditorBlock = {
+		const three: EditorSection = {
 			...tiers,
 			text: {
-				kind: 'impact-tiers',
+				kind: 'tiers',
 				currency: 'USD',
 				tiers: [
 					{ amount: '40.00', buys: 'one winter coat' },
@@ -360,7 +312,7 @@ describe('a list’s rows', () => {
 				]
 			}
 		};
-		const { root } = editor(sheet(three), BLOCK_FORMS.impactTiers, {
+		const { root } = editor(sheet(three), CONTENT_FORMS.tiers, {
 			'tier_amount[2]': ['more than $0']
 		});
 		const refused = () =>
@@ -388,71 +340,11 @@ describe('a list’s rows', () => {
 	it.each([
 		['tiers', TIERS_MAX, 'Add a tier'],
 		['faq', FAQ_MAX, 'Add a question']
-	] as const)('offer a full %s block no more rows', (kind, max, add) => {
+	] as const)('offer a full %s section no more rows', (kind, max, add) => {
 		const { root } = editor(sheet(full(kind, max)), '');
 		expect(rows(root)).toBe(max);
 		expect(named(root, add)).toBeNull();
 		const short = editor(sheet(full(kind, max - 1)), '').root;
 		expect(named(short, add)).not.toBeNull();
-	});
-});
-
-describe('the layout pictures', () => {
-	/** the Settings sheet as an editor route mounts it: the pick held by the editor, the sheet opened and closed. */
-	function Layout() {
-		const pick = useSettingsPresses({
-			version: 3,
-			layout: 'box-right',
-			look: { shade: 'light', corners: 'soft', palette: 'plain' },
-			share: { message: '', channels: [] },
-			addable: [],
-			onAdded: () => {}
-		});
-		const [open, setOpen] = useState(true);
-		return open ? (
-			<SettingsSheet
-				onDismiss={() => setOpen(false)}
-				layouts={[
-					{ value: 'box-right', label: 'Box beside' },
-					{ value: 'banner', label: 'Banner' }
-				]}
-				layout={pick.sheet.layout}
-				onLayout={pick.sheet.onLayout}
-				layoutRefusal={pick.sheet.layoutRefusal}
-			/>
-		) : (
-			<button
-				type="button"
-				onClick={() => {
-					pick.startClean();
-					setOpen(true);
-				}}
-			>
-				Settings
-			</button>
-		);
-	}
-
-	it('report a refused pick under them, from a region there before it', async () => {
-		const { root, posted } = editor(<Layout />, BLOCK_FORMS.layout);
-		expect(reports(root)).toEqual(['']);
-
-		await press(root.querySelector<HTMLInputElement>('input[value="banner"]'));
-		expect(posted.map((body) => body.get('layout'))).toEqual(['banner']);
-		expect(reports(root)).toEqual([STALE]);
-		expect(root.querySelector<HTMLInputElement>('input[value="box-right"]')?.checked).toBe(true);
-	});
-
-	it('open again without the refusal the sheet was closed on', async () => {
-		const { root } = editor(<Layout />, BLOCK_FORMS.layout);
-		await press(root.querySelector<HTMLInputElement>('input[value="banner"]'));
-		expect(reports(root)).toEqual([STALE]);
-
-		await press(root.querySelector<HTMLButtonElement>('button[aria-label="Close"]'));
-		await press(
-			[...root.querySelectorAll('button')].find((one) => one.textContent === 'Settings') ?? null
-		);
-
-		expect(reports(root)).toEqual(['']);
 	});
 });

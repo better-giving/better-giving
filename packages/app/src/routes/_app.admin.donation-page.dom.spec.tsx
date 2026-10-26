@@ -2,17 +2,9 @@ import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLoaderData } from 'react-router';
 import { beforeEach, expect, it, onTestFinished, vi } from 'vitest';
-import {
-	addablePictures,
-	editorBlocks,
-	editorLook,
-	editorShare,
-	layoutPictures,
-	lookPictures,
-	shareChannelPictures
-} from '$lib/page/block-edit';
-import { defaultCampaign } from '$lib/page/defaults';
-import { BLOCK_MESSAGE } from '$lib/page/preview-message';
+import { SECTION_MESSAGE } from '$lib/page/preview-message';
+import { defaultDonationPage } from '$lib/page/defaults';
+import { editorSections, editorShareMessage } from '$lib/page/content-edit';
 import DonationPageEditor, { clientAction } from './_app.admin.donation-page';
 
 // the Donation page's editor as the route mounts it, over a phone that has lost its signal: a
@@ -32,7 +24,7 @@ import DonationPageEditor, { clientAction } from './_app.admin.donation-page';
 type Drawn = Parameters<typeof DonationPageEditor>[0]['loaderData'];
 type Loaded = Extract<Drawn, { unreadable: false }>;
 
-const DRAFT = defaultCampaign();
+const DRAFT = defaultDonationPage();
 
 /** a Donation page live with edits since. */
 function edited(): Loaded {
@@ -44,14 +36,9 @@ function edited(): Loaded {
 		preview: 'about:blank',
 		goalMinor: null,
 		endDate: null,
-		blocks: editorBlocks(DRAFT, 'USD'),
-		layout: DRAFT.layout,
-		layouts: layoutPictures(),
-		look: editorLook(DRAFT),
-		lookPictures: lookPictures(),
-		share: editorShare(DRAFT),
-		shareChannels: shareChannelPictures(),
-		addable: addablePictures('donation_page'),
+		sections: editorSections(DRAFT, 'donation_page', 'USD'),
+		newPhoto: null,
+		shareMessage: editorShareMessage(DRAFT),
 		settings: {
 			boxes: {
 				program_mode: 'none',
@@ -178,7 +165,7 @@ it('presents Live when a published Donation page is taking gifts', async () => {
 	expect(stateWord()?.textContent).toBe('Live');
 });
 
-it('leaves a block’s sheet open, holding what was typed, and says so at Done', async () => {
+it('leaves the title’s sheet open, holding what was typed, and says so at Done', async () => {
 	await screen();
 	const framed = document.querySelector('iframe')?.contentWindow;
 	if (framed) vi.spyOn(framed, 'postMessage').mockImplementation(() => {});
@@ -186,7 +173,7 @@ it('leaves a block’s sheet open, holding what was typed, and says so at Done',
 	await act(async () => {
 		window.dispatchEvent(
 			new MessageEvent('message', {
-				data: { type: BLOCK_MESSAGE, id: 'title' },
+				data: { type: SECTION_MESSAGE, id: 'title' },
 				origin: window.location.origin,
 				source: framed ?? null
 			})
@@ -219,4 +206,51 @@ it('says at the bar that a Publish never reached the server, and draws the page 
 
 	expect(said(bar())).toContain(NOT_SENT);
 	expect(bar().textContent).toContain('Changes not published');
+});
+
+it('opens the donation settings, not a section, on a click on the donation box in the preview', async () => {
+	await screen();
+	const framed = document.querySelector('iframe')?.contentWindow;
+	if (framed) vi.spyOn(framed, 'postMessage').mockImplementation(() => {});
+	await press(button('Edit'));
+
+	await act(async () => {
+		window.dispatchEvent(
+			new MessageEvent('message', {
+				data: { type: SECTION_MESSAGE, id: 'donate' },
+				origin: window.location.origin,
+				source: framed ?? null
+			})
+		);
+	});
+	await settle();
+
+	expect(card('Donation settings').open).toBe(true);
+	expect(document.querySelector('dialog[open] input[name="heading"]')).toBeNull();
+});
+
+it('lists the title as the only content in Settings, with nothing to lay out', async () => {
+	await screen();
+	const framed = document.querySelector('iframe')?.contentWindow;
+	if (framed) vi.spyOn(framed, 'postMessage').mockImplementation(() => {});
+	await press(button('Edit'));
+
+	await press(button('Settings'));
+
+	const settings = card('Settings');
+	const rows = [...settings.querySelectorAll('.adm-openrow__label')].map((one) => one.textContent);
+	expect(rows).toEqual(['Title', 'Share message', 'Donation settings']);
+	const text = settings.textContent ?? '';
+	for (const gone of [
+		'Layout',
+		'Look',
+		'Variant',
+		'Background',
+		'Add',
+		'Move',
+		'Remove',
+		'Share button'
+	])
+		expect(text).not.toContain(gone);
+	expect(settings.querySelector('input[type="radio"], select')).toBeNull();
 });

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
 import { AddressSheet } from '$lib/admin/editor/address-sheet';
-import { BlockEditSheet, isDonationBox } from '$lib/admin/editor/block-edit';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
@@ -15,16 +14,16 @@ import {
 } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
-import { useSettingsPresses } from '$lib/admin/editor/settings-presses';
 import { type FirstPublish, usePublishPresses } from '$lib/admin/editor/publish-wiring';
+import { SectionEditSheet } from '$lib/admin/editor/section-edit';
 import { SettingsSheet, type SettingsRow } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formPress } from '$lib/admin/unreached';
 import { resultFor } from '$lib/admin/use-admin-form';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { PROGRAM_MODE_LABELS } from '$lib/forms/program-modes';
-import { BLOCK_FORM_IDS } from '$lib/page/block-edit';
-import { HEADING_MAX } from '$lib/page/catalog';
+import { HEADING_MAX, PHOTOS_MAX } from '$lib/page/catalog';
+import { CONTENT_FORM_IDS, type EditorSection } from '$lib/page/content-edit';
 import {
 	PAGE_END_DATE_FORM_ID,
 	PAGE_GOAL_FORM_ID,
@@ -42,7 +41,7 @@ import { checkSlug, type SlugCheck } from '$lib/page/slug';
 import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
-import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
+import { editorDraft, saveContentForm } from '$lib/server/pages/content';
 import {
 	editorPage,
 	readEditorSettings,
@@ -92,11 +91,13 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 // **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, the presses and their
 // confirms mounted through $lib/admin/editor/publish-wiring.tsx.
 //
-// **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
-// preview while Edit is on and by its row in Settings' block list alike, and the layout by
-// Settings' pictures; each writes the draft ($lib/server/pages/blocks.ts), as the Donation page's
-// editor does. the look, the sharing and a block added, removed or moved are presses there too.
-// the donation box opens Donation settings, which are what it draws.
+// **the content** — the title, the story, the cover photo and the photos beside it, the tiers and
+// the questions — is edited a section at a time in its sheet, opened by a click on the section in
+// the preview while Edit is on and by its row in Settings' content list alike; each writes the draft
+// ($lib/server/pages/content.ts), as the Donation page's editor does. nothing here lays the page
+// out: the page picks its whole layout from what the content holds ($lib/page/shape.ts). a click on
+// the donation box opens Donation settings, which are what it draws, on the goal bar the goal, and
+// on the share buttons the share message.
 //
 // every press is written against the version the editor was drawn at (`submittedVersion`), and the
 // preview is keyed on it, so the frame reloads on the render a landed write's revalidation brings.
@@ -140,10 +141,17 @@ const SCREEN_FORMS = [
 	...PUBLISH_FORMS,
 	FIRST_PUBLISH_FORM_ID,
 	...PAGE_SETTING_FORM_IDS,
-	...BLOCK_FORM_IDS
+	...CONTENT_FORM_IDS
 ] as const;
 
 const DONATION_PAGE_PATH = '/donate';
+
+/** what a click in the preview on the box, the goal bar or the share buttons opens: what they draw. */
+const PREVIEW_SHEETS: Readonly<Record<string, SettingsRow>> = {
+	donate: 'donation-settings',
+	goal: 'goal',
+	share: 'share-message'
+};
 
 const STALE =
 	'Nothing was changed: this campaign has been saved since the editor was opened. Reload it, then make this change again.';
@@ -251,7 +259,7 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 				gone(params.pageId)
 			);
 		default:
-			return saveBlockForm(
+			return saveContentForm(
 				context.get(database),
 				{ id: params.pageId, type: 'campaign' },
 				pressed,
@@ -481,19 +489,20 @@ function DraftEditor({
 	const [moving, setMoving] = useState<{ slug: string; confirmed: Confirmed } | null>(null);
 	/** the question up, held while the save answering it is in flight. */
 	const [question, setQuestion] = useState<Question | null>(null);
-	const [blockId, setBlockId] = useState<string | null>(null);
-	const openBlock = loaderData.blocks.find((block) => block.id === blockId) ?? null;
-	const closeBlock = useCallback(() => setBlockId(null), []);
-	const openBlockSheet = (id: string) =>
-		isDonationBox(loaderData.blocks, id) ? setOpened('donation-settings') : setBlockId(id);
-	const settingsPresses = useSettingsPresses({
-		version,
-		layout: loaderData.layout,
-		look: loaderData.look,
-		share: loaderData.share,
-		addable: loaderData.addable,
-		onAdded: openBlockSheet
-	});
+	/** the section whose sheet is open, or `new` for Add a photo's. */
+	const [sectionId, setSectionId] = useState<string | null>(null);
+	const openSection: EditorSection | null =
+		sectionId === 'new'
+			? loaderData.newPhoto
+			: (loaderData.sections.find((section) => section.id === sectionId) ?? null);
+	const closeSection = useCallback(() => setSectionId(null), []);
+	/** a click in the preview, or a row in Settings: a section's sheet, or the sheet for what it draws. */
+	const open = (id: string) => {
+		const elsewhere = PREVIEW_SHEETS[id];
+		if (elsewhere === undefined) setSectionId(id);
+		else setOpened(elsewhere);
+	};
+	const photos = loaderData.sections.filter((section) => section.id.startsWith('photo-')).length;
 
 	const { renamed, renaming, renamedIn } = naming;
 	const nameAnswer = naming.answer;
@@ -541,10 +550,7 @@ function DraftEditor({
 					state={state}
 					livePath={address ?? undefined}
 					{...presses.bar}
-					onSettings={() => {
-						settingsPresses.startClean();
-						setSettings(true);
-					}}
+					onSettings={() => setSettings(true)}
 					report={presses.bar.report ?? naming.barReport}
 				/>
 			}
@@ -553,7 +559,7 @@ function DraftEditor({
 					key={version}
 					src={preview}
 					title={`Preview of ${name}`}
-					onBlockClick={openBlockSheet}
+					onSectionClick={open}
 				/>
 			}
 		>
@@ -567,24 +573,22 @@ function DraftEditor({
 						currency: donationSettings.currency,
 						endDate: loaderData.endDate
 					}}
-					blocks={loaderData.blocks}
-					onOpenBlock={openBlockSheet}
-					layouts={loaderData.layouts}
-					lookPictures={loaderData.lookPictures}
-					shareChannels={loaderData.shareChannels}
-					{...settingsPresses.sheet}
+					sections={loaderData.sections}
+					onOpenSection={open}
+					onAddPhoto={photos < PHOTOS_MAX ? () => setSectionId('new') : undefined}
+					shareMessage={loaderData.shareMessage}
 					onShareMessage={() => setOpened('share-message')}
 					donationSettings={donationSettings.summary}
 					onOpen={setOpened}
 				/>
 			) : null}
-			{openBlock === null ? null : (
-				<BlockEditSheet
-					key={openBlock.id}
-					block={openBlock}
+			{openSection === null ? null : (
+				<SectionEditSheet
+					key={`${openSection.id}-${openSection.text.kind === 'photo' ? openSection.text.slot : ''}`}
+					section={openSection}
 					version={version}
-					onDismiss={closeBlock}
-					onSaved={closeBlock}
+					onDismiss={closeSection}
+					onSaved={closeSection}
 					stacked={settings}
 				/>
 			)}
@@ -617,7 +621,7 @@ function DraftEditor({
 			) : null}
 			{opened === 'share-message' ? (
 				<ShareMessageSettingsSheet
-					message={loaderData.share.message}
+					message={loaderData.shareMessage}
 					version={version}
 					onDismiss={() => setOpened(null)}
 					onSaved={() => setOpened(null)}

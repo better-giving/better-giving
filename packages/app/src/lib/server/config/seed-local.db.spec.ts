@@ -5,6 +5,8 @@ import { identityMissing } from '../org/identity';
 import { writeOrgRow } from '../org/org-row.testing';
 import { readOrgProfile } from '../org/queries';
 import { readSites } from '../sites/queries';
+import { parsePage } from '../../page/catalog';
+import { campaignShape } from '../../page/shape';
 import { readSetupState } from './setup-state';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 
@@ -91,5 +93,41 @@ describe('the local seed', () => {
 		await applySeed();
 
 		await expect(readSites(db)).resolves.toEqual([]);
+	});
+
+	it('puts a live campaign in each layout, each one the page rule reads', async () => {
+		await applySeed();
+		await applySeed();
+
+		const pages = await client.execute(
+			"select slug, state, published from page where type = 'campaign' order by slug"
+		);
+		const layouts = pages.rows.map((row) => {
+			const read = parsePage('campaign', JSON.parse(String(row.published)));
+			if (!read.ok) throw new Error(`${String(row.slug)}: ${read.message}`);
+			return [row.slug, row.state, campaignShape(read.page, { logoImageId: null }).layout];
+		});
+		expect(layouts).toEqual([
+			['coat-drive', 'live', 'card'],
+			['saturday-market', 'live', 'feature'],
+			['winter-pantry', 'live', 'letter']
+		]);
+	});
+
+	it('stores every photo the campaigns place', async () => {
+		await applySeed();
+
+		const placed = await client.execute(
+			`select json_extract(value, '$.imageId') from page, json_each(page.published, '$.photos') union
+			 select json_extract(page.published, '$.hero.imageId') from page where json_extract(page.published, '$.hero.imageId') is not null`
+		);
+		expect(placed.rows.length).toBeGreaterThan(0);
+
+		const missing = await client.execute(
+			`select json_extract(value, '$.imageId') from page, json_each(page.published, '$.photos') union
+			 select json_extract(page.published, '$.hero.imageId') from page where json_extract(page.published, '$.hero.imageId') is not null
+			 except select image_id from image_bytes`
+		);
+		expect(missing.rows).toEqual([]);
 	});
 });

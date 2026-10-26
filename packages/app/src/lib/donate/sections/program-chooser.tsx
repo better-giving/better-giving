@@ -1,7 +1,7 @@
 import { NO_PROGRAM_LABEL } from '@better-giving/form/v1';
 import { imageSrc } from '../../page/image-src';
 import { Glyph } from './glyph';
-import type { BlockOf, PageProgram } from './types';
+import type { PageProgram } from './types';
 
 // where the gift goes, picked on the page rather than in the box: the same active programs the
 // box's own select would offer, after the choice of none at all, which is the box's resting answer.
@@ -17,8 +17,7 @@ import type { BlockOf, PageProgram } from './types';
 // photos arrive beside the programs, keyed by program id, and never on a program itself: the
 // programs are the served config's `v1` options, and a photo is no part of that contract.
 
-export function ProgramChooserBlock({
-	block,
+export function ProgramChooser({
 	programs,
 	chosen,
 	onPick,
@@ -26,7 +25,6 @@ export function ProgramChooserBlock({
 	domId,
 	photos = {}
 }: {
-	readonly block: BlockOf<'program-chooser'>;
 	readonly programs: readonly PageProgram[];
 	/** the chosen program's id; null is none, the gift going where it is needed most. */
 	readonly chosen: string | null;
@@ -41,7 +39,7 @@ export function ProgramChooserBlock({
 		...programs
 	];
 	return (
-		<fieldset className="page-choose" data-variant={block.variant}>
+		<fieldset className="page-choose">
 			<legend className="page-choose-legend">Where should your gift go?</legend>
 			<div className="page-choose-options">
 				{options.map((option) => {
@@ -63,9 +61,7 @@ export function ProgramChooserBlock({
 								<img className="page-choose-thumb" src={imageSrc(photo)} alt="" loading="lazy" />
 							)}
 							<span className="page-choose-mark">
-								{block.variant === 'cards' && option.id === chosen ? (
-									<Glyph name="tick" className="page-choose-tick" />
-								) : null}
+								{option.id === chosen ? <Glyph name="tick" className="page-choose-tick" /> : null}
 							</span>
 							<span className="page-choose-name">{option.name}</span>
 							{option.description === undefined ? null : (

@@ -1,68 +1,71 @@
 import { type ReactNode, useEffect } from 'react';
 import type { ProgramMode } from '../forms/program-modes';
-import type { Block, Page } from '../page/catalog';
+import type { Page } from '../page/catalog';
 import { imageSrc } from '../page/image-src';
-import type { Background, Corner, Layout, PageType, Shade } from '../page/keys';
+import type { PageType } from '../page/keys';
 import {
-	BLOCK_MESSAGE,
-	type BlockMessage,
 	EDITING_MESSAGE,
 	READY_MESSAGE,
-	type ReadyMessage
+	type ReadyMessage,
+	SECTION_MESSAGE,
+	type SectionMessage
 } from '../page/preview-message';
+import { type CampaignShape, campaignShape } from '../page/shape';
 import { isEmptyDocument } from '../rich-text/document';
-import { AboutUsBlock } from './blocks/about-us';
-import { FaqBlock } from './blocks/faq';
-import { GoalBarBlock } from './blocks/goal-bar';
-import { HeroBlock } from './blocks/hero';
-import { ImageBlock } from './blocks/image';
-import { ImpactTiersBlock } from './blocks/impact-tiers';
-import { OrgInfoBlock } from './blocks/org-info';
-import { ProgramChooserBlock } from './blocks/program-chooser';
-import { ShareBlock } from './blocks/share';
-import { StoryBlock } from './blocks/story';
-import { TitleBlock } from './blocks/title';
-import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './blocks/types';
 import { PageRoot } from './page-root';
+import { AboutUs } from './sections/about-us';
+import { Cover } from './sections/cover';
+import { Faq } from './sections/faq';
+import { GoalBar } from './sections/goal-bar';
+import { OrgInfo } from './sections/org-info';
+import { Photos } from './sections/photos';
+import { ProgramChooser } from './sections/program-chooser';
+import { Share } from './sections/share';
+import { Story } from './sections/story';
+import { Tiers } from './sections/tiers';
+import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './sections/types';
 
-// a donor page drawn from its stored document: the Donation page at /donate, a campaign at its
+// a donor page drawn from its stored content: the Donation page at /donate, a campaign at its
 // address, and either one as the editor's preview. one renderer for all three, so the preview is
 // what a donor sees.
 //
-// the route reads everything a block draws beyond its own stored values and hands it in, and it
-// builds the donation box itself (`donationBox`), so nothing here knows the card's props. this file
-// decides three things: which blocks leave themselves out, where each stands in the page's layout,
-// and what the preview reports when a block is clicked.
+// the route reads everything a section draws beyond the page's own content and hands it in, and it
+// builds the donation box itself (`donationBox`), so nothing here knows the card's props.
 //
-// the donation box is always drawn, exactly once, in normal flow, and never inside another block's
-// wrapper: no layout here gives it an ancestor that clips, positions or transforms it, so no block
-// can cover it or cut it off. the cover is the one positioned block, and the box stands after it,
-// never over it. ./page-view.dom.spec.tsx holds that for every layout.
+// a campaign is drawn in the one whole layout $lib/page/shape.ts picks from its content — the card,
+// the letter or the feature — and the Donation page in its own fixed one. no section is placed by
+// the organisation: each layout has its order, and a section with nothing in it is left out. the
+// sections stand in the order a phone reads them, and ./page.css moves them into columns from
+// `@container page (min-width: 60rem)`:
 //
-// layouts, as ./page.css draws them. on a phone every layout is the stored order. from the page's
-// widest breakpoint, `box-right` stands the box in a column of its own beside the other blocks and
-// `banner` does the same inside a band at the top, the blocks after the box running full width
-// under it; `column` keeps one narrow column at every width. a goal bar or program chooser listed
-// directly before the box travels into the box's column with it, so the chooser always stands
-// against the box it drives. `cover` needs a hero then a title as the first two blocks drawn: the
-// hero runs edge to edge under the masthead with the title laid over it, and the rest of the page
-// is `box-right` under it. a cover page without that pair draws as `box-right`, its hero in the
-// flow where it is listed. an org-info footer always closes the page, wherever it is listed. a hero
-// or image block with no photo leaves itself out.
+// - card: the cover, the title, the goal, the donation box, the lede and the story. wide, the box
+//   stands in a column of its own beside the words, under the cover.
+// - letter: the cover framed, the title, then a rail of the goal, the box and the tiers, then the
+//   lede, the story, the photos and the questions. wide, the rail is a column beside the reading
+//   column.
+// - feature: the cover, the title, the lede, the goal, then the box, then the story, the tiers as
+//   cards, a strip of photos, the questions folded, and About us. wide, the cover runs the page's
+//   width with the title, lede and goal over it and the box over its right side.
+// - the Donation page: the title, the program chooser, then the box; About us. wide, the box stands
+//   beside the title and the chooser.
 //
-// the masthead stands above every block and names the organisation. with a logo, a logo at least
+// every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
+// the box straight after the cover and the title, the goal and the lede after it, so in every layout
+// all of the box is on the first screen at a phone's width and a laptop's alike; the source order
+// keeps the box ahead of the story and everything after it, which ./page-view.dom.spec.tsx holds.
+// the box is drawn exactly once, and no ancestor of it clips or transforms it.
+//
+// the masthead stands above every page and names the organisation. with a logo, a logo at least
 // twice as wide as it is tall stands in for the name and carries it as its alt, and a narrower one
 // stands beside the name and says nothing of its own; the stored image's width and height decide.
 // with none, a badge of the name's initials stands beside the name, in the page's brand fill and
-// corner (./page.css), and like a narrower logo says nothing of its own.
-// a program's photo stands on its chooser option. every image arrives by stored image id, drawn
-// from the deployment's own image route and never from an address a page carries.
+// corner (./page.css), and like a narrower logo says nothing of its own. a program's photo stands on
+// its chooser option. every image arrives by stored image id, drawn from the deployment's own image
+// route and never from an address a page carries.
 
 export type PageLook = {
-	/** lowercase `#rrggbb`, or null for the form's own grey. */
+	/** lowercase `#rrggbb`, or null for the form's own grey: the page's only accent. */
 	readonly brandColour: string | null;
-	readonly shade: Shade;
-	readonly corner: Corner;
 };
 
 /** the organisation's logo: its stored image, and that image's shape. */
@@ -75,15 +78,12 @@ export type PageLogo = {
 export type PageViewProps = {
 	readonly type: PageType;
 	readonly page: Page;
-	/** a campaign's name, which an empty title heading draws; null on the Donation page. */
+	/** a campaign's name, which an empty heading draws; null on the Donation page. */
 	readonly pageName: string | null;
 	readonly org: PageOrg;
-	/** the organisation's logo, atop the page; null or absent where it has none. */
+	/** the organisation's logo, atop the page and in place of a missing cover; null or absent where it has none. */
 	readonly logo?: PageLogo | null | undefined;
-	/**
-	 * the look the page is drawn in: its own shade and corners, or the defaults, and the
-	 * organisation's brand colour.
-	 */
+	/** the colour the page is drawn in: the organisation's brand colour. */
 	readonly look: PageLook;
 	readonly sharing: PageSharing;
 	/** a campaign's goal; null where it has none, and on the Donation page. */
@@ -101,150 +101,233 @@ export type PageViewProps = {
 	readonly chosenProgramId?: string | null;
 	/** the chooser takes no pick: the gift it would change has already been asked for. */
 	readonly chooserLocked?: boolean;
-	/** drawn as the editor's preview: a click on a block reports the block, and does nothing else. */
+	/** drawn as the editor's preview: a click on a section reports it, and does nothing else. */
 	readonly preview?: boolean;
 	/** the caller's placement of the page root. */
 	readonly className?: string;
 };
 
-/** a block's DOM id, in a namespace of its own, so a stored block id never meets another id on the page. */
-export const blockDomId = (id: string) => `blk-${id}`;
-
-/** blocks that travel into the box's column when listed directly before it. */
-const COMPANIONS: ReadonlySet<Block['type']> = new Set(['goal-bar', 'program-chooser']);
+/**
+ * the props every section wrapper carries: its area, and what a click on it in the preview reports —
+ * a content section's id ($lib/page/content-edit.ts), or `donate`, `goal` or `share` for the sheet
+ * that edits what those draw.
+ */
+const area = (name: string, section?: string) => ({
+	'data-area': name,
+	...(section === undefined ? {} : { 'data-section': section })
+});
 
 export function PageView(props: PageViewProps) {
 	const { page, look, org, preview = false, className } = props;
 	usePreviewReport(preview);
-
-	const shown = page.blocks.filter((block) => isDrawn(block, props));
-	const hideProgramSelect = shown.some((block) => block.type === 'program-chooser');
-	const firstTitle = shown.find((block) => block.type === 'title');
-	const isFooter = (block: Block) => block.type === 'org-info' && block.variant === 'footer';
-	const footers = shown.filter(isFooter);
-	const body = shown.filter((block) => !isFooter(block));
-	const cover = page.layout === 'cover' ? coverOf(body) : null;
-	const layout: Layout = page.layout === 'cover' ? 'box-right' : page.layout;
-
-	const draw = (block: Block, ground: Background = block.background) =>
-		block.type === 'donation-box' ? (
-			<div
-				key={block.id}
-				className="page-box"
-				id={blockDomId(block.id)}
-				data-block="donation-box"
-				data-block-id={block.id}
-			>
-				<div className="page-in" inert={preview}>
-					{props.donationBox({ hideProgramSelect })}
-				</div>
-			</div>
-		) : (
-			<section
-				key={block.id}
-				className="page-block"
-				id={blockDomId(block.id)}
-				data-block={block.type}
-				data-block-id={block.id}
-				data-background={ground}
-			>
-				<div className="page-in">{content(block, props, block === firstTitle)}</div>
-			</section>
-		);
-
+	const shape =
+		props.type === 'campaign'
+			? campaignShape(page, {
+					logoImageId: props.logo?.imageId ?? null,
+					hasMission: org.mission !== null || org.vision !== null
+				})
+			: null;
 	return (
 		<PageRoot
 			brandColour={look.brandColour}
-			shade={look.shade}
-			corner={look.corner}
-			palette={page.palette}
-			layout={cover === null ? layout : 'cover'}
+			layout={shape?.layout ?? 'donation'}
 			{...(className === undefined ? {} : { className })}
 		>
 			<Masthead name={org.name} logo={props.logo ?? null} />
 			<main className="page-body">
-				{cover === null ? (
-					arranged(body, layout, draw)
+				{shape === null ? (
+					<DonationLayout {...props} />
 				) : (
-					<>
-						<section
-							className="page-block"
-							id={blockDomId(cover.hero.id)}
-							data-block="hero"
-							data-block-id={cover.hero.id}
-							data-background={cover.hero.background}
-						>
-							<HeroBlock
-								block={cover.hero}
-								imageSrc={imageSrc}
-								over={
-									<div
-										id={blockDomId(cover.title.id)}
-										data-block="title"
-										data-block-id={cover.title.id}
-									>
-										<TitleBlock
-											block={cover.title}
-											heading={titleHeading(cover.title.heading, props)}
-											first={cover.title === firstTitle}
-										/>
-									</div>
-								}
-							/>
-						</section>
-						{arranged(body.slice(2), layout, draw)}
-					</>
+					<CampaignLayout {...props} shape={shape} />
 				)}
 			</main>
-			{footers.length === 0 ? null : (
-				<footer className="page-foot">{footers.map((block) => draw(block))}</footer>
-			)}
+			<footer className="page-foot">
+				<section className="page-end" {...area('share', 'share')}>
+					<div className="page-in">
+						<Share
+							sharing={props.sharing}
+							heading={props.type === 'campaign' ? 'Share this campaign' : 'Share this page'}
+						/>
+					</div>
+				</section>
+				<div className="page-in">
+					<OrgInfo info={org.info} />
+				</div>
+			</footer>
 		</PageRoot>
 	);
 }
 
-type Draw = (block: Block, ground?: Background) => ReactNode;
-
-function arranged(blocks: Block[], layout: Layout, draw: Draw) {
-	const flow = (list: Block[]) => (
-		<div className="page-flow">{list.map((block) => draw(block))}</div>
+/** the donation box, inert in the preview, where a click on it opens the settings it draws. */
+function Box({ props, hideProgramSelect }: { props: PageViewProps; hideProgramSelect: boolean }) {
+	return (
+		<div className="page-box" {...area('box', 'donate')}>
+			<div inert={props.preview ?? false}>{props.donationBox({ hideProgramSelect })}</div>
+		</div>
 	);
-	const at = blocks.findIndex((block) => block.type === 'donation-box');
-	if (layout === 'column' || at === -1) return flow(blocks);
-	let from = at;
-	while (from > 0 && COMPANIONS.has(blocks[from - 1]?.type ?? 'donation-box')) from -= 1;
-	const lead = blocks.slice(0, from);
-	const aside = blocks.slice(from, at + 1);
-	const rest = blocks.slice(at + 1);
-	const asideColumn = <div className="page-aside">{aside.map((block) => draw(block))}</div>;
-	if (layout === 'box-right') {
-		return (
-			<div className="page-split">
-				{lead.length === 0 ? null : (
-					<div className="page-lead">{lead.map((block) => draw(block))}</div>
-				)}
-				{asideColumn}
-				{rest.length === 0 ? null : (
-					<div className="page-rest">{rest.map((block) => draw(block))}</div>
-				)}
+}
+
+/**
+ * a title of more characters than this, counted as a reader sees them with its edges trimmed, is
+ * drawn a step smaller below 60rem (`data-long`, ./page.css): on a phone the box stands under the
+ * title, and the smaller title takes fewer lines. a title past about 110 characters still pushes
+ * the box below a 390 × 844 phone's first screen.
+ */
+export const TITLE_LONG = 28;
+
+function Heading({ props }: { props: PageViewProps }) {
+	const title = titleHeading(props.page.heading, props);
+	return (
+		<h1
+			className="page-title"
+			data-long={[...graphemes.segment(title.trim())].length > TITLE_LONG ? '' : undefined}
+			{...area('title', 'title')}
+		>
+			{title}
+		</h1>
+	);
+}
+
+function CampaignLayout(props: PageViewProps & { readonly shape: CampaignShape }) {
+	const { page, shape, goal, money } = props;
+	const story = page.story !== undefined && !isEmptyDocument(page.story) ? page.story : null;
+	const tiers = page.tiers ?? [];
+	const photos = page.photos ?? [];
+	const faq = page.faq ?? [];
+	const lede =
+		page.lede === undefined || page.lede === '' ? null : (
+			<p className="page-lede" {...area('lede', 'title')}>
+				{page.lede}
+			</p>
+		);
+	const goalBar =
+		shape.goalBar && goal !== null ? (
+			<div {...area('goal', 'goal')}>
+				<GoalBar goal={goal} money={money} />
+			</div>
+		) : null;
+	const cover =
+		shape.cover === null ? null : (
+			<div className="page-cover-area" {...area('cover', 'cover')}>
+				<Cover cover={shape.cover} imageSrc={imageSrc} />
 			</div>
 		);
+	const box = <Box props={props} hideProgramSelect={false} />;
+	const storySection =
+		story === null ? null : (
+			<div {...area('story', 'story')}>
+				<Story doc={story} />
+			</div>
+		);
+	const tiersSection = (shapeOf: 'list' | 'cards') =>
+		tiers.length === 0 ? null : (
+			<section className="page-section" {...area('tiers', 'tiers')}>
+				<Tiers tiers={tiers} money={money} shape={shapeOf} />
+			</section>
+		);
+	const photosSection = (shapeOf: 'column' | 'strip') =>
+		photos.length === 0 ? null : (
+			<section className="page-section" aria-label="Photos" {...area('photos')}>
+				<Photos photos={photos} imageSrc={imageSrc} shape={shapeOf} />
+			</section>
+		);
+	const faqSection = (folded: boolean) =>
+		faq.length === 0 ? null : (
+			<section className="page-section" {...area('faq', 'faq')}>
+				<Faq items={faq} domId="page" folded={folded} />
+			</section>
+		);
+
+	switch (shape.layout) {
+		case 'card':
+			return (
+				<div className="page-in page-layout">
+					{cover}
+					<Heading props={props} />
+					{goalBar}
+					{box}
+					{lede}
+					{storySection}
+				</div>
+			);
+		case 'letter':
+			return (
+				<div className="page-in page-layout">
+					{cover}
+					<Heading props={props} />
+					<div className="page-rail" data-area="rail">
+						{goalBar}
+						{box}
+						{tiersSection('list')}
+					</div>
+					{lede}
+					{storySection}
+					{photosSection('column')}
+					{faqSection(false)}
+				</div>
+			);
+		case 'feature':
+			return (
+				<>
+					<div
+						className="page-layout"
+						data-cover={shape.cover === null ? 'none' : shape.cover.source}
+					>
+						{cover ?? <div className="page-cover-area" data-area="cover" />}
+						<div className="page-hero-words" data-area="words">
+							<Heading props={props} />
+							{lede}
+							{goalBar}
+						</div>
+						<div className="page-rail" data-area="rail">
+							{box}
+						</div>
+						{storySection}
+						{tiersSection('cards')}
+						{photosSection('strip')}
+						{faqSection(true)}
+					</div>
+					{shape.aboutUs ? (
+						<section className="page-about-area" data-area="about">
+							<div className="page-in">
+								<AboutUs mission={props.org.mission} vision={props.org.vision} />
+							</div>
+						</section>
+					) : null}
+				</>
+			);
 	}
-	// banner: the blocks before the box stand on one band, in the first one's ground, and each
-	// draws on none of its own. the band never takes a strong ground: the box's column stands on it,
-	// and a goal bar's brand fill would be drawn on a ground of its own colour, so strong draws as tint.
-	const first = lead[0]?.background ?? 'none';
+}
+
+function DonationLayout(props: PageViewProps) {
+	const chooser =
+		props.programMode === 'choice' && props.programs.length >= 2 ? (
+			<div {...area('chooser', 'donate')}>
+				<ProgramChooser
+					programs={props.programs}
+					chosen={props.chosenProgramId ?? null}
+					onPick={props.onProgramPick}
+					locked={props.chooserLocked ?? false}
+					domId="page"
+					photos={props.programPhotos}
+				/>
+			</div>
+		) : null;
+	const { mission, vision } = props.org;
 	return (
 		<>
-			<div className="page-band" data-background={first === 'strong' ? 'tint' : first}>
-				<div className="page-split">
-					{lead.length === 0 ? null : (
-						<div className="page-lead">{lead.map((block) => draw(block, 'none'))}</div>
-					)}
-					{asideColumn}
-				</div>
+			<div className="page-in page-layout">
+				<Heading props={props} />
+				{chooser}
+				<Box props={props} hideProgramSelect={chooser !== null} />
 			</div>
-			{rest.length === 0 ? null : flow(rest)}
+			{mission === null && vision === null ? null : (
+				<section className="page-about-area" data-area="about">
+					<div className="page-in">
+						<AboutUs mission={mission} vision={vision} />
+					</div>
+				</section>
+			)}
 		</>
 	);
 }
@@ -347,97 +430,6 @@ function upperInitial(grapheme: string): string {
 	return upper?.segment ?? '';
 }
 
-/** the cover's hero and the title laid over it: the first two blocks drawn, in that order. */
-function coverOf(body: readonly Block[]) {
-	const [hero, title] = body;
-	if (hero?.type !== 'hero' || title?.type !== 'title') return null;
-	return { hero, title };
-}
-
-/** a block with nothing to show leaves itself out. */
-function isDrawn(block: Block, props: PageViewProps): boolean {
-	switch (block.type) {
-		case 'program-chooser':
-			return (
-				props.type === 'donation_page' &&
-				props.programMode === 'choice' &&
-				props.programs.length >= 2
-			);
-		case 'goal-bar':
-			return props.type === 'campaign' && props.goal !== null;
-		case 'impact-tiers':
-			return block.tiers.length > 0;
-		case 'faq':
-			return block.items.length > 0;
-		case 'story':
-			return !isEmptyDocument(block.body);
-		case 'about-us':
-			return props.org.mission !== null || props.org.vision !== null;
-		case 'share':
-			return props.sharing.channels.length > 0;
-		case 'hero':
-		case 'image':
-			return block.imageId !== null;
-		case 'title':
-		case 'org-info':
-		case 'donation-box':
-			return true;
-	}
-}
-
-function content(
-	block: Exclude<Block, { type: 'donation-box' }>,
-	props: PageViewProps,
-	first: boolean
-) {
-	const domId = blockDomId(block.id);
-	switch (block.type) {
-		case 'title':
-			return (
-				<TitleBlock block={block} heading={titleHeading(block.heading, props)} first={first} />
-			);
-		case 'story':
-			return <StoryBlock block={block} />;
-		case 'impact-tiers':
-			return <ImpactTiersBlock block={block} money={props.money} />;
-		case 'faq':
-			return <FaqBlock block={block} domId={domId} />;
-		case 'about-us':
-			return <AboutUsBlock block={block} mission={props.org.mission} vision={props.org.vision} />;
-		case 'org-info':
-			return <OrgInfoBlock block={block} info={props.org.info} />;
-		case 'share':
-			return (
-				<ShareBlock
-					block={block}
-					sharing={props.sharing}
-					heading={props.type === 'campaign' ? 'Share this campaign' : 'Share this page'}
-				/>
-			);
-		case 'hero':
-			return <HeroBlock block={block} imageSrc={imageSrc} />;
-		case 'image':
-			return <ImageBlock block={block} imageSrc={imageSrc} />;
-		case 'goal-bar':
-			// isDrawn left the bar out where there is no goal
-			return props.goal === null ? null : (
-				<GoalBarBlock block={block} goal={props.goal} money={props.money} />
-			);
-		case 'program-chooser':
-			return (
-				<ProgramChooserBlock
-					block={block}
-					programs={props.programs}
-					chosen={props.chosenProgramId ?? null}
-					onPick={props.onProgramPick}
-					locked={props.chooserLocked ?? false}
-					domId={domId}
-					photos={props.programPhotos}
-				/>
-			);
-	}
-}
-
 /** an empty heading draws a campaign's name, and on the Donation page "Donate to" the organisation. */
 export function titleHeading(
 	heading: string,
@@ -457,14 +449,14 @@ const TAB_STOPS =
 	'a[href], area[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]';
 
 /**
- * in the preview, a click anywhere in a block posts that block's id to the editor around the frame
- * and goes no further: the preview is a picture of the page, so a link, a share or a pick in it is
- * not followed, and no handler of a block's hears it. nothing in it takes a tab stop either — the
+ * in the preview, a click anywhere in a section posts that section's id to the editor around the
+ * frame and goes no further: the preview is a picture of the page, so a link, a share or a pick in it is
+ * not followed, and no handler of a section's hears it. nothing in it takes a tab stop either — the
  * donation box is inert, and every other stop is taken out of the order. the document itself stays
  * live, since an inert one would take no click to report.
  *
  * while the editor's Edit is on, the document carries `data-editing`, which ./page.css draws every
- * block as clickable by. the editor says so on each press, and answers the ready this posts once it
+ * section as clickable by. the editor says so on each press, and answers the ready this posts once it
  * listens, so a frame that reloaded under an Edit already on is told too. only the editor's own
  * window, on this deployment's origin, is listened to.
  */
@@ -474,11 +466,11 @@ function usePreviewReport(preview: boolean) {
 		for (const stop of document.querySelectorAll<HTMLElement>(TAB_STOPS)) stop.tabIndex = -1;
 		const report = (event: MouseEvent) => {
 			const target = event.target instanceof Element ? event.target : null;
-			const id = target?.closest<HTMLElement>('[data-block-id]')?.dataset.blockId;
+			const id = target?.closest<HTMLElement>('[data-section]')?.dataset.section;
 			event.preventDefault();
 			event.stopPropagation();
 			if (id === undefined) return;
-			const message: BlockMessage = { type: BLOCK_MESSAGE, id };
+			const message: SectionMessage = { type: SECTION_MESSAGE, id };
 			window.parent.postMessage(message, window.location.origin);
 		};
 		const editing = (event: MessageEvent) => {

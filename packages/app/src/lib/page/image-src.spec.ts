@@ -1,34 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import type { Block } from './catalog';
-import { placedImageIds } from './image-src';
+import { placedImageIds, shareImage } from './image-src';
 
 const HERO = 'a1b2c3d4-0000-7000-8000-000000000001';
 const IMAGE = 'a1b2c3d4-0000-7000-8000-000000000002';
 
 describe('placedImageIds', () => {
-	it('names each hero’s and image block’s photo in page order, and skips a block holding none', () => {
-		const blocks: Block[] = [
-			{ id: 'hero', type: 'hero', variant: 'wide', background: 'none', imageId: HERO, alt: null },
-			{ id: 'title', type: 'title', variant: 'left', background: 'none', heading: 'Coats' },
-			{
-				id: 'empty',
-				type: 'image',
-				variant: 'column',
-				background: 'none',
-				imageId: null,
-				alt: null
-			},
-			{
-				id: 'pic',
-				type: 'image',
-				variant: 'wide',
-				background: 'none',
-				imageId: IMAGE,
-				alt: 'Vans'
-			},
-			{ id: 'donate', type: 'donation-box', background: 'none' }
-		];
+	it('names the cover photo, then each photo beside it in order', () => {
+		expect(
+			placedImageIds({
+				hero: { imageId: HERO, alt: null },
+				photos: [{ imageId: IMAGE, alt: 'Vans' }]
+			})
+		).toEqual([HERO, IMAGE]);
+	});
 
-		expect(placedImageIds({ blocks })).toEqual([HERO, IMAGE]);
+	it('names nothing for a page with no photo', () => {
+		expect(placedImageIds({})).toEqual([]);
+	});
+});
+
+describe('shareImage', () => {
+	it('is the cover photo, absolute against the page’s address', () => {
+		expect(shareImage({ hero: { imageId: HERO, alt: null } }, 'https://give.test/coats')).toBe(
+			`https://give.test/image/${HERO}`
+		);
+	});
+
+	it('is none without a cover photo', () => {
+		expect(shareImage({}, 'https://give.test/coats')).toBeNull();
 	});
 });

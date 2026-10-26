@@ -1,13 +1,12 @@
 import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
 import { useEffect, useRef, useState } from 'react';
-import { SHARE_CHANNEL_LABELS, type ShareChannel, shareHref } from '../../page/share';
+import { SHARE_CHANNEL_LABELS, SHARE_CHANNELS, shareHref } from '../../page/share';
 import { Glyph } from './glyph';
-import type { BlockOf, PageSharing } from './types';
+import type { PageSharing } from './types';
 
-// the organisation's share channels, in its order. every channel but Copy link opens that channel's
-// own share page in a tab of its own; Copy link writes the page's address to the clipboard and says
-// so on itself, with a status region beside it saying the same out loud. `icons` draws every channel
-// but Copy link as its mark alone, named for what it does.
+// the share buttons every page offers, in their fixed order ($lib/page/share.ts). every one but Copy
+// link opens that channel's own share page in a tab of its own; Copy link writes the page's address
+// to the clipboard and says so on itself, with a status region beside it saying the same out loud.
 //
 // the region is cleared and written a task apart, as packages/operator's CopyControl.jsx does: a
 // second press puts back the words the region already holds, and a region handed what it holds is
@@ -15,14 +14,6 @@ import type { BlockOf, PageSharing } from './types';
 //
 // a network's mark is that network's own file (packages/operator's BrandMark.jsx), sized by its
 // height; Email and Copy link draw the form's own glyphs.
-
-const ACTIONS: Record<Exclude<ShareChannel, 'copy-link'>, string> = {
-	facebook: 'Share on Facebook',
-	whatsapp: 'Share on WhatsApp',
-	email: 'Share by email',
-	linkedin: 'Share on LinkedIn',
-	x: 'Share on X'
-};
 
 type Copy = 'idle' | 'copied' | 'failed';
 
@@ -32,12 +23,10 @@ const COPY_WORDS: Record<Copy, string> = {
 	failed: 'Couldn’t copy'
 };
 
-export function ShareBlock({
-	block,
+export function Share({
 	sharing,
 	heading
 }: {
-	readonly block: BlockOf<'share'>;
 	readonly sharing: PageSharing;
 	readonly heading: string;
 }) {
@@ -45,7 +34,6 @@ export function ShareBlock({
 	const [said, setSaid] = useState('');
 	const say = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	useEffect(() => () => clearTimeout(say.current), []);
-	const icons = block.variant === 'icons';
 
 	const copyLink = async () => {
 		let landed: Copy;
@@ -65,7 +53,7 @@ export function ShareBlock({
 		<div>
 			<h2 className="page-subheading">{heading}</h2>
 			<div className="page-share-row">
-				{sharing.channels.map((channel) =>
+				{SHARE_CHANNELS.map((channel) =>
 					channel === 'copy-link' ? (
 						<button
 							key={channel}
@@ -88,18 +76,16 @@ export function ShareBlock({
 						<a
 							key={channel}
 							className="page-share-button"
-							data-shape={icons ? 'icon' : undefined}
 							href={shareHref(channel, sharing)}
 							target={channel === 'email' ? undefined : '_blank'}
 							rel={channel === 'email' ? undefined : 'noopener noreferrer'}
-							aria-label={icons ? ACTIONS[channel] : undefined}
 						>
 							{channel === 'email' ? (
 								<Glyph name="mail" className="page-share-mark" />
 							) : (
 								<BrandMark platform={channel} className="page-share-brand" />
 							)}
-							{icons ? null : <span>{SHARE_CHANNEL_LABELS[channel]}</span>}
+							<span>{SHARE_CHANNEL_LABELS[channel]}</span>
 						</a>
 					)
 				)}

@@ -10,9 +10,9 @@ import { parseFormInput } from '$lib/server/forms/form-input';
 import { ownedFormInsert, readForm } from '$lib/server/forms/queries';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
-import { BLOCK_FORMS } from '$lib/page/block-edit';
+import { CONTENT_FORMS } from '$lib/page/content-edit';
 import { createImage } from '$lib/server/images/image.testing';
-import { saveBlockForm } from '$lib/server/pages/blocks';
+import { saveContentForm } from '$lib/server/pages/content';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { readPage } from '$lib/server/pages/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
@@ -131,15 +131,11 @@ async function open(pageId: string): Promise<DrawnPage> {
 describe('the preview of a page whose draft is not what is published', () => {
 	it('draws the draft, in preview', async () => {
 		const page = await ensureDonationPage(db);
-		const draft = defaultDonationPage();
-		const title = draft.blocks.find((block) => block.type === 'title');
-		if (title?.type !== 'title') throw new Error('the default page has no title');
-		title.heading = 'Coats before the first frost';
+		const draft = { ...defaultDonationPage(), heading: 'Coats before the first frost' };
 		await run(stmt('update page set draft = ? where id = ?', JSON.stringify(draft), page.id));
 
 		const view = await open(page.id);
-		const drawn = view.page.blocks.find((block) => block.type === 'title');
-		expect(drawn?.type === 'title' ? drawn.heading : null).toBe('Coats before the first frost');
+		expect(view.page.heading).toBe('Coats before the first frost');
 		expect(view.preview).toBe(true);
 	});
 
@@ -239,7 +235,7 @@ describe('the donation box in a preview', () => {
 });
 
 describe('a photo the draft places', () => {
-	it('is drawn by its id and its words, with nothing else on its block', async () => {
+	it('is drawn as the cover by its id and its words', async () => {
 		const campaign = await neverPublishedCampaign(defaultCampaign());
 		const row = await readPage(db, campaign.id);
 		if (row === null) throw new Error('the fixture campaign is gone');
@@ -249,22 +245,20 @@ describe('a photo the draft places', () => {
 			new Uint8Array([1, 2, 3])
 		);
 		const body = new FormData();
-		body.set(WHICH_FORM, BLOCK_FORMS.photo);
+		body.set(WHICH_FORM, CONTENT_FORMS.photo);
 		body.set(RECORD_VERSION, String(row.updatedAt.getTime()));
-		body.set('block_id', 'hero');
+		body.set('slot', 'cover');
 		body.set('image_id', photo);
 		body.set('alt', 'Volunteers');
-		await saveBlockForm(db, { type: 'campaign', id: campaign.id }, BLOCK_FORMS.photo, body, 'gone');
+		await saveContentForm(
+			db,
+			{ type: 'campaign', id: campaign.id },
+			CONTENT_FORMS.photo,
+			body,
+			'gone'
+		);
 
-		const [hero] = (await open(campaign.id)).page.blocks;
-		expect(hero).toEqual({
-			id: 'hero',
-			type: 'hero',
-			variant: 'framed',
-			background: 'none',
-			imageId: photo,
-			alt: 'Volunteers'
-		});
+		expect((await open(campaign.id)).page.hero).toEqual({ imageId: photo, alt: 'Volunteers' });
 	});
 });
 

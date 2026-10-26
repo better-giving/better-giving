@@ -17,8 +17,8 @@ import { readOwnedRow, readTarget, settingsOfRow } from './queries';
 // a campaign has none: nothing here takes a page to name, and a campaign's editor names no such form.
 //
 // a Reset puts the current default Donation page (`defaultDonationPage` in ../../page/defaults.ts)
-// in the draft and the live page alike, so both hold no look, share message or share buttons of
-// their own and draw the defaults (`donorLook` in ./view.ts); and clears `last_published`, so Undo
+// in the draft and the live page alike, so both hold no title or share message of their own and draw
+// the organisation's name and the title for them; and clears `last_published`, so Undo
 // has nothing to put back — in one write guarded on the version the editor was drawn at, as
 // ./publish.ts's presses are.
 // - the live donation settings stay: the owned settings row is not written, and the document
@@ -77,17 +77,9 @@ export async function resetDonationPage(db: Db, version: Date): Promise<ResetOut
 	return reset.length === 1 ? { kind: 'reset' } : { kind: 'stale' };
 }
 
-/** the parts of a Donation page's document Reset puts back. */
+/** the content of a Donation page's document Reset puts back. */
 function face(document: PageDocument) {
-	const { layout, palette, blocks } = document;
-	return {
-		layout,
-		palette,
-		blocks,
-		look: document.look ?? null,
-		share: document.shareMessage ?? null,
-		channels: document.shareChannels ?? null
-	};
+	return { heading: document.heading, share: document.shareMessage ?? null };
 }
 
 const DEFAULT_FACE = face(defaultDonationPage());

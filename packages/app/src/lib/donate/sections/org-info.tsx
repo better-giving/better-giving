@@ -1,18 +1,12 @@
 import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-links';
 import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
-import type { BlockOf, OrgInfo } from './types';
+import type { OrgInfo as OrgInfoValues } from './types';
 
-// who the gift is made to, as the organisation's legal details state it: `footer` closes the page,
-// `card` stands among the blocks. each social link is its platform's mark alone, opening in a new
+// who the gift is made to, as the organisation's legal details state it, closing every page. each
+// social link is its platform's mark alone, opening in a new
 // tab, and its name says both.
 
-export function OrgInfoBlock({
-	block,
-	info
-}: {
-	readonly block: BlockOf<'org-info'>;
-	readonly info: OrgInfo;
-}) {
+export function OrgInfo({ info }: { readonly info: OrgInfoValues }) {
 	const ein = info.ein === null ? null : <p>EIN {info.ein}</p>;
 	const address =
 		info.addressLines.length === 0 ? null : (
@@ -47,19 +41,8 @@ export function OrgInfoBlock({
 				))}
 			</p>
 		);
-	if (block.variant === 'card') {
-		return (
-			<div className="page-org" data-variant="card">
-				<h2 className="page-org-name">{info.legalName}</h2>
-				{ein}
-				{address}
-				{email}
-				{links}
-			</div>
-		);
-	}
 	return (
-		<div className="page-org" data-variant="footer">
+		<div className="page-org">
 			<div>
 				<p className="page-org-name">{info.legalName}</p>
 				{ein}
