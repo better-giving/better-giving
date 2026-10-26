@@ -1,11 +1,10 @@
 import type { FormConfig } from '@better-giving/form/v1';
 import { data } from 'react-router';
-import type { OrgInfo } from '../../donate/blocks/types';
+import type { OrgInfo } from '../../donate/sections/types';
 import type { PageWithCardProps } from '../../donate/page-with-card';
 import { type PageLook, titleHeading } from '../../donate/page-view';
 import type { Page } from '../../page/catalog';
-import { DEFAULT_CORNER, DEFAULT_SHADE, type PageType } from '../../page/keys';
-import { SHARE_CHANNELS_DEFAULT } from '../../page/share';
+import type { PageType } from '../../page/keys';
 import type { Db } from '../db/client';
 import type { OrgProfile } from '../db/schema';
 import { cachedCadences } from '../forms/cadence-cache';
@@ -41,9 +40,8 @@ import { pageGoal } from './goal';
 // now refuses, draws the plain page — the donation box alone — so a page broken by a narrowed rule
 // still takes gifts while somebody repairs it.
 //
-// a page draws its own shade, corners and share message, the defaults where it holds none
-// (`donorLook`, and its title for the message), and so moves them only at Publish with the rest of
-// its document. the organisation's mission, vision, brand colour, social links and logo are its
+// a page draws its own share message, its title where it holds none, and so moves it only at
+// Publish with the rest of its document. its only colour is the organisation's brand colour. the organisation's mission, vision, brand colour, social links and logo are its
 // profile's, read live on every draw, so a save in the console reaches every page at once, the
 // preview included. so are the programs' photos, handed beside the served config for the programs
 // its chooser offers and never on its `v1` options, and so is a campaign's raised figure
@@ -116,12 +114,11 @@ export async function loadPageView(
 	const { config } = result;
 
 	const brandColour = profile?.brandColour ?? null;
-	if (!parsed.ok) return { kind: 'plain', config, look: donorLook(undefined, brandColour) };
+	if (!parsed.ok) return { kind: 'plain', config, look: { brandColour } };
 	const { page } = parsed;
 	// the name the document was drafted with, so a rename reaches donors at Publish.
 	const pageName = page.name ?? source.name;
 	const orgName = config.orgLegalName;
-	const firstTitle = page.blocks.find((block) => block.type === 'title');
 	const goal = await pageGoal(db, source.formId, page, config.locale);
 
 	return {
@@ -138,12 +135,11 @@ export async function loadPageView(
 			},
 			logo,
 			programPhotos: chooserPhotos(config, photos),
-			look: donorLook(page.look, brandColour),
+			look: { brandColour },
 			sharing: {
-				channels: page.shareChannels ?? SHARE_CHANNELS_DEFAULT,
 				message:
 					page.shareMessage ??
-					titleHeading(firstTitle?.heading ?? '', {
+					titleHeading(page.heading, {
 						type: source.type,
 						pageName,
 						org: { name: orgName }
@@ -156,18 +152,6 @@ export async function loadPageView(
 			preview,
 			...openingOf(page.switches)
 		}
-	};
-}
-
-/**
- * what a donor page is drawn in: its own shade and corners, `DEFAULT_SHADE` and `DEFAULT_CORNER`
- * where it holds none, and the organisation's brand colour.
- */
-export function donorLook(own: Page['look'], brandColour: string | null): PageLook {
-	return {
-		shade: own?.shade ?? DEFAULT_SHADE,
-		corner: own?.corner ?? DEFAULT_CORNER,
-		brandColour
 	};
 }
 

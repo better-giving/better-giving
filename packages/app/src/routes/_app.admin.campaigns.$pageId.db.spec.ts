@@ -5,7 +5,6 @@ import { createDb, type Db } from '$lib/server/db/client';
 import { form, page, program } from '$lib/server/db/schema';
 import { createImage } from '$lib/server/images/image.testing';
 import { createCampaign, readServedCampaign } from '$lib/server/pages/campaign';
-import { defaultCampaign } from '$lib/page/defaults';
 import { insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { finishedDeployment } from '../page-routes.testing';
@@ -600,15 +599,12 @@ describe('the editor', () => {
 });
 
 describe('a draft the page rule refuses', () => {
-	/** `pageId`'s `column` holding its document with the donation box taken out, as a narrowed rule reads it. */
+	/** `pageId`'s `column` holding its document with a key the rule no longer knows, as a narrowed rule reads it. */
 	async function unreadable(pageId: string, column: 'draft' | 'published') {
 		const document = JSON.parse((await stored(pageId))[column] ?? '{}');
-		const blocks = document.blocks.filter(
-			(block: { type: string }) => block.type !== 'donation-box'
-		);
 		await db
 			.update(page)
-			.set({ [column]: JSON.stringify({ ...document, blocks }) })
+			.set({ [column]: JSON.stringify({ ...document, blocks: [] }) })
 			.where(eq(page.id, pageId));
 	}
 
@@ -738,63 +734,75 @@ describe('Publish', () => {
 	});
 });
 
-describe('a block’s sheet and the layout pictures', () => {
-	async function drawn(pageId: string) {
-		const response = await request(
-			new Request(`${ORIGIN}/admin/campaigns/${pageId}`, { headers: { cookie: session } }),
-			{ env: bindings }
-		);
-		return (await response.json()) as {
-			blocks: { id: string; summary: string; text: unknown }[];
-			layout: string;
-		};
+describe('a section’s sheet', () => {
+	type Drawn = {
+		sections: { id: string; summary: string; empty: boolean; text: unknown }[];
+		newPhoto: { id: string; text: unknown } | null;
+		shareMessage: string;
+	};
+
+	async function drawn(pageId: string): Promise<Drawn> {
+		const response = await open(pageId);
+		expect(response.status).toBe(200);
+		return response.json();
 	}
 
 	it('writes a title’s words to the draft, drawn on the next load, and the live page stays', async () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
 		const published = (await stored(pageId)).published;
 
-		const response = await post(pageId, 'block-title', {
-			block_id: 'title',
+		const response = await post(pageId, 'content-title', {
 			heading: 'Coats before the first frost',
-			lede: ''
+			lede: 'Every child warm by December.'
 		});
 
 		expect(response.status).toBe(200);
-		expect((await drawn(pageId)).blocks.find(({ id }) => id === 'title')).toMatchObject({
+		expect(await response.json()).toEqual({ saved: 'content' });
+		expect((await drawn(pageId)).sections.find(({ id }) => id === 'title')).toMatchObject({
 			summary: 'Coats before the first frost',
-			text: { kind: 'title', heading: 'Coats before the first frost', lede: '' }
+			text: {
+				kind: 'title',
+				heading: 'Coats before the first frost',
+				lede: 'Every child warm by December.'
+			}
 		});
 		expect((await stored(pageId)).published).toBe(published);
 	});
 
-	it('writes a layout picked, and refuses one off the list naming it', async () => {
+	it('refuses a heading past its length under its box, at 400', async () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
 
-		expect((await post(pageId, 'page-layout', { layout: 'banner' })).status).toBe(200);
-		expect((await drawn(pageId)).layout).toBe('banner');
+		const response = await post(pageId, 'content-title', { heading: 'a'.repeat(251), lede: '' });
 
-		const refused = await post(pageId, 'page-layout', { layout: 'sideways' });
-		expect(refused.status).toBe(400);
-		expect(await refused.json()).toMatchObject({
-			form: { result: { error: { layout: [expect.stringContaining('"sideways"')] } } }
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({
+			form: { result: { error: { heading: [expect.stringContaining('at most 250')] } } }
 		});
 	});
 });
 
 describe('a campaign New campaign has just made', () => {
-	it('opens its editor on the default page, with no chat and no marks on its photo blocks', async () => {
+	it('opens its editor on the default page, with every section empty and no chat', async () => {
 		const { pageId } = await createCampaign(db, { name: 'Winter coat drive' });
 
 		const response = await open(pageId);
 
 		expect(response.status).toBe(200);
-		const drawn = (await response.json()) as { blocks: { id: string; type: string }[] };
+		const drawn = (await response.json()) as {
+			sections: { id: string; empty: boolean }[];
+			shareMessage: string;
+		};
 		expect(drawn).toMatchObject({ state: 'unpublished', preview: `/preview/${pageId}` });
-		expect(drawn.blocks.map(({ id }) => id)).toEqual(defaultCampaign().blocks.map(({ id }) => id));
+		expect(drawn.sections.map(({ id, empty }) => [id, empty])).toEqual([
+			['title', false],
+			['story', true],
+			['cover', true],
+			['tiers', true],
+			['faq', true]
+		]);
+		expect(drawn.shareMessage).toBe('');
 		expect(drawn).not.toHaveProperty('chat');
 		expect(drawn).not.toHaveProperty('drafted');
-		expect(drawn.blocks.find(({ type }) => type === 'hero')).not.toHaveProperty('illustration');
 	});
 });
 
@@ -817,10 +825,9 @@ describe('every value a campaign’s page holds, by hand', () => {
 
 	type Drawn = {
 		state: string;
-		look: { shade: string; corners: string; palette: string };
-		share: { message: string; channels: string[] };
-		addable: { value: string }[];
-		blocks: { id: string; type: string; text: unknown }[];
+		shareMessage: string;
+		sections: { id: string; empty: boolean; text: Record<string, unknown> }[];
+		newPhoto: { text: Record<string, unknown> } | null;
 	};
 
 	async function drawn(pageId: string): Promise<Drawn> {
@@ -829,140 +836,139 @@ describe('every value a campaign’s page holds, by hand', () => {
 		return response.json();
 	}
 
-	function refused(answer: unknown, box = ''): string[] | undefined {
-		return (answer as { form: { result: { error: Record<string, string[]> } } }).form.result.error[
-			box
-		];
-	}
-
-	it('sets the look and the sharing on the draft, and the live page stays', async () => {
+	it('sets the share message on the draft, and the live page stays', async () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
 		const { published } = await stored(pageId);
 
-		for (const [which, fields] of [
-			['page-shade', [['shade', 'warm']]],
-			['page-corners', [['corners', 'square']]],
-			['page-palette', [['palette', 'duo']]],
-			['page-share-message', [['share_message', 'Coats before the first frost.']]],
-			[
-				'page-share-channels',
-				[
-					['share_channels', 'linkedin'],
-					['share_channels', 'copy-link']
-				]
-			]
-		] as [string, [string, string][]][]) {
-			const response = await press(pageId, which, fields);
-			expect(await response.json()).toEqual({ saved: which });
-		}
+		const response = await press(pageId, 'page-share-message', [
+			['share_message', 'Coats before the first frost.']
+		]);
 
+		expect(await response.json()).toEqual({ saved: 'content' });
 		expect(await drawn(pageId)).toMatchObject({
 			state: 'changed',
-			look: { shade: 'warm', corners: 'square', palette: 'duo' },
-			share: { message: 'Coats before the first frost.', channels: ['linkedin', 'copy-link'] }
+			shareMessage: 'Coats before the first frost.'
 		});
 		expect((await stored(pageId)).published).toBe(published);
 	});
 
-	it('adds a goal bar above the organisation details, and refuses the Donation page’s program choice', async () => {
+	it('removes the share message when its box is emptied', async () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
-		expect((await drawn(pageId)).addable.map(({ value }) => value)).toEqual([
-			'title',
-			'story',
-			'impact-tiers',
-			'faq',
-			'about-us',
-			'org-info',
-			'share',
-			'hero',
-			'image',
-			'goal-bar'
-		]);
+		await press(pageId, 'page-share-message', [['share_message', 'Coats for all.']]);
 
-		const added = await press(pageId, 'block-add', [['block_type', 'goal-bar']]);
-		expect(await added.json()).toEqual({ saved: 'block-add', blockId: 'goal-bar' });
-		expect((await drawn(pageId)).blocks.map(({ id }) => id).slice(-2)).toEqual([
-			'goal-bar',
-			'footer'
-		]);
+		await press(pageId, 'page-share-message', [['share_message', '  ']]);
 
-		const refusedAdd = await press(pageId, 'block-add', [['block_type', 'program-chooser']]);
-		expect(refusedAdd.status).toBe(400);
-		expect(refused(await refusedAdd.json(), 'block_type')).toEqual([
-			'"program-chooser" is no block a campaign can add; it adds title, story, impact-tiers, faq, about-us, org-info, share, hero, image or goal-bar'
-		]);
+		expect((await drawn(pageId)).shareMessage).toBe('');
 	});
 
-	it('removes a block and moves another, and refuses removing the donation box', async () => {
+	it('holds a story, tiers and questions by their sheets, each drawn on the next load', async () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		const doc = (text: string) =>
+			JSON.stringify({
+				type: 'doc',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
+			});
 
-		expect((await press(pageId, 'block-remove', [['block_id', 'goal']])).status).toBe(200);
 		expect(
-			(
-				await press(pageId, 'block-move', [
-					['block_id', 'story'],
-					['direction', 'up']
+			await (await press(pageId, 'content-story', [['body', doc('Last winter.')]])).json()
+		).toEqual({ saved: 'content' });
+		expect(
+			await (
+				await press(pageId, 'content-tiers', [
+					['tier_amount[0]', '25'],
+					['tier_buys[0]', 'a coat']
 				])
-			).status
-		).toBe(200);
-		expect((await drawn(pageId)).blocks.map(({ id }) => id)).toEqual([
-			'hero',
-			'story',
-			'title',
-			'donate',
-			'share',
-			'footer'
-		]);
+			).json()
+		).toEqual({ saved: 'content' });
+		expect(
+			await (
+				await press(pageId, 'content-faq', [
+					['question[0]', 'Where do the coats go?'],
+					['answer[0]', doc('To children.')]
+				])
+			).json()
+		).toEqual({ saved: 'content' });
 
-		const box = await press(pageId, 'block-remove', [['block_id', 'donate']]);
-		expect(box.status).toBe(400);
-		expect(refused(await box.json())).toEqual([
-			'the donation box is on every page exactly once and cannot be removed'
+		const after = await drawn(pageId);
+		expect(after.sections.filter(({ empty }) => !empty).map(({ id }) => id)).toEqual([
+			'title',
+			'story',
+			'tiers',
+			'faq'
 		]);
 	});
 
-	it('opens a photo sheet on a cover with no photo yet, and saves a first photo to it', async () => {
+	it('opens the cover with no photo yet, and saves a first photo to it', async () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
-		const hero = async () => (await drawn(pageId)).blocks.find(({ id }) => id === 'hero')?.text;
-		expect(await hero()).toEqual({ kind: 'photo', imageId: null, alt: '' });
+		const cover = async () => (await drawn(pageId)).sections.find(({ id }) => id === 'cover')?.text;
+		expect(await cover()).toMatchObject({ kind: 'photo', slot: 'cover', imageId: null, alt: '' });
 		const imageId = await createImage(
 			db,
 			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
 			new Uint8Array([1, 2, 3])
 		);
 
-		const response = await press(pageId, 'block-photo', [
-			['block_id', 'hero'],
+		const response = await press(pageId, 'content-photo', [
+			['slot', 'cover'],
 			['image_id', imageId],
 			['alt', 'Volunteers sorting coats']
 		]);
 
 		expect(response.status).toBe(200);
-		expect(await hero()).toEqual({ kind: 'photo', imageId, alt: 'Volunteers sorting coats' });
+		expect(await cover()).toMatchObject({
+			kind: 'photo',
+			imageId,
+			alt: 'Volunteers sorting coats'
+		});
+	});
+
+	it('adds a photo beside the cover, which the sheet for another one then opens after', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		const imageId = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+			new Uint8Array([1, 2, 3])
+		);
+
+		await press(pageId, 'content-photo', [
+			['slot', 'new'],
+			['image_id', imageId],
+			['alt', '']
+		]);
+
+		const after = await drawn(pageId);
+		expect(after.sections.find(({ id }) => id === 'photo-0')?.text).toMatchObject({
+			slot: '0',
+			imageId
+		});
+		expect(after.newPhoto?.text).toMatchObject({ slot: 'new', imageId: null });
 	});
 
 	it.each([
-		['page-shade', [['shade', 'warm']]],
-		['page-corners', [['corners', 'round']]],
-		['page-palette', [['palette', 'bold']]],
-		['page-share-message', [['share_message', 'Coats for all.']]],
-		['page-share-channels', [['share_channels', 'x']]],
-		['block-add', [['block_type', 'faq']]],
-		['block-remove', [['block_id', 'story']]],
 		[
-			'block-move',
+			'content-title',
 			[
-				['block_id', 'story'],
-				['direction', 'up']
+				['heading', 'Coats'],
+				['lede', '']
+			]
+		],
+		['content-story', [['body', '{"type":"doc","content":[{"type":"paragraph"}]}']]],
+		[
+			'content-tiers',
+			[
+				['tier_amount[0]', '25'],
+				['tier_buys[0]', 'a coat']
 			]
 		],
 		[
-			'block-background',
+			'content-faq',
 			[
-				['block_id', 'story'],
-				['background', 'soft']
+				['question[0]', ''],
+				['answer[0]', '{"type":"doc","content":[{"type":"paragraph"}]}']
 			]
-		]
+		],
+		['content-photo-remove', [['slot', 'cover']]],
+		['page-share-message', [['share_message', 'Coats for all.']]]
 	] as [string, [string, string][]][])(
 		'refuses %s drawn before the page last moved at 409, writing nothing',
 		async (which, fields) => {

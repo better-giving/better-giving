@@ -39,7 +39,8 @@ type Drawn = {
 	preview: string;
 	version: number;
 	takingGifts: boolean;
-	blocks: Record<string, unknown>[];
+	sections: { id: string; text: Record<string, unknown> }[];
+	shareMessage: string;
 	settings: {
 		summary: string;
 		boxes: Record<string, unknown>;
@@ -107,13 +108,14 @@ describe('the Donation page editor', () => {
 		expect(drawn).toMatchObject({ state: 'live', preview: `/preview/${made?.id}` });
 	});
 
-	it('sends the page as it is, with no chat and no marks on its blocks', async () => {
+	it('sends the page as its title alone, with no chat and no new-photo sheet', async () => {
 		const drawn = await open();
 
 		expect(drawn).not.toHaveProperty('chat');
 		expect(drawn).not.toHaveProperty('drafted');
-		expect(drawn.blocks.length).toBeGreaterThan(0);
-		for (const block of drawn.blocks) expect(block).not.toHaveProperty('illustration');
+		expect(drawn.sections.map(({ id }) => id)).toEqual(['title']);
+		expect(drawn.sections[0]?.text).toEqual({ kind: 'title', heading: '', lede: null });
+		expect(drawn).toMatchObject({ newPhoto: null, shareMessage: '' });
 	});
 });
 
@@ -368,14 +370,10 @@ describe('Publish, Undo and Discard changes', () => {
 		await open();
 		const made = await donationPage();
 		if (made === null) throw new Error('the editor made no Donation page');
-		const draft = JSON.parse(made.draft) as { blocks: { type: string }[] };
 		await db
 			.update(page)
 			.set({
-				draft: JSON.stringify({
-					...draft,
-					blocks: draft.blocks.filter((block) => block.type !== 'donation-box')
-				})
+				draft: JSON.stringify({ ...JSON.parse(made.draft), lede: 'only a campaign has a lede' })
 			})
 			.where(eq(page.id, made.id));
 		const written = await donationPage();
@@ -384,7 +382,7 @@ describe('Publish, Undo and Discard changes', () => {
 
 		expect(response.status).toBe(422);
 		expect(await refusal(response)).toEqual([
-			'Nothing was published: a page holds exactly one donation box, and this one holds none.'
+			'Nothing was published: the Donation page has no lede; only a campaign does (at lede).'
 		]);
 		expect((await donationPage())?.published).toBe(made.published);
 	});
@@ -430,17 +428,14 @@ describe('Publish, Undo and Discard changes', () => {
 });
 
 describe('a draft the page rule refuses', () => {
-	/** the Donation page's `column` with its donation box taken out, as a narrowed rule reads it. */
+	/** the Donation page's `column` with a key the rule no longer knows, as a narrowed rule reads it. */
 	async function unreadable(column: 'draft' | 'published') {
 		const made = await donationPage();
 		if (made === null) throw new Error('the editor made no Donation page');
 		const document = JSON.parse(made[column] ?? '{}');
-		const blocks = document.blocks.filter(
-			(block: { type: string }) => block.type !== 'donation-box'
-		);
 		await db
 			.update(page)
-			.set({ [column]: JSON.stringify({ ...document, blocks }) })
+			.set({ [column]: JSON.stringify({ ...document, blocks: [] }) })
 			.where(eq(page.id, made.id));
 	}
 
@@ -480,25 +475,62 @@ describe('a draft the page rule refuses', () => {
 	});
 });
 
-describe('a block’s sheet', () => {
-	it('writes a variant picked to the draft, drawn on the next load, and the live page stays', async () => {
+describe('the title’s sheet', () => {
+	async function press(fields: [string, string][], version: number) {
+		const body = new FormData();
+		body.set(WHICH_FORM, 'content-title');
+		body.set(RECORD_VERSION, String(version));
+		for (const [name, value] of fields) body.append(name, value);
+		return request(
+			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+			{ env: bindings }
+		);
+	}
+
+	it('writes a heading to the draft, drawn on the next load, and the live page stays', async () => {
 		const { version } = await open();
 		const before = await donationPage();
 
+		const response = await press(
+			[
+				['heading', 'Give to Elm Street'],
+				['lede', '']
+			],
+			version
+		);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ saved: 'content' });
+		const redrawn = await open();
+		expect(redrawn.sections[0]).toMatchObject({
+			text: { kind: 'title', heading: 'Give to Elm Street', lede: null }
+		});
+		expect(redrawn.state).toBe('changed');
+		expect((await donationPage())?.published).toBe(before?.published);
+	});
+
+	it('refuses a story, which the Donation page does not hold, under its box and writes nothing', async () => {
+		const { version } = await open();
+		const before = await donationPage();
 		const body = new FormData();
-		body.set(WHICH_FORM, 'block-variant');
+		body.set(WHICH_FORM, 'content-story');
 		body.set(RECORD_VERSION, String(version));
-		body.set('block_id', 'about');
-		body.set('variant', 'statement');
+		body.set(
+			'body',
+			'{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hi"}]}]}'
+		);
+
 		const response = await request(
 			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
 			{ env: bindings }
 		);
 
-		expect(response.status).toBe(200);
-		const redrawn = (await open()) as Drawn & { blocks: { id: string; variant: string }[] };
-		expect(redrawn.blocks.find(({ id }) => id === 'about')?.variant).toBe('statement');
-		expect((await donationPage())?.published).toBe(before?.published);
+		expect(response.status).toBe(400);
+		expect(
+			((await response.json()) as { form: { result: { error: Record<string, string[]> } } }).form
+				.result.error.body
+		).toEqual(['the Donation page has no story; only a campaign does']);
+		expect((await donationPage())?.draft).toBe(before?.draft);
 	});
 });
 
@@ -513,14 +545,14 @@ describe('Reset to default', () => {
 		);
 	}
 
-	/** the Donation page's draft laid out and palette'd its own way. */
+	/** the Donation page's draft given a heading of its own. */
 	async function editDraft() {
 		const made = await donationPage();
 		if (made === null) throw new Error('the editor made no Donation page');
 		await db
 			.update(page)
 			.set({
-				draft: JSON.stringify({ ...JSON.parse(made.draft), palette: 'bold', layout: 'banner' }),
+				draft: JSON.stringify({ ...JSON.parse(made.draft), heading: 'Give to Elm Street' }),
 				updatedAt: new Date(made.updatedAt.getTime() + 1_000)
 			})
 			.where(eq(page.id, made.id));
@@ -593,11 +625,11 @@ describe('Reset to default', () => {
 	});
 });
 
-describe('the look and the sharing', () => {
-	/** a press on the editor, drawn at `version`; a field named twice is posted twice. */
-	async function press(which: string, fields: [string, string][], version: number) {
+describe('the share message', () => {
+	/** a press on the editor, drawn at `version`. */
+	async function press(fields: [string, string][], version: number) {
 		const body = new FormData();
-		body.set(WHICH_FORM, which);
+		body.set(WHICH_FORM, 'page-share-message');
 		body.set(RECORD_VERSION, String(version));
 		for (const [name, value] of fields) body.append(name, value);
 		return request(
@@ -606,97 +638,6 @@ describe('the look and the sharing', () => {
 		);
 	}
 
-	/** the Donation page saved since the editor was drawn, as another tab's save leaves it. */
-	async function moved() {
-		const made = await donationPage();
-		if (made === null) throw new Error('the editor made no Donation page');
-		await db
-			.update(page)
-			.set({ updatedAt: new Date(made.updatedAt.getTime() + 1_000) })
-			.where(eq(page.id, made.id));
-		return made;
-	}
-
-	type Looked = Drawn & {
-		look: { shade: string; corners: string; palette: string };
-		share: { message: string; channels: string[] };
-	};
-
-	it('writes a shade picked to the draft alone, drawn on the next load', async () => {
-		const { version } = await open();
-		const before = await donationPage();
-
-		const response = await press('page-shade', [['shade', 'warm']], version);
-
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ saved: 'page-shade' });
-		expect(((await open()) as Looked).look).toEqual({
-			shade: 'warm',
-			corners: 'soft',
-			palette: 'tint'
-		});
-		expect((await donationPage())?.published).toBe(before?.published);
-	});
-
-	it('writes corners and a palette picked, each keeping what the other pictures set', async () => {
-		const { version } = await open();
-		expect((await press('page-shade', [['shade', 'cool']], version)).status).toBe(200);
-
-		const cornered = await press('page-corners', [['corners', 'round']], (await open()).version);
-		expect(await cornered.json()).toEqual({ saved: 'page-corners' });
-		const painted = await press('page-palette', [['palette', 'bold']], (await open()).version);
-		expect(await painted.json()).toEqual({ saved: 'page-palette' });
-
-		expect(((await open()) as Looked).look).toEqual({
-			shade: 'cool',
-			corners: 'round',
-			palette: 'bold'
-		});
-	});
-
-	it.each([
-		['page-shade', 'shade', 'dusk', 'light, warm or cool'],
-		['page-corners', 'corners', 'bevelled', 'square, soft or round'],
-		['page-palette', 'palette', 'neon', 'plain, tint, duo, bright or bold']
-	])(
-		'refuses a %s off the list under its box, naming the list',
-		async (which, box, value, list) => {
-			const { version } = await open();
-
-			const response = await press(which, [[box, value]], version);
-
-			expect(response.status).toBe(400);
-			const error = (
-				(await response.json()) as { form: { result: { error: Record<string, string[]> } } }
-			).form.result.error[box];
-			expect(error).toEqual([expect.stringContaining(`"${value}"`)]);
-			expect(error?.[0]).toContain(list);
-			expect(((await open()) as Looked).look).toEqual({
-				shade: 'light',
-				corners: 'soft',
-				palette: 'tint'
-			});
-		}
-	);
-
-	it.each([
-		['page-shade', [['shade', 'warm']]],
-		['page-corners', [['corners', 'round']]],
-		['page-palette', [['palette', 'bold']]]
-	] as [string, [string, string][]][])(
-		'refuses %s drawn before the page last moved at 409, writing nothing',
-		async (which, fields) => {
-			const { version } = await open();
-			const before = await moved();
-
-			const response = await press(which, fields, version);
-
-			expect(response.status).toBe(409);
-			expect((await donationPage())?.draft).toBe(before?.draft);
-		}
-	);
-
-	/** the stored draft, as the page rule's own keys hold it. */
 	async function storedDraft(): Promise<Record<string, unknown>> {
 		return JSON.parse((await donationPage())?.draft ?? '{}');
 	}
@@ -707,43 +648,27 @@ describe('the look and the sharing', () => {
 		];
 	}
 
-	it('sets a share message, changes it, and an emptied box removes it', async () => {
-		expect(((await open()) as Looked).share.message).toBe('');
+	it('is set, changed, and removed by an emptied box', async () => {
+		expect((await open()).shareMessage).toBe('');
 
-		const set = await press(
-			'page-share-message',
-			[['share_message', ' Keep Elm Street warm. ']],
-			(await open()).version
-		);
-		expect(await set.json()).toEqual({ saved: 'page-share-message' });
-		expect(((await open()) as Looked).share.message).toBe('Keep Elm Street warm.');
+		const set = await press([['share_message', ' Keep Elm Street warm. ']], (await open()).version);
+		expect(await set.json()).toEqual({ saved: 'content' });
+		expect((await open()).shareMessage).toBe('Keep Elm Street warm.');
 
-		await press(
-			'page-share-message',
-			[['share_message', 'Coats for all.']],
-			(await open()).version
-		);
-		expect(((await open()) as Looked).share.message).toBe('Coats for all.');
+		await press([['share_message', 'Coats for all.']], (await open()).version);
+		expect((await open()).shareMessage).toBe('Coats for all.');
 
-		const cleared = await press(
-			'page-share-message',
-			[['share_message', '']],
-			(await open()).version
-		);
+		const cleared = await press([['share_message', '']], (await open()).version);
 		expect(cleared.status).toBe(200);
-		expect(((await open()) as Looked).share.message).toBe('');
+		expect((await open()).shareMessage).toBe('');
 		expect(await storedDraft()).not.toHaveProperty('shareMessage');
 	});
 
-	it('refuses a share message past its limit under its box, writing nothing', async () => {
+	it('is refused past its limit under its box, writing nothing', async () => {
 		const { version } = await open();
 		const before = await donationPage();
 
-		const response = await press(
-			'page-share-message',
-			[['share_message', 'x'.repeat(281)]],
-			version
-		);
+		const response = await press([['share_message', 'x'.repeat(281)]], version);
 
 		expect(response.status).toBe(400);
 		expect(errorUnder(await response.json(), 'share_message')).toEqual([
@@ -752,335 +677,18 @@ describe('the look and the sharing', () => {
 		expect((await donationPage())?.draft).toBe(before?.draft);
 	});
 
-	it('offers the default share buttons until some are chosen, then those, in the order sent', async () => {
-		expect(((await open()) as Looked).share.channels).toEqual(['facebook', 'email', 'copy-link']);
-
-		const response = await press(
-			'page-share-channels',
-			[
-				['share_channels', 'whatsapp'],
-				['share_channels', 'x']
-			],
-			(await open()).version
-		);
-
-		expect(await response.json()).toEqual({ saved: 'page-share-channels' });
-		expect(((await open()) as Looked).share.channels).toEqual(['whatsapp', 'x']);
-	});
-
-	it('refuses an empty set of share buttons, naming the list to choose from', async () => {
+	it('is refused when drawn before the page last moved, at 409, writing nothing', async () => {
 		const { version } = await open();
+		const made = await donationPage();
+		if (made === null) throw new Error('the editor made no Donation page');
+		await db
+			.update(page)
+			.set({ updatedAt: new Date(made.updatedAt.getTime() + 1_000) })
+			.where(eq(page.id, made.id));
 
-		const response = await press('page-share-channels', [], version);
+		const response = await press([['share_message', 'Coats for all.']], version);
 
-		expect(response.status).toBe(400);
-		expect(errorUnder(await response.json(), 'share_channels')).toEqual([
-			'choose at least one share button: facebook, whatsapp, email, copy-link, linkedin or x'
-		]);
+		expect(response.status).toBe(409);
+		expect((await donationPage())?.draft).toBe(made.draft);
 	});
-
-	it('refuses a share button off the list under its box, naming the list', async () => {
-		const { version } = await open();
-
-		const response = await press(
-			'page-share-channels',
-			[
-				['share_channels', 'email'],
-				['share_channels', 'myspace']
-			],
-			version
-		);
-
-		expect(response.status).toBe(400);
-		const [said] = errorUnder(await response.json(), 'share_channels') ?? [];
-		expect(said).toContain('"myspace"');
-		expect(said).toContain('facebook, whatsapp, email, copy-link, linkedin or x');
-		expect(((await open()) as Looked).share.channels).toEqual(['facebook', 'email', 'copy-link']);
-	});
-
-	it.each([
-		['page-share-message', [['share_message', 'Coats for all.']]],
-		['page-share-channels', [['share_channels', 'x']]]
-	] as [string, [string, string][]][])(
-		'refuses %s drawn before the page last moved at 409, writing nothing',
-		async (which, fields) => {
-			const { version } = await open();
-			const before = await moved();
-
-			const response = await press(which, fields, version);
-
-			expect(response.status).toBe(409);
-			expect((await donationPage())?.draft).toBe(before.draft);
-		}
-	);
-});
-
-describe('the blocks', () => {
-	async function press(which: string, fields: [string, string][], version: number) {
-		const body = new FormData();
-		body.set(WHICH_FORM, which);
-		body.set(RECORD_VERSION, String(version));
-		for (const [name, value] of fields) body.append(name, value);
-		return request(
-			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env: bindings }
-		);
-	}
-
-	type Listed = Drawn & {
-		blocks: {
-			id: string;
-			type: string;
-			variant: string | null;
-			background: string;
-			removable: boolean;
-			movesUp: boolean;
-			movesDown: boolean;
-		}[];
-		addable: { value: string; label: string }[];
-	};
-
-	const listed = async () => (await open()) as Listed;
-
-	it.each([
-		['title', 'left'],
-		['story', 'plain'],
-		['impact-tiers', 'cards'],
-		['faq', 'accordion'],
-		['about-us', 'stacked'],
-		['org-info', 'footer'],
-		['share', 'buttons'],
-		['hero', 'wide'],
-		['image', 'column'],
-		['program-chooser', 'cards']
-	])(
-		'adds %s above the organisation details closing the page, in its first variant',
-		async (type, variant) => {
-			const { version } = await open();
-
-			const response = await press('block-add', [['block_type', type]], version);
-
-			expect(response.status).toBe(200);
-			const answer = (await response.json()) as { saved: string; blockId: string };
-			expect(answer.saved).toBe('block-add');
-			const { blocks } = await listed();
-			expect(blocks.map(({ id }) => id).slice(-2)).toEqual([answer.blockId, 'footer']);
-			expect(blocks.at(-2)).toMatchObject({ type, variant, background: 'none' });
-		}
-	);
-
-	it('gives a second block of a type an id of its own', async () => {
-		await press('block-add', [['block_type', 'story']], (await open()).version);
-		const second = await press('block-add', [['block_type', 'story']], (await open()).version);
-
-		expect(await second.json()).toEqual({ saved: 'block-add', blockId: 'story-2' });
-		expect((await listed()).blocks.filter(({ type }) => type === 'story')).toHaveLength(2);
-	});
-
-	it('offers every block the Donation page takes but the donation box, each named', async () => {
-		expect((await listed()).addable).toEqual([
-			{ value: 'title', label: 'Title' },
-			{ value: 'story', label: 'Story' },
-			{ value: 'impact-tiers', label: 'Impact tiers' },
-			{ value: 'faq', label: 'Questions' },
-			{ value: 'about-us', label: 'About us' },
-			{ value: 'org-info', label: 'Organisation details' },
-			{ value: 'share', label: 'Share buttons' },
-			{ value: 'hero', label: 'Cover photo' },
-			{ value: 'image', label: 'Photo' },
-			{ value: 'program-chooser', label: 'Program choice' }
-		]);
-	});
-
-	it.each([['goal-bar'], ['donation-box'], ['carousel']])(
-		'refuses adding a %s, naming the blocks it can add, and writes nothing',
-		async (type) => {
-			const { version } = await open();
-			const before = await donationPage();
-
-			const response = await press('block-add', [['block_type', type]], version);
-
-			expect(response.status).toBe(400);
-			const answer = (await response.json()) as {
-				form: { result: { error: Record<string, string[]> } };
-			};
-			expect(answer.form.result.error.block_type).toEqual([
-				`"${type}" is no block the Donation page can add; it adds title, story, impact-tiers, faq, about-us, org-info, share, hero, image or program-chooser`
-			]);
-			expect((await donationPage())?.draft).toBe(before?.draft);
-		}
-	);
-
-	const order = async () => (await listed()).blocks.map(({ id }) => id);
-
-	function refused(answer: unknown, box = ''): string[] | undefined {
-		return (answer as { form: { result: { error: Record<string, string[]> } } }).form.result.error[
-			box
-		];
-	}
-
-	it('sets a block’s background, and refuses one the block does not take, naming those it does', async () => {
-		const set = await press(
-			'block-background',
-			[
-				['block_id', 'about'],
-				['background', 'strong']
-			],
-			(await open()).version
-		);
-		expect(await set.json()).toEqual({ saved: 'block-background' });
-		expect((await listed()).blocks.find(({ id }) => id === 'about')?.background).toBe('strong');
-
-		const off = await press(
-			'block-background',
-			[
-				['block_id', 'share'],
-				['background', 'strong']
-			],
-			(await open()).version
-		);
-		expect(off.status).toBe(400);
-		expect(refused(await off.json(), 'background')).toEqual([
-			'"strong" is not a background share takes; it takes none, soft or tint'
-		]);
-	});
-
-	it('removes a block, and draws the page without it', async () => {
-		const response = await press('block-remove', [['block_id', 'about']], (await open()).version);
-
-		expect(await response.json()).toEqual({ saved: 'block-remove' });
-		expect(await order()).toEqual(['title', 'programs', 'donate', 'share', 'footer']);
-	});
-
-	it('refuses removing the donation box, which every page holds once, and writes nothing', async () => {
-		const { version } = await open();
-		const before = await donationPage();
-
-		const response = await press('block-remove', [['block_id', 'donate']], version);
-
-		expect(response.status).toBe(400);
-		expect(refused(await response.json())).toEqual([
-			'the donation box is on every page exactly once and cannot be removed'
-		]);
-		expect((await donationPage())?.draft).toBe(before?.draft);
-	});
-
-	it('refuses removing a block the page does not hold, naming those it does', async () => {
-		const response = await press('block-remove', [['block_id', 'gallery']], (await open()).version);
-
-		expect(response.status).toBe(400);
-		expect(refused(await response.json())).toEqual([
-			'`block_id` names no block on this page: "gallery"; its blocks are "title", "programs", "donate", "about", "share", "footer"'
-		]);
-	});
-
-	it('moves a block one step up and one step down', async () => {
-		const up = await press(
-			'block-move',
-			[
-				['block_id', 'about'],
-				['direction', 'up']
-			],
-			(await open()).version
-		);
-		expect(await up.json()).toEqual({ saved: 'block-move' });
-		expect(await order()).toEqual(['title', 'programs', 'about', 'donate', 'share', 'footer']);
-
-		await press(
-			'block-move',
-			[
-				['block_id', 'title'],
-				['direction', 'down']
-			],
-			(await open()).version
-		);
-		expect(await order()).toEqual(['programs', 'title', 'about', 'donate', 'share', 'footer']);
-	});
-
-	it.each([
-		['title', 'up', 'block "title" is first and moves no further up'],
-		['footer', 'down', 'block "footer" is last and moves no further down']
-	])('refuses moving %s %s off the end of the page', async (id, direction, sentence) => {
-		const { version } = await open();
-		const before = await donationPage();
-
-		const response = await press(
-			'block-move',
-			[
-				['block_id', id],
-				['direction', direction]
-			],
-			version
-		);
-
-		expect(response.status).toBe(400);
-		expect(refused(await response.json())).toEqual([sentence]);
-		expect((await donationPage())?.draft).toBe(before?.draft);
-	});
-
-	it('refuses a move that is neither up nor down, naming both', async () => {
-		const response = await press(
-			'block-move',
-			[
-				['block_id', 'about'],
-				['direction', 'left']
-			],
-			(await open()).version
-		);
-
-		expect(response.status).toBe(400);
-		expect(refused(await response.json(), 'direction')).toEqual([
-			'"left" is not a direction; a block moves up or down'
-		]);
-	});
-
-	it('says which blocks can be removed and which way each can move', async () => {
-		const { blocks } = await listed();
-
-		expect(
-			blocks.map(({ id, removable, movesUp, movesDown }) => [id, removable, movesUp, movesDown])
-		).toEqual([
-			['title', true, false, true],
-			['programs', true, true, true],
-			['donate', false, true, true],
-			['about', true, true, true],
-			['share', true, true, true],
-			['footer', true, true, false]
-		]);
-	});
-
-	it.each([
-		['block-add', [['block_type', 'story']]],
-		['block-remove', [['block_id', 'about']]],
-		[
-			'block-move',
-			[
-				['block_id', 'about'],
-				['direction', 'up']
-			]
-		],
-		[
-			'block-background',
-			[
-				['block_id', 'about'],
-				['background', 'none']
-			]
-		]
-	] as [string, [string, string][]][])(
-		'refuses %s drawn before the page last moved at 409, writing nothing',
-		async (which, fields) => {
-			const { version } = await open();
-			const made = await donationPage();
-			if (made === null) throw new Error('the editor made no Donation page');
-			await db
-				.update(page)
-				.set({ updatedAt: new Date(made.updatedAt.getTime() + 1_000) })
-				.where(eq(page.id, made.id));
-
-			const response = await press(which, fields, version);
-
-			expect(response.status).toBe(409);
-			expect((await donationPage())?.draft).toBe(made.draft);
-		}
-	);
 });

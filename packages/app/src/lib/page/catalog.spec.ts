@@ -1,354 +1,151 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { FAQ_MAX, HEADING_MAX, ID_MAX, parsePage, SHARE_MESSAGE_MAX, TIERS_MAX } from './catalog';
+import {
+	FAQ_MAX,
+	HEADING_MAX,
+	PHOTOS_MAX,
+	parsePage,
+	SHARE_MESSAGE_MAX,
+	TIERS_MAX
+} from './catalog';
 
 // node pool, no database: the rule is a pure function of the page type and the document.
 
-const box = { id: 'donate', type: 'donation-box', background: 'none' };
-
-function page(blocks: unknown[], rest: Record<string, unknown> = {}) {
-	return {
-		layout: 'box-right',
-		palette: 'tint',
-		switches: { openOnMonthly: false, dedicationOn: false },
-		blocks,
-		...rest
-	};
-}
-
-describe('which blocks a page holds', () => {
-	it('refuses a block it has no name for, naming it and where', () => {
-		const result = parsePage(
-			'campaign',
-			page([box, { id: 'x', type: 'carousel', variant: 'wide' }])
-		);
-		expect(result).toEqual({
-			ok: false,
-			path: ['blocks', 1, 'type'],
-			message:
-				'block 2 (id "x"): "carousel" is not a block; a page holds title, story, impact-tiers, faq, about-us, org-info, share, hero, image, goal-bar, program-chooser and the donation box'
-		});
-	});
-
-	it.each([
-		[
-			'donation_page',
-			{ id: 'goal', type: 'goal-bar', variant: 'bar', background: 'none' },
-			'block 1 (id "goal"): the Donation page takes no goal-bar; only a campaign does'
-		],
-		[
-			'campaign',
-			{ id: 'programs', type: 'program-chooser', variant: 'cards', background: 'none' },
-			'block 1 (id "programs"): a campaign takes no program-chooser; only the Donation page does'
-		]
-	] as const)('refuses on a %s the block its type forbids', (type, forbidden, message) => {
-		expect(parsePage(type, page([forbidden, box]))).toEqual({
-			ok: false,
-			path: ['blocks', 0, 'type'],
-			message
-		});
-	});
-
-	it.each([
-		['donation_page', { id: 'programs', type: 'program-chooser', variant: 'cards' }],
-		['campaign', { id: 'goal', type: 'goal-bar', variant: 'bar' }]
-	] as const)('accepts on a %s the block only its type takes', (type, only) => {
-		const blocks = [{ ...only, background: 'none' }, box];
-		expect(parsePage(type, page(blocks))).toEqual({ ok: true, page: page(blocks) });
-	});
+const IMAGE = '0b8a2f9e-2c4f-4f7a-9f55-0f2d6c3a9e11';
+const switches = { openOnMonthly: false, dedicationOn: false };
+const blank = { type: 'doc', content: [{ type: 'paragraph' }] };
+const words = (text: string) => ({
+	type: 'doc',
+	content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
 });
 
-describe('photo blocks', () => {
-	const photoId = '01926f3e-7c1a-7b2e-9d4f-3a5b6c7d8e9f';
+function page(rest: Record<string, unknown> = {}) {
+	return { heading: '', switches, ...rest };
+}
 
-	it.each(['donation_page', 'campaign'] as const)(
-		'accepts a hero and an image on a %s, by the image id alone',
-		(type) => {
-			const blocks = [
-				{
-					id: 'hero',
-					type: 'hero',
-					variant: 'framed',
-					background: 'none',
-					imageId: photoId,
-					alt: 'A well'
-				},
-				box,
-				{
-					id: 'photo',
-					type: 'image',
-					variant: 'wide',
-					background: 'none',
-					imageId: null,
-					alt: null
-				}
-			];
-			expect(parsePage(type, page(blocks))).toEqual({ ok: true, page: page(blocks) });
+describe('what a campaign holds', () => {
+	it('accepts every content key at once', () => {
+		const input = page({
+			heading: 'Fill the winter pantry',
+			lede: 'Help us keep 1,200 families fed.',
+			story: words('Last winter, 1,214 households came through our doors.'),
+			hero: { imageId: IMAGE, alt: 'Volunteers at the market' },
+			photos: [{ imageId: IMAGE, alt: null }],
+			tiers: [{ amountMinor: 2500, buys: 'a week of meals' }],
+			faq: [{ question: 'Is it deductible?', answer: words('Yes.') }],
+			shareMessage: 'I just gave. Join me?'
+		});
+		expect(parsePage('campaign', input)).toEqual({ ok: true, page: input });
+	});
+
+	it('accepts a campaign holding nothing yet, which draws as the card', () => {
+		expect(parsePage('campaign', page())).toEqual({ ok: true, page: page() });
+	});
+
+	it('accepts sections with nothing to show, which leave themselves out at render', () => {
+		const input = page({ story: blank, photos: [], tiers: [], faq: [] });
+		expect(parsePage('campaign', input)).toEqual({ ok: true, page: input });
+	});
+
+	it.each(['layout', 'palette', 'look', 'blocks', 'shareChannels'])(
+		'refuses %s, which a content-only page has no place for',
+		(key) => {
+			expect(parsePage('campaign', page({ [key]: 'box-right' }))).toMatchObject({ ok: false });
 		}
 	);
 
-	it.each(['url', 'src'])('refuses a %s on a photo block, naming what it carries', (key) => {
-		const hero = {
-			id: 'hero',
-			type: 'hero',
-			variant: 'wide',
-			background: 'none',
-			imageId: null,
-			alt: null
-		};
-		expect(
-			parsePage('campaign', page([{ ...hero, [key]: 'https://elsewhere.example/a.png' }, box]))
-		).toEqual({
+	it('refuses a heading over its length, naming the limit', () => {
+		expect(parsePage('campaign', page({ heading: 'x'.repeat(HEADING_MAX + 1) }))).toEqual({
 			ok: false,
-			path: ['blocks', 0],
-			message: `block 1 (id "hero"): hero carries no "${key}"; it carries id, type, variant, background, imageId and alt`
+			path: ['heading'],
+			message: `a heading holds at most ${HEADING_MAX} characters`
 		});
+	});
+});
+
+describe('photos', () => {
+	it.each(['url', 'src'])('refuses a %s on a photo', (key) => {
+		expect(
+			parsePage(
+				'campaign',
+				page({ hero: { imageId: IMAGE, alt: null, [key]: 'https://x.test/a.jpg' } })
+			)
+		).toMatchObject({ ok: false, path: ['hero'] });
 	});
 
 	it('refuses an image id that is an address, not an id', () => {
-		const image = {
-			id: 'photo',
-			type: 'image',
-			variant: 'column',
-			background: 'none',
-			imageId: 'https://elsewhere.example/a.png',
-			alt: null
-		};
-		expect(parsePage('campaign', page([image, box]))).toMatchObject({
+		expect(
+			parsePage('campaign', page({ hero: { imageId: 'https://x.test/a.jpg', alt: null } }))
+		).toEqual({
 			ok: false,
-			path: ['blocks', 0, 'imageId']
+			path: ['hero', 'imageId'],
+			message: 'an image id is the id a stored photo was given on upload, never an address'
 		});
 	});
 
-	it('refuses a photo block on a ground, since a photo stands on none', () => {
-		const hero = {
-			id: 'hero',
-			type: 'hero',
-			variant: 'wide',
-			background: 'soft',
-			imageId: null,
-			alt: null
-		};
-		expect(parsePage('campaign', page([hero, box]))).toEqual({
-			ok: false,
-			path: ['blocks', 0, 'background'],
-			message: 'block 1 (id "hero"): "soft" is not a background hero takes; it takes none'
-		});
+	it('refuses a photo beyond the cap beside the cover', () => {
+		const photos = Array.from({ length: PHOTOS_MAX + 1 }, () => ({ imageId: IMAGE, alt: null }));
+		expect(parsePage('campaign', page({ photos }))).toMatchObject({ ok: false, path: ['photos'] });
 	});
 });
 
-describe('the donation box', () => {
-	it('accepts a page holding exactly one', () => {
-		const result = parsePage('donation_page', page([box]));
-		expect(result).toEqual({ ok: true, page: page([box]) });
-	});
-
-	it('refuses a page with none, at the block list', () => {
-		expect(parsePage('campaign', page([]))).toEqual({
-			ok: false,
-			path: ['blocks'],
-			message: 'a page holds exactly one donation box, and this one holds none'
-		});
-	});
-
-	it('names it as a screen does when it carries a key it has no use for', () => {
-		expect(parsePage('campaign', page([{ ...box, variant: 'wide' }]))).toEqual({
-			ok: false,
-			path: ['blocks', 0],
-			message:
-				'block 1 (id "donate"): the donation box carries no "variant"; it carries id, type and background'
-		});
-	});
-
-	it('refuses a second one, naming it and the first', () => {
-		const second = { ...box, id: 'donate-again' };
-		expect(parsePage('campaign', page([box, second]))).toEqual({
-			ok: false,
-			path: ['blocks', 1],
-			message:
-				'block 2 (id "donate-again"): a page holds exactly one donation box, and block 1 (id "donate") is one'
-		});
-	});
-});
-
-describe('the closed sets', () => {
-	const body = { type: 'doc', content: [{ type: 'paragraph' }] };
-
-	it.each([
-		[
-			'layout',
-			page([box], { layout: 'grid' }),
-			['layout'],
-			'"grid" is not a layout; a page is laid out box-right, banner, column or cover'
-		],
-		[
-			'palette',
-			page([box], { palette: '#ff0000' }),
-			['palette'],
-			'"#ff0000" is not a palette; a page takes plain, tint, duo, bright or bold'
-		],
-		[
-			'variant',
-			page([box, { id: 'faq', type: 'faq', variant: 'grid', background: 'none' }]),
-			['blocks', 1, 'variant'],
-			'block 2 (id "faq"): "grid" is not a variant of faq; it is accordion or open'
-		],
-		[
-			'background',
-			page([box, { id: 'about', type: 'about-us', variant: 'stacked', background: 'red' }]),
-			['blocks', 1, 'background'],
-			'block 2 (id "about"): "red" is not a background about-us takes; it takes none, soft, tint or strong'
-		],
-		[
-			'background its row disallows',
-			page([box, { id: 'story', type: 'story', variant: 'plain', background: 'strong', body }]),
-			['blocks', 1, 'background'],
-			'block 2 (id "story"): "strong" is not a background story takes; it takes none, soft or tint'
-		]
-	])('refuses an off-list %s, naming it and the list', (_, input, path, message) => {
-		expect(parsePage('campaign', input)).toEqual({ ok: false, path, message });
-	});
-});
-
-describe('what a block carries', () => {
-	const title = { id: 'title', type: 'title', variant: 'left', background: 'none' };
-
-	it('accepts a title with a heading and a lede', () => {
-		const blocks = [
-			{ ...title, heading: 'Clean water for Kisumu', lede: 'Every tap counts.' },
-			box
-		];
-		expect(parsePage('campaign', page(blocks))).toEqual({ ok: true, page: page(blocks) });
-	});
-
-	it('refuses a heading over its length, naming the limit', () => {
-		const heading = 'x'.repeat(HEADING_MAX + 1);
-		expect(parsePage('campaign', page([{ ...title, heading }, box]))).toEqual({
-			ok: false,
-			path: ['blocks', 0, 'heading'],
-			message: `block 1 (id "title"): a heading holds at most ${HEADING_MAX} characters`
-		});
-	});
-
-	it.each(['colour', 'href', 'html', 'onClick'])('refuses a %s prop, naming it', (key) => {
-		expect(parsePage('campaign', page([{ ...title, heading: 'Hi', [key]: 'x' }, box]))).toEqual({
-			ok: false,
-			path: ['blocks', 0],
-			message: `block 1 (id "title"): title carries no "${key}"; it carries id, type, variant, background, heading and lede`
-		});
-	});
-});
-
-describe('rich text and lists in a block', () => {
-	const doc = (text: string) => ({
-		type: 'doc',
-		content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
-	});
-	const story = { id: 'story', type: 'story', variant: 'plain', background: 'none' };
-	const tiers = { id: 'impact', type: 'impact-tiers', variant: 'cards', background: 'none' };
-	const faq = { id: 'faq', type: 'faq', variant: 'open', background: 'none' };
+describe('tiers and questions', () => {
+	const tier = { amountMinor: 2500, buys: 'a week of meals' };
 
 	it('holds a story to the rich-text rule', () => {
-		const result = parsePage('campaign', page([box, { ...story, body: '<p>hi</p>' }]));
-		expect(result).toEqual({
-			ok: false,
-			path: ['blocks', 1, 'body'],
-			message:
-				'block 2 (id "story"): a document is Tiptap JSON, an object of type "doc", not a string, and HTML is refused'
-		});
+		expect(
+			parsePage('campaign', page({ story: { type: 'doc', content: [{ type: 'heading' }] } }))
+		).toMatchObject({ ok: false, path: expect.arrayContaining(['story']) });
 	});
 
-	it('refuses a seventh impact tier', () => {
-		const tier = { amountMinor: 2500, buys: 'a water filter' };
-		const result = parsePage('campaign', page([box, { ...tiers, tiers: Array(7).fill(tier) }]));
-		expect(result).toEqual({
+	it('refuses a tier beyond the cap', () => {
+		const tiers = Array.from({ length: TIERS_MAX + 1 }, () => tier);
+		expect(parsePage('campaign', page({ tiers }))).toEqual({
 			ok: false,
-			path: ['blocks', 1, 'tiers'],
-			message: `block 2 (id "impact"): an impact-tiers block holds at most ${TIERS_MAX} tiers`
+			path: ['tiers'],
+			message: `a campaign holds at most ${TIERS_MAX} impact tiers`
 		});
 	});
 
 	it('refuses a tier that does not say what it buys', () => {
-		const result = parsePage(
-			'campaign',
-			page([box, { ...tiers, tiers: [{ amountMinor: 2500, buys: '' }] }])
-		);
-		expect(result).toEqual({
+		expect(parsePage('campaign', page({ tiers: [{ amountMinor: 2500, buys: '' }] }))).toEqual({
 			ok: false,
-			path: ['blocks', 1, 'tiers', 0, 'buys'],
-			message: 'block 2 (id "impact"): a tier says what its amount buys'
+			path: ['tiers', 0, 'buys'],
+			message: 'a tier says what its amount buys'
 		});
 	});
 
-	it('refuses a tier whose amount is not a whole positive number of minor units', () => {
-		const result = parsePage(
-			'campaign',
-			page([box, { ...tiers, tiers: [{ amountMinor: 25.5, buys: 'a filter' }] }])
-		);
-		expect(result).toEqual({
+	it.each([0, -5, 12.5])('refuses a tier amount of %d', (amountMinor) => {
+		expect(parsePage('campaign', page({ tiers: [{ amountMinor, buys: 'x' }] }))).toMatchObject({
 			ok: false,
-			path: ['blocks', 1, 'tiers', 0, 'amountMinor'],
-			message: 'block 2 (id "impact"): a tier’s amount is a whole number of minor units above zero'
+			path: ['tiers', 0, 'amountMinor']
 		});
 	});
 
-	it('refuses an eleventh question', () => {
-		const item = { question: 'Is it tax-deductible?', answer: doc('Yes.') };
-		const result = parsePage('campaign', page([box, { ...faq, items: Array(11).fill(item) }]));
-		expect(result).toEqual({
-			ok: false,
-			path: ['blocks', 1, 'items'],
-			message: `block 2 (id "faq"): a faq holds at most ${FAQ_MAX} questions`
-		});
+	it('refuses a question beyond the cap', () => {
+		const faq = Array.from({ length: FAQ_MAX + 1 }, () => ({ question: 'q', answer: blank }));
+		expect(parsePage('campaign', page({ faq }))).toMatchObject({ ok: false, path: ['faq'] });
 	});
 
 	it('holds an answer to the rich-text rule', () => {
-		const item = {
-			question: 'Where does it go?',
-			answer: { type: 'doc', content: [{ type: 'heading' }] }
-		};
-		const result = parsePage('campaign', page([box, { ...faq, items: [item] }]));
-		expect(result).toEqual({
-			ok: false,
-			path: ['blocks', 1, 'items', 0, 'answer', 'content', 0, 'type'],
-			message:
-				'block 2 (id "faq"): "heading" is not allowed in a document; it holds paragraphs, bulleted lists and numbered lists'
-		});
+		expect(
+			parsePage(
+				'campaign',
+				page({ faq: [{ question: 'q', answer: { type: 'doc', content: 'no' } }] })
+			)
+		).toMatchObject({ ok: false, path: expect.arrayContaining(['faq', 0, 'answer']) });
 	});
 });
 
-describe('a block id', () => {
-	const share = { type: 'share', variant: 'buttons', background: 'none' };
-
-	it('refuses a second block under an id already taken, naming both', () => {
-		const result = parsePage('campaign', page([{ ...share, id: 'donate' }, box]));
-		expect(result).toEqual({
-			ok: false,
-			path: ['blocks', 1, 'id'],
-			message: 'block 2 (id "donate"): an id names one block, and block 1 already has it'
-		});
-	});
-
-	it.each(['', 'has space', 'x'.repeat(ID_MAX + 1)])('refuses the id %j', (id) => {
-		const result = parsePage('campaign', page([{ ...share, id }, box]));
-		expect(result).toMatchObject({
-			ok: false,
-			path: ['blocks', 0, 'id'],
-			message: expect.stringContaining(`an id is 1 to ${ID_MAX} letters, digits, "-" or "_"`)
-		});
-	});
-});
-
-describe('what a page carries beside its blocks', () => {
+describe('what a page carries beside its content', () => {
 	const endsAt = Date.UTC(2026, 11, 31);
 
-	it('accepts a campaign with its name, a goal, an end date, its own look and a share message', () => {
-		const input = page([box], {
+	it('accepts a campaign with its name, a goal, an end date and a share message', () => {
+		const input = page({
 			name: 'Coats for Kids',
 			goalMinor: 5_000_000,
 			endsAt,
 			endsZone: 'America/New_York',
-			look: { shade: 'warm', corner: 'round' },
 			shareMessage: 'I just gave to clean water. Join me?'
 		});
 		expect(parsePage('campaign', input)).toEqual({ ok: true, page: input });
@@ -358,14 +155,11 @@ describe('what a page carries beside its blocks', () => {
 		['blank', '  '],
 		['past a heading’s length', 'x'.repeat(HEADING_MAX + 1)]
 	])('refuses a campaign name that is %s', (_, name) => {
-		expect(parsePage('campaign', page([box], { name }))).toMatchObject({
-			ok: false,
-			path: ['name']
-		});
+		expect(parsePage('campaign', page({ name }))).toMatchObject({ ok: false, path: ['name'] });
 	});
 
 	it('refuses an end date without the time zone it ends in', () => {
-		expect(parsePage('campaign', page([box], { endsAt }))).toEqual({
+		expect(parsePage('campaign', page({ endsAt }))).toEqual({
 			ok: false,
 			path: ['endsZone'],
 			message: 'an end date names the time zone its day ends in'
@@ -373,7 +167,7 @@ describe('what a page carries beside its blocks', () => {
 	});
 
 	it('refuses a time zone without an end date', () => {
-		expect(parsePage('campaign', page([box], { endsZone: 'America/New_York' }))).toEqual({
+		expect(parsePage('campaign', page({ endsZone: 'America/New_York' }))).toEqual({
 			ok: false,
 			path: ['endsAt'],
 			message: 'a time zone belongs to an end date, and there is none'
@@ -381,17 +175,10 @@ describe('what a page carries beside its blocks', () => {
 	});
 
 	it('refuses a time zone the runtime does not know', () => {
-		expect(parsePage('campaign', page([box], { endsAt, endsZone: 'Mars/Olympus' }))).toEqual({
+		expect(parsePage('campaign', page({ endsAt, endsZone: 'Mars/Olympus' }))).toEqual({
 			ok: false,
 			path: ['endsZone'],
 			message: '"Mars/Olympus" is not a time zone'
-		});
-	});
-
-	it('refuses a partial look, naming the key it lacks', () => {
-		expect(parsePage('campaign', page([box], { look: { shade: 'warm' } }))).toMatchObject({
-			ok: false,
-			path: ['look', 'corner']
 		});
 	});
 
@@ -399,33 +186,33 @@ describe('what a page carries beside its blocks', () => {
 		['goalMinor', 5_000_000, 'the Donation page has no goal; only a campaign does'],
 		['endsAt', endsAt, 'the Donation page has no end date; only a campaign does'],
 		['endsZone', 'UTC', 'the Donation page has no end date; only a campaign does'],
-		['name', 'Spring', 'the Donation page has no name; only a campaign does']
+		['name', 'Spring', 'the Donation page has no name; only a campaign does'],
+		['lede', 'Help', 'the Donation page has no lede; only a campaign does'],
+		['story', blank, 'the Donation page has no story; only a campaign does'],
+		[
+			'hero',
+			{ imageId: IMAGE, alt: null },
+			'the Donation page has no cover photo; only a campaign does'
+		],
+		['photos', [], 'the Donation page has no photos; only a campaign does'],
+		['tiers', [], 'the Donation page has no impact tiers; only a campaign does'],
+		['faq', [], 'the Donation page has no questions; only a campaign does']
 	])('refuses %s on the Donation page', (key, value, message) => {
-		expect(parsePage('donation_page', page([box], { [key]: value }))).toEqual({
+		expect(parsePage('donation_page', page({ [key]: value }))).toEqual({
 			ok: false,
 			path: [key],
 			message
 		});
 	});
 
-	it.each([
-		[{ shade: 'dusk', corner: 'round' }, ['look', 'shade']],
-		[{ shade: 'warm', corner: 'pill' }, ['look', 'corner']]
-	])('refuses the look %j off its closed sets', (look, path) => {
-		expect(parsePage('campaign', page([box], { look }))).toMatchObject({ ok: false, path });
-	});
-
-	it('refuses a brand colour on the page’s look, which is the organisation’s', () => {
-		const look = { shade: 'cool', corner: 'square', brandColour: '#1f6feb' };
-		expect(parsePage('campaign', page([box], { look }))).toMatchObject({
-			ok: false,
-			path: ['look']
-		});
+	it('accepts the Donation page’s heading and share message', () => {
+		const input = page({ heading: 'Give today', shareMessage: 'Join me' });
+		expect(parsePage('donation_page', input)).toEqual({ ok: true, page: input });
 	});
 
 	it('refuses a share message over its length', () => {
 		const shareMessage = 'x'.repeat(SHARE_MESSAGE_MAX + 1);
-		expect(parsePage('campaign', page([box], { shareMessage }))).toEqual({
+		expect(parsePage('campaign', page({ shareMessage }))).toEqual({
 			ok: false,
 			path: ['shareMessage'],
 			message: `a share message holds at most ${SHARE_MESSAGE_MAX} characters`
@@ -444,46 +231,19 @@ describe('what a page carries beside its blocks', () => {
 	};
 
 	it('carries the draft donation settings', () => {
-		expect(parsePage('donation_page', page([box], { settings }))).toEqual({
+		expect(parsePage('donation_page', page({ settings }))).toEqual({
 			ok: true,
-			page: page([box], { settings })
+			page: page({ settings })
 		});
 	});
 
 	it('refuses draft donation settings off their rule, naming where', () => {
 		const loose = { ...settings, suggestedAmounts: [2500, 0] };
-		expect(parsePage('campaign', page([box], { settings: loose }))).toEqual({
+		expect(parsePage('campaign', page({ settings: loose }))).toEqual({
 			ok: false,
 			path: ['settings', 'suggestedAmounts', 1],
 			message: 'an amount is a whole number of minor units above zero'
 		});
-	});
-});
-
-describe('the rule reads shape only, never the page’s data', () => {
-	const blank = { type: 'doc', content: [{ type: 'paragraph' }] };
-
-	it('accepts on a campaign every block with nothing to show, which leaves itself out at render', () => {
-		const blocks = [
-			{ id: 'title', type: 'title', variant: 'left', background: 'none', heading: '' },
-			{ id: 'goal', type: 'goal-bar', variant: 'bar', background: 'none' },
-			{ id: 'story', type: 'story', variant: 'plain', background: 'none', body: blank },
-			{ id: 'impact', type: 'impact-tiers', variant: 'list', background: 'none', tiers: [] },
-			{ id: 'faq', type: 'faq', variant: 'accordion', background: 'none', items: [] },
-			{ id: 'about', type: 'about-us', variant: 'statement', background: 'strong' },
-			box,
-			{ id: 'share', type: 'share', variant: 'icons', background: 'soft' },
-			{ id: 'footer', type: 'org-info', variant: 'card', background: 'none' }
-		];
-		expect(parsePage('campaign', page(blocks))).toEqual({ ok: true, page: page(blocks) });
-	});
-
-	it('accepts a program chooser on a Donation page with no settings to choose among', () => {
-		const blocks = [
-			{ id: 'programs', type: 'program-chooser', variant: 'list', background: 'none' },
-			box
-		];
-		expect(parsePage('donation_page', page(blocks))).toEqual({ ok: true, page: page(blocks) });
 	});
 });
 
@@ -492,7 +252,7 @@ describe('one rule', () => {
 		const exported = Object.entries(await import('./catalog'));
 		const functions = exported.filter(([, value]) => typeof value === 'function');
 		expect(functions.map(([name]) => name)).toEqual(['parsePage']);
-		const valid = page([box]);
+		const valid = page();
 		expect(parsePage('campaign', valid).ok).toBe(true);
 		for (const [name, value] of exported) {
 			if (value instanceof z.ZodType)

@@ -4,7 +4,7 @@ import { type AdminActionData, resultFor } from '$lib/admin/use-admin-form';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 
 // the one way an editor part writes the page's draft: a press posted to the editor route's action
-// (`saveBlockForm` in $lib/server/pages/blocks.ts, `savePageSetting` in
+// (`saveContentForm` in $lib/server/pages/content.ts, `savePageSetting` in
 // $lib/server/pages/page-settings.ts) through a fetcher, against the page's version the editor holds
 // at the press, so the editor does not navigate. a landed write moves that version, which reloads
 // the preview and redraws the part from the draft.
@@ -15,18 +15,14 @@ import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 // control lands as the last of them, and presses on different forms are all kept, in the order
 // their forms were first kept. once an answer lands the first kept is sent, at the version that
 // answer moved the page to, and the next waits for its answer in turn. what is kept for a form, or
-// else what is in flight for it, is readable (`sending`), so a picture or a chip is drawn as the
-// press asked until it is answered, and as the draft holds once it is.
+// else what is in flight for it, is readable (`sending`), so a control is drawn as the press asked
+// until it is answered, and as the draft holds once it is.
 //
 // the fetcher is unkeyed, so an answer does not outlive the part that asked: a sheet reopened starts
 // with none. a part the editor holds for as long as it is up lets go of an answer with `startClean`.
 
 /** what the editor's action answers a press: what landed, or the form's refusal. */
-export type DraftAnswer = AdminActionData & {
-	readonly saved?: string;
-	/** the block a landed Add a block put on the page. */
-	readonly blockId?: string;
-};
+export type DraftAnswer = AdminActionData & { readonly saved?: string };
 
 /** a press's boxes, each posted in turn, so a box named twice posts twice. */
 export type PressBoxes = readonly (readonly [string, string])[] | FormData;

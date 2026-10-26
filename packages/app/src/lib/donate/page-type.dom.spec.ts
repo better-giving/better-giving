@@ -53,7 +53,7 @@ describe('the hosted page is set in Red Hat', () => {
 		hosted.innerHTML = `
 			<div class="page-ground">
 				<p id="prose">A gift keeps the doors open.</p>
-				<h1 class="page-title-heading" id="title">Northside pantry</h1>
+				<h1 class="page-title" id="title">Northside pantry</h1>
 				<h2 class="page-heading" id="heading">What your gift does</h2>
 				<p class="page-goal-raised" id="goal">$1,200</p>
 				<div data-donate-root id="card">

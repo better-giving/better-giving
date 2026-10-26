@@ -73,7 +73,7 @@ export type ReplacePhotoControlProps = Description &
 		readonly pressId?: string | undefined;
 	};
 
-/* a placed image and the press that swaps it: a block's photo in its edit sheet, a program's
+/* a placed image and the press that swaps it: a cover or a photo in its sheet, a program's
    photo, the organisation's logo. a new image is resized here and reported, or, with `onChosen`,
    handed over for the caller's own step first (`Picked`); the route uploads it and hands back
    `state`. none placed yet draws the press alone, as Add, on the same path; the box that

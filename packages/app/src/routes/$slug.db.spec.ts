@@ -160,14 +160,16 @@ function markup(loaderData: LoaderData): string {
 	);
 }
 
-/** one block's section, by the block type the renderer stamps on it. */
-function block(html: string, type: string): string {
-	const found = new RegExp(`<section[^>]*data-block="${type}"[\\s\\S]*?</section>`).exec(html);
-	return found?.[0] ?? '';
+/** one area of the page, from its opening tag to the next area's, by the name the renderer stamps on it. */
+function area(html: string, name: string): string {
+	const start = html.indexOf(`data-area="${name}"`);
+	if (start === -1) return '';
+	const next = html.indexOf('data-area=', start + 1);
+	return html.slice(start, next === -1 ? undefined : next);
 }
 
 describe('a published campaign at its address', () => {
-	it('draws its blocks around one donation box, against its own settings row', async () => {
+	it('draws its title around one donation box, against its own settings row', async () => {
 		const formId = await campaign();
 
 		const answered = await visit();
@@ -175,8 +177,8 @@ describe('a published campaign at its address', () => {
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.view.config.formId).toBe(formId);
 		const html = markup(answered.data);
-		expect(block(html, 'title')).toContain('Winter coat drive');
-		expect(html.match(/data-block="donation-box"/g)).toHaveLength(1);
+		expect(area(html, 'title')).toContain('Winter coat drive');
+		expect(html.match(/data-area="box"/g)).toHaveLength(1);
 		expect(answered.data.view.sharing.url).toBe(`${OWN}/${SLUG}`);
 	});
 
@@ -190,16 +192,7 @@ describe('a published campaign at its address', () => {
 
 	it('names its cover photo, by id, as its share image', async () => {
 		const photo = '0192a4c1-0000-7000-8000-000000000001';
-		const published = defaultCampaign();
-		published.blocks[0] = {
-			id: 'hero',
-			type: 'hero',
-			variant: 'framed',
-			background: 'none',
-			imageId: photo,
-			alt: null
-		};
-		await campaign({ published });
+		await campaign({ published: { ...defaultCampaign(), hero: { imageId: photo, alt: null } } });
 		const answered = await visit();
 		expect(campaignPage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
 			{ title: 'Winter coat drive' },
@@ -207,18 +200,11 @@ describe('a published campaign at its address', () => {
 		]);
 	});
 
-	it('names no share image without a cover photo, a photo lower on the page included', async () => {
+	it('names no share image without a cover photo, a photo beside the story included', async () => {
 		const photo = '0192a4c1-0000-7000-8000-000000000001';
-		const published = defaultCampaign();
-		published.blocks[0] = {
-			id: 'photo',
-			type: 'image',
-			variant: 'wide',
-			background: 'none',
-			imageId: photo,
-			alt: null
-		};
-		await campaign({ published });
+		await campaign({
+			published: { ...defaultCampaign(), photos: [{ imageId: photo, alt: null }] }
+		});
 		const answered = await visit();
 		expect(campaignPage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
 			{ title: 'Winter coat drive' }
@@ -233,24 +219,18 @@ describe('a published campaign at its address', () => {
 	});
 });
 
-/** the seeds the page root sets, read off the drawn page as the browser receives them. */
-function seeds(html: string) {
+/** the brand colour the page root sets, read off the drawn page as the browser receives it. */
+function brandColour(html: string): string | null {
 	const root = /<div[^>]*data-donate-root[^>]*>/.exec(html)?.[0];
 	if (root === undefined) throw new Error('the page drew no root');
-	return {
-		shade: /data-shade="([^"]*)"/.exec(root)?.[1],
-		corner: /data-corner="([^"]*)"/.exec(root)?.[1],
-		brandColour: /--donate-primary:([^;"]*)/.exec(root)?.[1] ?? null
-	};
+	return /--donate-primary:([^;"]*)/.exec(root)?.[1] ?? null;
 }
 
 describe('the organisation’s mission and vision on a published campaign', () => {
+	// About us closes the feature layout, which four impact tiers draw.
 	const withAboutUs = {
 		...defaultCampaign(),
-		blocks: [
-			...defaultCampaign().blocks,
-			{ id: 'about', type: 'about-us', variant: 'stacked', background: 'none' }
-		]
+		tiers: [1, 2, 3, 4].map((each) => ({ amountMinor: each * 1000, buys: `gift ${each}` }))
 	};
 
 	it('are the profile’s, drawn in About us', async () => {
@@ -263,7 +243,7 @@ describe('the organisation’s mission and vision on a published campaign', () =
 			mission: 'Warm coats for every child.',
 			vision: 'A warm town.'
 		});
-		const about = block(markup(answered.data), 'about-us');
+		const about = area(markup(answered.data), 'about');
 		expect(about).toContain('Warm coats for every child.');
 		expect(about).toContain('A warm town.');
 	});
@@ -274,51 +254,26 @@ describe('the organisation’s mission and vision on a published campaign', () =
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.view.org).toMatchObject({ mission: null, vision: null });
-		expect(block(markup(answered.data), 'about-us')).toBe('');
+		expect(area(markup(answered.data), 'about')).toBe('');
 	});
 });
 
-describe('the look a published campaign is drawn in', () => {
-	it('is its own shade and corners, light and soft where it holds none, in the profile’s brand colour', async () => {
-		const own = { shade: 'cool', corner: 'square' } as const;
+describe('the colour a campaign page is drawn in', () => {
+	it('is the profile’s brand colour on a published campaign, none where the profile sets none', async () => {
 		await campaign();
-		await campaign({
-			name: 'Spring fun run',
-			slug: 'spring-fun-run',
-			published: { ...defaultCampaign(), look: own }
-		});
+		expect(brandColour(markup((await visit()).data))).toBeNull();
 
 		await saveProfile(db, { brand_colour: '#1d6b4f' });
 
-		expect(seeds(markup((await visit()).data))).toEqual({
-			shade: 'light',
-			corner: 'soft',
-			brandColour: '#1d6b4f'
-		});
-		expect(seeds(markup((await visit('/spring-fun-run')).data))).toEqual({
-			...own,
-			brandColour: '#1d6b4f'
-		});
+		expect(brandColour(markup((await visit()).data))).toBe('#1d6b4f');
 	});
 
-	it('is its own on the ended screen too, in the profile’s brand colour', async () => {
-		await endedCampaign({
-			published: { ...defaultCampaign(), look: { shade: 'cool', corner: 'square' } }
-		});
-		await endedCampaign({ name: 'Spring fun run', slug: 'spring-fun-run' });
+	it('is the profile’s brand colour on the ended screen too', async () => {
+		await endedCampaign();
 
 		await saveProfile(db, { brand_colour: '#1d6b4f' });
 
-		expect(seeds(markup((await visit()).data))).toEqual({
-			shade: 'cool',
-			corner: 'square',
-			brandColour: '#1d6b4f'
-		});
-		expect(seeds(markup((await visit('/spring-fun-run')).data))).toEqual({
-			shade: 'light',
-			corner: 'soft',
-			brandColour: '#1d6b4f'
-		});
+		expect(brandColour(markup((await visit()).data))).toBe('#1d6b4f');
 	});
 });
 
@@ -366,7 +321,7 @@ describe('a published campaign with a goal', () => {
 
 		const answered = await visit();
 
-		const bar = block(markup(answered.data), 'goal-bar').replace(/<[^>]+>/g, '');
+		const bar = area(markup(answered.data), 'goal').replace(/<[^>]+>/g, '');
 		expect(bar).toContain('$125 raised of $5,000');
 		expect(bar).toContain('Ends December 31');
 	});
@@ -376,11 +331,8 @@ describe('a published campaign the read rule refuses', () => {
 	it.each([
 		{ why: 'missing its shape', published: {} },
 		{
-			why: 'naming a block it does not know',
-			published: {
-				...defaultCampaign(),
-				blocks: [...defaultCampaign().blocks, { id: 'x', type: 'marquee', background: 'none' }]
-			}
+			why: 'naming a key it does not know',
+			published: { ...defaultCampaign(), blocks: [] }
 		}
 	])('draws its own donation box alone when $why, and logs it', async ({ published }) => {
 		const formId = await campaign({ published });
@@ -392,7 +344,7 @@ describe('a published campaign the read rule refuses', () => {
 		expect(answered.data.config.formId).toBe(formId);
 		const html = markup(answered.data);
 		expect(html).toContain('$25');
-		expect(html).not.toContain('data-block=');
+		expect(html).not.toContain('data-area="title"');
 		expect(log).toHaveBeenCalledWith(
 			expect.stringContaining('fails the read rule'),
 			expect.any(String)
@@ -428,7 +380,7 @@ describe('an ended campaign at its address', () => {
 		expect(link).toContain('part="action"');
 		expect(link).toContain('Donate to Hope Foundation');
 		expect(html).toMatch(/^<div[^>]*data-donate-root/);
-		expect(html).not.toContain('data-block=');
+		expect(html).not.toContain('data-area="title"');
 		expect(html).not.toContain('$25');
 	});
 
@@ -734,7 +686,7 @@ describe('a campaign after its editor’s Publish', () => {
 		expect(answered.status).toBe(200);
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.view.config.program).toEqual({ mode: 'pinned', name: 'Winter coats' });
-		expect(block(markup(answered.data), 'title')).toContain('Winter coat drive');
+		expect(area(markup(answered.data), 'title')).toContain('Winter coat drive');
 	});
 
 	it.each([
@@ -779,12 +731,12 @@ describe('a campaign after its editor’s Publish', () => {
 		const back = await visit('/winter-coat-drive-2');
 		expect(back.status).toBe(200);
 		if (back.data.kind !== 'page') throw new Error(`drew ${back.data.kind}`);
-		expect(block(markup(back.data), 'title')).toContain('Winter coat drive');
+		expect(area(markup(back.data), 'title')).toContain('Winter coat drive');
 		const [row] = await db.select().from(page).where(eq(page.id, ended));
 		expect(back.data.view.config.formId).toBe(row?.formId);
 		const held = await visit('/winter-coat-drive');
 		if (held.data.kind !== 'page') throw new Error(`drew ${held.data.kind}`);
-		expect(block(markup(held.data), 'title')).toContain('Coats for kids');
+		expect(area(markup(held.data), 'title')).toContain('Coats for kids');
 	});
 });
 

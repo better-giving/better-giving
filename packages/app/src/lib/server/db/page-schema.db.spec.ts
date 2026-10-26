@@ -269,40 +269,6 @@ describe('a goal or an end date belongs to a campaign, never to the Donation pag
 	});
 });
 
-describe("a page's own look takes the closed sets", () => {
-	const LIVE = { ...CAMPAIGN, slug: 'look-probe', state: 'live', published: CAMPAIGN.draft };
-	const withLook = (look: Record<string, unknown>) => JSON.stringify({ blocks: [], look });
-	const DOCUMENTS = ['draft', 'published', 'last_published'] as const;
-
-	it.each(
-		DOCUMENTS.flatMap((column) => [
-			[column, 'the shade', { shade: 'dark' }],
-			[column, 'the corner', { corner: 'pill' }],
-			[column, 'the brand colour', { brandColour: 'red' }]
-		])
-	)('refuses %s holding an off-list look: %s', async (column, _, look) => {
-		const message = await rejectionCode(() => insertPage({ ...LIVE, [column]: withLook(look) }));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain(`page_${column}_look_check`);
-	});
-
-	it.each(DOCUMENTS)('refuses %s holding a look that is not an object', async (column) => {
-		const doc = JSON.stringify({ blocks: [], look: 'warm' });
-		const message = await rejectionCode(() => insertPage({ ...LIVE, [column]: doc }));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain(`page_${column}_look_check`);
-	});
-
-	it('accepts a page with its own look, and one with none', async () => {
-		const own = withLook({ shade: 'warm', corner: 'round' });
-		const id = await insertPage({ ...LIVE, draft: own, published: '{"look":null}' });
-		const row = await first(
-			stmt(`select json_extract(draft, '$.look.shade') as shade from page where id = ?`, id)
-		);
-		expect(row).toEqual({ shade: 'warm' });
-	});
-});
-
 describe("a campaign's type is one of the list, and the Donation page has none", () => {
 	it('refuses a type on the Donation page', async () => {
 		const message = await refusedAsDonationPage({ ...DONATION_PAGE, campaign_type: 'year_end' });

@@ -34,10 +34,10 @@ export function donorPageLinks() {
 	}));
 }
 
-/** the form's own look — its grey, light, soft — for a page with no look to read. */
-export const FORM_LOOK: PageLook = { brandColour: null, shade: 'light', corner: 'soft' };
+/** the form's own grey, for a page with no brand colour to read. */
+export const FORM_LOOK: PageLook = { brandColour: null };
 
-/** a page root on `plain` in one column, holding `children` and nothing else. */
+/** a page root in one plain column, holding `children` and nothing else. */
 export function PlainPage({
 	look,
 	children
@@ -46,13 +46,7 @@ export function PlainPage({
 	readonly children: ReactNode;
 }) {
 	return (
-		<PageRoot
-			brandColour={look.brandColour}
-			shade={look.shade}
-			corner={look.corner}
-			palette="plain"
-			layout="column"
-		>
+		<PageRoot brandColour={look.brandColour} layout="plain">
 			<main className="stage">{children}</main>
 		</PageRoot>
 	);
@@ -60,8 +54,7 @@ export function PlainPage({
 
 /**
  * a page whose stored document is missing or fails the read rule: its donation box alone, in the
- * default shade and corners and the organisation's brand colour (`donorLook` in
- * $lib/server/pages/view.ts), so a gift can still be made while the page is repaired.
+ * organisation's brand colour, so a gift can still be made while the page is repaired.
  */
 export function PlainDonationPage({
 	config,
@@ -99,13 +92,7 @@ export function EndedCampaignPage({
 	readonly look: PageLook;
 }) {
 	return (
-		<PageRoot
-			brandColour={look.brandColour}
-			shade={look.shade}
-			corner={look.corner}
-			palette="plain"
-			layout="column"
-		>
+		<PageRoot brandColour={look.brandColour} layout="plain">
 			{orgName === null ? null : <Masthead name={orgName} logo={logo ?? null} />}
 			<main className="stage ended">
 				<h1>{copy.campaignEnded(name)}</h1>

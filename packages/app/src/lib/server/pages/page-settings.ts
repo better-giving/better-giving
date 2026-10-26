@@ -13,7 +13,7 @@ import { type DraftKeys, type SettingsTarget, updateDraftKeys } from './queries'
 
 // the Settings sheet's goal and end date, for both editors: each press parsed here and written to
 // the draft alone (`updateDraftKeys` in ./queries.ts) against the version the editor was drawn at,
-// so the live page moves only at Publish. a page's look and sharing are ./blocks.ts's presses.
+// so the live page moves only at Publish. a page's content and share message are ./content.ts's presses.
 //
 // **the goal** is minor units in the page's currency, and an emptied box removes it. **the end
 // date** is a day and the IANA zone of the browser that chose it: the draft stores the day's end in

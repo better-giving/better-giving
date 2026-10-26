@@ -32,7 +32,9 @@ import { applyMigrations, type Migration } from './migrate';
 // `seedPausedBacklog` in front of 0022, `org_presentation` a third, which `seedOrgPresentation`
 // writes in front of 0026, `page` a fourth, which `seedLegacyLooks` writes in front of 0027 on
 // the forms `seed` wrote for it, and `chat_turn` a fifth, which `seedChat` writes in front of 0028
-// beside the images and the page that place them, on the cause and profile `seed` wrote.
+// beside the images and the page that place them, on the cause and profile `seed` wrote. a page
+// laid out as a block list is a sixth, which `seedBlockPage` writes in front of 0031 on the form
+// `seed` wrote for it.
 
 const CONTACT_ID = '019fb300-0000-7000-8000-000000000001';
 const FORM_ID = 'frm_migrationprobe';
@@ -71,6 +73,15 @@ const LEGACY_LOOK_FORMS = ['frm_legacylookcampaign', 'frm_legacylookdonate'] as 
 const LEGACY_LOOK_CAMPAIGN = '019fb300-0000-7000-8000-000000000301';
 const LEGACY_LOOK_DONATION_PAGE = '019fb300-0000-7000-8000-000000000302';
 const LEGACY_LOOK_UPDATED_AT = 1_790_000_000_500;
+
+const PAGE_CONTENT_BY = '0031_page_content_only.sql';
+const PAGE_CONTENT = MIGRATIONS.findIndex((m) => m.name === PAGE_CONTENT_BY);
+const BLOCK_PAGE_FORM = 'frm_blockpage';
+const BLOCK_PAGE = '019fb300-0000-7000-8000-000000000501';
+const BLOCK_PAGE_IMAGES = {
+	hero: '019fb300-0000-7000-8000-000000000502',
+	image: '019fb300-0000-7000-8000-000000000503'
+} as const;
 
 const CHAT_DROPPED_BY = '0028_page_chat_and_illustrations_dropped.sql';
 const CHAT_DROP = MIGRATIONS.findIndex((m) => m.name === CHAT_DROPPED_BY);
@@ -145,7 +156,8 @@ async function seed() {
 				 values (?, 'probe', ?, 'USD', 0, 0),
 				        (?, 'campaign page', ?, 'USD', 0, 0),
 				        (?, 'donation page', ?, 'USD', 0, 0),
-				        (?, 'chat page', ?, 'USD', 0, 0)`,
+				        (?, 'chat page', ?, 'USD', 0, 0),
+				        (?, 'block page', ?, 'USD', 0, 0)`,
 			FORM_ID,
 			POSTING_ACCOUNTS.donationsDeductible.id,
 			LEGACY_LOOK_FORMS[0],
@@ -153,6 +165,8 @@ async function seed() {
 			LEGACY_LOOK_FORMS[1],
 			POSTING_ACCOUNTS.donationsDeductible.id,
 			CHAT_PAGE_FORM,
+			POSTING_ACCOUNTS.donationsDeductible.id,
+			BLOCK_PAGE_FORM,
 			POSTING_ACCOUNTS.donationsDeductible.id
 		),
 		stmt(
@@ -426,6 +440,102 @@ async function seedLegacyLooks() {
 	);
 }
 
+const words = (text: string) => ({
+	type: 'doc',
+	content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
+});
+
+/** a campaign laid out as a block list, every kind of block in it, as the editor before 0031 saved it. */
+const BLOCK_PAGE_DOCUMENT = {
+	layout: 'cover',
+	palette: 'duo',
+	look: { shade: 'warm', corner: 'round' },
+	shareMessage: 'Fill the pantry',
+	shareChannels: ['email', 'x'],
+	switches: { openOnMonthly: true, dedicationOn: false },
+	goalMinor: 4_000_000,
+	endsAt: 1_798_675_199_999,
+	endsZone: 'America/New_York',
+	blocks: [
+		{
+			id: 'hero',
+			type: 'hero',
+			variant: 'wide',
+			background: 'none',
+			imageId: BLOCK_PAGE_IMAGES.hero,
+			alt: 'Volunteers'
+		},
+		{
+			id: 'title',
+			type: 'title',
+			variant: 'left',
+			background: 'none',
+			heading: 'Fill the pantry',
+			lede: 'Feed 1,200 families'
+		},
+		{ id: 'goal', type: 'goal-bar', variant: 'bar', background: 'none' },
+		{
+			id: 'story',
+			type: 'story',
+			variant: 'plain',
+			background: 'soft',
+			body: words('Last winter we fed 1,214 households.')
+		},
+		{ id: 'donate', type: 'donation-box', background: 'none' },
+		{
+			id: 'image',
+			type: 'image',
+			variant: 'wide',
+			background: 'none',
+			imageId: BLOCK_PAGE_IMAGES.image,
+			alt: null
+		},
+		{ id: 'empty', type: 'image', variant: 'column', background: 'none', imageId: null, alt: null },
+		{
+			id: 'tiers',
+			type: 'impact-tiers',
+			variant: 'cards',
+			background: 'none',
+			tiers: [{ amountMinor: 2500, buys: 'a week of meals' }]
+		},
+		{
+			id: 'faq',
+			type: 'faq',
+			variant: 'accordion',
+			background: 'none',
+			items: [{ question: 'Deductible?', answer: words('Yes.') }]
+		},
+		{ id: 'share', type: 'share', variant: 'icons', background: 'none' },
+		{ id: 'footer', type: 'org-info', variant: 'footer', background: 'none' }
+	]
+};
+
+/** a live campaign laid out as a block list, its last copy a bare donation box. */
+async function seedBlockPage() {
+	await bare.batch([
+		...Object.values(BLOCK_PAGE_IMAGES).flatMap((id) => [
+			stmt(
+				`insert into image (id, kind, content_type, width, height, byte_size, alt, created_at, updated_at)
+					 values (?, 'photo', 'image/webp', 640, 480, 2, null, 0, 0)`,
+				id
+			),
+			stmt(`insert into image_bytes (image_id, bytes) values (?, x'0a0b')`, id)
+		]),
+		stmt(
+			`insert into page
+				   (id, type, name, slug, state, form_id, draft, published, last_published, created_at, updated_at)
+				 values (?, 'campaign', 'Winter pantry', 'winter-pantry', 'live', ?, ?, ?, null, 0, 7)`,
+			BLOCK_PAGE,
+			BLOCK_PAGE_FORM,
+			JSON.stringify(BLOCK_PAGE_DOCUMENT),
+			JSON.stringify({
+				...BLOCK_PAGE_DOCUMENT,
+				blocks: [{ id: 'donate', type: 'donation-box', background: 'none' }]
+			})
+		)
+	]);
+}
+
 /**
  * a page's chat whose turns attach seven images: one in each of the page's three documents, the
  * photo of the cause `seed` wrote, the logo on the profile it wrote, and two no row but a turn
@@ -590,6 +700,8 @@ function migrateOverSeed() {
 		await applyMigrations(bare, chain.slice(0, CHAT_DROP));
 		await seedChat();
 		const imagesBefore = await all<Row>(stmt('select * from image order by id'));
+		await applyMigrations(bare, chain.slice(0, PAGE_CONTENT));
+		await seedBlockPage();
 		await applyMigrations(bare, chain);
 		const overSeed = (await recorded()).slice(underSeed.length);
 		return {
@@ -1082,44 +1194,32 @@ describe('0027 reads a page whose look the earlier settings sheet saved', () => 
 			expect(
 				read(row, 'draft'),
 				`the seed's ${String(row.type)} draft reads, so 0027 has nothing to repair`
-			).toMatchObject({ ok: false, path: ['look'] });
+			).toMatchObject({ ok: false });
 		}
 	});
 
-	it.skipIf(nowhereToStop)(
-		"reads all three of a campaign's documents, each keeping its shade and corner",
-		() => {
-			const campaign = stored(LEGACY_LOOK_CAMPAIGN);
-			const { draft, published, last_published } = LEGACY_LOOK_DOCUMENTS.campaign;
-			expect(read(campaign, 'draft')).toEqual({
-				ok: true,
-				page: { ...draft, look: { shade: 'warm', corner: 'round' } }
-			});
-			expect(read(campaign, 'published')).toEqual({
-				ok: true,
-				page: { ...published, look: { shade: 'cool', corner: 'soft' } }
-			});
-			expect(read(campaign, 'last_published')).toEqual({
-				ok: true,
-				page: { ...last_published, look: { shade: 'light', corner: 'square' } }
-			});
-		}
-	);
+	// 0031 then takes every look off with the layout, so the chain leaves each document reading as
+	// its content alone: the share message, the switches and the goal it held.
+	const content = {
+		heading: '',
+		shareMessage: 'Give warmth this winter',
+		switches: { openOnMonthly: false, dedicationOn: true }
+	};
+
+	it.skipIf(nowhereToStop)("reads all three of a campaign's documents", () => {
+		const campaign = stored(LEGACY_LOOK_CAMPAIGN);
+		expect(read(campaign, 'draft')).toEqual({ ok: true, page: { ...content, goalMinor: 500_000 } });
+		expect(read(campaign, 'published')).toEqual({ ok: true, page: content });
+		expect(read(campaign, 'last_published')).toEqual({ ok: true, page: content });
+	});
 
 	it.skipIf(nowhereToStop)(
 		"reads a null look as none of the page's own, and leaves a null column null",
 		() => {
 			const donationPage = stored(LEGACY_LOOK_DONATION_PAGE);
-			const { look, ...draft } = LEGACY_LOOK_DOCUMENTS.donationPage.draft;
-			expect(look).toBeNull();
-			expect(read(donationPage, 'draft')).toEqual({ ok: true, page: draft });
-			expect(read(donationPage, 'published')).toEqual({
-				ok: true,
-				page: {
-					...LEGACY_LOOK_DOCUMENTS.donationPage.published,
-					look: { shade: 'warm', corner: 'soft' }
-				}
-			});
+			expect(LEGACY_LOOK_DOCUMENTS.donationPage.draft.look).toBeNull();
+			expect(read(donationPage, 'draft')).toEqual({ ok: true, page: content });
+			expect(read(donationPage, 'published')).toEqual({ ok: true, page: content });
 			expect(donationPage?.last_published).toBeNull();
 		}
 	);
@@ -1128,6 +1228,85 @@ describe('0027 reads a page whose look the earlier settings sheet saved', () => 
 		expect(
 			[LEGACY_LOOK_CAMPAIGN, LEGACY_LOOK_DONATION_PAGE].map((id) => stored(id)?.updated_at)
 		).toEqual([LEGACY_LOOK_UPDATED_AT, LEGACY_LOOK_UPDATED_AT]);
+	});
+});
+
+// what 0031 is for: a page laid out as a block list reads as content alone, each section carried
+// from the block that held it, and nothing that drew the layout left behind.
+describe('0031 makes a page document content only', () => {
+	let after: Map<string, Row[]>;
+	let overSeed: string[];
+	const stored = () => after.get('page')?.find((r) => r.id === BLOCK_PAGE);
+	const read = (column: 'draft' | 'published') => {
+		const text = stored()?.[column];
+		if (typeof text !== 'string') throw new Error(`the block page has no ${column}`);
+		return parsePage('campaign', JSON.parse(text));
+	};
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		({ after, overSeed } = await migrateOverSeed());
+	});
+
+	it('is in the chain', () => {
+		expect(MIGRATIONS.map((m) => m.name)).toContain(PAGE_CONTENT_BY);
+	});
+
+	it.skipIf(nowhereToStop)('carries every section from the block that held it', () => {
+		expect(overSeed).toContain(PAGE_CONTENT_BY);
+		expect(read('draft')).toEqual({
+			ok: true,
+			page: {
+				heading: 'Fill the pantry',
+				lede: 'Feed 1,200 families',
+				story: words('Last winter we fed 1,214 households.'),
+				hero: { imageId: BLOCK_PAGE_IMAGES.hero, alt: 'Volunteers' },
+				photos: [{ imageId: BLOCK_PAGE_IMAGES.image, alt: null }],
+				tiers: [{ amountMinor: 2500, buys: 'a week of meals' }],
+				faq: [{ question: 'Deductible?', answer: words('Yes.') }],
+				shareMessage: 'Fill the pantry',
+				switches: { openOnMonthly: true, dedicationOn: false },
+				goalMinor: 4_000_000,
+				endsAt: 1_798_675_199_999,
+				endsZone: 'America/New_York'
+			}
+		});
+	});
+
+	it.skipIf(nowhereToStop)('leaves a page with nothing to carry its heading and the rest', () => {
+		expect(read('published')).toEqual({
+			ok: true,
+			page: {
+				heading: '',
+				shareMessage: 'Fill the pantry',
+				switches: { openOnMonthly: true, dedicationOn: false },
+				goalMinor: 4_000_000,
+				endsAt: 1_798_675_199_999,
+				endsZone: 'America/New_York'
+			}
+		});
+		expect(stored()?.last_published).toBeNull();
+	});
+
+	it.skipIf(nowhereToStop)("keeps the editor's version and the page's indexes", async () => {
+		expect(stored()?.updated_at).toBe(7);
+		const indexes = await all(
+			stmt(
+				`select name from sqlite_master where type = 'index' and tbl_name = 'page' and name not like 'sqlite_%' order by name`
+			)
+		);
+		expect(indexes.map((r) => (r as Row).name)).toEqual([
+			'page_form_id_idx',
+			'page_one_donation_page_idx',
+			'page_slug_idx'
+		]);
+	});
+
+	it.skipIf(nowhereToStop)('names a connector photo link’s slot, not a block', async () => {
+		const columns = await all(stmt(`select name from pragma_table_info('photo_link')`));
+		const names = columns.map((r) => (r as Row).name);
+		expect(names).toContain('slot');
+		expect(names).not.toContain('block_id');
 	});
 });
 
@@ -1180,8 +1359,10 @@ describe('0028 drops the page chat and the illustration kind', () => {
 					...LOGO_IMAGES
 				])
 			);
-			expect(ids('image', 'id')).toEqual(kept);
-			expect(ids('image_bytes', 'image_id')).toEqual(kept);
+			const seededLater = (id: string) =>
+				!(Object.values(BLOCK_PAGE_IMAGES) as string[]).includes(id);
+			expect(ids('image', 'id').filter(seededLater)).toEqual(kept);
+			expect(ids('image_bytes', 'image_id').filter(seededLater)).toEqual(kept);
 		}
 	);
 

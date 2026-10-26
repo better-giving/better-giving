@@ -6,11 +6,11 @@ import type { PageType } from '../page/keys';
 import { PageView, type PageViewProps } from './page-view';
 import { EndedCampaignPage } from './plain-page';
 
-// the images a page draws beside its blocks' own photos, through the renderer: the organisation's
-// logo in the masthead and a program's photo on its chooser option — and the logo on an ended
-// campaign's screen, which is drawn beside the renderer rather than by it. every one is drawn from
-// the deployment's image route by its stored id, and a hero's or an image block's photo draws as a
-// plain photo with nothing captioning it. how any of it looks is left to a person looking at it.
+// the images a page draws beside its own photos, through the renderer: the organisation's logo in
+// the masthead and a program's photo on its chooser option — and the logo on an ended campaign's
+// screen, which is drawn beside the renderer rather than by it. every one is drawn from the
+// deployment's image route by its stored id, and the cover and the photos beside it draw as plain
+// photos with nothing captioning them. how any of it looks is left to a person looking at it.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -32,38 +32,10 @@ function parsed(type: PageType, input: unknown): Page {
 	return result.page;
 }
 
-const frame = { background: 'none' };
-const title = { ...frame, id: 'title', type: 'title', variant: 'left', heading: '' };
-const box = { ...frame, id: 'donate', type: 'donation-box' };
-const chooser = (variant: 'cards' | 'list') => ({
-	...frame,
-	id: 'programs',
-	type: 'program-chooser',
-	variant
-});
-const hero = (variant: 'wide' | 'framed') => ({
-	...frame,
-	id: 'hero',
-	type: 'hero',
-	variant,
-	imageId: HERO,
-	alt: null
-});
-const image = (variant: 'column' | 'wide') => ({
-	...frame,
-	id: 'image',
-	type: 'image',
-	variant,
-	imageId: IMAGE,
-	alt: null
-});
-const page = (type: PageType, layout: string, blocks: unknown[]) =>
-	parsed(type, {
-		layout,
-		palette: 'tint',
-		switches: { openOnMonthly: false, dedicationOn: false },
-		blocks
-	});
+const switches = { openOnMonthly: false, dedicationOn: false };
+const donationPage = () => parsed('donation_page', { heading: '', switches });
+const campaign = (content: Record<string, unknown> = {}) =>
+	parsed('campaign', { heading: 'Coats', switches, ...content });
 
 function props(type: PageType, shown: Page, over: Partial<PageViewProps> = {}): PageViewProps {
 	return {
@@ -76,8 +48,8 @@ function props(type: PageType, shown: Page, over: Partial<PageViewProps> = {}): 
 			vision: null,
 			info: { legalName: ORG, ein: null, addressLines: [], email: null, socialLinks: [] }
 		},
-		look: { brandColour: '#1d6b4f', shade: 'warm', corner: 'soft' },
-		sharing: { channels: [], message: '', url: 'https://give.example.org/donate' },
+		look: { brandColour: '#1d6b4f' },
+		sharing: { message: '', url: 'https://give.example.org/donate' },
 		goal: null,
 		money: { locale: 'en-US', currency: 'usd' },
 		programs: PROGRAMS,
@@ -98,9 +70,6 @@ function mount(tree: ReactNode): HTMLElement {
 	});
 	return root;
 }
-
-const donationPage = (variant: 'cards' | 'list' = 'cards') =>
-	page('donation_page', 'box-right', [title, chooser(variant), box]);
 
 describe('the logo atop the page', () => {
 	const masthead = (logo: PageViewProps['logo']) =>
@@ -141,8 +110,8 @@ describe('the logo atop the page', () => {
 		expect(logo?.nextElementSibling?.textContent).toBe(ORG);
 	});
 
-	it('is atop a campaign under the cover too', () => {
-		const cover = page('campaign', 'cover', [hero('wide'), title, box]);
+	it('is atop a campaign with a cover too', () => {
+		const cover = campaign({ hero: { imageId: HERO, alt: null } });
 		const root = mount(
 			<PageView
 				{...props('campaign', cover, { logo: { imageId: LOGO, width: 420, height: 80 } })}
@@ -158,7 +127,7 @@ describe('the logo atop the page', () => {
 					name="Winter coat drive"
 					orgName={ORG}
 					logo={logo}
-					look={{ brandColour: '#1d6b4f', shade: 'warm', corner: 'soft' }}
+					look={{ brandColour: '#1d6b4f' }}
 				/>
 			).querySelector('.page-mast');
 
@@ -180,11 +149,11 @@ describe('the logo atop the page', () => {
 	});
 });
 
-describe.each(['cards', 'list'] as const)('program photos on the chooser, %s', (variant) => {
+describe('program photos on the chooser', () => {
 	const options = (programPhotos: PageViewProps['programPhotos']) =>
 		[
 			...mount(
-				<PageView {...props('donation_page', donationPage(variant), { programPhotos })} />
+				<PageView {...props('donation_page', donationPage(), { programPhotos })} />
 			).querySelectorAll('.page-choose-option')
 		].map((option) => ({
 			name: option.querySelector('.page-choose-name')?.textContent,
@@ -226,34 +195,19 @@ describe.each(['cards', 'list'] as const)('program photos on the chooser, %s', (
 	});
 });
 
-describe('a hero’s or an image block’s photo', () => {
-	it.each([
-		['wide', 'column'],
-		['framed', 'wide']
-	] as const)('draws as a plain photo on a %s hero and a %s image', (heroVariant, imageVariant) => {
-		const shown = page('campaign', 'box-right', [
-			hero(heroVariant),
-			title,
-			box,
-			image(imageVariant)
-		]);
+describe('the cover’s and the photos’ own', () => {
+	it('draws each as a plain photo', () => {
+		const shown = campaign({
+			hero: { imageId: HERO, alt: null },
+			photos: [{ imageId: IMAGE, alt: null }]
+		});
 		const root = mount(<PageView {...props('campaign', shown)} />);
-		expect(root.querySelector('[data-block="hero"] .page-photo')?.getAttribute('src')).toBe(
+		expect(root.querySelector('[data-area="cover"] .page-photo')?.getAttribute('src')).toBe(
 			`/image/${HERO}`
 		);
-		expect(root.querySelector('[data-block="image"] .page-photo')?.getAttribute('src')).toBe(
+		expect(root.querySelector('[data-area="photos"] .page-photo')?.getAttribute('src')).toBe(
 			`/image/${IMAGE}`
 		);
-		expect(root.querySelector('figure, figcaption')).toBeNull();
-	});
-
-	it('draws as a plain photo under the cover, its title over it', () => {
-		const shown = page('campaign', 'cover', [hero('wide'), title, box]);
-		const root = mount(<PageView {...props('campaign', shown)} />);
-		const cover = root.querySelector('.page-hero[data-variant="cover"]');
-
-		expect(cover?.tagName).toBe('DIV');
-		expect(cover?.querySelector('.page-hero-over [data-block="title"]')).not.toBeNull();
 		expect(root.querySelector('figure, figcaption')).toBeNull();
 	});
 });

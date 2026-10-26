@@ -28,7 +28,7 @@ import * as zapierSurface from './zapier';
 import * as zapierMe from './zapier.me';
 import * as unserved from './connector.v1.$';
 import * as campaign from './connector.v1.campaigns.$id._index';
-import * as blocks from './connector.v1.campaigns.$id.blocks';
+import * as content from './connector.v1.campaigns.$id.content';
 import * as settings from './connector.v1.campaigns.$id.settings';
 import * as campaigns from './connector.v1.campaigns._index';
 import * as disconnect from './connector.v1.disconnect';
@@ -46,7 +46,7 @@ const h = connectorHarness(() => ({
 	disconnect: under('disconnect', disconnect),
 	campaigns: under('campaigns', campaigns),
 	campaign: under('campaigns/:id', campaign),
-	blocks: under('campaigns/:id/blocks', blocks),
+	content: under('campaigns/:id/content', content),
 	settings: under('campaigns/:id/settings', settings),
 	uploadLink: under('photos/upload-link', uploadLink),
 	unserved: under('*', unserved),
@@ -79,6 +79,21 @@ describe('hello', () => {
 			name: 'Riverbank Trust',
 			actions: [...CONNECTOR_ACTIONS]
 		});
+	});
+
+	it('lists the content actions under their names, and none of the block ones', async () => {
+		const { actions } = (await (await call('hello', '/hello')).json()) as { actions: string[] };
+
+		expect(actions).toEqual(
+			expect.arrayContaining([
+				'campaigns.update_content',
+				'donation_page.update_content',
+				'content.catalog'
+			])
+		);
+		expect(actions).not.toContain('campaigns.update_blocks');
+		expect(actions).not.toContain('donation_page.update_blocks');
+		expect(actions).not.toContain('blocks.catalog');
 	});
 });
 
@@ -568,18 +583,21 @@ describe('campaign edits', () => {
 		return ((await response.json()) as { id: string }).id;
 	}
 
-	it('reads a campaign, and a missing one as not_found', async () => {
+	it('reads a campaign as its layout and content, with no blocks and no share buttons, and a missing one as not_found', async () => {
 		const key = await connect();
 		const id = await made(key);
 
-		const read = (await (await call('campaign', `/campaigns/${id}`, { key })).json()) as {
-			blocks: { type: string }[];
-		};
+		const read = (await (await call('campaign', `/campaigns/${id}`, { key })).json()) as Record<
+			string,
+			unknown
+		>;
 		const missing = await call('campaign', '/campaigns/019fb300-0000-7000-8000-000000000999', {
 			key
 		});
 
-		expect(read.blocks.some((b) => b.type === 'donation-box')).toBe(true);
+		expect(read).toMatchObject({ layout: 'card', content: { heading: expect.any(String) } });
+		expect(read).not.toHaveProperty('blocks');
+		expect(read.sharing).toEqual({ message: null });
 		expect(missing.status).toBe(404);
 		expect(await missing.json()).toMatchObject({ code: 'not_found' });
 	});
@@ -637,54 +655,130 @@ describe('campaign edits', () => {
 		expect(await response.json()).toMatchObject({ errors: [{ path: 'time_zone' }] });
 	});
 
-	it('replaces the blocks, and refuses a page the page rule refuses with the path', async () => {
+	it('writes the content keys it names and leaves the rest, null clearing one', async () => {
 		const key = await connect();
 		const id = await made(key);
-		const { blocks: current } = (await (
-			await call('campaign', `/campaigns/${id}`, { key })
-		).json()) as {
-			blocks: { type: string }[];
+		const story = {
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: 'Every coat is a warm night.' }] }
+			]
 		};
 
-		const kept = await call('blocks', `/campaigns/${id}/blocks`, {
+		const response = await call('content', `/campaigns/${id}/content`, {
 			method: 'PATCH',
 			key,
-			body: { blocks: current.filter((b) => b.type !== 'share') }
-		});
-		const noBox = await call('blocks', `/campaigns/${id}/blocks`, {
-			method: 'PATCH',
-			key,
-			body: { blocks: current.filter((b) => b.type !== 'donation-box') }
+			body: {
+				heading: 'Warm coats for winter',
+				story,
+				tiers: [{ amountMinor: 2500, buys: 'a coat for one child' }],
+				faq: [{ question: 'Who gets them?', answer: story }]
+			}
 		});
 
-		expect(kept.status).toBe(200);
-		expect(
-			((await kept.json()) as { blocks: { type: string }[] }).blocks.map((b) => b.type)
-		).not.toContain('share');
-		expect(noBox.status).toBe(422);
-		expect(await noBox.json()).toMatchObject({ code: 'invalid', errors: [{ path: 'blocks' }] });
+		expect(response.status).toBe(200);
+		const written = (await response.json()) as { layout: string; content: Record<string, unknown> };
+		expect(written.content).toMatchObject({
+			heading: 'Warm coats for winter',
+			story,
+			tiers: [{ amountMinor: 2500, buys: 'a coat for one child' }],
+			faq: [{ question: 'Who gets them?' }]
+		});
+		expect(written.layout).toBe('letter');
+
+		const cleared = await call('content', `/campaigns/${id}/content`, {
+			method: 'PATCH',
+			key,
+			body: { tiers: null }
+		});
+		const after = (await cleared.json()) as { layout: string; content: Record<string, unknown> };
+		expect(after.content).not.toHaveProperty('tiers');
+		expect(after.content).toMatchObject({ heading: 'Warm coats for winter', story });
+		const [row] = await h.db.select().from(page).where(eq(page.id, id));
+		expect(row?.published).toBeNull();
 	});
 
-	it('refuses a photo id that no stored photo has', async () => {
+	it.each([
+		['layout', { layout: 'feature' }],
+		['blocks', { blocks: [] }],
+		['palette', { palette: 'warm' }],
+		['variant', { variant: 'wide' }]
+	] as const)(
+		'refuses a %s key, saying the page picks its own layout, and writes nothing',
+		async (name, body) => {
+			const key = await connect();
+			const id = await made(key);
+			const [before] = await h.db.select().from(page).where(eq(page.id, id));
+
+			const response = await call('content', `/campaigns/${id}/content`, {
+				method: 'PATCH',
+				key,
+				body: { heading: 'Changed', ...body }
+			});
+
+			expect(response.status).toBe(422);
+			const problem = (await response.json()) as {
+				code: string;
+				detail: string;
+				errors: { path: string }[];
+			};
+			expect(problem).toMatchObject({ code: 'invalid', errors: [{ path: name }] });
+			expect(problem.detail).toContain('picks its whole layout from its content');
+			const [after] = await h.db.select().from(page).where(eq(page.id, id));
+			expect(after?.draft).toBe(before?.draft);
+		}
+	);
+
+	it('refuses content the page rule refuses, with the path', async () => {
 		const key = await connect();
 		const id = await made(key);
-		const { blocks: current } = (await (
-			await call('campaign', `/campaigns/${id}`, { key })
-		).json()) as {
-			blocks: { type: string; imageId?: string | null }[];
-		};
-		const forged = current.map((b) =>
-			b.type === 'hero' ? { ...b, imageId: '019fb300-0000-7000-8000-000000000abc' } : b
-		);
 
-		const response = await call('blocks', `/campaigns/${id}/blocks`, {
+		const response = await call('content', `/campaigns/${id}/content`, {
 			method: 'PATCH',
 			key,
-			body: { blocks: forged }
+			body: { tiers: [{ amountMinor: 0, buys: 'nothing' }] }
+		});
+
+		expect(response.status).toBe(422);
+		expect(await response.json()).toMatchObject({
+			code: 'invalid',
+			errors: [{ path: 'tiers.0.amountMinor' }]
+		});
+	});
+
+	it('refuses a cover photo id that no stored photo has', async () => {
+		const key = await connect();
+		const id = await made(key);
+
+		const response = await call('content', `/campaigns/${id}/content`, {
+			method: 'PATCH',
+			key,
+			body: { hero: { imageId: '019fb300-0000-7000-8000-000000000abc', alt: null } }
 		});
 
 		expect(response.status).toBe(422);
 		expect(((await response.json()) as { detail: string }).detail).toContain('photos.upload_link');
+	});
+
+	it('refuses a settings body that picks share channels, and keeps the message alone', async () => {
+		const key = await connect();
+		const id = await made(key);
+
+		const channels = await call('settings', `/campaigns/${id}/settings`, {
+			method: 'PATCH',
+			key,
+			body: { sharing: { message: 'Hello', channels: ['email'] } }
+		});
+		const message = await call('settings', `/campaigns/${id}/settings`, {
+			method: 'PATCH',
+			key,
+			body: { sharing: { message: 'Hello' } }
+		});
+
+		expect(channels.status).toBe(422);
+		expect(await channels.json()).toMatchObject({ errors: [{ path: 'sharing.channels' }] });
+		expect(message.status).toBe(200);
+		expect(await message.json()).toMatchObject({ sharing: { message: 'Hello' } });
 	});
 });
 
@@ -718,7 +812,7 @@ describe('the photo link', () => {
 		);
 	}
 
-	it('places one photo in the campaign’s empty hero, once', async () => {
+	it('places one photo as the campaign’s cover, once', async () => {
 		const key = await connect();
 		const { id, url } = await linked(key);
 		expect(url.origin).toBe(ORIGIN);
@@ -728,12 +822,117 @@ describe('the photo link', () => {
 
 		expect(await first.json()).toEqual({ placed: true });
 		expect(second.status).toBe(410);
-		const { blocks: after } = (await (
-			await call('campaign', `/campaigns/${id}`, { key })
-		).json()) as {
-			blocks: { type: string; imageId?: string | null }[];
+		const read = (await (await call('campaign', `/campaigns/${id}`, { key })).json()) as {
+			content: { hero?: { imageId: string } };
 		};
-		expect(after.find((b) => b.type === 'hero')?.imageId).toEqual(expect.any(String));
+		expect(read.content.hero?.imageId).toEqual(expect.any(String));
+	});
+
+	async function linkTo(key: string, id: string, extra: Record<string, unknown> = {}) {
+		const response = await call('uploadLink', '/photos/upload-link', {
+			method: 'POST',
+			key,
+			body: { target: { kind: 'campaign', id }, ...extra }
+		});
+		return {
+			response,
+			url: new URL(((await response.clone().json()) as { url?: string }).url ?? ORIGIN)
+		};
+	}
+
+	const contentOf = async (key: string, id: string) =>
+		(
+			(await (await call('campaign', `/campaigns/${id}`, { key })).json()) as {
+				content: { hero?: { imageId: string }; photos?: { imageId: string }[] };
+			}
+		).content;
+
+	it('puts a second photo after the cover, and a slot of "cover" replaces the cover', async () => {
+		const key = await connect();
+		const { id, url } = await linked(key);
+		await upload(url);
+		const first = (await contentOf(key, id)).hero?.imageId;
+
+		const beside = await linkTo(key, id);
+		await upload(beside.url);
+		const afterBeside = await contentOf(key, id);
+
+		expect(afterBeside.hero?.imageId).toBe(first);
+		expect(afterBeside.photos).toHaveLength(1);
+
+		const cover = await linkTo(key, id, { slot: 'cover' });
+		await upload(cover.url);
+		const afterCover = await contentOf(key, id);
+
+		expect(afterCover.hero?.imageId).not.toBe(first);
+		expect(afterCover.photos).toHaveLength(1);
+	});
+
+	it('replaces the photo beside the cover that a numbered slot names', async () => {
+		const key = await connect();
+		const { id, url } = await linked(key);
+		await upload(url);
+		await upload((await linkTo(key, id)).url);
+		const before = (await contentOf(key, id)).photos?.[0]?.imageId;
+
+		await upload((await linkTo(key, id, { slot: '0' })).url);
+		const after = await contentOf(key, id);
+
+		expect(after.photos).toHaveLength(1);
+		expect(after.photos?.[0]?.imageId).not.toBe(before);
+	});
+
+	it.each([
+		['new', 'slot is "cover"'],
+		['photo-1', 'slot is "cover"'],
+		['block-3', 'slot is "cover"']
+	])('refuses a link slot of %s, naming the slots there are', async (slot, saying) => {
+		const key = await connect();
+		const { id } = await linked(key);
+
+		const { response } = await linkTo(key, id, { slot });
+
+		expect(response.status).toBe(422);
+		expect(((await response.json()) as { detail: string }).detail).toContain(saying);
+		expect(await h.db.select().from(photoLink)).toHaveLength(1);
+	});
+
+	it('refuses a link for the donation page, which holds no photos', async () => {
+		const key = await connect();
+
+		const response = await call('uploadLink', '/photos/upload-link', {
+			method: 'POST',
+			key,
+			body: { target: { kind: 'donation_page' } }
+		});
+
+		expect(response.status).toBe(422);
+		expect(((await response.json()) as { detail: string }).detail).toContain('no photos');
+		expect(await h.db.select().from(photoLink)).toEqual([]);
+	});
+
+	it('places a stored photo as the cover of another campaign by its id, which a made-up id cannot', async () => {
+		const key = await connect();
+		const { id, url } = await linked(key);
+		await upload(url);
+		const imageId = (await contentOf(key, id)).hero?.imageId ?? '';
+		const other = (
+			(await (
+				await call('campaigns', '/campaigns', { method: 'POST', key, body: { title: 'Boots' } })
+			).json()) as { id: string }
+		).id;
+
+		const response = await call('content', `/campaigns/${other}/content`, {
+			method: 'PATCH',
+			key,
+			body: { hero: { imageId, alt: 'Coats on a rack' } }
+		});
+
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as { content: { hero: unknown } }).content.hero).toEqual({
+			imageId,
+			alt: 'Coats on a rack'
+		});
 	});
 
 	it('is refused past its thirty minutes, and no photo lands in the draft', async () => {
@@ -744,10 +943,10 @@ describe('the photo link', () => {
 		const response = await upload(url);
 
 		expect(response.status).toBe(410);
-		const { blocks: after } = (await (
-			await call('campaign', `/campaigns/${id}`, { key })
-		).json()) as { blocks: { type: string; imageId?: string | null }[] };
-		expect(after.find((b) => b.type === 'hero')?.imageId ?? null).toBeNull();
+		const read = (await (await call('campaign', `/campaigns/${id}`, { key })).json()) as {
+			content: { hero?: unknown };
+		};
+		expect(read.content.hero).toBeUndefined();
 	});
 
 	it('stops working once the connection is disconnected', async () => {

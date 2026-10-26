@@ -1,22 +1,21 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { BLOCK_TYPES } from '$lib/page/catalog';
 import { page } from '$lib/server/db/schema';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { connectorHarness, ORIGIN, under } from '../connector-routes.testing';
 import * as unserved from './connector.v1.$';
-import * as catalog from './connector.v1.blocks.catalog';
+import * as catalog from './connector.v1.content.catalog';
 import * as campaign from './connector.v1.campaigns.$id._index';
 import * as end from './connector.v1.campaigns.$id.end';
 import * as publish from './connector.v1.campaigns.$id.publish';
 import * as campaigns from './connector.v1.campaigns._index';
 import * as donationPage from './connector.v1.donation-page._index';
-import * as donationBlocks from './connector.v1.donation-page.blocks';
+import * as donationContent from './connector.v1.donation-page.content';
 import * as donationReset from './connector.v1.donation-page.reset';
 import * as hello from './connector.v1.hello';
 
 // the page actions of `/connector/v1`: Publish and End on a campaign, the donation page's read,
-// blocks and Reset, and the block catalog a chat writes blocks from.
+// content and Reset, and the content catalog a chat writes content from.
 
 const h = connectorHarness(() => ({
 	campaigns: under('campaigns', campaigns),
@@ -24,9 +23,9 @@ const h = connectorHarness(() => ({
 	publish: under('campaigns/:id/publish', publish),
 	end: under('campaigns/:id/end', end),
 	donationPage: under('donation-page', donationPage),
-	donationBlocks: under('donation-page/blocks', donationBlocks),
+	donationContent: under('donation-page/content', donationContent),
 	donationReset: under('donation-page/reset', donationReset),
-	catalog: under('blocks/catalog', catalog),
+	catalog: under('content/catalog', catalog),
 	hello: under('hello', hello),
 	unserved: under('*', unserved)
 }));
@@ -65,8 +64,8 @@ describe('campaigns.publish', () => {
 		const key = await connect();
 		const id = await made(key);
 		const [row] = await h.db.select().from(page).where(eq(page.id, id));
-		const draft = JSON.parse(row?.draft ?? '{}') as { blocks: { type: string }[] };
-		draft.blocks = draft.blocks.filter((b) => b.type !== 'donation-box');
+		const draft = JSON.parse(row?.draft ?? '{}') as Record<string, unknown>;
+		draft.endsAt = Date.now() + 86_400_000;
 		await h.db
 			.update(page)
 			.set({ draft: JSON.stringify(draft) })
@@ -81,7 +80,7 @@ describe('campaigns.publish', () => {
 		expect(response.status).toBe(422);
 		const problem = (await response.json()) as { code: string; detail: string };
 		expect(problem.code).toBe('invalid');
-		expect(problem.detail).toContain('exactly one donation box');
+		expect(problem.detail).toContain('an end date names the time zone');
 		const [after] = await h.db.select().from(page).where(eq(page.id, id));
 		expect(after?.published).toBeNull();
 	});
@@ -182,49 +181,45 @@ describe('the donation page', () => {
 		expect(await h.db.select().from(page)).toEqual([]);
 	});
 
-	it('reads the live donation page at /donate', async () => {
+	it('reads the live donation page at /donate as its heading, with no blocks and no share buttons', async () => {
 		const key = await connect();
 		await ensureDonationPage(h.db);
 
 		const response = await call('donationPage', '/donation-page', { key });
 
 		expect(response.status).toBe(200);
-		const read = (await response.json()) as Record<string, unknown> & {
-			blocks: { type: string }[];
-		};
+		const read = (await response.json()) as Record<string, unknown>;
 		expect(read).toMatchObject({
 			status: 'published',
 			public_url: `${ORIGIN}/donate`,
 			has_unpublished_changes: false,
-			sharing: { message: null, channels: null },
+			sharing: { message: null },
+			content: { heading: expect.any(String) },
 			updated_at: expect.any(String)
 		});
-		expect(read.blocks.some((b) => b.type === 'donation-box')).toBe(true);
-		expect(read).not.toHaveProperty('slug');
-		expect(read).not.toHaveProperty('goal');
+		expect(Object.keys(read.content as object)).toEqual(['heading']);
+		for (const gone of ['blocks', 'slug', 'goal', 'layout']) expect(read).not.toHaveProperty(gone);
 	});
 
-	it('takes new blocks on its draft, and Reset puts the default back live', async () => {
+	it('takes a new heading on its draft, and Reset puts the default back live', async () => {
 		const key = await connect();
 		await ensureDonationPage(h.db);
-		const { blocks: current } = (await (
-			await call('donationPage', '/donation-page', { key })
-		).json()) as {
-			blocks: { type: string }[];
+		const first = (await (await call('donationPage', '/donation-page', { key })).json()) as {
+			content: { heading: string };
 		};
 
-		const edited = await call('donationBlocks', '/donation-page/blocks', {
+		const edited = await call('donationContent', '/donation-page/content', {
 			method: 'PATCH',
 			key,
-			body: { blocks: current.filter((b) => b.type !== 'share') }
+			body: { heading: 'Give to the Riverbank' }
 		});
 
 		expect(edited.status).toBe(200);
 		const after = (await edited.json()) as {
-			blocks: { type: string }[];
+			content: { heading: string };
 			has_unpublished_changes: boolean;
 		};
-		expect(after.blocks.map((b) => b.type)).not.toContain('share');
+		expect(after.content.heading).toBe('Give to the Riverbank');
 		expect(after.has_unpublished_changes).toBe(true);
 
 		const reset = await call('donationReset', '/donation-page/reset', {
@@ -235,10 +230,10 @@ describe('the donation page', () => {
 
 		expect(reset.status).toBe(200);
 		const back = (await reset.json()) as {
-			blocks: { type: string }[];
+			content: { heading: string };
 			has_unpublished_changes: boolean;
 		};
-		expect(back.blocks).toEqual(current);
+		expect(back.content).toEqual(first.content);
 		expect(back.has_unpublished_changes).toBe(false);
 	});
 
@@ -251,13 +246,10 @@ describe('the donation page', () => {
 		async (_, body) => {
 			const key = await connect();
 			await ensureDonationPage(h.db);
-			const { blocks: current } = (await (
-				await call('donationPage', '/donation-page', { key })
-			).json()) as { blocks: { type: string }[] };
-			await call('donationBlocks', '/donation-page/blocks', {
+			await call('donationContent', '/donation-page/content', {
 				method: 'PATCH',
 				key,
-				body: { blocks: current.filter((b) => b.type !== 'share') }
+				body: { heading: 'Edited' }
 			});
 			const [before] = await h.db.select().from(page).where(eq(page.type, 'donation_page'));
 
@@ -296,46 +288,33 @@ describe('the donation page', () => {
 		expect(await response.json()).toMatchObject({ code: 'invalid', errors: [{ path: '' }] });
 	});
 
-	it('refuses blocks the page rule refuses, and a photo id no stored photo has', async () => {
-		const key = await connect();
-		await ensureDonationPage(h.db);
-		const { blocks: current } = (await (
-			await call('donationPage', '/donation-page', { key })
-		).json()) as {
-			blocks: { type: string; imageId?: string | null }[];
-		};
+	it.each([
+		['lede', { lede: 'A sentence' }],
+		['story', { story: { type: 'doc', content: [] } }],
+		['layout', { layout: 'feature' }],
+		['blocks', { blocks: [] }]
+	] as const)(
+		'refuses %s on the donation page, whose content is its heading alone',
+		async (name, body) => {
+			const key = await connect();
+			await ensureDonationPage(h.db);
+			const [before] = await h.db.select().from(page).where(eq(page.type, 'donation_page'));
 
-		const noBox = await call('donationBlocks', '/donation-page/blocks', {
-			method: 'PATCH',
-			key,
-			body: { blocks: current.filter((b) => b.type !== 'donation-box') }
-		});
-		const forged = await call('donationBlocks', '/donation-page/blocks', {
-			method: 'PATCH',
-			key,
-			body: {
-				blocks: [
-					{
-						id: 'photo',
-						type: 'image',
-						variant: 'wide',
-						background: 'none',
-						imageId: MISSING,
-						alt: null
-					},
-					...current
-				]
-			}
-		});
+			const response = await call('donationContent', '/donation-page/content', {
+				method: 'PATCH',
+				key,
+				body: { heading: 'Edited', ...body }
+			});
 
-		expect(noBox.status).toBe(422);
-		expect(await noBox.json()).toMatchObject({ code: 'invalid', errors: [{ path: 'blocks' }] });
-		expect(forged.status).toBe(422);
-		expect(((await forged.json()) as { detail: string }).detail).toContain('photos.upload_link');
-	});
+			expect(response.status).toBe(422);
+			expect(await response.json()).toMatchObject({ code: 'invalid', errors: [{ path: name }] });
+			const [after] = await h.db.select().from(page).where(eq(page.type, 'donation_page'));
+			expect(after?.draft).toBe(before?.draft);
+		}
+	);
 
 	it.each([
-		['donationBlocks', '/donation-page/blocks', 'PATCH', { blocks: [] }],
+		['donationContent', '/donation-page/content', 'PATCH', { heading: 'Hi' }],
 		['donationReset', '/donation-page/reset', 'POST', { confirm: true }]
 	] as const)(
 		'answers %s not_found before the dashboard opens it',
@@ -351,27 +330,39 @@ describe('the donation page', () => {
 	);
 });
 
-describe('blocks.catalog', () => {
-	it('describes every block a page may hold, each with the JSON Schema a block of it meets', async () => {
+describe('content.catalog', () => {
+	it('describes every content key with the JSON Schema of its value, and how the layout is picked', async () => {
 		const key = await connect();
 
-		const response = await call('catalog', '/blocks/catalog', { key });
+		const response = await call('catalog', '/content/catalog', { key });
 
 		expect(response.status).toBe(200);
-		const { blocks } = (await response.json()) as {
-			blocks: { type: string; description: string; schema: Record<string, unknown> }[];
+		const body = (await response.json()) as {
+			content: { key: string; description: string; schema: Record<string, unknown> }[];
+			layout: { description: string; story_threshold: number; feature_extras: number };
 		};
-		expect(blocks.map((b) => b.type)).toEqual(BLOCK_TYPES);
-		for (const entry of blocks) {
-			expect(entry.description).not.toBe('');
-			expect(entry.schema).toMatchObject({
-				type: 'object',
-				properties: { type: { const: entry.type } }
-			});
-		}
-		expect(blocks.find((b) => b.type === 'hero')?.schema).toMatchObject({
-			properties: { variant: { enum: ['wide', 'framed'] }, imageId: expect.any(Object) }
+		expect(body.content.map((c) => c.key)).toEqual([
+			'heading',
+			'lede',
+			'story',
+			'hero',
+			'photos',
+			'tiers',
+			'faq'
+		]);
+		for (const entry of body.content) expect(entry.description).not.toBe('');
+		expect(body.content.find((c) => c.key === 'tiers')?.schema).toMatchObject({
+			type: 'array',
+			maxItems: 6,
+			items: { properties: { amountMinor: expect.any(Object), buys: expect.any(Object) } }
 		});
+		expect(body.content.find((c) => c.key === 'hero')?.schema).toMatchObject({
+			type: 'object',
+			properties: { imageId: expect.any(Object), alt: expect.any(Object) }
+		});
+		expect(body.layout).toMatchObject({ story_threshold: 320, feature_extras: 4 });
+		expect(body.layout.description).toContain('never set');
+		expect(body).not.toHaveProperty('blocks');
 	});
 });
 
@@ -384,12 +375,14 @@ describe('what this release serves', () => {
 				'campaigns.publish',
 				'campaigns.end',
 				'donation_page.get',
-				'donation_page.update_blocks',
+				'donation_page.update_content',
 				'donation_page.reset',
-				'blocks.catalog'
+				'content.catalog'
 			])
 		);
 		expect(actions).not.toContain('campaigns.unpublish');
+		expect(actions).not.toContain('donation_page.update_blocks');
+		expect(actions).not.toContain('blocks.catalog');
 	});
 
 	it('answers an unpublish as unknown_action, since a live campaign leaves the air only by End', async () => {

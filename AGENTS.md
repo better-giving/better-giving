@@ -121,7 +121,7 @@ A contract below is permanent by decision. Weigh a fix on its own merits.
 ## Product surface
 
 - Donor-facing pages are `/donate` and each live campaign at its own address. A donor page is on no `site` row and on no form's `allowed_origins` (`packages/app/src/lib/server/pages/view.ts`). A gift there is a real gift on whatever keys the deployment holds. A form is pageless. A campaign address never shadows a route (`packages/app/src/lib/page/slug.ts`).
-- A page is arranged from a fixed set of blocks. `packages/app/src/lib/page/catalog.ts`'s `parsePage` is the only parser of a stored page.
+- A page holds content only. A campaign is drawn in the one layout its content picks, card, letter or feature (`packages/app/src/lib/page/shape.ts`), and the Donation page in one fixed layout. No screen or connector action sets a layout. `packages/app/src/lib/page/catalog.ts`'s `parsePage` is the only parser of a stored page.
 - A deployment calls no AI model and binds no AI service.
 - The repo contains no org-editable files.
 - The form's flow logic imports no framework. One machine and one `v1` client under `packages/form/src/`.

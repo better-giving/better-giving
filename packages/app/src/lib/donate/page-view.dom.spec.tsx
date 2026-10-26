@@ -3,111 +3,56 @@ import { join } from 'node:path';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { BLOCK_TYPES, BLOCKS, type Block, type Page, parsePage } from '../page/catalog';
+import type { Page } from '../page/catalog';
 import { defaultCampaign, defaultDonationPage } from '../page/defaults';
-import { LAYOUTS, type Layout, PAGE_TYPES, type PageType } from '../page/keys';
-import { BLOCK_MESSAGE, EDITING_MESSAGE, READY_MESSAGE } from '../page/preview-message';
+import type { PageType } from '../page/keys';
+import { SECTION_MESSAGE } from '../page/preview-message';
 import type { RichTextDocument } from '../rich-text/document';
 import { initials, PageView, type PageViewProps } from './page-view';
 
-// the page's renderer, mounted: which blocks draw and which leave themselves out, where each stands
-// in each layout, and that the donation box is always there, once, outside every block. the page is
-// built from `BLOCKS`, so a variant added to the catalog is drawn here without a line of this file
-// changing. how any of it looks is left to a person looking at it.
+// the page's renderer, mounted: which whole layout a campaign is drawn in, which sections each
+// layout draws and in what order, that a section with nothing in it is left out, and that the
+// donation box is there once and early. how any of it looks is left to a person looking at it, and
+// where ./page.css moves each section on a wide page is the stylesheet's.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const words = (text: string): RichTextDocument => ({
+const words = (...texts: string[]): RichTextDocument => ({
 	type: 'doc',
-	content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
+	content: texts.map((text) => ({ type: 'paragraph', content: [{ type: 'text', text }] }))
 });
 
-/** one block of each type and variant, holding what it draws. */
-function blockOf(type: Block['type'], variant: string | null, id: string): unknown {
-	const frame = { id, type, variant, background: 'none' };
-	switch (type) {
-		case 'title':
-			return { ...frame, heading: 'Winter coat drive', lede: 'Every kid starts winter warm.' };
-		case 'story':
-			return {
-				...frame,
-				body: {
-					type: 'doc',
-					content: [
-						{
-							type: 'paragraph',
-							content: [{ type: 'text', text: 'Last winter, 300 kids came without a coat.' }]
-						},
-						{
-							type: 'paragraph',
-							content: [{ type: 'text', text: 'This year we are buying one for each.' }]
-						}
-					]
-				}
-			};
-		case 'impact-tiers':
-			return {
-				...frame,
-				tiers: [
-					{ amountMinor: 2500, buys: 'Hat and gloves for one child' },
-					{ amountMinor: 5000, buys: 'One new winter coat' }
-				]
-			};
-		case 'faq':
-			return {
-				...frame,
-				items: [
-					{ question: 'Can I drop off a coat instead?', answer: words('Yes, on Saturdays.') },
-					{ question: 'Can I give monthly?', answer: words('Yes. Choose Monthly in the box.') }
-				]
-			};
-		case 'hero':
-		case 'image':
-			return { ...frame, imageId: '0192a4c1-0000-7000-8000-000000000001', alt: 'Coats on a rack' };
-		case 'about-us':
-		case 'org-info':
-		case 'share':
-		case 'goal-bar':
-		case 'program-chooser':
-			return frame;
-		case 'donation-box':
-			return { id, type, background: 'none' };
-	}
-}
+const PHOTO = '0192a4c1-0000-7000-8000-000000000001';
+const LOGO = '0192a4c1-0000-7000-8000-00000000000a';
+const tier = (amountMinor: number) => ({ amountMinor, buys: 'One new winter coat' });
+const question = {
+	question: 'Can I give monthly?',
+	answer: words('Yes. Choose Monthly in the box.')
+};
 
-/** a page of the type holding every block it takes in every variant, the box after the companions. */
-function everyBlock(type: PageType, layout: Layout): Page {
-	const blocks: unknown[] = [];
-	for (const blockType of BLOCK_TYPES) {
-		const { variants, pages } = BLOCKS[blockType];
-		if (blockType === 'donation-box' || !(pages as readonly PageType[]).includes(type)) continue;
-		for (const variant of variants ?? [])
-			blocks.push(blockOf(blockType, variant, `${blockType}-${variant}`));
-	}
-	const companions = blocks.filter((b) =>
-		['goal-bar', 'program-chooser'].includes((b as Block).type)
-	);
-	const rest = blocks.filter((b) => !companions.includes(b));
-	const page = {
-		layout,
-		palette: 'tint',
-		switches: { openOnMonthly: false, dedicationOn: false },
-		blocks: [
-			...rest.slice(0, 2),
-			...companions,
-			blockOf('donation-box', null, 'donate'),
-			...rest.slice(2)
-		]
-	};
-	return parsed(type, page);
-}
+/** a campaign holding `content` beside the defaults. */
+const campaign = (content: Partial<Page> = {}): Page => ({ ...defaultCampaign(), ...content });
 
-function parsed(type: PageType, input: unknown): Page {
-	const result = parsePage(type, input);
-	if (!result.ok) throw new Error(result.message);
-	return result.page;
-}
+const CARD = campaign({
+	heading: 'Winter coat drive',
+	lede: 'Every kid starts winter warm.',
+	hero: { imageId: PHOTO, alt: 'Coats on a rack' },
+	story: words('Last winter, 300 kids came without a coat.'),
+	goalMinor: 1_500_000
+});
+const LETTER = campaign({
+	...CARD,
+	story: words('x'.repeat(400)),
+	tiers: [tier(2500), tier(5000)],
+	photos: [{ imageId: PHOTO, alt: null }]
+});
+const FEATURE = campaign({
+	...CARD,
+	tiers: [tier(2500), tier(5000)],
+	photos: [{ imageId: PHOTO, alt: null }],
+	faq: [question]
+});
 
 const PROGRAMS = [
 	{
@@ -135,15 +80,11 @@ function props(type: PageType, page: Page, over: Partial<PageViewProps> = {}): P
 				socialLinks: [{ platform: 'instagram', href: 'https://instagram.com/northside' }]
 			}
 		},
-		look: { brandColour: '#1d6b4f', shade: 'warm', corner: 'round' },
-		sharing: {
-			channels: ['facebook', 'whatsapp', 'email', 'copy-link', 'linkedin', 'x'],
-			message: 'Help us get every kid a coat.',
-			url: 'https://give.example.org/coats'
-		},
+		look: { brandColour: '#1d6b4f' },
+		sharing: { message: 'Help us get every kid a coat.', url: 'https://give.example.org/coats' },
 		goal:
-			type === 'campaign'
-				? { raisedMinor: 984000, goalMinor: 1500000, endsAt: 'December 31' }
+			type === 'campaign' && page.goalMinor !== undefined
+				? { raisedMinor: 984000, goalMinor: page.goalMinor, endsAt: 'December 31' }
 				: null,
 		money: { locale: 'en-US', currency: 'usd' },
 		programs: PROGRAMS,
@@ -165,279 +106,196 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-const drawn = (root: HTMLElement) =>
-	[...root.querySelectorAll<HTMLElement>('[data-block]')].map((node) => node.dataset.block);
+/** the areas the page draws, in source order, the rail's wrapper and the words' left out. */
+const areas = (root: HTMLElement) =>
+	[...root.querySelectorAll<HTMLElement>('[data-area]')]
+		.map((node) => node.dataset.area)
+		.filter((name) => name !== 'rail' && name !== 'words');
 
-/** the one box, and the block wrapper it stands in, if any but its own. */
-function theBox(root: HTMLElement) {
-	const boxes = root.querySelectorAll('[data-testid="box"]');
-	expect(boxes).toHaveLength(1);
-	const box = boxes[0] as HTMLElement;
-	const own = box.closest<HTMLElement>('[data-block]');
-	expect(own?.dataset.block).toBe('donation-box');
-	return { own, outside: own?.parentElement?.closest('[data-block]') ?? null };
-}
+const layoutOf = (root: HTMLElement) =>
+	root.querySelector<HTMLElement>('[data-donate-root]')?.dataset.layout;
 
-const cases = PAGE_TYPES.flatMap((type) => LAYOUTS.map((layout) => [type, layout] as const));
-
-describe('every block in every variant, in every layout', () => {
-	it.each(cases)('the %s draws each block it takes, laid out %s', (type, layout) => {
-		const page = everyBlock(type, layout);
-		const root = mount(<PageView {...props(type, page)} />);
-		const expected = page.blocks.map((block) => block.type);
-		expect(drawn(root).sort()).toEqual([...expected].sort());
-		for (const block of page.blocks)
-			expect(root.querySelector(`#blk-${block.id}`), block.id).not.toBeNull();
-	});
-
-	it.each(cases)('the %s laid out %s holds the box once, outside every block', (type, layout) => {
-		const root = mount(<PageView {...props(type, everyBlock(type, layout))} />);
-		const { outside } = theBox(root);
-		expect(outside).toBeNull();
-	});
-
-	it.each(PAGE_TYPES)('the %s default holds the box once, outside every block', (type) => {
-		const page = type === 'campaign' ? defaultCampaign() : defaultDonationPage();
-		for (const layout of LAYOUTS) {
-			const root = mount(<PageView {...props(type, { ...page, layout })} />);
-			expect(theBox(root).outside).toBeNull();
-		}
-	});
-});
-
-describe('where the blocks stand', () => {
-	it('moves a companion listed directly before the box into the box’s column', () => {
-		const page = everyBlock('campaign', 'box-right');
-		const root = mount(<PageView {...props('campaign', page)} />);
-		const aside = root.querySelector('.page-aside');
-		expect(
-			[...(aside?.querySelectorAll<HTMLElement>('[data-block]') ?? [])].map((n) => n.dataset.block)
-		).toEqual(['goal-bar', 'goal-bar', 'donation-box']);
-	});
-
+describe('the whole layout a campaign is drawn in', () => {
 	it.each([
-		['strong', 'tint'],
-		['tint', 'tint'],
-		['soft', 'soft'],
-		['none', 'none']
-	] as const)(
-		'stands a banner on a band of the first block’s ground, %s drawing as %s',
-		(ground, band) => {
-			const page = defaultCampaign();
-			const blocks = page.blocks.map((b) =>
-				b.type === 'title' ? { ...b, background: ground } : b
-			);
-			const root = mount(
-				<PageView {...props('campaign', { ...page, layout: 'banner', blocks })} />
-			);
-			expect(root.querySelector('.page-band')?.getAttribute('data-background')).toBe(band);
-			expect(
-				root.querySelector('.page-band [data-block="title"]')?.getAttribute('data-background')
-			).toBe('none');
-		}
-	);
+		['card', CARD],
+		['letter', LETTER],
+		['feature', FEATURE]
+	] as const)('draws the %s its content picks', (layout, page) => {
+		expect(layoutOf(mount(<PageView {...props('campaign', page)} />))).toBe(layout);
+	});
 
-	it('keeps the stored order in one column', () => {
-		const page = everyBlock('campaign', 'column');
-		const root = mount(<PageView {...props('campaign', page)} />);
-		expect(root.querySelector('.page-split')).toBeNull();
-		const body = [...root.querySelectorAll<HTMLElement>('main [data-block]')].map(
-			(n) => n.dataset.blockId
-		);
-		expect(body).toEqual(
-			page.blocks.filter((b) => !(b.type === 'org-info' && b.variant === 'footer')).map((b) => b.id)
+	it('draws the Donation page in its own layout', () => {
+		expect(layoutOf(mount(<PageView {...props('donation_page', defaultDonationPage())} />))).toBe(
+			'donation'
 		);
 	});
 
-	it('draws a cover page opening on a title as box-right, its hero in the flow', () => {
-		const root = mount(<PageView {...props('campaign', everyBlock('campaign', 'cover'))} />);
-		expect(root.querySelector('[data-layout]')?.getAttribute('data-layout')).toBe('box-right');
-		expect(root.querySelector('.page-aside [data-block="donation-box"]')).not.toBeNull();
-		expect(root.querySelector('.page-hero[data-variant="cover"]')).toBeNull();
-	});
-
-	it('draws a cover page whose hero has no photo as box-right, its title in the flow', () => {
-		const root = mount(
-			<PageView {...props('campaign', { ...defaultCampaign(), layout: 'cover' })} />
-		);
-		expect(root.querySelector('[data-layout]')?.getAttribute('data-layout')).toBe('box-right');
-		expect(drawn(root)).not.toContain('hero');
-		expect(root.querySelector('.page-lead [data-block="title"] h1')).not.toBeNull();
-	});
-
-	it('closes the page with an org-info footer wherever it is listed', () => {
-		const page = defaultCampaign();
-		const footer = page.blocks.find((b) => b.type === 'org-info');
-		if (footer === undefined) throw new Error('the default campaign has an org-info footer');
-		const moved = { ...page, blocks: [footer, ...page.blocks.filter((b) => b !== footer)] };
-		const root = mount(<PageView {...props('campaign', moved)} />);
-		expect(root.querySelector('footer [data-block="org-info"]')).not.toBeNull();
-		expect(drawn(root).at(-1)).toBe('org-info');
-	});
-
-	it('prefixes each block’s element id', () => {
+	it('draws a fresh campaign as the card, its title, box, share and footer alone', () => {
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
-		expect(root.querySelector('#blk-donate')?.getAttribute('data-block-id')).toBe('donate');
+		expect(layoutOf(root)).toBe('card');
+		expect(areas(root)).toEqual(['title', 'box', 'share']);
+		expect(root.querySelector('.page-org')).not.toBeNull();
 	});
 });
 
-describe('the cover', () => {
-	/** every block the campaign takes, a wide hero and a left title first. */
-	function covered(): Page {
-		const page = everyBlock('campaign', 'cover');
-		const lead = ['hero-wide', 'title-left'];
-		const first = lead.flatMap((id) => page.blocks.filter((b) => b.id === id));
-		return { ...page, blocks: [...first, ...page.blocks.filter((b) => !lead.includes(b.id))] };
-	}
-
-	it('runs the hero edge to edge with the page’s title over it, before the box’s column', () => {
-		const root = mount(<PageView {...props('campaign', covered())} />);
-		expect(root.querySelector('[data-layout]')?.getAttribute('data-layout')).toBe('cover');
-		const hero = root.querySelector<HTMLElement>('main > [data-block="hero"]');
-		expect(hero?.dataset.blockId).toBe('hero-wide');
-		expect(hero?.nextElementSibling?.classList.contains('page-split')).toBe(true);
-		const cover = hero?.querySelector('.page-hero[data-variant="cover"]');
-		expect(cover?.closest('.page-in')).toBeNull();
-		const title = cover?.querySelector<HTMLElement>('.page-hero-over [data-block="title"]');
-		expect(title?.dataset.blockId).toBe('title-left');
-		expect(title?.querySelector('h1')?.textContent).toBe('Winter coat drive');
-		expect(root.querySelector('#blk-title-left')).toBe(title);
+describe('the sections each layout draws, in order', () => {
+	it('the card: cover, title, goal, box, lede, story', () => {
+		const root = mount(<PageView {...props('campaign', CARD)} />);
+		expect(areas(root)).toEqual(['cover', 'title', 'goal', 'box', 'lede', 'story', 'share']);
 	});
 
-	it('draws every block once, and the box once outside every block', () => {
-		const page = covered();
-		const root = mount(<PageView {...props('campaign', page)} />);
-		expect(drawn(root).sort()).toEqual(page.blocks.map((b) => b.type).sort());
-		expect(theBox(root).outside).toBeNull();
-		expect(root.querySelector('.page-aside [data-block="donation-box"]')).not.toBeNull();
-	});
-
-	it('draws a cover whose hero is followed by anything but a title as box-right', () => {
-		const page = covered();
-		const titles = page.blocks.filter((b) => b.type === 'title');
-		const blocks = [...page.blocks.filter((b) => b.type !== 'title'), ...titles];
-		const root = mount(<PageView {...props('campaign', { ...page, blocks })} />);
-		expect(root.querySelector('[data-layout]')?.getAttribute('data-layout')).toBe('box-right');
-		expect(root.querySelector('.page-hero[data-variant="wide"]')).not.toBeNull();
-		expect(root.querySelector('.page-hero-over')).toBeNull();
-	});
-
-	it('nests one block inside another only at the cover’s title, on the scrim', () => {
-		// the Edit edge turns solid on the innermost hovered block and reads the scrim's ring, by
-		// these two facts (./page.css).
-		const root = mount(<PageView {...props('campaign', covered())} />);
-		const nested = [...root.querySelectorAll<HTMLElement>('[data-block-id] [data-block-id]')];
-		expect(nested.map((el) => el.dataset.blockId)).toEqual(['title-left']);
-		expect(
-			nested[0]?.parentElement?.closest('[data-block-id]')?.getAttribute('data-block-id')
-		).toBe('hero-wide');
-		expect(nested[0]?.closest('.page-hero-over')).not.toBeNull();
-	});
-
-	it('reports a click on the title as the title, and on the photo as the hero', () => {
-		const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
-		onTestFinished(() => post.mockRestore());
-		const root = mount(<PageView {...props('campaign', covered())} preview />);
-		act(() => root.querySelector<HTMLElement>('.page-hero-over h1')?.click());
-		act(() => root.querySelector<HTMLElement>('.page-hero img')?.click());
-		expect(post.mock.calls.map(([message]) => message)).toEqual([
-			{ type: READY_MESSAGE },
-			{ type: BLOCK_MESSAGE, id: 'title-left' },
-			{ type: BLOCK_MESSAGE, id: 'hero-wide' }
-		]);
-	});
-
-	it('draws its blocks as clickable while the editor around it says Edit is on, and only it', () => {
-		vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
-		mount(<PageView {...props('campaign', covered())} preview />);
-		const editing = () => document.documentElement.hasAttribute('data-editing');
-		const say = (on: boolean, origin: string, source: Window | null) =>
-			act(() => {
-				window.dispatchEvent(
-					new MessageEvent('message', { data: { type: EDITING_MESSAGE, on }, origin, source })
-				);
-			});
-
-		say(true, 'https://elsewhere.example', window.parent);
-		say(true, window.location.origin, null);
-		expect(editing()).toBe(false);
-
-		say(true, window.location.origin, window.parent);
-		expect(editing()).toBe(true);
-		say(false, window.location.origin, window.parent);
-		expect(editing()).toBe(false);
-	});
-});
-
-describe('a block with nothing to show leaves itself out', () => {
-	const donation = () => defaultDonationPage();
-	const box =
-		(calls: { hideProgramSelect: boolean }[]) => (options: { hideProgramSelect: boolean }) => {
-			calls.push(options);
-			return <div data-testid="box" />;
-		};
-
-	it('draws the chooser on the Donation page when donors choose among two programs or more', () => {
-		const calls: { hideProgramSelect: boolean }[] = [];
+	it('the letter: cover, title, goal, box and tiers, then lede, story, photos and questions', () => {
 		const root = mount(
-			<PageView {...props('donation_page', donation(), { donationBox: box(calls) })} />
+			<PageView {...props('campaign', { ...LETTER, tiers: [tier(2500)], faq: [question] })} />
 		);
-		expect(drawn(root)).toContain('program-chooser');
-		expect(calls.at(-1)).toEqual({ hideProgramSelect: true });
+		expect(areas(root)).toEqual([
+			'cover',
+			'title',
+			'goal',
+			'box',
+			'tiers',
+			'lede',
+			'story',
+			'photos',
+			'faq',
+			'share'
+		]);
+		expect(root.querySelector('[data-area="faq"] details')).toBeNull();
+	});
+
+	it('the feature: cover, title, lede, goal, box, story, tiers, photos, questions and About us', () => {
+		const root = mount(<PageView {...props('campaign', FEATURE)} />);
+		expect(areas(root)).toEqual([
+			'cover',
+			'title',
+			'lede',
+			'goal',
+			'box',
+			'story',
+			'tiers',
+			'photos',
+			'faq',
+			'about',
+			'share'
+		]);
+		expect(root.querySelector('[data-area="tiers"] [data-shape="cards"]')).not.toBeNull();
+		expect(root.querySelector('[data-area="photos"] [data-shape="strip"]')).not.toBeNull();
+		expect(root.querySelector('[data-area="faq"] details')).not.toBeNull();
+	});
+
+	it('the Donation page: title, chooser, box and About us', () => {
+		const root = mount(<PageView {...props('donation_page', defaultDonationPage())} />);
+		expect(areas(root)).toEqual(['title', 'chooser', 'box', 'about', 'share']);
 	});
 
 	it.each([
-		['one program', { programMode: 'pinned' as const }],
-		['no program', { programMode: 'none' as const }],
-		['a single program to choose', { programs: PROGRAMS.slice(0, 1) }]
-	])('leaves the chooser out under %s, and the box keeps its own select', (_, over) => {
-		const calls: { hideProgramSelect: boolean }[] = [];
+		['card', CARD],
+		['letter', LETTER],
+		['feature', FEATURE]
+	] as const)('stands the %s’s box ahead of the story and everything after it', (_, page) => {
+		const order = areas(mount(<PageView {...props('campaign', page)} />));
+		for (const after of ['story', 'photos', 'faq', 'about', 'share'].filter((a) =>
+			order.includes(a)
+		))
+			expect(order.indexOf('box')).toBeLessThan(order.indexOf(after));
+	});
+
+	it('draws the box once, outside every other section', () => {
+		for (const [type, page] of [
+			['campaign', CARD],
+			['campaign', LETTER],
+			['campaign', FEATURE],
+			['donation_page', defaultDonationPage()]
+		] as const) {
+			const root = mount(<PageView {...props(type, page)} />);
+			const boxes = root.querySelectorAll('[data-testid="box"]');
+			expect(boxes).toHaveLength(1);
+			const own = boxes[0]?.closest<HTMLElement>('[data-area]');
+			expect(own?.dataset.area).toBe('box');
+			expect(own?.parentElement?.closest('[data-section]')).toBeNull();
+		}
+	});
+});
+
+describe('a section with nothing in it is left out', () => {
+	it('leaves out the goal bar where no goal is set', () => {
+		const { goalMinor: _, ...page } = CARD;
+		expect(areas(mount(<PageView {...props('campaign', page)} />))).not.toContain('goal');
+	});
+
+	it('leaves out a blank story and an empty lede', () => {
 		const root = mount(
-			<PageView {...props('donation_page', donation(), { ...over, donationBox: box(calls) })} />
-		);
-		expect(drawn(root)).not.toContain('program-chooser');
-		expect(calls.at(-1)).toEqual({ hideProgramSelect: false });
-	});
-
-	it('leaves the goal bar out of a campaign with no goal', () => {
-		const root = mount(<PageView {...props('campaign', defaultCampaign(), { goal: null })} />);
-		expect(drawn(root)).not.toContain('goal-bar');
-	});
-
-	it('leaves out a blank story, and tiers and questions with none listed', () => {
-		const page = parsed('campaign', {
-			...defaultCampaign(),
-			blocks: [
-				...defaultCampaign().blocks,
-				{ id: 'tiers', type: 'impact-tiers', variant: 'cards', background: 'none', tiers: [] },
-				{ id: 'faq', type: 'faq', variant: 'open', background: 'none', items: [] }
-			]
-		});
-		const root = mount(<PageView {...props('campaign', page)} />);
-		expect(drawn(root)).not.toContain('story');
-		expect(drawn(root)).not.toContain('impact-tiers');
-		expect(drawn(root)).not.toContain('faq');
-	});
-
-	it('leaves about-us out when the organisation has written neither a mission nor a vision', () => {
-		const org = props('donation_page', donation()).org;
-		const none = mount(
 			<PageView
-				{...props('donation_page', donation(), { org: { ...org, mission: null, vision: null } })}
+				{...props(
+					'campaign',
+					campaign({ story: { type: 'doc', content: [{ type: 'paragraph' }] } })
+				)}
 			/>
 		);
-		expect(drawn(none)).not.toContain('about-us');
-		const one = mount(
-			<PageView {...props('donation_page', donation(), { org: { ...org, mission: null } })} />
-		);
-		expect(drawn(one)).toContain('about-us');
-		expect(one.querySelector('[data-block="about-us"]')?.textContent).not.toContain('Our mission');
+		expect(areas(root)).not.toContain('story');
+		expect(areas(root)).not.toContain('lede');
 	});
 
-	it('leaves share out with no channels to offer', () => {
-		const sharing = { channels: [], message: '', url: 'https://give.example.org/donate' };
-		const root = mount(<PageView {...props('donation_page', donation(), { sharing })} />);
-		expect(drawn(root)).not.toContain('share');
+	it('falls back to the organisation’s logo for the cover, and to none without one', () => {
+		const page = campaign({ heading: 'Coats' });
+		const withLogo = mount(
+			<PageView
+				{...props('campaign', page, { logo: { imageId: LOGO, width: 200, height: 200 } })}
+			/>
+		);
+		expect(
+			withLogo.querySelector('[data-area="cover"] [data-source="logo"] img')?.getAttribute('src')
+		).toBe(`/image/${LOGO}`);
+		const without = mount(<PageView {...props('campaign', page, { logo: null })} />);
+		expect(areas(without)).not.toContain('cover');
+	});
+
+	it('leaves About us off the feature when the organisation has written neither', () => {
+		const base = props('campaign', FEATURE);
+		const root = mount(<PageView {...base} org={{ ...base.org, mission: null, vision: null }} />);
+		expect(areas(root)).not.toContain('about');
+	});
+
+	it('draws no About us on the card or the letter', () => {
+		expect(areas(mount(<PageView {...props('campaign', CARD)} />))).not.toContain('about');
+		expect(areas(mount(<PageView {...props('campaign', LETTER)} />))).not.toContain('about');
+	});
+
+	it('draws the chooser only when donors choose among two programs or more', () => {
+		const one = mount(
+			<PageView
+				{...props('donation_page', defaultDonationPage(), { programs: PROGRAMS.slice(0, 1) })}
+			/>
+		);
+		expect(areas(one)).not.toContain('chooser');
+		const pinned = mount(
+			<PageView {...props('donation_page', defaultDonationPage(), { programMode: 'pinned' })} />
+		);
+		expect(areas(pinned)).not.toContain('chooser');
+	});
+});
+
+describe('the title', () => {
+	it('draws a campaign’s name for an empty heading, and the organisation on the Donation page', () => {
+		const root = mount(<PageView {...props('campaign', campaign())} />);
+		expect(root.querySelector('h1')?.textContent).toBe('Winter coat drive');
+		const donation = mount(<PageView {...props('donation_page', defaultDonationPage())} />);
+		expect(donation.querySelector('h1')?.textContent).toBe('Donate to Northside Neighbors');
+	});
+
+	it('draws a heading of its own over the name', () => {
+		const root = mount(<PageView {...props('campaign', campaign({ heading: 'Coats for all' }))} />);
+		expect(root.querySelector('h1')?.textContent).toBe('Coats for all');
+	});
+});
+
+describe('the one colour', () => {
+	it('seeds the brand colour on the root and nothing else', () => {
+		const root = mount(<PageView {...props('campaign', CARD)} />);
+		const seeded = root.querySelector<HTMLElement>('[data-donate-root]');
+		expect(seeded?.getAttribute('style')).toBe('--donate-primary: #1d6b4f;');
+		expect(seeded?.hasAttribute('data-shade')).toBe(false);
+		expect(seeded?.hasAttribute('data-palette')).toBe(false);
 	});
 });
 
@@ -445,12 +303,7 @@ describe('the masthead with no logo', () => {
 	const masthead = (name: string, brandColour: string | null) => {
 		const base = props('donation_page', defaultDonationPage());
 		const root = mount(
-			<PageView
-				{...base}
-				org={{ ...base.org, name }}
-				logo={null}
-				look={{ ...base.look, brandColour }}
-			/>
+			<PageView {...base} org={{ ...base.org, name }} logo={null} look={{ brandColour }} />
 		);
 		const badge = root.querySelector<HTMLElement>('.page-mast-badge');
 		return { root, badge };
@@ -522,32 +375,6 @@ describe('the masthead with no logo', () => {
 	});
 });
 
-describe('the title', () => {
-	const titled = (heading: string, lede?: string) => ({
-		...defaultCampaign(),
-		blocks: defaultCampaign().blocks.map((b) =>
-			b.type === 'title'
-				? { ...b, variant: 'center' as const, heading, ...(lede === undefined ? {} : { lede }) }
-				: b
-		)
-	});
-
-	it('draws a campaign’s name for an empty heading, and the organisation on the Donation page', () => {
-		const campaign = mount(<PageView {...props('campaign', titled(''))} />);
-		expect(campaign.querySelector('h1')?.textContent).toBe('Winter coat drive');
-		const page = { ...titled(''), blocks: titled('').blocks.filter((b) => b.type !== 'goal-bar') };
-		const donation = mount(<PageView {...props('donation_page', page)} />);
-		expect(donation.querySelector('h1')?.textContent).toBe('Donate to Northside Neighbors');
-	});
-
-	it('draws a centred title left when its lede runs past 120 characters', () => {
-		const long = mount(<PageView {...props('campaign', titled('Coats', 'x'.repeat(121)))} />);
-		expect(long.querySelector('.page-title')?.getAttribute('data-variant')).toBe('left');
-		const short = mount(<PageView {...props('campaign', titled('Coats', 'x'.repeat(120)))} />);
-		expect(short.querySelector('.page-title')?.getAttribute('data-variant')).toBe('center');
-	});
-});
-
 describe('the program chooser', () => {
 	it('hands a pick to the route, and draws the pick it is handed', () => {
 		const onProgramPick = vi.fn();
@@ -558,9 +385,7 @@ describe('the program chooser', () => {
 			/>
 		);
 		const radios = [
-			...root.querySelectorAll<HTMLInputElement>(
-				'[data-block="program-chooser"] input[type="radio"]'
-			)
+			...root.querySelectorAll<HTMLInputElement>('[data-area="chooser"] input[type="radio"]')
 		];
 		expect(radios.map((r) => r.parentElement?.textContent)).toEqual([
 			'Where it’s needed most',
@@ -587,9 +412,7 @@ describe('the program chooser', () => {
 			/>
 		);
 		const radios = [
-			...root.querySelectorAll<HTMLInputElement>(
-				'[data-block="program-chooser"] input[type="radio"]'
-			)
+			...root.querySelectorAll<HTMLInputElement>('[data-area="chooser"] input[type="radio"]')
 		];
 		expect(radios.map((r) => r.getAttribute('aria-disabled'))).toEqual(['true', 'true', 'true']);
 		expect(radios.some((r) => r.disabled)).toBe(false);
@@ -610,9 +433,9 @@ describe('share', () => {
 			vi.unstubAllGlobals();
 		});
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
-		const status = root.querySelector('[data-block="share"] [role="status"]');
+		const status = root.querySelector('[data-area="share"] [role="status"]');
 		expect(status?.textContent).toBe('');
-		const press = root.querySelector<HTMLButtonElement>('[data-block="share"] button');
+		const press = root.querySelector<HTMLButtonElement>('[data-area="share"] button');
 		await act(async () => press?.click());
 		await nextTask();
 		expect(writeText).toHaveBeenCalledWith('https://give.example.org/coats');
@@ -626,8 +449,8 @@ describe('share', () => {
 			vi.unstubAllGlobals();
 		});
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
-		const status = root.querySelector('[data-block="share"] [role="status"]');
-		const press = root.querySelector<HTMLButtonElement>('[data-block="share"] button');
+		const status = root.querySelector('[data-area="share"] [role="status"]');
+		const press = root.querySelector<HTMLButtonElement>('[data-area="share"] button');
 		if (status === null) throw new Error('no status region');
 		await act(async () => press?.click());
 		await nextTask();
@@ -642,25 +465,42 @@ describe('share', () => {
 		expect(heard).toEqual(['', 'Link copied']);
 	});
 
-	it('draws the channels in the organisation’s order, each opening its own share', () => {
+	it('draws the same buttons on every page, each opening its own share', () => {
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
-		const hrefs = [...root.querySelectorAll<HTMLAnchorElement>('[data-block="share"] a')].map(
+		const hrefs = [...root.querySelectorAll<HTMLAnchorElement>('[data-area="share"] a')].map(
 			(a) => new URL(a.href).host || a.href.split(':')[0]
 		);
-		expect(hrefs).toEqual(['www.facebook.com', 'wa.me', 'mailto', 'www.linkedin.com', 'x.com']);
+		expect(hrefs).toEqual(['mailto', 'www.facebook.com', 'wa.me']);
+		expect(root.querySelector('[data-area="share"] button')?.textContent).toContain('Copy link');
 	});
 });
 
 describe('the preview', () => {
-	it('reports the block a click lands in to the editor, and follows nothing', () => {
+	it('reports the section a click lands in to the editor, and follows nothing', () => {
 		const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
 		onTestFinished(() => post.mockRestore());
-		const root = mount(<PageView {...props('campaign', defaultCampaign())} preview />);
-		const link = root.querySelector<HTMLAnchorElement>('[data-block="share"] a');
+		const root = mount(<PageView {...props('campaign', FEATURE)} preview />);
+		const link = root.querySelector<HTMLAnchorElement>('[data-area="share"] a');
 		const event = new MouseEvent('click', { bubbles: true, cancelable: true });
 		act(() => link?.dispatchEvent(event));
 		expect(event.defaultPrevented).toBe(true);
-		expect(post).toHaveBeenCalledWith({ type: BLOCK_MESSAGE, id: 'share' }, window.location.origin);
+		expect(post).toHaveBeenCalledWith(
+			{ type: SECTION_MESSAGE, id: 'share' },
+			window.location.origin
+		);
+		for (const [area, id] of [
+			['title', 'title'],
+			['lede', 'title'],
+			['story', 'story'],
+			['cover', 'cover'],
+			['tiers', 'tiers'],
+			['faq', 'faq'],
+			['goal', 'goal'],
+			['box', 'donate']
+		]) {
+			act(() => root.querySelector<HTMLElement>(`[data-area="${area}"]`)?.click());
+			expect(post).toHaveBeenLastCalledWith({ type: SECTION_MESSAGE, id }, window.location.origin);
+		}
 	});
 
 	/** a box standing in for the card, holding a control of its own. */
@@ -670,10 +510,11 @@ describe('the preview', () => {
 		</div>
 	);
 
-	it.each(PAGE_TYPES)('gives nothing on the %s outside the donation box a tab stop', (type) => {
-		const root = mount(
-			<PageView {...props(type, everyBlock(type, 'box-right'), { donationBox: box })} preview />
-		);
+	it.each([
+		['campaign', FEATURE],
+		['donation_page', defaultDonationPage()]
+	] as const)('gives nothing on the %s outside the donation box a tab stop', (type, page) => {
+		const root = mount(<PageView {...props(type, page, { donationBox: box })} preview />);
 		const controls = [
 			...root.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, summary')
 		].filter((control) => control.closest('[inert]') === null);
@@ -681,34 +522,29 @@ describe('the preview', () => {
 		expect(controls.filter((control) => control.getAttribute('tabindex') !== '-1')).toEqual([]);
 	});
 
-	it('draws the donation box inert, inside the block a click on it reports', () => {
+	it('draws the donation box inert, inside the section a click on it reports', () => {
 		const root = mount(
-			<PageView
-				{...props('donation_page', everyBlock('donation_page', 'column'), { donationBox: box })}
-				preview
-			/>
+			<PageView {...props('donation_page', defaultDonationPage(), { donationBox: box })} preview />
 		);
 		const inert = root.querySelector('[data-testid="box"]')?.closest('[inert]');
-		expect(inert?.closest('[data-block-id]')?.getAttribute('data-block-id')).toBe('donate');
+		expect(inert?.closest('[data-section]')?.getAttribute('data-section')).toBe('donate');
 	});
 
 	it('draws the donation box live outside the preview', () => {
 		const root = mount(
-			<PageView
-				{...props('donation_page', everyBlock('donation_page', 'column'), { donationBox: box })}
-			/>
+			<PageView {...props('donation_page', defaultDonationPage(), { donationBox: box })} />
 		);
 		expect(root.querySelector('[data-testid="box"]')?.closest('[inert]')).toBeNull();
 	});
 
-	it('lets a press reach nothing a block does', async () => {
+	it('lets a press reach nothing a section does', async () => {
 		vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
 		const writeText = vi.fn(async () => {});
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} preview />);
-		const status = root.querySelector('[data-block="share"] [role="status"]');
+		const status = root.querySelector('[data-area="share"] [role="status"]');
 		await act(async () =>
-			root.querySelector<HTMLButtonElement>('[data-block="share"] button')?.click()
+			root.querySelector<HTMLButtonElement>('[data-area="share"] button')?.click()
 		);
 		expect(writeText).not.toHaveBeenCalled();
 		expect(status?.textContent).toBe('');
@@ -718,7 +554,7 @@ describe('the preview', () => {
 		const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
 		onTestFinished(() => post.mockRestore());
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
-		act(() => root.querySelector<HTMLElement>('[data-block="title"]')?.click());
+		act(() => root.querySelector<HTMLElement>('[data-area="title"]')?.click());
 		expect(post).not.toHaveBeenCalled();
 	});
 });

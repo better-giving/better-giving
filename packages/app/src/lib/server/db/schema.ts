@@ -22,16 +22,7 @@ import type { Frequency } from '@better-giving/form/v1';
 import type { SocialLink } from '@better-giving/operator/console/org';
 import { PROGRAM_MODES, type ProgramMode } from '../../forms/program-modes';
 import { CAMPAIGN_TYPES, type CampaignType } from '../../page/campaign-types';
-import {
-	CORNERS,
-	LOOK_KEYS,
-	PAGE_KEYS,
-	PAGE_STATES,
-	PAGE_TYPES,
-	type PageState,
-	type PageType,
-	SHADES
-} from '../../page/keys';
+import { PAGE_KEYS, PAGE_STATES, PAGE_TYPES, type PageState, type PageType } from '../../page/keys';
 import { FORM_STATUSES, type FormStatus } from '../../forms/statuses';
 import { PROGRAM_STATUSES, type ProgramStatus } from '../../programs/statuses';
 import { RECURRING_PLAN_STATUSES, type RecurringPlanStatus } from '../../recurring/statuses';
@@ -96,9 +87,8 @@ import type { PostableAccountId } from './postable';
 //             `PROGRAM_STATUSES` and `PROGRAM_MODES` moved for that same reason (see
 //             ../../forms/statuses.ts, ../../programs/statuses.ts and
 //             ../../forms/program-modes.ts): a component renders the words and cannot
-//             import from `$lib/server/**` at all. `SHADES` and `CORNERS` moved for that
-//             reason too, with the page document's key names beside them
-//             (../../page/keys.ts), since the page catalog reads the keys the checks here do,
+//             import from `$lib/server/**` at all. the page document's key names live in
+//             ../../page/keys.ts, since the page catalog reads the keys the checks here do,
 //             and `PAGE_TYPES` joined them there because the catalog reads a page by its type
 //             (../../page/catalog.ts), and `PAGE_STATES` because ../../page/ended.ts reads
 //             whether a page has ended. `CAMPAIGN_TYPES` was born beside them
@@ -3190,30 +3180,9 @@ export const webhookDelivery = sqliteTable(
  */
 const jsonPath = (...keys: readonly string[]) => sql.raw(`'${['$', ...keys].join('.')}'`);
 
-/** check body: the key at `path`, a quoted JSON path, is absent from `doc` or one of `values`. */
-const jsonKeyIn = (doc: SQLiteColumn, path: SQL, values: readonly string[]) => {
-	const key = sql`json_extract(${doc}, ${path})`;
-	return sql`(${key} is null or ${key} in (${quotedList(values)}))`;
-};
-
 /** check body: a page document carries neither of a campaign's two keys, a goal and an end date. */
 const noCampaignSettings = (doc: SQLiteColumn) =>
 	sql`json_extract(${doc}, ${jsonPath(PAGE_KEYS.goalMinor)}) is null and json_extract(${doc}, ${jsonPath(PAGE_KEYS.endsAt)}) is null`;
-
-/**
- * check body for a page document's own look: absent or null, or an object whose shade and corner
- * are from their closed sets. a null document extracts null and passes. the parse is narrower — a
- * look is a shade and a corner, never null — and absent draws `DEFAULT_SHADE` and `DEFAULT_CORNER`
- * ($lib/page/keys.ts).
- */
-const pageLookCheck = (doc: SQLiteColumn) => {
-	const look = jsonPath(PAGE_KEYS.look);
-	// no page document holds a brand colour: none is written, the catalog's parse refuses one
-	// ($lib/page/catalog.ts), and migrations/0027 removed those stored before it. the arm stays
-	// because dropping it rebuilds `page`.
-	const colour = sql`json_extract(${doc}, ${jsonPath(PAGE_KEYS.look, LOOK_KEYS.brandColour)})`;
-	return sql`json_extract(${doc}, ${look}) is null or (json_type(${doc}, ${look}) = 'object' and ${jsonKeyIn(doc, jsonPath(PAGE_KEYS.look, LOOK_KEYS.shade), SHADES)} and ${jsonKeyIn(doc, jsonPath(PAGE_KEYS.look, LOOK_KEYS.corner), CORNERS)} and (${colour} is null or ${colour} glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))`;
-};
 
 /**
  * a donor page served on this deployment's own address: the donation page at `/donate`, or a
@@ -3227,7 +3196,7 @@ const pageLookCheck = (doc: SQLiteColumn) => {
  *
  * **three documents, in the page format.** `draft` is what the editor changes; `published` is what
  * donors are served, present exactly once the page has been live; `last_published` is the page
- * `published` replaced, kept for undo. the page's own look, its share message, its two switches
+ * `published` replaced, kept for undo. the page's content, its share message, its two switches
  * ("Open on monthly", "Dedication on by default"), a campaign's goal and end date, and its
  * donation settings are keys inside those documents and never columns — so nothing is live that
  * publish did not put there, and a draft's donation settings reach the owned row, and so what
@@ -3235,10 +3204,9 @@ const pageLookCheck = (doc: SQLiteColumn) => {
  * published document keeps the settings it went live with, so undo puts those back on the owned
  * row alongside the page.
  *
- * the database reads three of those keys, named in ../../page/keys.ts: `goalMinor` and `endsAt` are
- * refused on the donation page (`page_campaign_only_settings_check`), and `look`, where present, is
- * held to `SHADES` and `CORNERS` there (`page_<document>_look_check`), each in all
- * three documents. the header over this section says what reading a key pins.
+ * the database reads two of those keys, named in ../../page/keys.ts: `goalMinor` and `endsAt` are
+ * refused on the donation page in all three documents (`page_campaign_only_settings_check`). the
+ * header over this section says what reading a key pins.
  *
  * **one donation page**, held by `page_one_donation_page_idx` rather than by any read. no row is
  * seeded, for the reason `form` gives; the app makes the donation page on first need, and two
@@ -3301,8 +3269,8 @@ export const page = sqliteTable(
 			'page_last_published_check',
 			sql`${t.lastPublished} is null or ${t.published} is not null`
 		),
-		// the three object checks come before the look and campaign-only checks, which call
-		// `json_extract` and would raise a malformed-JSON error of their own on a document these refuse.
+		// the three object checks come before the campaign-only check, which calls `json_extract` and
+		// would raise a malformed-JSON error of its own on a document these refuse.
 		check('page_draft_object_check', jsonObject(t.draft)),
 		check(
 			'page_published_object_check',
@@ -3312,9 +3280,6 @@ export const page = sqliteTable(
 			'page_last_published_object_check',
 			sql`${t.lastPublished} is null or (${jsonObject(t.lastPublished)})`
 		),
-		check('page_draft_look_check', pageLookCheck(t.draft)),
-		check('page_published_look_check', pageLookCheck(t.published)),
-		check('page_last_published_look_check', pageLookCheck(t.lastPublished)),
 		check(
 			'page_campaign_only_settings_check',
 			sql`${t.type} <> 'donation_page' or (${noCampaignSettings(t.draft)} and ${noCampaignSettings(t.published)} and ${noCampaignSettings(t.lastPublished)})`
@@ -3497,8 +3462,11 @@ export const photoLink = sqliteTable(
 		pageId: text('page_id')
 			.notNull()
 			.references(() => page.id),
-		/** the photo block the photo fills, or null for the first empty one (or a new one). */
-		blockId: text('block_id'),
+		/**
+		 * where the photo goes: `cover`, or the place of a photo beside it to replace, as
+		 * `parseSlot` in ../../page/content-edit.ts reads it; null adds a new photo after the rest.
+		 */
+		slot: text('slot'),
 		/**
 		 * the connection that asked for it; its Disconnect ends the link too. `NO ACTION`:
 		 * `sweepConnectorLeftovers` in ../connector/keys.ts deletes a swept key's links before the key.

@@ -105,7 +105,7 @@ describe('the page a Publish replaces', () => {
 		const pageId = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
 		const failing = {
 			...LIVE_DONATION_PAGE,
-			blocks: LIVE_DONATION_PAGE.blocks.filter((block) => block.type !== 'donation-box')
+			lede: 'only a campaign has a lede'
 		};
 		await db
 			.update(page)
@@ -220,7 +220,7 @@ describe('a draft Publish refuses', () => {
 		const failing = {
 			...LIVE_DONATION_PAGE,
 			settings: CHANGED_SETTINGS,
-			blocks: LIVE_DONATION_PAGE.blocks.filter((block) => block.type !== 'donation-box')
+			lede: 'only a campaign has a lede'
 		};
 		await draftAs(pageId, failing);
 		const drawn = await stored(pageId);
@@ -229,7 +229,7 @@ describe('a draft Publish refuses', () => {
 
 		expect(outcome).toEqual({
 			kind: 'refused',
-			text: 'Nothing was published: a page holds exactly one donation box, and this one holds none.'
+			text: 'Nothing was published: the Donation page has no lede; only a campaign does (at lede).'
 		});
 		expect(await stored(pageId)).toEqual(drawn);
 		expect(await ownedSettings(pageId)).toEqual(SETTINGS);

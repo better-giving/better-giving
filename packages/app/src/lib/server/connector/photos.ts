@@ -1,6 +1,6 @@
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { Page as PageDocument } from '../../page/catalog';
-import { startingBlock } from '../../page/defaults';
+import { parseSlot } from '../../page/content-edit';
 import type { Db } from '../db/client';
 import { connectorKey, page, photoLink, type PhotoLink } from '../db/schema';
 import { freeImageStatements } from '../images/free';
@@ -13,17 +13,16 @@ import { hashOf, randomToken } from './keys';
 // file. `photos.upload_link` makes a single-use link for one photo on one page; the operator opens
 // it on their phone (src/routes/photo.$token.tsx), which needs no dashboard session — the link is
 // the permission, and it is good for `PHOTO_LINK_TTL_MS`, for one upload, while the connection that
-// asked for it stands. the photo lands in the draft only, through `editPageDraft`.
+// asked for it stands. the photo lands in the draft only, through `editPageDraft`. only a campaign
+// holds photos: the donation page draws one fixed layout with none.
 
 export const PHOTO_LINK_TTL_MS = 30 * 60_000;
 
 /** the address a photo link opens, under this deployment's own origin. */
 export const PHOTO_LINK_PATH = '/photo';
 
-/** what `photos.upload_link` is asked: the page, and optionally the photo block it fills. */
-export type PhotoTarget =
-	| { readonly kind: 'campaign'; readonly id: string }
-	| { readonly kind: 'donation_page' };
+/** what `photos.upload_link` is asked: the campaign, and optionally the slot the photo fills. */
+export type PhotoTarget = { readonly kind: 'campaign'; readonly id: string };
 
 export type MadeLink =
 	| { readonly ok: true; readonly url: string; readonly expiresAt: Date }
@@ -60,31 +59,33 @@ export async function makePhotoLink(
 		}
 		pageId = row.id;
 	} else if (kind === 'donation_page') {
-		const [row] = await db.select({ id: page.id }).from(page).where(eq(page.type, 'donation_page'));
-		if (!row)
-			return {
-				ok: false,
-				status: 404,
-				code: 'not_found',
-				detail: 'This deployment has no donation page yet.'
-			};
-		pageId = row.id;
+		return {
+			ok: false,
+			status: 422,
+			code: 'invalid',
+			detail:
+				'The donation page holds no photos: it draws one fixed layout. A photo goes on a campaign, as its cover or beside it.'
+		};
 	} else {
 		return {
 			ok: false,
 			status: 422,
 			code: 'invalid',
-			detail:
-				'target is { "kind": "campaign", "id": "<campaign id>" } or { "kind": "donation_page" }.'
+			detail: 'target is { "kind": "campaign", "id": "<campaign id>" }.'
 		};
 	}
-	if (input.slot !== undefined && typeof input.slot !== 'string') {
+	if (
+		input.slot !== undefined &&
+		(typeof input.slot !== 'string' ||
+			parseSlot(input.slot)?.kind === 'new' ||
+			parseSlot(input.slot) === null)
+	) {
 		return {
 			ok: false,
 			status: 422,
 			code: 'invalid',
 			detail:
-				'slot is the id of the hero or image block the photo fills; leave it out for the first empty one.'
+				'slot is "cover" for the cover photo, or the place of a photo beside it to replace, "0" for the first; leave it out to fill the cover where there is none, or add a photo after the rest.'
 		};
 	}
 	const token = randomToken();
@@ -92,7 +93,7 @@ export async function makePhotoLink(
 	await db.insert(photoLink).values({
 		tokenHash: hashOf(token),
 		pageId,
-		blockId: typeof input.slot === 'string' ? input.slot : null,
+		slot: typeof input.slot === 'string' ? input.slot : null,
 		connectorKeyId: keyId,
 		createdAt: now,
 		expiresAt
@@ -130,8 +131,8 @@ export type PhotoPlaced =
 	  };
 
 /**
- * the photo `request` posts, placed on the link's page: in the block the link names, or the first
- * hero or image block with no photo, or a new image block above the donation box. the link is taken
+ * the photo `request` posts, placed on the link's campaign: in the slot the link names, or the cover
+ * where there is none, or after the photos beside it. the link is taken
  * first, by one guarded UPDATE, so two uploads racing on it place one photo between them.
  */
 export async function placePostedPhoto(
@@ -172,7 +173,7 @@ export async function placePostedPhoto(
 		db,
 		target.type === 'campaign' ? { type: 'campaign', id: target.id } : { type: 'donation_page' },
 		'current',
-		(draft) => ({ ok: true, draft: withPhoto(draft, link.blockId, photo.id) })
+		(draft) => ({ ok: true, draft: withPhoto(draft, link.slot, photo.id) })
 	);
 	if (written.kind === 'written') return { ok: true };
 	console.error(`placing photo ${photo.id} from link ${link.id} failed: ${written.kind}`);
@@ -186,35 +187,19 @@ export async function placePostedPhoto(
 	};
 }
 
-/** `draft` with `imageId` in the block `blockId`, the first empty photo block, or a new one. */
-export function withPhoto(
-	draft: PageDocument,
-	blockId: string | null,
-	imageId: string
-): PageDocument {
-	const isPhoto = (block: PageDocument['blocks'][number]) =>
-		block.type === 'hero' || block.type === 'image';
-	const at =
-		blockId !== null
-			? draft.blocks.findIndex((block) => block.id === blockId && isPhoto(block))
-			: draft.blocks.findIndex(
-					(block) => isPhoto(block) && 'imageId' in block && block.imageId === null
-				);
-	if (at !== -1) {
-		return {
-			...draft,
-			blocks: draft.blocks.map((block, index) => (index === at ? { ...block, imageId } : block))
-		};
+/**
+ * `draft` with `imageId` in `slot`: the cover, or the place of a photo beside it where the draft holds
+ * one; with none named, or a place it does not hold, the cover where there is none, else a new photo
+ * after the rest. a slot read as nothing — a link made before slots, naming a block — is none named.
+ */
+export function withPhoto(draft: PageDocument, slot: string | null, imageId: string): PageDocument {
+	const photo = { imageId, alt: null };
+	const read = slot === null ? null : parseSlot(slot);
+	const photos = draft.photos ?? [];
+	if (read?.kind === 'cover') return { ...draft, hero: photo };
+	if (read?.kind === 'photo' && read.at < photos.length) {
+		return { ...draft, photos: photos.map((one, at) => (at === read.at ? photo : one)) };
 	}
-	const taken = new Set(draft.blocks.map((block) => block.id));
-	let n = 1;
-	while (taken.has(`photo-${n}`)) n += 1;
-	const added = {
-		...startingBlock('image', `photo-${n}`),
-		imageId
-	} as PageDocument['blocks'][number];
-	const box = draft.blocks.findIndex((block) => block.type === 'donation-box');
-	const blocks = [...draft.blocks];
-	blocks.splice(box === -1 ? blocks.length : box, 0, added);
-	return { ...draft, blocks };
+	if (draft.hero === undefined) return { ...draft, hero: photo };
+	return { ...draft, photos: [...photos, photo] };
 }

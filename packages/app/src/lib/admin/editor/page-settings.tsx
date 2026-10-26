@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BLOCK_FORMS, BOXES } from '$lib/page/block-edit';
+import { BOXES, CONTENT_FORMS } from '$lib/page/content-edit';
 import { PAGE_END_DATE_FORM_ID, PAGE_GOAL_FORM_ID } from '$lib/page/page-settings-form';
 import { useDraftPresses } from './draft-presses';
 import { EndDateSheet } from './end-date-sheet';
@@ -7,7 +7,7 @@ import { GoalSheet } from './goal-sheet';
 import { ShareMessageSheet } from './share-message-sheet';
 
 // a campaign's goal and end date, and any page's share message, each a sheet over Settings: each
-// posts its form ($lib/page/page-settings-form.ts, $lib/page/block-edit.ts) to the editor route's
+// posts its form ($lib/page/page-settings-form.ts, $lib/page/content-edit.ts) to the editor route's
 // action through ./draft-presses.ts, the sheet's own owner, so an answer does not outlive the sheet
 // that asked: a reopened sheet starts with none.
 //
@@ -106,7 +106,7 @@ export function ShareMessageSettingsSheet({
 	onDismiss,
 	onSaved
 }: SheetProps & { readonly message: string }) {
-	const press = usePress(BLOCK_FORMS.shareMessage, version);
+	const press = usePress(CONTENT_FORMS.shareMessage, version);
 	useClosesOnSave(press.saved, onSaved);
 	return (
 		<ShareMessageSheet
