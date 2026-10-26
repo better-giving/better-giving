@@ -168,8 +168,10 @@ function Box({ props, hideProgramSelect }: { props: PageViewProps; hideProgramSe
 }
 
 /**
- * the most characters a title holds at the display size; a longer one is drawn a step smaller
- * (`data-long`, ./page.css), so it wraps to fewer lines and the box stays on a phone's first screen.
+ * a title of more characters than this, counted as a reader sees them with its edges trimmed, is
+ * drawn a step smaller below 60rem (`data-long`, ./page.css): on a phone the box stands under the
+ * title, and the smaller title takes fewer lines. a title past about 110 characters still pushes
+ * the box below a 390 × 844 phone's first screen.
  */
 export const TITLE_LONG = 28;
 
@@ -178,7 +180,7 @@ function Heading({ props }: { props: PageViewProps }) {
 	return (
 		<h1
 			className="page-title"
-			data-long={[...title].length > TITLE_LONG ? '' : undefined}
+			data-long={[...graphemes.segment(title.trim())].length > TITLE_LONG ? '' : undefined}
 			{...area('title', 'title')}
 		>
 			{title}

@@ -288,18 +288,54 @@ describe('the title', () => {
 		expect(root.querySelector('h1')?.textContent).toBe('Coats for all');
 	});
 
+	const longOn = (root: HTMLElement) => root.querySelector('h1')?.hasAttribute('data-long');
+
 	it.each([
-		[TITLE_LONG, false],
-		[TITLE_LONG + 1, true]
+		[28, false],
+		[29, true]
 	])('draws a %i-character title a step smaller: %s', (length, long) => {
-		const heading = 'x'.repeat(length);
-		const root = mount(<PageView {...props('campaign', campaign({ heading }))} />);
-		expect(root.querySelector('h1')?.hasAttribute('data-long')).toBe(long);
+		expect(TITLE_LONG).toBe(28);
+		const root = mount(
+			<PageView {...props('campaign', campaign({ heading: 'x'.repeat(length) }))} />
+		);
+		expect(longOn(root)).toBe(long);
 	});
 
-	it('counts the title it draws, so "Donate to Northside Neighbors" (29) steps down too', () => {
-		const donation = mount(<PageView {...props('donation_page', defaultDonationPage())} />);
-		expect(donation.querySelector('h1')?.hasAttribute('data-long')).toBe(true);
+	it.each([
+		['card', CARD],
+		['letter', LETTER],
+		['feature', FEATURE]
+	] as const)('steps a long title down in the %s', (_, page) => {
+		const root = mount(<PageView {...props('campaign', { ...page, heading: 'x'.repeat(29) })} />);
+		expect(longOn(root)).toBe(true);
+	});
+
+	it('counts characters as a reader sees them, so 28 emoji are not long', () => {
+		const flags = '🇨🇦'.repeat(28);
+		expect(longOn(mount(<PageView {...props('campaign', campaign({ heading: flags }))} />))).toBe(
+			false
+		);
+	});
+
+	it('counts the title without the spaces at its edges', () => {
+		const padded = `  ${'x'.repeat(28)}  `;
+		expect(longOn(mount(<PageView {...props('campaign', campaign({ heading: padded }))} />))).toBe(
+			false
+		);
+	});
+
+	it('counts the title it draws, so a long name standing in for an empty heading steps down', () => {
+		const named = mount(
+			<PageView {...props('campaign', campaign())} pageName={'Winter coat drive '.repeat(2)} />
+		);
+		expect(longOn(named)).toBe(true);
+		const donation = mount(
+			<PageView
+				{...props('donation_page', defaultDonationPage())}
+				org={{ ...props('donation_page', defaultDonationPage()).org, name: 'x'.repeat(19) }}
+			/>
+		);
+		expect(longOn(donation)).toBe(true);
 	});
 });
 

@@ -410,6 +410,20 @@ describe('the edge the editor draws while its Edit is on', () => {
 	});
 });
 
+describe('a long title', () => {
+	// happy-dom does no layout, so the step is read off the sheet: smaller below 60rem, where the box
+	// stands under the title, and the display size from 60rem.
+	it('is drawn a step smaller on a phone and at the display size from 60rem', () => {
+		const long = page
+			.filter(({ at }) => at.at(-1) === '.page-title[data-long]')
+			.map(({ at, decls }) => [at.slice(0, -1).join(' » '), decls['font-size']]);
+		expect(long).toEqual([
+			['', 'var(--page-display-long)'],
+			['@container page (min-width: 60rem)', 'var(--page-display)']
+		]);
+	});
+});
+
 describe('the sections ./page.css draws', () => {
 	const here = relative(process.cwd(), import.meta.dirname);
 	const components = [

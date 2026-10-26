@@ -37,8 +37,10 @@
  * is written at its call site. this layer is `rem` where the card is `em`: the page is the host
  * document, not a guest in one, and its sizes follow the reader's root.
  *
- * type. `--page-display` is the page's title and `--page-display-long` a title past its length, `--page-heading` a section's heading and the goal
- * figure, `--page-lede` the lede, each with its line height and the two with a tracking. body text
+ * type. `--page-display` is the page's title, `--page-heading` a section's heading and the goal
+ * figure, `--page-lede` the lede, each with its line height and the two with a tracking.
+ * `--page-display-long` is a title past `TITLE_LONG` (./page-view.tsx) below 60rem, at the display
+ * line height and tracking, and never larger than the display size's floor. body text
  * is the card's `--_t-md` at `--_lh-body`, and prose held to `--page-measure` is `--page-lh-prose`.
  * a heading-sized statement that runs to more than a line is the card's `--_lh-tight`.
  *
@@ -60,7 +62,8 @@
  * the first screen. the donation box is the page's purpose, so every layout stands all of it on the
  * first screen of a 390 × 844 phone and a 1280 × 800 laptop: ahead of it stand only the masthead,
  * the cover and the title, and on a laptop the goal and the lede beside them. the cover's heights
- * and the title's smallest size are the budget that keeps it so —
+ * and the title's sizes on a phone, `--page-display` and the smaller `--page-display-long`, are
+ * the budget that keeps it so —
  * `--page-cover-card` and `--page-cover-letter` above the box on a phone, `--page-hero-narrow` the
  * feature's cover on a phone and `--page-hero` on a laptop, where the box stands over the cover's
  * right side `--page-gap-lead` off its top. the feature's cover is at least `--page-hero` and grows
@@ -137,7 +140,7 @@ body {
 
 .page > .page-ground {
 	--page-display: clamp(1.625rem, 1.2rem + 2.4cqi, 3rem);
-	--page-display-long: clamp(1.1875rem, 0.7rem + 2cqi, 2.25rem);
+	--page-display-long: clamp(1.1875rem, 0.7rem + 2cqi, 1.625rem);
 	--page-heading: clamp(1.375rem, 1.1rem + 1.1cqi, 1.75rem);
 	--page-lede: clamp(1.0625rem, 1rem + 0.4cqi, 1.25rem);
 	--page-lh-display: 1.08;
@@ -817,16 +820,22 @@ body {
 	text-wrap: balance;
 }
 
-/* a title past `TITLE_LONG` characters (./page-view.tsx) is a step smaller. */
+/* a title past `TITLE_LONG` characters (./page-view.tsx) is a step smaller below 60rem, where the
+   box stands under it. */
 .page-title[data-long] {
 	font-size: var(--page-display-long);
 }
 
 /* the title's measure holds from 60rem, where a column is wider than the measure; on a phone the
-   column is narrower, and the title takes all of it. */
+   column is narrower, and the title takes all of it. from 60rem the box stands beside or over the
+   title, and a long title is drawn at the display size. */
 @container page (min-width: 60rem) {
 	.page-title {
 		max-inline-size: var(--page-measure-title);
+	}
+
+	.page-title[data-long] {
+		font-size: var(--page-display);
 	}
 }
 
