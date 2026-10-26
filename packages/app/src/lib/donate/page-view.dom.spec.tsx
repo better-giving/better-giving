@@ -8,7 +8,7 @@ import { defaultCampaign, defaultDonationPage } from '../page/defaults';
 import type { PageType } from '../page/keys';
 import { SECTION_MESSAGE } from '../page/preview-message';
 import type { RichTextDocument } from '../rich-text/document';
-import { initials, PageView, type PageViewProps } from './page-view';
+import { initials, PageView, type PageViewProps, TITLE_LONG } from './page-view';
 
 // the page's renderer, mounted: which whole layout a campaign is drawn in, which sections each
 // layout draws and in what order, that a section with nothing in it is left out, and that the
@@ -286,6 +286,20 @@ describe('the title', () => {
 	it('draws a heading of its own over the name', () => {
 		const root = mount(<PageView {...props('campaign', campaign({ heading: 'Coats for all' }))} />);
 		expect(root.querySelector('h1')?.textContent).toBe('Coats for all');
+	});
+
+	it.each([
+		[TITLE_LONG, false],
+		[TITLE_LONG + 1, true]
+	])('draws a %i-character title a step smaller: %s', (length, long) => {
+		const heading = 'x'.repeat(length);
+		const root = mount(<PageView {...props('campaign', campaign({ heading }))} />);
+		expect(root.querySelector('h1')?.hasAttribute('data-long')).toBe(long);
+	});
+
+	it('counts the title it draws, so "Donate to Northside Neighbors" (29) steps down too', () => {
+		const donation = mount(<PageView {...props('donation_page', defaultDonationPage())} />);
+		expect(donation.querySelector('h1')?.hasAttribute('data-long')).toBe(true);
 	});
 });
 

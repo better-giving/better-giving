@@ -167,10 +167,21 @@ function Box({ props, hideProgramSelect }: { props: PageViewProps; hideProgramSe
 	);
 }
 
+/**
+ * the most characters a title holds at the display size; a longer one is drawn a step smaller
+ * (`data-long`, ./page.css), so it wraps to fewer lines and the box stays on a phone's first screen.
+ */
+export const TITLE_LONG = 28;
+
 function Heading({ props }: { props: PageViewProps }) {
+	const title = titleHeading(props.page.heading, props);
 	return (
-		<h1 className="page-title" {...area('title', 'title')}>
-			{titleHeading(props.page.heading, props)}
+		<h1
+			className="page-title"
+			data-long={[...title].length > TITLE_LONG ? '' : undefined}
+			{...area('title', 'title')}
+		>
+			{title}
 		</h1>
 	);
 }
