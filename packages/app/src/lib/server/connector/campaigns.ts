@@ -189,7 +189,7 @@ export async function updateContent(
 
 /** what a key the content holds no place for is answered with: how the page is laid out instead. */
 const NOT_CONTENT =
-	'the page picks its whole layout from its content — a short story with nothing else is a card, a longer story or one to three tiers, questions and photos a letter, four or more a feature — so no layout, look, colour, block, order or share button is set; send content keys only';
+	'the page picks its whole layout from its content: a short story with nothing else is a card; a longer story, or one to three tiers, questions and photos, is a letter; four or more is a feature. no layout, look, colour, block, order or share button is set, so send content keys only';
 
 /**
  * an update_content body — any of `CONTENT_KEYS_OF[type]`, each in the page rule's shape, null to

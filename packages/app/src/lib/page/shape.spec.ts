@@ -25,7 +25,7 @@ const question = { question: 'Is it deductible?', answer: story(10) as NonNullab
 const photo = { imageId: PHOTO, alt: null };
 
 describe('the layout two measures pick', () => {
-	it('matches the thresholds Platform draws by', () => {
+	it('is 320 characters of story and 4 extras', () => {
 		expect([STORY_THRESHOLD, FEATURE_EXTRAS]).toEqual([320, 4]);
 	});
 

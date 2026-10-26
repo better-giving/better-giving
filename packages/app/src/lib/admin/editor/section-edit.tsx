@@ -55,7 +55,7 @@ import {
 // what else the photo's rule refuses lands at Done. a slot with no photo yet opens on Add photo
 // alone, and Done there posts nothing: it says at the press that a photo is wanted and puts the
 // focus on it. Remove photo takes the photo off the page at once, and the cover's falls back to the
-// organisation's logo.
+// organisation's logo where it has one.
 
 const TEXT_FORMS = {
 	title: CONTENT_FORMS.title,

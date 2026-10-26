@@ -6,8 +6,8 @@
 // once is what keeps the check and the parser reading the same key.
 //
 // pure and not under `$lib/server/**`, for the reason `$lib/forms/statuses.ts` gives: ./catalog.ts
-// reads a page by its type, and cannot import from there. the dependency runs server -> shared and never back: schema.ts imports this,
-// this imports nothing.
+// reads a page by its type, and cannot import from there. the dependency runs server -> shared and
+// never back: schema.ts imports this, this imports nothing.
 
 /** top-level keys of a page document (`page.draft`, `published`, `last_published`). */
 export const PAGE_KEYS = {

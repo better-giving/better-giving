@@ -96,7 +96,7 @@ export async function makePhotoLink(
 			ok: false,
 			status: 422,
 			code: 'invalid',
-			detail: `This campaign already holds ${PHOTOS_MAX} photos beside its cover place, the most it can, so a new photo has no place. Ask the operator which photo it replaces, and make the link with that slot: "cover", or the place of a photo beside it, "0" for the first.`
+			detail: `This campaign already holds ${PHOTOS_MAX} photos beside its cover, the most it can, so a new photo has no place. Ask the operator which photo it replaces, and make the link with that slot: "cover", or the place of a photo beside it, "0" for the first.`
 		};
 	}
 	const token = randomToken();
