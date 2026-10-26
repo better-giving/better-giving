@@ -40,8 +40,8 @@
  * type. `--page-display` is the page's title, `--page-heading` a section's heading and the goal
  * figure, `--page-lede` the lede, each with its line height and the two with a tracking.
  * `--page-display-long` is a title past `TITLE_LONG` (./page-view.tsx) below 60rem, at the display
- * line height and tracking, and never larger than the display size's floor. body text
- * is the card's `--_t-md` at `--_lh-body`, and prose held to `--page-measure` is `--page-lh-prose`.
+ * line height and tracking, and never larger than the display size's floor. body text is the
+ * card's `--_t-md` at `--_lh-body`, and prose held to `--page-measure` is `--page-lh-prose`.
  * a heading-sized statement that runs to more than a line is the card's `--_lh-tight`.
  *
  * faces. `--page-font-text` is the page and the card, `--page-font-display` the title, a section

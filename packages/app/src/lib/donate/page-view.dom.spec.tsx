@@ -310,7 +310,7 @@ describe('the title', () => {
 		expect(longOn(root)).toBe(true);
 	});
 
-	it('counts characters as a reader sees them, so 28 emoji are not long', () => {
+	it('counts characters as a reader sees them, so 28 flags are not long', () => {
 		const flags = '🇨🇦'.repeat(28);
 		expect(longOn(mount(<PageView {...props('campaign', campaign({ heading: flags }))} />))).toBe(
 			false
