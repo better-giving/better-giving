@@ -78,6 +78,10 @@ const PAGE_CONTENT_BY = '0031_page_content_only.sql';
 const PAGE_CONTENT = MIGRATIONS.findIndex((m) => m.name === PAGE_CONTENT_BY);
 const BLOCK_PAGE_FORM = 'frm_blockpage';
 const BLOCK_PAGE = '019fb300-0000-7000-8000-000000000501';
+const MERGED_PAGE_FORM = 'frm_mergedpage';
+const MERGED_PAGE = '019fb300-0000-7000-8000-000000000511';
+const UNDO_PAGE_FORM = 'frm_undopage';
+const UNDO_PAGE = '019fb300-0000-7000-8000-000000000512';
 const BLOCK_PAGE_IMAGES = {
 	hero: '019fb300-0000-7000-8000-000000000502',
 	image: '019fb300-0000-7000-8000-000000000503'
@@ -157,7 +161,9 @@ async function seed() {
 				        (?, 'campaign page', ?, 'USD', 0, 0),
 				        (?, 'donation page', ?, 'USD', 0, 0),
 				        (?, 'chat page', ?, 'USD', 0, 0),
-				        (?, 'block page', ?, 'USD', 0, 0)`,
+				        (?, 'block page', ?, 'USD', 0, 0),
+				        (?, 'merged page', ?, 'USD', 0, 0),
+				        (?, 'undo page', ?, 'USD', 0, 0)`,
 			FORM_ID,
 			POSTING_ACCOUNTS.donationsDeductible.id,
 			LEGACY_LOOK_FORMS[0],
@@ -167,6 +173,10 @@ async function seed() {
 			CHAT_PAGE_FORM,
 			POSTING_ACCOUNTS.donationsDeductible.id,
 			BLOCK_PAGE_FORM,
+			POSTING_ACCOUNTS.donationsDeductible.id,
+			MERGED_PAGE_FORM,
+			POSTING_ACCOUNTS.donationsDeductible.id,
+			UNDO_PAGE_FORM,
 			POSTING_ACCOUNTS.donationsDeductible.id
 		),
 		stmt(
@@ -510,6 +520,46 @@ const BLOCK_PAGE_DOCUMENT = {
 	]
 };
 
+const tiersOf = (from: number, count: number) =>
+	Array.from({ length: count }, (_, n) => ({
+		amountMinor: (from + n) * 100,
+		buys: `meal ${from + n}`
+	}));
+const questionsOf = (from: number, count: number) =>
+	Array.from({ length: count }, (_, n) => ({
+		question: `Question ${from + n}?`,
+		answer: words(`Answer ${from + n}.`)
+	}));
+const block = (id: string, type: string, rest: Record<string, unknown> = {}) => ({
+	id,
+	type,
+	variant: 'plain',
+	background: 'none',
+	...rest
+});
+
+/** a campaign whose story blocks, tier blocks and question blocks are each more than one. */
+const MERGED_BLOCKS = [
+	block('title', 'title', { heading: 'Merged', lede: '' }),
+	block('blank', 'story', { body: words('   ') }),
+	block('story', 'story', { body: words('The story with words.') }),
+	block('later', 'story', { body: words('A later story.') }),
+	block('tiers-a', 'impact-tiers', { tiers: tiersOf(1, 4) }),
+	block('faq-a', 'faq', { items: questionsOf(1, 6) }),
+	block('tiers-b', 'impact-tiers', { tiers: tiersOf(5, 4) }),
+	block('faq-b', 'faq', { items: questionsOf(7, 6) })
+];
+
+/** the Donation page's draft laid out as blocks of every kind a campaign keeps. */
+const DONATION_PAGE_BLOCKS = [
+	block('title', 'title', { heading: 'Warm this winter', lede: 'A lede it loses' }),
+	block('story', 'story', { body: words('A story it loses.') }),
+	block('hero', 'hero', { imageId: BLOCK_PAGE_IMAGES.hero, alt: 'Volunteers' }),
+	block('tiers', 'impact-tiers', { tiers: tiersOf(1, 2) }),
+	block('faq', 'faq', { items: questionsOf(1, 2) }),
+	block('donate', 'donation-box')
+];
+
 /** a live campaign laid out as a block list, its last copy a bare donation box. */
 async function seedBlockPage() {
 	await bare.batch([
@@ -532,6 +582,31 @@ async function seedBlockPage() {
 				...BLOCK_PAGE_DOCUMENT,
 				blocks: [{ id: 'donate', type: 'donation-box', background: 'none' }]
 			})
+		),
+		stmt(
+			`insert into page
+				   (id, type, name, slug, state, form_id, draft, published, last_published, created_at, updated_at)
+				 values (?, 'campaign', 'Merged', 'merged', 'live', ?, ?, ?, null, 0, 8)`,
+			MERGED_PAGE,
+			MERGED_PAGE_FORM,
+			JSON.stringify({ ...BLOCK_PAGE_DOCUMENT, blocks: MERGED_BLOCKS }),
+			JSON.stringify({ ...BLOCK_PAGE_DOCUMENT, blocks: [] })
+		),
+		// undo copy holding a block list: the third UPDATE reaches it
+		stmt(
+			`insert into page
+				   (id, type, name, slug, state, form_id, draft, published, last_published, created_at, updated_at)
+				 values (?, 'campaign', 'Undo', 'undo', 'live', ?, ?, ?, ?, 0, 9)`,
+			UNDO_PAGE,
+			UNDO_PAGE_FORM,
+			JSON.stringify({ ...BLOCK_PAGE_DOCUMENT, blocks: [] }),
+			JSON.stringify({ ...BLOCK_PAGE_DOCUMENT, blocks: [] }),
+			JSON.stringify({ ...BLOCK_PAGE_DOCUMENT, blocks: MERGED_BLOCKS.slice(0, 3) })
+		),
+		stmt(
+			`update page set draft = ? where id = ?`,
+			JSON.stringify(legacyDocument(null, { blocks: DONATION_PAGE_BLOCKS })),
+			LEGACY_LOOK_DONATION_PAGE
 		)
 	]);
 }
@@ -1218,7 +1293,11 @@ describe('0027 reads a page whose look the earlier settings sheet saved', () => 
 		() => {
 			const donationPage = stored(LEGACY_LOOK_DONATION_PAGE);
 			expect(LEGACY_LOOK_DOCUMENTS.donationPage.draft.look).toBeNull();
-			expect(read(donationPage, 'draft')).toEqual({ ok: true, page: content });
+			// seedBlockPage then lays the draft out as blocks, so 0031 carries its title
+			expect(read(donationPage, 'draft')).toEqual({
+				ok: true,
+				page: { ...content, heading: 'Warm this winter' }
+			});
 			expect(read(donationPage, 'published')).toEqual({ ok: true, page: content });
 			expect(donationPage?.last_published).toBeNull();
 		}
@@ -1287,6 +1366,47 @@ describe('0031 makes a page document content only', () => {
 		});
 		expect(stored()?.last_published).toBeNull();
 	});
+
+	const storedDraft = (id: string, column = 'draft') => {
+		const text = after.get('page')?.find((r) => r.id === id)?.[column];
+		if (typeof text !== 'string') throw new Error(`page ${id} has no ${column}`);
+		return JSON.parse(text) as Record<string, unknown>;
+	};
+
+	it.skipIf(nowhereToStop)(
+		'keeps the Donation page its heading, share message and switches, and nothing else',
+		() => {
+			expect(storedDraft(LEGACY_LOOK_DONATION_PAGE)).toEqual({
+				heading: 'Warm this winter',
+				shareMessage: 'Give warmth this winter',
+				switches: { openOnMonthly: false, dedicationOn: true }
+			});
+		}
+	);
+
+	it.skipIf(nowhereToStop)(
+		"carries the copy Undo restores the way it carries a campaign's draft",
+		() => {
+			expect(storedDraft(UNDO_PAGE, 'last_published')).toMatchObject({
+				heading: 'Merged',
+				story: words('The story with words.')
+			});
+			expect(storedDraft(UNDO_PAGE, 'last_published')).not.toHaveProperty('blocks');
+		}
+	);
+
+	it.skipIf(nowhereToStop)('carries the first story that holds text, past a blank one', () => {
+		expect(storedDraft(MERGED_PAGE).story).toEqual(words('The story with words.'));
+	});
+
+	it.skipIf(nowhereToStop)(
+		'joins every tiers block and every faq block in order, to the first six and ten',
+		() => {
+			const draft = storedDraft(MERGED_PAGE);
+			expect(draft.tiers).toEqual(tiersOf(1, 6));
+			expect(draft.faq).toEqual(questionsOf(1, 10));
+		}
+	);
 
 	it.skipIf(nowhereToStop)("keeps the editor's version and the page's indexes", async () => {
 		expect(stored()?.updated_at).toBe(7);

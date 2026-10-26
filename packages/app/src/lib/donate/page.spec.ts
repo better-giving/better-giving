@@ -322,6 +322,19 @@ function floor(shade: Shade, ground: Ground, ink: string, on: string = GROUNDS[g
 	return Math.round(low * 100) / 100;
 }
 
+describe('the evaluator reads a hex colour', () => {
+	// the sRGB primaries' oklch hues as https://www.w3.org/TR/css-color-4/#ok-lab publishes them, a
+	// source independent of the conversion, which the 4.5:1 sweep below rests on.
+	it.each([
+		['#ff0000', 29.23],
+		['#00ff00', 142.5],
+		['#0000ff', 264.05],
+		['#ff00ff', 328.36]
+	])('%s at hue %f', (hex, hue) => {
+		expect(colour(hex).h).toBeCloseTo(hue, 1);
+	});
+});
+
 describe('text clears 4.5:1 for every brand colour', () => {
 	it.each(SHADES)('the quiet ink on every ground, %s', (shade) => {
 		for (const ground of Object.keys(GROUNDS) as Ground[])

@@ -117,6 +117,12 @@ describe('the local seed', () => {
 	it('stores every photo the campaigns place', async () => {
 		await applySeed();
 
+		const placed = await client.execute(
+			`select json_extract(value, '$.imageId') from page, json_each(page.published, '$.photos') union
+			 select json_extract(page.published, '$.hero.imageId') from page where json_extract(page.published, '$.hero.imageId') is not null`
+		);
+		expect(placed.rows.length).toBeGreaterThan(0);
+
 		const missing = await client.execute(
 			`select json_extract(value, '$.imageId') from page, json_each(page.published, '$.photos') union
 			 select json_extract(page.published, '$.hero.imageId') from page where json_extract(page.published, '$.hero.imageId') is not null

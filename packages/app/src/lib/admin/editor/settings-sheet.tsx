@@ -30,8 +30,6 @@ export type SettingsRow =
 	| 'donation-settings';
 
 type OpenRowProps = {
-	/** for a caller that moves the focus to the row. */
-	readonly id?: string | undefined;
 	readonly label: string;
 	/** what the row holds now, as a reader would say it. */
 	readonly value: ReactNode;
@@ -40,9 +38,9 @@ type OpenRowProps = {
 	readonly onOpen: () => void;
 };
 
-function OpenRow({ id, label, value, unset = false, onOpen }: OpenRowProps) {
+function OpenRow({ label, value, unset = false, onOpen }: OpenRowProps) {
 	return (
-		<button id={id} type="button" className="adm-openrow" aria-haspopup="dialog" onClick={onOpen}>
+		<button type="button" className="adm-openrow" aria-haspopup="dialog" onClick={onOpen}>
 			<span className="adm-openrow__label">{label}</span>
 			<span
 				className={unset ? 'adm-openrow__value adm-openrow__value--unset' : 'adm-openrow__value'}

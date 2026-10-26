@@ -23,7 +23,7 @@ describe('the sections a campaign lists', () => {
 		).toEqual([
 			{ id: 'title', label: 'Title', summary: 'The page’s name', empty: false },
 			{ id: 'story', label: 'Story', summary: 'No story yet', empty: true },
-			{ id: 'cover', label: 'Cover photo', summary: 'Your logo stands in', empty: true },
+			{ id: 'cover', label: 'Cover photo', summary: 'No photo yet', empty: true },
 			{ id: 'tiers', label: 'Impact tiers', summary: 'None yet', empty: true },
 			{ id: 'faq', label: 'Questions', summary: 'None yet', empty: true }
 		]);

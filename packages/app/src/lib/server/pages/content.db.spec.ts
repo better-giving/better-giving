@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '../../forms/definition';
-import { HEADING_MAX, LEDE_MAX, type Page, parsePage } from '../../page/catalog';
+import { HEADING_MAX, LEDE_MAX, type Page, PHOTOS_MAX, parsePage } from '../../page/catalog';
 import { CONTENT_FORMS, type ContentFormId, editorSections } from '../../page/content-edit';
 import { defaultCampaign } from '../../page/defaults';
 import type { RichTextDocument } from '../../rich-text/document';
@@ -451,6 +451,30 @@ describe('a photo', () => {
 			{ imageId: a, alt: 'a' },
 			{ imageId: added, alt: null }
 		]);
+	});
+
+	it('placed in a new slot past the cap is refused, and nothing is written', async () => {
+		const held = await Promise.all(
+			Array.from({ length: PHOTOS_MAX }, async (_, at) => ({
+				imageId: await upload(),
+				alt: `photo ${at}`
+			}))
+		);
+		const pageId = await insertPage(db, 'campaign', withPage({ photos: held }));
+		const before = await stored(pageId);
+
+		const answer = await press(pageId, CONTENT_FORMS.photo, [
+			['slot', 'new'],
+			['image_id', await upload()],
+			['alt', '']
+		]);
+
+		expect(refusal(answer)).toMatchObject({
+			status: 400,
+			error: { '': [expect.stringContaining(`at most ${PHOTOS_MAX} photos`)] }
+		});
+		expect(await stored(pageId)).toEqual(before);
+		expect((await stored(pageId)).draft.photos).toHaveLength(PHOTOS_MAX);
 	});
 
 	it.each([

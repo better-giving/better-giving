@@ -41,8 +41,8 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 // - card: the cover, the title, the goal, the donation box, the lede and the story. wide, the box
 //   stands in a column of its own beside the words, under the cover.
 // - letter: the cover framed, the title, then a rail of the goal, the box and the tiers, then the
-//   lede, the story, the photos and the questions. wide, the rail is a sticky column beside the
-//   reading column.
+//   lede, the story, the photos and the questions. wide, the rail is a column beside the reading
+//   column.
 // - feature: the cover, the title, the lede, the goal, then the box, then the story, the tiers as
 //   cards, a strip of photos, the questions folded, and About us. wide, the cover runs the page's
 //   width with the title, lede and goal over it and the box over its right side.
@@ -214,7 +214,7 @@ function CampaignLayout(props: PageViewProps & { readonly shape: CampaignShape }
 		);
 	const photosSection = (shapeOf: 'column' | 'strip') =>
 		photos.length === 0 ? null : (
-			<section className="page-section" aria-label="Photos" {...area('photos', 'photo-0')}>
+			<section className="page-section" aria-label="Photos" {...area('photos')}>
 				<Photos photos={photos} imageSrc={imageSrc} shape={shapeOf} />
 			</section>
 		);

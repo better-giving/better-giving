@@ -4,6 +4,9 @@ import { page } from '$lib/server/db/schema';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { connectorHarness, ORIGIN, under } from '../connector-routes.testing';
 import * as unserved from './connector.v1.$';
+import * as blocksCatalog from './connector.v1.blocks.catalog';
+import * as campaignBlocks from './connector.v1.campaigns.$id.blocks';
+import * as donationBlocks from './connector.v1.donation-page.blocks';
 import * as catalog from './connector.v1.content.catalog';
 import * as campaign from './connector.v1.campaigns.$id._index';
 import * as end from './connector.v1.campaigns.$id.end';
@@ -27,6 +30,9 @@ const h = connectorHarness(() => ({
 	donationReset: under('donation-page/reset', donationReset),
 	catalog: under('content/catalog', catalog),
 	hello: under('hello', hello),
+	campaignBlocks: under('campaigns/:id/blocks', campaignBlocks),
+	donationBlocks: under('donation-page/blocks', donationBlocks),
+	blocksCatalog: under('blocks/catalog', blocksCatalog),
 	unserved: under('*', unserved)
 }));
 const { call, connect } = h;
@@ -394,4 +400,27 @@ describe('what this release serves', () => {
 		expect(response.status).toBe(404);
 		expect(await response.json()).toMatchObject({ code: 'unknown_action' });
 	});
+
+	it.each([
+		['campaignBlocks', `/campaigns/${MISSING}/blocks`, 'PATCH', 'campaigns.update_content'],
+		['donationBlocks', '/donation-page/blocks', 'PATCH', 'donation_page.update_content'],
+		['blocksCatalog', '/blocks/catalog', 'GET', 'content.catalog']
+	] as const)(
+		'answers the retired %s action as replaced, naming the action that took its place',
+		async (name, path, method, replacement) => {
+			const key = await connect();
+
+			const response = await call(name, path, {
+				method,
+				key,
+				...(method === 'PATCH' ? { body: { blocks: [] } } : {})
+			});
+
+			expect(response.status).toBe(422);
+			const problem = (await response.json()) as { code: string; detail: string };
+			expect(problem.code).toBe('replaced');
+			expect(problem.detail).toContain(replacement);
+			expect(problem.detail).toContain('picks its layout from its content');
+		}
+	);
 });

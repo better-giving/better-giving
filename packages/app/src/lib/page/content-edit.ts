@@ -98,7 +98,7 @@ export const CONTENT_PHOTO_INPUT = z.object({
 	[BOXES.alt]: z.string().default('')
 });
 
-/** the photo in `slot` taken off the page: the cover falls back to the logo, and a photo goes. */
+/** the photo in `slot` taken off the page: the cover falls back to the logo where there is one, and a photo goes. */
 export const CONTENT_PHOTO_REMOVE_INPUT = z.object({ [BOXES.slot]: z.string('required') });
 
 /** what a share says beside the page's address; a blank box removes it, and the title is said. */
@@ -187,8 +187,7 @@ export function editorSections(draft: Page, type: PageType, currency: string): E
 		{
 			id: 'cover',
 			label: 'Cover photo',
-			summary:
-				draft.hero === undefined ? 'Your logo stands in' : clipped(draft.hero.alt ?? 'A photo'),
+			summary: draft.hero === undefined ? 'No photo yet' : clipped(draft.hero.alt ?? 'A photo'),
 			empty: draft.hero === undefined,
 			text: {
 				kind: 'photo',

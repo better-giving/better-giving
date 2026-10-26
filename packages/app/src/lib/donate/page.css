@@ -63,7 +63,8 @@
  * and the title's smallest size are the budget that keeps it so —
  * `--page-cover-card` and `--page-cover-letter` above the box on a phone, `--page-hero-narrow` the
  * feature's cover on a phone and `--page-hero` on a laptop, where the box stands over the cover's
- * right side `--page-gap-lead` off its top.
+ * right side `--page-gap-lead` off its top. the feature's cover is at least `--page-hero` and grows
+ * with the words on it, and a cover the words have grown carries the box down with it.
  *
  * space, in five tiers and no adjacent two sharing a step. inside an item the card's `--_sp1` to
  * `--_sp5` and nothing else. `--page-gap-item` stands items of one group apart; `--page-gap-group` is
@@ -73,8 +74,10 @@
  * between two columns and `--page-gutter` the page's side margin.
  *
  * grounds. the page ground is `--_n2`, the card's panel and every card on it `--_n1`, and About us
- * stands on `--page-band`, `--_n3`. no ground is drawn from the brand colour: the brand fills the
- * action, the goal's progress and the badge, and is the ink of a link and a tier's amount.
+ * stands on `--page-band`, `--_n3`. the brand is a ground in one place, a cover with no photo — the
+ * logo's cover, the logo on its own `--_n1` plate, and the feature's empty cover, its words in
+ * `--_on-p` from 60rem. otherwise the brand fills the action, the goal's progress and the badge,
+ * and is the ink of a link and a tier's amount.
  *
  * the measured pairs. `./page.spec.ts` works each one out from this file and the form's, across
  * brand colours around the wheel at full strength, dark and muted and the unbranded grey, under
@@ -260,8 +263,9 @@ body {
  * stand in `.page-layout`, each carrying `data-area` for the rules below to place it by, in the order
  * a phone reads them; from `@container page (min-width: 60rem)` each layout moves them into its
  * columns. the donation box is a `.page-box` among them, never inside another section, and no rule
- * below gives the box or any ancestor of it a clip, a position or a transform, the feature's sticky
- * rail aside, which moves it and cuts nothing off.
+ * below gives the box or any ancestor of it a clip, a position or a transform. neither rail is
+ * sticky: a box that a later step grows past the screen's height scrolls with the page, so its
+ * lower edge and what stands under it can always be reached.
  *
  * ink. `--page-accent` is what a link and a listed tier's amount are drawn in, the primary.
  * `--page-ring` is the focus ring, `--_n1` on the feature's scrim and the form's elsewhere. a card
@@ -386,7 +390,9 @@ body {
 	min-inline-size: 0;
 }
 
-.page-layout > .page-section {
+/* on a phone the letter's rail is `display: contents`, so a section in it is spaced as the layout's own. */
+.page-layout > .page-section,
+.page-layout > .page-rail > .page-section {
 	margin-block-start: calc(var(--page-gap-section) - var(--page-gap-group));
 }
 
@@ -431,8 +437,14 @@ body {
 		border-radius: var(--_r);
 	}
 
+	/* the panel keeps the page's gutter until the container is wider than the panel, and the masthead
+	   and footer, gutter and all, stand in the panel's width. */
 	.page[data-layout='card'] .page-in:not(.page-layout) {
-		padding-inline: 0;
+		max-inline-size: calc(var(--page-narrow) + 2 * var(--page-gutter));
+	}
+
+	.page[data-layout='card'] .page-layout {
+		max-inline-size: min(var(--page-narrow), 100% - 2 * var(--page-gutter));
 	}
 
 	.page[data-layout='card'] [data-area='cover'] {
@@ -473,7 +485,7 @@ body {
 }
 
 /* the letter. on a phone the rail's box follows the title, its goal falls in after the box with the
-   lede, and its tiers after those; wide, the rail is a sticky column beside the reading column. */
+   lede, and its tiers after those; wide, the rail is a column beside the reading column. */
 .page[data-layout='letter'] [data-area='cover'] {
 	padding: var(--_sp2);
 	background: var(--_n1);
@@ -500,11 +512,17 @@ body {
 }
 
 @container page (min-width: 60rem) {
+	/* a row for each of the reading column's six areas — cover, title, lede, story, photos, questions —
+	   and a last flexible row. the rail spans them all, and a rail taller than the reading column puts
+	   its extra height in that last row alone, since an item that crosses a flexible row sizes only
+	   that row. the column is spaced by margins rather than a row gap, so a row left empty adds
+	   nothing. */
 	.page[data-layout='letter'] .page-layout {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) var(--page-box);
+		grid-template-rows: repeat(6, auto) 1fr;
 		column-gap: var(--page-col-gap);
-		row-gap: var(--page-gap-group);
+		row-gap: 0;
 		align-items: start;
 	}
 
@@ -513,18 +531,24 @@ body {
 		max-inline-size: var(--page-measure);
 	}
 
+	.page[data-layout='letter'] .page-layout > :not(:first-child, .page-rail) {
+		margin-block-start: var(--page-gap-group);
+	}
+
+	.page[data-layout='letter'] .page-layout > .page-section {
+		margin-block-start: var(--page-gap-section);
+	}
+
 	.page[data-layout='letter'] .page-layout > [data-area='cover'] {
 		max-inline-size: none;
 	}
 
 	.page[data-layout='letter'] .page-rail {
-		position: sticky;
-		inset-block-start: var(--page-gap-lead);
 		display: flex;
 		flex-direction: column;
 		gap: var(--page-gap-group);
 		grid-column: 2;
-		grid-row: 1 / span 9;
+		grid-row: 1 / -1;
 		max-inline-size: none;
 	}
 
@@ -541,8 +565,10 @@ body {
 /* the feature. on a phone it reads as the card does, its cover taller. wide, one grid stands the
    cover across the page's width under the title, lede and goal, on the scrim, with the box over its
    right side `--page-gap-lead` off its top, the story beside the box under the cover, and the tiers,
-   the photos and the questions across both columns below. a cover with no photo is the brand's own
-   ground, the logo on it where there is one. */
+   the photos and the questions across both columns below. the cover's row is at least `--page-hero`
+   and grows with the words, and the rail spans it and the story's row, which is flexible, so a box
+   taller than the cover lengthens the story's row and never the cover. a cover with no photo is the
+   brand's own ground, the logo on it where there is one. */
 .page[data-layout='feature'] .page-layout {
 	box-sizing: border-box;
 	padding-inline: var(--page-gutter);
@@ -584,7 +610,7 @@ body {
 			)
 			[main-end] var(--page-col-gap) [rail-start] var(--page-box) [rail-end]
 			minmax(var(--page-gutter), 1fr) [full-end];
-		grid-template-rows: var(--page-hero) auto;
+		grid-template-rows: minmax(var(--page-hero), auto) 1fr;
 		row-gap: 0;
 		column-gap: 0;
 		padding-inline: 0;
@@ -634,7 +660,8 @@ body {
 		background: none;
 	}
 
-	/* the title, lede and goal, on the cover's lower edge in the scrim's one ink. */
+	/* the title, lede and goal, on the cover's lower edge in the scrim's one ink. the inset above them
+	   is what a cover they grow keeps over the heading; over a logo, the logo's height too. */
 	.page[data-layout='feature'] .page-hero-words {
 		--page-ring: var(--_n1);
 		--page-quiet: var(--_n1);
@@ -646,8 +673,18 @@ body {
 		grid-column: main-start / main-end;
 		grid-row: 1;
 		align-self: end;
-		padding-block-end: var(--page-band-inset);
+		padding-block: var(--page-band-inset);
 		color: var(--_n1);
+	}
+
+	.page[data-layout='feature'] .page-layout[data-cover='logo'] .page-hero-words {
+		padding-block-start: calc(
+			var(--page-gap-lead) +
+			var(--page-cover-logo) +
+			2 *
+			var(--_sp3) +
+			var(--page-gap-group)
+		);
 	}
 
 	.page[data-layout='feature'] .page-layout[data-cover='logo'] .page-hero-words,
@@ -669,16 +706,14 @@ body {
 		background: var(--_n1);
 	}
 
-	/* the rail stands in the story's row and is lifted over the cover by the cover's height, less the
-	   gap it keeps off the cover's top. */
+	/* the rail starts on the cover's row, `--page-gap-lead` below its top, and stands over the cover
+	   whatever height the words give it. */
 	.page[data-layout='feature'] .page-rail {
-		position: sticky;
-		inset-block-start: var(--page-gap-lead);
 		z-index: 2;
 		grid-column: rail-start / rail-end;
-		grid-row: 2;
+		grid-row: 1 / 3;
 		align-self: start;
-		margin-block-start: calc(var(--page-gap-lead) - var(--page-hero));
+		margin-block-start: var(--page-gap-lead);
 	}
 
 	.page[data-layout='feature'] [data-area='story'] {
@@ -772,7 +807,6 @@ body {
 
 /* title and lede */
 .page-title {
-	max-inline-size: var(--page-measure-title);
 	overflow-wrap: break-word;
 	font-family: var(--page-font-display);
 	font-size: var(--page-display);
@@ -780,6 +814,14 @@ body {
 	letter-spacing: var(--page-tracking-display);
 	font-weight: var(--_w-bold);
 	text-wrap: balance;
+}
+
+/* the title's measure holds from 60rem, where a column is wider than the measure; on a phone the
+   column is narrower, and the title takes all of it. */
+@container page (min-width: 60rem) {
+	.page-title {
+		max-inline-size: var(--page-measure-title);
+	}
 }
 
 .page-lede {
@@ -880,6 +922,10 @@ body {
 	gap: var(--_sp4);
 }
 
+.page-tiers[data-shape='cards'] .page-tiers-list[data-columns='1'] {
+	grid-template-columns: minmax(0, 1fr);
+}
+
 @container page (min-width: 48rem) {
 	.page-tiers[data-shape='cards'] .page-tiers-list[data-columns='3'] {
 		grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -904,10 +950,17 @@ body {
 	color: var(--_p);
 }
 
+/* the amount column is as wide as the list's widest amount, every row's words starting together. */
+.page-tiers[data-shape='list'] .page-tiers-list {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	column-gap: var(--_sp4);
+}
+
 .page-tiers[data-shape='list'] .page-tier {
 	display: grid;
-	grid-template-columns: 5rem minmax(0, 1fr); /* raw-length-ok: the amount column, a shape */
-	column-gap: var(--_sp4);
+	grid-column: 1 / -1;
+	grid-template-columns: subgrid;
 	align-items: baseline;
 	padding-block: var(--_sp3);
 	border-block-start: var(--_border) solid var(--_n6);

@@ -1,8 +1,9 @@
 import { and, eq, gt, isNull } from 'drizzle-orm';
-import type { Page as PageDocument } from '../../page/catalog';
+import { PHOTOS_MAX, type Page as PageDocument } from '../../page/catalog';
 import { parseSlot } from '../../page/content-edit';
+import { readDocument } from '../pages/document';
 import type { Db } from '../db/client';
-import { connectorKey, page, photoLink, type PhotoLink } from '../db/schema';
+import { connectorKey, photoLink, type PhotoLink } from '../db/schema';
 import { freeImageStatements } from '../images/free';
 import { readPostedPhoto } from '../images/intake';
 import { editPageDraft } from '../pages/draft-writer';
@@ -46,19 +47,7 @@ export async function makePhotoLink(
 		slot?: unknown;
 	};
 	const kind = input.target?.kind;
-	let pageId: string | null = null;
-	if (kind === 'campaign' && typeof input.target?.id === 'string') {
-		const row = await readPage(db, input.target.id);
-		if (row === null || row.type !== 'campaign') {
-			return {
-				ok: false,
-				status: 404,
-				code: 'not_found',
-				detail: `Campaign ${input.target.id} does not exist on this deployment.`
-			};
-		}
-		pageId = row.id;
-	} else if (kind === 'donation_page') {
+	if (kind === 'donation_page') {
 		return {
 			ok: false,
 			status: 422,
@@ -66,7 +55,8 @@ export async function makePhotoLink(
 			detail:
 				'The donation page holds no photos: it draws one fixed layout. A photo goes on a campaign, as its cover or beside it.'
 		};
-	} else {
+	}
+	if (kind !== 'campaign' || typeof input.target?.id !== 'string') {
 		return {
 			ok: false,
 			status: 422,
@@ -74,26 +64,47 @@ export async function makePhotoLink(
 			detail: 'target is { "kind": "campaign", "id": "<campaign id>" }.'
 		};
 	}
+	const row = await readPage(db, input.target.id);
+	if (row === null || row.type !== 'campaign') {
+		return {
+			ok: false,
+			status: 404,
+			code: 'not_found',
+			detail: `Campaign ${input.target.id} does not exist on this deployment.`
+		};
+	}
 	if (
 		input.slot !== undefined &&
-		(typeof input.slot !== 'string' ||
-			parseSlot(input.slot)?.kind === 'new' ||
-			parseSlot(input.slot) === null)
+		(typeof input.slot !== 'string' || parseSlot(input.slot) === null)
 	) {
 		return {
 			ok: false,
 			status: 422,
 			code: 'invalid',
 			detail:
-				'slot is "cover" for the cover photo, or the place of a photo beside it to replace, "0" for the first; leave it out to fill the cover where there is none, or add a photo after the rest.'
+				'slot is "cover" for the cover photo, "new" for a photo after the rest, or the place of a photo beside the cover to replace, "0" for the first; leave it out to fill the cover where there is none, or add a photo after the rest.'
+		};
+	}
+	const slot = typeof input.slot === 'string' ? input.slot : null;
+	const draft = readDocument(row, 'draft', row.draft);
+	if (
+		draft.ok &&
+		placeOf(draft.page, slot) === 'added' &&
+		(draft.page.photos ?? []).length >= PHOTOS_MAX
+	) {
+		return {
+			ok: false,
+			status: 422,
+			code: 'invalid',
+			detail: `This campaign already holds ${PHOTOS_MAX} photos beside its cover place, the most it can, so a new photo has no place. Ask the operator which photo it replaces, and make the link with that slot: "cover", or the place of a photo beside it, "0" for the first.`
 		};
 	}
 	const token = randomToken();
 	const expiresAt = new Date(now.getTime() + PHOTO_LINK_TTL_MS);
 	await db.insert(photoLink).values({
 		tokenHash: hashOf(token),
-		pageId,
-		slot: typeof input.slot === 'string' ? input.slot : null,
+		pageId: row.id,
+		slot,
 		connectorKeyId: keyId,
 		createdAt: now,
 		expiresAt
@@ -187,19 +198,28 @@ export async function placePostedPhoto(
 	};
 }
 
+type Place = 'cover' | { readonly replaces: number } | 'added';
+
 /**
- * `draft` with `imageId` in `slot`: the cover, or the place of a photo beside it where the draft holds
- * one; with none named, or a place it does not hold, the cover where there is none, else a new photo
- * after the rest. a slot read as nothing — a link made before slots, naming a block — is none named.
+ * where a photo for `slot` lands on `draft`: the cover, or the place of a photo beside it where the
+ * draft holds one; `new` after the rest; with none named, or a place it does not hold, the cover
+ * where there is none, else after the rest. a slot read as nothing — a link made before slots,
+ * naming a block — is none named.
  */
+function placeOf(draft: PageDocument, slot: string | null): Place {
+	const read = slot === null ? null : parseSlot(slot);
+	if (read?.kind === 'cover') return 'cover';
+	if (read?.kind === 'new') return 'added';
+	if (read?.kind === 'photo' && read.at < (draft.photos ?? []).length) return { replaces: read.at };
+	return draft.hero === undefined ? 'cover' : 'added';
+}
+
+/** `draft` with `imageId` where `placeOf` puts a photo for `slot`. */
 export function withPhoto(draft: PageDocument, slot: string | null, imageId: string): PageDocument {
 	const photo = { imageId, alt: null };
-	const read = slot === null ? null : parseSlot(slot);
 	const photos = draft.photos ?? [];
-	if (read?.kind === 'cover') return { ...draft, hero: photo };
-	if (read?.kind === 'photo' && read.at < photos.length) {
-		return { ...draft, photos: photos.map((one, at) => (at === read.at ? photo : one)) };
-	}
-	if (draft.hero === undefined) return { ...draft, hero: photo };
-	return { ...draft, photos: [...photos, photo] };
+	const place = placeOf(draft, slot);
+	if (place === 'cover') return { ...draft, hero: photo };
+	if (place === 'added') return { ...draft, photos: [...photos, photo] };
+	return { ...draft, photos: photos.map((one, at) => (at === place.replaces ? photo : one)) };
 }

@@ -245,7 +245,7 @@ describe('the settings sheet', () => {
 				}}
 				sections={[
 					story,
-					{ id: 'cover', label: 'Cover photo', summary: 'Your logo stands in', empty: true }
+					{ id: 'cover', label: 'Cover photo', summary: 'No photo yet', empty: true }
 				]}
 				onOpenSection={() => {}}
 				onAddPhoto={() => {}}

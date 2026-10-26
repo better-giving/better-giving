@@ -719,6 +719,20 @@ describe('Publish', () => {
 		expect(await stored(pageId)).toEqual(drawn);
 	});
 
+	it.each(['page-layout', 'page-palette', 'block-move', 'block-add', 'block-variant'])(
+		'refuses the retired %s form posted by hand, leaving the campaign as it was',
+		async (form) => {
+			const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+			const drawn = await stored(pageId);
+
+			const response = await post(pageId, form, {});
+
+			expect(response.status).toBe(400);
+			expect(await response.text()).toContain('names no form on this screen');
+			expect(await stored(pageId)).toEqual(drawn);
+		}
+	);
+
 	it('answers 404 for an id no campaign has', async () => {
 		const response = await post(
 			'no-such-page',

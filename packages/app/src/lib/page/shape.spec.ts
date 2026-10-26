@@ -41,6 +41,47 @@ describe('the layout two measures pick', () => {
 		});
 	});
 
+	// storyLength is the plain text's, so a break between paragraphs and a list marker each count.
+	const paragraph = (length: number) => ({
+		type: 'paragraph' as const,
+		content: [{ type: 'text' as const, text: 'x'.repeat(length) }]
+	});
+
+	it.each([
+		[159, 320, 'card'],
+		[160, 322, 'letter']
+	] as const)(
+		'counts the break between two %i-character paragraphs, so the story is %i and draws as the %s',
+		(each, total, layout) => {
+			const two = { type: 'doc' as const, content: [paragraph(each), paragraph(each)] };
+			expect(campaignShape(campaign({ story: two }), noLogo)).toMatchObject({
+				layout,
+				storyLength: total
+			});
+		}
+	);
+
+	it('counts a list item’s marker, so a 319-character bullet draws as the letter', () => {
+		const list = {
+			type: 'doc' as const,
+			content: [
+				{
+					type: 'bulletList' as const,
+					content: [
+						{
+							type: 'listItem' as const,
+							content: [paragraph(319)] as [ReturnType<typeof paragraph>]
+						}
+					]
+				}
+			]
+		};
+		expect(campaignShape(campaign({ story: list }), noLogo)).toMatchObject({
+			layout: 'letter',
+			storyLength: 321
+		});
+	});
+
 	it.each([
 		[0, 'card'],
 		[1, 'letter'],

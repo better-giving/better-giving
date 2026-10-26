@@ -246,7 +246,7 @@ describe('a placed photo’s sheet', () => {
 describe('the sheet of a slot with no photo yet', () => {
 	const bare: EditorSection = {
 		...hero,
-		summary: 'Your logo stands in',
+		summary: 'No photo yet',
 		empty: true,
 		text: { kind: 'photo', slot: SLOTS.cover, imageId: null, alt: '', removable: false }
 	};

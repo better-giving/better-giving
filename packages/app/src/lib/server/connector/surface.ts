@@ -110,6 +110,19 @@ export function unknownAction(pathname: string, method: string): Response {
 	);
 }
 
+/**
+ * a 422 for an action an earlier release served and this one replaced: the connector still deployed
+ * may call it, and `unknown_action` would tell it to update a release that is already the newest.
+ */
+export function replacedAction(retired: string, replacement: string): Response {
+	return connectorProblem(
+		422,
+		'replaced',
+		'This action was replaced',
+		`${retired} is no longer served: the page now picks its layout from its content. Use ${replacement} instead.`
+	);
+}
+
 /** a 404 for a campaign, form or donor that is not there. */
 export function notFound(what: string): Response {
 	return connectorProblem(

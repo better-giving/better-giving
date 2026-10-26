@@ -85,7 +85,7 @@ it('marks a section holding nothing as unset, and only that one', () => {
 			.filter((row) => row.unset)
 			.map((row) => [row.label, row.value])
 	).toEqual([
-		['Cover photo', 'Your logo stands in'],
+		['Cover photo', 'No photo yet'],
 		['Questions', 'None yet']
 	]);
 });

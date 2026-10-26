@@ -6,7 +6,7 @@ import { UNREACHED } from '$lib/admin/unreached';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { editorSections, editorShareMessage, newPhotoSection } from '$lib/page/content-edit';
 import { SECTION_MESSAGE } from '$lib/page/preview-message';
-import type { Page } from '$lib/page/catalog';
+import { type Page, PHOTOS_MAX } from '$lib/page/catalog';
 import { defaultCampaign } from '$lib/page/defaults';
 import type { Resized } from '@better-giving/operator/images/resize';
 import CampaignEditor, { clientAction } from './_app.admin.campaigns.$pageId';
@@ -513,7 +513,11 @@ describe('Settings’ content', () => {
 		])
 			expect(text).not.toContain(gone);
 		expect(sheet.querySelector('fieldset, input[type="radio"], select')).toBeNull();
-		expect(document.querySelector('.adm-blockrow')).toBeNull();
+		const labelled = [...document.querySelectorAll('[aria-label]')].map(
+			(one) => one.getAttribute('aria-label') ?? ''
+		);
+		expect(labelled.length).toBeGreaterThan(0);
+		expect(labelled.filter((name) => /\bmove\b|variant|background|layout/i.test(name))).toEqual([]);
 	});
 
 	it('lists a placed photo, a tier and a question as rows of their own, in the order the page draws them', async () => {
@@ -566,6 +570,32 @@ describe('Settings’ content', () => {
 			expect(() => card('Settings')).toThrow();
 		}
 	);
+
+	it.each([
+		[PHOTOS_MAX - 1, true],
+		[PHOTOS_MAX, false]
+	])('with %i photos placed, Add a photo is offered: %s', async (count, drawnButton) => {
+		const full: Page = {
+			...DRAFT,
+			photos: Array.from({ length: count }, (_, at) => ({
+				imageId: `019fb300-0000-7000-8000-0000000002${String(at).padStart(2, '0')}`,
+				alt: null
+			}))
+		};
+		drawn = {
+			...drawn,
+			sections: editorSections(full, 'campaign', 'USD'),
+			newPhoto: newPhotoSection(full)
+		};
+
+		const sheet = await settings();
+
+		expect(rows(sheet).filter((label) => label?.startsWith('Photo '))).toHaveLength(count);
+		const added = [...sheet.querySelectorAll('button')].some(
+			(one) => one.textContent?.trim() === 'Add a photo'
+		);
+		expect(added).toBe(drawnButton);
+	});
 
 	it('opens an empty photo’s sheet from Add a photo', async () => {
 		const sheet = await settings();

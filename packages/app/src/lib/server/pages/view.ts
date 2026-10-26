@@ -41,9 +41,10 @@ import { pageGoal } from './goal';
 // still takes gifts while somebody repairs it.
 //
 // a page draws its own share message, its title where it holds none, and so moves it only at
-// Publish with the rest of its document. its only colour is the organisation's brand colour. the organisation's mission, vision, brand colour, social links and logo are its
-// profile's, read live on every draw, so a save in the console reaches every page at once, the
-// preview included. so are the programs' photos, handed beside the served config for the programs
+// Publish with the rest of its document. its only colour is the organisation's brand colour.
+//
+// the organisation's mission, vision, brand colour, social links and logo are its profile's, read
+// live on every draw, so a save in the console reaches every page at once, the preview included. so are the programs' photos, handed beside the served config for the programs
 // its chooser offers and never on its `v1` options, and so is a campaign's raised figure
 // (./goal.ts), a sum over the books that is never cached.
 

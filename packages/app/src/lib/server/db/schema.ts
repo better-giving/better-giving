@@ -3167,9 +3167,10 @@ export const webhookDelivery = sqliteTable(
 // the pages this deployment serves on its own address: `page`.
 //
 // each page is held as a JSON document whose shape is the parse boundary's, and the database reads
-// a handful of keys out of them with `json_extract`. a key a check reads is pinned by that check:
-// rename it in the document and the check reads null, which it accepts. so every such key is named
-// once, in ../../page/keys.ts, for the checks here and the page catalog's parser alike.
+// two keys out of them with `json_extract`, `goalMinor` and `endsAt`. a key a check reads is pinned
+// by that check: rename it in the document and the check reads null, which it accepts. so every
+// such key is named once, in ../../page/keys.ts, for the checks here and the page catalog's parser
+// alike.
 // ---------------------------------------------------------------------------
 
 /**

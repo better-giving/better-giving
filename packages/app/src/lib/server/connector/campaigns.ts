@@ -20,11 +20,11 @@ import { endCampaign, readPage } from '../pages/queries';
 // `published` or `ended`, money is a decimal string with its currency, a day is `YYYY-MM-DD`. a
 // chat edits a campaign's content — its title, story, photos, tiers and questions — and never how
 // it is laid out: the page picks its layout from what the content holds ($lib/page/shape.ts), and
-// `campaigns.get` says which it picked. every edit goes through `editPageDraft` (../pages/draft-writer.ts), the writer the dashboard's own
-// presses use, so a page the connector edits meets the same page rule a hand edit does, and is only
-// ever the draft: donors see nothing of it until Publish. Publish and End are the dashboard's own
-// (`publishPage` in ../pages/publish.ts, `endCampaign` in ../pages/queries.ts), guarded on the row
-// as read just before.
+// `campaigns.get` says which it picked. every edit goes through `editPageDraft`
+// (../pages/draft-writer.ts), the writer the dashboard's own presses use, so a page the connector
+// edits meets the same page rule a hand edit does, and is only ever the draft: donors see nothing of
+// it until Publish. Publish and End are the dashboard's own (`publishPage` in ../pages/publish.ts,
+// `endCampaign` in ../pages/queries.ts), guarded on the row as read just before.
 
 export type CampaignStatus = 'draft' | 'published' | 'ended';
 
@@ -213,6 +213,11 @@ export function contentEdit(db: Db, body: unknown, type: PageType): DraftCommand
 		);
 	}
 	const posted = body as Record<string, unknown>;
+	if (Object.keys(posted).length === 0)
+		return invalid(
+			'',
+			`send at least one content key: ${CONTENT_KEYS_OF[type].join(', ')}; a key left out is left alone`
+		);
 	return async (draft) => {
 		const next: Record<string, unknown> = { ...draft };
 		for (const [key, value] of Object.entries(posted)) {
@@ -222,21 +227,36 @@ export function contentEdit(db: Db, body: unknown, type: PageType): DraftCommand
 			} else next[key] = value;
 		}
 		const before = new Set(placedImageIds(draft));
-		const added = placedImageIds({
-			hero: next.hero as PageDocument['hero'],
-			photos: Array.isArray(next.photos) ? (next.photos as PageDocument['photos']) : undefined
-		}).filter((imageId) => typeof imageId === 'string' && !before.has(imageId));
-		const missing = await firstMissingImage(db, added);
-		if (missing !== null) {
-			return {
-				ok: false,
-				path: [posted.hero !== undefined ? 'hero' : 'photos'],
-				message: `no photo ${JSON.stringify(missing)} is stored here; add a photo through photos.upload_link instead of naming one`
-			};
+		for (const key of ['hero', 'photos'] as const) {
+			const added = idsNamed(posted[key]).filter((imageId) => !before.has(imageId));
+			const missing = await firstMissingImage(db, added);
+			if (missing !== null) {
+				return {
+					ok: false,
+					path: [key],
+					message: `no photo ${JSON.stringify(missing)} is stored here; add a photo through photos.upload_link instead of naming one`
+				};
+			}
 		}
 		return { ok: true, draft: next };
 	};
 }
+
+/**
+ * the image ids a posted `hero` or `photos` value names, from its well-formed `{ imageId }` entries
+ * alone: any other entry is the page rule's to refuse.
+ */
+function idsNamed(value: unknown): string[] {
+	return (Array.isArray(value) ? value : [value]).flatMap((entry) =>
+		typeof entry === 'object' &&
+		entry !== null &&
+		typeof (entry as { imageId?: unknown }).imageId === 'string'
+			? [(entry as { imageId: string }).imageId]
+			: []
+	);
+}
+
+const SETTINGS_KEYS: readonly string[] = ['goal', 'end_date', 'time_zone', 'sharing'];
 
 /** sets a campaign's goal, end date and sharing on its draft; a key left out is left alone. */
 export async function changeSettings(
@@ -246,7 +266,32 @@ export async function changeSettings(
 	id: string,
 	body: unknown
 ): Promise<Done | Refused> {
-	if (typeof body !== 'object' || body === null) return invalid('', 'the body is a JSON object');
+	if (typeof body !== 'object' || body === null || Array.isArray(body))
+		return invalid('', `the body is a JSON object of ${SETTINGS_KEYS.join(', ')}`);
+	const unset = Object.keys(body).find((key) => !SETTINGS_KEYS.includes(key));
+	if (unset !== undefined) {
+		return invalid(
+			unset,
+			`${JSON.stringify(unset)} is not a setting; the settings are ${SETTINGS_KEYS.join(', ')}, content goes through campaigns.update_content, and the page picks its layout from its content, so no layout, look, colour or block is set`
+		);
+	}
+	const sharing = (body as { sharing?: unknown }).sharing;
+	if (sharing !== undefined) {
+		if (typeof sharing !== 'object' || sharing === null || Array.isArray(sharing))
+			return invalid(
+				'sharing',
+				'sharing is { "message": "<what a share says>" }, or { "message": null } for none'
+			);
+		const other = Object.keys(sharing).find((key) => key !== 'message');
+		if (other === 'channels') {
+			return invalid(
+				'sharing.channels',
+				'every page offers the same share buttons, Copy link, Email, Facebook and WhatsApp, and none is chosen; send sharing.message only'
+			);
+		}
+		if (other !== undefined)
+			return invalid(`sharing.${other}`, 'sharing holds message alone; send sharing.message only');
+	}
 	const input = body as {
 		goal?: unknown;
 		end_date?: unknown;
@@ -296,15 +341,9 @@ export async function changeSettings(
 			}
 		}
 		if (input.sharing !== undefined) {
-			const sharing = (input.sharing ?? {}) as { message?: unknown; channels?: unknown };
-			if (sharing.channels !== undefined) {
-				return refuse(
-					'sharing.channels',
-					'every page offers the same share buttons, Copy link, Email, Facebook and WhatsApp, and none is chosen; send sharing.message only'
-				);
-			}
-			if (sharing.message === null) delete next.shareMessage;
-			else if (sharing.message !== undefined) next.shareMessage = sharing.message;
+			const { message } = input.sharing as { message?: unknown };
+			if (message === null) delete next.shareMessage;
+			else if (message !== undefined) next.shareMessage = message;
 		}
 		return { ok: true, draft: next };
 	});

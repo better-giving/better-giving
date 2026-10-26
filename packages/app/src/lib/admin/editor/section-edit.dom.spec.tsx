@@ -149,6 +149,7 @@ describe('a section sheet', () => {
 					'dialog legend, dialog label, dialog button, dialog [role="radio"]'
 				)
 			].map((one) => one.getAttribute('aria-label') ?? one.textContent ?? '');
+			expect(names.length).toBeGreaterThan(2);
 			expect(names.filter((name) => NOT_CONTENT.test(name))).toEqual([]);
 			expect(root.querySelector('dialog input[type="radio"]')).toBeNull();
 		}

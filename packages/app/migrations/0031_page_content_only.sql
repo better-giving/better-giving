@@ -4,14 +4,19 @@
 -- (`src/lib/page/shape.ts`). `src/lib/page/catalog.ts` is the rule the documents are moved to.
 --
 -- in `draft`, `published` and `last_published` alike, each document holding a block list is
--- rewritten from it: `heading` from the first title (empty where there is none), and on a campaign
--- `lede` from that title, `story` from the first story, `hero` from the first hero holding a photo,
--- `photos` from the image blocks holding one (the first eight), `tiers` from the first impact-tiers
--- block holding any and `faq` from the first faq holding any. a key with nothing to carry is left
--- out, which `json_patch` does with a null; each object or list is wrapped in `json()` so a CASE
--- around it hands it on as JSON and not as its text. every other key — the share message, the switches, the
--- name, the goal, the end date and the settings — stays as it is, and a null column stays null.
--- a photo no document places any more stays stored; nothing serves it.
+-- rewritten from it. every page keeps `heading`, from the first title (empty where there is none). a
+-- campaign also keeps `lede` from that title; `story` from the first story whose body holds text
+-- that is not blank, and none where no story does; `hero` from the first hero holding a photo;
+-- `photos` from the image blocks holding one (the first eight); `tiers` from every impact-tiers
+-- block's tiers end to end in block order (the first six); and `faq` from every faq block's
+-- questions the same way (the first ten). the Donation page keeps its heading, its share message,
+-- its switches and its settings, and loses every other block — its lede, story, cover, photos,
+-- tiers and questions — in the draft, the live copy and the copy Undo restores alike: the page rule
+-- refuses them there, and the Donation page draws one fixed layout. a key with nothing to carry is
+-- left out, which `json_patch` does with a null; each object or list is wrapped in `json()` so a
+-- CASE around it hands it on as JSON and not as its text. every other key — the share message, the
+-- switches, the name, the goal, the end date and the settings — stays as it is, and a null column
+-- stays null. a photo no document places any more stays stored; nothing serves it.
 --
 -- the look checks go with the look: narrowing a table's CHECKs is not one of sqlite's native
 -- ALTERs, so `page` is then the create-copy-drop-rename rebuild `src/lib/server/db/schema.ts`'s rule
@@ -30,11 +35,11 @@ UPDATE `page` SET `draft` = json_patch(
 	json_object(
 		'heading', coalesce((SELECT json_extract(`b`.`value`, '$.heading') FROM json_each(`page`.`draft`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'title' ORDER BY `b`.`key` LIMIT 1), ''),
 		'lede', CASE WHEN `page`.`type` = 'campaign' THEN (SELECT nullif(json_extract(`b`.`value`, '$.lede'), '') FROM json_each(`page`.`draft`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'title' ORDER BY `b`.`key` LIMIT 1) END,
-		'story', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.body')) FROM json_each(`page`.`draft`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'story' ORDER BY `b`.`key` LIMIT 1) END),
+		'story', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.body')) FROM json_each(`page`.`draft`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'story' AND EXISTS (SELECT 1 FROM json_tree(`b`.`value`, '$.body') AS `n` WHERE `n`.`key` = 'text' AND `n`.`type` = 'text' AND trim(`n`.`value`, char(32, 9, 10, 11, 12, 13, 160)) <> '') ORDER BY `b`.`key` LIMIT 1) END),
 		'hero', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json_object('imageId', json_extract(`b`.`value`, '$.imageId'), 'alt', json_extract(`b`.`value`, '$.alt')) FROM json_each(`page`.`draft`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'hero' AND json_extract(`b`.`value`, '$.imageId') IS NOT NULL ORDER BY `b`.`key` LIMIT 1) END),
 		'photos', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(nullif(json_group_array(json(`p`.`photo`)), '[]')) FROM (SELECT json_object('imageId', json_extract(`b`.`value`, '$.imageId'), 'alt', json_extract(`b`.`value`, '$.alt')) AS `photo` FROM json_each(`page`.`draft`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'image' AND json_extract(`b`.`value`, '$.imageId') IS NOT NULL ORDER BY `b`.`key` LIMIT 8) AS `p`) END),
-		'tiers', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.tiers')) FROM json_each(`page`.`draft`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'impact-tiers' AND json_array_length(`b`.`value`, '$.tiers') > 0 ORDER BY `b`.`key` LIMIT 1) END),
-		'faq', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.items')) FROM json_each(`page`.`draft`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'faq' AND json_array_length(`b`.`value`, '$.items') > 0 ORDER BY `b`.`key` LIMIT 1) END)
+		'tiers', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(nullif(json_group_array(json(`i`.`item`)), '[]')) FROM (SELECT `t`.`value` AS `item` FROM json_each(`page`.`draft`, '$.blocks') AS `b`, json_each(`b`.`value`, '$.tiers') AS `t` WHERE json_extract(`b`.`value`, '$.type') = 'impact-tiers' ORDER BY `b`.`key`, `t`.`key` LIMIT 6) AS `i`) END),
+		'faq', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(nullif(json_group_array(json(`i`.`item`)), '[]')) FROM (SELECT `q`.`value` AS `item` FROM json_each(`page`.`draft`, '$.blocks') AS `b`, json_each(`b`.`value`, '$.items') AS `q` WHERE json_extract(`b`.`value`, '$.type') = 'faq' ORDER BY `b`.`key`, `q`.`key` LIMIT 10) AS `i`) END)
 	)
 )
 WHERE `draft` IS NOT NULL AND json_type(`draft`, '$.blocks') = 'array';
@@ -44,11 +49,11 @@ UPDATE `page` SET `published` = json_patch(
 	json_object(
 		'heading', coalesce((SELECT json_extract(`b`.`value`, '$.heading') FROM json_each(`page`.`published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'title' ORDER BY `b`.`key` LIMIT 1), ''),
 		'lede', CASE WHEN `page`.`type` = 'campaign' THEN (SELECT nullif(json_extract(`b`.`value`, '$.lede'), '') FROM json_each(`page`.`published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'title' ORDER BY `b`.`key` LIMIT 1) END,
-		'story', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.body')) FROM json_each(`page`.`published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'story' ORDER BY `b`.`key` LIMIT 1) END),
+		'story', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.body')) FROM json_each(`page`.`published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'story' AND EXISTS (SELECT 1 FROM json_tree(`b`.`value`, '$.body') AS `n` WHERE `n`.`key` = 'text' AND `n`.`type` = 'text' AND trim(`n`.`value`, char(32, 9, 10, 11, 12, 13, 160)) <> '') ORDER BY `b`.`key` LIMIT 1) END),
 		'hero', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json_object('imageId', json_extract(`b`.`value`, '$.imageId'), 'alt', json_extract(`b`.`value`, '$.alt')) FROM json_each(`page`.`published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'hero' AND json_extract(`b`.`value`, '$.imageId') IS NOT NULL ORDER BY `b`.`key` LIMIT 1) END),
 		'photos', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(nullif(json_group_array(json(`p`.`photo`)), '[]')) FROM (SELECT json_object('imageId', json_extract(`b`.`value`, '$.imageId'), 'alt', json_extract(`b`.`value`, '$.alt')) AS `photo` FROM json_each(`page`.`published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'image' AND json_extract(`b`.`value`, '$.imageId') IS NOT NULL ORDER BY `b`.`key` LIMIT 8) AS `p`) END),
-		'tiers', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.tiers')) FROM json_each(`page`.`published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'impact-tiers' AND json_array_length(`b`.`value`, '$.tiers') > 0 ORDER BY `b`.`key` LIMIT 1) END),
-		'faq', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.items')) FROM json_each(`page`.`published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'faq' AND json_array_length(`b`.`value`, '$.items') > 0 ORDER BY `b`.`key` LIMIT 1) END)
+		'tiers', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(nullif(json_group_array(json(`i`.`item`)), '[]')) FROM (SELECT `t`.`value` AS `item` FROM json_each(`page`.`published`, '$.blocks') AS `b`, json_each(`b`.`value`, '$.tiers') AS `t` WHERE json_extract(`b`.`value`, '$.type') = 'impact-tiers' ORDER BY `b`.`key`, `t`.`key` LIMIT 6) AS `i`) END),
+		'faq', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(nullif(json_group_array(json(`i`.`item`)), '[]')) FROM (SELECT `q`.`value` AS `item` FROM json_each(`page`.`published`, '$.blocks') AS `b`, json_each(`b`.`value`, '$.items') AS `q` WHERE json_extract(`b`.`value`, '$.type') = 'faq' ORDER BY `b`.`key`, `q`.`key` LIMIT 10) AS `i`) END)
 	)
 )
 WHERE `published` IS NOT NULL AND json_type(`published`, '$.blocks') = 'array';
@@ -58,11 +63,11 @@ UPDATE `page` SET `last_published` = json_patch(
 	json_object(
 		'heading', coalesce((SELECT json_extract(`b`.`value`, '$.heading') FROM json_each(`page`.`last_published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'title' ORDER BY `b`.`key` LIMIT 1), ''),
 		'lede', CASE WHEN `page`.`type` = 'campaign' THEN (SELECT nullif(json_extract(`b`.`value`, '$.lede'), '') FROM json_each(`page`.`last_published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'title' ORDER BY `b`.`key` LIMIT 1) END,
-		'story', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.body')) FROM json_each(`page`.`last_published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'story' ORDER BY `b`.`key` LIMIT 1) END),
+		'story', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.body')) FROM json_each(`page`.`last_published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'story' AND EXISTS (SELECT 1 FROM json_tree(`b`.`value`, '$.body') AS `n` WHERE `n`.`key` = 'text' AND `n`.`type` = 'text' AND trim(`n`.`value`, char(32, 9, 10, 11, 12, 13, 160)) <> '') ORDER BY `b`.`key` LIMIT 1) END),
 		'hero', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json_object('imageId', json_extract(`b`.`value`, '$.imageId'), 'alt', json_extract(`b`.`value`, '$.alt')) FROM json_each(`page`.`last_published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'hero' AND json_extract(`b`.`value`, '$.imageId') IS NOT NULL ORDER BY `b`.`key` LIMIT 1) END),
 		'photos', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(nullif(json_group_array(json(`p`.`photo`)), '[]')) FROM (SELECT json_object('imageId', json_extract(`b`.`value`, '$.imageId'), 'alt', json_extract(`b`.`value`, '$.alt')) AS `photo` FROM json_each(`page`.`last_published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'image' AND json_extract(`b`.`value`, '$.imageId') IS NOT NULL ORDER BY `b`.`key` LIMIT 8) AS `p`) END),
-		'tiers', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.tiers')) FROM json_each(`page`.`last_published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'impact-tiers' AND json_array_length(`b`.`value`, '$.tiers') > 0 ORDER BY `b`.`key` LIMIT 1) END),
-		'faq', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(json_extract(`b`.`value`, '$.items')) FROM json_each(`page`.`last_published`, '$.blocks') AS `b` WHERE json_extract(`b`.`value`, '$.type') = 'faq' AND json_array_length(`b`.`value`, '$.items') > 0 ORDER BY `b`.`key` LIMIT 1) END)
+		'tiers', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(nullif(json_group_array(json(`i`.`item`)), '[]')) FROM (SELECT `t`.`value` AS `item` FROM json_each(`page`.`last_published`, '$.blocks') AS `b`, json_each(`b`.`value`, '$.tiers') AS `t` WHERE json_extract(`b`.`value`, '$.type') = 'impact-tiers' ORDER BY `b`.`key`, `t`.`key` LIMIT 6) AS `i`) END),
+		'faq', json(CASE WHEN `page`.`type` = 'campaign' THEN (SELECT json(nullif(json_group_array(json(`i`.`item`)), '[]')) FROM (SELECT `q`.`value` AS `item` FROM json_each(`page`.`last_published`, '$.blocks') AS `b`, json_each(`b`.`value`, '$.items') AS `q` WHERE json_extract(`b`.`value`, '$.type') = 'faq' ORDER BY `b`.`key`, `q`.`key` LIMIT 10) AS `i`) END)
 	)
 )
 WHERE `last_published` IS NOT NULL AND json_type(`last_published`, '$.blocks') = 'array';

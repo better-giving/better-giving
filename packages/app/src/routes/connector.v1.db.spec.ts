@@ -13,6 +13,7 @@ import {
 	sweepConnectorLeftovers
 } from '$lib/server/connector/keys';
 import { CONNECTOR_ACTIONS, CONNECTOR_RETURN } from '$lib/server/connector/surface';
+import { PHOTOS_MAX } from '$lib/page/catalog';
 import { connectorCode, connectorKey, page, photoLink } from '$lib/server/db/schema';
 import { pngHeader } from '$lib/server/images/headers.testing';
 import { deleteNeverPublishedCampaign } from '$lib/server/pages/queries';
@@ -698,6 +699,28 @@ describe('campaign edits', () => {
 		expect(row?.published).toBeNull();
 	});
 
+	it('clears a heading sent null to the empty string, the one key a page cannot be without', async () => {
+		const key = await connect();
+		const id = await made(key);
+		const set = await call('content', `/campaigns/${id}/content`, {
+			method: 'PATCH',
+			key,
+			body: { heading: 'Warm coats for winter' }
+		});
+		expect(((await set.json()) as { content: { heading: string } }).content.heading).toBe(
+			'Warm coats for winter'
+		);
+
+		const cleared = await call('content', `/campaigns/${id}/content`, {
+			method: 'PATCH',
+			key,
+			body: { heading: null }
+		});
+
+		expect(cleared.status).toBe(200);
+		expect(((await cleared.json()) as { content: { heading: unknown } }).content.heading).toBe('');
+	});
+
 	it.each([
 		['layout', { layout: 'feature' }],
 		['blocks', { blocks: [] }],
@@ -758,6 +781,70 @@ describe('campaign edits', () => {
 
 		expect(response.status).toBe(422);
 		expect(((await response.json()) as { detail: string }).detail).toContain('photos.upload_link');
+	});
+
+	it.each([
+		['layout', { layout: 'feature' }],
+		['look', { look: 'warm' }],
+		['sharing', { sharing: null }],
+		['sharing', { sharing: 'Hello' }],
+		['sharing.tone', { sharing: { message: 'Hello', tone: 'warm' } }]
+	] as const)(
+		'refuses a settings body naming %s it does not set, and writes nothing',
+		async (path, body) => {
+			const key = await connect();
+			const id = await made(key);
+			const [before] = await h.db.select().from(page).where(eq(page.id, id));
+
+			const response = await call('settings', `/campaigns/${id}/settings`, {
+				method: 'PATCH',
+				key,
+				body: { goal: { amount: '100', currency: 'USD' }, ...body }
+			});
+
+			expect(response.status).toBe(422);
+			expect(await response.json()).toMatchObject({ code: 'invalid', errors: [{ path }] });
+			const [after] = await h.db.select().from(page).where(eq(page.id, id));
+			expect(after?.draft).toBe(before?.draft);
+			expect(after?.updatedAt).toEqual(before?.updatedAt);
+		}
+	);
+
+	it('refuses an empty content body, and writes nothing', async () => {
+		const key = await connect();
+		const id = await made(key);
+		const [before] = await h.db.select().from(page).where(eq(page.id, id));
+
+		const response = await call('content', `/campaigns/${id}/content`, {
+			method: 'PATCH',
+			key,
+			body: {}
+		});
+
+		expect(response.status).toBe(422);
+		expect(((await response.json()) as { detail: string }).detail).toContain(
+			'send at least one content key'
+		);
+		const [after] = await h.db.select().from(page).where(eq(page.id, id));
+		expect(after?.updatedAt).toEqual(before?.updatedAt);
+	});
+
+	it.each([
+		['a null photo', { photos: [null] }],
+		['a photo with no id', { photos: [{ alt: null }] }],
+		['a cover that is a string', { hero: 'cover.png' }]
+	] as const)('refuses %s as the page rule does, not as a fault', async (_, body) => {
+		const key = await connect();
+		const id = await made(key);
+
+		const response = await call('content', `/campaigns/${id}/content`, {
+			method: 'PATCH',
+			key,
+			body
+		});
+
+		expect(response.status).toBe(422);
+		expect(await response.json()).toMatchObject({ code: 'invalid' });
 	});
 
 	it('refuses a settings body that picks share channels, and keeps the message alone', async () => {
@@ -828,6 +915,22 @@ describe('the photo link', () => {
 		expect(read.content.hero?.imageId).toEqual(expect.any(String));
 	});
 
+	it('removes the cover when sent hero null', async () => {
+		const key = await connect();
+		const { id, url } = await linked(key);
+		await upload(url);
+		expect((await contentOf(key, id)).hero?.imageId).toEqual(expect.any(String));
+
+		const response = await call('content', `/campaigns/${id}/content`, {
+			method: 'PATCH',
+			key,
+			body: { hero: null }
+		});
+
+		expect(response.status).toBe(200);
+		expect((await contentOf(key, id)).hero).toBeUndefined();
+	});
+
 	async function linkTo(key: string, id: string, extra: Record<string, unknown> = {}) {
 		const response = await call('uploadLink', '/photos/upload-link', {
 			method: 'POST',
@@ -882,8 +985,59 @@ describe('the photo link', () => {
 		expect(after.photos?.[0]?.imageId).not.toBe(before);
 	});
 
+	it('adds a photo after the rest on a slot of "new", even with no cover', async () => {
+		const key = await connect();
+		const id = (
+			(await (
+				await call('campaigns', '/campaigns', { method: 'POST', key, body: { title: 'Coats' } })
+			).json()) as { id: string }
+		).id;
+
+		const { response, url } = await linkTo(key, id, { slot: 'new' });
+		await upload(url);
+		const after = await contentOf(key, id);
+
+		expect(response.status).toBe(201);
+		expect(after.hero).toBeUndefined();
+		expect(after.photos).toHaveLength(1);
+	});
+
 	it.each([
-		['new', 'slot is "cover"'],
+		['no slot', {}],
+		['a slot of "new"', { slot: 'new' }],
+		['a place past the photos', { slot: '8' }]
+	])(
+		'refuses a link with %s on a campaign whose cover and photos are full, and makes none',
+		async (_, extra) => {
+			const key = await connect();
+			const { id } = await linked(key);
+			await h.db.delete(photoLink);
+			const [row] = await h.db.select().from(page).where(eq(page.id, id));
+			const stored = (at: number) => ({
+				imageId: `019fb300-0000-7000-8000-0000000001${String(at).padStart(2, '0')}`,
+				alt: null
+			});
+			const full = {
+				...JSON.parse(row?.draft ?? '{}'),
+				hero: stored(99),
+				photos: Array.from({ length: PHOTOS_MAX }, (_, at) => stored(at))
+			};
+			await h.db
+				.update(page)
+				.set({ draft: JSON.stringify(full) })
+				.where(eq(page.id, id));
+
+			const { response } = await linkTo(key, id, extra);
+
+			expect(response.status).toBe(422);
+			expect(((await response.json()) as { detail: string }).detail).toContain(
+				`${PHOTOS_MAX} photos`
+			);
+			expect(await h.db.select().from(photoLink)).toEqual([]);
+		}
+	);
+
+	it.each([
 		['photo-1', 'slot is "cover"'],
 		['block-3', 'slot is "cover"']
 	])('refuses a link slot of %s, naming the slots there are', async (slot, saying) => {
@@ -933,6 +1087,22 @@ describe('the photo link', () => {
 			imageId,
 			alt: 'Coats on a rack'
 		});
+	});
+
+	it('names photos, not the cover, when the made-up id is among the photos', async () => {
+		const key = await connect();
+		const { id, url } = await linked(key);
+		await upload(url);
+		const hero = (await contentOf(key, id)).hero;
+
+		const response = await call('content', `/campaigns/${id}/content`, {
+			method: 'PATCH',
+			key,
+			body: { hero, photos: [{ imageId: '019fb300-0000-7000-8000-000000000abc', alt: null }] }
+		});
+
+		expect(response.status).toBe(422);
+		expect(await response.json()).toMatchObject({ errors: [{ path: 'photos' }] });
 	});
 
 	it('is refused past its thirty minutes, and no photo lands in the draft', async () => {

@@ -503,6 +503,29 @@ describe('the preview', () => {
 		}
 	});
 
+	it('reports the photo a click lands on by its own place, not the first or the group', () => {
+		const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+		onTestFinished(() => post.mockRestore());
+		const page = campaign({
+			...FEATURE,
+			photos: [
+				{ imageId: PHOTO, alt: 'first' },
+				{ imageId: PHOTO, alt: 'second' }
+			]
+		});
+		const root = mount(<PageView {...props('campaign', page)} preview />);
+
+		const items = root.querySelectorAll<HTMLElement>('.page-photos-item');
+		expect(items).toHaveLength(2);
+		for (const [at, item] of [...items].entries()) {
+			act(() => item.querySelector<HTMLElement>('img')?.click());
+			expect(post).toHaveBeenLastCalledWith(
+				{ type: SECTION_MESSAGE, id: `photo-${at}` },
+				window.location.origin
+			);
+		}
+	});
+
 	/** a box standing in for the card, holding a control of its own. */
 	const box = () => (
 		<div data-testid="box">
