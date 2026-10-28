@@ -273,6 +273,19 @@ describe('the list', () => {
 		);
 	});
 
+	it('links each campaign’s title to its editor, an ended one’s included', async () => {
+		const root = await screen();
+
+		for (const [name, id] of [
+			['Winter coat drive', 'pg_live'],
+			['Spring gala', 'pg_draft'],
+			['Giving Tuesday', 'pg_ended']
+		] as const) {
+			const title = record(root, name).querySelector('h2 a');
+			expect(title?.getAttribute('href')).toBe(`/admin/campaigns/${id}`);
+		}
+	});
+
 	it('puts the ended campaigns in a group of their own, each with Publish', async () => {
 		const root = await screen();
 		const group = root.querySelector<HTMLDetailsElement>('details.adm-disclosure');

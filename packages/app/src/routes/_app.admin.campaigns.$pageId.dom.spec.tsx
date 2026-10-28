@@ -333,6 +333,36 @@ describe('Goal and amounts', () => {
 		expect(held(button('Save goal and amounts'))).toBe(false);
 	});
 
+	it('counts a label without the spaces it ends in', async () => {
+		await screen();
+		const label = box(card('Goal and amounts'), 'Label for amount 1');
+
+		await type(label, 'A scarf   ');
+
+		expect(document.getElementById(`${label.id}-count`)?.textContent).toBe('7/40');
+	});
+
+	it('says how many amounts to remove before saving, when the saved list holds more than four', async () => {
+		const base = fixture();
+		drawn = {
+			...base,
+			seeds: {
+				...base.seeds,
+				goal: {
+					...base.seeds.goal,
+					boxes: {
+						...base.seeds.goal.boxes,
+						amount: ['10', '20', '30', '40', '50', '60'],
+						amount_label: ['', '', '', '', '', '']
+					}
+				}
+			}
+		};
+		await screen();
+
+		expect(card('Goal and amounts').textContent).toContain('Remove 2 amounts to save');
+	});
+
 	it('posts every box it states, an empty goal among them where there is none', async () => {
 		await screen();
 		await type(box(card('Goal and amounts'), 'Label for amount 1'), 'A scarf');
@@ -502,6 +532,20 @@ describe('the banner', () => {
 		expect(posted.map((body) => [body[WHICH_FORM], body[RECORD_VERSION]])).toEqual([
 			['page-publish', '1'],
 			['page-unpublish', '1']
+		]);
+	});
+
+	it('offers Undo publish once a Publish replaced a live page, and posts it against the version drawn', async () => {
+		drawn = fixture('public');
+		drawn.banner = { ...drawn.banner, undoable: true };
+		await screen();
+
+		expect(presses()).toEqual(['Undo publish', 'Unpublish', 'View live page']);
+		answers.push({ body: { undone: true } });
+		await press(button('Undo publish'));
+
+		expect(posted.map((body) => [body[WHICH_FORM], body[RECORD_VERSION]])).toEqual([
+			['page-undo', '1']
 		]);
 	});
 

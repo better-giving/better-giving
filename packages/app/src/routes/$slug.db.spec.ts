@@ -27,6 +27,7 @@ import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { saveProfile } from '$lib/server/org/profile.testing';
 import { putLogo } from '$lib/server/org/logo.testing';
+import { newImageStatements } from '$lib/server/images/queries';
 import { ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument } from '../route-request.testing';
@@ -94,7 +95,7 @@ const stripeEnv = { ...env, ...STRIPE } as Env;
 type Campaign = {
 	readonly name?: string;
 	readonly slug?: string | null;
-	readonly state?: 'never_published' | 'live';
+	readonly state?: 'never_published' | 'live' | 'unpublished' | 'ended';
 	readonly published?: unknown;
 };
 
@@ -296,6 +297,28 @@ describe('the organisation’s logo atop a published campaign', () => {
 		expect(mast).toContain('Hope Foundation');
 	});
 
+	it('gives way to the campaign’s own logo, once its published page sets one', async () => {
+		await campaign();
+		await putLogo(db, { contentType: 'image/png', width: 200, height: 200 });
+		const own = newImageStatements(
+			db,
+			{ kind: 'photo', contentType: 'image/png', width: 120, height: 60, alt: null },
+			new Uint8Array([1])
+		);
+		await db.batch(own.statements);
+		await db
+			.update(page)
+			.set({
+				published: JSON.stringify({ ...defaultCampaign(), logo: { imageId: own.id, alt: null } })
+			})
+			.where(eq(page.slug, SLUG));
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.logo).toEqual({ imageId: own.id, width: 120, height: 60 });
+		expect(masthead(markup(answered.data))).toContain(`src="/image/${own.id}"`);
+	});
+
 	it('is not drawn where none is set', async () => {
 		await campaign();
 		const answered = await visit();
@@ -324,6 +347,23 @@ describe('a published campaign with a goal', () => {
 		const bar = area(markup(answered.data), 'goal').replace(/<[^>]+>/g, '');
 		expect(bar).toContain('$125 raised of $5,000');
 		expect(bar).toContain('Ends December 31');
+	});
+});
+
+describe('a published campaign’s amount labels', () => {
+	it('draw beside the suggested amount each names', async () => {
+		await campaign({
+			published: {
+				...defaultCampaign(),
+				amountLabels: [{ amountMinor: 5000, label: 'Two warm coats' }]
+			}
+		});
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		const html = markup(answered.data);
+		expect(html.match(/class="amount-label"/g)).toHaveLength(1);
+		expect(element(html, 'span', 'class="amount-label"')).toContain('Two warm coats');
 	});
 });
 
@@ -382,6 +422,17 @@ describe('an ended campaign at its address', () => {
 		expect(html).toMatch(/^<div[^>]*data-donate-root/);
 		expect(html).not.toContain('data-area="title"');
 		expect(html).not.toContain('$25');
+	});
+
+	it('names the campaign as donors were last shown it, not by a rename since', async () => {
+		const formId = await endedCampaign({
+			published: { ...defaultCampaign(), name: 'Coats for every child' }
+		});
+		await db.update(page).set({ name: 'Renamed since' }).where(eq(page.formId, formId));
+
+		const html = markup((await visit()).data);
+		expect(element(html, 'h1', '')).toContain('Ended: Coats for every child');
+		expect(html).not.toContain('Renamed since');
 	});
 
 	it('names the organisation atop the screen, as /donate does', async () => {
@@ -728,6 +779,22 @@ describe('a campaign after its editor’s Publish', () => {
 			expect(await opened()).toEqual(opening);
 		}
 	);
+
+	it('answers nothing at its address after Unpublish, and draws it again once republished', async () => {
+		const { pageId } = await create('Winter coat drive');
+		await press(pageId, 'page-publish');
+		expect((await visit('/winter-coat-drive')).status).toBe(200);
+
+		await press(pageId, 'page-unpublish');
+		const down = await visit('/winter-coat-drive');
+		expect(down.status).toBe(404);
+		expect(down.data).toEqual({ kind: 'refused' });
+
+		await press(pageId, 'page-publish');
+		const back = await visit('/winter-coat-drive');
+		expect(back.status).toBe(200);
+		expect(back.data.kind).toBe('page');
+	});
 
 	it('brings an ended campaign back at the next free address when its own was taken', async () => {
 		const { pageId: ended } = await create('Winter coat drive');

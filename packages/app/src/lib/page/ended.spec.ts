@@ -32,6 +32,13 @@ describe('whether a campaign has ended', () => {
 		expect(isEnded(live({}), Number.MAX_SAFE_INTEGER)).toBe(false);
 	});
 
+	it('reads an unpublished campaign as ended from its published end instant', () => {
+		const published = JSON.stringify({ endsAt: END, endsZone: 'America/New_York' });
+		const unpublished = { state: 'unpublished' as const, published };
+		expect(isEnded(unpublished, END - 1)).toBe(false);
+		expect(isEnded(unpublished, END)).toBe(true);
+	});
+
 	it('has ended once End ended it, whatever its end date', () => {
 		const published = JSON.stringify({ endsAt: END, endsZone: 'America/New_York' });
 		expect(isEnded({ state: 'ended', published }, END - 86_400_000)).toBe(true);

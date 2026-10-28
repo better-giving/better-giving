@@ -208,6 +208,25 @@ describe('Goal and amounts', () => {
 		expect(refusal(answer)).toMatchObject({ status: 400, error: { goal_amount: ['required'] } });
 	});
 
+	it.each(['0', '-500', '12.345', 'lots', '1e15'])(
+		'refuses the fixed goal %j under its box, and writes nothing',
+		async (goal) => {
+			const pageId = await insertPage(db, 'campaign', withPage({ goalMinor: 500_000 }));
+
+			const answer = await press(
+				pageId,
+				EDIT_FORMS.campaignGoal,
+				GOAL_BOXES([['25', '']], ['fixed', goal])
+			);
+
+			expect(refusal(answer)).toMatchObject({
+				status: 400,
+				error: { goal_amount: [expect.any(String)] }
+			});
+			expect((await stored(pageId)).draft.goalMinor).toBe(500_000);
+		}
+	);
+
 	it('refuses a press drawn before another save, and writes nothing', async () => {
 		const pageId = await insertPage(db, 'campaign');
 		const drawn = (await stored(pageId)).row.updatedAt.getTime();
@@ -518,6 +537,25 @@ describe('General', () => {
 		});
 		expect((await stored(pageId)).row.slug).toBe(held);
 		expect((await stored(holder)).row.slug).toBeNull();
+	});
+
+	it('takes the link of an unpublished campaign past its published end, ending that one', async () => {
+		const ended = withPage({ endsAt: Date.now() - 60_000, endsZone: 'America/New_York' });
+		const holder = await insertPage(db, 'campaign', withPage({}), ended);
+		const held = fresh('coats');
+		await slugged(holder, held);
+		await db.update(page).set({ state: 'unpublished' }).where(eq(page.id, holder));
+		const pageId = await insertPage(db, 'campaign');
+		const fields = await general(pageId, { slug: held });
+
+		expect(await press(pageId, EDIT_FORMS.campaignGeneral, fields)).toEqual({
+			ask: { kind: 'takeover', holder: 'Winter coat drive', to: `/${held}` }
+		});
+		expect(
+			await press(pageId, EDIT_FORMS.campaignGeneral, [...fields, ['takeover', 'on']])
+		).toEqual({ saved: 'campaign-general' });
+		expect((await stored(pageId)).row.slug).toBe(held);
+		expect((await stored(holder)).row).toMatchObject({ state: 'ended', slug: null });
 	});
 
 	it('refuses a link another campaign holds, an unpublished one included, naming it', async () => {
