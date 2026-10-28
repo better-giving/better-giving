@@ -812,6 +812,8 @@
 		--admin-measure-column-wide: 76rem;
 		--admin-measure-rail: 15rem;
 		--admin-measure-panel: 26rem;
+		/* the tallest a banner's preview stands on an edit screen; its width follows at 4:1. */
+		--admin-measure-banner: 8rem;
 		/* the column a dialog is read in. it is authored apart from the panel above rather
 		   than pointed at it: a route drawn outside the shell and a question asked over one
 		   are different objects, and neither may drag the other. */

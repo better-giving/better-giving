@@ -19,8 +19,8 @@ import {
 	useNavigation
 } from 'react-router';
 import { z } from 'zod';
-import { replaceRefusal } from '$lib/admin/editor/replace-photo';
-import { postPhoto, type UploadAnswer } from '$lib/admin/editor/photo-upload';
+import { replaceRefusal } from '$lib/admin/page-edit/replace-photo';
+import { postPhoto, type UploadAnswer } from '$lib/admin/page-edit/photo-upload';
 import { ProgramFields } from '$lib/admin/programs/fields';
 import { ProgramPhotoControl } from '$lib/admin/programs/photo-control';
 import type { CrumbHandle } from '$lib/admin/crumbs';
@@ -131,7 +131,7 @@ const STALE_SAVE =
 
 /**
  * what a photo id no stored image has says, at the photo's box. worded as the control's own
- * refusals are (`$lib/admin/editor/replace-photo.tsx`), since it is drawn under the same press.
+ * refusals are (`$lib/admin/page-edit/replace-photo.tsx`), since it is drawn under the same press.
  */
 const noImage = (id: string) =>
 	`No stored photo has the id "${redactPublicId(id)}". Choose the photo again.`;

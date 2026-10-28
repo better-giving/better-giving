@@ -40,6 +40,11 @@ export function PageWithCard({ config, seams, opening, resuming, ...page }: Page
 		setHeld({ programId, locked });
 	}, []);
 	const program = config.program;
+	const labels = page.page.amountLabels;
+	const amountLabels =
+		labels === undefined || labels.length === 0
+			? undefined
+			: Object.fromEntries(labels.map((each) => [String(each.amountMinor), each.label]));
 
 	return (
 		<PageView
@@ -57,6 +62,7 @@ export function PageWithCard({ config, seams, opening, resuming, ...page }: Page
 					{...(opening === undefined ? {} : { opening })}
 					{...(resuming === undefined ? {} : { resuming })}
 					{...(hideProgramSelect ? { pageProgram: picked } : {})}
+					{...(amountLabels === undefined ? {} : { amountLabels })}
 				/>
 			)}
 		/>

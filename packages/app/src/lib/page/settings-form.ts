@@ -1,16 +1,12 @@
 import type { ProgramMode } from '../forms/program-modes';
 
-// the editor's Donation settings sheet as it posts: one form for the program, what a donor may give
-// and where the page's donation box opens, stated as `PAGE_SETTINGS_INPUT`
-// (../forms/input-schema.ts) under this id where it is mounted
-// ($lib/admin/editor/donation-settings.tsx) and where it is read ($lib/server/pages/editor.ts), and
-// named by both editors' actions.
-
-export const PAGE_SETTINGS_FORM_ID = 'page-settings';
+// a page's donation settings as its draft holds them, read by $lib/server/pages/editor.ts for the
+// edit screens' seeds ($lib/server/pages/section-seeds.ts), and the names its two switches are
+// drawn under ($lib/admin/page-edit/).
 
 type ProgramOption = { readonly value: string; readonly label: string };
 
-/** what the editor's loader hands the sheet: its seed, and the Settings row's line for it. */
+/** a page's donation settings as the boxes hold them. */
 export type SettingsSeed = {
 	/** the boxes as a form's program and giving groups hold them. */
 	readonly boxes: {
@@ -25,8 +21,6 @@ export type SettingsSeed = {
 	readonly programs: readonly ProgramOption[];
 	/** the archived program the draft is still pinned to, which the select carries until changed. */
 	readonly retired: ProgramOption | null;
-	/** what the settings come to — `One program, Winter coats, $25, $50, Open on monthly`. */
-	readonly summary: string;
 	/** the page's two switches as the draft holds them, under the boxes' names. */
 	readonly switches: { readonly open_on_monthly: boolean; readonly dedication_on: boolean };
 	/**
@@ -36,7 +30,7 @@ export type SettingsSeed = {
 	readonly monthlyOffered: boolean;
 };
 
-/** each switch's name, as its checkbox row and the Settings row's line both say it. */
+/** each switch's name, as its checkbox row says it. */
 export const SWITCH_LABELS = {
 	open_on_monthly: 'Open on monthly',
 	dedication_on: 'Dedication on by default'

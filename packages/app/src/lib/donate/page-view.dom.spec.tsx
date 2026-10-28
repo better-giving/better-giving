@@ -6,7 +6,6 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { Page } from '../page/catalog';
 import { defaultCampaign, defaultDonationPage } from '../page/defaults';
 import type { PageType } from '../page/keys';
-import { SECTION_MESSAGE } from '../page/preview-message';
 import type { RichTextDocument } from '../rich-text/document';
 import { initials, PageView, type PageViewProps, TITLE_LONG } from './page-view';
 
@@ -212,7 +211,6 @@ describe('the sections each layout draws, in order', () => {
 			expect(boxes).toHaveLength(1);
 			const own = boxes[0]?.closest<HTMLElement>('[data-area]');
 			expect(own?.dataset.area).toBe('box');
-			expect(own?.parentElement?.closest('[data-section]')).toBeNull();
 		}
 	});
 });
@@ -526,54 +524,12 @@ describe('share', () => {
 });
 
 describe('the preview', () => {
-	it('reports the section a click lands in to the editor, and follows nothing', () => {
-		const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
-		onTestFinished(() => post.mockRestore());
+	it('follows nothing a click lands on', () => {
 		const root = mount(<PageView {...props('campaign', FEATURE)} preview />);
 		const link = root.querySelector<HTMLAnchorElement>('[data-area="share"] a');
 		const event = new MouseEvent('click', { bubbles: true, cancelable: true });
 		act(() => link?.dispatchEvent(event));
 		expect(event.defaultPrevented).toBe(true);
-		expect(post).toHaveBeenCalledWith(
-			{ type: SECTION_MESSAGE, id: 'share' },
-			window.location.origin
-		);
-		for (const [area, id] of [
-			['title', 'title'],
-			['lede', 'title'],
-			['story', 'story'],
-			['cover', 'cover'],
-			['tiers', 'tiers'],
-			['faq', 'faq'],
-			['goal', 'goal'],
-			['box', 'donate']
-		]) {
-			act(() => root.querySelector<HTMLElement>(`[data-area="${area}"]`)?.click());
-			expect(post).toHaveBeenLastCalledWith({ type: SECTION_MESSAGE, id }, window.location.origin);
-		}
-	});
-
-	it('reports the photo a click lands on by its own place, not the first or the group', () => {
-		const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
-		onTestFinished(() => post.mockRestore());
-		const page = campaign({
-			...FEATURE,
-			photos: [
-				{ imageId: PHOTO, alt: 'first' },
-				{ imageId: PHOTO, alt: 'second' }
-			]
-		});
-		const root = mount(<PageView {...props('campaign', page)} preview />);
-
-		const items = root.querySelectorAll<HTMLElement>('.page-photos-item');
-		expect(items).toHaveLength(2);
-		for (const [at, item] of [...items].entries()) {
-			act(() => item.querySelector<HTMLElement>('img')?.click());
-			expect(post).toHaveBeenLastCalledWith(
-				{ type: SECTION_MESSAGE, id: `photo-${at}` },
-				window.location.origin
-			);
-		}
 	});
 
 	/** a box standing in for the card, holding a control of its own. */
@@ -595,12 +551,11 @@ describe('the preview', () => {
 		expect(controls.filter((control) => control.getAttribute('tabindex') !== '-1')).toEqual([]);
 	});
 
-	it('draws the donation box inert, inside the section a click on it reports', () => {
+	it('draws the donation box inert', () => {
 		const root = mount(
 			<PageView {...props('donation_page', defaultDonationPage(), { donationBox: box })} preview />
 		);
-		const inert = root.querySelector('[data-testid="box"]')?.closest('[inert]');
-		expect(inert?.closest('[data-section]')?.getAttribute('data-section')).toBe('donate');
+		expect(root.querySelector('[data-testid="box"]')?.closest('[inert]')).not.toBeNull();
 	});
 
 	it('draws the donation box live outside the preview', () => {
@@ -611,7 +566,6 @@ describe('the preview', () => {
 	});
 
 	it('lets a press reach nothing a section does', async () => {
-		vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
 		const writeText = vi.fn(async () => {});
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} preview />);
@@ -621,13 +575,5 @@ describe('the preview', () => {
 		);
 		expect(writeText).not.toHaveBeenCalled();
 		expect(status?.textContent).toBe('');
-	});
-
-	it('posts nothing outside the preview', () => {
-		const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
-		onTestFinished(() => post.mockRestore());
-		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
-		act(() => root.querySelector<HTMLElement>('[data-area="title"]')?.click());
-		expect(post).not.toHaveBeenCalled();
 	});
 });

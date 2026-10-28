@@ -94,7 +94,7 @@ const stripeEnv = { ...env, ...STRIPE } as Env;
 type Campaign = {
 	readonly name?: string;
 	readonly slug?: string | null;
-	readonly state?: 'never_published' | 'live';
+	readonly state?: 'never_published' | 'live' | 'unpublished' | 'ended';
 	readonly published?: unknown;
 };
 
@@ -327,6 +327,23 @@ describe('a published campaign with a goal', () => {
 	});
 });
 
+describe('a published campaign’s amount labels', () => {
+	it('draw beside the suggested amount each names', async () => {
+		await campaign({
+			published: {
+				...defaultCampaign(),
+				amountLabels: [{ amountMinor: 5000, label: 'Two warm coats' }]
+			}
+		});
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		const html = markup(answered.data);
+		expect(html.match(/class="amount-label"/g)).toHaveLength(1);
+		expect(element(html, 'span', 'class="amount-label"')).toContain('Two warm coats');
+	});
+});
+
 describe('a published campaign the read rule refuses', () => {
 	it.each([
 		{ why: 'missing its shape', published: {} },
@@ -382,6 +399,17 @@ describe('an ended campaign at its address', () => {
 		expect(html).toMatch(/^<div[^>]*data-donate-root/);
 		expect(html).not.toContain('data-area="title"');
 		expect(html).not.toContain('$25');
+	});
+
+	it('names the campaign as donors were last shown it, not by a rename since', async () => {
+		const formId = await endedCampaign({
+			published: { ...defaultCampaign(), name: 'Coats for every child' }
+		});
+		await db.update(page).set({ name: 'Renamed since' }).where(eq(page.formId, formId));
+
+		const html = markup((await visit()).data);
+		expect(element(html, 'h1', '')).toContain('Ended: Coats for every child');
+		expect(html).not.toContain('Renamed since');
 	});
 
 	it('names the organisation atop the screen, as /donate does', async () => {
@@ -672,7 +700,7 @@ describe('a campaign after its editor’s Publish', () => {
 	/** New campaign's create. */
 	const create = (name: string) => createCampaign(db, { name });
 
-	it('publishes a new campaign from “Winter coat drive” at /winter-coat-drive, gifts going to the program chosen', async () => {
+	it('publishes a new campaign from “Winter coat drive” at /winter-coat-drive, gifts going to the program its Settings chose', async () => {
 		const [coats] = await db
 			.insert(program)
 			.values({ name: 'Winter coats' })
@@ -680,7 +708,16 @@ describe('a campaign after its editor’s Publish', () => {
 		const { pageId } = await create('Winter coat drive');
 		expect((await visit()).status).toBe(404);
 
-		await press(pageId, 'page-first-publish', { gifts_go_to: coats?.id ?? '' });
+		await press(pageId, 'campaign-settings', {
+			program_mode: 'pinned',
+			program_id: coats?.id ?? '',
+			min_minor: '5',
+			max_minor: '5000',
+			share_message: '',
+			end_date: '',
+			time_zone: ''
+		});
+		await press(pageId, 'page-publish');
 
 		const answered = await visit('/winter-coat-drive');
 		expect(answered.status).toBe(200);
@@ -693,22 +730,24 @@ describe('a campaign after its editor’s Publish', () => {
 		['Open on monthly', 'open_on_monthly', { monthly: true }],
 		['Dedication on by default', 'dedication_on', { dedication: true }]
 	])(
-		'opens the box with “%s” only once a Done ticking it is published',
+		'opens the box with “%s” only once a save ticking it is published',
 		async (_, box, opening) => {
 			const { pageId } = await create('Winter coat drive');
-			await press(pageId, 'page-first-publish', { gifts_go_to: 'none' });
+			await press(pageId, 'page-publish');
 			const opened = async () => {
 				const answered = await visit('/winter-coat-drive');
 				if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 				return answered.data.view.opening;
 			};
 
-			await press(pageId, 'page-settings', {
+			await press(pageId, 'campaign-settings', {
 				program_mode: 'none',
 				program_id: '',
 				min_minor: '5',
 				max_minor: '5000',
-				'suggested_amounts[0]': '25',
+				share_message: '',
+				end_date: '',
+				time_zone: '',
 				[box]: 'on'
 			});
 			expect(await opened()).toBeUndefined();
@@ -718,13 +757,34 @@ describe('a campaign after its editor’s Publish', () => {
 		}
 	);
 
+	it('answers nothing at its address after Unpublish, and draws it again once republished', async () => {
+		const { pageId } = await create('Winter coat drive');
+		await press(pageId, 'page-publish');
+		expect((await visit('/winter-coat-drive')).status).toBe(200);
+
+		await press(pageId, 'page-unpublish');
+		const down = await visit('/winter-coat-drive');
+		expect(down.status).toBe(404);
+		expect(down.data).toEqual({ kind: 'refused' });
+
+		await press(pageId, 'page-publish');
+		const back = await visit('/winter-coat-drive');
+		expect(back.status).toBe(200);
+		expect(back.data.kind).toBe('page');
+	});
+
 	it('brings an ended campaign back at the next free address when its own was taken', async () => {
 		const { pageId: ended } = await create('Winter coat drive');
-		await press(ended, 'page-first-publish', { gifts_go_to: 'none' });
+		await press(ended, 'page-publish');
 		await endAsItStands(db, ended);
 		const { pageId: taker } = await create('Coats for kids');
-		await press(taker, 'campaign-address', { slug: 'winter-coat-drive', takeover: 'on' });
-		await press(taker, 'page-first-publish', { gifts_go_to: 'none' });
+		await press(taker, 'campaign-general', {
+			name: 'Coats for kids',
+			slug: 'winter-coat-drive',
+			story: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }),
+			takeover: 'on'
+		});
+		await press(taker, 'page-publish');
 
 		await press(ended, 'page-publish');
 

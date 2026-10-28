@@ -36,6 +36,10 @@ export const QUESTION_MAX = 200;
 export const PHOTOS_MAX = 8;
 export const SHARE_MESSAGE_MAX = 280;
 export const ALT_MAX = 250;
+/** what a label beside a campaign's suggested amount holds. */
+export const AMOUNT_LABEL_MAX = 40;
+/** the suggested amounts a campaign offers, and so the labels it holds at most. */
+export const CAMPAIGN_AMOUNTS_MAX = 4;
 
 const TIER_AMOUNT = 'a tier’s amount is a whole number of minor units above zero';
 
@@ -122,10 +126,35 @@ const CAMPAIGN_ONLY = [
 	['tiers', 'impact tiers'],
 	['faq', 'questions'],
 	[PAGE_KEYS.name, 'name'],
+	[PAGE_KEYS.slug, 'link'],
 	[PAGE_KEYS.goalMinor, 'goal'],
 	[PAGE_KEYS.endsAt, 'end date'],
-	[PAGE_KEYS.endsZone, 'end date']
+	[PAGE_KEYS.endsZone, 'end date'],
+	['amountLabels', 'suggested amount labels']
 ] as const;
+
+const LABEL_AMOUNT = 'a labelled amount is a whole number of minor units above zero';
+
+/**
+ * a label beside each of a campaign's suggested amounts, by the amount it stands beside. one whose
+ * amount the draft settings' `suggestedAmounts` no longer holds is dropped on save and drawn
+ * nowhere; the rule here reads shape only.
+ */
+const amountLabels = z
+	.array(
+		z.strictObject({
+			amountMinor: z.int({ error: LABEL_AMOUNT }).positive({ error: LABEL_AMOUNT }),
+			label: z
+				.string()
+				.min(1, { error: 'a label holds words' })
+				.max(AMOUNT_LABEL_MAX, {
+					error: `an amount’s label holds at most ${AMOUNT_LABEL_MAX} characters`
+				})
+		})
+	)
+	.max(CAMPAIGN_AMOUNTS_MAX, {
+		error: `a campaign labels at most ${CAMPAIGN_AMOUNTS_MAX} suggested amounts`
+	});
 
 const pageDocument = (type: PageType) =>
 	z
@@ -137,12 +166,22 @@ const pageDocument = (type: PageType) =>
 					error: `a share message holds at most ${SHARE_MESSAGE_MAX} characters`
 				})
 				.optional(),
+			amountLabels: amountLabels.optional(),
 			switches: z.strictObject({ openOnMonthly: z.boolean(), dedicationOn: z.boolean() }),
 			[PAGE_KEYS.name]: z
 				.string()
 				.trim()
 				.min(1, { error: 'a campaign name holds words' })
 				.max(HEADING_MAX, { error: `a campaign name holds at most ${HEADING_MAX} characters` })
+				.optional(),
+			// the shape alone: whether the link clashes with a route or another campaign is the save's
+			// and Publish's ($lib/page/slug.ts's `checkSlug`, which reads the route tree).
+			[PAGE_KEYS.slug]: z
+				.string()
+				.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
+					error: 'a link holds lowercase letters, numbers and single hyphens between words'
+				})
+				.max(60, { error: 'a link holds at most 60 characters' })
 				.optional(),
 			[PAGE_KEYS.goalMinor]: z.int({ error: GOAL }).positive({ error: GOAL }).optional(),
 			[PAGE_KEYS.endsAt]: z.int({ error: END }).positive({ error: END }).optional(),

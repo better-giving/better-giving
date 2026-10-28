@@ -4,7 +4,6 @@ import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
 import { form, page } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
-import { readOrgProfile } from '$lib/server/org/queries';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -12,7 +11,8 @@ import * as layout from './_app';
 import * as editor from './_app.admin.donation-page';
 import { client, stmt } from '$lib/server/db/database.testing';
 
-// a db spec because the editor makes the Donation page on first need. the chain is mounted,
+// a db spec because the edit page makes the Donation page on first need. what each card's save
+// checks is $lib/server/pages/section-saves.db.spec.ts's; this holds the route's wiring. the chain is mounted,
 // for ../route-request.testing.ts's reason: the session gate is a `middleware` on ./_app.tsx.
 
 const EDITOR = '/admin/donation-page';
@@ -35,17 +35,15 @@ beforeEach(async () => {
 });
 
 type Drawn = {
-	state: string;
-	preview: string;
 	version: number;
 	takingGifts: boolean;
-	sections: { id: string; text: Record<string, unknown> }[];
-	shareMessage: string;
-	settings: {
-		summary: string;
-		boxes: Record<string, unknown>;
-		switches: Record<string, boolean>;
-		monthlyOffered: boolean;
+	unreadable: boolean;
+	hasEdits: boolean;
+	banner: { state: string; preview: string; address: string | null; unpublishable: boolean };
+	seeds: {
+		general: { boxes: { heading: string } };
+		giving: { boxes: Record<string, unknown>; currency: string };
+		settings: { boxes: Record<string, unknown>; monthlyOffered: boolean };
 	};
 };
 
@@ -85,9 +83,29 @@ beforeEach(async () => {
 	await rails(['card']);
 });
 
+/** a press on the edit page, posting `fields` under the form `which`, drawn at `version`. */
+async function post(which: string, version: number, fields: Record<string, string> = {}) {
+	const body = new FormData();
+	body.set(WHICH_FORM, which);
+	body.set(RECORD_VERSION, String(version));
+	for (const [name, value] of Object.entries(fields)) body.set(name, value);
+	return request(
+		new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+		{ env: bindings }
+	);
+}
+
+/** the sentence a refused press carries under `box`, `''` for the form's own. */
+async function refusedUnder(response: Response, box: string): Promise<unknown> {
+	const answer = (await response.json()) as {
+		form?: { result?: { error?: Record<string, string[]> } };
+	};
+	return answer.form?.result?.error?.[box];
+}
+
 describe('whether the published Donation page is taking gifts', () => {
 	it('is taking gifts while the published page would be drawn', async () => {
-		expect(await open()).toMatchObject({ state: 'live', takingGifts: true });
+		expect(await open()).toMatchObject({ banner: { state: 'public' }, takingGifts: true });
 	});
 
 	it('is not taking gifts while the published page would be refused', async () => {
@@ -95,335 +113,143 @@ describe('whether the published Donation page is taking gifts', () => {
 		// (`renderableConfig` in $lib/server/forms/published-config.ts). the page row is still live.
 		await rails([]);
 
-		expect(await open()).toMatchObject({ state: 'live', takingGifts: false });
+		expect(await open()).toMatchObject({ banner: { state: 'public' }, takingGifts: false });
 	});
 });
 
-describe('the Donation page editor', () => {
-	it('makes the Donation page on a fresh deployment and frames it, live from the start', async () => {
+describe('the Donation page edit page', () => {
+	it('makes the Donation page on a fresh deployment, public from the start, with no Unpublish', async () => {
 		const drawn = await open();
 
 		const made = await donationPage();
 		expect(made).not.toBeNull();
-		expect(drawn).toMatchObject({ state: 'live', preview: `/preview/${made?.id}` });
-	});
-
-	it('sends the page as its title alone, with no chat and no new-photo sheet', async () => {
-		const drawn = await open();
-
-		expect(drawn).not.toHaveProperty('chat');
-		expect(drawn).not.toHaveProperty('drafted');
-		expect(drawn.sections.map(({ id }) => id)).toEqual(['title']);
-		expect(drawn.sections[0]?.text).toEqual({ kind: 'title', heading: '', lede: null });
-		expect(drawn).toMatchObject({ newPhoto: null, shareMessage: '' });
-	});
-});
-
-describe('the donation settings', () => {
-	async function save(fields: Record<string, string>, version: number) {
-		const body = new FormData();
-		body.set(WHICH_FORM, 'page-settings');
-		body.set(RECORD_VERSION, String(version));
-		body.set('program_mode', 'none');
-		body.set('program_id', '');
-		for (const [name, value] of Object.entries(fields)) body.set(name, value);
-		return request(
-			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env: bindings }
-		);
-	}
-
-	async function owned(formId: string) {
-		const [row] = await db.select().from(form).where(eq(form.id, formId));
-		return row;
-	}
-
-	it('draws the live row’s settings while the draft holds none of its own', async () => {
-		const drawn = await open();
-
-		const made = await donationPage();
-		const row = await owned(made?.formId ?? '');
-		expect(drawn.settings.boxes).toMatchObject({
-			program_mode: row?.programMode,
-			suggested_amounts: expect.any(Array)
-		});
-		expect(drawn.settings.summary).toMatch(/^No program, \$/);
-	});
-
-	it('writes the draft only: the live page and the settings row a gift is charged against stay', async () => {
-		const drawn = await open();
-		const made = await donationPage();
-		if (made === null) throw new Error('the editor made no Donation page');
-		const row = await owned(made.formId);
-
-		const response = await save(
-			{
-				min_minor: '10',
-				max_minor: '500',
-				'suggested_amounts[0]': '20',
-				'suggested_amounts[1]': '40'
+		expect(drawn).toMatchObject({
+			unreadable: false,
+			banner: {
+				state: 'public',
+				address: '/donate',
+				preview: `/preview/${made?.id}`,
+				unpublishable: false
 			},
-			drawn.version
-		);
-
-		expect(response.status).toBe(200);
-		const after = await donationPage();
-		expect(JSON.parse(after?.draft ?? '{}').settings).toEqual({
-			revenueAccountId: row?.revenueAccountId,
-			currency: row?.currency,
-			allowedOrigins: [],
-			programMode: 'none',
-			programId: null,
-			minMinor: 1000,
-			maxMinor: 50_000,
-			suggestedAmounts: [2000, 4000]
-		});
-		expect(after?.published).toBe(made.published);
-		expect(await owned(made.formId)).toEqual(row);
-
-		const redrawn = await open();
-		expect(redrawn.version).not.toBe(drawn.version);
-		expect(redrawn).toMatchObject({
-			state: 'changed',
-			settings: { summary: 'No program, $20, $40' }
-		});
-	});
-
-	it('seeds each amount box grouped, as the box draws it', async () => {
-		// the sheet's Done is armed by a box differing from its seed, and the box draws `20,000`.
-		const drawn = await open();
-		const amounts = {
-			min_minor: '25',
-			max_minor: '20000',
-			'suggested_amounts[0]': '1000',
-			'suggested_amounts[1]': '12345.50'
-		};
-		expect((await save(amounts, drawn.version)).status).toBe(200);
-
-		expect((await open()).settings.boxes).toMatchObject({
-			min_minor: '25',
-			max_minor: '20,000',
-			suggested_amounts: ['1,000', '12,345.50']
+			seeds: { general: { boxes: { heading: '' } } }
 		});
 	});
 });
 
-describe('the two switches in the donation settings', () => {
-	/** the cadences the deployment's processor offers, kept where the served config reads them. */
-	async function offering(cadences: string[]) {
-		await edgeCache().put(
-			new Request(`${ORIGIN}/__recurring-cadences`),
-			new Response(JSON.stringify(cadences), {
-				headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
-			})
-		);
-	}
+describe('a section’s Save', () => {
+	it('writes a title to the draft alone, and the banner says changes are not public yet', async () => {
+		const { version } = await open();
+		const live = (await donationPage())?.published;
 
-	async function done(ticked: Record<string, string>, version: number) {
-		const body = new FormData();
-		body.set(WHICH_FORM, 'page-settings');
-		body.set(RECORD_VERSION, String(version));
-		body.set('program_mode', 'none');
-		body.set('program_id', '');
-		body.set('min_minor', '5');
-		body.set('max_minor', '500');
-		for (const [name, value] of Object.entries(ticked)) body.set(name, value);
-		return request(
-			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env: bindings }
-		);
-	}
+		const saved = await post('donation-page-general', version, { heading: 'Give to Elm Street' });
 
-	it('seeds both unticked on a fresh page, and each as the draft holds it after a Done', async () => {
-		const drawn = await open();
-		expect(drawn.settings.switches).toEqual({ open_on_monthly: false, dedication_on: false });
-
-		expect((await done({ dedication_on: 'on' }, drawn.version)).status).toBe(200);
-
-		expect((await open()).settings.switches).toEqual({
-			open_on_monthly: false,
-			dedication_on: true
+		expect(saved.status).toBe(200);
+		expect(await saved.json()).toEqual({ saved: 'donation-page-general' });
+		expect((await donationPage())?.published).toBe(live);
+		expect(await open()).toMatchObject({
+			banner: { state: 'changed' },
+			seeds: { general: { boxes: { heading: 'Give to Elm Street' } } }
 		});
 	});
 
-	it('unticks a switch a Done no longer carries', async () => {
-		const drawn = await open();
-		await done({ open_on_monthly: 'on', dedication_on: 'on' }, drawn.version);
-
-		await done({ dedication_on: 'on' }, (await open()).version);
-
-		expect((await open()).settings.switches).toEqual({
-			open_on_monthly: false,
-			dedication_on: true
-		});
-	});
-
-	it('names each switch that is on in the Settings row’s line, by its own name', async () => {
-		const drawn = await open();
-		await done({ 'suggested_amounts[0]': '20', open_on_monthly: 'on' }, drawn.version);
-		expect((await open()).settings.summary).toBe('No program, $20, Open on monthly');
-
-		await done(
-			{ 'suggested_amounts[0]': '20', open_on_monthly: 'on', dedication_on: 'on' },
-			(await open()).version
-		);
-		expect((await open()).settings.summary).toBe(
-			'No program, $20, Open on monthly, Dedication on by default'
-		);
-	});
-
-	it('says whether this deployment offers monthly, which Open on monthly waits on', async () => {
-		await offering(['one_time', 'yearly']);
-		expect((await open()).settings.monthlyOffered).toBe(false);
-
-		await offering(['one_time', 'monthly', 'yearly']);
-		expect((await open()).settings.monthlyOffered).toBe(true);
-	});
-});
-
-describe('the mission', () => {
-	it.each([['mission-save'], ['mission-skip']])(
-		'is no form on this screen: %s is refused unknown, and nothing is written',
-		async (which) => {
-			await open();
-			const body = new FormData();
-			body.set(WHICH_FORM, which);
-			body.set('mission', 'We keep Riverbank families warm.');
-
-			const response = await request(
-				new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-				{ env: bindings }
-			);
-
-			expect(response.status).toBe(400);
-			expect(await response.text()).toContain('names no form on this screen');
-			expect((await readOrgProfile(db))?.mission).toBeNull();
-		}
-	);
-});
-
-describe('Publish, Undo and Discard changes', () => {
-	async function press(which: string, version: number) {
-		const body = new FormData();
-		body.set(WHICH_FORM, which);
-		body.set(RECORD_VERSION, String(version));
-		return request(
-			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env: bindings }
-		);
-	}
-
-	/** the Donation page's draft with a share message of its own, as a write leaves it. */
-	async function changeDraft(message: string) {
+	it('writes the donation settings to the draft, the settings row a gift is charged against staying', async () => {
+		const { version } = await open();
 		const made = await donationPage();
-		if (made === null) throw new Error('the editor made no Donation page');
-		await db
-			.update(page)
-			.set({
-				draft: JSON.stringify({ ...JSON.parse(made.draft), shareMessage: message }),
-				updatedAt: new Date(made.updatedAt.getTime() + 1_000)
-			})
-			.where(eq(page.id, made.id));
-	}
+		const [before] = await db
+			.select()
+			.from(form)
+			.where(eq(form.id, made?.formId ?? ''));
 
-	/** the message a refused press is answered with. */
-	async function refusal(response: Response): Promise<unknown> {
-		const answer = (await response.json()) as {
-			form?: { result?: { error?: Record<string, string[]> } };
-		};
-		return answer.form?.result?.error?.[''];
-	}
+		const saved = await post('donation-page-giving', version, {
+			program_mode: 'none',
+			program_id: '',
+			min_minor: '5',
+			max_minor: '5,000',
+			'suggested_amounts[0]': '1,000'
+		});
 
-	it('publishes with no confirm, as a republish Undo can take back', async () => {
-		await open();
-		await changeDraft('Keep Elm Street warm.');
-
-		const response = await press('page-publish', (await open()).version);
-
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ published: true, undoable: true });
-		expect((await open()).state).toBe('live');
+		expect(saved.status).toBe(200);
+		const [after] = await db
+			.select()
+			.from(form)
+			.where(eq(form.id, made?.formId ?? ''));
+		expect(after).toEqual(before);
+		expect(await open()).toMatchObject({
+			seeds: { giving: { boxes: { suggested_amounts: ['1,000'] } } }
+		});
 	});
 
-	it('undoes the republish, leaving the draft as it was published', async () => {
-		await open();
-		await changeDraft('Keep Elm Street warm.');
-		await press('page-publish', (await open()).version);
+	it('ticks and unticks the switches, and sets and clears the share message', async () => {
+		let { version } = await open();
 
-		const response = await press('page-undo', (await open()).version);
+		await post('donation-page-settings', version, {
+			open_on_monthly: 'on',
+			share_message: 'I gave to Elm Street.'
+		});
+		const ticked = await open();
+		expect(ticked.seeds.settings.boxes).toMatchObject({
+			open_on_monthly: true,
+			dedication_on: false,
+			share_message: 'I gave to Elm Street.'
+		});
 
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ undone: true });
-		expect((await open()).state).toBe('changed');
+		version = ticked.version;
+		await post('donation-page-settings', version, { share_message: '' });
+		expect((await open()).seeds.settings.boxes).toMatchObject({
+			open_on_monthly: false,
+			share_message: ''
+		});
 	});
 
-	it('refuses Undo where no Publish has replaced anything, saying so', async () => {
-		const response = await press('page-undo', (await open()).version);
+	it('refuses a campaign’s card, which the Donation page does not carry, writing nothing', async () => {
+		const { version } = await open();
+		const before = await donationPage();
 
-		expect(response.status).toBe(409);
-		expect(await refusal(response)).toEqual([
-			'Nothing was undone: no earlier version of this page was published.'
-		]);
+		const refused = await post('campaign-goal', version, { goal_mode: 'none' });
+
+		expect(refused.status).toBe(400);
+		expect(await donationPage()).toEqual(before);
 	});
 
-	it('refuses a Publish of a draft the page rule refuses, naming why', async () => {
-		await open();
-		const made = await donationPage();
-		if (made === null) throw new Error('the editor made no Donation page');
-		await db
-			.update(page)
-			.set({
-				draft: JSON.stringify({ ...JSON.parse(made.draft), lede: 'only a campaign has a lede' })
-			})
-			.where(eq(page.id, made.id));
-		const written = await donationPage();
+	it('refuses a save drawn before the page last moved, at 409, writing nothing', async () => {
+		const { version } = await open();
+		await post('donation-page-general', version, { heading: 'First' });
+		const between = await donationPage();
 
-		const response = await press('page-publish', written?.updatedAt.getTime() ?? 0);
+		const refused = await post('donation-page-general', version, { heading: 'Second' });
 
-		expect(response.status).toBe(422);
-		expect(await refusal(response)).toEqual([
-			'Nothing was published: the Donation page has no lede; only a campaign does (at lede).'
-		]);
-		expect((await donationPage())?.published).toBe(made.published);
+		expect(refused.status).toBe(409);
+		expect(await donationPage()).toEqual(between);
 	});
+});
 
-	it('takes no “Gifts go to”, which is a campaign’s first Publish alone', async () => {
-		const body = new FormData();
-		body.set(WHICH_FORM, 'page-first-publish');
-		body.set(RECORD_VERSION, String((await open()).version));
-		body.set('gifts_go_to', 'none');
+describe('Publish changes and Discard changes', () => {
+	it('makes saved changes live at Publish changes', async () => {
+		await post('donation-page-general', (await open()).version, { heading: 'Give to Elm Street' });
 
-		const response = await request(
-			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env: bindings }
-		);
+		const published = await post('page-publish', (await open()).version);
 
-		expect(response.status).toBe(400);
-		expect(await response.text()).toContain('names no form on this screen');
+		expect(published.status).toBe(200);
+		const row = await donationPage();
+		expect(row?.published).toBe(row?.draft);
+		expect(await open()).toMatchObject({ banner: { state: 'public' } });
 	});
 
 	it('discards changes: the draft is the live page again', async () => {
-		await open();
-		await changeDraft('Keep Elm Street warm.');
+		await post('donation-page-general', (await open()).version, { heading: 'Give to Elm Street' });
 
-		const response = await press('page-discard', (await open()).version);
+		const discarded = await post('page-discard', (await open()).version);
 
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ discarded: true });
-		expect((await open()).state).toBe('live');
+		expect(discarded.status).toBe(200);
+		const row = await donationPage();
+		expect(row?.draft).toBe(row?.published);
 	});
 
-	it('refuses a press drawn before the page last moved, and nothing changes', async () => {
-		const { version } = await open();
-		await changeDraft('Keep Elm Street warm.');
+	it('refuses Unpublish, which the Donation page does not have', async () => {
+		const refused = await post('page-unpublish', (await open()).version);
 
-		const response = await press('page-publish', version);
-
-		expect(response.status).toBe(409);
-		expect(await refusal(response)).toEqual([
-			'Nothing was changed: this page has been saved since the editor was opened. Reload it, then try again.'
-		]);
-		expect((await open()).state).toBe('changed');
+		expect(refused.status).toBe(400);
+		expect((await donationPage())?.state).toBe('live');
 	});
 });
 
@@ -431,7 +257,7 @@ describe('a draft the page rule refuses', () => {
 	/** the Donation page's `column` with a key the rule no longer knows, as a narrowed rule reads it. */
 	async function unreadable(column: 'draft' | 'published') {
 		const made = await donationPage();
-		if (made === null) throw new Error('the editor made no Donation page');
+		if (made === null) throw new Error('the edit page made no Donation page');
 		const document = JSON.parse(made[column] ?? '{}');
 		await db
 			.update(page)
@@ -439,98 +265,26 @@ describe('a draft the page rule refuses', () => {
 			.where(eq(page.id, made.id));
 	}
 
-	async function press(which: string, version: number) {
-		const body = new FormData();
-		body.set(WHICH_FORM, which);
-		body.set(RECORD_VERSION, String(version));
-		return request(
-			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env: bindings }
-		);
-	}
-
-	it('opens the editor saying so, offering Discard changes and Reset to default', async () => {
+	it('opens the page saying so, offering Discard changes and Reset to default', async () => {
 		await open();
 		await unreadable('draft');
 
-		expect(await open()).toMatchObject({
-			unreadable: true,
-			discardable: true,
-			hasEdits: true,
-			state: 'changed'
-		});
+		expect(await open()).toMatchObject({ unreadable: true, hasEdits: true });
+		expect(await refusedUnder(await post('page-discard', (await open()).version), '')).toBe(
+			undefined
+		);
+		expect(await open()).toMatchObject({ unreadable: false });
 	});
 
 	it('is repaired by Reset to default where the live page fails the rule too', async () => {
 		await open();
 		await unreadable('published');
 		await unreadable('draft');
-		const drawn = await open();
-		expect(drawn).toMatchObject({ unreadable: true, discardable: false });
 
-		const response = await press('page-reset', drawn.version);
+		const reset = await post('page-reset', (await open()).version);
 
-		expect(response.status).toBe(200);
-		expect(await open()).toMatchObject({ unreadable: false, state: 'live', hasEdits: false });
-	});
-});
-
-describe('the title’s sheet', () => {
-	async function press(fields: [string, string][], version: number) {
-		const body = new FormData();
-		body.set(WHICH_FORM, 'content-title');
-		body.set(RECORD_VERSION, String(version));
-		for (const [name, value] of fields) body.append(name, value);
-		return request(
-			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env: bindings }
-		);
-	}
-
-	it('writes a heading to the draft, drawn on the next load, and the live page stays', async () => {
-		const { version } = await open();
-		const before = await donationPage();
-
-		const response = await press(
-			[
-				['heading', 'Give to Elm Street'],
-				['lede', '']
-			],
-			version
-		);
-
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ saved: 'content' });
-		const redrawn = await open();
-		expect(redrawn.sections[0]).toMatchObject({
-			text: { kind: 'title', heading: 'Give to Elm Street', lede: null }
-		});
-		expect(redrawn.state).toBe('changed');
-		expect((await donationPage())?.published).toBe(before?.published);
-	});
-
-	it('refuses a story, which the Donation page does not hold, under its box and writes nothing', async () => {
-		const { version } = await open();
-		const before = await donationPage();
-		const body = new FormData();
-		body.set(WHICH_FORM, 'content-story');
-		body.set(RECORD_VERSION, String(version));
-		body.set(
-			'body',
-			'{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hi"}]}]}'
-		);
-
-		const response = await request(
-			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env: bindings }
-		);
-
-		expect(response.status).toBe(400);
-		expect(
-			((await response.json()) as { form: { result: { error: Record<string, string[]> } } }).form
-				.result.error.body
-		).toEqual(['the Donation page has no story; only a campaign does']);
-		expect((await donationPage())?.draft).toBe(before?.draft);
+		expect(reset.status).toBe(200);
+		expect(await open()).toMatchObject({ unreadable: false, hasEdits: false });
 	});
 });
 
@@ -570,7 +324,7 @@ describe('Reset to default', () => {
 		expect(await open()).toMatchObject({ hasEdits: true });
 	});
 
-	it('brings the default back after edits and a Publish, with nothing left to undo', async () => {
+	it('brings the default back after edits and a Publish', async () => {
 		await open();
 		await editDraft();
 		await press('page-publish', (await open()).version);
@@ -579,9 +333,7 @@ describe('Reset to default', () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ reset: true });
-		expect(await open()).toMatchObject({ state: 'live', hasEdits: false });
-		const undo = await press('page-undo', (await open()).version);
-		expect(undo.status).toBe(409);
+		expect(await open()).toMatchObject({ banner: { state: 'public' }, hasEdits: false });
 	});
 
 	it('is refused on a Donation page with no edits, saying so', async () => {
@@ -622,73 +374,5 @@ describe('Reset to default', () => {
 			'Nothing was changed: this page has been saved since the editor was opened. Reload it, then try again.'
 		]);
 		expect(await donationPage()).toEqual(written);
-	});
-});
-
-describe('the share message', () => {
-	/** a press on the editor, drawn at `version`. */
-	async function press(fields: [string, string][], version: number) {
-		const body = new FormData();
-		body.set(WHICH_FORM, 'page-share-message');
-		body.set(RECORD_VERSION, String(version));
-		for (const [name, value] of fields) body.append(name, value);
-		return request(
-			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env: bindings }
-		);
-	}
-
-	async function storedDraft(): Promise<Record<string, unknown>> {
-		return JSON.parse((await donationPage())?.draft ?? '{}');
-	}
-
-	function errorUnder(answer: unknown, box: string): string[] | undefined {
-		return (answer as { form: { result: { error: Record<string, string[]> } } }).form.result.error[
-			box
-		];
-	}
-
-	it('is set, changed, and removed by an emptied box', async () => {
-		expect((await open()).shareMessage).toBe('');
-
-		const set = await press([['share_message', ' Keep Elm Street warm. ']], (await open()).version);
-		expect(await set.json()).toEqual({ saved: 'content' });
-		expect((await open()).shareMessage).toBe('Keep Elm Street warm.');
-
-		await press([['share_message', 'Coats for all.']], (await open()).version);
-		expect((await open()).shareMessage).toBe('Coats for all.');
-
-		const cleared = await press([['share_message', '']], (await open()).version);
-		expect(cleared.status).toBe(200);
-		expect((await open()).shareMessage).toBe('');
-		expect(await storedDraft()).not.toHaveProperty('shareMessage');
-	});
-
-	it('is refused past its limit under its box, writing nothing', async () => {
-		const { version } = await open();
-		const before = await donationPage();
-
-		const response = await press([['share_message', 'x'.repeat(281)]], version);
-
-		expect(response.status).toBe(400);
-		expect(errorUnder(await response.json(), 'share_message')).toEqual([
-			'a share message holds at most 280 characters'
-		]);
-		expect((await donationPage())?.draft).toBe(before?.draft);
-	});
-
-	it('is refused when drawn before the page last moved, at 409, writing nothing', async () => {
-		const { version } = await open();
-		const made = await donationPage();
-		if (made === null) throw new Error('the editor made no Donation page');
-		await db
-			.update(page)
-			.set({ updatedAt: new Date(made.updatedAt.getTime() + 1_000) })
-			.where(eq(page.id, made.id));
-
-		const response = await press([['share_message', 'Coats for all.']], version);
-
-		expect(response.status).toBe(409);
-		expect((await donationPage())?.draft).toBe(made.draft);
 	});
 });

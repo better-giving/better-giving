@@ -16,6 +16,11 @@ export const PAGE_KEYS = {
 	 * current name for it.
 	 */
 	name: 'name',
+	/**
+	 * a campaign's link as its draft would move it, present only while that move waits on Publish,
+	 * which takes it onto `page.slug` and drops it from the document. absent, the link is `page.slug`.
+	 */
+	slug: 'slug',
 	/** a campaign's goal, minor units of its owned settings row's currency. */
 	goalMinor: 'goalMinor',
 	/** a campaign's end: the end of the chosen day, unix ms, in the setting browser's time zone. */
@@ -30,9 +35,11 @@ export type PageType = (typeof PAGE_TYPES)[number];
 
 /**
  * a page's stored state: `never_published` until a campaign's first publish; `live` while it
- * answers at its address; `ended` once End has taken it down. a `live` campaign past its published
- * end date reads as ended without this changing (./ended.ts). a campaign goes back from `ended` to
- * `live` by publishing again, and never back to `never_published`.
+ * answers at its address; `unpublished` once Unpublish has taken it down, keeping its published
+ * page and its address while nothing answers there; `ended` once End has taken it down. a `live`
+ * campaign past its published end date reads as ended without this changing (./ended.ts). a
+ * campaign goes back from `unpublished` or `ended` to `live` by publishing again, and never back to
+ * `never_published`. the Donation page is always `live`.
  */
-export const PAGE_STATES = ['never_published', 'live', 'ended'] as const;
+export const PAGE_STATES = ['never_published', 'live', 'unpublished', 'ended'] as const;
 export type PageState = (typeof PAGE_STATES)[number];

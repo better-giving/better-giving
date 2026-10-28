@@ -158,6 +158,34 @@ describe('what a page carries beside its content', () => {
 		expect(parsePage('campaign', page({ name }))).toMatchObject({ ok: false, path: ['name'] });
 	});
 
+	it('accepts a label beside each of a campaign’s suggested amounts', () => {
+		const input = page({
+			amountLabels: [
+				{ amountMinor: 2500, label: 'A coat' },
+				{ amountMinor: 5000, label: 'Two coats' }
+			]
+		});
+		expect(parsePage('campaign', input)).toEqual({ ok: true, page: input });
+	});
+
+	it('refuses an amount label over its length, naming the limit', () => {
+		const label = 'x'.repeat(41);
+		expect(parsePage('campaign', page({ amountLabels: [{ amountMinor: 2500, label }] }))).toEqual({
+			ok: false,
+			path: ['amountLabels', 0, 'label'],
+			message: 'an amount’s label holds at most 40 characters'
+		});
+	});
+
+	it('refuses a fifth amount label', () => {
+		const amountLabels = [1, 2, 3, 4, 5].map((n) => ({ amountMinor: n * 1000, label: `L${n}` }));
+		expect(parsePage('campaign', page({ amountLabels }))).toEqual({
+			ok: false,
+			path: ['amountLabels'],
+			message: 'a campaign labels at most 4 suggested amounts'
+		});
+	});
+
 	it('refuses an end date without the time zone it ends in', () => {
 		expect(parsePage('campaign', page({ endsAt }))).toEqual({
 			ok: false,
@@ -196,7 +224,8 @@ describe('what a page carries beside its content', () => {
 		],
 		['photos', [], 'the Donation page has no photos; only a campaign does'],
 		['tiers', [], 'the Donation page has no impact tiers; only a campaign does'],
-		['faq', [], 'the Donation page has no questions; only a campaign does']
+		['faq', [], 'the Donation page has no questions; only a campaign does'],
+		['amountLabels', [], 'the Donation page has no suggested amount labels; only a campaign does']
 	])('refuses %s on the Donation page', (key, value, message) => {
 		expect(parsePage('donation_page', page({ [key]: value }))).toEqual({
 			ok: false,

@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { drawAmountEntry, isComposing, keyInAmountBox, regroupAmountBox } from '../amount-box';
 import { AffixedField, type AffixedFieldProps } from './affixed-field';
 
-// every box on the page editor an operator types a sum of money in: the goal (./goal-sheet.tsx)
-// and a tier's amount (./section-edit.tsx). an affixed box (./affixed-field.tsx) that groups its
+// every box on a page's edit screen an operator types a sum of money in: the goal and each
+// suggested amount (./campaign-cards.tsx). an affixed box (./affixed-field.tsx) that groups its
 // digits as they are typed and hands on the text with the box's own separators taken out, as
 // ../amount-box.ts states for every money box. an example figure in the box is grouped as well.
 //
-// the box is the caller's to hold, with `value` and `onValueChange`, or the form's, with `name` and
-// `defaultValue`, in which case it holds what is typed itself and posts the text it draws, grouped,
+// the box is the caller's to hold, with `value` and `onValueChange` (and `name` where a form posts
+// it), or the form's, with `name` and `defaultValue`, in which case it holds what is typed itself and posts the text it draws, grouped,
 // under `name` with the rest of the form's boxes — a block's tier amounts. the server markup draws
 // the seed grouped too, so the box posts the same text with no script running.
 //
@@ -21,7 +21,8 @@ type MoneyEntry =
 	| {
 			readonly value: string;
 			readonly onValueChange: (text: string) => void;
-			readonly name?: undefined;
+			/** what the box posts under, where a form posts the box the caller holds. */
+			readonly name?: string | undefined;
 			readonly defaultValue?: undefined;
 	  }
 	| {

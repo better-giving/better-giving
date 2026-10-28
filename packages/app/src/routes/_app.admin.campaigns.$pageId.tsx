@@ -1,169 +1,79 @@
-import { Modal } from '@better-giving/operator/behaviour/Dialog';
-import { Banner } from '@better-giving/operator/components/status/Banner';
-import { useCallback, useEffect, useState } from 'react';
-import { useFetcher } from 'react-router';
-import { z } from 'zod';
-import { AddressSheet } from '$lib/admin/editor/address-sheet';
-import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
-import { EditorShell } from '$lib/admin/editor/editor-shell';
-import { NameSheet } from '$lib/admin/editor/name-sheet';
+import { Button } from '@better-giving/operator/components/controls/Button';
+import { Column, Section } from '@better-giving/operator/components/shell/Layout';
+import { href, Link } from 'react-router';
+import type { CrumbHandle } from '$lib/admin/crumbs';
 import {
-	EndDateSettingsSheet,
-	GoalSettingsSheet,
-	ShareMessageSettingsSheet
-} from '$lib/admin/editor/page-settings';
-import { PreviewFrame } from '$lib/admin/editor/preview-frame';
-import { PublishBar } from '$lib/admin/editor/publish-bar';
-import { type FirstPublish, usePublishPresses } from '$lib/admin/editor/publish-wiring';
-import { SectionEditSheet } from '$lib/admin/editor/section-edit';
-import { SettingsSheet, type SettingsRow } from '$lib/admin/editor/settings-sheet';
+	GeneralCard,
+	GoalCard,
+	MediaCard,
+	SettingsCard
+} from '$lib/admin/page-edit/campaign-cards';
+import { EditTabs } from '$lib/admin/page-edit/edit-tabs';
+import { PublishBanner } from '$lib/admin/page-edit/publish-banner';
+import { UnreadableDraft } from '$lib/admin/page-edit/page-presses';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formPress } from '$lib/admin/unreached';
-import { resultFor } from '$lib/admin/use-admin-form';
-import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
-import { PROGRAM_MODE_LABELS } from '$lib/forms/program-modes';
-import { HEADING_MAX, PHOTOS_MAX } from '$lib/page/catalog';
-import { CONTENT_FORM_IDS, type EditorSection } from '$lib/page/content-edit';
-import {
-	PAGE_END_DATE_FORM_ID,
-	PAGE_GOAL_FORM_ID,
-	PAGE_SETTING_FORM_IDS
-} from '$lib/page/page-settings-form';
+import { CAMPAIGN_EDIT_FORM_IDS } from '$lib/page/edit-forms';
 import {
 	DISCARD_FORM_ID,
-	FIRST_PUBLISH_FORM_ID,
 	PUBLISH_FORM_ID,
-	PUBLISH_FORMS,
-	UNDO_FORM_ID
+	UNDO_FORM_ID,
+	UNPUBLISH_FORM_ID
 } from '$lib/page/publish-form';
-import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
-import { checkSlug, type SlugCheck } from '$lib/page/slug';
-import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
+import { submittedForm } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
-import { editorDraft, saveContentForm } from '$lib/server/pages/content';
-import {
-	editorPage,
-	readEditorSettings,
-	saveDraftSettings,
-	unreadableEditor
-} from '$lib/server/pages/editor';
+import { unreadableEditor } from '$lib/server/pages/editor';
 import { answerPublishPress } from '$lib/server/pages/publish';
-import { savePageSetting } from '$lib/server/pages/page-settings';
-import {
-	addressAsked,
-	type NameWrite,
-	readPage,
-	type SlugWrite,
-	updateCampaignName,
-	updateCampaignSlug
-} from '$lib/server/pages/queries';
+import { readPage } from '$lib/server/pages/queries';
+import { saveCampaignSection } from '$lib/server/pages/section-saves';
+import { editBanner, readCampaignEditSeeds } from '$lib/server/pages/section-seeds';
 import { database, platform } from '../context';
-import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.campaigns.$pageId';
 
-// a campaign's editor, reached from the Campaigns list: its draft framed by the preview route, the
-// publish bar over it, and the Settings sheet behind the bar's Settings, while Edit is on. the
-// parts are $lib/admin/editor/'s; what they read and the writes behind them are here and in
-// $lib/server/pages/queries.ts.
+// a campaign's edit page, reached from its card on the Campaigns list: one tab per section card —
+// General, Media, Goal and amounts, Settings ($lib/admin/page-edit/edit-tabs.tsx) — under the
+// banner that says where the campaign stands against what donors see, which stays above the tabs on
+// every tab, and End campaign at the foot of Settings. no preview is drawn; the
+// banner's Preview page opens the draft in a tab of its own.
 //
-// **the name** is edited in place in the bar and as Settings' Name row, one write: the row's `name`,
-// which the dashboard shows, its settings row's, which a gift's notices carry, and the draft's,
-// which donors see from the next Publish ($lib/server/pages/queries.ts, `renaming`). until the
-// first Publish an address not set by hand follows it, to the next free one where another page
-// holds the one the name suggests, and the first Publish's confirm names the one it did not get
-// (`addressAsked`).
+// **every Save writes the draft**, a card at a time ($lib/server/pages/section-saves.ts), and
+// donors see it only at Publish or Publish changes ($lib/server/pages/publish.ts), the name and the
+// campaign link included, which Publish takes onto the campaign. a link that would stop a published
+// campaign's address working, or take an ended campaign's, is asked about at its save.
 //
-// **a draft the read rule refuses** ($lib/server/pages/document.ts) opens the editor on a notice
-// in the preview's place, with Discard changes where the live page reads: the one screen that can
-// repair the page opens whatever the rule now says.
+// **Unpublish** takes a public campaign down: its address answers nothing and it takes no gifts
+// until it is published again ($lib/server/pages/publish.ts, `unpublishCampaign`). **End campaign**
+// is the Campaigns list's own confirmation (./_app.admin.campaigns._index.tsx, `?end=`).
 //
-// **the address** takes effect when it is saved, not at Publish. a save the address rule refuses is
-// answered naming the clash; one that would stop a published campaign's address working, or take
-// the address an ended campaign holds, is answered with the question instead of a write, and the
-// save goes again with that question answered yes. the same body posted without the answer is
-// asked again, so no caller moves either address unasked.
+// **a draft the read rule refuses** ($lib/server/pages/document.ts) opens on a notice in the cards'
+// place, with Discard changes where the live page reads: the one screen that can repair the page
+// opens whatever the rule now says.
 //
-// **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
-// only at Publish; the Donation page's editor saves them the same way ($lib/server/pages/editor.ts).
-// so are the goal and the end date ($lib/server/pages/page-settings.ts).
-//
-// **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, the presses and their
-// confirms mounted through $lib/admin/editor/publish-wiring.tsx.
-//
-// **the content** — the title, the story, the cover photo and the photos beside it, the tiers and
-// the questions — is edited a section at a time in its sheet, opened by a click on the section in
-// the preview while Edit is on and by its row in Settings' content list alike; each writes the draft
-// ($lib/server/pages/content.ts), as the Donation page's editor does. nothing here lays the page
-// out: the page picks its whole layout from what the content holds ($lib/page/shape.ts). a click on
-// the donation box opens Donation settings, which are what it draws, on the goal bar the goal, and
-// on the share buttons the share message.
-//
-// every press is written against the version the editor was drawn at (`submittedVersion`), and the
-// preview is keyed on it, so the frame reloads on the render a landed write's revalidation brings.
-// the action below is the one writer; `clientAction` only answers, as its form's refusal, a press
-// whose request never reached it ($lib/admin/unreached.ts).
+// every press is written against the version the page was drawn at. the action below is the one
+// writer; `clientAction` only answers, as its form's refusal, a press whose request never reached
+// it ($lib/admin/unreached.ts).
 
-export const handle: BareHandle = { frame: 'bare' };
-
-const NAME_FORM_ID = 'campaign-name';
-const ADDRESS_FORM_ID = 'campaign-address';
-
-/** a campaign's name, as the dashboard shows it and as its title draws it from the next publish. */
-const NAME_EDIT = defineForm({
-	id: NAME_FORM_ID,
-	schema: z.object({
-		name: z
-			.string('required')
-			.trim()
-			.min(1, 'required')
-			.max(HEADING_MAX, `at most ${HEADING_MAX} characters`)
-	})
-});
-
-/**
- * the address, and the two questions a move may have been answered yes to. the case is repaired
- * rather than refused: the router matches an address in any case.
- */
-const ADDRESS_EDIT = defineForm({
-	id: ADDRESS_FORM_ID,
-	schema: z.object({
-		slug: z.string('required').trim().toLowerCase(),
-		move: z.boolean().optional(),
-		takeover: z.boolean().optional()
-	})
-});
+const SECTION = 'Campaigns';
 
 const SCREEN_FORMS = [
-	NAME_FORM_ID,
-	ADDRESS_FORM_ID,
-	PAGE_SETTINGS_FORM_ID,
-	...PUBLISH_FORMS,
-	FIRST_PUBLISH_FORM_ID,
-	...PAGE_SETTING_FORM_IDS,
-	...CONTENT_FORM_IDS
+	...CAMPAIGN_EDIT_FORM_IDS,
+	PUBLISH_FORM_ID,
+	UNPUBLISH_FORM_ID,
+	UNDO_FORM_ID,
+	DISCARD_FORM_ID
 ] as const;
-
-const DONATION_PAGE_PATH = '/donate';
-
-/** what a click in the preview on the box, the goal bar or the share buttons opens: what they draw. */
-const PREVIEW_SHEETS: Readonly<Record<string, SettingsRow>> = {
-	donate: 'donation-settings',
-	goal: 'goal',
-	share: 'share-message'
-};
-
-const STALE =
-	'Nothing was changed: this campaign has been saved since the editor was opened. Reload it, then make this change again.';
-const NAME_FAILED = 'Renaming this campaign failed and nothing was changed. Try again.';
-const ADDRESS_FAILED = 'Saving the address failed and nothing was changed. Try again.';
-
-/** what the bar and the notice call a draft the read rule refuses. */
-const UNREADABLE_WORD = 'This draft can’t be read';
 
 /** what a press on a page that is not a campaign, or no page at all, is told. */
 const gone = (pageId: string) =>
 	`no campaign has the id "${pageId}"; open it again from the Campaigns list.`;
+
+export const handle = {
+	crumbs: ({ loaderData, pathname }) => [
+		{ href: href('/admin/campaigns'), label: SECTION },
+		{ href: pathname, label: loaderData?.name ?? SECTION }
+	]
+} satisfies CrumbHandle<Route.ComponentProps['loaderData']>;
 
 export function meta({ loaderData, matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(loaderData?.name ?? 'Campaign', matches) }];
@@ -172,175 +82,49 @@ export function meta({ loaderData, matches }: Route.MetaArgs): Route.MetaDescrip
 export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const db = context.get(database);
 	let row: Page | null;
-	let settings: SettingsSeed;
-	let asked: string | null;
 	try {
 		row = await readPage(db, params.pageId);
 	} catch (e) {
-		console.error(`loading campaign ${params.pageId}'s editor failed:`, e);
+		console.error(`loading campaign ${params.pageId}'s edit page failed:`, e);
 		loadFailed('This campaign');
 	}
 	if (row === null || row.type !== 'campaign' || row.name === null) notFound(gone(params.pageId));
 	const now = Date.now();
+	const url = new URL(request.url);
 	const named = {
+		id: row.id,
 		name: row.name,
-		address: row.slug === null ? null : `/${row.slug}`,
-		host: `${new URL(request.url).host}/`
+		host: `${url.host}/`,
+		version: row.updatedAt.getTime(),
+		banner: editBanner(row, now)
 	};
-	const unreadable = unreadableEditor(row, now);
-	if (unreadable !== null) return { ...unreadable, ...named };
+	const unreadable = unreadableEditor(row);
+	if (unreadable !== null) {
+		return { ...named, unreadable: true as const, discardable: unreadable.discardable };
+	}
+	let seeds: Awaited<ReturnType<typeof readCampaignEditSeeds>>;
 	try {
-		[settings, asked] = await Promise.all([
-			readEditorSettings(db, context.get(platform).env, row, new URL(request.url).origin),
-			addressAsked(db, row)
-		]);
+		seeds = await readCampaignEditSeeds(db, context.get(platform).env, row, url.origin);
 	} catch (e) {
-		console.error(`loading campaign ${params.pageId}'s editor failed:`, e);
+		console.error(`loading campaign ${params.pageId}'s edit page failed:`, e);
 		loadFailed('This campaign');
 	}
-	return {
-		...editorPage(row, now),
-		...editorDraft(row, settings.currency),
-		...named,
-		settings,
-		asked: asked === null ? null : `/${asked}`
-	};
-}
-
-/** the address rule's refusal as the predicate under the box. */
-function slugPredicate(refused: Exclude<SlugCheck, { ok: true }>): string {
-	switch (refused.reason) {
-		case 'empty':
-			return 'required';
-		case 'length':
-			return `at most ${refused.max} characters`;
-		case 'character':
-			return `lowercase letters, numbers and single hyphens between words, not “${refused.character}”`;
-		case 'reserved':
-			return refused.clashesWith === DONATION_PAGE_PATH
-				? 'taken by the Donation page'
-				: `clashes with ${refused.clashesWith}`;
-	}
+	return { ...named, unreadable: false as const, seeds };
 }
 
 export async function action({ context, params, request }: Route.ActionArgs) {
 	const body = await request.formData();
-
+	const db = context.get(database);
+	const target = { id: params.pageId, type: 'campaign' } as const;
 	const pressed = submittedForm(body, SCREEN_FORMS);
 	switch (pressed) {
-		case NAME_FORM_ID:
-			return saveName();
-		case ADDRESS_FORM_ID:
-			return saveAddress();
-		case PAGE_SETTINGS_FORM_ID:
-			return saveDraftSettings(
-				context.get(database),
-				{ id: params.pageId, type: 'campaign' },
-				body,
-				gone(params.pageId)
-			);
 		case PUBLISH_FORM_ID:
-		case FIRST_PUBLISH_FORM_ID:
 		case UNDO_FORM_ID:
+		case UNPUBLISH_FORM_ID:
 		case DISCARD_FORM_ID:
-			return answerPublishPress(
-				context.get(database),
-				{ id: params.pageId, type: 'campaign' },
-				body,
-				gone(params.pageId)
-			);
-		case PAGE_GOAL_FORM_ID:
-		case PAGE_END_DATE_FORM_ID:
-			return savePageSetting(
-				context.get(database),
-				{ id: params.pageId, type: 'campaign' },
-				pressed,
-				body,
-				gone(params.pageId)
-			);
+			return answerPublishPress(db, target, body, gone(params.pageId));
 		default:
-			return saveContentForm(
-				context.get(database),
-				{ id: params.pageId, type: 'campaign' },
-				pressed,
-				body,
-				gone(params.pageId)
-			);
-	}
-
-	// declared inside the action: react router strips the `action` export from the browser bundle
-	// and nothing else, so a module-scope helper reaching `$lib/server/**` would ship with the page
-	// (../routes.spec.ts).
-
-	async function saveName() {
-		const submission = parseForm(body, NAME_EDIT);
-		if (!submission.ok) return invalid(400, submission.reject());
-		const seen = submittedVersion(body);
-		let written: NameWrite;
-		try {
-			written = await updateCampaignName(
-				context.get(database),
-				params.pageId,
-				seen,
-				submission.value.name
-			);
-		} catch (e) {
-			console.error(`renaming campaign ${params.pageId} failed:`, e);
-			return invalid(500, submission.reject({ formErrors: [NAME_FAILED] }));
-		}
-		switch (written) {
-			case 'written':
-				return { saved: 'name' as const };
-			case 'stale':
-				return invalid(409, submission.reject({ formErrors: [STALE] }));
-			case 'gone':
-				return invalid(404, submission.reject({ formErrors: [gone(params.pageId)] }));
-		}
-	}
-
-	async function saveAddress() {
-		const submission = parseForm(body, ADDRESS_EDIT);
-		if (!submission.ok) return invalid(400, submission.reject());
-		const checked = checkSlug(submission.value.slug);
-		if (!checked.ok) {
-			return invalid(400, submission.reject({ fieldErrors: { slug: [slugPredicate(checked)] } }));
-		}
-		const seen = submittedVersion(body);
-		let written: SlugWrite;
-		try {
-			written = await updateCampaignSlug(
-				context.get(database),
-				params.pageId,
-				seen,
-				checked.slug,
-				{ move: submission.value.move === true, takeover: submission.value.takeover === true },
-				Date.now()
-			);
-		} catch (e) {
-			console.error(`moving campaign ${params.pageId}'s address failed:`, e);
-			return invalid(500, submission.reject({ fieldErrors: { slug: [ADDRESS_FAILED] } }));
-		}
-		const to = `/${checked.slug}`;
-		switch (written.kind) {
-			case 'written':
-				return { saved: 'address' as const };
-			case 'ask':
-				return {
-					ask:
-						written.ask === 'move'
-							? { kind: written.ask, from: `/${written.from}`, to }
-							: { kind: written.ask, holder: written.holder, to }
-				};
-			case 'taken':
-				return invalid(
-					409,
-					submission.reject({ fieldErrors: { slug: [`taken by ${written.by}`] } })
-				);
-			case 'stale':
-				return invalid(409, submission.reject({ fieldErrors: { slug: [STALE] } }));
-			case 'gone':
-				return invalid(404, submission.reject({ fieldErrors: { slug: [gone(params.pageId)] } }));
-		}
+			return saveCampaignSection(db, target, pressed, body, gone(params.pageId));
 	}
 }
 
@@ -348,349 +132,85 @@ export function clientAction({ request, serverAction }: Route.ClientActionArgs) 
 	return formPress(request, serverAction);
 }
 
-type Answer = Route.ComponentProps['actionData'];
-
-/** the first message the last answer refused `form` with under `box` — `''` is the form's own. */
-function refusal(answer: Answer | undefined, form: { id: string }, box: string): string | null {
-	return resultFor(form, answer)?.error?.[box]?.[0] ?? null;
-}
-
-/** the question an address save came back with. */
-type Question = Extract<NonNullable<Answer>, { ask: unknown }>['ask'];
-
-/** the questions a move has been answered yes to, as the boxes post them. */
-type Confirmed = { readonly move: boolean; readonly takeover: boolean };
-
-/**
- * the first Publish's "Gifts go to": the active programs, the retired one the draft still pins, and
- * the draft's own mode where it pins none, on what the draft holds now.
- */
-function giftsGoTo(settings: SettingsSeed): Pick<FirstPublish, 'programs' | 'program'> {
-	const mode = settings.boxes.program_mode;
-	const pinned = mode === 'pinned';
-	return {
-		programs: [
-			...(pinned ? [] : [{ value: mode, label: PROGRAM_MODE_LABELS[mode] }]),
-			...(settings.retired ? [settings.retired] : []),
-			...settings.programs
-		],
-		program: pinned ? settings.boxes.program_id : mode
-	};
-}
-
-type Loaded = Route.ComponentProps['loaderData'];
-
-export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
-	return loaderData.unreadable ? (
-		<UnreadableDraftEditor loaderData={loaderData} />
-	) : (
-		<DraftEditor loaderData={loaderData} />
-	);
-}
-
-/** the name's in-place and Settings edits, on one fetcher, and where the last one was made. */
-function useRename(version: number) {
-	const fetcher = useFetcher<Answer>({ key: NAME_EDIT.id });
-	/** where the last rename was made, so its refusal is said there. */
-	const [renamedIn, setRenamedIn] = useState<'bar' | 'sheet'>('bar');
-	const renaming = fetcher.state !== 'idle';
-	const answer = renaming ? undefined : fetcher.data;
-	const rename = (next: string, from: 'bar' | 'sheet') => {
-		setRenamedIn(from);
-		const body = new FormData();
-		body.set(WHICH_FORM, NAME_EDIT.id);
-		body.set(RECORD_VERSION, String(version));
-		body.set('name', next);
-		fetcher.submit(body, { method: 'post' });
-	};
-	const barError = renamedIn === 'bar' ? nameRefusal(answer) : null;
-	return {
-		rename,
-		renaming,
-		renamedIn,
-		answer,
-		renamed: answer != null && 'saved' in answer && answer.saved === 'name',
-		barReport: barError === null ? null : { press: 'name' as const, text: barError }
-	};
-}
-
-function nameRefusal(answer: Answer | undefined): string | null {
-	return refusal(answer, NAME_EDIT, 'name') ?? refusal(answer, NAME_EDIT, '');
-}
-
-/**
- * the editor over a draft the read rule refuses: the bar, with Discard changes where the live page
- * reads, and a notice in the preview's place. the name still renames.
- */
-function UnreadableDraftEditor({
-	loaderData
-}: {
-	readonly loaderData: Extract<Loaded, { unreadable: true }>;
-}) {
-	const { name, address, state, version, discardable } = loaderData;
-	const presses = usePublishPresses({ version, state });
-	const naming = useRename(version);
+export default function CampaignEditPage({ loaderData }: Route.ComponentProps) {
+	const { id, name, host, version, banner } = loaderData;
 	return (
-		<EditorShell
-			bar={
-				<PublishBar
-					closeHref="/admin/campaigns"
-					page={{ kind: 'campaign', name, onRename: (next) => naming.rename(next, 'bar') }}
-					state={state}
-					livePath={address ?? undefined}
-					{...presses.bar}
-					onPublish={undefined}
-					publishHeld={UNREADABLE_WORD}
-					onDiscard={discardable ? presses.bar.onDiscard : undefined}
-					report={presses.bar.report ?? naming.barReport}
-				/>
-			}
-			preview={
-				<div className="adm-main">
-					<Banner tone="attention" word={UNREADABLE_WORD}>
-						{discardable
-							? 'It holds something a campaign can no longer hold. Discard changes to go back to the live page.'
-							: 'It holds something a campaign can no longer hold, and there is no live page to go back to.'}
-					</Banner>
+		<Column>
+			<header className="adm-pageheader">
+				<div className="adm-pageheader__row">
+					<h1>{name}</h1>
 				</div>
-			}
-		>
-			{presses.confirm}
-		</EditorShell>
-	);
-}
-
-function DraftEditor({
-	loaderData
-}: {
-	readonly loaderData: Extract<Loaded, { unreadable: false }>;
-}) {
-	const { name, address, state, version, preview, host, settings: donationSettings } = loaderData;
-
-	const presses = usePublishPresses({
-		version,
-		state,
-		first:
-			state === 'unpublished'
-				? {
-						name,
-						address: address ?? '',
-						asked: loaderData.asked ?? undefined,
-						...giftsGoTo(donationSettings)
-					}
-				: undefined
-	});
-	const naming = useRename(version);
-	const addressFetcher = useFetcher<Answer>({ key: ADDRESS_EDIT.id });
-
-	const [settings, setSettings] = useState(false);
-	const [opened, setOpened] = useState<SettingsRow | null>(null);
-	/** the address last saved, and the questions answered yes so far on the way to it. */
-	const [moving, setMoving] = useState<{ slug: string; confirmed: Confirmed } | null>(null);
-	/** the question up, held while the save answering it is in flight. */
-	const [question, setQuestion] = useState<Question | null>(null);
-	/** the section whose sheet is open, or `new` for Add a photo's. */
-	const [sectionId, setSectionId] = useState<string | null>(null);
-	const openSection: EditorSection | null =
-		sectionId === 'new'
-			? loaderData.newPhoto
-			: (loaderData.sections.find((section) => section.id === sectionId) ?? null);
-	const closeSection = useCallback(() => setSectionId(null), []);
-	/** a click in the preview, or a row in Settings: a section's sheet, or the sheet for what it draws. */
-	const open = (id: string) => {
-		const elsewhere = PREVIEW_SHEETS[id];
-		if (elsewhere === undefined) setSectionId(id);
-		else setOpened(elsewhere);
-	};
-	const photos = loaderData.sections.filter((section) => section.id.startsWith('photo-')).length;
-
-	const { renamed, renaming, renamedIn } = naming;
-	const nameAnswer = naming.answer;
-
-	const saving = addressFetcher.state !== 'idle';
-	const addressAnswer = saving ? undefined : addressFetcher.data;
-	const addressSaved =
-		addressAnswer != null && 'saved' in addressAnswer && addressAnswer.saved === 'address';
-
-	// a Done that landed closes the Name sheet, back onto Settings.
-	useEffect(() => {
-		if (renamed) setOpened((was) => (was === 'name' ? null : was));
-	}, [renamed]);
-
-	// each answer puts up the question it asks, or takes the last one down.
-	useEffect(() => {
-		if (addressAnswer === undefined) return;
-		setQuestion(addressAnswer != null && 'ask' in addressAnswer ? addressAnswer.ask : null);
-	}, [addressAnswer]);
-
-	const { rename } = naming;
-
-	const saveAddress = (slug: string, confirmed: Confirmed) => {
-		setMoving({ slug, confirmed });
-		const body = new FormData();
-		body.set(WHICH_FORM, ADDRESS_EDIT.id);
-		body.set(RECORD_VERSION, String(version));
-		body.set('slug', slug);
-		if (confirmed.move) body.set('move', 'on');
-		if (confirmed.takeover) body.set('takeover', 'on');
-		addressFetcher.submit(body, { method: 'post' });
-	};
-
-	const answerYes = (kind: keyof Confirmed) => {
-		if (moving !== null) saveAddress(moving.slug, { ...moving.confirmed, [kind]: true });
-	};
-	const answerNo = () => setQuestion(null);
-
-	return (
-		<EditorShell
-			bar={
-				<PublishBar
-					closeHref="/admin/campaigns"
-					page={{ kind: 'campaign', name, onRename: (next) => rename(next, 'bar') }}
-					state={state}
-					livePath={address ?? undefined}
-					{...presses.bar}
-					onSettings={() => setSettings(true)}
-					report={presses.bar.report ?? naming.barReport}
-				/>
-			}
-			preview={
-				<PreviewFrame
-					key={version}
-					src={preview}
-					title={`Preview of ${name}`}
-					onSectionClick={open}
-				/>
-			}
-		>
-			{settings && opened !== 'address' ? (
-				<SettingsSheet
-					onDismiss={() => setSettings(false)}
-					campaign={{
-						name,
-						address: address ?? '',
-						goalMinor: loaderData.goalMinor,
-						currency: donationSettings.currency,
-						endDate: loaderData.endDate
-					}}
-					sections={loaderData.sections}
-					onOpenSection={open}
-					onAddPhoto={photos < PHOTOS_MAX ? () => setSectionId('new') : undefined}
-					shareMessage={loaderData.shareMessage}
-					onShareMessage={() => setOpened('share-message')}
-					donationSettings={donationSettings.summary}
-					onOpen={setOpened}
-				/>
-			) : null}
-			{openSection === null ? null : (
-				<SectionEditSheet
-					key={`${openSection.id}-${openSection.text.kind === 'photo' ? openSection.text.slot : ''}`}
-					section={openSection}
-					version={version}
-					onDismiss={closeSection}
-					onSaved={closeSection}
-					stacked={settings}
+			</header>
+			<PublishBanner
+				state={banner.state}
+				version={version}
+				noun="campaign"
+				address={banner.address === null ? null : `${host}${banner.address.slice(1)}`}
+				livePath={banner.address}
+				preview={banner.preview}
+				unpublishable={banner.unpublishable}
+				undoable={banner.undoable}
+			/>
+			{loaderData.unreadable ? (
+				<>
+					<UnreadableDraft version={version} discardable={loaderData.discardable} noun="campaign" />
+					{banner.endable ? <EndCampaign id={id} /> : null}
+				</>
+			) : (
+				<EditTabs
+					label="Campaign sections"
+					tabs={[
+						{
+							id: 'general',
+							label: 'General',
+							panel: <GeneralCard seed={loaderData.seeds.general} version={version} host={host} />
+						},
+						{
+							id: 'media',
+							label: 'Media',
+							panel: <MediaCard seed={loaderData.seeds.media} version={version} />
+						},
+						{
+							id: 'goal',
+							label: 'Goal and amounts',
+							panel: <GoalCard seed={loaderData.seeds.goal} version={version} />
+						},
+						{
+							id: 'settings',
+							label: 'Settings',
+							panel: (
+								<div className="adm-stack">
+									<SettingsCard seed={loaderData.seeds.settings} version={version} />
+									{banner.endable ? <EndCampaign id={id} /> : null}
+								</div>
+							)
+						}
+					]}
 				/>
 			)}
-			{opened === 'name' ? (
-				<NameSheet
-					name={name}
-					onDone={(next) => (next === name ? setOpened(null) : rename(next, 'sheet'))}
-					applying={renaming && renamedIn === 'sheet'}
-					error={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, 'name') : null}
-					refusal={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, '') : null}
-					onDismiss={() => setOpened(null)}
-				/>
-			) : null}
-			{opened === 'goal' ? (
-				<GoalSettingsSheet
-					goalMinor={loaderData.goalMinor}
-					currency={donationSettings.currency}
-					version={version}
-					onDismiss={() => setOpened(null)}
-					onSaved={() => setOpened(null)}
-				/>
-			) : null}
-			{opened === 'end-date' ? (
-				<EndDateSettingsSheet
-					endDate={loaderData.endDate}
-					version={version}
-					onDismiss={() => setOpened(null)}
-					onSaved={() => setOpened(null)}
-				/>
-			) : null}
-			{opened === 'share-message' ? (
-				<ShareMessageSettingsSheet
-					message={loaderData.shareMessage}
-					version={version}
-					onDismiss={() => setOpened(null)}
-					onSaved={() => setOpened(null)}
-				/>
-			) : null}
-			{opened === 'donation-settings' ? (
-				<DonationSettingsSheet
-					seed={donationSettings}
-					version={version}
-					onDismiss={() => setOpened(null)}
-					onSaved={() => setOpened(null)}
-					stacked={settings}
-				/>
-			) : null}
-			{opened === 'address' ? (
-				<AddressSheet
-					host={host}
-					slug={address?.slice(1) ?? ''}
-					onSave={(slug) => saveAddress(slug, { move: false, takeover: false })}
-					saving={saving}
-					saved={addressSaved}
-					error={refusal(addressAnswer, ADDRESS_EDIT, 'slug')}
-					refusal={refusal(addressAnswer, ADDRESS_EDIT, '')}
-					onDismiss={() => setOpened(null)}
-				/>
-			) : null}
-			{presses.confirm}
-			{question?.kind === 'move' ? (
-				<Modal
-					title={`Change the address to ${question.to}?`}
-					danger="Change address"
-					dangerProps={held(saving, () => answerYes('move'))}
-					cancel="Cancel"
-					cancelProps={{ type: 'button', onClick: answerNo }}
-					onDismiss={answerNo}
-				>
-					<p>
-						<code className="adm-chip">{question.from}</code> stops working at once, and links
-						already shared to it will find nothing.
-					</p>
-				</Modal>
-			) : null}
-			{question?.kind === 'takeover' ? (
-				<Modal
-					title={`Use ${question.to} here?`}
-					commit="Use it here"
-					commitProps={held(saving, () => answerYes('takeover'))}
-					cancel="Cancel"
-					cancelProps={{ type: 'button', onClick: answerNo }}
-					onDismiss={answerNo}
-				>
-					<p>
-						It shows the ended screen of {question.holder}. Taking it leaves that campaign with no
-						address.
-					</p>
-				</Modal>
-			) : null}
-		</EditorShell>
+		</Column>
 	);
 }
 
-/** a confirm's act, holding its focus while the save it answered is in flight. */
-function held(busy: boolean, act: () => void) {
-	return {
-		type: 'button' as const,
-		'aria-busy': busy,
-		'aria-disabled': busy || undefined,
-		onClick: () => {
-			if (!busy) act();
-		}
-	};
+/** End campaign, one row: what it does, and the press that opens the Campaigns list's confirmation. */
+function EndCampaign({ id }: { readonly id: string }) {
+	return (
+		<Section card>
+			<div className="adm-rowcard">
+				<div>
+					<h2>End campaign</h2>
+					<p className="adm-hint">
+						Its page shows it has ended and takes no more gifts. Gifts already made are kept.
+					</p>
+				</div>
+				<Button
+					as={Link}
+					variant="danger"
+					to={`${href('/admin/campaigns')}?end=${encodeURIComponent(id)}`}
+				>
+					End campaign
+				</Button>
+			</div>
+		</Section>
+	);
 }

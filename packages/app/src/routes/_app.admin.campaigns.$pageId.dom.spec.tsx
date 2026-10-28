@@ -1,115 +1,111 @@
+import type { Resized } from '@better-giving/operator/images/resize';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { UNREACHED } from '$lib/admin/unreached';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
-import { editorSections, editorShareMessage, newPhotoSection } from '$lib/page/content-edit';
-import { SECTION_MESSAGE } from '$lib/page/preview-message';
-import { type Page, PHOTOS_MAX } from '$lib/page/catalog';
-import { defaultCampaign } from '$lib/page/defaults';
-import type { Resized } from '@better-giving/operator/images/resize';
-import CampaignEditor, { clientAction } from './_app.admin.campaigns.$pageId';
-import { clientAction as imagesClientAction } from './_app.admin.images';
+import type { BannerState } from '$lib/page/edit-forms';
+import CampaignEditPage, { clientAction } from './_app.admin.campaigns.$pageId';
 
-// happy-dom decodes no image, so the resize is the boundary stood in for: each pick waits in
-// `resizes` until the case hands it a result.
-const resizes: ((result: Resized) => void)[] = [];
+// happy-dom decodes no image, so the resize is the boundary stood in for: every pick resizes at once,
+// unless a case holds it, when the pick waits in `heldResize` until the case lets it go.
+const RESIZED: Resized = {
+	ok: true,
+	blob: new Blob(['webp'], { type: 'image/webp' }),
+	width: 1600,
+	height: 400
+};
+let holdResize = false;
+let heldResize: ((result: Resized) => void) | null = null;
 vi.mock('@better-giving/operator/images/resize', async (actual) => ({
 	...(await actual<typeof import('@better-giving/operator/images/resize')>()),
-	resizeImage: () => new Promise<Resized>((resolve) => resizes.push(resolve))
+	resizeImage: (): Promise<Resized> =>
+		holdResize
+			? new Promise<Resized>((resolve) => {
+					heldResize = resolve;
+				})
+			: Promise.resolve(RESIZED)
 }));
 
-// a campaign's editor as the route mounts it: the preview and the bar's presses, and no AI
-// anywhere, content and nothing that lays the page out, every hand edit reached from Settings or a
-// click in the preview once Edit is on, what its first Publish says of the address, the
-// questions an address save comes back with — asked, answered yes with the version, or declined —
-// whether the donation settings sheet stands over Settings or on its own ground, and the notice over
-// a draft the read rule refuses, and a press whose request never reaches the server.
-// the loader and the server's action are stand-ins, one drawing the fixture below and the other
-// recording each body and answering what the case scripts, or rejecting the way a browser's
-// `fetch` does when the request never left; what the real ones do is
+// a campaign's edit page as the route mounts it: a plain form of section cards under the publish
+// banner, with no preview; each card's Save held until that card changes, Media's until its upload
+// lands; the four-amount cap and the label counter; and the banner's three states and their
+// presses. the loader and the server's action are stand-ins, one drawing the fixture below and the
+// other recording each body and answering what the case scripts; what the real ones do is
 // ./_app.admin.campaigns.$pageId.db.spec.ts's. every press goes through the route's own
 // `clientAction`, as it does in a browser.
 //
-// it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
+// it is not the browser spec AGENTS.md bans over a dashboard screen: nothing here reads a computed
 // style.
 
-// react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const PAGE = '/admin/campaigns/p1';
 
-type Drawn = Parameters<typeof CampaignEditor>[0]['loaderData'];
+type Drawn = Parameters<typeof CampaignEditPage>[0]['loaderData'];
 type Loaded = Extract<Drawn, { unreadable: false }>;
 
-const DRAFT = defaultCampaign();
+const BLANK_STORY = { type: 'doc' as const, content: [{ type: 'paragraph' as const }] };
 
-/** a never-published campaign whose name asked for an address another campaign holds. */
-function unpublished(): Loaded {
+function fixture(state: BannerState = 'not_public'): Loaded {
 	return {
-		unreadable: false,
-		state: 'unpublished',
-		version: 1,
-		// a frame on a path would be fetched from a server nothing here runs.
-		preview: 'about:blank',
-		goalMinor: null,
-		endDate: null,
-		sections: editorSections(DRAFT, 'campaign', 'USD'),
-		newPhoto: newPhotoSection(DRAFT),
-		shareMessage: editorShareMessage(DRAFT),
-		settings: {
-			boxes: {
-				program_mode: 'none',
-				program_id: '',
-				min_minor: '100',
-				max_minor: '1000000',
-				suggested_amounts: []
-			},
-			currency: 'USD',
-			programs: [],
-			retired: null,
-			summary: 'No program',
-			switches: { open_on_monthly: false, dedication_on: false },
-			monthlyOffered: true
-		},
+		id: 'p1',
 		name: 'Winter coat drive',
-		address: '/winter-coat-drive-2',
-		asked: '/winter-coat-drive',
-		host: 'give.example.org/'
+		host: 'give.example.org/',
+		version: 1,
+		banner: {
+			state,
+			address: '/winter-coat-drive',
+			preview: '/preview/p1',
+			unpublishable: state === 'public' || state === 'changed',
+			endable: state !== 'ended',
+			undoable: false
+		},
+		unreadable: false,
+		seeds: {
+			general: {
+				boxes: { name: 'Winter coat drive', slug: 'winter-coat-drive' },
+				story: BLANK_STORY
+			},
+			media: { boxes: { hero_image_id: '' }, hero: null },
+			goal: {
+				boxes: { goal_mode: 'none', goal_amount: '', amount: ['25'], amount_label: [''] },
+				currency: 'USD'
+			},
+			settings: {
+				boxes: {
+					program_mode: 'none',
+					program_id: '',
+					min_minor: '1',
+					max_minor: '10,000',
+					open_on_monthly: false,
+					dedication_on: true,
+					share_message: '',
+					end_date: ''
+				},
+				currency: 'USD',
+				programs: [],
+				retired: null,
+				monthlyOffered: true
+			}
+		}
 	};
 }
 
 let drawn: Loaded;
-/** what the loader draws in `drawn`'s place over a draft the read rule refuses. */
-let unreadable: Extract<Drawn, { unreadable: true }> | null;
 let posted: Record<string, string>[];
-/** each body whole, for a box posted more than once. */
-let bodies: FormData[];
-/** what the action answers each post, in turn, and the draft it leaves for the loader to draw. */
+/** what the action answers each post, in turn, and the page it leaves for the loader to draw. */
 let answers: { body: unknown; status?: number; drawn?: Loaded }[];
-/** the phone has lost its signal: every request rejects before it leaves, as `fetch` does. */
-let offline: boolean;
-/** what the server's action throws in place of answering, as it reaches the browser. */
-let thrown: unknown;
-
-/** what the editor says of a press that never reached the server. */
-const NOT_SENT =
-	'That may not have saved: the server couldn’t be reached. Check your connection and press again.';
-
-function unreachable(): void {
-	if (offline) throw new TypeError('Failed to fetch');
-}
+/** the upload the images route holds open until a case answers it. */
+let upload: { resolve: (answer: Response) => void } | null;
 
 beforeEach(() => {
-	drawn = unpublished();
-	unreadable = null;
+	drawn = fixture();
 	posted = [];
-	bodies = [];
 	answers = [];
-	offline = false;
-	thrown = undefined;
-	resizes.length = 0;
+	upload = null;
+	holdResize = false;
+	heldResize = null;
 });
 
 function mount(tree: ReactNode) {
@@ -123,8 +119,8 @@ function mount(tree: ReactNode) {
 	});
 }
 
-function Editor() {
-	return createElement(CampaignEditor as never, {
+function Page() {
+	return createElement(CampaignEditPage as never, {
 		loaderData: useLoaderData<Drawn>(),
 		params: { pageId: 'p1' },
 		matches: []
@@ -135,39 +131,28 @@ async function screen() {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/campaigns/:pageId',
-			loader: () => {
-				unreachable();
-				return unreadable ?? drawn;
-			},
+			loader: () => drawn,
 			action: (args) =>
 				clientAction({
 					...args,
 					serverAction: async () => {
-						unreachable();
 						const body = await args.request.formData();
-						bodies.push(body);
 						posted.push(Object.fromEntries([...body].map(([k, v]) => [k, String(v)])));
-						if (thrown !== undefined) throw thrown;
 						const answer = answers.shift();
-						if (answer === undefined)
-							throw new Error('the action was posted to with no answer ready');
+						if (answer === undefined) throw new Error('posted to with no answer ready');
 						if (answer.drawn !== undefined) drawn = answer.drawn;
 						return Response.json(answer.body, { status: answer.status ?? 200 });
 					}
 				} as never),
 			HydrateFallback: () => null,
-			Component: Editor
+			Component: Page
 		},
 		{
 			path: '/admin/images',
-			action: (args) =>
-				imagesClientAction({
-					...args,
-					serverAction: async () => {
-						unreachable();
-						throw new Error('no upload in these cases reaches the server');
-					}
-				} as never)
+			action: () =>
+				new Promise<Response>((resolve) => {
+					upload = { resolve };
+				})
 		}
 	]);
 	mount(createElement(Stub, { initialEntries: [PAGE] }));
@@ -185,30 +170,16 @@ function button(name: string, within: Element | Document = document): HTMLButton
 	return found;
 }
 
-/** the lines the bar's More menu holds, open or not. */
-const moreLines = () =>
-	[...document.querySelectorAll('.adm-publishbar [role="menuitem"]')].map((one) =>
-		one.textContent?.trim()
+/** the card headed `title`. */
+function card(title: string): HTMLElement {
+	const found = [...document.querySelectorAll<HTMLElement>('section.adm-card')].find(
+		(one) => one.querySelector('h2')?.textContent === title
 	);
-
-/** the card whose heading reads `title`. */
-function card(title: string | RegExp): HTMLDialogElement {
-	const found = [...document.querySelectorAll('dialog')].find((one) => {
-		const heading = one.querySelector('h2')?.textContent ?? '';
-		return typeof title === 'string' ? heading === title : title.test(heading);
-	});
 	if (found === undefined) throw new Error(`no card is headed ${title}`);
 	return found;
 }
 
-/** Settings' own row named `label`. */
-function settingsRow(label: string): HTMLButtonElement {
-	const row = [...card('Settings').querySelectorAll('button')].find(
-		(one) => one.querySelector('.adm-openrow__label')?.textContent === label
-	);
-	if (row === undefined) throw new Error(`Settings drew no ${label} row`);
-	return row;
-}
+const held = (press: HTMLElement) => press.getAttribute('aria-disabled') === 'true';
 
 async function press(target: HTMLElement) {
 	await act(async () => {
@@ -218,592 +189,501 @@ async function press(target: HTMLElement) {
 	await settle();
 }
 
-/** a click on the section `id` in the preview, as the framed page posts it. */
-async function clickInPreview(id: string) {
-	const frame = document.querySelector('iframe');
+/** text put in a box the way a keystroke puts it there. */
+async function type(box: HTMLInputElement | HTMLTextAreaElement, text: string) {
+	const proto = box instanceof HTMLTextAreaElement ? HTMLTextAreaElement : HTMLInputElement;
 	await act(async () => {
-		window.dispatchEvent(
-			new MessageEvent('message', {
-				data: { type: SECTION_MESSAGE, id },
-				origin: window.location.origin,
-				source: frame?.contentWindow ?? null
-			})
-		);
+		Object.getOwnPropertyDescriptor(proto.prototype, 'value')?.set?.call(box, text);
+		box.dispatchEvent(new Event('input', { bubbles: true }));
 	});
-	await settle();
 }
 
-/**
- * the bar's Edit pressed on. what the editor tells the framed page is recorded rather than sent into
- * the empty document the stand-in frames.
- */
-async function editOn() {
-	const framed = document.querySelector('iframe')?.contentWindow;
-	if (framed) vi.spyOn(framed, 'postMessage').mockImplementation(() => {});
-	await press(button('Edit'));
-}
-
-describe('the editor as it opens', () => {
-	/** the bar's presses, each by the name a reader meets it by. */
-	const presses = () =>
-		[...document.querySelectorAll('.adm-publishbar button')].map(
-			(one) => one.getAttribute('aria-label') ?? one.textContent?.trim()
-		);
-
-	it('shows the preview and Edit, Settings and Publish', async () => {
-		await screen();
-
-		expect(document.querySelector('.adm-editor__preview iframe')).not.toBeNull();
-		expect(presses()).toEqual(expect.arrayContaining(['Edit', 'Publish']));
-		await editOn();
-		expect(presses()).toEqual(expect.arrayContaining(['Done', 'Settings', 'Publish']));
-	});
-
-	it('draws no AI press, panel or unread mark', async () => {
-		await screen();
-		await editOn();
-
-		expect(presses()).not.toContain('AI');
-		expect(document.querySelector('.adm-publishbar [role="img"]')).toBeNull();
-		expect(document.querySelector('.adm-editor__body > :not(main)')).toBeNull();
-		expect(document.querySelector('[role="complementary"], dialog')).toBeNull();
-	});
-});
-
-describe('every hand edit', () => {
-	it('is reached from Settings, which stands beside Done once Edit is on', async () => {
-		await screen();
-
-		await editOn();
-		await press(button('Settings'));
-
-		expect(card('Settings').open).toBe(true);
-	});
-
-	it('is reached by a click on its section in the preview while Edit is on, which opens that section’s sheet', async () => {
-		await screen();
-		const section = drawn.sections.find((one) => one.id === 'story');
-		if (section === undefined) throw new Error('the fixture draws no story section');
-
-		await clickInPreview(section.id);
-		expect(document.querySelector('dialog')).toBeNull();
-
-		await editOn();
-		await clickInPreview(section.id);
-
-		expect(card(section.label).open).toBe(true);
-		expect(() => card('Settings')).toThrow();
-	});
-});
-
-describe('a first Publish', () => {
-	it('reads the address taken and the one the campaign’s name asked for', async () => {
-		await screen();
-
-		await press(button('Publish', document.querySelector('.adm-publishbar') ?? document));
-
-		const text = card('Publish Winter coat drive?').textContent;
-		expect(text).toContain('/winter-coat-drive-2');
-		expect(text).toContain(
-			'The address /winter-coat-drive is taken, so this campaign takes the next free one.'
-		);
-	});
-});
-
-describe('an address save that comes back with a question', () => {
-	/** writes `text` into a box the way typing would, so react hears it. */
-	function typeInto(box: HTMLInputElement, text: string): void {
-		act(() => {
-			Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, text);
-			box.dispatchEvent(new Event('input', { bubbles: true }));
-		});
-	}
-
-	/** Settings, its Address row, `slug` typed and saved. */
-	async function saveAddress(slug: string) {
-		await editOn();
-		await press(button('Settings'));
-		await press(settingsRow('Address'));
-		const sheet = card('Address');
-		const box = sheet.querySelector('input');
-		if (box === null) throw new Error('the Address sheet drew no box');
-		typeInto(box, slug);
-		await press(button('Save address', sheet));
-	}
-
-	const ended = {
-		body: { ask: { kind: 'takeover', holder: 'Giving Tuesday', to: '/giving-tuesday' } }
-	};
-	const takeover = 'Use /giving-tuesday here?';
-
-	it('asks before taking an ended campaign’s address, and posts the yes with the version', async () => {
-		drawn = { ...drawn, version: 7 };
-		answers = [ended, { body: { saved: 'address' } }];
-		await screen();
-
-		await saveAddress('giving-tuesday');
-		expect(posted).toEqual([
-			{ [WHICH_FORM]: 'campaign-address', [RECORD_VERSION]: '7', slug: 'giving-tuesday' }
-		]);
-		expect(card(takeover).textContent).toContain('It shows the ended screen of Giving Tuesday.');
-
-		await press(button('Use it here', card(takeover)));
-
-		expect(posted[1]).toEqual({
-			[WHICH_FORM]: 'campaign-address',
-			[RECORD_VERSION]: '7',
-			slug: 'giving-tuesday',
-			takeover: 'on'
-		});
-		expect(() => card(takeover)).toThrow();
-	});
-
-	it('says a refusal about no box at Save, the connection-lost sentence among them', async () => {
-		answers = [
-			{
-				body: {
-					form: { id: 'campaign-address', result: { status: 'error', error: { '': [UNREACHED] } } }
-				},
-				status: 503
-			}
-		];
-		await screen();
-
-		await saveAddress('winter-coats');
-
-		const sheet = card('Address');
-		const said = [...sheet.querySelectorAll('[role="status"]')].map((one) => one.textContent);
-		expect(said).toContain(UNREACHED);
-		expect(button('Save address', sheet).getAttribute('aria-describedby')).toBeTruthy();
-	});
-
-	it('posts nothing more when the takeover is declined', async () => {
-		answers = [ended];
-		await screen();
-		await saveAddress('giving-tuesday');
-
-		await press(button('Cancel', card(takeover)));
-
-		expect(posted).toHaveLength(1);
-		expect(() => card(takeover)).toThrow();
-	});
-
-	it('asks before moving a published campaign, and posts the yes with the version', async () => {
-		drawn = { ...drawn, state: 'live', address: '/winter-coat-drive', asked: null, version: 4 };
-		answers = [
-			{ body: { ask: { kind: 'move', from: '/winter-coat-drive', to: '/coats' } } },
-			{ body: { saved: 'address' } }
-		];
-		await screen();
-
-		await saveAddress('coats');
-		const move = card('Change the address to /coats?');
-		expect(move.textContent).toContain('/winter-coat-drive stops working at once');
-		expect(posted).toHaveLength(1);
-
-		await press(button('Change address', move));
-
-		expect(posted[1]).toEqual({
-			[WHICH_FORM]: 'campaign-address',
-			[RECORD_VERSION]: '4',
-			slug: 'coats',
-			move: 'on'
-		});
-	});
-});
-
-describe('the donation settings sheet', () => {
-	it('stacks over Settings when opened from its Donation settings row', async () => {
-		await screen();
-		await editOn();
-		await press(button('Settings'));
-
-		await press(settingsRow('Donation settings'));
-
-		expect(card('Donation settings').classList.contains('adm-sheet--stacked')).toBe(true);
-	});
-
-	it('lays its own ground when opened from the preview’s donation box', async () => {
-		await screen();
-		await editOn();
-		await clickInPreview('donate');
-
-		expect(() => card('Settings')).toThrow();
-		expect(card('Donation settings').classList.contains('adm-sheet--stacked')).toBe(false);
-	});
-});
-
-describe('a draft the page rule refuses', () => {
-	const refused = (discardable: boolean): Extract<Drawn, { unreadable: true }> => ({
-		unreadable: true,
-		discardable,
-		state: 'changed',
-		version: 3,
-		preview: 'about:blank',
-		name: 'Winter coat drive',
-		address: '/winter-coat-drive',
-		host: 'give.example.org/'
-	});
-
-	it('says so in the preview’s place, padded from its edges, with Discard changes on the bar', async () => {
-		unreadable = refused(true);
-		await screen();
-
-		const notice = document.querySelector('.adm-editor__preview > .adm-main > .adm-banner');
-		expect(notice?.textContent).toContain('This draft can’t be read');
-		expect(notice?.textContent).toContain('Discard changes to go back to the live page.');
-		expect(document.querySelector('iframe')).toBe(null);
-		expect(moreLines()).toContain('Discard changes');
-	});
-
-	it('offers no Discard changes where the live page cannot be read either', async () => {
-		unreadable = refused(false);
-		await screen();
-
-		expect(document.querySelector('.adm-banner')?.textContent).toContain(
-			'there is no live page to go back to'
-		);
-		expect(moreLines()).not.toContain('Discard changes');
-	});
-});
-
-describe('Settings’ content', () => {
-	/** Settings opened over the editor, as the bar's Settings opens it with Edit on. */
-	async function settings() {
-		await screen();
-		await editOn();
-		await press(button('Settings'));
-		return card('Settings');
-	}
-
-	/** the rows Settings lists, by label. */
-	const rows = (sheet: Element) =>
-		[...sheet.querySelectorAll('.adm-openrow__label')].map((one) => one.textContent);
-
-	it('lists the content a campaign holds and what is around it, and nothing that lays the page out', async () => {
-		const sheet = await settings();
-
-		expect(rows(sheet)).toEqual([
-			'Name',
-			'Address',
-			'Title',
-			'Story',
-			'Cover photo',
-			'Impact tiers',
-			'Questions',
-			'Goal',
-			'End date',
-			'Share message',
-			'Donation settings'
-		]);
-		expect(button('Add a photo', sheet)).toBeDefined();
-		const text = sheet.textContent ?? '';
-		for (const gone of [
-			'Layout',
-			'Look',
-			'Shade',
-			'Corners',
-			'Colours',
-			'Variant',
-			'Background',
-			'Share buttons',
-			'Add a block',
-			'Move',
-			'Remove'
-		])
-			expect(text).not.toContain(gone);
-		expect(sheet.querySelector('fieldset, input[type="radio"], select')).toBeNull();
-		const labelled = [...document.querySelectorAll('[aria-label]')].map(
-			(one) => one.getAttribute('aria-label') ?? ''
-		);
-		expect(labelled.length).toBeGreaterThan(0);
-		expect(labelled.filter((name) => /\bmove\b|variant|background|layout/i.test(name))).toEqual([]);
-	});
-
-	it('lists a placed photo, a tier and a question as rows of their own, in the order the page draws them', async () => {
-		const full: Page = {
-			...DRAFT,
-			photos: [{ imageId: '019fb300-0000-7000-8000-000000000001', alt: 'Coats on a rack' }],
-			tiers: [{ amountMinor: 2500, buys: 'a coat' }],
-			faq: [
-				{ question: 'Who gets them?', answer: { type: 'doc', content: [{ type: 'paragraph' }] } }
-			]
-		};
-		drawn = {
-			...drawn,
-			sections: editorSections(full, 'campaign', 'USD'),
-			newPhoto: newPhotoSection(full)
-		};
-
-		const sheet = await settings();
-
-		expect(rows(sheet).slice(2, 8)).toEqual([
-			'Title',
-			'Story',
-			'Cover photo',
-			'Photo 1',
-			'Impact tiers',
-			'Questions'
-		]);
-	});
-
-	it('opens a section’s sheet over Settings from its row, with no preview click', async () => {
-		await settings();
-
-		await press(settingsRow('Story'));
-
-		expect(card('Story').classList.contains('adm-sheet--stacked')).toBe(true);
-	});
-
-	it.each([
-		['goal', 'Goal'],
-		['share', 'Share message']
-	])(
-		'opens the %s sheet, not a section’s, on a click on it in the preview',
-		async (id, heading) => {
-			await screen();
-			await editOn();
-
-			await clickInPreview(id);
-
-			expect(card(heading).open).toBe(true);
-			expect(() => card('Settings')).toThrow();
-		}
+function box(within: Element, label: string): HTMLInputElement {
+	const found = [...within.querySelectorAll<HTMLInputElement>('input, textarea')].find(
+		(one) =>
+			one.getAttribute('aria-label') === label ||
+			(one.id !== '' &&
+				within.querySelector(`label[for="${one.id}"]`)?.textContent?.startsWith(label))
 	);
+	if (found === undefined) throw new Error(`no box named ${label}`);
+	return found;
+}
 
-	it.each([
-		[PHOTOS_MAX - 1, true],
-		[PHOTOS_MAX, false]
-	])('with %i photos placed, Add a photo is offered: %s', async (count, drawnButton) => {
-		const full: Page = {
-			...DRAFT,
-			photos: Array.from({ length: count }, (_, at) => ({
-				imageId: `019fb300-0000-7000-8000-0000000002${String(at).padStart(2, '0')}`,
-				alt: null
-			}))
-		};
-		drawn = {
-			...drawn,
-			sections: editorSections(full, 'campaign', 'USD'),
-			newPhoto: newPhotoSection(full)
-		};
+const tabs = () => [...document.querySelectorAll<HTMLElement>('[role="tab"]')];
+const chosen = () =>
+	tabs().find((tab) => tab.getAttribute('aria-selected') === 'true')?.textContent;
+const panelOf = (tab: HTMLElement) =>
+	document.getElementById(tab.getAttribute('aria-controls') ?? '') as HTMLElement;
 
-		const sheet = await settings();
-
-		expect(rows(sheet).filter((label) => label?.startsWith('Photo '))).toHaveLength(count);
-		const added = [...sheet.querySelectorAll('button')].some(
-			(one) => one.textContent?.trim() === 'Add a photo'
-		);
-		expect(added).toBe(drawnButton);
-	});
-
-	it('opens an empty photo’s sheet from Add a photo', async () => {
-		const sheet = await settings();
-
-		await press(button('Add a photo', sheet));
-
-		expect(card('Add a photo').open).toBe(true);
-	});
-});
-
-describe('the share message', () => {
-	async function opened() {
+describe('the edit page as it opens', () => {
+	it('is a form of section cards in order, with no preview', async () => {
 		await screen();
-		await editOn();
-		await press(button('Settings'));
-		await press(settingsRow('Share message'));
-		return card('Share message');
-	}
 
-	function typeInto(box: HTMLTextAreaElement, text: string): void {
-		act(() => {
-			Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(box, text);
-			box.dispatchEvent(new Event('input', { bubbles: true }));
-		});
-	}
+		expect(document.querySelector('iframe')).toBeNull();
+		expect(
+			[...document.querySelectorAll('section.adm-card h2')].map((one) => one.textContent)
+		).toEqual(['General', 'Media', 'Goal and amounts', 'Settings', 'End campaign']);
+	});
 
-	it('is seeded with the page’s message, and Done posts it trimmed with the version', async () => {
-		drawn = { ...drawn, version: 5, shareMessage: 'Help us' };
-		answers = [{ body: { saved: 'page-share-message' } }];
-		const sheet = await opened();
-		const box = sheet.querySelector('textarea');
-		if (box === null) throw new Error('no message box');
-		expect(box.value).toBe('Help us');
+	it('puts each card in a tab of its own, the banner above them all', async () => {
+		await screen();
 
-		typeInto(box, '  Keep 300 kids warm  ');
-		await press(button('Done', sheet));
-
-		expect(posted).toEqual([
-			{
-				[WHICH_FORM]: 'page-share-message',
-				[RECORD_VERSION]: '5',
-				share_message: 'Keep 300 kids warm'
-			}
+		const tablist = document.querySelector('[role="tablist"]') as HTMLElement;
+		expect(tabs().map((tab) => tab.textContent)).toEqual([
+			'General',
+			'Media',
+			'Goal and amounts',
+			'Settings'
 		]);
-		expect(() => card('Share message')).toThrow();
+		expect(tabs().map((tab) => tab.getAttribute('aria-selected'))).toEqual([
+			'true',
+			'false',
+			'false',
+			'false'
+		]);
+		expect(tabs().map((tab) => tab.tabIndex)).toEqual([0, -1, -1, -1]);
+		const banner = document.querySelector('.adm-banner') as HTMLElement;
+		expect(banner.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(tablist.contains(banner)).toBe(false);
+		const general = panelOf(tabs()[0] as HTMLElement);
+		expect(general.hidden).toBe(false);
+		expect(general.contains(card('General'))).toBe(true);
+		expect(panelOf(tabs()[3] as HTMLElement).contains(card('End campaign'))).toBe(true);
+		expect(panelOf(tabs()[3] as HTMLElement).hidden).toBe(true);
 	});
 
-	it('says a refused message under its box, and a stale one at Done, open both times', async () => {
-		const stale = 'Nothing was changed: this page has been saved since the editor was opened.';
-		answers = [
-			{
-				body: {
-					form: {
-						id: 'page-share-message',
-						result: { status: 'error', error: { share_message: ['at most 280 characters'] } }
-					}
-				},
-				status: 400
-			},
-			{
-				body: {
-					form: { id: 'page-share-message', result: { status: 'error', error: { '': [stale] } } }
-				},
-				status: 409
-			}
-		];
-		const sheet = await opened();
-		const box = sheet.querySelector('textarea');
-		if (box === null) throw new Error('no message box');
+	it('moves between tabs with the arrow keys, Home and End', async () => {
+		await screen();
+		const tablist = document.querySelector('[role="tablist"]') as HTMLElement;
+		const key = (name: string) =>
+			act(() => {
+				tablist.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
+			});
 
-		typeInto(box, 'x'.repeat(281));
-		await press(button('Done', sheet));
-		expect(document.activeElement).toBe(box);
-		expect(sheet.textContent).toContain('at most 280 characters');
+		await key('ArrowRight');
+		expect(chosen()).toBe('Media');
+		expect(document.activeElement).toBe(tabs()[1]);
+		expect(panelOf(tabs()[1] as HTMLElement).hidden).toBe(false);
+		expect(panelOf(tabs()[0] as HTMLElement).hidden).toBe(true);
+		await key('ArrowLeft');
+		await key('ArrowLeft');
+		expect(chosen()).toBe('Settings');
+		await key('Home');
+		expect(chosen()).toBe('General');
+		await key('End');
+		expect(chosen()).toBe('Settings');
+	});
 
-		typeInto(box, 'Short');
-		await press(button('Done', sheet));
-		expect(card('Share message').open).toBe(true);
-		expect(card('Share message').textContent).toContain(stale);
+	it('marks a tab whose card holds unsaved edits, and only that one', async () => {
+		await screen();
+
+		await type(box(card('Settings'), 'Share message'), 'Join me');
+
+		expect(tabs().map((tab) => tab.querySelector('.adm-tabs__dot') !== null)).toEqual([
+			false,
+			false,
+			false,
+			true
+		]);
+		expect(tabs()[3]?.textContent).toBe('Settings, unsaved changes');
+	});
+
+	it('offers every Save held, until its card changes', async () => {
+		await screen();
+
+		for (const name of ['general', 'media', 'goal and amounts', 'settings']) {
+			expect(held(button(`Save ${name}`))).toBe(true);
+		}
+		expect(document.body.textContent).not.toContain('Unsaved changes');
+	});
+
+	it('links End campaign to the Campaigns list’s own confirmation', async () => {
+		await screen();
+
+		const end = card('End campaign').querySelector('a');
+		expect(end?.getAttribute('href')).toBe('/admin/campaigns?end=p1');
 	});
 });
 
-describe('a press whose request never reaches the server', () => {
-	/** what the sheet's message areas say, a group's refusal among them. */
-	const said = (sheet: Element) =>
-		[...sheet.querySelectorAll('[role="status"], [role="alert"]')]
-			.map((one) => one.textContent)
-			.join(' ');
-
-	function typeInto(box: HTMLInputElement, text: string): void {
-		act(() => {
-			Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, text);
-			box.dispatchEvent(new Event('input', { bubbles: true }));
-		});
-	}
-
-	it('leaves a section’s sheet open, holding what was typed, and says so at Done', async () => {
+describe('a section’s Save', () => {
+	it('is offered on the card that changed alone, saying it holds unsaved changes', async () => {
 		await screen();
-		await editOn();
-		await clickInPreview('title');
-		const sheet = card('Title');
-		const heading = sheet.querySelector<HTMLInputElement>('input[name="heading"]');
-		if (heading === null) throw new Error('the Title sheet drew no heading box');
 
-		typeInto(heading, 'Coats for every kid');
-		offline = true;
-		await press(button('Done', sheet));
+		await type(box(card('General'), 'Name'), 'Warm hands winter');
 
-		expect(card('Title').open).toBe(true);
-		expect(heading.value).toBe('Coats for every kid');
-		expect(said(card('Title'))).toContain(NOT_SENT);
+		expect(held(button('Save general'))).toBe(false);
+		expect(card('General').textContent).toContain('Unsaved changes');
+		expect(held(button('Save settings'))).toBe(true);
+		expect(card('Settings').textContent).not.toContain('Unsaved changes');
 	});
 
-	it('leaves the first Publish’s confirm up, and the campaign unpublished', async () => {
+	it('is held again once the card is put back as it was', async () => {
 		await screen();
-		await press(button('Publish', document.querySelector('.adm-publishbar') ?? document));
+		const name = box(card('General'), 'Name');
 
-		offline = true;
-		await press(button('Publish', card('Publish Winter coat drive?')));
+		await type(name, 'Warm hands winter');
+		await type(name, 'Winter coat drive');
 
-		expect(card('Publish Winter coat drive?').open).toBe(true);
-		expect(said(card('Publish Winter coat drive?'))).toContain(NOT_SENT);
-		expect(document.querySelector('.adm-publishbar')?.textContent).toContain('Not published');
+		expect(held(button('Save general'))).toBe(true);
 	});
 
-	it('leaves the Name sheet open on a rename, holding the name typed', async () => {
+	it('posts its own card, against the version drawn, and says it saved', async () => {
 		await screen();
-		await editOn();
-		await press(button('Settings'));
-		await press(settingsRow('Name'));
-		const box = card('Name').querySelector('input');
-		if (box === null) throw new Error('the Name sheet drew no box');
+		await type(box(card('Settings'), 'Share message'), 'I gave to keep a child warm.');
+		const saved = fixture();
+		answers.push({
+			body: { saved: 'campaign-settings' },
+			drawn: {
+				...saved,
+				version: 2,
+				seeds: {
+					...saved.seeds,
+					settings: {
+						...saved.seeds.settings,
+						boxes: { ...saved.seeds.settings.boxes, share_message: 'I gave to keep a child warm.' }
+					}
+				}
+			}
+		});
 
-		typeInto(box, 'Coats for every kid');
-		offline = true;
-		await press(button('Done', card('Name')));
+		await press(button('Save settings'));
 
-		expect(card('Name').open).toBe(true);
-		expect(box.value).toBe('Coats for every kid');
-		expect(said(card('Name'))).toContain(NOT_SENT);
-		expect(settingsRow('Name').textContent).toContain('Winter coat drive');
+		expect(posted).toHaveLength(1);
+		expect(posted[0]).toMatchObject({
+			[WHICH_FORM]: 'campaign-settings',
+			[RECORD_VERSION]: '1',
+			share_message: 'I gave to keep a child warm.'
+		});
+		expect(button('Saved settings').textContent).toBe('Saved settings');
+		expect(card('Settings').textContent).toContain(
+			'Saved. Donors see your changes once you publish.'
+		);
+	});
+});
+
+describe('Goal and amounts', () => {
+	it('asks how much to raise only for a fixed goal', async () => {
+		await screen();
+		const goal = card('Goal and amounts');
+		expect(goal.textContent).not.toContain('How much money do you want to raise?');
+
+		const fixed = [...goal.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(
+			(one) => one.value === 'fixed'
+		);
+		await press(fixed as HTMLInputElement);
+
+		expect(goal.textContent).toContain('How much money do you want to raise?');
+		expect(held(button('Save goal and amounts'))).toBe(false);
 	});
 
-	it('leaves the cover photo’s sheet open on an upload, with no photo placed, and says so at the press', async () => {
+	it('counts the amounts beside Add, and holds Add at four', async () => {
 		await screen();
-		await editOn();
-		await clickInPreview('cover');
-		const sheet = card('Cover photo');
-		const picker = sheet.querySelector<HTMLInputElement>('input[type="file"]');
-		if (picker === null) throw new Error('the Cover photo sheet drew no picker');
-		Object.defineProperty(picker, 'files', {
-			configurable: true,
-			value: [new File(['camera bytes'], 'coats.heic', { type: 'image/heic' })]
-		});
+		const add = button('Add an amount');
+		const count = () => document.getElementById(add.getAttribute('aria-describedby') ?? '');
+		expect(count()?.textContent).toBe('1 of 4 amounts');
 
-		offline = true;
-		await act(async () => {
-			picker.dispatchEvent(new Event('change', { bubbles: true }));
-		});
-		const blob = new Blob([new Uint8Array(1_000)], { type: 'image/webp' });
-		await act(async () => resizes.shift()?.({ ok: true, blob, width: 800, height: 800 }));
-		await settle();
+		for (let n = 0; n < 3; n += 1) await press(add);
 
-		expect(card('Cover photo').open).toBe(true);
-		expect(said(card('Cover photo'))).toContain(NOT_SENT);
-		expect(card('Cover photo').querySelector('input[name="image_id"]')?.getAttribute('value')).toBe(
-			''
+		expect(card('Goal and amounts').querySelectorAll('input[aria-label^="Amount "]')).toHaveLength(
+			4
+		);
+		expect(held(add)).toBe(true);
+		expect(count()?.textContent).toBe('4 of 4 amounts');
+		await press(add);
+		expect(card('Goal and amounts').querySelectorAll('input[aria-label^="Amount "]')).toHaveLength(
+			4
 		);
 	});
 
-	describe('beside a server that answered', () => {
-		async function renameInSheet(next: string) {
-			await screen();
-			await editOn();
-			await press(button('Settings'));
-			await press(settingsRow('Name'));
-			const box = card('Name').querySelector('input');
-			if (box === null) throw new Error('the Name sheet drew no box');
-			typeInto(box, next);
-			await press(button('Done', card('Name')));
-			return box;
-		}
+	it('counts a label’s characters against its forty', async () => {
+		await screen();
+		const label = box(card('Goal and amounts'), 'Label for amount 1');
+		const counter = document.getElementById(`${label.id}-count`);
+		expect(counter?.textContent).toBe('0/40');
 
-		it('draws a 500’s refusal in the sheet as it came', async () => {
-			const failed = 'Nothing was saved: the name could not be written. Press Done again.';
-			answers = [
-				{
-					body: {
-						form: { id: 'campaign-name', result: { status: 'error', error: { '': [failed] } } }
-					},
-					status: 500
+		await type(label, 'A scarf');
+
+		expect(counter?.textContent).toBe('7/40');
+		expect(held(button('Save goal and amounts'))).toBe(false);
+	});
+
+	it('counts a label without the spaces it ends in', async () => {
+		await screen();
+		const label = box(card('Goal and amounts'), 'Label for amount 1');
+
+		await type(label, 'A scarf   ');
+
+		expect(document.getElementById(`${label.id}-count`)?.textContent).toBe('7/40');
+	});
+
+	it('says how many amounts to remove before saving, when the saved list holds more than four', async () => {
+		const base = fixture();
+		drawn = {
+			...base,
+			seeds: {
+				...base.seeds,
+				goal: {
+					...base.seeds.goal,
+					boxes: {
+						...base.seeds.goal.boxes,
+						amount: ['10', '20', '30', '40', '50', '60'],
+						amount_label: ['', '', '', '', '', '']
+					}
 				}
-			];
-			const box = await renameInSheet('Coats for every kid');
+			}
+		};
+		await screen();
 
-			expect(card('Name').open).toBe(true);
-			expect(box.value).toBe('Coats for every kid');
-			expect(said(card('Name'))).toContain(failed);
-			expect(said(card('Name'))).not.toContain(NOT_SENT);
+		expect(card('Goal and amounts').textContent).toContain('Remove 2 amounts to save');
+		const add = button('Add an amount');
+		expect(held(add)).toBe(true);
+		expect(document.getElementById(add.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+			'6 amounts, 2 over the limit of 4'
+		);
+
+		await press(button('Remove amount 1'));
+		await press(button('Remove amount 1'));
+		expect(card('Goal and amounts').textContent).not.toContain('to save');
+		expect(document.getElementById(add.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+			'4 of 4 amounts'
+		);
+	});
+
+	it('says how many amounts it takes, and how they sit with the gift limits', async () => {
+		await screen();
+
+		expect(card('Goal and amounts').textContent).toContain(
+			'You can suggest up to 4 amounts. Donors see these in this order and can still give any amount between the smallest and largest gift.'
+		);
+	});
+
+	it('posts every box it states, an empty goal among them where there is none', async () => {
+		await screen();
+		await type(box(card('Goal and amounts'), 'Label for amount 1'), 'A scarf');
+		answers.push({ body: { saved: 'campaign-goal' } });
+
+		await press(button('Save goal and amounts'));
+
+		expect(posted[0]).toEqual({
+			[WHICH_FORM]: 'campaign-goal',
+			[RECORD_VERSION]: '1',
+			goal_mode: 'none',
+			goal_amount: '',
+			'amount[0]': '25',
+			'amount_label[0]': 'A scarf'
+		});
+	});
+});
+
+describe('Settings', () => {
+	it('sets the smallest and largest gift in two boxes, with no currency line and no slider', async () => {
+		await screen();
+		const settings = card('Settings');
+
+		expect(box(settings, 'Smallest gift').value).toBe('1');
+		expect(box(settings, 'Largest gift').value).toBe('10,000');
+		expect(settings.querySelector('[role="slider"]')).toBeNull();
+		expect(settings.textContent).not.toContain('Currency');
+		expect(settings.querySelectorAll('h3')).toHaveLength(0);
+	});
+});
+
+describe('the suggested amount cards', () => {
+	it('heads each card with its amount, typed in place, and its remove press', async () => {
+		await screen();
+		const goal = card('Goal and amounts');
+		const amount = goal.querySelector<HTMLInputElement>('.adm-amount input[aria-label="Amount 1"]');
+		expect(amount?.value).toBe('25');
+
+		await type(amount as HTMLInputElement, '1500');
+		expect(amount?.value).toBe('1,500');
+		expect(held(button('Save goal and amounts'))).toBe(false);
+
+		await press(button('Remove amount 1'));
+		expect(goal.querySelectorAll('.adm-amount')).toHaveLength(0);
+	});
+});
+
+describe('Media', () => {
+	/** a photo picked through the banner's Replace, as the device's picker hands it back. */
+	async function pickBanner() {
+		vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+		const input = card('Media').querySelector('input[type="file"]') as HTMLInputElement;
+		Object.defineProperty(input, 'files', {
+			configurable: true,
+			value: [new File(['jpg'], 'coats.jpg', { type: 'image/jpeg' })]
+		});
+		await act(async () => {
+			input.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		await settle();
+	}
+
+	async function answerUpload(body: unknown, status = 200) {
+		await act(async () => {
+			upload?.resolve(Response.json(body, { status }));
+		});
+		await settle();
+	}
+
+	const heroBox = () =>
+		card('Media').querySelector<HTMLInputElement>('input[name="hero_image_id"]')?.value;
+
+	it('holds the banner alone, with Reset banner held while nothing is changed', async () => {
+		await screen();
+
+		expect(card('Media').querySelectorAll('input[type="file"]')).toHaveLength(1);
+		expect(card('Media').textContent).not.toMatch(/logo/i);
+		expect(held(button('Reset banner'))).toBe(true);
+	});
+
+	it('holds Save media while a picked photo resizes', async () => {
+		holdResize = true;
+		await screen();
+
+		await pickBanner();
+
+		expect(heldResize).not.toBeNull();
+		expect(upload).toBeNull();
+		expect(held(button('Save media'))).toBe(true);
+		expect(held(button('Reset banner'))).toBe(true);
+	});
+
+	it('holds Save media while a photo uploads, then posts the photo it landed', async () => {
+		await screen();
+		await pickBanner();
+
+		expect(upload).not.toBeNull();
+		expect(held(button('Save media'))).toBe(true);
+
+		await answerUpload({ id: 'img1', width: 1600, height: 400 });
+
+		expect(held(button('Save media'))).toBe(false);
+		expect(heroBox()).toBe('img1');
+		expect(held(button('Reset banner'))).toBe(false);
+
+		answers.push({ body: { saved: 'campaign-media' } });
+		await press(button('Save media'));
+		expect(posted[0]).toEqual({
+			[WHICH_FORM]: 'campaign-media',
+			[RECORD_VERSION]: '1',
+			hero_image_id: 'img1'
+		});
+	});
+
+	it('puts the saved banner back at Reset banner, and holds Save media again', async () => {
+		const saved = fixture();
+		drawn = {
+			...saved,
+			seeds: {
+				...saved.seeds,
+				media: {
+					boxes: { hero_image_id: 'saved1' },
+					hero: { imageId: 'saved1', src: '/image/saved1' }
+				}
+			}
+		};
+		await screen();
+		await pickBanner();
+		await answerUpload({ id: 'img1', width: 1600, height: 400 });
+		expect(heroBox()).toBe('img1');
+
+		await press(button('Reset banner'));
+
+		expect(heroBox()).toBe('saved1');
+		expect(card('Media').querySelector('img')?.getAttribute('src')).toBe('/image/saved1');
+		expect(held(button('Save media'))).toBe(true);
+	});
+
+	it('says an upload that failed, keeping the photo it had and Save media held', async () => {
+		await screen();
+		await pickBanner();
+
+		await answerUpload({ error: 'the upload failed', reason: 'failed' }, 500);
+
+		expect(card('Media').textContent).toContain('The photo didn’t upload. Choose it again.');
+		expect(heroBox()).toBe('');
+		expect(held(button('Save media'))).toBe(true);
+	});
+});
+
+describe('the banner', () => {
+	const banner = () => document.querySelector('.adm-banner') as HTMLElement;
+	const presses = () =>
+		[...banner().querySelectorAll('button, a')].map((one) => one.textContent?.trim());
+
+	it('says a campaign never published is not public, offering Publish and the draft’s preview', async () => {
+		await screen();
+
+		expect(banner().textContent).toContain('Your campaign is not public yet');
+		expect(presses()).toEqual(['Publish', 'Preview page']);
+		expect(banner().querySelector('a')?.getAttribute('href')).toBe('/preview/p1');
+	});
+
+	it('says a public campaign is public, with its address, Unpublish and the live page', async () => {
+		drawn = fixture('public');
+		await screen();
+
+		expect(banner().textContent).toContain('Your campaign is public');
+		expect(banner().textContent).toContain('give.example.org/winter-coat-drive');
+		expect(presses()).toEqual(['Unpublish', 'View live page']);
+		const live = banner().querySelector('a');
+		expect(live?.getAttribute('href')).toBe('/winter-coat-drive');
+		expect(live?.getAttribute('target')).toBe('_blank');
+	});
+
+	it('says saved changes are not public yet, offering Publish changes and Unpublish', async () => {
+		drawn = fixture('changed');
+		await screen();
+
+		expect(banner().textContent).toContain('Changes not public yet');
+		expect(presses()).toEqual(['Publish changes', 'Unpublish', 'View live page']);
+	});
+
+	it('posts Publish changes and Unpublish against the version drawn', async () => {
+		drawn = fixture('changed');
+		await screen();
+		answers.push({ body: { published: true, undoable: true } });
+
+		await press(button('Publish changes'));
+
+		answers.push({ body: { unpublished: true } });
+		await press(button('Unpublish'));
+
+		expect(posted.map((body) => [body[WHICH_FORM], body[RECORD_VERSION]])).toEqual([
+			['page-publish', '1'],
+			['page-unpublish', '1']
+		]);
+	});
+
+	it('offers Undo publish once a Publish replaced a live page, and posts it against the version drawn', async () => {
+		drawn = fixture('public');
+		drawn.banner = { ...drawn.banner, undoable: true };
+		await screen();
+
+		expect(presses()).toEqual(['Undo publish', 'Unpublish', 'View live page']);
+		answers.push({ body: { undone: true } });
+		await press(button('Undo publish'));
+
+		expect(posted.map((body) => [body[WHICH_FORM], body[RECORD_VERSION]])).toEqual([
+			['page-undo', '1']
+		]);
+	});
+
+	it('says why a press was refused, beside the banner', async () => {
+		await screen();
+		answers.push({
+			status: 422,
+			body: {
+				form: {
+					id: 'page-publish',
+					result: { status: 'error', error: { '': ['the end date has passed'] } }
+				}
+			}
 		});
 
-		it('says nothing of the connection over an error the server’s action threw', async () => {
-			vi.spyOn(console, 'error').mockImplementation(() => {});
-			thrown = new Error('Unexpected Server Error');
-			await renameInSheet('Coats for every kid');
+		await press(button('Publish'));
 
-			expect(document.body.textContent).not.toContain(NOT_SENT);
-			expect(() => card('Name')).toThrow();
-		});
+		expect(document.body.textContent).toContain('the end date has passed');
 	});
 });

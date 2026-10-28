@@ -62,6 +62,8 @@ export type AmountStepProps = {
 	readonly refs: AmountRefs;
 	/** whether the card draws the program choice; false where the page around it draws one. */
 	readonly drawsProgram: boolean;
+	/** the words under each suggested amount, by the amount in minor units; none draws the figure alone. */
+	readonly amountLabels?: Readonly<Record<string, string>> | undefined;
 };
 
 /**
@@ -93,7 +95,8 @@ export function AmountStep({
 	onContinue,
 	submits,
 	refs,
-	drawsProgram
+	drawsProgram,
+	amountLabels
 }: AmountStepProps) {
 	const { locale, currency } = config;
 	const offer = (minor: number) => formatOffer(minor, locale, currency);
@@ -298,6 +301,9 @@ export function AmountStep({
 										}}
 									/>
 									<span>{offer(Number(option.value))}</span>
+									{amountLabels?.[String(option.value)] ? (
+										<span className="amount-label">{amountLabels[String(option.value)]}</span>
+									) : null}
 								</label>
 							))
 						: null}

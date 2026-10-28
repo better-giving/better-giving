@@ -3,7 +3,6 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { useFocusOnRefusal } from '$lib/admin/editor/done-sheet';
 import { LIST_DEPTH_MAX, parseRichText, type RichTextDocument } from '$lib/rich-text/document';
 import { RichTextEditor, type RichTextEditorProps } from './rich-text-editor';
 
@@ -360,30 +359,8 @@ describe('a refusal from the action', () => {
 		expect(content.hasAttribute('aria-invalid')).toBe(false);
 	});
 
-	it('puts the caller’s id on the editable, where useFocusOnRefusal finds it', async () => {
-		function Refusable({ error }: { error?: string }) {
-			useFocusOnRefusal(error, 'story-mission');
-			return (
-				<RichTextEditor name="mission" label="Mission" id="story-mission" error={error ?? null} />
-			);
-		}
-		const host = document.createElement('div');
-		document.body.appendChild(host);
-		const root = createRoot(host);
-		onTestFinished(() => {
-			act(() => root.unmount());
-			host.remove();
-		});
-		await act(async () => {
-			root.render(<Refusable />);
-		});
-		const content = one<HTMLElement>(host, '[role="textbox"]');
+	it('puts the caller’s id on the editable, so a caller can move the focus onto it', async () => {
+		const { content } = await mount({ id: 'story-mission' });
 		expect(content.id).toBe('story-mission');
-		expect(document.activeElement).not.toBe(content);
-
-		await act(async () => {
-			root.render(<Refusable error={refusal} />);
-		});
-		expect(document.activeElement).toBe(content);
 	});
 });

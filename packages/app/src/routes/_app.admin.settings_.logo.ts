@@ -20,7 +20,7 @@ import type { Route } from './+types/_app.admin.settings_.logo';
 // the photo is stored in the one `batch()` that puts it on and frees the logo it replaces
 // (`putNewOrgProfileLogo` in $lib/server/org/queries.ts), so an upload refused or failed leaves no
 // image behind. the answers are the images route's shape (`UploadAnswer` in
-// $lib/admin/editor/photo-upload.ts): the logo stored, or `error` with its sentence — a 413 for size,
+// $lib/admin/page-edit/photo-upload.ts): the logo stored, or `error` with its sentence — a 413 for size,
 // a 400 for a file that is no photo, a 409 for a profile that is missing or moved, and a 500 marked
 // `failed` where the write threw, since a fetcher's thrown error lands on the screen's boundary.
 

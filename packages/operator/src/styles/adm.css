@@ -5113,295 +5113,159 @@
 		visibility: hidden;
 	}
 
-	/* ---------- the page editor ---------------------------------------------------------------
+	/* ---------- the edit screens' parts -------------------------------------------------------
 
-	   a route of its own outside the rail, for the Donation page and a campaign alike: the publish
-	   bar across the top, and under it the page's own preview across the whole width; what a bar
-	   press opens is `.adm-sheet` above. every part in this section is drawn by
-	   packages/app/src/lib/admin/editor/.
+	   what a page's edit screen draws beyond the library's fields and cards: a confirm's refusal,
+	   and a box with its unit or address stated on it (packages/app/src/lib/admin/page-edit/). */
 
-	   space tiers, inside out: a picture's drawing space-2, a control group space-4, the bar's two
-	   halves space-6; in a sheet a part's heading to its rows space-5 and part to part the body's
-	   space-9. */
-
-	/* one column as wide as the editor: an implicit `auto` one grows to the bar's min-content
-	   width, which is a campaign's whole name, and would run past a phone's screen. */
-	.adm-editor {
-		position: fixed;
-		inset: 0;
-		display: grid;
-		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: auto minmax(0, 1fr);
-		background: var(--admin-page);
-	}
-
-	/* the preview, in one track at every width. */
-	.adm-editor__body {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr);
-		min-block-size: 0;
-	}
-
-	.adm-editor__preview {
-		position: relative;
-		min-block-size: 0;
-		background: var(--admin-surface-fill);
-	}
-
-	/* the page's own document, filling the region and scrolling itself. */
-	.adm-editor__frame {
-		display: block;
-		inline-size: 100%;
-		block-size: 100%;
-		border: 0;
-	}
-
-	/* the frame is the preview's one tab stop, and it meets the viewport's edge on three sides, so
-	   the outside ring ./base.css gives every focused element is clipped wherever it would be seen.
-	   the shadow is taken back and the ring is drawn inside the frame instead, as
-	   `.adm-datebox__chunk` keeps its outline. it is the outline that carries the colour here rather
-	   than an inset shadow, because the frame's own document paints over any shadow inside its box
-	   and an outline paints above it — and a forced-colours scheme paints that outline in the
-	   reader's own colour, so the ring survives one. */
-	.adm-editor__frame:focus-visible,
-	.adm-editor__frame.is-focus {
-		outline: var(--admin-focus-width) solid var(--admin-focus-ring);
-		outline-offset: calc(var(--admin-focus-width) * -1);
-		box-shadow: none;
-	}
-
-	/* the name at the start, where the page stands and its presses after it, and the report of the
-	   last press on a row of its own under them. on a phone Publish ends the state word's line and
-	   the quieter presses take a line of their own under it; where the name, the state word and
-	   Publish do not fit one line, the name takes the first line alone. */
-	.adm-publishbar {
+	/* one tab per section card (packages/app/src/lib/admin/page-edit/edit-tabs.tsx): a row of tabs
+	   over a hairline, the chosen one in the accent ink and underlined on the hairline itself. a row
+	   wider than the screen scrolls sideways rather than wrapping, with no scrollbar drawn, so a
+	   phone keeps one line. */
+	.adm-tabs {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		column-gap: var(--admin-space-6);
-		row-gap: var(--admin-space-3);
-		padding: var(--admin-space-3) var(--admin-space-5);
-		background: var(--admin-surface);
-		border-block-end: var(--admin-hairline);
-	}
-
-	/* the way out and the name. it grows to the whole name and no further, so where the page stands
-	   follows the name directly; and its basis is the way out and twelve of the name's characters,
-	   which is how far the name gives way on a shared line before the state word and the presses
-	   take the next one. the basis is a wrap point and never a width: a shorter name is drawn at its
-	   own. the font size is the name's, so a `ch` here is one of its characters. */
-	.adm-publishbar__who {
-		display: flex;
-		align-items: center;
-		gap: var(--admin-space-4);
-		/* raw-length-ok: twelve of the name's characters, a count and not a measure */
-		flex: 1 1
-			calc(
-				var(--admin-mark-size) +
-				3 *
-				var(--admin-space-4) +
-				2 *
-				var(--admin-space-3) +
-				4 *
-				var(--admin-border-width) +
-				12ch
-			);
-		min-inline-size: 0;
-		max-inline-size: max-content;
-		font-size: var(--admin-subhead-size);
-	}
-
-	.adm-publishbar__name {
-		min-inline-size: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: var(--admin-subhead-size);
-		font-weight: var(--admin-subhead-weight);
-		line-height: var(--admin-subhead-lh);
-	}
-
-	/* the state word never wraps and never shrinks; the name gives way first. it stands in a holder
-	   the focus is put on when the press that had it is taken off the bar. */
-	.adm-publishbar__state {
-		flex: none;
-		white-space: nowrap;
-	}
-
-	/* where the page stands, then the presses. on a phone Publish is pushed to the end of the state
-	   word's line and the quieter presses are moved under both, at the end edge; from the middle
-	   breakpoint they stand back between the two on one line. the bar's markup holds the presses in
-	   the order drawn at the width it is at (packages/app/src/lib/admin/editor/publish-bar.tsx), so
-	   the focus walks them as they read; the `order` here draws the server's markup, which is the
-	   middle width's, the phone's way until the browser has read the width. */
-	.adm-publishbar__acts {
-		display: flex;
-		flex: 1 1 auto;
-		flex-wrap: wrap;
-		align-items: center;
-		column-gap: var(--admin-space-4);
-		row-gap: var(--admin-space-3);
-	}
-
-	.adm-publishbar__quiet {
-		order: 1;
-		flex-basis: 100%;
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: flex-end;
 		gap: var(--admin-space-2);
+		overflow-x: auto;
+		border-block-end: var(--admin-hairline);
+		scrollbar-width: none;
 	}
 
-	/* no quieter press to draw is no line for them. */
-	.adm-publishbar__quiet:empty {
+	/* the row scrolls by touch, wheel and the focus walking it, and draws no scrollbar under it. */
+	.adm-tabs::-webkit-scrollbar {
 		display: none;
 	}
 
-	/* Published and the Undo beside it, one pair, at the end of the line. */
-	.adm-publishbar__done {
-		display: flex;
-		flex-wrap: wrap;
+	.adm-tabs__tab {
+		flex: none;
+		display: inline-flex;
 		align-items: center;
 		gap: var(--admin-space-2);
-		margin-inline-start: auto;
+		margin-block-end: calc(var(--admin-border-width) * -1);
+		padding: var(--admin-space-3) var(--admin-space-2);
+		background: none;
+		border: 0;
+		border-block-end: var(--admin-border-width-strong) solid transparent;
+		color: var(--admin-ink-2);
+		font-family: inherit;
+		font-size: var(--admin-control-size);
+		font-weight: var(--admin-label-weight);
+		white-space: nowrap;
+		cursor: pointer;
 	}
 
-	/* the refusal a press came back with, on its own row under the presses, and beside it why a held
-	   Publish is held. the region is on the page before it has anything to say, so it is announced
-	   when it does; while it is empty the bar's row gap above it is taken back, and it holds no room. */
-	.adm-publishbar__report {
-		flex-basis: 100%;
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: flex-end;
-		gap: var(--admin-space-2) var(--admin-space-4);
-	}
-
-	.adm-publishbar__report:empty {
-		margin-block-start: calc(-1 * var(--admin-space-3));
-	}
-
-	/* the refusal an editor confirm's act came back with, last in the card's body. it is there before
-	   it speaks, and while empty the body's gap above it is taken back, so it holds no room. */
-	.adm-dialog__refusal:empty {
-		margin-block-start: calc(-1 * var(--admin-space-5));
-	}
-
-	/* a name edited where it stands: the words at rest, and a box only once it is pointed at or holds
-	   the caret. the ring is ./base.css's own, on the box. */
-	.adm-inplace {
-		flex: 0 1 auto;
-		min-inline-size: 0;
-		max-inline-size: 100%;
-		field-sizing: content;
-		padding: var(--admin-space-1) var(--admin-space-3);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		font-size: var(--admin-subhead-size);
-		font-weight: var(--admin-subhead-weight);
-		line-height: var(--admin-subhead-lh);
+	.adm-tabs__tab:hover,
+	.adm-tabs__tab.is-hover {
 		color: var(--admin-ink);
-		background: transparent;
-		border: var(--admin-border-width) solid transparent;
-		border-radius: var(--admin-radius);
-		transition: var(--admin-transition-state);
 	}
 
-	.adm-inplace:hover,
-	.adm-inplace.is-hover,
-	.adm-inplace:focus-visible,
-	.adm-inplace.is-focus {
-		background: var(--admin-field-bg);
-		border-color: var(--admin-field-border-hover);
+	.adm-tabs__tab[aria-selected='true'] {
+		color: var(--admin-accent-ink);
+		border-block-end-color: var(--admin-accent-ink);
 	}
 
-	.adm-inplace[aria-invalid='true'] {
-		border-color: var(--admin-field-border-invalid);
+	.adm-tabs__tab:focus-visible,
+	.adm-tabs__tab.is-focus {
+		outline: var(--admin-focus-width) solid var(--admin-focus-ring);
+		outline-offset: calc(var(--admin-focus-width) * -1);
 	}
 
-	/* the form a sheet's Done submits, round the sheet's boxes. it draws no box of its own, so the
-	   boxes inside it are spaced as the body's own parts are. */
-	.adm-sheet__form {
-		display: contents;
+	/* a tab whose card holds unsaved edits. */
+	.adm-tabs__dot {
+		inline-size: var(--admin-space-2);
+		block-size: var(--admin-space-2);
+		background: var(--admin-tone-attention-mark);
+		border-radius: var(--admin-radius-pill);
 	}
 
-	/* a division of a sheet: its heading sits closer to its own rows than to the division above. */
-	.adm-sheetpart {
-		display: grid;
-		gap: var(--admin-space-5);
-	}
-
-	.adm-sheetpart > h3 {
-		font-size: var(--admin-subhead-size);
-		font-weight: var(--admin-subhead-weight);
-		line-height: var(--admin-subhead-lh);
-	}
-
-	/* a row that opens a sheet of its own: the name, what it holds, and the caret.
-
-	   a row never widens its sheet. what it holds is one line cut short with an ellipsis, and the
-	   whole of it is still the row's accessible name, since the words are the button's own. the
-	   track and the row both give up their content's width for that: an `auto` track and a grid
-	   item's automatic minimum each hand the value's unwrapped width up to the sheet's body, which
-	   grows to it and scrolls sideways. */
-	.adm-openrow-list {
+	/* the suggested amounts as cards: one to a row on a phone, two from the middle width. each is the
+	   amount as its heading, typed in place, with its code and its remove press on that line, and its
+	   label under it. */
+	.adm-amounts {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		border-block-start: var(--admin-rule);
+		gap: var(--admin-space-3);
 	}
 
-	.adm-openrow {
+	@media (min-width: 44rem) {
+		.adm-amounts {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	.adm-amount {
+		display: grid;
+		gap: var(--admin-space-2);
+		align-content: start;
+		padding: var(--admin-space-4);
+		background: var(--admin-surface-sunken);
+		border: var(--admin-hairline);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-amount__head {
 		display: flex;
 		align-items: center;
-		gap: var(--admin-space-5);
-		inline-size: 100%;
+		gap: var(--admin-space-2);
+	}
+
+	.adm-amount__figure {
+		display: flex;
+		flex: 1 1 auto;
+		align-items: center;
+		gap: var(--admin-space-1);
 		min-inline-size: 0;
-		min-block-size: var(--admin-touch-min);
-		padding-block: var(--admin-space-4);
-		font-size: var(--admin-body-size);
-		text-align: start;
-		color: var(--admin-ink);
-		background: transparent;
+		font-size: var(--admin-subhead-size);
+		font-weight: var(--admin-subhead-weight);
+	}
+
+	.adm-amount__input {
+		flex: 1 1 auto;
+		min-inline-size: 0;
+		padding: var(--admin-space-1);
+		background: none;
 		border: 0;
-		border-block-end: var(--admin-rule);
-		cursor: pointer;
-		transition: var(--admin-transition-state);
+		border-radius: var(--admin-radius);
+		color: var(--admin-ink);
+		font-family: inherit;
+		font-size: var(--admin-subhead-size);
+		font-weight: var(--admin-subhead-weight);
 	}
 
-	.adm-openrow:hover,
-	.adm-openrow.is-hover {
-		background: var(--admin-control-bg-hover);
+	.adm-amount__input:focus-visible,
+	.adm-amount__input.is-focus {
+		outline: var(--admin-focus-width) solid var(--admin-focus-ring);
 	}
 
-	.adm-openrow__label {
-		flex: none;
+	.adm-amount__input[aria-invalid='true'] {
+		outline: var(--admin-border-width) solid var(--admin-field-border-invalid);
+	}
+
+	.adm-amount__unit {
+		color: var(--admin-ink-muted);
+		font-size: var(--admin-hint-size);
 		font-weight: var(--admin-label-weight);
 	}
 
-	.adm-openrow__value {
-		flex: 1;
-		min-inline-size: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	/* how many characters a box holds against its limit, at the box's end edge. */
+	.adm-counter {
+		justify-self: end;
 		text-align: end;
-		color: var(--admin-ink-2);
 	}
 
-	.adm-openrow__value--unset {
-		color: var(--admin-ink-muted);
+	/* a card that is one row: what it does at the start, its one press at the end, wrapping under
+	   on a phone. */
+	.adm-rowcard {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--admin-space-4);
 	}
 
-	.adm-openrow > .adm-mark {
-		flex: none;
-		color: var(--admin-ink-muted);
-	}
-
-	/* the presses a phone's sheet grows and shrinks a list by — Add a photo under the content list,
-	   a tier's or a question's Add under the rows and each row's Remove — stand at the row's floor,
-	   whatever size their words are drawn at: they sit between rows a thumb aims at. */
-	.adm-btn.adm-rowpress {
-		min-block-size: var(--admin-touch-min);
+	/* the refusal an edit screen confirm's act came back with, last in the card's body. it is there before
+	   it speaks, and while empty the body's gap above it is taken back, so it holds no room. */
+	.adm-dialog__refusal:empty {
+		margin-block-start: calc(-1 * var(--admin-space-5));
 	}
 
 	/* a box with its unit or its address in front stated on the box itself: the box is the field,
@@ -5478,10 +5342,35 @@
 		border-radius: var(--admin-radius);
 	}
 
-	/* a program's photo, cropped square as the donation page's program chooser crops it. */
+	/* a program's photo, cropped square as the donation page's program chooser crops it; a
+	   campaign's logo the same. */
 	.adm-placed__art--square {
 		aspect-ratio: 1;
 		max-inline-size: var(--admin-measure-rail);
+	}
+
+	/* a campaign's banner, cropped to the band its page draws it in, and the same band empty: no
+	   taller than the preview's measure, so its width is held to four times that. */
+	.adm-placed__art--banner,
+	.adm-placed__empty {
+		aspect-ratio: 4 / 1;
+		max-inline-size: calc(var(--admin-measure-banner) * 4);
+	}
+
+	/* where a banner goes before there is one: its band, outlined and filled, so a photo dropped on
+	   the card has somewhere to be seen landing. */
+	.adm-placed__empty {
+		inline-size: 100%;
+		background: var(--admin-surface-fill);
+		border: var(--admin-border-width) dashed var(--admin-border);
+		border-radius: var(--admin-radius);
+	}
+
+	/* a card part a file is being dragged over: the focus ring's ink, dashed, inside its edge. */
+	.adm-dropzone.is-drop {
+		outline: var(--admin-focus-width) dashed var(--admin-focus-ring);
+		outline-offset: calc(var(--admin-focus-width) * -1);
+		border-radius: var(--admin-radius);
 	}
 
 	/* the crop the logo dialog draws (packages/app/src/lib/admin/settings/logo-crop-dialog.tsx): the
@@ -5520,8 +5409,8 @@
 
 	/* the square is the cropper's one tab stop. the scrim is its own shadow and outranks the ring
 	   ./base.css draws as one, and the square meets the image's edge, where the viewport clips
-	   anything drawn outside it. so its ring is the outline, inset over its own edge, as
-	   `.adm-editor__frame`'s is: an outline paints above the element's shadow and border. */
+	   anything drawn outside it. so its ring is the outline, inset over its own edge: an outline
+	   paints above the element's shadow and border. */
 	.adm-cropper__selection:focus-visible,
 	.adm-cropper__selection.is-focus {
 		outline: var(--admin-focus-width) solid var(--admin-focus-ring);
@@ -6871,17 +6760,6 @@
 	}
 
 	@media (min-width: 44rem) {
-		/* the publish bar's quieter presses back on Publish's line, and at its end with it. */
-		.adm-publishbar__quiet {
-			order: 0;
-			flex-basis: auto;
-			margin-inline-start: auto;
-		}
-
-		.adm-publishbar__quiet:not(:empty) + .adm-publishbar__done {
-			margin-inline-start: 0;
-		}
-
 		/* the rail is not here, and needs nothing here: cells as wide as their labels take one
 		   line as soon as there is room for one, and every width has to be a width they fit at
 		   rather than a width they are re-tracked for. */

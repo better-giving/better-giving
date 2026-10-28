@@ -468,7 +468,7 @@ describe('/donate after the editor’s presses', () => {
 		finished = await finishSetup(PASSWORD);
 	});
 
-	/** a press on the Donation page's editor, drawn at the version the page holds now. */
+	/** a press on the Donation page's edit page, drawn at the version the page holds now. */
 	async function press(which: string, fields: Record<string, string> = {}) {
 		const [row] = await db.select().from(page);
 		if (!row) throw new Error('there is no Donation page to press on');
@@ -487,15 +487,14 @@ describe('/donate after the editor’s presses', () => {
 		expect(response.status).toBe(200);
 	}
 
-	/** the draft's donation settings saved from the editor's sheet: $200 to $20,000. */
-	const saveSettings = (ticked: Record<string, string> = {}) =>
-		press('page-settings', {
+	/** the draft's donation settings saved from the edit page's Donation settings card: $200 to $20,000. */
+	const saveSettings = () =>
+		press('donation-page-giving', {
 			program_mode: 'none',
 			program_id: '',
 			min_minor: '200',
 			max_minor: '20000',
-			'suggested_amounts[0]': '250',
-			...ticked
+			'suggested_amounts[0]': '250'
 		});
 
 	async function documents() {
@@ -557,15 +556,13 @@ describe('/donate after the editor’s presses', () => {
 		return { status: response.status, message };
 	}
 
-	it('draws the published page after Publish, and the page before it after Undo', async () => {
+	it('draws the draft only once it is published', async () => {
 		await visit();
 		await draftMessage('Keep Elm Street warm this winter.');
+		expect((await drawn()).sharing.message).toBe('Donate to Hope Foundation');
 
 		await press('page-publish');
 		expect((await drawn()).sharing.message).toBe('Keep Elm Street warm this winter.');
-
-		await press('page-undo');
-		expect((await drawn()).sharing.message).toBe('Donate to Hope Foundation');
 	});
 
 	/** the page the editor's preview draws, as its document hands it to the browser. */
@@ -616,7 +613,7 @@ describe('/donate after the editor’s presses', () => {
 		expect((await drawn()).sharing.message).toBe('Donate to Hope Foundation');
 	});
 
-	it('serves the draft’s donation settings only once published, and the ones before after Undo', async () => {
+	it('serves the draft’s donation settings only once published', async () => {
 		const opened = (await drawn()).config;
 		await saveSettings();
 		expect((await drawn()).config).toEqual(opened);
@@ -627,9 +624,6 @@ describe('/donate after the editor’s presses', () => {
 			maxAmountMinor: 2_000_000,
 			suggestedAmountsMinor: [25_000]
 		});
-
-		await press('page-undo');
-		expect((await drawn()).config).toEqual(opened);
 	});
 
 	it('draws the current default, with no heading of its own and sharing its title, after Reset', async () => {
@@ -674,10 +668,10 @@ describe('/donate after the editor’s presses', () => {
 			{ dedication: true }
 		]
 	])(
-		'opens the box with “%s” only once a Done ticking it is published',
+		'opens the box with “%s” only once a save ticking it is published',
 		async (_, box, switches, opening) => {
 			await visit();
-			await saveSettings({ [box]: 'on' });
+			await press('donation-page-settings', { share_message: '', [box]: 'on' });
 
 			const saved = await documents();
 			expect(saved.draft.switches).toEqual(switches);

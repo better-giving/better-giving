@@ -1,77 +1,65 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLoaderData } from 'react-router';
-import { beforeEach, expect, it, onTestFinished, vi } from 'vitest';
-import { SECTION_MESSAGE } from '$lib/page/preview-message';
-import { defaultDonationPage } from '$lib/page/defaults';
-import { editorSections, editorShareMessage } from '$lib/page/content-edit';
-import DonationPageEditor, { clientAction } from './_app.admin.donation-page';
+import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import type { BannerState } from '$lib/page/edit-forms';
+import DonationPageEditPage, { clientAction } from './_app.admin.donation-page';
 
-// the Donation page's editor as the route mounts it, over a phone that has lost its signal: a
-// press whose request never reaches the server leaves the editor on screen and says so where the
-// press reports. the loader and the server's action are stand-ins that reject the way a
-// browser's `fetch` does while `offline`; every press goes through the route's own `clientAction`,
-// as it does in a browser. what the real action writes is
-// ./_app.admin.donation-page.db.spec.ts's, and the editor's other presses are the campaign
-// editor's spec beside this one, over the same parts.
-//
-// it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
-// style.
+// the Donation page's edit page as the route mounts it: its three section cards under the publish
+// banner, each Save held until its card changes, no Unpublish, and Reset to default while there is
+// something to reset. the loader and the server's action are stand-ins; what the real ones do is
+// ./_app.admin.donation-page.db.spec.ts's.
 
-// react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-type Drawn = Parameters<typeof DonationPageEditor>[0]['loaderData'];
+type Drawn = Parameters<typeof DonationPageEditPage>[0]['loaderData'];
 type Loaded = Extract<Drawn, { unreadable: false }>;
 
-const DRAFT = defaultDonationPage();
-
-/** a Donation page live with edits since. */
-function edited(): Loaded {
+function fixture(state: BannerState = 'public', hasEdits = false): Loaded {
 	return {
-		unreadable: false,
-		state: 'changed',
+		host: 'give.example.org/',
 		version: 1,
-		// a frame on a path would be fetched from a server nothing here runs.
-		preview: 'about:blank',
-		goalMinor: null,
-		endDate: null,
-		sections: editorSections(DRAFT, 'donation_page', 'USD'),
-		newPhoto: null,
-		shareMessage: editorShareMessage(DRAFT),
-		settings: {
-			boxes: {
-				program_mode: 'none',
-				program_id: '',
-				min_minor: '100',
-				max_minor: '1000000',
-				suggested_amounts: []
-			},
-			currency: 'USD',
-			programs: [],
-			retired: null,
-			summary: 'No program',
-			switches: { open_on_monthly: false, dedication_on: false },
-			monthlyOffered: true
+		takingGifts: true,
+		banner: {
+			state,
+			address: '/donate',
+			preview: '/preview/d1',
+			unpublishable: false,
+			endable: false,
+			undoable: false
 		},
-		hasEdits: true,
-		takingGifts: true
+		unreadable: false,
+		hasEdits,
+		seeds: {
+			general: { boxes: { heading: '' } },
+			giving: {
+				boxes: {
+					program_mode: 'none',
+					program_id: '',
+					min_minor: '1',
+					max_minor: '10,000',
+					suggested_amounts: ['25']
+				},
+				currency: 'USD',
+				programs: [],
+				retired: null
+			},
+			settings: {
+				boxes: { open_on_monthly: false, dedication_on: false, share_message: '' },
+				monthlyOffered: true
+			}
+		}
 	};
 }
 
-/** the phone has lost its signal: every request rejects before it leaves, as `fetch` does. */
-let offline: boolean;
+let drawn: Loaded;
+let posted: Record<string, string>[];
 
 beforeEach(() => {
-	offline = false;
+	drawn = fixture();
+	posted = [];
 });
-
-function unreachable(): void {
-	if (offline) throw new TypeError('Failed to fetch');
-}
-
-const NOT_SENT =
-	'That may not have saved: the server couldn’t be reached. Check your connection and press again.';
 
 function mount(tree: ReactNode) {
 	const root = document.createElement('div');
@@ -84,173 +72,100 @@ function mount(tree: ReactNode) {
 	});
 }
 
-function Editor() {
-	return createElement(DonationPageEditor as never, {
+function Page() {
+	return createElement(DonationPageEditPage as never, {
 		loaderData: useLoaderData<Drawn>(),
 		params: {},
 		matches: []
 	});
 }
 
-/** a round of the event loop, so the router's promises settle. */
-const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
-
-async function screen(loaded: Loaded = edited()) {
+async function screen() {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/donation-page',
-			loader: () => {
-				unreachable();
-				return loaded;
-			},
+			loader: () => drawn,
 			action: (args) =>
 				clientAction({
 					...args,
 					serverAction: async () => {
-						unreachable();
-						throw new Error('no press in these cases reaches the server');
+						const body = await args.request.formData();
+						posted.push(Object.fromEntries([...body].map(([k, v]) => [k, String(v)])));
+						return Response.json({ saved: body.get(WHICH_FORM) });
 					}
 				} as never),
 			HydrateFallback: () => null,
-			Component: Editor
+			Component: Page
 		}
 	]);
 	mount(createElement(Stub, { initialEntries: ['/admin/donation-page'] }));
 	await settle();
 }
 
-function button(name: string, within: Element | Document = document): HTMLButtonElement {
-	const found = [...within.querySelectorAll('button')].find(
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+function button(name: string): HTMLButtonElement {
+	const found = [...document.querySelectorAll('button')].find(
 		(b) => b.textContent?.trim() === name || b.getAttribute('aria-label') === name
 	);
 	if (found === undefined) throw new Error(`no ${name} button`);
 	return found;
 }
 
-function card(title: string): HTMLDialogElement {
-	const found = [...document.querySelectorAll('dialog')].find(
-		(one) => one.querySelector('h2')?.textContent === title
-	);
-	if (found === undefined) throw new Error(`no card is headed ${title}`);
-	return found;
+const held = (press: HTMLElement) => press.getAttribute('aria-disabled') === 'true';
+const headings = () =>
+	[...document.querySelectorAll('section.adm-card h2')].map((one) => one.textContent);
+
+async function type(box: HTMLInputElement, text: string) {
+	await act(async () => {
+		Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, text);
+		box.dispatchEvent(new Event('input', { bubbles: true }));
+	});
 }
 
-async function press(target: HTMLElement) {
-	await act(async () => {
-		target.focus();
-		target.click();
-	});
-	await settle();
-}
+describe('the Donation page edit page', () => {
+	it('is a form of its three cards, with no preview and no Unpublish', async () => {
+		await screen();
 
-/** what the message areas inside `within` say. */
-const said = (within: Element) =>
-	[...within.querySelectorAll('[role="status"]')].map((one) => one.textContent).join(' ');
-
-const bar = () => document.querySelector('.adm-publishbar') ?? document.body;
-
-/** the bar's state word, the span the status lives in. */
-const stateWord = () => document.querySelector('.adm-publishbar__state');
-
-it('does not present Live when a published Donation page is not taking gifts', async () => {
-	await screen({ ...edited(), state: 'live', hasEdits: false, takingGifts: false });
-
-	expect(stateWord()?.textContent).toBe('Not taking gifts');
-	expect(stateWord()?.textContent).not.toContain('Live');
-});
-
-it('presents Live when a published Donation page is taking gifts', async () => {
-	await screen({ ...edited(), state: 'live', hasEdits: false, takingGifts: true });
-
-	expect(stateWord()?.textContent).toBe('Live');
-});
-
-it('leaves the title’s sheet open, holding what was typed, and says so at Done', async () => {
-	await screen();
-	const framed = document.querySelector('iframe')?.contentWindow;
-	if (framed) vi.spyOn(framed, 'postMessage').mockImplementation(() => {});
-	await press(button('Edit'));
-	await act(async () => {
-		window.dispatchEvent(
-			new MessageEvent('message', {
-				data: { type: SECTION_MESSAGE, id: 'title' },
-				origin: window.location.origin,
-				source: framed ?? null
-			})
+		expect(document.querySelector('iframe')).toBeNull();
+		expect(headings()).toEqual(['General', 'Donation settings', 'Settings']);
+		const banner = document.querySelector('.adm-banner') as HTMLElement;
+		expect(banner.textContent).toContain('Your Donation page is public');
+		expect([...banner.querySelectorAll('button, a')].map((one) => one.textContent?.trim())).toEqual(
+			['View live page']
 		);
 	});
-	await settle();
-	const heading = card('Title').querySelector<HTMLInputElement>('input[name="heading"]');
-	if (heading === null) throw new Error('the Title sheet drew no heading box');
-	act(() => {
-		Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
-			heading,
-			'Give where it counts'
-		);
-		heading.dispatchEvent(new Event('input', { bubbles: true }));
+
+	it('offers Reset to default only while the page holds edits', async () => {
+		drawn = fixture('changed', true);
+		await screen();
+
+		expect(headings()).toContain('Reset to default');
+		expect(button('Publish changes')).toBeDefined();
 	});
 
-	offline = true;
-	await press(button('Done', card('Title')));
+	it('holds each Save until its card changes, and posts the card that changed', async () => {
+		await screen();
+		for (const name of ['general', 'donation settings', 'settings']) {
+			expect(held(button(`Save ${name}`))).toBe(true);
+		}
 
-	expect(card('Title').open).toBe(true);
-	expect(heading.value).toBe('Give where it counts');
-	expect(said(card('Title'))).toContain(NOT_SENT);
-});
+		const title = document.querySelector<HTMLInputElement>('input[name="heading"]');
+		await type(title as HTMLInputElement, 'Give to Elm Street');
+		expect(held(button('Save general'))).toBe(false);
+		expect(held(button('Save donation settings'))).toBe(true);
 
-it('says at the bar that a Publish never reached the server, and draws the page unpublished', async () => {
-	await screen();
+		await act(async () => {
+			button('Save general').click();
+		});
+		await settle();
 
-	offline = true;
-	await press(button('Publish', bar()));
-
-	expect(said(bar())).toContain(NOT_SENT);
-	expect(bar().textContent).toContain('Changes not published');
-});
-
-it('opens the donation settings, not a section, on a click on the donation box in the preview', async () => {
-	await screen();
-	const framed = document.querySelector('iframe')?.contentWindow;
-	if (framed) vi.spyOn(framed, 'postMessage').mockImplementation(() => {});
-	await press(button('Edit'));
-
-	await act(async () => {
-		window.dispatchEvent(
-			new MessageEvent('message', {
-				data: { type: SECTION_MESSAGE, id: 'donate' },
-				origin: window.location.origin,
-				source: framed ?? null
-			})
-		);
+		expect(posted).toEqual([
+			{
+				[WHICH_FORM]: 'donation-page-general',
+				[RECORD_VERSION]: '1',
+				heading: 'Give to Elm Street'
+			}
+		]);
 	});
-	await settle();
-
-	expect(card('Donation settings').open).toBe(true);
-	expect(document.querySelector('dialog[open] input[name="heading"]')).toBeNull();
-});
-
-it('lists the title as the only content in Settings, with nothing to lay out', async () => {
-	await screen();
-	const framed = document.querySelector('iframe')?.contentWindow;
-	if (framed) vi.spyOn(framed, 'postMessage').mockImplementation(() => {});
-	await press(button('Edit'));
-
-	await press(button('Settings'));
-
-	const settings = card('Settings');
-	const rows = [...settings.querySelectorAll('.adm-openrow__label')].map((one) => one.textContent);
-	expect(rows).toEqual(['Title', 'Share message', 'Donation settings']);
-	const text = settings.textContent ?? '';
-	for (const gone of [
-		'Layout',
-		'Look',
-		'Variant',
-		'Background',
-		'Add',
-		'Move',
-		'Remove',
-		'Share button'
-	])
-		expect(text).not.toContain(gone);
-	expect(settings.querySelector('input[type="radio"], select')).toBeNull();
 });

@@ -3,7 +3,7 @@ import { AppShell } from '@better-giving/operator/components/shell/AppShell';
 import { MoveStatus, ProgressBar } from '@better-giving/operator/components/status/ProgressBar';
 import { holdBar, movesPage, openingLabel, pageDrawn } from '@better-giving/operator/progress-bar';
 import { useEffect } from 'react';
-import { Form, Outlet, useLocation, useMatches, useNavigation } from 'react-router';
+import { Form, Outlet, useLocation, useNavigation } from 'react-router';
 import { ScreenCrumbs, useCrumbs } from '$lib/admin/crumbs';
 import { currentDestination, destinationGroupsFor } from '$lib/admin/destinations';
 import { operatorLinks } from '$lib/admin/operator-links';
@@ -33,8 +33,7 @@ import type { Route } from './+types/_app';
 // it is also the frame: the shell, the rail and the way out are drawn once here rather than by
 // each screen, so a screen under this route is a screen and nothing else. every part of that frame
 // is `@better-giving/operator`'s and is dressed by packages/operator/src/styles/adm.css — this
-// file states no arrangement, no breakpoint and no count. a screen whose `handle` is a
-// `BareHandle` — the editor — is drawn without the frame, across the whole window.
+// file states no arrangement, no breakpoint and no count.
 //
 // and it draws the bar over a move to another screen, held by `clientMiddleware` below. the rule
 // that bar keeps is packages/operator/src/progress-bar.ts's header.
@@ -63,20 +62,7 @@ export const clientMiddleware: Route.ClientMiddlewareFunction[] = [
 	}
 ];
 
-/**
- * what a screen drawn across the whole window exports as `handle`: the editor, whose own bar is
- * the way out (`$lib/admin/editor/editor-shell.tsx`). the gate holds it as it holds every screen;
- * only the frame is left off.
- */
-export type BareHandle = { readonly frame: 'bare' };
-
-function isBare(handle: unknown): boolean {
-	return (
-		typeof handle === 'object' && handle !== null && 'frame' in handle && handle.frame === 'bare'
-	);
-}
-
-/** where the globe beside the organisation's name goes: the Donation page's editor. */
+/** where the globe beside the organisation's name goes: the Donation page's edit page. */
 const DONATION_PAGE_EDITOR = { href: '/admin/donation-page', label: 'Donation page' } as const;
 
 // the sheet every screen beneath this layout wears, linked once here rather than by each of them.
@@ -111,7 +97,6 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 	const { pathname } = useLocation();
 	const at = currentDestination(pathname);
 	const crumbs = useCrumbs();
-	const bare = useMatches().some((match) => isBare(match.handle));
 	const navigation = useNavigation();
 	useEffect(() => pageDrawn(pathname), [pathname]);
 	useEffect(() => {
@@ -132,15 +117,6 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 			{moving ? <ProgressBar overMove /> : null}
 		</>
 	);
-
-	if (bare) {
-		return (
-			<>
-				{progress}
-				<Outlet />
-			</>
-		);
-	}
 
 	return (
 		<>

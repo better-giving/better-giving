@@ -1,4 +1,5 @@
-import { and, eq, exists, isNotNull } from 'drizzle-orm';
+import { and, eq, exists, isNotNull, type SQL } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
 import { z } from 'zod';
 import { defineForm, type RejectionStatus } from '../../forms/definition';
 import {
@@ -15,9 +16,10 @@ import {
 	GIFTS_GO_TO,
 	PUBLISH_FORM_ID,
 	PUBLISH_FORMS,
-	UNDO_FORM_ID
+	UNDO_FORM_ID,
+	UNPUBLISH_FORM_ID
 } from '../../page/publish-form';
-import { freeSlug } from '../../page/slug';
+import { checkSlug, freeSlug } from '../../page/slug';
 import { invalid, type ParsedForm, parseForm, submittedForm, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
@@ -37,18 +39,23 @@ import {
 	type DraftSettings,
 	nameToCarry,
 	ownedName,
+	planSlugMove,
 	readOwnedRow,
 	readTarget,
 	renamingOwned,
 	SLUG_ATTEMPTS,
 	type SettingsTarget,
-	settingsOfRow
+	settingsOfRow,
+	slugRace,
+	unpublishCampaign,
+	type UnpublishWrite
 } from './queries';
 
 // Publish, Undo and Discard changes: the editor's presses on the whole page, the Donation page's
-// and a campaign's alike, and the action arm both editors answer them with. each is one `batch()`
-// guarded on the version the editor was drawn at (`submittedVersion` in ../conform.ts), so a press
-// drawn before any other write moves nothing.
+// and a campaign's alike, and a campaign's Unpublish (`unpublishCampaign` in ./queries.ts), and the
+// action arm both editors answer them with. each is one `batch()` guarded on the version the editor
+// was drawn at (`submittedVersion` in ../conform.ts), so a press drawn before any other write moves
+// nothing.
 //
 // **Publish** holds the draft to the page rule (`parsePage`), a campaign's end date to the future,
 // and its donation settings to a form row's program and giving rules, then makes it live: `published`
@@ -57,14 +64,15 @@ import {
 // is checked against move together (`page` in ../db/schema.ts). a draft holding
 // no settings of its own — the Donation page's until the operator saves Donation settings — goes
 // live holding none, and the row keeps what it has.
-// - where gifts go ("Gifts go to") is answered at a campaign's first Publish and nowhere else: a
-//   first Publish without that answer is refused, and so is an answer on a page already published,
-//   whose program is Donation settings'.
+// - a campaign's first Publish takes where gifts go from its draft's own donation settings, which
+//   its Settings card sets. a caller may answer it instead ("Gifts go to", the connector's
+//   `gifts_go_to`), pinning a program or keeping the draft's, at the first Publish and nowhere
+//   else: an answer on a page already published, whose program is its Settings', is refused.
 // - a program newly pinned must be one still offered; the one the row pins, or the draft already
 //   pins, is taken as it is.
-// - an ended campaign published again, ended by End or by its end date (../../page/ended.ts), is
-//   live at its address, or, where another took it meanwhile, at the next free `-2`, `-3` from its
-//   name, with nothing to undo: the page it replaced is the one it ended on.
+// - an unpublished or ended campaign published again, ended by End or by its end date
+//   (../../page/ended.ts), is live at its address, or, where another took it meanwhile, at the next
+//   free `-2`, `-3` from its name, with nothing to undo: the page it replaced is the one it ended on.
 //
 // **Undo** swaps `published` and `last_published`. `last_published` carries the settings row as it
 // stood before the Publish, so the swap puts back both the page and what a gift is charged against;
@@ -191,19 +199,10 @@ export async function publishPage(
 			`the end date, ${endWords(draft.page, endsAt)}, has passed. Change or clear it in Settings, then publish`
 		);
 	}
-	const first = row.state === 'never_published';
-	if (first && at.giftsGoTo === undefined) {
+	if (row.state !== 'never_published' && at.giftsGoTo !== undefined) {
 		return {
 			...refused(
-				'a campaign’s first Publish says where its gifts go. Publish it from its editor, choosing under “Gifts go to”'
-			),
-			at: GIFTS_GO_TO
-		};
-	}
-	if (!first && at.giftsGoTo !== undefined) {
-		return {
-			...refused(
-				'where gifts go is asked only at a campaign’s first Publish. Change it in Settings, Donation settings, then publish'
+				'where gifts go is set when a campaign is first published. Change it under Settings on this page, then publish again'
 			),
 			at: GIFTS_GO_TO
 		};
@@ -226,11 +225,32 @@ export async function publishPage(
 	// a draft holding no settings of its own publishes none, and the row keeps what it holds: the
 	// Donation page's program goes on following the active programs (./donation-page.ts).
 	const carried = draft.page.settings !== undefined || typeof at.giftsGoTo === 'string';
-	const published: PageDocument = carried ? { ...draft.page, settings } : draft.page;
+	// a link the draft moves to is the row's from this Publish on, and leaves the document.
+	const { slug: movedTo, ...unmoved } = carried ? { ...draft.page, settings } : draft.page;
+	const published: PageDocument = unmoved;
 	const replaced = stateAt(row, at.now) === 'live' ? kept(row, live) : null;
 	const document = JSON.stringify(published);
-	// a name the draft holds and the row does not is the campaign's from now on, as a rename makes it
-	// (`renaming` in ./queries.ts), the address aside: the first Publish's confirm named that.
+	const moving = row.type === 'campaign' && movedTo !== undefined && movedTo !== row.slug;
+	let release: (drawn: SQL) => BatchItem<'sqlite'>[] = () => [];
+	if (moving) {
+		const link = `/${movedTo}`;
+		const checked = checkSlug(movedTo);
+		if (!checked.ok) {
+			return refused(
+				`the link ${link} can’t be used: it is the address of another page here. Change it under General, then publish again`
+			);
+		}
+		// asked at General's save; a live holder since is refused, an ended one let go as it was.
+		const plan = await planSlugMove(db, row, movedTo, { move: true, takeover: true }, at.now);
+		if (plan.kind === 'taken') {
+			return refused(
+				`the link ${link} is taken by ${plan.by}. Change it under General, then publish again`
+			);
+		}
+		if (plan.kind === 'move') release = plan.before;
+	}
+	// a name the draft holds and the row does not is the campaign's from now on, on its row and its
+	// owned settings row (`ownedName` in ./queries.ts).
 	const renamed = nameToCarry(row, draft.page);
 
 	const drawn = and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft));
@@ -240,37 +260,50 @@ export async function publishPage(
 		placedPhotos(row, { draft: document, last_published: replaced })
 	);
 	for (let attempt = 1; ; attempt += 1) {
-		const slug = await addressFor(db, row);
+		const slug = moving ? movedTo : await addressFor(db, row);
+		const before = release(drawn as SQL);
+		const ownedRow = db
+			.update(form)
+			.set({
+				...(carried ? settingsColumns(settings) : {}),
+				...(renamed === null ? {} : { name: ownedName(renamed) }),
+				status: 'live'
+			})
+			.where(
+				and(eq(form.id, row.formId), exists(db.select({ id: page.id }).from(page).where(drawn)))
+			);
+		const pageRow = db
+			.update(page)
+			.set({
+				draft: document,
+				published: document,
+				lastPublished: replaced,
+				state: 'live',
+				slug,
+				...(renamed === null ? {} : { name: renamed })
+			})
+			.where(drawn)
+			.returning({ publishedId: page.id });
 		try {
-			const [, made] = await db.batch([
-				db
-					.update(form)
-					.set({
-						...(carried ? settingsColumns(settings) : {}),
-						...(renamed === null ? {} : { name: ownedName(renamed) }),
-						status: 'live'
-					})
-					.where(
-						and(eq(form.id, row.formId), exists(db.select({ id: page.id }).from(page).where(drawn)))
-					),
-				db
-					.update(page)
-					.set({
-						draft: document,
-						published: document,
-						lastPublished: replaced,
-						state: 'live',
-						slug,
-						...(renamed === null ? {} : { name: renamed })
-					})
-					.where(drawn)
-					.returning({ id: page.id }),
-				...frees
+			// the link's release first, for `page_slug_idx`.
+			const written = await db.batch([...before, ownedRow, pageRow, ...frees] as unknown as [
+				typeof ownedRow,
+				typeof pageRow
 			]);
-			return made.length === 1
-				? { kind: 'published', undoable: replaced !== null }
-				: { kind: 'stale' };
+			// the page's write is found by what it returns, whatever statements stand before it.
+			const made = (written as unknown[]).some(
+				(rows) =>
+					Array.isArray(rows) &&
+					rows.some((each: { publishedId?: unknown }) => each.publishedId === row.id)
+			);
+			return made ? { kind: 'published', undoable: replaced !== null } : { kind: 'stale' };
 		} catch (error) {
+			if (moving && sqliteResultCode(error) === 'SQLITE_CONSTRAINT_UNIQUE') {
+				const by = await slugRace(db, movedTo, at.now, error);
+				return refused(
+					`the link /${movedTo} is taken by ${by}. Change it under General, then publish again`
+				);
+			}
 			// another campaign took the free address between the read and the batch.
 			const retry = row.slug === null && attempt < SLUG_ATTEMPTS;
 			if (!retry || sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;
@@ -443,22 +476,43 @@ const FIRST_PUBLISH = defineForm({
 });
 const UNDO = defineForm({ id: UNDO_FORM_ID, schema: z.object({}) });
 const DISCARD = defineForm({ id: DISCARD_FORM_ID, schema: z.object({}) });
+const UNPUBLISH = defineForm({ id: UNPUBLISH_FORM_ID, schema: z.object({}) });
 
 export const STALE =
 	'Nothing was changed: this page has been saved since the editor was opened. Reload it, then try again.';
 const NOTHING_TO_UNDO = 'Nothing was undone: no earlier version of this page was published.';
 const NOTHING_TO_DISCARD =
 	'Nothing was discarded: this campaign has never been published, so there is no live page to go back to.';
-/** every press this module answers; the Donation page's action routes all but the first Publish. */
-const PRESSES = [...PUBLISH_FORMS, FIRST_PUBLISH_FORM_ID] as const;
+const NOT_PUBLIC =
+	'Nothing was unpublished: this campaign is not public, or its end date has passed and it has ended.';
+const NO_UNPUBLISH = 'The Donation page is always public and has no Unpublish.';
+/**
+ * every press this module answers; the Donation page's action routes all but the first Publish
+ * and Unpublish.
+ */
+const PRESSES = [...PUBLISH_FORMS, FIRST_PUBLISH_FORM_ID, UNPUBLISH_FORM_ID] as const;
 type PublishForm = (typeof PRESSES)[number];
 
 const FAILED: Record<PublishForm, string> = {
 	[PUBLISH_FORM_ID]: 'Publishing failed and nothing was changed. Try again.',
 	[FIRST_PUBLISH_FORM_ID]: 'Publishing failed and nothing was changed. Try again.',
 	[UNDO_FORM_ID]: 'Undoing failed and nothing was changed. Try again.',
-	[DISCARD_FORM_ID]: 'Discarding the changes failed and nothing was changed. Try again.'
+	[DISCARD_FORM_ID]: 'Discarding the changes failed and nothing was changed. Try again.',
+	[UNPUBLISH_FORM_ID]: 'Unpublishing failed and nothing was changed. Try again.'
 };
+
+/** what an Unpublish did, in the outcomes the presses answer from. */
+type UnpublishOutcome =
+	| { readonly kind: 'unpublished' }
+	| { readonly kind: 'not_public' }
+	| { readonly kind: 'stale' }
+	| { readonly kind: 'gone' };
+
+type PressOutcome = PublishOutcome | UndoOutcome | DiscardOutcome | UnpublishOutcome;
+
+function unpublishedOutcome(written: UnpublishWrite): UnpublishOutcome {
+	return { kind: written === 'not_live' ? 'not_public' : written };
+}
 
 /** a first Publish's answer as `publishPage` takes it: a mode word keeps the draft's program. */
 function giftsGoTo(answer: string): string | null {
@@ -466,9 +520,9 @@ function giftsGoTo(answer: string): string | null {
 }
 
 /**
- * the editors' Publish, first Publish, Undo and Discard changes, for either editor: the press read
- * off the body, run against the version the editor was drawn at on the page `target` names, and
- * answered at the control pressed. `gone` is what a press on no such page is told.
+ * the editors' Publish, first Publish, Unpublish, Undo and Discard changes, for either editor: the
+ * press read off the body, run against the version the editor was drawn at on the page `target`
+ * names, and answered at the control pressed. `gone` is what a press on no such page is told.
  */
 export async function answerPublishPress(
 	db: Db,
@@ -494,18 +548,27 @@ export async function answerPublishPress(
 			return answer(DISCARD_FORM_ID, parseForm(body, DISCARD), (seen) =>
 				discardChanges(db, target, seen)
 			);
+		case UNPUBLISH_FORM_ID: {
+			const submission = parseForm(body, UNPUBLISH);
+			if (target.type !== 'campaign') {
+				return invalid(400, submission.reject({ formErrors: [NO_UNPUBLISH] }));
+			}
+			return answer(UNPUBLISH_FORM_ID, submission, async (seen) =>
+				unpublishedOutcome(await unpublishCampaign(db, target.id, seen, now))
+			);
+		}
 	}
 
 	async function answer<T>(
 		which: PublishForm,
 		submission: ParsedForm<T>,
-		run: (seen: Date, value: T) => Promise<PublishOutcome | UndoOutcome | DiscardOutcome>
+		run: (seen: Date, value: T) => Promise<PressOutcome>
 	) {
 		if (!submission.ok) return invalid(400, submission.reject());
 		const seen = submittedVersion(body);
 		const refuse = (status: RejectionStatus, text: string) =>
 			invalid(status, submission.reject({ formErrors: [text] }));
-		let outcome: PublishOutcome | UndoOutcome | DiscardOutcome;
+		let outcome: PressOutcome;
 		try {
 			outcome = await run(seen, submission.value);
 		} catch (e) {
@@ -519,6 +582,10 @@ export async function answerPublishPress(
 				return { undone: true as const };
 			case 'discarded':
 				return { discarded: true as const };
+			case 'unpublished':
+				return { unpublished: true as const };
+			case 'not_public':
+				return refuse(409, NOT_PUBLIC);
 			case 'refused':
 				return refuse(422, outcome.text);
 			case 'nothing':

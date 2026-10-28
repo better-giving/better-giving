@@ -17,7 +17,19 @@ export function isEnded(
 	now: number
 ): boolean {
 	if (page.state === 'ended') return true;
-	if (page.state !== 'live' || page.published === null) return false;
+	return page.state === 'live' && pastPublishedEnd(page, now);
+}
+
+/**
+ * whether the page's published document's `endsAt` has come. an unpublished campaign past it still
+ * reads as unpublished: it answers nothing either way, and End is still what ends it and gives its
+ * address up (`ending` in $lib/server/pages/queries.ts).
+ */
+export function pastPublishedEnd(
+	page: { readonly published: string | null },
+	now: number
+): boolean {
+	if (page.published === null) return false;
 	const endsAt: unknown = JSON.parse(page.published)[PAGE_KEYS.endsAt];
 	return typeof endsAt === 'number' && endsAt <= now;
 }

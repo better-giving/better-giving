@@ -386,30 +386,6 @@ describe('the scrim over the feature’s cover', () => {
 	});
 });
 
-describe('the edge the editor draws while its Edit is on', () => {
-	// a click opens the innermost section under it (./page-view.tsx), and hover state is not
-	// something the dom pool computes, so the rules are read here.
-	const edged = page.filter(
-		({ at, decls }) =>
-			at.at(-1)?.includes('[data-section]') &&
-			Object.keys(decls).some((name) => name.startsWith('outline'))
-	);
-
-	it('draws every edge only while Edit is on', () => {
-		expect(edged.length).toBeGreaterThan(0);
-		expect(
-			edged.map(({ at }) => at.join(' » ')).filter((at) => !at.startsWith(':root[data-editing] '))
-		).toEqual([]);
-	});
-
-	it('turns solid only on the innermost hovered section', () => {
-		const solid = edged.filter(({ decls }) => decls['outline-style'] === 'solid');
-		expect(solid.map(({ at }) => at.join(' » '))).toEqual([
-			':root[data-editing] [data-section]:hover:not(:has([data-section]:hover))'
-		]);
-	});
-});
-
 describe('a long title', () => {
 	// happy-dom does no layout, so the step is read off the sheet: smaller below 60rem, where the box
 	// stands under the title, and the display size from 60rem.

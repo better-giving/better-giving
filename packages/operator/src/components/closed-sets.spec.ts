@@ -167,7 +167,10 @@ describe('the states the operator components assemble', () => {
 				// the progress bar's done state. ./status/ProgressBar.jsx writes it off a boolean rather
 				// than off a state union, so there is no union for it to be a member of and the sheet's
 				// own `carried-ok:` note is what stands for its call site.
-				'finishing'
+				'finishing',
+				// a card part a file is dragged over. the media card in
+				// packages/app/src/lib/admin/page-edit/campaign-cards.tsx writes it off a boolean.
+				'drop'
 			])
 		).toEqual([...statesDefinedIn(SHEETS)].sort());
 	});

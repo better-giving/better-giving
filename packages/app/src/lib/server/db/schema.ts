@@ -3465,7 +3465,7 @@ export const photoLink = sqliteTable(
 			.references(() => page.id),
 		/**
 		 * where the photo goes: `cover`, or the place of a photo beside it to replace, as
-		 * `parseSlot` in ../../page/content-edit.ts reads it; null adds a new photo after the rest.
+		 * `parseSlot` in ../connector/photos.ts reads it; null adds a new photo after the rest.
 		 */
 		slot: text('slot'),
 		/**

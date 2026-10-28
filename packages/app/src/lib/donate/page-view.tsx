@@ -3,13 +3,6 @@ import type { ProgramMode } from '../forms/program-modes';
 import type { Page } from '../page/catalog';
 import { imageSrc } from '../page/image-src';
 import type { PageType } from '../page/keys';
-import {
-	EDITING_MESSAGE,
-	READY_MESSAGE,
-	type ReadyMessage,
-	SECTION_MESSAGE,
-	type SectionMessage
-} from '../page/preview-message';
 import { type CampaignShape, campaignShape } from '../page/shape';
 import { isEmptyDocument } from '../rich-text/document';
 import { PageRoot } from './page-root';
@@ -101,25 +94,18 @@ export type PageViewProps = {
 	readonly chosenProgramId?: string | null;
 	/** the chooser takes no pick: the gift it would change has already been asked for. */
 	readonly chooserLocked?: boolean;
-	/** drawn as the editor's preview: a click on a section reports it, and does nothing else. */
+	/** drawn as the preview of a draft: a press reaches nothing. */
 	readonly preview?: boolean;
 	/** the caller's placement of the page root. */
 	readonly className?: string;
 };
 
-/**
- * the props every section wrapper carries: its area, and what a click on it in the preview reports —
- * a content section's id ($lib/page/content-edit.ts), or `donate`, `goal` or `share` for the sheet
- * that edits what those draw.
- */
-const area = (name: string, section?: string) => ({
-	'data-area': name,
-	...(section === undefined ? {} : { 'data-section': section })
-});
+/** the prop every section wrapper carries: its area. */
+const area = (name: string) => ({ 'data-area': name });
 
 export function PageView(props: PageViewProps) {
 	const { page, look, org, preview = false, className } = props;
-	usePreviewReport(preview);
+	usePreviewStill(preview);
 	const shape =
 		props.type === 'campaign'
 			? campaignShape(page, {
@@ -142,7 +128,7 @@ export function PageView(props: PageViewProps) {
 				)}
 			</main>
 			<footer className="page-foot">
-				<section className="page-end" {...area('share', 'share')}>
+				<section className="page-end" {...area('share')}>
 					<div className="page-in">
 						<Share
 							sharing={props.sharing}
@@ -161,7 +147,7 @@ export function PageView(props: PageViewProps) {
 /** the donation box, inert in the preview, where a click on it opens the settings it draws. */
 function Box({ props, hideProgramSelect }: { props: PageViewProps; hideProgramSelect: boolean }) {
 	return (
-		<div className="page-box" {...area('box', 'donate')}>
+		<div className="page-box" {...area('box')}>
 			<div inert={props.preview ?? false}>{props.donationBox({ hideProgramSelect })}</div>
 		</div>
 	);
@@ -181,7 +167,7 @@ function Heading({ props }: { props: PageViewProps }) {
 		<h1
 			className="page-title"
 			data-long={[...graphemes.segment(title.trim())].length > TITLE_LONG ? '' : undefined}
-			{...area('title', 'title')}
+			{...area('title')}
 		>
 			{title}
 		</h1>
@@ -196,32 +182,32 @@ function CampaignLayout(props: PageViewProps & { readonly shape: CampaignShape }
 	const faq = page.faq ?? [];
 	const lede =
 		page.lede === undefined || page.lede === '' ? null : (
-			<p className="page-lede" {...area('lede', 'title')}>
+			<p className="page-lede" {...area('lede')}>
 				{page.lede}
 			</p>
 		);
 	const goalBar =
 		shape.goalBar && goal !== null ? (
-			<div {...area('goal', 'goal')}>
+			<div {...area('goal')}>
 				<GoalBar goal={goal} money={money} />
 			</div>
 		) : null;
 	const cover =
 		shape.cover === null ? null : (
-			<div className="page-cover-area" {...area('cover', 'cover')}>
+			<div className="page-cover-area" {...area('cover')}>
 				<Cover cover={shape.cover} imageSrc={imageSrc} />
 			</div>
 		);
 	const box = <Box props={props} hideProgramSelect={false} />;
 	const storySection =
 		story === null ? null : (
-			<div {...area('story', 'story')}>
+			<div {...area('story')}>
 				<Story doc={story} />
 			</div>
 		);
 	const tiersSection = (shapeOf: 'list' | 'cards') =>
 		tiers.length === 0 ? null : (
-			<section className="page-section" {...area('tiers', 'tiers')}>
+			<section className="page-section" {...area('tiers')}>
 				<Tiers tiers={tiers} money={money} shape={shapeOf} />
 			</section>
 		);
@@ -233,7 +219,7 @@ function CampaignLayout(props: PageViewProps & { readonly shape: CampaignShape }
 		);
 	const faqSection = (folded: boolean) =>
 		faq.length === 0 ? null : (
-			<section className="page-section" {...area('faq', 'faq')}>
+			<section className="page-section" {...area('faq')}>
 				<Faq items={faq} domId="page" folded={folded} />
 			</section>
 		);
@@ -302,7 +288,7 @@ function CampaignLayout(props: PageViewProps & { readonly shape: CampaignShape }
 function DonationLayout(props: PageViewProps) {
 	const chooser =
 		props.programMode === 'choice' && props.programs.length >= 2 ? (
-			<div {...area('chooser', 'donate')}>
+			<div {...area('chooser')}>
 				<ProgramChooser
 					programs={props.programs}
 					chosen={props.chosenProgramId ?? null}
@@ -449,44 +435,19 @@ const TAB_STOPS =
 	'a[href], area[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]';
 
 /**
- * in the preview, a click anywhere in a section posts that section's id to the editor around the
- * frame and goes no further: the preview is a picture of the page, so a link, a share or a pick in it is
- * not followed, and no handler of a section's hears it. nothing in it takes a tab stop either — the
- * donation box is inert, and every other stop is taken out of the order. the document itself stays
- * live, since an inert one would take no click to report.
- *
- * while the editor's Edit is on, the document carries `data-editing`, which ./page.css draws every
- * section as clickable by. the editor says so on each press, and answers the ready this posts once it
- * listens, so a frame that reloaded under an Edit already on is told too. only the editor's own
- * window, on this deployment's origin, is listened to.
+ * in the preview a press reaches nothing: the preview is a picture of the draft, so a link, a share
+ * or a pick in it is not followed, and no handler of a section's hears it. nothing in it takes a tab
+ * stop either — the donation box is inert, and every other stop is taken out of the order.
  */
-function usePreviewReport(preview: boolean) {
+function usePreviewStill(preview: boolean) {
 	useEffect(() => {
 		if (!preview) return;
 		for (const stop of document.querySelectorAll<HTMLElement>(TAB_STOPS)) stop.tabIndex = -1;
-		const report = (event: MouseEvent) => {
-			const target = event.target instanceof Element ? event.target : null;
-			const id = target?.closest<HTMLElement>('[data-section]')?.dataset.section;
+		const still = (event: MouseEvent) => {
 			event.preventDefault();
 			event.stopPropagation();
-			if (id === undefined) return;
-			const message: SectionMessage = { type: SECTION_MESSAGE, id };
-			window.parent.postMessage(message, window.location.origin);
 		};
-		const editing = (event: MessageEvent) => {
-			if (event.origin !== window.location.origin || event.source !== window.parent) return;
-			const { type, on } = (event.data ?? {}) as Record<string, unknown>;
-			if (type !== EDITING_MESSAGE || typeof on !== 'boolean') return;
-			document.documentElement.toggleAttribute('data-editing', on);
-		};
-		document.addEventListener('click', report, true);
-		window.addEventListener('message', editing);
-		const ready: ReadyMessage = { type: READY_MESSAGE };
-		window.parent.postMessage(ready, window.location.origin);
-		return () => {
-			document.removeEventListener('click', report, true);
-			window.removeEventListener('message', editing);
-			document.documentElement.removeAttribute('data-editing');
-		};
+		document.addEventListener('click', still, true);
+		return () => document.removeEventListener('click', still, true);
 	}, [preview]);
 }
