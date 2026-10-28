@@ -339,6 +339,14 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	// `archiveForm` writes the pair in one statement precisely so they cannot come apart, and
 	// `FormRecord` carries the status rather than the timestamp.
 	if (form.status === 'draft' && owner?.type === 'campaign') {
+		if (owner.state === 'unpublished') {
+			return refusal(
+				form,
+				'form_not_published',
+				`Form \`${redactPublicId(form.id)}\` holds the donation settings of a campaign that has been unpublished, so it takes no new gifts.`,
+				'An unpublished campaign takes gifts again once it is published again, from its editor under Campaigns in /admin.'
+			);
+		}
 		return owner.state === 'ended'
 			? refusal(
 					form,

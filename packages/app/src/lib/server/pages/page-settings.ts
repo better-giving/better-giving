@@ -86,28 +86,41 @@ function readEndDate(body: FormData, target: SettingsTarget): Read {
 	const submission = parseForm(body, END_DATE_EDIT);
 	if (!submission.ok) return unparsed(submission);
 	if (target.type !== 'campaign') return campaignsOnly(submission, 'end date');
-	const { end_date: day, time_zone: zone } = submission.value;
-	if (day === undefined) {
-		return taken(submission, { endsAt: undefined, endsZone: undefined });
-	}
+	const read = readEndDay(submission.value.end_date, submission.value.time_zone, Date.now());
+	return read.ok ? taken(submission, read.keys) : refusedBoxes(submission, read.boxes);
+}
+
+/**
+ * an end date as its two boxes post it, a day and the IANA zone it ends in, read as `now` stands:
+ * the draft keys it sets, both removed for no day, or the sentence each refused box carries.
+ */
+export function readEndDay(
+	day: string | undefined,
+	zone: string | undefined,
+	now: number
+):
+	| { readonly ok: true; readonly keys: Pick<DraftKeys, 'endsAt' | 'endsZone'> }
+	| { readonly ok: false; readonly boxes: Readonly<Record<string, string>> } {
+	if (day === undefined) return { ok: true, keys: { endsAt: undefined, endsZone: undefined } };
 	if (zone === undefined || !isTimeZone(zone)) {
-		return refusedBoxes(submission, {
-			time_zone:
-				zone === undefined
-					? 'required with an end date: the IANA time zone its day ends in'
-					: `${JSON.stringify(zone)} is not a time zone`
-		});
+		return {
+			ok: false,
+			boxes: {
+				time_zone:
+					zone === undefined
+						? 'required with an end date: the IANA time zone its day ends in'
+						: `${JSON.stringify(zone)} is not a time zone`
+			}
+		};
 	}
 	// the day's end is read whatever the clock says, so a day already over is told apart from one
 	// that is no day at all.
 	const ends = endOfDay({ day, timeZone: zone, now: Number.NEGATIVE_INFINITY });
-	if (!ends.ok) return refusedBoxes(submission, { end_date: ends.reason });
-	if (ends.endsAt <= Date.now()) {
-		return refusedBoxes(submission, {
-			end_date: `today or later; ${dayWords(day)} is already over`
-		});
+	if (!ends.ok) return { ok: false, boxes: { end_date: ends.reason } };
+	if (ends.endsAt <= now) {
+		return { ok: false, boxes: { end_date: `today or later; ${dayWords(day)} is already over` } };
 	}
-	return taken(submission, { endsAt: ends.endsAt, endsZone: zone });
+	return { ok: true, keys: { endsAt: ends.endsAt, endsZone: zone } };
 }
 
 /** the Donation page's refusal of what only a campaign carries, in ../../page/catalog.ts's words. */

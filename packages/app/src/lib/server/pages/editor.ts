@@ -43,7 +43,10 @@ import {
 // what that write moved (`submittedVersion` in ../conform.ts). the preview is keyed on it too, so the
 // frame reloads on the render any write's revalidation lands in.
 
-/** where a page stands against what donors see. */
+/**
+ * where a page stands against what donors see. `unpublished` is not public: a campaign never
+ * published, or one Unpublish took down, whose stored state is that same word.
+ */
 export type EditorState = 'unpublished' | 'changed' | 'live' | 'ended';
 
 /** what the editor draws whether or not its draft reads. */
@@ -100,6 +103,7 @@ export function unreadableEditor(row: Page, now: number): UnreadableEditor | nul
 function editorState(row: Page, now: number): EditorState {
 	switch (stateAt(row, now)) {
 		case 'never_published':
+		case 'unpublished':
 			return 'unpublished';
 		case 'ended':
 			return 'ended';

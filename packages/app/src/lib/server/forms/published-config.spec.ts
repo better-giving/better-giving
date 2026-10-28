@@ -169,6 +169,25 @@ describe('publishedConfig — refusals', () => {
 		expect(result.error.fix).toContain('Forms');
 	});
 
+	it('refuses an unpublished campaign’s settings, saying it was taken down and how it comes back', () => {
+		const result = publishedConfig({
+			id: FORM_ID,
+			cadences: SERVED_CADENCES,
+			program: null,
+			rails: OFFERED_PAYMENT_METHODS,
+			coins: [],
+			form: formRecord({ status: 'draft' }),
+			owner: { type: 'campaign', name: 'Winter coats', state: 'unpublished' },
+			profile: orgProfile(),
+			env: STRIPE
+		});
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('form_not_published');
+		expect(result.error.message).toContain('unpublished');
+		expect(result.error.fix).toContain('published again');
+	});
+
 	/**
 	 * a retired form is a different answer from a draft one, and the difference is the fix.
 	 *

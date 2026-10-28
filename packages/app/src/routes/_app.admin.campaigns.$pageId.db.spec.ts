@@ -687,16 +687,14 @@ describe('Publish', () => {
 		expect(owned).toMatchObject({ status: 'live', programMode: SETTINGS.programMode });
 	});
 
-	it('refuses a first Publish that skips its confirm, and nothing goes live', async () => {
+	it('publishes a campaign never published on its draft’s own settings, with no confirm', async () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
 
 		const response = await post(pageId, 'page-publish', {});
 
-		expect(response.status).toBe(422);
-		expect(await refusal(response)).toEqual([
-			'Nothing was published: a campaign’s first Publish says where its gifts go. Publish it from its editor, choosing under “Gifts go to”.'
-		]);
-		expect((await stored(pageId)).state).toBe('never_published');
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ published: true, undoable: false });
+		expect((await stored(pageId)).state).toBe('live');
 	});
 
 	it('republishes a live campaign with no confirm, as a republish Undo can take back', async () => {

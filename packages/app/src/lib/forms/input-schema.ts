@@ -324,7 +324,9 @@ export const INVERTED_BOUNDS = 'must be larger than smallest gift';
  * `$lib/server/forms/form-input.ts` measures them whatever the bounds did, so a screen that skipped
  * them would call a save fine that the boundary then refuses.
  */
-export function boundsRule(ctx: z.core.ParsePayload<GivingBoxes>): void {
+export function boundsRule(
+	ctx: z.core.ParsePayload<Pick<GivingBoxes, 'min_minor' | 'max_minor'>>
+): void {
 	const minMinor = readAmount(ctx.value.min_minor, FORM_CURRENCY).minor;
 	const maxMinor = readAmount(ctx.value.max_minor, FORM_CURRENCY).minor;
 	if (minMinor !== null && maxMinor !== null && minMinor > maxMinor) {
@@ -501,12 +503,12 @@ const FORM_NAME_FIELDS = {
 	status: FORM_FIELD_RULES.status
 } as const;
 
-const FORM_PROGRAM_FIELDS = {
+export const FORM_PROGRAM_FIELDS = {
 	program_mode: FORM_FIELD_RULES.program_mode,
 	program_id: FORM_FIELD_RULES.program_id
 } as const;
 
-const FORM_GIVING_FIELDS = {
+export const FORM_GIVING_FIELDS = {
 	min_minor: FORM_FIELD_RULES.min_minor,
 	max_minor: FORM_FIELD_RULES.max_minor,
 	suggested_amounts: FORM_FIELD_RULES.suggested_amounts.prefault([])
@@ -574,7 +576,7 @@ export const FORM_GIVING_INPUT = z
 export const FORM_ORIGINS_INPUT = z.object(FORM_ORIGINS_FIELDS);
 
 /** where a page's donation box opens, one checkbox each, absent when unticked. */
-const PAGE_SWITCH_FIELDS = {
+export const PAGE_SWITCH_FIELDS = {
 	open_on_monthly: z.boolean().default(false),
 	dedication_on: z.boolean().default(false)
 } as const;

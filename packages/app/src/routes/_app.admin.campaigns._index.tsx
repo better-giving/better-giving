@@ -48,11 +48,12 @@ import type { Route } from './+types/_app.admin.campaigns._index';
 // ($lib/server/pages/campaign.ts) and opens its editor. the Donation page is no campaign and is
 // not on this list.
 //
-// each row has the one press its state allows. End on a live campaign and Delete on one never
-// published each ask first, in a dialog on `?end={id}` or `?delete={id}`; Publish on an ended one
+// each row has the one press its state allows. End on a live or unpublished campaign and Delete on
+// one never published each ask first, in a dialog on `?end={id}` or `?delete={id}`; Publish on an ended one
 // is the editor's own Publish of its draft (`publishPage`), end date rule and all, and asks nothing
 // as that one does not. End keeps the published page and the draft (`endCampaign`), and Delete is
-// only ever of a campaign nobody was shown (`deleteNeverPublishedCampaign` argues why). every press is
+// only ever of a campaign nobody was shown (`deleteNeverPublishedCampaign` argues why). an
+// unpublished campaign stays among the rest, not public, its address held and answering nothing. every press is
 // written against the version its row was drawn at, so a row changed since — in its editor, in
 // another tab — is refused rather than acted on, and a press naming the Donation page names no
 // campaign. a live campaign past its published end date is an ended one here, in its group and to
@@ -119,17 +120,19 @@ function landedPress(marker: string): { outcome: Outcome; pageId: string } | nul
 	return known === undefined || pageId === undefined ? null : { outcome: known, pageId };
 }
 
-/** the one state each press acts on. */
-const ACTS_ON: Record<RowPress, CampaignListing['state']> = {
-	[END_FORM_ID]: 'live',
-	[DELETE_FORM_ID]: 'never_published',
-	[PUBLISH_FORM_ID]: 'ended'
+type State = CampaignListing['state'];
+
+/** the states each press acts on. */
+const ACTS_ON: Record<RowPress, readonly State[]> = {
+	[END_FORM_ID]: ['live', 'unpublished'],
+	[DELETE_FORM_ID]: ['never_published'],
+	[PUBLISH_FORM_ID]: ['ended']
 };
 
 /** why a campaign at the version pressed is not one the press acts on. */
 const NOT_THIS_STATE: Record<RowPress, string> = {
 	[END_FORM_ID]:
-		'Nothing was ended: this campaign is not live. A campaign never published is deleted rather than ended.',
+		'Nothing was ended: this campaign has ended already, or was never published. A campaign never published is deleted rather than ended.',
 	[DELETE_FORM_ID]:
 		'Nothing was deleted: this campaign has been published, and gifts may point at it. End it instead.',
 	[PUBLISH_FORM_ID]:
@@ -178,8 +181,9 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	}));
 	// a dialog naming a campaign not in the state it acts on — ended or published since the address
 	// was copied — is not drawn.
-	const asked = (param: string, state: CampaignListing['state']) =>
-		rows.find((row) => row.id === url.searchParams.get(param) && row.state === state) ?? null;
+	const asked = (param: string, states: readonly State[]) =>
+		rows.find((row) => row.id === url.searchParams.get(param) && states.includes(row.state)) ??
+		null;
 	// the press that redirected here, if one did. taken after the read, so a list that could not
 	// load burns no marker; and the id is matched against the rows rather than handed on, so an id
 	// no row answers to — a deleted campaign's among them — reaches the page as nothing.
@@ -197,8 +201,8 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 			campaigns: rows.filter((row) => row.state !== 'ended'),
 			ended: rows.filter((row) => row.state === 'ended'),
 			asking: url.searchParams.has('new'),
-			ending: asked(END_PARAM, 'live'),
-			deleting: asked(DELETE_PARAM, 'never_published'),
+			ending: asked(END_PARAM, ACTS_ON[END_FORM_ID]),
+			deleting: asked(DELETE_PARAM, ACTS_ON[DELETE_FORM_ID]),
 			landed
 		},
 		flash === null ? {} : { headers: { 'Set-Cookie': flash.clear } }
@@ -253,7 +257,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 			const row = await readPage(db, pageId);
 			if (row === null || row.type !== 'campaign') return refuse(404, noCampaign(press, pageId));
 			if (row.updatedAt.getTime() !== seen.getTime()) return refuse(409, STALE);
-			if (stateAt(row, now) !== ACTS_ON[press]) return refuse(409, NOT_THIS_STATE[press]);
+			if (!ACTS_ON[press].includes(stateAt(row, now))) return refuse(409, NOT_THIS_STATE[press]);
 
 			switch (press) {
 				case END_FORM_ID:
@@ -290,8 +294,13 @@ type Row = Route.ComponentProps['loaderData']['campaigns'][number];
 const STATE_WORDS: Record<Row['state'], string> = {
 	live: 'Live',
 	never_published: 'Not published',
+	unpublished: 'Not public',
 	ended: 'Ended'
 };
+
+/** a campaign whose address answers nothing: never published, or taken down by Unpublish. */
+const answersNothing = (state: Row['state']) =>
+	state === 'never_published' || state === 'unpublished';
 
 type Landed = NonNullable<Route.ComponentProps['loaderData']['landed']>;
 
@@ -482,13 +491,7 @@ function CampaignRecord({
 					</Link>
 				</h2>
 				<StatusWord
-					tone={
-						row.state === 'live'
-							? 'done'
-							: row.state === 'never_published'
-								? 'attention'
-								: undefined
-					}
+					tone={row.state === 'live' ? 'done' : answersNothing(row.state) ? 'attention' : undefined}
 					secondary={row.state === 'ended'}
 				>
 					{STATE_WORDS[row.state]}
@@ -500,8 +503,8 @@ function CampaignRecord({
 					// biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as `RecordCard` states it.
 					<ul role="list" className="adm-record__origins adm-record__foot">
 						<li>
-							{row.state === 'never_published' ? (
-								// nothing answers there until the first Publish, so it is no link yet.
+							{answersNothing(row.state) ? (
+								// nothing answers there until it is published, so it is no link.
 								<code className="adm-chip">{row.address}</code>
 							) : (
 								<a href={row.address} aria-label={`Open ${row.name} at ${row.address}`}>
@@ -511,7 +514,7 @@ function CampaignRecord({
 						</li>
 					</ul>
 				)}
-				{row.state === 'live' ? (
+				{ACTS_ON[END_FORM_ID].includes(row.state) ? (
 					// a link, because it writes nothing: it asks.
 					<Button
 						as={Link}

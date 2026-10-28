@@ -14,6 +14,17 @@ describe('placedImageIds', () => {
 		).toEqual([HERO, IMAGE]);
 	});
 
+	it('names the campaign’s logo after its photos', () => {
+		const LOGO = 'a1b2c3d4-0000-7000-8000-000000000003';
+		expect(
+			placedImageIds({
+				hero: { imageId: HERO, alt: null },
+				photos: [{ imageId: IMAGE, alt: 'Vans' }],
+				logo: { imageId: LOGO, alt: null }
+			})
+		).toEqual([HERO, IMAGE, LOGO]);
+	});
+
 	it('names nothing for a page with no photo', () => {
 		expect(placedImageIds({})).toEqual([]);
 	});

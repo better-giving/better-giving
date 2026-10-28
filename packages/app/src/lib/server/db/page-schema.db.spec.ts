@@ -134,14 +134,17 @@ describe('a campaign slug is unique; the Donation page has none', () => {
 		expect(message).toContain('page_slug_check');
 	});
 
-	it.each([['never_published'], ['live']])('refuses a %s campaign with no slug', async (state) => {
-		const published = state === 'live' ? CAMPAIGN.draft : null;
-		const message = await rejectionCode(() =>
-			insertPage({ ...CAMPAIGN, slug: null, state, published })
-		);
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('page_slug_check');
-	});
+	it.each([['never_published'], ['live'], ['unpublished']])(
+		'refuses a %s campaign with no slug',
+		async (state) => {
+			const published = state === 'never_published' ? null : CAMPAIGN.draft;
+			const message = await rejectionCode(() =>
+				insertPage({ ...CAMPAIGN, slug: null, state, published })
+			);
+			expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+			expect(message).toContain('page_slug_check');
+		}
+	);
 
 	it('accepts an ended campaign whose slug another campaign has taken', async () => {
 		const id = await insertPage({
@@ -175,7 +178,22 @@ describe('a campaign is named; the Donation page has no name of its own', () => 
 	});
 });
 
-describe('a page is never published, live or ended', () => {
+describe('a page is never published, live, unpublished or ended', () => {
+	it('accepts an unpublished campaign, which keeps its published page and its slug', async () => {
+		const id = await insertPage({
+			...CAMPAIGN,
+			slug: 'unpublished-probe',
+			state: 'unpublished',
+			published: CAMPAIGN.draft
+		});
+		const row = await first(stmt(`select slug, state, published from page where id = ?`, id));
+		expect(row).toEqual({
+			slug: 'unpublished-probe',
+			state: 'unpublished',
+			published: CAMPAIGN.draft
+		});
+	});
+
 	it.each([['draft'], ['published'], ['']])('refuses the state %j', async (state) => {
 		const message = await rejectionCode(() =>
 			insertPage({ ...CAMPAIGN, slug: 'state-probe', state })
@@ -184,11 +202,14 @@ describe('a page is never published, live or ended', () => {
 		expect(message).toContain('page_state_check');
 	});
 
-	it.each([['never_published'], ['ended']])('refuses a Donation page that is %s', async (state) => {
-		const message = await refusedAsDonationPage({ ...DONATION_PAGE, state });
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('page_donation_page_live_check');
-	});
+	it.each([['never_published'], ['unpublished'], ['ended']])(
+		'refuses a Donation page that is %s',
+		async (state) => {
+			const message = await refusedAsDonationPage({ ...DONATION_PAGE, state });
+			expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+			expect(message).toContain('page_donation_page_live_check');
+		}
+	);
 });
 
 describe('a published page exists exactly when the page has been live', () => {
@@ -200,13 +221,16 @@ describe('a published page exists exactly when the page has been live', () => {
 		expect(message).toContain('page_published_check');
 	});
 
-	it.each([['live'], ['ended']])('refuses a %s campaign with no published page', async (state) => {
-		const message = await rejectionCode(() =>
-			insertPage({ ...CAMPAIGN, slug: 'published-probe', state, published: null })
-		);
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('page_published_check');
-	});
+	it.each([['live'], ['unpublished'], ['ended']])(
+		'refuses a %s campaign with no published page',
+		async (state) => {
+			const message = await rejectionCode(() =>
+				insertPage({ ...CAMPAIGN, slug: 'published-probe', state, published: null })
+			);
+			expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+			expect(message).toContain('page_published_check');
+		}
+	);
 
 	it('refuses a last published page with no published page after it', async () => {
 		const message = await rejectionCode(() =>

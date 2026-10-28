@@ -49,8 +49,12 @@ const money = (minor: number | null | undefined): Money | null =>
 		? null
 		: { amount: majorText(minor, CURRENCY), currency: CURRENCY };
 
+/**
+ * a page state as `v1` names it. an unpublished campaign reads `draft`: it takes no gift and
+ * answers at no address until it is published again, as a never-published one; it keeps its slug.
+ */
 export function statusOf(state: PageRow['state']): CampaignStatus {
-	return state === 'never_published' ? 'draft' : state === 'live' ? 'published' : 'ended';
+	return state === 'live' ? 'published' : state === 'ended' ? 'ended' : 'draft';
 }
 
 const publicUrl = (origin: string, slug: string | null, status: CampaignStatus) =>
@@ -371,9 +375,9 @@ async function answer(
 
 /**
  * makes a campaign's draft live, through the dashboard's own Publish and its rules, guarded on the
- * row as read just before. `gifts_go_to` is the first Publish's answer to where gifts go, which the
- * chat asks the operator rather than answering itself: a program id to pin, or null to keep the
- * campaign's own donation settings. a later Publish takes none.
+ * row as read just before. `gifts_go_to` is an optional answer at the first Publish to where gifts
+ * go: a program id to pin, or null to keep the campaign's own donation settings, which leaving it
+ * out keeps too. a later Publish takes none.
  */
 export async function publishCampaign(
 	db: Db,
@@ -400,7 +404,7 @@ export async function publishCampaign(
 		case 'stale':
 			return changed('as it was being published', 'publish it again if it should still go live');
 		case 'refused':
-			if (outcome.at === GIFTS_GO_TO) return giftsGoToRefused(row.state === 'never_published');
+			if (outcome.at === GIFTS_GO_TO) return giftsGoToRefused();
 			return { ok: false, status: 422, code: 'invalid', detail: outcome.text };
 		case 'published':
 			return { ok: true, campaign: await reread(db, origin, now, id) };
@@ -410,18 +414,21 @@ export async function publishCampaign(
 const GIFTS_GO_TO_IS =
 	'gifts_go_to is a program id to pin this campaign’s gifts to, or null to keep its own donation settings';
 
-function giftsGoToRefused(first: boolean): Refused {
-	const message = first
-		? `a campaign’s first Publish says where its gifts go; ${GIFTS_GO_TO_IS}`
-		: 'where gifts go is answered at a campaign’s first Publish only, and this one has been published; leave gifts_go_to out';
+/** a `gifts_go_to` sent to a campaign already published, whose program is its Settings'. */
+function giftsGoToRefused(): Refused {
 	return {
 		ok: false,
 		status: 422,
 		code: 'invalid',
-		detail: first
-			? 'Nothing was published: ask the operator where this campaign’s gifts go, then publish again with gifts_go_to set to null to keep the campaign’s own donation settings, or to the id of the program to pin its gifts to.'
-			: 'Nothing was published: gifts_go_to is taken at a campaign’s first Publish only. Publish again without it; where gifts go is changed in the dashboard, under Settings, Donation settings.',
-		errors: [{ path: GIFTS_GO_TO, message }]
+		detail:
+			'Nothing was published: gifts_go_to is taken at a campaign’s first Publish only. Publish again without it; where gifts go is changed in the dashboard, in the campaign’s Settings.',
+		errors: [
+			{
+				path: GIFTS_GO_TO,
+				message:
+					'where gifts go is answered at a campaign’s first Publish only, and this one has been published; leave gifts_go_to out'
+			}
+		]
 	};
 }
 

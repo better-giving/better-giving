@@ -1,10 +1,13 @@
-// the editor's presses on the whole page as they post: Publish from the bar, a campaign's first
-// Publish from its confirm, Undo, Discard changes, and the Donation page's Reset to default. named
+// the editor's presses on the whole page as they post: Publish (and Publish changes) from the bar
+// or the banner, a campaign's first Publish from its confirm, a campaign's Unpublish, Undo, Discard
+// changes, and the Donation page's Reset to default. named
 // here, where both editors' components and `$lib/server/pages/publish.ts` and `reset.ts`, which
 // read them, import them from.
 
 export const PUBLISH_FORM_ID = 'page-publish';
 export const FIRST_PUBLISH_FORM_ID = 'page-first-publish';
+/** a campaign's alone: the Donation page is always live and names no such form. */
+export const UNPUBLISH_FORM_ID = 'page-unpublish';
 export const UNDO_FORM_ID = 'page-undo';
 export const DISCARD_FORM_ID = 'page-discard';
 /** the Donation page's alone: a campaign's editor has no Reset and names no such form. */

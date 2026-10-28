@@ -82,6 +82,8 @@ const MERGED_PAGE_FORM = 'frm_mergedpage';
 const MERGED_PAGE = '019fb300-0000-7000-8000-000000000511';
 const UNDO_PAGE_FORM = 'frm_undopage';
 const UNDO_PAGE = '019fb300-0000-7000-8000-000000000512';
+const PAGE_UNPUBLISHED_BY = '0032_page_unpublished.sql';
+const PAGE_UNPUBLISHED = MIGRATIONS.findIndex((m) => m.name === PAGE_UNPUBLISHED_BY);
 const BLOCK_PAGE_IMAGES = {
 	hero: '019fb300-0000-7000-8000-000000000502',
 	image: '019fb300-0000-7000-8000-000000000503'
@@ -700,6 +702,7 @@ let migrated:
 			pausedBacklogBefore: Row[];
 			orgPresentationBefore: Row[];
 			pagesBefore: Row[];
+			pagesBeforeUnpublished: Row[];
 			imagesBefore: Row[];
 			atApiKeyMove: Map<string, Row[]>;
 			recopy: { error: string | null; zapierRows: Row[] };
@@ -777,6 +780,8 @@ function migrateOverSeed() {
 		const imagesBefore = await all<Row>(stmt('select * from image order by id'));
 		await applyMigrations(bare, chain.slice(0, PAGE_CONTENT));
 		await seedBlockPage();
+		await applyMigrations(bare, chain.slice(0, PAGE_UNPUBLISHED));
+		const pagesBeforeUnpublished = await all<Row>(stmt('select * from page order by rowid'));
 		await applyMigrations(bare, chain);
 		const overSeed = (await recorded()).slice(underSeed.length);
 		return {
@@ -786,6 +791,7 @@ function migrateOverSeed() {
 			pausedBacklogBefore,
 			orgPresentationBefore,
 			pagesBefore,
+			pagesBeforeUnpublished,
 			imagesBefore,
 			atApiKeyMove,
 			recopy,
@@ -1427,6 +1433,43 @@ describe('0031 makes a page document content only', () => {
 		const names = columns.map((r) => (r as Row).name);
 		expect(names).toContain('slot');
 		expect(names).not.toContain('block_id');
+	});
+});
+
+describe('0032 lets a campaign be unpublished, keeping every page', () => {
+	let pagesBeforeUnpublished: Row[];
+	let after: Map<string, Row[]>;
+	let overSeed: string[];
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		({ pagesBeforeUnpublished, after, overSeed } = await migrateOverSeed());
+	});
+
+	it('is in the chain', () => {
+		expect(MIGRATIONS.map((m) => m.name)).toContain(PAGE_UNPUBLISHED_BY);
+	});
+
+	it.skipIf(nowhereToStop)('keeps every page, column for column', () => {
+		expect(overSeed).toContain(PAGE_UNPUBLISHED_BY);
+		expect(pagesBeforeUnpublished.length).toBeGreaterThan(3);
+		expect(after.get('page')).toEqual(pagesBeforeUnpublished);
+	});
+
+	it.skipIf(nowhereToStop)('takes an unpublished campaign, its indexes made again', async () => {
+		await run(stmt(`update page set state = 'unpublished' where id = ?`, BLOCK_PAGE));
+		const row = await first(stmt(`select state, slug from page where id = ?`, BLOCK_PAGE));
+		expect(row).toEqual({ state: 'unpublished', slug: 'winter-pantry' });
+		const indexes = await all(
+			stmt(
+				`select name from sqlite_master where type = 'index' and tbl_name = 'page' and name not like 'sqlite_%' order by name`
+			)
+		);
+		expect(indexes.map((r) => (r as Row).name)).toEqual([
+			'page_form_id_idx',
+			'page_one_donation_page_idx',
+			'page_slug_idx'
+		]);
 	});
 });
 

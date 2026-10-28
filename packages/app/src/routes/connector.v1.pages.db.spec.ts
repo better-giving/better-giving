@@ -66,6 +66,21 @@ describe('campaigns.publish', () => {
 		expect(await read.json()).toMatchObject({ status: 'published' });
 	});
 
+	it('reads an unpublished campaign as a draft, holding its slug and at no public address', async () => {
+		const key = await connect();
+		const id = await made(key);
+		await call('publish', `/campaigns/${id}/publish`, { method: 'POST', key });
+		await h.db.update(page).set({ state: 'unpublished' }).where(eq(page.id, id));
+
+		const read = await call('campaign', `/campaigns/${id}`, { key });
+
+		expect(await read.json()).toMatchObject({
+			status: 'draft',
+			slug: 'winter-coats',
+			public_url: null
+		});
+	});
+
 	it('refuses a draft the page rule refuses, with the rule’s reason, and publishes nothing', async () => {
 		const key = await connect();
 		const id = await made(key);
@@ -91,22 +106,15 @@ describe('campaigns.publish', () => {
 		expect(after?.published).toBeNull();
 	});
 
-	it('refuses a first Publish that does not say where gifts go, asking the operator', async () => {
+	it('makes a draft campaign live on its own donation settings where gifts_go_to is left out', async () => {
 		const key = await connect();
 		const id = await made(key);
 
 		const response = await call('publish', `/campaigns/${id}/publish`, { method: 'POST', key });
 
-		expect(response.status).toBe(422);
-		const problem = (await response.json()) as {
-			code: string;
-			detail: string;
-			errors: { path: string }[];
-		};
-		expect(problem).toMatchObject({ code: 'invalid', errors: [{ path: 'gifts_go_to' }] });
-		expect(problem.detail).toContain('ask the operator');
+		expect(response.status).toBe(200);
 		const [row] = await h.db.select().from(page).where(eq(page.id, id));
-		expect(row?.published).toBeNull();
+		expect(row?.state).toBe('live');
 	});
 
 	it('refuses gifts_go_to on a campaign already published', async () => {

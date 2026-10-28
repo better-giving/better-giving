@@ -9,8 +9,11 @@ import { readForm } from '../forms/queries';
 import { createImage, stored as imageStored } from '../images/image.testing';
 import { ensureDonationPage } from './donation-page';
 import { endAsItStands, heroShowing, insertPage, SETTINGS } from './page-row.testing';
-import { discardChanges, publishPage, undoPublish } from './publish';
-import { updateCampaignName } from './queries';
+import { answerPublishPress, discardChanges, publishPage, undoPublish } from './publish';
+import { endCampaign, updateCampaignName } from './queries';
+import { readServedCampaign } from './campaign';
+import { RECORD_VERSION, WHICH_FORM } from '../../forms/definition';
+import { PUBLISH_FORM_ID, UNPUBLISH_FORM_ID } from '../../page/publish-form';
 import { client, stmt } from '$lib/server/db/database.testing';
 
 // Publish, Undo and Discard changes against a real database: each is one `batch()` over
@@ -350,20 +353,25 @@ describe('a campaign’s first Publish', () => {
 		expect(await ownedSettings(pageId)).toMatchObject({ programMode: 'none', programId: null });
 	});
 
-	it('is refused without saying where gifts go, and nothing goes live', async () => {
-		const pageId = await insertPage(db, 'campaign', CAMPAIGN);
+	it('goes live on the draft’s own donation settings where nothing says where gifts go', async () => {
+		const coats = await aProgram('Winter coats');
+		const pinned = { ...SETTINGS, programMode: 'pinned' as const, programId: coats };
+		const pageId = await insertPage(db, 'campaign', { ...CAMPAIGN, settings: pinned });
+		await ownRow(pageId, SETTINGS, 'draft');
 		const drawn = await stored(pageId);
 
 		const outcome = await publishPage(db, { type: 'campaign', id: pageId }, drawn.updatedAt, {
 			now: NOW
 		});
 
-		expect(outcome).toEqual({
-			kind: 'refused',
-			text: 'Nothing was published: a campaign’s first Publish says where its gifts go. Publish it from its editor, choosing under “Gifts go to”.',
-			at: 'gifts_go_to'
+		expect(outcome).toEqual({ kind: 'published', undoable: false });
+		const after = await stored(pageId);
+		expect(after.state).toBe('live');
+		expect(await readForm(db, after.formId)).toMatchObject({
+			status: 'live',
+			programMode: 'pinned',
+			programId: coats
 		});
-		expect(await stored(pageId)).toEqual(drawn);
 	});
 
 	it('takes the retired program the draft already pins, as its confirm offers it', async () => {
@@ -420,7 +428,7 @@ describe('where gifts go', () => {
 
 			expect(outcome).toEqual({
 				kind: 'refused',
-				text: 'Nothing was published: where gifts go is asked only at a campaign’s first Publish. Change it in Settings, Donation settings, then publish.',
+				text: 'Nothing was published: where gifts go is chosen at a campaign’s first Publish only, and this one has been published. Change it in the campaign’s Settings, then publish.',
 				at: 'gifts_go_to'
 			});
 			expect(await stored(pageId)).toEqual(drawn);
@@ -706,5 +714,86 @@ describe('a photo the presses let go of', () => {
 		expect(outcome).toEqual({ kind: 'undone' });
 		expect(await imageStored(db, first)).toEqual({ row: true, bytes: true });
 		expect(await imageStored(db, second)).toEqual({ row: true, bytes: true });
+	});
+});
+
+describe('Unpublish', () => {
+	/** a campaign live at its own address, taking gifts through its settings row. */
+	async function liveCampaign(extra: Partial<PageDocument> = {}): Promise<string> {
+		const pageId = await insertPage(
+			db,
+			'campaign',
+			{ ...CAMPAIGN, ...extra },
+			{ ...CAMPAIGN, ...extra }
+		);
+		await db.update(page).set({ slug: 'winter-coat-drive' }).where(eq(page.id, pageId));
+		await ownRow(pageId, SETTINGS, 'live');
+		return pageId;
+	}
+
+	async function pressed(
+		pageId: string,
+		form: string,
+		target: 'campaign' | 'donation_page' = 'campaign'
+	) {
+		const body = new FormData();
+		body.set(WHICH_FORM, form);
+		body.set(RECORD_VERSION, String((await stored(pageId)).updatedAt.getTime()));
+		return answerPublishPress(
+			db,
+			target === 'campaign' ? { type: 'campaign', id: pageId } : { type: 'donation_page' },
+			body,
+			'gone'
+		);
+	}
+
+	it('takes the address down and the settings row out of service, and Publish puts both back', async () => {
+		const pageId = await liveCampaign();
+
+		expect(await pressed(pageId, UNPUBLISH_FORM_ID)).toEqual({ unpublished: true });
+		const down = await stored(pageId);
+		expect(down).toMatchObject({ state: 'unpublished', slug: 'winter-coat-drive' });
+		expect(down.published).not.toBeNull();
+		expect(await readServedCampaign(db, 'winter-coat-drive', NOW)).toBeNull();
+		expect((await readForm(db, down.formId))?.status).toBe('draft');
+
+		expect(await pressed(pageId, PUBLISH_FORM_ID)).toMatchObject({ published: true });
+		expect((await stored(pageId)).state).toBe('live');
+		expect((await readServedCampaign(db, 'winter-coat-drive', Date.now()))?.state).toBe('live');
+		expect((await readForm(db, down.formId))?.status).toBe('live');
+	});
+
+	it('is refused on a campaign past its published end, which has ended rather than gone down', async () => {
+		const ended = endOfDay({ day: '2026-09-01', timeZone: 'UTC', now: Number.NEGATIVE_INFINITY });
+		if (!ended.ok) throw new Error(ended.reason);
+		const pageId = await liveCampaign({ endsAt: ended.endsAt, endsZone: 'UTC' });
+
+		const answer = (await pressed(pageId, UNPUBLISH_FORM_ID)) as { init: { status: number } };
+
+		expect(answer.init.status).toBe(409);
+		expect((await stored(pageId)).state).toBe('live');
+	});
+
+	it('is refused on a campaign never published, and on the Donation page', async () => {
+		const draftOnly = await insertPage(db, 'campaign', CAMPAIGN);
+		const donationPage = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
+
+		const never = (await pressed(draftOnly, UNPUBLISH_FORM_ID)) as { init: { status: number } };
+		const donation = (await pressed(donationPage, UNPUBLISH_FORM_ID, 'donation_page')) as {
+			init: { status: number };
+		};
+
+		expect([never.init.status, donation.init.status]).toEqual([409, 400]);
+		expect((await stored(draftOnly)).state).toBe('never_published');
+		expect((await stored(donationPage)).state).toBe('live');
+	});
+
+	it('leaves an unpublished campaign that End then ends, its address saying so', async () => {
+		const pageId = await liveCampaign();
+		await pressed(pageId, UNPUBLISH_FORM_ID);
+
+		expect(await endCampaign(db, pageId, (await stored(pageId)).updatedAt)).toBe(true);
+		expect((await stored(pageId)).state).toBe('ended');
+		expect((await readServedCampaign(db, 'winter-coat-drive', NOW))?.state).toBe('ended');
 	});
 });
