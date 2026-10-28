@@ -169,6 +169,20 @@ describe('campaigns.end', () => {
 		expect(await response.json()).toMatchObject({ id, status: 'ended' });
 	});
 
+	it('ends an unpublished campaign, which gives its address up', async () => {
+		const key = await connect();
+		const id = await made(key);
+		await call('publish', `/campaigns/${id}/publish`, { method: 'POST', key });
+		await h.db.update(page).set({ state: 'unpublished' }).where(eq(page.id, id));
+
+		const response = await call('end', `/campaigns/${id}/end`, { method: 'POST', key });
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ id, status: 'ended' });
+		const [row] = await h.db.select().from(page).where(eq(page.id, id));
+		expect(row?.slug).toBeNull();
+	});
+
 	it('refuses a draft, which only Publish takes to donors', async () => {
 		const key = await connect();
 		const id = await made(key);
@@ -178,7 +192,7 @@ describe('campaigns.end', () => {
 		expect(response.status).toBe(422);
 		const problem = (await response.json()) as { code: string; detail: string };
 		expect(problem.code).toBe('invalid');
-		expect(problem.detail).toContain('only a published campaign can be ended');
+		expect(problem.detail).toContain('only a published or unpublished campaign can be ended');
 	});
 });
 

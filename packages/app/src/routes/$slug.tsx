@@ -15,7 +15,7 @@ import { checkSlug } from '$lib/page/slug';
 import { meterDonorPage } from '$lib/server/api/meter';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
 import { readOrgProfile, readOrgProfileLogo } from '$lib/server/org/queries';
-import { readServedCampaign } from '$lib/server/pages/campaign';
+import { publishedName, readServedCampaign } from '$lib/server/pages/campaign';
 import { loadPageView, refusedPage } from '$lib/server/pages/view';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
@@ -69,7 +69,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		return data(
 			{
 				kind: 'ended',
-				name: campaign.name,
+				name: publishedName(campaign),
 				orgName: profile?.legalName ?? null,
 				look: { brandColour: profile?.brandColour ?? null },
 				logo

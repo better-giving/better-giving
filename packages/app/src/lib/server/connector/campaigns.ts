@@ -432,7 +432,11 @@ function giftsGoToRefused(): Refused {
 	};
 }
 
-/** takes a live campaign off the air through the dashboard's End, guarded on the row as just read. */
+/**
+ * takes a live or unpublished campaign off the air through the dashboard's End, guarded on the row
+ * as just read. an unpublished one reads as `draft`, as one never published does, and only the
+ * stored state tells them apart.
+ */
 export async function endLiveCampaign(
 	db: Db,
 	origin: string,
@@ -441,13 +445,13 @@ export async function endLiveCampaign(
 ): Promise<Done | Refused> {
 	const row = await readPage(db, id);
 	if (row === null || row.type !== 'campaign') return missing(id);
-	const status = statusOf(stateAt(row, now.getTime()));
-	if (status !== 'published') {
+	const state = stateAt(row, now.getTime());
+	if (state !== 'live' && state !== 'unpublished') {
 		return {
 			ok: false,
 			status: 422,
 			code: 'invalid',
-			detail: `Nothing was ended: only a published campaign can be ended, and this one is ${status}.`
+			detail: `Nothing was ended: only a published or unpublished campaign can be ended, and this one is ${state === 'ended' ? 'ended' : 'a draft never published'}.`
 		};
 	}
 	if (!(await endCampaign(db, id, row.updatedAt)))

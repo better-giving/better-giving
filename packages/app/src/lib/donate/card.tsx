@@ -184,6 +184,11 @@ export type DonateCardProps = {
 	 */
 	readonly opening?: Opening;
 	/**
+	 * the words a campaign's page draws under each suggested amount, by the amount in minor units.
+	 * the card's own config carries no labels; a tile with none draws its figure alone.
+	 */
+	readonly amountLabels?: Readonly<Record<string, string>> | undefined;
+	/**
 	 * whether the page's url carries this form's resume stamp (`RESUME_FORM_PARAM` in
 	 * @better-giving/form/embed/resume), which is what the route can see of a return from a payment
 	 * provider.
@@ -202,7 +207,8 @@ export function DonateCard({
 	resuming = false,
 	pageProgram,
 	onProgramChange,
-	opening
+	opening,
+	amountLabels
 }: DonateCardProps) {
 	// a second gift is a fresh boot rather than a state on the flow: what the last gift left behind is
 	// not the flow's to clear — the provider's own fields still hold the card the donor entered and a
@@ -222,6 +228,7 @@ export function DonateCard({
 			restart={(focused) => setBoot((last) => ({ at: last.at + 1, focused }))}
 			{...(seams === undefined ? {} : { seams })}
 			{...(pageProgram === undefined ? {} : { pageProgram })}
+			{...(amountLabels === undefined ? {} : { amountLabels })}
 			{...(onProgramChange === undefined ? {} : { onProgramChange })}
 			monthly={opening?.monthly === true}
 			dedication={opening?.dedication === true}
@@ -238,9 +245,11 @@ function CheckoutCard({
 	pageProgram,
 	onProgramChange,
 	monthly,
-	dedication
+	dedication,
+	amountLabels
 }: {
 	config: FormConfig;
+	amountLabels?: DonateCardProps['amountLabels'];
 	/** whether this card's first paint puts the caret on its heading, which only a restart asks. */
 	takeFocus: boolean;
 	/** a fresh card, told whether this one held the caret when it was asked for. */
@@ -1162,6 +1171,7 @@ function CheckoutCard({
 						submits={shown === 'amount'}
 						refs={amountRefs}
 						drawsProgram={pagePick === undefined}
+						amountLabels={amountLabels}
 					/>
 					<DetailsStep
 						api={api}

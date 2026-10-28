@@ -52,6 +52,16 @@ export async function readServedCampaign(
 	return { ...row, state: stateAt(row, now) } as ServedCampaign;
 }
 
+/**
+ * the name donors were last shown: the published document's, which a rename reaches at Publish,
+ * or the row's where the published page names none or no longer reads.
+ */
+export function publishedName(row: ServedCampaign): string {
+	if (row.published === null) return row.name;
+	const read = readDocument(row, 'published', row.published);
+	return read.ok ? (read.page.name ?? row.name) : row.name;
+}
+
 /** a campaign as the Campaigns list reads it: its row, and its draft's goal and end. */
 export type CampaignListing = Pick<Page, 'id' | 'slug' | 'state' | 'updatedAt'> & {
 	name: string;

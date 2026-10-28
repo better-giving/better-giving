@@ -17,6 +17,7 @@ import { present } from '../org/receipt-fields';
 import { createPaymentProviders } from '../payments/factory';
 import { readActiveProgramPhotos } from '../programs/queries';
 import { readDocument } from './document';
+import { readImageShape } from '../images/queries';
 import { pageGoal } from './goal';
 
 // everything a donor page draws beyond its own stored document, read for one page: the donation
@@ -120,6 +121,8 @@ export async function loadPageView(
 	const { page } = parsed;
 	// the name the document was drafted with, so a rename reaches donors at Publish.
 	const pageName = page.name ?? source.name;
+	// a campaign's own logo stands where the organisation's would.
+	const pageLogo = page.logo === undefined ? null : await readImageShape(db, page.logo.imageId);
 	const orgName = config.orgLegalName;
 	const goal = await pageGoal(db, source.formId, page, config.locale);
 
@@ -135,7 +138,7 @@ export async function loadPageView(
 				vision: profile?.vision ?? null,
 				info: orgInfo(config, profile)
 			},
-			logo,
+			logo: pageLogo ?? logo,
 			programPhotos: chooserPhotos(config, photos),
 			look: { brandColour },
 			sharing: {

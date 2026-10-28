@@ -95,7 +95,7 @@ export async function deleteNeverPublishedCampaign(
 
 /**
  * ends a live or unpublished campaign: the page to `ended` and the settings row it owns out of
- * service, in one `batch()`, while the page is still the version it was drawn at. false when the
+ * service, in one `batch()`, and an unpublished one's address given up, while the page is still the version it was drawn at. false when the
  * page is missing, is the donation page, is neither live nor unpublished, or has been written since
  * `version`.
  *
@@ -132,7 +132,16 @@ function ending(db: Db, pageId: string, version: Date, also?: SQL) {
 					inArray(form.id, db.select({ id: page.formId }).from(page).where(endable))
 				)
 			),
-		db.update(page).set({ state: 'ended' }).where(endable).returning({ id: page.id })
+		// an unpublished campaign answered nothing at its address, and ended it would answer with the
+		// ended screen: it gives the address up instead.
+		db
+			.update(page)
+			.set({
+				state: 'ended',
+				slug: sql`case when ${page.state} = 'unpublished' then null else ${page.slug} end`
+			})
+			.where(endable)
+			.returning({ id: page.id })
 	] as const;
 }
 
@@ -277,7 +286,7 @@ export async function planSlugMove(
 				.where(
 					and(eq(page.id, holder.id), eq(page.state, 'ended'), eq(page.slug, slug), stillDrawn)
 				);
-			if (holder.stored !== 'live') return [release];
+			if (holder.stored === 'ended') return [release];
 			const [endRow, endPage] = ending(db, holder.id, holder.version, stillDrawn);
 			return [endRow, endPage, release];
 		}

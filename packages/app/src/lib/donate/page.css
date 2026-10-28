@@ -1401,3 +1401,15 @@ body {
 	border-color: var(--_edge-unavailable);
 	border-style: dashed;
 }
+
+/* a campaign's suggested amount with a label under its figure (`amountLabels` in ./card.tsx): the
+   tile stacks the two, and the label is the description's quiet ink at the small step. */
+.page-ground [part~='amount-option']:has(.amount-label) {
+	flex-direction: column;
+	gap: var(--_sp1);
+}
+
+.page-ground .amount-label {
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+}

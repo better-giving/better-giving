@@ -1,4 +1,4 @@
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
 import { image, type NewImage } from '../db/schema';
@@ -34,4 +34,16 @@ export async function firstMissingImage(db: Db, ids: readonly string[]): Promise
 		.where(inArray(image.id, [...ids]));
 	const stored = new Set(found.map(({ id }) => id));
 	return ids.find((id) => !stored.has(id)) ?? null;
+}
+
+/** a stored image's id and shape, as a page draws a logo; null where no image has the id. */
+export async function readImageShape(
+	db: Db,
+	id: string
+): Promise<{ imageId: string; width: number; height: number } | null> {
+	const [row] = await db
+		.select({ imageId: image.id, width: image.width, height: image.height })
+		.from(image)
+		.where(eq(image.id, id));
+	return row ?? null;
 }
