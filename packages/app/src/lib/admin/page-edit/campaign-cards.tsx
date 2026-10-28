@@ -454,42 +454,40 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 				{rows.map((row, at) => {
 					const labelId = `${id}-label-${row.key}`;
 					return (
-						<div className="adm-pair adm-pair--side" key={row.key}>
-							<MoneyField
-								id={`${id}-amount-${row.key}`}
-								name={`${EDIT_BOXES.amount}[${at}]`}
-								aria-label={`Amount ${at + 1}`}
-								currency={currency}
-								affix={currency}
-								affixAt="end"
-								value={row.amount}
-								onValueChange={(amount) => edit(row.key, { amount })}
-								error={firstError(errors, `${EDIT_BOXES.amount}[${at}]`)}
-							/>
-							<div className="adm-stack adm-stack--tight">
-								<div className="adm-actions">
-									<Field
-										id={labelId}
-										name={`${EDIT_BOXES.amountLabel}[${at}]`}
-										aria-label={`Label for amount ${at + 1}`}
-										placeholder="Label (optional)"
-										value={row.label}
-										aria-describedby={`${labelId}-count`}
-										onChange={(event) => edit(row.key, { label: event.currentTarget.value })}
-										error={firstError(errors, `${EDIT_BOXES.amountLabel}[${at}]`)}
-									/>
-									<Button
-										type="button"
-										variant="quiet"
-										mark="trash-2"
-										aria-label={`Remove amount ${at + 1}`}
-										onClick={() => setRows(rows.filter((each) => each.key !== row.key))}
-									>
-										Remove
-									</Button>
-								</div>
-								<Counter id={`${labelId}-count`} count={row.label.length} max={AMOUNT_LABEL_MAX} />
+						<div className="adm-stack adm-stack--tight" key={row.key}>
+							<div className="adm-actions">
+								<MoneyField
+									id={`${id}-amount-${row.key}`}
+									name={`${EDIT_BOXES.amount}[${at}]`}
+									aria-label={`Amount ${at + 1}`}
+									currency={currency}
+									affix={currency}
+									affixAt="end"
+									value={row.amount}
+									onValueChange={(amount) => edit(row.key, { amount })}
+									error={firstError(errors, `${EDIT_BOXES.amount}[${at}]`)}
+								/>
+								<Field
+									id={labelId}
+									name={`${EDIT_BOXES.amountLabel}[${at}]`}
+									aria-label={`Label for amount ${at + 1}`}
+									placeholder="Label (optional)"
+									value={row.label}
+									aria-describedby={`${labelId}-count`}
+									onChange={(event) => edit(row.key, { label: event.currentTarget.value })}
+									error={firstError(errors, `${EDIT_BOXES.amountLabel}[${at}]`)}
+								/>
+								<Button
+									type="button"
+									variant="quiet"
+									mark="trash-2"
+									aria-label={`Remove amount ${at + 1}`}
+									onClick={() => setRows(rows.filter((each) => each.key !== row.key))}
+								>
+									Remove
+								</Button>
 							</div>
+							<Counter id={`${labelId}-count`} count={row.label.length} max={AMOUNT_LABEL_MAX} />
 						</div>
 					);
 				})}
