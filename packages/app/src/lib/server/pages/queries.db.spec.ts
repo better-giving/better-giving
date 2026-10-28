@@ -5,7 +5,7 @@ import { createDb, type Db } from '../db/client';
 import { form, page } from '../db/schema';
 import type { PageState, PageType } from '../../page/keys';
 import { createImage, stored as imageStored } from '../images/image.testing';
-import { heroShowing, insertPage, } from './page-row.testing';
+import { heroShowing, insertPage } from './page-row.testing';
 import { deleteNeverPublishedCampaign, endCampaign, readPage } from './queries';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 

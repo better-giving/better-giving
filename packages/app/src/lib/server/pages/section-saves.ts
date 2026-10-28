@@ -36,7 +36,7 @@ import {
 	draftSettingsOf,
 	planSlugMove,
 	readTarget,
-	type SettingsTarget,
+	type SettingsTarget
 } from './queries';
 
 // each section card's Save on a page's edit screen ($lib/page/edit-forms.ts): the box values parsed
