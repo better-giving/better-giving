@@ -66,6 +66,8 @@ export type PageLogo = {
 	readonly imageId: string;
 	readonly width: number;
 	readonly height: number;
+	/** what a campaign's own logo was described as; absent or blank, the masthead's name says it. */
+	readonly alt?: string | null | undefined;
 };
 
 export type PageViewProps = {
@@ -353,10 +355,10 @@ export function Masthead({
 		<header className="page-mast">
 			<div className="page-in page-mast-in">
 				{logo.width >= 2 * logo.height ? (
-					<p className="page-mast-name">{art(name)}</p>
+					<p className="page-mast-name">{art(logo.alt?.trim() || name)}</p>
 				) : (
 					<>
-						{art('')}
+						{art(logo.alt?.trim() ?? '')}
 						<p className="page-mast-name">{name}</p>
 					</>
 				)}

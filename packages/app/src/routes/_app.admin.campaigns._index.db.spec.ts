@@ -428,6 +428,22 @@ describe('End on an unpublished campaign', () => {
 		expect((await listed('Winter coat drive')).address).toBeNull();
 		expect(await visit('winter-coat-drive')).toMatchObject({ kind: 'refused' });
 	});
+
+	it('is still offered past the campaign’s published end date, and gives its address up', async () => {
+		const pageId = await campaign('Winter coat drive', 'unpublished', NOW, {
+			endsAt: Date.now() - 60_000,
+			endsZone: 'America/New_York'
+		});
+		const before = await listed('Winter coat drive');
+		expect(before.state).toBe('unpublished');
+
+		const response = await press('campaign-end', before, `${LIST}?end=${pageId}`);
+
+		expect(response.status).toBe(303);
+		const after = await listed('Winter coat drive');
+		expect([after.state, after.address]).toEqual(['ended', null]);
+		expect(await visit('winter-coat-drive')).toMatchObject({ kind: 'refused' });
+	});
 });
 
 describe('Publish from the Ended group', () => {

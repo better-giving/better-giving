@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isEnded } from './ended';
+import { isEnded, pastPublishedEnd } from './ended';
 import { endOfDay } from './end-date';
 
 // node pool: whether a page has ended is its stored state and its published end against a clock the
@@ -32,11 +32,12 @@ describe('whether a campaign has ended', () => {
 		expect(isEnded(live({}), Number.MAX_SAFE_INTEGER)).toBe(false);
 	});
 
-	it('reads an unpublished campaign as ended from its published end instant', () => {
+	it('keeps an unpublished campaign unpublished past its published end, End being what ends it', () => {
 		const published = JSON.stringify({ endsAt: END, endsZone: 'America/New_York' });
 		const unpublished = { state: 'unpublished' as const, published };
-		expect(isEnded(unpublished, END - 1)).toBe(false);
-		expect(isEnded(unpublished, END)).toBe(true);
+		expect(isEnded(unpublished, END)).toBe(false);
+		expect(pastPublishedEnd(unpublished, END - 1)).toBe(false);
+		expect(pastPublishedEnd(unpublished, END)).toBe(true);
 	});
 
 	it('has ended once End ended it, whatever its end date', () => {

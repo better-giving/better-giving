@@ -139,7 +139,6 @@ export function GeneralCard({
 			saveName="general"
 			version={version}
 			changed={changed}
-			saved="The name and link changed at once. Donors see the description once you publish."
 		>
 			<Field
 				id={fields.name.id}
@@ -153,7 +152,7 @@ export function GeneralCard({
 				id={fields.slug.id}
 				name={fields.slug.name}
 				label="Campaign link"
-				hint="Links you’ve already shared stop working when you change this."
+				hint="Links you’ve already shared stop working once you publish a new one."
 				affix={host}
 				affixAt="start"
 				value={slug}
@@ -182,8 +181,8 @@ export function GeneralCard({
 					onDismiss={no}
 				>
 					<p>
-						<code className="adm-chip">{question.from}</code> stops working at once, and links
-						already shared to it will find nothing.
+						Once you publish, <code className="adm-chip">{question.from}</code> stops working, and
+						links already shared to it will find nothing.
 					</p>
 				</Modal>
 			) : null}
@@ -197,8 +196,8 @@ export function GeneralCard({
 					onDismiss={no}
 				>
 					<p>
-						This link now shows that {question.holder} has ended. Using it here leaves{' '}
-						{question.holder} with no link.
+						This link now shows that {question.holder} has ended. Once you publish, it is this
+						campaign’s, and {question.holder} is left with no link.
 					</p>
 				</Modal>
 			) : null}

@@ -31,17 +31,12 @@ import { type DraftAlongside, editPageDraft } from './draft-writer';
 import { formInputValues, parseFormGiving, parseFormProgram } from '../forms/form-input';
 import { firstMissingImage } from '../images/queries';
 import { readEndDay } from './page-settings';
-import { sqliteResultCode } from '../db/rejection';
 import {
 	draftSettingsAfter,
 	draftSettingsOf,
 	planSlugMove,
 	readTarget,
-	renamedColumns,
-	renamingOwned,
-	SLUG_ATTEMPTS,
 	type SettingsTarget,
-	slugRace
 } from './queries';
 
 // each section card's Save on a page's edit screen ($lib/page/edit-forms.ts): the box values parsed
@@ -50,8 +45,8 @@ import {
 // drawn before another write — another card's Save, a Publish — is refused at 409 rather than
 // putting back what that write moved, and a photo the draft lets go of is freed in the same write.
 //
-// nothing here reaches donors before Publish (./publish.ts), but the General card's name and link,
-// which are not page content and move at once.
+// nothing here reaches donors before Publish (./publish.ts), the General card's name and link
+// included.
 
 type CampaignTarget = Extract<SettingsTarget, { type: 'campaign' }>;
 type DonationPageTarget = Extract<SettingsTarget, { type: 'donation_page' }>;
@@ -189,12 +184,12 @@ function slugPredicate(refused: Exclude<SlugCheck, { ok: true }>): string {
 }
 
 /**
- * General: the name, the link and the description, in one `batch()` guarded on the version drawn.
- * the description is the draft's; the name and the link are not page content and move at once —
- * the name everywhere a rename reaches (`renaming` in ./queries.ts), the draft's name reaching
- * donors at Publish, and the link as `updateCampaignSlug` moves it. a link that would stop a
- * published campaign's address working, or take an ended campaign's, is answered with the question
- * and nothing is written; the resubmission ticks `move` or `takeover`.
+ * General: the name, the link and the description, written to the draft alone, as every card's
+ * save is: donors see all three at Publish, which takes the name and the link onto the campaign's
+ * row (`publishPage` in ./publish.ts). a link that would stop a published campaign's address
+ * working, or take an ended campaign's, is answered with the question and nothing is written; the
+ * resubmission ticks `move` or `takeover`. a link another campaign holds live is refused here, and
+ * again at Publish where one has taken it since.
  */
 export async function saveCampaignGeneral(
 	db: Db,
@@ -232,47 +227,31 @@ export async function saveCampaignGeneral(
 	const to = `/${checked.slug}`;
 
 	return answer(EDIT_FORMS.campaignGeneral, submission, gone, async (): Promise<SectionWrite> => {
-		const now = Date.now();
-		for (let attempt = 1; ; attempt += 1) {
-			const row = await readTarget(db, target);
-			if (row === null) return { kind: 'gone' };
-			if (row.updatedAt.getTime() !== seen.getTime()) return { kind: 'stale' };
-			const plan = await planSlugMove(db, row, checked.slug, confirmed, now);
-			if (plan.kind === 'taken') return plan;
-			if (plan.kind === 'ask') {
-				return {
-					kind: 'ask',
-					ask:
-						plan.ask === 'move'
-							? { kind: 'move', from: `/${plan.from}`, to }
-							: { kind: 'takeover', holder: plan.holder, to }
-				};
-			}
-			const renamed = name === row.name ? null : await renamedColumns(db, row, name);
-			const moving = plan.kind === 'move' ? plan : null;
-			try {
-				return await writeSection(db, target, seen, async (draft) => ({
-					ok: true,
-					draft: { ...draft, name, story: description },
-					alongside: {
-						columns: { ...renamed, ...(moving === null ? {} : { slug: checked.slug }) },
-						// the link's release first, for `page_slug_idx`; the owned row's rename before the
-						// page's update, which moves what `drawn` reads.
-						before: (drawn) => [
-							...(moving === null ? [] : moving.before(drawn)),
-							...(renamed === null ? [] : [renamingOwned(db, row.formId, name, drawn)])
-						]
-					}
-				}));
-			} catch (error) {
-				if (moving !== null)
-					return { kind: 'taken', by: await slugRace(db, checked.slug, now, error) };
-				// the address the name led to was taken between the read and the write.
-				if (attempt === SLUG_ATTEMPTS || sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') {
-					throw error;
-				}
-			}
+		const row = await readTarget(db, target);
+		if (row === null) return { kind: 'gone' };
+		if (row.updatedAt.getTime() !== seen.getTime()) return { kind: 'stale' };
+		// the questions a link asks are asked here, where it is typed, and Publish moves it
+		// (`publishPage` in ./publish.ts), refusing a link a live campaign has taken since.
+		const plan = await planSlugMove(db, row, checked.slug, confirmed, Date.now());
+		if (plan.kind === 'taken') return plan;
+		if (plan.kind === 'ask') {
+			return {
+				kind: 'ask',
+				ask:
+					plan.ask === 'move'
+						? { kind: 'move', from: `/${plan.from}`, to }
+						: { kind: 'takeover', holder: plan.holder, to }
+			};
 		}
+		return writeSection(db, target, seen, async (draft) => ({
+			ok: true,
+			draft: {
+				...draft,
+				name,
+				story: description,
+				slug: checked.slug === row.slug ? undefined : checked.slug
+			}
+		}));
 	});
 }
 

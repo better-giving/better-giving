@@ -15,7 +15,7 @@ import { checkSlug } from '$lib/page/slug';
 import { meterDonorPage } from '$lib/server/api/meter';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
 import { readOrgProfile, readOrgProfileLogo } from '$lib/server/org/queries';
-import { publishedName, readServedCampaign } from '$lib/server/pages/campaign';
+import { publishedLogo, publishedName, readServedCampaign } from '$lib/server/pages/campaign';
 import { loadPageView, refusedPage } from '$lib/server/pages/view';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
@@ -41,7 +41,8 @@ import type { Route } from './+types/$slug';
 //
 // an `ended` campaign — ended by End, or live and past its published end date, which reads the same
 // ($lib/page/ended.ts) — still holds its address, so the address answers 200 with the ended screen:
-// the organisation's name and logo atop it, the campaign's name, that it has ended, and the way on
+// the organisation's name atop it under the campaign's own logo, or the organisation's where the
+// campaign's page holds none, the campaign's name, that it has ended, and the way on
 // to /donate — in the organisation's brand colour, with none of its content and no donation box,
 // since its owned settings row is out of service (`endCampaign` in $lib/server/pages/queries.ts,
 // and read so past the end date by `readPublishedConfig`).
@@ -65,7 +66,13 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const campaign = await readServedCampaign(db, address.slug, now);
 	if (campaign === null) return refusedPage();
 	if (campaign.state === 'ended') {
-		const [profile, logo] = await Promise.all([readOrgProfile(db), readOrgProfileLogo(db)]);
+		const [profile, orgLogo, ownLogo] = await Promise.all([
+			readOrgProfile(db),
+			readOrgProfileLogo(db),
+			publishedLogo(db, campaign)
+		]);
+		// the campaign's own logo where its page holds one, as its live page drew it.
+		const logo = ownLogo ?? orgLogo;
 		return data(
 			{
 				kind: 'ended',

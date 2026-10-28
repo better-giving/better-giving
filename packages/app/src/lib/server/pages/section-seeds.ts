@@ -56,7 +56,8 @@ export async function readCampaignEditSeeds(
 	const labelOf = new Map((draft.amountLabels ?? []).map((each) => [each.amountMinor, each.label]));
 	return {
 		general: {
-			boxes: { name: row.name ?? '', slug: row.slug ?? '' },
+			// what General last saved, which Publish takes live: the draft's, else the row's.
+			boxes: { name: draft.name ?? row.name ?? '', slug: draft.slug ?? row.slug ?? '' },
 			story: draft.story ?? BLANK_STORY
 		},
 		media: {

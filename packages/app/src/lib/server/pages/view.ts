@@ -122,7 +122,8 @@ export async function loadPageView(
 	// the name the document was drafted with, so a rename reaches donors at Publish.
 	const pageName = page.name ?? source.name;
 	// a campaign's own logo stands where the organisation's would.
-	const pageLogo = page.logo === undefined ? null : await readImageShape(db, page.logo.imageId);
+	const shape = page.logo === undefined ? null : await readImageShape(db, page.logo.imageId);
+	const pageLogo = shape === null ? null : { ...shape, alt: page.logo?.alt };
 	const orgName = config.orgLegalName;
 	const goal = await pageGoal(db, source.formId, page, config.locale);
 

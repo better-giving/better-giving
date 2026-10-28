@@ -167,6 +167,24 @@ describe('the edit page', () => {
 		});
 	});
 
+	it('offers End on an unpublished campaign past its published end date', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		const row = await stored(pageId);
+		const published = {
+			...JSON.parse(row.published ?? '{}'),
+			endsAt: Date.now() - 60_000,
+			endsZone: 'America/New_York'
+		};
+		await db
+			.update(page)
+			.set({ state: 'unpublished', published: JSON.stringify(published) })
+			.where(eq(page.id, pageId));
+
+		expect(await (await open(pageId)).json()).toMatchObject({
+			banner: { state: 'not_public', unpublishable: false, endable: true }
+		});
+	});
+
 	it('answers 404 for the Donation page and for an id no page has', async () => {
 		const donationPage = await insertPage(db, 'donation_page');
 
@@ -245,7 +263,7 @@ describe('a section’s Save', () => {
 		expect((await stored(pageId)).draft).toBe(between);
 	});
 
-	it('asks before moving a published campaign’s link, and moves it once the move is confirmed', async () => {
+	it('asks before moving a published campaign’s link, drafts the move once confirmed, and Publish makes it', async () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
 
 		const asked = await general(pageId, { slug: 'warm-hands' });
@@ -258,7 +276,16 @@ describe('a section’s Save', () => {
 		const moved = await general(pageId, { slug: 'warm-hands', move: 'on' });
 
 		expect(moved.status).toBe(200);
+		expect((await stored(pageId)).slug).toBe('winter-coat-drive');
+		expect(await (await open(pageId)).json()).toMatchObject({
+			banner: { state: 'changed' },
+			seeds: { general: { boxes: { slug: 'warm-hands' } } }
+		});
+		expect(await readServedCampaign(db, 'winter-coat-drive', Date.now())).not.toBeNull();
+
+		expect((await post(pageId, 'page-publish', {})).status).toBe(200);
 		expect((await stored(pageId)).slug).toBe('warm-hands');
+		expect(await readServedCampaign(db, 'winter-coat-drive', Date.now())).toBeNull();
 	});
 });
 

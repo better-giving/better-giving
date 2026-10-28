@@ -286,6 +286,9 @@ describe('a section’s Save', () => {
 			share_message: 'I gave to keep a child warm.'
 		});
 		expect(button('Saved settings').textContent).toBe('Saved settings');
+		expect(card('Settings').textContent).toContain(
+			'Your changes are saved and go live when you publish.'
+		);
 	});
 });
 

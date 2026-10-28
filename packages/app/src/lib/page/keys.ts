@@ -16,6 +16,11 @@ export const PAGE_KEYS = {
 	 * current name for it.
 	 */
 	name: 'name',
+	/**
+	 * a campaign's link as its draft would move it, present only while that move waits on Publish,
+	 * which takes it onto `page.slug` and drops it from the document. absent, the link is `page.slug`.
+	 */
+	slug: 'slug',
 	/** a campaign's goal, minor units of its owned settings row's currency. */
 	goalMinor: 'goalMinor',
 	/** a campaign's end: the end of the chosen day, unix ms, in the setting browser's time zone. */

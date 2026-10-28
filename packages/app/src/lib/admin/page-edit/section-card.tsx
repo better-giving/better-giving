@@ -3,7 +3,7 @@ import { Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
-import { getFormProps } from '@conform-to/react';
+import type { getFormProps } from '@conform-to/react';
 import { type ReactNode, type SubmitEvent, useState } from 'react';
 import { Form, useActionData, useFormAction, useNavigation } from 'react-router';
 import { buttonState } from '../save-button-state';
@@ -24,6 +24,9 @@ import { WHICH_FORM } from '$lib/forms/definition';
 // a save that landed answers `{ saved: <form id> }`, which draws the tick on this card's Save alone.
 // the Save's name carries the card's — "Save general" — in words a reader hears and the eye skips,
 // so the name always holds what the button shows.
+
+/** what a landed save says: it is saved, and reaches donors at Publish. */
+export const PUBLISH_NOTE = 'Your changes are saved and go live when you publish.';
 
 /** the screen's writes as the cards read them: whether one is in flight, and which form posted it. */
 export function useScreenWrite() {
@@ -72,8 +75,8 @@ type SectionCardProps = {
 	/** something the card waits on before it may save — a photo uploading. */
 	readonly held?: boolean | undefined;
 	/**
-	 * what the confirmation says after "Saved" about the rest of the page. the default is true of a
-	 * draft save: donors see nothing until Publish, and the banner may now say so.
+	 * what the confirmation says after "Saved" about the rest of the page. the default is true of
+	 * every card's save: it is in the draft, and donors see it at Publish.
 	 */
 	readonly saved?: string | undefined;
 	/** run before conform's pass, with the form about to post: the end date's time zone. */
@@ -90,7 +93,7 @@ export function SectionCard({
 	changed,
 	held = false,
 	beforeSubmit,
-	saved = 'Donors see it once you publish.',
+	saved = PUBLISH_NOTE,
 	hint,
 	children
 }: SectionCardProps) {
@@ -139,6 +142,7 @@ export function SectionCard({
 						disabled={writing && !pending}
 					/>
 					{state === 'idle' ? <p className="adm-hint">Unsaved changes</p> : null}
+					{state === 'done' ? <p className="adm-hint">{saved}</p> : null}
 				</div>
 			</Section>
 		</Form>

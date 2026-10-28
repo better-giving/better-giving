@@ -12,6 +12,8 @@ import { page, type Page } from '../db/schema';
 import { formInputValuesFrom, type ParsedForm, parseFormInput } from '../forms/form-input';
 import { ownedFormInsert, readForm } from '../forms/queries';
 import { readDocument } from './document';
+import { readImageShape } from '../images/queries';
+import type { PageLogo } from '../../donate/page-view';
 import { ensureDonationPage } from './donation-page';
 import { SLUG_ATTEMPTS } from './queries';
 
@@ -60,6 +62,19 @@ export function publishedName(row: ServedCampaign): string {
 	if (row.published === null) return row.name;
 	const read = readDocument(row, 'published', row.published);
 	return read.ok ? (read.page.name ?? row.name) : row.name;
+}
+
+/**
+ * the campaign's own logo as donors were last shown it, with its shape and the words that describe
+ * it, or null where the published page holds none (the organisation's stands in its place).
+ */
+export async function publishedLogo(db: Db, row: ServedCampaign): Promise<PageLogo | null> {
+	if (row.published === null) return null;
+	const read = readDocument(row, 'published', row.published);
+	const logo = read.ok ? read.page.logo : undefined;
+	if (logo === undefined) return null;
+	const shape = await readImageShape(db, logo.imageId);
+	return shape === null ? null : { ...shape, alt: logo.alt };
 }
 
 /** a campaign as the Campaigns list reads it: its row, and its draft's goal and end. */

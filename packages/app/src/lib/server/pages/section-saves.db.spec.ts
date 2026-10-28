@@ -14,6 +14,7 @@ import { page, program } from '../db/schema';
 import { readForm } from '../forms/queries';
 import { createImage, stored as imageStored } from '../images/image.testing';
 import { endAsItStands, heroShowing, insertPage, SETTINGS } from './page-row.testing';
+import { publishPage } from './publish';
 import { readPage } from './queries';
 import { saveCampaignSection, saveDonationPageSection } from './section-saves';
 import { client } from '$lib/server/db/database.testing';
@@ -468,58 +469,83 @@ let slugs = 0;
 /** a link no other test's campaign holds, since the file shares one database. */
 const fresh = (base: string) => `${base}-${(slugs += 1)}`;
 
+/** Publish on `pageId`, at the version it holds now. */
+async function publish(pageId: string) {
+	const { row } = await stored(pageId);
+	return publishPage(db, { type: 'campaign', id: pageId }, row.updatedAt, { now: Date.now() });
+}
+
 async function slugged(pageId: string, slug: string) {
 	await db.update(page).set({ slug }).where(eq(page.id, pageId));
 }
 
 describe('General', () => {
-	it('writes the description to the draft, and the name everywhere a rename reaches', async () => {
+	it('writes the name, the link and the description to the draft alone, and Publish takes them live', async () => {
 		const pageId = await insertPage(db, 'campaign', withPage({}), withPage({}));
-		const { published } = await untouched(pageId);
+		const [from, to] = [fresh('coats'), fresh('spring-coats')];
+		await slugged(pageId, from);
+		const before = await stored(pageId);
 
-		const answer = await press(
-			pageId,
-			EDIT_FORMS.campaignGeneral,
-			await general(pageId, { name: 'Spring coat drive', story: story('Warm by May.') })
-		);
+		const answer = await press(pageId, EDIT_FORMS.campaignGeneral, [
+			...(await general(pageId, {
+				name: 'Spring coat drive',
+				slug: to,
+				story: story('Warm by May.')
+			})),
+			['move', 'on']
+		]);
 
 		expect(answer).toEqual({ saved: 'campaign-general' });
-		const { row, draft } = await stored(pageId);
-		expect(row.name).toBe('Spring coat drive');
-		expect(draft.name).toBe('Spring coat drive');
-		expect(draft.story).toEqual(JSON.parse(story('Warm by May.')));
-		expect((await readForm(db, row.formId))?.name).toBe('Spring coat drive');
-		expect(row.published).toBe(published);
+		const saved = await stored(pageId);
+		expect(saved.row).toMatchObject({
+			name: 'Winter coat drive',
+			slug: from,
+			published: before.row.published
+		});
+		expect((await readForm(db, saved.row.formId))?.name).not.toBe('Spring coat drive');
+		expect(saved.draft).toMatchObject({ name: 'Spring coat drive', slug: to });
+		expect(saved.draft.story).toEqual(JSON.parse(story('Warm by May.')));
+
+		expect((await publish(pageId)).kind).toBe('published');
+		const live = await stored(pageId);
+		expect(live.row).toMatchObject({ name: 'Spring coat drive', slug: to });
+		expect((await readForm(db, live.row.formId))?.name).toBe('Spring coat drive');
+		expect(JSON.parse(live.row.published ?? '{}')).not.toHaveProperty('slug');
+		expect(live.draft).not.toHaveProperty('slug');
 	});
 
-	it('moves a never-published campaign’s link with its name while the link still follows it', async () => {
+	it('keeps a never-published campaign’s link until its first Publish', async () => {
 		const pageId = await insertPage(db, 'campaign');
-		const name = fresh('Spring coats');
-		await slugged(pageId, 'winter-coat-drive');
+		const [from, to] = [fresh('coats'), fresh('spring-coats')];
+		await slugged(pageId, from);
 
-		await press(pageId, EDIT_FORMS.campaignGeneral, await general(pageId, { name }));
+		await press(pageId, EDIT_FORMS.campaignGeneral, await general(pageId, { slug: to }));
 
-		expect((await stored(pageId)).row.slug).toBe(name.toLowerCase().replace(' ', '-'));
+		expect((await stored(pageId)).row.slug).toBe(from);
+		expect((await publish(pageId)).kind).toBe('published');
+		expect((await stored(pageId)).row.slug).toBe(to);
 	});
 
-	it('asks before moving a published campaign’s link, writing nothing, and moves it once answered yes', async () => {
+	it('asks before moving a published campaign’s link, writing nothing, and drafts the move once answered yes', async () => {
 		const pageId = await insertPage(db, 'campaign', withPage({}), withPage({}));
 		const [from, to] = [fresh('coats'), fresh('warm-coats')];
 		await slugged(pageId, from);
 		const fields = await general(pageId, { name: 'Renamed', slug: to });
+		const before = (await stored(pageId)).row.draft;
 
 		const asked = await press(pageId, EDIT_FORMS.campaignGeneral, fields);
 
 		expect(asked).toEqual({ ask: { kind: 'move', from: `/${from}`, to: `/${to}` } });
-		expect((await stored(pageId)).row).toMatchObject({ slug: from, name: 'Winter coat drive' });
+		expect((await stored(pageId)).row.draft).toBe(before);
 
 		const answered = await press(pageId, EDIT_FORMS.campaignGeneral, [...fields, ['move', 'on']]);
 
 		expect(answered).toEqual({ saved: 'campaign-general' });
-		expect((await stored(pageId)).row).toMatchObject({ slug: to, name: 'Renamed' });
+		expect((await stored(pageId)).row).toMatchObject({ slug: from, name: 'Winter coat drive' });
+		expect((await stored(pageId)).draft).toMatchObject({ slug: to, name: 'Renamed' });
 	});
 
-	it('asks before taking an ended campaign’s link, and leaves that one without it once answered yes', async () => {
+	it('asks before taking an ended campaign’s link, which that one gives up at Publish', async () => {
 		const holder = await insertPage(db, 'campaign', withPage({}), withPage({}));
 		const held = fresh('coats');
 		await slugged(holder, held);
@@ -532,14 +558,15 @@ describe('General', () => {
 		});
 		expect(
 			await press(pageId, EDIT_FORMS.campaignGeneral, [...fields, ['takeover', 'on']])
-		).toEqual({
-			saved: 'campaign-general'
-		});
+		).toEqual({ saved: 'campaign-general' });
+		expect((await stored(holder)).row.slug).toBe(held);
+
+		expect((await publish(pageId)).kind).toBe('published');
 		expect((await stored(pageId)).row.slug).toBe(held);
 		expect((await stored(holder)).row.slug).toBeNull();
 	});
 
-	it('takes the link of an unpublished campaign past its published end, ending that one', async () => {
+	it('takes the link of an unpublished campaign past its published end at Publish, ending that one', async () => {
 		const ended = withPage({ endsAt: Date.now() - 60_000, endsZone: 'America/New_York' });
 		const holder = await insertPage(db, 'campaign', withPage({}), ended);
 		const held = fresh('coats');
@@ -551,11 +578,26 @@ describe('General', () => {
 		expect(await press(pageId, EDIT_FORMS.campaignGeneral, fields)).toEqual({
 			ask: { kind: 'takeover', holder: 'Winter coat drive', to: `/${held}` }
 		});
-		expect(
-			await press(pageId, EDIT_FORMS.campaignGeneral, [...fields, ['takeover', 'on']])
-		).toEqual({ saved: 'campaign-general' });
+		await press(pageId, EDIT_FORMS.campaignGeneral, [...fields, ['takeover', 'on']]);
+		expect((await publish(pageId)).kind).toBe('published');
+
 		expect((await stored(pageId)).row.slug).toBe(held);
 		expect((await stored(holder)).row).toMatchObject({ state: 'ended', slug: null });
+	});
+
+	it('refuses Publish where a live campaign has taken the drafted link since, moving nothing', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const [from, to] = [fresh('coats'), fresh('spring-coats')];
+		await slugged(pageId, from);
+		await press(pageId, EDIT_FORMS.campaignGeneral, await general(pageId, { slug: to }));
+		const taker = await insertPage(db, 'campaign', withPage({}), withPage({}));
+		await db.update(page).set({ slug: to, name: 'Spring fund' }).where(eq(page.id, taker));
+
+		const refused = await publish(pageId);
+
+		expect(refused).toMatchObject({ kind: 'refused' });
+		expect(JSON.stringify(refused)).toContain(`the link /${to} is taken by Spring fund`);
+		expect((await stored(pageId)).row).toMatchObject({ slug: from, state: 'never_published' });
 	});
 
 	it('refuses a link another campaign holds, an unpublished one included, naming it', async () => {

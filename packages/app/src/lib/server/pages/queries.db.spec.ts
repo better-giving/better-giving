@@ -4,11 +4,8 @@ import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import { form, page } from '../db/schema';
 import type { PageState, PageType } from '../../page/keys';
-import { defaultCampaign } from '../../page/defaults';
-import { readForm } from '../forms/queries';
 import { createImage, stored as imageStored } from '../images/image.testing';
-import { CAMPAIGN_NAME, heroShowing, insertPage, SETTINGS } from './page-row.testing';
-import { publishPage } from './publish';
+import { heroShowing, insertPage, } from './page-row.testing';
 import { deleteNeverPublishedCampaign, endCampaign, readPage } from './queries';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 

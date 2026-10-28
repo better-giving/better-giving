@@ -1,4 +1,5 @@
-import { and, eq, exists, isNotNull } from 'drizzle-orm';
+import { and, eq, exists, isNotNull, type SQL } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
 import { z } from 'zod';
 import { defineForm, type RejectionStatus } from '../../forms/definition';
 import {
@@ -18,7 +19,7 @@ import {
 	UNDO_FORM_ID,
 	UNPUBLISH_FORM_ID
 } from '../../page/publish-form';
-import { freeSlug } from '../../page/slug';
+import { checkSlug, freeSlug } from '../../page/slug';
 import { invalid, type ParsedForm, parseForm, submittedForm, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
@@ -38,12 +39,14 @@ import {
 	type DraftSettings,
 	nameToCarry,
 	ownedName,
+	planSlugMove,
 	readOwnedRow,
 	readTarget,
 	renamingOwned,
 	SLUG_ATTEMPTS,
 	type SettingsTarget,
 	settingsOfRow,
+	slugRace,
 	unpublishCampaign,
 	type UnpublishWrite
 } from './queries';
@@ -222,11 +225,32 @@ export async function publishPage(
 	// a draft holding no settings of its own publishes none, and the row keeps what it holds: the
 	// Donation page's program goes on following the active programs (./donation-page.ts).
 	const carried = draft.page.settings !== undefined || typeof at.giftsGoTo === 'string';
-	const published: PageDocument = carried ? { ...draft.page, settings } : draft.page;
+	// a link the draft moves to is the row's from this Publish on, and leaves the document.
+	const { slug: movedTo, ...unmoved } = carried ? { ...draft.page, settings } : draft.page;
+	const published: PageDocument = unmoved;
 	const replaced = stateAt(row, at.now) === 'live' ? kept(row, live) : null;
 	const document = JSON.stringify(published);
-	// a name the draft holds and the row does not is the campaign's from now on, as a rename makes it
-	// (`renaming` in ./queries.ts), the address aside: the first Publish's confirm named that.
+	const moving = row.type === 'campaign' && movedTo !== undefined && movedTo !== row.slug;
+	let release: (drawn: SQL) => BatchItem<'sqlite'>[] = () => [];
+	if (moving) {
+		const link = `/${movedTo}`;
+		const checked = checkSlug(movedTo);
+		if (!checked.ok) {
+			return refused(
+				`the link ${link} can’t be used: it is the address of another page here. Change it under General, then publish again`
+			);
+		}
+		// asked at General's save; a live holder since is refused, an ended one let go as it was.
+		const plan = await planSlugMove(db, row, movedTo, { move: true, takeover: true }, at.now);
+		if (plan.kind === 'taken') {
+			return refused(
+				`the link ${link} is taken by ${plan.by}. Change it under General, then publish again`
+			);
+		}
+		if (plan.kind === 'move') release = plan.before;
+	}
+	// a name the draft holds and the row does not is the campaign's from now on, on its row and its
+	// owned settings row, as a rename makes it (`renaming` in ./queries.ts).
 	const renamed = nameToCarry(row, draft.page);
 
 	const drawn = and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft));
@@ -236,37 +260,47 @@ export async function publishPage(
 		placedPhotos(row, { draft: document, last_published: replaced })
 	);
 	for (let attempt = 1; ; attempt += 1) {
-		const slug = await addressFor(db, row);
+		const slug = moving ? movedTo : await addressFor(db, row);
+		const before = release(drawn as SQL);
+		const ownedRow = db
+			.update(form)
+			.set({
+				...(carried ? settingsColumns(settings) : {}),
+				...(renamed === null ? {} : { name: ownedName(renamed) }),
+				status: 'live'
+			})
+			.where(
+				and(eq(form.id, row.formId), exists(db.select({ id: page.id }).from(page).where(drawn)))
+			);
+		const pageRow = db
+			.update(page)
+			.set({
+				draft: document,
+				published: document,
+				lastPublished: replaced,
+				state: 'live',
+				slug,
+				...(renamed === null ? {} : { name: renamed })
+			})
+			.where(drawn)
+			.returning({ id: page.id });
 		try {
-			const [, made] = await db.batch([
-				db
-					.update(form)
-					.set({
-						...(carried ? settingsColumns(settings) : {}),
-						...(renamed === null ? {} : { name: ownedName(renamed) }),
-						status: 'live'
-					})
-					.where(
-						and(eq(form.id, row.formId), exists(db.select({ id: page.id }).from(page).where(drawn)))
-					),
-				db
-					.update(page)
-					.set({
-						draft: document,
-						published: document,
-						lastPublished: replaced,
-						state: 'live',
-						slug,
-						...(renamed === null ? {} : { name: renamed })
-					})
-					.where(drawn)
-					.returning({ id: page.id }),
-				...frees
+			// the link's release first, for `page_slug_idx`.
+			const written = await db.batch([...before, ownedRow, pageRow, ...frees] as unknown as [
+				typeof ownedRow,
+				typeof pageRow
 			]);
+			const made = (written as unknown[])[before.length + 1] as { id: string }[];
 			return made.length === 1
 				? { kind: 'published', undoable: replaced !== null }
 				: { kind: 'stale' };
 		} catch (error) {
+			if (moving && sqliteResultCode(error) === 'SQLITE_CONSTRAINT_UNIQUE') {
+				const by = await slugRace(db, movedTo, at.now, error);
+				return refused(
+					`the link /${movedTo} is taken by ${by}. Change it under General, then publish again`
+				);
+			}
 			// another campaign took the free address between the read and the batch.
 			const retry = row.slug === null && attempt < SLUG_ATTEMPTS;
 			if (!retry || sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;

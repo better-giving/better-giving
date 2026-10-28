@@ -182,7 +182,7 @@ describe('a campaign’s name', () => {
 		expect([after.name, await ownedName(pageId)]).toEqual(['Coats for Kids', 'Coats for Kids']);
 	});
 
-	it('goes back to the live page’s with Discard changes', async () => {
+	it('reaches neither row before Publish, and goes back to the live page’s with Discard changes', async () => {
 		const live = { ...CAMPAIGN, name: 'Winter coat drive' };
 		const pageId = await insertPage(db, 'campaign', live, live);
 		const body = new FormData();
@@ -191,17 +191,19 @@ describe('a campaign’s name', () => {
 		body.set('name', 'Coats for Kids');
 		body.set('slug', (await stored(pageId)).slug ?? '');
 		body.set('story', JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }));
+		const owned = await ownedName(pageId);
 		expect(await saveCampaignGeneral(db, { type: 'campaign', id: pageId }, body, 'gone')).toEqual({
 			saved: 'campaign-general'
 		});
+		const saved = await stored(pageId);
+		expect([saved.name, await ownedName(pageId)]).toEqual(['Winter coat drive', owned]);
+		expect(JSON.parse(saved.draft).name).toBe('Coats for Kids');
 
-		await discardChanges(db, { type: 'campaign', id: pageId }, (await stored(pageId)).updatedAt);
+		await discardChanges(db, { type: 'campaign', id: pageId }, saved.updatedAt);
 
 		const after = await stored(pageId);
-		expect([after.name, await ownedName(pageId)]).toEqual([
-			'Winter coat drive',
-			'Winter coat drive'
-		]);
+		expect([after.name, await ownedName(pageId)]).toEqual(['Winter coat drive', owned]);
+		expect(JSON.parse(after.draft).name).toBe('Winter coat drive');
 	});
 });
 

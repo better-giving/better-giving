@@ -1,4 +1,3 @@
-import { editPageDraft } from './draft-writer';
 import {
 	and,
 	eq,
@@ -15,9 +14,9 @@ import {
 } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import type { Page as PageDocument } from '../../page/catalog';
-import { stateAt } from '../../page/ended';
+import { pastPublishedEnd, stateAt } from '../../page/ended';
 import { PAGE_KEYS } from '../../page/keys';
-import { freeSlug, slugFromTitle } from '../../page/slug';
+import { freeSlug } from '../../page/slug';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { form, type Page, page, photoLink } from '../db/schema';
@@ -298,7 +297,10 @@ async function slugHolder(
 	return {
 		id: held.id,
 		name: held.name,
-		state: stateAt(held, now),
+		// an unpublished holder past its published end is done with the address as an ended one is:
+		// it is taken over the same way, which ends it.
+		state:
+			held.state === 'unpublished' && pastPublishedEnd(held, now) ? 'ended' : stateAt(held, now),
 		stored: held.state,
 		version: held.updatedAt
 	};
@@ -467,8 +469,5 @@ export async function draftSettingsAfter(
 	};
 }
 
-/** a page document's keys the Settings sheet sets one at a time; `undefined` removes a key. */
+/** a page document's keys a Settings save sets; `undefined` removes a key. */
 export type DraftKeys = Partial<Pick<PageDocument, 'goalMinor' | 'endsAt' | 'endsZone'>>;
-
-const pageOf = (target: SettingsTarget) =>
-	target.type === 'campaign' ? target.id : 'donation_page';
