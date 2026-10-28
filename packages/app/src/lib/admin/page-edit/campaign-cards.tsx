@@ -441,7 +441,10 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 					onValueChange={setGoal}
 					error={firstError(errors, fields.goal_amount.name)}
 				/>
-			) : null}
+			) : (
+				// every box the card states arrives ($lib/server/conform.ts): no goal posts an empty one.
+				<input type="hidden" name={fields.goal_amount.name} value="" />
+			)}
 			<fieldset className="adm-fieldset" aria-describedby={`${id}-amounts-hint`}>
 				<legend className="adm-fieldset__legend">Suggested amounts</legend>
 				<p className="adm-hint" id={`${id}-amounts-hint`}>

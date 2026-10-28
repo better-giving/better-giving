@@ -17,6 +17,8 @@ import {
 	DONATION_PAGE_SETTINGS_INPUT,
 	EDIT_BOXES,
 	EDIT_FORMS,
+	type CampaignEditFormId,
+	type DonationPageEditFormId,
 	type EditFormId,
 	type SectionSaved
 } from '../../page/edit-forms';
@@ -559,43 +561,40 @@ export async function saveDonationPageSettings(
 	);
 }
 
-/** a card's Save on either edit screen, by the form its body names. */
-export async function saveEditSection(
+/** a card's Save on a campaign's edit screen, by the form its body names. */
+export async function saveCampaignSection(
 	db: Db,
-	target: SettingsTarget,
-	form: EditFormId,
+	target: CampaignTarget,
+	form: CampaignEditFormId,
 	body: FormData,
 	gone: string
 ) {
 	switch (form) {
 		case EDIT_FORMS.campaignGeneral:
-			return target.type === 'campaign'
-				? saveCampaignGeneral(db, target, body, gone)
-				: notHere(form);
-		case EDIT_FORMS.campaignGoal:
-			return target.type === 'campaign' ? saveCampaignGoal(db, target, body, gone) : notHere(form);
-		case EDIT_FORMS.campaignSettings:
-			return target.type === 'campaign'
-				? saveCampaignSettings(db, target, body, gone)
-				: notHere(form);
+			return saveCampaignGeneral(db, target, body, gone);
 		case EDIT_FORMS.campaignMedia:
-			return target.type === 'campaign' ? saveCampaignMedia(db, target, body, gone) : notHere(form);
-		case EDIT_FORMS.donationPageGeneral:
-			return target.type === 'donation_page'
-				? saveDonationPageGeneral(db, target, body, gone)
-				: notHere(form);
-		case EDIT_FORMS.donationPageGiving:
-			return target.type === 'donation_page'
-				? saveDonationPageGiving(db, target, body, gone)
-				: notHere(form);
-		case EDIT_FORMS.donationPageSettings:
-			return target.type === 'donation_page'
-				? saveDonationPageSettings(db, target, body, gone)
-				: notHere(form);
+			return saveCampaignMedia(db, target, body, gone);
+		case EDIT_FORMS.campaignGoal:
+			return saveCampaignGoal(db, target, body, gone);
+		case EDIT_FORMS.campaignSettings:
+			return saveCampaignSettings(db, target, body, gone);
 	}
 }
 
-/** a campaign's card posted to the Donation page, or the Donation page's to a campaign. */
-function notHere(form: EditFormId): never {
-	throw new Response(`\`${form}\` is not a form this page carries.`, { status: 400 });
+/** a card's Save on the Donation page's edit screen, by the form its body names. */
+export async function saveDonationPageSection(
+	db: Db,
+	target: DonationPageTarget,
+	form: DonationPageEditFormId,
+	body: FormData,
+	gone: string
+) {
+	switch (form) {
+		case EDIT_FORMS.donationPageGeneral:
+			return saveDonationPageGeneral(db, target, body, gone);
+		case EDIT_FORMS.donationPageGiving:
+			return saveDonationPageGiving(db, target, body, gone);
+		case EDIT_FORMS.donationPageSettings:
+			return saveDonationPageSettings(db, target, body, gone);
+	}
 }

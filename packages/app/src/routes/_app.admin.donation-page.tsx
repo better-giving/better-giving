@@ -18,7 +18,7 @@ import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { unreadableEditor } from '$lib/server/pages/editor';
 import { answerPublishPress } from '$lib/server/pages/publish';
 import { answerResetPress, hasEditsToReset } from '$lib/server/pages/reset';
-import { saveEditSection } from '$lib/server/pages/section-saves';
+import { saveDonationPageSection } from '$lib/server/pages/section-saves';
 import { editBanner, readDonationPageEditSeeds } from '$lib/server/pages/section-seeds';
 import { loadPageView } from '$lib/server/pages/view';
 import { database, platform } from '../context';
@@ -127,7 +127,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 		case RESET_FORM_ID:
 			return answerResetPress(db, body, NO_DONATION_PAGE);
 		default:
-			return saveEditSection(db, target, pressed, body, NO_DONATION_PAGE);
+			return saveDonationPageSection(db, target, pressed, body, NO_DONATION_PAGE);
 	}
 }
 

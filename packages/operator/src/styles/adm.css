@@ -5246,8 +5246,8 @@
 
 	/* the square is the cropper's one tab stop. the scrim is its own shadow and outranks the ring
 	   ./base.css draws as one, and the square meets the image's edge, where the viewport clips
-	   anything drawn outside it. so its ring is the outline, inset over its own edge, as
-	   `.adm-editor__frame`'s is: an outline paints above the element's shadow and border. */
+	   anything drawn outside it. so its ring is the outline, inset over its own edge: an outline
+	   paints above the element's shadow and border. */
 	.adm-cropper__selection:focus-visible,
 	.adm-cropper__selection.is-focus {
 		outline: var(--admin-focus-width) solid var(--admin-focus-ring);
@@ -6597,17 +6597,6 @@
 	}
 
 	@media (min-width: 44rem) {
-		/* the publish bar's quieter presses back on Publish's line, and at its end with it. */
-		.adm-publishbar__quiet {
-			order: 0;
-			flex-basis: auto;
-			margin-inline-start: auto;
-		}
-
-		.adm-publishbar__quiet:not(:empty) + .adm-publishbar__done {
-			margin-inline-start: 0;
-		}
-
 		/* the rail is not here, and needs nothing here: cells as wide as their labels take one
 		   line as soon as there is room for one, and every width has to be a width they fit at
 		   rather than a width they are re-tracked for. */

@@ -123,7 +123,11 @@ export function ReplacePhotoControl(props: ReplacePhotoControlProps) {
 				{placed ? (
 					<img
 						className={
-							frame === undefined ? 'adm-placed__art' : `adm-placed__art adm-placed__art--${frame}`
+							frame === 'square'
+								? 'adm-placed__art adm-placed__art--square'
+								: frame === 'banner'
+									? 'adm-placed__art adm-placed__art--banner'
+									: 'adm-placed__art'
 						}
 						src={imageSrc}
 						alt={alt ?? ''}

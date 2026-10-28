@@ -320,6 +320,23 @@ describe('Goal and amounts', () => {
 		expect(counter?.textContent).toBe('7/40');
 		expect(held(button('Save goal and amounts'))).toBe(false);
 	});
+
+	it('posts every box it states, an empty goal among them where there is none', async () => {
+		await screen();
+		await type(box(card('Goal and amounts'), 'Label for amount 1'), 'A scarf');
+		answers.push({ body: { saved: 'campaign-goal' } });
+
+		await press(button('Save goal and amounts'));
+
+		expect(posted[0]).toEqual({
+			[WHICH_FORM]: 'campaign-goal',
+			[RECORD_VERSION]: '1',
+			goal_mode: 'none',
+			goal_amount: '',
+			'amount[0]': '25',
+			'amount_label[0]': 'A scarf'
+		});
+	});
 });
 
 describe('Media', () => {

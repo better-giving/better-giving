@@ -20,7 +20,7 @@ import type { Page } from '$lib/server/db/schema';
 import { unreadableEditor } from '$lib/server/pages/editor';
 import { answerPublishPress } from '$lib/server/pages/publish';
 import { readPage } from '$lib/server/pages/queries';
-import { saveEditSection } from '$lib/server/pages/section-saves';
+import { saveCampaignSection } from '$lib/server/pages/section-saves';
 import { editBanner, readCampaignEditSeeds } from '$lib/server/pages/section-seeds';
 import { database, platform } from '../context';
 import type { Route } from './+types/_app.admin.campaigns.$pageId';
@@ -116,7 +116,7 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 		case DISCARD_FORM_ID:
 			return answerPublishPress(db, target, body, gone(params.pageId));
 		default:
-			return saveEditSection(db, target, pressed, body, gone(params.pageId));
+			return saveCampaignSection(db, target, pressed, body, gone(params.pageId));
 	}
 }
 

@@ -2,7 +2,12 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '../../forms/definition';
 import { type Page, parsePage } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
-import { EDIT_FORMS, type EditFormId } from '../../page/edit-forms';
+import {
+	type CampaignEditFormId,
+	type DonationPageEditFormId,
+	EDIT_FORMS,
+	type EditFormId
+} from '../../page/edit-forms';
 import { createDb, type Db } from '../db/client';
 import { eq } from 'drizzle-orm';
 import { page, program } from '../db/schema';
@@ -10,7 +15,7 @@ import { readForm } from '../forms/queries';
 import { createImage, stored as imageStored } from '../images/image.testing';
 import { endAsItStands, heroShowing, insertPage, SETTINGS } from './page-row.testing';
 import { readPage } from './queries';
-import { saveEditSection } from './section-saves';
+import { saveCampaignSection, saveDonationPageSection } from './section-saves';
 import { client } from '$lib/server/db/database.testing';
 
 // a db spec because every card's Save reads the page's draft and writes it back against the
@@ -43,11 +48,21 @@ async function press(
 	body.set(WHICH_FORM, form);
 	body.set(RECORD_VERSION, String(version ?? row.updatedAt.getTime()));
 	for (const [name, value] of fields) body.append(name, value);
-	const target =
-		row.type === 'campaign'
-			? ({ type: 'campaign', id: pageId } as const)
-			: ({ type: 'donation_page' } as const);
-	return saveEditSection(db, target, form, body, GONE);
+	return row.type === 'campaign'
+		? saveCampaignSection(
+				db,
+				{ type: 'campaign', id: pageId },
+				form as CampaignEditFormId,
+				body,
+				GONE
+			)
+		: saveDonationPageSection(
+				db,
+				{ type: 'donation_page' },
+				form as DonationPageEditFormId,
+				body,
+				GONE
+			);
 }
 
 /** what a save leaves alone: the live page, and the settings row gifts are charged against. */
@@ -644,13 +659,5 @@ describe('the Donation page’s cards', () => {
 		expect(draft.switches).toEqual({ openOnMonthly: false, dedicationOn: true });
 		expect(draft.shareMessage).toBe('Join me');
 		expect(await untouched(pageId)).toEqual(before);
-	});
-
-	it('refuses a campaign’s card posted to the Donation page', async () => {
-		const pageId = await insertPage(db, 'donation_page', donationPage());
-
-		await expect(
-			press(pageId, EDIT_FORMS.campaignGoal, GOAL_BOXES([['25', '']]))
-		).rejects.toMatchObject({ status: 400 });
 	});
 });

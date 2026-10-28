@@ -672,7 +672,7 @@ describe('a campaign after its editor’s Publish', () => {
 	/** New campaign's create. */
 	const create = (name: string) => createCampaign(db, { name });
 
-	it('publishes a new campaign from “Winter coat drive” at /winter-coat-drive, gifts going to the program chosen', async () => {
+	it('publishes a new campaign from “Winter coat drive” at /winter-coat-drive, gifts going to the program its Settings chose', async () => {
 		const [coats] = await db
 			.insert(program)
 			.values({ name: 'Winter coats' })
@@ -680,7 +680,16 @@ describe('a campaign after its editor’s Publish', () => {
 		const { pageId } = await create('Winter coat drive');
 		expect((await visit()).status).toBe(404);
 
-		await press(pageId, 'page-first-publish', { gifts_go_to: coats?.id ?? '' });
+		await press(pageId, 'campaign-settings', {
+			program_mode: 'pinned',
+			program_id: coats?.id ?? '',
+			min_minor: '5',
+			max_minor: '5000',
+			share_message: '',
+			end_date: '',
+			time_zone: ''
+		});
+		await press(pageId, 'page-publish');
 
 		const answered = await visit('/winter-coat-drive');
 		expect(answered.status).toBe(200);
@@ -693,22 +702,24 @@ describe('a campaign after its editor’s Publish', () => {
 		['Open on monthly', 'open_on_monthly', { monthly: true }],
 		['Dedication on by default', 'dedication_on', { dedication: true }]
 	])(
-		'opens the box with “%s” only once a Done ticking it is published',
+		'opens the box with “%s” only once a save ticking it is published',
 		async (_, box, opening) => {
 			const { pageId } = await create('Winter coat drive');
-			await press(pageId, 'page-first-publish', { gifts_go_to: 'none' });
+			await press(pageId, 'page-publish');
 			const opened = async () => {
 				const answered = await visit('/winter-coat-drive');
 				if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 				return answered.data.view.opening;
 			};
 
-			await press(pageId, 'page-settings', {
+			await press(pageId, 'campaign-settings', {
 				program_mode: 'none',
 				program_id: '',
 				min_minor: '5',
 				max_minor: '5000',
-				'suggested_amounts[0]': '25',
+				share_message: '',
+				end_date: '',
+				time_zone: '',
 				[box]: 'on'
 			});
 			expect(await opened()).toBeUndefined();
@@ -720,11 +731,16 @@ describe('a campaign after its editor’s Publish', () => {
 
 	it('brings an ended campaign back at the next free address when its own was taken', async () => {
 		const { pageId: ended } = await create('Winter coat drive');
-		await press(ended, 'page-first-publish', { gifts_go_to: 'none' });
+		await press(ended, 'page-publish');
 		await endAsItStands(db, ended);
 		const { pageId: taker } = await create('Coats for kids');
-		await press(taker, 'campaign-address', { slug: 'winter-coat-drive', takeover: 'on' });
-		await press(taker, 'page-first-publish', { gifts_go_to: 'none' });
+		await press(taker, 'campaign-general', {
+			name: 'Coats for kids',
+			slug: 'winter-coat-drive',
+			story: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }),
+			takeover: 'on'
+		});
+		await press(taker, 'page-publish');
 
 		await press(ended, 'page-publish');
 
