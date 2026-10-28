@@ -10,7 +10,7 @@ import type { SettingsTarget } from './queries';
 
 // the one writer of a page's draft document. every edit in document terms — a section's content,
 // its photos, the share message, the name, the goal and the end — reaches the `page` row through
-// `editPageDraft`; ./content.ts and ./page-settings.ts are the dashboard's form adapters over it,
+// `editPageDraft`; ./section-saves.ts is the dashboard's form adapter over it,
 // and ../connector/ is the connector's. what it holds once, so no caller restates it:
 //
 //   - the write lands only while the page is still the version the edit was made against, and the

@@ -20,7 +20,6 @@ import {
 	type EditFormId,
 	type SectionSaved
 } from '../../page/edit-forms';
-import { rowBox } from '../../page/content-edit';
 import { checkSlug, type SlugCheck } from '../../page/slug';
 import { isEmptyDocument, parseRichText } from '../../rich-text/document';
 import { invalid, parseForm, type RejectionReasons, submittedVersion } from '../conform';
@@ -302,7 +301,7 @@ export async function saveCampaignGoal(
 					refusal: {
 						fieldErrors: Object.fromEntries(
 							read.problems.map(({ row: at, problem }) => [
-								rowBox(EDIT_BOXES.amount, at),
+								`${EDIT_BOXES.amount}[${at}]`,
 								[problem]
 							])
 						)

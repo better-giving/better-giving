@@ -70,7 +70,7 @@ export type EditFormId = CampaignEditFormId | DonationPageEditFormId;
 
 /**
  * the name each box posts under and each schema reads it by. a row's box adds its place —
- * `amount[1]` (`rowBox` in ./content-edit.ts).
+ * `amount[1]`.
  */
 export const EDIT_BOXES = {
 	name: 'name',

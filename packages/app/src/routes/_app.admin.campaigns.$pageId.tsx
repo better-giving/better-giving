@@ -91,7 +91,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		version: row.updatedAt.getTime(),
 		banner: editBanner(row, now)
 	};
-	const unreadable = unreadableEditor(row, now);
+	const unreadable = unreadableEditor(row);
 	if (unreadable !== null) {
 		return { ...named, unreadable: true as const, discardable: unreadable.discardable };
 	}

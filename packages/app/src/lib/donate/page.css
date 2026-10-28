@@ -276,21 +276,6 @@ body {
  * drawn on `--_n1` — a tier, a program option, a share press — sets its own ink.
  */
 
-/* the editor's preview while its Edit is on (`usePreviewReport` in ./page-view.tsx): every section is
-   drawn as a thing to click, by the pointer and by its edge in the focus ring's ink — dashed at
-   rest, so a finger with no hover sees it too, and solid under the pointer. drawn inside the
-   section's own edge, so a section on the page's gutter keeps all of it. a click opens the
-   innermost section under it (`closest` in ./page-view.tsx), so only that one turns solid. */
-:root[data-editing] [data-section] {
-	cursor: pointer;
-	outline: var(--_border) dashed var(--page-ring, var(--_focus-ring));
-	outline-offset: calc(-1 * var(--_border));
-}
-
-:root[data-editing] [data-section]:hover:not(:has([data-section]:hover)) {
-	outline-style: solid;
-}
-
 .page-ground :where(h1, h2, h3, p, ul, ol, figure) {
 	margin: 0;
 }

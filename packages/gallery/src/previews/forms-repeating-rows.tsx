@@ -54,7 +54,7 @@ import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-li
  * every box; the third is the group at its cap, Add held and described by the line the group
  * draws directly under it; the fourth is the group closed, which closes both boxes of every row.
  * each amount stands behind a `$`, here as the box's own lead — the app's money box
- * (packages/app/src/lib/admin/editor/money-field.tsx) is out of this page's reach.
+ * (packages/app/src/lib/admin/page-edit/money-field.tsx) is out of this page's reach.
  *
  * both presses are the caller's and are stated here as a form layer's list intents would arrive.
  * nothing on this page is inside a form, so no press does anything — what a group draws is the

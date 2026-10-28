@@ -505,13 +505,13 @@ describe('the editor’s preview of a page', () => {
 		);
 	}
 
-	it('may be framed by this deployment’s own pages and by no one else’s', async () => {
+	it('may be framed by no one, as no document may', async () => {
 		const response = await answer();
 		expect(response.status).toBe(200);
 		expect(response.headers.get('content-type')).toMatch(/^text\/html/);
 		const policy = directives(response.headers.get('content-security-policy'));
-		expect(policy.get('frame-ancestors')).toEqual(["'self'"]);
-		expect(response.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+		expect(policy.get('frame-ancestors')).toEqual(["'none'"]);
+		expect(response.headers.get('x-frame-options')).toBe('DENY');
 	});
 
 	it('is drawn under the donor page’s policy, so the box it shows loads as a donor’s does', async () => {

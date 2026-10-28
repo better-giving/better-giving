@@ -95,7 +95,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		banner: editBanner(row, now),
 		takingGifts
 	};
-	const unreadable = unreadableEditor(row, now);
+	const unreadable = unreadableEditor(row);
 	// a draft the rule refuses is itself an edit Reset puts back (`hasEditsToReset`).
 	if (unreadable !== null) {
 		return {

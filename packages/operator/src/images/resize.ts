@@ -5,7 +5,7 @@
    ever holds the photo at the size the camera took it.
 
    every operator screen that posts a photo runs it — a placed photo's replace press in
-   `packages/app/src/lib/admin/editor/replace-photo.tsx` is one — and the route each reports to
+   `packages/app/src/lib/admin/page-edit/replace-photo.tsx` is one — and the route each reports to
    posts what it returns. */
 
 /**

@@ -1,6 +1,5 @@
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { PHOTOS_MAX, type Page as PageDocument } from '../../page/catalog';
-import { parseSlot } from '../../page/content-edit';
 import { readDocument } from '../pages/document';
 import type { Db } from '../db/client';
 import { connectorKey, photoLink, type PhotoLink } from '../db/schema';
@@ -21,6 +20,16 @@ export const PHOTO_LINK_TTL_MS = 30 * 60_000;
 
 /** the address a photo link opens, under this deployment's own origin. */
 export const PHOTO_LINK_PATH = '/photo';
+
+/** a photo's slot as posted: the cover, the place of a photo beside it, a new one after the rest. */
+type Slot = { kind: 'cover' } | { kind: 'photo'; at: number } | { kind: 'new' };
+
+/** a posted slot — `cover`, `new`, or a photo's place from 0 — or null where it names none. */
+function parseSlot(posted: string): Slot | null {
+	if (posted === 'cover') return { kind: 'cover' };
+	if (posted === 'new') return { kind: 'new' };
+	return /^(0|[1-9][0-9]?)$/.test(posted) ? { kind: 'photo', at: Number(posted) } : null;
+}
 
 /** what `photos.upload_link` is asked: the campaign, and optionally the slot the photo fills. */
 export type PhotoTarget = { readonly kind: 'campaign'; readonly id: string };

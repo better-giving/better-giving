@@ -10,9 +10,8 @@ import { parseFormInput } from '$lib/server/forms/form-input';
 import { ownedFormInsert, readForm } from '$lib/server/forms/queries';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
-import { CONTENT_FORMS } from '$lib/page/content-edit';
 import { createImage } from '$lib/server/images/image.testing';
-import { saveContentForm } from '$lib/server/pages/content';
+import { saveCampaignMedia } from '$lib/server/pages/section-saves';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { readPage } from '$lib/server/pages/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
@@ -235,7 +234,7 @@ describe('the donation box in a preview', () => {
 });
 
 describe('a photo the draft places', () => {
-	it('is drawn as the cover by its id and its words', async () => {
+	it('is drawn as the cover by its id', async () => {
 		const campaign = await neverPublishedCampaign(defaultCampaign());
 		const row = await readPage(db, campaign.id);
 		if (row === null) throw new Error('the fixture campaign is gone');
@@ -245,20 +244,15 @@ describe('a photo the draft places', () => {
 			new Uint8Array([1, 2, 3])
 		);
 		const body = new FormData();
-		body.set(WHICH_FORM, CONTENT_FORMS.photo);
+		body.set(WHICH_FORM, 'campaign-media');
 		body.set(RECORD_VERSION, String(row.updatedAt.getTime()));
-		body.set('slot', 'cover');
-		body.set('image_id', photo);
-		body.set('alt', 'Volunteers');
-		await saveContentForm(
-			db,
-			{ type: 'campaign', id: campaign.id },
-			CONTENT_FORMS.photo,
-			body,
-			'gone'
-		);
+		body.set('hero_image_id', photo);
+		body.set('logo_image_id', '');
+		expect(
+			await saveCampaignMedia(db, { type: 'campaign', id: campaign.id }, body, 'gone')
+		).toEqual({ saved: 'campaign-media' });
 
-		expect((await open(campaign.id)).page.hero).toEqual({ imageId: photo, alt: 'Volunteers' });
+		expect((await open(campaign.id)).page.hero).toMatchObject({ imageId: photo });
 	});
 });
 
