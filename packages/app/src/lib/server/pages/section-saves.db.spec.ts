@@ -366,48 +366,32 @@ const upload = () =>
 	);
 
 describe('Media', () => {
-	it('places the banner and the logo by their uploads’ ids, in the draft alone', async () => {
+	it('places the banner by its upload’s id, in the draft alone', async () => {
 		const pageId = await insertPage(db, 'campaign', withPage({}), withPage({}));
 		const before = await untouched(pageId);
-		const [banner, logo] = [await upload(), await upload()];
+		const banner = await upload();
 
-		const answer = await press(pageId, EDIT_FORMS.campaignMedia, [
-			['hero_image_id', banner],
-			['logo_image_id', logo]
-		]);
+		const answer = await press(pageId, EDIT_FORMS.campaignMedia, [['hero_image_id', banner]]);
 
 		expect(answer).toEqual({ saved: 'campaign-media' });
-		const { draft } = await stored(pageId);
-		expect([draft.hero, draft.logo]).toEqual([
-			{ imageId: banner, alt: null },
-			{ imageId: logo, alt: null }
-		]);
+		expect((await stored(pageId)).draft.hero).toEqual({ imageId: banner, alt: null });
 		expect(await untouched(pageId)).toEqual(before);
 	});
 
-	it('keeps a kept photo’s description, and takes a blank box’s photo off', async () => {
+	it('keeps a kept banner’s description, and a blank box takes the banner off and frees it', async () => {
 		const banner = await upload();
-		const logo = await upload();
 		const pageId = await insertPage(
 			db,
 			'campaign',
-			withPage({
-				hero: { imageId: banner, alt: 'Coats on a rail' },
-				logo: { imageId: logo, alt: null }
-			})
+			withPage({ hero: { imageId: banner, alt: 'Coats on a rail' } })
 		);
 
-		await press(pageId, EDIT_FORMS.campaignMedia, [
-			['hero_image_id', banner],
-			['logo_image_id', '']
-		]);
+		await press(pageId, EDIT_FORMS.campaignMedia, [['hero_image_id', banner]]);
+		expect((await stored(pageId)).draft.hero).toEqual({ imageId: banner, alt: 'Coats on a rail' });
 
-		const { draft } = await stored(pageId);
-		expect([draft.hero, draft.logo]).toEqual([
-			{ imageId: banner, alt: 'Coats on a rail' },
-			undefined
-		]);
-		expect(await imageStored(db, logo)).toEqual({ row: false, bytes: false });
+		await press(pageId, EDIT_FORMS.campaignMedia, [['hero_image_id', '']]);
+		expect((await stored(pageId)).draft.hero).toBeUndefined();
+		expect(await imageStored(db, banner)).toEqual({ row: false, bytes: false });
 	});
 
 	it('frees the banner it replaces, and keeps one the live page still places', async () => {
@@ -416,14 +400,8 @@ describe('Media', () => {
 		const live = await upload();
 		const published = await insertPage(db, 'campaign', heroShowing(live), heroShowing(live));
 
-		await press(draftOnly, EDIT_FORMS.campaignMedia, [
-			['hero_image_id', await upload()],
-			['logo_image_id', '']
-		]);
-		await press(published, EDIT_FORMS.campaignMedia, [
-			['hero_image_id', await upload()],
-			['logo_image_id', '']
-		]);
+		await press(draftOnly, EDIT_FORMS.campaignMedia, [['hero_image_id', await upload()]]);
+		await press(published, EDIT_FORMS.campaignMedia, [['hero_image_id', await upload()]]);
 
 		expect(await imageStored(db, first)).toEqual({ row: false, bytes: false });
 		expect(await imageStored(db, live)).toEqual({ row: true, bytes: true });
@@ -433,14 +411,11 @@ describe('Media', () => {
 		const pageId = await insertPage(db, 'campaign');
 		const missing = crypto.randomUUID();
 
-		const answer = await press(pageId, EDIT_FORMS.campaignMedia, [
-			['hero_image_id', ''],
-			['logo_image_id', missing]
-		]);
+		const answer = await press(pageId, EDIT_FORMS.campaignMedia, [['hero_image_id', missing]]);
 
 		expect(refusal(answer)).toMatchObject({
 			status: 400,
-			error: { logo_image_id: [`no stored photo has the id "${missing}"`] }
+			error: { hero_image_id: [`no stored photo has the id "${missing}"`] }
 		});
 	});
 });

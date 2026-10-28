@@ -8,6 +8,7 @@ import {
 	MediaCard,
 	SettingsCard
 } from '$lib/admin/page-edit/campaign-cards';
+import { EditTabs } from '$lib/admin/page-edit/edit-tabs';
 import { PublishBanner } from '$lib/admin/page-edit/publish-banner';
 import { UnreadableDraft } from '$lib/admin/page-edit/page-presses';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -30,16 +31,16 @@ import { editBanner, readCampaignEditSeeds } from '$lib/server/pages/section-see
 import { database, platform } from '../context';
 import type { Route } from './+types/_app.admin.campaigns.$pageId';
 
-// a campaign's edit page, reached from its card on the Campaigns list: a plain form of section
-// cards — General, Media, Goal and amounts, Settings — under the banner that says where the
-// campaign stands against what donors see, and End campaign at the foot. no preview is drawn; the
+// a campaign's edit page, reached from its card on the Campaigns list: one tab per section card —
+// General, Media, Goal and amounts, Settings ($lib/admin/page-edit/edit-tabs.tsx) — under the
+// banner that says where the campaign stands against what donors see, which stays above the tabs on
+// every tab, and End campaign at the foot of Settings. no preview is drawn; the
 // banner's Preview page opens the draft in a tab of its own.
 //
 // **every Save writes the draft**, a card at a time ($lib/server/pages/section-saves.ts), and
-// donors see it only at Publish or Publish changes ($lib/server/pages/publish.ts). the name and the
-// campaign link are the exception and move at once: the name is the dashboard's, and the link is
-// where donors reach the campaign. a link that would stop a published campaign's address working,
-// or take an ended campaign's, is asked about before anything moves.
+// donors see it only at Publish or Publish changes ($lib/server/pages/publish.ts), the name and the
+// campaign link included, which Publish takes onto the campaign. a link that would stop a published
+// campaign's address working, or take an ended campaign's, is asked about at its save.
 //
 // **Unpublish** takes a public campaign down: its address answers nothing and it takes no gifts
 // until it is published again ($lib/server/pages/publish.ts, `unpublishCampaign`). **End campaign**
@@ -151,30 +152,60 @@ export default function CampaignEditPage({ loaderData }: Route.ComponentProps) {
 				undoable={banner.undoable}
 			/>
 			{loaderData.unreadable ? (
-				<UnreadableDraft version={version} discardable={loaderData.discardable} noun="campaign" />
-			) : (
 				<>
-					<GeneralCard seed={loaderData.seeds.general} version={version} host={host} />
-					<MediaCard seed={loaderData.seeds.media} version={version} />
-					<GoalCard seed={loaderData.seeds.goal} version={version} />
-					<SettingsCard seed={loaderData.seeds.settings} version={version} />
+					<UnreadableDraft version={version} discardable={loaderData.discardable} noun="campaign" />
+					{banner.endable ? <EndCampaign id={id} /> : null}
 				</>
+			) : (
+				<EditTabs
+					label="Campaign sections"
+					tabs={[
+						{
+							id: 'general',
+							label: 'General',
+							panel: <GeneralCard seed={loaderData.seeds.general} version={version} host={host} />
+						},
+						{
+							id: 'media',
+							label: 'Media',
+							panel: <MediaCard seed={loaderData.seeds.media} version={version} />
+						},
+						{
+							id: 'goal',
+							label: 'Goal and amounts',
+							panel: <GoalCard seed={loaderData.seeds.goal} version={version} />
+						},
+						{
+							id: 'settings',
+							label: 'Settings',
+							panel: (
+								<div className="adm-stack">
+									<SettingsCard seed={loaderData.seeds.settings} version={version} />
+									{banner.endable ? <EndCampaign id={id} /> : null}
+								</div>
+							)
+						}
+					]}
+				/>
 			)}
-			{banner.endable ? <EndCampaign id={id} /> : null}
 		</Column>
 	);
 }
 
-/** End campaign, which opens the Campaigns list's confirmation for this campaign. */
+/** End campaign, one row: what it does, and the press that opens the Campaigns list's confirmation. */
 function EndCampaign({ id }: { readonly id: string }) {
 	return (
 		<Section card>
-			<h2>End campaign</h2>
-			<p className="adm-prose">
-				Its page shows that it has ended and takes no more gifts. Its gifts and its page are kept.
-			</p>
-			<div className="adm-actions">
-				<Button as={Link} to={`${href('/admin/campaigns')}?end=${encodeURIComponent(id)}`}>
+			<div className="adm-rowcard">
+				<div>
+					<h2>End campaign</h2>
+					<p className="adm-hint">Stops new gifts. Its gifts and page are kept.</p>
+				</div>
+				<Button
+					as={Link}
+					variant="danger"
+					to={`${href('/admin/campaigns')}?end=${encodeURIComponent(id)}`}
+				>
 					End campaign
 				</Button>
 			</div>

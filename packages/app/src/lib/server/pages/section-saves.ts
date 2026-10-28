@@ -6,7 +6,7 @@ import {
 } from '../../forms/amounts';
 import { FORM_TEXT_FIELDS, type FormInputFieldErrors } from '../../forms/fields';
 import { defineForm, type FormRejection } from '../../forms/definition';
-import { type Page, type Photo, photo as photoRule } from '../../page/catalog';
+import { type Page, photo as photoRule } from '../../page/catalog';
 import {
 	CAMPAIGN_GENERAL_INPUT,
 	CAMPAIGN_GOAL_INPUT,
@@ -84,7 +84,6 @@ const PAGE_BOXES: Readonly<Record<string, string>> = {
 	name: EDIT_BOXES.name,
 	story: EDIT_BOXES.story,
 	hero: EDIT_BOXES.heroImageId,
-	logo: EDIT_BOXES.logoImageId,
 	goalMinor: EDIT_BOXES.goalAmount,
 	amountLabels: EDIT_BOXES.amountLabel,
 	shareMessage: EDIT_BOXES.shareMessage,
@@ -413,10 +412,10 @@ export async function saveCampaignSettings(
 const CAMPAIGN_MEDIA = defineForm({ id: EDIT_FORMS.campaignMedia, schema: CAMPAIGN_MEDIA_INPUT });
 
 /**
- * Media: the banner (the cover photo, `hero`) and the campaign's logo, each by the id the images
- * route (src/routes/_app.admin.images.ts) answered its upload with; a blank box takes its photo off,
- * and an id no stored photo has is refused under its box. a photo kept keeps its description, and
- * one newly placed is decorative. a photo let go of is freed in the draft's write.
+ * Media: the banner (the cover photo, `hero`), by the id the images route
+ * (src/routes/_app.admin.images.ts) answered its upload with; a blank box takes it off, and an id
+ * no stored photo has is refused under its box. a photo kept keeps its description, and one newly
+ * placed is decorative. a photo let go of is freed in the draft's write.
  */
 export async function saveCampaignMedia(
 	db: Db,
@@ -426,28 +425,20 @@ export async function saveCampaignMedia(
 ) {
 	const submission = parseForm(body, CAMPAIGN_MEDIA);
 	if (!submission.ok) return invalid(400, submission.reject());
-	const posted = {
-		hero: { box: EDIT_BOXES.heroImageId, id: submission.value.hero_image_id ?? '' },
-		logo: { box: EDIT_BOXES.logoImageId, id: submission.value.logo_image_id ?? '' }
-	} as const;
+	const id = submission.value.hero_image_id ?? '';
+	const box = EDIT_BOXES.heroImageId;
 	return answer(EDIT_FORMS.campaignMedia, submission, gone, () =>
 		writeSection(db, target, submittedVersion(body), async (draft) => {
-			const placed: { hero?: Photo; logo?: Photo } = {};
-			for (const key of ['hero', 'logo'] as const) {
-				const { box, id } = posted[key];
-				if (id === '') continue;
-				const held = draft[key];
-				const checked = photoRule.safeParse({
-					imageId: id,
-					alt: held?.imageId === id ? held.alt : null
-				});
-				if (!checked.success) return refusedUnder(box, checked.error.issues[0]?.message ?? id);
-				if ((await firstMissingImage(db, [id])) !== null) {
-					return refusedUnder(box, `no stored photo has the id "${id}"`);
-				}
-				placed[key] = checked.data;
+			if (id === '') return { ok: true, draft: { ...draft, hero: undefined } };
+			const checked = photoRule.safeParse({
+				imageId: id,
+				alt: draft.hero?.imageId === id ? draft.hero.alt : null
+			});
+			if (!checked.success) return refusedUnder(box, checked.error.issues[0]?.message ?? id);
+			if ((await firstMissingImage(db, [id])) !== null) {
+				return refusedUnder(box, `no stored photo has the id "${id}"`);
 			}
-			return { ok: true, draft: { ...draft, hero: placed.hero, logo: placed.logo } };
+			return { ok: true, draft: { ...draft, hero: checked.data } };
 		})
 	);
 }

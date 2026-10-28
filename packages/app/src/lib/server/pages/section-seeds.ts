@@ -62,11 +62,9 @@ export async function readCampaignEditSeeds(
 		},
 		media: {
 			boxes: {
-				hero_image_id: draft.hero?.imageId ?? '',
-				logo_image_id: draft.logo?.imageId ?? ''
+				hero_image_id: draft.hero?.imageId ?? ''
 			},
-			hero: placed(draft.hero),
-			logo: placed(draft.logo)
+			hero: placed(draft.hero)
 		},
 		goal: {
 			boxes: {

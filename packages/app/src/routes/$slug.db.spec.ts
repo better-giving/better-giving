@@ -27,7 +27,6 @@ import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { saveProfile } from '$lib/server/org/profile.testing';
 import { putLogo } from '$lib/server/org/logo.testing';
-import { newImageStatements } from '$lib/server/images/queries';
 import { ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument } from '../route-request.testing';
@@ -297,28 +296,6 @@ describe('the organisation’s logo atop a published campaign', () => {
 		expect(mast).toContain('Hope Foundation');
 	});
 
-	it('gives way to the campaign’s own logo, once its published page sets one', async () => {
-		await campaign();
-		await putLogo(db, { contentType: 'image/png', width: 200, height: 200 });
-		const own = newImageStatements(
-			db,
-			{ kind: 'photo', contentType: 'image/png', width: 120, height: 60, alt: null },
-			new Uint8Array([1])
-		);
-		await db.batch(own.statements);
-		await db
-			.update(page)
-			.set({
-				published: JSON.stringify({ ...defaultCampaign(), logo: { imageId: own.id, alt: null } })
-			})
-			.where(eq(page.slug, SLUG));
-
-		const answered = await visit();
-		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
-		expect(answered.data.view.logo).toEqual({ imageId: own.id, width: 120, height: 60, alt: null });
-		expect(masthead(markup(answered.data))).toContain(`src="/image/${own.id}"`);
-	});
-
 	it('is not drawn where none is set', async () => {
 		await campaign();
 		const answered = await visit();
@@ -450,31 +427,6 @@ describe('an ended campaign at its address', () => {
 		expect(mast).toContain(`src="/image/${id}"`);
 		expect(mast).toContain('width="200"');
 		expect(mast).toContain('Hope Foundation');
-	});
-
-	it('draws the campaign’s own logo with its words where its published page sets one, the organisation’s otherwise', async () => {
-		await putLogo(db, { contentType: 'image/png', width: 200, height: 200 });
-		const own = newImageStatements(
-			db,
-			{ kind: 'photo', contentType: 'image/png', width: 300, height: 100, alt: null },
-			new Uint8Array([1])
-		);
-		await db.batch(own.statements);
-		await endedCampaign({
-			published: { ...defaultCampaign(), logo: { imageId: own.id, alt: 'Coats for Kids logo' } }
-		});
-
-		const answered = await visit();
-		if (answered.data.kind !== 'ended') throw new Error(`drew ${answered.data.kind}`);
-		expect(answered.data.logo).toEqual({
-			imageId: own.id,
-			width: 300,
-			height: 100,
-			alt: 'Coats for Kids logo'
-		});
-		const mast = masthead(markup(answered.data));
-		expect(mast).toContain(`src="/image/${own.id}"`);
-		expect(mast).toContain('alt="Coats for Kids logo"');
 	});
 
 	it('says in the tab that it has ended', async () => {

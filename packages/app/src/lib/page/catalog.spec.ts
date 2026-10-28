@@ -158,9 +158,8 @@ describe('what a page carries beside its content', () => {
 		expect(parsePage('campaign', page({ name }))).toMatchObject({ ok: false, path: ['name'] });
 	});
 
-	it('accepts a campaign’s own logo and a label beside each of its suggested amounts', () => {
+	it('accepts a label beside each of a campaign’s suggested amounts', () => {
 		const input = page({
-			logo: { imageId: IMAGE, alt: 'Coat drive' },
 			amountLabels: [
 				{ amountMinor: 2500, label: 'A coat' },
 				{ amountMinor: 5000, label: 'Two coats' }
@@ -226,7 +225,6 @@ describe('what a page carries beside its content', () => {
 		['photos', [], 'the Donation page has no photos; only a campaign does'],
 		['tiers', [], 'the Donation page has no impact tiers; only a campaign does'],
 		['faq', [], 'the Donation page has no questions; only a campaign does'],
-		['logo', { imageId: IMAGE, alt: null }, 'the Donation page has no logo; only a campaign does'],
 		['amountLabels', [], 'the Donation page has no suggested amount labels; only a campaign does']
 	])('refuses %s on the Donation page', (key, value, message) => {
 		expect(parsePage('donation_page', page({ [key]: value }))).toEqual({

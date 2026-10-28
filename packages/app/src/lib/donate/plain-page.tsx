@@ -87,7 +87,7 @@ export function EndedCampaignPage({
 }: {
 	readonly name: string;
 	readonly orgName: string | null;
-	/** the campaign's own logo, else the organisation's, in the masthead; null or absent for none. */
+	/** the organisation's logo, in the masthead; null or absent where it has none. */
 	readonly logo?: PageLogo | null | undefined;
 	readonly look: PageLook;
 }) {

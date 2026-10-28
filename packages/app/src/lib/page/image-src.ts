@@ -9,15 +9,11 @@ import type { Page } from './catalog';
 /** where the deployment serves a stored image's bytes. */
 export const imageSrc = (imageId: string) => `/image/${encodeURIComponent(imageId)}`;
 
-/**
- * the id of each photo the page places: its cover photo's, then each photo beside it, then a
- * campaign's own logo.
- */
-export function placedImageIds(page: Pick<Page, 'hero' | 'photos' | 'logo'>): string[] {
+/** the id of each photo the page places: its cover photo's, then each photo beside it. */
+export function placedImageIds(page: Pick<Page, 'hero' | 'photos'>): string[] {
 	return [
 		...(page.hero === undefined ? [] : [page.hero.imageId]),
-		...(page.photos ?? []).map((photo) => photo.imageId),
-		...(page.logo === undefined ? [] : [page.logo.imageId])
+		...(page.photos ?? []).map((photo) => photo.imageId)
 	];
 }
 

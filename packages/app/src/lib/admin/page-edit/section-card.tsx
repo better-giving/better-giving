@@ -7,6 +7,7 @@ import type { getFormProps } from '@conform-to/react';
 import { type ReactNode, type SubmitEvent, useState } from 'react';
 import { Form, useActionData, useFormAction, useNavigation } from 'react-router';
 import { buttonState } from '../save-button-state';
+import { useReportChanged } from './edit-tabs';
 import { type AdminActionData, recordVersion, resultFor, whichForm } from '../use-admin-form';
 import { WHICH_FORM } from '$lib/forms/definition';
 
@@ -20,6 +21,8 @@ import { WHICH_FORM } from '$lib/forms/definition';
 // uploading). beside an offered Save stands "Unsaved changes". while any write from the screen is
 // in flight every card's Save is held: the version each card carries is the page's, so a second
 // press before the first lands would carry the version the first moved past and be refused.
+//
+// a card standing in a tab tells it whether it holds unsaved edits, which draws the tab's dot.
 //
 // a save that landed answers `{ saved: <form id> }`, which draws the tick on this card's Save alone.
 // the Save's name carries the card's — "Save general" — in words a reader hears and the eye skips,
@@ -66,6 +69,8 @@ type SectionCardProps = {
 	/** conform's form props (`getFormProps`), for the form the card mounted through `useAdminForm`. */
 	readonly form: ReturnType<typeof getFormProps>;
 	readonly title: string;
+	/** the title is read and not drawn: a tab already names the card on the screen (./edit-tabs.tsx). */
+	readonly titleHidden?: boolean | undefined;
 	/** the word the Save is named by: "general" names it "Save general". */
 	readonly saveName: string;
 	/** the page's version the screen was drawn at. */
@@ -88,6 +93,7 @@ type SectionCardProps = {
 export function SectionCard({
 	form,
 	title,
+	titleHidden = false,
 	saveName,
 	version,
 	changed,
@@ -106,6 +112,7 @@ export function SectionCard({
 		pending
 	});
 	const state = buttonState(save);
+	useReportChanged(changed);
 	const refusal = formRefusal(form, answer);
 	const submit = (event: SubmitEvent<HTMLFormElement>) => {
 		beforeSubmit?.(event.currentTarget);
@@ -117,7 +124,7 @@ export function SectionCard({
 			<input {...whichForm(form.id)} />
 			<input {...recordVersion(version)} />
 			<Section card>
-				<h2>{title}</h2>
+				<h2 className={titleHidden ? 'adm-vh' : undefined}>{title}</h2>
 				{hint ? <p className="adm-hint">{hint}</p> : null}
 				{children}
 				{refusal === null ? null : (

@@ -10,10 +10,13 @@ import { type Resized, resizeImage } from '@better-giving/operator/images/resize
 import { type DragEvent, useEffect, useId, useRef, useState } from 'react';
 import { getFormProps } from '@conform-to/react';
 import { useFetcher, useSubmit } from 'react-router';
-import { FormGivingFields } from '../forms/giving-fields';
-import { FormProgramFields } from '../forms/program-fields';
+import { SelectWithNote } from '@better-giving/operator/components/forms/SelectWithNote';
+import { MarkedText } from '@better-giving/operator/marked-text.react';
+import { drawAmountEntry, isComposing, keyInAmountBox, regroupAmountBox } from '../amount-box';
+import type { Box } from '../use-admin-form';
 import { type AdminActionData, useAdminForm } from '../use-admin-form';
 import { readAmount } from '$lib/forms/amounts';
+import { PROGRAM_MODE_LABELS, PROGRAM_MODES } from '$lib/forms/program-modes';
 import { defineForm } from '$lib/forms/definition';
 import {
 	AMOUNT_LABEL_MAX,
@@ -45,9 +48,10 @@ import { ReplacePhotoControl, replaceRefusal } from './replace-photo';
 import { SectionCard, useScreenAnswer, useSeeded } from './section-card';
 
 // a campaign's four section cards on its edit screen (../../../routes/_app.admin.campaigns.$pageId.tsx),
-// in the order the screen draws them: General, Media, Goal and amounts, Settings. each posts its
-// own form ($lib/page/edit-forms.ts) and its Save writes the draft alone, but General's name and
-// link, which move at once ($lib/server/pages/section-saves.ts).
+// one to a tab (./edit-tabs.tsx): General, Media, Goal and amounts, Settings. each posts its own
+// form ($lib/page/edit-forms.ts) and its Save writes the draft alone, which donors see at Publish
+// ($lib/server/pages/section-saves.ts). the tab names each card, so a card's own title is read and
+// not drawn.
 //
 // the cards whose boxes a script writes — the description, the photos, the amount rows — hold what
 // is typed in state seeded from the loader (`useSeeded`), and say whether they hold a change by
@@ -81,7 +85,7 @@ type CardProps<Seed> = { readonly seed: Seed; readonly version: number };
 /** "n/max" under a box, read with it. */
 function Counter({ id, count, max }: { id: string; count: number; max: number }) {
 	return (
-		<p className="adm-hint adm-num" id={id}>
+		<p className="adm-hint adm-num adm-counter" id={id}>
 			{count.toLocaleString('en-US')}/{max.toLocaleString('en-US')}
 		</p>
 	);
@@ -136,6 +140,7 @@ export function GeneralCard({
 		<SectionCard
 			form={getFormProps(form)}
 			title="General"
+			titleHidden
 			saveName="general"
 			version={version}
 			changed={changed}
@@ -283,12 +288,12 @@ function PhotoSlot({
 	noun,
 	error
 }: {
-	readonly legend: 'Banner' | 'Logo';
+	readonly legend: 'Banner';
 	readonly hint: string;
 	readonly slot: Slot;
 	readonly saved: PlacedPhoto | null;
-	readonly frame: 'banner' | 'logo';
-	readonly noun: 'photo' | 'logo';
+	readonly frame: 'banner';
+	readonly noun: 'photo';
 	readonly error: string | undefined;
 }) {
 	const hintId = useId();
@@ -344,25 +349,23 @@ function PhotoSlot({
 	);
 }
 
-/** Media: the banner and the logo, each uploaded as it is picked and saved by Save media. */
+/** Media: the banner, uploaded as it is picked and saved by Save media. */
 export function MediaCard({ seed, version }: CardProps<CampaignMediaSeed>) {
 	const answer = useScreenAnswer();
 	const [form, fields] = useAdminForm(MEDIA, answer, { defaultValue: { ...seed.boxes } });
 	const hero = usePhotoSlot(seed.hero, seed.hero);
-	const logo = usePhotoSlot(seed.logo, seed.logo);
 	const heroId = hero.photo?.imageId ?? '';
-	const logoId = logo.photo?.imageId ?? '';
 	return (
 		<SectionCard
 			form={getFormProps(form)}
 			title="Media"
+			titleHidden
 			saveName="media"
 			version={version}
-			changed={heroId !== seed.boxes.hero_image_id || logoId !== seed.boxes.logo_image_id}
-			held={hero.busy || logo.busy}
+			changed={heroId !== seed.boxes.hero_image_id}
+			held={hero.busy}
 		>
 			<input type="hidden" name={fields.hero_image_id.name} value={heroId} />
-			<input type="hidden" name={fields.logo_image_id.name} value={logoId} />
 			<PhotoSlot
 				legend="Banner"
 				hint="Across the top of the campaign page. A wide photo works best, about four times as wide as it is tall."
@@ -372,16 +375,118 @@ export function MediaCard({ seed, version }: CardProps<CampaignMediaSeed>) {
 				noun="photo"
 				error={firstError(form.allErrors, fields.hero_image_id.name)}
 			/>
-			<PhotoSlot
-				legend="Logo"
-				hint="Beside the campaign’s name. A square image works best."
-				slot={logo}
-				saved={seed.logo}
-				frame="logo"
-				noun="logo"
-				error={firstError(form.allErrors, fields.logo_image_id.name)}
-			/>
 		</SectionCard>
+	);
+}
+
+/** the currency's symbol as an amount is written in it: `$` for USD. */
+function symbolOf(currency: string): string {
+	const parts = new Intl.NumberFormat('en-US', { style: 'currency', currency }).formatToParts(0);
+	return parts.find((part) => part.type === 'currency')?.value ?? '';
+}
+
+/**
+ * a suggested amount as its card's heading, typed in place: the figure grouped as it is typed, as
+ * every money box groups it (../amount-box.ts), with the symbol before it and the code after.
+ */
+function AmountHeading({
+	id,
+	name,
+	label,
+	currency,
+	value,
+	onValueChange,
+	invalid
+}: {
+	readonly id: string;
+	readonly name: string;
+	readonly label: string;
+	readonly currency: string;
+	readonly value: string;
+	readonly onValueChange: (text: string) => void;
+	readonly invalid: boolean;
+}) {
+	const [composed, setComposed] = useState<string | null>(null);
+	return (
+		<label className="adm-amount__figure" htmlFor={id}>
+			<span aria-hidden="true">{symbolOf(currency)}</span>
+			<input
+				id={id}
+				name={name}
+				className="adm-amount__input"
+				type="text"
+				inputMode="decimal"
+				autoComplete="off"
+				aria-label={label}
+				aria-invalid={invalid || undefined}
+				aria-describedby={invalid ? `${id}-err` : undefined}
+				value={composed ?? drawAmountEntry(value, currency)}
+				onKeyDown={(event) => keyInAmountBox(event, currency)}
+				onChange={(event) => {
+					const entry = regroupAmountBox(event, currency);
+					setComposed(isComposing(event) ? event.currentTarget.value : null);
+					onValueChange(entry);
+				}}
+				onCompositionEnd={(event) => {
+					setComposed(null);
+					onValueChange(regroupAmountBox(event, currency));
+				}}
+			/>
+			<span className="adm-amount__unit">{currency}</span>
+		</label>
+	);
+}
+
+type ProgramOption = { readonly value: string; readonly label: string };
+
+const MODE_OPTIONS: readonly ProgramOption[] = PROGRAM_MODES.map((mode) => ({
+	value: mode,
+	label: PROGRAM_MODE_LABELS[mode]
+}));
+
+/**
+ * where a gift goes and, while that is one program, which: two selects side by side. the program
+ * select stays in the tree in every mode, hidden, because every box a form states must arrive
+ * ($lib/server/conform.ts), as $lib/admin/forms/program-fields.tsx keeps it.
+ */
+function ProgramPair({
+	mode: modeBox,
+	program,
+	programs,
+	retired
+}: {
+	readonly mode: Box;
+	readonly program: Box;
+	readonly programs: readonly ProgramOption[];
+	readonly retired: ProgramOption | null;
+}) {
+	const [mode, setMode] = useState(modeBox.defaultValue ?? 'none');
+	const marked = (said: string | undefined) =>
+		said === undefined ? undefined : <MarkedText text={said} />;
+	return (
+		<div className="adm-pair adm-pair--side">
+			<SelectWithNote
+				id={modeBox.id}
+				name={modeBox.name}
+				label="Where a gift goes"
+				defaultValue={modeBox.defaultValue}
+				options={MODE_OPTIONS}
+				onValueChange={setMode}
+				error={marked(modeBox.errors?.[0])}
+			/>
+			<div hidden={mode !== 'pinned'}>
+				<SelectWithNote
+					id={program.id}
+					name={program.name}
+					label="Program"
+					defaultValue={program.defaultValue}
+					options={[{ value: '', label: 'Choose a program' }, ...programs]}
+					retired={retired ?? undefined}
+					hint={programs.length === 0 ? 'Add a program under Programs first.' : undefined}
+					error={marked(program.errors?.[0])}
+				/>
+			</div>
+		</div>
 	);
 }
 
@@ -442,6 +547,7 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 		<SectionCard
 			form={getFormProps(form)}
 			title="Goal and amounts"
+			titleHidden
 			saveName="goal and amounts"
 			version={version}
 			changed={changed}
@@ -476,9 +582,8 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 			<fieldset className="adm-fieldset" aria-describedby={`${id}-amounts-hint`}>
 				<legend className="adm-fieldset__legend">Suggested amounts</legend>
 				<p className="adm-hint" id={`${id}-amounts-hint`}>
-					Donors see these as buttons, in this order, and can still give any amount between the
-					smallest and largest gift. A label says what an amount does, like “Feeds a family for a
-					week”.
+					Up to {CAMPAIGN_AMOUNTS_MAX} buttons in the donation box. A label says what the amount
+					does.
 				</p>
 				{over > 0 ? (
 					<Banner
@@ -488,56 +593,62 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 						A campaign suggests up to {CAMPAIGN_AMOUNTS_MAX} amounts.
 					</Banner>
 				) : null}
-				{rows.map((row, at) => {
-					const labelId = `${id}-label-${row.key}`;
-					return (
-						<div className="adm-stack adm-stack--tight" key={row.key}>
-							<div className="adm-actions">
-								<MoneyField
-									id={`${id}-amount-${row.key}`}
-									name={`${EDIT_BOXES.amount}[${at}]`}
-									aria-label={`Amount ${at + 1}`}
-									currency={currency}
-									affix={currency}
-									affixAt="end"
-									value={row.amount}
-									onValueChange={(amount) => edit(row.key, { amount })}
-									error={firstError(errors, `${EDIT_BOXES.amount}[${at}]`)}
-								/>
-								<Field
-									id={labelId}
-									name={`${EDIT_BOXES.amountLabel}[${at}]`}
-									aria-label={`Label for amount ${at + 1}`}
-									placeholder="Label (optional)"
-									value={row.label}
-									aria-describedby={`${labelId}-count`}
-									onChange={(event) => edit(row.key, { label: event.currentTarget.value })}
-									error={firstError(errors, `${EDIT_BOXES.amountLabel}[${at}]`)}
-								/>
-								<Button
-									type="button"
-									variant="quiet"
-									mark="trash-2"
-									aria-label={`Remove amount ${at + 1}`}
-									onClick={() => setRows(rows.filter((each) => each.key !== row.key))}
-								>
-									Remove
-								</Button>
-							</div>
-							<Counter
-								id={`${labelId}-count`}
-								count={row.label.trim().length}
-								max={AMOUNT_LABEL_MAX}
-							/>
-						</div>
-					);
-				})}
+				{rows.length === 0 ? null : (
+					<div className="adm-amounts">
+						{rows.map((row, at) => {
+							const labelId = `${id}-label-${row.key}`;
+							const amountError = firstError(errors, `${EDIT_BOXES.amount}[${at}]`);
+							const labelError = firstError(errors, `${EDIT_BOXES.amountLabel}[${at}]`);
+							return (
+								<div className="adm-amount" key={row.key}>
+									<div className="adm-amount__head">
+										<AmountHeading
+											id={`${id}-amount-${row.key}`}
+											name={`${EDIT_BOXES.amount}[${at}]`}
+											label={`Amount ${at + 1}`}
+											currency={currency}
+											value={row.amount}
+											onValueChange={(amount) => edit(row.key, { amount })}
+											invalid={amountError !== undefined}
+										/>
+										<Button
+											type="button"
+											variant="quiet"
+											size="sm"
+											mark="x"
+											aria-label={`Remove amount ${at + 1}`}
+											onClick={() => setRows(rows.filter((each) => each.key !== row.key))}
+										/>
+									</div>
+									{amountError === undefined ? null : (
+										<FieldMessage id={`${id}-amount-${row.key}-err`}>{amountError}</FieldMessage>
+									)}
+									<Field
+										id={labelId}
+										name={`${EDIT_BOXES.amountLabel}[${at}]`}
+										aria-label={`Label for amount ${at + 1}`}
+										placeholder="Label (optional)"
+										value={row.label}
+										aria-describedby={`${labelId}-count`}
+										onChange={(event) => edit(row.key, { label: event.currentTarget.value })}
+										error={labelError}
+									/>
+									<Counter
+										id={`${labelId}-count`}
+										count={row.label.trim().length}
+										max={AMOUNT_LABEL_MAX}
+									/>
+								</div>
+							);
+						})}
+					</div>
+				)}
 				<div className="adm-actions">
 					<Button
 						type="button"
-						mark="list-ordered"
+						mark="plus"
 						aria-disabled={full || undefined}
-						aria-describedby={full && over <= 0 ? capId : undefined}
+						aria-describedby={capId}
 						onClick={() => {
 							if (full) return;
 							setRows([...rows, { key: minted, amount: '', label: '' }]);
@@ -546,11 +657,9 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 					>
 						Add an amount
 					</Button>
-					{full && over <= 0 ? (
-						<p className="adm-hint" id={capId}>
-							You can suggest up to {CAMPAIGN_AMOUNTS_MAX} amounts.
-						</p>
-					) : null}
+					<p className="adm-hint" id={capId}>
+						{Math.min(rows.length, CAMPAIGN_AMOUNTS_MAX)} of {CAMPAIGN_AMOUNTS_MAX}
+					</p>
 				</div>
 				{firstError(errors, EDIT_BOXES.amount) === undefined ? null : (
 					<FieldMessage id={`${id}-amounts-err`}>
@@ -596,6 +705,7 @@ export function SettingsCard({ seed, version }: CardProps<CampaignSettingsSeed>)
 		<SectionCard
 			form={getFormProps(form)}
 			title="Settings"
+			titleHidden
 			saveName="settings"
 			version={version}
 			changed={changed}
@@ -606,20 +716,37 @@ export function SettingsCard({ seed, version }: CardProps<CampaignSettingsSeed>)
 				}
 			}}
 		>
-			<FormProgramFields
-				boxes={{ program_mode: fields.program_mode, program_id: fields.program_id }}
+			<ProgramPair
+				mode={fields.program_mode}
+				program={fields.program_id}
 				programs={seed.programs}
 				retired={seed.retired}
-				heading="h3"
 			/>
-			<FormGivingFields
-				boxes={{ min_minor: fields.min_minor, max_minor: fields.max_minor }}
-				currency={seed.currency}
-				heading="h3"
-			/>
-			<h3>How the donation box opens</h3>
+			<div className="adm-pair adm-pair--side">
+				<MoneyField
+					id={fields.min_minor.id}
+					name={fields.min_minor.name}
+					label="Smallest gift"
+					currency={seed.currency}
+					affix={seed.currency}
+					affixAt="end"
+					defaultValue={seed.boxes.min_minor}
+					error={firstError(form.allErrors, fields.min_minor.name)}
+				/>
+				<MoneyField
+					id={fields.max_minor.id}
+					name={fields.max_minor.name}
+					label="Largest gift"
+					currency={seed.currency}
+					affix={seed.currency}
+					affixAt="end"
+					defaultValue={seed.boxes.max_minor}
+					error={firstError(form.allErrors, fields.max_minor.name)}
+				/>
+			</div>
 			<CheckboxGroup
 				id={`${id}-opens`}
+				legend="Donation box"
 				items={[
 					{
 						id: fields.open_on_monthly.id,
@@ -636,7 +763,6 @@ export function SettingsCard({ seed, version }: CardProps<CampaignSettingsSeed>)
 					}
 				]}
 			/>
-			<h3>Sharing and end date</h3>
 			<div className="adm-stack adm-stack--tight">
 				<Field
 					id={fields.share_message.id}
@@ -644,7 +770,7 @@ export function SettingsCard({ seed, version }: CardProps<CampaignSettingsSeed>)
 					as="textarea"
 					label="Share message"
 					optional
-					hint="What a donor’s post says when they share the campaign. Left empty, it says the campaign’s name."
+					hint="Empty says the campaign’s name."
 					defaultValue={seed.boxes.share_message}
 					aria-describedby={`${id}-share-count`}
 					error={firstError(form.allErrors, fields.share_message.name)}
@@ -655,7 +781,7 @@ export function SettingsCard({ seed, version }: CardProps<CampaignSettingsSeed>)
 				id={fields.end_date.id}
 				name={fields.end_date.name}
 				label="End date"
-				hint="The campaign ends at the end of this day, your time. Leave it empty to run until you end it."
+				hint="Ends at the end of this day, your time. Empty runs until you end it."
 				defaultValue={seed.boxes.end_date}
 				min={earliest}
 				error={

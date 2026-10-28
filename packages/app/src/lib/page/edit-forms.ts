@@ -82,7 +82,6 @@ export const EDIT_BOXES = {
 	/** the description: the rich-text box's document as JSON. */
 	story: 'story',
 	heroImageId: 'hero_image_id',
-	logoImageId: 'logo_image_id',
 	goalMode: 'goal_mode',
 	/** the goal in major units of the page's currency, as an amount box reads one. */
 	goalAmount: 'goal_amount',
@@ -149,10 +148,9 @@ export const CAMPAIGN_GENERAL_INPUT = z.object({
 	[EDIT_BOXES.takeover]: z.boolean().optional()
 });
 
-/** Media: the banner (the cover photo) and the campaign's logo, each by its upload's id; blank is none. */
+/** Media: the banner (the cover photo), by its upload's id; blank is none. */
 export const CAMPAIGN_MEDIA_INPUT = z.object({
-	[EDIT_BOXES.heroImageId]: z.string().trim().optional(),
-	[EDIT_BOXES.logoImageId]: z.string().trim().optional()
+	[EDIT_BOXES.heroImageId]: z.string().trim().optional()
 });
 
 /** an amount box's text read in the form currency: its problem, or null where it reads. */
@@ -278,9 +276,8 @@ export type CampaignGeneralSeed = {
 };
 
 export type CampaignMediaSeed = {
-	readonly boxes: { readonly hero_image_id: string; readonly logo_image_id: string };
+	readonly boxes: { readonly hero_image_id: string };
 	readonly hero: PlacedPhoto | null;
-	readonly logo: PlacedPhoto | null;
 };
 
 export type CampaignGoalSeed = {

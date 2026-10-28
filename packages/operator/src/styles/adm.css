@@ -5118,6 +5118,144 @@
 	   what a page's edit screen draws beyond the library's fields and cards: a confirm's refusal,
 	   and a box with its unit or address stated on it (packages/app/src/lib/admin/page-edit/). */
 
+	/* one tab per section card (packages/app/src/lib/admin/page-edit/edit-tabs.tsx): a row of tabs
+	   over a hairline, the chosen one in the accent ink and underlined on the hairline itself. a row
+	   wider than the screen scrolls sideways rather than wrapping, so a phone keeps one line. */
+	.adm-tabs {
+		display: flex;
+		gap: var(--admin-space-2);
+		overflow-x: auto;
+		border-block-end: var(--admin-hairline);
+		scrollbar-width: thin;
+	}
+
+	.adm-tabs__tab {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: var(--admin-space-2);
+		margin-block-end: calc(var(--admin-border-width) * -1);
+		padding: var(--admin-space-3) var(--admin-space-2);
+		background: none;
+		border: 0;
+		border-block-end: var(--admin-border-width-strong) solid transparent;
+		color: var(--admin-ink-2);
+		font-family: inherit;
+		font-size: var(--admin-control-size);
+		font-weight: var(--admin-label-weight);
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.adm-tabs__tab:hover,
+	.adm-tabs__tab.is-hover {
+		color: var(--admin-ink);
+	}
+
+	.adm-tabs__tab[aria-selected='true'] {
+		color: var(--admin-accent-ink);
+		border-block-end-color: var(--admin-accent-ink);
+	}
+
+	.adm-tabs__tab:focus-visible,
+	.adm-tabs__tab.is-focus {
+		outline: var(--admin-focus-width) solid var(--admin-focus-ring);
+		outline-offset: calc(var(--admin-focus-width) * -1);
+	}
+
+	/* a tab whose card holds unsaved edits. */
+	.adm-tabs__dot {
+		inline-size: var(--admin-space-2);
+		block-size: var(--admin-space-2);
+		background: var(--admin-tone-attention-mark);
+		border-radius: var(--admin-radius-pill);
+	}
+
+	/* the suggested amounts as cards: one to a row on a phone, two from the middle width. each is the
+	   amount as its heading, typed in place, with its code and its remove press on that line, and its
+	   label under it. */
+	.adm-amounts {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--admin-space-3);
+	}
+
+	@media (min-width: 44rem) {
+		.adm-amounts {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	.adm-amount {
+		display: grid;
+		gap: var(--admin-space-2);
+		align-content: start;
+		padding: var(--admin-space-4);
+		background: var(--admin-surface-sunken);
+		border: var(--admin-hairline);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-amount__head {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-2);
+	}
+
+	.adm-amount__figure {
+		display: flex;
+		flex: 1 1 auto;
+		align-items: center;
+		gap: var(--admin-space-1);
+		min-inline-size: 0;
+		font-size: var(--admin-subhead-size);
+		font-weight: var(--admin-subhead-weight);
+	}
+
+	.adm-amount__input {
+		flex: 1 1 auto;
+		min-inline-size: 0;
+		padding: var(--admin-space-1);
+		background: none;
+		border: 0;
+		border-radius: var(--admin-radius);
+		color: var(--admin-ink);
+		font-family: inherit;
+		font-size: var(--admin-subhead-size);
+		font-weight: var(--admin-subhead-weight);
+	}
+
+	.adm-amount__input:focus-visible,
+	.adm-amount__input.is-focus {
+		outline: var(--admin-focus-width) solid var(--admin-focus-ring);
+	}
+
+	.adm-amount__input[aria-invalid='true'] {
+		outline: var(--admin-border-width) solid var(--admin-field-border-invalid);
+	}
+
+	.adm-amount__unit {
+		color: var(--admin-ink-muted);
+		font-size: var(--admin-hint-size);
+		font-weight: var(--admin-label-weight);
+	}
+
+	/* how many characters a box holds against its limit, at the box's end edge. */
+	.adm-counter {
+		justify-self: end;
+		text-align: end;
+	}
+
+	/* a card that is one row: what it does at the start, its one press at the end, wrapping under
+	   on a phone. */
+	.adm-rowcard {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--admin-space-4);
+	}
+
 	/* the refusal an edit screen confirm's act came back with, last in the card's body. it is there before
 	   it speaks, and while empty the body's gap above it is taken back, so it holds no room. */
 	.adm-dialog__refusal:empty {
@@ -5205,16 +5343,12 @@
 		max-inline-size: var(--admin-measure-rail);
 	}
 
-	/* a campaign's banner, cropped to the band its page draws it in, and the same band empty. */
+	/* a campaign's banner, cropped to the band its page draws it in, and the same band empty: no
+	   taller than the preview's measure, so its width is held to four times that. */
 	.adm-placed__art--banner,
 	.adm-placed__empty {
 		aspect-ratio: 4 / 1;
-	}
-
-	/* a campaign's logo, square, at the measure a logo is judged at. */
-	.adm-placed__art--logo {
-		aspect-ratio: 1;
-		max-inline-size: var(--admin-measure-logo);
+		max-inline-size: calc(var(--admin-measure-banner) * 4);
 	}
 
 	/* where a banner goes before there is one: its band, outlined and filled, so a photo dropped on

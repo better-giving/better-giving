@@ -76,8 +76,6 @@ export const SECTION_DATA = {
 	story: richTextDocument.optional(),
 	/** absent draws the organisation's logo in its place, and nothing where it has none. */
 	hero: photo.optional(),
-	/** a campaign's own logo, drawn where the organisation's is; absent draws the organisation's. */
-	logo: photo.optional(),
 	photos: z
 		.array(photo)
 		.max(PHOTOS_MAX, { error: `a campaign holds at most ${PHOTOS_MAX} photos beside its cover` })
@@ -124,7 +122,6 @@ const CAMPAIGN_ONLY = [
 	['lede', 'lede'],
 	['story', 'story'],
 	['hero', 'cover photo'],
-	['logo', 'logo'],
 	['photos', 'photos'],
 	['tiers', 'impact tiers'],
 	['faq', 'questions'],

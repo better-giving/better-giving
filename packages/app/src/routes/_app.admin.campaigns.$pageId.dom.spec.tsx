@@ -67,7 +67,7 @@ function fixture(state: BannerState = 'not_public'): Loaded {
 				boxes: { name: 'Winter coat drive', slug: 'winter-coat-drive' },
 				story: BLANK_STORY
 			},
-			media: { boxes: { hero_image_id: '', logo_image_id: '' }, hero: null, logo: null },
+			media: { boxes: { hero_image_id: '' }, hero: null },
 			goal: {
 				boxes: { goal_mode: 'none', goal_amount: '', amount: ['25'], amount_label: [''] },
 				currency: 'USD'
@@ -209,6 +209,12 @@ function box(within: Element, label: string): HTMLInputElement {
 	return found;
 }
 
+const tabs = () => [...document.querySelectorAll<HTMLElement>('[role="tab"]')];
+const chosen = () =>
+	tabs().find((tab) => tab.getAttribute('aria-selected') === 'true')?.textContent;
+const panelOf = (tab: HTMLElement) =>
+	document.getElementById(tab.getAttribute('aria-controls') ?? '') as HTMLElement;
+
 describe('the edit page as it opens', () => {
 	it('is a form of section cards in order, with no preview', async () => {
 		await screen();
@@ -217,6 +223,69 @@ describe('the edit page as it opens', () => {
 		expect(
 			[...document.querySelectorAll('section.adm-card h2')].map((one) => one.textContent)
 		).toEqual(['General', 'Media', 'Goal and amounts', 'Settings', 'End campaign']);
+	});
+
+	it('puts each card in a tab of its own, the banner above them all', async () => {
+		await screen();
+
+		const tablist = document.querySelector('[role="tablist"]') as HTMLElement;
+		expect(tabs().map((tab) => tab.textContent)).toEqual([
+			'General',
+			'Media',
+			'Goal and amounts',
+			'Settings'
+		]);
+		expect(tabs().map((tab) => tab.getAttribute('aria-selected'))).toEqual([
+			'true',
+			'false',
+			'false',
+			'false'
+		]);
+		expect(tabs().map((tab) => tab.tabIndex)).toEqual([0, -1, -1, -1]);
+		const banner = document.querySelector('.adm-banner') as HTMLElement;
+		expect(banner.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(tablist.contains(banner)).toBe(false);
+		const general = panelOf(tabs()[0] as HTMLElement);
+		expect(general.hidden).toBe(false);
+		expect(general.contains(card('General'))).toBe(true);
+		expect(panelOf(tabs()[3] as HTMLElement).contains(card('End campaign'))).toBe(true);
+		expect(panelOf(tabs()[3] as HTMLElement).hidden).toBe(true);
+	});
+
+	it('moves between tabs with the arrow keys, Home and End', async () => {
+		await screen();
+		const tablist = document.querySelector('[role="tablist"]') as HTMLElement;
+		const key = (name: string) =>
+			act(() => {
+				tablist.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
+			});
+
+		await key('ArrowRight');
+		expect(chosen()).toBe('Media');
+		expect(document.activeElement).toBe(tabs()[1]);
+		expect(panelOf(tabs()[1] as HTMLElement).hidden).toBe(false);
+		expect(panelOf(tabs()[0] as HTMLElement).hidden).toBe(true);
+		await key('ArrowLeft');
+		await key('ArrowLeft');
+		expect(chosen()).toBe('Settings');
+		await key('Home');
+		expect(chosen()).toBe('General');
+		await key('End');
+		expect(chosen()).toBe('Settings');
+	});
+
+	it('marks a tab whose card holds unsaved edits, and only that one', async () => {
+		await screen();
+
+		await type(box(card('Settings'), 'Share message'), 'Join me');
+
+		expect(tabs().map((tab) => tab.querySelector('.adm-tabs__dot') !== null)).toEqual([
+			false,
+			false,
+			false,
+			true
+		]);
+		expect(tabs()[3]?.textContent).toBe('Settings, unsaved changes');
 	});
 
 	it('offers every Save held, until its card changes', async () => {
@@ -307,9 +376,11 @@ describe('Goal and amounts', () => {
 		expect(held(button('Save goal and amounts'))).toBe(false);
 	});
 
-	it('holds Add at four amounts, saying why', async () => {
+	it('counts the amounts beside Add, and holds Add at four', async () => {
 		await screen();
 		const add = button('Add an amount');
+		const count = () => document.getElementById(add.getAttribute('aria-describedby') ?? '');
+		expect(count()?.textContent).toBe('1 of 4');
 
 		for (let n = 0; n < 3; n += 1) await press(add);
 
@@ -317,7 +388,7 @@ describe('Goal and amounts', () => {
 			4
 		);
 		expect(held(add)).toBe(true);
-		expect(card('Goal and amounts').textContent).toContain('You can suggest up to 4 amounts.');
+		expect(count()?.textContent).toBe('4 of 4');
 		await press(add);
 		expect(card('Goal and amounts').querySelectorAll('input[aria-label^="Amount "]')).toHaveLength(
 			4
@@ -384,6 +455,35 @@ describe('Goal and amounts', () => {
 	});
 });
 
+describe('Settings', () => {
+	it('sets the smallest and largest gift in two boxes, with no currency line and no slider', async () => {
+		await screen();
+		const settings = card('Settings');
+
+		expect(box(settings, 'Smallest gift').value).toBe('1');
+		expect(box(settings, 'Largest gift').value).toBe('10,000');
+		expect(settings.querySelector('[role="slider"]')).toBeNull();
+		expect(settings.textContent).not.toContain('Currency');
+		expect(settings.querySelectorAll('h3')).toHaveLength(0);
+	});
+});
+
+describe('the suggested amount cards', () => {
+	it('heads each card with its amount, typed in place, and its remove press', async () => {
+		await screen();
+		const goal = card('Goal and amounts');
+		const amount = goal.querySelector<HTMLInputElement>('.adm-amount input[aria-label="Amount 1"]');
+		expect(amount?.value).toBe('25');
+
+		await type(amount as HTMLInputElement, '1500');
+		expect(amount?.value).toBe('1,500');
+		expect(held(button('Save goal and amounts'))).toBe(false);
+
+		await press(button('Remove amount 1'));
+		expect(goal.querySelectorAll('.adm-amount')).toHaveLength(0);
+	});
+});
+
 describe('Media', () => {
 	/** a photo picked through the banner's Replace, as the device's picker hands it back. */
 	async function pickBanner() {
@@ -409,11 +509,12 @@ describe('Media', () => {
 	const heroBox = () =>
 		card('Media').querySelector<HTMLInputElement>('input[name="hero_image_id"]')?.value;
 
-	it('names each Reset for its photo, and holds both while nothing is changed', async () => {
+	it('holds the banner alone, with Reset banner held while nothing is changed', async () => {
 		await screen();
 
+		expect(card('Media').querySelectorAll('input[type="file"]')).toHaveLength(1);
+		expect(card('Media').textContent).not.toMatch(/logo/i);
 		expect(held(button('Reset banner'))).toBe(true);
-		expect(held(button('Reset logo'))).toBe(true);
 	});
 
 	it('holds Save media while a picked photo resizes', async () => {
@@ -440,15 +541,13 @@ describe('Media', () => {
 		expect(held(button('Save media'))).toBe(false);
 		expect(heroBox()).toBe('img1');
 		expect(held(button('Reset banner'))).toBe(false);
-		expect(held(button('Reset logo'))).toBe(true);
 
 		answers.push({ body: { saved: 'campaign-media' } });
 		await press(button('Save media'));
 		expect(posted[0]).toEqual({
 			[WHICH_FORM]: 'campaign-media',
 			[RECORD_VERSION]: '1',
-			hero_image_id: 'img1',
-			logo_image_id: ''
+			hero_image_id: 'img1'
 		});
 	});
 
@@ -459,9 +558,8 @@ describe('Media', () => {
 			seeds: {
 				...saved.seeds,
 				media: {
-					boxes: { hero_image_id: 'saved1', logo_image_id: '' },
-					hero: { imageId: 'saved1', src: '/image/saved1' },
-					logo: null
+					boxes: { hero_image_id: 'saved1' },
+					hero: { imageId: 'saved1', src: '/image/saved1' }
 				}
 			}
 		};

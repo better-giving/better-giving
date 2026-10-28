@@ -61,9 +61,8 @@ describe('a campaign’s card seeds', () => {
 			story
 		});
 		expect(seeds.media).toEqual({
-			boxes: { hero_image_id: IMAGE, logo_image_id: '' },
-			hero: { imageId: IMAGE, src: `/image/${IMAGE}` },
-			logo: null
+			boxes: { hero_image_id: IMAGE },
+			hero: { imageId: IMAGE, src: `/image/${IMAGE}` }
 		});
 		expect(seeds.goal).toEqual({
 			boxes: {
