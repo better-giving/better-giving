@@ -1,16 +1,13 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { SettingRow } from '@better-giving/operator/components/data/SettingRow';
-import { SelectWithNote } from '@better-giving/operator/components/forms/SelectWithNote';
-import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { useId, useState } from 'react';
+import { useId } from 'react';
 
-// the editor's questions, each a card over the editor that the caller puts up and takes down.
+// the edit screens' questions, each a card over the screen that the caller puts up and takes down.
 //
-// two arrangements, by what the press costs: Reset to default and Discard changes destroy work and
-// are the danger card, listing only what the press replaces; a campaign's
-// first Publish destroys nothing and is the commit card. the act stands first in both, and Escape or
-// a press on the ground is the way out the card names.
+// Reset to default and Discard changes destroy work, so each is the danger card, listing only what
+// the press replaces. the act stands first, and Escape or a press on the ground is the way out the
+// card names.
 //
 // the act holds its focus while it is in flight — `aria-disabled` and the press turned away, never
 // `disabled` — and a refusal it comes back with is said inside the card, in a region that is there
@@ -93,68 +90,6 @@ export function DiscardConfirm({ discarding, onDiscard, onCancel, refusal }: Dis
 		>
 			<div>
 				<SettingRow label="Your draft" value="Back to the live page" />
-			</div>
-			<Refusal id={refusalId} text={refusal} />
-		</Modal>
-	);
-}
-
-type FirstPublishConfirmProps = {
-	/** the campaign's name, which the question is asked about. */
-	readonly name: string;
-	/** where a gift may go: the active programs, as the caller words them. */
-	readonly programs: readonly { readonly value: string; readonly label: string }[];
-	/** the program the draft's donation settings give gifts to now. */
-	readonly program: string;
-	/** the address the campaign will take, as a path. */
-	readonly address: string;
-	/** the address the campaign asked for, where it was taken and `address` is the next free one. */
-	readonly asked?: string | undefined;
-	readonly publishing: boolean;
-	/** Publish, with the program chosen here. */
-	readonly onPublish: (program: string) => void;
-	readonly onCancel: () => void;
-	readonly refusal?: string | null | undefined;
-};
-
-/** a campaign's first Publish: where its gifts go, changeable here, and the address it takes. */
-export function FirstPublishConfirm({
-	name,
-	programs,
-	program,
-	address,
-	asked,
-	publishing,
-	onPublish,
-	onCancel,
-	refusal
-}: FirstPublishConfirmProps) {
-	const id = useId();
-	const refusalId = `${id}-refusal`;
-	const [chosen, setChosen] = useState(program);
-	return (
-		<Modal
-			title={`Publish ${name}?`}
-			commit="Publish"
-			commitProps={held(publishing, () => onPublish(chosen), refusal ? refusalId : undefined)}
-			cancel="Cancel"
-			cancelProps={{ type: 'button', onClick: onCancel }}
-			onDismiss={onCancel}
-		>
-			<SelectWithNote
-				id={`${id}-program`}
-				label="Gifts go to"
-				options={programs}
-				value={chosen}
-				onValueChange={setChosen}
-			/>
-			<div className="adm-stack adm-stack--tight">
-				<StatedValue label="Address" value={address} code />
-				{asked ? (
-					<p className="adm-hint">
-						The address {asked} is taken, so this campaign takes the next free one.
-					</p>
-				) : null}
 			</div>
 			<Refusal id={refusalId} text={refusal} />
 		</Modal>

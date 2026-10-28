@@ -198,8 +198,11 @@ type FormGivingFieldsProps = {
 		readonly min_minor: Box;
 		readonly max_minor: Box;
 	};
-	/** the amounts group, which is a list of boxes rather than one. */
-	readonly amounts: AmountRows;
+	/**
+	 * the amounts group, which is a list of boxes rather than one; absent where a screen sets the
+	 * amounts elsewhere — a campaign's Goal and amounts card — and the group is the bounds alone.
+	 */
+	readonly amounts?: AmountRows | undefined;
 	/** the currency the form charges in. stated, never editable — v0 is USD-only. */
 	readonly currency: string;
 	/**
@@ -211,14 +214,23 @@ type FormGivingFieldsProps = {
 	readonly heading?: 'h2' | 'h3' | undefined;
 };
 
+/** the amounts group a screen without one draws: no rows, and presses nothing is drawn for. */
+const NO_AMOUNTS: AmountRows = {
+	id: 'no-amounts',
+	rows: [],
+	add: { name: '', value: '', form: '', formNoValidate: true },
+	remove: () => ({ name: '', value: '', form: '', formNoValidate: true })
+};
+
 export function FormGivingFields({
 	boxes,
-	amounts,
+	amounts: listed,
 	currency,
 	footer,
 	heading: Heading = 'h2'
 }: FormGivingFieldsProps) {
 	const hydrated = useHydrated();
+	const amounts = listed ?? NO_AMOUNTS;
 	// the rows a press was held over at the cap. the sentence stands while they are the rows on
 	// screen, and goes the moment one is added or dropped. it is the answer to the latest press, so
 	// it stands over a save's refusal of the same group.
@@ -501,33 +513,36 @@ export function FormGivingFields({
 				    amount is written is stated here: one box takes one amount and the placeholder
 				    shows the shape, and `amountRule` in `$lib/forms/amounts.ts` ends every sentence
 				    one of these boxes is refused with. */}
-				<RepeatingRows
-					id={amounts.id}
-					legend={FORM_FIELD_LABELS.suggested_amounts}
-					rowLabel="suggested amount"
-					hint="A donor sees these in the order you write them, and can still give any amount within the bounds."
-					describedBy={capError ? capErrorId : undefined}
-					placeholder={suggestedExample}
-					addLabel="Add an amount"
-					add={add}
-					rows={amounts.rows.map((row, index) => ({
-						// bound the way every other box on these screens is: the message under a row is
-						// that row's own, and the standing hint is composed in beside it rather than
-						// replacing the message's id (../use-admin-form.ts). the sentence goes over as a
-						// node for the reason the bounds' do.
-						...boxProps(row, { describedBy: suggestedHintId }),
-						defaultValue: seed(row),
-						...money(),
-						key: row.key,
-						className: 'adm-num',
-						inputMode: 'decimal',
-						error: row.errors?.[0] === undefined ? undefined : <MarkedText text={row.errors[0]} />,
-						// a lone row draws no Remove: with one box left there is nothing to choose
-						// between, and a control that would leave the group empty is one the group has
-						// no state for. it comes back on every row the moment there are two.
-						remove: amounts.rows.length > 1 ? drawn(amounts.remove(index), hydrated) : undefined
-					}))}
-				/>
+				{listed === undefined ? null : (
+					<RepeatingRows
+						id={amounts.id}
+						legend={FORM_FIELD_LABELS.suggested_amounts}
+						rowLabel="suggested amount"
+						hint="A donor sees these in the order you write them, and can still give any amount within the bounds."
+						describedBy={capError ? capErrorId : undefined}
+						placeholder={suggestedExample}
+						addLabel="Add an amount"
+						add={add}
+						rows={amounts.rows.map((row, index) => ({
+							// bound the way every other box on these screens is: the message under a row is
+							// that row's own, and the standing hint is composed in beside it rather than
+							// replacing the message's id (../use-admin-form.ts). the sentence goes over as a
+							// node for the reason the bounds' do.
+							...boxProps(row, { describedBy: suggestedHintId }),
+							defaultValue: seed(row),
+							...money(),
+							key: row.key,
+							className: 'adm-num',
+							inputMode: 'decimal',
+							error:
+								row.errors?.[0] === undefined ? undefined : <MarkedText text={row.errors[0]} />,
+							// a lone row draws no Remove: with one box left there is nothing to choose
+							// between, and a control that would leave the group empty is one the group has
+							// no state for. it comes back on every row the moment there are two.
+							remove: amounts.rows.length > 1 ? drawn(amounts.remove(index), hydrated) : undefined
+						}))}
+					/>
+				)}
 
 				{capError ? (
 					<FieldMessage key={heldPresses} id={capErrorId}>

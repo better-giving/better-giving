@@ -1,11 +1,9 @@
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { DiscardConfirm, FirstPublishConfirm, ResetConfirm } from './confirms';
+import { DiscardConfirm, ResetConfirm } from './confirms';
 
-// the editor's questions as the card draws them: what Reset, Discard and a block's Remove say they
-// replace or take, and what a campaign's first Publish says of an address it did not get. what the
-// presses post is ./publish-wiring.dom.spec.tsx's, and a block's Remove ./block-list.dom.spec.tsx's.
+// the edit screens' questions as the card draws them: what Reset and Discard say they replace.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -45,36 +43,5 @@ describe('what Reset and Discard replace', () => {
 		);
 		expect(rows(root)).toEqual(['Your draft']);
 		expect(card(root).textContent).not.toMatch(/chat/i);
-	});
-});
-
-describe('a campaign’s first Publish', () => {
-	const confirm = (asked?: string) =>
-		mount(
-			<FirstPublishConfirm
-				name="Winter coat drive"
-				programs={[{ value: 'none', label: 'No program' }]}
-				program="none"
-				address="/winter-coat-drive-2"
-				asked={asked}
-				publishing={false}
-				onPublish={() => {}}
-				onCancel={() => {}}
-			/>
-		);
-	const taken = /is taken, so this campaign takes the next free one/;
-
-	it('states the next free address it takes, and that the one asked for is taken', () => {
-		const text = card(confirm('/winter-coat-drive')).textContent;
-		expect(text).toContain('/winter-coat-drive-2');
-		expect(text).toContain(
-			'The address /winter-coat-drive is taken, so this campaign takes the next free one.'
-		);
-	});
-
-	it('says nothing is taken when it is handed no address asked for', () => {
-		const text = card(confirm()).textContent;
-		expect(text).toContain('/winter-coat-drive-2');
-		expect(text).not.toMatch(taken);
 	});
 });

@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client';
 import { createRoutesStub, Link } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import ProtectedLayout, { clientMiddleware } from './_app';
-import { handle as donationPageHandle } from './_app.admin.donation-page';
 import { handle as formHandle } from './_app.admin.forms.$id';
 
 // what the layout frames: the panel's top strip over each screen, the rail each viewer gets, the
@@ -56,11 +55,7 @@ function frameAt(at: string, deployer = true): Promise<HTMLElement> {
 					Component: () => <p>the form</p>
 				},
 				{ path: '/admin/members/password', Component: () => <h1>Your password</h1> },
-				{
-					path: '/admin/donation-page',
-					handle: donationPageHandle,
-					Component: () => <p>the editor</p>
-				},
+				{ path: '/admin/donation-page', Component: () => <p>the Donation page</p> },
 				{ path: '/admin/elsewhere', Component: () => <p>nowhere</p> }
 			]
 		}
@@ -112,7 +107,7 @@ it('draws no strip under no destination', async () => {
 	expect(strip(root)).toBeNull();
 });
 
-it('opens the Donation page editor from the globe beside the organisation’s name', async () => {
+it('opens the Donation page from the globe beside the organisation’s name', async () => {
 	const root = await frameAt('/admin/forms');
 	const globes = [...root.querySelectorAll('a[aria-label="Donation page"]')];
 
@@ -123,11 +118,11 @@ it('opens the Donation page editor from the globe beside the organisation’s na
 	expect(globes.map((a) => a.getAttribute('target'))).toEqual(globes.map(() => null));
 });
 
-it('draws an editor across the whole window, with no rail or band around it', async () => {
+it('draws the Donation page inside the frame, as every screen is', async () => {
 	const root = await frameAt('/admin/donation-page');
 
-	expect(root.textContent).toContain('the editor');
-	expect(root.textContent).not.toContain('Riverbank Trust');
+	expect(root.textContent).toContain('the Donation page');
+	expect(root.textContent).toContain('Riverbank Trust');
 });
 
 // the rail's Integrations group is the deployer's alone: every page in it answers a member with

@@ -64,17 +64,16 @@ export type ReplacePhotoControlProps = Description &
 			| 'removing'
 			| { readonly refused: string }
 			| undefined;
-		/** how the art is framed: absent, cropped to the sheet's frame; `square`, cropped as the
-		 *  program chooser crops a program's photo. */
-		readonly frame?: 'square' | undefined;
+		/** how the art is framed: absent, cropped 16:9; `square`, cropped as the program chooser
+		 *  crops a program's photo; `banner`, cropped 4:1 as a campaign's banner. */
+		readonly frame?: 'square' | 'banner' | undefined;
 		/** Remove beside the press while an image is placed; absent, no Remove is drawn. */
 		readonly onRemove?: (() => void) | undefined;
 		/** the press's id, for a caller that moves the focus to it. */
 		readonly pressId?: string | undefined;
 	};
 
-/* a placed image and the press that swaps it: a cover or a photo in its sheet, a program's
-   photo, the organisation's logo. a new image is resized here and reported, or, with `onChosen`,
+/* a placed image and the press that swaps it: a campaign's banner or logo, a program's photo. a new image is resized here and reported, or, with `onChosen`,
    handed over for the caller's own step first (`Picked`); the route uploads it and hands back
    `state`. none placed yet draws the press alone, as Add, on the same path; the box that
    describes a photo comes with the photo, unless the caller leaves it off.
@@ -124,7 +123,7 @@ export function ReplacePhotoControl(props: ReplacePhotoControlProps) {
 				{placed ? (
 					<img
 						className={
-							frame === 'square' ? 'adm-placed__art adm-placed__art--square' : 'adm-placed__art'
+							frame === undefined ? 'adm-placed__art' : `adm-placed__art adm-placed__art--${frame}`
 						}
 						src={imageSrc}
 						alt={alt ?? ''}

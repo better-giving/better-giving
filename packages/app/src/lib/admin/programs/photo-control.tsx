@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import type { Resized } from '@better-giving/operator/images/resize';
 import { imageSrc } from '$lib/page/image-src';
-import { ReplacePhotoControl, type ReplacePhotoControlProps } from '../editor/replace-photo';
+import { ReplacePhotoControl, type ReplacePhotoControlProps } from '../page-edit/replace-photo';
 
 // a program's photo, in the program's own group beside its name: the two things a donor sees of a
 // program on the Donation page's chooser. the placed-photo control (../editor/replace-photo.tsx),

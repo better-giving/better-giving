@@ -5478,10 +5478,16 @@
 		border-radius: var(--admin-radius);
 	}
 
-	/* a program's photo, cropped square as the donation page's program chooser crops it. */
+	/* a program's photo, cropped square as the donation page's program chooser crops it; a
+	   campaign's logo the same. */
 	.adm-placed__art--square {
 		aspect-ratio: 1;
 		max-inline-size: var(--admin-measure-rail);
+	}
+
+	/* a campaign's banner, cropped to the band its page draws it in. */
+	.adm-placed__art--banner {
+		aspect-ratio: 4 / 1;
 	}
 
 	/* the crop the logo dialog draws (packages/app/src/lib/admin/settings/logo-crop-dialog.tsx): the
