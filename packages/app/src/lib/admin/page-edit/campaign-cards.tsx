@@ -162,7 +162,7 @@ export function GeneralCard({
 				id={fields.slug.id}
 				name={fields.slug.name}
 				label="Campaign link"
-				hint="Links you’ve already shared stop working once you publish a new one."
+				hint="Change this and links you’ve already shared stop working once you publish."
 				affix={host}
 				affixAt="start"
 				value={slug}
@@ -206,8 +206,8 @@ export function GeneralCard({
 					onDismiss={no}
 				>
 					<p>
-						This link now shows that {question.holder} has ended. Once you publish, it is this
-						campaign’s, and {question.holder} is left with no link.
+						This link now shows that {question.holder} has ended. Once you publish, it becomes this
+						campaign’s link, and {question.holder} is left with no link.
 					</p>
 				</Modal>
 			) : null}
@@ -444,6 +444,12 @@ function AmountHeading({
 
 type ProgramOption = { readonly value: string; readonly label: string };
 
+/** what each mode does, as a campaign says it: the Programs form's notes, said of a campaign. */
+const CAMPAIGN_MODE_NOTES: Record<ProgramMode, string> = {
+	...PROGRAM_MODE_NOTES,
+	pinned: 'Every gift to this campaign goes to the program you pick.'
+};
+
 /** the chosen mode, from a box that carries whatever a body last put in it. */
 const asMode = (value: string): ProgramMode =>
 	PROGRAM_MODES.find((mode) => mode === value) ?? 'none';
@@ -480,7 +486,7 @@ function ProgramPair({
 				label="Where a gift goes"
 				defaultValue={modeBox.defaultValue}
 				options={MODE_OPTIONS}
-				hint={PROGRAM_MODE_NOTES[asMode(mode)]}
+				hint={CAMPAIGN_MODE_NOTES[asMode(mode)]}
 				onValueChange={setMode}
 				error={marked(modeBox.errors?.[0])}
 			/>
@@ -594,7 +600,7 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 				<p className="adm-hint" id={`${id}-amounts-hint`}>
 					You can suggest up to {CAMPAIGN_AMOUNTS_MAX} amounts. Donors see these in this order and
 					can still give any amount between the smallest and largest gift. A label says what an
-					amount does, like “Feeds a family for a week”.
+					amount does, like “Feeds a family for a week.”
 				</p>
 				{over > 0 ? (
 					<Banner

@@ -356,7 +356,7 @@ describe('a section’s Save', () => {
 		});
 		expect(button('Saved settings').textContent).toBe('Saved settings');
 		expect(card('Settings').textContent).toContain(
-			'Your changes are saved and go live when you publish.'
+			'Saved. Donors see your changes once you publish.'
 		);
 	});
 });

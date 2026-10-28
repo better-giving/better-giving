@@ -29,7 +29,7 @@ import { WHICH_FORM } from '$lib/forms/definition';
 // so the name always holds what the button shows.
 
 /** what a landed save says: it is saved, and reaches donors at Publish. */
-export const PUBLISH_NOTE = 'Your changes are saved and go live when you publish.';
+export const PUBLISH_NOTE = 'Saved. Donors see your changes once you publish.';
 
 /** the screen's writes as the cards read them: whether one is in flight, and which form posted it. */
 export function useScreenWrite() {
