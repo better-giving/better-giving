@@ -16,7 +16,12 @@ import { drawAmountEntry, isComposing, keyInAmountBox, regroupAmountBox } from '
 import type { Box } from '../use-admin-form';
 import { type AdminActionData, useAdminForm } from '../use-admin-form';
 import { readAmount } from '$lib/forms/amounts';
-import { PROGRAM_MODE_LABELS, PROGRAM_MODES } from '$lib/forms/program-modes';
+import {
+	PROGRAM_MODE_LABELS,
+	PROGRAM_MODE_NOTES,
+	PROGRAM_MODES,
+	type ProgramMode
+} from '$lib/forms/program-modes';
 import { defineForm } from '$lib/forms/definition';
 import {
 	AMOUNT_LABEL_MAX,
@@ -439,6 +444,10 @@ function AmountHeading({
 
 type ProgramOption = { readonly value: string; readonly label: string };
 
+/** the chosen mode, from a box that carries whatever a body last put in it. */
+const asMode = (value: string): ProgramMode =>
+	PROGRAM_MODES.find((mode) => mode === value) ?? 'none';
+
 const MODE_OPTIONS: readonly ProgramOption[] = PROGRAM_MODES.map((mode) => ({
 	value: mode,
 	label: PROGRAM_MODE_LABELS[mode]
@@ -471,6 +480,7 @@ function ProgramPair({
 				label="Where a gift goes"
 				defaultValue={modeBox.defaultValue}
 				options={MODE_OPTIONS}
+				hint={PROGRAM_MODE_NOTES[asMode(mode)]}
 				onValueChange={setMode}
 				error={marked(modeBox.errors?.[0])}
 			/>
@@ -478,7 +488,7 @@ function ProgramPair({
 				<SelectWithNote
 					id={program.id}
 					name={program.name}
-					label="Program"
+					label="Which program"
 					defaultValue={program.defaultValue}
 					options={[{ value: '', label: 'Choose a program' }, ...programs]}
 					retired={retired ?? undefined}
@@ -582,8 +592,9 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 			<fieldset className="adm-fieldset" aria-describedby={`${id}-amounts-hint`}>
 				<legend className="adm-fieldset__legend">Suggested amounts</legend>
 				<p className="adm-hint" id={`${id}-amounts-hint`}>
-					Up to {CAMPAIGN_AMOUNTS_MAX} buttons in the donation box. A label says what the amount
-					does.
+					You can suggest up to {CAMPAIGN_AMOUNTS_MAX} amounts. Donors see these in this order and
+					can still give any amount between the smallest and largest gift. A label says what an
+					amount does, like “Feeds a family for a week”.
 				</p>
 				{over > 0 ? (
 					<Banner
@@ -658,7 +669,9 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 						Add an amount
 					</Button>
 					<p className="adm-hint" id={capId}>
-						{Math.min(rows.length, CAMPAIGN_AMOUNTS_MAX)} of {CAMPAIGN_AMOUNTS_MAX}
+						{over > 0
+							? `${rows.length} amounts, ${over} over the limit of ${CAMPAIGN_AMOUNTS_MAX}`
+							: `${rows.length} of ${CAMPAIGN_AMOUNTS_MAX} amounts`}
 					</p>
 				</div>
 				{firstError(errors, EDIT_BOXES.amount) === undefined ? null : (
@@ -770,7 +783,7 @@ export function SettingsCard({ seed, version }: CardProps<CampaignSettingsSeed>)
 					as="textarea"
 					label="Share message"
 					optional
-					hint="Empty says the campaign’s name."
+					hint="What a donor’s post says when they share. If you leave it empty, it says the campaign’s name."
 					defaultValue={seed.boxes.share_message}
 					aria-describedby={`${id}-share-count`}
 					error={firstError(form.allErrors, fields.share_message.name)}
@@ -781,7 +794,7 @@ export function SettingsCard({ seed, version }: CardProps<CampaignSettingsSeed>)
 				id={fields.end_date.id}
 				name={fields.end_date.name}
 				label="End date"
-				hint="Ends at the end of this day, your time. Empty runs until you end it."
+				hint="The campaign ends at the end of this day, your time. Leave it empty to run until you end it."
 				defaultValue={seed.boxes.end_date}
 				min={earliest}
 				error={

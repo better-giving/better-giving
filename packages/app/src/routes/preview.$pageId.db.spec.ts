@@ -247,7 +247,6 @@ describe('a photo the draft places', () => {
 		body.set(WHICH_FORM, 'campaign-media');
 		body.set(RECORD_VERSION, String(row.updatedAt.getTime()));
 		body.set('hero_image_id', photo);
-		body.set('logo_image_id', '');
 		expect(
 			await saveCampaignMedia(db, { type: 'campaign', id: campaign.id }, body, 'gone')
 		).toEqual({ saved: 'campaign-media' });

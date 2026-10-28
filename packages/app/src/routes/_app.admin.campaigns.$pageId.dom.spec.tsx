@@ -380,7 +380,7 @@ describe('Goal and amounts', () => {
 		await screen();
 		const add = button('Add an amount');
 		const count = () => document.getElementById(add.getAttribute('aria-describedby') ?? '');
-		expect(count()?.textContent).toBe('1 of 4');
+		expect(count()?.textContent).toBe('1 of 4 amounts');
 
 		for (let n = 0; n < 3; n += 1) await press(add);
 
@@ -388,7 +388,7 @@ describe('Goal and amounts', () => {
 			4
 		);
 		expect(held(add)).toBe(true);
-		expect(count()?.textContent).toBe('4 of 4');
+		expect(count()?.textContent).toBe('4 of 4 amounts');
 		await press(add);
 		expect(card('Goal and amounts').querySelectorAll('input[aria-label^="Amount "]')).toHaveLength(
 			4
@@ -435,6 +435,26 @@ describe('Goal and amounts', () => {
 		await screen();
 
 		expect(card('Goal and amounts').textContent).toContain('Remove 2 amounts to save');
+		const add = button('Add an amount');
+		expect(held(add)).toBe(true);
+		expect(document.getElementById(add.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+			'6 amounts, 2 over the limit of 4'
+		);
+
+		await press(button('Remove amount 1'));
+		await press(button('Remove amount 1'));
+		expect(card('Goal and amounts').textContent).not.toContain('to save');
+		expect(document.getElementById(add.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+			'4 of 4 amounts'
+		);
+	});
+
+	it('says how many amounts it takes, and how they sit with the gift limits', async () => {
+		await screen();
+
+		expect(card('Goal and amounts').textContent).toContain(
+			'You can suggest up to 4 amounts. Donors see these in this order and can still give any amount between the smallest and largest gift.'
+		);
 	});
 
 	it('posts every box it states, an empty goal among them where there is none', async () => {

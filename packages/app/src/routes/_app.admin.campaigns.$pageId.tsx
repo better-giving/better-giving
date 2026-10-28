@@ -199,7 +199,9 @@ function EndCampaign({ id }: { readonly id: string }) {
 			<div className="adm-rowcard">
 				<div>
 					<h2>End campaign</h2>
-					<p className="adm-hint">Stops new gifts. Its gifts and page are kept.</p>
+					<p className="adm-hint">
+						Its page shows it has ended and takes no more gifts. Gifts already made are kept.
+					</p>
 				</div>
 				<Button
 					as={Link}

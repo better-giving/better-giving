@@ -1,22 +1,8 @@
-import {
-	and,
-	eq,
-	exists,
-	gt,
-	inArray,
-	isNotNull,
-	isNull,
-	ne,
-	notExists,
-	or,
-	type SQL,
-	sql
-} from 'drizzle-orm';
+import { and, eq, exists, gt, inArray, isNull, notExists, or, type SQL, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import type { Page as PageDocument } from '../../page/catalog';
 import { pastPublishedEnd, stateAt } from '../../page/ended';
 import { PAGE_KEYS } from '../../page/keys';
-import { freeSlug } from '../../page/slug';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { form, type Page, page, photoLink } from '../db/schema';
@@ -309,47 +295,6 @@ async function slugHolder(
 /** a free address is found this many times before a write taking one gives up on the race. */
 export const SLUG_ATTEMPTS = 5;
 
-/**
- * what makes `name` a campaign's name everywhere but its draft, in the batch that writes the
- * draft, each under `when` over the page row:
- * - the row's `name`, which the dashboard shows — the Campaigns list and the editor's bar;
- * - the owned settings row's `name`, which a gift's staff notice and Zapier's `form_name` carry
- *   (`ownedName`). it runs first, since the page's update moves what `when` reads;
- * - until the first publish, the address, where it still follows the name: the first `-2`, `-3`
- *   free (`freeSlug` in ../../page/slug.ts), as a new campaign's is. one set by hand stays, and so
- *   does a published campaign's, which donors may hold.
- *
- * a free address is read here, and `page_slug_idx` settles a race for it: the caller's batch fails
- * whole on `SQLITE_CONSTRAINT_UNIQUE`, and it tries again.
- */
-export async function renaming(
-	db: Db,
-	row: Pick<Page, 'id' | 'formId' | 'state' | 'slug' | 'name'>,
-	name: string,
-	when: SQL | undefined
-) {
-	return {
-		columns: await renamedColumns(db, row, name),
-		owned: renamingOwned(db, row.formId, name, when)
-	};
-}
-
-/** the page row's columns `renaming` sets: the name, and the address where it still follows it. */
-export async function renamedColumns(
-	db: Db,
-	row: Pick<Page, 'id' | 'state' | 'slug' | 'name'>,
-	name: string
-): Promise<{ name: string; slug: string | null }> {
-	if (row.state !== 'never_published' || !followsName(row.slug, row.name)) {
-		return { name, slug: row.slug };
-	}
-	const held = await db
-		.select({ slug: page.slug })
-		.from(page)
-		.where(and(isNotNull(page.slug), ne(page.id, row.id)));
-	return { name, slug: freeSlug(name, new Set(held.map((each) => each.slug))) };
-}
-
 /** the name `document` holds where `row` is a campaign named otherwise; null where there is none. */
 export function nameToCarry(
 	row: Pick<Page, 'type' | 'name'>,
@@ -370,19 +315,6 @@ export function renamingOwned(db: Db, formId: string, name: string, when: SQL | 
 		.update(form)
 		.set({ name: ownedName(name) })
 		.where(and(eq(form.id, formId), exists(db.select({ id: page.id }).from(page).where(when))));
-}
-
-/** whether `slug` is an address `freeSlug` gives `name`: its own, or a `-2`, `-3` after it. */
-function followsName(slug: string | null, name: string | null): boolean {
-	if (slug === null || name === null) return false;
-	const suffix = /-(\d+)$/.exec(slug);
-	const given = new Set<string>();
-	for (let n = 1; n <= (suffix === null ? 1 : Number(suffix[1])); n += 1) {
-		const next = freeSlug(name, given);
-		if (next === slug) return true;
-		given.add(next);
-	}
-	return false;
 }
 
 /** a page's draft donation settings, as its draft holds them. */

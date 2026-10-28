@@ -250,7 +250,7 @@ export async function publishPage(
 		if (plan.kind === 'move') release = plan.before;
 	}
 	// a name the draft holds and the row does not is the campaign's from now on, on its row and its
-	// owned settings row, as a rename makes it (`renaming` in ./queries.ts).
+	// owned settings row (`ownedName` in ./queries.ts).
 	const renamed = nameToCarry(row, draft.page);
 
 	const drawn = and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft));
@@ -283,17 +283,20 @@ export async function publishPage(
 				...(renamed === null ? {} : { name: renamed })
 			})
 			.where(drawn)
-			.returning({ id: page.id });
+			.returning({ publishedId: page.id });
 		try {
 			// the link's release first, for `page_slug_idx`.
 			const written = await db.batch([...before, ownedRow, pageRow, ...frees] as unknown as [
 				typeof ownedRow,
 				typeof pageRow
 			]);
-			const made = (written as unknown[])[before.length + 1] as { id: string }[];
-			return made.length === 1
-				? { kind: 'published', undoable: replaced !== null }
-				: { kind: 'stale' };
+			// the page's write is found by what it returns, whatever statements stand before it.
+			const made = (written as unknown[]).some(
+				(rows) =>
+					Array.isArray(rows) &&
+					rows.some((each: { publishedId?: unknown }) => each.publishedId === row.id)
+			);
+			return made ? { kind: 'published', undoable: replaced !== null } : { kind: 'stale' };
 		} catch (error) {
 			if (moving && sqliteResultCode(error) === 'SQLITE_CONSTRAINT_UNIQUE') {
 				const by = await slugRace(db, movedTo, at.now, error);

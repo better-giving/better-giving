@@ -5120,13 +5120,19 @@
 
 	/* one tab per section card (packages/app/src/lib/admin/page-edit/edit-tabs.tsx): a row of tabs
 	   over a hairline, the chosen one in the accent ink and underlined on the hairline itself. a row
-	   wider than the screen scrolls sideways rather than wrapping, so a phone keeps one line. */
+	   wider than the screen scrolls sideways rather than wrapping, with no scrollbar drawn, so a
+	   phone keeps one line. */
 	.adm-tabs {
 		display: flex;
 		gap: var(--admin-space-2);
 		overflow-x: auto;
 		border-block-end: var(--admin-hairline);
-		scrollbar-width: thin;
+		scrollbar-width: none;
+	}
+
+	/* the row scrolls by touch, wheel and the focus walking it, and draws no scrollbar under it. */
+	.adm-tabs::-webkit-scrollbar {
+		display: none;
 	}
 
 	.adm-tabs__tab {
