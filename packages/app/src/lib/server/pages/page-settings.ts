@@ -24,7 +24,7 @@ export function readEndDay(
 			boxes: {
 				time_zone:
 					zone === undefined
-						? 'required with an end date: the IANA time zone its day ends in'
+						? 'choose the time zone the end date is in'
 						: `${JSON.stringify(zone)} is not a time zone`
 			}
 		};

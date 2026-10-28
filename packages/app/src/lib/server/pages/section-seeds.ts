@@ -135,7 +135,8 @@ export function editBanner(row: Page, now: number): EditBanner {
 		address: campaign ? (row.slug === null ? null : `/${row.slug}`) : DONATION_PAGE_ADDRESS,
 		preview: `/preview/${row.id}`,
 		unpublishable: campaign && state === 'live',
-		endable: campaign && (state === 'live' || state === 'unpublished')
+		endable: campaign && (state === 'live' || state === 'unpublished'),
+		undoable: state === 'live' && row.lastPublished !== null
 	};
 }
 

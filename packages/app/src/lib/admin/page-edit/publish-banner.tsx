@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { Form } from 'react-router';
 import { recordVersion, whichForm } from '../use-admin-form';
 import type { BannerState } from '$lib/page/edit-forms';
-import { PUBLISH_FORM_ID, UNPUBLISH_FORM_ID } from '$lib/page/publish-form';
+import { PUBLISH_FORM_ID, UNDO_FORM_ID, UNPUBLISH_FORM_ID } from '$lib/page/publish-form';
 import { formRefusal, useScreenAnswer, useScreenWrite } from './section-card';
 
 // the banner over a page's edit screen: where the page stands against what donors see, and the
@@ -13,6 +13,8 @@ import { formRefusal, useScreenAnswer, useScreenWrite } from './section-card';
 //
 // - not public (never published, or unpublished): Publish, and Preview page, which opens the draft.
 // - public, the draft as published: the address, Unpublish, and View live page.
+// - Undo publish beside either public state, while a Publish replaced an earlier live page: it puts
+//   that page back live, and pressed again puts this one back.
 // - public with saved changes donors do not see yet: Publish changes, Unpublish, View live page.
 // - ended: the campaign's page shows its ended screen; Publish puts it back up as drafted.
 //
@@ -34,6 +36,8 @@ type PublishBannerProps = {
 	readonly preview: string;
 	/** Unpublish is offered. */
 	readonly unpublishable: boolean;
+	/** Undo publish is offered: a Publish replaced an earlier live page, which Undo puts back. */
+	readonly undoable: boolean;
 };
 
 const WORDS: Record<BannerState, (noun: PublishBannerProps['noun']) => string> = {
@@ -50,12 +54,15 @@ export function PublishBanner({
 	address,
 	livePath,
 	preview,
-	unpublishable
+	unpublishable,
+	undoable
 }: PublishBannerProps) {
 	const { writing, posted } = useScreenWrite();
 	const answer = useScreenAnswer();
 	const refusal =
-		formRefusal({ id: PUBLISH_FORM_ID }, answer) ?? formRefusal({ id: UNPUBLISH_FORM_ID }, answer);
+		formRefusal({ id: PUBLISH_FORM_ID }, answer) ??
+		formRefusal({ id: UNPUBLISH_FORM_ID }, answer) ??
+		formRefusal({ id: UNDO_FORM_ID }, answer);
 
 	const press = (id: string, label: string, variant: 'primary' | 'default') => (
 		<Form method="post" key={id}>
@@ -87,6 +94,9 @@ export function PublishBanner({
 		actions.push(press(PUBLISH_FORM_ID, 'Publish changes', 'primary'));
 	} else if (state === 'ended') {
 		actions.push(press(PUBLISH_FORM_ID, 'Publish', 'primary'), open(preview, 'Preview page'));
+	}
+	if (undoable && (state === 'public' || state === 'changed')) {
+		actions.push(press(UNDO_FORM_ID, 'Undo publish', 'default'));
 	}
 	if (unpublishable) actions.push(press(UNPUBLISH_FORM_ID, 'Unpublish', 'default'));
 	if ((state === 'public' || state === 'changed') && livePath !== null) {

@@ -220,7 +220,7 @@ export async function saveCampaignGeneral(
 			400,
 			submission.reject({
 				fieldErrors: {
-					[EDIT_BOXES.story]: ['is not a document: the box posts Tiptap JSON, and this is not JSON']
+					[EDIT_BOXES.story]: ['couldn’t be read. Reload the page and enter the description again.']
 				}
 			})
 		);

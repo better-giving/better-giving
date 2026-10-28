@@ -199,7 +199,7 @@ export async function publishPage(
 	if (row.state !== 'never_published' && at.giftsGoTo !== undefined) {
 		return {
 			...refused(
-				'where gifts go is chosen at a campaign’s first Publish only, and this one has been published. Change it in the campaign’s Settings, then publish'
+				'where gifts go is set when a campaign is first published. Change it under Settings on this page, then publish again'
 			),
 			at: GIFTS_GO_TO
 		};

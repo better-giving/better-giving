@@ -349,4 +349,6 @@ export type EditBanner = {
 	readonly unpublishable: boolean;
 	/** End campaign is offered: a campaign live or unpublished. */
 	readonly endable: boolean;
+	/** Undo publish is offered: the page is public and a Publish replaced an earlier live page. */
+	readonly undoable: boolean;
 };

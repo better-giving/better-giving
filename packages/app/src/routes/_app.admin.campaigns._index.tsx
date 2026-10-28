@@ -132,7 +132,7 @@ const ACTS_ON: Record<RowPress, readonly State[]> = {
 /** why a campaign at the version pressed is not one the press acts on. */
 const NOT_THIS_STATE: Record<RowPress, string> = {
 	[END_FORM_ID]:
-		'Nothing was ended: this campaign has ended already, or was never published. A campaign never published is deleted rather than ended.',
+		'Nothing was ended: this campaign has ended already, or was never published. A campaign that was never published can be deleted instead.',
 	[DELETE_FORM_ID]:
 		'Nothing was deleted: this campaign has been published, and gifts may point at it. End it instead.',
 	[PUBLISH_FORM_ID]:

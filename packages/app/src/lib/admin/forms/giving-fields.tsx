@@ -518,7 +518,7 @@ export function FormGivingFields({
 						id={amounts.id}
 						legend={FORM_FIELD_LABELS.suggested_amounts}
 						rowLabel="suggested amount"
-						hint="A donor sees these in the order you write them, and can still give any amount within the bounds."
+						hint="A donor sees these in the order you write them, and can still give any amount between the smallest and largest gift."
 						describedBy={capError ? capErrorId : undefined}
 						placeholder={suggestedExample}
 						addLabel="Add an amount"

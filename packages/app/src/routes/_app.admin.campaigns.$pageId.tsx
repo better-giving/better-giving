@@ -13,7 +13,12 @@ import { UnreadableDraft } from '$lib/admin/page-edit/page-presses';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formPress } from '$lib/admin/unreached';
 import { CAMPAIGN_EDIT_FORM_IDS } from '$lib/page/edit-forms';
-import { DISCARD_FORM_ID, PUBLISH_FORM_ID, UNPUBLISH_FORM_ID } from '$lib/page/publish-form';
+import {
+	DISCARD_FORM_ID,
+	PUBLISH_FORM_ID,
+	UNDO_FORM_ID,
+	UNPUBLISH_FORM_ID
+} from '$lib/page/publish-form';
 import { submittedForm } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
@@ -54,6 +59,7 @@ const SCREEN_FORMS = [
 	...CAMPAIGN_EDIT_FORM_IDS,
 	PUBLISH_FORM_ID,
 	UNPUBLISH_FORM_ID,
+	UNDO_FORM_ID,
 	DISCARD_FORM_ID
 ] as const;
 
@@ -112,6 +118,7 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 	const pressed = submittedForm(body, SCREEN_FORMS);
 	switch (pressed) {
 		case PUBLISH_FORM_ID:
+		case UNDO_FORM_ID:
 		case UNPUBLISH_FORM_ID:
 		case DISCARD_FORM_ID:
 			return answerPublishPress(db, target, body, gone(params.pageId));
@@ -141,9 +148,10 @@ export default function CampaignEditPage({ loaderData }: Route.ComponentProps) {
 				livePath={banner.address}
 				preview={banner.preview}
 				unpublishable={banner.unpublishable}
+				undoable={banner.undoable}
 			/>
 			{loaderData.unreadable ? (
-				<UnreadableDraft version={version} discardable={loaderData.discardable} noun="a campaign" />
+				<UnreadableDraft version={version} discardable={loaderData.discardable} noun="campaign" />
 			) : (
 				<>
 					<GeneralCard seed={loaderData.seeds.general} version={version} host={host} />

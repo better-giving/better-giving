@@ -10,7 +10,8 @@ import { createImage, stored as imageStored } from '../images/image.testing';
 import { ensureDonationPage } from './donation-page';
 import { endAsItStands, heroShowing, insertPage, SETTINGS } from './page-row.testing';
 import { answerPublishPress, discardChanges, publishPage, undoPublish } from './publish';
-import { endCampaign, updateCampaignName } from './queries';
+import { endCampaign } from './queries';
+import { saveCampaignGeneral } from './section-saves';
 import { readServedCampaign } from './campaign';
 import { RECORD_VERSION, WHICH_FORM } from '../../forms/definition';
 import { PUBLISH_FORM_ID, UNPUBLISH_FORM_ID } from '../../page/publish-form';
@@ -184,13 +185,15 @@ describe('a campaign’s name', () => {
 	it('goes back to the live page’s with Discard changes', async () => {
 		const live = { ...CAMPAIGN, name: 'Winter coat drive' };
 		const pageId = await insertPage(db, 'campaign', live, live);
-		const renamed = await updateCampaignName(
-			db,
-			pageId,
-			(await stored(pageId)).updatedAt,
-			'Coats for Kids'
-		);
-		expect(renamed).toBe('written');
+		const body = new FormData();
+		body.set(WHICH_FORM, 'campaign-general');
+		body.set(RECORD_VERSION, String((await stored(pageId)).updatedAt.getTime()));
+		body.set('name', 'Coats for Kids');
+		body.set('slug', (await stored(pageId)).slug ?? '');
+		body.set('story', JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }));
+		expect(await saveCampaignGeneral(db, { type: 'campaign', id: pageId }, body, 'gone')).toEqual({
+			saved: 'campaign-general'
+		});
 
 		await discardChanges(db, { type: 'campaign', id: pageId }, (await stored(pageId)).updatedAt);
 
@@ -428,7 +431,7 @@ describe('where gifts go', () => {
 
 			expect(outcome).toEqual({
 				kind: 'refused',
-				text: 'Nothing was published: where gifts go is chosen at a campaign’s first Publish only, and this one has been published. Change it in the campaign’s Settings, then publish.',
+				text: 'Nothing was published: where gifts go is set when a campaign is first published. Change it under Settings on this page, then publish again.',
 				at: 'gifts_go_to'
 			});
 			expect(await stored(pageId)).toEqual(drawn);
@@ -788,12 +791,20 @@ describe('Unpublish', () => {
 		expect((await stored(donationPage)).state).toBe('live');
 	});
 
-	it('leaves an unpublished campaign that End then ends, its address saying so', async () => {
+	it('lets End end an unpublished campaign, which gives its address up rather than answering there', async () => {
 		const pageId = await liveCampaign();
 		await pressed(pageId, UNPUBLISH_FORM_ID);
 
 		expect(await endCampaign(db, pageId, (await stored(pageId)).updatedAt)).toBe(true);
-		expect((await stored(pageId)).state).toBe('ended');
+		const ended = await stored(pageId);
+		expect([ended.state, ended.slug]).toEqual(['ended', null]);
+		expect(await readServedCampaign(db, 'winter-coat-drive', NOW)).toBeNull();
+	});
+
+	it('keeps a live campaign’s address when End ends it', async () => {
+		const pageId = await liveCampaign();
+
+		expect(await endCampaign(db, pageId, (await stored(pageId)).updatedAt)).toBe(true);
 		expect((await readServedCampaign(db, 'winter-coat-drive', NOW))?.state).toBe('ended');
 	});
 });

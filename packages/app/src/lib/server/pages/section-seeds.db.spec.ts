@@ -140,7 +140,8 @@ describe('the banner', () => {
 			address: `/${(await row(pageId)).slug}`,
 			preview: `/preview/${pageId}`,
 			unpublishable: false,
-			endable: false
+			endable: false,
+			undoable: false
 		});
 	});
 
@@ -151,7 +152,8 @@ describe('the banner', () => {
 		expect(editBanner(await row(pageId), NOW)).toMatchObject({
 			state: 'not_public',
 			unpublishable: false,
-			endable: true
+			endable: true,
+			undoable: false
 		});
 	});
 
@@ -162,7 +164,8 @@ describe('the banner', () => {
 		expect(editBanner(await row(same), NOW)).toMatchObject({
 			state: 'public',
 			unpublishable: true,
-			endable: true
+			endable: true,
+			undoable: false
 		});
 		expect(editBanner(await row(changed), NOW)).toMatchObject({ state: 'changed' });
 	});
@@ -176,7 +179,8 @@ describe('the banner', () => {
 		expect(editBanner(await row(pageId), NOW)).toMatchObject({
 			state: 'ended',
 			unpublishable: false,
-			endable: false
+			endable: false,
+			undoable: false
 		});
 	});
 
@@ -188,7 +192,8 @@ describe('the banner', () => {
 			address: '/donate',
 			preview: `/preview/${pageId}`,
 			unpublishable: false,
-			endable: false
+			endable: false,
+			undoable: false
 		});
 	});
 });

@@ -5205,9 +5205,32 @@
 		max-inline-size: var(--admin-measure-rail);
 	}
 
-	/* a campaign's banner, cropped to the band its page draws it in. */
-	.adm-placed__art--banner {
+	/* a campaign's banner, cropped to the band its page draws it in, and the same band empty. */
+	.adm-placed__art--banner,
+	.adm-placed__empty {
 		aspect-ratio: 4 / 1;
+	}
+
+	/* a campaign's logo, square, at the measure a logo is judged at. */
+	.adm-placed__art--logo {
+		aspect-ratio: 1;
+		max-inline-size: var(--admin-measure-logo);
+	}
+
+	/* where a banner goes before there is one: its band, outlined and filled, so a photo dropped on
+	   the card has somewhere to be seen landing. */
+	.adm-placed__empty {
+		inline-size: 100%;
+		background: var(--admin-surface-fill);
+		border: var(--admin-border-width) dashed var(--admin-border);
+		border-radius: var(--admin-radius);
+	}
+
+	/* a card part a file is being dragged over: the focus ring's ink, dashed, inside its edge. */
+	.adm-dropzone.is-drop {
+		outline: var(--admin-focus-width) dashed var(--admin-focus-ring);
+		outline-offset: calc(var(--admin-focus-width) * -1);
+		border-radius: var(--admin-radius);
 	}
 
 	/* the crop the logo dialog draws (packages/app/src/lib/admin/settings/logo-crop-dialog.tsx): the

@@ -207,45 +207,6 @@ export type SlugWrite =
 export type SlugConfirmed = { readonly move: boolean; readonly takeover: boolean };
 
 /**
- * moves a campaign to `slug`, one the address rule (`checkSlug` in ../../page/slug.ts) has passed,
- * while the page is still the version it was drawn at. an address is not page content: it takes
- * effect here, not at publish. a holder live past its published end as of `now` is an ended one
- * (`isEnded` in ../../page/ended.ts): taking its address ends it as End does, in the same batch.
- */
-export async function updateCampaignSlug(
-	db: Db,
-	pageId: string,
-	version: Date,
-	slug: string,
-	confirmed: SlugConfirmed,
-	now: number
-): Promise<SlugWrite> {
-	const [row] = await db
-		.select({ id: page.id, slug: page.slug, state: page.state })
-		.from(page)
-		.where(and(eq(page.id, pageId), eq(page.type, 'campaign')));
-	if (!row) return { kind: 'gone' };
-	const plan = await planSlugMove(db, row, slug, confirmed, now);
-	if (plan.kind === 'unchanged') return { kind: 'written' };
-	if (plan.kind !== 'move') return plan;
-
-	const drawn = and(eq(page.id, pageId), eq(page.updatedAt, version));
-	if (drawn === undefined) throw new Error('a guard of two conditions came back empty');
-	const move = db.update(page).set({ slug }).where(drawn).returning({ id: page.id });
-	try {
-		const before = plan.before(drawn);
-		const results = await db.batch([...before, move] as unknown as [
-			BatchItem<'sqlite'>,
-			...BatchItem<'sqlite'>[]
-		]);
-		const moved = results[before.length] as Awaited<typeof move>;
-		return moved.length === 1 ? { kind: 'written' } : { kind: 'stale' };
-	} catch (error) {
-		return { kind: 'taken', by: await slugRace(db, slug, now, error) };
-	}
-}
-
-/**
  * what moving the campaign `row` to `slug` takes: nothing, where it holds it already; a refusal or a
  * question, where `updateCampaignSlug` names one; or the statements that release the address from
  * an ended holder — ending it first where it is live past its published end — each to run ahead of
@@ -343,64 +304,8 @@ async function slugHolder(
 	};
 }
 
-/**
- * the address a never-published campaign's name suggests (`slugFromTitle`, no suffix), where
- * another page holds it: what its first Publish says it did not get. null otherwise, a published
- * campaign's included.
- */
-export async function addressAsked(db: Db, row: Page): Promise<string | null> {
-	if (row.state !== 'never_published' || row.name === null) return null;
-	const asked = slugFromTitle(row.name);
-	const [holder] = await db
-		.select({ id: page.id })
-		.from(page)
-		.where(and(eq(page.slug, asked), ne(page.id, row.id)));
-	return holder === undefined ? null : asked;
-}
-
-/** what a rename did: the page as drawn is no longer the page stored, or there is none. */
-export type NameWrite = 'written' | 'stale' | 'gone';
-
 /** a free address is found this many times before a write taking one gives up on the race. */
 export const SLUG_ATTEMPTS = 5;
-
-/**
- * renames a campaign while the page is still the version it was drawn at: the draft's name, which
- * donors see from the next publish, and everywhere `renaming` names.
- */
-export async function updateCampaignName(
-	db: Db,
-	pageId: string,
-	version: Date,
-	name: string
-): Promise<NameWrite> {
-	for (let attempt = 1; ; attempt += 1) {
-		const [row] = await db
-			.select()
-			.from(page)
-			.where(and(eq(page.id, pageId), eq(page.type, 'campaign')));
-		if (!row) return 'gone';
-
-		const draft = JSON.stringify({ ...JSON.parse(row.draft), name });
-		const drawn = and(eq(page.id, pageId), eq(page.updatedAt, version), eq(page.draft, row.draft));
-		const rename = await renaming(db, row, name, drawn);
-		try {
-			const [, renamed] = await db.batch([
-				rename.owned,
-				db
-					.update(page)
-					.set({ ...rename.columns, draft })
-					.where(drawn)
-					.returning({ id: page.id })
-			]);
-			return renamed.length === 1 ? 'written' : 'stale';
-		} catch (error) {
-			if (attempt === SLUG_ATTEMPTS || sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') {
-				throw error;
-			}
-		}
-	}
-}
 
 /**
  * what makes `name` a campaign's name everywhere but its draft, in the batch that writes the
@@ -532,46 +437,6 @@ export async function readTarget(db: Db, target: SettingsTarget): Promise<Page |
 	return row ?? null;
 }
 
-/** what a donation-settings save did; `unknown_program` pins a cause no longer offered. */
-export type SettingsWrite = 'written' | 'stale' | 'gone' | 'unknown_program';
-
-/**
- * writes a page's draft donation settings — the program, what a donor may give and where the box
- * opens — while the page is still the version it was drawn at. the draft alone: the owned settings
- * row, which /donate, a campaign's address and every gift read, moves only at Publish. the fund,
- * currency and sites stay as the draft holds them.
- *
- * a cause newly pinned must be one still offered; a pin the draft already holds is kept as it is,
- * as the form screen keeps a form's.
- */
-export async function updateDraftSettings(
-	db: Db,
-	target: SettingsTarget,
-	version: Date,
-	input: {
-		readonly program: ParsedFormProgram;
-		readonly giving: ParsedFormGiving;
-		readonly switches: PageDocument['switches'];
-	}
-): Promise<SettingsWrite> {
-	const row = await readTarget(db, target);
-	if (row === null) return 'gone';
-
-	const settings = await draftSettingsAfter(db, row, {
-		program: input.program,
-		bounds: input.giving,
-		suggestedAmounts: input.giving.suggestedAmounts
-	});
-	if (settings === 'unknown_program') return settings;
-	const written = await editPageDraft(db, target, version, (draft) => ({
-		ok: true,
-		draft: { ...draft, settings, switches: input.switches }
-	}));
-	if (written.kind === 'refused')
-		throw new Error(`page ${row.id}'s draft would fail its rule: ${written.message}`);
-	return written.kind === 'written' ? 'written' : written.kind;
-}
-
 /**
  * the draft donation settings of `row` with the program, the bounds and the suggested amounts moved
  * to these, the fund, currency and sites as the draft holds them. a cause newly pinned must be one
@@ -604,27 +469,6 @@ export async function draftSettingsAfter(
 
 /** a page document's keys the Settings sheet sets one at a time; `undefined` removes a key. */
 export type DraftKeys = Partial<Pick<PageDocument, 'goalMinor' | 'endsAt' | 'endsZone'>>;
-
-/**
- * sets or removes top-level keys of a page's draft while the page is still the version it was drawn
- * at — the draft alone, so donors see nothing of it before Publish. the draft that results is held
- * to the page's rule before it is written, and one that fails it throws: the caller has already
- * refused whatever an operator could have typed.
- */
-export async function updateDraftKeys(
-	db: Db,
-	target: SettingsTarget,
-	version: Date,
-	keys: DraftKeys
-): Promise<'written' | 'stale' | 'gone'> {
-	const written = await editPageDraft(db, target, version, (draft) => ({
-		ok: true,
-		draft: { ...draft, ...keys }
-	}));
-	if (written.kind === 'refused')
-		throw new Error(`page ${pageOf(target)}'s draft would fail its rule: ${written.message}`);
-	return written.kind === 'written' ? 'written' : written.kind;
-}
 
 const pageOf = (target: SettingsTarget) =>
 	target.type === 'campaign' ? target.id : 'donation_page';

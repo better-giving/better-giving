@@ -26,7 +26,8 @@ function fixture(state: BannerState = 'public', hasEdits = false): Loaded {
 			address: '/donate',
 			preview: '/preview/d1',
 			unpublishable: false,
-			endable: false
+			endable: false,
+			undoable: false
 		},
 		unreadable: false,
 		hasEdits,

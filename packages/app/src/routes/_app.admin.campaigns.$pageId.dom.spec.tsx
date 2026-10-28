@@ -7,15 +7,24 @@ import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import type { BannerState } from '$lib/page/edit-forms';
 import CampaignEditPage, { clientAction } from './_app.admin.campaigns.$pageId';
 
-// happy-dom decodes no image, so the resize is the boundary stood in for: every pick resizes at once.
+// happy-dom decodes no image, so the resize is the boundary stood in for: every pick resizes at once,
+// unless a case holds it, when the pick waits in `heldResize` until the case lets it go.
+const RESIZED: Resized = {
+	ok: true,
+	blob: new Blob(['webp'], { type: 'image/webp' }),
+	width: 1600,
+	height: 400
+};
+let holdResize = false;
+let heldResize: ((result: Resized) => void) | null = null;
 vi.mock('@better-giving/operator/images/resize', async (actual) => ({
 	...(await actual<typeof import('@better-giving/operator/images/resize')>()),
-	resizeImage: async (): Promise<Resized> => ({
-		ok: true,
-		blob: new Blob(['webp'], { type: 'image/webp' }),
-		width: 1600,
-		height: 400
-	})
+	resizeImage: (): Promise<Resized> =>
+		holdResize
+			? new Promise<Resized>((resolve) => {
+					heldResize = resolve;
+				})
+			: Promise.resolve(RESIZED)
 }));
 
 // a campaign's edit page as the route mounts it: a plain form of section cards under the publish
@@ -49,7 +58,8 @@ function fixture(state: BannerState = 'not_public'): Loaded {
 			address: '/winter-coat-drive',
 			preview: '/preview/p1',
 			unpublishable: state === 'public' || state === 'changed',
-			endable: state !== 'ended'
+			endable: state !== 'ended',
+			undoable: false
 		},
 		unreadable: false,
 		seeds: {
@@ -94,6 +104,8 @@ beforeEach(() => {
 	posted = [];
 	answers = [];
 	upload = null;
+	holdResize = false;
+	heldResize = null;
 });
 
 function mount(tree: ReactNode) {
@@ -273,7 +285,7 @@ describe('a section’s Save', () => {
 			[RECORD_VERSION]: '1',
 			share_message: 'I gave to keep a child warm.'
 		});
-		expect(button('Save settings').textContent).toContain('Saved');
+		expect(button('Saved settings').textContent).toBe('Saved settings');
 	});
 });
 
@@ -340,32 +352,107 @@ describe('Goal and amounts', () => {
 });
 
 describe('Media', () => {
-	it('holds Save media while a photo uploads, and offers it once the upload lands', async () => {
+	/** a photo picked through the banner's Replace, as the device's picker hands it back. */
+	async function pickBanner() {
 		vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
-		await screen();
-		const banner = card('Media').querySelector('input[type="file"]') as HTMLInputElement;
-		Object.defineProperty(banner, 'files', {
+		const input = card('Media').querySelector('input[type="file"]') as HTMLInputElement;
+		Object.defineProperty(input, 'files', {
+			configurable: true,
 			value: [new File(['jpg'], 'coats.jpg', { type: 'image/jpeg' })]
 		});
-
 		await act(async () => {
-			banner.dispatchEvent(new Event('change', { bubbles: true }));
+			input.dispatchEvent(new Event('change', { bubbles: true }));
 		});
 		await settle();
+	}
+
+	async function answerUpload(body: unknown, status = 200) {
+		await act(async () => {
+			upload?.resolve(Response.json(body, { status }));
+		});
+		await settle();
+	}
+
+	const heroBox = () =>
+		card('Media').querySelector<HTMLInputElement>('input[name="hero_image_id"]')?.value;
+
+	it('names each Reset for its photo, and holds both while nothing is changed', async () => {
+		await screen();
+
+		expect(held(button('Reset banner'))).toBe(true);
+		expect(held(button('Reset logo'))).toBe(true);
+	});
+
+	it('holds Save media while a picked photo resizes', async () => {
+		holdResize = true;
+		await screen();
+
+		await pickBanner();
+
+		expect(heldResize).not.toBeNull();
+		expect(upload).toBeNull();
+		expect(held(button('Save media'))).toBe(true);
+		expect(held(button('Reset banner'))).toBe(true);
+	});
+
+	it('holds Save media while a photo uploads, then posts the photo it landed', async () => {
+		await screen();
+		await pickBanner();
 
 		expect(upload).not.toBeNull();
 		expect(held(button('Save media'))).toBe(true);
 
-		await act(async () => {
-			upload?.resolve(Response.json({ id: 'img1', width: 1600, height: 400 }));
-		});
-		await settle();
+		await answerUpload({ id: 'img1', width: 1600, height: 400 });
 
 		expect(held(button('Save media'))).toBe(false);
-		expect(
-			card('Media').querySelector<HTMLInputElement>('input[name="hero_image_id"]')?.value
-		).toBe('img1');
-		expect(held(button('Reset', card('Media')))).toBe(false);
+		expect(heroBox()).toBe('img1');
+		expect(held(button('Reset banner'))).toBe(false);
+		expect(held(button('Reset logo'))).toBe(true);
+
+		answers.push({ body: { saved: 'campaign-media' } });
+		await press(button('Save media'));
+		expect(posted[0]).toEqual({
+			[WHICH_FORM]: 'campaign-media',
+			[RECORD_VERSION]: '1',
+			hero_image_id: 'img1',
+			logo_image_id: ''
+		});
+	});
+
+	it('puts the saved banner back at Reset banner, and holds Save media again', async () => {
+		const saved = fixture();
+		drawn = {
+			...saved,
+			seeds: {
+				...saved.seeds,
+				media: {
+					boxes: { hero_image_id: 'saved1', logo_image_id: '' },
+					hero: { imageId: 'saved1', src: '/image/saved1' },
+					logo: null
+				}
+			}
+		};
+		await screen();
+		await pickBanner();
+		await answerUpload({ id: 'img1', width: 1600, height: 400 });
+		expect(heroBox()).toBe('img1');
+
+		await press(button('Reset banner'));
+
+		expect(heroBox()).toBe('saved1');
+		expect(card('Media').querySelector('img')?.getAttribute('src')).toBe('/image/saved1');
+		expect(held(button('Save media'))).toBe(true);
+	});
+
+	it('says an upload that failed, keeping the photo it had and Save media held', async () => {
+		await screen();
+		await pickBanner();
+
+		await answerUpload({ error: 'the upload failed', reason: 'failed' }, 500);
+
+		expect(card('Media').textContent).toContain('The photo didn’t upload. Choose it again.');
+		expect(heroBox()).toBe('');
+		expect(held(button('Save media'))).toBe(true);
 	});
 });
 

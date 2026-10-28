@@ -10,7 +10,12 @@ import { PublishBanner } from '$lib/admin/page-edit/publish-banner';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formPress } from '$lib/admin/unreached';
 import { DONATION_PAGE_EDIT_FORM_IDS } from '$lib/page/edit-forms';
-import { DISCARD_FORM_ID, PUBLISH_FORM_ID, RESET_FORM_ID } from '$lib/page/publish-form';
+import {
+	DISCARD_FORM_ID,
+	PUBLISH_FORM_ID,
+	RESET_FORM_ID,
+	UNDO_FORM_ID
+} from '$lib/page/publish-form';
 import { submittedForm } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
@@ -49,6 +54,7 @@ const SCREEN_TITLE = 'Donation page';
 const SCREEN_FORMS = [
 	...DONATION_PAGE_EDIT_FORM_IDS,
 	PUBLISH_FORM_ID,
+	UNDO_FORM_ID,
 	DISCARD_FORM_ID,
 	RESET_FORM_ID
 ] as const;
@@ -122,6 +128,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 	const pressed = submittedForm(body, SCREEN_FORMS);
 	switch (pressed) {
 		case PUBLISH_FORM_ID:
+		case UNDO_FORM_ID:
 		case DISCARD_FORM_ID:
 			return answerPublishPress(db, target, body, NO_DONATION_PAGE);
 		case RESET_FORM_ID:
@@ -152,6 +159,7 @@ export default function DonationPageEditPage({ loaderData }: Route.ComponentProp
 				livePath="/donate"
 				preview={banner.preview}
 				unpublishable={false}
+				undoable={banner.undoable}
 			/>
 			{takingGifts ? null : (
 				<Banner tone="attention" word="Not taking gifts">
@@ -162,7 +170,7 @@ export default function DonationPageEditPage({ loaderData }: Route.ComponentProp
 				<UnreadableDraft
 					version={version}
 					discardable={loaderData.discardable}
-					noun="the Donation page"
+					noun="Donation page"
 				/>
 			) : (
 				<>

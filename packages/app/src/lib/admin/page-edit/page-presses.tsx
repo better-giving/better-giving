@@ -40,7 +40,7 @@ export function UnreadableDraft({
 }: {
 	readonly version: number;
 	readonly discardable: boolean;
-	readonly noun: 'a campaign' | 'the Donation page';
+	readonly noun: 'campaign' | 'Donation page';
 }) {
 	const [asking, setAsking] = useState(false);
 	const discard = usePagePress(DISCARD_FORM_ID, version);
@@ -58,8 +58,8 @@ export function UnreadableDraft({
 				}
 			>
 				{discardable
-					? `It holds something ${noun} can no longer hold. Discard changes to go back to the live page.`
-					: `It holds something ${noun} can no longer hold, and there is no live page to go back to.`}
+					? `It has content the ${noun} no longer supports. Discard changes to go back to the live page.`
+					: `It has content the ${noun} no longer supports, and there is no live page to go back to.`}
 			</Banner>
 			{asking ? (
 				<DiscardConfirm
@@ -80,9 +80,7 @@ export function ResetCard({ version }: { readonly version: number }) {
 	return (
 		<Section card>
 			<h2>Reset to default</h2>
-			<p className="adm-prose">
-				Puts the draft and the published page at /donate back to how they started.
-			</p>
+			<p className="adm-prose">Resets the draft and the live page at /donate to the default.</p>
 			<div className="adm-actions">
 				<Button type="button" variant="danger" onClick={() => setAsking(true)}>
 					Reset to default

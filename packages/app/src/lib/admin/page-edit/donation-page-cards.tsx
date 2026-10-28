@@ -117,7 +117,7 @@ export function DonationPageGivingCard({ seed, version }: CardProps<DonationPage
 }
 
 const MONTHLY_UNOFFERED =
-	'Monthly is not offered while no payment account here can collect repeating gifts.';
+	'Monthly giving is off until a connected payment account can collect recurring gifts.';
 
 /** Settings: how the donation box opens, and the share message. */
 export function DonationPageSettingsCard({ seed, version }: CardProps<DonationPageSettingsSeed>) {
@@ -129,7 +129,7 @@ export function DonationPageSettingsCard({ seed, version }: CardProps<DonationPa
 	const changed =
 		ticksChanged(boxes, held, [EDIT_BOXES.openOnMonthly, EDIT_BOXES.dedicationOn]) ||
 		textsChanged(boxes, held, [EDIT_BOXES.shareMessage]);
-	const shareCount = typeof held.share_message === 'string' ? held.share_message.length : 0;
+	const shareCount = typeof held.share_message === 'string' ? held.share_message.trim().length : 0;
 	return (
 		<SectionCard
 			form={getFormProps(form)}

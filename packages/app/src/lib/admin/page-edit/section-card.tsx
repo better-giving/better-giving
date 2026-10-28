@@ -22,6 +22,8 @@ import { WHICH_FORM } from '$lib/forms/definition';
 // press before the first lands would carry the version the first moved past and be refused.
 //
 // a save that landed answers `{ saved: <form id> }`, which draws the tick on this card's Save alone.
+// the Save's name carries the card's — "Save general" — in words a reader hears and the eye skips,
+// so the name always holds what the button shows.
 
 /** the screen's writes as the cards read them: whether one is in flight, and which form posted it. */
 export function useScreenWrite() {
@@ -69,6 +71,11 @@ type SectionCardProps = {
 	readonly changed: boolean;
 	/** something the card waits on before it may save — a photo uploading. */
 	readonly held?: boolean | undefined;
+	/**
+	 * what the confirmation says after "Saved" about the rest of the page. the default is true of a
+	 * draft save: donors see nothing until Publish, and the banner may now say so.
+	 */
+	readonly saved?: string | undefined;
 	/** run before conform's pass, with the form about to post: the end date's time zone. */
 	readonly beforeSubmit?: ((form: HTMLFormElement) => void) | undefined;
 	readonly hint?: ReactNode;
@@ -83,6 +90,7 @@ export function SectionCard({
 	changed,
 	held = false,
 	beforeSubmit,
+	saved = 'Donors see it once you publish.',
 	hint,
 	children
 }: SectionCardProps) {
@@ -116,8 +124,17 @@ export function SectionCard({
 				)}
 				<div className="adm-actions">
 					<SaveButton
-						label="Save"
-						aria-label={`Save ${saveName}`}
+						label={
+							<>
+								Save<span className="adm-vh"> {saveName}</span>
+							</>
+						}
+						doneLabel={
+							<>
+								Saved<span className="adm-vh"> {saveName}</span>
+							</>
+						}
+						elsewhere={saved}
 						state={state}
 						disabled={writing && !pending}
 					/>

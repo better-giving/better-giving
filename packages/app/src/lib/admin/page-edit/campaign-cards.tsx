@@ -1,12 +1,13 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { Button } from '@better-giving/operator/components/controls/Button';
+import { Banner } from '@better-giving/operator/components/status/Banner';
 import { CheckboxGroup } from '@better-giving/operator/components/forms/CheckboxGroup';
 import { ChoiceChips } from '@better-giving/operator/components/forms/ChoiceChips';
 import { DateField } from '@better-giving/operator/components/forms/DateField';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { type Resized, resizeImage } from '@better-giving/operator/images/resize';
-import { type DragEvent, useEffect, useId, useState } from 'react';
+import { type DragEvent, useEffect, useId, useRef, useState } from 'react';
 import { getFormProps } from '@conform-to/react';
 import { useFetcher, useSubmit } from 'react-router';
 import { FormGivingFields } from '../forms/giving-fields';
@@ -138,6 +139,7 @@ export function GeneralCard({
 			saveName="general"
 			version={version}
 			changed={changed}
+			saved="The name and link changed at once. Donors see the description once you publish."
 		>
 			<Field
 				id={fields.name.id}
@@ -195,8 +197,8 @@ export function GeneralCard({
 					onDismiss={no}
 				>
 					<p>
-						It shows the ended screen of {question.holder}. Taking it leaves that campaign with no
-						link.
+						This link now shows that {question.holder} has ended. Using it here leaves{' '}
+						{question.holder} with no link.
 					</p>
 				</Modal>
 			) : null}
@@ -204,18 +206,23 @@ export function GeneralCard({
 	);
 }
 
-/** a photo slot's upload: the photo it holds now, whether one is on its way, and why one was not. */
+/**
+ * a photo slot's upload: the photo it holds now, whether one is on its way — resizing, from a pick
+ * or a drop, then uploading — and why one was not. only the latest pick or drop is reported.
+ */
 function usePhotoSlot(seeded: PlacedPhoto | null, seedKey: unknown) {
 	const upload = useFetcher<UploadAnswer>();
 	const [photo, setPhoto] = useSeeded<PlacedPhoto | null>(seedKey, () => seeded);
 	const [refused, setRefused] = useState<string | null>(null);
+	const [resizing, setResizing] = useState(false);
+	const latest = useRef<File | null>(null);
 	const [landed, setLanded] = useState(upload.data);
 	if (upload.data !== landed) {
 		setLanded(upload.data);
 		if (upload.data !== undefined && 'error' in upload.data) {
 			setRefused(
 				upload.data.reason === 'failed'
-					? 'That didn’t go through. Choose the photo again.'
+					? 'The photo didn’t upload. Choose it again.'
 					: upload.data.error
 			);
 		} else if (upload.data !== undefined) {
@@ -224,6 +231,7 @@ function usePhotoSlot(seeded: PlacedPhoto | null, seedKey: unknown) {
 	}
 	const uploading = upload.state !== 'idle';
 	const resized = (result: Resized) => {
+		setResizing(false);
 		if (!result.ok) {
 			setRefused(replaceRefusal(result.reason));
 			return;
@@ -233,13 +241,29 @@ function usePhotoSlot(seeded: PlacedPhoto | null, seedKey: unknown) {
 	};
 	return {
 		photo,
-		uploading,
-		state: uploading ? ('uploading' as const) : refused === null ? undefined : { refused },
+		/** a photo is resizing or uploading, and the card waits on it. */
+		busy: resizing || uploading,
+		state: resizing
+			? ('resizing' as const)
+			: uploading
+				? ('uploading' as const)
+				: refused === null
+					? undefined
+					: { refused },
+		/** a pick through Replace, which the control resizes and hands to `resized`. */
+		picked: () => {
+			latest.current = null;
+			setRefused(null);
+			setResizing(true);
+		},
 		resized,
 		/** a file dropped on the slot, resized and posted as a picked one is. */
 		dropped: async (file: File) => {
+			latest.current = file;
 			setRefused(null);
-			resized(await resizeImage(file));
+			setResizing(true);
+			const result = await resizeImage(file);
+			if (latest.current === file) resized(result);
 		},
 		reset: () => {
 			setRefused(null);
@@ -260,11 +284,11 @@ function PhotoSlot({
 	noun,
 	error
 }: {
-	readonly legend: string;
+	readonly legend: 'Banner' | 'Logo';
 	readonly hint: string;
 	readonly slot: Slot;
 	readonly saved: PlacedPhoto | null;
-	readonly frame: 'banner' | 'square';
+	readonly frame: 'banner' | 'logo';
 	readonly noun: 'photo' | 'logo';
 	readonly error: string | undefined;
 }) {
@@ -275,11 +299,13 @@ function PhotoSlot({
 		event.preventDefault();
 		setOver(false);
 		const file = event.dataTransfer.files[0];
-		if (file !== undefined && !slot.uploading) void slot.dropped(file);
+		if (file !== undefined && !slot.busy) void slot.dropped(file);
 	};
 	return (
 		<fieldset
-			className={over ? 'adm-fieldset is-hover' : 'adm-fieldset'}
+			className={
+				over && !slot.busy ? 'adm-fieldset adm-dropzone is-drop' : 'adm-fieldset adm-dropzone'
+			}
 			aria-describedby={hintId}
 			onDragOver={(event) => {
 				event.preventDefault();
@@ -298,6 +324,7 @@ function PhotoSlot({
 				frame={frame}
 				imageSrc={slot.photo?.src}
 				state={slot.state}
+				onPicked={slot.picked}
 				onResized={slot.resized}
 			/>
 			<div className="adm-actions">
@@ -305,12 +332,12 @@ function PhotoSlot({
 					type="button"
 					variant="quiet"
 					mark="undo-2"
-					aria-disabled={!undoable || slot.uploading || undefined}
+					aria-disabled={!undoable || slot.busy || undefined}
 					onClick={() => {
-						if (undoable && !slot.uploading) slot.reset();
+						if (undoable && !slot.busy) slot.reset();
 					}}
 				>
-					Reset
+					Reset {legend.toLowerCase()}
 				</Button>
 			</div>
 			{error === undefined ? null : <FieldMessage id={`${hintId}-err`}>{error}</FieldMessage>}
@@ -333,7 +360,7 @@ export function MediaCard({ seed, version }: CardProps<CampaignMediaSeed>) {
 			saveName="media"
 			version={version}
 			changed={heroId !== seed.boxes.hero_image_id || logoId !== seed.boxes.logo_image_id}
-			held={hero.uploading || logo.uploading}
+			held={hero.busy || logo.busy}
 		>
 			<input type="hidden" name={fields.hero_image_id.name} value={heroId} />
 			<input type="hidden" name={fields.logo_image_id.name} value={logoId} />
@@ -351,7 +378,7 @@ export function MediaCard({ seed, version }: CardProps<CampaignMediaSeed>) {
 				hint="Beside the campaign’s name. A square image works best."
 				slot={logo}
 				saved={seed.logo}
-				frame="square"
+				frame="logo"
 				noun="logo"
 				error={firstError(form.allErrors, fields.logo_image_id.name)}
 			/>
@@ -405,6 +432,8 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 		rowsKey(rows, currency) !== rowsKey(seededRows(seed), currency);
 
 	const full = rows.length >= CAMPAIGN_AMOUNTS_MAX;
+	// a campaign saved before the cap may hold more amounts than a save takes now.
+	const over = rows.filter((row) => row.amount.trim() !== '').length - CAMPAIGN_AMOUNTS_MAX;
 	const capId = `${id}-cap`;
 	const edit = (key: number, patch: Partial<AmountRow>) =>
 		setRows(rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
@@ -448,9 +477,18 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 			<fieldset className="adm-fieldset" aria-describedby={`${id}-amounts-hint`}>
 				<legend className="adm-fieldset__legend">Suggested amounts</legend>
 				<p className="adm-hint" id={`${id}-amounts-hint`}>
-					Donors see these as buttons, in this order, and can still give any amount. A label says
-					what an amount does, like “Feeds a family for a week”.
+					Donors see these as buttons, in this order, and can still give any amount between the
+					smallest and largest gift. A label says what an amount does, like “Feeds a family for a
+					week”.
 				</p>
+				{over > 0 ? (
+					<Banner
+						tone="attention"
+						word={`Remove ${over} ${over === 1 ? 'amount' : 'amounts'} to save`}
+					>
+						A campaign suggests up to {CAMPAIGN_AMOUNTS_MAX} amounts.
+					</Banner>
+				) : null}
 				{rows.map((row, at) => {
 					const labelId = `${id}-label-${row.key}`;
 					return (
@@ -487,7 +525,11 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 									Remove
 								</Button>
 							</div>
-							<Counter id={`${labelId}-count`} count={row.label.length} max={AMOUNT_LABEL_MAX} />
+							<Counter
+								id={`${labelId}-count`}
+								count={row.label.trim().length}
+								max={AMOUNT_LABEL_MAX}
+							/>
 						</div>
 					);
 				})}
@@ -496,7 +538,7 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 						type="button"
 						mark="list-ordered"
 						aria-disabled={full || undefined}
-						aria-describedby={full ? capId : undefined}
+						aria-describedby={full && over <= 0 ? capId : undefined}
 						onClick={() => {
 							if (full) return;
 							setRows([...rows, { key: minted, amount: '', label: '' }]);
@@ -505,7 +547,7 @@ export function GoalCard({ seed, version }: CardProps<CampaignGoalSeed>) {
 					>
 						Add an amount
 					</Button>
-					{full ? (
+					{full && over <= 0 ? (
 						<p className="adm-hint" id={capId}>
 							You can suggest up to {CAMPAIGN_AMOUNTS_MAX} amounts.
 						</p>
@@ -529,7 +571,7 @@ function today(): string {
 }
 
 const MONTHLY_UNOFFERED =
-	'Monthly is not offered while no payment account here can collect repeating gifts.';
+	'Monthly giving is off until a connected payment account can collect recurring gifts.';
 
 /**
  * Settings: where a gift goes, the smallest and largest gift, the two switches, the share message
@@ -549,7 +591,7 @@ export function SettingsCard({ seed, version }: CardProps<CampaignSettingsSeed>)
 		amountsChanged(boxes, held, [EDIT_BOXES.minMinor, EDIT_BOXES.maxMinor], seed.currency) ||
 		ticksChanged(boxes, held, [EDIT_BOXES.openOnMonthly, EDIT_BOXES.dedicationOn]) ||
 		textsChanged(boxes, held, [EDIT_BOXES.shareMessage, EDIT_BOXES.endDate]);
-	const shareCount = typeof held.share_message === 'string' ? held.share_message.length : 0;
+	const shareCount = typeof held.share_message === 'string' ? held.share_message.trim().length : 0;
 
 	return (
 		<SectionCard

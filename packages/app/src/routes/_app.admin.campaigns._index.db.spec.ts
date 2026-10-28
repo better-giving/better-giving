@@ -409,7 +409,7 @@ describe('End', () => {
 });
 
 describe('End on an unpublished campaign', () => {
-	it('is asked, and moves it to the Ended group, its address saying it has ended', async () => {
+	it('is asked, and moves it to the Ended group, giving its address up', async () => {
 		const pageId = await campaign('Winter coat drive', 'unpublished', NOW);
 		const asking = await request(
 			new Request(`${ORIGIN}${LIST}?end=${pageId}`, { headers: { cookie: session } }),
@@ -425,7 +425,8 @@ describe('End on an unpublished campaign', () => {
 
 		expect(response.status).toBe(303);
 		expect((await listed('Winter coat drive')).state).toBe('ended');
-		expect(await visit('winter-coat-drive')).toMatchObject({ kind: 'ended' });
+		expect((await listed('Winter coat drive')).address).toBeNull();
+		expect(await visit('winter-coat-drive')).toMatchObject({ kind: 'refused' });
 	});
 });
 

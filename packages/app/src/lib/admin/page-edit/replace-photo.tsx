@@ -65,8 +65,9 @@ export type ReplacePhotoControlProps = Description &
 			| { readonly refused: string }
 			| undefined;
 		/** how the art is framed: absent, cropped 16:9; `square`, cropped as the program chooser
-		 *  crops a program's photo; `banner`, cropped 4:1 as a campaign's banner. */
-		readonly frame?: 'square' | 'banner' | undefined;
+		 *  crops a program's photo; `banner`, cropped 4:1 as a campaign's banner, its empty band drawn
+		 *  while there is none; `logo`, square at a logo's measure. */
+		readonly frame?: 'square' | 'banner' | 'logo' | undefined;
 		/** Remove beside the press while an image is placed; absent, no Remove is drawn. */
 		readonly onRemove?: (() => void) | undefined;
 		/** the press's id, for a caller that moves the focus to it. */
@@ -127,11 +128,15 @@ export function ReplacePhotoControl(props: ReplacePhotoControlProps) {
 								? 'adm-placed__art adm-placed__art--square'
 								: frame === 'banner'
 									? 'adm-placed__art adm-placed__art--banner'
-									: 'adm-placed__art'
+									: frame === 'logo'
+										? 'adm-placed__art adm-placed__art--logo'
+										: 'adm-placed__art'
 						}
 						src={imageSrc}
 						alt={alt ?? ''}
 					/>
+				) : frame === 'banner' ? (
+					<div className="adm-placed__empty" aria-hidden="true" />
 				) : null}
 				<div className="adm-actions">
 					<Button
