@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
 // the squint test the head of the fields section in ./adm.css states: inside a field, between two
-// fields, between two groups — three tiers, each wider than the one inside it. a label reads as its
+// fields, between two groups — three tiers, each wider than the one inside it. two fields inside a
+// group stand at least as far apart as two on a stack, because the run inside a group has the
+// group's name over it to belong to. a label reads as its
 // own box's only while the step down to that box is shorter than the step down to the next field's
 // label, and a group reads as one only while the step out of it is longer than any step inside it.
 // under the three is a fourth: the sentence under a label or a group's name stands closer to that
@@ -18,8 +20,10 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 const css = sheet('adm.css');
 const tokens = sheet('tokens.css');
 
-/** a step of the spacing scale, in rem, as ./tokens.css decides it. */
+/** a step of the spacing scale, in rem, as ./tokens.css decides it — or a named gap, through the step it names. */
 function step(token: string): number {
+	const gap = tokens.match(new RegExp(`${token}:\\s*var\\((--admin-space-\\d+)\\)\\s*;`))?.[1];
+	if (token.startsWith('--admin-gap-') && gap !== undefined) return step(gap);
 	const stated = tokens.match(new RegExp(`${token}:\\s*(0|[\\d.]+rem)\\s*;`))?.[1];
 	if (stated === undefined) throw new Error(`${token} is not a length in ./tokens.css`);
 	return Number.parseFloat(stated);
@@ -28,7 +32,9 @@ function step(token: string): number {
 /** a length a rule spends — one step, or a sum of steps — in rem. */
 function length(value: string | undefined): number {
 	if (value === undefined) throw new Error('the rule states no such length');
-	const terms = [...value.matchAll(/var\((--admin-space-\d+)\)/g)].map((m) => m[1] ?? '');
+	const terms = [...value.matchAll(/var\((--admin-(?:space-\d+|gap-[a-z]+))\)/g)].map(
+		(m) => m[1] ?? ''
+	);
 	if (terms.length === 0) throw new Error(`not a step of the spacing scale: ${value}`);
 	return terms.reduce((sum, token) => sum + step(token), 0);
 }
@@ -64,14 +70,15 @@ const inside = {
 };
 const heads = Object.values(inside);
 
-const between = {
+const onAStack = {
 	'a stack': length(ruleOf(css, '.adm-stack').get('gap')),
-	'a group': length(ruleOf(css, '.adm-fieldset > * + *').get('margin-block-start')),
 	'a pair': length(ruleOf(css, '.adm-pair').get('gap')),
 	'a tight stack':
 		length(ruleOf(css, '.adm-stack--tight').get('gap')) +
 		stated('.adm-stack--tight > * + .adm-field', 'margin-block-start')
 };
+const inAGroup = length(ruleOf(css, '.adm-fieldset > * + *').get('margin-block-start'));
+const between = { ...onAStack, 'a group': inAGroup };
 
 const groups = {
 	'groups side by side': length(ruleOf(css, '.adm-groups').get('gap')),
@@ -103,8 +110,12 @@ describe('the squint test on every operator form', () => {
 		}
 	});
 
-	it('stands two fields one step apart, whatever holds them', () => {
-		expect(new Set(Object.values(between)).size).toBe(1);
+	it('stands two fields one step apart on a stack, whatever holds them', () => {
+		expect(new Set(Object.values(onAStack)).size).toBe(1);
+	});
+
+	it('stands two fields in a group no closer than two on a stack', () => {
+		expect(inAGroup).toBeGreaterThanOrEqual(Math.max(...Object.values(onAStack)));
 	});
 
 	it('stands two fields at least twice as far apart as a label from its box', () => {

@@ -158,10 +158,8 @@ describe("a select's list counts the row's floor", () => {
 	// so a list of four rows stands whole and a fifth shows half of itself.
 	it('is four and a half rows of the floor tall, plus its padding and border', () => {
 		expect(list.get('padding')).toBe('var(--admin-space-2)');
-		expect(list.get('border')).toBe('var(--admin-hairline)');
-		expect(terms(tokens.match(/--admin-hairline:\s*([^;]+);/)?.[1])[0]).toBe(
-			'--admin-border-width'
-		);
+		// the border's width is its first term, which is the one the height below counts.
+		expect(terms(list.get('border'))[0]).toBe('--admin-border-width');
 		const height = list.get('max-block-size');
 		expect(height).toMatch(/4\.5 \* var\(--admin-touch-min\)/);
 		expect(terms(height)).toEqual(['--admin-touch-min', '--admin-space-2', '--admin-border-width']);
@@ -201,16 +199,20 @@ describe('the More sheet stands on the bar', () => {
 	});
 });
 
-/** a length a rule spells, or nothing where it spells one against a box this spec has not got. */
+/**
+ * a length a rule spells, read against a holder of no size at all, or nothing where it spells one
+ * this spec cannot read. a size that is a share of its holder is then at its least, so what is
+ * still at the floor is at the floor on any holder.
+ */
 const lengthOr = (value: string | undefined) => {
 	try {
-		return evaluate(value);
+		return evaluate(value, 0);
 	} catch {
 		return Number.NaN;
 	}
 };
 
-/** every rule drawing a square at least the floor on a `::before`, and its members without the pseudo. */
+/** every rule drawing a box at least the floor each way on a `::before`, and its members without the pseudo. */
 const floorRules = rulesIn(css).filter(
 	({ selector, stated }) =>
 		selector.split(', ').every((member) => member.endsWith('::before')) &&
@@ -252,6 +254,7 @@ const widthOf = (border: string | undefined) =>
 
 const BUTTON_BORDER = () => widthOf(ruleOf(css, '.adm-btn').get('border'));
 const ROW_REMOVE = '.adm-rows__row > .adm-rows__remove';
+const CHIP = '.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip';
 
 const MEMBERS: Record<string, Member> = {
 	// a row's Remove is a button (../components/controls/Button.jsx draws `.adm-btn`), the box's
@@ -293,6 +296,28 @@ const MEMBERS: Record<string, Member> = {
 				evaluate(ruleOf(css, '.adm-field > .adm-actions:has(> .adm-wellwrap)').get('gap'))
 			]
 		]
+	},
+	// a choice chip in a wrapping row, drawn at the small control's height and never narrower than
+	// the floor: the `<label>` round the radio or checkbox is the holder, and a press on it is a
+	// press on the box inside.
+	[CHIP]: {
+		holder: '.adm-choicechip',
+		drawn: () => {
+			const chip = ruleOf(css, CHIP);
+			return {
+				inline: evaluate(chip.get('min-inline-size')),
+				block: evaluate(chip.get('min-block-size')),
+				border: widthOf(ruleOf(css, '.adm-choicechip').get('border'))
+			};
+		},
+		neighbours: () => {
+			const at = target(CHIP);
+			const room = evaluate(ruleOf(css, '.adm-choicechips').get('gap'));
+			return [
+				['the chip beside it', at.inlineEnd + at.inlineStart, room],
+				['the chip on the next line', at.blockEnd + at.blockStart, room]
+			];
+		}
 	}
 };
 

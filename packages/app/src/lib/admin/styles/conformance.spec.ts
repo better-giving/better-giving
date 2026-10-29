@@ -84,34 +84,39 @@ const REFERENCE = /var\(\s*(--admin-[\w-]+)/g;
 // something has since reached for goes on claiming to be unread, and nothing about the tree says
 // otherwise. `exempts no token anything reads` is what fails then.
 //
-// the same twenty-three are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
+// the same twenty-eight are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
 // the paragraph is what a reader meets, and this is what fails.
 const SCALE_EXEMPT = [
 	// the unread rungs of the three chromatic ladders. each ladder is twelve rungs because the rung
 	// number is the job, and a family whose middle is missing is one where the next value drawn in
 	// that tone is a number somebody picks.
 	//
-	// the neutral: rung 8 is the step between the border rung and the first boundary that clears
-	// 3:1, and no edge or fill on these screens spends it.
-	'--admin-neutral-8',
+	// the neutral: rung 6 is the subtle border, and no edge on these screens is drawn that light —
+	// a row rule is rung 4, a band draws no edge, and a box's outline is rung 8.
+	'--admin-neutral-6',
 	//
 	// the accent: no operator screen draws a ground lighter than rung 3 or a chromatic border, so
-	// the two lightest rungs go unread and so do the two between the line rung and the solid band.
-	// rung 9 joins them because this family's solid band is too bright to carry a label, which
-	// packages/operator/src/styles/tokens.css argues at `--admin-accent-solid-1`. rung 10 is
-	// unread too: the rail marks its current cell by tint alone and draws no edge.
+	// the two lightest rungs go unread, and so do rung 5, the selected ground the rail's current
+	// cell no longer takes, rung 6, the line a band in this tone no longer draws, and the two
+	// between that line rung and the solid band. rung 9 joins them because this family's solid
+	// band is too bright to carry a label, which packages/operator/src/styles/tokens.css argues
+	// at `--admin-accent-solid-1`. rung 10 is unread too: the rail marks its current cell by
+	// ground alone and draws no edge.
 	'--admin-accent-1',
 	'--admin-accent-2',
+	'--admin-accent-5',
+	'--admin-accent-6',
 	'--admin-accent-7',
 	'--admin-accent-8',
 	'--admin-accent-9',
 	'--admin-accent-10',
 	// the blocker: a red band, a red word and a destructive fill are the whole of what this tone
-	// draws, so its tint band and its border band each spend one rung and the rest are unread.
+	// draws, and a band draws no edge, so its tint band spends one rung and its border band none.
 	'--admin-blocker-1',
 	'--admin-blocker-2',
 	'--admin-blocker-4',
 	'--admin-blocker-5',
+	'--admin-blocker-6',
 	'--admin-blocker-7',
 	'--admin-blocker-8',
 	// the attention ochre, and its two solid rungs are in this list rather than in use. rung 9 is
@@ -122,6 +127,8 @@ const SCALE_EXEMPT = [
 	'--admin-attention-2',
 	'--admin-attention-4',
 	'--admin-attention-5',
+	// rung 6 is the line a band in this tone no longer draws.
+	'--admin-attention-6',
 	'--admin-attention-7',
 	'--admin-attention-8',
 	'--admin-attention-9',
@@ -134,7 +141,11 @@ const SCALE_EXEMPT = [
 	'--admin-text-xl',
 	// the weight scale's top. three of the four weights are drawn and this is the fourth; it is a
 	// self-hosted file either way, so the name existing is what says the face has four.
-	'--admin-weight-bold'
+	'--admin-weight-bold',
+	// the widest of the four named gaps, the squint tier between page sections. a section break is
+	// two of `--admin-space-7` across a rule and no one rule states the tier, so the scale keeps
+	// its fourth member as packages/operator/src/styles/tokens.css argues at the gaps.
+	'--admin-gap-sections'
 ];
 
 // the five layers, in the order ../../../app.css declares them. later wins, which is why `layout` is

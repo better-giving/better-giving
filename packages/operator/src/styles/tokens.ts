@@ -25,10 +25,10 @@ export const ADMIN_TOKENS = {
 	// the ground the document is read on, and the two grounds a block inside it sits on. the three
 	// are the same stack an operator screen is built from: a page, a band on it, a heavier band on
 	// that.
-	'--admin-page': 'oklch(0.986 0.003 250)',
+	'--admin-page': 'oklch(0.965 0.005 250)',
 	'--admin-surface-sunken': 'oklch(0.965 0.005 250)',
 	'--admin-surface-fill': 'oklch(0.938 0.007 250)',
-	'--admin-divider': 'oklch(0.878 0.011 250)',
+	'--admin-divider': 'oklch(0.938 0.007 250)',
 	'--admin-ink': 'oklch(0.27 0.013 250)',
 	'--admin-ink-muted': 'oklch(0.54 0.019 250)',
 	'--admin-link': 'oklch(0.556 0.15 247.3)',

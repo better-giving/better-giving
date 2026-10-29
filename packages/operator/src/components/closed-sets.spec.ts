@@ -97,7 +97,11 @@ describe('the modifiers the operator components assemble', () => {
 		expect(
 			sorted([
 				...BUTTON_VARIANTS.filter((variant) => variant !== 'default'),
-				...BUTTON_SIZES.filter((size) => size !== 'md')
+				...BUTTON_SIZES.filter((size) => size !== 'md'),
+				// the shape a press drawn with a mark and no words takes, which composes over a rank
+				// and a size rather than being one of them. ./controls/Button.jsx and
+				// ./controls/CopyControl.jsx write it as a literal.
+				'icon'
 			])
 		).toEqual(drawn('adm-btn'));
 	});

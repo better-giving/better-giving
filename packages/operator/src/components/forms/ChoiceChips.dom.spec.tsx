@@ -1,6 +1,5 @@
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { ruleOf, sheet } from '../../styles/sheet-rule.testing';
 import { render } from '../render.testing';
 import { ChoiceChips, type ChoiceChipsProps } from './ChoiceChips.jsx';
 
@@ -126,35 +125,19 @@ describe('choice chips mounted into a document', () => {
 		}
 	});
 
-	describe('the tick a question taking several answers draws', () => {
-		const ticks = (root: HTMLElement) =>
-			[...root.querySelectorAll('label.adm-choicechip')].map(
-				(label) => label.querySelector('svg.adm-choicechip__tick') !== null
-			);
+	describe('the tick no chip draws', () => {
+		// a taken chip is told by its tint and its edge, and a question taking several answers says
+		// so in its hint, so a checkbox chip is drawn as a radio chip is.
+		it.each([
+			['checkbox', { type: 'checkbox' }],
+			['radio', {}],
+			['checkbox card', { type: 'checkbox', options: KINDS, other: undefined, cards: true }],
+			['radio card', { options: KINDS, other: undefined, cards: true }]
+		] as const)('stands in no %s chip', (_, props) => {
+			const root = render(Bound, props);
 
-		it('stands in every checkbox chip, Other among them, out of the tree', () => {
-			const root = render(Bound, { type: 'checkbox' });
-
-			expect(ticks(root)).toEqual([true, true, true, true]);
-			for (const tick of root.querySelectorAll('.adm-choicechip__tick')) {
-				expect(tick.getAttribute('aria-hidden')).toBe('true');
-			}
-		});
-
-		it('stands in no radio chip', () => {
-			const root = render(Bound, {});
-
-			expect(ticks(root)).toEqual([false, false, false, false]);
-		});
-
-		it('fills with the primary pair when its chip is taken, and is an empty box until then', () => {
-			const css = sheet('adm.css');
-			const rest = ruleOf(css, '.adm-choicechip__tick');
-			const taken = ruleOf(css, '.adm-choicechip:has(input:checked) > .adm-choicechip__tick');
-
-			expect(rest.get('color')).toBe('transparent');
-			expect(taken.get('background')).toBe('var(--admin-primary-bg)');
-			expect(taken.get('color')).toBe('var(--admin-primary-ink)');
+			expect(root.querySelectorAll('label.adm-choicechip').length).toBeGreaterThan(0);
+			expect(root.querySelector('.adm-choicechip__tick')).toBeNull();
 		});
 	});
 

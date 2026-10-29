@@ -429,8 +429,9 @@
 	   the size is stated here and never passed down: lucide takes a `size` number, and a length
 	   written into a component is what ../raw-values.ts refuses. it beats the `width` and `height`
 	   attributes lucide writes onto the svg, and the glyph's own 24 viewBox scales into whichever
-	   of the two boxes below it lands in — the stroke with it, so the weight is a share of the box
-	   rather than a value this sheet sets.
+	   of the two boxes below it lands in — the stroke with it, so the weight is a share of the box.
+	   what this sheet sets is the share: `--admin-mark-stroke` in the 24 viewBox, over the
+	   `stroke-width` attribute lucide writes, because a presentation attribute loses to any rule.
 
 	   both of the first two lines take back what the reset above does to every `svg` on the page,
 	   and neither is spare. the reset makes one a block, which would drop every mark onto a line of
@@ -449,6 +450,7 @@
 		inline-size: var(--admin-mark-size);
 		block-size: var(--admin-mark-size);
 		flex: none;
+		stroke-width: var(--admin-mark-stroke);
 	}
 
 	.adm-mark--lg {

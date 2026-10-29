@@ -13,8 +13,10 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 const css = sheet('adm.css');
 const tokens = sheet('tokens.css');
 
-/** a step of the spacing scale as a number of rem, resolved in ./tokens.css where it is decided. */
+/** a step of the spacing scale as a number of rem, resolved in ./tokens.css where it is decided — a named gap through the step it names. */
 function rem(token: string): number {
+	const named = tokens.match(new RegExp(`${token}:\\s*var\\((--admin-space-\\d+)\\)\\s*;`))?.[1];
+	if (token.startsWith('--admin-gap-') && named !== undefined) return rem(named);
 	const stated = tokens.match(new RegExp(`${token}:\\s*(0|[\\d.]+rem)\\s*;`))?.[1];
 	if (stated === undefined) throw new Error(`${token} is not a length in ./tokens.css`);
 	return Number.parseFloat(stated);
@@ -22,21 +24,19 @@ function rem(token: string): number {
 
 /** the spacing tokens a value spends, summed: one `var()`, or a `calc()` adding several. */
 function lengthIn(value: string | undefined): number {
-	const spent = [...(value ?? '').matchAll(/var\((--admin-space-\d+)\)/g)].map(([, name]) => name);
+	const spent = [...(value ?? '').matchAll(/var\((--admin-(?:space-\d+|gap-[a-z]+))\)/g)].map(
+		([, name]) => name
+	);
 	if (spent.length === 0) throw new Error(`not a step of the spacing scale: ${value}`);
 	return spent.reduce((sum, name) => sum + rem(name as string), 0);
 }
 
-// the moat a stack gives a group, which is the token the group inside a group is moated by too.
-const STACK_MOAT = ruleOf(css, '.adm-stack > .adm-fieldset:not(:first-child)').get(
-	'margin-block-start'
-);
+// the group tier of the squint test, which is what the group inside a group is moated by.
+const GROUP_TIER = 'var(--admin-gap-groups)';
 
 const moat = rulesIn(css).find(
 	({ selector, stated }) =>
-		selector.startsWith('.adm-fieldset >') &&
-		STACK_MOAT !== undefined &&
-		(stated.get('margin-block-start') ?? '').includes(STACK_MOAT)
+		selector.startsWith('.adm-fieldset >') && stated.get('margin-block-start') === GROUP_TIER
 );
 if (moat === undefined) throw new Error('./adm.css moats no group standing inside a group');
 
@@ -139,8 +139,8 @@ describe('a group standing inside a group', () => {
 		const step = lengthIn(ruleOf(css, '.adm-fieldset > * + *').get('margin-block-start'));
 
 		expect(lengthIn(MOATED)).toBeGreaterThan(inside);
-		// and the moat is added to the group's step rather than replacing it, as the stack's is
-		// added to its gap.
-		expect(lengthIn(MOATED)).toBe(step + lengthIn(STACK_MOAT));
+		// and it stands wider than the step between two fields in the group, so the edge of the
+		// inner group reads as an edge rather than as one more step of the run.
+		expect(lengthIn(MOATED)).toBeGreaterThan(step);
 	});
 });

@@ -75,6 +75,10 @@ export function Button({
 		'adm-btn',
 		variant !== 'default' ? `adm-btn--${variant}` : '',
 		size === 'sm' ? 'adm-btn--sm' : '',
+		/* a mark and no words is a press named by its `aria-label`, which is round by nature. */
+		mark && !markAfter && (children === undefined || children === null || children === false)
+			? 'adm-btn--icon'
+			: '',
 		state ? `is-${state}` : '',
 		className
 	]
