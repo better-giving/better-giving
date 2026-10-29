@@ -16,13 +16,15 @@ import { APPEARANCE_INPUTS, stripeAppearance, type TokenReader } from './appeara
  */
 const RESOLVED: Record<string, string> = {
 	'--_p': 'oklch(0.45 0.13 264)',
-	'--_focus-ring': 'oklch(0.27 0.002 264)',
-	'--_n1': 'oklch(0.995 0.001 264)',
-	'--_n11': 'oklch(0.49 0.002 264)',
-	'--_n12': 'oklch(0.27 0.002 264)',
-	'--_n3': 'oklch(0.965 0.001 264)',
-	'--_edge-control': 'oklch(0.855 0.001 264)',
-	'--_bad': 'oklch(0.495 0.19 27)',
+	'--_focus-ring': 'oklch(0.27 0.013 250)',
+	'--_n1': 'oklch(0.994 0.002 250)',
+	'--_n2': 'oklch(0.986 0.003 250)',
+	'--_n10': 'oklch(0.54 0.019 250)',
+	'--_n11': 'oklch(0.49 0.017 250)',
+	'--_n12': 'oklch(0.27 0.013 250)',
+	'--_n3': 'oklch(0.965 0.005 250)',
+	'--_edge-control': 'oklch(0.794 0.016 250)',
+	'--_bad': 'oklch(0.485 0.18 27)',
 	'--_r': '8px',
 	'--_border': '1px',
 	'--_focus-width': '1px',
@@ -43,7 +45,7 @@ const RAIL = {
 	border: 'none',
 	boxShadow: 'none',
 	borderRadius: '0',
-	backgroundColor: 'oklch(0.995 0.001 264)',
+	backgroundColor: 'oklch(0.994 0.002 250)',
 	paddingTop: '12px',
 	paddingBottom: '12px',
 	paddingLeft: '20px',
@@ -83,11 +85,11 @@ describe('stripeAppearance', () => {
 		expect(appearance.theme).toBe('flat');
 		expect(appearance.variables).toEqual({
 			colorPrimary: 'oklch(0.45 0.13 264)',
-			colorBackground: 'oklch(0.995 0.001 264)',
-			colorText: 'oklch(0.27 0.002 264)',
-			colorTextSecondary: 'oklch(0.49 0.002 264)',
-			colorTextPlaceholder: 'oklch(0.49 0.002 264)',
-			colorDanger: 'oklch(0.495 0.19 27)',
+			colorBackground: 'oklch(0.994 0.002 250)',
+			colorText: 'oklch(0.27 0.013 250)',
+			colorTextSecondary: 'oklch(0.49 0.017 250)',
+			colorTextPlaceholder: 'oklch(0.49 0.017 250)',
+			colorDanger: 'oklch(0.485 0.18 27)',
 			fontFamily: 'system-ui, sans-serif',
 			fontSizeBase: '14px',
 			// the provider's own rail names, held at the size our rows draw theirs at rather than
@@ -102,12 +104,14 @@ describe('stripeAppearance', () => {
 			// the control edge and the border weight are both read, so the card fields carry the
 			// same frame the form's own fields do rather than a restatement of it.
 			'.Input': {
-				border: '1px solid oklch(0.855 0.001 264)',
-				backgroundColor: 'oklch(0.995 0.001 264)',
+				border: '1px solid oklch(0.794 0.016 250)',
+				backgroundColor: 'oklch(0.986 0.003 250)',
 				// the length `[part~='field']` in ./parts.css draws the card's own fields at, worn
 				// here a second time: the box a donor types into is one size wherever it is painted.
 				fontSize: '16px'
 			},
+			// a pointer over a field steps its outline, as it does over the card's own.
+			'.Input:hover': { borderColor: 'oklch(0.54 0.019 250)' },
 			// each rail is its own container in the stack and draws no edge and no lift; the side
 			// pad is room for a block the provider paints wider than the rail's content, and
 			// `[part~='payment']` in ./parts.css pulls the box back onto the seam by that step.
@@ -116,17 +120,17 @@ describe('stripeAppearance', () => {
 			'.AccordionItem': RAIL,
 			// the open rail carries the ramp's faint fill, so which method is expanded is legible
 			// from the band rather than only from what is under it.
-			'.AccordionItem--selected': { backgroundColor: 'oklch(0.965 0.001 264)' },
+			'.AccordionItem--selected': { backgroundColor: 'oklch(0.965 0.005 250)' },
 			// and a pointer over a rail moves neither, because a pointer over one of our rows moves
 			// nothing (./rows.css draws no `:hover`).
-			'.AccordionItem:hover': { backgroundColor: 'oklch(0.995 0.001 264)' },
-			'.AccordionItem--selected:hover': { backgroundColor: 'oklch(0.965 0.001 264)' },
+			'.AccordionItem:hover': { backgroundColor: 'oklch(0.994 0.002 250)' },
+			'.AccordionItem--selected:hover': { backgroundColor: 'oklch(0.965 0.005 250)' },
 			// the ring is the accent's, not the primary's: a ring is a line rather than a fill, and
 			// the same swap is made on every focused control the form draws itself.
-			'.Input:focus': { boxShadow: '0 0 0 1px oklch(0.27 0.002 264)' },
+			'.Input:focus': { boxShadow: '0 0 0 1px oklch(0.27 0.013 250)' },
 			'.Label': {
 				fontSize: '14px',
-				color: 'oklch(0.49 0.002 264)',
+				color: 'oklch(0.49 0.017 250)',
 				fontWeight: '600'
 			}
 		});
@@ -189,7 +193,7 @@ describe('stripeAppearance', () => {
 		const appearance = stripeAppearance(reader({ '--_p': '' }));
 
 		expect(appearance.variables).not.toHaveProperty('colorPrimary');
-		expect(appearance.variables.colorText).toBe('oklch(0.27 0.002 264)');
+		expect(appearance.variables.colorText).toBe('oklch(0.27 0.013 250)');
 	});
 
 	it('treats a whitespace-only read as an absent one', () => {
@@ -231,7 +235,7 @@ describe('stripeAppearance', () => {
 		const appearance = stripeAppearance(reader());
 
 		expect(appearance.variables.colorPrimary).toBe('oklch(0.45 0.13 264)');
-		expect(appearance.rules['.Input:focus']?.boxShadow).toBe('0 0 0 1px oklch(0.27 0.002 264)');
+		expect(appearance.rules['.Input:focus']?.boxShadow).toBe('0 0 0 1px oklch(0.27 0.013 250)');
 	});
 
 	it('draws no ring when the ring step did not resolve', () => {
@@ -248,14 +252,14 @@ describe('stripeAppearance', () => {
 		// brand keeps every surface saying where the caret is.
 		const appearance = stripeAppearance(reader({ '--_p': '' }));
 
-		expect(appearance.rules['.Input:focus']?.boxShadow).toBe('0 0 0 1px oklch(0.27 0.002 264)');
+		expect(appearance.rules['.Input:focus']?.boxShadow).toBe('0 0 0 1px oklch(0.27 0.013 250)');
 	});
 
 	it('keeps the part of a rule that did resolve', () => {
 		const appearance = stripeAppearance(reader({ '--_edge-control': '' }));
 
 		expect(appearance.rules['.Input']).toEqual({
-			backgroundColor: 'oklch(0.995 0.001 264)',
+			backgroundColor: 'oklch(0.986 0.003 250)',
 			fontSize: '16px'
 		});
 	});
@@ -266,7 +270,7 @@ describe('stripeAppearance', () => {
 		const appearance = stripeAppearance(reader({ '--_border': '' }));
 
 		expect(appearance.rules['.Input']).toEqual({
-			backgroundColor: 'oklch(0.995 0.001 264)',
+			backgroundColor: 'oklch(0.986 0.003 250)',
 			fontSize: '16px'
 		});
 	});
@@ -278,7 +282,7 @@ describe('stripeAppearance', () => {
 		// absence would be the inverse of the defect: a deliberate zero silently ignored.
 		const appearance = stripeAppearance(reader({ '--_border': '0px' }));
 
-		expect(appearance.rules['.Input']?.border).toBe('0px solid oklch(0.855 0.001 264)');
+		expect(appearance.rules['.Input']?.border).toBe('0px solid oklch(0.794 0.016 250)');
 	});
 
 	it('draws the rails bare whatever the cascade resolved', () => {
@@ -299,7 +303,7 @@ describe('stripeAppearance', () => {
 		const appearance = stripeAppearance(reader({ '--_p': '' }));
 
 		expect(appearance.rules['.AccordionItem--selected']).toEqual({
-			backgroundColor: 'oklch(0.965 0.001 264)'
+			backgroundColor: 'oklch(0.965 0.005 250)'
 		});
 	});
 

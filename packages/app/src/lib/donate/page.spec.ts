@@ -268,12 +268,12 @@ describe('the colour evaluator agrees with the readings the form token file stat
 	const at = (seed?: string) => ({ ...formBase, ...(seed ? { '--donate-primary': seed } : {}) });
 	const worst = 'oklch(0.5 0.16 190)';
 	it.each([
-		['--_n10', '--_n1', 4.99, undefined],
-		['--_n10', '--_n2', 4.86, undefined],
-		['--_n10', '--_n3', 4.57, undefined],
-		['--_focus-ring', '--_n1', 14.85, undefined],
+		['--_n10', '--_n1', 4.96, undefined],
+		['--_n10', '--_n2', 4.85, undefined],
+		['--_n10', '--_n3', 4.56, undefined],
+		['--_focus-ring', '--_n1', 14.8, undefined],
 		['--_on-p', '--_p', 4.79, worst],
-		['--_p', '--_n1', 4.93, worst]
+		['--_p', '--_n1', 4.92, worst]
 	])('%s on %s reads %d', (ink, ground, stated, seed) => {
 		const scope = at(seed);
 		expect(contrast(resolve(scope, ink), resolve(scope, ground))).toBeCloseTo(stated, 1);

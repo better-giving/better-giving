@@ -373,30 +373,37 @@ form {
 	overflow-y: auto;
 }
 
+/*
+ * a named set — the legend and the boxes under it — stands at the inside step, the tightest of the
+ * grouping steps (`--_gap-inside` in ./tokens.css), so it reads as one thing at the step's wider
+ * gap. a row — a label, its box and the sentence under it — takes the same step (`.field-row`
+ * below).
+ */
 .group {
 	display: flex;
 	flex-direction: column;
-	--_column-gap: var(--_sp2);
+	--_column-gap: var(--_gap-inside);
 	gap: var(--_column-gap);
 }
 
 /*
- * the payment list under the receipt: a break wider than the step's own gap, because the rows below
- * it stand a padded row apart (`.head` in ./rows.css, `.AccordionItem` in ./appearance.ts) — which
- * is the target floor, not slack — and at the step's gap alone the total and the list read as one
- * run while the list reads as loose. on the pair, so the receipt moved off the step
- * (`receiptSlot` in ../views.ts) leaves the box at the step's rhythm.
+ * the payment list under the receipt: the grouping step between two groups, 32px with the step's
+ * own gap (the grouping steps beside `--_gap-inside` in ./tokens.css), because the rows below it stand a padded row apart
+ * (`.head` in ./rows.css, `.AccordionItem` in ./appearance.ts) — which is the target floor, not
+ * slack — and at the step's gap alone the total and the list read as one run while the list reads
+ * as loose. on the pair, so the receipt moved off the step (`receiptSlot` in ../views.ts) leaves
+ * the box at the step's rhythm.
  */
 [part~='summary'] + .group {
-	margin-block-start: var(--_sp4);
+	margin-block-start: var(--_sp3);
 }
 
 /*
  * a fieldset's first legend is its rendered legend, laid on the fieldset's border outside any flow
- * the fieldset lays out — outside the gap above, so a legend left alone stands on the tray's own
+ * the fieldset lays out — outside the gap above, so a legend left alone stands on the fieldset's own
  * edge with nothing between the two. a float is the one thing that stops it being the rendered
  * legend, and a flex item is never floated, so what is left is a plain first item of the column.
- * the platform's own inline pad on a legend is taken back so the word starts where the tray does.
+ * the platform's own inline pad on a legend is taken back so the word starts where the set does.
  */
 .group > legend {
 	float: left;
@@ -438,11 +445,9 @@ form {
  * own: a tile's cell holds a figure and nothing else, and the entry carries a mark at each end of
  * the figure, which at the 375px card leaves the word in it cut.
  *
- * the tray the boxes stand on is painted in ./parts.css (`.segment, .tiles`); this is the flow
- * inside it. the gap is twice the tray's own inset, on both trays alike, because a grid line
- * stands at the middle of it (./parts.css, the grid-line rules): a chosen box then stands off the
- * line beside it by exactly what it stands off the tray's edge. the tray is a query container so
- * those lines can be drawn the tray's content width across in `cqi`; nothing queries it.
+ * each box is painted in ./parts.css and the set draws nothing of its own; this is the flow. the
+ * gap is the one between the boxes of one control, `--_sp2`, on both sets alike, so every outline
+ * stands clear of the next.
  */
 .tiles {
 	display: grid;
@@ -452,7 +457,6 @@ form {
 			minmax(max(6em, calc((100% - 2 * var(--_sp2)) / 3 - 1px)), 1fr)
 		);
 	gap: var(--_sp2);
-	container-type: inline-size;
 }
 
 .tiles > * {
@@ -609,7 +613,7 @@ form {
 .field-row {
 	display: flex;
 	flex-direction: column;
-	--_column-gap: var(--_sp2);
+	--_column-gap: var(--_gap-inside);
 	gap: var(--_column-gap);
 }
 
@@ -643,11 +647,10 @@ form {
 }
 
 /*
- * the amount group's refusal, under the tray it refuses, with the entry's hidden label standing out
- * of flow between the two. the take-back is on the sentence because the tray is an inline-size
- * container, and chromium drops every box inside one whose margin is switched through `:has()` —
- * the tiles lose their rects while their computed `display` still reads as drawn. a hidden sentence
- * is `display: none`, so the margin needs no gate.
+ * the amount group's refusal, under the set it refuses, with the entry's hidden label standing out
+ * of flow between the two. the take-back is on the sentence rather than on the set, so it needs no
+ * `:has()` gate: a hidden sentence is `display: none`, and a box that is not drawn spends no
+ * margin.
  *
  * the sentence is drawn at `--_t-xs`, and every step is an `em`, so the two steps resolved on it
  * would be that rung's fraction of the column's. the difference is scaled back by `--_t-xs`'s own
@@ -827,7 +830,7 @@ form {
 
 /*
  * held under the block: the amount step's free entry is an `.entry` too (`entryTile` in ../views.ts),
- * and this grid reaching it lays its input into one column of the tray.
+ * and this grid reaching it lays its input into one column of the set.
  */
 .summary > .entry {
 	display: grid;
