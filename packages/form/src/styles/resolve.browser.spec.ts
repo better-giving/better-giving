@@ -96,6 +96,7 @@ describe('what the provider is handed', () => {
 			'.AccordionItem:hover',
 			'.Input',
 			'.Input:focus',
+			'.Input:hover',
 			'.Label'
 		]);
 	});
@@ -106,7 +107,7 @@ describe('what the provider is handed', () => {
 		const appearance = resolveAppearance(card);
 		const sent = JSON.stringify(appearance);
 
-		expect(APPEARANCE_INPUTS.length).toBe(18);
+		expect(APPEARANCE_INPUTS.length).toBe(20);
 		expect(sent).not.toContain('var(');
 		expect(sent).not.toContain('oklch');
 	});
@@ -148,7 +149,7 @@ describe('what the provider is handed', () => {
 
 		expect(warm.variables.colorBackground).not.toBe(light);
 		expect(Number(red)).toBeGreaterThan(Number(blue));
-		expect(warm.variables.borderRadius).toBe('12px');
+		expect(warm.variables.borderRadius).toBe('16px');
 		expect(square.variables.borderRadius).toBe('0px');
 	});
 

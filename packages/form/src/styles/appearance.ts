@@ -62,8 +62,10 @@ export const APPEARANCE_INPUTS = [
 	'--_focus-width',
 	'--_inset',
 	'--_n1',
+	'--_n10',
 	'--_n11',
 	'--_n12',
+	'--_n2',
 	'--_n3',
 	'--_p',
 	'--_r',
@@ -213,12 +215,13 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	// spaced, which is the layout that file asks for.
 	variables.accordionItemSpacing = '0px';
 
-	// the same frame every other control a donor has to find carries, at the same weight, so the
-	// card fields do not read as a foreign widget bolted into the form.
+	// the same text box every other box a donor types into is drawn as — the outline that finds it at
+	// the same weight, and a field's fill inside it (`[part~='field']` in ./parts.css) — so the card
+	// fields do not read as a foreign widget bolted into the form.
 	const frame: Record<string, string> = {};
 	if (borderWidth !== undefined && edge !== undefined)
 		frame.border = `${borderWidth} solid ${edge}`;
-	put(frame, 'backgroundColor', n1);
+	put(frame, 'backgroundColor', value('--_n2'));
 	// and the size, which is the one thing on these fields that is not the row's: a field is drawn at
 	// `FIELD_MIN_PX` above or at the card's root, whichever is larger, exactly as `[part~='field']` in
 	// ./parts.css draws the boxes beside it. the root is the card's and not the one sent above — the
@@ -306,6 +309,11 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 		inputFocus.boxShadow = `0 0 0 ${focusWidth} ${focusRing}`;
 	}
 
+	// and the pointer: a text box's outline steps one rung along the ladder under it, as the boxes
+	// beside the frame do (`[part~='field']:hover` in ./parts.css).
+	const inputHover: Record<string, string> = {};
+	put(inputHover, 'borderColor', value('--_n10'));
+
 	// the same length the root above carries, and stated rather than left derived: the provider sizes
 	// a label off the root rather than at it, and the card's own labels are that same step
 	// (`[part~='label']` in ./parts.css), so a derived one would sit under every label beside it.
@@ -317,6 +325,7 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	const rules: Record<string, Record<string, string>> = {};
 	for (const [selector, declarations] of [
 		['.Input', frame],
+		['.Input:hover', inputHover],
 		['.AccordionItem', rail],
 		['.AccordionItem--selected', railSelected],
 		['.AccordionItem:hover', railHover],

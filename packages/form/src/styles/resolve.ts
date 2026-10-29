@@ -32,8 +32,10 @@ const COLOR_TOKENS: readonly string[] = [
 	'--_edge-control',
 	'--_focus-ring',
 	'--_n1',
+	'--_n10',
 	'--_n11',
 	'--_n12',
+	'--_n2',
 	'--_n3',
 	'--_p'
 ];
