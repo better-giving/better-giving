@@ -37,10 +37,9 @@
    count along. twenty-five of the forty-eight rungs are unread today and stay for
    that reason: `--admin-accent-1`, `-2`, `-5`, `-6`, `-7`, `-8`, `-9` and `-10`;
    `--admin-blocker-1`, `-2`, `-4`, `-5`, `-6`, `-7` and `-8`; `--admin-attention-1`, `-2`, `-4`,
-   `-5`, `-6`, `-7`, `-8`, `-9` and `-10`; `--admin-neutral-6`. three more are unread outside
-   colour: `--admin-text-xl`, `--admin-weight-bold` and `--admin-gap-sections`, the widest of the
-   four named gaps. the exemption is membership of a scale and never a token that has merely not
-   been reached for yet. those twenty-eight are named again in
+   `-5`, `-6`, `-7`, `-8`, `-9` and `-10`; `--admin-neutral-6`. two more are unread outside
+   colour: `--admin-text-xl` and `--admin-weight-bold`. the exemption is membership of a scale and
+   never a token that has merely not been reached for yet. those twenty-seven are named again in
    packages/app/src/lib/admin/styles/conformance.spec.ts, which is what fails when the two
    lists stop agreeing — in both directions, so a rung this paragraph calls unread that something
    has since reached for fails it as well.
@@ -226,8 +225,8 @@
    split is arithmetic rather than taste. a hugging ring abuts two grounds at once — whatever
    fills the control on its inner edge, whatever the control stands on at its outer one — so a
    single ring colour would have to clear a 1px line's Lc 30 against every ground a ring can
-   touch here. there are six: `--admin-page`, `--admin-surface`, `--admin-surface-sunken` — which
-   the code slab's `--admin-slab-bg` is the same rung as — `--admin-surface-fill`,
+   touch here. there are six: `--admin-page`, `--admin-surface`, `--admin-surface-sunken`,
+   `--admin-surface-fill` — which the code slab's `--admin-slab-bg` is the same rung as —
    `--admin-primary-bg` and `--admin-danger-bg`.
 
    nothing lighter than the page clears it from above: a near-white ring is Lc 0 on
@@ -236,8 +235,8 @@
    darkest ink this system has, `--admin-neutral-12`, Lc 28 on `--admin-primary-bg`. so no
    accent reaches all six and both tokens stay.
 
-   `--admin-focus-ring` is the outside one: Lc 65 on `--admin-page` and on the sunken band and the
-   code slab alike, and Lc 60 on `--admin-surface-fill`, which are the tightest of the grounds it
+   `--admin-focus-ring` is the outside one: Lc 65 on `--admin-page` and on the sunken band alike,
+   and Lc 60 on `--admin-surface-fill` and the code slab, which are the tightest of the grounds it
    is drawn on. it is the same value as `--admin-primary-bg`, so it reaches Lc 0 on that fill and
    a solid-filled control cannot wear it. `--admin-focus-ring-solid` is the inset one,
    near-white, at Lc 76 on `--admin-primary-bg` and on `--admin-danger-bg` and higher on every
@@ -373,11 +372,22 @@
 
 		   the whole background system, and both ends of it are on the ladder: the page is rung 3,
 		   a plane on it — a card, a panel, a record, a table's plane, the dialog — is rung 1, and
-		   a band is rung 3. a plane is told from the page by its fill and draws no edge; that
-		   fill is Lc 0 against the page, which is decoration by the header's measure, so what
-		   groups a screen is its spacing and never the fill. a band is the page's own rung and is
-		   only ever drawn inside a plane, where it is a step down from the white rather than a
-		   hole through to the page. there is no imagery, no gradient, no texture and no pattern anywhere in /admin,
+		   `--admin-surface-sunken` is rung 3. a plane is told from the page by its fill and draws
+		   no edge; that fill is Lc 0 against the page, which is decoration by the header's measure,
+		   so what groups a screen is its spacing and never the fill.
+
+		   so there are two grounds, rung 1 and rung 3, and nothing holds a fill to one of them: a
+		   banner, a code slab, a closed control or a table stands wherever a screen puts it, the
+		   page included. every fill that has to be seen where it is drawn — a hover, a press, a held
+		   open control, a closed one, a tone's tint, a code slab's ground, a table's or a group's
+		   head — is therefore cut at least one rung off every ground it can stand on, which for
+		   all of those is both, and the neutral ones land on rung 4 or 5. a fill drawn only inside
+		   one box, a row's hover inside a table's plane, is held to that box's ground alone. `--admin-surface-sunken` is the page's own rung under another name and is no such
+		   fill: it is the shell's ground, the phone's bar of destinations, which floats and says so
+		   with an overlay's edge and shadow, and a few bands drawn inside a box of their own.
+		   `--admin-surface-fill` is rung 4, the band a step off both grounds.
+
+		   there is no imagery, no gradient, no texture and no pattern anywhere in /admin,
 		   and an empty state is a sentence rather than a graphic by rule, so there is no place
 		   left where an image would be the honest answer. */
 		--admin-page: var(--admin-neutral-3);
@@ -397,7 +407,7 @@
 		   table annotation are drawn on, all over the Lc 60 content text is held to. */
 		--admin-ink-muted: var(--admin-neutral-10);
 		/* the ink of an inactive control, held to the Lc 30 any text is and not to content text's
-		   60, and drawn at Lc 53 on the disabled field ground. it is never used for text that is
+		   60, and drawn at Lc 48 on the disabled field ground. it is never used for text that is
 		   merely quiet. */
 		--admin-ink-disabled: var(--admin-neutral-9);
 		/* the one alpha in /admin. raw-colour-ok: what is under a dialog has to go on being
@@ -441,11 +451,11 @@
 		--admin-tone-attention-deep: var(--admin-attention-12);
 		--admin-tone-note-ink: var(--admin-neutral-11);
 		/* a rung below the tone's own mark position, measured on the tint it is drawn against:
-		   rung 9 reaches Lc 53 there and rung 10 reaches Lc 68. a note's mark is the one mark
+		   rung 9 reaches Lc 48 there and rung 10 reaches Lc 63. a note's mark is the one mark
 		   on an operator screen with no hue to carry it, so the only thing separating it from
 		   its own band is this number. */
 		--admin-tone-note-mark: var(--admin-neutral-10);
-		--admin-tone-note-tint: var(--admin-neutral-3);
+		--admin-tone-note-tint: var(--admin-neutral-4);
 		--admin-tone-note-deep: var(--admin-neutral-12);
 		--admin-tone-done-ink: var(--admin-accent-11);
 		/* the accent's rung 9 reaches Lc 49 on this tint and Lc 51 on the page, and this mark
@@ -464,9 +474,10 @@
 		/* ---- the state ladder ---------------------------------------------------------
 
 		   rest, hover, active, disabled and focus on every interactive element, expressed as
-		   named rungs and never as an alpha of the rest state. hover is rung 3 and press is
-		   rung 4, which is what those two rungs mean, and nothing scales, nothing lifts and
-		   nothing changes opacity.
+		   named rungs and never as an alpha of the rest state. hover is rung 4 and press is
+		   rung 5, which is what those two rungs mean, and neither is rung 3, which is the page: a
+		   quiet control stands on the page as often as on a plane. a closed control is rung 4, the
+		   closed primary's grey. nothing scales, nothing lifts and nothing changes opacity.
 
 		   a filled control is the exception the ladder forces: a family has a rest solid at rung
 		   9 and a hover solid at rung 10 and no third solid rung, so the destructive control's
@@ -480,9 +491,9 @@
 		   decision a reader can see, and an absent rung is what sends the next hand reaching
 		   for an alpha. */
 		--admin-control-bg: var(--admin-neutral-1);
-		--admin-control-bg-hover: var(--admin-neutral-3);
-		--admin-control-bg-active: var(--admin-neutral-4);
-		--admin-control-bg-disabled: var(--admin-neutral-3);
+		--admin-control-bg-hover: var(--admin-neutral-4);
+		--admin-control-bg-active: var(--admin-neutral-5);
+		--admin-control-bg-disabled: var(--admin-neutral-4);
 		--admin-control-ink: var(--admin-neutral-12);
 		--admin-control-ink-hover: var(--admin-neutral-12);
 		--admin-control-ink-disabled: var(--admin-neutral-9);
@@ -501,9 +512,9 @@
 		--admin-control-border-disabled: var(--admin-neutral-5);
 		/* the ground of a control whose whole boundary is that ground: a press standing on a band
 		   it shares with the value it acts on, where a mark and a word left on the bare band read
-		   as two loose things rather than as one control. it is the quiet rank one rung forward —
-		   the fill that rank waits for a pointer to draw is this one's resting ground — and it
-		   steps the same way from there, so neither rank ever stands on the other's rung. no
+		   as two loose things rather than as one control. it rests on rung 3, a fill the quiet rank
+		   never draws, and its hover and press are the quiet rank's two rungs, so the two ranks
+		   answer a pointer alike and differ only at rest. no
 		   border rung is named because the rank draws none, and the ink is the neutral button's:
 		   a rank with a ground of its own is read as a control and carries a control's label. */
 		--admin-control-soft-bg: var(--admin-neutral-3);
@@ -543,7 +554,7 @@
 		/* a box's fill is a second cue and never the one that finds it: rung 2 is Lc 0 against a
 		   plane, so a box standing on one is found by its outline below. */
 		--admin-field-bg: var(--admin-neutral-2);
-		--admin-field-bg-disabled: var(--admin-neutral-3);
+		--admin-field-bg-disabled: var(--admin-neutral-4);
 		/* the line that finds a box, so it is a fine detail held to Lc 30 rather than a hairline:
 		   Lc 34 on the box's own fill and Lc 35 on a plane, where the ladder's border rung reaches
 		   Lc 23. a box drawn straight on the page ground has Lc 29 on its outer edge, so a form
@@ -560,9 +571,9 @@
 		/* placeholder text is read rather than decorative — it is the example of the value a
 		   box is waiting for — so content text's Lc 60 applies to it, and this is the lightest
 		   rung that clears it on both grounds a placeholder is drawn on: Lc 72 on
-		   `--admin-field-bg` and Lc 68 on `--admin-field-bg-disabled`, where a box an operator
+		   `--admin-field-bg` and Lc 63 on `--admin-field-bg-disabled`, where a box an operator
 		   cannot type in goes on showing its example. the rung under it clears it on neither —
-		   `--admin-neutral-9` is Lc 57 on the first and Lc 53 on the second.
+		   `--admin-neutral-9` is Lc 57 on the first and Lc 48 on the second.
 
 		   `--admin-ink-muted` resolves to this same rung and is not the same decision: an
 		   example standing inside a box and an annotation standing beside one are two roles,
@@ -588,16 +599,18 @@
 		--admin-focus-ring-solid: var(--admin-neutral-1);
 		--admin-selection-bg: var(--admin-accent-4);
 		--admin-selection-ink: var(--admin-accent-12);
-		--admin-code-bg: var(--admin-neutral-3);
+		/* rung 4 and not the page's 3: inline code and a key's chip are read in a sentence on the
+		   page as well as on a plane. */
+		--admin-code-bg: var(--admin-neutral-4);
 		--admin-code-ink: var(--admin-neutral-12);
 
 		/* ---- the code slab ------------------------------------------------------------
 
-		   a quiet block on the light ladder with no edge, and every rung it takes is one the page
-		   already spends: the sunken band's ground and the page's own ink. it is named rather than
-		   reaching those aliases so that re-cutting a band moves the slab only when someone says
-		   it should. */
-		--admin-slab-bg: var(--admin-neutral-3);
+		   a quiet block on the light ladder with no edge, on rung 4 so it reads on the page as well
+		   as on a plane, in the page's own ink. it is named rather than reaching
+		   `--admin-surface-fill` and `--admin-ink` so that re-cutting a band moves the slab only when
+		   someone says it should. */
+		--admin-slab-bg: var(--admin-neutral-4);
 		--admin-slab-ink: var(--admin-neutral-12);
 
 		/* ---- the rail's current destination -------------------------------------------
@@ -830,7 +843,7 @@
 
 		   a 4px base in rem, thirteen steps. density is high by intent: thirteen setting rows
 		   and a six-column table fit one scroll, so these screens lean on 4 through 6 and
-		   reserves 9 and above for section separation. the four named gaps after the steps are
+		   reserves 9 and above for section separation. the three named gaps after the steps are
 		   the squint tiers ./adm.css's fields section states, each one a step of the scale. */
 		--admin-space-0: 0;
 		--admin-space-1: 0.125rem;
@@ -846,15 +859,16 @@
 		--admin-space-11: 3.5rem;
 		--admin-space-12: 4.5rem;
 		/* the squint tiers, each strictly wider than the one inside it: inside a field, between
-		   fields in a group, between groups, between page sections. a step that says which tier it
-		   is reads the gap rather than the step, so a tier moves in one place; ./squint.spec.ts
-		   holds the order. `-sections` is read nowhere yet — a section break is two of
-		   `--admin-space-7` across a rule — and stays as the fourth member of the scale, which is
-		   what its exemption in the header is for. */
+		   fields in a group, between groups. a rule that spaces two groups reads `-groups`, except
+		   a group's moat on a stack, which is spent on top of the stack's own gap and so is a step
+		   rather than the tier; ./squint.spec.ts pins every group boundary, that one included, to
+		   `-groups`, so moving the tier here fails there until the moat follows. the field tier is
+		   `-items` inside a group and `--admin-space-6` between fields on a stack, where the run has
+		   no name over it. a section break is two of `--admin-space-7` across a rule and names no
+		   gap. */
 		--admin-gap-inside: var(--admin-space-3);
 		--admin-gap-items: var(--admin-space-7);
 		--admin-gap-groups: var(--admin-space-9);
-		--admin-gap-sections: var(--admin-space-10);
 
 		/* ---- radius --------------------------------------------------------------------
 
@@ -924,9 +938,9 @@
 		   that modal will stand, and the card a positioner places over whatever it was opened from.
 		   the overlay's is the quiet one, and it goes with `--admin-overlay-border` on what stands
 		   over the flow without taking it over — a menu, a select's list, a finder's list, the
-		   calendar and the two sheets. everywhere else depth is a band or a change of surface — a
-		   table header is a sunken band, a record is a white plane on the page, a section break is a
-		   1px rule. a screen that floats is performing a confidence the deployment has not earned,
+		   calendar, the two sheets and the phone's bar of destinations. everywhere else depth is a
+		   band or a change of surface — a table header is a band a rung off both grounds, a record
+		   is a white plane on the page, a section break is a 1px rule. a screen that floats is performing a confidence the deployment has not earned,
 		   and a surface that genuinely covers another and says so with a band alone reads as having
 		   replaced it.
 

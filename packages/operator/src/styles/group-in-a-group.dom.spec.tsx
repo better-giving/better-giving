@@ -143,4 +143,20 @@ describe('a group standing inside a group', () => {
 		// inner group reads as an edge rather than as one more step of the run.
 		expect(lengthIn(MOATED)).toBeGreaterThan(step);
 	});
+
+	it('stands the two steps at the tiers ./tokens.css names, and the group tier is the stack moat', () => {
+		// the inequalities above pass for any wider moat; these pin each step to its named gap, and
+		// the nested moat to the boundary a group on a stack takes, so the two cannot drift apart.
+		const step = lengthIn(ruleOf(css, '.adm-fieldset > * + *').get('margin-block-start'));
+		const stackMoat = rulesIn(css).find(({ selector }) =>
+			selector.split(', ').includes('.adm-stack > .adm-fieldset:not(:first-child)')
+		);
+		const onAStack =
+			lengthIn(ruleOf(css, '.adm-stack').get('gap')) +
+			lengthIn(stackMoat?.stated.get('margin-block-start'));
+
+		expect(step).toBe(rem('--admin-gap-items'));
+		expect(lengthIn(MOATED)).toBe(rem('--admin-gap-groups'));
+		expect(lengthIn(MOATED)).toBe(onAStack);
+	});
 });

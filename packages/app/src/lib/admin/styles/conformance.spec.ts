@@ -84,7 +84,7 @@ const REFERENCE = /var\(\s*(--admin-[\w-]+)/g;
 // something has since reached for goes on claiming to be unread, and nothing about the tree says
 // otherwise. `exempts no token anything reads` is what fails then.
 //
-// the same twenty-eight are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
+// the same twenty-seven are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
 // the paragraph is what a reader meets, and this is what fails.
 const SCALE_EXEMPT = [
 	// the unread rungs of the three chromatic ladders. each ladder is twelve rungs because the rung
@@ -141,11 +141,7 @@ const SCALE_EXEMPT = [
 	'--admin-text-xl',
 	// the weight scale's top. three of the four weights are drawn and this is the fourth; it is a
 	// self-hosted file either way, so the name existing is what says the face has four.
-	'--admin-weight-bold',
-	// the widest of the four named gaps, the squint tier between page sections. a section break is
-	// two of `--admin-space-7` across a rule and no one rule states the tier, so the scale keeps
-	// its fourth member as packages/operator/src/styles/tokens.css argues at the gaps.
-	'--admin-gap-sections'
+	'--admin-weight-bold'
 ];
 
 // the five layers, in the order ../../../app.css declares them. later wins, which is why `layout` is

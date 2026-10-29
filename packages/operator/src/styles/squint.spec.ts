@@ -84,7 +84,10 @@ const groups = {
 	'groups side by side': length(ruleOf(css, '.adm-groups').get('gap')),
 	'a group on a stack':
 		length(ruleOf(css, '.adm-stack').get('gap')) +
-		length(ruleOf(css, '.adm-stack > .adm-fieldset:not(:first-child)').get('margin-block-start')),
+		stated('.adm-stack > .adm-fieldset:not(:first-child)', 'margin-block-start'),
+	'what follows a group on a stack':
+		length(ruleOf(css, '.adm-stack').get('gap')) +
+		stated('.adm-stack > .adm-fieldset + *', 'margin-block-start'),
 	'a group inside a group': stated(
 		".adm-fieldset > .adm-fieldset + :not([type='hidden'])",
 		'margin-block-start'
@@ -128,6 +131,18 @@ describe('the squint test on every operator form', () => {
 	it('stands one group further from the next than two fields stand apart', () => {
 		for (const [where, gap] of Object.entries(groups)) {
 			expect(gap, where).toBeGreaterThan(Math.max(...Object.values(between)));
+		}
+	});
+
+	// the order above holds for any wider step, so a tier doubled by accident would pass it. each
+	// tier ./tokens.css names is pinned to its gap: one group tier, wherever a group stands.
+	it('stands two fields in a group at the field tier', () => {
+		expect(inAGroup).toBe(step('--admin-gap-items'));
+	});
+
+	it('stands every group off the next at the group tier', () => {
+		for (const [where, gap] of Object.entries(groups)) {
+			expect(gap, where).toBe(step('--admin-gap-groups'));
 		}
 	});
 });

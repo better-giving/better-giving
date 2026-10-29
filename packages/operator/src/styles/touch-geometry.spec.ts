@@ -158,8 +158,8 @@ describe("a select's list counts the row's floor", () => {
 	// so a list of four rows stands whole and a fifth shows half of itself.
 	it('is four and a half rows of the floor tall, plus its padding and border', () => {
 		expect(list.get('padding')).toBe('var(--admin-space-2)');
-		// the border's width is its first term, which is the one the height below counts.
-		expect(terms(list.get('border'))[0]).toBe('--admin-border-width');
+		// the overlay's whole edge, whose width is the term the height below counts.
+		expect(list.get('border')).toBe('var(--admin-border-width) solid var(--admin-overlay-border)');
 		const height = list.get('max-block-size');
 		expect(height).toMatch(/4\.5 \* var\(--admin-touch-min\)/);
 		expect(terms(height)).toEqual(['--admin-touch-min', '--admin-space-2', '--admin-border-width']);
@@ -181,13 +181,13 @@ describe('the More sheet stands on the bar', () => {
 	it("adds up the bar's height out of what the bar draws", () => {
 		const tab = ruleOf(css, '.adm-dest');
 		const bar = ruleOf(css, '.adm-rail');
-		const rule = tokens.match(/--admin-rule:\s*([^;]+);/)?.[1];
 
 		// the tab's floor, which its contents are shorter than: ./adm.css argues it at the reserve.
 		expect(tab.get('min-block-size')).toBe('var(--admin-touch-min)');
-		// the rule the bar draws over its tabs, whose width is the first term of the rule.
-		expect(bar.get('border-block-start')).toBe('var(--admin-rule)');
-		expect(terms(rule)[0]).toBe('--admin-border-width');
+		// the overlay's edge the bar draws over its tabs, whose width is its first term.
+		expect(bar.get('border-block-start')).toBe(
+			'var(--admin-border-width) solid var(--admin-overlay-border)'
+		);
 		// the platform's inset, under the tabs.
 		expect(bar.get('padding-block-end')).toBe('env(safe-area-inset-bottom)');
 
@@ -312,10 +312,10 @@ const MEMBERS: Record<string, Member> = {
 		},
 		neighbours: () => {
 			const at = target(CHIP);
-			const room = evaluate(ruleOf(css, '.adm-choicechips').get('gap'));
+			const row = ruleOf(css, '.adm-choicechips');
 			return [
-				['the chip beside it', at.inlineEnd + at.inlineStart, room],
-				['the chip on the next line', at.blockEnd + at.blockStart, room]
+				['the chip beside it', at.inlineEnd + at.inlineStart, evaluate(row.get('column-gap'))],
+				['the chip on the next line', at.blockEnd + at.blockStart, evaluate(row.get('row-gap'))]
 			];
 		}
 	}

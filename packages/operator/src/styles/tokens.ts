@@ -34,10 +34,10 @@ export const ADMIN_TOKENS = {
 	'--admin-ink-muted': 'oklch(0.54 0.019 250)',
 	'--admin-link': 'oklch(0.556 0.15 247.3)',
 	// a literal inside a sentence: its ground and its ink.
-	'--admin-code-bg': 'oklch(0.965 0.005 250)',
+	'--admin-code-bg': 'oklch(0.938 0.007 250)',
 	'--admin-code-ink': 'oklch(0.27 0.013 250)',
 	// the band an instruction is set on: the base banner's tone, which carries no hue.
-	'--admin-tone-note-tint': 'oklch(0.965 0.005 250)',
+	'--admin-tone-note-tint': 'oklch(0.938 0.007 250)',
 
 	// ---- type ----
 	// both stacks are copied whole, first face included. that face is self-hosted by ./fonts.css and

@@ -1,12 +1,13 @@
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { ruleOf, sheet } from '../../styles/sheet-rule.testing';
 import { render } from '../render.testing';
 import { ChoiceChips, type ChoiceChipsProps } from './ChoiceChips.jsx';
 
 // what a question drawn as chips is besides its look: native radios or checkboxes in one named
 // group, so the platform's own keys walk it and a form submits it; the hint each control is
-// described by; the tick that tells a question taking several answers from one taking one; the
-// cards a choice with a line under it is drawn as; the group's refusal; and the Other chip, whose
+// described by; the taken chip's tint and edge, which with no tick drawn is the whole of what says
+// a chip is taken; the cards a choice with a line under it is drawn as; the group's refusal; and the Other chip, whose
 // box opens with it, closes with it, and submits under a name of its own.
 //
 // the arrow keys inside a radio group and Space on a checkbox are the platform's, which happy-dom
@@ -138,6 +139,31 @@ describe('choice chips mounted into a document', () => {
 
 			expect(root.querySelectorAll('label.adm-choicechip').length).toBeGreaterThan(0);
 			expect(root.querySelector('.adm-choicechip__tick')).toBeNull();
+		});
+	});
+
+	describe('the taken chip', () => {
+		// the sheet's rule is keyed on the control inside the label, so the markup is what the case
+		// matches it against, and the rule is what the case reads the look from.
+		const TAKEN = '.adm-choicechip:has(input:checked)';
+
+		it('is the one chip the taken rule matches', async () => {
+			const root = render(Bound, {});
+			await take(chip(root, 'Children'));
+
+			const matched = [...root.querySelectorAll('label.adm-choicechip')]
+				.filter((label) => label.matches(TAKEN))
+				.map((label) => label.textContent);
+			expect(matched).toEqual(['Children']);
+		});
+
+		it('paints the accent tint inside the accent ink edge', () => {
+			const taken = ruleOf(sheet('adm.css'), TAKEN);
+
+			expect([taken.get('background'), taken.get('border-color')]).toEqual([
+				'var(--admin-accent-tint)',
+				'var(--admin-accent-ink)'
+			]);
 		});
 	});
 
