@@ -106,6 +106,9 @@ describe('stripeAppearance', () => {
 			// same frame the form's own fields do rather than a restatement of it.
 			'.Input': {
 				border: '1px solid oklch(0.794 0.016 250)',
+				// the control corner the rail around it and the card's own fields are drawn at, rather
+				// than the plane's corner `variables.borderRadius` carries.
+				borderRadius: '4px',
 				backgroundColor: 'oklch(0.986 0.003 250)',
 				// the length `[part~='field']` in ./parts.css draws the card's own fields at, worn
 				// here a second time: the box a donor types into is one size wherever it is painted.
@@ -113,6 +116,9 @@ describe('stripeAppearance', () => {
 			},
 			// a pointer over a field steps its outline, as it does over the card's own.
 			'.Input:hover': { borderColor: 'oklch(0.54 0.019 250)' },
+			// and a refused field keeps its danger edge under the pointer, sent after the rule above
+			// so the step along the ramp does not take it back.
+			'.Input--invalid:hover': { borderColor: 'oklch(0.485 0.18 27)' },
 			// each rail is a choice box of its own: the white face, the control outline, the
 			// control corner, and no lift.
 			'.AccordionItem': RAIL,
@@ -130,6 +136,16 @@ describe('stripeAppearance', () => {
 			'.AccordionItem--selected:hover': {
 				borderColor: 'oklch(0.395 0.13 264)',
 				backgroundColor: 'oklch(0.994 0.002 250)'
+			},
+			// a focused rail is rung the way ./rows.css rings ours: the plain ring hugging a closed
+			// rail's edge, and on the open one a band of the face laid against the primary's edge
+			// first, with the ring outside it. the transparent outline is what forced colours paint.
+			'.AccordionItem:focus-visible': {
+				outline: '1px solid transparent',
+				boxShadow: '0 0 0 1px oklch(0.27 0.013 250)'
+			},
+			'.AccordionItem--selected:focus-visible': {
+				boxShadow: '0 0 0 1px oklch(0.994 0.002 250), 0 0 0 2px oklch(0.27 0.013 250)'
 			},
 			// the ring is the accent's, not the primary's: a ring is a line rather than a fill, and
 			// the same swap is made on every focused control the form draws itself.
@@ -263,6 +279,7 @@ describe('stripeAppearance', () => {
 		const appearance = stripeAppearance(reader({ '--_edge-control': '' }));
 
 		expect(appearance.rules['.Input']).toEqual({
+			borderRadius: '4px',
 			backgroundColor: 'oklch(0.986 0.003 250)',
 			fontSize: '16px'
 		});
@@ -274,6 +291,7 @@ describe('stripeAppearance', () => {
 		const appearance = stripeAppearance(reader({ '--_border': '' }));
 
 		expect(appearance.rules['.Input']).toEqual({
+			borderRadius: '4px',
 			backgroundColor: 'oklch(0.986 0.003 250)',
 			fontSize: '16px'
 		});
@@ -326,6 +344,63 @@ describe('stripeAppearance', () => {
 			borderColor: RESOLVED['--_p-hover'],
 			backgroundColor: RESOLVED['--_n1']
 		});
+	});
+
+	// each hover rule is built from one step of its own, so a cascade that lost that step alone drops
+	// only the edge it fed and keeps the face, or the rule, that did resolve.
+	it('drops the closed rail’s and the field’s pointer edge when the ramp step did not resolve', () => {
+		const appearance = stripeAppearance(reader({ '--_n10': '' }));
+
+		expect(appearance.rules).not.toHaveProperty('.Input:hover');
+		expect(appearance.rules['.AccordionItem:hover']).toEqual({
+			backgroundColor: RESOLVED['--_n1']
+		});
+		expect(appearance.rules['.AccordionItem--selected:hover']).toEqual({
+			borderColor: RESOLVED['--_p-hover'],
+			backgroundColor: RESOLVED['--_n1']
+		});
+		expect(appearance.rules['.Input--invalid:hover']).toEqual({ borderColor: RESOLVED['--_bad'] });
+	});
+
+	it('drops the open rail’s pointer edge when the brand’s hover step did not resolve', () => {
+		const appearance = stripeAppearance(reader({ '--_p-hover': '' }));
+
+		expect(appearance.rules['.AccordionItem--selected:hover']).toEqual({
+			backgroundColor: RESOLVED['--_n1']
+		});
+		expect(appearance.rules['.AccordionItem:hover']).toEqual({
+			borderColor: RESOLVED['--_n10'],
+			backgroundColor: RESOLVED['--_n1']
+		});
+		expect(appearance.rules['.Input:hover']).toEqual({ borderColor: RESOLVED['--_n10'] });
+	});
+
+	it('sends no refused field’s pointer rule when the danger step did not resolve', () => {
+		// with nothing to hold, the provider's own refusal is left as it draws it.
+		const appearance = stripeAppearance(reader({ '--_bad': '' }));
+
+		expect(appearance.rules).not.toHaveProperty('.Input--invalid:hover');
+		expect(appearance.rules['.Input:hover']).toEqual({ borderColor: RESOLVED['--_n10'] });
+	});
+
+	it('rings no rail when the ring step did not resolve', () => {
+		// a ring against no colour is the provider's default ring thickened, for the reason the
+		// field's ring above is dropped.
+		const appearance = stripeAppearance(reader({ '--_focus-ring': '' }));
+
+		expect(appearance.rules).not.toHaveProperty('.AccordionItem:focus-visible');
+		expect(appearance.rules).not.toHaveProperty('.AccordionItem--selected:focus-visible');
+	});
+
+	it('rings the open rail as a closed one when the face’s band cannot be laid', () => {
+		// with no face to lay against the primary's edge, the open rail keeps the plain ring the
+		// closed rule gives it rather than a ring sent around a band of nothing.
+		const appearance = stripeAppearance(reader({ '--_n1': '' }));
+
+		expect(appearance.rules).not.toHaveProperty('.AccordionItem--selected:focus-visible');
+		expect(appearance.rules['.AccordionItem:focus-visible']?.boxShadow).toBe(
+			'0 0 0 1px oklch(0.27 0.013 250)'
+		);
 	});
 
 	it('pads a rail and spaces the rails in a unit the frame survives', () => {

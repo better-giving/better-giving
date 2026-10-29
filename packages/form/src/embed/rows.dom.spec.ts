@@ -40,15 +40,15 @@ function em(name: string): number {
 /** a cascade that resolved, at the root the card clamps to by default. */
 const ROOT_PX = 16;
 const RESOLVED: Record<string, string> = {
-	'--_bad': 'oklch(0.495 0.19 27)',
+	'--_bad': 'oklch(0.485 0.18 27)',
 	'--_border': '1px',
-	'--_edge-control': 'oklch(0.855 0.001 264)',
-	'--_focus-ring': 'oklch(0.27 0.002 264)',
+	'--_edge-control': 'oklch(0.794 0.016 250)',
+	'--_focus-ring': 'oklch(0.27 0.013 250)',
 	'--_focus-width': '1px',
-	'--_n1': 'oklch(0.995 0.001 264)',
-	'--_n10': 'oklch(0.54 0.002 264)',
-	'--_n11': 'oklch(0.49 0.002 264)',
-	'--_n12': 'oklch(0.27 0.002 264)',
+	'--_n1': 'oklch(0.994 0.002 250)',
+	'--_n10': 'oklch(0.54 0.019 250)',
+	'--_n11': 'oklch(0.49 0.017 250)',
+	'--_n12': 'oklch(0.27 0.013 250)',
 	'--_p': 'oklch(0.45 0.13 264)',
 	'--_p-hover': 'oklch(0.395 0.13 264)',
 	'--_r': '8px',
@@ -171,6 +171,28 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 		expect(spent('.band.open:hover', 'border-color')).toBe(`var(${PAYMENT_ROW.chosenEdgeHover})`);
 		expect(provider['.AccordionItem--selected:hover']?.borderColor).toBe(
 			RESOLVED[PAYMENT_ROW.chosenEdgeHover]
+		);
+	});
+
+	// one ring on a Tab through the list: the plain ring hugging a closed box's edge, and on the open
+	// one a band of the face against the primary's edge with the ring outside it.
+	it('rings a focused row the way the provider’s rail is rung', () => {
+		const rules = styleRules(rowSheet());
+		const spent = (selector: string) =>
+			rules.find((rule) => rule.selector === selector)?.style.getPropertyValue('box-shadow');
+		const provider = stripeAppearance(read).rules;
+		const ring = RESOLVED['--_focus-ring'];
+		const face = RESOLVED[PAYMENT_ROW.ground];
+
+		expect(spent('.band:has(.head:focus-visible)')).toBe(
+			'0 0 0 var(--_focus-width) var(--_focus-ring)'
+		);
+		expect(provider['.AccordionItem:focus-visible']?.boxShadow).toBe(`0 0 0 1px ${ring}`);
+		expect(spent('.band.open:has(.head:focus-visible)')?.replace(/\s+/g, ' ')).toBe(
+			`0 0 0 var(--_border) var(${PAYMENT_ROW.ground}), 0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring)`
+		);
+		expect(provider['.AccordionItem--selected:focus-visible']?.boxShadow).toBe(
+			`0 0 0 1px ${face}, 0 0 0 2px ${ring}`
 		);
 	});
 

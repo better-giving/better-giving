@@ -153,6 +153,13 @@ function toPx(value: string | undefined, basePx: number | undefined): string | u
 	return `${Number((Number(factor) * basePx).toFixed(4))}px`;
 }
 
+/** two `px` lengths added, or `undefined` unless both are `px`. */
+function pxSum(a: string | undefined, b: string | undefined): string | undefined {
+	const left = pxNumber(a);
+	const right = pxNumber(b);
+	return left === undefined || right === undefined ? undefined : `${left + right}px`;
+}
+
 /** assigns a key only when there is a value for it, so a failed read leaves no empty string. */
 function put(target: Record<string, string>, key: string, value: string | undefined): void {
 	if (value !== undefined) target[key] = value;
@@ -226,6 +233,10 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	const frame: Record<string, string> = {};
 	if (borderWidth !== undefined && edge !== undefined)
 		frame.border = `${borderWidth} solid ${edge}`;
+	// the control corner, as the rail around the fields and the form's own fields are drawn: the
+	// `borderRadius` variable above is the plane's, and a field inside a rail drawn at it stands
+	// rounder than the box that holds it.
+	put(frame, 'borderRadius', value(PAYMENT_ROW.radius));
 	put(frame, 'backgroundColor', value('--_n2'));
 	// and the size, which is the one thing on these fields that is not the row's: a field is drawn at
 	// `FIELD_MIN_PX` above or at the card's root, whichever is larger, exactly as `[part~='field']` in
@@ -277,6 +288,22 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	put(railSelectedHover, 'borderColor', value(PAYMENT_ROW.chosenEdgeHover));
 	put(railSelectedHover, 'backgroundColor', ground);
 
+	// a focused rail is rung the way ./rows.css rings ours, so a Tab from a provider's rail to one of
+	// ours keeps one ring: the plain ring hugging a closed rail's edge, and on the open one a band of
+	// the face laid against the primary's edge first, with the ring outside it. the transparent
+	// outline is what forced colours paint once every shadow is dropped, as `.head:focus-visible`
+	// keeps one there.
+	const railFocus: Record<string, string> = {};
+	const railSelectedFocus: Record<string, string> = {};
+	if (focusWidth !== undefined && focusRing !== undefined) {
+		railFocus.outline = `${focusWidth} solid transparent`;
+		railFocus.boxShadow = `0 0 0 ${focusWidth} ${focusRing}`;
+		const outside = pxSum(borderWidth, focusWidth);
+		if (ground !== undefined && outside !== undefined) {
+			railSelectedFocus.boxShadow = `0 0 0 ${borderWidth} ${ground}, 0 0 0 ${outside} ${focusRing}`;
+		}
+	}
+
 	// the same ring the rest of the form draws on a focused control, so moving from an email field
 	// into the card field does not change what focus looks like — which means a rung of the ladder
 	// rather than the brand. the split holds across the frame boundary as well as inside it: a fill
@@ -292,6 +319,11 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	// beside the frame do (`[part~='field']:hover` in ./parts.css).
 	const inputHover: Record<string, string> = {};
 	put(inputHover, 'borderColor', value('--_n10'));
+	// except on a field the provider has refused, which keeps its danger edge under the pointer as
+	// the form's own do (`[part~='field'][part~='invalid']` in ./parts.css, after `:hover`). sent
+	// after the rule above, whose class and pseudo-class outrank the theme's state class alone.
+	const invalidHover: Record<string, string> = {};
+	put(invalidHover, 'borderColor', value('--_bad'));
 
 	// the same length the root above carries, and stated rather than left derived: the provider sizes
 	// a label off the root rather than at it, and the card's own labels are that same step
@@ -305,10 +337,13 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	for (const [selector, declarations] of [
 		['.Input', frame],
 		['.Input:hover', inputHover],
+		['.Input--invalid:hover', invalidHover],
 		['.AccordionItem', rail],
 		['.AccordionItem--selected', railSelected],
 		['.AccordionItem:hover', railHover],
 		['.AccordionItem--selected:hover', railSelectedHover],
+		['.AccordionItem:focus-visible', railFocus],
+		['.AccordionItem--selected:focus-visible', railSelectedFocus],
 		['.Input:focus', inputFocus],
 		['.Label', label]
 	] as const) {

@@ -234,6 +234,7 @@ export function createPaymentSurface(
 		return (failure) => {
 			if (unsaid === null) unsaid = failure;
 			down.add(at);
+			space();
 			sayWhatIsLeft();
 		};
 	};
@@ -292,15 +293,16 @@ export function createPaymentSurface(
 	 * the provider's frame spaces its own rails (`accordionItemSpacing` in ../styles/appearance.ts),
 	 * so what is left is the step between two nodes — and a node listing nothing yet takes none, or
 	 * the gap above it would stand in the list as a stripe of the card's ground. the provider's node
-	 * counts as listing from the start, because its rails are counted off the config (`inlineRows`).
+	 * counts as listing from the start, because its rails are counted off the config (`inlineRows`),
+	 * until its processor is down (`down` above): a frame that never drew lists nothing.
 	 *
 	 * an inline declaration for the reason `PINNED` below is one, and a token rather than a literal
 	 * because this one is a look: the step resolves on the node through the slot it is projected by.
 	 */
 	const space = (): void => {
 		let above = false;
-		for (const part of parts) {
-			const listing = part.rows === undefined || part.rows.current().length > 0;
+		for (const [at, part] of parts.entries()) {
+			const listing = up(at) && (part.rows === undefined || part.rows.current().length > 0);
 			part.node.style.setProperty('margin-block-start', above && listing ? 'var(--_sp5)' : '0px');
 			above ||= listing;
 		}
