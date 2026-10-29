@@ -9,8 +9,8 @@
  * property does.
  *
  * the box is a text box like every other on the card, a field's fill inside the outline that finds
- * it: the open row it stands in is drawn on rung 3 (`.band.open` in ./rows.css), and the outline is
- * what keeps the box from disappearing into that ground, not its fill. nothing here moves.
+ * it: the open row it stands in is the card's white face (`.band` in ./rows.css), and the outline is
+ * what keeps the box from disappearing into that face, not its fill. nothing here moves.
  *
  * the open list is the closed choices' list (`[part~='select-list']` and `[part~='select-option']`
  * in ./parts.css, which draw its surface and its rows' ground, size and tick), and what is here is

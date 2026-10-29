@@ -16,21 +16,23 @@ import { APPEARANCE_INPUTS, stripeAppearance, type TokenReader } from './appeara
  */
 const RESOLVED: Record<string, string> = {
 	'--_p': 'oklch(0.45 0.13 264)',
+	'--_p-hover': 'oklch(0.395 0.13 264)',
 	'--_focus-ring': 'oklch(0.27 0.013 250)',
 	'--_n1': 'oklch(0.994 0.002 250)',
 	'--_n2': 'oklch(0.986 0.003 250)',
 	'--_n10': 'oklch(0.54 0.019 250)',
 	'--_n11': 'oklch(0.49 0.017 250)',
 	'--_n12': 'oklch(0.27 0.013 250)',
-	'--_n3': 'oklch(0.965 0.005 250)',
 	'--_edge-control': 'oklch(0.794 0.016 250)',
 	'--_bad': 'oklch(0.485 0.18 27)',
 	'--_r': '8px',
+	'--_r-in': '4px',
 	'--_border': '1px',
 	'--_focus-width': '1px',
-	'--_inset': '20px',
 	'--_sp1': '0.25em',
 	'--_sp3': '0.75em',
+	'--_sp4': '1em',
+	'--_sp5': '1.25em',
 	'--_t-sm': '0.875em',
 	'--_w-bold': '600',
 	'font-family': 'system-ui, sans-serif',
@@ -38,25 +40,23 @@ const RESOLVED: Record<string, string> = {
 };
 
 /**
- * the rail's container off a cascade that resolved: no edge of its own, the card's ground under it,
- * and the room around it.
+ * the rail's container off a cascade that resolved: a choice box, the white face inside the outline
+ * that finds a box, at the control corner, and the room inside it.
  */
 const RAIL = {
-	border: 'none',
 	boxShadow: 'none',
-	borderRadius: '0',
+	border: '1px solid oklch(0.794 0.016 250)',
+	borderRadius: '4px',
 	backgroundColor: 'oklch(0.994 0.002 250)',
 	paddingTop: '12px',
 	paddingBottom: '12px',
-	paddingLeft: '20px',
-	paddingRight: '20px'
+	paddingLeft: '16px',
+	paddingRight: '16px'
 };
 
-/** and off one that did not: the ground and the pads are read from tokens, so only the bare rail is left. */
+/** and off one that did not: the edge, corner, ground and pads are read from tokens, so only the refused lift is left. */
 const RAIL_WITHOUT_ROOM = {
-	border: 'none',
-	boxShadow: 'none',
-	borderRadius: '0'
+	boxShadow: 'none'
 };
 
 /** a reader over that cascade, with any property replaced or blanked for one test. */
@@ -97,8 +97,9 @@ describe('stripeAppearance', () => {
 			accordionItemLabelFontSize: '14px',
 			borderRadius: '8px',
 			spacingUnit: '4px',
-			// the step's own rhythm: with the rails drawn bare, space is all that parts them.
-			accordionItemSpacing: '0px'
+			// the item gap: each rail is a box of its own, stood apart from the next by the step
+			// the card's asks stand apart by.
+			accordionItemSpacing: '20px'
 		});
 		expect(appearance.rules).toEqual({
 			// the control edge and the border weight are both read, so the card fields carry the
@@ -112,19 +113,24 @@ describe('stripeAppearance', () => {
 			},
 			// a pointer over a field steps its outline, as it does over the card's own.
 			'.Input:hover': { borderColor: 'oklch(0.54 0.019 250)' },
-			// each rail is its own container in the stack and draws no edge and no lift; the side
-			// pad is room for a block the provider paints wider than the rail's content, and
-			// `[part~='payment']` in ./parts.css pulls the box back onto the seam by that step.
-			// the top pad is what keeps the method's name off the top edge of the fill the open
-			// rail carries.
+			// each rail is a choice box of its own: the white face, the control outline, the
+			// control corner, and no lift.
 			'.AccordionItem': RAIL,
-			// the open rail carries the ramp's faint fill, so which method is expanded is legible
-			// from the band rather than only from what is under it.
-			'.AccordionItem--selected': { backgroundColor: 'oklch(0.965 0.005 250)' },
-			// and a pointer over a rail moves neither, because a pointer over one of our rows moves
-			// nothing (./rows.css draws no `:hover`).
-			'.AccordionItem:hover': { backgroundColor: 'oklch(0.994 0.002 250)' },
-			'.AccordionItem--selected:hover': { backgroundColor: 'oklch(0.965 0.005 250)' },
+			// the open rail is the chosen one and is marked by the primary's edge on the same face.
+			'.AccordionItem--selected': {
+				borderColor: 'oklch(0.45 0.13 264)',
+				backgroundColor: 'oklch(0.994 0.002 250)'
+			},
+			// a pointer steps the edge, along the ramp on a closed rail and along the brand on the
+			// open one, and the face holds.
+			'.AccordionItem:hover': {
+				borderColor: 'oklch(0.54 0.019 250)',
+				backgroundColor: 'oklch(0.994 0.002 250)'
+			},
+			'.AccordionItem--selected:hover': {
+				borderColor: 'oklch(0.395 0.13 264)',
+				backgroundColor: 'oklch(0.994 0.002 250)'
+			},
 			// the ring is the accent's, not the primary's: a ring is a line rather than a fill, and
 			// the same swap is made on every focused control the form draws itself.
 			'.Input:focus': { boxShadow: '0 0 0 1px oklch(0.27 0.013 250)' },
@@ -213,11 +219,9 @@ describe('stripeAppearance', () => {
 		// arrive as nothing at all rather than as a wrong color.
 		const appearance = stripeAppearance(() => 'var(--_p)');
 
-		// the one variable left reads no token: the rails stack flush, which is a length stated in
-		// ./appearance.ts rather than a step off the ladder that failed to resolve.
-		expect(appearance.variables).toEqual({ accordionItemSpacing: '0px' });
-		// the one rule left is the rail, and both the lengths it reads — the top pad and the side
-		// room — are dropped here with every other one rather than sent carrying the var().
+		expect(appearance.variables).toEqual({});
+		// the one rule left is the rail's refused lift, which reads no token; every value it does
+		// read is dropped here with every other one rather than sent carrying the var().
 		expect(appearance.rules).toEqual({ '.AccordionItem': RAIL_WITHOUT_ROOM });
 	});
 
@@ -285,76 +289,54 @@ describe('stripeAppearance', () => {
 		expect(appearance.rules['.Input']?.border).toBe('0px solid oklch(0.794 0.016 250)');
 	});
 
-	it('draws the rails bare whatever the cascade resolved', () => {
-		// the rail's edge and lift read no token, so a cascade that lost its edge, its weight and
-		// its seed still hands the provider the same bare container rather than one Stripe frames
-		// itself.
-		const appearance = stripeAppearance(
-			reader({ '--_edge-control': '', '--_border': '', '--_p': '' })
-		);
+	it('sends no rail edge at all when only its weight resolved', () => {
+		// half a border is a width against no colour, which the provider draws as its own default
+		// edge: the same answer the field's frame above gives.
+		const appearance = stripeAppearance(reader({ '--_edge-control': '' }));
 
-		expect(appearance.rules['.AccordionItem']).toEqual(RAIL);
+		expect(appearance.rules['.AccordionItem']).not.toHaveProperty('border');
+		expect(appearance.rules['.AccordionItem']?.borderRadius).toBe('4px');
 	});
 
-	it('fills the open rail from the ramp rather than from the seed', () => {
-		// the fill is a rung, so a card that lost its brand still says which method is open. it is
-		// the same faint step the ramp already rests other things on — the ramp doing its job, not a
-		// meaning borrowed from one of them.
-		const appearance = stripeAppearance(reader({ '--_p': '' }));
+	it('marks the open rail with the seed’s edge, and only with it', () => {
+		// a rail is picked from a set, so it is marked the way a chosen amount tile is: the primary
+		// edge on the same white face, never a primary fill under the fields it holds.
+		const marked = stripeAppearance(reader());
+		const unseeded = stripeAppearance(reader({ '--_p': '' }));
 
-		expect(appearance.rules['.AccordionItem--selected']).toEqual({
-			backgroundColor: 'oklch(0.965 0.005 250)'
+		expect(marked.rules['.AccordionItem--selected']?.borderColor).toBe(RESOLVED['--_p']);
+		expect(marked.rules['.AccordionItem--selected']?.backgroundColor).toBe(RESOLVED['--_n1']);
+		// a card that lost its brand keeps the open rail on the white face rather than sending a
+		// mark against no colour.
+		expect(unseeded.rules['.AccordionItem--selected']).toEqual({
+			backgroundColor: RESOLVED['--_n1']
 		});
 	});
 
-	// our rows draw nothing under the pointer, so a rail is sent its resting ground there; the open
-	// rail keeps its fill under the pointer as well, or hovering the open method would drop it back
-	// to the ground of a closed one.
-	it('holds every rail at its resting ground under the pointer', () => {
+	// every control a pointer can act on answers it (`--_p-hover` in ./tokens.css): the outline steps
+	// one rung along the ramp on a closed rail and one step along the brand on the open one.
+	it('steps a rail’s edge under the pointer and holds its face', () => {
 		const appearance = stripeAppearance(reader());
 
 		expect(appearance.rules['.AccordionItem:hover']).toEqual({
+			borderColor: RESOLVED['--_n10'],
 			backgroundColor: RESOLVED['--_n1']
 		});
 		expect(appearance.rules['.AccordionItem--selected:hover']).toEqual({
-			backgroundColor: RESOLVED['--_n3']
+			borderColor: RESOLVED['--_p-hover'],
+			backgroundColor: RESOLVED['--_n1']
 		});
 	});
 
-	it('leaves the open rail unpainted when the faint step did not resolve', () => {
-		// a rule with nothing in it is a claim that the open rail was drawn. without the step the
-		// open rail is told from the closed ones only by the fields standing under it.
-		const appearance = stripeAppearance(reader({ '--_n3': '' }));
-
-		expect(appearance.rules).not.toHaveProperty('.AccordionItem--selected');
-		expect(appearance.rules).toHaveProperty('.AccordionItem');
-	});
-
-	it('keeps a rail name off the top edge of its band, in a unit the frame survives', () => {
-		// the open rail is filled, so it has a top edge of its own for the name to sit against. the
-		// step is `em` and the rail is painted where the form's root does not exist, so what a
-		// smaller root has to change is the pad as well: a length sent as `0.75em` there resolves
-		// against whatever font size the provider applied.
+	it('pads a rail and spaces the rails in a unit the frame survives', () => {
+		// every one of these is an `em` step and the rail is painted where the form's root does not
+		// exist, so a smaller root has to change them on this side of the frame.
 		const appearance = stripeAppearance(reader({ 'font-size': '15px' }));
+		const rail = appearance.rules['.AccordionItem'];
 
-		expect(appearance.rules['.AccordionItem']?.paddingTop).toBe('11.25px');
-		expect(appearance.rules['.AccordionItem']?.paddingBottom).toBe('11.25px');
-	});
-
-	it('pads each rail by the inset the card body itself is padded by', () => {
-		// the pad and the pull `[part~='payment']` in ./parts.css draws are one decision: the box
-		// goes out to the card's own edges by the body's inset and the pad puts the fields back on
-		// the seam every other control sits on. the two are the same token, so this is the half of
-		// that pair a spec can see — the other half is a length in a stylesheet.
-		const appearance = stripeAppearance(reader());
-
-		expect([
-			appearance.rules['.AccordionItem']?.paddingLeft,
-			appearance.rules['.AccordionItem']?.paddingRight
-		]).toEqual(['20px', '20px']);
-		// and it is the inset rather than the spacing unit: a fixture where the two matched would
-		// pass with either token feeding the pad.
-		expect(appearance.variables.spacingUnit).not.toBe('20px');
+		expect([rail?.paddingTop, rail?.paddingBottom]).toEqual(['11.25px', '11.25px']);
+		expect([rail?.paddingLeft, rail?.paddingRight]).toEqual(['15px', '15px']);
+		expect(appearance.variables.accordionItemSpacing).toBe('18.75px');
 	});
 
 	it('returns an empty map rather than throwing when nothing resolves', () => {
@@ -365,7 +347,7 @@ describe('stripeAppearance', () => {
 
 		expect(appearance).toEqual({
 			theme: 'flat',
-			variables: { accordionItemSpacing: '0px' },
+			variables: {},
 			rules: { '.AccordionItem': RAIL_WITHOUT_ROOM }
 		});
 	});

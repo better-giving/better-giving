@@ -22,11 +22,12 @@
  * the brand seed is spent three ways and the difference is what a donor is being told. it *fills*
  * the one control that commits the gift — the action — and it fills the boxes a donor does not
  * choose a shape for: the fee switch set on, the box a donor ticks, the mark on the step head saying
- * where the donor is standing. it *marks* the two controls a donor picks from a set: the chosen
- * frequency and the chosen amount tile take a primary edge and a primary word on the white face
- * every choice stands on rather than a primary fill. one card holding three solid brand blocks at
- * once ranks them by area, and the largest of the three is not the one that spends the money — so
- * the fill is reserved for the press and the other two are marked. and it is a
+ * where the donor is standing. it *marks* the controls a donor picks from a set: the chosen
+ * frequency and the chosen amount tile take a primary edge and a primary word, and the chosen
+ * payment rail a primary edge, on the white face every choice stands on rather than a primary fill.
+ * one card holding three solid brand blocks at once ranks them by area, and the largest of the three
+ * is not the one that spends the money — so the fill is reserved for the press and the choices are
+ * marked; a chosen rail holds the provider's fields as well, which no fill could carry. and it is a
  * *word* on the quiet action, which is the one control here drawn as words rather than as a box.
  * the operator surfaces' accent is not imported: the seed stays this card's one accent.
  *
@@ -552,12 +553,12 @@
 	 *   2 the gap between the boxes of one control, and between the rows of one block. `.segment`
 	 *     and `.tiles` in ./layout.css and the receipt's rows in ./parts.css are all this.
 	 *   3 a box's own padding: a field's inline inset, the free entry's, a bounded well's.
-	 *   4 the widest padding a box takes — the action's inline step, and the alert's on every
-	 *     side.
+	 *   4 the widest padding a box takes — the action's inline step, the alert's on every side, and
+	 *     a payment rail's inline pad (`PAYMENT_ROW` in ./appearance.ts).
 	 *   5 the step's own gap — the rhythm from one ask to the next, and the whole reason a rule
 	 *     that cancels it or pays it back names this token rather than a length (`.disclosure +
-	 *     .disclosure` in ./layout.css). it is also what the provider is handed as
-	 *     `accordionItemSpacing`.
+	 *     .disclosure` in ./layout.css). it is also the gap between one payment rail and the next,
+	 *     handed to the provider as `accordionItemSpacing`.
 	 *
 	 * the ladder stops at 5 and the card's own interior is not on it. the two insets below are
 	 * lengths of the card rather than of whatever box a rule lands on, so they are stated off the
@@ -668,7 +669,7 @@
 	--_adorn-trail-inset: calc(var(--_root-size) * 0.75);
 
 	/*
-	 * 1px is structure and 2px is state — an invalid field, a needed field, a selected rail — so
+	 * 1px is structure and 2px is state — an invalid field, a needed field — so
 	 * border weight means something here rather than decorating.
 	 *
 	 * the ring is the one pixel of state, and it is no exception to that: it is not a border at all
@@ -965,10 +966,12 @@
 	 * around the wheel.
 	 *
 	 * the three roots share a lightness and a chroma and differ in hue alone: `light` is the operator
-	 * hue, and `warm` and `cool` lean to amber at 70 and to blue at 240. so every rung stands at the
-	 * same lightness and the same chroma under all three, and every reading written below is
-	 * `light`'s and moves by less than 0.04 under the other two — ./tokens.browser.spec.ts measures
-	 * every pair under each.
+	 * hue, and `warm` and `cool` lean to amber at 70 and to cyan-blue at 220. `cool` stands thirty
+	 * degrees off `light` so the rungs carrying the most trace land on colours of their own at the
+	 * screen's resolution rather than on `light`'s ("draws a ladder of its own under each shade" in
+	 * ./tokens.browser.spec.ts). so every rung stands at the same lightness and the same chroma under
+	 * all three, and every reading written below is `light`'s and moves by less than 0.04 under the
+	 * other two — ./tokens.browser.spec.ts measures every pair under each.
 	 *
 	 * the rung number is the job, and the meanings are radix colors'
 	 * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), adopted
@@ -1169,7 +1172,7 @@
 @container style(--donate-shade: cool) {
 	:host > *,
 	[data-donate-root] > * {
-		--_s: oklch(0.994 0.002 240);
+		--_s: oklch(0.994 0.002 220);
 	}
 }
 

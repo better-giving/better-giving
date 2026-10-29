@@ -60,17 +60,19 @@ export const APPEARANCE_INPUTS = [
 	'--_edge-control',
 	'--_focus-ring',
 	'--_focus-width',
-	'--_inset',
 	'--_n1',
 	'--_n10',
 	'--_n11',
 	'--_n12',
 	'--_n2',
-	'--_n3',
 	'--_p',
+	'--_p-hover',
 	'--_r',
+	'--_r-in',
 	'--_sp1',
 	'--_sp3',
+	'--_sp4',
+	'--_sp5',
 	'--_t-sm',
 	'--_w-bold',
 	'font-family',
@@ -78,16 +80,25 @@ export const APPEARANCE_INPUTS = [
 ] as const;
 
 /**
- * the pads and grounds a payment row is drawn in, named once for both kinds of row: the provider's,
- * which this module sends as `.AccordionItem` and its states, and ours, which ./rows.css draws and
- * ../embed/rows.dom.spec.ts holds to these same names. a closed row of ours paints no ground of its
- * own and stands on the card's, `[part~='card']` in ./parts.css, so `ground` is that one too.
+ * the box a payment rail is drawn as, named once for both kinds of rail: the provider's, which this
+ * module sends as `.AccordionItem` and its states, and ours, which ./rows.css draws and
+ * ../embed/rows.dom.spec.ts holds to these same names.
+ *
+ * a rail is a choice box: the white face every choice stands on, the outline that finds a box, the
+ * corner preset's control radius, and the item gap between one rail and the next. the open rail is
+ * the chosen one and is marked as a chosen amount tile is, by the primary's edge on the same face
+ * (the head of ./tokens.css). a pointer steps the edge and never the face.
  */
 export const PAYMENT_ROW = {
 	padBlock: '--_sp3',
-	padInline: '--_inset',
+	padInline: '--_sp4',
 	ground: '--_n1',
-	openGround: '--_n3'
+	edge: '--_edge-control',
+	edgeHover: '--_n10',
+	chosenEdge: '--_p',
+	chosenEdgeHover: '--_p-hover',
+	radius: '--_r-in',
+	gap: '--_sp5'
 } as const;
 
 const EM = /^(-?(?:\d+\.?\d*|\.\d+))em$/;
@@ -204,16 +215,10 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	put(variables, 'borderRadius', value('--_r'));
 	const unit = toPx(value('--_sp1'), basePx);
 	put(variables, 'spacingUnit', unit);
-	// the rails stack flush. `../embed/stripe.ts` draws each as a container of its own and the rule
-	// below draws it bare and square, running to the card's own edges, so the fill on the open one is
-	// what tells one rail from the next — and a gap between two of those bands is a stripe of the
-	// card's ground cutting across a list that is one object. what separates two closed rails is the
-	// pad each carries, which is the same room the open one's name stands in.
-	//
-	// stated as a length rather than read off a token: it is not a step on the card's spacing ladder
-	// that someone could retune, it is the absence of one. Stripe reads it only while the items are
-	// spaced, which is the layout that file asks for.
-	variables.accordionItemSpacing = '0px';
+	// the rails stand apart as boxes of their own, by the item gap the asks of one step stand apart
+	// by. Stripe reads it only while the items are spaced, which is the layout ../embed/stripe.ts
+	// asks for; ../embed/surface.ts spends the same step between the rows drawn outside the frame.
+	put(variables, 'accordionItemSpacing', toPx(value(PAYMENT_ROW.gap), basePx));
 
 	// the same text box every other box a donor types into is drawn as — the outline that finds it at
 	// the same weight, and a field's fill inside it (`[part~='field']` in ./parts.css) — so the card
@@ -229,74 +234,48 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	const fieldSize = basePx === undefined ? undefined : `${Math.max(FIELD_MIN_PX, basePx)}px`;
 	put(frame, 'fontSize', fieldSize);
 
-	// the container each rail is drawn in draws no edge and no lift: the fields inside it are what a
-	// donor finds, and they carry the frame above; a box around the rail as well is a second ring
-	// around boxes that already have one. it does take a top pad, because the open rail is filled
-	// (`--_n3` below) and so the band has a top edge of its own — with none, the method's name sits
-	// against that edge. the bottom pad is the same step, stated rather than left to the provider, so
-	// a closed rail stands `--_sp3` over and under its name as `.head` in ./rows.css does. the
-	// provider sets that name on a shorter line than `.name`, so its closed rail stands a few pixels
-	// under our row; a line height sent on this rule reaches the card fields inside it and grows
-	// them, so none is sent. what stands between an open rail's name and its
-	// first field is the provider's own, derived from the `spacingUnit` above. the layout in
+	// each rail is a box of its own, drawn the way ./rows.css draws ours (`PAYMENT_ROW` above). it
+	// draws no lift: nothing that stands on the card is raised (`--_lift` in ./tokens.css). the edge
+	// is sent whole or not at all, for the reason the field's frame above is. the layout in
 	// ../embed/stripe.ts draws no radio, so a rail's name is a bare press and the open one is the one
 	// with its fields under it.
 	//
-	// the side pad is the card body's own inset, and it is room rather than an inset: `[part~='payment']`
-	// in ./parts.css pulls the whole box out by that same length, so the rail's band runs to the card's
-	// left and right edges while the fields inside it land back on the seam the rest of the card's
-	// controls sit on. the two are one decision and move together — the pull is a length in that sheet
-	// and this is the resolved value of the same token. the pad is also the room the provider needs:
-	// it paints one box inside a rail — the Link sign-up block — wider than the rail's own content,
-	// and a rail with no side pad clips its left and right edges away inside the provider's frame,
-	// leaving a box with a top and a bottom and no sides.
+	// the pads are spacing steps and `em`, so they take the same conversion every other one here
+	// does. the side pad is also room the provider needs: it paints one box inside a rail — the Link
+	// sign-up block — wider than the rail's own content, and a rail with no side pad clips that
+	// block's left and right edges away inside the provider's frame.
 	//
-	// the inset is stated off the clamped root rather than in `em` (./tokens.css), so it crosses the
-	// frame boundary already absolute and takes no conversion; the top and bottom pads are a spacing
-	// step and `em`, so they take the same conversion every other one here does.
-	const railPad = value(PAYMENT_ROW.padInline);
-	const rail: Record<string, string> = {
-		border: 'none',
-		boxShadow: 'none',
-		// the band runs to the card's own left and right edges — `[part~='payment']` in ./parts.css
-		// pulls the box out by the inset this rule pads back in — so it has no corner to round: the
-		// radius the `borderRadius` variable above carries would cut a notch of the card's ground out
-		// of each end of a band that reaches the edge. the variable stays what it is, because the
-		// fields inside the rail are boxes that do have corners and carry the same radius every other
-		// control on the card does.
-		borderRadius: '0'
-	};
-	// the card's own ground, stated: the provider's flat theme paints a closed rail its own white,
-	// which stands as a seam against the rows ./rows.css draws on `--_n1` beside it.
+	// the closed rail's ground is stated because the provider's flat theme paints one of its own,
+	// which stands as a seam against the rows ./rows.css draws on the card's face beside it.
 	const ground = value(PAYMENT_ROW.ground);
+	const rail: Record<string, string> = { boxShadow: 'none' };
+	if (borderWidth !== undefined && edge !== undefined) rail.border = `${borderWidth} solid ${edge}`;
+	put(rail, 'borderRadius', value(PAYMENT_ROW.radius));
 	put(rail, 'backgroundColor', ground);
 	const railStep = toPx(value(PAYMENT_ROW.padBlock), basePx);
 	put(rail, 'paddingTop', railStep);
 	put(rail, 'paddingBottom', railStep);
+	const railPad = toPx(value(PAYMENT_ROW.padInline), basePx);
 	put(rail, 'paddingLeft', railPad);
 	put(rail, 'paddingRight', railPad);
 
-	// which rail is open, said on the band itself rather than only by the fields standing under it.
-	// the provider draws no radio in this layout (../embed/stripe.ts), so without a fill the name of
-	// the open method reads exactly like the names of the closed ones.
-	//
+	// which rail is open, said on the box itself rather than only by the fields standing under it.
 	// `--selected` is the provider's own state suffix on a class its appearance API exposes, which
 	// is what keeps this on the same channel as every other rule here: nothing reaches into the
-	// frame. `--_n3` is the ramp's faint fill — the first step above the card's own ground that is
-	// visible as a wash — and other things on this card already rest on it; it is the ladder's step
-	// for this, not a meaning taken from one of them.
-	const openGround = value(PAYMENT_ROW.openGround);
+	// frame. the face is restated so the theme draws no selected ground of its own.
 	const railSelected: Record<string, string> = {};
-	put(railSelected, 'backgroundColor', openGround);
+	put(railSelected, 'borderColor', value(PAYMENT_ROW.chosenEdge));
+	put(railSelected, 'backgroundColor', ground);
 
-	// a pointer over one of our rows draws nothing (./rows.css has no `:hover`), so each rail is sent
-	// the ground it rests on under the pointer too, leaving the theme no hover ground of its own to
-	// draw. the open one is stated as well: the plain `:hover` rule would otherwise reach it and drop
-	// its fill to the closed rails' ground while the pointer is over it.
+	// and the pointer: the edge steps and the face holds, on a closed rail along the ramp and on the
+	// open one along the brand. the open one is stated apart, or the plain `:hover` rule would reach
+	// it and trade its primary edge for a closed rail's.
 	const railHover: Record<string, string> = {};
+	put(railHover, 'borderColor', value(PAYMENT_ROW.edgeHover));
 	put(railHover, 'backgroundColor', ground);
 	const railSelectedHover: Record<string, string> = {};
-	put(railSelectedHover, 'backgroundColor', openGround);
+	put(railSelectedHover, 'borderColor', value(PAYMENT_ROW.chosenEdgeHover));
+	put(railSelectedHover, 'backgroundColor', ground);
 
 	// the same ring the rest of the form draws on a focused control, so moving from an email field
 	// into the card field does not change what focus looks like — which means a rung of the ladder

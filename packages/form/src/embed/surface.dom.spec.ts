@@ -485,6 +485,35 @@ describe('one payment surface over however many processors a config names', () =
 			surface.stop();
 		});
 
+		// every rail is a box of its own, stood the item gap under whatever the box lists above it.
+		// inside one processor's node the rows space themselves (../styles/rows.css); between two
+		// nodes the gap is this module's, and a node listing nothing yet takes none, or an empty
+		// node would stand a gap of the card's ground in the list.
+		it('stands each processor’s rows the item gap under whatever is listed above them', async () => {
+			const gaps = (k: Kit) =>
+				[...k.mount.children].map((node) =>
+					(node as HTMLElement).style.getPropertyValue('margin-block-start')
+				);
+
+			const withCard = kit();
+			const surface = await composed(withCard, FUNDED);
+			expect(gaps(withCard)).toEqual(['0px', 'var(--_sp5)', '0px']);
+			surface.offerFund(true);
+			expect(gaps(withCard)).toEqual(['0px', 'var(--_sp5)', 'var(--_sp5)']);
+			surface.stop();
+
+			const withoutCard = kit();
+			const hosted = await composed(withoutCard, {
+				...FUNDED,
+				paymentMethods: ['daf', 'paypal']
+			});
+			hosted.offerFund(true);
+			expect(gaps(withoutCard)).toEqual(['0px', 'var(--_sp5)']);
+			hosted.offerFund(false);
+			expect(gaps(withoutCard)).toEqual(['0px', '0px']);
+			hosted.stop();
+		});
+
 		it('keeps one row open across the processors’ rows', async () => {
 			const k = kit();
 			const surface = await composed(k, FUNDED);

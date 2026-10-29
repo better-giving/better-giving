@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PAYMENT_ROW, stripeAppearance, type TokenReader } from '../styles/appearance';
 import partStyles from '../styles/parts.css?inline';
+import rowStyles from '../styles/rows.css?inline';
 import tokenStyles from '../styles/tokens.css?inline';
 import { createRows } from './rows';
 import { PROVIDER_NAME_OFFSET_PX } from './rows.measured';
@@ -26,8 +27,8 @@ import { PROVIDER_NAME_OFFSET_PX } from './rows.measured';
 //    appearance variable reaches (https://docs.stripe.com/elements/appearance-api lists what an
 //    integrator may set: the label's colour, size and weight, and the item's box — never the icon).
 //
-// the rail's padding edge is ours, because `.AccordionItem` in ../styles/appearance.ts pays it
-// `--_inset` and `[part~='payment']` in ../styles/parts.css pulls the box out by the same length.
+// the rail's padding edge is ours, because `.AccordionItem` in ../styles/appearance.ts pays it the
+// same `PAYMENT_ROW.padInline` ../styles/rows.css pads our heads by.
 
 /** the `em` factor one token in ../styles/tokens.css is declared at. */
 function em(name: string): number {
@@ -44,15 +45,18 @@ const RESOLVED: Record<string, string> = {
 	'--_edge-control': 'oklch(0.855 0.001 264)',
 	'--_focus-ring': 'oklch(0.27 0.002 264)',
 	'--_focus-width': '1px',
-	'--_inset': '20px',
 	'--_n1': 'oklch(0.995 0.001 264)',
+	'--_n10': 'oklch(0.54 0.002 264)',
 	'--_n11': 'oklch(0.49 0.002 264)',
 	'--_n12': 'oklch(0.27 0.002 264)',
-	'--_n3': 'oklch(0.965 0.001 264)',
 	'--_p': 'oklch(0.45 0.13 264)',
+	'--_p-hover': 'oklch(0.395 0.13 264)',
 	'--_r': '8px',
+	'--_r-in': '4px',
 	'--_sp1': '0.25em',
 	'--_sp3': '0.75em',
+	'--_sp4': '1em',
+	'--_sp5': '1.25em',
 	'--_t-sm': '0.875em',
 	'--_w-bold': '600',
 	'font-family': 'system-ui, sans-serif',
@@ -87,25 +91,36 @@ function styleRules(sheet: CSSStyleSheet): { selector: string; style: CSSStyleDe
 }
 
 describe('the payment rows drawn beside the provider’s frame', () => {
-	// the provider draws nothing between one rail and the next — the open one is told by its fill
-	// alone — so a line anywhere on a row of ours cuts across a list that is one object. read off the
-	// sheet the row adopted, which is the one thing that can say the absence is still there: a rule
-	// that paints no line is indistinguishable from a rule nobody wrote until one is added.
-	it('paints no line above, between or below a row', () => {
-		const edges = ['border', 'border-block-start', 'border-block-end', 'box-shadow', 'outline'];
+	// every rail is a choice box, ours and the provider's alike: the white face, the outline that
+	// finds a box at the structural weight, and the corner preset's control radius.
+	it('draws a row as the box the provider draws a rail as', () => {
+		const band = styleRules(rowSheet()).find(({ selector }) => selector === '.band')?.style;
+		const rail = stripeAppearance(read).rules['.AccordionItem'];
 
-		const drawn = styleRules(rowSheet())
-			// the caret's own ring is the one edge a row draws, and a press is the only thing it is
-			// drawn on.
-			.filter(({ selector }) => !selector.includes(':focus-visible'))
-			.flatMap(({ selector, style }) =>
-				edges
-					.map((property) => ({ selector, property, value: style.getPropertyValue(property) }))
-					// a zeroed border is the host page's own `button { … }` held off, not a line.
-					.filter(({ value }) => value !== '' && !/^0(px)?$/.test(value))
-			);
+		// the edge is read off the sheet's source: a lightweight DOM splits a shorthand holding a
+		// `var()` into longhands it cannot fill, so the adopted rule no longer says what was written.
+		expect(/^\.band \{[^}]*\bborder: ([^;]+);/m.exec(rowStyles)?.[1]).toBe(
+			`var(--_border) solid var(${PAYMENT_ROW.edge})`
+		);
+		expect(rail?.border).toBe(`${RESOLVED['--_border']} solid ${RESOLVED[PAYMENT_ROW.edge]}`);
+		expect(band?.getPropertyValue('border-radius')).toBe(`var(${PAYMENT_ROW.radius})`);
+		expect(rail?.borderRadius).toBe(RESOLVED[PAYMENT_ROW.radius]);
+		expect(band?.getPropertyValue('box-shadow')).toBe('');
+		expect(rail?.boxShadow).toBe('none');
+	});
 
-		expect(drawn).toEqual([]);
+	// and stood apart from the next by the item gap: inside the provider's frame by its own spacing
+	// variable, and between ours by the band's own margin after the first row in a node
+	// (../embed/surface.ts spaces one adapter's node from the next by the same step).
+	it('stands one row the item gap under the next', () => {
+		const spaced = styleRules(rowSheet()).find(
+			({ selector }) => selector === ':host(:not(:first-child)) .band'
+		);
+
+		expect(spaced?.style.getPropertyValue('margin-block-start')).toBe(`var(${PAYMENT_ROW.gap})`);
+		expect(stripeAppearance(read).variables.accordionItemSpacing).toBe(
+			`${em(PAYMENT_ROW.gap) * ROOT_PX}px`
+		);
 	});
 
 	// the pads and grounds both kinds of row are drawn in, read by ours off the sheet and by the
@@ -119,35 +134,43 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 		);
 		expect(rail?.paddingTop).toBe(`${em(PAYMENT_ROW.padBlock) * ROOT_PX}px`);
 		expect(rail?.paddingBottom).toBe(`${em(PAYMENT_ROW.padBlock) * ROOT_PX}px`);
-		expect(rail?.paddingLeft).toBe(RESOLVED[PAYMENT_ROW.padInline]);
-		expect(rail?.paddingRight).toBe(RESOLVED[PAYMENT_ROW.padInline]);
+		expect(rail?.paddingLeft).toBe(`${em(PAYMENT_ROW.padInline) * ROOT_PX}px`);
+		expect(rail?.paddingRight).toBe(`${em(PAYMENT_ROW.padInline) * ROOT_PX}px`);
 	});
 
-	// a closed row of ours paints nothing, so it stands on the card's own ground; the provider's rail
-	// is sent that ground outright, because its flat theme paints one of its own. the open fill and
-	// the ground under a pointer are the same pair.
-	it('stands on the rail’s own ground, open, closed and under a pointer', () => {
+	// one face open, closed and under a pointer, on both sides of the frame: what moves is the edge,
+	// one rung along the ramp under a pointer, the primary on the open row, and one step along the
+	// brand under a pointer there.
+	it('holds the face and steps the edge, open, closed and under a pointer', () => {
 		const rules = styleRules(rowSheet());
-		const background = (selector: string, property = 'background') =>
+		const spent = (selector: string, property: string) =>
 			rules.find((rule) => rule.selector === selector)?.style.getPropertyValue(property);
 		const card = /\[part~='card'\]\s*\{[^}]*?\bbackground:\s*var\((--_[\w-]+)\)/.exec(
 			partStyles
 		)?.[1];
 		const provider = stripeAppearance(read).rules;
 
-		// the `none` the sheet writes, read back as happy-dom spells it and as a browser does.
-		expect(background('.head', 'background-color')).toMatch(/^(none|transparent)$/);
-		expect(rules.filter(({ selector }) => selector.includes(':hover'))).toEqual([]);
 		expect(card).toBe(PAYMENT_ROW.ground);
-		expect(provider['.AccordionItem']?.backgroundColor).toBe(RESOLVED[PAYMENT_ROW.ground]);
-		expect(provider['.AccordionItem:hover']?.backgroundColor).toBe(RESOLVED[PAYMENT_ROW.ground]);
+		expect(spent('.band', 'background')).toBe(`var(${PAYMENT_ROW.ground})`);
+		expect(spent('.head', 'background-color')).toMatch(/^(none|transparent)$/);
+		for (const state of [
+			'.AccordionItem',
+			'.AccordionItem:hover',
+			'.AccordionItem--selected',
+			'.AccordionItem--selected:hover'
+		]) {
+			expect(provider[state]?.backgroundColor).toBe(RESOLVED[PAYMENT_ROW.ground]);
+		}
 
-		expect(background('.band.open')).toBe(`var(${PAYMENT_ROW.openGround})`);
-		expect(provider['.AccordionItem--selected']?.backgroundColor).toBe(
-			RESOLVED[PAYMENT_ROW.openGround]
+		expect(spent('.band:hover', 'border-color')).toBe(`var(${PAYMENT_ROW.edgeHover})`);
+		expect(provider['.AccordionItem:hover']?.borderColor).toBe(RESOLVED[PAYMENT_ROW.edgeHover]);
+		expect(spent('.band.open', 'border-color')).toBe(`var(${PAYMENT_ROW.chosenEdge})`);
+		expect(provider['.AccordionItem--selected']?.borderColor).toBe(
+			RESOLVED[PAYMENT_ROW.chosenEdge]
 		);
-		expect(provider['.AccordionItem--selected:hover']?.backgroundColor).toBe(
-			RESOLVED[PAYMENT_ROW.openGround]
+		expect(spent('.band.open:hover', 'border-color')).toBe(`var(${PAYMENT_ROW.chosenEdgeHover})`);
+		expect(provider['.AccordionItem--selected:hover']?.borderColor).toBe(
+			RESOLVED[PAYMENT_ROW.chosenEdgeHover]
 		);
 	});
 

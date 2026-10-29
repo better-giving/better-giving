@@ -819,7 +819,7 @@ describe('the shade seed', () => {
 	it.each([
 		['light', { l: 0.994, c: 0.002, h: 250 }],
 		['warm', { l: 0.994, c: 0.002, h: 70 }],
-		['cool', { l: 0.994, c: 0.002, h: 240 }]
+		['cool', { l: 0.994, c: 0.002, h: 220 }]
 	])('roots the ladder at the %s ground', (shade, root) => {
 		seed(`--donate-shade: ${shade};`);
 		const s = oklchOf('--_s');
@@ -827,6 +827,25 @@ describe('the shade seed', () => {
 		expect(s.l).toBeCloseTo(root.l, 3);
 		expect(s.c).toBeCloseTo(root.c, 4);
 		expect(s.h).toBeCloseTo(root.h, 0);
+	});
+
+	// a preset a host picks has to be a look they can see: the three roots are far enough apart
+	// around the wheel that the rungs carrying the most trace land on three different 8-bit colours,
+	// which is the screen's own resolution rather than a difference only arithmetic can find.
+	it('draws a ladder of its own under each shade', () => {
+		const rungs = (shade: string) => {
+			seed(`--donate-shade: ${shade};`);
+			return ['--_n6', '--_n9', '--_n12'].map((rung) =>
+				srgbOf(rung)
+					.map((channel) => Math.round(channel * 255))
+					.join()
+			);
+		};
+		const [light, warm, cool] = SHADES.map(rungs) as [string[], string[], string[]];
+
+		for (const at of [0, 1, 2]) {
+			expect(new Set([light[at], warm[at], cool[at]]).size).toBe(3);
+		}
 	});
 
 	// the registration makes a keyword off the list invalid at computed-value time, so with nothing
