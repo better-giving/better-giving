@@ -299,8 +299,8 @@ describe('stripeAppearance', () => {
 	});
 
 	it('marks the open rail with the seed’s edge, and only with it', () => {
-		// a rail is picked from a set, so it is marked the way a chosen amount tile is: the primary
-		// edge on the same white face, never a primary fill under the fields it holds.
+		// a rail is picked from a set, so it is marked rather than filled: the primary edge on the
+		// same white face, never a primary fill under the fields it holds.
 		const marked = stripeAppearance(reader());
 		const unseeded = stripeAppearance(reader({ '--_p': '' }));
 

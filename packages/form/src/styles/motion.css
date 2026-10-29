@@ -98,11 +98,11 @@
  * arriving and read `--_move-state`, so a press moves the surface on one curve while what it is
  * painted in settles on another.
  *
- * the edge is `border-color`: the action's, and the outline every option and tile is found by, which
- * steps under the pointer and becomes the primary's edge when a tile is chosen (`[part~='selected']`
- * in ./parts.css). `outline-color` may not join this list: every focus ring on this card is an
- * outline or a shadow, so putting it here fades a focus indicator in over `--_dur-fast` instead of
- * drawing it on the key press.
+ * the edge is `border-color` and it is the action's. the mark a chosen frequency or amount tile
+ * takes is an `outline` (`[part~='selected']` in ./parts.css), and `outline-color` may not join this
+ * list: every focus ring on this card is an outline too, so putting it here fades a focus indicator
+ * in over `--_dur-fast` instead of drawing it on the key press. the mark snaps, which is what a
+ * radio answering a press should do anyway.
  */
 :where(
 	[part~='action'],
@@ -129,14 +129,14 @@
  * the chosen cadence travelling to the option a donor picked, which is the second of the two things
  * on this card whose answer to a press is where it now stands rather than that it was pressed.
  *
- * one chip on the set rather than an edge per option (`.segment[data-thumb]::before` in
+ * one chip on the track rather than a raised treatment per option (`.segment[data-thumb]::before` in
  * ./parts.css) is what there is to move at all: a mark drawn by each option could only disappear
  * from one and reappear on another, and a donor watching a set of three is being told which one
  * their press landed on. `translate` paints without reflowing, which is what this file's header asks
  * of anything that moves a box, and the words above the chip never move.
  *
  * `data-sliding` is the whole of when it travels, and the patch decides it off where the options
- * were actually laid out (`placeThumb` in ../views.ts). the set wraps at narrow widths with
+ * were actually laid out (`placeThumb` in ../views.ts). the track flex-wraps at narrow widths with
  * enough cadences, and a chip crossing rows would travel diagonally across two other options on its
  * way — so a move between rows is written with the attribute absent and the chip is simply
  * somewhere else on the next frame. neither half of that is knowable from here: the cadence count is

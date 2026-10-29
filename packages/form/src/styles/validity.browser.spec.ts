@@ -462,19 +462,19 @@ describe('the free entry the donor has already typed into', () => {
 			standing: 'on a tray',
 			suggested: CONFIG.suggestedAmountsMinor,
 			refused: false,
-			input: ['--_focus-ring'],
+			input: ['--_n1', '--_focus-ring'],
 			surface: []
 		},
-		// a refused entry carries the field's own mark wherever it stands, the inset hairline inside
-		// its danger edge, and the ring outside it is the mark's colour rather than the ordinary ring's.
 		{
 			standing: 'on a tray',
 			suggested: CONFIG.suggestedAmountsMinor,
 			refused: true,
 			input: ['danger'],
-			surface: ['danger']
+			surface: []
 		},
 		{ standing: 'alone', suggested: [], refused: false, input: ['--_focus-ring'], surface: [] },
+		// standing alone a refused entry carries the field's own mark, the inset hairline inside its
+		// danger edge, and the ring outside it is the mark's colour rather than the ordinary ring's.
 		{ standing: 'alone', suggested: [], refused: true, input: ['danger'], surface: ['danger'] }
 	] as const;
 
@@ -490,20 +490,19 @@ describe('the free entry the donor has already typed into', () => {
 			await painted(entry, surface);
 			const colour = (name: string) => (name === 'danger' ? dangerOf(card) : tokenOf(card, name));
 
-			expect(card.shadow.querySelectorAll("[part~='amount-option']").length === 0).toBe(
-				standing === 'alone'
-			);
+			expect(card.find('.tiles').classList.contains('bare')).toBe(standing === 'alone');
 			expect(surface.getAttribute('part')?.includes('invalid')).toBe(refused);
 			expect(layers(getComputedStyle(entry).boxShadow)).toEqual(input.map(colour));
 			expect(layers(getComputedStyle(surface).boxShadow)).toEqual(marked.map(colour));
-			// wherever it stands it is a text box like any other, and a field's ring is its edge
-			// recoloured with the ring flush outside it (`[part~='field']:focus-visible` in
-			// ../styles/parts.css). the input stands inside the surface's edge, so its ring is that
-			// edge's width wider.
-			const spread = /0px 0px 0px ([\d.]+)px/.exec(getComputedStyle(entry).boxShadow)?.[1];
-			expect(Number(spread)).toBe(
-				parseFloat(getComputedStyle(surface).borderTopWidth) + lengthOf(card, '--_focus-width')
-			);
+			// standing alone it is a field like any other, and a field's ring is its edge recoloured
+			// with the ring flush outside it (`[part~='field']:focus-visible` in ../styles/parts.css).
+			// the input stands inside the surface's edge, so its ring is that edge's width wider.
+			if (standing === 'alone') {
+				const spread = /0px 0px 0px ([\d.]+)px/.exec(getComputedStyle(entry).boxShadow)?.[1];
+				expect(Number(spread)).toBe(
+					parseFloat(getComputedStyle(surface).borderTopWidth) + lengthOf(card, '--_focus-width')
+				);
+			}
 		});
 	}
 
@@ -574,16 +573,17 @@ describe('the amount step’s problem edge', () => {
 		return shadow + edge;
 	}
 
-	// the amount set draws no tray, so a refused amount marks every box in it (../styles/parts.css):
-	// each tile and the entry carry the token and each recolours its own edge and draws one pixel of
-	// shadow inside it, and the set around them draws nothing. a real engine is the only place any of
-	// it is visible.
+	// one refused decision is one marked box, and on a tray of shortcuts that box is the tray
+	// (../styles/parts.css): the tiles and the entry standing on it carry the token and draw
+	// nothing from it, so the mark is one edge around the whole choice rather than a dozen boxes
+	// each saying the same thing. the tray has a border to recolour, so its two pixels are that
+	// edge and one of shadow inside it. a real engine is the only place any of it is visible.
 	//
 	// the tile is read at index 1 rather than 0 for a reason that survives whatever the caret does:
 	// a marked control that has the focus draws the ring instead of the mark
-	// (`[part~='invalid']:focus-visible` in ../styles/parts.css). the entry is read with the caret
-	// taken out of it for the same reason.
-	it('is drawn on every box of the set, and on no tray', async () => {
+	// (`[part~='invalid']:focus-visible` in ../styles/parts.css), and this case is about the boxes
+	// nothing is drawn on at all.
+	it('is drawn once, on the tray the tiles stand on', async () => {
 		const card = await mount();
 		// the seeded amount taken back through the other tile, so the press is refused for it and
 		// every option in the group is marked.
@@ -592,18 +592,19 @@ describe('the amount step’s problem edge', () => {
 		const tray = card.find('.tiles');
 		const tile = card.shadow.querySelectorAll("[part~='amount-option']")[1] as HTMLElement;
 		const entry = card.find("[part~='amount-input']");
-		card.find("[part~='amount-input'] input").blur();
 		await painted(tray, tile, entry);
 		const danger = dangerOf(card);
 
 		expect(tile.getAttribute('part')).toContain('invalid');
-		expect(dangerWidth(tray, danger)).toBe(0);
-		expect(edgeOf(tile)).toBe(danger);
-		expect(dangerWidth(tile, danger)).toBe(2);
-		expect(dangerWidth(entry, danger)).toBe(2);
+		expect(edgeOf(tray)).toBe(danger);
+		expect(dangerWidth(tray, danger)).toBe(2);
+		expect(getComputedStyle(tile).boxShadow).toBe('none');
+		expect(dangerWidth(tile, danger)).toBe(0);
+		expect(dangerWidth(entry, danger)).toBe(0);
 	});
 
-	// and a form suggesting one amount or none draws the entry alone, which takes the same mark.
+	// and a form suggesting one amount or none has no tray to mark: the entry is the outermost box
+	// there, standing on the card as every other field does, so it takes the field's own mark.
 	it('is drawn on the free entry itself where the entry stands alone', async () => {
 		const card = await mount({ ...CONFIG, suggestedAmountsMinor: [] });
 		proceed(card);
@@ -614,7 +615,7 @@ describe('the amount step’s problem edge', () => {
 		await painted(entry);
 		const danger = dangerOf(card);
 
-		expect(card.shadow.querySelectorAll("[part~='amount-option']")).toHaveLength(0);
+		expect(card.find('.tiles').classList.contains('bare')).toBe(true);
 		expect(entry.getAttribute('part')).toContain('invalid');
 		expect(edgeOf(entry)).toBe(danger);
 		expect(dangerWidth(entry, danger)).toBe(2);

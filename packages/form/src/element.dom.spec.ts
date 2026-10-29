@@ -1317,6 +1317,7 @@ describe('the amount step', () => {
 		});
 
 		expect(card.all('[part~="amount-option"]')).toHaveLength(0);
+		expect(card.find('.tiles').classList.contains('bare')).toBe(true);
 		expect(card.find('[part~="amount-input"]').hidden).toBe(false);
 		expect((card.find('#amount-entry') as HTMLInputElement).value).toBe('25');
 		expect(card.find('[part~="amount-input"]').getAttribute('part')).toBe('amount-input selected');

@@ -23,8 +23,9 @@
  * the one control that commits the gift — the action — and it fills the boxes a donor does not
  * choose a shape for: the fee switch set on, the box a donor ticks, the mark on the step head saying
  * where the donor is standing. it *marks* the controls a donor picks from a set: the chosen
- * frequency and the chosen amount tile take a primary edge and a primary word, and the chosen
- * payment rail a primary edge, on the white face every choice stands on rather than a primary fill.
+ * frequency and the chosen amount tile take a primary word, raised to the near-white ground off the
+ * tray they stand on, and the chosen payment rail a primary edge on the white face it stands on —
+ * a mark rather than a primary fill.
  * one card holding three solid brand blocks at once ranks them by area, and the largest of the three
  * is not the one that spends the money — so the fill is reserved for the press and the choices are
  * marked; a chosen rail holds the provider's fields as well, which no fill could carry. and it is a
@@ -44,7 +45,7 @@
  * a ring drawn against each other read as one thick dark band, not as two. a control the primary
  * *fills* answers that by ringing itself inside, in `--_on-p`. a control the primary *marks*
  * answers it with a band of `--_n1` laid between its primary edge and the ring outside — the same
- * construction the checkbox and the switch already use — and that hairline is
+ * construction the free entry, the checkbox and the switch already use — and that hairline is
  * 14.80:1 against both of the edges it separates. a rule that puts the two in contact without one
  * of those two answers is what this invariant exists to refuse.
  *
@@ -274,12 +275,11 @@
 	 * would take on whatever the host put behind the card.
 	 *
 	 * they are spent on a mark as well as on a fill: a selected frequency or amount tile answers
-	 * the pointer by stepping its edge and its word together, because its ground is `--_n1` and
-	 * the ladder has no second usable step above it for a fill to move through — `--_n3` is where
-	 * the primary stops clearing the text floor, and it is also the fill an unselected neighbour
-	 * takes under the pointer. both steps are *darker* than `--_p`, so a word drawn in either clears
-	 * that floor by more than `--_p` does and neither adds a measurement to the four this file
-	 * carries.
+	 * the pointer by stepping its word, because its ground is `--_n1` and the ladder has no second
+	 * usable step above it for a fill to move through — `--_n3` is where the primary stops clearing
+	 * the text floor, and it is also the fill its unselected neighbours already stand on. both
+	 * steps are *darker* than `--_p`, so a word drawn in either clears that floor by more than
+	 * `--_p` does and neither adds a measurement to the four this file carries.
 	 *
 	 * the two steps are a constant lightness apart at every point of the band, so what they buy
 	 * narrows as the band darkens: oklch lightness is perceptually even and a WCAG ratio is not.
@@ -290,12 +290,20 @@
 	 *
 	 * every control a pointer can act on carries a hover step, and the rule is stated at this pair
 	 * because this pair is what it exists for. a control drawn in the brand steps to `--_p-hover`:
-	 * the action's fill, the fee switch set on, a chosen option's edge and word, the quiet action's
-	 * word. a control drawn from the ramp steps along the ramp instead — an outline to `--_n10` (a
-	 * field, the free entry, a step mark, an unchosen cadence or tile, which also takes `--_n3`
-	 * under it), the tick box's rung-9 edge to `--_n11`, and the fee switch set off from its fill to
-	 * the rung under it. "answers the pointer on every part a pointer can act on" in
-	 * ../element.dom.spec.ts is what refuses a control that says nothing.
+	 * the action's fill, the fee switch set on, a chosen option's word, a chosen rail's edge, the
+	 * quiet action's word. a control drawn from the ramp steps along the ramp instead — an outline
+	 * to `--_n10` (a field, the free entry on a bare tray, a step mark, an unchosen rail), the tick
+	 * box's rung-9 edge to `--_n11`, and a fill to the rung under the one it rests on (an unchosen
+	 * cadence or tile, the fee switch set off).
+	 *
+	 * two controls are exempt and each is exempt for the same reason: there is nothing left for a
+	 * pointer to be offered. a chosen cadence has no fill of its own — the chip behind it is the
+	 * track's — and the free entry standing on a tray is the box that has already been chosen, on
+	 * `--_n1` with the tray's own fill two rungs under it and nothing between the two that reads
+	 * (1.02:1 at `--_n2`, which is the same number `[part~='frequency-option'][part~='selected']` in
+	 * ./parts.css refuses a ground step for). an exemption is an argument written where the rule
+	 * would have been drawn; silence is not one, and "answers the pointer on every part a pointer
+	 * can act on" in ../element.dom.spec.ts is what refuses silence.
 	 *
 	 * the press is that same rule stepped once further — `--_p-press` in the brand, one more rung
 	 * along the ramp — and it is not an embellishment on the hover. a touch never hovers, so on the
@@ -547,9 +555,9 @@
 	 * stated here rather than at the rule that first needed it — a job written at a consumer is a
 	 * job the next consumer picks by eye off whichever rule it happened to read.
 	 *
-	 *   1 the tightest gap there is: a refusal under the box it refuses, and a mark beside the word it
-	 *     marks. it is also what the payment provider is handed as its `spacingUnit`
-	 *     (`./appearance.ts`), so a step moved here moves the provider's frame with it.
+	 *   1 the tightest gap there is: a tray's own inset, a refusal under the box it refuses, and a
+	 *     mark beside the word it marks. it is also what the payment provider is handed as its
+	 *     `spacingUnit` (`./appearance.ts`), so a step moved here moves the provider's frame with it.
 	 *   2 the gap between the boxes of one control, and between the rows of one block. `.segment`
 	 *     and `.tiles` in ./layout.css and the receipt's rows in ./parts.css are all this.
 	 *   3 a box's own padding: a field's inline inset, the free entry's, a bounded well's.
@@ -999,7 +1007,8 @@
 	 *
 	 * a box's own fill is a ground it is read on too. two things stand on a text box's rung 2 at this
 	 * rung: the words of a floated label while the box under them is empty and holds no caret, and
-	 * the placeholder in the amount entry (`.floating` and `[part~='amount-input']` in ./parts.css).
+	 * the placeholder in the amount entry where a form suggesting one amount or none draws that entry
+	 * on a bare tray (`.floating` and `[part~='amount-input']` in ./parts.css).
 	 * the tightest reading of any word this card draws is that rung on rung 3, 4.56:1 — the mandate's
 	 * ground — and rung 9 reads 2.98:1 there, which is the other half of why the quietest ink has
 	 * nowhere under it. "clears 4.5:1 on every other ground a word is drawn on" in
@@ -1029,10 +1038,12 @@
 	 * amount entry, a payment rail, the mount the card fields are drawn into.
 	 *
 	 * one outline shade for every box a donor finds, and it is the operator surfaces' text-box
-	 * outline, rung 8: a field, the free entry, each amount tile and cadence, the open list. a box is
-	 * found by its outline and not by its fill — a field's rung-2 fill is 1.02:1 on the card, which
-	 * finds nothing — so every one of them draws this edge, and the chosen one of a set trades it for
-	 * the primary.
+	 * outline, rung 8: a field, the free entry on a bare tray, each payment rail, the open list. a box
+	 * is found by its outline and not by its fill — a field's rung-2 fill is 1.02:1 on the card, which
+	 * finds nothing — so every one of them draws this edge, and the chosen rail trades it for the
+	 * primary. the two trays the preset amounts and the cadences stand on are containers, not boxes
+	 * a donor finds, and read rung 7 directly (`.segment, .tiles` in ./parts.css); what stands on
+	 * them draws no edge of its own.
 	 *
 	 * it is a look and carries no WCAG floor. 1.4.11's 3:1 against the card
 	 * (https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html) is not reached at this
@@ -1085,8 +1096,8 @@
 	 *
 	 * rung 12 rather than a border rung. a ring outranks every other line on this card and is read
 	 * on five grounds, because a keyboard donor can be hovering what they have tabbed onto: the card
-	 * at 14.80:1, a text box's rung 2 at 14.46:1, rung 3 under a hovered option at 13.61:1, rung 4
-	 * under a pressed one at 12.56:1, and rung 5 at 11.39:1. the lighter rungs
+	 * at 14.80:1, a text box's rung 2 at 14.46:1, an option's own fill, rung 3, at 13.61:1, and that
+	 * fill under the pointer and the press, rungs 4 and 5, at 12.56:1 and 11.39:1. the lighter rungs
 	 * are this card's own outlines and fills, and a ring drawn from one of them would be a field's
 	 * resting edge again rather than a change to it.
 	 *
@@ -1150,14 +1161,20 @@
 	 * shade this component knows the ground for. `--_n7` is a separator step, so what lands under a
 	 * raised box is a shade the card already carries as a hairline elsewhere.
 	 *
-	 * one consumer: the open list (`[part~='select-list']` in ./parts.css), the one surface that
-	 * stands over the card rather than on it. it is drawn as the operator surfaces draw an overlay —
-	 * a quiet edge, `--_edge-control`, and a shadow — with the shadow in a solid rung rather than the
-	 * operator's translucent one, for the reason above. nothing that stands on the card is raised: a
-	 * chosen option is said by its primary edge and word.
+	 * three consumers. the chip the chosen frequency stands on (`.segment[data-thumb]::before` in
+	 * ./parts.css) and a chosen amount tile (`[part~='amount-option'][part~='selected']` there), each
+	 * raised off the tray it stands in — the ground there is `--_n3` rather than the card, which is
+	 * the bound above being met rather than an exception to it. and the open list
+	 * (`[part~='select-list']` there), the one surface that stands over the card rather than on it,
+	 * drawn as the operator surfaces draw an overlay — a quiet edge, `--_edge-control`, and a shadow
+	 * — with the shadow in a solid rung rather than the operator's translucent one, for the reason
+	 * above.
 	 *
 	 * it is below the threshold of an eye at 1× and it is not a signal anything may rest on. `--_n7`
-	 * is a hairline shade and the offset is one pixel; the list's edge is what bounds it.
+	 * is a hairline shade and the offset is one pixel, so what it casts under a chip on `--_n3` is
+	 * findable in a rendered review only at high zoom; the list's edge is what bounds the list, and a
+	 * chosen frequency and a chosen tile are said by their word and the ground under them
+	 * (`[part~='selected']` in ./parts.css).
 	 */
 	--_lift: 0 1px 2px var(--_n7);
 }

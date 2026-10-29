@@ -670,7 +670,7 @@ describe.each(SHADES)('text on the card under %s', (preset) => {
 		expect(contrastRatio(srgbOf('--_n11'), srgbOf('--_bad-tint'))).toBeGreaterThanOrEqual(4.5);
 	});
 
-	// one outline shade for every box on the card: a field, a tile, a cadence and the box the
+	// one outline shade for every box on the card: a field, a rail and the box the
 	// provider paints into are found by the operator surfaces' text-box outline, rung 8. no WCAG floor
 	// is asserted and none is claimed — the edge is a look, which ./tokens.css says at the token
 	// itself; what is held here is the rung.

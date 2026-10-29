@@ -12,9 +12,8 @@
  * for its own rails, named once there as `PAYMENT_ROW`, so the two kinds of row are one list of
  * choice boxes: the white face inside the outline that finds a box, at the corner preset's control
  * radius, the name `--_sp3` under the box's top edge, and the item gap between one box and the next.
- * the open row is the chosen one and is marked as a chosen amount tile is (`[part~='amount-option']`
- * in ./parts.css): the primary's edge on the same face, at the same one-pixel weight, so opening a
- * row reflows nothing. a pointer steps the edge — along the ramp on a closed row, along the brand on
+ * the open row is the chosen one and is marked by the primary's edge on the same face, at the same
+ * one-pixel weight, so opening a row reflows nothing. a pointer steps the edge — along the ramp on a closed row, along the brand on
  * the open one — and never the face. ../embed/rows.dom.spec.ts holds both sides to those names. the
  * name's type and the mark's size are matched to what the provider draws unasked, because
  * ./appearance.ts sends its rows' names nothing — with the one departure stated at `.head` below: an

@@ -86,8 +86,8 @@ export const APPEARANCE_INPUTS = [
  *
  * a rail is a choice box: the white face every choice stands on, the outline that finds a box, the
  * corner preset's control radius, and the item gap between one rail and the next. the open rail is
- * the chosen one and is marked as a chosen amount tile is, by the primary's edge on the same face
- * (the head of ./tokens.css). a pointer steps the edge and never the face.
+ * the chosen one and is marked by the primary's edge on the same face (the head of
+ * ./tokens.css). a pointer steps the edge and never the face.
  */
 export const PAYMENT_ROW = {
 	padBlock: '--_sp3',
