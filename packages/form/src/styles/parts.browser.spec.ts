@@ -2350,6 +2350,43 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		expect(getComputedStyle(band).borderTopWidth).toBe(edgeWidth);
 	});
 
+	// forced colours paint every border in the user's one text colour, so the primary edge that marks
+	// the open row is gone there. the mode's own `Highlight` says it instead, thicker than the closed
+	// row's edge and drawn as an outline, so opening a row still moves nothing.
+	it('marks the open row where the system forces its own colours, and moves nothing', async () => {
+		const session = cdp();
+		await session.send('Emulation.setEmulatedMedia', {
+			features: [{ name: 'forced-colors', value: 'active' }]
+		});
+		try {
+			expect(matchMedia('(forced-colors: active)').matches, 'the mode is on').toBe(true);
+			const { head, row } = measured('paypal');
+			const band = head.parentElement as HTMLElement;
+			const probe = document.createElement('div');
+			probe.style.color = 'Highlight';
+			document.body.appendChild(probe);
+			const highlight = getComputedStyle(probe).color;
+			probe.remove();
+			const closed = getComputedStyle(band);
+			const closedOutline = closed.outlineStyle;
+			const closedBox = band.getBoundingClientRect();
+
+			row.expand();
+			const open = getComputedStyle(band);
+
+			expect(closedOutline).toBe('none');
+			expect(open.outlineStyle).toBe('solid');
+			expect(open.outlineColor).toBe(highlight);
+			expect(open.borderTopColor).toBe(highlight);
+			expect(Number.parseFloat(open.outlineWidth)).toBeGreaterThan(0);
+			expect(band.getBoundingClientRect().top).toBe(closedBox.top);
+			expect(band.getBoundingClientRect().width).toBe(closedBox.width);
+			expect(open.borderTopWidth).toBe(closed.borderTopWidth);
+		} finally {
+			await session.send('Emulation.setEmulatedMedia', { features: [] });
+		}
+	});
+
 	// each row is a box of its own and the next stands the item gap under it, `--_sp5` at the default
 	// root, with the first row in the node taking none (`:host(:not(:first-child))` in ./rows.css).
 	it('stands one row’s box the item gap under the one above it', () => {
@@ -2850,14 +2887,18 @@ describe('the surfaces a donor operates', () => {
 	// a step quieter than the outline a field is found by: a tray bounds the group the way the
 	// card's edge bounds the card and identifies no control on it. what identifies a chosen option
 	// is that it is raised, and no tile on either tray draws an edge at all.
-	it('frames both trays in the card’s one hairline, and no tile on them', async () => {
+	it('frames both trays in the separator rung, a step quieter than a field’s outline, and no tile on them', async () => {
 		const { shadow } = await mount();
 		const tile = shadow.querySelector('[part~="amount-option"]') as HTMLElement;
+		const field = shadow.querySelector('[part~="field"]') as HTMLElement;
+		const fieldEdge = getComputedStyle(field).borderTopColor;
 
+		expect(fieldEdge).toBe(token(shadow, '--_edge-control'));
 		for (const tray of ['.segment', '.tiles']) {
 			const drawn = getComputedStyle(shadow.querySelector(tray) as HTMLElement);
 			expect(Number.parseFloat(drawn.borderTopWidth), tray).toBe(1);
 			expect(drawn.borderTopColor, tray).toBe(token(shadow, '--_n7'));
+			expect(drawn.borderTopColor, tray).not.toBe(fieldEdge);
 		}
 		expect(Number.parseFloat(getComputedStyle(tile).borderTopWidth)).toBe(0);
 	});

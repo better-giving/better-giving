@@ -5510,23 +5510,16 @@ describe('the stylesheets', () => {
 	it('carries no step nothing spends', async () => {
 		// derived from the token file rather than listed, so it fails for a name that stops being
 		// read tomorrow and not only for the ones dropped when it was written. a name is spent by a
-		// sheet, by another token, or by the set the payment provider is handed.
-		//
-		// the two unread rungs of the neutral ramp are the one exemption and the ladder in
-		// ./styles/tokens.css argues it: a scale is read by counting along it, and one with holes
-		// in it is no longer one anybody can count along. every other name is a value a reader has
-		// to decide about, so one nothing spends is a decision with no consumer to check it against.
-		const exempt = ['--_n8', '--_n9'];
+		// sheet, by another token, or by the set the payment provider is handed. every name is a value
+		// a reader has to decide about, so one nothing spends is a decision with no consumer to check
+		// it against — the rungs of the neutral ramp included, every one of which is read.
 		const handedOver = APPEARANCE_INPUTS as readonly string[];
 		const declared = [...tokenSheet.matchAll(/^\s*(--_[\w-]+)\s*:/gm)].flatMap(
 			(match) => match[1] ?? []
 		);
 		const swept = `${tokenSheet}\n${adopted}`;
 		const unspent = declared.filter(
-			(token) =>
-				!exempt.includes(token) &&
-				!handedOver.includes(token) &&
-				!new RegExp(`var\\(${token}(?![\\w-])`).test(swept)
+			(token) => !handedOver.includes(token) && !new RegExp(`var\\(${token}(?![\\w-])`).test(swept)
 		);
 
 		expect(declared.length).toBeGreaterThan(50);

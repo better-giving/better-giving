@@ -388,10 +388,10 @@ form {
 
 /*
  * the payment list under the receipt: the grouping step between two groups, 32px with the step's
- * own gap (the grouping steps beside `--_gap-inside` in ./tokens.css), because the rows below it stand a padded row apart
- * (`.head` in ./rows.css, `.AccordionItem` in ./appearance.ts) — which is the target floor, not
- * slack — and at the step's gap alone the total and the list read as one run while the list reads
- * as loose. on the pair, so the receipt moved off the step (`receiptSlot` in ../views.ts) leaves
+ * own gap (the grouping steps beside `--_gap-inside` in ./tokens.css), because the rows below it
+ * stand a padded row apart (`.head` in ./rows.css, `.AccordionItem` in ./appearance.ts) — which is
+ * the target floor, not slack — and at the step's gap alone the total and the list read as one run
+ * while the list reads as loose. on the pair, so the receipt moved off the step (`receiptSlot` in ../views.ts) leaves
  * the box at the step's rhythm.
  */
 [part~='summary'] + .group {

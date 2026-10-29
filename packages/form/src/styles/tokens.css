@@ -1014,10 +1014,9 @@
 	 * nowhere under it. "clears 4.5:1 on every other ground a word is drawn on" in
 	 * ./tokens.browser.spec.ts holds the pairs.
 	 *
-	 * every rung is read, and "carries no step nothing spends" in ../element.dom.spec.ts holds the rest
-	 * of this file to that. rungs 8 and 9 are its named exception all the same: a scale is read by
-	 * counting along it and one with holes in it is no longer one anybody can count along, so a rung
-	 * that stops being read stays.
+	 * every rung is read, and "carries no step nothing spends" in ../element.dom.spec.ts holds this
+	 * file to that with no rung exempt: rung 8 is `--_edge-control` below and rung 9 the tick box's
+	 * edge (`[part~='checkbox']` in ./parts.css).
 	 */
 	--_s: oklch(0.994 0.002 250);
 	--_n1: oklch(from var(--_s) 0.994 c h);

@@ -13,12 +13,12 @@
  * choice boxes: the white face inside the outline that finds a box, at the corner preset's control
  * radius, the name `--_sp3` under the box's top edge, and the item gap between one box and the next.
  * the open row is the chosen one and is marked by the primary's edge on the same face, at the same
- * one-pixel weight, so opening a row reflows nothing. a pointer steps the edge — along the ramp on a closed row, along the brand on
- * the open one — and never the face. ../embed/rows.dom.spec.ts holds both sides to those names. the
- * name's type and the mark's size are matched to what the provider draws unasked, because
- * ./appearance.ts sends its rows' names nothing — with the one departure stated at `.head` below: an
- * open row is said in ink and edge and never in weight, whatever the provider does inside its own
- * frame.
+ * one-pixel weight, so opening a row reflows nothing. a pointer steps the edge — along the ramp on a
+ * closed row, along the brand on the open one — and never the face. ../embed/rows.dom.spec.ts holds
+ * both sides to those names. the name's type and the mark's size are matched to what the provider
+ * draws unasked, because ./appearance.ts sends its rows' names nothing — with the one departure
+ * stated at `.head` below: an open row is said in ink and edge and never in weight, whatever the
+ * provider does inside its own frame.
  *
  * nothing here moves: the provider's rows open without a transition this sheet could match.
  */
@@ -43,6 +43,20 @@
 
 .band.open:hover {
 	border-color: var(--_p-hover);
+}
+
+/*
+ * forced colours paint every border in the user's one text colour, which takes the primary edge
+ * off the open row and leaves it the closed row's box. `Highlight` is the mode's own word for a
+ * thing the user picked (`[part~='select-option']` in ./parts.css says it the same way), and the
+ * outline laid outside the edge makes the mark thicker than any closed row's without moving a
+ * pixel of layout.
+ */
+@media (forced-colors: active) {
+	.band.open {
+		border-color: Highlight;
+		outline: var(--_focus-width) solid Highlight;
+	}
 }
 
 /*

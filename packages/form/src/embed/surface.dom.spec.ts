@@ -514,6 +514,23 @@ describe('one payment surface over however many processors a config names', () =
 			hosted.stop();
 		});
 
+		// a card box whose provider never came up draws no rails, so it lists nothing: the PayPal
+		// rows under it stand at the seam rather than a gap below an empty node.
+		it('takes no gap under a card box whose provider is down', async () => {
+			const gaps = (k: Kit) =>
+				[...k.mount.children].map((node) =>
+					(node as HTMLElement).style.getPropertyValue('margin-block-start')
+				);
+			const k = kit({ stripe: () => Promise.resolve(null) });
+			const surface = await composed(k, FUNDED);
+
+			expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal', 'Venmo']);
+			expect(gaps(k)).toEqual(['0px', '0px', '0px']);
+			surface.offerFund(true);
+			expect(gaps(k)).toEqual(['0px', '0px', 'var(--_sp5)']);
+			surface.stop();
+		});
+
 		it('keeps one row open across the processors’ rows', async () => {
 			const k = kit();
 			const surface = await composed(k, FUNDED);
