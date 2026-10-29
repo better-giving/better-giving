@@ -72,8 +72,10 @@
  * space. grouping is the operator surfaces' squint test
  * (packages/operator/src/styles/squint.spec.ts), each tier strictly wider than the one inside it,
  * so what belongs together is told by space alone and no line or edge is drawn to carry it. inside
- * an item the card's `--_sp1` to `--_sp5` and nothing else. `--page-gap-item`, 20px, stands items
- * of one group apart and a heading over its content; `--page-gap-group`, 32px, is one group of a
+ * an item the card's `--_sp1` to `--_sp5` and nothing else. a section's heading stands `--_sp2` over
+ * its content, an em step read at the heading's own size, 11px to 14px across `--page-heading`, so
+ * it binds tighter than `--page-gap-item`, 20px, which stands items of one group apart (held by
+ * ./page.spec.ts). `--page-gap-group`, 32px, is one group of a
  * column to the next; `--page-gap-section`, 40px on a phone and growing with the container, is
  * section to section down the page. `--page-gap-lead` is the masthead to the first section; `--page-band-inset` is the
  * inset of a section drawn on a ground of its own; `--page-col-gap` is between two columns and
@@ -772,7 +774,7 @@ body {
 
 /* headings a section opens with. */
 .page-heading {
-	margin-block-end: var(--page-gap-item);
+	margin-block-end: var(--_sp2);
 	font-family: var(--page-font-display);
 	font-size: var(--page-heading);
 	line-height: var(--page-lh-heading);

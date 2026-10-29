@@ -274,9 +274,10 @@ describe('the colour evaluator agrees with the readings the form token file stat
 		['--_focus-ring', '--_n1', 14.8, undefined],
 		['--_on-p', '--_p', 4.79, worst],
 		['--_p', '--_n1', 4.92, worst]
-	])('%s on %s reads %d', (ink, ground, stated, seed) => {
+	])('%s on %s reads %s', (ink, ground, stated, seed) => {
 		const scope = at(seed);
-		expect(contrast(resolve(scope, ink), resolve(scope, ground))).toBeCloseTo(stated, 1);
+		// to the two places the token file states each reading at, so a move of 0.01 fails.
+		expect(contrast(resolve(scope, ink), resolve(scope, ground))).toBeCloseTo(stated, 2);
 	});
 });
 
@@ -397,6 +398,76 @@ describe('a long title', () => {
 			['', 'var(--page-display-long)'],
 			['@container page (min-width: 60rem)', 'var(--page-display)']
 		]);
+	});
+});
+
+describe('the squint tiers on the page', () => {
+	// `--_sp2` is an em step, so it is read at the heading's own size; the heading's largest size is
+	// the top of its clamp, where the step is widest.
+	const ground = declared(page, '.page > .page-ground');
+	const rem = (value: string | undefined) => {
+		const m = /^([\d.]+)rem$/.exec(value ?? '');
+		if (!m) throw new Error(`not a rem length: ${value}`);
+		return Number(m[1]);
+	};
+	const em = (value: string | undefined) => {
+		const m = /^([\d.]+)em$/.exec(value ?? '');
+		if (!m) throw new Error(`not an em length: ${value}`);
+		return Number(m[1]);
+	};
+
+	it('stands a section heading closer to its content than one item to the next', () => {
+		const heading = declared(page, '.page-heading');
+		expect(heading['margin-block-end']).toBe('var(--_sp2)');
+		const largest = /clamp\(.*,\s*([\d.]+rem)\)$/.exec(ground['--page-heading'] ?? '')?.[1];
+		const step = em(formBase['--_sp2']) * rem(largest);
+		expect(step).toBeLessThan(rem(ground['--page-gap-item']));
+	});
+});
+
+describe('the masthead’s lead over a cover', () => {
+	// happy-dom does no layout, so the margins are read off the sheet. on a phone the card's and the
+	// feature's covers stand `--page-gap-lead` under the masthead, so no rule on the cover takes its
+	// block-start margin negative; wide, the card's cover sits flush at the top of its panel.
+	const COVERS = [
+		".page[data-layout='card'] [data-area='cover']",
+		".page[data-layout='feature'] [data-area='cover']"
+	];
+	const terms = (value: string) => {
+		const found: string[] = [];
+		let depth = 0;
+		let term = '';
+		for (const char of value.trim()) {
+			if (char === '(') depth += 1;
+			if (char === ')') depth -= 1;
+			if (char === ' ' && depth === 0) {
+				if (term) found.push(term);
+				term = '';
+			} else term += char;
+		}
+		if (term) found.push(term);
+		return found;
+	};
+	const blockStart = (decls: Scope) =>
+		decls['margin-block-start'] ??
+		(decls['margin-block'] === undefined ? undefined : terms(decls['margin-block'])[0]) ??
+		(decls.margin === undefined ? undefined : terms(decls.margin)[0]);
+	const onCover = (at: readonly string[]) =>
+		(at.at(-1) ?? '').split(',').some((one) => COVERS.includes(one.trim()));
+
+	it('takes no cover’s block-start margin negative on a phone', () => {
+		const phone = page.filter(({ at }) => at.length === 1 && onCover(at));
+		expect(phone.length).toBeGreaterThanOrEqual(COVERS.length);
+		for (const { at, decls } of phone) {
+			const start = blockStart(decls);
+			expect(start ?? '', at.join(' » ')).not.toMatch(/^calc\(\s*-|^-/);
+			expect(start ?? '', at.join(' » ')).not.toContain('--page-gap-lead');
+		}
+	});
+
+	it('still sets the wide card’s cover flush at the top of its panel', () => {
+		const wide = declared(page, '@container page (min-width: 60rem)', COVERS[0] ?? '');
+		expect(blockStart(wide)).toBe('0');
 	});
 });
 
