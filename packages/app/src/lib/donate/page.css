@@ -69,18 +69,31 @@
  * right side `--page-gap-lead` off its top. the feature's cover is at least `--page-hero` and grows
  * with the words on it, and a cover the words have grown carries the box down with it.
  *
- * space, in five tiers and no adjacent two sharing a step. inside an item the card's `--_sp1` to
- * `--_sp5` and nothing else. `--page-gap-item` stands items of one group apart; `--page-gap-group` is
- * a heading to its content and one section of a column to the next; `--page-gap-lead` is the
- * masthead to the first section; `--page-gap-section` is section to section down the page;
- * `--page-band-inset` is the inset of a section drawn on a ground of its own; `--page-col-gap` is
- * between two columns and `--page-gutter` the page's side margin.
+ * space. grouping is the operator surfaces' squint test
+ * (packages/operator/src/styles/squint.spec.ts), each tier strictly wider than the one inside it,
+ * so what belongs together is told by space alone and no line or edge is drawn to carry it. inside
+ * an item the card's `--_sp1` to `--_sp5` and nothing else. `--page-gap-item`, 20px, stands items
+ * of one group apart and a heading over its content; `--page-gap-group`, 32px, is one group of a
+ * column to the next; `--page-gap-section`, 40px on a phone and growing with the container, is
+ * section to section down the page. `--page-gap-lead` is the masthead to the first section; `--page-band-inset` is the
+ * inset of a section drawn on a ground of its own; `--page-col-gap` is between two columns and
+ * `--page-gutter` the page's side margin.
  *
  * grounds. the page ground is `--_n2`, the card's panel and every card on it `--_n1`, and About us
- * stands on `--page-band`, `--_n3`. the brand is a ground in one place, a cover with no photo — the
+ * stands on `--page-band`, `--_n3`. a plane — the card's panel, the letter's cover frame, a tier
+ * card — is told from the ground by its fill and has no visible edge: its border keeps its width in
+ * `transparent`, so nothing moves. a rule between rows of one list is decoration, `--_n4`, and
+ * nothing between sections is a rule. what a donor presses keeps the outline that finds it,
+ * `--_edge-control`. the brand is a ground in one place, a cover with no photo — the
  * logo's cover, the logo on its own `--_n1` plate, and the feature's empty cover, its words in
  * `--_on-p` from 60rem. otherwise the brand fills the action, the goal's progress and the badge,
  * and is the ink of a link and a tier's amount.
+ *
+ * corners. a plane is the card's `--_r` and what stands on one `--_r-in`, the form's corner preset
+ * (`soft` is 8px and 4px). a mark round by nature is a circle and no preset moves it: the initials
+ * badge and a platform's mark, at `50%`, and the goal track and its fill, at half of
+ * `--page-track-block`, the track's thickness, which is a `--page-*` name because the card draws no
+ * bar.
  *
  * the measured pairs. `./page.spec.ts` works each one out from this file and the form's, across
  * brand colours around the wheel at full strength, dark and muted and the unbranded grey, under
@@ -169,10 +182,10 @@ body {
 	--page-cover-logo: 5rem;
 
 	--page-gutter: clamp(1rem, 0.5rem + 2.5cqi, 2.5rem);
-	--page-gap-group: 1.25rem;
-	--page-gap-item: 1.5rem;
+	--page-gap-item: 1.25rem;
+	--page-gap-group: 2rem;
 	--page-gap-lead: 1.5rem;
-	--page-gap-section: clamp(3rem, 2rem + 4cqi, 5rem);
+	--page-gap-section: clamp(2.5rem, 1.5rem + 4cqi, 5rem);
 	--page-band-inset: clamp(2.25rem, 1.5rem + 3cqi, 4rem);
 	--page-col-gap: clamp(2rem, 1rem + 4cqi, 4rem);
 
@@ -184,6 +197,7 @@ body {
 	--page-band: var(--_n3);
 	--page-quiet: var(--_n10);
 	--page-track: var(--_n4);
+	--page-track-block: 0.625rem;
 	--page-accent: var(--_p);
 	--page-ring: var(--_focus-ring);
 	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header measures it */
@@ -237,7 +251,7 @@ body {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
-	gap: var(--page-gap-group);
+	gap: var(--page-gap-item);
 }
 
 .ended h1 {
@@ -326,10 +340,10 @@ body {
    stands in for the name and carries it as its alt; a narrower one stands beside the name and says
    nothing of its own (./page-view.tsx decides which, off the stored image's width and height). it
    is one row tall, `--_row-min`, the height of the card's own rows, and it is drawn whole, never
-   cropped. with no logo, the badge of the name's initials stands where a narrower one would, a row
-   square: the brand fill under the one ink the form draws on it, `--_on-p` on `--_p`, 4.79:1 at the
-   fill band's worst corner (packages/form/src/styles/tokens.css). a page with no brand colour fills
-   it with the form's registered grey. */
+   cropped. with no logo, the badge of the name's initials stands where a narrower one would, a
+   circle a row across: the brand fill under the one ink the form draws on it, `--_on-p` on `--_p`,
+   4.79:1 at the fill band's worst corner (packages/form/src/styles/tokens.css). a page with no
+   brand colour fills it with the form's registered grey. */
 .page-mast-in {
 	display: flex;
 	align-items: center;
@@ -353,7 +367,7 @@ body {
 	block-size: var(--_row-min);
 	background: var(--_p);
 	color: var(--_on-p);
-	border-radius: var(--_r-in);
+	border-radius: 50%;
 	font-weight: var(--_w-bold);
 }
 
@@ -422,7 +436,7 @@ body {
 		align-items: start;
 		padding: 0 var(--page-card-inset) var(--page-card-inset);
 		background: var(--_n1);
-		border: var(--_border) solid var(--_n6);
+		border: var(--_border) solid transparent;
 		border-radius: var(--_r);
 	}
 
@@ -478,7 +492,7 @@ body {
 .page[data-layout='letter'] [data-area='cover'] {
 	padding: var(--_sp2);
 	background: var(--_n1);
-	border: var(--_border) solid var(--_n6);
+	border: var(--_border) solid transparent;
 	border-radius: var(--_r);
 }
 
@@ -749,15 +763,17 @@ body {
 	padding-block-end: var(--page-gap-section);
 }
 
+/* the share row and the organisation under it are two sections, told apart by the section step
+   alone: no rule stands between them. */
 .page-end {
-	padding-block: var(--page-gap-section) var(--page-gap-item);
+	padding-block: var(--page-gap-section);
 }
 
 /* ── the sections ── */
 
 /* headings a section opens with. */
 .page-heading {
-	margin-block-end: var(--page-gap-group);
+	margin-block-end: var(--page-gap-item);
 	font-family: var(--page-font-display);
 	font-size: var(--page-heading);
 	line-height: var(--page-lh-heading);
@@ -872,7 +888,7 @@ body {
 .page-photos[data-shape='column'] {
 	display: flex;
 	flex-direction: column;
-	gap: var(--page-gap-group);
+	gap: var(--page-gap-item);
 }
 
 .page-photos[data-shape='column'] .page-photo {
@@ -939,7 +955,7 @@ body {
 	padding: var(--_sp5);
 	background: var(--_n1);
 	color: var(--_n11);
-	border: var(--_border) solid var(--_n6);
+	border: var(--_border) solid transparent;
 	border-radius: var(--_r);
 }
 
@@ -963,7 +979,7 @@ body {
 	grid-template-columns: subgrid;
 	align-items: baseline;
 	padding-block: var(--_sp3);
-	border-block-start: var(--_border) solid var(--_n6);
+	border-block-start: var(--_border) solid var(--_n4);
 }
 
 .page-tiers[data-shape='list'] .page-tier-amount {
@@ -980,11 +996,11 @@ body {
 }
 
 .page-faq[data-folded] .page-faq-item {
-	border-block-start: var(--_border) solid var(--_n6);
+	border-block-start: var(--_border) solid var(--_n4);
 }
 
 .page-faq[data-folded] .page-faq-item:last-child {
-	border-block-end: var(--_border) solid var(--_n6);
+	border-block-end: var(--_border) solid var(--_n4);
 }
 
 .page-faq[data-folded] .page-faq-question {
@@ -1056,7 +1072,7 @@ body {
 }
 
 .page-about-beneath {
-	margin-block-start: var(--page-gap-group);
+	margin-block-start: var(--page-gap-item);
 	max-inline-size: var(--page-measure);
 	color: var(--page-quiet);
 }
@@ -1083,16 +1099,18 @@ body {
 }
 
 .page-goal-track {
-	block-size: 0.625rem; /* raw-length-ok: the goal track's thickness, a shape */
+	block-size: var(--page-track-block);
 	margin-block: var(--_sp2);
 	overflow: hidden;
 	background: var(--page-track);
-	border-radius: var(--_r-in);
+	border-radius: calc(var(--page-track-block) / 2);
 }
 
+/* the fill's own leading end is round too, so a part-way bar ends in the track's shape. */
 .page-goal-fill {
 	block-size: 100%;
 	background: var(--_p);
+	border-radius: calc(var(--page-track-block) / 2);
 }
 
 .page-goal-meta {
@@ -1104,8 +1122,6 @@ body {
 .page-org {
 	display: grid;
 	gap: var(--_sp4);
-	padding-block-start: var(--_sp5);
-	border-block-start: var(--_border) solid var(--_n6);
 	font-size: var(--_t-sm);
 	color: var(--page-quiet);
 }
@@ -1128,7 +1144,8 @@ body {
 
 /* a platform's mark alone, centred in a `--_row-min` square, and the row pulled back by the slack
    between the square and a square mark, so a square first mark's edge lines up with the words
-   above it. the mark is the network's own file and is sized by its height alone. */
+   above it. the mark is the network's own file and is sized by its height alone. the square is drawn
+   round, so the focus ring around a mark is a circle. */
 .page-org-links {
 	display: flex;
 	flex-wrap: wrap;
@@ -1140,6 +1157,7 @@ body {
 	place-items: center;
 	min-inline-size: var(--_row-min);
 	min-block-size: var(--_row-min);
+	border-radius: 50%;
 }
 
 .page-org-mark {
@@ -1170,7 +1188,7 @@ body {
 }
 
 .page-share-button:hover {
-	border-color: var(--_n11);
+	border-color: var(--_n10);
 }
 
 /* a channel's press is a link, and a link takes the page's accent: the press is a card on `--_n1`
@@ -1322,7 +1340,7 @@ body {
 }
 
 .page-choose .page-choose-option:hover:not(:has(:checked, [aria-disabled='true'])) {
-	border-color: var(--_n11);
+	border-color: var(--_n10);
 }
 
 .page-choose .page-choose-option:has(:checked) {

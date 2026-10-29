@@ -135,8 +135,6 @@ export function AmountStep({
 
 	const track = useRef<HTMLDivElement | null>(null);
 	const chips = useRef<(HTMLLabelElement | null)[]>([]);
-	const tiles = useRef<HTMLDivElement | null>(null);
-	const tileLabels = useRef<(HTMLLabelElement | null)[]>([]);
 	/** where the chip stood after the last pass, so a move along a row is told from a move across a wrap. */
 	const chipAt = useRef<{ x: number; y: number } | null>(null);
 	/** a pointer went down on Other and the change it brings has not arrived yet. */
@@ -175,32 +173,8 @@ export function AmountStep({
 			chipAt.current = { x, y };
 		};
 
-		/**
-		 * which tile opens a row of the grid, and how many columns it came out with.
-		 *
-		 * where the grid wraps is the engine's answer and no stylesheet can ask it, so both are read
-		 * off the tiles' own boxes: a tile whose top differs from the one before it opens a row, and
-		 * the tiles sharing the first top are the columns the tray's verticals repeat at.
-		 */
-		const markRows = (): void => {
-			const tray = tiles.current;
-			if (tray === null || tray.offsetParent === null) return;
-			const labels = tileLabels.current.filter((label) => label !== null);
-			const first = labels[0]?.offsetTop;
-			let above: number | null = null;
-			let cols = 0;
-			for (const label of labels) {
-				if (label.offsetTop !== above) label.setAttribute('data-row-start', '');
-				else label.removeAttribute('data-row-start');
-				if (label.offsetTop === first) cols += 1;
-				above = label.offsetTop;
-			}
-			if (cols === 0) tray.style.removeProperty('--_cols');
-			else tray.style.setProperty('--_cols', String(cols));
-		};
-
-		if (chooses) placeThumb(false);
-		markRows();
+		if (!chooses) return;
+		placeThumb(false);
 
 		// the window changing size is the one rewrap this card can hear, and the overwhelming majority
 		// of what rewraps one in the wild. answered on the next paint rather than in the handler: a
@@ -215,8 +189,7 @@ export function AmountStep({
 			if (frame !== 0) return;
 			frame = window.requestAnimationFrame(() => {
 				frame = 0;
-				if (chooses) placeThumb(true);
-				markRows();
+				placeThumb(true);
 			});
 		};
 		window.addEventListener('resize', rewrapped);
@@ -274,14 +247,11 @@ export function AmountStep({
 				}}
 			>
 				<legend part={part('label')}>{copy.HOW_MUCH}</legend>
-				<div className={tiled ? 'tiles' : 'tiles bare'} ref={tiles}>
+				<div className={tiled ? 'tiles' : 'tiles bare'}>
 					{tiled
-						? api.amountGroup.options.map((option, at) => (
+						? api.amountGroup.options.map((option) => (
 								<label
 									key={String(option.value)}
-									ref={(node) => {
-										tileLabels.current[at] = node;
-									}}
 									part={partWhen('amount-option', {
 										selected: option.checked && !otherHolds,
 										invalid: missingAmount
@@ -310,9 +280,6 @@ export function AmountStep({
 					{tiled ? (
 						<label
 							className="other"
-							ref={(node) => {
-								tileLabels.current[api.amountGroup.options.length] = node;
-							}}
 							part={partWhen('amount-option', { selected: otherHolds, invalid: missingAmount })}
 							onPointerDown={() => {
 								pointed.current = true;
