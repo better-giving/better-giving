@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderEmail } from '../render';
-import { RADIUS_PLANE } from '../tokens';
+import { PANEL_BG, PLANE_BG, RADIUS_PLANE } from '../tokens';
 import * as receipt from './receipt';
 import type { GoodsOrServices, ReceiptContribution, ReceiptData, ReceiptOrg } from './receipt';
 
@@ -444,7 +444,8 @@ describe('receipt.template — the receipt block', () => {
 			goodsOrServices: { kind: 'provided', description: 'a gala ticket' },
 			contribution: { ...CONTRIBUTION, totalMinor: 20_000, nonDeductibleMinor: 6_000 }
 		});
-		expect(panel(html)).toContain('background:');
+		expect(PANEL_BG).not.toBe(PLANE_BG);
+		expect(panel(html)).toContain(`background:${PANEL_BG}`);
 		expect(panel(html)).not.toContain('border:');
 		expect(panel(html)).toContain(`border-radius:${RADIUS_PLANE}px`);
 		// the width and the fact of a border, not the colour: the value is the operator design
@@ -486,6 +487,20 @@ describe('receipt.template — the receipt block', () => {
 			expect(block.slice(block.lastIndexOf('<td', at), at)).toContain('monospace');
 		}
 		expect(block).toContain('<td style="padding:0 24px 4px 0">Donor</td>');
+	});
+
+	/**
+	 * on a phone the value column is what is left after the page gutter, the plane, the panel and the
+	 * label column, and a value with no space in it — a long name, an email address — is wider than
+	 * that. a cell that cannot break it widens the table, which an app client shows as a sideways
+	 * scroll.
+	 */
+	it('lets a long unbroken value break inside its cell', async () => {
+		const block = table((await rendered()).html);
+		const at = block.indexOf('Ada Lovelace');
+		const cell = block.slice(block.lastIndexOf('<td', at), at);
+		expect(cell).toContain('overflow-wrap:anywhere');
+		expect(cell).toContain('word-break:break-word');
 	});
 
 	/**

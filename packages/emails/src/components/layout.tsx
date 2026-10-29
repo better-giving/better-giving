@@ -67,18 +67,25 @@ const DOCUMENT_STYLE: CSSProperties = {
 	padding: 0
 };
 
-/** a readable measure on a desktop client, and harmless on a phone. */
-const FRAME_STYLE: CSSProperties = { maxWidth: MEASURE, margin: '0 auto' };
+/**
+ * the measure where a client reads `max-width`, and the full width of a phone narrower than it.
+ * Outlook for Windows ignores `max-width`, and holds the measure from the table's `width` attribute.
+ */
+const FRAME_STYLE: CSSProperties = { width: '100%', maxWidth: MEASURE, margin: '0 auto' };
 
 const FRAME_ROW_STYLE: CSSProperties = { width: '100%' };
 
 /**
  * the plane the body is set on: one group, so one plane, told from the page by its ground alone.
- * a client that drops the radius draws it square and a client that drops the background draws the
- * body on the page, and either still reads.
+ * a client that drops the radius draws it square. a client that drops the background draws the body
+ * on the page, where the text still reads and the blocks on the plane, whose ground is the page's
+ * own, keep their spacing and structure but no longer stand out.
+ *
+ * the padding is the page gutter's step: no `<style>` reaches a mail, so a phone gets this inset too,
+ * and it comes out of the body column on both sides.
  */
 const PLANE_STYLE: CSSProperties = {
-	padding: SPACE_8,
+	padding: SPACE_6,
 	backgroundColor: PLANE_BG,
 	borderRadius: RADIUS_PLANE
 };
@@ -147,13 +154,15 @@ export function Layout({ title, children }: LayoutProps) {
  * the measure, as a centred presentation table, and the plane inside it.
  *
  * a table and not a `<div>` with a max-width: Outlook resolves neither `max-width` nor `margin:
- * auto` on a block, and a table with `align="center"` is the one centring every client agrees on.
+ * auto` on a block. it does honour a table's `width` attribute and `align="center"`, so the measure
+ * is stated twice: the attribute for Outlook, and the style, which outranks the attribute everywhere
+ * else and lets the table shrink to a phone.
  */
 function Frame({ children }: { readonly children: ReactNode }) {
 	return (
 		<table
 			align="center"
-			width="100%"
+			width={MEASURE}
 			border={0}
 			cellPadding="0"
 			cellSpacing="0"

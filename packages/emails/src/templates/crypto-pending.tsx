@@ -152,8 +152,10 @@ function textArm(copy: Copy, legalName: string): string {
 	].join('\n');
 }
 
-/** ./receipt.tsx's block treatment: a tinted ground at the plane corner, a presentation table,
- * values in monospace. */
+/**
+ * ./receipt.tsx's block treatment: a tinted ground at the plane corner, a presentation table,
+ * values in monospace.
+ */
 const PANEL_STYLE: CSSProperties = {
 	margin: box(0, 0, SPACE_6),
 	padding: SPACE_6,
