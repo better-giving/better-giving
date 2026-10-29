@@ -2321,12 +2321,13 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		}
 	);
 
-	// the open row is said in ink and ground and in nothing else. a name that went bold on the press
+	// the open row is said in ink and edge and in nothing else: the face is the white every choice
+	// stands on, open or closed (./rows.css), and the edge is the primary's. a name that went bold on the press
 	// would be re-laid out under the pointer that pressed it, which is the rule
 	// `[part~='amount-option']` in ./parts.css is held to and the whole reason `--_w-medium` exists
 	// (./tokens.css). read on the drawn word as well as on the declaration, because a weight the
 	// stack's tail resolves to the same glyphs would pass one and not the other.
-	it('opens a row in ink and ground alone, at the weight the closed row draws its name at', () => {
+	it('opens a row in ink and edge alone, at the weight the closed row draws its name at', () => {
 		const { head, row } = measured('fund');
 		const name = head.querySelector('.name') as HTMLElement;
 		const band = head.parentElement as HTMLElement;
@@ -2334,6 +2335,8 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		const weight = closed.fontWeight;
 		const ink = closed.color;
 		const ground = getComputedStyle(band).backgroundColor;
+		const edge = getComputedStyle(band).borderTopColor;
+		const edgeWidth = getComputedStyle(band).borderTopWidth;
 		const resting = name.getBoundingClientRect().width;
 
 		row.expand();
@@ -2341,7 +2344,26 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		expect(getComputedStyle(head).fontWeight).toBe(weight);
 		expect(name.getBoundingClientRect().width).toBe(resting);
 		expect(getComputedStyle(head).color).not.toBe(ink);
-		expect(getComputedStyle(band).backgroundColor).not.toBe(ground);
+		expect(getComputedStyle(band).backgroundColor).toBe(ground);
+		expect(getComputedStyle(band).borderTopColor).not.toBe(edge);
+		// one weight open and closed, so opening a row reflows nothing beside it.
+		expect(getComputedStyle(band).borderTopWidth).toBe(edgeWidth);
+	});
+
+	// each row is a box of its own and the next stands the item gap under it, `--_sp5` at the default
+	// root, with the first row in the node taking none (`:host(:not(:first-child))` in ./rows.css).
+	it('stands one row’s box the item gap under the one above it', () => {
+		document.documentElement.style.fontSize = '16px';
+		page(tokens);
+		const { mount } = drawn('paypal');
+		mount.setAttribute('data-donate-root', '');
+		createRows(mount).draw('Venmo', 'venmo', document.createElement('button'));
+		const [first, second] = [...mount.children].map(
+			(host) => host.shadowRoot?.querySelector('.band') as HTMLElement
+		) as [HTMLElement, HTMLElement];
+
+		expect(first.getBoundingClientRect().top).toBe(mount.getBoundingClientRect().top);
+		expect(second.getBoundingClientRect().top - first.getBoundingClientRect().bottom).toBe(20);
 	});
 
 	// the fund's mark is Chariot's single-colour icon, every path `currentColor` (../embed/rows.ts), so
@@ -3197,7 +3219,7 @@ describe('what a pointer is answered with', () => {
 	it('steps the free entry to the edge a field steps to', async () => {
 		const { shadow } = await mount({ ...CONFIG, suggestedAmountsMinor: [] });
 		const entry = shadow.querySelector(
-			".step:not([hidden]) .bare > [part~='amount-input']"
+			".step:not([hidden]) .tiles > [part~='amount-input']"
 		) as HTMLElement;
 
 		expect((await hovered(entry)).borderTopColor).toBe(used(shadow, '--_n10'));
@@ -3819,7 +3841,7 @@ describe('the presets a host page picks', () => {
 		page('body { --donate-shade: cool; }');
 		const { card } = await mount();
 
-		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.994 0.002 240)'));
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.994 0.002 220)'));
 	});
 
 	// square squares the boxes and nothing drawn as a shape of its own: the marks on the step head

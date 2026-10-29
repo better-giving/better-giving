@@ -490,7 +490,9 @@ describe('the free entry the donor has already typed into', () => {
 			await painted(entry, surface);
 			const colour = (name: string) => (name === 'danger' ? dangerOf(card) : tokenOf(card, name));
 
-			expect(card.find('.tiles').classList.contains('bare')).toBe(standing === 'alone');
+			expect(card.shadow.querySelectorAll("[part~='amount-option']").length === 0).toBe(
+				standing === 'alone'
+			);
 			expect(surface.getAttribute('part')?.includes('invalid')).toBe(refused);
 			expect(layers(getComputedStyle(entry).boxShadow)).toEqual(input.map(colour));
 			expect(layers(getComputedStyle(surface).boxShadow)).toEqual(marked.map(colour));
@@ -612,7 +614,7 @@ describe('the amount step’s problem edge', () => {
 		await painted(entry);
 		const danger = dangerOf(card);
 
-		expect(card.find('.tiles').classList.contains('bare')).toBe(true);
+		expect(card.shadow.querySelectorAll("[part~='amount-option']")).toHaveLength(0);
 		expect(entry.getAttribute('part')).toContain('invalid');
 		expect(edgeOf(entry)).toBe(danger);
 		expect(dangerWidth(entry, danger)).toBe(2);

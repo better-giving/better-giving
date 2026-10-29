@@ -1870,8 +1870,8 @@ export function createCard(
 	 *
 	 * a missing amount is always the entry and never a tile. on a tray with tiles the amount can
 	 * only go missing through the other tile, which opens the box in the tiles' place
-	 * (`setHidden(entryTile, …)` in `update` below), and on a bare tray the box is the whole amount
-	 * block — so it is the one control a refused amount has to send the caret to either way.
+	 * (`setHidden(entryTile, …)` in `update` below), and on a form with no tiles the box is the whole
+	 * amount block — so it is the one control a refused amount has to send the caret to either way.
 	 *
 	 * the cadences are not among the destinations. the track opens with one chosen and offers no way
 	 * back to none, so no press is ever refused for it (`AmountDecision` in ./value.ts).
@@ -2566,11 +2566,9 @@ export function createCard(
 		// one suggestion is no choice: a tray with one tile and an other tile beside it offers a
 		// press that changes nothing, so a form suggesting one amount draws the box alone with that
 		// figure already in it, and a form suggesting none draws the box alone and empty. either way
-		// the tray is bare — the box stands on the card as every other field does (`.bare` in
-		// ./styles/parts.css) — and the flow still holds the one figure (`settledDraft` in
-		// ./checkout.machine.ts), which is what the box was written from.
+		// the box stands on the card as every other field does, and the flow still holds the one
+		// figure (`settledDraft` in ./checkout.machine.ts), which is what the box was written from.
 		const tiled = api.amountGroup.options.length > 1;
-		amountTiles.classList.toggle('bare', !tiled);
 		const sole = api.amountGroup.options[0];
 		if (!tiled && sole !== undefined) setValue(entryInput, figure(Number(sole.value)));
 		if (tiled)

@@ -1436,11 +1436,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 /*
  * the provider paints inside its own frame on its own origin, so nothing here and nothing in the
  * host's page reaches the fields themselves. ./appearance.ts hands the provider the same edge every
- * other control on the card carries for the fields and draws the rail around them bare, so this
- * box paints none of its own either: a border here is a ring around fields that already have one,
- * and a fill or a pad is an inset that only pushes them in off the seam. what is left is that seam,
- * which a host can align their own against, and the height the step holds from the provider's
- * first paint on.
+ * other control on the card carries for the fields and draws each rail around them as a choice box
+ * of its own, so this box paints none of its own: a border here is a ring around rails that already
+ * have one, and a fill or a pad is an inset that only pushes them in off the seam every other
+ * control on the card stands on. what is left is that seam, which a host can align their own
+ * against, and the height the step holds from the provider's first paint on.
  * ./appearance.ts is the only channel to what is inside it.
  *
  * the reserve is spent only on a box a provider has actually painted in, and what keeps it off the
@@ -1451,23 +1451,6 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  */
 [part~='payment'] {
 	min-block-size: calc(var(--_row-min) * 2);
-	/*
-	 * out to the card's own left and right edges on both sides, so each rail's band is full bleed
-	 * rather than stopping at the body's inset — which is what lets the open rail's fill read as the
-	 * band it is. ./appearance.ts pads each rail by this same token, so the provider's fields land
-	 * back on the seam every other control on the card sits on: the pull and the pad are one
-	 * decision, the step is `--_inset` in both, and neither moves without the other.
-	 *
-	 * the pad is also room the provider needs — a rail with none clips the sides off the Link block
-	 * it paints inside one — and the pull is what keeps that room from reading as an inset.
-	 *
-	 * exactly the card's edge and no further, so nothing spills past the corner the card clips to.
-	 * `.card-body` in ./layout.css takes `--_inset-wide` from 26em of container width on, and this
-	 * pull stays at `--_inset`, so past that width the band stops short of the edge by the
-	 * difference: the pad ./appearance.ts sends is resolved once at mount and cannot follow a
-	 * container query, and a pull that moved on its own would take the fields off the seam.
-	 */
-	margin-inline: calc(-1 * var(--_inset));
 }
 
 [part~='action'] {

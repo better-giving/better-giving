@@ -8,17 +8,18 @@
  * outside the card's encapsulation) and a host page's own `button { … }` rule would otherwise reach
  * the row's name. the tokens arrive the way every inherited property does, through the slot.
  *
- * every length placing the band and every ground under it is the one ./appearance.ts sends the
- * provider for its own rows, named once there as `PAYMENT_ROW`, so the two kinds of row are one
- * list: the band runs to the card's edges and pads back in by `--_inset` (`[part~='payment']` in
- * ./parts.css pulls the box out by that same length), the name stands `--_sp3` below the band's top
- * edge, and the open band is `--_n3`. a closed band paints nothing, which is the card's own ground,
- * a pointer over either draws nothing, and no line stands between two bands — an absence
- * ../embed/rows.dom.spec.ts holds, because a sheet that draws none reads like a sheet nobody has
- * written a line into yet. the name's type and the mark's size are matched to what the provider
- * draws unasked, because ./appearance.ts sends its rows' names nothing — with the one departure
- * stated at `.head` below: an open row is said in ink and ground and never in weight, whatever the
- * provider does inside its own frame.
+ * every length, edge and ground the band is drawn in is the one ./appearance.ts sends the provider
+ * for its own rails, named once there as `PAYMENT_ROW`, so the two kinds of row are one list of
+ * choice boxes: the white face inside the outline that finds a box, at the corner preset's control
+ * radius, the name `--_sp3` under the box's top edge, and the item gap between one box and the next.
+ * the open row is the chosen one and is marked as a chosen amount tile is (`[part~='amount-option']`
+ * in ./parts.css): the primary's edge on the same face, at the same one-pixel weight, so opening a
+ * row reflows nothing. a pointer steps the edge — along the ramp on a closed row, along the brand on
+ * the open one — and never the face. ../embed/rows.dom.spec.ts holds both sides to those names. the
+ * name's type and the mark's size are matched to what the provider draws unasked, because
+ * ./appearance.ts sends its rows' names nothing — with the one departure stated at `.head` below: an
+ * open row is said in ink and edge and never in weight, whatever the provider does inside its own
+ * frame.
  *
  * nothing here moves: the provider's rows open without a transition this sheet could match.
  */
@@ -27,8 +28,32 @@
 	display: block;
 }
 
+.band {
+	border: var(--_border) solid var(--_edge-control);
+	border-radius: var(--_r-in);
+	background: var(--_n1);
+}
+
+.band:hover {
+	border-color: var(--_n10);
+}
+
 .band.open {
-	background: var(--_n3);
+	border-color: var(--_p);
+}
+
+.band.open:hover {
+	border-color: var(--_p-hover);
+}
+
+/*
+ * the item gap between two rows one adapter draws. the first row in a node takes none, and
+ * ../embed/surface.ts spaces one adapter's node from the one above it by the same step. it is on the
+ * band rather than the host because the host is a light-DOM node pinned inline (`PINNED` in
+ * ../embed/rows.ts), and a `:host` rule loses to that.
+ */
+:host(:not(:first-child)) .band {
+	margin-block-start: var(--_sp5);
 }
 
 /*
@@ -37,8 +62,9 @@
  *
  * the weight is the one thing the row's state does not move, and it stays put however heavily the
  * provider draws its own open row: a name redrawn at another weight is a name re-laid out under the
- * pointer at the moment it is pressed. open is `--_n12` on `--_n3` and nothing else — the same rule
- * `[part~='amount-option']` in ./parts.css is held to, and what `--_w-medium` is for (./tokens.css).
+ * pointer at the moment it is pressed. open is `--_n12` inside the primary's edge and nothing else —
+ * the same rule `[part~='amount-option']` in ./parts.css is held to, and what `--_w-medium` is for
+ * (./tokens.css).
  *
  * this ink is the fund's mark as well as its name: Chariot's glyph is drawn `currentColor`
  * (../embed/rows.ts), so it moves between the two states with the words beside it. PayPal's and
@@ -51,7 +77,7 @@
 	box-sizing: border-box;
 	inline-size: 100%;
 	margin: 0;
-	padding: var(--_sp3) var(--_inset);
+	padding: var(--_sp3) var(--_sp4);
 	border: 0;
 	background: none;
 	font: inherit;
@@ -67,18 +93,30 @@
 }
 
 /*
- * inset, because the band reaches the card's edges and a ring outside it would be clipped at both
- * ends — the same answer `[part~='frequency-option']` in ./parts.css gives for a control whose edge is
- * a neighbour's.
+ * the ring is drawn around the box rather than around the press inside it, because the box is the
+ * control a donor finds. a closed row takes the plain ring hugging its edge; the open one has the
+ * primary's edge, which at its band's floor is the ring's own darkness, so a band of `--_n1` is laid
+ * against that edge first and the ring goes outside it — the construction a chosen amount tile takes
+ * (the head of ./tokens.css). the head keeps a transparent outline, which forced-colors paints in the
+ * user's own colour once it drops every shadow.
  */
 .head:focus-visible {
 	outline: var(--_focus-width) solid transparent;
-	box-shadow: inset 0 0 0 var(--_focus-width) var(--_focus-ring);
+}
+
+.band:has(.head:focus-visible) {
+	box-shadow: 0 0 0 var(--_focus-width) var(--_focus-ring);
+}
+
+.band.open:has(.head:focus-visible) {
+	box-shadow:
+		0 0 0 var(--_border) var(--_n1),
+		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
 }
 
 /*
  * the size is set on the name and the mark rather than the head, so the head's padding stays the
- * `--_sp3` the provider's rows are padded by at the card's own size.
+ * pads the provider's rows are padded by at the card's own size.
  */
 .name,
 .mark {
@@ -106,7 +144,7 @@
 
 .panel {
 	display: grid;
-	padding: 0 var(--_inset) var(--_sp3);
+	padding: 0 var(--_sp4) var(--_sp3);
 }
 
 .panel[hidden] {
