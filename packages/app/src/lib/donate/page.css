@@ -403,11 +403,11 @@ body {
 	max-inline-size: var(--page-box);
 }
 
-/* the card. on a phone its cover runs edge to edge under the masthead. wide, the page is one panel
+/* the card. on a phone its cover runs edge to edge, `--page-gap-lead` under the
+   masthead, so the logo never touches it. wide, the page is one panel
    on `--_n1`: the cover across its top, and under it the words beside the box. */
 .page[data-layout='card'] [data-area='cover'] {
 	margin-inline: calc(-1 * var(--page-gutter));
-	margin-block-start: calc(-1 * var(--page-gap-lead));
 }
 
 .page[data-layout='card'] [data-area='cover'] .page-cover {
@@ -579,7 +579,6 @@ body {
 
 .page[data-layout='feature'] [data-area='cover'] {
 	margin-inline: calc(-1 * var(--page-gutter));
-	margin-block-start: calc(-1 * var(--page-gap-lead));
 }
 
 .page[data-layout='feature'] [data-area='cover'] .page-cover,
