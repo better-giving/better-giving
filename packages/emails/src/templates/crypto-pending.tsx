@@ -2,7 +2,16 @@ import type { CSSProperties } from 'react';
 import { Divider, Heading, Layout, Paragraph, SmallPrint } from '../components/layout';
 import { formatDateTime } from '../format';
 import type { EmailTemplate } from '../template';
-import { box, FONT_MONO, PANEL_BG, SPACE_2, SPACE_4, SPACE_6, SPACE_8 } from '../tokens';
+import {
+	box,
+	FONT_MONO,
+	PANEL_BG,
+	RADIUS_PLANE,
+	SPACE_2,
+	SPACE_4,
+	SPACE_6,
+	SPACE_8
+} from '../tokens';
 import { greetingFor } from './greeting';
 
 // the donor's "here is where to send your crypto gift", sent when they are shown an address.
@@ -143,11 +152,13 @@ function textArm(copy: Copy, legalName: string): string {
 	].join('\n');
 }
 
-/** ./receipt.tsx's block treatment: a tinted ground, a presentation table, values in monospace. */
+/** ./receipt.tsx's block treatment: a tinted ground at the plane corner, a presentation table,
+ * values in monospace. */
 const PANEL_STYLE: CSSProperties = {
 	margin: box(0, 0, SPACE_6),
 	padding: SPACE_6,
-	background: PANEL_BG
+	background: PANEL_BG,
+	borderRadius: RADIUS_PLANE
 };
 const LEAD_STYLE: CSSProperties = { margin: box(0, 0, SPACE_4) };
 const TABLE_STYLE: CSSProperties = { margin: 0, borderCollapse: 'collapse' };

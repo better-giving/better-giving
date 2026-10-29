@@ -9,6 +9,8 @@ import {
 	LH_HEADING,
 	MEASURE,
 	PAGE_BG,
+	PLANE_BG,
+	RADIUS_PLANE,
 	SPACE_6,
 	SPACE_8,
 	TEXT_BODY,
@@ -50,7 +52,7 @@ import {
  */
 const BODY_STYLE: CSSProperties = {
 	margin: 0,
-	padding: SPACE_8,
+	padding: SPACE_6,
 	backgroundColor: PAGE_BG,
 	color: INK,
 	fontFamily: FONT_SANS,
@@ -69,6 +71,17 @@ const DOCUMENT_STYLE: CSSProperties = {
 const FRAME_STYLE: CSSProperties = { maxWidth: MEASURE, margin: '0 auto' };
 
 const FRAME_ROW_STYLE: CSSProperties = { width: '100%' };
+
+/**
+ * the plane the body is set on: one group, so one plane, told from the page by its ground alone.
+ * a client that drops the radius draws it square and a client that drops the background draws the
+ * body on the page, and either still reads.
+ */
+const PLANE_STYLE: CSSProperties = {
+	padding: SPACE_8,
+	backgroundColor: PLANE_BG,
+	borderRadius: RADIUS_PLANE
+};
 
 const PARAGRAPH_STYLE: CSSProperties = { margin: box(0, 0, SPACE_6) };
 
@@ -131,7 +144,7 @@ export function Layout({ title, children }: LayoutProps) {
 }
 
 /**
- * the measure, as a centred presentation table.
+ * the measure, as a centred presentation table, and the plane inside it.
  *
  * a table and not a `<div>` with a max-width: Outlook resolves neither `max-width` nor `margin:
  * auto` on a block, and a table with `align="center"` is the one centring every client agrees on.
@@ -149,7 +162,7 @@ function Frame({ children }: { readonly children: ReactNode }) {
 		>
 			<tbody>
 				<tr style={FRAME_ROW_STYLE}>
-					<td>{children}</td>
+					<td style={PLANE_STYLE}>{children}</td>
 				</tr>
 			</tbody>
 		</table>

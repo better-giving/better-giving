@@ -9,6 +9,7 @@ import {
 	FONT_MONO,
 	INK,
 	PANEL_BG,
+	RADIUS_PLANE,
 	SPACE_2,
 	SPACE_4,
 	SPACE_6,
@@ -536,7 +537,8 @@ const DISCLOSURE_HEADING_STYLE: CSSProperties = {
 const PANEL_STYLE: CSSProperties = {
 	margin: box(0, 0, SPACE_6),
 	padding: SPACE_6,
-	background: PANEL_BG
+	background: PANEL_BG,
+	borderRadius: RADIUS_PLANE
 };
 
 const LEAD_STYLE: CSSProperties = { margin: box(0, 0, SPACE_4) };

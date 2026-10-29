@@ -94,12 +94,17 @@ export const box = (...sides: number[]) =>
 // every one is a token converted, and the name says the job rather than the rung. what each is for
 // is at its own line where the choice was not the obvious one.
 
-/** the ground the document is read on, and the two a block inside it sits on. */
+/** the ground the document is read on, the plane its body sits on, and the two a block on that
+ * plane sits on. */
 export const PAGE_BG = hexFromOklch(ADMIN_TOKENS['--admin-page']);
+/** a mail's body is one group, and one group is one plane: the system's white, with no edge. */
+export const PLANE_BG = hexFromOklch(ADMIN_TOKENS['--admin-surface']);
 /** the receipt's own block: a ground, and no rule around it. */
 export const PANEL_BG = hexFromOklch(ADMIN_TOKENS['--admin-surface-sunken']);
-/** the heavier band under the §6115 disclosure and the alert's instruction — a step darker. */
+/** the heavier band under the §6115 disclosure — a step darker. */
 export const BLOCK_BG = hexFromOklch(ADMIN_TOKENS['--admin-surface-fill']);
+/** the alert's instruction, set as `.adm-banner` sets a note: the tint carries it, no edge does. */
+export const BANNER_BG = hexFromOklch(ADMIN_TOKENS['--admin-tone-note-tint']);
 
 export const INK = hexFromOklch(ADMIN_TOKENS['--admin-ink']);
 /** the small print under the rule: real text, and the rung the system cut to carry it. */
@@ -138,10 +143,10 @@ export const BORDER_WIDTH = pxFromLength(ADMIN_TOKENS['--admin-border-width']);
 /** 2px is state rather than structure in this system, and the disclosure's border is exactly that:
  * the one block on the page whose prominence is a statutory standard. */
 export const BORDER_WIDTH_STRONG = pxFromLength(ADMIN_TOKENS['--admin-border-width-strong']);
-/** the band a block carries at one edge, which is what the alert's instruction wears. */
-export const EDGE = pxFromLength(ADMIN_TOKENS['--admin-edge']);
-/** the one corner the system rounds anything to. */
+/** the corner of a control, a literal set in a sentence, and a banner. */
 export const RADIUS = pxFromLength(ADMIN_TOKENS['--admin-radius']);
+/** the corner of a plane and of a block set on one. */
+export const RADIUS_PLANE = pxFromLength(ADMIN_TOKENS['--admin-radius-plane']);
 /** the measure the document is read at. the system's measures are screen columns and none of them
  * is a mail's; this is the one that lands where a line of body type stops being comfortable. */
 export const MEASURE = pxFromLength(ADMIN_TOKENS['--admin-measure-dialog']);

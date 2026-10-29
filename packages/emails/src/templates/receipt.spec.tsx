@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderEmail } from '../render';
+import { RADIUS_PLANE } from '../tokens';
 import * as receipt from './receipt';
 import type { GoodsOrServices, ReceiptContribution, ReceiptData, ReceiptOrg } from './receipt';
 
@@ -445,11 +446,16 @@ describe('receipt.template — the receipt block', () => {
 		});
 		expect(panel(html)).toContain('background:');
 		expect(panel(html)).not.toContain('border:');
+		expect(panel(html)).toContain(`border-radius:${RADIUS_PLANE}px`);
 		// the width and the fact of a border, not the colour: the value is the operator design
 		// system's ink and is stated in packages/operator/src/styles/tokens.css, which is the only
 		// place a colour is decided. what this case is about is that the disclosure carries a rule
 		// and the panel does not.
 		expect(html).toMatch(/border:2px solid #[0-9a-f]{6}/);
+		// the statutory block keeps its square, ruled box: the plane's corner is the panel's, and a
+		// rounded disclosure would be the panel's treatment with a rule added.
+		const disclosure = html.slice(html.lastIndexOf('<div', html.indexOf('border:2px solid')));
+		expect(disclosure.slice(0, disclosure.indexOf('>'))).not.toContain('border-radius');
 	});
 
 	/**
