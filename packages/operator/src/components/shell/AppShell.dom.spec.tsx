@@ -320,6 +320,44 @@ describe('the way out a shell draws', () => {
 	});
 });
 
+describe("the link to the organisation's page a shell draws", () => {
+	const PAGE = { href: '/donate', label: 'Open donation page' };
+
+	it('draws no link where none is handed', () => {
+		const root = render(AppShell, { org: ORG, groups: GROUPS });
+
+		expect(root.querySelector('.adm-pagelink')).toBeNull();
+		expect(root.querySelector('.adm-identity a[href="/donate"]')).toBeNull();
+	});
+
+	it('draws the handed link in the top bar, named by its label, before the way out', () => {
+		const root = render(AppShell, { org: ORG, groups: GROUPS, pageLink: PAGE });
+		const anchor = root.querySelector('.adm-identity > .adm-pagelink > a');
+
+		expect(anchor?.getAttribute('href')).toBe('/donate');
+		expect(anchor?.getAttribute('aria-label')).toBe('Open donation page');
+		expect(anchor?.querySelector('.adm-pagelink__word')?.textContent).toBe('Open donation page');
+		// the same tab: the page is opened in place of the dashboard, not beside it.
+		expect(anchor?.hasAttribute('target')).toBe(false);
+		expect(
+			[...(root.querySelector('.adm-identity')?.children ?? [])].map((node) => node.className)
+		).toEqual(['adm-identity__name', 'adm-pagelink', 'adm-signout']);
+	});
+
+	it("draws a plain anchor rather than the rail's link, since the page is outside the shell", () => {
+		function Routed({ href, children, ...rest }: DestinationLinkProps) {
+			return (
+				<a href={href} data-routed="" {...rest}>
+					{children}
+				</a>
+			);
+		}
+		const root = render(AppShell, { org: ORG, groups: GROUPS, link: Routed, pageLink: PAGE });
+
+		expect(root.querySelector('.adm-pagelink > a')?.hasAttribute('data-routed')).toBe(false);
+	});
+});
+
 describe('the identity a shell draws', () => {
 	/** the top bar's row, and anything else standing as one. */
 	function heads(root: HTMLElement): Element[] {

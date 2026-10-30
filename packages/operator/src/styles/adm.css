@@ -402,8 +402,9 @@
 	   stands beside one is set at least that far off it, so no target lies over another control: a
 	   row's Remove and the brand colour's well each stand further off their box than their target
 	   reaches, a row of choice chips stands its rows apart by both reaches together, and the top
-	   bar's globe and way out reach no further than the bar's breathing room and the gap off the
-	   name. ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
+	   bar's globe, its link to the public page and its way out reach no further than the bar's
+	   breathing room and, together with the target beside them, the gap between them.
+	   ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
 	   neighbours, so a control joining the list is named in that spec too.
 
 	   an `<input>` draws no `::before`, so the brand colour's well is aimed at through the label
@@ -412,6 +413,7 @@
 	.adm-wellwrap::before,
 	.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip::before,
 	.adm-identity__lead > .adm-btn::before,
+	.adm-identity > .adm-pagelink > .adm-btn::before,
 	.adm-identity > .adm-signout > .adm-btn::before {
 		content: '';
 		position: absolute;
@@ -5712,17 +5714,17 @@
 	   page under it: the one rule there is decoration (Lc 20 on the bar, ./tokens.css at
 	   `--admin-divider`), and it is the white against the wash that tells the two apart. it states
 	   `--_ground` beside its fill for the reason ./plane-ground.spec.ts gives, though it holds no
-	   field. one row — the site's globe, the name, the way out — so the name is cut to one line
-	   rather than wrapped. the row is a grid item of the shell, and at the default minimum an uncut
-	   name would widen the shell's track to its own length; at zero the track holds and the name
-	   takes its ellipsis.
+	   field. one row — the site's globe, the name, the public page's link, the way out — so the
+	   name is cut to one line rather than wrapped. the row is a grid item of the shell, and at the
+	   default minimum an uncut name would widen the shell's track to its own length; at zero the
+	   track holds and the name takes its ellipsis.
 
 	   its height is a row's floor and a step of breathing room either side, so the bar is the same
 	   height whatever the way out is drawn as; the wide breakpoint stands it taller. that is the
-	   bar's height and not a target's: the globe and the way out are small buttons,
-	   `--admin-control-height-sm` tall, and each is aimed at at `--admin-touch-min` through the
-	   shared target under `a target past the drawn edge`, which reaches into that breathing room
-	   and no further. */
+	   bar's height and not a target's: the globe, the page's link and the way out are small
+	   buttons, `--admin-control-height-sm` tall, and each is aimed at at `--admin-touch-min`
+	   through the shared target under `a target past the drawn edge`, which reaches into that
+	   breathing room and no further. */
 	.adm-identity {
 		--_ground: var(--admin-surface);
 		display: flex;
@@ -6092,6 +6094,28 @@
 	   specimen way out is the shape. */
 	.adm-signout:has(.adm-signout__word) .adm-mark {
 		display: none;
+	}
+
+	/* the link to the organisation's public page, just before the way out. it never shrinks, for
+	   the way out's reason. under the middle breakpoint the bar has room for the way out's word and
+	   no second one, so the link is its mark alone there, named by the anchor's `aria-label`
+	   (../components/shell/AppShell.jsx); from it, the word and not the mark. */
+	.adm-pagelink {
+		flex-shrink: 0;
+	}
+
+	.adm-pagelink__word {
+		display: none;
+	}
+
+	@media (min-width: 44rem) {
+		.adm-pagelink__word {
+			display: inline;
+		}
+
+		.adm-pagelink .adm-mark {
+			display: none;
+		}
 	}
 
 	/* at zero rather than the default minimum, for the reason `.adm-identity` gives: the page is a

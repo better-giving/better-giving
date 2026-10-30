@@ -55,6 +55,15 @@ import { Button } from '../controls/Button.jsx';
  */
 
 /**
+ * the organisation's own public page, reached from the top bar: an address this package is handed
+ * and never matches, and the words the bar reads it out by.
+ *
+ * @typedef {object} PageLink
+ * @property {string} href
+ * @property {string} label
+ */
+
+/**
  * @typedef {object} AppShellProps
  * @property {ReactNode} org the operating organisation's legal name. there is no logo. it has no
  * default, and neither has `groups`: a shell that filled either in would put a fictional
@@ -83,6 +92,10 @@ import { Button } from '../controls/Button.jsx';
  * the default. a way out is a `.adm-signout` holder with its button directly inside, the shape the
  * top bar's touch target is aimed at; a way out carrying a mark and a word wraps the word in
  * `.adm-signout__word`, and the top bar shows the word and not the mark.
+ * @property {PageLink | undefined} [pageLink] the organisation's public page, drawn in the top bar
+ * just before the way out as a plain anchor in the same tab: the page is a donor's and stands
+ * outside this shell, so it is a document load rather than `link`. from the middle breakpoint it
+ * shows `label`; under it, the mark alone, named by the same words. absent, nothing is drawn.
  * @property {ReactNode} [foot] what the rail's foot holds, at the wide width only. absent or `null`,
  * no foot is drawn.
  * @property {ReactNode} [head] the panel's strip, over the page: `.adm-headstrip`, holding what the
@@ -132,6 +145,7 @@ export function AppShell({
 	groups,
 	link,
 	wayOut,
+	pageLink,
 	foot,
 	head,
 	centred = false,
@@ -232,6 +246,25 @@ export function AppShell({
 			</span>
 		) : (
 			wayOut
+		);
+
+	/* the label is the anchor's name at every width, so the mark that stands alone under the middle
+	   breakpoint is named by the words it stands in for. */
+	/** @type {ReactNode} */
+	const toPage =
+		pageLink === undefined ? null : (
+			<span className="adm-pagelink">
+				<Button
+					as="a"
+					href={pageLink.href}
+					variant="quiet"
+					size="sm"
+					mark="eye"
+					aria-label={pageLink.label}
+				>
+					<span className="adm-pagelink__word">{pageLink.label}</span>
+				</Button>
+			</span>
 		);
 
 	/* one row at both widths: the site's globe, the name cut to one line, and the way out at the far
@@ -336,6 +369,7 @@ export function AppShell({
 			<div className="adm-identity">
 				{lead}
 				{name}
+				{toPage}
 				{out}
 			</div>
 			{barred ? (

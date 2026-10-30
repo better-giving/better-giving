@@ -256,6 +256,7 @@ const BUTTON_BORDER = () => widthOf(ruleOf(css, '.adm-btn').get('border'));
 const ROW_REMOVE = '.adm-rows__row > .adm-rows__remove';
 const CHIP = '.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip';
 const GLOBE = '.adm-identity__lead > .adm-btn';
+const PAGE_LINK = '.adm-identity > .adm-pagelink > .adm-btn';
 const WAY_OUT = '.adm-identity > .adm-signout > .adm-btn';
 
 /**
@@ -360,6 +361,26 @@ const MEMBERS: Record<string, Member> = {
 				["the window's edge", at.inlineStart, evaluate(bar.get('padding-inline'))],
 				['the name after it', at.inlineEnd, evaluate(bar.get('gap'))],
 				...barEdges(GLOBE)
+			];
+		}
+	},
+	// the link to the organisation's public page, just before the way out: a mark alone under the
+	// middle breakpoint, which is its narrowest. its target and the way out's both reach into the
+	// gap between them, so the two reaches together are held to it.
+	[PAGE_LINK]: {
+		holder: '.adm-btn',
+		drawn: barButton,
+		neighbours: () => {
+			const at = target(PAGE_LINK);
+			const bar = ruleOf(css, '.adm-identity');
+			return [
+				['the name before it', at.inlineStart, evaluate(bar.get('gap'))],
+				[
+					'the way out after it',
+					at.inlineEnd + target(WAY_OUT).inlineStart,
+					evaluate(bar.get('gap'))
+				],
+				...barEdges(PAGE_LINK)
 			];
 		}
 	},
