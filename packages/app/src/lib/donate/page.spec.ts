@@ -292,10 +292,12 @@ const hsv = (h: number, s: number, v: number) => {
 const BRANDS: (string | null)[] = [null, '#000000', '#808080', '#ffffff'];
 for (let h = 0; h < 360; h += 5) BRANDS.push(hsv(h, 1, 1), hsv(h, 1, 0.45), hsv(h, 0.35, 0.85));
 
-/** where text stands: the page ground, the form's card on `--_n1`, a plane on `--page-plane`, and
- * the About us band. */
+/** where text stands: the page ground, the wash's two tints at full strength, each a darkest point
+ * of the wash, the form's card on `--_n1`, a plane on `--page-plane`, and the About us band. */
 const GROUNDS = {
 	page: { ground: '--page-ground', scope: {} },
+	washBrand: { ground: '--page-wash-brand', scope: {} },
+	washWarm: { ground: '--page-wash-warm', scope: {} },
 	card: { ground: '--_n1', scope: {} },
 	plane: { ground: '--page-plane', scope: {} },
 	band: {
@@ -344,11 +346,15 @@ describe('text clears 4.5:1 for every brand colour', () => {
 			expect(floor(shade, ground, '--page-quiet'), ground).toBeGreaterThanOrEqual(4.5);
 	});
 
-	// a link and a tier's amount are drawn in it on the page ground, on a card and on a plane.
+	// a link and a tier's amount are drawn in it on the page ground and its wash, on a card and on
+	// a plane. the top bar's Share stands on the plane, and steps to `--_p-hover` under a pointer.
 	it.each(SHADES)('the primary as ink on the page ground, a card and a plane, %s', (shade) => {
 		expect(floor(shade, 'page', '--_p')).toBeGreaterThanOrEqual(4.5);
+		expect(floor(shade, 'washBrand', '--_p')).toBeGreaterThanOrEqual(4.5);
+		expect(floor(shade, 'washWarm', '--_p')).toBeGreaterThanOrEqual(4.5);
 		expect(floor(shade, 'card', '--_p')).toBeGreaterThanOrEqual(4.5);
 		expect(floor(shade, 'plane', '--_p')).toBeGreaterThanOrEqual(4.5);
+		expect(floor(shade, 'plane', '--_p-hover')).toBeGreaterThanOrEqual(4.5);
 	});
 
 	// a program option's description stands on the option's own ground, which rests on rung 3 and
@@ -408,6 +414,75 @@ describe('a long title', () => {
 			['', 'var(--page-display-long)'],
 			['@container page (min-width: 60rem)', 'var(--page-display)']
 		]);
+	});
+});
+
+describe('the card layout', () => {
+	// happy-dom does no layout, so the placement is read off the sheet.
+	const CARD = ".page[data-layout='card']";
+	const WIDE = '@container page (min-width: 60rem)';
+
+	it('stands the cover, the title, the lede and the goal in one plane on a phone, then the box and the story', () => {
+		const layout = declared(page, `${CARD} .page-layout`);
+		expect(layout['grid-template-areas']?.match(/'[\w-]+'/g)).toEqual([
+			"'cover'",
+			"'title'",
+			"'lede'",
+			"'goal'",
+			"'close'",
+			"'box'",
+			"'story'"
+		]);
+		expect(declared(page, `${CARD} .page-layout::before`)).toMatchObject({
+			'grid-row': 'cover-start / close-end',
+			background: 'var(--page-plane)',
+			'border-radius': 'var(--page-plane-radius)',
+			'box-shadow': 'var(--page-plane-lift)'
+		});
+		expect(declared(page, WIDE, `${CARD} .page-layout::before`).content).toBe('none');
+	});
+
+	it('takes the plane’s top corners on the cover at every width', () => {
+		expect(declared(page, `${CARD} [data-area='cover'] .page-cover`)['border-radius']).toBe(
+			'var(--page-plane-radius) var(--page-plane-radius) 0 0'
+		);
+		expect(
+			page.filter(
+				({ at, decls }) =>
+					at.at(-1) === `${CARD} [data-area='cover'] .page-cover` && decls['border-radius']
+			)
+		).toHaveLength(1);
+	});
+
+	it('orders no card section on a phone, so the grid’s areas alone place them', () => {
+		const ordered = page.filter(
+			({ at, decls }) => at.length === 1 && decls.order !== undefined && at[0]?.includes(CARD)
+		);
+		expect(ordered).toEqual([]);
+	});
+
+	it('draws the box on the wide panel as a plane, with the plane’s shadow and no edge', () => {
+		const onPanel = page.filter(
+			({ at }) => at[0] === WIDE && at.at(-1)?.includes("[part~='card']")
+		);
+		expect(onPanel).toEqual([]);
+		expect(declared(page, ".page [part~='card']")).toMatchObject({
+			'border-color': 'transparent',
+			'box-shadow': 'var(--page-plane-lift)'
+		});
+	});
+});
+
+describe('the organisation’s name in the top bar', () => {
+	// happy-dom does no layout, so the cut is read off the sheet: a name that wrapped would stand the
+	// bar taller than the header's first-screen sum counts, and Share takes width from the name's row.
+	it('is cut to one line with an ellipsis, and gives up its width rather than widening the bar', () => {
+		expect(declared(page, '.page-mast-name')).toMatchObject({
+			'white-space': 'nowrap',
+			overflow: 'hidden',
+			'text-overflow': 'ellipsis',
+			'min-inline-size': '0'
+		});
 	});
 });
 

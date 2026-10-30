@@ -258,22 +258,46 @@ describe('the groups a rail is divided into', () => {
 });
 
 describe('the way out a shell draws', () => {
-	/** the controls standing in the band and the foot, at both widths. */
+	/** the controls standing in the top bar and the rail's foot. */
 	function waysOut(root: HTMLElement): Element[] {
 		return [...root.querySelectorAll('.adm-identity > .adm-signout, .adm-rail__foot > *')];
 	}
 
-	it('draws the specimen its own button, at both widths', () => {
+	it('draws the specimen its own button, once, in the top bar', () => {
 		// a bare shell — no `wayOut` override — is not mounted anywhere in this repository; the
 		// one caller (packages/app/src/routes/_app.tsx) always hands one in. this asserts the
 		// prop's own declared default regardless, since a prop with a fallback should draw one
 		// that works.
 		const root = render(AppShell, { org: ORG, groups: GROUPS });
 
-		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Sign out', 'Sign out']);
+		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Sign out']);
 	});
 
-	it('draws what a surface hands it, and the same node at both widths', () => {
+	it('shows the way out as its word, which the sheet then hides the mark beside', () => {
+		const root = render(AppShell, { org: ORG, groups: GROUPS });
+		const out = root.querySelector('.adm-identity > .adm-signout');
+
+		expect(out?.querySelector('.adm-signout__word')?.textContent).toBe('Sign out');
+		// the mark rides in the same button; ../../styles/adm.css hides it wherever the word shows.
+		expect(out?.querySelector('.adm-mark')).not.toBeNull();
+	});
+
+	it('draws exactly one way out anywhere in the shell, however the destinations are laid', () => {
+		const root = render(AppShell, {
+			org: ORG,
+			groups: GROUPS,
+			foot: <div>Riverbank Trust's Account</div>
+		});
+
+		expect(root.querySelectorAll('.adm-signout')).toHaveLength(1);
+		expect(
+			[...root.querySelectorAll('button, a')].filter((node) =>
+				/sign out/i.test(node.textContent ?? '')
+			)
+		).toHaveLength(1);
+	});
+
+	it('draws what a surface hands it in the top bar, and no foot under the rail', () => {
 		const root = render(AppShell, {
 			org: ORG,
 			groups: GROUPS,
@@ -284,10 +308,11 @@ describe('the way out a shell draws', () => {
 			)
 		});
 
-		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Leave', 'Leave']);
+		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Leave']);
+		expect(root.querySelector('.adm-rail__foot')).toBeNull();
 	});
 
-	it('stands a handed foot in the rail and keeps the way out in the band', () => {
+	it('stands a handed foot in the rail and keeps the way out in the top bar', () => {
 		const root = render(AppShell, {
 			org: ORG,
 			groups: GROUPS,
@@ -303,29 +328,67 @@ describe('the way out a shell draws', () => {
 		expect(root.querySelector('.adm-rail__foot')?.textContent).toBe("Riverbank Trust's Account");
 	});
 
-	it('draws no foot where neither a foot nor a way out is handed', () => {
+	it('draws no foot where the way out and the foot are both handed as none', () => {
 		const root = render(AppShell, { org: ORG, groups: GROUPS, wayOut: null, foot: null });
 
 		expect(waysOut(root)).toHaveLength(0);
 		expect(root.querySelector('.adm-rail__foot')).toBeNull();
 	});
 
-	it('draws no foot where the way out is none and no foot is handed', () => {
-		// the foot goes with the control rather than standing empty: the box draws its own rule and
-		// its own padding, so an empty one is a divider under nothing.
+	it('draws no foot where the way out is none and no foot is stated', () => {
+		// a foot that comes to nothing is dropped rather than stood empty: the box draws its own rule
+		// and its own padding, so an empty one is a divider under nothing.
 		const root = render(AppShell, { org: ORG, groups: GROUPS, wayOut: null });
 
 		expect(root.querySelector('.adm-rail__foot')).toBeNull();
 	});
 });
 
+describe("the link to the organisation's page a shell draws", () => {
+	const PAGE = { href: '/donate', label: 'Open donation page' };
+
+	it('draws no link where none is handed', () => {
+		const root = render(AppShell, { org: ORG, groups: GROUPS });
+
+		expect(root.querySelector('.adm-pagelink')).toBeNull();
+		expect(root.querySelector('.adm-identity a[href="/donate"]')).toBeNull();
+	});
+
+	it('draws the handed link in the top bar, named by its label, before the way out', () => {
+		const root = render(AppShell, { org: ORG, groups: GROUPS, pageLink: PAGE });
+		const anchor = root.querySelector('.adm-identity > .adm-pagelink > a');
+
+		expect(anchor?.getAttribute('href')).toBe('/donate');
+		expect(anchor?.getAttribute('aria-label')).toBe('Open donation page');
+		expect(anchor?.querySelector('.adm-pagelink__word')?.textContent).toBe('Open donation page');
+		// the same tab: the page is opened in place of the dashboard, not beside it.
+		expect(anchor?.hasAttribute('target')).toBe(false);
+		expect(
+			[...(root.querySelector('.adm-identity')?.children ?? [])].map((node) => node.className)
+		).toEqual(['adm-identity__name', 'adm-pagelink', 'adm-signout']);
+	});
+
+	it("draws a plain anchor rather than the rail's link, since the page is outside the shell", () => {
+		function Routed({ href, children, ...rest }: DestinationLinkProps) {
+			return (
+				<a href={href} data-routed="" {...rest}>
+					{children}
+				</a>
+			);
+		}
+		const root = render(AppShell, { org: ORG, groups: GROUPS, link: Routed, pageLink: PAGE });
+
+		expect(root.querySelector('.adm-pagelink > a')?.hasAttribute('data-routed')).toBe(false);
+	});
+});
+
 describe('the identity a shell draws', () => {
-	/** the band's row and the rail head's, in that order. */
+	/** the top bar's row, and anything else standing as one. */
 	function heads(root: HTMLElement): Element[] {
-		return [...root.querySelectorAll('.adm-identity, .adm-rail__identity')];
+		return [...root.querySelectorAll('.adm-identity')];
 	}
 
-	it('leads the name with a link to the site in the band and the rail head, and prints no address', () => {
+	it('leads the name with a link to the site in the top bar alone, and prints no address', () => {
 		const site = 'https://better-giving.riverside.workers.dev/admin';
 		const root = render(AppShell, { groups: GROUPS, org: 'Riverbank Trust', site });
 
@@ -339,7 +402,7 @@ describe('the identity a shell draws', () => {
 			expect(head.querySelector('.adm-identity__name')?.textContent).toBe('Riverbank Trust');
 			expect(head.textContent).not.toContain(site);
 		}
-		expect(heads(root)).toHaveLength(2);
+		expect(heads(root)).toHaveLength(1);
 	});
 
 	it('leads the name with a same-tab link through the handed link where the site is on this surface', () => {
@@ -365,12 +428,13 @@ describe('the identity a shell draws', () => {
 			expect(link?.hasAttribute('target')).toBe(false);
 			expect(link?.getAttribute('data-handed')).toBe('yes');
 		}
-		expect(heads(root)).toHaveLength(2);
+		expect(heads(root)).toHaveLength(1);
 	});
 
 	it('draws the name alone where no site is handed', () => {
 		const root = render(AppShell, { groups: GROUPS, org: 'Riverbank Trust' });
 
+		expect(heads(root)).toHaveLength(1);
 		for (const head of heads(root)) {
 			expect(head.querySelector('a')).toBeNull();
 			expect(head.querySelector('.adm-identity__name')?.textContent).toBe('Riverbank Trust');

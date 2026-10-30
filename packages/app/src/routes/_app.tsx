@@ -65,6 +65,9 @@ export const clientMiddleware: Route.ClientMiddlewareFunction[] = [
 /** where the globe beside the organisation's name goes: the Donation page's edit page. */
 const DONATION_PAGE_EDITOR = { href: '/admin/donation-page', label: 'Donation page' } as const;
 
+/** the top bar's way to the published Donation page (./donate.tsx), drawn for every operator. */
+const DONATION_PAGE = { href: '/donate', label: 'Open donation page' } as const;
+
 // the sheet every screen beneath this layout wears, linked once here rather than by each of them.
 export const links = operatorLinks;
 
@@ -73,8 +76,8 @@ export const links = operatorLinks;
 // here with no loader of its own would be entered without the gate having run for it. one loader
 // on this route makes every navigation into the protected surface a request the gate sees.
 export async function loader({ context }: Route.LoaderArgs) {
-	// the identity band names the organisation: `null` where there is no row or the read did not
-	// land, and the band then says what the software is instead. a read that throws is swallowed
+	// the top bar names the organisation: `null` where there is no row or the read did not
+	// land, and the bar then says what the software is instead. a read that throws is swallowed
 	// ($lib/server/config/setup-state.ts), because this layout covers the screens that explain a
 	// database which is not answering, on exactly the deployment that needs them.
 	const state = await readSetupState(context.get(database), context.get(platform).env);
@@ -123,11 +126,12 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 			{progress}
 			<AppShell
 				// before anyone has saved the organisation's details in Settings there is no name to
-				// show, so it says what the software is rather than printing an empty band. the word is
+				// show, so it says what the software is rather than printing an empty bar. the word is
 				// shared with every screen's tab title, which falls back to the same one
 				// ($lib/admin/screen-title.ts).
 				org={loaderData.orgName ?? APP_NAME}
 				site={DONATION_PAGE_EDITOR}
+				pageLink={DONATION_PAGE}
 				groups={destinationGroupsFor(loaderData.deployer)}
 				link={RouterLink}
 				current={at}
@@ -144,8 +148,8 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 					// of them would have it.
 					//
 					// `.adm-signout` is what keeps two words from breaking across two lines when an
-					// organisation's long name contests the identity band's row, and what the collapsed
-					// rail keys its foot off; `.adm-signout__word` is the word it hides there, leaving the
+					// organisation's long name contests the top bar's row, and what stands the control at
+					// the bar's far end; `.adm-signout__word` is the word the bar shows in place of the
 					// mark.
 					<Form method="post" action={SIGN_OUT_PATH} className="adm-signout">
 						<Button variant="quiet" size="sm" mark="log-out">

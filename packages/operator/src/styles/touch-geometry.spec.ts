@@ -255,6 +255,34 @@ const widthOf = (border: string | undefined) =>
 const BUTTON_BORDER = () => widthOf(ruleOf(css, '.adm-btn').get('border'));
 const ROW_REMOVE = '.adm-rows__row > .adm-rows__remove';
 const CHIP = '.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip';
+const GLOBE = '.adm-identity__lead > .adm-btn';
+const PAGE_LINK = '.adm-identity > .adm-pagelink > .adm-btn';
+const WAY_OUT = '.adm-identity > .adm-signout > .adm-btn';
+
+/**
+ * a small button in the top bar at its narrowest, a mark alone between its padding: the globe always
+ * is one, and a way out is one where it carries no word. a wider way out reaches less far across.
+ */
+const barButton = (): Drawn => {
+	const small = ruleOf(css, '.adm-btn--sm');
+	const border = BUTTON_BORDER();
+	return {
+		inline: 2 * (border + evaluate(small.get('padding-inline'))) + px('--admin-mark-size'),
+		block: evaluate(small.get('min-block-size')),
+		border
+	};
+};
+
+/** the top bar's edges above and below a button in it, each a step of the bar's breathing room off it. */
+const barEdges = (member: string): (readonly [string, number, number])[] => {
+	const at = target(member);
+	const bar = ruleOf(css, '.adm-identity');
+	const room = (evaluate(bar.get('min-block-size')) - barButton().block) / 2;
+	return [
+		["the bar's edge above", at.blockStart, room],
+		["the bar's edge below", at.blockEnd, room]
+	];
+};
 
 const MEMBERS: Record<string, Member> = {
 	// a row's Remove is a button (../components/controls/Button.jsx draws `.adm-btn`), the box's
@@ -316,6 +344,58 @@ const MEMBERS: Record<string, Member> = {
 			return [
 				['the chip beside it', at.inlineEnd + at.inlineStart, evaluate(row.get('column-gap'))],
 				['the chip on the next line', at.blockEnd + at.blockStart, evaluate(row.get('row-gap'))]
+			];
+		}
+	},
+	// the site's globe leading the top bar, an icon-only small button in a box exactly its width.
+	[GLOBE]: {
+		holder: '.adm-btn',
+		drawn: () => ({
+			...barButton(),
+			inline: evaluate(ruleOf(css, '.adm-identity__lead').get('inline-size'))
+		}),
+		neighbours: () => {
+			const at = target(GLOBE);
+			const bar = ruleOf(css, '.adm-identity');
+			return [
+				["the window's edge", at.inlineStart, evaluate(bar.get('padding-inline'))],
+				['the name after it', at.inlineEnd, evaluate(bar.get('gap'))],
+				...barEdges(GLOBE)
+			];
+		}
+	},
+	// the link to the organisation's public page, just before the way out: a mark alone under the
+	// middle breakpoint, which is its narrowest. its target and the way out's both reach into the
+	// gap between them, so the two reaches together are held to it.
+	[PAGE_LINK]: {
+		holder: '.adm-btn',
+		drawn: barButton,
+		neighbours: () => {
+			const at = target(PAGE_LINK);
+			const bar = ruleOf(css, '.adm-identity');
+			return [
+				['the name before it', at.inlineStart, evaluate(bar.get('gap'))],
+				[
+					'the way out after it',
+					at.inlineEnd + target(WAY_OUT).inlineStart,
+					evaluate(bar.get('gap'))
+				],
+				...barEdges(PAGE_LINK)
+			];
+		}
+	},
+	// the way out ending the top bar: the button inside the `.adm-signout` holder, which is the form
+	// packages/app/src/routes/_app.tsx posts and a span in ../components/shell/AppShell.jsx's specimen.
+	[WAY_OUT]: {
+		holder: '.adm-btn',
+		drawn: barButton,
+		neighbours: () => {
+			const at = target(WAY_OUT);
+			const bar = ruleOf(css, '.adm-identity');
+			return [
+				['the name before it', at.inlineStart, evaluate(bar.get('gap'))],
+				["the window's edge", at.inlineEnd, evaluate(bar.get('padding-inline'))],
+				...barEdges(WAY_OUT)
 			];
 		}
 	}

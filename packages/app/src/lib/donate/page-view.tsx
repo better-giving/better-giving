@@ -31,8 +31,9 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 // sections stand in the order a phone reads them, and ./page.css moves them into columns from
 // `@container page (min-width: 60rem)`:
 //
-// - card: the cover, the title, the goal, the donation box, the lede and the story. wide, the box
-//   stands in a column of its own beside the words, under the cover.
+// - card: the cover, the title, the goal, the donation box, the lede and the story. on a phone the
+//   cover, the title, the lede and the goal stand in one plane, then the box, then the story. wide,
+//   the box stands in a column of its own beside the words, under the cover.
 // - letter: the cover framed, the title, then a rail of the goal, the box and the tiers, then the
 //   lede, the story, the photos and the questions. wide, the rail is a column beside the reading
 //   column.
@@ -43,12 +44,14 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 //   beside the title and the chooser.
 //
 // every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
-// the box straight after the cover and the title, the goal and the lede after it, so in every layout
-// all of the box is on the first screen at a phone's width and a laptop's alike; the source order
-// keeps the box ahead of the story and everything after it, which ./page-view.dom.spec.tsx holds.
+// the letter's and the feature's box straight after the cover and the title, the goal and the lede
+// after it, so all of their box is on the first screen; the card's box begins on it, under the
+// plane, and ./page.css's header sums what stands ahead of it. the source order keeps the box ahead
+// of the story and everything after it, which ./page-view.dom.spec.tsx holds.
 // the box is drawn exactly once, and no ancestor of it clips or transforms it.
 //
-// the masthead stands above every page and names the organisation. with a logo, a logo at least
+// the masthead is the top bar over every page: it names the organisation at its start and, on a
+// page with a share section, ends on a Share link to it. with a logo, a logo at least
 // twice as wide as it is tall stands in for the name and carries it as its alt, and a narrower one
 // stands beside the name and says nothing of its own; the stored image's width and height decide.
 // with none, a badge of the name's initials stands beside the name, in the page's brand fill and
@@ -119,7 +122,7 @@ export function PageView(props: PageViewProps) {
 			layout={shape?.layout ?? 'donation'}
 			{...(className === undefined ? {} : { className })}
 		>
-			<Masthead name={org.name} logo={props.logo ?? null} />
+			<Masthead name={org.name} logo={props.logo ?? null} shareTarget={SHARE_ID} />
 			<main className="page-body">
 				{shape === null ? (
 					<DonationLayout {...props} />
@@ -128,7 +131,7 @@ export function PageView(props: PageViewProps) {
 				)}
 			</main>
 			<footer className="page-foot">
-				<section className="page-end" {...area('share')}>
+				<section className="page-end" id={SHARE_ID} {...area('share')}>
 					<div className="page-in">
 						<Share
 							sharing={props.sharing}
@@ -144,6 +147,9 @@ export function PageView(props: PageViewProps) {
 	);
 }
 
+/** the share section's id, which the top bar's Share link jumps to. */
+const SHARE_ID = 'page-share';
+
 /** the donation box, inert in the preview, where a click on it opens the settings it draws. */
 function Box({ props, hideProgramSelect }: { props: PageViewProps; hideProgramSelect: boolean }) {
 	return (
@@ -156,8 +162,8 @@ function Box({ props, hideProgramSelect }: { props: PageViewProps; hideProgramSe
 /**
  * a title of more characters than this, counted as a reader sees them with its edges trimmed, is
  * drawn a step smaller below 60rem (`data-long`, ./page.css): on a phone the box stands under the
- * title, and the smaller title takes fewer lines. a title past about 110 characters still pushes
- * the box below a 390 × 844 phone's first screen.
+ * title, and the smaller title takes fewer lines. in the letter and the feature a title past about
+ * 110 characters still pushes the box's foot below a 390 × 844 phone's first screen.
  */
 export const TITLE_LONG = 28;
 
@@ -320,11 +326,20 @@ function DonationLayout(props: PageViewProps) {
 
 export function Masthead({
 	name,
-	logo
+	logo,
+	shareTarget
 }: {
 	readonly name: string;
 	readonly logo: PageLogo | null;
+	/** the id of the page's share section, which a Share link at the bar's end jumps to; absent where none. */
+	readonly shareTarget?: string | undefined;
 }) {
+	const share =
+		shareTarget === undefined ? null : (
+			<a className="page-mast-share" href={`#${shareTarget}`}>
+				Share
+			</a>
+		);
 	if (logo === null) {
 		const letters = initials(name);
 		return (
@@ -335,7 +350,10 @@ export function Masthead({
 							{letters}
 						</span>
 					)}
-					<p className="page-mast-name">{name}</p>
+					<p className="page-mast-name" title={name}>
+						{name}
+					</p>
+					{share}
 				</div>
 			</header>
 		);
@@ -357,9 +375,12 @@ export function Masthead({
 				) : (
 					<>
 						{art('')}
-						<p className="page-mast-name">{name}</p>
+						<p className="page-mast-name" title={name}>
+							{name}
+						</p>
 					</>
 				)}
+				{share}
 			</div>
 		</header>
 	);

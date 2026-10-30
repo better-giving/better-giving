@@ -404,6 +404,14 @@ describe('the masthead with no logo', () => {
 		expect(root.querySelector('.page-mast-name')?.textContent).toBe('Hope Foundation');
 	});
 
+	// ./page.css cuts the name to one line, so the whole of it rides on the line's `title`.
+	it('carries the whole name in its title, where the cut takes the end off', () => {
+		const name = 'Greater Springfield Community Food Bank';
+		expect(
+			masthead(name, '#1d6b4f').root.querySelector('.page-mast-name')?.getAttribute('title')
+		).toBe(name);
+	});
+
 	// the fill is the stylesheet's to paint, and happy-dom resolves no custom property: the badge is
 	// held to standing under the root that seeds the brand colour, and the sheet to filling it so.
 	it('stands on the brand colour the page root seeds', () => {
@@ -521,6 +529,23 @@ describe('share', () => {
 		expect(hrefs).toEqual(['mailto', 'www.facebook.com', 'wa.me']);
 		expect(root.querySelector('[data-area="share"] button')?.textContent).toContain('Copy link');
 	});
+
+	it.each([
+		['card', 'campaign', CARD],
+		['letter', 'campaign', LETTER],
+		['feature', 'campaign', FEATURE],
+		['donation page', 'donation_page', defaultDonationPage()]
+	] as const)(
+		'ends the top bar on a Share link to the share section, on the %s',
+		(_, type, page) => {
+			const root = mount(<PageView {...props(type, page)} />);
+			const link = root.querySelector<HTMLAnchorElement>('.page-mast a');
+			expect(link?.textContent).toBe('Share');
+			const target = link?.getAttribute('href') ?? '';
+			expect(target).toMatch(/^#./);
+			expect(root.querySelector(target)?.getAttribute('data-area')).toBe('share');
+		}
+	);
 });
 
 describe('the preview', () => {
