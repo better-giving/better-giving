@@ -348,7 +348,9 @@ export function Masthead({
 							{letters}
 						</span>
 					)}
-					<p className="page-mast-name">{name}</p>
+					<p className="page-mast-name" title={name}>
+						{name}
+					</p>
 					{share}
 				</div>
 			</header>
@@ -371,7 +373,9 @@ export function Masthead({
 				) : (
 					<>
 						{art('')}
-						<p className="page-mast-name">{name}</p>
+						<p className="page-mast-name" title={name}>
+							{name}
+						</p>
 					</>
 				)}
 				{share}

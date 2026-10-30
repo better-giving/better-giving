@@ -131,3 +131,60 @@ describe('every plane is a white card on the page', () => {
 		}
 	});
 });
+
+describe('a rule drawn inside a white surface is the plane’s quieter one', () => {
+	// the rules standing between rows or divisions inside a plane, the dialog or a sheet. each draws
+	// `--admin-rule` on its own, `--admin-divider` against the page, and the remap trades its colour
+	// for `--admin-divider-plane` wherever it stands on white, which ./tokens.css states at
+	// `--admin-divider-plane`.
+	const INSIDE = [
+		'.adm-section + .adm-section',
+		'.adm-setting',
+		'.adm-triggers > li + li',
+		'.adm-literals > li + li',
+		'.adm-disclosure[open]',
+		'.adm-sheet__head',
+		'.adm-sheet__foot'
+	];
+	const surfaces = [
+		...painting
+			.filter(({ selector }) => !NOT_A_GROUND.has(selector) && !NOT_A_CARD.has(selector))
+			.map(({ selector }) => selector),
+		'.adm-dialog',
+		'.adm-sheet'
+	];
+	const remap = rulesIn(css).filter(
+		({ selector, stated }) =>
+			/^:is\([^)]*\) :is\([^)]*\)$/.test(selector) &&
+			stated.get('border-color') === 'var(--admin-divider-plane)' &&
+			!stated.has('box-shadow')
+	);
+	const [outer, inner] = (remap[0]?.selector.match(/:is\(([^)]*)\)/g) ?? []).map((list) =>
+		list
+			.slice(4, -1)
+			.split(',')
+			.map((one) => one.trim())
+	);
+
+	it('is drawn by one rule', () => {
+		expect(remap).toHaveLength(1);
+	});
+
+	it('stands on every white surface that holds rows: each plane, the dialog and a sheet', () => {
+		expect([...(outer ?? [])].sort()).toEqual([...surfaces].sort());
+	});
+
+	it('names every rule drawn inside one, and each still draws the page’s rule on its own', () => {
+		expect([...(inner ?? [])].sort()).toEqual([...INSIDE].sort());
+		for (const selector of INSIDE) {
+			// a selector may head more than one rule, and the rule is in whichever states it.
+			const own = rulesIn(css)
+				.filter((rule) => rule.selector === selector)
+				.flatMap(({ stated }) => [
+					stated.get('border-block-start'),
+					stated.get('border-block-end')
+				]);
+			expect(own, selector).toContain('var(--admin-rule)');
+		}
+	});
+});

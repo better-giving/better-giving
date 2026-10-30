@@ -80,8 +80,9 @@ import { Button } from '../controls/Button.jsx';
  * @property {ReactNode} [wayOut] the way out: the dashboard's sign-out, drawn at the far end of the
  * top bar at every width. unstated, it is the quiet button a specimen shows; `null` is none.
  * absence cannot say that: a slot with a default of its own reads nothing stated as a request for
- * the default. a way out carrying a mark and a word wraps the word in `.adm-signout__word`, and the
- * top bar shows the word and not the mark.
+ * the default. a way out is a `.adm-signout` holder with its button directly inside, the shape the
+ * top bar's touch target is aimed at; a way out carrying a mark and a word wraps the word in
+ * `.adm-signout__word`, and the top bar shows the word and not the mark.
  * @property {ReactNode} [foot] what the rail's foot holds, at the wide width only. absent or `null`,
  * no foot is drawn.
  * @property {ReactNode} [head] the panel's strip, over the page: `.adm-headstrip`, holding what the
@@ -218,14 +219,17 @@ export function AppShell({
 	const inSheet =
 		at !== undefined && sheet.some((group) => group.destinations.some((d) => d.label === at.label));
 
-	/* the specimen's own button carries `.adm-signout` for the same reason a caller's node does —
-	   the top bar needs it to keep from shrinking and to stand at the bar's far end. */
+	/* the specimen's way out is shaped as packages/app/src/routes/_app.tsx's: a `.adm-signout` holder,
+	   which keeps the way out from shrinking and stands it at the bar's far end, round the button,
+	   which ../../styles/adm.css aims at at the touch floor as `.adm-identity > .adm-signout > .adm-btn`. */
 	/** @type {ReactNode} */
 	const out =
 		wayOut === undefined ? (
-			<Button variant="quiet" size="sm" mark="log-out" className="adm-signout">
-				<span className="adm-signout__word">Sign out</span>
-			</Button>
+			<span className="adm-signout">
+				<Button variant="quiet" size="sm" mark="log-out">
+					<span className="adm-signout__word">Sign out</span>
+				</Button>
+			</span>
 		) : (
 			wayOut
 		);

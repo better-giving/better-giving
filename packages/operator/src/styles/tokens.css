@@ -400,10 +400,10 @@
 
 		   `--admin-page-wash` is the page as it is painted: a radial tint of the accent's rung 2 at the
 		   upper left and one of `--admin-wash-lavender` at the lower right, each fading to
-		   `transparent` over a solid `--admin-neutral-2`, read as one fixed sheet behind the content
-		   rather than a band that scrolls with it. `--admin-page` is that solid, and is what every
-		   rule that needs one flat colour reads — the document's own ground, a floated date label's
-		   fallback and the mail. the wash's darkest point is the lavender's centre, which is lighter
+		   `transparent` over a solid `--admin-neutral-2`, painted once behind the whole shell
+		   (`.adm-shell` in ./adm.css says where it holds still and where it scrolls). `--admin-page` is
+		   that solid, and is what every rule that needs one flat colour reads — the document's own
+		   ground, a floated date label's fallback and the mail. the wash's darkest point is the lavender's centre, which is lighter
 		   than rung 3, so every pair measured on the page in this file is quoted there as well, and
 		   every one clears its floor at that point.
 
@@ -428,13 +428,15 @@
 		   pattern. an empty state is a sentence rather than a graphic by rule, so there is no place
 		   left where an image would be the honest answer. */
 		--admin-page: var(--admin-neutral-2);
-		/* the wash's second tint: hue 300 at the accent's rung 2 lightness and chroma, so it is no
-		   darker than the accent's own tint and the page's pairs measured at either centre agree to a
-		   point. it is no rung of a ladder and stands on no ground of its own: the wash is the one
-		   thing that reads it. */
+		/* the wash's second tint: hue 300 at the accent's rung 2 lightness and chroma. at hue 300 the
+		   same lightness and chroma come out a shade darker than the accent's own tint (APCA Y 0.9261
+		   against 0.9310), so the wash's darkest point is the lavender's centre, and the page's pairs
+		   measured at either centre agree to within a point of Lc. it is no rung of a ladder and
+		   stands on no ground of its own: the wash is the one thing that reads it. */
 		--admin-wash-lavender: oklch(0.978 0.017 300);
-		/* the sizes are shares of the window the sheet is fixed to, so the two tints keep their place
-		   at a phone's width and a desk's alike. */
+		/* the sizes are shares of the box the wash is painted over: the window wherever the wash holds
+		   still, and the whole scrolled shell on iOS Safari, where it scrolls with the page and the
+		   tints stretch with a long one (`.adm-shell` in ./adm.css). */
 		--admin-page-wash:
 			radial-gradient(80% 65% at 15% 30%, var(--admin-accent-2), transparent 70%),
 			radial-gradient(65% 65% at 95% 90%, var(--admin-wash-lavender), transparent 70%),

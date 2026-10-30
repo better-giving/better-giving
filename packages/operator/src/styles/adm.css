@@ -401,14 +401,18 @@
 	   a target's reach past the drawn edge is half the floor less the drawn size, and whatever
 	   stands beside one is set at least that far off it, so no target lies over another control: a
 	   row's Remove and the brand colour's well each stand further off their box than their target
-	   reaches, and a row of choice chips stands its rows apart by both reaches together. ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
+	   reaches, a row of choice chips stands its rows apart by both reaches together, and the top
+	   bar's globe and way out reach no further than the bar's breathing room and the gap off the
+	   name. ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
 	   neighbours, so a control joining the list is named in that spec too.
 
 	   an `<input>` draws no `::before`, so the brand colour's well is aimed at through the label
 	   around it (`.adm-wellwrap`): a press on a label is a press on the control inside it. */
 	.adm-rows__row > .adm-rows__remove::before,
 	.adm-wellwrap::before,
-	.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip::before {
+	.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip::before,
+	.adm-identity__lead > .adm-btn::before,
+	.adm-identity > .adm-signout > .adm-btn::before {
 		content: '';
 		position: absolute;
 		inline-size: max(var(--admin-touch-min), 100%);
@@ -4923,7 +4927,7 @@
 	   would paint over the card's own surface. a shadow takes no press: before the script, a press
 	   on the ground reaches the page under it, which is the one way out a question with no script
 	   over it has besides its own controls. it stands at step 3 of the ladder stated at `.adm-rail`,
-	   over the bar and the band as the top layer is.
+	   over the phone's bar and the top bar as the top layer is.
 
 	   `:not(:modal)` because the lift and the modifier coming off are two moments — the element is in
 	   the top layer a frame before ../behaviour/Dialog.tsx's render takes the class away, and a
@@ -5657,9 +5661,12 @@
 	   height, so a short screen still fills the viewport; name a third track for the rail and the
 	   leftover goes to a row with nothing standing in it.
 
-	   the shell paints the page's wash, fixed to the window, so the rail and the page beside it
-	   stand on one sheet that does not scroll with either; the page and the wide rail paint no
-	   ground of their own over it. */
+	   the shell paints the page's wash, and the page and the wide rail paint no ground of their own
+	   over it, so the rail and the page beside it stand on one sheet. from the wide breakpoint the
+	   shell is the window's height and the panel is its one scroller, so the sheet never moves. below
+	   it the document scrolls, and the wash is fixed to the window where the browser honours
+	   `background-attachment: fixed`; iOS Safari ignores it, so on an iPhone the wash scrolls with
+	   the page and its sizes are shares of the whole shell. */
 	.adm-shell {
 		min-block-size: 100dvh;
 		display: grid;
@@ -5711,7 +5718,11 @@
 	   takes its ellipsis.
 
 	   its height is a row's floor and a step of breathing room either side, so the bar is the same
-	   height whatever the way out is drawn as; the wide breakpoint stands it taller. */
+	   height whatever the way out is drawn as; the wide breakpoint stands it taller. that is the
+	   bar's height and not a target's: the globe and the way out are small buttons,
+	   `--admin-control-height-sm` tall, and each is aimed at at `--admin-touch-min` through the
+	   shared target under `a target past the drawn edge`, which reaches into that breathing room
+	   and no further. */
 	.adm-identity {
 		--_ground: var(--admin-surface);
 		display: flex;
@@ -5817,9 +5828,8 @@
 
 	/* the heading is small print, not a destination, and stands tight to the group's first entry.
 	   it is a name over the names under it, so it takes the strong label weight in the muted ink.
-	   it is set in sentence case as every word on these screens is, though the approved mockup sets
-	   it in capitals: ./tokens.css has no caps role (the type section), and the weight and the
-	   ink are what the system says emphasis with instead. */
+	   it is set in sentence case as every word on these screens is: ./tokens.css has no caps role
+	   (the type section), and the weight and the ink are what the system says emphasis with. */
 	.adm-rail__heading {
 		padding: 0 var(--admin-space-4) var(--admin-space-2);
 		font-size: var(--admin-caption-size);
@@ -5957,7 +5967,7 @@
 	/* the shell's skip link: its first stop, off the screen until it takes focus, and then a button
 	   over the top corner of whatever is there, so arriving on it moves nothing under it. it is
 	   `.adm-vh` in ./base.css, restated, because that utility never comes back on focus. it stands at
-	   step 3 of the ladder stated at `.adm-rail` above, over the bar and the band alike. */
+	   step 3 of the ladder stated at `.adm-rail` above, over the phone's bar and the top bar alike. */
 	.adm-skip {
 		position: fixed;
 		inset-block-start: var(--admin-space-4);
@@ -6875,10 +6885,28 @@
 	}
 
 	/* a rule the page draws between two of its own divisions or rows is `--admin-divider`, drawn
-	   against the page; standing inside a white plane, the same rule is the plane's quieter one, as
-	   a table's rows and a group's head are. */
-	:is(.adm-status--section, .adm-group, .adm-record, .adm-plane, .adm-card, .adm-panel)
-	:is(.adm-section + .adm-section, .adm-setting, .adm-triggers > li + li, .adm-literals > li + li) {
+	   against the page; standing inside a white surface — a plane, the dialog or a sheet — the same
+	   rule is the plane's quieter one, as a table's rows and a group's head are. a sheet's head and
+	   foot are always on the sheet, so they always take it. ./plane-ground.spec.ts pins both lists. */
+	:is(
+		.adm-status--section,
+		.adm-group,
+		.adm-record,
+		.adm-plane,
+		.adm-card,
+		.adm-panel,
+		.adm-dialog,
+		.adm-sheet
+	)
+	:is(
+		.adm-section + .adm-section,
+		.adm-setting,
+		.adm-triggers > li + li,
+		.adm-literals > li + li,
+		.adm-disclosure[open],
+		.adm-sheet__head,
+		.adm-sheet__foot
+	) {
 		border-color: var(--admin-divider-plane);
 	}
 

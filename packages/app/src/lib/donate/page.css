@@ -68,8 +68,9 @@
  * feature's cover on a phone and `--page-hero` on a laptop, where the box stands over the cover's
  * right side `--page-gap-lead` off its top. the feature's cover is at least `--page-hero` and grows
  * with the words on it, and a cover the words have grown carries the box down with it. at the
- * card's 16px root the top bar is 60px on a phone and 68px from 60rem, and `--page-gap-lead` under
- * it 20px, so 80px and 88px stand ahead of the first section.
+ * card's 16px root the top bar is a 44px row, its inset over and under it and its 1px rule, 61px on a
+ * phone and 69px from 60rem, and `--page-gap-lead` under it 20px, so 81px and 89px stand ahead of the
+ * first section. the organisation's name is cut to one line, so no name, however long, adds to that.
  *
  * space. grouping is the operator surfaces' squint test
  * (packages/operator/src/styles/squint.spec.ts), each tier strictly wider than the one inside it,
@@ -398,11 +399,16 @@ body {
 	text-decoration: underline;
 }
 
-/* a name with no space in it wraps inside the column rather than widening the document: `anywhere`
-   is what keeps a 375px viewport off a horizontal scrollbar for a name longer than the column. */
+/* one line, cut with an ellipsis and carried whole in its `title` (./page-view.tsx): a name that
+   wrapped would stand the bar taller and push the box down off the first screen the header's sum
+   counts. it is a flex item at zero rather than the default minimum, so a long name gives up its
+   width to Share rather than widening the document past a 375px viewport. */
 .page-mast-name {
 	margin: 0;
-	overflow-wrap: anywhere;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 	font-weight: var(--_w-bold);
 	color: var(--_n11);
 }
@@ -444,7 +450,6 @@ body {
 
 .page-mast-name:has(> .page-mast-logo) {
 	display: flex;
-	min-inline-size: 0;
 }
 
 .page-body {
@@ -1144,7 +1149,7 @@ body {
 }
 
 /* about us: the organisation's own words, an address or a long word among them, broken where they
-   must be rather than run out of the section, as `.page-mast-name` is. */
+   must be rather than run out of the section. */
 :is(.page-about-statement, .page-about-beneath) {
 	overflow-wrap: anywhere;
 }

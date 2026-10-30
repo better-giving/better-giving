@@ -416,6 +416,19 @@ describe('a long title', () => {
 	});
 });
 
+describe('the organisation’s name in the top bar', () => {
+	// happy-dom does no layout, so the cut is read off the sheet: a name that wrapped would stand the
+	// bar taller than the header's first-screen sum counts, and Share takes width from the name's row.
+	it('is cut to one line with an ellipsis, and gives up its width rather than widening the bar', () => {
+		expect(declared(page, '.page-mast-name')).toMatchObject({
+			'white-space': 'nowrap',
+			overflow: 'hidden',
+			'text-overflow': 'ellipsis',
+			'min-inline-size': '0'
+		});
+	});
+});
+
 describe('the squint tiers on the page', () => {
 	// `--_sp2` is an em step, so it is read at the heading's own size; the heading's largest size is
 	// the top of its clamp, where the step is widest.
