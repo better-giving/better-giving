@@ -14,6 +14,7 @@ import { getFormProps } from '@conform-to/react';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { data, Form, href, Link, useFetcher, useNavigation } from 'react-router';
 import { uuidv7 } from 'uuidv7';
+import { calendarDay } from '$lib/admin/calendar-day';
 import type { CrumbHandle } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
@@ -210,8 +211,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 									: {
 											amount: formatMinor(gift.totalMinor, gift.currency),
 											donorName: gift.donorName,
-											// the day only: it was stored as that day's UTC midnight.
-											receivedOn: gift.receivedAt.toISOString().slice(0, 10)
+											// the day the operator typed, as `readAccountingDate` in
+											// packages/app/src/lib/ledger/input-schema.ts stored it: that day's UTC midnight.
+											receivedOn: calendarDay(gift.receivedAt, 'UTC')
 										}
 						}
 		},
@@ -471,8 +473,7 @@ const CREATE_BOXES = [
 
 /** the operator's own calendar day, as the browser's clock and zone read it. */
 function localDay(at: Date): string {
-	const pad = (n: number) => String(n).padStart(2, '0');
-	return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+	return calendarDay(at, Intl.DateTimeFormat().resolvedOptions().timeZone);
 }
 
 /**
