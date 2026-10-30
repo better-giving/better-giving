@@ -69,7 +69,7 @@ export const ADMIN_TOKENS = {
 	'--admin-space-8': '1.5rem',
 	'--admin-border-width': '1px',
 	'--admin-border-width-strong': '2px',
-	'--admin-radius': '4px',
-	'--admin-radius-plane': '8px',
+	'--admin-radius': '6px',
+	'--admin-radius-plane': '12px',
 	'--admin-measure-dialog': '34rem'
 } as const;

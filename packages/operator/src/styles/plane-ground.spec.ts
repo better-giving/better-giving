@@ -8,11 +8,12 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 // rung on a white plane — a grey notch no other gate sees, because the pool lays nothing out
 // (../../vitest.config.ts).
 //
-// a plane is also a white card on the page's wash, and what makes it one is its edge and its
-// shadow rather than its fill, which is Lc 0 against the page (./tokens.css at `surfaces and
-// ink`). so every plane draws `--admin-divider` round itself and rests on `--admin-elevation-card`,
-// and the fill's painters that are not a plane on the page — chrome, and what floats over the flow
-// — are named below with what they draw instead.
+// a plane is also a white card on the page's wash, and what makes it one is its shadow rather than
+// its fill, which is Lc 0 against the page (./tokens.css at `surfaces and ink`). so every plane
+// keeps its border's width in `transparent` and rests on `--admin-elevation-card`, and a plane
+// nested in another — white on white — trades the shadow for a `--admin-divider-plane` edge. the
+// fill's painters that are not a plane on the page — chrome, and what floats over the flow — are
+// named below with what they draw instead.
 //
 // what counts as a plane is derived rather than listed: every rule that paints the plane's fill. the
 // few that paint it and are not a ground a field stands on are named below with why, so a new rule
@@ -28,6 +29,10 @@ const NOT_A_GROUND = new Map([
 	['.adm-cal', 'the calendar a date field opens, which holds day presses and no field'],
 	['.adm-table [data-pin]', "a pinned cell, inside a table's plane, which states the ground"],
 	[
+		'.adm-rail__cells .adm-dest > .adm-mark',
+		"a destination's mark tile in the rail, which holds a glyph"
+	],
+	[
 		".adm-cropper__handle:is( [data-position='nw'], [data-position='ne'], [data-position='sw'], [data-position='se'] )",
 		"a crop handle's grip, which holds nothing"
 	]
@@ -35,13 +40,13 @@ const NOT_A_GROUND = new Map([
 
 const painting = rulesIn(css).filter(({ stated }) => stated.get('background') === PLANE_FILL);
 
-const PLANE_EDGE = 'var(--admin-border-width) solid var(--admin-divider)';
+const NO_EDGE = 'var(--admin-border-width) solid transparent';
+const DIALOG_EDGE = 'var(--admin-border-width) solid var(--admin-divider)';
 const CARD_ELEVATION = 'var(--admin-elevation-card)';
 
 /** rules painting the fill that stand a field on it and are not a card on the page, and why. */
 const NOT_A_CARD = new Map([
 	['.adm-identity', 'the top band, white with the rule under it and no edge round it'],
-	['.adm-rail ~ .adm-main > .adm-head', 'the header row, white with the rule under it'],
 	['.adm-rail', "the phone's bar, which floats and wears the overlay's edge and shadow"],
 	['.adm-moresheet', "the bar's More sheet, which floats as the bar does"],
 	['.adm-sheet', 'a sheet, which floats over the flow with the overlay’s edge and shadow'],
@@ -83,17 +88,38 @@ describe('every plane is a white card on the page', () => {
 	});
 
 	it.each(planes.map(({ selector }) => selector))(
-		'%s draws the edge and the card shadow',
+		'%s draws no edge and the card shadow on the wash',
 		(selector) => {
 			const rule = planes.find((one) => one.selector === selector);
-			expect(rule?.stated.get('border')).toBe(PLANE_EDGE);
+			expect(rule?.stated.get('border')).toBe(NO_EDGE);
 			expect(rule?.stated.get('box-shadow')).toBe(CARD_ELEVATION);
 		}
 	);
 
-	it('draws the dialog with the plane edge under its own shadow', () => {
-		expect(ruleOf(css, '.adm-dialog').get('border')).toBe(PLANE_EDGE);
+	it.each(planes.map(({ selector }) => selector))(
+		'%s draws an edge and no shadow nested in another plane',
+		(selector) => {
+			const nested = rulesIn(css).filter(
+				({ selector: one, stated }) =>
+					/^:is\([^)]*\) :is\([^)]*\)$/.test(one) && stated.get('box-shadow') === 'none'
+			);
+			expect(nested).toHaveLength(1);
+			const [outer, inner] = (nested[0]?.selector.match(/:is\(([^)]*)\)/g) ?? []).map((list) =>
+				list
+					.slice(4, -1)
+					.split(',')
+					.map((one) => one.trim())
+			);
+			expect(outer).toContain(selector);
+			expect(inner).toContain(selector);
+			expect(nested[0]?.stated.get('border-color')).toBe('var(--admin-divider-plane)');
+		}
+	);
+
+	it('draws the dialog with its edge under its own shadow and the plane corner', () => {
+		expect(ruleOf(css, '.adm-dialog').get('border')).toBe(DIALOG_EDGE);
 		expect(ruleOf(css, '.adm-dialog').get('box-shadow')).toBe('var(--admin-elevation-dialog)');
+		expect(ruleOf(css, '.adm-dialog').get('border-radius')).toBe('var(--admin-radius-plane)');
 	});
 
 	it('names only rules that still paint the fill', () => {

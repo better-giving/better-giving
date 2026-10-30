@@ -52,9 +52,9 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
  * the toggle on the rail's head collapses it to an icon rail, and the choice is kept per browser,
  * so every specimen on this page follows it once the page is reloaded.
  *
- * `wayOut` reads absence as a request for the component's own quiet button and `null` as none.
- * `foot`, handed, stands in the rail's foot in its place, and `null` for both drops the rail's foot
- * rather than standing an empty one.
+ * `wayOut` reads absence as a request for the component's own quiet button and `null` as none, and
+ * stands at the far end of the top bar. `foot`, handed, stands in the rail's foot at the wide width,
+ * and absent or `null` draws no foot rather than an empty one.
  *
  * every shell's first stop is its skip link, off the screen until it takes focus: Tab once into
  * any specimen and it stands over the top corner of the window, and pressing it puts focus on that

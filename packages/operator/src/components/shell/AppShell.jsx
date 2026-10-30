@@ -59,8 +59,8 @@ import { Button } from '../controls/Button.jsx';
  * @property {ReactNode} org the operating organisation's legal name. there is no logo. it has no
  * default, and neither has `groups`: a shell that filled either in would put a fictional
  * organisation and its rail on a real deployment whose surface forgot to state its own.
- * @property {string | SiteLink | undefined} [site] the globe leading the name, in the narrow band and
- * the rail's head alike. an address is somewhere off this surface and opens in a new tab, named
+ * @property {string | SiteLink | undefined} [site] the globe leading the name in the top bar. an
+ * address is somewhere off this surface and opens in a new tab, named
  * "Open dashboard", with the address as its `title` and never printed. a `SiteLink` is somewhere
  * on it, drawn as `link` in the same tab under its own name. absent, no globe.
  * @property {string | Whereabouts | undefined} [current] the destination the reader is in: a bare
@@ -77,13 +77,13 @@ import { Button } from '../controls/Button.jsx';
  * waiting — nothing has arrived and there is nothing on it to act on — and a screen with anything
  * to do on it is read from the top. ../../styles/adm.css's `.adm-main--centred` is the rule and
  * holds why the page rather than the column carries it.
- * @property {ReactNode} [wayOut] the way out: the dashboard's sign-out. drawn in the narrow band,
- * and in the rail's foot when no `foot` is handed. unstated, it is the quiet
- * button a specimen shows; `null` is none. absence cannot say that: a slot with a default of its
- * own reads nothing stated as a request for the default. a way out carrying a mark and a word
- * wraps the word in `.adm-signout__word`, so the icon rail can show the mark alone.
- * @property {ReactNode} [foot] what the rail's foot holds in place of `wayOut`. absent, the foot
- * holds `wayOut`; a foot that comes to `null` either way is not drawn.
+ * @property {ReactNode} [wayOut] the way out: the dashboard's sign-out, drawn at the far end of the
+ * top bar at every width. unstated, it is the quiet button a specimen shows; `null` is none.
+ * absence cannot say that: a slot with a default of its own reads nothing stated as a request for
+ * the default. a way out carrying a mark and a word wraps the word in `.adm-signout__word`, and the
+ * top bar shows the word and not the mark.
+ * @property {ReactNode} [foot] what the rail's foot holds, at the wide width only. absent or `null`,
+ * no foot is drawn.
  * @property {ReactNode} [head] the panel's strip, over the page: `.adm-headstrip`, holding what the
  * caller hands it — the dashboard's trail of pages on a nested screen. absent, no strip: a screen
  * named by its tab title and its marked rail cell has nothing for one to add.
@@ -110,16 +110,18 @@ import { Button } from '../controls/Button.jsx';
 /* the key the rail's collapsed state is kept under, per browser. */
 const RAIL_STORAGE_KEY = 'bg-operator-rail';
 
-/* two arrangements from one markup order. below the shell's breakpoint: an identity band across
-   the top and a bar of tabs fixed to the foot of the viewport on a row that never wraps — a tab is
-   an equal share of the width whatever the count, so what bounds how many the bar holds is the
-   share each is left with at the 375px floor rather than a number written anywhere. a rail whose
+/* two arrangements from one markup order, under one top bar at both: the bar runs the window's
+   width and holds the identity at its start and the way out at its end. below the shell's
+   breakpoint the destinations are a bar of tabs fixed to the foot of the viewport on a row that
+   never wraps — a tab is an equal share of the width whatever the count, so what bounds how many
+   the bar holds is the share each is left with at the 375px floor rather than a number written
+   anywhere. a rail whose
    destinations state `bar` puts those on it and ends it with More, which opens a sheet holding the
    rest in the column's order, spaced and headed as the column is; a rail stating none has a tab
    per destination. the bar itself is flat: groups, marks and headings are the column's and the
-   sheet's. above it: a left column with the identity and the collapse toggle at its head, the
-   grouped destinations, and the foot; the page is a panel filling the rest of the window beside
-   it.
+   sheet's. above it: a left column under the top bar with the collapse toggle at its head, the
+   grouped destinations, and the foot when one is handed; the page fills the rest of the window
+   beside it.
    the identity slot renders the operating organisation's legal name — there is no logo. */
 /** @param {AppShellProps} props */
 export function AppShell({
@@ -216,9 +218,8 @@ export function AppShell({
 	const inSheet =
 		at !== undefined && sheet.some((group) => group.destinations.some((d) => d.label === at.label));
 
-	/* settled once and drawn in both slots, so the two cannot disagree about which control the way
-	   out is. the specimen's own button carries `.adm-signout` for the same reason a caller's node
-	   does — the band needs it to keep from shrinking, and the icon rail keys its foot off it. */
+	/* the specimen's own button carries `.adm-signout` for the same reason a caller's node does —
+	   the top bar needs it to keep from shrinking and to stand at the bar's far end. */
 	/** @type {ReactNode} */
 	const out =
 		wayOut === undefined ? (
@@ -229,20 +230,12 @@ export function AppShell({
 			wayOut
 		);
 
-	/* the same node as the band's when no foot is handed, because the way out is one control drawn
-	   at two widths and only one of them is ever visible: the sheet hides the band above 64rem and
-	   the foot below it. a foot that comes to nothing is dropped rather than stood empty: the box
-	   draws its own rule and its own padding, so left in place it is a divider at the end of the
-	   column with nothing under it. */
-	/** @type {ReactNode} */
-	const footing = foot === undefined ? out : foot;
-
-	/* one row at both widths: the site's globe, the name cut to one line, and the control at the far
+	/* one row at both widths: the site's globe, the name cut to one line, and the way out at the far
 	   end. the name's `title` is the whole of it wherever the cut takes the end off. */
 	/** @type {ReactNode} */
 	const lead =
 		site === undefined ? null : (
-			<span className="adm-rail__lead">
+			<span className="adm-identity__lead">
 				{typeof site === 'string' ? (
 					<Button
 						as="a"
@@ -276,9 +269,7 @@ export function AppShell({
 
 	const rail = (
 		<nav className="adm-rail" aria-label="Sections" ref={railBox}>
-			<div className="adm-rail__identity">
-				{lead}
-				{name}
+			<div className="adm-rail__head">
 				<Button
 					type="button"
 					variant="quiet"
@@ -314,13 +305,16 @@ export function AppShell({
 					</Dialog.Trigger>
 				) : null}
 			</div>
-			{footing === null ? null : <div className="adm-rail__foot">{footing}</div>}
+			{/* a foot that comes to nothing is dropped rather than stood empty: the box draws its own
+			    rule and its own padding, so left in place it is a divider at the end of the column with
+			    nothing under it. */}
+			{foot === undefined || foot === null ? null : <div className="adm-rail__foot">{foot}</div>}
 		</nav>
 	);
 
 	return (
 		<div className={collapsed ? 'adm-shell adm-shell--collapsed' : 'adm-shell'}>
-			{/* the first stop, and the way past the identity and every destination the rail holds. it
+			{/* the first stop, and the way past the top bar and every destination the rail holds. it
 			    points at the page's own id, so it works before the script arrives; once it has, the
 			    press moves focus itself and leaves the address alone, because a fragment on the address
 			    is a history entry, and Back would then land on this same page rather than leave it. */}

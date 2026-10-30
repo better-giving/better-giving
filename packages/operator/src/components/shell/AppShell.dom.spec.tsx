@@ -258,22 +258,22 @@ describe('the groups a rail is divided into', () => {
 });
 
 describe('the way out a shell draws', () => {
-	/** the controls standing in the band and the foot, at both widths. */
+	/** the controls standing in the top bar and the rail's foot. */
 	function waysOut(root: HTMLElement): Element[] {
 		return [...root.querySelectorAll('.adm-identity > .adm-signout, .adm-rail__foot > *')];
 	}
 
-	it('draws the specimen its own button, at both widths', () => {
+	it('draws the specimen its own button, once, in the top bar', () => {
 		// a bare shell — no `wayOut` override — is not mounted anywhere in this repository; the
 		// one caller (packages/app/src/routes/_app.tsx) always hands one in. this asserts the
 		// prop's own declared default regardless, since a prop with a fallback should draw one
 		// that works.
 		const root = render(AppShell, { org: ORG, groups: GROUPS });
 
-		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Sign out', 'Sign out']);
+		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Sign out']);
 	});
 
-	it('draws what a surface hands it, and the same node at both widths', () => {
+	it('draws what a surface hands it in the top bar, and no foot under the rail', () => {
 		const root = render(AppShell, {
 			org: ORG,
 			groups: GROUPS,
@@ -284,10 +284,11 @@ describe('the way out a shell draws', () => {
 			)
 		});
 
-		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Leave', 'Leave']);
+		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Leave']);
+		expect(root.querySelector('.adm-rail__foot')).toBeNull();
 	});
 
-	it('stands a handed foot in the rail and keeps the way out in the band', () => {
+	it('stands a handed foot in the rail and keeps the way out in the top bar', () => {
 		const root = render(AppShell, {
 			org: ORG,
 			groups: GROUPS,
@@ -310,9 +311,9 @@ describe('the way out a shell draws', () => {
 		expect(root.querySelector('.adm-rail__foot')).toBeNull();
 	});
 
-	it('draws no foot where the way out is none and no foot is handed', () => {
-		// the foot goes with the control rather than standing empty: the box draws its own rule and
-		// its own padding, so an empty one is a divider under nothing.
+	it('draws no foot where no foot is handed', () => {
+		// a foot that comes to nothing is dropped rather than stood empty: the box draws its own rule
+		// and its own padding, so an empty one is a divider under nothing.
 		const root = render(AppShell, { org: ORG, groups: GROUPS, wayOut: null });
 
 		expect(root.querySelector('.adm-rail__foot')).toBeNull();
@@ -320,12 +321,12 @@ describe('the way out a shell draws', () => {
 });
 
 describe('the identity a shell draws', () => {
-	/** the band's row and the rail head's, in that order. */
+	/** the top bar's row, and anything else standing as one. */
 	function heads(root: HTMLElement): Element[] {
-		return [...root.querySelectorAll('.adm-identity, .adm-rail__identity')];
+		return [...root.querySelectorAll('.adm-identity')];
 	}
 
-	it('leads the name with a link to the site in the band and the rail head, and prints no address', () => {
+	it('leads the name with a link to the site in the top bar alone, and prints no address', () => {
 		const site = 'https://better-giving.riverside.workers.dev/admin';
 		const root = render(AppShell, { groups: GROUPS, org: 'Riverbank Trust', site });
 
@@ -339,7 +340,7 @@ describe('the identity a shell draws', () => {
 			expect(head.querySelector('.adm-identity__name')?.textContent).toBe('Riverbank Trust');
 			expect(head.textContent).not.toContain(site);
 		}
-		expect(heads(root)).toHaveLength(2);
+		expect(heads(root)).toHaveLength(1);
 	});
 
 	it('leads the name with a same-tab link through the handed link where the site is on this surface', () => {
@@ -365,7 +366,7 @@ describe('the identity a shell draws', () => {
 			expect(link?.hasAttribute('target')).toBe(false);
 			expect(link?.getAttribute('data-handed')).toBe('yes');
 		}
-		expect(heads(root)).toHaveLength(2);
+		expect(heads(root)).toHaveLength(1);
 	});
 
 	it('draws the name alone where no site is handed', () => {
