@@ -84,7 +84,7 @@ const REFERENCE = /var\(\s*(--admin-[\w-]+)/g;
 // something has since reached for goes on claiming to be unread, and nothing about the tree says
 // otherwise. `exempts no token anything reads` is what fails then.
 //
-// the same twenty-six are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
+// the same twenty-five are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
 // the paragraph is what a reader meets, and this is what fails.
 const SCALE_EXEMPT = [
 	// the unread rungs of the three chromatic ladders. each ladder is twelve rungs because the rung
@@ -92,14 +92,14 @@ const SCALE_EXEMPT = [
 	// that tone is a number somebody picks.
 	//
 	// the accent: no operator screen draws a ground lighter than rung 3 or a chromatic border, so
-	// the two lightest rungs go unread, and so do rung 5, a selected ground no cell takes, rung 6,
+	// the lightest rung goes unread — rung 2 is read once, as the cool end of the page's wash — and
+	// so do rung 5, a selected ground no cell takes, rung 6,
 	// the line of a band, which no band draws, and the two between that line rung and the solid
 	// band. rung 9 joins them because this family's solid
 	// band is too bright to carry a label, which packages/operator/src/styles/tokens.css argues
-	// at `--admin-accent-solid-1`. rung 10 is unread too: the rail marks its current cell by
-	// ground alone and draws no edge.
+	// at `--admin-accent-solid-1`. rung 10 is unread too: the rail marks its current cell with a
+	// neutral chip and draws no accent edge.
 	'--admin-accent-1',
-	'--admin-accent-2',
 	'--admin-accent-5',
 	'--admin-accent-6',
 	'--admin-accent-7',

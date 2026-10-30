@@ -3,9 +3,16 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
 // a floated date label knocks the box's edge out in two halves, and the upper half is the ground the
 // box stands on: `.adm-datebox[data-floated] .adm-datefield__label` in ./adm.css reads `--_ground`,
-// and falls back to the page when nothing sets it. so every plane states `--_ground` beside its own
-// fill, and a plane added without it knocks the label out in the page's rung on a white box — a grey
-// notch no other gate sees, because the pool lays nothing out (../../vitest.config.ts).
+// and falls back to the page's solid `--admin-page` when nothing sets it. so every plane states
+// `--_ground` beside its own fill, and a plane added without it knocks the label out in the page's
+// rung on a white plane — a grey notch no other gate sees, because the pool lays nothing out
+// (../../vitest.config.ts).
+//
+// a plane is also a white card on the page's wash, and what makes it one is its edge and its
+// shadow rather than its fill, which is Lc 0 against the page (./tokens.css at `surfaces and
+// ink`). so every plane draws `--admin-divider` round itself and rests on `--admin-elevation-card`,
+// and the fill's painters that are not a plane on the page — chrome, and what floats over the flow
+// — are named below with what they draw instead.
 //
 // what counts as a plane is derived rather than listed: every rule that paints the plane's fill. the
 // few that paint it and are not a ground a field stands on are named below with why, so a new rule
@@ -28,6 +35,19 @@ const NOT_A_GROUND = new Map([
 
 const painting = rulesIn(css).filter(({ stated }) => stated.get('background') === PLANE_FILL);
 
+const PLANE_EDGE = 'var(--admin-border-width) solid var(--admin-divider)';
+const CARD_ELEVATION = 'var(--admin-elevation-card)';
+
+/** rules painting the fill that stand a field on it and are not a card on the page, and why. */
+const NOT_A_CARD = new Map([
+	['.adm-identity', 'the top band, white with the rule under it and no edge round it'],
+	['.adm-rail ~ .adm-main > .adm-head', 'the header row, white with the rule under it'],
+	['.adm-rail', "the phone's bar, which floats and wears the overlay's edge and shadow"],
+	['.adm-moresheet', "the bar's More sheet, which floats as the bar does"],
+	['.adm-sheet', 'a sheet, which floats over the flow with the overlay’s edge and shadow'],
+	['.adm-dialog', 'the dialog, which takes the edge and the deeper shadow it floats with']
+]);
+
 describe('every plane states the ground a floated date label knocks out in', () => {
 	it('is read by the floated label, with the page as its fallback', () => {
 		expect(
@@ -47,6 +67,41 @@ describe('every plane states the ground a floated date label knocks out in', () 
 			const rule = painting.find((one) => one.selector === selector);
 			expect(rule, selector).toBeDefined();
 			expect(rule?.stated.get('--_ground'), selector).toBeUndefined();
+		}
+	});
+});
+
+describe('every plane is a white card on the page', () => {
+	const planes = painting.filter(
+		({ selector }) => !NOT_A_GROUND.has(selector) && !NOT_A_CARD.has(selector)
+	);
+
+	it('finds the planes it is meant to be guarding', () => {
+		// a floor rather than the count today: the card, the panel, the plane, the record, the group
+		// and the status section.
+		expect(planes.length).toBeGreaterThanOrEqual(6);
+	});
+
+	it.each(planes.map(({ selector }) => selector))(
+		'%s draws the edge and the card shadow',
+		(selector) => {
+			const rule = planes.find((one) => one.selector === selector);
+			expect(rule?.stated.get('border')).toBe(PLANE_EDGE);
+			expect(rule?.stated.get('box-shadow')).toBe(CARD_ELEVATION);
+		}
+	);
+
+	it('draws the dialog with the plane edge under its own shadow', () => {
+		expect(ruleOf(css, '.adm-dialog').get('border')).toBe(PLANE_EDGE);
+		expect(ruleOf(css, '.adm-dialog').get('box-shadow')).toBe('var(--admin-elevation-dialog)');
+	});
+
+	it('names only rules that still paint the fill', () => {
+		for (const selector of NOT_A_CARD.keys()) {
+			expect(
+				painting.some((one) => one.selector === selector),
+				selector
+			).toBe(true);
 		}
 	});
 });
