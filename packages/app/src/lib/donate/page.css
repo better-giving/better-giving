@@ -86,9 +86,12 @@
  * the form's ladder and the operator surfaces' share (packages/form/src/styles/tokens.css): 1 the app
  * background, 2 a subtle background, 3 a control's, 4 its hover, 5 its press, 6 a separator, 7 a
  * border. the page ground, `--page-ground`, is rung 1, and so is the card, which the form draws.
- * a plane — the card's panel, the letter's cover frame, a tier card — is rung 2, and the card
- * standing on the card's panel is a box on a plane. a plane is told from the ground by its fill and
- * has no visible edge: its border keeps its width in `transparent`, so nothing moves. About us
+ * a plane — the card's panel, the letter's cover frame, a tier card — is a white card on that
+ * ground, as an operator screen's planes are: `--page-plane`, rung 1, with a rung 6 edge,
+ * `--page-plane-edge`, and a soft shadow, `--page-plane-lift`, drawn in a solid rung because the
+ * ground under it is known. the face is the ground's own rung, so the edge and the shadow are what
+ * tell a plane from the page, and the card standing on the card's panel is a box on a plane. the
+ * ground stays one solid rung: the operator surfaces' wash is theirs alone. About us
  * stands on `--page-band`, rung 2, a band one rung off the page it crosses. a cover before its
  * photo arrives is rung 3, the operator surfaces' sunken well (`--admin-surface-sunken`). a rule
  * between rows of one list is a separator, rung 6, and nothing between sections is a rule. what a
@@ -206,6 +209,9 @@ body {
 	--page-brand-mark: calc(var(--_root-size) * 1.4);
 
 	--page-ground: var(--_n1);
+	--page-plane: var(--_n1);
+	--page-plane-edge: var(--_n6);
+	--page-plane-lift: 0 1px 3px var(--_n5);
 	--page-band: var(--_n2);
 	--page-quiet: var(--_n10);
 	--page-track: var(--_n3);
@@ -416,8 +422,8 @@ body {
 }
 
 /* the card. on a phone its cover runs edge to edge, `--page-gap-lead` under the
-   masthead, so the logo never touches it. wide, the page is one panel
-   on the plane's `--_n2`: the cover across its top, and under it the words beside the box. */
+   masthead, so the logo never touches it. wide, the page is one panel, a plane: the cover across
+   its top, and under it the words beside the box. */
 .page[data-layout='card'] [data-area='cover'] {
 	margin-inline: calc(-1 * var(--page-gutter));
 }
@@ -447,9 +453,10 @@ body {
 		row-gap: var(--page-gap-group);
 		align-items: start;
 		padding: 0 var(--page-card-inset) var(--page-card-inset);
-		background: var(--_n2);
-		border: var(--_border) solid transparent;
+		background: var(--page-plane);
+		border: var(--_border) solid var(--page-plane-edge);
 		border-radius: var(--_r);
+		box-shadow: var(--page-plane-lift);
 	}
 
 	/* the panel keeps the page's gutter until the container is wider than the panel, and the masthead
@@ -503,9 +510,10 @@ body {
    lede, and its tiers after those; wide, the rail is a column beside the reading column. */
 .page[data-layout='letter'] [data-area='cover'] {
 	padding: var(--_sp2);
-	background: var(--_n2);
-	border: var(--_border) solid transparent;
+	background: var(--page-plane);
+	border: var(--_border) solid var(--page-plane-edge);
 	border-radius: var(--_r);
+	box-shadow: var(--page-plane-lift);
 }
 
 .page[data-layout='letter'] [data-area='cover'] .page-cover {
@@ -964,10 +972,11 @@ body {
 	flex-direction: column;
 	gap: var(--_sp2);
 	padding: var(--_sp5);
-	background: var(--_n2);
+	background: var(--page-plane);
 	color: var(--_n11);
-	border: var(--_border) solid transparent;
+	border: var(--_border) solid var(--page-plane-edge);
 	border-radius: var(--_r);
+	box-shadow: var(--page-plane-lift);
 }
 
 .page-tiers[data-shape='cards'] .page-tier-amount {

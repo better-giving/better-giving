@@ -292,12 +292,12 @@ const hsv = (h: number, s: number, v: number) => {
 const BRANDS: (string | null)[] = [null, '#000000', '#808080', '#ffffff'];
 for (let h = 0; h < 360; h += 5) BRANDS.push(hsv(h, 1, 1), hsv(h, 1, 0.45), hsv(h, 0.35, 0.85));
 
-/** where text stands: the page ground, the form's card on `--_n1`, a plane on `--_n2`, and the
- * About us band. */
+/** where text stands: the page ground, the form's card on `--_n1`, a plane on `--page-plane`, and
+ * the About us band. */
 const GROUNDS = {
 	page: { ground: '--page-ground', scope: {} },
 	card: { ground: '--_n1', scope: {} },
-	plane: { ground: '--_n2', scope: {} },
+	plane: { ground: '--page-plane', scope: {} },
 	band: {
 		ground: '--page-band',
 		scope: declared(page, ".page[data-layout='feature'] .page-about-area")

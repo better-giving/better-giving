@@ -24,9 +24,11 @@ export const ADMIN_TOKENS = {
 	// ---- colour ----
 	// the ground the document is read on, the plane its body is set on, and the two grounds a block
 	// on that plane sits on. the four are the same stack an operator screen is built from: a page, a
-	// plane on it, and the two bands on the plane, which share a rung in ./tokens.css today.
-	'--admin-page': 'oklch(0.994 0.002 250)',
-	'--admin-surface': 'oklch(0.986 0.003 250)',
+	// plane on it, and the two bands on the plane, which share a rung in ./tokens.css today. the page
+	// is the solid `--admin-page` and never its wash: a gradient is a background image, which a mail
+	// client may drop, and the solid is the wash's mid tone.
+	'--admin-page': 'oklch(0.986 0.003 250)',
+	'--admin-surface': 'oklch(0.994 0.002 250)',
 	'--admin-surface-sunken': 'oklch(0.965 0.005 250)',
 	'--admin-surface-fill': 'oklch(0.965 0.005 250)',
 	'--admin-divider': 'oklch(0.878 0.011 250)',
