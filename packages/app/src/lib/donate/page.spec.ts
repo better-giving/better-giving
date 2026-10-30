@@ -292,10 +292,12 @@ const hsv = (h: number, s: number, v: number) => {
 const BRANDS: (string | null)[] = [null, '#000000', '#808080', '#ffffff'];
 for (let h = 0; h < 360; h += 5) BRANDS.push(hsv(h, 1, 1), hsv(h, 1, 0.45), hsv(h, 0.35, 0.85));
 
-/** where text stands: the page ground, the form's card on `--_n1`, a plane on `--page-plane`, and
- * the About us band. */
+/** where text stands: the page ground, the wash's two tints at full strength, which is the wash's
+ * darkest point, the form's card on `--_n1`, a plane on `--page-plane`, and the About us band. */
 const GROUNDS = {
 	page: { ground: '--page-ground', scope: {} },
+	washBrand: { ground: '--page-wash-brand', scope: {} },
+	washWarm: { ground: '--page-wash-warm', scope: {} },
 	card: { ground: '--_n1', scope: {} },
 	plane: { ground: '--page-plane', scope: {} },
 	band: {
@@ -344,9 +346,12 @@ describe('text clears 4.5:1 for every brand colour', () => {
 			expect(floor(shade, ground, '--page-quiet'), ground).toBeGreaterThanOrEqual(4.5);
 	});
 
-	// a link and a tier's amount are drawn in it on the page ground, on a card and on a plane.
+	// a link, the top bar's Share and a tier's amount are drawn in it on the page ground and its
+	// wash, on a card and on a plane.
 	it.each(SHADES)('the primary as ink on the page ground, a card and a plane, %s', (shade) => {
 		expect(floor(shade, 'page', '--_p')).toBeGreaterThanOrEqual(4.5);
+		expect(floor(shade, 'washBrand', '--_p')).toBeGreaterThanOrEqual(4.5);
+		expect(floor(shade, 'washWarm', '--_p')).toBeGreaterThanOrEqual(4.5);
 		expect(floor(shade, 'card', '--_p')).toBeGreaterThanOrEqual(4.5);
 		expect(floor(shade, 'plane', '--_p')).toBeGreaterThanOrEqual(4.5);
 	});

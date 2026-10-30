@@ -48,7 +48,8 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 // keeps the box ahead of the story and everything after it, which ./page-view.dom.spec.tsx holds.
 // the box is drawn exactly once, and no ancestor of it clips or transforms it.
 //
-// the masthead stands above every page and names the organisation. with a logo, a logo at least
+// the masthead is the top bar over every page: it names the organisation at its start and, on a
+// page with a share section, ends on a Share link to it. with a logo, a logo at least
 // twice as wide as it is tall stands in for the name and carries it as its alt, and a narrower one
 // stands beside the name and says nothing of its own; the stored image's width and height decide.
 // with none, a badge of the name's initials stands beside the name, in the page's brand fill and
@@ -119,7 +120,7 @@ export function PageView(props: PageViewProps) {
 			layout={shape?.layout ?? 'donation'}
 			{...(className === undefined ? {} : { className })}
 		>
-			<Masthead name={org.name} logo={props.logo ?? null} />
+			<Masthead name={org.name} logo={props.logo ?? null} shareTarget={SHARE_ID} />
 			<main className="page-body">
 				{shape === null ? (
 					<DonationLayout {...props} />
@@ -128,7 +129,7 @@ export function PageView(props: PageViewProps) {
 				)}
 			</main>
 			<footer className="page-foot">
-				<section className="page-end" {...area('share')}>
+				<section className="page-end" id={SHARE_ID} {...area('share')}>
 					<div className="page-in">
 						<Share
 							sharing={props.sharing}
@@ -143,6 +144,9 @@ export function PageView(props: PageViewProps) {
 		</PageRoot>
 	);
 }
+
+/** the share section's id, which the top bar's Share link jumps to. */
+const SHARE_ID = 'page-share';
 
 /** the donation box, inert in the preview, where a click on it opens the settings it draws. */
 function Box({ props, hideProgramSelect }: { props: PageViewProps; hideProgramSelect: boolean }) {
@@ -320,11 +324,20 @@ function DonationLayout(props: PageViewProps) {
 
 export function Masthead({
 	name,
-	logo
+	logo,
+	shareTarget
 }: {
 	readonly name: string;
 	readonly logo: PageLogo | null;
+	/** the id of the page's share section, which a Share link at the bar's end jumps to; absent where none. */
+	readonly shareTarget?: string | undefined;
 }) {
+	const share =
+		shareTarget === undefined ? null : (
+			<a className="page-mast-share" href={`#${shareTarget}`}>
+				Share
+			</a>
+		);
 	if (logo === null) {
 		const letters = initials(name);
 		return (
@@ -336,6 +349,7 @@ export function Masthead({
 						</span>
 					)}
 					<p className="page-mast-name">{name}</p>
+					{share}
 				</div>
 			</header>
 		);
@@ -360,6 +374,7 @@ export function Masthead({
 						<p className="page-mast-name">{name}</p>
 					</>
 				)}
+				{share}
 			</div>
 		</header>
 	);

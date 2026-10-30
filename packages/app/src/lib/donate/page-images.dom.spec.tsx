@@ -94,7 +94,7 @@ describe('the logo atop the page', () => {
 		expect(logo?.getAttribute('src')).toBe(`/image/${LOGO}`);
 		expect(logo?.getAttribute('alt')).toBe(ORG);
 		expect(logo?.parentElement?.className).toBe('page-mast-name');
-		expect(mast?.textContent).toBe('');
+		expect(logo?.parentElement?.textContent).toBe('');
 	});
 
 	it.each([
