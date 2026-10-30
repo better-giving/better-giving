@@ -65,6 +65,9 @@ export const clientMiddleware: Route.ClientMiddlewareFunction[] = [
 /** where the globe beside the organisation's name goes: the Donation page's edit page. */
 const DONATION_PAGE_EDITOR = { href: '/admin/donation-page', label: 'Donation page' } as const;
 
+/** the top bar's way to the published Donation page (./donate.tsx), drawn for every operator. */
+const DONATION_PAGE = { href: '/donate', label: 'Open donation page' } as const;
+
 // the sheet every screen beneath this layout wears, linked once here rather than by each of them.
 export const links = operatorLinks;
 
@@ -128,6 +131,7 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 				// ($lib/admin/screen-title.ts).
 				org={loaderData.orgName ?? APP_NAME}
 				site={DONATION_PAGE_EDITOR}
+				pageLink={DONATION_PAGE}
 				groups={destinationGroupsFor(loaderData.deployer)}
 				link={RouterLink}
 				current={at}

@@ -118,6 +118,20 @@ it('opens the Donation page from the globe beside the organisation’s name', as
 	expect(globes.map((a) => a.getAttribute('target'))).toEqual(globes.map(() => null));
 });
 
+// /donate is public, so the link to it is every operator's and not one of the deployer's
+// destinations ($lib/admin/destinations.ts).
+it.each([
+	['the deployer', true],
+	['a member', false]
+])('gives %s the top bar link to the published donation page', async (_, deployer) => {
+	const root = await frameAt('/admin/forms', deployer);
+	const links = [...root.querySelectorAll('.adm-pagelink > a')];
+
+	expect(links.map((a) => [a.getAttribute('href'), a.getAttribute('aria-label')])).toEqual([
+		['/donate', 'Open donation page']
+	]);
+});
+
 it('draws the Donation page inside the frame, as every screen is', async () => {
 	const root = await frameAt('/admin/donation-page');
 
