@@ -157,7 +157,11 @@ export function CopyControl({
 				onClick={copy}
 				aria-disabled={disabled || undefined}
 				aria-label={spoken}
-				className="adm-btn adm-btn--quiet adm-btn--sm"
+				className={
+					wording === undefined
+						? 'adm-btn adm-btn--quiet adm-btn--sm adm-btn--icon'
+						: 'adm-btn adm-btn--quiet adm-btn--sm'
+				}
 			>
 				{wording === undefined ? (
 					<>

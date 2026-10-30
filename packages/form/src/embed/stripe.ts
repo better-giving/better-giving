@@ -672,10 +672,11 @@ export function createPaymentSurface(
 			// `layout` is what makes the rails read as a list of options rather than as one box
 			// with a seam across it: on the accordion, `spacedAccordionItems` draws each rail in a
 			// container of its own with space between them, and the `.AccordionItem` rule in
-			// ../styles/appearance.ts draws that container bare, so a rail's fields sit on the
-			// seam the card's own controls sit on. `radios: 'never'` leaves each rail's name a bare
-			// press — its icon and its label — and what says a rail is picked is that it is the one
-			// open with its fields under it; a radio beside that is a second mark for the same fact,
+			// ../styles/appearance.ts draws that container as a choice box, the same box
+			// ../styles/rows.css draws the rails outside the frame as. `radios: 'never'` leaves each
+			// rail's name a bare press — its icon and its label — and what says a rail is picked is
+			// that it is the one open with its fields under it and the primary's edge around it; a
+			// radio beside that is a second mark for the same fact,
 			// and `offer` below narrows the group to a single rail for the length of a confirmation,
 			// where a mark of choice states one that is already over
 			// (https://docs.stripe.com/payments/payment-element#layout,

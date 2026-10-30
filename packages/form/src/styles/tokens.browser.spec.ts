@@ -58,11 +58,11 @@ const NEUTRAL = [
 /**
  * fixed literals with no relation to any seed: legibility is not allowed to depend on a host. two
  * bands and not three — the card reports success by drawing the receipt, so there is no green
- * band. a band is a rule and a ground; `--_bad` is the third name only because refusal is also
- * drawn on the control itself, and attention marks no control. "carries no step nothing spends"
- * in ../element.dom.spec.ts is what keeps a fourth from sitting here unread.
+ * band. a band is a ground and draws no line; `--_bad` is the other name only because refusal is
+ * also drawn on the control itself, and attention marks no control. "carries no step nothing
+ * spends" in ../element.dom.spec.ts is what keeps another from sitting here unread.
  */
-const SEMANTIC = ['--_bad', '--_bad-line', '--_bad-tint', '--_warn-line', '--_warn-tint'];
+const SEMANTIC = ['--_bad', '--_bad-tint', '--_warn-tint'];
 
 const COLOR_TOKENS = [...PRIMARY, ...NEUTRAL, ...SEMANTIC];
 
@@ -266,7 +266,7 @@ describe('the light-DOM card root', () => {
 		const s = parseOklch(getComputedStyle(card).color);
 
 		expect(s?.h).toBeCloseTo(70, 0);
-		expect(getComputedStyle(card).paddingLeft).toBe('12px');
+		expect(getComputedStyle(card).paddingLeft).toBe('16px');
 	});
 
 	it('declares none of the private layer anywhere else in the document', () => {
@@ -313,14 +313,13 @@ describe('the derived ramp', () => {
 		expect(RUNGS.map((token) => oklchOf(token).h)).toEqual(seeded);
 	});
 
-	// the root carries a trace and the dark rungs double it, so the ladder reads as a grey leaning
-	// one way rather than as a second colour on the card. the ceiling is the shade's: `light` leans
-	// by a hair, and `warm` and `cool` lean far enough to be read as a tone, doubled to 0.012 on the
-	// four dark rungs.
+	// every rung carries the operator ladder's trace of chroma, so the ladder reads as a grey leaning
+	// one way rather than as a second colour on the card. the ceiling is that ladder's own, 0.019 at
+	// rungs 9 and 10, and the three shades share it.
 	it.each([
-		['light', 0.004],
-		['warm', 0.012],
-		['cool', 0.012]
+		['light', 0.019],
+		['warm', 0.019],
+		['cool', 0.019]
 	])('gives the neutral steps a trace of chroma, never a colour, under %s', (shade, ceiling) => {
 		seed(`--donate-shade: ${shade};`);
 
@@ -330,12 +329,33 @@ describe('the derived ramp', () => {
 		}
 	});
 
-	it.each(['warm', 'cool'])('takes the dark rungs to 0.012 under %s', (shade) => {
+	// the operator surfaces' neutral ladder, `--admin-neutral-1` to `-12`, rung for rung: the chroma
+	// each rung carries there, under every shade.
+	const OPERATOR_CHROMA = [
+		0.002, 0.003, 0.005, 0.007, 0.009, 0.011, 0.013, 0.016, 0.019, 0.019, 0.017, 0.013
+	];
+
+	it.each(SHADES)('carries the operator ladder’s chroma on every rung under %s', (shade) => {
 		seed(`--donate-shade: ${shade};`);
 
-		for (const token of RUNGS.slice(8)) {
-			expect(oklchOf(token).c, token).toBeCloseTo(0.012, 4);
-		}
+		RUNGS.forEach((token, index) => {
+			expect(oklchOf(token).c, token).toBeCloseTo(OPERATOR_CHROMA[index] ?? Number.NaN, 4);
+		});
+	});
+
+	// and the operator ladder's lightness, rung for rung, under `light` — the one shade those
+	// surfaces have — at its own hue.
+	it('is the operator ladder under light', () => {
+		seed('');
+		const lightness = [
+			0.994, 0.986, 0.965, 0.938, 0.906, 0.878, 0.855, 0.794, 0.645, 0.54, 0.49, 0.27
+		];
+
+		RUNGS.forEach((token, index) => {
+			const rung = oklchOf(token);
+			expect(rung.l, token).toBeCloseTo(lightness[index] ?? Number.NaN, 3);
+			expect(rung.h, token).toBeCloseTo(250, 0);
+		});
 	});
 });
 
@@ -650,15 +670,14 @@ describe.each(SHADES)('text on the card under %s', (preset) => {
 		expect(contrastRatio(srgbOf('--_n11'), srgbOf('--_bad-tint'))).toBeGreaterThanOrEqual(4.5);
 	});
 
-	// one hairline shade for every box on the card: a field, a rail and the box the provider paints
-	// into are drawn with the rung the amount tray and the cadence track carry, so a field reads as
-	// the same kind of box the tiles stand in. no floor is asserted and none is claimed — the edge
-	// is a look, which ./tokens.css says at the token itself; what is held here is that the two
-	// have not been allowed to drift apart into two hairlines.
-	it('draws a control boundary at the rung the trays are drawn with', () => {
+	// one outline shade for every box on the card: a field, a rail and the box the
+	// provider paints into are found by the operator surfaces' text-box outline, rung 8. no WCAG floor
+	// is asserted and none is claimed — the edge is a look, which ./tokens.css says at the token
+	// itself; what is held here is the rung.
+	it('draws every box outline at the operator surfaces’ text-box rung', () => {
 		seed('');
 
-		expect(srgbOf('--_edge-control')).toEqual(srgbOf('--_n7'));
+		expect(srgbOf('--_edge-control')).toEqual(srgbOf('--_n8'));
 	});
 
 	// a boundary under the pointer steps down the ladder rather than up it. every bordered control
@@ -762,8 +781,8 @@ describe('the card the form draws for itself', () => {
 	it('paints the card at one lightness whatever the brand is', () => {
 		seed('--donate-primary: oklch(0.45 0.2 265);');
 
-		expect(oklchOf('--_n1').l).toBeCloseTo(0.995, 3);
-		expect(oklchOf('--_s').l).toBeCloseTo(0.995, 3);
+		expect(oklchOf('--_n1').l).toBeCloseTo(0.994, 3);
+		expect(oklchOf('--_s').l).toBeCloseTo(0.994, 3);
 	});
 
 	it('draws the two corners the whole card is built from', () => {
@@ -795,12 +814,12 @@ describe('the card the form draws for itself', () => {
 });
 
 describe('the shade seed', () => {
-	// the root the ladder is derived from, per preset: a hue and a chroma swapped on `light`'s
-	// lightness column, so every rung keeps the lightness it has under `light`.
+	// the root the ladder is derived from, per preset: a hue swapped on `light`'s lightness and
+	// chroma, so every rung keeps the lightness and the trace it has under `light`.
 	it.each([
-		['light', { l: 0.995, c: 0.001, h: 264 }],
-		['warm', { l: 0.995, c: 0.006, h: 70 }],
-		['cool', { l: 0.995, c: 0.006, h: 240 }]
+		['light', { l: 0.994, c: 0.002, h: 250 }],
+		['warm', { l: 0.994, c: 0.002, h: 70 }],
+		['cool', { l: 0.994, c: 0.002, h: 220 }]
 	])('roots the ladder at the %s ground', (shade, root) => {
 		seed(`--donate-shade: ${shade};`);
 		const s = oklchOf('--_s');
@@ -808,6 +827,25 @@ describe('the shade seed', () => {
 		expect(s.l).toBeCloseTo(root.l, 3);
 		expect(s.c).toBeCloseTo(root.c, 4);
 		expect(s.h).toBeCloseTo(root.h, 0);
+	});
+
+	// a preset a host picks has to be a look they can see: the three roots are far enough apart
+	// around the wheel that the rungs carrying the most trace land on three different 8-bit colours,
+	// which is the screen's own resolution rather than a difference only arithmetic can find.
+	it('draws a ladder of its own under each shade', () => {
+		const rungs = (shade: string) => {
+			seed(`--donate-shade: ${shade};`);
+			return ['--_n6', '--_n9', '--_n12'].map((rung) =>
+				srgbOf(rung)
+					.map((channel) => Math.round(channel * 255))
+					.join()
+			);
+		};
+		const [light, warm, cool] = SHADES.map(rungs) as [string[], string[], string[]];
+
+		for (const at of [0, 1, 2]) {
+			expect(new Set([light[at], warm[at], cool[at]]).size).toBe(3);
+		}
 	});
 
 	// the registration makes a keyword off the list invalid at computed-value time, so with nothing
@@ -829,7 +867,7 @@ describe('the corner seed', () => {
 	it.each([
 		['square', ['0px', '0px', '0px', '4px']],
 		['soft', ['8px', '4px', '4px', '4px']],
-		['round', ['12px', '8px', '4px', '8px']],
+		['round', ['16px', '8px', '4px', '8px']],
 		['a corner off the list', ['8px', '4px', '4px', '4px']]
 	])('draws %s', (name, corners) => {
 		const corner = name.includes(' ') ? 'pill' : name;

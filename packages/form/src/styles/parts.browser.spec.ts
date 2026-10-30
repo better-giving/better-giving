@@ -875,7 +875,7 @@ describe('the labels on the pair under the name', () => {
 		const [, band = ''] = painted.backgroundSize.split(' ');
 
 		expect(painted.backgroundImage).toContain(used(shadow, '--_n1'));
-		expect(painted.backgroundImage).toContain(used(shadow, '--_n3'));
+		expect(painted.backgroundImage).toContain(used(shadow, '--_n2'));
 		expect(parseFloat(band)).toBeGreaterThanOrEqual(ink(words).height);
 		// across the words and past the last letter, so no run of the edge is left inside the band's
 		// own span of it.
@@ -2321,12 +2321,13 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		}
 	);
 
-	// the open row is said in ink and ground and in nothing else. a name that went bold on the press
+	// the open row is said in ink and edge and in nothing else: the face is the white every choice
+	// stands on, open or closed (./rows.css), and the edge is the primary's. a name that went bold on the press
 	// would be re-laid out under the pointer that pressed it, which is the rule
 	// `[part~='amount-option']` in ./parts.css is held to and the whole reason `--_w-medium` exists
 	// (./tokens.css). read on the drawn word as well as on the declaration, because a weight the
 	// stack's tail resolves to the same glyphs would pass one and not the other.
-	it('opens a row in ink and ground alone, at the weight the closed row draws its name at', () => {
+	it('opens a row in ink and edge alone, at the weight the closed row draws its name at', () => {
 		const { head, row } = measured('fund');
 		const name = head.querySelector('.name') as HTMLElement;
 		const band = head.parentElement as HTMLElement;
@@ -2334,6 +2335,8 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		const weight = closed.fontWeight;
 		const ink = closed.color;
 		const ground = getComputedStyle(band).backgroundColor;
+		const edge = getComputedStyle(band).borderTopColor;
+		const edgeWidth = getComputedStyle(band).borderTopWidth;
 		const resting = name.getBoundingClientRect().width;
 
 		row.expand();
@@ -2341,7 +2344,63 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		expect(getComputedStyle(head).fontWeight).toBe(weight);
 		expect(name.getBoundingClientRect().width).toBe(resting);
 		expect(getComputedStyle(head).color).not.toBe(ink);
-		expect(getComputedStyle(band).backgroundColor).not.toBe(ground);
+		expect(getComputedStyle(band).backgroundColor).toBe(ground);
+		expect(getComputedStyle(band).borderTopColor).not.toBe(edge);
+		// one weight open and closed, so opening a row reflows nothing beside it.
+		expect(getComputedStyle(band).borderTopWidth).toBe(edgeWidth);
+	});
+
+	// forced colours paint every border in the user's one text colour, so the primary edge that marks
+	// the open row is gone there. the mode's own `Highlight` says it instead, thicker than the closed
+	// row's edge and drawn as an outline, so opening a row still moves nothing.
+	it('marks the open row where the system forces its own colours, and moves nothing', async () => {
+		const session = cdp();
+		await session.send('Emulation.setEmulatedMedia', {
+			features: [{ name: 'forced-colors', value: 'active' }]
+		});
+		try {
+			expect(matchMedia('(forced-colors: active)').matches, 'the mode is on').toBe(true);
+			const { head, row } = measured('paypal');
+			const band = head.parentElement as HTMLElement;
+			const probe = document.createElement('div');
+			probe.style.color = 'Highlight';
+			document.body.appendChild(probe);
+			const highlight = getComputedStyle(probe).color;
+			probe.remove();
+			const closed = getComputedStyle(band);
+			const closedOutline = closed.outlineStyle;
+			const closedBox = band.getBoundingClientRect();
+
+			row.expand();
+			const open = getComputedStyle(band);
+
+			expect(closedOutline).toBe('none');
+			expect(open.outlineStyle).toBe('solid');
+			expect(open.outlineColor).toBe(highlight);
+			expect(open.borderTopColor).toBe(highlight);
+			expect(Number.parseFloat(open.outlineWidth)).toBeGreaterThan(0);
+			expect(band.getBoundingClientRect().top).toBe(closedBox.top);
+			expect(band.getBoundingClientRect().width).toBe(closedBox.width);
+			expect(open.borderTopWidth).toBe(closed.borderTopWidth);
+		} finally {
+			await session.send('Emulation.setEmulatedMedia', { features: [] });
+		}
+	});
+
+	// each row is a box of its own and the next stands the item gap under it, `--_sp5` at the default
+	// root, with the first row in the node taking none (`:host(:not(:first-child))` in ./rows.css).
+	it('stands one row’s box the item gap under the one above it', () => {
+		document.documentElement.style.fontSize = '16px';
+		page(tokens);
+		const { mount } = drawn('paypal');
+		mount.setAttribute('data-donate-root', '');
+		createRows(mount).draw('Venmo', 'venmo', document.createElement('button'));
+		const [first, second] = [...mount.children].map(
+			(host) => host.shadowRoot?.querySelector('.band') as HTMLElement
+		) as [HTMLElement, HTMLElement];
+
+		expect(first.getBoundingClientRect().top).toBe(mount.getBoundingClientRect().top);
+		expect(second.getBoundingClientRect().top - first.getBoundingClientRect().bottom).toBe(20);
 	});
 
 	// the fund's mark is Chariot's single-colour icon, every path `currentColor` (../embed/rows.ts), so
@@ -2786,7 +2845,7 @@ describe('the surfaces a donor operates', () => {
 		);
 	}
 
-	it('gives every field and both trays the tiles’ own fill, and the free entry the card’s', async () => {
+	it('gives both trays the tiles’ own fill, a field a text box’s, and the free entry the card’s', async () => {
 		const { shadow } = await mount();
 		// a tile nobody has chosen: the first is chosen from the first paint and stands raised.
 		const tile = shadow.querySelector(
@@ -2796,11 +2855,13 @@ describe('the surfaces a donor operates', () => {
 
 		expect(fill).toBe(token(shadow, '--_n3'));
 		const drawn = [
-			shadow.querySelector('[part~="field"]') as HTMLElement,
 			shadow.querySelector('.segment') as HTMLElement,
 			shadow.querySelector('.tiles') as HTMLElement
 		];
 		for (const control of drawn) expect(getComputedStyle(control).backgroundColor).toBe(fill);
+		// a text box takes rung 2 inside the outline that finds it, a step off the tray's fill.
+		const field = shadow.querySelector('[part~="field"]') as HTMLElement;
+		expect(getComputedStyle(field).backgroundColor).toBe(token(shadow, '--_n2'));
 		// the entry stands on the tray at the ground a chosen tile rises to, not on the tray's own fill.
 		const entry = shadow.querySelector('[part~="amount-input"]') as HTMLElement;
 		expect(getComputedStyle(entry).backgroundColor).toBe(token(shadow, '--_n1'));
@@ -2822,20 +2883,22 @@ describe('the surfaces a donor operates', () => {
 	// identifies nothing, so the receipt is no frame and no fill at all (../styles/tokens.css argues
 	// both halves at `--_edge-control`).
 	//
-	// the two trays are that same half and they draw a frame anyway, in the one hairline every box on
-	// this card is drawn with: a tray bounds the group the way the card's edge bounds the card and
-	// identifies no control on it, and a field beside it is drawn as the same kind of box rather
-	// than a heavier one. what identifies a chosen option is that it is raised, and no tile on
-	// either tray draws an edge at all.
-	it('frames both trays in the card’s one hairline, and no tile on them', async () => {
+	// the two trays are that same half and they draw a frame anyway, in the card's separator rung,
+	// a step quieter than the outline a field is found by: a tray bounds the group the way the
+	// card's edge bounds the card and identifies no control on it. what identifies a chosen option
+	// is that it is raised, and no tile on either tray draws an edge at all.
+	it('frames both trays in the separator rung, a step quieter than a field’s outline, and no tile on them', async () => {
 		const { shadow } = await mount();
 		const tile = shadow.querySelector('[part~="amount-option"]') as HTMLElement;
+		const field = shadow.querySelector('[part~="field"]') as HTMLElement;
+		const fieldEdge = getComputedStyle(field).borderTopColor;
 
+		expect(fieldEdge).toBe(token(shadow, '--_edge-control'));
 		for (const tray of ['.segment', '.tiles']) {
 			const drawn = getComputedStyle(shadow.querySelector(tray) as HTMLElement);
 			expect(Number.parseFloat(drawn.borderTopWidth), tray).toBe(1);
 			expect(drawn.borderTopColor, tray).toBe(token(shadow, '--_n7'));
-			expect(drawn.borderTopColor, tray).toBe(token(shadow, '--_edge-control'));
+			expect(drawn.borderTopColor, tray).not.toBe(fieldEdge);
 		}
 		expect(Number.parseFloat(getComputedStyle(tile).borderTopWidth)).toBe(0);
 	});
@@ -3167,13 +3230,15 @@ describe('what a pointer is answered with', () => {
 	}
 
 	// the note and the tribute stand on the amount step, so a fresh card already draws two of them.
-	// unticked the box is the field's construction, so it answers the way a field does.
-	it('steps the tick box to the edge a field steps to', async () => {
+	// unticked the box is the operator surfaces' tick box, a rung-9 edge, and it steps that edge to
+	// rung 11 as theirs does.
+	it('steps the tick box from its rung-9 edge to rung 11', async () => {
 		const { shadow } = await mount();
 		const box = shadow.querySelector(".step:not([hidden]) [part~='checkbox']") as HTMLInputElement;
 
+		expect(getComputedStyle(box).borderTopColor).toBe(used(shadow, '--_n9'));
 		expect((await hovered(box)).borderTopColor).toBe(used(shadow, '--_n11'));
-		expect(used(shadow, '--_n11')).not.toBe(used(shadow, '--_edge-control'));
+		expect(used(shadow, '--_n11')).not.toBe(used(shadow, '--_n9'));
 	});
 
 	// the quiet action is the primary drawn as ink, so it steps the way the other two words the
@@ -3201,21 +3266,21 @@ describe('what a pointer is answered with', () => {
 
 	// a form suggesting nothing draws the entry alone on a bare tray, which is the one shape this
 	// box has an edge in — on a tray of tiles it is the box already chosen and is exempt at the
-	// rule. so the bare card is the card this has to be measured on.
+	// rule. so the bare card is the card this has to be measured on, and it steps the outline a
+	// field steps.
 	it('steps the free entry on a bare tray to that same edge', async () => {
 		const { shadow } = await mount({ ...CONFIG, suggestedAmountsMinor: [] });
 		const entry = shadow.querySelector(
 			".step:not([hidden]) .bare > [part~='amount-input']"
 		) as HTMLElement;
 
-		expect((await hovered(entry)).borderTopColor).toBe(used(shadow, '--_n11'));
-		expect(used(shadow, '--_n11')).not.toBe(used(shadow, '--_edge-control'));
+		expect((await hovered(entry)).borderTopColor).toBe(used(shadow, '--_n10'));
+		expect(used(shadow, '--_n10')).not.toBe(used(shadow, '--_edge-control'));
 	});
 
 	// the tick box under a finger, which is the only acknowledgement a touch is ever given: a phone
 	// has no hover, so a box that answered the press with nothing would answer a phone with nothing.
-	// unticked it is the field's construction, so it steps its edge one rung past where the pointer
-	// left it.
+	// unticked it steps its edge one rung past where the pointer left it.
 	it('steps the unticked tick box one rung past the edge a pointer leaves it on', async () => {
 		const { shadow } = await mount();
 		const box = shadow.querySelector(".step:not([hidden]) [part~='checkbox']") as HTMLInputElement;
@@ -3526,18 +3591,18 @@ describe('the list a closed choice opens', () => {
 		return { ...mounted, box, list };
 	}
 
-	it('draws the list on the card’s ground and the row under the keys on a field’s fill', async () => {
-		const { card, box, list } = await opened();
+	it('draws the list on the card’s ground and the row under the keys on the hover ground', async () => {
+		const { shadow, card, list } = await opened();
 		const highlighted = await vi.waitFor(() => {
 			const row = list.querySelector<HTMLElement>("[part~='select-option'][data-highlighted]");
 			if (row === null) throw new Error('no row is highlighted');
 			return row;
 		});
 
+		// rung 3, the ground an unchosen option takes under the pointer: a field's own fill is a
+		// step too faint to tell one row from the next on the list's white.
 		expect(getComputedStyle(list).backgroundColor).toBe(getComputedStyle(card).backgroundColor);
-		expect(getComputedStyle(highlighted).backgroundColor).toBe(
-			getComputedStyle(box).backgroundColor
-		);
+		expect(getComputedStyle(highlighted).backgroundColor).toBe(used(shadow, '--_n3'));
 	});
 
 	/** a `box-shadow` value as this card resolves it. */
@@ -3805,8 +3870,8 @@ describe('the presets a host page picks', () => {
 		page('body { --donate-shade: warm; --donate-corner: round; }');
 		const { card } = await mount();
 
-		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.995 0.006 70)'));
-		expect(corner(card)).toBe('12px');
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.994 0.002 70)'));
+		expect(corner(card)).toBe('16px');
 		expect(corner(card.querySelector("[part~='amount-option']"))).toBe('8px');
 		expect(corner(card.querySelector("[part~='checkbox']"))).toBe('4px');
 	});
@@ -3822,7 +3887,7 @@ describe('the presets a host page picks', () => {
 		const [red = 0, , blue = 0] =
 			(variables.colorBackground ?? '').match(/\d+/g)?.map(Number) ?? [];
 
-		expect(variables.borderRadius).toBe('12px');
+		expect(variables.borderRadius).toBe('16px');
 		expect(red).toBeGreaterThan(blue);
 	});
 
@@ -3830,7 +3895,7 @@ describe('the presets a host page picks', () => {
 		page('body { --donate-shade: cool; }');
 		const { card } = await mount();
 
-		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.995 0.006 240)'));
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.994 0.002 220)'));
 	});
 
 	// square squares the boxes and nothing drawn as a shape of its own: the marks on the step head
@@ -3862,7 +3927,7 @@ describe('the presets a host page picks', () => {
 		page('body { --donate-shade: dark; --donate-corner: pill; }');
 		const { card } = await mount();
 
-		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.995 0.001 264)'));
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.994 0.002 250)'));
 		expect(corner(card)).toBe('8px');
 	});
 
@@ -3874,8 +3939,8 @@ describe('the presets a host page picks', () => {
 		host.style.setProperty('--donate-shade', 'dark');
 		host.style.setProperty('--donate-corner', 'rounded');
 
-		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.995 0.006 70)'));
-		expect(corner(card)).toBe('12px');
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.994 0.002 70)'));
+		expect(corner(card)).toBe('16px');
 	});
 });
 

@@ -51,10 +51,12 @@ type LandsAt = Record<string, (appearance: StripeAppearance) => string | undefin
 const LENGTH_LANDS_AT: LandsAt = {
 	'--_border': (a) => a.rules['.Input']?.border?.split(' ')[0],
 	'--_focus-width': (a) => a.rules['.Input:focus']?.boxShadow?.split(' ')[3],
-	'--_inset': (a) => a.rules['.AccordionItem']?.paddingLeft,
 	'--_r': (a) => a.variables.borderRadius,
+	'--_r-in': (a) => a.rules['.AccordionItem']?.borderRadius,
 	'--_sp1': (a) => a.variables.spacingUnit,
 	'--_sp3': (a) => a.rules['.AccordionItem']?.paddingTop,
+	'--_sp4': (a) => a.rules['.AccordionItem']?.paddingLeft,
+	'--_sp5': (a) => a.variables.accordionItemSpacing,
 	'--_t-sm': (a) => a.rules['.Label']?.fontSize
 };
 
@@ -92,10 +94,14 @@ describe('what the provider is handed', () => {
 		expect(Object.keys(appearance.rules).sort()).toEqual([
 			'.AccordionItem',
 			'.AccordionItem--selected',
+			'.AccordionItem--selected:focus-visible',
 			'.AccordionItem--selected:hover',
+			'.AccordionItem:focus-visible',
 			'.AccordionItem:hover',
 			'.Input',
+			'.Input--invalid:hover',
 			'.Input:focus',
+			'.Input:hover',
 			'.Label'
 		]);
 	});
@@ -106,7 +112,7 @@ describe('what the provider is handed', () => {
 		const appearance = resolveAppearance(card);
 		const sent = JSON.stringify(appearance);
 
-		expect(APPEARANCE_INPUTS.length).toBe(18);
+		expect(APPEARANCE_INPUTS.length).toBe(22);
 		expect(sent).not.toContain('var(');
 		expect(sent).not.toContain('oklch');
 	});
@@ -148,8 +154,11 @@ describe('what the provider is handed', () => {
 
 		expect(warm.variables.colorBackground).not.toBe(light);
 		expect(Number(red)).toBeGreaterThan(Number(blue));
-		expect(warm.variables.borderRadius).toBe('12px');
+		expect(warm.variables.borderRadius).toBe('16px');
 		expect(square.variables.borderRadius).toBe('0px');
+		// and a rail takes the preset's control corner, the one every box on the card is drawn at.
+		expect(warm.rules['.AccordionItem']?.borderRadius).toBe('8px');
+		expect(square.rules['.AccordionItem']?.borderRadius).toBe('0px');
 	});
 
 	// the split, proven off a real cascade rather than off a table: the fill inside the provider's
@@ -182,13 +191,13 @@ describe('what the provider is handed', () => {
 		expect(appearance.variables.fontSizeBase).toBe('14px');
 		expect(appearance.variables.spacingUnit).toBe('4px');
 		expect(appearance.variables.borderRadius).toBe('8px');
-		// the rail's side pad, which `[part~='payment']` in ./parts.css pulls the box out by: the
-		// inset is stated off the clamped root rather than in `em`, so it is already absolute here
-		// and the pair still cancels on the other side of the frame.
-		expect(appearance.rules['.AccordionItem']?.paddingLeft).toBe('20px');
-		// and its top pad, which is a spacing step rather than the inset: `em` on this side of the
-		// frame and converted against the root the form resolved to before it crosses.
+		// the rail's pads, the gap between two rails and the rail's corner: spacing steps are `em` on
+		// this side of the frame and converted against the root the form resolved to before they
+		// cross.
+		expect(appearance.rules['.AccordionItem']?.paddingLeft).toBe('16px');
 		expect(appearance.rules['.AccordionItem']?.paddingTop).toBe('12px');
+		expect(appearance.variables.accordionItemSpacing).toBe('20px');
+		expect(appearance.rules['.AccordionItem']?.borderRadius).toBe('4px');
 		expect(appearance.rules['.Label']?.fontSize).toBe('14px');
 		// the frame is assembled from two tokens rather than from a literal, so both halves have to
 		// have crossed: a weight the engine resolved and a colour the canvas painted.
@@ -277,24 +286,18 @@ describe('a cascade the sheet never reached at all', () => {
 
 		expect(appearance.variables).not.toHaveProperty('borderRadius');
 		expect(appearance.variables).not.toHaveProperty('spacingUnit');
-		// the flush stack is the one variable that survives a cascade that resolved nothing: it reads
-		// no token, so there was nothing for this reader to fail to resolve.
-		expect(appearance.variables.accordionItemSpacing).toBe('0px');
+		expect(appearance.variables).not.toHaveProperty('accordionItemSpacing');
 		// not one rule read from a token survives, and the whole object is the assertion: a rule
 		// left holding a single declaration is a surface this form claims to have drawn on a page
 		// where it resolved nothing at all. two rules are the exception, because neither reads a
-		// token. the rail's draws nothing read at all — ./appearance.ts sends the bare container
-		// whatever resolved, and both its pads are lengths and are dropped here with every other one.
+		// token. the rail's refused lift is a keyword rather than a read — ./appearance.ts sends it
+		// whatever resolved, and the rail's edge, corner, face and pads are dropped with every other one.
 		// and the typed field's size is `[part~='field']`'s `max(16px, 1em)` in ./parts.css: a literal
 		// floor over the card's computed `font-size`, a standard property the browser resolves on any
 		// page, so it is sent here too, and at the floor.
 		expect(appearance.rules).toEqual({
 			'.Input': { fontSize: '16px' },
-			'.AccordionItem': {
-				border: 'none',
-				boxShadow: 'none',
-				borderRadius: '0'
-			}
+			'.AccordionItem': { boxShadow: 'none' }
 		});
 	});
 });

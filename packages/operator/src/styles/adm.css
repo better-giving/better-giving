@@ -60,6 +60,13 @@
 		   the states that use it, because what stands the dots over the label is one absolute box
 		   and a button whose position changed with its state would move under the operator. */
 		position: relative;
+		/* the neutral rank is found the way a text box is, by the box's quieter outline, so a press
+		   and a box standing side by side are bounded at one weight. the control rungs are pointed
+		   at it here rather than in ./tokens.css, because the slider's thumb and a swatch read the
+		   same names and still need the darker line. every other rank states its own border. */
+		--admin-control-border: var(--admin-field-border);
+		--admin-control-border-hover: var(--admin-field-border-hover);
+		--admin-control-border-active: var(--admin-field-border-hover);
 		min-block-size: var(--admin-control-height);
 		padding-inline: var(--admin-space-5);
 		font-size: var(--admin-control-size);
@@ -317,8 +324,9 @@
 	   as louder than the value it is beside.
 
 	   it cancels every border rung for the quiet rank's reason: a rank whose boundary is a fill has
-	   no border to appear under a pointer. it steps where that rank steps and never onto its rungs
-	   — ./tokens.css holds where the two sit against each other. the disabled rung keeps the
+	   no border to appear under a pointer. under a pointer it takes that rank's two rungs and
+	   differs from it only at rest — ./tokens.css holds where the two sit against each other. the
+	   disabled rung keeps the
 	   resting ground and moves the ink alone, because a rank that draws no border has only its
 	   label left to say a press is unavailable.
 
@@ -367,6 +375,14 @@
 		font-size: var(--admin-control-size-sm);
 	}
 
+	/* a button whose only visible content is a mark, named by its `aria-label`, is round by nature:
+	   a circle on a square box, and a pill on the occasion a word joins the mark. it is one of the
+	   `--admin-radius-pill` wearers ./tokens.css names. ../components/controls/Button.jsx writes the
+	   class on any press drawn with a mark and no words. */
+	.adm-btn--icon {
+		border-radius: var(--admin-radius-pill);
+	}
+
 	/* ---------- a target past the drawn edge -------------------------------------------------
 
 	   a control drawn smaller than `--admin-touch-min` is still aimed at at that floor: a transparent
@@ -378,24 +394,27 @@
 	   the box is sized outright and centred off `100%`: an absolute box is placed against the
 	   holder's padding box, which a bordered control draws inside its border, so a size stated
 	   outright is the one that comes out at the floor whatever the border, and the padding box's
-	   centre is the border box's.
+	   centre is the border box's. across, it is the floor or the control's own width, whichever is
+	   the wider, because a chip holding a long word is wider than the floor and a target narrower
+	   than its control would leave the control's ends to the control alone.
 
 	   a target's reach past the drawn edge is half the floor less the drawn size, and whatever
 	   stands beside one is set at least that far off it, so no target lies over another control: a
 	   row's Remove and the brand colour's well each stand further off their box than their target
-	   reaches. ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
+	   reaches, and a row of choice chips stands its rows apart by both reaches together. ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
 	   neighbours, so a control joining the list is named in that spec too.
 
 	   an `<input>` draws no `::before`, so the brand colour's well is aimed at through the label
 	   around it (`.adm-wellwrap`): a press on a label is a press on the control inside it. */
 	.adm-rows__row > .adm-rows__remove::before,
-	.adm-wellwrap::before {
+	.adm-wellwrap::before,
+	.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip::before {
 		content: '';
 		position: absolute;
-		inline-size: var(--admin-touch-min);
+		inline-size: max(var(--admin-touch-min), 100%);
 		block-size: var(--admin-touch-min);
 		inset-block-start: calc((100% - var(--admin-touch-min)) / 2);
-		inset-inline-start: calc((100% - var(--admin-touch-min)) / 2);
+		inset-inline-start: calc((100% - max(var(--admin-touch-min), 100%)) / 2);
 	}
 
 	/* ---------- a press in flight -------------------------------------------------------
@@ -769,8 +788,8 @@
 	   it reads what a line drew rather than what a screen passed, which is why it is stated here
 	   and not in packages/operator/src/components/status/StatusLine.jsx: that component folds a
 	   subject made of one step away and draws no run at all, and it cannot see the line beside it
-	   in any case. `.adm-ledger--sections` is out because its entries are boxes and a box says its
-	   own bounds however tall it grows. */
+	   in any case. `.adm-ledger--sections` is out because its own gap is already the group tier,
+	   wider than this boundary, and states it for every entry. */
 	.adm-ledger:not(.adm-ledger--sections)
 	> li:not(:first-child):has(.adm-status__note, .adm-status__fix, .adm-status__steps),
 	.adm-ledger:not(.adm-ledger--sections)
@@ -782,21 +801,20 @@
 	/* the ledger whose entries are sections rather than lines.
 
 	   an entry here is a block whose contents are the screen's — rows, a numbered procedure, a
-	   form — and several screenfuls separate the first from the last. so an entry is a box: it
-	   draws its own edge on the page's ground, and that edge says where it starts and where it ends
-	   however tall it grows. a gap says where one entry ends only while an entry is smaller than
-	   the gap, and bounding the entry is what buys that back — two entries are told apart by being
-	   two boxes and never by the space between them. so the step here is close: a little over the
-	   one a run of lines takes above, which is enough to say a boxed entry is a bigger thing than
-	   a line, and short of anything that would push a run of them apart into a list of strangers. the readiness list on the form-writing screen is one line per entry and takes none of
-	   this: a line is one statement in a close-set run, and a box around each would draw a table
+	   form — and several screenfuls separate the first from the last. each entry is a white plane
+	   on the page with no edge drawn, and a plane's fill is decoration by ./tokens.css's measure,
+	   so what tells one entry from the next is the space between them. each entry is one group,
+	   so that space is the group tier, `--admin-gap-groups`: wider than the step between two
+	   fields or two lines inside an entry, which is what a squint needs to read two entries as
+	   two. the readiness list on the form-writing screen is one line per entry and takes none of
+	   this: a line is one statement in a close-set run, and a plane around each would draw a table
 	   nobody asked for.
 
-	   the one rule in here is inside an open entry, between the summary and what it hides. the box
-	   is what divides one entry from the next and a rule is what divides a line from its own
+	   the one rule in here is inside an open entry, between the summary and what it hides. the
+	   space is what divides one entry from the next and a rule is what divides a line from its own
 	   detail, and neither ever stands for the other. */
 	.adm-ledger--sections {
-		gap: var(--admin-space-5);
+		gap: var(--admin-gap-groups);
 	}
 
 	.adm-status {
@@ -1399,15 +1417,16 @@
 	   there are the line's and here the line is the summary. the summary states them again as its
 	   own, with a third track at the trailing edge for the caret.
 
-	   it is a box, which is the boundary the ledger above draws none of: a hairline around the
-	   surface, standing on the page's own ground, which is the recipe `.adm-panel` takes. so the
+	   it is a box, which is the boundary the ledger above draws none of: a white plane standing on
+	   the page's own ground with no edge drawn, which is the recipe `.adm-panel` takes. so the
 	   summary is inset the way a box's contents are, and a section that is shut is that inset and
 	   nothing else. */
 	.adm-status--section {
+		--_ground: var(--admin-surface);
 		display: block;
 		background: var(--admin-surface);
-		border: var(--admin-hairline);
-		border-radius: var(--admin-radius);
+		border: var(--admin-border-width) solid transparent;
+		border-radius: var(--admin-radius-plane);
 	}
 
 	.adm-status--section > summary {
@@ -1470,14 +1489,14 @@
 	/* the ring takes the box's radius and not the smaller one a control inside a box takes: the
 	   summary is the top of the box rather than something sitting in it, and its corners are the
 	   box's own. the ring hugs at that edge — ../styles/base.css draws it as a shadow at no offset
-	   — so a tighter corner would pull the ring off the hairline it is tracing.
+	   — so a tighter corner would pull the ring off the box's own edge it is tracing.
 
 	   an open summary has the box's two upper corners and none of its lower ones, because the panel
 	   is under it: rounding an edge that runs corner to corner would notch the ring at each end of
 	   the rule below. */
 	.adm-status--section > summary:focus-visible,
 	.adm-status--section > summary.is-focus {
-		border-radius: var(--admin-radius);
+		border-radius: var(--admin-radius-plane);
 	}
 
 	.adm-status--section[open] > summary:focus-visible,
@@ -1551,25 +1570,27 @@
 	   where one subject ends. what says it turns on what the block is already standing in, and
 	   there are two cases.
 
-	   **on the page's own ground the box says it**: a hairline, and a band above its contents
-	   carrying the block's own heading — `.adm-group` below.
+	   **on the page's own ground the band says it**: a band above its contents carrying the block's
+	   own heading — `.adm-group` below. the box around the two keeps its border's width with no
+	   colour in it and has no fill, so the band and the hairline under it are all that is drawn,
+	   and what holds the contents to the band is that they stand directly under it.
 
 	   **inside a box the heading says it and nothing is drawn around it** — `.adm-named` first.
-	   an entry of `.adm-ledger--sections` is a hairline box and so is `.adm-panel`, so a group
+	   an entry of `.adm-ledger--sections` is a plane and so is `.adm-panel`, so a group
 	   inside either is a box inside a box: two edges a step apart, and the inner one says nothing
 	   the outer one has not. what is left doing the work there is the heading and the step under
 	   it, and a ledger below draws no edge of its own for either to compete with.
 
 	   depth in /admin is rules and bands, so that is the whole of it — no shadow, no ground behind
-	   the box and no corner past the radius every other box wears. the band takes the sunken
-	   surface for the reason a table head does: it is the page's own ground read one step down and
-	   not a second colour. its corners are one step in from the box's, which is what a radius
-	   inside a radius is.
+	   the box and no corner past the plane's. the band takes `--admin-surface-fill` for the reason
+	   a table head does: it is a rung off both grounds, so it reads on the page and on a plane
+	   alike, and it is a step of the neutral ladder rather than a second colour. its corners are
+	   one step in from the box's, which is what a radius inside a radius is.
 
-	   the hairline and the band are one device and never half of one. a block with nothing to write
-	   in a band takes neither — the list of what a capability read is that block, and a bare
-	   hairline around it would be a boundary naming nothing, drawn a step outside a run of lines
-	   that draws no boundary at all. what separates a block like that from the one beside it is
+	   the band is the device, so a block with nothing to write in a band takes no `.adm-group` at
+	   all — the list of what a capability read is that block, and a box with no band would be a
+	   boundary naming nothing, drawn a step outside a run of lines that draws no boundary at
+	   all. what separates a block like that from the one beside it is
 	   `* + .adm-break`'s step below.
 
 	   the band's type is the h3 rank ../styles/base.css draws and not the legend bundle
@@ -1622,8 +1643,8 @@
 	}
 
 	.adm-group {
-		border: var(--admin-hairline);
-		border-radius: var(--admin-radius);
+		border: var(--admin-border-width) solid transparent;
+		border-radius: var(--admin-radius-plane);
 	}
 
 	.adm-group__label {
@@ -1632,13 +1653,13 @@
 		font-weight: var(--admin-subhead-weight);
 		line-height: var(--admin-subhead-lh);
 		color: var(--admin-ink);
-		background: var(--admin-surface-sunken);
+		background: var(--admin-surface-fill);
 		border-block-end: var(--admin-hairline);
 		/* the band's corners are the box's less the border it sits inside. any other value leaves
 		   the border's inner curve uncovered at each top corner, and a curve showing the ground
 		   through it reads as one corner drawn twice. */
-		border-start-start-radius: calc(var(--admin-radius) - var(--admin-border-width));
-		border-start-end-radius: calc(var(--admin-radius) - var(--admin-border-width));
+		border-start-start-radius: calc(var(--admin-radius-plane) - var(--admin-border-width));
+		border-start-end-radius: calc(var(--admin-radius-plane) - var(--admin-border-width));
 	}
 
 	.adm-group__body {
@@ -1647,11 +1668,12 @@
 
 	/* the descriptive register: this is just what it is. a fact about a gift is not an
 	   instruction to the operator, so it carries no mark and no sentence and sits in a value
-	   slot — and it is drawn as a pill, which is the one thing on these surfaces a fully round
-	   corner is for. ./tokens.css argues the shape at the radius block and argues the trade at
+	   slot — and it is drawn as a pill, the one wearer of the fully round corner that is read
+	   rather than pressed, and the only one with no edge. ./tokens.css names every wearer at the
+	   radius block and argues the trade at
 	   `three registers of status`.
 
-	   hueless at rest: the ground is the note tone's tint, which is the neutral ladder's rung 3,
+	   hueless at rest: the ground is the note tone's tint, which is the neutral ladder's rung 4,
 	   and the word over it is the page's own ink. a value that is not a record's lifecycle
 	   status — a consent reading, a count, `Repeating` — stops at this rule and ranks against
 	   nothing.
@@ -1798,7 +1820,9 @@
 	/* ---------- banner ----------------------------------------------------------------
 
 	   four tones and one of them has no hue: a note is a fact, and a fact is not coloured.
-	   what tells a note from the others is its mark and its sentence. */
+	   what tells a note from the others is its mark and its sentence. the band draws no edge in
+	   any tone: the tint carries the tone, and the mark and the sentence carry the meaning. the
+	   border keeps its width with no colour in it, so the band is the size an edged one would be. */
 
 	/* carried-ok: .adm-banner .adm-banner--blocker .adm-banner--attention .adm-banner--done —
 	   ``adm-banner${tone === 'note' ? '' : ` adm-banner--${tone}`}`` in
@@ -1811,7 +1835,7 @@
 		gap: var(--admin-space-4);
 		padding: var(--admin-space-5) var(--admin-space-6);
 		background: var(--admin-tone-note-tint);
-		border: var(--admin-border-width) solid var(--admin-tone-note-line);
+		border: var(--admin-border-width) solid transparent;
 		border-radius: var(--admin-radius);
 	}
 
@@ -1884,7 +1908,6 @@
 
 	.adm-banner--blocker {
 		background: var(--admin-tone-blocker-tint);
-		border-color: var(--admin-tone-blocker-line);
 	}
 
 	.adm-banner--blocker .adm-banner__mark {
@@ -1897,7 +1920,6 @@
 
 	.adm-banner--attention {
 		background: var(--admin-tone-attention-tint);
-		border-color: var(--admin-tone-attention-line);
 	}
 
 	.adm-banner--attention .adm-banner__mark {
@@ -1910,7 +1932,6 @@
 
 	.adm-banner--done {
 		background: var(--admin-tone-done-tint);
-		border-color: var(--admin-tone-done-line);
 	}
 
 	.adm-banner--done .adm-banner__mark {
@@ -1932,16 +1953,20 @@
 
 	   the squint test, and every operator form passes it by these steps alone: three tiers, each
 	   one clearly wider than the tier inside it, so a label reads as its own box's before anything
-	   on the screen is read.
+	   on the screen is read. ./tokens.css names the tiers as gaps, and a step written here reads
+	   the gap where one says what the step is for.
 	     - inside a field — a label, its sentence, its box and a message under the box —
-	       `--admin-space-3`, and a label's sentence `--admin-space-1` under it (`.adm-field` below),
-	       as a group's sentence stands under its name (`.adm-fieldset` below).
-	     - between one field and the next, `--admin-space-6`, whatever holds the two: the stack's
-	       own gap, a group's step (`.adm-fieldset > * + *`), a pair's gap (`.adm-pair`), and a
-	       field on a tight stack (`.adm-stack--tight > .adm-field + *`).
-	     - between one group and the next, `--admin-space-8` and up: the step `.adm-groups` stands
-	       its groups apart by, a group's moat on a stack and a group's moat inside a group.
-	   ./squint.spec.ts holds the three apart, reading each step off this sheet. */
+	       `--admin-gap-inside`, and a label's sentence `--admin-space-1` under it (`.adm-field`
+	       below), as a group's sentence stands under its name (`.adm-fieldset` below).
+	     - between one field and the next, `--admin-space-6` on a stack and a pair — the stack's own
+	       gap, a pair's gap (`.adm-pair`), and a field on a tight stack (`.adm-stack--tight >
+	       .adm-field + *`) — and `--admin-gap-items`, a step wider, inside a group
+	       (`.adm-fieldset > * + *`), whose run of fields has its name over it to belong to.
+	     - between one group and the next, `--admin-gap-groups` and nothing else: the gap
+	       `.adm-groups` stands its groups apart by, a group's moat on a stack (the stack's gap
+	       and the moat together), and the moat between a group and the group inside it.
+	   ./squint.spec.ts holds the three apart and pins the field and group tiers to their
+	   gaps, reading each step off this sheet. */
 
 	/* a field is five rows — a label, the sentence under it, the box, a refusal and a standing
 	   sentence — and every part names the one it belongs to rather than filling them in order.
@@ -1967,7 +1992,7 @@
 	}
 
 	.adm-field > * + * {
-		margin-block-start: var(--admin-space-3);
+		margin-block-start: var(--admin-gap-inside);
 	}
 
 	/* the sentence under a label qualifies the label, so it stands closer to it than the box stands
@@ -2183,9 +2208,11 @@
 	   thumb is being dragged as `data-dragging`, so nothing here places anything or reads a class
 	   for that state.
 
-	   the thumb is a control and dressed as one — the control ground, the control border, the one
-	   corner — and square-cornered for the reason ./tokens.css keeps the round corner to the status
-	   word. it is drawn at the 24px that clears 2.5.8's minimum, and the target a finger lands on is
+	   the thumb is a control and dressed as one — the control ground and the control border — and
+	   the slider is round end to end: a circle thumb on a pill track and fill, at
+	   `--admin-radius-pill`, one of the wearers ./tokens.css names beside the status word. it is
+	   outlined and pressed and never read as a state, which is what keeps the round corner from
+	   blurring the two. it is drawn at the 24px that clears 2.5.8's minimum, and the target a finger lands on is
 	   grown from it in the block axis alone: `--admin-touch-min` tall and centred on it, the thumb's
 	   own width across, drawn out of flow on `::before`. the drawn thumb and the row it runs along
 	   keep their size, and a press on the target is a press on the thumb. it is never wider than
@@ -2213,14 +2240,14 @@
 		position: relative;
 		flex: 1;
 		block-size: var(--admin-space-2);
-		border-radius: var(--admin-radius);
+		border-radius: var(--admin-radius-pill);
 		background: var(--admin-surface-fill);
 		outline: var(--admin-border-width) solid transparent;
 	}
 
 	.adm-range__fill {
 		block-size: 100%;
-		border-radius: var(--admin-radius);
+		border-radius: var(--admin-radius-pill);
 		background: var(--admin-primary-bg);
 	}
 
@@ -2228,7 +2255,7 @@
 		inline-size: var(--admin-space-8);
 		block-size: var(--admin-space-8);
 		border: var(--admin-border-width) solid var(--admin-control-border);
-		border-radius: var(--admin-radius);
+		border-radius: var(--admin-radius-pill);
 		background: var(--admin-control-bg);
 		cursor: grab;
 		transition: var(--admin-transition-state);
@@ -2320,9 +2347,9 @@
 		);
 		padding: var(--admin-space-2);
 		background: var(--admin-surface);
-		border: var(--admin-hairline);
+		border: var(--admin-border-width) solid var(--admin-overlay-border);
 		border-radius: var(--admin-radius);
-		box-shadow: var(--admin-elevation-dialog);
+		box-shadow: var(--admin-elevation-overlay);
 		overflow-y: auto;
 		pointer-events: auto;
 	}
@@ -2460,8 +2487,9 @@
 			(var(--admin-space-2) + var(--admin-border-width))
 		);
 		padding: var(--admin-space-2);
-		border: var(--admin-hairline);
+		border: var(--admin-border-width) solid var(--admin-overlay-border);
 		border-radius: var(--admin-radius);
+		box-shadow: var(--admin-elevation-overlay);
 		overflow-y: auto;
 	}
 
@@ -2733,10 +2761,13 @@
 
 	   the border must not strike through the words, so the label paints a knockout behind them: a
 	   band split at its own middle, which after the move is the border's. the half above that line
-	   is the fill of the page the box stands on and the half below it is the box's own, because
+	   is the fill of the ground the box stands on and the half below it is the box's own, because
 	   that is exactly what each half covers — one flat colour would match one of them and read as a
 	   patch on the other. the lower stop reads the box's fill rather than naming it, so that a box
-	   an operator cannot answer knocks out in the fill it is actually drawn in.
+	   an operator cannot answer knocks out in the fill it is actually drawn in, and the upper stop
+	   reads `--_ground`, which every plane states beside its own fill — a card, a panel, a record,
+	   a table's plane, a status panel, the dialog and the sheets — and which falls back to the
+	   page a box drawn straight on the main column stands on.
 
 	   the band's height is a length rather than the words' own line, so it does not move with the
 	   step the label is drawn at, and it is as tall as it has to be and no taller: the border is the
@@ -2755,8 +2786,8 @@
 	.adm-datebox[data-floated] .adm-datefield__label {
 		translate: 0 calc(-50% - var(--admin-space-3) - var(--admin-border-width) / 2);
 		background:
-			linear-gradient(to bottom, var(--admin-page) 50%, var(--_datebox-fill) 50%) 0 50% / 100%
-			var(--admin-space-4) no-repeat;
+			linear-gradient(to bottom, var(--_ground, var(--admin-page)) 50%, var(--_datebox-fill) 50%) 0
+			50% / 100% var(--admin-space-4) no-repeat;
 		font-size: var(--admin-caption-size);
 		font-weight: var(--admin-label-weight);
 		color: var(--admin-ink);
@@ -2901,9 +2932,9 @@
 		z-index: 3;
 		padding: var(--admin-space-3);
 		background: var(--admin-surface);
-		border: var(--admin-hairline);
+		border: var(--admin-border-width) solid var(--admin-overlay-border);
 		border-radius: var(--admin-radius);
-		box-shadow: var(--admin-elevation-dialog);
+		box-shadow: var(--admin-elevation-overlay);
 	}
 
 	/* the line over the grid: a step back, what is on the grid, and a step forward. three columns
@@ -2925,7 +2956,7 @@
 		padding: 0;
 		background: none;
 		border: 0;
-		border-radius: var(--admin-radius);
+		border-radius: var(--admin-radius-pill);
 		color: var(--admin-ink-2);
 		cursor: pointer;
 		transition: var(--admin-transition-state);
@@ -2973,14 +3004,16 @@
 	}
 
 	/* one cell, dressed once for all three views. a day, a month and a year are the same press with
-	   different words in it, so the only thing that changes with the view is how wide the press has
-	   to be to hold its own word. */
+	   different words in it, so what changes with the view is how wide the press has to be to hold
+	   its own word, and its corner: a day is a number in a square, round by nature and one of the
+	   `--admin-radius-pill` wearers ./tokens.css names — its band in a range, its today ring and the
+	   chosen fill with it — and a month or a year is a word, which takes a control's corner. */
 	.adm-cal__pick {
 		display: grid;
 		place-items: center;
 		min-inline-size: var(--admin-control-height);
 		min-block-size: var(--admin-control-height);
-		border-radius: var(--admin-radius);
+		border-radius: var(--admin-radius-pill);
 		font-size: var(--admin-control-size);
 		color: var(--admin-ink);
 		cursor: pointer;
@@ -2990,6 +3023,7 @@
 	.adm-cal__pick[data-view='month'],
 	.adm-cal__pick[data-view='year'] {
 		min-inline-size: var(--admin-space-10);
+		border-radius: var(--admin-radius);
 	}
 
 	.adm-cal__pick:hover,
@@ -3164,7 +3198,8 @@
 	   the one step in the group that goes undrawn is the step under its name.
 
 	   two steps and a token each. between one thing in the group and the next is the wider, and it
-	   is the step between two fields (the squint test at the head of the fields section): a label
+	   is `--admin-gap-items`, the step between two fields in a group (the squint test at the head
+	   of the fields section): a label
 	   reads as belonging to the box under it only while the step down to that box is visibly
 	   shorter than the step down to the next field's label, and one token for both leaves every
 	   label floating between two boxes. the narrower is under the legend, whatever follows it: the
@@ -3184,11 +3219,11 @@
 	}
 
 	.adm-fieldset > * + * {
-		margin-block-start: var(--admin-space-6);
+		margin-block-start: var(--admin-gap-items);
 	}
 
 	.adm-fieldset > .adm-fieldset__legend + * {
-		margin-block-start: var(--admin-space-3);
+		margin-block-start: var(--admin-gap-inside);
 	}
 
 	.adm-fieldset > .adm-fieldset__legend + .adm-hint {
@@ -3206,33 +3241,32 @@
 	   over it is drawn or not: under a hidden legend the sentence is the whole head. */
 	.adm-fieldset > .adm-fieldset__legend + .adm-hint + *,
 	.adm-fieldset > legend.adm-vh + .adm-hint + * {
-		margin-block-start: var(--admin-space-3);
+		margin-block-start: var(--admin-gap-inside);
 	}
 
 	/* a group standing among other questions is moated, and the moat is what tells a reader where
 	   it ends. `.adm-stack` gaps its items by `--admin-space-6` and this group steps its own children
-	   by the same step — so without one the last row of a group and the name of the next one stand
-	   the same distance apart as two things inside one group, and a reader has nothing to tell
-	   from. with it the boundary is `--admin-space-8`, the group tier. a field needs none of this:
-	   what is inside one is `--admin-space-3` and under, so the stack's own step already reads as
-	   the larger.
+	   by `--admin-gap-items`, a step wider — so without one the last row of a group and the name of
+	   the next one stand closer than two things inside one group, and a reader has nothing to tell
+	   from. the moat is `--admin-space-6` on top of the stack's gap, which brings the boundary to
+	   `--admin-gap-groups`, the group tier. a field needs none of this: what is inside one is
+	   `--admin-space-3` and under, so the stack's own step already reads as the larger.
 
 	   it is added to that gap rather than replacing it, so nothing else in the stack moves, and only
 	   between siblings — a group at either end of a stack is bounded by the panel and a moat there
-	   would be space against the edge. */
-	.adm-stack > .adm-fieldset:not(:first-child) {
-		margin-block-start: var(--admin-space-4);
+	   would be space against the edge. it is one margin on whichever item starts the boundary, the
+	   group or what follows it, because a margin states one length and two groups in a row would
+	   otherwise stand two moats apart. */
+	.adm-stack > .adm-fieldset:not(:first-child),
+	.adm-stack > .adm-fieldset + * {
+		margin-block-start: var(--admin-space-6);
 	}
 
-	.adm-stack > .adm-fieldset:not(:last-child) {
-		margin-block-end: var(--admin-space-4);
-	}
-
-	/* a group inside a group is moated the same way and by the same token, for the same reason: a
-	   `.adm-pair` stacked inside it gaps its two boxes by the group's own step, so without a moat
-	   the box that follows the inner group stands as close to its last box as that box stands to
-	   the one above it, and reads as a third box of the inner group. the steps here are margins
-	   rather than a gap, so the moat is added to the step in a sum.
+	/* a group inside a group is moated, for the same reason: the inner group's last box and the box
+	   that follows the inner group would otherwise stand the group's own step apart, and the box
+	   after it would read as one more box of the inner group. the moat is `--admin-gap-groups`, the
+	   group tier, and it replaces the step rather than adding to it, because these steps are
+	   margins and a margin states one length.
 
 	   it is drawn on whatever starts the boundary, on both sides, and never under the outer
 	   group's head: the inner group directly under the name of the one around it, or under an
@@ -3241,7 +3275,7 @@
 	   no box, so it takes none. */
 	.adm-fieldset > :not(legend):not(.adm-hint) + .adm-fieldset,
 	.adm-fieldset > .adm-fieldset + :not([type='hidden']) {
-		margin-block-start: calc(var(--admin-space-6) + var(--admin-space-4));
+		margin-block-start: var(--admin-gap-groups);
 	}
 
 	/* the name of a group of boxes, and it is set a rank above the boxes' own names: at the label's
@@ -3263,9 +3297,9 @@
 
 	   an error belongs to the pair rather than to a box, so it sits after both of them.
 
-	   the gap is the step between one field and the next, which is the group's own above and not a
-	   step of the pair's: stacked, the two fields are two fields and stand apart by what any two
-	   fields in the group do. */
+	   the gap is the step between one field and the next on a stack, and it is a step closer than
+	   the group's own above: two boxes that are one decision stand nearer each other than two
+	   questions in the group do, so a pair inside a group still reads as one. */
 	.adm-pair {
 		display: grid;
 		gap: var(--admin-space-6);
@@ -3358,14 +3392,14 @@
 	   packages/operator/src/components/forms/CheckboxGroup.jsx writes the class. */
 	.adm-check--boxed {
 		padding: var(--admin-space-5) var(--admin-space-6);
-		border: var(--admin-hairline);
+		border: var(--admin-border-width) solid var(--admin-field-border);
 		border-radius: var(--admin-radius);
 		cursor: pointer;
 	}
 
 	.adm-check--boxed:hover,
 	.adm-check--boxed.is-hover {
-		border-color: var(--admin-field-border);
+		border-color: var(--admin-field-border-hover);
 	}
 
 	.adm-check--boxed:has(input:checked) {
@@ -3420,32 +3454,42 @@
 
 	   a question answered by pressing one of a few short words. each chip is a `<label>` round a
 	   radio or a checkbox held out of sight (`.adm-vh` in ./base.css), so the chip is the whole of
-	   what a pointer presses. a chip is a control at the touch floor, with the control's own edge,
-	   ground and hover; the taken one holds the accent as `.adm-check--boxed` does, its words in the
-	   accent's deep ink. the corner is the control's: the round one is the read-only pill's alone
-	   (`.adm-state`), and a chip is pressed.
+	   what a pointer presses. a chip is a control aimed at at the touch floor, with a text box's
+	   edge, the control's ground and its hover; the taken one holds the accent as
+	   `.adm-check--boxed` does, its words in the accent's deep ink. a chip in a row is round, which
+	   ./tokens.css allows a pressed control by name at `--admin-radius-pill`: its edge is what
+	   tells it from the read-only pill (`.adm-state`), which has none. a card keeps the plane's
+	   corner.
 
 	   the focused chip takes the ring off the control inside it, for `.adm-check--boxed`'s reason.
 	   the Other box under them is `.adm-input`, as wide as a short answer and no wider.
 
-	   a chip taking one of several answers draws a tick box before its words, the mark's own
-	   square: an empty edge at rest and the primary pair once taken. a chip taking the one answer
-	   draws none, so the two kinds of question part before anything is pressed.
+	   neither kind of chip draws a tick box: a chip taking one of several answers and a chip taking
+	   the one answer look alike, and a question taking several says so in its hint.
 
 	   cards are the same chips laid in a grid, each its label over the line saying what it is for,
 	   in `.adm-check__sub`'s ink, which reads on the taken card's tint as it does on a taken boxed
 	   row. one across on a phone and two from the middle width, where the dialog's measure has
 	   room for two lines of words side by side and no more.
 	   packages/operator/src/components/forms/ChoiceChips.jsx writes all of it. */
+	/* the row gap is both targets' reach together (`.adm-choicechip::before` above): a chip is drawn
+	   at the small control's height and aimed at at the floor, so a row of them wrapped onto a
+	   second line has to stand its lines that far apart or one chip's target lies over the next
+	   line's. across, a chip is never narrower than the floor (the plain chip's rule below), so its
+	   target reaches nothing past its ends and two chips abreast keep the close step a run of
+	   choices takes. cards are drawn at the floor and reach nothing, so they keep the closer step
+	   both ways. */
 	.adm-choicechips {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--admin-space-3);
+		row-gap: var(--admin-space-6);
+		column-gap: var(--admin-space-3);
 	}
 
 	.adm-choicechips--cards {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
+		gap: var(--admin-space-3);
 	}
 
 	@media (min-width: 44rem) {
@@ -3454,8 +3498,12 @@
 		}
 	}
 
-	/* `position` is the containing block the control inside is taken out of the flow against, so a
-	   press on it scrolls nothing. */
+	/* a chip is found the way a text box and the neutral button are: a white face and the box's
+	   quieter outline. a picked chip is told by its tint and its edge, and nothing else — no tick
+	   is drawn in either kind, and a question taking several answers says so in its hint.
+
+	   `position` is the containing block the control inside is taken out of the flow against, so a
+	   press on it scrolls nothing, and it is what places the target the plain chip is aimed at. */
 	.adm-choicechip {
 		position: relative;
 		display: inline-flex;
@@ -3467,11 +3515,25 @@
 		line-height: var(--admin-control-lh);
 		color: var(--admin-control-ink);
 		background: var(--admin-control-bg);
-		border: var(--admin-border-width) solid var(--admin-control-border);
+		border: var(--admin-border-width) solid var(--admin-field-border);
 		border-radius: var(--admin-radius);
 		cursor: pointer;
 		transition: var(--admin-transition-state);
-		gap: var(--admin-space-3);
+	}
+
+	/* a chip in a wrapping row is smaller than a button, so the two never read as one: round by
+	   nature, one of the `--admin-radius-pill` wearers ./tokens.css names, at the small text and the
+	   small control's height. it is never narrower than the floor (`min-inline-size`), so its
+	   target reaches past it in the block axis alone, which is what lets two chips abreast stand the row's
+	   close column gap apart. a card chip holds a sentence, so it keeps the floor, the control's size
+	   and the plane's corner. */
+	.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip {
+		min-inline-size: var(--admin-touch-min);
+		min-block-size: var(--admin-control-height-sm);
+		padding: var(--admin-space-2) var(--admin-space-4);
+		gap: var(--admin-space-2);
+		border-radius: var(--admin-radius-pill);
+		font-size: var(--admin-control-size-sm);
 	}
 
 	/* a card's line is read at the hint's size and the body's weight, so the card's own weight
@@ -3481,6 +3543,7 @@
 		align-content: start;
 		gap: var(--admin-space-2);
 		padding: var(--admin-space-5);
+		border-radius: var(--admin-radius-plane);
 		font-weight: inherit;
 	}
 
@@ -3494,22 +3557,9 @@
 		color: var(--admin-ink-2);
 	}
 
-	.adm-choicechip__tick {
-		color: transparent;
-		background: var(--admin-field-bg);
-		border: var(--admin-border-width) solid var(--admin-control-border);
-		border-radius: var(--admin-radius);
-	}
-
-	.adm-choicechip:has(input:checked) > .adm-choicechip__tick {
-		color: var(--admin-primary-ink);
-		background: var(--admin-primary-bg);
-		border-color: var(--admin-primary-bg);
-	}
-
 	.adm-choicechip:hover,
 	.adm-choicechip.is-hover {
-		border-color: var(--admin-control-border-hover);
+		border-color: var(--admin-field-border-hover);
 		background: var(--admin-control-bg-hover);
 	}
 
@@ -3897,25 +3947,28 @@
 
 	/* ---------- the code slab ----------------------------------------------------------
 
-	   a quiet block with an edge of its own. it scrolls sideways rather than wrapping — a snippet
-	   is one long line more often than not — and the block of code is what scrolls, never the
-	   box around it: a scrolling box carries its head off to the right with the code, and a
-	   copy control hundreds of pixels past the visible edge is one nobody goes looking for.
-	   the block is what takes focus for the same reason it is what scrolls — a keyboard has to
-	   be able to reach the end of what is in it. the ring it takes is the document's own, so
-	   nothing about it is stated here. */
+	   a head and a block of code, stacked the way a field stacks its label over its box: the
+	   caption and the copy control stand over the block, outside it, and only the block wears the
+	   slab's ground, so what is in the box is the code and nothing else. the block draws no edge;
+	   its tint is the whole of what bounds it. it scrolls sideways rather than wrapping — a
+	   snippet is one long line more often than not — and the block of code is what scrolls, never
+	   the stack around it: a scrolling stack carries its head off to the right with the code, and
+	   a copy control hundreds of pixels past the visible edge is one nobody goes looking for. the
+	   block is what takes focus for the same reason it is what scrolls — a keyboard has to be able
+	   to reach the end of what is in it. the ring it takes is the document's own, so nothing about
+	   it is stated here. the one-line form below is the exception: it is one box, and the ground
+	   is the box's. */
 
 	.adm-slab {
 		display: grid;
-		gap: var(--admin-space-4);
-		padding: var(--admin-space-5);
-		background: var(--admin-slab-bg);
+		gap: var(--admin-space-3);
 		color: var(--admin-slab-ink);
-		border: var(--admin-border-width) solid var(--admin-slab-border);
-		border-radius: var(--admin-radius);
 	}
 
 	.adm-slab pre {
+		padding: var(--admin-space-5);
+		background: var(--admin-slab-bg);
+		border-radius: var(--admin-radius);
 		font-family: var(--admin-font-mono);
 		font-size: var(--admin-code-size);
 		line-height: var(--admin-code-lh);
@@ -3928,9 +3981,10 @@
 	}
 
 	/* the slab's label row: what is in the slab at the leading edge, the copy control at the
-	   trailing one. the label is set in the slab's own ink and told apart from the code by
-	   its face and its weight rather than by a second, dimmer step — sentence case, because
-	   there is no caps role in this system. */
+	   trailing one. the row stands on whatever the slab stands on, so the label is the page's own
+	   ink, as a field's label is, and told apart from the code by its face and its weight rather
+	   than by a second, dimmer step — sentence case, because there is no caps role in this
+	   system. */
 	.adm-slabhead {
 		display: flex;
 		align-items: center;
@@ -3951,21 +4005,7 @@
 		font-size: var(--admin-label-size);
 		font-weight: var(--admin-label-weight);
 		letter-spacing: var(--admin-label-track);
-		color: var(--admin-slab-ink);
-	}
-
-	/* the control on the slab is the quiet rank and keeps every rung of it but the two fills. the
-	   quiet rank's pointed-at fill is the sunken band's rung, which is the slab's own ground, so a
-	   pointer arriving would change nothing; it takes the soft rank's steps instead, which are
-	   measured from that same ground and step the same way. */
-	.adm-slab .adm-btn--quiet:hover,
-	.adm-slab .adm-btn--quiet.is-hover {
-		background: var(--admin-control-soft-bg-hover);
-	}
-
-	.adm-slab .adm-btn--quiet:active,
-	.adm-slab .adm-btn--quiet.is-active {
-		background: var(--admin-control-soft-bg-active);
+		color: var(--admin-ink);
 	}
 
 	/* ---------- the slab's one-line form ------------------------------------------------
@@ -3985,8 +4025,24 @@
 	   element scrolls and takes focus. a control stands on the line, and the fade below is what
 	   keeps the line from being read through it. */
 
+	/* the box keeps its border's width with no colour in it, so it takes the room an edged box
+	   would. */
 	.adm-slab--oneline {
 		padding: var(--admin-space-4) var(--admin-space-5);
+		background: var(--admin-slab-bg);
+		border: var(--admin-border-width) solid transparent;
+		border-radius: var(--admin-radius);
+	}
+
+	/* the control on the line is the quiet rank and keeps every rung of it but the pointed-at
+	   fill. that fill is rung 4, which is the slab's own ground, so a pointer arriving would change
+	   nothing; it takes the rank's press rung instead, the one rung past the slab's, and a press
+	   therefore draws what a pointer does. the control over a multi-line block stands outside it,
+	   on whatever the slab stands on, and the quiet rank's own fills read on the plane and on the
+	   page alike. */
+	.adm-slab--oneline .adm-btn--quiet:hover,
+	.adm-slab--oneline .adm-btn--quiet.is-hover {
+		background: var(--admin-control-bg-active);
 	}
 
 	.adm-slab--oneline > * {
@@ -4087,12 +4143,13 @@
 	/* ---------- record card ------------------------------------------------------------ */
 
 	.adm-record {
+		--_ground: var(--admin-surface);
 		display: grid;
 		gap: var(--admin-space-4);
 		padding: var(--admin-space-6);
 		background: var(--admin-surface);
-		border: var(--admin-hairline);
-		border-radius: var(--admin-radius);
+		border: var(--admin-border-width) solid transparent;
+		border-radius: var(--admin-radius-plane);
 	}
 
 	.adm-record__head {
@@ -4496,11 +4553,12 @@
 	   (packages/operator/src/components/data/DataTable.jsx's `revealFocused`): the browser alone
 	   leaves a control alone once any of it is showing inside this padding. */
 	.adm-plane {
+		--_ground: var(--admin-surface);
 		overflow-x: auto;
 		scroll-padding-inline: var(--admin-space-5);
 		background: var(--admin-surface);
-		border: var(--admin-hairline);
-		border-radius: var(--admin-radius);
+		border: var(--admin-border-width) solid transparent;
+		border-radius: var(--admin-radius-plane);
 	}
 
 	.adm-table {
@@ -4518,8 +4576,10 @@
 	}
 
 	/* the rule above is what separates one row from the next, so the first row of the table has
-	   nothing above it to be separated from: `.adm-plane` has already drawn the edge, and a cell
-	   rule under it is that edge drawn twice a hairline apart.
+	   nothing above it to be separated from. `.adm-plane` draws no edge, and the plane's top is
+	   read off the header band instead: that band is `--admin-surface-fill`, a rung off the page
+	   above it as well as off the plane under it, so a cell rule at its top would be a line drawn
+	   along an edge the band already makes.
 
 	   two rules and not one, because "the first row group" cannot be spelled directly: every
 	   `<tr>` is the first child of the group holding it, so the first selector clears the rule at
@@ -4539,7 +4599,7 @@
 		font-weight: var(--admin-label-weight-strong);
 		letter-spacing: var(--admin-label-track);
 		color: var(--admin-ink-2);
-		background: var(--admin-surface-sunken);
+		background: var(--admin-surface-fill);
 		white-space: nowrap;
 	}
 
@@ -4615,7 +4675,7 @@
 	   `.adm-table thead th` and would give the pinned header the body's. */
 	.adm-table thead [data-pin] {
 		font-weight: var(--admin-label-weight-strong);
-		background: var(--admin-surface-sunken);
+		background: var(--admin-surface-fill);
 		z-index: 1;
 	}
 
@@ -4813,9 +4873,10 @@
 		max-block-size: calc(100% - var(--admin-space-9));
 		overflow: auto;
 		padding: var(--admin-space-8);
+		--_ground: var(--admin-surface);
 		background: var(--admin-surface);
-		border: var(--admin-hairline);
-		border-radius: var(--admin-radius);
+		border: var(--admin-border-width) solid transparent;
+		border-radius: var(--admin-radius-plane);
 		box-shadow: var(--admin-elevation-dialog);
 	}
 
@@ -4927,12 +4988,13 @@
 		block-size: auto;
 		max-block-size: calc(100% - var(--admin-space-11));
 		overflow: hidden;
+		--_ground: var(--admin-surface);
 		color: var(--admin-ink);
 		background: var(--admin-surface);
-		border-block-start: var(--admin-hairline);
+		border-block-start: var(--admin-border-width) solid var(--admin-overlay-border);
 		border-start-start-radius: var(--admin-radius);
 		border-start-end-radius: var(--admin-radius);
-		box-shadow: var(--admin-elevation-dialog);
+		box-shadow: var(--admin-elevation-overlay);
 	}
 
 	.adm-sheet::backdrop {
@@ -5608,7 +5670,7 @@
 
 	   `--_bar-height` is the bar as it is drawn, and it is what the More sheet stands on
 	   (`.adm-moresheet` below): contents shorter than the floor make the tab the floor exactly, and
-	   `.adm-rail` adds its rule above the tabs and the platform's inset under them. a sheet on the
+	   `.adm-rail` adds its edge above the tabs and the platform's inset under them. a sheet on the
 	   reserve instead stands clear of the bar by the overstatement, with the page showing through
 	   the gap.
 
@@ -5701,14 +5763,19 @@
 	   and live, which that file's `persistentElements` is what keeps it.
 
 	   the platform's own inset at the foot of the screen sits under the tabs rather than inside
-	   them, so a tab keeps the whole of its height wherever it is drawn. */
+	   them, so a tab keeps the whole of its height wherever it is drawn.
+
+	   the bar floats over the flow, and its ground is the page's own rung, so it is one of the
+	   overlays ./tokens.css names at `--admin-elevation-overlay`: that edge on its top and that
+	   shadow, which is what tells it from the page scrolling under it. */
 	.adm-rail {
 		position: fixed;
 		inset-block-end: 0;
 		inset-inline: 0;
 		z-index: 2;
 		background: var(--admin-surface-sunken);
-		border-block-start: var(--admin-rule);
+		border-block-start: var(--admin-border-width) solid var(--admin-overlay-border);
+		box-shadow: var(--admin-elevation-overlay);
 		padding-block-end: env(safe-area-inset-bottom);
 	}
 
@@ -5821,11 +5888,12 @@
 		max-block-size: calc(100dvh - var(--_bar-height));
 		overflow-y: auto;
 		padding: var(--admin-space-4) var(--admin-space-4) var(--admin-space-5);
+		--_ground: var(--admin-surface);
 		background: var(--admin-surface);
-		border-block-start: var(--admin-hairline);
+		border-block-start: var(--admin-border-width) solid var(--admin-overlay-border);
 		border-start-start-radius: var(--admin-radius);
 		border-start-end-radius: var(--admin-radius);
-		box-shadow: var(--admin-elevation-dialog);
+		box-shadow: var(--admin-elevation-overlay);
 	}
 
 	.adm-moresheet__cells {
@@ -6006,9 +6074,11 @@
 		padding: var(--admin-space-6);
 	}
 
-	/* the page of the shell with a rail: a panel running edge to edge across the window, its head
-	   and body padded from one inset. below the wide breakpoint the document is its scroller, and
-	   its one edge is the hairline under the identity band. it is matched off the rail beside it,
+	/* the page of the shell with a rail: the page's own ground running edge to edge across the
+	   window, its head and body padded from one inset, and the planes in it carry the white. it
+	   draws no edge — its border keeps its width with no colour, so nothing moves — because a
+	   column on the page ground is the page and not a plane on it. below the wide breakpoint the
+	   document is its scroller. it is matched off the rail beside it,
 	   two classes of weight, so the `.adm-main` padding the two widths below restate never reaches
 	   it.
 
@@ -6021,8 +6091,8 @@
 		flex-direction: column;
 		padding: 0;
 		padding-block-end: var(--_bar-reserve);
-		background: var(--admin-surface);
-		border-block-start: var(--admin-hairline);
+		background: var(--admin-page);
+		border-block-start: var(--admin-border-width) solid transparent;
 	}
 
 	/* the panel's head is a line over the page and no band: no rule closes it and it pads no block
@@ -6362,12 +6432,13 @@
 	   no rule between two cards and no margin under one: the column's own step is what separates
 	   them, and a card spacing itself would be a second answer to the same gap. */
 	.adm-card {
+		--_ground: var(--admin-surface);
 		display: grid;
 		gap: var(--admin-space-5);
 		padding: var(--admin-space-6);
 		background: var(--admin-surface);
-		border: var(--admin-hairline);
-		border-radius: var(--admin-radius);
+		border: var(--admin-border-width) solid transparent;
+		border-radius: var(--admin-radius-plane);
 	}
 
 	/* the step a run of cards takes under whatever is not one. the column gaps everything it holds
@@ -6406,10 +6477,9 @@
 	   this: its gap is already the step between two fields.
 
 	   `--admin-space-4` on top of the gap brings that boundary to `--admin-space-6`, the step between
-	   two fields in the squint test at the head of the fields section, and the step a fieldset puts
-	   between one of its children and the next (`.adm-fieldset > * + *` above) — so a field
-	   standing on a tight stack stands off its neighbour exactly as far as a field inside a group
-	   does, and what holds no field stays on the closer step.
+	   two fields on a stack in the squint test at the head of the fields section — so a field
+	   standing on a tight stack stands off its neighbour exactly as far as a field on the wider
+	   stack does, and what holds no field stays on the closer step.
 
 	   added to the gap rather than replacing it, so a tight stack holding no field is untouched, and
 	   between siblings only — a field at either end of the stack is bounded by the panel, and a step
@@ -6427,7 +6497,7 @@
 	   makes, the Zapier page's two sentences and what each opens onto. `.adm-grouped` holds one
 	   group's items a step closer than the stack does, and `.adm-groups` stands the groups a break
 	   step apart, so a squint reads the page as its groups: inside a group the step is
-	   `--admin-space-5`, between groups `--admin-space-8`, and a group's own parts — a label and
+	   `--admin-space-5`, between groups `--admin-gap-groups`, and a group's own parts — a label and
 	   its box — stay the `--admin-space-3` a field already spends. a group that stands in a
 	   `.adm-stack` rather than in `.adm-groups` — a page header and the banner that qualifies it —
 	   is held together the same way and stands off the rest by the stack's own gap.
@@ -6436,7 +6506,7 @@
 	   are the groups with nothing to write there. */
 	.adm-groups {
 		display: grid;
-		gap: var(--admin-space-8);
+		gap: var(--admin-gap-groups);
 	}
 
 	.adm-grouped {
@@ -6558,14 +6628,15 @@
 	}
 
 	.adm-panel {
+		--_ground: var(--admin-surface);
 		display: grid;
 		gap: var(--admin-space-6);
 		inline-size: 100%;
 		max-inline-size: var(--admin-measure-panel);
 		padding: var(--admin-space-8);
 		background: var(--admin-surface);
-		border: var(--admin-hairline);
-		border-radius: var(--admin-radius);
+		border: var(--admin-border-width) solid transparent;
+		border-radius: var(--admin-radius-plane);
 	}
 
 	/* the panel's share of the route's inset. it is a bound and not a margin: the box is
@@ -6895,6 +6966,7 @@
 			padding-block-end: 0;
 			background: transparent;
 			border-block-start: 0;
+			box-shadow: none;
 		}
 
 		/* the globe, the name and the toggle on one line, inside the cells' inline step: the toggle's
@@ -6990,7 +7062,7 @@
 			block-size: auto;
 			max-block-size: none;
 			border-block-start: 0;
-			border-inline-start: var(--admin-hairline);
+			border-inline-start: var(--admin-border-width) solid var(--admin-overlay-border);
 			border-radius: var(--admin-radius-0);
 		}
 
@@ -7061,8 +7133,8 @@
 			padding: var(--admin-space-9) var(--admin-space-10);
 		}
 
-		/* the panel runs to the window's top, right and bottom edges, with one hairline against the
-		   rail, and scrolls inside itself. `position: relative` makes it the containing block of the
+		/* the panel runs to the window's top, right and bottom edges, on the same ground as the rail
+		   and with no line between them, and scrolls inside itself. `position: relative` makes it the containing block of the
 		   absolutely positioned boxes it holds (`.adm-vh` in ./base.css among them): without it
 		   their containing block is the viewport, the panel's `overflow` clips none of them, and one
 		   standing far down a long page stretches the document into a second scroller. */
@@ -7073,7 +7145,7 @@
 			padding-block-end: 0;
 			overflow: auto;
 			border-block-start: 0;
-			border-inline-start: var(--admin-hairline);
+			border-inline-start: var(--admin-border-width) solid transparent;
 		}
 
 		.adm-panelbody {

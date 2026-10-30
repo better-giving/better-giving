@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderEmail } from '../render';
+import { BANNER_BG, INK, PLANE_BG, RADIUS } from '../tokens';
 import * as adminAlert from './admin-alert';
 import type { AdminAlertData } from './admin-alert';
 
@@ -82,6 +83,24 @@ describe('adminAlert.template', () => {
 			expect(arm).toContain('Amount: USD 100.00');
 			expect(arm).not.toContain('What to do');
 		}
+	});
+
+	/**
+	 * the instruction is a banner on an operator screen, and a banner is a tint with no edge: the
+	 * ground sets it apart from the sentences around it, and a rule down its side would be a line
+	 * doing the grouping the system gives to ground.
+	 */
+	it('sets the instruction on the banner tint, with no edge', async () => {
+		const { html } = await rendered();
+		const open = html.lastIndexOf('<p', html.indexOf('What to do:'));
+		const block = html.slice(open, html.indexOf('>', open) + 1);
+		// the tint is the whole treatment, so it has to differ from the plane it sits on and from
+		// the ink set on it, or the instruction is an ordinary paragraph again.
+		expect(BANNER_BG).not.toBe(PLANE_BG);
+		expect(BANNER_BG).not.toBe(INK);
+		expect(block).toContain(`background:${BANNER_BG}`);
+		expect(block).toContain(`border-radius:${RADIUS}px`);
+		expect(block).not.toMatch(/border(-[a-z]+)?:[^;"]*solid/);
 	});
 
 	// a fact's value is frequently something a third party sent — an error string off a

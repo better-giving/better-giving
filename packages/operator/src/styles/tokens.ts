@@ -22,19 +22,22 @@
 /** the copied declarations, keyed by the custom property each one is a copy of. */
 export const ADMIN_TOKENS = {
 	// ---- colour ----
-	// the ground the document is read on, and the two grounds a block inside it sits on. the three
-	// are the same stack an operator screen is built from: a page, a band on it, a heavier band on
-	// that.
-	'--admin-page': 'oklch(0.986 0.003 250)',
+	// the ground the document is read on, the plane its body is set on, and the two grounds a block
+	// on that plane sits on. the four are the same stack an operator screen is built from: a page, a
+	// plane on it, a band on the plane, a heavier band on that.
+	'--admin-page': 'oklch(0.965 0.005 250)',
+	'--admin-surface': 'oklch(0.994 0.002 250)',
 	'--admin-surface-sunken': 'oklch(0.965 0.005 250)',
 	'--admin-surface-fill': 'oklch(0.938 0.007 250)',
-	'--admin-divider': 'oklch(0.878 0.011 250)',
+	'--admin-divider': 'oklch(0.938 0.007 250)',
 	'--admin-ink': 'oklch(0.27 0.013 250)',
 	'--admin-ink-muted': 'oklch(0.54 0.019 250)',
 	'--admin-link': 'oklch(0.556 0.15 247.3)',
 	// a literal inside a sentence: its ground and its ink.
-	'--admin-code-bg': 'oklch(0.965 0.005 250)',
+	'--admin-code-bg': 'oklch(0.938 0.007 250)',
 	'--admin-code-ink': 'oklch(0.27 0.013 250)',
+	// the band an instruction is set on: the base banner's tone, which carries no hue.
+	'--admin-tone-note-tint': 'oklch(0.938 0.007 250)',
 
 	// ---- type ----
 	// both stacks are copied whole, first face included. that face is self-hosted by ./fonts.css and
@@ -64,7 +67,7 @@ export const ADMIN_TOKENS = {
 	'--admin-space-8': '1.5rem',
 	'--admin-border-width': '1px',
 	'--admin-border-width-strong': '2px',
-	'--admin-edge': '3px',
 	'--admin-radius': '4px',
+	'--admin-radius-plane': '8px',
 	'--admin-measure-dialog': '34rem'
 } as const;

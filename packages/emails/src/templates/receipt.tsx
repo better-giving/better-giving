@@ -9,6 +9,7 @@ import {
 	FONT_MONO,
 	INK,
 	PANEL_BG,
+	RADIUS_PLANE,
 	SPACE_2,
 	SPACE_4,
 	SPACE_6,
@@ -536,15 +537,23 @@ const DISCLOSURE_HEADING_STYLE: CSSProperties = {
 const PANEL_STYLE: CSSProperties = {
 	margin: box(0, 0, SPACE_6),
 	padding: SPACE_6,
-	background: PANEL_BG
+	background: PANEL_BG,
+	borderRadius: RADIUS_PLANE
 };
 
 const LEAD_STYLE: CSSProperties = { margin: box(0, 0, SPACE_4) };
 const TABLE_STYLE: CSSProperties = { margin: 0, borderCollapse: 'collapse' };
 const LABEL_CELL_STYLE: CSSProperties = { padding: box(0, SPACE_8, SPACE_2, 0) };
 /* the values are set in the system's monospace stack, so the column reads down. the labels do not
-   take it: a label set like a figure reads as another figure. */
-const VALUE_CELL_STYLE: CSSProperties = { padding: box(0, 0, SPACE_2), fontFamily: FONT_MONO };
+   take it: a label set like a figure reads as another figure. a value with no space in it breaks
+   inside the cell rather than widening the table past a phone; `word-break: break-word` is the
+   same break for a client that predates `overflow-wrap: anywhere`. */
+const VALUE_CELL_STYLE: CSSProperties = {
+	padding: box(0, 0, SPACE_2),
+	fontFamily: FONT_MONO,
+	overflowWrap: 'anywhere',
+	wordBreak: 'break-word'
+};
 
 /** the rows set apart in the HTML arm, which `ReceiptPanel` argues. */
 const EMPHASISED: readonly string[] = [RECEIPT_LABELS.amount, CRYPTO_LABELS.amountReceived];

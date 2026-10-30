@@ -32,10 +32,12 @@ const COLOR_TOKENS: readonly string[] = [
 	'--_edge-control',
 	'--_focus-ring',
 	'--_n1',
+	'--_n10',
 	'--_n11',
 	'--_n12',
-	'--_n3',
-	'--_p'
+	'--_n2',
+	'--_p',
+	'--_p-hover'
 ];
 
 /**
@@ -48,10 +50,12 @@ const COLOR_TOKENS: readonly string[] = [
 export const LENGTH_TOKENS: readonly string[] = [
 	'--_border',
 	'--_focus-width',
-	'--_inset',
 	'--_r',
+	'--_r-in',
 	'--_sp1',
 	'--_sp3',
+	'--_sp4',
+	'--_sp5',
 	'--_t-sm'
 ];
 
