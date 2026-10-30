@@ -416,6 +416,62 @@ describe('a long title', () => {
 	});
 });
 
+describe('the card layout', () => {
+	// happy-dom does no layout, so the placement is read off the sheet.
+	const CARD = ".page[data-layout='card']";
+	const WIDE = '@container page (min-width: 60rem)';
+
+	it('stands the cover, the title, the lede and the goal in one plane on a phone, then the box and the story', () => {
+		const layout = declared(page, `${CARD} .page-layout`);
+		expect(layout['grid-template-areas']?.match(/'[\w-]+'/g)).toEqual([
+			"'cover'",
+			"'title'",
+			"'lede'",
+			"'goal'",
+			"'close'",
+			"'box'",
+			"'story'"
+		]);
+		expect(declared(page, `${CARD} .page-layout::before`)).toMatchObject({
+			'grid-row': 'cover-start / close-end',
+			background: 'var(--page-plane)',
+			'border-radius': 'var(--page-plane-radius)',
+			'box-shadow': 'var(--page-plane-lift)'
+		});
+		expect(declared(page, WIDE, `${CARD} .page-layout::before`).content).toBe('none');
+	});
+
+	it('takes the plane’s top corners on the cover at every width', () => {
+		expect(declared(page, `${CARD} [data-area='cover'] .page-cover`)['border-radius']).toBe(
+			'var(--page-plane-radius) var(--page-plane-radius) 0 0'
+		);
+		expect(
+			page.filter(
+				({ at, decls }) =>
+					at.at(-1) === `${CARD} [data-area='cover'] .page-cover` && decls['border-radius']
+			)
+		).toHaveLength(1);
+	});
+
+	it('orders no card section on a phone, so the grid’s areas alone place them', () => {
+		const ordered = page.filter(
+			({ at, decls }) => at.length === 1 && decls.order !== undefined && at[0]?.includes(CARD)
+		);
+		expect(ordered).toEqual([]);
+	});
+
+	it('draws the box on the wide panel as a plane, with the plane’s shadow and no edge', () => {
+		const onPanel = page.filter(
+			({ at }) => at[0] === WIDE && at.at(-1)?.includes("[part~='card']")
+		);
+		expect(onPanel).toEqual([]);
+		expect(declared(page, ".page [part~='card']")).toMatchObject({
+			'border-color': 'transparent',
+			'box-shadow': 'var(--page-plane-lift)'
+		});
+	});
+});
+
 describe('the organisation’s name in the top bar', () => {
 	// happy-dom does no layout, so the cut is read off the sheet: a name that wrapped would stand the
 	// bar taller than the header's first-screen sum counts, and Share takes width from the name's row.
