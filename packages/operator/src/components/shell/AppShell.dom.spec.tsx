@@ -278,7 +278,7 @@ describe('the way out a shell draws', () => {
 		const out = root.querySelector('.adm-identity > .adm-signout');
 
 		expect(out?.querySelector('.adm-signout__word')?.textContent).toBe('Sign out');
-		// the mark rides in the same button; ../../styles/adm.css hides it behind the word.
+		// the mark rides in the same button; ../../styles/adm.css hides it wherever the word shows.
 		expect(out?.querySelector('.adm-mark')).not.toBeNull();
 	});
 

@@ -139,7 +139,7 @@ export default function ShellAppShellPreview() {
 
 			{/* the dashboard's rail: three groups with a mark on every entry, the four tabs marked `bar`
 			    and the rest under More on a phone, the reader in a section rather than on its page, a name long enough to
-			    contest the identity row led by the in-app globe and ended by the link to the public page
+			    contest the top bar's row led by the in-app globe and ended by the link to the public page
 			    before the way out, a strip over the panel, and the cells drawn as the link the surface
 			    handed in. */}
 			<AppShell

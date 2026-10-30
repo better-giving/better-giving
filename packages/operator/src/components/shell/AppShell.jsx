@@ -235,7 +235,8 @@ export function AppShell({
 
 	/* the specimen's way out is shaped as packages/app/src/routes/_app.tsx's: a `.adm-signout` holder,
 	   which keeps the way out from shrinking and stands it at the bar's far end, round the button,
-	   which ../../styles/adm.css aims at at the touch floor as `.adm-identity > .adm-signout > .adm-btn`. */
+	   whose target ../../styles/adm.css widens to the touch floor at
+	   `.adm-identity > .adm-signout > .adm-btn`. */
 	/** @type {ReactNode} */
 	const out =
 		wayOut === undefined ? (
@@ -267,8 +268,9 @@ export function AppShell({
 			</span>
 		);
 
-	/* one row at both widths: the site's globe, the name cut to one line, and the way out at the far
-	   end. the name's `title` is the whole of it wherever the cut takes the end off. */
+	/* one row at both widths: the site's globe, the name cut to one line, and the link to the public
+	   page and the way out at the far end. the name's `title` is the whole of it wherever the cut
+	   takes the end off. */
 	/** @type {ReactNode} */
 	const lead =
 		site === undefined ? null : (

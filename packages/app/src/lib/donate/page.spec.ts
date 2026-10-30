@@ -292,8 +292,8 @@ const hsv = (h: number, s: number, v: number) => {
 const BRANDS: (string | null)[] = [null, '#000000', '#808080', '#ffffff'];
 for (let h = 0; h < 360; h += 5) BRANDS.push(hsv(h, 1, 1), hsv(h, 1, 0.45), hsv(h, 0.35, 0.85));
 
-/** where text stands: the page ground, the wash's two tints at full strength, which is the wash's
- * darkest point, the form's card on `--_n1`, a plane on `--page-plane`, and the About us band. */
+/** where text stands: the page ground, the wash's two tints at full strength, each a darkest point
+ * of the wash, the form's card on `--_n1`, a plane on `--page-plane`, and the About us band. */
 const GROUNDS = {
 	page: { ground: '--page-ground', scope: {} },
 	washBrand: { ground: '--page-wash-brand', scope: {} },

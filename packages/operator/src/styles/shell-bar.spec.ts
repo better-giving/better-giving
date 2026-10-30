@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { rulesIn, ruleOf, sheet } from './sheet-rule.testing';
 
-// what the top bar and the phone bar paint, read off the sheets: the dom pool lays nothing out
-// (see ./sheet-rule.testing.ts), so the rule is the claim.
+// what the top bar and the phone bar paint, read off the sheets: neither pool lays anything out
+// (../../vitest.config.ts), so the rule is the claim.
 
 const css = sheet('adm.css');
 const tokens = sheet('tokens.css');

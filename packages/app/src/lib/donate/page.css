@@ -89,9 +89,8 @@
  * column to the next; `--page-gap-section`, 40px on a phone and growing with the container, is
  * section to section down the page. `--page-gap-lead` is the top bar to the first section;
  * `--page-band-inset` is the inset of a section drawn on a ground of its own, and
- * `--page-card-inset` the inset of the card layout's panel, 16px on a phone as the approved phone
- * mockup draws it and 28px from 60rem; `--page-col-gap` is between two columns and `--page-gutter`
- * the page's side margin.
+ * `--page-card-inset` the inset of the card layout's panel, 16px on a phone and 28px from 60rem;
+ * `--page-col-gap` is between two columns and `--page-gutter` the page's side margin.
  *
  * grounds. a rung is the job radix colors gives its number
  * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), the meanings
@@ -106,9 +105,9 @@
  * ink, rung 12, at a faint alpha in two layers, a short one and a soft throw: it falls on the wash,
  * whose colour changes under it, so no solid rung could be its shade. a plane on a plane keeps a
  * hairline edge, `--page-plane-edge`, rung 6, and no shadow of its own, but for one: the box on the
- * card's panel from 60rem takes the plane's own shadow and no edge, as the approved card mockup
- * draws it. the top bar keeps that hairline along its foot, the one side the page meets it on. the
- * bar runs the page's full width and has no corner and no shadow.
+ * card's panel from 60rem takes the plane's own shadow and no edge. the top bar keeps that hairline
+ * along its foot, the one side the page meets it on. the bar runs the page's full width and has no
+ * corner and no shadow.
  *
  * the wash. `--page-wash` is two soft radial tints laid over the solid ground, the brand's at the
  * first screen's start and a warm one at the page's far corner, each fading to `transparent` at 70%
