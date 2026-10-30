@@ -4,7 +4,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { type Page, parsePage } from '../page/catalog';
 import type { PageType } from '../page/keys';
 import { PageView, type PageViewProps } from './page-view';
-import { EndedCampaignPage } from './plain-page';
+import { EndedCampaignPage, PlainPage } from './plain-page';
 
 // the images a page draws beside its own photos, through the renderer: the organisation's logo in
 // the masthead and a program's photo on its chooser option — and the logo on an ended campaign's
@@ -71,6 +71,13 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
+/** what a masthead prints, less its Share link: the words a wide logo stands in for. */
+function wordsOf(mast: Element | null | undefined): string {
+	const copy = mast?.cloneNode(true) as Element | undefined;
+	copy?.querySelector('.page-mast-share')?.remove();
+	return copy?.textContent ?? '(no masthead)';
+}
+
 describe('the logo atop the page', () => {
 	const masthead = (logo: PageViewProps['logo']) =>
 		mount(<PageView {...props('donation_page', donationPage(), { logo })} />).querySelector(
@@ -94,7 +101,8 @@ describe('the logo atop the page', () => {
 		expect(logo?.getAttribute('src')).toBe(`/image/${LOGO}`);
 		expect(logo?.getAttribute('alt')).toBe(ORG);
 		expect(logo?.parentElement?.className).toBe('page-mast-name');
-		expect(logo?.parentElement?.textContent).toBe('');
+		expect(wordsOf(mast)).toBe('');
+		expect(mast?.querySelector('.page-mast-share')?.textContent).toBe('Share');
 	});
 
 	it.each([
@@ -137,7 +145,22 @@ describe('the logo atop the page', () => {
 
 			expect(logo?.getAttribute('src')).toBe(`/image/${LOGO}`);
 			expect(logo?.getAttribute('alt')).toBe(ORG);
-			expect(mast?.textContent).toBe('');
+			expect(wordsOf(mast)).toBe('');
+		});
+
+		it('draws no Share link, there being no share section to jump to', () => {
+			expect(ended(null)?.querySelector('.page-mast-share')).toBeNull();
+			expect(ended({ imageId: LOGO, width: 420, height: 80 })?.querySelector('a')).toBeNull();
+		});
+
+		it('draws a plain page with no masthead, and so no Share link', () => {
+			const root = mount(
+				<PlainPage look={{ brandColour: null }}>
+					<p>Nothing to share</p>
+				</PlainPage>
+			);
+			expect(root.querySelector('.page-mast')).toBeNull();
+			expect(root.querySelector('.page-mast-share')).toBeNull();
 		});
 
 		it('none: the name, beside the badge of its initials', () => {

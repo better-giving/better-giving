@@ -99,20 +99,26 @@ describe('every plane is a white card on the page', () => {
 	it.each(planes.map(({ selector }) => selector))(
 		'%s draws an edge and no shadow nested in another plane',
 		(selector) => {
-			const nested = rulesIn(css).filter(
-				({ selector: one, stated }) =>
-					/^:is\([^)]*\) :is\([^)]*\)$/.test(one) && stated.get('box-shadow') === 'none'
-			);
-			expect(nested).toHaveLength(1);
-			const [outer, inner] = (nested[0]?.selector.match(/:is\(([^)]*)\)/g) ?? []).map((list) =>
-				list
-					.slice(4, -1)
-					.split(',')
-					.map((one) => one.trim())
-			);
-			expect(outer).toContain(selector);
-			expect(inner).toContain(selector);
-			expect(nested[0]?.stated.get('border-color')).toBe('var(--admin-divider-plane)');
+			const lists = (head: string) =>
+				(head.match(/:is\(([^)]*)\)/g) ?? []).map((list) =>
+					list
+						.slice(4, -1)
+						.split(',')
+						.map((one) => one.trim())
+				);
+			// a rule drawing a plane's nested edge names it in its outer and in its inner list.
+			const nested = rulesIn(css).filter(({ selector: head, stated }) => {
+				const [outer, inner] = lists(head);
+				return (
+					stated.get('box-shadow') === 'none' &&
+					outer?.includes(selector) === true &&
+					inner?.includes(selector) === true
+				);
+			});
+			expect(nested.length, selector).toBeGreaterThanOrEqual(1);
+			for (const rule of nested) {
+				expect(rule.stated.get('border-color')).toBe('var(--admin-divider-plane)');
+			}
 		}
 	);
 

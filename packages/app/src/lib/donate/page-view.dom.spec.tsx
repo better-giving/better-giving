@@ -530,18 +530,22 @@ describe('share', () => {
 		expect(root.querySelector('[data-area="share"] button')?.textContent).toContain('Copy link');
 	});
 
-	it('ends the top bar on a Share link to the share section, on every layout', () => {
-		for (const page of [CARD, LETTER, FEATURE]) {
-			const root = mount(<PageView {...props('campaign', page)} />);
+	it.each([
+		['card', 'campaign', CARD],
+		['letter', 'campaign', LETTER],
+		['feature', 'campaign', FEATURE],
+		['donation page', 'donation_page', defaultDonationPage()]
+	] as const)(
+		'ends the top bar on a Share link to the share section, on the %s',
+		(_, type, page) => {
+			const root = mount(<PageView {...props(type, page)} />);
 			const link = root.querySelector<HTMLAnchorElement>('.page-mast a');
 			expect(link?.textContent).toBe('Share');
 			const target = link?.getAttribute('href') ?? '';
-			expect(target).toMatch(/^#/);
+			expect(target).toMatch(/^#./);
 			expect(root.querySelector(target)?.getAttribute('data-area')).toBe('share');
 		}
-		const donation = mount(<PageView {...props('donation_page', defaultDonationPage())} />);
-		expect(donation.querySelector('.page-mast a')?.textContent).toBe('Share');
-	});
+	);
 });
 
 describe('the preview', () => {

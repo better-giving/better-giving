@@ -273,6 +273,30 @@ describe('the way out a shell draws', () => {
 		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Sign out']);
 	});
 
+	it('shows the way out as its word, which the sheet then hides the mark beside', () => {
+		const root = render(AppShell, { org: ORG, groups: GROUPS });
+		const out = root.querySelector('.adm-identity > .adm-signout');
+
+		expect(out?.querySelector('.adm-signout__word')?.textContent).toBe('Sign out');
+		// the mark rides in the same button; ../../styles/adm.css hides it behind the word.
+		expect(out?.querySelector('.adm-mark')).not.toBeNull();
+	});
+
+	it('draws exactly one way out anywhere in the shell, however the destinations are laid', () => {
+		const root = render(AppShell, {
+			org: ORG,
+			groups: GROUPS,
+			foot: <div>Riverbank Trust's Account</div>
+		});
+
+		expect(root.querySelectorAll('.adm-signout')).toHaveLength(1);
+		expect(
+			[...root.querySelectorAll('button, a')].filter((node) =>
+				/sign out/i.test(node.textContent ?? '')
+			)
+		).toHaveLength(1);
+	});
+
 	it('draws what a surface hands it in the top bar, and no foot under the rail', () => {
 		const root = render(AppShell, {
 			org: ORG,
@@ -304,14 +328,14 @@ describe('the way out a shell draws', () => {
 		expect(root.querySelector('.adm-rail__foot')?.textContent).toBe("Riverbank Trust's Account");
 	});
 
-	it('draws no foot where neither a foot nor a way out is handed', () => {
+	it('draws no foot where the way out and the foot are both handed as none', () => {
 		const root = render(AppShell, { org: ORG, groups: GROUPS, wayOut: null, foot: null });
 
 		expect(waysOut(root)).toHaveLength(0);
 		expect(root.querySelector('.adm-rail__foot')).toBeNull();
 	});
 
-	it('draws no foot where no foot is handed', () => {
+	it('draws no foot where the way out is none and no foot is stated', () => {
 		// a foot that comes to nothing is dropped rather than stood empty: the box draws its own rule
 		// and its own padding, so an empty one is a divider under nothing.
 		const root = render(AppShell, { org: ORG, groups: GROUPS, wayOut: null });
@@ -410,6 +434,7 @@ describe('the identity a shell draws', () => {
 	it('draws the name alone where no site is handed', () => {
 		const root = render(AppShell, { groups: GROUPS, org: 'Riverbank Trust' });
 
+		expect(heads(root)).toHaveLength(1);
 		for (const head of heads(root)) {
 			expect(head.querySelector('a')).toBeNull();
 			expect(head.querySelector('.adm-identity__name')?.textContent).toBe('Riverbank Trust');

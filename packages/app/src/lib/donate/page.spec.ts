@@ -346,14 +346,15 @@ describe('text clears 4.5:1 for every brand colour', () => {
 			expect(floor(shade, ground, '--page-quiet'), ground).toBeGreaterThanOrEqual(4.5);
 	});
 
-	// a link, the top bar's Share and a tier's amount are drawn in it on the page ground and its
-	// wash, on a card and on a plane.
+	// a link and a tier's amount are drawn in it on the page ground and its wash, on a card and on
+	// a plane. the top bar's Share stands on the plane, and steps to `--_p-hover` under a pointer.
 	it.each(SHADES)('the primary as ink on the page ground, a card and a plane, %s', (shade) => {
 		expect(floor(shade, 'page', '--_p')).toBeGreaterThanOrEqual(4.5);
 		expect(floor(shade, 'washBrand', '--_p')).toBeGreaterThanOrEqual(4.5);
 		expect(floor(shade, 'washWarm', '--_p')).toBeGreaterThanOrEqual(4.5);
 		expect(floor(shade, 'card', '--_p')).toBeGreaterThanOrEqual(4.5);
 		expect(floor(shade, 'plane', '--_p')).toBeGreaterThanOrEqual(4.5);
+		expect(floor(shade, 'plane', '--_p-hover')).toBeGreaterThanOrEqual(4.5);
 	});
 
 	// a program option's description stands on the option's own ground, which rests on rung 3 and

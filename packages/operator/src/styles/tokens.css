@@ -707,7 +707,8 @@
 		--admin-rail-hover-bg: var(--admin-neutral-3);
 		/* below the wide breakpoint the destinations stand in the phone's bar and its More sheet, both
 		   white, and current there is the column's own answer: the accent's tint, rung 3, under the
-		   accent's rung 12 at Lc 90, and under a pointer rung 4 at Lc 85. a resting tab's hover is
+		   rail's current ink (rung 12) at Lc 90, and under a pointer rung 4 under
+		   `--admin-accent-deep` at Lc 85. a resting tab's hover is
 		   `--admin-control-bg-hover`. they are named apart from the rail's so either may be re-cut
 		   without the other. */
 		--admin-bar-current-bg: var(--admin-accent-3);
