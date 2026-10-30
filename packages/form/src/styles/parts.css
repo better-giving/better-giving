@@ -61,14 +61,17 @@
  * scroll well and the two trays read a ramp step directly, and the receipt draws neither, because
  * the rules inside it are what it is read against.
  *
- * what kind of box a control is shows in its face. a box a donor types into takes a field's rung-2
- * fill inside its outline; a payment rail takes the white face of the card itself inside the same
- * outline. the outline is what finds each of them: a fill a step off the card is too faint to find
- * a box by (./tokens.css argues it at `--_edge-control`).
+ * the rung a ground takes is the job radix gives that number, as on the operator surfaces: the card
+ * is rung 1, a plane inside it — the two trays — is rung 2, a control rests on rung 3 and answers a
+ * pointer on 4 and a press on 5, a row's or a section's rule is rung 6 and an overlay's edge rung 7.
+ *
+ * a box a donor types into and a payment rail both take the white face of the card itself inside
+ * the outline that finds them, and the outline is what finds each of them: a face the card's own
+ * colour finds nothing (./tokens.css argues it at `--_edge-control`).
  *
  * the preset amounts and the cadences draw no edge of their own, and are the controls here not
- * bounded by one. each set stands on a tray — one fill a step off the card, and a hairline of the
- * card's own separator step around the group, drawn by the tray and by no control on it. the
+ * bounded by one. each set stands on a tray — a plane's fill a rung off the card, and a hairline of
+ * the card's own edge rung around the group, drawn by the tray and by no control on it. the
  * hairline bounds the set the way the card's edge bounds the card and is drawn against no floor,
  * because a container's edge identifies nothing; what a donor finds on a tray is the chosen one,
  * raised to the card's own ground. the free entry stands on the amount tray too, at that same
@@ -133,10 +136,10 @@
 	min-block-size: var(--_row-min);
 	padding: var(--_sp2) var(--_sp3);
 	/*
-	 * a text box's fill, rung 2, inside the outline that finds it (`--_edge-control` in
-	 * ./tokens.css): the operator surfaces' text box, fill and outline both.
+	 * a text box's white face, the card's own rung 1, inside the outline that finds it
+	 * (`--_edge-control` in ./tokens.css): the operator surfaces' text box, face and outline both.
 	 */
-	background: var(--_n2);
+	background: var(--_n1);
 	color: var(--_n12);
 	border: var(--_border) solid var(--_edge-control);
 	border-radius: var(--_r-in);
@@ -229,10 +232,12 @@ textarea[part~='field'] {
 }
 
 /*
- * the open list, the closed choices' and the coin list's alike: the card's own ground on a control's
- * edge, at the inner radius, raised by the one elevation this component draws. it stands in the top
- * layer rather than on the card (../zag.ts), and `--_lift` is a rung of the card's ramp, so the
- * shade under it is one the card already carries.
+ * the open list, the closed choices' and the coin list's alike: the card's own ground inside an
+ * overlay's edge, rung 7 — the operator surfaces' `--admin-overlay-border`, a quiet line with the
+ * shadow beside it saying the list floats, and no control's outline, because the list is no box a
+ * donor finds — at the inner radius, raised by the one elevation this component draws. it stands
+ * in the top layer rather than on the card (../zag.ts), and `--_lift` is a rung of the card's ramp,
+ * so the shade under it is one the card already carries.
  *
  * at least the box's own width (`--reference-width` is the box's, as zag measures it) and never
  * wider than the room the viewport leaves beside it (`--available-width`, zag's too): zag sizes the
@@ -251,7 +256,7 @@ textarea[part~='field'] {
 	padding: var(--_sp1);
 	background: var(--_n1);
 	color: var(--_n12);
-	border: var(--_border) solid var(--_edge-control);
+	border: var(--_border) solid var(--_n7);
 	border-radius: var(--_r-in);
 	box-shadow: var(--_lift);
 }
@@ -346,7 +351,7 @@ textarea[part~='field'] {
  * and two weights and two inks. resting, the words stand where the value will, so they are drawn as
  * a placeholder is — the quiet weight, at `--_n10`, and a donor reads the box as waiting rather than
  * as one already holding what it says. that rung is the quietest this card can set words in on a
- * field's fill and there is nothing under it: `--_n9` reads 3.16:1 on `--_n2`, and rung 10 clears
+ * field's face and there is nothing under it: `--_n9` reads 3.24:1 on `--_n1`, and rung 10 clears
  * the floor there only because ./tokens.css authors it below its own distribution. floated, the
  * words are the box's name and take the weight and the ink every other label on the card is drawn
  * at — the base `[part~='label']` rule's own `--_w-bold` and `--_n11`, both left to it. so the words
@@ -368,11 +373,11 @@ textarea[part~='field'] {
  * would draw the floated words at 0.65625em of the card.
  *
  * the edge must not strike through the name, so the span paints its own knockout behind its words: a
- * band one line tall, centred on the words as they are, split at its own middle. the half above the
- * edge is the card's own fill and the half below is the box's, because that is exactly what each
- * half covers — one flat colour would match one of them and read as a patch on the other. on the
- * span and not on the label around it, because the band is the words' own line: `1lh` on the label
- * is the base step it carries for the span rather than the step the span is drawn at.
+ * band one line tall, centred on the words as they are, in the card's own ground. the half above the
+ * edge covers the card and the half below covers the box, and a box's face is the card's rung 1, so
+ * one colour is exactly what both halves cover and reads as a patch on neither. on the span and not
+ * on the label around it, because the band is the words' own line: `1lh` on the label is the base
+ * step it carries for the span rather than the step the span is drawn at.
  *
  * `1lh` is the span's own line, so the band is re-derived by whatever size that span is drawn at
  * rather than stating a length here. half of it is the whole of what stands above the box, and at
@@ -396,9 +401,8 @@ textarea[part~='field'] {
  * through the words.
  *
  * the label's rise is transitioned and nothing else about the move is (./motion.css): the band is painted
- * from the first frame rather than fading in over it, and what that costs is its upper half standing
- * on the box's own fill for the length of the move — `--_n1` on `--_n2` is 1.02:1, under what any
- * state on this card is said with.
+ * from the first frame rather than fading in over it, and that costs nothing, because for the length
+ * of the move the band stands on the box's own face, which is its own colour.
  *
  * the label takes no pointer. it stands over the box a donor clicks into, and a click landing on a
  * `<label for>` focuses the control rather than placing the caret where it fell — so a donor could
@@ -465,7 +469,8 @@ textarea[part~='field'] {
 	font-size: max(12px, var(--_t-xs));
 	/* the gap the edge leaves either side of the name, the same at both ends. */
 	padding-inline: var(--_sp1);
-	background: linear-gradient(to bottom, var(--_n1) 50%, var(--_n2) 50%) 0 50% / 100% 1lh no-repeat;
+	/* one colour as an image, because a `background-color` takes no size and the band is one line. */
+	background: linear-gradient(var(--_n1), var(--_n1)) 0 50% / 100% 1lh no-repeat;
 }
 
 /*
@@ -801,10 +806,10 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * a fill and no edge. this is a container rather than a control, and ./tokens.css states at
  * `--_edge-control` that a container's edge identifies nothing — the receipt is that argument taken
  * to its end and draws none either, because a fill already says where a block starts and stops. the
- * track carries `--_n3`, which is the same fill the denominations below stand on, and those already
- * draw no edge at all: what identifies an option here is that fill against the card, exactly as it
- * is for a tile, and the frame this rule used to draw was around the group rather than around any
- * one of them.
+ * tray is a plane inside the card, so it carries a plane's rung, `--_n2`, one rung off the card's
+ * `--_n1`, and what stands on it is a rung off it again: a denomination rests on a control's own
+ * `--_n3` and draws no edge at all, and a cadence draws no ground of its own until a pointer
+ * reaches it. the hairline is around the group rather than around any one of them.
  *
  * the pad is what the chosen option lifts inside — without it a chip would be flush to the track's
  * corner on three sides, its shadow would fall past the track rather than on it, and nothing would
@@ -835,22 +840,22 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 .segment,
 .tiles:not(.bare) {
 	position: relative;
-	background: var(--_n3);
+	background: var(--_n2);
 	border: var(--_border) solid var(--_n7);
 	border-radius: var(--_r-in);
 	padding: var(--_sp1);
 }
 
 .bare > [part~='amount-input'] {
-	background: var(--_n2);
+	background: var(--_n1);
 	border: var(--_border) solid var(--_edge-control);
 }
 
 /*
- * the grid lines between the boxes: a hairline standing in each gap, two steps fainter than the
- * tray's own edge, drawn as one lattice — every vertical meets every horizontal and both run
- * through a cell nothing stands in, so the boxes on a tray read as pieces on one board rather than
- * words floating on a fill. the lines run to the tray's inset and no further, and a chosen box
+ * the grid lines between the boxes: a hairline standing in each gap, in the separator rung, a step
+ * fainter than the tray's own edge, drawn as one lattice — every vertical meets every horizontal
+ * and both run through a cell nothing stands in, so the boxes on a tray read as pieces on one board
+ * rather than words floating on a fill. the lines run to the tray's inset and no further, and a chosen box
  * stands clear of them on every side by that same inset: the gap is twice it, the line stands at
  * the gap's middle, and a raised chip is a piece set on a square rather than a box drawn over a
  * rule. the lines run beside the chosen box as beside any other; a lattice broken either side of
@@ -885,8 +890,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 		linear-gradient(
 			to right,
 			transparent calc(100% - (var(--_sp2) + var(--_border)) / 2),
-			var(--_n5) 0,
-			var(--_n5) calc(100% - (var(--_sp2) - var(--_border)) / 2),
+			var(--_n6) 0,
+			var(--_n6) calc(100% - (var(--_sp2) - var(--_border)) / 2),
 			transparent 0
 		),
 		none;
@@ -911,7 +916,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 .tiles:not(.bare) > .entry::after {
 	content: '';
 	position: absolute;
-	background: var(--_n5);
+	background: var(--_n6);
 }
 
 .segment > label + label::before {
@@ -1028,20 +1033,28 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * a step at a time off a surface that is already a step off the card, and the same two steps for
- * both: an option and a tile stand on one fill now, so they answer a pointer identically.
+ * a step at a time from where each rests, which is the operator surfaces' two ranks. a tile rests on
+ * a control's rung 3 and steps to 4 under the pointer and 5 under the press, as their neutral button
+ * does; a cadence draws no ground of its own on the tray's rung 2, so it takes the quiet rank's pair
+ * instead, 3 and 4 — the first fill it shows a rung off the tray, as the tile's is a rung off its own.
  *
  * a chosen cadence is exempt because it has no fill of its own to move: the chip behind it is the
  * track's, and a fill painted here would cover it. its press is answered by the chip itself
  * (`.segment:has(…)::before` in ./motion.css) and its hover by nothing, because a chosen option has
  * nothing left to offer a pointer.
  */
-[part~='frequency-option']:not([part~='selected']):hover,
+[part~='frequency-option']:not([part~='selected']):hover {
+	background: var(--_n3);
+}
+
+[part~='frequency-option']:not([part~='selected']):active {
+	background: var(--_n4);
+}
+
 [part~='amount-option']:hover {
 	background: var(--_n4);
 }
 
-[part~='frequency-option']:not([part~='selected']):active,
 [part~='amount-option']:active {
 	background: var(--_n5);
 }
@@ -1082,9 +1095,10 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the primary steps and the ground holds, which is the reverse of what an unselected option two
- * rules above does. the ramp has one step between `--_n1` and the fill a neighbour already stands
- * on: a ground that answered the pointer would either move 1.02:1, which is nothing, or move a
- * chosen option down onto its neighbours' own colour, which reads as the choice coming undone
+ * rules above does. the ramp has one step under `--_n1` before the colour a neighbour already
+ * stands on, and it is the tray's own `--_n2`: a ground that answered the pointer would either move
+ * 1.02:1, which is nothing, or move a chosen option down onto its neighbours' own colour or the
+ * tray's, which reads as the choice coming undone
  * rather than as a press. the word is what steps, and both steps are darker than `--_p`, so it only
  * gains contrast on the way down.
  */
@@ -1127,8 +1141,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * gives (`[part~='field']` above, and the two are one rule in ./motion.css). that is the whole of
  * where it can be answered: the edge is drawn only on a bare tray, where this box is a field like
  * any other, and on a tray of tiles it is the box that has already been chosen and stands at the
- * card's own ground with no step under it that reads (`--_p-hover` in ./tokens.css carries that
- * exemption with the cadence's).
+ * card's own ground with nothing between it and the tray's that reads (`--_p-hover` in ./tokens.css
+ * carries that exemption with the cadence's).
  */
 [part~='amount-input']:hover {
 	border-color: var(--_n10);
@@ -1176,8 +1190,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * and the quietest rung this card sets words in, which is the rung the naming span resting inside a
  * floating row takes (`.floating` above): the two are one thing — words standing in a value's place
  * until a donor types — so they are drawn alike, and this rule is where that pair is stated. there
- * is no step under it. `--_n10` reads 4.96:1 on `--_n1` and 4.85:1 on the `--_n2` this box takes on
- * a bare tray; rung 9 reads 3.24:1 and 3.16:1 on the two, under the floor a word has to clear.
+ * is no step under it. `--_n10` reads 4.96:1 on the `--_n1` this box takes on a tray and on a bare
+ * one alike; rung 9 reads 3.24:1 there, under the floor a word has to clear.
  *
  * and the opacity, which is what keeps it that rung on screen. an engine fades a placeholder of
  * its own accord, and the fade is over the ink rather than instead of it, so left at the default
@@ -1793,10 +1807,9 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * the one skeleton block that does not stand on the card. it is inside a real `.segment` (../views.ts
- * builds the skeleton out of the same track), so it is drawn on the track's own fill and would be
- * invisible at the step every other block takes — one rung further is what makes it a shape rather
- * than a slightly different patch of the same colour.
+ * a cadence's place on the track. it is inside a real `.segment` (../views.ts builds the skeleton out
+ * of the same track), so it stands on the tray's rung 2, and the step every block takes is a rung off
+ * that as it is off the card — the shapes on both trays are the control's own rung 3 on a plane.
  *
  * the height is the option's floor and the track's pad and frame are the segment's own, so the
  * skeleton and the card that replaces it are the same height without either restating the other's
@@ -1804,7 +1817,6 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  */
 .skeleton-segment {
 	block-size: var(--_row-min);
-	background: var(--_n4);
 }
 
 /*
@@ -1900,7 +1912,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the provider's own authorization wording. quiet, because it is not ours: a ground of its own
- * marks it as quoted material, the way the operator surfaces set a slab of code on rung 4 with no
+ * marks it as quoted material, the way the operator surfaces set a slab of code on rung 3 with no
  * edge, and nothing in it is styled to draw a donor's eye to one clause. the border keeps its width
  * in `transparent`, so the words keep an edged box's inset. it carries a 12px floor under the
  * token, because it authorizes a debit and a host who shrank their own root must not be able to
@@ -2043,8 +2055,9 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * of a row's value — so it carries the full target, and out of flow, because a target carried by the
  * box itself would prop the row open to the target's height rather than the text's.
  *
- * the ground while its caution is standing is the same step the card's quiet controls take under a
- * pointer, with the mark keeping its warning ink: the open state is the same mark, not a second one.
+ * the ground while its caution is standing is rung 3, the step a control with no ground of its own
+ * takes under a pointer and while it holds something open — the operator surfaces' quiet rank — with
+ * the mark keeping its warning ink: the open state is the same mark, not a second one.
  * a circle, because a control that is one glyph is round by nature (`--_switch-radius` in
  * ./tokens.css keeps that list).
  */
@@ -2068,7 +2081,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 .deposit .caution[aria-expanded='true'] {
-	background: var(--_n4);
+	background: var(--_n3);
 	border-radius: 50%;
 }
 
@@ -2077,8 +2090,9 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  *
  * rung 3 is the ladder's own ui-element ground, so the value is marked out of the prose by standing
  * on it rather than by a colour or a weight the prose could also take — and that ground is what a
- * donor sees pressed, because the whole run is what they press. rung 4 under the pointer and under
- * the press, the same step every quiet control on this card takes.
+ * donor sees pressed, because the whole run is what they press. rung 4 under the pointer and rung 5
+ * under the press, the steps every control resting on rung 3 takes — the operator surfaces' soft
+ * rank, a press standing on a band it shares with the value it acts on.
  *
  * one control per value and no control inside another: the mark is the affordance and never a target
  * of its own (`run` in ../deposit.ts argues what that buys and what it costs).
@@ -2091,9 +2105,12 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	white-space: nowrap;
 }
 
-.deposit .run:hover,
-.deposit .run:active {
+.deposit .run:hover {
 	background: var(--_n4);
+}
+
+.deposit .run:active {
+	background: var(--_n5);
 }
 
 /*

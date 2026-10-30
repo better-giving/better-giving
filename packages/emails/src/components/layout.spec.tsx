@@ -25,15 +25,15 @@ function bodyCell(html: string): string {
 
 describe('Layout', () => {
 	/**
-	 * the operator system groups by ground, not by line: one group is one plane, a lighter ground
-	 * on the page with no edge of its own and the plane's corner. a mail's body is that one group,
+	 * the operator system groups by ground, not by line: one group is one plane, a ground a rung off
+	 * the page with no edge of its own and the plane's corner. a mail's body is that one group,
 	 * and without the plane every block in it is set on the page's own rung and vanishes.
 	 */
-	it('sets the body on one plane: a ground lighter than the page, no edge, the plane corner', async () => {
+	it('sets the body on one plane: a ground a rung off the page, no edge, the plane corner', async () => {
 		const html = await rendered();
 		const cell = bodyCell(html);
-		// --admin-surface is --admin-neutral-1 in packages/operator/src/styles/tokens.css, converted.
-		expect(PLANE_BG).toBe('#fcfdfe');
+		// --admin-surface is --admin-neutral-2 in packages/operator/src/styles/tokens.css, converted.
+		expect(PLANE_BG).toBe('#f9fbfc');
 		expect(PLANE_BG).not.toBe(PAGE_BG);
 		expect(html.indexOf(cell)).toBeLessThan(html.indexOf('The body.'));
 		expect(cell).toContain(`background-color:${PLANE_BG}`);

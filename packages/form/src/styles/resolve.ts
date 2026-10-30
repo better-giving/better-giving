@@ -35,7 +35,6 @@ const COLOR_TOKENS: readonly string[] = [
 	'--_n10',
 	'--_n11',
 	'--_n12',
-	'--_n2',
 	'--_p',
 	'--_p-hover'
 ];

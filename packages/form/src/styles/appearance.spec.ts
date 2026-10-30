@@ -19,7 +19,6 @@ const RESOLVED: Record<string, string> = {
 	'--_p-hover': 'oklch(0.395 0.13 264)',
 	'--_focus-ring': 'oklch(0.27 0.013 250)',
 	'--_n1': 'oklch(0.994 0.002 250)',
-	'--_n2': 'oklch(0.986 0.003 250)',
 	'--_n10': 'oklch(0.54 0.019 250)',
 	'--_n11': 'oklch(0.49 0.017 250)',
 	'--_n12': 'oklch(0.27 0.013 250)',
@@ -109,7 +108,7 @@ describe('stripeAppearance', () => {
 				// the control corner the rail around it and the card's own fields are drawn at, rather
 				// than the plane's corner `variables.borderRadius` carries.
 				borderRadius: '4px',
-				backgroundColor: 'oklch(0.986 0.003 250)',
+				backgroundColor: 'oklch(0.994 0.002 250)',
 				// the length `[part~='field']` in ./parts.css draws the card's own fields at, worn
 				// here a second time: the box a donor types into is one size wherever it is painted.
 				fontSize: '16px'
@@ -280,7 +279,7 @@ describe('stripeAppearance', () => {
 
 		expect(appearance.rules['.Input']).toEqual({
 			borderRadius: '4px',
-			backgroundColor: 'oklch(0.986 0.003 250)',
+			backgroundColor: 'oklch(0.994 0.002 250)',
 			fontSize: '16px'
 		});
 	});
@@ -292,7 +291,7 @@ describe('stripeAppearance', () => {
 
 		expect(appearance.rules['.Input']).toEqual({
 			borderRadius: '4px',
-			backgroundColor: 'oklch(0.986 0.003 250)',
+			backgroundColor: 'oklch(0.994 0.002 250)',
 			fontSize: '16px'
 		});
 	});

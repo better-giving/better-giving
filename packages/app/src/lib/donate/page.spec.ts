@@ -292,10 +292,12 @@ const hsv = (h: number, s: number, v: number) => {
 const BRANDS: (string | null)[] = [null, '#000000', '#808080', '#ffffff'];
 for (let h = 0; h < 360; h += 5) BRANDS.push(hsv(h, 1, 1), hsv(h, 1, 0.45), hsv(h, 0.35, 0.85));
 
-/** where text stands: the page ground, a card on `--_n1`, and the About us band. */
+/** where text stands: the page ground, the form's card on `--_n1`, a plane on `--_n2`, and the
+ * About us band. */
 const GROUNDS = {
 	page: { ground: '--page-ground', scope: {} },
 	card: { ground: '--_n1', scope: {} },
+	plane: { ground: '--_n2', scope: {} },
 	band: {
 		ground: '--page-band',
 		scope: declared(page, ".page[data-layout='feature'] .page-about-area")
@@ -342,10 +344,18 @@ describe('text clears 4.5:1 for every brand colour', () => {
 			expect(floor(shade, ground, '--page-quiet'), ground).toBeGreaterThanOrEqual(4.5);
 	});
 
-	// a link and a tier's amount are drawn in it on the page ground and on a card.
-	it.each(SHADES)('the primary as ink on the page ground and a card, %s', (shade) => {
+	// a link and a tier's amount are drawn in it on the page ground, on a card and on a plane.
+	it.each(SHADES)('the primary as ink on the page ground, a card and a plane, %s', (shade) => {
 		expect(floor(shade, 'page', '--_p')).toBeGreaterThanOrEqual(4.5);
 		expect(floor(shade, 'card', '--_p')).toBeGreaterThanOrEqual(4.5);
+		expect(floor(shade, 'plane', '--_p')).toBeGreaterThanOrEqual(4.5);
+	});
+
+	// a program option's description stands on the option's own ground, which rests on rung 3 and
+	// steps to 5 under a press.
+	it.each(SHADES)('the option’s quiet ink on its press rung, %s', (shade) => {
+		expect(declared(page, '.page-choose-description').color).toBe('var(--_n11)');
+		expect(floor(shade, 'page', '--_n11', '--_n5')).toBeGreaterThanOrEqual(4.5);
 	});
 
 	// the feature's words on a cover with no photo stand on the brand fill itself.

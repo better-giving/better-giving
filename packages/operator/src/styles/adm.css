@@ -289,14 +289,14 @@
 	.adm-btn--quiet.is-hover,
 	.adm-btn--quiet[aria-expanded='true'],
 	.adm-btn--quiet[data-state='open'] {
-		background: var(--admin-control-bg-hover);
+		background: var(--admin-control-quiet-bg-hover);
 		border-color: transparent;
 		color: var(--admin-ink);
 	}
 
 	.adm-btn--quiet:active,
 	.adm-btn--quiet.is-active {
-		background: var(--admin-control-bg-active);
+		background: var(--admin-control-quiet-bg-active);
 		border-color: transparent;
 		color: var(--admin-ink);
 	}
@@ -313,7 +313,7 @@
 	   rule. */
 	.adm-btn--quiet[aria-busy='true']:disabled,
 	.adm-btn--quiet[aria-busy='true'][aria-disabled='true'] {
-		background: var(--admin-control-bg-active);
+		background: var(--admin-control-quiet-bg-active);
 		border-color: transparent;
 		color: var(--admin-ink);
 	}
@@ -801,8 +801,8 @@
 	/* the ledger whose entries are sections rather than lines.
 
 	   an entry here is a block whose contents are the screen's — rows, a numbered procedure, a
-	   form — and several screenfuls separate the first from the last. each entry is a white plane
-	   on the page with no edge drawn, and a plane's fill is decoration by ./tokens.css's measure,
+	   form — and several screenfuls separate the first from the last. each entry is a plane on
+	   the page with no edge drawn, and a plane's fill is decoration by ./tokens.css's measure,
 	   so what tells one entry from the next is the space between them. each entry is one group,
 	   so that space is the group tier, `--admin-gap-groups`: wider than the step between two
 	   fields or two lines inside an entry, which is what a squint needs to read two entries as
@@ -1417,8 +1417,8 @@
 	   there are the line's and here the line is the summary. the summary states them again as its
 	   own, with a third track at the trailing edge for the caret.
 
-	   it is a box, which is the boundary the ledger above draws none of: a white plane standing on
-	   the page's own ground with no edge drawn, which is the recipe `.adm-panel` takes. so the
+	   it is a box, which is the boundary the ledger above draws none of: a plane standing on the
+	   page's ground with no edge drawn, which is the recipe `.adm-panel` takes. so the
 	   summary is inset the way a box's contents are, and a section that is shut is that inset and
 	   nothing else. */
 	.adm-status--section {
@@ -1673,7 +1673,7 @@
 	   radius block and argues the trade at
 	   `three registers of status`.
 
-	   hueless at rest: the ground is the note tone's tint, which is the neutral ladder's rung 4,
+	   hueless at rest: the ground is the note tone's tint, which is the neutral ladder's rung 3,
 	   and the word over it is the page's own ink. a value that is not a record's lifecycle
 	   status — a consent reading, a count, `Repeating` — stops at this rule and ranks against
 	   nothing.
@@ -3498,9 +3498,10 @@
 		}
 	}
 
-	/* a chip is found the way a text box and the neutral button are: a white face and the box's
-	   quieter outline. a picked chip is told by its tint and its edge, and nothing else — no tick
-	   is drawn in either kind, and a question taking several answers says so in its hint.
+	/* a chip is found the way a text box and the neutral button are, by the box's quieter
+	   outline, and its face is the neutral button's. a picked chip is told by its tint and its
+	   edge, and nothing else — no tick is drawn in either kind, and a question taking several
+	   answers says so in its hint.
 
 	   `position` is the containing block the control inside is taken out of the flow against, so a
 	   press on it scrolls nothing, and it is what places the target the plain chip is aimed at. */
@@ -4035,14 +4036,14 @@
 	}
 
 	/* the control on the line is the quiet rank and keeps every rung of it but the pointed-at
-	   fill. that fill is rung 4, which is the slab's own ground, so a pointer arriving would change
+	   fill. that fill is rung 3, which is the slab's own ground, so a pointer arriving would change
 	   nothing; it takes the rank's press rung instead, the one rung past the slab's, and a press
 	   therefore draws what a pointer does. the control over a multi-line block stands outside it,
 	   on whatever the slab stands on, and the quiet rank's own fills read on the plane and on the
 	   page alike. */
 	.adm-slab--oneline .adm-btn--quiet:hover,
 	.adm-slab--oneline .adm-btn--quiet.is-hover {
-		background: var(--admin-control-bg-active);
+		background: var(--admin-control-quiet-bg-active);
 	}
 
 	.adm-slab--oneline > * {
@@ -5694,25 +5695,24 @@
 		scroll-padding-block-end: var(--_bar-reserve);
 	}
 
-	/* the shell with a rail stands on a tinted ground and the page is a full-bleed panel on it
-	   (`.adm-rail ~ .adm-main` below). */
-	.adm-shell:has(> .adm-rail) {
-		background: var(--admin-surface-sunken);
-	}
-
 	/* below the wide breakpoint the identity is a band across the top and the way out sits in it;
-	   above, both move into the rail's own head and foot. the band is the shell's ground and draws
-	   no edge of its own: the panel under it is the boundary. one row at either width — the site's
+	   above, both move into the rail's own head and foot. the band is chrome, so it stands on the
+	   chrome's ground, and its block end is the seam with the page under it: the one rule there is
+	   decoration (Lc 18 on the band, ./tokens.css at `--admin-divider`), and it is the change of
+	   ground that tells the two apart. it states `--_ground` beside its fill for the reason
+	   ./plane-ground.spec.ts gives, though it holds no field. one row at either width — the site's
 	   globe, the name, the control — so the name is cut to one line rather than wrapped. the row is a
 	   grid item of the shell, and at the default minimum an uncut name would widen the shell's track
 	   to its own length; at zero the track holds and the name takes its ellipsis. */
 	.adm-identity {
+		--_ground: var(--admin-surface);
 		display: flex;
 		align-items: center;
 		min-inline-size: 0;
 		gap: var(--admin-space-5);
 		padding: var(--admin-space-5) var(--admin-space-6);
-		background: transparent;
+		background: var(--admin-surface);
+		border-block-end: var(--admin-rule);
 	}
 
 	/* the tracking is the step and not a role's: the subhead role binds none, and this is the one
@@ -5765,15 +5765,18 @@
 	   the platform's own inset at the foot of the screen sits under the tabs rather than inside
 	   them, so a tab keeps the whole of its height wherever it is drawn.
 
-	   the bar floats over the flow, and its ground is the page's own rung, so it is one of the
-	   overlays ./tokens.css names at `--admin-elevation-overlay`: that edge on its top and that
-	   shadow, which is what tells it from the page scrolling under it. */
+	   the bar is chrome and stands on the chrome's ground, the band's at the top of the screen.
+	   it also floats over the flow, so it is one of the overlays ./tokens.css names at
+	   `--admin-elevation-overlay`: that edge on its top and that shadow, which is what tells it
+	   from a plane scrolling under it. it states `--_ground` beside its fill for the reason
+	   ./plane-ground.spec.ts gives, though it holds no field. */
 	.adm-rail {
 		position: fixed;
 		inset-block-end: 0;
 		inset-inline: 0;
+		--_ground: var(--admin-surface);
 		z-index: 2;
-		background: var(--admin-surface-sunken);
+		background: var(--admin-surface);
 		border-block-start: var(--admin-border-width) solid var(--admin-overlay-border);
 		box-shadow: var(--admin-elevation-overlay);
 		padding-block-end: env(safe-area-inset-bottom);
@@ -5999,7 +6002,7 @@
 
 	.adm-dest:hover,
 	.adm-dest.is-hover {
-		background: var(--admin-surface-fill);
+		background: var(--admin-control-bg-hover);
 		color: var(--admin-ink);
 		text-decoration: none;
 	}
@@ -6007,10 +6010,9 @@
 	/* the ring is stated here rather than left to the focused-link treatment in ./base.css: that
 	   one is a tint fill, a thicker underline and a bleed of the same tint, and a destination
 	   overrides the first two in this layer — a fill it sets on itself, an underline it does not
-	   draw — which leaves the bleed alone against the rail's own ground, where it is not visible
-	   at all. the transparent outline comes from the general focus rule above it and is not
-	   restated here. the step lifts the ring over the tab beside it, which it is drawn outside the
-	   edge of.
+	   draw — which leaves the bleed alone, a tint round the cell too faint to find focus by. the
+	   transparent outline comes from the general focus rule above it and is not restated here.
+	   the step lifts the ring over the tab beside it, which it is drawn outside the edge of.
 
 	   the corner is stated, and it is square: a destination is always an anchor, and the focused
 	   link rule in ./base.css rounds one. a tab is square and hover and current fill it corner to
@@ -6074,13 +6076,12 @@
 		padding: var(--admin-space-6);
 	}
 
-	/* the page of the shell with a rail: the page's own ground running edge to edge across the
-	   window, its head and body padded from one inset, and the planes in it carry the white. it
-	   draws no edge — its border keeps its width with no colour, so nothing moves — because a
-	   column on the page ground is the page and not a plane on it. below the wide breakpoint the
-	   document is its scroller. it is matched off the rail beside it,
-	   two classes of weight, so the `.adm-main` padding the two widths below restate never reaches
-	   it.
+	/* the page of the shell with a rail: the content's ground running edge to edge across the
+	   window beside the chrome, its head and body padded from one inset, and the planes in it carry
+	   the plane's rung. it draws no edge: the seam with the chrome is the chrome's to draw, on the band's
+	   block end here and on the rail's inline end at the wide breakpoint. below the wide breakpoint
+	   the document is its scroller. it is matched off the rail beside it, two classes of weight, so
+	   the `.adm-main` padding the two widths below restate never reaches it.
 
 	   the page reserves the strip the bar stands in, `--_bar-reserve` on the root above, because
 	   below the wide breakpoint the bar is out of the flow and would otherwise be laid over the end
@@ -6092,7 +6093,6 @@
 		padding: 0;
 		padding-block-end: var(--_bar-reserve);
 		background: var(--admin-page);
-		border-block-start: var(--admin-border-width) solid transparent;
 	}
 
 	/* the panel's head is a line over the page and no band: no rule closes it and it pads no block
@@ -6943,18 +6943,25 @@
 			scroll-padding-block-end: auto;
 		}
 
-		/* the icon rail: a column one target wide, inside the cells' inline step. AppShell writes
-		   the class off its own toggle. */
+		/* the icon rail: a column one target wide, inside the cells' inline step and the rail's
+		   own edge (`.adm-rail` below). AppShell writes the class off its own toggle. */
 		.adm-shell--collapsed {
 			grid-template-columns:
-				calc(var(--admin-touch-min) + var(--admin-space-4) + var(--admin-space-4))
+				calc(
+					var(--admin-touch-min) +
+					var(--admin-space-4) +
+					var(--admin-space-4) +
+					var(--admin-border-width)
+				)
 				minmax(0, 1fr);
 		}
 
 		/* the bar comes back into the flow as the shell's first column: a rail as tall as the page
 		   is one the eye reads down rather than across, and the head and the foot it grows here
-		   are what the identity band carries below this width. it stands on the shell's ground
-		   with no edge: the panel beside it is the boundary. */
+		   are what the identity band carries below this width. it keeps the chrome's ground and
+		   trades the overlay's edge and shadow for the seam's one decorative rule on its inline
+		   end, the band's rule turned to the side the page now stands on: it no longer floats, and
+		   the change of ground is what tells it from the page. */
 		.adm-rail {
 			position: static;
 			display: grid;
@@ -6964,8 +6971,8 @@
 			align-content: start;
 			min-block-size: 0;
 			padding-block-end: 0;
-			background: transparent;
 			border-block-start: 0;
+			border-inline-end: var(--admin-rule);
 			box-shadow: none;
 		}
 
@@ -7004,13 +7011,13 @@
 
 		.adm-rail__toggle:hover,
 		.adm-rail__toggle.is-hover {
-			background: var(--admin-control-bg-hover);
+			background: var(--admin-control-quiet-bg-hover);
 			color: var(--admin-ink);
 		}
 
 		.adm-rail__toggle:active,
 		.adm-rail__toggle.is-active {
-			background: var(--admin-control-bg-active);
+			background: var(--admin-control-quiet-bg-active);
 			color: var(--admin-ink);
 		}
 
@@ -7133,8 +7140,8 @@
 			padding: var(--admin-space-9) var(--admin-space-10);
 		}
 
-		/* the panel runs to the window's top, right and bottom edges, on the same ground as the rail
-		   and with no line between them, and scrolls inside itself. `position: relative` makes it the containing block of the
+		/* the panel runs to the window's top, right and bottom edges, against the rail's rule, and
+		   scrolls inside itself. `position: relative` makes it the containing block of the
 		   absolutely positioned boxes it holds (`.adm-vh` in ./base.css among them): without it
 		   their containing block is the viewport, the panel's `overflow` clips none of them, and one
 		   standing far down a long page stretches the document into a second scroller. */
@@ -7144,8 +7151,6 @@
 			min-block-size: 0;
 			padding-block-end: 0;
 			overflow: auto;
-			border-block-start: 0;
-			border-inline-start: var(--admin-border-width) solid transparent;
 		}
 
 		.adm-panelbody {

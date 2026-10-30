@@ -97,11 +97,11 @@ export const box = (...sides: number[]) =>
 /** the ground the document is read on, the plane its body sits on, and the two a block on that
  * plane sits on. */
 export const PAGE_BG = hexFromOklch(ADMIN_TOKENS['--admin-page']);
-/** a mail's body is one group, and one group is one plane: the system's white, with no edge. */
+/** a mail's body is one group, and one group is one plane: the system's plane rung, with no edge. */
 export const PLANE_BG = hexFromOklch(ADMIN_TOKENS['--admin-surface']);
 /** the receipt's own block: a ground, and no rule around it. */
 export const PANEL_BG = hexFromOklch(ADMIN_TOKENS['--admin-surface-sunken']);
-/** the heavier band under the §6115 disclosure — a step darker. */
+/** the band under the §6115 disclosure, a rung off the plane. */
 export const BLOCK_BG = hexFromOklch(ADMIN_TOKENS['--admin-surface-fill']);
 /** the alert's instruction, set as `.adm-banner` sets a note: the tint carries it, no edge does. */
 export const BANNER_BG = hexFromOklch(ADMIN_TOKENS['--admin-tone-note-tint']);

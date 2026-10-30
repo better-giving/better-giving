@@ -84,16 +84,12 @@ const REFERENCE = /var\(\s*(--admin-[\w-]+)/g;
 // something has since reached for goes on claiming to be unread, and nothing about the tree says
 // otherwise. `exempts no token anything reads` is what fails then.
 //
-// the same twenty-seven are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
+// the same twenty-six are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
 // the paragraph is what a reader meets, and this is what fails.
 const SCALE_EXEMPT = [
 	// the unread rungs of the three chromatic ladders. each ladder is twelve rungs because the rung
 	// number is the job, and a family whose middle is missing is one where the next value drawn in
 	// that tone is a number somebody picks.
-	//
-	// the neutral: rung 6 is the subtle border, and no edge on these screens is drawn that light —
-	// a row rule is rung 4, a band draws no edge, and a box's outline is rung 8.
-	'--admin-neutral-6',
 	//
 	// the accent: no operator screen draws a ground lighter than rung 3 or a chromatic border, so
 	// the two lightest rungs go unread, and so do rung 5, a selected ground no cell takes, rung 6,

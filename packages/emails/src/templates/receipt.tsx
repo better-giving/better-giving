@@ -529,8 +529,8 @@ const DISCLOSURE_HEADING_STYLE: CSSProperties = {
 };
 
 /**
- * the ground the block sits on. a rung lighter than the disclosure's and carrying no border at
- * all, which is the whole of how the two are kept apart: the statutory standard for the disclosure
+ * the ground the block sits on. the disclosure's rung, carrying no border at all, which is the
+ * whole of how the two are kept apart: the statutory standard for the disclosure
  * is prominence, and a second block matching its rule would be two blocks competing for the same
  * eye. the heavy treatment — a border, and a heading over it — stays the disclosure's alone.
  */
