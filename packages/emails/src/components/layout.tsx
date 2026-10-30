@@ -78,8 +78,7 @@ const FRAME_ROW_STYLE: CSSProperties = { width: '100%' };
 /**
  * the plane the body is set on: one group, so one plane, told from the page by its ground alone.
  * a client that drops the radius draws it square. a client that drops the background draws the body
- * on the page, where the text still reads and the blocks on the plane, whose ground is the page's
- * own, keep their spacing and structure but no longer stand out.
+ * on the page, where the text still reads and the blocks on the plane keep their own grounds.
  *
  * the padding is the page gutter's step: no `<style>` reaches a mail, so a phone gets this inset too,
  * and it comes out of the body column on both sides.
