@@ -96,9 +96,9 @@ const SCALE_EXEMPT = [
 	'--admin-neutral-6',
 	//
 	// the accent: no operator screen draws a ground lighter than rung 3 or a chromatic border, so
-	// the two lightest rungs go unread, and so do rung 5, the selected ground the rail's current
-	// cell no longer takes, rung 6, the line a band in this tone no longer draws, and the two
-	// between that line rung and the solid band. rung 9 joins them because this family's solid
+	// the two lightest rungs go unread, and so do rung 5, a selected ground no cell takes, rung 6,
+	// the line of a band, which no band draws, and the two between that line rung and the solid
+	// band. rung 9 joins them because this family's solid
 	// band is too bright to carry a label, which packages/operator/src/styles/tokens.css argues
 	// at `--admin-accent-solid-1`. rung 10 is unread too: the rail marks its current cell by
 	// ground alone and draws no edge.
@@ -127,7 +127,7 @@ const SCALE_EXEMPT = [
 	'--admin-attention-2',
 	'--admin-attention-4',
 	'--admin-attention-5',
-	// rung 6 is the line a band in this tone no longer draws.
+	// rung 6 is the line of a band, and no band draws one.
 	'--admin-attention-6',
 	'--admin-attention-7',
 	'--admin-attention-8',

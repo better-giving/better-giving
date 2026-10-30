@@ -1900,11 +1900,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the provider's own authorization wording. quiet, because it is not ours: a ground of its own
- * marks it as quoted material, the way the operator surfaces set a slab of code on rung 3 with no
+ * marks it as quoted material, the way the operator surfaces set a slab of code on rung 4 with no
  * edge, and nothing in it is styled to draw a donor's eye to one clause. the border keeps its width
- * and loses its colour, so the words stand where they stood. it
- * carries a 12px floor under the token, because it authorizes a debit and a host who shrank their
- * own root must not be able to shrink the words that do it.
+ * in `transparent`, so the words keep an edged box's inset. it carries a 12px floor under the
+ * token, because it authorizes a debit and a host who shrank their own root must not be able to
+ * shrink the words that do it.
  */
 .mandate {
 	padding: var(--_sp3);
@@ -2261,7 +2261,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * them their gift has already broken.
  *
  * the tint is the band and draws no line around it, here and on the refusal below: the card groups
- * by ground. each border keeps its width and loses its colour, so nothing inside moves.
+ * by ground. each border keeps its width in `transparent`, so nothing inside moves.
  */
 .attention {
 	margin: 0;

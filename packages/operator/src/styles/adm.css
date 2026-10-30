@@ -1822,7 +1822,7 @@
 	   four tones and one of them has no hue: a note is a fact, and a fact is not coloured.
 	   what tells a note from the others is its mark and its sentence. the band draws no edge in
 	   any tone: the tint carries the tone, and the mark and the sentence carry the meaning. the
-	   border keeps its width with no colour in it, so the band is the size it was. */
+	   border keeps its width with no colour in it, so the band is the size an edged one would be. */
 
 	/* carried-ok: .adm-banner .adm-banner--blocker .adm-banner--attention .adm-banner--done —
 	   ``adm-banner${tone === 'note' ? '' : ` adm-banner--${tone}`}`` in
@@ -3523,9 +3523,8 @@
 
 	/* a chip in a wrapping row is smaller than a button, so the two never read as one: round by
 	   nature, one of the `--admin-radius-pill` wearers ./tokens.css names, at the small text and the
-	   small control's height. `min-inline-size: var(--admin-touch-min)` is this sheet's addition to
-	   the approved chip, made on purpose: a chip never narrower than the floor has a target that
-	   reaches past it in the block axis alone, which is what lets two chips abreast stand the row's
+	   small control's height. it is never narrower than the floor (`min-inline-size`), so its
+	   target reaches past it in the block axis alone, which is what lets two chips abreast stand the row's
 	   close column gap apart. a card chip holds a sentence, so it keeps the floor, the control's size
 	   and the plane's corner. */
 	.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip {
@@ -4026,8 +4025,8 @@
 	   element scrolls and takes focus. a control stands on the line, and the fade below is what
 	   keeps the line from being read through it. */
 
-	/* the box keeps its border's width with no colour in it, so a slab of either form takes the
-	   room it did when the box was edged and a screen holding one does not move. */
+	/* the box keeps its border's width with no colour in it, so it takes the room an edged box
+	   would. */
 	.adm-slab--oneline {
 		padding: var(--admin-space-4) var(--admin-space-5);
 		background: var(--admin-slab-bg);

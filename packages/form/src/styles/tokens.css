@@ -347,7 +347,7 @@
 	 *
 	 * the attention band is the one value off its ladder. rung 3 of it, oklch(0.965 0.05 75), puts
 	 * `--_n10` at 4.46:1 on the band, under the 4.5:1 "clears 4.5:1 for the ink on an attention or
-	 * error band" in ./tokens.browser.spec.ts holds, so the band keeps the lighter tint it had and
+	 * error band" in ./tokens.browser.spec.ts holds, so the band is the lighter tint below and
 	 * `--_n10` reads 4.70:1 there.
 	 *
 	 * the word inside a band stays on the ramp — `.attention` in ./parts.css is `--_n11`, the same
