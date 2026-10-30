@@ -60,14 +60,16 @@
  * own size: `--page-measure-title` the title, `--page-measure-lede` a lede and an about-us statement.
  *
  * the first screen. the donation box is the page's purpose, so every layout stands all of it on the
- * first screen of a 390 × 844 phone and a 1280 × 800 laptop: ahead of it stand only the masthead,
+ * first screen of a 390 × 844 phone and a 1280 × 800 laptop: ahead of it stand only the top bar,
  * the cover and the title, and on a laptop the goal and the lede beside them. the cover's heights
  * and the title's sizes on a phone, `--page-display` and the smaller `--page-display-long`, are
  * the budget that keeps it so —
  * `--page-cover-card` and `--page-cover-letter` above the box on a phone, `--page-hero-narrow` the
  * feature's cover on a phone and `--page-hero` on a laptop, where the box stands over the cover's
  * right side `--page-gap-lead` off its top. the feature's cover is at least `--page-hero` and grows
- * with the words on it, and a cover the words have grown carries the box down with it.
+ * with the words on it, and a cover the words have grown carries the box down with it. at the
+ * card's 16px root the top bar is 60px on a phone and 68px from 60rem, and `--page-gap-lead` under
+ * it 20px, so 80px and 88px stand ahead of the first section.
  *
  * space. grouping is the operator surfaces' squint test
  * (packages/operator/src/styles/squint.spec.ts), each tier strictly wider than the one inside it,
@@ -77,22 +79,37 @@
  * it binds tighter than `--page-gap-item`, 20px, which stands items of one group apart (held by
  * ./page.spec.ts). `--page-gap-group`, 32px, is one group of a
  * column to the next; `--page-gap-section`, 40px on a phone and growing with the container, is
- * section to section down the page. `--page-gap-lead` is the masthead to the first section; `--page-band-inset` is the
- * inset of a section drawn on a ground of its own; `--page-col-gap` is between two columns and
- * `--page-gutter` the page's side margin.
+ * section to section down the page. `--page-gap-lead` is the top bar to the first section;
+ * `--page-band-inset` is the inset of a section drawn on a ground of its own; `--page-col-gap` is
+ * between two columns and `--page-gutter` the page's side margin.
  *
  * grounds. a rung is the job radix colors gives its number
  * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), the meanings
  * the form's ladder and the operator surfaces' share (packages/form/src/styles/tokens.css): 1 the app
  * background, 2 a subtle background, 3 a control's, 4 its hover, 5 its press, 6 a separator, 7 a
- * border. the page ground, `--page-ground`, is rung 1, and so is the card, which the form draws.
- * a plane — the card's panel, the letter's cover frame, a tier card — is a white card on that
- * ground, as an operator screen's planes are: `--page-plane`, rung 1, with a rung 6 edge,
- * `--page-plane-edge`, and a soft shadow, `--page-plane-lift`, drawn in a solid rung because the
- * ground under it is known. the face is the ground's own rung, so the edge and the shadow are what
- * tell a plane from the page, and the card standing on the card's panel is a box on a plane. the
- * ground stays one solid rung: the operator surfaces' wash is theirs alone. About us
- * stands on `--page-band`, rung 2, a band one rung off the page it crosses. a cover before its
+ * border. the page ground, `--page-ground`, is rung 2, under a wash. a plane — the top bar, the
+ * card's panel, the letter's cover frame, a tier card, and the donation box, which the form draws —
+ * is a white card on that ground, as an operator screen's planes are: `--page-plane`, rung 1, with
+ * no visible edge, its border kept at `--_border` and drawn transparent so a plane is the same size
+ * with or without one, the shadow `--page-plane-lift`, and the corner `--page-plane-radius`. the
+ * shadow is the page's ink, rung 12, at a faint alpha in two layers, a short one and a soft throw:
+ * it falls on the wash, whose colour changes under it, so no solid rung could be its shade. a plane
+ * on a plane — the box on the card's panel from 60rem — keeps a hairline edge, `--page-plane-edge`,
+ * rung 6, and no shadow of its own, and so does the top bar along its foot, the one side the page
+ * meets it on. the bar runs the page's full width and has no corner and no shadow.
+ *
+ * the wash. `--page-wash` is two soft radial tints laid over the solid ground, the brand's at the
+ * first screen's start and a warm one at the page's far corner, each fading to `transparent` at 70%
+ * of its reach. a stop that is transparent is no translucent colour standing on its own: the ground
+ * under it is opaque, so the composite is opaque everywhere. `--page-wash-brand` is the brand's own
+ * hue, `--_p`'s, at 0.97 lightness — between rung 2 and rung 3, very pale — and three tenths of its
+ * chroma to at most 0.025; `--page-wash-warm` is that same lightness at hue 20 and chroma 0.02. a
+ * page with no brand colour reads the form's registered grey, whose chroma is 0, so its brand tint is
+ * a plain grey a step under the ground and only the warm tint carries a hue. both are opaque and at
+ * one lightness, so where the two overlap the page is no darker than either, and each is the wash's
+ * darkest point: every ink read on the page ground is measured on both (the pairs below). About us
+ * stands on `--page-band`, rung 1, a white band across the page's width, a rung off the ground it
+ * crosses; it is a band rather than a plane, so it draws no corner and no shadow. a cover before its
  * photo arrives is rung 3, the operator surfaces' sunken well (`--admin-surface-sunken`). a rule
  * between rows of one list is a separator, rung 6, and nothing between sections is a rule. what a
  * donor presses — a share press, a program option — is the operator surfaces' neutral button: it
@@ -104,9 +121,12 @@
  * otherwise the brand fills the action, the goal's progress and the badge, and is the ink of a link
  * and a tier's amount.
  *
- * corners. a plane is the card's `--_r` and what stands on one `--_r-in`, the form's corner preset
- * (`soft` is 8px and 4px). a mark round by nature is a circle and no preset moves it: the initials
- * badge and a platform's mark, at `50%`, and the goal track and its fill, at half of
+ * corners. a plane is `--page-plane-radius`, 12px, a step rounder than the card's `--_r`, and the
+ * donation box takes it too; what stands on a plane is the card's `--_r` or `--_r-in`, the form's
+ * corner preset (`soft` is 8px and 4px). the card layout's cover takes the panel's corner at its top
+ * two, so it runs to the panel's corners without the panel clipping it: the panel is an ancestor of
+ * the box, which no rule clips. a mark round by nature is a circle and no preset moves it: the
+ * initials badge and a platform's mark, at `50%`, and the goal track and its fill, at half of
  * `--page-track-block`, the track's thickness, which is a `--page-*` name because the card draws no
  * bar.
  *
@@ -114,18 +134,18 @@
  * brand colours around the wheel at full strength, dark and muted and the unbranded grey, under
  * every shade, and holds the lowest reading against its floor:
  *
- *   `--page-quiet` — `--_n10` on the page ground, the card and a plane, `--_n11` on the about
- *   band. text, held to 4.5:1.
+ *   `--page-quiet` — `--_n10` on the page ground, the wash's two tints, the card and a plane,
+ *   `--_n11` on the about band. text, held to 4.5:1.
  *
- *   `--_p` as ink — a link or a tier's amount — on the page ground, the card and a plane. text,
- *   held to 4.5:1.
+ *   `--_p` as ink — a link, the top bar's Share or a tier's amount — on the page ground, the wash's
+ *   two tints, the card and a plane. text, held to 4.5:1.
  *
  *   the goal track — `--page-track`, rung 3, a control's ground — holds the bar's `--_p` fill
  *   apart, held to 3:1, since the fill is what the bar is read by.
  *
- *   `--page-scrim` is the one translucent colour here, laid over the feature's cover photo, which the
- *   page cannot see, and carries the note that says so. it is at its darkest from the cover's left
- *   edge across the 58% the words stand in, and fades over the rest, under the box. `--_n1` on it
+ *   `--page-scrim` is the one translucent colour text stands on, laid over the feature's cover
+ *   photo, which the page cannot see, and carries the note that says so. it is at its darkest from
+ *   the cover's left edge across the 58% the words stand in, and fades over the rest, under the box. `--_n1` on it
  *   over a white photo is held to 4.5:1, and the same ink is the ring there.
  */
 
@@ -199,7 +219,7 @@ body {
 	--page-gutter: clamp(1rem, 0.5rem + 2.5cqi, 2.5rem);
 	--page-gap-item: 1.25rem;
 	--page-gap-group: 2rem;
-	--page-gap-lead: 1.5rem;
+	--page-gap-lead: 1.25rem;
 	--page-gap-section: clamp(2.5rem, 1.5rem + 4cqi, 5rem);
 	--page-band-inset: clamp(2.25rem, 1.5rem + 3cqi, 4rem);
 	--page-col-gap: clamp(2rem, 1rem + 4cqi, 4rem);
@@ -208,11 +228,20 @@ body {
 	   floor makes it 21px. */
 	--page-brand-mark: calc(var(--_root-size) * 1.4);
 
-	--page-ground: var(--_n1);
+	--page-ground: var(--_n2);
+	--page-wash-brand: oklch(from var(--_p) 0.97 min(c * 0.3, 0.025) h);
+	--page-wash-warm: oklch(from var(--page-wash-brand) l 0.02 20);
+	--page-wash:
+		radial-gradient(max(80cqi, 26rem) 38rem at 0% 14rem, var(--page-wash-brand), transparent 70%),
+		radial-gradient(max(65cqi, 24rem) 38rem at 100% 100%, var(--page-wash-warm), transparent 70%);
 	--page-plane: var(--_n1);
 	--page-plane-edge: var(--_n6);
-	--page-plane-lift: 0 1px 3px var(--_n5);
-	--page-band: var(--_n2);
+	/* raw-colour-ok: the page's ink at a faint alpha, falling on the wash, whose colour changes
+	   under it, so no solid rung could be its shade. */
+	--page-plane-lift:
+		0 1px 2px oklch(from var(--_n12) l c h / 0.06), 0 4px 12px oklch(from var(--_n12) l c h / 0.05);
+	--page-plane-radius: 0.75rem;
+	--page-band: var(--_n1);
 	--page-quiet: var(--_n10);
 	--page-track: var(--_n3);
 	--page-track-block: 0.625rem;
@@ -226,7 +255,7 @@ body {
 	);
 
 	flex: 1 0 auto;
-	background: var(--page-ground);
+	background: var(--page-wash), var(--page-ground);
 	color: var(--_n12);
 	line-height: var(--_lh-body);
 }
@@ -335,14 +364,38 @@ body {
 	max-inline-size: var(--page-narrow);
 }
 
+/* the top bar: a plane's white across the page's full width with a separator under it, the
+   organisation at its start and, where the page has a share section, a Share link at its end. it is
+   one row, `--_row-min`, with an `--_sp2` inset over and under it, `--_sp3` from 60rem. */
 .page-mast {
-	padding-block-start: var(--_sp3);
+	background: var(--page-plane);
+	border-block-end: var(--_border) solid var(--page-plane-edge);
+}
+
+.page-mast-in {
+	padding-block: var(--_sp2);
 }
 
 @container page (min-width: 60rem) {
-	.page-mast {
-		padding-block-start: var(--_sp5);
+	.page-mast-in {
+		padding-block: var(--_sp3);
 	}
+}
+
+/* an in-page link to the share section, a row tall so a thumb finds it. */
+.page-mast-share {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	min-block-size: var(--_row-min);
+	margin-inline-start: auto;
+	font-weight: var(--_w-medium);
+	text-decoration: none;
+}
+
+.page-mast-share:hover {
+	color: var(--_p-hover);
+	text-decoration: underline;
 }
 
 /* a name with no space in it wraps inside the column rather than widening the document: `anywhere`
@@ -421,8 +474,20 @@ body {
 	max-inline-size: var(--page-box);
 }
 
+/* the donation box on the page's own ground, the plain page's included, is a plane like the rest:
+   its edge kept at its width and drawn transparent, the plane's corner and the plane's shadow.
+   `card` is one of the form's public `::part()` names (packages/form/custom-elements.json), so
+   this is the dress an integrator could give it, and the light-DOM card is reached by the
+   attribute where a page holding the element would use `::part(card)`. the card clips to its own
+   corner, so its insides follow. */
+.page [part~='card'] {
+	border-color: transparent;
+	border-radius: var(--page-plane-radius);
+	box-shadow: var(--page-plane-lift);
+}
+
 /* the card. on a phone its cover runs edge to edge, `--page-gap-lead` under the
-   masthead, so the logo never touches it. wide, the page is one panel, a plane: the cover across
+   top bar. wide, the page is one panel, a plane: the cover across
    its top, and under it the words beside the box. */
 .page[data-layout='card'] [data-area='cover'] {
 	margin-inline: calc(-1 * var(--page-gutter));
@@ -454,8 +519,8 @@ body {
 		align-items: start;
 		padding: 0 var(--page-card-inset) var(--page-card-inset);
 		background: var(--page-plane);
-		border: var(--_border) solid var(--page-plane-edge);
-		border-radius: var(--_r);
+		border: var(--_border) solid transparent;
+		border-radius: var(--page-plane-radius);
 		box-shadow: var(--page-plane-lift);
 	}
 
@@ -475,7 +540,13 @@ body {
 	}
 
 	.page[data-layout='card'] [data-area='cover'] .page-cover {
-		border-radius: var(--_r) var(--_r) 0 0;
+		border-radius: var(--page-plane-radius) var(--page-plane-radius) 0 0;
+	}
+
+	/* the box on the panel is a plane on a plane: a hairline edge and no shadow of its own. */
+	.page[data-layout='card'] [part~='card'] {
+		border-color: var(--page-plane-edge);
+		box-shadow: none;
 	}
 
 	.page[data-layout='card'] [data-area='cover'] ~ [data-area='title'],
@@ -511,8 +582,8 @@ body {
 .page[data-layout='letter'] [data-area='cover'] {
 	padding: var(--_sp2);
 	background: var(--page-plane);
-	border: var(--_border) solid var(--page-plane-edge);
-	border-radius: var(--_r);
+	border: var(--_border) solid transparent;
+	border-radius: var(--page-plane-radius);
 	box-shadow: var(--page-plane-lift);
 }
 
@@ -974,8 +1045,8 @@ body {
 	padding: var(--_sp5);
 	background: var(--page-plane);
 	color: var(--_n11);
-	border: var(--_border) solid var(--page-plane-edge);
-	border-radius: var(--_r);
+	border: var(--_border) solid transparent;
+	border-radius: var(--page-plane-radius);
 	box-shadow: var(--page-plane-lift);
 }
 
