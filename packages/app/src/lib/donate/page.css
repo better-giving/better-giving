@@ -59,18 +59,25 @@
  * `--page-measure` holds prose inside a wider column. the `ch` measures hold a line of type at its
  * own size: `--page-measure-title` the title, `--page-measure-lede` a lede and an about-us statement.
  *
- * the first screen. the donation box is the page's purpose, so every layout stands all of it on the
- * first screen of a 390 × 844 phone and a 1280 × 800 laptop: ahead of it stand only the top bar,
- * the cover and the title, and on a laptop the goal and the lede beside them. the cover's heights
- * and the title's sizes on a phone, `--page-display` and the smaller `--page-display-long`, are
- * the budget that keeps it so —
- * `--page-cover-card` and `--page-cover-letter` above the box on a phone, `--page-hero-narrow` the
- * feature's cover on a phone and `--page-hero` on a laptop, where the box stands over the cover's
- * right side `--page-gap-lead` off its top. the feature's cover is at least `--page-hero` and grows
- * with the words on it, and a cover the words have grown carries the box down with it. at the
- * card's 16px root the top bar is a 44px row, its inset over and under it and its 1px rule, 61px on a
- * phone and 69px from 60rem, and `--page-gap-lead` under it 20px, so 81px and 89px stand ahead of the
- * first section. the organisation's name is cut to one line, so no name, however long, adds to that.
+ * the first screen. the donation box is the page's purpose. on a 1280 × 800 laptop every layout
+ * stands all of it on the first screen, and on a 390 × 844 phone the letter and the feature do too:
+ * ahead of it stand only the top bar, the cover and the title, and on a laptop the goal and the lede
+ * beside them. on a phone the card stands its whole plane ahead of the box, the cover, the title,
+ * the lede and the goal, so there the box begins on the first screen and runs on past it. the
+ * cover's heights and the title's sizes on a phone, `--page-display` and the smaller
+ * `--page-display-long`, are the budget that keeps it so — `--page-cover-card` and
+ * `--page-cover-letter` above the box on a phone, `--page-hero-narrow` the feature's cover on a
+ * phone and `--page-hero` on a laptop, where the box stands over the cover's right side
+ * `--page-gap-lead` off its top. the feature's cover is at least `--page-hero` and grows with the
+ * words on it, and a cover the words have grown carries the box down with it. at the card's 16px
+ * root the top bar is a 44px row, its inset over and under it and its 1px rule, 61px on a phone and
+ * 69px from 60rem, and `--page-gap-lead` under it 20px, so 81px and 89px stand ahead of the first
+ * section. the organisation's name is cut to one line, so no name, however long, adds to that. the
+ * card's plane on a 390px phone, a cover, a two-line title, a two-line lede and the goal's figure
+ * and track, is 136 + 16 + 62 + 20 + 51 + 20 + 52 + 16 = 373px, and `--page-gap-group` under it
+ * 32px, so the box's top edge stands 486px down and 358px of it are on the first screen. its top
+ * edge stays on the first screen under a title of two lines and a lede of any length up to its 400
+ * characters ($lib/page/catalog.ts); a longer title takes that room from the lede's.
  *
  * space. grouping is the operator surfaces' squint test
  * (packages/operator/src/styles/squint.spec.ts), each tier strictly wider than the one inside it,
@@ -81,23 +88,27 @@
  * ./page.spec.ts). `--page-gap-group`, 32px, is one group of a
  * column to the next; `--page-gap-section`, 40px on a phone and growing with the container, is
  * section to section down the page. `--page-gap-lead` is the top bar to the first section;
- * `--page-band-inset` is the inset of a section drawn on a ground of its own; `--page-col-gap` is
- * between two columns and `--page-gutter` the page's side margin.
+ * `--page-band-inset` is the inset of a section drawn on a ground of its own, and
+ * `--page-card-inset` the inset of the card layout's panel, 16px on a phone as the approved phone
+ * mockup draws it and 28px from 60rem; `--page-col-gap` is between two columns and `--page-gutter`
+ * the page's side margin.
  *
  * grounds. a rung is the job radix colors gives its number
  * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), the meanings
  * the form's ladder and the operator surfaces' share (packages/form/src/styles/tokens.css): 1 the app
  * background, 2 a subtle background, 3 a control's, 4 its hover, 5 its press, 6 a separator, 7 a
  * border. the page ground, `--page-ground`, is rung 2, under a wash. a plane — the top bar, the
- * card's panel, the letter's cover frame, a tier card, and the donation box, which the form draws —
- * is a white card on that ground, as an operator screen's planes are: `--page-plane`, rung 1, with
- * no visible edge, its border kept at `--_border` and drawn transparent so a plane is the same size
- * with or without one, the shadow `--page-plane-lift`, and the corner `--page-plane-radius`. the
- * shadow is the page's ink, rung 12, at a faint alpha in two layers, a short one and a soft throw:
- * it falls on the wash, whose colour changes under it, so no solid rung could be its shade. a plane
- * on a plane — the box on the card's panel from 60rem — keeps a hairline edge, `--page-plane-edge`,
- * rung 6, and no shadow of its own, and so does the top bar along its foot, the one side the page
- * meets it on. the bar runs the page's full width and has no corner and no shadow.
+ * card's panel, which on a phone holds the cover, the title, the lede and the goal, the letter's
+ * cover frame, a tier card, and the donation box, which the form draws — is a white card on that
+ * ground, as an operator screen's planes are: `--page-plane`, rung 1, with no visible edge, its
+ * border kept at `--_border` and drawn transparent so a plane is the same size with or without one,
+ * the shadow `--page-plane-lift`, and the corner `--page-plane-radius`. the shadow is the page's
+ * ink, rung 12, at a faint alpha in two layers, a short one and a soft throw: it falls on the wash,
+ * whose colour changes under it, so no solid rung could be its shade. a plane on a plane keeps a
+ * hairline edge, `--page-plane-edge`, rung 6, and no shadow of its own, but for one: the box on the
+ * card's panel from 60rem takes the plane's own shadow and no edge, as the approved card mockup
+ * draws it. the top bar keeps that hairline along its foot, the one side the page meets it on. the
+ * bar runs the page's full width and has no corner and no shadow.
  *
  * the wash. `--page-wash` is two soft radial tints laid over the solid ground, the brand's at the
  * first screen's start and a warm one at the page's far corner, each fading to `transparent` at 70%
@@ -125,8 +136,8 @@
  * corners. a plane is `--page-plane-radius`, 12px, a step rounder than the card's `--_r`, and the
  * donation box takes it too; what stands on a plane is the card's `--_r` or `--_r-in`, the form's
  * corner preset (`soft` is 8px and 4px). the card layout's cover takes the panel's corner at its top
- * two, so it runs to the panel's corners without the panel clipping it: the panel is an ancestor of
- * the box, which no rule clips. a mark round by nature is a circle and no preset moves it: the
+ * two at every width, so it runs to the panel's corners without the panel clipping it: wide, the
+ * panel is an ancestor of the box, which no rule clips. a mark round by nature is a circle and no preset moves it: the
  * initials badge and a platform's mark, at `50%`, and the goal track and its fill, at half of
  * `--page-track-block`, the track's thickness, which is a `--page-*` name because the card draws no
  * bar.
@@ -214,7 +225,7 @@ body {
 	--page-cover-letter: 7rem;
 	--page-hero-narrow: 9rem;
 	--page-hero: 28.75rem;
-	--page-card-inset: 1.75rem;
+	--page-card-inset: 1rem;
 	--page-cover-logo: 5rem;
 
 	--page-gutter: clamp(1rem, 0.5rem + 2.5cqi, 2.5rem);
@@ -265,6 +276,7 @@ body {
 	.page > .page-ground {
 		--page-cover-card: 10rem;
 		--page-cover-letter: 20rem;
+		--page-card-inset: 1.75rem;
 	}
 }
 
@@ -326,9 +338,9 @@ body {
  * ── the donor page's sections ─────────────────────────────────────────────────────────────────
  *
  * ./page-view.tsx draws a page as a masthead, a body and a footer under the root. a page's sections
- * stand in `.page-layout`, each carrying `data-area` for the rules below to place it by, in the order
- * a phone reads them; from `@container page (min-width: 60rem)` each layout moves them into its
- * columns. the donation box is a `.page-box` among them, never inside another section, and no rule
+ * stand in `.page-layout`, each carrying `data-area` for the rules below to place it by; on a phone
+ * the card's grid areas and the letter's and the feature's `order` stand them in the order a phone reads them,
+ * and from `@container page (min-width: 60rem)` each layout moves them into its columns. the donation box is a `.page-box` among them, never inside another section, and no rule
  * below gives the box or any ancestor of it a clip, a position or a transform. neither rail is
  * sticky: a box that a later step grows past the screen's height scrolls with the page, so its
  * lower edge and what stands under it can always be reached.
@@ -491,19 +503,69 @@ body {
 	box-shadow: var(--page-plane-lift);
 }
 
-/* the card. on a phone its cover runs edge to edge, `--page-gap-lead` under the
-   top bar. wide, the page is one panel, a plane: the cover across
-   its top, and under it the words beside the box. */
+/* the card. on a phone the cover, the title, the lede and the goal stand together in one plane
+   inside the gutter, the cover under the plane's top corners, and the box follows as a plane of its
+   own, then the story. the sections keep their source order and the grid's areas place them. the
+   plane is the layout's `::before`, laid over the rows from the cover's to `close`, the plane's
+   inset under its last line: an area left out takes its row to nothing, so the plane closes on
+   whichever of them stands last. wide, the page is one panel, a plane: the cover across its top,
+   and under it the words beside the box. */
+.page[data-layout='card'] .page-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-areas: 'cover' 'title' 'lede' 'goal' 'close' 'box' 'story';
+	grid-template-rows: auto auto auto auto var(--page-card-inset) auto auto;
+	row-gap: 0;
+}
+
+.page[data-layout='card'] .page-layout::before {
+	content: '';
+	grid-column: 1;
+	grid-row: cover-start / close-end;
+	background: var(--page-plane);
+	border-radius: var(--page-plane-radius);
+	box-shadow: var(--page-plane-lift);
+}
+
 .page[data-layout='card'] [data-area='cover'] {
-	margin-inline: calc(-1 * var(--page-gutter));
+	grid-area: cover;
 }
 
 .page[data-layout='card'] [data-area='cover'] .page-cover {
 	block-size: var(--page-cover-card);
+	border-radius: var(--page-plane-radius) var(--page-plane-radius) 0 0;
 }
 
-/* on a phone the box stands straight after the cover and the title, and the goal after it. */
-:is(.page[data-layout='card'], .page[data-layout='feature'])
+.page[data-layout='card'] [data-area='title'] {
+	grid-area: title;
+	margin: var(--page-card-inset) var(--page-card-inset) 0;
+}
+
+.page[data-layout='card'] [data-area='lede'] {
+	grid-area: lede;
+}
+
+.page[data-layout='card'] [data-area='goal'] {
+	grid-area: goal;
+}
+
+.page[data-layout='card'] :is([data-area='lede'], [data-area='goal']) {
+	margin: var(--page-gap-item) var(--page-card-inset) 0;
+}
+
+.page[data-layout='card'] [data-area='box'] {
+	grid-area: box;
+	margin-block-start: var(--page-gap-group);
+}
+
+.page[data-layout='card'] [data-area='story'] {
+	grid-area: story;
+	margin-block-start: var(--page-gap-group);
+}
+
+/* the feature on a phone: the box straight after the cover and the title, the lede and the goal
+   after it. */
+.page[data-layout='feature']
 :is([data-area='goal'], [data-area='lede'], [data-area='story'], .page-section) {
 	order: 1;
 }
@@ -529,6 +591,10 @@ body {
 		box-shadow: var(--page-plane-lift);
 	}
 
+	.page[data-layout='card'] .page-layout::before {
+		content: none;
+	}
+
 	/* the panel keeps the page's gutter until the container is wider than the panel, and the masthead
 	   and footer, gutter and all, stand in the panel's width. */
 	.page[data-layout='card'] .page-in:not(.page-layout) {
@@ -540,18 +606,7 @@ body {
 	}
 
 	.page[data-layout='card'] [data-area='cover'] {
-		grid-area: cover;
 		margin: 0 calc(-1 * var(--page-card-inset)) var(--_sp3);
-	}
-
-	.page[data-layout='card'] [data-area='cover'] .page-cover {
-		border-radius: var(--page-plane-radius) var(--page-plane-radius) 0 0;
-	}
-
-	/* the box on the panel is a plane on a plane: a hairline edge and no shadow of its own. */
-	.page[data-layout='card'] [part~='card'] {
-		border-color: var(--page-plane-edge);
-		box-shadow: none;
 	}
 
 	.page[data-layout='card'] [data-area='cover'] ~ [data-area='title'],
@@ -560,24 +615,14 @@ body {
 	}
 
 	.page[data-layout='card'] [data-area='title'] {
-		grid-area: title;
-		margin-block-start: var(--page-card-inset);
+		margin: var(--page-card-inset) 0 0;
 	}
 
-	.page[data-layout='card'] [data-area='lede'] {
-		grid-area: lede;
-	}
-
-	.page[data-layout='card'] [data-area='goal'] {
-		grid-area: goal;
-	}
-
-	.page[data-layout='card'] [data-area='story'] {
-		grid-area: story;
+	.page[data-layout='card'] :is([data-area='lede'], [data-area='goal'], [data-area='story']) {
+		margin: 0;
 	}
 
 	.page[data-layout='card'] [data-area='box'] {
-		grid-area: box;
 		margin-block-start: var(--page-card-inset);
 	}
 }
