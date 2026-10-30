@@ -112,7 +112,7 @@ describe('what the provider is handed', () => {
 		const appearance = resolveAppearance(card);
 		const sent = JSON.stringify(appearance);
 
-		expect(APPEARANCE_INPUTS.length).toBe(22);
+		expect(APPEARANCE_INPUTS.length).toBe(21);
 		expect(sent).not.toContain('var(');
 		expect(sent).not.toContain('oklch');
 	});

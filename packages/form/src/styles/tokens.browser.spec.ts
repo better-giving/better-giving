@@ -534,10 +534,10 @@ describe.each(SHADES)('the focus ring under %s', (preset) => {
 	});
 
 	// where the caret is standing, and it is a rung rather than the brand: nothing a host writes
-	// moves it, which is why these are single readings. it is drawn on four grounds, because a
-	// keyboard donor can be hovering or pressing what they have tabbed onto — the card, the receipt
-	// block the fee switch stands in, and an option's own fill at rest, under the pointer and under
-	// the press. 3:1 is the floor a boundary carries; the ring clears it by an order of magnitude,
+	// moves it, which is why these are single readings. it is drawn on five grounds, because a
+	// keyboard donor can be hovering or pressing what they have tabbed onto — the card and a text
+	// box's face, a tray, and a control's own fill at rest, under the pointer and under the press.
+	// 3:1 is the floor a boundary carries; the ring clears it by an order of magnitude,
 	// which is the whole point of taking the darkest rung for it.
 	it('clears 3:1 on every ground it is drawn on', () => {
 		seed('');
@@ -630,13 +630,11 @@ describe.each(SHADES)('text on the card under %s', (preset) => {
 	});
 
 	// the card is not the only ground a word is drawn on, and a floor read against `--_n1` alone
-	// says nothing about the others. the receipt block is `--_n2` and carries the ledger's labels,
-	// its notes and the quoted mandate; the denominations are `--_n3` and step to `--_n4` and
-	// `--_n5` under the pointer, carrying their figure the whole way. a field's fill is `--_n3` as
-	// well, and two things stand on it at the ladder's quietest ink: the label resting inside one of
-	// the pair under the name, and the placeholder in the amount entry where a form suggesting no
-	// amounts draws that entry on a bare tray (`.floating` and `[part~='amount-input']` in
-	// ./parts.css) — the tightest reading in this list.
+	// says nothing about the others. the two trays are a plane's `--_n2` and carry the cadences'
+	// words; the denominations are a control's `--_n3` and step to `--_n4` and `--_n5` under the
+	// pointer, carrying their figure the whole way; the quoted mandate stands on `--_n3` at the
+	// ladder's quietest ink — the tightest reading in this list. a text box's face is the card's own
+	// `--_n1` and is held above.
 	it('clears 4.5:1 on every other ground a word is drawn on', () => {
 		seed('');
 		const pairs: [string, string][] = [

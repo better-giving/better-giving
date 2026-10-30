@@ -855,11 +855,11 @@ describe('the labels on the pair under the name', () => {
 	});
 
 	// standing on the edge, the label has to be painted behind or the edge reads through its words.
-	// two fills and not one: the half above the edge covers the card and the half below covers the
-	// box, and a single flat colour would match one of them and show as a patch on the other. the
-	// band is at least the words' own line, which is what makes it an edge knocked out rather than a
-	// line the words happen to sit above.
-	it('knocks the edge out behind the floated label, one fill per side of it', async () => {
+	// one fill: the half above the edge covers the card and the half below covers the box, and a
+	// text box's face is the card's own rung 1, so the card's ground is a patch on neither. the band
+	// is at least the words' own line, which is what makes it an edge knocked out rather than a line
+	// the words happen to sit above.
+	it('knocks the edge out behind the floated label in the ground both sides of it share', async () => {
 		const { shadow } = await mount();
 		await atDetails(shadow);
 		const { box, label, words } = field(shadow, '#first-name');
@@ -875,7 +875,8 @@ describe('the labels on the pair under the name', () => {
 		const [, band = ''] = painted.backgroundSize.split(' ');
 
 		expect(painted.backgroundImage).toContain(used(shadow, '--_n1'));
-		expect(painted.backgroundImage).toContain(used(shadow, '--_n2'));
+		expect(painted.backgroundImage).not.toContain(used(shadow, '--_n2'));
+		expect(getComputedStyle(box).backgroundColor).toBe(used(shadow, '--_n1'));
 		expect(parseFloat(band)).toBeGreaterThanOrEqual(ink(words).height);
 		// across the words and past the last letter, so no run of the edge is left inside the band's
 		// own span of it.
@@ -2043,6 +2044,10 @@ describe('the address screen', () => {
 		await userEvent.click(mark);
 
 		const band = caution.getBoundingClientRect();
+		// the mark held open takes the fill a control with no ground of its own shows first, rung 3.
+		expect(bytes(getComputedStyle(mark).backgroundColor)).toEqual(
+			bytes(used(root.getRootNode() as ShadowRoot, '--_n3'))
+		);
 		expect(under.getBoundingClientRect().top).toBeCloseTo(before, 0);
 		// it stands on the warning band's own ground, over the rows it covers.
 		expect(band.bottom).toBeGreaterThan(before);
@@ -2221,6 +2226,7 @@ describe('the address screen', () => {
 		// rather than in anything the control's own tone changes.
 		expect(ring.boxShadow).toContain(used(shadow, '--_focus-ring'));
 		expect(ring.outlineOffset === '' || Number.parseFloat(ring.outlineOffset) === 0).toBe(true);
+		expect(bytes(resting)).toEqual(bytes(used(shadow, '--_n3')));
 		expect(bytes(resting)).not.toEqual(bytes(used(shadow, '--_n4')));
 	});
 
@@ -2845,23 +2851,25 @@ describe('the surfaces a donor operates', () => {
 		);
 	}
 
-	it('gives both trays the tiles’ own fill, a field a text box’s, and the free entry the card’s', async () => {
+	it('gives both trays a plane’s rung, a tile a control’s, and a field and the free entry the card’s', async () => {
 		const { shadow } = await mount();
 		// a tile nobody has chosen: the first is chosen from the first paint and stands raised.
 		const tile = shadow.querySelector(
 			'[part~="amount-option"]:not([part~="selected"])'
 		) as HTMLElement;
-		const fill = getComputedStyle(tile).backgroundColor;
 
-		expect(fill).toBe(token(shadow, '--_n3'));
+		// a control rests on rung 3 and stands on a tray one rung under it, which is a plane's rung 2.
+		expect(getComputedStyle(tile).backgroundColor).toBe(token(shadow, '--_n3'));
 		const drawn = [
 			shadow.querySelector('.segment') as HTMLElement,
 			shadow.querySelector('.tiles') as HTMLElement
 		];
-		for (const control of drawn) expect(getComputedStyle(control).backgroundColor).toBe(fill);
-		// a text box takes rung 2 inside the outline that finds it, a step off the tray's fill.
+		for (const tray of drawn) {
+			expect(getComputedStyle(tray).backgroundColor).toBe(token(shadow, '--_n2'));
+		}
+		// a text box takes the card's own white face inside the outline that finds it.
 		const field = shadow.querySelector('[part~="field"]') as HTMLElement;
-		expect(getComputedStyle(field).backgroundColor).toBe(token(shadow, '--_n2'));
+		expect(getComputedStyle(field).backgroundColor).toBe(token(shadow, '--_n1'));
 		// the entry stands on the tray at the ground a chosen tile rises to, not on the tray's own fill.
 		const entry = shadow.querySelector('[part~="amount-input"]') as HTMLElement;
 		expect(getComputedStyle(entry).backgroundColor).toBe(token(shadow, '--_n1'));
@@ -2883,11 +2891,11 @@ describe('the surfaces a donor operates', () => {
 	// identifies nothing, so the receipt is no frame and no fill at all (../styles/tokens.css argues
 	// both halves at `--_edge-control`).
 	//
-	// the two trays are that same half and they draw a frame anyway, in the card's separator rung,
+	// the two trays are that same half and they draw a frame anyway, in the card's own edge rung,
 	// a step quieter than the outline a field is found by: a tray bounds the group the way the
 	// card's edge bounds the card and identifies no control on it. what identifies a chosen option
 	// is that it is raised, and no tile on either tray draws an edge at all.
-	it('frames both trays in the separator rung, a step quieter than a field’s outline, and no tile on them', async () => {
+	it('frames both trays in the card’s edge rung, a step quieter than a field’s outline, and no tile on them', async () => {
 		const { shadow } = await mount();
 		const tile = shadow.querySelector('[part~="amount-option"]') as HTMLElement;
 		const field = shadow.querySelector('[part~="field"]') as HTMLElement;
@@ -2901,6 +2909,19 @@ describe('the surfaces a donor operates', () => {
 			expect(drawn.borderTopColor, tray).not.toBe(fieldEdge);
 		}
 		expect(Number.parseFloat(getComputedStyle(tile).borderTopWidth)).toBe(0);
+	});
+
+	// the lattice between the boxes on a tray is a separator, rung 6, a step quieter than the tray's
+	// own edge, so the board reads as ruled inside a frame rather than as a second frame.
+	it('rules the gaps on both trays in the separator rung', async () => {
+		const { shadow } = await mount();
+		const separator = token(shadow, '--_n6');
+		const second = shadow.querySelector('.segment > label + label') as HTMLElement;
+
+		expect(getComputedStyle(second, '::before').backgroundColor).toBe(separator);
+		expect(
+			getComputedStyle(shadow.querySelector('.tiles') as HTMLElement).backgroundImage
+		).toContain(separator);
 	});
 
 	it('leaves the receipt bare: no fill, no frame, no pad', async () => {
@@ -3278,6 +3299,23 @@ describe('what a pointer is answered with', () => {
 		expect(used(shadow, '--_n10')).not.toBe(used(shadow, '--_edge-control'));
 	});
 
+	// the two ranks a tray holds answer a pointer from where each rests. a tile rests on rung 3, a
+	// control's own ground, and steps to rung 4; a cadence draws no ground of its own on its tray's
+	// rung 2, so the first fill it shows is rung 3 — a step off the tray either way.
+	it('steps an unchosen tile to rung 4 and an unchosen cadence to rung 3', async () => {
+		const { shadow } = await mount();
+		const tile = shadow.querySelector(
+			".step:not([hidden]) [part~='amount-option']:not([part~='selected'])"
+		) as HTMLElement;
+		const cadence = shadow.querySelector(
+			".step:not([hidden]) [part~='frequency-option']:not([part~='selected'])"
+		) as HTMLElement;
+
+		expect((await hovered(tile)).backgroundColor).toBe(used(shadow, '--_n4'));
+		expect((await hovered(cadence)).backgroundColor).toBe(used(shadow, '--_n3'));
+		await userEvent.unhover(cadence);
+	});
+
 	// the tick box under a finger, which is the only acknowledgement a touch is ever given: a phone
 	// has no hover, so a box that answered the press with nothing would answer a phone with nothing.
 	// unticked it steps its edge one rung past where the pointer left it.
@@ -3599,10 +3637,13 @@ describe('the list a closed choice opens', () => {
 			return row;
 		});
 
-		// rung 3, the ground an unchosen option takes under the pointer: a field's own fill is a
+		// rung 3, the ground a control with no fill of its own takes under the pointer: rung 2 is a
 		// step too faint to tell one row from the next on the list's white.
 		expect(getComputedStyle(list).backgroundColor).toBe(getComputedStyle(card).backgroundColor);
 		expect(getComputedStyle(highlighted).backgroundColor).toBe(used(shadow, '--_n3'));
+		// and an overlay's edge, rung 7: what bounds the list is the edge with the lift beside it,
+		// and it finds no control, so it is not the outline a box a donor operates is found by.
+		expect(getComputedStyle(list).borderTopColor).toBe(used(shadow, '--_n7'));
 	});
 
 	/** a `box-shadow` value as this card resolves it. */
