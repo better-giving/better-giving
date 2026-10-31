@@ -496,7 +496,7 @@ describe('share', () => {
 		await nextTask();
 		expect(writeText).toHaveBeenCalledWith('https://give.example.org/coats');
 		expect(status?.textContent).toBe('Link copied');
-		expect(press?.querySelector('[data-shown]')?.textContent).toBe('Link copied');
+		expect(press?.getAttribute('aria-label')).toBe('Link copied');
 	});
 
 	it('says a second Copy link again, clearing what it said before writing it', async () => {
@@ -527,7 +527,9 @@ describe('share', () => {
 			(a) => new URL(a.href).host || a.href.split(':')[0]
 		);
 		expect(hrefs).toEqual(['mailto', 'www.facebook.com', 'wa.me']);
-		expect(root.querySelector('[data-area="share"] button')?.textContent).toContain('Copy link');
+		expect(root.querySelector('[data-area="share"] button')?.getAttribute('aria-label')).toBe(
+			'Copy link'
+		);
 	});
 
 	it.each([

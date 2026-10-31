@@ -130,15 +130,15 @@ export function PageView(props: PageViewProps) {
 					<CampaignLayout {...props} shape={shape} />
 				)}
 			</main>
+			<section className="page-end" id={SHARE_ID} {...area('share')}>
+				<div className="page-in">
+					<Share
+						sharing={props.sharing}
+						heading={props.type === 'campaign' ? 'Share this campaign' : 'Share this page'}
+					/>
+				</div>
+			</section>
 			<footer className="page-foot">
-				<section className="page-end" id={SHARE_ID} {...area('share')}>
-					<div className="page-in">
-						<Share
-							sharing={props.sharing}
-							heading={props.type === 'campaign' ? 'Share this campaign' : 'Share this page'}
-						/>
-					</div>
-				</section>
 				<div className="page-in">
 					<OrgInfo info={org.info} />
 				</div>

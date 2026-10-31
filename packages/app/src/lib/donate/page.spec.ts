@@ -18,7 +18,8 @@ import {
 	declared,
 	overWhite,
 	resolve,
-	type Scope
+	type Scope,
+	substitute
 } from './page-colour.testing';
 import { PageRoot } from './page-root';
 
@@ -370,6 +371,48 @@ describe('text clears 4.5:1 for every brand colour', () => {
 	});
 });
 
+describe('the share row and the footer', () => {
+	// each share press is a white circle on the wash, lifted as a plane is, at the touch floor.
+	it('draws a share press as a circle at the touch floor, a plane with no edge', () => {
+		expect(substitute(formBase, 'var(--_row-min)')).toBe('44px');
+		expect(declared(page, '.page-share-button')).toMatchObject({
+			'inline-size': 'var(--_row-min)',
+			'block-size': 'var(--_row-min)',
+			'border-radius': '50%',
+			border: 'none',
+			background: 'var(--page-plane)',
+			'box-shadow': 'var(--page-plane-lift)',
+			color: 'var(--_n12)'
+		});
+	});
+
+	it('labels the row in the quiet ink, a step under a heading', () => {
+		expect(declared(page, '.page-share-heading')).toMatchObject({
+			color: 'var(--page-quiet)',
+			'font-weight': 'var(--_w-medium)'
+		});
+	});
+
+	// the footer is one line on the wash, under a separator: the name in `--_n11`, the rest in the
+	// quiet ink at the small step, which the quiet-ink sweep above holds on every ground.
+	it('draws the footer on the wash under one separator, its line in the quiet ink', () => {
+		expect(declared(page, '.page-foot')).toMatchObject({
+			'border-block-start': 'var(--_border) solid var(--_n6)'
+		});
+		expect(declared(page, '.page-foot').background).toBeUndefined();
+		expect(declared(page, '.page-org')).toMatchObject({
+			color: 'var(--page-quiet)',
+			'font-size': 'var(--_t-sm)'
+		});
+		expect(declared(page, '.page-org-name').color).toBe('var(--_n11)');
+	});
+
+	it.each(SHADES)('holds the organisation’s name 4.5:1 on the wash, %s', (shade) => {
+		for (const ground of ['page', 'washBrand', 'washWarm'] as const)
+			expect(floor(shade, ground, '--_n11'), ground).toBeGreaterThanOrEqual(4.5);
+	});
+});
+
 describe('the goal track', () => {
 	// the fill is what the bar is read by; the track against the ground under it is a look.
 	it.each(SHADES)('holds its fill apart by 3:1, %s', (shade) => {
@@ -543,7 +586,8 @@ describe('no card inside a card', () => {
 				".page[data-layout='card'] .page-layout::before",
 				`${WIDE} » .page[data-layout='card'] .page-layout`,
 				".page[data-layout='letter'] [data-area='cover']",
-				".page-tiers[data-shape='cards'] .page-tier"
+				".page-tiers[data-shape='cards'] .page-tier",
+				'.page-share-button'
 			].sort()
 		);
 	});

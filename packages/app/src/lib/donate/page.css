@@ -123,11 +123,12 @@
  * stands on `--page-band`, rung 1, a white band across the page's width, a rung off the ground it
  * crosses; it is a band rather than a plane, so it draws no corner and no shadow. a cover before its
  * photo arrives is rung 3, the operator surfaces' sunken well (`--admin-surface-sunken`). a rule
- * between rows of one list is a separator, rung 6, and nothing between sections is a rule. what a
- * donor presses — a share press, a program option — is the operator surfaces' neutral button: it
+ * between rows of one list is a separator, rung 6, and the one rule between sections is the same
+ * separator over the footer. a program option is the operator surfaces' neutral button: it
  * rests on rung 3, answers a pointer on 4 and a press on 5, and keeps the outline that finds it,
- * `--_edge-control`. a chosen option and a copied press rise to rung 1, as the form's chosen tile
- * does, because the primary they are marked in reads under 4.5:1 on rungs 4 and 5. the brand is a
+ * `--_edge-control`. a chosen option rises to rung 1, as the form's chosen tile does, because the
+ * primary it is marked in reads under 4.5:1 on rungs 4 and 5. a share press is a round plane with no
+ * edge that steps to rung 3 under a pointer and 4 under a press. the brand is a
  * ground in one place, a cover with no photo — the logo's cover, the logo on its own rung 1 plate,
  * a face the logo is read on, and the feature's empty cover, its words in `--_on-p` from 60rem.
  * otherwise the brand fills the action, the goal's progress and the badge, and is the ink of a link
@@ -138,7 +139,7 @@
  * corner preset (`soft` is 8px and 4px). the card layout's cover takes the panel's corner at its top
  * two at every width, so it runs to the panel's corners without the panel clipping it: wide, the
  * panel is an ancestor of the box, which no rule clips. a mark round by nature is a circle and no preset moves it: the
- * initials badge and a platform's mark, at `50%`, and the goal track and its fill, at half of
+ * initials badge, a platform's mark and a share press, at `50%`, and the goal track and its fill, at half of
  * `--page-track-block`, the track's thickness, which is a `--page-*` name because the card draws no
  * bar.
  *
@@ -148,6 +149,9 @@
  *
  *   `--page-quiet` — `--_n10` on the page ground, the wash's two tints, the card and a plane,
  *   `--_n11` on the about band. text, held to 4.5:1.
+ *
+ *   `--_n11` — the organisation's name in the footer — on the page ground and the wash's two tints.
+ *   text, held to 4.5:1.
  *
  *   `--_p` as ink — a link, the top bar's Share or a tier's amount — on the page ground, the wash's
  *   two tints, the card and a plane. text, held to 4.5:1.
@@ -239,6 +243,8 @@ body {
 	/* the drawn height of a third-party brand mark: 1.4 × the card's clamped root, whose 15px
 	   floor makes it 21px. */
 	--page-brand-mark: calc(var(--_root-size) * 1.4);
+	/* a share press's mark, glyph or network file alike. */
+	--page-share-icon: 1.25rem;
 
 	--page-ground: var(--_n2);
 	--page-wash-brand: oklch(from var(--_p) 0.97 min(c * 0.3, 0.025) h);
@@ -347,7 +353,7 @@ body {
  *
  * ink. `--page-accent` is what a link and a listed tier's amount are drawn in, the primary.
  * `--page-ring` is the focus ring, `--_n1` on the feature's scrim and the form's elsewhere. a tier
- * card on its plane, and a program option or a share press on its control ground, sets its own ink.
+ * card or a share press on its plane, and a program option on its control ground, sets its own ink.
  */
 
 .page-ground :where(h1, h2, h3, p, ul, ol, figure) {
@@ -465,7 +471,7 @@ body {
 }
 
 .page-body {
-	padding-block: var(--page-gap-lead) var(--page-gap-section);
+	padding-block-start: var(--page-gap-lead);
 }
 
 /* ── the layouts ── */
@@ -917,14 +923,17 @@ body {
 	--page-quiet: var(--_n11);
 }
 
-.page-foot {
-	padding-block-end: var(--page-gap-section);
+/* the share row stands a group's step under the page's last plane, on the wash with no plane of
+   its own, and a section's step over the footer. */
+.page-end {
+	padding-block: var(--page-gap-group) var(--page-gap-section);
 }
 
-/* the share row and the organisation under it are two sections, told apart by the section step
-   alone: no rule stands between them. */
-.page-end {
-	padding-block: var(--page-gap-section);
+/* the footer is one line on the wash under a separator, the one rule between two sections: below
+   it the page holds no content, only who the gift is made to. */
+.page-foot {
+	padding-block: var(--page-gap-item) var(--page-gap-group);
+	border-block-start: var(--_border) solid var(--_n6);
 }
 
 /* ── the sections ── */
@@ -938,13 +947,6 @@ body {
 	letter-spacing: var(--page-tracking-heading);
 	font-weight: var(--_w-bold);
 	text-wrap: balance;
-}
-
-.page-subheading {
-	margin-block-end: var(--_sp3);
-	font-size: var(--_t-lg);
-	line-height: var(--_lh-tight);
-	font-weight: var(--_w-bold);
 }
 
 .page-label {
@@ -1277,19 +1279,17 @@ body {
 	color: var(--page-quiet);
 }
 
-/* org footer */
+/* org footer: the name, the EIN, the address on one line, the email and the social marks, in
+   that order, one line that wraps item by item on a narrow screen. an `address` sets italic by
+   default; this one is set upright. */
 .page-org {
-	display: grid;
-	gap: var(--_sp4);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--_sp1) var(--_sp4);
 	font-size: var(--_t-sm);
+	font-style: normal;
 	color: var(--page-quiet);
-}
-
-@container page (min-width: 48rem) {
-	.page-org {
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		column-gap: var(--page-col-gap);
-	}
 }
 
 .page-org-name {
@@ -1297,14 +1297,10 @@ body {
 	color: var(--_n11);
 }
 
-.page-org-line {
-	display: block;
-}
-
 /* a platform's mark alone, centred in a `--_row-min` square, and the row pulled back by the slack
-   between the square and a square mark, so a square first mark's edge lines up with the words
-   above it. the mark is the network's own file and is sized by its height alone. the square is drawn
-   round, so the focus ring around a mark is a circle. */
+   between the square and a square mark, so a square mark stands its gap from the words beside it.
+   the mark is the network's own file and is sized by its height alone. the square is drawn round,
+   so the focus ring around a mark is a circle. */
 .page-org-links {
 	display: flex;
 	flex-wrap: wrap;
@@ -1323,85 +1319,78 @@ body {
 	block-size: var(--page-brand-mark);
 }
 
-/* share */
+/* share: a label and the channels' presses in one row, the label over them where the row is too
+   short for both. the label is an `h2` set as a label: the body step at the medium weight, in the
+   quiet ink. */
+.page-share {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--_sp3) var(--_sp4);
+}
+
+.page-share-heading {
+	margin: 0;
+	font-size: var(--_t-md);
+	line-height: var(--_lh-tight);
+	font-weight: var(--_w-medium);
+	color: var(--page-quiet);
+}
+
 .page-share-row {
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--_sp2);
+	gap: var(--_sp3);
 }
 
+/* a press is a mark alone in a white circle at the touch floor, lifted off the wash as a plane is,
+   with no edge. under a pointer and a press it steps down the neutral ladder, as the operator
+   surfaces' quiet button does; the ink stays the page's, so the glyphs read on every step. */
 .page-share-button {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--_sp2);
-	min-block-size: var(--_row-min);
-	padding-inline: var(--_sp3) var(--_sp4);
-	background: var(--_n3);
+	display: inline-grid;
+	place-items: center;
+	inline-size: var(--_row-min);
+	block-size: var(--_row-min);
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: var(--page-plane);
+	box-shadow: var(--page-plane-lift);
 	color: var(--_n12);
-	border: var(--_border) solid var(--_edge-control);
-	border-radius: var(--_r-in);
-	font: inherit;
-	font-weight: var(--_w-medium);
-	text-decoration: none;
 	cursor: pointer;
 }
 
 .page-share-button:hover {
-	background: var(--_n4);
-	border-color: var(--_n10);
+	background: var(--_n3);
 }
 
 .page-share-button:active {
-	background: var(--_n5);
-	border-color: var(--_n10);
+	background: var(--_n4);
 }
 
-/* a channel's press is a link, and a link takes the page's accent: the press is a control on
-   `--_n3` and keeps its own ink, as Copy link's button does. */
+/* the ring joins the lift rather than replacing it, and outranks the ring every page link takes. */
+.page-ground .page-share-button:focus-visible {
+	outline: var(--_focus-width) solid transparent;
+	box-shadow:
+		var(--page-plane-lift),
+		0 0 0 var(--_focus-width) var(--page-ring);
+}
+
+/* a channel's press is a link, and a link takes the page's accent: the press keeps the page's ink,
+   as Copy link's button does. */
 .page-ground a.page-share-button {
 	color: var(--_n12);
 }
 
-.page-share-button[data-state='copied'] {
-	background: var(--_n1);
-	color: var(--_p);
-	border-color: var(--_p);
-}
-
-/* a primary edge keeps a band of `--_n1` between itself and the ring, as the card's marked controls do. */
-.page-share-button[data-state='copied']:focus-visible {
-	box-shadow:
-		0 0 0 var(--_border) var(--_n1),
-		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
-}
-
 .page-share-mark {
-	flex: none;
-	inline-size: var(--_glyph-beside);
-	block-size: var(--_glyph-beside);
+	inline-size: var(--page-share-icon);
+	block-size: var(--page-share-icon);
 }
 
-/* a network's own mark beside its channel's words: a brand mark's height, and the width its file's
-   own shape gives it. */
+/* a network's own mark, in its own colour, at the glyphs' height and the width its file's shape
+   gives it. */
 .page-share-brand {
-	flex: none;
-	block-size: var(--page-brand-mark);
-}
-
-/* the shown wording stands at the cell's start, its mark's gap away like every channel's label;
-   a button centres its text, which in a cell as wide as the longest wording widens that gap. */
-.page-share-words {
-	display: inline-grid;
-	justify-items: start;
-}
-
-.page-share-words > * {
-	grid-area: 1 / 1;
-	visibility: hidden;
-}
-
-.page-share-words > [data-shown] {
-	visibility: visible;
+	block-size: var(--page-share-icon);
 }
 
 /* program chooser: a set the donor picks from, marked the way the box marks a chosen tile. the

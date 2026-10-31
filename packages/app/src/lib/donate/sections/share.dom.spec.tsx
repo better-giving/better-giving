@@ -1,12 +1,12 @@
 import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { describe, expect, it, onTestFinished } from 'vitest';
-import { SHARE_CHANNELS } from '../../page/share';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { SHARE_CHANNEL_LABELS, SHARE_CHANNELS } from '../../page/share';
 import { Share } from './share';
 
-// the share buttons' marks, mounted: each network is drawn as its own official file
-// and never as a letter or a lookalike standing in for one.
+// the share buttons, mounted: each is a mark alone, named for its channel, and each network is
+// drawn as its own official file and never as a letter or a lookalike standing in for one.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -58,5 +58,36 @@ describe('share', () => {
 				press.querySelector('.page-share-brand, .page-share-mark')?.tagName.toLowerCase()
 			).toMatch(/^(img|svg)$/);
 		}
+	});
+
+	it('names each press for its channel, with no words of its own', () => {
+		const pressed = presses();
+		expect(pressed.map((press) => press.getAttribute('aria-label'))).toEqual(
+			SHARE_CHANNELS.map((channel) => SHARE_CHANNEL_LABELS[channel])
+		);
+		for (const press of pressed) {
+			expect(press.textContent).toBe('');
+			expect(press.getAttribute('title')).toBe(press.getAttribute('aria-label'));
+		}
+	});
+
+	it.each([
+		['copied', async () => {}, 'Link copied'],
+		[
+			'refused',
+			async () => {
+				throw new Error('denied');
+			},
+			'Couldn’t copy'
+		]
+	] as const)('names Copy link for what it did once the copy is %s', async (_, writeText, name) => {
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		onTestFinished(() => {
+			vi.unstubAllGlobals();
+		});
+		const copy = presses()[SHARE_CHANNELS.indexOf('copy-link')];
+		await act(async () => copy?.click());
+		expect(copy?.getAttribute('aria-label')).toBe(name);
+		expect(copy?.getAttribute('title')).toBe(name);
 	});
 });
