@@ -138,6 +138,57 @@ describe('every plane is a white card on the page', () => {
 	});
 });
 
+describe('no shadow stands inside another', () => {
+	// a plane's card shadow says it floats over what it stands on; inside anything that already
+	// floats or lifts, that shadow is a second lift over the first. every rule that paints a shadow
+	// under a white surface is either a parent the nested rule above trades a plane's shadow off in,
+	// or named here with why no plane stands in it, so a new lifted surface fails here until it says.
+	const lifts = (shadow: string | undefined) =>
+		shadow !== undefined && /var\(--admin-elevation-(card|overlay|dialog)\)/.test(shadow);
+	const lifted = painting
+		.filter(({ stated }) => lifts(stated.get('box-shadow')))
+		.map(({ selector }) => selector);
+	const nested = rulesIn(css).find(
+		({ selector, stated }) =>
+			stated.get('box-shadow') === 'none' &&
+			stated.get('border-color') === 'var(--admin-divider-plane)' &&
+			/^:is\([^)]*\) :is\([^)]*\)$/.test(selector)
+	);
+	const parents = (nested?.selector.match(/:is\(([^)]*)\)/)?.[1] ?? '')
+		.split(',')
+		.map((one) => one.trim());
+
+	/** lifted white surfaces the nested rule does not name as a parent, and why none holds a plane. */
+	const HOLDS_NO_PLANE = new Map([
+		['.adm-menulist, .adm-selectlist', 'a menu’s and a select’s list, which hold rows'],
+		['.adm-cal', 'the calendar a date field opens, which holds day presses'],
+		['.adm-rail', "the phone's bar, which holds destination cells"],
+		['.adm-moresheet', "the bar's More sheet, which holds destination cells"],
+		[
+			'.adm-rail__cells .adm-dest > .adm-mark',
+			"a destination's mark tile on the desk rail, which holds a glyph and stands on the wash"
+		]
+	]);
+
+	it('reads the nested rule', () => {
+		expect(parents.length).toBeGreaterThanOrEqual(8);
+	});
+
+	it.each(lifted.filter((selector) => !HOLDS_NO_PLANE.has(selector)))(
+		'%s trades a plane’s shadow for the nested edge inside it',
+		(selector) => {
+			expect(parents).toContain(selector);
+		}
+	);
+
+	it('names only lifted surfaces the nested rule leaves out', () => {
+		for (const selector of HOLDS_NO_PLANE.keys()) {
+			expect(lifted, selector).toContain(selector);
+			expect(parents, selector).not.toContain(selector);
+		}
+	});
+});
+
 describe('a rule drawn inside a white surface is the plane’s quieter one', () => {
 	// the rules standing between rows or divisions inside a plane, the dialog or a sheet. each draws
 	// `--admin-rule` on its own, `--admin-divider` against the page, and the remap trades its colour

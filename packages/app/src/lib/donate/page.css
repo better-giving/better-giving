@@ -103,11 +103,12 @@
  * border kept at `--_border` and drawn transparent so a plane is the same size with or without one,
  * the shadow `--page-plane-lift`, and the corner `--page-plane-radius`. the shadow is the page's
  * ink, rung 12, at a faint alpha in two layers, a short one and a soft throw: it falls on the wash,
- * whose colour changes under it, so no solid rung could be its shade. a plane on a plane keeps a
- * hairline edge, `--page-plane-edge`, rung 6, and no shadow of its own, but for one: the box on the
- * card's panel from 60rem takes the plane's own shadow and no edge. the top bar keeps that hairline
- * along its foot, the one side the page meets it on. the bar runs the page's full width and has no
- * corner and no shadow.
+ * whose colour changes under it, so no solid rung could be its shade. no plane stands in another:
+ * the one that could, the box on the card's panel from 60rem, draws no fill, edge, corner, shadow or
+ * inset of its own there and reads as part of the panel, which already groups it; on a phone, under
+ * the panel rather than in it, it is a plane again. the top bar keeps a hairline edge,
+ * `--page-plane-edge`, rung 6, along its foot, the one side the page meets it on. the bar runs the
+ * page's full width and has no corner and no shadow.
  *
  * the wash. `--page-wash` is two soft radial tints laid over the solid ground, the brand's at the
  * first screen's start and a warm one at the page's far corner, each fading to `transparent` at 70%
@@ -133,7 +134,7 @@
  * and a tier's amount.
  *
  * corners. a plane is `--page-plane-radius`, 12px, a step rounder than the card's `--_r`, and the
- * donation box takes it too; what stands on a plane is the card's `--_r` or `--_r-in`, the form's
+ * donation box takes it too wherever it is a plane; what stands on a plane is the card's `--_r` or `--_r-in`, the form's
  * corner preset (`soft` is 8px and 4px). the card layout's cover takes the panel's corner at its top
  * two at every width, so it runs to the panel's corners without the panel clipping it: wide, the
  * panel is an ancestor of the box, which no rule clips. a mark round by nature is a circle and no preset moves it: the
@@ -491,7 +492,8 @@ body {
 }
 
 /* the donation box on the page's own ground, the plain page's included, is a plane like the rest:
-   its edge kept at its width and drawn transparent, the plane's corner and the plane's shadow.
+   its edge kept at its width and drawn transparent, the plane's corner and the plane's shadow. in a
+   plane it is none of these (the card layout's panel, below).
    `card` is one of the form's public `::part()` names (packages/form/custom-elements.json), so
    this is the dress an integrator could give it, and the light-DOM card is reached by the
    attribute where a page holding the element would use `::part(card)`. the card clips to its own
@@ -623,6 +625,23 @@ body {
 
 	.page[data-layout='card'] [data-area='box'] {
 		margin-block-start: var(--page-card-inset);
+	}
+
+	/* the box on the panel is part of the plane it stands in: no fill, edge, corner or shadow of its
+	   own, and no inset, so its heading starts on the title's line and its content runs to the
+	   panel's inset. the inset is `.card-body`'s, which no part name reaches
+	   (packages/form/src/styles/layout.css). with no corner drawn there is nothing to clip to, and a
+	   focus ring at the box's edge paints into the panel's inset rather than being cut off. */
+	.page[data-layout='card'] [part~='card'] {
+		background: transparent;
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+		overflow: visible;
+	}
+
+	.page[data-layout='card'] [part~='card'] > .card-body {
+		padding: 0;
 	}
 }
 

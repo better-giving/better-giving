@@ -461,15 +461,91 @@ describe('the card layout', () => {
 		expect(ordered).toEqual([]);
 	});
 
-	it('draws the box on the wide panel as a plane, with the plane’s shadow and no edge', () => {
-		const onPanel = page.filter(
-			({ at }) => at[0] === WIDE && at.at(-1)?.includes("[part~='card']")
-		);
-		expect(onPanel).toEqual([]);
-		expect(declared(page, ".page [part~='card']")).toMatchObject({
-			'border-color': 'transparent',
-			'box-shadow': 'var(--page-plane-lift)'
+	it('draws the box on the wide panel as part of the panel: no fill, edge, corner, shadow or inset of its own', () => {
+		expect(declared(page, WIDE, `${CARD} [part~='card']`)).toEqual({
+			background: 'transparent',
+			border: '0',
+			'border-radius': '0',
+			'box-shadow': 'none',
+			overflow: 'visible'
 		});
+		// the card's interior inset is `.card-body`'s, which no part name reaches
+		// (packages/form/src/styles/layout.css), so the heading starts on the title's line only with it gone.
+		expect(declared(page, WIDE, `${CARD} [part~='card'] > .card-body`)).toEqual({ padding: '0' });
+		expect(declared(page, WIDE, `${CARD} [data-area='title']`).margin).toBe(
+			'var(--page-card-inset) 0 0'
+		);
+		expect(declared(page, WIDE, `${CARD} [data-area='box']`)['margin-block-start']).toBe(
+			'var(--page-card-inset)'
+		);
+	});
+});
+
+describe('no card inside a card', () => {
+	// a plane is a white card on the wash, and its lift is what makes it one; a plane standing in
+	// another is white on white, where the lift says it floats over what already groups it. the box is
+	// the one plane the form draws, and it stands in `.page-layout` in every layout, so wherever a
+	// layout paints `.page-layout` itself as a plane, the box there draws none of a plane's dress.
+	// happy-dom does no layout, so where the box stands is read off the sheet.
+	const WIDE = '@container page (min-width: 60rem)';
+	const WIDTHS: readonly (readonly string[])[] = [[], [WIDE]];
+	const layouts = [...LAYOUTS, 'donation'] as const;
+	const PLANE = 'var(--page-plane)';
+	const LIFT = 'var(--page-plane-lift)';
+	const at = (inside: readonly string[], selector: string) =>
+		page.filter((b) => b.at.join(' » ') === [...inside, selector].join(' » '));
+
+	const holding = layouts.flatMap((layout) =>
+		WIDTHS.flatMap((inside) =>
+			at(inside, `.page[data-layout='${layout}'] .page-layout`).some(
+				({ decls }) => decls.background === PLANE
+			)
+				? [{ layout, inside }]
+				: []
+		)
+	);
+
+	it('finds the plane that holds the box: the card’s panel from 60rem', () => {
+		expect(holding).toEqual([{ layout: 'card', inside: [WIDE] }]);
+	});
+
+	it.each(
+		holding.map(({ layout, inside }) => [layout, inside.join(' ') || 'phone', inside] as const)
+	)('the box in the %s layout’s plane (%s) draws no lift, fill or edge', (layout, _, inside) => {
+		const box = at(inside, `.page[data-layout='${layout}'] [part~='card']`);
+		expect(box).toHaveLength(1);
+		expect(box[0]?.decls).toMatchObject({
+			'box-shadow': 'none',
+			background: 'transparent',
+			border: '0'
+		});
+	});
+
+	it('keeps the box a card where it stands on the wash, the phone’s card layout included', () => {
+		expect(declared(page, ".page [part~='card']")['box-shadow']).toBe(LIFT);
+		const unset = page.filter(
+			({ at: [first, ...rest], decls }) =>
+				rest.length === 0 &&
+				first?.includes("[part~='card']") === true &&
+				decls['box-shadow'] !== undefined &&
+				decls['box-shadow'] !== LIFT
+		);
+		expect(unset).toEqual([]);
+	});
+
+	it('lifts nothing a plane holds but the box: every other lift stands on the wash', () => {
+		const lifted = page
+			.filter(({ decls }) => decls['box-shadow'] === LIFT)
+			.map(({ at }) => at.join(' » '));
+		expect(lifted.sort()).toEqual(
+			[
+				".page [part~='card']",
+				".page[data-layout='card'] .page-layout::before",
+				`${WIDE} » .page[data-layout='card'] .page-layout`,
+				".page[data-layout='letter'] [data-area='cover']",
+				".page-tiers[data-shape='cards'] .page-tier"
+			].sort()
+		);
 	});
 });
 
