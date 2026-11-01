@@ -5,13 +5,14 @@ import { Glyph } from './glyph';
 import type { PageSharing } from './types';
 
 // the share buttons every page offers, in their fixed order ($lib/page/share.ts), each a mark alone
-// that carries its channel's label as its name. every one but Copy link opens that channel's own
-// share page in a tab of its own; Copy link writes the page's address to the clipboard and says so
-// in its name and its mark, with a status region beside it saying the same out loud.
+// that carries its channel's label as its name. a network's press opens that network's share page
+// in a new tab, and its name says so, as the footer's social marks do; Email opens a mail draft.
+// Copy link writes the page's address to the clipboard and reports the outcome in its own name and
+// mark, and nowhere else: a focused control's new name is spoken, so a status region saying the
+// same would be heard twice. it settles back to Copy link after `SETTLE_MS`, so a later visit meets
+// the press and not a past outcome.
 //
-// the region is cleared and written a task apart, as packages/operator's CopyControl.jsx does: a
-// second press puts back the words the region already holds, and a region handed what it holds is
-// announced by nobody.
+// the heading carries `headingId`, the name of the section the caller stands this in.
 //
 // a network's mark is that network's own file (packages/operator's BrandMark.jsx), sized by its
 // height and drawn in that network's colour; Email and Copy link draw the form's own glyphs.
@@ -24,17 +25,21 @@ const COPY_WORDS: Record<Copy, string> = {
 	failed: 'Couldn’t copy'
 };
 
+/** how long Copy link holds its outcome, as packages/operator's CopyControl.jsx holds its own. */
+export const SETTLE_MS = 2000;
+
 export function Share({
 	sharing,
-	heading
+	heading,
+	headingId
 }: {
 	readonly sharing: PageSharing;
 	readonly heading: string;
+	readonly headingId: string;
 }) {
 	const [copy, setCopy] = useState<Copy>('idle');
-	const [said, setSaid] = useState('');
-	const say = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-	useEffect(() => () => clearTimeout(say.current), []);
+	const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	useEffect(() => () => clearTimeout(settle.current), []);
 
 	const copyLink = async () => {
 		let landed: Copy;
@@ -45,14 +50,15 @@ export function Share({
 			landed = 'failed';
 		}
 		setCopy(landed);
-		setSaid('');
-		clearTimeout(say.current);
-		say.current = setTimeout(() => setSaid(COPY_WORDS[landed]), 0);
+		clearTimeout(settle.current);
+		settle.current = setTimeout(() => setCopy('idle'), SETTLE_MS);
 	};
 
 	return (
 		<div className="page-share">
-			<h2 className="page-share-heading">{heading}</h2>
+			<h2 className="page-share-heading" id={headingId}>
+				{heading}
+			</h2>
 			<div className="page-share-row">
 				{SHARE_CHANNELS.map((channel) =>
 					channel === 'copy-link' ? (
@@ -66,28 +72,31 @@ export function Share({
 						>
 							<Glyph name={copy === 'copied' ? 'tick' : 'link'} className="page-share-mark" />
 						</button>
+					) : channel === 'email' ? (
+						<a
+							key={channel}
+							className="page-share-button"
+							href={shareHref(channel, sharing)}
+							aria-label={SHARE_CHANNEL_LABELS[channel]}
+							title={SHARE_CHANNEL_LABELS[channel]}
+						>
+							<Glyph name="mail" className="page-share-mark" />
+						</a>
 					) : (
 						<a
 							key={channel}
 							className="page-share-button"
 							href={shareHref(channel, sharing)}
-							target={channel === 'email' ? undefined : '_blank'}
-							rel={channel === 'email' ? undefined : 'noopener noreferrer'}
-							aria-label={SHARE_CHANNEL_LABELS[channel]}
+							target="_blank"
+							rel="noopener noreferrer"
+							aria-label={`${SHARE_CHANNEL_LABELS[channel]}, opens in a new tab`}
 							title={SHARE_CHANNEL_LABELS[channel]}
 						>
-							{channel === 'email' ? (
-								<Glyph name="mail" className="page-share-mark" />
-							) : (
-								<BrandMark platform={channel} className="page-share-brand" />
-							)}
+							<BrandMark platform={channel} className="page-share-brand" />
 						</a>
 					)
 				)}
 			</div>
-			<p className="vh" role="status">
-				{said}
-			</p>
 		</div>
 	);
 }

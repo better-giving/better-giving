@@ -478,47 +478,36 @@ describe('the program chooser', () => {
 	});
 });
 
-/** a task later, when the share row's status region is written. */
-const nextTask = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
-
 describe('share', () => {
-	it('copies the page’s address and says so at the press and out loud', async () => {
+	it.each([
+		['campaign', defaultCampaign(), 'Share this campaign'],
+		['donation_page', defaultDonationPage(), 'Share this page']
+	] as const)('stands share in a region its heading names, on the %s', (type, page, heading) => {
+		const root = mount(<PageView {...props(type, page)} />);
+		const section = root.querySelector('[data-area="share"]');
+		expect(section?.tagName.toLowerCase()).toBe('section');
+		expect(section?.id).toBe('page-share');
+		const name = section?.getAttribute('aria-labelledby') ?? '';
+		expect(name).not.toBe('');
+		const label = root.ownerDocument.getElementById(name);
+		expect(label?.tagName.toLowerCase()).toBe('h2');
+		expect(label?.textContent).toBe(heading);
+		expect(section?.contains(label ?? null)).toBe(true);
+	});
+
+	it('copies the page’s address and says so at the press alone', async () => {
 		const writeText = vi.fn(async () => {});
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 		onTestFinished(() => {
 			vi.unstubAllGlobals();
 		});
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
-		const status = root.querySelector('[data-area="share"] [role="status"]');
-		expect(status?.textContent).toBe('');
 		const press = root.querySelector<HTMLButtonElement>('[data-area="share"] button');
 		await act(async () => press?.click());
-		await nextTask();
 		expect(writeText).toHaveBeenCalledWith('https://give.example.org/coats');
-		expect(status?.textContent).toBe('Link copied');
 		expect(press?.getAttribute('aria-label')).toBe('Link copied');
-	});
-
-	it('says a second Copy link again, clearing what it said before writing it', async () => {
-		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
-		onTestFinished(() => {
-			vi.unstubAllGlobals();
-		});
-		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
-		const status = root.querySelector('[data-area="share"] [role="status"]');
-		const press = root.querySelector<HTMLButtonElement>('[data-area="share"] button');
-		if (status === null) throw new Error('no status region');
-		await act(async () => press?.click());
-		await nextTask();
-		const heard: (string | null)[] = [];
-		const listen = new MutationObserver(() => heard.push(status.textContent));
-		listen.observe(status, { childList: true, characterData: true, subtree: true });
-		onTestFinished(() => listen.disconnect());
-
-		await act(async () => press?.click());
-		await nextTask();
-
-		expect(heard).toEqual(['', 'Link copied']);
+		const share = root.querySelector('[data-area="share"]');
+		expect(share?.querySelector('[role="status"], [aria-live]')).toBeNull();
 	});
 
 	it('draws the same buttons on every page, each opening its own share', () => {
@@ -596,11 +585,9 @@ describe('the preview', () => {
 		const writeText = vi.fn(async () => {});
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} preview />);
-		const status = root.querySelector('[data-area="share"] [role="status"]');
-		await act(async () =>
-			root.querySelector<HTMLButtonElement>('[data-area="share"] button')?.click()
-		);
+		const press = root.querySelector<HTMLButtonElement>('[data-area="share"] button');
+		await act(async () => press?.click());
 		expect(writeText).not.toHaveBeenCalled();
-		expect(status?.textContent).toBe('');
+		expect(press?.getAttribute('aria-label')).toBe('Copy link');
 	});
 });

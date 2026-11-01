@@ -379,7 +379,7 @@ describe('the share row and the footer', () => {
 			'inline-size': 'var(--_row-min)',
 			'block-size': 'var(--_row-min)',
 			'border-radius': '50%',
-			border: 'none',
+			border: '0',
 			background: 'var(--page-plane)',
 			'box-shadow': 'var(--page-plane-lift)',
 			color: 'var(--_n12)'

@@ -240,7 +240,7 @@ body {
 	--page-band-inset: clamp(2.25rem, 1.5rem + 3cqi, 4rem);
 	--page-col-gap: clamp(2rem, 1rem + 4cqi, 4rem);
 
-	/* the drawn height of a third-party brand mark: 1.4 × the card's clamped root, whose 15px
+	/* the drawn height of a social mark in the footer: 1.4 × the card's clamped root, whose 15px
 	   floor makes it 21px. */
 	--page-brand-mark: calc(var(--_root-size) * 1.4);
 	/* a share press's mark, glyph or network file alike. */
@@ -343,8 +343,8 @@ body {
 /*
  * ── the donor page's sections ─────────────────────────────────────────────────────────────────
  *
- * ./page-view.tsx draws a page as a masthead, a body and a footer under the root. a page's sections
- * stand in `.page-layout`, each carrying `data-area` for the rules below to place it by; on a phone
+ * ./page-view.tsx draws a page as a masthead, a body, the share section and a footer under the
+ * root. a page's sections stand in `.page-layout`, each carrying `data-area` for the rules below to place it by; on a phone
  * the card's grid areas and the letter's and the feature's `order` stand them in the order a phone reads them,
  * and from `@container page (min-width: 60rem)` each layout moves them into its columns. the donation box is a `.page-box` among them, never inside another section, and no rule
  * below gives the box or any ancestor of it a clip, a position or a transform. neither rail is
@@ -923,7 +923,7 @@ body {
 	--page-quiet: var(--_n11);
 }
 
-/* the share row stands a group's step under the page's last plane, on the wash with no plane of
+/* the share row stands a group's step under the body's last section, on the wash with no plane of
    its own, and a section's step over the footer. */
 .page-end {
 	padding-block: var(--page-gap-group) var(--page-gap-section);
@@ -1280,16 +1280,32 @@ body {
 }
 
 /* org footer: the name, the EIN, the address on one line, the email and the social marks, in
-   that order, one line that wraps item by item on a narrow screen. an `address` sets italic by
-   default; this one is set upright. */
+   that order, one line that wraps on a narrow screen, the name and EIN first and then the contact
+   details, each list item by item. a long email or address line breaks where it must rather than
+   run the page sideways, as the about band's words do. an `address` sets italic by default; this
+   one is set upright. */
 .page-org {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--_sp1) var(--_sp4);
 	font-size: var(--_t-sm);
-	font-style: normal;
 	color: var(--page-quiet);
+	overflow-wrap: anywhere;
+}
+
+.page-org-list {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--_sp1) var(--_sp4);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.page-org-contact {
+	font-style: normal;
 }
 
 .page-org-name {
@@ -1352,7 +1368,7 @@ body {
 	inline-size: var(--_row-min);
 	block-size: var(--_row-min);
 	padding: 0;
-	border: none;
+	border: 0;
 	border-radius: 50%;
 	background: var(--page-plane);
 	box-shadow: var(--page-plane-lift);

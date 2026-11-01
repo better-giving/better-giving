@@ -3,10 +3,11 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { SHARE_CHANNEL_LABELS, SHARE_CHANNELS } from '../../page/share';
-import { Share } from './share';
+import { SETTLE_MS, Share } from './share';
 
-// the share buttons, mounted: each is a mark alone, named for its channel, and each network is
-// drawn as its own official file and never as a letter or a lookalike standing in for one.
+// the share buttons, mounted: each is a mark alone, named for its channel and for the new tab a
+// network opens in, and each network is drawn as its own official file and never as a letter or a
+// lookalike standing in for one. Copy link reports what it did in its name alone, and settles back.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -36,11 +37,14 @@ const sharing = {
 
 const NETWORKS = ['facebook', 'whatsapp'] as const;
 
+const share = () => mount(<Share sharing={sharing} heading="Share this campaign" headingId="sh" />);
+
 describe('share', () => {
-	const presses = () => {
-		const host = mount(<Share sharing={sharing} heading="Share this campaign" />);
-		return [...host.querySelectorAll<HTMLElement>('.page-share-button')];
-	};
+	const presses = () => [...share().querySelectorAll<HTMLElement>('.page-share-button')];
+
+	it('gives its heading the id the section it stands in is named by', () => {
+		expect(share().querySelector('h2')?.id).toBe('sh');
+	});
 
 	it.each(NETWORKS)('draws %s as its own file, hidden from a screen reader', (network) => {
 		const press = presses()[SHARE_CHANNELS.indexOf(network)];
@@ -62,12 +66,29 @@ describe('share', () => {
 
 	it('names each press for its channel, with no words of its own', () => {
 		const pressed = presses();
-		expect(pressed.map((press) => press.getAttribute('aria-label'))).toEqual(
+		expect(pressed.map((press) => press.getAttribute('title'))).toEqual(
 			SHARE_CHANNELS.map((channel) => SHARE_CHANNEL_LABELS[channel])
 		);
 		for (const press of pressed) {
 			expect(press.textContent).toBe('');
-			expect(press.getAttribute('title')).toBe(press.getAttribute('aria-label'));
+			expect(press.getAttribute('aria-label')).toContain(press.getAttribute('title'));
+		}
+	});
+
+	it.each(NETWORKS)('names %s for the new tab it opens in', (network) => {
+		const press = presses()[SHARE_CHANNELS.indexOf(network)];
+		expect(press?.getAttribute('target')).toBe('_blank');
+		expect(press?.getAttribute('aria-label')).toBe(
+			`${SHARE_CHANNEL_LABELS[network]}, opens in a new tab`
+		);
+	});
+
+	it('names Email and Copy link for their channel alone, opening no tab', () => {
+		const pressed = presses();
+		for (const channel of ['email', 'copy-link'] as const) {
+			const press = pressed[SHARE_CHANNELS.indexOf(channel)];
+			expect(press?.hasAttribute('target')).toBe(false);
+			expect(press?.getAttribute('aria-label')).toBe(SHARE_CHANNEL_LABELS[channel]);
 		}
 	});
 
@@ -89,5 +110,39 @@ describe('share', () => {
 		await act(async () => copy?.click());
 		expect(copy?.getAttribute('aria-label')).toBe(name);
 		expect(copy?.getAttribute('title')).toBe(name);
+	});
+
+	it('reports a copy in its name alone, with no status region saying it again', async () => {
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
+		onTestFinished(() => {
+			vi.unstubAllGlobals();
+		});
+		const host = share();
+		const copy =
+			host.querySelectorAll<HTMLElement>('.page-share-button')[SHARE_CHANNELS.indexOf('copy-link')];
+		await act(async () => copy?.click());
+		expect(copy?.getAttribute('aria-label')).toBe('Link copied');
+		expect(host.querySelector('[role="status"], [aria-live]')).toBeNull();
+	});
+
+	it('settles Copy link back to its name and mark once the moment passes', async () => {
+		vi.useFakeTimers();
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
+		onTestFinished(() => {
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		});
+		const copy = presses()[SHARE_CHANNELS.indexOf('copy-link')];
+		const resting = copy?.innerHTML;
+		await act(async () => copy?.click());
+		expect(copy?.innerHTML).not.toBe(resting);
+
+		act(() => vi.advanceTimersByTime(SETTLE_MS - 1));
+		expect(copy?.getAttribute('aria-label')).toBe('Link copied');
+
+		act(() => vi.advanceTimersByTime(1));
+		expect(copy?.getAttribute('aria-label')).toBe('Copy link');
+		expect(copy?.getAttribute('title')).toBe('Copy link');
+		expect(copy?.innerHTML).toBe(resting);
 	});
 });

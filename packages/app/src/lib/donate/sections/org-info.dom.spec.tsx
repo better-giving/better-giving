@@ -7,9 +7,9 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { OrgInfo } from './org-info';
 import type { OrgInfo as OrgInfoValues } from './types';
 
-// the organisation footer's social links, mounted: each is its platform's own official
-// file, named for the platform and the new tab it opens in, and opens the address the organisation
-// stored.
+// the organisation footer, mounted: each detail stands apart as a list item, only the ways to reach
+// the organisation stand in `address`, and each social link is its platform's own official file,
+// named for the platform and the new tab it opens in, opening the address the organisation stored.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -85,5 +85,35 @@ describe('org info', () => {
 	it('draws no row of links with none stored', () => {
 		const host = mount(<OrgInfo info={info([])} />);
 		expect(host.querySelector('.page-org-links')).toBeNull();
+	});
+
+	it('stands each detail apart as a list item, never one run of text', () => {
+		const host = mount(<OrgInfo info={info(links)} />);
+		expect([...host.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
+			'Northside Neighbors',
+			'EIN 84-2913377',
+			'40 Elm Street, Easton, PA 18042',
+			'hello@northsideneighbors.org',
+			''
+		]);
+	});
+
+	it('holds only the ways to reach the organisation in its address', () => {
+		const host = mount(<OrgInfo info={info(links)} />);
+		const address = host.querySelector('address');
+		expect(address?.textContent).not.toContain('Northside Neighbors');
+		expect(address?.textContent).not.toContain('EIN');
+		expect(address?.textContent).toContain('40 Elm Street');
+		expect(address?.querySelector('a[href="mailto:hello@northsideneighbors.org"]')).not.toBeNull();
+		expect(address?.querySelectorAll('.page-org-social')).toHaveLength(links.length);
+	});
+
+	it('draws no address with no way to reach the organisation set', () => {
+		const host = mount(<OrgInfo info={{ ...info([]), addressLines: [], email: null }} />);
+		expect(host.querySelector('address')).toBeNull();
+		expect([...host.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
+			'Northside Neighbors',
+			'EIN 84-2913377'
+		]);
 	});
 });
