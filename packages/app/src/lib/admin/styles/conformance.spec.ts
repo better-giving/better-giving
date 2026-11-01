@@ -84,49 +84,37 @@ const REFERENCE = /var\(\s*(--admin-[\w-]+)/g;
 // something has since reached for goes on claiming to be unread, and nothing about the tree says
 // otherwise. `exempts no token anything reads` is what fails then.
 //
-// the same twenty-five are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
+// the same twenty-one are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
 // the paragraph is what a reader meets, and this is what fails.
 const SCALE_EXEMPT = [
-	// the unread rungs of the three chromatic ladders. each ladder is twelve rungs because the rung
-	// number is the job, and a family whose middle is missing is one where the next value drawn in
-	// that tone is a number somebody picks.
+	// the unread steps of the four ladders. each ladder is radix's twelve steps because the step
+	// number is the job (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale),
+	// and a family whose middle is missing is one where the next value drawn in that tone is a
+	// number somebody picks.
 	//
-	// the accent: no operator screen draws a ground lighter than rung 3 or a chromatic border, so
-	// the lightest rung goes unread — rung 2 is read once, as the cool end of the page's wash — and
-	// so do rung 5, a selected ground no cell takes, rung 6,
-	// the line of a band, which no band draws, and the two between that line rung and the solid
-	// band. rung 9 joins them because this family's solid
-	// band is too bright to carry a label, which packages/operator/src/styles/tokens.css argues
-	// at `--admin-accent-solid-1`. rung 10 is unread too: the rail marks its current cell with a
-	// neutral chip and draws no accent edge.
+	// the neutral: steps 9 and 10 are its solid pair, and no operator screen fills with grey.
+	'--admin-neutral-9',
+	'--admin-neutral-10',
+	// the accent: no screen draws an accent ground lighter than the wash's step 2, a hovered accent
+	// element, or an accent rule.
 	'--admin-accent-1',
-	'--admin-accent-5',
+	'--admin-accent-4',
 	'--admin-accent-6',
-	'--admin-accent-7',
-	'--admin-accent-8',
-	'--admin-accent-9',
-	'--admin-accent-10',
-	// the blocker: a red band, a red word and a destructive fill are the whole of what this tone
-	// draws, and a band draws no edge, so its tint band spends one rung and its border band none.
+	// the blocker: a red band, a red edge on a refused box, a red word and a destructive fill are the
+	// whole of what this tone draws, and a band draws no edge.
 	'--admin-blocker-1',
 	'--admin-blocker-2',
 	'--admin-blocker-4',
 	'--admin-blocker-5',
 	'--admin-blocker-6',
 	'--admin-blocker-7',
-	'--admin-blocker-8',
-	// the attention ochre, and its two solid rungs are in this list rather than in use. rung 9 is
-	// lighter than rung 8 in this family, so an ochre bright enough to be a solid ground is too
-	// bright to be a boundary or a glyph on white — the two roles that would have taken it take
-	// rung 11 instead, which packages/operator/src/styles/tokens.css argues at their entries.
+	// the attention amber: a band, an edge on a needed box and a word, and no screen fills with it.
 	'--admin-attention-1',
 	'--admin-attention-2',
 	'--admin-attention-4',
 	'--admin-attention-5',
-	// rung 6 is the line of a band, and no band draws one.
 	'--admin-attention-6',
 	'--admin-attention-7',
-	'--admin-attention-8',
 	'--admin-attention-9',
 	'--admin-attention-10',
 	// the one rung of the type scale nothing reads: the step between the section heading's size
