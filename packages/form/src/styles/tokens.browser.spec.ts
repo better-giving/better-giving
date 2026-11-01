@@ -12,69 +12,90 @@ import tokens from './tokens.css?inline';
 // helper below therefore assigns the token to a standard property on a probe element and reads
 // that property back, which is the same thing ./resolve.ts does before anything is handed to a
 // payment provider — what that module then sends is asserted in ./resolve.browser.spec.ts.
+//
+// every colour in ./tokens.css is a step of a radix colors scale
+// (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), and text is
+// measured the way radix states its guarantee: in APCA, step 11 at Lc 60 and step 12 at Lc 90 on
+// step 2 of its own scale.
 
 const sheet = new CSSStyleSheet();
 sheet.replaceSync(tokens);
 
-/** the seed's own roles: each a solid step of the clamped brand, never an alpha of it. */
-const PRIMARY = ['--_p', '--_p-hover', '--_p-press', '--_on-p'];
+/** radix slate, light, from @radix-ui/colors 3.0.0 — the literal each declared step must be. */
+const SLATE: Record<string, string> = {
+	'--_n1': '#fcfcfd',
+	'--_n2': '#f9f9fb',
+	'--_n3': '#f0f0f3',
+	'--_n4': '#e8e8ec',
+	'--_n5': '#e0e1e6',
+	'--_n6': '#d9d9e0',
+	'--_n7': '#cdced6',
+	'--_n8': '#b9bbc6',
+	'--_n9': '#8b8d98',
+	'--_n11': '#60646c',
+	'--_n12': '#1c2024'
+};
 
-/** the twelve rungs in order, rung 1 first. */
-const RUNGS = [
-	'--_n1',
-	'--_n2',
-	'--_n3',
-	'--_n4',
-	'--_n5',
-	'--_n6',
-	'--_n7',
-	'--_n8',
-	'--_n9',
-	'--_n10',
-	'--_n11',
-	'--_n12'
-];
+/** the slate steps the card declares, lightest first. */
+const RUNGS = Object.keys(SLATE);
 
-/** the twelve fixed steps, plus the root they are derived from and the three named edges. */
-const NEUTRAL = [
-	'--_s',
-	'--_n1',
-	'--_n2',
-	'--_n3',
-	'--_n4',
-	'--_n5',
-	'--_n6',
-	'--_n7',
-	'--_n8',
-	'--_n9',
-	'--_n10',
-	'--_n11',
-	'--_n12',
+/** the brand scale's declared steps, the solid pair and the ink on it. */
+const BRAND = ['--_a8', '--_p', '--_p-hover', '--_a11', '--_a12', '--_on-p'];
+
+/** fixed literals with no relation to any seed: legibility is not allowed to depend on a host. */
+const SEMANTIC = ['--_bad', '--_bad-edge', '--_bad-tint', '--_warn-tint', '--_warn-ink'];
+
+const NETWORK = [0, 1, 2, 3, 4, 5].flatMap((n) => [`--_net-${n}-tint`, `--_net-${n}-ink`]);
+
+const COLOR_TOKENS = [
+	...BRAND,
+	...RUNGS,
 	'--_edge-control',
 	'--_edge-unavailable',
-	'--_focus-ring'
+	'--_focus-ring',
+	...SEMANTIC,
+	...NETWORK
 ];
 
 /**
- * fixed literals with no relation to any seed: legibility is not allowed to depend on a host. two
- * bands and not three — the card reports success by drawing the receipt, so there is no green
- * band. a band is a ground and draws no line; `--_bad` is the other name only because refusal is
- * also drawn on the control itself, and attention marks no control. "carries no step nothing
- * spends" in ../element.dom.spec.ts is what keeps another from sitting here unread.
+ * the brand scale's step 2, written from the table at `--_a8` in ./tokens.css. the card spends no
+ * step 2, so nothing declares it; radix's text guarantee is stated on it, so this is where it is
+ * measured from.
  */
-const SEMANTIC = ['--_bad', '--_bad-tint', '--_warn-tint'];
+const BRAND_STEP_2 = 'oklch(from var(--donate-primary) 0.982 calc(c * 0.06) h)';
 
-const COLOR_TOKENS = [...PRIMARY, ...NEUTRAL, ...SEMANTIC];
+/** the registered `initial-value` of the seed: slate's step 12. */
+const DEFAULT_SEED = '#1c2024';
 
 /**
- * the clamp band tokens.css narrows the seed's lightness into. the floor is the ladder's own
- * darkest rung, so the registered default computes to itself; the ceiling is where a near-white
- * stops clearing 4.5:1 on the fill, which is the tighter of the two readings the band carries.
+ * a spread of seeds every brand reading is made across: the default, radix's own step 9s (its deep
+ * hues, the ones it draws white on, and the light ones it draws dark ink on), and the seeds no radix
+ * scale holds — a pastel, a neon outside sRGB, a near-black, white and a mid grey.
  */
-const BAND = { low: 0.27, high: 0.5 };
+const SEEDS: readonly (readonly [string, string])[] = [
+	['the default', ''],
+	['radix blue', '#0090ff'],
+	['radix violet', '#6e56cf'],
+	['radix purple', '#8e4ec6'],
+	['radix red', '#e5484d'],
+	['radix orange', '#f76b15'],
+	['radix grass', '#46a758'],
+	['radix teal', '#12a594'],
+	['radix yellow', '#ffe629'],
+	['radix amber', '#ffc53d'],
+	['radix sky', '#7ce2fe'],
+	['a pastel pink', '#ffd1dc'],
+	['a neon green outside sRGB', 'oklch(0.92 0.28 140)'],
+	['a near-black navy', '#0b1d3a'],
+	['white', '#ffffff'],
+	['a mid grey', '#808080']
+];
 
-/** the registered `initial-value` of the seed: the ladder's darkest rung. */
-const DEFAULT_SEED = { l: 0.27, c: 0, h: 0 };
+/** the seeds radix itself ships as a step 9, every one of which it draws a legible ink on. */
+const RADIX_NINES = SEEDS.filter(([name]) => name.startsWith('radix'));
+
+/** the three shade presets: a preset moves every grey on the card at once. */
+const SHADES = ['light', 'warm', 'cool'] as const;
 
 let host: HTMLElement;
 let probe: HTMLElement;
@@ -104,26 +125,20 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	shade = null;
 	document.adoptedStyleSheets = [];
 	host.remove();
 	hostStyle.remove();
 	document.documentElement.style.removeProperty('font-size');
 });
 
-/**
- * the three shade presets, and every contrast this file measures is measured under each: a preset
- * moves every grey on the card at once, so a pair that clears under one is a claim about that one.
- */
-const SHADES = ['light', 'warm', 'cool'] as const;
-
-/** the shade a block measures under, written ahead of whatever a case seeds; none outside one. */
-let shade: string | null = null;
-
 /** what a host page wrote on the element. */
 function seed(declarations: string): void {
-	const preset = shade === null ? '' : `--donate-shade: ${shade}; `;
-	hostStyle.textContent = `#donate-host { ${preset}${declarations} }`;
+	hostStyle.textContent = `#donate-host { ${declarations} }`;
+}
+
+/** a seed as a declaration, or nothing for the default. */
+function brand(value: string): string {
+	return value === '' ? '' : `--donate-primary: ${value};`;
 }
 
 /** resolves one declaration against the real cascade and reads a property back off it. */
@@ -132,9 +147,10 @@ function computed(declaration: string, property: string): string {
 	return getComputedStyle(probe).getPropertyValue(property);
 }
 
-/** the token, forced through an `oklch()` output so the engine has to evaluate it. */
-function oklchString(token: string): string {
-	return computed(`color: oklch(from var(${token}) l c h)`, 'color');
+/** a token, or any colour expression, forced through an `oklch()` output. */
+function oklchString(colour: string): string {
+	const source = colour.startsWith('--') ? `var(${colour})` : colour;
+	return computed(`color: oklch(from ${source} l c h)`, 'color');
 }
 
 type Oklch = { l: number; c: number; h: number };
@@ -148,7 +164,7 @@ function channel(raw: string, percentBase: number): number {
 }
 
 /**
- * the token as three numbers, or `null` when it did not resolve to a color at all.
+ * the colour as three numbers, or `null` when it did not resolve to a color at all.
  *
  * an unresolvable token makes the whole `oklch(from …)` invalid, so `color` falls back to its
  * inherited value and serializes as `rgb(…)` — which is exactly the failure this spec exists
@@ -165,39 +181,52 @@ function parseOklch(serialized: string): Oklch | null {
 		: null;
 }
 
-function oklchOf(token: string): Oklch {
-	const serialized = oklchString(token);
+function oklchOf(colour: string): Oklch {
+	const serialized = oklchString(colour);
 	const parsed = parseOklch(serialized);
-	if (parsed === null) throw new Error(`${token} did not resolve to a color: "${serialized}"`);
+	if (parsed === null) throw new Error(`${colour} did not resolve to a color: "${serialized}"`);
 	return parsed;
 }
 
 const SRGB = /^color\(srgb\s+(\S+)\s+(\S+)\s+([^\s/)]+)/;
 
-/** the token converted into sRGB channels, which is the space WCAG contrast is defined in. */
-function srgbOf(token: string): [number, number, number] {
-	const serialized = computed(`color: color(from var(${token}) srgb r g b)`, 'color');
-	const match = SRGB.exec(serialized);
-	const [, r, g, b] = match ?? [];
+/** a token, or any colour expression, as sRGB channels clamped to what a screen shows. */
+function srgbOf(colour: string): [number, number, number] {
+	const source = colour.startsWith('--') ? `var(${colour})` : colour;
+	const serialized = computed(`color: color(from ${source} srgb r g b)`, 'color');
+	const [, r, g, b] = SRGB.exec(serialized) ?? [];
 	if (r === undefined || g === undefined || b === undefined) {
-		throw new Error(`${token} did not resolve to a color: "${serialized}"`);
+		throw new Error(`${colour} did not resolve to a color: "${serialized}"`);
 	}
-	return [Number(r), Number(g), Number(b)];
+	const clamp = (value: string) => Math.min(Math.max(Number(value), 0), 1);
+	return [clamp(r), clamp(g), clamp(b)];
 }
 
-function relativeLuminance([r, g, b]: [number, number, number]): number {
-	// a seed outside the sRGB gamut converts to channels outside [0, 1]; a screen shows the
-	// clamped value, so the contrast a donor sees is the clamped one.
-	const linear = (channelValue: number) => {
-		const v = Math.min(Math.max(channelValue, 0), 1);
-		return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+/** the two colours as the eight-bit channels a screen draws. */
+function bytes(colour: string): number[] {
+	return srgbOf(colour).map((value) => Math.round(value * 255));
+}
+
+/**
+ * APCA's lightness contrast (0.0.98G-4g, https://github.com/Myndex/apca-w3), the measure radix
+ * states its text guarantee in. signed by polarity: dark text on a light ground reads positive and
+ * light on dark negative, so a floor is held on the magnitude.
+ */
+function apca(text: string, ground: string): number {
+	const luminance = ([r, g, b]: [number, number, number]) => {
+		const y = 0.2126729 * r ** 2.4 + 0.7151522 * g ** 2.4 + 0.072175 * b ** 2.4;
+		// biome-ignore lint/suspicious/noApproximativeNumericConstant: APCA's black-clamp exponent is 1.414 exactly, not √2
+		return y > 0.022 ? y : y + (0.022 - y) ** 1.414;
 	};
-	return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
-}
-
-function contrastRatio(a: [number, number, number], b: [number, number, number]): number {
-	const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
-	return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
+	const txt = luminance(srgbOf(text));
+	const bg = luminance(srgbOf(ground));
+	if (Math.abs(bg - txt) < 0.0005) return 0;
+	if (bg > txt) {
+		const s = (bg ** 0.56 - txt ** 0.57) * 1.14;
+		return s < 0.1 ? 0 : (s - 0.027) * 100;
+	}
+	const s = (bg ** 0.65 - txt ** 0.62) * 1.14;
+	return s > -0.1 ? 0 : (s + 0.027) * 100;
 }
 
 /** the token as a used length, which is the only way a `clamp()` of lengths becomes a number. */
@@ -211,7 +240,7 @@ describe('the seed registrations', () => {
 		// is still declared — but with nothing registering `--donate-primary` there is no initial
 		// value behind it, and every step derived from it is invalid at computed-value time.
 		// a host who seeded nothing is the common case, so this is a card drawn with no brand on it
-		// at all rather than one drawn in the registered grey.
+		// at all rather than one drawn in the registered default.
 		document.adoptedStyleSheets = [];
 
 		expect(parseOklch(oklchString('--_p'))).toBeNull();
@@ -262,10 +291,10 @@ describe('the light-DOM card root', () => {
 	// card follows — the same reading an embedding page gets by setting them above the element.
 	it('switches the presets a page sets above the root', () => {
 		hostStyle.textContent = 'body { --donate-shade: warm; --donate-corner: round; }';
-		card.style.cssText = 'color: oklch(from var(--_s) l c h); padding-left: var(--_r)';
-		const s = parseOklch(getComputedStyle(card).color);
+		card.style.cssText = 'color: oklch(from var(--_n1) l c h); padding-left: var(--_r)';
+		const face = parseOklch(getComputedStyle(card).color);
 
-		expect(s?.h).toBeCloseTo(70, 0);
+		expect(face?.h).toBeCloseTo(70, 0);
 		expect(getComputedStyle(card).paddingLeft).toBe('16px');
 	});
 
@@ -279,475 +308,281 @@ describe('the light-DOM card root', () => {
 });
 
 describe('the derived ramp', () => {
-	it('resolves every derived step to a real color', () => {
+	it.each(SEEDS)('resolves every step to a real color for %s', (_name, value) => {
+		seed(brand(value));
 		const unresolved = COLOR_TOKENS.filter((token) => parseOklch(oklchString(token)) === null);
 
 		expect(unresolved).toEqual([]);
 	});
 
-	it('keeps every derived step inside a displayable lightness', () => {
-		const outOfRange = COLOR_TOKENS.filter((token) => {
-			const { l } = oklchOf(token);
-			return l < 0 || l > 1;
-		});
-
-		expect(outOfRange).toEqual([]);
-	});
-
-	it('carries the brand hue through every role the seed has', () => {
+	it('carries the seed’s hue through every brand step', () => {
 		seed('--donate-primary: oklch(0.5 0.14 300);');
 
-		for (const token of PRIMARY) {
+		for (const token of BRAND.filter((name) => name !== '--_on-p')) {
 			expect(oklchOf(token).h, token).toBeCloseTo(300, 0);
 		}
 	});
 
 	it('leaves the neutral steps alone whatever the brand is', () => {
 		// the ladder is the form's own and the seed reaches none of it, which is what makes every
-		// neutral reading in ./tokens.css a single number rather than a floor across a band. a
-		// derivation accidentally reintroduced would show up here as a hue following the brand.
+		// neutral reading a single number rather than a floor across seeds. a derivation
+		// accidentally reintroduced would show up here as a step following the brand.
 		seed('--donate-primary: oklch(0.5 0.25 300);');
-		const seeded = RUNGS.map((token) => oklchOf(token).h);
+		const seeded = RUNGS.map(oklchString);
 		seed('');
 
-		expect(RUNGS.map((token) => oklchOf(token).h)).toEqual(seeded);
+		expect(RUNGS.map(oklchString)).toEqual(seeded);
+	});
+});
+
+describe('the neutral ladder', () => {
+	// slate exactly, step for step, at the screen's own resolution.
+	it('is radix slate under light', () => {
+		seed('');
+
+		expect(RUNGS.map(bytes)).toEqual(RUNGS.map((token) => bytes(SLATE[token] as string)));
 	});
 
-	// every rung carries the operator ladder's trace of chroma, so the ladder reads as a grey leaning
-	// one way rather than as a second colour on the card. the ceiling is that ladder's own, 0.019 at
-	// rungs 9 and 10, and the three shades share it.
+	// the hue `warm` and `cool` hand the ladder is private and declared unset under `light`, so a
+	// page that happens to set the same name cannot re-hue a card it never chose a shade for.
+	it('keeps slate under light whatever the page above set', () => {
+		seed('--_shade-h: 140;');
+
+		expect(RUNGS.map(bytes)).toEqual(RUNGS.map((token) => bytes(SLATE[token] as string)));
+	});
+
+	// warm and cool turn slate's hue and keep its lightness and chroma, so every reading made on
+	// slate holds under them.
 	it.each([
-		['light', 0.019],
-		['warm', 0.019],
-		['cool', 0.019]
-	])('gives the neutral steps a trace of chroma, never a colour, under %s', (shade, ceiling) => {
-		seed(`--donate-shade: ${shade};`);
-
-		for (const token of RUNGS) {
-			expect(oklchOf(token).c, token).toBeLessThanOrEqual(ceiling + 1e-4);
-			expect(oklchOf(token).c, token).toBeGreaterThan(0);
-		}
-	});
-
-	// the operator surfaces' neutral ladder, `--admin-neutral-1` to `-12`, rung for rung: the chroma
-	// each rung carries there, under every shade.
-	const OPERATOR_CHROMA = [
-		0.002, 0.003, 0.005, 0.007, 0.009, 0.011, 0.013, 0.016, 0.019, 0.019, 0.017, 0.013
-	];
-
-	it.each(SHADES)('carries the operator ladder’s chroma on every rung under %s', (shade) => {
+		['warm', 70],
+		['cool', 220]
+	])('keeps slate’s lightness and chroma under %s, at its own hue', (shade, hue) => {
+		seed('');
+		const light = RUNGS.map((token) => oklchOf(token));
 		seed(`--donate-shade: ${shade};`);
 
 		RUNGS.forEach((token, index) => {
-			expect(oklchOf(token).c, token).toBeCloseTo(OPERATOR_CHROMA[index] ?? Number.NaN, 4);
+			const step = oklchOf(token);
+			expect(step.l, token).toBeCloseTo(light[index]?.l ?? Number.NaN, 4);
+			expect(step.c, token).toBeCloseTo(light[index]?.c ?? Number.NaN, 4);
+			expect(step.h, token).toBeCloseTo(hue, 0);
 		});
 	});
 
-	// and the operator ladder's lightness, rung for rung, under `light` — the one shade those
-	// surfaces have — at its own hue.
-	it('is the operator ladder under light', () => {
-		seed('');
-		const lightness = [
-			0.994, 0.986, 0.965, 0.938, 0.906, 0.878, 0.855, 0.794, 0.645, 0.54, 0.49, 0.27
-		];
+	// slate's chroma tops out at 0.019, a trace a donor reads as the card's tone rather than a
+	// colour, and the three shades share it.
+	it.each(SHADES)('gives every step a trace of chroma, never a colour, under %s', (shade) => {
+		seed(`--donate-shade: ${shade};`);
 
-		RUNGS.forEach((token, index) => {
-			const rung = oklchOf(token);
-			expect(rung.l, token).toBeCloseTo(lightness[index] ?? Number.NaN, 3);
-			expect(rung.h, token).toBeCloseTo(250, 0);
-		});
-	});
-});
-
-describe.each(SHADES)('the neutral ladder under %s', (preset) => {
-	beforeEach(() => {
-		shade = preset;
+		for (const token of RUNGS) expect(oklchOf(token).c, token).toBeLessThanOrEqual(0.0195);
 	});
 
-	// the whole of what makes a rung number mean something: a reader who knows rung 7 is a border
-	// and rung 11 is text knows it without reading a legend, and that only holds while the ladder
-	// runs one way. a rung that crossed its neighbour would leave two numbers claiming one shade.
-	it('runs from lightest to darkest with no rung crossing its neighbour', () => {
-		const crossings = RUNGS.filter((token, index) => {
-			const next = RUNGS[index + 1];
-			return next !== undefined && oklchOf(next).l >= oklchOf(token).l;
-		});
+	it.each(SHADES)(
+		'runs from lightest to darkest with no step crossing its neighbour under %s',
+		(shade) => {
+			seed(`--donate-shade: ${shade};`);
+			const lightness = RUNGS.map((token) => oklchOf(token).l);
 
-		expect(crossings).toEqual([]);
-	});
-
-	// where the ladder turns, and it is the decision the rung meanings rest on. rungs 1 to 8 are
-	// grounds, hovers, separators and the one hairline every box on this card is drawn with — every
-	// one of them is a shade of the card, and none may be drawn as a word.
-	it('keeps every rung above the solid rung off the card by less than 3:1', () => {
-		seed('');
-		const card = srgbOf('--_n1');
-		const tooDark = RUNGS.slice(0, 8).filter((token) => contrastRatio(srgbOf(token), card) >= 3);
-
-		expect(tooDark).toEqual([]);
-	});
-
-	// rung 9 is the solid rung: dark enough to be a ground a near-white stands on, and never a word.
-	// it sits between the two floors and is the last rung that does, which is what makes the number
-	// it reaches worth holding rather than incidental.
-	it('leaves the solid rung between the two floors', () => {
-		seed('');
-		const onCard = contrastRatio(srgbOf('--_n9'), srgbOf('--_n1'));
-
-		expect(onCard).toBeGreaterThanOrEqual(3);
-		expect(onCard).toBeLessThan(4.5);
-	});
-
-	// the three inks stay three. rung 10 is cut below its own distribution to carry the quietest of
-	// them (./tokens.css argues it), and a cut that went far enough to merge it with rung 11 would
-	// buy the floor by spending the level of hierarchy it was cut for.
-	it('keeps the three ink rungs apart from each other', () => {
-		seed('');
-
-		expect(contrastRatio(srgbOf('--_n10'), srgbOf('--_n11'))).toBeGreaterThanOrEqual(1.2);
-		expect(contrastRatio(srgbOf('--_n11'), srgbOf('--_n12'))).toBeGreaterThanOrEqual(1.2);
-	});
-});
-
-describe('the primary clamp band', () => {
-	it('darkens a seed lighter than the band', () => {
-		seed('--donate-primary: oklch(0.95 0.25 140);');
-		const { l } = oklchOf('--_p');
-
-		expect(l).toBeLessThanOrEqual(BAND.high + 1e-4);
-		expect(l).toBeGreaterThanOrEqual(BAND.low - 1e-4);
-	});
-
-	it('lightens a seed darker than the band', () => {
-		seed('--donate-primary: oklch(0.05 0.2 300);');
-		const { l } = oklchOf('--_p');
-
-		expect(l).toBeGreaterThanOrEqual(BAND.low - 1e-4);
-		expect(l).toBeLessThanOrEqual(BAND.high + 1e-4);
-	});
-
-	it('caps the chroma of an over-saturated seed', () => {
-		seed('--donate-primary: oklch(0.5 0.37 30);');
-
-		expect(oklchOf('--_p').c).toBeLessThanOrEqual(0.16 + 1e-4);
-	});
-
-	it('leaves an achromatic seed achromatic', () => {
-		// the chroma floor reaches zero, which is the whole of how a card carries no hue: a floor
-		// above it would tint a grey brand, and the registered default is a grey brand.
-		seed('--donate-primary: oklch(0.5 0 0);');
-
-		expect(oklchOf('--_p').c).toBe(0);
-	});
-
-	it('leaves a seed already inside the band alone', () => {
-		seed('--donate-primary: oklch(0.44 0.09 210);');
-		const { l, c, h } = oklchOf('--_p');
-
-		expect(l).toBeCloseTo(0.44, 3);
-		expect(c).toBeCloseTo(0.09, 3);
-		expect(h).toBeCloseTo(210, 0);
-	});
-
-	// the two steps a fill answers a pointer with are a constant lightness apart, so the contrast
-	// they buy narrows as the band darkens — oklch lightness is perceptually even and a WCAG ratio
-	// is not. the floor is where that narrowing bottoms out, and it is the number a later change to
-	// either step has to beat rather than a guarantee anything else rests on.
-	it.each([
-		['at the floor', '--donate-primary: oklch(0.1 0.3 250);', 1.08, 1.14],
-		['at the ceiling', '--donate-primary: oklch(0.5 0.16 190);', 1.25, 1.5]
-	])('keeps the hover and press steps apart from the fill %s', (_n, decls, hover, press) => {
-		seed(decls);
-		const fill = srgbOf('--_p');
-
-		expect(contrastRatio(srgbOf('--_p-hover'), fill)).toBeGreaterThanOrEqual(hover);
-		expect(contrastRatio(srgbOf('--_p-press'), fill)).toBeGreaterThanOrEqual(press);
-	});
-});
-
-describe('an unseeded brand', () => {
-	// the card a host who seeded nothing gets, and it is the reason the chroma floor reaches zero.
-	//
-	// measured against one 8-bit step rather than against zero. a grey authored in oklch does not
-	// come back out of the srgb conversion with its three channels bit-identical — the round trip
-	// leaves a spread around 4e-5, which is a hundredth of the smallest difference a screen can
-	// draw. the bound still decides the question this test asks: a chroma floor of 0.02 spreads the
-	// channels by an order of magnitude more than a step and is a tint anyone can see.
-	//
-	// `--_on-p` is the one step left out. it carries a fixed trace of chroma whatever the fill
-	// does, which its own entry in ./tokens.css states, so it is held to a bound of its own.
-	it('draws no brand hue at all when nothing is seeded', () => {
-		seed('');
-		const ONE_BYTE = 1 / 255;
-		const spread = (token: string) => {
-			const [r, g, b] = srgbOf(token);
-			return Math.max(r, g, b) - Math.min(r, g, b);
-		};
-
-		for (const token of ['--_p', '--_p-hover', '--_p-press']) {
-			expect(spread(token), token).toBeLessThan(ONE_BYTE);
+			expect([...lightness].sort((a, b) => b - a)).toEqual(lightness);
 		}
-		expect(spread('--_on-p')).toBeLessThan(3 * ONE_BYTE);
-	});
+	);
 });
 
-describe.each(SHADES)('the primary as ink on the card under %s', (preset) => {
-	beforeEach(() => {
-		shade = preset;
+describe('the brand scale', () => {
+	// radix holds the seed as step 9: the brand exactly as the host gave it, at the screen's own
+	// resolution, for every seed inside sRGB.
+	it.each(SEEDS.filter(([, value]) => !value.startsWith('oklch')))(
+		'is the seed itself at step 9 for %s',
+		(_name, value) => {
+			seed(brand(value));
+
+			expect(bytes('--_p')).toEqual(bytes(value === '' ? DEFAULT_SEED : value));
+		}
+	);
+
+	// every other declared step stands at the lightness the table in ./tokens.css gives it, whatever
+	// the seed's own lightness — which is what makes 11 and 12 legible for a pale brand and a deep
+	// one alike. read off the unclipped colour, where the lightness is the one authored.
+	it.each(SEEDS)('sets steps 8, 11 and 12 at fixed lightnesses for %s', (_name, value) => {
+		seed(brand(value));
+
+		expect(oklchOf('--_a8').l).toBeCloseTo(0.729, 3);
+		expect(oklchOf('--_a11').l).toBeCloseTo(0.54, 3);
+		expect(oklchOf('--_a12').l).toBeCloseTo(0.326, 3);
 	});
 
-	// the brand is a word twice on this card — the quiet action, and the figure or label on a chosen
-	// amount or frequency — so the whole band it may be seeded to carries the text floor against the
-	// card. it is the looser of the two readings that bound the band (the fill's own foreground is
-	// the tighter, swept below), and the sweep is the point: the worst corner is a saturated cyan,
-	// and a value picked off one seed is a value a host moves.
+	// step 10 is the seed moved 0.03 in lightness: darker, as every radix scale's is, and lighter
+	// under a seed darker than 0.4, where a darker step would be no change a donor sees.
 	it.each([
-		['unseeded', ''],
-		['a neon brand', '--donate-primary: oklch(0.92 0.28 140);'],
-		['the cyan end of the band', '--donate-primary: oklch(0.5 0.3 191);'],
-		['a yellow brand', '--donate-primary: oklch(0.86 0.18 100);'],
-		['a magenta brand', '--donate-primary: oklch(0.7 0.3 330);'],
-		['white', '--donate-primary: #ffffff;'],
-		['a cyan brand at the worst corner of the band', '--donate-primary: oklch(0.5 0.16 190);']
-	])('the primary reads as ink on the card for %s', (_name, declarations) => {
-		seed(declarations);
+		['a mid seed', 'oklch(0.6 0.15 250)', 0.57],
+		['a light seed', 'oklch(0.9 0.15 100)', 0.87],
+		['a dark seed', 'oklch(0.3 0.1 250)', 0.33],
+		['the default', '', 0.271]
+	])('moves step 10 off step 9 for %s', (_name, value, expected) => {
+		seed(brand(value));
 
-		expect(contrastRatio(srgbOf('--_p'), srgbOf('--_n1'))).toBeGreaterThanOrEqual(4.5);
+		expect(oklchOf('--_p-hover').l).toBeCloseTo(expected, 2);
+		expect(bytes('--_p-hover')).not.toEqual(bytes('--_p'));
 	});
 
-	// the same ink as a fill, which is the step head's current mark: a shape a donor reads rather
-	// than a word, so it carries a boundary's floor rather than a text one.
-	it.each([
-		['unseeded', ''],
-		['the cyan end of the band', '--donate-primary: oklch(0.5 0.3 191);'],
-		['a yellow brand', '--donate-primary: oklch(0.86 0.18 100);']
-	])('the primary reads as a mark on the card for %s', (_name, declarations) => {
-		seed(declarations);
-
-		expect(contrastRatio(srgbOf('--_p'), srgbOf('--_n1'))).toBeGreaterThanOrEqual(3);
-	});
-});
-
-describe.each(SHADES)('the focus ring under %s', (preset) => {
-	beforeEach(() => {
-		shade = preset;
-	});
-
-	// where the caret is standing, and it is a rung rather than the brand: nothing a host writes
-	// moves it, which is why these are single readings. it is drawn on five grounds, because a
-	// keyboard donor can be hovering or pressing what they have tabbed onto — the card and a text
-	// box's face, a tray, and a control's own fill at rest, under the pointer and under the press.
-	// 3:1 is the floor a boundary carries; the ring clears it by an order of magnitude,
-	// which is the whole point of taking the darkest rung for it.
-	it('clears 3:1 on every ground it is drawn on', () => {
+	// an unseeded card's brand scale is slate's hue at slate's trace of chroma: no hue a host did
+	// not ask for.
+	it('draws no brand hue beyond slate’s trace when nothing is seeded', () => {
 		seed('');
 
-		for (const ground of ['--_n1', '--_n2', '--_n3', '--_n4', '--_n5']) {
-			const measured = contrastRatio(srgbOf('--_focus-ring'), srgbOf(ground));
-			expect(measured, ground).toBeGreaterThanOrEqual(3);
+		for (const token of BRAND) expect(oklchOf(token).c, token).toBeLessThanOrEqual(0.0195);
+	});
+});
+
+describe('radix’s text guarantee', () => {
+	// steps 11 and 12 at Lc 60 and Lc 90 on step 2 of their own scale, as
+	// https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale states it.
+	it.each(SHADES)('holds on slate under %s', (shade) => {
+		seed(`--donate-shade: ${shade};`);
+
+		expect(apca('--_n11', '--_n2')).toBeGreaterThanOrEqual(60);
+		expect(apca('--_n12', '--_n2')).toBeGreaterThanOrEqual(90);
+	});
+
+	// red's and amber's word steps on their own step 2, which the card spends nowhere and which
+	// ./tokens.css lists beside the steps it declares.
+	it('holds on red and amber', () => {
+		seed('');
+
+		expect(apca('--_bad', '#fff7f7')).toBeGreaterThanOrEqual(60);
+		expect(apca('--_warn-ink', '#fefbe9')).toBeGreaterThanOrEqual(60);
+	});
+
+	it.each(SEEDS)('holds on the brand scale for %s', (_name, value) => {
+		seed(brand(value));
+
+		expect(apca('--_a11', BRAND_STEP_2)).toBeGreaterThanOrEqual(60);
+		expect(apca('--_a12', BRAND_STEP_2)).toBeGreaterThanOrEqual(90);
+	});
+
+	// and where the brand's words are drawn: a chosen option's word and the quiet action's, on the
+	// card's own face.
+	it.each(SEEDS)('holds the brand’s word steps on the card face for %s', (_name, value) => {
+		seed(brand(value));
+
+		expect(apca('--_a11', '--_n1')).toBeGreaterThanOrEqual(60);
+		expect(apca('--_a12', '--_n1')).toBeGreaterThanOrEqual(90);
+	});
+});
+
+describe.each(SHADES)('the words on the grounds they stand on under %s', (shade) => {
+	beforeEach(() => {
+		seed(`--donate-shade: ${shade};`);
+	});
+
+	// the card's face, a tray's ground, a control's resting ground, and the two bands: every ground
+	// a word rests on. a tile under the pointer and the press is a passing state and is left to the
+	// guarantee above.
+	const GROUNDS = ['--_n1', '--_n2', '--_n3', '--_warn-tint', '--_bad-tint'];
+
+	it('holds step 11 at Lc 60 and step 12 at Lc 90 on every resting ground', () => {
+		for (const ground of GROUNDS) {
+			expect(apca('--_n11', ground), ground).toBeGreaterThanOrEqual(60);
+			expect(apca('--_n12', ground), ground).toBeGreaterThanOrEqual(90);
 		}
 	});
 
-	// a focused field recolours its own border to the ring as well as drawing one outside it
-	// (`[part~='field']:focus-visible` in ./parts.css). a ring token that landed on
-	// `--_edge-control` would make that recolour a no-op — the edge would change to the colour it
-	// already was — so the two being distinct is the rule rather than a happy accident.
-	it('is a step a focused field can actually recolour its own edge to', () => {
-		seed('');
-
-		expect(
-			contrastRatio(srgbOf('--_focus-ring'), srgbOf('--_edge-control'))
-		).toBeGreaterThanOrEqual(2.5);
+	// red's and amber's word steps stand on the card face: a refusal under its field, a send-by and
+	// the caution mark.
+	it('holds red’s and amber’s word steps at Lc 60 on the card face', () => {
+		expect(apca('--_bad', '--_n1')).toBeGreaterThanOrEqual(60);
+		expect(apca('--_warn-ink', '--_n1')).toBeGreaterThanOrEqual(60);
 	});
 
-	// the one adjacency this system never allows, and the reason a `--_p`-filled control rings
-	// itself inside instead: the ring is the ladder's darkest rung and the seed's band reaches that
-	// same darkness at its floor, so a ring laid outside such a fill is the fill continuing outward.
-	// ./tokens.css argues it at `--_on-p` and at `--_focus-ring`; this is the measurement.
-	it('is indistinguishable from a fill at the band floor, which is why it is never laid on one', () => {
-		seed('--donate-primary: oklch(0.05 0 0);');
-
-		expect(contrastRatio(srgbOf('--_focus-ring'), srgbOf('--_p'))).toBeLessThan(1.5);
-	});
-
-	// and what keeps the two apart wherever a marked control does put them one pixel apart: the
-	// `--_n1` band laid between a primary edge and the ring outside it (the four two-tone blocks in
-	// ./parts.css). it is the hairline doing the separating, not the two darks.
-	it('is separated from a primary edge by a band that clears both', () => {
-		seed('--donate-primary: oklch(0.27 0 0);');
-		const band = srgbOf('--_n1');
-
-		expect(contrastRatio(band, srgbOf('--_focus-ring'))).toBeGreaterThanOrEqual(4.5);
-		expect(contrastRatio(band, srgbOf('--_p'))).toBeGreaterThanOrEqual(4.5);
+	// each network pill's ink is its own step 11 on its own step 3, held to the step-11 floor there.
+	it('reads the network ink on its own pill', () => {
+		for (const n of [0, 1, 2, 3, 4, 5]) {
+			expect(apca(`--_net-${n}-ink`, `--_net-${n}-tint`), `pill ${n}`).toBeGreaterThanOrEqual(60);
+		}
 	});
 });
 
-describe.each(SHADES)('on-primary under %s', (preset) => {
-	beforeEach(() => {
-		shade = preset;
+describe('the ink on the solid fill', () => {
+	// radix draws white on most step 9s and dark ink on its sky, mint, lime, yellow and amber, and on
+	// every one of its own the better of the two reads Lc 60 or more.
+	it.each(RADIX_NINES)('reads Lc 60 on steps 9 and 10 for %s', (_name, value) => {
+		seed(brand(value));
+
+		expect(Math.abs(apca('--_on-p', '--_p'))).toBeGreaterThanOrEqual(60);
+		expect(Math.abs(apca('--_on-p', '--_p-hover'))).toBeGreaterThanOrEqual(60);
 	});
 
-	// the band is what makes this unconditional: nothing in the component selects a foreground
-	// for contrast, because a fill lighter than the band's ceiling never exists.
+	// a relaxed floor, and radix's own page is why: no radix step 9 stands between its darkest
+	// light-text one and its lightest dark-text one, and a seed standing there reads alike with
+	// either ink, about Lc 40 at the worst
+	// (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale). the switch
+	// at 0.73 is what keeps the choice the better of the two everywhere else.
 	it.each([
-		['unseeded', ''],
-		['a neon brand', '--donate-primary: oklch(0.92 0.28 140);'],
-		['a near-black brand', '--donate-primary: oklch(0.06 0.02 260);'],
-		['an over-saturated brand', '--donate-primary: oklch(0.5 0.37 25);'],
-		['white', '--donate-primary: #ffffff;'],
-		['black', '--donate-primary: #000000;'],
-		['a gray brand', '--donate-primary: oklch(0.5 0 0);'],
-		['a yellow brand', '--donate-primary: oklch(0.86 0.18 100);'],
-		['a magenta brand', '--donate-primary: oklch(0.7 0.3 330);'],
-		['a blue brand', '--donate-primary: oklch(0.45 0.2 265);'],
-		['a cyan brand', '--donate-primary: oklch(0.7 0.3 191);'],
-		['a teal brand at the ceiling', '--donate-primary: oklch(0.5 0.16 178);'],
-		['a cyan brand at the worst corner of the band', '--donate-primary: oklch(0.5 0.16 188);'],
-		['a brand at the floor', '--donate-primary: oklch(0.1 0.3 250);']
-	])('clears 4.5:1 against the primary fill for %s', (_name, declarations) => {
-		seed(declarations);
+		...SEEDS,
+		['a seed just under the switch', 'oklch(0.72 0.15 190)'],
+		['a seed just over the switch', 'oklch(0.74 0.15 25)']
+	] as const)('reads at least Lc 40 on steps 9 and 10 for %s', (_name, value) => {
+		seed(brand(value));
 
-		expect(contrastRatio(srgbOf('--_on-p'), srgbOf('--_p'))).toBeGreaterThanOrEqual(4.5);
+		expect(Math.abs(apca('--_on-p', '--_p'))).toBeGreaterThanOrEqual(40);
+		expect(Math.abs(apca('--_on-p', '--_p-hover'))).toBeGreaterThanOrEqual(40);
+	});
+
+	// white below the switch, the brand's step 12 above it.
+	it.each([
+		['radix blue', '#0090ff', 'white'],
+		['the default', '', 'white'],
+		['radix yellow', '#ffe629', 'step 12'],
+		['radix amber', '#ffc53d', 'step 12']
+	])('draws %s’s ink in %s', (_name, value, ink) => {
+		seed(brand(value));
+
+		expect(bytes('--_on-p')).toEqual(ink === 'white' ? [255, 255, 255] : bytes('--_a12'));
 	});
 });
 
-describe.each(SHADES)('text on the card under %s', (preset) => {
-	beforeEach(() => {
-		shade = preset;
-	});
-
-	// every neutral step the sheets actually set words in. `--_n10` is the smallest of them — the
-	// "(optional)" beside a label, an aside, the note under the fee — and it is the one this exists
-	// to hold, because it is authored below its own distribution to reach the floor at all. the
-	// brand is absent here and swept on its own above: it is the one ink a host moves.
-	it('clears 4.5:1 on the card', () => {
-		seed('');
-		const card = srgbOf('--_n1');
-
-		for (const token of ['--_n10', '--_n11', '--_n12']) {
-			expect(contrastRatio(srgbOf(token), card), token).toBeGreaterThanOrEqual(4.5);
-		}
-	});
-
-	// the card is not the only ground a word is drawn on, and a floor read against `--_n1` alone
-	// says nothing about the others. the two trays are a plane's `--_n2` and carry the cadences'
-	// words; the denominations are a control's `--_n3` and step to `--_n4` and `--_n5` under the
-	// pointer, carrying their figure the whole way; the quoted mandate stands on `--_n3` at the
-	// ladder's quietest ink — the tightest reading in this list. a text box's face is the card's own
-	// `--_n1` and is held above.
-	it('clears 4.5:1 on every other ground a word is drawn on', () => {
-		seed('');
-		const pairs: [string, string][] = [
-			['--_n10', '--_n2'],
-			['--_n11', '--_n2'],
-			['--_n12', '--_n2'],
-			['--_n10', '--_n3'],
-			['--_n11', '--_n3'],
-			['--_n11', '--_n4'],
-			['--_n12', '--_n3'],
-			['--_n12', '--_n4'],
-			['--_n12', '--_n5']
-		];
-
-		for (const [ink, ground] of pairs) {
-			const measured = contrastRatio(srgbOf(ink), srgbOf(ground));
-			expect(measured, `${ink} on ${ground}`).toBeGreaterThanOrEqual(4.5);
-		}
-	});
-
-	// the two fixed tints are literals with no relation to any seed, and the ink standing on them is
-	// a step that rides one — so these are the one place in the file where only one side moves. the
-	// attention band is not only the takeover's: a receipt whose total was corrected takes it under
-	// the whole block, so the ledger's own labels and its notes are drawn on it too.
-	it('clears 4.5:1 for the ink on an attention or error band', () => {
+describe('the edges', () => {
+	// every box a donor operates is found by slate's step 7, radix's border for an interactive
+	// component, and steps to 8 under the pointer. no contrast floor is held on an edge, which is
+	// radix's step 7 taken as it is.
+	it('draws every box outline at step 7', () => {
 		seed('');
 
-		expect(contrastRatio(srgbOf('--_n10'), srgbOf('--_warn-tint'))).toBeGreaterThanOrEqual(4.5);
-		expect(contrastRatio(srgbOf('--_n11'), srgbOf('--_warn-tint'))).toBeGreaterThanOrEqual(4.5);
-		expect(contrastRatio(srgbOf('--_n12'), srgbOf('--_warn-tint'))).toBeGreaterThanOrEqual(4.5);
-		expect(contrastRatio(srgbOf('--_n11'), srgbOf('--_bad-tint'))).toBeGreaterThanOrEqual(4.5);
-	});
-
-	// one outline shade for every box on the card: a field, a rail and the box the
-	// provider paints into are found by the operator surfaces' text-box outline, rung 8. no WCAG floor
-	// is asserted and none is claimed — the edge is a look, which ./tokens.css says at the token
-	// itself; what is held here is the rung.
-	it('draws every box outline at the operator surfaces’ text-box rung', () => {
-		seed('');
-
-		expect(srgbOf('--_edge-control')).toEqual(srgbOf('--_n8'));
-	});
-
-	// a boundary under the pointer steps down the ladder rather than up it. every bordered control
-	// on this card answers a hover by stepping to `--_n11` and the switch's track carries on to
-	// `--_n12` under the press, and both of those are darker than the card by a margin the resting
-	// edge does not have — a hover that stepped the other way would be a control receding under the
-	// hand that reached for it.
-	it('holds the two steps a boundary answers a pointer with well clear of the card', () => {
-		seed('');
-		const card = srgbOf('--_n1');
-
-		expect(contrastRatio(srgbOf('--_n11'), card)).toBeGreaterThanOrEqual(3);
-		expect(contrastRatio(srgbOf('--_n12'), card)).toBeGreaterThanOrEqual(3);
+		expect(bytes('--_edge-control')).toEqual(bytes('--_n7'));
 	});
 
 	// the decision itself, not a consequence of it: at a boundary, unavailable is drawn at exactly
 	// the available value. no control here is ever rendered `disabled` (../checkout.machine.ts), so
-	// an unavailable one is still focusable and a donor can tab onto a shape and ring it — and the
-	// available edge is already as light as a boundary on this card goes, so there is no quieter
-	// step to move the state to. it is carried in the stroke's
-	// pattern instead (`.step-mark` in ./parts.css). a change here that makes these two differ is a
-	// re-decision, and this is where it has to be argued.
+	// an unavailable one is still focusable and a donor can tab onto a shape and ring it. it is
+	// carried in the stroke's pattern instead (`.step-mark` in ./parts.css).
 	it('draws an unavailable boundary at exactly the available one', () => {
 		seed('');
 
-		expect(srgbOf('--_edge-unavailable')).toEqual(srgbOf('--_edge-control'));
+		expect(bytes('--_edge-unavailable')).toEqual(bytes('--_edge-control'));
 	});
 
-	// the one pair the switch introduces. its thumb is `--_on-p` on both tracks: against `--_p` that
-	// is the 4.5:1 swept above, and against the off track it is this — the thumb is where the
-	// decision is read from, so it carries a boundary's floor against the fill it stands on.
-	it.each([
-		['unseeded', ''],
-		['a neon brand', '--donate-primary: oklch(0.92 0.28 140);'],
-		['a red brand', '--donate-primary: oklch(0.5 0.2 20);'],
-		['a cyan brand at the worst corner of the band', '--donate-primary: oklch(0.5 0.16 190);']
-	])('clears 3:1 for the switch thumb on its off track for %s', (_name, declarations) => {
-		seed(declarations);
+	// the focus ring is the brand's step 8, the step radix gives a focus ring, and never its fill.
+	it.each(SEEDS)('draws the focus ring at the brand’s step 8 for %s', (_name, value) => {
+		seed(brand(value));
 
-		// all three fills the off track takes: at rest, under the pointer, under the press. the
-		// thumb is where the decision is read from and it does not change with any of them.
-		for (const track of ['--_n10', '--_n11', '--_n12']) {
-			const measured = contrastRatio(srgbOf('--_on-p'), srgbOf(track));
-			expect(measured, track).toBeGreaterThanOrEqual(3);
-		}
+		expect(bytes('--_focus-ring')).toEqual(bytes('--_a8'));
 	});
-});
 
-describe('the lift', () => {
-	// the one elevation this component draws, and the bound it was admitted under rather than its
-	// geometry: a solid rung of the card's own ladder and never an alpha of black. the file-level ban
-	// on alpha is what this holds — a translucent shade takes on whatever the host put behind the
-	// card, and a rung is a shade the component knows the ground for.
-	it('draws the lift in a solid rung of the card ladder', () => {
+	// a refused control is drawn at red 8 and named in red 11: two steps of one hue, each on its
+	// own job.
+	it('draws a refusal’s edge and its words at two steps of red', () => {
 		seed('');
-		const shadow = computed('box-shadow: var(--_lift)', 'box-shadow');
 
-		expect(shadow).toContain(computed('color: var(--_n7)', 'color'));
-		// an alpha channel serializes as a slash in a modern color function and as `rgba(` in a
-		// legacy one, so both spellings are the failure.
-		expect(shadow).not.toMatch(/\/|rgba/);
+		expect(bytes('--_bad-edge')).toEqual(bytes('#eb8e90'));
+		expect(bytes('--_bad')).toEqual(bytes('#ce2c31'));
 	});
 });
 
 describe('a malformed seed', () => {
 	it("falls back to the seed's initial value", () => {
 		seed('--donate-primary: not-a-color;');
-		const seedColor = oklchOf('--donate-primary');
 
-		expect(seedColor.l).toBeCloseTo(DEFAULT_SEED.l, 3);
-		expect(seedColor.c).toBeCloseTo(DEFAULT_SEED.c, 3);
-		expect(seedColor.h).toBeCloseTo(DEFAULT_SEED.h, 0);
+		expect(bytes('--donate-primary')).toEqual(bytes(DEFAULT_SEED));
 	});
 
 	it('leaves the rest of the ramp resolving past a bad seed', () => {
@@ -762,13 +597,10 @@ describe('a malformed seed', () => {
 
 	it('renders the same ramp a host who set nothing gets', () => {
 		seed('');
-		const unseeded = oklchOf('--_n12');
+		const unseeded = BRAND.map(bytes);
 		seed('--donate-primary: rgb(0 0);');
-		const rejected = oklchOf('--_n12');
 
-		expect(rejected.l).toBeCloseTo(unseeded.l, 4);
-		expect(rejected.c).toBeCloseTo(unseeded.c, 4);
-		expect(rejected.h).toBeCloseTo(unseeded.h, 2);
+		expect(BRAND.map(bytes)).toEqual(unseeded);
 	});
 });
 
@@ -776,11 +608,10 @@ describe('the card the form draws for itself', () => {
 	// what the card draws when a host sets nothing: the brand moves none of it, and the two presets
 	// that move the ground and the corners are at their initial values. a rule that let the brand
 	// reach one of these shows up here as a value that moved.
-	it('paints the card at one lightness whatever the brand is', () => {
+	it('paints the card at slate’s step 1 whatever the brand is', () => {
 		seed('--donate-primary: oklch(0.45 0.2 265);');
 
-		expect(oklchOf('--_n1').l).toBeCloseTo(0.994, 3);
-		expect(oklchOf('--_s').l).toBeCloseTo(0.994, 3);
+		expect(bytes('--_n1')).toEqual(bytes('#fcfcfd'));
 	});
 
 	it('draws the two corners the whole card is built from', () => {
@@ -812,34 +643,15 @@ describe('the card the form draws for itself', () => {
 });
 
 describe('the shade seed', () => {
-	// the root the ladder is derived from, per preset: a hue swapped on `light`'s lightness and
-	// chroma, so every rung keeps the lightness and the trace it has under `light`.
-	it.each([
-		['light', { l: 0.994, c: 0.002, h: 250 }],
-		['warm', { l: 0.994, c: 0.002, h: 70 }],
-		['cool', { l: 0.994, c: 0.002, h: 220 }]
-	])('roots the ladder at the %s ground', (shade, root) => {
-		seed(`--donate-shade: ${shade};`);
-		const s = oklchOf('--_s');
-
-		expect(s.l).toBeCloseTo(root.l, 3);
-		expect(s.c).toBeCloseTo(root.c, 4);
-		expect(s.h).toBeCloseTo(root.h, 0);
-	});
-
-	// a preset a host picks has to be a look they can see: the three roots are far enough apart
-	// around the wheel that the rungs carrying the most trace land on three different 8-bit colours,
-	// which is the screen's own resolution rather than a difference only arithmetic can find.
+	// a preset a host picks has to be a look they can see: the three hues are far enough apart
+	// around the wheel that the steps carrying the most trace land on three different 8-bit
+	// colours, which is the screen's own resolution rather than a difference only arithmetic finds.
 	it('draws a ladder of its own under each shade', () => {
-		const rungs = (shade: string) => {
+		const steps = (shade: string) => {
 			seed(`--donate-shade: ${shade};`);
-			return ['--_n6', '--_n9', '--_n12'].map((rung) =>
-				srgbOf(rung)
-					.map((channel) => Math.round(channel * 255))
-					.join()
-			);
+			return ['--_n6', '--_n9', '--_n12'].map((step) => bytes(step).join());
 		};
-		const [light, warm, cool] = SHADES.map(rungs) as [string[], string[], string[]];
+		const [light, warm, cool] = SHADES.map(steps) as [string[], string[], string[]];
 
 		for (const at of [0, 1, 2]) {
 			expect(new Set([light[at], warm[at], cool[at]]).size).toBe(3);

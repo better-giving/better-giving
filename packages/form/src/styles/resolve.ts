@@ -28,15 +28,16 @@ import { stripeAppearance, type StripeAppearance, type TokenReader } from './app
  * otherwise arrives as an unresolved string instead of as a failure.
  */
 const COLOR_TOKENS: readonly string[] = [
+	'--_a8',
 	'--_bad',
+	'--_bad-edge',
 	'--_edge-control',
 	'--_focus-ring',
 	'--_n1',
-	'--_n10',
 	'--_n11',
 	'--_n12',
-	'--_p',
-	'--_p-hover'
+	'--_n8',
+	'--_p'
 ];
 
 /**

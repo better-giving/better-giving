@@ -40,17 +40,18 @@ function em(name: string): number {
 /** a cascade that resolved, at the root the card clamps to by default. */
 const ROOT_PX = 16;
 const RESOLVED: Record<string, string> = {
-	'--_bad': 'oklch(0.485 0.18 27)',
+	'--_a8': 'oklch(0.729 0.095 264)',
+	'--_bad': 'rgb(206, 44, 49)',
+	'--_bad-edge': 'rgb(235, 142, 144)',
 	'--_border': '1px',
-	'--_edge-control': 'oklch(0.794 0.016 250)',
-	'--_focus-ring': 'oklch(0.27 0.013 250)',
+	'--_edge-control': 'oklch(0.853 0.011 280)',
+	'--_focus-ring': 'oklch(0.729 0.095 264)',
 	'--_focus-width': '1px',
-	'--_n1': 'oklch(0.994 0.002 250)',
-	'--_n10': 'oklch(0.54 0.019 250)',
-	'--_n11': 'oklch(0.49 0.017 250)',
-	'--_n12': 'oklch(0.27 0.013 250)',
+	'--_n1': 'oklch(0.991 0.002 286)',
+	'--_n8': 'oklch(0.794 0.015 278)',
+	'--_n11': 'oklch(0.502 0.013 264)',
+	'--_n12': 'oklch(0.241 0.009 248)',
 	'--_p': 'oklch(0.45 0.13 264)',
-	'--_p-hover': 'oklch(0.395 0.13 264)',
 	'--_r': '8px',
 	'--_r-in': '4px',
 	'--_sp1': '0.25em',
@@ -139,8 +140,8 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 	});
 
 	// one face open, closed and under a pointer, on both sides of the frame: what moves is the edge,
-	// one rung along the ramp under a pointer, the primary on the open row, and one step along the
-	// brand under a pointer there.
+	// from step 7 to 8 under a pointer, the brand's step 8 on the open row, and held there under a
+	// pointer.
 	it('holds the face and steps the edge, open, closed and under a pointer', () => {
 		const rules = styleRules(rowSheet());
 		const spent = (selector: string, property: string) =>
@@ -168,14 +169,14 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 		expect(provider['.AccordionItem--selected']?.borderColor).toBe(
 			RESOLVED[PAYMENT_ROW.chosenEdge]
 		);
-		expect(spent('.band.open:hover', 'border-color')).toBe(`var(${PAYMENT_ROW.chosenEdgeHover})`);
+		expect(spent('.band.open:hover', 'border-color')).toBe(`var(${PAYMENT_ROW.chosenEdge})`);
 		expect(provider['.AccordionItem--selected:hover']?.borderColor).toBe(
-			RESOLVED[PAYMENT_ROW.chosenEdgeHover]
+			RESOLVED[PAYMENT_ROW.chosenEdge]
 		);
 	});
 
 	// one ring on a Tab through the list: the plain ring hugging a closed box's edge, and on the open
-	// one a band of the face against the primary's edge with the ring outside it.
+	// one a band of the face against the brand's edge with the ring outside it.
 	it('rings a focused row the way the provider’s rail is rung', () => {
 		const rules = styleRules(rowSheet());
 		const spent = (selector: string) =>

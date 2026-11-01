@@ -10,20 +10,21 @@ import { APPEARANCE_INPUTS, stripeAppearance, type TokenReader } from './appeara
 /**
  * a cascade that resolved cleanly, with the brand seeded and a 16px root.
  *
- * the brand is deliberately not the ring's own value and not the registered default, which is grey:
- * a fixture where the two matched would pass every assertion below with the brand feeding the focus
- * ring or the ring feeding a fill.
+ * the brand is deliberately not the registered default, which is slate's step 12, and its step 9 is
+ * not its step 8: a fixture where the solid and the edge step matched would pass every assertion
+ * below with the fill feeding the focus ring or a chosen rail's edge, or the reverse.
  */
 const RESOLVED: Record<string, string> = {
 	'--_p': 'oklch(0.45 0.13 264)',
-	'--_p-hover': 'oklch(0.395 0.13 264)',
-	'--_focus-ring': 'oklch(0.27 0.013 250)',
-	'--_n1': 'oklch(0.994 0.002 250)',
-	'--_n10': 'oklch(0.54 0.019 250)',
-	'--_n11': 'oklch(0.49 0.017 250)',
-	'--_n12': 'oklch(0.27 0.013 250)',
-	'--_edge-control': 'oklch(0.794 0.016 250)',
-	'--_bad': 'oklch(0.485 0.18 27)',
+	'--_a8': 'oklch(0.729 0.095 264)',
+	'--_focus-ring': 'oklch(0.729 0.095 264)',
+	'--_n1': 'oklch(0.991 0.002 286)',
+	'--_n8': 'oklch(0.794 0.015 278)',
+	'--_n11': 'oklch(0.502 0.013 264)',
+	'--_n12': 'oklch(0.241 0.009 248)',
+	'--_edge-control': 'oklch(0.853 0.011 280)',
+	'--_bad': 'rgb(206, 44, 49)',
+	'--_bad-edge': 'rgb(235, 142, 144)',
 	'--_r': '8px',
 	'--_r-in': '4px',
 	'--_border': '1px',
@@ -44,9 +45,9 @@ const RESOLVED: Record<string, string> = {
  */
 const RAIL = {
 	boxShadow: 'none',
-	border: '1px solid oklch(0.794 0.016 250)',
+	border: '1px solid oklch(0.853 0.011 280)',
 	borderRadius: '4px',
-	backgroundColor: 'oklch(0.994 0.002 250)',
+	backgroundColor: 'oklch(0.991 0.002 286)',
 	paddingTop: '12px',
 	paddingBottom: '12px',
 	paddingLeft: '16px',
@@ -84,11 +85,11 @@ describe('stripeAppearance', () => {
 		expect(appearance.theme).toBe('flat');
 		expect(appearance.variables).toEqual({
 			colorPrimary: 'oklch(0.45 0.13 264)',
-			colorBackground: 'oklch(0.994 0.002 250)',
-			colorText: 'oklch(0.27 0.013 250)',
-			colorTextSecondary: 'oklch(0.49 0.017 250)',
-			colorTextPlaceholder: 'oklch(0.49 0.017 250)',
-			colorDanger: 'oklch(0.485 0.18 27)',
+			colorBackground: 'oklch(0.991 0.002 286)',
+			colorText: 'oklch(0.241 0.009 248)',
+			colorTextSecondary: 'oklch(0.502 0.013 264)',
+			colorTextPlaceholder: 'oklch(0.502 0.013 264)',
+			colorDanger: 'rgb(206, 44, 49)',
 			fontFamily: 'system-ui, sans-serif',
 			fontSizeBase: '14px',
 			// the provider's own rail names, held at the size our rows draw theirs at rather than
@@ -104,54 +105,54 @@ describe('stripeAppearance', () => {
 			// the control edge and the border weight are both read, so the card fields carry the
 			// same frame the form's own fields do rather than a restatement of it.
 			'.Input': {
-				border: '1px solid oklch(0.794 0.016 250)',
+				border: '1px solid oklch(0.853 0.011 280)',
 				// the control corner the rail around it and the card's own fields are drawn at, rather
 				// than the plane's corner `variables.borderRadius` carries.
 				borderRadius: '4px',
-				backgroundColor: 'oklch(0.994 0.002 250)',
+				backgroundColor: 'oklch(0.991 0.002 286)',
 				// the length `[part~='field']` in ./parts.css draws the card's own fields at, worn
 				// here a second time: the box a donor types into is one size wherever it is painted.
 				fontSize: '16px'
 			},
-			// a pointer over a field steps its outline, as it does over the card's own.
-			'.Input:hover': { borderColor: 'oklch(0.54 0.019 250)' },
+			// a pointer over a field steps its outline from 7 to 8, as it does over the card's own.
+			'.Input:hover': { borderColor: 'oklch(0.794 0.015 278)' },
 			// and a refused field keeps its danger edge under the pointer, sent after the rule above
 			// so the step along the ramp does not take it back.
-			'.Input--invalid:hover': { borderColor: 'oklch(0.485 0.18 27)' },
+			'.Input--invalid:hover': { borderColor: 'rgb(235, 142, 144)' },
 			// each rail is a choice box of its own: the white face, the control outline, the
 			// control corner, and no lift.
 			'.AccordionItem': RAIL,
-			// the open rail is the chosen one and is marked by the primary's edge on the same face.
+			// the open rail is the chosen one and is marked by the brand's step-8 edge on the same face.
 			'.AccordionItem--selected': {
-				borderColor: 'oklch(0.45 0.13 264)',
-				backgroundColor: 'oklch(0.994 0.002 250)'
+				borderColor: 'oklch(0.729 0.095 264)',
+				backgroundColor: 'oklch(0.991 0.002 286)'
 			},
-			// a pointer steps the edge, along the ramp on a closed rail and along the brand on the
-			// open one, and the face holds.
+			// a pointer steps a closed rail's edge from 7 to 8, the open one holds its step-8 edge,
+			// and the face holds on both.
 			'.AccordionItem:hover': {
-				borderColor: 'oklch(0.54 0.019 250)',
-				backgroundColor: 'oklch(0.994 0.002 250)'
+				borderColor: 'oklch(0.794 0.015 278)',
+				backgroundColor: 'oklch(0.991 0.002 286)'
 			},
 			'.AccordionItem--selected:hover': {
-				borderColor: 'oklch(0.395 0.13 264)',
-				backgroundColor: 'oklch(0.994 0.002 250)'
+				borderColor: 'oklch(0.729 0.095 264)',
+				backgroundColor: 'oklch(0.991 0.002 286)'
 			},
 			// a focused rail is rung the way ./rows.css rings ours: the plain ring hugging a closed
-			// rail's edge, and on the open one a band of the face laid against the primary's edge
+			// rail's edge, and on the open one a band of the face laid against the brand's edge
 			// first, with the ring outside it. the transparent outline is what forced colours paint.
 			'.AccordionItem:focus-visible': {
 				outline: '1px solid transparent',
-				boxShadow: '0 0 0 1px oklch(0.27 0.013 250)'
+				boxShadow: '0 0 0 1px oklch(0.729 0.095 264)'
 			},
 			'.AccordionItem--selected:focus-visible': {
-				boxShadow: '0 0 0 1px oklch(0.994 0.002 250), 0 0 0 2px oklch(0.27 0.013 250)'
+				boxShadow: '0 0 0 1px oklch(0.991 0.002 286), 0 0 0 2px oklch(0.729 0.095 264)'
 			},
-			// the ring is the accent's, not the primary's: a ring is a line rather than a fill, and
-			// the same swap is made on every focused control the form draws itself.
-			'.Input:focus': { boxShadow: '0 0 0 1px oklch(0.27 0.013 250)' },
+			// the ring is the brand's step 8, not its fill: a ring is a line rather than a fill, and
+			// the same step is drawn on every focused control the form draws itself.
+			'.Input:focus': { boxShadow: '0 0 0 1px oklch(0.729 0.095 264)' },
 			'.Label': {
 				fontSize: '14px',
-				color: 'oklch(0.49 0.017 250)',
+				color: 'oklch(0.502 0.013 264)',
 				fontWeight: '600'
 			}
 		});
@@ -214,7 +215,7 @@ describe('stripeAppearance', () => {
 		const appearance = stripeAppearance(reader({ '--_p': '' }));
 
 		expect(appearance.variables).not.toHaveProperty('colorPrimary');
-		expect(appearance.variables.colorText).toBe('oklch(0.27 0.013 250)');
+		expect(appearance.variables.colorText).toBe('oklch(0.241 0.009 248)');
 	});
 
 	it('treats a whitespace-only read as an absent one', () => {
@@ -247,14 +248,13 @@ describe('stripeAppearance', () => {
 		expect(appearance.rules).toHaveProperty('.Input');
 	});
 
-	// the whole of the split, at the one boundary where both colours are handed to somebody else's
-	// code: a fill takes the primary and a line takes the accent, and neither seed reaches the
-	// other's surface.
-	it('sends the primary to the fills and the accent to the ring', () => {
+	// the split by step, at the one boundary where both are handed to somebody else's code: a fill
+	// takes the brand's step 9 and a ring takes its step 8, and neither reaches the other's surface.
+	it('sends step 9 to the fills and step 8 to the ring', () => {
 		const appearance = stripeAppearance(reader());
 
 		expect(appearance.variables.colorPrimary).toBe('oklch(0.45 0.13 264)');
-		expect(appearance.rules['.Input:focus']?.boxShadow).toBe('0 0 0 1px oklch(0.27 0.013 250)');
+		expect(appearance.rules['.Input:focus']?.boxShadow).toBe('0 0 0 1px oklch(0.729 0.095 264)');
 	});
 
 	it('draws no ring when the ring step did not resolve', () => {
@@ -266,12 +266,12 @@ describe('stripeAppearance', () => {
 		expect(appearance.rules).toHaveProperty('.Input');
 	});
 
-	it('still rings a focused field when the primary did not resolve', () => {
-		// the ring is a rung of the ladder and takes nothing from the seed, so a form that lost the
-		// brand keeps every surface saying where the caret is.
+	it('still rings a focused field when the fill did not resolve', () => {
+		// the ring is read from its own token rather than from the fill's, so a cascade that lost step
+		// 9 alone keeps every surface saying where the caret is.
 		const appearance = stripeAppearance(reader({ '--_p': '' }));
 
-		expect(appearance.rules['.Input:focus']?.boxShadow).toBe('0 0 0 1px oklch(0.27 0.013 250)');
+		expect(appearance.rules['.Input:focus']?.boxShadow).toBe('0 0 0 1px oklch(0.729 0.095 264)');
 	});
 
 	it('keeps the part of a rule that did resolve', () => {
@@ -279,7 +279,7 @@ describe('stripeAppearance', () => {
 
 		expect(appearance.rules['.Input']).toEqual({
 			borderRadius: '4px',
-			backgroundColor: 'oklch(0.994 0.002 250)',
+			backgroundColor: 'oklch(0.991 0.002 286)',
 			fontSize: '16px'
 		});
 	});
@@ -291,7 +291,7 @@ describe('stripeAppearance', () => {
 
 		expect(appearance.rules['.Input']).toEqual({
 			borderRadius: '4px',
-			backgroundColor: 'oklch(0.994 0.002 250)',
+			backgroundColor: 'oklch(0.991 0.002 286)',
 			fontSize: '16px'
 		});
 	});
@@ -303,7 +303,7 @@ describe('stripeAppearance', () => {
 		// absence would be the inverse of the defect: a deliberate zero silently ignored.
 		const appearance = stripeAppearance(reader({ '--_border': '0px' }));
 
-		expect(appearance.rules['.Input']?.border).toBe('0px solid oklch(0.794 0.016 250)');
+		expect(appearance.rules['.Input']?.border).toBe('0px solid oklch(0.853 0.011 280)');
 	});
 
 	it('sends no rail edge at all when only its weight resolved', () => {
@@ -315,13 +315,13 @@ describe('stripeAppearance', () => {
 		expect(appearance.rules['.AccordionItem']?.borderRadius).toBe('4px');
 	});
 
-	it('marks the open rail with the seed’s edge, and only with it', () => {
-		// a rail is picked from a set, so it is marked rather than filled: the primary edge on the
-		// same white face, never a primary fill under the fields it holds.
+	it('marks the open rail with the brand’s step-8 edge, and only with it', () => {
+		// a rail is picked from a set, so it is marked rather than filled: the brand edge on the same
+		// white face, never a brand fill under the fields it holds.
 		const marked = stripeAppearance(reader());
-		const unseeded = stripeAppearance(reader({ '--_p': '' }));
+		const unseeded = stripeAppearance(reader({ '--_a8': '' }));
 
-		expect(marked.rules['.AccordionItem--selected']?.borderColor).toBe(RESOLVED['--_p']);
+		expect(marked.rules['.AccordionItem--selected']?.borderColor).toBe(RESOLVED['--_a8']);
 		expect(marked.rules['.AccordionItem--selected']?.backgroundColor).toBe(RESOLVED['--_n1']);
 		// a card that lost its brand keeps the open rail on the white face rather than sending a
 		// mark against no colour.
@@ -330,17 +330,17 @@ describe('stripeAppearance', () => {
 		});
 	});
 
-	// every control a pointer can act on answers it (`--_p-hover` in ./tokens.css): the outline steps
-	// one rung along the ramp on a closed rail and one step along the brand on the open one.
+	// every control a pointer can act on answers it: a closed rail's edge steps from 7 to 8, and the
+	// open rail's is already 8 and holds it, stated apart so the plain hover cannot reach it.
 	it('steps a rail’s edge under the pointer and holds its face', () => {
 		const appearance = stripeAppearance(reader());
 
 		expect(appearance.rules['.AccordionItem:hover']).toEqual({
-			borderColor: RESOLVED['--_n10'],
+			borderColor: RESOLVED['--_n8'],
 			backgroundColor: RESOLVED['--_n1']
 		});
 		expect(appearance.rules['.AccordionItem--selected:hover']).toEqual({
-			borderColor: RESOLVED['--_p-hover'],
+			borderColor: RESOLVED['--_a8'],
 			backgroundColor: RESOLVED['--_n1']
 		});
 	});
@@ -348,38 +348,40 @@ describe('stripeAppearance', () => {
 	// each hover rule is built from one step of its own, so a cascade that lost that step alone drops
 	// only the edge it fed and keeps the face, or the rule, that did resolve.
 	it('drops the closed rail’s and the field’s pointer edge when the ramp step did not resolve', () => {
-		const appearance = stripeAppearance(reader({ '--_n10': '' }));
+		const appearance = stripeAppearance(reader({ '--_n8': '' }));
 
 		expect(appearance.rules).not.toHaveProperty('.Input:hover');
 		expect(appearance.rules['.AccordionItem:hover']).toEqual({
 			backgroundColor: RESOLVED['--_n1']
 		});
 		expect(appearance.rules['.AccordionItem--selected:hover']).toEqual({
-			borderColor: RESOLVED['--_p-hover'],
+			borderColor: RESOLVED['--_a8'],
 			backgroundColor: RESOLVED['--_n1']
 		});
-		expect(appearance.rules['.Input--invalid:hover']).toEqual({ borderColor: RESOLVED['--_bad'] });
+		expect(appearance.rules['.Input--invalid:hover']).toEqual({
+			borderColor: RESOLVED['--_bad-edge']
+		});
 	});
 
-	it('drops the open rail’s pointer edge when the brand’s hover step did not resolve', () => {
-		const appearance = stripeAppearance(reader({ '--_p-hover': '' }));
+	it('drops the open rail’s pointer edge when the brand’s edge step did not resolve', () => {
+		const appearance = stripeAppearance(reader({ '--_a8': '' }));
 
 		expect(appearance.rules['.AccordionItem--selected:hover']).toEqual({
 			backgroundColor: RESOLVED['--_n1']
 		});
 		expect(appearance.rules['.AccordionItem:hover']).toEqual({
-			borderColor: RESOLVED['--_n10'],
+			borderColor: RESOLVED['--_n8'],
 			backgroundColor: RESOLVED['--_n1']
 		});
-		expect(appearance.rules['.Input:hover']).toEqual({ borderColor: RESOLVED['--_n10'] });
+		expect(appearance.rules['.Input:hover']).toEqual({ borderColor: RESOLVED['--_n8'] });
 	});
 
 	it('sends no refused field’s pointer rule when the danger step did not resolve', () => {
 		// with nothing to hold, the provider's own refusal is left as it draws it.
-		const appearance = stripeAppearance(reader({ '--_bad': '' }));
+		const appearance = stripeAppearance(reader({ '--_bad-edge': '' }));
 
 		expect(appearance.rules).not.toHaveProperty('.Input--invalid:hover');
-		expect(appearance.rules['.Input:hover']).toEqual({ borderColor: RESOLVED['--_n10'] });
+		expect(appearance.rules['.Input:hover']).toEqual({ borderColor: RESOLVED['--_n8'] });
 	});
 
 	it('rings no rail when the ring step did not resolve', () => {
@@ -398,7 +400,7 @@ describe('stripeAppearance', () => {
 
 		expect(appearance.rules).not.toHaveProperty('.AccordionItem--selected:focus-visible');
 		expect(appearance.rules['.AccordionItem:focus-visible']?.boxShadow).toBe(
-			'0 0 0 1px oklch(0.27 0.013 250)'
+			'0 0 0 1px oklch(0.729 0.095 264)'
 		);
 	});
 

@@ -12,9 +12,9 @@
  * for its own rails, named once there as `PAYMENT_ROW`, so the two kinds of row are one list of
  * choice boxes: the white face inside the outline that finds a box, at the corner preset's control
  * radius, the name `--_sp3` under the box's top edge, and the item gap between one box and the next.
- * the open row is the chosen one and is marked by the primary's edge on the same face, at the same
- * one-pixel weight, so opening a row reflows nothing. a pointer steps the edge — along the ramp on a
- * closed row, along the brand on the open one — and never the face. ../embed/rows.dom.spec.ts holds
+ * the open row is the chosen one and is marked by the brand's step-8 edge on the same face, at the
+ * same one-pixel weight, so opening a row reflows nothing. a pointer steps a closed row's edge from
+ * step 7 to step 8 and never the face; an open row's edge is already step 8 and holds. ../embed/rows.dom.spec.ts holds
  * both sides to those names. the name's type and the mark's size are matched to what the provider
  * draws unasked, because ./appearance.ts sends its rows' names nothing — with the one departure
  * stated at `.head` below: an open row is said in ink and edge and never in weight, whatever the
@@ -34,15 +34,16 @@
 }
 
 .band:hover {
-	border-color: var(--_n10);
+	border-color: var(--_n8);
 }
 
 .band.open {
-	border-color: var(--_p);
+	border-color: var(--_a8);
 }
 
+/* the open row holds its step-8 edge under the pointer, stated so the closed row's hover cannot reach it. */
 .band.open:hover {
-	border-color: var(--_p-hover);
+	border-color: var(--_a8);
 }
 
 /*

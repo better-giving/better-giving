@@ -112,7 +112,7 @@ describe('what the provider is handed', () => {
 		const appearance = resolveAppearance(card);
 		const sent = JSON.stringify(appearance);
 
-		expect(APPEARANCE_INPUTS.length).toBe(21);
+		expect(APPEARANCE_INPUTS.length).toBe(22);
 		expect(sent).not.toContain('var(');
 		expect(sent).not.toContain('oklch');
 	});
@@ -162,20 +162,21 @@ describe('what the provider is handed', () => {
 	});
 
 	// the split, proven off a real cascade rather than off a table: the fill inside the provider's
-	// frame follows the seed and the ring does not follow it anywhere. only this pool can see it —
+	// frame is the seed's step 9 and the ring is its step 8, two colours off one seed. only this
+	// pool can see it —
 	// `--_p` and `--_focus-ring` are unregistered custom properties, so a lightweight DOM hands back
 	// the `oklch(from …)` expression and never a colour.
-	it('sends the seed to the fills and a fixed rung to the ring', () => {
+	it('sends the seed’s step 9 to the fills and its step 8 to the ring', () => {
 		seed('--donate-primary: oklch(0.45 0.15 25);');
 		const warm = resolveAppearance(card);
 		seed('--donate-primary: oklch(0.45 0.15 250);');
 		const cool = resolveAppearance(card);
 
-		// the fill moves with the seed and the ring stands still, which is the whole of the split.
+		// both move with the seed, because both are steps of its scale.
 		expect(cool.variables.colorPrimary).not.toBe(warm.variables.colorPrimary);
-		expect(cool.rules['.Input:focus']?.boxShadow).toBe(warm.rules['.Input:focus']?.boxShadow);
+		expect(cool.rules['.Input:focus']?.boxShadow).not.toBe(warm.rules['.Input:focus']?.boxShadow);
 		// and the ring is not the fill under another name: a token quietly repointed at `--_p` would
-		// pass the line above on an unseeded card and fail here.
+		// pass both lines above and fail here.
 		expect(warm.rules['.Input:focus']?.boxShadow).not.toBe(
 			`0 0 0 1px ${warm.variables.colorPrimary}`
 		);
