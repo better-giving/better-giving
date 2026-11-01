@@ -11,9 +11,8 @@ import { stripComments } from '@better-giving/operator/styles/raw-values';
 // a colour with; anything else throws and names itself.
 //
 // out-of-gamut channels are clipped per channel into sRGB before luminance is read. the spec checks
-// that choice against the readings packages/form/src/styles/tokens.css states at its own entries,
-// which were taken in chromium: an evaluator that disagreed with them would be measuring a
-// different card.
+// the round trip against slate's published hexes, measured in sRGB directly: an evaluator that
+// disagreed with them would be measuring a different card.
 
 export type Scope = Readonly<Record<string, string>>;
 
@@ -85,7 +84,9 @@ export function substitute(scope: Scope, value: string, seen: string[] = []): st
 		const inner = value.slice(start + 4, end - 1);
 		const comma = inner.indexOf(',');
 		const name = (comma === -1 ? inner : inner.slice(0, comma)).trim();
-		const own = scope[name];
+		// a custom property set to `initial` is the guaranteed-invalid value, so `var()` takes its
+		// fallback (https://www.w3.org/TR/css-variables-1/#guaranteed-invalid).
+		const own = scope[name] === 'initial' ? undefined : scope[name];
 		let replacement: string;
 		if (own !== undefined) {
 			if (seen.includes(name)) throw new Error(`${name} refers to itself`);

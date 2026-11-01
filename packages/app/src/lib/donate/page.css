@@ -92,53 +92,57 @@
  * `--page-card-inset` the inset of the card layout's panel, 16px on a phone and 28px from 60rem;
  * `--page-col-gap` is between two columns and `--page-gutter` the page's side margin.
  *
- * grounds. a rung is the job radix colors gives its number
- * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), the meanings
- * the form's ladder and the operator surfaces' share (packages/form/src/styles/tokens.css): 1 the app
- * background, 2 a subtle background, 3 a control's, 4 its hover, 5 its press, 6 a separator, 7 a
- * border. the page ground, `--page-ground`, is rung 2, under a wash. a plane — the top bar, the
- * card's panel, which on a phone holds the cover, the title, the lede and the goal, the letter's
- * cover frame, a tier card, and the donation box, which the form draws — is a white card on that
- * ground, as an operator screen's planes are: `--page-plane`, rung 1, with no visible edge, its
- * border kept at `--_border` and drawn transparent so a plane is the same size with or without one,
- * the shadow `--page-plane-lift`, and the corner `--page-plane-radius`. the shadow is the page's
- * ink, rung 12, at a faint alpha in two layers, a short one and a soft throw: it falls on the wash,
- * whose colour changes under it, so no solid rung could be its shade. no plane stands in another:
- * the one that could, the box on the card's panel from 60rem, draws no fill, edge, corner, shadow or
- * inset of its own there and reads as part of the panel, which already groups it; on a phone, under
- * the panel rather than in it, it is a plane again. the top bar keeps a hairline edge,
- * `--page-plane-edge`, rung 6, along its foot, the one side the page meets it on. the bar runs the
- * page's full width and has no corner and no shadow.
+ * grounds. every colour is a step of a radix colors twelve-step scale, and the step number is the
+ * job (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): slate for
+ * every grey and the brand scale the form derives from its one seed, both declared in
+ * packages/form/src/styles/tokens.css. 1 and 2 backgrounds, 3 a control's ground, 4 its hover, 5 its
+ * press, 6 a border nothing operates and a separator, 7 the edge of a control a donor operates and 8
+ * that edge under the pointer and the focus ring, 9 a solid fill, 10 its hover, 11 and 12 text.
+ * nothing casts a shadow: a `box-shadow` here is a focus ring, a spread with no offset and no blur.
  *
- * the wash. `--page-wash` is two soft radial tints laid over the solid ground, the brand's at the
- * first screen's start and a warm one at the page's far corner, each fading to `transparent` at 70%
- * of its reach. a stop that is transparent is no translucent colour standing on its own: the ground
- * under it is opaque, so the composite is opaque everywhere. `--page-wash-brand` is the brand's own
- * hue, `--_p`'s, at 0.97 lightness — between rung 2 and rung 3, very pale — and three tenths of its
- * chroma to at most 0.025; `--page-wash-warm` is that same lightness at hue 20 and chroma 0.02. a
- * page with no brand colour reads the form's registered grey, whose chroma is 0, so its brand tint is
- * a plain grey a step under the ground and only the warm tint carries a hue. both are opaque and at
- * one lightness, so where the two overlap the page is no darker than either, and each is the wash's
- * darkest point: every ink read on the page ground is measured on both (the pairs below). About us
- * stands on `--page-band`, rung 1, a white band across the page's width, a rung off the ground it
- * crosses; it is a band rather than a plane, so it draws no corner and no shadow. a cover before its
- * photo arrives is rung 3, the operator surfaces' sunken well (`--admin-surface-sunken`). a rule
- * between rows of one list is a separator, rung 6, and the one rule between sections is the same
- * separator over the footer. a program option is the operator surfaces' neutral button: it
- * rests on rung 3, answers a pointer on 4 and a press on 5, and keeps the outline that finds it,
- * `--_edge-control`. a chosen option rises to rung 1, as the form's chosen tile does, because the
- * primary it is marked in reads under 4.5:1 on rungs 4 and 5. a share press is a round plane with no
- * edge that steps to rung 3 under a pointer and 4 under a press. the brand is a
- * ground in one place, a cover with no photo — the logo's cover, the logo on its own rung 1 plate,
- * a face the logo is read on, and the feature's empty cover, its words in `--_on-p` from 60rem.
- * otherwise the brand fills the action, the goal's progress and the badge, and is the ink of a link
- * and a tier's amount.
+ * the page ground, `--page-ground`, is slate 2 under a wash. a plane — the top bar, the card's
+ * panel, which on a phone holds the cover, the title, the lede and the goal, the letter's cover
+ * frame, a tier card, a share press, and the donation box, which the form draws — is
+ * `--page-plane`, slate 1, inside a `--_border` edge of `--page-plane-edge`, slate 6, at the corner
+ * `--page-plane-radius`, and flat: its face and its edge are what lift it off the wash. no plane
+ * stands in another: the one that could, the box on the card's panel from 60rem, draws no fill,
+ * edge, corner or inset of its own there and reads as part of the panel, which already groups it; on
+ * a phone, under the panel rather than in it, it is a plane again. the top bar runs the page's full
+ * width with no corner and draws its edge along its foot alone, the one side the page meets it on.
+ *
+ * the wash. `--page-wash` is two soft radial tints laid over the solid ground, brand step 2,
+ * `--page-a2`, at the first screen's start and brand step 3, `--page-a3`, at the page's far corner,
+ * each fading to `transparent` at 70% of its reach. a stop that is transparent is no translucent
+ * colour standing on its own: the ground under it is opaque, so the composite is opaque everywhere.
+ * the two steps are the form's brand method, `oklch(from var(--donate-primary) L_N calc(c * k_N) h)`
+ * with L and k from the table in packages/form/src/styles/tokens.css, which declares only the steps
+ * the card spends; the page spends these two, so it declares them here. a page with no brand colour
+ * reads the form's registered seed, slate 12, so its tints are slate's hue at a trace of chroma. step
+ * 3 is the darker of the two and where they overlap the page is no darker than it, so it is the
+ * wash's darkest point: every ink read on the page ground is measured on both (the pairs below).
+ * About us stands on `--page-band`, slate 1, a band across the page's width; it is a band rather than
+ * a plane, so it draws no corner and no edge. a cover before its photo arrives is slate 3, the
+ * operator surfaces' sunken well (`--admin-surface-sunken`). a rule between rows of one list is a
+ * separator, slate 6, and the one rule between sections is the same separator over the footer.
+ *
+ * a program option is the operator surfaces' neutral button: it rests on slate 3, answers a pointer
+ * on 4 and a press on 5, and its edge is `--_edge-control`, slate 7, stepping to 8 under the pointer
+ * and the press. a chosen option is marked as the form marks a chosen tile: it rises to slate 1 inside
+ * a brand-8 edge, its name and tick in brand 11. a share press steps to slate 3 under a pointer and 4
+ * under a press and keeps its edge.
+ *
+ * the brand is spent by step. 9, the seed itself, is a solid: the action, the goal's progress, the
+ * initials badge, and a cover with no photo — the logo's cover, the logo on its own slate-1 plate,
+ * and the feature's empty cover. the ink on 9 is the form's `--_on-p`, white or brand 12 by the
+ * seed's lightness. 11 is a brand word, `--page-accent` — a link, the top bar's Share and a tier's
+ * amount — and 12 is that word under the pointer. 8 is a brand edge and the focus ring.
  *
  * corners. a plane is `--page-plane-radius`, 12px, a step rounder than the card's `--_r`, and the
  * donation box takes it too wherever it is a plane; what stands on a plane is the card's `--_r` or `--_r-in`, the form's
- * corner preset (`soft` is 8px and 4px). the card layout's cover takes the panel's corner at its top
- * two at every width, so it runs to the panel's corners without the panel clipping it: wide, the
- * panel is an ancestor of the box, which no rule clips. a mark round by nature is a circle and no preset moves it: the
+ * corner preset (`soft` is 8px and 4px). the card layout's cover stands inside the panel's edge and
+ * takes the panel's corner less that edge at its top two at every width, so it runs to the panel's
+ * corners without the panel clipping it: wide, the panel is an ancestor of the box, which no rule
+ * clips. a mark round by nature is a circle and no preset moves it: the
  * initials badge, a platform's mark and a share press, at `50%`, and the goal track and its fill, at half of
  * `--page-track-block`, the track's thickness, which is a `--page-*` name because the card draws no
  * bar.
@@ -147,17 +151,19 @@
  * brand colours around the wheel at full strength, dark and muted and the unbranded grey, under
  * every shade, and holds the lowest reading against its floor:
  *
- *   `--page-quiet` — `--_n10` on the page ground, the wash's two tints, the card and a plane,
- *   `--_n11` on the about band. text, held to 4.5:1.
+ *   `--page-quiet` — slate 11 — on the page ground, the wash's two tints, the card, a plane and the
+ *   about band; slate 11 on a program option's press, slate 5. text, held to 4.5:1.
  *
- *   `--_n11` — the organisation's name in the footer — on the page ground and the wash's two tints.
- *   text, held to 4.5:1.
+ *   `--page-accent` — brand 11 — on the page ground, the wash's two tints, the card and a plane,
+ *   and brand 12 on a plane. text, held to 4.5:1. radix holds step 11 to APCA Lc 60 on step 2 and
+ *   not to WCAG, and the greens and yellows at full strength read under 4.5:1 there; the spec marks
+ *   that pair as falling short rather than lowering its floor.
  *
- *   `--_p` as ink — a link, the top bar's Share or a tier's amount — on the page ground, the wash's
- *   two tints, the card and a plane. text, held to 4.5:1.
+ *   `--_on-p` on the brand fill, text, held to 4.5:1, and marked as falling short for a seed near
+ *   the form's switch from white to brand 12 (packages/form/src/styles/tokens.css at `--_on-p`).
  *
- *   the goal track — `--page-track`, rung 3, a control's ground — holds the bar's `--_p` fill
- *   apart, held to 3:1, since the fill is what the bar is read by.
+ *   the goal track — `--page-track`, slate 3 — against the bar's brand-9 fill, held to 3:1, and
+ *   marked as falling short for a pale seed. the figure beside the bar states the amount in words.
  *
  *   `--page-scrim` is the one translucent colour text stands on, laid over the feature's cover
  *   photo, which the page cannot see, and carries the note that says so. it is at its darkest from
@@ -247,23 +253,19 @@ body {
 	--page-share-icon: 1.25rem;
 
 	--page-ground: var(--_n2);
-	--page-wash-brand: oklch(from var(--_p) 0.97 min(c * 0.3, 0.025) h);
-	--page-wash-warm: oklch(from var(--page-wash-brand) l 0.02 20);
+	--page-a2: oklch(from var(--donate-primary) 0.982 calc(c * 0.06) h);
+	--page-a3: oklch(from var(--donate-primary) 0.959 calc(c * 0.14) h);
 	--page-wash:
-		radial-gradient(max(80cqi, 26rem) 38rem at 0% 14rem, var(--page-wash-brand), transparent 70%),
-		radial-gradient(max(65cqi, 24rem) 38rem at 100% 100%, var(--page-wash-warm), transparent 70%);
+		radial-gradient(max(80cqi, 26rem) 38rem at 0% 14rem, var(--page-a2), transparent 70%),
+		radial-gradient(max(65cqi, 24rem) 38rem at 100% 100%, var(--page-a3), transparent 70%);
 	--page-plane: var(--_n1);
 	--page-plane-edge: var(--_n6);
-	/* raw-colour-ok: the page's ink at a faint alpha, falling on the wash, whose colour changes
-	   under it, so no solid rung could be its shade. */
-	--page-plane-lift:
-		0 1px 2px oklch(from var(--_n12) l c h / 0.06), 0 4px 12px oklch(from var(--_n12) l c h / 0.05);
 	--page-plane-radius: 0.75rem;
 	--page-band: var(--_n1);
-	--page-quiet: var(--_n10);
+	--page-quiet: var(--_n11);
 	--page-track: var(--_n3);
 	--page-track-block: 0.625rem;
-	--page-accent: var(--_p);
+	--page-accent: var(--_a11);
 	--page-ring: var(--_focus-ring);
 	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header measures it */
 	--page-scrim: linear-gradient(
@@ -383,7 +385,7 @@ body {
 	max-inline-size: var(--page-narrow);
 }
 
-/* the top bar: a plane's white across the page's full width with a separator under it, the
+/* the top bar: a plane's face across the page's full width with a separator under it, the
    organisation at its start and, where the page has a share section, a Share link at its end. it is
    one row, `--_row-min`, with an `--_sp2` inset over and under it, `--_sp3` from 60rem. */
 .page-mast {
@@ -413,7 +415,7 @@ body {
 }
 
 .page-mast-share:hover {
-	color: var(--_p-hover);
+	color: var(--_a12);
 	text-decoration: underline;
 }
 
@@ -428,7 +430,7 @@ body {
 	white-space: nowrap;
 	text-overflow: ellipsis;
 	font-weight: var(--_w-bold);
-	color: var(--_n11);
+	color: var(--_n12);
 }
 
 /* the organisation's logo, the masthead's one row. a logo at least twice as wide as it is tall
@@ -436,9 +438,9 @@ body {
    nothing of its own (./page-view.tsx decides which, off the stored image's width and height). it
    is one row tall, `--_row-min`, the height of the card's own rows, and it is drawn whole, never
    cropped. with no logo, the badge of the name's initials stands where a narrower one would, a
-   circle a row across: the brand fill under the one ink the form draws on it, `--_on-p` on `--_p`,
-   4.79:1 at the fill band's worst corner (packages/form/src/styles/tokens.css). a page with no
-   brand colour fills it with the form's registered grey. */
+   circle a row across: the brand's step 9 under the one ink the form draws on it, `--_on-p` on
+   `--_p` (packages/form/src/styles/tokens.css). a page with no brand colour fills it with the
+   form's registered seed, slate 12. */
 .page-mast-in {
 	display: flex;
 	align-items: center;
@@ -498,16 +500,15 @@ body {
 }
 
 /* the donation box on the page's own ground, the plain page's included, is a plane like the rest:
-   its edge kept at its width and drawn transparent, the plane's corner and the plane's shadow. in a
-   plane it is none of these (the card layout's panel, below).
+   the plane's step-6 edge and the plane's corner; the form draws its slate-1 face. in a plane it is
+   none of these (the card layout's panel, below).
    `card` is one of the form's public `::part()` names (packages/form/custom-elements.json), so
    this is the dress an integrator could give it, and the light-DOM card is reached by the
    attribute where a page holding the element would use `::part(card)`. the card clips to its own
    corner, so its insides follow. */
 .page [part~='card'] {
-	border-color: transparent;
+	border-color: var(--page-plane-edge);
 	border-radius: var(--page-plane-radius);
-	box-shadow: var(--page-plane-lift);
 }
 
 /* the card. on a phone the cover, the title, the lede and the goal stand together in one plane
@@ -530,17 +531,19 @@ body {
 	grid-column: 1;
 	grid-row: cover-start / close-end;
 	background: var(--page-plane);
+	border: var(--_border) solid var(--page-plane-edge);
 	border-radius: var(--page-plane-radius);
-	box-shadow: var(--page-plane-lift);
 }
 
 .page[data-layout='card'] [data-area='cover'] {
 	grid-area: cover;
+	margin: var(--_border) var(--_border) 0;
 }
 
 .page[data-layout='card'] [data-area='cover'] .page-cover {
 	block-size: var(--page-cover-card);
-	border-radius: var(--page-plane-radius) var(--page-plane-radius) 0 0;
+	border-radius: calc(var(--page-plane-radius) - var(--_border))
+		calc(var(--page-plane-radius) - var(--_border)) 0 0;
 }
 
 .page[data-layout='card'] [data-area='title'] {
@@ -593,9 +596,8 @@ body {
 		align-items: start;
 		padding: 0 var(--page-card-inset) var(--page-card-inset);
 		background: var(--page-plane);
-		border: var(--_border) solid transparent;
+		border: var(--_border) solid var(--page-plane-edge);
 		border-radius: var(--page-plane-radius);
-		box-shadow: var(--page-plane-lift);
 	}
 
 	.page[data-layout='card'] .page-layout::before {
@@ -633,8 +635,8 @@ body {
 		margin-block-start: var(--page-card-inset);
 	}
 
-	/* the box on the panel is part of the plane it stands in: no fill, edge, corner or shadow of its
-	   own, and no inset, so its heading starts on the title's line and its content runs to the
+	/* the box on the panel is part of the plane it stands in: no fill, edge or corner of its own,
+	   and no inset, so its heading starts on the title's line and its content runs to the
 	   panel's inset. the inset is `.card-body`'s, which no part name reaches
 	   (packages/form/src/styles/layout.css). with no corner drawn there is nothing to clip to, and a
 	   focus ring at the box's edge paints into the panel's inset rather than being cut off. */
@@ -642,7 +644,6 @@ body {
 		background: transparent;
 		border: 0;
 		border-radius: 0;
-		box-shadow: none;
 		overflow: visible;
 	}
 
@@ -656,9 +657,8 @@ body {
 .page[data-layout='letter'] [data-area='cover'] {
 	padding: var(--_sp2);
 	background: var(--page-plane);
-	border: var(--_border) solid transparent;
+	border: var(--_border) solid var(--page-plane-edge);
 	border-radius: var(--page-plane-radius);
-	box-shadow: var(--page-plane-lift);
 }
 
 .page[data-layout='letter'] [data-area='cover'] .page-cover {
@@ -763,7 +763,6 @@ body {
 	margin-block-start: var(--page-gap-section);
 	padding-block: var(--page-band-inset);
 	background: var(--page-band);
-	--page-quiet: var(--_n11);
 }
 
 @container page (min-width: 60rem) {
@@ -920,7 +919,6 @@ body {
 	margin-block-start: var(--page-gap-section);
 	padding-block: var(--page-band-inset);
 	background: var(--page-band);
-	--page-quiet: var(--_n11);
 }
 
 /* the share row stands a group's step under the body's last section, on the wash with no plane of
@@ -1115,16 +1113,15 @@ body {
 	padding: var(--_sp5);
 	background: var(--page-plane);
 	color: var(--_n11);
-	border: var(--_border) solid transparent;
+	border: var(--_border) solid var(--page-plane-edge);
 	border-radius: var(--page-plane-radius);
-	box-shadow: var(--page-plane-lift);
 }
 
 .page-tiers[data-shape='cards'] .page-tier-amount {
 	font-family: var(--page-font-display);
 	font-size: var(--page-heading);
 	line-height: var(--page-lh-heading);
-	color: var(--_p);
+	color: var(--page-accent);
 }
 
 /* the amount column is as wide as the list's widest amount, every row's words starting together. */
@@ -1359,19 +1356,18 @@ body {
 	gap: var(--_sp3);
 }
 
-/* a press is a mark alone in a white circle at the touch floor, lifted off the wash as a plane is,
-   with no edge. under a pointer and a press it steps down the neutral ladder, as the operator
-   surfaces' quiet button does; the ink stays the page's, so the glyphs read on every step. */
+/* a press is a mark alone in a slate-1 circle at the touch floor, a plane inside the plane's step-6
+   edge. under a pointer and a press it steps to slate 3 and 4, as the operator surfaces' quiet
+   button does; the ink stays the page's, so the glyphs read on every step. */
 .page-share-button {
 	display: inline-grid;
 	place-items: center;
 	inline-size: var(--_row-min);
 	block-size: var(--_row-min);
 	padding: 0;
-	border: 0;
+	border: var(--_border) solid var(--page-plane-edge);
 	border-radius: 50%;
 	background: var(--page-plane);
-	box-shadow: var(--page-plane-lift);
 	color: var(--_n12);
 	cursor: pointer;
 }
@@ -1384,12 +1380,10 @@ body {
 	background: var(--_n4);
 }
 
-/* the ring joins the lift rather than replacing it, and outranks the ring every page link takes. */
+/* a Copy link press is a button, which the ring every page link takes does not reach. */
 .page-ground .page-share-button:focus-visible {
 	outline: var(--_focus-width) solid transparent;
-	box-shadow:
-		var(--page-plane-lift),
-		0 0 0 var(--_focus-width) var(--page-ring);
+	box-shadow: 0 0 0 var(--_focus-width) var(--page-ring);
 }
 
 /* a channel's press is a link, and a link takes the page's accent: the press keeps the page's ink,
@@ -1483,8 +1477,7 @@ body {
 	font-weight: var(--_w-bold);
 }
 
-/* rung 11, not the page's quiet rung 10: an option hovers on rung 4 and presses on 5, where rung 10
-   reads under 4.5:1 (./page.spec.ts). */
+/* slate 11, the quiet text step, which holds 4.5:1 on the option's press, slate 5 (./page.spec.ts). */
 .page-choose-description {
 	grid-column: 1;
 	grid-row: 2;
@@ -1500,7 +1493,7 @@ body {
 	place-items: center;
 	inline-size: var(--_glyph-beside);
 	block-size: 1lh;
-	color: var(--_p);
+	color: var(--_a11);
 }
 
 .page-choose-tick {
@@ -1509,36 +1502,28 @@ body {
 }
 
 .page-choose-option:has(:checked) .page-choose-name {
-	color: var(--_p);
+	color: var(--_a11);
 }
 
 .page-choose .page-choose-option:hover:not(:has(:checked, [aria-disabled='true'])) {
 	background: var(--_n4);
-	border-color: var(--_n10);
+	border-color: var(--_n8);
 }
 
 .page-choose .page-choose-option:active:not(:has(:checked, [aria-disabled='true'])) {
 	background: var(--_n5);
-	border-color: var(--_n10);
+	border-color: var(--_n8);
 }
 
 .page-choose .page-choose-option:has(:checked) {
 	background: var(--_n1);
-	border-color: var(--_p);
-	box-shadow: inset 0 0 0 var(--_border) var(--_p);
+	border-color: var(--_a8);
 }
 
 .page-choose-option:has(:focus-visible) {
 	z-index: 1;
 	outline: var(--_focus-width) solid transparent;
 	box-shadow:
-		0 0 0 var(--_border) var(--_n1),
-		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
-}
-
-.page-choose .page-choose-option:has(:checked:focus-visible) {
-	box-shadow:
-		inset 0 0 0 var(--_border) var(--_p),
 		0 0 0 var(--_border) var(--_n1),
 		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
 }
@@ -1583,8 +1568,8 @@ body {
 /* locked, from the press on Donate until the donor is back on a step they edit (./card.tsx). the
    pick standing keeps its mark, and every other option is drawn the way the form draws a control a
    donor cannot reach yet: its boundary in `--_edge-unavailable`, dashed, as `.step-mark` in
-   packages/form/src/styles/parts.css is, and its name in the page's quiet rung 10, which clears
-   4.5:1 on the option's rung 3 and is never drawn on its hover or press rung. the dash is a pattern
+   packages/form/src/styles/parts.css is, and its name in the quiet text step, slate 11, which holds
+   4.5:1 on the option's slate 3 and is never drawn on its hover or press step. the dash is a pattern
    rather than a colour, so it still says so under forced-colors. each radio is `aria-disabled` and still focusable, so the ring a focus draws stays;
    what goes is the pointer and the hover step, because no press is answered. */
 .page-choose-option:has([aria-disabled='true']) {
@@ -1592,7 +1577,7 @@ body {
 }
 
 .page-choose-option:has([aria-disabled='true']:not(:checked)) .page-choose-name {
-	color: var(--_n10);
+	color: var(--_n11);
 }
 
 .page-choose-option:has([aria-disabled='true']:not(:checked)) {

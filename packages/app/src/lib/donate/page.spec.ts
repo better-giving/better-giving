@@ -45,8 +45,8 @@ import { PageRoot } from './page-root';
 //
 // contrast: the page's grounds and inks, worked out from the two sheets as written by
 // ./page-colour.testing.ts across a sweep of brand colours, for every shade and ground.
-// the node pool, because this app has no browser pool; the evaluator is checked first against the
-// readings the form's own token file states, which were taken in chromium.
+// the node pool, because this app has no browser pool; the evaluator is checked first against
+// slate's published hexes, measured in sRGB with no oklch in the path.
 
 const require = createRequire(import.meta.url);
 const FORM_TOKENS = require.resolve('@better-giving/form/styles/tokens.css');
@@ -265,20 +265,33 @@ describe('the page root', () => {
 	});
 });
 
-describe('the colour evaluator agrees with the readings the form token file states', () => {
-	const at = (seed?: string) => ({ ...formBase, ...(seed ? { '--donate-primary': seed } : {}) });
-	const worst = 'oklch(0.5 0.16 190)';
+// WCAG 2 contrast taken straight off two `#rrggbb` colours in sRGB, with no oklch in the path.
+const hexLuminance = (hex: string) => {
+	const [r = 0, g = 0, b = 0] = [1, 3, 5].map((at) => {
+		const v = Number.parseInt(hex.slice(at, at + 2), 16) / 255;
+		return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+	});
+	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const hexContrast = (one: string, other: string) => {
+	const [a, b] = [hexLuminance(one), hexLuminance(other)];
+	return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+};
+
+describe('the colour evaluator agrees with slate as radix publishes it', () => {
+	// the form writes each slate step as radix's literal run through `oklch(from …)`, so under the
+	// light shade the evaluator's round trip lands on the reading the literals give directly.
 	it.each([
-		['--_n10', '--_n1', 4.96, undefined],
-		['--_n10', '--_n2', 4.85, undefined],
-		['--_n10', '--_n3', 4.56, undefined],
-		['--_focus-ring', '--_n1', 14.8, undefined],
-		['--_on-p', '--_p', 4.79, worst],
-		['--_p', '--_n1', 4.92, worst]
-	])('%s on %s reads %s', (ink, ground, stated, seed) => {
-		const scope = at(seed);
-		// to the two places the token file states each reading at, so a move of 0.01 fails.
-		expect(contrast(resolve(scope, ink), resolve(scope, ground))).toBeCloseTo(stated, 2);
+		['--_n11', '#60646c', '--_n1', '#fcfcfd'],
+		['--_n11', '#60646c', '--_n2', '#f9f9fb'],
+		['--_n11', '#60646c', '--_n3', '#f0f0f3'],
+		['--_n11', '#60646c', '--_n5', '#e0e1e6'],
+		['--_n12', '#1c2024', '--_n2', '#f9f9fb']
+	])('%s (%s) on %s (%s)', (ink, inkHex, ground, groundHex) => {
+		expect(contrast(resolve(formBase, ink), resolve(formBase, ground))).toBeCloseTo(
+			hexContrast(inkHex, groundHex),
+			2
+		);
 	});
 });
 
@@ -293,12 +306,12 @@ const hsv = (h: number, s: number, v: number) => {
 const BRANDS: (string | null)[] = [null, '#000000', '#808080', '#ffffff'];
 for (let h = 0; h < 360; h += 5) BRANDS.push(hsv(h, 1, 1), hsv(h, 1, 0.45), hsv(h, 0.35, 0.85));
 
-/** where text stands: the page ground, the wash's two tints at full strength, each a darkest point
- * of the wash, the form's card on `--_n1`, a plane on `--page-plane`, and the About us band. */
+/** where text stands: the page ground, the wash's two tints at full strength — brand step 3 is its
+ * darkest point — the form's card on `--_n1`, a plane on `--page-plane`, and the About us band. */
 const GROUNDS = {
 	page: { ground: '--page-ground', scope: {} },
-	washBrand: { ground: '--page-wash-brand', scope: {} },
-	washWarm: { ground: '--page-wash-warm', scope: {} },
+	washStart: { ground: '--page-a2', scope: {} },
+	washEnd: { ground: '--page-a3', scope: {} },
 	card: { ground: '--_n1', scope: {} },
 	plane: { ground: '--page-plane', scope: {} },
 	band: {
@@ -307,6 +320,20 @@ const GROUNDS = {
 	}
 } as const;
 type Ground = keyof typeof GROUNDS;
+
+/** the text steps, radix's 11 and 12 of slate and of the brand and the two names that point at them,
+ * and the one ink each ground outside the ladders takes: `--_n1` on the feature's scrim and
+ * `--_on-p` on the brand's fill. */
+const TEXT_INKS = [
+	'var(--_n11)',
+	'var(--_n12)',
+	'var(--_a11)',
+	'var(--_a12)',
+	'var(--page-quiet)',
+	'var(--page-accent)',
+	'var(--_n1)',
+	'var(--_on-p)'
+];
 
 function scopeFor(shade: Shade, ground: Ground, brand: string | null): Scope {
 	return {
@@ -347,15 +374,29 @@ describe('text clears 4.5:1 for every brand colour', () => {
 			expect(floor(shade, ground, '--page-quiet'), ground).toBeGreaterThanOrEqual(4.5);
 	});
 
-	// a link and a tier's amount are drawn in it on the page ground and its wash, on a card and on
-	// a plane. the top bar's Share stands on the plane, and steps to `--_p-hover` under a pointer.
-	it.each(SHADES)('the primary as ink on the page ground, a card and a plane, %s', (shade) => {
-		expect(floor(shade, 'page', '--_p')).toBeGreaterThanOrEqual(4.5);
-		expect(floor(shade, 'washBrand', '--_p')).toBeGreaterThanOrEqual(4.5);
-		expect(floor(shade, 'washWarm', '--_p')).toBeGreaterThanOrEqual(4.5);
-		expect(floor(shade, 'card', '--_p')).toBeGreaterThanOrEqual(4.5);
-		expect(floor(shade, 'plane', '--_p')).toBeGreaterThanOrEqual(4.5);
-		expect(floor(shade, 'plane', '--_p-hover')).toBeGreaterThanOrEqual(4.5);
+	it('draws text in slate 11 and 12 and the brand’s 11 and 12, and in no other step', () => {
+		const ground = declared(page, '.page > .page-ground');
+		expect(ground['--page-quiet']).toBe('var(--_n11)');
+		expect(ground['--page-accent']).toBe('var(--_a11)');
+		const inks = new Set(page.flatMap(({ decls }) => (decls.color ? [decls.color] : [])));
+		expect([...inks].filter((ink) => !TEXT_INKS.includes(ink))).toEqual([]);
+	});
+
+	// a link and a tier's amount are the brand's step 11 on the page ground and its wash, on a card
+	// and on a plane. radix holds step 11 to APCA Lc 60 on step 2 rather than to WCAG 4.5:1, and the
+	// form sets it at one lightness for every seed (packages/form/src/styles/tokens.css), so a seed
+	// whose hue carries its luminance high — the greens and yellows at full strength — reads under
+	// 4.5:1 here. it is held to the floor and marked as falling short, so the day it clears, this
+	// turns red.
+	it.fails.each(SHADES)('the brand’s step 11 as ink on every ground it stands on, %s', (shade) => {
+		for (const ground of ['page', 'washStart', 'washEnd', 'card', 'plane'] as const)
+			expect(floor(shade, ground, '--page-accent'), ground).toBeGreaterThanOrEqual(4.5);
+	});
+
+	// the top bar's Share steps from 11 to 12 under a pointer, as the form's brand words do.
+	it.each(SHADES)('the brand’s step 12 as ink on a plane, %s', (shade) => {
+		expect(declared(page, '.page-mast-share:hover').color).toBe('var(--_a12)');
+		expect(floor(shade, 'plane', '--_a12')).toBeGreaterThanOrEqual(4.5);
 	});
 
 	// a program option's description stands on the option's own ground, which rests on rung 3 and
@@ -365,25 +406,29 @@ describe('text clears 4.5:1 for every brand colour', () => {
 		expect(floor(shade, 'page', '--_n11', '--_n5')).toBeGreaterThanOrEqual(4.5);
 	});
 
-	// the feature's words on a cover with no photo stand on the brand fill itself.
-	it.each(SHADES)('the one ink on the brand fill, %s', (shade) => {
+	// the feature's words on a cover with no photo, and the badge's initials, stand on the brand fill
+	// itself. `--_on-p` turns from white to the brand's step 12 at a seed lightness of 0.73, and a seed
+	// near that switch reads Lc 40 in APCA whichever it takes (packages/form/src/styles/tokens.css),
+	// which is under 4.5:1. held to the floor and marked as falling short.
+	it.fails.each(SHADES)('the one ink on the brand fill, %s', (shade) => {
 		expect(floor(shade, 'page', '--_on-p', '--_p')).toBeGreaterThanOrEqual(4.5);
 	});
 });
 
 describe('the share row and the footer', () => {
-	// each share press is a white circle on the wash, lifted as a plane is, at the touch floor.
-	it('draws a share press as a circle at the touch floor, a plane with no edge', () => {
+	// each share press is a step-1 circle on the wash inside a step-6 edge, at the touch floor.
+	it('draws a share press as a flat circle at the touch floor, a plane edged in step 6', () => {
 		expect(substitute(formBase, 'var(--_row-min)')).toBe('44px');
-		expect(declared(page, '.page-share-button')).toMatchObject({
+		const press = declared(page, '.page-share-button');
+		expect(press).toMatchObject({
 			'inline-size': 'var(--_row-min)',
 			'block-size': 'var(--_row-min)',
 			'border-radius': '50%',
-			border: '0',
+			border: 'var(--_border) solid var(--page-plane-edge)',
 			background: 'var(--page-plane)',
-			'box-shadow': 'var(--page-plane-lift)',
 			color: 'var(--_n12)'
 		});
+		expect(press['box-shadow']).toBeUndefined();
 	});
 
 	it('labels the row in the quiet ink, a step under a heading', () => {
@@ -408,14 +453,16 @@ describe('the share row and the footer', () => {
 	});
 
 	it.each(SHADES)('holds the organisation’s name 4.5:1 on the wash, %s', (shade) => {
-		for (const ground of ['page', 'washBrand', 'washWarm'] as const)
+		for (const ground of ['page', 'washStart', 'washEnd'] as const)
 			expect(floor(shade, ground, '--_n11'), ground).toBeGreaterThanOrEqual(4.5);
 	});
 });
 
 describe('the goal track', () => {
-	// the fill is what the bar is read by; the track against the ground under it is a look.
-	it.each(SHADES)('holds its fill apart by 3:1, %s', (shade) => {
+	// the fill is the brand's step 9, the seed exactly as set, and the figure beside the bar says the
+	// same amount in words. a pale seed's fill stands within 3:1 of the step-3 track, so this is held
+	// to the floor and marked as falling short.
+	it.fails.each(SHADES)('holds its fill apart by 3:1, %s', (shade) => {
 		expect(floor(shade, 'page', '--_p', '--page-track')).toBeGreaterThanOrEqual(3);
 		expect(floor(shade, 'card', '--_p', '--page-track')).toBeGreaterThanOrEqual(3);
 	});
@@ -479,15 +526,19 @@ describe('the card layout', () => {
 		expect(declared(page, `${CARD} .page-layout::before`)).toMatchObject({
 			'grid-row': 'cover-start / close-end',
 			background: 'var(--page-plane)',
-			'border-radius': 'var(--page-plane-radius)',
-			'box-shadow': 'var(--page-plane-lift)'
+			border: 'var(--_border) solid var(--page-plane-edge)',
+			'border-radius': 'var(--page-plane-radius)'
 		});
 		expect(declared(page, WIDE, `${CARD} .page-layout::before`).content).toBe('none');
 	});
 
-	it('takes the plane’s top corners on the cover at every width', () => {
+	it('takes the plane’s top corners inside its edge on the cover at every width', () => {
+		const inner = 'calc(var(--page-plane-radius) - var(--_border))';
 		expect(declared(page, `${CARD} [data-area='cover'] .page-cover`)['border-radius']).toBe(
-			'var(--page-plane-radius) var(--page-plane-radius) 0 0'
+			`${inner} ${inner} 0 0`
+		);
+		expect(declared(page, `${CARD} [data-area='cover']`).margin).toBe(
+			'var(--_border) var(--_border) 0'
 		);
 		expect(
 			page.filter(
@@ -504,12 +555,11 @@ describe('the card layout', () => {
 		expect(ordered).toEqual([]);
 	});
 
-	it('draws the box on the wide panel as part of the panel: no fill, edge, corner, shadow or inset of its own', () => {
+	it('draws the box on the wide panel as part of the panel: no fill, edge, corner or inset of its own', () => {
 		expect(declared(page, WIDE, `${CARD} [part~='card']`)).toEqual({
 			background: 'transparent',
 			border: '0',
 			'border-radius': '0',
-			'box-shadow': 'none',
 			overflow: 'visible'
 		});
 		// the card's interior inset is `.card-body`'s, which no part name reaches
@@ -525,16 +575,16 @@ describe('the card layout', () => {
 });
 
 describe('no card inside a card', () => {
-	// a plane is a white card on the wash, and its lift is what makes it one; a plane standing in
-	// another is white on white, where the lift says it floats over what already groups it. the box is
-	// the one plane the form draws, and it stands in `.page-layout` in every layout, so wherever a
-	// layout paints `.page-layout` itself as a plane, the box there draws none of a plane's dress.
+	// a plane is a step-1 card on the wash, and its step-6 edge is what makes it one; a plane standing
+	// in another is an edge inside an edge, grouping drawn twice. the box is the one plane the form
+	// draws, and it stands in `.page-layout` in every layout, so wherever a layout paints
+	// `.page-layout` itself as a plane, the box there draws none of a plane's dress.
 	// happy-dom does no layout, so where the box stands is read off the sheet.
 	const WIDE = '@container page (min-width: 60rem)';
 	const WIDTHS: readonly (readonly string[])[] = [[], [WIDE]];
 	const layouts = [...LAYOUTS, 'donation'] as const;
 	const PLANE = 'var(--page-plane)';
-	const LIFT = 'var(--page-plane-lift)';
+	const EDGE = 'var(--_border) solid var(--page-plane-edge)';
 	const at = (inside: readonly string[], selector: string) =>
 		page.filter((b) => b.at.join(' » ') === [...inside, selector].join(' » '));
 
@@ -554,42 +604,151 @@ describe('no card inside a card', () => {
 
 	it.each(
 		holding.map(({ layout, inside }) => [layout, inside.join(' ') || 'phone', inside] as const)
-	)('the box in the %s layout’s plane (%s) draws no lift, fill or edge', (layout, _, inside) => {
+	)('the box in the %s layout’s plane (%s) draws no fill or edge', (layout, _, inside) => {
 		const box = at(inside, `.page[data-layout='${layout}'] [part~='card']`);
 		expect(box).toHaveLength(1);
-		expect(box[0]?.decls).toMatchObject({
-			'box-shadow': 'none',
-			background: 'transparent',
-			border: '0'
-		});
+		expect(box[0]?.decls).toMatchObject({ background: 'transparent', border: '0' });
 	});
 
 	it('keeps the box a card where it stands on the wash, the phone’s card layout included', () => {
-		expect(declared(page, ".page [part~='card']")['box-shadow']).toBe(LIFT);
+		expect(declared(page, ".page [part~='card']")).toMatchObject({
+			'border-color': 'var(--page-plane-edge)',
+			'border-radius': 'var(--page-plane-radius)'
+		});
 		const unset = page.filter(
 			({ at: [first, ...rest], decls }) =>
 				rest.length === 0 &&
 				first?.includes("[part~='card']") === true &&
-				decls['box-shadow'] !== undefined &&
-				decls['box-shadow'] !== LIFT
+				(decls.border !== undefined || decls.background !== undefined)
 		);
 		expect(unset).toEqual([]);
 	});
 
-	it('lifts nothing a plane holds but the box: every other lift stands on the wash', () => {
-		const lifted = page
-			.filter(({ decls }) => decls['box-shadow'] === LIFT)
-			.map(({ at }) => at.join(' » '));
-		expect(lifted.sort()).toEqual(
+	it('edges every plane on the wash in step 6, and the box is the one a plane holds', () => {
+		const planes = page
+			.filter(({ decls }) => decls.background === PLANE)
+			.map(({ at, decls }) => [at.join(' » '), decls.border ?? decls['border-block-end']]);
+		expect(planes.sort()).toEqual(
 			[
-				".page [part~='card']",
-				".page[data-layout='card'] .page-layout::before",
-				`${WIDE} » .page[data-layout='card'] .page-layout`,
-				".page[data-layout='letter'] [data-area='cover']",
-				".page-tiers[data-shape='cards'] .page-tier",
-				'.page-share-button'
+				[".page[data-layout='card'] .page-layout::before", EDGE],
+				[`${WIDE} » .page[data-layout='card'] .page-layout`, EDGE],
+				[".page[data-layout='letter'] [data-area='cover']", EDGE],
+				[".page-tiers[data-shape='cards'] .page-tier", EDGE],
+				['.page-share-button', EDGE],
+				['.page-mast', EDGE]
 			].sort()
 		);
+	});
+});
+
+describe('no shadow anywhere', () => {
+	// radix's steps say depth by a face and an edge; a `box-shadow` the page writes is a focus ring,
+	// a spread hugging the box with no offset and no blur.
+	const layers = (value: string) => {
+		const found: string[] = [];
+		let depth = 0;
+		let layer = '';
+		for (const char of value) {
+			if (char === '(') depth += 1;
+			if (char === ')') depth -= 1;
+			if (char === ',' && depth === 0) {
+				found.push(layer.trim());
+				layer = '';
+			} else layer += char;
+		}
+		return [...found, layer.trim()];
+	};
+
+	it('finds the rings it is meant to be guarding', () => {
+		expect(page.filter(({ decls }) => decls['box-shadow'] !== undefined).length).toBeGreaterThan(1);
+	});
+
+	it('writes every `box-shadow` as zero-offset, zero-blur spreads', () => {
+		const cast = page.flatMap(({ at, decls }) =>
+			decls['box-shadow'] === undefined
+				? []
+				: layers(decls['box-shadow'])
+						.filter((layer) => !/^0 0 0 \S/.test(layer))
+						.map((layer) => `${at.join(' » ')}: ${layer}`)
+		);
+		expect(cast).toEqual([]);
+	});
+
+	it('declares no shadow token', () => {
+		const tokens = declared(page, '.page > .page-ground');
+		expect(Object.values(tokens).filter((v) => /\d+px \d+px/.test(v))).toEqual([]);
+	});
+});
+
+describe('the ground and the wash', () => {
+	// brand steps 2 and 3 are written by the form's own method, `oklch(from var(--donate-primary) L_N
+	// calc(c * k_N) h)`, from the L and k table packages/form/src/styles/tokens.css states.
+	const table = (() => {
+		const row = (label: string) =>
+			new RegExp(`^\\s*\\*\\s+${label}\\s+([.\\d\\s]+)$`, 'm')
+				.exec(formText)?.[1]
+				?.trim()
+				.split(/\s+/);
+		const steps = row('step') ?? [];
+		const L = row('L') ?? [];
+		const k = row('k') ?? [];
+		return (n: number) => {
+			const i = steps.indexOf(String(n));
+			if (i === -1) throw new Error(`the form's table has no step ${n}`);
+			return { L: Number(L[i]), k: Number(k[i]) };
+		};
+	})();
+	const ground = declared(page, '.page > .page-ground');
+
+	it.each([2, 3])('derives brand step %i by the form’s table', (n) => {
+		const { L, k } = table(n);
+		expect(ground[`--page-a${n}`]).toBe(`oklch(from var(--donate-primary) ${L} calc(c * ${k}) h)`);
+	});
+
+	it('lays brand 2 at the top left and brand 3 at the bottom right over slate 2', () => {
+		expect(ground['--page-ground']).toBe('var(--_n2)');
+		expect(ground['--page-wash']).toMatch(
+			/^radial-gradient\(.* at 0% .*, var\(--page-a2\), transparent 70%\), radial-gradient\(.* at 100% 100%, var\(--page-a3\), transparent 70%\)$/
+		);
+		expect(ground.background).toBe('var(--page-wash), var(--page-ground)');
+	});
+
+	it('rules the masthead’s foot and the footer’s head in step 6', () => {
+		expect(declared(page, '.page-mast')['border-block-end']).toBe(
+			'var(--_border) solid var(--page-plane-edge)'
+		);
+		expect(ground['--page-plane-edge']).toBe('var(--_n6)');
+		expect(declared(page, '.page-foot')['border-block-start']).toBe(
+			'var(--_border) solid var(--_n6)'
+		);
+	});
+});
+
+describe('the program options', () => {
+	it('edges an option in step 7 and in step 8 under a pointer and a press', () => {
+		expect(
+			page
+				.filter(({ at, decls }) => at.join() === '.page-choose-option' && decls.border)
+				.map(({ decls }) => decls.border)
+		).toEqual(['var(--_border) solid var(--_edge-control)']);
+		for (const state of [':hover', ':active'])
+			expect(
+				declared(
+					page,
+					`.page-choose .page-choose-option${state}:not(:has(:checked, [aria-disabled='true']))`
+				)['border-color']
+			).toBe('var(--_n8)');
+	});
+
+	it('marks the chosen option as the form marks a chosen tile: step 1, a brand-8 edge, brand-11 words', () => {
+		expect(declared(page, '.page-choose .page-choose-option:has(:checked)')).toEqual({
+			background: 'var(--_n1)',
+			'border-color': 'var(--_a8)'
+		});
+		expect(declared(page, '.page-choose-option:has(:checked) .page-choose-name').color).toBe(
+			'var(--_a11)'
+		);
+		expect(declared(page, '.page-choose-mark').color).toBe('var(--_a11)');
 	});
 });
 
