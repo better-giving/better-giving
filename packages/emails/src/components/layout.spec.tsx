@@ -1,6 +1,14 @@
 import { render } from '@react-email/render';
 import { describe, expect, it } from 'vitest';
-import { MEASURE, PAGE_BG, PLANE_BG, RADIUS_PLANE, SPACE_6 } from '../tokens';
+import {
+	BORDER_WIDTH,
+	DIVIDER,
+	MEASURE,
+	PAGE_BG,
+	PLANE_BG,
+	RADIUS_PLANE,
+	SPACE_6
+} from '../tokens';
 import { Layout, Paragraph } from './layout';
 
 function rendered() {
@@ -25,21 +33,26 @@ function bodyCell(html: string): string {
 
 describe('Layout', () => {
 	/**
-	 * the operator system groups by ground, not by line: one group is one plane, a ground a rung off
-	 * the page with the plane's corner. a mail's body is that one group, drawn by its ground alone
-	 * with no edge, and without the plane every block in it is set on the page's own rung and
-	 * vanishes.
+	 * the operator system draws a group as a plane: step 1 on the page's step 2, edged in step 6, the
+	 * plane's corner and no shadow. a mail's body is that one group, and without the plane every
+	 * block in it is set on the page's own step and vanishes.
 	 */
-	it('sets the body on one plane: a ground a rung off the page, no edge, the plane corner', async () => {
+	it('sets the body on one plane: step 1 on the page, the step-6 edge, the plane corner', async () => {
 		const html = await rendered();
 		const cell = bodyCell(html);
-		// --admin-surface is --admin-neutral-1 in packages/operator/src/styles/tokens.css, converted.
-		expect(PLANE_BG).toBe('#fcfdfe');
+		// --admin-surface and --admin-divider are slate 1 and slate 6 in
+		// packages/operator/src/styles/tokens.css.
+		expect(PLANE_BG).toBe('#fcfcfd');
+		expect(DIVIDER).toBe('#d9d9e0');
 		expect(PLANE_BG).not.toBe(PAGE_BG);
 		expect(html.indexOf(cell)).toBeLessThan(html.indexOf('The body.'));
 		expect(cell).toContain(`background-color:${PLANE_BG}`);
+		expect(cell).toContain(`border:${BORDER_WIDTH}px solid ${DIVIDER}`);
 		expect(cell).toContain(`border-radius:${RADIUS_PLANE}px`);
-		expect(cell).not.toMatch(/border(-[a-z]+)?:[^;"]*solid/);
+	});
+
+	it('draws no shadow anywhere in the shell', async () => {
+		expect(await rendered()).not.toContain('shadow');
 	});
 
 	/**

@@ -27,19 +27,19 @@ export const ADMIN_TOKENS = {
 	// plane on it, and the two bands on the plane, which share a rung in ./tokens.css today. the page
 	// is the solid `--admin-page` and never its wash: a gradient is a background image, which a mail
 	// client may drop, and the solid is the wash's mid tone.
-	'--admin-page': 'oklch(0.986 0.003 250)',
-	'--admin-surface': 'oklch(0.994 0.002 250)',
-	'--admin-surface-sunken': 'oklch(0.965 0.005 250)',
-	'--admin-surface-fill': 'oklch(0.965 0.005 250)',
-	'--admin-divider': 'oklch(0.878 0.011 250)',
-	'--admin-ink': 'oklch(0.27 0.013 250)',
-	'--admin-ink-muted': 'oklch(0.54 0.019 250)',
-	'--admin-link': 'oklch(0.556 0.15 247.3)',
+	'--admin-page': '#f9f9fb',
+	'--admin-surface': '#fcfcfd',
+	'--admin-surface-sunken': '#f0f0f3',
+	'--admin-surface-fill': '#f0f0f3',
+	'--admin-divider': '#d9d9e0',
+	'--admin-ink': '#1c2024',
+	'--admin-ink-muted': '#60646c',
+	'--admin-link': '#0d74ce',
 	// a literal inside a sentence: its ground and its ink.
-	'--admin-code-bg': 'oklch(0.965 0.005 250)',
-	'--admin-code-ink': 'oklch(0.27 0.013 250)',
+	'--admin-code-bg': '#f0f0f3',
+	'--admin-code-ink': '#1c2024',
 	// the band an instruction is set on: the base banner's tone, which carries no hue.
-	'--admin-tone-note-tint': 'oklch(0.965 0.005 250)',
+	'--admin-tone-note-tint': '#f0f0f3',
 
 	// ---- type ----
 	// both stacks are copied whole, first face included. that face is self-hosted by ./fonts.css and
