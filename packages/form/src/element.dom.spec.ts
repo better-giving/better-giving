@@ -5525,6 +5525,19 @@ describe('the stylesheets', () => {
 		expect(declared.length).toBeGreaterThan(50);
 		expect(unspent).toEqual([]);
 	});
+
+	// flat (the head of ./styles/tokens.css): a `box-shadow` this card writes is a ring, no offset and
+	// no blur, never a shadow cast under something. swept over every sheet the card and its two inner
+	// roots adopt, so a raised chip coming back on any of them fails here.
+	it('casts no shadow anywhere, and draws every box-shadow as a ring', async () => {
+		const layers = [...adopted.matchAll(/box-shadow:\s*([^;]+);/g)].flatMap(([, value]) =>
+			(value ?? '').split(/,(?![^(]*\))/).map((layer) => layer.trim().replace(/\s+/g, ' '))
+		);
+		const cast = layers.filter((layer) => layer !== 'none' && !/^(inset )?0 0 0 /.test(layer));
+
+		expect(layers.length).toBeGreaterThan(10);
+		expect(cast).toEqual([]);
+	});
 });
 
 describe('where a payment provider paints', () => {
