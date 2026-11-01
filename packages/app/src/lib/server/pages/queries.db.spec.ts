@@ -4,12 +4,9 @@ import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import { form, page } from '../db/schema';
 import type { PageState, PageType } from '../../page/keys';
-import { defaultCampaign } from '../../page/defaults';
-import { readForm } from '../forms/queries';
 import { createImage, stored as imageStored } from '../images/image.testing';
-import { CAMPAIGN_NAME, heroShowing, insertPage, SETTINGS } from './page-row.testing';
-import { publishPage } from './publish';
-import { deleteNeverPublishedCampaign, endCampaign, readPage, updateCampaignSlug } from './queries';
+import { heroShowing, insertPage } from './page-row.testing';
+import { deleteNeverPublishedCampaign, endCampaign, readPage } from './queries';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 
 // the one delete of a page: a campaign that has never been live, with its owned settings row, in
@@ -172,63 +169,5 @@ describe('endCampaign()', () => {
 
 	it('refuses a page that does not exist', async () => {
 		expect(await endCampaign(db, '019fc800-0000-7000-8000-000000000000', EARLIER)).toBe(false);
-	});
-});
-
-describe('updateCampaignSlug() taking a campaign past its end date', () => {
-	const DAY = 86_400_000;
-
-	/** a live campaign whose published end passed a day ago and whose draft ends a week on. */
-	async function pastItsEnd(): Promise<{ pageId: string; formId: string; slug: string }> {
-		const end = (at: number) => ({ endsAt: at, endsZone: 'America/New_York' });
-		const pageId = await insertPage(
-			db,
-			'campaign',
-			{ ...defaultCampaign(), settings: SETTINGS, ...end(Date.now() + 7 * DAY) },
-			{ ...defaultCampaign(), settings: SETTINGS, ...end(Date.now() - DAY) }
-		);
-		const row = await readPage(db, pageId);
-		if (row === null || row.slug === null) throw new Error('the fixture campaign has no address');
-		await db.update(form).set({ status: 'live' }).where(eq(form.id, row.formId));
-		return { pageId, formId: row.formId, slug: row.slug };
-	}
-
-	it('moves nothing where the holder is published again between the read and the write', async () => {
-		const holder = await pastItsEnd();
-		const taker = await insertPage(db, 'campaign');
-		const takerRow = await readPage(db, taker);
-		if (takerRow === null) throw new Error('the fixture taker is not there');
-		// the holder's Publish lands after `updateCampaignSlug` has read it and before its batch.
-		const racing = new Proxy(db, {
-			get: (target, property) =>
-				property === 'batch'
-					? async (statements: Parameters<Db['batch']>[0]) => {
-							const drawn = await readPage(target, holder.pageId);
-							if (drawn === null) throw new Error('the holder is gone');
-							const outcome = await publishPage(
-								target,
-								{ type: 'campaign', id: holder.pageId },
-								drawn.updatedAt,
-								{ now: Date.now() }
-							);
-							expect(outcome).toMatchObject({ kind: 'published' });
-							return target.batch(statements);
-						}
-					: Reflect.get(target, property)
-		});
-
-		const written = await updateCampaignSlug(
-			racing,
-			taker,
-			takerRow.updatedAt,
-			holder.slug,
-			{ move: false, takeover: true },
-			Date.now()
-		);
-
-		expect(written).toEqual({ kind: 'taken', by: CAMPAIGN_NAME });
-		expect((await readPage(db, taker))?.slug).toBe(takerRow.slug);
-		expect(await readPage(db, holder.pageId)).toMatchObject({ state: 'live', slug: holder.slug });
-		expect((await readForm(db, holder.formId))?.status).toBe('live');
 	});
 });

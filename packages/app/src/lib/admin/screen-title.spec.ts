@@ -22,7 +22,7 @@ describe('a screen title', () => {
 	});
 
 	it('names the software where no organisation name is stored', () => {
-		// the same answer the identity band gives, and for the same reason: an operator who has not
+		// the same answer the top bar gives, and for the same reason: an operator who has not
 		// been to the console yet has nothing for either to print.
 		expect(screenTitle('Gifts', [layout(null)])).toBe(`Gifts · ${APP_NAME}`);
 	});

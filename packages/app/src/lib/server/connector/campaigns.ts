@@ -1,6 +1,8 @@
 import { readAmount } from '../../forms/amounts';
 import { GIFTS_GO_TO } from '../../page/publish-form';
 import { HEADING_MAX, type Page as PageDocument } from '../../page/catalog';
+import { campaignShape, type Layout } from '../../page/shape';
+import type { PageType } from '../../page/keys';
 import { endDayOf, endOfDay, isTimeZone } from '../../page/end-date';
 import { stateAt } from '../../page/ended';
 import { placedImageIds } from '../../page/image-src';
@@ -15,12 +17,14 @@ import { publishPage } from '../pages/publish';
 import { endCampaign, readPage } from '../pages/queries';
 
 // the campaign actions of `/connector/v1`, in the contract's terms: a campaign is `draft`,
-// `published` or `ended`, money is a decimal string with its currency, a day is `YYYY-MM-DD`. every
-// edit goes through `editPageDraft` (../pages/draft-writer.ts), the writer the dashboard's own
-// presses use, so a page the connector edits meets the same page rule a hand edit does, and is only
-// ever the draft: donors see nothing of it until Publish. Publish and End are the dashboard's own
-// (`publishPage` in ../pages/publish.ts, `endCampaign` in ../pages/queries.ts), guarded on the row
-// as read just before.
+// `published` or `ended`, money is a decimal string with its currency, a day is `YYYY-MM-DD`. a
+// chat edits a campaign's content — its title, story, photos, tiers and questions — and never how
+// it is laid out: the page picks its layout from what the content holds ($lib/page/shape.ts), and
+// `campaigns.get` says which it picked. every edit goes through `editPageDraft`
+// (../pages/draft-writer.ts), the writer the dashboard's own presses use, so a page the connector
+// edits meets the same page rule a hand edit does, and is only ever the draft: donors see nothing of
+// it until Publish. Publish and End are the dashboard's own (`publishPage` in ../pages/publish.ts,
+// `endCampaign` in ../pages/queries.ts), guarded on the row as read just before.
 
 export type CampaignStatus = 'draft' | 'published' | 'ended';
 
@@ -45,8 +49,12 @@ const money = (minor: number | null | undefined): Money | null =>
 		? null
 		: { amount: majorText(minor, CURRENCY), currency: CURRENCY };
 
+/**
+ * a page state as `v1` names it. an unpublished campaign reads `draft`: it takes no gift and
+ * answers at no address until it is published again, as a never-published one; it keeps its slug.
+ */
 export function statusOf(state: PageRow['state']): CampaignStatus {
-	return state === 'never_published' ? 'draft' : state === 'live' ? 'published' : 'ended';
+	return state === 'live' ? 'published' : state === 'ended' ? 'ended' : 'draft';
 }
 
 const publicUrl = (origin: string, slug: string | null, status: CampaignStatus) =>
@@ -77,16 +85,33 @@ export async function listCampaigns(
 		.filter((row) => status === null || row.status === status);
 }
 
-/** a campaign as `campaigns.get` answers it: the summary, with its draft's blocks and settings. */
+/** a page's content as the connector reads and writes it: the draft's own keys, by these names. */
+export const CONTENT_KEYS = ['heading', 'lede', 'story', 'hero', 'photos', 'tiers', 'faq'] as const;
+export type ContentKey = (typeof CONTENT_KEYS)[number];
+export type Content = Pick<PageDocument, ContentKey>;
+
+/** the content keys a page of `type` holds: a campaign every one, the donation page its heading. */
+export const CONTENT_KEYS_OF: Record<PageType, readonly ContentKey[]> = {
+	campaign: CONTENT_KEYS,
+	donation_page: ['heading']
+};
+
+/** a campaign as `campaigns.get` answers it: the summary, with its draft's content and settings. */
 export type CampaignDetail = CampaignSummary & {
 	readonly has_unpublished_changes: boolean;
-	readonly sharing: {
-		readonly message: string | null;
-		readonly channels: readonly string[] | null;
-	};
+	readonly sharing: { readonly message: string | null };
 	readonly time_zone: string | null;
-	readonly blocks: PageDocument['blocks'];
+	/** the layout the draft's content draws in, which no edit picks. */
+	readonly layout: Layout;
+	readonly content: Content;
 };
+
+/** the content keys `page` holds, by their names. */
+export function contentOf(page: PageDocument, type: PageType): Content {
+	return Object.fromEntries(
+		CONTENT_KEYS_OF[type].flatMap((key) => (page[key] === undefined ? [] : [[key, page[key]]]))
+	) as Content;
+}
 
 /** the campaign `id`, or `null` where there is none or it is no campaign. */
 export async function readCampaign(
@@ -115,9 +140,10 @@ function detailOf(row: PageRow, origin: string, now: Date): CampaignDetail | nul
 		end_date: endDayOf(page),
 		updated_at: row.updatedAt.toISOString(),
 		has_unpublished_changes: row.published !== null && row.published !== row.draft,
-		sharing: { message: page.shareMessage ?? null, channels: page.shareChannels ?? null },
+		sharing: { message: page.shareMessage ?? null },
 		time_zone: page.endsZone ?? null,
-		blocks: page.blocks
+		layout: campaignShape(page, { logoImageId: null }).layout,
+		content: contentOf(page, 'campaign')
 	};
 }
 
@@ -151,47 +177,90 @@ export async function createFromTitle(
 	return { ok: true, campaign: made };
 }
 
-/** replaces a campaign's draft blocks with `blocks`, in the catalog's shape. */
-export async function replaceBlocks(
+/** writes the content keys `body` names over a campaign's draft; a key left out is left alone. */
+export async function updateContent(
 	db: Db,
 	origin: string,
 	now: Date,
 	id: string,
 	body: unknown
 ): Promise<Done | Refused> {
-	const edit = blocksEdit(db, body);
+	const edit = contentEdit(db, body, 'campaign');
 	if (typeof edit !== 'function') return edit;
 	const written = await editPageDraft(db, { type: 'campaign', id }, 'current', edit);
 	return answer(db, origin, now, id, written);
 }
 
+/** what a key the content holds no place for is answered with: how the page is laid out instead. */
+const NOT_CONTENT =
+	'the page picks its whole layout from its content: a short story with nothing else is a card; a longer story, or one to three tiers, questions and photos, is a letter; four or more is a feature. no layout, look, colour, block, order or share button is set, so send content keys only';
+
 /**
- * an update_blocks body, `{ blocks }`, as the draft edit that puts those blocks in place of the
- * draft's; or its refusal. a photo it places is one already stored here, never an id made up.
+ * an update_content body — any of `CONTENT_KEYS_OF[type]`, each in the page rule's shape, null to
+ * clear one — as the draft edit that writes those keys over the draft's; or its refusal. a photo it
+ * places is one already stored here, never an id made up.
  */
-export function blocksEdit(db: Db, body: unknown): DraftCommand | Refused {
-	const blocks =
-		typeof body === 'object' && body !== null ? (body as { blocks?: unknown }).blocks : undefined;
-	if (!Array.isArray(blocks))
+export function contentEdit(db: Db, body: unknown, type: PageType): DraftCommand | Refused {
+	if (typeof body !== 'object' || body === null || Array.isArray(body))
 		return invalid(
-			'blocks',
-			'blocks is the whole list of the page’s blocks, in the catalog’s shape (blocks.catalog)'
+			'',
+			`the body is a JSON object of content keys: ${CONTENT_KEYS_OF[type].join(', ')}`
+		);
+	const keys: readonly string[] = CONTENT_KEYS_OF[type];
+	const unknown = Object.keys(body).find((key) => !keys.includes(key));
+	if (unknown !== undefined) {
+		return invalid(
+			unknown,
+			(CONTENT_KEYS as readonly string[]).includes(unknown)
+				? `the donation page holds no ${unknown}; it draws one fixed layout and its content is its heading alone`
+				: `${JSON.stringify(unknown)} is not content; ${NOT_CONTENT}`
+		);
+	}
+	const posted = body as Record<string, unknown>;
+	if (Object.keys(posted).length === 0)
+		return invalid(
+			'',
+			`send at least one content key: ${CONTENT_KEYS_OF[type].join(', ')}; a key left out is left alone`
 		);
 	return async (draft) => {
-		const next = { ...draft, blocks };
+		const next: Record<string, unknown> = { ...draft };
+		for (const [key, value] of Object.entries(posted)) {
+			if (value === null) {
+				if (key === 'heading') next.heading = '';
+				else delete next[key];
+			} else next[key] = value;
+		}
 		const before = new Set(placedImageIds(draft));
-		const added = imageIdsIn(blocks).filter((imageId) => !before.has(imageId));
-		const missing = await firstMissingImage(db, added);
-		if (missing !== null) {
-			return {
-				ok: false,
-				path: ['blocks'],
-				message: `no photo ${JSON.stringify(missing)} is stored here; add a photo through photos.upload_link instead of naming one`
-			};
+		for (const key of ['hero', 'photos'] as const) {
+			const added = idsNamed(posted[key]).filter((imageId) => !before.has(imageId));
+			const missing = await firstMissingImage(db, added);
+			if (missing !== null) {
+				return {
+					ok: false,
+					path: [key],
+					message: `no photo ${JSON.stringify(missing)} is stored here; add a photo through photos.upload_link instead of naming one`
+				};
+			}
 		}
 		return { ok: true, draft: next };
 	};
 }
+
+/**
+ * the image ids a posted `hero` or `photos` value names, from its well-formed `{ imageId }` entries
+ * alone: any other entry is the page rule's to refuse.
+ */
+function idsNamed(value: unknown): string[] {
+	return (Array.isArray(value) ? value : [value]).flatMap((entry) =>
+		typeof entry === 'object' &&
+		entry !== null &&
+		typeof (entry as { imageId?: unknown }).imageId === 'string'
+			? [(entry as { imageId: string }).imageId]
+			: []
+	);
+}
+
+const SETTINGS_KEYS: readonly string[] = ['goal', 'end_date', 'time_zone', 'sharing'];
 
 /** sets a campaign's goal, end date and sharing on its draft; a key left out is left alone. */
 export async function changeSettings(
@@ -201,7 +270,32 @@ export async function changeSettings(
 	id: string,
 	body: unknown
 ): Promise<Done | Refused> {
-	if (typeof body !== 'object' || body === null) return invalid('', 'the body is a JSON object');
+	if (typeof body !== 'object' || body === null || Array.isArray(body))
+		return invalid('', `the body is a JSON object of ${SETTINGS_KEYS.join(', ')}`);
+	const unset = Object.keys(body).find((key) => !SETTINGS_KEYS.includes(key));
+	if (unset !== undefined) {
+		return invalid(
+			unset,
+			`${JSON.stringify(unset)} is not a setting; the settings are ${SETTINGS_KEYS.join(', ')}, content goes through campaigns.update_content, and the page picks its layout from its content, so no layout, look, colour or block is set`
+		);
+	}
+	const sharing = (body as { sharing?: unknown }).sharing;
+	if (sharing !== undefined) {
+		if (typeof sharing !== 'object' || sharing === null || Array.isArray(sharing))
+			return invalid(
+				'sharing',
+				'sharing is { "message": "<what a share says>" }, or { "message": null } for none'
+			);
+		const other = Object.keys(sharing).find((key) => key !== 'message');
+		if (other === 'channels') {
+			return invalid(
+				'sharing.channels',
+				'every page offers the same share buttons, Copy link, Email, Facebook and WhatsApp, and none is chosen; send sharing.message only'
+			);
+		}
+		if (other !== undefined)
+			return invalid(`sharing.${other}`, 'sharing holds message alone; send sharing.message only');
+	}
 	const input = body as {
 		goal?: unknown;
 		end_date?: unknown;
@@ -251,11 +345,9 @@ export async function changeSettings(
 			}
 		}
 		if (input.sharing !== undefined) {
-			const sharing = (input.sharing ?? {}) as { message?: unknown; channels?: unknown };
-			if (sharing.message === null) delete next.shareMessage;
-			else if (sharing.message !== undefined) next.shareMessage = sharing.message;
-			if (sharing.channels === null) delete next.shareChannels;
-			else if (sharing.channels !== undefined) next.shareChannels = sharing.channels;
+			const { message } = input.sharing as { message?: unknown };
+			if (message === null) delete next.shareMessage;
+			else if (message !== undefined) next.shareMessage = message;
 		}
 		return { ok: true, draft: next };
 	});
@@ -283,9 +375,9 @@ async function answer(
 
 /**
  * makes a campaign's draft live, through the dashboard's own Publish and its rules, guarded on the
- * row as read just before. `gifts_go_to` is the first Publish's answer to where gifts go, which the
- * chat asks the operator rather than answering itself: a program id to pin, or null to keep the
- * campaign's own donation settings. a later Publish takes none.
+ * row as read just before. `gifts_go_to` is an optional answer at the first Publish to where gifts
+ * go: a program id to pin, or null to keep the campaign's own donation settings, which leaving it
+ * out keeps too. a later Publish takes none.
  */
 export async function publishCampaign(
 	db: Db,
@@ -312,7 +404,7 @@ export async function publishCampaign(
 		case 'stale':
 			return changed('as it was being published', 'publish it again if it should still go live');
 		case 'refused':
-			if (outcome.at === GIFTS_GO_TO) return giftsGoToRefused(row.state === 'never_published');
+			if (outcome.at === GIFTS_GO_TO) return giftsGoToRefused();
 			return { ok: false, status: 422, code: 'invalid', detail: outcome.text };
 		case 'published':
 			return { ok: true, campaign: await reread(db, origin, now, id) };
@@ -322,22 +414,29 @@ export async function publishCampaign(
 const GIFTS_GO_TO_IS =
 	'gifts_go_to is a program id to pin this campaign’s gifts to, or null to keep its own donation settings';
 
-function giftsGoToRefused(first: boolean): Refused {
-	const message = first
-		? `a campaign’s first Publish says where its gifts go; ${GIFTS_GO_TO_IS}`
-		: 'where gifts go is answered at a campaign’s first Publish only, and this one has been published; leave gifts_go_to out';
+/** a `gifts_go_to` sent to a campaign already published, whose program is its Settings'. */
+function giftsGoToRefused(): Refused {
 	return {
 		ok: false,
 		status: 422,
 		code: 'invalid',
-		detail: first
-			? 'Nothing was published: ask the operator where this campaign’s gifts go, then publish again with gifts_go_to set to null to keep the campaign’s own donation settings, or to the id of the program to pin its gifts to.'
-			: 'Nothing was published: gifts_go_to is taken at a campaign’s first Publish only. Publish again without it; where gifts go is changed in the dashboard, under Settings, Donation settings.',
-		errors: [{ path: GIFTS_GO_TO, message }]
+		detail:
+			'Nothing was published: gifts_go_to is taken at a campaign’s first Publish only. Publish again without it; where gifts go is changed in the dashboard, in the campaign’s Settings.',
+		errors: [
+			{
+				path: GIFTS_GO_TO,
+				message:
+					'where gifts go is answered at a campaign’s first Publish only, and this one has been published; leave gifts_go_to out'
+			}
+		]
 	};
 }
 
-/** takes a live campaign off the air through the dashboard's End, guarded on the row as just read. */
+/**
+ * takes a live or unpublished campaign off the air through the dashboard's End, guarded on the row
+ * as just read. an unpublished one reads as `draft`, as one never published does, and only the
+ * stored state tells them apart.
+ */
 export async function endLiveCampaign(
 	db: Db,
 	origin: string,
@@ -346,13 +445,13 @@ export async function endLiveCampaign(
 ): Promise<Done | Refused> {
 	const row = await readPage(db, id);
 	if (row === null || row.type !== 'campaign') return missing(id);
-	const status = statusOf(stateAt(row, now.getTime()));
-	if (status !== 'published') {
+	const state = stateAt(row, now.getTime());
+	if (state !== 'live' && state !== 'unpublished') {
 		return {
 			ok: false,
 			status: 422,
 			code: 'invalid',
-			detail: `Nothing was ended: only a published campaign can be ended, and this one is ${status}.`
+			detail: `Nothing was ended: only a published or unpublished campaign can be ended, and this one is ${state === 'ended' ? 'ended' : 'a draft never published'}.`
 		};
 	}
 	if (!(await endCampaign(db, id, row.updatedAt)))
@@ -399,12 +498,4 @@ export function invalid(path: string, message: string): Refused {
 		detail: `The edit was refused: ${message}. Nothing was changed.`,
 		errors: [{ path, message }]
 	};
-}
-
-function imageIdsIn(blocks: readonly unknown[]): string[] {
-	return blocks.flatMap((block) => {
-		if (typeof block !== 'object' || block === null) return [];
-		const imageId = (block as { imageId?: unknown }).imageId;
-		return typeof imageId === 'string' ? [imageId] : [];
-	});
 }

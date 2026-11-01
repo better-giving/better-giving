@@ -1,30 +1,16 @@
-// the share channels a donor page can offer, what each is called on a button, and where each sends
-// a donor. each page picks some of these and orders them (`shareChannels` in ./catalog.ts); the
-// page's share block draws them in that order ($lib/donate/blocks/share.tsx).
+// the share buttons every donor page offers, in the order they stand, what each is called, and where
+// each sends a donor. the set is fixed: no page chooses its own ($lib/donate/sections/share.tsx).
 //
-// pure and not under `$lib/server/**`, for the reason ./keys.ts gives: the rule that refuses an
-// off-list channel and the block that draws one read the same list.
+// pure and not under `$lib/server/**`: the page draws the buttons and its specs read the same list.
 
-export const SHARE_CHANNELS = [
-	'facebook',
-	'whatsapp',
-	'email',
-	'copy-link',
-	'linkedin',
-	'x'
-] as const;
+export const SHARE_CHANNELS = ['copy-link', 'email', 'facebook', 'whatsapp'] as const;
 export type ShareChannel = (typeof SHARE_CHANNELS)[number];
-
-/** the channels a page offers where the page has chosen none. */
-export const SHARE_CHANNELS_DEFAULT: readonly ShareChannel[] = ['facebook', 'email', 'copy-link'];
 
 export const SHARE_CHANNEL_LABELS: Record<ShareChannel, string> = {
 	facebook: 'Facebook',
 	whatsapp: 'WhatsApp',
 	email: 'Email',
-	'copy-link': 'Copy link',
-	linkedin: 'LinkedIn',
-	x: 'X'
+	'copy-link': 'Copy link'
 };
 
 /** what a channel is handed: the page's own address and the message said with it. */
@@ -48,11 +34,5 @@ export function shareHref(
 			return `https://wa.me/?text=${q(said)}`;
 		case 'email':
 			return `mailto:?body=${q(said)}`;
-		case 'linkedin':
-			return `https://www.linkedin.com/sharing/share-offsite/?url=${q(url)}`;
-		case 'x':
-			return message === ''
-				? `https://x.com/intent/post?url=${q(url)}`
-				: `https://x.com/intent/post?text=${q(message)}&url=${q(url)}`;
 	}
 }

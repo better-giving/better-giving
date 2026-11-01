@@ -148,7 +148,7 @@ export type QuoteInputResult = { readonly ok: true; readonly value: ParsedQuoteR
  * hold before the write rather than at it, since a length check on that column would be a
  * constraint added to a table that already exists (../db/schema.ts).
  */
-const MAX_NOTE = 2_000;
+export const MAX_NOTE = 2_000;
 
 /**
  * the body itself: a JSON object, and not an array.

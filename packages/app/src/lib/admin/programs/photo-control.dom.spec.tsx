@@ -1,7 +1,7 @@
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { replaceRefusal } from '../editor/replace-photo';
+import { replaceRefusal } from '../page-edit/replace-photo';
 import { ProgramPhotoControl, type ProgramPhotoControlProps } from './photo-control';
 
 // a program's photo on its own screen in each state it can stand in: none, a pick uploading, a pick

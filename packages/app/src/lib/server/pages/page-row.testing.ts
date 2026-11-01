@@ -25,13 +25,9 @@ export const CAMPAIGN_NAME = 'Winter coat drive';
 
 let sequence = 0;
 
-/** a campaign document whose hero places `imageId`, and no other block a photo. */
+/** a campaign document whose cover photo is `imageId`, and which places no other photo. */
 export function heroShowing(imageId: string): Page {
-	const draft: Page = { ...defaultCampaign(), settings: SETTINGS };
-	return {
-		...draft,
-		blocks: draft.blocks.map((block) => (block.type === 'hero' ? { ...block, imageId } : block))
-	};
+	return { ...defaultCampaign(), settings: SETTINGS, hero: { imageId, alt: null } };
 }
 
 /**

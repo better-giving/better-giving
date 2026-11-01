@@ -1,4 +1,3 @@
-import type { Page as PageDocument } from '../../page/catalog';
 import { stateAt } from '../../page/ended';
 import type { Db } from '../db/client';
 import type { Page as PageRow } from '../db/schema';
@@ -7,20 +6,24 @@ import { editPageDraft } from '../pages/draft-writer';
 import { readTarget } from '../pages/queries';
 import { resetDonationPage } from '../pages/reset';
 import {
-	blocksEdit,
 	type CampaignStatus,
+	type Content,
+	contentEdit,
+	contentOf,
 	invalid,
 	pathText,
 	type Refused,
 	statusOf
 } from './campaigns';
 
-// the donation page's actions of `/connector/v1`: its read, its blocks and its Reset to default.
+// the donation page's actions of `/connector/v1`: its read, its content and its Reset to default.
 // the connector never makes the donation page: the dashboard's loaders are the ones that do
 // ($lib/server/pages/donation-page.ts), so a deployment whose dashboard has never opened it answers
 // every action here `not_found`, telling the operator to open it once.
 //
-// a blocks edit is the draft only, as a campaign's is. Reset writes the draft and the live page
+// the donation page draws one fixed layout — its title, the program chooser, the donation box, About
+// us, the share buttons and the footer — so its content is its heading alone. a content edit is the
+// draft only, as a campaign's is. Reset writes the draft and the live page
 // together (../pages/reset.ts), so donors see the default at once; on a page already the default
 // it writes nothing and answers the page as it stands. with no Publish step between it and donors,
 // Reset takes `confirm: true` in its body, the JSON boolean and nothing else, which the chat sends
@@ -31,11 +34,8 @@ export type DonationPage = {
 	readonly status: CampaignStatus;
 	readonly public_url: string | null;
 	readonly has_unpublished_changes: boolean;
-	readonly sharing: {
-		readonly message: string | null;
-		readonly channels: readonly string[] | null;
-	};
-	readonly blocks: PageDocument['blocks'];
+	readonly sharing: { readonly message: string | null };
+	readonly content: Content;
 	readonly updated_at: string;
 };
 
@@ -74,23 +74,20 @@ function pageOf(row: PageRow, origin: string, now: Date): DonationPage {
 		status,
 		public_url: status === 'published' ? `${origin}/donate` : null,
 		has_unpublished_changes: row.published !== null && row.published !== row.draft,
-		sharing: {
-			message: draft.page.shareMessage ?? null,
-			channels: draft.page.shareChannels ?? null
-		},
-		blocks: draft.page.blocks,
+		sharing: { message: draft.page.shareMessage ?? null },
+		content: contentOf(draft.page, 'donation_page'),
 		updated_at: row.updatedAt.toISOString()
 	};
 }
 
-/** replaces the donation page's draft blocks with `blocks`, in the catalog's shape. */
-export async function replaceDonationBlocks(
+/** writes the donation page's heading, as `body` names it, over its draft. */
+export async function updateDonationContent(
 	db: Db,
 	origin: string,
 	now: Date,
 	body: unknown
 ): Promise<Done | Refused> {
-	const edit = blocksEdit(db, body);
+	const edit = contentEdit(db, body, 'donation_page');
 	if (typeof edit !== 'function') return edit;
 	const written = await editPageDraft(db, TARGET, 'current', edit);
 	switch (written.kind) {

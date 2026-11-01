@@ -1,5 +1,5 @@
 import { Fragment, type CSSProperties } from 'react';
-import { BLOCK_BG, box, EDGE, FONT_MONO, INK, LH_CODE, SPACE_6, TEXT_CODE } from '../tokens';
+import { BANNER_BG, box, FONT_MONO, LH_CODE, RADIUS, SPACE_6, TEXT_CODE } from '../tokens';
 import { Divider, Heading, Layout, Paragraph, SmallPrint } from '../components/layout';
 import type { EmailTemplate } from '../template';
 
@@ -109,10 +109,10 @@ const FACTS_STYLE: CSSProperties = {
 	lineHeight: LH_CODE
 };
 
-/** the one instruction on the page, set apart by a rule down its side. */
+/** the one instruction on the page, set apart as `.adm-banner` sets a note: by its tint, no edge. */
 const ACTION_STYLE: CSSProperties = {
 	margin: box(0, 0, SPACE_6),
 	padding: SPACE_6,
-	borderLeft: `${EDGE}px solid ${INK}`,
-	background: BLOCK_BG
+	background: BANNER_BG,
+	borderRadius: RADIUS
 };

@@ -78,9 +78,16 @@ export type GiftInHand = {
 	 * how the gift came in, in the operator's words — `donation.source`.
 	 *
 	 * never `donation.note`: that column is what a donor typed, and the gifts list prints it as the
-	 * donor's message.
+	 * donor's message. the dashboard's Add a donation has no note box, so it leaves `note` out.
 	 */
 	readonly source: string | null;
+	/**
+	 * the donor's message — `donation.note`.
+	 *
+	 * `/connector/v1` `donations.record` is the caller that has one (`parseGift` in
+	 * ../connector/record.ts). absent is none, the same as `null`.
+	 */
+	readonly note?: string | null;
 };
 
 /**
@@ -139,6 +146,7 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 			receivedAt: gift.dated,
 			formId: null,
 			source: gift.source,
+			note: gift.note ?? null,
 			programId: gift.programId
 		};
 		const lineRow: NewLineItem = {
@@ -202,6 +210,8 @@ export type SubmittedGiftInHand = {
 	readonly method: InHandMethod;
 	readonly programId: string | null;
 	readonly source: string | null;
+	/** the donor's message, or `null`. a retry under one key is the same gift only when this matches. */
+	readonly note: string | null;
 	readonly donor:
 		| { readonly kind: 'existing'; readonly contactId: string }
 		| { readonly kind: 'new'; readonly email: string | null; readonly name: string };
@@ -213,7 +223,7 @@ export type SubmittedGiftInHand = {
  * idempotency key.
  *
  * what a refused duplicate is checked against before it is answered as already recorded: the figure,
- * the day, how it arrived, the cause, the source and the donor. a new donor is compared the way
+ * the day, how it arrived, the cause, the source, the note and the donor. a new donor is compared the way
  * `resolveDonor` in ./donor.ts files one — by address where one was given, since an address on file
  * files the gift under that contact whatever name was typed, and by name where none was.
  */
@@ -231,6 +241,7 @@ export function holdsSubmittedGift(found: RecordedGift, submitted: SubmittedGift
 		found.receivedAt.getTime() === submitted.receivedAt.getTime() &&
 		found.method === submitted.method &&
 		found.programId === submitted.programId &&
-		found.source === submitted.source
+		found.source === submitted.source &&
+		found.note === submitted.note
 	);
 }

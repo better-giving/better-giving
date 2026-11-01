@@ -11,6 +11,7 @@ import {
 	WHITESPACE_RUN
 } from '../contacts/contact-input';
 import type { Db } from '../db/client';
+import { MAX_NOTE } from '../donations/quote-input';
 import { findRecordedGift } from '../donations/queries';
 import {
 	holdsSubmittedGift,
@@ -76,7 +77,13 @@ type GiftCall = {
 	readonly dated: Date;
 	readonly method: InHandMethod;
 	readonly donor: ParsedContact;
-	readonly source: string | null;
+	/**
+	 * the donor's message, `donation.note`.
+	 *
+	 * never `donation.source`: that column is the operator's words on Add a donation
+	 * (`GiftInHand.source` in ../donations/record-in-hand.ts), and this call has none.
+	 */
+	readonly note: string | null;
 };
 
 const ruleMessage = (result: { success: boolean; error?: { issues: { message: string }[] } }) =>
@@ -160,18 +167,26 @@ function parseGift(body: unknown): GiftCall | Issue[] {
 			message: 'is left out: a hand-recorded gift is not tied to a campaign, and counts toward none'
 		});
 
-	let source: string | null = null;
+	let note: string | null = null;
 	if (input.note !== undefined && input.note !== null) {
-		const read = GIFT_IN_HAND_INPUT.shape.source.safeParse(input.note);
-		if (!read.success) issues.push({ path: 'note', message: ruleMessage(read) ?? 'is refused' });
-		else source = read.data.trim() === '' ? null : read.data.trim();
+		if (typeof input.note !== 'string')
+			issues.push({ path: 'note', message: 'is the donor’s message, as a string, or left out' });
+		else {
+			const trimmed = input.note.trim();
+			if (trimmed.length > MAX_NOTE)
+				issues.push({
+					path: 'note',
+					message: `is at most ${MAX_NOTE} characters, the longest message a gift keeps`
+				});
+			else note = trimmed === '' ? null : trimmed;
+		}
 	}
 
 	const donor = parseDonor(input.donor, issues);
 
 	if (issues.length > 0 || amountMinor === null || dated === null || method === null || !donor)
 		return issues;
-	return { amountMinor, dated, method, donor, source };
+	return { amountMinor, dated, method, donor, note };
 }
 
 function parseDonor(value: unknown, issues: Issue[]): ParsedContact | null {
@@ -289,7 +304,8 @@ export async function recordConnectorGift(
 		dated: parsed.dated,
 		method: parsed.method,
 		programId: null,
-		source: parsed.source
+		source: null,
+		note: parsed.note
 	});
 	if (recorded.ok) return { ok: true, status: 201, gift: await readBack(db, paymentId) };
 	if (recorded.reason === 'write_failed') return WRITE_FAILED;
@@ -300,7 +316,8 @@ export async function recordConnectorGift(
 		receivedAt: parsed.dated,
 		method: parsed.method,
 		programId: null,
-		source: parsed.source,
+		source: null,
+		note: parsed.note,
 		donor: { kind: 'new', email: parsed.donor.primaryEmail, name: parsed.donor.displayName }
 	};
 	if (found === null || !holdsSubmittedGift(found, submitted))

@@ -43,6 +43,7 @@ export type ConfirmResult = {
 /** the error as much of it as this mapping reads. */
 export type StripeErrorLike = {
 	readonly type?: string;
+	readonly code?: string;
 	readonly message?: string;
 	readonly payment_intent?: IntentLike | null;
 };
@@ -60,6 +61,28 @@ const UNSTATED_DECLINE = 'Your payment was not accepted. Try a different payment
  */
 const UNCONFIRMABLE =
 	'This gift could not be sent for payment, and nothing was charged. Try again.';
+
+/**
+ * what a donor is told when their bank could not complete the card check.
+ *
+ * Stripe sends `payment_intent_authentication_failure` and
+ * `setup_intent_authentication_failure` as `invalid_request_error`
+ * (https://docs.stripe.com/error-codes/payment-intent-authentication-failure). that type is
+ * otherwise a request this integration made wrong (`REFUSED_REQUEST_TYPES`), and reading the
+ * bank's answer as that request tells the donor the gift could not be sent and reports a fault
+ * nobody on the page can fix.
+ */
+const BANK_COULD_NOT_VERIFY = "Your bank couldn't verify this card. Try again or use another card.";
+
+/** the codes that are a bank declining the card check, whatever `type` they arrive under. */
+const AUTHENTICATION_FAILURE_CODES: readonly string[] = [
+	'payment_intent_authentication_failure',
+	'setup_intent_authentication_failure'
+];
+
+function authenticationFailed(error: StripeErrorLike): boolean {
+	return AUTHENTICATION_FAILURE_CODES.includes(error.code ?? '');
+}
 
 /**
  * one Stripe intent status as an outcome.
@@ -129,7 +152,9 @@ const UNFINISHED_FIELD_TYPES: readonly string[] = ['validation_error'];
  * the error types that say the request itself was refused, so no rail was ever reached.
  *
  * `invalid_request_error` is the provider rejecting the call before processing it — a parameter it
- * will not accept, or one that disagrees with the intent being confirmed. the money provably did
+ * will not accept, or one that disagrees with the intent being confirmed. a bank that could not
+ * verify the card arrives as this type too, and is read off its code first (`authenticationFailed`):
+ * that one is the donor's, and the rest of this type is not. the money provably did
  * not move, which is what separates it from `api_connection_error` and `api_error`: those two say
  * the request may have been received and answered, and stay `indeterminate` for that reason.
  *
@@ -144,19 +169,23 @@ const REFUSED_REQUEST_TYPES: readonly string[] = ['invalid_request_error'];
 /**
  * whether a refusal is the donor's own to act on rather than this integration's.
  *
- * the two lists above are the two a donor can do something about — an issuer said no, or a field
- * of the provider's own is not finished — and each already reaches them on the screen: the first as
- * a sentence this flow carries, the second as the provider's own mark on its own field. everything
- * else is a fault of the integration or of the network, which is what ./stripe.ts reports to the
- * console of the page the form is embedded in. the distinction is worth drawing: a decline logged
- * on every host page is noise on the path that works, and noise is where a fault that only happens
- * once goes unread. an unfinished form is noisier still — it is the ordinary way a donor fills one
- * in.
+ * an issuer said no, a field of the provider's own is not finished, or the bank could not verify
+ * the card (`authenticationFailed`). each already reaches the donor on the screen: the first and
+ * the third as a sentence this flow carries, the second as the provider's own mark on its own
+ * field. everything else is a fault of the integration or of the network, which is what ./stripe.ts
+ * reports to the console of the page the form is embedded in. the distinction is worth drawing:
+ * a decline logged on every host page is noise on the path that works, and noise is where a fault
+ * that only happens once goes unread. an unfinished form is noisier still — it is the ordinary way
+ * a donor fills one in.
  */
 export function donorsOwn(error: StripeErrorLike | null | undefined): boolean {
 	if (error === null || error === undefined) return false;
 	const type = error.type ?? '';
-	return DECLINING_ERROR_TYPES.includes(type) || UNFINISHED_FIELD_TYPES.includes(type);
+	return (
+		DECLINING_ERROR_TYPES.includes(type) ||
+		UNFINISHED_FIELD_TYPES.includes(type) ||
+		authenticationFailed(error)
+	);
 }
 
 /**
@@ -181,12 +210,14 @@ export function outcomeOf(result: ConfirmResult): ConfirmOutcome {
 /**
  * a confirmation, as one outcome.
  *
- * `outcomeOf` above with two types read ahead of the intent, and the split is what the two callers
- * may each claim. a confirmation the provider refused outright never reached a rail, so the money
- * provably did not move — see `REFUSED_REQUEST_TYPES`, and the intent such an error carries
- * describes the moment before the call rather than what became of the gift. a *read* refused the
- * same way says nothing whatever about a charge that may already have settled, which is why the
- * certainty lives on this entry point and never on the shared one.
+ * `outcomeOf` above with the bank's card check, a refused request and an unfinished field read
+ * ahead of the intent, and the split is what the two callers may each claim. the card check is
+ * first because it arrives as `invalid_request_error`, and reading it as that request would tell
+ * the donor the gift could not be sent. a confirmation the provider refused outright never reached
+ * a rail, so the money provably did not move — see `REFUSED_REQUEST_TYPES`, and the intent such an
+ * error carries describes the moment before the call rather than what became of the gift. a *read*
+ * refused the same way says nothing whatever about a charge that may already have settled, which is
+ * why the certainty lives on this entry point and never on the shared one.
  *
  * an unfinished field is the same ordering for the same reason. the confirmation was stopped by the
  * provider's own validation before anything left the page, and whatever intent came back with it is
@@ -196,6 +227,9 @@ export function outcomeOf(result: ConfirmResult): ConfirmOutcome {
  */
 export function outcomeOfConfirmation(result: ConfirmResult): ConfirmOutcome {
 	const error = result.error;
+	if (error && authenticationFailed(error)) {
+		return { kind: 'declined', message: BANK_COULD_NOT_VERIFY };
+	}
 	if (error && REFUSED_REQUEST_TYPES.includes(error.type ?? '')) {
 		return { kind: 'declined', message: UNCONFIRMABLE };
 	}

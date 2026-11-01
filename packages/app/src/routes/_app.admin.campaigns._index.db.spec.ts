@@ -84,7 +84,7 @@ async function load(): Promise<{ campaigns: Row[]; ended: Row[] }> {
 /** a campaign in `state`, made `at` ms, its draft carrying `extra`. */
 async function campaign(
 	name: string,
-	state: 'never_published' | 'live' | 'ended',
+	state: 'never_published' | 'live' | 'unpublished' | 'ended',
 	at: number,
 	extra: object = {}
 ) {
@@ -174,6 +174,17 @@ describe('the Campaigns list', () => {
 			['Winter coat drive', 'live', '/winter-coat-drive']
 		]);
 		expect(ended.map((row) => [row.name, row.state])).toEqual([['Summer camp fund', 'ended']]);
+	});
+
+	it('lists an unpublished campaign among the rest, with the address it keeps', async () => {
+		await campaign('Winter coat drive', 'unpublished', NOW);
+
+		const { campaigns: listed, ended } = await load();
+
+		expect(listed.map((row) => [row.name, row.state, row.address])).toEqual([
+			['Winter coat drive', 'unpublished', '/winter-coat-drive']
+		]);
+		expect(ended).toEqual([]);
 	});
 
 	it('shows a campaign’s goal and the day its end was chosen for, in the zone it was chosen in', async () => {
@@ -397,6 +408,44 @@ describe('End', () => {
 	});
 });
 
+describe('End on an unpublished campaign', () => {
+	it('is asked, and moves it to the Ended group, giving its address up', async () => {
+		const pageId = await campaign('Winter coat drive', 'unpublished', NOW);
+		const asking = await request(
+			new Request(`${ORIGIN}${LIST}?end=${pageId}`, { headers: { cookie: session } }),
+			{ env: bindings }
+		);
+		expect(((await asking.json()) as { ending: { id: string } | null }).ending?.id).toBe(pageId);
+
+		const response = await press(
+			'campaign-end',
+			await listed('Winter coat drive'),
+			`${LIST}?end=${pageId}`
+		);
+
+		expect(response.status).toBe(303);
+		expect((await listed('Winter coat drive')).state).toBe('ended');
+		expect((await listed('Winter coat drive')).address).toBeNull();
+		expect(await visit('winter-coat-drive')).toMatchObject({ kind: 'refused' });
+	});
+
+	it('is still offered past the campaign’s published end date, and gives its address up', async () => {
+		const pageId = await campaign('Winter coat drive', 'unpublished', NOW, {
+			endsAt: Date.now() - 60_000,
+			endsZone: 'America/New_York'
+		});
+		const before = await listed('Winter coat drive');
+		expect(before.state).toBe('unpublished');
+
+		const response = await press('campaign-end', before, `${LIST}?end=${pageId}`);
+
+		expect(response.status).toBe(303);
+		const after = await listed('Winter coat drive');
+		expect([after.state, after.address]).toEqual(['ended', null]);
+		expect(await visit('winter-coat-drive')).toMatchObject({ kind: 'refused' });
+	});
+});
+
 describe('Publish from the Ended group', () => {
 	it('brings an ended campaign back live at its address, taking gifts again', async () => {
 		const pageId = await campaign('Summer camp fund', 'ended', NOW);
@@ -474,7 +523,7 @@ describe('Delete', () => {
 		expect(await asked(ended)).toBeNull();
 	});
 
-	it.each([['live'], ['ended']] as const)(
+	it.each([['live'], ['unpublished'], ['ended']] as const)(
 		'refuses a campaign that is %s, keeping it',
 		async (state) => {
 			await campaign('Winter coat drive', state, NOW);

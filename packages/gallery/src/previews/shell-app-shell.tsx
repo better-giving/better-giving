@@ -52,13 +52,17 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
  * the toggle on the rail's head collapses it to an icon rail, and the choice is kept per browser,
  * so every specimen on this page follows it once the page is reloaded.
  *
- * `wayOut` reads absence as a request for the component's own quiet button and `null` as none.
- * `foot`, handed, stands in the rail's foot in its place, and `null` for both drops the rail's foot
- * rather than standing an empty one.
+ * `wayOut` reads absence as a request for the component's own quiet button and `null` as none, and
+ * stands at the far end of the top bar. `foot`, handed, stands in the rail's foot at the wide width,
+ * and absent or `null` draws no foot rather than an empty one.
  *
  * every shell's first stop is its skip link, off the screen until it takes focus: Tab once into
  * any specimen and it stands over the top corner of the window, and pressing it puts focus on that
  * shell's page past the whole rail. the page draws no ring when it lands there.
+ *
+ * `pageLink` is the organisation's public page, just before the way out: its words from 44rem and
+ * its mark alone under it. only the dashboard's specimen hands one, and every other shows the bar
+ * without it.
  *
  * `head` is the strip across the top of the panel, and `site` is the globe leading the
  * organisation's name, drawn both ways: an address off the surface, opened in a new tab, and an
@@ -135,11 +139,13 @@ export default function ShellAppShellPreview() {
 
 			{/* the dashboard's rail: three groups with a mark on every entry, the four tabs marked `bar`
 			    and the rest under More on a phone, the reader in a section rather than on its page, a name long enough to
-			    contest the identity row led by the in-app globe, a strip over the panel, and the cells
-			    drawn as the link the surface handed in. */}
+			    contest the top bar's row led by the in-app globe and ended by the link to the public page
+			    before the way out, a strip over the panel, and the cells drawn as the link the surface
+			    handed in. */}
 			<AppShell
 				org="The Wharfedale Riverside Community Kitchen and Night Shelter Trust"
 				site={{ href: '#', label: 'Donation page' }}
+				pageLink={{ href: '#', label: 'Open donation page' }}
 				current={{ label: 'Donors', kind: 'section' }}
 				groups={[
 					{

@@ -11,7 +11,7 @@ import { setupReadiness } from './readiness';
 //
 // **a read that did not land answers `null`.** the five are a reading of rows and values, and the
 // row is also where everything that names this deployment takes the registered name from — the
-// protected layout's identity band (../../../routes/_app.tsx), and the screens and mail outside
+// protected layout's top bar (../../../routes/_app.tsx), and the screens and mail outside
 // it. a throw there would replace those screens with a bare error on exactly the deployment whose
 // database is not answering, so the failure is logged and each caller goes on without the name.
 

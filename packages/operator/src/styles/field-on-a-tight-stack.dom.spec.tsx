@@ -34,8 +34,13 @@ const tokens = stripComments(readFileSync(join(here, 'tokens.css'), 'utf8'));
 
 /** a step of the scale as a number of rem, resolved in ./tokens.css where it is decided. */
 function lengthIn(value: string | undefined): number {
-	const token = value?.match(/^var\((--admin-space-\d+)\)$/)?.[1];
-	if (token === undefined) throw new Error(`not a step of the spacing scale: ${value}`);
+	const named = value?.match(/^var\((--admin-(?:space-\d+|gap-[a-z]+))\)$/)?.[1];
+	if (named === undefined) throw new Error(`not a step of the spacing scale: ${value}`);
+	// a named gap is a step of the scale under the name of the tier it is.
+	const token = named.startsWith('--admin-gap-')
+		? tokens.match(new RegExp(`${named}:\\s*var\\((--admin-space-\\d+)\\)\\s*;`))?.[1]
+		: named;
+	if (token === undefined) throw new Error(`${named} names no step in ./tokens.css`);
 	const stated = tokens.match(new RegExp(`${token}:\\s*(0|[\\d.]+rem)\\s*;`))?.[1];
 	if (stated === undefined) throw new Error(`${token} is not a length in ./tokens.css`);
 	return Number.parseFloat(stated);
@@ -160,8 +165,8 @@ describe('a field standing on a tight stack', () => {
 		const inside = lengthIn(ruleOf(css, '.adm-field > * + *').get('margin-block-start'));
 
 		expect(boundary).toBeGreaterThan(inside);
-		// and it is the step a fieldset already puts between one of its children and the next, so
-		// two boxes stand the same distance apart whether or not a group is drawn around them.
-		expect(boundary).toBe(lengthIn(ruleOf(css, '.adm-fieldset > * + *').get('margin-block-start')));
+		// and it is the step the wider stack already puts between two of its items, so two boxes
+		// on a stack stand the same distance apart whichever of the two stacks holds them.
+		expect(boundary).toBe(lengthIn(ruleOf(css, '.adm-stack').get('gap')));
 	});
 });

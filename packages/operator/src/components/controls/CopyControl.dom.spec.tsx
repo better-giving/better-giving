@@ -159,6 +159,23 @@ describe('a copy control mounted into a document', () => {
 		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
 	});
 
+	it('is drawn round while it is a mark alone, and keeps the corner once it is worded', () => {
+		// `.adm-btn--icon` in ../../styles/adm.css is the round shape, and this control writes it
+		// itself rather than through ./Button.jsx.
+		const unworded = render(CopyControl, { text: 'bgz_key' });
+		const worded = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt',
+			wayOut: WAY_OUT,
+			onBlocked: () => {}
+		});
+
+		expect([
+			button(unworded).classList.contains('adm-btn--icon'),
+			button(worded).classList.contains('adm-btn--icon')
+		]).toEqual([true, false]);
+	});
+
 	it('reports each outcome as an unworded control does, and draws its wording again once settled', async () => {
 		const onBlocked = vi.fn();
 		const root = render(CopyControl, {

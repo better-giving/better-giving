@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react';
-import { Mark } from '../status/Mark.jsx';
 import { FieldMessage } from './FieldMessage.jsx';
 
 /**
@@ -52,11 +51,10 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @typedef {object} ChoiceChipsProps
  * @property {string} id
  * @property {string} name the name every chip submits under.
- * @property {'radio' | 'checkbox' | undefined} [type] one of the chips, or any of them. a checkbox
- *   chip draws a tick box before its words, empty until it is taken, so a question taking several
- *   answers reads as one before anything is pressed; a radio chip draws none. the browser submits
- *   and the keyboard walks the two differently — arrows move between radios, Tab between
- *   checkboxes.
+ * @property {'radio' | 'checkbox' | undefined} [type] one of the chips, or any of them. the two
+ *   are drawn alike: a taken chip is told by its tint and its edge, and a question taking several
+ *   answers says so in its `hint`. the browser submits and the keyboard walks the two differently
+ *   — arrows move between radios, Tab between checkboxes.
  * @property {ReactNode} legend the question the chips answer.
  * @property {ReactNode} [hint]
  * @property {ReactNode} [error] the group's refusal, never a single chip's.
@@ -109,7 +107,6 @@ export function ChoiceChips({
 	const groupLines = [hintId, errorId].filter(Boolean).join(' ') || undefined;
 	const legendId = `${id}-legend`;
 	const otherText = `${id}-other-text`;
-	const tick = type === 'checkbox' ? <Mark name="check" className="adm-choicechip__tick" /> : null;
 	const refusal = error ? <FieldMessage id={errorId}>{error}</FieldMessage> : null;
 
 	/** @param {FocusEvent<HTMLFieldSetElement>} event */
@@ -158,7 +155,6 @@ export function ChoiceChips({
 									aria-labelledby={line ? words : undefined}
 									aria-describedby={[groupLines, line].filter(Boolean).join(' ') || undefined}
 								/>
-								{tick}
 								<span className="adm-choicechip__label" id={line ? words : undefined}>
 									{label}
 								</span>
@@ -183,7 +179,6 @@ export function ChoiceChips({
 							aria-invalid={errorId ? 'true' : undefined}
 							aria-describedby={groupLines}
 						/>
-						{tick}
 						<span id={otherText}>{other.label ?? 'Other'}</span>
 					</label>
 				) : null}

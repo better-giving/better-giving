@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { connectorHarness, under } from '../connector-routes.testing';
 import * as splat from './connector.v1.$';
 import * as donations from './connector.v1.donations';
+import * as donor from './connector.v1.donors.$id';
 import * as donors from './connector.v1.donors._index';
 import * as results from './connector.v1.results';
 import { first, run, stmt } from '$lib/server/db/database.testing';
@@ -27,6 +28,7 @@ beforeEach(async () => {
 
 const h = connectorHarness(() => ({
 	donations: under('donations', donations),
+	donor: under('donors/:id', donor),
 	donors: under('donors', donors),
 	results: under('results', results),
 	unserved: under('*', splat)
@@ -74,11 +76,15 @@ describe('donations.record', () => {
 			donor_email: 'ada@example.org',
 			form_id: null,
 			campaign_id: null,
-			// the operator's words are the gift's source, never the donor's message.
-			note: null
+			note: 'envelope at the spring fair'
 		});
 		const listed = await call('donations', '/donations', { key });
 		expect(await listed.json()).toEqual({ data: [recorded], next_cursor: null });
+		const donorId = recorded.donor_id;
+		const file = await call('donor', `/donors/${String(donorId)}`, { key });
+		expect(await file.json()).toMatchObject({
+			gifts: { data: [expect.objectContaining({ note: 'envelope at the spring fair' })] }
+		});
 		const summary = await call('results', '/results?from=2026-09-01&to=2026-09-30', { key });
 		expect(await summary.json()).toMatchObject({
 			total: usd('250.00'),
@@ -179,6 +185,17 @@ describe('donations.record', () => {
 		expect(await second.json()).toEqual(await first.json());
 		expect(await count('donation')).toBe(1);
 		expect(await count('payment')).toBe(1);
+	});
+
+	it('refuses a different note under an Idempotency-Key already spent', async () => {
+		const key = await connect();
+		await record(key, CHEQUE, 'chat-turn-41');
+
+		const changed = await record(key, { ...CHEQUE, note: 'a different envelope' }, 'chat-turn-41');
+
+		expect(changed.status).toBe(409);
+		expect(await changed.json()).toMatchObject({ code: 'idempotency_conflict' });
+		expect(await count('donation')).toBe(1);
 	});
 
 	it('refuses a different gift under an Idempotency-Key already spent', async () => {

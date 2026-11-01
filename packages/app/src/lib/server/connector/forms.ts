@@ -98,20 +98,27 @@ export async function readConnectorForm(db: Db, id: string): Promise<ConnectorFo
 }
 
 /**
- * the forms the dashboard's Forms list shows, oldest first, from `from` for `limit`; and whether
- * any follow. a page's own row is not one of them (`readForms`), so `campaign_id` is null on each.
+ * every form that is not archived, oldest first, from `from` for `limit`; and whether any follow.
+ *
+ * a page's own row is one of them (`readForms` with `include`). a campaign's answers with that
+ * campaign's id, the same way `readConnectorForm` does, and the donation page's answers with none.
  */
 export async function listConnectorForms(
 	db: Db,
 	from: number,
 	limit: number
 ): Promise<{ data: ConnectorForm[]; more: boolean }> {
-	const listed = await readForms(db);
+	const listed = await readForms(db, 'include');
 	const records = await Promise.all(
-		listed.slice(from, from + limit).map((row) => readForm(db, row.id))
+		listed.slice(from, from + limit).map(async (row) => {
+			const record = await readForm(db, row.id);
+			if (record === null) return null;
+			const owned = await owner(db, row.id);
+			return wireOf(record, owned?.type === 'campaign' ? owned.id : null);
+		})
 	);
 	return {
-		data: records.flatMap((record) => (record === null ? [] : [wireOf(record, null)])),
+		data: records.flatMap((record) => (record === null ? [] : [record])),
 		more: from + limit < listed.length
 	};
 }

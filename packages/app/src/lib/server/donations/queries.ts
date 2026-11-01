@@ -650,7 +650,7 @@ function firstCollected(db: Db) {
  */
 export type RecordedGift = Pick<
 	Donation,
-	'totalMinor' | 'currency' | 'receivedAt' | 'contactId' | 'programId' | 'source'
+	'totalMinor' | 'currency' | 'receivedAt' | 'contactId' | 'programId' | 'source' | 'note'
 > & {
 	readonly donorName: string;
 	readonly donorEmail: string | null;
@@ -659,7 +659,7 @@ export type RecordedGift = Pick<
 };
 
 /**
- * one gift's figure, day, donor, cause, source and method, or `null` where no gift has the id.
+ * one gift's figure, day, donor, cause, source, note and method, or `null` where no gift has the id.
  *
  * read back by the id the flash or the press carried rather than carried itself: a cookie holds a
  * marker and never a sentence (`$lib/server/flash.ts`).
@@ -672,7 +672,8 @@ export async function findRecordedGift(db: Db, id: string): Promise<RecordedGift
 			receivedAt: donation.receivedAt,
 			contactId: donation.contactId,
 			programId: donation.programId,
-			source: donation.source
+			source: donation.source,
+			note: donation.note
 		})
 		.from(donation)
 		.where(eq(donation.id, id))

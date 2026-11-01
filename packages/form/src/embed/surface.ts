@@ -63,6 +63,8 @@ export type PaymentSeams = {
 type Part = {
 	readonly owns: (rail: PaymentMethod) => boolean;
 	readonly surface: PaymentSurface;
+	/** the node this processor draws into, which `open` below placed in the box. */
+	readonly node: HTMLElement;
 	/** the rows this processor draws outside the provider's frame, where it draws any. */
 	readonly rows?: RowList;
 	/** whether this page load is a return from this processor's own window. */
@@ -232,6 +234,7 @@ export function createPaymentSurface(
 		return (failure) => {
 			if (unsaid === null) unsaid = failure;
 			down.add(at);
+			space();
 			sayWhatIsLeft();
 		};
 	};
@@ -284,8 +287,30 @@ export function createPaymentSurface(
 	/** how many rails the provider's frame lists, off the config for the reason `rows` above gives. */
 	const inlineRows = config.paymentMethods.filter(isStripeRail).length;
 
+	/**
+	 * every rail is a box of its own, stood the item gap under whatever the box lists above it. the
+	 * rows inside one node space themselves (`:host(:not(:first-child))` in ../styles/rows.css), and
+	 * the provider's frame spaces its own rails (`accordionItemSpacing` in ../styles/appearance.ts),
+	 * so what is left is the step between two nodes — and a node listing nothing yet takes none, or
+	 * the gap above it would stand in the list as a stripe of the card's ground. the provider's node
+	 * counts as listing from the start, because its rails are counted off the config (`inlineRows`),
+	 * until its processor is down (`down` above): a frame that never drew lists nothing.
+	 *
+	 * an inline declaration for the reason `PINNED` below is one, and a token rather than a literal
+	 * because this one is a look: the step resolves on the node through the slot it is projected by.
+	 */
+	const space = (): void => {
+		let above = false;
+		for (const [at, part] of parts.entries()) {
+			const listing = up(at) && (part.rows === undefined || part.rows.current().length > 0);
+			part.node.style.setProperty('margin-block-start', above && listing ? 'var(--_sp5)' : '0px');
+			above ||= listing;
+		}
+	};
+
 	/** the count told, after any row was drawn or taken away. */
 	const recount = (): void => {
+		space();
 		const count = inlineRows + drawnRows().length;
 		if (count === counted) return;
 		counted = count;
@@ -293,11 +318,8 @@ export function createPaymentSurface(
 	};
 
 	/**
-	 * the node one adapter owns, placed and pinned here and dressed inside by the adapter itself.
-	 *
-	 * the nodes stack flush: every processor draws its options as rows of the one list the box is
-	 * (`accordionItemSpacing` in ../styles/appearance.ts, ../styles/rows.css), and a gap between two
-	 * processors' rows is a stripe of the card's ground cutting across it.
+	 * the node one adapter owns, placed and pinned here and dressed inside by the adapter itself, and
+	 * spaced from the node above it by `space` above.
 	 */
 	const open = (): HTMLElement => {
 		const node = doc.createElement('div');
@@ -308,9 +330,10 @@ export function createPaymentSurface(
 
 	let inlinePart: Part | null = null;
 	if (config.paymentMethods.some(isStripeRail)) {
+		const node = open();
 		const inline = createStripeSurface(
 			config,
-			open(),
+			node,
 			(rail) => {
 				// a rail the donor opened in the provider's frame is the one open option in the box.
 				if (rail !== null) for (const row of drawnRows()) row.collapse();
@@ -323,6 +346,7 @@ export function createPaymentSurface(
 		const part: Part = {
 			owns: isStripeRail,
 			surface: inline,
+			node,
 			// the inline fields recognise no return ahead of a read: the token a redirect comes back
 			// with is the intent's own, and reading it is exactly what that adapter's `resume` does.
 			// so it claims nothing, and it is the fallback below instead.
@@ -335,9 +359,10 @@ export function createPaymentSurface(
 
 	let offerVenmo: (offered: boolean) => void = () => {};
 	if (config.paymentMethods.some(isPaypalRail)) {
+		const node = open();
 		const paypal = createPaypalSurface(
 			config,
-			open(),
+			node,
 			(rail) => reported(part, rail),
 			heldAt(),
 			unrepeatableAt(),
@@ -346,6 +371,7 @@ export function createPaymentSurface(
 		const part: Part = {
 			owns: isPaypalRail,
 			surface: paypal,
+			node,
 			rows: paypal.rows,
 			claimsReturn: () => paypal.claimsReturn(),
 			repeats: config.paymentMethods.includes('paypal')
@@ -358,10 +384,12 @@ export function createPaymentSurface(
 	// rail chosen and the window opened in one go, and that press reaches the flow through `fund`.
 	let offerFund: (offered: boolean) => void = () => {};
 	if (config.paymentMethods.some(isChariotRail)) {
-		const chariot = createChariotSurface(config, open(), heldAt(), fund, seams?.chariot);
+		const node = open();
+		const chariot = createChariotSurface(config, node, heldAt(), fund, seams?.chariot);
 		parts.push({
 			owns: isChariotRail,
 			surface: chariot,
+			node,
 			rows: chariot.rows,
 			// a grant id is nothing a browser can read back, and no window of the fund's returns here.
 			claimsReturn: () => Promise.resolve(false),
@@ -373,10 +401,12 @@ export function createPaymentSurface(
 	// last of all, because the card lists it last: no processor's window or frame stands behind it.
 	let offerCrypto: (offered: boolean) => void = () => {};
 	if (config.paymentMethods.some(isNowpaymentsRail)) {
-		const crypto = createNowpaymentsSurface(open(), coins, (rail) => reported(part, rail));
+		const node = open();
+		const crypto = createNowpaymentsSurface(node, coins, (rail) => reported(part, rail));
 		const part: Part = {
 			owns: isNowpaymentsRail,
 			surface: crypto,
+			node,
 			rows: crypto.rows,
 			claimsReturn: () => Promise.resolve(false),
 			repeats: false

@@ -6,8 +6,8 @@ import { ChoiceChips, type ChoiceChipsProps } from './ChoiceChips.jsx';
 
 // what a question drawn as chips is besides its look: native radios or checkboxes in one named
 // group, so the platform's own keys walk it and a form submits it; the hint each control is
-// described by; the tick that tells a question taking several answers from one taking one; the
-// cards a choice with a line under it is drawn as; the group's refusal; and the Other chip, whose
+// described by; the taken chip's tint and edge, which with no tick drawn is the whole of what says
+// a chip is taken; the cards a choice with a line under it is drawn as; the group's refusal; and the Other chip, whose
 // box opens with it, closes with it, and submits under a name of its own.
 //
 // the arrow keys inside a radio group and Space on a checkbox are the platform's, which happy-dom
@@ -126,35 +126,44 @@ describe('choice chips mounted into a document', () => {
 		}
 	});
 
-	describe('the tick a question taking several answers draws', () => {
-		const ticks = (root: HTMLElement) =>
-			[...root.querySelectorAll('label.adm-choicechip')].map(
-				(label) => label.querySelector('svg.adm-choicechip__tick') !== null
-			);
+	describe('the tick no chip draws', () => {
+		// a taken chip is told by its tint and its edge, and a question taking several answers says
+		// so in its hint, so a checkbox chip is drawn as a radio chip is.
+		it.each([
+			['checkbox', { type: 'checkbox' }],
+			['radio', {}],
+			['checkbox card', { type: 'checkbox', options: KINDS, other: undefined, cards: true }],
+			['radio card', { options: KINDS, other: undefined, cards: true }]
+		] as const)('stands in no %s chip', (_, props) => {
+			const root = render(Bound, props);
 
-		it('stands in every checkbox chip, Other among them, out of the tree', () => {
-			const root = render(Bound, { type: 'checkbox' });
-
-			expect(ticks(root)).toEqual([true, true, true, true]);
-			for (const tick of root.querySelectorAll('.adm-choicechip__tick')) {
-				expect(tick.getAttribute('aria-hidden')).toBe('true');
-			}
+			expect(root.querySelectorAll('label.adm-choicechip').length).toBeGreaterThan(0);
+			expect(root.querySelector('.adm-choicechip__tick')).toBeNull();
 		});
+	});
 
-		it('stands in no radio chip', () => {
+	describe('the taken chip', () => {
+		// the sheet's rule is keyed on the control inside the label, so the markup is what the case
+		// matches it against, and the rule is what the case reads the look from.
+		const TAKEN = '.adm-choicechip:has(input:checked)';
+
+		it('is the one chip the taken rule matches', async () => {
 			const root = render(Bound, {});
+			await take(chip(root, 'Children'));
 
-			expect(ticks(root)).toEqual([false, false, false, false]);
+			const matched = [...root.querySelectorAll('label.adm-choicechip')]
+				.filter((label) => label.matches(TAKEN))
+				.map((label) => label.textContent);
+			expect(matched).toEqual(['Children']);
 		});
 
-		it('fills with the primary pair when its chip is taken, and is an empty box until then', () => {
-			const css = sheet('adm.css');
-			const rest = ruleOf(css, '.adm-choicechip__tick');
-			const taken = ruleOf(css, '.adm-choicechip:has(input:checked) > .adm-choicechip__tick');
+		it('paints the accent tint inside the accent ink edge', () => {
+			const taken = ruleOf(sheet('adm.css'), TAKEN);
 
-			expect(rest.get('color')).toBe('transparent');
-			expect(taken.get('background')).toBe('var(--admin-primary-bg)');
-			expect(taken.get('color')).toBe('var(--admin-primary-ink)');
+			expect([taken.get('background'), taken.get('border-color')]).toEqual([
+				'var(--admin-accent-tint)',
+				'var(--admin-accent-ink)'
+			]);
 		});
 	});
 

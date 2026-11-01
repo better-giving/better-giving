@@ -1144,6 +1144,9 @@ async function reinstate(
 			`the dispute fee given back is ${feeReturnedMinor}, which is not a whole number of minor units.`
 		);
 	}
+	// a win that follows this dispute's own loss puts the money back. the loss's ledger lines stay;
+	// the group below is a new one. a row already won is a redelivery and writes nothing.
+	let restoringLoss = false;
 	if (reversal.kind === 'dispute_won') {
 		const [closed] = await deps.db
 			.select({ outcome: dispute.outcome })
@@ -1156,7 +1159,7 @@ async function reinstate(
 				detail: `dispute ${reversal.providerReversalId} is already recorded as won; this delivery changed nothing.`
 			};
 		}
-		if (closed?.outcome === 'lost') return closedTheOtherWay(deps, reversal, refundRow);
+		restoringLoss = closed?.outcome === 'lost';
 	}
 
 	const withdrawal = await findEntryGroup(deps.db, 'refund', refundRow.id);
@@ -1212,7 +1215,12 @@ async function reinstate(
 					deps.db
 						.update(dispute)
 						.set({ outcome: 'won', closedAt: reversal.occurredAt })
-						.where(and(eq(dispute.paymentId, refundRow.id), isNull(dispute.outcome)))
+						.where(
+							and(
+								eq(dispute.paymentId, refundRow.id),
+								restoringLoss ? eq(dispute.outcome, 'lost') : isNull(dispute.outcome)
+							)
+						)
 				]
 			: []),
 		...(putBack === null
@@ -1249,6 +1257,8 @@ async function reinstate(
 	}
 
 	if (reversal.kind === 'refund_failed') await refundDidNotStand(deps, reversal, refundRow);
+	if (restoringLoss && reversal.kind === 'dispute_won')
+		await wonAfterLoss(deps, reversal, refundRow, withdrawal !== null);
 	return withdrawal === null
 		? {
 				ok: true,
@@ -1380,25 +1390,54 @@ async function wonUnheard(
 }
 
 /**
- * a dispute reported closed one way after this deployment recorded it closed the other. which
- * report stands is the processor's to say and a person's to read, so nothing is written and staff
- * are told.
+ * staff told, once, that a dispute recorded as lost was later won.
+ *
+ * `posted` is whether this delivery wrote the group that puts the money back. a loss the books
+ * never held has no group to mirror, and the mail says so rather than naming one that is not
+ * there. a redelivery is `already_posted` before this runs.
+ */
+async function wonAfterLoss(
+	deps: SettleDeps,
+	reversal: WonDisputeRead,
+	refundRow: Payment,
+	posted: boolean
+): Promise<void> {
+	const processor = processorLabel(deps);
+	await tellStaff(deps, {
+		headline: `A ${processor} dispute marked lost is now reported won`,
+		body: posted
+			? `${processor} reported a dispute as won after your records had it as lost. The money is ` +
+				'back on the gift and the donor’s total. The record that took the money off is unchanged, and a new one puts it back.'
+			: `${processor} reported a dispute as won after your records had it as lost. Nothing new ` +
+				'was posted: your records never held the money it took. The gift counts the money again.',
+		facts: [
+			{ label: `${processor} dispute ID`, value: reversal.providerReversalId },
+			{ label: 'Refund ID', value: refundRow.id },
+			{ label: 'Gift ID', value: refundRow.donationId },
+			{ label: 'Amount', value: alertMoney(refundRow.amountMinor, refundRow.currency) }
+		],
+		action: null
+	});
+}
+
+/**
+ * a dispute reported lost after this deployment recorded it won.
+ *
+ * which report stands is the processor's to say and a person's to read, so nothing is written
+ * and staff are told. a win after a recorded loss does not come here: `reinstate` posts the
+ * group that puts the money back.
  */
 async function closedTheOtherWay(
 	deps: SettleDeps,
-	reversal: Extract<Reversal, { kind: 'dispute_won' | 'dispute_lost' }>,
+	reversal: Extract<Reversal, { kind: 'dispute_lost' }>,
 	refundRow: Payment
 ): Promise<SettleResult> {
 	const processor = processorLabel(deps);
-	const [reported, recorded] = reversal.kind === 'dispute_won' ? ['won', 'lost'] : ['lost', 'won'];
 	await tellStaff(deps, {
-		headline: `A ${processor} dispute marked ${recorded} is now reported ${reported}`,
+		headline: `A ${processor} dispute marked won is now reported lost`,
 		body:
-			`${processor} reported a dispute as ${reported}, but your records already show it as ` +
-			`${recorded}. Nothing was changed: ` +
-			(recorded === 'lost'
-				? 'the money is still taken off the gift and the donor’s total.'
-				: 'the money still counts on the gift and the donor’s total.'),
+			`${processor} reported a dispute as lost, but your records already show it as won. ` +
+			'Nothing was changed: the money still counts on the gift and the donor’s total.',
 		facts: [
 			{ label: `${processor} dispute ID`, value: reversal.providerReversalId },
 			{ label: 'Refund ID', value: refundRow.id },
@@ -1406,18 +1445,14 @@ async function closedTheOtherWay(
 			{ label: 'Amount', value: alertMoney(refundRow.amountMinor, refundRow.currency) }
 		],
 		action:
-			recorded === 'lost'
-				? `Check the dispute in your ${processor} dashboard. If the money did come back, post a ` +
-					'correction for it on the Books page: out of the fund it was given to, into the account ' +
-					'the gift went into.'
-				: `Check the dispute in your ${processor} dashboard. If the money did go, post a ` +
-					'correction for it on the Books page: out of the account the gift went into, into the ' +
-					'fund it was given to.'
+			`Check the dispute in your ${processor} dashboard. If the money did go, post a ` +
+			'correction for it on the Books page: out of the account the gift went into, into the ' +
+			'fund it was given to.'
 	});
 	return {
 		ok: true,
 		outcome: 'unactionable',
-		detail: `dispute ${reversal.providerReversalId} was reported ${reported} and is recorded as ${recorded}; nothing was changed.`
+		detail: `dispute ${reversal.providerReversalId} was reported lost and is recorded as won; nothing was changed.`
 	};
 }
 

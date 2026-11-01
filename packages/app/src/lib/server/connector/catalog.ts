@@ -1,42 +1,44 @@
 import { z } from 'zod';
-import { BLOCK_TYPES, type BlockType, block } from '../../page/catalog';
+import { SECTION_DATA } from '../../page/catalog';
+import { FEATURE_EXTRAS, STORY_THRESHOLD } from '../../page/shape';
+import { CONTENT_KEYS, type ContentKey } from './campaigns';
 
-// `blocks.catalog`: every block a page may hold, what it shows a donor, and the JSON Schema of one
-// block of that type as the page rule holds it (../../page/catalog.ts), so a chat writes blocks the
-// rule takes. the schema is the shape alone: a page's own rules — one donation box, ids unique,
-// the goal bar on a campaign only — are refused at the write, naming the block.
+// `content.catalog`: every content key a page holds, what it shows a donor, and the JSON Schema of
+// its value as the page rule holds it (../../page/catalog.ts), so a chat writes content the rule
+// takes; and how the page picks its layout from that content, since no chat picks one. a campaign
+// holds every key, the donation page its heading alone. a page's own rules beyond a key's shape are
+// refused at the write, naming the key.
 
-const DESCRIPTIONS: Record<BlockType, string> = {
-	title:
-		'The page’s heading and an optional lede; an empty heading shows the campaign’s name, or “Donate to” the organisation on the donation page.',
-	story: 'The story behind the appeal, in rich text.',
-	'impact-tiers': 'Up to six gift amounts, each with what that gift buys.',
-	faq: 'Up to ten questions donors ask, each with its answer.',
-	'about-us': 'What the organisation is about, drawn from its profile.',
-	'org-info': 'The organisation’s own details, drawn from its profile.',
-	share: 'Buttons for sharing the page, with its share message.',
-	hero: 'A large photo at the top of the page.',
-	image: 'A photo within the page.',
-	'goal-bar': 'A campaign’s progress toward its goal; a campaign only.',
-	'program-chooser': 'The programs a donor may give to, to choose one; the donation page only.',
-	'donation-box': 'The donation form itself; every page holds exactly one.'
+const DESCRIPTIONS: Record<ContentKey, string> = {
+	heading:
+		'The page’s title; an empty heading shows the campaign’s name, or “Donate to” the organisation on the donation page.',
+	lede: 'A sentence or two under the title; a campaign only.',
+	story: 'The story behind the appeal, in rich text; a campaign only.',
+	hero: 'The cover photo, the organisation’s logo standing in without one; a campaign only.',
+	photos: 'Photos beside the cover; a campaign only.',
+	tiers: 'Up to six gift amounts, each with what that gift buys; a campaign only.',
+	faq: 'Up to ten questions donors ask, each with its answer; a campaign only.'
 };
 
 export type CatalogEntry = {
-	readonly type: BlockType;
+	readonly key: ContentKey;
 	readonly description: string;
 	readonly schema: Record<string, unknown>;
 };
 
-/** the catalog, in `BLOCK_TYPES` order. */
-export function blockCatalog(): CatalogEntry[] {
-	return BLOCK_TYPES.map((type) => {
-		const arm = block.options.find((option) => option.shape.type.value === type);
-		if (arm === undefined) throw new Error(`the page rule has no block ${type}`);
-		return {
-			type,
-			description: DESCRIPTIONS[type],
-			schema: z.toJSONSchema(arm, { io: 'input' }) as Record<string, unknown>
-		};
-	});
+/** the catalog: the content keys in `CONTENT_KEYS` order, and the layout rule. */
+export function contentCatalog() {
+	const content: CatalogEntry[] = CONTENT_KEYS.map((key) => ({
+		key,
+		description: DESCRIPTIONS[key],
+		schema: z.toJSONSchema(SECTION_DATA[key], { io: 'input' }) as Record<string, unknown>
+	}));
+	return {
+		content,
+		layout: {
+			description: `A campaign is drawn in one of three layouts, picked from its content and never set: the card for a story of at most ${STORY_THRESHOLD} characters and nothing else; the letter for a longer story, or one to ${FEATURE_EXTRAS - 1} tiers, questions and photos beside the cover counted together; the feature for ${FEATURE_EXTRAS} or more. The donation page has one fixed layout.`,
+			story_threshold: STORY_THRESHOLD,
+			feature_extras: FEATURE_EXTRAS
+		}
+	};
 }

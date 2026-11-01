@@ -97,7 +97,11 @@ describe('the modifiers the operator components assemble', () => {
 		expect(
 			sorted([
 				...BUTTON_VARIANTS.filter((variant) => variant !== 'default'),
-				...BUTTON_SIZES.filter((size) => size !== 'md')
+				...BUTTON_SIZES.filter((size) => size !== 'md'),
+				// the shape a press drawn with a mark and no words takes, which composes over a rank
+				// and a size rather than being one of them. ./controls/Button.jsx and
+				// ./controls/CopyControl.jsx write it as a literal.
+				'icon'
 			])
 		).toEqual(drawn('adm-btn'));
 	});
@@ -167,7 +171,10 @@ describe('the states the operator components assemble', () => {
 				// the progress bar's done state. ./status/ProgressBar.jsx writes it off a boolean rather
 				// than off a state union, so there is no union for it to be a member of and the sheet's
 				// own `carried-ok:` note is what stands for its call site.
-				'finishing'
+				'finishing',
+				// a card part a file is dragged over. the media card in
+				// packages/app/src/lib/admin/page-edit/campaign-cards.tsx writes it off a boolean.
+				'drop'
 			])
 		).toEqual([...statesDefinedIn(SHEETS)].sort());
 	});

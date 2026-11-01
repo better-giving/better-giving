@@ -127,11 +127,12 @@ export function Steps({ tight = false, children }) {
 	);
 }
 
-/* a block that names itself: a hairline box with its heading in a band, and the band and the
-   hairline are one device and never half of one. the box is what a block wears when it has a
-   name — never a divider, and never reached for to make something look important. a block with
-   nothing to write in the band is a `Stack`, and what separates it from the block beside it is
-   the space. */
+/* a block that names itself: its heading in a band, with a hairline under the band and the
+   block's contents directly below it. the box around them is a plane, a white card on the page
+   (`.adm-group` in packages/operator/src/styles/adm.css), and the band is what names it. it is what a block
+   wears when it has a name — never a divider, and never reached for to make something look
+   important. a block with nothing to write in the band is a `Stack`, and what separates it from
+   the block beside it is the space. */
 /** @param {GroupProps} props */
 export function Group({ label, labelAs: Label, children }) {
 	return (

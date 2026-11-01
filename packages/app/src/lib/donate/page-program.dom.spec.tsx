@@ -145,8 +145,8 @@ async function donationPage(config: FormConfig) {
 						socialLinks: []
 					}
 				}}
-				look={{ brandColour: null, shade: 'warm', corner: 'round' }}
-				sharing={{ channels: [], message: '', url: 'https://give.example.org/donate' }}
+				look={{ brandColour: null }}
+				sharing={{ message: '', url: 'https://give.example.org/donate' }}
 				goal={null}
 				money={{ locale: config.locale, currency: config.currency }}
 			/>
@@ -185,7 +185,7 @@ function type(root: HTMLElement, selector: string, value: string): void {
 	});
 }
 
-const CHOOSER = '[data-block="program-chooser"]';
+const CHOOSER = '[data-area="chooser"]';
 const CONTINUE = 'section.step:not([hidden]) > button[part~="action"]';
 
 /** a chooser card's radio, found by the words it shows. */

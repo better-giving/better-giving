@@ -1,4 +1,4 @@
-import type { PageGoal } from '../../donate/blocks/types';
+import type { PageGoal } from '../../donate/sections/types';
 import type { Page } from '../../page/catalog';
 import { endDayOf } from '../../page/end-date';
 import type { Db } from '../db/client';

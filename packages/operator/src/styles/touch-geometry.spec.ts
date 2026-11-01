@@ -42,17 +42,6 @@ describe("a row a finger aims at takes the row's floor", () => {
 	});
 });
 
-describe("a press a sheet's list grows or shrinks by takes the row's floor", () => {
-	it.each([
-		// Add a block, under the editor's block list.
-		['.adm-openrow-list + .adm-menuwrap > .adm-btn'],
-		// a tier's or a question's Add under the rows, and each row's Remove, drawn small.
-		['.adm-btn.adm-rowpress']
-	])('%s', (selector) => {
-		expect(ruleOf(css, selector).get('min-block-size')).toBe('var(--admin-touch-min)');
-	});
-});
-
 /** a length ./tokens.css states — in rem at the root's 16px, in px, or as another token — in css pixels. */
 const px = (token: string): number => {
 	const stated = tokens.match(new RegExp(`${token}:\\s*([^;]+);`))?.[1]?.trim() ?? '';
@@ -169,10 +158,8 @@ describe("a select's list counts the row's floor", () => {
 	// so a list of four rows stands whole and a fifth shows half of itself.
 	it('is four and a half rows of the floor tall, plus its padding and border', () => {
 		expect(list.get('padding')).toBe('var(--admin-space-2)');
-		expect(list.get('border')).toBe('var(--admin-hairline)');
-		expect(terms(tokens.match(/--admin-hairline:\s*([^;]+);/)?.[1])[0]).toBe(
-			'--admin-border-width'
-		);
+		// the overlay's whole edge, whose width is the term the height below counts.
+		expect(list.get('border')).toBe('var(--admin-border-width) solid var(--admin-overlay-border)');
 		const height = list.get('max-block-size');
 		expect(height).toMatch(/4\.5 \* var\(--admin-touch-min\)/);
 		expect(terms(height)).toEqual(['--admin-touch-min', '--admin-space-2', '--admin-border-width']);
@@ -194,13 +181,13 @@ describe('the More sheet stands on the bar', () => {
 	it("adds up the bar's height out of what the bar draws", () => {
 		const tab = ruleOf(css, '.adm-dest');
 		const bar = ruleOf(css, '.adm-rail');
-		const rule = tokens.match(/--admin-rule:\s*([^;]+);/)?.[1];
 
 		// the tab's floor, which its contents are shorter than: ./adm.css argues it at the reserve.
 		expect(tab.get('min-block-size')).toBe('var(--admin-touch-min)');
-		// the rule the bar draws over its tabs, whose width is the first term of the rule.
-		expect(bar.get('border-block-start')).toBe('var(--admin-rule)');
-		expect(terms(rule)[0]).toBe('--admin-border-width');
+		// the overlay's edge the bar draws over its tabs, whose width is its first term.
+		expect(bar.get('border-block-start')).toBe(
+			'var(--admin-border-width) solid var(--admin-overlay-border)'
+		);
 		// the platform's inset, under the tabs.
 		expect(bar.get('padding-block-end')).toBe('env(safe-area-inset-bottom)');
 
@@ -212,16 +199,20 @@ describe('the More sheet stands on the bar', () => {
 	});
 });
 
-/** a length a rule spells, or nothing where it spells one against a box this spec has not got. */
+/**
+ * a length a rule spells, read against a holder of no size at all, or nothing where it spells one
+ * this spec cannot read. a size that is a share of its holder is then at its least, so what is
+ * still at the floor is at the floor on any holder.
+ */
 const lengthOr = (value: string | undefined) => {
 	try {
-		return evaluate(value);
+		return evaluate(value, 0);
 	} catch {
 		return Number.NaN;
 	}
 };
 
-/** every rule drawing a square at least the floor on a `::before`, and its members without the pseudo. */
+/** every rule drawing a box at least the floor each way on a `::before`, and its members without the pseudo. */
 const floorRules = rulesIn(css).filter(
 	({ selector, stated }) =>
 		selector.split(', ').every((member) => member.endsWith('::before')) &&
@@ -263,6 +254,35 @@ const widthOf = (border: string | undefined) =>
 
 const BUTTON_BORDER = () => widthOf(ruleOf(css, '.adm-btn').get('border'));
 const ROW_REMOVE = '.adm-rows__row > .adm-rows__remove';
+const CHIP = '.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip';
+const GLOBE = '.adm-identity__lead > .adm-btn';
+const PAGE_LINK = '.adm-identity > .adm-pagelink > .adm-btn';
+const WAY_OUT = '.adm-identity > .adm-signout > .adm-btn';
+
+/**
+ * a small button in the top bar at its narrowest, a mark alone between its padding: the globe always
+ * is one, and a way out is one where it carries no word. a wider way out reaches less far across.
+ */
+const barButton = (): Drawn => {
+	const small = ruleOf(css, '.adm-btn--sm');
+	const border = BUTTON_BORDER();
+	return {
+		inline: 2 * (border + evaluate(small.get('padding-inline'))) + px('--admin-mark-size'),
+		block: evaluate(small.get('min-block-size')),
+		border
+	};
+};
+
+/** the top bar's edges above and below a button in it, each a step of the bar's breathing room off it. */
+const barEdges = (member: string): (readonly [string, number, number])[] => {
+	const at = target(member);
+	const bar = ruleOf(css, '.adm-identity');
+	const room = (evaluate(bar.get('min-block-size')) - barButton().block) / 2;
+	return [
+		["the bar's edge above", at.blockStart, room],
+		["the bar's edge below", at.blockEnd, room]
+	];
+};
 
 const MEMBERS: Record<string, Member> = {
 	// a row's Remove is a button (../components/controls/Button.jsx draws `.adm-btn`), the box's
@@ -304,6 +324,80 @@ const MEMBERS: Record<string, Member> = {
 				evaluate(ruleOf(css, '.adm-field > .adm-actions:has(> .adm-wellwrap)').get('gap'))
 			]
 		]
+	},
+	// a choice chip in a wrapping row, drawn at the small control's height and never narrower than
+	// the floor: the `<label>` round the radio or checkbox is the holder, and a press on it is a
+	// press on the box inside.
+	[CHIP]: {
+		holder: '.adm-choicechip',
+		drawn: () => {
+			const chip = ruleOf(css, CHIP);
+			return {
+				inline: evaluate(chip.get('min-inline-size')),
+				block: evaluate(chip.get('min-block-size')),
+				border: widthOf(ruleOf(css, '.adm-choicechip').get('border'))
+			};
+		},
+		neighbours: () => {
+			const at = target(CHIP);
+			const row = ruleOf(css, '.adm-choicechips');
+			return [
+				['the chip beside it', at.inlineEnd + at.inlineStart, evaluate(row.get('column-gap'))],
+				['the chip on the next line', at.blockEnd + at.blockStart, evaluate(row.get('row-gap'))]
+			];
+		}
+	},
+	// the site's globe leading the top bar, an icon-only small button in a box exactly its width.
+	[GLOBE]: {
+		holder: '.adm-btn',
+		drawn: () => ({
+			...barButton(),
+			inline: evaluate(ruleOf(css, '.adm-identity__lead').get('inline-size'))
+		}),
+		neighbours: () => {
+			const at = target(GLOBE);
+			const bar = ruleOf(css, '.adm-identity');
+			return [
+				["the window's edge", at.inlineStart, evaluate(bar.get('padding-inline'))],
+				['the name after it', at.inlineEnd, evaluate(bar.get('gap'))],
+				...barEdges(GLOBE)
+			];
+		}
+	},
+	// the link to the organisation's public page, just before the way out: a mark alone under the
+	// middle breakpoint, which is its narrowest. its target and the way out's both reach into the
+	// gap between them, so the two reaches together are held to it.
+	[PAGE_LINK]: {
+		holder: '.adm-btn',
+		drawn: barButton,
+		neighbours: () => {
+			const at = target(PAGE_LINK);
+			const bar = ruleOf(css, '.adm-identity');
+			return [
+				['the name before it', at.inlineStart, evaluate(bar.get('gap'))],
+				[
+					'the way out after it',
+					at.inlineEnd + target(WAY_OUT).inlineStart,
+					evaluate(bar.get('gap'))
+				],
+				...barEdges(PAGE_LINK)
+			];
+		}
+	},
+	// the way out ending the top bar: the button inside the `.adm-signout` holder, which is the form
+	// packages/app/src/routes/_app.tsx posts and a span in ../components/shell/AppShell.jsx's specimen.
+	[WAY_OUT]: {
+		holder: '.adm-btn',
+		drawn: barButton,
+		neighbours: () => {
+			const at = target(WAY_OUT);
+			const bar = ruleOf(css, '.adm-identity');
+			return [
+				['the name before it', at.inlineStart, evaluate(bar.get('gap'))],
+				["the window's edge", at.inlineEnd, evaluate(bar.get('padding-inline'))],
+				...barEdges(WAY_OUT)
+			];
+		}
 	}
 };
 

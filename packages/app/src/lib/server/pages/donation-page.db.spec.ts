@@ -8,7 +8,7 @@ import { form, page, program } from '../db/schema';
 import { writeOrgRow } from '../org/org-row.testing';
 import { ensureDonationPage } from './donation-page';
 import { publishPage } from './publish';
-import { saveDraftSettings } from './editor';
+import { saveDonationPageGiving } from './section-saves';
 import { client, stmt } from '$lib/server/db/database.testing';
 
 // the donation page made on first need: no migration seeds it, and whichever reader asks first makes
@@ -127,15 +127,15 @@ describe('the Donation page’s program, while the operator has chosen none', ()
 	it('stops following once the operator’s saved choice is published', async () => {
 		const made = await ensureDonationPage(db);
 		const body = new FormData();
-		body.set(WHICH_FORM, 'page-settings');
+		body.set(WHICH_FORM, 'donation-page-giving');
 		body.set(RECORD_VERSION, String((await versionNow()).getTime()));
 		body.set('program_mode', 'none');
 		body.set('program_id', '');
 		body.set('min_minor', '1');
 		body.set('max_minor', '10000');
 		body.set('suggested_amounts[0]', '25');
-		expect(await saveDraftSettings(db, { type: 'donation_page' }, body, 'gone')).toEqual({
-			saved: 'settings'
+		expect(await saveDonationPageGiving(db, { type: 'donation_page' }, body, 'gone')).toEqual({
+			saved: 'donation-page-giving'
 		});
 		await publishAsItStands();
 

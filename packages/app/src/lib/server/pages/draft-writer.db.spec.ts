@@ -104,12 +104,7 @@ describe('editPageDraft', () => {
 
 		await editPageDraft(db, { type: 'campaign', id }, 'current', (draft) => ({
 			ok: true,
-			draft: {
-				...draft,
-				blocks: draft.blocks.map((block) =>
-					block.type === 'hero' ? { ...block, imageId: null } : block
-				)
-			}
+			draft: { ...draft, hero: undefined }
 		}));
 
 		expect(await stored(db, imageId)).toEqual({ row: false, bytes: false });

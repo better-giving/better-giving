@@ -711,10 +711,10 @@ export function createPaymentSurface(
 	/**
 	 * the rows this adapter's buttons stand in, one per rail, drawn into the node it was handed.
 	 *
-	 * the node takes no pad of its own: `[part~='payment']` in ../styles/parts.css pulls the whole box
-	 * out to the card's own edges by `--_inset`, and each row runs its band to those edges and pads its
-	 * name and its button back in by that same token (../styles/rows.css), which is the same decision
-	 * the other adapter's rows are sent through the appearance object it hands its provider.
+	 * the node takes no pad of its own: each row is a choice box that pads its name and its button
+	 * inside its own edge (../styles/rows.css), which is the same box the other adapter's rails are
+	 * sent through the appearance object it hands its provider (`PAYMENT_ROW` in
+	 * ../styles/appearance.ts).
 	 */
 	const rowList = createRows(mount);
 

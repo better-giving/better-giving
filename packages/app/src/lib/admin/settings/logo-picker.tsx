@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ReplacePhotoControl } from '../editor/replace-photo';
+import { ReplacePhotoControl } from '../page-edit/replace-photo';
 import { type CropSquare, LOGO_ACCEPT } from './logo-crop';
 import { LogoCropDialog } from './logo-crop-dialog';
 import { type Squared, squareLogo } from './logo-square';

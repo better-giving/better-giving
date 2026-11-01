@@ -24,10 +24,8 @@ import { PAYPAL_DEFAULT_API_URL, paypalApiOrigin, paypalSdkUrl } from '$lib/serv
 // every document gets the dashboard's policy unless a route it matched says otherwise through its
 // `handle`, so a screen added later is strict until someone widens it on purpose.
 //
-// no document may be framed but the editor's preview of a page (./routes/preview.$pageId.tsx), and
-// that one only by this deployment's own pages — the editor frames it and reads the block a click
-// lands in ($lib/admin/editor/preview-frame.tsx). it is drawn under the donor page's policy, since
-// what it draws is the donor page.
+// no document may be framed. the preview of a page's draft (./routes/preview.$pageId.tsx) opens in
+// a tab of its own, under the donor page's policy, since what it draws is the donor page.
 //
 // every document allows inline style, the dashboard's as well as the donor page's. operator
 // components set layout through style attributes the server renders — the column widths in
@@ -44,12 +42,7 @@ export interface DonorPolicyHandle {
 	readonly documentPolicy: 'donor';
 }
 
-/** what the editor's preview carries: the donor page's policy, framed by this origin's own pages. */
-export interface PreviewPolicyHandle {
-	readonly documentPolicy: 'preview';
-}
-
-type DocumentPolicy = 'operator' | (DonorPolicyHandle | PreviewPolicyHandle)['documentPolicy'];
+type DocumentPolicy = 'operator' | DonorPolicyHandle['documentPolicy'];
 
 /** a fresh nonce: 128 bits, base64. */
 export function mintNonce(): string {
@@ -173,8 +166,8 @@ function paypalOrigins(apiUrl: string = PAYPAL_DEFAULT_API_URL): PaypalOrigins {
 /** the policy a route's `handle` asks for, or null where it asks for none. */
 function handlePolicy(handle: unknown): DocumentPolicy | null {
 	if (typeof handle !== 'object' || handle === null) return null;
-	const asked = (handle as Partial<DonorPolicyHandle | PreviewPolicyHandle>).documentPolicy;
-	return asked === 'donor' || asked === 'preview' ? asked : null;
+	const asked = (handle as Partial<DonorPolicyHandle>).documentPolicy;
+	return asked === 'donor' ? asked : null;
 }
 
 /**
@@ -191,17 +184,16 @@ export function setDocumentHeaders(
 		context.staticHandlerContext.matches
 			.map((match) => handlePolicy(match.route.handle))
 			.findLast((asked) => asked !== null) ?? 'operator';
-	const framed = policy === 'preview';
 	headers.set(
 		'Content-Security-Policy',
 		[
 			...(policy === 'operator'
 				? operatorPolicy(nonce)
 				: donorPolicy(nonce, paypalOrigins(paypalApiUrl))),
-			`frame-ancestors ${framed ? "'self'" : "'none'"}`
+			"frame-ancestors 'none'"
 		].join('; ')
 	);
-	headers.set('X-Frame-Options', framed ? 'SAMEORIGIN' : 'DENY');
+	headers.set('X-Frame-Options', 'DENY');
 	headers.set(
 		'Referrer-Policy',
 		policy === 'operator' ? 'same-origin' : 'strict-origin-when-cross-origin'

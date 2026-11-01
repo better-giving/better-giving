@@ -8,9 +8,9 @@
  * the few rules of theirs it needs are restated here; the tokens arrive the way every inherited
  * property does.
  *
- * the box and the list take the card's own ground rather than a field's, because the open row they
- * stand in is drawn a field's ground (`.band.open` in ./rows.css) and a box that matched it would
- * disappear into it. nothing here moves.
+ * the box is a text box like every other on the card, a field's fill inside the outline that finds
+ * it: the open row it stands in is the card's white face (`.band` in ./rows.css), and the outline is
+ * what keeps the box from disappearing into that face, not its fill. nothing here moves.
  *
  * the open list is the closed choices' list (`[part~='select-list']` and `[part~='select-option']`
  * in ./parts.css, which draw its surface and its rows' ground, size and tick), and what is here is
@@ -38,7 +38,7 @@ button {
 .field-row {
 	display: flex;
 	flex-direction: column;
-	--_column-gap: var(--_sp2);
+	--_column-gap: var(--_gap-inside);
 	gap: var(--_column-gap);
 }
 
@@ -60,7 +60,6 @@ button {
 	grid-template-columns: auto minmax(0, 1fr) auto;
 	align-items: center;
 	gap: var(--_sp3);
-	background: var(--_n1);
 	cursor: text;
 }
 

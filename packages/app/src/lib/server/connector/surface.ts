@@ -30,14 +30,14 @@ export const CONNECTOR_ACTIONS = [
 	'campaigns.list',
 	'campaigns.get',
 	'campaigns.create',
-	'campaigns.update_blocks',
+	'campaigns.update_content',
 	'campaigns.update_settings',
 	'campaigns.publish',
 	'campaigns.end',
 	'donation_page.get',
-	'donation_page.update_blocks',
+	'donation_page.update_content',
 	'donation_page.reset',
-	'blocks.catalog',
+	'content.catalog',
 	'forms.list',
 	'forms.get',
 	'forms.create',
@@ -107,6 +107,19 @@ export function unknownAction(pathname: string, method: string): Response {
 		'unknown_action',
 		'No such action',
 		`This deployment serves no action at ${method} ${pathname}. Its release is ${connectorRelease()}; an older release lacks newer actions, and updating Better Giving adds them.`
+	);
+}
+
+/**
+ * a 422 for an action an earlier release served and this one replaced: the connector still deployed
+ * may call it, and `unknown_action` would tell it to update a release that is already the newest.
+ */
+export function replacedAction(retired: string, replacement: string): Response {
+	return connectorProblem(
+		422,
+		'replaced',
+		'This action was replaced',
+		`${retired} is no longer served: the page now picks its layout from its content. Use ${replacement} instead.`
 	);
 }
 

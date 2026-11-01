@@ -1,5 +1,4 @@
 import { stripComments } from '@better-giving/operator/styles/raw-values';
-import { type Oklch, oklchFromHex } from '../page/palette';
 
 // what $lib/donate/page.spec.ts measures contrast with: the page's grounds and inks worked out from
 // the stylesheets as written, in node, with no browser.
@@ -106,7 +105,31 @@ function tokens(text: string): string[] {
 	return found;
 }
 
-/** linear sRGB, each channel clipped into [0, 1] — the inverse of ../page/palette.ts's matrices. */
+const decode = (channel: number) =>
+	channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+
+type Oklch = { l: number; c: number; h: number };
+
+/**
+ * a `#rrggbb` colour in oklch, hue in degrees from 0 up to 360, by
+ * https://bottosson.github.io/posts/oklab/'s matrices.
+ */
+function oklchFromHex(hex: string): Oklch {
+	const channel = (at: number) => decode(Number.parseInt(hex.slice(at, at + 2), 16) / 255);
+	const [r, g, b] = [channel(1), channel(3), channel(5)];
+	const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+	const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+	const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+	const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+	const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+	return {
+		l: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+		c: Math.hypot(A, B),
+		h: ((((Math.atan2(B, A) * 180) / Math.PI) % 360) + 360) % 360
+	};
+}
+
+/** linear sRGB, each channel clipped into [0, 1] — the inverse of `oklchFromHex`'s matrices. */
 export function linearSrgb({ l, c, h }: Oklch): [number, number, number] {
 	const a = c * Math.cos((h * Math.PI) / 180);
 	const b = c * Math.sin((h * Math.PI) / 180);

@@ -104,3 +104,23 @@ describe('what the element wears', () => {
 		expect([asButton, asLink]).toEqual(['adm-btn adm-btn--primary', 'adm-btn adm-btn--primary']);
 	});
 });
+
+// a press drawn with a mark and no words is named by its `aria-label` and round by nature, and the
+// class is the only thing that says so: ../../styles/adm.css draws `.adm-btn--icon` and no screen
+// writes it.
+describe('a press that is a mark alone', () => {
+	const classes = (props: Record<string, unknown>) =>
+		only(render(Button, { 'aria-label': 'Remove', ...props })).classList;
+
+	it('is drawn round when it has a mark and no words', () => {
+		expect(classes({ mark: 'x' }).contains('adm-btn--icon')).toBe(true);
+	});
+
+	it('is drawn round when the words it was handed draw nothing', () => {
+		expect(classes({ mark: 'x', children: false }).contains('adm-btn--icon')).toBe(true);
+	});
+
+	it('keeps the corner when words stand beside the mark', () => {
+		expect(classes({ mark: 'plus', children: 'Add a form' }).contains('adm-btn--icon')).toBe(false);
+	});
+});

@@ -588,21 +588,21 @@ describe('the review step at the narrowest card', () => {
 		expect(Math.max(...inside)).toBeLessThan(Math.min(...apart));
 	});
 
-	// the payment rows stand flush, each padded top and bottom (`.head` in ./rows.css), so one row's
-	// name and the next stand those two pads apart. the break over the list has to read wider than
-	// that, or the receipt and the list read as one run (`[part~='summary'] + .group` in
-	// ./layout.css).
+	// the payment rows are boxes of their own and stand the item gap apart (./rows.css). a box says
+	// its own edges, so what groups the list is the space between one box and the next rather than
+	// between the names inside them, and the break over the list has to read wider than that gap,
+	// or the receipt and the list read as one run (`[part~='summary'] + .group` in ./layout.css).
 	it('stands the payment list further under the receipt than one payment row under the next', () => {
 		const { summary, group, box } = review('donor@example.org');
 		const drawer = createRows(box);
-		const names = ['PayPal', 'Venmo'].map((name) => {
+		const boxes = ['PayPal', 'Venmo'].map((name) => {
 			const content = document.createElement('div');
 			drawer.draw(name, name === 'PayPal' ? 'paypal' : 'venmo', content);
-			const row = box.lastElementChild?.shadowRoot?.querySelector('.name');
-			if (!(row instanceof HTMLElement)) throw new Error(`the ${name} row drew no name`);
+			const row = box.lastElementChild?.shadowRoot?.querySelector('.band');
+			if (!(row instanceof HTMLElement)) throw new Error(`the ${name} row drew no box`);
 			return row;
 		});
-		const [first, second] = names as [HTMLElement, HTMLElement];
+		const [first, second] = boxes as [HTMLElement, HTMLElement];
 
 		expect(between(first, second)).toBeGreaterThan(0);
 		expect(between(summary, group)).toBeGreaterThan(between(first, second));
@@ -696,18 +696,15 @@ describe('the seam a payment provider paints in', () => {
 		expect([inner.width, inner.height]).toEqual([outer.width, outer.height]);
 	});
 
-	// and the one length the box does spend, which is the other half of the same decision: the box
-	// reaches out to the card's own edges by the body's inset so each rail's band is full bleed, and
-	// ../styles/appearance.ts pads every rail by that same length so the fields land back on the
-	// seam. the pad is also the room the provider needs — it paints one block inside the card rail
-	// wider than the rail's own content, and a rail with none has that block's left and right edges
-	// clipped away inside the provider's frame.
-	it('reaches past the step by the inset the fields are put back on the seam by', () => {
+	// and no pull past it either: each rail is a box of its own (`PAYMENT_ROW` in
+	// ../styles/appearance.ts), so the rails' edges stand on the seam every other box on the card
+	// stands on, and a box reaching out to the card's edges would put them off it.
+	it('stands on the step’s own seam', () => {
 		const { box } = seam('200px');
 		const outer = box.getBoundingClientRect();
 		const step = (box.parentElement as HTMLElement).getBoundingClientRect();
 
-		expect([outer.left - step.left, outer.right - step.right]).toEqual([-20, 20]);
+		expect([outer.left - step.left, outer.right - step.right]).toEqual([0, 0]);
 	});
 
 	// the other half, and the reason the seam is still a box: the step holds the height open before

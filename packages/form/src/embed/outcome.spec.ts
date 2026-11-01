@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { outcomeOf, outcomeOfConfirmation, UNCONFIRMABLE, UNSTATED_DECLINE } from './outcome';
+import {
+	donorsOwn,
+	outcomeOf,
+	outcomeOfConfirmation,
+	UNCONFIRMABLE,
+	UNSTATED_DECLINE
+} from './outcome';
 
 describe('a confirmation that came back with an intent', () => {
 	it('reads a succeeded intent as the gift being made', () => {
@@ -133,6 +139,27 @@ describe('a confirmation that came back with an error', () => {
 	 * the intent's own answer that is an unanswered confirmation, which thanks a donor for a gift
 	 * nobody charged and leaves the fault invisible.
 	 */
+	it.each(['payment_intent_authentication_failure', 'setup_intent_authentication_failure'])(
+		'reads %s as the bank declining the card, not as a request this integration made wrong',
+		(code) => {
+			const outcome = outcomeOfConfirmation({
+				error: {
+					type: 'invalid_request_error',
+					code,
+					message:
+						'We are unable to authenticate your payment method. Please choose a different payment method and try again.',
+					payment_intent: { status: 'requires_payment_method' }
+				}
+			});
+
+			expect(outcome).toEqual({
+				kind: 'declined',
+				message: "Your bank couldn't verify this card. Try again or use another card."
+			});
+			expect(donorsOwn({ type: 'invalid_request_error', code })).toBe(true);
+		}
+	);
+
 	it('reads a refused request as a refusal, never as the untried intent it carries', () => {
 		const outcome = outcomeOfConfirmation({
 			error: {

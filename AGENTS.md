@@ -1,6 +1,6 @@
 # better-giving
 
-Self-hosted donation forms for a single organisation. One deployment serves one org; a fork is how a second org gets one.
+Self-hosted donation platform. One deployment serves one organisation; a fork is how a second organisation gets one.
 
 File headers still hold the argument for a rule about that file.
 
@@ -72,7 +72,7 @@ The image PATH lists `/exec-daemon/node` (v22.14, below the 22.22 floor) before 
 
 Configuration values and processor keys are environment variables, set in `.env`, and no screen writes one. Settings (organisation profile, notification address, mail), Payments, the sites list on Donation forms and the QuickBooks part of Books are the deployer's to change; each route gates its own loader and action on `STAFF_USER_ID`, and `packages/app/src/lib/admin/destinations.ts` hides them from members. Where a fix lives in `.env`, a screen says what to ask whoever runs the server and gives that person the command.
 
-**Design systems never meet.** The donation form dresses from `packages/form/src/styles/tokens.css` (`custom-elements.json` is what an integrator may set). Operator surfaces dress from `packages/operator/src/styles/tokens.css`, `base.css`, and `adm.css`. `/admin` derives no colour from a `--donate-*` seed or a `::part()` name. No `/admin` screen gets a `*.browser.spec.ts`. A value a screen needs that the token file cannot express is a gap to report. A deliberate exception is a `raw-colour-ok:`, `raw-length-ok:`, or `type-ok:` note on the line, never a change to the gate.
+**One look, two token files.** Every surface shares one visual language, and the operator system is its source: the donation form's private `--_` values mirror `packages/operator/src/styles/tokens.css` by decision, restated because a shadow root reads no outside sheet, and the head of `packages/form/src/styles/tokens.css` says which. The files and names never meet. The donation form dresses from `packages/form/src/styles/tokens.css` (`custom-elements.json` is what an integrator may set). Operator surfaces dress from `packages/operator/src/styles/tokens.css`, `base.css`, and `adm.css`. `/admin` derives no colour from a `--donate-*` seed or a `::part()` name. No `/admin` screen gets a `*.browser.spec.ts`. A value a screen needs that the token file cannot express is a gap to report. A deliberate exception is a `raw-colour-ok:`, `raw-length-ok:`, or `type-ok:` note on the line, never a change to the gate.
 
 **Payments** go through the `PaymentProvider` port, never a processor SDK directly (`sole-importer.spec.ts`). **Email** goes through the `EmailProvider` port. SMTP is the interface, on port 465 only (`packages/app/src/lib/server/email/smtp-config.ts`). Nothing selects a transport.
 
@@ -121,7 +121,7 @@ A contract below is permanent by decision. Weigh a fix on its own merits.
 ## Product surface
 
 - Donor-facing pages are `/donate` and each live campaign at its own address. A donor page is on no `site` row and on no form's `allowed_origins` (`packages/app/src/lib/server/pages/view.ts`). A gift there is a real gift on whatever keys the deployment holds. A form is pageless. A campaign address never shadows a route (`packages/app/src/lib/page/slug.ts`).
-- A page is arranged from a fixed set of blocks. `packages/app/src/lib/page/catalog.ts`'s `parsePage` is the only parser of a stored page.
+- A page holds content only. A campaign is drawn in the one layout its content picks: card, letter or feature (`packages/app/src/lib/page/shape.ts`), and the Donation page in one fixed layout. No screen or connector action sets a layout. `packages/app/src/lib/page/catalog.ts`'s `parsePage` is the only parser of a stored page.
 - A deployment calls no AI model and binds no AI service.
 - The repo contains no org-editable files.
 - The form's flow logic imports no framework. One machine and one `v1` client under `packages/form/src/`.
