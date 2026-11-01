@@ -495,6 +495,26 @@ describe('share', () => {
 		expect(section?.contains(label ?? null)).toBe(true);
 	});
 
+	it.each([
+		['campaign', defaultCampaign(), 'Share this campaign'],
+		['donation_page', defaultDonationPage(), 'Share this page']
+	] as const)(
+		'jumps the masthead Share link to the one share region, on the %s',
+		(type, page, heading) => {
+			const root = mount(<PageView {...props(type, page)} />);
+			const link = root.querySelector<HTMLAnchorElement>('.page-mast-share');
+			expect(link?.getAttribute('href')).toBe('#page-share');
+			const targets = root.querySelectorAll('[id="page-share"]');
+			expect(targets).toHaveLength(1);
+			const target = targets[0];
+			expect(target?.getAttribute('data-area')).toBe('share');
+			const label = root.ownerDocument.getElementById(
+				target?.getAttribute('aria-labelledby') ?? ''
+			);
+			expect(label?.textContent).toBe(heading);
+		}
+	);
+
 	it('copies the page’s address and says so at the press alone', async () => {
 		const writeText = vi.fn(async () => {});
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });

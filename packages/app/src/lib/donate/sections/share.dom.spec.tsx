@@ -1,3 +1,4 @@
+import { GLYPHS } from '@better-giving/form/glyph';
 import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -144,5 +145,39 @@ describe('share', () => {
 		expect(copy?.getAttribute('aria-label')).toBe('Copy link');
 		expect(copy?.getAttribute('title')).toBe('Copy link');
 		expect(copy?.innerHTML).toBe(resting);
+	});
+
+	describe('Copy link mark', () => {
+		const marks = (copy: Element | undefined) =>
+			[...(copy?.querySelectorAll('svg path') ?? [])].map((p) => p.getAttribute('d'));
+
+		function copyWith(writeText: () => Promise<void>) {
+			vi.useFakeTimers();
+			vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+			onTestFinished(() => {
+				vi.unstubAllGlobals();
+				vi.useRealTimers();
+			});
+			return presses()[SHARE_CHANNELS.indexOf('copy-link')];
+		}
+
+		it('swaps the link glyph for the tick on a copy and back after the moment passes', async () => {
+			const copy = copyWith(async () => {});
+			expect(marks(copy)).toEqual(GLYPHS.link);
+			await act(async () => copy?.click());
+			expect(marks(copy)).toEqual(GLYPHS.tick);
+			act(() => vi.advanceTimersByTime(SETTLE_MS));
+			expect(marks(copy)).toEqual(GLYPHS.link);
+		});
+
+		it('shows no tick when the copy is refused', async () => {
+			const copy = copyWith(async () => {
+				throw new Error('denied');
+			});
+			await act(async () => copy?.click());
+			expect(copy?.getAttribute('aria-label')).toBe('Couldn’t copy');
+			expect(marks(copy)).toEqual(GLYPHS.link);
+			expect(marks(copy)).not.toEqual(GLYPHS.tick);
+		});
 	});
 });

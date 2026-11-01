@@ -116,4 +116,80 @@ describe('org info', () => {
 			'EIN 84-2913377'
 		]);
 	});
+
+	describe('draws nothing for a detail the organisation has not set', () => {
+		const items = (host: HTMLElement) =>
+			[...host.querySelectorAll('li')].map((li) => li.textContent);
+
+		it('leaves out the EIN when it is null', () => {
+			const host = mount(<OrgInfo info={{ ...info([]), ein: null }} />);
+			expect(host.textContent).not.toContain('EIN');
+			expect(items(host)).toEqual([
+				'Northside Neighbors',
+				'40 Elm Street, Easton, PA 18042',
+				'hello@northsideneighbors.org'
+			]);
+		});
+
+		it('leaves out the address line item when there are no address lines', () => {
+			const host = mount(<OrgInfo info={{ ...info([]), addressLines: [] }} />);
+			expect(items(host)).toEqual([
+				'Northside Neighbors',
+				'EIN 84-2913377',
+				'hello@northsideneighbors.org'
+			]);
+			expect(host.querySelector('address')).not.toBeNull();
+		});
+
+		it('leaves out the mailto link when the email is null', () => {
+			const host = mount(<OrgInfo info={{ ...info([]), email: null }} />);
+			expect(host.querySelector('a')).toBeNull();
+			expect(items(host)).toEqual([
+				'Northside Neighbors',
+				'EIN 84-2913377',
+				'40 Elm Street, Easton, PA 18042'
+			]);
+		});
+
+		it('draws no address element when every detail past the name is unset', () => {
+			const host = mount(
+				<OrgInfo
+					info={{
+						legalName: 'Northside Neighbors',
+						ein: null,
+						addressLines: [],
+						email: null,
+						socialLinks: []
+					}}
+				/>
+			);
+			expect(host.querySelector('address')).toBeNull();
+			expect(items(host)).toEqual(['Northside Neighbors']);
+		});
+	});
+
+	it('draws a fully set organisation as one list item per detail, only contact inside address', () => {
+		const host = mount(
+			<OrgInfo
+				info={info([
+					{ platform: 'instagram', href: HREFS.instagram },
+					{ platform: 'x', href: HREFS.x }
+				])}
+			/>
+		);
+		const address = host.querySelector('address');
+		const inside = [...(address?.querySelectorAll('li') ?? [])];
+		const outside = [...host.querySelectorAll('li')].filter((li) => !address?.contains(li));
+
+		expect(outside.map((li) => li.textContent)).toEqual(['Northside Neighbors', 'EIN 84-2913377']);
+		expect(inside).toHaveLength(3);
+		expect(inside[0]?.textContent).toBe('40 Elm Street, Easton, PA 18042');
+		expect(inside[1]?.querySelector('a')?.getAttribute('href')).toBe(
+			'mailto:hello@northsideneighbors.org'
+		);
+		expect(inside[1]?.textContent).toBe('hello@northsideneighbors.org');
+		expect(
+			[...(inside[2]?.querySelectorAll('a') ?? [])].map((a) => a.getAttribute('href'))
+		).toEqual([HREFS.instagram, HREFS.x]);
+	});
 });
