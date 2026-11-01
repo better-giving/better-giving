@@ -157,11 +157,12 @@ describe('choice chips mounted into a document', () => {
 			expect(matched).toEqual(['Children']);
 		});
 
-		it('paints the accent tint inside the accent ink edge', () => {
+		it('paints the accent tint inside the accent edge, under the accent ink', () => {
 			const taken = ruleOf(sheet('adm.css'), TAKEN);
 
-			expect([taken.get('background'), taken.get('border-color')]).toEqual([
+			expect([taken.get('background'), taken.get('border-color'), taken.get('color')]).toEqual([
 				'var(--admin-accent-tint)',
+				'var(--admin-accent-edge)',
 				'var(--admin-accent-ink)'
 			]);
 		});
