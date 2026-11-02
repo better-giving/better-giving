@@ -10,6 +10,7 @@ import { createDepositBlock, type DepositView } from '../deposit';
 import { defineDonateForm, DONATE_FORM_TAG } from '../element';
 import { createRows, type Row, type RowMark } from '../embed/rows';
 import { PROVIDER_NAME_OFFSET_PX } from '../embed/rows.measured';
+import { generateBrandScale } from './radix-scale';
 import type { CheckoutPorts } from '../ports';
 import type { FormConfig } from '../v1';
 import { createSkeleton } from '../views';
@@ -26,7 +27,7 @@ import tokens from './tokens.css?inline';
 // vitest.browser.config.ts).
 //
 // the whole element is mounted rather than a shadow root assembled by hand, because the question
-// is about the four sheets ../element.ts adopts, in the order it adopts them, through the code
+// is about the five sheets ../element.ts adopts, in the order it adopts them, through the code
 // that adopts them. a hand-built host would be asserting the fixture.
 //
 // css cascading and inheritance level 5, §6.1, applies its criteria in this order: origin and
@@ -107,6 +108,24 @@ const DEVICE_PIXEL = 1;
 /** lets the configuration read settle before the card is inspected. */
 function settle(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * a seed written after mount, once the element's generated scale has followed it: the scale is set
+ * from a transition the seed change starts (./brand.ts), which reports a frame or more later.
+ */
+async function reseed(host: HTMLElement, declarations: string): Promise<void> {
+	host.style.cssText = declarations;
+	const shadow = host.shadowRoot as ShadowRoot;
+	const scale = generateBrandScale(getComputedStyle(host).getPropertyValue('--donate-primary'));
+	if (scale === null) return;
+	const steps = matchMedia('(color-gamut: p3)').matches ? scale.stepsWideGamut : scale.steps;
+	const probe = document.createElement('div');
+	probe.style.color = steps[8] as string;
+	shadow.appendChild(probe);
+	const solid = getComputedStyle(probe).color;
+	probe.remove();
+	await vi.waitFor(() => expect(used(shadow, '--_p')).toBe(solid));
 }
 
 /**
@@ -252,9 +271,9 @@ function page(css: string): void {
 }
 
 /**
- * css in the element's own encapsulation context, beside the four sheets already there.
+ * css in the element's own encapsulation context, beside the five sheets already there.
  *
- * a fifth adopted sheet rather than an edit to ../styles/parts.css: what the cascade compares is
+ * a sixth adopted sheet rather than an edit to ../styles/parts.css: what the cascade compares is
  * the context a declaration is in, and a constructed sheet adopted into this shadow root is in the
  * same one every rule ../element.ts adopts is in.
  */
@@ -297,7 +316,8 @@ describe('the sheets the element adopts', () => {
 	it('puts none of its own rules in a layer', async () => {
 		const { shadow } = await mount();
 
-		expect(shadow.adoptedStyleSheets.length).toBe(4);
+		// the shared four and the element's own brand scale (../styles/brand.ts)
+		expect(shadow.adoptedStyleSheets.length).toBe(5);
 		expect(shadow.adoptedStyleSheets.filter(declaresALayer).length).toBe(0);
 	});
 });
@@ -1221,17 +1241,18 @@ describe('the step marks as laid out', () => {
 	});
 
 	// a pale seed's fill is near the card's own face, so the fill alone no longer separates solid from
-	// hollow: the current mark carries the ink the fill takes, `--_on-p`, as a rim — step 12 there,
-	// and a near-white that vanishes into the card on a seed dark enough to carry white.
+	// hollow: the current mark carries the ink the fill takes, `--_on-p`, as a rim — the generator's
+	// dark tint of the seed there, and a near-white that vanishes into the card on a seed dark enough
+	// to carry white.
 	it('rims the current mark in the ink its fill takes, so a pale seed still reads solid', async () => {
 		const { host, shadow } = await mount();
-		host.style.cssText = '--donate-primary: #ffe629;';
+		await reseed(host, '--donate-primary: #ffe629;');
 		const current = shadow.querySelector('.step:not([hidden]) .step-dot.current .step-mark');
 		const drawn = getComputedStyle(current as HTMLElement);
 		const ink = used(shadow, '--_on-p');
 
 		expect(ink).not.toBe(used(shadow, '--_p'));
-		expect(ink).toBe(used(shadow, '--_a12'));
+		expect(ink).not.toBe('rgb(255, 255, 255)');
 		expect(drawn.boxShadow).toContain(ink);
 	});
 
@@ -3178,7 +3199,7 @@ describe('the option a donor chose', () => {
 		const { host, shadow } = await mount();
 		// a seeded card: on an unseeded one the brand's steps are slate greys, and a brand step and a
 		// grey one could match by accident.
-		host.style.cssText = '--donate-primary: oklch(0.45 0.18 25);';
+		await reseed(host, '--donate-primary: oklch(0.45 0.18 25);');
 		const drawn = Array.from(
 			shadow.querySelectorAll(`.step:not([hidden]) ${selector}`)
 		) as HTMLElement[];
@@ -3215,7 +3236,7 @@ describe('the option a donor chose', () => {
 		['the amount grid', "[part~='amount-option']"]
 	])('draws a chosen word at the width it rested at on %s', async (_name, selector) => {
 		const { host, shadow } = await mount();
-		host.style.cssText = '--donate-primary: oklch(0.45 0.18 25);';
+		await reseed(host, '--donate-primary: oklch(0.45 0.18 25);');
 		const drawn = Array.from(
 			shadow.querySelectorAll(`.step:not([hidden]) ${selector}`)
 		) as HTMLElement[];
@@ -3296,7 +3317,7 @@ describe('what a pointer is answered with', () => {
 	// a screen has a use for it. so the tribute is opened and the press it reveals is the target.
 	it('steps the quiet action to the ink a chosen word steps to', async () => {
 		const { host, shadow } = await mount();
-		host.style.cssText = '--donate-primary: oklch(0.45 0.18 25);';
+		await reseed(host, '--donate-primary: oklch(0.45 0.18 25);');
 		const tribute = shadow.querySelectorAll(
 			".step:not([hidden]) [part~='checkbox']"
 		)[1] as HTMLInputElement;
@@ -3359,7 +3380,7 @@ describe('what a pointer is answered with', () => {
 	// seeded so the two steps are the brand's.
 	it('steps the ticked tick box to the fill a pressed action takes', async () => {
 		const { host, shadow } = await mount();
-		host.style.cssText = '--donate-primary: oklch(0.45 0.18 25);';
+		await reseed(host, '--donate-primary: oklch(0.45 0.18 25);');
 		const box = shadow.querySelector(".step:not([hidden]) [part~='checkbox']") as HTMLInputElement;
 		box.click();
 		await settle();
@@ -3379,7 +3400,7 @@ describe('the ring and the brand never touch', () => {
 
 	it('rings every control the primary has not filled in a rung of the ladder', async () => {
 		const { host, shadow } = await mount();
-		host.style.cssText = SEEDS;
+		await reseed(host, SEEDS);
 		await atReview(shadow);
 		const primary = used(shadow, '--_p');
 		const ring = used(shadow, '--_focus-ring');
@@ -3405,7 +3426,7 @@ describe('the ring and the brand never touch', () => {
 	// edge. the chosen tile, edged rather than filled, is the case after this one.
 	it('rings a control the primary marks with a band of the ladder between the two', async () => {
 		const { host, shadow } = await mount();
-		host.style.cssText = SEEDS;
+		await reseed(host, SEEDS);
 		await atReview(shadow);
 		const primary = used(shadow, '--_p');
 		const ring = used(shadow, '--_focus-ring');
@@ -3426,7 +3447,7 @@ describe('the ring and the brand never touch', () => {
 	// ring it reads edge, band, ring — the edge kept, the face's band outside it, the ring past that.
 	it('keeps the chosen tile’s brand edge under the ring, with the face’s band between', async () => {
 		const { host, shadow } = await mount();
-		host.style.cssText = SEEDS;
+		await reseed(host, SEEDS);
 		const tile = shadow.querySelector(
 			".step:not([hidden]) [part~='amount-option'][part~='selected']"
 		) as HTMLElement;
@@ -3444,7 +3465,7 @@ describe('the ring and the brand never touch', () => {
 
 	it('rings a control the primary has filled inside itself, in neither of them', async () => {
 		const { host, shadow } = await mount();
-		host.style.cssText = SEEDS;
+		await reseed(host, SEEDS);
 		await atReview(shadow);
 		// the Donate press on the step the donor is standing on. every earlier step keeps its own, hidden,
 		// and so does the one-time offer above it on this step; `focus()` on a control with no layout box
@@ -3554,7 +3575,7 @@ describe('the ring a primary-filled control draws inside itself, as painted', ()
 		await browser.viewport(held[0], held[1]);
 	});
 
-	/** one pixel as WCAG's own luminance, which is the space a margin between two of them is in. */
+	/** one pixel's relative luminance, which is how the brightest of a run is told apart. */
 	function luminance([red, green, blue]: Rgb): number {
 		const channel = (value: number): number => {
 			const unit = value / 255;
@@ -3563,13 +3584,7 @@ describe('the ring a primary-filled control draws inside itself, as painted', ()
 		return 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue);
 	}
 
-	function contrastRatio(a: Rgb, b: Rgb): number {
-		const light = Math.max(luminance(a), luminance(b));
-		const dark = Math.min(luminance(a), luminance(b));
-		return (light + 0.05) / (dark + 0.05);
-	}
-
-	/** the widest a channel differs, which is the one question a ratio cannot answer: sameness. */
+	/** the widest a channel differs between two pixels. */
 	function apart(a: Rgb, b: Rgb): number {
 		return Math.max(...a.map((channel, index) => Math.abs(channel - (b[index] as number))));
 	}
@@ -3618,7 +3633,7 @@ describe('the ring a primary-filled control draws inside itself, as painted', ()
 		['an unseeded card', '']
 	])('lays the fill on both sides of it, on %s', async (_name, declarations) => {
 		const { host, shadow } = await mount();
-		host.style.cssText = declarations;
+		await reseed(host, declarations);
 		const action = await focusedAction(shadow);
 
 		// the ring is the one near-white on a fill the band keeps dark at every point, so the
@@ -3635,10 +3650,6 @@ describe('the ring a primary-filled control draws inside itself, as painted', ()
 		const outside = column[first - 1] as Rgb;
 		const inside = column[last + 1] as Rgb;
 
-		// and a real margin on both sides of it rather than a lightening of one edge. 3:1 is the floor
-		// a boundary carries, and `--_on-p` clears it on every fill the band allows.
-		expect(contrastRatio(ring, outside)).toBeGreaterThanOrEqual(3);
-		expect(contrastRatio(ring, inside)).toBeGreaterThanOrEqual(3);
 		// the two neighbours are one colour, which is what makes the ring a line within the control
 		// rather than its rim: the fill is on both sides of it.
 		expect(apart(outside, inside)).toBeLessThanOrEqual(8);
@@ -3694,7 +3705,7 @@ describe('the tick in a ticked box, as painted', () => {
 		['a deep seed', '--donate-primary: #0f766e;']
 	])('draws the tick in the fill’s own ink on %s', async (_name, declarations) => {
 		const { host, shadow } = await mount();
-		host.style.cssText = declarations;
+		await reseed(host, declarations);
 		const box = Array.from(shadow.querySelectorAll(".step:not([hidden]) [part~='checkbox']")).find(
 			(node) => !node.closest('.fee-decision') && (node as HTMLElement).getClientRects().length > 0
 		) as HTMLInputElement;

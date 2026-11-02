@@ -1127,7 +1127,8 @@ describe('the style adoption', () => {
 		const card = await mount();
 
 		expect(document.adoptedStyleSheets.length).toBeGreaterThan(0);
-		expect(card.shadow.adoptedStyleSheets).toHaveLength(4);
+		// the shared four, and the element's own brand scale after them (./styles/brand.ts)
+		expect(card.shadow.adoptedStyleSheets).toHaveLength(5);
 		expect(card.shadow.adoptedStyleSheets[0]).toBe(document.adoptedStyleSheets[0]);
 	});
 
@@ -1156,7 +1157,7 @@ describe('the style adoption', () => {
 		expect(document.adoptedStyleSheets).toContain(token);
 	});
 
-	// an element moved into another document keeps a shadow root holding four sheets constructed in
+	// an element moved into another document keeps a shadow root holding five sheets constructed in
 	// the document it came from, and a constructed sheet may only be adopted by the document it was
 	// constructed in — so what it is holding is not adoptable and the card is styled by nothing.
 	// there is no rebuild without this callback: `#mount` returns early on a shadow root that exists.
@@ -1171,7 +1172,7 @@ describe('the style adoption', () => {
 		// whose `ownerDocument` is already the new one, which is what an engine does.
 		(card.host as HTMLElement & { adoptedCallback(): void }).adoptedCallback();
 
-		expect(card.shadow.adoptedStyleSheets).toHaveLength(4);
+		expect(card.shadow.adoptedStyleSheets).toHaveLength(5);
 		expect(other.adoptedStyleSheets).toContain(card.shadow.adoptedStyleSheets[0]);
 		expect(document.adoptedStyleSheets).not.toContain(card.shadow.adoptedStyleSheets[0]);
 	});
@@ -5406,6 +5407,7 @@ describe('the stylesheets', () => {
 			'element.ts',
 			'embed/rows.ts',
 			'embed/surface.ts',
+			'styles/brand.ts',
 			'styles/resolve.ts'
 		]);
 		expect(

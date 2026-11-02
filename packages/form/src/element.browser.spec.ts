@@ -4,6 +4,7 @@ import { createCoinPicker } from './coin-picker';
 import { PRE_UPGRADE_RESERVATION_CSS, RESERVED_MIN_HEIGHT } from './embed/reservation';
 import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
+import { generateBrandScale } from './styles/radix-scale';
 import type { FormConfig, PaymentMethod } from './v1';
 
 // what a lightweight DOM cannot see about the element, all of it engine behaviour:
@@ -170,7 +171,7 @@ afterEach(() => {
 });
 
 describe('the element in a second document', () => {
-	// the premise behind rebuilding all four sheets rather than re-assigning the ones the shadow root
+	// the premise behind rebuilding all five sheets rather than re-assigning the ones the shadow root
 	// is already holding: they belong to the document they were constructed in and no other will take
 	// them (https://developer.mozilla.org/en-US/docs/Web/API/Document/adoptedStyleSheets).
 	it('cannot hand a document a sheet constructed in another one', () => {
@@ -194,7 +195,7 @@ describe('the element in a second document', () => {
 		await settle();
 
 		expect(host.ownerDocument).toBe(other);
-		expect(host.shadowRoot?.adoptedStyleSheets).toHaveLength(4);
+		expect(host.shadowRoot?.adoptedStyleSheets).toHaveLength(5);
 		expect(background(host)).toBe(painted);
 	});
 });
@@ -1053,5 +1054,82 @@ describe('the other tile by keyboard and by pointer', () => {
 
 		expect(other?.checked).toBe(true);
 		expect(root.activeElement).toBe(other);
+	});
+});
+
+// the brand scale is radix's custom-palette generator run on the seed the host computes
+// (./styles/radix-scale.ts), set on the shadow host before first paint and again when the seed
+// moves. read as painted bytes on both sides, so the hex block and the display-p3 block are each
+// held to the generator's output for whichever one this screen takes.
+describe('the brand scale the element generates', () => {
+	/** the scale this screen should paint for a seed, by token. */
+	function expected(seed: string): Record<string, string> {
+		const scale = generateBrandScale(seed);
+		if (scale === null) throw new Error(`${seed} is a seed the generator reads`);
+		const steps = matchMedia('(color-gamut: p3)').matches ? scale.stepsWideGamut : scale.steps;
+		return {
+			...Object.fromEntries(steps.map((value, i) => [`--_a${i + 1}`, value])),
+			'--_p': steps[8] as string,
+			'--_p-hover': steps[9] as string,
+			'--_on-p': scale.contrast
+		};
+	}
+
+	/** a colour, or a token resolved inside the card, as the sRGB bytes a canvas paints it in. */
+	function bytes(host: HTMLElement, colour: string): number[] {
+		const probe = document.createElement('div');
+		probe.style.color = colour.startsWith('--') ? `var(${colour})` : colour;
+		host.shadowRoot?.appendChild(probe);
+		const used = getComputedStyle(probe).color;
+		probe.remove();
+		const surface = document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D;
+		surface.fillStyle = used;
+		surface.fillRect(0, 0, 1, 1);
+		return Array.from(surface.getImageData(0, 0, 1, 1).data.slice(0, 3));
+	}
+
+	function seedAbove(seed: string): void {
+		document.body.style.setProperty('--donate-primary', seed);
+		onTestFinished(() => {
+			document.body.style.removeProperty('--donate-primary');
+		});
+	}
+
+	it.each([
+		['the default', '', '#1c2024'],
+		['purple', '#8e4ec6', '#8e4ec6'],
+		['red', '#e5484d', '#e5484d'],
+		['yellow', '#ffe629', '#ffe629'],
+		['a display-p3 neon', 'color(display-p3 0 1 0)', 'color(display-p3 0 1 0)']
+	])('paints the generated scale for %s', async (_name, seed, generatedFrom) => {
+		if (seed !== '') seedAbove(seed);
+		const host = await mount();
+
+		for (const [token, value] of Object.entries(expected(generatedFrom))) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	it('follows a seed the host changes after mount', async () => {
+		const host = await mount();
+		host.style.setProperty('--donate-primary', '#e5484d');
+		const scale = expected('#e5484d');
+		// set from a transition the change starts (./styles/brand.ts), which reports a frame or more on
+		await vi.waitFor(() => {
+			expect(bytes(host, '--_p')).toEqual(bytes(host, scale['--_p'] as string));
+		});
+
+		for (const [token, value] of Object.entries(scale)) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	// the generator reads what an engine hands back for a registered colour, and a cie lab seed comes
+	// back as lab(); the card keeps ./styles/tokens.css's fallback scale, whose step 9 is the seed.
+	it('keeps the stylesheet’s fallback for a seed the generator does not read', async () => {
+		seedAbove('lab(50% 40 30)');
+		const host = await mount();
+
+		expect(bytes(host, '--_p')).toEqual(bytes(host, 'lab(50% 40 30)'));
 	});
 });

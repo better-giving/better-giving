@@ -14,9 +14,9 @@ import tokens from './tokens.css?inline';
 // payment provider — what that module then sends is asserted in ./resolve.browser.spec.ts.
 //
 // every colour in ./tokens.css is a step of a radix colors scale
-// (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), and text is
-// measured the way radix states its guarantee: in APCA, step 11 at Lc 60 and step 12 at Lc 90 on
-// step 2 of its own scale.
+// (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale). the brand
+// steps read here are the stylesheet's fallback; the scale the element generates over them is held
+// in ../element.browser.spec.ts and, against radix's own generator, in ./radix-scale.spec.ts.
 
 const sheet = new CSSStyleSheet();
 sheet.replaceSync(tokens);
@@ -42,7 +42,7 @@ const RUNGS = Object.keys(SLATE);
 /** the brand scale's declared steps, the solid pair and the ink on it. */
 const BRAND = ['--_a8', '--_p', '--_p-hover', '--_a11', '--_a12', '--_on-p'];
 
-/** fixed literals with no relation to any seed: legibility is not allowed to depend on a host. */
+/** fixed literals with no relation to any seed: a refusal is drawn alike whatever a host seeded. */
 const SEMANTIC = ['--_bad', '--_bad-edge', '--_bad-tint', '--_warn-tint', '--_warn-ink'];
 
 const NETWORK = [0, 1, 2, 3, 4, 5].flatMap((n) => [`--_net-${n}-tint`, `--_net-${n}-ink`]);
@@ -56,13 +56,6 @@ const COLOR_TOKENS = [
 	...SEMANTIC,
 	...NETWORK
 ];
-
-/**
- * the brand scale's step 2, written from the table at `--_a8` in ./tokens.css. the card spends no
- * step 2, so nothing declares it; radix's text guarantee is stated on it, so this is where it is
- * measured from.
- */
-const BRAND_STEP_2 = 'oklch(from var(--donate-primary) 0.982 calc(c * 0.06) h)';
 
 /** the registered `initial-value` of the seed: slate's step 12. */
 const DEFAULT_SEED = '#1c2024';
@@ -90,9 +83,6 @@ const SEEDS: readonly (readonly [string, string])[] = [
 	['white', '#ffffff'],
 	['a mid grey', '#808080']
 ];
-
-/** the seeds radix itself ships as a step 9, every one of which it draws a legible ink on. */
-const RADIX_NINES = SEEDS.filter(([name]) => name.startsWith('radix'));
 
 /** the three shade presets: a preset moves every grey on the card at once. */
 const SHADES = ['light', 'warm', 'cool'] as const;
@@ -205,28 +195,6 @@ function srgbOf(colour: string): [number, number, number] {
 /** the two colours as the eight-bit channels a screen draws. */
 function bytes(colour: string): number[] {
 	return srgbOf(colour).map((value) => Math.round(value * 255));
-}
-
-/**
- * APCA's lightness contrast (0.0.98G-4g, https://github.com/Myndex/apca-w3), the measure radix
- * states its text guarantee in. signed by polarity: dark text on a light ground reads positive and
- * light on dark negative, so a floor is held on the magnitude.
- */
-function apca(text: string, ground: string): number {
-	const luminance = ([r, g, b]: [number, number, number]) => {
-		const y = 0.2126729 * r ** 2.4 + 0.7151522 * g ** 2.4 + 0.072175 * b ** 2.4;
-		// biome-ignore lint/suspicious/noApproximativeNumericConstant: APCA's black-clamp exponent is 1.414 exactly, not √2
-		return y > 0.022 ? y : y + (0.022 - y) ** 1.414;
-	};
-	const txt = luminance(srgbOf(text));
-	const bg = luminance(srgbOf(ground));
-	if (Math.abs(bg - txt) < 0.0005) return 0;
-	if (bg > txt) {
-		const s = (bg ** 0.56 - txt ** 0.57) * 1.14;
-		return s < 0.1 ? 0 : (s - 0.027) * 100;
-	}
-	const s = (bg ** 0.65 - txt ** 0.62) * 1.14;
-	return s > -0.1 ? 0 : (s + 0.027) * 100;
 }
 
 /** the token as a used length, which is the only way a `clamp()` of lengths becomes a number. */
@@ -388,7 +356,7 @@ describe('the neutral ladder', () => {
 	);
 });
 
-describe('the brand scale', () => {
+describe('the brand scale’s fallback', () => {
 	// radix holds the seed as step 9: the brand exactly as the host gave it, at the screen's own
 	// resolution, for every seed inside sRGB.
 	it.each(SEEDS.filter(([, value]) => !value.startsWith('oklch')))(
@@ -401,8 +369,7 @@ describe('the brand scale', () => {
 	);
 
 	// every other declared step stands at the lightness the table in ./tokens.css gives it, whatever
-	// the seed's own lightness — which is what makes 11 and 12 legible for a pale brand and a deep
-	// one alike. read off the unclipped colour, where the lightness is the one authored.
+	// the seed's own lightness. read off the unclipped colour, where the lightness is the one authored.
 	it.each(SEEDS)('sets steps 8, 11 and 12 at fixed lightnesses for %s', (_name, value) => {
 		seed(brand(value));
 
@@ -434,117 +401,9 @@ describe('the brand scale', () => {
 	});
 });
 
-describe('radix’s text guarantee', () => {
-	// steps 11 and 12 at Lc 60 and Lc 90 on step 2 of their own scale, as
-	// https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale states it.
-	it.each(SHADES)('holds on slate under %s', (shade) => {
-		seed(`--donate-shade: ${shade};`);
-
-		expect(apca('--_n11', '--_n2')).toBeGreaterThanOrEqual(60);
-		expect(apca('--_n12', '--_n2')).toBeGreaterThanOrEqual(90);
-	});
-
-	// red's and amber's word steps on their own step 2, which the card spends nowhere and which
-	// ./tokens.css lists beside the steps it declares.
-	it('holds on red and amber', () => {
-		seed('');
-
-		expect(apca('--_bad', '#fff7f7')).toBeGreaterThanOrEqual(60);
-		expect(apca('--_warn-ink', '#fefbe9')).toBeGreaterThanOrEqual(60);
-	});
-
-	it.each(SEEDS)('holds on the brand scale for %s', (_name, value) => {
-		seed(brand(value));
-
-		expect(apca('--_a11', BRAND_STEP_2)).toBeGreaterThanOrEqual(60);
-		expect(apca('--_a12', BRAND_STEP_2)).toBeGreaterThanOrEqual(90);
-	});
-
-	// and where the brand's words are drawn: a chosen option's word and the quiet action's, on the
-	// card's own face.
-	it.each(SEEDS)('holds the brand’s word steps on the card face for %s', (_name, value) => {
-		seed(brand(value));
-
-		expect(apca('--_a11', '--_n1')).toBeGreaterThanOrEqual(60);
-		expect(apca('--_a12', '--_n1')).toBeGreaterThanOrEqual(90);
-	});
-});
-
-describe.each(SHADES)('the words on the grounds they stand on under %s', (shade) => {
-	beforeEach(() => {
-		seed(`--donate-shade: ${shade};`);
-	});
-
-	// the card's face, a tray's ground, a control's resting ground, and the two bands: every ground
-	// a word rests on. a tile under the pointer and the press is a passing state and is left to the
-	// guarantee above.
-	const GROUNDS = ['--_n1', '--_n2', '--_n3', '--_warn-tint', '--_bad-tint'];
-
-	it('holds step 11 at Lc 60 and step 12 at Lc 90 on every resting ground', () => {
-		for (const ground of GROUNDS) {
-			expect(apca('--_n11', ground), ground).toBeGreaterThanOrEqual(60);
-			expect(apca('--_n12', ground), ground).toBeGreaterThanOrEqual(90);
-		}
-	});
-
-	// red's and amber's word steps stand on the card face: a refusal under its field, a send-by and
-	// the caution mark.
-	it('holds red’s and amber’s word steps at Lc 60 on the card face', () => {
-		expect(apca('--_bad', '--_n1')).toBeGreaterThanOrEqual(60);
-		expect(apca('--_warn-ink', '--_n1')).toBeGreaterThanOrEqual(60);
-	});
-
-	// each network pill's ink is its own step 11 on its own step 3, held to the step-11 floor there.
-	it('reads the network ink on its own pill', () => {
-		for (const n of [0, 1, 2, 3, 4, 5]) {
-			expect(apca(`--_net-${n}-ink`, `--_net-${n}-tint`), `pill ${n}`).toBeGreaterThanOrEqual(60);
-		}
-	});
-});
-
-describe('the ink on the solid fill', () => {
-	// radix draws white on most step 9s and dark ink on its sky, mint, lime, yellow and amber, and on
-	// every one of its own the better of the two reads Lc 60 or more.
-	it.each(RADIX_NINES)('reads Lc 60 on steps 9 and 10 for %s', (_name, value) => {
-		seed(brand(value));
-
-		expect(Math.abs(apca('--_on-p', '--_p'))).toBeGreaterThanOrEqual(60);
-		expect(Math.abs(apca('--_on-p', '--_p-hover'))).toBeGreaterThanOrEqual(60);
-	});
-
-	// a relaxed floor, and radix's own page is why: no radix step 9 stands between its darkest
-	// light-text one and its lightest dark-text one, and a seed standing there reads alike with
-	// either ink, about Lc 40 at the worst
-	// (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale). the switch
-	// at 0.73 is what keeps the choice the better of the two everywhere else.
-	it.each([
-		...SEEDS,
-		['a seed just under the switch', 'oklch(0.72 0.15 190)'],
-		['a seed just over the switch', 'oklch(0.74 0.15 25)']
-	] as const)('reads at least Lc 40 on steps 9 and 10 for %s', (_name, value) => {
-		seed(brand(value));
-
-		expect(Math.abs(apca('--_on-p', '--_p'))).toBeGreaterThanOrEqual(40);
-		expect(Math.abs(apca('--_on-p', '--_p-hover'))).toBeGreaterThanOrEqual(40);
-	});
-
-	// white below the switch, the brand's step 12 above it.
-	it.each([
-		['radix blue', '#0090ff', 'white'],
-		['the default', '', 'white'],
-		['radix yellow', '#ffe629', 'step 12'],
-		['radix amber', '#ffc53d', 'step 12']
-	])('draws %s’s ink in %s', (_name, value, ink) => {
-		seed(brand(value));
-
-		expect(bytes('--_on-p')).toEqual(ink === 'white' ? [255, 255, 255] : bytes('--_a12'));
-	});
-});
-
 describe('the edges', () => {
 	// every box a donor operates is found by slate's step 7, radix's border for an interactive
-	// component, and steps to 8 under the pointer. no contrast floor is held on an edge, which is
-	// radix's step 7 taken as it is.
+	// component, and steps to 8 under the pointer: radix's step 7 taken as it is.
 	it('draws every box outline at step 7', () => {
 		seed('');
 

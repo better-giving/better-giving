@@ -90,13 +90,8 @@
  * does exactly this, and is the only spec in the repo that can see any of it: a lightweight
  * DOM computes these as strings, never as a rendered color.
  *
- * text is measured the way radix states its guarantee, in APCA: step 11 reaches Lc 60 and step 12
- * Lc 90 on step 2 of its own scale, and ./tokens.browser.spec.ts holds both for slate, for red and
- * amber, and for the brand scale across a spread of seeds. the ink on a solid fill is the one
- * reading radix states no number for, and `--_on-p` says what it holds.
- *
- * an edge is held to no contrast floor, and that is radix's step 7 taken as it is: a control's edge
- * at rest is a quiet line, and the step a pointer moves it to is the one that finds it.
+ * an edge is radix's step 7 taken as it is: a control's edge at rest is a quiet line, and the step
+ * a pointer moves it to is the one that finds it.
  *
  * a control this card draws as unavailable is drawn at exactly the value its available state takes
  * and buys no quiet at all. nothing in this directory is ever rendered `disabled`
@@ -218,12 +213,17 @@
 	--_root-size: clamp(15px, 1rem, 18px);
 
 	/*
-	 * the brand scale: twelve steps around the one seed, which is step 9 exactly as the host gave it.
-	 * radix builds a custom scale by holding the seed as step 9 and setting every other step at the
-	 * lightness its own scales hold that step at, with the seed's hue and a share of its chroma
-	 * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale for the jobs;
-	 * https://www.radix-ui.com/colors/custom for the generator). the generator itself is not
-	 * expressible in a stylesheet, so this is its approximation in oklch relative colour:
+	 * the brand scale: twelve steps around the one seed. the element generates them with radix's own
+	 * custom-palette generator (https://www.radix-ui.com/colors/custom), ported in ./radix-scale.ts,
+	 * and sets all twelve with the solid pair and the ink on `:host` from a sheet adopted after this
+	 * one (./brand.ts), before first paint and again whenever the seed moves. the deployment's own
+	 * donation page, which draws the card under `[data-donate-root]`, takes its scale from the same
+	 * module, exported as `./styles/radix-scale` in ../../package.json.
+	 *
+	 * what is declared here is only the fallback: what the card wears in the moment before the
+	 * script runs, and for a seed written in a notation the port does not read. it is the generator
+	 * approximated in oklch relative colour, a fixed lightness per step with the seed's hue and a
+	 * share of its chroma:
 	 *
 	 *   step N = oklch(L_N, C_9 × k_N, H_9), and step 9 = the seed
 	 *
@@ -234,29 +234,18 @@
 	 *   L     .993  .982  .959  .932  .900  .859  .803  .729  .540  .326
 	 *   k     .03   .06   .14   .25   .33   .44   .55   .73   .90   .48
 	 *
-	 * steps 1 to 5 land within 0.01 of slate's own lightness at those steps, so a brand ground and a
-	 * grey ground at one step read as one plane; steps 6 to 8 and 11 to 12 sit where radix's colours
-	 * sit rather than where its greys do, which is what keeps a brand edge and a brand word coloured.
-	 * the ten steps are fixed lightnesses, so every reading made on them is a reading of the seed's
-	 * hue and chroma and never of its lightness: a pale or a neon brand gets the same legible 11 and
-	 * 12 as a deep one. "radix’s text guarantee" in ./tokens.browser.spec.ts
-	 * holds 11 at Lc 60 and 12 at Lc 90 on step 2 across a spread of seeds.
-	 *
-	 * the steps the card spends are declared below and the rest are not; a rule that comes to need
-	 * step N writes it from the table, `oklch(from var(--donate-primary) L_N calc(c * k_N) h)`.
-	 *
-	 * a seed outside sRGB at a light step is gamut-mapped by the browser, which moves its chroma and
-	 * not its lightness, so no step's job moves with it.
+	 * the fallback declares the steps the card spends and no others; a rule that comes to need step N
+	 * gets it from the generated sheet, and writes its fallback from the table,
+	 * `oklch(from var(--donate-primary) L_N calc(c * k_N) h)`.
 	 */
 	--_a8: oklch(from var(--donate-primary) 0.729 calc(c * 0.73) h);
 	--_a11: oklch(from var(--donate-primary) 0.54 calc(c * 0.9) h);
 	--_a12: oklch(from var(--donate-primary) 0.326 calc(c * 0.48) h);
 
 	/*
-	 * step 9, the seed itself, and step 10, its hover. radix's step 10 is the seed moved 0.03 in
-	 * lightness — darker across every one of its scales — and that move turns round under a dark seed:
-	 * below 0.4 a darker step would be no change a donor can see, so step 10 is 0.03 lighter there.
-	 * the `clamp(-1, …, 1)` is a sign taken off the seed's own lightness.
+	 * the fallback's step 9, the seed itself, and step 10, its hover: the seed moved 0.03 in
+	 * lightness, darker, and lighter instead below 0.4, where a darker step would be no change a
+	 * donor can see. the `clamp(-1, …, 1)` is a sign taken off the seed's own lightness.
 	 *
 	 * a press is answered by step 10 as well. radix states no step for a solid fill pressed, and a
 	 * touch never hovers, so on a phone the press is the step-10 change itself and under a pointer it
@@ -266,19 +255,12 @@
 	--_p-hover: oklch(from var(--_p) calc(l - 0.03 * clamp(-1, (l - 0.4) * 1000, 1)) c h);
 
 	/*
-	 * the ink on steps 9 and 10, and the ring a filled control draws inside itself: white, or step 12
-	 * of the brand scale where the seed is too light to carry white — radix draws its sky, mint, lime,
-	 * yellow and amber that way. the switch is on the seed's lightness at 0.73, with
+	 * the fallback's ink on steps 9 and 10, and the ring a filled control draws inside itself: white,
+	 * or step 12 of the brand scale where the seed is too light to carry white, as radix draws its
+	 * sky, mint, lime, yellow and amber. the switch is on the seed's lightness at 0.73, with
 	 * `clamp(0, (l - 0.73) * 1000, 1)` the step: 0 below it, which keeps white, and 1 above it, which
 	 * takes step 12's lightness and chroma. step 10 takes the ink step 9 takes, so a hover never
 	 * swaps the ink under the pointer.
-	 *
-	 * 0.73 is where white and step 12 read alike in APCA, so the choice is always the better of the
-	 * two. on radix's own step 9s that is Lc 60 or more; a seed standing right at the switch — between
-	 * radix's darkest light-text 9 and its lightest dark-text one, where radix places none — reads
-	 * Lc 40 with either. "the ink on the solid fill" in ./tokens.browser.spec.ts holds
-	 * both numbers; `::part(action)` is the answer for a brand standing there, where the host sets
-	 * fill and foreground together and owns the pair.
 	 */
 	--_on-p: oklch(
 		from var(--_p) calc(1 - clamp(0, (l - 0.73) * 1000, 1) * 0.674)
@@ -345,15 +327,12 @@
 	 * name and the number that picks it, in the one place here where a name is chosen by arithmetic.
 	 *
 	 * one lightness and one chroma across all six, and six hues: no entry reads louder than another.
-	 * each pill is the brand scale's method (`--_a8` above) run at a hue of its own with a step-9
-	 * chroma of 0.16: the ground is step 3, where radix's badge stands, and the ink is step 11. the
+	 * each pill is the brand scale's fallback method (`--_a8` above) run at a hue of its own with a
+	 * step-9 chroma of 0.16: the ground is step 3, where radix's badge stands, and the ink is step 11. the
 	 * ink is stated from its own tint so each hue is written once.
 	 *
 	 * the hues step around the wheel and skip the ones the semantic colours hold, 27 and 75 to 85, so
 	 * a pill is never the shade a refusal or a caution is said in.
-	 *
-	 * the ink is step 11 on step 3 rather than on step 2, so it is held to radix's step-11 floor, Lc
-	 * 60, on its own pill — "reads the network ink on its own pill" in ./tokens.browser.spec.ts.
 	 */
 	--_net-0-tint: oklch(0.959 0.022 145);
 	--_net-1-tint: oklch(0.959 0.022 185);
@@ -902,9 +881,9 @@
 	 * `cool` set: under `light` the fallback is the literal's own hue and the step is slate exactly,
 	 * and under the other two the step keeps slate's lightness and chroma and turns to amber at 70 or
 	 * to cyan-blue at 220. so every step stands at the same lightness and the same chroma under all
-	 * three, and every reading made on slate holds under the other two — ./tokens.browser.spec.ts
-	 * measures each pair under each. slate's chroma tops out at 0.019, which is a trace a donor reads
-	 * as the tone of the card rather than as a colour, under any of the three hues.
+	 * three — "the neutral ladder" in ./tokens.browser.spec.ts holds both. slate's chroma tops out
+	 * at 0.019, which is a trace a donor reads as the tone of the card rather than as a colour, under
+	 * any of the three hues.
 	 *
 	 * the step number is the job, and the jobs are the head of this file's. step 10 is slate's solid
 	 * hover, and nothing on this card is a grey solid a pointer moves, so it is listed above and not
