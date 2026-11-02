@@ -239,7 +239,7 @@
 	 * sit rather than where its greys do, which is what keeps a brand edge and a brand word coloured.
 	 * the ten steps are fixed lightnesses, so every reading made on them is a reading of the seed's
 	 * hue and chroma and never of its lightness: a pale or a neon brand gets the same legible 11 and
-	 * 12 as a deep one. "keeps radix's text guarantee on the brand scale" in ./tokens.browser.spec.ts
+	 * 12 as a deep one. "radix’s text guarantee" in ./tokens.browser.spec.ts
 	 * holds 11 at Lc 60 and 12 at Lc 90 on step 2 across a spread of seeds.
 	 *
 	 * the steps the card spends are declared below and the rest are not; a rule that comes to need
@@ -276,7 +276,7 @@
 	 * 0.73 is where white and step 12 read alike in APCA, so the choice is always the better of the
 	 * two. on radix's own step 9s that is Lc 60 or more; a seed standing right at the switch — between
 	 * radix's darkest light-text 9 and its lightest dark-text one, where radix places none — reads
-	 * Lc 40 with either. "carries a legible ink on the solid fill" in ./tokens.browser.spec.ts holds
+	 * Lc 40 with either. "the ink on the solid fill" in ./tokens.browser.spec.ts holds
 	 * both numbers; `::part(action)` is the answer for a brand standing there, where the host sets
 	 * fill and foreground together and owns the pair.
 	 */

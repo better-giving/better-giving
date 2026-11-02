@@ -76,9 +76,9 @@
  *
  * the weight is the one thing the row's state does not move, and it stays put however heavily the
  * provider draws its own open row: a name redrawn at another weight is a name re-laid out under the
- * pointer at the moment it is pressed. open is `--_n12` inside the primary's edge and nothing else —
- * the same rule `[part~='amount-option']` in ./parts.css is held to, and what `--_w-medium` is for
- * (./tokens.css).
+ * pointer at the moment it is pressed. open is `--_n12` inside the primary's edge and nothing else,
+ * at the one weight a chosen amount tile keeps too (`[part~='amount-option']` in ./parts.css), which
+ * is what `--_w-medium` is for (./tokens.css).
  *
  * this ink is the fund's mark as well as its name: Chariot's glyph is drawn `currentColor`
  * (../embed/rows.ts), so it moves between the two states with the words beside it. PayPal's and
@@ -109,9 +109,9 @@
 /*
  * the ring is drawn around the box rather than around the press inside it, because the box is the
  * control a donor finds. a closed row takes the plain ring hugging its edge; the open one has the
- * primary's edge, which at its band's floor is the ring's own darkness, so a band of `--_n1` is laid
- * against that edge first and the ring goes outside it — the construction a chosen amount tile takes
- * (the head of ./tokens.css). the head keeps a transparent outline, which forced-colors paints in the
+ * primary's edge, which is the ring's own step 8, so a band of `--_n1` is laid against that edge first
+ * and the ring goes outside it — the construction a chosen amount tile takes (the focus block at the
+ * end of ./parts.css). the head keeps a transparent outline, which forced-colors paints in the
  * user's own colour once it drops every shadow.
  */
 .head:focus-visible {

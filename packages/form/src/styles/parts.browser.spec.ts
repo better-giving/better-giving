@@ -1220,6 +1220,21 @@ describe('the step marks as laid out', () => {
 		expect(getComputedStyle(current).backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
 	});
 
+	// a pale seed's fill is near the card's own face, so the fill alone no longer separates solid from
+	// hollow: the current mark carries the ink the fill takes, `--_on-p`, as a rim — step 12 there,
+	// and a near-white that vanishes into the card on a seed dark enough to carry white.
+	it('rims the current mark in the ink its fill takes, so a pale seed still reads solid', async () => {
+		const { host, shadow } = await mount();
+		host.style.cssText = '--donate-primary: #ffe629;';
+		const current = shadow.querySelector('.step:not([hidden]) .step-dot.current .step-mark');
+		const drawn = getComputedStyle(current as HTMLElement);
+		const ink = used(shadow, '--_on-p');
+
+		expect(ink).not.toBe(used(shadow, '--_p'));
+		expect(ink).toBe(used(shadow, '--_a12'));
+		expect(drawn.boxShadow).toContain(ink);
+	});
+
 	// the ring is on the shape rather than on the target. the target is `--_target-min` by
 	// `--_row-min` around a mark a fraction of that, so the ring goes on the mark — the one control
 	// on the card where the element that takes the caret is not the one that reports it.
@@ -2934,6 +2949,33 @@ describe('the surfaces a donor operates', () => {
 		const total = shadow.querySelector('.row.total') as HTMLElement;
 		expect(Number.parseFloat(getComputedStyle(total).borderTopWidth)).toBe(1);
 	});
+
+	// a corrected total tints the block and a step past its rows. the step is a spread ring rather
+	// than an outline: forced-colors repaints an outline as a frame in the user's text colour and
+	// drops a ring, and the tint is a ground — the mode's own to take away.
+	it('tints a corrected receipt a step past its rows, and frames it in no mode', async () => {
+		const { shadow } = await mount();
+		await atReview(shadow);
+		const receipt = shadow.querySelector('[part~="summary"]') as HTMLElement;
+		(shadow.querySelector('.row.total .figure') as HTMLElement).setAttribute('data-changed', '');
+		const tint = used(shadow, '--_warn-tint');
+		const drawn = getComputedStyle(receipt);
+
+		expect(drawn.backgroundColor).toBe(tint);
+		expect(drawn.outlineStyle).toBe('none');
+		expect(drawn.boxShadow).toBe(`${tint} 0px 0px 0px ${step(shadow, '--_sp2')}px`);
+
+		const session = cdp();
+		await session.send('Emulation.setEmulatedMedia', {
+			features: [{ name: 'forced-colors', value: 'active' }]
+		});
+		try {
+			expect(matchMedia('(forced-colors: active)').matches, 'the mode is on').toBe(true);
+			expect(getComputedStyle(receipt).outlineStyle).toBe('none');
+		} finally {
+			await session.send('Emulation.setEmulatedMedia', { features: [] });
+		}
+	});
 });
 
 // the chip is the track's own `::before` rather than any option, drawn flat: the card's face inside
@@ -3359,9 +3401,8 @@ describe('the ring and the brand never touch', () => {
 	// the other half of the invariant: a control the primary *marks* has two dark edges a pixel apart
 	// at its own edge, so the ring is laid outside a band of the ladder rather than taken back. that
 	// the band is listed first is what makes it the separator — a band drawn outside the ring
-	// separates nothing. the fee switch set on is the control that shows it: its track is the
-	// primary from edge to edge, and the chosen tiles on the amount step are raised rather than
-	// edged, so nothing there is marked at its edge any more.
+	// separates nothing. the fee switch set on shows it here: its track is the primary from edge to
+	// edge. the chosen tile, edged rather than filled, is the case after this one.
 	it('rings a control the primary marks with a band of the ladder between the two', async () => {
 		const { host, shadow } = await mount();
 		host.style.cssText = SEEDS;
@@ -3377,6 +3418,26 @@ describe('the ring and the brand never touch', () => {
 		// the mark survives the ring: the fill is the mark, and the ring is laid past a band of it.
 		expect(drawn.backgroundColor).toBe(primary);
 		expect(drawn.boxShadow).toContain(ring);
+		expect(drawn.boxShadow).toContain(band);
+		expect(drawn.boxShadow.indexOf(band)).toBeLessThan(drawn.boxShadow.indexOf(ring));
+	});
+
+	// the chosen tile is where a Tab into the amounts lands, and its brand edge is the mark: under the
+	// ring it reads edge, band, ring — the edge kept, the face's band outside it, the ring past that.
+	it('keeps the chosen tile’s brand edge under the ring, with the face’s band between', async () => {
+		const { host, shadow } = await mount();
+		host.style.cssText = SEEDS;
+		const tile = shadow.querySelector(
+			".step:not([hidden]) [part~='amount-option'][part~='selected']"
+		) as HTMLElement;
+		await caretOn(tile.querySelector('input') as HTMLInputElement);
+		const drawn = getComputedStyle(tile);
+		const ring = used(shadow, '--_focus-ring');
+		const band = used(shadow, '--_n1');
+
+		expect(drawn.outlineColor).toBe(used(shadow, '--_a8'));
+		expect(drawn.outlineWidth).toBe('1px');
+		expect(Number.parseFloat(drawn.outlineOffset)).toBeLessThan(0);
 		expect(drawn.boxShadow).toContain(band);
 		expect(drawn.boxShadow.indexOf(band)).toBeLessThan(drawn.boxShadow.indexOf(ring));
 	});
@@ -3581,6 +3642,80 @@ describe('the ring a primary-filled control draws inside itself, as painted', ()
 		// the two neighbours are one colour, which is what makes the ring a line within the control
 		// rather than its rim: the fill is on both sides of it.
 		expect(apart(outside, inside)).toBeLessThanOrEqual(8);
+	});
+});
+
+// the tick is the ink the fill takes rather than a hole the card shows through, so a pale seed —
+// whose `--_on-p` is its step 12 — gets a dark tick on its pale fill. read off painted pixels: a tick
+// cut out of the fill and one drawn in an ink compute alike on every property an engine reports.
+describe('the tick in a ticked box, as painted', () => {
+	let held: readonly [number, number] = [0, 0];
+
+	beforeEach(async () => {
+		held = [window.innerWidth, window.innerHeight];
+		await browser.viewport(600, 700);
+	});
+
+	afterEach(async () => {
+		await browser.viewport(held[0], held[1]);
+	});
+
+	/** a used colour as the sRGB bytes a canvas paints it in, whatever space the engine reports. */
+	function bytesOf(color: string): number[] {
+		const surface = document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D;
+		surface.fillStyle = color;
+		surface.fillRect(0, 0, 1, 1);
+		return Array.from(surface.getImageData(0, 0, 1, 1).data.slice(0, 3));
+	}
+
+	/** the painted pixel at the middle of a box, which is on the tick's long stroke. */
+	async function middleOf(box: DOMRect): Promise<number[]> {
+		const shot = await browser.screenshot({ save: false });
+		const image = new Image();
+		image.src = `data:image/png;base64,${shot}`;
+		await image.decode();
+		const canvas = document.createElement('canvas');
+		canvas.width = image.naturalWidth;
+		canvas.height = image.naturalHeight;
+		const surface = canvas.getContext('2d') as CanvasRenderingContext2D;
+		surface.drawImage(image, 0, 0);
+		expect(image.naturalWidth).toBe(window.innerWidth);
+		const [red, green, blue] = surface.getImageData(
+			Math.floor(box.left + box.width / 2),
+			Math.floor(box.top + box.height / 2),
+			1,
+			1
+		).data;
+		return [red, green, blue] as number[];
+	}
+
+	it.each([
+		['a pale seed', '--donate-primary: #ffe629;'],
+		['a deep seed', '--donate-primary: #0f766e;']
+	])('draws the tick in the fill’s own ink on %s', async (_name, declarations) => {
+		const { host, shadow } = await mount();
+		host.style.cssText = declarations;
+		const box = Array.from(shadow.querySelectorAll(".step:not([hidden]) [part~='checkbox']")).find(
+			(node) => !node.closest('.fee-decision') && (node as HTMLElement).getClientRects().length > 0
+		) as HTMLInputElement;
+		box.click();
+		await settle();
+		await landed(box);
+		expect(box.checked).toBe(true);
+
+		const painted = await middleOf(box.getBoundingClientRect());
+		const apart = (color: string) => {
+			const bytes = bytesOf(used(shadow, color));
+			return Math.max(
+				...bytes.map((channel, index) => Math.abs(channel - (painted[index] as number)))
+			);
+		};
+
+		// the stroke is under two pixels wide at this size, so its middle is antialiased: what is read
+		// is that the pixel is the ink's within that blur and nearer it than the fill — a hole shows the
+		// card, which on a pale seed is a near-white where the ink is step 12.
+		expect(apart('--_on-p')).toBeLessThanOrEqual(24);
+		expect(apart('--_on-p')).toBeLessThan(apart('--_p'));
 	});
 });
 

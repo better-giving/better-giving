@@ -114,6 +114,12 @@ describe('stripeAppearance', () => {
 				// here a second time: the box a donor types into is one size wherever it is painted.
 				fontSize: '16px'
 			},
+			// a refused field is drawn as the card's own refused field is: the danger edge and one
+			// pixel of it inside, at rest rather than only under the pointer.
+			'.Input--invalid': {
+				borderColor: 'rgb(235, 142, 144)',
+				boxShadow: 'inset 0 0 0 1px rgb(235, 142, 144)'
+			},
 			// a pointer over a field steps its outline from 7 to 8, as it does over the card's own.
 			'.Input:hover': { borderColor: 'oklch(0.794 0.015 278)' },
 			// and a refused field keeps its danger edge under the pointer, sent after the rule above
@@ -150,6 +156,11 @@ describe('stripeAppearance', () => {
 			// the ring is the brand's step 8, not its fill: a ring is a line rather than a fill, and
 			// the same step is drawn on every focused control the form draws itself.
 			'.Input:focus': { boxShadow: '0 0 0 1px oklch(0.729 0.095 264)' },
+			// and a focused refused field keeps its danger edge and rings in it, as the card's own does.
+			'.Input--invalid:focus': {
+				borderColor: 'rgb(235, 142, 144)',
+				boxShadow: '0 0 0 1px rgb(235, 142, 144)'
+			},
 			'.Label': {
 				fontSize: '14px',
 				color: 'oklch(0.502 0.013 264)',
@@ -376,11 +387,13 @@ describe('stripeAppearance', () => {
 		expect(appearance.rules['.Input:hover']).toEqual({ borderColor: RESOLVED['--_n8'] });
 	});
 
-	it('sends no refused field’s pointer rule when the danger step did not resolve', () => {
+	it('sends no refused field’s rule when the danger step did not resolve', () => {
 		// with nothing to hold, the provider's own refusal is left as it draws it.
 		const appearance = stripeAppearance(reader({ '--_bad-edge': '' }));
 
+		expect(appearance.rules).not.toHaveProperty('.Input--invalid');
 		expect(appearance.rules).not.toHaveProperty('.Input--invalid:hover');
+		expect(appearance.rules).not.toHaveProperty('.Input--invalid:focus');
 		expect(appearance.rules['.Input:hover']).toEqual({ borderColor: RESOLVED['--_n8'] });
 	});
 

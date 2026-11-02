@@ -304,6 +304,17 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 		}
 	}
 
+	// a field the provider has refused, drawn as the form's own refused field is
+	// (`[part~='field'][part~='invalid']` in ./parts.css): the danger edge and one pixel of it inside,
+	// at rest. the theme's own refused edge is `colorDanger` above, which is the danger word's step
+	// and not the edge's.
+	const badEdge = value('--_bad-edge');
+	const invalid: Record<string, string> = {};
+	put(invalid, 'borderColor', badEdge);
+	if (badEdge !== undefined && borderWidth !== undefined) {
+		invalid.boxShadow = `inset 0 0 0 ${borderWidth} ${badEdge}`;
+	}
+
 	// the same ring the rest of the form draws on a focused control, so moving from an email field
 	// into the card field does not change what focus looks like: the brand's step 8, hugging a field
 	// that carries no brand edge of its own — only a chosen rail does, and a rail is not a field.
@@ -320,7 +331,15 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	// the form's own do (`[part~='field'][part~='invalid']` in ./parts.css, after `:hover`). sent
 	// after the rule above, whose class and pseudo-class outrank the theme's state class alone.
 	const invalidHover: Record<string, string> = {};
-	put(invalidHover, 'borderColor', value('--_bad-edge'));
+	put(invalidHover, 'borderColor', badEdge);
+
+	// and with the caret in it, the edge holds and the ring is drawn in it, as the form's own focused
+	// refused field is (`[part~='invalid']:focus-visible` in ./parts.css). sent after `.Input:focus`.
+	const invalidFocus: Record<string, string> = {};
+	put(invalidFocus, 'borderColor', badEdge);
+	if (badEdge !== undefined && focusWidth !== undefined) {
+		invalidFocus.boxShadow = `0 0 0 ${focusWidth} ${badEdge}`;
+	}
 
 	// the same length the root above carries, and stated rather than left derived: the provider sizes
 	// a label off the root rather than at it, and the card's own labels are that same step
@@ -333,6 +352,7 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	const rules: Record<string, Record<string, string>> = {};
 	for (const [selector, declarations] of [
 		['.Input', frame],
+		['.Input--invalid', invalid],
 		['.Input:hover', inputHover],
 		['.Input--invalid:hover', invalidHover],
 		['.AccordionItem', rail],
@@ -342,6 +362,7 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 		['.AccordionItem:focus-visible', railFocus],
 		['.AccordionItem--selected:focus-visible', railSelectedFocus],
 		['.Input:focus', inputFocus],
+		['.Input--invalid:focus', invalidFocus],
 		['.Label', label]
 	] as const) {
 		// a rule whose every declaration failed to resolve is left out entirely: an empty rule

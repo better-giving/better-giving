@@ -99,6 +99,8 @@ describe('what the provider is handed', () => {
 			'.AccordionItem:focus-visible',
 			'.AccordionItem:hover',
 			'.Input',
+			'.Input--invalid',
+			'.Input--invalid:focus',
 			'.Input--invalid:hover',
 			'.Input:focus',
 			'.Input:hover',

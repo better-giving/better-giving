@@ -72,10 +72,10 @@
  * colour finds nothing (./tokens.css argues it at `--_edge-control`).
  *
  * the preset amounts and the cadences draw no edge of their own, and are the controls here not
- * bounded by one. each set stands on a tray — a plane's fill a rung off the card, and a hairline of
- * the card's own edge rung around the group, drawn by the tray and by no control on it. the
- * hairline bounds the set the way the card's edge bounds the card and is drawn against no floor,
- * because a container's edge identifies nothing; what a donor finds on a tray is the chosen one,
+ * bounded by one. each set stands on a tray — a plane's fill a rung off the card, and a hairline at
+ * rung 7 around the group, the edge of a tray of controls (above), drawn by the tray and by no
+ * control on it. the hairline bounds the set the way the card's edge bounds the card and is drawn
+ * against no floor, because a container's edge identifies nothing; what a donor finds on a tray is the chosen one,
  * stepped up to the card's own face inside a brand edge. the free entry stands on the amount tray too, at that same
  * ground and with no edge either: it is shown only under the tile that chose it, and what says it
  * is a box to type in is the two currency marks in it and the caret.
@@ -349,16 +349,15 @@ textarea[part~='field'] {
  * value will and is the value's own reading size; floated, it is an annotation on the box's edge and
  * takes the smallest step this card has.
  *
- * and two weights and two inks. resting, the words stand where the value will, so they are drawn as
+ * and two weights, in one ink. resting, the words stand where the value will, so they are drawn as
  * a placeholder is — the quiet weight, at `--_n11`, and a donor reads the box as waiting rather than
  * as one already holding what it says. step 11 is the quieter of the card's two text steps and
  * there is nothing under it. floated, the words are the box's name and take the weight every other
  * label on the card is drawn at — the base `[part~='label']` rule's own `--_w-bold`, with the same
- * `--_n11`, both left to it. so the words
- * do darken as they move, because what they are changed: a value's stand-in resting, the box's name
- * floated.
+ * `--_n11`, both left to it. so the words keep their ink and gain weight as they move, because what
+ * they are changed: a value's stand-in resting, the box's name floated.
  *
- * what a host governs follows from where each of those is declared, and the two inks are on the
+ * what a host governs follows from where each of those is declared, and the one ink is on the
  * label for that reason: `color` on `::part(label)` reaches the words in both positions, because
  * neither position declares an ink anywhere an outer rule cannot reach. `font-weight` reaches the
  * floated position alone and stops at the naming span resting, where the placeholder weight is.
@@ -535,17 +534,15 @@ textarea[part~='field'] {
  * it when it is ticked — the half of the seed's split that fills rather than marks (./tokens.css).
  * what rings it is the brand's step 8, in the focus block at the end of this sheet.
  *
- * the tick is knocked out of the fill rather than laid over it, and that is the one thing the
- * platform's box did that a single element cannot: an `<input>` renders no `::before`, and a mask
- * over the element takes the fill with it. so the mask is the box with the tick as a hole, and what
- * a donor reads through it is the card the box stands on — a near-white against the primary, which
- * is the pair `--_on-p` is for and within a hundredth of its lightness. no colour crosses the
- * boundary: the mask carries alpha and nothing else.
+ * the tick is drawn in `--_on-p`, the ink the brand's fill takes: white on a seed dark enough to
+ * carry it and the brand's step 12 on a pale one, so a yellow seed gets a dark tick. it is the box's
+ * `::before`, which a checkbox at `appearance: none` renders, filled with that ink and masked to the
+ * tick's shape. no colour crosses the boundary: the mask carries alpha and nothing else.
  *
- * forced-colors is answered rather than opted out of: the fill is restated in `Highlight` at the
- * end of this sheet — the mode forces every other background to `Canvas`, which would leave ticked
- * and unticked the same box — and the transparent outline is what the mode paints as the box's
- * own edge.
+ * forced-colors is answered rather than opted out of: the fill and the tick are restated in
+ * `Highlight` and `HighlightText` at the end of this sheet — the mode forces every other background
+ * to `Canvas`, which would leave ticked and unticked the same box — and the transparent outline is
+ * what the mode paints as the box's own edge.
  */
 [part~='checkbox'] {
 	appearance: none;
@@ -569,11 +566,21 @@ textarea[part~='field'] {
 [part~='checkbox']:checked {
 	background: var(--_p);
 	border-color: var(--_p);
+}
+
+/* the tick, over the box's whole border box so it is drawn at the box's size and not its content's. */
+[part~='checkbox']:checked::before {
+	content: '';
+	display: block;
+	inline-size: calc(100% + 2 * var(--_border));
+	block-size: calc(100% + 2 * var(--_border));
+	margin: calc(-1 * var(--_border));
+	background: var(--_on-p);
 	/*
-	 * raw-colour-ok: a shape and not a colour. the fill inside the URI is the mask's alpha — one
-	 * opaque rect with the tick as an even-odd hole — and nothing in it is painted.
+	 * raw-colour-ok: a shape and not a colour. the fill inside the URI is the mask's alpha — the
+	 * tick, opaque, on nothing — and nothing in it is painted.
 	 */
-	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' fill-rule='evenodd' d='M0 0h16v16H0Z M6.4 11.2 3.6 8.4 4.9 7.1 6.4 8.6 11.1 3.9 12.4 5.2Z'/%3E%3C/svg%3E");
+	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M6.4 11.2 3.6 8.4 4.9 7.1 6.4 8.6 11.1 3.9 12.4 5.2Z'/%3E%3C/svg%3E");
 	mask-size: 100% 100%;
 	mask-repeat: no-repeat;
 }
@@ -710,7 +717,11 @@ button.step-dot[aria-disabled='true'] {
  * would say the form is one screen long to exactly the donor the count exists to serve.
  *
  * the current mark has no edge apart from its fill. the border stays and is painted in the fill's
- * own colour, so the box is the size of the other two and the disc is the whole of the shape.
+ * own colour, so the box is the size of the other two and the disc is the whole of the shape. a ring
+ * outside it is drawn in `--_on-p`, the ink the fill takes: on a seed dark enough to carry white it
+ * is a near-white on the card's near-white and reads as nothing, and on a pale seed it is the
+ * brand's step 12, the rim that keeps a pale disc solid against the hollow marks beside it.
+ * forced-colors drops the ring and fills the disc in `CanvasText` below.
  *
  * the outline is `--_border`: the mark a donor is standing on is the state here, and the weight
  * that carries state is not spent on the ones they are not.
@@ -730,6 +741,7 @@ button.step-dot[aria-disabled='true'] {
 .step-dot.current .step-mark {
 	background: var(--_p);
 	border-color: var(--_p);
+	box-shadow: 0 0 0 var(--_border) var(--_on-p);
 }
 
 .step-dot[aria-disabled='true'] .step-mark {
@@ -814,14 +826,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * corner on three sides, and its brand edge would run into the track's own hairline. it is the smallest step on the scale, which is as much as can be given away: the
  * options carry the interactive floor and the track is that floor plus this on both sides of it.
  *
- * no divider between the options, and its absence is the chip. a divider is how three cells on one
- * ground say where each of them ends; a chip standing on that ground says which one is chosen, and
- * the words say the rest. two mechanisms for one job would put a rule under the chosen box's own
- * corner.
- *
- * nothing is clipped here. the chip's shadow is drawn outside its own box and a track that clipped
- * to its own corner would cut it off — which is also why the options do not reach that corner: the
- * pad is what they are inset by.
+ * nothing is clipped here, and the options do not reach the track's corner: the pad is what they
+ * are inset by, so the chip's edge, laid inside the chip, never meets the track's own hairline.
  *
  * `position: relative` is what the chip below is placed against, and it is the track's own padding
  * box: `offsetLeft` on an option is measured from that same edge, so the two agree with no border
@@ -1123,9 +1129,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * and it answers a pointer with its edge, which is the answer the other control a donor types into
  * gives (`[part~='field']` above, and the two are one rule in ./motion.css). that is the whole of
  * where it can be answered: the edge is drawn only on a bare tray, where this box is a field like
- * any other, and on a tray of tiles it is the box that has already been chosen and stands at the
- * card's own ground with nothing between it and the tray's that reads (`--_p-hover` in ./tokens.css
- * carries that exemption with the cadence's).
+ * any other. on a tray of tiles it draws no edge, so a pointer there has nothing to step: it is the
+ * box the Other tile has already chosen, and like a chosen cadence it has nothing left to offer.
  */
 [part~='amount-input']:hover {
 	border-color: var(--_n8);
@@ -1489,8 +1494,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 .fee-decision [part~='checkbox']:checked {
 	background: var(--_p);
 	outline-color: var(--_p);
-	/* the box above knocks a tick out of a checked fill; a track is not a box and carries none. */
-	mask-image: none;
+}
+
+/* the box above draws a tick on a checked fill; a track is not a box and carries none. */
+.fee-decision [part~='checkbox']:checked::before {
+	content: none;
 }
 
 .fee-decision [part~='checkbox']:hover {
@@ -1566,11 +1574,13 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * line around it: the card groups by ground, and the band is the ground. the block has no pad, so
  * the tint is a spread shadow that stands a step outside its rows, and the rest of this file's rule
  * about state is why: a pad or a border appearing here would move every row of the receipt at the
- * moment a donor is being told their total changed.
+ * moment a donor is being told their total changed. a ring with no offset and no blur, never an
+ * outline: forced-colors drops the ring and the ground with it, where it would repaint an outline as
+ * a frame in the user's text colour.
  */
 [part~='summary']:has([data-changed]) {
 	background: var(--_warn-tint);
-	outline: var(--_sp2) solid var(--_warn-tint);
+	box-shadow: 0 0 0 var(--_sp2) var(--_warn-tint);
 }
 
 /*
@@ -2493,14 +2503,13 @@ button.step-dot:focus-visible .step-mark {
 }
 
 /*
- * a chosen tile, which is the band construction above. the outline the first rule in this block
- * sets — transparent — stands in for the tile's brand edge for as long as the caret is on it, and
- * forced-colors paints that one instead; the face and the figure carry the state meanwhile.
- *
- * the band is `--_n1`, which is the face the chosen tile is already standing on, so the ring stands
- * a pixel clear of the tile at the brand step its edge is drawn in, and the two never touch.
+ * a chosen tile, which is the band construction above: the tile's brand edge, then a band of `--_n1`
+ * outside it, then the ring — edge, gap, ring. the first rule in this block clears the outline to
+ * transparent, so the edge is restated here, and it is still the outline forced-colors paints.
  */
 [part~='amount-option'][part~='selected']:has(:focus-visible) {
+	outline: var(--_border) solid var(--_a8);
+	outline-offset: calc(-1 * var(--_border));
 	box-shadow:
 		0 0 0 var(--_border) var(--_n1),
 		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
@@ -2512,10 +2521,8 @@ button.step-dot:focus-visible .step-mark {
  * and therefore cannot erase. what it has to beat is the segment's own inset ring two blocks up,
  * which is drawn for an option with no chip under it — this one is standing on one.
  *
- * the band lands a pixel outside the option's box, which is the chip's box exactly. the chip
- * carries no primary edge for it to separate from the ring, so here the band separates nothing; it
- * is kept because it is the one construction every marked control on this card shares, and it is
- * what sets the ring the same distance from the word on the track as in the grid.
+ * the band lands a pixel outside the option's box, which is the chip's box exactly, so the chip
+ * reads as a chosen tile does under the caret: its brand edge, the band, then the ring.
  */
 [part~='frequency-option'][part~='selected']:has(:focus-visible) {
 	box-shadow:
@@ -2545,14 +2552,18 @@ button.step-dot:focus-visible .step-mark {
  * block near the top because it has to outrank the rule it restates.
  *
  * the mode forces every background to `Canvas`, so a ticked box and an untouched one come out the
- * same box: same fill, same edge, and the tick knocked out of the fill (`[part~='checkbox']:checked`
- * above) is a `Canvas` hole in a `Canvas` fill. `Highlight` is the mode's own word for a thing the
- * user has picked, and a system colour is the one value an author may still set here — so the fill
- * comes back, the hole reads against it, and the shape says ticked without a colour of this card's
- * own crossing into the user's palette.
+ * same box: same fill, same edge, and the tick (`[part~='checkbox']:checked::before` above) a
+ * `Canvas` shape on a `Canvas` fill. `Highlight` is the mode's own word for a thing the user has
+ * picked and `HighlightText` the ink that goes on it, and a system colour is the one value an author
+ * may still set here — so the fill comes back, the tick reads against it, and the shape says ticked
+ * without a colour of this card's own crossing into the user's palette.
  */
 @media (forced-colors: active) {
 	[part~='checkbox']:checked {
 		background: Highlight;
+	}
+
+	[part~='checkbox']:checked::before {
+		background: HighlightText;
 	}
 }
