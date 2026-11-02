@@ -8,7 +8,8 @@ import { SETTLE_MS, Share } from './share';
 
 // the share buttons, mounted: each is a mark alone, named for its channel and for the new tab a
 // network opens in, and each network is drawn as its own official file and never as a letter or a
-// lookalike standing in for one. Copy link reports what it did in its name alone, and settles back.
+// lookalike standing in for one. Copy link reports what it did in its name and its mark, a refusal
+// in a status region as well, and settles back.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -113,7 +114,7 @@ describe('share', () => {
 		expect(copy?.getAttribute('title')).toBe(name);
 	});
 
-	it('reports a copy in its name alone, with no status region saying it again', async () => {
+	it('reports a copy in its name alone, with its status region saying nothing', async () => {
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
 		onTestFinished(() => {
 			vi.unstubAllGlobals();
@@ -123,7 +124,35 @@ describe('share', () => {
 			host.querySelectorAll<HTMLElement>('.page-share-button')[SHARE_CHANNELS.indexOf('copy-link')];
 		await act(async () => copy?.click());
 		expect(copy?.getAttribute('aria-label')).toBe('Link copied');
-		expect(host.querySelector('[role="status"], [aria-live]')).toBeNull();
+		expect(host.querySelector('[role="status"]')?.textContent).toBe('');
+	});
+
+	it('announces a refused copy politely in a status region that stood there before it', async () => {
+		vi.useFakeTimers();
+		vi.stubGlobal('navigator', {
+			...navigator,
+			clipboard: {
+				writeText: async () => {
+					throw new Error('denied');
+				}
+			}
+		});
+		onTestFinished(() => {
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		});
+		const host = share();
+		const status = host.querySelector('[role="status"]');
+		expect(status?.textContent).toBe('');
+		const copy =
+			host.querySelectorAll<HTMLElement>('.page-share-button')[SHARE_CHANNELS.indexOf('copy-link')];
+		await act(async () => copy?.click());
+		expect(host.querySelector('[role="status"]')).toBe(status);
+		expect(status?.textContent).toBe('Couldn’t copy');
+		expect(status?.classList.contains('vh')).toBe(true);
+
+		act(() => vi.advanceTimersByTime(SETTLE_MS));
+		expect(status?.textContent).toBe('');
 	});
 
 	it('settles Copy link back to its name and mark once the moment passes', async () => {
@@ -170,14 +199,18 @@ describe('share', () => {
 			expect(marks(copy)).toEqual(GLYPHS.link);
 		});
 
-		it('shows no tick when the copy is refused', async () => {
+		it('swaps the link glyph for the alert mark in the refusal’s ink when the copy is refused, and back', async () => {
 			const copy = copyWith(async () => {
 				throw new Error('denied');
 			});
+			expect(copy?.getAttribute('data-copy')).toBe('idle');
 			await act(async () => copy?.click());
 			expect(copy?.getAttribute('aria-label')).toBe('Couldn’t copy');
+			expect(marks(copy)).toEqual(GLYPHS.alert);
+			expect(copy?.getAttribute('data-copy')).toBe('failed');
+			act(() => vi.advanceTimersByTime(SETTLE_MS));
 			expect(marks(copy)).toEqual(GLYPHS.link);
-			expect(marks(copy)).not.toEqual(GLYPHS.tick);
+			expect(copy?.getAttribute('data-copy')).toBe('idle');
 		});
 	});
 });

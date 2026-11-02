@@ -129,7 +129,8 @@
  * on 4 and a press on 5, and its edge is `--_edge-control`, slate 7, stepping to 8 under the pointer
  * and the press. a chosen option is marked as the form marks a chosen tile: it rises to slate 1 inside
  * a brand-8 edge, its name and tick in brand 11. a share press steps to slate 3 under a pointer and 4
- * under a press and keeps its edge.
+ * under a press and keeps its edge; a refused Copy link draws its mark in red 11, `--_bad`, the
+ * word the card says a refusal in.
  *
  * the brand is spent by step. 9, the seed itself, is a solid: the action, the goal's progress, the
  * initials badge, and a cover with no photo — the logo's cover, the logo on its own slate-1 plate,
@@ -159,7 +160,8 @@
  *   has no step and which the page cannot see, and it carries the note that says so. it is at its
  *   darkest from the cover's left edge across the 58% the words stand in, and fades over the rest,
  *   under the box. what stands on it is slate 1, radix's white: the words, the ring, and the goal's
- *   fill on a slate-8 track.
+ *   fill on a slate-8 track, a border step standing in for a ground because on the scrim the
+ *   grounds are the fill's own near-white (the rule says it again).
  */
 
 body {
@@ -344,7 +346,7 @@ body {
  * sticky: a box that a later step grows past the screen's height scrolls with the page, so its
  * lower edge and what stands under it can always be reached.
  *
- * ink. `--page-accent` is what a link and a listed tier's amount are drawn in, the primary.
+ * ink. `--page-accent` is what a link and a listed tier's amount are drawn in, brand 11.
  * `--page-ring` is the focus ring, `--_n1` on the feature's scrim and the form's elsewhere. a tier
  * card or a share press on its plane, and a program option on its control ground, sets its own ink.
  */
@@ -855,6 +857,9 @@ body {
 		max-inline-size: var(--page-measure);
 	}
 
+	/* the track is a ground, but on the scrim the grounds, 1 to 3, are the fill's own near-white and
+	   the fill would vanish into them; slate 8 is the one step that reads as unfilled between the
+	   scrim's dark and the slate-1 fill, so the scrim's job (./page.spec.ts) allows it here alone. */
 	.page[data-layout='feature'] .page-hero-words .page-goal-track {
 		background: var(--_n8);
 	}
@@ -1381,6 +1386,12 @@ body {
    as Copy link's button does. */
 .page-ground a.page-share-button {
 	color: var(--_n12);
+}
+
+/* a refused copy draws its alert mark in `--_bad`, red 11, the word a refusal is said in on the card
+   (packages/form/src/styles/tokens.css). */
+.page-share-button[data-copy='failed'] {
+	color: var(--_bad);
 }
 
 .page-share-mark {

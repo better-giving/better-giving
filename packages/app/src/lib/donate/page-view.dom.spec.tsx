@@ -527,7 +527,8 @@ describe('share', () => {
 		expect(writeText).toHaveBeenCalledWith('https://give.example.org/coats');
 		expect(press?.getAttribute('aria-label')).toBe('Link copied');
 		const share = root.querySelector('[data-area="share"]');
-		expect(share?.querySelector('[role="status"], [aria-live]')).toBeNull();
+		// the region is there for a refused copy (./sections/share.tsx) and says nothing of a copy.
+		expect(share?.querySelector('[role="status"]')?.textContent).toBe('');
 	});
 
 	it('draws the same buttons on every page, each opening its own share', () => {

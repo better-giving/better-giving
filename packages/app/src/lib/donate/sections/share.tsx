@@ -1,6 +1,7 @@
 import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
 import { useEffect, useRef, useState } from 'react';
 import { SHARE_CHANNEL_LABELS, SHARE_CHANNELS, shareHref } from '../../page/share';
+import type { GlyphName } from '@better-giving/form/glyph';
 import { Glyph } from './glyph';
 import type { PageSharing } from './types';
 
@@ -8,9 +9,11 @@ import type { PageSharing } from './types';
 // that carries its channel's label as its name. a network's press opens that network's share page
 // in a new tab, and its name says so, as the footer's social marks do; Email opens a mail draft.
 // Copy link writes the page's address to the clipboard and reports the outcome in its own name and
-// mark, and nowhere else: a focused control's new name is spoken, so a status region saying the
-// same would be heard twice. it settles back to Copy link after `SETTLE_MS`, so a later visit meets
-// the press and not a past outcome.
+// mark: a tick for a copy, and the alert mark in the refusal's red for a refused one. a refusal is
+// also said in a polite status region, rendered empty from the first paint so the words arriving in
+// it are announced; a copy is said in the name alone, since a focused control's new name is spoken
+// and the region saying it too would be heard twice. it settles back to Copy link after
+// `SETTLE_MS`, so a later visit meets the press and not a past outcome.
 //
 // the heading carries `headingId`, the name of the section the caller stands this in.
 //
@@ -18,6 +21,11 @@ import type { PageSharing } from './types';
 // height and drawn in that network's colour; Email and Copy link draw the form's own glyphs.
 
 type Copy = 'idle' | 'copied' | 'failed';
+
+const COPY_MARK = { idle: 'link', copied: 'tick', failed: 'alert' } as const satisfies Record<
+	Copy,
+	GlyphName
+>;
 
 const COPY_WORDS: Record<Copy, string> = {
 	idle: SHARE_CHANNEL_LABELS['copy-link'],
@@ -66,11 +74,12 @@ export function Share({
 							key={channel}
 							type="button"
 							className="page-share-button"
+							data-copy={copy}
 							aria-label={COPY_WORDS[copy]}
 							title={COPY_WORDS[copy]}
 							onClick={copyLink}
 						>
-							<Glyph name={copy === 'copied' ? 'tick' : 'link'} className="page-share-mark" />
+							<Glyph name={COPY_MARK[copy]} className="page-share-mark" />
 						</button>
 					) : channel === 'email' ? (
 						<a
@@ -97,6 +106,9 @@ export function Share({
 					)
 				)}
 			</div>
+			<p className="vh" role="status">
+				{copy === 'failed' ? COPY_WORDS.failed : ''}
+			</p>
 		</div>
 	);
 }

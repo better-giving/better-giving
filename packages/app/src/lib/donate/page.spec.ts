@@ -339,7 +339,7 @@ describe('every colour lands on the radix step for its job', () => {
 			}
 		},
 		[TEXT]: {
-			allowed: ['slate-11', 'slate-12', 'brand-11', 'brand-12'],
+			allowed: ['slate-11', 'slate-12', 'brand-11', 'brand-12', 'red-11'],
 			at: {
 				'.page > .page-ground | --page-quiet': 'slate-11',
 				'.page > .page-ground | --page-accent': 'brand-11',
@@ -366,6 +366,7 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-share-heading | color': 'slate-11',
 				'.page-share-button | color': 'slate-12',
 				'.page-ground a.page-share-button | color': 'slate-12',
+				".page-share-button[data-copy='failed'] | color": 'red-11',
 				'.page-choose-option | color': 'slate-12',
 				'.page-choose-description | color': 'slate-11',
 				'.page-choose-mark | color': 'brand-11',
