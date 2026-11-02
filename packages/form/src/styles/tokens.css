@@ -216,15 +216,15 @@
 	/*
 	 * the brand scale: twelve steps around the one seed. the element generates them with radix's own
 	 * custom-palette generator (https://www.radix-ui.com/colors/custom), ported in ./radix-scale.ts,
-	 * and sets all twelve with the solid pair and the ink on `:host` from a sheet adopted after this
-	 * one (./brand.ts), before first paint and again whenever the seed moves. the deployment's own
-	 * donation page, which draws the card under `[data-donate-root]`, takes its scale from the same
-	 * module, exported as `./styles/radix-scale` in ../../package.json.
+	 * and sets the steps declared below, the solid pair and the ink on `:host` from a sheet adopted
+	 * after this one (./brand.ts), before the first card goes up and again whenever the seed or the
+	 * shade moves. the deployment's own donation page, which draws the card under
+	 * `[data-donate-root]`, takes its scale from the same module, exported as
+	 * `./styles/radix-scale` in ../../package.json, and sets every step.
 	 *
-	 * what is declared here is only the fallback: what the card wears in the moment before the
-	 * script runs, and for a seed written in a notation the port does not read. it is the generator
-	 * approximated in oklch relative colour, a fixed lightness per step with the seed's hue and a
-	 * share of its chroma:
+	 * what is declared here is only the fallback, and on either surface it shows only for a seed
+	 * written in a notation the port does not read. it is the generator approximated in oklch
+	 * relative colour, a fixed lightness per step with the seed's hue and a share of its chroma:
 	 *
 	 *   step N = oklch(L_N, C_9 × k_N, H_9), and step 9 = the seed
 	 *
@@ -235,8 +235,9 @@
 	 *   L     .993  .982  .959  .932  .900  .859  .803  .729  .540  .326
 	 *   k     .03   .06   .14   .25   .33   .44   .55   .73   .90   .48
 	 *
-	 * the fallback declares the steps the card spends and no others; a rule that comes to need step N
-	 * gets it from the generated sheet, and writes its fallback from the table,
+	 * the fallback declares the steps the card spends and no others, and the element's generated
+	 * sheet sets the same ones (`BRAND_TOKENS` in ./brand.ts); a rule that comes to need step N adds
+	 * it there and writes its fallback here from the table,
 	 * `oklch(from var(--donate-primary) L_N calc(c * k_N) h)`.
 	 */
 	--_a8: oklch(from var(--donate-primary) 0.729 calc(c * 0.73) h);
@@ -884,8 +885,8 @@
 	 *
 	 * the step number is the job, and the jobs are the head of this file's. step 10 is the solid
 	 * hover, and nothing on this card is a grey solid a pointer moves, so it is listed above and not
-	 * declared. the brand scale is generated against slate's step 9 under every shade
-	 * (`generateBrandScale` in ./radix-scale.ts).
+	 * declared. the element generates the brand scale against the grey the shade draws: slate's
+	 * step 9, or sand's under `warm` (`brandInputsOf` in ./brand.ts).
 	 */
 	--_n1: #fcfcfd;
 	--_n2: #f9f9fb;

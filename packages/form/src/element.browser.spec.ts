@@ -4,7 +4,8 @@ import { createCoinPicker } from './coin-picker';
 import { PRE_UPGRADE_RESERVATION_CSS, RESERVED_MIN_HEIGHT } from './embed/reservation';
 import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
-import { generateBrandScale } from './styles/radix-scale';
+import { BRAND_TOKENS } from './styles/brand';
+import { type BrandGray, generateBrandScale } from './styles/radix-scale';
 import type { FormConfig, PaymentMethod } from './v1';
 
 // what a lightweight DOM cannot see about the element, all of it engine behaviour:
@@ -1063,16 +1064,17 @@ describe('the other tile by keyboard and by pointer', () => {
 // held to the generator's output for whichever one this screen takes.
 describe('the brand scale the element generates', () => {
 	/** the scale this screen should paint for a seed, by token. */
-	function expected(seed: string): Record<string, string> {
-		const scale = generateBrandScale(seed);
+	function expected(seed: string, gray: BrandGray = 'slate'): Record<string, string> {
+		const scale = generateBrandScale(seed, gray);
 		if (scale === null) throw new Error(`${seed} is a seed the generator reads`);
 		const steps = matchMedia('(color-gamut: p3)').matches ? scale.stepsWideGamut : scale.steps;
-		return {
+		const all: Record<string, string> = {
 			...Object.fromEntries(steps.map((value, i) => [`--_a${i + 1}`, value])),
 			'--_p': steps[8] as string,
 			'--_p-hover': steps[9] as string,
 			'--_on-p': scale.contrast
 		};
+		return Object.fromEntries(BRAND_TOKENS.map((token) => [token, all[token] as string]));
 	}
 
 	/** a colour, or a token resolved inside the card, as the sRGB bytes a canvas paints it in. */
@@ -1117,6 +1119,56 @@ describe('the brand scale the element generates', () => {
 		// set from a transition the change starts (./styles/brand.ts), which reports a frame or more on
 		await vi.waitFor(() => {
 			expect(bytes(host, '--_p')).toEqual(bytes(host, scale['--_p'] as string));
+		});
+
+		for (const [token, value] of Object.entries(scale)) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	// a closed <dialog>, a hidden tab panel: nothing under `display: none` starts a transition, so the
+	// change itself reports nothing, and the card has to look again when it is drawn again.
+	it('follows a seed the host changed while the card was not rendered', async () => {
+		const panel = document.createElement('div');
+		document.body.appendChild(panel);
+		planted.push(panel);
+		const host = await mount(CONFIG, { parent: panel });
+		panel.hidden = true;
+		panel.style.setProperty('--donate-primary', '#e5484d');
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+		panel.hidden = false;
+		const scale = expected('#e5484d');
+		await vi.waitFor(() => {
+			expect(bytes(host, '--_p')).toEqual(bytes(host, scale['--_p'] as string));
+		});
+		for (const [token, value] of Object.entries(scale)) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	// the warm card's greys are sand, and the generator is handed sand's step 9 as its grey there,
+	// which a black seed takes its tint from.
+	it('generates against sand under the warm shade', async () => {
+		seedAbove('#000000');
+		document.body.style.setProperty('--donate-shade', 'warm');
+		onTestFinished(() => {
+			document.body.style.removeProperty('--donate-shade');
+		});
+		const host = await mount();
+
+		for (const [token, value] of Object.entries(expected('#000000', 'sand'))) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	it('follows a shade the host changes after mount', async () => {
+		seedAbove('#000000');
+		const host = await mount();
+		host.style.setProperty('--donate-shade', 'warm');
+		const scale = expected('#000000', 'sand');
+		await vi.waitFor(() => {
+			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
 		});
 
 		for (const [token, value] of Object.entries(scale)) {

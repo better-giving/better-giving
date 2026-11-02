@@ -49,7 +49,7 @@ import tokens from './styles/tokens.css?inline';
 import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
 import motionStyles from './styles/motion.css?inline';
-import { brandCss, seedOf, seedWatch } from './styles/brand';
+import { type BrandInputs, brandCss, brandInputsOf, seedWatch } from './styles/brand';
 
 /** the tag, and it is permanent: a breaking change ships as a second element beside this one. */
 export const DONATE_FORM_TAG = 'bg-donate-form';
@@ -536,12 +536,12 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 */
 		#announcer: HTMLElement | null = null;
 		/**
-		 * the brand scale this element's seed generates (./styles/brand.ts), adopted after the shared
-		 * four, and the seed it was generated from. per element, because two cards on one page may
+		 * the brand scale this element's seed and shade generate (./styles/brand.ts), adopted after the
+		 * shared four, and what it was generated from. per element, because two cards on one page may
 		 * carry two brands; rebuilt with the rest when the element changes document.
 		 */
 		#brand: CSSStyleSheet | null = null;
-		#brandSeed: string | null = null;
+		#brandFrom: BrandInputs | null = null;
 		/**
 		 * whether nothing has been said through the region since it reached the tree.
 		 *
@@ -627,7 +627,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 
 		connectedCallback(): void {
 			this.#stay();
-			// a seed that moved while the element was off the document reported nothing
+			// a seed or shade that moved while the element was off the document reported nothing
 			this.#paintBrand();
 			this.#reattachCard?.();
 			this.#bootIfNeeded();
@@ -694,7 +694,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			if (root === null) return;
 			root.adoptedStyleSheets = [...sheetsFor(this.ownerDocument)];
 			this.#brand = null;
-			this.#brandSeed = null;
+			this.#brandFrom = null;
 			this.#paintBrand();
 		}
 
@@ -779,23 +779,25 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		}
 
 		/**
-		 * the brand scale for the seed the host computes now, set unless it is the one already set.
+		 * the brand scale for the seed and shade the host computes now, set unless it is the one already
+		 * set.
 		 *
-		 * a seed the generator does not read sets an empty sheet, which leaves ./styles/tokens.css's
-		 * fallback scale standing.
+		 * a seed the generator does not read sets a sheet with no scale in it, which leaves
+		 * ./styles/tokens.css's fallback scale standing.
 		 */
 		#paintBrand(): void {
 			const root = this.shadowRoot;
 			const view = this.ownerDocument.defaultView;
 			if (root === null || view === null) return;
-			const seed = seedOf(this);
-			if (this.#brand !== null && seed === this.#brandSeed) return;
+			const from = brandInputsOf(this);
+			const same = from.seed === this.#brandFrom?.seed && from.gray === this.#brandFrom.gray;
+			if (this.#brand !== null && same) return;
 			if (this.#brand === null) {
 				this.#brand = new view.CSSStyleSheet();
 				root.adoptedStyleSheets = [...root.adoptedStyleSheets, this.#brand];
 			}
-			this.#brand.replaceSync(brandCss(seed));
-			this.#brandSeed = seed;
+			this.#brand.replaceSync(brandCss(from));
+			this.#brandFrom = from;
 		}
 
 		#root(): ShadowRoot | null {

@@ -535,7 +535,8 @@ textarea[part~='field'] {
  * what rings it is the brand's step 8, in the focus block at the end of this sheet.
  *
  * the tick is drawn in `--_on-p`, the ink the brand's fill takes: white on a seed dark enough to
- * carry it and the brand's step 12 on a pale one, so a yellow seed gets a dark tick. it is the box's
+ * carry it and the generator's dark tint of the seed on a pale one (`getTextColor` in
+ * ./radix-scale.ts), so a yellow seed gets a dark tick. it is the box's
  * `::before`, which a checkbox at `appearance: none` renders, filled with that ink and masked to the
  * tick's shape. no colour crosses the boundary: the mask carries alpha and nothing else.
  *
@@ -720,7 +721,8 @@ button.step-dot[aria-disabled='true'] {
  * own colour, so the box is the size of the other two and the disc is the whole of the shape. a ring
  * outside it is drawn in `--_on-p`, the ink the fill takes: on a seed dark enough to carry white it
  * is a near-white on the card's near-white and reads as nothing, and on a pale seed it is the
- * brand's step 12, the rim that keeps a pale disc solid against the hollow marks beside it.
+ * generator's dark tint of the seed, the rim that keeps a pale disc solid against the hollow marks
+ * beside it.
  * forced-colors drops the ring and fills the disc in `CanvasText` below.
  *
  * the outline is `--_border`: the mark a donor is standing on is the state here, and the weight
