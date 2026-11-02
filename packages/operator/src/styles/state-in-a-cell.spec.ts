@@ -47,7 +47,7 @@ describe('a status drawn in a table cell is still the pill', () => {
 		expect(inACell('border-radius')).toEqual([]);
 	});
 
-	it('draws the at-rest pill as the mockup does, slate 3 under slate 11', () => {
+	it('draws the at-rest pill as the gifts list at /admin/donations does, slate 3 under slate 11', () => {
 		expect(pill.get('background')).toBe('var(--admin-tone-note-tint)');
 		expect(pill.get('color')).toBe('var(--admin-ink-2)');
 		expect(pill.get('border-radius')).toBe('var(--admin-radius-pill)');
