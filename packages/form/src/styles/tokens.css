@@ -947,10 +947,10 @@
 
 	/*
 	 * two corners for the whole component: `--_r` is the card, which is a plane, and `--_r-in` is
-	 * every control and box drawn on it. they are the operator surfaces' pair — `--admin-radius` 4px on
-	 * controls and fields, `--admin-radius-plane` 8px on planes — and these are `soft`'s, which is that
+	 * every control and box drawn on it. they are the operator surfaces' pair — `--admin-radius` 6px on
+	 * controls and fields, `--admin-radius-plane` 12px on planes — and these are `soft`'s, which is that
 	 * pair exactly and the preset a host who sets nothing gets. every other preset keeps the pair's
-	 * relation, the plane twice the control: `round` is 16px and 8px, and `square` is both at zero.
+	 * relation, the plane twice the control: `round` is 24px and 12px, and `square` is both at zero.
 	 * the step between them is what makes a control read as sitting *in* its container rather than
 	 * as a second container — a box and the box inside it at one radius have concentric corners that
 	 * do not look concentric, because the inner arc has to start further in to end at the same place.
@@ -962,15 +962,23 @@
 	 * dot saying where the donor stands, neither is a box a donor operates, and a square one would be
 	 * neither.
 	 */
-	--_r: 8px;
-	--_r-in: 4px;
+	--_r: 12px;
+	--_r-in: 6px;
+
+	/*
+	 * the corner of a tray (`.segment` and `.tiles` in ./parts.css): it holds boxes at `--_r-in`
+	 * behind a `--_sp1` pad inside its own hairline, so its corner is theirs grown by both, and the
+	 * arc inside its edge is concentric with the arc of the box standing in its corner. `square` has
+	 * no arc to grow and holds it at zero below.
+	 */
+	--_r-tray: calc(var(--_r-in) + var(--_sp1) + var(--_border));
 
 	/*
 	 * the box a donor ticks (`[part~='checkbox']` in ./parts.css) takes the inner corner up to
 	 * `soft`'s and no further. it is 15px to 18px across the clamp band, so `round`'s inner corner
-	 * would take it half way to a circle — and a round box beside a sentence reads as a radio, which
-	 * is a second kind of control saying something this one does not. so `round` holds it at `soft`'s
-	 * 4px below, and `square` squares it with everything else.
+	 * would draw it a circle — and a round box beside a sentence reads as a radio, which is a second
+	 * kind of control saying something this one does not. so `round` holds it at `soft`'s 6px below,
+	 * and `square` squares it with everything else.
 	 */
 	--_r-box: var(--_r-in);
 
@@ -978,7 +986,7 @@
 	 * where the band behind a floated label starts (`.floating > [part~='label']` in ./parts.css):
 	 * the inner corner's end, so the words knock the edge out past the arc and not through it. under
 	 * `square` there is no arc, and a band flush with the box would take the top of its inline-start
-	 * edge with it and leave the corner open — so `square` holds it at `soft`'s 4px below.
+	 * edge with it and leave the corner open — so `square` holds it at `soft`'s 6px below.
 	 */
 	--_label-inset: var(--_r-in);
 }
@@ -1006,16 +1014,17 @@
 	[data-donate-root] > * {
 		--_r: 0;
 		--_r-in: 0;
-		--_label-inset: 4px;
+		--_r-tray: 0;
+		--_label-inset: 6px;
 	}
 }
 
 @container style(--donate-corner: round) {
 	:host > *,
 	[data-donate-root] > * {
-		--_r: 16px;
-		--_r-in: 8px;
-		--_r-box: 4px;
+		--_r: 24px;
+		--_r-in: 12px;
+		--_r-box: 6px;
 	}
 }
 

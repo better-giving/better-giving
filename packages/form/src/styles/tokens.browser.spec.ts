@@ -283,7 +283,7 @@ describe('the light-DOM card root', () => {
 		hostStyle.textContent = 'body { --donate-shade: warm; --donate-corner: round; }';
 		card.style.cssText = 'color: var(--_n1); padding-left: var(--_r)';
 		expect(bytes(getComputedStyle(card).color)).toEqual(bytes(SAND['--_n1'] as string));
-		expect(getComputedStyle(card).paddingLeft).toBe('16px');
+		expect(getComputedStyle(card).paddingLeft).toBe('24px');
 	});
 
 	it('declares none of the private layer anywhere else in the document', () => {
@@ -471,8 +471,8 @@ describe('the card the form draws for itself', () => {
 	it('draws the two corners the whole card is built from', () => {
 		seed('');
 
-		expect(lengthOf('--_r')).toBe('8px');
-		expect(lengthOf('--_r-in')).toBe('4px');
+		expect(lengthOf('--_r')).toBe('12px');
+		expect(lengthOf('--_r-in')).toBe('6px');
 	});
 
 	it('sets the form in the platform stack and loads no face of its own', () => {
@@ -514,10 +514,10 @@ describe('the corner seed', () => {
 	// floated label's band starts, which follows it down to `soft`'s and no further so a square box
 	// keeps its edge.
 	it.each([
-		['square', ['0px', '0px', '0px', '4px']],
-		['soft', ['8px', '4px', '4px', '4px']],
-		['round', ['16px', '8px', '4px', '8px']],
-		['a corner off the list', ['8px', '4px', '4px', '4px']]
+		['square', ['0px', '0px', '0px', '6px']],
+		['soft', ['12px', '6px', '6px', '6px']],
+		['round', ['24px', '12px', '6px', '12px']],
+		['a corner off the list', ['12px', '6px', '6px', '6px']]
 	])('draws %s', (name, corners) => {
 		const corner = name.includes(' ') ? 'pill' : name;
 		seed(`--donate-corner: ${corner};`);

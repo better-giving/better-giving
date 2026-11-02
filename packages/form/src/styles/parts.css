@@ -848,7 +848,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	position: relative;
 	background: var(--_n2);
 	border: var(--_border) solid var(--_n7);
-	border-radius: var(--_r-in);
+	border-radius: var(--_r-tray);
 	padding: var(--_sp1);
 }
 

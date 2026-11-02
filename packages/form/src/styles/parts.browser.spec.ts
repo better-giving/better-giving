@@ -898,7 +898,7 @@ describe('the labels on the pair under the name', () => {
 		await landed(label);
 
 		expect(corner(box)).toBe(0);
-		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + 4);
+		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + 6);
 	});
 
 	// standing on the edge, the label has to be painted behind or the edge reads through its words.
@@ -2661,18 +2661,20 @@ describe('the target under the fee decision', () => {
 
 	// the pill, on the drawn track rather than on the token that states it — the one shape on this
 	// card outside the two corners `--_r` and `--_r-in` state (`--_switch-radius` in ./tokens.css).
-	// read against the card beside it, because a track that quietly fell back to `--_r-in` would be
-	// a rounded rectangle nobody notices until it is next to the thing it must not look like.
+	// read against a box at `--_r-in` beside it, because a track that quietly fell back to that
+	// corner would be a rounded rectangle nobody notices until it is next to the thing it must not
+	// look like.
 	it('draws the track as a pill and nothing else on the card with it', async () => {
-		const { shadow, card } = await mount();
+		const { shadow } = await mount();
 		await atReview(shadow);
 		const track = shadow.querySelector('.fee-decision [part~="checkbox"]') as HTMLElement;
+		const tile = shadow.querySelector('[part~="amount-option"]') as HTMLElement;
 		const radius = (element: HTMLElement) =>
 			parseFloat(getComputedStyle(element).borderTopLeftRadius);
 
 		expect(radius(track)).toBeCloseTo(track.getBoundingClientRect().height / 2, 1);
-		expect(radius(track)).toBeGreaterThan(radius(card));
-		expect(radius(card)).toBe(8);
+		expect(radius(track)).toBeGreaterThan(radius(tile));
+		expect(radius(tile)).toBe(6);
 	});
 
 	// and the track is deliberately under it. a hit box grown around the switch itself would be a
@@ -2972,6 +2974,29 @@ describe('the surfaces a donor operates', () => {
 			expect(drawn.borderTopColor, tray).toBe(token(shadow, '--_n7'));
 		}
 		expect(Number.parseFloat(getComputedStyle(tile).borderTopWidth)).toBe(0);
+	});
+
+	// a tray holds its boxes behind the smallest pad, so its corner is theirs grown by that pad and
+	// its own hairline: the arc inside the tray's edge is then concentric with the arc of a box
+	// standing in its corner. one corner on both would read as two boxes and not one inside the other.
+	it('rounds both trays around the corner of the boxes standing in them', async () => {
+		const { shadow } = await mount();
+		const radius = (element: Element | null) =>
+			parseFloat(getComputedStyle(element as HTMLElement).borderTopLeftRadius);
+
+		for (const [tray, box] of [
+			['.segment', '[part~="frequency-option"]'],
+			['.tiles', '[part~="amount-option"]']
+		] as const) {
+			const drawn = shadow.querySelector(tray) as HTMLElement;
+			const style = getComputedStyle(drawn);
+			const around =
+				radius(drawn.querySelector(box)) +
+				parseFloat(style.paddingTop) +
+				parseFloat(style.borderTopWidth);
+
+			expect(radius(drawn), tray).toBeCloseTo(around, 4);
+		}
 	});
 
 	// the lattice between the boxes on a tray is a separator, rung 6, a step quieter than the tray's
@@ -4077,9 +4102,9 @@ describe('the presets a host page picks', () => {
 		const { card } = await mount();
 
 		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('#fdfdfc'));
-		expect(corner(card)).toBe('16px');
-		expect(corner(card.querySelector("[part~='amount-option']"))).toBe('8px');
-		expect(corner(card.querySelector("[part~='checkbox']"))).toBe('4px');
+		expect(corner(card)).toBe('24px');
+		expect(corner(card.querySelector("[part~='amount-option']"))).toBe('12px');
+		expect(corner(card.querySelector("[part~='checkbox']"))).toBe('6px');
 	});
 
 	// the provider paints inside its own frame from what the node it is handed resolves, and that
@@ -4093,7 +4118,7 @@ describe('the presets a host page picks', () => {
 		const [red = 0, , blue = 0] =
 			(variables.colorBackground ?? '').match(/\d+/g)?.map(Number) ?? [];
 
-		expect(variables.borderRadius).toBe('16px');
+		expect(variables.borderRadius).toBe('24px');
 		expect(red).toBeGreaterThan(blue);
 	});
 
@@ -4135,7 +4160,7 @@ describe('the presets a host page picks', () => {
 		const { card } = await mount();
 
 		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('#fcfcfd'));
-		expect(corner(card)).toBe('8px');
+		expect(corner(card)).toBe('12px');
 	});
 
 	// the fallback is the value above, not the default: a theme that set the presets on the page
@@ -4147,7 +4172,7 @@ describe('the presets a host page picks', () => {
 		host.style.setProperty('--donate-corner', 'rounded');
 
 		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('#fdfdfc'));
-		expect(corner(card)).toBe('16px');
+		expect(corner(card)).toBe('24px');
 	});
 });
 

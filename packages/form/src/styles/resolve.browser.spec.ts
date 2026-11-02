@@ -156,10 +156,10 @@ describe('what the provider is handed', () => {
 
 		expect(warm.variables.colorBackground).not.toBe(light);
 		expect(Number(red)).toBeGreaterThan(Number(blue));
-		expect(warm.variables.borderRadius).toBe('16px');
+		expect(warm.variables.borderRadius).toBe('24px');
 		expect(square.variables.borderRadius).toBe('0px');
 		// and a rail takes the preset's control corner, the one every box on the card is drawn at.
-		expect(warm.rules['.AccordionItem']?.borderRadius).toBe('8px');
+		expect(warm.rules['.AccordionItem']?.borderRadius).toBe('12px');
 		expect(square.rules['.AccordionItem']?.borderRadius).toBe('0px');
 	});
 
@@ -193,14 +193,14 @@ describe('what the provider is handed', () => {
 		// `--_t-sm` (`.name` in ./rows.css), and the root the provider is given is what sizes them.
 		expect(appearance.variables.fontSizeBase).toBe('14px');
 		expect(appearance.variables.spacingUnit).toBe('4px');
-		expect(appearance.variables.borderRadius).toBe('8px');
+		expect(appearance.variables.borderRadius).toBe('12px');
 		// the rail's pads, the gap between two rails and the rail's corner: spacing steps are `em` on
 		// this side of the frame and converted against the root the form resolved to before they
 		// cross.
 		expect(appearance.rules['.AccordionItem']?.paddingLeft).toBe('16px');
 		expect(appearance.rules['.AccordionItem']?.paddingTop).toBe('12px');
 		expect(appearance.variables.accordionItemSpacing).toBe('20px');
-		expect(appearance.rules['.AccordionItem']?.borderRadius).toBe('4px');
+		expect(appearance.rules['.AccordionItem']?.borderRadius).toBe('6px');
 		expect(appearance.rules['.Label']?.fontSize).toBe('14px');
 		// the frame is assembled from two tokens rather than from a literal, so both halves have to
 		// have crossed: a weight the engine resolved and a colour the canvas painted.
@@ -271,7 +271,7 @@ describe('a cascade the ramp did not reach', () => {
 		// in it rather than an absent one.
 		expect(appearance.variables.colorBackground).toEqual(expect.stringMatching(/\S/));
 		expect(appearance.variables.colorText).toEqual(expect.stringMatching(/\S/));
-		expect(appearance.variables.borderRadius).toBe('8px');
+		expect(appearance.variables.borderRadius).toBe('12px');
 	});
 });
 
