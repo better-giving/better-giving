@@ -1,96 +1,81 @@
 import { describe, expect, it } from 'vitest';
-import { ruleOf, sheet } from './sheet-rule.testing';
+import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
-// the descriptive status word is a pill everywhere on an operator surface except inside a table,
-// where ./adm.css takes the pill off at `.adm-table .adm-state` and leaves the word standing in its
-// tone. this holds that rule to what it is for.
+// the descriptive status word is a pill everywhere on an operator surface, a table cell included:
+// the approved gifts list draws its status column as pills, a settled gift on slate 3 under slate
+// 11, a waiting one on amber 3 under amber 11 and a failed one on red 3 under red 11. ./adm.css
+// compacts the pill's inset at `.adm-table .adm-state` and nothing more.
 //
-// **it exists because the exception is keyed on position and nothing in the markup says so.** no
-// screen passes a prop for it and no component writes a class for it, which is the decision — a
-// table added later cannot forget a rule it never states. the cost of that decision is that the
-// only statement of the rule is the sheet, so a declaration put back on `.adm-state` is a ground
-// back in every cell of every table on both surfaces, with no diff anywhere near a table to read.
+// **it exists because a table's rule is keyed on position and nothing in the markup says so.** no
+// screen passes a prop for it, so the only statement of what a cell does to the word is the sheet,
+// and a ground taken back off there is every status in every table on both surfaces losing its
+// ground with no diff anywhere near a table to read.
 //
-// **what it sweeps is derived from the pill rather than listed.** every property `.adm-state` sets
-// that draws something around the word has to be answered in the cell, so a fourth one added to the
-// pill — a border, a shadow — fails here until the cell says what becomes of it. the three sets
-// below are the only thing this file spells: the properties that are the word and are left as the
-// pill set them, the properties the cell takes back off the plane it stands in, and the sheet's own
-// spellings for nothing.
-//
-// the middle set is what a property joins when it is neither the shape around the word nor the word
-// as the pill set it. a cell is set at the plane's size and read at the plane's leading, and a word
-// standing in one is a cell and takes both — so each is named here with the value the cell has to
-// state, and a property left out of all three sets falls into the derived list and fails until
-// somebody says which of the three it is.
+// the second half holds the at-rest/ended split ../../../app/src/lib/admin/status-tones.ts states:
+// a record at rest takes the hueless pill, and an ended one (`note`) keeps the word in the same ink
+// and loses the ground, so `Completed` and `Refunded` differ by a ground and not by one ink step.
 //
 // it reads the sheet's text, for ./raw-values.ts's reason: what a rule draws is not observable from
 // a value. ../../vitest.config.ts renders the dom pool into happy-dom, which lays nothing out, and
-// no /admin screen gets a `*.browser.spec.ts` (CLAUDE.md) — so a computed ground is not something
-// any pool that renders one of these components can see.
+// no /admin screen gets a `*.browser.spec.ts` (CLAUDE.md).
 
-/** the properties that are the word and not the shape around it, which a cell keeps as they are. */
-const WORD = new Set(['color', 'display', 'font-style', 'font-weight', 'white-space']);
-
-/**
- * the properties a cell takes back off the plane rather than keeping, and what each has to say.
- *
- * the size is the older half of the rule and the leading joined it: a word that wraps inside a cell
- * sets its two lines against the reading beside it, and the caption leading the pill was given is a
- * step tighter than the plane's.
- */
-const PLANE = new Map([
-	['font-size', 'var(--admin-table-size)'],
-	// whatever the cell was set at, which is the one answer that stays true if the plane is
-	// re-pitched: ./adm.css argues it on the rule itself.
-	['line-height', 'inherit']
-]);
-
-/** the sheet's word for nothing, in the two spellings ./tokens.css names and the css keyword. */
-const NOTHING = /^(?:none|var\(--admin-(?:space|radius)-0\))$/;
+/** the sheet's word for nothing: the two spellings ./tokens.css names, and the css keywords. */
+const NOTHING = /^(?:none|transparent|var\(--admin-(?:space|radius)-0\))$/;
 
 const css = sheet('adm.css');
 const pill = ruleOf(css, '.adm-state');
 const cell = ruleOf(css, '.adm-table .adm-state');
+const TONED = ['done', 'attention', 'blocker'] as const;
 
-/** the pill's own drawing: what it puts around the word rather than what it makes of the word. */
-const around = [...pill.keys()].filter((property) => !WORD.has(property) && !PLANE.has(property));
+/** every declaration of `property` stated by a rule reaching a status word in a table. */
+const inACell = (property: string) =>
+	rulesIn(css)
+		.filter(({ selector }) => /\.adm-table\b[^,]*\.adm-state/.test(selector))
+		.map(({ selector, stated }) => [selector, stated.get(property)] as const)
+		.filter(([, value]) => value !== undefined);
 
-describe('a status drawn in a table cell is the word and nothing else', () => {
-	it('finds the two rules it is meant to be reading', () => {
-		// without this a selector renamed in the sheet reads as two empty rules agreeing with each
-		// other, which is this whole file passing at its loudest while drawing a pill in every cell.
-		expect(around).not.toEqual([]);
+describe('a status drawn in a table cell is still the pill', () => {
+	it('finds the rules it is meant to be reading', () => {
+		// without this a selector renamed in the sheet reads as empty rules agreeing with each other.
+		expect([...pill.keys()]).not.toEqual([]);
 		expect([...cell.keys()]).not.toEqual([]);
 	});
 
-	it('answers every part of the pill the sheet draws around the word', () => {
-		expect(around.filter((property) => !cell.has(property))).toEqual([]);
+	it('takes no ground and no corner back off the word in a cell', () => {
+		expect(inACell('background')).toEqual([]);
+		expect(inACell('background-color')).toEqual([]);
+		expect(inACell('border-radius')).toEqual([]);
 	});
 
-	it('answers every part of the pill the cell takes off the plane instead', () => {
-		expect([...PLANE.keys()].filter((property) => !cell.has(property))).toEqual([]);
+	it('draws the at-rest pill as the mockup does, slate 3 under slate 11', () => {
+		expect(pill.get('background')).toBe('var(--admin-tone-note-tint)');
+		expect(pill.get('color')).toBe('var(--admin-ink-2)');
+		expect(pill.get('border-radius')).toBe('var(--admin-radius-pill)');
 	});
 
-	it('names nothing in that set the pill does not set', () => {
-		// without this the set is where a property goes to stop being swept: a name left here after
-		// the pill stopped setting it is a name out of `around` and answered by a cell rule nothing
-		// else reads, which is this file excusing a declaration that draws nothing.
-		expect([...PLANE.keys()].filter((property) => !pill.has(property))).toEqual([]);
-	});
-
-	it('draws no ground, no padding and no corner there', () => {
+	it("keeps each tone's own pill: its word on its tint", () => {
 		expect(
-			around
-				.map((property) => [property, cell.get(property)] as const)
-				.filter(([, value]) => value === undefined || !NOTHING.test(value))
-		).toEqual([]);
+			TONED.map((tone) => [tone, ruleOf(css, `.adm-state--${tone}`).get('background')])
+		).toEqual(TONED.map((tone) => [tone, `var(--admin-tone-${tone}-tint)`]));
 	});
 
-	it("takes the plane's size and the plane's leading rather than the tag's", () => {
-		// the half that survives the pill coming off: a word set a step above every other cell reads
-		// as the row pointing at itself, and a word whose two lines are set tighter than the cell
-		// beside it reads the same way — the tag still speaking with its ground gone.
-		expect([...PLANE].filter(([property, value]) => cell.get(property) !== value)).toEqual([]);
+	it('compacts the inset in a cell and leaves it some', () => {
+		const inset = cell.get('padding') ?? '';
+		expect(inset).not.toMatch(NOTHING);
+		expect(inset).not.toBe(pill.get('padding'));
+	});
+});
+
+describe('an ended record is told from one at rest by more than an ink step', () => {
+	const note = ruleOf(css, '.adm-state--note');
+
+	it('draws the ended word with no ground where the at-rest word has one', () => {
+		expect(note.get('background') ?? '').toMatch(NOTHING);
+		expect(pill.get('background') ?? '').not.toMatch(NOTHING);
+	});
+
+	it('keeps the ended word legible on the ground it now stands on', () => {
+		// an ink-11 word on the page's own 1 or 2, which radix builds step 11 to be read on.
+		expect(note.get('color')).toBe('var(--admin-tone-note-ink)');
 	});
 });

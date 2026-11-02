@@ -50,11 +50,12 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * where the line holds one child. the press is the screen's own element and not something the plane
  * drew, so what stands there is an ordinary button.
  *
- * the last plane is the descriptive status word in a cell, which is the one drawing of it that is
- * not the pill src/previews/status-status-word.tsx shows: the ground and the corner come off inside
- * a table and the word is left standing in its tone. a row of them is the only way to see why —
- * packages/operator/src/styles/adm.css argues it at `.adm-table .adm-state` — so every tone is
- * drawn at once, with the untoned quiet word beside a figure and a word long enough to wrap.
+ * the last plane is the descriptive status word in a cell: the pill
+ * src/previews/status-status-word.tsx shows, with its inset tightened to sit in a row
+ * (packages/operator/src/styles/adm.css at `.adm-table .adm-state`). a settled gift is the hueless
+ * pill and a refunded one the ended word with no ground, and a row of them is the only way to see
+ * that the two read apart, so every rung a gift takes is drawn at once, with the quiet word beside
+ * a figure and a word long enough to wrap.
  *
  * the key list is the pinned column holding a name with no break in it — a pasted address, which
  * is a name an operator may give a key — beside two short ones. the pin has to wrap it at the width
@@ -376,10 +377,10 @@ export default function DataDataTablePreview() {
 				]}
 			/>
 
-			{/* the status word in a cell, which is where the pill comes off. every tone at once, the
-			    untoned quiet word beside the figure it qualifies, and the unset one — and a blocker
-			    long enough to wrap, because a status word can be computed from a list rather than
-			    chosen from one and a cell is the narrowest place one lands. */}
+			{/* the status word in a cell, still the pill. each rung a gift takes, the settled one at
+			    rest, the untoned quiet word beside the figure it qualifies, and the unset one — and a
+			    blocker long enough to wrap, because a status word can be computed from a list rather
+			    than chosen from one and a cell is the narrowest place one lands. */}
 			<DataTable
 				caption="5 gifts."
 				columns={[
@@ -402,7 +403,7 @@ export default function DataDataTablePreview() {
 									</>
 								)
 							},
-							status: <StatusWord tone="done">Received</StatusWord>
+							status: <StatusWord>Received</StatusWord>
 						}
 					},
 					{

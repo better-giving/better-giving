@@ -10,30 +10,35 @@ import { Mark } from './Mark.jsx';
  * @typedef {object} StatusWordBase
  * @property {ReactNode} [children]
  * @property {StatusRegister | undefined} [register]
- * @property {boolean | undefined} [unset] no value at all, which says something different from `secondary`.
+ * @property {boolean | undefined} [unset] no value at all, which says something different from
+ *   `secondary`.
  * @property {boolean | undefined} [secondary]
  * @property {Tone | undefined} [tone] where a record stands on its own lifecycle ladder: `done`
- *   running, `attention` waiting on somebody, `blocker` failed or refused, `note` retired,
- *   stopped or ended. a record at rest, such as a gift that settled, takes none. absent on every word that is not one of those statuses — a consent
- *   reading and a count are facts about a record rather than where it stands — and absent wherever
- *   `secondary` is passed, since a tone already says the quiet one is quiet.
+ *   live by the operator's hand, `attention` waiting on somebody, `blocker` failed or refused,
+ *   `note` retired, stopped or ended. a record at rest, such as a gift that settled or a repeating
+ *   gift still collecting, takes none (packages/app/src/lib/admin/status-tones.ts). absent on every
+ *   word that is not one of those statuses — a consent reading and a count are facts about a
+ *   record rather than where it stands — and absent wherever `secondary` is passed, since a tone
+ *   already says the quiet one is quiet.
  * @property {MarkName | undefined} [mark]
  *
  * @typedef {object} StatusWordBlocked
- * @property {boolean | undefined} [blocked] a momentary word reporting that the thing could not be done.
+ * @property {boolean | undefined} [blocked] a momentary word reporting that the thing could not
+ *   be done.
  * @property {undefined} [neutral]
  *
  * @typedef {object} StatusWordNeutral
- * @property {boolean | undefined} [neutral] a momentary word reporting that the press changed nothing: neither done nor refused.
+ * @property {boolean | undefined} [neutral] a momentary word reporting that the press changed
+ *   nothing: neither done nor refused.
  * @property {undefined} [blocked]
  *
  * @typedef {StatusWordBase & (StatusWordBlocked | StatusWordNeutral)} StatusWordProps
  */
 
 /* three registers, and the register is carried by position and accompaniment, never by hue alone.
-   descriptive — a fact in a value slot, with no mark and no sentence: a pill everywhere but
-                 inside a table, where it is the word alone. hueless until it is handed a `tone`,
-                 which only a record's own lifecycle status gets.
+   descriptive — a fact in a value slot, with no mark and no sentence: a pill everywhere, a
+                 table cell included. hueless until it is handed a `tone`, which only a
+                 record's own lifecycle status gets.
    momentary   — this just happened, on this control. accent, with the check, transient;
                  attention with the triangle when `blocked`, and ink with the info mark when
                  `neutral`. a `mark` handed in replaces the register's own. */

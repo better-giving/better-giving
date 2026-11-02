@@ -1670,14 +1670,15 @@
 	   `three registers of status`.
 
 	   hueless at rest: the ground is the note tone's tint, which is the neutral ladder's rung 3,
-	   and the word over it is the page's own ink. a value that is not a record's lifecycle
-	   status — a consent reading, a count, `Repeating` — stops at this rule and ranks against
+	   and the word over it is rung 11, the approved gifts list's settled pill. a record at rest
+	   (packages/app/src/lib/admin/status-tones.ts) and a value that is not a record's lifecycle
+	   status — a consent reading, a count, `Repeating` — stop at this rule and rank against
 	   nothing.
 
-	   the caption size holds at every width: a pill whose size moves with its container is two tags
-	   rather than one, and it sits a step under the text around it, which is what a tag beside a
-	   reading should do. a table cell is the one place that stops, and the rule under the tones
-	   below is where it does.
+	   the caption size holds at every width, a table cell included: a pill whose size moves with
+	   its container is two tags rather than one, and it sits a step under the text around it,
+	   which is what a tag beside a reading should do. a table cell only tightens the inset, at the
+	   rule under the tones below.
 
 	   and no line under it. a run of words with a rule beneath is what a link wears on every
 	   other operator screen, so a state drawn that way is a fact an operator tries to click. the
@@ -1697,17 +1698,16 @@
 		line-height: var(--admin-caption-lh);
 		padding: var(--admin-space-3) var(--admin-space-5);
 		border-radius: var(--admin-radius-pill);
-		color: var(--admin-ink);
+		color: var(--admin-ink-2);
 		background: var(--admin-tone-note-tint);
 	}
 
-	/* set, and quiet. it steps the ink and the weight down. */
+	/* set, and quiet. it steps the weight down; the ink is already the pill's rung 11. */
 	/* every name in this block is spelled in the derived class list in
 	   packages/operator/src/components/status/StatusWord.jsx rather than in a `class` attribute,
 	   and that component is the only thing that writes any of them.
 	   carried-ok: .adm-state .adm-state--unset .adm-state--secondary */
 	.adm-state--secondary {
-		color: var(--admin-ink-2);
 		/* type-ok: the variant steps the value rank down. */
 		font-weight: var(--admin-weight-regular);
 	}
@@ -1725,15 +1725,16 @@
 	   is a word the tone speaks for, and source order is what settles that rather than the order
 	   the component happens to assemble its class list in.
 
-	   only a record's own lifecycle status takes one, and each names what produces it — `done` is
-	   running, `attention` is waiting on somebody, `blocker` is failed or refused, `note` is
-	   retired, stopped or ended. each is its tone's word on its tone's tint, the same
-	   pair a banner in that tone wears. `done` is the accent and never green; ./tokens.css argues
-	   that where the ladders are declared.
+	   only a record's own lifecycle status takes one, and packages/app/src/lib/admin/status-tones.ts
+	   states the ladder — `done` is live by the operator's hand, `attention` is waiting on
+	   somebody, `blocker` is failed or refused, `note` is retired, stopped or ended, and a record
+	   at rest takes none. `done`, `attention` and `blocker` are each the tone's word on the tone's
+	   tint, the same pair a banner in that tone wears. `done` is the accent and never green;
+	   ./tokens.css argues that where the ladders are declared.
 
-	   `note` steps the ink down and leaves the ground alone, because the pill is already hueless:
-	   an ended record is a fact said quietly. it lands on the rung `secondary` lands on, which is
-	   the same quiet said by a screen with no lifecycle ladder to name. */
+	   `note` keeps the hueless pill's ink and takes its ground away: an ended record is a fact
+	   said quietly, and the ground is what tells it from a record at rest, which keeps the slate 3
+	   pill. one ink step between them is not a difference a list of a hundred rows shows. */
 	/* carried-ok: .adm-state--done .adm-state--attention .adm-state--blocker .adm-state--note
 	   — each is `` `adm-state--${tone}` `` in that same derived class list, so no `class`
 	   attribute anywhere spells one. */
@@ -1754,34 +1755,18 @@
 
 	.adm-state--note {
 		color: var(--admin-tone-note-ink);
+		background: none;
 	}
 
-	/* a state in a cell is a cell. the plane has already grouped these rows and ruled one off the
-	   next, so a ground behind the word draws a second grid inside the first one — and a hundred
-	   rows of it is read as a pattern of tinted blocks before any of the words in them is read.
-	   what a row's status has to say is which of the four it is, and the tone on the word alone
-	   says it.
-
-	   the size and the leading go with the ground, which is the rule's older half: a word set a step
-	   above every other cell reads as the row pointing at itself, and once the pill is off there is
-	   no tag left to hold apart from the reading beside it. the leading is the same sentence said
-	   about a word that wraps — the rule above deliberately withholds `white-space: nowrap`, so two
-	   lines in a cell is a state this drawing exists to support, and two lines set at the caption's
-	   leading beside a cell set at the plane's is the tag still speaking after its ground came off.
-
-	   the leading is `inherit` and not a second token named here: what the word takes is whatever
-	   the cell it stands in was set at, which is what keeps this rule saying that a status in a
-	   cell is a cell rather than naming some other specific thing for it to be.
-
-	   keyed on where the word is drawn and not on a prop a screen passes, so a table added later
-	   cannot forget it. everywhere else keeps the pill — a record card, a setting row's neighbour,
-	   a value slot — and ./tokens.css carries the exception at both places it states the shape. */
+	/* a state in a cell keeps the pill, ground, corner and caption size, as the approved gifts list
+	   draws its status column: the ground is what tells a record at rest from an ended one
+	   (`.adm-state--note` above), and a tone with no tint behind it is a coloured word an
+	   operator learns to scan instead of reading. the inset alone tightens, so the pill sits in a
+	   row at the row's own height rather than pushing every status row a step taller than the
+	   rows beside it. keyed on where the word is drawn and not on a prop a screen passes, so a
+	   table added later cannot forget it; ./state-in-a-cell.spec.ts holds it. */
 	.adm-table .adm-state {
-		font-size: var(--admin-table-size);
-		line-height: inherit;
-		padding: var(--admin-space-0);
-		background: none;
-		border-radius: var(--admin-radius-0);
+		padding: var(--admin-space-1) var(--admin-space-4);
 	}
 
 	/* the momentary register: this just happened, on this control. it reports beside the

@@ -114,22 +114,24 @@
    sits at the leading edge of a ledger line in a fixed mark gutter, carries a mark, carries a
    tone, and carries a sentence. descriptive — this is just what it is — sits in a value slot,
    carries no mark and no sentence, and is drawn as a pill: the word on a rung 3 tint at
-   `--admin-radius-pill`, hueless until it is given a tone. a table cell is where the pill comes
-   off and the word is left standing in its tone alone — a plane already groups the rows it holds,
-   so a ground per cell is a second grid drawn inside the first — and ./adm.css argues that at
+   `--admin-radius-pill`, hueless until it is given a tone. a table cell keeps the pill and only
+   tightens its inset, as the approved gifts list draws it, and ./adm.css argues that at
    `.adm-table .adm-state`. momentary — this just happened, on this control — reports on the
    control that caused it, in the accent, and is never a toast and never a banner at the head of
-   the page.
-   packages/operator/src/components/status/Banner.jsx, StatusWord.jsx and StatusLine.jsx are where those three
-   are drawn.
+   the page. packages/operator/src/components/status/Banner.jsx, StatusWord.jsx and
+   StatusLine.jsx are where those three are drawn.
 
    the descriptive register is the one that is not uniform, and the trade is worth stating where
    it is made. it is the register an operator meets a hundred at a time, and a word drawn
    identically for every value leaves `failed` and `completed` typographically the same thing —
    a list of gifts read a row at a time to find the two that went wrong. a tone answers one
-   question and no other: which of four a value is, running, waiting on somebody, failed or
-   refused, ended. a record at rest that asks nothing, such as a gift that settled, takes none.
-   the scanning it invites therefore lands on the only question it can answer, and the word is still the only thing saying which value it is.
+   question and no other: which of four a value is — live by the operator's hand, waiting on
+   somebody, failed or refused, ended. a record at rest that asks nothing, such as a gift that
+   settled or a repeating gift still collecting, takes none and keeps the hueless pill, and an
+   ended one keeps the pill's ink and loses its ground, so the two are told apart by a ground
+   rather than by an ink step. packages/app/src/lib/admin/status-tones.ts states the ladder. the
+   scanning it invites therefore lands on the only question it can answer, and the word is still
+   the only thing saying which value it is.
 
    two bounds keep that from becoming the hue scheme this file rules out. only a record's own
    lifecycle status takes a tone: a consent reading, a count, `Repeating` and `Invited` stay the
@@ -194,10 +196,10 @@
    sitting in a box that arrived with the keyboard. the one exception is a chosen control, a chip
    or a boxed row, whose edge is the accent's 7: that edge and an 8 ring abutting it read as one
    heavier edge, so there the ring stands outside a band of the ground the control stands on, as
-   the donor page rings its chosen option (packages/app/src/lib/donate/page.css). and the ring is one hue, learned once: it
-   never changes with the control's tone, a destructive control's included, because that would
-   spend an operator screen's one alarm colour on the thing a reader is doing rather than on the
-   thing the screen is reporting.
+   the donor page rings its chosen option (packages/app/src/lib/donate/page.css). and the ring is
+   one hue, learned once: it never changes with the control's tone, a destructive control's
+   included, because that would spend an operator screen's one alarm colour on the thing a reader
+   is doing rather than on the thing the screen is reporting.
 
    a text link takes no ring. a rectangle drawn around a run of words frames the text rather
    than the control, and in a dense ledger it collides with the lines above and below, so a
@@ -350,7 +352,7 @@
 		   once: `ink` is the word at step 11, `mark` is the glyph beside it at step 11 as well,
 		   `tint` is a band drawn in that tone at step 3, `deep` is the word on the band at step 12.
 		   a band draws no edge: the tint carries the tone. a status pill is the tone's 3 under its
-		   11. */
+		   11, except `note`'s, which is its 11 with no ground (./adm.css `.adm-state--note`). */
 		--admin-tone-blocker-ink: var(--admin-blocker-11);
 		--admin-tone-blocker-mark: var(--admin-blocker-11);
 		--admin-tone-blocker-tint: var(--admin-blocker-3);
@@ -750,9 +752,8 @@
 		   it will meet rather than measured, because what is inside sets that height.
 
 		   the bound is on a wearer beyond the list and not on one of them wearing it everywhere:
-		   inside a table cell the status word drops the corner with the ground it sat on, because
-		   the row is already the unit and the tag is not what the word is read as there. ./adm.css
-		   argues it at `.adm-table .adm-state`. */
+		   the status word keeps the corner inside a table cell too, and an ended word that has lost
+		   its ground keeps it with nothing to round. ./adm.css argues both at `.adm-state`. */
 		--admin-radius-0: 0;
 		--admin-radius: 6px;
 		--admin-radius-plane: 12px;
