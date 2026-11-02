@@ -4,15 +4,15 @@ import { ADMIN_TOKENS } from '@better-giving/operator/styles/tokens';
 //
 // the system is one file — packages/operator/src/styles/tokens.css — and this package reads it
 // through the copy beside it, packages/operator/src/styles/tokens.ts, which is the same values as
-// css text. no value is decided here and none may be: what this module does is convert. a screen
-// hands the browser `var(--admin-ink)` and the browser resolves a custom property, an `oklch()` and
-// a `rem` for it. a mail has none of that. it is a set of inline style attributes read by clients
+// css text. no value is decided here and none may be: what this module does is check and convert.
+// a screen hands the browser `var(--admin-ink)` and the browser resolves a custom property and a
+// `rem` for it. a mail has none of that. it is a set of inline style attributes read by clients
 // whose css support was fixed years ago — Outlook desktop renders through Word — so what a template
 // writes has to be a six-digit hex triple and a pixel count, already resolved.
 //
-// two conversions and one shorthand, and every value a template writes comes out of them. a number
-// a template states for itself is the thing this module exists to make unnecessary: react writes
-// `px` after a unitless number in a style object, so `padding: 16` and `padding: '16px'` are the
+// one check, one conversion and one shorthand, and every value a template writes comes out of
+// them. a number a template states for itself is the thing this module exists to make unnecessary:
+// react writes `px` after a unitless number in a style object, so `padding: 16` and `padding: '16px'` are the
 // same declaration and only one of them is a value somebody chose in this file.
 
 /** what a `rem` resolves against.
@@ -37,46 +37,18 @@ export function pxFromLength(value: string): number {
 	throw new Error(`not a length this converts: ${value}`);
 }
 
-/** the sRGB transfer function — linear light to the encoded channel. */
-const encode = (channel: number) =>
-	channel <= 0.0031308 ? 12.92 * channel : 1.055 * channel ** (1 / 2.4) - 0.055;
-
-const channelHex = (channel: number) =>
-	Math.min(255, Math.max(0, Math.round(encode(channel) * 255)))
-		.toString(16)
-		.padStart(2, '0');
+const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
 /**
- * an `oklch()` colour as the six-digit sRGB hex a mail client understands.
+ * a colour as the six-digit hex a mail client understands.
  *
- * the arithmetic is CSS Color 4's (https://www.w3.org/TR/css-color-4/#color-conversion-code):
- * oklch to oklab by polar coordinates, oklab to LMS and cube to linear sRGB through the published
- * matrices, then the transfer function above. ./tokens.spec.ts checks it against the three sRGB
- * primaries, whose oklch coordinates that specification publishes and whose hex everyone knows.
- *
- * out of gamut is clipped per channel rather than reduced in chroma, and the difference does not
- * arise: every colour the operator system authors is inside sRGB — its own screens are drawn in it
- * by a browser doing this same conversion, so a colour that needed real gamut mapping would already
- * be a different colour on /admin than the file states.
+ * ../../operator/src/styles/tokens.css writes every colour a mail reads as radix's published hex, so
+ * nothing is converted and this only refuses what a client could not render: a short hex, an alpha
+ * channel, a colour function, a `var()`. lowercase, so a rendered attribute is one spelling.
  */
-export function hexFromOklch(value: string): string {
-	const parsed = /^oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\)$/.exec(value);
-	if (!parsed) throw new Error(`not an oklch colour this converts: ${value}`);
-	const [lightness, chroma, hue] = [Number(parsed[1]), Number(parsed[2]), Number(parsed[3])];
-
-	const radians = (hue * Math.PI) / 180;
-	const a = chroma * Math.cos(radians);
-	const b = chroma * Math.sin(radians);
-
-	const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3;
-	const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3;
-	const s = (lightness - 0.0894841775 * a - 1.291485548 * b) ** 3;
-
-	const red = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
-	const green = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
-	const blue = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
-
-	return `#${channelHex(red)}${channelHex(green)}${channelHex(blue)}`;
+export function hexColour(value: string): string {
+	if (!HEX_COLOUR.test(value)) throw new Error(`not a six-digit hex colour: ${value}`);
+	return value.toLowerCase();
 }
 
 /**
@@ -91,30 +63,30 @@ export const box = (...sides: number[]) =>
 
 // ---- the values a template writes ----------------------------------------------------------
 //
-// every one is a token converted, and the name says the job rather than the rung. what each is for
-// is at its own line where the choice was not the obvious one.
+// every one is a token, checked, converted or passed whole, and the name says the job rather than
+// the step. what each is for is at its own line where the choice was not the obvious one.
 
 /** the ground the document is read on, the plane its body sits on, and the two a block on that
  * plane sits on. */
-export const PAGE_BG = hexFromOklch(ADMIN_TOKENS['--admin-page']);
-/** a mail's body is one group, and one group is one plane: the system's plane rung, white on the
- * page's, with no edge and no shadow. */
-export const PLANE_BG = hexFromOklch(ADMIN_TOKENS['--admin-surface']);
+export const PAGE_BG = hexColour(ADMIN_TOKENS['--admin-page']);
+/** a mail's body is one group, and one group is one plane: the system's plane step on the page's,
+ * with the step-6 edge every operator plane draws and no shadow. */
+export const PLANE_BG = hexColour(ADMIN_TOKENS['--admin-surface']);
 /** the receipt's own block: a ground, and no rule around it. */
-export const PANEL_BG = hexFromOklch(ADMIN_TOKENS['--admin-surface-sunken']);
-/** the band under the §6115 disclosure, a rung off the plane. */
-export const BLOCK_BG = hexFromOklch(ADMIN_TOKENS['--admin-surface-fill']);
+export const PANEL_BG = hexColour(ADMIN_TOKENS['--admin-surface-sunken']);
+/** the §6115 disclosure's own fill: the band a plane carries, `--admin-surface-fill`. */
+export const BLOCK_BG = hexColour(ADMIN_TOKENS['--admin-surface-fill']);
 /** the alert's instruction, set as `.adm-banner` sets a note: the tint carries it, no edge does. */
-export const BANNER_BG = hexFromOklch(ADMIN_TOKENS['--admin-tone-note-tint']);
+export const BANNER_BG = hexColour(ADMIN_TOKENS['--admin-tone-note-tint']);
 
-export const INK = hexFromOklch(ADMIN_TOKENS['--admin-ink']);
-/** the small print under the rule: real text, and the rung the system cut to carry it. */
-export const INK_MUTED = hexFromOklch(ADMIN_TOKENS['--admin-ink-muted']);
-export const DIVIDER = hexFromOklch(ADMIN_TOKENS['--admin-divider']);
-export const LINK = hexFromOklch(ADMIN_TOKENS['--admin-link']);
+export const INK = hexColour(ADMIN_TOKENS['--admin-ink']);
+/** the small print under the rule: real text, on the low-contrast text step, slate 11. */
+export const INK_MUTED = hexColour(ADMIN_TOKENS['--admin-ink-muted']);
+export const DIVIDER = hexColour(ADMIN_TOKENS['--admin-divider']);
+export const LINK = hexColour(ADMIN_TOKENS['--admin-link']);
 /** a literal set in a sentence — a destination's address — on the ground the system gives code. */
-export const CODE_BG = hexFromOklch(ADMIN_TOKENS['--admin-code-bg']);
-export const CODE_INK = hexFromOklch(ADMIN_TOKENS['--admin-code-ink']);
+export const CODE_BG = hexColour(ADMIN_TOKENS['--admin-code-bg']);
+export const CODE_INK = hexColour(ADMIN_TOKENS['--admin-code-ink']);
 
 export const FONT_SANS = ADMIN_TOKENS['--admin-font-sans'];
 export const FONT_MONO = ADMIN_TOKENS['--admin-font-mono'];

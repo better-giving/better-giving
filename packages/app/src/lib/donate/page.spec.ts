@@ -9,24 +9,18 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { brandScaleCss, generateBrandScale } from '@better-giving/form/styles/radix-scale';
 import { afterAll, describe, expect, it } from 'vitest';
 import { LAYOUTS } from '../page/shape';
-import {
-	blocks,
-	colour,
-	contrast,
-	declared,
-	overWhite,
-	resolve,
-	type Scope
-} from './page-colour.testing';
+import { blocks, declared, type Scope, steps, substitute } from './page-colour.testing';
 import { PageRoot } from './page-root';
 
 // the gate over ./page.css, which is the donor page's token layer and the rules beside it. the
 // sheet's header states what each half below holds it to.
 //
-// names: every `--_` name the sheet reads is one the form's token file declares. the sheet
-// re-points `--_font` and `--_font-mono`, declares `--_w-sent`, and declares no other `--_` name.
+// names: every `--_` name the sheet reads is one the form's token file declares, or one the brand
+// scale ./page-root.tsx renders sets. the sheet re-points `--_font` and `--_font-mono`, declares
+// `--_w-sent`, and declares no other `--_` name.
 // every `--page-*` name read is declared here or set inline by the page root; every `--donate-*`
 // name written is a seed the form registers.
 //
@@ -42,10 +36,10 @@ import { PageRoot } from './page-root';
 // the edit edge: drawn only under `:root[data-editing]`, and solid on the innermost hovered section
 // alone.
 //
-// contrast: the page's grounds and inks, worked out from the two sheets as written by
-// ./page-colour.testing.ts across a sweep of brand colours, for every shade and ground.
-// the node pool, because this app has no browser pool; the evaluator is checked first against the
-// readings the form's own token file states, which were taken in chromium.
+// the steps: every colour the sheet writes lands on the radix step whose job it does
+// (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), read down
+// to the step through ./page-colour.testing.ts. contrast is radix's guarantee for a step doing its
+// job, not a number measured here.
 
 const require = createRequire(import.meta.url);
 const FORM_TOKENS = require.resolve('@better-giving/form/styles/tokens.css');
@@ -67,27 +61,18 @@ const seedDefaults: Scope = Object.fromEntries(
 			: []
 	)
 );
+// the scale ./page-root.tsx renders for a page with no brand colour, from the seed's initial value.
+const unseededScale = (() => {
+	const scale = generateBrandScale(seedDefaults['--donate-primary'] ?? '');
+	if (scale === null) throw new Error('the generator reads no scale from the registered seed');
+	return brandScaleCss('[data-donate-root]', scale);
+})();
 const formBase: Scope = {
 	...seedDefaults,
 	...declared(form, ':host, [data-donate-root]'),
+	...declared(blocks(unseededScale), '[data-donate-root]'),
 	...declared(form, ':host > *, [data-donate-root] > *')
 };
-const SHADES = ['light', 'warm', 'cool'] as const;
-type Shade = (typeof SHADES)[number];
-const shadeRoot: Record<Shade, Scope> = {
-	light: {},
-	warm: declared(
-		form,
-		'@container style(--donate-shade: warm)',
-		':host > *, [data-donate-root] > *'
-	),
-	cool: declared(
-		form,
-		'@container style(--donate-shade: cool)',
-		':host > *, [data-donate-root] > *'
-	)
-};
-
 const reads = (css: string, prefix: string) =>
 	new Set(
 		[...stripComments(css).matchAll(new RegExp(`var\\(\\s*(${prefix}[\\w-]*)`, 'g'))].map(
@@ -130,8 +115,8 @@ function root(props: Partial<Parameters<typeof PageRoot>[0]> = {}): {
 }
 
 describe('the names ./page.css reads and writes', () => {
-	it('reads every `--_` name from the form token file, and finds names to read', () => {
-		const formNames = declares(formText, '--_');
+	it('reads every `--_` name from the form token file or the generated scale, and finds names to read', () => {
+		const formNames = new Set([...declares(formText, '--_'), ...declares(unseededScale, '--_')]);
 		const read = [...reads(pageText, '--_')];
 		expect(read.length).toBeGreaterThan(0);
 		expect(read.filter((name) => !formNames.has(name))).toEqual([]);
@@ -248,6 +233,7 @@ describe('the page root', () => {
 		expect(root().inline).toEqual({ '--donate-primary': '#1f6feb' });
 		expect(Object.keys(root().attributes).sort()).toEqual([
 			'class',
+			'data-brand-scope',
 			'data-donate-root',
 			'data-layout',
 			'style'
@@ -264,135 +250,249 @@ describe('the page root', () => {
 	});
 });
 
-describe('the colour evaluator agrees with the readings the form token file states', () => {
-	const at = (seed?: string) => ({ ...formBase, ...(seed ? { '--donate-primary': seed } : {}) });
-	const worst = 'oklch(0.5 0.16 190)';
-	it.each([
-		['--_n10', '--_n1', 4.96, undefined],
-		['--_n10', '--_n2', 4.85, undefined],
-		['--_n10', '--_n3', 4.56, undefined],
-		['--_focus-ring', '--_n1', 14.8, undefined],
-		['--_on-p', '--_p', 4.79, worst],
-		['--_p', '--_n1', 4.92, worst]
-	])('%s on %s reads %s', (ink, ground, stated, seed) => {
-		const scope = at(seed);
-		// to the two places the token file states each reading at, so a move of 0.01 fails.
-		expect(contrast(resolve(scope, ink), resolve(scope, ground))).toBeCloseTo(stated, 2);
-	});
-});
-
-// brand colours across the wheel, at full strength, dark and muted, and the unbranded page.
-const hsv = (h: number, s: number, v: number) => {
-	const f = (n: number) => {
-		const k = (n + h / 60) % 6;
-		return Math.round(255 * (v - v * s * Math.max(0, Math.min(k, 4 - k, 1))));
+describe('every colour lands on the radix step for its job', () => {
+	// each colour declaration in ./page.css, by the block it stands in and its property, read down to
+	// its step through the form's token file and the ground's own names, grouped by the job radix
+	// gives that step (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale).
+	// `allowed` is the steps the job may land on; a new colour declaration fails the last case until it
+	// is placed in one of these.
+	const WIDE = '@container page (min-width: 60rem)';
+	const FEATURE = ".page[data-layout='feature']";
+	const OVER_FILL = `${FEATURE} .page-layout[data-cover='logo'] .page-hero-words, ${FEATURE} .page-layout[data-cover='none'] .page-hero-words`;
+	const IDLE = ":not(:has(:checked, [aria-disabled='true']))";
+	const BORDER =
+		'6, 7 and 8: a separator, a control’s edge, that edge under the pointer and a brand edge';
+	const RING = '8: the focus ring, in a step-1 gap where it rings a control';
+	const ON_FILL = 'the ink on a solid fill: the form’s `--_on-p`';
+	const TEXT = '11 and 12: text';
+	const SCRIM = 'the feature’s scrim, and slate 1 on it';
+	const JOBS: Record<string, { allowed: readonly string[]; at: Record<string, string> }> = {
+		'1, 2 and 3: a ground, the wash brand 2 and 3 over slate 2': {
+			allowed: ['slate-1', 'slate-2', 'slate-3', 'brand-2', 'brand-3'],
+			at: {
+				'.page > .page-ground | --page-ground': 'slate-2',
+				'.page > .page-ground | --page-wash': 'brand-2 brand-3',
+				'.page > .page-ground | background': 'brand-2 brand-3 slate-2',
+				'.page > .page-ground | --page-plane': 'slate-1',
+				'.page > .page-ground | --page-band': 'slate-1',
+				'.page > .page-ground | --page-track': 'slate-3',
+				'.page-mast | background': 'slate-1',
+				".page[data-layout='card'] .page-layout::before | background": 'slate-1',
+				[`${WIDE} » .page[data-layout='card'] .page-layout | background`]: 'slate-1',
+				".page[data-layout='letter'] [data-area='cover'] | background": 'slate-1',
+				[`${FEATURE} .page-about-area | background`]: 'slate-1',
+				".page[data-layout='donation'] .page-about-area | background": 'slate-1',
+				'.page-cover | background': 'slate-3',
+				'.page-cover-logo | background': 'slate-1',
+				".page-tiers[data-shape='cards'] .page-tier | background": 'slate-1',
+				'.page-goal-track | background': 'slate-3',
+				'.page-share-button | background': 'slate-1',
+				'.page-choose .page-choose-option:has(:checked) | background': 'slate-1'
+			}
+		},
+		'3, 4 and 5: a control’s ground, its hover and its press': {
+			allowed: ['slate-3', 'slate-4', 'slate-5'],
+			at: {
+				'.page-choose-option | background': 'slate-3',
+				[`.page-choose .page-choose-option:hover${IDLE} | background`]: 'slate-4',
+				[`.page-choose .page-choose-option:active${IDLE} | background`]: 'slate-5',
+				'.page-share-button:hover | background': 'slate-3',
+				'.page-share-button:active | background': 'slate-4'
+			}
+		},
+		[BORDER]: {
+			allowed: ['slate-6', 'slate-7', 'slate-8', 'brand-6', 'brand-7', 'brand-8'],
+			at: {
+				'.page > .page-ground | --page-plane-edge': 'slate-6',
+				'.page-mast | border-block-end': 'slate-6',
+				".page [part~='card'] | border-color": 'slate-6',
+				".page[data-layout='card'] .page-layout::before | border": 'slate-6',
+				[`${WIDE} » .page[data-layout='card'] .page-layout | border`]: 'slate-6',
+				".page[data-layout='letter'] [data-area='cover'] | border": 'slate-6',
+				'.page-foot | border-block-start': 'slate-6',
+				".page-tiers[data-shape='cards'] .page-tier | border": 'slate-6',
+				".page-tiers[data-shape='list'] .page-tier | border-block-start": 'slate-6',
+				'.page-faq[data-folded] .page-faq-item | border-block-start': 'slate-6',
+				'.page-faq[data-folded] .page-faq-item:last-child | border-block-end': 'slate-6',
+				'.page-share-button | border': 'slate-6',
+				'.page-choose-option | border': 'slate-7',
+				".page-choose-option:has([aria-disabled='true']:not(:checked)) | border-color": 'slate-7',
+				[`.page-choose .page-choose-option:hover${IDLE} | border-color`]: 'slate-8',
+				[`.page-choose .page-choose-option:active${IDLE} | border-color`]: 'slate-8',
+				'.page-choose .page-choose-option:has(:checked) | border-color': 'brand-8'
+			}
+		},
+		[RING]: {
+			allowed: ['brand-8', 'slate-1'],
+			at: {
+				'.page > .page-ground | --page-ring': 'brand-8',
+				'.page-ground a:focus-visible, .page-faq-question:focus-visible | box-shadow': 'brand-8',
+				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-8',
+				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-8'
+			}
+		},
+		'9: a solid fill, the generator’s step 9': {
+			allowed: ['brand-9'],
+			at: {
+				'.page-mast-badge | background': 'brand-9',
+				[`${FEATURE} .page-cover-area:empty | background`]: 'brand-9',
+				".page-cover[data-source='logo'] | background": 'brand-9',
+				'.page-goal-fill | background': 'brand-9'
+			}
+		},
+		[ON_FILL]: {
+			allowed: ['on-brand-9'],
+			at: {
+				'.page-mast-badge | color': 'on-brand-9',
+				[`${WIDE} » ${OVER_FILL} | --page-quiet`]: 'on-brand-9',
+				[`${WIDE} » ${OVER_FILL} | color`]: 'on-brand-9'
+			}
+		},
+		[TEXT]: {
+			allowed: ['slate-11', 'slate-12', 'brand-11', 'brand-12', 'red-11'],
+			at: {
+				'.page > .page-ground | --page-quiet': 'slate-11',
+				'.page > .page-ground | --page-accent': 'brand-11',
+				'.page > .page-ground | color': 'slate-12',
+				'.notice | color': 'slate-11',
+				'.ended p | color': 'slate-11',
+				'.page-ground a | color': 'brand-11',
+				'.page-mast-share:hover | color': 'brand-12',
+				'.page-mast-name | color': 'slate-12',
+				'.page-label | color': 'slate-11',
+				'.page-lede | color': 'slate-11',
+				".page-tiers[data-shape='cards'] .page-tier | color": 'slate-11',
+				".page-tiers[data-shape='cards'] .page-tier-amount | color": 'brand-11',
+				".page-tiers[data-shape='list'] .page-tier-amount | color": 'brand-11',
+				".page-tiers[data-shape='list'] .page-tier-buys | color": 'slate-11',
+				'.page-faq-mark | color': 'slate-11',
+				'.page-faq[data-folded] .page-faq-answer | color': 'slate-11',
+				'.page-faq:not([data-folded]) .page-faq-answer | color': 'slate-11',
+				'.page-about-beneath | color': 'slate-11',
+				'.page-goal-of | color': 'slate-11',
+				'.page-goal-meta | color': 'slate-11',
+				'.page-org | color': 'slate-11',
+				'.page-org-name | color': 'slate-11',
+				'.page-share-heading | color': 'slate-11',
+				'.page-share-button | color': 'slate-12',
+				'.page-ground a.page-share-button | color': 'slate-12',
+				".page-share-button[data-copy='failed'] | color": 'red-11',
+				'.page-choose-option | color': 'slate-12',
+				'.page-choose-description | color': 'slate-11',
+				'.page-choose-mark | color': 'brand-11',
+				'.page-choose-option:has(:checked) .page-choose-name | color': 'brand-11',
+				".page-choose-option:has([aria-disabled='true']:not(:checked)) .page-choose-name | color":
+					'slate-11',
+				'.page-ground .amount-label | color': 'slate-11'
+			}
+		},
+		// a photo has no step. the scrim over the feature's cover is the one colour off the ladders, and
+		// what stands on it is slate 1, radix's white, with the goal's track on slate 8.
+		[SCRIM]: {
+			allowed: ['scrim', 'slate-1', 'slate-8'],
+			at: {
+				[`${WIDE} » ${FEATURE} [data-area='cover']::after | background`]: 'scrim',
+				[`${WIDE} » ${FEATURE} [data-area='cover'] | --page-ring`]: 'slate-1',
+				[`${WIDE} » ${FEATURE} .page-hero-words | --page-ring`]: 'slate-1',
+				[`${WIDE} » ${FEATURE} .page-hero-words | --page-quiet`]: 'slate-1',
+				[`${WIDE} » ${FEATURE} .page-hero-words | color`]: 'slate-1',
+				[`${WIDE} » ${FEATURE} .page-hero-words .page-goal-track | background`]: 'slate-8',
+				[`${WIDE} » ${FEATURE} .page-hero-words .page-goal-fill | background`]: 'slate-1'
+			}
+		}
 	};
-	return `#${[5, 3, 1].map((n) => f(n).toString(16).padStart(2, '0')).join('')}`;
-};
-const BRANDS: (string | null)[] = [null, '#000000', '#808080', '#ffffff'];
-for (let h = 0; h < 360; h += 5) BRANDS.push(hsv(h, 1, 1), hsv(h, 1, 0.45), hsv(h, 0.35, 0.85));
 
-/** where text stands: the page ground, the wash's two tints at full strength, each a darkest point
- * of the wash, the form's card on `--_n1`, a plane on `--page-plane`, and the About us band. */
-const GROUNDS = {
-	page: { ground: '--page-ground', scope: {} },
-	washBrand: { ground: '--page-wash-brand', scope: {} },
-	washWarm: { ground: '--page-wash-warm', scope: {} },
-	card: { ground: '--_n1', scope: {} },
-	plane: { ground: '--page-plane', scope: {} },
-	band: {
-		ground: '--page-band',
-		scope: declared(page, ".page[data-layout='feature'] .page-about-area")
-	}
-} as const;
-type Ground = keyof typeof GROUNDS;
+	// every name a colour declaration can read: the form's declarations under its root, and the ground's.
+	const scope: Scope = { ...formBase, ...declared(page, '.page > .page-ground') };
+	const read = Object.fromEntries(
+		page.flatMap(({ at, decls }) =>
+			Object.entries(decls).flatMap(([property, value]) => {
+				const found = steps(scope, value);
+				return found.length === 0 ? [] : [[`${at.join(' » ')} | ${property}`, found.join(' ')]];
+			})
+		)
+	);
 
-function scopeFor(shade: Shade, ground: Ground, brand: string | null): Scope {
-	return {
-		...formBase,
-		...shadeRoot[shade],
-		...declared(page, '.page > .page-ground'),
-		...GROUNDS[ground].scope,
-		...root({ brandColour: brand }).inline
-	};
-}
+	it.each(Object.entries(JOBS))('%s', (_, { allowed, at }) => {
+		expect(Object.fromEntries(Object.keys(at).map((key) => [key, read[key]]))).toEqual(at);
+		const off = Object.entries(at).filter(([, step]) =>
+			step.split(' ').some((one) => !allowed.includes(one))
+		);
+		expect(off).toEqual([]);
+	});
 
-/** the lowest reading of one pair across every brand, on one shade and ground. */
-function floor(shade: Shade, ground: Ground, ink: string, on: string = GROUNDS[ground].ground) {
-	let low = Number.POSITIVE_INFINITY;
-	for (const brand of BRANDS) {
-		const scope = scopeFor(shade, ground, brand);
-		low = Math.min(low, contrast(resolve(scope, ink), resolve(scope, on)));
-	}
-	return Math.round(low * 100) / 100;
-}
+	it('sets text, a border and a ring only in the jobs that draw them', () => {
+		const may: [RegExp, string[]][] = [
+			[/^color$/, [TEXT, ON_FILL, SCRIM]],
+			[/^border/, [BORDER]],
+			[/^box-shadow$/, [RING]]
+		];
+		const astray = Object.entries(JOBS).flatMap(([job, { at }]) =>
+			Object.keys(at).filter((key) => {
+				const property = key.slice(key.lastIndexOf(' | ') + 3);
+				return may.some(([pattern, jobs]) => pattern.test(property) && !jobs.includes(job));
+			})
+		);
+		expect(astray).toEqual([]);
+	});
 
-describe('the evaluator reads a hex colour', () => {
-	// the sRGB primaries' oklch hues as https://www.w3.org/TR/css-color-4/#ok-lab publishes them, a
-	// source independent of the conversion, which the 4.5:1 sweep below rests on.
-	it.each([
-		['#ff0000', 29.23],
-		['#00ff00', 142.5],
-		['#0000ff', 264.05],
-		['#ff00ff', 328.36]
-	])('%s at hue %f', (hex, hue) => {
-		expect(colour(hex).h).toBeCloseTo(hue, 1);
+	it('places every colour declaration ./page.css writes', () => {
+		const placed = new Set(Object.values(JOBS).flatMap(({ at }) => Object.keys(at)));
+		expect(Object.keys(read).length).toBeGreaterThan(0);
+		expect(Object.keys(read).filter((key) => !placed.has(key))).toEqual([]);
 	});
 });
 
-describe('text clears 4.5:1 for every brand colour', () => {
-	it.each(SHADES)('the quiet ink on every ground, %s', (shade) => {
-		for (const ground of Object.keys(GROUNDS) as Ground[])
-			expect(floor(shade, ground, '--page-quiet'), ground).toBeGreaterThanOrEqual(4.5);
+describe('the share row and the footer', () => {
+	// each share press is a step-1 circle on the wash inside a step-6 edge, at the touch floor.
+	it('draws a share press as a flat circle at the touch floor, a plane edged in step 6', () => {
+		expect(substitute(formBase, 'var(--_row-min)')).toBe('44px');
+		const press = declared(page, '.page-share-button');
+		expect(press).toMatchObject({
+			'inline-size': 'var(--_row-min)',
+			'block-size': 'var(--_row-min)',
+			'border-radius': '50%',
+			border: 'var(--_border) solid var(--page-plane-edge)',
+			background: 'var(--page-plane)',
+			color: 'var(--_n12)'
+		});
+		expect(press['box-shadow']).toBeUndefined();
 	});
 
-	// a link and a tier's amount are drawn in it on the page ground and its wash, on a card and on
-	// a plane. the top bar's Share stands on the plane, and steps to `--_p-hover` under a pointer.
-	it.each(SHADES)('the primary as ink on the page ground, a card and a plane, %s', (shade) => {
-		expect(floor(shade, 'page', '--_p')).toBeGreaterThanOrEqual(4.5);
-		expect(floor(shade, 'washBrand', '--_p')).toBeGreaterThanOrEqual(4.5);
-		expect(floor(shade, 'washWarm', '--_p')).toBeGreaterThanOrEqual(4.5);
-		expect(floor(shade, 'card', '--_p')).toBeGreaterThanOrEqual(4.5);
-		expect(floor(shade, 'plane', '--_p')).toBeGreaterThanOrEqual(4.5);
-		expect(floor(shade, 'plane', '--_p-hover')).toBeGreaterThanOrEqual(4.5);
+	it('labels the row in the quiet ink, a step under a heading', () => {
+		expect(declared(page, '.page-share-heading')).toMatchObject({
+			color: 'var(--page-quiet)',
+			'font-weight': 'var(--_w-medium)'
+		});
 	});
 
-	// a program option's description stands on the option's own ground, which rests on rung 3 and
-	// steps to 5 under a press.
-	it.each(SHADES)('the option’s quiet ink on its press rung, %s', (shade) => {
-		expect(declared(page, '.page-choose-description').color).toBe('var(--_n11)');
-		expect(floor(shade, 'page', '--_n11', '--_n5')).toBeGreaterThanOrEqual(4.5);
-	});
-
-	// the feature's words on a cover with no photo stand on the brand fill itself.
-	it.each(SHADES)('the one ink on the brand fill, %s', (shade) => {
-		expect(floor(shade, 'page', '--_on-p', '--_p')).toBeGreaterThanOrEqual(4.5);
-	});
-});
-
-describe('the goal track', () => {
-	// the fill is what the bar is read by; the track against the ground under it is a look.
-	it.each(SHADES)('holds its fill apart by 3:1, %s', (shade) => {
-		expect(floor(shade, 'page', '--_p', '--page-track')).toBeGreaterThanOrEqual(3);
-		expect(floor(shade, 'card', '--_p', '--page-track')).toBeGreaterThanOrEqual(3);
+	// the footer is one line on the wash, under a separator: the name in `--_n11`, the rest in the
+	// quiet ink at the small step.
+	it('draws the footer on the wash under one separator, its line in the quiet ink', () => {
+		expect(declared(page, '.page-foot')).toMatchObject({
+			'border-block-start': 'var(--_border) solid var(--_n6)'
+		});
+		expect(declared(page, '.page-foot').background).toBeUndefined();
+		expect(declared(page, '.page-org')).toMatchObject({
+			color: 'var(--page-quiet)',
+			'font-size': 'var(--_t-sm)'
+		});
+		expect(declared(page, '.page-org-name').color).toBe('var(--_n11)');
 	});
 });
 
 describe('the scrim over the feature’s cover', () => {
 	const scrim = declared(page, '.page > .page-ground')['--page-scrim'] ?? '';
 	const stops = [...scrim.matchAll(/oklch\(([^/]+)\/\s*([\d.]+)\)\s*([\d.]+%)?/g)];
-	const ink = resolve(scopeFor('light', 'page', null), '--_n1');
 
-	it('holds the words’ ink at 4.5:1 over a white photo where the words stand', () => {
+	it('darkens the cover from its left edge across the 58% the words stand in', () => {
 		const [darkest] = stops;
 		if (darkest === undefined) throw new Error(`no translucent stop in ${scrim}`);
 		expect(scrim).toMatch(/^linear-gradient\(\s*to right,/);
 		expect(Number.parseFloat(darkest[3] ?? '0')).toBeGreaterThanOrEqual(58);
-		const ground = overWhite(colour(`oklch(${darkest[1]})`), Number(darkest[2]));
-		expect(contrast(ink, ground)).toBeGreaterThanOrEqual(4.5);
 	});
 
-	it('draws the words in that ink, and the ring with it', () => {
+	it('draws the words in slate 1, and the ring with it', () => {
 		const words = page.find(
 			({ at }) =>
 				at[0] === '@container page (min-width: 60rem)' &&
@@ -436,15 +536,19 @@ describe('the card layout', () => {
 		expect(declared(page, `${CARD} .page-layout::before`)).toMatchObject({
 			'grid-row': 'cover-start / close-end',
 			background: 'var(--page-plane)',
-			'border-radius': 'var(--page-plane-radius)',
-			'box-shadow': 'var(--page-plane-lift)'
+			border: 'var(--_border) solid var(--page-plane-edge)',
+			'border-radius': 'var(--page-plane-radius)'
 		});
 		expect(declared(page, WIDE, `${CARD} .page-layout::before`).content).toBe('none');
 	});
 
-	it('takes the plane’s top corners on the cover at every width', () => {
+	it('takes the plane’s top corners inside its edge on the cover at every width', () => {
+		const inner = 'calc(var(--page-plane-radius) - var(--_border))';
 		expect(declared(page, `${CARD} [data-area='cover'] .page-cover`)['border-radius']).toBe(
-			'var(--page-plane-radius) var(--page-plane-radius) 0 0'
+			`${inner} ${inner} 0 0`
+		);
+		expect(declared(page, `${CARD} [data-area='cover']`).margin).toBe(
+			'var(--_border) var(--_border) 0'
 		);
 		expect(
 			page.filter(
@@ -461,15 +565,209 @@ describe('the card layout', () => {
 		expect(ordered).toEqual([]);
 	});
 
-	it('draws the box on the wide panel as a plane, with the plane’s shadow and no edge', () => {
-		const onPanel = page.filter(
-			({ at }) => at[0] === WIDE && at.at(-1)?.includes("[part~='card']")
-		);
-		expect(onPanel).toEqual([]);
-		expect(declared(page, ".page [part~='card']")).toMatchObject({
-			'border-color': 'transparent',
-			'box-shadow': 'var(--page-plane-lift)'
+	it('draws the box on the wide panel as part of the panel: no fill, edge, corner or inset of its own', () => {
+		expect(declared(page, WIDE, `${CARD} [part~='card']`)).toEqual({
+			background: 'transparent',
+			border: '0',
+			'border-radius': '0',
+			overflow: 'visible'
 		});
+		// the card's interior inset is `.card-body`'s, which no part name reaches
+		// (packages/form/src/styles/layout.css), so the heading starts on the title's line only with it gone.
+		expect(declared(page, WIDE, `${CARD} [part~='card'] > .card-body`)).toEqual({ padding: '0' });
+		expect(declared(page, WIDE, `${CARD} [data-area='title']`).margin).toBe(
+			'var(--page-card-inset) 0 0'
+		);
+		expect(declared(page, WIDE, `${CARD} [data-area='box']`)['margin-block-start']).toBe(
+			'var(--page-card-inset)'
+		);
+	});
+});
+
+describe('no card inside a card', () => {
+	// a plane is a step-1 card on the wash, and its step-6 edge is what makes it one; a plane standing
+	// in another is an edge inside an edge, grouping drawn twice. the box is the one plane the form
+	// draws, and it stands in `.page-layout` in every layout, so wherever a layout paints
+	// `.page-layout` itself as a plane, the box there draws none of a plane's dress.
+	// happy-dom does no layout, so where the box stands is read off the sheet.
+	const WIDE = '@container page (min-width: 60rem)';
+	const WIDTHS: readonly (readonly string[])[] = [[], [WIDE]];
+	const layouts = [...LAYOUTS, 'donation'] as const;
+	const PLANE = 'var(--page-plane)';
+	const EDGE = 'var(--_border) solid var(--page-plane-edge)';
+	const at = (inside: readonly string[], selector: string) =>
+		page.filter((b) => b.at.join(' » ') === [...inside, selector].join(' » '));
+
+	const holding = layouts.flatMap((layout) =>
+		WIDTHS.flatMap((inside) =>
+			at(inside, `.page[data-layout='${layout}'] .page-layout`).some(
+				({ decls }) => decls.background === PLANE
+			)
+				? [{ layout, inside }]
+				: []
+		)
+	);
+
+	it('finds the plane that holds the box: the card’s panel from 60rem', () => {
+		expect(holding).toEqual([{ layout: 'card', inside: [WIDE] }]);
+	});
+
+	it.each(
+		holding.map(({ layout, inside }) => [layout, inside.join(' ') || 'phone', inside] as const)
+	)('the box in the %s layout’s plane (%s) draws no fill or edge', (layout, _, inside) => {
+		const box = at(inside, `.page[data-layout='${layout}'] [part~='card']`);
+		expect(box).toHaveLength(1);
+		expect(box[0]?.decls).toMatchObject({ background: 'transparent', border: '0' });
+	});
+
+	it('keeps the box a card where it stands on the wash, the phone’s card layout included', () => {
+		expect(declared(page, ".page [part~='card']")).toMatchObject({
+			'border-color': 'var(--page-plane-edge)',
+			'border-radius': 'var(--page-plane-radius)'
+		});
+		const unset = page.filter(
+			({ at: [first, ...rest], decls }) =>
+				rest.length === 0 &&
+				first?.includes("[part~='card']") === true &&
+				(decls.border !== undefined || decls.background !== undefined)
+		);
+		expect(unset).toEqual([]);
+	});
+
+	it('edges every plane on the wash in step 6, and the box is the one a plane holds', () => {
+		const planes = page
+			.filter(({ decls }) => decls.background === PLANE)
+			.map(({ at, decls }) => [at.join(' » '), decls.border ?? decls['border-block-end']]);
+		expect(planes.sort()).toEqual(
+			[
+				[".page[data-layout='card'] .page-layout::before", EDGE],
+				[`${WIDE} » .page[data-layout='card'] .page-layout`, EDGE],
+				[".page[data-layout='letter'] [data-area='cover']", EDGE],
+				[".page-tiers[data-shape='cards'] .page-tier", EDGE],
+				['.page-share-button', EDGE],
+				['.page-mast', EDGE]
+			].sort()
+		);
+	});
+});
+
+describe('no shadow anywhere', () => {
+	// radix's steps say depth by a face and an edge; a `box-shadow` the page writes is a focus ring,
+	// a spread hugging the box with no offset and no blur.
+	const layers = (value: string) => {
+		const found: string[] = [];
+		let depth = 0;
+		let layer = '';
+		for (const char of value) {
+			if (char === '(') depth += 1;
+			if (char === ')') depth -= 1;
+			if (char === ',' && depth === 0) {
+				found.push(layer.trim());
+				layer = '';
+			} else layer += char;
+		}
+		return [...found, layer.trim()];
+	};
+
+	it('finds the rings it is meant to be guarding', () => {
+		expect(page.filter(({ decls }) => decls['box-shadow'] !== undefined).length).toBeGreaterThan(1);
+	});
+
+	it('writes every `box-shadow` as zero-offset, zero-blur spreads', () => {
+		const cast = page.flatMap(({ at, decls }) =>
+			decls['box-shadow'] === undefined
+				? []
+				: layers(decls['box-shadow'])
+						.filter((layer) => !/^0 0 0 \S/.test(layer))
+						.map((layer) => `${at.join(' » ')}: ${layer}`)
+		);
+		expect(cast).toEqual([]);
+	});
+
+	it('declares no shadow token', () => {
+		const tokens = declared(page, '.page > .page-ground');
+		expect(Object.values(tokens).filter((v) => /\d+px \d+px/.test(v))).toEqual([]);
+	});
+});
+
+describe('the ground and the wash', () => {
+	// brand steps 2 and 3 are the generated scale's, rendered by the page root; the sheet derives
+	// neither.
+	const ground = declared(page, '.page > .page-ground');
+
+	it('derives no brand step of its own', () => {
+		expect(stripComments(pageText)).not.toMatch(/oklch\(\s*from/);
+		expect(
+			[...declares(pageText, '--page-a')].filter((name) => /^--page-a\d+$/.test(name))
+		).toEqual([]);
+	});
+
+	it.each([2, 3])('draws brand step %i as the generator makes it for the brand colour', (n) => {
+		const scale = generateBrandScale('#1f6feb');
+		const html = renderToStaticMarkup(
+			createElement(PageRoot, { brandColour: '#1f6feb', layout: 'card', children: null })
+		);
+		const css = /<style>([^<]*)<\/style>/.exec(html)?.[1] ?? '';
+		const scope = /data-brand-scope="([^"]*)"/.exec(html)?.[1] ?? '';
+		expect(scope).not.toBe('');
+		const sheet = blocks(css);
+		expect(declared(sheet, `[data-donate-root][data-brand-scope="${scope}"]`)[`--_a${n}`]).toBe(
+			scale?.steps[n - 1]
+		);
+		expect(
+			declared(
+				sheet,
+				'@supports (color: color(display-p3 1 1 1))',
+				'@media (color-gamut: p3)',
+				`[data-donate-root][data-brand-scope="${scope}"]`
+			)[`--_a${n}`]
+		).toBe(scale?.stepsWideGamut[n - 1]);
+	});
+
+	it('lays brand 2 at the top left and brand 3 at the bottom right over slate 2', () => {
+		expect(ground['--page-ground']).toBe('var(--_n2)');
+		expect(ground['--page-wash']).toMatch(
+			/^radial-gradient\(.* at 0% .*, var\(--_a2\), transparent 70%\), radial-gradient\(.* at 100% 100%, var\(--_a3\), transparent 70%\)$/
+		);
+		expect(ground.background).toBe('var(--page-wash), var(--page-ground)');
+	});
+
+	it('rules the masthead’s foot and the footer’s head in step 6', () => {
+		expect(declared(page, '.page-mast')['border-block-end']).toBe(
+			'var(--_border) solid var(--page-plane-edge)'
+		);
+		expect(ground['--page-plane-edge']).toBe('var(--_n6)');
+		expect(declared(page, '.page-foot')['border-block-start']).toBe(
+			'var(--_border) solid var(--_n6)'
+		);
+	});
+});
+
+describe('the program options', () => {
+	it('edges an option in step 7 and in step 8 under a pointer and a press', () => {
+		expect(
+			page
+				.filter(({ at, decls }) => at.join() === '.page-choose-option' && decls.border)
+				.map(({ decls }) => decls.border)
+		).toEqual(['var(--_border) solid var(--_edge-control)']);
+		for (const state of [':hover', ':active'])
+			expect(
+				declared(
+					page,
+					`.page-choose .page-choose-option${state}:not(:has(:checked, [aria-disabled='true']))`
+				)['border-color']
+			).toBe('var(--_n8)');
+	});
+
+	it('marks the chosen option as the form marks a chosen tile: step 1, a brand-8 edge, brand-11 words', () => {
+		expect(declared(page, '.page-choose .page-choose-option:has(:checked)')).toEqual({
+			background: 'var(--_n1)',
+			'border-color': 'var(--_a8)'
+		});
+		expect(declared(page, '.page-choose-option:has(:checked) .page-choose-name').color).toBe(
+			'var(--_a11)'
+		);
+		expect(declared(page, '.page-choose-mark').color).toBe('var(--_a11)');
 	});
 });
 

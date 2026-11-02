@@ -20,10 +20,10 @@ import type { FormConfig } from '../v1';
 // ./parts.browser.spec.ts gives: the question is about the sheets ../element.ts adopts, through
 // the code that adopts them, so a hand-built host would be asserting the fixture.
 //
-// nothing here reads a colour literal. the danger pair is one token (`--_bad` in ./tokens.css) and
-// the sentence under the field is painted with it, so the field's border is compared against the
-// sentence's own colour — which is the claim worth making anyway: the edge and the words say the
-// same thing.
+// nothing here reads a colour literal. a refusal is radix's red at two steps (./tokens.css): the
+// edge a refused control is drawn in is `--_bad-edge`, red 8, and the sentence under it is `--_bad`,
+// red 11, so the field's border is compared against the edge token and the sentence against the
+// word token, both read off the card's own cascade.
 //
 // the second half of this file is about a rule rather than a paint. the browser's `type="email"`
 // and `pattern` decide which sentence the donor reads, and `completePayer` (../value.ts) decides
@@ -234,9 +234,9 @@ function outerShadowColour(shadow: string): string {
 	);
 }
 
-/** the danger colour, read off the one surface that is painted with nothing else. */
+/** the danger edge, read off the card's own cascade. */
 function dangerOf(card: Card): string {
-	return resolved(getComputedStyle(card.find('#email-problem')).color);
+	return tokenOf(card, '--_bad-edge');
 }
 
 afterEach(() => {
@@ -267,6 +267,12 @@ describe('the details step’s problem edge', () => {
 		await painted(email);
 
 		expect(edgeOf(email)).toBe(dangerOf(card));
+		// and the sentence naming it in red's word step rather than its edge step: two steps of one
+		// hue, each on its own job.
+		expect(resolved(getComputedStyle(card.find('#email-problem')).color)).toBe(
+			tokenOf(card, '--_bad')
+		);
+		expect(tokenOf(card, '--_bad')).not.toBe(dangerOf(card));
 
 		// and the token is the whole of what drew it. the field is still `:invalid` to the engine
 		// with the token taken off, so an edge that survived this would be one the sheet paints
@@ -637,7 +643,10 @@ describe('the mark that says a field is optional', () => {
 
 		expect(mark.getBoundingClientRect().width).toBeGreaterThan(0);
 		expect(parseFloat(marked.fontSize)).toBeLessThan(parseFloat(around.fontSize));
-		expect(resolved(marked.color)).not.toBe(resolved(around.color));
+		// quieter by size alone: the words it follows are already the quieter of the card's two text
+		// steps, and radix sets text in no third (the head of ./tokens.css).
+		expect(resolved(marked.color)).toBe(resolved(around.color));
+		expect(resolved(marked.color)).toBe(tokenOf(card, '--_n11'));
 	});
 });
 

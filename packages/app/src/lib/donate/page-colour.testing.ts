@@ -1,19 +1,8 @@
 import { stripComments } from '@better-giving/operator/styles/raw-values';
 
-// what $lib/donate/page.spec.ts measures contrast with: the page's grounds and inks worked out from
-// the stylesheets as written, in node, with no browser.
-//
-// the custom properties the page and the form declare are unregistered, so a browser keeps each as
-// a token list until a standard property reads it. this does the same in two steps: every `var()`
-// is substituted from the declarations a node would inherit, then the colour expression left over
-// is evaluated — `oklch()`, its relative `from` form, `min()`, `max()`, `clamp()` and `calc()`
-// over the channel keywords, and a `#rrggbb` seed. that is every construction either sheet spells
-// a colour with; anything else throws and names itself.
-//
-// out-of-gamut channels are clipped per channel into sRGB before luminance is read. the spec checks
-// that choice against the readings packages/form/src/styles/tokens.css states at its own entries,
-// which were taken in chromium: an evaluator that disagreed with them would be measuring a
-// different card.
+// what $lib/donate/page.spec.ts reads the page's sheet and the form's token file with, in node, with
+// no browser: every `{}` block with the preludes it sits in, a custom property's `var()`s substituted
+// from a scope, and the radix step a colour declaration lands on.
 
 export type Scope = Readonly<Record<string, string>>;
 
@@ -85,7 +74,9 @@ export function substitute(scope: Scope, value: string, seen: string[] = []): st
 		const inner = value.slice(start + 4, end - 1);
 		const comma = inner.indexOf(',');
 		const name = (comma === -1 ? inner : inner.slice(0, comma)).trim();
-		const own = scope[name];
+		// a custom property set to `initial` is the guaranteed-invalid value, so `var()` takes its
+		// fallback (https://www.w3.org/TR/css-variables-1/#guaranteed-invalid).
+		const own = scope[name] === 'initial' ? undefined : scope[name];
 		let replacement: string;
 		if (own !== undefined) {
 			if (seen.includes(name)) throw new Error(`${name} refers to itself`);
@@ -97,180 +88,30 @@ export function substitute(scope: Scope, value: string, seen: string[] = []): st
 	}
 }
 
-const TOKEN = /#[0-9a-f]{6}|\d*\.?\d+|[a-z]+|[(),/*+-]/gi;
-
-function tokens(text: string): string[] {
-	const found = text.match(TOKEN) ?? [];
-	if (found.join('') !== text.replace(/\s+/g, '')) throw new Error(`cannot read ${text}`);
-	return found;
-}
-
-const decode = (channel: number) =>
-	channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-
-type Oklch = { l: number; c: number; h: number };
+/** the ladder names a colour bottoms out in, by the step radix gives each one's job. */
+const LADDER: readonly [RegExp, (m: RegExpExecArray) => string][] = [
+	[/^--_n(\d+)$/, (m) => `slate-${m[1]}`],
+	[/^--_a(\d+)$/, (m) => `brand-${m[1]}`],
+	[/^--_p$/, () => 'brand-9'],
+	[/^--_on-p$/, () => 'on-brand-9'],
+	[/^--page-scrim$/, () => 'scrim'],
+	[/^--_bad$/, () => 'red-11']
+];
 
 /**
- * a `#rrggbb` colour in oklch, hue in degrees from 0 up to 360, by
- * https://bottosson.github.io/posts/oklab/'s matrices.
+ * the steps a declaration's colours land on, in the order it reads them, each `var()` followed
+ * through the scope until it reaches a ladder name. a name that never reaches one — a width, a
+ * corner — is no colour and is left out.
  */
-function oklchFromHex(hex: string): Oklch {
-	const channel = (at: number) => decode(Number.parseInt(hex.slice(at, at + 2), 16) / 255);
-	const [r, g, b] = [channel(1), channel(3), channel(5)];
-	const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-	const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-	const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-	const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
-	const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
-	return {
-		l: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
-		c: Math.hypot(A, B),
-		h: ((((Math.atan2(B, A) * 180) / Math.PI) % 360) + 360) % 360
-	};
-}
-
-/** linear sRGB, each channel clipped into [0, 1] — the inverse of `oklchFromHex`'s matrices. */
-export function linearSrgb({ l, c, h }: Oklch): [number, number, number] {
-	const a = c * Math.cos((h * Math.PI) / 180);
-	const b = c * Math.sin((h * Math.PI) / 180);
-	const L = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
-	const M = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
-	const S = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
-	const clip = (v: number) => Math.min(1, Math.max(0, v));
-	return [
-		clip(4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S),
-		clip(-1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S),
-		clip(-0.0041960863 * L - 0.7034186147 * M + 1.707614701 * S)
-	];
-}
-
-/** a colour expression with no `var()` left in it. */
-export function colour(text: string): Oklch {
-	const list = tokens(text);
-	let at = 0;
-	const next = () => {
-		const token = list[at++];
-		if (token === undefined) throw new Error(`ran out reading ${text}`);
-		return token;
-	};
-	const expect = (want: string) => {
-		const got = next();
-		if (got !== want) throw new Error(`expected ${want}, read ${got} in ${text}`);
-	};
-
-	function readColour(): Oklch {
-		const head = next();
-		if (head.startsWith('#')) return oklchFromHex(head.toLowerCase());
-		if (head !== 'oklch') throw new Error(`not a colour this reads: ${head} in ${text}`);
-		expect('(');
-		let origin: Oklch = { l: 0, c: 0, h: 0 };
-		if (list[at] === 'from') {
-			next();
-			origin = readColour();
-		}
-		const l = sum(origin);
-		const c = sum(origin);
-		const h = sum(origin);
-		if (list[at] === '/') {
-			next();
-			sum(origin);
-		}
-		expect(')');
-		return { l, c, h };
+export function steps(scope: Scope, value: string): string[] {
+	const found: string[] = [];
+	for (const [, name = ''] of value.matchAll(/var\(\s*(--[\w-]+)/g)) {
+		const ladder = LADDER.map(([pattern, label]) => {
+			const m = pattern.exec(name);
+			return m && label(m);
+		}).find(Boolean);
+		const next = ladder ? [ladder] : scope[name] === undefined ? [] : steps(scope, scope[name]);
+		for (const step of next) if (!found.includes(step)) found.push(step);
 	}
-
-	// a channel is a sum. `/` divides only inside a function or parentheses: at a channel's own
-	// level it opens the alpha, which is the colour's to read.
-	function sum(origin: Oklch, inner = false): number {
-		let value = product(origin, inner);
-		while (list[at] === '+' || list[at] === '-') {
-			const op = next();
-			const right = product(origin, inner);
-			value = op === '+' ? value + right : value - right;
-		}
-		return value;
-	}
-
-	function product(origin: Oklch, inner: boolean): number {
-		let value = unit(origin);
-		while (list[at] === '*' || (inner && list[at] === '/')) {
-			const op = next();
-			const right = unit(origin);
-			value = op === '*' ? value * right : value / right;
-		}
-		return value;
-	}
-
-	function args(origin: Oklch): number[] {
-		expect('(');
-		const found = [sum(origin, true)];
-		while (list[at] === ',') {
-			next();
-			found.push(sum(origin, true));
-		}
-		expect(')');
-		return found;
-	}
-
-	function unit(origin: Oklch): number {
-		const head = next();
-		if (head === '-') return -unit(origin);
-		if (head === '(') {
-			const value = sum(origin, true);
-			expect(')');
-			return value;
-		}
-		if (head === 'l' || head === 'c' || head === 'h') return origin[head];
-		if (head === 'min') return Math.min(...args(origin));
-		if (head === 'max') return Math.max(...args(origin));
-		if (head === 'calc' || head === 'clamp') {
-			const [first, value, high] = args(origin);
-			if (first === undefined) throw new Error(`an empty ${head}() in ${text}`);
-			if (head === 'calc') return first;
-			if (value === undefined || high === undefined)
-				throw new Error(`clamp() takes three in ${text}`);
-			return Math.max(first, Math.min(value, high));
-		}
-		const number = Number.parseFloat(head);
-		if (Number.isNaN(number)) throw new Error(`cannot read ${head} in ${text}`);
-		return number;
-	}
-
-	const found = readColour();
-	if (at !== list.length) throw new Error(`left over after the colour in ${text}`);
 	return found;
 }
-
-/** WCAG 2 relative luminance. */
-export function luminance(value: Oklch): number {
-	const [r, g, b] = linearSrgb(value);
-	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-const encode = (channel: number) =>
-	channel <= 0.0031308 ? 12.92 * channel : 1.055 * channel ** (1 / 2.4) - 0.055;
-
-/**
- * a translucent colour laid over white, as the browser composites it: in encoded sRGB, channel by
- * channel. the ground a scrim is read on when the photo under it is at its lightest.
- */
-export function overWhite(value: Oklch, alpha: number): Oklch {
-	const hex = linearSrgb(value)
-		.map((v) => alpha * encode(v) + (1 - alpha))
-		.map((v) =>
-			Math.round(v * 255)
-				.toString(16)
-				.padStart(2, '0')
-		)
-		.join('');
-	return colour(`#${hex}`);
-}
-
-/** WCAG 2 contrast ratio between two colours, lighter over darker. */
-export function contrast(one: Oklch, other: Oklch): number {
-	const [a, b] = [luminance(one), luminance(other)];
-	return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-}
-
-/** the colour a custom property resolves to in the scope. */
-export const resolve = (scope: Scope, name: string) => colour(substitute(scope, `var(${name})`));

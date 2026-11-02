@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useId } from 'react';
 import type { ProgramMode } from '../forms/program-modes';
 import type { Page } from '../page/catalog';
 import { imageSrc } from '../page/image-src';
@@ -109,6 +109,7 @@ const area = (name: string) => ({ 'data-area': name });
 export function PageView(props: PageViewProps) {
 	const { page, look, org, preview = false, className } = props;
 	usePreviewStill(preview);
+	const shareHeading = useId();
 	const shape =
 		props.type === 'campaign'
 			? campaignShape(page, {
@@ -130,15 +131,16 @@ export function PageView(props: PageViewProps) {
 					<CampaignLayout {...props} shape={shape} />
 				)}
 			</main>
+			<section className="page-end" id={SHARE_ID} aria-labelledby={shareHeading} {...area('share')}>
+				<div className="page-in">
+					<Share
+						headingId={shareHeading}
+						sharing={props.sharing}
+						heading={props.type === 'campaign' ? 'Share this campaign' : 'Share this page'}
+					/>
+				</div>
+			</section>
 			<footer className="page-foot">
-				<section className="page-end" id={SHARE_ID} {...area('share')}>
-					<div className="page-in">
-						<Share
-							sharing={props.sharing}
-							heading={props.type === 'campaign' ? 'Share this campaign' : 'Share this page'}
-						/>
-					</div>
-				</section>
 				<div className="page-in">
 					<OrgInfo info={org.info} />
 				</div>

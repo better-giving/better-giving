@@ -19,9 +19,12 @@ const listed = (...selectors: string[]) =>
 	rulesIn(css).find((rule) => rule.selector === selectors.join(', '))?.stated;
 
 describe("the phone bar's current destination", () => {
-	it('is the accent’s tint at rest and one step up under a pointer', () => {
-		expect(token('--admin-bar-current-bg')).toBe('var(--admin-accent-3)');
-		expect(token('--admin-bar-current-bg-hover')).toBe('var(--admin-accent-4)');
+	it('is the accent’s selected step, 5, at rest and under a pointer', () => {
+		// radix's element ladder tops out at the selected step, so a pointer over the current
+		// destination has nowhere further to go.
+		expect(token('--admin-bar-current-bg')).toBe('var(--admin-accent-5)');
+		expect(token('--admin-bar-current-bg-hover')).toBe('var(--admin-accent-5)');
+		expect(token('--admin-rail-current-ink')).toBe('var(--admin-accent-12)');
 	});
 
 	it('paints those grounds, and keeps its ink the rail’s at rest', () => {
@@ -57,11 +60,12 @@ describe('the way out in the top bar', () => {
 });
 
 describe('the top bar’s row', () => {
-	it('is white and draws the neutral-6 rule under it', () => {
+	it('is step 1 and draws the neutral-6 rule under it', () => {
 		const bar = ruleOf(css, '.adm-identity');
 		expect(bar.get('background')).toBe('var(--admin-surface)');
 		expect(bar.get('border-block-end')).toBe('var(--admin-rule)');
 		expect(token('--admin-rule')).toBe('var(--admin-border-width) solid var(--admin-divider)');
 		expect(token('--admin-divider')).toBe('var(--admin-neutral-6)');
+		expect(token('--admin-surface')).toBe('var(--admin-neutral-1)');
 	});
 });

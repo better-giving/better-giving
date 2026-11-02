@@ -1127,7 +1127,8 @@ describe('the style adoption', () => {
 		const card = await mount();
 
 		expect(document.adoptedStyleSheets.length).toBeGreaterThan(0);
-		expect(card.shadow.adoptedStyleSheets).toHaveLength(4);
+		// the shared four, and the element's own brand scale after them (./styles/brand.ts)
+		expect(card.shadow.adoptedStyleSheets).toHaveLength(5);
 		expect(card.shadow.adoptedStyleSheets[0]).toBe(document.adoptedStyleSheets[0]);
 	});
 
@@ -1156,7 +1157,7 @@ describe('the style adoption', () => {
 		expect(document.adoptedStyleSheets).toContain(token);
 	});
 
-	// an element moved into another document keeps a shadow root holding four sheets constructed in
+	// an element moved into another document keeps a shadow root holding five sheets constructed in
 	// the document it came from, and a constructed sheet may only be adopted by the document it was
 	// constructed in — so what it is holding is not adoptable and the card is styled by nothing.
 	// there is no rebuild without this callback: `#mount` returns early on a shadow root that exists.
@@ -1171,7 +1172,7 @@ describe('the style adoption', () => {
 		// whose `ownerDocument` is already the new one, which is what an engine does.
 		(card.host as HTMLElement & { adoptedCallback(): void }).adoptedCallback();
 
-		expect(card.shadow.adoptedStyleSheets).toHaveLength(4);
+		expect(card.shadow.adoptedStyleSheets).toHaveLength(5);
 		expect(other.adoptedStyleSheets).toContain(card.shadow.adoptedStyleSheets[0]);
 		expect(document.adoptedStyleSheets).not.toContain(card.shadow.adoptedStyleSheets[0]);
 	});
@@ -5406,6 +5407,7 @@ describe('the stylesheets', () => {
 			'element.ts',
 			'embed/rows.ts',
 			'embed/surface.ts',
+			'styles/brand.ts',
 			'styles/resolve.ts'
 		]);
 		expect(
@@ -5524,6 +5526,68 @@ describe('the stylesheets', () => {
 
 		expect(declared.length).toBeGreaterThan(50);
 		expect(unspent).toEqual([]);
+	});
+
+	// flat (the head of ./styles/tokens.css), with one named exception: a `box-shadow` this card
+	// writes is a ring, no offset and no blur, but for `--_lift`, which raises the chosen option off
+	// the protected amount tray — the chosen tile, at rest and under the caret, and the chip the
+	// chosen cadence stands on — and nothing else. swept over every sheet the card and its two inner
+	// roots adopt, so a cast shadow anywhere else, or the lift on any other box, fails here.
+	describe('the one cast shadow', () => {
+		const RING = /^(inset )?0 0 0 \S/;
+		const LIFT = 'var(--_lift)';
+		const LIFTED = [
+			"[part~='amount-option'][part~='selected']",
+			"[part~='amount-option'][part~='selected']:has(:focus-visible)",
+			'.segment[data-thumb]::before'
+		];
+		const squash = (value: string) => value.trim().replace(/\s+/g, ' ');
+		/** a shadow's layers, split on the commas no parenthesis holds: a ring outside a band is two. */
+		const layersOf = (value: string) => value.split(/,(?![^(]*\))/).map(squash);
+		/** every innermost block stating a `box-shadow`, one entry per selector in its list. */
+		const shadows = [...adopted.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap(
+			([, selectors = '', body = '']) => {
+				const value = /(?:^|;)\s*box-shadow:\s*([^;]+)/.exec(body)?.[1];
+				return value === undefined
+					? []
+					: selectors
+							.split(',')
+							.map((selector) => ({ selector: squash(selector), layers: layersOf(value) }));
+			}
+		);
+
+		it('casts the lift on the chosen amount tile and the chosen cadence’s chip, and nothing else', () => {
+			expect(
+				shadows
+					.filter(({ layers }) => layers.includes(LIFT))
+					.map(({ selector }) => selector)
+					.sort()
+			).toEqual([...LIFTED].sort());
+		});
+
+		it('draws every other box-shadow as a ring', () => {
+			const cast = shadows.flatMap(({ selector, layers }) =>
+				layers
+					.filter((layer) => layer !== 'none' && layer !== LIFT && !RING.test(layer))
+					.map((layer) => `${selector}: ${layer}`)
+			);
+
+			// the focus rings alone are more than this; a floor rather than the count today.
+			expect(shadows.length).toBeGreaterThan(10);
+			expect(cast).toEqual([]);
+		});
+
+		it('declares one cast shadow among the tokens, the lift', () => {
+			// two or three lengths and then a colour is a shadow layer; one with no offset is a ring.
+			const CAST = /^(inset )?(-?[\d.]+(px|em)? ){2,3}(oklch|rgb|hsl|color|var|#)/;
+			const cast = [...tokenSheet.matchAll(/(--_[\w-]+)\s*:\s*([^;]+);/g)]
+				.filter(([, , value = '']) =>
+					layersOf(value).some((layer) => CAST.test(layer) && !RING.test(layer))
+				)
+				.map(([, name]) => name);
+
+			expect(cast).toEqual(['--_lift']);
+		});
 	});
 });
 

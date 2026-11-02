@@ -49,6 +49,7 @@ import tokens from './styles/tokens.css?inline';
 import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
 import motionStyles from './styles/motion.css?inline';
+import { type BrandInputs, brandCss, brandInputsOf, seedWatch } from './styles/brand';
 
 /** the tag, and it is permanent: a breaking change ships as a second element beside this one. */
 export const DONATE_FORM_TAG = 'bg-donate-form';
@@ -535,6 +536,13 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 */
 		#announcer: HTMLElement | null = null;
 		/**
+		 * the brand scale this element's seed and shade generate (./styles/brand.ts), adopted after the
+		 * shared four, and what it was generated from. per element, because two cards on one page may
+		 * carry two brands; rebuilt with the rest when the element changes document.
+		 */
+		#brand: CSSStyleSheet | null = null;
+		#brandFrom: BrandInputs | null = null;
+		/**
 		 * whether nothing has been said through the region since it reached the tree.
 		 *
 		 * the one sentence that has to wait a task — see `#announce` below, which is where the whole
@@ -619,6 +627,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 
 		connectedCallback(): void {
 			this.#stay();
+			// a seed or shade that moved while the element was off the document reported nothing
+			this.#paintBrand();
 			this.#reattachCard?.();
 			this.#bootIfNeeded();
 		}
@@ -670,11 +680,11 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 *
 		 * a constructed stylesheet may only be adopted by the document it was constructed in — a
 		 * sheet from another one is a `NotAllowedError`
-		 * (https://developer.mozilla.org/en-US/docs/Web/API/Document/adoptedStyleSheets) — so the four
-		 * this root is holding are not the new document's to keep. all four are rebuilt rather than
-		 * re-assigned: the token sheet also has to reach the new document's own list, because
-		 * `@property` registrations are collected from the document tree and a card with none is a
-		 * blank card.
+		 * (https://developer.mozilla.org/en-US/docs/Web/API/Document/adoptedStyleSheets) — so the five
+		 * this root is holding are not the new document's to keep. all five are rebuilt rather than
+		 * re-assigned, the brand scale's against the seed the new document gives. the token sheet also
+		 * has to reach the new document's own list, because `@property` registrations are collected
+		 * from the document tree and a card with none is a blank card.
 		 *
 		 * without this there is no second chance at it. `#mount` above returns early on a shadow root
 		 * that already exists, so nothing else would ever ask this document for anything.
@@ -683,6 +693,9 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			const root = this.shadowRoot;
 			if (root === null) return;
 			root.adoptedStyleSheets = [...sheetsFor(this.ownerDocument)];
+			this.#brand = null;
+			this.#brandFrom = null;
+			this.#paintBrand();
 		}
 
 		/**
@@ -757,7 +770,34 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			if (this.shadowRoot !== null) return;
 			const root = this.attachShadow({ mode: 'open' });
 			root.adoptedStyleSheets = [...sheets];
-			put(this.ownerDocument, root, [this.#region()]);
+			put(this.ownerDocument, root, [
+				this.#region(),
+				seedWatch(this.ownerDocument, () => this.#paintBrand())
+			]);
+			// before the first card goes up, so no frame paints the stylesheet's fallback scale
+			this.#paintBrand();
+		}
+
+		/**
+		 * the brand scale for the seed and shade the host computes now, set unless it is the one already
+		 * set.
+		 *
+		 * a seed the generator does not read sets a sheet with no scale in it, which leaves
+		 * ./styles/tokens.css's fallback scale standing.
+		 */
+		#paintBrand(): void {
+			const root = this.shadowRoot;
+			const view = this.ownerDocument.defaultView;
+			if (root === null || view === null) return;
+			const from = brandInputsOf(this);
+			const same = from.seed === this.#brandFrom?.seed && from.gray === this.#brandFrom.gray;
+			if (this.#brand !== null && same) return;
+			if (this.#brand === null) {
+				this.#brand = new view.CSSStyleSheet();
+				root.adoptedStyleSheets = [...root.adoptedStyleSheets, this.#brand];
+			}
+			this.#brand.replaceSync(brandCss(from));
+			this.#brandFrom = from;
 		}
 
 		#root(): ShadowRoot | null {

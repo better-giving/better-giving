@@ -60,13 +60,6 @@
 		   the states that use it, because what stands the dots over the label is one absolute box
 		   and a button whose position changed with its state would move under the operator. */
 		position: relative;
-		/* the neutral rank is found the way a text box is, by the box's quieter outline, so a press
-		   and a box standing side by side are bounded at one weight. the control rungs are pointed
-		   at it here rather than in ./tokens.css, because the slider's thumb and a swatch read the
-		   same names and still need the darker line. every other rank states its own border. */
-		--admin-control-border: var(--admin-field-border);
-		--admin-control-border-hover: var(--admin-field-border-hover);
-		--admin-control-border-active: var(--admin-field-border-hover);
 		min-block-size: var(--admin-control-height);
 		padding-inline: var(--admin-space-5);
 		font-size: var(--admin-control-size);
@@ -247,9 +240,9 @@
 	}
 
 	/* the two controls filled with a solid step draw their ring inside themselves, in the near-white
-	   ink both fills already carry. ./tokens.css holds the arithmetic: a hugging ring abuts the fill
-	   on one edge and the page on the other, and no accent rung reaches 3:1 against both. growing
-	   the control is not an escape because the sum is about colour. */
+	   ink both fills already carry. ./tokens.css holds why: the ring is the accent's 8 and the fill
+	   its 9, neighbours, so a hugging ring abutting the fill is a ring nobody finds. growing the
+	   control is no escape, because the neighbours are the same at any size. */
 	.adm-btn--primary:focus-visible,
 	.adm-btn--primary.is-focus,
 	.adm-btn--danger:focus-visible,
@@ -324,8 +317,9 @@
 	   as louder than the value it is beside.
 
 	   it cancels every border rung for the quiet rank's reason: a rank whose boundary is a fill has
-	   no border to appear under a pointer. under a pointer it takes that rank's two rungs and
-	   differs from it only at rest — ./tokens.css holds where the two sit against each other. the
+	   no border to appear under a pointer. it takes the neutral button's three grounds, 3 at rest,
+	   4 under a pointer and 5 under a press, and differs from that rank by the edge alone —
+	   ./tokens.css holds where the two sit against each other. the
 	   disabled rung keeps the
 	   resting ground and moves the ink alone, because a rank that draws no border has only its
 	   label left to say a press is unavailable.
@@ -515,7 +509,7 @@
 	   a toast and never a banner at the head of the page, either of which asks them to look
 	   somewhere else to find out whether the thing in front of them worked.
 
-	   done keeps its resting border. the done tone's own line is 1.20:1 against the page, so
+	   done keeps its resting border. the done tone's tint is step 3, a ground, and no edge, so
 	   swapping to it would lose the button's boundary at the moment it reports success; and
 	   keeping the border is what makes the swap quiet, which is what a confirmation is for. */
 	/* carried-ok: .is-pending .is-done — `is-${state}` in
@@ -1204,7 +1198,7 @@
 		content: '';
 		display: block;
 		block-size: 100%;
-		background: var(--admin-accent-solid-1);
+		background: var(--admin-accent-fill);
 		transform-origin: 0 50%;
 		animation: adm-navigation-line var(--admin-dur-braille-bar) var(--admin-ease-sweep) forwards;
 	}
@@ -1398,7 +1392,7 @@
 
 	.adm-series__fill {
 		inline-size: 100%;
-		background: var(--admin-accent-solid-1);
+		background: var(--admin-accent-fill);
 	}
 
 	.adm-series__months {
@@ -1423,17 +1417,16 @@
 	   there are the line's and here the line is the summary. the summary states them again as its
 	   own, with a third track at the trailing edge for the caret.
 
-	   it is a box, which is the boundary the ledger above draws none of: a white plane standing on
-	   the page's wash with no edge drawn and the card's shadow under it, which is the recipe
-	   `.adm-panel` takes. so the summary is inset the way a box's contents are, and a section that
-	   is shut is that inset and nothing else. */
+	   it is a box, which is the boundary the ledger above draws none of: a plane standing on the
+	   page's wash with the step-6 edge round it, which is the recipe `.adm-panel` takes. so the
+	   summary is inset the way a box's contents are, and a section that is shut is that inset and
+	   nothing else. */
 	.adm-status--section {
 		--_ground: var(--admin-surface);
 		display: block;
 		background: var(--admin-surface);
-		border: var(--admin-border-width) solid transparent;
+		border: var(--admin-rule);
 		border-radius: var(--admin-radius-plane);
-		box-shadow: var(--admin-elevation-card);
 	}
 
 	.adm-status--section > summary {
@@ -1515,7 +1508,7 @@
 	/* the one rule a section draws, between the line and what it hides. it is the summary's and not
 	   the panel's, so it is there only while there is something under it to divide. */
 	.adm-status--section[open] > summary {
-		border-block-end: var(--admin-rule-plane);
+		border-block-end: var(--admin-rule);
 	}
 
 	/* what the summary hides, inset the way the box's contents are and then on again to the label's
@@ -1578,9 +1571,9 @@
 	   there are two cases.
 
 	   **on the page's own ground the band says it**: a band above its contents carrying the block's
-	   own heading — `.adm-group` below. the box around the two is a plane, white with the card's
-	   shadow and no edge drawn, so it reads as a card on the wash, and the band and the rule under
-	   it are what name it; what holds the contents to the band is that they stand directly under it.
+	   own heading — `.adm-group` below. the box around the two is a plane with the step-6 edge, so
+	   it reads as a card on the wash, and the band and the rule under it are what name it; what
+	   holds the contents to the band is that they stand directly under it.
 
 	   **inside a box the heading says it and nothing is drawn around it** — `.adm-named` first.
 	   an entry of `.adm-ledger--sections` is a plane and so is `.adm-panel`, so a group
@@ -1588,9 +1581,9 @@
 	   the outer one has not. what is left doing the work there is the heading and the step under
 	   it, and a ledger below draws no edge of its own for either to compete with.
 
-	   the box is a plane and wears a plane's whole recipe and nothing past it — the card's shadow
-	   and no deeper one, and no corner past the plane's. the band is the plane's own white and is
-	   closed by `--admin-rule-plane` under it, as a table's head is: the heading's rank and that
+	   the box is a plane and wears a plane's whole recipe and nothing past it — the step-6 edge and
+	   no shadow, and no corner past the plane's. the band is the plane's own white and is
+	   closed by `--admin-rule` under it, as a table's head is: the heading's rank and that
 	   rule are what make it a band, and a fill inside a white card would be a second ground drawn
 	   for the same job.
 
@@ -1652,9 +1645,8 @@
 	.adm-group {
 		--_ground: var(--admin-surface);
 		background: var(--admin-surface);
-		border: var(--admin-border-width) solid transparent;
+		border: var(--admin-rule);
 		border-radius: var(--admin-radius-plane);
-		box-shadow: var(--admin-elevation-card);
 	}
 
 	.adm-group__label {
@@ -1663,7 +1655,7 @@
 		font-weight: var(--admin-subhead-weight);
 		line-height: var(--admin-subhead-lh);
 		color: var(--admin-ink);
-		border-block-end: var(--admin-rule-plane);
+		border-block-end: var(--admin-rule);
 	}
 
 	.adm-group__body {
@@ -1678,14 +1670,15 @@
 	   `three registers of status`.
 
 	   hueless at rest: the ground is the note tone's tint, which is the neutral ladder's rung 3,
-	   and the word over it is the page's own ink. a value that is not a record's lifecycle
-	   status — a consent reading, a count, `Repeating` — stops at this rule and ranks against
+	   and the word over it is rung 11, a settled gift's pill on /admin/donations. a record at rest
+	   (packages/app/src/lib/admin/status-tones.ts) and a value that is not a record's lifecycle
+	   status — a consent reading, a count, `Repeating` — stop at this rule and rank against
 	   nothing.
 
-	   the caption size holds at every width: a pill whose size moves with its container is two tags
-	   rather than one, and it sits a step under the text around it, which is what a tag beside a
-	   reading should do. a table cell is the one place that stops, and the rule under the tones
-	   below is where it does.
+	   the caption size holds at every width, a table cell included: a pill whose size moves with
+	   its container is two tags rather than one, and it sits a step under the text around it,
+	   which is what a tag beside a reading should do. a table cell only tightens the inset, at the
+	   rule under the tones below.
 
 	   and no line under it. a run of words with a rule beneath is what a link wears on every
 	   other operator screen, so a state drawn that way is a fact an operator tries to click. the
@@ -1705,17 +1698,16 @@
 		line-height: var(--admin-caption-lh);
 		padding: var(--admin-space-3) var(--admin-space-5);
 		border-radius: var(--admin-radius-pill);
-		color: var(--admin-ink);
+		color: var(--admin-ink-2);
 		background: var(--admin-tone-note-tint);
 	}
 
-	/* set, and quiet. it steps the ink and the weight down. */
+	/* set, and quiet. it steps the weight down; the ink is already the pill's rung 11. */
 	/* every name in this block is spelled in the derived class list in
 	   packages/operator/src/components/status/StatusWord.jsx rather than in a `class` attribute,
 	   and that component is the only thing that writes any of them.
 	   carried-ok: .adm-state .adm-state--unset .adm-state--secondary */
 	.adm-state--secondary {
-		color: var(--admin-ink-2);
 		/* type-ok: the variant steps the value rank down. */
 		font-weight: var(--admin-weight-regular);
 	}
@@ -1733,15 +1725,16 @@
 	   is a word the tone speaks for, and source order is what settles that rather than the order
 	   the component happens to assemble its class list in.
 
-	   only a record's own lifecycle status takes one, and each names what produces it — `done` is
-	   settled or running, `attention` is waiting on somebody, `blocker` is failed or refused,
-	   `note` is retired, stopped or ended. each is its tone's word on its tone's tint, the same
-	   pair a banner in that tone wears. `done` is the accent and never green; ./tokens.css argues
-	   that where the ladders are declared.
+	   only a record's own lifecycle status takes one, and packages/app/src/lib/admin/status-tones.ts
+	   states the ladder — `done` is live by the operator's hand, `attention` is waiting on
+	   somebody, `blocker` is failed or refused, `note` is retired, stopped or ended, and a record
+	   at rest takes none. `done`, `attention` and `blocker` are each the tone's word on the tone's
+	   tint, the same pair a banner in that tone wears. `done` is the accent and never green;
+	   ./tokens.css argues that where the ladders are declared.
 
-	   `note` steps the ink down and leaves the ground alone, because the pill is already hueless:
-	   an ended record is a fact said quietly. it lands on the rung `secondary` lands on, which is
-	   the same quiet said by a screen with no lifecycle ladder to name. */
+	   `note` keeps the hueless pill's ink and takes its ground away: an ended record is a fact
+	   said quietly, and the ground is what tells it from a record at rest, which keeps the slate 3
+	   pill. one ink step between them is not a difference a list of a hundred rows shows. */
 	/* carried-ok: .adm-state--done .adm-state--attention .adm-state--blocker .adm-state--note
 	   — each is `` `adm-state--${tone}` `` in that same derived class list, so no `class`
 	   attribute anywhere spells one. */
@@ -1762,34 +1755,18 @@
 
 	.adm-state--note {
 		color: var(--admin-tone-note-ink);
+		background: none;
 	}
 
-	/* a state in a cell is a cell. the plane has already grouped these rows and ruled one off the
-	   next, so a ground behind the word draws a second grid inside the first one — and a hundred
-	   rows of it is read as a pattern of tinted blocks before any of the words in them is read.
-	   what a row's status has to say is which of the four it is, and the tone on the word alone
-	   says it.
-
-	   the size and the leading go with the ground, which is the rule's older half: a word set a step
-	   above every other cell reads as the row pointing at itself, and once the pill is off there is
-	   no tag left to hold apart from the reading beside it. the leading is the same sentence said
-	   about a word that wraps — the rule above deliberately withholds `white-space: nowrap`, so two
-	   lines in a cell is a state this drawing exists to support, and two lines set at the caption's
-	   leading beside a cell set at the plane's is the tag still speaking after its ground came off.
-
-	   the leading is `inherit` and not a second token named here: what the word takes is whatever
-	   the cell it stands in was set at, which is what keeps this rule saying that a status in a
-	   cell is a cell rather than naming some other specific thing for it to be.
-
-	   keyed on where the word is drawn and not on a prop a screen passes, so a table added later
-	   cannot forget it. everywhere else keeps the pill — a record card, a setting row's neighbour,
-	   a value slot — and ./tokens.css carries the exception at both places it states the shape. */
+	/* a state in a cell keeps the pill, ground, corner and caption size, as the gifts list at
+	   /admin/donations draws its status column: the ground is what tells a record at rest from an
+	   ended one (`.adm-state--note` above), and a tone with no tint behind it is a coloured word an
+	   operator learns to scan instead of reading. the inset alone tightens, so the pill sits in a
+	   row at the row's own height rather than pushing every status row a step taller than the
+	   rows beside it. keyed on where the word is drawn and not on a prop a screen passes, so a
+	   table added later cannot forget it; ./state-in-a-cell.spec.ts holds it. */
 	.adm-table .adm-state {
-		font-size: var(--admin-table-size);
-		line-height: inherit;
-		padding: var(--admin-space-0);
-		background: none;
-		border-radius: var(--admin-radius-0);
+		padding: var(--admin-space-1) var(--admin-space-4);
 	}
 
 	/* the momentary register: this just happened, on this control. it reports beside the
@@ -2353,7 +2330,6 @@
 		background: var(--admin-surface);
 		border: var(--admin-border-width) solid var(--admin-overlay-border);
 		border-radius: var(--admin-radius);
-		box-shadow: var(--admin-elevation-overlay);
 		overflow-y: auto;
 		pointer-events: auto;
 	}
@@ -2493,7 +2469,6 @@
 		padding: var(--admin-space-2);
 		border: var(--admin-border-width) solid var(--admin-overlay-border);
 		border-radius: var(--admin-radius);
-		box-shadow: var(--admin-elevation-overlay);
 		overflow-y: auto;
 	}
 
@@ -2677,13 +2652,13 @@
 	   annotation at, because a label over the box's edge is an annotation on it and no longer words
 	   standing in the day's place. resting the weight and the ink are `--admin-weight-regular` and
 	   `--admin-ink-muted`: the weight `.adm-input::placeholder` inherits from its box, and the rung
-	   the ink that rule draws in resolves to — `--admin-field-placeholder` is `--admin-neutral-10`,
+	   the ink that rule draws in resolves to — `--admin-field-placeholder` is `--admin-neutral-11`,
 	   as this alias is. the two are one thing and are drawn alike — quiet weight, quiet ink, words
 	   standing where the value will — because on these screens a placeholder and a label standing
-	   inside a box are the same thing. they go no lighter than this rung: `--admin-ink-muted` is
-	   4.97:1 on `--admin-field-bg`, and the rung under it, `--admin-neutral-9`, is 3.24:1 on that
-	   same fill and is the one `--admin-ink-disabled` takes — so a label an operator can still
-	   answer has nowhere lighter to go. floated the weight and the ink are `--admin-label-weight` and `--admin-ink`, the
+	   inside a box are the same thing. they go no lighter than this step: 11 is radix's lighter text
+	   step, and the next one down that this system spends on words, `--admin-neutral-8`, is
+	   `--admin-ink-disabled`'s, the ink of a control nobody can use — so a label an operator can
+	   still answer has nowhere lighter to go. floated the weight and the ink are `--admin-label-weight` and `--admin-ink`, the
 	   register every other `.adm-field__label` is read at, because over the box's edge the words are
 	   the field's name. the move is what carries all of that, and the three steps are part of what
 	   the move says rather than three things happening to one word.
@@ -2938,7 +2913,6 @@
 		background: var(--admin-surface);
 		border: var(--admin-border-width) solid var(--admin-overlay-border);
 		border-radius: var(--admin-radius);
-		box-shadow: var(--admin-elevation-overlay);
 	}
 
 	/* the line over the grid: a step back, what is on the grid, and a step forward. three columns
@@ -3406,9 +3380,21 @@
 		border-color: var(--admin-field-border-hover);
 	}
 
+	/* taken is radix's selected step under the accent's deep ink, as the rail's current destination
+	   is. the selected step is the top of the element ladder, so a pointer moves the edge to the
+	   accent's hovered border and leaves the ground where it is. */
 	.adm-check--boxed:has(input:checked) {
-		border-color: var(--admin-accent-ink);
-		background: var(--admin-accent-tint);
+		border-color: var(--admin-accent-edge);
+		background: var(--admin-accent-selected);
+	}
+
+	.adm-check--boxed:has(input:checked) .adm-check__text {
+		color: var(--admin-accent-deep);
+	}
+
+	.adm-check--boxed:has(input:checked:enabled):hover,
+	.adm-check--boxed:has(input:checked:enabled).is-hover {
+		border-color: var(--admin-accent-edge-hover);
 	}
 
 	/* a restatement of the ring that is not a restatement at all: the box wearing it is not the
@@ -3419,6 +3405,16 @@
 	.adm-check--boxed:has(input.is-focus) {
 		outline: var(--admin-focus-width) solid transparent;
 		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	/* a taken row's edge is the accent's 7 and the ring its 8, neighbours that would read as one
+	   heavier edge, so the ring stands outside a band of the ground the row stands on (`--_ground`,
+	   which every plane states; ./plane-ground.spec.ts). */
+	.adm-check--boxed:has(input:checked:focus-visible),
+	.adm-check--boxed:has(input:checked.is-focus) {
+		box-shadow:
+			0 0 0 var(--admin-border-width) var(--_ground, var(--admin-page)),
+			0 0 0 calc(var(--admin-border-width) + var(--admin-focus-width)) var(--admin-focus-ring);
 	}
 
 	.adm-check--boxed input:focus-visible,
@@ -3442,7 +3438,7 @@
 
 	   the boxed row's hover and its taken ground both lose to this without a `:not()` on either: the
 	   hover pair is a rung of specificity under this, and the taken rule matches it for specificity
-	   and stands above it. */
+	   and stands above it. the taken row's own pointer rule outranks this, so it names `:enabled`. */
 	.adm-check:has(input:disabled) .adm-check__text,
 	.adm-check:has(input:disabled) .adm-check__sub {
 		color: var(--admin-control-ink-disabled);
@@ -3459,8 +3455,8 @@
 	   a question answered by pressing one of a few short words. each chip is a `<label>` round a
 	   radio or a checkbox held out of sight (`.adm-vh` in ./base.css), so the chip is the whole of
 	   what a pointer presses. a chip is a control aimed at at the touch floor, with a text box's
-	   edge, the control's ground and its hover; the taken one holds the accent as
-	   `.adm-check--boxed` does, its words in the accent's deep ink. a chip in a row is round, which
+	   edge, the control's ground and its hover; the taken one stands on the accent's selected step
+	   as `.adm-check--boxed` does, its words in the accent's deep ink. a chip in a row is round, which
 	   ./tokens.css allows a pressed control by name at `--admin-radius-pill`: its edge is what
 	   tells it from the read-only pill (`.adm-state`), which has none. a card keeps the plane's
 	   corner.
@@ -3472,7 +3468,7 @@
 	   the one answer look alike, and a question taking several says so in its hint.
 
 	   cards are the same chips laid in a grid, each its label over the line saying what it is for,
-	   in `.adm-check__sub`'s ink, which reads on the taken card's tint as it does on a taken boxed
+	   in `.adm-check__sub`'s ink, which reads on the taken card's ground as it does on a taken boxed
 	   row. one across on a phone and two from the middle width, where the dialog's measure has
 	   room for two lines of words side by side and no more.
 	   packages/operator/src/components/forms/ChoiceChips.jsx writes all of it. */
@@ -3503,8 +3499,8 @@
 	}
 
 	/* a chip is found the way a text box and the neutral button are, by the box's quieter
-	   outline, and its face is the neutral button's. a picked chip is told by its tint and its
-	   edge, and nothing else — no tick is drawn in either kind, and a question taking several
+	   outline, and its face is the neutral button's. a picked chip is told by its selected ground and
+	   its edge, and nothing else — no tick is drawn in either kind, and a question taking several
 	   answers says so in its hint.
 
 	   `position` is the containing block the control inside is taken out of the flow against, so a
@@ -3568,16 +3564,30 @@
 		background: var(--admin-control-bg-hover);
 	}
 
+	/* taken is `.adm-check--boxed`'s: the selected step under the deep ink, its edge stepping to the
+	   accent's hovered border under a pointer, and its ring outside a band of its ground. */
 	.adm-choicechip:has(input:checked) {
 		color: var(--admin-accent-deep);
-		background: var(--admin-accent-tint);
-		border-color: var(--admin-accent-ink);
+		background: var(--admin-accent-selected);
+		border-color: var(--admin-accent-edge);
+	}
+
+	.adm-choicechip:has(input:checked):hover,
+	.adm-choicechip:has(input:checked).is-hover {
+		border-color: var(--admin-accent-edge-hover);
 	}
 
 	.adm-choicechip:has(input:focus-visible),
 	.adm-choicechip:has(input.is-focus) {
 		outline: var(--admin-focus-width) solid transparent;
 		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	.adm-choicechip:has(input:checked:focus-visible),
+	.adm-choicechip:has(input:checked.is-focus) {
+		box-shadow:
+			0 0 0 var(--admin-border-width) var(--_ground, var(--admin-page)),
+			0 0 0 calc(var(--admin-border-width) + var(--admin-focus-width)) var(--admin-focus-ring);
 	}
 
 	.adm-choicechips__other {
@@ -4153,9 +4163,8 @@
 		gap: var(--admin-space-4);
 		padding: var(--admin-space-6);
 		background: var(--admin-surface);
-		border: var(--admin-border-width) solid transparent;
+		border: var(--admin-rule);
 		border-radius: var(--admin-radius-plane);
-		box-shadow: var(--admin-elevation-card);
 	}
 
 	.adm-record__head {
@@ -4563,9 +4572,8 @@
 		overflow-x: auto;
 		scroll-padding-inline: var(--admin-space-5);
 		background: var(--admin-surface);
-		border: var(--admin-border-width) solid transparent;
+		border: var(--admin-rule);
 		border-radius: var(--admin-radius-plane);
-		box-shadow: var(--admin-elevation-card);
 	}
 
 	.adm-table {
@@ -4579,7 +4587,7 @@
 		padding: var(--admin-space-4) var(--admin-space-5);
 		text-align: start;
 		vertical-align: top;
-		border-block-start: var(--admin-rule-plane);
+		border-block-start: var(--admin-rule);
 	}
 
 	/* the rule above is what separates one row from the next, so the first row of the table has
@@ -4598,7 +4606,7 @@
 	}
 
 	.adm-table > :is(thead, tbody, tfoot) ~ :is(thead, tbody, tfoot) > tr:first-child > :is(th, td) {
-		border-block-start: var(--admin-rule-plane);
+		border-block-start: var(--admin-rule);
 	}
 
 	/* the head is the plane's white, told from the rows by its weight, its ink and the rule under
@@ -4665,7 +4673,7 @@
 		position: sticky;
 		inset-inline-start: 0;
 		background: var(--admin-surface);
-		border-inline-end: var(--admin-rule-plane);
+		border-inline-end: var(--admin-rule);
 		font-weight: var(--admin-label-weight);
 		/* a name typed with no break in it — a pasted address — would otherwise be the column's
 		   narrowest width, and under the table's automatic layout that width is taken whatever the
@@ -4741,7 +4749,7 @@
 		font-size: var(--admin-table-size);
 		color: var(--admin-ink-2);
 		text-decoration: none;
-		border-block-start: var(--admin-rule-plane);
+		border-block-start: var(--admin-rule);
 	}
 
 	.adm-table__add:hover,
@@ -4884,7 +4892,6 @@
 		background: var(--admin-surface);
 		border: var(--admin-border-width) solid var(--admin-divider);
 		border-radius: var(--admin-radius-plane);
-		box-shadow: var(--admin-elevation-dialog);
 	}
 
 	/* the card stands in one box whichever presentation it is in, and that box is stated here and
@@ -4944,9 +4951,7 @@
 		inset: 0;
 		z-index: 3;
 		/* raw-length-ok: the spread is past the longest side of any window, which no step is. */
-		box-shadow:
-			var(--admin-elevation-dialog),
-			0 0 0 100vmax var(--admin-scrim);
+		box-shadow: 0 0 0 100vmax var(--admin-scrim);
 	}
 
 	/* the body a dialog is described by. it is one element so `aria-describedby` has one thing to
@@ -5001,7 +5006,6 @@
 		border-block-start: var(--admin-border-width) solid var(--admin-overlay-border);
 		border-start-start-radius: var(--admin-radius);
 		border-start-end-radius: var(--admin-radius);
-		box-shadow: var(--admin-elevation-overlay);
 	}
 
 	.adm-sheet::backdrop {
@@ -5711,7 +5715,7 @@
 
 	/* the top bar, across the window's whole width at every width: the identity at its start and
 	   the way out at its end. it is white, a plane's ground, and its block end is the seam with the
-	   page under it: the one rule there is decoration (Lc 20 on the bar, ./tokens.css at
+	   page under it: the one rule there is decoration (the subtle border, ./tokens.css at
 	   `--admin-divider`), and it is the white against the wash that tells the two apart. it states
 	   `--_ground` beside its fill for the reason ./plane-ground.spec.ts gives, though it holds no
 	   field. one row — the site's globe, the name, the public page's link, the way out — so the
@@ -5788,8 +5792,8 @@
 	   them, so a tab keeps the whole of its height wherever it is drawn.
 
 	   the bar is white, as the top bar is. it also floats over the flow, so
-	   it is one of the overlays ./tokens.css names at `--admin-elevation-overlay`: that edge on its
-	   top and that shadow, which is what tells it from a plane scrolling under it. it states
+	   it is one of the overlays ./tokens.css names at `--admin-overlay-border`: that edge on its
+	   top is what tells it from a plane scrolling under it. it states
 	   `--_ground` beside its fill for the reason ./plane-ground.spec.ts gives, though it holds no
 	   field. */
 	.adm-rail {
@@ -5800,7 +5804,6 @@
 		z-index: 2;
 		background: var(--admin-surface);
 		border-block-start: var(--admin-border-width) solid var(--admin-overlay-border);
-		box-shadow: var(--admin-elevation-overlay);
 		padding-block-end: env(safe-area-inset-bottom);
 	}
 
@@ -5922,7 +5925,6 @@
 		border-block-start: var(--admin-border-width) solid var(--admin-overlay-border);
 		border-start-start-radius: var(--admin-radius);
 		border-start-end-radius: var(--admin-radius);
-		box-shadow: var(--admin-elevation-overlay);
 	}
 
 	.adm-moresheet__cells {
@@ -6056,8 +6058,8 @@
 	}
 
 	/* current and hovered have to be unmistakably different, so current changes ground, ink and
-	   weight; hover only fills. at both widths current is the accent's tint under the accent's deep
-	   ink, set one weight up, and hover is a neutral step. no mark is drawn at the leading edge at
+	   weight; hover only fills. at both widths current is the accent's selected step under the
+	   accent's deep ink, set one weight up, and hover is a neutral step. no mark is drawn at the leading edge at
 	   either width, because a mark there in /admin is the one it puts on a thing worth acting on,
 	   and being somewhere is not one. the heavier word changes its own width and nothing else's:
 	   a tab in the bar is an equal share of the row whatever its word, and a row in the column is
@@ -6473,9 +6475,9 @@
 		padding-block-end: 0;
 	}
 
-	/* the same division drawn as a box: the surface, the card's shadow, no edge drawn and the
-	   radius every other plane in this system wears, at the full width of the column it stands in
-	   rather than at a measure of its own.
+	/* the same division drawn as a box: the surface, the step-6 edge and the radius every other
+	   plane in this system wears, at the full width of the column it stands in rather than at a
+	   measure of its own.
 
 	   which frame a division wears is the screen's decision and not the division's, and a screen
 	   that takes the card takes it for every division below its header: a run of divisions that
@@ -6492,9 +6494,8 @@
 		gap: var(--admin-space-5);
 		padding: var(--admin-space-6);
 		background: var(--admin-surface);
-		border: var(--admin-border-width) solid transparent;
+		border: var(--admin-rule);
 		border-radius: var(--admin-radius-plane);
-		box-shadow: var(--admin-elevation-card);
 	}
 
 	/* the step a run of cards takes under whatever is not one. the column gaps everything it holds
@@ -6692,9 +6693,8 @@
 		max-inline-size: var(--admin-measure-panel);
 		padding: var(--admin-space-8);
 		background: var(--admin-surface);
-		border: var(--admin-border-width) solid transparent;
+		border: var(--admin-rule);
 		border-radius: var(--admin-radius-plane);
-		box-shadow: var(--admin-elevation-card);
 	}
 
 	/* the panel's share of the route's inset. it is a bound and not a margin: the box is
@@ -6888,52 +6888,6 @@
 		min-block-size: var(--admin-field-height);
 	}
 
-	/* a plane standing inside another — or inside the dialog or a sheet, which are white as well —
-	   is white on white, where the card's shadow would say it floats over its parent and no edge
-	   would leave it nothing to be found by. so it draws `--admin-divider-plane` round itself and
-	   no shadow. ./plane-ground.spec.ts pins both halves: on the wash, no edge and the shadow;
-	   nested, the edge and no shadow. it is written here, last, because `.adm-card` and
-	   `.adm-panel` are this layer's own and a nested rule in the layer above would lose to them. */
-	:is(
-		.adm-status--section,
-		.adm-group,
-		.adm-record,
-		.adm-plane,
-		.adm-card,
-		.adm-panel,
-		.adm-dialog,
-		.adm-sheet
-	) :is(.adm-status--section, .adm-group, .adm-record, .adm-plane, .adm-card, .adm-panel) {
-		border-color: var(--admin-divider-plane);
-		box-shadow: none;
-	}
-
-	/* a rule the page draws between two of its own divisions or rows is `--admin-divider`, drawn
-	   against the page; standing inside a white surface — a plane, the dialog or a sheet — the same
-	   rule is the plane's quieter one, as a table's rows and a group's head are. a sheet's head and
-	   foot are always on the sheet, so they always take it. ./plane-ground.spec.ts pins both lists. */
-	:is(
-		.adm-status--section,
-		.adm-group,
-		.adm-record,
-		.adm-plane,
-		.adm-card,
-		.adm-panel,
-		.adm-dialog,
-		.adm-sheet
-	)
-	:is(
-		.adm-section + .adm-section,
-		.adm-setting,
-		.adm-triggers > li + li,
-		.adm-literals > li + li,
-		.adm-disclosure[open],
-		.adm-sheet__head,
-		.adm-sheet__foot
-	) {
-		border-color: var(--admin-divider-plane);
-	}
-
 	@media (min-width: 44rem) {
 		/* the rail is not here, and needs nothing here: cells as wide as their labels take one
 		   line as soon as there is room for one, and every width has to be a width they fit at
@@ -7067,7 +7021,7 @@
 		/* the bar comes back into the flow as the shell's first column, under the top bar: a rail as
 		   tall as the page is one the eye reads down rather than across. it grows a head holding the
 		   collapse toggle, and a foot when one is handed. it no longer floats, so it gives up the
-		   overlay's edge and shadow, and its white with them: it stands on the shell's wash beside
+		   overlay's edge, and its white with it: it stands on the shell's wash beside
 		   the page with no ground of its own and no seam, and what tells the two apart is that the
 		   page's planes are white cards and the rail's destinations are words. */
 		.adm-rail {
@@ -7081,7 +7035,6 @@
 			padding-block-end: 0;
 			background: transparent;
 			border-block-start: 0;
-			box-shadow: none;
 		}
 
 		/* the toggle alone, at the column's far end and inside the cells' inline step: the toggle's
@@ -7153,22 +7106,26 @@
 			background: var(--admin-rail-current-bg-hover);
 		}
 
-		/* each mark stands in a white tile with the card's shadow, a press's face in small, so the
+		/* each mark stands in a white tile with the step-6 edge, a press's face in small, so the
 		   column reads as a run of things to press on the wash rather than as loose glyphs. the tile
 		   is the mark's own box padded out to `--admin-mark-tile`, so a picture somebody else drew
 		   stands in it the same way a glyph does. it is centred on the name's first line, off that
-		   line's own box. the tile stays white on the current tint, and the glyph in it takes the
-		   current ink. */
+		   line's own box, and the edge is spent inside the tile's measure so the mark keeps its size.
+		   the tile stays white on the current fill, and the glyph in it takes the current ink. */
 		.adm-rail__cells .adm-dest > .adm-mark {
 			display: inline-block;
 			inline-size: var(--admin-mark-tile);
 			block-size: var(--admin-mark-tile);
-			padding: calc((var(--admin-mark-tile) - var(--admin-mark-size)) / 2);
+			padding: calc(
+				(var(--admin-mark-tile) - var(--admin-mark-size)) /
+				2 -
+				var(--admin-border-width)
+			);
 			margin-block-start: calc((1lh - var(--admin-mark-tile)) / 2);
 			color: var(--admin-ink-muted);
 			background: var(--admin-surface);
+			border: var(--admin-rule);
 			border-radius: var(--admin-radius);
-			box-shadow: var(--admin-elevation-card);
 		}
 
 		.adm-rail__cells .adm-dest:is([aria-current], .is-current) > .adm-mark {

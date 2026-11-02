@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { userEvent } from 'vitest/browser';
+import { cdp, userEvent } from 'vitest/browser';
 import { createCoinPicker } from './coin-picker';
 import { PRE_UPGRADE_RESERVATION_CSS, RESERVED_MIN_HEIGHT } from './embed/reservation';
 import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
+import { BRAND_TOKENS } from './styles/brand';
+import { type BrandGray, generateBrandScale } from './styles/radix-scale';
 import type { FormConfig, PaymentMethod } from './v1';
 
 // what a lightweight DOM cannot see about the element, all of it engine behaviour:
@@ -170,7 +172,7 @@ afterEach(() => {
 });
 
 describe('the element in a second document', () => {
-	// the premise behind rebuilding all four sheets rather than re-assigning the ones the shadow root
+	// the premise behind rebuilding all five sheets rather than re-assigning the ones the shadow root
 	// is already holding: they belong to the document they were constructed in and no other will take
 	// them (https://developer.mozilla.org/en-US/docs/Web/API/Document/adoptedStyleSheets).
 	it('cannot hand a document a sheet constructed in another one', () => {
@@ -194,7 +196,7 @@ describe('the element in a second document', () => {
 		await settle();
 
 		expect(host.ownerDocument).toBe(other);
-		expect(host.shadowRoot?.adoptedStyleSheets).toHaveLength(4);
+		expect(host.shadowRoot?.adoptedStyleSheets).toHaveLength(5);
 		expect(background(host)).toBe(painted);
 	});
 });
@@ -1053,5 +1055,272 @@ describe('the other tile by keyboard and by pointer', () => {
 
 		expect(other?.checked).toBe(true);
 		expect(root.activeElement).toBe(other);
+	});
+});
+
+// the brand scale is radix's custom-palette generator run on the seed the host computes
+// (./styles/radix-scale.ts), set on the shadow host before first paint and again when the seed
+// moves. read as painted bytes on both sides, so the hex block and the display-p3 block are each
+// held to the generator's output for whichever one this screen takes.
+describe('the brand scale the element generates', () => {
+	/** the scale this screen should paint for a seed, by token. */
+	function expected(seed: string, gray: BrandGray = 'slate'): Record<string, string> {
+		const scale = generateBrandScale(seed, gray);
+		if (scale === null) throw new Error(`${seed} is a seed the generator reads`);
+		const steps = matchMedia('(color-gamut: p3)').matches ? scale.stepsWideGamut : scale.steps;
+		const all: Record<string, string> = {
+			...Object.fromEntries(steps.map((value, i) => [`--_a${i + 1}`, value])),
+			'--_p': steps[8] as string,
+			'--_p-hover': steps[9] as string,
+			'--_on-p': scale.contrast
+		};
+		return Object.fromEntries(BRAND_TOKENS.map((token) => [token, all[token] as string]));
+	}
+
+	/** a colour, or a token resolved inside the card, as the sRGB bytes a canvas paints it in. */
+	function bytes(host: HTMLElement, colour: string): number[] {
+		const probe = document.createElement('div');
+		probe.style.color = colour.startsWith('--') ? `var(${colour})` : colour;
+		host.shadowRoot?.appendChild(probe);
+		const used = getComputedStyle(probe).color;
+		probe.remove();
+		const surface = document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D;
+		surface.fillStyle = used;
+		surface.fillRect(0, 0, 1, 1);
+		return Array.from(surface.getImageData(0, 0, 1, 1).data.slice(0, 3));
+	}
+
+	function seedAbove(seed: string): void {
+		document.body.style.setProperty('--donate-primary', seed);
+		onTestFinished(() => {
+			document.body.style.removeProperty('--donate-primary');
+		});
+	}
+
+	it.each([
+		['the default', '', '#1c2024'],
+		['purple', '#8e4ec6', '#8e4ec6'],
+		['red', '#e5484d', '#e5484d'],
+		['yellow', '#ffe629', '#ffe629'],
+		['a display-p3 neon', 'color(display-p3 0 1 0)', 'color(display-p3 0 1 0)']
+	])('paints the generated scale for %s', async (_name, seed, generatedFrom) => {
+		if (seed !== '') seedAbove(seed);
+		const host = await mount();
+
+		for (const [token, value] of Object.entries(expected(generatedFrom))) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	it('follows a seed the host changes after mount', async () => {
+		const host = await mount();
+		host.style.setProperty('--donate-primary', '#e5484d');
+		const scale = expected('#e5484d');
+		// `--_p` is the seed itself in the fallback and in the generator's step 9 for this seed, so
+		// the wait is on `--_a8`, which the fallback derives to another colour (./styles/tokens.css).
+		expect(bytes(host, 'oklch(from #e5484d 0.729 calc(c * 0.73) h)')).not.toEqual(
+			bytes(host, scale['--_a8'] as string)
+		);
+		// set from a transition the change starts (./styles/brand.ts), which reports a frame or more on
+		await vi.waitFor(() => {
+			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+		});
+
+		for (const [token, value] of Object.entries(scale)) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	// a closed <dialog>, a hidden tab panel: nothing under `display: none` starts a transition, so the
+	// change itself reports nothing, and the card has to look again when it is drawn again.
+	it('follows a seed the host changed while the card was not rendered', async () => {
+		const panel = document.createElement('div');
+		document.body.appendChild(panel);
+		planted.push(panel);
+		const host = await mount(CONFIG, { parent: panel });
+		panel.hidden = true;
+		panel.style.setProperty('--donate-primary', '#e5484d');
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+		panel.hidden = false;
+		const scale = expected('#e5484d');
+		await vi.waitFor(() => {
+			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+		});
+		for (const [token, value] of Object.entries(scale)) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	// a closed <details> and a `content-visibility: hidden` box render nothing of what is under them
+	// without being `display: none` themselves, so each is its own way for a change to go unreported.
+	it.each([
+		[
+			'a closed <details>',
+			() => document.createElement('details'),
+			(box: HTMLElement) => box.removeAttribute('open'),
+			(box: HTMLElement) => box.setAttribute('open', '')
+		],
+		[
+			'a content-visibility: hidden box',
+			() => document.createElement('div'),
+			(box: HTMLElement) => box.style.setProperty('content-visibility', 'hidden'),
+			(box: HTMLElement) => box.style.removeProperty('content-visibility')
+		]
+	])('follows a seed the host changed under %s', async (_name, make, hide, show) => {
+		const box = make();
+		document.body.appendChild(box);
+		planted.push(box);
+		show(box);
+		const host = await mount(CONFIG, { parent: box });
+		hide(box);
+		box.style.setProperty('--donate-primary', '#e5484d');
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+		show(box);
+		const scale = expected('#e5484d');
+		await vi.waitFor(() => {
+			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+		});
+		for (const [token, value] of Object.entries(scale)) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	it('paints each card its own scale when two on one page have different seeds', async () => {
+		const boxWithSeed = (seed: string): HTMLElement => {
+			const box = document.createElement('div');
+			box.style.setProperty('--donate-primary', seed);
+			document.body.appendChild(box);
+			planted.push(box);
+			return box;
+		};
+		const red = boxWithSeed('#e5484d');
+		const purple = boxWithSeed('#8e4ec6');
+		const first = await mount(CONFIG, { parent: red });
+		const second = await mount(CONFIG, { parent: purple });
+
+		const redScale = expected('#e5484d');
+		const purpleScale = expected('#8e4ec6');
+		expect(redScale['--_a8']).not.toEqual(purpleScale['--_a8']);
+		for (const [token, value] of Object.entries(redScale)) {
+			expect(bytes(first, token), token).toEqual(bytes(first, value));
+		}
+		for (const [token, value] of Object.entries(purpleScale)) {
+			expect(bytes(second, token), token).toEqual(bytes(second, value));
+		}
+
+		// and a seed moved on one leaves the other's alone
+		red.style.setProperty('--donate-primary', '#ffe629');
+		const yellowScale = expected('#ffe629');
+		await vi.waitFor(() => {
+			expect(bytes(first, '--_a8')).toEqual(bytes(first, yellowScale['--_a8'] as string));
+		});
+		expect(bytes(second, '--_a8')).toEqual(bytes(second, purpleScale['--_a8'] as string));
+	});
+
+	// nothing reports a seed that moves off the document, so the repaint is the reconnect's.
+	it('paints the seed that moved while the element was detached once it is connected again', async () => {
+		const host = await mount();
+		host.remove();
+		host.style.setProperty('--donate-primary', '#e5484d');
+		await settle();
+		document.body.appendChild(host);
+
+		const scale = expected('#e5484d');
+		await vi.waitFor(() => {
+			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+		});
+		for (const [token, value] of Object.entries(scale)) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	// the watch's transition runs over `--_dur-spin`, the one duration reduced motion leaves above
+	// zero (./styles/brand.ts), so the repaint must survive a visitor who asked for none.
+	it('follows a seed the host changes after mount under prefers-reduced-motion: reduce', async () => {
+		const session = cdp();
+		await session.send('Emulation.setEmulatedMedia', {
+			features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
+		});
+		onTestFinished(async () => {
+			await session.send('Emulation.setEmulatedMedia', {
+				features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }]
+			});
+		});
+		expect(matchMedia('(prefers-reduced-motion: reduce)').matches).toBe(true);
+		const host = await mount();
+		// the watch's own first animationstart arrives a frame after the mount and would repaint
+		// whatever seed stands then, so the change waits until that has passed.
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+		expect(bytes(host, '--_a8')).toEqual(bytes(host, expected('#1c2024')['--_a8'] as string));
+		host.style.setProperty('--donate-primary', '#e5484d');
+
+		const scale = expected('#e5484d');
+		await vi.waitFor(() => {
+			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+		});
+		for (const [token, value] of Object.entries(scale)) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	// the sheets are rebuilt for the document the element lands in: the brand one is generated from
+	// the seed that document gives, and constructed in that document's realm.
+	it('regenerates the brand sheet from the seed of the document it is moved into', async () => {
+		const host = await mount();
+		const other = otherDocument();
+		other.body.style.setProperty('--donate-primary', '#8e4ec6');
+		other.body.appendChild(host);
+		await settle();
+
+		const sheets = shadow(host).adoptedStyleSheets;
+		expect(sheets).toHaveLength(5);
+		expect(sheets[4]).toBeInstanceOf(
+			(other.defaultView as Window & typeof globalThis).CSSStyleSheet
+		);
+		const scale = expected('#8e4ec6');
+		expect(scale['--_a8']).not.toEqual(expected('#1c2024')['--_a8']);
+		for (const [token, value] of Object.entries(scale)) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	// the warm card's greys are sand, and the generator is handed sand's step 9 as its grey there,
+	// which a black seed takes its tint from.
+	it('generates against sand under the warm shade', async () => {
+		seedAbove('#000000');
+		document.body.style.setProperty('--donate-shade', 'warm');
+		onTestFinished(() => {
+			document.body.style.removeProperty('--donate-shade');
+		});
+		const host = await mount();
+
+		for (const [token, value] of Object.entries(expected('#000000', 'sand'))) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	it('follows a shade the host changes after mount', async () => {
+		seedAbove('#000000');
+		const host = await mount();
+		host.style.setProperty('--donate-shade', 'warm');
+		const scale = expected('#000000', 'sand');
+		await vi.waitFor(() => {
+			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+		});
+
+		for (const [token, value] of Object.entries(scale)) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+	});
+
+	// the generator reads what an engine hands back for a registered colour, and a cie lab seed comes
+	// back as lab(); the card keeps ./styles/tokens.css's fallback scale, whose step 9 is the seed.
+	it('keeps the stylesheet’s fallback for a seed the generator does not read', async () => {
+		seedAbove('lab(50% 40 30)');
+		const host = await mount();
+
+		expect(bytes(host, '--_p')).toEqual(bytes(host, 'lab(50% 40 30)'));
 	});
 });

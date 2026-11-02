@@ -55,17 +55,18 @@ export type StripeAppearance = {
  * missing Stripe variable rather than as a failure.
  */
 export const APPEARANCE_INPUTS = [
+	'--_a8',
 	'--_bad',
+	'--_bad-edge',
 	'--_border',
 	'--_edge-control',
 	'--_focus-ring',
 	'--_focus-width',
 	'--_n1',
-	'--_n10',
 	'--_n11',
 	'--_n12',
+	'--_n8',
 	'--_p',
-	'--_p-hover',
 	'--_r',
 	'--_r-in',
 	'--_sp1',
@@ -85,17 +86,17 @@ export const APPEARANCE_INPUTS = [
  *
  * a rail is a choice box: the white face every choice stands on, the outline that finds a box, the
  * corner preset's control radius, and the item gap between one rail and the next. the open rail is
- * the chosen one and is marked by the primary's edge on the same face (the head of
- * ./tokens.css). a pointer steps the edge and never the face.
+ * the chosen one and is marked by the brand's step-8 edge on the same face (the head of
+ * ./tokens.css). a pointer steps a closed rail's edge from 7 to 8 and never the face; the open
+ * rail's edge is already 8 and holds.
  */
 export const PAYMENT_ROW = {
 	padBlock: '--_sp3',
 	padInline: '--_sp4',
 	ground: '--_n1',
 	edge: '--_edge-control',
-	edgeHover: '--_n10',
-	chosenEdge: '--_p',
-	chosenEdgeHover: '--_p-hover',
+	edgeHover: '--_n8',
+	chosenEdge: '--_a8',
 	radius: '--_r-in',
 	gap: '--_sp5'
 } as const;
@@ -208,7 +209,7 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	put(variables, 'colorTextSecondary', n11);
 	// placeholder takes the same step as secondary text rather than one of the fill steps. inside
 	// the card fields the placeholder is what names the field — `MM / YY`, `CVC` — so it is read,
-	// not decoration, and 4.5:1 applies to it. the form's own fields carry a label above them and
+	// not decoration, and it takes a text step. the form's own fields carry a label above them and
 	// do not depend on a placeholder to say what they are.
 	put(variables, 'colorTextPlaceholder', n11);
 	put(variables, 'colorDanger', value('--_bad'));
@@ -245,7 +246,7 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	put(frame, 'fontSize', fieldSize);
 
 	// each rail is a box of its own, drawn the way ./rows.css draws ours (`PAYMENT_ROW` above). it
-	// draws no lift: nothing that stands on the card is raised (`--_lift` in ./tokens.css). the edge
+	// draws no shadow: the card is flat (the head of ./tokens.css). the edge
 	// is sent whole or not at all, for the reason the field's frame above is. the layout in
 	// ../embed/stripe.ts draws no radio, so a rail's name is a bare press and the open one is the one
 	// with its fields under it.
@@ -277,19 +278,19 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	put(railSelected, 'borderColor', value(PAYMENT_ROW.chosenEdge));
 	put(railSelected, 'backgroundColor', ground);
 
-	// and the pointer: the edge steps and the face holds, on a closed rail along the ramp and on the
-	// open one along the brand. the open one is stated apart, or the plain `:hover` rule would reach
-	// it and trade its primary edge for a closed rail's.
+	// and the pointer: a closed rail's edge steps to 8 and the face holds, and the open one holds its
+	// brand edge. the open one is stated apart, or the plain `:hover` rule would reach it and trade
+	// its brand edge for a closed rail's.
 	const railHover: Record<string, string> = {};
 	put(railHover, 'borderColor', value(PAYMENT_ROW.edgeHover));
 	put(railHover, 'backgroundColor', ground);
 	const railSelectedHover: Record<string, string> = {};
-	put(railSelectedHover, 'borderColor', value(PAYMENT_ROW.chosenEdgeHover));
+	put(railSelectedHover, 'borderColor', value(PAYMENT_ROW.chosenEdge));
 	put(railSelectedHover, 'backgroundColor', ground);
 
 	// a focused rail is rung the way ./rows.css rings ours, so a Tab from a provider's rail to one of
 	// ours keeps one ring: the plain ring hugging a closed rail's edge, and on the open one a band of
-	// the face laid against the primary's edge first, with the ring outside it. the transparent
+	// the face laid against the brand's edge first, with the ring outside it. the transparent
 	// outline is what forced colours paint once every shadow is dropped, as `.head:focus-visible`
 	// keeps one there.
 	const railFocus: Record<string, string> = {};
@@ -303,26 +304,42 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 		}
 	}
 
+	// a field the provider has refused, drawn as the form's own refused field is
+	// (`[part~='field'][part~='invalid']` in ./parts.css): the danger edge and one pixel of it inside,
+	// at rest. the theme's own refused edge is `colorDanger` above, which is the danger word's step
+	// and not the edge's.
+	const badEdge = value('--_bad-edge');
+	const invalid: Record<string, string> = {};
+	put(invalid, 'borderColor', badEdge);
+	if (badEdge !== undefined && borderWidth !== undefined) {
+		invalid.boxShadow = `inset 0 0 0 ${borderWidth} ${badEdge}`;
+	}
+
 	// the same ring the rest of the form draws on a focused control, so moving from an email field
-	// into the card field does not change what focus looks like — which means a rung of the ladder
-	// rather than the brand. the split holds across the frame boundary as well as inside it: a fill
-	// the donor acts on is the primary above, a line saying where the caret is is this, and the two
-	// never meet here either, because the field this rings carries no primary edge at all — only a
-	// chosen rail does, and a rail is not a field.
+	// into the card field does not change what focus looks like: the brand's step 8, hugging a field
+	// that carries no brand edge of its own — only a chosen rail does, and a rail is not a field.
 	const inputFocus: Record<string, string> = {};
 	if (focusWidth !== undefined && focusRing !== undefined) {
 		inputFocus.boxShadow = `0 0 0 ${focusWidth} ${focusRing}`;
 	}
 
-	// and the pointer: a text box's outline steps one rung along the ladder under it, as the boxes
-	// beside the frame do (`[part~='field']:hover` in ./parts.css).
+	// and the pointer: a text box's outline steps from 7 to 8 under it, as the boxes beside the frame
+	// do (`[part~='field']:hover` in ./parts.css).
 	const inputHover: Record<string, string> = {};
-	put(inputHover, 'borderColor', value('--_n10'));
+	put(inputHover, 'borderColor', value('--_n8'));
 	// except on a field the provider has refused, which keeps its danger edge under the pointer as
 	// the form's own do (`[part~='field'][part~='invalid']` in ./parts.css, after `:hover`). sent
 	// after the rule above, whose class and pseudo-class outrank the theme's state class alone.
 	const invalidHover: Record<string, string> = {};
-	put(invalidHover, 'borderColor', value('--_bad'));
+	put(invalidHover, 'borderColor', badEdge);
+
+	// and with the caret in it, the edge holds and the ring is drawn in it, as the form's own focused
+	// refused field is (`[part~='invalid']:focus-visible` in ./parts.css). sent after `.Input:focus`.
+	const invalidFocus: Record<string, string> = {};
+	put(invalidFocus, 'borderColor', badEdge);
+	if (badEdge !== undefined && focusWidth !== undefined) {
+		invalidFocus.boxShadow = `0 0 0 ${focusWidth} ${badEdge}`;
+	}
 
 	// the same length the root above carries, and stated rather than left derived: the provider sizes
 	// a label off the root rather than at it, and the card's own labels are that same step
@@ -335,6 +352,7 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	const rules: Record<string, Record<string, string>> = {};
 	for (const [selector, declarations] of [
 		['.Input', frame],
+		['.Input--invalid', invalid],
 		['.Input:hover', inputHover],
 		['.Input--invalid:hover', invalidHover],
 		['.AccordionItem', rail],
@@ -344,6 +362,7 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 		['.AccordionItem:focus-visible', railFocus],
 		['.AccordionItem--selected:focus-visible', railSelectedFocus],
 		['.Input:focus', inputFocus],
+		['.Input--invalid:focus', invalidFocus],
 		['.Label', label]
 	] as const) {
 		// a rule whose every declaration failed to resolve is left out entirely: an empty rule

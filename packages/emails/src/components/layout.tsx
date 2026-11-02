@@ -35,12 +35,12 @@ import {
 // turns styling into classes, the next two are the fetches above, and the last is a line of copy
 // only the inbox list ever shows.
 //
-// every value here comes from ../tokens.ts, which is the operator design system converted into what
-// a client renders — a hex triple and a pixel count, because a mail resolves no custom property and
-// no `oklch()`. the type stacks come over whole, self-hosted first face included: a mail client
-// fetches nothing, so that face is never found and the stack falls through to the platform's own,
-// which is how these mails are set in the system's stack without the web font this shell may not
-// grow.
+// every value here comes from ../tokens.ts, which holds the operator design system as a client
+// renders it — a hex triple, checked, and a pixel count, converted — because a mail resolves no
+// custom property and no colour function. the type stacks come over whole, self-hosted first face
+// included: a mail client fetches nothing, so that face is never found and the stack falls through
+// to the platform's own, which is how these mails are set in the system's stack without the web
+// font this shell may not grow.
 
 /**
  * the base type styling.
@@ -76,9 +76,10 @@ const FRAME_STYLE: CSSProperties = { width: '100%', maxWidth: MEASURE, margin: '
 const FRAME_ROW_STYLE: CSSProperties = { width: '100%' };
 
 /**
- * the plane the body is set on: one group, so one plane, told from the page by its ground alone.
- * a client that drops the radius draws it square. a client that drops the background draws the body
- * on the page, where the text still reads and the blocks on the plane keep their own grounds.
+ * the plane the body is set on: one group, so one plane, a ground a step off the page with the
+ * step-6 edge every operator plane draws and no shadow. a client that drops the radius draws it
+ * square. a client that drops the background still draws the edge, and the blocks on the plane keep
+ * their own grounds.
  *
  * the padding is the page gutter's step: no `<style>` reaches a mail, so a phone gets this inset too,
  * and it comes out of the body column on both sides.
@@ -86,6 +87,7 @@ const FRAME_ROW_STYLE: CSSProperties = { width: '100%' };
 const PLANE_STYLE: CSSProperties = {
 	padding: SPACE_6,
 	backgroundColor: PLANE_BG,
+	border: `${BORDER_WIDTH}px solid ${DIVIDER}`,
 	borderRadius: RADIUS_PLANE
 };
 

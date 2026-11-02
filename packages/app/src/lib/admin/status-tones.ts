@@ -6,10 +6,23 @@ import type { RecurringPlanStatus } from '$lib/recurring/statuses';
 
 // which tone the status pill takes, one map per lifecycle union the dashboard renders.
 //
-// the ladder is the one `packages/operator/src/styles/tokens.css` declares at `three registers of
-// status`: settled or running is `done`, waiting on somebody is `attention`, failed or refused is
-// `blocker`, ended is `note`. a word that is not a record's own lifecycle status — a consent
-// reading, a count, `Repeating`, `Invited` — takes no tone at all and stays hueless.
+// the ladder, whose colours `packages/operator/src/styles/tokens.css` declares at `three registers
+// of status`:
+//   - `done` is a record the operator put live and that is live, a form taking gifts or a program
+//     open. being live is the state the operator set it to reach, and the accent says it got there.
+//   - no tone is a record at rest that asks nothing of the operator: a gift that settled and a
+//     repeating gift still collecting. a list of money is mostly those rows, and a tone on them
+//     would put the accent on every row an operator is not looking for. it draws the hueless pill,
+//     slate 3 under slate 11, in a table cell as everywhere else.
+//   - `attention` is waiting on somebody.
+//   - `blocker` is failed or refused.
+//   - `note` is ended: retired, stopped, cancelled or refunded. it keeps the hueless pill's
+//     slate 11 ink and draws no ground, so an ended record is told from one at rest by the ground
+//     and not by one ink step. `packages/operator/src/styles/state-in-a-cell.spec.ts` holds that
+//     split.
+//
+// a word that is not a record's own lifecycle status — a consent reading, a count, `Repeating`,
+// `Invited` — takes no tone at all and stays the hueless pill.
 //
 // here and not beside the labels in `$lib/{programs,forms,recurring,donations}/statuses.ts`, for
 // the reason `./forms/readiness.tsx`'s `TONES` is where it is: those four modules are also the
@@ -51,8 +64,8 @@ export function formStatusWord(
 // `cancelled` is the operator's own deliberate end and `lapsed` is the rail giving up on a card
 // that kept failing. they read alike down a list and are not the same fact, which is the whole of
 // why they are toned apart.
-export const RECURRING_STATUS_TONES: Record<RecurringPlanStatus, Tone> = {
-	active: 'done',
+export const RECURRING_STATUS_TONES: Record<RecurringPlanStatus, Tone | undefined> = {
+	active: undefined,
 	cancelled: 'note',
 	lapsed: 'blocker'
 };
@@ -70,9 +83,9 @@ export const RECURRING_STATUS_TONES: Record<RecurringPlanStatus, Tone> = {
 // loss reads as a refund does, on the refund states' rung, and a win reads as the gift did before.
 // never `done`, since the processor has already taken the money back out. ./status-tones.spec.ts
 // holds the last.
-export const DONATION_STATUS_TONES: Record<DonationStatus, Tone> = {
+export const DONATION_STATUS_TONES: Record<DonationStatus, Tone | undefined> = {
 	pending: 'attention',
-	completed: 'done',
+	completed: undefined,
 	failed: 'blocker',
 	cancelled: 'note',
 	refunded: 'note',

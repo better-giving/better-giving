@@ -10,36 +10,39 @@
 // custom properties: it has a stylesheet, a document and a cascade. a mail has none of the three —
 // an html mail is rendered by clients with no `<style>` support and a `<head>` that is frequently
 // discarded, so every value has to arrive as a literal in an inline style attribute
-// (packages/emails/src/components/layout.tsx argues that from its own side). a worker has no file
-// system at send time either, so the values cannot be read out of the css when a mail is rendered.
-// they have to be in the module graph, which is this file.
+// (packages/emails/src/components/layout.tsx argues that from its own side). nor can a mail read
+// them out of the stylesheet at send time: the `runtime` stage of the root Dockerfile carries
+// packages/app and none of packages/operator, so ./tokens.css is not on disk where a mail renders.
+// the values have to be in the module graph, which is this file.
 //
 // only what a mail reads is here. a token nobody outside the css reads has no copy, because a copy
 // is a second thing to keep true and a name with no reader behind it cannot be seen to be wrong.
-// packages/emails/src/tokens.ts is what turns these into what a mail client renders — a hex triple,
-// a pixel count — and no conversion happens here: what this file holds is the css text.
+// packages/emails/src/tokens.ts is what makes these what a mail client renders — it checks each
+// colour is a hex triple and turns each length into a pixel count — and nothing is converted here:
+// what this file holds is the css text.
 
 /** the copied declarations, keyed by the custom property each one is a copy of. */
 export const ADMIN_TOKENS = {
 	// ---- colour ----
 	// the ground the document is read on, the plane its body is set on, and the two grounds a block
 	// on that plane sits on. the four are the same stack an operator screen is built from: a page, a
-	// plane on it, and the two bands on the plane, which share a rung in ./tokens.css today. the page
-	// is the solid `--admin-page` and never its wash: a gradient is a background image, which a mail
-	// client may drop, and the solid is the wash's mid tone.
-	'--admin-page': 'oklch(0.986 0.003 250)',
-	'--admin-surface': 'oklch(0.994 0.002 250)',
-	'--admin-surface-sunken': 'oklch(0.965 0.005 250)',
-	'--admin-surface-fill': 'oklch(0.965 0.005 250)',
-	'--admin-divider': 'oklch(0.878 0.011 250)',
-	'--admin-ink': 'oklch(0.27 0.013 250)',
-	'--admin-ink-muted': 'oklch(0.54 0.019 250)',
-	'--admin-link': 'oklch(0.556 0.15 247.3)',
+	// plane on it, and the two bands on the plane, both step 3 in ./tokens.css and named apart so
+	// either may move. the page is the solid `--admin-page` and never its wash: a gradient is a
+	// background image, which a mail client may drop, and the solid is the step-2 ground the wash's
+	// tints are laid over.
+	'--admin-page': '#f9f9fb',
+	'--admin-surface': '#fcfcfd',
+	'--admin-surface-sunken': '#f0f0f3',
+	'--admin-surface-fill': '#f0f0f3',
+	'--admin-divider': '#d9d9e0',
+	'--admin-ink': '#1c2024',
+	'--admin-ink-muted': '#60646c',
+	'--admin-link': '#0d74ce',
 	// a literal inside a sentence: its ground and its ink.
-	'--admin-code-bg': 'oklch(0.965 0.005 250)',
-	'--admin-code-ink': 'oklch(0.27 0.013 250)',
+	'--admin-code-bg': '#f0f0f3',
+	'--admin-code-ink': '#1c2024',
 	// the band an instruction is set on: the base banner's tone, which carries no hue.
-	'--admin-tone-note-tint': 'oklch(0.965 0.005 250)',
+	'--admin-tone-note-tint': '#f0f0f3',
 
 	// ---- type ----
 	// both stacks are copied whole, first face included. that face is self-hosted by ./fonts.css and

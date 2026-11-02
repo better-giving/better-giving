@@ -1,47 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { box, hexFromOklch, INK, LINK, pxFromLength } from './tokens';
+import { box, hexColour, INK, INK_MUTED, LINK, pxFromLength } from './tokens';
 
-// the conversion ./tokens.ts performs, checked against values decided outside this repository.
-//
-// what makes it checkable is that the arithmetic is not this project's: the three sRGB primaries
-// have published oklch coordinates (CSS Color 4, https://www.w3.org/TR/css-color-4/), and their hex
-// is the one thing every reader of this file already knows. a conversion that reproduces all three
-// to the byte is the conversion a browser performs on the operator surfaces, which is what makes a
-// mail and a screen the same colour.
+// the check and the conversion ./tokens.ts performs. a colour arrives from the operator system
+// already as the six-digit hex a mail client renders, so what is checked for a colour is that
+// nothing else gets through; a length still resolves, and is checked against the root size.
 
-describe('oklch to the hex a mail client renders', () => {
-	it('converts the ends of the ramp', () => {
-		expect(hexFromOklch('oklch(1 0 0)')).toBe('#ffffff');
-		expect(hexFromOklch('oklch(0 0 0)')).toBe('#000000');
+describe('the hex a mail client renders', () => {
+	it('takes a six-digit hex as it stands, in lowercase', () => {
+		expect(hexColour('#0d74ce')).toBe('#0d74ce');
+		expect(hexColour('#0D74CE')).toBe('#0d74ce');
 	});
 
-	it('reproduces the three sRGB primaries from their published coordinates', () => {
-		expect(hexFromOklch('oklch(0.62796 0.25768 29.234)')).toBe('#ff0000');
-		expect(hexFromOklch('oklch(0.86644 0.29483 142.495)')).toBe('#00ff00');
-		expect(hexFromOklch('oklch(0.45201 0.31321 264.052)')).toBe('#0000ff');
-	});
-
-	it('clips a colour outside sRGB into it', () => {
-		// no token needs this — every colour the operator system authors is inside sRGB — and a
-		// channel that came back outside 0–255 would be a hex nobody could render at all.
-		expect(hexFromOklch('oklch(0.7 0.4 30)')).toMatch(/^#[0-9a-f]{6}$/);
-	});
-
-	it('refuses what it cannot convert', () => {
-		expect(() => hexFromOklch('#ff0000')).toThrow();
+	it('refuses a colour a mail client may not read', () => {
+		// a mail is written in the one colour form every client reads, so nothing else passes.
+		expect(() => hexColour('#fff')).toThrow();
+		expect(() => hexColour('#0d74ce80')).toThrow();
+		expect(() => hexColour('oklch(0.556 0.15 247.3)')).toThrow();
+		expect(() => hexColour('var(--admin-ink)')).toThrow();
 	});
 
 	/**
-	 * the two colours a reader of a mail actually meets: the ink every sentence is set in, and the
-	 * word an invitation is opened by.
+	 * the colours a reader of a mail actually meets: the ink every sentence is set in, the small
+	 * print under the rule, and the word an invitation is opened by.
 	 *
 	 * pinned to the hex rather than to the token, so that a mail's own colour is a thing this suite
 	 * states. the token moving is a deliberate change to the design system and lands here as a
-	 * failure; the arithmetic moving is not, and lands here the same way.
+	 * failure. each is the radix step its operator alias names in
+	 * packages/operator/src/styles/tokens.css: slate 12, slate 11 and blue 11.
 	 */
-	it('draws the mails in the operator ink and the operator link colour', () => {
-		expect(INK).toBe('#22272d');
-		expect(LINK).toBe('#0077c5');
+	it('draws the mails in the operator ink, small print and link colour', () => {
+		expect(INK).toBe('#1c2024');
+		expect(INK_MUTED).toBe('#60646c');
+		expect(LINK).toBe('#0d74ce');
 	});
 });
 

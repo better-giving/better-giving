@@ -20,9 +20,8 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * from a list rather than chosen from one, and the pill does not refuse to wrap — what a wrapped
  * one looks like is only visible with one here.
  *
- * every descriptive specimen on this page is the pill, which is not how an operator meets one
- * inside a table: the ground and the corner come off there and the word stands in its tone alone.
- * src/previews/data-data-table.tsx is where that drawing is.
+ * every descriptive specimen on this page is the pill, and so is one inside a table, where only
+ * its inset tightens. src/previews/data-data-table.tsx is where that drawing is.
  *
  * momentary is the other register and it discards four of the props. `unset`, `secondary` and
  * `tone` are read only on the descriptive path

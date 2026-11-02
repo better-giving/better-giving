@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ruleOf, rulesIn, sheet } from '../../styles/sheet-rule.testing';
 import { render } from '../render.testing';
 import { CheckboxGroup, type CheckboxGroupProps } from './CheckboxGroup.jsx';
 
@@ -165,5 +166,43 @@ describe('a checkbox group mounted into a document', () => {
 			['Tick at least one site.', 'Tick at least one site.']
 		);
 		expect(root.querySelector('.adm-field__error')?.getAttribute('role')).toBe('alert');
+	});
+});
+
+// the boxed row's taken look, read off the sheet: the dom pool computes no style.
+describe('a taken boxed row', () => {
+	const css = sheet('adm.css');
+
+	it('stands on the accent’s selected step inside the accent edge, under the accent’s deep ink', () => {
+		const taken = ruleOf(css, '.adm-check--boxed:has(input:checked)');
+		expect([taken.get('background'), taken.get('border-color')]).toEqual([
+			'var(--admin-accent-selected)',
+			'var(--admin-accent-edge)'
+		]);
+		// the label sets its own ink, so the taken row re-inks the label rather than the row.
+		expect(ruleOf(css, '.adm-check--boxed:has(input:checked) .adm-check__text').get('color')).toBe(
+			'var(--admin-accent-deep)'
+		);
+	});
+
+	it('still answers a pointer, its edge stepping to the accent’s hovered border', () => {
+		// `:enabled`, so a closed row's edge stays the closed one under a pointer.
+		const taken = '.adm-check--boxed:has(input:checked:enabled)';
+		const pointer = rulesIn(css).find((rule) =>
+			rule.selector.split(',').some((one) => one.trim() === `${taken}:hover`)
+		);
+		expect(pointer?.selector.split(',').map((one) => one.trim())).toEqual([
+			`${taken}:hover`,
+			`${taken}.is-hover`
+		]);
+		const hovered = pointer?.stated ?? new Map<string, string>();
+		expect(hovered.get('border-color')).toBe('var(--admin-accent-edge-hover)');
+		expect(hovered.get('background')).toBeUndefined();
+	});
+
+	it('rings a focused taken row outside a band of its ground, never flush on its accent edge', () => {
+		expect(ruleOf(css, '.adm-check--boxed:has(input:checked.is-focus)').get('box-shadow')).toBe(
+			'0 0 0 var(--admin-border-width) var(--_ground, var(--admin-page)), 0 0 0 calc(var(--admin-border-width) + var(--admin-focus-width)) var(--admin-focus-ring)'
+		);
 	});
 });

@@ -2,10 +2,11 @@ import type { PaymentElementLike, StripeLike } from '@better-giving/form/embed/s
 import type { ChallengeSeams } from '@better-giving/form/embed/challenge';
 import type { TurnstileLike } from '@better-giving/form/embed/turnstile';
 import type { FeeRules, FormConfig } from '@better-giving/form/v1';
-import { act } from 'react';
+import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, onTestFinished } from 'vitest';
 import { DonateCard } from './card';
+import { brandScopeSelector, PageRoot } from './page-root';
 
 // the structure the form's sheets are written against, as this page draws it.
 //
@@ -101,19 +102,21 @@ const CHALLENGE: ChallengeSeams = {
 	}
 };
 
-async function card(): Promise<HTMLElement> {
+async function card(around: (card: ReactNode) => ReactNode = (card) => card): Promise<HTMLElement> {
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
 	act(() => {
 		mounted.render(
-			<DonateCard
-				config={CONFIG}
-				seams={{
-					payment: { stripe: { load: async () => stripe(), delay: () => () => {} } },
-					challenge: CHALLENGE
-				}}
-			/>
+			around(
+				<DonateCard
+					config={CONFIG}
+					seams={{
+						payment: { stripe: { load: async () => stripe(), delay: () => () => {} } },
+						challenge: CHALLENGE
+					}}
+				/>
+			)
 		);
 	});
 	onTestFinished(() => {
@@ -267,4 +270,21 @@ it('reaches the payment group under the summary, the fee decision’s parts, and
 
 	expect(one(root, '#payment-problem').hidden).toBe(false);
 	expect(reached(root, LAYOUT.refusedGroup)).toEqual([group]);
+});
+
+// the token file declares its fallback scale on every `[data-donate-root]`, the card's own included,
+// so the page root's generated scale has to reach the card's root by selector, not by inheritance.
+it('puts the card’s root in the brand scope of the page root around it, and in none alone', async () => {
+	const page = await card((drawn) => (
+		<PageRoot brandColour="#1d6b4f" layout="plain">
+			{drawn}
+		</PageRoot>
+	));
+	const [outer, inner] = page.querySelectorAll<HTMLElement>('[data-donate-root]');
+	const scope = outer?.getAttribute('data-brand-scope') ?? '';
+	expect(scope).not.toBe('');
+	expect([...page.querySelectorAll(brandScopeSelector(scope))]).toEqual([outer, inner]);
+
+	const alone = await card();
+	expect(one(alone, '[data-donate-root]').hasAttribute('data-brand-scope')).toBe(false);
 });

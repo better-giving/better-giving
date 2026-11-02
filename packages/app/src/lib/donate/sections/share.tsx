@@ -1,39 +1,59 @@
 import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
 import { useEffect, useRef, useState } from 'react';
 import { SHARE_CHANNEL_LABELS, SHARE_CHANNELS, shareHref } from '../../page/share';
+import type { GlyphName } from '@better-giving/form/glyph';
 import { Glyph } from './glyph';
 import type { PageSharing } from './types';
 
-// the share buttons every page offers, in their fixed order ($lib/page/share.ts). every one but Copy
-// link opens that channel's own share page in a tab of its own; Copy link writes the page's address
-// to the clipboard and says so on itself, with a status region beside it saying the same out loud.
+// the share buttons every page offers, in their fixed order ($lib/page/share.ts), each a mark alone
+// that carries its channel's label as its name. a network's press opens that network's share page
+// in a new tab, and its name says so, as the footer's social marks do; Email opens a mail draft.
+// Copy link writes the page's address to the clipboard and reports the outcome on one channel each.
+// a copy is said in the press's own name, Link copied, with a tick for its mark, since a focused
+// control's new name is spoken. a refusal keeps the name Copy link — the press still does what it
+// says — and is said in a polite status region instead, rendered empty from the first paint so the
+// words arriving in it are announced, with the alert mark in the refusal's red; naming the press
+// for the refusal as well would be heard twice. each refusal adds its words to the region as a
+// node of its own, keyed by the press, so a second refusal inside the first one's moment is
+// announced too rather than leaving the region's text as it was. it settles back after
+// `SETTLE_MS`, so a later visit meets the press and not a past outcome.
 //
-// the region is cleared and written a task apart, as packages/operator's CopyControl.jsx does: a
-// second press puts back the words the region already holds, and a region handed what it holds is
-// announced by nobody.
+// the heading carries `headingId`, the name of the section the caller stands this in.
 //
 // a network's mark is that network's own file (packages/operator's BrandMark.jsx), sized by its
-// height; Email and Copy link draw the form's own glyphs.
+// height and drawn in that network's colour; Email and Copy link draw the form's own glyphs.
 
 type Copy = 'idle' | 'copied' | 'failed';
 
-const COPY_WORDS: Record<Copy, string> = {
+const COPY_MARK = { idle: 'link', copied: 'tick', failed: 'alert' } as const satisfies Record<
+	Copy,
+	GlyphName
+>;
+
+const COPY_NAME: Record<Copy, string> = {
 	idle: SHARE_CHANNEL_LABELS['copy-link'],
 	copied: 'Link copied',
-	failed: 'Couldn’t copy'
+	failed: SHARE_CHANNEL_LABELS['copy-link']
 };
+
+const REFUSED_WORDS = 'Couldn’t copy';
+
+/** how long Copy link holds its outcome, as packages/operator's CopyControl.jsx holds its own. */
+export const SETTLE_MS = 2000;
 
 export function Share({
 	sharing,
-	heading
+	heading,
+	headingId
 }: {
 	readonly sharing: PageSharing;
 	readonly heading: string;
+	readonly headingId: string;
 }) {
 	const [copy, setCopy] = useState<Copy>('idle');
-	const [said, setSaid] = useState('');
-	const say = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-	useEffect(() => () => clearTimeout(say.current), []);
+	const [refusal, setRefusal] = useState(0);
+	const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	useEffect(() => () => clearTimeout(settle.current), []);
 
 	const copyLink = async () => {
 		let landed: Copy;
@@ -44,14 +64,16 @@ export function Share({
 			landed = 'failed';
 		}
 		setCopy(landed);
-		setSaid('');
-		clearTimeout(say.current);
-		say.current = setTimeout(() => setSaid(COPY_WORDS[landed]), 0);
+		if (landed === 'failed') setRefusal((press) => press + 1);
+		clearTimeout(settle.current);
+		settle.current = setTimeout(() => setCopy('idle'), SETTLE_MS);
 	};
 
 	return (
-		<div>
-			<h2 className="page-subheading">{heading}</h2>
+		<div className="page-share">
+			<h2 className="page-share-heading" id={headingId}>
+				{heading}
+			</h2>
 			<div className="page-share-row">
 				{SHARE_CHANNELS.map((channel) =>
 					channel === 'copy-link' ? (
@@ -59,39 +81,40 @@ export function Share({
 							key={channel}
 							type="button"
 							className="page-share-button"
-							data-state={copy}
+							data-copy={copy}
+							aria-label={COPY_NAME[copy]}
+							title={COPY_NAME[copy]}
 							onClick={copyLink}
 						>
-							<Glyph name={copy === 'copied' ? 'tick' : 'link'} className="page-share-mark" />
-							{/* every wording in one cell, the current one shown, so the press keeps its width */}
-							<span className="page-share-words">
-								{(Object.keys(COPY_WORDS) as Copy[]).map((state) => (
-									<span key={state} data-shown={state === copy ? '' : undefined}>
-										{COPY_WORDS[state]}
-									</span>
-								))}
-							</span>
+							<Glyph name={COPY_MARK[copy]} className="page-share-mark" />
 						</button>
+					) : channel === 'email' ? (
+						<a
+							key={channel}
+							className="page-share-button"
+							href={shareHref(channel, sharing)}
+							aria-label={SHARE_CHANNEL_LABELS[channel]}
+							title={SHARE_CHANNEL_LABELS[channel]}
+						>
+							<Glyph name="mail" className="page-share-mark" />
+						</a>
 					) : (
 						<a
 							key={channel}
 							className="page-share-button"
 							href={shareHref(channel, sharing)}
-							target={channel === 'email' ? undefined : '_blank'}
-							rel={channel === 'email' ? undefined : 'noopener noreferrer'}
+							target="_blank"
+							rel="noopener noreferrer"
+							aria-label={`${SHARE_CHANNEL_LABELS[channel]}, opens in a new tab`}
+							title={SHARE_CHANNEL_LABELS[channel]}
 						>
-							{channel === 'email' ? (
-								<Glyph name="mail" className="page-share-mark" />
-							) : (
-								<BrandMark platform={channel} className="page-share-brand" />
-							)}
-							<span>{SHARE_CHANNEL_LABELS[channel]}</span>
+							<BrandMark platform={channel} className="page-share-brand" />
 						</a>
 					)
 				)}
 			</div>
 			<p className="vh" role="status">
-				{said}
+				{copy === 'failed' ? <span key={refusal}>{REFUSED_WORDS}</span> : null}
 			</p>
 		</div>
 	);

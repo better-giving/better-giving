@@ -1,3 +1,4 @@
+import { brandScaleCss, generateBrandScale } from '@better-giving/form/styles/radix-scale';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act, type ReactNode } from 'react';
@@ -7,6 +8,7 @@ import type { Page } from '../page/catalog';
 import { defaultCampaign, defaultDonationPage } from '../page/defaults';
 import type { PageType } from '../page/keys';
 import type { RichTextDocument } from '../rich-text/document';
+import { brandScopeSelector, PageRoot } from './page-root';
 import { initials, PageView, type PageViewProps, TITLE_LONG } from './page-view';
 
 // the page's renderer, mounted: which whole layout a campaign is drawn in, which sections each
@@ -345,6 +347,46 @@ describe('the one colour', () => {
 		expect(seeded?.hasAttribute('data-shade')).toBe(false);
 		expect(seeded?.hasAttribute('data-palette')).toBe(false);
 	});
+
+	// happy-dom resolves no custom property, so the scale is held to the sheet the root renders and
+	// the nodes its selector matches.
+	it.each([
+		['#1d6b4f', '#1d6b4f'],
+		['the registered seed', null]
+	] as const)('renders the generated scale for %s, scoped to its own root', (_, brandColour) => {
+		const host = mount(<PageView {...props('campaign', CARD)} look={{ brandColour }} />);
+		const root = host.querySelector<HTMLElement>('[data-donate-root]');
+		const scope = root?.getAttribute('data-brand-scope') ?? '';
+		expect(scope).not.toBe('');
+		const scale = generateBrandScale(brandColour ?? '#1c2024');
+		if (scale === null) throw new Error('no scale');
+		expect(root?.querySelector('style')?.textContent).toBe(
+			brandScaleCss(brandScopeSelector(scope), scale)
+		);
+		expect([...document.querySelectorAll(brandScopeSelector(scope))]).toEqual([root]);
+	});
+
+	it('gives two roots on one document their own scales, neither matching the other', () => {
+		const host = mount(
+			<>
+				<PageRoot brandColour="#1d6b4f" layout="plain">
+					{null}
+				</PageRoot>
+				<PageRoot brandColour="#1f6feb" layout="plain">
+					{null}
+				</PageRoot>
+			</>
+		);
+		const roots = [...host.querySelectorAll<HTMLElement>('[data-donate-root]')];
+		const scopes = roots.map((r) => r.getAttribute('data-brand-scope') ?? '');
+		expect(new Set(scopes).size).toBe(2);
+		for (const [i, root] of roots.entries()) {
+			expect([...document.querySelectorAll(brandScopeSelector(scopes[i] ?? ''))]).toEqual([root]);
+			expect(root.querySelector('style')?.textContent).toContain(
+				generateBrandScale(i === 0 ? '#1d6b4f' : '#1f6feb')?.steps[1]
+			);
+		}
+	});
 });
 
 describe('the masthead with no logo', () => {
@@ -478,47 +520,57 @@ describe('the program chooser', () => {
 	});
 });
 
-/** a task later, when the share row's status region is written. */
-const nextTask = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
-
 describe('share', () => {
-	it('copies the page’s address and says so at the press and out loud', async () => {
+	it.each([
+		['campaign', defaultCampaign(), 'Share this campaign'],
+		['donation_page', defaultDonationPage(), 'Share this page']
+	] as const)('stands share in a region its heading names, on the %s', (type, page, heading) => {
+		const root = mount(<PageView {...props(type, page)} />);
+		const section = root.querySelector('[data-area="share"]');
+		expect(section?.tagName.toLowerCase()).toBe('section');
+		expect(section?.id).toBe('page-share');
+		const name = section?.getAttribute('aria-labelledby') ?? '';
+		expect(name).not.toBe('');
+		const label = root.ownerDocument.getElementById(name);
+		expect(label?.tagName.toLowerCase()).toBe('h2');
+		expect(label?.textContent).toBe(heading);
+		expect(section?.contains(label ?? null)).toBe(true);
+	});
+
+	it.each([
+		['campaign', defaultCampaign(), 'Share this campaign'],
+		['donation_page', defaultDonationPage(), 'Share this page']
+	] as const)(
+		'jumps the masthead Share link to the one share region, on the %s',
+		(type, page, heading) => {
+			const root = mount(<PageView {...props(type, page)} />);
+			const link = root.querySelector<HTMLAnchorElement>('.page-mast-share');
+			expect(link?.getAttribute('href')).toBe('#page-share');
+			const targets = root.querySelectorAll('[id="page-share"]');
+			expect(targets).toHaveLength(1);
+			const target = targets[0];
+			expect(target?.getAttribute('data-area')).toBe('share');
+			const label = root.ownerDocument.getElementById(
+				target?.getAttribute('aria-labelledby') ?? ''
+			);
+			expect(label?.textContent).toBe(heading);
+		}
+	);
+
+	it('copies the page’s address and says so at the press alone', async () => {
 		const writeText = vi.fn(async () => {});
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 		onTestFinished(() => {
 			vi.unstubAllGlobals();
 		});
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
-		const status = root.querySelector('[data-area="share"] [role="status"]');
-		expect(status?.textContent).toBe('');
 		const press = root.querySelector<HTMLButtonElement>('[data-area="share"] button');
 		await act(async () => press?.click());
-		await nextTask();
 		expect(writeText).toHaveBeenCalledWith('https://give.example.org/coats');
-		expect(status?.textContent).toBe('Link copied');
-		expect(press?.querySelector('[data-shown]')?.textContent).toBe('Link copied');
-	});
-
-	it('says a second Copy link again, clearing what it said before writing it', async () => {
-		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
-		onTestFinished(() => {
-			vi.unstubAllGlobals();
-		});
-		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
-		const status = root.querySelector('[data-area="share"] [role="status"]');
-		const press = root.querySelector<HTMLButtonElement>('[data-area="share"] button');
-		if (status === null) throw new Error('no status region');
-		await act(async () => press?.click());
-		await nextTask();
-		const heard: (string | null)[] = [];
-		const listen = new MutationObserver(() => heard.push(status.textContent));
-		listen.observe(status, { childList: true, characterData: true, subtree: true });
-		onTestFinished(() => listen.disconnect());
-
-		await act(async () => press?.click());
-		await nextTask();
-
-		expect(heard).toEqual(['', 'Link copied']);
+		expect(press?.getAttribute('aria-label')).toBe('Link copied');
+		const share = root.querySelector('[data-area="share"]');
+		// the region is there for a refused copy (./sections/share.tsx) and says nothing of a copy.
+		expect(share?.querySelector('[role="status"]')?.textContent).toBe('');
 	});
 
 	it('draws the same buttons on every page, each opening its own share', () => {
@@ -527,7 +579,9 @@ describe('share', () => {
 			(a) => new URL(a.href).host || a.href.split(':')[0]
 		);
 		expect(hrefs).toEqual(['mailto', 'www.facebook.com', 'wa.me']);
-		expect(root.querySelector('[data-area="share"] button')?.textContent).toContain('Copy link');
+		expect(root.querySelector('[data-area="share"] button')?.getAttribute('aria-label')).toBe(
+			'Copy link'
+		);
 	});
 
 	it.each([
@@ -594,11 +648,9 @@ describe('the preview', () => {
 		const writeText = vi.fn(async () => {});
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} preview />);
-		const status = root.querySelector('[data-area="share"] [role="status"]');
-		await act(async () =>
-			root.querySelector<HTMLButtonElement>('[data-area="share"] button')?.click()
-		);
+		const press = root.querySelector<HTMLButtonElement>('[data-area="share"] button');
+		await act(async () => press?.click());
 		expect(writeText).not.toHaveBeenCalled();
-		expect(status?.textContent).toBe('');
+		expect(press?.getAttribute('aria-label')).toBe('Copy link');
 	});
 });
