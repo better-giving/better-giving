@@ -28,6 +28,7 @@
 		"./embed/turnstile": "./src/embed/turnstile.ts",
 		"./embed/challenge": "./src/embed/challenge.ts",
 		"./embed/resume": "./src/embed/resume.ts",
+		"./styles/radix-scale": "./src/styles/radix-scale.ts",
 		"./styles/tokens.css": "./src/styles/tokens.css",
 		"./styles/parts.css": "./src/styles/parts.css",
 		"./styles/layout.css": "./src/styles/layout.css",
@@ -50,8 +51,11 @@
 		"xstate": "catalog:"
 	},
 	"devDependencies": {
+		"@radix-ui/colors": "3.0.0",
 		"@types/node": "catalog:",
 		"@vitest/browser-playwright": "4.1.10",
+		"bezier-easing": "2.1.0",
+		"colorjs.io": "0.5.2",
 		"happy-dom": "catalog:",
 		"playwright": "1.62.1",
 		"typescript": "catalog:",
