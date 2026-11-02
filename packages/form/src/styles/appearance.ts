@@ -209,7 +209,7 @@ export function stripeAppearance(read: TokenReader): StripeAppearance {
 	put(variables, 'colorTextSecondary', n11);
 	// placeholder takes the same step as secondary text rather than one of the fill steps. inside
 	// the card fields the placeholder is what names the field — `MM / YY`, `CVC` — so it is read,
-	// not decoration, and step 11's text floor applies to it. the form's own fields carry a label above them and
+	// not decoration, and it takes a text step. the form's own fields carry a label above them and
 	// do not depend on a placeholder to say what they are.
 	put(variables, 'colorTextPlaceholder', n11);
 	put(variables, 'colorDanger', value('--_bad'));

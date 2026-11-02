@@ -293,7 +293,7 @@ describe('the derived ramp', () => {
 
 	it('leaves the neutral steps alone whatever the brand is', () => {
 		// the ladder is the form's own and the seed reaches none of it, which is what makes every
-		// neutral reading a single number rather than a floor across seeds. a derivation
+		// neutral reading a single number whatever the seed. a derivation
 		// accidentally reintroduced would show up here as a step following the brand.
 		seed('--donate-primary: oklch(0.5 0.25 300);');
 		const seeded = RUNGS.map(oklchString);

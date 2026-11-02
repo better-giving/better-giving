@@ -4,9 +4,9 @@ import { ADMIN_TOKENS } from '@better-giving/operator/styles/tokens';
 //
 // the system is one file — packages/operator/src/styles/tokens.css — and this package reads it
 // through the copy beside it, packages/operator/src/styles/tokens.ts, which is the same values as
-// css text. no value is decided here and none may be: what this module does is convert. a screen
-// hands the browser `var(--admin-ink)` and the browser resolves a custom property and a `rem` for
-// it. a mail has none of that. it is a set of inline style attributes read by clients
+// css text. no value is decided here and none may be: what this module does is check and convert.
+// a screen hands the browser `var(--admin-ink)` and the browser resolves a custom property and a
+// `rem` for it. a mail has none of that. it is a set of inline style attributes read by clients
 // whose css support was fixed years ago — Outlook desktop renders through Word — so what a template
 // writes has to be a six-digit hex triple and a pixel count, already resolved.
 //
@@ -63,8 +63,8 @@ export const box = (...sides: number[]) =>
 
 // ---- the values a template writes ----------------------------------------------------------
 //
-// every one is a token converted, and the name says the job rather than the rung. what each is for
-// is at its own line where the choice was not the obvious one.
+// every one is a token checked or converted, and the name says the job rather than the step. what
+// each is for is at its own line where the choice was not the obvious one.
 
 /** the ground the document is read on, the plane its body sits on, and the two a block on that
  * plane sits on. */
@@ -74,7 +74,7 @@ export const PAGE_BG = hexColour(ADMIN_TOKENS['--admin-page']);
 export const PLANE_BG = hexColour(ADMIN_TOKENS['--admin-surface']);
 /** the receipt's own block: a ground, and no rule around it. */
 export const PANEL_BG = hexColour(ADMIN_TOKENS['--admin-surface-sunken']);
-/** the band under the §6115 disclosure, a rung off the plane. */
+/** the band under the §6115 disclosure, step 3, two steps off the plane. */
 export const BLOCK_BG = hexColour(ADMIN_TOKENS['--admin-surface-fill']);
 /** the alert's instruction, set as `.adm-banner` sets a note: the tint carries it, no edge does. */
 export const BANNER_BG = hexColour(ADMIN_TOKENS['--admin-tone-note-tint']);

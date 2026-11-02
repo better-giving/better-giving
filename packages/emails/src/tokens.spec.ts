@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { box, hexColour, INK, INK_MUTED, LINK, pxFromLength } from './tokens';
 
-// the conversions ./tokens.ts performs. a colour arrives from the operator system already as the
-// six-digit hex a mail client renders, so what is checked for a colour is that nothing else gets
-// through; a length still resolves, and is checked against the root size.
+// the check and the conversion ./tokens.ts performs. a colour arrives from the operator system
+// already as the six-digit hex a mail client renders, so what is checked for a colour is that
+// nothing else gets through; a length still resolves, and is checked against the root size.
 
 describe('the hex a mail client renders', () => {
 	it('takes a six-digit hex as it stands, in lowercase', () => {

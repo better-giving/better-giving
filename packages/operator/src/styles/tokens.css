@@ -25,9 +25,10 @@
    one reader cannot read any of this, and it is ./tokens.ts. a mail is a set of inline style
    attributes rendered by clients that resolve no custom property, so packages/emails reads a
    copy of the values it needs as plain strings — resolved
-   through their `var()` chains, converted to hex and pixels at packages/emails/src/tokens.ts, and
-   held to this file by ./tokens.spec.ts. changing a value copied there fails that spec until the
-   copy follows, which is the whole of what stops a mail from sending last month's colour.
+   through their `var()` chains, checked as hex and converted to pixels at
+   packages/emails/src/tokens.ts, and held to this file by ./tokens.spec.ts. changing a value
+   copied there fails that spec until the copy follows, which is the whole of what stops a mail
+   from sending last month's colour.
 
    the converse holds too, with one exemption: a token nothing reads is deleted, because a
    name with no site behind it is a decision nobody can see the effect of changing, and a
@@ -174,15 +175,15 @@
    no value is authored off its ladder and no alias points at a step its job does not name;
    ./radix-steps.spec.ts is what fails when one does.
 
-   ---------- contrast ----------
+   ---------- legibility ----------
 
-   contrast is radix's guarantee rather than a measurement made here, and the floors are radix's
-   (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): step 11 is
-   built to reach APCA Lc 60 and step 12 Lc 90 on step 2, and step 9 carries a white label in the
-   blue and the red. a control's resting edge is step 7, radix's ui element border, and is not
-   darkened to a later step to make it louder: 8 is that edge under a pointer. no pair is re-tuned
-   here: a value that reads wrong is another step of the same ladder or a gap to report, never a
-   literal nudged.
+   legibility is radix's guarantee for a step doing its job rather than a measurement made here
+   (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): steps 11 and
+   12 are its text steps, built to be read on its background steps, and step 9 carries a white
+   label in the blue and the red. a control's resting edge is step 7, radix's ui element border,
+   and is not darkened to a later step to make it louder: 8 is that edge under a pointer. no pair
+   is re-tuned here: a value that reads wrong is another step of the same ladder or a gap to
+   report, never a literal nudged.
 
    the focus ring is drawn outside a control, in the accent's 8 against whatever the control stands
    on. a control filled with a solid step draws its ring inside itself in `--admin-focus-ring-solid`
@@ -367,7 +368,7 @@
 		--admin-tone-done-tint: var(--admin-accent-3);
 		--admin-tone-done-deep: var(--admin-accent-12);
 		/* a resolved status is expressed by de-emphasis and never by a colour: the note's ink and
-		   mark, measured on the page rather than on a tint. */
+		   mark, drawn on the page rather than on a tint. */
 		--admin-tone-resolved-ink: var(--admin-neutral-11);
 		--admin-tone-resolved-mark: var(--admin-neutral-11);
 

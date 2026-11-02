@@ -107,8 +107,8 @@
  * panel, which on a phone holds the cover, the title, the lede and the goal, the letter's cover
  * frame, a tier card, a share press, and the donation box, which the form draws — is
  * `--page-plane`, slate 1, inside a `--_border` edge of `--page-plane-edge`, slate 6, at the corner
- * `--page-plane-radius`, and flat: its face and its edge are what lift it off the wash. no plane
- * stands in another: the one that could, the box on the card's panel from 60rem, draws no fill,
+ * `--page-plane-radius`, and flat: its face and its edge are what set it apart from the wash. no
+ * plane stands in another: the one that could, the box on the card's panel from 60rem, draws no fill,
  * edge, corner or inset of its own there and reads as part of the panel, which already groups it; on
  * a phone, under the panel rather than in it, it is a plane again. the top bar runs the page's full
  * width with no corner and draws its edge along its foot alone, the one side the page meets it on.
@@ -155,8 +155,8 @@
  * it to the job radix names for that step
  * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): text on 11
  * and 12, a solid fill on 9 with the form's `--_on-p` as its ink, a separator or an edge on 6, 7
- * and 8, the focus ring on 8, a ground on 1, 2 and 3 — the wash brand 2 and 3 by the form's L and k
- * table — and a control's hover and press on 4 and 5. legibility is radix's guarantee for a step
+ * and 8, the focus ring on 8, a ground on 1, 2 and 3 — the wash brand 2 and 3 over slate 2 —
+ * and a control's hover and press on 4 and 5. legibility is radix's guarantee for a step
  * doing its job, and no ratio is measured here.
  *
  *   `--page-scrim` is the one colour off the ladders, laid over the feature's cover photo, which

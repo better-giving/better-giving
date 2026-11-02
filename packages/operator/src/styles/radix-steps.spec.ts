@@ -3,11 +3,9 @@ import { sheet } from './sheet-rule.testing';
 
 // ./tokens.css adopts radix colors whole: the four ladders are `@radix-ui/colors` 3.0.0's light
 // values, and every alias reads the step whose job radix names for it
-// (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale). contrast is
-// radix's guarantee rather than a number measured here — step 11 is built for APCA Lc 60 and step 12
-// for Lc 90 on step 2, and a step-7 control edge reads under a fine line's Lc 30 by radix's own
-// design — so what this file holds is the step each job lands on, which is what that guarantee is
-// a guarantee about.
+// (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale). legibility is
+// radix's guarantee for a step doing its job rather than a number measured here, so what this file
+// holds is the step each job lands on, which is what that guarantee is a guarantee about.
 
 const tokens = sheet('tokens.css');
 

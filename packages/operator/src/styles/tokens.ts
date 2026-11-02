@@ -10,23 +10,25 @@
 // custom properties: it has a stylesheet, a document and a cascade. a mail has none of the three —
 // an html mail is rendered by clients with no `<style>` support and a `<head>` that is frequently
 // discarded, so every value has to arrive as a literal in an inline style attribute
-// (packages/emails/src/components/layout.tsx argues that from its own side). a worker has no file
-// system at send time either, so the values cannot be read out of the css when a mail is rendered.
+// (packages/emails/src/components/layout.tsx argues that from its own side). nothing parses css
+// when a mail is rendered either, so the values cannot be read out of the stylesheet at send time.
 // they have to be in the module graph, which is this file.
 //
 // only what a mail reads is here. a token nobody outside the css reads has no copy, because a copy
 // is a second thing to keep true and a name with no reader behind it cannot be seen to be wrong.
-// packages/emails/src/tokens.ts is what turns these into what a mail client renders — a hex triple,
-// a pixel count — and no conversion happens here: what this file holds is the css text.
+// packages/emails/src/tokens.ts is what makes these what a mail client renders — it checks each
+// colour is a hex triple and turns each length into a pixel count — and nothing is converted here:
+// what this file holds is the css text.
 
 /** the copied declarations, keyed by the custom property each one is a copy of. */
 export const ADMIN_TOKENS = {
 	// ---- colour ----
 	// the ground the document is read on, the plane its body is set on, and the two grounds a block
 	// on that plane sits on. the four are the same stack an operator screen is built from: a page, a
-	// plane on it, and the two bands on the plane, which share a rung in ./tokens.css today. the page
-	// is the solid `--admin-page` and never its wash: a gradient is a background image, which a mail
-	// client may drop, and the solid is the wash's mid tone.
+	// plane on it, and the two bands on the plane, both step 3 in ./tokens.css and named apart so
+	// either may move. the page is the solid `--admin-page` and never its wash: a gradient is a
+	// background image, which a mail client may drop, and the solid is the step-2 ground the wash's
+	// tints are laid over.
 	'--admin-page': '#f9f9fb',
 	'--admin-surface': '#fcfcfd',
 	'--admin-surface-sunken': '#f0f0f3',
