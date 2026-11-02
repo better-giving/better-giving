@@ -236,3 +236,10 @@ it('draws a disputed gift’s word in the tone of a gift waiting on somebody', (
 	expect(word?.classList.contains('adm-state--attention')).toBe(true);
 	expect(word?.classList.contains('adm-state--done')).toBe(false);
 });
+
+it('draws a settled gift’s word as the neutral pill, in no tone', () => {
+	const root = screen([gift({ status: 'completed' })]);
+	const word = root.querySelector('tbody .adm-state');
+	expect(word?.textContent).toBe('Completed');
+	expect(word?.className).toBe('adm-state');
+});

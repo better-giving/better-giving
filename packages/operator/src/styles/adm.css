@@ -1726,8 +1726,8 @@
 	   the component happens to assemble its class list in.
 
 	   only a record's own lifecycle status takes one, and each names what produces it — `done` is
-	   settled or running, `attention` is waiting on somebody, `blocker` is failed or refused,
-	   `note` is retired, stopped or ended. each is its tone's word on its tone's tint, the same
+	   running, `attention` is waiting on somebody, `blocker` is failed or refused, `note` is
+	   retired, stopped or ended. each is its tone's word on its tone's tint, the same
 	   pair a banner in that tone wears. `done` is the accent and never green; ./tokens.css argues
 	   that where the ladders are declared.
 

@@ -7,9 +7,13 @@ import type { RecurringPlanStatus } from '$lib/recurring/statuses';
 // which tone the status pill takes, one map per lifecycle union the dashboard renders.
 //
 // the ladder is the one `packages/operator/src/styles/tokens.css` declares at `three registers of
-// status`: settled or running is `done`, waiting on somebody is `attention`, failed or refused is
-// `blocker`, ended is `note`. a word that is not a record's own lifecycle status — a consent
-// reading, a count, `Repeating`, `Invited` — takes no tone at all and stays hueless.
+// status`: running is `done`, waiting on somebody is `attention`, failed or refused is `blocker`,
+// ended is `note`. a word that is not a record's own lifecycle status — a consent reading, a count,
+// `Repeating`, `Invited` — takes no tone at all and stays hueless.
+//
+// a gift that settled and a repeating gift still collecting take no tone either, and draw the base
+// pill: each is a record at rest that asks nothing of the operator, and a list of money is mostly
+// those rows. a tone on them would put the accent on every row an operator is not looking for.
 //
 // here and not beside the labels in `$lib/{programs,forms,recurring,donations}/statuses.ts`, for
 // the reason `./forms/readiness.tsx`'s `TONES` is where it is: those four modules are also the
@@ -51,8 +55,8 @@ export function formStatusWord(
 // `cancelled` is the operator's own deliberate end and `lapsed` is the rail giving up on a card
 // that kept failing. they read alike down a list and are not the same fact, which is the whole of
 // why they are toned apart.
-export const RECURRING_STATUS_TONES: Record<RecurringPlanStatus, Tone> = {
-	active: 'done',
+export const RECURRING_STATUS_TONES: Record<RecurringPlanStatus, Tone | undefined> = {
+	active: undefined,
 	cancelled: 'note',
 	lapsed: 'blocker'
 };
@@ -70,9 +74,9 @@ export const RECURRING_STATUS_TONES: Record<RecurringPlanStatus, Tone> = {
 // loss reads as a refund does, on the refund states' rung, and a win reads as the gift did before.
 // never `done`, since the processor has already taken the money back out. ./status-tones.spec.ts
 // holds the last.
-export const DONATION_STATUS_TONES: Record<DonationStatus, Tone> = {
+export const DONATION_STATUS_TONES: Record<DonationStatus, Tone | undefined> = {
 	pending: 'attention',
-	completed: 'done',
+	completed: undefined,
 	failed: 'blocker',
 	cancelled: 'note',
 	refunded: 'note',

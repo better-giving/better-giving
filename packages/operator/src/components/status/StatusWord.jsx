@@ -13,8 +13,8 @@ import { Mark } from './Mark.jsx';
  * @property {boolean | undefined} [unset] no value at all, which says something different from `secondary`.
  * @property {boolean | undefined} [secondary]
  * @property {Tone | undefined} [tone] where a record stands on its own lifecycle ladder: `done`
- *   settled or running, `attention` waiting on somebody, `blocker` failed or refused, `note`
- *   retired, stopped or ended. absent on every word that is not one of those statuses — a consent
+ *   running, `attention` waiting on somebody, `blocker` failed or refused, `note` retired,
+ *   stopped or ended. a record at rest, such as a gift that settled, takes none. absent on every word that is not one of those statuses — a consent
  *   reading and a count are facts about a record rather than where it stands — and absent wherever
  *   `secondary` is passed, since a tone already says the quiet one is quiet.
  * @property {MarkName | undefined} [mark]
