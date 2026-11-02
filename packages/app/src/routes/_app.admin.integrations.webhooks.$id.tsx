@@ -418,7 +418,7 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 
 /**
  * each way a delivery can stand, as the list says it and the tone the word takes. a delivered
- * one is at rest and takes no tone, the ladder in `$lib/admin/status-tones.ts`.
+ * one is at rest and takes no tone, as `$lib/admin/status-tones.ts` sets for a record at rest.
  */
 const OUTCOMES: Record<
 	Loaded['deliveries'][number]['status'],
