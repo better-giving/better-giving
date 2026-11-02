@@ -258,6 +258,27 @@ it('lists its recent deliveries: the event, when, where each stands, the answer 
 	expect(table?.querySelector('time')?.getAttribute('datetime')).toBe('2026-09-28T10:41:00.000Z');
 });
 
+it('draws a delivered row’s word as the neutral pill, in no tone, and keeps the others toned', async () => {
+	const root = await flow(SCREEN, {
+		paused: false,
+		deliveries: [
+			recorded('m1', 'gift.made', 'delivered', 200, 1),
+			recorded('m2', 'donor.added', 'pending', 503, 2),
+			recorded('m3', 'gift.refunded', 'failed', null, 9),
+			recorded('m4', 'recurring_gift.charge_failed', 'dropped', null, 0)
+		]
+	});
+
+	expect(
+		[...root.querySelectorAll('tbody .adm-state')].map((word) => [word.textContent, word.className])
+	).toEqual([
+		['Delivered', 'adm-state'],
+		['Waiting', 'adm-state adm-state--attention'],
+		['Failed', 'adm-state adm-state--blocker'],
+		['Withheld', 'adm-state adm-state--note']
+	]);
+});
+
 it('says a destination sent nothing yet has no deliveries', async () => {
 	const root = await flow(SCREEN, { paused: false });
 

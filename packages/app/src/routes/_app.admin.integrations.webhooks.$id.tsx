@@ -416,9 +416,15 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 	);
 }
 
-/** each way a delivery can stand, as the list says it and the tone the word takes. */
-const OUTCOMES: Record<Loaded['deliveries'][number]['status'], { word: string; tone: Tone }> = {
-	delivered: { word: 'Delivered', tone: 'done' },
+/**
+ * each way a delivery can stand, as the list says it and the tone the word takes. a delivered
+ * one is at rest and takes no tone, the ladder in `$lib/admin/status-tones.ts`.
+ */
+const OUTCOMES: Record<
+	Loaded['deliveries'][number]['status'],
+	{ word: string; tone: Tone | undefined }
+> = {
+	delivered: { word: 'Delivered', tone: undefined },
 	pending: { word: 'Waiting', tone: 'attention' },
 	failed: { word: 'Failed', tone: 'blocker' },
 	dropped: { word: 'Withheld', tone: 'note' }
