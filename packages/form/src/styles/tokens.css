@@ -40,11 +40,12 @@
  * the brand seed is step 9 of its scale, and it is spent by step. 9 fills the one control that
  * commits the gift — the action — and the boxes a donor does not choose a shape for: the fee switch
  * set on, the box a donor ticks, the mark on the step head saying where the donor is standing; 10 is
- * each of those under the pointer. 8 edges a chosen option — the chosen frequency's chip, the chosen
- * amount tile, the open payment rail — on a step-1 face, and 8 is the focus ring. 11 is the word on a
- * chosen option and on the quiet action, and 12 is that word under the pointer. one card holding
- * three solid brand blocks at once ranks them by area, and the largest of the three is not the one
- * that spends the money — so a choice is marked and the fill is reserved for the press.
+ * each of those under the pointer. 8 edges the open payment rail on a step-1 face, and 8 is the
+ * focus ring. 11 is the word on the quiet action, and 12 is that word under the pointer. a chosen
+ * cadence and a chosen amount tile spend no brand step: each is raised by `--_lift` below, its word
+ * in the neutral's 12. one card holding three solid brand blocks at once ranks them by area, and
+ * the largest of the three is not the one that spends the money — so a choice is marked and the
+ * fill is reserved for the press.
  *
  * a focus ring and a brand edge are one colour by that rule, so wherever the two would meet a band
  * of `--_n1` is laid between them — the construction the free entry, the checkbox and the switch
@@ -64,11 +65,15 @@
  * no shade is ever made with alpha. a translucent fill takes on whatever the host's page
  * put behind it, and this component is painted onto a page it cannot see. every shade the
  * UI needs is its own solid step below, which is why radix's solid scales are copied and its
- * alpha scales are not.
+ * alpha scales are not. the one translucent value is `--_lift`, a shadow rather than a fill, and it
+ * falls only on the amount tray's own step-2 fill, which this card paints — never on the host's page.
  *
- * flat: nothing on this card casts a shadow — not the card, not a chosen option, not the open list.
- * a raised box is said by its step-1 face and its edge. a `box-shadow` this card writes is a ring
- * with no offset and no blur, the way a focus ring and a refused control's second line are drawn.
+ * flat, with one named exception: nothing on this card casts a shadow but the chosen option on the
+ * protected amount tray — the chosen amount tile and the chip under the chosen cadence — which is
+ * raised by `--_lift` below. not the card, not the open list, not any other box. a `box-shadow`
+ * this card writes is otherwise a ring with no offset and no blur, the way a focus ring and a
+ * refused control's second line are drawn. "the one cast shadow" in ../element.dom.spec.ts holds
+ * both halves.
  *
  * light only. no dark ramp, no `prefers-color-scheme` branch, no mode detection. a
  * dark-themed host page gets a light card sitting in a dark page. the shade a host picks swaps the
@@ -928,6 +933,17 @@
 	 * from sits in one layer; the brand scale is inherited from `:host` unchanged by any preset.
 	 */
 	--_focus-ring: var(--_a8);
+
+	/*
+	 * the lift: the one cast shadow on the card, and the named exception to the flat rule at the head
+	 * of this file. it raises the chosen option off the protected amount tray — the chosen amount tile
+	 * (`[part~='amount-option'][part~='selected']` in ./parts.css) and the chip under the chosen
+	 * cadence (`.segment[data-thumb]::before` there) — and nothing else. it is the approved tray's
+	 * drawing: two layers in step 12's own channels, a soft one and a tighter one, so the face reads
+	 * a little deeper at its foot. the ink is the neutral's, so the `warm` shade lifts in sand.
+	 */
+	--_lift:
+		0 1px 2px oklch(from var(--_n12) l c h / 0.12), 0 1px 1px oklch(from var(--_n12) l c h / 0.06);
 
 	/*
 	 * two corners for the whole component: `--_r` is the card, which is a plane, and `--_r-in` is

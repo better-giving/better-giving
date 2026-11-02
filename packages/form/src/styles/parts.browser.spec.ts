@@ -258,6 +258,16 @@ function used(shadow: ShadowRoot, token: string): string {
 	return color;
 }
 
+/** the lift token as the `box-shadow` an engine reports it in, every layer resolved. */
+function lift(shadow: ShadowRoot): string {
+	const probe = document.createElement('div');
+	probe.style.cssText = 'box-shadow: var(--_lift)';
+	shadow.appendChild(probe);
+	const cast = getComputedStyle(probe).boxShadow;
+	probe.remove();
+	return cast;
+}
+
 /** one length token as the px an engine resolves it to inside the card. */
 function step(shadow: ShadowRoot, token: string): number {
 	const probe = document.createElement('div');
@@ -2947,7 +2957,7 @@ describe('the surfaces a donor operates', () => {
 	// the two trays are that same half and they draw a frame anyway, at step 7, radix's border for
 	// what holds controls a donor operates — the step a field's outline is drawn at — while the card
 	// itself, which holds nothing a donor operates, takes step 6. what identifies a chosen option is
-	// its face and its brand edge, and no tile on either tray draws a border.
+	// its face and its lift, and no tile on either tray draws a border.
 	it('frames both trays at step 7, the card at step 6, and no tile on them', async () => {
 		const { shadow, card } = await mount();
 		const tile = shadow.querySelector('[part~="amount-option"]') as HTMLElement;
@@ -3050,7 +3060,7 @@ describe('the chip the chosen cadence stands under', () => {
 		expect(chip(shadow).translate).toBe(`${first.offsetLeft}px ${first.offsetTop}px`);
 	});
 
-	it('stands over the chosen option, flat and edged in the brand', async () => {
+	it('stands over the chosen option, raised and with no edge', async () => {
 		const { shadow } = await mount();
 		const drawn = options(shadow);
 		const chosen = drawn[1] as HTMLElement;
@@ -3073,19 +3083,20 @@ describe('the chip the chosen cadence stands under', () => {
 		expect(Number.parseFloat(painted.width)).toBe(chosen.offsetWidth);
 		expect(Number.parseFloat(painted.height)).toBe(chosen.offsetHeight);
 		expect(painted.translate).toBe(`${chosen.offsetLeft}px ${chosen.offsetTop}px`);
-		expect(painted.boxShadow).toBe('none');
+		expect(lift(shadow)).not.toBe('none');
+		expect(painted.boxShadow).toBe(lift(shadow));
 		expect(painted.backgroundColor).toBe(used(shadow, '--_n1'));
-		expect(painted.outlineColor).toBe(used(shadow, '--_a8'));
+		expect(painted.outlineColor).toBe('rgba(0, 0, 0, 0)');
 		// and the options themselves carry none of it, so an option drawing its own would be a second
 		// chip under the first.
 		for (const option of drawn) expect(getComputedStyle(option).boxShadow).toBe('none');
 	});
 
 	// the trap this case exists for, in the shape it takes now: every ring in ../styles/parts.css is
-	// a `box-shadow`, so a rule ringing the option a donor tabbed onto must not be able to reach the
-	// chip — and the chip's face and edge have to survive a focus they are no longer on the same
-	// element as. a chip that lost its edge while its option stayed marked and ringed is something
-	// no computed colour, no snapshot and no other pool in this repo can see.
+	// a `box-shadow`, and so is the chip's lift, so a rule ringing the option a donor tabbed onto
+	// must not be able to reach the chip — and the chip's face and lift have to survive a focus they
+	// are no longer on the same element as. a chip that lost its lift while its option stayed marked
+	// and ringed is something no computed colour, no snapshot and no other pool in this repo can see.
 	it('keeps the chip whole while its option holds the caret', async () => {
 		const { shadow } = await mount();
 		const chosen = options(shadow)[0] as HTMLElement;
@@ -3096,9 +3107,10 @@ describe('the chip the chosen cadence stands under', () => {
 		radio.focus();
 
 		const painted = chip(shadow);
-		expect(painted.boxShadow).toBe('none');
-		// the edge is an outline laid inside the chip, and focus does not move it.
-		expect(painted.outlineColor).toBe(used(shadow, '--_a8'));
+		expect(painted.boxShadow).toBe(lift(shadow));
+		// the hairline forced-colors paints is laid inside the chip, transparent, and focus does not
+		// move it.
+		expect(painted.outlineColor).toBe('rgba(0, 0, 0, 0)');
 		expect(Number.parseFloat(painted.outlineOffset)).toBeLessThan(0);
 		expect(Number.parseFloat(painted.outlineWidth)).toBeGreaterThan(0);
 		// and the ring is on the option, which is the control that actually holds the caret.
@@ -3198,8 +3210,8 @@ describe('the option a donor chose', () => {
 
 	// the face is on the option in the amount grid and on the track's own chip in the frequency
 	// segment — one box that travels between the cadences rather than three that appear and
-	// disappear (`.segment[data-thumb]::before` in ../styles/parts.css). both draw the edge as an
-	// outline laid inside, so choosing reflows nothing. this reads the surface under the word,
+	// disappear (`.segment[data-thumb]::before` in ../styles/parts.css). both are raised by the lift
+	// and edged by nothing, so choosing reflows nothing. this reads the surface under the word,
 	// whichever element draws it.
 	it.each([
 		[
@@ -3212,7 +3224,7 @@ describe('the option a donor chose', () => {
 				)
 		],
 		['the amount grid', "[part~='amount-option']", null]
-	])('is marked rather than filled on %s', async (_name, selector, surfaceOf) => {
+	])('is raised rather than edged or filled on %s', async (_name, selector, surfaceOf) => {
 		// ../styles/motion.css fades the ground and the edge over `--_dur-fast`, so every colour below
 		// is read after the transitions land rather than at the tick the click returned on — which is
 		// mid-fade, and reads as whatever the option was before the donor chose it.
@@ -3235,15 +3247,17 @@ describe('the option a donor chose', () => {
 		// picks from a set.
 		expect(surface.backgroundColor).toBe(used(shadow, '--_n1'));
 		expect(surface.backgroundColor).not.toBe(used(shadow, '--_p'));
-		// the word is the option's on both, because the word is the thing that has to be read.
-		expect(getComputedStyle(chosen).color).toBe(used(shadow, '--_a11'));
-		// the brand's step-8 edge, one pixel, laid inside the box so picking one moves nothing beside
-		// it.
-		expect(surface.outlineColor).toBe(used(shadow, '--_a8'));
+		// the word is the option's on both, because the word is the thing that has to be read, and it
+		// is the neutral's step 12: the brand is in no chosen word.
+		expect(getComputedStyle(chosen).color).toBe(used(shadow, '--_n12'));
+		expect(getComputedStyle(chosen).color).not.toBe(used(shadow, '--_a11'));
+		// no brand edge: the one-pixel hairline laid inside the box is transparent, there for
+		// forced-colors to paint and for nothing else.
+		expect(surface.outlineColor).toBe('rgba(0, 0, 0, 0)');
 		expect(surface.outlineWidth).toBe('1px');
 		expect(Number.parseFloat(surface.outlineOffset)).toBeLessThan(0);
-		// and flat: no shadow under it.
-		expect(surface.boxShadow).toBe('none');
+		// and raised: the lift under it, the one cast shadow the card draws.
+		expect(surface.boxShadow).toBe(lift(shadow));
 		expect(chosen.getBoundingClientRect().height).toBe(neighbour.getBoundingClientRect().height);
 	});
 
@@ -3328,14 +3342,13 @@ describe('what a pointer is answered with', () => {
 		expect(used(shadow, '--_n8')).not.toBe(used(shadow, '--_n7'));
 	});
 
-	// the quiet action is the brand drawn as ink, step 11, so it steps to 12 the way the other two
-	// words the brand draws do. the card is seeded, so the two steps are the brand's rather than two
-	// slate greys.
+	// the quiet action is the brand drawn as ink, step 11, so it steps to the brand's 12. the card is
+	// seeded, so the two steps are the brand's rather than two slate greys.
 	//
 	// the notify press inside the tribute is the one of the two this control is drawn as that a
 	// donor can reach on a step: the other is the takeover's second button, which is hidden until
 	// a screen has a use for it. so the tribute is opened and the press it reveals is the target.
-	it('steps the quiet action to the ink a chosen word steps to', async () => {
+	it('steps the quiet action from the brand’s step 11 to its 12', async () => {
 		const { host, shadow } = await mount();
 		await reseed(host, '--donate-primary: oklch(0.45 0.18 25);');
 		const tribute = shadow.querySelectorAll(
@@ -3443,7 +3456,7 @@ describe('the ring and the brand never touch', () => {
 	// at its own edge, so the ring is laid outside a band of the ladder rather than taken back. that
 	// the band is listed first is what makes it the separator — a band drawn outside the ring
 	// separates nothing. the fee switch set on shows it here: its track is the primary from edge to
-	// edge. the chosen tile, edged rather than filled, is the case after this one.
+	// edge. the chosen tile, raised rather than filled, is the case after this one.
 	it('rings a control the primary marks with a band of the ladder between the two', async () => {
 		const { host, shadow } = await mount();
 		await reseed(host, SEEDS);
@@ -3463,9 +3476,10 @@ describe('the ring and the brand never touch', () => {
 		expect(drawn.boxShadow.indexOf(band)).toBeLessThan(drawn.boxShadow.indexOf(ring));
 	});
 
-	// the chosen tile is where a Tab into the amounts lands, and its brand edge is the mark: under the
-	// ring it reads edge, band, ring — the edge kept, the face's band outside it, the ring past that.
-	it('keeps the chosen tile’s brand edge under the ring, with the face’s band between', async () => {
+	// the chosen tile is where a Tab into the amounts lands, and its lift is the mark: under the caret
+	// it reads band, ring, lift — the face's band at its edge, the ring past that, and the tile still
+	// raised under both. no brand edge is drawn, focused or not.
+	it('rings the chosen tile past the face’s band and keeps it raised, with no edge', async () => {
 		const { host, shadow } = await mount();
 		await reseed(host, SEEDS);
 		const tile = shadow.querySelector(
@@ -3476,11 +3490,11 @@ describe('the ring and the brand never touch', () => {
 		const ring = used(shadow, '--_focus-ring');
 		const band = used(shadow, '--_n1');
 
-		expect(drawn.outlineColor).toBe(used(shadow, '--_a8'));
-		expect(drawn.outlineWidth).toBe('1px');
-		expect(Number.parseFloat(drawn.outlineOffset)).toBeLessThan(0);
+		expect(drawn.outlineColor).toBe('rgba(0, 0, 0, 0)');
 		expect(drawn.boxShadow).toContain(band);
+		expect(drawn.boxShadow).toContain(ring);
 		expect(drawn.boxShadow.indexOf(band)).toBeLessThan(drawn.boxShadow.indexOf(ring));
+		expect(drawn.boxShadow.endsWith(lift(shadow))).toBe(true);
 	});
 
 	it('rings a control the primary has filled inside itself, in neither of them', async () => {

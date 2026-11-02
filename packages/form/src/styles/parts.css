@@ -76,7 +76,7 @@
  * rung 7 around the group, the edge of a tray of controls (above), drawn by the tray and by no
  * control on it. the hairline bounds the set the way the card's edge bounds the card and is drawn
  * against no floor, because a container's edge identifies nothing; what a donor finds on a tray is the chosen one,
- * stepped up to the card's own face inside a brand edge. the free entry stands on the amount tray too, at that same
+ * stepped up to the card's own face and raised by the lift, with no edge. the free entry stands on the amount tray too, at that same
  * ground and with no edge either: it is shown only under the tile that chose it, and what says it
  * is a box to type in is the two currency marks in it and the caret.
  *
@@ -825,11 +825,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * reaches it. the hairline is around the group rather than around any one of them.
  *
  * the pad is what the chosen option stands inside — without it a chip would be flush to the track's
- * corner on three sides, and its brand edge would run into the track's own hairline. it is the smallest step on the scale, which is as much as can be given away: the
+ * corner on three sides, and its lift would run into the track's own hairline. it is the smallest step on the scale, which is as much as can be given away: the
  * options carry the interactive floor and the track is that floor plus this on both sides of it.
  *
  * nothing is clipped here, and the options do not reach the track's corner: the pad is what they
- * are inset by, so the chip's edge, laid inside the chip, never meets the track's own hairline.
+ * are inset by, so the chip and the lift under it never meet the track's own hairline.
  *
  * `position: relative` is what the chip below is placed against, and it is the track's own padding
  * box: `offsetLeft` on an option is measured from that same edge, so the two agree with no border
@@ -865,7 +865,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * stands clear of them on every side by that same inset: the gap is twice it, the line stands at
  * the gap's middle, and a chosen chip is a piece set on a square rather than a box drawn over a
  * rule. the lines run beside the chosen box as beside any other; a lattice broken either side of
- * one cell is a hole in the board, and the chip's own face and edge are what say chosen.
+ * one cell is a hole in the board, and the chip's own face and lift are what say chosen.
  *
  * the amount tray's verticals are its own background: one tile of gradient per column, the line
  * at the tile's trailing gap, repeated across the content box and clipped to it — so the column
@@ -959,12 +959,13 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * `content`, no box — which is a card where nothing has been chosen yet.
  *
  * the chip is drawn the way a chosen amount tile is (`[part~='amount-option'][part~='selected']`
- * below): step 1, the card's own face, inside a 1px edge of the brand's step 8, with the word on the
- * option stepped to the brand's 11. flat — the face and the edge are the whole of what says chosen.
+ * below): step 1, the card's own face, raised off the track by `--_lift` — the one cast shadow this
+ * card draws, and the protected tray's named exception to the flat rule (./tokens.css). no edge: the
+ * track is bounded already, and a box drawn around a box the track raised is the one mark drawn twice.
  *
- * the edge is an outline laid inside the box, so it reflows nothing and covers no track, and it is
- * the whole of the chip in forced-colors, which replaces every fill and paints an outline in the
- * user's own colour.
+ * the outline it keeps is a hairline and transparent: forced-colors paints no shadow and replaces
+ * every fill, and an outline is painted there in the user's own colour, so it is the whole of the
+ * chip in that mode. laid inside the box, so it reflows nothing and covers no track.
  */
 .segment[data-thumb]::before {
 	content: '';
@@ -983,8 +984,9 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	translate: var(--_thumb-x) var(--_thumb-y);
 	background: var(--_n1);
 	border-radius: var(--_r-in);
-	outline: var(--_border) solid var(--_a8);
+	outline: var(--_border) solid transparent;
 	outline-offset: calc(-1 * var(--_border));
+	box-shadow: var(--_lift);
 }
 
 /*
@@ -992,9 +994,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * the whole card answers, so the chip drawn on it is the card's shape rather than a shape of its
  * own — a form seeded square gets a square chip on a square track.
  *
- * the word rests in the card's own ink and steps to the brand when it is chosen, which is what
- * makes the brand on this track mean chosen and nothing else: a set drawn in the seed throughout
- * is a set where the colour says only that the card was seeded.
+ * the word is the card's own ink, resting and chosen alike: the chip under it is what says chosen,
+ * and the brand is spent on no word on this track.
  */
 [part~='frequency-option'] {
 	min-block-size: var(--_row-min);
@@ -1010,10 +1011,9 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * below them on the same tray, and they stand at the card's base size like every other figure a
  * donor reads — what separates the two is the ground and the edge rather than the type: a figure
  * standing on its step-3 ground against a box at the same height on the card's own face
- * with a hairline and a caret in it. at rest a figure is the card's own ink, the way a cadence on
- * the track is, and at the one weight both states are drawn at: the brand is what a donor chose,
- * and a tray of figures already in the brand is a tray where the chosen one is told apart by its
- * ground alone.
+ * with a hairline and a caret in it. a figure is the card's own ink, the way a cadence on the
+ * track is, chosen or not, and at the one weight both states are drawn at: what tells the chosen
+ * one apart is its face and its lift.
  *
  * the block pad is a step the figure stands inside and never a height the tile adds: a figure at
  * `--_t-md` in a `--_lh-body` line is 24px, so the floor is what the tile is drawn at and the pad
@@ -1060,47 +1060,29 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * chosen, and it is marked rather than filled. the brand fills the one control that spends the
- * gift (`[part~='action']` below) and nothing else on the card, so a chosen tile is said the way a
- * chosen cadence is: it steps from the tiles' step 3 up to step 1, the card's own face, inside a 1px
- * edge of the brand's step 8, and its figure steps from slate 12 to the brand's 11. the face is what
- * a donor who cannot separate the two hues is given — a figure on `--_n1` among figures on `--_n3`,
- * which is a shape and not a colour — and the edge is what a donor who cannot separate the two
- * greys is given. flat, like the rest of the card.
+ * chosen, and it is raised rather than filled or edged. the brand fills the one control that spends
+ * the gift (`[part~='action']` below) and nothing else on the card, so a chosen tile is said the way
+ * a chosen cadence is: it steps from the tiles' step 3 up to step 1, the card's own face, raised off
+ * the tray by `--_lift`, and its figure stays the card's own ink. this tray is protected, and the
+ * lift is the one cast shadow the card draws (./tokens.css names the exception). the face is a
+ * figure on `--_n1` among figures on `--_n3`, which is a shape and not a colour, and the lift is the
+ * same shape said again at the face's foot.
  *
- * the edge is an outline laid inside the box, so picking a tile reflows nothing beside it, and it is
- * what forced-colors — which replaces every fill — paints in the user's own colour.
+ * no edge: the tray is bounded already, and a box drawn around a box the tray raised is the one
+ * mark drawn twice. the outline kept is a hairline and transparent, so forced-colors — which paints
+ * no shadow and replaces every fill — still has something to paint in the user's own colour. laid
+ * inside the box, so picking a tile reflows nothing beside it.
+ *
+ * nothing answers a pointer on it: a face that stepped would step down onto 2, the tray's own
+ * ground, or 3, its neighbours', which reads as the choice coming undone rather than as a press,
+ * and the figure is already the ladder's darkest ink. this rule outranks the unchosen steps above
+ * by coming after them at their weight.
  */
 [part~='amount-option'][part~='selected'] {
 	background: var(--_n1);
-	color: var(--_a11);
-	outline: var(--_border) solid var(--_a8);
+	outline: var(--_border) solid transparent;
 	outline-offset: calc(-1 * var(--_border));
-}
-
-/*
- * and the state on the track, split across two elements: the chip above draws the face and the
- * edge, and the option keeps the word, stepped to the brand's 11 — and it is drawn this way so that
- * one box can travel between options rather than two of them appearing and disappearing.
- */
-[part~='frequency-option'][part~='selected'] {
-	color: var(--_a11);
-}
-
-/*
- * the word steps and the face holds, which is the reverse of what an unselected option two rules
- * above does. a face that answered the pointer would step down onto 2, the tray's own ground, or 3,
- * its neighbours', which reads as the choice coming undone rather than as a press. the word steps
- * from the brand's 11 to its 12, the other text step, and holds there under the press.
- */
-[part~='frequency-option'][part~='selected']:hover,
-[part~='amount-option'][part~='selected']:hover {
-	color: var(--_a12);
-}
-
-[part~='frequency-option'][part~='selected']:active,
-[part~='amount-option'][part~='selected']:active {
-	color: var(--_a12);
+	box-shadow: var(--_lift);
 }
 
 /*
@@ -1271,8 +1253,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  *
  * every tile carries the token rather than one of them (`updateOptions` in ../views.ts marks the
  * whole group from one missing amount), and a tile can be chosen and marked at once — the other
- * tile is what holds while the amount is missing. neither collides with anything now: the edge a
- * chosen tile draws (`[part~='amount-option'][part~='selected']` below) is on the tile and the mark
+ * tile is what holds while the amount is missing. neither collides with anything now: the lift a
+ * chosen tile draws (`[part~='amount-option'][part~='selected']` above) is on the tile and the mark
  * is on the tray, where one line on the tile would have had to carry both.
  *
  * the cadences are absent from every selector here, and that is the state and not an oversight: the
@@ -1678,9 +1660,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * the word steps and the underline follows it, because both are `currentColor`. this is the third
- * place the brand is spent as ink and it answers a pointer the way the other two do — a chosen
- * cadence and a chosen tile step their word from 11 to 12 as well.
+ * the word steps and the underline follows it, because both are `currentColor`: the brand's 11 at
+ * rest, its 12 under the pointer, the other text step.
  */
 [part~='action-quiet']:hover {
 	color: var(--_a12);
@@ -2334,11 +2315,12 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * `--_on-p`, the ink that fill takes, because a brand ring laid outside a brand fill reads as the
  * control growing rather than as a line, and inside the fill it never touches the card at all.
  *
- * a control the brand marks or fills along its edge — a chosen amount tile, a checked box, the fee
- * switch set on — has a brand step at its edge and a brand step in the ring, and answers it the other
- * way: a band of `--_n1` first and the ring outside that band, so the edge and the ring are a pixel
- * of near-white apart and the ring is still on the outside where every other ring on this card is. the blocks
- * below that draw that band are one decision.
+ * a control the brand marks or fills along its edge — a checked box, the fee switch set on — has a
+ * brand step at its edge and a brand step in the ring, and answers it the other way: a band of
+ * `--_n1` first and the ring outside that band, so the edge and the ring are a pixel of near-white
+ * apart and the ring is still on the outside where every other ring on this card is. a chosen
+ * amount tile and a chosen cadence have no edge, and take the same band so every chosen control on
+ * the card rings at one distance. the blocks below that draw that band are one decision.
  *
  * the transparent outline is not decoration. forced-colors mode replaces the box-shadow with
  * nothing and paints the outline in the user's own colour, so removing the outline outright is
@@ -2505,26 +2487,27 @@ button.step-dot:focus-visible .step-mark {
 }
 
 /*
- * a chosen tile, which is the band construction above: the tile's brand edge, then a band of `--_n1`
- * outside it, then the ring — edge, gap, ring. the first rule in this block clears the outline to
- * transparent, so the edge is restated here, and it is still the outline forced-colors paints.
+ * a chosen tile, which is the band construction above on a control whose `box-shadow` is already
+ * spent on its lift: a band of `--_n1` at the tile's edge, the ring outside it, and the lift last so
+ * the tile stays raised under both — the ring and the band are painted over the lift, not instead of
+ * it. there is no edge to restate: the first rule in this block sets the transparent outline, and
+ * that is what forced-colors paints.
  */
 [part~='amount-option'][part~='selected']:has(:focus-visible) {
-	outline: var(--_border) solid var(--_a8);
-	outline-offset: calc(-1 * var(--_border));
 	box-shadow:
 		0 0 0 var(--_border) var(--_n1),
-		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
+		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring),
+		var(--_lift);
 }
 
 /*
  * the same band and ring on a chosen cadence, and it has nothing to restate: the face and the
- * edge are the track's chip (`.segment[data-thumb]::before` above), which this rule cannot reach
+ * lift are the track's chip (`.segment[data-thumb]::before` above), which this rule cannot reach
  * and therefore cannot erase. what it has to beat is the segment's own inset ring two blocks up,
  * which is drawn for an option with no chip under it — this one is standing on one.
  *
  * the band lands a pixel outside the option's box, which is the chip's box exactly, so the chip
- * reads as a chosen tile does under the caret: its brand edge, the band, then the ring.
+ * reads as a chosen tile does under the caret: raised, the band, then the ring.
  */
 [part~='frequency-option'][part~='selected']:has(:focus-visible) {
 	box-shadow:

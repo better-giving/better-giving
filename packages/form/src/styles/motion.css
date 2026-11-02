@@ -99,10 +99,10 @@
  * painted in settles on another.
  *
  * the edge is `border-color` and it is the action's. the mark a chosen frequency or amount tile
- * takes is an `outline` (`[part~='selected']` in ./parts.css), and `outline-color` may not join this
- * list: every focus ring on this card is an outline too, so putting it here fades a focus indicator
- * in over `--_dur-fast` instead of drawing it on the key press. the mark snaps, which is what a
- * radio answering a press should do anyway.
+ * takes is the lift, a `box-shadow` (`[part~='amount-option'][part~='selected']` in ./parts.css),
+ * and `box-shadow` may not join this list: nearly every focus ring on this card is one too, so
+ * putting it here fades a focus indicator in over `--_dur-fast` instead of drawing it on the key
+ * press. the mark snaps, which is what a radio answering a press should do anyway.
  */
 :where(
 	[part~='action'],

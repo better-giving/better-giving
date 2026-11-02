@@ -5528,17 +5528,66 @@ describe('the stylesheets', () => {
 		expect(unspent).toEqual([]);
 	});
 
-	// flat (the head of ./styles/tokens.css): a `box-shadow` this card writes is a ring, no offset and
-	// no blur, never a shadow cast under something. swept over every sheet the card and its two inner
-	// roots adopt, so a raised chip coming back on any of them fails here.
-	it('casts no shadow anywhere, and draws every box-shadow as a ring', async () => {
-		const layers = [...adopted.matchAll(/box-shadow:\s*([^;]+);/g)].flatMap(([, value]) =>
-			(value ?? '').split(/,(?![^(]*\))/).map((layer) => layer.trim().replace(/\s+/g, ' '))
+	// flat (the head of ./styles/tokens.css), with one named exception: a `box-shadow` this card
+	// writes is a ring, no offset and no blur, but for `--_lift`, which raises the chosen option off
+	// the protected amount tray — the chosen tile, at rest and under the caret, and the chip the
+	// chosen cadence stands on — and nothing else. swept over every sheet the card and its two inner
+	// roots adopt, so a cast shadow anywhere else, or the lift on any other box, fails here.
+	describe('the one cast shadow', () => {
+		const RING = /^(inset )?0 0 0 \S/;
+		const LIFT = 'var(--_lift)';
+		const LIFTED = [
+			"[part~='amount-option'][part~='selected']",
+			"[part~='amount-option'][part~='selected']:has(:focus-visible)",
+			'.segment[data-thumb]::before'
+		];
+		const squash = (value: string) => value.trim().replace(/\s+/g, ' ');
+		/** a shadow's layers, split on the commas no parenthesis holds: a ring outside a band is two. */
+		const layersOf = (value: string) => value.split(/,(?![^(]*\))/).map(squash);
+		/** every innermost block stating a `box-shadow`, one entry per selector in its list. */
+		const shadows = [...adopted.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap(
+			([, selectors = '', body = '']) => {
+				const value = /(?:^|;)\s*box-shadow:\s*([^;]+)/.exec(body)?.[1];
+				return value === undefined
+					? []
+					: selectors
+							.split(',')
+							.map((selector) => ({ selector: squash(selector), layers: layersOf(value) }));
+			}
 		);
-		const cast = layers.filter((layer) => layer !== 'none' && !/^(inset )?0 0 0 /.test(layer));
 
-		expect(layers.length).toBeGreaterThan(10);
-		expect(cast).toEqual([]);
+		it('casts the lift on the chosen amount tile and the chosen cadence’s chip, and nothing else', () => {
+			expect(
+				shadows
+					.filter(({ layers }) => layers.includes(LIFT))
+					.map(({ selector }) => selector)
+					.sort()
+			).toEqual([...LIFTED].sort());
+		});
+
+		it('draws every other box-shadow as a ring', () => {
+			const cast = shadows.flatMap(({ selector, layers }) =>
+				layers
+					.filter((layer) => layer !== 'none' && layer !== LIFT && !RING.test(layer))
+					.map((layer) => `${selector}: ${layer}`)
+			);
+
+			// the focus rings alone are more than this; a floor rather than the count today.
+			expect(shadows.length).toBeGreaterThan(10);
+			expect(cast).toEqual([]);
+		});
+
+		it('declares one cast shadow among the tokens, the lift', () => {
+			// two or three lengths and then a colour is a shadow layer; one with no offset is a ring.
+			const CAST = /^(inset )?(-?[\d.]+(px|em)? ){2,3}(oklch|rgb|hsl|color|var|#)/;
+			const cast = [...tokenSheet.matchAll(/(--_[\w-]+)\s*:\s*([^;]+);/g)]
+				.filter(([, , value = '']) =>
+					layersOf(value).some((layer) => CAST.test(layer) && !RING.test(layer))
+				)
+				.map(([, name]) => name);
+
+			expect(cast).toEqual(['--_lift']);
+		});
 	});
 });
 
