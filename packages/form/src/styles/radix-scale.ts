@@ -5,14 +5,15 @@
 // the source is components/generate-radix-colors.tsx in https://github.com/radix-ui/website, the
 // code behind https://www.radix-ui.com/colors/custom. its light path — `generateRadixColors`,
 // `getScaleFromColor`, `getStep9Colors`, `getButtonHoverColor`, `getTextColor` and the easing
-// transposition — is here with its inputs fixed: the seed as the accent, radix slate's step 9
-// (`#8b8d98`) as the grey and white as the background, the generator's light default. the
+// transposition — is here with its inputs fixed but the grey: the seed as the accent, radix slate's
+// or sand's step 9 as the grey and white as the background, the generator's light default. the
 // colour arithmetic it borrows from colorjs.io 0.5.2 (oklab, oklch, deltaEOK, the css gamut
 // mapping, APCA) and the curve it borrows from bezier-easing 2.1.0 are ported beside it, operation
 // for operation, so a step comes out bit for bit what the generator writes —
 // ./radix-scale.spec.ts runs the original on its own dependencies against this and holds every
-// output identical. the radix light scales the generator searches are @radix-ui/colors 3.0.0's
-// display-p3 values, copied below.
+// output identical. it departs in three places, each held by a spec of its own: a seed's alpha and
+// a `none` channel (`parseSeed`), and a seed with no triangle to mix by (`mixRatio`). the radix
+// light scales the generator searches are @radix-ui/colors 3.0.0's display-p3 values, copied below.
 //
 // nothing here touches a document. the element runs it in the browser (./brand.ts) and the
 // deployment's own donor pages run it on the server, so the two draw one scale from one seed.
@@ -458,6 +459,22 @@ function mix(c1: Coords, c2: Coords, p: number): Coords {
 	);
 }
 
+/**
+ * how much of B the triangle above mixes into A. a seed on a step (`b` zero) or a B on A's own step
+ * (`c` zero) has no triangle: the cosines are 0/0, and the generator, which divides anyway, draws a
+ * grey ramp from white to black. zero is the limit the ratio takes as the seed nears A, and with B
+ * on A, B adds nothing at any ratio — so both take A alone, as `getScaleFromColor` below does.
+ */
+function mixRatio(a: number, b: number, c: number): number {
+	const cosA = (b ** 2 + c ** 2 - a ** 2) / (2 * b * c);
+	const sinA = Math.sin(Math.acos(cosA));
+	const cosB = (a ** 2 + c ** 2 - b ** 2) / (2 * a * c);
+	const sinB = Math.sin(Math.acos(cosB));
+	const tanC1 = cosA / sinA;
+	const tanC2 = cosB / sinB;
+	return Math.max(0, tanC1 / tanC2) * 0.5;
+}
+
 /** the generator's `getScaleFromColor`, light path. */
 function getScaleFromColor(
 	source: Coords,
@@ -495,13 +512,7 @@ function getScaleFromColor(
 	const b = colorA.distance;
 	const c = distanceOklch(colorA.color, colorB.color);
 
-	const cosA = (b ** 2 + c ** 2 - a ** 2) / (2 * b * c);
-	const sinA = Math.sin(Math.acos(cosA));
-	const cosB = (a ** 2 + c ** 2 - b ** 2) / (2 * a * c);
-	const sinB = Math.sin(Math.acos(cosB));
-	const tanC1 = cosA / sinA;
-	const tanC2 = cosB / sinB;
-	const ratio = Math.max(0, tanC1 / tanC2) * 0.5;
+	const ratio = b === 0 || c === 0 ? 0 : mixRatio(a, b, c);
 
 	const scaleA = scales[colorA.scale] ?? [];
 	const scaleB = scales[colorB.scale] ?? [];
@@ -576,9 +587,9 @@ function getButtonHoverColor(source: Coords, scales: readonly Scale[]): Coords {
 /** a number, a percentage, an angle in degrees, or `none`: one channel of a css colour function. */
 const CHANNEL = /^(none|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?(%|deg)?)$/;
 
-/** a channel's value, a percentage taken as a share of `full`, `none` as colorjs.io's `NaN`. */
+/** a channel's value, a percentage taken as a share of `full`, and `none` as zero, as css paints it. */
 function channel(raw: string, full: number): number {
-	if (raw === 'none') return Number.NaN;
+	if (raw === 'none') return 0;
 	if (raw.endsWith('%')) return (Number(raw.slice(0, -1)) / 100) * full;
 	return Number(raw.replace(/deg$/, ''));
 }
@@ -600,8 +611,13 @@ const FUNCTIONS: Readonly<Record<string, { readonly space: Space; readonly full:
  * it reads what reaches it: the hex the deployment stores, and what an engine serializes a
  * registered `<color>` to — `rgb()` or `rgba()` for every legacy sRGB form and keyword, and the
  * function as written for `oklch()`, `oklab()` and `color(srgb | srgb-linear | display-p3 …)`.
- * alpha is dropped, as the generator drops it. any other notation — `lab()`, `lch()`,
- * `color(rec2020 …)` and the rest — is `null`, and the card keeps ./tokens.css's fallback scale.
+ * any other notation — `lab()`, `lch()`, `color(rec2020 …)` and the rest — is `null`, and the card
+ * keeps ./tokens.css's fallback scale.
+ *
+ * two readings depart from the generator, which keeps a seed's alpha in step 9 and reads colorjs.io's
+ * `none` as a grey: alpha is dropped, because the card paints step 9 opaque, and `none` is zero, as
+ * css paints it. "where the port departs from radix’s generator on purpose" in
+ * ./radix-scale.spec.ts holds both.
  */
 function parseSeed(value: string): { space: Space; coords: Coords } | null {
 	const text = value.trim().toLowerCase();
@@ -660,24 +676,37 @@ function radixLightScales(): RadixLight {
 /** the generator's light default page: white. */
 const BACKGROUND: Coords = toOklch('srgb', [1, 1, 1]);
 
-let grayScale: Scale | null = null;
+/** the radix grey the card's neutrals are drawn in: slate, or sand under the `warm` shade. */
+export type BrandGray = 'slate' | 'sand';
 
-/** the grey scale the generator builds from slate's step 9, which stands in for a white or black seed. */
-function grayScaleColors(): Scale {
-	grayScale ??= getScaleFromColor(
-		toOklch('srgb', [0x8b / 255, 0x8d / 255, 0x98 / 255]),
-		radixLightScales().grays,
-		BACKGROUND
-	);
-	return grayScale;
+/** each grey's step 9 (@radix-ui/colors 3.0.0, light), the generator's `gray` input. */
+const GRAY_NINES: Readonly<Record<BrandGray, Coords>> = {
+	slate: [0x8b / 255, 0x8d / 255, 0x98 / 255],
+	sand: [0x8d / 255, 0x8d / 255, 0x86 / 255]
+};
+
+const grayScales = new Map<BrandGray, Scale>();
+
+/** the grey scale the generator builds from a grey's step 9, which stands in for a white or black seed. */
+function grayScaleColors(gray: BrandGray): Scale {
+	let scale = grayScales.get(gray);
+	if (scale === undefined) {
+		scale = getScaleFromColor(
+			toOklch('srgb', GRAY_NINES[gray]),
+			radixLightScales().grays,
+			BACKGROUND
+		);
+		grayScales.set(gray, scale);
+	}
+	return scale;
 }
 
 /**
  * the brand scale for one seed, the generator's `generateRadixColors` with `appearance: 'light'`,
- * the seed as `accent`, `#8b8d98` as `gray` and `#ffffff` as `background`. `null` for a seed
- * `parseSeed` above does not read.
+ * the seed as `accent`, `gray`'s step 9 as `gray` — `#8b8d98` for slate, `#8d8d86` for sand — and
+ * `#ffffff` as `background`. `null` for a seed `parseSeed` above does not read.
  */
-export function generateBrandScale(seed: string): BrandScale | null {
+export function generateBrandScale(seed: string, gray: BrandGray = 'slate'): BrandScale | null {
 	const parsed = parseSeed(seed);
 	if (parsed === null) return null;
 
@@ -687,7 +716,7 @@ export function generateBrandScale(seed: string): BrandScale | null {
 	// a pure white or black seed takes the grey scale's tint
 	const bytes = srgbBytes(accentBaseColor);
 	if (bytes.every((byte) => byte === 0) || bytes.every((byte) => byte === 255)) {
-		accentScaleColors = grayScaleColors().map((color): Coords => [...color]);
+		accentScaleColors = grayScaleColors(gray).map((color): Coords => [...color]);
 	}
 
 	const [accent9Color, accentContrastColor] = getStep9Colors(accentScaleColors, accentBaseColor);
@@ -706,25 +735,37 @@ export function generateBrandScale(seed: string): BrandScale | null {
 	};
 }
 
-/** the private tokens one scale sets: every step, the solid pair, and the ink on the solid. */
-function declarations(steps: readonly string[], contrast: string): string {
-	return [
-		...steps.map((value, i) => `--_a${i + 1}: ${value};`),
-		`--_p: ${nth(steps, 8)};`,
-		`--_p-hover: ${nth(steps, 9)};`,
-		`--_on-p: ${contrast};`
-	].join(' ');
+/** the private tokens one scale sets, of `names`: every step, the solid pair, and the ink on the solid. */
+function declarations(
+	steps: readonly string[],
+	contrast: string,
+	names: readonly string[] | undefined
+): string {
+	const all: [string, string][] = [
+		...steps.map((value, i): [string, string] => [`--_a${i + 1}`, value]),
+		['--_p', nth(steps, 8)],
+		['--_p-hover', nth(steps, 9)],
+		['--_on-p', contrast]
+	];
+	return all
+		.filter(([name]) => names === undefined || names.includes(name))
+		.map(([name, value]) => `${name}: ${value};`)
+		.join(' ');
 }
 
 /**
  * the scale as css for `selector`, the way radix's custom page writes one: sRGB hex for every
  * display, and the wide-gamut steps for a display that shows display-p3. the ink is hex in both,
- * as the generator gives it.
+ * as the generator gives it. `names` narrows it to those tokens; every one is set without it.
  */
-export function brandScaleCss(selector: string, scale: BrandScale): string {
+export function brandScaleCss(
+	selector: string,
+	scale: BrandScale,
+	names?: readonly string[]
+): string {
 	return (
-		`${selector} { ${declarations(scale.steps, scale.contrast)} }\n` +
+		`${selector} { ${declarations(scale.steps, scale.contrast, names)} }\n` +
 		'@supports (color: color(display-p3 1 1 1)) { @media (color-gamut: p3) { ' +
-		`${selector} { ${declarations(scale.stepsWideGamut, scale.contrast)} } } }`
+		`${selector} { ${declarations(scale.stepsWideGamut, scale.contrast, names)} } } }`
 	);
 }
