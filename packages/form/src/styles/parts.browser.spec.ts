@@ -4037,14 +4037,12 @@ describe('the presets a host page picks', () => {
 	}
 
 	// the two seeds set where a host page sets anything, above the element rather than on it: every
-	// grey on the card leans warm and every corner rounds, and the tick box stays a box.
+	// grey on the card is radix sand and every corner rounds, and the tick box stays a box.
 	it('draws the card warm and round when the page sets the two seeds', async () => {
 		page('body { --donate-shade: warm; --donate-corner: round; }');
 		const { card } = await mount();
 
-		expect(getComputedStyle(card).backgroundColor).toBe(
-			computedColour('oklch(from #fcfcfd l c 70)')
-		);
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('#fdfdfc'));
 		expect(corner(card)).toBe('16px');
 		expect(corner(card.querySelector("[part~='amount-option']"))).toBe('8px');
 		expect(corner(card.querySelector("[part~='checkbox']"))).toBe('4px');
@@ -4065,13 +4063,12 @@ describe('the presets a host page picks', () => {
 		expect(red).toBeGreaterThan(blue);
 	});
 
-	it('draws the card cool when the page asks for it', async () => {
+	// `cool` draws radix slate, the same greys as `light`.
+	it('draws the card in slate when the page asks for cool', async () => {
 		page('body { --donate-shade: cool; }');
 		const { card } = await mount();
 
-		expect(getComputedStyle(card).backgroundColor).toBe(
-			computedColour('oklch(from #fcfcfd l c 220)')
-		);
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('#fcfcfd'));
 	});
 
 	// square squares the boxes and nothing drawn as a shape of its own: the marks on the step head
@@ -4103,9 +4100,7 @@ describe('the presets a host page picks', () => {
 		page('body { --donate-shade: dark; --donate-corner: pill; }');
 		const { card } = await mount();
 
-		expect(getComputedStyle(card).backgroundColor).toBe(
-			computedColour('oklch(from #fcfcfd l c h)')
-		);
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('#fcfcfd'));
 		expect(corner(card)).toBe('8px');
 	});
 
@@ -4117,9 +4112,7 @@ describe('the presets a host page picks', () => {
 		host.style.setProperty('--donate-shade', 'dark');
 		host.style.setProperty('--donate-corner', 'rounded');
 
-		expect(getComputedStyle(card).backgroundColor).toBe(
-			computedColour('oklch(from #fcfcfd l c 70)')
-		);
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('#fdfdfc'));
 		expect(corner(card)).toBe('16px');
 	});
 });

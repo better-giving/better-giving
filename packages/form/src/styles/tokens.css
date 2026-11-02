@@ -23,11 +23,11 @@
  * a control whose ground is transparent at rest takes 3 under the pointer and 4 under the press,
  * which is the one variation the radix page itself states.
  *
- * the scales are slate for every grey, red for a refusal, amber for attention, and a brand scale
- * derived from the one seed below — `--_n*`, `--_bad*`, `--_warn*`, and `--_a*` with `--_p`,
- * `--_p-hover` and `--_on-p` as its solid pair and the ink on it. a step this card spends is
- * declared; a step it does not spend is not, and each scale's entry says how its missing steps are
- * written when a rule comes to need one.
+ * the scales are slate for every grey (sand under the `warm` shade), red for a refusal, amber for
+ * attention, and a brand scale derived from the one seed below — `--_n*`, `--_bad*`, `--_warn*`,
+ * and `--_a*` with `--_p`, `--_p-hover` and `--_on-p` as its solid pair and the ink on it. a step
+ * this card spends is declared; a step it does not spend is not, and each scale's entry says how its
+ * missing steps are written when a rule comes to need one.
  *
  * three public seeds are what a host page sets, and there is no fourth. `--donate-primary` takes a
  * value — the brand colour — and `--donate-shade` and `--donate-corner` take a preset: each picks one
@@ -71,10 +71,11 @@
  * with no offset and no blur, the way a focus ring and a refused control's second line are drawn.
  *
  * light only. no dark ramp, no `prefers-color-scheme` branch, no mode detection. a
- * dark-themed host page gets a light card sitting in a dark page. the shade a host picks re-hues
- * slate's steps and keeps their lightness and chroma, so it tints the card by a trace and cannot
- * darken it — none of the three is dark, a keyword off the list takes what the element inherits
- * instead, and the failure is a rule an integrator reads rather than a value quietly clamped back.
+ * dark-themed host page gets a light card sitting in a dark page. the shade a host picks swaps the
+ * grey ladder for another of radix's published light greys, so it tints the card by a trace and
+ * cannot darken it — none of the three is dark, a keyword off the list takes what the element
+ * inherits instead, and the failure is a rule an integrator reads rather than a value quietly
+ * clamped back.
  *
  * a dark-themed host getting a light card is the accepted cost rather than a gap, and
  * retrofitting dark is authoring a second system rather than adding an attribute: radix's dark
@@ -851,11 +852,10 @@
  * the node below it is the first node in its shadow root, where the query reads the host.
  *
  * and the whole layer moves with its roots, not the roots alone. these are unregistered custom
- * properties, so each one is substituted where it is declared: a ladder declared on `:host` off a
- * `--_shade-h` re-declared a node further in would stay the ladder of the `--_shade-h` above it. so
- * the steps and the three edges read off them are declared here beside the hue they derive from,
- * and a new token reading one of them belongs here too — declared on `:host`, it would read the
- * ladder of an element with no shade.
+ * properties, so each one is substituted where it is declared: an edge declared on `:host` off
+ * `--_n7` would read the ladder of the node above the one a preset re-declares. so the three edges
+ * read off the steps are declared here beside them, and a new token reading one of them belongs
+ * here too — declared on `:host`, it would read the ladder of an element with no shade.
  *
  * every node the card draws stands under one of those: the card and the live region beside it are
  * the shadow root's first nodes, and the light-DOM nodes a payment provider and the payment rows
@@ -873,35 +873,31 @@
 :host > *,
 [data-donate-root] > * {
 	/*
-	 * the neutral ladder is radix's slate (@radix-ui/colors 3.0.0, light), copied as literals:
+	 * the neutral ladder is radix's slate (@radix-ui/colors 3.0.0, `slate.css`, light), copied as
+	 * literals: `light` and `cool` both draw it, so the two presets paint the same greys. `warm`
+	 * re-declares every step as radix's sand from the same release, in the `--donate-shade: warm`
+	 * query at the end of this layer. "the neutral ladder" in ./tokens.browser.spec.ts holds each
+	 * shade to its scale's literals.
 	 *
-	 *   #fcfcfd #f9f9fb #f0f0f3 #e8e8ec #e0e1e6 #d9d9e0 #cdced6 #b9bbc6 #8b8d98 #80838d #60646c #1c2024
+	 *   slate  #fcfcfd #f9f9fb #f0f0f3 #e8e8ec #e0e1e6 #d9d9e0 #cdced6 #b9bbc6 #8b8d98 #80838d #60646c #1c2024
+	 *   sand   #fdfdfc #f9f9f8 #f1f0ef #e9e8e6 #e2e1de #dad9d6 #cfceca #bcbbb5 #8d8d86 #82827c #63635e #21201c
 	 *
-	 * every step is written as that literal with its hue handed to `--_shade-h`, which only `warm` and
-	 * `cool` set: under `light` the fallback is the literal's own hue and the step is slate exactly,
-	 * and under the other two the step keeps slate's lightness and chroma and turns to amber at 70 or
-	 * to cyan-blue at 220. so every step stands at the same lightness and the same chroma under all
-	 * three — "the neutral ladder" in ./tokens.browser.spec.ts holds both. slate's chroma tops out
-	 * at 0.019, which is a trace a donor reads as the tone of the card rather than as a colour, under
-	 * any of the three hues.
-	 *
-	 * the step number is the job, and the jobs are the head of this file's. step 10 is slate's solid
+	 * the step number is the job, and the jobs are the head of this file's. step 10 is the solid
 	 * hover, and nothing on this card is a grey solid a pointer moves, so it is listed above and not
-	 * declared.
+	 * declared. the brand scale is generated against slate's step 9 under every shade
+	 * (`generateBrandScale` in ./radix-scale.ts).
 	 */
-	/* unset here, so a value inherited from the page cannot re-hue `light`; the fallback is what draws it. */
-	--_shade-h: initial;
-	--_n1: oklch(from #fcfcfd l c var(--_shade-h, h));
-	--_n2: oklch(from #f9f9fb l c var(--_shade-h, h));
-	--_n3: oklch(from #f0f0f3 l c var(--_shade-h, h));
-	--_n4: oklch(from #e8e8ec l c var(--_shade-h, h));
-	--_n5: oklch(from #e0e1e6 l c var(--_shade-h, h));
-	--_n6: oklch(from #d9d9e0 l c var(--_shade-h, h));
-	--_n7: oklch(from #cdced6 l c var(--_shade-h, h));
-	--_n8: oklch(from #b9bbc6 l c var(--_shade-h, h));
-	--_n9: oklch(from #8b8d98 l c var(--_shade-h, h));
-	--_n11: oklch(from #60646c l c var(--_shade-h, h));
-	--_n12: oklch(from #1c2024 l c var(--_shade-h, h));
+	--_n1: #fcfcfd;
+	--_n2: #f9f9fb;
+	--_n3: #f0f0f3;
+	--_n4: #e8e8ec;
+	--_n5: #e0e1e6;
+	--_n6: #d9d9e0;
+	--_n7: #cdced6;
+	--_n8: #b9bbc6;
+	--_n9: #8b8d98;
+	--_n11: #60646c;
+	--_n12: #1c2024;
 
 	/*
 	 * the edge every box a donor operates carries at rest — a text box, the free entry standing on its
@@ -970,17 +966,21 @@
 	--_label-inset: var(--_r-in);
 }
 
+/* radix sand, @radix-ui/colors 3.0.0 `sand.css`, light. `cool` has no query: it draws slate. */
 @container style(--donate-shade: warm) {
 	:host > *,
 	[data-donate-root] > * {
-		--_shade-h: 70;
-	}
-}
-
-@container style(--donate-shade: cool) {
-	:host > *,
-	[data-donate-root] > * {
-		--_shade-h: 220;
+		--_n1: #fdfdfc;
+		--_n2: #f9f9f8;
+		--_n3: #f1f0ef;
+		--_n4: #e9e8e6;
+		--_n5: #e2e1de;
+		--_n6: #dad9d6;
+		--_n7: #cfceca;
+		--_n8: #bcbbb5;
+		--_n9: #8d8d86;
+		--_n11: #63635e;
+		--_n12: #21201c;
 	}
 }
 

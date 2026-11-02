@@ -21,7 +21,7 @@ import tokens from './tokens.css?inline';
 const sheet = new CSSStyleSheet();
 sheet.replaceSync(tokens);
 
-/** radix slate, light, from @radix-ui/colors 3.0.0 — the literal each declared step must be. */
+/** radix slate, light, from @radix-ui/colors 3.0.0 — the ladder `light` and `cool` draw. */
 const SLATE: Record<string, string> = {
 	'--_n1': '#fcfcfd',
 	'--_n2': '#f9f9fb',
@@ -86,6 +86,28 @@ const SEEDS: readonly (readonly [string, string])[] = [
 
 /** the three shade presets: a preset moves every grey on the card at once. */
 const SHADES = ['light', 'warm', 'cool'] as const;
+
+/** radix sand, light, from @radix-ui/colors 3.0.0 — the ladder `warm` draws. */
+const SAND: Record<string, string> = {
+	'--_n1': '#fdfdfc',
+	'--_n2': '#f9f9f8',
+	'--_n3': '#f1f0ef',
+	'--_n4': '#e9e8e6',
+	'--_n5': '#e2e1de',
+	'--_n6': '#dad9d6',
+	'--_n7': '#cfceca',
+	'--_n8': '#bcbbb5',
+	'--_n9': '#8d8d86',
+	'--_n11': '#63635e',
+	'--_n12': '#21201c'
+};
+
+/** the radix scale each shade preset draws its greys from. */
+const LADDER_OF: Record<(typeof SHADES)[number], Record<string, string>> = {
+	light: SLATE,
+	warm: SAND,
+	cool: SLATE
+};
 
 let host: HTMLElement;
 let probe: HTMLElement;
@@ -259,10 +281,8 @@ describe('the light-DOM card root', () => {
 	// card follows — the same reading an embedding page gets by setting them above the element.
 	it('switches the presets a page sets above the root', () => {
 		hostStyle.textContent = 'body { --donate-shade: warm; --donate-corner: round; }';
-		card.style.cssText = 'color: oklch(from var(--_n1) l c h); padding-left: var(--_r)';
-		const face = parseOklch(getComputedStyle(card).color);
-
-		expect(face?.h).toBeCloseTo(70, 0);
+		card.style.cssText = 'color: var(--_n1); padding-left: var(--_r)';
+		expect(bytes(getComputedStyle(card).color)).toEqual(bytes(SAND['--_n1'] as string));
 		expect(getComputedStyle(card).paddingLeft).toBe('16px');
 	});
 
@@ -304,41 +324,16 @@ describe('the derived ramp', () => {
 });
 
 describe('the neutral ladder', () => {
-	// slate exactly, step for step, at the screen's own resolution.
-	it('is radix slate under light', () => {
-		seed('');
-
-		expect(RUNGS.map(bytes)).toEqual(RUNGS.map((token) => bytes(SLATE[token] as string)));
-	});
-
-	// the hue `warm` and `cool` hand the ladder is private and declared unset under `light`, so a
-	// page that happens to set the same name cannot re-hue a card it never chose a shade for.
-	it('keeps slate under light whatever the page above set', () => {
-		seed('--_shade-h: 140;');
-
-		expect(RUNGS.map(bytes)).toEqual(RUNGS.map((token) => bytes(SLATE[token] as string)));
-	});
-
-	// warm and cool turn slate's hue and keep its lightness and chroma, so every reading made on
-	// slate holds under them.
-	it.each([
-		['warm', 70],
-		['cool', 220]
-	])('keeps slate’s lightness and chroma under %s, at its own hue', (shade, hue) => {
-		seed('');
-		const light = RUNGS.map((token) => oklchOf(token));
+	// each shade is a published radix grey copied step for step, at the screen's own resolution.
+	it.each(SHADES)('is the radix scale %s names', (shade) => {
 		seed(`--donate-shade: ${shade};`);
+		const ladder = LADDER_OF[shade];
 
-		RUNGS.forEach((token, index) => {
-			const step = oklchOf(token);
-			expect(step.l, token).toBeCloseTo(light[index]?.l ?? Number.NaN, 4);
-			expect(step.c, token).toBeCloseTo(light[index]?.c ?? Number.NaN, 4);
-			expect(step.h, token).toBeCloseTo(hue, 0);
-		});
+		expect(RUNGS.map(bytes)).toEqual(RUNGS.map((token) => bytes(ladder[token] as string)));
 	});
 
-	// slate's chroma tops out at 0.019, a trace a donor reads as the card's tone rather than a
-	// colour, and the three shades share it.
+	// slate's and sand's chroma both stay under 0.0195, a trace a donor reads as the card's tone
+	// rather than a colour.
 	it.each(SHADES)('gives every step a trace of chroma, never a colour, under %s', (shade) => {
 		seed(`--donate-shade: ${shade};`);
 
@@ -502,21 +497,6 @@ describe('the card the form draws for itself', () => {
 });
 
 describe('the shade seed', () => {
-	// a preset a host picks has to be a look they can see: the three hues are far enough apart
-	// around the wheel that the steps carrying the most trace land on three different 8-bit
-	// colours, which is the screen's own resolution rather than a difference only arithmetic finds.
-	it('draws a ladder of its own under each shade', () => {
-		const steps = (shade: string) => {
-			seed(`--donate-shade: ${shade};`);
-			return ['--_n6', '--_n9', '--_n12'].map((step) => bytes(step).join());
-		};
-		const [light, warm, cool] = SHADES.map(steps) as [string[], string[], string[]];
-
-		for (const at of [0, 1, 2]) {
-			expect(new Set([light[at], warm[at], cool[at]]).size).toBe(3);
-		}
-	});
-
 	// the registration makes a keyword off the list invalid at computed-value time, so with nothing
 	// above setting one what computes is the initial value, the card a host who set nothing gets.
 	it('draws today’s ladder for a shade off the list', () => {
