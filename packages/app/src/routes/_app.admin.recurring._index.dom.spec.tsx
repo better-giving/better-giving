@@ -12,7 +12,7 @@ import RecurringGifts from './_app.admin.recurring._index';
 // money is mostly rows at rest, and a tone on an active one would put the accent on every row an
 // operator is not looking for.
 //
-// it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
+// it is not the browser spec AGENTS.md bans over a dashboard screen: nothing here reads a computed
 // style.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.

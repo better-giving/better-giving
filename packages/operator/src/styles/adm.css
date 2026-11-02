@@ -1670,7 +1670,7 @@
 	   `three registers of status`.
 
 	   hueless at rest: the ground is the note tone's tint, which is the neutral ladder's rung 3,
-	   and the word over it is rung 11, the approved gifts list's settled pill. a record at rest
+	   and the word over it is rung 11, a settled gift's pill on /admin/donations. a record at rest
 	   (packages/app/src/lib/admin/status-tones.ts) and a value that is not a record's lifecycle
 	   status — a consent reading, a count, `Repeating` — stop at this rule and rank against
 	   nothing.
@@ -1758,9 +1758,9 @@
 		background: none;
 	}
 
-	/* a state in a cell keeps the pill, ground, corner and caption size, as the approved gifts list
-	   draws its status column: the ground is what tells a record at rest from an ended one
-	   (`.adm-state--note` above), and a tone with no tint behind it is a coloured word an
+	/* a state in a cell keeps the pill, ground, corner and caption size, as the gifts list at
+	   /admin/donations draws its status column: the ground is what tells a record at rest from an
+	   ended one (`.adm-state--note` above), and a tone with no tint behind it is a coloured word an
 	   operator learns to scan instead of reading. the inset alone tightens, so the pill sits in a
 	   row at the row's own height rather than pushing every status row a step taller than the
 	   rows beside it. keyed on where the word is drawn and not on a prop a screen passes, so a

@@ -19,8 +19,8 @@ import { PageRoot } from './page-root';
 // sheet's header states what each half below holds it to.
 //
 // names: every `--_` name the sheet reads is one the form's token file declares, or one the brand
-// scale ./page-root.tsx renders from radix's generator declares. the sheet
-// re-points `--_font` and `--_font-mono`, declares `--_w-sent`, and declares no other `--_` name.
+// scale ./page-root.tsx renders sets. the sheet re-points `--_font` and `--_font-mono`, declares
+// `--_w-sent`, and declares no other `--_` name.
 // every `--page-*` name read is declared here or set inline by the page root; every `--donate-*`
 // name written is a seed the form registers.
 //

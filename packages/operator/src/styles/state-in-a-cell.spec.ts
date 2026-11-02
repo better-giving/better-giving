@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
 // the descriptive status word is a pill everywhere on an operator surface, a table cell included:
-// the approved gifts list draws its status column as pills, a settled gift on slate 3 under slate
-// 11, a waiting one on amber 3 under amber 11 and a failed one on red 3 under red 11. ./adm.css
-// compacts the pill's inset at `.adm-table .adm-state` and nothing more.
+// the gifts list at /admin/donations draws its status column as pills, a settled gift on slate 3
+// under slate 11, a waiting one on amber 3 under amber 11 and a failed one on red 3 under red 11.
+// ./adm.css compacts the pill's inset at `.adm-table .adm-state` and nothing more.
 //
 // **it exists because a table's rule is keyed on position and nothing in the markup says so.** no
 // screen passes a prop for it, so the only statement of what a cell does to the word is the sheet,
@@ -17,7 +17,7 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 //
 // it reads the sheet's text, for ./raw-values.ts's reason: what a rule draws is not observable from
 // a value. ../../vitest.config.ts renders the dom pool into happy-dom, which lays nothing out, and
-// no /admin screen gets a `*.browser.spec.ts` (CLAUDE.md).
+// no /admin screen gets a `*.browser.spec.ts` (AGENTS.md, Never).
 
 /** the sheet's word for nothing: the two spellings ./tokens.css names, and the css keywords. */
 const NOTHING = /^(?:none|transparent|var\(--admin-(?:space|radius)-0\))$/;

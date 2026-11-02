@@ -63,8 +63,8 @@ export const box = (...sides: number[]) =>
 
 // ---- the values a template writes ----------------------------------------------------------
 //
-// every one is a token checked or converted, and the name says the job rather than the step. what
-// each is for is at its own line where the choice was not the obvious one.
+// every one is a token, checked, converted or passed whole, and the name says the job rather than
+// the step. what each is for is at its own line where the choice was not the obvious one.
 
 /** the ground the document is read on, the plane its body sits on, and the two a block on that
  * plane sits on. */
@@ -74,7 +74,7 @@ export const PAGE_BG = hexColour(ADMIN_TOKENS['--admin-page']);
 export const PLANE_BG = hexColour(ADMIN_TOKENS['--admin-surface']);
 /** the receipt's own block: a ground, and no rule around it. */
 export const PANEL_BG = hexColour(ADMIN_TOKENS['--admin-surface-sunken']);
-/** the band under the §6115 disclosure, step 3, two steps off the plane. */
+/** the §6115 disclosure's own fill: the band a plane carries, `--admin-surface-fill`. */
 export const BLOCK_BG = hexColour(ADMIN_TOKENS['--admin-surface-fill']);
 /** the alert's instruction, set as `.adm-banner` sets a note: the tint carries it, no edge does. */
 export const BANNER_BG = hexColour(ADMIN_TOKENS['--admin-tone-note-tint']);
