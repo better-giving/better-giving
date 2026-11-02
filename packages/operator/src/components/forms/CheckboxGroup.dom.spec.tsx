@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ruleOf, sheet } from '../../styles/sheet-rule.testing';
+import { ruleOf, rulesIn, sheet } from '../../styles/sheet-rule.testing';
 import { render } from '../render.testing';
 import { CheckboxGroup, type CheckboxGroupProps } from './CheckboxGroup.jsx';
 
@@ -187,7 +187,15 @@ describe('a taken boxed row', () => {
 
 	it('still answers a pointer, its edge stepping to the accent’s hovered border', () => {
 		// `:enabled`, so a closed row's edge stays the closed one under a pointer.
-		const hovered = ruleOf(css, '.adm-check--boxed:has(input:checked:enabled).is-hover');
+		const taken = '.adm-check--boxed:has(input:checked:enabled)';
+		const pointer = rulesIn(css).find((rule) =>
+			rule.selector.split(',').some((one) => one.trim() === `${taken}:hover`)
+		);
+		expect(pointer?.selector.split(',').map((one) => one.trim())).toEqual([
+			`${taken}:hover`,
+			`${taken}.is-hover`
+		]);
+		const hovered = pointer?.stated ?? new Map<string, string>();
 		expect(hovered.get('border-color')).toBe('var(--admin-accent-edge-hover)');
 		expect(hovered.get('background')).toBeUndefined();
 	});

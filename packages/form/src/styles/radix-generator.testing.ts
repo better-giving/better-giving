@@ -5,7 +5,8 @@
 // generator exactly as it ships, on the dependencies it ships with (colorjs.io 0.5.2,
 // bezier-easing 2.1.0, @radix-ui/colors 3.0.0 — packages/form's devDependencies, never a
 // runtime one). this is components/generate-radix-colors.tsx from
-// https://github.com/radix-ui/website, the code behind https://www.radix-ui.com/colors/custom,
+// https://github.com/radix-ui/website at 402e749613ab2e7ab7139c65b0029842b0360f07 (the commit that
+// last changed it), the code behind https://www.radix-ui.com/colors/custom,
 // renamed from .tsx (it holds no jsx) and otherwise unchanged below this header.
 //
 // MIT License

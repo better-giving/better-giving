@@ -21,8 +21,8 @@ vi.mock('@better-giving/form/styles/radix-scale', async (importOriginal) => {
 
 const BRAND = '#1d6b4f';
 
-const sheetFor = (scope: string) => {
-	const scale = generateBrandScale(BRAND);
+const sheetFor = (scope: string, colour: string = BRAND) => {
+	const scale = generateBrandScale(colour);
 	if (scale === null) throw new Error('no scale');
 	return brandScaleCss(brandScopeSelector(scope), scale);
 };
@@ -96,5 +96,37 @@ describe('the brand scale sheet', () => {
 		act(() => rerender());
 		act(() => rerender());
 		expect(generate.mock.calls.length).toBe(first);
+	});
+
+	it('redraws the sheet for a changed colour, in the same scope, on the node it already had', () => {
+		const OTHER = '#8e4ec6';
+		const page = (colour: string) => (
+			<PageRoot brandColour={colour} layout="plain">
+				{null}
+			</PageRoot>
+		);
+		const host = document.createElement('div');
+		document.body.appendChild(host);
+		const root = createRoot(host);
+		onTestFinished(() => {
+			act(() => root.unmount());
+			host.remove();
+		});
+		act(() => root.render(page(BRAND)));
+		const node = host.querySelector('style');
+		const scope = host.querySelector('[data-brand-scope]')?.getAttribute('data-brand-scope') ?? '';
+		expect(node?.textContent).toBe(sheetFor(scope, BRAND));
+
+		act(() => root.render(page(OTHER)));
+
+		expect(sheetFor(scope, OTHER)).not.toBe(sheetFor(scope, BRAND));
+		expect(host.querySelector('style')).toBe(node);
+		expect(host.querySelector('style')?.textContent).toBe(sheetFor(scope, OTHER));
+		expect(host.querySelector('[data-brand-scope]')?.getAttribute('data-brand-scope')).toBe(scope);
+		expect(
+			(host.querySelector('[data-donate-root]') as HTMLElement).style.getPropertyValue(
+				'--donate-primary'
+			)
+		).toBe(OTHER);
 	});
 });

@@ -110,22 +110,42 @@ function settle(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** a colour as the sRGB bytes a canvas paints it in, so two notations of one colour compare equal. */
+function paintedBytes(colour: string): number[] {
+	const probe = document.createElement('div');
+	probe.style.color = colour;
+	document.body.appendChild(probe);
+	const used = getComputedStyle(probe).color;
+	probe.remove();
+	const surface = document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D;
+	surface.fillStyle = used;
+	surface.fillRect(0, 0, 1, 1);
+	return Array.from(surface.getImageData(0, 0, 1, 1).data.slice(0, 3));
+}
+
 /**
  * a seed written after mount, once the element's generated scale has followed it: the scale is set
  * from a transition the seed change starts (./brand.ts), which reports a frame or more later.
+ *
+ * waits on `--_a8`, because ./tokens.css's fallback for `--_p` is the seed itself and the
+ * generator's step 9 is that seed for most seeds, so `--_p` reads as followed before the sheet
+ * lands. `--_a8` is the fallback's own oklch derivation there, and the guard below holds the seed
+ * to one where the generator's step 8 is a different colour from it.
  */
 async function reseed(host: HTMLElement, declarations: string): Promise<void> {
 	host.style.cssText = declarations;
 	const shadow = host.shadowRoot as ShadowRoot;
-	const scale = generateBrandScale(getComputedStyle(host).getPropertyValue('--donate-primary'));
+	const seed = getComputedStyle(host).getPropertyValue('--donate-primary');
+	const scale = generateBrandScale(seed);
 	if (scale === null) return;
 	const steps = matchMedia('(color-gamut: p3)').matches ? scale.stepsWideGamut : scale.steps;
-	const probe = document.createElement('div');
-	probe.style.color = steps[8] as string;
-	shadow.appendChild(probe);
-	const solid = getComputedStyle(probe).color;
-	probe.remove();
-	await vi.waitFor(() => expect(used(shadow, '--_p')).toBe(solid));
+	const fallback = paintedBytes(`oklch(from ${seed} 0.729 calc(c * 0.73) h)`);
+	const generated = paintedBytes(steps[7] as string);
+	expect(
+		generated,
+		`${seed}: step 8 must differ from the fallback or the wait proves nothing`
+	).not.toEqual(fallback);
+	await vi.waitFor(() => expect(paintedBytes(used(shadow, '--_a8'))).toEqual(generated));
 }
 
 /**

@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { ruleOf, sheet } from '../../styles/sheet-rule.testing';
+import { ruleOf, rulesIn, sheet } from '../../styles/sheet-rule.testing';
 import { render } from '../render.testing';
 import { ChoiceChips, type ChoiceChipsProps } from './ChoiceChips.jsx';
 
@@ -170,8 +170,14 @@ describe('choice chips mounted into a document', () => {
 		it('still answers a pointer, its edge stepping to the accent’s hovered border', () => {
 			const css = sheet('adm.css');
 			// the pinned twin stands last in the pointer's own list, so a specimen draws what a pointer does.
-			expect(css).toContain(`${TAKEN}:hover,\n\t.adm-choicechip:has(input:checked).is-hover {`);
-			const hovered = ruleOf(css, '.adm-choicechip:has(input:checked).is-hover');
+			const pointer = rulesIn(css).find((rule) =>
+				rule.selector.split(',').some((one) => one.trim() === `${TAKEN}:hover`)
+			);
+			expect(pointer?.selector.split(',').map((one) => one.trim())).toEqual([
+				`${TAKEN}:hover`,
+				`${TAKEN}.is-hover`
+			]);
+			const hovered = pointer?.stated ?? new Map<string, string>();
 			expect(hovered.get('border-color')).toBe('var(--admin-accent-edge-hover)');
 			// the selected step is the top of the element ladder, so the ground stays on it.
 			expect(hovered.get('background')).toBeUndefined();
