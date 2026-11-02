@@ -26,11 +26,10 @@
  * root sets `--donate-primary` inline from the brand colour, the page's one accent, and renders the
  * brand scale radix's custom-palette generator makes from it as a `<style>` beside, scoped to the
  * root and the card's own root inside it, so the card and every section take the same brand. no
- * other `--donate-*` name is written here. the
- * shade and the corners are the form's own defaults. the inner node, `.page-ground`, is where every
- * token below is declared and the ground is painted: the form declares its ladder one node under
- * `[data-donate-root]`, and a token that reads a rung has to be declared at or under that node, or
- * it reads a ladder that is not there.
+ * other `--donate-*` name is written here. the shade and the corners are the form's own defaults.
+ * the inner node, `.page-ground`, is where every token below is declared and the ground is painted:
+ * the form declares its ladder one node under `[data-donate-root]`, and a token that reads a rung
+ * has to be declared at or under that node, or it reads a ladder that is not there.
  *
  * the outer node is a `page` inline-size container, and every fluid token below is in `cqi` off it.
  * those tokens are unregistered, so `cqi` resolves where a rule spends the token. a section's layout
@@ -98,9 +97,10 @@
  * job (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): slate for
  * every grey, declared in packages/form/src/styles/tokens.css, and the brand scale, `--_a1`…`--_a12`
  * with `--_p`, `--_p-hover` and `--_on-p`, which ./page-root.tsx renders from the brand colour with
- * the generator the form itself runs (packages/form/src/styles/radix-scale.ts). 1 and 2 backgrounds, 3 a control's ground, 4 its hover, 5 its
- * press, 6 a border nothing operates and a separator, 7 the edge of a control a donor operates and 8
- * that edge under the pointer and the focus ring, 9 a solid fill, 10 its hover, 11 and 12 text.
+ * the generator the form itself runs (packages/form/src/styles/radix-scale.ts). 1 and 2
+ * backgrounds, 3 a control's ground, 4 its hover, 5 its press, 6 a border nothing operates and a
+ * separator, 7 the edge of a control a donor operates and 8 that edge under the pointer and the
+ * focus ring, 9 a solid fill, 10 its hover, 11 and 12 text.
  * nothing casts a shadow: a `box-shadow` here is a focus ring, a spread with no offset and no blur.
  *
  * the page ground, `--page-ground`, is slate 2 under a wash. a plane — the top bar, the card's
@@ -120,8 +120,9 @@
  * steps are the generated scale's, which the page root always renders: a page with no brand colour
  * has it generated from the form's registered seed, slate 12, so its tints are slate's hue at a
  * trace of chroma. the token file's fallback declares neither, so the ground stands on the page
- * root's scale: a `.page-ground` outside one paints no background at all. both tints are background steps, so wherever the wash reaches, an ink on the page ground stands on the
- * 2 or 3 radix builds steps 11 and 12 to be read on.
+ * root's scale: a `.page-ground` outside one paints no background at all. both tints are
+ * background steps, so wherever the wash reaches, an ink on the page ground stands on the 2 or 3
+ * radix builds steps 11 and 12 to be read on.
  * About us stands on `--page-band`, slate 1, a band across the page's width; it is a band rather than
  * a plane, so it draws no corner and no edge. a cover before its photo arrives is slate 3, the
  * operator surfaces' sunken well (`--admin-surface-sunken`). a rule between rows of one list is a
@@ -135,26 +136,27 @@
  * word the card says a refusal in.
  *
  * the brand is spent by step. 9, the generator's solid — the brand colour itself, unless it is so
- * close to white that the generator takes its scale's own step 9 — is a solid: the action, the goal's progress, the
- * initials badge, and a cover with no photo — the logo's cover, the logo on its own slate-1 plate,
- * and the feature's empty cover. the ink on 9 is the generated `--_on-p`, the ink the generator
- * picks for its step 9. 11 is a brand word, `--page-accent` — a link, the top bar's Share and a tier's
- * amount — and 12 is that word under the pointer. 8 is a brand edge and the focus ring.
+ * close to white that the generator takes its scale's own step 9 — is a solid: the action, the
+ * goal's progress, the initials badge, and a cover with no photo — the logo's cover, the logo on
+ * its own slate-1 plate, and the feature's empty cover. the ink on 9 is the generated `--_on-p`,
+ * the ink the generator picks for its step 9. 11 is a brand word, `--page-accent` — a link, the top
+ * bar's Share and a tier's amount — and 12 is that word under the pointer. 8 is a brand edge and
+ * the focus ring.
  *
  * corners. a plane is `--page-plane-radius`, 12px, a step rounder than the card's `--_r`, and the
- * donation box takes it too wherever it is a plane; what stands on a plane is the card's `--_r` or `--_r-in`, the form's
- * corner preset (`soft` is 8px and 4px). the card layout's cover stands inside the panel's edge and
- * takes the panel's corner less that edge at its top two at every width, so it runs to the panel's
- * corners without the panel clipping it: wide, the panel is an ancestor of the box, which no rule
- * clips. a mark round by nature is a circle and no preset moves it: the
- * initials badge, a platform's mark and a share press, at `50%`, and the goal track and its fill, at half of
- * `--page-track-block`, the track's thickness, which is a `--page-*` name because the card draws no
- * bar.
+ * donation box takes it too wherever it is a plane; what stands on a plane is the card's `--_r` or
+ * `--_r-in`, the form's corner preset (`soft` is 8px and 4px). the card layout's cover stands
+ * inside the panel's edge and takes the panel's corner less that edge at its top two at every
+ * width, so it runs to the panel's corners without the panel clipping it: wide, the panel is an
+ * ancestor of the box, which no rule clips. a mark round by nature is a circle and no preset moves
+ * it: the initials badge, a platform's mark and a share press, at `50%`, and the goal track and its
+ * fill, at half of `--page-track-block`, the track's thickness, which is a `--page-*` name because
+ * the card draws no bar.
  *
  * the steps held. `./page.spec.ts` reads every colour this sheet writes down to its step and holds
  * it to the job radix names for that step
  * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): text on 11
- * and 12, a solid fill on 9 with the form's `--_on-p` as its ink, a separator or an edge on 6, 7
+ * and 12, a solid fill on 9 with the generated `--_on-p` as its ink, a separator or an edge on 6, 7
  * and 8, the focus ring on 8, a ground on 1, 2 and 3 — the wash brand 2 and 3 over slate 2 —
  * and a control's hover and press on 4 and 5. legibility is radix's guarantee for a step
  * doing its job, and no ratio is measured here.

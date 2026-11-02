@@ -1,5 +1,12 @@
 import { brandScaleCss, generateBrandScale } from '@better-giving/form/styles/radix-scale';
-import { createContext, useContext, useId, type CSSProperties, type ReactNode } from 'react';
+import {
+	createContext,
+	useContext,
+	useId,
+	useMemo,
+	type CSSProperties,
+	type ReactNode
+} from 'react';
 import type { Layout } from '../page/shape';
 
 // the outer node of every donor page, and the one place its colour is set.
@@ -55,7 +62,11 @@ export function brandScopeSelector(scope: string): string {
 
 export function PageRoot({ brandColour, layout, className, children }: PageRootProps) {
 	const scope = useId();
-	const scale = generateBrandScale(brandColour ?? UNSEEDED);
+	// a `PageWithCard` pick or lock report re-renders this root, and the colour has not moved.
+	const css = useMemo(() => {
+		const scale = generateBrandScale(brandColour ?? UNSEEDED);
+		return scale === null ? null : brandScaleCss(brandScopeSelector(scope), scale);
+	}, [brandColour, scope]);
 	return (
 		<div
 			className={className === undefined ? 'page' : `page ${className}`}
@@ -66,12 +77,9 @@ export function PageRoot({ brandColour, layout, className, children }: PageRootP
 				brandColour === null ? undefined : ({ '--donate-primary': brandColour } as CSSProperties)
 			}
 		>
-			{scale === null ? null : (
-				// set as html: react would escape the selector's quotes as text
-				<style
-					dangerouslySetInnerHTML={{ __html: brandScaleCss(brandScopeSelector(scope), scale) }}
-				/>
-			)}
+			{/* plain children: react's server renderer leaves quotes in a `<style>` as they are and
+			    breaks only a `</style` that would close it early. */}
+			{css === null ? null : <style>{css}</style>}
 			<BrandScope value={scope}>
 				<div className="page-ground">{children}</div>
 			</BrandScope>

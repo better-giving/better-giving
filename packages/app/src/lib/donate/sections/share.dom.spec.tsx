@@ -157,6 +157,50 @@ describe('share', () => {
 		expect(status?.textContent).toBe('');
 	});
 
+	it('announces a second refusal inside the moment the first one holds', async () => {
+		// a denied clipboard stays denied, so the press the donor tries again within `SETTLE_MS` is
+		// refused again — and says so again, as fresh words added to the same region.
+		vi.useFakeTimers();
+		vi.stubGlobal('navigator', {
+			...navigator,
+			clipboard: {
+				writeText: async () => {
+					throw new Error('denied');
+				}
+			}
+		});
+		onTestFinished(() => {
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		});
+		const host = share();
+		const status = host.querySelector('[role="status"]');
+		const copy =
+			host.querySelectorAll<HTMLElement>('.page-share-button')[SHARE_CHANNELS.indexOf('copy-link')];
+		await act(async () => copy?.click());
+		act(() => vi.advanceTimersByTime(SETTLE_MS - 1));
+		expect(status?.textContent).toBe('Couldn’t copy');
+
+		const first = status?.firstChild;
+		const said: (string | null)[] = [];
+		const watched = new MutationObserver((records) => {
+			for (const record of records)
+				for (const node of record.addedNodes) said.push(node.textContent);
+		});
+		watched.observe(status as Node, { childList: true, subtree: true, characterData: true });
+		onTestFinished(() => watched.disconnect());
+		await act(async () => copy?.click());
+
+		expect(status?.firstChild).not.toBe(first);
+		expect(said).toEqual(['Couldn’t copy']);
+		expect(host.querySelector('[role="status"]')).toBe(status);
+		expect(status?.textContent).toBe('Couldn’t copy');
+		act(() => vi.advanceTimersByTime(SETTLE_MS - 1));
+		expect(status?.textContent).toBe('Couldn’t copy');
+		act(() => vi.advanceTimersByTime(1));
+		expect(status?.textContent).toBe('');
+	});
+
 	it('settles Copy link back to its name and mark once the moment passes', async () => {
 		vi.useFakeTimers();
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });

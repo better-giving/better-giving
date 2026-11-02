@@ -13,8 +13,10 @@ import type { PageSharing } from './types';
 // control's new name is spoken. a refusal keeps the name Copy link — the press still does what it
 // says — and is said in a polite status region instead, rendered empty from the first paint so the
 // words arriving in it are announced, with the alert mark in the refusal's red; naming the press
-// for the refusal as well would be heard twice. it settles back after `SETTLE_MS`, so a later visit
-// meets the press and not a past outcome.
+// for the refusal as well would be heard twice. each refusal adds its words to the region as a
+// node of its own, keyed by the press, so a second refusal inside the first one's moment is
+// announced too rather than leaving the region's text as it was. it settles back after
+// `SETTLE_MS`, so a later visit meets the press and not a past outcome.
 //
 // the heading carries `headingId`, the name of the section the caller stands this in.
 //
@@ -49,6 +51,7 @@ export function Share({
 	readonly headingId: string;
 }) {
 	const [copy, setCopy] = useState<Copy>('idle');
+	const [refusal, setRefusal] = useState(0);
 	const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	useEffect(() => () => clearTimeout(settle.current), []);
 
@@ -61,6 +64,7 @@ export function Share({
 			landed = 'failed';
 		}
 		setCopy(landed);
+		if (landed === 'failed') setRefusal((press) => press + 1);
 		clearTimeout(settle.current);
 		settle.current = setTimeout(() => setCopy('idle'), SETTLE_MS);
 	};
@@ -110,7 +114,7 @@ export function Share({
 				)}
 			</div>
 			<p className="vh" role="status">
-				{copy === 'failed' ? REFUSED_WORDS : ''}
+				{copy === 'failed' ? <span key={refusal}>{REFUSED_WORDS}</span> : null}
 			</p>
 		</div>
 	);
