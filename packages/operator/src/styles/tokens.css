@@ -159,9 +159,12 @@
    and in any family:
 
      1 app background · 2 subtle background · 3 ui element background · 4 hovered ui element ·
-     5 active or selected ui element · 6 subtle borders and separators · 7 ui element border and
-     focus rings · 8 hovered ui element border · 9 solid backgrounds · 10 hovered solid ·
+     5 active or selected ui element · 6 subtle borders and separators · 7 ui element border ·
+     8 hovered ui element border and focus rings · 9 solid backgrounds · 10 hovered solid ·
      11 low-contrast text · 12 high-contrast text
+
+   radix's table puts the focus ring on 7 and its prose allows 7 or 8; this system takes 8, so a
+   ring is the stronger of the two interactive borders and never a control's own resting edge.
 
    so a card, a panel, the top bar, the phone's bar and a text box's face are step 1 and the page
    is step 2. a control rests on 3, answers a pointer on 4 and is pressed or selected on 5. every
@@ -176,10 +179,10 @@
    contrast is radix's guarantee rather than a measurement made here, and the floors are radix's
    (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): step 11 is
    built to reach APCA Lc 60 and step 12 Lc 90 on step 2, and step 9 carries a white label in the
-   blue and the red. a 1px step-7 outline round a control reads under the Lc 30 APCA's bronze level
-   holds a fine line to, and that is accepted as radix's own trade for a quiet control edge rather
-   than corrected with a darker step. no pair is re-tuned here: a value that reads wrong is another
-   step of the same ladder or a gap to report, never a literal nudged.
+   blue and the red. a control's resting edge is step 7, radix's ui element border, and is not
+   darkened to a later step to make it louder: 8 is that edge under a pointer. no pair is re-tuned
+   here: a value that reads wrong is another step of the same ladder or a gap to report, never a
+   literal nudged.
 
    the focus ring is drawn outside a control, in the accent's 8 against whatever the control stands
    on. a control filled with a solid step draws its ring inside itself in `--admin-focus-ring-solid`
@@ -187,7 +190,10 @@
    other is a ring nobody finds.
    the ring hugs. it starts at the control's own edge and no ground is drawn between the two,
    in either direction, because a band of the page laid inside the ring reads as the control
-   sitting in a box that arrived with the keyboard. and the ring is one hue, learned once: it
+   sitting in a box that arrived with the keyboard. the one exception is a chosen control, a chip
+   or a boxed row, whose edge is the accent's 7: that edge and an 8 ring abutting it read as one
+   heavier edge, so there the ring stands outside a band of the ground the control stands on, as
+   the donor page rings its chosen option (packages/app/src/lib/donate/page.css). and the ring is one hue, learned once: it
    never changes with the control's tone, a destructive control's included, because that would
    spend an operator screen's one alarm colour on the thing a reader is doing rather than on the
    thing the screen is reporting.
@@ -328,8 +334,11 @@
 		--admin-accent-ink-hover: var(--admin-accent-12);
 		--admin-accent-tint: var(--admin-accent-3);
 		--admin-accent-deep: var(--admin-accent-12);
-		/* the edge of a chosen control, a chip or a boxed row, on the accent's ui element border. */
+		/* a chosen control, a chip or a boxed row: the accent's selected step inside the accent's ui
+		   element border, which steps to its hovered border under a pointer. */
+		--admin-accent-selected: var(--admin-accent-5);
 		--admin-accent-edge: var(--admin-accent-7);
+		--admin-accent-edge-hover: var(--admin-accent-8);
 		/* a solid fill that is no control: the series' bars and the line over a move to another
 		   page. */
 		--admin-accent-fill: var(--admin-accent-9);
@@ -718,8 +727,8 @@
 		   control's and a field's corner, and a destination's and its mark tile's in the rail.
 		   `--admin-radius-plane` is the corner of a plane on the page — a card, a panel, a record, a
 		   table's plane, a group, a status panel — and of the dialog and a choice drawn as a card,
-		   twice the control's because a plane is the larger object and, with no edge drawn round it,
-		   its corner is most of what its outline says. `--admin-radius-0` is the word for
+		   twice the control's because a plane is the larger object and a corner keeps its proportion
+		   to what it rounds. `--admin-radius-0` is the word for
 		   square, so a rule that means square says it rather than leaving the corner unstated.
 
 		   `--admin-radius-pill` is the exception, and its wearers are a named list, because a shape

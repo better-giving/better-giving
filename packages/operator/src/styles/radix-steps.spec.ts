@@ -129,6 +129,7 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-control-bg-active': 'neutral-5',
 		'--admin-control-soft-bg-active': 'neutral-5',
 		'--admin-selection-bg': 'accent-5',
+		'--admin-accent-selected': 'accent-5',
 		'--admin-rail-current-bg': 'accent-5',
 		'--admin-rail-current-bg-hover': 'accent-5',
 		'--admin-bar-current-bg': 'accent-5',
@@ -152,6 +153,7 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-field-border-invalid': 'blocker-8',
 		'--admin-field-border-needed': 'attention-8',
 		'--admin-focus-ring': 'accent-8',
+		'--admin-accent-edge-hover': 'accent-8',
 		// radix themes draws a disabled label on the hovered border step.
 		'--admin-ink-disabled': 'neutral-8',
 		'--admin-control-ink-disabled': 'neutral-8',

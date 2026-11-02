@@ -157,14 +157,32 @@ describe('choice chips mounted into a document', () => {
 			expect(matched).toEqual(['Children']);
 		});
 
-		it('paints the accent tint inside the accent edge, under the accent ink', () => {
+		it('paints the accent’s selected step inside the accent edge, under the accent’s deep ink', () => {
 			const taken = ruleOf(sheet('adm.css'), TAKEN);
 
 			expect([taken.get('background'), taken.get('border-color'), taken.get('color')]).toEqual([
-				'var(--admin-accent-tint)',
+				'var(--admin-accent-selected)',
 				'var(--admin-accent-edge)',
-				'var(--admin-accent-ink)'
+				'var(--admin-accent-deep)'
 			]);
+		});
+
+		it('still answers a pointer, its edge stepping to the accent’s hovered border', () => {
+			const css = sheet('adm.css');
+			// the pinned twin stands last in the pointer's own list, so a specimen draws what a pointer does.
+			expect(css).toContain(`${TAKEN}:hover,\n\t.adm-choicechip:has(input:checked).is-hover {`);
+			const hovered = ruleOf(css, '.adm-choicechip:has(input:checked).is-hover');
+			expect(hovered.get('border-color')).toBe('var(--admin-accent-edge-hover)');
+			// the selected step is the top of the element ladder, so the ground stays on it.
+			expect(hovered.get('background')).toBeUndefined();
+		});
+
+		it('rings a focused taken chip outside a band of its ground, never flush on its accent edge', () => {
+			const css = sheet('adm.css');
+			const ring = ruleOf(css, '.adm-choicechip:has(input:checked.is-focus)').get('box-shadow');
+			expect(ring).toBe(
+				'0 0 0 var(--admin-border-width) var(--_ground, var(--admin-page)), 0 0 0 calc(var(--admin-border-width) + var(--admin-focus-width)) var(--admin-focus-ring)'
+			);
 		});
 	});
 

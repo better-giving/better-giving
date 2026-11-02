@@ -176,7 +176,19 @@ describe('what floats over the flow is flat, with the step-6 edge', () => {
 describe('no shadow is depth', () => {
 	// radix's flat look: a `box-shadow` here is a ring, a link's bleed or the scrim's spread — no
 	// offset and no blur, only a spread — and never a lift. ./tokens.css holds no elevation token.
-	const RING = /^(inset )?0 0 0 [^,]+$/;
+	const RING = /^(inset )?0 0 0 \S/;
+	/** a shadow's layers, split on the commas no parenthesis holds: a ring outside a band is two. */
+	const layers = (value: string): string[] => {
+		const out = [''];
+		let depth = 0;
+		for (const ch of value) {
+			if (ch === '(') depth++;
+			else if (ch === ')') depth--;
+			if (ch === ',' && depth === 0) out.push('');
+			else out[out.length - 1] += ch;
+		}
+		return out.map((one) => one.trim());
+	};
 	const shadows = (['adm.css', 'base.css'] as const).flatMap((name) =>
 		rulesIn(sheet(name))
 			.filter(({ stated }) => stated.has('box-shadow'))
@@ -194,7 +206,9 @@ describe('no shadow is depth', () => {
 	it('draws every shadow as a spread with no offset and no blur', () => {
 		expect(
 			shadows
-				.filter(({ value }) => value !== 'none' && !RING.test(value))
+				.filter(
+					({ value }) => value !== 'none' && !layers(value).every((layer) => RING.test(layer))
+				)
 				.map(({ at, value }) => `${at}: ${value}`)
 		).toEqual([]);
 	});

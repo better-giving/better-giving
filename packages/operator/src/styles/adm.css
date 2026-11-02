@@ -240,9 +240,9 @@
 	}
 
 	/* the two controls filled with a solid step draw their ring inside themselves, in the near-white
-	   ink both fills already carry. ./tokens.css holds the arithmetic: a hugging ring abuts the fill
-	   on one edge and the page on the other, and no accent rung reaches 3:1 against both. growing
-	   the control is not an escape because the sum is about colour. */
+	   ink both fills already carry. ./tokens.css holds why: the ring is the accent's 8 and the fill
+	   its 9, neighbours, so a hugging ring abutting the fill is a ring nobody finds. growing the
+	   control is no escape, because the neighbours are the same at any size. */
 	.adm-btn--primary:focus-visible,
 	.adm-btn--primary.is-focus,
 	.adm-btn--danger:focus-visible,
@@ -317,8 +317,9 @@
 	   as louder than the value it is beside.
 
 	   it cancels every border rung for the quiet rank's reason: a rank whose boundary is a fill has
-	   no border to appear under a pointer. under a pointer it takes that rank's two rungs and
-	   differs from it only at rest — ./tokens.css holds where the two sit against each other. the
+	   no border to appear under a pointer. it takes the neutral button's three grounds, 3 at rest,
+	   4 under a pointer and 5 under a press, and differs from that rank by the edge alone —
+	   ./tokens.css holds where the two sit against each other. the
 	   disabled rung keeps the
 	   resting ground and moves the ink alone, because a rank that draws no border has only its
 	   label left to say a press is unavailable.
@@ -508,7 +509,7 @@
 	   a toast and never a banner at the head of the page, either of which asks them to look
 	   somewhere else to find out whether the thing in front of them worked.
 
-	   done keeps its resting border. the done tone's own line is 1.20:1 against the page, so
+	   done keeps its resting border. the done tone's tint is step 3, a ground, and no edge, so
 	   swapping to it would lose the button's boundary at the moment it reports success; and
 	   keeping the border is what makes the swap quiet, which is what a confirmation is for. */
 	/* carried-ok: .is-pending .is-done — `is-${state}` in
@@ -2666,13 +2667,13 @@
 	   annotation at, because a label over the box's edge is an annotation on it and no longer words
 	   standing in the day's place. resting the weight and the ink are `--admin-weight-regular` and
 	   `--admin-ink-muted`: the weight `.adm-input::placeholder` inherits from its box, and the rung
-	   the ink that rule draws in resolves to — `--admin-field-placeholder` is `--admin-neutral-10`,
+	   the ink that rule draws in resolves to — `--admin-field-placeholder` is `--admin-neutral-11`,
 	   as this alias is. the two are one thing and are drawn alike — quiet weight, quiet ink, words
 	   standing where the value will — because on these screens a placeholder and a label standing
-	   inside a box are the same thing. they go no lighter than this rung: `--admin-ink-muted` is
-	   4.97:1 on `--admin-field-bg`, and the rung under it, `--admin-neutral-9`, is 3.24:1 on that
-	   same fill and is the one `--admin-ink-disabled` takes — so a label an operator can still
-	   answer has nowhere lighter to go. floated the weight and the ink are `--admin-label-weight` and `--admin-ink`, the
+	   inside a box are the same thing. they go no lighter than this step: 11 is radix's lighter text
+	   step, and the next one down that this system spends on words, `--admin-neutral-8`, is
+	   `--admin-ink-disabled`'s, the ink of a control nobody can use — so a label an operator can
+	   still answer has nowhere lighter to go. floated the weight and the ink are `--admin-label-weight` and `--admin-ink`, the
 	   register every other `.adm-field__label` is read at, because over the box's edge the words are
 	   the field's name. the move is what carries all of that, and the three steps are part of what
 	   the move says rather than three things happening to one word.
@@ -3394,9 +3395,21 @@
 		border-color: var(--admin-field-border-hover);
 	}
 
+	/* taken is radix's selected step under the accent's deep ink, as the rail's current destination
+	   is. the selected step is the top of the element ladder, so a pointer moves the edge to the
+	   accent's hovered border and leaves the ground where it is. */
 	.adm-check--boxed:has(input:checked) {
 		border-color: var(--admin-accent-edge);
-		background: var(--admin-accent-tint);
+		background: var(--admin-accent-selected);
+	}
+
+	.adm-check--boxed:has(input:checked) .adm-check__text {
+		color: var(--admin-accent-deep);
+	}
+
+	.adm-check--boxed:has(input:checked:enabled):hover,
+	.adm-check--boxed:has(input:checked:enabled).is-hover {
+		border-color: var(--admin-accent-edge-hover);
 	}
 
 	/* a restatement of the ring that is not a restatement at all: the box wearing it is not the
@@ -3407,6 +3420,16 @@
 	.adm-check--boxed:has(input.is-focus) {
 		outline: var(--admin-focus-width) solid transparent;
 		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	/* a taken row's edge is the accent's 7 and the ring its 8, neighbours that would read as one
+	   heavier edge, so the ring stands outside a band of the ground the row stands on (`--_ground`,
+	   which every plane states; ./plane-ground.spec.ts). */
+	.adm-check--boxed:has(input:checked:focus-visible),
+	.adm-check--boxed:has(input:checked.is-focus) {
+		box-shadow:
+			0 0 0 var(--admin-border-width) var(--_ground, var(--admin-page)),
+			0 0 0 calc(var(--admin-border-width) + var(--admin-focus-width)) var(--admin-focus-ring);
 	}
 
 	.adm-check--boxed input:focus-visible,
@@ -3430,7 +3453,7 @@
 
 	   the boxed row's hover and its taken ground both lose to this without a `:not()` on either: the
 	   hover pair is a rung of specificity under this, and the taken rule matches it for specificity
-	   and stands above it. */
+	   and stands above it. the taken row's own pointer rule outranks this, so it names `:enabled`. */
 	.adm-check:has(input:disabled) .adm-check__text,
 	.adm-check:has(input:disabled) .adm-check__sub {
 		color: var(--admin-control-ink-disabled);
@@ -3447,8 +3470,8 @@
 	   a question answered by pressing one of a few short words. each chip is a `<label>` round a
 	   radio or a checkbox held out of sight (`.adm-vh` in ./base.css), so the chip is the whole of
 	   what a pointer presses. a chip is a control aimed at at the touch floor, with a text box's
-	   edge, the control's ground and its hover; the taken one holds the accent as
-	   `.adm-check--boxed` does, its words in the accent's deep ink. a chip in a row is round, which
+	   edge, the control's ground and its hover; the taken one stands on the accent's selected step
+	   as `.adm-check--boxed` does, its words in the accent's deep ink. a chip in a row is round, which
 	   ./tokens.css allows a pressed control by name at `--admin-radius-pill`: its edge is what
 	   tells it from the read-only pill (`.adm-state`), which has none. a card keeps the plane's
 	   corner.
@@ -3460,7 +3483,7 @@
 	   the one answer look alike, and a question taking several says so in its hint.
 
 	   cards are the same chips laid in a grid, each its label over the line saying what it is for,
-	   in `.adm-check__sub`'s ink, which reads on the taken card's tint as it does on a taken boxed
+	   in `.adm-check__sub`'s ink, which reads on the taken card's ground as it does on a taken boxed
 	   row. one across on a phone and two from the middle width, where the dialog's measure has
 	   room for two lines of words side by side and no more.
 	   packages/operator/src/components/forms/ChoiceChips.jsx writes all of it. */
@@ -3491,8 +3514,8 @@
 	}
 
 	/* a chip is found the way a text box and the neutral button are, by the box's quieter
-	   outline, and its face is the neutral button's. a picked chip is told by its tint and its
-	   edge, and nothing else — no tick is drawn in either kind, and a question taking several
+	   outline, and its face is the neutral button's. a picked chip is told by its selected ground and
+	   its edge, and nothing else — no tick is drawn in either kind, and a question taking several
 	   answers says so in its hint.
 
 	   `position` is the containing block the control inside is taken out of the flow against, so a
@@ -3556,16 +3579,30 @@
 		background: var(--admin-control-bg-hover);
 	}
 
+	/* taken is `.adm-check--boxed`'s: the selected step under the deep ink, its edge stepping to the
+	   accent's hovered border under a pointer, and its ring outside a band of its ground. */
 	.adm-choicechip:has(input:checked) {
-		color: var(--admin-accent-ink);
-		background: var(--admin-accent-tint);
+		color: var(--admin-accent-deep);
+		background: var(--admin-accent-selected);
 		border-color: var(--admin-accent-edge);
+	}
+
+	.adm-choicechip:has(input:checked):hover,
+	.adm-choicechip:has(input:checked).is-hover {
+		border-color: var(--admin-accent-edge-hover);
 	}
 
 	.adm-choicechip:has(input:focus-visible),
 	.adm-choicechip:has(input.is-focus) {
 		outline: var(--admin-focus-width) solid transparent;
 		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	.adm-choicechip:has(input:checked:focus-visible),
+	.adm-choicechip:has(input:checked.is-focus) {
+		box-shadow:
+			0 0 0 var(--admin-border-width) var(--_ground, var(--admin-page)),
+			0 0 0 calc(var(--admin-border-width) + var(--admin-focus-width)) var(--admin-focus-ring);
 	}
 
 	.adm-choicechips__other {
