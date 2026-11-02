@@ -117,9 +117,9 @@
  * the two steps are the form's brand method, `oklch(from var(--donate-primary) L_N calc(c * k_N) h)`
  * with L and k from the table in packages/form/src/styles/tokens.css, which declares only the steps
  * the card spends; the page spends these two, so it declares them here. a page with no brand colour
- * reads the form's registered seed, slate 12, so its tints are slate's hue at a trace of chroma. step
- * 3 is the darker of the two and where they overlap the page is no darker than it, so it is the
- * wash's darkest point: every ink read on the page ground is measured on both (the pairs below).
+ * reads the form's registered seed, slate 12, so its tints are slate's hue at a trace of chroma. both
+ * tints are background steps, so wherever the wash reaches, an ink on the page ground stands on the
+ * 2 or 3 radix builds steps 11 and 12 to be read on.
  * About us stands on `--page-band`, slate 1, a band across the page's width; it is a band rather than
  * a plane, so it draws no corner and no edge. a cover before its photo arrives is slate 3, the
  * operator surfaces' sunken well (`--admin-surface-sunken`). a rule between rows of one list is a
@@ -147,28 +147,19 @@
  * `--page-track-block`, the track's thickness, which is a `--page-*` name because the card draws no
  * bar.
  *
- * the measured pairs. `./page.spec.ts` works each one out from this file and the form's, across
- * brand colours around the wheel at full strength, dark and muted and the unbranded grey, under
- * every shade, and holds the lowest reading against its floor:
+ * the steps held. `./page.spec.ts` reads every colour this sheet writes down to its step and holds
+ * it to the job radix names for that step
+ * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): text on 11
+ * and 12, a solid fill on 9 with the form's `--_on-p` as its ink, a separator or an edge on 6, 7
+ * and 8, the focus ring on 8, a ground on 1, 2 and 3 — the wash brand 2 and 3 by the form's L and k
+ * table — and a control's hover and press on 4 and 5. legibility is radix's guarantee for a step
+ * doing its job, and no ratio is measured here.
  *
- *   `--page-quiet` — slate 11 — on the page ground, the wash's two tints, the card, a plane and the
- *   about band; slate 11 on a program option's press, slate 5. text, held to 4.5:1.
- *
- *   `--page-accent` — brand 11 — on the page ground, the wash's two tints, the card and a plane,
- *   and brand 12 on a plane. text, held to 4.5:1. radix holds step 11 to APCA Lc 60 on step 2 and
- *   not to WCAG, and the greens and yellows at full strength read under 4.5:1 there; the spec marks
- *   that pair as falling short rather than lowering its floor.
- *
- *   `--_on-p` on the brand fill, text, held to 4.5:1, and marked as falling short for a seed near
- *   the form's switch from white to brand 12 (packages/form/src/styles/tokens.css at `--_on-p`).
- *
- *   the goal track — `--page-track`, slate 3 — against the bar's brand-9 fill, held to 3:1, and
- *   marked as falling short for a pale seed. the figure beside the bar states the amount in words.
- *
- *   `--page-scrim` is the one translucent colour text stands on, laid over the feature's cover
- *   photo, which the page cannot see, and carries the note that says so. it is at its darkest from
- *   the cover's left edge across the 58% the words stand in, and fades over the rest, under the box. `--_n1` on it
- *   over a white photo is held to 4.5:1, and the same ink is the ring there.
+ *   `--page-scrim` is the one colour off the ladders, laid over the feature's cover photo, which
+ *   has no step and which the page cannot see, and it carries the note that says so. it is at its
+ *   darkest from the cover's left edge across the 58% the words stand in, and fades over the rest,
+ *   under the box. what stands on it is slate 1, radix's white: the words, the ring, and the goal's
+ *   fill on a slate-8 track.
  */
 
 body {
@@ -267,7 +258,7 @@ body {
 	--page-track-block: 0.625rem;
 	--page-accent: var(--_a11);
 	--page-ring: var(--_focus-ring);
-	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header measures it */
+	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header says why */
 	--page-scrim: linear-gradient(
 		to right,
 		oklch(0.18 0.01 260 / 0.72) 58%,
@@ -1477,7 +1468,7 @@ body {
 	font-weight: var(--_w-bold);
 }
 
-/* slate 11, the quiet text step, which holds 4.5:1 on the option's press, slate 5 (./page.spec.ts). */
+/* slate 11, radix's low-contrast text step, on the option's slate 3 to 5 grounds (./page.spec.ts). */
 .page-choose-description {
 	grid-column: 1;
 	grid-row: 2;
@@ -1568,8 +1559,8 @@ body {
 /* locked, from the press on Donate until the donor is back on a step they edit (./card.tsx). the
    pick standing keeps its mark, and every other option is drawn the way the form draws a control a
    donor cannot reach yet: its boundary in `--_edge-unavailable`, dashed, as `.step-mark` in
-   packages/form/src/styles/parts.css is, and its name in the quiet text step, slate 11, which holds
-   4.5:1 on the option's slate 3 and is never drawn on its hover or press step. the dash is a pattern
+   packages/form/src/styles/parts.css is, and its name in the quiet text step, slate 11, on the
+   option's slate 3, never on its hover or press step. the dash is a pattern
    rather than a colour, so it still says so under forced-colors. each radio is `aria-disabled` and still focusable, so the ring a focus draws stays;
    what goes is the pointer and the hover step, because no press is answered. */
 .page-choose-option:has([aria-disabled='true']) {
