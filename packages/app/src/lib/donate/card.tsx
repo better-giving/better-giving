@@ -28,6 +28,7 @@ import {
 	type Opening
 } from './machine';
 import { createReactPropTypes, type ReactApi } from './normalize';
+import { useBrandScope } from './page-root';
 import { AmountStep, type AmountRefs } from './steps/amount';
 import { DetailsStep, fieldProblem, type DetailsRefs } from './steps/details';
 import { GiveStep, readReceipt, Receipt, type ReceiptReading } from './steps/give';
@@ -262,6 +263,7 @@ function CheckoutCard({
 	monthly: boolean;
 	dedication: boolean;
 }) {
+	const brandScope = useBrandScope();
 	const { locale, currency } = config;
 	const money = (minor: number) => formatMinor(minor, locale, currency);
 	const offer = (minor: number) => formatOffer(minor, locale, currency);
@@ -1122,8 +1124,10 @@ function CheckoutCard({
 	return (
 		// the outer node carries the ladder the element's `:host` block declares in a shadow tree, and
 		// the card carries the container query every breakpoint resolves against. `@property
-		// --donate-primary` registers from the document tree, which is where this sheet now is.
-		<div data-donate-root="">
+		// --donate-primary` registers from the document tree, which is where this sheet now is. the
+		// brand scope is the page root's (./page-root.tsx), so its generated scale outranks the token
+		// file's fallback here as well.
+		<div data-donate-root="" data-brand-scope={brandScope}>
 			<div
 				ref={cardNode}
 				part={part('card')}

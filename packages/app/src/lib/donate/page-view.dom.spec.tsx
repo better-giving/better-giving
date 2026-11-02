@@ -1,3 +1,4 @@
+import { brandScaleCss, generateBrandScale } from '@better-giving/form/styles/radix-scale';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act, type ReactNode } from 'react';
@@ -7,6 +8,7 @@ import type { Page } from '../page/catalog';
 import { defaultCampaign, defaultDonationPage } from '../page/defaults';
 import type { PageType } from '../page/keys';
 import type { RichTextDocument } from '../rich-text/document';
+import { brandScopeSelector, PageRoot } from './page-root';
 import { initials, PageView, type PageViewProps, TITLE_LONG } from './page-view';
 
 // the page's renderer, mounted: which whole layout a campaign is drawn in, which sections each
@@ -344,6 +346,46 @@ describe('the one colour', () => {
 		expect(seeded?.getAttribute('style')).toBe('--donate-primary: #1d6b4f;');
 		expect(seeded?.hasAttribute('data-shade')).toBe(false);
 		expect(seeded?.hasAttribute('data-palette')).toBe(false);
+	});
+
+	// happy-dom resolves no custom property, so the scale is held to the sheet the root renders and
+	// the nodes its selector matches.
+	it.each([
+		['#1d6b4f', '#1d6b4f'],
+		['the registered seed', null]
+	] as const)('renders the generated scale for %s, scoped to its own root', (_, brandColour) => {
+		const host = mount(<PageView {...props('campaign', CARD)} look={{ brandColour }} />);
+		const root = host.querySelector<HTMLElement>('[data-donate-root]');
+		const scope = root?.getAttribute('data-brand-scope') ?? '';
+		expect(scope).not.toBe('');
+		const scale = generateBrandScale(brandColour ?? '#1c2024');
+		if (scale === null) throw new Error('no scale');
+		expect(root?.querySelector('style')?.textContent).toBe(
+			brandScaleCss(brandScopeSelector(scope), scale)
+		);
+		expect([...document.querySelectorAll(brandScopeSelector(scope))]).toEqual([root]);
+	});
+
+	it('gives two roots on one document their own scales, neither matching the other', () => {
+		const host = mount(
+			<>
+				<PageRoot brandColour="#1d6b4f" layout="plain">
+					{null}
+				</PageRoot>
+				<PageRoot brandColour="#1f6feb" layout="plain">
+					{null}
+				</PageRoot>
+			</>
+		);
+		const roots = [...host.querySelectorAll<HTMLElement>('[data-donate-root]')];
+		const scopes = roots.map((r) => r.getAttribute('data-brand-scope') ?? '');
+		expect(new Set(scopes).size).toBe(2);
+		for (const [i, root] of roots.entries()) {
+			expect([...document.querySelectorAll(brandScopeSelector(scopes[i] ?? ''))]).toEqual([root]);
+			expect(root.querySelector('style')?.textContent).toContain(
+				generateBrandScale(i === 0 ? '#1d6b4f' : '#1f6feb')?.steps[1]
+			);
+		}
 	});
 });
 

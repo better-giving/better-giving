@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { brandScaleCss, generateBrandScale } from '@better-giving/form/styles/radix-scale';
 import { afterAll, describe, expect, it } from 'vitest';
 import { LAYOUTS } from '../page/shape';
 import { blocks, declared, type Scope, steps, substitute } from './page-colour.testing';
@@ -17,7 +18,8 @@ import { PageRoot } from './page-root';
 // the gate over ./page.css, which is the donor page's token layer and the rules beside it. the
 // sheet's header states what each half below holds it to.
 //
-// names: every `--_` name the sheet reads is one the form's token file declares. the sheet
+// names: every `--_` name the sheet reads is one the form's token file declares, or one the brand
+// scale ./page-root.tsx renders from radix's generator declares. the sheet
 // re-points `--_font` and `--_font-mono`, declares `--_w-sent`, and declares no other `--_` name.
 // every `--page-*` name read is declared here or set inline by the page root; every `--donate-*`
 // name written is a seed the form registers.
@@ -59,9 +61,16 @@ const seedDefaults: Scope = Object.fromEntries(
 			: []
 	)
 );
+// the scale ./page-root.tsx renders for a page with no brand colour, from the seed's initial value.
+const unseededScale = (() => {
+	const scale = generateBrandScale(seedDefaults['--donate-primary'] ?? '');
+	if (scale === null) throw new Error('the generator reads no scale from the registered seed');
+	return brandScaleCss('[data-donate-root]', scale);
+})();
 const formBase: Scope = {
 	...seedDefaults,
 	...declared(form, ':host, [data-donate-root]'),
+	...declared(blocks(unseededScale), '[data-donate-root]'),
 	...declared(form, ':host > *, [data-donate-root] > *')
 };
 const reads = (css: string, prefix: string) =>
@@ -106,8 +115,8 @@ function root(props: Partial<Parameters<typeof PageRoot>[0]> = {}): {
 }
 
 describe('the names ./page.css reads and writes', () => {
-	it('reads every `--_` name from the form token file, and finds names to read', () => {
-		const formNames = declares(formText, '--_');
+	it('reads every `--_` name from the form token file or the generated scale, and finds names to read', () => {
+		const formNames = new Set([...declares(formText, '--_'), ...declares(unseededScale, '--_')]);
 		const read = [...reads(pageText, '--_')];
 		expect(read.length).toBeGreaterThan(0);
 		expect(read.filter((name) => !formNames.has(name))).toEqual([]);
@@ -224,6 +233,7 @@ describe('the page root', () => {
 		expect(root().inline).toEqual({ '--donate-primary': '#1f6feb' });
 		expect(Object.keys(root().attributes).sort()).toEqual([
 			'class',
+			'data-brand-scope',
 			'data-donate-root',
 			'data-layout',
 			'style'
@@ -321,7 +331,7 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-8'
 			}
 		},
-		'9: a solid fill, the seed itself': {
+		'9: a solid fill, the generator’s step 9': {
 			allowed: ['brand-9'],
 			at: {
 				'.page-mast-badge | background': 'brand-9',
@@ -681,34 +691,43 @@ describe('no shadow anywhere', () => {
 });
 
 describe('the ground and the wash', () => {
-	// brand steps 2 and 3 are written by the form's own method, `oklch(from var(--donate-primary) L_N
-	// calc(c * k_N) h)`, from the L and k table packages/form/src/styles/tokens.css states.
-	const table = (() => {
-		const row = (label: string) =>
-			new RegExp(`^\\s*\\*\\s+${label}\\s+([.\\d\\s]+)$`, 'm')
-				.exec(formText)?.[1]
-				?.trim()
-				.split(/\s+/);
-		const steps = row('step') ?? [];
-		const L = row('L') ?? [];
-		const k = row('k') ?? [];
-		return (n: number) => {
-			const i = steps.indexOf(String(n));
-			if (i === -1) throw new Error(`the form's table has no step ${n}`);
-			return { L: Number(L[i]), k: Number(k[i]) };
-		};
-	})();
+	// brand steps 2 and 3 are the generated scale's, rendered by the page root; the sheet derives
+	// neither.
 	const ground = declared(page, '.page > .page-ground');
 
-	it.each([2, 3])('derives brand step %i by the form’s table', (n) => {
-		const { L, k } = table(n);
-		expect(ground[`--page-a${n}`]).toBe(`oklch(from var(--donate-primary) ${L} calc(c * ${k}) h)`);
+	it('derives no brand step of its own', () => {
+		expect(stripComments(pageText)).not.toMatch(/oklch\(\s*from/);
+		expect(
+			[...declares(pageText, '--page-a')].filter((name) => /^--page-a\d+$/.test(name))
+		).toEqual([]);
+	});
+
+	it.each([2, 3])('draws brand step %i as the generator makes it for the brand colour', (n) => {
+		const scale = generateBrandScale('#1f6feb');
+		const html = renderToStaticMarkup(
+			createElement(PageRoot, { brandColour: '#1f6feb', layout: 'card', children: null })
+		);
+		const css = /<style>([^<]*)<\/style>/.exec(html)?.[1] ?? '';
+		const scope = /data-brand-scope="([^"]*)"/.exec(html)?.[1] ?? '';
+		expect(scope).not.toBe('');
+		const sheet = blocks(css);
+		expect(declared(sheet, `[data-donate-root][data-brand-scope="${scope}"]`)[`--_a${n}`]).toBe(
+			scale?.steps[n - 1]
+		);
+		expect(
+			declared(
+				sheet,
+				'@supports (color: color(display-p3 1 1 1))',
+				'@media (color-gamut: p3)',
+				`[data-donate-root][data-brand-scope="${scope}"]`
+			)[`--_a${n}`]
+		).toBe(scale?.stepsWideGamut[n - 1]);
 	});
 
 	it('lays brand 2 at the top left and brand 3 at the bottom right over slate 2', () => {
 		expect(ground['--page-ground']).toBe('var(--_n2)');
 		expect(ground['--page-wash']).toMatch(
-			/^radial-gradient\(.* at 0% .*, var\(--page-a2\), transparent 70%\), radial-gradient\(.* at 100% 100%, var\(--page-a3\), transparent 70%\)$/
+			/^radial-gradient\(.* at 0% .*, var\(--_a2\), transparent 70%\), radial-gradient\(.* at 100% 100%, var\(--_a3\), transparent 70%\)$/
 		);
 		expect(ground.background).toBe('var(--page-wash), var(--page-ground)');
 	});

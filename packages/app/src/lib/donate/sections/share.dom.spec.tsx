@@ -8,8 +8,8 @@ import { SETTLE_MS, Share } from './share';
 
 // the share buttons, mounted: each is a mark alone, named for its channel and for the new tab a
 // network opens in, and each network is drawn as its own official file and never as a letter or a
-// lookalike standing in for one. Copy link reports what it did in its name and its mark, a refusal
-// in a status region as well, and settles back.
+// lookalike standing in for one. Copy link reports a copy in its name and its mark, a refusal in its
+// mark and a status region with its name left as it was, and settles back.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -101,9 +101,9 @@ describe('share', () => {
 			async () => {
 				throw new Error('denied');
 			},
-			'Couldn’t copy'
+			'Copy link'
 		]
-	] as const)('names Copy link for what it did once the copy is %s', async (_, writeText, name) => {
+	] as const)('names Copy link once the copy is %s', async (_, writeText, name) => {
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 		onTestFinished(() => {
 			vi.unstubAllGlobals();
@@ -150,6 +150,8 @@ describe('share', () => {
 		expect(host.querySelector('[role="status"]')).toBe(status);
 		expect(status?.textContent).toBe('Couldn’t copy');
 		expect(status?.classList.contains('vh')).toBe(true);
+		expect(copy?.getAttribute('aria-label')).toBe('Copy link');
+		expect(copy?.getAttribute('title')).toBe('Copy link');
 
 		act(() => vi.advanceTimersByTime(SETTLE_MS));
 		expect(status?.textContent).toBe('');
@@ -205,7 +207,7 @@ describe('share', () => {
 			});
 			expect(copy?.getAttribute('data-copy')).toBe('idle');
 			await act(async () => copy?.click());
-			expect(copy?.getAttribute('aria-label')).toBe('Couldn’t copy');
+			expect(copy?.getAttribute('aria-label')).toBe('Copy link');
 			expect(marks(copy)).toEqual(GLYPHS.alert);
 			expect(copy?.getAttribute('data-copy')).toBe('failed');
 			act(() => vi.advanceTimersByTime(SETTLE_MS));

@@ -8,12 +8,13 @@ import type { PageSharing } from './types';
 // the share buttons every page offers, in their fixed order ($lib/page/share.ts), each a mark alone
 // that carries its channel's label as its name. a network's press opens that network's share page
 // in a new tab, and its name says so, as the footer's social marks do; Email opens a mail draft.
-// Copy link writes the page's address to the clipboard and reports the outcome in its own name and
-// mark: a tick for a copy, and the alert mark in the refusal's red for a refused one. a refusal is
-// also said in a polite status region, rendered empty from the first paint so the words arriving in
-// it are announced; a copy is said in the name alone, since a focused control's new name is spoken
-// and the region saying it too would be heard twice. it settles back to Copy link after
-// `SETTLE_MS`, so a later visit meets the press and not a past outcome.
+// Copy link writes the page's address to the clipboard and reports the outcome on one channel each.
+// a copy is said in the press's own name, Link copied, with a tick for its mark, since a focused
+// control's new name is spoken. a refusal keeps the name Copy link — the press still does what it
+// says — and is said in a polite status region instead, rendered empty from the first paint so the
+// words arriving in it are announced, with the alert mark in the refusal's red; naming the press
+// for the refusal as well would be heard twice. it settles back after `SETTLE_MS`, so a later visit
+// meets the press and not a past outcome.
 //
 // the heading carries `headingId`, the name of the section the caller stands this in.
 //
@@ -27,11 +28,13 @@ const COPY_MARK = { idle: 'link', copied: 'tick', failed: 'alert' } as const sat
 	GlyphName
 >;
 
-const COPY_WORDS: Record<Copy, string> = {
+const COPY_NAME: Record<Copy, string> = {
 	idle: SHARE_CHANNEL_LABELS['copy-link'],
 	copied: 'Link copied',
-	failed: 'Couldn’t copy'
+	failed: SHARE_CHANNEL_LABELS['copy-link']
 };
+
+const REFUSED_WORDS = 'Couldn’t copy';
 
 /** how long Copy link holds its outcome, as packages/operator's CopyControl.jsx holds its own. */
 export const SETTLE_MS = 2000;
@@ -75,8 +78,8 @@ export function Share({
 							type="button"
 							className="page-share-button"
 							data-copy={copy}
-							aria-label={COPY_WORDS[copy]}
-							title={COPY_WORDS[copy]}
+							aria-label={COPY_NAME[copy]}
+							title={COPY_NAME[copy]}
 							onClick={copyLink}
 						>
 							<Glyph name={COPY_MARK[copy]} className="page-share-mark" />
@@ -107,7 +110,7 @@ export function Share({
 				)}
 			</div>
 			<p className="vh" role="status">
-				{copy === 'failed' ? COPY_WORDS.failed : ''}
+				{copy === 'failed' ? REFUSED_WORDS : ''}
 			</p>
 		</div>
 	);

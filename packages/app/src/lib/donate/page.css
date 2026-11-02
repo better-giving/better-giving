@@ -23,8 +23,10 @@
  * `data-donate-root` — the selector the form's file declares its layer on outside a shadow root —
  * and `data-layout`, the whole layout the page is drawn in: `card`, `letter` or `feature` for a
  * campaign ($lib/page/shape.ts), `donation` for the Donation page, `plain` for the box alone. the
- * root sets `--donate-primary` inline from the brand colour, the page's one accent, so the card
- * inside and every section take the same brand. no other `--donate-*` name is written here. the
+ * root sets `--donate-primary` inline from the brand colour, the page's one accent, and renders the
+ * brand scale radix's custom-palette generator makes from it as a `<style>` beside, scoped to the
+ * root and the card's own root inside it, so the card and every section take the same brand. no
+ * other `--donate-*` name is written here. the
  * shade and the corners are the form's own defaults. the inner node, `.page-ground`, is where every
  * token below is declared and the ground is painted: the form declares its ladder one node under
  * `[data-donate-root]`, and a token that reads a rung has to be declared at or under that node, or
@@ -94,8 +96,9 @@
  *
  * grounds. every colour is a step of a radix colors twelve-step scale, and the step number is the
  * job (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): slate for
- * every grey and the brand scale the form derives from its one seed, both declared in
- * packages/form/src/styles/tokens.css. 1 and 2 backgrounds, 3 a control's ground, 4 its hover, 5 its
+ * every grey, declared in packages/form/src/styles/tokens.css, and the brand scale, `--_a1`…`--_a12`
+ * with `--_p`, `--_p-hover` and `--_on-p`, which ./page-root.tsx renders from the brand colour with
+ * the generator the form itself runs (packages/form/src/styles/radix-scale.ts). 1 and 2 backgrounds, 3 a control's ground, 4 its hover, 5 its
  * press, 6 a border nothing operates and a separator, 7 the edge of a control a donor operates and 8
  * that edge under the pointer and the focus ring, 9 a solid fill, 10 its hover, 11 and 12 text.
  * nothing casts a shadow: a `box-shadow` here is a focus ring, a spread with no offset and no blur.
@@ -111,14 +114,13 @@
  * width with no corner and draws its edge along its foot alone, the one side the page meets it on.
  *
  * the wash. `--page-wash` is two soft radial tints laid over the solid ground, brand step 2,
- * `--page-a2`, at the first screen's start and brand step 3, `--page-a3`, at the page's far corner,
- * each fading to `transparent` at 70% of its reach. a stop that is transparent is no translucent
- * colour standing on its own: the ground under it is opaque, so the composite is opaque everywhere.
- * the two steps are the form's brand method, `oklch(from var(--donate-primary) L_N calc(c * k_N) h)`
- * with L and k from the table in packages/form/src/styles/tokens.css, which declares only the steps
- * the card spends; the page spends these two, so it declares them here. a page with no brand colour
- * reads the form's registered seed, slate 12, so its tints are slate's hue at a trace of chroma. both
- * tints are background steps, so wherever the wash reaches, an ink on the page ground stands on the
+ * `--_a2`, at the first screen's start and brand step 3, `--_a3`, at the page's far corner, each
+ * fading to `transparent` at 70% of its reach. a stop that is transparent is no translucent colour
+ * standing on its own: the ground under it is opaque, so the composite is opaque everywhere. both
+ * steps are the generated scale's, which the page root always renders: a page with no brand colour
+ * has it generated from the form's registered seed, slate 12, so its tints are slate's hue at a
+ * trace of chroma. the token file's fallback declares neither, so the ground stands on the page
+ * root's scale: a `.page-ground` outside one paints no background at all. both tints are background steps, so wherever the wash reaches, an ink on the page ground stands on the
  * 2 or 3 radix builds steps 11 and 12 to be read on.
  * About us stands on `--page-band`, slate 1, a band across the page's width; it is a band rather than
  * a plane, so it draws no corner and no edge. a cover before its photo arrives is slate 3, the
@@ -132,10 +134,11 @@
  * under a press and keeps its edge; a refused Copy link draws its mark in red 11, `--_bad`, the
  * word the card says a refusal in.
  *
- * the brand is spent by step. 9, the seed itself, is a solid: the action, the goal's progress, the
+ * the brand is spent by step. 9, the generator's solid — the brand colour itself, unless it is so
+ * close to white that the generator takes its scale's own step 9 — is a solid: the action, the goal's progress, the
  * initials badge, and a cover with no photo — the logo's cover, the logo on its own slate-1 plate,
- * and the feature's empty cover. the ink on 9 is the form's `--_on-p`, white or brand 12 by the
- * seed's lightness. 11 is a brand word, `--page-accent` — a link, the top bar's Share and a tier's
+ * and the feature's empty cover. the ink on 9 is the generated `--_on-p`, the ink the generator
+ * picks for its step 9. 11 is a brand word, `--page-accent` — a link, the top bar's Share and a tier's
  * amount — and 12 is that word under the pointer. 8 is a brand edge and the focus ring.
  *
  * corners. a plane is `--page-plane-radius`, 12px, a step rounder than the card's `--_r`, and the
@@ -246,11 +249,9 @@ body {
 	--page-share-icon: 1.25rem;
 
 	--page-ground: var(--_n2);
-	--page-a2: oklch(from var(--donate-primary) 0.982 calc(c * 0.06) h);
-	--page-a3: oklch(from var(--donate-primary) 0.959 calc(c * 0.14) h);
 	--page-wash:
-		radial-gradient(max(80cqi, 26rem) 38rem at 0% 14rem, var(--page-a2), transparent 70%),
-		radial-gradient(max(65cqi, 24rem) 38rem at 100% 100%, var(--page-a3), transparent 70%);
+		radial-gradient(max(80cqi, 26rem) 38rem at 0% 14rem, var(--_a2), transparent 70%),
+		radial-gradient(max(65cqi, 24rem) 38rem at 100% 100%, var(--_a3), transparent 70%);
 	--page-plane: var(--_n1);
 	--page-plane-edge: var(--_n6);
 	--page-plane-radius: 0.75rem;
@@ -432,8 +433,8 @@ body {
    is one row tall, `--_row-min`, the height of the card's own rows, and it is drawn whole, never
    cropped. with no logo, the badge of the name's initials stands where a narrower one would, a
    circle a row across: the brand's step 9 under the one ink the form draws on it, `--_on-p` on
-   `--_p` (packages/form/src/styles/tokens.css). a page with no brand colour fills it with the
-   form's registered seed, slate 12. */
+   `--_p`, from the scale ./page-root.tsx renders. a page with no brand colour fills it with the
+   scale generated from the form's registered seed, slate 12. */
 .page-mast-in {
 	display: flex;
 	align-items: center;
