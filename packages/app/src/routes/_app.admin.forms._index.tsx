@@ -403,12 +403,12 @@ const SAMPLE = (
 			<span className="adm-record__mark">
 				<Mark name="form" />
 			</span>
-			<span className="adm-record__title">Year-end appeal</span>
+			<span className="adm-record__title">Form name</span>
 			<StatusWord tone="done">Live</StatusWord>
 		</div>
 		<ul className="adm-record__origins adm-record__foot">
 			<li>
-				<span className="adm-chip adm-press">riverside-shelter.org</span>
+				<span className="adm-chip adm-press">example.org</span>
 			</li>
 		</ul>
 	</div>
