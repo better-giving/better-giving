@@ -162,7 +162,7 @@ async function runLoad() {
 			amount: string;
 			interval: string;
 			status: string;
-			nextChargeOn: string | null;
+			nextChargeAt: string | null;
 		}[];
 		limit: number;
 		hasMore: boolean;
@@ -175,12 +175,11 @@ describe('/admin/recurring load', () => {
 		expect((await runLoad()).plans[0]?.amount).toBe('$123.45');
 	});
 
-	it('formats the next charge server-side, to the day', async () => {
-		// an `Intl.DateTimeFormat` in the page would run once on the server and again in the
-		// browser, in two different locales and time zones — a hydration mismatch as well as a lie
-		// about whose "today" it is.
+	it('crosses the next charge instant and leaves the day to the page', async () => {
+		// the loader does not know the browser zone, so the instant crosses and the page formats
+		// the day. a sliced UTC day is the defect: 23:30Z is already the next calendar day east of UTC.
 		await plan();
-		expect((await runLoad()).plans[0]?.nextChargeOn).toBe('2026-09-04');
+		expect((await runLoad()).plans[0]?.nextChargeAt).toBe('2026-09-04T23:30:00.000Z');
 	});
 
 	it('keeps a next charge nobody expects as null, for the page to put a word to', async () => {
@@ -188,7 +187,7 @@ describe('/admin/recurring load', () => {
 		// spoken about — so the page renders it three ways against the status. a date stood in for
 		// here would collapse all three.
 		await plan({ nextChargeAt: null });
-		expect((await runLoad()).plans[0]?.nextChargeOn).toBeNull();
+		expect((await runLoad()).plans[0]?.nextChargeAt).toBeNull();
 	});
 
 	it('hands the state and the cadence over as values, for the page to put words to', async () => {
@@ -212,7 +211,7 @@ describe('/admin/recurring load', () => {
 			'donorName',
 			'id',
 			'interval',
-			'nextChargeOn',
+			'nextChargeAt',
 			'status'
 		]);
 	});

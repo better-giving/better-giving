@@ -33,6 +33,7 @@ import {
 } from 'react-router';
 import { uuidv7 } from 'uuidv7';
 import { z } from 'zod';
+import { calendarDay } from '$lib/admin/calendar-day';
 import { screenTitle } from '$lib/admin/screen-title';
 import { buttonState } from '$lib/admin/save-button-state';
 import { formPress } from '$lib/admin/unreached';
@@ -322,8 +323,7 @@ function sameBoxes(a: CorrectionBoxes, b: CorrectionBoxes): boolean {
  * UTC midnight of whatever day the box holds (`readAccountingDate` in `$lib/ledger/input-schema.ts`).
  */
 function localDay(at: Date): string {
-	const pad = (n: number) => String(n).padStart(2, '0');
-	return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+	return calendarDay(at, Intl.DateTimeFormat().resolvedOptions().timeZone);
 }
 
 /**
