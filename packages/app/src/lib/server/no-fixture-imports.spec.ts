@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 // a fixture module (`*.testing.ts`, `*.testing.tsx`, `*.testing.json`) is imported by specs and by
 // other fixtures only. a screen, a route module, the server, a script the image runs or a build
 // config importing one would carry a spec's sample rows into a build. a source scan of each import,
-// export and `import.meta.glob` specifier in the trees and config files listed below, which `pnpm
-// build` compiles or the image runs; a computed specifier passes it.
+// export and `import.meta.glob` specifier in the trees and config files listed below, which
+// `pnpm build` compiles or the image runs; a computed specifier passes it.
 
 const PACKAGES = resolve(import.meta.dirname, '..', '..', '..', '..');
 const APP = join(PACKAGES, 'app');

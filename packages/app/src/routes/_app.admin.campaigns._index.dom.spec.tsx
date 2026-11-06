@@ -262,7 +262,8 @@ describe('the list', () => {
 		if (ghost === null) throw new Error('the create card drew no hidden sample');
 		expect(ghost.closest('[aria-hidden="true"]')).not.toBeNull();
 		expect(ghost.querySelector('a, h1, h2, h3, h4, h5, h6')).toBeNull();
-		// the sample speaks of a campaign in general, with the address placeholder rather than a plausible one.
+		// the sample speaks of a campaign in general, and its address is the placeholder rather than a
+		// plausible one.
 		expect(ghost.querySelector('.adm-record__title')?.textContent).toMatch(/\bcampaign\b/i);
 		expect(ghost.querySelector('.adm-chip')?.textContent).toBe('/campaign-address');
 	});
