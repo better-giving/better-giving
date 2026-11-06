@@ -263,6 +263,7 @@ describe('New campaign', () => {
 			{ env: bindings }
 		);
 		expect(asking.status).toBe(200);
+		expect(await asking.json()).toMatchObject({ asking: true });
 		expect(await campaignRows()).toEqual([]);
 
 		await post({ name: 'Spring appeal' });
