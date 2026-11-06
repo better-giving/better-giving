@@ -249,6 +249,25 @@ describe('the list', () => {
 		expect(root.textContent).not.toContain('Ended (');
 	});
 
+	it('puts no campaign name or address in the page while there are no campaigns', async () => {
+		rows = [];
+		const root = await screen();
+
+		const text = (root.textContent ?? '').toLowerCase();
+		for (const { name, address } of [LIVE, UNPUBLISHED, ENDED]) {
+			expect(text).not.toContain(name.toLowerCase());
+			expect(text).not.toContain(address);
+		}
+		const ghost = root.querySelector('.adm-create__ghost');
+		if (ghost === null) throw new Error('the create card drew no hidden sample');
+		expect(ghost.closest('[aria-hidden="true"]')).not.toBeNull();
+		expect(ghost.querySelector('a, h1, h2, h3, h4, h5, h6')).toBeNull();
+		// the sample speaks of a campaign in general, and its address is the placeholder rather than a
+		// plausible one.
+		expect(ghost.querySelector('.adm-record__title')?.textContent).toMatch(/\bcampaign\b/i);
+		expect(ghost.querySelector('.adm-chip')?.textContent).toBe('/campaign-address');
+	});
+
 	it('draws a live row as a link to its address with End, and an unpublished one as bare text with Delete', async () => {
 		const root = await screen();
 

@@ -123,6 +123,16 @@ function records(root: HTMLElement): HTMLElement[] {
 	);
 }
 
+/**
+ * every hostname-shaped word under `root`, read element by element: `textContent` over the whole
+ * subtree runs neighbouring elements' words together into one token.
+ */
+function hostnamesIn(root: HTMLElement): string[] {
+	return [...root.querySelectorAll('*')]
+		.filter((element) => element.childElementCount === 0)
+		.flatMap((leaf) => leaf.textContent?.match(/[a-z0-9-]+(\.[a-z0-9-]+)+/gi) ?? []);
+}
+
 /** the presses at the foot of one record, in the order the card draws them. */
 function foot(card: HTMLElement | undefined): HTMLAnchorElement[] {
 	if (card === undefined) throw new Error('the screen drew no such record');
@@ -148,6 +158,23 @@ it('draws the create card and nothing else while the deployment has no forms', (
 	expect(records(root)).toHaveLength(0);
 	expect(list(root).childElementCount).toBe(1);
 	expect(root.querySelector('.adm-empty')).toBe(null);
+});
+
+it('holds a placeholder rather than a plausible form in the empty list’s hidden sample', () => {
+	const empty = list(screen(null, []));
+	const sample = empty.querySelector<HTMLElement>('[aria-hidden="true"]');
+	if (sample === null) throw new Error('the create card drew no hidden sample');
+
+	// a record's shape, so the create card stands as tall as one, and nothing a reader can reach.
+	expect(sample.querySelector('.adm-record__head--marked .adm-record__mark')).not.toBe(null);
+	expect(sample.querySelector('.adm-state')).not.toBe(null);
+	expect(sample.querySelectorAll('.adm-record__foot .adm-chip')).toHaveLength(1);
+	expect(sample.querySelector('a, h1, h2, h3, h4, h5, h6')).toBe(null);
+	// its name speaks of a form in general, and any address in the list is one RFC 2606 reserves,
+	// which no organisation can hold.
+	expect(sample.querySelector('.adm-record__title')?.textContent).toMatch(/\bform\b/i);
+	const reserved = /(^|\.)(example\.(com|net|org)|[a-z0-9-]+\.(example|test|invalid))$/i;
+	expect(hostnamesIn(empty).filter((hostname) => !reserved.test(hostname))).toEqual([]);
 });
 
 it('says a live form is not taking gifts while a blocker stands, and the sample stays Live', () => {

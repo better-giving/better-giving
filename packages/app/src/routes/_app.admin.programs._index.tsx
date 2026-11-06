@@ -87,10 +87,10 @@ const SAMPLE = (
 			<span className="adm-record__mark">
 				<Mark name="folder-heart" />
 			</span>
-			<span className="adm-record__title">Clean water</span>
+			<span className="adm-record__title">Program name</span>
 			<StatusWord tone="done">Active</StatusWord>
 		</div>
-		<p className="adm-caption">Wells and filters for villages along the river.</p>
+		<p className="adm-caption">Program description</p>
 	</div>
 );
 

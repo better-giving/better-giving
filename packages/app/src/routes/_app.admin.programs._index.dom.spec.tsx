@@ -127,6 +127,19 @@ it('draws the create card and nothing else while the deployment has no causes', 
 	expect(root.querySelector('.adm-empty')).toBe(null);
 });
 
+it('holds a placeholder rather than a plausible cause in the empty list’s hidden sample', () => {
+	const sample = list(screen([])).querySelector<HTMLElement>('[aria-hidden="true"]');
+	if (sample === null) throw new Error('the create card drew no hidden sample');
+
+	// a record's shape, so the create card stands as tall as one, and nothing a reader can reach.
+	expect(sample.querySelector('.adm-record__head--marked .adm-record__mark')).not.toBe(null);
+	expect(sample.querySelector('.adm-state')).not.toBe(null);
+	expect(sample.querySelector('a, h1, h2, h3, h4, h5, h6')).toBe(null);
+	// its name and its description each speak of a program in general rather than of one cause.
+	expect(sample.querySelector('.adm-record__title')?.textContent).toMatch(/\bprogram\b/i);
+	expect(sample.querySelector('.adm-caption')?.textContent).toMatch(/\bprogram\b/i);
+});
+
 it('puts no press over the page, on either reading', () => {
 	// the page's one press is the card that leads the list, so a header holding a second copy of it
 	// would be two ways to the same screen a card apart.

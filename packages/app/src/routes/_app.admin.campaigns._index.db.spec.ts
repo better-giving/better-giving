@@ -254,6 +254,23 @@ describe('the Campaigns list', () => {
 });
 
 describe('New campaign', () => {
+	it('holds no campaign on an empty database until the operator presses Create, then exactly the one they named', async () => {
+		const campaignRows = () => db.select().from(page).where(eq(page.type, 'campaign'));
+
+		expect(await load()).toMatchObject({ campaigns: [], ended: [] });
+		const asking = await request(
+			new Request(`${ORIGIN}${LIST}?new`, { headers: { cookie: session } }),
+			{ env: bindings }
+		);
+		expect(asking.status).toBe(200);
+		expect(await asking.json()).toMatchObject({ asking: true });
+		expect(await campaignRows()).toEqual([]);
+
+		await post({ name: 'Spring appeal' });
+
+		expect((await campaignRows()).map((row) => row.name)).toEqual(['Spring appeal']);
+	});
+
 	it('makes the campaign from its name alone, of no type, on the default page, and opens its editor', async () => {
 		const response = await post(CREATE);
 

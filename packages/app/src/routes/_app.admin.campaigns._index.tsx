@@ -333,14 +333,14 @@ const SAMPLE = (
 			<span className="adm-record__mark">
 				<Mark name="megaphone" />
 			</span>
-			<span className="adm-record__title">Winter coat drive</span>
+			<span className="adm-record__title">Campaign name</span>
 			<StatusWord tone="done">Live</StatusWord>
 		</div>
-		<p className="adm-record__facts">Goal $15,000 · Ends Dec 31, 2026</p>
+		<p className="adm-record__facts">Goal · End date</p>
 		<div className="adm-record__row">
 			<ul className="adm-record__origins adm-record__foot">
 				<li>
-					<span className="adm-chip adm-press">/winter-coat-drive</span>
+					<span className="adm-chip adm-press">/campaign-address</span>
 				</li>
 			</ul>
 			<span className="adm-btn adm-btn--quiet adm-btn--sm">End</span>
