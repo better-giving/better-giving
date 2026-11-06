@@ -336,7 +336,7 @@ const SAMPLE = (
 			<span className="adm-record__title">Campaign name</span>
 			<StatusWord tone="done">Live</StatusWord>
 		</div>
-		<p className="adm-record__facts">Goal $0 · Ends Jan 1</p>
+		<p className="adm-record__facts">Goal · End date</p>
 		<div className="adm-record__row">
 			<ul className="adm-record__origins adm-record__foot">
 				<li>
