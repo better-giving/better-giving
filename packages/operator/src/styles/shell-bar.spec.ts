@@ -65,7 +65,7 @@ describe('the top bar’s row', () => {
 		expect(bar.get('background')).toBe('var(--admin-surface)');
 		expect(bar.get('border-block-end')).toBe('var(--admin-rule)');
 		expect(token('--admin-rule')).toBe('var(--admin-border-width) solid var(--admin-divider)');
-		expect(token('--admin-divider')).toBe('var(--admin-neutral-6)');
+		expect(token('--admin-divider')).toBe('var(--hairline)'); // the registry's step 6 in light
 		expect(token('--admin-surface')).toBe('var(--admin-neutral-1)');
 	});
 });

@@ -10,7 +10,16 @@
 		// href="#" on a link that goes nowhere yet, a heading whose page has no <html> around
 		// it. formatting it is churn against files a generator rewrites. git ignores the
 		// directory as well (.gitignore), and the exclude here keeps the reason beside the rule.
-		"includes": ["**", "!packages/app/migrations/meta", "!packages/design"]
+		// packages/operator/src/registry holds the files `bg-design` copied from the design registry
+		// (bg-design.json lists them, and is the CLI's own file). a formatter pass edits them, and
+		// `pnpm design:check` then fails on the edit, so biome leaves them as the registry wrote them.
+		"includes": [
+			"**",
+			"!packages/app/migrations/meta",
+			"!packages/design",
+			"!packages/operator/src/registry",
+			"!bg-design.json"
+		]
 	},
 	"formatter": {
 		"enabled": true,

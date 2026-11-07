@@ -95,7 +95,7 @@ describe('every plane is a step-1 card with a step-6 edge on the page', () => {
 	it('paints a plane on step 1 and its edge on step 6', () => {
 		expect(token('--admin-surface')).toBe('var(--admin-neutral-1)');
 		expect(token('--admin-rule')).toBe('var(--admin-border-width) solid var(--admin-divider)');
-		expect(token('--admin-divider')).toBe('var(--admin-neutral-6)');
+		expect(token('--admin-divider')).toBe('var(--hairline)'); // the registry's step 6 in light
 	});
 
 	it.each(planes.map(({ selector }) => selector))(

@@ -30,8 +30,8 @@
    a logo is not a ./Mark.jsx and could not be one. a mark takes its ink from the text it stands
    with and belongs to a tone ladder; this is colours of the company's own that answer to neither,
    so it takes no `color` and appears on no ladder. it is drawn from css — ../../styles/base.css
-   holds the url, the way ../../styles/fonts.css holds its faces' — so every surface's bundler
-   resolves one relative url and nothing here imports a binary.
+   holds the url, the way ../../registry/styles/fonts.css holds its faces' — so every surface's
+   bundler resolves one relative url and nothing here imports a binary.
 
    a further brand is a decision made out loud: a name added to `BrandName`, a rule added to the
    sheet, and a member added to each of the two maps below. dropping a file into that folder does

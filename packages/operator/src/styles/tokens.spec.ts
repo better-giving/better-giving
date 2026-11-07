@@ -10,19 +10,25 @@ import { ADMIN_TOKENS } from './tokens';
 //
 // the css is the source in both directions here. a copy of a name the css does not define fails,
 // and so does a copy whose value the css disagrees with, so the only way to change a value a mail
-// reads is to change ./tokens.css and bring the copy after it.
+// reads is to change ./tokens.css, or the registry file it aliases, and bring the copy after it.
 //
-// this reads the file on disk rather than importing it, for the reason ./raw-values.ts states about
-// its own sweeps: what is asserted is what is in the file, not what a build step made of it.
+// ./tokens.css holds aliases, so a chain ends in the design registry's copied files
+// (../registry/styles, recorded in bg-design.json): a colour there is an `oklch()` with its sRGB hex
+// in the comment beside it, and the hex is what a mail client can render, so it is what the chain
+// resolves to. only the default theme's light block is read, because a mail has no dark.
+//
+// this reads the files on disk rather than importing them, for the reason ./raw-values.ts states
+// about its own sweeps: what is asserted is what is in the file, not what a build step made of it.
 
 const CSS = new URL('./tokens.css', import.meta.url).pathname;
+const REGISTRY = (name: string) => new URL(`../registry/styles/${name}`, import.meta.url).pathname;
 
 // a custom property declaration. the value runs to the `;`, which is what lets a multi-line one
 // through: `--admin-transition-state` is three declarations' worth of text with commas in it.
 const DECLARATION = /(--admin-[\w-]+)\s*:\s*([^;]+);/g;
 
-/** a `var(--admin-x)` that is the whole value, which is the only reference shape this file uses. */
-const REFERENCE = /^var\((--admin-[\w-]+)\)$/;
+/** a `var(--x)` that is the whole value, which is the only reference shape these files use. */
+const REFERENCE = /^var\((--[\w-]+)\)$/;
 
 /**
  * every `--admin-*` declaration in the sheet, by name, in the order it was written.
@@ -44,9 +50,38 @@ function declarations() {
 
 const css = declarations();
 
+/**
+ * every custom property the registry's variables, roles and default light theme declare, by name.
+ * a value with an sRGB hex in the comment beside it is that hex.
+ */
+function registryDeclarations() {
+	const found = new Map<string, string>();
+	const theme = readFileSync(REGISTRY('themes/default.css'), 'utf8');
+	// the light block opens the file and the dark block opens at the first `:root.dark`. a file
+	// without that marker would slice(0, -1) and read the dark block as light, so it fails here.
+	const darkAt = theme.indexOf(':root.dark');
+	if (darkAt < 0) throw new Error('registry themes/default.css has no :root.dark block to cut at');
+	const light = theme.slice(0, darkAt);
+	const sources = [
+		light,
+		readFileSync(REGISTRY('colors.css'), 'utf8'),
+		readFileSync(REGISTRY('variables.css'), 'utf8')
+	];
+	for (const source of sources) {
+		for (const [, name = '', value = '', hex] of source.matchAll(
+			/(--[\w-]+)\s*:\s*([^;]+);(?:\s*\/\*\s*(#[0-9a-f]{6})\s*\*\/)?/g
+		)) {
+			if (!found.has(name)) found.set(name, hex ?? value.trim().replace(/\s+/g, ' '));
+		}
+	}
+	return found;
+}
+
+const registry = registryDeclarations();
+
 /** a declared value with its `var()` chain followed to the literal the browser would resolve to. */
 function resolve(name: string, seen: string[] = []): string {
-	const value = css.get(name)?.[0];
+	const value = css.get(name)?.[0] ?? registry.get(name);
 	if (value === undefined) return `<undeclared: ${name}>`;
 	if (seen.includes(name)) return `<circular: ${[...seen, name].join(' -> ')}>`;
 	const reference = REFERENCE.exec(value);
@@ -58,6 +93,7 @@ describe('the mail token mirror still says what tokens.css says', () => {
 		// a tokens.css this file failed to parse would declare nothing, and "every copy matches
 		// nothing" is a sentence that passes. both floors are floors rather than the number today.
 		expect(css.size).toBeGreaterThan(150);
+		expect(registry.size).toBeGreaterThan(100);
 		expect(Object.keys(ADMIN_TOKENS).length).toBeGreaterThan(20);
 	});
 
@@ -73,5 +109,33 @@ describe('the mail token mirror still says what tokens.css says', () => {
 			.filter(([name, copy]) => resolve(name) !== copy)
 			.map(([name, copy]) => `${name}: ${copy} — tokens.css resolves it to ${resolve(name)}`);
 		expect(drifted).toEqual([]);
+	});
+
+	it('reads only registry names for every var() that is not an --admin name', () => {
+		// resolve() reports an undeclared name only for tokens that reach ADMIN_TOKENS; a registry
+		// rename of --overlay or --link-hover would leave the other aliases drawing nothing.
+		const source = stripComments(readFileSync(CSS, 'utf8'));
+		const read = new Set(
+			[...source.matchAll(/var\(\s*(--[\w-]+)/g)].map((match) => match[1] ?? '')
+		);
+		const external = [...read].filter((name) => !name.startsWith('--admin-'));
+		expect(external.length).toBeGreaterThan(10);
+		const missing = external.filter((name) => !registry.has(name) && !css.has(name));
+		expect(missing).toEqual([]);
+	});
+
+	it('reads the registry font stacks through the --admin-font aliases', () => {
+		expect({
+			sans: css.get('--admin-font-sans'),
+			display: css.get('--admin-font-display'),
+			mono: css.get('--admin-font-mono')
+		}).toEqual({
+			sans: ['var(--font-body)'],
+			display: ['var(--font-display)'],
+			mono: ['var(--font-mono)']
+		});
+		expect(registry.get('--font-body')).toContain('Red Hat Round Text');
+		expect(registry.get('--font-display')).toMatch(/^"Red Hat Round Display"/);
+		expect(registry.get('--font-mono')).toMatch(/^"Red Hat Round Mono"/);
 	});
 });

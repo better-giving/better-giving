@@ -2,7 +2,7 @@ import formLayout from '@better-giving/form/styles/layout.css?url';
 import formMotion from '@better-giving/form/styles/motion.css?url';
 import formParts from '@better-giving/form/styles/parts.css?url';
 import formTokens from '@better-giving/form/styles/tokens.css?url';
-import hostedFaces from '@better-giving/operator/styles/fonts.css?url';
+import hostedFaces from '@better-giving/operator/registry/styles/fonts.css?url';
 import { part } from '@better-giving/form/parts';
 import type { FormConfig } from '@better-giving/form/v1';
 import type { ReactNode } from 'react';
@@ -23,7 +23,7 @@ import { Masthead, type PageLogo, type PageLook } from './page-view';
  * the four are in the order `sheetsFor` in packages/form/src/element.ts adopts them, which is
  * cascade order for the equal-specificity rules they are almost entirely made of. the faces sit
  * after them and before the page: a `@font-face` carries no cascading declaration
- * (packages/operator/src/styles/fonts.css), so the sheet registers the files and orders nothing.
+ * (packages/operator/src/registry/styles/fonts.css), so the sheet registers the files and orders nothing.
  * none of them is hoisted with a `precedence`: a donor page's whole document is these six, so
  * there is nothing for a precedence to order them against. the embed links none of these.
  */

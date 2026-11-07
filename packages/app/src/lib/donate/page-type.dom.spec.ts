@@ -32,6 +32,18 @@ function adopt(root: HTMLElement | ShadowRoot, css: string): void {
 	root.appendChild(style);
 }
 
+// the display stack is `"Red Hat Round Display", "Red Hat Round Text", sans-serif` in the registry's
+// variables.css, so a substring check for the text family passes on a display element. the lead
+// family is what tells the stacks apart.
+function expectTextStack(stack: string) {
+	expect(stack).toMatch(/^["']?Red Hat Round Text/);
+	expect(stack).not.toContain('Red Hat Round Display');
+}
+
+function expectDisplayStack(stack: string) {
+	expect(stack).toMatch(/^["']?Red Hat Round Display/);
+}
+
 function face(node: Element): string {
 	return getComputedStyle(node).fontFamily;
 }
@@ -73,14 +85,14 @@ describe('the hosted page is set in Red Hat', () => {
 		ticker.textContent = 'BTC';
 		picker.appendChild(ticker);
 
-		expect(face(document.getElementById('prose') as Element)).toContain('Red Hat Text');
-		expect(face(document.getElementById('title') as Element)).toContain('Red Hat Display');
-		expect(face(document.getElementById('heading') as Element)).toContain('Red Hat Display');
-		expect(face(document.getElementById('goal') as Element)).toContain('Red Hat Display');
-		expect(face(document.getElementById('ask') as Element)).toContain('Red Hat Text');
+		expectTextStack(face(document.getElementById('prose') as Element));
+		expectDisplayStack(face(document.getElementById('title') as Element));
+		expectDisplayStack(face(document.getElementById('heading') as Element));
+		expectDisplayStack(face(document.getElementById('goal') as Element));
+		expectTextStack(face(document.getElementById('ask') as Element));
 		const address = document.getElementById('address') as Element;
-		expect(face(address)).toContain('Red Hat Mono');
-		expect(face(ticker)).toContain('Red Hat Mono');
+		expect(face(address)).toContain('Red Hat Round Mono');
+		expect(face(ticker)).toContain('Red Hat Round Mono');
 	});
 
 	// the figure inside the send sentence. its weight is read off the element, because

@@ -8,7 +8,7 @@ import type { FormConfig } from './v1';
 // a nonprofit's page is the document. this one links the same face sheet a hosted campaign
 // links, then mounts the real element, whose coin list is the one the card builds and stands in
 // its own shadow. the computed face is the platform stack, and none of the sheet's files is
-// fetched. a probe set in Red Hat Text on the same document does fetch one, so a request the
+// fetched. a probe set in Red Hat Round Text on the same document does fetch one, so a request the
 // element made would have been seen.
 //
 // `__HOSTED_FACES__` is the sheet's href, set by vitest.browser.config.ts. the form package does
@@ -91,10 +91,11 @@ describe('the embed beside the hosted face sheet', () => {
 		document.head.appendChild(link);
 		await loaded;
 
-		const declared = [...document.fonts].map((face) => face.family).join(' ');
-		expect(declared).toContain('Red Hat Text');
-		expect(declared).toContain('Red Hat Display');
-		expect(declared).toContain('Red Hat Mono');
+		// whole family names, so a sheet that renames a family fails here rather than on a substring
+		const declared = new Set([...document.fonts].map((face) => face.family.replaceAll('"', '')));
+		expect(declared).toContain('Red Hat Round Text');
+		expect(declared).toContain('Red Hat Round Display');
+		expect(declared).toContain('Red Hat Round Mono');
 		for (const face of document.fonts) expect(face.status).toBe('unloaded');
 
 		const tag = `${DONATE_FORM_TAG}-faces`;
@@ -151,9 +152,9 @@ describe('the embed beside the hosted face sheet', () => {
 		const probe = document.createElement('p');
 		probe.id = 'face-probe';
 		probe.textContent = 'Northside pantry';
-		probe.style.fontFamily = "'Red Hat Text', sans-serif";
+		probe.style.fontFamily = "'Red Hat Round Text', sans-serif";
 		document.body.appendChild(probe);
-		await document.fonts.load('400 16px "Red Hat Text"');
+		await document.fonts.load('400 16px "Red Hat Round Text"');
 		await document.fonts.ready;
 		expect(fontFiles().length).toBeGreaterThan(0);
 		expect(getComputedStyle(word).fontFamily).not.toContain('Red Hat');

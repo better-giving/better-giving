@@ -1,6 +1,6 @@
 @layer tokens, reset, base, elements, layout;
 
-@import '@better-giving/operator/styles/fonts.css';
+@import '@better-giving/operator/registry/styles/variables.css';
 @import '@better-giving/operator/styles/tokens.css';
 @import '@better-giving/operator/styles/base.css';
 @import '@better-giving/operator/styles/adm.css';
@@ -29,15 +29,22 @@
    a sheet that forgets its `@layer` loses its place in the order below; there is nothing for
    it to cross into.
 
-   four sheets and five layers, and the @import order above is the source order inside a
-   layer, which is what settles a tie between two rules of equal specificity. fonts.css
-   registers the faces; tokens.css fills `tokens` with the custom properties the rest read;
-   base.css claims `reset` and the document defaults in `base`; adm.css fills the last
-   two, `elements` with every `.adm-*` the dashboard draws as a thing and `layout` with the
-   shell, the rail, the measured column, the page header and the reflow of any element whose
-   arrangement changes with the width. only `tokens` is written by two of them, and a
-   @font-face carries no cascading declaration, so nothing fonts.css puts there can tie
-   with tokens.css.
+   five sheets and five layers, and the @import order above is the source order inside a
+   layer, which is what settles a tie between two rules of equal specificity. the registry's
+   variables.css comes first and is unlayered: it declares the design registry's scales and
+   roles and, through its own import of its fonts.css, registers the faces (bg-design.json at
+   the repository root records both copied items, and `pnpm design:check` fails when a copied
+   file is edited). tokens.css fills `tokens` with the `--admin-*` names the rest read: every
+   colour, face and control or plane radius an alias onto a registry property, and the type
+   scale, spacing, measures, pill radius, border and focus widths, control metrics and motion
+   literals of its own, because the registry carries no value for them; base.css claims `reset`
+   and the document defaults in `base`; adm.css fills the last two, `elements` with every `.adm-*` the dashboard draws as a thing and
+   `layout` with the shell, the rail, the measured column, the page header and the reflow of
+   any element whose arrangement changes with the width. the registry sheet and the `tokens`
+   layer write disjoint custom properties (`--gray-*` and `--font-*` against `--admin-*`), so
+   those tie with nothing. the registry sheet also writes one real property, `color-scheme` on
+   `:root` (light, and dark under `.dark`, in ../../operator/src/registry/styles/themes/default.css),
+   and being unlayered it outranks a `color-scheme` any of the five layers sets; none sets one.
 
    `layout` is last so a screen's arrangement of an element outranks that element's own rule
    without either one raising its specificity to say so. a component's scoped <style> block

@@ -7,13 +7,13 @@ import { describe, expect, it } from 'vitest';
 
 // the sheet /donate and a campaign link is the built one, not the source.
 //
-// donorPageLinks() in ./plain-page.tsx imports packages/operator/src/styles/fonts.css with `?url`,
+// donorPageLinks() in ./plain-page.tsx imports packages/operator/src/registry/styles/fonts.css with `?url`,
 // and the build rewrites each `url()` into the origin's own assets. a reading of the source stays
 // green when that rewrite points at another host, so this builds the sheet and reads the urls that
 // came out.
 
 const require = createRequire(import.meta.url);
-const fontsCss = require.resolve('@better-giving/operator/styles/fonts.css');
+const fontsCss = require.resolve('@better-giving/operator/registry/styles/fonts.css');
 
 /** a font url the page can fetch from the deployment it is already on. */
 function sameOrigin(url: string): boolean {
@@ -25,7 +25,7 @@ function sameOrigin(url: string): boolean {
 
 describe('the built face sheet', () => {
 	it('points every font file at this origin', async () => {
-		expect(sameOrigin('/assets/RedHatMono-Regular.woff2')).toBe(true);
+		expect(sameOrigin('/assets/RedHatRoundMono-Regular.woff2')).toBe(true);
 		expect(sameOrigin('https://fonts.gstatic.com/x.woff2')).toBe(false);
 		expect(sameOrigin('//cdn.example/x.woff2')).toBe(false);
 
@@ -58,7 +58,9 @@ describe('the built face sheet', () => {
 				await Promise.all(cssFiles.map((name) => readFile(join(assets, name), 'utf8')))
 			).join('\n');
 			expect(css).toContain('@font-face');
-			expect(css).toContain('Red Hat Mono');
+			for (const family of ['Display', 'Text', 'Mono']) {
+				expect(css).toMatch(new RegExp(`font-family:\\s*["']Red Hat Round ${family}["']`));
+			}
 			const urls = [...css.matchAll(/url\(\s*([^)]+?)\s*\)/g)].map((match) => match[1] ?? '');
 			expect(urls.length).toBeGreaterThan(0);
 			expect(urls.every((url) => sameOrigin(url))).toBe(true);

@@ -1,6 +1,6 @@
 @layer tokens, reset, base, elements, layout;
 
-@import '@better-giving/operator/styles/fonts.css';
+@import '@better-giving/operator/registry/styles/variables.css';
 @import '@better-giving/operator/styles/tokens.css';
 @import '@better-giving/operator/styles/base.css';
 @import '@better-giving/operator/styles/adm.css';
@@ -11,4 +11,6 @@
    operator surface imports from, so this file names an order and defines nothing beyond it.
 
    this package defines no css of its own: every value a preview needs comes from
-   packages/operator/src/styles/tokens.css, gated here by src/raw-values.spec.ts. */
+   packages/operator/src/styles/tokens.css, which aliases the registry's variables.css for colour,
+   faces and the control and plane radii and states the rest as its own literals, gated here by
+   src/raw-values.spec.ts. */

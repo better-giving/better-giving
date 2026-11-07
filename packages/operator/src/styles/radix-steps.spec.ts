@@ -1,13 +1,28 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { sheet } from './sheet-rule.testing';
 
-// ./tokens.css adopts radix colors whole: the four ladders are `@radix-ui/colors` 3.0.0's light
-// values, and every alias reads the step whose job radix names for it
-// (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale). legibility is
-// radix's guarantee for a step doing its job rather than a number measured here, so what this file
-// holds is the step each job lands on, which is what that guarantee is a guarantee about.
+// ./tokens.css holds no colour of its own: each of its four ladders is twelve aliases onto a scale of
+// the design registry's copied theme (../registry/styles/themes/default.css, recorded in
+// bg-design.json), and every alias reads the step whose job radix names for it
+// (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), which the
+// registry's scales follow. what a step's value is belongs to the registry and `pnpm design:check`;
+// what this file holds is that each name reads the registry scale it is meant to, step for step, and
+// the step each job lands on.
 
 const tokens = sheet('tokens.css');
+// the theme's two blocks, comments stripped, cut where tokens.spec.ts cuts them: the light block
+// opens the file and the dark block opens at the first `:root.dark`.
+const registryTheme = readFileSync(
+	new URL('../registry/styles/themes/default.css', import.meta.url).pathname,
+	'utf8'
+).replace(/\/\*[\s\S]*?\*\//g, '');
+const darkAt = registryTheme.indexOf(':root.dark');
+if (darkAt < 0) throw new Error('registry themes/default.css has no :root.dark block to cut at');
+const registryModes = {
+	light: registryTheme.slice(0, darkAt),
+	dark: registryTheme.slice(darkAt)
+};
 
 /** the value ./tokens.css states for a custom property, spaces collapsed. */
 const token = (name: string): string | undefined =>
@@ -16,65 +31,13 @@ const token = (name: string): string | undefined =>
 		?.trim()
 		.replace(/\s+/g, ' ');
 
-// the package's published light scales, copied from `@radix-ui/colors` 3.0.0 (slate.js, blue.js,
-// red.js, amber.js). no dependency is installed: these are the reference the file is held to.
-const RADIX = {
-	neutral: [
-		'#fcfcfd',
-		'#f9f9fb',
-		'#f0f0f3',
-		'#e8e8ec',
-		'#e0e1e6',
-		'#d9d9e0',
-		'#cdced6',
-		'#b9bbc6',
-		'#8b8d98',
-		'#80838d',
-		'#60646c',
-		'#1c2024'
-	],
-	accent: [
-		'#fbfdff',
-		'#f4faff',
-		'#e6f4fe',
-		'#d5efff',
-		'#c2e5ff',
-		'#acd8fc',
-		'#8ec8f6',
-		'#5eb1ef',
-		'#0090ff',
-		'#0588f0',
-		'#0d74ce',
-		'#113264'
-	],
-	blocker: [
-		'#fffcfc',
-		'#fff7f7',
-		'#feebec',
-		'#ffdbdc',
-		'#ffcdce',
-		'#fdbdbe',
-		'#f4a9aa',
-		'#eb8e90',
-		'#e5484d',
-		'#dc3e42',
-		'#ce2c31',
-		'#641723'
-	],
-	attention: [
-		'#fefdfb',
-		'#fefbe9',
-		'#fff7c2',
-		'#ffee9c',
-		'#fbe577',
-		'#f3d673',
-		'#e9c162',
-		'#e2a336',
-		'#ffc53d',
-		'#ffba18',
-		'#ab6400',
-		'#4f3422'
-	]
+// the registry scale each ladder reads: the neutral is the registry's gray, the accent its accent,
+// the blocker its destructive and the attention its warning.
+const LADDERS = {
+	neutral: 'gray',
+	accent: 'accent',
+	blocker: 'destructive',
+	attention: 'warning'
 } as const;
 
 /** an alias's step, as `<ladder>-<n>`, or what it states when that is not one step of a ladder. */
@@ -82,11 +45,26 @@ const step = (name: string) =>
 	token(name)?.match(/^var\(--admin-((?:neutral|accent|blocker|attention)-\d+)\)$/)?.[1] ??
 	`not one step: ${token(name)}`;
 
-describe('the four ladders are radix’s published values', () => {
-	it.each(Object.entries(RADIX))('%s is its radix scale, step for step', (ladder, values) => {
-		const declared = values.map((_, index) => token(`--admin-${ladder}-${index + 1}`));
-		expect(declared).toEqual([...values]);
+describe('the four ladders alias the registry’s scales', () => {
+	it.each(Object.entries(LADDERS))('%s is the registry’s %s, step for step', (ladder, scale) => {
+		const declared = Array.from({ length: 12 }, (_, index) =>
+			token(`--admin-${ladder}-${index + 1}`)
+		);
+		expect(declared).toEqual(
+			Array.from({ length: 12 }, (_, index) => `var(--${scale}-${index + 1})`)
+		);
 		expect(token(`--admin-${ladder}-13`)).toBeUndefined();
+	});
+
+	it.each(Object.values(LADDERS))('the registry theme declares every step of %s', (scale) => {
+		// an alias onto a step the registry does not declare resolves to nothing and draws nothing,
+		// so each mode declares all twelve itself.
+		const missing = Object.entries(registryModes).flatMap(([mode, block]) =>
+			Array.from({ length: 12 }, (_, index) => `--${scale}-${index + 1}:`)
+				.filter((name) => !block.includes(name))
+				.map((name) => `${mode} ${name}`)
+		);
+		expect(missing).toEqual([]);
 	});
 });
 
@@ -134,7 +112,6 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-bar-current-bg-hover': 'accent-5'
 	},
 	'6 subtle borders and separators': {
-		'--admin-divider': 'neutral-6',
 		'--admin-overlay-border': 'neutral-6',
 		'--admin-control-border-disabled': 'neutral-6'
 	},
@@ -150,7 +127,6 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-field-border-hover': 'neutral-8',
 		'--admin-field-border-invalid': 'blocker-8',
 		'--admin-field-border-needed': 'attention-8',
-		'--admin-focus-ring': 'accent-8',
 		'--admin-accent-edge-hover': 'accent-8',
 		// radix themes draws a disabled label on the hovered border step.
 		'--admin-ink-disabled': 'neutral-8',
@@ -173,7 +149,6 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-ink-muted': 'neutral-11',
 		'--admin-field-placeholder': 'neutral-11',
 		'--admin-accent-ink': 'accent-11',
-		'--admin-link': 'accent-11',
 		'--admin-tone-blocker-ink': 'blocker-11',
 		'--admin-tone-blocker-mark': 'blocker-11',
 		'--admin-tone-attention-ink': 'attention-11',
@@ -194,28 +169,42 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-slab-ink': 'neutral-12',
 		'--admin-accent-ink-hover': 'accent-12',
 		'--admin-accent-deep': 'accent-12',
-		'--admin-link-hover': 'accent-12',
-		'--admin-link-visited': 'accent-12',
 		'--admin-selection-ink': 'accent-12',
 		'--admin-rail-current-ink': 'accent-12',
 		'--admin-tone-blocker-deep': 'blocker-12',
 		'--admin-tone-attention-deep': 'attention-12',
 		'--admin-tone-note-deep': 'neutral-12',
 		'--admin-tone-done-deep': 'accent-12'
-	},
-	// the white a label stands in on a solid fill, and the ring drawn inside one: radix's white,
-	// spelled as the neutral's step 1 so no literal stands outside the ladders.
-	'white on a solid step': {
-		'--admin-primary-ink': 'neutral-1',
-		'--admin-danger-ink': 'neutral-1',
-		'--admin-focus-ring-solid': 'neutral-1'
 	}
+};
+
+// the aliases that read a registry role instead of a ladder step, because the registry resolves the
+// job one way in light and another in dark (`--ring` and `--hairline` take later steps in dark, and
+// `--link` is chosen for contrast on the page), where a fixed step would be wrong in one of them.
+// the ring inside a solid fill is the fill's own ink, white in both modes, where the neutral's
+// step 1 turns near-black in dark. a visited link reads `--link` because the registry names no
+// visited ink.
+const ROLES: Record<string, string> = {
+	'--admin-divider': 'var(--hairline)',
+	'--admin-focus-ring': 'var(--ring)',
+	'--admin-link': 'var(--link)',
+	'--admin-link-hover': 'var(--link-hover)',
+	'--admin-link-visited': 'var(--link)',
+	'--admin-focus-ring-solid': 'var(--primary-fg)',
+	'--admin-primary-ink': 'var(--primary-fg)',
+	'--admin-danger-ink': 'var(--destructive-fg)',
+	'--admin-scrim': 'var(--overlay)'
 };
 
 describe('every colour alias reads the step radix names for its job', () => {
 	it.each(Object.entries(JOBS))('%s', (_, aliases) => {
 		const stated = Object.fromEntries(Object.keys(aliases).map((name) => [name, step(name)]));
 		expect(stated).toEqual(aliases);
+	});
+
+	it('reads a registry role where the registry resolves the job differently in dark', () => {
+		const stated = Object.fromEntries(Object.keys(ROLES).map((name) => [name, token(name)]));
+		expect(stated).toEqual(ROLES);
 	});
 
 	it('draws the wash as step 2 under the accent’s 2 and 3', () => {
@@ -225,8 +214,8 @@ describe('every colour alias reads the step radix names for its job', () => {
 	});
 
 	it('places every colour alias tokens.css declares', () => {
-		// a colour alias is a declaration whose value is one ladder step. the wash, the scrim and the
-		// ladders themselves are not aliases.
+		// a colour alias is a declaration whose value is one ladder step. the wash, the roles above and
+		// the ladders themselves are not aliases.
 		const aliases = [
 			...tokens.matchAll(
 				/(--admin-[\w-]+)\s*:\s*var\(--admin-(?:neutral|accent|blocker|attention)-\d+\)\s*;/g

@@ -132,28 +132,29 @@ describe('the names ./page.css reads and writes', () => {
 		});
 	});
 
-	it('sets the three faces to the operator screens’ stacks', () => {
-		const operator = readFileSync(
-			require.resolve('@better-giving/operator/styles/tokens.css'),
+	it('sets the three faces to the registry’s stacks', () => {
+		// the registry's `--font-*` values, which /admin's `--admin-font-*` alias, in one quote style.
+		const registry = readFileSync(
+			require.resolve('@better-giving/operator/registry/styles/variables.css'),
 			'utf8'
-		);
+		).replaceAll('"', "'");
 		const stack = (css: string, name: string) => {
 			const found = new RegExp(`${name}:\\s*([^;]+);`).exec(css);
 			if (found?.[1] === undefined) throw new Error(`${name} is not declared`);
-			return found[1].trim();
+			return found[1].trim().replace(/\s+/g, ' ');
 		};
-		expect(stack(pageText, '--page-font-text')).toBe(stack(operator, '--admin-font-sans'));
-		expect(stack(pageText, '--page-font-display')).toBe(stack(operator, '--admin-font-display'));
-		expect(stack(pageText, '--page-font-mono')).toBe(stack(operator, '--admin-font-mono'));
+		expect(stack(pageText, '--page-font-text')).toBe(stack(registry, '--font-body'));
+		expect(stack(pageText, '--page-font-display')).toBe(stack(registry, '--font-display'));
+		expect(stack(pageText, '--page-font-mono')).toBe(stack(registry, '--font-mono'));
 	});
 
-	it('sets the crypto total at the mono medium, which is a file', () => {
+	it('sets the crypto total at the medium, the page’s weight for an emphasised mono figure', () => {
 		expect(declared(page, '.page .entry.total .value.amount')).toEqual({
 			'font-weight': 'var(--_w-medium)'
 		});
 	});
 
-	it('sets the sent figure at the mono medium, which is a file', () => {
+	it('sets the sent figure at the medium, the page’s weight for an emphasised mono figure', () => {
 		expect(declared(page, '.page div')['--_w-sent']).toBe('var(--_w-medium)');
 	});
 
