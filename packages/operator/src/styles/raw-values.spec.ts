@@ -10,11 +10,10 @@ import { rawColourViolations, rawLengthViolations } from './raw-values';
 // in packages/app/src/lib/admin/styles/ — can assert only
 // that its own files come back clean, and a clean answer is what a working sweep and a blind one
 // both give. `raw-colour-ok:` and `raw-length-ok:` are the half of the bargain nothing else
-// exercises: no caller hands ./tokens.css to the colour sweep and none hands ./adm.css to the
-// length sweep, which are the two files the notes in this repository are actually written in. so
-// every note in the tree today is excusing a value that is never swept, and the hatch itself has no
-// call site at all. a value written into a screen with a note on it would be the first, and finding
-// out then whether the note works is finding out at the wrong moment.
+// exercises: no caller hands ./adm.css to the length sweep, which is the file the
+// `raw-length-ok:` notes in this repository are actually written in. so every such note in the tree
+// today is excusing a value that is never swept, and the hatch itself has no call site at all. a value written into a screen with a note on it would
+// be the first, and finding out then whether the note works is finding out at the wrong moment.
 //
 // the fixture is a real file in a temp directory because the sweeps read from disk — they take
 // paths so that a caller can glob its own tree, and a fake in memory would be proving something
@@ -130,16 +129,19 @@ describe('a negative length', () => {
 
 describe('a face name is not a colour', () => {
 	it('passes a family whose name carries a colour word', () => {
-		// ./fonts.css declares ten faces of the red hat family, so `red` stands inside a proper
-		// noun on every one of those lines.
-		const files = fixture('family', "@font-face {\n\tfont-family: 'Red Hat Text';\n}");
+		// ../registry/styles/fonts.css declares the red hat round family, so `red` stands inside a
+		// proper noun on every one of its `font-family` lines.
+		const files = fixture('family', "@font-face {\n\tfont-family: 'Red Hat Round Text';\n}");
 		expect(rawColourViolations(files)).toEqual([]);
 	});
 
 	it('refuses a colour on any other property', () => {
 		// the exemption is the property and not the quotes: without this case it would pass
 		// against a sweep that had stopped reading a quoted value anywhere.
-		const files = fixture('family-adjacent', "a {\n\tcontent: 'Red Hat Text';\n\tcolor: red;\n}");
+		const files = fixture(
+			'family-adjacent',
+			"a {\n\tcontent: 'Red Hat Round Text';\n\tcolor: red;\n}"
+		);
 		expect(rawColourViolations(files)).toHaveLength(2);
 	});
 });

@@ -52,8 +52,6 @@ const TOKENS_FILE = '../operator/src/styles/tokens.css';
 // the element sheet, which holds `elements` and `layout` and is therefore where every state ladder
 // and every declared motion in /admin is written.
 const ELEMENT_FILE = '../operator/src/styles/adm.css';
-// the faces, which is the one sheet that draws no rule: `@font-face` blocks and nothing else.
-const FONTS_FILE = '../operator/src/styles/fonts.css';
 const APP_FILE = 'src/app.css';
 
 // src/lib/donate/** is swept out rather than in. the donor page draws the donation form's own
@@ -63,10 +61,12 @@ const APP_FILE = 'src/app.css';
 // dressed from that same file, and src/lib/donate/page.spec.ts is its gate.
 const DONATE = 'src/lib/donate/';
 const screens = globSync('src/**/*.tsx').filter((file) => !file.startsWith(DONATE));
-// the four sheets live in packages/operator, a sibling package this file reaches out of rather
-// than a directory inside this one.
+// the three sheets live in packages/operator, a sibling package this file reaches out of rather
+// than a directory inside this one. the registry's copied files beside them
+// (packages/operator/src/registry, recorded in bg-design.json) are not swept: `pnpm design:check`
+// holds them to the registry, and a rule written there is the registry's to judge.
 const sheets = globSync('../operator/src/styles/*.css');
-// src/app.css is named rather than swept: it is where the layer order every one of the four
+// src/app.css is named rather than swept: it is where the layer order every one of the three
 // sheets is read inside gets declared.
 const stylesheets = [...sheets, APP_FILE];
 const sources = [...screens, ...stylesheets];
@@ -466,7 +466,7 @@ function excused(raw: string[], blanked: string[], line: number) {
 
 // every declaration a sheet writes for one of the named properties, with the block it stands in.
 // `@font-face` is out by name, and that is the difference between a rank and a descriptor:
-// `@font-face { font-weight: 400 }` in packages/operator/src/styles/fonts.css says which face the
+// `@font-face { font-weight: 400 }` in packages/operator/src/registry/styles/fonts.css says which face the
 // file behind it is, not how loud anything on a screen is drawn.
 //
 // named, so a nested `@media`, `@container` or `@supports` stays in the sweep: css nesting puts
@@ -648,7 +648,7 @@ describe('the --admin-* token layer is what /admin is drawn from', () => {
 		// failure the whole file exists to refuse. every count below is a floor rather than the number
 		// today, so adding a screen is not an edit here.
 		expect(screens.length).toBeGreaterThan(0);
-		expect(sheets.length).toBeGreaterThanOrEqual(4);
+		expect(sheets.length).toBeGreaterThanOrEqual(3);
 		expect(stylesheets).toContain(APP_FILE);
 		expect(stylesheets).toContain(ELEMENT_FILE);
 		// a tokens.css this file failed to parse would define nothing, and "nothing defined is unread"
@@ -750,14 +750,11 @@ describe('every class an /admin stylesheet draws is carried by markup', () => {
 		// and captured no selector — every one of them reading as an at-rule, say — reports no class
 		// at all and passes a block count in the hundreds.
 		//
-		// the two sheets that draw no rule are off the floor rather than floored at zero, which is
-		// an assertion with no failing input. packages/operator/src/styles/fonts.css is `@font-face`
-		// and nothing else and ../../../app.css opens no block at all, and that each is read is
-		// asserted where it means something: `every rule an /admin sheet writes stands inside a
-		// declared layer` below floors the first's top-level blocks and reads the second's layer
-		// statement.
-		if (file !== APP_FILE && file !== FONTS_FILE)
-			expect(selectors(read(file)).length).toBeGreaterThan(0);
+		// the sheet that draws no rule is off the floor rather than floored at zero, which is an
+		// assertion with no failing input. ../../../app.css opens no block at all, and that it is
+		// read is asserted where it means something: `every rule an /admin sheet writes stands
+		// inside a declared layer` below reads its layer statement.
+		if (file !== APP_FILE) expect(selectors(read(file)).length).toBeGreaterThan(0);
 		// worn is not the same question as inside the set: a borrowed name the markup happens to
 		// carry passes the sweep above and is still a rule a reader cannot find by the name of the
 		// block it belongs to.

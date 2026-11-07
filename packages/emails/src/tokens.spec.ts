@@ -1,9 +1,31 @@
+import { render } from '@react-email/render';
+import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
-import { box, hexColour, INK, INK_MUTED, LINK, pxFromLength } from './tokens';
+import { box, FONT_MONO, FONT_SANS, hexColour, INK, INK_MUTED, LINK, pxFromLength } from './tokens';
 
 // the check and the conversion ./tokens.ts performs. a colour arrives from the operator system
 // already as the six-digit hex a mail client renders, so what is checked for a colour is that
 // nothing else gets through; a length still resolves, and is checked against the root size.
+
+describe('the face a mail client sets', () => {
+	it('names the registry face first and falls to the system faces before the generic one', () => {
+		// a mail client fetches no web font, so the registry face is never found there and what a
+		// reader sees is the system faces behind it.
+		expect(FONT_SANS).toBe(
+			'"Red Hat Round Text", ui-sans-serif, system-ui, "Segoe UI", sans-serif'
+		);
+	});
+
+	it.each([
+		['sans', FONT_SANS],
+		['mono', FONT_MONO]
+	])('reaches a rendered style attribute whole, the %s stack', async (_, stack) => {
+		const html = await render(createElement('span', { style: { fontFamily: stack } }));
+		const attribute = /<span style="([^"]*)"/.exec(html)?.[1];
+		const decoded = attribute?.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
+		expect(decoded).toBe(`font-family:${stack}`);
+	});
+});
 
 describe('the hex a mail client renders', () => {
 	it('takes a six-digit hex as it stands, in lowercase', () => {
@@ -25,13 +47,13 @@ describe('the hex a mail client renders', () => {
 	 *
 	 * pinned to the hex rather than to the token, so that a mail's own colour is a thing this suite
 	 * states. the token moving is a deliberate change to the design system and lands here as a
-	 * failure. each is the radix step its operator alias names in
-	 * packages/operator/src/styles/tokens.css: slate 12, slate 11 and blue 11.
+	 * failure. each is what its operator alias resolves to in the design registry's default light
+	 * theme (packages/operator/src/styles/tokens.css names the alias): gray 12, gray 11 and `--link`.
 	 */
 	it('draws the mails in the operator ink, small print and link colour', () => {
-		expect(INK).toBe('#1c2024');
-		expect(INK_MUTED).toBe('#60646c');
-		expect(LINK).toBe('#0d74ce');
+		expect(INK).toBe('#1a2029');
+		expect(INK_MUTED).toBe('#5d656f');
+		expect(LINK).toBe('#1e6dab');
 	});
 });
 

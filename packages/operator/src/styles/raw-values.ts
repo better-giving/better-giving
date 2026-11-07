@@ -35,10 +35,8 @@ import { readFileSync } from 'node:fs';
 // nobody counts along. a length rule over them would be mostly allowlist, and an allowlist is the
 // thing that rots. a raw length in a sheet carries a `raw-length-ok:` note and is caught by review.
 //
-// ./tokens.css is where literals belong and is the one file exempt from the colour sweep. a caller
-// leaves it out of the list it hands here and asserts that the exemption is still one file rather
-// than a list, because a surface that split its values across four token files would turn a
-// one-file exemption into a four-file allowlist without a line of this file changing.
+// ./tokens.css is swept by the colour gate like any other sheet: it aliases the registry's
+// variables and holds no colour literal of its own.
 
 const COLOUR_FUNCTIONS = [
 	'rgba?',
@@ -203,11 +201,11 @@ function colourViolations(css: string, file: string) {
 		.forEach((line, i) => {
 			const colon = line.indexOf(':');
 			if (colon === -1 || COLOUR_ESCAPE.test(raw[i] ?? '')) return;
-			// a face name is not a colour. the faces ./fonts.css loads are the red hat family, so
-			// `font-family: 'Red Hat Text'` carries a named colour inside a proper noun. the
-			// property is what exempts the line rather than the quotes around the value: a colour
-			// is never quoted in css but is quoted in the `style={{ color: 'red' }}` object this
-			// same sweep reads out of a .tsx screen.
+			// a face name is not a colour. the faces ../registry/styles/fonts.css loads are the red
+			// hat round family, so `font-family: "Red Hat Round Text"` carries a named colour inside
+			// a proper noun. the property is what exempts the line rather than the quotes around the
+			// value: a colour is never quoted in css but is quoted in the `style={{ color: 'red' }}`
+			// object this same sweep reads out of a .tsx screen.
 			if (line.slice(0, colon).trim().toLowerCase() === 'font-family') return;
 			const value = line.slice(colon + 1);
 			if (RAW_COLOUR.test(value)) found.push(`${file}:${i + 1} ${line.trim()}`);

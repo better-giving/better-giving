@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "dir": "packages/operator/src/registry",
+  "registryVersion": "2.0.0",
+  "items": {
+    "fonts": {
+      "version": "1.1.0",
+      "files": {
+        "styles/fonts.css": "3b6f62f6565456cbecef29251b242ee116efbbcfcbd06261fd09add857852185",
+        "styles/fonts.usage.md": "8ad022fcd43127ee7b91b6c7b3c545d073bf8013047b4458358cbbb78d99b18a",
+        "styles/fonts/gochi-hand-latin-400-normal.woff2": "a8b59207e7dfe4da71585bd2beed7f1a7d2c66c33fc5e5c6c5293e9a2c010e8b",
+        "styles/fonts/red-hat-round-OFL.txt": "4f1417e27511207cd217656c964f1b0d8b0c4a30156a1a699cf16dc5eba0dff6",
+        "styles/fonts/RedHatRoundDisplay-Black.woff2": "71c876b62055a2ab539678a488256f652f053a36f552255726f2a2825696901f",
+        "styles/fonts/RedHatRoundDisplay-BlackItalic.woff2": "7c8c163e04dd35e0926d861576464bead1940dc0e6290d00d6b68af4370b988f",
+        "styles/fonts/RedHatRoundDisplay-Bold.woff2": "4295291ab3ce6fa70d9030312d35562fc2f3a2efee7fd14ba8277ba09da8977a",
+        "styles/fonts/RedHatRoundDisplay-BoldItalic.woff2": "501daece03ba94908e466368e3607fdd43a60420aa89d20e77b134043d64a46e",
+        "styles/fonts/RedHatRoundDisplay-ExtraBold.woff2": "7bc5f4c7ae8e30c6f3c0832ea514e2f75bb2190b122236f37bde90e9165c7a59",
+        "styles/fonts/RedHatRoundDisplay-ExtraBoldItalic.woff2": "115703576550bd38f0354ff7ecc6e9c2e1da1e6320c5368ed2f1fb8ea671d786",
+        "styles/fonts/RedHatRoundDisplay-Italic.woff2": "85a24b0fc2046ad3d38f529070e4ef6414a13cf32caf9c5672a29ae670b120bd",
+        "styles/fonts/RedHatRoundDisplay-Light.woff2": "64b75657998c7ccd26af2985885d74501dc6ce9e53e6bf39e2b462b69259c37e",
+        "styles/fonts/RedHatRoundDisplay-LightItalic.woff2": "19e55c8948dd4dfadbf44b8ab0395e98bbd9c6aca397499f2425761dbc112537",
+        "styles/fonts/RedHatRoundDisplay-Medium.woff2": "3708aa466fa3ef0867443fc50f620e94d5580966b38a955f7bd2d5358a6094d1",
+        "styles/fonts/RedHatRoundDisplay-MediumItalic.woff2": "897d883aa9c7ec91bfa404bfe60af86b53eab0d6d7445d00af998554d90834c6",
+        "styles/fonts/RedHatRoundDisplay-Regular.woff2": "259ed348ee29be7e1923e3fa7b36fd2b5d8bcbfc8648980df9529e12ba966a9b",
+        "styles/fonts/RedHatRoundDisplay-SemiBold.woff2": "0c9f21f423cc0d3be52529ee523e953edf9b68417b2c6d845d7582396c09601b",
+        "styles/fonts/RedHatRoundDisplay-SemiBoldItalic.woff2": "69609cb72f065d9933523b200cc3a3955e329ff1b62f40526f43e755952bf54d",
+        "styles/fonts/RedHatRoundMono-Bold.woff2": "91c1009233b9e1f47b0350b28c3b45899eea5f7b99a8e0b188a1a107de17a3d1",
+        "styles/fonts/RedHatRoundMono-BoldItalic.woff2": "6eaa3bc17812da6441718a2b833242726c3c56e4f16c0559ea8e1d9a79590f42",
+        "styles/fonts/RedHatRoundMono-Italic.woff2": "7b26ebfd8286a5564e7f4dfc7b323ce46df0b22cbbddf7ceeb39dbe4f41a6fde",
+        "styles/fonts/RedHatRoundMono-Light.woff2": "dfdcaa52a44b80faa2a04d396006e81e30c1795afe49976a2a7b614070db36ab",
+        "styles/fonts/RedHatRoundMono-LightItalic.woff2": "4c7dbb78ac6d7d9bb54c2b360a8da46e19aef3c5edff29d2c16afe75a650aa59",
+        "styles/fonts/RedHatRoundMono-Medium.woff2": "f0b2390973e6ba55998389ba41dc4ef10111463cf51211ae333511f7a5229f45",
+        "styles/fonts/RedHatRoundMono-MediumItalic.woff2": "3f5874ee378450391d74ca19e7023b090a5598642be5bf8063195aabcc2bdee8",
+        "styles/fonts/RedHatRoundMono-Regular.woff2": "2913195d8a779643e1ffc7560479d734dd8596020b5bd4a97d7d2416dd942aa8",
+        "styles/fonts/RedHatRoundMono-SemiBold.woff2": "b67efec707d57884ad49f95db7fae7c918fab3bfa71df42d9f3e3a12b746e2cf",
+        "styles/fonts/RedHatRoundMono-SemiBoldItalic.woff2": "07e3e49d882ffe1bf6f3020b4b635db3aeb870f2d7b2bd7f2ad308c0a3a4040a",
+        "styles/fonts/RedHatRoundText-Bold.woff2": "d8737cc755600d074bab867b358657ad36cbe544b30eb12d94b1e43e6fa3e9d0",
+        "styles/fonts/RedHatRoundText-BoldItalic.woff2": "421945f1ac28af4e8da4517969b8f1b1877109b75debd1a9757697fc10d4b551",
+        "styles/fonts/RedHatRoundText-Italic.woff2": "af5f9c464fa20274a43dbae96f3b9e42d6ead565a54be68c68ddd8c49bce5a93",
+        "styles/fonts/RedHatRoundText-Light.woff2": "b5f1463fb67d9817b81533c3a588c48cb228c5d34cf8eccb97c9c5458d8d82bb",
+        "styles/fonts/RedHatRoundText-LightItalic.woff2": "c19d3c0191ec6fab808d2ffecb4d54100f7c39e7adee736a2c8576af691d4792",
+        "styles/fonts/RedHatRoundText-Medium.woff2": "01be36bdc73c236587bbe67e469479c47ab6839e4903ee4659d97de601c336df",
+        "styles/fonts/RedHatRoundText-MediumItalic.woff2": "3982397f104df14704a1b2e31d017e2a1b2c706a02f5f4e89bb52a02bba9b1d5",
+        "styles/fonts/RedHatRoundText-Regular.woff2": "2aa6fc6dc7cf478edd6b9a63a65f0946ed31a0d53a021d3353cc1b421a95bb28",
+        "styles/fonts/RedHatRoundText-SemiBold.woff2": "ffdb85ce37ceb7c783dc05bc17bd62c51c4aaff961698835ca314b3d0a89ca6d",
+        "styles/fonts/RedHatRoundText-SemiBoldItalic.woff2": "b675323fb9e241105bfce4e23f1846494f9536548fecb232f044e563c0536561"
+      }
+    },
+    "variables": {
+      "version": "1.0.0",
+      "files": {
+        "styles/colors.css": "65f8a69a1e755b347d7fa5a9bdc3e99575a0e6e516ccb430046866738cb4c8c2",
+        "styles/themes/default.css": "e0ca25235e719c79b64c1ba226173f8311e5e36d5abab697c9a8f95d358b7c18",
+        "styles/variables.css": "a99020e6f02d3759fb273ab69a8da2a7a553a425f7ff0c86e5d02f33a3317e90",
+        "styles/variables.usage.md": "4e4374d2a416ef4bc183785175dd3c2e9ce03f56e3619c630adec8dd0778b912"
+      }
+    }
+  }
+}

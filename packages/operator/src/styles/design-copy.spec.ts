@@ -23,8 +23,8 @@ import { ruleCopyDrift, tokenCopyDrift } from './design-copy';
 // donation form's own system.
 //
 // the three sheets handed to the rule half are the chain an artboard copy holds, in cascade order —
-// ./fonts.css is the fourth and is the one no copy carries, because its `src:` urls are relative to
-// this directory.
+// ../registry/styles/fonts.css, which registers the faces, is the one no copy carries, because its
+// `src:` urls are relative to its own directory.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tokens = join(here, 'tokens.css');

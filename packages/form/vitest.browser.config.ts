@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config';
 // the href of the hosted face sheet, so a browser spec can link it without the form package
 // importing packages/operator. the sheet is what a hosted campaign links; the spec asserts the
 // element does not use it.
-const hostedFaces = `/@fs${resolve(import.meta.dirname, '../operator/src/styles/fonts.css')}`;
+const hostedFaces = `/@fs${resolve(import.meta.dirname, '../operator/src/registry/styles/fonts.css')}`;
 
 // the pool that runs specs in a real Chromium, for what happy-dom (the `dom` project in
 // vitest.config.ts) cannot prove about the embeddable form's custom element. layout, `@container`

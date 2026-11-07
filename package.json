@@ -27,7 +27,8 @@
 		"lint": "biome lint .",
 		"format": "biome format --write .",
 		"test": "pnpm -r --workspace-concurrency=1 test",
-		"test:browser": "pnpm -r --workspace-concurrency=1 test:browser"
+		"test:browser": "pnpm -r --workspace-concurrency=1 test:browser",
+		"design:check": "node scripts/design-check.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.9",

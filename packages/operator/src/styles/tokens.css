@@ -96,11 +96,14 @@
    bar and the dialog are each told from what they stand on by a step-6 edge and nothing else. a
    `box-shadow` in /admin is a focus ring, a link's bleed or the scrim's spread, and never depth.
 
-   light only. there is no dark ramp, no `prefers-color-scheme` branch and no `light-dark()`,
-   and that is a decision rather than an omission. adding dark is a second authored set of four
-   ladders and no re-pointing at all — the rung meanings hold in both modes, which is the whole
-   reason the ladders are numbered the way they are. it is still a decision made on purpose,
-   instead of a half-themed screen arriving because one token happened to carry a second value.
+   light and dark are the registry's, and this file authors neither. the ladders are aliases onto
+   the registry's scales, which carry both modes, so the `dark` class on `<html>` re-points every
+   rung, and an alias onto a step reads that same step in dark. that is right only for a job the
+   registry gives one step in both modes; a job it resolves differently in dark reads the
+   registry's role instead (the list under the ladders below), and an alias left on a step for
+   such a job is wrong in dark with nothing here to show it. there is no `prefers-color-scheme`
+   branch and no `light-dark()`: following the system is the app's call, and nothing sets the
+   class today, so an operator screen is drawn light.
 
    no green anywhere. green reads as "this is fine", and an operator who learns to scan for it
    stops reading the words — which is how `degraded`, the state where a deployment is configured
@@ -156,45 +159,51 @@
    ---------- the twelve steps, and what each number means ----------
 
    four ladders, twelve steps each, and the step number is the job in every one of them. the
-   values are radix colors' own (`@radix-ui/colors` 3.0.0, light: slate, blue, red and amber) and
-   so are the jobs (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale),
-   adopted whole and without a deviation, so a reader knows what step 7 is for without a legend
-   and in any family:
+   values are the design registry's (the `variables` item: gray, accent, destructive and warning)
+   and the jobs are radix's, which the registry's scales follow
+   (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), so a
+   reader knows what step 7 is for without a legend and in any family:
 
      1 app background · 2 subtle background · 3 ui element background · 4 hovered ui element ·
      5 active or selected ui element · 6 subtle borders and separators · 7 ui element border ·
      8 hovered ui element border and focus rings · 9 solid backgrounds · 10 hovered solid ·
      11 low-contrast text · 12 high-contrast text
 
-   radix's table puts the focus ring on 7 and its prose allows 7 or 8; this system takes 8, so a
-   ring is the stronger of the two interactive borders and never a control's own resting edge.
+   radix's table puts the focus ring on 7 and its prose allows 7 or 8; the registry takes 8 in
+   light (`--ring`) and a later step in dark, so a ring is the stronger of the two interactive
+   borders and never a control's own resting edge.
 
    so a card, a panel, the top bar, the phone's bar and a text box's face are step 1 and the page
    is step 2. a control rests on 3, answers a pointer on 4 and is pressed or selected on 5. every
    rule, and the edge of everything that is not a control, is 6. a control's own edge is 7 at rest
-   and 8 under a pointer, and the focus ring is the accent's 8. a primary or destructive fill is 9
-   with its hover on 10, under a white label. text is 11 for the secondary run and 12 for the rest.
+   and 8 under a pointer, and the focus ring is the registry's `--ring`: the accent's 8 in light
+   and its 11 in dark. a primary or destructive fill is 9 with its hover on 10, under a white
+   label. text is 11 for the secondary run and 12 for the rest.
    no value is authored off its ladder and no alias points at a step its job does not name;
-   ./radix-steps.spec.ts is what fails when one does.
+   ./radix-steps.spec.ts is what fails when one does. a few aliases read a registry role instead
+   of a step (`--primary-fg`, `--destructive-fg`, `--link`, `--link-hover`, `--ring`, `--hairline`,
+   `--overlay`, `--primary-fg` again for the ring inside a solid fill and `--link` again for a
+   visited link), where the registry resolves that job differently in dark than a fixed step
+   would.
 
    ---------- legibility ----------
 
-   legibility is radix's guarantee for a step doing its job rather than a measurement made here
-   (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): steps 11 and
-   12 are its text steps, built to be read on its background steps, and step 9 carries a white
-   label in the blue and the red. a control's resting edge is step 7, radix's ui element border,
+   legibility is the registry's guarantee for a step doing its job rather than a measurement made
+   here (the `variables` usage note, ../registry/styles/variables.usage.md): steps 11 and 12 are its
+   text steps, built to be read on its background steps, and step 9 carries `--accent-contrast` or
+   `--destructive-contrast`. a control's resting edge is step 7, radix's ui element border,
    and is not darkened to a later step to make it louder: 8 is that edge under a pointer. no pair
    is re-tuned here: a value that reads wrong is another step of the same ladder or a gap to
    report, never a literal nudged.
 
-   the focus ring is drawn outside a control, in the accent's 8 against whatever the control stands
-   on. a control filled with a solid step draws its ring inside itself in `--admin-focus-ring-solid`
-   instead, because the accent's 8 and 9 are neighbours and a ring of one abutting a fill of the
-   other is a ring nobody finds.
+   the focus ring is drawn outside a control, in `--ring` (the accent's 8 in light, its 11 in dark)
+   against whatever the control stands on. a control filled with a solid step draws its ring
+   inside itself in `--admin-focus-ring-solid` instead, because in light the accent's 8 and 9 are
+   neighbours and a ring of one abutting a fill of the other is a ring nobody finds.
    the ring hugs. it starts at the control's own edge and no ground is drawn between the two,
    in either direction, because a band of the page laid inside the ring reads as the control
    sitting in a box that arrived with the keyboard. the one exception is a chosen control, a chip
-   or a boxed row, whose edge is the accent's 7: that edge and an 8 ring abutting it read as one
+   or a boxed row, whose edge is the accent's 7: that edge and a ring abutting it read as one
    heavier edge, so there the ring stands outside a band of the ground the control stands on, as
    the donor page rings its chosen option (packages/app/src/lib/donate/page.css). and the ring is
    one hue, learned once: it never changes with the control's tone, a destructive control's
@@ -212,72 +221,78 @@
 
    the ladders come first and are raw material. a component reads the semantic alias layer after
    them and never a rung, without exception, so a rung is re-pointable in one place. ladders and
-   aliases both live here and the values are literals: nobody outside this deployment ever
-   themes an operator screen. */
+   aliases both live here. every colour, the three faces and the control and plane radii are a
+   `var()` onto the registry's files, which this file imports nothing of:
+   ../../../app/src/app.css loads them first. the rest are literals of this file's own, because
+   the registry carries no value for them: the type sizes, line heights, tracking and weights,
+   the measures, the spacing steps, the pill radius, the border, edge and focus widths, the
+   control, field, touch and mark metrics, and every duration and easing. */
 
 @layer tokens {
 	:root {
 		/* ---- the four ladders ----------------------------------------------------------
 
-		   radix colors' published light values, `@radix-ui/colors` 3.0.0, copied as literals: slate
-		   is the neutral, blue the accent, red the blocker and amber the attention. nothing is
-		   installed — the package is the source of the numbers and not a dependency — and no step
-		   is authored off its ladder. ./radix-steps.spec.ts holds every literal to the package's. */
-		--admin-neutral-1: #fcfcfd;
-		--admin-neutral-2: #f9f9fb;
-		--admin-neutral-3: #f0f0f3;
-		--admin-neutral-4: #e8e8ec;
-		--admin-neutral-5: #e0e1e6;
-		--admin-neutral-6: #d9d9e0;
-		--admin-neutral-7: #cdced6;
-		--admin-neutral-8: #b9bbc6;
-		--admin-neutral-9: #8b8d98;
-		--admin-neutral-10: #80838d;
-		--admin-neutral-11: #60646c;
-		--admin-neutral-12: #1c2024;
+		   the design registry's scales, by alias and never by value: the neutral is the registry's
+		   gray, the accent its accent, the blocker its destructive and the attention its warning
+		   (../registry/styles/themes/default.css, copied by `bg-design` and recorded in
+		   bg-design.json at the repository root). the registry decides every value, light and dark;
+		   this file decides which scale each name reads, and no step is authored off its ladder.
+		   ./radix-steps.spec.ts holds every alias to the step of the same number. */
+		--admin-neutral-1: var(--gray-1);
+		--admin-neutral-2: var(--gray-2);
+		--admin-neutral-3: var(--gray-3);
+		--admin-neutral-4: var(--gray-4);
+		--admin-neutral-5: var(--gray-5);
+		--admin-neutral-6: var(--gray-6);
+		--admin-neutral-7: var(--gray-7);
+		--admin-neutral-8: var(--gray-8);
+		--admin-neutral-9: var(--gray-9);
+		--admin-neutral-10: var(--gray-10);
+		--admin-neutral-11: var(--gray-11);
+		--admin-neutral-12: var(--gray-12);
 
 		/* the operator surfaces' only chromatic family that is not a severity, and it never means
 		   "this is fine". */
-		--admin-accent-1: #fbfdff;
-		--admin-accent-2: #f4faff;
-		--admin-accent-3: #e6f4fe;
-		--admin-accent-4: #d5efff;
-		--admin-accent-5: #c2e5ff;
-		--admin-accent-6: #acd8fc;
-		--admin-accent-7: #8ec8f6;
-		--admin-accent-8: #5eb1ef;
-		--admin-accent-9: #0090ff;
-		--admin-accent-10: #0588f0;
-		--admin-accent-11: #0d74ce;
-		--admin-accent-12: #113264;
+		--admin-accent-1: var(--accent-1);
+		--admin-accent-2: var(--accent-2);
+		--admin-accent-3: var(--accent-3);
+		--admin-accent-4: var(--accent-4);
+		--admin-accent-5: var(--accent-5);
+		--admin-accent-6: var(--accent-6);
+		--admin-accent-7: var(--accent-7);
+		--admin-accent-8: var(--accent-8);
+		--admin-accent-9: var(--accent-9);
+		--admin-accent-10: var(--accent-10);
+		--admin-accent-11: var(--accent-11);
+		--admin-accent-12: var(--accent-12);
 
-		--admin-blocker-1: #fffcfc;
-		--admin-blocker-2: #fff7f7;
-		--admin-blocker-3: #feebec;
-		--admin-blocker-4: #ffdbdc;
-		--admin-blocker-5: #ffcdce;
-		--admin-blocker-6: #fdbdbe;
-		--admin-blocker-7: #f4a9aa;
-		--admin-blocker-8: #eb8e90;
-		--admin-blocker-9: #e5484d;
-		--admin-blocker-10: #dc3e42;
-		--admin-blocker-11: #ce2c31;
-		--admin-blocker-12: #641723;
+		--admin-blocker-1: var(--destructive-1);
+		--admin-blocker-2: var(--destructive-2);
+		--admin-blocker-3: var(--destructive-3);
+		--admin-blocker-4: var(--destructive-4);
+		--admin-blocker-5: var(--destructive-5);
+		--admin-blocker-6: var(--destructive-6);
+		--admin-blocker-7: var(--destructive-7);
+		--admin-blocker-8: var(--destructive-8);
+		--admin-blocker-9: var(--destructive-9);
+		--admin-blocker-10: var(--destructive-10);
+		--admin-blocker-11: var(--destructive-11);
+		--admin-blocker-12: var(--destructive-12);
 
-		/* amber's step 9 is lighter than its step 8 and carries dark text, which is how radix draws
-		   the bright end of the wheel. no screen fills with it. */
-		--admin-attention-1: #fefdfb;
-		--admin-attention-2: #fefbe9;
-		--admin-attention-3: #fff7c2;
-		--admin-attention-4: #ffee9c;
-		--admin-attention-5: #fbe577;
-		--admin-attention-6: #f3d673;
-		--admin-attention-7: #e9c162;
-		--admin-attention-8: #e2a336;
-		--admin-attention-9: #ffc53d;
-		--admin-attention-10: #ffba18;
-		--admin-attention-11: #ab6400;
-		--admin-attention-12: #4f3422;
+		/* the warning scale's step 9 is a bright fill that carries dark text, so no screen fills
+		   with it. */
+		--admin-attention-1: var(--warning-1);
+		--admin-attention-2: var(--warning-2);
+		--admin-attention-3: var(--warning-3);
+		--admin-attention-4: var(--warning-4);
+		--admin-attention-5: var(--warning-5);
+		--admin-attention-6: var(--warning-6);
+		--admin-attention-7: var(--warning-7);
+		--admin-attention-8: var(--warning-8);
+		--admin-attention-9: var(--warning-9);
+		--admin-attention-10: var(--warning-10);
+		--admin-attention-11: var(--warning-11);
+		--admin-attention-12: var(--warning-12);
 
 		/* ---- surfaces and ink --------------------------------------------------------
 
@@ -313,7 +328,7 @@
 		/* step 6, the subtle border: every rule, inside a plane or on the page, and the edge of
 		   every surface that is not a control — a plane, the top bar, a rail tile, a menu, a list,
 		   the calendar, a sheet, the phone's bar and the dialog. */
-		--admin-divider: var(--admin-neutral-6);
+		--admin-divider: var(--hairline);
 		--admin-border: var(--admin-neutral-7);
 		--admin-ink: var(--admin-neutral-12);
 		--admin-ink-2: var(--admin-neutral-11);
@@ -325,12 +340,9 @@
 		/* the ink of an inactive control, on the hovered border step, as radix themes draws a
 		   disabled label. it is never used for text that is merely quiet. */
 		--admin-ink-disabled: var(--admin-neutral-8);
-		/* the one alpha in /admin. raw-colour-ok: what is under a dialog has to go on being
-		   seen as under it, so this is genuine translucency rather than a shade. its channels
-		   are `--admin-neutral-12`'s, and that coupling cannot be expressed mechanically here —
-		   this file derives no colour from another with a relative colour function, so moving
-		   that step is a change to be made on this line too, by hand. */
-		--admin-scrim: rgb(28 32 36 / 0.55);
+		/* the one alpha in /admin: what is under a dialog has to go on being seen as under it, so
+		   this is genuine translucency rather than a shade. it is the registry's `--overlay`. */
+		--admin-scrim: var(--overlay);
 
 		/* ---- accent roles ------------------------------------------------------------- */
 		--admin-accent-ink: var(--admin-accent-11);
@@ -412,8 +424,8 @@
 		--admin-primary-bg-hover: var(--admin-accent-10);
 		--admin-primary-bg-active: var(--admin-accent-10);
 		--admin-primary-bg-disabled: var(--admin-neutral-3);
-		/* radix's white label on blue 9, drawn in the neutral's step 1. */
-		--admin-primary-ink: var(--admin-neutral-1);
+		/* the label on the accent's step 9: the registry's own ink for that fill. */
+		--admin-primary-ink: var(--primary-fg);
 		--admin-primary-ink-disabled: var(--admin-neutral-8);
 		/* a destructive control has no disabled pair of its own: a disabled destructive button
 		   greys to the neutral disabled steps above, because a red control nobody can press is an
@@ -421,13 +433,13 @@
 		--admin-danger-bg: var(--admin-blocker-9);
 		--admin-danger-bg-hover: var(--admin-blocker-10);
 		--admin-danger-bg-active: var(--admin-blocker-10);
-		--admin-danger-ink: var(--admin-neutral-1);
-		--admin-link: var(--admin-accent-11);
-		--admin-link-hover: var(--admin-accent-12);
-		/* the accent holds two text steps and a link has three states, so the visited link shares
-		   the hover's step. what separates them on the page is the heavier underline ./base.css
-		   draws on hover, which is a property rather than a colour. */
-		--admin-link-visited: var(--admin-accent-12);
+		--admin-danger-ink: var(--destructive-fg);
+		--admin-link: var(--link);
+		--admin-link-hover: var(--link-hover);
+		/* the registry names no visited ink, so a followed link is drawn in the resting link's
+		   `--link`. ./base.css sets `a:visited` before `a:hover`, so hover still moves a followed
+		   link to `--link-hover`. */
+		--admin-link-visited: var(--link);
 		/* a box's face is step 1, a plane's own, and a box is found by its step-7 edge. a closed box
 		   greys to step 3, the closed control's. */
 		--admin-field-bg: var(--admin-neutral-1);
@@ -443,12 +455,13 @@
 		/* placeholder text is read rather than decorative — it is the example of the value a box is
 		   waiting for — so it is the secondary text step. */
 		--admin-field-placeholder: var(--admin-neutral-11);
-		/* one ring, one hue, everywhere, on the accent's step 8, and it does not change with the
-		   control's tone. */
-		--admin-focus-ring: var(--admin-accent-8);
-		/* the ring a control filled with a solid step draws inside itself: the label's white, which
-		   abuts the fill and nothing else. */
-		--admin-focus-ring-solid: var(--admin-neutral-1);
+		/* one ring, one hue, everywhere, on the registry's `--ring` (the accent's 8 in light, its 11
+		   in dark), and it does not change with the control's tone. */
+		--admin-focus-ring: var(--ring);
+		/* the ring a control filled with a solid step draws inside itself: the label's own ink, the
+		   registry's `--primary-fg`, white in both modes, which abuts the fill and nothing else. the
+		   neutral's step 1 is near-white in light only and turns near-black in dark. */
+		--admin-focus-ring-solid: var(--primary-fg);
 		--admin-selection-bg: var(--admin-accent-5);
 		--admin-selection-ink: var(--admin-accent-12);
 		/* inline code and a key's chip are read in a sentence on a plane and on the page alike. */
@@ -491,9 +504,12 @@
 		   never names the display face — base.css puts it on `h1`, `h2` and `h3`, which is the
 		   whole of where it is spent.
 
-		   all three are self-hosted and declared in ./fonts.css, which holds that argument. the donation
-		   form is set in the platform's own stack and loads no face at all, so nothing under
-		   packages/form/src/** may assume these are present.
+		   all three are the registry's red hat round faces (Red Hat Round Text, Red Hat Round
+		   Display, Red Hat Round Mono), self-hosted and declared in ../registry/styles/fonts.css;
+		   the roles are the registry's `--font-body`, `--font-display` and `--font-mono`
+		   (../registry/styles/variables.css). the donation form is set in the platform's own stack
+		   and loads no face at all, so nothing under packages/form/src/** may assume these are
+		   present.
 
 		   a size and a line height are separate tokens here rather than one `font` shorthand,
 		   because the shorthand resets `font-variant-numeric` and a money column silently stops
@@ -502,9 +518,9 @@
 
 		   sentence case everywhere, and there is no caps role: a screen that wants one is asking
 		   for emphasis this system draws with weight and tone instead. */
-		--admin-font-sans: 'Red Hat Text', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
-		--admin-font-display: 'Red Hat Display', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
-		--admin-font-mono: 'Red Hat Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+		--admin-font-sans: var(--font-body);
+		--admin-font-display: var(--font-display);
+		--admin-font-mono: var(--font-mono);
 		--admin-figures-tabular: 'tnum' 1, 'lnum' 1, 'zero' 1;
 
 		--admin-text-2xs: 0.6875rem;
@@ -755,8 +771,8 @@
 		   the status word keeps the corner inside a table cell too, and an ended word that has lost
 		   its ground keeps it with nothing to round. ./adm.css argues both at `.adm-state`. */
 		--admin-radius-0: 0;
-		--admin-radius: 6px;
-		--admin-radius-plane: 12px;
+		--admin-radius: var(--radius-control);
+		--admin-radius-plane: var(--radius-card);
 		--admin-radius-pill: 999px;
 
 		/* ---- borders and rules ---------------------------------------------------------

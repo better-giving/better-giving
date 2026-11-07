@@ -4,7 +4,8 @@ import { ADMIN_TOKENS } from '@better-giving/operator/styles/tokens';
 //
 // the system is one file — packages/operator/src/styles/tokens.css — and this package reads it
 // through the copy beside it, packages/operator/src/styles/tokens.ts, which is the same values as
-// css text. no value is decided here and none may be: what this module does is check and convert.
+// css text. no value is decided here and none may be, save the system faces at `FONT_SANS`: what
+// this module does is check and convert.
 // a screen hands the browser `var(--admin-ink)` and the browser resolves a custom property and a
 // `rem` for it. a mail has none of that. it is a set of inline style attributes read by clients
 // whose css support was fixed years ago — Outlook desktop renders through Word — so what a template
@@ -42,9 +43,11 @@ const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 /**
  * a colour as the six-digit hex a mail client understands.
  *
- * ../../operator/src/styles/tokens.css writes every colour a mail reads as radix's published hex, so
- * nothing is converted and this only refuses what a client could not render: a short hex, an alpha
- * channel, a colour function, a `var()`. lowercase, so a rendered attribute is one spelling.
+ * ../../operator/src/styles/tokens.css aliases the design registry's oklch values, and
+ * ../../operator/src/styles/tokens.ts holds each colour a mail reads as the sRGB hex the registry
+ * writes beside it, so nothing is converted here and this only refuses what a client could not
+ * render: a short hex, an alpha channel, a colour function, a `var()`. lowercase, so a rendered
+ * attribute is one spelling.
  */
 export function hexColour(value: string): string {
 	if (!HEX_COLOUR.test(value)) throw new Error(`not a six-digit hex colour: ${value}`);
@@ -80,7 +83,7 @@ export const BLOCK_BG = hexColour(ADMIN_TOKENS['--admin-surface-fill']);
 export const BANNER_BG = hexColour(ADMIN_TOKENS['--admin-tone-note-tint']);
 
 export const INK = hexColour(ADMIN_TOKENS['--admin-ink']);
-/** the small print under the rule: real text, on the low-contrast text step, slate 11. */
+/** the small print under the rule: real text, on the low-contrast text step, the registry's gray 11. */
 export const INK_MUTED = hexColour(ADMIN_TOKENS['--admin-ink-muted']);
 export const DIVIDER = hexColour(ADMIN_TOKENS['--admin-divider']);
 export const LINK = hexColour(ADMIN_TOKENS['--admin-link']);
@@ -88,7 +91,11 @@ export const LINK = hexColour(ADMIN_TOKENS['--admin-link']);
 export const CODE_BG = hexColour(ADMIN_TOKENS['--admin-code-bg']);
 export const CODE_INK = hexColour(ADMIN_TOKENS['--admin-code-ink']);
 
-export const FONT_SANS = ADMIN_TOKENS['--admin-font-sans'];
+/** the registry's face, then system faces ahead of the generic family. the registry stack goes
+ * straight from its face to `sans-serif`, and a mail client fetches no web font, so without the
+ * system faces a mail would land on the client's generic sans-serif. */
+const registrySansFace = ADMIN_TOKENS['--admin-font-sans'].replace(/,.*$/s, '');
+export const FONT_SANS = `${registrySansFace}, ui-sans-serif, system-ui, "Segoe UI", sans-serif`;
 export const FONT_MONO = ADMIN_TOKENS['--admin-font-mono'];
 
 /** what a mail is read at. a step of the scale and not `--admin-body-size`, which is 14px because

@@ -239,6 +239,12 @@
 		text-decoration-thickness: from-font;
 	}
 
+	/* before the hover rule: the two tie on specificity, so the later one wins on a followed
+	   link under a pointer, and that has to be the hover. */
+	a:visited {
+		color: var(--admin-link-visited);
+	}
+
 	/* carried-ok: .is-hover .is-focus — the twin beside each state pseudo, here and below. no
 	   screen writes one: it is what lets a specimen pin a state without a pointer on the
 	   element. */
@@ -246,10 +252,6 @@
 	a.is-hover {
 		color: var(--admin-link-hover);
 		text-decoration-thickness: var(--admin-border-width-strong);
-	}
-
-	a:visited {
-		color: var(--admin-link-visited);
 	}
 
 	/* one ring for the whole surface, on :focus-visible only — a mouse click on a button
@@ -463,9 +465,9 @@
 	   logo somebody else owns, in colours of their own, and it belongs to no tone ladder — nothing
 	   here sets `color` and nothing may.
 
-	   the image is reached by a relative url for the reason ./fonts.css reaches its faces by one:
-	   it is resolved against this sheet, so every surface that imports it emits the file into its
-	   own output and none of them has to serve a public directory holding a second copy.
+	   the image is reached by a relative url for the reason ../registry/styles/fonts.css reaches
+	   its faces by one: it is resolved against this sheet, so every surface that imports it emits
+	   the file into its own output and none of them has to serve a public directory holding a second copy.
 
 	   the height is the mark box's and the width follows the picture. each `aspect-ratio` is that
 	   file's own pixel dimensions rather than a value from ./tokens.css, and no token could hold

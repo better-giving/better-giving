@@ -1,10 +1,13 @@
 // ./tokens.css's values, re-stated for the one reader that cannot read css.
 //
 // this is not a second token file and defines nothing. every value below is a copy of a
-// declaration in ./tokens.css, resolved through its `var()` chain to the leaf literal, and that
-// file stays the only place a value is decided. ./tokens.spec.ts reads the css and asserts each
-// copy still equals it, because two statements of one value with nothing holding them together is
-// the drift this whole system is arranged to refuse.
+// declaration in ./tokens.css, resolved through its `var()` chain to the leaf literal: in the
+// design registry's copied files (../registry/styles) for the colours, the faces and the two
+// radii, and in ./tokens.css itself for the type steps, line heights, weight, spacing, border
+// widths and measure, which the registry carries no value for. those two stay the only places a
+// value is decided. ./tokens.spec.ts reads the css and asserts each copy still equals it, because
+// two statements of one value with nothing holding them together is the drift this whole system
+// is arranged to refuse.
 //
 // the reader is packages/emails, and nothing else may import this. an operator screen reads the
 // custom properties: it has a stylesheet, a document and a cascade. a mail has none of the three —
@@ -30,27 +33,30 @@ export const ADMIN_TOKENS = {
 	// either may move. the page is the solid `--admin-page` and never its wash: a gradient is a
 	// background image, which a mail client may drop, and the solid is the step-2 ground the wash's
 	// tints are laid over.
-	'--admin-page': '#f9f9fb',
-	'--admin-surface': '#fcfcfd',
-	'--admin-surface-sunken': '#f0f0f3',
-	'--admin-surface-fill': '#f0f0f3',
-	'--admin-divider': '#d9d9e0',
-	'--admin-ink': '#1c2024',
-	'--admin-ink-muted': '#60646c',
-	'--admin-link': '#0d74ce',
+	'--admin-page': '#f6f9fd',
+	'--admin-surface': '#fbfcfe',
+	'--admin-surface-sunken': '#ecf1f7',
+	'--admin-surface-fill': '#ecf1f7',
+	'--admin-divider': '#d2dbe7',
+	'--admin-ink': '#1a2029',
+	'--admin-ink-muted': '#5d656f',
+	'--admin-link': '#1e6dab',
 	// a literal inside a sentence: its ground and its ink.
-	'--admin-code-bg': '#f0f0f3',
-	'--admin-code-ink': '#1c2024',
+	'--admin-code-bg': '#ecf1f7',
+	'--admin-code-ink': '#1a2029',
 	// the band an instruction is set on: the base banner's tone, which carries no hue.
-	'--admin-tone-note-tint': '#f0f0f3',
+	'--admin-tone-note-tint': '#ecf1f7',
 
 	// ---- type ----
-	// both stacks are copied whole, first face included. that face is self-hosted by ./fonts.css and
-	// a mail client fetches nothing, so it is never found and the stack falls through to the system
-	// faces behind it — which is how a mail keeps the operator surfaces' own stack without loading a
-	// web font, the thing packages/emails/src/components/layout.tsx says its shell may not grow.
-	'--admin-font-sans': "'Red Hat Text', ui-sans-serif, system-ui, 'Segoe UI', sans-serif",
-	'--admin-font-mono': "'Red Hat Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace",
+	// both stacks are copied whole, first face included. that face is self-hosted by the registry's
+	// ../registry/styles/fonts.css and a mail client fetches nothing, so it is never found there and
+	// a mail sets the system faces behind it without loading a web font, the thing
+	// packages/emails/src/components/layout.tsx says its shell may not grow. the sans stack names no
+	// system face, so packages/emails/src/tokens.ts (`FONT_SANS`) puts them between the face and
+	// `sans-serif`.
+	'--admin-font-sans': '"Red Hat Round Text", sans-serif',
+	'--admin-font-mono':
+		'"Red Hat Round Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
 	// the steps of the type scale rather than the roles above them, and that is the one place a mail
 	// reads this system differently from a screen. the roles are screen roles — a title, a standfirst,
 	// a field — and a mail has none of them; `--admin-body-size` is 14px because an operator screen
@@ -72,7 +78,7 @@ export const ADMIN_TOKENS = {
 	'--admin-space-8': '1.5rem',
 	'--admin-border-width': '1px',
 	'--admin-border-width-strong': '2px',
-	'--admin-radius': '6px',
-	'--admin-radius-plane': '12px',
+	'--admin-radius': '0.375rem',
+	'--admin-radius-plane': '0.75rem',
 	'--admin-measure-dialog': '34rem'
 } as const;
