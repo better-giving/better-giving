@@ -7,9 +7,9 @@ import type { FormConfig } from './v1';
 //
 // a nonprofit's page is the document, and it sets its own face on the element's parent. the real
 // element is mounted, whose coin list is the one the card builds and stands in its own shadow. the
-// card's words and heading compute the page's face, the coin's ticker the platform's monospace, and
-// the page fetches no font file and holds no face the element declared. ./embed/build-output.spec.ts
-// holds the built runtime to carrying none.
+// card's words, heading, a text box and a button compute the page's face, the coin's ticker the
+// platform's monospace, and the page fetches no font file and holds no face the element declared.
+// ./embed/build-output.spec.ts holds the built runtime to carrying none.
 
 const CONFIG: FormConfig = {
 	formId: 'frm_a8x2k9',
@@ -110,13 +110,19 @@ describe('the embed’s face', () => {
 		const word = host.shadowRoot?.querySelector('label, p');
 		const heading = host.shadowRoot?.querySelector("[part~='heading']");
 		const ticker = list.querySelector('.coin-ticker');
+		// a control inherits only through layout.css's `font: inherit`, never by default
+		const field = host.shadowRoot?.querySelector('input:not([type=checkbox], [type=radio])');
+		const button = host.shadowRoot?.querySelector('button');
 		if (word == null || heading == null) throw new Error('the card drew no text');
+		if (field == null || button == null) throw new Error('the card drew no control');
 		if (ticker == null) throw new Error('the coin list drew no ticker');
 
 		const pageFace = getComputedStyle(page).fontFamily;
 		expect(pageFace).toContain('Georgia');
 		expect(getComputedStyle(word).fontFamily).toBe(pageFace);
 		expect(getComputedStyle(heading).fontFamily).toBe(pageFace);
+		expect(getComputedStyle(field).fontFamily).toBe(pageFace);
+		expect(getComputedStyle(button).fontFamily).toBe(pageFace);
 		expect(getComputedStyle(ticker).fontFamily.startsWith('ui-monospace')).toBe(true);
 
 		await document.fonts.ready;

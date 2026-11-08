@@ -20,8 +20,8 @@ import { PageRoot } from './page-root';
 //
 // names: every `--_` name the sheet reads is one the form's token file declares, or one the brand
 // scale ./page-root.tsx renders sets, and every registry accent step it reads is one that scale
-// re-themes. the sheet re-points `--_font` and `--_font-mono`, declares
-// `--_w-sent`, and declares no other `--_` name.
+// re-themes. the sheet re-points `--_font-mono`, declares `--_w-sent`, and declares no other `--_`
+// name.
 // every `--page-*` name read is declared here or set inline by the page root; every `--donate-*`
 // name written is a seed the form registers.
 //
@@ -180,29 +180,35 @@ describe('the names ./page.css reads and writes', () => {
 		});
 	});
 
-	it('sets the three faces to the registry’s stacks', () => {
-		// the registry's `--font-*` values, which /admin's `--admin-font-*` alias, in one quote style.
-		const registry = readFileSync(
-			require.resolve('@better-giving/operator/registry/styles/variables.css'),
+	it('sets the three faces to the operator screens’ stacks', () => {
+		// the plain red hat stacks the operator token file re-points the registry's `--font-*` roles
+		// at, which /admin's `--admin-font-*` alias. that file writes each one `!important`.
+		const operator = readFileSync(
+			require.resolve('@better-giving/operator/styles/tokens.css'),
 			'utf8'
-		).replaceAll('"', "'");
+		);
 		const stack = (css: string, name: string) => {
-			const found = new RegExp(`${name}:\\s*([^;]+);`).exec(css);
+			// `--font-mono:` stands inside `--admin-font-mono:` too, so a name is matched whole.
+			const found = new RegExp(`(?<![\\w-])${name}:\\s*([^;]+);`).exec(css);
 			if (found?.[1] === undefined) throw new Error(`${name} is not declared`);
-			return found[1].trim().replace(/\s+/g, ' ');
+			return found[1]
+				.trim()
+				.replace(/\s+/g, ' ')
+				.replace(/ !important$/, '');
 		};
-		expect(stack(pageText, '--page-font-text')).toBe(stack(registry, '--font-body'));
-		expect(stack(pageText, '--page-font-display')).toBe(stack(registry, '--font-display'));
-		expect(stack(pageText, '--page-font-mono')).toBe(stack(registry, '--font-mono'));
+		expect(stack(pageText, '--page-font-text')).toBe(stack(operator, '--font-body'));
+		expect(stack(pageText, '--page-font-display')).toBe(stack(operator, '--font-display'));
+		expect(stack(pageText, '--page-font-mono')).toBe(stack(operator, '--font-mono'));
+		expect(stack(pageText, '--page-font-text')).toMatch(/^'Red Hat Text'/);
 	});
 
-	it('sets the crypto total at the medium, the page’s weight for an emphasised mono figure', () => {
+	it('sets the crypto total at the mono medium, which is a file', () => {
 		expect(declared(page, '.page .entry.total .value.amount')).toEqual({
 			'font-weight': 'var(--_w-medium)'
 		});
 	});
 
-	it('sets the sent figure at the medium, the page’s weight for an emphasised mono figure', () => {
+	it('sets the sent figure at the mono medium, which is a file', () => {
 		expect(declared(page, '.page div')['--_w-sent']).toBe('var(--_w-medium)');
 	});
 

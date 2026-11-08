@@ -1,19 +1,18 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { build } from 'vite';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { buildSheet } from './built-sheet.testing';
 
 // the sheet /donate and a campaign link is the built one, not the source.
 //
-// donorPageLinks() in ./plain-page.tsx imports packages/operator/src/registry/styles/fonts.css with `?url`,
+// donorPageLinks() in ./plain-page.tsx imports packages/operator/src/styles/fonts.css with `?url`,
 // and the build rewrites each `url()` into the origin's own assets. a reading of the source stays
 // green when that rewrite points at another host, so this builds the sheet and reads the urls that
 // came out.
 
 const require = createRequire(import.meta.url);
-const fontsCss = require.resolve('@better-giving/operator/registry/styles/fonts.css');
+const fontsCss = require.resolve('@better-giving/operator/styles/fonts.css');
 
 /** a font url the page can fetch from the deployment it is already on. */
 function sameOrigin(url: string): boolean {
@@ -23,50 +22,44 @@ function sameOrigin(url: string): boolean {
 	return bare.startsWith('/') || bare.startsWith('./') || bare.startsWith('../');
 }
 
+/** the woff2 files the source sheet declares, by the name they have beside it. */
+const declaredFiles = [
+	...readFileSync(fontsCss, 'utf8').matchAll(/url\(\s*['"]?\.\/fonts\/([^'")]+\.woff2)/g)
+]
+	.map((match) => match[1] ?? '')
+	.sort();
+
 describe('the built face sheet', () => {
 	it('points every font file at this origin', async () => {
-		expect(sameOrigin('/assets/RedHatRoundMono-Regular.woff2')).toBe(true);
+		expect(sameOrigin('/assets/RedHatMono-Regular.woff2')).toBe(true);
 		expect(sameOrigin('https://fonts.gstatic.com/x.woff2')).toBe(false);
 		expect(sameOrigin('//cdn.example/x.woff2')).toBe(false);
 
-		const root = await mkdtemp(join(tmpdir(), 'hosted-faces-'));
-		try {
-			// the import has to be read. an unused `?url` import is dropped, and the built sheet
-			// goes with it, which would leave this test looking at an empty directory.
-			await writeFile(
-				join(root, 'entry.js'),
-				`import href from ${JSON.stringify(`${fontsCss}?url`)};\nglobalThis.__href = href;\n`
-			);
-			await build({
-				configFile: false,
-				root,
-				logLevel: 'silent',
-				publicDir: false,
-				build: {
-					outDir: 'dist',
-					emptyOutDir: true,
-					assetsInlineLimit: 0,
-					minify: false,
-					write: true,
-					rollupOptions: { input: join(root, 'entry.js') }
-				}
-			});
-			const assets = join(root, 'dist', 'assets');
-			const cssFiles = (await readdir(assets)).filter((name) => name.endsWith('.css'));
-			expect(cssFiles.length).toBeGreaterThan(0);
-			const css = (
-				await Promise.all(cssFiles.map((name) => readFile(join(assets, name), 'utf8')))
-			).join('\n');
-			expect(css).toContain('@font-face');
-			for (const family of ['Display', 'Text', 'Mono']) {
-				expect(css).toMatch(new RegExp(`font-family:\\s*["']Red Hat Round ${family}["']`));
-			}
-			const urls = [...css.matchAll(/url\(\s*([^)]+?)\s*\)/g)].map((match) => match[1] ?? '');
-			expect(urls.length).toBeGreaterThan(0);
-			expect(urls.every((url) => sameOrigin(url))).toBe(true);
-			expect(urls.some((url) => url.includes('.woff2'))).toBe(true);
-		} finally {
-			await rm(root, { recursive: true, force: true });
+		const { css, urls, assets, dangling, diagnostics } = await buildSheet([fontsCss]);
+		expect(css).toContain('@font-face');
+		for (const family of ['Display', 'Text', 'Mono']) {
+			expect(css).toMatch(new RegExp(`font-family:\\s*["']Red Hat ${family}["']`));
 		}
+		expect(css).not.toContain('Red Hat Round');
+		expect(urls.length).toBeGreaterThan(0);
+		expect(urls.every((url) => sameOrigin(url))).toBe(true);
+		expect(urls.some((url) => url.includes('.woff2'))).toBe(true);
+
+		// a url that names no emitted file is a face that falls back without a word: vite leaves an
+		// unresolved `./fonts/X.woff2` as written, which `sameOrigin` alone accepts.
+		expect(diagnostics).toEqual([]);
+		expect(dangling).toEqual([]);
+
+		// and the emitted set is the declared set: vite hashes each name, `Stem-<hash>.woff2`.
+		expect(declaredFiles.length).toBeGreaterThan(0);
+		const emitted = assets.filter((name) => name.endsWith('.woff2')).sort();
+		expect(emitted.map((name) => name.replace(/-[\w-]{8}\.woff2$/, '.woff2'))).toEqual(
+			declaredFiles
+		);
+		expect(
+			readdirSync(join(dirname(fontsCss), 'fonts'))
+				.filter((n) => n.endsWith('.woff2'))
+				.sort()
+		).toEqual(declaredFiles);
 	}, 60_000);
 });

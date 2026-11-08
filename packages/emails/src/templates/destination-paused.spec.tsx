@@ -48,7 +48,7 @@ describe('destinationPaused.template', () => {
 	it('names the destination by its URL in a mono chip, never in quote marks', async () => {
 		const message = await rendered();
 		expect(message.html).toMatch(
-			new RegExp(`<code style="[^"]*font-family:[^"]*Red Hat Round Mono[^"]*">${ADDRESS}</code>`)
+			new RegExp(`<code style="[^"]*font-family:[^"]*Red Hat Mono[^"]*">${ADDRESS}</code>`)
 		);
 		for (const arm of [message.text, message.html]) {
 			expect(arm).not.toMatch(/["“”‘’']https:\/\/crm/);

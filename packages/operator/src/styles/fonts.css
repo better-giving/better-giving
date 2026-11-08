@@ -1,0 +1,135 @@
+/* red hat text, red hat display and red hat mono, self-hosted. no third-party font host: the
+   files sit beside this sheet in ./fonts/ and are served from the origin the operator screen is
+   already on, so a fork inherits the faces along with everything else and no reader of an
+   operator screen is announced to anybody.
+
+   these are this deployment's faces and not the design registry's. the registry's `fonts` item is
+   red hat round, the face of Better Giving's hosted platform; a self-hosted deployment is set in
+   plain red hat, which the registry does not carry until its `fonts-red-hat` item in 2.2.0, and
+   that item replaces this sheet and the ten files beside it. ./tokens.css points the registry's
+   `--font-body`, `--font-display` and `--font-mono` at the three families declared here.
+
+   the src urls below are relative on purpose, and it is what lets every surface read this sheet.
+   a root-absolute /fonts/… would need each one to serve a public directory holding the same ten
+   files, and the dashboard has one while the component gallery serves no assets at all, so the
+   faces would be a second copy of a binary or a surface set in a fallback stack. a relative
+   url is resolved against this file instead, and each surface's bundler emits the faces into its
+   own output from the one copy here. the binaries are in this package for the reason the sheets
+   are: more than one surface reads them.
+
+   text 400, 400 italic, 500, 600 and 700; display 500, 600 and 700; mono 400 and 500. the weights
+   are each face's own rather than a browser's synthesis, so an emphasis is never a smeared 400 and
+   a de-emphasis is never nothing at all. ./base.css sets `b` and `strong` to `bolder`: from body
+   text that asks for 700 and paints the text face's bold, and inside a heading set at 600 it asks
+   for 900, which a family whose heaviest file is 700 matches with that file. so display carries
+   600 for the ranks ./base.css sets, 500 for a rank a screen re-pitches to
+   `--admin-weight-medium`, which is what a fold's summary in ./adm.css does, and 700 for emphasis
+   inside a heading. the one italic is the text face's 400 companion and it is worn by one thing —
+   a value the deployment has not been given, where the italic is what separates "there is nothing
+   here" from a value that happens to be short. nothing italicises display or mono.
+
+   every weight a screen sets a face at has a file here. a weight with no file is synthesised or
+   matched to a neighbour without a word, so a new weight on a face ships with its block below.
+
+   500 is a file here, served by each operator surface. the donation form ships no webfont and
+   inherits whatever a host hands it, where a two-weight family resolves 500 down to 400 and the
+   emphasis vanishes, which is why packages/form/src/styles/tokens.css never spends 500 on
+   emphasis.
+
+   the blocks sit inside `tokens` for the same reason the rest of the operator css is inside a
+   layer: an unlayered sheet outranks every layer, and the donation form the dashboard embeds
+   carries its own css unlayered into a shadow root. a @font-face carries no cascading
+   declaration, so the layer costs it nothing.
+
+   a face whose file is missing falls back to the stack ./tokens.css gives `--font-body`,
+   `--font-display` or `--font-mono` without a word, so the set of files is the set of blocks
+   below. ./tokens.spec.ts checks that each role's lead family has a block here, and ./fonts.spec.ts
+   checks that each block's file is there.
+
+   all three families are licensed under the sil open font license 1.1, which requires the copyright
+   notice and the licence to travel with the binaries wherever they go, and a fork of this
+   repository takes all ten with it. ./fonts/OFL.txt sits beside them and carries the one notice
+   that covers the three, so a face added to or dropped from that directory is a change to that
+   file too. the root LICENSE is this project's own grant and says nothing about the faces. */
+
+@layer tokens {
+	@font-face {
+		font-family: 'Red Hat Text';
+		src: url('./fonts/RedHatText-Regular.woff2') format('woff2');
+		font-weight: 400;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Text';
+		src: url('./fonts/RedHatText-Italic.woff2') format('woff2');
+		font-weight: 400;
+		font-style: italic;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Text';
+		src: url('./fonts/RedHatText-Medium.woff2') format('woff2');
+		font-weight: 500;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Text';
+		src: url('./fonts/RedHatText-SemiBold.woff2') format('woff2');
+		font-weight: 600;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Text';
+		src: url('./fonts/RedHatText-Bold.woff2') format('woff2');
+		font-weight: 700;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Display';
+		src: url('./fonts/RedHatDisplay-Medium.woff2') format('woff2');
+		font-weight: 500;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Display';
+		src: url('./fonts/RedHatDisplay-SemiBold.woff2') format('woff2');
+		font-weight: 600;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Display';
+		src: url('./fonts/RedHatDisplay-Bold.woff2') format('woff2');
+		font-weight: 700;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Mono';
+		src: url('./fonts/RedHatMono-Regular.woff2') format('woff2');
+		font-weight: 400;
+		font-style: normal;
+		font-display: swap;
+	}
+
+	@font-face {
+		font-family: 'Red Hat Mono';
+		src: url('./fonts/RedHatMono-Medium.woff2') format('woff2');
+		font-weight: 500;
+		font-style: normal;
+		font-display: swap;
+	}
+}

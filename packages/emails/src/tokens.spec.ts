@@ -1,17 +1,25 @@
 import { render } from '@react-email/render';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
-import { box, FONT_MONO, FONT_SANS, hexColour, INK, INK_MUTED, LINK, pxFromLength } from './tokens';
+import {
+	box,
+	FONT_MONO,
+	FONT_SANS,
+	fontStack,
+	hexColour,
+	INK,
+	INK_MUTED,
+	LINK,
+	pxFromLength
+} from './tokens';
 
 // the check and the conversion ./tokens.ts performs. a colour arrives from the operator system
 // already as the six-digit hex a mail client renders, so what is checked for a colour is that
 // nothing else gets through; a length still resolves, and is checked against the root size.
 
 describe('the face a mail client sets', () => {
-	it('names the registry face first and falls to the system faces before the generic one', () => {
-		expect(FONT_SANS).toBe(
-			'"Red Hat Round Text", ui-sans-serif, system-ui, "Segoe UI", sans-serif'
-		);
+	it('names red hat text first and falls to the system faces before the generic one', () => {
+		expect(FONT_SANS).toBe("'Red Hat Text', ui-sans-serif, system-ui, 'Segoe UI', sans-serif");
 	});
 
 	it.each([
@@ -22,6 +30,21 @@ describe('the face a mail client sets', () => {
 		const attribute = /<span style="([^"]*)"/.exec(html)?.[1];
 		const decoded = attribute?.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
 		expect(decoded).toBe(`font-family:${stack}`);
+	});
+
+	it('takes a list of family names as it stands', () => {
+		expect(fontStack("'Red Hat Mono', ui-monospace, Consolas, monospace")).toBe(
+			"'Red Hat Mono', ui-monospace, Consolas, monospace"
+		);
+	});
+
+	it('refuses a stack a mail client may not read', () => {
+		// an inline style resolves no custom property, and a priority or a second declaration
+		// smuggled into the value is not a face.
+		expect(() => fontStack("var(--font-body), 'Segoe UI', sans-serif")).toThrow();
+		expect(() => fontStack("'Red Hat Text', sans-serif !important")).toThrow();
+		expect(() => fontStack("'Red Hat Text', sans-serif; color: red")).toThrow();
+		expect(() => fontStack('')).toThrow();
 	});
 });
 

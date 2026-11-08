@@ -15,7 +15,9 @@ import { ADMIN_TOKENS } from './tokens';
 // ./tokens.css holds aliases, so a chain ends in the design registry's copied files
 // (../registry/styles, recorded in bg-design.json): a colour there is an `oklch()` with its sRGB hex
 // in the comment beside it, and the hex is what a mail client can render, so it is what the chain
-// resolves to. only the default theme's light block is read, because a mail has no dark.
+// resolves to. only the default theme's light block is read, because a mail has no dark. the three
+// face roles are the exception: ./tokens.css re-points them itself, and that is where their chain
+// ends.
 //
 // this reads the files on disk rather than importing them, for the reason ./raw-values.ts states
 // about its own sweeps: what is asserted is what is in the file, not what a build step made of it.
@@ -51,6 +53,26 @@ function declarations() {
 const css = declarations();
 
 /**
+ * every registry name the sheet declares rather than reads, by name: the three face roles it
+ * re-points at plain red hat. each is written `!important`, and `important` says whether it was,
+ * because the registry declares them unlayered and without it the re-point loses (the type group
+ * in ./tokens.css).
+ */
+function repointedDeclarations() {
+	const found = new Map<string, { value: string; important: boolean }>();
+	for (const [, name = '', value = ''] of stripComments(readFileSync(CSS, 'utf8')).matchAll(
+		/(?<![\w-])(--(?!admin-)[\w-]+)\s*:\s*([^;]+);/g
+	)) {
+		const flat = value.trim().replace(/\s+/g, ' ');
+		const important = flat.endsWith('!important');
+		found.set(name, { value: flat.replace(/\s*!important$/, ''), important });
+	}
+	return found;
+}
+
+const repointed = repointedDeclarations();
+
+/**
  * every custom property the registry's variables, roles and default light theme declare, by name.
  * a value with an sRGB hex in the comment beside it is that hex.
  */
@@ -81,7 +103,7 @@ const registry = registryDeclarations();
 
 /** a declared value with its `var()` chain followed to the literal the browser would resolve to. */
 function resolve(name: string, seen: string[] = []): string {
-	const value = css.get(name)?.[0] ?? registry.get(name);
+	const value = css.get(name)?.[0] ?? repointed.get(name)?.value ?? registry.get(name);
 	if (value === undefined) return `<undeclared: ${name}>`;
 	if (seen.includes(name)) return `<circular: ${[...seen, name].join(' -> ')}>`;
 	const reference = REFERENCE.exec(value);
@@ -124,7 +146,7 @@ describe('the mail token mirror still says what tokens.css says', () => {
 		expect(missing).toEqual([]);
 	});
 
-	it('reads the registry font stacks through the --admin-font aliases', () => {
+	it('reads the registry font roles through the --admin-font aliases', () => {
 		expect({
 			sans: css.get('--admin-font-sans'),
 			display: css.get('--admin-font-display'),
@@ -134,9 +156,39 @@ describe('the mail token mirror still says what tokens.css says', () => {
 			display: ['var(--font-display)'],
 			mono: ['var(--font-mono)']
 		});
-		expect(registry.get('--font-body')).toContain('Red Hat Round Text');
-		expect(registry.get('--font-display')).toMatch(/^"Red Hat Round Display"/);
-		expect(registry.get('--font-mono')).toMatch(/^"Red Hat Round Mono"/);
+	});
+
+	it('re-points the three registry font roles at plain red hat, and nothing else', () => {
+		// the registry's own stacks are red hat round; the re-point is what sets these surfaces in
+		// the faces ./fonts.css declares, and losing the `!important` loses it in every browser.
+		expect(registry.get('--font-body')).toMatch(/^"Red Hat Round Text"/);
+		expect(Object.fromEntries(repointed)).toEqual({
+			'--font-body': {
+				value: "'Red Hat Text', ui-sans-serif, system-ui, 'Segoe UI', sans-serif",
+				important: true
+			},
+			'--font-display': {
+				value: "'Red Hat Display', ui-sans-serif, system-ui, 'Segoe UI', sans-serif",
+				important: true
+			},
+			'--font-mono': {
+				value: "'Red Hat Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace",
+				important: true
+			}
+		});
+	});
+
+	it('declares a face in ./fonts.css for the lead family of every re-pointed role', () => {
+		const faces = new Set(
+			[
+				...readFileSync(new URL('./fonts.css', import.meta.url).pathname, 'utf8').matchAll(
+					/font-family:\s*'([^']+)'/g
+				)
+			].map((match) => match[1])
+		);
+		const leads = [...repointed.values()].map(({ value }) => /^'([^']+)'/.exec(value)?.[1]);
+		expect(leads).toEqual(['Red Hat Text', 'Red Hat Display', 'Red Hat Mono']);
+		expect(leads.filter((lead) => !faces.has(lead ?? ''))).toEqual([]);
 	});
 
 	it('reads the registry’s control radius and card radius through the --admin-radius pair', () => {

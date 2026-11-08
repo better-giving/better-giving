@@ -8,9 +8,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 // /donate and a campaign link this sheet after the form's, and the card is in the document, so
 // the re-point in ./page.css reaches it. the coin list adopts the picker's own sheets (parts and
 // coins, not the token sheet) and inherits the re-point from its host. what the embed computes,
-// and that the faces it fetches are the registry's core six it brings with it, is
-// packages/form/src/embed-faces.browser.spec.ts — a stand-in shadow in this document could not see
-// which faces the element asks for.
+// and that it requests none of these files, is packages/form/src/embed-faces.browser.spec.ts —
+// a stand-in shadow in this document would stay green if the element started asking for a face.
 
 const require = createRequire(import.meta.url);
 const formStyles = dirname(require.resolve('@better-giving/form/styles/tokens.css'));
@@ -31,18 +30,6 @@ function adopt(root: HTMLElement | ShadowRoot, css: string): void {
 	const style = document.createElement('style');
 	style.textContent = css;
 	root.appendChild(style);
-}
-
-// the display stack is `"Red Hat Round Display", "Red Hat Round Text", sans-serif` in the registry's
-// variables.css, so a substring check for the text family passes on a display element. the lead
-// family is what tells the stacks apart.
-function expectTextStack(stack: string) {
-	expect(stack).toMatch(/^["']?Red Hat Round Text/);
-	expect(stack).not.toContain('Red Hat Round Display');
-}
-
-function expectDisplayStack(stack: string) {
-	expect(stack).toMatch(/^["']?Red Hat Round Display/);
 }
 
 function face(node: Element): string {
@@ -86,14 +73,14 @@ describe('the hosted page is set in Red Hat', () => {
 		ticker.textContent = 'BTC';
 		picker.appendChild(ticker);
 
-		expectTextStack(face(document.getElementById('prose') as Element));
-		expectDisplayStack(face(document.getElementById('title') as Element));
-		expectDisplayStack(face(document.getElementById('heading') as Element));
-		expectDisplayStack(face(document.getElementById('goal') as Element));
-		expectTextStack(face(document.getElementById('ask') as Element));
+		expect(face(document.getElementById('prose') as Element)).toMatch(/^["']Red Hat Text["']/);
+		expect(face(document.getElementById('title') as Element)).toMatch(/^["']Red Hat Display["']/);
+		expect(face(document.getElementById('heading') as Element)).toMatch(/^["']Red Hat Display["']/);
+		expect(face(document.getElementById('goal') as Element)).toMatch(/^["']Red Hat Display["']/);
+		expect(face(document.getElementById('ask') as Element)).toMatch(/^["']Red Hat Text["']/);
 		const address = document.getElementById('address') as Element;
-		expect(face(address)).toContain('Red Hat Round Mono');
-		expect(face(ticker)).toContain('Red Hat Round Mono');
+		expect(face(address)).toMatch(/^["']Red Hat Mono["']/);
+		expect(face(ticker)).toMatch(/^["']Red Hat Mono["']/);
 	});
 
 	// the figure inside the send sentence. its weight is read off the element, because

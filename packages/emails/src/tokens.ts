@@ -3,15 +3,16 @@ import { ADMIN_TOKENS } from '@better-giving/operator/styles/tokens';
 // the operator design system, in the values a mail client can actually render.
 //
 // the system's values are the design registry's copied files (bg-design.json lists them), which
-// packages/operator/src/styles/tokens.css aliases, and this package reads them through the copy
-// beside that file, packages/operator/src/styles/tokens.ts, which is the same values as css text. no value is decided here and none may be, save the system faces at `FONT_SANS`: what
-// this module does is check and convert.
+// packages/operator/src/styles/tokens.css aliases, and the faces that file re-points the registry's
+// roles at. this package reads them through the copy beside that file,
+// packages/operator/src/styles/tokens.ts, which is the same values as css text. no value is decided
+// here and none may be: what this module does is check and convert.
 // a screen hands the browser `var(--admin-ink)` and the browser resolves a custom property and a
 // `rem` for it. a mail has none of that. it is a set of inline style attributes read by clients
 // whose css support was fixed years ago — Outlook desktop renders through Word — so what a template
 // writes has to be a six-digit hex triple and a pixel count, already resolved.
 //
-// one check, one conversion and one shorthand, and every value a template writes comes out of
+// two checks, one conversion and one shorthand, and every value a template writes comes out of
 // them. a number a template states for itself is the thing this module exists to make unnecessary:
 // react writes `px` after a unitless number in a style object, so `padding: 16` and `padding: '16px'` are the
 // same declaration and only one of them is a value somebody chose in this file.
@@ -54,6 +55,23 @@ export function hexColour(value: string): string {
 	return value.toLowerCase();
 }
 
+const FAMILY_NAME = /^(?:'[^'"]+'|"[^'"]+"|[a-z][\w-]*(?: [a-z][\w-]*)*)$/i;
+
+/**
+ * a `font-family` list as a style attribute carries it.
+ *
+ * ../../operator/src/styles/tokens.ts holds each stack as names, and this refuses anything else: a
+ * `var()`, an `!important`, a `;` that would start a second declaration. a client that walks the
+ * list sets the first face it has installed, so the self-hosted first face falls through to the
+ * platform's own. Outlook for Windows renders through Word, which reads the first name alone and
+ * sets Times New Roman where that face is not installed.
+ */
+export function fontStack(value: string): string {
+	if (!value.split(',').every((family) => FAMILY_NAME.test(family.trim())))
+		throw new Error(`not a list of family names: ${value}`);
+	return value;
+}
+
 /**
  * a `margin` or `padding` shorthand from pixel counts.
  *
@@ -91,13 +109,8 @@ export const LINK = hexColour(ADMIN_TOKENS['--admin-link']);
 export const CODE_BG = hexColour(ADMIN_TOKENS['--admin-code-bg']);
 export const CODE_INK = hexColour(ADMIN_TOKENS['--admin-code-ink']);
 
-/** the registry's face (`--font-body` in packages/operator/src/registry/styles/variables.css),
- * then system faces ahead of the generic family. a mail client fetches no web font, and the
- * registry stack names no system face, so without them a mail would land on the client's generic
- * sans-serif. the system faces are this file's own: the registry has no mail stack to take. */
-const registrySansFace = ADMIN_TOKENS['--admin-font-sans'].replace(/,.*$/s, '');
-export const FONT_SANS = `${registrySansFace}, ui-sans-serif, system-ui, "Segoe UI", sans-serif`;
-export const FONT_MONO = ADMIN_TOKENS['--admin-font-mono'];
+export const FONT_SANS = fontStack(ADMIN_TOKENS['--admin-font-sans']);
+export const FONT_MONO = fontStack(ADMIN_TOKENS['--admin-font-mono']);
 
 /** what a mail is read at. a step of the scale and not `--admin-body-size`, which is 14px because
  * an operator screen is dense; a mail is a document in somebody's client. */

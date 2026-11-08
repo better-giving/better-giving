@@ -1,13 +1,14 @@
 // ./tokens.css's values, re-stated for the one reader that cannot read css.
 //
 // this is not a second token file and defines nothing. every value below is a copy of a
-// declaration in ./tokens.css, resolved through its `var()` chain to the leaf literal: in the
-// design registry's copied files (../registry/styles) for the colours, the faces and the two
-// radii, and in ./tokens.css itself for the type steps, line heights, weight, spacing, border
-// widths and measure, which the registry carries no value for. those two stay the only places a
-// value is decided. ./tokens.spec.ts reads the css and asserts each copy still equals it, because
-// two statements of one value with nothing holding them together is the drift this whole system
-// is arranged to refuse.
+// declaration in ./tokens.css, resolved through its `var()` chain to the leaf literal. the colours
+// and the two radii resolve to the design registry's copied files (../registry/styles). the faces
+// resolve to ./tokens.css, which re-points the registry's `--font-*` roles at plain red hat over
+// the registry's own values. the type steps, line heights, weight, spacing, border widths and
+// measure resolve to ./tokens.css too, because the registry has none of them. those two files are
+// the only places a value is decided. ./tokens.spec.ts reads the css and asserts each copy still
+// equals it, because two statements of one value with nothing holding them together is the drift
+// this whole system is arranged to refuse.
 //
 // the reader is packages/emails, and nothing else may import this. an operator screen reads the
 // custom properties: it has a stylesheet, a document and a cascade. a mail has none of the three —
@@ -48,15 +49,12 @@ export const ADMIN_TOKENS = {
 	'--admin-tone-note-tint': '#ecf1f7',
 
 	// ---- type ----
-	// both stacks are copied whole, first face included. that face is self-hosted by the registry's
-	// ../registry/styles/fonts.css and a mail client fetches nothing, so it is never found there and
-	// a mail sets the system faces behind it without loading a web font, the thing
-	// packages/emails/src/components/layout.tsx says its shell may not grow. the sans stack names no
-	// system face, so packages/emails/src/tokens.ts (`FONT_SANS`) puts them between the face and
-	// `sans-serif`.
-	'--admin-font-sans': '"Red Hat Round Text", sans-serif',
-	'--admin-font-mono':
-		'"Red Hat Round Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+	// both stacks are copied whole, first face included. that face is self-hosted by ./fonts.css and
+	// a mail client fetches nothing, so it is never found and the stack falls through to the system
+	// faces behind it — which is how a mail keeps the operator surfaces' own stack without loading a
+	// web font, the thing packages/emails/src/components/layout.tsx says its shell may not grow.
+	'--admin-font-sans': "'Red Hat Text', ui-sans-serif, system-ui, 'Segoe UI', sans-serif",
+	'--admin-font-mono': "'Red Hat Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace",
 	// the steps of the type scale rather than the roles above them, and that is the one place a mail
 	// reads this system differently from a screen. the roles are screen roles — a title, a standfirst,
 	// a field — and a mail has none of them; `--admin-body-size` is 14px because an operator screen

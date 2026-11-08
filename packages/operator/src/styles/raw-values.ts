@@ -181,35 +181,53 @@ export const styleObjectsIn = (source: string) => {
 
 // the css a file contributes to a sweep. a .jsx or .tsx file contributes its style objects
 // — the rest of the file holds neither a colour nor a length this system governs — and every
-// other file contributes its whole text.
+// other file contributes its whole text. a style object separates its entries with `,` where a
+// sheet uses `;`, and that is what ends a wrapped value in it.
 const cssIn = (file: string) => {
 	const source = readFileSync(file, 'utf8');
-	if (file.endsWith('.jsx') || file.endsWith('.tsx')) return styleObjectsIn(source);
-	return [source];
+	if (file.endsWith('.jsx') || file.endsWith('.tsx'))
+		return styleObjectsIn(source).map((css) => ({ css, ends: /[,;{}]/ }));
+	return [{ css: source, ends: /[;{}]/ }];
 };
 
 // a colour is read off what follows the first `:` on the line, so a selector is never mistaken for
-// a value.
-function colourViolations(css: string, file: string) {
+// a value. a line with no `:` is read only as the value of a declaration wrapped onto it: one whose
+// `:` line holds none of `ends`, followed down to the line that holds one. a `{` there makes the
+// lines a wrapped selector list instead, and none of them is read.
+function colourViolations(css: string, file: string, ends: RegExp) {
 	const found: string[] = [];
 	// the escape note is read off the raw line and the colour off the stripped one. a css comment
 	// is the only way to write the note, so testing the stripped line for it is how a hatch comes
 	// to be documented and dead — which is the failure shape this file exists over.
 	const raw = css.split('\n');
-	stripComments(css)
-		.split('\n')
-		.forEach((line, i) => {
-			const colon = line.indexOf(':');
-			if (colon === -1 || COLOUR_ESCAPE.test(raw[i] ?? '')) return;
-			// a face name is not a colour. the faces ../registry/styles/fonts.css loads are the red
-			// hat round family, so `font-family: "Red Hat Round Text"` carries a named colour inside
-			// a proper noun. the property is what exempts the line rather than the quotes around the
-			// value: a colour is never quoted in css but is quoted in the `style={{ color: 'red' }}`
-			// object this same sweep reads out of a .tsx screen.
-			if (line.slice(0, colon).trim().toLowerCase() === 'font-family') return;
-			const value = line.slice(colon + 1);
-			if (RAW_COLOUR.test(value)) found.push(`${file}:${i + 1} ${line.trim()}`);
-		});
+	const lines = stripComments(css).split('\n');
+	const check = (i: number, value: string) => {
+		if (COLOUR_ESCAPE.test(raw[i] ?? '')) return;
+		if (RAW_COLOUR.test(value)) found.push(`${file}:${i + 1} ${lines[i]?.trim()}`);
+	};
+	lines.forEach((line, i) => {
+		const colon = line.indexOf(':');
+		if (colon === -1) return;
+		// a face name is not a colour. the faces ./fonts.css loads are the red hat family, so
+		// `font-family: 'Red Hat Text'` carries a named colour inside a proper noun. the property
+		// is what exempts the declaration rather than the quotes around the value: a colour is
+		// never quoted in css but is quoted in the `style={{ color: 'red' }}` object this same
+		// sweep reads out of a .tsx screen. a custom property holding a face stack is not
+		// `font-family`, so ./tokens.css carries a `raw-colour-ok:` note on each of its three.
+		if (line.slice(0, colon).trim().toLowerCase() === 'font-family') return;
+		const value = line.slice(colon + 1);
+		check(i, value);
+		if (ends.test(value)) return;
+		const wrapped: number[] = [];
+		for (let next = i + 1; next < lines.length && !lines[next]?.includes(':'); next++) {
+			const text = lines[next] ?? '';
+			const end = text.match(ends)?.[0];
+			if (end === '{') return;
+			wrapped.push(next);
+			if (end) break;
+		}
+		for (const next of wrapped) check(next, lines[next] ?? '');
+	});
 	return found;
 }
 
@@ -236,8 +254,10 @@ function lengthViolations(css: string, file: string) {
 
 /** every raw colour written into the css the given files contribute, as `file:line rule`. */
 export const rawColourViolations = (files: string[]) =>
-	files.flatMap((file) => cssIn(file).flatMap((css) => colourViolations(css, file)));
+	files.flatMap((file) =>
+		cssIn(file).flatMap(({ css, ends }) => colourViolations(css, file, ends))
+	);
 
 /** every raw length written into the css the given files contribute, as `file:line value — rule`. */
 export const rawLengthViolations = (files: string[]) =>
-	files.flatMap((file) => cssIn(file).flatMap((css) => lengthViolations(css, file)));
+	files.flatMap((file) => cssIn(file).flatMap(({ css }) => lengthViolations(css, file)));
