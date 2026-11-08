@@ -35,10 +35,15 @@ const locks = lockPaths.map((lock) => {
 	return { lock, dir: manifest.dir, files: files as Record<string, string> };
 });
 
-function mismatches(manifestRoot: string, dir: string, files: Record<string, string>) {
+function mismatches(
+	manifestRoot: string,
+	dir: string,
+	files: Record<string, string>,
+	lock = 'bg-design.json'
+) {
 	return Object.entries(files).flatMap(([file, recorded]) => {
 		const path = join(manifestRoot, dir, file);
-		if (!existsSync(path)) return [`${file}: listed in bg-design.json but missing`];
+		if (!existsSync(path)) return [`${file}: listed in ${lock} but missing`];
 		const actual = createHash('sha256').update(readFileSync(path)).digest('hex');
 		return actual === recorded ? [] : [`${file}: edited (sha256 ${actual}, recorded ${recorded})`];
 	});
@@ -46,7 +51,12 @@ function mismatches(manifestRoot: string, dir: string, files: Record<string, str
 
 // the reverse of mismatches: a file on disk the manifest does not list is a hand-added file that
 // reads as registry truth, and an empty manifest would hash nothing and pass.
-function unlisted(manifestRoot: string, dir: string, files: Record<string, string>) {
+function unlisted(
+	manifestRoot: string,
+	dir: string,
+	files: Record<string, string>,
+	lock = 'bg-design.json'
+) {
 	const base = join(manifestRoot, dir);
 	const onDisk = globSync('**/*', { cwd: base, exclude: () => false })
 		.filter((f) => statSync(join(base, f)).isFile())
@@ -54,10 +64,10 @@ function unlisted(manifestRoot: string, dir: string, files: Record<string, strin
 	return [
 		...onDisk
 			.filter((f) => !(f in files))
-			.map((f) => `${f}: on disk but not listed in bg-design.json`),
+			.map((f) => `${f}: on disk but not listed in ${lock}`),
 		...Object.keys(files)
 			.filter((f) => !onDisk.includes(f))
-			.map((f) => `${f}: listed in bg-design.json but missing`)
+			.map((f) => `${f}: listed in ${lock} but missing`)
 	].sort();
 }
 
@@ -71,18 +81,20 @@ describe('the files copied from the design registry', () => {
 
 	it.each(locks)(
 		'$lock: are the whole tree under its dir, no more and no fewer',
-		({ dir, files }) => {
-			expect(unlisted(ROOT, dir, files)).toEqual([]);
+		({ lock, dir, files }) => {
+			expect(unlisted(ROOT, dir, files, lock)).toEqual([]);
 		}
 	);
 
-	it.each(locks)('$lock: are byte for byte what it recorded', ({ dir, files }) => {
-		expect(mismatches(ROOT, dir, files)).toEqual([]);
+	it.each(locks)('$lock: are byte for byte what it recorded', ({ lock, dir, files }) => {
+		expect(mismatches(ROOT, dir, files, lock)).toEqual([]);
 	});
 
 	it('names a listed file that is not on disk', () => {
 		const root = locks.find(({ lock }) => lock === 'bg-design.json');
 		if (!root) throw new Error('the root lock bg-design.json was not found');
+		// the case only proves something if the lookup reached the root lock's real copy folder.
+		expect(statSync(join(ROOT, root.dir)).isDirectory()).toBe(true);
 		expect(mismatches(ROOT, root.dir, { 'styles/no-such-file.css': '0'.repeat(64) })).toEqual([
 			'styles/no-such-file.css: listed in bg-design.json but missing'
 		]);
