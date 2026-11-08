@@ -95,8 +95,13 @@ describe('the files copied from the design registry', () => {
 		if (!root) throw new Error('the root lock bg-design.json was not found');
 		// the case only proves something if the lookup reached the root lock's real copy folder.
 		expect(statSync(join(ROOT, root.dir)).isDirectory()).toBe(true);
-		expect(mismatches(ROOT, root.dir, { 'styles/no-such-file.css': '0'.repeat(64) })).toEqual([
+		const missing = { 'styles/no-such-file.css': '0'.repeat(64) };
+		expect(mismatches(ROOT, root.dir, missing)).toEqual([
 			'styles/no-such-file.css: listed in bg-design.json but missing'
+		]);
+		// the message names the lock it was given, not a fixed one.
+		expect(mismatches(ROOT, root.dir, missing, 'packages/form/bg-design.json')).toEqual([
+			'styles/no-such-file.css: listed in packages/form/bg-design.json but missing'
 		]);
 	});
 
@@ -110,7 +115,21 @@ describe('the files copied from the design registry', () => {
 			expect(unlisted(dir, '.', { 'a.css': '0' })).toEqual([
 				'sub/b.css: on disk but not listed in bg-design.json'
 			]);
-			expect(unlisted(dir, '.', {})).toHaveLength(2);
+			expect(unlisted(dir, '.', {})).toEqual([
+				'a.css: on disk but not listed in bg-design.json',
+				'sub/b.css: on disk but not listed in bg-design.json'
+			]);
+			const formLock = 'packages/form/bg-design.json';
+			expect(unlisted(dir, '.', { 'a.css': '0' }, formLock)).toEqual([
+				'sub/b.css: on disk but not listed in packages/form/bg-design.json'
+			]);
+			const withGone = { 'a.css': '0', 'sub/b.css': '0', 'gone.css': '0' };
+			expect(unlisted(dir, '.', withGone)).toEqual([
+				'gone.css: listed in bg-design.json but missing'
+			]);
+			expect(unlisted(dir, '.', withGone, formLock)).toEqual([
+				'gone.css: listed in packages/form/bg-design.json but missing'
+			]);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
