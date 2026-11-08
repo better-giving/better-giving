@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { stripComments } from './raw-values';
 
-// a face whose file is missing falls back to the stack ./tokens.css gives its role without a word.
+// a face whose file is missing falls back to the stack ./fonts.css gives its role without a word.
 // this reads ./fonts.css and the directory beside it and holds them to each other.
 
 const SHEET = new URL('./fonts.css', import.meta.url);
