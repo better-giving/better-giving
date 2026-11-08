@@ -3,23 +3,13 @@ import { SaveButton } from '@better-giving/operator/components/controls/SaveButt
 /*
  * the four states SaveButton takes, and the two words each one may be re-spelled with.
  *
- * three of the four close the press with `aria-disabled` — a save in flight takes no second
- * press, a button reporting one stands over a group with nothing left in it to save, and `disabled`
- * is that same group before any press — so all three reach `.adm-btn--primary[aria-disabled='true']`
- * in packages/operator/src/styles/adm.css. only `disabled` is left there: `.adm-save.is-pending` and
- * `.adm-save.is-done` tie it on specificity and stand later, so each keeps a ground of its own and
- * the three read apart. neither restates the border, which stays the closed rung's — the done
- * tone's own line is too near the page to hold the button's boundary at the moment it reports
- * success. `idle` writes no name at all — resting is what the primary button already is.
- *
- * a press in flight has no words of its own: the resting label stays where it is and the three
- * dots of `.adm-btn__dots` stand over it, so the specimen beside `idle` is the same size as it.
- *
- * the ring on a button still reporting a save is a pair of states and not one: the press that
- * saved keeps the focus through its confirmation, so a keyboard is standing on this specimen at the
- * moment it draws. it is pinned the way every other state on this page is (`.is-focus` in packages/operator/src/styles/base.css).
- * the resting closed press is the same pair: `aria-disabled` keeps it in the tab order, so the
- * last specimen is a keyboard standing on it, ringed over the closed grey.
+ * the button is packages/operator/src/components/controls/Button.jsx's primary rank. three of the
+ * four close the press with `aria-disabled` — a save in flight takes no second press, a button
+ * reporting one stands over a group with nothing left in it to save, and `disabled` is that same
+ * group before any press. a press in flight is the registry's `aria-busy` look, the disabled fill
+ * with the resting label still in it; done and disabled are the closed press
+ * `.adm-btn[aria-disabled='true']` draws in packages/operator/src/styles/adm.css, done with the tick
+ * and its own words in place of the label.
  */
 export default function ControlsSaveButtonPreview() {
 	return (
@@ -35,8 +25,6 @@ export default function ControlsSaveButtonPreview() {
 				doneLabel="Receipt settings saved"
 			/>
 			<SaveButton state="done" label="Save receipt settings" doneLabel="Receipt settings saved" />
-			<SaveButton state="done" className="is-focus" />
-			<SaveButton state="disabled" className="is-focus" />
 		</>
 	);
 }

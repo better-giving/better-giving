@@ -142,7 +142,10 @@ export function ReplacePhotoControl(props: ReplacePhotoControlProps) {
 						id={pressId}
 						type="button"
 						mark="image-up"
-						state={picker.choosing ? 'active' : undefined}
+						// held at the open fill while the file chooser this press opened stands open
+						// (`.adm-placed .adm-btn[data-state='open']` in packages/operator/src/styles/adm.css,
+						// so the press draws it only inside `.adm-placed`).
+						data-state={picker.choosing ? 'open' : undefined}
 						aria-busy={busy || undefined}
 						aria-disabled={busy || undefined}
 						aria-describedby={refusal === '' ? undefined : refusalId}

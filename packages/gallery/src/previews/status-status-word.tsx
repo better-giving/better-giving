@@ -3,25 +3,22 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
 /*
  * two registers, and everything each one ignores about the other.
  *
- * descriptive is a fact and is drawn as a pill. untoned it is hueless, and it takes three drawings
- * that way: the plain word, the quiet one for a value nobody needs to act on, and the unset one for
- * no value at all. `unset` and `secondary` say different things and compose in the class list, so
- * the row carrying both is drawn — nothing in the component stops it, and what wins is whichever
- * rule comes last in packages/operator/src/styles/adm.css rather than anything either prop states.
+ * descriptive is a fact and is drawn as the registry's badge
+ * (packages/operator/src/registry/styles/badge-css.css). untoned it is the neutral chip, and the
+ * quiet word and the unset one are drawn beside it as the same chip: the badge has nothing quieter,
+ * so `unset` and `secondary` are stated and draw nothing of their own. that sameness is the finding
+ * those rows are kept for.
  *
- * `tone` is the fourth drawing and there are four of it, one per member of the shared set
- * (packages/operator/src/components/closed-sets.js). only a record's own lifecycle status is meant
- * to carry one — $lib/admin/status-tones.ts in packages/app maps the four unions the dashboard
- * renders — so every untoned specimen above is what everything else on a screen looks like. a word
- * handed a tone and `secondary` together is drawn here too, because nothing stops a screen doing
- * it: the tone wins, by source order in the sheet and not by anything the component says.
+ * `tone` is the other drawing and there are four of it, one per member of the shared set
+ * (packages/operator/src/components/closed-sets.js): done the accent's chip, attention the warning
+ * chip, blocker the destructive chip, and note the neutral chip with its ground taken away
+ * (`.adm-state--note` in packages/operator/src/styles/adm.css), which is all that tells an ended
+ * record from the untoned chip a record at rest takes. only a record's own lifecycle status is
+ * meant to carry one — $lib/admin/status-tones.ts in packages/app maps the four unions the
+ * dashboard renders.
  *
- * the long word is the specimen the pill exists to be tested against. a status word can be computed
- * from a list rather than chosen from one, and the pill does not refuse to wrap — what a wrapped
- * one looks like is only visible with one here.
- *
- * every descriptive specimen on this page is the pill, and so is one inside a table, where only
- * its inset tightens. src/previews/data-data-table.tsx is where that drawing is.
+ * the long word is the specimen the badge is tested against: a status word can be computed from a
+ * list rather than chosen from one, and the badge does not wrap.
  *
  * momentary is the other register and it discards four of the props. `unset`, `secondary` and
  * `tone` are read only on the descriptive path

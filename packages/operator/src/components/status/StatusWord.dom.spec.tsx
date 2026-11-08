@@ -64,3 +64,32 @@ describe('a momentary word with no mark handed in', () => {
 		expect(glyph(root)).toBe(markFor('clock'));
 	});
 });
+
+describe('a descriptive word', () => {
+	const drawn = (props: Record<string, unknown>) =>
+		render(StatusWord, { children: 'Live', ...props }).firstElementChild?.className;
+
+	it('is the registry’s neutral badge when it carries no tone', () => {
+		expect(drawn({})).toBe('ds-badge ds-badge-neutral');
+	});
+
+	it('is the badge in each tone’s variant, done the accent’s chip and never the success one', () => {
+		expect(
+			(['done', 'attention', 'blocker', 'note'] as const).map((tone) => drawn({ tone }))
+		).toEqual([
+			'ds-badge ds-badge-primary',
+			'ds-badge ds-badge-warning',
+			'ds-badge ds-badge-destructive',
+			// an ended record's ground is taken away by ../../styles/adm.css, so it is told from one at
+			// rest (../../styles/state-in-a-cell.spec.ts).
+			'ds-badge ds-badge-neutral adm-state--note'
+		]);
+	});
+
+	it('draws the quiet and the unset word as the neutral badge, which has nothing quieter', () => {
+		expect([drawn({ secondary: true }), drawn({ unset: true })]).toEqual([
+			'ds-badge ds-badge-neutral',
+			'ds-badge ds-badge-neutral'
+		]);
+	});
+});

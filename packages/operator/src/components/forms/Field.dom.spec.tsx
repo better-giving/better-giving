@@ -1,5 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type ComponentProps, act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { stripComments } from '../../styles/raw-values';
+import { rulesIn, sheet } from '../../styles/sheet-rule.testing';
 import { closedRungOf } from '../closed-look.testing';
 import { mount, render } from '../render.testing';
 import { Field } from './Field.jsx';
@@ -73,8 +78,8 @@ describe('a field mounted into a document', () => {
 			'aria-invalid': 'true'
 		});
 
-		expect(root.querySelector('input')?.getAttribute('aria-invalid')).toBe('true');
-		expect(boxClasses(root)).toContain('adm-input--invalid');
+		// the registry's field-css draws the refused edge off this selector and nothing else.
+		expect(root.querySelector('input')?.matches(".ds-field-input[aria-invalid='true']")).toBe(true);
 	});
 
 	it('draws a box refused by its own message as refused, with nothing said from outside', () => {
@@ -84,8 +89,7 @@ describe('a field mounted into a document', () => {
 			error: 'Give it a name.'
 		});
 
-		expect(root.querySelector('input')?.getAttribute('aria-invalid')).toBe('true');
-		expect(boxClasses(root)).toContain('adm-input--invalid');
+		expect(root.querySelector('input')?.matches(".ds-field-input[aria-invalid='true']")).toBe(true);
 	});
 
 	it('adds a caller’s class to its own rather than standing in for them', () => {
@@ -96,7 +100,7 @@ describe('a field mounted into a document', () => {
 		});
 
 		expect(boxClasses(root)).toContain('adm-num');
-		expect(boxClasses(root)).toContain('adm-input');
+		expect(boxClasses(root)).toContain('ds-field-input');
 	});
 
 	it('keeps the standing sentence while the box is refused, and names both', () => {
@@ -327,11 +331,11 @@ describe('a field mounted into a document', () => {
 		});
 
 		expect(plain.querySelector('.adm-field')?.children[1]?.className).toBe(
-			'adm-input adm-input--code'
+			'ds-field-input adm-field__box adm-field__box--code'
 		);
 		expect(masked.querySelector('.adm-field')?.children[1]?.className).toBe('adm-maskwrap');
 		expect(masked.querySelector('.adm-maskwrap > input')?.className).toBe(
-			'adm-input adm-input--code'
+			'ds-field-input adm-field__box adm-field__box--code'
 		);
 		expect(masked.querySelector('.adm-actions')).toBeNull();
 	});
@@ -345,7 +349,7 @@ describe('a field mounted into a document', () => {
 			label: 'Password',
 			masked: true,
 			beside: (
-				<button type="button" className="adm-btn">
+				<button type="button" className="ds-btn ds-btn-secondary adm-btn">
 					Send test email
 				</button>
 			)
@@ -354,7 +358,10 @@ describe('a field mounted into a document', () => {
 		const items = [...(row?.children ?? [])];
 		const column = [...(items[0]?.children ?? [])];
 
-		expect(items.map((item) => item.className)).toEqual(['adm-field__boxcol', 'adm-btn']);
+		expect(items.map((item) => item.className)).toEqual([
+			'adm-field__boxcol',
+			'ds-btn ds-btn-secondary adm-btn'
+		]);
 		expect(column.map((item) => item.className)).toEqual(['adm-maskwrap']);
 		expect(column[0]?.contains(reveal(root))).toBe(true);
 		expect(column[0]?.querySelector('input')).not.toBeNull();
@@ -370,7 +377,7 @@ describe('a field mounted into a document', () => {
 			error: 'required',
 			needed: 'wanted by the Zapier page',
 			beside: (
-				<button type="submit" className="adm-btn adm-btn--primary">
+				<button type="submit" className="ds-btn ds-btn-primary adm-btn">
 					Make key
 				</button>
 			)
@@ -381,7 +388,11 @@ describe('a field mounted into a document', () => {
 		expect([...(row?.children ?? [])].at(-1)?.textContent).toBe('Make key');
 		expect(
 			[...(column?.children ?? [])].map((item) => `${item.tagName}.${item.className}`)
-		).toEqual(['INPUT.adm-input adm-input--invalid', 'P.adm-field__error', 'P.adm-field__needed']);
+		).toEqual([
+			'INPUT.ds-field-input adm-field__box',
+			'P.ds-field-err adm-field__error',
+			'P.adm-field__needed'
+		]);
 		expect(root.querySelector('input')?.getAttribute('aria-describedby')).toBe(
 			'api-key-make-name-err api-key-make-name-need'
 		);
@@ -548,6 +559,170 @@ describe('a field that reports what was found about its value', () => {
 		const root = render(Field, { id: 'org-tax_id', label: 'EIN', status: 'Not on the IRS list.' });
 
 		expect(root.querySelector('input')?.getAttribute('aria-invalid')).toBeNull();
-		expect(boxClasses(root)).not.toContain('adm-input--needed');
+		expect(boxClasses(root)).not.toContain('adm-field__box--needed');
+	});
+});
+
+describe('the registry field a box is drawn as', () => {
+	const parts = (root: HTMLElement) =>
+		[...(root.querySelector('.adm-field')?.children ?? [])].map(
+			(part) => `${part.tagName}.${part.className}`
+		);
+
+	it('dresses the label, the sentence, the box and the refusal from field-css', () => {
+		// ../../registry/styles/field-css.css draws each of these; the `adm-*` beside the sentence,
+		// the box and the refusal is ../../styles/adm.css's row for it in the field's grid.
+		const root = render(Field, {
+			id: 'org-name',
+			label: 'Registered name',
+			hint: 'As it reads on your registration.',
+			error: 'Give it a name.'
+		});
+
+		expect(parts(root)).toEqual([
+			'LABEL.ds-label',
+			'P.ds-field-hint adm-hint',
+			'INPUT.ds-field-input adm-field__box',
+			'P.ds-field-err adm-field__error'
+		]);
+	});
+
+	it('keeps “(optional)” inside the label, where it is part of the name a reader is told', () => {
+		const root = render(Field, { id: 'org-phone', label: 'Phone', optional: true });
+
+		expect(root.querySelector('label')?.textContent).toBe('Phone (optional)');
+	});
+
+	it('marks a multi-line box and a needed box with the two finishes the registry has no rule for', () => {
+		const textarea = render(Field, { id: 'thanks', label: 'Thank-you message', as: 'textarea' });
+		const needed = render(Field, { id: 'to', label: 'To', needed: 'Type an address.' });
+
+		expect([boxClasses(textarea), boxClasses(needed)]).toEqual([
+			['ds-field-input', 'adm-field__box', 'adm-field__box--multiline'],
+			['ds-field-input', 'adm-field__box', 'adm-field__box--needed']
+		]);
+	});
+
+	it('draws a refused box as refused and not as needed, since the refusal is the louder', () => {
+		const root = render(Field, {
+			id: 'to',
+			label: 'To',
+			error: 'That is not an address.',
+			needed: 'Type an address.'
+		});
+
+		expect(boxClasses(root)).toEqual(['ds-field-input', 'adm-field__box']);
+	});
+});
+
+describe('a read-only box', () => {
+	// every sheet a box in /admin is drawn by: this package's three and the registry's field, which
+	// is where `pointer-events: none` on `[readonly]` lives. resolved through `fileURLToPath`, which
+	// ../../styles/field-on-a-tight-stack.dom.spec.tsx argues.
+	const registry = stripComments(
+		readFileSync(
+			join(dirname(fileURLToPath(import.meta.url)), '../../registry/styles/field-css.css'),
+			'utf8'
+		)
+	);
+	const rules = [sheet('adm.css'), sheet('base.css'), sheet('tokens.css'), registry].flatMap(
+		(css) => rulesIn(css)
+	);
+
+	/**
+	 * every `pointer-events` a sheet states on the box or on anything around it — the property
+	 * inherits, so a wrapper's `none` is the box's too. a member is matched with its pointer and
+	 * focus states taken off, since a pointer is what arrives at the box; a member of a pseudo-element
+	 * is not the box and is left out.
+	 */
+	const pointerEventsOn = (box: Element) => {
+		const said: string[] = [];
+		for (const { selector, stated } of rules) {
+			const value = stated.get('pointer-events');
+			if (value === undefined) continue;
+			for (const member of selector.split(', ')) {
+				if (member.includes('::') || member.startsWith('@')) continue;
+				const resting = member.replace(/:(hover|active|focus-visible|focus-within|focus)\b/g, '');
+				for (let at: Element | null = box; at !== null; at = at.parentElement) {
+					if (at.matches(resting)) said.push(`${member} { pointer-events: ${value} }`);
+				}
+			}
+		}
+		return said;
+	};
+
+	const READ_ONLY: [string, ComponentProps<typeof Field>][] = [
+		// the Zapier key and a locked row: a plain read-only box, the key in the mono face.
+		[
+			'a plain one',
+			{ id: 'zapier-key', label: 'Zapier key', code: true, readOnly: true, value: 'zk_••••1234' }
+		],
+		// the webhook's signing secret: masked, with the copy and the reveal inside the box.
+		[
+			'a masked one with its presses',
+			{
+				id: 'signing-secret',
+				label: 'Signing secret',
+				code: true,
+				masked: true,
+				copyable: true,
+				readOnly: true,
+				value: 'whsec_riverbank'
+			}
+		],
+		[
+			'a refused one',
+			{
+				id: 'zapier-key',
+				label: 'Zapier key',
+				readOnly: true,
+				value: '',
+				error: 'Make a key first.'
+			}
+		]
+	];
+
+	it.each(READ_ONLY)('%s wears no registry box', (_, props) => {
+		const classes = boxClasses(render(Field, props));
+
+		expect(classes).toContain('adm-input');
+		expect(classes.filter((name) => name.startsWith('ds-'))).toEqual([]);
+	});
+
+	it.each(READ_ONLY)(
+		'%s takes a press, a drag and a finger: no sheet stops its pointer',
+		(_, props) => {
+			const box = render(Field, props).querySelector('input');
+			if (box === null) throw new Error('the field drew no box');
+
+			expect(box.readOnly).toBe(true);
+			expect(pointerEventsOn(box).filter((said) => said.endsWith('none }'))).toEqual([]);
+		}
+	);
+
+	it('is refused on its own box, off the message it holds', () => {
+		const root = render(Field, {
+			id: 'zapier-key',
+			label: 'Zapier key',
+			readOnly: true,
+			value: '',
+			error: 'Make a key first.'
+		});
+
+		expect(boxClasses(root)).toEqual(['adm-input', 'adm-input--invalid']);
+	});
+
+	// the gate's own check: the same box put back on the registry's class is the one it was written
+	// against, and the registry's sheet takes its pointer.
+	it('would fail on the registry box', () => {
+		const box = render(Field, {
+			id: 'zapier-key',
+			label: 'Zapier key',
+			readOnly: true
+		}).querySelector('input');
+		if (box === null) throw new Error('the field drew no box');
+		box.classList.add('ds-field-input');
+
+		expect(pointerEventsOn(box)).toContain('.ds-field-input[readonly] { pointer-events: none }');
 	});
 });

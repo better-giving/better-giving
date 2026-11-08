@@ -56,7 +56,7 @@ describe('an error panel mounted into a document', () => {
 		const out = root.querySelector('a');
 
 		expect(out?.getAttribute('href')).toBe('/admin/forms');
-		expect(out?.className).toBe('adm-btn adm-btn--primary');
+		expect(out?.className).toBe('ds-btn ds-btn-primary adm-btn');
 		expect(out?.textContent).toBe('Go to forms');
 	});
 

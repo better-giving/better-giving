@@ -6,7 +6,7 @@ import RecurringGifts from './_app.admin.recurring._index';
 
 // the status word on each row of the recurring gifts list, drawn.
 //
-// what it covers: which tone rung a row's `StatusWord` stands on, off its `adm-state--<tone>`
+// what it covers: which tone rung a row's `StatusWord` stands on, off its badge variant
 // class. ./_app.admin.recurring._index.db.spec.ts reads the json a loader publishes, and the tone is
 // chosen here in the page, from `RECURRING_STATUS_TONES` in $lib/admin/status-tones.ts. a list of
 // money is mostly rows at rest, and a tone on an active one would put the accent on every row an
@@ -70,13 +70,13 @@ function screen(plans: Plan[]): HTMLElement {
 
 /** the status word in the one row's Status cell. */
 function statusWord(root: HTMLElement): Element | null {
-	return root.querySelector('tbody .adm-state');
+	return root.querySelector('tbody .ds-badge');
 }
 
 it.each([
-	['active', 'Active', 'adm-state'],
-	['cancelled', 'Stopped', 'adm-state adm-state--note'],
-	['lapsed', 'Payment failed', 'adm-state adm-state--blocker']
+	['active', 'Active', 'ds-badge ds-badge-neutral'],
+	['cancelled', 'Stopped', 'ds-badge ds-badge-neutral adm-state--note'],
+	['lapsed', 'Payment failed', 'ds-badge ds-badge-destructive']
 ] as const)('draws a %s commitment’s status word on its own rung', (status, label, drawn) => {
 	const word = statusWord(screen([plan({ status, nextChargeOn: null })]));
 	expect(word?.textContent).toBe(label);

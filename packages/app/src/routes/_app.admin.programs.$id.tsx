@@ -1,4 +1,5 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
@@ -720,14 +721,9 @@ function ArchiveSection({
 			) : (
 				// a link dressed as a button, because it writes nothing: it asks.
 				<div className="adm-actions">
-					<Link
-						className="adm-btn"
-						preventScrollReset
-						ref={ask}
-						to={`${screen(id)}?confirm=archive`}
-					>
+					<Button as={Link} preventScrollReset ref={ask} to={`${screen(id)}?confirm=archive`}>
 						Archive this program
-					</Link>
+					</Button>
 				</div>
 			)}
 		</Section>

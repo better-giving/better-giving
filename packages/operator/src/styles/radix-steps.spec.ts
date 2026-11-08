@@ -88,9 +88,9 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-surface-fill': 'neutral-3',
 		'--admin-control-bg': 'neutral-3',
 		'--admin-control-bg-disabled': 'neutral-3',
+		'--admin-button-bg-disabled': 'neutral-3',
 		'--admin-control-soft-bg': 'neutral-3',
 		'--admin-control-quiet-bg-hover': 'neutral-3',
-		'--admin-primary-bg-disabled': 'neutral-3',
 		'--admin-field-bg-disabled': 'neutral-3',
 		'--admin-code-bg': 'neutral-3',
 		'--admin-slab-bg': 'neutral-3',
@@ -135,24 +135,18 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-accent-edge-hover': 'accent-8',
 		// radix themes draws a disabled label on the hovered border step.
 		'--admin-ink-disabled': 'neutral-8',
-		'--admin-control-ink-disabled': 'neutral-8',
-		'--admin-primary-ink-disabled': 'neutral-8'
+		'--admin-control-ink-disabled': 'neutral-8'
 	},
 	'9 solid background': {
 		'--admin-primary-bg': 'accent-9',
-		'--admin-accent-fill': 'accent-9',
-		'--admin-danger-bg': 'blocker-9'
-	},
-	'10 hovered solid background': {
-		'--admin-primary-bg-hover': 'accent-10',
-		'--admin-primary-bg-active': 'accent-10',
-		'--admin-danger-bg-hover': 'blocker-10',
-		'--admin-danger-bg-active': 'blocker-10'
+		'--admin-accent-fill': 'accent-9'
 	},
 	'11 low-contrast text': {
 		'--admin-ink-2': 'neutral-11',
 		'--admin-ink-muted': 'neutral-11',
 		'--admin-field-placeholder': 'neutral-11',
+		// the registry button's closed label (../registry/styles/button-css.css).
+		'--admin-button-ink-disabled': 'neutral-11',
 		'--admin-accent-ink': 'accent-11',
 		'--admin-tone-blocker-ink': 'blocker-11',
 		'--admin-tone-blocker-mark': 'blocker-11',
@@ -168,8 +162,6 @@ const JOBS: Record<string, Record<string, string>> = {
 	'12 high-contrast text': {
 		'--admin-ink': 'neutral-12',
 		'--admin-control-ink': 'neutral-12',
-		'--admin-control-ink-hover': 'neutral-12',
-		'--admin-control-soft-ink': 'neutral-12',
 		'--admin-code-ink': 'neutral-12',
 		'--admin-slab-ink': 'neutral-12',
 		'--admin-accent-ink-hover': 'accent-12',
@@ -187,18 +179,16 @@ const JOBS: Record<string, Record<string, string>> = {
 // declares the job per appearance (../registry/styles/themes/default.css: `--hairline` is gray 6 in
 // light and 8 in dark, `--link` accent 9 and 11, and `--ring` the step its generator picks for each,
 // accent 11 in both), where a fixed step would be wrong in one of them.
-// the ring inside a solid fill is the fill's own ink, white in both modes, where the neutral's
-// step 1 turns near-black in dark. a visited link reads `--link` because the registry names no
-// visited ink.
+// the label on a solid fill is the fill's own ink, white in both modes, where the neutral's step 1
+// turns near-black in dark. a visited link reads `--link` because the registry names no visited
+// ink.
 const ROLES: Record<string, string> = {
 	'--admin-divider': 'var(--hairline)',
 	'--admin-focus-ring': 'var(--ring)',
 	'--admin-link': 'var(--link)',
 	'--admin-link-hover': 'var(--link-hover)',
 	'--admin-link-visited': 'var(--link)',
-	'--admin-focus-ring-solid': 'var(--primary-fg)',
 	'--admin-primary-ink': 'var(--primary-fg)',
-	'--admin-danger-ink': 'var(--destructive-fg)',
 	'--admin-scrim': 'var(--overlay)'
 };
 

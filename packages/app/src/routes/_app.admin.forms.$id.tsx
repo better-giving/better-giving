@@ -1,5 +1,6 @@
 import { formSnippet } from '@better-giving/form/embed/snippet';
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { CodeChip, CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
@@ -1543,14 +1544,9 @@ function ArchiveSection({
 			) : (
 				// a link dressed as a button, because it writes nothing: it asks.
 				<div className="adm-actions">
-					<Link
-						className="adm-btn"
-						preventScrollReset
-						ref={ask}
-						to={`${screen(id)}?confirm=archive`}
-					>
+					<Button as={Link} preventScrollReset ref={ask} to={`${screen(id)}?confirm=archive`}>
 						Archive this form
-					</Link>
+					</Button>
 				</div>
 			)}
 		</Section>

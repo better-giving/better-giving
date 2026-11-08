@@ -1,6 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, redirect } from 'react-router';
+import { createRoutesStub, redirect, useLoaderData } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { WHICH_FORM } from '$lib/forms/definition';
 import { type FormReadinessLine, liveOffered } from '$lib/forms/readiness';
@@ -207,6 +207,40 @@ it('holds the archive through the redirect’s loading, and a second press posts
 	expect(posted).toEqual(['form-archive']);
 });
 
+it('hands focus back to the link that asked when the question is cancelled', async () => {
+	const Stub = createRoutesStub([
+		{
+			id: 'record',
+			path: '/admin/forms/:id',
+			loader: ({ request }) => record(new URL(request.url).searchParams.has('confirm')),
+			Component: () =>
+				createElement(DonationForm as never, {
+					loaderData: useLoaderData(),
+					actionData: undefined,
+					params: { id: FORM_ID },
+					matches: []
+				})
+		}
+	]);
+	const root = mount(
+		createElement(Stub, {
+			initialEntries: [`${RECORD}?confirm=archive`],
+			hydrationData: { loaderData: { record: record(true) } }
+		})
+	);
+	const cancel = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Cancel');
+	if (cancel === undefined) throw new Error('the question drew no Cancel link');
+
+	await act(async () => cancel.click());
+	await act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+
+	const ask = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Archive this form');
+	expect(ask).toBeDefined();
+	expect(document.activeElement).toBe(ask);
+});
+
 it('says under the heading why the form cannot go live, and at the status box why Live is missing', () => {
 	const { root } = screen({ blocked: true });
 
@@ -224,18 +258,18 @@ it('says under the heading why the form cannot go live, and at the status box wh
 
 it('says a live form is not taking gifts while a blocker stands', () => {
 	const { root } = screen({ blocked: true, status: 'live' });
-	const word = root.querySelector('.adm-pageheader .adm-state');
+	const word = root.querySelector('.adm-pageheader .ds-badge');
 
 	expect(word?.textContent).toBe('Not taking gifts');
-	expect(word?.classList.contains('adm-state--attention')).toBe(true);
-	expect(root.querySelector('.adm-pageheader .adm-state--done')).toBeNull();
+	expect(word?.classList.contains('ds-badge-warning')).toBe(true);
+	expect(root.querySelector('.adm-pageheader .ds-badge-primary')).toBeNull();
 });
 
 it('keeps Live on a live form while nothing blocks', () => {
-	const word = screen({ status: 'live' }).root.querySelector('.adm-pageheader .adm-state');
+	const word = screen({ status: 'live' }).root.querySelector('.adm-pageheader .ds-badge');
 
 	expect(word?.textContent).toBe('Live');
-	expect(word?.classList.contains('adm-state--done')).toBe(true);
+	expect(word?.classList.contains('ds-badge-primary')).toBe(true);
 });
 
 it('opens a live form under a blocker with Live chosen and its group holding nothing to save', () => {

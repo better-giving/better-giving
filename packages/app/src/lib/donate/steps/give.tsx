@@ -1,5 +1,5 @@
 import { formatMinor } from '@better-giving/form/money';
-import { part, partWhen } from '@better-giving/form/parts';
+import { part, partWhen, REGISTRY_CLASS } from '@better-giving/form/parts';
 import { FREQUENCY_LABELS, NO_PROGRAM_LABEL, type FormConfig } from '@better-giving/form/v1';
 import type { ReactNode, RefObject } from 'react';
 import * as copy from '../copy';
@@ -326,7 +326,12 @@ export function GiveStep({
 			    the sentence is a task — the markup `oneTimeGroup` in @better-giving/form's views.ts draws. */}
 			<div className="group" hidden={!offered}>
 				<p className="attention">{oneTimeOffer}</p>
-				<button part={part('action')} type="button" onClick={onMakeOneTime}>
+				<button
+					part={part('action')}
+					className={REGISTRY_CLASS.action}
+					type="button"
+					onClick={onMakeOneTime}
+				>
 					{copy.MAKE_ONE_TIME}
 				</button>
 			</div>
@@ -335,6 +340,7 @@ export function GiveStep({
 			</p>
 			<button
 				part={partWhen('action', { submit: true, busy })}
+				className={REGISTRY_CLASS.action}
 				type={submits && !offered ? 'submit' : 'button'}
 				aria-busy={busy}
 				hidden={offered}

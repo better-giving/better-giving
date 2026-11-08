@@ -1,7 +1,11 @@
-@layer tokens, reset, base, elements, layout;
+@layer tokens, reset, base, registry, elements, layout;
 
 @import '@better-giving/operator/styles/fonts.css';
 @import '@better-giving/operator/registry/styles/variables.css';
+@import '@better-giving/operator/registry/styles/button-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/badge-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/card-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/field-css.css' layer(registry);
 @import '@better-giving/operator/styles/tokens.css';
 @import '@better-giving/operator/styles/base.css';
 @import '@better-giving/operator/styles/adm.css';
@@ -9,9 +13,9 @@
 /* the whole of the gallery's css, and the order it is read in — identical to
    packages/app/src/app.css, per CLAUDE.md's design system
    section. the sheets themselves live in packages/operator, the leaf package every operator
-   surface imports from: the registry's variables.css copied into src/registry/styles/ and the
-   other four in src/styles/. so this file names an order and defines nothing beyond it. the
-   registry sheet's own import of its red hat round faces resolves to an empty sheet
+   surface imports from: the registry's variables.css and its four component sheets copied into
+   src/registry/styles/, and the other four in src/styles/. so this file names an order and defines
+   nothing beyond it. the registry sheet's own import of its red hat round faces resolves to an empty sheet
    (../vite.config.ts), as it does for /admin.
 
    this package defines no css of its own: every value a preview needs comes from

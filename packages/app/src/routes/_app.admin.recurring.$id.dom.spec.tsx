@@ -28,7 +28,7 @@ import RecurringGift from './_app.admin.recurring.$id';
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
 // style. what is asserted is which words are on the page, and which tone rung the status word on the
-// heading stands on, off its `adm-state--<tone>` class.
+// heading stands on, off its badge variant class.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -309,13 +309,13 @@ it('reads a refusal on the page where there is no card left to read it in', () =
 
 /** the status word on the heading's row, which is the one the lifecycle tone is drawn on. */
 function statusWord(root: HTMLElement): Element | null {
-	return root.querySelector('.adm-pageheader .adm-state');
+	return root.querySelector('.adm-pageheader .ds-badge');
 }
 
 it.each([
-	['active', 'Active', 'adm-state'],
-	['cancelled', 'Stopped', 'adm-state adm-state--note'],
-	['lapsed', 'Payment failed', 'adm-state adm-state--blocker']
+	['active', 'Active', 'ds-badge ds-badge-neutral'],
+	['cancelled', 'Stopped', 'ds-badge ds-badge-neutral adm-state--note'],
+	['lapsed', 'Payment failed', 'ds-badge ds-badge-destructive']
 ] as const)('draws a %s commitment’s status word on its own rung', (status, label, drawn) => {
 	const word = statusWord(screen(commitment({ status, nextChargeOn: null })));
 	expect(word?.textContent).toBe(label);

@@ -1,5 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { globSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { stripComments } from './raw-values';
+import { classesDrawnIn } from './vocabulary';
 
 // the registry's variables sheet is what every alias in ./tokens.css points at. an alias whose
 // target is not loaded resolves to nothing and a browser drops the declaration without a warning,
@@ -39,4 +41,63 @@ describe('the registry variables sheet', () => {
 			expect(imports.indexOf(REGISTRY)).toBeLessThan(imports.indexOf(TOKENS));
 		});
 	}
+});
+
+// the registry's component sheets are what the `ds-*` classes the components write are drawn by. a
+// class whose sheet is not loaded paints nothing and errors nowhere, and so does a class no sheet
+// draws at all: both look like a control that lost its look only in a browser, which no spec in
+// this package opens. so each entry sheet must import every one of them into the `registry` layer
+// packages/app/src/app.css orders, and every `ds-*` class a component spells must be one of theirs.
+
+const COMPONENT_SHEETS = ['button-css', 'badge-css', 'card-css', 'field-css'];
+
+/** the specifiers a sheet `@import`s into the `registry` layer. */
+const layeredImportsOf = (css: string) =>
+	[
+		...css
+			.replace(/\/\*[\s\S]*?\*\//g, '')
+			.matchAll(/@import\s+(?:url\()?['"]([^'"]+)['"]\)?\s+layer\(registry\)/g)
+	].map((m) => m[1]);
+
+describe('the registry component sheets', () => {
+	for (const [surface, url] of Object.entries(entrySheets)) {
+		it(`are imported by the ${surface} entry sheet into the registry layer, after the variables`, () => {
+			const css = readFileSync(url, 'utf8');
+			const layered = layeredImportsOf(css);
+			const imports = importsOf(css);
+
+			expect(layered).toEqual(
+				COMPONENT_SHEETS.map((item) => `@better-giving/operator/registry/styles/${item}.css`)
+			);
+			for (const specifier of layered) {
+				expect(imports.indexOf(specifier ?? '')).toBeGreaterThan(imports.indexOf(REGISTRY));
+			}
+		});
+	}
+
+	it('draw every ds- class a component or a screen spells', () => {
+		const drawn = classesDrawnIn(COMPONENT_SHEETS.map((item) => `src/registry/styles/${item}.css`));
+		const components = globSync('src/components/*/*.jsx');
+		// the screens that spell one by hand, beside the components that draw it: /admin's and the
+		// gallery's previews. the donor pages are the donation form's and read none of these sheets.
+		const screens = [
+			...globSync('../app/src/routes/_app.admin*.tsx'),
+			...globSync('../app/src/lib/admin/**/*.tsx'),
+			...globSync('../gallery/src/previews/*.tsx')
+		].filter((file) => !file.includes('.spec.'));
+		const spelled = [...components, ...screens].flatMap((file) =>
+			[...stripComments(readFileSync(file, 'utf8')).matchAll(/\bds-[a-z][\w-]*/g)].map(
+				([name]) => ({ file, name })
+			)
+		);
+
+		// the non-empty guards: a glob or a sheet this stopped reading reports every class drawn.
+		expect(components.length).toBeGreaterThan(20);
+		expect(screens.length).toBeGreaterThan(20);
+		expect(spelled.length).toBeGreaterThan(10);
+		expect(drawn.has('ds-btn')).toBe(true);
+		expect(
+			spelled.filter(({ name }) => !drawn.has(name)).map(({ file, name }) => `${file} ${name}`)
+		).toEqual([]);
+	});
 });

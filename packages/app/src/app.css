@@ -1,14 +1,18 @@
-@layer tokens, reset, base, elements, layout;
+@layer tokens, reset, base, registry, elements, layout;
 
 @import '@better-giving/operator/styles/fonts.css';
 @import '@better-giving/operator/registry/styles/variables.css';
+@import '@better-giving/operator/registry/styles/button-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/badge-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/card-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/field-css.css' layer(registry);
 @import '@better-giving/operator/styles/tokens.css';
 @import '@better-giving/operator/styles/base.css';
 @import '@better-giving/operator/styles/adm.css';
 
-/* the whole of /admin's css, and the order it is read in. the five sheets themselves live in
+/* the whole of /admin's css, and the order it is read in. the sheets themselves live in
    packages/operator — fonts.css, tokens.css, base.css and adm.css in src/styles/, and the registry's
-   variables.css copied into src/registry/styles/ — a leaf package both this dashboard and the operator
+   variables.css and component sheets copied into src/registry/styles/ — a leaf package both this dashboard and the operator
    console import from, so a sheet has one copy and one owner rather than a fork per surface.
    this file is the one place that names the import order, because that order is a fact about
    how /admin is assembled and not a fact any one sheet could state about itself.
@@ -22,18 +26,17 @@
    around the donation form, and no rule here needs one, because the two systems never share
    a document: this sheet is linked by the operator screens' own `links` exports
    (src/lib/admin/operator-links.ts) and by nothing else, and the donor pages (`/donate` and
-   each campaign's address) link the form's four sheets instead. src/lib/donate/page.css
+   each campaign's address) link the form's sheets instead. src/lib/donate/page.css
    states the same from the other side. what makes the absence the mechanism rather than a
-   tidiness is that the form's four sheets are unlayered: an unlayered rule outranks every
+   tidiness is that the form's sheets are unlayered: an unlayered rule outranks every
    layer below, and base.css's reset zeroes properties the form sets — so a document holding
    both would let each side beat the other on whatever only one of them writes.
 
    a sheet that forgets its `@layer` loses its place in the order below; there is nothing for
    it to cross into.
 
-   five sheets and five layers, and the @import order above is the source order inside a
-   layer, which is what settles a tie between two rules of equal specificity. fonts.css
-   registers the plain red hat faces in `tokens` and re-points the registry's three face roles
+   the @import order above is the source order inside a layer, which is what settles a tie between
+   two rules of equal specificity. fonts.css registers the plain red hat faces in `tokens` and re-points the registry's three face roles
    there, and tokens.css declares only `--admin-*` names, so nothing either puts there can tie
    with the other. the registry's variables.css
    comes next and is unlayered: it declares the design registry's scales and roles
@@ -52,13 +55,23 @@
    red hat with `!important` so its layer outranks the unlayered registry. the registry sheet
    also writes one real property, `color-scheme` on
    `:root` (light, and dark under `.dark`, in ../../operator/src/registry/styles/themes/default.css),
-   and being unlayered it outranks a `color-scheme` any of the five layers sets; none sets one.
+   and being unlayered it outranks a `color-scheme` any of the layers sets; none sets one.
+
+   the registry's four component sheets (button-css, badge-css, card-css and field-css, beside
+   variables.css) are copied unlayered and imported into `registry`, between `base` and
+   `elements`. so a `ds-*` class outranks the reset and the document defaults under it, and a rule
+   of adm.css's outranks it: the registry's usage notes expect the page's own classes to be read
+   after its sheets (a heading class in a `ds-card-header`, card-css.usage.md). what that order
+   asks of adm.css is that no element wearing a `ds-*` class also wears an `adm-*` class whose rule
+   restates what the registry draws; the `adm-*` classes on those elements place them, or draw a
+   state the registry has no rule for, and nothing else.
 
    `layout` is last so a screen's arrangement of an element outranks that element's own rule
    without either one raising its specificity to say so. a component's scoped <style> block
-   stays unlayered and therefore outranks all five of these — that comparison is between two
+   stays unlayered and therefore outranks every one of these layers — that comparison is between two
    sheets of this document, which is the one place layer order decides anything — and it is
    what lets a page arrange the elements the sheets draw — a scoped block is right for composition that belongs to one
    file, and a component carries adm.css's classes rather than restating those rules in
-   one. there is still no css build step and no extractor anywhere in this: the four operator
-   sheets are hand-written and layered, and the registry's is copied and unlayered. */
+   one. there is still no css build step and no extractor anywhere in this: the operator's own
+   sheets are hand-written and layered, and the registry's are copied, variables.css unlayered
+   and the component sheets put in `registry` by the import. */

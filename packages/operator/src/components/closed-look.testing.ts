@@ -8,7 +8,7 @@ import { stripComments } from '../styles/raw-values';
 // selector proves two strings match and nothing about what the browser is handed. the dom pool lays
 // nothing out and computes no style, so the rule a control matches is the claim a case can make.
 //
-// a closed rung is found by what it draws — one of the two disabled inks — and a rung for a press
+// a closed rung is found by what it draws — one of the disabled inks — and a rung for a press
 // in flight is not one: it holds the rank's active look, which is working rather than closed.
 //
 // the `.testing` suffix matches no pool's include glob, as ./render.testing.tsx's does.
@@ -17,7 +17,7 @@ import { stripComments } from '../styles/raw-values';
 const here = dirname(fileURLToPath(import.meta.url));
 const sheet = stripComments(readFileSync(join(here, '../styles/adm.css'), 'utf8'));
 
-const CLOSED_INK = /color:\s*var\(--admin-(?:control|primary)-ink-disabled\)/;
+const CLOSED_INK = /color:\s*var\(--admin-(?:control|primary|button)-ink-disabled\)/;
 
 const closedRungs = [...sheet.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
 	.filter(([, , body]) => CLOSED_INK.test(body ?? ''))

@@ -1,5 +1,5 @@
 import { currencySymbol, formatOffer, parseMinor } from '@better-giving/form/money';
-import { part, partWhen } from '@better-giving/form/parts';
+import { part, partWhen, REGISTRY_CLASS } from '@better-giving/form/parts';
 import type { AmountDecision } from '@better-giving/form/value';
 import type { FormConfig } from '@better-giving/form/v1';
 import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
@@ -397,6 +397,7 @@ export function AmountStep({
 				<label className="check-row">
 					<input
 						part={part('checkbox')}
+						className={REGISTRY_CLASS.checkbox}
 						type="checkbox"
 						checked={api.noteToggle.pressed === true}
 						onChange={onNoteToggle}
@@ -417,6 +418,7 @@ export function AmountStep({
 							ref={refs.note}
 							rows={3}
 							part={partWhen('field', { invalid: missingNote })}
+							className={REGISTRY_CLASS.field}
 							aria-invalid={missingNote ? true : undefined}
 							aria-describedby={missingNote ? 'note-problem' : undefined}
 						/>
@@ -436,6 +438,7 @@ export function AmountStep({
 				<label className="check-row">
 					<input
 						part={part('checkbox')}
+						className={REGISTRY_CLASS.checkbox}
 						type="checkbox"
 						checked={api.tributeToggle.pressed === true}
 						onChange={onTributeToggle}
@@ -518,6 +521,7 @@ export function AmountStep({
 
 			<button
 				part={partWhen('action', { busy })}
+				className={REGISTRY_CLASS.action}
 				type={submits ? 'submit' : 'button'}
 				aria-busy={busy}
 				onClick={onContinue}
@@ -573,6 +577,7 @@ function TributeBox({
 				placeholder={placeholder}
 				autoComplete="off"
 				part={partWhen('field', { invalid: wrong })}
+				className={REGISTRY_CLASS.field}
 				aria-invalid={wrong ? true : undefined}
 				aria-describedby={wrong ? problemId : undefined}
 			/>

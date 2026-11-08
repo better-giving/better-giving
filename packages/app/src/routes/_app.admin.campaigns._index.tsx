@@ -343,7 +343,9 @@ const SAMPLE = (
 					<span className="adm-chip adm-press">/campaign-address</span>
 				</li>
 			</ul>
-			<span className="adm-btn adm-btn--quiet adm-btn--sm">End</span>
+			<Button as="span" variant="quiet" size="sm">
+				End
+			</Button>
 		</div>
 	</div>
 );

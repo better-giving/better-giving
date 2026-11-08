@@ -21,12 +21,12 @@ import { describe, expect, it } from 'vitest';
 
 describe('no raw colour in an /admin stylesheet', () => {
 	// src/lib/donate/** is swept out rather than in. the donor page draws the donation form's own
-	// card, dressed from packages/form's four sheets and its token file, so an /admin colour is
+	// card, dressed from packages/form's sheets and its token file, so an /admin colour is
 	// exactly what a screen there must not carry — and the gate over those values is the form
 	// package's own browser specs against that token file. its src/lib/donate/page.css is the page's
 	// token layer, dressed from that same file, and src/lib/donate/page.spec.ts is its gate.
 	const screens = globSync('src/**/*.tsx').filter((file) => !file.startsWith('src/lib/donate/'));
-	// the four sheets live in packages/operator, a sibling package this one imports from
+	// the operator sheets live in packages/operator, a sibling package this one imports from
 	// (src/app.css) rather than a directory of its own — so the glob reaches out of the
 	// package instead of down into it.
 	const sheets = globSync('../operator/src/styles/*.css');

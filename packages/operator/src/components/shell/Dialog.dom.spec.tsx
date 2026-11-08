@@ -134,8 +134,8 @@ describe('the dialog the server renders', () => {
 		});
 		const [confirm, cancel] = [...root.querySelectorAll('.adm-dialog__actions > *')];
 
-		expect(confirm?.className).toContain('adm-btn--danger');
-		expect(cancel?.className).toBe('adm-btn');
+		expect(confirm?.classList.contains('ds-btn-destructive')).toBe(true);
+		expect(cancel?.className).toBe('ds-btn ds-btn-secondary adm-btn');
 	});
 
 	it('stands a commit where a destructive control stands, in the primary rank and with no exit', () => {
@@ -151,10 +151,10 @@ describe('the dialog the server renders', () => {
 		const [press, cancel, ...rest] = [...root.querySelectorAll('.adm-dialog__actions > *')];
 
 		expect(press?.textContent).toBe('Publish');
-		expect(press?.className).toContain('adm-btn--primary');
-		expect(root.querySelector('.adm-btn--danger')).toBeNull();
+		expect(press?.classList.contains('ds-btn-primary')).toBe(true);
+		expect(root.querySelector('.ds-btn-destructive')).toBeNull();
 		expect(cancel?.textContent).toBe('Cancel');
-		expect(cancel?.className).toBe('adm-btn');
+		expect(cancel?.className).toBe('ds-btn ds-btn-secondary adm-btn');
 		expect(rest).toEqual([]);
 
 		(press as HTMLButtonElement).click();

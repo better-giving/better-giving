@@ -1,0 +1,195 @@
+/* the registry's form field as plain css: container, label, input, hint and
+   error, no tailwind. reads only the variables the `variables` item declares,
+   so a theme, `.dark` and `.light` recolor it like the tailwind `.field-input`,
+   `.field-err` and `.label` it mirrors. field-css.test.tsx renders both and
+   asserts the same computed look in light and dark, for the default and
+   example themes.
+
+   the spacing step, the type ladder, the font weight and the control height
+   live only in tailwind's theme or components.css; they are declared on the
+   classes under ds- names with the same values, and the test holds each equal
+   to the original. */
+.ds-field {
+  --ds-spacing: 0.25rem;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* the label sits 4px above the control, or flush when a hint follows */
+.ds-label {
+  --ds-spacing: 0.25rem;
+  --ds-text-sm: 0.875rem;
+  --ds-font-weight-medium: 500;
+  display: block;
+  margin: 0;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-font-weight-medium);
+}
+.ds-field > .ds-label {
+  margin-bottom: calc(var(--ds-spacing) * 1);
+}
+.ds-field > .ds-label:has(+ .ds-field-hint) {
+  margin-bottom: 0;
+}
+/* data-required="true" draws a star, "false" draws (optional). the empty
+   alt text after the slash keeps both out of the label's accessible name. */
+.ds-label[data-required="true"]::after {
+  content: " *" / "";
+  color: var(--destructive-subtle-fg);
+}
+.ds-label[data-required="false"]::after {
+  content: " (optional)" / "";
+  color: var(--gray-11);
+  font-weight: normal;
+  font-size: 0.8em;
+}
+
+.ds-field-hint {
+  --ds-spacing: 0.25rem;
+  --ds-text-sm: 0.875rem;
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  margin-block: 0 calc(var(--ds-spacing) * 2);
+  color: var(--gray-11);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  overflow-wrap: break-word;
+}
+
+.ds-field-input {
+  --ds-spacing: 0.25rem;
+  --ds-text-sm: 0.875rem;
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-field-size: calc(var(--ds-spacing) * 12.5);
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  border-radius: var(--radius);
+  font-family: inherit;
+  letter-spacing: inherit;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  background-color: var(--surface);
+  padding: calc(var(--ds-spacing) * 3.5) calc(var(--ds-spacing) * 4);
+  min-block-size: var(--ds-field-size);
+  /* the edge is --input, the interactive-border step; an invalid field's
+     destructive edge is left alone by the hover */
+  border: 1px solid var(--input);
+  outline-color: var(--ring);
+  color: var(--gray-12);
+}
+.ds-field-input:hover:not(
+  :disabled,
+  [readonly],
+  [aria-disabled="true"],
+  :user-invalid,
+  [aria-invalid="true"]
+) {
+  border-color: var(--input-hover);
+}
+.ds-field-input::placeholder {
+  color: var(--gray-11);
+  opacity: 1;
+}
+.ds-field-input[aria-disabled="true"],
+.ds-field-input[readonly],
+.ds-field-input:disabled {
+  pointer-events: none;
+  background-color: var(--gray-3);
+  color: var(--gray-11);
+}
+/* :user-invalid, never :invalid, which paints every required-but-empty field
+   destructive before it is touched */
+.ds-field-input:user-invalid,
+.ds-field-input[aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+/* a wrapper that carries the control's look and holds an input of its own */
+.ds-field-input-container {
+  --ds-text-sm: 0.875rem;
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  box-sizing: border-box;
+  width: 100%;
+  border-radius: var(--radius);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  background-color: var(--surface);
+  border: 1px solid var(--input);
+  color: var(--gray-12);
+}
+/* the bare input inside: the container draws the edge, the fill and the ring,
+   so the input brings none of its own and keeps ds-field-input's padding */
+.ds-field-input-container > input {
+  --ds-spacing: 0.25rem;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+  padding: calc(var(--ds-spacing) * 3.5) calc(var(--ds-spacing) * 4);
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  outline: none;
+}
+.ds-field-input-container > input::placeholder {
+  color: var(--gray-11);
+  opacity: 1;
+}
+.ds-field-input-container:hover:not(
+  :has(
+    input:disabled,
+    input[readonly],
+    input[aria-disabled="true"],
+    input:user-invalid,
+    input[aria-invalid="true"]
+  )
+) {
+  border-color: var(--input-hover);
+}
+.ds-field-input-container:has(input:focus) {
+  outline: solid;
+  outline-width: 2px;
+  outline-color: var(--ring);
+}
+.ds-field-input-container:has(input[aria-disabled="true"]),
+.ds-field-input-container:has(input[readonly]),
+.ds-field-input-container:has(input:disabled) {
+  pointer-events: none;
+  background-color: var(--gray-3);
+  color: var(--gray-11);
+}
+.ds-field-input-container:has(input:user-invalid),
+.ds-field-input-container:has(input[aria-invalid="true"]) {
+  border-color: var(--destructive);
+}
+
+/* the message under a control; empty, it takes no room */
+.ds-field-err {
+  --ds-spacing: 0.25rem;
+  --ds-text-xs: 0.75rem;
+  margin: calc(var(--ds-spacing) * 1) 0 0;
+  text-align: right;
+  font-size: var(--ds-text-xs);
+  color: var(--destructive-subtle-fg);
+}
+.ds-field-err:empty {
+  display: none;
+}
+
+/* the same message laid over the field's bottom edge instead of in the flow;
+   the field container needs position: relative */
+.ds-field-error {
+  --ds-spacing: 0.25rem;
+  --ds-text-xs: 0.75rem;
+  --ds-text-xs-lh: calc(1 / 0.75);
+  position: absolute;
+  margin: 0;
+  bottom: calc(var(--ds-spacing) * -5);
+  right: 0;
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  text-align: right;
+  color: var(--destructive-subtle-fg);
+}

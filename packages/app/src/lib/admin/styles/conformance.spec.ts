@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
 // is a literal. two more are the two sheets' together, and the screens' beside them: every
 // `font-size` written reads a type role rather than a step of the ladder under it, and every
 // `font-weight` reads one too. one is ../../../app.css's: every rule /admin
-// ships stands inside one of the five layers declared there. colour is the twelfth and is gated
+// ships stands inside one of the layers declared there. colour is the twelfth and is gated
 // separately, by ./raw-color.spec.ts. the first two live in a different package than this file
 // does — packages/operator/src/styles/ — so every path below spells the whole route from the
 // repository root to a file that is not a sibling, and stays relative for one that still is.
@@ -55,18 +55,18 @@ const ELEMENT_FILE = '../operator/src/styles/adm.css';
 const APP_FILE = 'src/app.css';
 
 // src/lib/donate/** is swept out rather than in. the donor page draws the donation form's own
-// card, dressed from packages/form's four sheets and its token file, so an /admin token is exactly
+// card, dressed from packages/form's sheets and its token file, so an /admin token is exactly
 // what a screen there must not carry — and the gate over those values is the form package's own
 // browser specs against that token file. its src/lib/donate/page.css is the page's token layer,
 // dressed from that same file, and src/lib/donate/page.spec.ts is its gate.
 const DONATE = 'src/lib/donate/';
 const screens = globSync('src/**/*.tsx').filter((file) => !file.startsWith(DONATE));
-// the four sheets live in packages/operator, a sibling package this file reaches out of rather
+// the operator sheets live in packages/operator, a sibling package this file reaches out of rather
 // than a directory inside this one. the registry's copied files beside them
 // (packages/operator/src/registry, recorded in bg-design.json) are not swept: `pnpm design:check`
 // holds them to the registry, and a rule written there is the registry's to judge.
 const sheets = globSync('../operator/src/styles/*.css');
-// src/app.css is named rather than swept: it is where the layer order every one of the four
+// src/app.css is named rather than swept: it is where the layer order every one of those
 // sheets is read inside gets declared.
 const stylesheets = [...sheets, APP_FILE];
 const sources = [...screens, ...stylesheets];
@@ -84,7 +84,7 @@ const REFERENCE = /var\(\s*(--admin-[\w-]+)/g;
 // something has since reached for goes on claiming to be unread, and nothing about the tree says
 // otherwise. `exempts no token anything reads` is what fails then.
 //
-// the same twenty-one are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
+// the same twenty-four are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
 // the paragraph is what a reader meets, and this is what fails.
 const SCALE_EXEMPT = [
 	// the unread steps of the four ladders. each ladder is radix's twelve steps because the step
@@ -96,18 +96,21 @@ const SCALE_EXEMPT = [
 	'--admin-neutral-9',
 	'--admin-neutral-10',
 	// the accent: no screen draws an accent ground lighter than the wash's step 2, a hovered accent
-	// element, or an accent rule.
+	// element, or an accent rule, and a hovered accent fill is the registry button's own.
 	'--admin-accent-1',
 	'--admin-accent-4',
 	'--admin-accent-6',
-	// the blocker: a red band, a red edge on a refused box, a red word and a destructive fill are the
-	// whole of what this tone draws, and a band draws no edge.
+	'--admin-accent-10',
+	// the blocker: a red band, a red edge on a refused box and a red word are the whole of what this
+	// tone draws, a band draws no edge, and a destructive fill is the registry button's own.
 	'--admin-blocker-1',
 	'--admin-blocker-2',
 	'--admin-blocker-4',
 	'--admin-blocker-5',
 	'--admin-blocker-6',
 	'--admin-blocker-7',
+	'--admin-blocker-9',
+	'--admin-blocker-10',
 	// the attention amber: a band, an edge on a needed box and a word, and no screen fills with it.
 	'--admin-attention-1',
 	'--admin-attention-2',
@@ -128,10 +131,11 @@ const SCALE_EXEMPT = [
 	'--admin-weight-bold'
 ];
 
-// the five layers, in the order ../../../app.css declares them. later wins, which is why `layout` is
+// the six layers, in the order ../../../app.css declares them. later wins, which is why `layout` is
 // last: a screen's arrangement of an element outranks that element's own rule without either one
-// raising its specificity to say so.
-const LAYERS = ['tokens', 'reset', 'base', 'elements', 'layout'];
+// raising its specificity to say so. `registry` holds the design registry's copied component sheets
+// and no sheet swept here opens it: ../../../app.css puts them there by their `@import`.
+const LAYERS = ['tokens', 'reset', 'base', 'registry', 'elements', 'layout'];
 
 const read = (file: string) => readFileSync(file, 'utf8');
 
@@ -990,7 +994,7 @@ describe('every motion in /admin collapses at source', () => {
 describe('every rule an /admin sheet writes stands inside a declared layer', () => {
 	const statement = read(APP_FILE).match(/@layer\s+([^;{]+);/);
 
-	it('declares the five layers, in order', () => {
+	it('declares the six layers, in order', () => {
 		expect(statement).not.toBeNull();
 		expect(statement?.[1]?.split(',').map((n) => n.trim())).toEqual(LAYERS);
 	});

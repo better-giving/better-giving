@@ -525,10 +525,11 @@ function SignInScreen({
 					<p className="adm-caption">
 						<Link to="/forgot">Forgot your password?</Link>
 					</p>
-					{/* a lone submit is still an action row: `.adm-btn` is `inline-flex`, so a
-					    control placed directly in a `.adm-stack` is a grid item stretched to the
-					    track and draws itself full width — which at the panel's measure is a
-					    phone-app idiom this dashboard has nowhere else. */}
+					{/* a lone submit is still an action row: `.ds-btn` is `display: flex`
+					    (packages/operator/src/registry/styles/button-css.css) and `.adm-btn` sets no
+					    `display`, so a control placed directly in a `.adm-stack` is a grid item
+					    stretched to the track and draws itself full width — which at the panel's
+					    measure is a phone-app idiom this dashboard has nowhere else. */}
 					<div className="adm-actions">
 						{/* busy and still reachable: a disabled control leaves the tab order, so
 						    switching this one off at the moment it is pressed throws the focus that

@@ -35,12 +35,12 @@
    reader looking for the token that does a job has to rule it out first. what is exempt is
    a member of a scale — a rung of a ramp, a spacing step, a type step, a weight — because a
    scale is read by counting along it and one with holes in it is no longer one anybody can
-   count along. nineteen of the forty-eight steps are unread today and stay for
-   that reason: `--admin-neutral-9` and `-10`; `--admin-accent-1`, `-4` and `-6`;
-   `--admin-blocker-1`, `-2`, `-4`, `-5`, `-6` and `-7`; `--admin-attention-1`, `-2`, `-4`, `-5`,
-   `-6`, `-7`, `-9` and `-10`. two more are unread outside colour: `--admin-text-xl` and
+   count along. twenty-two of the forty-eight steps are unread today and stay for
+   that reason: `--admin-neutral-9` and `-10`; `--admin-accent-1`, `-4`, `-6` and `-10`;
+   `--admin-blocker-1`, `-2`, `-4`, `-5`, `-6`, `-7`, `-9` and `-10`; `--admin-attention-1`, `-2`,
+   `-4`, `-5`, `-6`, `-7`, `-9` and `-10`. two more are unread outside colour: `--admin-text-xl` and
    `--admin-weight-bold`. the exemption is membership of a scale and never a token that has merely
-   not been reached for yet. those twenty-one are named again in
+   not been reached for yet. those twenty-four are named again in
    packages/app/src/lib/admin/styles/conformance.spec.ts, which is what fails when the two
    lists stop agreeing — in both directions, so a step this paragraph calls unread that something
    has since reached for fails it as well.
@@ -116,11 +116,10 @@
    operator learns to scan instead of reading. imperative — something is asking you to act —
    sits at the leading edge of a ledger line in a fixed mark gutter, carries a mark, carries a
    tone, and carries a sentence. descriptive — this is just what it is — sits in a value slot,
-   carries no mark and no sentence, and is drawn as a pill: the word on a rung 3 tint at
-   `--admin-radius-pill`, hueless until it is given a tone. a table cell keeps the pill and only
-   tightens its inset, as the gifts list at /admin/donations draws it, and ./adm.css argues that at
-   `.adm-table .adm-state`. momentary — this just happened, on this control — reports on the
-   control that caused it, in the accent, and is never a toast and never a banner at the head of
+   carries no mark and no sentence, and is drawn as the registry's badge
+   (../registry/styles/badge-css.css): neutral until it is given a tone, the same chip in a table
+   cell as anywhere else, as the gifts list at /admin/donations draws it. momentary — this just
+   happened, on this control — reports on the control that caused it, in the accent, and is never a toast and never a banner at the head of
    the page. packages/operator/src/components/status/Banner.jsx, StatusWord.jsx and
    StatusLine.jsx are where those three are drawn.
 
@@ -199,10 +198,8 @@
    report, never a literal nudged.
 
    the focus ring is drawn outside a control, in `--ring` (the accent's 11, light and dark)
-   against whatever the control stands on. a control filled with a solid step draws its ring
-   inside itself in `--admin-focus-ring-solid` instead, the fill's own ink, as the registry rings
-   a control drawn on a `--primary` fill in that fill's ink (`--primary-ring` in
-   ../registry/styles/colors.css).
+   against whatever the control stands on. a button's ring is the registry's own outline
+   (`.ds-btn:focus-visible`, ../registry/styles/button-css.css).
    the ring hugs. it starts at the control's own edge and no ground is drawn between the two,
    in either direction, because a band of the page laid inside the ring reads as the control
    sitting in a box that arrived with the keyboard. the one exception is a chosen control, a chip
@@ -368,8 +365,8 @@
 		   four entries per tone, and the set is the same shape for each so a reader learns it
 		   once: `ink` is the word at step 11, `mark` is the glyph beside it at step 11 as well,
 		   `tint` is a band drawn in that tone at step 3, `deep` is the word on the band at step 12.
-		   a band draws no edge: the tint carries the tone. a status pill is the tone's 3 under its
-		   11, except `note`'s, which is its 11 with no ground (./adm.css `.adm-state--note`). */
+		   a band draws no edge: the tint carries the tone. a status word is the registry's badge,
+		   and an ended one (`note`) is its 11 with no ground (./adm.css `.adm-state--note`). */
 		--admin-tone-blocker-ink: var(--admin-blocker-11);
 		--admin-tone-blocker-mark: var(--admin-blocker-11);
 		--admin-tone-blocker-tint: var(--admin-blocker-3);
@@ -400,21 +397,26 @@
 		   takes the ladder from step 3 — hover 3, press 4. a closed control is step 3 with a step-6
 		   edge and its ink on step 8. nothing scales, nothing lifts and nothing changes opacity.
 
-		   a filled control is a solid step: 9 at rest and 10 under a pointer and a press, because
-		   radix has two solid steps and no third. `--admin-control-ink-hover` restates the resting
-		   ink rather than moving it: a step that says "this does not change" is a decision a reader
-		   can see. */
+		   a button is not drawn from these: its ranks are the registry's button-css
+		   (../registry/styles/button-css.css), and what packages/operator/src/styles/adm.css still
+		   draws on one reads the quiet steps here for a quiet press held open, and the button's own
+		   closed pair below for a press closed by `aria-disabled`. */
 		--admin-control-bg: var(--admin-neutral-3);
 		--admin-control-bg-hover: var(--admin-neutral-4);
 		--admin-control-bg-active: var(--admin-neutral-5);
 		--admin-control-bg-disabled: var(--admin-neutral-3);
 		--admin-control-ink: var(--admin-neutral-12);
-		--admin-control-ink-hover: var(--admin-neutral-12);
 		--admin-control-ink-disabled: var(--admin-neutral-8);
 		--admin-control-border: var(--admin-neutral-7);
 		--admin-control-border-hover: var(--admin-neutral-8);
 		--admin-control-border-active: var(--admin-neutral-8);
 		--admin-control-border-disabled: var(--admin-neutral-6);
+		/* a closed button, which is not drawn from the ladder above: the registry button's own
+		   closed pair (`:disabled` and `aria-busy` in ../registry/styles/button-css.css), step 3
+		   under step 11, so a press closed by `aria-disabled` in ./adm.css draws what a natively
+		   closed one does. */
+		--admin-button-bg-disabled: var(--admin-neutral-3);
+		--admin-button-ink-disabled: var(--admin-neutral-11);
 		/* the ground of a control whose whole boundary is that ground: a press standing on a band
 		   it shares with the value it acts on. it takes the neutral button's three steps, so the two
 		   ranks answer a pointer alike and differ by the edge alone, and it names its own so either
@@ -422,23 +424,11 @@
 		--admin-control-soft-bg: var(--admin-neutral-3);
 		--admin-control-soft-bg-hover: var(--admin-neutral-4);
 		--admin-control-soft-bg-active: var(--admin-neutral-5);
-		--admin-control-soft-ink: var(--admin-neutral-12);
 		--admin-control-quiet-bg-hover: var(--admin-neutral-3);
 		--admin-control-quiet-bg-active: var(--admin-neutral-4);
 		--admin-primary-bg: var(--admin-accent-9);
-		--admin-primary-bg-hover: var(--admin-accent-10);
-		--admin-primary-bg-active: var(--admin-accent-10);
-		--admin-primary-bg-disabled: var(--admin-neutral-3);
 		/* the label on the accent's step 9: the registry's own ink for that fill. */
 		--admin-primary-ink: var(--primary-fg);
-		--admin-primary-ink-disabled: var(--admin-neutral-8);
-		/* a destructive control has no disabled pair of its own: a disabled destructive button
-		   greys to the neutral disabled steps above, because a red control nobody can press is an
-		   alarm with nothing behind it. */
-		--admin-danger-bg: var(--admin-blocker-9);
-		--admin-danger-bg-hover: var(--admin-blocker-10);
-		--admin-danger-bg-active: var(--admin-blocker-10);
-		--admin-danger-ink: var(--destructive-fg);
 		--admin-link: var(--link);
 		--admin-link-hover: var(--link-hover);
 		/* the registry names no visited ink, so a followed link is drawn in the resting link's
@@ -463,10 +453,6 @@
 		/* one ring, one hue, everywhere, on the registry's `--ring` (the accent's 11, light and dark),
 		   and it does not change with the control's tone. */
 		--admin-focus-ring: var(--ring);
-		/* the ring a control filled with a solid step draws inside itself: the label's own ink, the
-		   registry's `--primary-fg`, white in both modes, which abuts the fill and nothing else. the
-		   neutral's step 1 is near-white in light only and turns near-black in dark. */
-		--admin-focus-ring-solid: var(--primary-fg);
 		--admin-selection-bg: var(--admin-accent-5);
 		--admin-selection-ink: var(--admin-accent-12);
 		/* inline code and a key's chip are read in a sentence on a plane and on the page alike. */
@@ -634,10 +620,6 @@
 		--admin-field-lh: var(--admin-lh-body);
 		--admin-hint-size: var(--admin-text-sm);
 		--admin-hint-lh: var(--admin-lh-snug);
-		/* a field's refusal is drawn at the hint's rank and one weight above it: it stands where
-		   help stands, under the box, and must not be read as help. it binds no size for that
-		   reason — the rank is the hint's and only the weight is its own. */
-		--admin-error-weight: var(--admin-weight-medium);
 		--admin-caption-size: var(--admin-text-xs);
 		/* the caption binds a leading because one rule stacks it under a mark — a destination in the
 		   rail, at the width the rail is a column — and there the caption is a word rather than a
@@ -762,23 +744,19 @@
 		   `--admin-radius-pill` is the exception, and its wearers are a named list, because a shape
 		   worn by whatever reaches for it turns into decoration. a new wearer joins this list and
 		   ./adm.css in one change, never by itself.
-		     - the descriptive status word, which is a tag — a record's own state, read as a unit and
-		       never pressed: an edgeless tint, and the round corner is what says so.
 		     - controls round by nature: a choice chip in a wrapping row, the range slider's thumb,
-		       track and fill, a button whose only visible content is a mark (`.adm-btn--icon`), and
-		       the calendar's two steps and its days.
+		       track and fill, and the calendar's two steps and its days.
+		   the descriptive status word is round too, and its corner is the registry badge's own
+		   rather than this one.
 		   the two kinds cannot be confused, and the edge is what keeps them apart: a control is
 		   outlined or filled and pressed, the status word is an edgeless tint that is only read, so
 		   a round shape with an edge or a press is a control and one without is a word. a card chip
 		   holds a sentence and keeps the plane's corner, and a calendar's month or year is a word and
-		   keeps a control's. a native radio is round already, drawn by the browser, and so are a
-		   busy button's three dots (`.adm-btn__dots`, a circle at 50%) and the dot a tab draws over
-		   unsaved edits, which is a mark rather than a wearer. the value is larger than any height
+		   keeps a control's. a native radio is round already, drawn by the browser, and so is the dot
+		   a tab draws over unsaved edits, which is a mark rather than a wearer. the value is larger than any height
 		   it will meet rather than measured, because what is inside sets that height.
 
-		   the bound is on a wearer beyond the list and not on one of them wearing it everywhere:
-		   the status word keeps the corner inside a table cell too, and an ended word that has lost
-		   its ground keeps it with nothing to round. ./adm.css argues both at `.adm-state`. */
+		   the bound is on a wearer beyond the list and not on one of them wearing it everywhere. */
 		--admin-radius-0: 0;
 		--admin-radius: var(--radius-control);
 		--admin-radius-plane: var(--radius-card);
@@ -836,7 +814,13 @@
 		   against this paragraph. */
 		--admin-control-height: 2.25rem;
 		--admin-control-height-sm: 1.75rem;
-		--admin-field-height: 2.5rem;
+		/* the height of every box ./adm.css draws itself — select, date box, affixed box, a
+		   read-only box — and of what stands square beside one, so it is one height with the
+		   registry's `ds-field-input`. it is that box's `--ds-field-size`, 12.5 steps of 0.25rem in
+		   ../registry/styles/field-css.css, which the registry declares on its own class and not
+		   on `:root`, so no box outside it can read it. the registry's `select` item, arriving in
+		   registry 2.2.0, replaces the select's local rule. */
+		--admin-field-height: 3.125rem;
 		--admin-touch-min: 2.75rem;
 
 		/* the mark, and it is reserved for state: no state in /admin is ever a bare square, a
@@ -863,21 +847,17 @@
 
 		/* ---- motion ---------------------------------------------------------------------
 
-		   six motions and each is motivated in one sentence. nothing else in /admin may
+		   four motions and each is motivated in one sentence. nothing else in /admin may
 		   animate, and nothing fades in in front of a sentence somebody is trying to read. the
-		   dwell at the foot is the seventh entry and is none of the six: it holds and does not
-		   move, which is why it is the one entry here that does not collapse below.
+		   dwell at the foot is the fifth entry and is none of the four: it holds and does not
+		   move, which is why it is the one entry here that does not collapse below. a button's
+		   press and its press in flight are the registry's (../registry/styles/button-css.css) and
+		   take nothing from here.
 
 		   state   - a control's fill answering something and its border with it: the pointer, so a
 		             dense page feels alive under the hand.
 		   reveal  - a disclosure body and the dialog's entrance; a body that appears with no
 		             movement reads as a repaint rather than as an opening.
-		   confirm - the save button's swap to saved. the only motion that reports an outcome
-		             and the only one with any overshoot.
-		   pulse   - the three dots a control that is working draws over its own label. it is one
-		             dot's whole cycle, dim to lit and dim again, which is also the circuit: ./adm.css
-		             delays each dot by a seventh of it, so a re-pointing here moves the stagger with
-		             the loop and the dots cannot come to lap each other.
 		   dots    - one circuit of the dot loader on the status ledger. it is one
 		             dot's whole cycle, which is also the circuit: ./adm.css delays each dot by
 		             a sixth of it, so a re-pointing here moves the stagger with the loop and
@@ -898,8 +878,6 @@
 		             on. */
 		--admin-dur-state: 80ms;
 		--admin-dur-reveal: 140ms;
-		--admin-dur-confirm: 180ms;
-		--admin-dur-pulse: 1.4s;
 		--admin-dur-dots: 720ms;
 		--admin-dur-braille-bar: 6s;
 		/* three of `--admin-dur-state`, which is a quarter of a second, and the move this holds
@@ -909,10 +887,6 @@
 		--admin-dur-dwell: 240ms;
 		--admin-ease-state: cubic-bezier(0.2, 0, 0, 1);
 		--admin-ease-reveal: cubic-bezier(0.2, 0, 0.1, 1);
-		--admin-ease-confirm: cubic-bezier(0.34, 1.2, 0.64, 1);
-		/* symmetric: each dot leaves its dim and arrives at its lit at rest, so the three read as one
-		   light passing along the row rather than three lamps switching. */
-		--admin-ease-pulse: cubic-bezier(0.42, 0, 0.58, 1);
 		/* the last two are named for the job rather than for one motion, because each paces more than
 		   one of the motions above. this one is for a motion whose shape is already in its keyframe
 		   stops — the line's schedule, the dot's fade and then its hold — so the curve is asked to
@@ -949,10 +923,9 @@
 	   reader who asked for less of it while a hand-maintained list of selectors quietly stops
 	   being complete. packages/app/src/lib/admin/styles/conformance.spec.ts is what holds every duration to coming from a token.
 
-	   the two loops and the progress bar slow rather than stopping. dots standing still over a
-	   control that is still working, a still ledger under a deployment that is still deploying, or
-	   a bar that has stopped filling while the screen is still reading, is a lie about what is
-	   happening.
+	   the loop and the progress bar slow rather than stopping. a still ledger under a deployment
+	   that is still deploying, or a bar that has stopped filling while the screen is still reading,
+	   is a lie about what is happening.
 
 	   the dwell is restated at its own value, which is the one entry here that does not move. a
 	   hold is not motion: what collapses to nothing is the move under it, and a full bar taken
@@ -964,8 +937,6 @@
 		:root {
 			--admin-dur-state: 0ms;
 			--admin-dur-reveal: 0ms;
-			--admin-dur-confirm: 0ms;
-			--admin-dur-pulse: 4.2s;
 			--admin-dur-dots: 2.4s;
 			--admin-dur-braille-bar: 12s;
 			--admin-dur-dwell: 240ms;

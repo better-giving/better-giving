@@ -22,8 +22,9 @@
  * a registry variable is declared on that node or below it — the colour layer on `:host > *`, never on
  * `:host`, which would read whatever the host page calls `--gray-1`. a host's own `--primary` or
  * `--gray-3` stops at the card's root, which declares its own. the deployment's own donor page draws
- * the card in the document tree under `[data-donate-root]`, where the registry's `:root` block
- * applies instead.
+ * the card in the document tree, and its outer `[data-donate-root]` node carries the same
+ * `data-theme` (packages/app/src/lib/donate/card.tsx), so the registry's `[data-theme]` block
+ * declares the scales and roles there and the colour layer sits on the node under it.
  *
  * the step number is the job, as the registry states it (../registry/styles/variables.usage.md →
  * Scales and roles):
@@ -765,9 +766,10 @@
 	 * the brand: the registry's accent scale, which ./brand.ts re-themes on this node for a seeded
 	 * card. the steps aliased are the ones the card spends, 8, 11 and 12 (the head of this file says
 	 * what each does); `--_p` is step 9 and `--_p-hover` step 10, the solid pair, and `--_on-p` is the
-	 * scale's own ink on it. steps rather than the registry's roles (`--primary`), because the
-	 * deployment's own donor page re-themes its accent on `[data-donate-root]`, below the `:root` its
-	 * roles were resolved on, and a step is what follows it there.
+	 * scale's own ink on it. they name steps rather than the registry's roles (`--primary`) because
+	 * the card spends the accent by step, as the head of this file sets out. a brand moves both: the
+	 * node it re-themes carries `data-theme` in either tree, so the roles declared there resolve
+	 * against its scale too.
 	 *
 	 * a press is answered by step 10 as well. radix states no step for a solid fill pressed, and a
 	 * touch never hovers, so on a phone the press is the step-10 change itself and under a pointer it
@@ -868,7 +870,7 @@
 	 * off the clamped root, on the node the registry declares them on and after its sheet: at a 16px
 	 * root they are its 6px and 12px. `--radius` is restated as the alias the registry declares it as,
 	 * because on the deployment's own page this node carries no `data-theme` and would otherwise
-	 * inherit the registry's from `:root`.
+	 * inherit the registry's from the `[data-donate-root]` above it.
 	 */
 	--radius-control: calc(var(--_root-size) * 0.375);
 	--radius: var(--radius-control);

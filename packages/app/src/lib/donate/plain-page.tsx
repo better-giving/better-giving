@@ -1,3 +1,6 @@
+import registryButton from '@better-giving/form/registry/styles/button-css.css?url';
+import registryCheckbox from '@better-giving/form/registry/styles/checkbox-css.css?url';
+import registryField from '@better-giving/form/registry/styles/field-css.css?url';
 import formLayout from '@better-giving/form/styles/layout.css?url';
 import formMotion from '@better-giving/form/styles/motion.css?url';
 import formParts from '@better-giving/form/styles/parts.css?url';
@@ -17,20 +20,32 @@ import { Masthead, type PageLogo, type PageLook } from './page-view';
 // an ended campaign's screen.
 
 /**
- * the form's four sheets, the self-hosted faces, and the page's own chrome, in that order, for a
- * donor page's `links`.
+ * the form's sheets, the self-hosted faces, and the page's own chrome, in that order, for a donor
+ * page's `links`.
  *
- * the four are in the order `sheetsFor` in packages/form/src/element.ts adopts them, which is
- * cascade order for the equal-specificity rules they are almost entirely made of. the faces sit
+ * the form's are in the order `sheetsFor` in packages/form/src/element.ts adopts them, which is
+ * cascade order for the equal-specificity rules they are almost entirely made of: its tokens, the
+ * registry's button, text box and tick box the card's controls carry the classes of
+ * (`REGISTRY_CLASS` in packages/form/src/parts.ts), then its parts, layout and motion. the faces sit
  * after them and before the page, and their place orders nothing: the sheet
  * (packages/operator/src/styles/fonts.css) registers the files and re-points the registry's three
  * `--font-*` roles, which the form's token sheet declares unlayered, from inside a layer with
  * `!important`, which outranks them wherever it is linked. ./page.css reads those roles. none of
- * them is hoisted with a `precedence`: a donor page's whole document is these six, so there is
- * nothing for a precedence to order them against. the embed links none of these.
+ * them is hoisted with a `precedence`: a donor page's whole document is these, so there is nothing
+ * for a precedence to order them against. the embed links none of these.
  */
 export function donorPageLinks() {
-	return [formTokens, formParts, formLayout, formMotion, hostedFaces, pageChrome].map((href) => ({
+	return [
+		formTokens,
+		registryButton,
+		registryField,
+		registryCheckbox,
+		formParts,
+		formLayout,
+		formMotion,
+		hostedFaces,
+		pageChrome
+	].map((href) => ({
 		rel: 'stylesheet' as const,
 		href
 	}));

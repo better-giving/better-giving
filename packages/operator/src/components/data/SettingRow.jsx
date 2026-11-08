@@ -19,9 +19,9 @@
    the code face. `literal` hides nothing — it is the same value `value` draws, in the face an
    operator checks a key or a host character for character.
 
-   the three word readings are `.adm-setting__word` and never `.adm-state`: a value is not a state.
-   ../../styles/adm.css argues the split where both are drawn, and ../status/StatusWord.jsx's
-   descriptive register is the only thing that may write the status pill. a row wanting a record's
+   the three word readings are `.adm-setting__word` and never the status badge: a value is not a
+   state. ../../styles/adm.css argues the split, and ../status/StatusWord.jsx's descriptive register
+   is the only thing that may write the status badge. a row wanting a record's
    own status in its cell is a screen passing that word in, not this part reaching for the class.
 
    one mark, and it is a slot rather than a name on a bare mark: a mark with nothing behind it says

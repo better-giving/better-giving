@@ -1,0 +1,51 @@
+/* the registry's content card as plain css: the in-flow container on the 12px
+   corner, a step-2 fill and a hairline edge, no shadow. header, body and footer
+   are slots; use the ones you need. reads only the variables the `variables`
+   item declares. card-css.test.tsx renders the React card beside it and asserts
+   the same computed look in light and dark, for the default and example themes.
+
+   the spacing step lives only in tailwind's theme; it is declared here under a
+   ds- name with the same value, and the test holds the two equal. */
+.ds-card {
+  --ds-spacing: 0.25rem;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--hairline);
+  background-color: var(--card);
+  color: var(--gray-12);
+}
+.ds-card-header {
+  --ds-spacing: 0.25rem;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--hairline);
+  padding-inline: calc(var(--ds-spacing) * 6);
+  padding-block: calc(var(--ds-spacing) * 4);
+}
+/* a heading in the header takes no margin and the header's own size and
+   weight, as it does under tailwind's reset, so the header is one height with
+   or without one. :where() keeps this at one class, so a heading class of the
+   page's own declared after this file still wins. */
+.ds-card-header > :where(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+.ds-card-body {
+  --ds-spacing: 0.25rem;
+  box-sizing: border-box;
+  padding-inline: calc(var(--ds-spacing) * 6);
+  padding-block: calc(var(--ds-spacing) * 5);
+}
+/* the actions row, on the well fill one rung in from the card */
+.ds-card-footer {
+  --ds-spacing: 0.25rem;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--ds-spacing) * 3);
+  border-top: 1px solid var(--hairline);
+  background-color: var(--panel);
+  padding-inline: calc(var(--ds-spacing) * 6);
+  padding-block: calc(var(--ds-spacing) * 4);
+}

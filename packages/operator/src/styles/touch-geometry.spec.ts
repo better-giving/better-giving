@@ -1,4 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { stripComments } from './raw-values';
 import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
 // where a finger lands on the phone's own furniture: a row takes the row's floor, and the More
@@ -22,6 +26,23 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
 const css = sheet('adm.css');
 const tokens = sheet('tokens.css');
+// a button's box is the registry's (../components/controls/Button.jsx draws `ds-btn` beside
+// `.adm-btn`), so its edge, its padding and its tier's height are read from the copied sheet.
+// resolved through `fileURLToPath`, which ./field-on-a-tight-stack.dom.spec.tsx argues.
+const registry = stripComments(
+	readFileSync(
+		join(dirname(fileURLToPath(import.meta.url)), '../registry/styles/button-css.css'),
+		'utf8'
+	)
+);
+
+// the registry's box, whose height every box this sheet draws itself is held to below.
+const field = stripComments(
+	readFileSync(
+		join(dirname(fileURLToPath(import.meta.url)), '../registry/styles/field-css.css'),
+		'utf8'
+	)
+);
 
 /** the `var()` names and `env()` calls a value adds up, in the order it spells them. */
 const terms = (value: string | undefined) =>
@@ -252,7 +273,20 @@ type Member = {
 const widthOf = (border: string | undefined) =>
 	border === undefined ? 0 : evaluate(border.split(' ')[0]);
 
-const BUTTON_BORDER = () => widthOf(ruleOf(css, '.adm-btn').get('border'));
+/**
+ * the registry's own names a small press is measured in, as `evaluate` reads them: the spacing step
+ * and the small tier's height, both declared on the registry's classes rather than in ./tokens.css.
+ */
+const REGISTRY_SIZES = (): Record<string, string> => ({
+	'--ds-spacing': ruleOf(registry, '.ds-btn').get('--ds-spacing') ?? '',
+	'--ds-btn-size': ruleOf(registry, '.ds-btn-sm').get('--ds-btn-size') ?? ''
+});
+
+/** the quiet rank's edge, which is the one `.ds-btn` states: `.ds-btn-ghost` adds none. */
+const BUTTON_BORDER = () => {
+	expect(ruleOf(registry, '.ds-btn-ghost').get('border')).toBeUndefined();
+	return widthOf(ruleOf(registry, '.ds-btn').get('border'));
+};
 const ROW_REMOVE = '.adm-rows__row > .adm-rows__remove';
 const CHIP = '.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip';
 const GLOBE = '.adm-identity__lead > .adm-btn';
@@ -264,11 +298,14 @@ const WAY_OUT = '.adm-identity > .adm-signout > .adm-btn';
  * is one, and a way out is one where it carries no word. a wider way out reaches less far across.
  */
 const barButton = (): Drawn => {
-	const small = ruleOf(css, '.adm-btn--sm');
+	const small = ruleOf(registry, '.ds-btn-sm');
 	const border = BUTTON_BORDER();
+	const sizes = REGISTRY_SIZES();
 	return {
-		inline: 2 * (border + evaluate(small.get('padding-inline'))) + px('--admin-mark-size'),
-		block: evaluate(small.get('min-block-size')),
+		inline:
+			2 * (border + evaluate(small.get('padding-inline'), undefined, sizes)) +
+			px('--admin-mark-size'),
+		block: evaluate(small.get('min-block-size'), undefined, sizes),
 		border
 	};
 };
@@ -444,10 +481,16 @@ describe('a control drawn under the floor takes a target at it', () => {
 	it.each(members)('%s is placed against its own box and shows its pointer', (member) => {
 		const holder = ruleOf(css, MEMBERS[member]?.holder ?? '');
 		const naming = rulesIn(css).filter(({ selector }) => selector.split(', ').includes(member));
+		// a button's pointer is the registry's, drawn on the `ds-btn` it wears beside `.adm-btn`.
+		const cursor =
+			holder.get('cursor') ??
+			(MEMBERS[member]?.holder === '.adm-btn'
+				? ruleOf(registry, '.ds-btn').get('cursor')
+				: undefined);
 
 		expect(holder.get('position')).toBe('relative');
 		for (const { stated } of naming) expect(stated.get('position') ?? 'relative').toBe('relative');
-		expect(holder.get('cursor') ?? 'auto').not.toBe('auto');
+		expect(cursor ?? 'auto').not.toBe('auto');
 	});
 
 	it.each(members)('%s reaches the floor and covers the whole control', (member) => {
@@ -535,5 +578,65 @@ describe('a crop handle reaches 24px into the square, and leaves 24px in its mid
 
 		expect(step(CORNERS)).toBeGreaterThan(step(ACROSS));
 		expect(step(CORNERS)).toBeGreaterThan(step(DOWN));
+	});
+});
+
+describe("every box in a form stands at the registry box's height", () => {
+	// a box ../components/forms/Field.jsx draws is the registry's `ds-field-input`, at its own field
+	// size; every other box, and what stands square beside one, is ./adm.css's and spends
+	// `--admin-field-height`. the two meet only in pixels, so the token is held to the registry's
+	// figure here, and every local box to the token.
+	const fieldSize = () => {
+		const box = ruleOf(field, '.ds-field-input');
+		return evaluate(box.get('--ds-field-size'), undefined, {
+			'--ds-spacing': box.get('--ds-spacing') ?? ''
+		});
+	};
+	const declaring = (member: string) =>
+		rulesIn(css).find(({ selector }) => selector.split(', ').includes(member))?.stated ??
+		new Map<string, string>();
+
+	it("holds the local box height at the registry box's field size", () => {
+		expect(px('--admin-field-height')).toBe(fieldSize());
+		expect(ruleOf(field, '.ds-field-input').get('min-block-size')).toBe('var(--ds-field-size)');
+	});
+
+	it.each([
+		// the text box a control draws by hand, and the read-only box Field.jsx draws.
+		['.adm-input'],
+		// SelectWithNote.jsx's trigger, until the registry's `select` item replaces it.
+		['.adm-select'],
+		// DateField.jsx's and DateRangeField.jsx's box.
+		['.adm-datebox'],
+		// a box with its unit or address in front.
+		['.adm-affixed']
+	])('%s stands at it', (member) => {
+		expect(declaring(member).get('min-block-size')).toBe('var(--admin-field-height)');
+	});
+
+	it.each([
+		// a row's Remove, square beside its box.
+		[ROW_REMOVE, 'min-block-size'],
+		// the brand colour's well, square beside its box.
+		['.adm-swatch--well', 'block-size']
+	])('%s, beside a box, stands at it', (member, property) => {
+		expect(ruleOf(css, member).get(property)).toBe('var(--admin-field-height)');
+	});
+
+	it("stands a press on a box's own row at the registry's field size", () => {
+		// the button reads `--ds-field-size` off its own `ds-btn`, which button-css declares at the
+		// field's figure for its `ds-btn-field` tier.
+		const button = ruleOf(registry, '.ds-btn');
+		expect(
+			evaluate(button.get('--ds-field-size'), undefined, {
+				'--ds-spacing': button.get('--ds-spacing') ?? ''
+			})
+		).toBe(fieldSize());
+		for (const row of [
+			'.adm-field > .adm-actions > .adm-btn',
+			'.adm-findorg > .adm-actions > .adm-btn'
+		]) {
+			expect(declaring(row).get('min-block-size'), row).toBe('var(--ds-field-size)');
+		}
 	});
 });

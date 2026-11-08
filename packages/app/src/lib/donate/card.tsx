@@ -4,7 +4,7 @@ import { createDepositBlock, type DepositView } from '@better-giving/form/deposi
 import { takeResumeToken } from '@better-giving/form/embed/resume';
 import { checkoutMachine, type CheckoutEvent } from '@better-giving/form/machine';
 import { formatFigure, formatMinor, formatOffer, parseMinor } from '@better-giving/form/money';
-import { part } from '@better-giving/form/parts';
+import { CARD_THEME, part } from '@better-giving/form/parts';
 import type { AmountDecision, PayerField } from '@better-giving/form/value';
 import type { FormConfig } from '@better-giving/form/v1';
 import {
@@ -1126,8 +1126,11 @@ function CheckoutCard({
 		// the card carries the container query every breakpoint resolves against. `@property
 		// --donate-primary` registers from the document tree, which is where this sheet now is. the
 		// brand scope is the page root's (./page-root.tsx), so the scale it writes is declared on this
-		// node as well.
-		<div data-donate-root="" data-brand-scope={brandScope}>
+		// node as well. `data-theme` is what makes this node re-resolve the registry's roles
+		// (`--primary`, `--ring`) against that scale: they are declared on `:root` and on every
+		// `[data-theme]` (packages/form/src/registry/styles/colors.css), and read on `:root` they hold
+		// the default accent. the scale's selector outranks the theme's, so the brand's steps win here.
+		<div data-donate-root="" data-brand-scope={brandScope} data-theme={CARD_THEME}>
 			<div
 				ref={cardNode}
 				part={part('card')}

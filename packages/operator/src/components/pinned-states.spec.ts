@@ -30,17 +30,13 @@ import { stripComments } from '../styles/raw-values';
 // of the component's own classes paints the pinned member at all.
 //
 // **what it sweeps is the components drawing from ./closed-sets.js's shared set, and it is blind to
-// a pinned union that names none of it.** ./controls/SaveButton.jsx pins a class from a union of its
-// own the same way and is not read here: one of its members deliberately writes no class at all, so
-// a rule holding every member of every `state` prop to a selector would need an exception, and
-// ../styles/raw-values.ts's header argues in its own terms against a gate that carries one. a
-// component leaving the shared set entirely therefore leaves this sweep, which is a change big
-// enough to be read; a member added to a union that stays in it — ./controls/Button.jsx's two — is
-// caught here on the next run.
+// a pinned union that names none of it.** a `state` prop that is not a pinned state —
+// ./controls/SaveButton.jsx's write, which writes no class at all — is not read here. a component
+// leaving the shared set entirely therefore leaves this sweep, which is a change big enough to be
+// read; a member added to a union that stays in it is caught here on the next run.
 //
 // the classes a component writes are read off its source with its comments blanked, because the
-// prose in these files names classes it does not write — ./controls/Button.jsx's header names
-// `.adm-btn` and ./forms/Field.jsx's names `.adm-actions`. a `//` line is blanked along with the
+// prose in these files names classes it does not write — ./forms/Field.jsx's names `.adm-actions`. a `//` line is blanked along with the
 // block comments, and the two strippers only ever err by dropping a class the component did write:
 // that reads a real rule as belonging to nobody and fails here, which is the direction to be wrong
 // in.
@@ -65,7 +61,7 @@ const COMPONENTS = 'src/components/*/*.jsx';
  */
 const STATE_PROP = /@property\s*\{([^}]*\bPointerState\b[^}]*)\}\s*\[state\]/;
 
-/** the shared set's own members, where all seven unions point. */
+/** the shared set's own members, where every one of the unions points. */
 const SHARED_SET = /@typedef\s*\{([^}]*)\}\s*PointerState/;
 
 /** a stated member of a union. */

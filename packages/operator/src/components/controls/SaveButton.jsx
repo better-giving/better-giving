@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Mark } from '../status/Mark.jsx';
-import { BusyDots } from './Button.jsx';
+import { Button } from './Button.jsx';
 
 /**
  * @import { ComponentProps, ReactNode } from 'react'
@@ -83,37 +83,18 @@ export function SaveButton({
 
 	return (
 		<>
-			<button
-				// the class list is composed here rather than in a name above, so that every one of these
-				// stands inside a `className={…}` — which is where
-				// packages/app/src/lib/admin/styles/conformance.spec.ts reads what markup carries, and a
-				// name it cannot see there reads as a dead rule in the sheet. ../data/DataTable.jsx
-				// composes its cells' classes at the cell for the same reason.
-				//
-				// resting wears no name of its own: `.adm-save.is-idle` matches no rule in
-				// ../../styles/adm.css, and what a resting save button looks like is what
-				// `.adm-btn--primary` already draws. a class nothing draws paints nothing, errors
-				// nowhere, and still reads as a state the sheet handles.
-				//
-				// the other two are drawn by the ladder rather than by a `.adm-save` rule: pending is
-				// `.adm-save.is-pending` for the pressed ground it holds over the primary rank's
-				// closed one, and closed is `.adm-btn.is-disabled` and
-				// `.adm-btn--primary.is-disabled` in that same sheet. what a press in flight draws
-				// over its own label is neither of those and wears no name of this button's: it
-				// hangs off `aria-busy` below, through `.adm-btn[aria-busy='true']`.
-				className={[
-					'adm-btn',
-					'adm-btn--primary',
-					'adm-save',
-					state === 'idle' ? '' : `is-${state}`,
-					className
-				]
-					.filter(Boolean)
-					.join(' ')}
+			<Button
+				variant="primary"
 				type="submit"
 				// before the three this button answers for itself, so a caller's own spelling of any of
 				// them cannot re-open a press the state has closed.
 				{...rest}
+				// the caller's class is added to ./Button.jsx's, never put in place of it. the states
+				// draw no class of their own: pending, done and disabled are each the closed press
+				// `.adm-btn[aria-disabled='true']` draws in ../../styles/adm.css, in the registry's own
+				// closed pair, the one its `:disabled` and `aria-busy` rules draw
+				// (../../registry/styles/button-css.css).
+				className={className}
 				// the press is closed while its own write is in flight as well as for the two conditions
 				// beside it: a press left open under `aria-busy` is one operator intent and two writes,
 				// because the second press starts a second navigation while the first is still going. it
@@ -141,26 +122,18 @@ export function SaveButton({
 					onClick?.(event);
 				}}
 			>
-				{/* the resting label stands in this span in every state, and under a press it is what
-				    the dots stand over: swapped for a word of its own, a button reporting a write
-				    would resize the row of actions it is in at the moment it is closed to a press.
-				    `.adm-btn__label` and the dots are ./Button.jsx's and drawn once, so this button
-				    and the shared one report a press the same way. */}
-				<span className="adm-btn__label">
-					{state === 'done' ? (
-						<span className="adm-save__done">
-							<Mark name="check" />
-							{doneLabel}
-						</span>
-					) : (
-						label
-					)}
-				</span>
-				{/* the dots say a write is going and never how far it has got: this button carries one
-				    write, which is a moment with no named steps to be part of the way through. a press
-				    that starts a run of them reports at the card it stands in instead. */}
-				{busy ? <BusyDots /> : null}
-			</button>
+				{/* the resting label stands in every state but done, under a press too: swapped for a
+				    word of its own, a button reporting a write would resize the row of actions it is in
+				    at the moment it is closed to a press. */}
+				{state === 'done' ? (
+					<span className="adm-save__done">
+						<Mark name="check" />
+						{doneLabel}
+					</span>
+				) : (
+					label
+				)}
+			</Button>
 			{/* the live region stands beside the press and is never the press itself, nor anything
 			    inside it: a region reports every change to its own contents, so a button that was one
 			    would report the tick arriving over the label and the label coming back — two

@@ -4,7 +4,7 @@ import { stripComments } from './raw-values';
 // what the sheets beside this file draw, as findings a caller hands a file list.
 //
 // it exists for the half a class-name sweep cannot read. a component assembles most of its class
-// list — `` `adm-btn--${variant}` `` — so the name never appears in the source as a literal, and
+// list — `` `adm-status--${tone}` `` — so the name never appears in the source as a literal, and
 // the only thing standing between the stem and the sheet is the union the prop takes. a member of
 // that union with no rule behind it is a control that type-checks, renders, and paints nothing.
 // ../components/closed-sets.spec.ts is where the two are put beside each other.
@@ -48,6 +48,22 @@ export function statesDefinedIn(files: readonly string[]): ReadonlySet<string> {
 	for (const file of files) {
 		for (const [, name] of stripComments(readFileSync(file, 'utf8')).matchAll(/\.is-([\w-]+)/g)) {
 			if (name !== undefined) found.add(name);
+		}
+	}
+	return found;
+}
+
+/**
+ * every class the given sheets name in a selector, as the names alone. a declaration's value never
+ * holds one, so the selector lists are all this reads: a block's text up to its brace.
+ */
+export function classesDrawnIn(files: readonly string[]): ReadonlySet<string> {
+	const found = new Set<string>();
+	for (const file of files) {
+		for (const [, head] of stripComments(readFileSync(file, 'utf8')).matchAll(/([^{}]+)\{/g)) {
+			for (const [, name] of (head ?? '').matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) {
+				if (name !== undefined) found.add(name);
+			}
 		}
 	}
 	return found;

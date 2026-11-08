@@ -1,4 +1,4 @@
-import { part, partWhen } from '@better-giving/form/parts';
+import { part, partWhen, REGISTRY_CLASS } from '@better-giving/form/parts';
 import type { PayerField } from '@better-giving/form/value';
 import type { FormConfig } from '@better-giving/form/v1';
 import type { ReactNode, RefObject } from 'react';
@@ -128,6 +128,7 @@ export function DetailsStep({
 			<label className="check-row">
 				<input
 					part={part('checkbox')}
+					className={REGISTRY_CLASS.checkbox}
 					type="checkbox"
 					checked={api.consentToggle.pressed === true}
 					onChange={onConsent}
@@ -137,6 +138,7 @@ export function DetailsStep({
 
 			<button
 				part={partWhen('action', { busy })}
+				className={REGISTRY_CLASS.action}
 				type={submits ? 'submit' : 'button'}
 				aria-busy={busy}
 				onClick={onContinue}
@@ -213,6 +215,11 @@ function TextField({
 				// opt-in the sheet does: a box labelled over the top has nothing to ask.
 				placeholder={floating ? ' ' : undefined}
 				part={partWhen('field', { invalid: wrong })}
+				// the registry's text box in both constructions, so the pair stands at the Email box's
+				// height: the floating label is laid over the box's own grid area and centred in it
+				// (`.floating` in @better-giving/form's parts.css), so it rides whatever height the
+				// registry draws. the element's `textField` in views.ts still draws the pair as its own.
+				className={REGISTRY_CLASS.field}
 				aria-invalid={wrong ? true : undefined}
 				aria-describedby={wrong ? problemId : undefined}
 			/>

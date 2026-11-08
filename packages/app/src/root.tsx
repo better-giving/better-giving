@@ -17,7 +17,7 @@ import { APP_NAME } from '$lib/admin/screen-title';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 // the operator stylesheet is not imported here, and that absence is the mechanism: the document
 // below renders the donor pages, `/donate` and each campaign's address, as well as every operator
-// screen, and the donation form's four sheets are unlayered while every operator declaration is
+// screen, and the donation form's sheets are unlayered while every operator declaration is
 // layered (./app.css) — so a document that carried both would let one side outrank the other on
 // every property only one of them sets. each surface links its own chain from its own `links`;
 // $lib/admin/operator-links.ts is where that is argued and src/routes.spec.ts is what holds it.

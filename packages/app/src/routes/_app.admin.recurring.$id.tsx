@@ -1,5 +1,6 @@
 import { FREQUENCY_LABELS } from '@better-giving/form/v1';
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { CodeChip } from '@better-giving/operator/components/data/CodeSlab';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
@@ -730,15 +731,15 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 						// the question opens at this same address, at the foot of the page the press was
 						// made at. it names the sentence above it, which is what the press costs.
 						<div className="adm-actions">
-							<Link
+							<Button
+								as={Link}
 								aria-describedby="stop-cost"
-								className="adm-btn"
 								preventScrollReset
 								ref={ask}
 								to={`${screen(id)}?confirm=stop`}
 							>
 								Stop this gift
-							</Link>
+							</Button>
 						</div>
 					)}
 				</Section>

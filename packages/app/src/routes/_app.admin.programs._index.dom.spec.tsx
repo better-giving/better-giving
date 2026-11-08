@@ -133,7 +133,7 @@ it('holds a placeholder rather than a plausible cause in the empty list’s hidd
 
 	// a record's shape, so the create card stands as tall as one, and nothing a reader can reach.
 	expect(sample.querySelector('.adm-record__head--marked .adm-record__mark')).not.toBe(null);
-	expect(sample.querySelector('.adm-state')).not.toBe(null);
+	expect(sample.querySelector('.ds-badge')).not.toBe(null);
 	expect(sample.querySelector('a, h1, h2, h3, h4, h5, h6')).toBe(null);
 	// its name and its description each speak of a program in general rather than of one cause.
 	expect(sample.querySelector('.adm-record__title')?.textContent).toMatch(/\bprogram\b/i);

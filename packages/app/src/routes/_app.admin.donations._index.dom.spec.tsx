@@ -18,7 +18,7 @@ import Donations from './_app.admin.donations._index';
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
 // style. what a case names a class for is where a thing is drawn — which line the press stands on —
-// or which tone rung a `StatusWord` stands on, off its `adm-state--<tone>` class; never what either
+// or which tone rung a `StatusWord` stands on, off its badge variant class; never what either
 // looks like there.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
@@ -231,39 +231,39 @@ it('draws no tracking id on a gift that has none', () => {
 it('draws a disputed gift’s word in the tone of a gift waiting on somebody', () => {
 	const root = screen([gift({ status: 'disputed' })]);
 	expect(cell(root, 'Status')).toBe('Disputed');
-	const word = root.querySelector('tbody .adm-state');
+	const word = root.querySelector('tbody .ds-badge');
 	expect(word?.textContent).toBe('Disputed');
-	expect(word?.classList.contains('adm-state--attention')).toBe(true);
-	expect(word?.classList.contains('adm-state--done')).toBe(false);
+	expect(word?.classList.contains('ds-badge-warning')).toBe(true);
+	expect(word?.classList.contains('ds-badge-primary')).toBe(false);
 });
 
 it('draws a settled gift’s word as the neutral pill, in no tone', () => {
 	const root = screen([gift({ status: 'completed' })]);
-	const word = root.querySelector('tbody .adm-state');
+	const word = root.querySelector('tbody .ds-badge');
 	expect(word?.textContent).toBe('Completed');
-	expect(word?.className).toBe('adm-state');
+	expect(word?.className).toBe('ds-badge ds-badge-neutral');
 });
 
 it.each([
-	['completed', 'adm-state'],
-	['refunded', 'adm-state adm-state--note'],
-	['partially_refunded', 'adm-state adm-state--note'],
-	['cancelled', 'adm-state adm-state--note']
+	['completed', 'ds-badge ds-badge-neutral'],
+	['refunded', 'ds-badge ds-badge-neutral adm-state--note'],
+	['partially_refunded', 'ds-badge ds-badge-neutral adm-state--note'],
+	['cancelled', 'ds-badge ds-badge-neutral adm-state--note']
 ] as const)(
 	'draws %s beside a grant’s tracking id in the same tone as without one',
 	(status, drawn) => {
 		const word = screen([
 			gift({ status, paidWith: 'Donor-advised fund', trackingId: 'L9E182VBGP' })
-		]).querySelector('tbody .adm-state');
+		]).querySelector('tbody .ds-badge');
 		expect(word?.className).toBe(drawn);
 	}
 );
 
 it.each([
-	['refunded', 'adm-state adm-state--note'],
-	['partially_refunded', 'adm-state adm-state--note'],
-	['cancelled', 'adm-state adm-state--note']
+	['refunded', 'ds-badge ds-badge-neutral adm-state--note'],
+	['partially_refunded', 'ds-badge ds-badge-neutral adm-state--note'],
+	['cancelled', 'ds-badge ds-badge-neutral adm-state--note']
 ] as const)('draws an ended gift’s word as the note, for %s', (status, drawn) => {
-	const word = screen([gift({ status })]).querySelector('tbody .adm-state');
+	const word = screen([gift({ status })]).querySelector('tbody .ds-badge');
 	expect(word?.className).toBe(drawn);
 });
