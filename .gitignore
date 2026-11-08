@@ -62,3 +62,6 @@ vite.config.ts.timestamp-*
 # notes a claude code subagent keeps for itself on the machine it ran on, at the root or beside a
 # package it worked in. they are that machine's, never the repository's.
 **/.claude/agent-memory-local/
+
+# proof screenshots go in the PR thread, never in the repo
+docs/surface-screenshots/
