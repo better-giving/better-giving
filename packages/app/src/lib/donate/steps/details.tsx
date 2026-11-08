@@ -215,7 +215,7 @@ function TextField({
 				// opt-in the sheet does: a box labelled over the top has nothing to ask.
 				placeholder={floating ? ' ' : undefined}
 				part={partWhen('field', { invalid: wrong })}
-				// the registry's text box in both constructions, so the pair stands at the address's
+				// the registry's text box in both constructions, so the pair stands at the Email box's
 				// height: the floating label is laid over the box's own grid area and centred in it
 				// (`.floating` in @better-giving/form's parts.css), so it rides whatever height the
 				// registry draws. the element's `textField` in views.ts still draws the pair as its own.

@@ -185,10 +185,11 @@
 }
 
 /*
- * a text box the form draws itself: the floating-label pair (`.floating` below), and every box on the
- * deployment's own donor page, whose react card (packages/app/src/lib/donate) draws the part without
- * the registry's class. a box labelled over the top on the element is the registry's text box,
- * `.ds-field-input` (../registry/styles/field-css.css), which this rule does not reach; the two
+ * a text box the form draws itself: the element's floating-label pair (`.floating` below, `textField`
+ * in ../views.ts) and the coin search's box (../coin-picker.ts). every other box is the registry's
+ * text box, `.ds-field-input` (../registry/styles/field-css.css), which this rule does not reach: a
+ * box labelled over the top on the element, and every box on the deployment's own donor page, whose
+ * react card (packages/app/src/lib/donate) puts the registry's class on its floating pair too; the two
  * `.ds-field-input` rules after it are what the form changes on that box, and its ring is in the
  * focus block at the end of this sheet.
  */

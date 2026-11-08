@@ -13,7 +13,8 @@
  * here. the brand clamp, the neutral ladder, the type steps, the space steps and the corners are
  * the card's, and the sections around the card read the same ones, so the card and the page cannot
  * come apart. what the card has no use for — display type, a page's widths, the space between
- * sections, the cover's heights, the about band's ground, and the three faces — is a `--page-*`
+ * sections, the cover's heights, the about band's ground, the three faces, and the registry box's
+ * height the card's tiles take — is a `--page-*`
  * name declared in this file and nowhere else. the operator's tokens, base and element sheets are
  * never linked beside it: they are layered and these are not, so a document holding both would let
  * every rule here outrank them. the faces are the exception: packages/operator/src/styles/fonts.css
@@ -214,10 +215,12 @@ body {
 
 /* every box on the card a donor types or picks in is one height. the text boxes and the closed
    choices' boxes are the registry's and draw it themselves; the amount tray's tiles and its free
-   entry, and the coin search, are the form's own (packages/form/src/styles/parts.css and
-   coins.css), drawn at the form's 44px row floor, and take the registry's height here as a floor
-   over that one. the embed links no page sheet and keeps the form's. */
-.page :is([part~='amount-option'], [part~='amount-input'], .picker) {
+   entry are the form's own (packages/form/src/styles/parts.css), drawn at the form's 44px row
+   floor, and take the registry's height here as a floor over that one. the exceptions are the
+   frequency options, which stay at that floor, and the coin search, whose box is in its own shadow
+   root (packages/form/src/coin-picker.ts) and which no sheet here reaches. the embed links no page
+   sheet and keeps the form's. */
+.page :is([part~='amount-option'], [part~='amount-input']) {
 	min-block-size: var(--page-field-block);
 }
 
@@ -269,12 +272,16 @@ body {
 	   in packages/form/src/styles/parts.css): its 12.5-step floor, or its two 3.5-step pads, its
 	   line at `1.25 / 0.875` of the 16px-floored type and its two edges, whichever is taller —
 	   52.86px at the card's 16px root. field-css declares its floor on the class alone, so no other
-	   box can read it, and the floor is not the drawn height; this copy stands until the registry's
-	   `select` item, arriving in registry 2.2.0, draws a box a tile can take its height from. */
+	   box can read it, and the floor is not the drawn height, so the arithmetic is copied here.
+	   parts.css sets the box's type to `max(16px, 1em)`, where `1em` is the field row's size; a
+	   tile's own `1em` is the tile's, so the copy reads `--_root-size` instead, and holds only while
+	   nothing between `[data-donate-root]` and the field row sets a font size. no dom spec can
+	   measure the two heights side by side. */
 	--page-field-block: max(
 		calc(var(--_root-size) * 3.125),
 		calc(
 			(var(--_root-size) * 1.75) +
+			/* raw-length-ok: the iOS zoom floor parts.css puts under the registry box's type. */
 			(max(16px, var(--_root-size)) * 1.25 / 0.875) +
 			(2 * var(--_border))
 		)
