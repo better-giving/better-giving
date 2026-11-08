@@ -15,8 +15,8 @@
  *     against a parent already at `--_t-sm`, so the step documented as 12px draws at 10.5px and
  *     lower — the floor is what stops the compounding, and the token is what the size still follows
  *     above it. the press and the floated label compound against nothing and take the floor for the
- *     clamp band alone. the registry's badge text takes the same floor over its own step off the
- *     root (`.ds-badge`), for the clamp band alone.
+ *     clamp band alone. the registry's badge text (`.ds-badge`) takes the same floor over its own
+ *     step off the root, for the same band.
  *   - `min-block-size: 5em` on the textarea. how many lines the box opens at, which is a shape of
  *     that box and not a measure anything else on the card shares.
  *   - `overflow-clip-margin: 6px` on `.disclosure-inner`. the room a focus ring painted outside a
@@ -112,6 +112,7 @@
  * sheet declares its own spacing step and type sizes on its class in `rem`, so under a host's
  * `html { font-size: 62.5% }` they would draw the action 32px tall with an 11px label and the tick
  * box at 10px.
+ *
  * each figure below is the registry's own `rem` figure taken off `--_root-size` (./tokens.css), so at
  * a 16px root every control draws exactly what the registry draws, and under any host root it draws
  * what the registry would on a root inside the card's clamp band. this sheet is adopted after the

@@ -510,8 +510,8 @@ describe('the sizes the card draws its type at', () => {
 
 	// the registry's controls state their spacing step, type sizes and corners in `rem`, which a host
 	// that shrank its root shrinks with them: on a `10px` root they would draw the action 32px tall
-	// with an 11px label and the tick box at 10px. the head of ../styles/parts.css and the colour
-	// layer of ../styles/tokens.css take each of those figures off the card's clamped root instead,
+	// with an 11px label and the tick box at 10px. the head of ./parts.css and the colour
+	// layer of ./tokens.css take each of those figures off the card's clamped root instead,
 	// which that host's root leaves at the clamp's 15px floor.
 	it('draws the registry’s controls off the card’s clamped root, on a host whose root is 10px', async () => {
 		document.documentElement.style.fontSize = '10px';

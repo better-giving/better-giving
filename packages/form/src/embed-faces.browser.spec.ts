@@ -13,8 +13,8 @@ import type { FormConfig } from './v1';
 //
 // `document.fonts` holds the document's faces only: an `@font-face` in a shadow root's sheet is not
 // in it, so this file cannot see a face the card's own sheets declare. the guard on those is "carries
-// no face and emits no file beside the runtime" (and the loader) in ./embed/build-output.spec.ts,
-// which reads the shipped bytes.
+// no face and emits no file beside the runtime", and its case for the loader, in
+// ./embed/build-output.spec.ts, which reads the shipped bytes.
 
 const CONFIG: FormConfig = {
 	formId: 'frm_a8x2k9',
