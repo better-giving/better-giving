@@ -81,9 +81,10 @@ describe('the files copied from the design registry', () => {
 	});
 
 	it('names a listed file that is not on disk', () => {
-		expect(mismatches(ROOT, manifest.dir, { 'styles/no-such-file.css': '0'.repeat(64) })).toEqual([
-			'styles/no-such-file.css: listed in bg-design.json but missing'
-		]);
+		const root = locks.find(({ lock }) => lock === 'bg-design.json');
+		expect(
+			mismatches(ROOT, root?.dir ?? '', { 'styles/no-such-file.css': '0'.repeat(64) })
+		).toEqual(['styles/no-such-file.css: listed in bg-design.json but missing']);
 	});
 
 	it('names a file on disk the manifest does not list, and an empty manifest', () => {
