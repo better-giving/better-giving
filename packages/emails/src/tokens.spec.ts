@@ -9,8 +9,6 @@ import { box, FONT_MONO, FONT_SANS, hexColour, INK, INK_MUTED, LINK, pxFromLengt
 
 describe('the face a mail client sets', () => {
 	it('names the registry face first and falls to the system faces before the generic one', () => {
-		// a mail client fetches no web font, so the registry face is never found there and what a
-		// reader sees is the system faces behind it.
 		expect(FONT_SANS).toBe(
 			'"Red Hat Round Text", ui-sans-serif, system-ui, "Segoe UI", sans-serif'
 		);

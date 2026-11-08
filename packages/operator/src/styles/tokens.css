@@ -223,10 +223,12 @@
    them and never a rung, without exception, so a rung is re-pointable in one place. ladders and
    aliases both live here. every colour, the three faces and the control and plane radii are a
    `var()` onto the registry's files, which this file imports nothing of:
-   ../../../app/src/app.css loads them first. the rest are literals of this file's own, because
-   the registry carries no value for them: the type sizes, line heights, tracking and weights,
-   the measures, the spacing steps, the pill radius, the border, edge and focus widths, the
-   control, field, touch and mark metrics, and every duration and easing. */
+   ../../../app/src/app.css loads them first. the rest are literals of this file's own: the type
+   sizes, line heights, tracking and weights, the measures, the spacing steps, the pill radius,
+   the border, edge and focus widths, the control, field, touch and mark metrics, and every
+   duration and easing. the registry carries a value for none of them but the durations, and its
+   `--duration-fast`, `--duration-base` and `--duration-slow` (../registry/styles/variables.css)
+   are not the `--admin-dur-*` steps below, which stay this file's. */
 
 @layer tokens {
 	:root {

@@ -3,10 +3,11 @@
  * comes from.
  *
  * it governs the donation form and nothing else, and it looks like the operator surfaces by
- * decision: one visual system across every screen this repository draws. the values here — the
- * neutral ladder, the refusal and attention ladders, the step each job takes, the corner pair, the
- * grouping steps — mirror ../../../operator/src/styles/tokens.css, and a change there is carried
- * here by hand. what is shared is the values and never a file or a name: the shadow root cannot read
+ * decision: one visual system across every screen this repository draws. the step each job takes,
+ * the corner pair and the grouping steps mirror ../../../operator/src/styles/tokens.css, and a
+ * change there is carried here by hand. the colour ladders do not: the operator's alias the design
+ * registry's scales, and the form's are the radix scales named below, which the registry's do not
+ * equal. what is shared is the values and never a file or a name: the shadow root cannot read
  * a sheet the host document links, AGENTS.md → Workspace keeps `packages/form` from importing
  * `packages/operator`, and what is named here is a public contract a host's own stylesheet is written
  * against while /admin's names are free to change.

@@ -15,9 +15,9 @@
  * sections, the cover's heights, the about band's ground, and the three faces — is a `--page-*`
  * name declared in this file and nowhere else. the operator's tokens, base and element sheets are
  * never linked beside it: they are layered and these are not, so a document holding both would let
- * every rule here outrank them. the faces are the exception, and
- * packages/operator/src/registry/styles/fonts.css holds why: a `@font-face` carries no cascading
- * declaration, so linking that one sheet registers the faces and changes no rule.
+ * every rule here outrank them. the faces are the exception: a `@font-face` carries no cascading
+ * declaration, so linking packages/operator/src/registry/styles/fonts.css registers the faces and
+ * changes no rule.
  *
  * the page root is two nodes, and ./page-root.tsx draws both. the outer one carries
  * `data-donate-root` — the selector the form's file declares its layer on outside a shadow root —

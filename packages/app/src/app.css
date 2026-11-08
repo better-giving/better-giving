@@ -6,7 +6,8 @@
 @import '@better-giving/operator/styles/adm.css';
 
 /* the whole of /admin's css, and the order it is read in. the four sheets themselves live in
-   packages/operator/src/styles/ — a leaf package both this dashboard and the operator
+   packages/operator — tokens.css, base.css and adm.css in src/styles/, and the registry's
+   variables.css copied into src/registry/styles/ — a leaf package both this dashboard and the operator
    console import from, so a sheet has one copy and one owner rather than a fork per surface.
    this file is the one place that names the import order, because that order is a fact about
    how /admin is assembled and not a fact any one sheet could state about itself.
@@ -29,7 +30,7 @@
    a sheet that forgets its `@layer` loses its place in the order below; there is nothing for
    it to cross into.
 
-   five sheets and five layers, and the @import order above is the source order inside a
+   four sheets and five layers, and the @import order above is the source order inside a
    layer, which is what settles a tie between two rules of equal specificity. the registry's
    variables.css comes first and is unlayered: it declares the design registry's scales and
    roles and, through its own import of its fonts.css, registers the faces (bg-design.json at
@@ -37,7 +38,8 @@
    file is edited). tokens.css fills `tokens` with the `--admin-*` names the rest read: every
    colour, face and control or plane radius an alias onto a registry property, and the type
    scale, spacing, measures, pill radius, border and focus widths, control metrics and motion
-   literals of its own, because the registry carries no value for them; base.css claims `reset`
+   literals of its own. the registry carries none of those but durations, and its
+   `--duration-*` scale is not the `--admin-dur-*` one /admin keeps; base.css claims `reset`
    and the document defaults in `base`; adm.css fills the last two, `elements` with every `.adm-*` the dashboard draws as a thing and
    `layout` with the shell, the rail, the measured column, the page header and the reflow of
    any element whose arrangement changes with the width. the registry sheet and the `tokens`
@@ -52,5 +54,5 @@
    sheets of this document, which is the one place layer order decides anything — and it is
    what lets a page arrange the elements the sheets draw — a scoped block is right for composition that belongs to one
    file, and a component carries adm.css's classes rather than restating those rules in
-   one. there is still no css build step and no extractor anywhere in this: all four sheets
-   are hand-written and layered. */
+   one. there is still no css build step and no extractor anywhere in this: the three operator
+   sheets are hand-written and layered, and the registry's is copied and unlayered. */

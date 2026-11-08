@@ -17,8 +17,7 @@ import { describe, expect, it } from 'vitest';
 //
 // tokens.css is swept like every other sheet. it holds aliases of the registry's variables and
 // states no colour of its own, so a literal written there is a colour taken from nowhere in the
-// registry. the exemption it once had is gone, and the case below asserts the sheet is in the list
-// rather than assuming it.
+// registry. the case below asserts the sheet is in the list rather than assuming it.
 
 describe('no raw colour in an /admin stylesheet', () => {
 	// src/lib/donate/** is swept out rather than in. the donor page draws the donation form's own

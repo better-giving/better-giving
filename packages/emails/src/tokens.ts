@@ -2,9 +2,9 @@ import { ADMIN_TOKENS } from '@better-giving/operator/styles/tokens';
 
 // the operator design system, in the values a mail client can actually render.
 //
-// the system is one file — packages/operator/src/styles/tokens.css — and this package reads it
-// through the copy beside it, packages/operator/src/styles/tokens.ts, which is the same values as
-// css text. no value is decided here and none may be, save the system faces at `FONT_SANS`: what
+// the system's values are the design registry's copied files (bg-design.json lists them), which
+// packages/operator/src/styles/tokens.css aliases, and this package reads them through the copy
+// beside that file, packages/operator/src/styles/tokens.ts, which is the same values as css text. no value is decided here and none may be, save the system faces at `FONT_SANS`: what
 // this module does is check and convert.
 // a screen hands the browser `var(--admin-ink)` and the browser resolves a custom property and a
 // `rem` for it. a mail has none of that. it is a set of inline style attributes read by clients
@@ -91,9 +91,10 @@ export const LINK = hexColour(ADMIN_TOKENS['--admin-link']);
 export const CODE_BG = hexColour(ADMIN_TOKENS['--admin-code-bg']);
 export const CODE_INK = hexColour(ADMIN_TOKENS['--admin-code-ink']);
 
-/** the registry's face, then system faces ahead of the generic family. the registry stack goes
- * straight from its face to `sans-serif`, and a mail client fetches no web font, so without the
- * system faces a mail would land on the client's generic sans-serif. */
+/** the registry's face (`--font-body` in packages/operator/src/registry/styles/variables.css),
+ * then system faces ahead of the generic family. a mail client fetches no web font, and the
+ * registry stack names no system face, so without them a mail would land on the client's generic
+ * sans-serif. the system faces are this file's own: the registry has no mail stack to take. */
 const registrySansFace = ADMIN_TOKENS['--admin-font-sans'].replace(/,.*$/s, '');
 export const FONT_SANS = `${registrySansFace}, ui-sans-serif, system-ui, "Segoe UI", sans-serif`;
 export const FONT_MONO = ADMIN_TOKENS['--admin-font-mono'];

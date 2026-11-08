@@ -37,10 +37,11 @@ import {
 //
 // every value here comes from ../tokens.ts, which holds the operator design system as a client
 // renders it — a hex triple, checked, and a pixel count, converted — because a mail resolves no
-// custom property and no colour function. the type stacks come over whole, self-hosted first face
-// included: a mail client fetches nothing, so that face is never found and the stack falls through
-// to the platform's own, which is how these mails are set in the system's stack without the web
-// font this shell may not grow.
+// custom property and no colour function. the mono stack comes over whole, and the sans stack is
+// the registry's face with ../tokens.ts's system faces behind it (`FONT_SANS`). a mail client
+// fetches nothing, so the self-hosted first face is never found and either stack falls through to
+// the platform's own, which is how these mails are set in the system's stack without the web font
+// this shell may not grow.
 
 /**
  * the base type styling.

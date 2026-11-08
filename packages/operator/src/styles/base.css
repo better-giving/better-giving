@@ -465,8 +465,8 @@
 	   logo somebody else owns, in colours of their own, and it belongs to no tone ladder — nothing
 	   here sets `color` and nothing may.
 
-	   the image is reached by a relative url for the reason ../registry/styles/fonts.css reaches
-	   its faces by one: it is resolved against this sheet, so every surface that imports it emits
+	   the image is reached by a relative url, as ../registry/styles/fonts.css reaches its faces:
+	   it is resolved against this sheet, so every surface that imports it emits
 	   the file into its own output and none of them has to serve a public directory holding a second copy.
 
 	   the height is the mark box's and the width follows the picture. each `aspect-ratio` is that
