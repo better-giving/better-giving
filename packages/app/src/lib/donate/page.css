@@ -14,8 +14,8 @@
  * the card's, and the sections around the card read the same ones, so the card and the page cannot
  * come apart. what the card has no use for — display type, a page's widths, the space between
  * sections, the cover's heights, the about band's ground, the three faces, and the registry box's
- * height the card's tiles take — is a `--page-*`
- * name declared in this file and nowhere else. the operator's tokens, base and element sheets are
+ * height that the card's tiles take — is a `--page-*` name declared in this file and nowhere else.
+ * the operator's tokens, base and element sheets are
  * never linked beside it: they are layered and these are not, so a document holding both would let
  * every rule here outrank them. the faces are the exception: packages/operator/src/styles/fonts.css
  * registers them and re-points the three face roles, and writes nothing else, so linking it
