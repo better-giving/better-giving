@@ -213,7 +213,7 @@ function colourViolations(css: string, file: string, ends: RegExp) {
 		// is what exempts the declaration rather than the quotes around the value: a colour is
 		// never quoted in css but is quoted in the `style={{ color: 'red' }}` object this same
 		// sweep reads out of a .tsx screen. a custom property holding a face stack is not
-		// `font-family`, so ./tokens.css carries a `raw-colour-ok:` note on each of its three.
+		// `font-family`, so ./fonts.css carries a `raw-colour-ok:` note on each of its three.
 		if (line.slice(0, colon).trim().toLowerCase() === 'font-family') return;
 		const value = line.slice(colon + 1);
 		check(i, value);
