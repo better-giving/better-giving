@@ -272,8 +272,8 @@ it('reaches the payment group under the summary, the fee decision’s parts, and
 	expect(reached(root, LAYOUT.refusedGroup)).toEqual([group]);
 });
 
-// the token file declares its fallback scale on every `[data-donate-root]`, the card's own included,
-// so the page root's generated scale has to reach the card's root by selector, not by inheritance.
+// the scale ./page-root.tsx writes matches every `[data-donate-root]` carrying its scope, so the
+// card's root inside a page root carries that scope, and a card drawn alone carries none.
 it('puts the card’s root in the brand scope of the page root around it, and in none alone', async () => {
 	const page = await card((drawn) => (
 		<PageRoot brandColour="#1d6b4f" layout="plain">

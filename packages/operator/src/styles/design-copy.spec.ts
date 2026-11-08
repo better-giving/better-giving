@@ -1,4 +1,4 @@
-import { existsSync, globSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,6 +57,24 @@ describe.skipIf(!existsSync(design))(
 		});
 	}
 );
+
+// the registry's round faces stay out of the copied set. the operator surfaces are set in plain red
+// hat from ./fonts.css (AGENTS.md → one look, one source), and a `bg-design update` of `variables`
+// can copy the registry's `fonts` item back beside it. `pnpm design:check` then reads a lock and a
+// tree that agree with each other and passes, so this is the case that refuses the item.
+describe('the registry copy carries no faces', () => {
+	const root = join(here, '..', '..', '..', '..');
+	const registry = join(here, '..', 'registry');
+
+	it('lists no `fonts` item in the root bg-design.json', () => {
+		const lock = JSON.parse(readFileSync(join(root, 'bg-design.json'), 'utf8'));
+		expect(Object.keys(lock.items)).not.toContain('fonts');
+	});
+
+	it('holds no fonts file under ../registry/styles', () => {
+		expect(globSync('styles/fonts*', { cwd: registry })).toEqual([]);
+	});
+});
 
 // the two shapes of finding, opened against a fixture rather than against the tree, for the reason
 // ./raw-values.spec.ts states about its own: the cases above can only ever assert that the sheets

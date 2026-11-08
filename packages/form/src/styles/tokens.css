@@ -1,150 +1,152 @@
 /*
- * the donation form's token system: the file every color, length and size the form paints
- * comes from.
+ * the donation form's token file: where every colour, length and size the form paints is named.
  *
- * it governs the donation form and nothing else, and it looks like the operator surfaces by
- * decision: one visual system across every screen this repository draws. the values here — the
- * neutral ladder, the refusal and attention ladders, the step each job takes, the corner pair, the
- * grouping steps — mirror ../../../operator/src/styles/tokens.css, and a change there is carried
- * here by hand. what is shared is the values and never a file or a name: the shadow root cannot read
- * a sheet the host document links, AGENTS.md → Workspace keeps `packages/form` from importing
- * `packages/operator`, and what is named here is a public contract a host's own stylesheet is written
- * against while /admin's names are free to change.
+ * the colours and the corner pair are the Better Giving design registry's, copied into
+ * ../registry/ by its CLI and listed in ../../bg-design.json — a second lock beside the root's,
+ * because AGENTS.md → Workspace keeps `packages/form` from importing `packages/operator`. those copies
+ * are never edited (`pnpm design:check`), so this file reads them and states no colour of its own:
+ * every `--_` colour below is an alias of a registry variable, and "names no colour of its own" in
+ * ../element.dom.spec.ts holds it to that. the one colour literal here is the seed's registered
+ * default, which is the registry's own default accent step 9 (`--donate-primary` below).
  *
- * every colour here is a step of a radix colors twelve-step scale
- * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale), and the step
- * number is the job, with no exceptions on this card:
+ * the registry arrives through the `@import` below: ../registry/styles/variables.css, which brings
+ * its colors.css and the generated default theme. variables.css also `@import`s the registry's face
+ * sheet, and the form's vite and vitest configs point that one import at an empty sheet
+ * (../../vite.registry-faces.ts): the card loads no web font and packs none. it is set in whatever
+ * face the host page gives the element — the `:host` block below names no `font-family` — so on the
+ * deployment's own pages it is that page's face and on a nonprofit's site it is theirs, with that
+ * page's own fallbacks.
+ *
+ * the registry declares its scales on `:root` and on every `[data-theme]` element, and a shadow tree
+ * has no `:root`: the card's root node carries `data-theme="default"`, and everything here that reads
+ * a registry variable is declared on that node or below it — the colour layer on `:host > *`, never on
+ * `:host`, which would read whatever the host page calls `--gray-1`. a host's own `--primary` or
+ * `--gray-3` stops at the card's root, which declares its own. the deployment's own donor page draws
+ * the card in the document tree under `[data-donate-root]`, where the registry's `:root` block
+ * applies instead.
+ *
+ * the step number is the job, as the registry states it (../registry/styles/variables.usage.md →
+ * Scales and roles):
  *
  *   1–2 backgrounds (the card face is 1) · 3 / 4 / 5 a control's ground at rest, under the pointer,
  *   pressed or chosen · 6 a border nothing operates, and a divider · 7 / 8 the edge of a control a
- *   donor operates, and that edge under the pointer — the focus ring is the brand's 8 · 9 / 10 a
- *   solid fill and its hover · 11 / 12 text, quiet and strong, and no third text shade
+ *   donor operates, and that edge under the pointer · 9 / 10 a solid fill and its hover · 11 / 12
+ *   text, quiet and strong, and no third text shade
  *
  * a control whose ground is transparent at rest takes 3 under the pointer and 4 under the press,
- * which is the one variation the radix page itself states.
+ * which is the one variation the radix page the registry's scales come from states.
  *
- * the scales are slate for every grey (sand under the `warm` shade), red for a refusal, amber for
- * attention, and a brand scale derived from the one seed below — `--_n*`, `--_bad*`, `--_warn*`,
- * and `--_a*` with `--_p`, `--_p-hover` and `--_on-p` as its solid pair and the ink on it. a step
- * this card spends is declared; a step it does not spend is not, and each scale's entry says how its
- * missing steps are written when a rule comes to need one.
+ * the button, the text box, the box a donor ticks and the network badge are the registry's own
+ * controls (`ds-btn`, `ds-field-input`, `ds-checkbox`, `ds-badge`), drawn by its copied component
+ * sheets; ./parts.css draws the controls the registry has none of — the amount tiles and chips, the
+ * cadence tray, the floating-label name boxes, the fee switch, the step marks — from the aliases
+ * below.
  *
- * three public seeds are what a host page sets, and there is no fourth. `--donate-primary` takes a
- * value — the brand colour — and `--donate-shade` and `--donate-corner` take a preset: each picks one
- * of three looks this file authors whole, so a host chooses a ground and a corner without writing a
- * value of either. everything else is `--_`-prefixed and private: derived here, never read or
- * written by a host. an org wanting more of this card than its brand colour and the two presets
- * forks the package and edits this file; that is the whole of the customisation story and
- * ../../custom-elements.json states it to integrators.
+ * two public seeds are what a host page sets, and there is no third. `--donate-primary` takes a
+ * value — the brand colour — and `--donate-corner` takes a preset: one of three corner pairs, so a
+ * host chooses a corner without writing a length. everything else is `--_`-prefixed and private, or a
+ * registry name: derived here, never read or written by a host. an org wanting more of this card
+ * than its brand colour and the corner forks the package; ../../custom-elements.json states it to
+ * integrators. `--donate-shade` stays listed there, because a published seed is permanent
+ * (AGENTS.md → Permanent contracts), and has no effect: this file registers and reads nothing for
+ * it, and the card's one grey is the registry's.
  *
- * the brand seed is step 9 of its scale, and it is spent by step. 9 fills the one control that
- * commits the gift — the action — and the boxes a donor does not choose a shape for: the fee switch
- * set on, the box a donor ticks, the mark on the step head saying where the donor is standing; 10 is
- * each of those under the pointer. 8 edges the open payment rail on a step-1 face, and 8 is the
- * focus ring. 11 is the word on the quiet action, and 12 is that word under the pointer. a chosen
- * cadence and a chosen amount tile spend no brand step: each is raised by `--_lift` below, its word
- * in the neutral's 12. one card holding three solid brand blocks at once ranks them by area, and
- * the largest of the three is not the one that spends the money — so a choice is marked and the
- * fill is reserved for the press.
+ * the brand seed is the registry's accent step 9, and a seeded card is a seeded registry theme: the
+ * element runs the radix generator the registry's scales were made with (./radix-scale.ts) on the
+ * seed and writes all twelve `--accent-*` steps and `--accent-contrast` onto the card's root
+ * (./brand.ts), so the registry's roles — `--primary`, `--ring`, the form slots — follow the seed
+ * without this file naming them. an unseeded card writes nothing and is the registry's default theme.
+ * the registry gap: it ships its themes as generated literals, made by its CLI's `theme:generate`,
+ * and no runtime generator or seed hook, so the form keeps the generator's port to theme a seed a
+ * host sets at runtime. ../styles/radix-scale.spec.ts holds the port to the registry — the registry's
+ * default accent seed comes out as the registry's default accent scale — and the steps a runtime
+ * theme would have the CLI pick per theme (`--ring`, `--link`) stay the default theme's.
  *
- * a focus ring and a brand edge are one colour by that rule, so wherever the two would meet a band
- * of `--_n1` is laid between them — the construction the free entry, the checkbox and the switch
- * already use — and a control the brand fills rings itself inside, in `--_on-p`.
+ * the brand is spent by step. 9 fills the one control that commits the gift — the action — and the
+ * boxes a donor does not choose a shape for: the fee switch set on, the box a donor ticks, the mark
+ * on the step head saying where the donor is standing; 10 is each of those under the pointer. 8
+ * edges the open payment rail on a step-1 face. 11 is the word on the quiet action, and 12 is that
+ * word under the pointer. a chosen cadence and a chosen amount tile spend no brand step: each is
+ * raised by `--_lift` below, its word in the neutral's 12. the focus ring is step 11, the step the
+ * registry's `--ring` is.
  *
- * the seed's `initial-value` is slate's own step 12, so an unseeded card's brand scale is slate's
- * hue at a trace of chroma: a near-black action, grey marks, and no hue a host did not ask for.
+ * one grey. the registry has one grey scale, so the card has no warm or cool grey — a registry gap
+ * if a host ever needs one.
  *
- * this sheet is unlayered, and that is the other half of the guarantee the operator layers
- * make: an unlayered sheet outranks every layer regardless of specificity, so no rule /admin
- * ships can reach into this element even if one were somehow adopted alongside it.
+ * light only, by decision (2026-11-08): no dark ramp, no `prefers-color-scheme` branch, no mode
+ * detection. the registry's theme file carries its dark blocks, and they are copied with it, but each
+ * one is reached through a `.dark` ancestor or a `.dark` on the `[data-theme]` node, and a selector in
+ * a shadow root's sheet matches nothing in the host page around it. so a dark host page gets a light
+ * card, and dark needs a host-mode contract nobody has asked for.
  *
- * `em` throughout, off the clamped root below. the element is a guest in a document it does
- * not own, so a host that set `html { font-size: 62.5% }` must not be able to render the card
- * at 10px, while a reader's own browser zoom still moves type and spacing together.
+ * this sheet is unlayered, and that is the other half of the guarantee the operator layers make: an
+ * unlayered sheet outranks every layer regardless of specificity, so no rule /admin ships can reach
+ * into this element even if one were somehow adopted alongside it.
  *
- * no shade is ever made with alpha. a translucent fill takes on whatever the host's page
- * put behind it, and this component is painted onto a page it cannot see. every shade the
- * UI needs is its own solid step below, which is why radix's solid scales are copied and its
- * alpha scales are not. the one translucent value is `--_lift`, a shadow rather than a fill, and it
- * falls only on the amount tray's own step-2 fill, which this card paints — never on the host's page.
+ * `em` throughout, off the clamped root below. the element is a guest in a document it does not
+ * own, so a host that set `html { font-size: 62.5% }` must not be able to render the card at 10px,
+ * while a reader's own browser zoom still moves type and spacing together. the registry's corners and
+ * its component sheets are stated in `rem`, which that host does shrink — a registry gap. so the form
+ * takes each `rem` figure it draws off the clamped root instead: the corner pair in the colour layer
+ * below, and the button's, text box's, tick box's and badge's spacing step and type sizes at the head
+ * of ./parts.css. at a 16px root each is exactly the registry's figure. the text box's type is held
+ * at 16px besides (`.ds-field-input` in ./parts.css), and the badge's at 12px.
+ *
+ * no shade is ever made with alpha. a translucent fill takes on whatever the host's page put behind
+ * it, and this component is painted onto a page it cannot see; the registry's alpha steps
+ * (`--accent-a*`, `--gray-a*`) are copied with its theme and read by nothing here. the one
+ * translucent value is `--_lift`, a shadow rather than a fill, and it falls only on the amount tray's
+ * own step-2 fill, which this card paints — never on the host's page.
  *
  * flat, with one named exception: nothing on this card casts a shadow but the chosen option on the
  * protected amount tray — the chosen amount tile and the chip under the chosen cadence — which is
- * raised by `--_lift` below. not the card, not the open list, not any other box. a `box-shadow`
- * this card writes is otherwise a ring with no offset and no blur, the way a focus ring and a
- * refused control's second line are drawn. "the one cast shadow" in ../element.dom.spec.ts holds
- * both halves.
+ * raised by `--_lift` below. not the card, not the open list, not any other box. a `box-shadow` this
+ * card writes is otherwise a ring with no offset and no blur, the way a refused control's second
+ * line is drawn. "the one cast shadow" in ../element.dom.spec.ts holds both halves.
  *
- * light only. no dark ramp, no `prefers-color-scheme` branch, no mode detection. a
- * dark-themed host page gets a light card sitting in a dark page. the shade a host picks swaps the
- * grey ladder for another of radix's published light greys, so it tints the card by a trace and
- * cannot darken it — none of the three is dark, a keyword off the list takes what the element
- * inherits instead, and the failure is a rule an integrator reads rather than a value quietly
- * clamped back.
- *
- * a dark-themed host getting a light card is the accepted cost rather than a gap, and
- * retrofitting dark is authoring a second system rather than adding an attribute: radix's dark
- * scales, a second brand derivation, a second resolve for Stripe's `appearance` in ./appearance.ts,
- * and a mode-detection path this element does not have. the public attribute surface is `form` and
- * `variant`, and there is no third.
- *
- * reading a `--_` token off `getComputedStyle` does not hand back a color. these are
- * unregistered custom properties, so their computed value is the `oklch(from …)` expression
- * with `var()`s substituted — not the color it evaluates to. to obtain a literal, which is
- * what `./appearance.ts` needs before anything can be handed to Stripe, assign the token to
- * a standard property on a probe element and read that property back. `./tokens.browser.spec.ts`
- * does exactly this, and is the only spec in the repo that can see any of it: a lightweight
- * DOM computes these as strings, never as a rendered color.
- *
- * an edge is radix's step 7 taken as it is: a control's edge at rest is a quiet line, and the step
- * a pointer moves it to is the one that finds it.
+ * reading a `--_` token off `getComputedStyle` does not hand back a color. these are unregistered
+ * custom properties, so their computed value is the `var()` they alias, substituted, and a
+ * registry step is an `oklch()` literal — not the sRGB a provider can parse. to obtain one, which is
+ * what `./appearance.ts` needs before anything can be handed to Stripe, assign the token to a
+ * standard property on a probe element and read that property back. `./tokens.browser.spec.ts` does
+ * exactly this, and a lightweight DOM computes these as strings, never as a rendered color.
  *
  * a control this card draws as unavailable is drawn at exactly the value its available state takes
  * and buys no quiet at all. nothing in this directory is ever rendered `disabled`
  * (../checkout.machine.ts states why), so a step a donor cannot reach yet is still focusable and
- * still in the tab order — and a shape a donor can put a focus ring around is a shape they have to
- * be able to see. `--_edge-unavailable` below is the whole of how this system says unavailable in
+ * still in the tab order — and a shape a donor can put a focus ring around is a shape they have to be
+ * able to see. `--_edge-unavailable` below is the whole of how this system says unavailable in
  * colour: it says it in pattern instead.
  *
  * ../../package.json exports this file as `./styles/tokens.css`, first of the four the card is
- * dressed from. the element adopts them as constructed sheets (`sheetsFor` in ../element.ts); the
- * deployment's own donation page links the same four by url, in that same order, so the cascade
- * order those four are written against is one order rather than two.
+ * dressed from. the element adopts them as constructed sheets (`sheetsFor` in ../element.ts), with
+ * the registry's component sheets between this one and ./parts.css, so a rule there that adjusts a
+ * registry control does it by order; the deployment's own donation page links the four by url, in
+ * that same order, so the cascade order those four are written against is one order rather than two.
  */
+
+@import '../registry/styles/variables.css';
 
 /*
  * the seeds are registered so that a host's malformed value is invalid at computed-value time and
  * falls back to what the element inherits: the value an ancestor set, and the `initial-value` below
  * where nothing above sets one.
  *
- * unregistered, a bad seed is not a bad color — it substitutes into every
- * `oklch(from var(--donate-primary) …)`, each one is invalid at computed-value time, and each
- * dependent property falls back to `unset`. that is a shredded form inside a stranger's page
- * rather than a form in the wrong color. "a malformed seed falls back to the registered
- * initial value" in ./tokens.browser.spec.ts is the proof.
+ * unregistered, a bad seed is not a bad color — it substitutes into the relative colours ./brand.ts
+ * writes for a seed its generator cannot read, each one is invalid at computed-value time, and each
+ * dependent property falls back to `unset`. that is a shredded form inside a stranger's page rather
+ * than a form in the wrong color. "a malformed seed falls back to the registered initial value" in
+ * ./tokens.browser.spec.ts is the proof.
  *
- * this sheet must be adopted into the host document as well as into the shadow root.
- * `@property` registrations are collected from the document tree only — one that reaches the
- * engine solely through a shadow root's stylesheet is ignored, which leaves the seed with no
- * initial value and the brand scale derived from it unresolved on any page that seeded nothing.
- * "registers only from the document tree" in ./tokens.browser.spec.ts pins that down, because it
- * is the difference between a working default and a card with no brand on it at all. what it does
- * not reach is everything else here: the ladder, the corners and the type resolve whether or not
- * the registrations landed — a preset nobody set matches no style query and draws the defaults —
- * which "sends everything the seed does not feed" in ./resolve.browser.spec.ts holds from the other
- * side. adopting the whole file into the document tree costs a parse and, on a host's page, nothing
- * else: `:host` and `:host > *` match nothing out there, and `[data-donate-root]` beside them is a
- * name the embed never writes — the element sets no attribute on anything it does not own, so on a
- * pasted-snippet page nothing matches any of the four selectors and the private layer is still
- * declared only inside the shadow root. that is the rule every selector here keeps and the one
- * another would have to keep too: a selector matching something a host's own markup could carry
- * would define the `--_` layer out there, where a host can read it. `[data-donate-root]` is for the
- * deployment's own donation page, which draws this card in the document tree rather than in a
- * shadow root and puts the attribute on the card's outer node itself. "the light-DOM card root" in
- * ./tokens.browser.spec.ts holds both halves.
- *
- * the consequence is three `--donate-`-prefixed names in the host document's property registry.
- * accepted: the prefix is a namespace this component owns.
+ * the registrations have to reach the host document as well as the shadow root. `@property` rules
+ * are collected from the document tree only — one that reaches the engine solely through a shadow
+ * root's stylesheet is ignored, which leaves the seed with no initial value and no way to tell a seed
+ * from none. "registers the seed only from the document tree" in ./tokens.browser.spec.ts pins that
+ * down. so the element copies these two rules into a sheet of their own in the host document
+ * (`sheetsFor` in ../element.ts) — and nothing else: this file's own selectors include the
+ * registry's `:root`, which would declare the whole registry on the host page's root. what the
+ * document gets is two `--donate-`-prefixed names in its property registry. accepted: the prefix is
+ * a namespace this component owns.
  *
  * each seed carries an `initial-value` and may not drop it. `@property` requires one for every
  * syntax except `*`, and a block written without one is invalid and dropped whole — which leaves
@@ -152,29 +154,24 @@
  */
 
 /*
- * the brand, and step 9 of the brand scale below. the default is slate's step 12, so an unseeded
- * card draws a near-black action rather than somebody else's blue: this component ships with no
- * brand of its own to lend.
+ * the brand: the registry's accent step 9. the default is the registry's own default accent step 9,
+ * copied as the literal ../registry/styles/themes/default.css declares, so an unseeded card is the
+ * registry's default theme. "the seed's default is the registry's accent 9" in ./brand.spec.ts reads
+ * that file and holds the two equal, and `UNSEEDED` in ./brand.ts with them.
  */
 @property --donate-primary {
 	syntax: '<color>';
 	inherits: true;
-	initial-value: #1c2024;
+	initial-value: oklch(0.5198 0.1225 247.31);
 }
 
 /*
- * the two presets. each is a keyword out of a closed set, so a value off the list falls back exactly
- * as a malformed brand does: to the preset an ancestor set, and to the `initial-value` where nothing
- * above sets one — `light` and `soft`, the card a host who set nothing gets. neither is substituted
- * into any declaration. each is compared by the container style queries at the end of the preset
- * layer below, which is why that layer sits on the node under `:host` rather than on it.
+ * the corner preset. a keyword out of a closed set, so a value off the list falls back exactly as a
+ * malformed brand does: to the preset an ancestor set, and to the `initial-value` where nothing above
+ * sets one — `soft`, the registry's own corners. it is substituted into no declaration. it is compared
+ * by the container style queries at the end of the colour layer below, which is why that layer sits
+ * on the node under `:host` rather than on it.
  */
-@property --donate-shade {
-	syntax: 'light | warm | cool';
-	inherits: true;
-	initial-value: light;
-}
-
 @property --donate-corner {
 	syntax: 'square | soft | round';
 	inherits: true;
@@ -189,7 +186,6 @@
 	 * their own root.
 	 */
 	font-size: var(--_root-size);
-	font-family: var(--_font);
 
 	/*
 	 * the alignment, case, indent, shadow, tracking, word spacing, slant, font variants and axes,
@@ -197,7 +193,8 @@
 	 * the host page's, so a centred hero centres the receipt, an uppercase, tracked theme shouts every
 	 * label and a `nowrap` banner runs the receipt off the card. colour, weight and leading are
 	 * `[part~='card']`'s in ./parts.css; an inherited property neither block names still reaches the
-	 * card from the host.
+	 * card from the host, and the face is one of them by decision: the card is set in the family the
+	 * page gives the element, the page's own fallbacks included.
 	 *
 	 * what this resets is the value the element inherits from the page around it, and only that. a
 	 * page rule that matches the element itself — `*`, its tag name — outranks every `:host` rule for
@@ -219,155 +216,19 @@
 	--_root-size: clamp(15px, 1rem, 18px);
 
 	/*
-	 * the brand scale: twelve steps around the one seed. the element generates them with radix's own
-	 * custom-palette generator (https://www.radix-ui.com/colors/custom), ported in ./radix-scale.ts,
-	 * and sets the steps declared below, the solid pair and the ink on `:host` from a sheet adopted
-	 * after this one (./brand.ts), before the first card goes up and again whenever the seed or the
-	 * shade moves. the deployment's own donation page, which draws the card under
-	 * `[data-donate-root]`, takes its scale from the same module, exported as
-	 * `./styles/radix-scale` in ../../package.json, and sets every step.
-	 *
-	 * what is declared here is only the fallback, and on either surface it shows only for a seed
-	 * written in a notation the port does not read. it is the generator approximated in oklch
-	 * relative colour, a fixed lightness per step with the seed's hue and a share of its chroma:
-	 *
-	 *   step N = oklch(L_N, C_9 × k_N, H_9), and step 9 = the seed
-	 *
-	 * where L_N and k_N are the mean lightness and the mean chroma share, relative to step 9, that
-	 * radix's red, blue, violet, grass and teal (@radix-ui/colors 3.0.0, light) hold at step N:
-	 *
-	 *   step  1     2     3     4     5     6     7     8     11    12
-	 *   L     .993  .982  .959  .932  .900  .859  .803  .729  .540  .326
-	 *   k     .03   .06   .14   .25   .33   .44   .55   .73   .90   .48
-	 *
-	 * the fallback declares the steps the card spends and no others, and the element's generated
-	 * sheet sets the same ones (`BRAND_TOKENS` in ./brand.ts); a rule that comes to need step N adds
-	 * it there and writes its fallback here from the table,
-	 * `oklch(from var(--donate-primary) L_N calc(c * k_N) h)`.
-	 */
-	--_a8: oklch(from var(--donate-primary) 0.729 calc(c * 0.73) h);
-	--_a11: oklch(from var(--donate-primary) 0.54 calc(c * 0.9) h);
-	--_a12: oklch(from var(--donate-primary) 0.326 calc(c * 0.48) h);
-
-	/*
-	 * the fallback's step 9, the seed itself, and step 10, its hover: the seed moved 0.03 in
-	 * lightness, darker, and lighter instead below 0.4, where a darker step would be no change a
-	 * donor can see. the `clamp(-1, …, 1)` is a sign taken off the seed's own lightness.
-	 *
-	 * a press is answered by step 10 as well. radix states no step for a solid fill pressed, and a
-	 * touch never hovers, so on a phone the press is the step-10 change itself and under a pointer it
-	 * holds the hover — what the press adds there is the `scale` in ./motion.css.
-	 */
-	--_p: var(--donate-primary);
-	--_p-hover: oklch(from var(--_p) calc(l - 0.03 * clamp(-1, (l - 0.4) * 1000, 1)) c h);
-
-	/*
-	 * the fallback's ink on steps 9 and 10, and the ring a filled control draws inside itself: white,
-	 * or step 12 of the brand scale where the seed is too light to carry white, as radix draws its
-	 * sky, mint, lime, yellow and amber. the switch is on the seed's lightness at 0.73, with
-	 * `clamp(0, (l - 0.73) * 1000, 1)` the step: 0 below it, which keeps white, and 1 above it, which
-	 * takes step 12's lightness and chroma. step 10 takes the ink step 9 takes, so a hover never
-	 * swaps the ink under the pointer.
-	 */
-	--_on-p: oklch(
-		from var(--_p) calc(1 - clamp(0, (l - 0.73) * 1000, 1) * 0.674)
-			calc(clamp(0, (l - 0.73) * 1000, 1) * c * 0.48) h
-	);
-
-	/*
-	 * refusal and attention, radix's red and amber (@radix-ui/colors 3.0.0, light), copied as
-	 * literals and with no relation to any seed: an error has to be legible whatever the host seeded.
-	 * the full ladders, for a rule that comes to need another step:
-	 *
-	 *   red    #fffcfc #fff7f7 #feebec #ffdbdc #ffcdce #fdbdbe #f4a9aa #eb8e90 #e5484d #dc3e42 #ce2c31 #641723
-	 *   amber  #fefdfb #fefbe9 #fff7c2 #ffee9c #fbe577 #f3d673 #e9c162 #e2a336 #ffc53d #ffba18 #ab6400 #4f3422
-	 *
-	 * a band is step 3 — the ground radix's own callout and badge stand on — and draws no edge: the
-	 * tint is what says the block is set apart, and a line around it as well is grouping drawn twice.
-	 * the word inside a band stays on slate — `.attention` in ./parts.css is `--_n11`, the same ink as
-	 * any other sentence on the card.
-	 *
-	 * `--_bad` is red 11, the word a refusal is said in (`.message` in ./parts.css), and `--_bad-edge`
-	 * is red 8, the edge a refused control is drawn in — a marked field's edge, the inset line on a
-	 * control with no border of its own, the ring on the box a provider paints in. 8 rather than 7
-	 * because a refused edge is the edge a donor is being sent to, which is the stronger of radix's
-	 * two interactive borders. attention marks no control, so it has no edge and needs none.
-	 *
-	 * these surfaces are also absent from the part vocabulary, which is what keeps them
-	 * un-themable: a host's `::part()` normal declaration beats a shadow-internal rule, so
-	 * the enforcement is the missing name, not an `!important`.
-	 *
-	 * two bands and not three. this card reports success by drawing the receipt — the money, the
-	 * cadence and where it is going, on the screen that took it — so there is no sentence for a
-	 * green band to carry and no surface to lay one under.
-	 */
-	--_bad: #ce2c31;
-	--_bad-edge: #eb8e90;
-	--_bad-tint: #feebec;
-	--_warn-tint: #fff7c2;
-	/*
-	 * attention on a mark and on a word standing outside a band — amber 11.
-	 *
-	 * the exception the paragraph above states is bounded to what has no band to stand in: the
-	 * question mark on the network row, which is the caution itself folded onto a control, and the
-	 * send-by, which is a deadline rather than the news a band carries (`.expiry` in ./parts.css).
-	 * a word inside a band stays on the ramp, and this is not a second ink for one.
-	 */
-	--_warn-ink: #ab6400;
-
-	/*
-	 * the network palette: six tints a coin's network pill is painted from (`.net` in ./coins.css),
-	 * and the one colour on this card picked by a rule rather than read off a name.
-	 *
-	 * which entry a pill takes is `networkTint` in ../coins.ts — a hash of the network's own words,
-	 * modulo six — so a network the processor lists tomorrow is painted with nobody editing this
-	 * file. that is the whole reason there are six anonymous entries and not a name per chain: a
-	 * network-to-colour table is a list somebody has to maintain, and the entry it is missing paints
-	 * every chain added after it the default.
-	 *
-	 * so no entry matches any chain's brand, and two networks may land on one. both are intended: the
-	 * pill carries the network's words as well, so the colour is a scanning aid and never the
-	 * identifier, and a collision costs a donor nothing they can read.
-	 *
-	 * numbered from zero because the index is the hash's own answer and the sheet reads it straight
-	 * (`[data-tint='0']` in ./coins.css). a ladder starting at one would put an off-by-one between a
-	 * name and the number that picks it, in the one place here where a name is chosen by arithmetic.
-	 *
-	 * one lightness and one chroma across all six, and six hues: no entry reads louder than another.
-	 * each pill is the brand scale's fallback method (`--_a8` above) run at a hue of its own with a
-	 * step-9 chroma of 0.16: the ground is step 3, where radix's badge stands, and the ink is step 11. the
-	 * ink is stated from its own tint so each hue is written once.
-	 *
-	 * the hues step around the wheel and skip the ones the semantic colours hold, 27 and 75 to 85, so
-	 * a pill is never the shade a refusal or a caution is said in.
-	 */
-	--_net-0-tint: oklch(0.959 0.022 145);
-	--_net-1-tint: oklch(0.959 0.022 185);
-	--_net-2-tint: oklch(0.959 0.022 225);
-	--_net-3-tint: oklch(0.959 0.022 265);
-	--_net-4-tint: oklch(0.959 0.022 305);
-	--_net-5-tint: oklch(0.959 0.022 340);
-	--_net-0-ink: oklch(from var(--_net-0-tint) 0.54 0.144 h);
-	--_net-1-ink: oklch(from var(--_net-1-tint) 0.54 0.144 h);
-	--_net-2-ink: oklch(from var(--_net-2-tint) 0.54 0.144 h);
-	--_net-3-ink: oklch(from var(--_net-3-tint) 0.54 0.144 h);
-	--_net-4-ink: oklch(from var(--_net-4-tint) 0.54 0.144 h);
-	--_net-5-ink: oklch(from var(--_net-5-tint) 0.54 0.144 h);
-
-	/*
-	 * no webfont ships. one is an extra request in a stranger's critical path and a face that by
-	 * definition does not match the host's, so the stack is the platform's own the whole way down
-	 * and ends in `sans-serif`, which never fails to resolve.
-	 */
-	--_font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-
-	/*
 	 * the face for a string a donor checks against a wallet character by character — an address, a
 	 * memo, a figure in coin units, a ticker, a network code — where `0` and `O`, `l` and `1` must not
-	 * share a shape. the platform's own stack for the reason `--_font` gives, ending in `monospace`.
-	 * the words around such a string, and every dollar figure, stay in `--_font`.
+	 * share a shape. the words around such a string, and every dollar figure, stay in the face the
+	 * card inherits.
+	 *
+	 * it is the registry's `--font-mono` (../registry/styles/variables.css) less its first family, the
+	 * Red Hat Round Mono this card never loads: the platform's own monospace faces, ending in
+	 * `monospace`, which always resolves. copied rather than read, because the registry declares it on
+	 * `:root` and a shadow tree has none. "takes the registry's mono stack less its web face" in
+	 * ./font-mono.spec.ts holds the two lists equal.
 	 */
-	--_font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+	--_font-mono:
+		ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
 	/*
 	 * every size is `em` off the clamped root above, and `--_t-xs` is the one step this scale does
@@ -380,11 +241,13 @@
 	 *
 	 * `--_t-md` is the base and it is the card's whole rule: only a heading goes above it, and only
 	 * an error and fine print go below it. every figure a donor reads — the presets, the amount they
-	 * type, the currency symbol beside it, the label on the button that sends it — sits on that base,
-	 * because a figure set larger than the field it is typed into is a size that ranks the two rather
-	 * than a size that reads. the entry is told apart from the shortcuts by its edge and its caret
-	 * instead (`[part~='amount-input']` in ./parts.css); the box is the one floor for both
-	 * (`--_row-min` below).
+	 * type, the currency symbol beside it — sits on that base, because a figure set larger than the
+	 * field it is typed into is a size that ranks the two rather than a size that reads. the entry is
+	 * told apart from the shortcuts by its edge and its caret instead (`[part~='amount-input']` in
+	 * ./parts.css); the box is the one floor for both (`--_row-min` below). the exception is the label
+	 * on the button that sends the gift, which is the registry's large button and takes that
+	 * button's own `--ds-text-lg` (`.ds-btn-lg` in ../registry/styles/button-css.css), a step over
+	 * the base.
 	 *
 	 * the ladder stops at `--_t-xl`, which is the receipt's total once the takeover has it, and the
 	 * coin amount on the address screen that stands where that total would, and the largest thing
@@ -398,18 +261,20 @@
 	--_t-xl: 1.375em;
 
 	/*
-	 * two weights for emphasis, and the reason is the stack's own tail rather than taste. the far end
-	 * of `--_font` above is Arial and Helvetica Neue, families that ship 400 and 700 and nothing
-	 * between — and CSS weight matching resolves 500 down to 400 there while resolving 600 up to 700.
-	 * so a 500-weight label is invisible emphasis on any reader whose machine falls that far down the
-	 * stack. 600 is the emphasis weight everywhere in this component, and 300 appears nowhere.
+	 * two weights for emphasis, because of the face the card inherits: a host's face may ship 400 and
+	 * 700 and nothing between, as Arial does, and CSS weight matching resolves 500 down to 400 there
+	 * while resolving 600 up to 700. so a 500-weight label is invisible emphasis on any page whose
+	 * face falls that way. 600 is the emphasis weight everywhere in this component, and 300 appears
+	 * nowhere.
 	 *
 	 * the third is not emphasis and that is what admits it. `--_w-medium` is the one weight a word a
 	 * donor chooses among is drawn at, resting and chosen alike (`[part~='amount-option']` in
-	 * ./parts.css), so nothing about it is read against a neighbour at another weight: on a stack
-	 * that ships 500 it is a shade heavier than the card's prose, and on the tail that does not it
-	 * is 400 in both states — and either way choosing one moves no word by a pixel, which is the
-	 * whole of what it is for.
+	 * ./parts.css), so nothing about it is read against a neighbour at another weight: on a face that
+	 * ships 500 it is a shade heavier than the card's prose, and on one that does not it is 400 in
+	 * both states — and either way choosing one moves no word by a pixel.
+	 *
+	 * the registry states its weights on its component classes (`--ds-font-weight-medium` on
+	 * `.ds-label`) and as no variable a local rule can read, so these are the form's own.
 	 */
 	--_w-normal: 400;
 	--_w-medium: 500;
@@ -678,7 +543,7 @@
 	 *
 	 * on is the brand's solid pair: the track is `--_p`, stepping to `--_p-hover` under the pointer
 	 * and the press, and the thumb on it is `--_on-p`, the ink that fill takes. off is a control at
-	 * rest on slate: the track's ground is step 3 inside a step-7 edge, stepping to 4 and 8 under the
+	 * rest on the grey: the track's ground is step 3 inside a step-7 edge, stepping to 4 and 8 under the
 	 * pointer and to 5 under the press, and the thumb is step 9, the solid grey a knob standing on
 	 * that ground is. so off reads as a track a donor has not set rather than as a fainter on, and the
 	 * thumb changing from a grey solid to the brand's ink is the second thing that says which way it
@@ -737,7 +602,8 @@
 	--_mark: calc(var(--_root-size) * 0.625);
 
 	/*
-	 * the box a donor ticks (`[part~='checkbox']` in ./parts.css), and the one drawn shape here
+	 * the box a donor ticks where the form draws it (`[part~='checkbox']` in ./parts.css — the
+	 * element's own are the registry's 16px box), and the one drawn shape here
 	 * stated in `em` rather than off the clamped root. the mark above and the switch below are
 	 * objects standing beside words at a size of their own; this one is drawn *against* a sentence
 	 * and has to be the height of that sentence's own line — the row is set at `--_t-sm` and the
@@ -845,70 +711,107 @@
 }
 
 /*
- * the preset layer: every token a `--donate-shade` or `--donate-corner` preset moves, and every token
- * derived from one of those. the `light` and `soft` values are declared here, and each other
- * preset is a container style query at the end of this layer re-declaring only the roots it moves.
- * an engine without container style queries on custom properties matches none of them, so it draws
- * the light, soft card whatever the host set — the declared values, never an unresolved token.
+ * the colour layer: every alias of a registry variable, every token the corner preset moves, and
+ * every token derived from one of those. it is declared on the node under `:host` and under
+ * `[data-donate-root]` rather than on either, for two reasons that land on one node.
  *
- * it is declared on the node under `:host` and under `[data-donate-root]` rather than on either,
- * and that is what a style query costs. a query compares the value the seed has on an ancestor, so
- * the root a preset moves has to be declared one node below the nearest place a host can set the
- * seed — the element itself, or the outer node of the deployment's own page — and on the element
- * the node below it is the first node in its shadow root, where the query reads the host.
+ * the registry's. its scales and roles are declared on `[data-theme]`, which in a shadow tree is the
+ * card's root — the node under `:host` — and a custom property holding a `var()` is substituted where
+ * it is declared: `--_n1: var(--gray-1)` declared on `:host` would read the host page's `--gray-1`,
+ * or nothing. declared here, beside the registry's own declarations on the same node, every alias
+ * reads the card's theme, a seeded one included (./brand.ts sets its accent on this node).
  *
- * and the whole layer moves with its roots, not the roots alone. these are unregistered custom
- * properties, so each one is substituted where it is declared: an edge declared on `:host` off
- * `--_n7` would read the ladder of the node above the one a preset re-declares. so the three edges
- * read off the steps are declared here beside them, and a new token reading one of them belongs
- * here too — declared on `:host`, it would read the ladder of an element with no shade.
+ * the preset's. a container style query compares the value the seed has on an ancestor, so the roots
+ * a preset moves are declared one node below the nearest place a host can set it — the element
+ * itself, or the outer node of the deployment's own page — and on the element the node below it is
+ * the first node in its shadow root, where the query reads the host. an engine without container
+ * style queries on custom properties matches none of them and draws the `soft` card, the registry's
+ * corners, whatever the host set.
  *
  * every node the card draws stands under one of those: the card and the live region beside it are
- * the shadow root's first nodes, and the light-DOM nodes a payment provider and the payment rows
- * are drawn into are projected through the card's slots and inherit from there. so the probe
- * ./resolve.ts hangs off the provider's node reads a preset exactly as the card paints it, and the
- * provider's fields take the shade and the corner the host picked.
+ * the shadow root's first nodes, and the light-DOM nodes a payment provider and the payment rows are
+ * drawn into are projected through the card's slots and inherit from there. so the probe ./resolve.ts
+ * hangs off the provider's node reads these exactly as the card paints them, and the provider's fields
+ * take the corner the host picked. the live region carries no `data-theme` and paints nothing.
  *
- * a value off either list never reaches a query — the registrations above make it invalid at
+ * a value off the corner's list never reaches a query — the registration above makes it invalid at
  * computed-value time, and what the query compares is the preset the element inherits — so a host
- * who typed a preset wrong gets the preset set above the element, or the card a host who set nothing
- * gets where nothing above sets one. "draws today’s card for a preset off either list" and "draws
- * the presets the page above set for a preset off either list on the element" in
- * ./parts.browser.spec.ts hold both on the drawn card.
+ * who typed a preset wrong gets the preset set above the element, or the registry's corners where
+ * nothing above sets one. "draws today’s card for a preset off the list" and "draws the corner the
+ * page above set for a preset off the list on the element" in ./parts.browser.spec.ts hold both on
+ * the drawn card.
  */
 :host > *,
 [data-donate-root] > * {
 	/*
-	 * the neutral ladder is radix's slate (@radix-ui/colors 3.0.0, `slate.css`, light), copied as
-	 * literals: `light` and `cool` both draw it, so the two presets paint the same greys. `warm`
-	 * re-declares every step as radix's sand from the same release, in the `--donate-shade: warm`
-	 * query at the end of this layer. "the neutral ladder" in ./tokens.browser.spec.ts holds each
-	 * shade to its scale's literals.
-	 *
-	 *   slate  #fcfcfd #f9f9fb #f0f0f3 #e8e8ec #e0e1e6 #d9d9e0 #cdced6 #b9bbc6 #8b8d98 #80838d #60646c #1c2024
-	 *   sand   #fdfdfc #f9f9f8 #f1f0ef #e9e8e6 #e2e1de #dad9d6 #cfceca #bcbbb5 #8d8d86 #82827c #63635e #21201c
-	 *
-	 * the step number is the job, and the jobs are the head of this file's. step 10 is the solid
-	 * hover, and nothing on this card is a grey solid a pointer moves, so it is listed above and not
-	 * declared. the element generates the brand scale against the grey the shade draws: slate's
-	 * step 9, or sand's under `warm` (`brandInputsOf` in ./brand.ts).
+	 * the neutral ladder: the registry's one grey scale, generated with its theme from `#e2e8f0`
+	 * (../registry/styles/themes/default.css). the step number is the job, and the jobs are the head
+	 * of this file's. step 10 is the solid hover, and nothing on this card is a grey solid a pointer
+	 * moves, so it is not aliased.
 	 */
-	--_n1: #fcfcfd;
-	--_n2: #f9f9fb;
-	--_n3: #f0f0f3;
-	--_n4: #e8e8ec;
-	--_n5: #e0e1e6;
-	--_n6: #d9d9e0;
-	--_n7: #cdced6;
-	--_n8: #b9bbc6;
-	--_n9: #8b8d98;
-	--_n11: #60646c;
-	--_n12: #1c2024;
+	--_n1: var(--gray-1);
+	--_n2: var(--gray-2);
+	--_n3: var(--gray-3);
+	--_n4: var(--gray-4);
+	--_n5: var(--gray-5);
+	--_n6: var(--gray-6);
+	--_n7: var(--gray-7);
+	--_n8: var(--gray-8);
+	--_n9: var(--gray-9);
+	--_n11: var(--gray-11);
+	--_n12: var(--gray-12);
 
 	/*
-	 * the edge every box a donor operates carries at rest — a text box, the free entry standing on its
-	 * own, a payment rail, a step mark — is step 7, and under the pointer it is step 8. the tick box
-	 * and the trays carry step 7 by the same rule.
+	 * the brand: the registry's accent scale, which ./brand.ts re-themes on this node for a seeded
+	 * card. the steps aliased are the ones the card spends, 8, 11 and 12 (the head of this file says
+	 * what each does); `--_p` is step 9 and `--_p-hover` step 10, the solid pair, and `--_on-p` is the
+	 * scale's own ink on it. steps rather than the registry's roles (`--primary`), because the
+	 * deployment's own donor page re-themes its accent on `[data-donate-root]`, below the `:root` its
+	 * roles were resolved on, and a step is what follows it there.
+	 *
+	 * a press is answered by step 10 as well. radix states no step for a solid fill pressed, and a
+	 * touch never hovers, so on a phone the press is the step-10 change itself and under a pointer it
+	 * holds the hover — what the press adds there is the `scale` in ./motion.css.
+	 */
+	--_a8: var(--accent-8);
+	--_a11: var(--accent-11);
+	--_a12: var(--accent-12);
+	--_p: var(--accent-9);
+	--_p-hover: var(--accent-10);
+	--_on-p: var(--accent-contrast);
+
+	/*
+	 * refusal and attention: the registry's status scales, which no seed moves — an error has to be
+	 * legible whatever the host seeded. `--_bad` is the registry's error ink everywhere,
+	 * `--destructive-subtle-fg` (`.message` in ./parts.css), and `--_bad-edge` is `--destructive`, the
+	 * edge the registry's own text box takes when refused (`.ds-field-input[aria-invalid]` in
+	 * ../registry/styles/field-css.css): a marked floating box's edge, the inset line on a tray with no
+	 * border of its own, the ring on the box a provider paints in. `--_bad-tint` and `--_warn-tint` are
+	 * the subtle bands, and `--_warn-ink` is the warning ink everywhere, `--warning-subtle-fg` — the
+	 * question mark on the network row, which is the caution folded onto a control, and the send-by
+	 * (`.expiry` in ./parts.css). a word inside a band stays on the grey: `.attention` in ./parts.css
+	 * is `--_n11`, the same ink as any other sentence on the card.
+	 *
+	 * a band is the tint and draws no edge: the tint is what says the block is set apart, and a line
+	 * around it as well is grouping drawn twice. these surfaces are also absent from the part
+	 * vocabulary, which is what keeps them un-themable: a host's `::part()` normal declaration beats a
+	 * shadow-internal rule, so the enforcement is the missing name, not an `!important`.
+	 *
+	 * two bands and not three. this card reports success by drawing the receipt — the money, the
+	 * cadence and where it is going, on the screen that took it — so there is no sentence for a green
+	 * band to carry and no surface to lay one under.
+	 */
+	--_bad: var(--destructive-subtle-fg);
+	--_bad-edge: var(--destructive);
+	--_bad-tint: var(--destructive-subtle);
+	--_warn-tint: var(--warning-subtle);
+	--_warn-ink: var(--warning-subtle-fg);
+
+	/*
+	 * the edge every box a donor operates carries at rest — a floating text box, the free entry
+	 * standing on its own, a payment rail, a step mark — is step 7, the step the registry's `--input`
+	 * is, and under the pointer it is step 8, its `--input-hover`. the trays carry step 7 by the same
+	 * rule.
 	 */
 	--_edge-control: var(--_n7);
 
@@ -920,50 +823,58 @@
 	--_edge-unavailable: var(--_edge-control);
 
 	/*
-	 * the focus ring: the brand's step 8, one line `--_focus-width` wide hugging the control's own
-	 * edge. radix gives step 8 to "stronger borders on interactive components and focus rings", so a
-	 * focused text box's edge stepping to it is the step its hover takes, and the ring outside it is
-	 * what says the caret is there rather than the pointer.
-	 *
-	 * the one place it is not drawn is inside a control the brand has filled, which rings itself in
-	 * `--_on-p`, and a control the brand edges keeps a band of `--_n1` between that edge and this
-	 * ring, because the two are one step of one scale.
-	 *
-	 * declared here rather than beside the brand steps on `:host` so that everything an edge is drawn
-	 * from sits in one layer; the brand scale is inherited from `:host` unchanged by any preset.
+	 * the focus ring on the controls this card draws itself: the brand's step 11, one line
+	 * `--_focus-width` wide hugging the control's own edge. step 11 is the registry's `--ring` in its
+	 * default theme, which the registry's own controls draw theirs from (`.ds-btn:focus-visible`,
+	 * `.ds-checkbox:focus-visible`), so every ring on the card is one colour; named by its step for
+	 * the reason the brand steps above are, so the donor page's re-themed accent reaches it too.
 	 */
-	--_focus-ring: var(--_a8);
+	--_focus-ring: var(--_a11);
 
 	/*
 	 * the lift: the one cast shadow on the card, and the named exception to the flat rule at the head
 	 * of this file. it raises the chosen option off the protected amount tray — the chosen amount tile
 	 * (`[part~='amount-option'][part~='selected']` in ./parts.css) and the chip under the chosen
 	 * cadence (`.segment[data-thumb]::before` there) — and nothing else. it is the approved tray's
-	 * drawing: two layers in step 12's own channels, a soft one and a tighter one, so the face reads
-	 * a little deeper at its foot. the ink is the neutral's, so the `warm` shade lifts in sand.
+	 * drawing: two layers in the registry's shadow ink, a soft one and a tighter one, so the face reads
+	 * a little deeper at its foot.
+	 *
+	 * the registry gap: its one elevation is `--shadow-floating`, for a layer that floats over the
+	 * page, and it has none for a chosen control resting on a tray, so the two alphas are the form's.
 	 */
 	--_lift:
-		0 1px 2px oklch(from var(--_n12) l c h / 0.12), 0 1px 1px oklch(from var(--_n12) l c h / 0.06);
+		0 1px 2px oklch(from var(--shadow-ink) l c h / 0.12),
+		0 1px 1px oklch(from var(--shadow-ink) l c h / 0.06);
 
 	/*
-	 * two corners for the whole component: `--_r` is the card, which is a plane, and `--_r-in` is
-	 * every control and box drawn on it. they are the operator surfaces' pair — `--admin-radius` 6px on
-	 * controls and fields, `--admin-radius-plane` 12px on planes — and these are `soft`'s, which is that
-	 * pair exactly and the preset a host who sets nothing gets. every other preset keeps the pair's
-	 * relation, the plane twice the control: `round` is 24px and 12px, and `square` is both at zero.
-	 * the step between them is what makes a control read as sitting *in* its container rather than
-	 * as a second container — a box and the box inside it at one radius have concentric corners that
-	 * do not look concentric, because the inner arc has to start further in to end at the same place.
+	 * two corners for the whole component, the registry's pair: `--_r` is the card, which is a plane,
+	 * and `--_r-in` is every control and box drawn on it — `--radius-card` and `--radius`, the control
+	 * corner the registry's own controls read (`--radius-control` under its tailwind name). these are
+	 * `soft`'s, the preset a host who sets nothing gets. `round` and `square` are host hooks rather than
+	 * registry values, re-declared in the queries below; each keeps the pair's relation, the plane
+	 * twice the control, and re-declares the registry's own names, so the registry's controls take the
+	 * same corner as the form's. the step between them is what makes a control read as sitting *in*
+	 * its container rather than as a second container — a box and the box inside it at one radius
+	 * have concentric corners that do not look concentric, because the inner arc has to start further
+	 * in to end at the same place.
 	 *
 	 * the shapes round by nature are outside the pair rather than exceptions to it, and no preset
 	 * moves them: the fee switch (`--_switch-radius`, where that list is kept), the busy spinner and
-	 * the marks on the step head (`.spinner` and `.step-mark` in ./parts.css). the last two are
-	 * circles by construction — one is a shape reporting that something is happening and the other a
-	 * dot saying where the donor stands, neither is a box a donor operates, and a square one would be
-	 * neither.
+	 * the marks on the step head (`.spinner` and `.step-mark` in ./parts.css), and the registry's
+	 * badge, a pill by its own rule.
+	 *
+	 * the registry states the pair in `rem` (../registry/styles/colors.css), which a host that shrank
+	 * its root shrinks with it, so the three names are re-declared here at the registry's own figures
+	 * off the clamped root, on the node the registry declares them on and after its sheet: at a 16px
+	 * root they are its 6px and 12px. `--radius` is restated as the alias the registry declares it as,
+	 * because on the deployment's own page this node carries no `data-theme` and would otherwise
+	 * inherit the registry's from `:root`.
 	 */
-	--_r: 12px;
-	--_r-in: 6px;
+	--radius-control: calc(var(--_root-size) * 0.375);
+	--radius: var(--radius-control);
+	--radius-card: calc(var(--_root-size) * 0.75);
+	--_r: var(--radius-card);
+	--_r-in: var(--radius);
 
 	/*
 	 * the corner of a tray (`.segment` and `.tiles` in ./parts.css): it holds boxes at `--_r-in`
@@ -974,11 +885,12 @@
 	--_r-tray: calc(var(--_r-in) + var(--_sp1) + var(--_border));
 
 	/*
-	 * the box a donor ticks (`[part~='checkbox']` in ./parts.css) takes the inner corner up to
-	 * `soft`'s and no further. it is 15px to 18px across the clamp band, so `round`'s inner corner
-	 * would draw it a circle — and a round box beside a sentence reads as a radio, which is a second
-	 * kind of control saying something this one does not. so `round` holds it at `soft`'s 6px below,
-	 * and `square` squares it with everything else.
+	 * the box a donor ticks, where the form draws it (the `[part~='checkbox']` rules in ./parts.css)
+	 * and where the registry does (`.ds-checkbox` there), takes the inner corner up to `soft`'s and no
+	 * further. it is 15px to 18px across the
+	 * clamp band, so `round`'s inner corner would draw it a circle — and a round box beside a sentence
+	 * reads as a radio, which is a second kind of control saying something this one does not. so
+	 * `round` holds it at the registry's control corner below.
 	 */
 	--_r-box: var(--_r-in);
 
@@ -986,45 +898,35 @@
 	 * where the band behind a floated label starts (`.floating > [part~='label']` in ./parts.css):
 	 * the inner corner's end, so the words knock the edge out past the arc and not through it. under
 	 * `square` there is no arc, and a band flush with the box would take the top of its inline-start
-	 * edge with it and leave the corner open — so `square` holds it at `soft`'s 6px below.
+	 * edge with it and leave the corner open — so `square` holds it at the registry's control corner
+	 * below, which the preset leaves declared.
 	 */
 	--_label-inset: var(--_r-in);
-}
-
-/* radix sand, @radix-ui/colors 3.0.0 `sand.css`, light. `cool` has no query: it draws slate. */
-@container style(--donate-shade: warm) {
-	:host > *,
-	[data-donate-root] > * {
-		--_n1: #fdfdfc;
-		--_n2: #f9f9f8;
-		--_n3: #f1f0ef;
-		--_n4: #e9e8e6;
-		--_n5: #e2e1de;
-		--_n6: #dad9d6;
-		--_n7: #cfceca;
-		--_n8: #bcbbb5;
-		--_n9: #8d8d86;
-		--_n11: #63635e;
-		--_n12: #21201c;
-	}
 }
 
 @container style(--donate-corner: square) {
 	:host > *,
 	[data-donate-root] > * {
-		--_r: 0;
-		--_r-in: 0;
+		--radius: 0;
+		--radius-card: 0;
 		--_r-tray: 0;
-		--_label-inset: 6px;
+		--_label-inset: var(--radius-control);
 	}
 }
 
+/*
+ * `--radius` here is the corner every registry control reads, the tick box included, and a 16px box
+ * at 12px draws as a circle — so `.ds-checkbox` in ./parts.css reads `--_r-box` instead, which this
+ * query holds at the registry's control corner.
+ */
 @container style(--donate-corner: round) {
 	:host > *,
 	[data-donate-root] > * {
-		--_r: 24px;
-		--_r-in: 12px;
-		--_r-box: 6px;
+		/* raw-length-ok: `round` is a host hook and not a registry value — the plane twice the control. */
+		--radius: 12px;
+		/* raw-length-ok: as above. */
+		--radius-card: 24px;
+		--_r-box: var(--radius-control);
 	}
 }
 

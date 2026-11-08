@@ -7,14 +7,16 @@
  * what a token apiece would misrepresent — a scale nobody counts along. they are stated here so an
  * eighth is a decision rather than a habit, and each is argued at its own rule:
  *
- *   - `max(16px, 1em)` on `[part~='field']`. iOS Safari zooms the page when a focused control
- *     computes below 16px, and this form is on someone else's page.
+ *   - `max(16px, 1em)`, twice: on the text boxes this sheet draws and on the registry's,
+ *     `.ds-field-input`. iOS Safari zooms the page when a focused control computes below 16px, and
+ *     this form is on someone else's page.
  *   - `max(12px, var(--_t-xs))`, five times: `.mandate`, `.fee-note`, the `(optional)` beside
  *     a label, the notify press inside the tribute and the words of a floated label. `em` compounds
  *     against a parent already at `--_t-sm`, so the step documented as 12px draws at 10.5px and
  *     lower — the floor is what stops the compounding, and the token is what the size still follows
  *     above it. the press and the floated label compound against nothing and take the floor for the
- *     clamp band alone.
+ *     clamp band alone. the registry's badge text (`.ds-badge`) takes the same floor over its own
+ *     step off the root, for the same band.
  *   - `min-block-size: 5em` on the textarea. how many lines the box opens at, which is a shape of
  *     that box and not a measure anything else on the card shares.
  *   - `overflow-clip-margin: 6px` on `.disclosure-inner`. the room a focus ring painted outside a
@@ -33,7 +35,10 @@
  *
  * the selectors are `[part~='name']`, not classes, because the part attribute is what a host
  * targets and a second selector for the same surface is a second thing to keep in step. a class
- * appears here only for something that is deliberately not a part.
+ * appears here only for something that is deliberately not a part, or for the registry's: the
+ * button, the text box and the tick box the registry draws (../registry/styles/, adopted before this
+ * sheet) carry its classes, and a rule here names one only to keep itself off that control,
+ * `:where(:not(.ds-…))` at no weight of its own, or to place it.
  *
  * naming a part hands over control of it. across the shadow boundary a host's normal declaration
  * beats an inner one, which is the point of `::part()` — so every rule below is one a host is
@@ -84,11 +89,13 @@
  * drawn by widening a border: a second pixel that reflowed would move every tile in the row when a
  * donor changed their mind, so it is an inset shadow instead.
  *
- * a problem edge is drawn from the `invalid` part token and from no other selector. the token is
- * written from the flow's own answer (../views.ts), and the platform's `:invalid` is a second and
- * stricter rule — `looksLikeAnAddress` in ../value.ts accepts an address an `<input type="email">`
- * refuses — so a rule here on that pseudo-class paints a field the form is not refusing, in the
- * same red as the field it is, with only one sentence on the card between them. the engine's
+ * a problem edge is drawn from the flow's own answer and from no other selector: the `invalid` part
+ * token on the boxes this sheet draws, and `aria-invalid` on the registry's text box, both written
+ * from that answer (../views.ts). the platform's `:invalid` is a second and stricter rule —
+ * `looksLikeAnAddress` in ../value.ts accepts an address an `<input type="email">` refuses — so a
+ * rule on that pseudo-class, or on `:user-invalid` as the registry's text box has, paints a field
+ * the form is not refusing, in the same red as the field it is, with only one sentence on the card
+ * between them; `.ds-field-input:user-invalid` below takes the registry's back. the engine's
  * verdict chooses which sentence a marked field shows and decides nothing about the paint.
  * "leaves an email the flow accepted unmarked" in ./validity.browser.spec.ts is what holds it.
  *
@@ -99,6 +106,40 @@
  * places what these rules paint. `sheetsFor` in ../element.ts is that order for the element; the
  * deployment's own donation page links the four in it.
  */
+
+/*
+ * the registry's controls on the card's clamped root rather than on the host's. each copied component
+ * sheet declares its own spacing step and type sizes on its class in `rem`, so under a host's
+ * `html { font-size: 62.5% }` they would draw the action 32px tall with an 11px label and the tick
+ * box at 10px.
+ *
+ * each figure below is the registry's own `rem` figure taken off `--_root-size` (./tokens.css), so at
+ * a 16px root every control draws exactly what the registry draws, and under any host root it draws
+ * what the registry would on a root inside the card's clamp band. this sheet is adopted after the
+ * registry's, so each rule takes its values by order at the registry's own weight. "draws the
+ * registry’s controls off the card’s clamped root" in ./parts.browser.spec.ts holds them.
+ */
+.ds-btn {
+	--ds-spacing: calc(var(--_root-size) * 0.25);
+	--ds-text-lg: calc(var(--_root-size) * 1.125);
+}
+
+.ds-checkbox,
+.ds-field-input {
+	--ds-spacing: calc(var(--_root-size) * 0.25);
+}
+
+.ds-badge {
+	--ds-spacing: calc(var(--_root-size) * 0.25);
+	/*
+	 * a network code a donor checks against a wallet, at the registry's `0.75rem` off the root, which
+	 * the clamp's floor takes to 11.25px — under the 12px floor the card's own small print states at
+	 * its sites (`max(12px, var(--_t-xs))`, this file's header).
+	 *
+	 * raw-length-ok: the floor, for that reason.
+	 */
+	--ds-text-xs: max(12px, calc(var(--_root-size) * 0.75));
+}
 
 [part~='card'] {
 	background: var(--_n1);
@@ -133,14 +174,31 @@
 	color: var(--_n11);
 }
 
+/*
+ * every box a donor types or picks in is a block of its own row, the registry's text box included:
+ * field-css draws the box and leaves its display to the page, and an inline box stands on a line's
+ * baseline with the line's descent under it, which opens a gap between a box and the refusal under
+ * it.
+ */
 [part~='field'] {
 	display: block;
+}
+
+/*
+ * a text box the form draws itself: the floating-label pair (`.floating` below), and every box on the
+ * deployment's own donor page, whose react card (packages/app/src/lib/donate) draws the part without
+ * the registry's class. a box labelled over the top on the element is the registry's text box,
+ * `.ds-field-input` (../registry/styles/field-css.css), which this rule does not reach; the two
+ * `.ds-field-input` rules after it are what the form changes on that box, and its ring is in the
+ * focus block at the end of this sheet.
+ */
+[part~='field']:where(:not(.ds-field-input)) {
 	inline-size: 100%;
 	min-block-size: var(--_row-min);
 	padding: var(--_sp2) var(--_sp3);
 	/*
 	 * a text box's white face, the card's own rung 1, inside the outline that finds it
-	 * (`--_edge-control` in ./tokens.css): the operator surfaces' text box, face and outline both.
+	 * (`--_edge-control` in ./tokens.css): the registry's text box, face and outline both.
 	 */
 	background: var(--_n1);
 	color: var(--_n12);
@@ -157,7 +215,28 @@
 	font-size: max(16px, 1em);
 }
 
-[part~='field']:hover {
+/*
+ * the registry's text box, and the closed choices' buttons drawn as one, at the same floor for the
+ * same reason. its own size is `0.875rem` (../registry/styles/field-css.css): 14px on a 16px root and
+ * 8.75px on a host's `html { font-size: 62.5% }`. this sheet is adopted after the registry's, so the
+ * rule takes the size by order at the registry's own weight.
+ */
+.ds-field-input {
+	/* raw-length-ok: the floor and the scale under it, as on the rule above. */
+	font-size: max(16px, 1em);
+}
+
+/*
+ * the registry's text box marks `:user-invalid` as well as `aria-invalid` (field-css.css), and the
+ * engine's verdict is not the flow's (this file's header): the box the flow accepted takes back the
+ * edge it has at rest, so the red is drawn only where `aria-invalid`, written from the flow's answer
+ * (../views.ts), puts a sentence under it.
+ */
+.ds-field-input:user-invalid:not([aria-invalid='true']) {
+	border-color: var(--_edge-control);
+}
+
+[part~='field']:where(:not(.ds-field-input)):hover {
 	border-color: var(--_n8);
 }
 
@@ -521,7 +600,13 @@ textarea[part~='field'] {
 }
 
 /*
- * the box a donor ticks, drawn here rather than by the engine.
+ * the box a donor ticks, where the form draws it: under the fee switch (`.fee-decision` below, which
+ * overrules most of it), and on the deployment's own donor page, whose react card draws the part
+ * without the registry's class. every other tick box on the element is the registry's,
+ * `.ds-checkbox` (../registry/styles/checkbox-css.css), and none of the checkbox rules here reach it;
+ * `.check-row > .ds-checkbox` below places it and `.ds-checkbox` after that holds its corner.
+ *
+ * drawn here rather than by the engine.
  *
  * `appearance: none` is why every line under it exists, and the corner is why it is there at all:
  * chromium computes `border-radius` to `0px` on a checkbox left at `appearance: auto`, whatever is
@@ -532,7 +617,7 @@ textarea[part~='field'] {
  * so it is a box a donor operates like any other: the white face inside the step-7 edge a text box
  * carries, at the size and the first-line offset it already stood at, and the brand's step 9 fills
  * it when it is ticked — the half of the seed's split that fills rather than marks (./tokens.css).
- * what rings it is the brand's step 8, in the focus block at the end of this sheet.
+ * what rings it is the brand's step 11, in the focus block at the end of this sheet.
  *
  * the tick is drawn in `--_on-p`, the ink the brand's fill takes: white on a seed dark enough to
  * carry it and the generator's dark tint of the seed on a pale one (`getTextColor` in
@@ -545,7 +630,7 @@ textarea[part~='field'] {
  * to `Canvas`, which would leave ticked and unticked the same box — and the transparent outline is
  * what the mode paints as the box's own edge.
  */
-[part~='checkbox'] {
+[part~='checkbox']:where(:not(.ds-checkbox)) {
 	appearance: none;
 	flex: none;
 	inline-size: var(--_box);
@@ -564,13 +649,13 @@ textarea[part~='field'] {
 	cursor: pointer;
 }
 
-[part~='checkbox']:checked {
+[part~='checkbox']:where(:not(.ds-checkbox)):checked {
 	background: var(--_p);
 	border-color: var(--_p);
 }
 
 /* the tick, over the box's whole border box so it is drawn at the box's size and not its content's. */
-[part~='checkbox']:checked::before {
+[part~='checkbox']:where(:not(.ds-checkbox)):checked::before {
 	content: '';
 	display: block;
 	inline-size: calc(100% + 2 * var(--_border));
@@ -593,11 +678,11 @@ textarea[part~='field'] {
  * switch below is drawn from this same part and overrules both, because a track is a fill on either
  * side of its decision.
  */
-[part~='checkbox']:hover {
+[part~='checkbox']:where(:not(.ds-checkbox)):hover {
 	border-color: var(--_n8);
 }
 
-[part~='checkbox']:hover:checked {
+[part~='checkbox']:where(:not(.ds-checkbox)):hover:checked {
 	background: var(--_p-hover);
 	border-color: var(--_p-hover);
 }
@@ -610,12 +695,12 @@ textarea[part~='field'] {
  * solid under the pointer and is the first change a finger sees (`--_p-hover` in ./tokens.css). the
  * fee switch overrules this pair for the reason it overrules the one above.
  */
-[part~='checkbox']:active {
+[part~='checkbox']:where(:not(.ds-checkbox)):active {
 	background: var(--_n3);
 	border-color: var(--_n8);
 }
 
-[part~='checkbox']:active:checked {
+[part~='checkbox']:where(:not(.ds-checkbox)):active:checked {
 	background: var(--_p-hover);
 	border-color: var(--_p-hover);
 }
@@ -623,6 +708,27 @@ textarea[part~='field'] {
 .check-row {
 	font-size: var(--_t-sm);
 	color: var(--_n11);
+}
+
+/*
+ * the registry's tick box onto the first line of the sentence beside it rather than onto the middle
+ * of the block, so a consent line that wraps on a narrow card still reads as a box against its own
+ * first words. the box's size is the registry's own, four of its spacing steps, taken off the
+ * card's root at the head of this sheet, and the offset is computed off that line's box, so it holds
+ * at every step of the clamped root.
+ */
+.check-row > .ds-checkbox {
+	margin-block-start: calc((1lh - var(--ds-spacing) * 4) / 2);
+}
+
+/*
+ * the registry's tick box at the corner the form's own box takes (`--_r-box` in ./tokens.css): it
+ * reads `--radius` (../registry/styles/checkbox-css.css), which `round` sets to a corner that draws a
+ * 16px box as a circle, and a round box beside a sentence reads as a radio. this sheet is adopted
+ * after the registry's, so the rule takes the corner by order at the registry's own weight.
+ */
+.ds-checkbox {
+	border-radius: var(--_r-box);
 }
 
 /*
@@ -1124,12 +1230,14 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * transparent over the surface above, which is the part a host restyles: a fill here would paint
  * over whatever `::part(amount-input)` set, and the corner is inherited for the same reason.
  *
- * the block padding is the inline inset every other field on the card takes (`[part~='field']`
- * above), so the figure stands off the top and the bottom of the box by what the trailing mark
- * stands off its end. it is not what sets this box's height: the floor on the surface above is, and
- * the figure's line at 1 and this padding come to less than it at every root, so what a donor reads
- * above and below the figure is the floor's slack. what the two inline steps clear is the strip each
- * mark stands in, and the strips are two lengths rather than one because a symbol is one glyph and a
+ * the block padding is not what sets this box's height: the floor on the surface above is, and the
+ * figure's line and this padding come to less than it at every root, so what a donor reads above and
+ * below the figure is the floor's slack. it is a step under the inline inset for that reason: an
+ * input draws its line no shorter than its face's own ascent and descent whatever `line-height`
+ * says. the face is the host page's, and one whose ascent and descent come to 1.3em, as rounded
+ * faces' do, would carry the line past the floor with the inline step on both sides. what the two
+ * inline steps clear is the strip each mark stands in, and the strips are two lengths rather than
+ * one because a symbol is one glyph and a
  * code is a three-letter word (`--_adorn-lead` and `--_adorn-trail` in ./tokens.css).
  *
  * the leading strip is spent only where a mark is drawn in it. a currency the locale writes no
@@ -1139,7 +1247,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 [part~='amount-input'] input {
 	flex: 1;
 	min-inline-size: 0;
-	padding-block: var(--_sp3);
+	padding-block: var(--_sp2);
 	padding-inline: var(--_sp3) var(--_adorn-trail);
 	background: none;
 	border: 0;
@@ -1261,7 +1369,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * card opens with one chosen (`settledDraft` in ../checkout.machine.ts) and the track offers no way
  * back to none, so no press is refused for that group and no option on it ever carries the token.
  */
-[part~='field'][part~='invalid'],
+[part~='field']:where(:not(.ds-field-input))[part~='invalid'],
 .bare > [part~='amount-input'][part~='invalid'],
 .tiles:not(.bare):has(> [part~='invalid']) {
 	border-color: var(--_bad-edge);
@@ -1456,7 +1564,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * as narrowly as it is: it takes away the platform's whole drawing, so everything after it has to
  * be put back by hand.
  *
- * off, the track is a control at rest on slate: a step-3 ground inside a step-7 edge, stepping to 4
+ * off, the track is a control at rest on the grey: a step-3 ground inside a step-7 edge, stepping to 4
  * and 8 under the pointer and to 5 under the press. on, it is the brand's solid pair, 9 and 10, and
  * the edge takes the fill's own colour so the track stays one shape. the edge is an outline laid
  * inside the track rather than a border, so the thumb's geometry (./tokens.css) is the same box in
@@ -1507,7 +1615,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 /*
  * the thumb, standing off every track edge by the same inset so the shape closes on itself
  * (./tokens.css states the geometry). it takes no pointer: the press belongs to the box under it,
- * and to the whole label around that. off it is slate 9, the solid a knob on a step-3 ground is;
+ * and to the whole label around that. off it is grey 9, the solid a knob on a step-3 ground is;
  * on it is `--_on-p`, the ink the brand's fill takes.
  */
 .fee-decision .switch-thumb {
@@ -1587,13 +1695,27 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	min-block-size: calc(var(--_row-min) * 2);
 }
 
+/*
+ * the action: the registry's primary button on the element (`.ds-btn.ds-btn-primary.ds-btn-lg`,
+ * ../registry/styles/button-css.css), which paints it, sizes it and draws its hover, press, busy and
+ * focus. what is the form's is that it spans the column, that the spinner is placed against it, and
+ * that its figures are tabular, so a total in its label never reflows as it changes.
+ */
 [part~='action'] {
 	position: relative;
+	gap: var(--_sp2);
+	inline-size: 100%;
+	font-variant-numeric: tabular-nums lining-nums;
+}
+
+/*
+ * the action where the form draws it: the deployment's own donor page, whose react card draws the
+ * part without the registry's class, drawn here from the same registry variables.
+ */
+[part~='action']:where(:not(.ds-btn)) {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	gap: var(--_sp2);
-	inline-size: 100%;
 	min-block-size: var(--_row-min);
 	padding: var(--_sp3) var(--_sp4);
 	background: var(--_p);
@@ -1602,29 +1724,27 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	border-radius: var(--_r-in);
 	font-size: var(--_t-md);
 	font-weight: var(--_w-bold);
-	font-variant-numeric: tabular-nums lining-nums;
 	cursor: pointer;
 }
 
-[part~='action']:hover {
+[part~='action']:where(:not(.ds-btn)):hover {
 	background: var(--_p-hover);
 	border-color: var(--_p-hover);
 }
 
-[part~='action']:active {
+[part~='action']:where(:not(.ds-btn)):active {
 	background: var(--_p-hover);
 	border-color: var(--_p-hover);
 }
 
 /*
- * busy is a report, not a gate, and it is not a greying-out: the control holds its step-10 fill,
- * keeps its full-contrast label and gains a spinner, so it reads as working rather than as
- * unavailable. the press is bounded by the flow's shape — `quoting` has no `SUBMIT` handler — and
- * this only stops a second click from being aimed at a control that has already left. the label
- * does not change: its width would jump, and the label is a promise about the money. what changes
- * is `aria-busy` and the live region.
+ * busy is a report, not a gate: the press is bounded by the flow's shape — `quoting` has no `SUBMIT`
+ * handler — and this only stops a second click from being aimed at a control that has already left.
+ * the label does not change: its width would jump, and the label is a promise about the money. what
+ * changes is `aria-busy`, the spinner and the live region. the registry's button draws `aria-busy` as
+ * its disabled fill; the form-drawn one below holds its step-10 fill.
  */
-[part~='action'][part~='busy'] {
+[part~='action']:where(:not(.ds-btn))[part~='busy'] {
 	background: var(--_p-hover);
 	border-color: var(--_p-hover);
 	pointer-events: none;
@@ -1636,9 +1756,9 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * the second control on a full-card screen. underlined rather than coloured alone, because a word
  * that is only a hue is not a control on a page whose own links this component cannot see.
  *
- * it is the brand drawn as ink, step 11, the step a chosen option's word takes. the underline
- * carries more than the sentence above says: on a card nobody seeded, step 11 is a slate grey close
- * to the card's quiet text, so the underline is the whole of what separates this from a sentence.
+ * it is the brand drawn as ink, step 11. the underline carries more than the sentence above says: a
+ * word that is only a hue reads as a sentence to a donor who cannot tell the hue from the card's
+ * quiet text, so the underline is the whole of what separates this from a sentence for them.
  */
 [part~='action-quiet'] {
 	display: inline-flex;
@@ -1820,13 +1940,16 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * the action's own box rather than the floor: the label's line, the block padding and the strong
- * edge (`[part~='action']` below) stand over `--_row-min` at every root, so a block at the floor
- * leaves the shape short by that difference. `1lh` is the card's line at the base size, which is
- * what the label is drawn in, so the three terms are the action's own and move with it.
+ * the action's own box rather than the floor: the action is the registry's large button
+ * (`.ds-btn-lg` in ../registry/styles/button-css.css), which stands over `--_row-min`, so a block at
+ * the floor leaves the shape short by that difference. the registry states the button's height on
+ * its class alone, as `--ds-btn-size`, and as no variable a box that is not a button can read — a
+ * registry gap — so its thirteen spacing steps are restated here, off the card's root as the action's
+ * own are (`.ds-btn` at the head of this sheet), and "draws the action's placeholder at the action's
+ * own height" in ./parts.browser.spec.ts holds the two equal.
  */
 .skeleton-action {
-	block-size: calc(1lh + 2 * var(--_sp3) + 2 * var(--_border-strong));
+	block-size: calc(var(--_root-size) * 3.25);
 }
 
 /*
@@ -1931,7 +2054,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 .value.name {
-	font-family: var(--_font);
+	font-family: inherit;
 	font-size: var(--_t-sm);
 }
 
@@ -1979,7 +2102,6 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 .worth {
 	margin: 0;
 	color: var(--_n11);
-	font-family: var(--_font);
 	font-size: var(--_t-xs);
 	line-height: var(--_lh-body);
 	text-align: end;
@@ -2310,10 +2432,10 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * target `--_target-min` by `--_row-min` around a mark a fraction of that, so the ring is drawn on
  * the mark instead, in the block below.
  *
- * a ring is `--_focus-ring` — the brand's step 8, the step radix gives a focus ring — everywhere
- * except on the one control the brand fills, which is the action. there the ring goes *inside*, in
- * `--_on-p`, the ink that fill takes, because a brand ring laid outside a brand fill reads as the
- * control growing rather than as a line, and inside the fill it never touches the card at all.
+ * a ring is `--_focus-ring` — the brand's step 11, the step the registry's `--ring` is — on every
+ * control this sheet draws. the one control the brand fills, the action, is the registry's button
+ * and rings itself the registry's way (`.ds-btn:focus-visible` in
+ * ../registry/styles/button-css.css): an outline stood off the fill by a band of the card.
  *
  * a control the brand marks or fills along its edge — a checked box, the fee switch set on — has a
  * brand step at its edge and a brand step in the ring, and answers it the other way: a band of
@@ -2327,6 +2449,12 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * what would leave that user with no focus indicator at all. the two blocks below that have no
  * transparent outline are the two whose ring *is* an outline, and each says so where it stands.
  *
+ * the registry's button and tick box — `.ds-btn`, `.ds-checkbox` — ring themselves in the registry's
+ * way (`:focus-visible` in ../registry/styles/button-css.css and checkbox-css.css) and are taken out
+ * of the rule below inside its `:where()`. the registry's text box states only its ring's colour
+ * (field-css.css), which leaves it the engine's own outline, so it takes this card's ring like every
+ * box this sheet draws, and a refused one the refused ring below.
+ *
  * `[tabindex="-1"]` draws no ring, in any mode. a node carrying it is out of the tab order and takes
  * the caret only from script, to be announced — a screen's heading, the payment box a refused press
  * returns to — and chromium matches `:focus-visible` on a script's focus after any key and before
@@ -2334,7 +2462,9 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * inside `:where()` so this rule keeps the one-class weight every block below overrides it at, and
  * the rule after it takes the engine's own outline back, which the exclusion alone would uncover.
  */
-:where(button, input, textarea, select, [tabindex]):where(:not([tabindex='-1'])):focus-visible,
+:where(button, input, textarea, select, [tabindex]):where(
+	:not([tabindex='-1'], .ds-btn, .ds-checkbox)
+):focus-visible,
 [part~='amount-option']:has(:focus-visible) {
 	outline: var(--_focus-width) solid transparent;
 	box-shadow: 0 0 0 var(--_focus-width) var(--_focus-ring);
@@ -2353,7 +2483,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	box-shadow: none;
 }
 
-[part~='field']:focus-visible {
+[part~='field']:where(:not(.ds-field-input)):focus-visible {
 	border-color: var(--_focus-ring);
 }
 
@@ -2362,14 +2492,14 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * border inside a red ring draws the edge as two lines of two colours, and a floating label's notch
  * (`.floating` above) breaks one edge, not a pair.
  */
-[part~='field'][part~='invalid']:focus-visible {
+[part~='field']:where(:not(.ds-field-input))[part~='invalid']:focus-visible {
 	border-color: var(--_bad-edge);
 }
 
 /*
  * the ticked box, which the rule above would otherwise ring in a single tone. it is one of the
  * controls the brand fills (`[part~='checkbox']` above), so a single-tone ring hugging its edge
- * would lay the brand's step 8 straight against its step 9 along that edge.
+ * would lay a brand step straight against its step 9 along that edge.
  *
  * so it takes the two tones of a control the primary marks, for the reason the focus header above
  * gives — a near-white band laid over the box's own edge first and the ring outside it, so the two
@@ -2377,7 +2507,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * darks and the box is filled in only one of them. the fee decision draws a switch rather than a
  * box and rings itself below.
  */
-[part~='checkbox']:focus-visible {
+[part~='checkbox']:where(:not(.ds-checkbox)):focus-visible {
 	box-shadow:
 		0 0 0 var(--_border) var(--_n1),
 		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
@@ -2415,8 +2545,9 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 /*
  * the switch's ring, in the two tones of a control the primary marks (the focus header above): on,
  * the track *is* the primary, and a ring hugging it is either the colour of the thing it is meant
- * to bound or the brand's step 8 against its step 9 — the control growing, either way. a near-white band is laid on the track's edge first and the ring goes outside it, so
- * what a keyboard donor sees is a band appearing where a solid edge was.
+ * to bound or a brand step against its step 9 — the control growing, either way. a near-white band
+ * is laid on the track's edge first and the ring goes outside it, so what a keyboard donor sees is a
+ * band appearing where a solid edge was.
  *
  * one ring in both states rather than one per state. the ring says where the caret is and the fill
  * says which way the decision is set, and a ring that changed with the fill would be saying the
@@ -2459,7 +2590,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * filled control on the card, and `--_focus-ring` laid on that fill is a brand step against a brand
  * step, the one adjacency this system never draws.
  */
-[part~='action']:focus-visible {
+[part~='action']:where(:not(.ds-btn)):focus-visible {
 	outline: var(--_focus-width) solid var(--_on-p);
 	outline-offset: calc(-1 * (var(--_focus-inset) + var(--_focus-width)));
 	box-shadow: none;
@@ -2470,11 +2601,10 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * and the mark inside it is what a donor reads, so the ring hugs the mark's circle with no offset,
  * and the button's own ring from the first rule above is taken back in both properties.
  *
- * an outline rather than a shadow, and for the action's reason: forced-colors drops every shadow and
- * paints an outline in the user's own colour, and with the button's outline gone this is the whole
- * of the indicator that mode has. the ring is step 8 on a step-7 edge, the step a focused field's
- * border takes, and the current mark, the one the brand fills, is never a button and never takes
- * this ring.
+ * an outline rather than a shadow: forced-colors drops every shadow and paints an outline in the
+ * user's own colour, and with the button's outline gone this is the whole of the indicator that mode
+ * has. the ring is the brand's step 11 on a step-7 edge, the ring every control this sheet draws
+ * takes, and the current mark, the one the brand fills, is never a button and never takes this ring.
  */
 button.step-dot:focus-visible {
 	outline: none;
@@ -2544,11 +2674,11 @@ button.step-dot:focus-visible .step-mark {
  * without a colour of this card's own crossing into the user's palette.
  */
 @media (forced-colors: active) {
-	[part~='checkbox']:checked {
+	[part~='checkbox']:where(:not(.ds-checkbox)):checked {
 		background: Highlight;
 	}
 
-	[part~='checkbox']:checked::before {
+	[part~='checkbox']:where(:not(.ds-checkbox)):checked::before {
 		background: HighlightText;
 	}
 }

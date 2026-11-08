@@ -1,0 +1,317 @@
+/* the registry's button as plain css: no tailwind, no @apply, no @layer. every
+   rule reads only the variables the `variables` item declares (the roles and
+   the scale steps), so a theme, `.dark` and `.light` recolor it like the
+   tailwind `.btn` it mirrors. one look: button-css.test.tsx renders both and
+   asserts the same computed color, fill, edge, corner, padding, height and
+   font in light and dark, for the default and example themes.
+
+   every class carries the ds- prefix, so nothing here collides with the
+   `btn-*` classes the `tokens` item ships.
+
+   a few sizes live only in tailwind's theme (the --spacing step, the type
+   ladder). they are declared below with the same values, under ds- names, and
+   button-css.test.tsx holds each one equal to tailwind's. the declarations sit
+   on the class, not on :root, so the button also works inside a shadow root.
+
+   bare .ds-btn is the md tier, as bare .btn is. the tier classes come after it
+   in this file at the same specificity, which is what lets them win; keep that
+   order. */
+.ds-btn {
+  --ds-spacing: 0.25rem;
+  --ds-text-xs: 0.75rem;
+  --ds-text-xs-lh: calc(1 / 0.75);
+  --ds-text-sm: 0.875rem;
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-text-lg: 1.125rem;
+  --ds-text-lg-lh: calc(1.75 / 1.125);
+  --ds-field-size: calc(var(--ds-spacing) * 12.5);
+  /* published for ds-btn-icon, which squares a button on its tier's height */
+  --ds-btn-size: calc(var(--ds-spacing) * 9);
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 0 solid var(--border);
+  outline-color: var(--ring);
+  font-family: inherit;
+  font-weight: 700;
+  padding-block: calc(var(--ds-spacing) * 2);
+  padding-inline: calc(var(--ds-spacing) * 6);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  min-block-size: var(--ds-btn-size);
+  border-radius: var(--radius);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ds-btn-secondary {
+  background-color: var(--gray-3);
+  color: var(--gray-12);
+  border: 1px solid var(--gray-7);
+}
+.ds-btn-secondary:hover:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
+  background-color: var(--gray-4);
+  border-color: var(--gray-8);
+}
+.ds-btn-secondary:active:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
+  background-color: var(--gray-5);
+}
+
+.ds-btn-ghost {
+  background-color: transparent;
+  color: inherit;
+}
+.ds-btn-ghost:hover:not(:disabled, [aria-disabled="true"], [aria-busy="true"]) {
+  background-color: var(--gray-4);
+}
+.ds-btn-ghost:active:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
+  background-color: var(--gray-5);
+}
+.ds-btn-ghost:disabled {
+  background-color: var(--gray-3);
+  color: var(--gray-11);
+}
+
+.ds-btn-primary {
+  background-color: var(--primary);
+  color: var(--primary-fg);
+}
+.ds-btn-primary:active {
+  background-color: var(--primary-hover);
+  transform: translateY(1px);
+}
+.ds-btn-primary:hover:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
+  background-color: var(--primary-hover);
+}
+
+.ds-btn-destructive {
+  background-color: var(--destructive);
+  color: var(--destructive-fg);
+}
+.ds-btn-destructive:active {
+  background-color: var(--destructive-hover);
+  transform: translateY(1px);
+}
+.ds-btn-destructive:hover:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
+  background-color: var(--destructive-hover);
+}
+
+.ds-btn-success {
+  background-color: var(--success);
+  color: var(--success-fg);
+}
+.ds-btn-success:active {
+  background-color: var(--success-hover);
+  transform: translateY(1px);
+}
+.ds-btn-success:hover:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
+  background-color: var(--success-hover);
+}
+
+.ds-btn-warning {
+  background-color: var(--warning);
+  color: var(--warning-fg);
+}
+.ds-btn-warning:active {
+  background-color: var(--warning-hover);
+  transform: translateY(1px);
+}
+.ds-btn-warning:hover:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
+  background-color: var(--warning-hover);
+}
+
+/* the filled button on a brand fill: it inverts to the fill's own ink and has
+   no hover rung, only the press nudge. */
+.ds-btn-inverse {
+  background-color: var(--primary-fg);
+  color: var(--primary);
+}
+.ds-btn-inverse:active {
+  transform: translateY(1px);
+}
+
+/* an outline that takes its color from the surface it sits on: currentColor
+   is whatever the surface set. oklab, like the tailwind opacity modifiers. */
+.ds-btn-outline {
+  background-color: transparent;
+  color: inherit;
+  border: 2px solid color-mix(in oklab, currentColor 40%, transparent);
+}
+.ds-btn-outline:hover:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
+  background-color: color-mix(in oklab, currentColor 10%, transparent);
+}
+.ds-btn-outline:active {
+  background-color: color-mix(in oklab, currentColor 15%, transparent);
+}
+
+/* one focus indicator for every variant */
+.ds-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.ds-btn-inverse:focus-visible {
+  outline-color: var(--primary-ring);
+}
+
+.ds-btn-outline:disabled,
+.ds-btn-secondary:disabled,
+.ds-btn-success:disabled,
+.ds-btn-primary:disabled,
+.ds-btn-warning:disabled,
+.ds-btn-destructive:disabled {
+  background-color: var(--gray-3);
+  color: var(--gray-11);
+}
+
+/* in flight: deliberately the disabled fill, and inert to the pointer. the
+   state is aria-busy rather than disabled so the control stays focusable. the
+   hover and press rules above exclude it, because they outrank this block and
+   the pointer that started the request is usually still on the button. */
+.ds-btn-primary[aria-busy="true"],
+.ds-btn-secondary[aria-busy="true"],
+.ds-btn-ghost[aria-busy="true"],
+.ds-btn-outline[aria-busy="true"],
+.ds-btn-destructive[aria-busy="true"],
+.ds-btn-success[aria-busy="true"],
+.ds-btn-warning[aria-busy="true"] {
+  background-color: var(--gray-3);
+  color: var(--gray-11);
+  pointer-events: none;
+}
+
+/* an anchor has no disabled attribute: aria-disabled is the state */
+a.ds-btn-secondary[aria-disabled="true"],
+a.ds-btn-warning[aria-disabled="true"],
+a.ds-btn-success[aria-disabled="true"],
+a.ds-btn-primary[aria-disabled="true"],
+a.ds-btn-ghost[aria-disabled="true"],
+a.ds-btn-outline[aria-disabled="true"],
+a.ds-btn-destructive[aria-disabled="true"] {
+  background-color: var(--gray-3);
+  color: var(--gray-11);
+}
+a.ds-btn[aria-disabled="true"] {
+  pointer-events: none;
+  cursor: not-allowed;
+}
+.ds-btn:disabled {
+  cursor: not-allowed;
+}
+
+/* a fill from the form slots; hover and press mix the slot 10% toward black
+   unless --form-primary-hover or -active is set. */
+.ds-btn-form-primary {
+  background-color: var(--form-primary);
+  color: var(--form-primary-fg);
+}
+.ds-btn-form-primary:focus-visible {
+  outline: 2px solid var(--form-ring);
+  outline-offset: 2px;
+}
+.ds-btn-form-primary:hover:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
+  background-color: var(
+    --form-primary-hover,
+    color-mix(in oklch, var(--form-primary) 90%, black)
+  );
+}
+.ds-btn-form-primary:active {
+  background-color: var(
+    --form-primary-active,
+    color-mix(in oklch, var(--form-primary) 90%, black)
+  );
+}
+.ds-btn-form-primary:disabled {
+  background-color: var(--gray-3);
+  color: var(--gray-11);
+}
+.ds-btn-form-primary[aria-busy="true"] {
+  background-color: var(--gray-3);
+  color: var(--gray-11);
+  pointer-events: none;
+}
+
+/* the size tiers */
+.ds-btn-sm {
+  --ds-btn-size: calc(var(--ds-spacing) * 6);
+  padding-block: calc(var(--ds-spacing) * 1);
+  padding-inline: calc(var(--ds-spacing) * 3);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  min-block-size: var(--ds-btn-size);
+  min-inline-size: var(--ds-btn-size);
+}
+.ds-btn-md {
+  --ds-btn-size: calc(var(--ds-spacing) * 9);
+  padding-block: calc(var(--ds-spacing) * 2);
+  padding-inline: calc(var(--ds-spacing) * 6);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  min-block-size: var(--ds-btn-size);
+}
+.ds-btn-lg {
+  --ds-btn-size: calc(var(--ds-spacing) * 13);
+  padding-block: calc(var(--ds-spacing) * 3);
+  padding-inline: calc(var(--ds-spacing) * 8);
+  font-size: var(--ds-text-lg);
+  line-height: var(--ds-text-lg-lh);
+  min-block-size: var(--ds-btn-size);
+}
+/* the height of a form field, for a button beside one */
+.ds-btn-field {
+  --ds-btn-size: var(--ds-field-size);
+  padding-block: calc(var(--ds-spacing) * 2);
+  padding-inline: calc(var(--ds-spacing) * 6);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  min-block-size: var(--ds-btn-size);
+  block-size: var(--ds-btn-size);
+}
+/* square, icon-only; after the tiers so it wins their padding-inline */
+.ds-btn-icon {
+  padding-inline: 0;
+  inline-size: var(--ds-btn-size);
+  min-inline-size: var(--ds-btn-size);
+  block-size: var(--ds-btn-size);
+}
+/* sentence-case label */
+.ds-btn-sentence {
+  border-radius: var(--radius);
+  text-transform: none;
+}

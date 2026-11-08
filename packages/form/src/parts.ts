@@ -130,3 +130,26 @@ export function partWhen(
 	);
 	return part(name, ...present);
 }
+
+/**
+ * the registry theme every card root carries as `data-theme`. the registry declares its scales and
+ * roles on `:root` and on every `[data-theme]` element (./registry/styles/variables.usage.md →
+ * Themes), a shadow tree has no `:root`, and so the card's root is where they land; ./styles/brand.ts
+ * re-themes the same node for a seeded card.
+ */
+export const CARD_THEME = 'default';
+
+/**
+ * the registry's classes on the controls the registry draws (./registry/styles/*.usage.md): the
+ * action, a text box whose label stands over it — the closed choice's box among them — and the box
+ * a donor ticks. the controls the registry has nothing for — the tiles, the cadence tray, the
+ * floating-label pair, the fee switch — carry none and are drawn by ./styles/parts.css.
+ *
+ * beside the part names, which the deployment's own donation page takes from this module for the
+ * same controls drawn in react.
+ */
+export const REGISTRY_CLASS = {
+	action: 'ds-btn ds-btn-primary ds-btn-lg',
+	field: 'ds-field-input',
+	checkbox: 'ds-checkbox'
+} as const;

@@ -60,7 +60,7 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 // route and never from an address a page carries.
 
 export type PageLook = {
-	/** lowercase `#rrggbb`, or null for the form's own grey: the page's only accent. */
+	/** lowercase `#rrggbb`, the page's only accent, or null for the registry's default accent. */
 	readonly brandColour: string | null;
 };
 

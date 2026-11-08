@@ -1,0 +1,247 @@
+/* design-token roles. the scales themselves (accent, gray and the status scales,
+   solid and alpha, light and dark) are a generated theme file, imported below;
+   this file names what the scales are FOR (--primary, --background, --border...)
+   and nothing here is a color of its own.
+
+   themes: ./themes/default.css is the "default" theme, derived from accent
+   #1e6dab with a #e2e8f0 gray (pnpm theme:generate; the variables item's
+   usage note covers overriding and generating a theme). it applies to :root
+   and to [data-theme="default"]. another theme is another file with the same
+   variable names under its own selector.
+   the roles below are declared on :root AND on every [data-theme] element, so
+   a subtree that sets its own theme re-resolves them against its own scales:
+   a var() holding a var() is resolved where it is declared, not where it is
+   read.
+
+   appearance: light is the base. dark is the `.dark` class on <html> (or on a
+   [data-theme] element) and swaps the scales only; the roles follow because
+   they are aliases. there is no prefers-color-scheme query: following the
+   system is the app's call (toggle the class from a media query listener).
+
+   colors.ts mirrors the LIGHT, solid steps and roles as hex for consumers that
+   cannot read oklch() or custom properties (transactional email). */
+
+@import "./themes/default.css";
+
+/* roles, shadcn convention */
+
+:root,
+[data-theme] {
+  /* two corners, one per job. --radius is the control's and the well's: a
+     field, a button, a chip that is not a pill, a well inside a card.
+     --radius-card is the container's: the card, and every layer that floats or
+     sits over the page — dialog, menu, popover, select list, hovercard, toast.
+     the ladder is closed otherwise (theme.css resets --radius-*); a third
+     corner is a decision to take back to the system, not one to spell.
+     --radius-control is the same corner under the name a plain-css app reads
+     (styles/variables.css); --radius stays as the name the tailwind layer and
+     existing call sites bind to. */
+  --radius-control: 0.375rem;
+  --radius: var(--radius-control);
+  --radius-card: 0.75rem;
+
+  /* there is no --fg, and no -fg twin for any surface below: every one of them
+     would resolve to gray-12. the page ink never varies with the surface
+     under it, and a name per surface for one step is the shape the ramp
+     exists to remove. body copy is text-gray-12 and de-emphasised copy is
+     text-gray-11, at the call site, named as the rungs they are.
+     a -fg name survives only where the ink genuinely follows its fill —
+     --primary-fg, --destructive-fg, --success-fg, --warning-fg. those four are
+     each scale's generated contrast token (--accent-contrast and the status
+     ones). the generator picks white or dark per scale, and
+     scripts/generate-theme.ts swaps in the scale's darkest step where white
+     would read under Lc 60, which is what a warning fill needs. */
+  /* the surface model, outside in: page -> card -> well -> field, each on the
+     radix step whose job it is:
+     1-2 backgrounds, 3/4/5 a component at rest/hovered/pressed, 6 the edge of
+     something you can't operate, 7/8 the edge of something you can, 9/10 a
+     solid, 11/12 ink.
+     the PAGE is --background (step 1), on every page alike, painted once in
+     the base styles. a CARD is step 2 with a step-6 edge
+     and no shadow. a WELL (--panel) is step 3, one rung in from the card. a
+     FIELD is step 1 (--surface) with the --input edge. a FLOATING layer —
+     menu, popover, select list, hovercard, toast, and the dialog — is step 1
+     (--popover) and keeps shadow-floating. */
+  --background: var(--gray-1);
+  /* the in-flow container: `card`, `solo-card`, the delegated-inset shells and
+     the `.table` shell. step 2 — radix names "card background" there — with a
+     --hairline edge, and no shadow: the step-6 edge is what finds it on the
+     step-1 page and on a `--band` alike. */
+  --card: var(--gray-2);
+  /* a WELL inside a card: a recessed block that groups a figure, a meter
+     track, a summary. step 3, one rung in from the card it sits in. */
+  --panel: var(--gray-3);
+  --primary: var(--accent-9); /* white-on-fill Lc 82.3 */
+  /* the hovered rung of the filled control, and its pressed rung too. the ramp
+     gives a solid fill two steps, 9 and 10; steps 11 and 12 are text and both
+     sit LIGHTER than 10, so there is no third rung to press to. */
+  --primary-hover: var(--accent-10);
+  /* the accent scale's own contrast color */
+  --primary-fg: var(--accent-contrast);
+  /* the dark brand ground: a full-bleed marketing hero, and the scrim that puts
+     copy over a photograph. --primary is a control color tuned for white ink at
+     Lc 82.3 — enough for a button, not enough to survive a translucent scrim over
+     pixels you don't control. step 12 sits far enough down the ramp to carry
+     --primary-fg with headroom (Lc 99.6), and headroom is what a scrim spends.
+     at the 70% every hero scrim uses, over a white worst-case photograph, white
+     ink lands at Lc 77.7 — clears the Lc 75 body text needs with 2.7 to spare.
+     65% would be Lc 73.2 and fail; the Lc 75 line itself falls at 68% (Lc 75.9),
+     so 70 is the nearest 5% step over the floor, not the floor itself. ink is
+     --primary-fg; there is no -deep-fg, because a second name for #ffffff is a
+     drift trap the test can't catch. */
+  --primary-deep: var(--accent-ground);
+  /* the brand tint's rungs, one job each, on radix's roles. step 2 is a
+     page-level GROUND — the full-bleed marketing band, which nothing hovers.
+     steps 3/4/5 are a tinted ui element at rest / hovered / pressed or
+     selected: a tinted chip rests on 3; a tinted option or row resting
+     transparent hovers (or is highlighted) at 4 and is selected at 5 — a
+     hovered row and a checked one have to paint differently or the state is
+     invisible. a tinted surface presses UP the scale, not toward black, so
+     every rung stays under its own ink. the neutral equivalents are the gray
+     steps themselves (bg-gray-3/4/5), named at the call site. */
+  --band: var(--accent-2);
+  --secondary: var(--accent-3);
+  --secondary-hover: var(--accent-4);
+  --secondary-active: var(--accent-5);
+  /* the filled error control: white ink at Lc 81.3. a tinted band carrying
+     error copy takes --destructive-subtle/-fg below instead — that pair clears
+     Lc 60 on its own band, which is a fill's job to do, not this one's. */
+  --destructive: var(--destructive-9);
+  /* hovered and pressed rung of the filled error control — one step for both,
+     see --primary-hover. */
+  --destructive-hover: var(--destructive-10);
+  --destructive-fg: var(--destructive-contrast);
+  /* de-emphasised destructive surface: an error panel, banner, or row that
+     carries error ink as body copy rather than a filled control. step 11 on
+     step 3 is Lc 64.8, over the Lc 60 status ink needs. --destructive-subtle-fg
+     is the error ink EVERYWHERE, the page included, not only on this band —
+     --destructive is a fill, and step 9 read as text clears Lc 60 (Lc 74.1 on
+     the page) only because the default destructive step 9 happens to sit dark. the
+     success step 9 clears it too (Lc 67.0) and warning's does not (Lc 39.9), so
+     ink follows the rung, not the luck. an icon is a shape, not text, and keeps
+     step 9. */
+  --destructive-subtle: var(--destructive-3);
+  --destructive-subtle-fg: var(--destructive-11);
+  /* pressed rung for a control whose resting surface is --destructive-subtle.
+     step 5 is the ramp's own active/selected rung. NOT the `color-mix(… 85%,
+     black)` ladder the filled .btn variants use: on a near-white band that
+     moves the surface away from the ink sitting on it and the pair fails. */
+  --destructive-subtle-active: var(--destructive-5);
+  /* white-on-fill Lc 74.3 — clears the Lc 60 a button label needs */
+  --success: var(--success-9);
+  /* hovered and pressed rung of the filled success control — one step for both,
+     see --primary-hover. */
+  --success-hover: var(--success-10);
+  --success-fg: var(--success-contrast);
+  /* de-emphasised success surface, same shape as the destructive and warning
+     bands: a confirmation panel, status pill, or row carrying success copy
+     rather than a filled control. --success itself is a FILL and must never be
+     painted on it — as text on the page it is Lc 67.0, clear of Lc 60 but under
+     the Lc 75 body copy needs, and a step 9 is a fill by the ramp's rule either
+     way; --success-subtle-fg is the success ink everywhere, Lc 66.1 here. step
+     3, radix's component background: step 2 sits on the gray-2 card at 1.005:1
+     and leaves a pill or badge no visible fill (WCAG 4.45:1, reference only —
+     radix is the authority). an icon is a shape, not text, and keeps step 9.
+     gray-12 on the band stays far clear, so it also takes neutral body copy. */
+  --success-subtle: var(--success-3);
+  --success-subtle-fg: var(--success-11);
+  --warning: var(--warning-9); /* a fill, never text */
+  /* hovered and pressed rung of the filled warning control — one step for both,
+     see --primary-hover. a fill like --warning; --warning-fg is its ink. */
+  --warning-hover: var(--warning-10);
+  /* dark ink on a light warning fill, Lc 52.1 in the default theme: under the
+     Lc 60 a button label needs, an accepted miss. not white: the generator's
+     own pick is white (Lc 46.4, weaker still), so the theme script swaps in
+     the scale's darkest step. */
+  --warning-fg: var(--warning-contrast);
+  /* de-emphasised warning surface: an advisory panel, banner, or row carrying
+     warning copy rather than a filled control. --warning is a FILL and is not
+     legible as text at any size; --warning-subtle-fg is the warning ink
+     everywhere — step 12, not the ramp's 11: warning-11 on this band is 4.00:1,
+     under the 4.5:1 warning copy needs; warning-12 is 9.98:1 (Lc 87.3). gray-12 on
+     the band stays far clear, so it also takes neutral body copy. */
+  --warning-subtle: var(--warning-3);
+  --warning-subtle-fg: var(--warning-12);
+  /* the edge of something you can't operate: a card's outline, a header's or
+     footer's rule, a table's row lines, a divider between sections or list
+     rows. step 6, radix's "subtle borders on components which are not
+     interactive". not a control edge — that is --input.
+     --hairline is declared in the theme file, per appearance: light takes
+     step 6, dark the first step at or past 6 whose contrast on the page and the
+     card is at least light's (scripts/generate-theme.ts, edge_steps). holding
+     that contrast puts the dark divider at or past the --input step; that
+     ordering is the cost of parity, and the fields keep their own fill. */
+  /* what a bare `border` draws: the base `*` rule reads it, and
+     `surface-primary` rebinds it so a line inside a brand fill is drawn against
+     that fill. an alias of --hairline, the same rung and the same job —
+     a bare edge is a non-interactive one. the separate name exists for the
+     rebind, which --hairline does not take. */
+  --border: var(--hairline);
+  /* the edge of a field, checkbox, radio and select trigger: radix's role —
+     step 7 is the interactive component's border, step 8 the hovered/stronger
+     one. under WCAG 1.4.11's 3:1 for an input's identifying boundary: 1.48:1
+     on the card, 1.52:1 on the page, 1.37:1 in a well. an accepted miss, as
+     the focus ring is — the field's label and placeholder, and its step-1 fill
+     against the step-2 card, also identify it. fields and .btn-secondary share
+     7/8. */
+  --input: var(--gray-7);
+  /* the field edge under the pointer: radix's step 8, 1.80:1 on the card. */
+  --input-hover: var(--gray-8);
+  /* the fill a form control carries — radix's --color-surface. step 1, one
+     rung lighter than the step-2 card, so a field reads as a recess-in-reverse
+     on a card and lifts off a well by fill. the same value as --background and
+     --popover doing a different job, so it keeps its own name.
+     unrelated to the `surface-primary` utility, which is a brand-filled BAND.
+     that one names what fills it; this one names what sits on a fill. */
+  --surface: var(--gray-1);
+  /* the floating fill: menu, popover, select list, hovercard, toast, and the
+     dialog. step 1 with shadow-floating — radix themes' panel-plus-shadow —
+     so a layer over a step-2 card reads lighter than it and above it. */
+  --popover: var(--gray-1);
+  /* the scrim a dialog lays over the page — radix's --color-overlay. --shadow-ink
+     at --overlay-strength, both set per appearance in the theme file (gray-12 at
+     30% in light, black at 60% in dark). the dialog above it is --popover with
+     shadow-floating — see the elevation set in packages/ui/src/styles/theme.css.
+     every backdrop takes it: the ark dialog backdrops, a drawer (a Modal
+     size="none" takes the house backdrop rather than one of its own), and a
+     native <dialog>, whose backdrop: pseudo-element takes the same token.
+     color-mix() has no single literal, so this has no email twin — mail has no
+     dialogs, so it needs none. */
+  --overlay: color-mix(
+    in oklch,
+    var(--shadow-ink) var(--overlay-strength),
+    transparent
+  );
+  /* the ring is deliberately not --primary: a ring that equals the fill it
+     surrounds is not there at all, which is why a button keeps its 2px offset
+     and a panel filled with --primary scopes with `surface-primary`.
+     in light the ring starts at the ramp's focus rung, step 8, and takes the
+     first step from there, skipping 9 and 10 (the fill and its hover), that
+     reads at 3:1 on --background: WCAG 1.4.11 asks that of a state indicator
+     and step 8 is 2.30:1 in the default theme. that lands on step 11, 5.19:1
+     on the page. the generator picks it per theme.
+     --ring is declared in the theme file, per appearance: dark takes the first
+     step at or past 8 that reaches the contrast light's step 8 has on the page
+     and the card, skipping 9 and 10 for the same reason. it is held at that
+     baseline rather than at the raised light ring, and clears 3:1 as well
+     (themes.test.ts). */
+  /* --link and --link-hover are the ink of a text link, declared in the theme
+     file per appearance like --ring, each the first step with Lc 60 on the page
+     and the card: light takes the fill steps 9 and 10 where they read (so they
+     equal --primary and --primary-hover and a link moves with a button) and the
+     text steps 11 and 12 where a bright accent does not, dark the text steps 11
+     and 12. step 9 is a fill; as ink on the dark page it reads too faint (see
+     contrast.test.ts, the dark ledger). the hover is never the rest step. */
+  /* ring + hairline for controls drawn ON a --primary fill.
+     Lc 82.3 and about Lc 61 on --primary respectively — the second is a
+     color-mix with no email twin and no checked value; read it out of a
+     browser before leaning on the last digit. */
+  --primary-ring: var(--primary-fg);
+  --primary-border: color-mix(in oklch, var(--primary-fg) 80%, var(--primary));
+
+  --chart-1: var(--accent-9);
+  --chart-2: var(--success-9);
+  --chart-3: var(--warning-9);
+  --chart-4: var(--destructive-9);
+  --chart-5: var(--accent-11);
+}

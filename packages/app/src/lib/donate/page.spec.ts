@@ -6,7 +6,7 @@ import {
 import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { brandScaleCss, generateBrandScale } from '@better-giving/form/styles/radix-scale';
@@ -19,8 +19,9 @@ import { PageRoot } from './page-root';
 // sheet's header states what each half below holds it to.
 //
 // names: every `--_` name the sheet reads is one the form's token file declares, or one the brand
-// scale ./page-root.tsx renders sets. the sheet re-points `--_font` and `--_font-mono`, declares
-// `--_w-sent`, and declares no other `--_` name.
+// scale ./page-root.tsx renders sets, and every registry accent step it reads is one that scale
+// re-themes. the sheet re-points `--_font-mono`, declares `--_w-sent`, and declares no other `--_`
+// name.
 // every `--page-*` name read is declared here or set inline by the page root; every `--donate-*`
 // name written is a seed the form registers.
 //
@@ -61,16 +62,23 @@ const seedDefaults: Scope = Object.fromEntries(
 			: []
 	)
 );
-// the scale ./page-root.tsx renders for a page with no brand colour, from the seed's initial value.
-const unseededScale = (() => {
-	const scale = generateBrandScale(seedDefaults['--donate-primary'] ?? '');
-	if (scale === null) throw new Error('the generator reads no scale from the registered seed');
-	return brandScaleCss('[data-donate-root]', scale);
-})();
+// a page with no brand colour renders no scale (./page-root.tsx), so its `--accent-*` steps are the
+// registry default theme's own: the light block of the copied sheet, which declares them on `:root`
+// and reaches the page by inheritance.
+const REGISTRY_THEME = readFileSync(
+	join(dirname(FORM_TOKENS), '../registry/styles/themes/default.css'),
+	'utf8'
+);
+const registryLight = blocks(REGISTRY_THEME).find(({ decls }) => decls['--accent-2'] !== undefined);
+if (registryLight === undefined) throw new Error('the registry theme declares no light accent');
+// the generator's scale for a brand colour: the declarations a branded page renders on its root.
+const branded = generateBrandScale('#1f6feb');
+if (branded === null) throw new Error('the generator reads no scale from #1f6feb');
+const brandedScale = brandScaleCss('[data-donate-root]', branded);
 const formBase: Scope = {
 	...seedDefaults,
 	...declared(form, ':host, [data-donate-root]'),
-	...declared(blocks(unseededScale), '[data-donate-root]'),
+	...registryLight.decls,
 	...declared(form, ':host > *, [data-donate-root] > *')
 };
 const reads = (css: string, prefix: string) =>
@@ -114,37 +122,92 @@ function root(props: Partial<Parameters<typeof PageRoot>[0]> = {}): {
 	return { attributes, inline };
 }
 
+describe('a page with no brand colour', () => {
+	const literal = (name: string) =>
+		new RegExp(`^\\s*${name}:\\s*([^;]+?);`, 'm').exec(stripComments(REGISTRY_THEME))?.[1];
+	const wash = page.flatMap(({ decls }) => decls['--page-wash'] ?? []);
+
+	it('reaches the registry theme’s `:root` block from the form’s token file, with no scale of its own', () => {
+		const variables = readFileSync(
+			join(dirname(FORM_TOKENS), '../registry/styles/variables.css'),
+			'utf8'
+		);
+		const colors = readFileSync(
+			join(dirname(FORM_TOKENS), '../registry/styles/colors.css'),
+			'utf8'
+		);
+
+		expect(formText).toContain("@import '../registry/styles/variables.css'");
+		expect(variables).toContain('@import "./colors.css"');
+		expect(colors).toContain('@import "./themes/default.css"');
+		expect(registryLight.at[0]?.split(',').map((one) => one.trim())).toContain(':root');
+		expect(root({ brandColour: null }).inline).toEqual({});
+	});
+
+	it('draws the wash from the registry theme’s accent 2 and 3, and the ring from its accent 11', () => {
+		expect(wash).toHaveLength(1);
+		expect(substitute(formBase, wash[0] ?? '')).toBe(
+			`radial-gradient(max(80cqi, 26rem) 38rem at 0% 14rem, ${literal('--accent-2')}, transparent 70%), ` +
+				`radial-gradient(max(65cqi, 24rem) 38rem at 100% 100%, ${literal('--accent-3')}, transparent 70%)`
+		);
+		expect(substitute(formBase, 'var(--_focus-ring)')).toBe(literal('--accent-11'));
+		expect(literal('--accent-11')).toMatch(/^oklch\(/);
+	});
+});
+
 describe('the names ./page.css reads and writes', () => {
 	it('reads every `--_` name from the form token file or the generated scale, and finds names to read', () => {
-		const formNames = new Set([...declares(formText, '--_'), ...declares(unseededScale, '--_')]);
+		const formNames = new Set([...declares(formText, '--_')]);
 		const read = [...reads(pageText, '--_')];
 		expect(read.length).toBeGreaterThan(0);
 		expect(read.filter((name) => !formNames.has(name))).toEqual([]);
 	});
 
-	it('re-points the form’s two type tokens and the sent figure’s weight', () => {
-		expect([...declares(pageText, '--_')].sort()).toEqual(['--_font', '--_font-mono', '--_w-sent']);
+	// the wash reads the registry's accent by name rather than through an alias the card does not
+	// spend, so each step it reads has to be one the page root's scale re-themes for the brand.
+	it('reads every `--accent-*` step from the scale the page root renders', () => {
+		const read = [...reads(pageText, '--accent-')];
+		expect(read.length).toBeGreaterThan(0);
+		expect(read.filter((name) => !declares(brandedScale, '--accent-').has(name))).toEqual([]);
+	});
+
+	it('re-points the form’s monospace token and the sent figure’s weight', () => {
+		expect([...declares(pageText, '--_')].sort()).toEqual(['--_font-mono', '--_w-sent']);
 		expect(declared(page, '.page div')).toEqual({
-			'--_font': 'var(--page-font-text)',
 			'--_font-mono': 'var(--page-font-mono)',
 			'--_w-sent': 'var(--_w-medium)',
 			'font-variant-ligatures': 'no-contextual'
 		});
 	});
 
-	it('sets the three faces to the operator screens’ stacks', () => {
-		const operator = readFileSync(
-			require.resolve('@better-giving/operator/styles/tokens.css'),
-			'utf8'
+	it('sets the three faces from the roles the face sheet re-points', () => {
+		// packages/operator/src/styles/fonts.css re-points the registry's `--font-*` roles at plain red
+		// hat, `!important`, and donorPageLinks() in ./plain-page.tsx links it beside this sheet, so
+		// the page reads the roles rather than stating a stack of its own.
+		const fonts = stripComments(
+			readFileSync(require.resolve('@better-giving/operator/styles/fonts.css'), 'utf8')
 		);
-		const stack = (css: string, name: string) => {
-			const found = new RegExp(`${name}:\\s*([^;]+);`).exec(css);
-			if (found?.[1] === undefined) throw new Error(`${name} is not declared`);
-			return found[1].trim();
-		};
-		expect(stack(pageText, '--page-font-text')).toBe(stack(operator, '--admin-font-sans'));
-		expect(stack(pageText, '--page-font-display')).toBe(stack(operator, '--admin-font-display'));
-		expect(stack(pageText, '--page-font-mono')).toBe(stack(operator, '--admin-font-mono'));
+		const faces = declared(page, '.page > .page-ground');
+		expect({
+			text: faces['--page-font-text'],
+			display: faces['--page-font-display'],
+			mono: faces['--page-font-mono']
+		}).toEqual({
+			text: 'var(--font-body)',
+			display: 'var(--font-display)',
+			mono: 'var(--font-mono)'
+		});
+		for (const [role, lead] of [
+			['--font-body', 'Red Hat Text'],
+			['--font-display', 'Red Hat Display'],
+			['--font-mono', 'Red Hat Mono']
+		])
+			expect(fonts).toMatch(new RegExp(`(?<![\\w-])${role}:\\s*'${lead}'[^;]*!important;`));
+		expect([...reads(pageText, '--font-')].sort()).toEqual([
+			'--font-body',
+			'--font-display',
+			'--font-mono'
+		]);
 	});
 
 	it('sets the crypto total at the mono medium, which is a file', () => {
@@ -262,7 +325,8 @@ describe('every colour lands on the radix step for its job', () => {
 	const IDLE = ":not(:has(:checked, [aria-disabled='true']))";
 	const BORDER =
 		'6, 7 and 8: a separator, a control’s edge, that edge under the pointer and a brand edge';
-	const RING = '8: the focus ring, in a step-1 gap where it rings a control';
+	const RING =
+		'11: the focus ring, the registry’s ring step, in a step-1 gap where it rings a control';
 	const ON_FILL = 'the ink on a solid fill: the form’s `--_on-p`';
 	const TEXT = '11 and 12: text';
 	const SCRIM = 'the feature’s scrim, and slate 1 on it';
@@ -323,12 +387,12 @@ describe('every colour lands on the radix step for its job', () => {
 			}
 		},
 		[RING]: {
-			allowed: ['brand-8', 'slate-1'],
+			allowed: ['brand-11', 'slate-1'],
 			at: {
-				'.page > .page-ground | --page-ring': 'brand-8',
-				'.page-ground a:focus-visible, .page-faq-question:focus-visible | box-shadow': 'brand-8',
-				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-8',
-				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-8'
+				'.page > .page-ground | --page-ring': 'brand-11',
+				'.page-ground a:focus-visible, .page-faq-question:focus-visible | box-shadow': 'brand-11',
+				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-11',
+				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-11'
 			}
 		},
 		'9: a solid fill, the generator’s step 9': {
@@ -691,8 +755,8 @@ describe('no shadow anywhere', () => {
 });
 
 describe('the ground and the wash', () => {
-	// brand steps 2 and 3 are the generated scale's, rendered by the page root; the sheet derives
-	// neither.
+	// brand steps 2 and 3 are the registry's accent, re-themed by the scale the page root renders;
+	// the sheet derives neither.
 	const ground = declared(page, '.page > .page-ground');
 
 	it('derives no brand step of its own', () => {
@@ -711,23 +775,23 @@ describe('the ground and the wash', () => {
 		const scope = /data-brand-scope="([^"]*)"/.exec(html)?.[1] ?? '';
 		expect(scope).not.toBe('');
 		const sheet = blocks(css);
-		expect(declared(sheet, `[data-donate-root][data-brand-scope="${scope}"]`)[`--_a${n}`]).toBe(
-			scale?.steps[n - 1]
-		);
+		expect(
+			declared(sheet, `[data-donate-root][data-brand-scope="${scope}"]`)[`--accent-${n}`]
+		).toBe(scale?.steps[n - 1]);
 		expect(
 			declared(
 				sheet,
 				'@supports (color: color(display-p3 1 1 1))',
 				'@media (color-gamut: p3)',
 				`[data-donate-root][data-brand-scope="${scope}"]`
-			)[`--_a${n}`]
+			)[`--accent-${n}`]
 		).toBe(scale?.stepsWideGamut[n - 1]);
 	});
 
 	it('lays brand 2 at the top left and brand 3 at the bottom right over slate 2', () => {
 		expect(ground['--page-ground']).toBe('var(--_n2)');
 		expect(ground['--page-wash']).toMatch(
-			/^radial-gradient\(.* at 0% .*, var\(--_a2\), transparent 70%\), radial-gradient\(.* at 100% 100%, var\(--_a3\), transparent 70%\)$/
+			/^radial-gradient\(.* at 0% .*, var\(--accent-2\), transparent 70%\), radial-gradient\(.* at 100% 100%, var\(--accent-3\), transparent 70%\)$/
 		);
 		expect(ground.background).toBe('var(--page-wash), var(--page-ground)');
 	});

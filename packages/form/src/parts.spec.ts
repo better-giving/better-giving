@@ -29,8 +29,15 @@ const element = manifest.modules
 	.flatMap((module) => module.declarations)
 	.find((declaration) => declaration.tagName === 'bg-donate-form');
 
+// a seed published once stays published (AGENTS.md → Permanent contracts). a retired one is listed
+// with no effect, so the stylesheet registers nothing for it and the registration comparisons below
+// read the live seeds alone.
+const RETIRED_SEEDS = ['--donate-shade'];
+
 const publishedSeeds = Object.fromEntries(
-	(element?.cssProperties ?? []).map((property) => [property.name, property])
+	(element?.cssProperties ?? [])
+		.filter((property) => !RETIRED_SEEDS.includes(property.name))
+		.map((property) => [property.name, property])
 );
 
 // whitespace and nothing else. a color spelled two ways is two strings here, because the claim
@@ -188,10 +195,15 @@ describe('the published manifest', () => {
 		expect(unemitted).toEqual([]);
 	});
 
-	it('publishes the three seeds and no fourth', () => {
+	it('publishes the two seeds and the retired shade, and no fourth', () => {
 		const published = (element?.cssProperties ?? []).map((property) => property.name);
 
-		expect(published).toEqual(['--donate-primary', '--donate-shade', '--donate-corner']);
+		expect(published).toEqual(['--donate-primary', '--donate-corner', ...RETIRED_SEEDS]);
+		expect(Object.keys(publishedSeeds)).toEqual(['--donate-primary', '--donate-corner']);
+	});
+
+	it('registers nothing for a retired seed', () => {
+		expect(RETIRED_SEEDS.filter((name) => name in registeredSeeds)).toEqual([]);
 	});
 
 	it('names the same seeds the stylesheet registers, in both directions', () => {

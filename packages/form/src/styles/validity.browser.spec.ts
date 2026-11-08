@@ -8,9 +8,10 @@ import { completePayer, NAME_PATTERN } from '../value';
 import type { FormConfig } from '../v1';
 
 // the browser pool, and the only pool that can see any of this. the details step's problem edge is
-// drawn from the `invalid` part token and from nothing else (./parts.css), so what the node pool
-// can hold ../views.ts to is the attribute and what only a real engine can answer is the colour it
-// produces. the engine's own verdict is measured here for the same reason: a lightweight DOM
+// drawn from the flow's answer: the `invalid` part token on the boxes the form draws (./parts.css),
+// and `aria-invalid`, which ../views.ts writes from the same answer, on the registry's text box
+// (../registry/styles/field-css.css). what the node pool can hold ../views.ts to is the attribute,
+// and what only a real engine can answer is the colour it produces. the engine's own verdict is measured here for the same reason: a lightweight DOM
 // answers `false` to `input.matches(':invalid')` for a genuinely invalid input rather than
 // throwing, so a claim about the two rules disagreeing would look proven there with nothing in the
 // sheet at all. run with `pnpm test:browser`; it is deliberately outside `pnpm test` and outside
@@ -20,10 +21,10 @@ import type { FormConfig } from '../v1';
 // ./parts.browser.spec.ts gives: the question is about the sheets ../element.ts adopts, through
 // the code that adopts them, so a hand-built host would be asserting the fixture.
 //
-// nothing here reads a colour literal. a refusal is radix's red at two steps (./tokens.css): the
-// edge a refused control is drawn in is `--_bad-edge`, red 8, and the sentence under it is `--_bad`,
-// red 11, so the field's border is compared against the edge token and the sentence against the
-// word token, both read off the card's own cascade.
+// nothing here reads a colour literal. a refusal is the registry's destructive scale at two jobs
+// (./tokens.css): the edge a refused control is drawn in is `--_bad-edge`, `--destructive`, and the
+// sentence under it is `--_bad`, `--destructive-subtle-fg`, so the field's border is compared against
+// the edge token and the sentence against the word token, both read off the card's own cascade.
 //
 // the second half of this file is about a rule rather than a paint. the browser's `type="email"`
 // and `pattern` decide which sentence the donor reads, and `completePayer` (../value.ts) decides
@@ -204,11 +205,16 @@ function shadowColour(shadow: string): string {
 	return resolved(at === -1 ? shadow : shadow.slice(0, at));
 }
 
+/** the card's own root, which carries the registry theme every colour token reads. */
+function rootOf(card: Card): HTMLElement {
+	return card.find('[data-theme]');
+}
+
 /** a colour token as the card resolves it, read off a probe inside the card's own root. */
 function tokenOf(card: Card, token: string): string {
 	const probe = document.createElement('div');
 	probe.style.cssText = `color: var(${token})`;
-	card.shadow.appendChild(probe);
+	rootOf(card).appendChild(probe);
 	const read = getComputedStyle(probe).color;
 	probe.remove();
 	return resolved(read);
@@ -218,7 +224,7 @@ function tokenOf(card: Card, token: string): string {
 function lengthOf(card: Card, token: string): number {
 	const probe = document.createElement('div');
 	probe.style.cssText = `inline-size: var(${token})`;
-	card.shadow.appendChild(probe);
+	rootOf(card).appendChild(probe);
 	const read = parseFloat(getComputedStyle(probe).inlineSize);
 	probe.remove();
 	return read;
@@ -267,29 +273,84 @@ describe('the details step’s problem edge', () => {
 		await painted(email);
 
 		expect(edgeOf(email)).toBe(dangerOf(card));
-		// and the sentence naming it in red's word step rather than its edge step: two steps of one
-		// hue, each on its own job.
+		// and the sentence naming it in the registry's error ink rather than its edge: two steps of
+		// one scale, each on its own job.
 		expect(resolved(getComputedStyle(card.find('#email-problem')).color)).toBe(
 			tokenOf(card, '--_bad')
 		);
 		expect(tokenOf(card, '--_bad')).not.toBe(dangerOf(card));
 
-		// and the token is the whole of what drew it. the field is still `:invalid` to the engine
-		// with the token taken off, so an edge that survived this would be one the sheet paints
-		// from the engine's answer — which marks fields the flow accepted, having no sentence for
-		// any of them.
+		// the flow's answer is the whole of what drew it: the part token on the boxes the form draws,
+		// and `aria-invalid`, written from the same answer, on the registry's text box. the field is
+		// still `:user-invalid` to the engine with both taken off, so an edge that survived this would be
+		// one the sheets paint from the engine's answer — which marks fields the flow accepted, having
+		// no sentence for any of them.
+		expect(email.getAttribute('aria-invalid')).toBe('true');
 		email.setAttribute('part', 'field');
+		email.removeAttribute('aria-invalid');
 		await painted(email);
 
-		expect(email.matches(':invalid')).toBe(true);
+		expect(email.matches(':user-invalid')).toBe(true);
 		expect(edgeOf(email)).not.toBe(dangerOf(card));
+
+		const last = card.find('#last-name');
+		last.blur();
+		await painted(last);
+		expect(edgeOf(last)).toBe(dangerOf(card));
+		last.setAttribute('part', 'field');
+		await painted(last);
+
+		expect(last.matches(':invalid')).toBe(true);
+		expect(edgeOf(last)).not.toBe(dangerOf(card));
 	});
 
-	// nothing in ./parts.css arranges this: the mark and the ring are two rules writing one
-	// property, and the ring wins by sitting later in the file. that is what makes it worth
-	// measuring rather than reading — a rule added between them, or either one moved, takes the
-	// ring off a marked field with nothing else on the card changing, and the field then looks
-	// identical focused and unfocused, which is a keyboard donor with nowhere to be.
+	// a donor tabbing past a box on the way to the next one has not finished with it, so the card
+	// draws the resting edge there and no sentence.
+	it('is not drawn on a box the donor tabbed past empty', async () => {
+		const card = await atDetailsStep();
+		const email = card.find('#email') as HTMLInputElement;
+		email.focus();
+		await userEvent.keyboard('{Tab}');
+		await painted(email);
+
+		expect(card.shadow.activeElement).not.toBe(email);
+		expect(email.matches(':invalid')).toBe(true);
+		expect(edgeOf(email)).not.toBe(dangerOf(card));
+		expect(card.find('#email-problem').hidden).toBe(true);
+	});
+
+	// a donor who typed into a box and left it wrong has finished with it, and is told so as the
+	// caret leaves, before any press.
+	it('is drawn on a box the donor typed into and left wrong', async () => {
+		const card = await atDetailsStep();
+		const email = card.find('#email') as HTMLInputElement;
+		email.focus();
+		await userEvent.keyboard('donor@');
+		await userEvent.keyboard('{Tab}');
+		await painted(email);
+
+		expect(edgeOf(email)).toBe(dangerOf(card));
+		expect(card.find('#email-problem').hidden).toBe(false);
+		expect(card.find('#email-problem').textContent).toBe('not an email address');
+		expect(card.find('#first-name-problem').hidden).toBe(true);
+	});
+
+	// and Continue asks for every box at once, the ones nobody reached included.
+	it('is drawn on every empty required box when Continue is pressed', async () => {
+		const card = await atDetailsStep();
+		proceed(card);
+		const boxes = ['#email', '#first-name', '#last-name'].map((id) => card.find(id));
+		for (const box of boxes) box.blur();
+		await painted(...boxes);
+
+		for (const box of boxes) expect(edgeOf(box), box.id).toBe(dangerOf(card));
+		expect(card.find('#email-problem').textContent).toBe('required for your receipt');
+		expect(card.find('#first-name-problem').textContent).toBe('required');
+	});
+
+	// the mark is the border and the ring is a shadow laid outside it (./parts.css), two properties,
+	// so the one cannot take the other off. a field that looked identical focused and unfocused would
+	// leave a keyboard donor with nowhere to be.
 	it('leaves the focus ring on a field it has marked', async () => {
 		const card = await atDetailsStep();
 		proceed(card);
@@ -303,14 +364,12 @@ describe('the details step’s problem edge', () => {
 		const focused = getComputedStyle(email).boxShadow;
 
 		expect(email.getAttribute('part')).toBe('field invalid');
+		expect(resting).toBe('none');
 		expect(focused).not.toBe(resting);
-		// what each of them is, so a ring that changed into something else is not read as a ring.
-		// the mark is the inset second pixel on the field's own edge; the ring is laid outside it.
-		expect(resting).toContain('inset');
-		expect(focused).not.toContain('inset');
-		// and it is the danger ring rather than the ordinary one: on a control the form has
-		// already marked, the ring carries the state instead of sitting beside it.
+		// and it is the danger ring rather than the ordinary one: on a control the form has already
+		// marked, the ring carries the state instead of sitting beside it.
 		expect(shadowColour(focused)).toBe(dangerOf(card));
+		expect(edgeOf(email)).toBe(dangerOf(card));
 	});
 
 	// nothing is written by hand here. the keystroke is an `input` event, which is a snapshot,
@@ -356,8 +415,10 @@ describe('the details step’s problem edge', () => {
 		last.blur();
 		await painted(email, last);
 
-		// the premise, asserted rather than assumed: the two rules disagree about this address.
+		// the premise, asserted rather than assumed: the two rules disagree about this address, and
+		// the engine has had the caret in the box, so the registry's `:user-invalid` matches it.
 		expect(email.checkValidity()).toBe(false);
+		expect(email.matches(':user-invalid')).toBe(true);
 		expect(
 			completePayer(
 				{ method: 'card', email: email.value, firstName: 'Ada', lastName: 'Lovelace' },

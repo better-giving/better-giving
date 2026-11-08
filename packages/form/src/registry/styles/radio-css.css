@@ -1,0 +1,65 @@
+/* the registry's radio as plain css, no tailwind. reads only the variables the
+   `variables` item declares. the wrapper (a label or a div) lays the input and
+   its text in a row; the input is drawn as a ring with a dot. radio-css.test.tsx
+   renders the tailwind `radio` beside it and asserts the same computed look in
+   light and dark, for the default and example themes.
+
+   the spacing step lives only in tailwind's theme; it is declared here under a
+   ds- name with the same value, and the test holds the two equal. */
+.ds-radio {
+  --ds-spacing: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--ds-spacing) * 4);
+}
+.ds-radio[data-required="true"]::after {
+  margin-left: calc(var(--ds-spacing) * 1);
+  content: "*" / "";
+  color: var(--destructive-subtle-fg);
+}
+.ds-radio > input {
+  appearance: none;
+  box-sizing: border-box;
+  position: relative;
+  block-size: calc(var(--ds-spacing) * 4);
+  aspect-ratio: 1 / 1;
+  margin: 0;
+  border: 1px solid var(--input);
+  background-color: var(--surface);
+  border-radius: calc(infinity * 1px);
+  outline-color: var(--ring);
+}
+@media (hover: hover) {
+  .ds-radio > input:hover {
+    border-color: var(--input-hover);
+  }
+}
+.ds-radio > input::before {
+  content: "";
+  block-size: calc(var(--ds-spacing) * 2.5);
+  aspect-ratio: 1 / 1;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  border-radius: calc(infinity * 1px);
+}
+.ds-radio > input:checked::before {
+  background-color: var(--primary);
+}
+.ds-radio > input:disabled:checked::before {
+  background-color: var(--gray-3);
+}
+.ds-radio > input:focus-visible {
+  outline-style: solid;
+  outline-width: 2px;
+  outline-color: var(--ring);
+}
+/* forced colors repaint every background, which would erase a dot drawn as
+   one: the dot opts out and takes the system ink */
+@media (forced-colors: active) {
+  .ds-radio > input:checked::before {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}

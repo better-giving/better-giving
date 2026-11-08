@@ -9,5 +9,13 @@
 		"types": ["node", "vite/client"],
 		"noEmit": true
 	},
-	"include": ["src/**/*.ts", "dev/**/*.ts", "vite.config.ts", "vite.embed.config.ts"]
+	"include": [
+		"src/**/*.ts",
+		"dev/**/*.ts",
+		"vite.config.ts",
+		"vite.embed.config.ts",
+		"vite.registry-faces.ts",
+		"vitest.config.ts",
+		"vitest.browser.config.ts"
+	]
 }

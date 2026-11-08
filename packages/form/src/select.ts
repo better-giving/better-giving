@@ -19,7 +19,7 @@
 import * as zag from '@zag-js/select';
 import { normalizeProps, VanillaMachine } from '@zag-js/vanilla';
 import { glyph } from './glyph';
-import { part, partWhen } from './parts';
+import { part, partWhen, REGISTRY_CLASS } from './parts';
 import { lostWhileOpen, type Props, rootNodeOf, showWhile, spread } from './zag';
 
 type Choice = { readonly value: string; readonly label: string };
@@ -75,6 +75,10 @@ export function createSelect(
 	// rather than left to the machine's props, which reach it only on the first `update`.
 	trigger.type = 'button';
 	trigger.setAttribute('part', part('field'));
+	// the registry's text box, on the button a closed choice opens from: field-css has no select of
+	// its own, and a box drawn by the form beside the registry's would stand a different height on the
+	// tribute's line.
+	trigger.className = REGISTRY_CLASS.field;
 	trigger.appendChild(words);
 	trigger.appendChild(glyph(doc, 'chevron', 'glyph'));
 

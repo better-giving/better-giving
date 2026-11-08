@@ -1,14 +1,21 @@
 @layer tokens, reset, base, elements, layout;
 
 @import '@better-giving/operator/styles/fonts.css';
+@import '@better-giving/operator/registry/styles/variables.css';
 @import '@better-giving/operator/styles/tokens.css';
 @import '@better-giving/operator/styles/base.css';
 @import '@better-giving/operator/styles/adm.css';
 
 /* the whole of the gallery's css, and the order it is read in — identical to
    packages/app/src/app.css, per CLAUDE.md's design system
-   section. the sheets themselves live in packages/operator/src/styles/, the leaf package every
-   operator surface imports from, so this file names an order and defines nothing beyond it.
+   section. the sheets themselves live in packages/operator, the leaf package every operator
+   surface imports from: the registry's variables.css copied into src/registry/styles/ and the
+   other four in src/styles/. so this file names an order and defines nothing beyond it. the
+   registry sheet's own import of its red hat round faces resolves to an empty sheet
+   (../vite.config.ts), as it does for /admin.
 
    this package defines no css of its own: every value a preview needs comes from
-   packages/operator/src/styles/tokens.css, gated here by src/raw-values.spec.ts. */
+   packages/operator/src/styles/tokens.css, which aliases the registry's variables.css for colour,
+   the face roles and the control and plane radii and states the rest as its own literals, gated
+   here by src/raw-values.spec.ts. packages/operator/src/styles/fonts.css declares the plain red
+   hat faces and re-points those roles at them. */

@@ -79,6 +79,7 @@
 		"./styles/tokens.css": "./src/styles/tokens.css",
 		"./styles/base.css": "./src/styles/base.css",
 		"./styles/adm.css": "./src/styles/adm.css",
+		"./registry/styles/variables.css": "./src/registry/styles/variables.css",
 		"./styles/fonts.css": "./src/styles/fonts.css",
 		"./styles/raw-values": "./src/styles/raw-values.ts",
 		"./brand/zapier.png": "./src/styles/brand/zapier.png"

@@ -10,11 +10,10 @@ import { rawColourViolations, rawLengthViolations } from './raw-values';
 // in packages/app/src/lib/admin/styles/ — can assert only
 // that its own files come back clean, and a clean answer is what a working sweep and a blind one
 // both give. `raw-colour-ok:` and `raw-length-ok:` are the half of the bargain nothing else
-// exercises: no caller hands ./tokens.css to the colour sweep and none hands ./adm.css to the
-// length sweep, which are the two files the notes in this repository are actually written in. so
-// every note in the tree today is excusing a value that is never swept, and the hatch itself has no
-// call site at all. a value written into a screen with a note on it would be the first, and finding
-// out then whether the note works is finding out at the wrong moment.
+// exercises: no caller hands ./adm.css to the length sweep, which is the file the
+// `raw-length-ok:` notes in this repository are actually written in. so every such note in the tree
+// today is excusing a value that is never swept, and the hatch itself has no call site at all. a value written into a screen with a note on it would
+// be the first, and finding out then whether the note works is finding out at the wrong moment.
 //
 // the fixture is a real file in a temp directory because the sweeps read from disk — they take
 // paths so that a caller can glob its own tree, and a fake in memory would be proving something
@@ -68,6 +67,47 @@ describe('raw-colour-ok:', () => {
 			'a {\n\tcolor: #ff0000; /* the header names raw-colour-ok: in a sentence. */\n}'
 		);
 		expect(rawColourViolations(files)).toHaveLength(1);
+	});
+});
+
+describe('a declaration wrapped onto the next line', () => {
+	it('is refused on its value line', () => {
+		// biome wraps a long custom property after its `:`, so the value stands on a line of its own
+		// with no colon on it. that line is the declaration's, and the finding names it.
+		const files = fixture('colour-wrapped', 'a {\n\t--x:\n\t\t#123456;\n}');
+		expect(rawColourViolations(files)).toEqual([`${files[0]}:3 #123456;`]);
+	});
+
+	it('is excused by the note on its value line', () => {
+		const files = fixture(
+			'colour-wrapped-noted',
+			'a {\n\t--x:\n\t\t#123456; /* raw-colour-ok: the fixture says why. */\n}'
+		);
+		expect(rawColourViolations(files)).toEqual([]);
+	});
+
+	it('is not excused by a note on its property line', () => {
+		// the note excuses the line it stands on, and the colour stands on the next one.
+		const files = fixture(
+			'colour-wrapped-noted-above',
+			'a {\n\t--x: /* raw-colour-ok: the fixture says why. */\n\t\t#123456;\n}'
+		);
+		expect(rawColourViolations(files)).toHaveLength(1);
+	});
+
+	it('keeps the face-name exemption across the wrap', () => {
+		const files = fixture(
+			'family-wrapped',
+			"a {\n\tfont-family:\n\t\t'Red Hat Text', sans-serif;\n}"
+		);
+		expect(rawColourViolations(files)).toEqual([]);
+	});
+
+	it('does not read a selector wrapped after a pseudo-class as a value', () => {
+		// a selector list's `:hover,` ends in no terminator either, and the line after it is a
+		// selector until the `{` that opens the block says so.
+		const files = fixture('selector-wrapped', 'a:hover,\n.red,\n.tan {\n\tcolor: inherit;\n}');
+		expect(rawColourViolations(files)).toEqual([]);
 	});
 });
 

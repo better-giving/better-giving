@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "dir": "packages/form/src/registry",
+  "registryVersion": "2.1.0",
+  "items": {
+    "badge-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/badge-css.css": "8b5f7ec866330a52e6304f6eb753ebb82919f95765e91125ac3540c757c75d61",
+        "styles/badge-css.usage.md": "eed5c9b3be08d356d01e105dc28ab169e9391f129067e90bbe82e7e294a8efd5"
+      }
+    },
+    "button-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/button-css.css": "6904be2682efd85a0104832e2b057bdd6b16b932dd5923ff0dd3a17cdfc7f40b",
+        "styles/button-css.usage.md": "c0758f074b2d975d9d4a8ec9aec2cae9de2a016fef0f8d7b0bd363b75862dc18"
+      }
+    },
+    "checkbox-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/checkbox-css.css": "ffe0f14879a00be8343969fecec5754cda3b574b722b974c2a39728eb14702f7",
+        "styles/checkbox-css.usage.md": "0ca59b0c3ec3b93b9f7ad47e88975e43df10eef514e19a5adb70d55009fd8518"
+      }
+    },
+    "field-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/field-css.css": "f2dfb6267b8ee753ad2a8ac919d604fb98b37b877bab49ac5de650facc085e9f",
+        "styles/field-css.usage.md": "83bb78b7b66b4d0e2a82e0e2548c71549ba8088094c809c4407735bf2a15f27b"
+      }
+    },
+    "radio-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/radio-css.css": "89a784ae29f163b4ea4f654988da250cf42ced131193ab2f3661e4f0a03ef973",
+        "styles/radio-css.usage.md": "fca2a9a1887672beb7a2d772b4456a3b1bd60953a002674123702f38dfb694c5"
+      }
+    },
+    "variables": {
+      "version": "1.0.1",
+      "files": {
+        "styles/colors.css": "2255bd12008047adc438d0face61cefae835ed70f5c8b229d7d9c4d6f036c964",
+        "styles/themes/default.css": "a7f3a46b00c45aff7a4d2958b2c1263a0c8206c351d1eab3ce3905e13c08dcdd",
+        "styles/variables.css": "284b5d1d7ebcfca3a03236a46e0f04d13f84703f14bc6c53823bf6d91f9a5923",
+        "styles/variables.usage.md": "caece6dfa9b54fc3257e79eb4af112676753e042ee5c18716ba24057988c6328"
+      }
+    }
+  }
+}

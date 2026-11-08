@@ -40,10 +40,10 @@ describe('Layout', () => {
 	it('sets the body on one plane: step 1 on the page, the step-6 edge, the plane corner', async () => {
 		const html = await rendered();
 		const cell = bodyCell(html);
-		// --admin-surface and --admin-divider are slate 1 and slate 6 in
-		// packages/operator/src/styles/tokens.css.
-		expect(PLANE_BG).toBe('#fcfcfd');
-		expect(DIVIDER).toBe('#d9d9e0');
+		// --admin-surface and --admin-divider are registry gray 1 and gray 6 (`--hairline`)
+		// through packages/operator/src/styles/tokens.css.
+		expect(PLANE_BG).toBe('#fbfcfe');
+		expect(DIVIDER).toBe('#d2dbe7');
 		expect(PLANE_BG).not.toBe(PAGE_BG);
 		expect(html.indexOf(cell)).toBeLessThan(html.indexOf('The body.'));
 		expect(cell).toContain(`background-color:${PLANE_BG}`);

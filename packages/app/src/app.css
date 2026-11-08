@@ -1,12 +1,14 @@
 @layer tokens, reset, base, elements, layout;
 
 @import '@better-giving/operator/styles/fonts.css';
+@import '@better-giving/operator/registry/styles/variables.css';
 @import '@better-giving/operator/styles/tokens.css';
 @import '@better-giving/operator/styles/base.css';
 @import '@better-giving/operator/styles/adm.css';
 
-/* the whole of /admin's css, and the order it is read in. the four sheets themselves live in
-   packages/operator/src/styles/ — a leaf package both this dashboard and the operator
+/* the whole of /admin's css, and the order it is read in. the five sheets themselves live in
+   packages/operator — fonts.css, tokens.css, base.css and adm.css in src/styles/, and the registry's
+   variables.css copied into src/registry/styles/ — a leaf package both this dashboard and the operator
    console import from, so a sheet has one copy and one owner rather than a fork per surface.
    this file is the one place that names the import order, because that order is a fact about
    how /admin is assembled and not a fact any one sheet could state about itself.
@@ -29,15 +31,28 @@
    a sheet that forgets its `@layer` loses its place in the order below; there is nothing for
    it to cross into.
 
-   four sheets and five layers, and the @import order above is the source order inside a
+   five sheets and five layers, and the @import order above is the source order inside a
    layer, which is what settles a tie between two rules of equal specificity. fonts.css
-   registers the faces; tokens.css fills `tokens` with the custom properties the rest read;
-   base.css claims `reset` and the document defaults in `base`; adm.css fills the last
-   two, `elements` with every `.adm-*` the dashboard draws as a thing and `layout` with the
-   shell, the rail, the measured column, the page header and the reflow of any element whose
-   arrangement changes with the width. only `tokens` is written by two of them, and a
-   @font-face carries no cascading declaration, so nothing fonts.css puts there can tie
-   with tokens.css.
+   registers the plain red hat faces in `tokens` and re-points the registry's three face roles
+   there, and tokens.css declares only `--admin-*` names, so nothing either puts there can tie
+   with the other. the registry's variables.css
+   comes next and is unlayered: it declares the design registry's scales and roles
+   (bg-design.json at the repository root records the copied item, and `pnpm design:check`
+   fails when a copied file is edited). its own `@import "./fonts.css"` names a file no lock
+   copies, and ../vite.config.ts resolves it to an empty sheet. tokens.css fills `tokens` with
+   the `--admin-*` names the rest read: every colour, face and control or plane radius an alias onto a registry property, and the type
+   scale, spacing, measures, pill radius, border and focus widths, control metrics and motion
+   literals of its own. the registry carries none of those but durations, and its
+   `--duration-*` scale is not the `--admin-dur-*` one /admin keeps; base.css claims `reset`
+   and the document defaults in `base`; adm.css fills the last two, `elements` with every `.adm-*` the dashboard draws as a thing and
+   `layout` with the shell, the rail, the measured column, the page header and the reflow of
+   any element whose arrangement changes with the width. the registry sheet and the `tokens`
+   layer write disjoint custom properties (`--gray-*` against `--admin-*`) but for the three face
+   roles, `--font-body`, `--font-display` and `--font-mono`, which fonts.css re-points at plain
+   red hat with `!important` so its layer outranks the unlayered registry. the registry sheet
+   also writes one real property, `color-scheme` on
+   `:root` (light, and dark under `.dark`, in ../../operator/src/registry/styles/themes/default.css),
+   and being unlayered it outranks a `color-scheme` any of the five layers sets; none sets one.
 
    `layout` is last so a screen's arrangement of an element outranks that element's own rule
    without either one raising its specificity to say so. a component's scoped <style> block
@@ -45,5 +60,5 @@
    sheets of this document, which is the one place layer order decides anything — and it is
    what lets a page arrange the elements the sheets draw — a scoped block is right for composition that belongs to one
    file, and a component carries adm.css's classes rather than restating those rules in
-   one. there is still no css build step and no extractor anywhere in this: all four sheets
-   are hand-written and layered. */
+   one. there is still no css build step and no extractor anywhere in this: the four operator
+   sheets are hand-written and layered, and the registry's is copied and unlayered. */

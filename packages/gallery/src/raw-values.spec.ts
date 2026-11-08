@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 // packages/app/src/lib/admin/styles/raw-color.spec.ts and .../conformance.spec.ts are the
 // dashboard's two halves of the same arrangement.
 //
-// the four sheets are swept there and not here, and that is the boundary rather than an oversight:
+// the three operator sheets are swept there and not here, and that is the boundary rather than an oversight:
 // they live in packages/operator and one surface reading them twice proves nothing the first
 // reading did not. what this surface owns is its previews and ../app.css, which is where its layer
 // order is declared — a colour written there would outrank the layer every sheet's rule is inside.

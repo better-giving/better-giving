@@ -1,123 +1,80 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { cdp } from 'vitest/browser';
+import { documentCss } from '../element';
+import { CARD_THEME } from '../parts';
+import { UNSEEDED } from './brand';
 import tokens from './tokens.css?inline';
 
-// the browser pool, and the only pool that can see any of this. `oklch(from …)` is resolved at
-// computed-value time by a real engine — a lightweight DOM hands the expression back as the
-// string it was given, so an assertion there would be asserting the fixture rather than the
-// ramp. run with `pnpm test:browser`; it is deliberately outside `pnpm test` and outside the
-// deploy gate (see vitest.browser.config.ts).
+// the browser pool, and the only pool that can see any of this. a registry step is an `oklch()`
+// literal behind one or two `var()`s, resolved at computed-value time by a real engine — a
+// lightweight DOM hands the expression back as the string it was given, so an assertion there would
+// be asserting the fixture rather than the ramp. run with `pnpm test:browser`; it is deliberately
+// outside `pnpm test` and outside the deploy gate (see vitest.browser.config.ts).
 //
-// how a token is read here. the `--_` steps are unregistered custom properties, so
-// `getPropertyValue('--_p')` returns the `oklch(from …)` expression rather than a color. every
-// helper below therefore assigns the token to a standard property on a probe element and reads
-// that property back, which is the same thing ./resolve.ts does before anything is handed to a
-// payment provider — what that module then sends is asserted in ./resolve.browser.spec.ts.
+// how a token is read here. the `--_` names are unregistered custom properties, so
+// `getPropertyValue('--_p')` returns the `var()` it aliases rather than a color. every helper below
+// therefore assigns the token to a standard property on a probe element and reads that property
+// back, which is the same thing ./resolve.ts does before anything is handed to a payment provider —
+// what that module then sends is asserted in ./resolve.browser.spec.ts.
 //
-// every colour in ./tokens.css is a step of a radix colors scale
-// (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale). the brand
-// steps read here are the stylesheet's fallback; the scale the element generates over them is held
-// in ../element.browser.spec.ts and, against radix's own generator, in ./radix-scale.spec.ts.
+// every colour in ./tokens.css is a registry variable (../registry/styles/variables.css and the
+// theme it imports). the probe stands where the card's root does — the first node in the shadow
+// root, carrying the registry theme — because that is the node the registry declares its scales on.
+// the accent a seed writes over them is the element's brand sheet (./brand.ts), held in
+// ../element.browser.spec.ts and, against radix's own generator, in ./radix-scale.spec.ts.
 
 const sheet = new CSSStyleSheet();
 sheet.replaceSync(tokens);
 
-/** radix slate, light, from @radix-ui/colors 3.0.0 — the ladder `light` and `cool` draw. */
-const SLATE: Record<string, string> = {
-	'--_n1': '#fcfcfd',
-	'--_n2': '#f9f9fb',
-	'--_n3': '#f0f0f3',
-	'--_n4': '#e8e8ec',
-	'--_n5': '#e0e1e6',
-	'--_n6': '#d9d9e0',
-	'--_n7': '#cdced6',
-	'--_n8': '#b9bbc6',
-	'--_n9': '#8b8d98',
-	'--_n11': '#60646c',
-	'--_n12': '#1c2024'
-};
+/** what the element puts in the document: the seed registrations, and nothing else. */
+const documentSheet = new CSSStyleSheet();
+documentSheet.replaceSync(documentCss(tokens));
 
-/** the slate steps the card declares, lightest first. */
-const RUNGS = Object.keys(SLATE);
+/** the neutral steps the card declares, lightest first, and the registry step each one is. */
+const RUNGS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '11', '12'].map((n) => [
+	`--_n${n}`,
+	`--gray-${n}`
+]);
 
-/** the brand scale's declared steps, the solid pair and the ink on it. */
-const BRAND = ['--_a8', '--_p', '--_p-hover', '--_a11', '--_a12', '--_on-p'];
-
-/** fixed literals with no relation to any seed: a refusal is drawn alike whatever a host seeded. */
-const SEMANTIC = ['--_bad', '--_bad-edge', '--_bad-tint', '--_warn-tint', '--_warn-ink'];
-
-const NETWORK = [0, 1, 2, 3, 4, 5].flatMap((n) => [`--_net-${n}-tint`, `--_net-${n}-ink`]);
-
-const COLOR_TOKENS = [
-	...BRAND,
-	...RUNGS,
-	'--_edge-control',
-	'--_edge-unavailable',
-	'--_focus-ring',
-	...SEMANTIC,
-	...NETWORK
+/** the brand aliases, and the registry accent each one is. */
+const BRAND = [
+	['--_a8', '--accent-8'],
+	['--_a11', '--accent-11'],
+	['--_a12', '--accent-12'],
+	['--_p', '--accent-9'],
+	['--_p-hover', '--accent-10'],
+	['--_on-p', '--accent-contrast']
 ];
 
-/** the registered `initial-value` of the seed: slate's step 12. */
-const DEFAULT_SEED = '#1c2024';
-
-/**
- * a spread of seeds every brand reading is made across: the default, radix's own step 9s (its deep
- * hues, the ones it draws white on, and the light ones it draws dark ink on), and the seeds no radix
- * scale holds — a pastel, a neon outside sRGB, a near-black, white and a mid grey.
- */
-const SEEDS: readonly (readonly [string, string])[] = [
-	['the default', ''],
-	['radix blue', '#0090ff'],
-	['radix violet', '#6e56cf'],
-	['radix purple', '#8e4ec6'],
-	['radix red', '#e5484d'],
-	['radix orange', '#f76b15'],
-	['radix grass', '#46a758'],
-	['radix teal', '#12a594'],
-	['radix yellow', '#ffe629'],
-	['radix amber', '#ffc53d'],
-	['radix sky', '#7ce2fe'],
-	['a pastel pink', '#ffd1dc'],
-	['a neon green outside sRGB', 'oklch(0.92 0.28 140)'],
-	['a near-black navy', '#0b1d3a'],
-	['white', '#ffffff'],
-	['a mid grey', '#808080']
+/** refusal and attention, and the registry role each one is: none moves with a seed. */
+const SEMANTIC = [
+	['--_bad', '--destructive-subtle-fg'],
+	['--_bad-edge', '--destructive'],
+	['--_bad-tint', '--destructive-subtle'],
+	['--_warn-tint', '--warning-subtle'],
+	['--_warn-ink', '--warning-subtle-fg']
 ];
 
-/** the three shade presets: a preset moves every grey on the card at once. */
-const SHADES = ['light', 'warm', 'cool'] as const;
+/** the edges, and the registry role each one is. */
+const EDGES = [
+	['--_edge-control', '--input'],
+	['--_edge-unavailable', '--input'],
+	['--_focus-ring', '--ring']
+];
 
-/** radix sand, light, from @radix-ui/colors 3.0.0 — the ladder `warm` draws. */
-const SAND: Record<string, string> = {
-	'--_n1': '#fdfdfc',
-	'--_n2': '#f9f9f8',
-	'--_n3': '#f1f0ef',
-	'--_n4': '#e9e8e6',
-	'--_n5': '#e2e1de',
-	'--_n6': '#dad9d6',
-	'--_n7': '#cfceca',
-	'--_n8': '#bcbbb5',
-	'--_n9': '#8d8d86',
-	'--_n11': '#63635e',
-	'--_n12': '#21201c'
-};
+const ALIASES = [...RUNGS, ...BRAND, ...SEMANTIC, ...EDGES];
 
-/** the radix scale each shade preset draws its greys from. */
-const LADDER_OF: Record<(typeof SHADES)[number], Record<string, string>> = {
-	light: SLATE,
-	warm: SAND,
-	cool: SLATE
-};
+const COLOR_TOKENS = ALIASES.map(([token]) => token as string);
 
 let host: HTMLElement;
 let probe: HTMLElement;
 let hostStyle: HTMLStyleElement;
 
 beforeEach(() => {
-	// the two trees the element has to put this sheet in, and both are load-bearing: the shadow
-	// root is where `:host` applies, and the document is the only tree `@property` registrations
-	// are collected from.
-	document.adoptedStyleSheets = [sheet];
+	// the two trees the element puts its sheets in, and both are load-bearing: the shadow root is
+	// where `:host` and the card's theme apply, and the document is the only tree `@property`
+	// registrations and `@font-face` rules are collected from.
+	document.adoptedStyleSheets = [documentSheet];
 
 	host = document.createElement('div');
 	host.id = 'donate-host';
@@ -127,6 +84,7 @@ beforeEach(() => {
 	shadow.adoptedStyleSheets = [sheet];
 
 	probe = document.createElement('div');
+	probe.setAttribute('data-theme', CARD_THEME);
 	shadow.appendChild(probe);
 
 	// a stylesheet in the outer document, targeting the host element — the path an org's own
@@ -146,11 +104,6 @@ afterEach(() => {
 /** what a host page wrote on the element. */
 function seed(declarations: string): void {
 	hostStyle.textContent = `#donate-host { ${declarations} }`;
-}
-
-/** a seed as a declaration, or nothing for the default. */
-function brand(value: string): string {
-	return value === '' ? '' : `--donate-primary: ${value};`;
 }
 
 /** resolves one declaration against the real cascade and reads a property back off it. */
@@ -224,33 +177,51 @@ function lengthOf(token: string): string {
 	return computed(`padding-left: var(${token})`, 'padding-left');
 }
 
-describe('the seed registrations', () => {
-	it('registers only from the document tree', () => {
-		// the sheet is still adopted into the shadow root, so `:host` still applies and the ramp
-		// is still declared — but with nothing registering `--donate-primary` there is no initial
-		// value behind it, and every step derived from it is invalid at computed-value time.
-		// a host who seeded nothing is the common case, so this is a card drawn with no brand on it
-		// at all rather than one drawn in the registered default.
+describe('the document sheet', () => {
+	it('registers the seed only from the document tree', () => {
+		// the token sheet is still adopted into the shadow root, so its `@property` rules are still
+		// in a sheet the card reads — and an engine ignores them there. with nothing registering
+		// `--donate-primary`, an unseeded card computes no default to tell a seed from.
 		document.adoptedStyleSheets = [];
+		expect(computed('', '--donate-primary').trim()).toBe('');
 
-		expect(parseOklch(oklchString('--_p'))).toBeNull();
+		document.adoptedStyleSheets = [documentSheet];
+		expect(computed('', '--donate-primary').trim()).toBe(UNSEEDED);
 	});
 
-	it('resolves the ramp once the document tree has them', () => {
-		expect(parseOklch(oklchString('--_p'))).not.toBeNull();
+	// the card loads no web font, so the document gets the seed registrations and no face: a
+	// `@font-face` here would be a face fetched onto a stranger's page.
+	it('registers no face in the host document', () => {
+		document.adoptedStyleSheets = [documentSheet];
+
+		expect([...document.fonts]).toEqual([]);
+		expect(documentCss(tokens)).not.toMatch(/@font-face/);
+	});
+
+	it('declares nothing on the host page', () => {
+		const outside = document.createElement('div');
+		document.body.appendChild(outside);
+		const reaching = ['--gray-1', '--accent-9', '--primary', '--_n1'].filter(
+			(name) => getComputedStyle(outside).getPropertyValue(name) !== ''
+		);
+		outside.remove();
+
+		expect(reaching).toEqual([]);
 	});
 });
 
 describe('the light-DOM card root', () => {
 	// the deployment draws this card on its own page in the document tree rather than in a shadow
-	// root, so `[data-donate-root]` is the second selector on the ladder. the pair of cases is the
-	// whole of what that selector is allowed to do: declare the private layer where the card is,
-	// and nowhere else on a document that adopted this sheet.
+	// root, so `[data-donate-root]` is the second selector on the ladder, and that page links the
+	// whole token file, whose registry `:root` block declares the scales there. the pair of cases is
+	// the whole of what the selector is allowed to do: declare the private layer where the card is,
+	// and nowhere else on the document.
 	let root: HTMLElement;
 	let card: HTMLElement;
 	let outside: HTMLElement;
 
 	beforeEach(() => {
+		document.adoptedStyleSheets = [sheet];
 		root = document.createElement('div');
 		root.setAttribute('data-donate-root', '');
 		card = document.createElement('div');
@@ -272,17 +243,42 @@ describe('the light-DOM card root', () => {
 		return parseOklch(getComputedStyle(element).getPropertyValue('color')) !== null;
 	}
 
+	// light only (the head of ./tokens.css): the registry theme has no `prefers-color-scheme` branch,
+	// and its one dark switch on this page is a `.dark` class on `<html>`, which nothing in the app
+	// sets. so a visitor whose system is dark gets the light page.
+	it('stays light for a visitor whose system prefers dark', async () => {
+		const names = ['--accent-1', '--accent-12', '--gray-1', '--gray-12'];
+		const read = () => names.map((name) => getComputedStyle(card).getPropertyValue(name));
+		const light = read();
+
+		const session = cdp();
+		await session.send('Emulation.setEmulatedMedia', {
+			features: [{ name: 'prefers-color-scheme', value: 'dark' }]
+		});
+		onTestFinished(async () => {
+			await session.send('Emulation.setEmulatedMedia', {
+				features: [{ name: 'prefers-color-scheme', value: 'light' }]
+			});
+			document.documentElement.classList.remove('dark');
+		});
+		expect(matchMedia('(prefers-color-scheme: dark)').matches).toBe(true);
+		expect(read()).toEqual(light);
+
+		// the read is live: the class on `<html>` is what moves it.
+		document.documentElement.classList.add('dark');
+		expect(read()).not.toEqual(light);
+	});
+
 	it('declares the ladder under a root carrying the attribute', () => {
 		expect(resolvesOn(card, '--_p')).toBe(true);
 		expect(resolvesOn(card, '--_n12')).toBe(true);
 	});
 
-	// the presets switch on the node under the root, so a page can set them at its own root and the
-	// card follows — the same reading an embedding page gets by setting them above the element.
-	it('switches the presets a page sets above the root', () => {
-		hostStyle.textContent = 'body { --donate-shade: warm; --donate-corner: round; }';
-		card.style.cssText = 'color: var(--_n1); padding-left: var(--_r)';
-		expect(bytes(getComputedStyle(card).color)).toEqual(bytes(SAND['--_n1'] as string));
+	// the preset switches on the node under the root, so a page can set it at its own root and the
+	// card follows — the same reading an embedding page gets by setting it above the element.
+	it('switches the corner a page sets above the root', () => {
+		hostStyle.textContent = 'body { --donate-corner: round; }';
+		card.style.cssText = 'padding-left: var(--_r)';
 		expect(getComputedStyle(card).paddingLeft).toBe('24px');
 	});
 
@@ -295,140 +291,57 @@ describe('the light-DOM card root', () => {
 	});
 });
 
-describe('the derived ramp', () => {
-	it.each(SEEDS)('resolves every step to a real color for %s', (_name, value) => {
-		seed(brand(value));
+describe('the colour layer', () => {
+	it('resolves every alias to a real color', () => {
 		const unresolved = COLOR_TOKENS.filter((token) => parseOklch(oklchString(token)) === null);
 
 		expect(unresolved).toEqual([]);
 	});
 
-	it('carries the seed’s hue through every brand step', () => {
-		seed('--donate-primary: oklch(0.5 0.14 300);');
-
-		for (const token of BRAND.filter((name) => name !== '--_on-p')) {
-			expect(oklchOf(token).h, token).toBeCloseTo(300, 0);
-		}
+	// every colour on the card is the registry's: each alias paints exactly the registry variable it
+	// names, at the screen's own resolution.
+	it.each(ALIASES)('paints %s as the registry’s %s', (token, registry) => {
+		expect(bytes(token as string)).toEqual(bytes(registry as string));
 	});
 
-	it('leaves the neutral steps alone whatever the brand is', () => {
-		// the ladder is the form's own and the seed reaches none of it, which is what makes every
-		// neutral reading a single number whatever the seed. a derivation
-		// accidentally reintroduced would show up here as a step following the brand.
+	it('reads the registry’s default theme on a card nobody seeded', () => {
+		// the theme file's own step 9 and grey step 1, which the card face and the action are drawn in.
+		expect(bytes('--_p')).toEqual(bytes(UNSEEDED));
+		expect(bytes('--_n1')).toEqual(bytes('#fbfcfe'));
+	});
+
+	// a host's own registry, or any page that names its variables the registry's way, stops at the
+	// card's root: the theme declares its own there, so nothing a page sets above reaches the card.
+	it('takes none of a host page’s registry-named variables', () => {
+		seed('--gray-1: #ff0000; --accent-9: #00ff00; --primary: #0000ff; --ring: #ff00ff;');
+
+		expect(bytes('--_n1')).toEqual(bytes('#fbfcfe'));
+		expect(bytes('--_p')).toEqual(bytes(UNSEEDED));
+		expect(bytes('--primary')).toEqual(bytes(UNSEEDED));
+		expect(bytes('--_focus-ring')).toEqual(bytes('--accent-11'));
+	});
+
+	it('leaves every alias alone whatever the seed is, which only the brand sheet moves', () => {
 		seed('--donate-primary: oklch(0.5 0.25 300);');
-		const seeded = RUNGS.map(oklchString);
+		const seeded = COLOR_TOKENS.map(oklchString);
 		seed('');
 
-		expect(RUNGS.map(oklchString)).toEqual(seeded);
+		expect(COLOR_TOKENS.map(oklchString)).toEqual(seeded);
 	});
 });
 
 describe('the neutral ladder', () => {
-	// each shade is a published radix grey copied step for step, at the screen's own resolution.
-	it.each(SHADES)('is the radix scale %s names', (shade) => {
-		seed(`--donate-shade: ${shade};`);
-		const ladder = LADDER_OF[shade];
-
-		expect(RUNGS.map(bytes)).toEqual(RUNGS.map((token) => bytes(ladder[token] as string)));
-	});
-
-	// slate's and sand's chroma both stay under 0.0195, a trace a donor reads as the card's tone
+	// the registry's grey carries a trace of blue, at a chroma a donor reads as the card's tone
 	// rather than a colour.
-	it.each(SHADES)('gives every step a trace of chroma, never a colour, under %s', (shade) => {
-		seed(`--donate-shade: ${shade};`);
-
-		for (const token of RUNGS) expect(oklchOf(token).c, token).toBeLessThanOrEqual(0.0195);
+	it('gives every step a trace of chroma, never a colour', () => {
+		for (const [token] of RUNGS)
+			expect(oklchOf(token as string).c, token).toBeLessThanOrEqual(0.02);
 	});
 
-	it.each(SHADES)(
-		'runs from lightest to darkest with no step crossing its neighbour under %s',
-		(shade) => {
-			seed(`--donate-shade: ${shade};`);
-			const lightness = RUNGS.map((token) => oklchOf(token).l);
+	it('runs from lightest to darkest with no step crossing its neighbour', () => {
+		const lightness = RUNGS.map(([token]) => oklchOf(token as string).l);
 
-			expect([...lightness].sort((a, b) => b - a)).toEqual(lightness);
-		}
-	);
-});
-
-describe('the brand scale’s fallback', () => {
-	// radix holds the seed as step 9: the brand exactly as the host gave it, at the screen's own
-	// resolution, for every seed inside sRGB.
-	it.each(SEEDS.filter(([, value]) => !value.startsWith('oklch')))(
-		'is the seed itself at step 9 for %s',
-		(_name, value) => {
-			seed(brand(value));
-
-			expect(bytes('--_p')).toEqual(bytes(value === '' ? DEFAULT_SEED : value));
-		}
-	);
-
-	// every other declared step stands at the lightness the table in ./tokens.css gives it, whatever
-	// the seed's own lightness. read off the unclipped colour, where the lightness is the one authored.
-	it.each(SEEDS)('sets steps 8, 11 and 12 at fixed lightnesses for %s', (_name, value) => {
-		seed(brand(value));
-
-		expect(oklchOf('--_a8').l).toBeCloseTo(0.729, 3);
-		expect(oklchOf('--_a11').l).toBeCloseTo(0.54, 3);
-		expect(oklchOf('--_a12').l).toBeCloseTo(0.326, 3);
-	});
-
-	// step 10 is the seed moved 0.03 in lightness: darker, as every radix scale's is, and lighter
-	// under a seed darker than 0.4, where a darker step would be no change a donor sees.
-	it.each([
-		['a mid seed', 'oklch(0.6 0.15 250)', 0.57],
-		['a light seed', 'oklch(0.9 0.15 100)', 0.87],
-		['a dark seed', 'oklch(0.3 0.1 250)', 0.33],
-		['the default', '', 0.271]
-	])('moves step 10 off step 9 for %s', (_name, value, expected) => {
-		seed(brand(value));
-
-		expect(oklchOf('--_p-hover').l).toBeCloseTo(expected, 2);
-		expect(bytes('--_p-hover')).not.toEqual(bytes('--_p'));
-	});
-
-	// an unseeded card's brand scale is slate's hue at slate's trace of chroma: no hue a host did
-	// not ask for.
-	it('draws no brand hue beyond slate’s trace when nothing is seeded', () => {
-		seed('');
-
-		for (const token of BRAND) expect(oklchOf(token).c, token).toBeLessThanOrEqual(0.0195);
-	});
-});
-
-describe('the edges', () => {
-	// every box a donor operates is found by slate's step 7, radix's border for an interactive
-	// component, and steps to 8 under the pointer: radix's step 7 taken as it is.
-	it('draws every box outline at step 7', () => {
-		seed('');
-
-		expect(bytes('--_edge-control')).toEqual(bytes('--_n7'));
-	});
-
-	// the decision itself, not a consequence of it: at a boundary, unavailable is drawn at exactly
-	// the available value. no control here is ever rendered `disabled` (../checkout.machine.ts), so
-	// an unavailable one is still focusable and a donor can tab onto a shape and ring it. it is
-	// carried in the stroke's pattern instead (`.step-mark` in ./parts.css).
-	it('draws an unavailable boundary at exactly the available one', () => {
-		seed('');
-
-		expect(bytes('--_edge-unavailable')).toEqual(bytes('--_edge-control'));
-	});
-
-	// the focus ring is the brand's step 8, the step radix gives a focus ring, and never its fill.
-	it.each(SEEDS)('draws the focus ring at the brand’s step 8 for %s', (_name, value) => {
-		seed(brand(value));
-
-		expect(bytes('--_focus-ring')).toEqual(bytes('--_a8'));
-	});
-
-	// a refused control is drawn at red 8 and named in red 11: two steps of one hue, each on its
-	// own job.
-	it('draws a refusal’s edge and its words at two steps of red', () => {
-		seed('');
-
-		expect(bytes('--_bad-edge')).toEqual(bytes('#eb8e90'));
-		expect(bytes('--_bad')).toEqual(bytes('#ce2c31'));
+		expect([...lightness].sort((a, b) => b - a)).toEqual(lightness);
 	});
 });
 
@@ -436,51 +349,43 @@ describe('a malformed seed', () => {
 	it("falls back to the seed's initial value", () => {
 		seed('--donate-primary: not-a-color;');
 
-		expect(bytes('--donate-primary')).toEqual(bytes(DEFAULT_SEED));
+		expect(bytes('--donate-primary')).toEqual(bytes(UNSEEDED));
 	});
 
 	it('leaves the rest of the ramp resolving past a bad seed', () => {
-		// unregistered, this is the case that shreds the form: the bad value substitutes into
-		// every `oklch(from …)`, each one is invalid at computed-value time, and every dependent
-		// property falls back to `unset`.
 		seed('--donate-primary: 12px;');
 		const unresolved = COLOR_TOKENS.filter((token) => parseOklch(oklchString(token)) === null);
 
 		expect(unresolved).toEqual([]);
 	});
-
-	it('renders the same ramp a host who set nothing gets', () => {
-		seed('');
-		const unseeded = BRAND.map(bytes);
-		seed('--donate-primary: rgb(0 0);');
-
-		expect(BRAND.map(bytes)).toEqual(unseeded);
-	});
 });
 
 describe('the card the form draws for itself', () => {
-	// what the card draws when a host sets nothing: the brand moves none of it, and the two presets
-	// that move the ground and the corners are at their initial values. a rule that let the brand
-	// reach one of these shows up here as a value that moved.
-	it('paints the card at slate’s step 1 whatever the brand is', () => {
-		seed('--donate-primary: oklch(0.45 0.2 265);');
-
-		expect(bytes('--_n1')).toEqual(bytes('#fcfcfd'));
-	});
-
-	it('draws the two corners the whole card is built from', () => {
+	it('draws the two corners the whole card is built from, the registry’s pair', () => {
 		seed('');
 
+		expect(lengthOf('--_r')).toBe(lengthOf('--radius-card'));
+		expect(lengthOf('--_r-in')).toBe(lengthOf('--radius-control'));
 		expect(lengthOf('--_r')).toBe('12px');
 		expect(lengthOf('--_r-in')).toBe('6px');
 	});
 
-	it('sets the form in the platform stack and loads no face of its own', () => {
-		seed('');
-		const stack = computed('font-family: var(--_font)', 'font-family');
+	// the face is the host page's: the card declares no family of its own, so what the page gives the
+	// element is what the card's words are set in, fallbacks and all.
+	it('sets the card in the face the host page gives the element', () => {
+		seed("font-family: Georgia, 'Times New Roman', serif;");
 
-		expect(stack).toContain('system-ui');
-		expect(stack.endsWith('sans-serif')).toBe(true);
+		expect(computed('', 'font-family')).toBe(getComputedStyle(host).fontFamily);
+		expect(computed('', 'font-family')).toContain('Georgia');
+	});
+
+	// the one face it does name is the platform's monospace, for the strings a donor checks character
+	// by character, and it loads nothing.
+	it('sets a checked string in the platform’s monospace', () => {
+		const mono = computed('font-family: var(--_font-mono)', 'font-family');
+
+		expect(mono.startsWith('ui-monospace')).toBe(true);
+		expect(mono.endsWith('monospace')).toBe(true);
 	});
 
 	// the one shape outside the two-corner pair: the switch is a pill, which is the exception
@@ -496,33 +401,23 @@ describe('the card the form draws for itself', () => {
 	});
 });
 
-describe('the shade seed', () => {
-	// the registration makes a keyword off the list invalid at computed-value time, so with nothing
-	// above setting one what computes is the initial value, the card a host who set nothing gets.
-	it('draws today’s ladder for a shade off the list', () => {
-		seed('');
-		const unseeded = RUNGS.map(oklchString);
-		seed('--donate-shade: dark;');
-
-		expect(RUNGS.map(oklchString)).toEqual(unseeded);
-	});
-});
-
 describe('the corner seed', () => {
-	// the card's corner, the corner of a control inside a box on it, the tick box's, which follows
-	// the inner corner up to `soft`'s and no further so it never rounds toward a radio, and where a
-	// floated label's band starts, which follows it down to `soft`'s and no further so a square box
-	// keeps its edge.
+	// the card's corner, the corner of a control inside a box on it — the registry's own controls
+	// read it as `--radius` — the tick box the form draws, which follows the inner corner up to
+	// `soft`'s and no further so it never rounds toward a radio, and where a floated label's band
+	// starts, which follows it down to `soft`'s and no further so a square box keeps its edge.
 	it.each([
-		['square', ['0px', '0px', '0px', '6px']],
-		['soft', ['12px', '6px', '6px', '6px']],
-		['round', ['24px', '12px', '6px', '12px']],
-		['a corner off the list', ['12px', '6px', '6px', '6px']]
+		['square', ['0px', '0px', '0px', '0px', '6px']],
+		['soft', ['12px', '6px', '6px', '6px', '6px']],
+		['round', ['24px', '12px', '12px', '6px', '12px']],
+		['a corner off the list', ['12px', '6px', '6px', '6px', '6px']]
 	])('draws %s', (name, corners) => {
 		const corner = name.includes(' ') ? 'pill' : name;
 		seed(`--donate-corner: ${corner};`);
 
-		expect(['--_r', '--_r-in', '--_r-box', '--_label-inset'].map(lengthOf)).toEqual(corners);
+		expect(['--_r', '--_r-in', '--radius', '--_r-box', '--_label-inset'].map(lengthOf)).toEqual(
+			corners
+		);
 	});
 });
 

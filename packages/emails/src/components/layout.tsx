@@ -38,9 +38,9 @@ import {
 // every value here comes from ../tokens.ts, which holds the operator design system as a client
 // renders it — a hex triple, checked, and a pixel count, converted — because a mail resolves no
 // custom property and no colour function. the type stacks come over whole, self-hosted first face
-// included: a mail client fetches nothing, so that face is never found and the stack falls through
-// to the platform's own, which is how these mails are set in the system's stack without the web
-// font this shell may not grow.
+// included, and no web font is linked for it: a client that walks the list sets the platform's own
+// face, and Outlook for Windows, which reads the first name alone, sets Times New Roman
+// (fontStack in ../tokens.ts).
 
 /**
  * the base type styling.

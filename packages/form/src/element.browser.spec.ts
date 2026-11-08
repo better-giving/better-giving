@@ -4,15 +4,15 @@ import { createCoinPicker } from './coin-picker';
 import { PRE_UPGRADE_RESERVATION_CSS, RESERVED_MIN_HEIGHT } from './embed/reservation';
 import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
-import { BRAND_TOKENS } from './styles/brand';
-import { type BrandGray, generateBrandScale } from './styles/radix-scale';
+import { BRAND_TOKENS, UNSEEDED } from './styles/brand';
+import { generateBrandScale } from './styles/radix-scale';
 import type { FormConfig, PaymentMethod } from './v1';
 
 // what a lightweight DOM cannot see about the element, all of it engine behaviour:
 //
 //  - its stylesheets: which document a constructed sheet belongs to, and what a card renders as when
 //    the `@property` registrations its seeds derive from are not in the tree — the whole reason
-//    `sheetsFor` puts a second copy of the token sheet in the document at all.
+//    `sheetsFor` puts a sheet of its own in the document at all.
 //  - the box a host page holds before upgrade, which is a used box and needs a layout.
 //  - the closed choices operated by pointer and keyboard, and where the open list stands over a
 //    host box that clips.
@@ -172,7 +172,7 @@ afterEach(() => {
 });
 
 describe('the element in a second document', () => {
-	// the premise behind rebuilding all five sheets rather than re-assigning the ones the shadow root
+	// the premise behind rebuilding all six sheets rather than re-assigning the ones the shadow root
 	// is already holding: they belong to the document they were constructed in and no other will take
 	// them (https://developer.mozilla.org/en-US/docs/Web/API/Document/adoptedStyleSheets).
 	it('cannot hand a document a sheet constructed in another one', () => {
@@ -185,9 +185,9 @@ describe('the element in a second document', () => {
 		}).toThrow(/not allowed/i);
 	});
 
-	// so the callback rebuilds, and what it is rebuilding for is the second adoption: `@property`
-	// registrations are collected from the document tree, and a card whose seeds have no initial
-	// value paints as nothing at all on a page whose host set none.
+	// so the callback rebuilds, and what it is rebuilding for is the document sheet: `@property`
+	// registrations are collected from the document tree, and a card whose seed has no initial value
+	// cannot tell a host's seed from none.
 	it('paints in the document it was adopted into', async () => {
 		const host = await mount();
 		const painted = background(host);
@@ -196,7 +196,7 @@ describe('the element in a second document', () => {
 		await settle();
 
 		expect(host.ownerDocument).toBe(other);
-		expect(host.shadowRoot?.adoptedStyleSheets).toHaveLength(5);
+		expect(host.shadowRoot?.adoptedStyleSheets).toHaveLength(6);
 		expect(background(host)).toBe(painted);
 	});
 });
@@ -1059,35 +1059,48 @@ describe('the other tile by keyboard and by pointer', () => {
 });
 
 // the brand scale is radix's custom-palette generator run on the seed the host computes
-// (./styles/radix-scale.ts), set on the shadow host before first paint and again when the seed
-// moves. read as painted bytes on both sides, so the hex block and the display-p3 block are each
-// held to the generator's output for whichever one this screen takes.
+// (./styles/radix-scale.ts), written as the registry's accent variables on the card's root before
+// first paint and again when the seed moves. read as painted bytes on both sides, so the hex block and
+// the display-p3 block are each held to the generator's output for whichever one this screen takes.
 describe('the brand scale the element generates', () => {
-	/** the scale this screen should paint for a seed, by token. */
-	function expected(seed: string, gray: BrandGray = 'slate'): Record<string, string> {
-		const scale = generateBrandScale(seed, gray);
+	/** the scale this screen should paint for a seed, by registry name. */
+	function expected(seed: string): Record<string, string> {
+		const scale = generateBrandScale(seed);
 		if (scale === null) throw new Error(`${seed} is a seed the generator reads`);
 		const steps = matchMedia('(color-gamut: p3)').matches ? scale.stepsWideGamut : scale.steps;
-		const all: Record<string, string> = {
-			...Object.fromEntries(steps.map((value, i) => [`--_a${i + 1}`, value])),
-			'--_p': steps[8] as string,
-			'--_p-hover': steps[9] as string,
-			'--_on-p': scale.contrast
-		};
-		return Object.fromEntries(BRAND_TOKENS.map((token) => [token, all[token] as string]));
+		return Object.fromEntries(
+			BRAND_TOKENS.map((token, i) => [token, i < 12 ? (steps[i] as string) : scale.contrast])
+		);
 	}
 
-	/** a colour, or a token resolved inside the card, as the sRGB bytes a canvas paints it in. */
+	/**
+	 * a colour, or a variable resolved inside the card's root, as the sRGB bytes a canvas paints it
+	 * in. inside the root, because that is the node the registry's variables are declared on.
+	 */
 	function bytes(host: HTMLElement, colour: string): number[] {
 		const probe = document.createElement('div');
 		probe.style.color = colour.startsWith('--') ? `var(${colour})` : colour;
-		host.shadowRoot?.appendChild(probe);
+		const root = host.shadowRoot?.querySelector('[data-theme]');
+		if (root === null || root === undefined) throw new Error('the card carries no registry theme');
+		root.appendChild(probe);
 		const used = getComputedStyle(probe).color;
 		probe.remove();
 		const surface = document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D;
 		surface.fillStyle = used;
 		surface.fillRect(0, 0, 1, 1);
 		return Array.from(surface.getImageData(0, 0, 1, 1).data.slice(0, 3));
+	}
+
+	/** every accent variable the sheet writes, held to the scale, and the roles that alias them. */
+	function paints(host: HTMLElement, scale: Record<string, string>): void {
+		for (const [token, value] of Object.entries(scale)) {
+			expect(bytes(host, token), token).toEqual(bytes(host, value));
+		}
+		// the registry's roles are declared on the same node and follow by substitution
+		expect(bytes(host, '--primary')).toEqual(bytes(host, scale['--accent-9'] as string));
+		expect(bytes(host, '--primary-fg')).toEqual(bytes(host, scale['--accent-contrast'] as string));
+		expect(bytes(host, '--ring')).toEqual(bytes(host, scale['--accent-11'] as string));
+		expect(bytes(host, '--_p')).toEqual(bytes(host, scale['--accent-9'] as string));
 	}
 
 	function seedAbove(seed: string): void {
@@ -1097,38 +1110,50 @@ describe('the brand scale the element generates', () => {
 		});
 	}
 
+	// unseeded, the sheet writes nothing and the card is the registry's default theme, which is the
+	// generator's own output for the registry's seed (./styles/radix-scale.spec.ts), in sRGB.
+	it('paints the registry’s default theme for a card nobody seeded', async () => {
+		const host = await mount();
+		const scale = generateBrandScale(UNSEEDED);
+		if (scale === null) throw new Error('the registered default is a seed the generator reads');
+
+		const brand = shadow(host).adoptedStyleSheets[5];
+		expect([...(brand?.cssRules ?? [])].map((rule) => rule.constructor.name)).toEqual([
+			'CSSKeyframesRule'
+		]);
+		paints(
+			host,
+			Object.fromEntries(
+				BRAND_TOKENS.map((token, i) => [
+					token,
+					i < 12 ? (scale.steps[i] as string) : scale.contrast
+				])
+			)
+		);
+	});
+
 	it.each([
-		['the default', '', '#1c2024'],
-		['purple', '#8e4ec6', '#8e4ec6'],
-		['red', '#e5484d', '#e5484d'],
-		['yellow', '#ffe629', '#ffe629'],
-		['a display-p3 neon', 'color(display-p3 0 1 0)', 'color(display-p3 0 1 0)']
-	])('paints the generated scale for %s', async (_name, seed, generatedFrom) => {
-		if (seed !== '') seedAbove(seed);
+		['purple', '#8e4ec6'],
+		['red', '#e5484d'],
+		['yellow', '#ffe629'],
+		['a display-p3 neon', 'color(display-p3 0 1 0)']
+	])('paints the generated scale for %s', async (_name, seed) => {
+		seedAbove(seed);
 		const host = await mount();
 
-		for (const [token, value] of Object.entries(expected(generatedFrom))) {
-			expect(bytes(host, token), token).toEqual(bytes(host, value));
-		}
+		paints(host, expected(seed));
 	});
 
 	it('follows a seed the host changes after mount', async () => {
 		const host = await mount();
 		host.style.setProperty('--donate-primary', '#e5484d');
 		const scale = expected('#e5484d');
-		// `--_p` is the seed itself in the fallback and in the generator's step 9 for this seed, so
-		// the wait is on `--_a8`, which the fallback derives to another colour (./styles/tokens.css).
-		expect(bytes(host, 'oklch(from #e5484d 0.729 calc(c * 0.73) h)')).not.toEqual(
-			bytes(host, scale['--_a8'] as string)
-		);
 		// set from a transition the change starts (./styles/brand.ts), which reports a frame or more on
 		await vi.waitFor(() => {
-			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+			expect(bytes(host, '--accent-8')).toEqual(bytes(host, scale['--accent-8'] as string));
 		});
 
-		for (const [token, value] of Object.entries(scale)) {
-			expect(bytes(host, token), token).toEqual(bytes(host, value));
-		}
+		paints(host, scale);
 	});
 
 	// a closed <dialog>, a hidden tab panel: nothing under `display: none` starts a transition, so the
@@ -1145,11 +1170,9 @@ describe('the brand scale the element generates', () => {
 		panel.hidden = false;
 		const scale = expected('#e5484d');
 		await vi.waitFor(() => {
-			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+			expect(bytes(host, '--accent-8')).toEqual(bytes(host, scale['--accent-8'] as string));
 		});
-		for (const [token, value] of Object.entries(scale)) {
-			expect(bytes(host, token), token).toEqual(bytes(host, value));
-		}
+		paints(host, scale);
 	});
 
 	// a closed <details> and a `content-visibility: hidden` box render nothing of what is under them
@@ -1180,11 +1203,9 @@ describe('the brand scale the element generates', () => {
 		show(box);
 		const scale = expected('#e5484d');
 		await vi.waitFor(() => {
-			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+			expect(bytes(host, '--accent-8')).toEqual(bytes(host, scale['--accent-8'] as string));
 		});
-		for (const [token, value] of Object.entries(scale)) {
-			expect(bytes(host, token), token).toEqual(bytes(host, value));
-		}
+		paints(host, scale);
 	});
 
 	it('paints each card its own scale when two on one page have different seeds', async () => {
@@ -1202,21 +1223,17 @@ describe('the brand scale the element generates', () => {
 
 		const redScale = expected('#e5484d');
 		const purpleScale = expected('#8e4ec6');
-		expect(redScale['--_a8']).not.toEqual(purpleScale['--_a8']);
-		for (const [token, value] of Object.entries(redScale)) {
-			expect(bytes(first, token), token).toEqual(bytes(first, value));
-		}
-		for (const [token, value] of Object.entries(purpleScale)) {
-			expect(bytes(second, token), token).toEqual(bytes(second, value));
-		}
+		expect(redScale['--accent-8']).not.toEqual(purpleScale['--accent-8']);
+		paints(first, redScale);
+		paints(second, purpleScale);
 
 		// and a seed moved on one leaves the other's alone
 		red.style.setProperty('--donate-primary', '#ffe629');
 		const yellowScale = expected('#ffe629');
 		await vi.waitFor(() => {
-			expect(bytes(first, '--_a8')).toEqual(bytes(first, yellowScale['--_a8'] as string));
+			expect(bytes(first, '--accent-8')).toEqual(bytes(first, yellowScale['--accent-8'] as string));
 		});
-		expect(bytes(second, '--_a8')).toEqual(bytes(second, purpleScale['--_a8'] as string));
+		expect(bytes(second, '--accent-8')).toEqual(bytes(second, purpleScale['--accent-8'] as string));
 	});
 
 	// nothing reports a seed that moves off the document, so the repaint is the reconnect's.
@@ -1229,11 +1246,9 @@ describe('the brand scale the element generates', () => {
 
 		const scale = expected('#e5484d');
 		await vi.waitFor(() => {
-			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+			expect(bytes(host, '--accent-8')).toEqual(bytes(host, scale['--accent-8'] as string));
 		});
-		for (const [token, value] of Object.entries(scale)) {
-			expect(bytes(host, token), token).toEqual(bytes(host, value));
-		}
+		paints(host, scale);
 	});
 
 	// the watch's transition runs over `--_dur-spin`, the one duration reduced motion leaves above
@@ -1253,74 +1268,147 @@ describe('the brand scale the element generates', () => {
 		// the watch's own first animationstart arrives a frame after the mount and would repaint
 		// whatever seed stands then, so the change waits until that has passed.
 		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-		expect(bytes(host, '--_a8')).toEqual(bytes(host, expected('#1c2024')['--_a8'] as string));
+		const red = expected('#e5484d');
+		expect(bytes(host, '--accent-8')).not.toEqual(bytes(host, red['--accent-8'] as string));
 		host.style.setProperty('--donate-primary', '#e5484d');
 
-		const scale = expected('#e5484d');
 		await vi.waitFor(() => {
-			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+			expect(bytes(host, '--accent-8')).toEqual(bytes(host, red['--accent-8'] as string));
 		});
-		for (const [token, value] of Object.entries(scale)) {
-			expect(bytes(host, token), token).toEqual(bytes(host, value));
-		}
+		paints(host, red);
 	});
 
 	// the sheets are rebuilt for the document the element lands in: the brand one is generated from
 	// the seed that document gives, and constructed in that document's realm.
 	it('regenerates the brand sheet from the seed of the document it is moved into', async () => {
 		const host = await mount();
+		const before = bytes(host, '--accent-8');
 		const other = otherDocument();
 		other.body.style.setProperty('--donate-primary', '#8e4ec6');
 		other.body.appendChild(host);
 		await settle();
 
 		const sheets = shadow(host).adoptedStyleSheets;
-		expect(sheets).toHaveLength(5);
-		expect(sheets[4]).toBeInstanceOf(
+		expect(sheets).toHaveLength(6);
+		expect(sheets[5]).toBeInstanceOf(
 			(other.defaultView as Window & typeof globalThis).CSSStyleSheet
 		);
 		const scale = expected('#8e4ec6');
-		expect(scale['--_a8']).not.toEqual(expected('#1c2024')['--_a8']);
-		for (const [token, value] of Object.entries(scale)) {
-			expect(bytes(host, token), token).toEqual(bytes(host, value));
-		}
+		expect(bytes(host, scale['--accent-8'] as string)).not.toEqual(before);
+		paints(host, scale);
 	});
 
-	// the warm card's greys are sand, and the generator is handed sand's step 9 as its grey there,
-	// which a black seed takes its tint from.
-	it('generates against sand under the warm shade', async () => {
-		seedAbove('#000000');
-		document.body.style.setProperty('--donate-shade', 'warm');
-		onTestFinished(() => {
-			document.body.style.removeProperty('--donate-shade');
-		});
+	// light only (./styles/tokens.css): the registry's dark blocks are copied but reached through a
+	// `.dark` ancestor of a `[data-theme]` node, and a selector in a shadow sheet matches nothing in
+	// the host page around it, so a dark host page gets the light card, seeded or not.
+	it.each([
+		{ name: 'unseeded', seed: undefined },
+		{ name: 'seeded', seed: '#0f766e' }
+	])('draws the same $name card under a dark host page', async ({ seed }) => {
+		if (seed !== undefined) seedAbove(seed);
 		const host = await mount();
-
-		for (const [token, value] of Object.entries(expected('#000000', 'sand'))) {
-			expect(bytes(host, token), token).toEqual(bytes(host, value));
-		}
-	});
-
-	it('follows a shade the host changes after mount', async () => {
-		seedAbove('#000000');
-		const host = await mount();
-		host.style.setProperty('--donate-shade', 'warm');
-		const scale = expected('#000000', 'sand');
-		await vi.waitFor(() => {
-			expect(bytes(host, '--_a8')).toEqual(bytes(host, scale['--_a8'] as string));
+		const card = host.shadowRoot?.querySelector<HTMLElement>('[data-theme]');
+		if (card === null || card === undefined) throw new Error('the card carries no registry theme');
+		const names = [
+			...BRAND_TOKENS,
+			...Array.from({ length: 12 }, (_, i) => `--gray-${i + 1}`),
+			'--primary',
+			'--ring'
+		];
+		const drawn = () => ({
+			variables: names.map((name) => bytes(host, name)),
+			card: [getComputedStyle(card).color, getComputedStyle(card).backgroundColor],
+			scheme: getComputedStyle(card).colorScheme
 		});
+		const light = drawn();
 
-		for (const [token, value] of Object.entries(scale)) {
-			expect(bytes(host, token), token).toEqual(bytes(host, value));
-		}
+		const session = cdp();
+		await session.send('Emulation.setEmulatedMedia', {
+			features: [{ name: 'prefers-color-scheme', value: 'dark' }]
+		});
+		document.documentElement.classList.add('dark');
+		document.body.classList.add('dark');
+		onTestFinished(async () => {
+			document.documentElement.classList.remove('dark');
+			document.body.classList.remove('dark');
+			await session.send('Emulation.setEmulatedMedia', {
+				features: [{ name: 'prefers-color-scheme', value: 'light' }]
+			});
+		});
+		expect(matchMedia('(prefers-color-scheme: dark)').matches).toBe(true);
+
+		expect(drawn()).toEqual(light);
+		expect(light.scheme).toBe('light');
+
+		// the read is live: the registry's dark block does apply once the `.dark` is on the card's own
+		// node, which is the one place the host page cannot put it.
+		card.classList.add('dark');
+		expect(drawn()).not.toEqual(light);
+		expect(getComputedStyle(card).colorScheme).toBe('dark');
+		card.classList.remove('dark');
 	});
 
 	// the generator reads what an engine hands back for a registered colour, and a cie lab seed comes
-	// back as lab(); the card keeps ./styles/tokens.css's fallback scale, whose step 9 is the seed.
-	it('keeps the stylesheet’s fallback for a seed the generator does not read', async () => {
+	// back as lab(); the sheet approximates its scale in relative colour (./styles/brand.ts), whose
+	// step 9 is the seed, so the card still carries the host's colour and not the default accent.
+	it('approximates the scale for a seed the generator does not read', async () => {
 		seedAbove('lab(50% 40 30)');
 		const host = await mount();
 
-		expect(bytes(host, '--_p')).toEqual(bytes(host, 'lab(50% 40 30)'));
+		expect(bytes(host, '--accent-9')).toEqual(bytes(host, 'lab(50% 40 30)'));
+		expect(bytes(host, '--primary')).toEqual(bytes(host, 'lab(50% 40 30)'));
+	});
+
+	/** the largest channel gap between two colours' sRGB bytes. */
+	function gap(a: number[], b: number[]): number {
+		return Math.max(...a.map((value, i) => Math.abs(value - (b[i] as number))));
+	}
+
+	function luma([r, g, b]: number[]): number {
+		return (0.2126 * (r as number) + 0.7152 * (g as number) + 0.0722 * (b as number)) / 255;
+	}
+
+	// the approximation is a table of radix's mean steps, so each seed is held to the generator's own
+	// scale for the same colour in sRGB, within the spread between radix's hues (the pale yellow is
+	// the widest, and gets the ink and the darkest step checked on their side instead).
+	describe.each([
+		{ seed: 'lab(50% 40 30)', tolerance: 20 },
+		{ seed: 'lab(30% 20 -50)', tolerance: 20 },
+		{ seed: 'lch(60% 50 200)', tolerance: 20 }
+	])('for the seed $seed', ({ seed, tolerance }) => {
+		it('draws every step and the ink within reach of the generator’s scale for that colour', async () => {
+			seedAbove(seed);
+			const host = await mount();
+			const [r, g, b] = bytes(host, seed);
+			const hex = `#${[r, g, b].map((v) => (v as number).toString(16).padStart(2, '0')).join('')}`;
+			const scale = generateBrandScale(hex);
+			if (scale === null) throw new Error(`${hex} is a seed the generator reads`);
+
+			for (const [i, step] of scale.steps.entries()) {
+				expect(
+					gap(bytes(host, `--accent-${i + 1}`), bytes(host, step)),
+					`--accent-${i + 1}`
+				).toBeLessThanOrEqual(tolerance);
+			}
+			expect(bytes(host, '--accent-contrast'), '--accent-contrast').toEqual(
+				bytes(host, scale.contrast)
+			);
+			// the pressed step reads darker than the fill it presses
+			expect(luma(bytes(host, '--accent-10'))).toBeLessThan(luma(bytes(host, '--accent-9')));
+		});
+	});
+
+	it('inks a pale seed dark, as the generator does for the same yellow', async () => {
+		seedAbove('lab(85% 10 70)');
+		const host = await mount();
+		const [r, g, b] = bytes(host, 'lab(85% 10 70)');
+		const hex = `#${[r, g, b].map((v) => (v as number).toString(16).padStart(2, '0')).join('')}`;
+		const scale = generateBrandScale(hex);
+		if (scale === null) throw new Error(`${hex} is a seed the generator reads`);
+
+		expect(luma(bytes(host, scale.contrast))).toBeLessThan(0.3);
+		expect(luma(bytes(host, '--accent-contrast'))).toBeLessThan(0.3);
+		expect(luma(bytes(host, '--accent-12'))).toBeLessThan(0.3);
+		expect(luma(bytes(host, '--accent-1'))).toBeGreaterThan(0.9);
 	});
 });

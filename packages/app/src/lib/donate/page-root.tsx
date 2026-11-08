@@ -18,16 +18,17 @@ import type { Layout } from '../page/shape';
 // the sections by.
 //
 // the brand colour is the page's only accent, set inline as the `--donate-primary` seed. a page with
-// no brand colour sets none and draws the form's registered grey.
+// no brand colour sets none and writes no scale, and draws the registry's default theme, whose
+// accent is a blue (`--accent-9` in packages/form/src/registry/styles/themes/default.css).
 //
 // the brand scale is radix's custom-palette generator run on that colour, the module the element
 // runs on its own seed (packages/form/src/styles/radix-scale.ts), so a donor page and an embedded
 // form draw one scale from one colour. it is rendered here, on the server, as a `<style>` setting
-// `--_a1`…`--_a12`, `--_p`, `--_p-hover` and `--_on-p` on this root, and on the donation card's own
-// `[data-donate-root]` inside it, which packages/form/src/styles/tokens.css would otherwise declare
-// the fallback scale on again. both carry `data-brand-scope`, one id per page root, so two roots on
-// one document never read each other's scale, and the attribute pair outranks the token file's bare
-// `[data-donate-root]` wherever the sheets stand. ./card.tsx reads the id with `useBrandScope`.
+// the registry's `--accent-1`…`--accent-12` and `--accent-contrast` (`brandScaleCss`) on this root,
+// and on the donation card's own `[data-donate-root]` inside it. both carry `data-brand-scope`, one
+// id per page root, so two roots on one document never read each other's scale. ./card.tsx reads
+// the id with `useBrandScope`. the form's `--_a*` and `--_p` aliases are declared one node under
+// each root (packages/form/src/styles/tokens.css) and read these steps from there.
 //
 // the single node inside is where the page's own tokens are declared and its ground is painted:
 // the form declares its ladder one node under `[data-donate-root]`, so a token reading a rung has to
@@ -37,16 +38,13 @@ import type { Layout } from '../page/shape';
 export type RootLayout = Layout | 'donation' | 'plain';
 
 export type PageRootProps = {
-	/** lowercase `#rrggbb`, or `null` for a page drawn in the form's own grey. */
+	/** lowercase `#rrggbb`, or `null` for a page drawn in the registry's default accent. */
 	readonly brandColour: string | null;
 	readonly layout: RootLayout;
 	/** the caller's placement; the root sets no outer spacing of its own. */
 	readonly className?: string;
 	readonly children: ReactNode;
 };
-
-/** `@property --donate-primary`'s `initial-value` in packages/form/src/styles/tokens.css. */
-const UNSEEDED = '#1c2024';
 
 const BrandScope = createContext<string | undefined>(undefined);
 
@@ -64,7 +62,10 @@ export function PageRoot({ brandColour, layout, className, children }: PageRootP
 	const scope = useId();
 	// a `PageWithCard` pick or lock report re-renders this root, and the colour has not moved.
 	const css = useMemo(() => {
-		const scale = generateBrandScale(brandColour ?? UNSEEDED);
+		// a page with no brand colour writes no scale: it draws the accent the registry's default theme
+		// declares on `:root` (packages/form/src/registry/styles/themes/default.css).
+		if (brandColour === null) return null;
+		const scale = generateBrandScale(brandColour);
 		return scale === null ? null : brandScaleCss(brandScopeSelector(scope), scale);
 	}, [brandColour, scope]);
 	return (

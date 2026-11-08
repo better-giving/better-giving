@@ -140,6 +140,18 @@
 		font-weight: bolder;
 	}
 
+	/* the code face has files at 400 and 500 and none heavier (./fonts.css), so `bolder` inside it
+	   asks for a 700 the browser synthesises. emphasis there is the 500 file. the lists are every
+	   selector this sheet and ./adm.css set the code face on, and
+	   packages/app/src/lib/donate/mono-weights.spec.ts fails when one is missing.
+	   carried-ok: .adm-input--code — put on a box by the derived class list in
+	   packages/operator/src/components/forms/Field.jsx rather than by a `class` attribute. */
+	:is(code, kbd, samp, pre) :is(b, strong),
+	:is(.adm-code, .adm-url, .adm-chip, .adm-braille-bar, .adm-input--code) :is(b, strong) {
+		/* type-ok: an emphasis inside a run, held to the code face's heaviest file. */
+		font-weight: var(--admin-weight-medium);
+	}
+
 	code,
 	kbd,
 	samp,
@@ -239,6 +251,12 @@
 		text-decoration-thickness: from-font;
 	}
 
+	/* before the hover rule: the two tie on specificity, so the later one wins on a followed
+	   link under a pointer, and that has to be the hover. */
+	a:visited {
+		color: var(--admin-link-visited);
+	}
+
 	/* carried-ok: .is-hover .is-focus — the twin beside each state pseudo, here and below. no
 	   screen writes one: it is what lets a specimen pin a state without a pointer on the
 	   element. */
@@ -246,10 +264,6 @@
 	a.is-hover {
 		color: var(--admin-link-hover);
 		text-decoration-thickness: var(--admin-border-width-strong);
-	}
-
-	a:visited {
-		color: var(--admin-link-visited);
 	}
 
 	/* one ring for the whole surface, on :focus-visible only — a mouse click on a button

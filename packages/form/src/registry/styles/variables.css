@@ -1,0 +1,87 @@
+/* the registry's tokens as plain css custom properties, for an app that has no
+   tailwind: import this one file and read `var(--primary)`, `var(--font-body)`,
+   `var(--radius-card)`, `var(--form-primary)` from hand-written css. a tailwind
+   app gets the same file through ./index.css.
+
+   what is where: the palette and the two corners come from the brand colors.css
+   imported below (--primary, --radius-control, --radius-card, the ramp), the
+   faces from ./fonts.css, and the rest is declared here.
+
+   the type, shadow and speed values below are ALSO declared in ./theme.css,
+   because tailwind needs them inside @theme to generate font-*, shadow-* and
+   duration-* utilities. the two are kept equal by variables.test.tsx, which
+   fails when either file moves alone. colors need no second copy: theme.css
+   maps them with var(). */
+
+@import "./fonts.css";
+@import "./colors.css";
+
+:root {
+  /* two roles, two faces of one family, plus the handwritten accent and mono. */
+  --font-display: "Red Hat Round Display", "Red Hat Round Text", sans-serif;
+  --font-body: "Red Hat Round Text", sans-serif;
+  --font-gochi: Gochi Hand, cursive;
+  --font-mono:
+    "Red Hat Round Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
+
+  /* a layer that floats over the page: menu, popover, tooltip, dialog. */
+  --shadow-floating:
+    0 10px 15px -3px color-mix(in oklch, var(--shadow-ink) 10%, transparent),
+    0 4px 6px -4px color-mix(in oklch, var(--shadow-ink) 10%, transparent);
+
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+}
+
+/* the form color slots: the accent scale, named for a form. a container themes
+   its form by taking a theme: data-theme="acme" on the container, with the
+   theme's scale variables (themes/*.css, or the accent-only file that
+   pnpm theme:generate --only accent writes). the slots follow, and so does
+   dark mode, because the steps do.
+
+   the slots are declared where the roles are, on :root and on every
+   [data-theme] element. a custom property holding var() is resolved where it
+   is declared, so a container with its own theme re-resolves them against its
+   own scale, and a container that sets one slot (.checkout { --form-primary:
+   ... }) passes it to everything inside it. redefining --accent-9 on a plain
+   element re-themes nothing below it; put the scale on a [data-theme] element.
+
+   the steps are the scale's roles: 9 is the solid fill, 3 and 4 the tinted
+   ground at rest and hovered, 7 the edge of a control, 11 text on the tinted
+   ground. the ring is the page's --ring (the step the theme picks per
+   appearance: 11 in light and dark in both shipped themes), so it follows the
+   appearance as well as the theme.
+
+   the hover and press of the fill are not declared here. a slot holding var()
+   is resolved where it is declared, so a default declared on :root could not
+   follow a --form-primary set on a container below it. btn-form-primary (and
+   bg-form-primary-hover|active, in ./theme.css) read them with a fallback
+   that mixes 10% black into --form-primary, so setting --form-primary alone
+   moves the hover and press with it. an app that sets --form-primary-hover or
+   --form-primary-active keeps its own. the other slots read their own steps:
+   setting --form-primary alone does not move the ring or the tint. the figures
+   for the default theme are the palette's
+   (--accent-contrast on --accent-9, Lc 82.3); a custom theme's pairs are the
+   theme's to check. */
+:root,
+[data-theme] {
+  --form-primary: var(--accent-9);
+  --form-primary-fg: var(--accent-contrast);
+  --form-subtle: var(--accent-3);
+  --form-subtle-hover: var(--accent-4);
+  --form-subtle-fg: var(--accent-11);
+  --form-border: var(--accent-7);
+  --form-ring: var(--ring);
+  --form-secondary: var(--form-subtle);
+}
+
+/* the reduced-motion guard rides on the three speeds, as in ./theme.css. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0.01ms;
+    --duration-base: 0.01ms;
+    --duration-slow: 0.01ms;
+  }
+}

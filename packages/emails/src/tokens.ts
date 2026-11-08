@@ -2,15 +2,18 @@ import { ADMIN_TOKENS } from '@better-giving/operator/styles/tokens';
 
 // the operator design system, in the values a mail client can actually render.
 //
-// the system is one file — packages/operator/src/styles/tokens.css — and this package reads it
-// through the copy beside it, packages/operator/src/styles/tokens.ts, which is the same values as
-// css text. no value is decided here and none may be: what this module does is check and convert.
+// the system's values are the design registry's copied files (bg-design.json lists them), which
+// packages/operator/src/styles/tokens.css aliases, and the faces
+// packages/operator/src/styles/fonts.css re-points the registry's roles at. this package reads them
+// through the copy beside tokens.css, packages/operator/src/styles/tokens.ts, which is the same
+// values as css text. no value is decided here and none may be: what this module does is check
+// and convert.
 // a screen hands the browser `var(--admin-ink)` and the browser resolves a custom property and a
 // `rem` for it. a mail has none of that. it is a set of inline style attributes read by clients
 // whose css support was fixed years ago — Outlook desktop renders through Word — so what a template
 // writes has to be a six-digit hex triple and a pixel count, already resolved.
 //
-// one check, one conversion and one shorthand, and every value a template writes comes out of
+// two checks, one conversion and one shorthand, and every value a template writes comes out of
 // them. a number a template states for itself is the thing this module exists to make unnecessary:
 // react writes `px` after a unitless number in a style object, so `padding: 16` and `padding: '16px'` are the
 // same declaration and only one of them is a value somebody chose in this file.
@@ -42,13 +45,32 @@ const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 /**
  * a colour as the six-digit hex a mail client understands.
  *
- * ../../operator/src/styles/tokens.css writes every colour a mail reads as radix's published hex, so
- * nothing is converted and this only refuses what a client could not render: a short hex, an alpha
- * channel, a colour function, a `var()`. lowercase, so a rendered attribute is one spelling.
+ * ../../operator/src/styles/tokens.css aliases the design registry's oklch values, and
+ * ../../operator/src/styles/tokens.ts holds each colour a mail reads as the sRGB hex the registry
+ * writes beside it, so nothing is converted here and this only refuses what a client could not
+ * render: a short hex, an alpha channel, a colour function, a `var()`. lowercase, so a rendered
+ * attribute is one spelling.
  */
 export function hexColour(value: string): string {
 	if (!HEX_COLOUR.test(value)) throw new Error(`not a six-digit hex colour: ${value}`);
 	return value.toLowerCase();
+}
+
+const FAMILY_NAME = /^(?:'[^'"]+'|"[^'"]+"|[a-z][\w-]*(?: [a-z][\w-]*)*)$/i;
+
+/**
+ * a `font-family` list as a style attribute carries it.
+ *
+ * ../../operator/src/styles/tokens.ts holds each stack as names, and this refuses anything else: a
+ * `var()`, an `!important`, a `;` that would start a second declaration. a client that walks the
+ * list sets the first face it has installed, so the self-hosted first face falls through to the
+ * platform's own. Outlook for Windows renders through Word, which reads the first name alone and
+ * sets Times New Roman where that face is not installed.
+ */
+export function fontStack(value: string): string {
+	if (!value.split(',').every((family) => FAMILY_NAME.test(family.trim())))
+		throw new Error(`not a list of family names: ${value}`);
+	return value;
 }
 
 /**
@@ -80,7 +102,7 @@ export const BLOCK_BG = hexColour(ADMIN_TOKENS['--admin-surface-fill']);
 export const BANNER_BG = hexColour(ADMIN_TOKENS['--admin-tone-note-tint']);
 
 export const INK = hexColour(ADMIN_TOKENS['--admin-ink']);
-/** the small print under the rule: real text, on the low-contrast text step, slate 11. */
+/** the small print under the rule: real text, on the low-contrast text step, the registry's gray 11. */
 export const INK_MUTED = hexColour(ADMIN_TOKENS['--admin-ink-muted']);
 export const DIVIDER = hexColour(ADMIN_TOKENS['--admin-divider']);
 export const LINK = hexColour(ADMIN_TOKENS['--admin-link']);
@@ -88,8 +110,8 @@ export const LINK = hexColour(ADMIN_TOKENS['--admin-link']);
 export const CODE_BG = hexColour(ADMIN_TOKENS['--admin-code-bg']);
 export const CODE_INK = hexColour(ADMIN_TOKENS['--admin-code-ink']);
 
-export const FONT_SANS = ADMIN_TOKENS['--admin-font-sans'];
-export const FONT_MONO = ADMIN_TOKENS['--admin-font-mono'];
+export const FONT_SANS = fontStack(ADMIN_TOKENS['--admin-font-sans']);
+export const FONT_MONO = fontStack(ADMIN_TOKENS['--admin-font-mono']);
 
 /** what a mail is read at. a step of the scale and not `--admin-body-size`, which is 14px because
  * an operator screen is dense; a mail is a document in somebody's client. */

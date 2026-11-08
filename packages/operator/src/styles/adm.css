@@ -240,9 +240,8 @@
 	}
 
 	/* the two controls filled with a solid step draw their ring inside themselves, in the near-white
-	   ink both fills already carry. ./tokens.css holds why: the ring is the accent's 8 and the fill
-	   its 9, neighbours, so a hugging ring abutting the fill is a ring nobody finds. growing the
-	   control is no escape, because the neighbours are the same at any size. */
+	   ink both fills already carry, as the registry rings a control on a `--primary` fill
+	   (`--primary-ring`, ../registry/styles/colors.css). ./tokens.css holds the ring's rules. */
 	.adm-btn--primary:focus-visible,
 	.adm-btn--primary.is-focus,
 	.adm-btn--danger:focus-visible,
@@ -3407,8 +3406,8 @@
 		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
 	}
 
-	/* a taken row's edge is the accent's 7 and the ring its 8, neighbours that would read as one
-	   heavier edge, so the ring stands outside a band of the ground the row stands on (`--_ground`,
+	/* a taken row's edge is the accent's 7 and the ring its 11, one hue that abutting would read as
+	   one heavier edge, so the ring stands outside a band of the ground the row stands on (`--_ground`,
 	   which every plane states; ./plane-ground.spec.ts). */
 	.adm-check--boxed:has(input:checked:focus-visible),
 	.adm-check--boxed:has(input:checked.is-focus) {

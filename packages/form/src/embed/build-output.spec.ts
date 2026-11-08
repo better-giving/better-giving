@@ -1,3 +1,4 @@
+import { gzipSync } from 'node:zlib';
 import { build, type Rollup } from 'vite';
 import { describe, expect, it } from 'vitest';
 import { embedConfig } from '../../vite.embed.config';
@@ -12,7 +13,9 @@ import { embedConfig } from '../../vite.embed.config';
 
 const STAMP_PLUGIN = 'bg-donate-stamp-runtime-path';
 
-async function shippedCode(mode: 'runtime' | 'loader'): Promise<string> {
+async function shipped(
+	mode: 'runtime' | 'loader'
+): Promise<readonly (Rollup.OutputChunk | Rollup.OutputAsset)[]> {
 	const config = embedConfig({ mode });
 	const result = await build({
 		...config,
@@ -30,8 +33,11 @@ async function shippedCode(mode: 'runtime' | 'loader'): Promise<string> {
 		build: { ...config.build, write: false }
 	});
 	const outputs = (Array.isArray(result) ? result : [result]) as Rollup.RollupOutput[];
-	return outputs
-		.flatMap(({ output }) => output)
+	return outputs.flatMap(({ output }) => output);
+}
+
+async function shippedCode(mode: 'runtime' | 'loader'): Promise<string> {
+	return (await shipped(mode))
 		.filter((item): item is Rollup.OutputChunk => item.type === 'chunk')
 		.map((chunk) => chunk.code)
 		.join('\n');
@@ -50,4 +56,35 @@ describe('the shipped bytes', () => {
 			expect(code.match(PROCESS_ENV_READ) ?? []).toEqual([]);
 		}, 60_000);
 	}
+});
+
+// the form loads no web font (../styles/tokens.css): the card is set in the face the host page gives
+// it. so neither half carries a face, inline or beside it, and the runtime's size stays the script's
+// own. this is the guard on the face: `document.fonts` sees no `@font-face` a shadow root's sheet
+// declares, so ../embed-faces.browser.spec.ts cannot go red on one.
+describe('the shipped bytes carry no face', () => {
+	/**
+	 * the gzip size the runtime stays under, in bytes: its own code, with room to grow. the runtime
+	 * measured about 118 KB gzipped when the card took the registry's sheets (BG-2101, PR #31).
+	 */
+	const RUNTIME_GZIP_CEILING = 125_000;
+
+	for (const mode of ['runtime', 'loader'] as const) {
+		it(`carries no face and emits no file beside the ${mode}`, async () => {
+			const output = await shipped(mode);
+			const code = output
+				.filter((item): item is Rollup.OutputChunk => item.type === 'chunk')
+				.map((chunk) => chunk.code)
+				.join('\n');
+
+			expect(code.length).toBeGreaterThan(0);
+			expect(code).not.toMatch(/@font-face/);
+			expect(code).not.toMatch(/data:font\//);
+			expect(output.filter((item) => item.type === 'asset')).toEqual([]);
+		}, 60_000);
+	}
+
+	it('keeps the runtime the script’s own size', async () => {
+		expect(gzipSync(await shippedCode('runtime')).length).toBeLessThan(RUNTIME_GZIP_CEILING);
+	}, 60_000);
 });
