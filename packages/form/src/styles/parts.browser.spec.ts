@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // document and is the one a reader here is looking for.
 import { page as browser, cdp, userEvent } from 'vitest/browser';
 import { createCoinPicker } from '../coin-picker';
-import { NETWORK_BADGES, networkTint } from '../coins';
 import { createDepositBlock, type DepositView } from '../deposit';
 import { defineDonateForm, DONATE_FORM_TAG } from '../element';
 import { createRows, type Row, type RowMark } from '../embed/rows';
@@ -953,9 +952,9 @@ describe('the labels on the pair under the name', () => {
 		expect(painted.backgroundImage).toContain(used(shadow, '--_n1'));
 		expect(painted.backgroundImage).not.toContain(used(shadow, '--_n2'));
 		expect(getComputedStyle(box).backgroundColor).toBe(used(shadow, '--_n1'));
-		// the words' own line, read off the span rather than off its text: Red Hat Round's ascent and
-		// descent come to about 1.3em, so the text's content box stands a fraction proud of the tight
-		// line the floated words are set on, and the line is what the band is drawn at.
+		// the words' own line, read off the span rather than off its text: the face is the host
+		// page's, and one whose ascent and descent pass the tight line the floated words are set on
+		// has a content box a fraction proud of it. the line is what the band is drawn at.
 		expect(parseFloat(band)).toBeGreaterThanOrEqual(parseFloat(painted.lineHeight));
 		expect(parseFloat(band)).toBeGreaterThanOrEqual(ink(words).height - DEVICE_PIXEL);
 		// across the words and past the last letter, so no run of the edge is left inside the band's
@@ -1742,7 +1741,7 @@ describe('the coin list inside the crypto option', () => {
 
 		expect(closed).toBe(family('[role="option"] .coin-ticker'));
 		expect(family('[role="option"] .coin-ticker')).toContain('ui-monospace');
-		expect(family('[role="option"] .net')).toMatch(/^"?Red Hat Round Text"?,/);
+		expect(family('[role="option"] .net')).toBe(getComputedStyle(root.host).fontFamily);
 	});
 
 	// the mark's width is the row's to lose: a logo that was blocked leaves the lettered shape under
@@ -1801,28 +1800,30 @@ describe('the coin list inside the crypto option', () => {
 		expect(mark.top + mark.height / 2).toBeCloseTo(ticker.top + (pill.bottom - ticker.top) / 2, 1);
 	});
 
-	// which badge a network takes is a rule over its own words (`networkTint` in ../coins.ts) and no
-	// table, so what a sheet can get wrong is whether the badge it picked paints at all: a variant the
-	// list adopts no rule for leaves the pill with no ground, which renders as a word among words and
-	// reads as finished. the registry's five, each a ground and an ink of its own.
-	it('gives every badge a network can take a ground and an ink of its own', async () => {
+	// every network is the registry's neutral badge, and the badge has to paint: a class the list
+	// adopts no rule for leaves the pill with no ground, which renders as a word among words and reads
+	// as finished. neutral is the grey the registry draws it in, and never a status's.
+	it('draws every network as the registry’s neutral badge, with a ground and an ink', async () => {
 		const root = drawn(false);
-		const row = root.querySelector('.field-row') as HTMLElement;
-		const painted = NETWORK_BADGES.map((badge) => {
-			const pill = document.createElement('span');
-			pill.className = `net ds-badge ds-badge-${badge}`;
-			row.appendChild(pill);
-			const style = getComputedStyle(pill);
-			const pair = `${style.backgroundColor} on ${style.color}`;
-			pill.remove();
-			return pair;
-		});
+		await opened(root);
+		const pills = [...root.querySelectorAll<HTMLElement>('.net')];
+		const card = root.host.parentElement as HTMLElement;
+		const grey = (step: string) => {
+			const probe = document.createElement('div');
+			probe.style.color = `var(${step})`;
+			card.appendChild(probe);
+			const colour = getComputedStyle(probe).color;
+			probe.remove();
+			return colour;
+		};
 
-		expect(new Set(painted).size).toBe(NETWORK_BADGES.length);
-		expect(painted.filter((pair) => pair.includes('rgba(0, 0, 0, 0)'))).toEqual([]);
-		expect(root.querySelector('.net')?.className).toBe(
-			`net ds-badge ds-badge-${networkTint('Bitcoin')}`
-		);
+		expect(pills.length).toBeGreaterThan(1);
+		for (const pill of pills) {
+			expect(pill.className).toBe('net ds-badge ds-badge-neutral');
+			expect(getComputedStyle(pill).backgroundColor).toBe(grey('--gray-3'));
+			expect(getComputedStyle(pill).color).toBe(grey('--gray-12'));
+			expect(pill.textContent).not.toBe('');
+		}
 	});
 
 	// the logo is the processor's own image and the letter under it is what a blocked or broken one
@@ -2052,7 +2053,7 @@ describe('the address screen', () => {
 			getComputedStyle(root.querySelector(selector) as Element).fontFamily;
 
 		for (const selector of ['.value.name', '[part~="label"]', '.instruction']) {
-			expect(family(selector), selector).toMatch(/^"?Red Hat Round Text"?,/);
+			expect(family(selector), selector).toBe(getComputedStyle(root).fontFamily);
 		}
 	});
 
@@ -3562,6 +3563,29 @@ describe('the ring and the brand never touch', () => {
 		expect(drawn.outlineColor).not.toBe(used(shadow, '--_p'));
 		expect(drawn.boxShadow).toBe('none');
 		expect(Number.parseFloat(drawn.outlineOffset)).toBeGreaterThan(0);
+	});
+});
+
+// a press in flight is the registry's own busy state on its button (`aria-busy` in
+// ../registry/styles/button-css.usage.md → States), with the form's spinner beside the label. the
+// registry has no busy look that keeps the fill: its busy state is its disabled fill, which is the
+// registry gap this pins, so a registry release that adds one is a change this case reports.
+describe('the action while a press is in flight', () => {
+	it('draws the registry’s busy state and the spinner beside an unchanged label', async () => {
+		const { shadow } = await mount();
+		const action = shadow.querySelector(".step:not([hidden]) [part~='action']") as HTMLElement;
+		const label = (action.querySelector('.action-label') as HTMLElement).textContent;
+		action.setAttribute('aria-busy', 'true');
+		action.setAttribute('part', 'action busy');
+		await landed(action);
+		const drawn = getComputedStyle(action);
+
+		expect(action.classList.contains('ds-btn-primary')).toBe(true);
+		expect(paintedBytes(drawn.backgroundColor)).toEqual(paintedBytes(used(shadow, '--gray-3')));
+		expect(paintedBytes(drawn.color)).toEqual(paintedBytes(used(shadow, '--gray-11')));
+		expect(drawn.pointerEvents).toBe('none');
+		expect(getComputedStyle(action.querySelector('.spinner') as HTMLElement).opacity).toBe('1');
+		expect((action.querySelector('.action-label') as HTMLElement).textContent).toBe(label);
 	});
 });
 

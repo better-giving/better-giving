@@ -146,10 +146,10 @@ button {
 /*
  * the network's pill, after the ticker in the closed box and under it in a row.
  *
- * the pill is the registry's badge (../registry/styles/badge-css.css, adopted before this sheet), and
- * which of its variants is `networkTint` (../coins.ts) written onto the node as a class — so a network
- * the processor lists tomorrow is painted without a rule being added here. there is no rule for a
- * network by name and there is not to be one. what is left here is where it stands.
+ * the pill is the registry's neutral badge (../registry/styles/badge-css.css, adopted before this
+ * sheet), the same for every network: the registry's other variants are statuses, and a network
+ * drawn in one would read as a chain in trouble. the words tell one network from another, so there
+ * is no rule for a network by name. what is left here is where the pill stands.
  *
  * inline-block rather than the badge's own inline-flex, which keeps the ticker and the pill one run of
  * inline content in the closed box: `.chosen` above cuts that run with an ellipsis, and an ellipsis

@@ -1127,11 +1127,21 @@ export function createCard(
 	 *
 	 * the step says nothing until a donor presses Continue, and this is what holds that: it gates
 	 * the sentences, the part tokens and the aria state below, so an untouched card marks nothing.
-	 * blur is not the moment — a donor tabbing past an empty field on the way to the next one is not
-	 * a donor who has finished with it. it lasts as long as the donor stays on the step and no
-	 * longer; `updateDetails` is where it is put back.
+	 * blur alone is not the moment — a donor tabbing past an empty field on the way to the next one
+	 * is not a donor who has finished with it. a box the donor typed into and then left is the one
+	 * exception, `left` below. it lasts as long as the donor stays on the step and no longer;
+	 * `updateDetails` is where it is put back.
 	 */
 	let attempted = false;
+	/**
+	 * the details boxes a donor typed into, and of those the ones the caret has since left.
+	 *
+	 * a box typed into and left is one the donor has finished with, so it says what is wrong with it
+	 * as the caret leaves rather than waiting for the press — the one box, and never the boxes beside
+	 * it nobody has reached. both are put back with `attempted`.
+	 */
+	const typedInto = new Set<PayerField>();
+	const left = new Set<PayerField>();
 	/**
 	 * the same, for the one thing the review step can refuse a press for.
 	 *
@@ -2108,7 +2118,15 @@ export function createCard(
 		if (floating) field.setAttribute('placeholder', ' ');
 		// a box labelled over the top is the registry's text box; the floating pair is the form's own.
 		else field.classList.add(REGISTRY_CLASS.field);
-		field.addEventListener('input', () => read(now()).onChange(field.value));
+		field.addEventListener('input', () => {
+			typedInto.add(key);
+			read(now()).onChange(field.value);
+		});
+		field.addEventListener('blur', () => {
+			if (!typedInto.has(key)) return;
+			left.add(key);
+			updateDetails(now());
+		});
 		// the sentence, drawn one way on every row the card has: the row's own child under the box,
 		// tied to it by `aria-describedby` while it is shown so that it is read out with the field
 		// rather than found by looking for it. where the label stands does not reach it — a floating
@@ -3245,12 +3263,17 @@ export function createCard(
 		// the press is forgotten on the way off the step, so a donor who was refused, went Back and
 		// came round again meets the card they left rather than the marks from last time. asking is
 		// a thing a press does, and returning to a step is not a press.
-		if (api.state.step !== 'details') attempted = false;
-		const asking = attempted && api.state.step === 'details' ? api.state : null;
+		if (api.state.step !== 'details') {
+			attempted = false;
+			typedInto.clear();
+			left.clear();
+		}
+		const asking = api.state.step === 'details' ? api.state : null;
 
 		const said: string[] = [];
 		for (const entry of detailsFields) {
-			const wrong = asking?.missing.includes(entry.key) ?? false;
+			const wrong =
+				(attempted || left.has(entry.key)) && (asking?.missing.includes(entry.key) ?? false);
 			const words = wrong ? entry.wording(entry.field.validity) : '';
 			setText(entry.message, words);
 			setHidden(entry.message, !wrong);

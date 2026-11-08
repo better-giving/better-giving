@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vit
 import { cdp } from 'vitest/browser';
 import { documentCss } from '../element';
 import { CARD_THEME } from '../parts';
-import registryVariables from '../registry/styles/variables.css?raw';
 import { UNSEEDED } from './brand';
 import tokens from './tokens.css?inline';
 
@@ -27,7 +26,7 @@ import tokens from './tokens.css?inline';
 const sheet = new CSSStyleSheet();
 sheet.replaceSync(tokens);
 
-/** what the element puts in the document: the seed registrations and the faces, and nothing else. */
+/** what the element puts in the document: the seed registrations, and nothing else. */
 const documentSheet = new CSSStyleSheet();
 documentSheet.replaceSync(documentCss(tokens));
 
@@ -190,26 +189,13 @@ describe('the document sheet', () => {
 		expect(computed('', '--donate-primary').trim()).toBe(UNSEEDED);
 	});
 
-	it('registers the registry’s six faces from the document tree, and from nowhere else', () => {
-		const faces = () =>
-			[...document.fonts].filter((face) => face.family.replaceAll('"', '').startsWith('Red Hat'));
-
-		document.adoptedStyleSheets = [];
-		expect(faces()).toHaveLength(0);
-
+	// the card loads no web font, so the document gets the seed registrations and no face: a
+	// `@font-face` here would be a face fetched onto a stranger's page.
+	it('registers no face in the host document', () => {
 		document.adoptedStyleSheets = [documentSheet];
-		expect(
-			faces()
-				.map((face) => `${face.family.replaceAll('"', '')} ${face.weight}`)
-				.sort()
-		).toEqual([
-			'Red Hat Round Display 600',
-			'Red Hat Round Display 700',
-			'Red Hat Round Text 400',
-			'Red Hat Round Text 500',
-			'Red Hat Round Text 600',
-			'Red Hat Round Text 700'
-		]);
+
+		expect([...document.fonts]).toEqual([]);
+		expect(documentCss(tokens)).not.toMatch(/@font-face/);
 	});
 
 	it('declares nothing on the host page', () => {
@@ -384,26 +370,22 @@ describe('the card the form draws for itself', () => {
 		expect(lengthOf('--_r-in')).toBe('6px');
 	});
 
-	// the registry declares its faces on `:root` alone, which a shadow tree has no node for, so the
-	// token file mirrors them (./tokens.css at `--_font`). a registry release that moves a stack
-	// fails here rather than drifting.
-	it('mirrors the registry’s three faces', () => {
-		const stackOf = (name: string) =>
-			(new RegExp(`${name}:\\s*([^;]+);`).exec(registryVariables)?.[1] ?? '')
-				.replace(/\s+/g, ' ')
-				.trim();
-		const resolved = (token: string) => computed(`font-family: var(${token})`, 'font-family');
-		const asWritten = (stack: string) => computed(`font-family: ${stack}`, 'font-family');
+	// the face is the host page's: the card declares no family of its own, so what the page gives the
+	// element is what the card's words are set in, fallbacks and all.
+	it('sets the card in the face the host page gives the element', () => {
+		seed("font-family: Georgia, 'Times New Roman', serif;");
 
-		for (const [token, registry] of [
-			['--_font', '--font-body'],
-			['--_font-display', '--font-display'],
-			['--_font-mono', '--font-mono']
-		] as const) {
-			expect(stackOf(registry), registry).not.toBe('');
-			expect(resolved(token), token).toBe(asWritten(stackOf(registry)));
-		}
-		expect(resolved('--_font')).toContain('Red Hat Round Text');
+		expect(computed('', 'font-family')).toBe(getComputedStyle(host).fontFamily);
+		expect(computed('', 'font-family')).toContain('Georgia');
+	});
+
+	// the one face it does name is the platform's monospace, for the strings a donor checks character
+	// by character, and it loads nothing.
+	it('sets a checked string in the platform’s monospace', () => {
+		const mono = computed('font-family: var(--_font-mono)', 'font-family');
+
+		expect(mono.startsWith('ui-monospace')).toBe(true);
+		expect(mono.endsWith('monospace')).toBe(true);
 	});
 
 	// the one shape outside the two-corner pair: the switch is a pill, which is the exception

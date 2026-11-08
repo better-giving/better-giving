@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { defineConfig, type Plugin, type UserConfig } from 'vite';
 import { RUNTIME_PATH_PREFIX } from './src/embed/loader';
 import { runtimeAssetPath, stampLoader } from './src/embed/stamp';
-import { registryFaces } from './vite.registry-faces';
+import { noRegistryFaces } from './vite.registry-faces';
 
 // the embed's own build: two classic scripts, run once each by `pnpm run build:embed`.
 //
@@ -166,7 +166,7 @@ export function embedConfig({ mode }: { readonly mode: string }): UserConfig {
 		// allowed to contain: scripts/stage-embed.js copies the whole of it into the app's static/,
 		// so anything that appeared here would be served from the deployment without being asked for.
 		publicDir: false,
-		resolve: { alias: [registryFaces] },
+		resolve: { alias: [noRegistryFaces] },
 		// the boundary gate is on both halves. the loader imports nothing but its own source today,
 		// and that is the state it is being held in rather than a reason to leave it ungated.
 		plugins: runtime

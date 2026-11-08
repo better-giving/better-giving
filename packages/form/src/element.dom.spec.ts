@@ -1161,8 +1161,8 @@ describe('the style adoption', () => {
 		document.adoptedStyleSheets.filter((sheet) => !card.shadow.adoptedStyleSheets.includes(sheet));
 
 	it('puts a sheet of its own in the document beside the ones in the shadow root', async () => {
-		// `@property` registrations and `@font-face` rules are collected from the document tree only.
-		// without the sheet the seed has no initial value and the registry's faces never load.
+		// `@property` registrations are collected from the document tree only. without the sheet the
+		// seed has no initial value.
 		const card = await mount();
 
 		expect(documentSheets(card)).toHaveLength(1);
@@ -1170,18 +1170,17 @@ describe('the style adoption', () => {
 		expect(card.shadow.adoptedStyleSheets).toHaveLength(6);
 	});
 
-	it('hands the document the seed registrations and the faces, and no rule a host page could match', () => {
+	it('hands the document the seed registrations, and no face and no rule a host page could match', () => {
 		const css = documentCss(tokenStyles);
 
 		expect(css).toContain('@property --donate-primary');
 		expect(css).toContain('@property --donate-corner');
-		expect(css.match(/@font-face/g)).toHaveLength(6);
-		for (const family of ['Red Hat Round Text', 'Red Hat Round Display'])
-			expect(css).toContain(family);
+		// the card loads no web font: neither the token sheet nor the document's carries a face
+		expect(tokenStyles).not.toMatch(/@font-face/);
 		// the token sheet's own selectors include the registry's `:root`, which would declare every
 		// registry variable on a host page's root
 		expect(tokenStyles).toMatch(/:root\b/);
-		expect(css.replace(/@(?:property|font-face)\b[^{]*\{[^}]*\}/g, '').trim()).toBe('');
+		expect(css.replace(/@property\b[^{]*\{[^}]*\}/g, '').trim()).toBe('');
 	});
 
 	it('adopts one set of sheets however many elements a page holds', async () => {
@@ -1197,8 +1196,8 @@ describe('the style adoption', () => {
 
 	// the document adoption is done once per document and then never looked at again, and the array
 	// belongs to the host page: a design system that assigns rather than appends takes the document
-	// sheet off with it, and with it the seed registrations and the faces. that is a card that cannot
-	// tell a seed from none, on a page nothing here can see.
+	// sheet off with it, and with it the seed registrations. that is a card that cannot tell a seed
+	// from none, on a page nothing here can see.
 	it('puts the document sheet back when the host page assigns the array out from under it', async () => {
 		const card = await mount();
 		const [sheet] = documentSheets(card);
@@ -3727,6 +3726,63 @@ describe('the details step’s refusals', () => {
 		expect(card.find('#email-problem').hidden).toBe(true);
 		expect(card.find('#email').hasAttribute('aria-invalid')).toBe(false);
 		expect(card.find('#email').getAttribute('part')).toBe('field');
+	});
+
+	// a donor tabbing past an empty box on the way to the next one is not a donor who has finished
+	// with it, so leaving a box untyped marks nothing.
+	it('marks nothing on a box the donor tabbed past empty', async () => {
+		const card = await atDetailsStep();
+		const email = card.find('#email');
+		email.focus();
+		email.blur();
+
+		expect(card.find('#email-problem').hidden).toBe(true);
+		expect(email.hasAttribute('aria-invalid')).toBe(false);
+		expect(email.getAttribute('part')).toBe('field');
+	});
+
+	// a donor who typed into a box and left it wrong has finished with it, so the box says what is
+	// wrong as the caret leaves, before any press.
+	it('marks a box the donor typed into and left wrong, as the caret leaves it', async () => {
+		const card = await atDetailsStep();
+		const email = card.find('#email');
+		email.focus();
+		type(email, 'donor@');
+
+		expect(card.find('#email-problem').hidden).toBe(true);
+
+		email.blur();
+
+		expect(card.find('#email-problem').hidden).toBe(false);
+		expect(card.text('#email-problem')).toBe('not an email address');
+		expect(email.getAttribute('part')).toBe('field invalid');
+		expect(email.getAttribute('aria-invalid')).toBe('true');
+		expect(email.getAttribute('aria-describedby')).toBe('email-problem');
+		// and only that box: the names nobody typed into stay unmarked
+		expect(card.find('#first-name-problem').hidden).toBe(true);
+	});
+
+	it('marks a box the donor typed into and emptied again, as required', async () => {
+		const card = await atDetailsStep();
+		const first = card.find('#first-name');
+		first.focus();
+		type(first, 'A');
+		type(first, '');
+		first.blur();
+
+		expect(card.text('#first-name-problem')).toBe('required');
+		expect(first.getAttribute('aria-invalid')).toBe('true');
+	});
+
+	it('leaves a box the donor typed into and left right unmarked', async () => {
+		const card = await atDetailsStep();
+		const email = card.find('#email');
+		email.focus();
+		type(email, 'donor@example.org');
+		email.blur();
+
+		expect(card.find('#email-problem').hidden).toBe(true);
+		expect(email.hasAttribute('aria-invalid')).toBe(false);
 	});
 
 	it('names the field it is missing rather than doing nothing when pressed', async () => {

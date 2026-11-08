@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { build, type Rollup } from 'vite';
 import { describe, expect, it } from 'vitest';
 import { embedConfig } from '../../vite.embed.config';
@@ -59,37 +58,22 @@ describe('the shipped bytes', () => {
 	}
 });
 
-// the registry's faces travel inside the runtime rather than beside it: a file beside it is a second
-// request from the host page to this deployment, made in cors mode for a font, and one more thing a
-// host's policy or this server's headers can refuse. library mode inlines every asset it meets, so
-// what this holds is which faces it met — the six fonts-core ships (the alias in
-// ../../vite.registry-faces.ts), each byte for byte the copied file, and no file emitted beside the
-// script.
-describe('the faces the runtime carries', () => {
-	const FONTS = new URL('../registry/styles/fonts/', import.meta.url);
-	const CORE = [
-		'RedHatRoundDisplay-Bold.woff2',
-		'RedHatRoundDisplay-SemiBold.woff2',
-		'RedHatRoundText-Bold.woff2',
-		'RedHatRoundText-Medium.woff2',
-		'RedHatRoundText-Regular.woff2',
-		'RedHatRoundText-SemiBold.woff2'
-	];
-	const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+// the form loads no web font (../styles/tokens.css): the card is set in the face the host page gives
+// it. so the runtime carries no face, inline or beside it, and its size stays the script's own.
+describe('the runtime carries no face', () => {
+	/** the gzip size the runtime stays under, in bytes: its own code, with room to grow. */
+	const RUNTIME_GZIP_CEILING = 150_000;
 
-	it('takes the six core faces and no other, inline', async () => {
+	it('carries no face, emits no file beside the script, and stays the script’s own size', async () => {
 		const output = await shipped('runtime');
 		const code = output
 			.filter((item): item is Rollup.OutputChunk => item.type === 'chunk')
 			.map((chunk) => chunk.code)
 			.join('\n');
-		const inlined = [...code.matchAll(/data:font\/woff2;base64,([A-Za-z0-9+/=]+)/g)].map(
-			([, base64]) => digest(Buffer.from(base64 ?? '', 'base64'))
-		);
 
+		expect(code).not.toMatch(/@font-face/);
+		expect(code).not.toMatch(/data:font\//);
 		expect(output.filter((item) => item.type === 'asset')).toEqual([]);
-		expect(inlined.sort()).toEqual(
-			CORE.map((name) => digest(readFileSync(new URL(name, FONTS)))).sort()
-		);
+		expect(gzipSync(code).length).toBeLessThan(RUNTIME_GZIP_CEILING);
 	}, 60_000);
 });

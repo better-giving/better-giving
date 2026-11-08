@@ -85,8 +85,7 @@ img-src      'self' data:
              https://cdn.givechariot.com
              https://nowpayments.io
 
-font-src     data:
-             https://cdn.givechariot.com
+font-src     https://cdn.givechariot.com
 
 style-src    'unsafe-inline'
 ```
@@ -106,8 +105,6 @@ style-src    'unsafe-inline'
 `connect-src https://api-m.paypal.com` is the one with the widest blast radius. The form asks PayPal which methods this donor is eligible for before it draws anything, so a blocked read is no PayPal buttons at all, on every page load.
 
 The spam check uses the deployment origin already in `connect-src` when the deployment has no Turnstile key pair: the form reads a puzzle from your deployment and solves it in the donor's browser. A deployment holding a Turnstile pair needs the two `https://challenges.cloudflare.com` lines.
-
-`font-src data:` is the form's own type. The card is set in the Better Giving design registry's faces, Red Hat Round Text and Display, and the script carries the six it uses inline, so they need no request to your deployment. Leave it out and the card draws in your visitor's sans-serif instead; nothing else changes.
 
 Chariot's lines are the fund option's alone. Chariot's button loads from `https://cdn.givechariot.com`, writes its fonts and inline `<style>` into your page, and draws the fund's window in a frame on `https://secure.dafpay.com` or in a popup. Leave one out and the donor-advised fund option fails on that page while every other way to give keeps working.
 
@@ -131,6 +128,6 @@ Two custom properties, set on the element or anything above it:
 ></bg-donate-form>
 ```
 
-The card is drawn in the Better Giving design registry's look: its greys, its faces, its buttons, text boxes and tick boxes. `--donate-primary` is the brand colour, and it re-themes the registry's accent around it: every solid block a donor acts on, the focus ring, the quiet action's words and the edge of the open payment rail. Unset, the card is the registry's own blue. `--donate-corner` picks its corners: `square`, `soft` (the default, the registry's corners), or `round`. Anything else in either falls back to what the element inherits, and to the default where nothing above sets one. A browser without container style queries on custom properties draws the soft card whatever the corner is set to. The card is light only: a dark host page gets a light card.
+The card is drawn in the Better Giving design registry's look: its greys, its buttons, text boxes and tick boxes. Its type is yours: the form loads no web font and sets its words in the font your page gives the element. `--donate-primary` is the brand colour, and it re-themes the registry's accent around it: every solid block a donor acts on, the focus ring, the quiet action's words and the edge of the open payment rail. Unset, the card is the registry's own blue. `--donate-corner` picks its corners: `square`, `soft` (the default, the registry's corners), or `round`. Anything else in either falls back to what the element inherits, and to the default where nothing above sets one. A browser without container style queries on custom properties draws the soft card whatever the corner is set to. The card is light only: a dark host page gets a light card.
 
 `form` is read as an attribute. Setting the element's `form` property does nothing. `variant` renders only `inline`. Any other value renders that way too. [`custom-elements.json`](../packages/form/custom-elements.json) is the list of attributes, part names, and tokens.

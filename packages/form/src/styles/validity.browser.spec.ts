@@ -304,6 +304,50 @@ describe('the details step’s problem edge', () => {
 		expect(edgeOf(last)).not.toBe(dangerOf(card));
 	});
 
+	// a donor tabbing past a box on the way to the next one has not finished with it, so the card
+	// draws the resting edge there and no sentence.
+	it('is not drawn on a box the donor tabbed past empty', async () => {
+		const card = await atDetailsStep();
+		const email = card.find('#email') as HTMLInputElement;
+		email.focus();
+		await userEvent.keyboard('{Tab}');
+		await painted(email);
+
+		expect(card.shadow.activeElement).not.toBe(email);
+		expect(email.matches(':invalid')).toBe(true);
+		expect(edgeOf(email)).not.toBe(dangerOf(card));
+		expect(card.find('#email-problem').hidden).toBe(true);
+	});
+
+	// a donor who typed into a box and left it wrong has finished with it, and is told so as the
+	// caret leaves, before any press.
+	it('is drawn on a box the donor typed into and left wrong', async () => {
+		const card = await atDetailsStep();
+		const email = card.find('#email') as HTMLInputElement;
+		email.focus();
+		await userEvent.keyboard('donor@');
+		await userEvent.keyboard('{Tab}');
+		await painted(email);
+
+		expect(edgeOf(email)).toBe(dangerOf(card));
+		expect(card.find('#email-problem').hidden).toBe(false);
+		expect(card.find('#email-problem').textContent).toBe('not an email address');
+		expect(card.find('#first-name-problem').hidden).toBe(true);
+	});
+
+	// and Continue asks for every box at once, the ones nobody reached included.
+	it('is drawn on every empty required box when Continue is pressed', async () => {
+		const card = await atDetailsStep();
+		proceed(card);
+		const boxes = ['#email', '#first-name', '#last-name'].map((id) => card.find(id));
+		for (const box of boxes) box.blur();
+		await painted(...boxes);
+
+		for (const box of boxes) expect(edgeOf(box), box.id).toBe(dangerOf(card));
+		expect(card.find('#email-problem').textContent).toBe('required for your receipt');
+		expect(card.find('#first-name-problem').textContent).toBe('required');
+	});
+
 	// the mark is the border and the ring is a shadow laid outside it (./parts.css), two properties,
 	// so the one cannot take the other off. a field that looked identical focused and unfocused would
 	// leave a keyboard donor with nowhere to be.

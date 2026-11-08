@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { registryFaces } from './vite.registry-faces';
+import { noRegistryFaces } from './vite.registry-faces';
 
 // packages/form's own test config. this package mounts no react-router route and binds no D1, so
 // it needs neither the app's reactRouter plugin nor a cloudflareTest pool — two projects are the
@@ -11,7 +11,7 @@ import { registryFaces } from './vite.registry-faces';
 // (vitest.browser.config.ts), exists outside this list — see that file for why it is not one of
 // these projects.
 export default defineConfig({
-	resolve: { alias: [registryFaces] },
+	resolve: { alias: [noRegistryFaces] },
 	test: {
 		expect: { requireAssertions: true },
 		// a spy or fake one test installs is restored before the next runs; vitest 4 leaves this off

@@ -15,14 +15,15 @@ import { versionDefine } from './version-define';
 // this same file, so dev and the build share one config.
 
 // the form's tokens.css `@import`s the registry's `variables.css`, whose own `@import "./fonts.css"`
-// is the 35-face sheet; the form takes the six-face subset instead (packages/form/vite.registry-faces.ts
-// states why). the same swap here, but only for the form's copy: packages/operator's variables.css
-// imports the same specifier and keeps the full sheet for /admin, so the form's alias would reach it
-// too. vite resolves a css `@import` through its alias table alone (a plugin's resolveId never sees
-// it, and an alias `customResolver` is deprecated) and reads an imported file from disk without a
-// transform, so the one import that reaches the form's variables.css is replaced by that file's text
-// with the faces import repointed. the form's directory is found through its exported tokens.css,
-// since a relative path into packages/form is refused (biome.jsonc).
+// is the 35-face sheet; the form loads no face (packages/form/vite.registry-faces.ts states why), and
+// a donor page links its own (./src/lib/donate/plain-page.tsx). so the import is dropped here, but
+// only from the form's copy: packages/operator's variables.css imports the same specifier and keeps
+// the full sheet for /admin, so an alias like the form's `noRegistryFaces` would reach it too.
+// vite resolves a css `@import` through its alias table alone (a plugin's resolveId never sees it,
+// and an alias `customResolver` is deprecated) and reads an imported file from disk without a
+// transform, so the one import that reaches the form's variables.css is replaced by that file's
+// text with the faces import taken out. the form's directory is found through its exported
+// tokens.css, since a relative path into packages/form is refused (biome.jsonc).
 const formStyles = dirname(
 	createRequire(import.meta.url).resolve('@better-giving/form/styles/tokens.css')
 );
@@ -38,10 +39,20 @@ const formRegistryFaces: Plugin = {
 			this.error(`the form's tokens.css no longer holds ${formVariablesImport}`);
 		}
 		const registry = resolve(formStyles, '../registry/styles');
+		let facesRemoved = 0;
 		const variables = readFileSync(resolve(registry, 'variables.css'), 'utf8').replace(
 			/@import "\.\/(fonts|colors)\.css";/g,
-			(_, name) => `@import "${resolve(registry, name === 'fonts' ? 'fonts-core' : name)}.css";`
+			(_, name) => {
+				if (name !== 'fonts') return `@import "${resolve(registry, name)}.css";`;
+				facesRemoved++;
+				return '';
+			}
 		);
+		if (facesRemoved !== 1) {
+			this.error(
+				`the registry's variables.css holds ${facesRemoved} \`@import "./fonts.css";\`, not one`
+			);
+		}
 		return code.replace(formVariablesImport, variables);
 	}
 };

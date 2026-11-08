@@ -340,7 +340,7 @@ const SHEETS = new WeakMap<
  *
  * asserted on every mount rather than appended once, because the array is the host page's. a design
  * system that assigns where this appends — `document.adoptedStyleSheets = [theirs]` — takes this
- * sheet off with it, and takes the seed registrations and the faces with that. the check is an
+ * sheet off with it, and takes the seed registrations with that. the check is an
  * `includes` over a list a page holds a handful of entries in.
  */
 function adoptDocumentSheet(doc: Document, sheet: CSSStyleSheet): void {
@@ -348,18 +348,18 @@ function adoptDocumentSheet(doc: Document, sheet: CSSStyleSheet): void {
 	doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
 }
 
-/** a `@property` or `@font-face` block: one level of braces, and neither holds a nested one. */
-const DOCUMENT_RULE = /@(?:property|font-face)\b[^{]*\{[^}]*\}/g;
+/** a `@property` block: one level of braces, holding no nested one. */
+const DOCUMENT_RULE = /@property\b[^{]*\{[^}]*\}/g;
 
 /**
- * the rules of the token sheet that work only from the document tree: the seed registrations and the
- * registry's faces. `@property` and `@font-face` are collected from the document and ignored in a
- * shadow root's sheet, so these are the part of ./styles/tokens.css the host page has to hold — and
- * the only part, because the rest of that file includes the registry's `:root` block, which would
- * declare every registry variable on the host page's root.
+ * the rules of the token sheet that work only from the document tree: the seed registrations.
+ * `@property` is collected from the document and ignored in a shadow root's sheet, so these are the
+ * part of ./styles/tokens.css the host page has to hold — and the only part, because the rest of
+ * that file includes the registry's `:root` block, which would declare every registry variable on
+ * the host page's root.
  */
 export function documentCss(css: string): string {
-	// a comment naming either at-rule would otherwise be read as the start of one.
+	// a comment naming the at-rule would otherwise be read as the start of one.
 	return (css.replace(/\/\*[\s\S]*?\*\//g, '').match(DOCUMENT_RULE) ?? []).join('\n');
 }
 
@@ -368,9 +368,8 @@ export function documentCss(css: string): string {
  *
  * the document sheet is load-bearing, not defensive. a seed registration that reaches the engine
  * solely through a shadow root is ignored, which leaves the seed with no initial value and a seeded
- * card indistinguishable from none, and a face declared there is never loaded. "registers the seed
- * only from the document tree" in ./styles/tokens.browser.spec.ts is the proof, and the sheet holds
- * no selector, so it matches nothing on a host's page.
+ * card indistinguishable from none. "registers the seed only from the document tree" in
+ * ./styles/tokens.browser.spec.ts is the proof, and the sheet holds no selector, so it matches nothing on a host's page.
  *
  * the sheets are built once per document and the document adoption is checked on every call, which
  * is the asymmetry `adoptDocumentSheet` above is for: building twice would waste a parse, and
@@ -707,8 +706,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 * (https://developer.mozilla.org/en-US/docs/Web/API/Document/adoptedStyleSheets) — so the six
 		 * this root is holding are not the new document's to keep. all six are rebuilt rather than
 		 * re-assigned, the brand scale's against the seed the new document gives. the document sheet
-		 * also has to reach the new document's own list, because `@property` registrations and the
-		 * faces are collected from the document tree.
+		 * also has to reach the new document's own list, because `@property` registrations are
+		 * collected from the document tree.
 		 *
 		 * without this there is no second chance at it. `#mount` above returns early on a shadow root
 		 * that already exists, so nothing else would ever ask this document for anything.

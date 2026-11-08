@@ -171,10 +171,9 @@ describe('the names ./page.css reads and writes', () => {
 		expect(read.filter((name) => !declares(brandedScale, '--accent-').has(name))).toEqual([]);
 	});
 
-	it('re-points the form’s two type tokens and the sent figure’s weight', () => {
-		expect([...declares(pageText, '--_')].sort()).toEqual(['--_font', '--_font-mono', '--_w-sent']);
+	it('re-points the form’s monospace token and the sent figure’s weight', () => {
+		expect([...declares(pageText, '--_')].sort()).toEqual(['--_font-mono', '--_w-sent']);
 		expect(declared(page, '.page div')).toEqual({
-			'--_font': 'var(--page-font-text)',
 			'--_font-mono': 'var(--page-font-mono)',
 			'--_w-sent': 'var(--_w-medium)',
 			'font-variant-ligatures': 'no-contextual'

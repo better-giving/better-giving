@@ -3,16 +3,13 @@ import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
 import type { FormConfig } from './v1';
 
-// the embed draws in the design registry's faces, and brings the six core ones with it.
+// the embed loads no web font: the card is set in the face the host page gives the element.
 //
-// a nonprofit's page is the document, and it links no face of its own here. the real element is
-// mounted, whose coin list is the one the card builds and stands in its own shadow. the card's words
-// compute Red Hat Round Text and its heading Red Hat Round Display, the faces the element put into
-// the document (`documentCss` in ./element.ts) — a `@font-face` in a shadow root's sheet is never
-// collected — and the files the page fetched are the core subset's alone
-// (./registry/styles/fonts-core.usage.md). the built runtime carries them inline, which
-// ./embed/build-output.spec.ts reads; here the dev server serves the copied files, so each one is a
-// request a spec can see.
+// a nonprofit's page is the document, and it sets its own face on the element's parent. the real
+// element is mounted, whose coin list is the one the card builds and stands in its own shadow. the
+// card's words and heading compute the page's face, the coin's ticker the platform's monospace, and
+// the page fetches no font file and holds no face the element declared. ./embed/build-output.spec.ts
+// holds the built runtime to carrying none.
 
 const CONFIG: FormConfig = {
 	formId: 'frm_a8x2k9',
@@ -74,18 +71,11 @@ afterEach(() => {
 	for (const node of planted.splice(0)) node.remove();
 });
 
-/** the six faces fonts-core ships, as the file names the registry gives them. */
-const CORE_FILES = [
-	'RedHatRoundDisplay-Bold.woff2',
-	'RedHatRoundDisplay-SemiBold.woff2',
-	'RedHatRoundText-Bold.woff2',
-	'RedHatRoundText-Medium.woff2',
-	'RedHatRoundText-Regular.woff2',
-	'RedHatRoundText-SemiBold.woff2'
-];
+/** the face the host page sets, which no font file stands behind. */
+const HOST_FACE = "Georgia, 'Times New Roman', serif";
 
-describe('the embed’s own faces', () => {
-	it('draws the card in the registry’s faces and fetches none outside the core six', async () => {
+describe('the embed’s face', () => {
+	it('draws the card in the face the host page gives it and fetches no font', async () => {
 		const tag = `${DONATE_FORM_TAG}-faces`;
 		defineDonateForm(
 			{
@@ -107,10 +97,13 @@ describe('the embed’s own faces', () => {
 			},
 			tag
 		);
+		const page = document.createElement('div');
+		page.style.fontFamily = HOST_FACE;
 		const host = document.createElement(tag);
 		host.setAttribute('form', CONFIG.formId);
-		document.body.appendChild(host);
-		planted.push(host);
+		page.appendChild(host);
+		document.body.appendChild(page);
+		planted.push(page);
 
 		const list = await vi.waitFor(() => coinList(host), { timeout: 5000 });
 
@@ -120,25 +113,14 @@ describe('the embed’s own faces', () => {
 		if (word == null || heading == null) throw new Error('the card drew no text');
 		if (ticker == null) throw new Error('the coin list drew no ticker');
 
-		expect(getComputedStyle(word).fontFamily).toMatch(/^"?Red Hat Round Text"?,/);
-		expect(getComputedStyle(heading).fontFamily).toMatch(/^"?Red Hat Round Display"?,/);
-		// Mono is not one of the six, so the ticker draws in the platform monospace its stack falls to.
-		expect(getComputedStyle(ticker).fontFamily).toContain('ui-monospace');
+		const pageFace = getComputedStyle(page).fontFamily;
+		expect(pageFace).toContain('Georgia');
+		expect(getComputedStyle(word).fontFamily).toBe(pageFace);
+		expect(getComputedStyle(heading).fontFamily).toBe(pageFace);
+		expect(getComputedStyle(ticker).fontFamily.startsWith('ui-monospace')).toBe(true);
 
 		await document.fonts.ready;
-		const declared = [...document.fonts].map(
-			(face) => `${face.family.replaceAll('"', '')} ${face.weight} ${face.style}`
-		);
-		expect(declared.sort()).toEqual([
-			'Red Hat Round Display 600 normal',
-			'Red Hat Round Display 700 normal',
-			'Red Hat Round Text 400 normal',
-			'Red Hat Round Text 500 normal',
-			'Red Hat Round Text 600 normal',
-			'Red Hat Round Text 700 normal'
-		]);
-		const fetched = fontFiles().map((url) => url.slice(url.lastIndexOf('/') + 1).split('?')[0]);
-		expect(fetched.length).toBeGreaterThan(0);
-		expect(fetched.filter((name) => !CORE_FILES.includes(name ?? ''))).toEqual([]);
+		expect([...document.fonts]).toEqual([]);
+		expect(fontFiles()).toEqual([]);
 	});
 });

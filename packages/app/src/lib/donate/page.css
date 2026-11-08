@@ -3,10 +3,11 @@
  *
  * the page is dressed from the donation form's own token file,
  * packages/form/src/styles/tokens.css, and adds a layer of its own on top. every `--_` name read
- * here is declared there. this sheet re-points `--_font` and `--_font-mono` on `.page div`.
+ * here is declared there. this sheet re-points `--_font-mono` on `.page div`.
  * the card root is its own `[data-donate-root]` div (./card.tsx), and `:host, [data-donate-root]`
- * in packages/form/src/styles/tokens.css sets both tokens on that element, so an ancestor value
- * does not reach it. `.page div` works because it outranks `[data-donate-root]`. `--_w-sent` is
+ * in packages/form/src/styles/tokens.css sets that token on that element, so an ancestor value
+ * does not reach it. `.page div` works because it outranks `[data-donate-root]`. the card names no
+ * text face and inherits `.page-ground`'s. `--_w-sent` is
  * declared on the same div, which `.value.sent` reads and falls back from to `--_w-bold`
  * (packages/form/src/styles/parts.css). every other `--_` name is the card's and is not declared
  * here. the brand clamp, the neutral ladder, the type steps, the space steps and the corners are
@@ -52,7 +53,7 @@
  * font host. a mono figure this page emphasises is `--_w-medium` rather than `--_w-bold`. that is
  * this page's choice and not a limit of the face: red hat round mono ships 300 to 700
  * (packages/operator/src/registry/styles/fonts.css). the embed links neither this sheet nor those
- * faces, and its own `--_font` stays the platform stack.
+ * faces: it is set in its host page's face, and its `--_font-mono` stays the platform stack.
  *
  * widths. `--page-width` bounds the page's content and `--page-narrow` the card's and the Donation
  * page's, `--page-box` is the donation box's column — the card's widest shape starts at 26em in
@@ -185,7 +186,7 @@ body {
 }
 
 /* the card root is its own `[data-donate-root]` div (./card.tsx), and
-   packages/form/src/styles/tokens.css sets `--_font` and `--_font-mono` on that element, so an
+   packages/form/src/styles/tokens.css sets `--_font-mono` on that element, so an
    ancestor value does not reach it. `.page div` outranks `[data-donate-root]`. `--_w-sent`
    is set on the same node: the sent figure reads it and falls back to `--_w-bold`
    (packages/form/src/styles/parts.css), and this page sets its emphasised mono figures at
@@ -195,7 +196,6 @@ body {
    these faces. `no-contextual` leaves the text face's common ligatures. the card's own
    `font-variant: normal` would put them back, and this longhand outranks it. */
 .page div {
-	--_font: var(--page-font-text);
 	--_font-mono: var(--page-font-mono);
 	--_w-sent: var(--_w-medium);
 	font-variant-ligatures: no-contextual;

@@ -37,7 +37,7 @@ import { normalizeProps, VanillaMachine } from '@zag-js/vanilla';
 import badgeStyles from './registry/styles/badge-css.css?inline';
 import partStyles from './styles/parts.css?inline';
 import coinStyles from './styles/coins.css?inline';
-import { networkTint, searchCoins } from './coins';
+import { searchCoins } from './coins';
 import { glyph } from './glyph';
 import { part, partWhen } from './parts';
 import { lostWhileOpen, type Props, rootNodeOf, showWhile, spread } from './zag';
@@ -157,16 +157,15 @@ function logo(doc: Document, option: CoinOption): HTMLElement {
  * and along one line in the closed box, which is ./styles/coins.css's call and not this function's.
  *
  * the network's words are the served config's own and are drawn as they arrive; the pill is the
- * registry's badge, and which variant is `networkTint` (./coins.ts) and no rule of this file's.
+ * registry's neutral badge for every network. a status variant would read as the chain's status, and
+ * the pill's words, not its colour, are what tell one network from another.
  *
  * no whitespace between the two: the step between them is the sheet's, and a text node here would add
  * one the sheet cannot take back. so they stay one run of inline content wherever the sheet leaves
  * them inline, which is what lets the box above cut a long pill with an ellipsis (`.chosen` there).
  */
 function words(doc: Document, option: CoinOption): HTMLElement {
-	const network = node(doc, 'span', `net ds-badge ds-badge-${networkTint(option.network)}`, [
-		option.network
-	]);
+	const network = node(doc, 'span', 'net ds-badge ds-badge-neutral', [option.network]);
 	return node(doc, 'span', 'coin-text', [
 		node(doc, 'span', 'coin-ticker', [option.label]),
 		network

@@ -74,20 +74,6 @@
         "styles/fonts/RedHatRoundText-SemiBoldItalic.woff2": "b675323fb9e241105bfce4e23f1846494f9536548fecb232f044e563c0536561"
       }
     },
-    "fonts-core": {
-      "version": "1.0.0",
-      "files": {
-        "styles/fonts-core.css": "c55916b3684ddd0773fcd92d36d16bfafbf04686f7adfdcb1cedae85692fe183",
-        "styles/fonts-core.usage.md": "e7d008b1839ecf7b3381092122ddf902a3d6efd02e5411621f90c556e1c8e4d3",
-        "styles/fonts/red-hat-round-OFL.txt": "4f1417e27511207cd217656c964f1b0d8b0c4a30156a1a699cf16dc5eba0dff6",
-        "styles/fonts/RedHatRoundDisplay-Bold.woff2": "4295291ab3ce6fa70d9030312d35562fc2f3a2efee7fd14ba8277ba09da8977a",
-        "styles/fonts/RedHatRoundDisplay-SemiBold.woff2": "0c9f21f423cc0d3be52529ee523e953edf9b68417b2c6d845d7582396c09601b",
-        "styles/fonts/RedHatRoundText-Bold.woff2": "d8737cc755600d074bab867b358657ad36cbe544b30eb12d94b1e43e6fa3e9d0",
-        "styles/fonts/RedHatRoundText-Medium.woff2": "01be36bdc73c236587bbe67e469479c47ab6839e4903ee4659d97de601c336df",
-        "styles/fonts/RedHatRoundText-Regular.woff2": "2aa6fc6dc7cf478edd6b9a63a65f0946ed31a0d53a021d3353cc1b421a95bb28",
-        "styles/fonts/RedHatRoundText-SemiBold.woff2": "ffdb85ce37ceb7c783dc05bc17bd62c51c4aaff961698835ca314b3d0a89ca6d"
-      }
-    },
     "radio-css": {
       "version": "1.0.0",
       "files": {

@@ -186,8 +186,8 @@ describe('the element in a second document', () => {
 	});
 
 	// so the callback rebuilds, and what it is rebuilding for is the document sheet: `@property`
-	// registrations and the faces are collected from the document tree, and a card whose seed has no
-	// initial value cannot tell a host's seed from none.
+	// registrations are collected from the document tree, and a card whose seed has no initial value
+	// cannot tell a host's seed from none.
 	it('paints in the document it was adopted into', async () => {
 		const host = await mount();
 		const painted = background(host);

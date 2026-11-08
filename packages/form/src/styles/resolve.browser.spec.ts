@@ -15,7 +15,7 @@ import tokens from './tokens.css?inline';
 const sheet = new CSSStyleSheet();
 sheet.replaceSync(tokens);
 
-/** what the element puts in the document: the seed registrations and the faces. */
+/** what the element puts in the document: the seed registrations. */
 const documentSheet = new CSSStyleSheet();
 documentSheet.replaceSync(documentCss(tokens));
 

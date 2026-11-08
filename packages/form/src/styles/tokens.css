@@ -1,7 +1,7 @@
 /*
  * the donation form's token file: where every colour, length and size the form paints is named.
  *
- * the colours, the corner pair and the faces are the Better Giving design registry's, copied into
+ * the colours and the corner pair are the Better Giving design registry's, copied into
  * ../registry/ by its CLI and listed in ../../bg-design.json — a second lock beside the root's,
  * because AGENTS.md → Workspace keeps `packages/form` from importing `packages/operator`. those copies
  * are never edited (`pnpm design:check`), so this file reads them and states no colour of its own:
@@ -10,11 +10,12 @@
  * default, which is the registry's own default accent step 9 (`--donate-primary` below).
  *
  * the registry arrives through the `@import` below: ../registry/styles/variables.css, which brings
- * its colors.css and the generated default theme. variables.css `@import`s the registry's full
- * fonts.css, and the form's vite and vitest configs point that one import at fonts-core.css instead
- * (../../vite.registry-faces.ts), the six faces the registry's usage note gives a self-contained
- * widget. a `@font-face` inside a shadow root is ignored, so the element copies the faces, with the
- * seed registrations, into the host document (`sheetsFor` in ../element.ts).
+ * its colors.css and the generated default theme. variables.css also `@import`s the registry's face
+ * sheet, and the form's vite and vitest configs point that one import at an empty sheet
+ * (../../vite.registry-faces.ts): the card loads no web font and packs none. it is set in whatever
+ * face the host page gives the element — the `:host` block below names no `font-family` — so on the
+ * deployment's own pages it is that page's face and on a nonprofit's site it is theirs, with that
+ * page's own fallbacks.
  *
  * the registry declares its scales on `:root` and on every `[data-theme]` element, and a shadow tree
  * has no `:root`: the card's root node carries `data-theme="default"`, and everything here that reads
@@ -137,12 +138,11 @@
  * are collected from the document tree only — one that reaches the engine solely through a shadow
  * root's stylesheet is ignored, which leaves the seed with no initial value and no way to tell a seed
  * from none. "registers the seed only from the document tree" in ./tokens.browser.spec.ts pins that
- * down. so the element copies these two rules, and the registry's `@font-face` rules for the same
- * reason, into a sheet of their own in the host document (`sheetsFor` in ../element.ts) — and
- * nothing else: this file's own selectors include the registry's `:root`, which would declare the
- * whole registry on the host page's root. what the document gets is two `--donate-`-prefixed names
- * in its property registry and the registry's six faces, under the registry's family names. accepted: the prefix is a
- * namespace this component owns, and a face a page can also use is a face, not a rule.
+ * down. so the element copies these two rules into a sheet of their own in the host document
+ * (`sheetsFor` in ../element.ts) — and nothing else: this file's own selectors include the
+ * registry's `:root`, which would declare the whole registry on the host page's root. what the
+ * document gets is two `--donate-`-prefixed names in its property registry. accepted: the prefix is
+ * a namespace this component owns.
  *
  * each seed carries an `initial-value` and may not drop it. `@property` requires one for every
  * syntax except `*`, and a block written without one is invalid and dropped whole — which leaves
@@ -182,7 +182,6 @@
 	 * their own root.
 	 */
 	font-size: var(--_root-size);
-	font-family: var(--_font);
 
 	/*
 	 * the alignment, case, indent, shadow, tracking, word spacing, slant, font variants and axes,
@@ -190,7 +189,8 @@
 	 * the host page's, so a centred hero centres the receipt, an uppercase, tracked theme shouts every
 	 * label and a `nowrap` banner runs the receipt off the card. colour, weight and leading are
 	 * `[part~='card']`'s in ./parts.css; an inherited property neither block names still reaches the
-	 * card from the host.
+	 * card from the host, and the face is one of them by decision: the card is set in the family the
+	 * page gives the element, the page's own fallbacks included.
 	 *
 	 * what this resets is the value the element inherits from the page around it, and only that. a
 	 * page rule that matches the element itself — `*`, its tag name — outranks every `:host` rule for
@@ -212,30 +212,13 @@
 	--_root-size: clamp(15px, 1rem, 18px);
 
 	/*
-	 * the registry's faces, Red Hat Round Text for the card's words and Red Hat Round Display for its
-	 * headings, set as ../registry/styles/variables.css sets `--font-body` and `--font-display`. the
-	 * six core faces reach the page with the element (the head of this file), so the stacks name the
-	 * family first and fall back to the registry's own tail while the faces load and if a host's
-	 * content security policy refuses them (`font-display: swap`).
-	 *
-	 * mirrored rather than read, and that is a registry gap: variables.css declares its type, shadow
-	 * and speed variables on `:root` alone, which a shadow tree does not have, so `var(--font-body)`
-	 * on the card reads nothing — or reads whatever the host page calls `--font-body`. the copies
-	 * below are held equal to the registry's by "mirrors the registry's three faces" in
-	 * ./tokens.browser.spec.ts, so a registry release that moves a stack fails there.
-	 *
-	 * `--_font-mono` is the face for a string a donor checks against a wallet character by character —
-	 * an address, a memo, a figure in coin units, a ticker, a network code — where `0` and `O`, `l` and
-	 * `1` must not share a shape. it is the registry's `--font-mono`; Red Hat Round Mono is not one of
-	 * the six faces the element ships (../registry/styles/fonts-core.usage.md), so it draws in the
-	 * platform monospace the stack falls to. the words around such a string, and every dollar figure,
-	 * stay in `--_font`.
+	 * the face for a string a donor checks against a wallet character by character — an address, a
+	 * memo, a figure in coin units, a ticker, a network code — where `0` and `O`, `l` and `1` must not
+	 * share a shape. it is the platform's own monospace stack: it loads nothing and ends in
+	 * `monospace`, which always resolves. the words around such a string, and every dollar figure, stay in
+	 * the face the card inherits.
 	 */
-	--_font: 'Red Hat Round Text', sans-serif;
-	--_font-display: 'Red Hat Round Display', 'Red Hat Round Text', sans-serif;
-	--_font-mono:
-		'Red Hat Round Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
-		'Liberation Mono', monospace;
+	--_font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
 	/*
 	 * every size is `em` off the clamped root above, and `--_t-xs` is the one step this scale does
@@ -266,14 +249,17 @@
 	--_t-xl: 1.375em;
 
 	/*
-	 * two weights for emphasis and one for a choice. 600 is the emphasis weight everywhere in this
-	 * component, one of the four Red Hat Round Text weights the element ships, and 300 appears
-	 * nowhere — it is not one of them, and would fall back to 400.
+	 * two weights for emphasis, because of the face the card inherits: a host's face may ship 400 and
+	 * 700 and nothing between, as Arial does, and CSS weight matching resolves 500 down to 400 there
+	 * while resolving 600 up to 700. so a 500-weight label is invisible emphasis on any page whose
+	 * face falls that way. 600 is the emphasis weight everywhere in this component, and 300 appears
+	 * nowhere.
 	 *
-	 * `--_w-medium` is not emphasis and that is what admits it: it is the one weight a word a donor
-	 * chooses among is drawn at, resting and chosen alike (`[part~='amount-option']` in ./parts.css),
-	 * so nothing about it is read against a neighbour at another weight, and choosing one moves no
-	 * word by a pixel, which is the whole of what it is for.
+	 * the third is not emphasis and that is what admits it. `--_w-medium` is the one weight a word a
+	 * donor chooses among is drawn at, resting and chosen alike (`[part~='amount-option']` in
+	 * ./parts.css), so nothing about it is read against a neighbour at another weight: on a face that
+	 * ships 500 it is a shade heavier than the card's prose, and on one that does not it is 400 in
+	 * both states — and either way choosing one moves no word by a pixel.
 	 *
 	 * the registry states its weights on its component classes (`--ds-font-weight-medium` on
 	 * `.ds-label`) and as no variable a local rule can read, so these are the form's own.
