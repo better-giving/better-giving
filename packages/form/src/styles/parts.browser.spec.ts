@@ -508,6 +508,52 @@ describe('the sizes the card draws its type at', () => {
 		});
 	}
 
+	// the registry's controls state their spacing step, type sizes and corners in `rem`, which a host
+	// that shrank its root shrinks with them: on a `10px` root they would draw the action 32px tall
+	// with an 11px label and the tick box at 10px. the head of ../styles/parts.css and the colour
+	// layer of ../styles/tokens.css take each of those figures off the card's clamped root instead,
+	// which that host's root leaves at the clamp's 15px floor.
+	it('draws the registry’s controls off the card’s clamped root, on a host whose root is 10px', async () => {
+		document.documentElement.style.fontSize = '10px';
+		const { shadow, card } = await mount();
+		const root = step(shadow, '--_root-size');
+		const action = shadow.querySelector(
+			".step:not([hidden]) [part~='action'].ds-btn"
+		) as HTMLElement;
+		const tick = shadow.querySelector('.ds-checkbox') as HTMLElement;
+
+		expect(root).toBe(15);
+		expect(action.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+		expect(px(action)).toBeCloseTo(root * 1.125, 1);
+		// four of the registry's spacing steps, which is one root.
+		expect(parseFloat(getComputedStyle(tick).inlineSize)).toBeCloseTo(root, 1);
+		expect(parseFloat(getComputedStyle(tick).borderTopLeftRadius)).toBeCloseTo(root * 0.375, 1);
+		expect(parseFloat(getComputedStyle(card).borderTopLeftRadius)).toBeCloseTo(root * 0.75, 1);
+
+		// the network badge stands in the coin list's own shadow root, which inherits the root from
+		// the card around it; `data-donate-root` stands in for that card here.
+		const picker = createCoinPicker(document);
+		const around = document.createElement('div');
+		around.setAttribute('data-donate-root', '');
+		const sheet = document.createElement('style');
+		sheet.textContent = tokens;
+		around.append(sheet, picker.host);
+		document.body.appendChild(around);
+		picker.update(
+			{
+				value: 'btc',
+				options: [
+					{ value: 'btc', label: 'BTC', name: 'Bitcoin', network: 'Bitcoin', refused: false }
+				],
+				onChange: () => {}
+			},
+			''
+		);
+		const badge = picker.host.shadowRoot?.querySelector('.ds-badge') as HTMLElement;
+
+		expect(px(badge)).toBeGreaterThanOrEqual(12);
+	});
+
 	// and the consequence of the base: with the tile and the field at one size, nothing about the
 	// type separates a shortcut from the control it is a shortcut past, and nothing about the box
 	// does either — every box in the block is drawn at the one floor (`--_row-min` in
@@ -1819,7 +1865,6 @@ describe('the coin list inside the crypto option', () => {
 
 		expect(pills.length).toBeGreaterThan(1);
 		for (const pill of pills) {
-			expect(pill.className).toBe('net ds-badge ds-badge-neutral');
 			expect(getComputedStyle(pill).backgroundColor).toBe(grey('--gray-3'));
 			expect(getComputedStyle(pill).color).toBe(grey('--gray-12'));
 			expect(pill.textContent).not.toBe('');

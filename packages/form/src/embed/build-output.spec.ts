@@ -59,21 +59,32 @@ describe('the shipped bytes', () => {
 });
 
 // the form loads no web font (../styles/tokens.css): the card is set in the face the host page gives
-// it. so the runtime carries no face, inline or beside it, and its size stays the script's own.
-describe('the runtime carries no face', () => {
-	/** the gzip size the runtime stays under, in bytes: its own code, with room to grow. */
-	const RUNTIME_GZIP_CEILING = 150_000;
+// it. so neither half carries a face, inline or beside it, and the runtime's size stays the script's
+// own. this is the guard on the face: `document.fonts` sees no `@font-face` a shadow root's sheet
+// declares, so ../embed-faces.browser.spec.ts cannot go red on one.
+describe('the shipped bytes carry no face', () => {
+	/**
+	 * the gzip size the runtime stays under, in bytes: its own code, with room to grow. the runtime
+	 * measured about 118 KB gzipped when the card took the registry's sheets (BG-2101, PR #31).
+	 */
+	const RUNTIME_GZIP_CEILING = 125_000;
 
-	it('carries no face, emits no file beside the script, and stays the script’s own size', async () => {
-		const output = await shipped('runtime');
-		const code = output
-			.filter((item): item is Rollup.OutputChunk => item.type === 'chunk')
-			.map((chunk) => chunk.code)
-			.join('\n');
+	for (const mode of ['runtime', 'loader'] as const) {
+		it(`carries no face and emits no file beside the ${mode}`, async () => {
+			const output = await shipped(mode);
+			const code = output
+				.filter((item): item is Rollup.OutputChunk => item.type === 'chunk')
+				.map((chunk) => chunk.code)
+				.join('\n');
 
-		expect(code).not.toMatch(/@font-face/);
-		expect(code).not.toMatch(/data:font\//);
-		expect(output.filter((item) => item.type === 'asset')).toEqual([]);
-		expect(gzipSync(code).length).toBeLessThan(RUNTIME_GZIP_CEILING);
+			expect(code.length).toBeGreaterThan(0);
+			expect(code).not.toMatch(/@font-face/);
+			expect(code).not.toMatch(/data:font\//);
+			expect(output.filter((item) => item.type === 'asset')).toEqual([]);
+		}, 60_000);
+	}
+
+	it('keeps the runtime the script’s own size', async () => {
+		expect(gzipSync(await shippedCode('runtime')).length).toBeLessThan(RUNTIME_GZIP_CEILING);
 	}, 60_000);
 });

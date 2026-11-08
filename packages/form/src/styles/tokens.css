@@ -47,7 +47,9 @@
  * host chooses a corner without writing a length. everything else is `--_`-prefixed and private, or a
  * registry name: derived here, never read or written by a host. an org wanting more of this card
  * than its brand colour and the corner forks the package; ../../custom-elements.json states it to
- * integrators.
+ * integrators. `--donate-shade` stays listed there, because a published seed is permanent
+ * (AGENTS.md → Permanent contracts), and has no effect: this file registers and reads nothing for
+ * it, and the card's one grey is the registry's.
  *
  * the brand seed is the registry's accent step 9, and a seeded card is a seeded registry theme: the
  * element runs the radix generator the registry's scales were made with (./radix-scale.ts) on the
@@ -84,9 +86,11 @@
  * `em` throughout, off the clamped root below. the element is a guest in a document it does not
  * own, so a host that set `html { font-size: 62.5% }` must not be able to render the card at 10px,
  * while a reader's own browser zoom still moves type and spacing together. the registry's corners and
- * its component sheets are stated in `rem`, which that host does shrink — a registry gap. the form
- * holds the text box's type at 16px (`.ds-field-input` in ./parts.css) and restates none of the
- * rest, which would be a second copy of the registry's lengths.
+ * its component sheets are stated in `rem`, which that host does shrink — a registry gap. so the form
+ * takes each `rem` figure it draws off the clamped root instead: the corner pair in the colour layer
+ * below, and the button's, text box's, tick box's and badge's spacing step and type sizes at the head
+ * of ./parts.css. at a 16px root each is exactly the registry's figure. the text box's type is held
+ * at 16px besides (`.ds-field-input` in ./parts.css), and the badge's at 12px.
  *
  * no shade is ever made with alpha. a translucent fill takes on whatever the host's page put behind
  * it, and this component is painted onto a page it cannot see; the registry's alpha steps
@@ -214,11 +218,17 @@
 	/*
 	 * the face for a string a donor checks against a wallet character by character — an address, a
 	 * memo, a figure in coin units, a ticker, a network code — where `0` and `O`, `l` and `1` must not
-	 * share a shape. it is the platform's own monospace stack: it loads nothing and ends in
-	 * `monospace`, which always resolves. the words around such a string, and every dollar figure, stay in
-	 * the face the card inherits.
+	 * share a shape. the words around such a string, and every dollar figure, stay in the face the
+	 * card inherits.
+	 *
+	 * it is the registry's `--font-mono` (../registry/styles/variables.css) less its first family, the
+	 * Red Hat Round Mono this card never loads: the platform's own monospace faces, ending in
+	 * `monospace`, which always resolves. copied rather than read, because the registry declares it on
+	 * `:root` and a shadow tree has none. "takes the registry's mono stack less its web face" in
+	 * ./font-mono.spec.ts holds the two lists equal.
 	 */
-	--_font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+	--_font-mono:
+		ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
 	/*
 	 * every size is `em` off the clamped root above, and `--_t-xs` is the one step this scale does
@@ -231,11 +241,13 @@
 	 *
 	 * `--_t-md` is the base and it is the card's whole rule: only a heading goes above it, and only
 	 * an error and fine print go below it. every figure a donor reads — the presets, the amount they
-	 * type, the currency symbol beside it, the label on the button that sends it — sits on that base,
-	 * because a figure set larger than the field it is typed into is a size that ranks the two rather
-	 * than a size that reads. the entry is told apart from the shortcuts by its edge and its caret
-	 * instead (`[part~='amount-input']` in ./parts.css); the box is the one floor for both
-	 * (`--_row-min` below).
+	 * type, the currency symbol beside it — sits on that base, because a figure set larger than the
+	 * field it is typed into is a size that ranks the two rather than a size that reads. the entry is
+	 * told apart from the shortcuts by its edge and its caret instead (`[part~='amount-input']` in
+	 * ./parts.css); the box is the one floor for both (`--_row-min` below). the exception is the label
+	 * on the button that sends the gift, which is the registry's large button and takes that
+	 * button's own `--ds-text-lg` (`.ds-btn-lg` in ../registry/styles/button-css.css), a step over
+	 * the base.
 	 *
 	 * the ladder stops at `--_t-xl`, which is the receipt's total once the takeover has it, and the
 	 * coin amount on the address screen that stands where that total would, and the largest thing
@@ -850,7 +862,17 @@
 	 * moves them: the fee switch (`--_switch-radius`, where that list is kept), the busy spinner and
 	 * the marks on the step head (`.spinner` and `.step-mark` in ./parts.css), and the registry's
 	 * badge, a pill by its own rule.
+	 *
+	 * the registry states the pair in `rem` (../registry/styles/colors.css), which a host that shrank
+	 * its root shrinks with it, so the three names are re-declared here at the registry's own figures
+	 * off the clamped root, on the node the registry declares them on and after its sheet: at a 16px
+	 * root they are its 6px and 12px. `--radius` is restated as the alias the registry declares it as,
+	 * because on the deployment's own page this node carries no `data-theme` and would otherwise
+	 * inherit the registry's from `:root`.
 	 */
+	--radius-control: calc(var(--_root-size) * 0.375);
+	--radius: var(--radius-control);
+	--radius-card: calc(var(--_root-size) * 0.75);
 	--_r: var(--radius-card);
 	--_r-in: var(--radius);
 

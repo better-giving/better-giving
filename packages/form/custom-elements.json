@@ -65,6 +65,10 @@
 							"syntax": "square | soft | round",
 							"default": "soft",
 							"description": "How round the card's corners are. `soft` is the design registry's own pair: 0.75rem on the card itself and 0.375rem on every control and box drawn on it (the text boxes, the amount tiles and the free entry, the frequency options, the payment rails, the open list and the buttons) — 12px and 6px at a 16px root — and the two trays the amount tiles and the frequency options stand on are rounded by that corner plus the gap they hold their boxes behind, so each box sits concentric in its tray's corner. `round` is 24px and 12px and `square` draws all of them sharp; those two are the form's own and not values the registry has. Three shapes keep their own under every value: the marks on the step head stay circles, the processing-fee switch stays a pill, and the network badge in the crypto option's coin list stays a pill. The box a donor ticks is never rounder than the registry's control corner, 0.375rem, so under `round` it still reads as a checkbox. Any other value is invalid at computed-value time and falls back to what the element inherits: the value set on anything above it, or `soft` where nothing above sets one, the look it has when nothing is set. A browser without container style queries on custom properties draws `soft` whatever is set. Set on the element or anything above it, like --donate-primary; the payment provider's card fields read it once, when they mount."
+						},
+						{
+							"name": "--donate-shade",
+							"description": "Retained for pages that set it, and it has no effect: every value draws the registry's grey. The card has one grey scale, the design registry's, and no seed moves it; a page that sets `light`, `warm` or `cool` gets the same card as one that sets nothing."
 						}
 					],
 					"cssParts": [

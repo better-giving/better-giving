@@ -57,11 +57,13 @@ describe('the brand sheet sets what the card reads', () => {
 	// every `--accent-*` a shadow sheet reads has to move with the seed. a read the sheet does not
 	// write stays at the default accent on a seeded card, unless the theme declares it as an alias of
 	// one it does — `--accent-ground: var(--accent-12)` — which follows by substitution on the same
-	// node.
+	// node. every registry sheet is read, listed off the directory, so a sheet the lock adds is read
+	// the day it lands rather than the day someone remembers to name it here.
+	const registrySheets = readdirSync(REGISTRY, { withFileTypes: true })
+		.filter((entry) => entry.isFile() && entry.name.endsWith('.css'))
+		.map((entry) => entry.name);
 	const shadowSheets = [
-		...['variables.css', 'colors.css', 'button-css.css', 'field-css.css', 'checkbox-css.css'].map(
-			(name) => readFileSync(new URL(name, REGISTRY), 'utf8')
-		),
+		...registrySheets.map((name) => readFileSync(new URL(name, REGISTRY), 'utf8')),
 		light,
 		...sources().map((path) => readFileSync(new URL(path, SRC), 'utf8'))
 	];
@@ -79,6 +81,7 @@ describe('the brand sheet sets what the card reads', () => {
 	}
 
 	it('writes every accent variable the card’s sheets read, or one it aliases', () => {
+		expect(registrySheets).toContain('badge-css.css');
 		expect(read.size).toBeGreaterThan(5);
 		expect([...read].filter((name) => !followed.has(name))).toEqual([]);
 	});

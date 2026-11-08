@@ -8,8 +8,13 @@ import type { FormConfig } from './v1';
 // a nonprofit's page is the document, and it sets its own face on the element's parent. the real
 // element is mounted, whose coin list is the one the card builds and stands in its own shadow. the
 // card's words, heading, a text box and a button compute the page's face, the coin's ticker the
-// platform's monospace, and the page fetches no font file and holds no face the element declared.
-// ./embed/build-output.spec.ts holds the built runtime to carrying none.
+// platform's monospace, and the page fetches no font file and holds no face in the document's own
+// sheets — the one the element adopts there included.
+//
+// `document.fonts` holds the document's faces only: an `@font-face` in a shadow root's sheet is not
+// in it, so this file cannot see a face the card's own sheets declare. the guard on those is "carries
+// no face and emits no file beside the runtime" (and the loader) in ./embed/build-output.spec.ts,
+// which reads the shipped bytes.
 
 const CONFIG: FormConfig = {
 	formId: 'frm_a8x2k9',
