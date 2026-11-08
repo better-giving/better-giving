@@ -6,7 +6,8 @@ import Donations from './_app.admin.donations._index';
 
 // the dedication cell, drawn.
 //
-// what it covers: the one sentence this screen composes rather than looks up. every other cell is a
+// what it covers: the one sentence this screen composes rather than looks up. the received day is
+// formatted by `CalendarDay` and pinned in `$lib/admin/calendar-day.spec.ts`; every other cell is a
 // value the loader already turned into a string, and ./_app.admin.donations._index.db.spec.ts is
 // where those are asserted — but `In memory of Margaret Chen` is the phrase and the honoree joined
 // here, in the page, and a join that lost the space or put the name first would ship with every
@@ -50,7 +51,7 @@ function gift(over: Partial<Gift> = {}): Gift {
 		id: '019fb300-0000-7000-8000-000000000001',
 		donorName: 'Ada Okafor',
 		amount: '$123.45',
-		receivedOn: '2026-07-04',
+		receivedAt: '2026-07-04T23:30:00.000Z',
 		source: 'Annual appeal',
 		note: null,
 		status: 'completed',

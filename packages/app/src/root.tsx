@@ -1,6 +1,6 @@
 import { ErrorPanel } from '@better-giving/operator/components/shell/ErrorPanel';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useContext } from 'react';
 import {
 	isRouteErrorResponse,
 	Link,
@@ -9,11 +9,13 @@ import {
 	Outlet,
 	Scripts,
 	ScrollRestoration,
+	UNSAFE_FrameworkContext,
 	useMatches,
 	useRouteError
 } from 'react-router';
 import type { Route } from './+types/root';
 import { APP_NAME } from '$lib/admin/screen-title';
+import { viewerZoneScript } from '$lib/admin/viewer-zone';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 // the operator stylesheet is not imported here, and that absence is the mechanism: the document
 // below renders the donor pages, `/donate` and each campaign's address, as well as every operator
@@ -43,10 +45,22 @@ export function links(): Route.LinkDescriptors {
 }
 
 export function Layout({ children }: { children: ReactNode }) {
+	// absent when this renders outside `ServerRouter`. the client is not handed the nonce, so the
+	// attribute would hydrate as a mismatch the way `<Links nonce="">` below would.
+	const nonce = useContext(UNSAFE_FrameworkContext)?.nonce;
 	return (
 		<html lang="en">
 			<head>
 				<meta charSet="utf-8" />
+				{/* the viewer's zone, for the document after this one (`viewerZoneScript` in
+				    $lib/admin/viewer-zone.ts). react emits the charset and viewport metas ahead of
+				    an inline script. `suppressHydrationWarning` is what `<Scripts>` sets on its own
+				    inline scripts, for the nonce the client re-renders without. */}
+				<script
+					{...(nonce === undefined ? {} : { nonce })}
+					suppressHydrationWarning
+					dangerouslySetInnerHTML={{ __html: viewerZoneScript }}
+				/>
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
 				<Meta />
 				{/* an empty nonce in place of the one `ServerRouter` hands down: a browser hides a nonce's
