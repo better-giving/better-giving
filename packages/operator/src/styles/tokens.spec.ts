@@ -138,4 +138,14 @@ describe('the mail token mirror still says what tokens.css says', () => {
 		expect(registry.get('--font-display')).toMatch(/^"Red Hat Round Display"/);
 		expect(registry.get('--font-mono')).toMatch(/^"Red Hat Round Mono"/);
 	});
+
+	it('reads the registry’s control radius and card radius through the --admin-radius pair', () => {
+		expect({
+			control: css.get('--admin-radius'),
+			plane: css.get('--admin-radius-plane')
+		}).toEqual({
+			control: ['var(--radius-control)'],
+			plane: ['var(--radius-card)']
+		});
+	});
 });

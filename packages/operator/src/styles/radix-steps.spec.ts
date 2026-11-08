@@ -196,6 +196,16 @@ const ROLES: Record<string, string> = {
 	'--admin-scrim': 'var(--overlay)'
 };
 
+// the aliases that read a registry variable directly and are no colour: the three faces and the two
+// radii, which tokens.spec.ts pins to their targets.
+const NON_COLOUR_REGISTRY_READS = [
+	'--admin-font-sans',
+	'--admin-font-display',
+	'--admin-font-mono',
+	'--admin-radius',
+	'--admin-radius-plane'
+];
+
 describe('every colour alias reads the step radix names for its job', () => {
 	it.each(Object.entries(JOBS))('%s', (_, aliases) => {
 		const stated = Object.fromEntries(Object.keys(aliases).map((name) => [name, step(name)]));
@@ -224,5 +234,21 @@ describe('every colour alias reads the step radix names for its job', () => {
 		const placed = new Set(Object.values(JOBS).flatMap((group) => Object.keys(group)));
 		expect(aliases.filter((name) => name !== undefined && !placed.has(name))).toEqual([]);
 		expect([...placed].filter((name) => !aliases.includes(name))).toEqual([]);
+	});
+
+	it('names every alias that reads a registry variable instead of a ladder step', () => {
+		// an alias onto a registry variable is in no job above, so without this it is checked by
+		// nothing: it is a role or one of the non-colour reads, or it fails here. the ladders' own
+		// rungs read the registry by design and are held by the first cases.
+		const rungs = Object.keys(LADDERS).flatMap((ladder) =>
+			Array.from({ length: 12 }, (_, index) => `--admin-${ladder}-${index + 1}`)
+		);
+		const direct = [...tokens.matchAll(/(--admin-[\w-]+)\s*:\s*([^;]+);/g)]
+			.filter(([, , value]) => /var\(\s*--(?!admin-)/.test(value ?? ''))
+			.map(([, name]) => name ?? '')
+			.filter((name) => !rungs.includes(name));
+		const named = new Set([...Object.keys(ROLES), ...NON_COLOUR_REGISTRY_READS]);
+		expect(direct.filter((name) => !named.has(name))).toEqual([]);
+		expect([...named].filter((name) => !direct.includes(name))).toEqual([]);
 	});
 });
