@@ -212,6 +212,15 @@ body {
 	font-weight: var(--_w-medium);
 }
 
+/* every box on the card a donor types or picks in is one height. the text boxes and the closed
+   choices' boxes are the registry's and draw it themselves; the amount tray's tiles and its free
+   entry, and the coin search, are the form's own (packages/form/src/styles/parts.css and
+   coins.css), drawn at the form's 44px row floor, and take the registry's height here as a floor
+   over that one. the embed links no page sheet and keeps the form's. */
+.page :is([part~='amount-option'], [part~='amount-input'], .picker) {
+	min-block-size: var(--page-field-block);
+}
+
 .page > .page-ground {
 	--page-display: clamp(1.625rem, 1.2rem + 2.4cqi, 3rem);
 	--page-display-long: clamp(1.1875rem, 0.7rem + 2cqi, 1.625rem);
@@ -255,6 +264,21 @@ body {
 	--page-brand-mark: calc(var(--_root-size) * 1.4);
 	/* a share press's mark, glyph or network file alike. */
 	--page-share-icon: 1.25rem;
+	/* the height the registry's text box draws on the card (`.ds-field-input` in
+	   packages/form/src/registry/styles/field-css.css, its spacing step re-rooted on `--_root-size`
+	   in packages/form/src/styles/parts.css): its 12.5-step floor, or its two 3.5-step pads, its
+	   line at `1.25 / 0.875` of the 16px-floored type and its two edges, whichever is taller —
+	   52.86px at the card's 16px root. field-css declares its floor on the class alone, so no other
+	   box can read it, and the floor is not the drawn height; this copy stands until the registry's
+	   `select` item, arriving in registry 2.2.0, draws a box a tile can take its height from. */
+	--page-field-block: max(
+		calc(var(--_root-size) * 3.125),
+		calc(
+			(var(--_root-size) * 1.75) +
+			(max(16px, var(--_root-size)) * 1.25 / 0.875) +
+			(2 * var(--_border))
+		)
+	);
 
 	--page-ground: var(--_n2);
 	--page-wash:

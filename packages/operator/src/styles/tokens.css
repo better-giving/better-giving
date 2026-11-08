@@ -814,7 +814,13 @@
 		   against this paragraph. */
 		--admin-control-height: 2.25rem;
 		--admin-control-height-sm: 1.75rem;
-		--admin-field-height: 2.5rem;
+		/* the height of every box ./adm.css draws itself — select, date box, affixed box, a
+		   read-only box — and of what stands square beside one, so it is one height with the
+		   registry's `ds-field-input`. it is that box's `--ds-field-size`, `calc(0.25rem * 12.5)` in
+		   ../registry/styles/field-css.css, which the registry declares on its own class and not
+		   on `:root`, so no box outside it can read it. the registry's `select` item, arriving in
+		   registry 2.2.0, replaces the select's local rule. */
+		--admin-field-height: 3.125rem;
 		--admin-touch-min: 2.75rem;
 
 		/* the mark, and it is reserved for state: no state in /admin is ever a bare square, a

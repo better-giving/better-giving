@@ -215,9 +215,11 @@ function TextField({
 				// opt-in the sheet does: a box labelled over the top has nothing to ask.
 				placeholder={floating ? ' ' : undefined}
 				part={partWhen('field', { invalid: wrong })}
-				// a box labelled over the top is the registry's text box; the floating pair is the form's
-				// own, as `textField` in @better-giving/form's views.ts draws them.
-				className={floating ? undefined : REGISTRY_CLASS.field}
+				// the registry's text box in both constructions, so the pair stands at the address's
+				// height: the floating label is laid over the box's own grid area and centred in it
+				// (`.floating` in @better-giving/form's parts.css), so it rides whatever height the
+				// registry draws. the element's `textField` in views.ts still draws the pair as its own.
+				className={REGISTRY_CLASS.field}
 				aria-invalid={wrong ? true : undefined}
 				aria-describedby={wrong ? problemId : undefined}
 			/>

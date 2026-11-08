@@ -22,6 +22,8 @@ import {
 } from '@better-giving/form/parts';
 import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act, createRef, type ReactElement, StrictMode, Suspense } from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
@@ -31,6 +33,7 @@ import { DonateCard, type DonateCardProps } from './card';
 import { Choice, type ChoiceProps } from './choice';
 import * as copy from './copy';
 import { createReactPropTypes } from './normalize';
+import { blocks } from './page-colour.testing';
 import { PaymentBox } from './payment';
 
 // the card a donor uses, driven the way a donor drives it.
@@ -1596,18 +1599,79 @@ it('emits only part names the element publishes, and no control anywhere is disa
 	expect(names.size).toBeGreaterThan(6);
 });
 
-// the controls the registry draws carry its classes, on the elements @better-giving/form's views.ts
-// gives them: every action, every box labelled over the top and the closed choices' boxes, every
-// box a donor ticks. the floating pair and the fee switch are the form's own and carry none. the
-// card's outer root carries the registry theme, so the roles those classes read re-resolve
-// against the brand scale declared on the same node.
+// the controls the registry draws carry its classes: every action, every text box and the closed
+// choices' boxes — the floating name pair included, so it stands at the address's height — and
+// every box a donor ticks. the fee switch is the form's own and carries none. the card's outer root
+// carries the registry theme, so the roles those classes read re-resolve against the brand scale
+// declared on the same node.
+//
+// and ./page.css draws no rule that could move a registry box off the registry's height, while the
+// tray's boxes, which the registry cannot draw, all take the page's copy of that height.
+const PAGE_RULES = blocks(readFileSync(join(import.meta.dirname, 'page.css'), 'utf8'));
+
+// every declaration that can move a box's drawn height: its own size, its block padding, its line
+// and its type, and the width of its block edge.
+const SIZES_A_BOX =
+	/^(?:(?:min-|max-)?(?:height|block-size)|padding(?:-block(?:-start|-end)?|-top|-bottom)?|line-height|font(?:-size)?|border(?:-block(?:-start|-end)?|-top|-bottom)?(?:-width)?)$/;
+
+/**
+ * the last compound of each selector in a rule's list. a node matching the whole selector matches
+ * its last compound, so asking the compound alone is the wider question: it holds without mounting
+ * the page root and the layout ./page.css reads its ancestors off.
+ */
+function lastCompounds(list: string): string[] {
+	const out: string[] = [];
+	let depth = 0;
+	let start = 0;
+	let piece = '';
+	const close = () => {
+		out.push(piece.slice(start).trim());
+		piece = '';
+		start = 0;
+	};
+	for (const char of list) {
+		if (char === '(' || char === '[') depth += 1;
+		if (char === ')' || char === ']') depth -= 1;
+		if (depth === 0 && char === ',') {
+			close();
+			continue;
+		}
+		piece += char;
+		if (depth === 0 && /[\s>+~]/.test(char)) start = piece.length;
+	}
+	close();
+	return out.filter((one) => one !== '');
+}
+
+/** each ./page.css rule that reaches this node and sets something that sizes a box, as `selector { property }`. */
+function pageRulesSizing(node: Element): string[] {
+	return PAGE_RULES.flatMap(({ at, decls }) => {
+		const rule = at.at(-1) ?? '';
+		if (rule.startsWith('@')) return [];
+		const sizing = Object.keys(decls).filter((property) => SIZES_A_BOX.test(property));
+		if (sizing.length === 0) return [];
+		return lastCompounds(rule).some((compound) => node.matches(compound))
+			? [`${rule} { ${sizing.join(', ')} }`]
+			: [];
+	});
+}
+
+/** whether a ./page.css rule reaching this node gives it the page's copy of the registry field's height. */
+function pageFieldHeight(node: Element): boolean {
+	return PAGE_RULES.some(
+		({ at, decls }) =>
+			decls['min-block-size'] === 'var(--page-field-block)' &&
+			lastCompounds(at.at(-1) ?? '').some((compound) => node.matches(compound))
+	);
+}
+
 it('draws its controls with the registry’s classes, on the elements the element gives them', async () => {
 	const { root, payment } = await card();
 	const outer = root.firstElementChild;
 	expect(outer?.hasAttribute('data-donate-root')).toBe(true);
 	expect(outer?.getAttribute('data-theme')).toBe(CARD_THEME);
 
-	const seen = { action: 0, field: 0, floating: 0, checkbox: 0, fee: 0 };
+	const seen = { action: 0, field: 0, floating: 0, checkbox: 0, fee: 0, tray: 0 };
 	const registryClasses = (node: HTMLElement): string[] =>
 		[...node.classList].filter((name) => name.startsWith('ds-'));
 	const collect = (): void => {
@@ -1619,14 +1683,14 @@ it('draws its controls with the registry’s classes, on the elements the elemen
 			expect(registryClasses(node), node.outerHTML).toEqual([]);
 		}
 		for (const node of every(root, '[part~="field"]')) {
-			const floating = node.closest('.field-row.floating') !== null;
-			if (floating) {
-				expect(registryClasses(node), node.outerHTML).toEqual([]);
-				seen.floating += 1;
-			} else {
-				expect(node.className, node.outerHTML).toBe(REGISTRY_CLASS.field);
-				seen.field += 1;
-			}
+			expect(node.className, node.outerHTML).toBe(REGISTRY_CLASS.field);
+			expect(pageRulesSizing(node), node.outerHTML).toEqual([]);
+			if (node.closest('.field-row.floating') !== null) seen.floating += 1;
+			else seen.field += 1;
+		}
+		for (const node of every(root, '[part~="amount-option"], [part~="amount-input"]')) {
+			expect(pageFieldHeight(node), node.outerHTML).toBe(true);
+			seen.tray += 1;
 		}
 		for (const node of every(root, '[part~="checkbox"]')) {
 			const fee = node.closest('.switch') !== null;

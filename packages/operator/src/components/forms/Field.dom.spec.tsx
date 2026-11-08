@@ -1,5 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type ComponentProps, act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { stripComments } from '../../styles/raw-values';
+import { rulesIn, sheet } from '../../styles/sheet-rule.testing';
 import { closedRungOf } from '../closed-look.testing';
 import { mount, render } from '../render.testing';
 import { Field } from './Field.jsx';
@@ -607,5 +612,117 @@ describe('the registry field a box is drawn as', () => {
 		});
 
 		expect(boxClasses(root)).toEqual(['ds-field-input', 'adm-field__box']);
+	});
+});
+
+describe('a read-only box', () => {
+	// every sheet a box in /admin is drawn by: this package's three and the registry's field, which
+	// is where `pointer-events: none` on `[readonly]` lives. resolved through `fileURLToPath`, which
+	// ../../styles/field-on-a-tight-stack.dom.spec.tsx argues.
+	const registry = stripComments(
+		readFileSync(
+			join(dirname(fileURLToPath(import.meta.url)), '../../registry/styles/field-css.css'),
+			'utf8'
+		)
+	);
+	const rules = [sheet('adm.css'), sheet('base.css'), sheet('tokens.css'), registry].flatMap(
+		(css) => rulesIn(css)
+	);
+
+	/**
+	 * every `pointer-events` a sheet states on the box or on anything around it — the property
+	 * inherits, so a wrapper's `none` is the box's too. a member is matched with its pointer and
+	 * focus states taken off, since a pointer is what arrives at the box; a member of a pseudo-element
+	 * is not the box and is left out.
+	 */
+	const pointerEventsOn = (box: Element) => {
+		const said: string[] = [];
+		for (const { selector, stated } of rules) {
+			const value = stated.get('pointer-events');
+			if (value === undefined) continue;
+			for (const member of selector.split(', ')) {
+				if (member.includes('::') || member.startsWith('@')) continue;
+				const resting = member.replace(/:(hover|active|focus-visible|focus-within|focus)\b/g, '');
+				for (let at: Element | null = box; at !== null; at = at.parentElement) {
+					if (at.matches(resting)) said.push(`${member} { pointer-events: ${value} }`);
+				}
+			}
+		}
+		return said;
+	};
+
+	const READ_ONLY: [string, ComponentProps<typeof Field>][] = [
+		// the Zapier key and a locked row: a plain read-only box, the key in the mono face.
+		[
+			'a plain one',
+			{ id: 'zapier-key', label: 'Zapier key', code: true, readOnly: true, value: 'zk_••••1234' }
+		],
+		// the webhook's signing secret: masked, with the copy and the reveal inside the box.
+		[
+			'a masked one with its presses',
+			{
+				id: 'signing-secret',
+				label: 'Signing secret',
+				code: true,
+				masked: true,
+				copyable: true,
+				readOnly: true,
+				value: 'whsec_riverbank'
+			}
+		],
+		[
+			'a refused one',
+			{
+				id: 'zapier-key',
+				label: 'Zapier key',
+				readOnly: true,
+				value: '',
+				error: 'Make a key first.'
+			}
+		]
+	];
+
+	it.each(READ_ONLY)('%s wears no registry box', (_, props) => {
+		const classes = boxClasses(render(Field, props));
+
+		expect(classes).toContain('adm-input');
+		expect(classes.filter((name) => name.startsWith('ds-'))).toEqual([]);
+	});
+
+	it.each(READ_ONLY)(
+		'%s takes a press, a drag and a finger: no sheet stops its pointer',
+		(_, props) => {
+			const box = render(Field, props).querySelector('input');
+			if (box === null) throw new Error('the field drew no box');
+
+			expect(box.readOnly).toBe(true);
+			expect(pointerEventsOn(box).filter((said) => said.endsWith('none }'))).toEqual([]);
+		}
+	);
+
+	it('is refused on its own box, off the message it holds', () => {
+		const root = render(Field, {
+			id: 'zapier-key',
+			label: 'Zapier key',
+			readOnly: true,
+			value: '',
+			error: 'Make a key first.'
+		});
+
+		expect(boxClasses(root)).toEqual(['adm-input', 'adm-input--invalid']);
+	});
+
+	// the gate's own check: the same box put back on the registry's class is the one it was written
+	// against, and the registry's sheet takes its pointer.
+	it('would fail on the registry box', () => {
+		const box = render(Field, {
+			id: 'zapier-key',
+			label: 'Zapier key',
+			readOnly: true
+		}).querySelector('input');
+		if (box === null) throw new Error('the field drew no box');
+		box.classList.add('ds-field-input');
+
+		expect(pointerEventsOn(box)).toContain('.ds-field-input[readonly] { pointer-events: none }');
 	});
 });

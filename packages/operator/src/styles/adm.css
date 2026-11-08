@@ -105,18 +105,19 @@
 
 	/* ---------- a target past the drawn edge -------------------------------------------------
 
-	   a control drawn smaller than `--admin-touch-min` is still aimed at at that floor: a transparent
-	   `::before`, `--admin-touch-min` square and centred on the control, out of flow, so the drawn
-	   size and the row it stands in stay what they were. a control joins this list rather than
-	   growing a target of its own. the holder is `position: relative`, as `.adm-btn` and
-	   `.adm-wellwrap` are.
+	   a control drawn smaller than `--admin-touch-min`, or sized off a token that may be, is still
+	   aimed at at that floor: a transparent `::before`, at least `--admin-touch-min` square and
+	   centred on the control, out of flow, so the drawn size and the row it stands in stay what
+	   they were. a control joins this list rather than growing a target of its own. the holder is
+	   `position: relative`, as `.adm-btn` and `.adm-wellwrap` are.
 
 	   the box is sized outright and centred off `100%`: an absolute box is placed against the
 	   holder's padding box, which a bordered control draws inside its border, so a size stated
 	   outright is the one that comes out at the floor whatever the border, and the padding box's
-	   centre is the border box's. across, it is the floor or the control's own width, whichever is
-	   the wider, because a chip holding a long word is wider than the floor and a target narrower
-	   than its control would leave the control's ends to the control alone.
+	   centre is the border box's. each way it is the floor or the control's own size, whichever is
+	   the larger, because a chip holding a long word is wider than the floor, a row's Remove and the
+	   brand colour's well stand square at the box height, which is over it, and a target smaller
+	   than its control would leave the control's edges to the control alone.
 
 	   a target's reach past the drawn edge is half the floor less the drawn size, and whatever
 	   stands beside one is set at least that far off it, so no target lies over another control: a
@@ -138,8 +139,8 @@
 		content: '';
 		position: absolute;
 		inline-size: max(var(--admin-touch-min), 100%);
-		block-size: var(--admin-touch-min);
-		inset-block-start: calc((100% - var(--admin-touch-min)) / 2);
+		block-size: max(var(--admin-touch-min), 100%);
+		inset-block-start: calc((100% - max(var(--admin-touch-min), 100%)) / 2);
 		inset-inline-start: calc((100% - max(var(--admin-touch-min), 100%)) / 2);
 	}
 
@@ -1542,9 +1543,10 @@
 	/* the boxes this sheet still draws: the select, which is
 	   packages/operator/src/components/forms/SelectWithNote.jsx's machine trigger and put on it by
 	   that file's derived class list (carried-ok: .adm-select), and `.adm-input`, a text box a
-	   control draws by hand beside a run of choices. a box
-	   packages/operator/src/components/forms/Field.jsx draws is the registry's `ds-field-input` and
-	   is placed and finished by `.adm-field__box` below. */
+	   control draws by hand beside a run of choices and the read-only box
+	   packages/operator/src/components/forms/Field.jsx draws. every other box that file draws is the
+	   registry's `ds-field-input` and is placed and finished by `.adm-field__box` below. the
+	   height is `--admin-field-height`, which ./tokens.css holds at the registry box's own. */
 	.adm-input,
 	.adm-select {
 		inline-size: 100%;
@@ -1589,7 +1591,13 @@
 	   words in a refused box stand where they stood before it was refused. the select is marked by
 	   the machine's own `data-invalid`, off the message
 	   packages/operator/src/components/forms/SelectWithNote.jsx holds or an `aria-invalid` something
-	   larger than the one box marked it with. */
+	   larger than the one box marked it with. a read-only box Field.jsx draws is `.adm-input` and is
+	   marked by the derived `.adm-input--invalid`, off the same two.
+	   carried-ok: .adm-input--invalid — put on the box by the derived class list in
+	   packages/operator/src/components/forms/Field.jsx. */
+	.adm-input--invalid,
+	.adm-input--invalid:hover,
+	.adm-input--invalid.is-hover,
 	.adm-select[data-invalid],
 	.adm-select[data-invalid]:hover,
 	.adm-select[data-invalid].is-hover {
@@ -2558,7 +2566,7 @@
 
 	/* the room the press stands in: its own width, and the step of clear space between it and the
 	   last character of a value long enough to reach it. */
-	.adm-maskwrap > .adm-field__box {
+	.adm-maskwrap > :is(.adm-field__box, .adm-input) {
 		padding-inline-end: var(--admin-space-10);
 	}
 
@@ -2591,7 +2599,7 @@
 	   `--admin-control-size-sm` and 6.3rem as a small quiet press; with the reveal, the gap and the
 	   inset the cluster reaches about 8.95rem, and the sum below is 9.25rem. it is measured from
 	   those words, so new words are a new measurement. */
-	.adm-maskwrap:has(> .adm-maskwrap__presses) > .adm-field__box {
+	.adm-maskwrap:has(> .adm-maskwrap__presses) > :is(.adm-field__box, .adm-input) {
 		padding-inline-end: calc(var(--admin-space-9) * 4 + var(--admin-space-7));
 	}
 
@@ -2633,7 +2641,7 @@
 		block-size: var(--admin-brand-mark-size);
 	}
 
-	.adm-leadwrap .adm-field__box {
+	.adm-leadwrap :is(.adm-field__box, .adm-input) {
 		padding-inline-start: calc(var(--admin-space-4) + var(--admin-space-9) + var(--admin-space-3));
 	}
 
@@ -6361,7 +6369,10 @@
 	   wins because the box is the thing the row is for and the press is beside it. the height is the
 	   registry's own field size, `--ds-field-size`, which ../registry/styles/button-css.css declares
 	   on every `ds-btn` for its `ds-btn-field` tier. it is stated here rather than at each pair so the
-	   next row that puts the two together follows it instead of deciding again. */
+	   next row that puts the two together follows it instead of deciding again. the organisation
+	   finder's Search press stands on its box's row the same way, inside the combobox rather than a
+	   field. */
+	.adm-findorg > .adm-actions > .adm-btn,
 	.adm-field > .adm-actions > .adm-btn {
 		min-block-size: var(--ds-field-size);
 	}

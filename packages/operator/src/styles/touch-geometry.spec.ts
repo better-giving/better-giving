@@ -36,6 +36,14 @@ const registry = stripComments(
 	)
 );
 
+// the registry's box, whose height every box this sheet draws itself is held to below.
+const field = stripComments(
+	readFileSync(
+		join(dirname(fileURLToPath(import.meta.url)), '../registry/styles/field-css.css'),
+		'utf8'
+	)
+);
+
 /** the `var()` names and `env()` calls a value adds up, in the order it spells them. */
 const terms = (value: string | undefined) =>
 	[...(value ?? '').matchAll(/var\((--[\w-]+)\)|env\(([\w-]+)\)/g)].map(
@@ -570,5 +578,65 @@ describe('a crop handle reaches 24px into the square, and leaves 24px in its mid
 
 		expect(step(CORNERS)).toBeGreaterThan(step(ACROSS));
 		expect(step(CORNERS)).toBeGreaterThan(step(DOWN));
+	});
+});
+
+describe("every box in a form stands at the registry box's height", () => {
+	// a box ../components/forms/Field.jsx draws is the registry's `ds-field-input`, at its own field
+	// size; every other box, and what stands square beside one, is ./adm.css's and spends
+	// `--admin-field-height`. the two meet only in pixels, so the token is held to the registry's
+	// figure here, and every local box to the token.
+	const fieldSize = () => {
+		const box = ruleOf(field, '.ds-field-input');
+		return evaluate(box.get('--ds-field-size'), undefined, {
+			'--ds-spacing': box.get('--ds-spacing') ?? ''
+		});
+	};
+	const declaring = (member: string) =>
+		rulesIn(css).find(({ selector }) => selector.split(', ').includes(member))?.stated ??
+		new Map<string, string>();
+
+	it("holds the local box height at the registry box's field size", () => {
+		expect(px('--admin-field-height')).toBe(fieldSize());
+		expect(ruleOf(field, '.ds-field-input').get('min-block-size')).toBe('var(--ds-field-size)');
+	});
+
+	it.each([
+		// the text box a control draws by hand, and the read-only box Field.jsx draws.
+		['.adm-input'],
+		// SelectWithNote.jsx's trigger, until the registry's `select` item replaces it.
+		['.adm-select'],
+		// DateField.jsx's and DateRangeField.jsx's box.
+		['.adm-datebox'],
+		// a box with its unit or address in front.
+		['.adm-affixed']
+	])('%s stands at it', (member) => {
+		expect(declaring(member).get('min-block-size')).toBe('var(--admin-field-height)');
+	});
+
+	it.each([
+		// a row's Remove, square beside its box.
+		[ROW_REMOVE, 'min-block-size'],
+		// the brand colour's well, square beside its box.
+		['.adm-swatch--well', 'block-size']
+	])('%s, beside a box, stands at it', (member, property) => {
+		expect(ruleOf(css, member).get(property)).toBe('var(--admin-field-height)');
+	});
+
+	it("stands a press on a box's own row at the registry's field size", () => {
+		// the button reads `--ds-field-size` off its own `ds-btn`, which button-css declares at the
+		// field's figure for its `ds-btn-field` tier.
+		const button = ruleOf(registry, '.ds-btn');
+		expect(
+			evaluate(button.get('--ds-field-size'), undefined, {
+				'--ds-spacing': button.get('--ds-spacing') ?? ''
+			})
+		).toBe(fieldSize());
+		for (const row of [
+			'.adm-field > .adm-actions > .adm-btn',
+			'.adm-findorg > .adm-actions > .adm-btn'
+		]) {
+			expect(declaring(row).get('min-block-size'), row).toBe('var(--ds-field-size)');
+		}
 	});
 });
