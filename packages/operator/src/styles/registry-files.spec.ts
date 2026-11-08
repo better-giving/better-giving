@@ -22,7 +22,18 @@ const ROOT = new URL('../../../../', import.meta.url).pathname;
 
 type Manifest = { dir: string; items: Record<string, { files: Record<string, string> }> };
 
-const manifest = JSON.parse(readFileSync(join(ROOT, 'bg-design.json'), 'utf8')) as Manifest;
+// every lock the repo keeps: the root's, and each package's own (packages/form's holds the donation
+// form's copies). each names its own `dir` from the repo root.
+const lockPaths = [
+	'bg-design.json',
+	...globSync('packages/*/bg-design.json', { cwd: ROOT }).map((p) => p.split(sep).join('/'))
+].sort();
+
+const locks = lockPaths.map((lock) => {
+	const manifest = JSON.parse(readFileSync(join(ROOT, lock), 'utf8')) as Manifest;
+	const files = Object.assign({}, ...Object.values(manifest.items).map((item) => item.files));
+	return { lock, dir: manifest.dir, files: files as Record<string, string> };
+});
 
 function mismatches(manifestRoot: string, dir: string, files: Record<string, string>) {
 	return Object.entries(files).flatMap(([file, recorded]) => {
@@ -51,14 +62,22 @@ function unlisted(manifestRoot: string, dir: string, files: Record<string, strin
 }
 
 describe('the files copied from the design registry', () => {
-	const files = Object.assign({}, ...Object.values(manifest.items).map((item) => item.files));
-
-	it('are the whole tree under the manifest dir, no more and no fewer', () => {
-		expect(unlisted(ROOT, manifest.dir, files)).toEqual([]);
+	// a lock the glob stops finding would leave its copies unchecked and every case below green.
+	it('finds the root lock and at least one package lock', () => {
+		expect(locks.length).toBeGreaterThanOrEqual(2);
+		expect(locks.map(({ lock }) => lock)).toContain('bg-design.json');
+		expect(locks.every(({ files }) => Object.keys(files).length > 0)).toBe(true);
 	});
 
-	it('are byte for byte what bg-design.json recorded', () => {
-		expect(mismatches(ROOT, manifest.dir, files)).toEqual([]);
+	it.each(locks)(
+		'$lock: are the whole tree under its dir, no more and no fewer',
+		({ dir, files }) => {
+			expect(unlisted(ROOT, dir, files)).toEqual([]);
+		}
+	);
+
+	it.each(locks)('$lock: are byte for byte what it recorded', ({ dir, files }) => {
+		expect(mismatches(ROOT, dir, files)).toEqual([]);
 	});
 
 	it('names a listed file that is not on disk', () => {

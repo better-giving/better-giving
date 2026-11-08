@@ -23,6 +23,11 @@ const registryModes = {
 	light: registryTheme.slice(0, darkAt),
 	dark: registryTheme.slice(darkAt)
 };
+// the registry's role sheet, which names what the scales are for and declares no scale itself.
+const registryRoles = readFileSync(
+	new URL('../registry/styles/colors.css', import.meta.url).pathname,
+	'utf8'
+).replace(/\/\*[\s\S]*?\*\//g, '');
 
 /** the value ./tokens.css states for a custom property, spaces collapsed. */
 const token = (name: string): string | undefined =>
@@ -251,5 +256,70 @@ describe('every colour alias reads the step radix names for its job', () => {
 		const named = new Set([...Object.keys(ROLES), ...NON_COLOUR_REGISTRY_READS]);
 		expect(direct.filter((name) => !named.has(name))).toEqual([]);
 		expect([...named].filter((name) => !direct.includes(name))).toEqual([]);
+	});
+});
+
+/** the value a block of css states for a custom property, spaces collapsed. */
+const declaredIn = (block: string, name: string): string | undefined =>
+	block
+		.match(new RegExp(`(?<![\\w-])${name}\\s*:\\s*([^;]+);`))?.[1]
+		?.trim()
+		.replace(/\s+/g, ' ');
+
+/**
+ * what a custom property comes to under `.dark`, following `var()` aliases to the first value that
+ * is not one. an `--admin-*` name reads ./tokens.css, any other the registry's dark block and then
+ * its role sheet; a name nothing declares, or a cycle, comes to `undefined`.
+ */
+function resolveInDark(name: string, seen = new Set<string>()): string | undefined {
+	if (seen.has(name)) return undefined;
+	seen.add(name);
+	const value = name.startsWith('--admin-')
+		? token(name)
+		: (declaredIn(registryModes.dark, name) ?? declaredIn(registryRoles, name));
+	const next = value?.match(/^var\((--[\w-]+)\)$/)?.[1];
+	return next ? resolveInDark(next, seen) : value;
+}
+
+describe('every colour alias still draws under .dark', () => {
+	// the registry declares these per appearance (light and dark each state their own step), and the
+	// operator aliases the role rather than a step. a role the dark block stopped declaring would
+	// keep its light value under .dark, silently, so each is held to the dark block itself.
+	const perMode = [
+		...new Set(
+			Object.values(ROLES)
+				.flatMap((value) => value.match(/^var\((--[\w-]+)\)$/)?.[1] ?? [])
+				.filter((name) => declaredIn(registryModes.light, name) !== undefined)
+		)
+	].sort();
+
+	it('aliases exactly the four roles the registry resolves per appearance', () => {
+		expect(perMode).toEqual(['--hairline', '--link', '--link-hover', '--ring']);
+	});
+
+	it.each(perMode)('the registry’s dark block declares %s as a step', (name) => {
+		expect(declaredIn(registryModes.dark, name)).toMatch(/^var\(--(?:accent|gray)-\d+\)$/);
+	});
+
+	it('resolves a name nothing declares to nothing, so the next case can fail', () => {
+		expect(resolveInDark('--admin-no-such-alias')).toBeUndefined();
+		expect(resolveInDark('--no-such-registry-role')).toBeUndefined();
+	});
+
+	it('resolves every ladder rung, job alias and role to a declared value', () => {
+		const rungs = Object.keys(LADDERS).flatMap((ladder) =>
+			Array.from({ length: 12 }, (_, index) => `--admin-${ladder}-${index + 1}`)
+		);
+		const aliases = [
+			...rungs,
+			...Object.values(JOBS).flatMap((group) => Object.keys(group)),
+			...Object.keys(ROLES)
+		];
+		expect(aliases.length).toBeGreaterThanOrEqual(rungs.length);
+		const unresolved = aliases.filter((name) => {
+			const value = resolveInDark(name);
+			return value === undefined || value.startsWith('var(');
+		});
+		expect(unresolved).toEqual([]);
 	});
 });
