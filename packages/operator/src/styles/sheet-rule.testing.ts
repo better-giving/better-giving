@@ -38,8 +38,8 @@ function declarations(body: string): Map<string, string> {
  * the declarations one rule states, by property, last one wins as css itself resolves them.
  *
  * the selector is matched from the start of its own line up to the rule's brace, which is what
- * keeps `.adm-field` from also matching the `.adm-pair--side > .adm-field` further down the sheet — and
- * what makes the first rule it matches the one read. a selector standing first in a list is on no
+ * keeps `.adm-field` from also matching the `.adm-pair--side > .adm-field` further down the sheet
+ * — and what makes the first rule it matches the one read. a selector standing first in a list is on no
  * line of its own that ends in the brace, and is not found; an absent rule is an empty map.
  */
 export function ruleOf(css: string, selector: string): Map<string, string> {

@@ -118,8 +118,8 @@
    tone, and carries a sentence. descriptive — this is just what it is — sits in a value slot,
    carries no mark and no sentence, and is drawn as the registry's badge
    (../registry/styles/badge-css.css): neutral until it is given a tone, the same chip in a table
-   cell as anywhere else, as the gifts list at /admin/donations draws it. momentary — this just happened, on this control — reports on the
-   control that caused it, in the accent, and is never a toast and never a banner at the head of
+   cell as anywhere else, as the gifts list at /admin/donations draws it. momentary — this just
+   happened, on this control — reports on the control that caused it, in the accent, and is never a toast and never a banner at the head of
    the page. packages/operator/src/components/status/Banner.jsx, StatusWord.jsx and
    StatusLine.jsx are where those three are drawn.
 

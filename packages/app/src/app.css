@@ -35,8 +35,8 @@
    a sheet that forgets its `@layer` loses its place in the order below; there is nothing for
    it to cross into.
 
-   the @import order above is the source order inside a layer, which is what settles a tie between two rules of equal specificity. fonts.css
-   registers the plain red hat faces in `tokens` and re-points the registry's three face roles
+   the @import order above is the source order inside a layer, which is what settles a tie between
+   two rules of equal specificity. fonts.css registers the plain red hat faces in `tokens` and re-points the registry's three face roles
    there, and tokens.css declares only `--admin-*` names, so nothing either puts there can tie
    with the other. the registry's variables.css
    comes next and is unlayered: it declares the design registry's scales and roles

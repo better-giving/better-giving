@@ -4,15 +4,15 @@
  * a union is stated as a JSDoc annotation on the component that takes it, and that annotation is
  * the one statement of a prop's type. this file is the exception the word "one" makes necessary:
  * every component that pins an interaction state draws from the same one, and a copy of it per
- * component is the drift a closed set exists to stop. what earns a place here is a set a second component
- * already needs — anything one component owns stays on that component.
+ * component is the drift a closed set exists to stop. what earns a place here is a set a second
+ * component already needs — anything one component owns stays on that component.
  *
  * every member of a set here has to be one the sheets actually draw, and
  * packages/operator/src/components/pinned-states.spec.ts is what holds it to that: it reads each
  * component's own union out of its JSDoc and refuses a member no rule in
  * packages/operator/src/styles/adm.css or packages/operator/src/styles/base.css paints. a member
- * added here reaches every one of those components at once, which makes it the widest way in this package to
- * write a state that paints nothing.
+ * added here reaches every one of those components at once, which makes it the widest way in this
+ * package to write a state that paints nothing.
  *
  * nothing here is imported at runtime — the components name these in JSDoc, which carries no
  * value into the build.
