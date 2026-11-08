@@ -184,7 +184,7 @@ export function RecordCard({
 				// reasons the other reading states it for: no marker and a flex row, either of which
 				// stops a browser reporting this as a list. removing the attribute re-opens the defect.
 				// biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as above.
-				<ul role="list" className="ds-card-footer adm-record__origins">
+				<ul role="list" className="ds-card-footer adm-record__presses">
 					{foot}
 				</ul>
 			) : null}

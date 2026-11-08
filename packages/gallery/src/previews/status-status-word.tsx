@@ -11,9 +11,11 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  *
  * `tone` is the other drawing and there are four of it, one per member of the shared set
  * (packages/operator/src/components/closed-sets.js): done the accent's chip, attention the warning
- * chip, blocker the destructive chip, and note the neutral chip a record at rest takes. only a
- * record's own lifecycle status is meant to carry one — $lib/admin/status-tones.ts in packages/app
- * maps the four unions the dashboard renders.
+ * chip, blocker the destructive chip, and note the neutral chip with its ground taken away
+ * (`.adm-state--note` in packages/operator/src/styles/adm.css), which is all that tells an ended
+ * record from the untoned chip a record at rest takes. only a record's own lifecycle status is
+ * meant to carry one — $lib/admin/status-tones.ts in packages/app maps the four unions the
+ * dashboard renders.
  *
  * the long word is the specimen the badge is tested against: a status word can be computed from a
  * list rather than chosen from one, and the badge does not wrap.

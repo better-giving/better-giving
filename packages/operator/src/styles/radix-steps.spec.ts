@@ -88,6 +88,7 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-surface-fill': 'neutral-3',
 		'--admin-control-bg': 'neutral-3',
 		'--admin-control-bg-disabled': 'neutral-3',
+		'--admin-button-bg-disabled': 'neutral-3',
 		'--admin-control-soft-bg': 'neutral-3',
 		'--admin-control-quiet-bg-hover': 'neutral-3',
 		'--admin-field-bg-disabled': 'neutral-3',
@@ -144,6 +145,8 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-ink-2': 'neutral-11',
 		'--admin-ink-muted': 'neutral-11',
 		'--admin-field-placeholder': 'neutral-11',
+		// the registry button's closed label (../registry/styles/button-css.css).
+		'--admin-button-ink-disabled': 'neutral-11',
 		'--admin-accent-ink': 'accent-11',
 		'--admin-tone-blocker-ink': 'blocker-11',
 		'--admin-tone-blocker-mark': 'blocker-11',

@@ -1,6 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, redirect } from 'react-router';
+import { createRoutesStub, redirect, useLoaderData } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { WHICH_FORM } from '$lib/forms/definition';
 import { type FormReadinessLine, liveOffered } from '$lib/forms/readiness';
@@ -205,6 +205,40 @@ it('holds the archive through the redirect’s loading, and a second press posts
 	// a second archive is refused as already archived, over a form still drawn as editable.
 	await press(archive);
 	expect(posted).toEqual(['form-archive']);
+});
+
+it('hands focus back to the link that asked when the question is cancelled', async () => {
+	const Stub = createRoutesStub([
+		{
+			id: 'record',
+			path: '/admin/forms/:id',
+			loader: ({ request }) => record(new URL(request.url).searchParams.has('confirm')),
+			Component: () =>
+				createElement(DonationForm as never, {
+					loaderData: useLoaderData(),
+					actionData: undefined,
+					params: { id: FORM_ID },
+					matches: []
+				})
+		}
+	]);
+	const root = mount(
+		createElement(Stub, {
+			initialEntries: [`${RECORD}?confirm=archive`],
+			hydrationData: { loaderData: { record: record(true) } }
+		})
+	);
+	const cancel = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Cancel');
+	if (cancel === undefined) throw new Error('the question drew no Cancel link');
+
+	await act(async () => cancel.click());
+	await act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+
+	const ask = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Archive this form');
+	expect(ask).toBeDefined();
+	expect(document.activeElement).toBe(ask);
 });
 
 it('says under the heading why the form cannot go live, and at the status box why Live is missing', () => {

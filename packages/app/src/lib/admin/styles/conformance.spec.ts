@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
 // is a literal. two more are the two sheets' together, and the screens' beside them: every
 // `font-size` written reads a type role rather than a step of the ladder under it, and every
 // `font-weight` reads one too. one is ../../../app.css's: every rule /admin
-// ships stands inside one of the five layers declared there. colour is the twelfth and is gated
+// ships stands inside one of the layers declared there. colour is the twelfth and is gated
 // separately, by ./raw-color.spec.ts. the first two live in a different package than this file
 // does — packages/operator/src/styles/ — so every path below spells the whole route from the
 // repository root to a file that is not a sibling, and stays relative for one that still is.
@@ -55,18 +55,18 @@ const ELEMENT_FILE = '../operator/src/styles/adm.css';
 const APP_FILE = 'src/app.css';
 
 // src/lib/donate/** is swept out rather than in. the donor page draws the donation form's own
-// card, dressed from packages/form's four sheets and its token file, so an /admin token is exactly
+// card, dressed from packages/form's sheets and its token file, so an /admin token is exactly
 // what a screen there must not carry — and the gate over those values is the form package's own
 // browser specs against that token file. its src/lib/donate/page.css is the page's token layer,
 // dressed from that same file, and src/lib/donate/page.spec.ts is its gate.
 const DONATE = 'src/lib/donate/';
 const screens = globSync('src/**/*.tsx').filter((file) => !file.startsWith(DONATE));
-// the four sheets live in packages/operator, a sibling package this file reaches out of rather
+// the operator sheets live in packages/operator, a sibling package this file reaches out of rather
 // than a directory inside this one. the registry's copied files beside them
 // (packages/operator/src/registry, recorded in bg-design.json) are not swept: `pnpm design:check`
 // holds them to the registry, and a rule written there is the registry's to judge.
 const sheets = globSync('../operator/src/styles/*.css');
-// src/app.css is named rather than swept: it is where the layer order every one of the four
+// src/app.css is named rather than swept: it is where the layer order every one of those
 // sheets is read inside gets declared.
 const stylesheets = [...sheets, APP_FILE];
 const sources = [...screens, ...stylesheets];

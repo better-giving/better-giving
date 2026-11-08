@@ -125,7 +125,7 @@ describe('a record card mounted into a document', () => {
 		const list = root.querySelector('ul');
 
 		expect(root.querySelector('dl')).toBeNull();
-		expect(list?.className).toBe('ds-card-footer adm-record__origins');
+		expect(list?.className).toBe('ds-card-footer adm-record__presses');
 		expect(list?.getAttribute('role')).toBe('list');
 		expect(list?.getAttribute('aria-labelledby')).toBeNull();
 	});

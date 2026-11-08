@@ -69,13 +69,21 @@
 	   it keeps the focus (../components/controls/SaveButton.jsx argues it). the registry draws the
 	   closed fill for `:disabled` on a button and for `aria-disabled` on an anchor alone, so a
 	   `<button>` closed this way would otherwise draw at rest beside a natively closed one. the
-	   registry's hover and press rules already pass over it; this is its ground and ink, every rank
-	   alike as the registry's own closed rule is. a press in flight is closed the same way, and the
-	   registry's `aria-busy` look is this same pair. */
+	   registry's hover rules already pass over it; this is its ground and ink, every rank alike, and
+	   the pair is the registry's own closed pair, which its `:disabled` and `aria-busy` rules draw
+	   too (./tokens.css, `--admin-button-*-disabled`). a press in flight is closed the same way. */
 	.adm-btn[aria-disabled='true'] {
-		background-color: var(--admin-control-bg-disabled);
-		color: var(--admin-control-ink-disabled);
+		background-color: var(--admin-button-bg-disabled);
+		color: var(--admin-button-ink-disabled);
 		cursor: not-allowed;
+	}
+
+	/* the registry's primary and destructive press rules move the press down a pixel and do not
+	   pass over `aria-disabled`, so a closed press of either rank would still nudge under a
+	   pointer. */
+	.adm-btn[aria-disabled='true']:active,
+	.adm-btn[aria-disabled='true'].is-active {
+		transform: none;
 	}
 
 	/* a quiet press that opened something is held at the pointed-at fill for as long as what it
@@ -3733,6 +3741,13 @@
 		gap: var(--admin-space-2);
 	}
 
+	/* the presses at the foot of ../components/data/RecordCard.jsx, on the registry's card footer:
+	   the footer draws the row and its gap and does not wrap, and a foot holding several hosts is
+	   wider than the card at 375 (packages/gallery/src/previews/data-record-card.tsx draws one). */
+	.adm-record__presses {
+		flex-wrap: wrap;
+	}
+
 	/* the same list stood at the foot of the card instead of beside a label: the step above it is
 	   what separates the presses from what the card says, and the wider gap is what tells one from
 	   the next now that each is a thing to press rather than a literal to read. a second class on
@@ -6272,14 +6287,10 @@
 	}
 
 	/* a press on this strip takes the box a hand has to find, **on both axes**. a press that is its
-	   mark and no word is given its size by nothing inside it on either axis: the small soft rank is
-	   sized for a word, and left to itself it is a line of small print tall and two insets around a
+	   mark and no word is given its size by nothing inside it on either axis: the small tier is sized
+	   for a word, and left to itself it is a line of small print tall and two insets around a
 	   glyph wide. the floor is what makes the box square, and it is stated on the inline axis for
-	   that reason — a press carrying a word is wider than the floor on its own and never needed it.
-
-	   the rank is the soft one because the press stands on the band with nothing around it: the
-	   fill is the whole of its boundary, one step down the neutral ramp from the page, and a
-	   bordered control here would draw a box on a strip that has none. */
+	   that reason — a press carrying a word is wider than the floor on its own and never needed it. */
 	.adm-headstrip .adm-btn {
 		min-block-size: var(--admin-touch-min);
 		min-inline-size: var(--admin-touch-min);

@@ -399,8 +399,8 @@
 
 		   a button is not drawn from these: its ranks are the registry's button-css
 		   (../registry/styles/button-css.css), and what packages/operator/src/styles/adm.css still
-		   draws on one — a press closed by `aria-disabled`, a quiet press held open — reads the
-		   closed and quiet steps here. */
+		   draws on one reads the quiet steps here for a quiet press held open, and the button's own
+		   closed pair below for a press closed by `aria-disabled`. */
 		--admin-control-bg: var(--admin-neutral-3);
 		--admin-control-bg-hover: var(--admin-neutral-4);
 		--admin-control-bg-active: var(--admin-neutral-5);
@@ -411,6 +411,12 @@
 		--admin-control-border-hover: var(--admin-neutral-8);
 		--admin-control-border-active: var(--admin-neutral-8);
 		--admin-control-border-disabled: var(--admin-neutral-6);
+		/* a closed button, which is not drawn from the ladder above: the registry button's own
+		   closed pair (`:disabled` and `aria-busy` in ../registry/styles/button-css.css), step 3
+		   under step 11, so a press closed by `aria-disabled` in ./adm.css draws what a natively
+		   closed one does. */
+		--admin-button-bg-disabled: var(--admin-neutral-3);
+		--admin-button-ink-disabled: var(--admin-neutral-11);
 		/* the ground of a control whose whole boundary is that ground: a press standing on a band
 		   it shares with the value it acts on. it takes the neutral button's three steps, so the two
 		   ranks answer a pointer alike and differ by the edge alone, and it names its own so either
@@ -614,9 +620,6 @@
 		--admin-field-lh: var(--admin-lh-body);
 		--admin-hint-size: var(--admin-text-sm);
 		--admin-hint-lh: var(--admin-lh-snug);
-		/* a field's refusal is drawn at the hint's rank and one weight above it: it stands where
-		   help stands, under the box, and must not be read as help. it binds no size for that
-		   reason — the rank is the hint's and only the weight is its own. */
 		--admin-caption-size: var(--admin-text-xs);
 		/* the caption binds a leading because one rule stacks it under a mark — a destination in the
 		   rail, at the width the rail is a column — and there the caption is a word rather than a
