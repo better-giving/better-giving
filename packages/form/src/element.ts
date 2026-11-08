@@ -34,7 +34,7 @@ import {
 } from './checkout.machine';
 import { connect, type State } from './connect';
 import { readFormConfig } from './config';
-import { SLOT_NAMES } from './parts';
+import { CARD_THEME, SLOT_NAMES } from './parts';
 import {
 	createAnnouncer,
 	createCard,
@@ -45,11 +45,14 @@ import {
 } from './views';
 import type { FundReports } from './ports';
 import type { FormConfig, Frequency, PaymentMethod } from './v1';
+import buttonStyles from './registry/styles/button-css.css?inline';
+import checkboxStyles from './registry/styles/checkbox-css.css?inline';
+import fieldStyles from './registry/styles/field-css.css?inline';
 import tokens from './styles/tokens.css?inline';
 import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
 import motionStyles from './styles/motion.css?inline';
-import { type BrandInputs, brandCss, brandInputsOf, seedWatch } from './styles/brand';
+import { brandCss, brandSeedOf, seedWatch } from './styles/brand';
 
 /** the tag, and it is permanent: a breaking change ships as a second element beside this one. */
 export const DONATE_FORM_TAG = 'bg-donate-form';
@@ -324,46 +327,59 @@ function committedFrequency(state: State): Frequency | undefined {
  * was constructed in — so an element that moves between them is served a set per document rather
  * than carrying one across (`adoptedCallback` below).
  *
- * the token sheet is held beside the set because it is the one that also belongs in the document's
- * own list, and that membership is asserted rather than assumed.
+ * the document's own sheet is held beside the set because it is the one that belongs in the
+ * document's list rather than a shadow root's, and that membership is asserted rather than assumed.
  */
 const SHEETS = new WeakMap<
 	Document,
-	{ readonly shadow: readonly CSSStyleSheet[]; readonly token: CSSStyleSheet }
+	{ readonly shadow: readonly CSSStyleSheet[]; readonly document: CSSStyleSheet }
 >();
 
 /**
- * the token sheet in the document's own list, put back wherever it is not there.
+ * the document sheet in the document's own list, put back wherever it is not there.
  *
  * asserted on every mount rather than appended once, because the array is the host page's. a design
  * system that assigns where this appends — `document.adoptedStyleSheets = [theirs]` — takes this
- * sheet off with it, and takes every `@property` registration the seeds derive from with that. the
- * check is an `includes` over a list a page holds a handful of entries in.
+ * sheet off with it, and takes the seed registrations and the faces with that. the check is an
+ * `includes` over a list a page holds a handful of entries in.
  */
-function adoptTokens(doc: Document, token: CSSStyleSheet): void {
-	if (doc.adoptedStyleSheets.includes(token)) return;
-	doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, token];
+function adoptDocumentSheet(doc: Document, sheet: CSSStyleSheet): void {
+	if (doc.adoptedStyleSheets.includes(sheet)) return;
+	doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+}
+
+/** a `@property` or `@font-face` block: one level of braces, and neither holds a nested one. */
+const DOCUMENT_RULE = /@(?:property|font-face)\b[^{]*\{[^}]*\}/g;
+
+/**
+ * the rules of the token sheet that work only from the document tree: the seed registrations and the
+ * registry's faces. `@property` and `@font-face` are collected from the document and ignored in a
+ * shadow root's sheet, so these are the part of ./styles/tokens.css the host page has to hold — and
+ * the only part, because the rest of that file includes the registry's `:root` block, which would
+ * declare every registry variable on the host page's root.
+ */
+export function documentCss(css: string): string {
+	// a comment naming either at-rule would otherwise be read as the start of one.
+	return (css.replace(/\/\*[\s\S]*?\*\//g, '').match(DOCUMENT_RULE) ?? []).join('\n');
 }
 
 /**
- * the sheets a shadow root adopts, having put the token sheet into the document as well.
+ * the sheets a shadow root adopts, having put the document sheet into the document as well.
  *
- * the second adoption is load-bearing, not defensive. `@property` registrations are collected from
- * the document tree only — one that reaches the engine solely through a shadow root's stylesheet
- * is ignored — so a token sheet adopted into the shadow root alone leaves the brand seed with no
- * initial value and every step derived from it invalid at computed-value time. that is a blank
- * card on any page whose host set no seeds, which is the common case. "registers only from the
- * document tree" in ./styles/tokens.browser.spec.ts is the proof, and no selector in that file
- * matches anything on a host's page, so the second adoption costs a parse and nothing else.
+ * the document sheet is load-bearing, not defensive. a seed registration that reaches the engine
+ * solely through a shadow root is ignored, which leaves the seed with no initial value and a seeded
+ * card indistinguishable from none, and a face declared there is never loaded. "registers the seed
+ * only from the document tree" in ./styles/tokens.browser.spec.ts is the proof, and the sheet holds
+ * no selector, so it matches nothing on a host's page.
  *
  * the sheets are built once per document and the document adoption is checked on every call, which
- * is the asymmetry `adoptTokens` above is for: building twice would waste a parse, and appending
- * once trusts a list this code does not own to still hold what it put there.
+ * is the asymmetry `adoptDocumentSheet` above is for: building twice would waste a parse, and
+ * appending once trusts a list this code does not own to still hold what it put there.
  */
 function sheetsFor(doc: Document): readonly CSSStyleSheet[] {
 	const cached = SHEETS.get(doc);
 	if (cached !== undefined) {
-		adoptTokens(doc, cached.token);
+		adoptDocumentSheet(doc, cached.document);
 		return cached.shadow;
 	}
 
@@ -376,14 +392,22 @@ function sheetsFor(doc: Document): readonly CSSStyleSheet[] {
 		return sheet;
 	};
 
-	// order is cascade order for the equal-specificity rules these four files are almost entirely
-	// made of. layout comes after paint so that `[hidden]` — which every `display` declaration
-	// above it would otherwise outrank — is the last word on what is on screen; motion comes after
-	// layout because it moves what layout has placed.
-	const tokenSheet = build(tokens);
-	const shadow = [tokenSheet, build(partStyles), build(layoutStyles), build(motionStyles)];
-	adoptTokens(doc, tokenSheet);
-	SHEETS.set(doc, { shadow, token: tokenSheet });
+	// order is cascade order for the equal-specificity rules these files are almost entirely made
+	// of. the registry's controls come after the tokens they read and before the form's own sheets,
+	// so a rule there that adjusts a registry control does it by order. layout comes after paint so
+	// that `[hidden]` — which every `display` declaration above it would otherwise outrank — is the
+	// last word on what is on screen; motion comes after layout because it moves what layout has
+	// placed.
+	const shadow = [
+		build(tokens),
+		build(`${buttonStyles}\n${fieldStyles}\n${checkboxStyles}`),
+		build(partStyles),
+		build(layoutStyles),
+		build(motionStyles)
+	];
+	const documentSheet = build(documentCss(tokens));
+	adoptDocumentSheet(doc, documentSheet);
+	SHEETS.set(doc, { shadow, document: documentSheet });
 	return shadow;
 }
 
@@ -536,12 +560,12 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 */
 		#announcer: HTMLElement | null = null;
 		/**
-		 * the brand scale this element's seed and shade generate (./styles/brand.ts), adopted after the
-		 * shared four, and what it was generated from. per element, because two cards on one page may
+		 * the brand scale this element's seed generates (./styles/brand.ts), adopted after the shared
+		 * five, and the seed it was generated from. per element, because two cards on one page may
 		 * carry two brands; rebuilt with the rest when the element changes document.
 		 */
 		#brand: CSSStyleSheet | null = null;
-		#brandFrom: BrandInputs | null = null;
+		#brandFrom: string | null = null;
 		/**
 		 * whether nothing has been said through the region since it reached the tree.
 		 *
@@ -627,7 +651,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 
 		connectedCallback(): void {
 			this.#stay();
-			// a seed or shade that moved while the element was off the document reported nothing
+			// a seed that moved while the element was off the document reported nothing
 			this.#paintBrand();
 			this.#reattachCard?.();
 			this.#bootIfNeeded();
@@ -680,11 +704,11 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 *
 		 * a constructed stylesheet may only be adopted by the document it was constructed in — a
 		 * sheet from another one is a `NotAllowedError`
-		 * (https://developer.mozilla.org/en-US/docs/Web/API/Document/adoptedStyleSheets) — so the five
-		 * this root is holding are not the new document's to keep. all five are rebuilt rather than
-		 * re-assigned, the brand scale's against the seed the new document gives. the token sheet also
-		 * has to reach the new document's own list, because `@property` registrations are collected
-		 * from the document tree and a card with none is a blank card.
+		 * (https://developer.mozilla.org/en-US/docs/Web/API/Document/adoptedStyleSheets) — so the six
+		 * this root is holding are not the new document's to keep. all six are rebuilt rather than
+		 * re-assigned, the brand scale's against the seed the new document gives. the document sheet
+		 * also has to reach the new document's own list, because `@property` registrations and the
+		 * faces are collected from the document tree.
 		 *
 		 * without this there is no second chance at it. `#mount` above returns early on a shadow root
 		 * that already exists, so nothing else would ever ask this document for anything.
@@ -764,8 +788,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 */
 		#mount(): void {
 			// asked for on every boot rather than on the one that builds the root, because the second
-			// half of what it does — the token sheet in the document — is an assertion about a list the
-			// host page owns and may have assigned since (`adoptTokens` above).
+			// half of what it does — the document sheet in the document — is an assertion about a list
+			// the host page owns and may have assigned since (`adoptDocumentSheet` above).
 			const sheets = sheetsFor(this.ownerDocument);
 			if (this.shadowRoot !== null) return;
 			const root = this.attachShadow({ mode: 'open' });
@@ -774,24 +798,22 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				this.#region(),
 				seedWatch(this.ownerDocument, () => this.#paintBrand())
 			]);
-			// before the first card goes up, so no frame paints the stylesheet's fallback scale
+			// before the first card goes up, so no frame of a seeded card paints the default accent
 			this.#paintBrand();
 		}
 
 		/**
-		 * the brand scale for the seed and shade the host computes now, set unless it is the one already
-		 * set.
+		 * the brand scale for the seed the host computes now, set unless it is the one already set.
 		 *
-		 * a seed the generator does not read sets a sheet with no scale in it, which leaves
-		 * ./styles/tokens.css's fallback scale standing.
+		 * an unseeded card sets a sheet with no scale in it, which leaves the registry's default theme
+		 * standing.
 		 */
 		#paintBrand(): void {
 			const root = this.shadowRoot;
 			const view = this.ownerDocument.defaultView;
 			if (root === null || view === null) return;
-			const from = brandInputsOf(this);
-			const same = from.seed === this.#brandFrom?.seed && from.gray === this.#brandFrom.gray;
-			if (this.#brand !== null && same) return;
+			const from = brandSeedOf(this);
+			if (this.#brand !== null && from === this.#brandFrom) return;
 			if (this.#brand === null) {
 				this.#brand = new view.CSSStyleSheet();
 				root.adoptedStyleSheets = [...root.adoptedStyleSheets, this.#brand];
@@ -914,6 +936,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			const doc = this.ownerDocument;
 			const card = doc.createElement('div');
 			card.setAttribute('part', 'card');
+			card.setAttribute('data-theme', CARD_THEME);
 			// the one card that reserves a box rather than standing at its own height, and the class
 			// is the whole of how the sheet tells it from the two that follow it (`.loading` in
 			// ./styles/layout.css). it carries no `::part()` name for the reason the heading below

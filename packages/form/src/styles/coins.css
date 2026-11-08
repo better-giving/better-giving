@@ -146,53 +146,19 @@ button {
 /*
  * the network's pill, after the ticker in the closed box and under it in a row.
  *
- * its colour is the six-entry palette in ./tokens.css, and which entry is `networkTint`
- * (../coins.ts) written onto the node as `data-tint` — so a network the processor lists tomorrow is
- * painted without a rule being added here. there is no rule for a network by name and there is not
- * to be one.
+ * the pill is the registry's badge (../registry/styles/badge-css.css, adopted before this sheet), and
+ * which of its variants is `networkTint` (../coins.ts) written onto the node as a class — so a network
+ * the processor lists tomorrow is painted without a rule being added here. there is no rule for a
+ * network by name and there is not to be one. what is left here is where it stands.
  *
- * inline-block, which keeps the ticker and the pill one run of inline content in the closed box:
- * `.chosen` above cuts that run with an ellipsis, and an ellipsis is only ever applied to inline
- * content. the pill itself never breaks across two lines in either place.
+ * inline-block rather than the badge's own inline-flex, which keeps the ticker and the pill one run of
+ * inline content in the closed box: `.chosen` above cuts that run with an ellipsis, and an ellipsis
+ * is only ever applied to inline content. the pill itself never breaks across two lines in either
+ * place.
  */
 .net {
 	display: inline-block;
 	margin-inline-start: var(--_sp1);
-	padding-inline: var(--_sp1);
-	border-radius: var(--_r-in);
-	font-size: var(--_t-xs);
-	font-weight: var(--_w-medium);
-	white-space: nowrap;
-}
-
-.net[data-tint='0'] {
-	background: var(--_net-0-tint);
-	color: var(--_net-0-ink);
-}
-
-.net[data-tint='1'] {
-	background: var(--_net-1-tint);
-	color: var(--_net-1-ink);
-}
-
-.net[data-tint='2'] {
-	background: var(--_net-2-tint);
-	color: var(--_net-2-ink);
-}
-
-.net[data-tint='3'] {
-	background: var(--_net-3-tint);
-	color: var(--_net-3-ink);
-}
-
-.net[data-tint='4'] {
-	background: var(--_net-4-tint);
-	color: var(--_net-4-ink);
-}
-
-.net[data-tint='5'] {
-	background: var(--_net-5-tint);
-	color: var(--_net-5-ink);
 }
 
 /* a coin's mark: the round shape a logo stands in, holding the first letter of the coin's name. */

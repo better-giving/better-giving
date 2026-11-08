@@ -1125,8 +1125,8 @@ function CheckoutCard({
 		// the outer node carries the ladder the element's `:host` block declares in a shadow tree, and
 		// the card carries the container query every breakpoint resolves against. `@property
 		// --donate-primary` registers from the document tree, which is where this sheet now is. the
-		// brand scope is the page root's (./page-root.tsx), so its generated scale outranks the token
-		// file's fallback here as well.
+		// brand scope is the page root's (./page-root.tsx), so the scale it writes is declared on this
+		// node as well.
 		<div data-donate-root="" data-brand-scope={brandScope}>
 			<div
 				ref={cardNode}

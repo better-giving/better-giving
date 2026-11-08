@@ -41,7 +41,7 @@
   --accent-contrast: oklch(1 0 0); /* #ffffff */
   --accent-ground: var(--accent-12);
   --accent-surface: color(display-p3 0.9451 0.9725 1 / 0.8); /* #f0f8ffcc */
-  --ring: var(--accent-8);
+  --ring: var(--accent-11);
   --link: var(--accent-9);
   --link-hover: var(--accent-10);
   --gray-1: oklch(0.991 0.003 264.5); /* #fbfcfe */

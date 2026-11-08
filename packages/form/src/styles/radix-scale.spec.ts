@@ -1,7 +1,8 @@
+import { readFileSync } from 'node:fs';
 import * as RadixColors from '@radix-ui/colors';
 import { describe, expect, it } from 'vitest';
 import { generateRadixColors } from './radix-generator.testing';
-import { brandScaleCss, generateBrandScale } from './radix-scale';
+import { brandScaleCss, generateBrandScale, REGISTRY_GRAY_SEED } from './radix-scale';
 
 // ./radix-scale.ts is a port of radix's custom-palette generator, and this is the spec that says
 // whether it is one: every seed below goes through the generator as radix ships it
@@ -11,8 +12,12 @@ import { brandScaleCss, generateBrandScale } from './radix-scale';
 // the precision the generator itself serializes (eight bits a channel; four significant digits of
 // chroma and hue, lightness to a tenth of a percent).
 
-/** the generator's inputs other than the seed: light, slate's step 9 as the grey, a white page. */
-const RADIX_INPUTS = { appearance: 'light', gray: '#8b8d98', background: '#ffffff' } as const;
+/** the generator's inputs other than the seed: light, the registry's grey seed, a white page. */
+const RADIX_INPUTS = {
+	appearance: 'light',
+	gray: REGISTRY_GRAY_SEED,
+	background: '#ffffff'
+} as const;
 
 const SCALE_NAMES = [
 	'gray',
@@ -57,7 +62,8 @@ const RADIX_NINES = SCALE_NAMES.map((name) => {
 
 const SEEDS: readonly (readonly [string, string])[] = [
 	...RADIX_NINES,
-	['the registered default, slate 12', '#1c2024'],
+	['a near-black, slate 12', '#1c2024'],
+	['the registered default, the registry’s accent 9', 'oklch(0.5198 0.1225 247.31)'],
 	['a mid grey', '#808080'],
 	['a dark grey', '#333333'],
 	['a light grey', '#cccccc'],
@@ -201,31 +207,41 @@ describe('where the port departs from radix’s generator on purpose', () => {
 	});
 });
 
-describe('the brand scale under the warm shade', () => {
-	// the warm card's greys are sand, so the generator is handed sand's step 9 as its grey, as radix's
-	// custom page is with sand chosen. the grey only reaches a pure black or white seed.
-	const WARM_INPUTS = { ...RADIX_INPUTS, gray: '#8d8d86' } as const;
+describe('the registry’s default theme', () => {
+	// the registry's scales are this generator's output, run by its CLI on the seeds the theme file's
+	// head names. the port is what themes a seed a host sets at runtime, so it has to reproduce the
+	// registry's own: the default accent seed in, the default accent scale out, step for step.
+	const theme = readFileSync(
+		new URL('../registry/styles/themes/default.css', import.meta.url),
+		'utf8'
+	);
+	const light = theme.slice(0, theme.indexOf('}'));
+	const seed = (name: string) => new RegExp(`--${name} '(#[0-9a-f]{6})'`).exec(theme)?.[1];
+	const hexOf = (name: string) =>
+		[...light.matchAll(new RegExp(`--${name}: [^;]+; /\\* (#[0-9a-f]{6}) \\*/`, 'g'))].map(
+			([, hex]) => hex
+		);
 
-	it.each([
-		['black', '#000000'],
-		['white', '#ffffff'],
-		['the registered default, slate 12', '#1c2024'],
-		['radix red 9', '#e5484d'],
-		['a mid grey', '#808080']
-	])('matches every output for %s against sand', (_name, seed) => {
-		const radix = generateRadixColors({ ...WARM_INPUTS, accent: seed });
-		const port = generateBrandScale(seed, 'sand');
+	it('names the grey seed the port is handed', () => {
+		expect(seed('gray')).toBe(REGISTRY_GRAY_SEED);
+	});
 
-		expect(port?.steps).toEqual(radix.accentScale.map(longHex));
-		expect(port?.stepsWideGamut).toEqual(radix.accentScaleWideGamut);
-		expect(port?.contrast).toEqual(longHex(radix.accentContrast));
+	it('comes out of the port as the registry’s accent scale and its ink, from the registry’s seed', () => {
+		const accent = seed('accent');
+		expect(accent).toBeDefined();
+		const port = generateBrandScale(accent ?? '');
+		const steps = Array.from({ length: 12 }, (_, i) => hexOf(`accent-${i + 1}`)[0]);
+
+		expect(steps.every((hex) => hex !== undefined)).toBe(true);
+		expect(port?.steps).toEqual(steps);
+		expect(port?.contrast).toBe(hexOf('accent-contrast')[0]);
 	});
 });
 
 describe('a seed the port does not read', () => {
-	// the element leaves ./tokens.css's fallback scale standing for these rather than painting a
-	// guess: notations no engine hands back for a registered `<color>` it was given in another form,
-	// and strings that are no colour at all.
+	// the element draws these in relative colour instead (`brandCss` in ./brand.ts): notations no
+	// engine hands back for a registered `<color>` it was given in another form, and strings that are
+	// no colour at all.
 	it.each([
 		['a cie lab colour', 'lab(50% 40 30)'],
 		['a rec2020 colour', 'color(rec2020 0.5 0.2 0.1)'],
@@ -241,23 +257,21 @@ describe('a seed the port does not read', () => {
 describe('the scale as css', () => {
 	const scale = generateBrandScale('#0f766e');
 	if (scale === null) throw new Error('#0f766e is a seed the port reads');
-	const css = brandScaleCss(':host', scale);
+	const css = brandScaleCss(':host > [data-theme]', scale);
 
 	/** the declarations in one block of the css, by name. */
 	function block(source: string): Record<string, string> {
 		return Object.fromEntries(
-			[...source.matchAll(/(--_[\w-]+): ([^;]+);/g)].map(([, name, value]) => [name, value])
+			[...source.matchAll(/(--[\w-]+): ([^;]+);/g)].map(([, name, value]) => [name, value])
 		);
 	}
 
-	it('sets every step, the solid pair and the ink, in sRGB for every display', () => {
+	it('sets every step of the registry’s accent and its ink, in sRGB for every display', () => {
 		const [srgb = ''] = css.split('@supports');
-		expect(srgb.startsWith(':host {')).toBe(true);
+		expect(srgb.startsWith(':host > [data-theme] {')).toBe(true);
 		expect(block(srgb)).toEqual({
-			...Object.fromEntries(scale.steps.map((value, i) => [`--_a${i + 1}`, value])),
-			'--_p': scale.steps[8],
-			'--_p-hover': scale.steps[9],
-			'--_on-p': scale.contrast
+			...Object.fromEntries(scale.steps.map((value, i) => [`--accent-${i + 1}`, value])),
+			'--accent-contrast': scale.contrast
 		});
 	});
 
@@ -267,18 +281,9 @@ describe('the scale as css', () => {
 			true
 		);
 		expect(block(wide)).toEqual({
-			...Object.fromEntries(scale.stepsWideGamut.map((value, i) => [`--_a${i + 1}`, value])),
-			'--_p': scale.stepsWideGamut[8],
-			'--_p-hover': scale.stepsWideGamut[9],
-			'--_on-p': scale.contrast
+			...Object.fromEntries(scale.stepsWideGamut.map((value, i) => [`--accent-${i + 1}`, value])),
+			'--accent-contrast': scale.contrast
 		});
-	});
-
-	it('sets only the tokens it is narrowed to, on every display', () => {
-		const narrowed = brandScaleCss(':host', scale, ['--_a8', '--_on-p']);
-		const [srgb = '', wide = ''] = narrowed.split('@supports');
-		expect(block(srgb)).toEqual({ '--_a8': scale.steps[7], '--_on-p': scale.contrast });
-		expect(block(wide)).toEqual({ '--_a8': scale.stepsWideGamut[7], '--_on-p': scale.contrast });
 	});
 });
 

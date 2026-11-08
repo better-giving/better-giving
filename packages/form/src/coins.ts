@@ -44,12 +44,22 @@ export function searchCoins<T extends SearchableCoin>(coins: readonly T[], query
 		.map((entry) => entry.coin);
 }
 
-/** how many entries the network palette holds (`--_net-0-tint` … in ./styles/tokens.css). */
-export const NETWORK_TINTS = 6;
+/**
+ * the badges a network's pill is painted as: the registry's five `ds-badge` variants
+ * (./registry/styles/badge-css.usage.md), in the order a hash lands on them.
+ *
+ * five because the registry has five, and every one of them is a status: a network landing on
+ * `warning` or `destructive` reads as a chain in trouble when the colour says nothing about it. the
+ * registry has no anonymous tint for a label to be told apart by, which is the gap this list stands
+ * in.
+ */
+export const NETWORK_BADGES = ['neutral', 'primary', 'success', 'warning', 'destructive'] as const;
+
+export type NetworkBadge = (typeof NETWORK_BADGES)[number];
 
 /**
- * which palette entry a network's pill is painted in: a hash of the network's own words, taken
- * modulo the palette.
+ * which badge a network's pill is painted as: a hash of the network's own words, taken modulo the
+ * badges.
  *
  * total by construction, which is the whole point. a network the processor adds tomorrow takes a
  * colour with nobody editing this repository, because there is no table here to be missing from — a
@@ -58,18 +68,18 @@ export const NETWORK_TINTS = 6;
  *
  * so the colour matches no chain's brand, and that is intended: the pill carries the network's words
  * too, so the colour is a scanning aid rather than the identifier, and two networks landing on one
- * entry cost nothing for the same reason.
+ * badge cost nothing for the same reason.
  *
  * FNV-1a over the trimmed, lowercased name. the arithmetic is `Math.imul` and `>>> 0` so it stays in
  * 32 bits rather than drifting into a float at the fifth character, and the answer is a pure function
  * of the string: the same network is the same colour on every page load, in every browser, whatever
  * else the list holds and in whatever order the deployment served it.
  */
-export function networkTint(network: string): number {
+export function networkTint(network: string): NetworkBadge {
 	const text = network.trim().toLowerCase();
 	let hash = 0x811c9dc5;
 	for (let at = 0; at < text.length; at += 1) {
 		hash = Math.imul(hash ^ text.charCodeAt(at), 0x01000193) >>> 0;
 	}
-	return hash % NETWORK_TINTS;
+	return NETWORK_BADGES[hash % NETWORK_BADGES.length] ?? 'neutral';
 }

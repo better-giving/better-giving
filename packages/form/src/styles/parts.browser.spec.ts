@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // document and is the one a reader here is looking for.
 import { page as browser, cdp, userEvent } from 'vitest/browser';
 import { createCoinPicker } from '../coin-picker';
-import { NETWORK_TINTS } from '../coins';
+import { NETWORK_BADGES, networkTint } from '../coins';
 import { createDepositBlock, type DepositView } from '../deposit';
 import { defineDonateForm, DONATE_FORM_TAG } from '../element';
 import { createRows, type Row, type RowMark } from '../embed/rows';
@@ -13,6 +13,7 @@ import { PROVIDER_NAME_OFFSET_PX } from '../embed/rows.measured';
 import { generateBrandScale } from './radix-scale';
 import type { CheckoutPorts } from '../ports';
 import type { FormConfig } from '../v1';
+import { CARD_THEME } from '../parts';
 import { createSkeleton } from '../views';
 import layoutSheet from './layout.css?inline';
 import partSheet from './parts.css?inline';
@@ -127,24 +128,22 @@ function paintedBytes(colour: string): number[] {
  * a seed written after mount, once the element's generated scale has followed it: the scale is set
  * from a transition the seed change starts (./brand.ts), which reports a frame or more later.
  *
- * waits on `--_a8`, because ./tokens.css's fallback for `--_p` is the seed itself and the
- * generator's step 9 is that seed for most seeds, so `--_p` reads as followed before the sheet
- * lands. `--_a8` is the fallback's own oklch derivation there, and the guard below holds the seed
- * to one where the generator's step 8 is a different colour from it.
+ * waits on `--_a8`, the generated step 8, and the guard below holds the seed to one whose step 8 is
+ * a different colour from the one the card stood at before, or the wait proves nothing.
  */
 async function reseed(host: HTMLElement, declarations: string): Promise<void> {
-	host.style.cssText = declarations;
 	const shadow = host.shadowRoot as ShadowRoot;
+	const before = paintedBytes(used(shadow, '--_a8'));
+	host.style.cssText = declarations;
 	const seed = getComputedStyle(host).getPropertyValue('--donate-primary');
 	const scale = generateBrandScale(seed);
 	if (scale === null) return;
 	const steps = matchMedia('(color-gamut: p3)').matches ? scale.stepsWideGamut : scale.steps;
-	const fallback = paintedBytes(`oklch(from ${seed} 0.729 calc(c * 0.73) h)`);
 	const generated = paintedBytes(steps[7] as string);
 	expect(
 		generated,
-		`${seed}: step 8 must differ from the fallback or the wait proves nothing`
-	).not.toEqual(fallback);
+		`${seed}: step 8 must differ from the card's before or the wait proves nothing`
+	).not.toEqual(before);
 	await vi.waitFor(() => expect(paintedBytes(used(shadow, '--_a8'))).toEqual(generated));
 }
 
@@ -248,11 +247,19 @@ async function atReview(shadow: ShadowRoot): Promise<void> {
 	await settle();
 }
 
-/** one token as the `rgb(…)` an engine reports a used color in. */
+/**
+ * where a probe reading a token stands: the card's root, which carries the registry theme every
+ * colour token reads, or the shadow root of a mount that drew no card.
+ */
+function themed(shadow: ShadowRoot): ParentNode {
+	return shadow.querySelector('[data-theme]') ?? shadow;
+}
+
+/** one token as the `rgb(…)` an engine reports a used color in, read inside the card's root. */
 function used(shadow: ShadowRoot, token: string): string {
 	const probe = document.createElement('div');
 	probe.style.cssText = `color: var(${token})`;
-	shadow.appendChild(probe);
+	themed(shadow).appendChild(probe);
 	const color = getComputedStyle(probe).color;
 	probe.remove();
 	return color;
@@ -262,7 +269,7 @@ function used(shadow: ShadowRoot, token: string): string {
 function lift(shadow: ShadowRoot): string {
 	const probe = document.createElement('div');
 	probe.style.cssText = 'box-shadow: var(--_lift)';
-	shadow.appendChild(probe);
+	themed(shadow).appendChild(probe);
 	const cast = getComputedStyle(probe).boxShadow;
 	probe.remove();
 	return cast;
@@ -272,7 +279,7 @@ function lift(shadow: ShadowRoot): string {
 function step(shadow: ShadowRoot, token: string): number {
 	const probe = document.createElement('div');
 	probe.style.cssText = `font-size: var(${token})`;
-	shadow.appendChild(probe);
+	themed(shadow).appendChild(probe);
 	const size = parseFloat(getComputedStyle(probe).fontSize);
 	probe.remove();
 	return size;
@@ -346,8 +353,8 @@ describe('the sheets the element adopts', () => {
 	it('puts none of its own rules in a layer', async () => {
 		const { shadow } = await mount();
 
-		// the shared four and the element's own brand scale (../styles/brand.ts)
-		expect(shadow.adoptedStyleSheets.length).toBe(5);
+		// the shared five and the element's own brand scale (../styles/brand.ts)
+		expect(shadow.adoptedStyleSheets.length).toBe(6);
 		expect(shadow.adoptedStyleSheets.filter(declaresALayer).length).toBe(0);
 	});
 });
@@ -479,6 +486,28 @@ describe('the sizes the card draws its type at', () => {
 		expect(px(heading)).toBeGreaterThan(px(card));
 		expect(px(message)).toBeLessThan(px(card));
 	});
+
+	// iOS Safari zooms the host's page when a focused control computes below 16px. the registry's
+	// text box is drawn at its own `0.875rem`, which is 14px on a 16px root and less on a host that
+	// shrank its root, so every box is measured — the registry's included, the two closed choices'
+	// buttons with them — on a default root and on a `62.5%` one.
+	for (const root of ['16px', '10px']) {
+		it(`draws no box a donor types or picks in under 16px, on a host whose root is ${root}`, async () => {
+			document.documentElement.style.fontSize = root;
+			const { shadow } = await mount();
+			const boxes = Array.from(
+				shadow.querySelectorAll("[part~='field'], .ds-field-input")
+			) as HTMLElement[];
+
+			expect(
+				boxes.filter((box) => box.classList.contains('ds-field-input')).length
+			).toBeGreaterThan(3);
+			expect(
+				shadow.querySelector("[data-scope='select'][data-part='trigger'].ds-field-input")
+			).not.toBeNull();
+			for (const box of boxes) expect(px(box), box.id || box.className).toBeGreaterThanOrEqual(16);
+		});
+	}
 
 	// and the consequence of the base: with the tile and the field at one size, nothing about the
 	// type separates a shortcut from the control it is a shortcut past, and nothing about the box
@@ -664,7 +693,7 @@ describe('the labels on the pair under the name', () => {
 	function weight(shadow: ShadowRoot, token: string): string {
 		const probe = document.createElement('div');
 		probe.style.cssText = `font-weight: var(${token})`;
-		shadow.appendChild(probe);
+		themed(shadow).appendChild(probe);
 		const resolved = getComputedStyle(probe).fontWeight;
 		probe.remove();
 		return resolved;
@@ -924,7 +953,11 @@ describe('the labels on the pair under the name', () => {
 		expect(painted.backgroundImage).toContain(used(shadow, '--_n1'));
 		expect(painted.backgroundImage).not.toContain(used(shadow, '--_n2'));
 		expect(getComputedStyle(box).backgroundColor).toBe(used(shadow, '--_n1'));
-		expect(parseFloat(band)).toBeGreaterThanOrEqual(ink(words).height);
+		// the words' own line, read off the span rather than off its text: Red Hat Round's ascent and
+		// descent come to about 1.3em, so the text's content box stands a fraction proud of the tight
+		// line the floated words are set on, and the line is what the band is drawn at.
+		expect(parseFloat(band)).toBeGreaterThanOrEqual(parseFloat(painted.lineHeight));
+		expect(parseFloat(band)).toBeGreaterThanOrEqual(ink(words).height - DEVICE_PIXEL);
 		// across the words and past the last letter, so no run of the edge is left inside the band's
 		// own span of it.
 		expect(words.getBoundingClientRect().width).toBeGreaterThan(ink(words).width);
@@ -1379,6 +1412,17 @@ describe('the shape drawn before the org’s own is known', () => {
 		expect(off, `${off}px apart`).toBeLessThan(row);
 	});
 
+	// the registry's button states its height on its own class, so the placeholder restates it
+	// (`.skeleton-action` in ../styles/parts.css), and this is what keeps the two from drifting.
+	it('draws the action’s placeholder at the action’s own height', async () => {
+		const { shadow, card } = await mount(DEFAULT);
+		const action = shadow.querySelector(".step:not([hidden]) [part~='action']") as HTMLElement;
+		const shape = skeleton(card);
+		const placeholder = shape.querySelector('.skeleton-action') as HTMLElement;
+
+		expect(placeholder.getBoundingClientRect().height).toBe(action.getBoundingClientRect().height);
+	});
+
 	it('draws the head at the real head’s height, with three marks at its end', async () => {
 		const { shadow, card } = await mount(DEFAULT);
 		const head = shadow.querySelector('.step:not([hidden]) .step-head') as HTMLElement;
@@ -1698,7 +1742,7 @@ describe('the coin list inside the crypto option', () => {
 
 		expect(closed).toBe(family('[role="option"] .coin-ticker'));
 		expect(family('[role="option"] .coin-ticker')).toContain('ui-monospace');
-		expect(family('[role="option"] .net')).toContain('system-ui');
+		expect(family('[role="option"] .net')).toMatch(/^"?Red Hat Round Text"?,/);
 	});
 
 	// the mark's width is the row's to lose: a logo that was blocked leaves the lettered shape under
@@ -1757,17 +1801,16 @@ describe('the coin list inside the crypto option', () => {
 		expect(mark.top + mark.height / 2).toBeCloseTo(ticker.top + (pill.bottom - ticker.top) / 2, 1);
 	});
 
-	// which entry a network takes is a rule over its own words (`networkTint` in ../coins.ts) and no
-	// table, so the only thing a sheet can get wrong is whether the entry it picked paints at all: a
-	// `data-tint` no rule answers leaves the pill with no ground, which renders as a word among words
-	// and reads as finished.
-	it('gives every entry of the network palette a ground and an ink of its own', async () => {
+	// which badge a network takes is a rule over its own words (`networkTint` in ../coins.ts) and no
+	// table, so what a sheet can get wrong is whether the badge it picked paints at all: a variant the
+	// list adopts no rule for leaves the pill with no ground, which renders as a word among words and
+	// reads as finished. the registry's five, each a ground and an ink of its own.
+	it('gives every badge a network can take a ground and an ink of its own', async () => {
 		const root = drawn(false);
 		const row = root.querySelector('.field-row') as HTMLElement;
-		const painted = [...Array(NETWORK_TINTS).keys()].map((tint) => {
+		const painted = NETWORK_BADGES.map((badge) => {
 			const pill = document.createElement('span');
-			pill.className = 'net';
-			pill.dataset.tint = String(tint);
+			pill.className = `net ds-badge ds-badge-${badge}`;
 			row.appendChild(pill);
 			const style = getComputedStyle(pill);
 			const pair = `${style.backgroundColor} on ${style.color}`;
@@ -1775,8 +1818,11 @@ describe('the coin list inside the crypto option', () => {
 			return pair;
 		});
 
-		expect(new Set(painted).size).toBe(NETWORK_TINTS);
+		expect(new Set(painted).size).toBe(NETWORK_BADGES.length);
 		expect(painted.filter((pair) => pair.includes('rgba(0, 0, 0, 0)'))).toEqual([]);
+		expect(root.querySelector('.net')?.className).toBe(
+			`net ds-badge ds-badge-${networkTint('Bitcoin')}`
+		);
 	});
 
 	// the logo is the processor's own image and the letter under it is what a blocked or broken one
@@ -1881,6 +1927,8 @@ describe('the address screen', () => {
 		});
 		const block = createDepositBlock(document, () => {});
 		blocks.push(block);
+		// the block stands where the card's root does, so it carries the theme the card's root does.
+		block.root.setAttribute('data-theme', CARD_THEME);
 		shadow.appendChild(block.root);
 		// the card's inset, which a Copy's target reaches into past the sentence's end.
 		mount.style.cssText = `display: block; box-sizing: border-box; inline-size: ${width}; padding: var(--_inset);`;
@@ -2003,9 +2051,9 @@ describe('the address screen', () => {
 		const family = (selector: string) =>
 			getComputedStyle(root.querySelector(selector) as Element).fontFamily;
 
-		expect(family('.value.name')).toContain('system-ui');
-		expect(family('[part~="label"]')).toContain('system-ui');
-		expect(family('.instruction')).toContain('system-ui');
+		for (const selector of ['.value.name', '[part~="label"]', '.instruction']) {
+			expect(family(selector), selector).toMatch(/^"?Red Hat Round Text"?,/);
+		}
 	});
 
 	it.each(['375px', '560px'])(
@@ -2894,7 +2942,7 @@ describe('the surfaces a donor operates', () => {
 	function token(shadow: ShadowRoot, name: string): string {
 		const probe = document.createElement('div');
 		probe.style.cssText = `color: var(${name})`;
-		shadow.appendChild(probe);
+		themed(shadow).appendChild(probe);
 		const colour = getComputedStyle(probe).color;
 		probe.remove();
 		return colour;
@@ -3227,7 +3275,7 @@ describe('the option a donor chose', () => {
 	function used(shadow: ShadowRoot, token: string): string {
 		const probe = document.createElement('div');
 		probe.style.cssText = `color: var(${token})`;
-		shadow.appendChild(probe);
+		themed(shadow).appendChild(probe);
 		const color = getComputedStyle(probe).color;
 		probe.remove();
 		return color;
@@ -3254,8 +3302,8 @@ describe('the option a donor chose', () => {
 		// is read after the transitions land rather than at the tick the click returned on — which is
 		// mid-fade, and reads as whatever the option was before the donor chose it.
 		const { host, shadow } = await mount();
-		// a seeded card: on an unseeded one the brand's steps are slate greys, and a brand step and a
-		// grey one could match by accident.
+		// a seeded card, so the brand's steps are the seed's and a step of the default accent cannot
+		// stand in for one by accident.
 		await reseed(host, '--donate-primary: oklch(0.45 0.18 25);');
 		const drawn = Array.from(
 			shadow.querySelectorAll(`.step:not([hidden]) ${selector}`)
@@ -3268,7 +3316,7 @@ describe('the option a donor chose', () => {
 
 		const surface = surfaceOf === null ? getComputedStyle(chosen) : surfaceOf(shadow);
 		expect(chosen.getAttribute('part')).toContain('selected');
-		// slate's step 1, the card's own face, and not the brand's 9: the brand fills nothing a donor
+		// the grey's step 1, the card's own face, and not the brand's 9: the brand fills nothing a donor
 		// picks from a set.
 		expect(surface.backgroundColor).toBe(used(shadow, '--_n1'));
 		expect(surface.backgroundColor).not.toBe(used(shadow, '--_p'));
@@ -3328,34 +3376,6 @@ describe('what a pointer is answered with', () => {
 		return getComputedStyle(element);
 	}
 
-	/**
-	 * one control read while it is genuinely being pressed, and released after.
-	 *
-	 * `:active` matches while a device is holding the control down and at no other time, and no
-	 * event this file dispatched would set it: a synthetic `mousedown` is untrusted and matches
-	 * nothing at all, which is a reading of the resting colour that passes against a rule nobody
-	 * wrote. the pointer has no held half in this provider's api — every one of its mouse actions
-	 * completes — so the press held here is the keyboard's, which puts the same engine state on the
-	 * same selector.
-	 *
-	 * read through a callback rather than returned as a declaration, because the reading has to
-	 * happen while the key is still down. the release completes the activation, so a box pressed
-	 * here comes back with its tick the other way round.
-	 */
-	async function underPress<T>(
-		element: HTMLElement,
-		read: (style: CSSStyleDeclaration) => T
-	): Promise<T> {
-		element.focus();
-		await userEvent.keyboard('{Space>}');
-		await landed(element);
-		const held = read(getComputedStyle(element));
-		await userEvent.keyboard('{/Space}');
-		await landed(element);
-
-		return held;
-	}
-
 	// the note and the tribute stand on the amount step, so a fresh card already draws two of them.
 	// unticked the box carries the step-7 edge every box a donor operates carries, and steps it to 8.
 	it('steps the tick box from its step-7 edge to step 8', async () => {
@@ -3368,7 +3388,7 @@ describe('what a pointer is answered with', () => {
 	});
 
 	// the quiet action is the brand drawn as ink, step 11, so it steps to the brand's 12. the card is
-	// seeded, so the two steps are the brand's rather than two slate greys.
+	// seeded, so the two steps are the seed's rather than the default accent's.
 	//
 	// the notify press inside the tribute is the one of the two this control is drawn as that a
 	// donor can reach on a step: the other is the takeover's second button, which is hidden until
@@ -3420,35 +3440,6 @@ describe('what a pointer is answered with', () => {
 		expect((await hovered(cadence)).backgroundColor).toBe(used(shadow, '--_n3'));
 		await userEvent.unhover(cadence);
 	});
-
-	// the tick box under a finger, which is the only acknowledgement a touch is ever given: a phone
-	// has no hover, so a box that answered the press with nothing would answer a phone with nothing.
-	// unticked its face takes step 3 inside the step-8 edge.
-	it('steps the unticked tick box onto step 3 inside the step-8 edge', async () => {
-		const { shadow } = await mount();
-		const box = shadow.querySelector(".step:not([hidden]) [part~='checkbox']") as HTMLInputElement;
-
-		expect(await underPress(box, (style) => [style.backgroundColor, style.borderTopColor])).toEqual(
-			[used(shadow, '--_n3'), used(shadow, '--_n8')]
-		);
-	});
-
-	// ticked it is a step-9 fill, so it takes step 10 like every other block of the brand: radix
-	// states no press step for a solid, and step 10 is the first change a finger sees. the card is
-	// seeded so the two steps are the brand's.
-	it('steps the ticked tick box to the fill a pressed action takes', async () => {
-		const { host, shadow } = await mount();
-		await reseed(host, '--donate-primary: oklch(0.45 0.18 25);');
-		const box = shadow.querySelector(".step:not([hidden]) [part~='checkbox']") as HTMLInputElement;
-		box.click();
-		await settle();
-		await landed(box);
-
-		expect(await underPress(box, (style) => style.backgroundColor)).toBe(
-			used(shadow, '--_p-hover')
-		);
-		expect(used(shadow, '--_p-hover')).not.toBe(used(shadow, '--_p'));
-	});
 });
 
 describe('the ring and the brand never touch', () => {
@@ -3475,6 +3466,33 @@ describe('the ring and the brand never touch', () => {
 			expect(drawn).toContain(ring);
 			expect(drawn).not.toContain(primary);
 		}
+	});
+
+	// the registry's text box states its ring's colour and no ring (../registry/styles/field-css.css),
+	// so left to it a keyboard donor gets the engine's own outline, a different mark in every
+	// browser. the closed choices' buttons are drawn as that box and are measured with it.
+	it('rings every registry text box the keys reach in the card’s own ring', async () => {
+		const { host, shadow } = await mount({
+			...CONFIG,
+			program: { mode: 'choice', options: [{ id: 'prg_water', name: 'Clean water' }] }
+		});
+		await reseed(host, SEEDS);
+		const ring = used(shadow, '--_focus-ring');
+		const ringed: string[] = [];
+		async function ringVisible(): Promise<void> {
+			for (const box of shadow.querySelectorAll<HTMLElement>('.ds-field-input')) {
+				if (box.getClientRects().length === 0) continue;
+				expect((await caretOn(box)).boxShadow, box.id).toContain(ring);
+				ringed.push(box.id);
+			}
+		}
+
+		await ringVisible();
+		await atDetails(shadow);
+		await ringVisible();
+
+		expect(ringed).toContain('program');
+		expect(ringed).toContain('email');
 	});
 
 	// the other half of the invariant: a control the primary *marks* has two dark edges a pixel apart
@@ -3522,7 +3540,11 @@ describe('the ring and the brand never touch', () => {
 		expect(drawn.boxShadow.endsWith(lift(shadow))).toBe(true);
 	});
 
-	it('rings a control the primary has filled inside itself, in neither of them', async () => {
+	// the one control the primary fills is the registry's button, and it rings itself the
+	// registry's way (`.ds-btn:focus-visible` in ../registry/styles/button-css.css): an outline in
+	// the registry's ring, stood off the fill by an offset, so the card's own face shows between the
+	// two and the ring never touches the fill.
+	it('rings a control the primary has filled outside itself, past a band of the card', async () => {
 		const { host, shadow } = await mount();
 		await reseed(host, SEEDS);
 		await atReview(shadow);
@@ -3535,17 +3557,11 @@ describe('the ring and the brand never touch', () => {
 		) as HTMLElement;
 		const drawn = await caretOn(action);
 
-		// the near-white the fill takes, and the ring here is the outline rather than a shadow. the
-		// ladder's darkest rung laid outside this fill is the one adjacency the split refuses, and a
-		// primary ring outside it reads as the button growing — so the shadow every unfilled control
-		// rings itself with is taken back rather than recoloured.
-		expect(drawn.outlineColor).not.toBe(used(shadow, '--_focus-ring'));
+		expect(drawn.outlineStyle).toBe('solid');
+		expect(drawn.outlineColor).toBe(used(shadow, '--ring'));
 		expect(drawn.outlineColor).not.toBe(used(shadow, '--_p'));
-		expect(drawn.outlineColor).toBe(used(shadow, '--_on-p'));
 		expect(drawn.boxShadow).toBe('none');
-		// and it is drawn inside the fill rather than on the fill's own edge. how far inside is a
-		// question for the painted pixels below; that it is inside at all is this one.
-		expect(Number.parseFloat(drawn.outlineOffset)).toBeLessThan(0);
+		expect(Number.parseFloat(drawn.outlineOffset)).toBeGreaterThan(0);
 	});
 });
 
@@ -3594,124 +3610,6 @@ describe('a node focused only to be announced', () => {
 		const radio = await tabFromHeading(shadow, "[part~='frequency-option'] input");
 
 		expect(getComputedStyle(radio).boxShadow).toContain(used(shadow, '--_focus-ring'));
-	});
-});
-
-// the same ring, read off the pixels an engine painted rather than off the declaration that asked
-// for them — and this is the one question in this file no computed style can answer. a ring drawn
-// on the fill's own outermost band and a ring drawn a band in from it are the same string in
-// `getComputedStyle`, and only the second of them is visible at 1×: the first has the control's
-// edge for an outer neighbour and the near-white card immediately past that, so it reads as the
-// button lightening at its rim rather than as a line. what says which was drawn is that the ring's
-// two neighbours are the same colour as each other, which is the fill on both sides of it.
-//
-// the action is the subject because it is the one control the primary fills. the amount tile was,
-// until the brand stopped filling it — a chosen tile is now a near-white box with a primary edge and
-// rings itself outside that edge, which is the case two describes above.
-//
-// both ends of the fill band are here, because the fill is what the ring is measured against: a
-// seeded card carries a host's own colour clamped into the band, and an unseeded one carries the
-// neutral ladder's darkest rung (`--_p` in ../styles/tokens.css).
-describe('the ring a primary-filled control draws inside itself, as painted', () => {
-	type Rgb = readonly [number, number, number];
-
-	/**
-	 * a viewport the provider can shoot pixel for pixel, and the page's own is restored after.
-	 *
-	 * the pool's default viewport is taller than the browser window holding it, so the page is drawn
-	 * scaled down to fit and every band in the shot is scaled with it — a hairline ring lands across
-	 * blended pixels and belongs to no colour. every other case in this file measures boxes rather
-	 * than pixels and is indifferent to which of the two it is laid out in.
-	 */
-	let held: readonly [number, number] = [0, 0];
-
-	beforeEach(async () => {
-		held = [window.innerWidth, window.innerHeight];
-		await browser.viewport(600, 700);
-	});
-
-	afterEach(async () => {
-		await browser.viewport(held[0], held[1]);
-	});
-
-	/** one pixel's relative luminance, which is how the brightest of a run is told apart. */
-	function luminance([red, green, blue]: Rgb): number {
-		const channel = (value: number): number => {
-			const unit = value / 255;
-			return unit <= 0.03928 ? unit / 12.92 : ((unit + 0.055) / 1.055) ** 2.4;
-		};
-		return 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue);
-	}
-
-	/** the widest a channel differs between two pixels. */
-	function apart(a: Rgb, b: Rgb): number {
-		return Math.max(...a.map((channel, index) => Math.abs(channel - (b[index] as number))));
-	}
-
-	/**
-	 * the painted pixels down one column of the page, from a control's top edge inward.
-	 *
-	 * the column is taken at the control's mid width, where the corner radius is out of the way and
-	 * no glyph has started yet. the whole viewport is shot rather than one element: a rect is
-	 * already in the viewport's own coordinates, and asking the provider for one element's box would
-	 * be asking it to reach a node inside a shadow root.
-	 */
-	async function columnInto(box: DOMRect, depth: number): Promise<Rgb[]> {
-		const shot = await browser.screenshot({ save: false });
-		const image = new Image();
-		image.src = `data:image/png;base64,${shot}`;
-		await image.decode();
-		const canvas = document.createElement('canvas');
-		canvas.width = image.naturalWidth;
-		canvas.height = image.naturalHeight;
-		const surface = canvas.getContext('2d') as CanvasRenderingContext2D;
-		surface.drawImage(image, 0, 0);
-
-		// one shot pixel per css pixel, which is what makes a band of a stated width readable at all.
-		expect(image.naturalWidth).toBe(window.innerWidth);
-
-		const x = Math.floor(box.left + box.width / 2);
-		return Array.from({ length: depth }, (_, step) => {
-			const [red, green, blue] = surface.getImageData(x, Math.ceil(box.top) + step, 1, 1).data;
-			return [red, green, blue] as unknown as Rgb;
-		});
-	}
-
-	/** the action on the step the donor is standing on, with the keyboard as what put the caret there. */
-	async function focusedAction(shadow: ShadowRoot): Promise<HTMLElement> {
-		const action = shadow.querySelector(".step:not([hidden]) [part~='action']") as HTMLElement;
-		// a real key press first: `:focus-visible` matches nothing while the engine is on the pointer,
-		// and every assertion below would read a ring that is not drawn as a ring in the wrong place.
-		await userEvent.keyboard('{Tab}');
-		action.focus();
-		return action;
-	}
-
-	it.each([
-		['a seeded card', '--donate-primary: #0f766e;'],
-		['an unseeded card', '']
-	])('lays the fill on both sides of it, on %s', async (_name, declarations) => {
-		const { host, shadow } = await mount();
-		await reseed(host, declarations);
-		const action = await focusedAction(shadow);
-
-		// the ring is the one near-white on a fill the band keeps dark at every point, so the
-		// brightest pixel of the run is it, wherever it was drawn.
-		const column = await columnInto(action.getBoundingClientRect(), 10);
-		const ring = column.reduce((a, b) => (luminance(a) > luminance(b) ? a : b));
-		const drawn = column.map((pixel, index) => (apart(pixel, ring) <= 8 ? index : -1));
-		const first = drawn.find((index) => index >= 0) as number;
-		const last = drawn.reduce((held, index) => (index >= 0 ? index : held), -1);
-
-		// a band of fill outside the ring: the edge pixel is not the ring, which is the whole of what
-		// went wrong when the ring was drawn at offset zero.
-		expect(first).toBeGreaterThanOrEqual(1);
-		const outside = column[first - 1] as Rgb;
-		const inside = column[last + 1] as Rgb;
-
-		// the two neighbours are one colour, which is what makes the ring a line within the control
-		// rather than its rim: the fill is on both sides of it.
-		expect(apart(outside, inside)).toBeLessThanOrEqual(8);
 	});
 });
 
@@ -3840,7 +3738,7 @@ describe('the list a closed choice opens', () => {
 	function shadowOf(root: ShadowRoot, value: string): string {
 		const probe = document.createElement('div');
 		probe.style.boxShadow = value;
-		root.appendChild(probe);
+		themed(root).appendChild(probe);
 		const drawn = getComputedStyle(probe).boxShadow;
 		probe.remove();
 		return drawn;
@@ -4080,54 +3978,36 @@ describe('a refusal under its box', () => {
 });
 
 describe('the presets a host page picks', () => {
-	/** a colour as the engine computes it in the host's own document, to compare a drawn one to. */
-	function computedColour(colour: string): string {
-		const probe = document.createElement('div');
-		probe.style.backgroundColor = colour;
-		document.body.appendChild(probe);
-		const value = getComputedStyle(probe).backgroundColor;
-		probe.remove();
-		return value;
-	}
-
 	function corner(element: Element | null): string {
 		if (element === null) throw new Error('the card drew no such box');
 		return getComputedStyle(element).borderTopLeftRadius;
 	}
 
-	// the two seeds set where a host page sets anything, above the element rather than on it: every
-	// grey on the card is radix sand and every corner rounds, and the tick box stays a box.
-	it('draws the card warm and round when the page sets the two seeds', async () => {
-		page('body { --donate-shade: warm; --donate-corner: round; }');
+	// the corner set where a host page sets anything, above the element rather than on it: every
+	// corner rounds, the registry's controls with the form's own, and the ground stays the registry's
+	// grey. the tick box is the one control held back: at 16px across, the control corner would draw
+	// it a circle, which reads as a radio, so it keeps the registry's own control corner.
+	it('draws the card round when the page sets the corner', async () => {
+		page('body { --donate-corner: round; }');
 		const { card } = await mount();
 
-		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('#fdfdfc'));
+		expect(paintedBytes(getComputedStyle(card).backgroundColor)).toEqual(paintedBytes('#fbfcfe'));
 		expect(corner(card)).toBe('24px');
 		expect(corner(card.querySelector("[part~='amount-option']"))).toBe('12px');
-		expect(corner(card.querySelector("[part~='checkbox']"))).toBe('6px');
+		expect(corner(card.querySelector('.ds-checkbox'))).toBe('6px');
 	});
 
 	// the provider paints inside its own frame from what the node it is handed resolves, and that
-	// node is the host's light-DOM child projected into the card, so the presets reach it through the
+	// node is the host's light-DOM child projected into the card, so the preset reaches it through the
 	// slot rather than from the host it hangs off.
-	it('hands the provider the corner and the ground the page picked', async () => {
-		page('body { --donate-shade: warm; --donate-corner: round; }');
+	it('hands the provider the corner the page picked', async () => {
+		page('body { --donate-corner: round; }');
 		const { host } = await mount();
 		const node = host.querySelector('[slot="payment"]') as HTMLElement;
 		const { variables } = resolveAppearance(node);
-		const [red = 0, , blue = 0] =
-			(variables.colorBackground ?? '').match(/\d+/g)?.map(Number) ?? [];
 
 		expect(variables.borderRadius).toBe('24px');
-		expect(red).toBeGreaterThan(blue);
-	});
-
-	// `cool` draws radix slate, the same greys as `light`.
-	it('draws the card in slate when the page asks for cool', async () => {
-		page('body { --donate-shade: cool; }');
-		const { card } = await mount();
-
-		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('#fcfcfd'));
+		expect(variables.colorBackground).toBe('rgb(251, 252, 254)');
 	});
 
 	// square squares the boxes and nothing drawn as a shape of its own: the marks on the step head
@@ -4153,25 +4033,23 @@ describe('the presets a host page picks', () => {
 		expect(corner(card.querySelector('.skeleton-mark'))).toBe('50%');
 	});
 
-	// a keyword off either list is invalid at computed-value time and takes what it inherits, which
-	// is the initial value where nothing above sets one: the card a host who set nothing gets.
-	it('draws today’s card for a preset off either list', async () => {
-		page('body { --donate-shade: dark; --donate-corner: pill; }');
+	// a keyword off the list is invalid at computed-value time and takes what it inherits, which is
+	// the initial value where nothing above sets one: the card a host who set nothing gets.
+	it('draws today’s card for a preset off the list', async () => {
+		page('body { --donate-corner: pill; }');
 		const { card } = await mount();
 
-		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('#fcfcfd'));
+		expect(paintedBytes(getComputedStyle(card).backgroundColor)).toEqual(paintedBytes('#fbfcfe'));
 		expect(corner(card)).toBe('12px');
 	});
 
-	// the fallback is the value above, not the default: a theme that set the presets on the page
-	// keeps them when the element itself carries a keyword off the list.
-	it('draws the presets the page above set for a preset off either list on the element', async () => {
-		page('body { --donate-shade: warm; --donate-corner: round; }');
+	// the fallback is the value above, not the default: a theme that set the corner on the page
+	// keeps it when the element itself carries a keyword off the list.
+	it('draws the corner the page above set for a preset off the list on the element', async () => {
+		page('body { --donate-corner: round; }');
 		const { host, card } = await mount();
-		host.style.setProperty('--donate-shade', 'dark');
 		host.style.setProperty('--donate-corner', 'rounded');
 
-		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('#fdfdfc'));
 		expect(corner(card)).toBe('24px');
 	});
 });

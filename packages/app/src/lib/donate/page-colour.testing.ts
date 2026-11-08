@@ -92,6 +92,7 @@ export function substitute(scope: Scope, value: string, seen: string[] = []): st
 const LADDER: readonly [RegExp, (m: RegExpExecArray) => string][] = [
 	[/^--_n(\d+)$/, (m) => `slate-${m[1]}`],
 	[/^--_a(\d+)$/, (m) => `brand-${m[1]}`],
+	[/^--accent-(\d+)$/, (m) => `brand-${m[1]}`],
 	[/^--_p$/, () => 'brand-9'],
 	[/^--_on-p$/, () => 'on-brand-9'],
 	[/^--page-scrim$/, () => 'scrim'],

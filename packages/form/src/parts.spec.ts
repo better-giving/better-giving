@@ -188,10 +188,10 @@ describe('the published manifest', () => {
 		expect(unemitted).toEqual([]);
 	});
 
-	it('publishes the three seeds and no fourth', () => {
+	it('publishes the two seeds and no third', () => {
 		const published = (element?.cssProperties ?? []).map((property) => property.name);
 
-		expect(published).toEqual(['--donate-primary', '--donate-shade', '--donate-corner']);
+		expect(published).toEqual(['--donate-primary', '--donate-corner']);
 	});
 
 	it('names the same seeds the stylesheet registers, in both directions', () => {

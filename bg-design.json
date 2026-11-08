@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "dir": "packages/operator/src/registry",
-  "registryVersion": "2.0.0",
+  "registryVersion": "2.1.0",
   "items": {
     "fonts": {
       "version": "1.1.0",
@@ -47,12 +47,12 @@
       }
     },
     "variables": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "files": {
-        "styles/colors.css": "65f8a69a1e755b347d7fa5a9bdc3e99575a0e6e516ccb430046866738cb4c8c2",
-        "styles/themes/default.css": "e0ca25235e719c79b64c1ba226173f8311e5e36d5abab697c9a8f95d358b7c18",
-        "styles/variables.css": "a99020e6f02d3759fb273ab69a8da2a7a553a425f7ff0c86e5d02f33a3317e90",
-        "styles/variables.usage.md": "4e4374d2a416ef4bc183785175dd3c2e9ce03f56e3619c630adec8dd0778b912"
+        "styles/colors.css": "2255bd12008047adc438d0face61cefae835ed70f5c8b229d7d9c4d6f036c964",
+        "styles/themes/default.css": "a7f3a46b00c45aff7a4d2958b2c1263a0c8206c351d1eab3ce3905e13c08dcdd",
+        "styles/variables.css": "284b5d1d7ebcfca3a03236a46e0f04d13f84703f14bc6c53823bf6d91f9a5923",
+        "styles/variables.usage.md": "caece6dfa9b54fc3257e79eb4af112676753e042ee5c18716ba24057988c6328"
       }
     }
   }

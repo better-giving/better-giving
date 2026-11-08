@@ -8,8 +8,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 // /donate and a campaign link this sheet after the form's, and the card is in the document, so
 // the re-point in ./page.css reaches it. the coin list adopts the picker's own sheets (parts and
 // coins, not the token sheet) and inherits the re-point from its host. what the embed computes,
-// and that it requests none of these files, is packages/form/src/embed-faces.browser.spec.ts —
-// a stand-in shadow in this document would stay green if the element started asking for a face.
+// and that the faces it fetches are the registry's core six it brings with it, is
+// packages/form/src/embed-faces.browser.spec.ts — a stand-in shadow in this document could not see
+// which faces the element asks for.
 
 const require = createRequire(import.meta.url);
 const formStyles = dirname(require.resolve('@better-giving/form/styles/tokens.css'));

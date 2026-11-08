@@ -34,7 +34,7 @@ export function donorPageLinks() {
 	}));
 }
 
-/** the form's own grey, for a page with no brand colour to read. */
+/** the registry's default accent, for a page with no brand colour to read. */
 export const FORM_LOOK: PageLook = { brandColour: null };
 
 /** a page root in one plain column, holding `children` and nothing else. */

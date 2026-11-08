@@ -34,6 +34,7 @@
 
 import * as zag from '@zag-js/combobox';
 import { normalizeProps, VanillaMachine } from '@zag-js/vanilla';
+import badgeStyles from './registry/styles/badge-css.css?inline';
 import partStyles from './styles/parts.css?inline';
 import coinStyles from './styles/coins.css?inline';
 import { networkTint, searchCoins } from './coins';
@@ -98,7 +99,8 @@ function sheetsFor(doc: Document): readonly CSSStyleSheet[] {
 	if (held !== undefined) return held;
 	const view = doc.defaultView;
 	if (view === null) return [];
-	const built = [partStyles, coinStyles].map((css) => {
+	// the registry's badge before the form's own two, which place the pill it paints.
+	const built = [badgeStyles, partStyles, coinStyles].map((css) => {
 		const sheet = new view.CSSStyleSheet();
 		sheet.replaceSync(css);
 		return sheet;
@@ -154,16 +156,17 @@ function logo(doc: Document, option: CoinOption): HTMLElement {
  * the ticker and the network's pill, in two inks — one node, drawn on two lines in a row of the list
  * and along one line in the closed box, which is ./styles/coins.css's call and not this function's.
  *
- * the network's words are the served config's own and are drawn as they arrive; the pill's colour is
- * `networkTint` (./coins.ts) and no rule of this file's.
+ * the network's words are the served config's own and are drawn as they arrive; the pill is the
+ * registry's badge, and which variant is `networkTint` (./coins.ts) and no rule of this file's.
  *
  * no whitespace between the two: the step between them is the sheet's, and a text node here would add
  * one the sheet cannot take back. so they stay one run of inline content wherever the sheet leaves
  * them inline, which is what lets the box above cut a long pill with an ellipsis (`.chosen` there).
  */
 function words(doc: Document, option: CoinOption): HTMLElement {
-	const network = node(doc, 'span', 'net', [option.network]);
-	network.dataset.tint = String(networkTint(option.network));
+	const network = node(doc, 'span', `net ds-badge ds-badge-${networkTint(option.network)}`, [
+		option.network
+	]);
 	return node(doc, 'span', 'coin-text', [
 		node(doc, 'span', 'coin-ticker', [option.label]),
 		network

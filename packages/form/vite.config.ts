@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { registryFaces } from './vite.registry-faces';
 
 // the donation form's dev page, and nothing that produces an artifact.
 //
@@ -17,5 +18,6 @@ import { defineConfig } from 'vite';
 const DEV_PORT = 5324;
 
 export default defineConfig({
+	resolve: { alias: [registryFaces] },
 	server: { port: DEV_PORT, strictPort: true }
 });

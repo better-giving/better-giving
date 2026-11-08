@@ -2,13 +2,14 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
 	CONFIG_DEADLINE_MS,
 	defineDonateForm,
+	documentCss,
 	DONATE_FORM_TAG,
 	OBSERVED_ATTRIBUTES,
 	type FormBoot,
 	type FormRuntime
 } from './element';
 import manifestText from '../custom-elements.json?raw';
-import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from './parts';
+import { CARD_THEME, PART_NAMES, REGISTRY_CLASS, ROLE_TOKENS, STATE_TOKENS } from './parts';
 import type { CheckoutPorts, FundReports } from './ports';
 import { DEPOSIT_POLL_MS, type Failure } from './checkout.machine';
 import {
@@ -27,6 +28,10 @@ import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
 import motionStyles from './styles/motion.css?inline';
 import tokenStyles from './styles/tokens.css?inline';
+import tokenSource from './styles/tokens.css?raw';
+import buttonStyles from './registry/styles/button-css.css?inline';
+import checkboxStyles from './registry/styles/checkbox-css.css?inline';
+import fieldStyles from './registry/styles/field-css.css?inline';
 import rowStyles from './styles/rows.css?inline';
 import coinStyles from './styles/coins.css?inline';
 
@@ -1119,17 +1124,64 @@ describe('the language the card is spoken in', () => {
 	});
 });
 
-describe('the style adoption', () => {
-	it('puts the token sheet in the document as well as in the shadow root', async () => {
-		// `@property` registrations are collected from the document tree only. a token sheet that
-		// reached the engine solely through a shadow root would leave the five seeds with no initial
-		// value and every derived step invalid, which is a blank card rather than a fallback.
+// the registry theme the card is drawn in. the registry declares its scales and roles on `:root` and
+// on every `[data-theme]` element, and a shadow tree has no `:root`, so a card root without the
+// attribute is a card on which every registry variable reads nothing.
+describe('the registry theme', () => {
+	it('is declared on the card', async () => {
 		const card = await mount();
 
-		expect(document.adoptedStyleSheets.length).toBeGreaterThan(0);
-		// the shared four, and the element's own brand scale after them (./styles/brand.ts)
-		expect(card.shadow.adoptedStyleSheets).toHaveLength(5);
-		expect(card.shadow.adoptedStyleSheets[0]).toBe(document.adoptedStyleSheets[0]);
+		expect(card.find('[part~="card"]').getAttribute('data-theme')).toBe(CARD_THEME);
+	});
+
+	it('is declared on the card the wait is spent on', async () => {
+		const card = await mount({ loadConfig: () => new Promise(() => {}) });
+
+		expect(card.find('[part~="card"]').getAttribute('data-theme')).toBe(CARD_THEME);
+	});
+
+	it('is declared on the card that cannot render', async () => {
+		const card = await mount({ loadConfig: async () => ({ formId: 'frm_a8x2k9' }) });
+
+		expect(card.find('[part~="card"]').getAttribute('data-theme')).toBe(CARD_THEME);
+	});
+
+	// the host element is the integrator's, and a `data-theme` on it would theme the host page's own
+	// registry, if it runs one, from markup this element does not own.
+	it('declares nothing on the host element', async () => {
+		const card = await mount();
+
+		expect(card.host.hasAttribute('data-theme')).toBe(false);
+	});
+});
+
+describe('the style adoption', () => {
+	/** the sheet the element puts into the document: the one it adopted that no shadow root holds. */
+	const documentSheets = (card: { shadow: ShadowRoot }) =>
+		document.adoptedStyleSheets.filter((sheet) => !card.shadow.adoptedStyleSheets.includes(sheet));
+
+	it('puts a sheet of its own in the document beside the ones in the shadow root', async () => {
+		// `@property` registrations and `@font-face` rules are collected from the document tree only.
+		// without the sheet the seed has no initial value and the registry's faces never load.
+		const card = await mount();
+
+		expect(documentSheets(card)).toHaveLength(1);
+		// the shared five, and the element's own brand scale after them (./styles/brand.ts)
+		expect(card.shadow.adoptedStyleSheets).toHaveLength(6);
+	});
+
+	it('hands the document the seed registrations and the faces, and no rule a host page could match', () => {
+		const css = documentCss(tokenStyles);
+
+		expect(css).toContain('@property --donate-primary');
+		expect(css).toContain('@property --donate-corner');
+		expect(css.match(/@font-face/g)).toHaveLength(6);
+		for (const family of ['Red Hat Round Text', 'Red Hat Round Display'])
+			expect(css).toContain(family);
+		// the token sheet's own selectors include the registry's `:root`, which would declare every
+		// registry variable on a host page's root
+		expect(tokenStyles).toMatch(/:root\b/);
+		expect(css.replace(/@(?:property|font-face)\b[^{]*\{[^}]*\}/g, '').trim()).toBe('');
 	});
 
 	it('adopts one set of sheets however many elements a page holds', async () => {
@@ -1144,25 +1196,27 @@ describe('the style adoption', () => {
 	});
 
 	// the document adoption is done once per document and then never looked at again, and the array
-	// belongs to the host page: a design system that assigns rather than appends takes the token
-	// sheet off with it, and with it every `@property` registration the seeds derive from. that is a
-	// blank card taking money, on a page nothing here can see.
-	it('puts the token sheet back when the host page assigns the array out from under it', async () => {
+	// belongs to the host page: a design system that assigns rather than appends takes the document
+	// sheet off with it, and with it the seed registrations and the faces. that is a card that cannot
+	// tell a seed from none, on a page nothing here can see.
+	it('puts the document sheet back when the host page assigns the array out from under it', async () => {
 		const card = await mount();
-		const token = card.shadow.adoptedStyleSheets[0];
+		const [sheet] = documentSheets(card);
 		document.adoptedStyleSheets = [];
 		card.host.setAttribute('form', 'frm_other');
 		await settle();
 
-		expect(document.adoptedStyleSheets).toContain(token);
+		expect(sheet).toBeDefined();
+		expect(document.adoptedStyleSheets).toContain(sheet);
 	});
 
-	// an element moved into another document keeps a shadow root holding five sheets constructed in
+	// an element moved into another document keeps a shadow root holding six sheets constructed in
 	// the document it came from, and a constructed sheet may only be adopted by the document it was
 	// constructed in — so what it is holding is not adoptable and the card is styled by nothing.
 	// there is no rebuild without this callback: `#mount` returns early on a shadow root that exists.
 	it('rebuilds its sheets from the document it was adopted into', async () => {
 		const card = await mount();
+		const [before] = documentSheets(card);
 		const frame = document.createElement('iframe');
 		document.body.appendChild(frame);
 		const other = frame.contentDocument as Document;
@@ -1172,8 +1226,9 @@ describe('the style adoption', () => {
 		// whose `ownerDocument` is already the new one, which is what an engine does.
 		(card.host as HTMLElement & { adoptedCallback(): void }).adoptedCallback();
 
-		expect(card.shadow.adoptedStyleSheets).toHaveLength(5);
-		expect(other.adoptedStyleSheets).toContain(card.shadow.adoptedStyleSheets[0]);
+		expect(card.shadow.adoptedStyleSheets).toHaveLength(6);
+		expect(other.adoptedStyleSheets).toHaveLength(1);
+		expect(other.adoptedStyleSheets[0]).not.toBe(before);
 		expect(document.adoptedStyleSheets).not.toContain(card.shadow.adoptedStyleSheets[0]);
 	});
 });
@@ -2425,7 +2480,7 @@ describe('the cause a gift is credited to', () => {
 			'field-row program',
 			'disclosure note',
 			'disclosure tribute',
-			''
+			'ds-btn ds-btn-primary ds-btn-lg'
 		]);
 	});
 
@@ -5112,6 +5167,24 @@ describe('the stylesheets', () => {
 		expect(css).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
 	});
 
+	// the token file as written, before its `@import` brings the registry in: every colour on the card
+	// is the registry's, so the file's own declarations alias registry variables and name none. the
+	// seed's registered default is the one literal, and it is the registry's own accent step 9
+	// ("the seed's default is the registry's accent 9" in ./styles/brand.spec.ts holds the two equal).
+	// the lift's two alphas are relative colours of the registry's shadow ink rather than colours.
+	it('names no colour of its own in the token file', async () => {
+		const own = declarations(tokenSource).replace(
+			/initial-value: oklch\(0\.5198 0\.1225 247\.31\);/,
+			''
+		);
+
+		expect(own.length).toBeGreaterThan(1000);
+		expect(own).toMatch(/var\(--gray-1\)/);
+		expect(own).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+		expect(own.match(/\b(rgb|rgba|hsl|oklch)\(/g)).toEqual(['oklch(', 'oklch(']);
+		expect(own.match(/oklch\(from var\(--shadow-ink\) l c h \/ 0\.\d+\)/g)).toHaveLength(2);
+	});
+
 	// every sheet in the styles directory, read off the directory rather than listed: a sixth one
 	// written there is swept by existing, where a list held here would leave it swept by nobody
 	// while every case in this block stayed green.
@@ -5451,16 +5524,42 @@ describe('the stylesheets', () => {
 	// the parts of `parts` no rule of their own paints in `state`. anchored at the start of the
 	// compound the selector begins with, so a rule painting an ancestor's state onto something else
 	// does not answer for the part. `.fee-decision [part~='checkbox']:hover` holds the same text and
-	// answers only for the switch it draws.
+	// answers only for the switch it draws. a part the registry draws on the element keeps its rule
+	// here for the instances it does not — `:where(:not(.ds-…))` — and the registry's class answers
+	// for the rest, below.
 	const unanswered = (parts: readonly string[], state: string) =>
 		parts.filter(
 			(name) =>
 				!compounds.some((compound) =>
-					new RegExp(`^\\[part~='${name}'\\](?:\\[[^\\]]*\\]|:not\\([^)]*\\))*:${state}`).test(
-						compound
-					)
+					new RegExp(
+						`^\\[part~='${name}'\\](?:\\[[^\\]]*\\]|:not\\([^)]*\\)|:where\\(:not\\([^)]*\\)\\))*:${state}`
+					).test(compound)
 				)
 		);
+
+	// the registry's own sheets, which draw the controls the element hands them (`REGISTRY_CLASS` in
+	// ./parts.ts), each class of which has to answer the pointer too.
+	const registryControls = declarations(`${buttonStyles}\n${fieldStyles}\n${checkboxStyles}`);
+
+	it('hands the registry only classes its sheets define', () => {
+		const classes = Object.values(REGISTRY_CLASS).flatMap((list) => list.split(' '));
+
+		expect(classes.length).toBeGreaterThan(2);
+		expect(
+			classes.filter((name) => !new RegExp(`\\.${name}(?![\\w-])`).test(registryControls))
+		).toEqual([]);
+	});
+
+	it('answers the pointer on every registry control the element draws', async () => {
+		const classes = Object.values(REGISTRY_CLASS).map((list) => list.split(' ')[1] ?? list);
+
+		expect(classes).toEqual(['ds-btn-primary', 'ds-field-input', 'ds-checkbox']);
+		expect(
+			classes.filter(
+				(name) => !new RegExp(`\\.${name}(?::not\\([^{]*\\))?:hover`).test(registryControls)
+			)
+		).toEqual([]);
+	});
 
 	// the rule stated at `--_p-hover` in ./styles/tokens.css: every control a pointer can act on
 	// carries a hover step. the list is the operable half of `PART_NAMES` (./parts.ts) — the five

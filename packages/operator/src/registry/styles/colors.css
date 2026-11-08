@@ -212,20 +212,19 @@
     var(--shadow-ink) var(--overlay-strength),
     transparent
   );
-  /* step 8 is the ramp's focus rung, and deliberately not --primary: a ring
-     that equals the fill it surrounds measures Lc 0.0 against it and is not
-     there at all. on a --primary fill step 8 reaches Lc 30.0 — exactly the Lc 30 a
-     focus indicator needs, not over it, which is the job the `surface-primary`
-     utility keeps.
-     against the page the ring is Lc 44.6, Lc 42.7 on the card — the rung
-     radix assigns, taken as generated, and clear of Lc 30. in WCAG 2 terms
-     it is 2.30:1 on the page and 2.24:1 on the card, under the 3:1 1.4.11
-     asks of a state indicator: recorded in contrast.test.ts, not compensated
-     here.
-     --ring is declared in the theme file, per appearance: light takes step 8,
-     dark the first step at or past 8 that reaches light's contrast on the page
-     and the card, skipping 9 and 10: those are the accent's fill and its hover,
-     and a ring the color of the button it surrounds is not there. */
+  /* the ring is deliberately not --primary: a ring that equals the fill it
+     surrounds is not there at all, which is why a button keeps its 2px offset
+     and a panel filled with --primary scopes with `surface-primary`.
+     in light the ring starts at the ramp's focus rung, step 8, and takes the
+     first step from there, skipping 9 and 10 (the fill and its hover), that
+     reads at 3:1 on --background: WCAG 1.4.11 asks that of a state indicator
+     and step 8 is 2.30:1 in the default theme. that lands on step 11, 5.19:1
+     on the page. the generator picks it per theme.
+     --ring is declared in the theme file, per appearance: dark takes the first
+     step at or past 8 that reaches the contrast light's step 8 has on the page
+     and the card, skipping 9 and 10 for the same reason. it is held at that
+     baseline rather than at the raised light ring, and clears 3:1 as well
+     (themes.test.ts). */
   /* --link and --link-hover are the ink of a text link, declared in the theme
      file per appearance like --ring, each the first step with Lc 60 on the page
      and the card: light takes the fill steps 9 and 10 where they read (so they

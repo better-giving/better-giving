@@ -1,0 +1,47 @@
+/* the registry's badge as plain css: a small status chip, no tailwind. reads
+   only the variables the `variables` item declares. every variant is a tinted
+   chip on the subtle fill with its subtle ink; none paints a solid fill.
+   badge-css.test.tsx renders the React badge beside it and asserts the same
+   computed look in light and dark, for the default and example themes.
+
+   the type size and weight live only in tailwind's theme; they are declared
+   here under ds- names with the same values, and the test holds them equal. */
+.ds-badge {
+  --ds-spacing: 0.25rem;
+  --ds-text-xs: 0.75rem;
+  --ds-text-xs-lh: calc(1 / 0.75);
+  --ds-font-weight-semibold: 600;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--ds-spacing) * 1);
+  border-radius: calc(infinity * 1px);
+  padding-inline: calc(var(--ds-spacing) * 2.5);
+  padding-block: calc(var(--ds-spacing) * 0.5);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  font-weight: var(--ds-font-weight-semibold);
+  white-space: nowrap;
+  background-color: var(--gray-3);
+  color: var(--gray-12);
+}
+.ds-badge-neutral {
+  background-color: var(--gray-3);
+  color: var(--gray-12);
+}
+.ds-badge-primary {
+  background-color: var(--secondary);
+  color: var(--accent-12);
+}
+.ds-badge-success {
+  background-color: var(--success-subtle);
+  color: var(--success-subtle-fg);
+}
+.ds-badge-warning {
+  background-color: var(--warning-subtle);
+  color: var(--warning-subtle-fg);
+}
+.ds-badge-destructive {
+  background-color: var(--destructive-subtle);
+  color: var(--destructive-subtle-fg);
+}

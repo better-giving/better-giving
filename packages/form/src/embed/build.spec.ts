@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { embedConfig, importAllowed, importerJudged } from '../../vite.embed.config';
 import { RUNTIME_PATH_PREFIX } from './loader';
@@ -35,6 +37,33 @@ describe('the runtime half', () => {
 	// the snippet loads a bare classic script, so an emitted `import` is a form that never runs.
 	it('emits a self-executing classic script', () => {
 		expect(config.build?.lib).toMatchObject({ formats: ['iife'] });
+	});
+
+	// the registry's variables `@import` all 35 faces; the runtime carries the core six
+	// (../../vite.registry-faces.ts), and the loader shares the table so neither half reads the 35.
+	it('points the registry’s face import at the core subset, in both halves', () => {
+		const core = fileURLToPath(new URL('../registry/styles/fonts-core.css', import.meta.url));
+		const variables = readFileSync(
+			new URL('../registry/styles/variables.css', import.meta.url),
+			'utf8'
+		);
+		const faces = (file: string) => (readFileSync(file, 'utf8').match(/@font-face/g) ?? []).length;
+
+		// the one import the alias exists for, written as it is in the registry's variables sheet
+		expect(variables).toContain('@import "./fonts.css"');
+		for (const mode of ['runtime', 'loader'] as const) {
+			const aliases = embedConfig({ mode }).resolve?.alias;
+			if (!Array.isArray(aliases) || aliases.length !== 1) throw new Error(`${mode}: one alias`);
+			const [alias] = aliases;
+			expect(alias?.find instanceof RegExp && alias.find.test('./fonts.css'), mode).toBe(true);
+			expect(alias?.find instanceof RegExp && alias.find.test('./fonts-core.css'), mode).toBe(
+				false
+			);
+			expect(alias?.replacement, mode).toBe(core);
+		}
+		expect(faces(core)).toBeLessThan(
+			faces(fileURLToPath(new URL('../registry/styles/fonts.css', import.meta.url)))
+		);
 	});
 });
 

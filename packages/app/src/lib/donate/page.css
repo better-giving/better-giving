@@ -93,14 +93,18 @@
  * `--page-card-inset` the inset of the card layout's panel, 16px on a phone and 28px from 60rem;
  * `--page-col-gap` is between two columns and `--page-gutter` the page's side margin.
  *
- * grounds. every colour is a step of a radix colors twelve-step scale, and the step number is the
- * job (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): slate for
- * every grey, declared in packages/form/src/styles/tokens.css, and the brand scale, `--_a1`…`--_a12`
- * with `--_p`, `--_p-hover` and `--_on-p`, which ./page-root.tsx renders from the brand colour with
- * the generator the form itself runs (packages/form/src/styles/radix-scale.ts). 1 and 2
- * backgrounds, 3 a control's ground, 4 its hover, 5 its press, 6 a border nothing operates and a
- * separator, 7 the edge of a control a donor operates and 8 that edge under the pointer and the
- * focus ring, 9 a solid fill, 10 its hover, 11 and 12 text.
+ * grounds. every colour is a step of one of the design registry's twelve-step scales, which the form's
+ * token file imports (packages/form/src/styles/tokens.css), and the step number is the job
+ * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): the
+ * registry's grey for every grey, aliased there as `--_n1`…`--_n12` — named slate 1 to 12 in these
+ * notes and in ./page.spec.ts — and the
+ * registry's accent, `--accent-1`…`--accent-12` with `--accent-contrast`, which ./page-root.tsx
+ * renders from the brand colour with the generator the form itself runs
+ * (packages/form/src/styles/radix-scale.ts) and the token file aliases as `--_a8`, `--_a11`,
+ * `--_a12`, `--_p`, `--_p-hover` and `--_on-p`. 1 and 2 backgrounds, 3 a control's ground, 4 its
+ * hover, 5 its press, 6 a border nothing operates and a separator, 7 the edge of a control a donor
+ * operates and 8 that edge under the pointer, 9 a solid fill, 10 its hover, 11 and 12 text, and 11
+ * the focus ring, the registry's own ring step.
  * nothing casts a shadow: a `box-shadow` here is a focus ring, a spread with no offset and no blur.
  *
  * the page ground, `--page-ground`, is slate 2 under a wash. a plane — the top bar, the card's
@@ -114,13 +118,12 @@
  * width with no corner and draws its edge along its foot alone, the one side the page meets it on.
  *
  * the wash. `--page-wash` is two soft radial tints laid over the solid ground, brand step 2,
- * `--_a2`, at the first screen's start and brand step 3, `--_a3`, at the page's far corner, each
- * fading to `transparent` at 70% of its reach. a stop that is transparent is no translucent colour
- * standing on its own: the ground under it is opaque, so the composite is opaque everywhere. both
- * steps are the generated scale's, which the page root always renders: a page with no brand colour
- * has it generated from the form's registered seed, slate 12, so its tints are slate's hue at a
- * trace of chroma. the token file's fallback declares neither, so the ground stands on the page
- * root's scale: a `.page-ground` outside one paints no background at all. both tints are
+ * `--accent-2`, at the first screen's start and brand step 3, `--accent-3`, at the page's far
+ * corner, each fading to `transparent` at 70% of its reach. a stop that is transparent is no
+ * translucent colour standing on its own: the ground under it is opaque, so the composite is opaque
+ * everywhere. both steps are read off the registry's accent by name, where the page root's
+ * generated scale re-themes them on `[data-donate-root]`; the form aliases neither, because the card
+ * spends neither. both tints are
  * background steps, so wherever the wash reaches, an ink on the page ground stands on the 2 or 3
  * radix builds steps 11 and 12 to be read on.
  * About us stands on `--page-band`, slate 1, a band across the page's width; it is a band rather than
@@ -140,8 +143,8 @@
  * goal's progress, the initials badge, and a cover with no photo — the logo's cover, the logo on
  * its own slate-1 plate, and the feature's empty cover. the ink on 9 is the generated `--_on-p`,
  * the ink the generator picks for its step 9. 11 is a brand word, `--page-accent` — a link, the top
- * bar's Share and a tier's amount — and 12 is that word under the pointer. 8 is a brand edge and
- * the focus ring.
+ * bar's Share and a tier's amount — and the focus ring, and 12 is that word under the pointer. 8 is
+ * a brand edge.
  *
  * corners. a plane is `--page-plane-radius`, 12px, a step rounder than the card's `--_r`, and the
  * donation box takes it too wherever it is a plane; what stands on a plane is the card's `--_r` or
@@ -157,7 +160,7 @@
  * it to the job radix names for that step
  * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): text on 11
  * and 12, a solid fill on 9 with the generated `--_on-p` as its ink, a separator or an edge on 6, 7
- * and 8, the focus ring on 8, a ground on 1, 2 and 3 — the wash brand 2 and 3 over slate 2 —
+ * and 8, the focus ring on 11, a ground on 1, 2 and 3 — the wash brand 2 and 3 over slate 2 —
  * and a control's hover and press on 4 and 5. legibility is radix's guarantee for a step
  * doing its job, and no ratio is measured here.
  *
@@ -253,8 +256,8 @@ body {
 
 	--page-ground: var(--_n2);
 	--page-wash:
-		radial-gradient(max(80cqi, 26rem) 38rem at 0% 14rem, var(--_a2), transparent 70%),
-		radial-gradient(max(65cqi, 24rem) 38rem at 100% 100%, var(--_a3), transparent 70%);
+		radial-gradient(max(80cqi, 26rem) 38rem at 0% 14rem, var(--accent-2), transparent 70%),
+		radial-gradient(max(65cqi, 24rem) 38rem at 100% 100%, var(--accent-3), transparent 70%);
 	--page-plane: var(--_n1);
 	--page-plane-edge: var(--_n6);
 	--page-plane-radius: 0.75rem;
@@ -437,7 +440,7 @@ body {
    cropped. with no logo, the badge of the name's initials stands where a narrower one would, a
    circle a row across: the brand's step 9 under the one ink the form draws on it, `--_on-p` on
    `--_p`, from the scale ./page-root.tsx renders. a page with no brand colour fills it with the
-   scale generated from the form's registered seed, slate 12. */
+   registry's default accent. */
 .page-mast-in {
 	display: flex;
 	align-items: center;

@@ -1,6 +1,6 @@
 ## Design system
 
-- Components and tokens come from the Better Giving design registry (better-giving/design-system, served at https://design.better.giving/registry) through the `bg-design` CLI. Once this app adopts it, `bg-design.json` at the repo root lists every copied item and its folder; those copied files are this repo's design system. Take values from them and never invent a token, color or variant.
+- Components and tokens come from the Better Giving design registry (better-giving/design-system, served at https://design.better.giving/registry) through the `bg-design` CLI. `bg-design.json` at the repo root lists every copied item and its folder, and `packages/form/bg-design.json` lists the donation form's own copies; those copied files are this repo's design system, and CI's `pnpm design:check` fails when one is edited, missing or behind the registry. Take values from them and never invent a token, color or variant.
 - The doop canvas `_gTDOwL8my` (https://doop-justin.fly.dev/c/_gTDOwL8my) and its guidelines doc `better-giving-design-system` are a picture of the registry. When they disagree, the registry wins.
 - A part the registry lacks is a registry gap for the design-system PM, not something to draw or build ad hoc.
 

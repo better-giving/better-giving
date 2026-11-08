@@ -1,0 +1,58 @@
+/* the core faces: Red Hat Round Text 400, 500, 600 and 700, and Display 600
+   and 700, upright. six files instead of the 35 in ./fonts.css, for a
+   self-contained widget that inlines its fonts and has to stay small. each rule
+   is the same as the one in ./fonts.css for that face (fonts-core.test.ts holds
+   them equal), so a page that loads both gets one face, not two.
+
+   not included: Mono, Gochi Hand, italics, and the light, extra-bold and black
+   weights. text set in a weight or style that is not here falls back to the
+   nearest face that is, then to the next family in the stack.
+   license: ./fonts/red-hat-round-OFL.txt (SIL OFL 1.1). */
+
+@font-face {
+  font-family: "Red Hat Round Text";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(./fonts/RedHatRoundText-Regular.woff2) format("woff2");
+}
+
+@font-face {
+  font-family: "Red Hat Round Text";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url(./fonts/RedHatRoundText-Medium.woff2) format("woff2");
+}
+
+@font-face {
+  font-family: "Red Hat Round Text";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(./fonts/RedHatRoundText-SemiBold.woff2) format("woff2");
+}
+
+@font-face {
+  font-family: "Red Hat Round Text";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url(./fonts/RedHatRoundText-Bold.woff2) format("woff2");
+}
+
+@font-face {
+  font-family: "Red Hat Round Display";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(./fonts/RedHatRoundDisplay-SemiBold.woff2) format("woff2");
+}
+
+@font-face {
+  font-family: "Red Hat Round Display";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url(./fonts/RedHatRoundDisplay-Bold.woff2) format("woff2");
+}

@@ -1,12 +1,18 @@
 // radix's custom-palette generator, light only, ported with no dependency: one brand colour in, the
-// twelve-step scale ./tokens.css spends as `--_a1`…`--_a12` out, with its solid (`--_p`, step 9),
-// the solid's hover (`--_p-hover`, step 10) and the ink on the solid (`--_on-p`).
+// twelve-step accent scale out — the design registry's `--accent-1`…`--accent-12` and
+// `--accent-contrast`, the ink on the solid (../registry/styles/variables.usage.md).
+//
+// the registry's own scales come from this same generator, run by its CLI (`theme:generate`) at
+// build time; the registry ships no runtime generator and no seed hook, so a colour a host page
+// seeds at runtime is put through this port instead. ./radix-scale.spec.ts holds the port to the
+// registry: the registry's default accent seed comes out as the registry's default accent scale.
 //
 // the source is components/generate-radix-colors.tsx in https://github.com/radix-ui/website, the
 // code behind https://www.radix-ui.com/colors/custom. its light path — `generateRadixColors`,
 // `getScaleFromColor`, `getStep9Colors`, `getButtonHoverColor`, `getTextColor` and the easing
-// transposition — is here with its inputs fixed but the grey: the seed as the accent, radix slate's
-// or sand's step 9 as the grey and white as the background, the generator's light default. the
+// transposition — is here with its inputs fixed but the seed: the seed as the accent, the
+// registry's grey seed as the grey and white as the background, the inputs the registry's default
+// theme was generated with (the head of ../registry/styles/themes/default.css). the
 // colour arithmetic it borrows from colorjs.io 0.5.2 (oklab, oklch, deltaEOK, the css gamut
 // mapping, APCA) and the curve it borrows from bezier-easing 2.1.0 are ported beside it, operation
 // for operation, so a step comes out bit for bit what the generator writes —
@@ -676,37 +682,35 @@ function radixLightScales(): RadixLight {
 /** the generator's light default page: white. */
 const BACKGROUND: Coords = toOklch('srgb', [1, 1, 1]);
 
-/** the radix grey the card's neutrals are drawn in: slate, or sand under the `warm` shade. */
-export type BrandGray = 'slate' | 'sand';
+/**
+ * the grey the registry's default theme was generated with (`--gray` in the head of
+ * ../registry/styles/themes/default.css), the generator's `gray` input. it reaches only a pure white
+ * or black seed, which takes the grey scale's tint.
+ */
+export const REGISTRY_GRAY_SEED = '#e2e8f0';
 
-/** each grey's step 9 (@radix-ui/colors 3.0.0, light), the generator's `gray` input. */
-const GRAY_NINES: Readonly<Record<BrandGray, Coords>> = {
-	slate: [0x8b / 255, 0x8d / 255, 0x98 / 255],
-	sand: [0x8d / 255, 0x8d / 255, 0x86 / 255]
-};
+let grayScale: Scale | null = null;
 
-const grayScales = new Map<BrandGray, Scale>();
-
-/** the grey scale the generator builds from a grey's step 9, which stands in for a white or black seed. */
-function grayScaleColors(gray: BrandGray): Scale {
-	let scale = grayScales.get(gray);
-	if (scale === undefined) {
-		scale = getScaleFromColor(
-			toOklch('srgb', GRAY_NINES[gray]),
+/** the grey scale the generator builds from the registry's grey seed. */
+function grayScaleColors(): Scale {
+	if (grayScale === null) {
+		const seed = parseSeed(REGISTRY_GRAY_SEED);
+		if (seed === null) throw new Error(`${REGISTRY_GRAY_SEED} is a seed the port reads`);
+		grayScale = getScaleFromColor(
+			toOklch(seed.space, seed.coords),
 			radixLightScales().grays,
 			BACKGROUND
 		);
-		grayScales.set(gray, scale);
 	}
-	return scale;
+	return grayScale;
 }
 
 /**
  * the brand scale for one seed, the generator's `generateRadixColors` with `appearance: 'light'`,
- * the seed as `accent`, `gray`'s step 9 as `gray` — `#8b8d98` for slate, `#8d8d86` for sand — and
- * `#ffffff` as `background`. `null` for a seed `parseSeed` above does not read.
+ * the seed as `accent`, `REGISTRY_GRAY_SEED` as `gray` and `#ffffff` as `background`. `null` for a
+ * seed `parseSeed` above does not read.
  */
-export function generateBrandScale(seed: string, gray: BrandGray = 'slate'): BrandScale | null {
+export function generateBrandScale(seed: string): BrandScale | null {
 	const parsed = parseSeed(seed);
 	if (parsed === null) return null;
 
@@ -716,7 +720,7 @@ export function generateBrandScale(seed: string, gray: BrandGray = 'slate'): Bra
 	// a pure white or black seed takes the grey scale's tint
 	const bytes = srgbBytes(accentBaseColor);
 	if (bytes.every((byte) => byte === 0) || bytes.every((byte) => byte === 255)) {
-		accentScaleColors = grayScaleColors(gray).map((color): Coords => [...color]);
+		accentScaleColors = grayScaleColors().map((color): Coords => [...color]);
 	}
 
 	const [accent9Color, accentContrastColor] = getStep9Colors(accentScaleColors, accentBaseColor);
@@ -735,37 +739,23 @@ export function generateBrandScale(seed: string, gray: BrandGray = 'slate'): Bra
 	};
 }
 
-/** the private tokens one scale sets, of `names`: every step, the solid pair, and the ink on the solid. */
-function declarations(
-	steps: readonly string[],
-	contrast: string,
-	names: readonly string[] | undefined
-): string {
-	const all: [string, string][] = [
-		...steps.map((value, i): [string, string] => [`--_a${i + 1}`, value]),
-		['--_p', nth(steps, 8)],
-		['--_p-hover', nth(steps, 9)],
-		['--_on-p', contrast]
-	];
-	return all
-		.filter(([name]) => names === undefined || names.includes(name))
-		.map(([name, value]) => `${name}: ${value};`)
-		.join(' ');
+/** the registry's accent variables one scale sets: every step, and the ink on the solid. */
+function declarations(steps: readonly string[], contrast: string): string {
+	return [
+		...steps.map((value, i) => `--accent-${i + 1}: ${value};`),
+		`--accent-contrast: ${contrast};`
+	].join(' ');
 }
 
 /**
  * the scale as css for `selector`, the way radix's custom page writes one: sRGB hex for every
  * display, and the wide-gamut steps for a display that shows display-p3. the ink is hex in both,
- * as the generator gives it. `names` narrows it to those tokens; every one is set without it.
+ * as the generator gives it.
  */
-export function brandScaleCss(
-	selector: string,
-	scale: BrandScale,
-	names?: readonly string[]
-): string {
+export function brandScaleCss(selector: string, scale: BrandScale): string {
 	return (
-		`${selector} { ${declarations(scale.steps, scale.contrast, names)} }\n` +
+		`${selector} { ${declarations(scale.steps, scale.contrast)} }\n` +
 		'@supports (color: color(display-p3 1 1 1)) { @media (color-gamut: p3) { ' +
-		`${selector} { ${declarations(scale.stepsWideGamut, scale.contrast, names)} } } }`
+		`${selector} { ${declarations(scale.stepsWideGamut, scale.contrast)} } } }`
 	);
 }

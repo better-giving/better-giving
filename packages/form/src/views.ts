@@ -29,7 +29,7 @@ import {
 import type { AmountDecision, PayerField } from './value';
 import { RECONCILIATION_LABELS, type DeductedFee } from './fee';
 import { currencySymbol, formatFigure, formatMinor, formatOffer, parseMinor } from './money';
-import { part, partWhen } from './parts';
+import { CARD_THEME, part, partWhen, REGISTRY_CLASS } from './parts';
 import {
 	FREQUENCY_LABELS,
 	NO_PROGRAM_LABEL,
@@ -1523,8 +1523,17 @@ export function createCard(
 
 	// ── the note ───────────────────────────────────────────────────────────────────────────────
 
-	const noteToggle = make(doc, 'input', { part: part('checkbox'), type: 'checkbox' });
-	const noteField = make(doc, 'textarea', { part: part('field'), id: 'note', rows: 3 });
+	const noteToggle = make(doc, 'input', {
+		part: part('checkbox'),
+		class: REGISTRY_CLASS.checkbox,
+		type: 'checkbox'
+	});
+	const noteField = make(doc, 'textarea', {
+		part: part('field'),
+		class: REGISTRY_CLASS.field,
+		id: 'note',
+		rows: 3
+	});
 	// inside the disclosure, under the field it is about, so it is revealed and hidden with the note
 	// itself: a sentence about a note nobody has opened is a sentence about nothing. it carries no
 	// `::part()` name, for the reason ./parts.ts gives about every error surface.
@@ -1617,7 +1626,11 @@ export function createCard(
 	// different is what is inside the body: four boxes rather than one, with two pairings between
 	// them that `missingAmountDecisions` (./value.ts) holds and this file only reports.
 
-	const tributeToggle = make(doc, 'input', { part: part('checkbox'), type: 'checkbox' });
+	const tributeToggle = make(doc, 'input', {
+		part: part('checkbox'),
+		class: REGISTRY_CLASS.checkbox,
+		type: 'checkbox'
+	});
 
 	/** one tribute box, with the sentence that says what is wrong with it directly under it. */
 	type TributeBox = {
@@ -1691,7 +1704,11 @@ export function createCard(
 		tributeKindSelect.list,
 		...tributeBox(
 			'tribute-honoree',
-			make(doc, 'input', { part: part('field'), id: 'tribute-honoree' }),
+			make(doc, 'input', {
+				part: part('field'),
+				class: REGISTRY_CLASS.field,
+				id: 'tribute-honoree'
+			}),
 			'Who this gift is for',
 			'Their name',
 			'required, or untick to skip',
@@ -1707,7 +1724,11 @@ export function createCard(
 			tributeRowOf(
 				tributeBox(
 					'tribute-notify-name',
-					make(doc, 'input', { part: part('field'), id: 'tribute-notify-name' }),
+					make(doc, 'input', {
+						part: part('field'),
+						class: REGISTRY_CLASS.field,
+						id: 'tribute-notify-name'
+					}),
 					'Name of the person to tell',
 					'Name',
 					// short, because these two sit in half a card each once there is room for two columns.
@@ -1722,7 +1743,12 @@ export function createCard(
 					// `type="email"` for the keyboard it opens and the shape the engine checks; never
 					// `required`, because the pair is optional and a donor who asked for nobody to be told
 					// is the case the pairing rule exists for. ./connect.ts declares the same and says why.
-					make(doc, 'input', { part: part('field'), id: 'tribute-notify-email', type: 'email' }),
+					make(doc, 'input', {
+						part: part('field'),
+						class: REGISTRY_CLASS.field,
+						id: 'tribute-notify-email',
+						type: 'email'
+					}),
 					'Email address of the person to tell',
 					'Email',
 					// two rules and one sentence, the way a name field on the details step has one for both
@@ -1837,10 +1863,12 @@ export function createCard(
 
 	// ── the amount step ────────────────────────────────────────────────────────────────────────
 
-	const continueButton = make(doc, 'button', { part: part('action'), type: 'button' }, [
-		make(doc, 'span', { class: 'action-label' }, ['Continue']),
-		spinner(doc)
-	]);
+	const continueButton = make(
+		doc,
+		'button',
+		{ part: part('action'), class: REGISTRY_CLASS.action, type: 'button' },
+		[make(doc, 'span', { class: 'action-label' }, ['Continue']), spinner(doc)]
+	);
 	continueButton.addEventListener('click', () => {
 		const pressedOn = now().state.step;
 		now().continueButton.onClick();
@@ -2078,6 +2106,8 @@ export function createCard(
 		// real one for the same line, and gone the moment a donor needed it. it rides the same
 		// opt-in the sheet does: a box labelled over the top has nothing to ask.
 		if (floating) field.setAttribute('placeholder', ' ');
+		// a box labelled over the top is the registry's text box; the floating pair is the form's own.
+		else field.classList.add(REGISTRY_CLASS.field);
 		field.addEventListener('input', () => read(now()).onChange(field.value));
 		// the sentence, drawn one way on every row the card has: the row's own child under the box,
 		// tied to it by `aria-describedby` while it is shown so that it is read out with the field
@@ -2148,17 +2178,23 @@ export function createCard(
 		])
 	]);
 
-	const consentToggle = make(doc, 'input', { part: part('checkbox'), type: 'checkbox' });
+	const consentToggle = make(doc, 'input', {
+		part: part('checkbox'),
+		class: REGISTRY_CLASS.checkbox,
+		type: 'checkbox'
+	});
 	const consentRow = make(doc, 'label', { class: 'check-row' }, [
 		consentToggle,
 		make(doc, 'span', {}, [`Allow ${config.orgLegalName} to contact me`])
 	]);
 	consentToggle.addEventListener('change', () => now().consentToggle.onClick());
 
-	const detailsContinue = make(doc, 'button', { part: part('action'), type: 'button' }, [
-		make(doc, 'span', { class: 'action-label' }, ['Continue']),
-		spinner(doc)
-	]);
+	const detailsContinue = make(
+		doc,
+		'button',
+		{ part: part('action'), class: REGISTRY_CLASS.action, type: 'button' },
+		[make(doc, 'span', { class: 'action-label' }, ['Continue']), spinner(doc)]
+	);
 	detailsContinue.addEventListener('click', () => {
 		const pressedOn = now().state.step;
 		now().continueButton.onClick();
@@ -2279,9 +2315,12 @@ export function createCard(
 	// refused, and this press is the one thing on the step that moves the gift on. `attention`
 	// rather than `message`, for the reason ./styles/parts.css gives at `.attention`.
 	const oneTimeOffer = make(doc, 'p', { class: 'attention' });
-	const oneTimeButton = make(doc, 'button', { part: part('action'), type: 'button' }, [
-		'Make it one-time'
-	]);
+	const oneTimeButton = make(
+		doc,
+		'button',
+		{ part: part('action'), class: REGISTRY_CLASS.action, type: 'button' },
+		['Make it one-time']
+	);
 	oneTimeButton.addEventListener('click', () => {
 		madeOneTime = true;
 		now().oneTimeButton.onClick();
@@ -2295,10 +2334,12 @@ export function createCard(
 	const coinPicker = createCoinPicker(doc);
 
 	const submitLabel = make(doc, 'span', { class: 'action-label' });
-	const submitButton = make(doc, 'button', { part: part('action', 'submit'), type: 'button' }, [
-		submitLabel,
-		spinner(doc)
-	]);
+	const submitButton = make(
+		doc,
+		'button',
+		{ part: part('action', 'submit'), class: REGISTRY_CLASS.action, type: 'button' },
+		[submitLabel, spinner(doc)]
+	);
 	submitButton.addEventListener('click', () => {
 		const pressedOn = now().state.step;
 		now().submitButton.onClick();
@@ -2418,7 +2459,7 @@ export function createCard(
 	const primaryButton = make(
 		doc,
 		'button',
-		{ part: part('action'), type: 'button', hidden: true },
+		{ part: part('action'), class: REGISTRY_CLASS.action, type: 'button', hidden: true },
 		[primaryLabel, spinner(doc)]
 	);
 	const primaryNote = make(doc, 'p', { class: 'aside', hidden: true });
@@ -2510,7 +2551,9 @@ export function createCard(
 	// declares the language its own strings are written in rather than the host's: dropped into an
 	// `<html lang="es">` page, an undeclared shadow tree is a card spoken with Spanish phonetics.
 	// never on the host element, whose attributes belong to whoever pasted the snippet.
-	const root = make(doc, 'div', { part: part('card'), lang: 'en' }, [body]);
+	const root = make(doc, 'div', { part: part('card'), lang: 'en', 'data-theme': CARD_THEME }, [
+		body
+	]);
 
 	// ── the options, built from the first projection ────────────────────────────────────────────
 
@@ -3787,12 +3830,17 @@ export function createUnavailable(
 		// (./parts.ts), and a host who has painted the form's primary control has painted this one.
 		// the words directly in the control rather than in a `.action-label` span: that span is where
 		// the patch writes a label beside a spinner, and this card is never patched and never busy.
-		const button = make(doc, 'button', { part: part('action'), type: 'button' }, ['Try again']);
+		const button = make(
+			doc,
+			'button',
+			{ part: part('action'), class: REGISTRY_CLASS.action, type: 'button' },
+			['Try again']
+		);
 		button.addEventListener('click', retry);
 		put(doc, body, [button]);
 	}
 	return {
-		root: make(doc, 'div', { part: part('card'), lang: 'en' }, [body]),
+		root: make(doc, 'div', { part: part('card'), lang: 'en', 'data-theme': CARD_THEME }, [body]),
 		focus() {
 			heading.focus();
 		}

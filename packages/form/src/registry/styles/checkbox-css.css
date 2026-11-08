@@ -1,0 +1,102 @@
+/* the registry's checkbox and check-field as plain css, no tailwind. reads only
+   the variables the `variables` item declares. drawn, not the browser box: the
+   native box carries its own edge and ignores --input. the check is two borders
+   of a rotated box, so it takes --primary-fg like any ink on the fill and needs
+   no image. checkbox-css.test.tsx renders the tailwind `checkbox` and
+   `check-field` beside these and asserts the same computed look in light and
+   dark, for the default and example themes.
+
+   the spacing step and the type ladder live only in tailwind's theme; they are
+   declared here under ds- names with the same values, and the test holds each
+   equal to tailwind's. */
+.ds-checkbox,
+.ds-check-field > input {
+  --ds-spacing: 0.25rem;
+  appearance: none;
+  box-sizing: border-box;
+  position: relative;
+  inline-size: calc(var(--ds-spacing) * 4);
+  block-size: calc(var(--ds-spacing) * 4);
+  flex-shrink: 0;
+  margin: 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--input);
+  background-color: var(--surface);
+  outline-color: var(--ring);
+}
+@media (hover: hover) {
+  .ds-checkbox:not(:disabled):hover,
+  .ds-check-field > input:not(:disabled):hover {
+    border-color: var(--input-hover);
+  }
+}
+.ds-checkbox:checked,
+.ds-check-field > input:checked {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+.ds-checkbox::before,
+.ds-check-field > input::before {
+  content: "";
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin-top: calc(var(--ds-spacing) * -0.5);
+  width: calc(var(--ds-spacing) * 1.5);
+  height: calc(var(--ds-spacing) * 2.5);
+  translate: -50% -50%;
+  rotate: 45deg;
+  border: 0 solid var(--border);
+  border-right-width: 2px;
+  border-bottom-width: 2px;
+  border-color: var(--primary-fg);
+}
+.ds-checkbox:checked::before,
+.ds-check-field > input:checked::before {
+  display: block;
+}
+.ds-checkbox:disabled,
+.ds-check-field > input:disabled {
+  background-color: var(--gray-3);
+  border-color: var(--hairline);
+}
+.ds-checkbox:disabled::before,
+.ds-check-field > input:disabled::before {
+  border-color: var(--gray-11);
+}
+.ds-checkbox:focus-visible,
+.ds-check-field > input:focus-visible {
+  outline-style: solid;
+  outline-width: 2px;
+  outline-color: var(--ring);
+}
+.ds-checkbox:checked:not(:disabled):hover,
+.ds-check-field > input:checked:not(:disabled):hover {
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+/* a checkbox, its label and an error line: label and box in two columns */
+.ds-check-field {
+  --ds-spacing: 0.25rem;
+  --ds-text-xs: 0.75rem;
+  --ds-text-xs-lh: calc(1 / 0.75);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  justify-items: start;
+  column-gap: calc(var(--ds-spacing) * 3);
+  align-items: center;
+}
+.ds-check-field > label[data-required="true"]::after {
+  margin-left: calc(var(--ds-spacing) * 1);
+  content: "*" / "";
+  color: var(--destructive-subtle-fg);
+}
+.ds-check-field > [data-error] {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  color: var(--destructive-subtle-fg);
+}

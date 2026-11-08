@@ -169,15 +169,17 @@
      8 hovered ui element border and focus rings · 9 solid backgrounds · 10 hovered solid ·
      11 low-contrast text · 12 high-contrast text
 
-   radix's table puts the focus ring on 7 and its prose allows 7 or 8; the registry takes 8 in
-   light (`--ring`) and a later step in dark, so a ring is the stronger of the two interactive
-   borders and never a control's own resting edge.
+   radix's table puts the focus ring on 7 and its prose allows 7 or 8; the registry's light
+   ring is the first step from 8 on, past the fill and its hover (9 and 10), that reads at 3:1 on
+   the page, its dark ring is picked from 8 on by a rule of its own (../registry/styles/colors.css),
+   and in its default theme both are 11 (`--ring`, ../registry/styles/themes/default.css). so a
+   ring is never a control's own edge, at rest or under a pointer.
 
    so a card, a panel, the top bar, the phone's bar and a text box's face are step 1 and the page
    is step 2. a control rests on 3, answers a pointer on 4 and is pressed or selected on 5. every
    rule, and the edge of everything that is not a control, is 6. a control's own edge is 7 at rest
-   and 8 under a pointer, and the focus ring is the registry's `--ring`: the accent's 8 in light
-   and its 11 in dark. a primary or destructive fill is 9 with its hover on 10, under a white
+   and 8 under a pointer, and the focus ring is the registry's `--ring`: the accent's 11 in light
+   and in dark. a primary or destructive fill is 9 with its hover on 10, under a white
    label. text is 11 for the secondary run and 12 for the rest.
    no value is authored off its ladder and no alias points at a step its job does not name;
    ./radix-steps.spec.ts is what fails when one does. a few aliases read a registry role instead
@@ -196,10 +198,11 @@
    is re-tuned here: a value that reads wrong is another step of the same ladder or a gap to
    report, never a literal nudged.
 
-   the focus ring is drawn outside a control, in `--ring` (the accent's 8 in light, its 11 in dark)
+   the focus ring is drawn outside a control, in `--ring` (the accent's 11, light and dark)
    against whatever the control stands on. a control filled with a solid step draws its ring
-   inside itself in `--admin-focus-ring-solid` instead, because in light the accent's 8 and 9 are
-   neighbours and a ring of one abutting a fill of the other is a ring nobody finds.
+   inside itself in `--admin-focus-ring-solid` instead, the fill's own ink, as the registry rings
+   a control drawn on a `--primary` fill in that fill's ink (`--primary-ring` in
+   ../registry/styles/colors.css).
    the ring hugs. it starts at the control's own edge and no ground is drawn between the two,
    in either direction, because a band of the page laid inside the ring reads as the control
    sitting in a box that arrived with the keyboard. the one exception is a chosen control, a chip
@@ -457,8 +460,8 @@
 		/* placeholder text is read rather than decorative — it is the example of the value a box is
 		   waiting for — so it is the secondary text step. */
 		--admin-field-placeholder: var(--admin-neutral-11);
-		/* one ring, one hue, everywhere, on the registry's `--ring` (the accent's 8 in light, its 11
-		   in dark), and it does not change with the control's tone. */
+		/* one ring, one hue, everywhere, on the registry's `--ring` (the accent's 11, light and dark),
+		   and it does not change with the control's tone. */
 		--admin-focus-ring: var(--ring);
 		/* the ring a control filled with a solid step draws inside itself: the label's own ink, the
 		   registry's `--primary-fg`, white in both modes, which abuts the fill and nothing else. the

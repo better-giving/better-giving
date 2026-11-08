@@ -350,20 +350,22 @@ describe('the one colour', () => {
 
 	// happy-dom resolves no custom property, so the scale is held to the sheet the root renders and
 	// the nodes its selector matches.
-	it.each([
-		['#1d6b4f', '#1d6b4f'],
-		['the registered seed', null]
-	] as const)('renders the generated scale for %s, scoped to its own root', (_, brandColour) => {
-		const host = mount(<PageView {...props('campaign', CARD)} look={{ brandColour }} />);
+	it('renders the generated scale for a seeded page, scoped to its own root', () => {
+		const host = mount(<PageView {...props('campaign', CARD)} look={{ brandColour: '#1d6b4f' }} />);
 		const root = host.querySelector<HTMLElement>('[data-donate-root]');
 		const scope = root?.getAttribute('data-brand-scope') ?? '';
 		expect(scope).not.toBe('');
-		const scale = generateBrandScale(brandColour ?? '#1c2024');
+		const scale = generateBrandScale('#1d6b4f');
 		if (scale === null) throw new Error('no scale');
 		expect(root?.querySelector('style')?.textContent).toBe(
 			brandScaleCss(brandScopeSelector(scope), scale)
 		);
 		expect([...document.querySelectorAll(brandScopeSelector(scope))]).toEqual([root]);
+	});
+
+	it('renders no scale for a page with no brand colour, so the registry default accent draws', () => {
+		const host = mount(<PageView {...props('campaign', CARD)} look={{ brandColour: null }} />);
+		expect(host.querySelector('[data-donate-root] style')).toBeNull();
 	});
 
 	it('gives two roots on one document their own scales, neither matching the other', () => {

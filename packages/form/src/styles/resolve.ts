@@ -167,10 +167,11 @@ function bytes(context: CanvasRenderingContext2D, value: string): readonly numbe
 /**
  * the appearance object for one mounted card, resolved once against the cascade it is in.
  *
- * `host` is any node inside the card, or projected into it through a slot: the steps a preset moves
- * are declared on the node under `:host` rather than on it (the preset layer in ./tokens.css), so a
- * probe resolves the shade and the corner the card is painted with only from inside that node. the
- * probe is removed before this returns — nothing is left in the card that the card did not build.
+ * `host` is any node inside the card, or projected into it through a slot: the registry's colours
+ * and the corner a preset moves are declared on the node under `:host` rather than on it
+ * (./tokens.css), so a probe resolves the colours and the corner the card is painted with only from
+ * inside that node. the probe is removed before this returns — nothing is left in the card that the
+ * card did not build.
  *
  * resolved at mount and never again. a host page that changes a seed afterwards gets a form that
  * follows and provider fields that do not until the next mount, which ./appearance.ts states as the

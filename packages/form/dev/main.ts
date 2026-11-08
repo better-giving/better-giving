@@ -56,7 +56,7 @@ function hex(value: string | null): string | null {
  * unset is a state beside the picker rather than inside it, because `<input type="color">` has no
  * empty value — so the swatch goes on showing what pressing it would apply while the element is
  * still drawing its own default. that difference is the point of the whole panel: the unseeded card
- * is grey, and nothing about the swatch says so.
+ * is the design registry's default accent, and nothing about the swatch says so.
  */
 function brandSeed(): void {
 	const picker = need('primary', HTMLInputElement);
