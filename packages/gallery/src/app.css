@@ -16,6 +16,6 @@
 
    this package defines no css of its own: every value a preview needs comes from
    packages/operator/src/styles/tokens.css, which aliases the registry's variables.css for colour,
-   the face roles and the control and plane radii, re-points those roles at the plain red hat
-   faces packages/operator/src/styles/fonts.css declares, and states the rest as its own literals,
-   gated here by src/raw-values.spec.ts. */
+   the face roles and the control and plane radii and states the rest as its own literals, gated
+   here by src/raw-values.spec.ts. packages/operator/src/styles/fonts.css declares the plain red
+   hat faces and re-points those roles at them. */

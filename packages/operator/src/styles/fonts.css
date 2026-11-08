@@ -6,8 +6,24 @@
    these are this deployment's faces and not the design registry's. the registry's `fonts` item is
    red hat round, the face of Better Giving's hosted platform; a self-hosted deployment is set in
    plain red hat, which the registry does not carry until its `fonts-red-hat` item in 2.2.0, and
-   that item replaces this sheet and the ten files beside it. ./tokens.css points the registry's
-   `--font-body`, `--font-display` and `--font-mono` at the three families declared here.
+   that item replaces this sheet and the ten files beside it.
+
+   this sheet also points the registry's `--font-body`, `--font-display` and `--font-mono`
+   (../registry/styles/variables.css) at the three families declared here, in the `:root` block
+   below. it is the one sheet every surface set in these faces links: /admin and the gallery
+   import it (packages/app/src/app.css, packages/gallery/src/app.css), and the donor pages link it
+   beside the form's sheets (`donorPageLinks()` in packages/app/src/lib/donate/plain-page.tsx),
+   where packages/app/src/lib/donate/page.css reads the three roles. the registry declares the roles
+   unlayered on `:root` — /admin and the gallery import its variables.css after this sheet, and a
+   donor page reaches it through packages/form/src/styles/tokens.css — and a declaration inside a
+   layer loses to an unlayered one whatever the source order, so each of the three is
+   `!important`: an important declaration inside a layer outranks every normal one, and among
+   important ones the first layer wins. `tokens` is the first layer /admin and the gallery declare,
+   and on a donor page it is the only one. the mono stack is the registry's own fallbacks, in its
+   order, behind the plain face, so a reader without the files gets the system face the registry
+   would have given them, and ./tokens.spec.ts holds it to the registry's list. the donation form
+   imports nothing from this package and its shadow root never reads this sheet: the card is set
+   in its host page's face, so nothing under packages/form/src/** may assume these are present.
 
    the src urls below are relative on purpose, and it is what lets every surface read this sheet.
    a root-absolute /fonts/… would need each one to serve a public directory holding the same ten
@@ -24,9 +40,11 @@
    for 900, which a family whose heaviest file is 700 matches with that file. so display carries
    600 for the ranks ./base.css sets, 500 for a rank a screen re-pitches to
    `--admin-weight-medium`, which is what a fold's summary in ./adm.css does, and 700 for emphasis
-   inside a heading. the one italic is the text face's 400 companion and it is worn by one thing —
-   a value the deployment has not been given, where the italic is what separates "there is nothing
-   here" from a value that happens to be short. nothing italicises display or mono.
+   inside a heading. mono has no 700, so inside a code-face element ./base.css pins `b` and
+   `strong` to `--admin-weight-medium`, which is the 500 file. the one italic is the text face's
+   400 companion and it is worn by one thing — a value the deployment has not been given, where
+   the italic is what separates "there is nothing here" from a value that happens to be short.
+   nothing italicises display or mono.
 
    every weight a screen sets a face at has a file here. a weight with no file is synthesised or
    matched to a neighbour without a word, so a new weight on a face ships with its block below.
@@ -36,15 +54,14 @@
    emphasis vanishes, which is why packages/form/src/styles/tokens.css never spends 500 on
    emphasis.
 
-   the blocks sit inside `tokens` for the same reason the rest of the operator css is inside a
-   layer: an unlayered sheet outranks every layer, and the donation form the dashboard embeds
-   carries its own css unlayered into a shadow root. a @font-face carries no cascading
+   the `@font-face` blocks sit inside `tokens` for the same reason the rest of the operator css is
+   inside a layer: an unlayered sheet outranks every layer, and the donation form the dashboard
+   embeds carries its own css unlayered into a shadow root. a @font-face carries no cascading
    declaration, so the layer costs it nothing.
 
-   a face whose file is missing falls back to the stack ./tokens.css gives `--font-body`,
-   `--font-display` or `--font-mono` without a word, so the set of files is the set of blocks
-   below. ./tokens.spec.ts checks that each role's lead family has a block here, and ./fonts.spec.ts
-   checks that each block's file is there.
+   a face whose file is missing falls back to the rest of its role's stack below without a word,
+   so the set of files is the set of blocks below. ./tokens.spec.ts checks that each role's lead
+   family has a block here, and ./fonts.spec.ts checks that each block's file is there.
 
    all three families are licensed under the sil open font license 1.1, which requires the copyright
    notice and the licence to travel with the binaries wherever they go, and a fork of this
@@ -53,6 +70,15 @@
    file too. the root LICENSE is this project's own grant and says nothing about the faces. */
 
 @layer tokens {
+	:root {
+		--font-body:
+			'Red Hat Text', ui-sans-serif, system-ui, 'Segoe UI', sans-serif !important; /* raw-colour-ok: a face name */
+		--font-display:
+			'Red Hat Display', ui-sans-serif, system-ui, 'Segoe UI', sans-serif !important; /* raw-colour-ok: a face name */
+		--font-mono:
+			'Red Hat Mono', ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace !important; /* raw-colour-ok: a face name */
+	}
+
 	@font-face {
 		font-family: 'Red Hat Text';
 		src: url('./fonts/RedHatText-Regular.woff2') format('woff2');

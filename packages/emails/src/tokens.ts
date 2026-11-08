@@ -3,10 +3,11 @@ import { ADMIN_TOKENS } from '@better-giving/operator/styles/tokens';
 // the operator design system, in the values a mail client can actually render.
 //
 // the system's values are the design registry's copied files (bg-design.json lists them), which
-// packages/operator/src/styles/tokens.css aliases, and the faces that file re-points the registry's
-// roles at. this package reads them through the copy beside that file,
-// packages/operator/src/styles/tokens.ts, which is the same values as css text. no value is decided
-// here and none may be: what this module does is check and convert.
+// packages/operator/src/styles/tokens.css aliases, and the faces
+// packages/operator/src/styles/fonts.css re-points the registry's roles at. this package reads them
+// through the copy beside tokens.css, packages/operator/src/styles/tokens.ts, which is the same
+// values as css text. no value is decided here and none may be: what this module does is check
+// and convert.
 // a screen hands the browser `var(--admin-ink)` and the browser resolves a custom property and a
 // `rem` for it. a mail has none of that. it is a set of inline style attributes read by clients
 // whose css support was fixed years ago — Outlook desktop renders through Word — so what a template

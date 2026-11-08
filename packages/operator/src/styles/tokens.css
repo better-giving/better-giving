@@ -226,11 +226,10 @@
    them and never a rung, without exception, so a rung is re-pointable in one place. ladders and
    aliases both live here. every colour, the three face roles and the control and plane radii
    are a `var()` onto the registry's files, which this file imports nothing of:
-   ../../../app/src/app.css loads them first. the three roles are the one place this file writes a
-   registry name rather than reading one: it re-points them at plain red hat (the type group
-   below). the rest are literals of this file's own: the type sizes, line heights, tracking and
-   weights, the measures, the spacing steps, the pill radius, the border, edge and focus widths,
-   the control, field, touch and mark metrics, and every duration and easing. the registry carries a value for none of them but the durations, and its
+   ../../../app/src/app.css loads them first, and this file writes no registry name: the three face
+   roles are re-pointed at plain red hat in ./fonts.css (the type group below). the rest are
+   literals of this file's own: the type sizes, line heights, tracking and weights, the measures,
+   the spacing steps, the pill radius, the border, edge and focus widths, the control, field, touch and mark metrics, and every duration and easing. the registry carries a value for none of them but the durations, and its
    `--duration-fast`, `--duration-base` and `--duration-slow` (../registry/styles/variables.css)
    are not the `--admin-dur-*` steps below, which stay this file's. */
 
@@ -511,18 +510,15 @@
 		   whole of where it is spent.
 
 		   the roles are the registry's `--font-body`, `--font-display` and `--font-mono`
-		   (../registry/styles/variables.css), re-pointed here at plain red hat: Red Hat Text, Red Hat
-		   Display and Red Hat Mono, self-hosted and declared in ./fonts.css. the registry's own
-		   faces are red hat round, the face of Better Giving's hosted platform, and a self-hosted
-		   deployment is set in plain red hat, which the registry does not carry yet: that is the gap
-		   its `fonts-red-hat` item closes in 2.2.0, which replaces ./fonts.css and the three
-		   declarations below. they are `!important` because the registry declares the roles
-		   unlayered on `:root`, and a declaration inside a layer loses to an unlayered one whatever
-		   the source order; an important one inside a layer outranks every normal declaration.
+		   (../registry/styles/variables.css), which ./fonts.css re-points at plain red hat: Red Hat
+		   Text, Red Hat Display and Red Hat Mono, self-hosted and declared beside them. the
+		   registry's own faces are red hat round, the face of Better Giving's hosted platform, and a
+		   self-hosted deployment is set in plain red hat, which the registry does not carry yet: that
+		   is the gap its `fonts-red-hat` item closes in 2.2.0, which replaces ./fonts.css. the
+		   re-point is there rather than here because that sheet is the one the donor pages link too,
+		   and its header carries why each is `!important`. this file only aliases the three roles.
 		   nothing reads the registry's round faces, so packages/app/vite.config.ts and
-		   packages/gallery/vite.config.ts resolve its `@import "./fonts.css"` to an empty sheet. the
-		   donation form is set in its host page's face and loads no face at all, so nothing under
-		   packages/form/src/** may assume these are present.
+		   packages/gallery/vite.config.ts resolve its `@import "./fonts.css"` to an empty sheet.
 
 		   a size and a line height are separate tokens here rather than one `font` shorthand,
 		   because the shorthand resets `font-variant-numeric` and a money column silently stops
@@ -531,12 +527,6 @@
 
 		   sentence case everywhere, and there is no caps role: a screen that wants one is asking
 		   for emphasis this system draws with weight and tone instead. */
-		--font-body:
-			'Red Hat Text', ui-sans-serif, system-ui, 'Segoe UI', sans-serif !important; /* raw-colour-ok: a face name */
-		--font-display:
-			'Red Hat Display', ui-sans-serif, system-ui, 'Segoe UI', sans-serif !important; /* raw-colour-ok: a face name */
-		--font-mono:
-			'Red Hat Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace !important; /* raw-colour-ok: a face name */
 		--admin-font-sans: var(--font-body);
 		--admin-font-display: var(--font-display);
 		--admin-font-mono: var(--font-mono);

@@ -33,8 +33,9 @@
 
    five sheets and five layers, and the @import order above is the source order inside a
    layer, which is what settles a tie between two rules of equal specificity. fonts.css
-   registers the plain red hat faces in `tokens`, and a @font-face carries no cascading
-   declaration, so nothing it puts there can tie with tokens.css. the registry's variables.css
+   registers the plain red hat faces in `tokens` and re-points the registry's three face roles
+   there, and tokens.css declares only `--admin-*` names, so nothing either puts there can tie
+   with the other. the registry's variables.css
    comes next and is unlayered: it declares the design registry's scales and roles
    (bg-design.json at the repository root records the copied item, and `pnpm design:check`
    fails when a copied file is edited). its own `@import "./fonts.css"` names a file no lock
@@ -47,7 +48,7 @@
    `layout` with the shell, the rail, the measured column, the page header and the reflow of
    any element whose arrangement changes with the width. the registry sheet and the `tokens`
    layer write disjoint custom properties (`--gray-*` against `--admin-*`) but for the three face
-   roles, `--font-body`, `--font-display` and `--font-mono`, which tokens.css re-points at plain
+   roles, `--font-body`, `--font-display` and `--font-mono`, which fonts.css re-points at plain
    red hat with `!important` so its layer outranks the unlayered registry. the registry sheet
    also writes one real property, `color-scheme` on
    `:root` (light, and dark under `.dark`, in ../../operator/src/registry/styles/themes/default.css),

@@ -16,13 +16,13 @@ import { ADMIN_TOKENS } from './tokens';
 // (../registry/styles, recorded in bg-design.json): a colour there is an `oklch()` with its sRGB hex
 // in the comment beside it, and the hex is what a mail client can render, so it is what the chain
 // resolves to. only the default theme's light block is read, because a mail has no dark. the three
-// face roles are the exception: ./tokens.css re-points them itself, and that is where their chain
-// ends.
+// face roles are the exception: ./fonts.css re-points them, and that is where their chain ends.
 //
 // this reads the files on disk rather than importing them, for the reason ./raw-values.ts states
 // about its own sweeps: what is asserted is what is in the file, not what a build step made of it.
 
 const CSS = new URL('./tokens.css', import.meta.url).pathname;
+const FONTS = new URL('./fonts.css', import.meta.url).pathname;
 const REGISTRY = (name: string) => new URL(`../registry/styles/${name}`, import.meta.url).pathname;
 
 // a custom property declaration. the value runs to the `;`, which is what lets a multi-line one
@@ -53,14 +53,14 @@ function declarations() {
 const css = declarations();
 
 /**
- * every registry name the sheet declares rather than reads, by name: the three face roles it
- * re-points at plain red hat. each is written `!important`, and `important` says whether it was,
- * because the registry declares them unlayered and without it the re-point loses (the type group
- * in ./tokens.css).
+ * every registry name a sheet declares rather than reads, by name: in ./fonts.css, the three face
+ * roles it re-points at plain red hat. each is written `!important`, and `important` says whether
+ * it was, because the registry declares them unlayered and without it the re-point loses (the
+ * header of ./fonts.css).
  */
-function repointedDeclarations() {
+function repointedDeclarations(file: string) {
 	const found = new Map<string, { value: string; important: boolean }>();
-	for (const [, name = '', value = ''] of stripComments(readFileSync(CSS, 'utf8')).matchAll(
+	for (const [, name = '', value = ''] of stripComments(readFileSync(file, 'utf8')).matchAll(
 		/(?<![\w-])(--(?!admin-)[\w-]+)\s*:\s*([^;]+);/g
 	)) {
 		const flat = value.trim().replace(/\s+/g, ' ');
@@ -70,7 +70,11 @@ function repointedDeclarations() {
 	return found;
 }
 
-const repointed = repointedDeclarations();
+const repointed = repointedDeclarations(FONTS);
+
+/** a font stack as its family names, unquoted: `'SFMono-Regular'` and `SFMono-Regular` are one. */
+const families = (stack: string) =>
+	stack.split(',').map((family) => family.trim().replace(/^(['"])(.*)\1$/, '$2'));
 
 /**
  * every custom property the registry's variables, roles and default light theme declare, by name.
@@ -158,10 +162,13 @@ describe('the mail token mirror still says what tokens.css says', () => {
 		});
 	});
 
-	it('re-points the three registry font roles at plain red hat, and nothing else', () => {
+	it('re-points the three registry font roles at plain red hat in ./fonts.css alone', () => {
 		// the registry's own stacks are red hat round; the re-point is what sets these surfaces in
 		// the faces ./fonts.css declares, and losing the `!important` loses it in every browser.
+		// ./fonts.css is the sheet the donor pages link as well, so a role re-pointed in ./tokens.css
+		// instead would reach /admin and miss them.
 		expect(registry.get('--font-body')).toMatch(/^"Red Hat Round Text"/);
+		expect([...repointedDeclarations(CSS).keys()]).toEqual([]);
 		expect(Object.fromEntries(repointed)).toEqual({
 			'--font-body': {
 				value: "'Red Hat Text', ui-sans-serif, system-ui, 'Segoe UI', sans-serif",
@@ -172,10 +179,26 @@ describe('the mail token mirror still says what tokens.css says', () => {
 				important: true
 			},
 			'--font-mono': {
-				value: "'Red Hat Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace",
+				value:
+					"'Red Hat Mono', ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
 				important: true
 			}
 		});
+	});
+
+	it('keeps the registry’s mono fallbacks, in its order, behind plain red hat', () => {
+		// read off the copied file rather than written here, so a registry update that changes the
+		// fallbacks fails this case instead of leaving the two stacks to drift apart.
+		const declared = /(?<![\w-])--font-mono\s*:\s*([^;]+);/.exec(
+			stripComments(readFileSync(REGISTRY('variables.css'), 'utf8'))
+		)?.[1];
+		if (declared === undefined) throw new Error('registry variables.css declares no --font-mono');
+		const theirs = families(declared.replace(/\s+/g, ' '));
+		const ours = families(repointed.get('--font-mono')?.value ?? '');
+		expect(theirs[0]).toBe('Red Hat Round Mono');
+		expect(ours[0]).toBe('Red Hat Mono');
+		expect(theirs.length).toBeGreaterThan(1);
+		expect(ours.slice(1)).toEqual(theirs.slice(1));
 	});
 
 	it('declares a face in ./fonts.css for the lead family of every re-pointed role', () => {

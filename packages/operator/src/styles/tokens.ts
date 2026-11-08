@@ -3,12 +3,12 @@
 // this is not a second token file and defines nothing. every value below is a copy of a
 // declaration in ./tokens.css, resolved through its `var()` chain to the leaf literal. the colours
 // and the two radii resolve to the design registry's copied files (../registry/styles). the faces
-// resolve to ./tokens.css, which re-points the registry's `--font-*` roles at plain red hat over
+// resolve to ./fonts.css, which re-points the registry's `--font-*` roles at plain red hat over
 // the registry's own values. the type steps, line heights, weight, spacing, border widths and
-// measure resolve to ./tokens.css too, because the registry has none of them. those two files are
-// the only places a value is decided. ./tokens.spec.ts reads the css and asserts each copy still
-// equals it, because two statements of one value with nothing holding them together is the drift
-// this whole system is arranged to refuse.
+// measure resolve to ./tokens.css, because the registry has none of them. the registry's files,
+// ./fonts.css and ./tokens.css are the only places a value is decided. ./tokens.spec.ts reads the
+// css and asserts each copy still equals it, because two statements of one value with nothing
+// holding them together is the drift this whole system is arranged to refuse.
 //
 // the reader is packages/emails, and nothing else may import this. an operator screen reads the
 // custom properties: it has a stylesheet, a document and a cascade. a mail has none of the three —
@@ -54,7 +54,8 @@ export const ADMIN_TOKENS = {
 	// faces behind it — which is how a mail keeps the operator surfaces' own stack without loading a
 	// web font, the thing packages/emails/src/components/layout.tsx says its shell may not grow.
 	'--admin-font-sans': "'Red Hat Text', ui-sans-serif, system-ui, 'Segoe UI', sans-serif",
-	'--admin-font-mono': "'Red Hat Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace",
+	'--admin-font-mono':
+		"'Red Hat Mono', ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
 	// the steps of the type scale rather than the roles above them, and that is the one place a mail
 	// reads this system differently from a screen. the roles are screen roles — a title, a standfirst,
 	// a field — and a mail has none of them; `--admin-body-size` is 14px because an operator screen

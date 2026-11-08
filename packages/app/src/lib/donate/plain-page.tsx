@@ -22,10 +22,12 @@ import { Masthead, type PageLogo, type PageLook } from './page-view';
  *
  * the four are in the order `sheetsFor` in packages/form/src/element.ts adopts them, which is
  * cascade order for the equal-specificity rules they are almost entirely made of. the faces sit
- * after them and before the page: a `@font-face` carries no cascading declaration
- * (packages/operator/src/styles/fonts.css), so the sheet registers the files and orders nothing.
- * none of them is hoisted with a `precedence`: a donor page's whole document is these six, so
- * there is nothing for a precedence to order them against. the embed links none of these.
+ * after them and before the page, and their place orders nothing: the sheet
+ * (packages/operator/src/styles/fonts.css) registers the files and re-points the registry's three
+ * `--font-*` roles, which the form's token sheet declares unlayered, from inside a layer with
+ * `!important`, which outranks them wherever it is linked. ./page.css reads those roles. none of
+ * them is hoisted with a `precedence`: a donor page's whole document is these six, so there is
+ * nothing for a precedence to order them against. the embed links none of these.
  */
 export function donorPageLinks() {
 	return [formTokens, formParts, formLayout, formMotion, hostedFaces, pageChrome].map((href) => ({

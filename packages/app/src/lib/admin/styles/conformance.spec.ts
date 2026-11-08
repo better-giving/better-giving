@@ -52,8 +52,6 @@ const TOKENS_FILE = '../operator/src/styles/tokens.css';
 // the element sheet, which holds `elements` and `layout` and is therefore where every state ladder
 // and every declared motion in /admin is written.
 const ELEMENT_FILE = '../operator/src/styles/adm.css';
-// the faces, which is the one sheet that draws no rule: `@font-face` blocks and nothing else.
-const FONTS_FILE = '../operator/src/styles/fonts.css';
 const APP_FILE = 'src/app.css';
 
 // src/lib/donate/** is swept out rather than in. the donor page draws the donation form's own
@@ -752,14 +750,11 @@ describe('every class an /admin stylesheet draws is carried by markup', () => {
 		// and captured no selector — every one of them reading as an at-rule, say — reports no class
 		// at all and passes a block count in the hundreds.
 		//
-		// the two sheets that draw no rule are off the floor rather than floored at zero, which is
-		// an assertion with no failing input. packages/operator/src/styles/fonts.css is `@font-face`
-		// and nothing else and ../../../app.css opens no block at all, and that each is read is
-		// asserted where it means something: `every rule an /admin sheet writes stands inside a
-		// declared layer` below floors the first's top-level blocks and reads the second's layer
-		// statement.
-		if (file !== APP_FILE && file !== FONTS_FILE)
-			expect(selectors(read(file)).length).toBeGreaterThan(0);
+		// the one sheet that draws no rule is off the floor rather than floored at zero, which is an
+		// assertion with no failing input. ../../../app.css opens no block at all, and that it is
+		// read is asserted where it means something: `every rule an /admin sheet writes stands inside
+		// a declared layer` below reads its layer statement.
+		if (file !== APP_FILE) expect(selectors(read(file)).length).toBeGreaterThan(0);
 		// worn is not the same question as inside the set: a borrowed name the markup happens to
 		// carry passes the sweep above and is still a rule a reader cannot find by the name of the
 		// block it belongs to.

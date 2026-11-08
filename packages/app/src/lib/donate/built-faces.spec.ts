@@ -41,7 +41,8 @@ describe('the faces the app build emits', () => {
 		expect(admin.urls.filter((url) => url.includes('.woff2'))).not.toEqual([]);
 		expect(admin.dangling.filter((url) => url.includes('.woff2'))).toEqual([]);
 		// the registry's own `--font-*` declarations still say "Red Hat Round" in text, and
-		// ./tokens.css re-points them; what must not exist is a face or a file for it.
+		// packages/operator/src/styles/fonts.css re-points them; what must not exist is a face or a
+		// file for it.
 		expect(admin.urls.filter((url) => /Round/i.test(url))).toEqual([]);
 		expect(admin.assets.filter((name) => /Round/i.test(name))).toEqual([]);
 	});

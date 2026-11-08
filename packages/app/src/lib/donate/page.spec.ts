@@ -180,26 +180,34 @@ describe('the names ./page.css reads and writes', () => {
 		});
 	});
 
-	it('sets the three faces to the operator screens’ stacks', () => {
-		// the plain red hat stacks the operator token file re-points the registry's `--font-*` roles
-		// at, which /admin's `--admin-font-*` alias. that file writes each one `!important`.
-		const operator = readFileSync(
-			require.resolve('@better-giving/operator/styles/tokens.css'),
-			'utf8'
+	it('sets the three faces from the roles the face sheet re-points', () => {
+		// packages/operator/src/styles/fonts.css re-points the registry's `--font-*` roles at plain red
+		// hat, `!important`, and donorPageLinks() in ./plain-page.tsx links it beside this sheet, so
+		// the page reads the roles rather than stating a stack of its own.
+		const fonts = stripComments(
+			readFileSync(require.resolve('@better-giving/operator/styles/fonts.css'), 'utf8')
 		);
-		const stack = (css: string, name: string) => {
-			// `--font-mono:` stands inside `--admin-font-mono:` too, so a name is matched whole.
-			const found = new RegExp(`(?<![\\w-])${name}:\\s*([^;]+);`).exec(css);
-			if (found?.[1] === undefined) throw new Error(`${name} is not declared`);
-			return found[1]
-				.trim()
-				.replace(/\s+/g, ' ')
-				.replace(/ !important$/, '');
-		};
-		expect(stack(pageText, '--page-font-text')).toBe(stack(operator, '--font-body'));
-		expect(stack(pageText, '--page-font-display')).toBe(stack(operator, '--font-display'));
-		expect(stack(pageText, '--page-font-mono')).toBe(stack(operator, '--font-mono'));
-		expect(stack(pageText, '--page-font-text')).toMatch(/^'Red Hat Text'/);
+		const faces = declared(page, '.page > .page-ground');
+		expect({
+			text: faces['--page-font-text'],
+			display: faces['--page-font-display'],
+			mono: faces['--page-font-mono']
+		}).toEqual({
+			text: 'var(--font-body)',
+			display: 'var(--font-display)',
+			mono: 'var(--font-mono)'
+		});
+		for (const [role, lead] of [
+			['--font-body', 'Red Hat Text'],
+			['--font-display', 'Red Hat Display'],
+			['--font-mono', 'Red Hat Mono']
+		])
+			expect(fonts).toMatch(new RegExp(`(?<![\\w-])${role}:\\s*'${lead}'[^;]*!important;`));
+		expect([...reads(pageText, '--font-')].sort()).toEqual([
+			'--font-body',
+			'--font-display',
+			'--font-mono'
+		]);
 	});
 
 	it('sets the crypto total at the mono medium, which is a file', () => {

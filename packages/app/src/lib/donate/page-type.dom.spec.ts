@@ -1,3 +1,4 @@
+import { stripComments } from '@better-giving/operator/styles/raw-values';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -19,6 +20,13 @@ const parts = readFileSync(join(formStyles, 'parts.css'), 'utf8');
 // beside the tokens, and the test reads that same file.
 const coins = readFileSync(join(formStyles, 'coins.css'), 'utf8');
 const page = readFileSync(join(import.meta.dirname, 'page.css'), 'utf8');
+// the face roles ./page.css reads, from packages/operator/src/styles/fonts.css: its `:root` block
+// alone, without the `@layer` around it or the `@font-face` blocks beside it, so what this computes
+// is the stacks and not happy-dom's reading of a layer. why the layered block outranks the
+// registry's is that sheet's header, and ./page.spec.ts holds it `!important`.
+const faces = readFileSync(require.resolve('@better-giving/operator/styles/fonts.css'), 'utf8');
+const roles = /:root\s*\{[^}]*\}/.exec(stripComments(faces))?.[0];
+if (roles === undefined) throw new Error('fonts.css declares no :root block of face roles');
 // happy-dom skips a selector that starts with :host, so :host, [data-donate-root] in
 // packages/form/src/styles/tokens.css never sets these two. this sheet is that half.
 // happy-dom drops a selector that starts with `:host`, so `--_w-medium` and `--_w-bold` on
@@ -45,6 +53,7 @@ describe('the hosted page is set in Red Hat', () => {
 	it('computes Red Hat on the page and the card', () => {
 		adopt(document.head, tokens);
 		adopt(document.head, parts);
+		adopt(document.head, roles);
 		adopt(document.head, page);
 
 		const hosted = document.createElement('div');
