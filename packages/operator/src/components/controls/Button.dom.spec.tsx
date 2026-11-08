@@ -43,53 +43,44 @@ describe('the element a caller asks for', () => {
 });
 
 describe('what a button draws inside itself', () => {
-	it('puts the mark and the words in one span, so the pair can be hidden together', () => {
-		// the span is what the dots stand over, and what keeps the two boxes the same size: the label
-		// keeps its own width under a press rather than being swapped for a word of another length.
-		const label = only(render(Button, { mark: 'plus', children: 'Add a form' })).firstElementChild;
+	it('puts the mark and the words straight into the press, in the order they were handed', () => {
+		// the registry's button is a flex row, and `.adm-btn` in ../../styles/adm.css is the gap
+		// between its items, so the mark and the words are items of the press itself.
+		const button = only(render(Button, { mark: 'plus', children: 'Add a form' }));
 
-		expect([
-			label?.className,
-			label?.querySelector('.adm-mark') !== null,
-			label?.textContent
-		]).toEqual(['adm-btn__label', true, 'Add a form']);
+		expect([button.firstElementChild?.classList.contains('adm-mark'), button.textContent]).toEqual([
+			true,
+			'Add a form'
+		]);
 	});
 });
 
 describe('a press a caller says is in flight', () => {
-	it('draws three dots over a label that is still in the tree', () => {
-		// the dots are the whole report: `aria-busy` is what a reader is told, so the mark beside it
-		// is hidden from them and says nothing twice.
+	it('carries the attribute through, which is what the registry draws the wait off', () => {
+		// ../../registry/styles/button-css.css draws `[aria-busy='true']` as the disabled fill with
+		// the label still in it, so the label is in the tree and nothing is drawn over it.
 		const button = only(render(Button, { 'aria-busy': true, children: 'Save' }));
-		const dots = button.querySelector('.adm-btn__dots');
 
-		expect([
-			button.getAttribute('aria-busy'),
-			button.textContent,
-			dots?.getAttribute('aria-hidden'),
-			dots?.children.length
-		]).toEqual(['true', 'Save', 'true', 3]);
+		expect([button.getAttribute('aria-busy'), button.textContent, button.children.length]).toEqual([
+			'true',
+			'Save',
+			0
+		]);
 	});
 
-	it('reads the attribute’s own word as well as the boolean', () => {
+	it('carries the attribute’s own word as well as the boolean', () => {
 		// a caller spreading props through from somewhere else hands over the string the platform
-		// stores, and a button that only took the boolean would draw nothing for a press that is
-		// really going.
+		// stores.
 		const button = only(render(Button, { 'aria-busy': 'true', children: 'Save' }));
 
-		expect(button.querySelector('.adm-btn__dots')?.children.length).toBe(3);
+		expect(button.matches("[aria-busy='true']")).toBe(true);
 	});
 
-	it('draws nothing for a button that is not busy, whichever way that is said', () => {
-		// `'false'` is a non-empty string and truthy, so a button reading the prop rather than its
-		// value would pulse over every press that had ever finished.
+	it('is not busy for a button that is not, whichever way that is said', () => {
 		for (const busy of [undefined, false, 'false'] as const) {
 			const button = only(render(Button, { 'aria-busy': busy, children: 'Save' }));
 
-			expect([
-				button.querySelector('.adm-btn__dots'),
-				button.matches("[aria-busy='true']")
-			]).toEqual([null, false]);
+			expect(button.matches("[aria-busy='true']")).toBe(false);
 		}
 	});
 });
@@ -101,26 +92,57 @@ describe('what the element wears', () => {
 			render(Button, { as: 'a', variant: 'primary', children: 'Save' })
 		).className;
 
-		expect([asButton, asLink]).toEqual(['adm-btn adm-btn--primary', 'adm-btn adm-btn--primary']);
+		expect([asButton, asLink]).toEqual([
+			'ds-btn ds-btn-primary adm-btn',
+			'ds-btn ds-btn-primary adm-btn'
+		]);
+	});
+
+	it('wears the registry’s rank for every variant, and the secondary rank for the default', () => {
+		const ranks = (['default', 'primary', 'danger', 'quiet', 'soft'] as const).map(
+			(variant) => only(render(Button, { variant, children: 'Go' })).classList[1]
+		);
+
+		expect(ranks).toEqual([
+			'ds-btn-secondary',
+			'ds-btn-primary',
+			'ds-btn-destructive',
+			'ds-btn-ghost',
+			'ds-btn-secondary'
+		]);
+	});
+
+	it('wears the small tier and the hooks a screen places a quiet small press by', () => {
+		const button = only(render(Button, { variant: 'quiet', size: 'sm', children: 'Copy' }));
+
+		expect(button.className).toBe(
+			'ds-btn ds-btn-ghost ds-btn-sm adm-btn adm-btn--quiet adm-btn--sm'
+		);
+	});
+
+	it('adds a caller’s class to its own rather than standing in for them', () => {
+		const button = only(render(Button, { className: 'adm-moresheet__close', children: 'Close' }));
+
+		expect(button.className).toBe('ds-btn ds-btn-secondary adm-btn adm-moresheet__close');
 	});
 });
 
-// a press drawn with a mark and no words is named by its `aria-label` and round by nature, and the
-// class is the only thing that says so: ../../styles/adm.css draws `.adm-btn--icon` and no screen
-// writes it.
+// a press drawn with a mark and no words is named by its `aria-label` and squared on its tier's
+// height, and the class is the only thing that says so: ../../registry/styles/button-css.css draws
+// `.ds-btn-icon` and no screen writes it.
 describe('a press that is a mark alone', () => {
 	const classes = (props: Record<string, unknown>) =>
 		only(render(Button, { 'aria-label': 'Remove', ...props })).classList;
 
-	it('is drawn round when it has a mark and no words', () => {
-		expect(classes({ mark: 'x' }).contains('adm-btn--icon')).toBe(true);
+	it('is squared when it has a mark and no words', () => {
+		expect(classes({ mark: 'x' }).contains('ds-btn-icon')).toBe(true);
 	});
 
-	it('is drawn round when the words it was handed draw nothing', () => {
-		expect(classes({ mark: 'x', children: false }).contains('adm-btn--icon')).toBe(true);
+	it('is squared when the words it was handed draw nothing', () => {
+		expect(classes({ mark: 'x', children: false }).contains('ds-btn-icon')).toBe(true);
 	});
 
-	it('keeps the corner when words stand beside the mark', () => {
-		expect(classes({ mark: 'plus', children: 'Add a form' }).contains('adm-btn--icon')).toBe(false);
+	it('keeps its padding when words stand beside the mark', () => {
+		expect(classes({ mark: 'plus', children: 'Add a form' }).contains('ds-btn-icon')).toBe(false);
 	});
 });

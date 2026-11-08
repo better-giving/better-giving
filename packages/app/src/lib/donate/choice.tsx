@@ -1,5 +1,5 @@
 import { Select, useSelectContext } from '@ark-ui/react/select';
-import { part, partWhen } from '@better-giving/form/parts';
+import { part, partWhen, REGISTRY_CLASS } from '@better-giving/form/parts';
 import { type ComponentProps, type ReactNode, useLayoutEffect, useRef } from 'react';
 import type { SelectProps } from './normalize';
 
@@ -12,7 +12,8 @@ import type { SelectProps } from './normalize';
 // (https://www.w3.org/WAI/ARIA/apg/patterns/listbox/) with the box as its `role="combobox"` named by
 // the label through `aria-labelledby`, the arrow keys, typeahead, Enter and Space, Escape back to the
 // box, the pointer, and the dismissal on a press outside. what this file owns is the nodes, drawn in
-// the embed's anatomy so the sheets reach them: the box is `part="field"`, the list `select-list`,
+// the embed's anatomy so the sheets reach them: the box is `part="field"` and the registry's text
+// box class, as @better-giving/form's src/select.ts gives its trigger, the list `select-list`,
 // a row `select-option` with `selected` on the chosen one, and the rest is selected by the
 // `data-scope`/`data-part` pair ark writes.
 //
@@ -59,7 +60,7 @@ export function Choice({ id, label, hideLabel = false, choice, className, childr
 						{label}
 					</Caption>
 				</Select.Label>
-				<Select.Trigger part={part('field')}>
+				<Select.Trigger part={part('field')} className={REGISTRY_CLASS.field}>
 					{/*
 					 * every option's words stacked in one cell, the chosen one visible: the box is as wide
 					 * as its longest option whichever is chosen, so the tribute's name beside it does not

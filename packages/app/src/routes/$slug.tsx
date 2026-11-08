@@ -23,7 +23,7 @@ import type { Route } from './+types/$slug';
 
 // a campaign at its own address: `/{slug}` on the deployment, one top-level segment.
 //
-// a donor screen, dressed and served as ./donate.tsx is — the form's four sheets, the donor
+// a donor screen, dressed and served as ./donate.tsx is — the form's sheets, the donor
 // document policy, no operator component — and everything that route's header says of the reader,
 // the origin and the gift holds here unchanged. the gift goes through the card to
 // `/api/v1/forms/:id/donations` against the campaign's owned settings row; there is no action.

@@ -157,10 +157,12 @@ export function CopyControl({
 				onClick={copy}
 				aria-disabled={disabled || undefined}
 				aria-label={spoken}
+				// ./Button.jsx's quiet small press, spelled out because this one is a plain `<button>`
+				// with a ref of its own.
 				className={
 					wording === undefined
-						? 'adm-btn adm-btn--quiet adm-btn--sm adm-btn--icon'
-						: 'adm-btn adm-btn--quiet adm-btn--sm'
+						? 'ds-btn ds-btn-ghost ds-btn-sm ds-btn-icon adm-btn adm-btn--quiet adm-btn--sm'
+						: 'ds-btn ds-btn-ghost ds-btn-sm adm-btn adm-btn--quiet adm-btn--sm'
 				}
 			>
 				{wording === undefined ? (

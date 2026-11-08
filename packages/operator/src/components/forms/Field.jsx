@@ -2,11 +2,9 @@ import { useState } from 'react';
 import { Button } from '../controls/Button.jsx';
 import { CopyControl } from '../controls/CopyControl.jsx';
 import { Mark } from '../status/Mark.jsx';
-import { FieldMessage } from './FieldMessage.jsx';
 
 /**
  * @import { HTMLInputTypeAttribute, InputHTMLAttributes, ReactNode, Ref, TextareaHTMLAttributes } from 'react'
- * @import { PointerState } from '../closed-sets.js'
  */
 
 /**
@@ -65,10 +63,6 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {string | undefined} [placeholder]
  * @property {HTMLInputTypeAttribute | undefined} [type]
  * @property {'input' | 'textarea' | undefined} [as]
- * @property {PointerState | undefined} [state] the state pinned by class rather than reached,
- *   which is what a specimen wants and no screen does. unavailable is not one of them:
- *   packages/operator/src/styles/adm.css draws `.adm-input:disabled` with no twin beside it, so
- *   a box that cannot be used takes the platform's own `disabled` through the rest.
  */
 
 /**
@@ -148,7 +142,6 @@ export function Field({
 	placeholder,
 	type = 'text',
 	as = 'input',
-	state,
 	className,
 	'aria-invalid': stated,
 	'aria-describedby': describedByStated,
@@ -287,18 +280,24 @@ export function Field({
 				].filter(Boolean)
 			)
 		].join(' ') || undefined;
+	/* the box is the registry's `ds-field-input` (../../registry/styles/field-css.css), which draws a
+	   refused box off the `aria-invalid` below. `adm-field__box` and its modifiers are
+	   ../../styles/adm.css's: the row the box stands in, and the three things the registry draws no
+	   rule for — a multi-line box's height, a box marked as needed, and the mono face. */
 	const cls = [
-		as === 'textarea' ? 'adm-textarea' : 'adm-input',
-		refused ? (as === 'textarea' ? 'adm-textarea--invalid' : 'adm-input--invalid') : '',
-		!refused && needed ? 'adm-input--needed' : '',
-		code ? 'adm-input--code' : '',
-		state ? `is-${state}` : '',
+		'ds-field-input',
+		'adm-field__box',
+		as === 'textarea' ? 'adm-field__box--multiline' : '',
+		!refused && needed ? 'adm-field__box--needed' : '',
+		code ? 'adm-field__box--code' : '',
 		className
 	]
 		.filter(Boolean)
 		.join(' ');
+	/* `ds-label` and not the registry's `data-required`: the registry draws "(optional)" out of the
+	   label's name, and here it is part of the name a reader is told. */
 	const named = label ? (
-		<label className="adm-field__label" htmlFor={id}>
+		<label className="ds-label" htmlFor={id}>
 			{label}
 			{optional ? <span className="adm-field__optional"> (optional)</span> : null}
 		</label>
@@ -307,7 +306,7 @@ export function Field({
 		<div className="adm-field">
 			{named}
 			{hint ? (
-				<p className="adm-hint" id={`${id}-hint`}>
+				<p className="ds-field-hint adm-hint" id={`${id}-hint`}>
 					{hint}
 				</p>
 			) : null}
@@ -324,9 +323,9 @@ export function Field({
 					/>
 				),
 				<>
-					{/* both rows are ./FieldMessage.jsx's, and the sentence is wrapped there: which of the
-					    two announces itself, and why a message is never handed to the row unwrapped, are
-					    argued in that file. */}
+					{/* both rows are `FieldMessage`'s below, and the sentence is wrapped there: which of
+					    the two announces itself, and why a message is never handed to the row unwrapped,
+					    are argued there. */}
 					{error ? <FieldMessage id={`${id}-err`}>{error}</FieldMessage> : null}
 					{/* drawn beside a message rather than instead of one. the two are reachable together —
 					    a test send marks a blank box as wanted, and a save refused afterwards leaves the
@@ -355,5 +354,75 @@ export function Field({
 				</>
 			)}
 		</div>
+	);
+}
+
+/**
+ * which of the two rows this is. `error` is what a press answered with; `needed` is a standing
+ * condition something elsewhere on the page put on the box, with the operator having done nothing
+ * wrong yet.
+ *
+ * the set stays on this component rather than joining ../closed-sets.js, whose header says what
+ * earns a place there: a set a second component already needs. nothing else takes this one.
+ *
+ * @typedef {'error' | 'needed'} FieldMessageTone
+ */
+
+/**
+ * @typedef {object} FieldMessageProps
+ * @property {ReactNode} children the sentence, handed over whole. it may be a node rather than a
+ *   string — a value marked with backticks is drawn as code by ../../marked-text.react.tsx, and a
+ *   way out of a state is often a link.
+ * @property {FieldMessageTone | undefined} [tone]
+ * @property {string | undefined} [id] set where a box points at this row through
+ *   `aria-describedby`. a row a press draws at a control has nothing pointing at it and carries
+ *   none.
+ */
+
+/* the one row a message under a box is drawn as, in both of its tones. the controls beside this
+   one import it through ./FieldMessage.jsx.
+
+   the sentence is wrapped in a single child, and that is the whole reason this is a component. the
+   standing row is a flex line, and its gap is what stands between the mark and the words — so a
+   message arriving as more than one node takes that gap between every part of itself, and a
+   sentence holding a link or a marked value comes apart across the row. a caller handing over a
+   plain string cannot see that it matters, which is why no caller wraps its own, and the refusal
+   takes the same wrapper so that the two rows are one shape to a reader of either.
+
+   the error row is a live region and the standing row is not. a refusal is the only thing about a
+   field that is an event: the operator pressed a button and the box came back. a standing condition
+   announcing itself at the same time leaves a reader unable to tell which of the two answered the
+   press.
+
+   the refusal is the registry's `ds-field-err` (../../registry/styles/field-css.css), and
+   `.adm-field__error` beside it is ../../styles/adm.css's row for it and draws nothing else. the
+   standing row has no registry message to be and stays adm.css's own.
+
+   the `<p>` is returned with nothing around it. adm.css places `.adm-field > .adm-field__error` and
+   `.adm-field > .adm-field__needed` in the field's own grid rows, and a wrapper between the field
+   and the row loses both placements. the one wrapper there is on purpose is `.adm-field__boxcol`,
+   the box's own column on a row it shares with a press (`beside` above), which stacks the
+   rows under the box itself.
+
+   two shapes rather than one element with the class, the mark and the role written as expressions:
+   what separates the tones is every part of the row. the refusal draws no mark — its ink, its
+   weight and the box it stands under already say what it is, and a glyph beside every refused box
+   is a row of glyphs on a card that came back with several.
+
+   whether there is a message at all stays with the caller — `{error ? <FieldMessage>{error}</FieldMessage> : null}`
+   — so the condition that draws the row is the same one that names it in `aria-describedby`. */
+/** @param {FieldMessageProps} props */
+export function FieldMessage({ children, tone = 'error', id }) {
+	if (tone === 'needed')
+		return (
+			<p className="adm-field__needed" id={id}>
+				<Mark name="triangle-alert" />
+				<span>{children}</span>
+			</p>
+		);
+	return (
+		<p className="ds-field-err adm-field__error" id={id} role="alert">
+			<span>{children}</span>
+		</p>
 	);
 }

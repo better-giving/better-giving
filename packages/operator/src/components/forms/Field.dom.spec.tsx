@@ -73,8 +73,8 @@ describe('a field mounted into a document', () => {
 			'aria-invalid': 'true'
 		});
 
-		expect(root.querySelector('input')?.getAttribute('aria-invalid')).toBe('true');
-		expect(boxClasses(root)).toContain('adm-input--invalid');
+		// the registry's field-css draws the refused edge off this selector and nothing else.
+		expect(root.querySelector('input')?.matches(".ds-field-input[aria-invalid='true']")).toBe(true);
 	});
 
 	it('draws a box refused by its own message as refused, with nothing said from outside', () => {
@@ -84,8 +84,7 @@ describe('a field mounted into a document', () => {
 			error: 'Give it a name.'
 		});
 
-		expect(root.querySelector('input')?.getAttribute('aria-invalid')).toBe('true');
-		expect(boxClasses(root)).toContain('adm-input--invalid');
+		expect(root.querySelector('input')?.matches(".ds-field-input[aria-invalid='true']")).toBe(true);
 	});
 
 	it('adds a caller’s class to its own rather than standing in for them', () => {
@@ -96,7 +95,7 @@ describe('a field mounted into a document', () => {
 		});
 
 		expect(boxClasses(root)).toContain('adm-num');
-		expect(boxClasses(root)).toContain('adm-input');
+		expect(boxClasses(root)).toContain('ds-field-input');
 	});
 
 	it('keeps the standing sentence while the box is refused, and names both', () => {
@@ -327,11 +326,11 @@ describe('a field mounted into a document', () => {
 		});
 
 		expect(plain.querySelector('.adm-field')?.children[1]?.className).toBe(
-			'adm-input adm-input--code'
+			'ds-field-input adm-field__box adm-field__box--code'
 		);
 		expect(masked.querySelector('.adm-field')?.children[1]?.className).toBe('adm-maskwrap');
 		expect(masked.querySelector('.adm-maskwrap > input')?.className).toBe(
-			'adm-input adm-input--code'
+			'ds-field-input adm-field__box adm-field__box--code'
 		);
 		expect(masked.querySelector('.adm-actions')).toBeNull();
 	});
@@ -345,7 +344,7 @@ describe('a field mounted into a document', () => {
 			label: 'Password',
 			masked: true,
 			beside: (
-				<button type="button" className="adm-btn">
+				<button type="button" className="ds-btn ds-btn-secondary adm-btn">
 					Send test email
 				</button>
 			)
@@ -354,7 +353,10 @@ describe('a field mounted into a document', () => {
 		const items = [...(row?.children ?? [])];
 		const column = [...(items[0]?.children ?? [])];
 
-		expect(items.map((item) => item.className)).toEqual(['adm-field__boxcol', 'adm-btn']);
+		expect(items.map((item) => item.className)).toEqual([
+			'adm-field__boxcol',
+			'ds-btn ds-btn-secondary adm-btn'
+		]);
 		expect(column.map((item) => item.className)).toEqual(['adm-maskwrap']);
 		expect(column[0]?.contains(reveal(root))).toBe(true);
 		expect(column[0]?.querySelector('input')).not.toBeNull();
@@ -370,7 +372,7 @@ describe('a field mounted into a document', () => {
 			error: 'required',
 			needed: 'wanted by the Zapier page',
 			beside: (
-				<button type="submit" className="adm-btn adm-btn--primary">
+				<button type="submit" className="ds-btn ds-btn-primary adm-btn">
 					Make key
 				</button>
 			)
@@ -381,7 +383,11 @@ describe('a field mounted into a document', () => {
 		expect([...(row?.children ?? [])].at(-1)?.textContent).toBe('Make key');
 		expect(
 			[...(column?.children ?? [])].map((item) => `${item.tagName}.${item.className}`)
-		).toEqual(['INPUT.adm-input adm-input--invalid', 'P.adm-field__error', 'P.adm-field__needed']);
+		).toEqual([
+			'INPUT.ds-field-input adm-field__box',
+			'P.ds-field-err adm-field__error',
+			'P.adm-field__needed'
+		]);
 		expect(root.querySelector('input')?.getAttribute('aria-describedby')).toBe(
 			'api-key-make-name-err api-key-make-name-need'
 		);
@@ -548,6 +554,58 @@ describe('a field that reports what was found about its value', () => {
 		const root = render(Field, { id: 'org-tax_id', label: 'EIN', status: 'Not on the IRS list.' });
 
 		expect(root.querySelector('input')?.getAttribute('aria-invalid')).toBeNull();
-		expect(boxClasses(root)).not.toContain('adm-input--needed');
+		expect(boxClasses(root)).not.toContain('adm-field__box--needed');
+	});
+});
+
+describe('the registry field a box is drawn as', () => {
+	const parts = (root: HTMLElement) =>
+		[...(root.querySelector('.adm-field')?.children ?? [])].map(
+			(part) => `${part.tagName}.${part.className}`
+		);
+
+	it('dresses the label, the sentence, the box and the refusal from field-css', () => {
+		// ../../registry/styles/field-css.css draws each of these; the `adm-*` beside the sentence,
+		// the box and the refusal is ../../styles/adm.css's row for it in the field's grid.
+		const root = render(Field, {
+			id: 'org-name',
+			label: 'Registered name',
+			hint: 'As it reads on your registration.',
+			error: 'Give it a name.'
+		});
+
+		expect(parts(root)).toEqual([
+			'LABEL.ds-label',
+			'P.ds-field-hint adm-hint',
+			'INPUT.ds-field-input adm-field__box',
+			'P.ds-field-err adm-field__error'
+		]);
+	});
+
+	it('keeps “(optional)” inside the label, where it is part of the name a reader is told', () => {
+		const root = render(Field, { id: 'org-phone', label: 'Phone', optional: true });
+
+		expect(root.querySelector('label')?.textContent).toBe('Phone (optional)');
+	});
+
+	it('marks a multi-line box and a needed box with the two finishes the registry has no rule for', () => {
+		const textarea = render(Field, { id: 'thanks', label: 'Thank-you message', as: 'textarea' });
+		const needed = render(Field, { id: 'to', label: 'To', needed: 'Type an address.' });
+
+		expect([boxClasses(textarea), boxClasses(needed)]).toEqual([
+			['ds-field-input', 'adm-field__box', 'adm-field__box--multiline'],
+			['ds-field-input', 'adm-field__box', 'adm-field__box--needed']
+		]);
+	});
+
+	it('draws a refused box as refused and not as needed, since the refusal is the louder', () => {
+		const root = render(Field, {
+			id: 'to',
+			label: 'To',
+			error: 'That is not an address.',
+			needed: 'Type an address.'
+		});
+
+		expect(boxClasses(root)).toEqual(['ds-field-input', 'adm-field__box']);
 	});
 });

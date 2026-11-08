@@ -2,7 +2,7 @@ import type { State } from '@better-giving/form/connect';
 import { coinDifference, type DepositScreen, isFigure } from '@better-giving/form/deposit';
 import { RECONCILIATION_LABELS } from '@better-giving/form/fee';
 import { PAYMENT_METHOD_LABELS, type FormConfig } from '@better-giving/form/v1';
-import { part, partWhen } from '@better-giving/form/parts';
+import { part, partWhen, REGISTRY_CLASS } from '@better-giving/form/parts';
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import * as copy from './copy';
 
@@ -449,6 +449,7 @@ export function TakeoverScreen({
 			<button
 				ref={primary}
 				part={partWhen('action', { submit: screen.primary?.submit === true, busy })}
+				className={REGISTRY_CLASS.action}
 				type={screen.primary?.submit === true ? 'submit' : 'button'}
 				aria-busy={busy}
 				hidden={screen.primary === null}

@@ -1544,7 +1544,7 @@ function ArchiveSection({
 				// a link dressed as a button, because it writes nothing: it asks.
 				<div className="adm-actions">
 					<Link
-						className="adm-btn"
+						className="ds-btn ds-btn-secondary adm-btn"
 						preventScrollReset
 						ref={ask}
 						to={`${screen(id)}?confirm=archive`}

@@ -6,9 +6,9 @@ import { SaveButton } from './SaveButton.jsx';
 // what the button keeps when a caller states something of its own, and what it says out loud when a
 // save lands. two of a button's attributes are answers this component has already given — the class
 // list it draws itself in, and whether the press is closed — and a caller has its own reasons to
-// state either: a screen pins a state for a specimen, and a fold closes every control on it while a
+// state either: a screen adds a class of its own, and a fold closes every control on it while a
 // run is going. taken over rather than taken in, each of those loses the component's half: the class
-// list drops all four of its names, and the group's own "there is nothing to save" stops closing the
+// list drops the registry's names, and the group's own "there is nothing to save" stops closing the
 // press.
 //
 // ../forms/Field.jsx, ../forms/SelectWithNote.jsx and ../forms/CheckboxGroup.jsx each compose a
@@ -26,17 +26,16 @@ function pressed(root: HTMLElement): HTMLButtonElement {
 
 describe('a save button mounted into a document', () => {
 	it('keeps its own drawing when a caller states a class of its own', () => {
-		// the caller's class is a state pinned on the specimen, not a replacement for the four names
-		// that make this a primary button reporting a save. replaced, the specimen is an unstyled
-		// element and reads as the sheet having lost the rule.
-		const root = render(SaveButton, { state: 'done', className: 'is-focus' });
+		// the caller's class is added to the names that make this the registry's primary button, not
+		// put in place of them. replaced, the press is an unstyled element and reads as the sheet
+		// having lost the rule.
+		const root = render(SaveButton, { state: 'done', className: 'adm-grouped__save' });
 
 		expect([...pressed(root).classList].toSorted()).toEqual([
 			'adm-btn',
-			'adm-btn--primary',
-			'adm-save',
-			'is-done',
-			'is-focus'
+			'adm-grouped__save',
+			'ds-btn',
+			'ds-btn-primary'
 		]);
 	});
 
@@ -118,38 +117,50 @@ describe('a save button mounted into a document', () => {
 		expect(clicked).toHaveBeenCalledTimes(1);
 	});
 
-	it('keeps its resting label under its own write and stands the dots over it', () => {
-		// a press in flight reports with three dots and no second word: swapped for one, the button
-		// resizes at the moment it is closed, and the row of actions around it reflows under the hand
-		// that just pressed it. the label is what the button is called, so it stays in the tree.
+	it('keeps its resting label under its own write and says the wait with `aria-busy` alone', () => {
+		// a press in flight has no second word: swapped for one, the button resizes at the moment it
+		// is closed, and the row of actions around it reflows under the hand that just pressed it.
+		// the registry draws the wait off the attribute (../../registry/styles/button-css.css), so
+		// nothing is drawn over the label.
 		const button = pressed(render(SaveButton, { state: 'pending', label: 'Save receipts' }));
 
-		expect([
-			button.getAttribute('aria-busy'),
-			button.textContent,
-			button.querySelector('.adm-btn__dots')?.children.length
-		]).toEqual(['true', 'Save receipts', 3]);
+		expect([button.getAttribute('aria-busy'), button.textContent, button.children.length]).toEqual([
+			'true',
+			'Save receipts',
+			0
+		]);
 	});
 
-	it('draws no dots when nothing of its own is in flight', () => {
+	it('is not busy when nothing of its own is in flight', () => {
 		for (const state of ['idle', 'done', 'disabled'] as const) {
 			const button = pressed(render(SaveButton, { state }));
 
-			expect([state, button.querySelector('.adm-btn__dots')]).toEqual([state, null]);
+			expect([state, button.hasAttribute('aria-busy')]).toEqual([state, false]);
 		}
 	});
 
-	it('writes no class for resting, which is what the primary button already draws', () => {
-		// `.adm-save.is-idle` matches no rule in ../../styles/adm.css, so a name written for it is a
-		// class nothing draws — which paints nothing, errors nowhere, and reads as a state the sheet
-		// handles.
-		const root = render(SaveButton, { state: 'idle' });
+	it('writes the same names in every state, which the registry and the closed press draw', () => {
+		// no state wears a class of its own: pending is the registry's `aria-busy` look, and done and
+		// disabled are `.adm-btn[aria-disabled='true']` in ../../styles/adm.css. a name written for
+		// one would be a class nothing draws — which paints nothing, errors nowhere, and reads as a
+		// state the sheet handles.
+		for (const state of ['idle', 'pending', 'done', 'disabled'] as const) {
+			const root = render(SaveButton, { state });
 
-		expect([...pressed(root).classList].toSorted()).toEqual([
-			'adm-btn',
-			'adm-btn--primary',
-			'adm-save'
-		]);
+			expect([state, [...pressed(root).classList].toSorted()]).toEqual([
+				state,
+				['adm-btn', 'ds-btn', 'ds-btn-primary']
+			]);
+		}
+	});
+
+	it('draws the tick and the done words in place of the label once the save has landed', () => {
+		const button = pressed(render(SaveButton, { state: 'done', doneLabel: 'Receipts saved' }));
+
+		expect([
+			button.querySelector('.adm-save__done > .adm-mark') !== null,
+			button.textContent
+		]).toEqual([true, 'Receipts saved']);
 	});
 });
 

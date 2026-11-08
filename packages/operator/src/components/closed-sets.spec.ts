@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { modifiersDefinedIn, statesDefinedIn } from '../styles/vocabulary';
-import type { Tone } from './closed-sets.js';
-import type { ButtonOwnProps, ButtonSize, ButtonVariant } from './controls/Button.jsx';
-import type { SaveButtonState } from './controls/SaveButton.jsx';
+import { classesDrawnIn, modifiersDefinedIn, statesDefinedIn } from '../styles/vocabulary';
+import type { PointerState, Tone } from './closed-sets.js';
+import { BUTTON_VARIANT_CLASS, type ButtonSize, type ButtonVariant } from './controls/Button.jsx';
 import type { Reading } from './data/DataTable.jsx';
 import type { MarkSize } from './status/Mark.jsx';
 import type { StatusTone } from './status/StatusLine.jsx';
+import { BADGE_VARIANT_CLASS } from './status/StatusWord.jsx';
 
 // every member of every union a component assembles a class from is a suffix the sheets draw, and
 // every suffix the sheets draw under one of those stems is a member.
 //
 // **it exists because an assembled name is a name nothing else can read.** a component writes
-// `` `adm-btn--${variant}` ``, so the class never appears in the source as a literal and no sweep
+// `` `adm-status--${tone}` ``, so the class never appears in the source as a literal and no sweep
 // over the components can see it: the union the prop takes is the whole of what stands between the
 // stem and the sheet. where a member has no rule behind it the element paints exactly as the bare
 // stem does — no error, no warning, and a control that looks correct in every review.
@@ -22,16 +22,27 @@ import type { StatusTone } from './status/StatusLine.jsx';
 // against a whole union, so a rule the sheets draw under a stem no member reaches fails too. that
 // half is the one that catches a modifier left behind by a component that has gone.
 //
-// **the states half covers the unions ./pinned-states.spec.ts states it is blind to.** that sweep
-// reads only the components drawing from ./closed-sets.js's shared set, so ./controls/SaveButton.jsx
-// — which pins a class from a union of its own — is outside it. the `is-*` vocabulary is small and
-// every member of it belongs to some union, so it is asserted whole here rather than per component.
+// **the states half is the `is-*` vocabulary whole.** ./pinned-states.spec.ts reads it per component
+// from the union to the sheets; here the vocabulary is small enough to be asserted whole, both ways.
+//
+// **a class a component takes from the registry's table is held to the registry's copied sheet.**
+// ./controls/Button.jsx and ./status/StatusWord.jsx assemble a `ds-*` class from a variant or a
+// tone through a table, so that table is read against the sheet it names.
 //
 // each case reads the sheet rather than restating it, and an exception would be a listed line with
 // its reason on it. what an assertion here refuses is a list quietly widened until it matched.
 
 /** the three sheets every operator surface is dressed from, in the order each `app.css` imports them. */
 const SHEETS = ['tokens.css', 'base.css', 'adm.css'].map((file) => `src/styles/${file}`);
+
+/**
+ * the registry's copied sheets a component draws a class from, beside the three above
+ * (packages/app/src/app.css imports them into the `registry` layer).
+ */
+const REGISTRY = {
+	button: 'src/registry/styles/button-css.css',
+	badge: 'src/registry/styles/badge-css.css'
+};
 
 /**
  * a union's members, as a list tsc holds to the union in both directions.
@@ -63,17 +74,8 @@ const CELL_READINGS = closed<Reading>()(
 	['count', 'date', 'money', 'whole', 'noted', 'prose'],
 	true
 );
-const SAVE_STATES = closed<SaveButtonState>()(['idle', 'pending', 'done', 'disabled'], true);
-
-/**
- * the whole of what ./controls/Button.jsx pins, which is ./closed-sets.js's shared `PointerState`
- * and the two the button adds to it. held here rather than as two lists, so a member added to the
- * shared set — which reaches seven components at once — fails this file's own type check.
- */
-const BUTTON_STATES = closed<NonNullable<ButtonOwnProps['state']>>()(
-	['hover', 'focus', 'active', 'disabled'],
-	true
-);
+/** the shared set ./closed-sets.js names, held here so a member added to it fails this file's own type check. */
+const POINTER_STATES = closed<PointerState>()(['hover', 'focus'], true);
 
 /** the suffixes one stem is drawn with, sorted, so a failure prints two comparable lists. */
 function drawn(stem: string): readonly string[] {
@@ -84,24 +86,52 @@ function sorted(names: readonly string[]): readonly string[] {
 	return [...new Set(names)].sort();
 }
 
-describe('the modifiers the operator components assemble', () => {
+describe('the registry classes the operator components assemble', () => {
+	const button = classesDrawnIn([REGISTRY.button]);
+	const badge = classesDrawnIn([REGISTRY.badge]);
+
 	it('reach a sheet', () => {
-		// the non-empty guard every source-reading gate in this package makes first: a stem this
-		// stopped finding reads as a component promising nothing, which is a passing gate forever.
-		expect(drawn('adm-btn').length).toBeGreaterThan(2);
+		// the non-empty guard every source-reading gate in this package makes first: a registry sheet
+		// this stopped reading draws nothing, and every class would then read as one it is missing.
+		expect([button.has('ds-btn'), badge.has('ds-badge')]).toEqual([true, true]);
 	});
 
-	// the bare `.adm-btn` is the secondary rank and the bare size is `md`, so each of those two
-	// members is a button with no modifier on it rather than a rule the sheet is missing.
-	it('are the ranks and the size .adm-btn-- draws', () => {
+	// ./controls/Button.jsx assembles its rank from a table rather than a literal, so the table is
+	// the whole of what stands between a variant and the registry's sheet. the size and the shape are
+	// literals beside it, held here so the three are read in one place.
+	it('are ranks, a size and a shape the registry’s button-css draws', () => {
+		expect(
+			sorted(
+				[
+					...BUTTON_VARIANTS.map((variant) => BUTTON_VARIANT_CLASS[variant]),
+					'ds-btn-sm',
+					'ds-btn-icon'
+				].filter((name) => !button.has(name))
+			)
+		).toEqual([]);
+	});
+
+	it('are a badge the registry’s badge-css draws for every tone', () => {
+		expect(
+			sorted(TONES.map((tone) => BADGE_VARIANT_CLASS[tone]).filter((name) => !badge.has(name)))
+		).toEqual([]);
+	});
+});
+
+describe('the modifiers the operator components assemble', () => {
+	it('reach a sheet', () => {
+		expect(drawn('adm-status').length).toBeGreaterThan(2);
+	});
+
+	// what ./controls/Button.jsx writes under `.adm-btn--` is two hooks and no rank: the quiet rank
+	// and the small size are what a screen places a press by, and the look of every rank and size is
+	// the registry's. a variant or a size the sheet drew a modifier for beyond these two would be a
+	// local rank drawn over the registry's.
+	it('are the two hooks .adm-btn-- draws', () => {
 		expect(
 			sorted([
-				...BUTTON_VARIANTS.filter((variant) => variant !== 'default'),
-				...BUTTON_SIZES.filter((size) => size !== 'md'),
-				// the shape a press drawn with a mark and no words takes, which composes over a rank
-				// and a size rather than being one of them. ./controls/Button.jsx and
-				// ./controls/CopyControl.jsx write it as a literal.
-				'icon'
+				...BUTTON_VARIANTS.filter((variant) => variant === 'quiet'),
+				...BUTTON_SIZES.filter((size) => size === 'sm')
 			])
 		).toEqual(drawn('adm-btn'));
 	});
@@ -158,13 +188,11 @@ describe('the states the operator components assemble', () => {
 	it('are the `is-` names the sheets draw', () => {
 		expect(
 			sorted([
-				...BUTTON_STATES,
-				...SAVE_STATES.filter(
-					// a save at rest is the bare `.adm-save`: ./controls/SaveButton.jsx writes no class
-					// for `idle`, so it names no rule to find. the other three are drawn, `disabled` by
-					// the button ladder the save stands on rather than by a `.adm-save` rule.
-					(state) => state !== 'idle'
-				),
+				...POINTER_STATES,
+				// the twin `:active` takes beside it, which packages/app/src/lib/admin/styles/conformance.spec.ts
+				// requires of every state rule. no component pins it, and ../styles/adm.css says so in a
+				// `carried-ok:` note.
+				'active',
 				// the destination a reader is on. it is a boolean on ./shell/DestinationCell.jsx rather
 				// than a member of a state union, because a cell can be current and hovered at once.
 				'current',

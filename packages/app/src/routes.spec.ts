@@ -123,8 +123,8 @@ const CAMPAIGN_PAGE = 'routes/$slug.tsx';
  * the donor's pages, which with the preview below are the screens outside the layout that wear no
  * operator stylesheet.
  *
- * each draws the donation form's own card and links the form's four sheets in its own `links`, and
- * those four are unlayered while every operator declaration is layered (src/app.css) — so a
+ * each draws the donation form's own card and links the form's sheets in its own `links`, and
+ * those are unlayered while every operator declaration is layered (src/app.css) — so a
  * document holding both would let one side outrank the other on properties only one of them sets.
  * they are named here so the sweep below can hold every *other* screen outside the layout to
  * carrying the operator sheet without holding these to it.

@@ -1,4 +1,4 @@
-import { part, partWhen } from '@better-giving/form/parts';
+import { part, partWhen, REGISTRY_CLASS } from '@better-giving/form/parts';
 import type { PayerField } from '@better-giving/form/value';
 import type { FormConfig } from '@better-giving/form/v1';
 import type { ReactNode, RefObject } from 'react';
@@ -128,6 +128,7 @@ export function DetailsStep({
 			<label className="check-row">
 				<input
 					part={part('checkbox')}
+					className={REGISTRY_CLASS.checkbox}
 					type="checkbox"
 					checked={api.consentToggle.pressed === true}
 					onChange={onConsent}
@@ -137,6 +138,7 @@ export function DetailsStep({
 
 			<button
 				part={partWhen('action', { busy })}
+				className={REGISTRY_CLASS.action}
 				type={submits ? 'submit' : 'button'}
 				aria-busy={busy}
 				onClick={onContinue}
@@ -213,6 +215,9 @@ function TextField({
 				// opt-in the sheet does: a box labelled over the top has nothing to ask.
 				placeholder={floating ? ' ' : undefined}
 				part={partWhen('field', { invalid: wrong })}
+				// a box labelled over the top is the registry's text box; the floating pair is the form's
+				// own, as `textField` in @better-giving/form's views.ts draws them.
+				className={floating ? undefined : REGISTRY_CLASS.field}
 				aria-invalid={wrong ? true : undefined}
 				aria-describedby={wrong ? problemId : undefined}
 			/>

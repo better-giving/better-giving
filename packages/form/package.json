@@ -32,7 +32,10 @@
 		"./styles/tokens.css": "./src/styles/tokens.css",
 		"./styles/parts.css": "./src/styles/parts.css",
 		"./styles/layout.css": "./src/styles/layout.css",
-		"./styles/motion.css": "./src/styles/motion.css"
+		"./styles/motion.css": "./src/styles/motion.css",
+		"./registry/styles/button-css.css": "./src/registry/styles/button-css.css",
+		"./registry/styles/field-css.css": "./src/registry/styles/field-css.css",
+		"./registry/styles/checkbox-css.css": "./src/registry/styles/checkbox-css.css"
 	},
 	"scripts": {
 		"dev": "vite",

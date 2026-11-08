@@ -2,7 +2,7 @@ import { Field } from '@better-giving/operator/components/forms/Field';
 
 /*
  * every combination of the four blocks a field draws around its box — label, hint, error, needed —
- * plus the box types, the two pointer states, and the box with a control on its own row. `status`
+ * plus the box types, the closed box, and the box with a control on its own row. `status`
  * is drawn twice, empty and speaking, because the empty region is the state that has to hold no room.
  *
  * `beside` is drawn three times because the row is where the two heights meet: the press takes the
@@ -20,10 +20,9 @@ import { Field } from '@better-giving/operator/components/forms/Field';
  * field marked it refused and holds the sentence itself, so the box draws the border and says
  * nothing.
  *
- * the two pointer states are the whole of what a box pins: packages/operator/src/styles/adm.css
- * gives `.adm-input` a hover twin and packages/operator/src/styles/base.css draws every
- * `.is-focus`. unavailable is not pinned at all — the sheet draws `:disabled` with no twin beside
- * it — so the specimen for it is the real attribute the field passes through.
+ * no pointer state is pinned: the box is the registry's `ds-field-input`
+ * (packages/operator/src/registry/styles/field-css.css), which draws hover and focus off the
+ * pseudo-classes alone. unavailable is the real attribute the field passes through.
  *
  * the masked boxes open with one standing directly above a plain box, because the width of the two
  * against each other is the whole reason the press is inside the box rather than on the row beside
@@ -126,7 +125,7 @@ export default function FormsFieldPreview() {
 				code
 				defaultValue="alerts@riverside-shelter.org"
 				beside={
-					<button type="button" className="adm-btn">
+					<button type="button" className="ds-btn ds-btn-secondary adm-btn">
 						Send test email
 					</button>
 				}
@@ -138,7 +137,7 @@ export default function FormsFieldPreview() {
 				defaultValue="alerts@riverside-shelter"
 				error="That is not an address this deployment can send to. Nothing was sent."
 				beside={
-					<button type="button" className="adm-btn">
+					<button type="button" className="ds-btn ds-btn-secondary adm-btn">
 						Send test email
 					</button>
 				}
@@ -149,7 +148,7 @@ export default function FormsFieldPreview() {
 				code
 				needed="Type an address to send the test to."
 				beside={
-					<button type="button" className="adm-btn" disabled>
+					<button type="button" className="ds-btn ds-btn-secondary adm-btn" disabled>
 						Send test email
 					</button>
 				}
@@ -209,7 +208,7 @@ export default function FormsFieldPreview() {
 				masked
 				defaultValue="re_8fJq2xVn"
 				beside={
-					<button type="button" className="adm-btn">
+					<button type="button" className="ds-btn ds-btn-secondary adm-btn">
 						Send test email
 					</button>
 				}
@@ -227,8 +226,6 @@ export default function FormsFieldPreview() {
 				defaultValue="whsec_4tLp0Zd8fJq"
 			/>
 			<Field id="forms-field-unlabelled" aria-label="Suggested amount 1" defaultValue="25" />
-			<Field id="forms-field-hover" label="hover" state="hover" />
-			<Field id="forms-field-focus" label="focus" state="focus" />
 			<Field
 				id="forms-field-really-disabled"
 				label="disabled attribute"

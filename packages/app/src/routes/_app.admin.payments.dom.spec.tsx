@@ -138,9 +138,9 @@ describe('a Stripe card', () => {
 	it('draws the ways of paying, the notices, the repeating gifts and the events Stripe reports', () => {
 		const stripe = card(screen({ cards: [STRIPE], others: OTHERS.slice(1) }).root, 'Stripe');
 
-		expect(stripe.querySelector('.adm-record__head .adm-state')?.textContent).toBe('Set up');
+		expect(stripe.querySelector('.adm-record__head .ds-badge')?.textContent).toBe('Set up');
 		expect(
-			stripe.querySelector('.adm-record__head .adm-state')?.classList.contains('adm-state--done')
+			stripe.querySelector('.adm-record__head .ds-badge')?.classList.contains('ds-badge-primary')
 		).toBe(true);
 		expect(lines(stripe, 'Donation methods')).toEqual([
 			['Card', ''],
@@ -247,10 +247,10 @@ describe('payment notices', () => {
 		);
 		const notices = block(stripe, 'Payment notices');
 		const banner = notices?.querySelector<HTMLElement>('.adm-banner');
-		const badge = stripe.querySelector('.adm-record__head .adm-state');
+		const badge = stripe.querySelector('.adm-record__head .ds-badge');
 
 		expect(badge?.textContent).toBe('Not taking gifts');
-		expect(badge?.classList.contains('adm-state--attention')).toBe(true);
+		expect(badge?.classList.contains('ds-badge-warning')).toBe(true);
 		expect(banner?.querySelector('.adm-banner__word')?.textContent).toBe(
 			'Payment notices aren’t set up'
 		);
@@ -297,10 +297,10 @@ describe('payment notices', () => {
 			'Stripe'
 		);
 		const notices = block(stripe, 'Payment notices');
-		const badge = stripe.querySelector('.adm-record__head .adm-state');
+		const badge = stripe.querySelector('.adm-record__head .ds-badge');
 
 		expect(badge?.textContent).toBe('Set up');
-		expect(badge?.classList.contains('adm-state--done')).toBe(true);
+		expect(badge?.classList.contains('ds-badge-primary')).toBe(true);
 
 		expect(notices?.querySelector('.adm-banner__word')?.textContent).toBe(
 			'Payment notices are not arriving'
@@ -329,10 +329,10 @@ describe('payment notices', () => {
 			'NOWPayments'
 		);
 		const notices = block(nowpayments, 'Payment notices');
-		const badge = nowpayments.querySelector('.adm-record__head .adm-state');
+		const badge = nowpayments.querySelector('.adm-record__head .ds-badge');
 
 		expect(badge?.textContent).toBe('Not taking gifts');
-		expect(badge?.classList.contains('adm-state--attention')).toBe(true);
+		expect(badge?.classList.contains('ds-badge-warning')).toBe(true);
 		expect(notices?.querySelector('.adm-banner')?.textContent).toContain(
 			'Donation forms stay offline until NOWPayments can tell this site about payments. No donor can give through NOWPayments yet.'
 		);
@@ -351,10 +351,10 @@ describe('payment notices', () => {
 			'NOWPayments'
 		);
 		const notices = block(nowpayments, 'Payment notices');
-		const badge = nowpayments.querySelector('.adm-record__head .adm-state');
+		const badge = nowpayments.querySelector('.adm-record__head .ds-badge');
 
 		expect(badge?.textContent).toBe('Set up');
-		expect(badge?.classList.contains('adm-state--done')).toBe(true);
+		expect(badge?.classList.contains('ds-badge-primary')).toBe(true);
 
 		expect(notices?.querySelector('.adm-banner')).toBeNull();
 		expect(notices?.querySelector('.adm-status__word')?.textContent).toBe('Not confirmed yet');
@@ -453,10 +453,10 @@ describe('a PayPal card', () => {
 	it('says it is not taking gifts, and donation forms stay offline, where notices are unset', () => {
 		const paypal = card(screen({ cards: [{ ...PAYPAL, notices: 'unset' }] }).root, 'PayPal');
 		const banner = block(paypal, 'Payment notices')?.querySelector<HTMLElement>('.adm-banner');
-		const badge = paypal.querySelector('.adm-record__head .adm-state');
+		const badge = paypal.querySelector('.adm-record__head .ds-badge');
 
 		expect(badge?.textContent).toBe('Not taking gifts');
-		expect(badge?.classList.contains('adm-state--attention')).toBe(true);
+		expect(badge?.classList.contains('ds-badge-warning')).toBe(true);
 		expect(banner?.textContent).toContain(
 			'Donation forms stay offline until PayPal can tell this site about payments. No donor can give through PayPal yet.'
 		);
@@ -476,10 +476,10 @@ describe('a Chariot card', () => {
 	it('says it is not taking gifts, and donation forms stay offline, where notices are unset', () => {
 		const chariot = card(screen({ cards: [{ ...CHARIOT, notices: 'unset' }] }).root, 'Chariot');
 		const banner = block(chariot, 'Payment notices')?.querySelector<HTMLElement>('.adm-banner');
-		const badge = chariot.querySelector('.adm-record__head .adm-state');
+		const badge = chariot.querySelector('.adm-record__head .ds-badge');
 
 		expect(badge?.textContent).toBe('Not taking gifts');
-		expect(badge?.classList.contains('adm-state--attention')).toBe(true);
+		expect(badge?.classList.contains('ds-badge-warning')).toBe(true);
 		expect(banner?.textContent).toContain(
 			'Donation forms stay offline until Chariot can tell this site about payments. No donor can give through Chariot yet.'
 		);

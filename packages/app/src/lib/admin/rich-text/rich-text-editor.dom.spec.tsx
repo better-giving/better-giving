@@ -177,7 +177,7 @@ describe('making a link', () => {
 		await press(pressNamed(host, 'Link'));
 		const address = await typeAddress(host, 'https://riverbanktrust.org/annual-report');
 		expect(document.activeElement).toBe(address);
-		await press(one<HTMLButtonElement>(host, '.adm-rte__link button.adm-btn--primary'));
+		await press(one<HTMLButtonElement>(host, '.adm-rte__link button.ds-btn-primary'));
 		expect(firstRun(posted(host))?.marks).toEqual([
 			{ type: 'link', attrs: { href: 'https://riverbanktrust.org/annual-report' } }
 		]);
@@ -216,7 +216,7 @@ describe('making a link', () => {
 		await write(editor, 'click me');
 		await press(pressNamed(host, 'Link'));
 		const address = await typeAddress(host, 'javascript:alert(document.cookie)');
-		await press(one<HTMLButtonElement>(host, '.adm-rte__link button.adm-btn--primary'));
+		await press(one<HTMLButtonElement>(host, '.adm-rte__link button.ds-btn-primary'));
 
 		expect(address.getAttribute('aria-invalid')).toBe('true');
 		const message = one<HTMLElement>(host, `#${CSS.escape(address.id)}-err`);

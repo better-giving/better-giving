@@ -16,7 +16,7 @@ import type { Route } from './+types/donate';
 //
 // **it is a donor screen rather than an operator screen**, and everything odd about this file
 // follows from that. the reader is a person who was handed a link, so a refusal is a sentence rather
-// than a status somebody can act on; the page is dressed from packages/form's own four sheets rather
+// than a status somebody can act on; the page is dressed from packages/form's own sheets rather
 // than from the operator system, which is why `links` below does not return `operatorLinks`
 // ($lib/admin/operator-links.ts); and no operator component is mounted anywhere under it.
 //

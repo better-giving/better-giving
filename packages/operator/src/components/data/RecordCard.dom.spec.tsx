@@ -85,7 +85,9 @@ describe('a record card mounted into a document', () => {
 			origins: ORIGINS
 		});
 
-		expect(root.querySelector('.adm-record__head')?.className).toBe('adm-record__head');
+		expect(root.querySelector('.adm-record__head')?.className).toBe(
+			'ds-card-header adm-record__head'
+		);
 		expect(root.querySelector('.adm-record__mark')).toBeNull();
 	});
 
@@ -102,7 +104,7 @@ describe('a record card mounted into a document', () => {
 		});
 
 		expect(root.querySelector('.adm-record__head')?.className).toBe(
-			'adm-record__head adm-record__head--marked'
+			'ds-card-header adm-record__head adm-record__head--marked'
 		);
 		expect(root.querySelector('.adm-record__mark > svg')?.getAttribute('aria-hidden')).toBe('true');
 	});
@@ -123,25 +125,78 @@ describe('a record card mounted into a document', () => {
 		const list = root.querySelector('ul');
 
 		expect(root.querySelector('dl')).toBeNull();
-		expect(list?.className).toBe('adm-record__origins adm-record__foot');
+		expect(list?.className).toBe('ds-card-footer adm-record__origins');
 		expect(list?.getAttribute('role')).toBe('list');
 		expect(list?.getAttribute('aria-labelledby')).toBeNull();
 	});
 
-	it('speaks the status word in the register the screen states', () => {
-		// Live is the word somebody scanning a list is looking for, so Draft is the quieter of the
-		// two — and which is which is the screen's, not this card's.
+	it('hands the record’s tone to the status word it draws in its head', () => {
+		// where the record stands is the screen's to say, and the word is the registry's badge in
+		// that tone's variant (../status/StatusWord.jsx).
 		const root = render(RecordCard, {
 			title: 'General fund',
 			titleAs: 'h2',
 			originsLabel: 'Sites',
 			emptyOrigins: 'None yet.',
-			state: 'Draft',
-			secondary: true
+			state: 'Live',
+			tone: 'done'
 		});
 
 		expect(root.querySelector('.adm-record__head > span')?.getAttribute('class')).toBe(
-			'adm-state adm-state--secondary'
+			'ds-badge ds-badge-primary'
 		);
+	});
+});
+
+describe('the registry card a record is drawn in', () => {
+	const slots = (root: HTMLElement) =>
+		[...(root.firstElementChild?.children ?? [])].map((slot) => slot.classList[0]);
+
+	it('is the card with a header and a body when the origins are read', () => {
+		const root = render(RecordCard, {
+			title: 'General fund',
+			titleAs: 'h2',
+			originsLabel: 'Sites',
+			emptyOrigins: 'None yet.',
+			origins: ORIGINS
+		});
+
+		expect([root.firstElementChild?.className, ...slots(root)]).toEqual([
+			'ds-card',
+			'ds-card-header',
+			'ds-card-body'
+		]);
+	});
+
+	it('is the card with a header and a footer when the origins are pressed, and no empty body', () => {
+		const root = render(RecordCard, {
+			title: 'General fund',
+			titleAs: 'h2',
+			foot: (
+				<li>
+					<button type="button">riverbank.org</button>
+				</li>
+			)
+		});
+
+		expect(slots(root)).toEqual(['ds-card-header', 'ds-card-footer']);
+	});
+
+	it('stands what the screen hands in in the body, above the footer', () => {
+		const root = render(RecordCard, {
+			title: 'General fund',
+			titleAs: 'h2',
+			foot: (
+				<li>
+					<button type="button">riverbank.org</button>
+				</li>
+			),
+			children: <p>Seats and usage.</p>
+		});
+
+		expect([slots(root), root.querySelector('.ds-card-body')?.textContent]).toEqual([
+			['ds-card-header', 'ds-card-body', 'ds-card-footer'],
+			'Seats and usage.'
+		]);
 	});
 });

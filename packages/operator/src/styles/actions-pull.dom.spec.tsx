@@ -1,9 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { rulesIn, sheet } from './sheet-rule.testing';
+import { stripComments } from './raw-values';
+import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
 // a quiet small control at the start of any line of a page header's or a group's actions row
 // aligns by its word, which ./adm.css does by pulling the row or its first control out by the
-// padding and border the control keeps.
+// padding the registry's small ghost press keeps (../registry/styles/button-css.css).
 //
 // **the row wraps at the 375px floor, and a wrapped control starts a line too.** a pull on the
 // first control alone leaves every later line's word a padding in from the column's edge — the API
@@ -15,14 +19,15 @@ import { rulesIn, sheet } from './sheet-rule.testing';
 // both pulled.
 
 const css = sheet('adm.css');
-const PULL = 'calc(-1 * (var(--admin-space-4) + var(--admin-border-width)))';
+const PULL = 'calc(-1 * var(--admin-space-5))';
 const pulls = rulesIn(css)
 	.filter(({ stated }) => stated.get('margin-inline-start') === PULL)
 	.map(({ selector }) => selector);
 
 function quiet(tag: 'a' | 'button') {
 	const control = document.createElement(tag);
-	control.className = 'adm-btn adm-btn--quiet adm-btn--sm';
+	// what ../components/controls/Button.jsx writes for `variant="quiet" size="sm"`.
+	control.className = 'ds-btn ds-btn-ghost ds-btn-sm adm-btn adm-btn--quiet adm-btn--sm';
 	return control;
 }
 
@@ -45,6 +50,28 @@ describe("an actions row's lines start on the column's edge by their word", () =
 		expect(pulls).not.toEqual([]);
 	});
 
+	it('pulls by exactly the padding the registry gives a small ghost press', () => {
+		// the registry's step and the tier's multiple of it, against the token the pull spends.
+		// resolved through `fileURLToPath`, which ./field-on-a-tight-stack.dom.spec.tsx argues.
+		const registry = stripComments(
+			readFileSync(
+				join(dirname(fileURLToPath(import.meta.url)), '../registry/styles/button-css.css'),
+				'utf8'
+			)
+		);
+		const step = ruleOf(registry, '.ds-btn').get('--ds-spacing');
+		const padding = ruleOf(registry, '.ds-btn-sm').get('padding-inline');
+		const ghost = ruleOf(registry, '.ds-btn-ghost');
+		const token = ruleOf(sheet('tokens.css'), ':root').get('--admin-space-5');
+
+		expect([step, padding, ghost.get('border'), token]).toEqual([
+			'0.25rem',
+			'calc(var(--ds-spacing) * 3)',
+			undefined,
+			'0.75rem'
+		]);
+	});
+
 	it.each(['grouped', 'header'] as const)(
 		'pulls a %s row of quiet small controls as one, beside a live region',
 		(where) => {
@@ -63,7 +90,7 @@ describe("an actions row's lines start on the column's edge by their word", () =
 		(where) => {
 			const first = quiet('a');
 			const grounded = document.createElement('button');
-			grounded.className = 'adm-btn';
+			grounded.className = 'ds-btn ds-btn-secondary adm-btn';
 			const actions = row(where, [first, grounded, quiet('a')]);
 
 			expect(pulled(actions)).toBe(false);

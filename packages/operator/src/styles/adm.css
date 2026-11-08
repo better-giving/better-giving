@@ -9,10 +9,11 @@
    here while `.adm-setting` itself is drawn above.
 
    the state ladder is written twice on every stateful rule: once as the pseudo and once as
-   the twin class beside it (`.adm-btn:hover, .adm-btn.is-hover`), because a state that can
+   the twin class beside it (`.adm-create:hover, .adm-create.is-hover`), because a state that can
    only be reached with a pointer is a state nobody can put on a page and look at. `disabled`
    takes no twin and needs none — it is a real attribute, so a screen sets the attribute and
    gets the product's own rendering.
+   carried-ok: .is-active — the twin beside `:active`, which no component pins.
 
    no duration and no easing is spelled here. every one is a `--admin-dur-*` and a
    `--admin-ease-*`, which is what lets ./tokens.css collapse the lot for a reader who asked
@@ -40,340 +41,58 @@
 @layer elements {
 	/* ---------- buttons ---------------------------------------------------------------
 
-	   five ranks and one ladder. the bare button is the secondary rank — there is no third,
-	   because a screen with three ranks of button has two of them nobody can tell apart. the
-	   last two are not a hierarchy at all and are what a control's boundary is made of: the
-	   quiet rank has none until it is pointed at, and the soft rank's is a fill.
-	   nothing scales, nothing lifts and nothing changes opacity: hover is a step down the
-	   neutral ramp and press is one step further with the border darkening under it. */
+	   a button's look is the registry's, every rank and size of it: `ds-btn` and its variants in
+	   ../registry/styles/button-css.css, read in the `registry` layer under this one
+	   (packages/app/src/app.css). ../components/controls/Button.jsx writes `.adm-btn` beside them,
+	   and what this sheet draws on it is what the registry has no rule for, and nothing it does:
+	   the space between a mark and its words, the holder a target past the drawn edge is placed
+	   against, a press closed by `aria-disabled` on a `<button>`, and a quiet press holding open
+	   what it opened. a rule here restating a rank's ground, ink, edge, size or corner would outrank
+	   the registry's and is the one thing this block does not hold. */
 
+	/* the gap is the mark's and the words', which the registry's flex row draws touching. the
+	   position is the containing block of the target past the drawn edge below. */
 	.adm-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		/* the gap is here for a button a screen draws by hand — a mark and a word written straight
-		   into `.adm-btn` with no label span between them. every button
-		   packages/operator/src/components/controls/Button.jsx draws has exactly one flow child,
-		   which is that span, and spaces its own mark by the same step on `.adm-btn__label` below. */
 		gap: var(--admin-space-3);
-		/* the containing block the busy dots are centred over. it is on every rank rather than on
-		   the states that use it, because what stands the dots over the label is one absolute box
-		   and a button whose position changed with its state would move under the operator. */
 		position: relative;
-		min-block-size: var(--admin-control-height);
-		padding-inline: var(--admin-space-5);
-		font-size: var(--admin-control-size);
-		font-weight: var(--admin-control-weight);
-		line-height: var(--admin-control-lh);
-		color: var(--admin-control-ink);
-		background: var(--admin-control-bg);
-		border: var(--admin-border-width) solid var(--admin-control-border);
-		border-radius: var(--admin-radius);
-		cursor: pointer;
-		text-decoration: none;
-		transition: var(--admin-transition-state);
 	}
 
-	/* carried-ok: .is-hover .is-active .is-disabled .is-focus — the twin beside each state
-	   pseudo, here and in every ladder below. no screen writes one: it is what lets a specimen pin
-	   a state without a pointer on the element, and the gate requiring every state rule in this
-	   sheet to carry a twin is packages/app/src/lib/admin/styles/conformance.spec.ts. */
-
-	/* the hover rung restates the resting ink rather than moving it, and it is authored
-	   rather than left out: a rung that says "this does not change" is a decision a reader
-	   can see, and an absent rung is what sends the next hand reaching for an alpha. */
-	.adm-btn:hover,
-	.adm-btn.is-hover {
-		background: var(--admin-control-bg-hover);
-		border-color: var(--admin-control-border-hover);
-		color: var(--admin-control-ink-hover);
-		text-decoration: none;
+	/* one ring. the registry draws a button's focus as an outline (`.ds-btn:focus-visible`), and
+	   ./base.css rings every focused surface with a shadow, and a focused link with a tint bled past
+	   it — on a button, a second ring around the first. */
+	.adm-btn:focus-visible,
+	.adm-btn.is-focus {
+		box-shadow: none;
 	}
 
-	.adm-btn:active,
-	.adm-btn.is-active {
-		background: var(--admin-control-bg-active);
-		border-color: var(--admin-control-border-active);
-	}
-
-	/* closed, in either spelling. `aria-disabled` is a press turned away in its own handler so the
-	   reader standing on it keeps the focus (the busy rung below argues that), and it is the same
-	   closed press as the native one: without its member here it draws at rest, and a control
-	   beside a natively closed one would read as the one still open. every rank's closed rung
-	   carries the member for the same reason. */
-	.adm-btn:disabled,
-	.adm-btn.is-disabled,
+	/* closed by `aria-disabled`, the press turned away in its own handler so the reader standing on
+	   it keeps the focus (../components/controls/SaveButton.jsx argues it). the registry draws the
+	   closed fill for `:disabled` on a button and for `aria-disabled` on an anchor alone, so a
+	   `<button>` closed this way would otherwise draw at rest beside a natively closed one. the
+	   registry's hover and press rules already pass over it; this is its ground and ink, every rank
+	   alike as the registry's own closed rule is. a press in flight is closed the same way, and the
+	   registry's `aria-busy` look is this same pair. */
 	.adm-btn[aria-disabled='true'] {
-		background: var(--admin-control-bg-disabled);
-		border-color: var(--admin-control-border-disabled);
+		background-color: var(--admin-control-bg-disabled);
 		color: var(--admin-control-ink-disabled);
 		cursor: not-allowed;
 	}
 
-	/* a press closed while its own write is going is working, not unavailable, and the rung it holds
-	   is the one `:active` holds: the control looks pressed because it still is.
+	/* a quiet press that opened something is held at the pointed-at fill for as long as what it
+	   opened stands open: the two say the same thing — this is the control being acted through —
+	   and a press with no open state reads exactly as it did at rest while its panel is on the
+	   screen. both spellings, because a trigger states it in whichever its machine writes:
+	   `aria-expanded` on a control that says what it opened, `data-state` on one whose machine
+	   drives the pair.
 
-	   two spellings close it and this rung answers both, because both are the same press. `disabled`
-	   is one — one operator intent is one write — and without this rung the rank's disabled rung
-	   would grey it, which says the press cannot be made rather than that it is already going.
-	   `aria-disabled` with the press turned away in the control's own handler is the other, and it
-	   is what a press has to use where the reader is standing on it: a disabled control cannot hold
-	   focus, so the native attribute drops the caret on `<body>` for the whole of the write and the
-	   dots underneath are then a change nobody is standing on to hear. that press matches the
-	   closed rung's `[aria-disabled]` member, so without this rung it greys for the same reason.
-
-	   every value here is the rank's own active rung above, restated and never re-picked. this
-	   rank's states a ground and a border and no ink, because what a press moves is the ground; the
-	   ink is therefore the rank's resting one, and it is written out because the disabled rung this
-	   is answering does state an ink of its own.
-
-	   each member is three simple selectors, so a twin outranks its own rank's disabled rung and
-	   its hover and active rungs alike — which is what the second spelling needs, since a press
-	   held that way is still under the pointer's rules. the five twins tie each other instead, and
-	   a button takes the last one it matches — which is why each stands directly after the rung it
-	   answers, in the ranks' own order. */
-	.adm-btn[aria-busy='true']:disabled,
-	.adm-btn[aria-busy='true'][aria-disabled='true'] {
-		background: var(--admin-control-bg-active);
-		border-color: var(--admin-control-border-active);
-		color: var(--admin-control-ink);
-	}
-
-	/* a link an operator screen draws as a button takes a control's ring. ./base.css rings every
-	   focusable surface, then draws a focused *link* as a tint fill bled past its own box — the
-	   right answer for a run of words in a sentence, and on a control it is a wash the reader
-	   cannot see against the ground the control already has. an anchor wearing `.adm-btn` is a
-	   control, and the ring is what says so.
-
-	   only the shadow needs restating: this layer outranks ./base.css whatever the specificity
-	   there, and every variant declares its own ground and ink here, so the link rule's fill and
-	   ink reach no button. what it has no answer to is a property nothing here writes, which is
-	   the shadow on every rank but the two filled ones.
-
-	   it stands above those two deliberately. `.adm-btn--primary:focus-visible` matches this rule
-	   for specificity, so the later of the two wins, and theirs is the inset ring a solid fill
-	   needs. */
-	.adm-btn:focus-visible,
-	.adm-btn.is-focus {
-		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
-	}
-
-	.adm-btn--primary {
-		background: var(--admin-primary-bg);
-		border-color: var(--admin-primary-bg);
-		color: var(--admin-primary-ink);
-	}
-
-	.adm-btn--primary:hover,
-	.adm-btn--primary.is-hover {
-		background: var(--admin-primary-bg-hover);
-		border-color: var(--admin-primary-bg-hover);
-		color: var(--admin-primary-ink);
-	}
-
-	.adm-btn--primary:active,
-	.adm-btn--primary.is-active {
-		background: var(--admin-primary-bg-active);
-		border-color: var(--admin-primary-bg-active);
-	}
-
-	.adm-btn--primary:disabled,
-	.adm-btn--primary.is-disabled,
-	.adm-btn--primary[aria-disabled='true'] {
-		background: var(--admin-primary-bg-disabled);
-		border-color: var(--admin-control-border-disabled);
-		color: var(--admin-primary-ink-disabled);
-	}
-
-	/* this rank's active rung, restated for a press in flight — the secondary rank above states the
-	   rule and where each value comes from. */
-	.adm-btn--primary[aria-busy='true']:disabled,
-	.adm-btn--primary[aria-busy='true'][aria-disabled='true'] {
-		background: var(--admin-primary-bg-active);
-		border-color: var(--admin-primary-bg-active);
-		color: var(--admin-primary-ink);
-	}
-
-	/* carried-ok: .adm-btn--danger — `adm-btn--${variant}` in
-	   packages/operator/src/components/controls/Button.jsx is a template hole, not a literal, so
-	   this note is what carries the class. the ranks themselves are held to this sheet by
-	   packages/operator/src/components/closed-sets.spec.ts. */
-	.adm-btn--danger {
-		background: var(--admin-danger-bg);
-		border-color: var(--admin-danger-bg);
-		color: var(--admin-danger-ink);
-	}
-
-	.adm-btn--danger:hover,
-	.adm-btn--danger.is-hover {
-		background: var(--admin-danger-bg-hover);
-		border-color: var(--admin-danger-bg-hover);
-		color: var(--admin-danger-ink);
-	}
-
-	.adm-btn--danger:active,
-	.adm-btn--danger.is-active {
-		background: var(--admin-danger-bg-active);
-		border-color: var(--admin-danger-bg-active);
-	}
-
-	/* a destructive control has no disabled pair of its own: it greys to the neutral rungs,
-	   because a red control nobody can press is an alarm with nothing behind it. it is stated
-	   rather than inherited because the hover rung above matches `.adm-btn:disabled` for
-	   specificity and would otherwise win a disabled button back on a pointer. */
-	.adm-btn--danger:disabled,
-	.adm-btn--danger.is-disabled,
-	.adm-btn--danger[aria-disabled='true'] {
-		background: var(--admin-control-bg-disabled);
-		border-color: var(--admin-control-border-disabled);
-		color: var(--admin-control-ink-disabled);
-	}
-
-	/* this rank's active rung, restated for a press in flight — the secondary rank above states the
-	   rule. the destructive rank stays red for the whole of the write and greys only where a press
-	   is genuinely unavailable, which the rung above is. */
-	.adm-btn--danger[aria-busy='true']:disabled,
-	.adm-btn--danger[aria-busy='true'][aria-disabled='true'] {
-		background: var(--admin-danger-bg-active);
-		border-color: var(--admin-danger-bg-active);
-		color: var(--admin-danger-ink);
-	}
-
-	/* the two controls filled with a solid step draw their ring inside themselves, in the near-white
-	   ink both fills already carry, as the registry rings a control on a `--primary` fill
-	   (`--primary-ring`, ../registry/styles/colors.css). ./tokens.css holds the ring's rules. */
-	.adm-btn--primary:focus-visible,
-	.adm-btn--primary.is-focus,
-	.adm-btn--danger:focus-visible,
-	.adm-btn--danger.is-focus {
-		box-shadow: inset 0 0 0 var(--admin-focus-width) var(--admin-focus-ring-solid);
-	}
-
-	/* closed, the two filled ranks are not filled: their closed rungs above grey the ground, and the
-	   near-white inset ring over that grey is a ring nobody can see. a press closed by
-	   `aria-disabled` keeps the focus — every resting SaveButton is one — so it takes the hugging
-	   ring every unfilled rank wears. a press in flight is closed the same way and keeps its solid
-	   fill (the busy rungs above), so it keeps the inset ring and is left out here. */
-	.adm-btn--primary[aria-disabled='true']:not([aria-busy='true']):focus-visible,
-	.adm-btn--primary[aria-disabled='true']:not([aria-busy='true']).is-focus,
-	.adm-btn--danger[aria-disabled='true']:not([aria-busy='true']):focus-visible,
-	.adm-btn--danger[aria-disabled='true']:not([aria-busy='true']).is-focus {
-		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
-	}
-
-	/* the quiet button is a control with no box until it is pointed at. it keeps the base
-	   ladder's fills and cancels every border rung, because a border appearing under a
-	   pointer is a second thing happening at once.
-
-	   a press that opened something is held at the pointed-at fill for as long as what it opened
-	   stands open, and it takes the hover step rather than a fill of its own: the two say the same
-	   thing — this is the control being acted through — and a quiet button with no open state at
-	   all is one that reads exactly as it did at rest while its panel is on the screen. both
-	   spellings, because a trigger states it in whichever its machine writes: `aria-expanded` on a
-	   control that says what it opened, `data-state` on one whose machine drives the pair. */
-	.adm-btn--quiet {
-		background: transparent;
-		border-color: transparent;
-		color: var(--admin-ink-2);
-	}
-
-	.adm-btn--quiet:hover,
-	.adm-btn--quiet.is-hover,
+	   the one press of another rank held this way is a placed image's own, while the file chooser
+	   it opened stands open (packages/app/src/lib/admin/page-edit/replace-photo.tsx states it): a
+	   dialog's trigger of any rank writes `data-state` too, and is under the dialog it opened.
+	   the fill is the registry's hover step for the quiet and the secondary rank alike. */
 	.adm-btn--quiet[aria-expanded='true'],
-	.adm-btn--quiet[data-state='open'] {
-		background: var(--admin-control-quiet-bg-hover);
-		border-color: transparent;
-		color: var(--admin-ink);
-	}
-
-	.adm-btn--quiet:active,
-	.adm-btn--quiet.is-active {
-		background: var(--admin-control-quiet-bg-active);
-		border-color: transparent;
-		color: var(--admin-ink);
-	}
-
-	.adm-btn--quiet:disabled,
-	.adm-btn--quiet.is-disabled,
-	.adm-btn--quiet[aria-disabled='true'] {
-		background: transparent;
-		border-color: transparent;
-		color: var(--admin-control-ink-disabled);
-	}
-
-	/* this rank's active rung, restated for a press in flight — the secondary rank above states the
-	   rule. */
-	.adm-btn--quiet[aria-busy='true']:disabled,
-	.adm-btn--quiet[aria-busy='true'][aria-disabled='true'] {
-		background: var(--admin-control-quiet-bg-active);
-		border-color: transparent;
-		color: var(--admin-ink);
-	}
-
-	/* the soft button is a control whose boundary is its ground. it is for a press standing on a
-	   band beside the value it acts on, where a mark and a word on the bare band read as two loose
-	   marks rather than as one control, and a bordered box on a band that carries no other box reads
-	   as louder than the value it is beside.
-
-	   it cancels every border rung for the quiet rank's reason: a rank whose boundary is a fill has
-	   no border to appear under a pointer. it takes the neutral button's three grounds, 3 at rest,
-	   4 under a pointer and 5 under a press, and differs from that rank by the edge alone —
-	   ./tokens.css holds where the two sit against each other. the
-	   disabled rung keeps the
-	   resting ground and moves the ink alone, because a rank that draws no border has only its
-	   label left to say a press is unavailable.
-
-	   there is no open-state pair here. a press that opens something is the quiet rank's, which is
-	   the rank with a state to arrive at: this one is already wearing the fill that would say it. */
-	/* carried-ok: .adm-btn--soft — the same template hole `.adm-btn--danger` above names. */
-	.adm-btn--soft {
-		background: var(--admin-control-soft-bg);
-		border-color: transparent;
-		color: var(--admin-control-soft-ink);
-	}
-
-	.adm-btn--soft:hover,
-	.adm-btn--soft.is-hover {
-		background: var(--admin-control-soft-bg-hover);
-		border-color: transparent;
-		color: var(--admin-control-soft-ink);
-	}
-
-	.adm-btn--soft:active,
-	.adm-btn--soft.is-active {
-		background: var(--admin-control-soft-bg-active);
-		border-color: transparent;
-	}
-
-	.adm-btn--soft:disabled,
-	.adm-btn--soft.is-disabled,
-	.adm-btn--soft[aria-disabled='true'] {
-		background: var(--admin-control-soft-bg);
-		border-color: transparent;
-		color: var(--admin-control-ink-disabled);
-	}
-
-	/* this rank's active rung, restated for a press in flight — the secondary rank above states the
-	   rule. the rung states no ink, so the ink is this rank's resting one. */
-	.adm-btn--soft[aria-busy='true']:disabled,
-	.adm-btn--soft[aria-busy='true'][aria-disabled='true'] {
-		background: var(--admin-control-soft-bg-active);
-		border-color: transparent;
-		color: var(--admin-control-soft-ink);
-	}
-
-	.adm-btn--sm {
-		min-block-size: var(--admin-control-height-sm);
-		padding-inline: var(--admin-space-4);
-		font-size: var(--admin-control-size-sm);
-	}
-
-	/* a button whose only visible content is a mark, named by its `aria-label`, is round by nature:
-	   a circle on a square box, and a pill on the occasion a word joins the mark. it is one of the
-	   `--admin-radius-pill` wearers ./tokens.css names. ../components/controls/Button.jsx writes the
-	   class on any press drawn with a mark and no words. */
-	.adm-btn--icon {
-		border-radius: var(--admin-radius-pill);
+	.adm-btn--quiet[data-state='open'],
+	.adm-placed .adm-btn[data-state='open'] {
+		background-color: var(--admin-control-quiet-bg-active);
 	}
 
 	/* ---------- a target past the drawn edge -------------------------------------------------
@@ -416,38 +135,10 @@
 		inset-inline-start: calc((100% - max(var(--admin-touch-min), 100%)) / 2);
 	}
 
-	/* ---------- a press in flight -------------------------------------------------------
-
-	   a button that is working draws three pulsing dots over its own label, and the label stays
-	   where it is underneath them. the button's box is what that is for: a label swapped for a
-	   shorter or a longer word resizes the control at the moment it is closed to a press, so a row
-	   of actions reflows under the hand that just pressed one of them.
-
-	   the hook is `aria-busy`, which every pending press on these surfaces already states, and the
-	   attribute is the whole of it — there is no second class saying the same thing, and no state a
-	   caller has to remember to set beside the one a reader is told to hold. */
-
-	/* everything a button draws inside itself stands in this span: a mark before the words, the
-	   words, a mark after them. it carries the gap, so a button dropping to `opacity: 0` under a
-	   press takes its own spacing with it and the resting arrangement is untouched. */
-	.adm-btn__label {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: var(--admin-space-3);
-	}
-
-	/* the label goes invisible and stays in the box. `visibility: hidden` would take it out of the
-	   accessible tree, which is the button's own name — a press that reported itself as working by
-	   losing the word it is called is a control a reader can no longer identify. */
-	.adm-btn[aria-busy='true'] .adm-btn__label {
-		opacity: 0;
-	}
-
 	/* a worded copy control's two faces in one cell, so the box is the wider of the two and an
 	   outcome drawn over the resting words leaves the control the width it was pressed at —
 	   packages/operator/src/components/controls/CopyControl.jsx. each face spaces its own mark as
-	   `.adm-btn__label` does, and starts where the resting mark stands, so the tick takes its place. */
+	   `.adm-btn` does, and starts where the resting mark stands, so the tick takes its place. */
 	.adm-copyface {
 		display: inline-grid;
 	}
@@ -466,116 +157,12 @@
 		visibility: hidden;
 	}
 
-	/* the cursor over a press that is already working. it is under the pointer only and never for a
-	   keyboard, which is why it says nothing on its own and the dots are what report the wait. */
-	.adm-btn[aria-busy='true'] {
-		cursor: progress;
-	}
-
-	/* the dots are laid over the whole button rather than inside its content flow, so they are
-	   centred on the control and not on whatever length of label is standing under them. */
-	.adm-btn__dots {
-		position: absolute;
-		inset: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: var(--admin-space-3);
-	}
-
-	/* raw-length-ok: 50% — a circle, which is a shape and not a step on the size scale. */
-	.adm-btn__dots span {
-		inline-size: var(--admin-space-4);
-		block-size: var(--admin-space-4);
-		border-radius: 50%;
-		background: currentColor;
-		animation: adm-pulse var(--admin-dur-pulse) var(--admin-ease-pulse) infinite;
-	}
-
-	/* a seventh of the loop between one dot and the next, so three of them span three sevenths of
-	   the cycle and the row reads as one light travelling. every delay is computed from the loop's
-	   own token, so re-pointing it in ./tokens.css moves the stagger with it. */
-	.adm-btn__dots span:nth-child(2) {
-		animation-delay: calc(var(--admin-dur-pulse) / 7);
-	}
-
-	.adm-btn__dots span:nth-child(3) {
-		animation-delay: calc(var(--admin-dur-pulse) / 7 * 2);
-	}
-
-	/* the save button reports its own outcome, in place. an operator who saved a row is
-	   looking at that row, so the confirmation is drawn on the control that caused it — never
-	   a toast and never a banner at the head of the page, either of which asks them to look
-	   somewhere else to find out whether the thing in front of them worked.
-
-	   done keeps its resting border. the done tone's tint is step 3, a ground, and no edge, so
-	   swapping to it would lose the button's boundary at the moment it reports success; and
-	   keeping the border is what makes the swap quiet, which is what a confirmation is for. */
-	/* carried-ok: .is-pending .is-done — `is-${state}` in
-	   packages/operator/src/components/controls/SaveButton.jsx is a template hole, not a
-	   literal. the states themselves are held to this sheet by
-	   packages/operator/src/components/closed-sets.spec.ts. */
+	/* the tick and its words a save reports in place of the label
+	   (../components/controls/SaveButton.jsx), as one item of the button's row. */
 	.adm-save__done {
 		display: inline-flex;
 		align-items: center;
 		gap: var(--admin-space-3);
-	}
-
-	/* a save in flight is closed to a second press and holds the primary rank's active band while it
-	   writes, which is the rule the busy twins above state for every rank. what this rule is for is
-	   a save press that is not on that rank — a bare `.adm-btn` wearing `.adm-save` — and the band is
-	   what makes it read as the same control as ../components/controls/SaveButton.jsx's. that button
-	   reaches `.adm-btn--primary[aria-busy='true'][aria-disabled='true']` above on its own, which
-	   carries these same three values by carrying the same rank's rung.
-
-	   the cursor is this rule's alone and reaches both: it is under the pointer only and never for a
-	   keyboard, and a closed press would otherwise take the closed rung's.
-
-	   the dots are neither rule's — the button carries `aria-busy` while it is writing, so
-	   `.adm-btn[aria-busy='true']` above draws them and closes the label underneath. */
-	.adm-save.is-pending {
-		background: var(--admin-primary-bg-active);
-		border-color: var(--admin-primary-bg-active);
-		color: var(--admin-primary-ink);
-		cursor: progress;
-	}
-
-	.adm-save.is-done {
-		background: var(--admin-tone-done-tint);
-		color: var(--admin-tone-done-deep);
-		animation: adm-confirm var(--admin-dur-confirm) var(--admin-ease-confirm);
-	}
-
-	/* the confirmation leaves the primary's solid fill for a tint, and the filled rank's ring goes
-	   with it: `.adm-btn--primary:focus-visible` above draws inside the control in the near-white
-	   ink a solid fill carries, which over this tint is a ring nobody can see. that rule ties
-	   `.adm-btn:focus-visible` on specificity and stands later, so the hugging ring every unfilled
-	   rank takes is reached from here or not at all.
-
-	   a keyboard reaches this pair on every save: the press that saved is closed by `aria-disabled`
-	   and keeps the focus through its confirmation (../components/controls/SaveButton.jsx). the
-	   pinned half is how the gallery stands it
-	   (packages/gallery/src/previews/controls-save-button.tsx). */
-	.adm-save.is-done:focus-visible,
-	.adm-save.is-done.is-focus {
-		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
-	}
-
-	/* one dot of `.adm-btn__dots` breathing: dim, full, dim again, with the whole of each half spent
-	   moving. it never goes out, because a dot that reached zero would leave a hole in a row of three
-	   and the loader has to stay one shape the whole time it runs.
-
-	   the dim is deep enough to read as off at a glance and light enough that the row keeps its
-	   width in the eye — the three dots are the mark, and a row that came and went would flicker
-	   rather than pulse. */
-	@keyframes adm-pulse {
-		0%,
-		100% {
-			opacity: 0.2;
-		}
-		50% {
-			opacity: 1;
-		}
 	}
 
 	/* one dot of the loader `.adm-dots` turns: lit, fading, and then holding dim until its turn
@@ -733,15 +320,6 @@
 		from {
 		}
 		to {
-		}
-	}
-
-	@keyframes adm-confirm {
-		from {
-			transform: translateY(var(--admin-space-1));
-		}
-		to {
-			transform: none;
 		}
 	}
 
@@ -1661,111 +1239,15 @@
 		padding: var(--admin-space-6);
 	}
 
-	/* the descriptive register: this is just what it is. a fact about a gift is not an
-	   instruction to the operator, so it carries no mark and no sentence and sits in a value
-	   slot — and it is drawn as a pill, the one wearer of the fully round corner that is read
-	   rather than pressed, and the only one with no edge. ./tokens.css names every wearer at the
-	   radius block and argues the trade at
-	   `three registers of status`.
-
-	   hueless at rest: the ground is the note tone's tint, which is the neutral ladder's rung 3,
-	   and the word over it is rung 11, a settled gift's pill on /admin/donations. a record at rest
-	   (packages/app/src/lib/admin/status-tones.ts) and a value that is not a record's lifecycle
-	   status — a consent reading, a count, `Repeating` — stop at this rule and rank against
-	   nothing.
-
-	   the caption size holds at every width, a table cell included: a pill whose size moves with
-	   its container is two tags rather than one, and it sits a step under the text around it,
-	   which is what a tag beside a reading should do. a table cell only tightens the inset, at the
-	   rule under the tones below.
-
-	   and no line under it. a run of words with a rule beneath is what a link wears on every
-	   other operator screen, so a state drawn that way is a fact an operator tries to click. the
-	   ground and the corner are what tell these words from the prose around them, which is why
-	   one may stand mid-sentence where the plain word could not.
-
-	   a setting row's value is not one of these and draws `.adm-setting__word` below: a value is
-	   not a state.
-
-	   no `white-space: nowrap`, deliberately: a status word can be computed from a list rather
-	   than chosen from one, and a pill that refuses to wrap pushes a screen sideways at 375
-	   instead. packages/gallery/src/previews/status-status-word.tsx carries the long specimen. */
-	.adm-state {
-		display: inline-block;
-		font-size: var(--admin-caption-size);
-		font-weight: var(--admin-value-weight);
-		line-height: var(--admin-caption-lh);
-		padding: var(--admin-space-3) var(--admin-space-5);
-		border-radius: var(--admin-radius-pill);
-		color: var(--admin-ink-2);
-		background: var(--admin-tone-note-tint);
-	}
-
-	/* set, and quiet. it steps the weight down; the ink is already the pill's rung 11. */
-	/* every name in this block is spelled in the derived class list in
-	   packages/operator/src/components/status/StatusWord.jsx rather than in a `class` attribute,
-	   and that component is the only thing that writes any of them.
-	   carried-ok: .adm-state .adm-state--unset .adm-state--secondary */
-	.adm-state--secondary {
-		/* type-ok: the variant steps the value rank down. */
-		font-weight: var(--admin-weight-regular);
-	}
-
-	/* not set at all, which says something different from quiet: there is no value here,
-	   rather than a value nobody needs to act on. */
-	.adm-state--unset {
-		color: var(--admin-ink-muted);
-		/* type-ok: as above, and unset is quieter still. */
-		font-weight: var(--admin-weight-regular);
-		font-style: italic;
-	}
-
-	/* the four tones, last in this list on purpose: a word handed a tone and `secondary` together
-	   is a word the tone speaks for, and source order is what settles that rather than the order
-	   the component happens to assemble its class list in.
-
-	   only a record's own lifecycle status takes one, and packages/app/src/lib/admin/status-tones.ts
-	   states the ladder — `done` is live by the operator's hand, `attention` is waiting on
-	   somebody, `blocker` is failed or refused, `note` is retired, stopped or ended, and a record
-	   at rest takes none. `done`, `attention` and `blocker` are each the tone's word on the tone's
-	   tint, the same pair a banner in that tone wears. `done` is the accent and never green;
-	   ./tokens.css argues that where the ladders are declared.
-
-	   `note` keeps the hueless pill's ink and takes its ground away: an ended record is a fact
-	   said quietly, and the ground is what tells it from a record at rest, which keeps the slate 3
-	   pill. one ink step between them is not a difference a list of a hundred rows shows. */
-	/* carried-ok: .adm-state--done .adm-state--attention .adm-state--blocker .adm-state--note
-	   — each is `` `adm-state--${tone}` `` in that same derived class list, so no `class`
-	   attribute anywhere spells one. */
-	.adm-state--done {
-		color: var(--admin-tone-done-ink);
-		background: var(--admin-tone-done-tint);
-	}
-
-	.adm-state--attention {
-		color: var(--admin-tone-attention-ink);
-		background: var(--admin-tone-attention-tint);
-	}
-
-	.adm-state--blocker {
-		color: var(--admin-tone-blocker-ink);
-		background: var(--admin-tone-blocker-tint);
-	}
-
+	/* an ended record's status word: the registry's neutral badge with its ground taken away
+	   (packages/operator/src/components/status/StatusWord.jsx). a record at rest keeps the badge's
+	   ground, and the ground is what tells the two apart — one ink step between them is not a
+	   difference a list of a hundred rows shows. the registry has no groundless chip, so this is the
+	   one rule here drawn over a `ds-badge`, and it goes when the registry draws one.
+	   ./state-in-a-cell.spec.ts holds it. */
 	.adm-state--note {
 		color: var(--admin-tone-note-ink);
 		background: none;
-	}
-
-	/* a state in a cell keeps the pill, ground, corner and caption size, as the gifts list at
-	   /admin/donations draws its status column: the ground is what tells a record at rest from an
-	   ended one (`.adm-state--note` above), and a tone with no tint behind it is a coloured word an
-	   operator learns to scan instead of reading. the inset alone tightens, so the pill sits in a
-	   row at the row's own height rather than pushing every status row a step taller than the
-	   rows beside it. keyed on where the word is drawn and not on a prop a screen passes, so a
-	   table added later cannot forget it; ./state-in-a-cell.spec.ts holds it. */
-	.adm-table .adm-state {
-		padding: var(--admin-space-1) var(--admin-space-4);
 	}
 
 	/* the momentary register: this just happened, on this control. it reports beside the
@@ -1980,7 +1462,11 @@
 	   it is tighter than the step between it and the next field.
 
 	   only where a label is above it. a field named some other way draws none, and its sentence is
-	   then the first part of the field with nothing above it to belong to. */
+	   then the first part of the field with nothing above it to belong to.
+
+	   the bare `label` is packages/operator/src/components/forms/Field.jsx's, which is dressed by the
+	   registry's `ds-label` and wears no class of this sheet's. */
+	.adm-field > label + .adm-hint,
 	.adm-field > .adm-field__label + .adm-hint {
 		margin-block-start: var(--admin-space-1);
 	}
@@ -1990,13 +1476,18 @@
 	   puts the caret in the box. `justify-self` rather than a stated width, so a label too long for
 	   the field still wraps inside it instead of running past its edge, and the `(optional)` a
 	   caller puts inside the label stays part of the text it hugs. */
+	.adm-field > label,
 	.adm-field > .adm-field__label {
 		grid-row: 1;
 		justify-self: start;
 	}
 
+	/* the steps inside a field are the parts' top margins above, so the space under the registry's
+	   `ds-field-hint` (../registry/styles/field-css.css), which Field.jsx's sentence wears, is taken
+	   off: drawn as well, the box would stand the two steps added together under a sentence. */
 	.adm-field > .adm-hint {
 		grid-row: 2;
+		margin-block-end: 0;
 	}
 
 	/* the box, whichever of the three a field draws. the select is placed by its wrapper, because
@@ -2007,7 +1498,7 @@
 	   field that draws no hint, which is the row a neighbouring field in a `.adm-pair--side` keeps
 	   for one. */
 	.adm-field
-	> :is(.adm-input, .adm-textarea, .adm-selectwrap, .adm-maskwrap, .adm-leadwrap, .adm-actions) {
+	> :is(.adm-input, .adm-field__box, .adm-selectwrap, .adm-maskwrap, .adm-leadwrap, .adm-actions) {
 		grid-row: 3;
 	}
 
@@ -2040,15 +1531,14 @@
 		color: var(--admin-ink-muted);
 	}
 
-	/* carried-ok: .adm-input .adm-textarea .adm-select — each is put on its box by a derived class
-	   list rather than by a `class` attribute: the first two by
-	   `as === 'textarea' ? 'adm-textarea' : 'adm-input'` in
-	   packages/operator/src/components/forms/Field.jsx, and the select by
-	   packages/operator/src/components/forms/SelectWithNote.jsx, where it is the machine's trigger.
-	   between them those two components are every box either surface draws. */
+	/* the boxes this sheet still draws: the select, which is
+	   packages/operator/src/components/forms/SelectWithNote.jsx's machine trigger and put on it by
+	   that file's derived class list (carried-ok: .adm-select), and `.adm-input`, a text box a
+	   control draws by hand beside a run of choices. a box
+	   packages/operator/src/components/forms/Field.jsx draws is the registry's `ds-field-input` and
+	   is placed and finished by `.adm-field__box` below. */
 	.adm-input,
-	.adm-select,
-	.adm-textarea {
+	.adm-select {
 		inline-size: 100%;
 		min-block-size: var(--admin-field-height);
 		padding: var(--admin-space-3) var(--admin-space-4);
@@ -2060,20 +1550,10 @@
 		transition: var(--admin-transition-state);
 	}
 
-	.adm-textarea {
-		/* raw-length-ok: a textarea's floor is a shape — how much of what is typed into it is
-		   visible at once — rather than a measure anything else is read at. */
-		min-block-size: 6rem;
-		line-height: var(--admin-field-lh);
-		resize: vertical;
-	}
-
 	.adm-input:hover,
 	.adm-input.is-hover,
 	.adm-select:hover,
-	.adm-select.is-hover,
-	.adm-textarea:hover,
-	.adm-textarea.is-hover {
+	.adm-select.is-hover {
 		border-color: var(--admin-field-border-hover);
 	}
 
@@ -2083,7 +1563,6 @@
 	   read off the machine's own `data-disabled`, which it writes on its trigger. */
 	.adm-input:disabled,
 	.adm-select[data-disabled],
-	.adm-textarea:disabled,
 	.adm-affixed:has(> input:disabled) {
 		background: var(--admin-field-bg-disabled);
 		border-color: var(--admin-control-border-disabled);
@@ -2092,35 +1571,20 @@
 		cursor: not-allowed;
 	}
 
-	.adm-input::placeholder,
-	.adm-textarea::placeholder {
+	.adm-input::placeholder {
 		color: var(--admin-field-placeholder);
 	}
 
-	/* refused, on all three box types. a save that would not take what is in a box says so on the
-	   box, and a multi-line box is refused for the same reasons a single-line one is — so the rung
-	   is written across the trio the way the resting, hover and disabled rungs above are. the hover
-	   twins are named with it so the refusal outranks the hover rung, which on touch stays on a box
-	   after a tap.
-
-	   the second pixel of border is taken back out of the padding on the same rung, so the words in
-	   a refused box stand where they stood before it was refused. a box whose end padding is stated
-	   more narrowly — the masked one's, at `.adm-maskwrap > .adm-input` — keeps its own there, which
-	   moves nothing but where a long value stops. */
-	/* carried-ok: .adm-input--invalid .adm-textarea--invalid — put on the box by the derived class
-	   list in packages/operator/src/components/forms/Field.jsx, off either the message that control
-	   holds or an `aria-invalid` something larger than the one box marked it with. the select is
-	   marked by the machine's own `data-invalid`, off the same two in
-	   packages/operator/src/components/forms/SelectWithNote.jsx. */
-	.adm-input--invalid,
-	.adm-input--invalid:hover,
-	.adm-input--invalid.is-hover,
+	/* refused. a save that would not take what is in a box says so on the box. the hover twins are
+	   named with it so the refusal outranks the hover rung, which on touch stays on a box after a
+	   tap. the second pixel of border is taken back out of the padding on the same rung, so the
+	   words in a refused box stand where they stood before it was refused. the select is marked by
+	   the machine's own `data-invalid`, off the message
+	   packages/operator/src/components/forms/SelectWithNote.jsx holds or an `aria-invalid` something
+	   larger than the one box marked it with. */
 	.adm-select[data-invalid],
 	.adm-select[data-invalid]:hover,
-	.adm-select[data-invalid].is-hover,
-	.adm-textarea--invalid,
-	.adm-textarea--invalid:hover,
-	.adm-textarea--invalid.is-hover {
+	.adm-select[data-invalid].is-hover {
 		border-color: var(--admin-field-border-invalid);
 		border-width: var(--admin-border-width-strong);
 		padding: calc(
@@ -2131,21 +1595,40 @@
 			calc(var(--admin-space-4) - var(--admin-border-width-strong) + var(--admin-border-width));
 	}
 
+	/* carried-ok: .adm-field__box — put on the box by the derived class list in
+	   packages/operator/src/components/forms/Field.jsx.
+	   the box packages/operator/src/components/forms/Field.jsx draws. its look is the registry's
+	   `ds-field-input` (../registry/styles/field-css.css), the refused edge off `aria-invalid`
+	   included, and this is what the registry has no rule for. the class places the box in the
+	   field's row above and takes ./base.css's shadow ring off it, since the registry rings a
+	   focused box with its outline and two rings would stand around one box. */
+	.adm-field__box:focus-visible,
+	.adm-field__box.is-focus {
+		box-shadow: none;
+	}
+
+	/* a multi-line box: the registry's floor is a single line's. */
+	/* carried-ok: .adm-field__box--multiline .adm-field__box--needed .adm-field__box--code — each is
+	   put on the box by the derived class list in packages/operator/src/components/forms/Field.jsx. */
+	.adm-field__box--multiline {
+		/* raw-length-ok: a textarea's floor is a shape — how much of what is typed into it is
+		   visible at once — rather than a measure anything else is read at. */
+		min-block-size: 6rem;
+		line-height: var(--admin-field-lh);
+		resize: vertical;
+	}
+
 	/* needed but not invalid: something elsewhere on the page requires this box to be filled
-	   for the deployment to work, and the operator has not done anything wrong. the input is the
-	   whole of it and there is no select or textarea rung: the mark is put on the boxes a test send
-	   names, and every one of those is a single line of an address or a receipt. */
-	/* carried-ok: .adm-input--needed — put on a box by the derived class list in
-	   packages/operator/src/components/forms/Field.jsx rather than by a `class` attribute. */
-	.adm-input--needed {
+	   for the deployment to work, and the operator has not done anything wrong. the registry draws
+	   a refused box and no needed one. */
+	.adm-field__box--needed {
 		border-color: var(--admin-field-border-needed);
 		border-width: var(--admin-border-width-strong);
 	}
 
-	/* carried-ok: .adm-input--code — no screen sets a box in the mono face. the operator package's
-	   component library offers it as Field's `code`, at
-	   packages/operator/src/components/forms/Field.jsx. */
-	.adm-input--code {
+	/* the mono face, for a box holding a literal (Field's `code`). the registry's box takes the
+	   page's face. */
+	.adm-field__box--code {
 		font-family: var(--admin-font-mono);
 		font-size: var(--admin-code-size);
 	}
@@ -3067,7 +2550,7 @@
 
 	/* the room the press stands in: its own width, and the step of clear space between it and the
 	   last character of a value long enough to reach it. */
-	.adm-maskwrap > .adm-input {
+	.adm-maskwrap > .adm-field__box {
 		padding-inline-end: var(--admin-space-10);
 	}
 
@@ -3100,7 +2583,7 @@
 	   `--admin-control-size-sm` and 6.3rem as a small quiet press; with the reveal, the gap and the
 	   inset the cluster reaches about 8.95rem, and the sum below is 9.25rem. it is measured from
 	   those words, so new words are a new measurement. */
-	.adm-maskwrap:has(> .adm-maskwrap__presses) > .adm-input {
+	.adm-maskwrap:has(> .adm-maskwrap__presses) > .adm-field__box {
 		padding-inline-end: calc(var(--admin-space-9) * 4 + var(--admin-space-7));
 	}
 
@@ -3142,18 +2625,8 @@
 		block-size: var(--admin-brand-mark-size);
 	}
 
-	.adm-leadwrap .adm-input {
+	.adm-leadwrap .adm-field__box {
 		padding-inline-start: calc(var(--admin-space-4) + var(--admin-space-9) + var(--admin-space-3));
-	}
-
-	.adm-field__error {
-		display: flex;
-		align-items: flex-start;
-		gap: var(--admin-space-3);
-		font-size: var(--admin-hint-size);
-		line-height: var(--admin-hint-lh);
-		font-weight: var(--admin-error-weight);
-		color: var(--admin-tone-blocker-ink);
 	}
 
 	.adm-field__needed {
@@ -3457,7 +2930,7 @@
 	   edge, the control's ground and its hover; the taken one stands on the accent's selected step
 	   as `.adm-check--boxed` does, its words in the accent's deep ink. a chip in a row is round, which
 	   ./tokens.css allows a pressed control by name at `--admin-radius-pill`: its edge is what
-	   tells it from the read-only pill (`.adm-state`), which has none. a card keeps the plane's
+	   tells it from the read-only status badge (the registry's `ds-badge`), which has none. a card keeps the plane's
 	   corner.
 
 	   the focused chip takes the ring off the control inside it, for `.adm-check--boxed`'s reason.
@@ -3703,7 +3176,7 @@
 	   and a word read as one thing rather than a pair spread over a track apiece — a word placed in
 	   a track of its own lands past the width of the presses beside it, which is a word a hand's
 	   breadth from the mark it belongs to. so the step between the status's mark and its word is
-	   the button's own label step (`.adm-btn__label` above). the item is set at the start of its
+	   the button's own step between a mark and its words (`.adm-btn` above). the item is set at the start of its
 	   track, because the
 	   control's rank centres it and a control centred in a track sized by a longer one beside it is
 	   off its column by half the difference. and what stands there starts one line-width in whether
@@ -3863,7 +3336,7 @@
 
 	   a modifier on the chip rather than a class that redraws one: what is pressed is still that
 	   literal, so the face, the ground and the corner stay the chip's and this adds the press and
-	   nothing else. it is not `.adm-state`'s corner and must not become it — a state is read and a
+	   nothing else. it is not the status badge's corner and must not become it — a state is read and a
 	   press is taken, and ./tokens.css keeps the round one to the single thing that is only read.
 	   no `font-family` here for the same reason: a press holding a literal is in the code face, and
 	   the one holding words says so itself below.
@@ -4046,17 +3519,6 @@
 		background: var(--admin-slab-bg);
 		border: var(--admin-border-width) solid transparent;
 		border-radius: var(--admin-radius);
-	}
-
-	/* the control on the line is the quiet rank and keeps every rung of it but the pointed-at
-	   fill. that fill is rung 3, which is the slab's own ground, so a pointer arriving would change
-	   nothing; it takes the rank's press rung instead, the one rung past the slab's, and a press
-	   therefore draws what a pointer does. the control over a multi-line block stands outside it,
-	   on whatever the slab stands on, and the quiet rank's own fills read on the plane and on the
-	   page alike. */
-	.adm-slab--oneline .adm-btn--quiet:hover,
-	.adm-slab--oneline .adm-btn--quiet.is-hover {
-		background: var(--admin-control-quiet-bg-active);
 	}
 
 	.adm-slab--oneline > * {
@@ -4410,6 +3872,8 @@
 
 	   inside a record card it is every row: the card gaps what it holds itself, so a rule between
 	   any two of its blocks is a second separator drawn against a step that already separates them.
+	   `.adm-record` is a record a screen draws by hand, and `.adm-record__body` the body slot of
+	   packages/operator/src/components/data/RecordCard.jsx's registry card.
 
 	   inside `.adm-card` in the layout layer below it is the last row and no other. a card of
 	   settings is a run of rows with nothing but their rules between them, so the rules above are
@@ -4418,6 +3882,7 @@
 
 	   on a settings screen a row is what separates one setting from the next and keeps its rule. */
 	.adm-record .adm-setting,
+	.adm-record__body .adm-setting,
 	.adm-card .adm-setting:last-child {
 		border-block-end: 0;
 	}
@@ -4446,7 +3911,7 @@
 	/* the word in a value cell: what the row holds, said in words rather than drawn as a figure or
 	   a literal. a stored secret's marker, an act nobody performed, the reading a row was given.
 
-	   it is not `.adm-state` and must not become it. a value is not a state: `.adm-state` is a tag
+	   it is not the status badge and must not become it. a value is not a state: the badge is a tag
 	   because a record's own status is read as a unit and scanned down a list, and a reply-to
 	   address or a sum of money is none of those things. the pill around one would rank a setting
 	   against the settings beside it and shrink the value a reader came to check. so this
@@ -6333,14 +5798,13 @@
 
 	/* a quiet control at the start of the actions' own line aligns by its word rather than by its
 	   box: the quiet rank draws no ground, so what a reader takes for the start of the control is
-	   the first letter of its label, and that sits inside the inline padding and the transparent
-	   border every button keeps. the pull is exactly those two, which puts the word on the
-	   column's edge under the title's own first letter.
+	   the first letter of its label, and that sits inside the inline padding. the pull is exactly
+	   that padding, which puts the word on the column's edge under the title's own first letter.
 
-	   it spends `--admin-space-4` because that is what a small button pads itself by. a full-size
-	   quiet control at this edge would be a line of its own spending `--admin-space-5`, never this
-	   one widened to cover both — a pull that is not the padding it cancels is a second
-	   misalignment.
+	   it spends `--admin-space-5` because that is what the registry's small ghost press pads
+	   itself by, with no edge (the note at the rule). a full-size quiet control at this edge would
+	   be a line of its own spending its own padding, never this one widened to cover both — a pull
+	   that is not the padding it cancels is a second misalignment.
 
 	   in a page header the row is spaced apart, so the pull shows only where it should. sharing the
 	   title's line the actions sit at the far end, and a negative margin comes off the group's
@@ -6368,7 +5832,9 @@
 	.adm-grouped
 		> .adm-actions:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh))
 		> .adm-btn--quiet.adm-btn--sm:first-child {
-		margin-inline-start: calc(-1 * (var(--admin-space-4) + var(--admin-border-width)));
+		/* the registry's ghost small press is three of its spacing steps in from its word and draws
+		   no edge (`.ds-btn-sm`, ../registry/styles/button-css.css), which is this step. */
+		margin-inline-start: calc(-1 * var(--admin-space-5));
 	}
 
 	/* the trail of pages above this one, drawn by
@@ -6856,7 +6322,8 @@
 	   at the `inline-size: 100%` above would take the whole line on its own and put the press under
 	   it at every width. a masked box is on the row as its wrapper, for the reason
 	   `.adm-selectwrap` is — what stands in the row is what the box is inside of. */
-	.adm-actions > :is(.adm-input, .adm-textarea, .adm-maskwrap, .adm-leadwrap, .adm-field__boxcol) {
+	.adm-actions
+	> :is(.adm-input, .adm-field__box, .adm-maskwrap, .adm-leadwrap, .adm-field__boxcol) {
 		flex: 1 1 var(--admin-measure-panel);
 		min-inline-size: 0;
 	}
@@ -6877,14 +6344,15 @@
 	}
 
 	/* **a control standing on a field's own row takes the field's height, not the control's.** the
-	   two metrics differ by a step — a box is `--admin-field-height` and a button is
-	   `--admin-control-height` — and side by side that step is slack above and below the shorter of
-	   them, which reads as a control that missed the line rather than as two things on it. the
-	   field's is what wins because the box is the thing the row is for and the press is beside it.
-	   it is stated here rather than at each pair so the next row that puts the two together follows
-	   it instead of deciding again. */
+	   two metrics differ — the registry's box is its field size and its button the control tier
+	   under it — and side by side that step is slack above and below the shorter of them, which
+	   reads as a control that missed the line rather than as two things on it. the field's is what
+	   wins because the box is the thing the row is for and the press is beside it. the height is the
+	   registry's own field size, `--ds-field-size`, which ../registry/styles/button-css.css declares
+	   on every `ds-btn` for its `ds-btn-field` tier. it is stated here rather than at each pair so the
+	   next row that puts the two together follows it instead of deciding again. */
 	.adm-field > .adm-actions > .adm-btn {
-		min-block-size: var(--admin-field-height);
+		min-block-size: var(--ds-field-size);
 	}
 
 	@media (min-width: 44rem) {

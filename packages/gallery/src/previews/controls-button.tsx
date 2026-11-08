@@ -1,32 +1,19 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 
 /*
- * the smoke preview: every state packages/operator/src/styles/adm.css draws for Button — the five
- * ranks, the small size, a mark before and after, the four pointer states pinned by class rather
- * than triggered (the union on `state` in
- * packages/operator/src/components/controls/Button.jsx, which is the shared set plus the two the
- * sheet draws for `.adm-btn` alone), and `as` handed a plain anchor rather than a router's link,
- * since this package declares no router.
+ * the smoke preview: every rank and size packages/operator/src/components/controls/Button.jsx draws
+ * from the registry's button-css (packages/operator/src/registry/styles/button-css.css) — the five
+ * ranks, the small size, a mark before and after and a mark alone, and `as` handed a plain anchor
+ * rather than a router's link, since this package declares no router.
  *
- * the two filled ranks repeat all four pointer states, because they are the only ranks whose fill
- * moves under the pointer and whose ring is drawn inside the control rather than around it: a
- * label that stops clearing its fill on the press, or a ring that vanishes into it, is visible
- * here and nowhere else.
+ * no pointer state is pinned here: the registry draws hover, press and focus off the pseudo-classes
+ * alone, so they are reached with a pointer and a keyboard on this page. the closed presses are the
+ * two spellings a screen writes: the native `disabled`, which the registry draws, and
+ * `aria-disabled` on a press that keeps the focus, which packages/operator/src/styles/adm.css draws
+ * because the registry draws it on an anchor alone.
  *
- * the busy row is the one specimen with a rest twin standing next to it, and that pairing is the
- * whole point of it: a press in flight keeps the label it had and draws the dots over it, so the
- * only thing this page can show going wrong is the two boxes coming out different sizes. it repeats
- * across the ranks because the dots take their ink from the label's, so a rank whose ground moved
- * without its ink moving is dots nobody can see. `aria-busy` and nothing else turns them on.
- *
- * the three at the foot carry `disabled` beside it, which is what a real press in flight does — one
- * operator intent is one write. each stands beside the rank's plain disabled specimen above, and the
- * pair is the whole case: a press that is working holds its rank's active rung and a press that is
- * unavailable greys, so two specimens that came out the same colour is the finding.
- *
- * the two filled ranks closed by `aria-disabled` with the keyboard on them close the page: a press
- * closed that way keeps the focus, and over the closed grey the ring is the hugging one rather than
- * the inset near-white a solid fill wears, so a closed press with no ring visible is the finding.
+ * the busy row repeats across the ranks: a press in flight is the registry's `aria-busy` look, the
+ * disabled fill with the label still in it, and it is the same on every rank.
  */
 export default function ButtonPreview() {
 	return (
@@ -39,39 +26,23 @@ export default function ButtonPreview() {
 			<Button size="sm">small</Button>
 			<Button mark="plus">marked</Button>
 			<Button markAfter="check">marked after</Button>
-			<Button state="hover">hover</Button>
-			<Button state="active">active</Button>
-			<Button state="focus">focus</Button>
-			<Button state="disabled">disabled</Button>
+			<Button mark="x" aria-label="Remove" />
+			<Button variant="quiet" size="sm" mark="x" aria-label="Remove" />
 			<Button as="a" href="#">
 				as link
 			</Button>
-			<Button variant="primary" state="hover">
-				primary hover
-			</Button>
-			<Button variant="primary" state="active">
-				primary active
-			</Button>
-			<Button variant="primary" state="focus">
-				primary focus
-			</Button>
-			<Button variant="primary" state="disabled">
+			<Button disabled>disabled</Button>
+			<Button variant="primary" disabled>
 				primary disabled
 			</Button>
-			<Button variant="danger" state="hover">
-				danger hover
-			</Button>
-			<Button variant="danger" state="active">
-				danger active
-			</Button>
-			<Button variant="danger" state="focus">
-				danger focus
-			</Button>
-			<Button variant="danger" state="disabled">
+			<Button variant="danger" disabled>
 				danger disabled
 			</Button>
-			<Button>busy rest twin</Button>
-			<Button aria-busy>busy rest twin</Button>
+			<Button aria-disabled>closed, focusable</Button>
+			<Button variant="primary" aria-disabled>
+				primary closed, focusable
+			</Button>
+			<Button aria-busy>busy</Button>
 			<Button variant="primary" aria-busy>
 				primary busy
 			</Button>
@@ -83,21 +54,6 @@ export default function ButtonPreview() {
 			</Button>
 			<Button mark="plus" aria-busy>
 				marked busy
-			</Button>
-			<Button aria-busy disabled>
-				busy and closed
-			</Button>
-			<Button variant="primary" aria-busy disabled>
-				primary busy and closed
-			</Button>
-			<Button variant="danger" aria-busy disabled>
-				danger busy and closed
-			</Button>
-			<Button variant="primary" aria-disabled className="is-focus">
-				primary closed, focused
-			</Button>
-			<Button variant="danger" aria-disabled className="is-focus">
-				danger closed, focused
 			</Button>
 		</>
 	);

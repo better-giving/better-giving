@@ -270,12 +270,12 @@ it('draws a delivered row’s word as the neutral pill, in no tone, and keeps th
 	});
 
 	expect(
-		[...root.querySelectorAll('tbody .adm-state')].map((word) => [word.textContent, word.className])
+		[...root.querySelectorAll('tbody .ds-badge')].map((word) => [word.textContent, word.className])
 	).toEqual([
-		['Delivered', 'adm-state'],
-		['Waiting', 'adm-state adm-state--attention'],
-		['Failed', 'adm-state adm-state--blocker'],
-		['Withheld', 'adm-state adm-state--note']
+		['Delivered', 'ds-badge ds-badge-neutral'],
+		['Waiting', 'ds-badge ds-badge-warning'],
+		['Failed', 'ds-badge ds-badge-destructive'],
+		['Withheld', 'ds-badge ds-badge-neutral adm-state--note']
 	]);
 });
 

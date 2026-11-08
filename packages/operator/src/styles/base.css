@@ -144,10 +144,10 @@
 	   asks for a 700 the browser synthesises. emphasis there is the 500 file. the lists are every
 	   selector this sheet and ./adm.css set the code face on, and
 	   packages/app/src/lib/donate/mono-weights.spec.ts fails when one is missing.
-	   carried-ok: .adm-input--code — put on a box by the derived class list in
+	   carried-ok: .adm-field__box--code — put on a box by the derived class list in
 	   packages/operator/src/components/forms/Field.jsx rather than by a `class` attribute. */
 	:is(code, kbd, samp, pre) :is(b, strong),
-	:is(.adm-code, .adm-url, .adm-chip, .adm-braille-bar, .adm-input--code) :is(b, strong) {
+	:is(.adm-code, .adm-url, .adm-chip, .adm-braille-bar, .adm-field__box--code) :is(b, strong) {
 		/* type-ok: an emphasis inside a run, held to the code face's heaviest file. */
 		font-weight: var(--admin-weight-medium);
 	}

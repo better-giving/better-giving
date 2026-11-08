@@ -94,12 +94,20 @@ export function RecordCard({
 	const Title = titleAs;
 
 	return (
-		<article className="adm-record">
+		// the registry's card (../../registry/styles/card-css.css) draws the plane and its three slots;
+		// the `adm-record__*` classes beside them arrange what stands in each and draw no plane.
+		<article className="ds-card">
 			{/* the marked head is a second class and not a rule of its own: a head with a mark in it
 			    has three tracks, and one without has two ends held apart. both keep the baseline,
 			    which is what a heading and the word beside it are read on. ../../styles/adm.css
 			    argues both. */}
-			<div className={mark ? 'adm-record__head adm-record__head--marked' : 'adm-record__head'}>
+			<div
+				className={
+					mark
+						? 'ds-card-header adm-record__head adm-record__head--marked'
+						: 'ds-card-header adm-record__head'
+				}
+			>
 				{/* out of the accessibility tree: every record in a list whose records carry one carries
 				    the same glyph, so a reader told it on each of twenty is told nothing twenty times.
 				    what names the record is the name. */}
@@ -120,7 +128,55 @@ export function RecordCard({
 			</div>
 			{/* the two readings of the same origins: named and read, or taken. which one a card draws
 			    is settled by the props the screen had to hand rather than by a flag — the typedefs
-			    above are what make passing both a type error. */}
+			    above are what make passing both a type error. the read origins open the body; the
+			    taken ones are the footer, which stands last, under whatever the screen put in the
+			    body. a card with neither a reading nor anything handed in draws no body. */}
+			{foot && children === undefined ? null : (
+				<div className="ds-card-body adm-record__body">
+					{foot ? null : (
+						// the origins as a labelled value and not a run: what they are is the one fact a list
+						// of records is scanned for, and a row of identifiers under a title says nothing
+						// about which of the record's facts it is. ../../styles/adm.css drops the row's rule
+						// inside a card, so the card's own border is the only line.
+						<dl>
+							<div className="adm-setting">
+								<dt className="adm-setting__label" id={labelId}>
+									{originsLabel}
+								</dt>
+								{origins.length ? (
+									// a list and never the joined text, however few there are: an origin is an
+									// identifier, and a comma between two of them reads as part of one.
+									//
+									// the role is stated because nothing about this element is left reading as a
+									// list: packages/operator/src/styles/base.css takes `list-style` off every
+									// list in the document, and `.adm-record__origins` lays the items out as a
+									// flex row — either on its own is enough for a browser to stop reporting how
+									// many there are and where one ends.
+									<dd className="adm-setting__value">
+										{/* biome-ignore lint/a11y/noRedundantRoles: not redundant here, for the two
+										    reasons above — no marker and a flex row, either of which stops a browser
+										    reporting this as a list. removing the attribute re-opens the defect. */}
+										<ul role="list" aria-labelledby={labelId} className="adm-record__origins">
+											{origins.map((o) => (
+												<li key={o}>
+													<code className="adm-chip">{o}</code>
+												</li>
+											))}
+										</ul>
+									</dd>
+								) : (
+									// the value can be empty, and it says so in words: a blank value beside a
+									// label reads as a screen that failed to load one rather than as a record no
+									// site may use yet. it is a caption because it states what the record is
+									// rather than something to act on.
+									<dd className="adm-setting__value adm-caption">{emptyOrigins}</dd>
+								)}
+							</div>
+						</dl>
+					)}
+					{children}
+				</div>
+			)}
 			{foot ? (
 				// the foot keeps the list the labelled reading draws and drops the `<dl>` around it:
 				// what is at the foot of the card is a run of presses rather than a value the record
@@ -128,51 +184,10 @@ export function RecordCard({
 				// reasons the other reading states it for: no marker and a flex row, either of which
 				// stops a browser reporting this as a list. removing the attribute re-opens the defect.
 				// biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as above.
-				<ul role="list" className="adm-record__origins adm-record__foot">
+				<ul role="list" className="ds-card-footer adm-record__origins">
 					{foot}
 				</ul>
-			) : (
-				// the origins as a labelled value and not a run: what they are is the one fact a list of
-				// records is scanned for, and a row of identifiers under a title says nothing about
-				// which of the record's facts it is. ../../styles/adm.css drops the row's rule inside a
-				// card, so the card's own border is the only line.
-				<dl>
-					<div className="adm-setting">
-						<dt className="adm-setting__label" id={labelId}>
-							{originsLabel}
-						</dt>
-						{origins.length ? (
-							// a list and never the joined text, however few there are: an origin is an
-							// identifier, and a comma between two of them reads as part of one.
-							//
-							// the role is stated because nothing about this element is left reading as a
-							// list: packages/operator/src/styles/base.css takes `list-style` off every list
-							// in the document, and `.adm-record__origins` lays the items out as a flex row —
-							// either on its own is enough for a browser to stop reporting how many there are
-							// and where one ends.
-							<dd className="adm-setting__value">
-								{/* biome-ignore lint/a11y/noRedundantRoles: not redundant here, for the two
-							    reasons above — no marker and a flex row, either of which stops a browser
-							    reporting this as a list. removing the attribute re-opens the defect. */}
-								<ul role="list" aria-labelledby={labelId} className="adm-record__origins">
-									{origins.map((o) => (
-										<li key={o}>
-											<code className="adm-chip">{o}</code>
-										</li>
-									))}
-								</ul>
-							</dd>
-						) : (
-							// the value can be empty, and it says so in words: a blank value beside a label
-							// reads as a screen that failed to load one rather than as a record no site may
-							// use yet. it is a caption because it states what the record is rather than
-							// something to act on.
-							<dd className="adm-setting__value adm-caption">{emptyOrigins}</dd>
-						)}
-					</div>
-				</dl>
-			)}
-			{children}
+			) : null}
 		</article>
 	);
 }

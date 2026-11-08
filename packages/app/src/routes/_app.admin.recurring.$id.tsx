@@ -732,7 +732,7 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 						<div className="adm-actions">
 							<Link
 								aria-describedby="stop-cost"
-								className="adm-btn"
+								className="ds-btn ds-btn-secondary adm-btn"
 								preventScrollReset
 								ref={ask}
 								to={`${screen(id)}?confirm=stop`}

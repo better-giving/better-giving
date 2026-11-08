@@ -159,9 +159,9 @@ describe('a copy control mounted into a document', () => {
 		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
 	});
 
-	it('is drawn round while it is a mark alone, and keeps the corner once it is worded', () => {
-		// `.adm-btn--icon` in ../../styles/adm.css is the round shape, and this control writes it
-		// itself rather than through ./Button.jsx.
+	it('is squared while it is a mark alone, and keeps its padding once it is worded', () => {
+		// `.ds-btn-icon` in ../../registry/styles/button-css.css is the square shape, and this control
+		// writes it itself rather than through ./Button.jsx.
 		const unworded = render(CopyControl, { text: 'bgz_key' });
 		const worded = render(CopyControl, {
 			text: 'You are integrating…',
@@ -171,8 +171,8 @@ describe('a copy control mounted into a document', () => {
 		});
 
 		expect([
-			button(unworded).classList.contains('adm-btn--icon'),
-			button(worded).classList.contains('adm-btn--icon')
+			button(unworded).classList.contains('ds-btn-icon'),
+			button(worded).classList.contains('ds-btn-icon')
 		]).toEqual([true, false]);
 	});
 

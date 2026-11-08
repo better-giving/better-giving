@@ -13,7 +13,13 @@ import type {
 import { CHARIOT_TAG } from '@better-giving/form/embed/chariot';
 import type { ChallengeSeams } from '@better-giving/form/embed/challenge';
 import type { TurnstileLike } from '@better-giving/form/embed/turnstile';
-import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
+import {
+	CARD_THEME,
+	PART_NAMES,
+	REGISTRY_CLASS,
+	ROLE_TOKENS,
+	STATE_TOKENS
+} from '@better-giving/form/parts';
 import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
 import { act, createRef, type ReactElement, StrictMode, Suspense } from 'react';
@@ -1588,6 +1594,70 @@ it('emits only part names the element publishes, and no control anywhere is disa
 		[...names].filter((name) => (PART_NAMES as readonly string[]).includes(name)).sort()
 	);
 	expect(names.size).toBeGreaterThan(6);
+});
+
+// the controls the registry draws carry its classes, on the elements @better-giving/form's views.ts
+// gives them: every action, every box labelled over the top and the closed choices' boxes, every
+// box a donor ticks. the floating pair and the fee switch are the form's own and carry none. the
+// card's outer root carries the registry theme, so the roles those classes read re-resolve
+// against the brand scale declared on the same node.
+it('draws its controls with the registry’s classes, on the elements the element gives them', async () => {
+	const { root, payment } = await card();
+	const outer = root.firstElementChild;
+	expect(outer?.hasAttribute('data-donate-root')).toBe(true);
+	expect(outer?.getAttribute('data-theme')).toBe(CARD_THEME);
+
+	const seen = { action: 0, field: 0, floating: 0, checkbox: 0, fee: 0 };
+	const registryClasses = (node: HTMLElement): string[] =>
+		[...node.classList].filter((name) => name.startsWith('ds-'));
+	const collect = (): void => {
+		for (const node of every(root, '[part~="action"]')) {
+			expect(node.className, node.outerHTML).toBe(REGISTRY_CLASS.action);
+			seen.action += 1;
+		}
+		for (const node of every(root, '[part~="action-quiet"]')) {
+			expect(registryClasses(node), node.outerHTML).toEqual([]);
+		}
+		for (const node of every(root, '[part~="field"]')) {
+			const floating = node.closest('.field-row.floating') !== null;
+			if (floating) {
+				expect(registryClasses(node), node.outerHTML).toEqual([]);
+				seen.floating += 1;
+			} else {
+				expect(node.className, node.outerHTML).toBe(REGISTRY_CLASS.field);
+				seen.field += 1;
+			}
+		}
+		for (const node of every(root, '[part~="checkbox"]')) {
+			const fee = node.closest('.switch') !== null;
+			if (fee) {
+				expect(registryClasses(node), node.outerHTML).toEqual([]);
+				seen.fee += 1;
+			} else {
+				expect(node.className, node.outerHTML).toBe(REGISTRY_CLASS.checkbox);
+				seen.checkbox += 1;
+			}
+		}
+	};
+
+	collect();
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => {
+			throw new Error('no network in this pool');
+		})
+	);
+	await walkToGive(root);
+	collect();
+	payment.pick('card');
+	await act(async () => {
+		one(root, 'button[part~="submit"]').click();
+	});
+	expect(one(root, 'section.takeover').hidden).toBe(false);
+	collect();
+
+	// each kind was met, so no loop above passed over nothing.
+	for (const [kind, count] of Object.entries(seen)) expect(count, kind).toBeGreaterThan(0);
 });
 
 // the hole this page had while its payment seam composed one processor: a deployment holding

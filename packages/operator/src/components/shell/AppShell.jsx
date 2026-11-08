@@ -410,7 +410,7 @@ export function AppShell({
 							    with no Escape to send, which a phone's screen reader is — whose cursor
 							    reaches a control without focusing it, so one drawn only on focus would be a
 							    point a finger cannot find. */}
-							<Dialog.CloseTrigger className="adm-btn adm-btn--quiet adm-btn--sm adm-moresheet__close">
+							<Dialog.CloseTrigger className="ds-btn ds-btn-ghost ds-btn-sm adm-btn adm-btn--quiet adm-btn--sm adm-moresheet__close">
 								Close
 							</Dialog.CloseTrigger>
 						</Dialog.Content>

@@ -167,7 +167,7 @@ it('holds a placeholder rather than a plausible form in the empty list’s hidde
 
 	// a record's shape, so the create card stands as tall as one, and nothing a reader can reach.
 	expect(sample.querySelector('.adm-record__head--marked .adm-record__mark')).not.toBe(null);
-	expect(sample.querySelector('.adm-state')).not.toBe(null);
+	expect(sample.querySelector('.ds-badge')).not.toBe(null);
 	expect(sample.querySelectorAll('.adm-record__foot .adm-chip')).toHaveLength(1);
 	expect(sample.querySelector('a, h1, h2, h3, h4, h5, h6')).toBe(null);
 	// its name speaks of a form in general, and any address in the list is one RFC 2606 reserves,
@@ -179,22 +179,22 @@ it('holds a placeholder rather than a plausible form in the empty list’s hidde
 
 it('says a live form is not taking gifts while a blocker stands, and the sample stays Live', () => {
 	const root = screen(null, [GENERAL, APPEAL], DEPLOYER_SITES, undefined, true);
-	const live = records(root)[0]?.querySelector('.adm-state');
-	const draft = records(root)[1]?.querySelector('.adm-state');
+	const live = records(root)[0]?.querySelector('.ds-badge');
+	const draft = records(root)[1]?.querySelector('.ds-badge');
 
 	expect(live?.textContent).toBe('Not taking gifts');
-	expect(live?.classList.contains('adm-state--attention')).toBe(true);
-	expect(live?.classList.contains('adm-state--done')).toBe(false);
+	expect(live?.classList.contains('ds-badge-warning')).toBe(true);
+	expect(live?.classList.contains('ds-badge-primary')).toBe(false);
 	expect(draft?.textContent).toBe('Draft');
 	// the sample inside the create card is not a stored form.
-	expect(list(root).querySelector('[aria-hidden="true"] .adm-state')?.textContent).toBe('Live');
+	expect(list(root).querySelector('[aria-hidden="true"] .ds-badge')?.textContent).toBe('Live');
 });
 
 it('keeps Live on a live form while nothing blocks', () => {
-	const word = records(screen())[0]?.querySelector('.adm-state');
+	const word = records(screen())[0]?.querySelector('.ds-badge');
 
 	expect(word?.textContent).toBe('Live');
-	expect(word?.classList.contains('adm-state--done')).toBe(true);
+	expect(word?.classList.contains('ds-badge-primary')).toBe(true);
 });
 
 it('carries a form’s mark on the line its name is on, with its status word', () => {
