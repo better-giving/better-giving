@@ -62,9 +62,7 @@ function unlisted(
 		.filter((f) => statSync(join(base, f)).isFile())
 		.map((f) => f.split(sep).join('/'));
 	return [
-		...onDisk
-			.filter((f) => !(f in files))
-			.map((f) => `${f}: on disk but not listed in ${lock}`),
+		...onDisk.filter((f) => !(f in files)).map((f) => `${f}: on disk but not listed in ${lock}`),
 		...Object.keys(files)
 			.filter((f) => !onDisk.includes(f))
 			.map((f) => `${f}: listed in ${lock} but missing`)
