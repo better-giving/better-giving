@@ -88,7 +88,7 @@ describe('the files copied from the design registry', () => {
 		expect(mismatches(ROOT, dir, files, lock)).toEqual([]);
 	});
 
-	it('names a listed file that is not on disk', () => {
+	it('names a listed file that is not on disk, and the lock that lists it', () => {
 		const root = locks.find(({ lock }) => lock === 'bg-design.json');
 		if (!root) throw new Error('the root lock bg-design.json was not found');
 		// the case only proves something if the lookup reached the root lock's real copy folder.
@@ -103,7 +103,7 @@ describe('the files copied from the design registry', () => {
 		]);
 	});
 
-	it('names a file on disk the manifest does not list, and an empty manifest', () => {
+	it('names an unlisted file, a listed file not on disk, and an empty manifest', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'registry-tree-'));
 		try {
 			mkdirSync(join(dir, 'sub'));
