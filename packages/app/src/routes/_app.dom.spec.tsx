@@ -42,7 +42,7 @@ function frameAt(at: string, deployer = true): Promise<HTMLElement> {
 			id: 'app',
 			Component: () =>
 				createElement(ProtectedLayout as never, {
-					loaderData: { orgName: 'Riverbank Trust', deployer },
+					loaderData: { orgName: 'Riverbank Trust', deployer, viewerZone: null },
 					params: {},
 					matches: []
 				}),
@@ -315,7 +315,7 @@ async function frameOverReading() {
 			id: 'routes/_app',
 			Component: () =>
 				createElement(ProtectedLayout as never, {
-					loaderData: { orgName: 'Riverbank Trust', deployer: true },
+					loaderData: { orgName: 'Riverbank Trust', deployer: true, viewerZone: null },
 					params: {},
 					matches: []
 				}),

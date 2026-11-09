@@ -9,6 +9,8 @@ import { currentDestination, destinationGroupsFor } from '$lib/admin/destination
 import { operatorLinks } from '$lib/admin/operator-links';
 import { RouterLink } from '$lib/admin/router-link';
 import { APP_NAME } from '$lib/admin/screen-title';
+import { parseViewerZone, VIEWER_ZONE_COOKIE } from '$lib/admin/viewer-time';
+import { ViewerZoneProvider } from '$lib/admin/viewer-time.react';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { staffGate } from '$lib/server/auth/gate';
 import { readSetupState } from '$lib/server/config/setup-state';
@@ -75,7 +77,7 @@ export const links = operatorLinks;
 // client-side navigation only when the navigation asks the server for something, so a screen under
 // here with no loader of its own would be entered without the gate having run for it. one loader
 // on this route makes every navigation into the protected surface a request the gate sees.
-export async function loader({ context }: Route.LoaderArgs) {
+export async function loader({ request, context }: Route.LoaderArgs) {
 	// the top bar names the organisation: `null` where there is no row or the read did not
 	// land, and the bar then says what the software is instead. a read that throws is swallowed
 	// ($lib/server/config/setup-state.ts), because this layout covers the screens that explain a
@@ -87,10 +89,30 @@ export async function loader({ context }: Route.LoaderArgs) {
 	//
 	// `deployer` is the predicate the pages in the rail's Integrations group read, read again here
 	// so a member is drawn no cell leading to their not-found ($lib/admin/destinations.ts).
+	//
+	// `viewerZone` is the zone the `admin_zone` cookie names, so an instant on any screen beneath
+	// renders on the server in the viewer's own day ($lib/admin/viewer-time.react.tsx). the cookie is
+	// `Path=/`, so it rides on document and data requests alike, `/admin.data` included. before the
+	// browser has written one, and for a value that is no zone, this is null, and `useViewerZone` falls
+	// back to the browser's own zone, or to UTC where this runtime cannot write in that one
+	// (`LocalTime`).
 	return {
 		orgName: state?.profile?.legalName ?? null,
-		deployer: context.get(staff).id === STAFF_USER_ID
+		deployer: context.get(staff).id === STAFF_USER_ID,
+		viewerZone: parseViewerZone(cookieValue(request.headers, VIEWER_ZONE_COOKIE))
 	};
+}
+
+/**
+ * the raw value of the cookie `name`, or null where the request carries none. not react router's
+ * `createCookie`, which reads a value it signed or encoded itself: the browser writes this one as is.
+ */
+function cookieValue(headers: Headers, name: string): string | null {
+	for (const element of headers.get('cookie')?.split(';') ?? []) {
+		const at = element.indexOf('=');
+		if (at !== -1 && element.slice(0, at).trim() === name) return element.slice(at + 1).trim();
+	}
+	return null;
 }
 
 export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
@@ -170,7 +192,9 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 						</h1>
 					) : null
 				}
-				<Outlet />
+				<ViewerZoneProvider serverZone={loaderData.viewerZone}>
+					<Outlet />
+				</ViewerZoneProvider>
 			</AppShell>
 		</>
 	);

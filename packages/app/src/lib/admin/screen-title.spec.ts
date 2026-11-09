@@ -13,7 +13,7 @@ const layout = (orgName: string | null): LayoutMatch => ({
 	params: {},
 	pathname: '/admin',
 	meta: [],
-	loaderData: { orgName, deployer: true }
+	loaderData: { orgName, deployer: true, viewerZone: null }
 });
 
 describe('a screen title', () => {

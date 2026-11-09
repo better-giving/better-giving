@@ -42,7 +42,6 @@ type Screen = {
 		event: string;
 		status: string;
 		at: string;
-		when: string;
 		answer: number | null;
 		attempts: number;
 	}[];
@@ -244,7 +243,6 @@ describe('GET /admin/integrations/webhooks/:id', () => {
 				status: 'pending',
 				answer: null,
 				attempts: 0,
-				when: '28 Sep 2026, 10:50 UTC',
 				at: '2026-09-28T10:50:00.000Z'
 			}),
 			expect.objectContaining({
@@ -252,7 +250,7 @@ describe('GET /admin/integrations/webhooks/:id', () => {
 				status: 'pending',
 				answer: 500,
 				attempts: 2,
-				when: '28 Sep 2026, 10:49 UTC'
+				at: '2026-09-28T10:49:00.000Z'
 			}),
 			expect.objectContaining({
 				event: 'gift.refunded',
@@ -266,10 +264,11 @@ describe('GET /admin/integrations/webhooks/:id', () => {
 				status: 'delivered',
 				answer: 200,
 				attempts: 1,
-				when: '28 Sep 2026, 10:46 UTC'
+				at: '2026-09-28T10:46:00.000Z'
 			})
 		]);
-		expect(deliveries.at(-1)?.when).toBe('28 Sep 2026, 10:01 UTC');
+		expect(deliveries.at(-1)?.at).toBe('2026-09-28T10:01:00.000Z');
+		expect(Object.keys(deliveries[0] ?? {})).not.toContain('when');
 	});
 
 	it('reads paused, with how many events it is holding', async () => {

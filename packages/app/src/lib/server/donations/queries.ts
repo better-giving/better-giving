@@ -527,7 +527,10 @@ export async function listDonations(db: Db): Promise<DonationPage> {
 		.orderBy(desc(donation.receivedAt), desc(donation.id))
 		.limit(DONATION_LIST_LIMIT + 1);
 
-	// newest first, so the row the cap drops is the oldest of the ones fetched.
+	// newest first by stored instant, so the row the cap drops is the oldest of the ones fetched and
+	// "only the most recent 50 are shown" is true of that order. the page re-sorts the kept rows by
+	// the day each shows in the viewer's zone (../../admin/received-order.ts), so near the cut a
+	// dropped gift can show a later day than a kept one.
 	const page = rows.slice(0, DONATION_LIST_LIMIT);
 	const hasMore = rows.length > DONATION_LIST_LIMIT;
 

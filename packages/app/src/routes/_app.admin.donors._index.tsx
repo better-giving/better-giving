@@ -6,6 +6,7 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { href, Link } from 'react-router';
 import { screenTitle } from '$lib/admin/screen-title';
+import { LocalTime } from '$lib/admin/viewer-time.react';
 import { CONSENT_LABELS, consentState } from '$lib/contacts/consent';
 import { KIND_LABELS } from '$lib/contacts/kinds';
 import { formatMinor } from '$lib/donations/money';
@@ -110,11 +111,9 @@ function viewParam(view: ContactView): string {
 /**
  * how a month is spelled under either end of the run — 'Oct 2025'.
  *
- * built here rather than in the component for the reason the money and the date columns are: an
- * `Intl` call in the page runs once on the Worker and again in the browser, in two different
- * locales and time zones, which is a hydration mismatch as well as a lie about whose month it is.
- * `UTC` because the buckets are UTC calendar months, and a label formatted in another zone would
- * name a month the count beneath it is not of.
+ * `UTC` and never the viewer's zone: the buckets are UTC calendar months summed in SQL
+ * ($lib/server/months.ts), so the bucket decides the month, and a label formatted in another zone
+ * would name a month the count beneath it is not of.
  *
  * `en-US` matches `DISPLAY_LOCALE` in $lib/donations/money.ts, which is private to that module —
  * one deployment states its figures in one language, and a second spelling of that decision is
@@ -213,12 +212,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 			// donor's gifts are all in it — and the figure is a sum, which is a number only one
 			// currency can be added into.
 			given: formatMinor(c.given, FORM_CURRENCY),
-			// the date only, ISO, formatted here rather than in the component. an
-			// `Intl.DateTimeFormat` in the page would run once on the Worker during ssr and
-			// again in the browser, in two different locales and time zones, which is a
-			// hydration mismatch as well as a lie about whose "today" it is. a fixed format has
-			// neither problem, and `<time dateTime>` carries the machine-readable value.
-			createdOn: c.createdAt.toISOString().slice(0, 10)
+			// the instant, ISO, which `LocalTime` writes as the day in the viewer's zone
+			// ($lib/admin/viewer-time.react.tsx).
+			createdAt: c.createdAt.toISOString()
 		})),
 		// every unarchived donor, which is what the caption counts against — the page it is on is
 		// a slice of that rather than the whole of what the deployment holds.
@@ -431,7 +427,7 @@ export default function Donors({ loaderData }: Route.ComponentProps) {
 								{CONSENT_LABELS[consentState(c.consentedToContact)]}
 							</StatusWord>
 						),
-						added: <time dateTime={c.createdOn}>{c.createdOn}</time>
+						added: <LocalTime at={c.createdAt} style="iso-day" />
 					}
 				}))}
 				// a fresh deployment and not an error, which is why `DataTable` marks it with an

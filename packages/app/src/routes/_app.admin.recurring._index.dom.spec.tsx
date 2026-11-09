@@ -2,6 +2,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
+import { browserIn } from '$lib/admin/viewer-time.testing';
 import RecurringGifts from './_app.admin.recurring._index';
 
 // the status word on each row of the recurring gifts list, drawn.
@@ -47,7 +48,7 @@ function plan(over: Partial<Plan> = {}): Plan {
 		amount: '$123.45',
 		interval: 'monthly',
 		status: 'active',
-		nextChargeOn: '2026-09-04',
+		nextChargeAt: '2026-09-04T14:00:00.000Z',
 		...over
 	};
 }
@@ -78,7 +79,19 @@ it.each([
 	['cancelled', 'Stopped', 'ds-badge ds-badge-neutral adm-state--note'],
 	['lapsed', 'Payment failed', 'ds-badge ds-badge-destructive']
 ] as const)('draws a %s commitment’s status word on its own rung', (status, label, drawn) => {
-	const word = statusWord(screen([plan({ status, nextChargeOn: null })]));
+	const word = statusWord(screen([plan({ status, nextChargeAt: null })]));
 	expect(word?.textContent).toBe(label);
 	expect(word?.className).toBe(drawn);
+});
+
+it.each([
+	['Asia/Manila', '2026-10-22'],
+	['America/New_York', '2026-10-21']
+])('draws the next charge as the day in a browser in %s', (zone, day) => {
+	browserIn(zone);
+	const row = screen([plan({ nextChargeAt: '2026-10-21T16:23:00.000Z' })]).querySelector(
+		'tbody tr'
+	);
+
+	expect(row?.textContent).toContain(day);
 });

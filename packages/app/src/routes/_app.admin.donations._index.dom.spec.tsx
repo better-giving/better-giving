@@ -1,7 +1,10 @@
 import { act, createElement, type ReactNode } from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { createRoutesStub } from 'react-router';
-import { expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { ViewerZoneProvider } from '$lib/admin/viewer-time.react';
+import { browserIn } from '$lib/admin/viewer-time.testing';
 import Donations from './_app.admin.donations._index';
 
 // the dedication cell, drawn.
@@ -11,6 +14,10 @@ import Donations from './_app.admin.donations._index';
 // where those are asserted — but `In memory of Margaret Chen` is the phrase and the honoree joined
 // here, in the page, and a join that lost the space or put the name first would ship with every
 // workers case green.
+//
+// and the day a gift was received: an instant written in the viewer's zone the layout read, which
+// is the page's doing ($lib/admin/viewer-time.react.tsx), beside the day the loader crossed for a
+// gift in hand.
 //
 // it also holds the column apart from the message beside it. a dedication is a structured fact the
 // organisation reports on and a message is free text a donor wrote, and the whole argument for a
@@ -50,7 +57,7 @@ function gift(over: Partial<Gift> = {}): Gift {
 		id: '019fb300-0000-7000-8000-000000000001',
 		donorName: 'Ada Okafor',
 		amount: '$123.45',
-		receivedOn: '2026-07-04',
+		receivedAt: '2026-07-04T14:00:00.000Z',
 		source: 'Annual appeal',
 		note: null,
 		status: 'completed',
@@ -72,6 +79,10 @@ function gift(over: Partial<Gift> = {}): Gift {
  * alone.
  */
 function screen(donations: Gift[]): HTMLElement {
+	return mount(stubbed(donations));
+}
+
+function stubbed(donations: Gift[]): ReactNode {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/donations',
@@ -83,7 +94,20 @@ function screen(donations: Gift[]): HTMLElement {
 				})
 		}
 	]);
-	return mount(createElement(Stub, { initialEntries: ['/admin/donations'] }));
+	return createElement(Stub, { initialEntries: ['/admin/donations'] });
+}
+
+/**
+ * the screen as the server sends it, under the zone the layout read off the `admin_zone` cookie
+ * (./_app.tsx). the server's text is what a viewer first reads, and the browser hydrates that same
+ * text ($lib/admin/viewer-time.dom.spec.tsx).
+ */
+function served(donations: Gift[], serverZone: string | null): HTMLElement {
+	const root = document.createElement('div');
+	root.innerHTML = renderToString(
+		<ViewerZoneProvider serverZone={serverZone}>{stubbed(donations)}</ViewerZoneProvider>
+	);
+	return root;
 }
 
 /**
@@ -266,4 +290,123 @@ it.each([
 ] as const)('draws an ended gift’s word as the note, for %s', (status, drawn) => {
 	const word = screen([gift({ status })]).querySelector('tbody .ds-badge');
 	expect(word?.className).toBe(drawn);
+});
+
+describe('the day a gift was received', () => {
+	it('is the viewer’s day for a gift given late at night in Manila', () => {
+		const late = [gift({ receivedAt: '2026-10-21T16:23:00.000Z' })];
+
+		expect(cell(served(late, 'Asia/Manila'), 'Received')).toBe('2026-10-22');
+		expect(cell(served(late, 'America/New_York'), 'Received')).toBe('2026-10-21');
+	});
+
+	it('turns at the viewer’s midnight, not at UTC’s', () => {
+		const midnight = [gift({ receivedAt: '2026-10-21T00:00:00.000Z' })];
+
+		expect(cell(served(midnight, 'Asia/Manila'), 'Received')).toBe('2026-10-21');
+		expect(cell(served(midnight, 'America/New_York'), 'Received')).toBe('2026-10-20');
+	});
+
+	it.each([
+		['Asia/Manila', '2026-10-22'],
+		['America/New_York', '2026-10-21']
+	])('moves to the day of a browser in %s once mounted there', (zone, day) => {
+		browserIn(zone);
+		const late = [gift({ receivedAt: '2026-10-21T16:23:00.000Z' })];
+
+		expect(cell(screen(late), 'Received')).toBe(day);
+	});
+
+	it('keeps the day typed for money that arrived in hand, in the browser’s zone too', () => {
+		const inHand = [gift({ receivedAt: undefined, receivedOn: '2026-10-21', paidWith: 'Cash' })];
+
+		browserIn('Asia/Manila');
+		expect(cell(screen(inHand), 'Received')).toBe('2026-10-21');
+	});
+
+	// a case names a gift by its donor, the one cell that says which gift a row holds.
+	const newestFirst = [
+		gift({
+			id: '019fb300-0000-7000-8000-000000000003',
+			donorName: 'Online',
+			receivedAt: '2026-10-22T02:00:00.000Z'
+		}),
+		gift({
+			id: '019fb300-0000-7000-8000-000000000002',
+			donorName: 'In hand',
+			receivedAt: undefined,
+			receivedOn: '2026-10-22',
+			paidWith: 'Cash'
+		}),
+		gift({
+			id: '019fb300-0000-7000-8000-000000000001',
+			donorName: 'Earlier',
+			receivedAt: '2026-10-21T13:00:00.000Z'
+		})
+	];
+	const rowsOf = (root: HTMLElement) =>
+		[...root.querySelectorAll('tbody tr')].map((tr) => [
+			tr.querySelector('th')?.textContent,
+			tr.querySelectorAll('td')[0]?.textContent
+		]);
+
+	it('never lists a later day below an earlier one, west of UTC', () => {
+		// newest first by the stored instant, as `listDonations` orders them: the in-hand gift is
+		// stored at its day's UTC midnight, so the online one at 02:00Z sorts above it yet shows the
+		// 21st in New York.
+		expect(rowsOf(served(newestFirst, 'America/New_York'))).toEqual([
+			['2026-10-22', 'In hand'],
+			['2026-10-21', 'Online'],
+			['2026-10-21', 'Earlier']
+		]);
+		browserIn('America/New_York');
+		expect(rowsOf(screen(newestFirst))).toEqual([
+			['2026-10-22', 'In hand'],
+			['2026-10-21', 'Online'],
+			['2026-10-21', 'Earlier']
+		]);
+	});
+
+	it('keeps the stored order, and draws no instant, for a viewer with no zone yet', () => {
+		expect(rowsOf(served(newestFirst, null))).toEqual([
+			['', 'Online'],
+			['2026-10-22', 'In hand'],
+			['', 'Earlier']
+		]);
+	});
+
+	it('recovers to the browser’s order when it hydrates a server order it reorders', async () => {
+		// served in Manila, where both top gifts show the 22nd and the stored order stands; the
+		// browser is in New York, where the online gift moves below the in-hand one.
+		const host = served(newestFirst, 'Asia/Manila');
+		document.body.appendChild(host);
+		expect(rowsOf(host).map(([, donor]) => donor)).toEqual(['Online', 'In hand', 'Earlier']);
+		browserIn('America/New_York');
+
+		const recovered: unknown[] = [];
+		const mounted = await act(async () =>
+			hydrateRoot(
+				host,
+				<ViewerZoneProvider serverZone="Asia/Manila">{stubbed(newestFirst)}</ViewerZoneProvider>,
+				{ onRecoverableError: (e) => recovered.push(e) }
+			)
+		);
+		onTestFinished(() => {
+			act(() => mounted.unmount());
+			host.remove();
+		});
+
+		expect(rowsOf(host)).toEqual([
+			['2026-10-22', 'In hand'],
+			['2026-10-21', 'Online'],
+			['2026-10-21', 'Earlier']
+		]);
+	});
+
+	it('keeps the day typed for money that arrived in hand, in every zone', () => {
+		const inHand = [gift({ receivedAt: undefined, receivedOn: '2026-10-21', paidWith: 'Cash' })];
+
+		expect(cell(served(inHand, 'Asia/Manila'), 'Received')).toBe('2026-10-21');
+		expect(cell(served(inHand, 'America/New_York'), 'Received')).toBe('2026-10-21');
+	});
 });

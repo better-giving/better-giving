@@ -2,6 +2,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, redirect } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
+import { browserIn } from '$lib/admin/viewer-time.testing';
 import RecurringGift from './_app.admin.recurring.$id';
 
 // every sentence on this screen that names a processor, drawn, and the card they are read in.
@@ -64,9 +65,9 @@ function commitment(over: Partial<Loaded> = {}): Loaded {
 		amount: '$123.45',
 		interval: 'monthly',
 		status: 'active',
-		startedOn: '2026-06-01',
-		nextChargeOn: '2026-09-04',
-		endedOn: null,
+		startedAt: '2026-06-01T08:00:00.000Z',
+		nextChargeAt: '2026-09-04T14:00:00.000Z',
+		endedAt: null,
 		formId: 'frm_recurringdetail1',
 		formName: 'Spring appeal',
 		processor: 'Stripe',
@@ -169,7 +170,7 @@ it('states what stopping costs in the words the commitment’s processor is name
 	expect(words(screen(commitment(asking)))).toContain('Stripe stops collecting it straight away.');
 
 	const lapsed = words(
-		screen(commitment({ ...asking, status: 'lapsed', processor: 'PayPal', nextChargeOn: null }))
+		screen(commitment({ ...asking, status: 'lapsed', processor: 'PayPal', nextChargeAt: null }))
 	);
 	expect(lapsed).toContain('PayPal is not collecting this now');
 	expect(lapsed).not.toContain('Stripe');
@@ -188,7 +189,7 @@ it('states the cost with no processor in it where none stands behind the commitm
 it('names the processor that gave up, in the note under a payment-failed heading', () => {
 	// the note that stops a staff member reading "payment failed" as "already over" and leaving a
 	// donor collected from after they asked to stop.
-	const lapsed = { status: 'lapsed' as const, nextChargeOn: null };
+	const lapsed = { status: 'lapsed' as const, nextChargeAt: null };
 	expect(words(screen(commitment(lapsed)))).toContain('Stripe stopped collecting');
 	const paypal = words(screen(commitment({ ...lapsed, processor: 'PayPal' })));
 	expect(paypal).toContain('PayPal stopped collecting');
@@ -317,7 +318,37 @@ it.each([
 	['cancelled', 'Stopped', 'ds-badge ds-badge-neutral adm-state--note'],
 	['lapsed', 'Payment failed', 'ds-badge ds-badge-destructive']
 ] as const)('draws a %s commitment’s status word on its own rung', (status, label, drawn) => {
-	const word = statusWord(screen(commitment({ status, nextChargeOn: null })));
+	const word = statusWord(screen(commitment({ status, nextChargeAt: null })));
 	expect(word?.textContent).toBe(label);
 	expect(word?.className).toBe(drawn);
 });
+
+/** the value beside the term `label` in the record's definition list. */
+function detailValue(root: HTMLElement, label: string): string | undefined {
+	const term = [...root.querySelectorAll('dt')].find((dt) => dt.textContent === label);
+	return term?.parentElement?.querySelector('dd')?.textContent ?? undefined;
+}
+
+it.each([
+	// each instant is late enough in UTC to fall on the next day in Manila and early enough to fall
+	// on the previous one in New York, so a date wired to the wrong field or written in UTC differs.
+	['Asia/Manila', ['2026-06-02', '2026-09-05', '2026-10-22']],
+	['America/New_York', ['2026-06-01', '2026-09-04', '2026-10-21']]
+] as const)(
+	'draws started, next charge and stopped as their own days for a browser in %s',
+	(zone, [started, next, stopped]) => {
+		browserIn(zone);
+		const root = screen(
+			commitment({
+				status: 'cancelled',
+				startedAt: '2026-06-01T16:30:00.000Z',
+				nextChargeAt: '2026-09-04T17:00:00.000Z',
+				endedAt: '2026-10-21T16:23:00.000Z'
+			})
+		);
+
+		expect(detailValue(root, 'Started')).toBe(started);
+		expect(detailValue(root, 'Next charge')).toBe(next);
+		expect(detailValue(root, 'Stopped')).toBe(stopped);
+	}
+);

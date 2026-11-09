@@ -27,6 +27,7 @@ import { useAfterPaint } from '$lib/admin/after-paint';
 import { useAnswerRevision } from '$lib/admin/answer-revision';
 import { buttonState } from '$lib/admin/save-button-state';
 import { screenTitle } from '$lib/admin/screen-title';
+import { LocalTime } from '$lib/admin/viewer-time.react';
 import {
 	type AdminActionData,
 	resultFor,
@@ -111,16 +112,6 @@ const screen = (id: string) => href('/admin/integrations/webhooks/:id', { id });
 /** how many of its deliveries the page lists. */
 const RECENT_DELIVERIES = 50;
 
-const MONTH = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' });
-const twoDigits = (n: number) => String(n).padStart(2, '0');
-/**
- * a moment as the deliveries list says it, in UTC and formatted here: an `Intl.DateTimeFormat` in
- * the page would run once on the Worker during ssr and again in the browser, in two time zones.
- */
-const whenOf = (at: Date) =>
-	`${at.getUTCDate()} ${MONTH.format(at)} ${at.getUTCFullYear()}, ` +
-	`${twoDigits(at.getUTCHours())}:${twoDigits(at.getUTCMinutes())} UTC`;
-
 export const handle = {
 	crumbs: ({ pathname, loaderData }) => [
 		{ href: href('/admin/integrations/webhooks'), label: 'Webhooks' },
@@ -179,8 +170,8 @@ export async function loader({ context, params, request, url }: Route.LoaderArgs
 				id: delivery.id,
 				event: delivery.event,
 				status: delivery.status,
+				// the instant, which `LocalTime` writes in the viewer's zone ($lib/admin/viewer-time.react.tsx).
 				at: delivery.createdAt.toISOString(),
-				when: whenOf(delivery.createdAt),
 				answer: delivery.lastStatus,
 				attempts: delivery.attempts
 			}))
@@ -451,7 +442,7 @@ function RecentDeliveries({ deliveries }: { readonly deliveries: Loaded['deliver
 					id: delivery.id,
 					cells: {
 						event: WEBHOOK_EVENTS[delivery.event],
-						when: <time dateTime={delivery.at}>{delivery.when}</time>,
+						when: <LocalTime at={delivery.at} style="moment" />,
 						outcome: (
 							<StatusWord tone={OUTCOMES[delivery.status].tone}>
 								{OUTCOMES[delivery.status].word}

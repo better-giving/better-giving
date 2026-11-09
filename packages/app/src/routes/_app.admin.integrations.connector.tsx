@@ -4,6 +4,7 @@ import { Stack } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Form } from 'react-router';
 import { operatorLinks } from '$lib/admin/operator-links';
+import { LocalTime } from '$lib/admin/viewer-time.react';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
 import { listConnections, revokeConnectorKey } from '$lib/server/connector/keys';
@@ -47,8 +48,6 @@ export async function action({ context, request }: Route.ActionArgs) {
 	return { disconnected: await revokeConnectorKey(context.get(database), id, 'dashboard') };
 }
 
-const day = (iso: string) => iso.slice(0, 10);
-
 export default function ConnectorConnections({ loaderData, actionData }: Route.ComponentProps) {
 	return (
 		<PanelRoute>
@@ -68,10 +67,15 @@ export default function ConnectorConnections({ loaderData, actionData }: Route.C
 					{loaderData.connections.map((connection) => (
 						<Form method="post" key={connection.id} className="adm-actions">
 							<span>
-								Connected {day(connection.createdAt)} · key {connection.key}
-								{connection.lastUsedAt
-									? ` · last used ${day(connection.lastUsedAt)}`
-									: ' · not used yet'}
+								Connected <LocalTime at={connection.createdAt} style="day" /> · key {connection.key}
+								{connection.lastUsedAt ? (
+									<>
+										{' '}
+										· last used <LocalTime at={connection.lastUsedAt} style="day" />
+									</>
+								) : (
+									' · not used yet'
+								)}
 							</span>
 							<input type="hidden" name="connection" value={connection.id} />
 							<Button>Disconnect</Button>
