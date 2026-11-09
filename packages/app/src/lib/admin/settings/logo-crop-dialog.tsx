@@ -106,9 +106,13 @@ const squareWords = (square: CropSquare | null): string =>
 /**
  * every drop on the card taken by it, the ground around it included: while the card is up a drop
  * anywhere lands on its `dialog`, the ground being that element's own `::backdrop`. the operator
- * `Modal` hands no element out, so the card is found from an element drawn inside it.
+ * `Modal` hands no element out, so the card is found from an element drawn inside it. the banner's
+ * crop card (./banner-crop-dialog.tsx) takes the same types and drops the same way.
  */
-function useDropsOnCard(inside: RefObject<HTMLElement | null>, onSwap: (file: File) => void): void {
+export function useDropsOnCard(
+	inside: RefObject<HTMLElement | null>,
+	onSwap: (file: File) => void
+): void {
 	const swap = useEffectEvent(onSwap);
 	useEffect(() => {
 		const card = inside.current?.closest('dialog');
@@ -135,7 +139,7 @@ function useDropsOnCard(inside: RefObject<HTMLElement | null>, onSwap: (file: Fi
 }
 
 /** the address a file is drawn from: its own object url for as long as the card is up. */
-function useImageSource(file: File): string | null {
+export function useImageSource(file: File): string | null {
 	const [made, setMade] = useState<string | null>(null);
 	useEffect(() => {
 		const url = URL.createObjectURL(file);

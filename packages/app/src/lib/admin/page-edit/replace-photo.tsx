@@ -52,7 +52,7 @@ export type ReplacePhotoControlProps = Description &
 		/** the placed photo as it is served; absent while the block holds none. */
 		readonly imageSrc?: string | undefined;
 		/** what the presses name: `Add photo`, `Replace photo`, `Remove the photo`. */
-		readonly noun?: 'photo' | 'logo' | undefined;
+		readonly noun?: 'photo' | 'logo' | 'banner' | undefined;
 		/**
 		 * `resizing` while a caller's own step after an `onChosen` pick runs; `uploading` while the
 		 * route posts; `removing` while it takes the image off; `refused` with the words to show at the

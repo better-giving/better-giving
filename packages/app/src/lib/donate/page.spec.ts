@@ -351,7 +351,12 @@ describe('every colour lands on the radix step for its job', () => {
 				".page-tiers[data-shape='cards'] .page-tier | background": 'slate-1',
 				'.page-goal-track | background': 'slate-3',
 				'.page-share-button | background': 'slate-1',
-				'.page-choose .page-choose-option:has(:checked) | background': 'slate-1'
+				'.page-choose .page-choose-option:has(:checked) | background': 'slate-1',
+				'.page > .page-ground | --page-profile-band': 'brand-3',
+				'.page-profile-banner | background': 'slate-3',
+				'.page-profile-band | background': 'brand-3',
+				'.page-profile-logo | background': 'slate-1',
+				'.page-profile-raised | background': 'slate-1'
 			}
 		},
 		'3, 4 and 5: a control’s ground, its hover and its press': {
@@ -383,7 +388,10 @@ describe('every colour lands on the radix step for its job', () => {
 				".page-choose-option:has([aria-disabled='true']:not(:checked)) | border-color": 'slate-7',
 				[`.page-choose .page-choose-option:hover${IDLE} | border-color`]: 'slate-8',
 				[`.page-choose .page-choose-option:active${IDLE} | border-color`]: 'slate-8',
-				'.page-choose .page-choose-option:has(:checked) | border-color': 'brand-8'
+				'.page-choose .page-choose-option:has(:checked) | border-color': 'brand-8',
+				'.page-profile-banner, .page-profile-band | border': 'slate-6',
+				'.page-profile-logo | border': 'slate-6',
+				'.page-profile-raised | border': 'slate-6'
 			}
 		},
 		[RING]: {
@@ -401,13 +409,15 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-mast-badge | background': 'brand-9',
 				[`${FEATURE} .page-cover-area:empty | background`]: 'brand-9',
 				".page-cover[data-source='logo'] | background": 'brand-9',
-				'.page-goal-fill | background': 'brand-9'
+				'.page-goal-fill | background': 'brand-9',
+				'.page-profile-badge | background': 'brand-9'
 			}
 		},
 		[ON_FILL]: {
 			allowed: ['on-brand-9'],
 			at: {
 				'.page-mast-badge | color': 'on-brand-9',
+				'.page-profile-badge | color': 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | --page-quiet`]: 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | color`]: 'on-brand-9'
 			}
@@ -447,7 +457,12 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-choose-option:has(:checked) .page-choose-name | color': 'brand-11',
 				".page-choose-option:has([aria-disabled='true']:not(:checked)) .page-choose-name | color":
 					'slate-11',
-				'.page-ground .amount-label | color': 'slate-11'
+				'.page-ground .amount-label | color': 'slate-11',
+				'.page-profile-ein | color': 'slate-11',
+				'.page-profile-raised-label | color': 'slate-11',
+				".page[data-layout='profile'] .page-about .page-label | color": 'slate-12',
+				".page[data-layout='profile'] :is(.page-about-statement, .page-about-beneath) | color":
+					'slate-12'
 			}
 		},
 		// a photo has no step. the scrim over the feature's cover is the one colour off the ladders, and
@@ -709,7 +724,9 @@ describe('no card inside a card', () => {
 				[".page[data-layout='letter'] [data-area='cover']", EDGE],
 				[".page-tiers[data-shape='cards'] .page-tier", EDGE],
 				['.page-share-button', EDGE],
-				['.page-mast', EDGE]
+				['.page-mast', EDGE],
+				['.page-profile-logo', EDGE],
+				['.page-profile-raised', EDGE]
 			].sort()
 		);
 	});
@@ -832,6 +849,22 @@ describe('the program options', () => {
 			'var(--_a11)'
 		);
 		expect(declared(page, '.page-choose-mark').color).toBe('var(--_a11)');
+	});
+});
+
+describe('the profile head’s quiet ink', () => {
+	// the EIN and the raised label are slate 11, which stands only on slate 1 or 2: the label on the
+	// raised plane, and the EIN on the wash, under no ground of the head's own.
+	it('stands the raised label on the plane and the EIN on the wash', () => {
+		expect(declared(page, '.page-profile-raised').background).toBe('var(--page-plane)');
+		for (const selector of [
+			'.page-profile-who',
+			'.page-profile-id',
+			'.page-profile-names',
+			'.page-profile-ein',
+			'.page-profile-raised-label'
+		])
+			expect(declared(page, selector).background, selector).toBeUndefined();
 	});
 });
 

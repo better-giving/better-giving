@@ -125,7 +125,13 @@ export function links(): Route.LinkDescriptors {
 export default function DonationPage({ loaderData }: Route.ComponentProps) {
 	switch (loaderData.kind) {
 		case 'page':
-			return <PageWithCard {...loaderData.view} resuming={loaderData.resuming} />;
+			return (
+				<PageWithCard
+					{...loaderData.view}
+					profile={loaderData.profile}
+					resuming={loaderData.resuming}
+				/>
+			);
 		case 'plain':
 			return (
 				<PlainDonationPage

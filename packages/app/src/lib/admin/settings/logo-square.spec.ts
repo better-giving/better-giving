@@ -1,6 +1,7 @@
 import { LONG_SIDE_MAX, type Resized } from '@better-giving/operator/images/resize';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LOGO_REFUSED } from './logo-crop';
+import { cropBanner } from './banner-image';
 import { squareLogo } from './logo-square';
 
 // what a save in the logo's crop card does with its square: the canvas it draws the square on, and
@@ -110,5 +111,23 @@ describe('a saved crop', () => {
 			ok: false,
 			refused: LOGO_REFUSED['too-large-after-resize']
 		});
+	});
+});
+
+describe('a saved banner', () => {
+	it(`draws the 4:1 band at its own shape, no wider than the ${LONG_SIDE_MAX} the resize keeps`, async () => {
+		decodes(4000, 3000);
+
+		const kept = await cropBanner(PICKED, { x: 400, y: 100, width: 3200, height: 800 });
+
+		expect(canvases).toEqual([
+			{
+				width: LONG_SIDE_MAX,
+				height: 400,
+				drawn: [[400, 100, 3200, 800, 0, 0, LONG_SIDE_MAX, 400]]
+			}
+		]);
+		expect(resize.mock.calls[0]?.[0]?.name).toBe('banner.png');
+		expect(kept.ok).toBe(true);
 	});
 });

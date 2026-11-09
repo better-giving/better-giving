@@ -70,7 +70,7 @@ export function links(): Route.LinkDescriptors {
 export default function PagePreview({ loaderData }: Route.ComponentProps) {
 	switch (loaderData.kind) {
 		case 'page':
-			return <PageWithCard {...loaderData.view} />;
+			return <PageWithCard {...loaderData.view} profile={loaderData.profile} />;
 		case 'plain':
 			return (
 				<div inert>
