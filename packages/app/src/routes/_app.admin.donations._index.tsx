@@ -5,8 +5,9 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { DONATION_STATUS_TONES } from '$lib/admin/status-tones';
 import { href, Link } from 'react-router';
+import { byDayShown } from '$lib/admin/received-order';
 import { screenTitle } from '$lib/admin/screen-title';
-import { LocalTime } from '$lib/admin/viewer-time.react';
+import { LocalTime, useViewerZone } from '$lib/admin/viewer-time.react';
 import { IN_HAND_METHOD_LABELS, IN_HAND_METHODS, type InHandMethod } from '$lib/donations/methods';
 import { formatMinor } from '$lib/donations/money';
 import { DONATION_STATUS_LABELS } from '$lib/donations/statuses';
@@ -228,6 +229,9 @@ export async function loader({ context }: Route.LoaderArgs) {
 export default function Donations({ loaderData }: Route.ComponentProps) {
 	const { donations, limit, hasMore } = loaderData;
 	const count = donations.length;
+	// newest first by the day each row shows, which the stored order alone is not west of UTC
+	// ($lib/admin/received-order.ts).
+	const zone = useViewerZone();
 
 	return (
 		// one column and the column is what spaces it: every block below carries no margin of its
@@ -270,10 +274,11 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 				caption={count > 0 ? `${count} ${count === 1 ? 'gift' : 'gifts'}, newest first.` : 'Gifts'}
 				capNote={hasMore ? `Only the most recent ${limit} are shown.` : undefined}
 				columns={COLUMNS}
-				rows={donations.map((d) => ({
+				rows={byDayShown(donations, zone).map((d) => ({
 					// the gift's own id, which is what keys the row. it is never rendered — no
 					// column is keyed `id` — and it is here because keying by position instead
-					// hands two rows that swap places each other's cells.
+					// hands two rows that swap places each other's cells, which they do once the
+					// browser's zone is known.
 					id: d.id,
 					cells: {
 						received:

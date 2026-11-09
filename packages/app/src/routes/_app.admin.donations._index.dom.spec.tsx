@@ -324,6 +324,32 @@ describe('the day a gift was received', () => {
 		expect(cell(screen(inHand), 'Received')).toBe('2026-10-21');
 	});
 
+	it('never lists a later day below an earlier one, west of UTC', () => {
+		// newest first by the stored instant, as `listDonations` orders them: the in-hand gift is
+		// stored at its day's UTC midnight, so the online one at 02:00Z sorts above it yet shows the
+		// 21st in New York.
+		const newestFirst = [
+			gift({ id: '019fb300-0000-7000-8000-000000000003', receivedAt: '2026-10-22T02:00:00.000Z' }),
+			gift({
+				id: '019fb300-0000-7000-8000-000000000002',
+				receivedAt: undefined,
+				receivedOn: '2026-10-22',
+				paidWith: 'Cash'
+			}),
+			gift({ id: '019fb300-0000-7000-8000-000000000001', receivedAt: '2026-10-21T13:00:00.000Z' })
+		];
+		const days = (root: HTMLElement) =>
+			[...root.querySelectorAll('tbody tr th')].map((th) => th.textContent);
+
+		expect(days(served(newestFirst, 'America/New_York'))).toEqual([
+			'2026-10-22',
+			'2026-10-21',
+			'2026-10-21'
+		]);
+		browserIn('America/New_York');
+		expect(days(screen(newestFirst))).toEqual(['2026-10-22', '2026-10-21', '2026-10-21']);
+	});
+
 	it('keeps the day typed for money that arrived in hand, in every zone', () => {
 		const inHand = [gift({ receivedAt: undefined, receivedOn: '2026-10-21', paidWith: 'Cash' })];
 
