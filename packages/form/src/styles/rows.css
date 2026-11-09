@@ -108,11 +108,12 @@
 
 /*
  * the ring is drawn around the box rather than around the press inside it, because the box is the
- * control a donor finds. a closed row takes the plain ring hugging its edge; the open one has the
- * primary's edge, step 8 against the ring's step 11, two steps of one hue, so a band of `--_n1` is
- * laid against that edge first and the ring goes outside it — the construction a chosen amount tile
- * takes (the focus block at the end of ./parts.css). the head keeps a transparent outline, which forced-colors paints in the
- * user's own colour once it drops every shadow.
+ * control a donor finds. a closed row takes the plain ring hugging its edge. the open row's edge is
+ * the brand's step 8 (`--_a8`), and so is the ring (`--_focus-ring` in ./tokens.css): a ring laid
+ * against that edge would read as the edge grown thicker rather than as focus, so a band of `--_n1`
+ * goes against the edge first and the ring outside it — the construction a chosen amount tile takes
+ * (the focus block at the end of ./parts.css). the head keeps a transparent outline, which
+ * forced-colors paints in the user's own colour once it drops every shadow.
  */
 .head:focus-visible {
 	outline: var(--_focus-width) solid transparent;

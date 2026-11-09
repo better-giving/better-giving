@@ -5802,6 +5802,36 @@ describe('the stylesheets', () => {
 		expect(moving).not.toMatch(/var\(--_ease-/);
 	});
 
+	// a registry control that brings its own transition moves at the registry's duration, which is
+	// `--duration-fast` on the registry's `:root` (./registry/styles/variables.css): a shadow tree has
+	// no `:root`, so inside the card that name is the host page's, and the `reduce` collapse in
+	// ./styles/tokens.css never reaches it. its class also outweighs the zero-weight list in
+	// ./styles/motion.css, so the part loses the movements that sheet gives it. each such part is
+	// restated there at its registry class, so what it moves is the motion sheet's.
+	it('restates the motion of every registry control that brings its own', () => {
+		const transitioned = registryControls
+			.split('}')
+			.filter((rule) => /\btransition/.test(rule.split('{')[1] ?? ''))
+			.flatMap((rule) => (rule.split('{')[0] ?? '').split(','))
+			.map((selector) => selector.trim());
+		const handed = Object.entries(REGISTRY_CLASS).flatMap(([part, list]) =>
+			list.split(' ').map((name) => ({ part, name }))
+		);
+		const brought = handed.filter(({ name }) => transitioned.includes(`.${name}`));
+
+		expect(brought.length).toBeGreaterThan(0);
+		expect(
+			brought
+				.filter(
+					({ part, name }) =>
+						!new RegExp(
+							`\\[part~='${part}'\\]\\.${name}(?![\\w-])[^{]*\\{[^}]*\\btransition:`
+						).test(moving)
+				)
+				.map(({ part, name }) => `[part~='${part}'].${name}`)
+		).toEqual([]);
+	});
+
 	it('carries no step nothing spends', async () => {
 		// derived from the token file rather than listed, so it fails for a name that stops being
 		// read tomorrow and not only for the ones dropped when it was written. a name is spent by a

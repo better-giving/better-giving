@@ -172,7 +172,7 @@ describe('what the provider is handed', () => {
 	});
 
 	// the split, proven off a real cascade rather than off a table: the fill inside the provider's
-	// frame is the seed's step 9 and the ring is the registry's ring, step 11 of the same scale, two
+	// frame is the seed's step 9 and the ring is the registry's ring, step 8 of the same scale, two
 	// colours off one seed. only this pool can see it — `--_p` and `--_focus-ring` are unregistered
 	// custom properties, so a lightweight DOM hands back the `var()` and never a colour.
 	it('sends the seed’s step 9 to the fills and its ring to the ring', () => {

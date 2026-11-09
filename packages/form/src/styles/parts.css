@@ -619,7 +619,7 @@ textarea[part~='field'] {
  * so it is a box a donor operates like any other: the white face inside the step-7 edge a text box
  * carries, at the size and the first-line offset it already stood at, and the brand's step 9 fills
  * it when it is ticked — the half of the seed's split that fills rather than marks (./tokens.css).
- * what rings it is the brand's step 11, in the focus block at the end of this sheet.
+ * what rings it is the brand's step 8, in the focus block at the end of this sheet.
  *
  * the tick is drawn in `--_on-p`, the ink the brand's fill takes: white on a seed dark enough to
  * carry it and the generator's dark tint of the seed on a pale one (`getTextColor` in
@@ -2467,7 +2467,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * target `--_target-min` by `--_row-min` around a mark a fraction of that, so the ring is drawn on
  * the mark instead, in the block below.
  *
- * a ring is `--_focus-ring` — the brand's step 11, the step the registry's `--ring` is — on every
+ * a ring is `--_focus-ring` — the brand's step 8, the step the registry's `--ring` is — on every
  * control this sheet draws. the one control the brand fills, the action, is the registry's button
  * and rings itself the registry's way (`.ds-btn:focus-visible` in
  * ../registry/styles/button-css.css): an outline stood off the fill by a band of the card.
@@ -2638,7 +2638,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  *
  * an outline rather than a shadow: forced-colors drops every shadow and paints an outline in the
  * user's own colour, and with the button's outline gone this is the whole of the indicator that mode
- * has. the ring is the brand's step 11 on a step-7 edge, the ring every control this sheet draws
+ * has. the ring is the brand's step 8 on a step-7 edge, the ring every control this sheet draws
  * takes, and the current mark, the one the brand fills, is never a button and never takes this ring.
  */
 button.step-dot:focus-visible {

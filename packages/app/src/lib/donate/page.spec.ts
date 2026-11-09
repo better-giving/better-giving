@@ -149,14 +149,14 @@ describe('a page with no brand colour', () => {
 		expect(root({ brandColour: null }).inline).toEqual({});
 	});
 
-	it('draws the wash from the registry theme’s accent 2 and 3, and the ring from its accent 11', () => {
+	it('draws the wash from the registry theme’s accent 2 and 3, and the ring from its accent 8', () => {
 		expect(wash).toHaveLength(1);
 		expect(substitute(formBase, wash[0] ?? '')).toBe(
 			`radial-gradient(max(80cqi, 26rem) 38rem at 0% 14rem, ${literal('--accent-2')}, transparent 70%), ` +
 				`radial-gradient(max(65cqi, 24rem) 38rem at 100% 100%, ${literal('--accent-3')}, transparent 70%)`
 		);
-		expect(substitute(formBase, 'var(--_focus-ring)')).toBe(literal('--accent-11'));
-		expect(literal('--accent-11')).toMatch(/^oklch\(/);
+		expect(substitute(formBase, 'var(--_focus-ring)')).toBe(literal('--accent-8'));
+		expect(literal('--accent-8')).toMatch(/^oklch\(/);
 	});
 });
 
@@ -338,7 +338,7 @@ describe('every colour lands on the radix step for its job', () => {
 	const BORDER =
 		'6, 7 and 8: a separator, a control’s edge, that edge under the pointer, a brand edge and red 6 round a failure';
 	const RING =
-		'11: the focus ring, the registry’s ring step, in a step-1 gap where it rings a control';
+		'8: the focus ring, the registry’s ring step, in a step-1 gap where it rings a control';
 	const ON_FILL = 'the ink on a solid fill: the form’s `--_on-p`';
 	const TEXT = '11 and 12: text';
 	const SCRIM =
@@ -418,15 +418,15 @@ describe('every colour lands on the radix step for its job', () => {
 			}
 		},
 		[RING]: {
-			allowed: ['brand-11', 'slate-1'],
+			allowed: ['brand-8', 'slate-1'],
 			at: {
-				'.page > .page-ground | --page-ring': 'brand-11',
-				'.page-ground a:focus-visible, .page-faq-question:focus-visible | box-shadow': 'brand-11',
-				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-11',
-				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-11',
-				'.page-messages-row:focus-visible | outline': 'brand-11',
-				'.page-ground .page-messages-more:focus-visible | box-shadow': 'brand-11',
-				'.page-video-box:focus-visible | outline': 'brand-11'
+				'.page > .page-ground | --page-ring': 'brand-8',
+				'.page-ground a:focus-visible, .page-faq-question:focus-visible | box-shadow': 'brand-8',
+				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-8',
+				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-8',
+				'.page-messages-row:focus-visible | outline': 'brand-8',
+				'.page-ground .page-messages-more:focus-visible | box-shadow': 'brand-8',
+				'.page-video-box:focus-visible | outline': 'brand-8'
 			}
 		},
 		'9: a solid fill, the generator’s step 9': {

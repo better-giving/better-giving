@@ -1,6 +1,7 @@
 /* the registry's badge as plain css: a small status chip, no tailwind. reads
    only the variables the `variables` item declares. every variant is a tinted
-   chip on the subtle fill with its subtle ink; none paints a solid fill.
+   chip on the subtle fill with its subtle ink; .ds-badge-on-photo swaps that
+   for a solid fill, a ring and a shape mark.
    badge-css.test.tsx renders the React badge beside it and asserts the same
    computed look in light and dark, for the default and example themes.
 
@@ -44,4 +45,87 @@
 .ds-badge-destructive {
   background-color: var(--destructive-subtle);
   color: var(--destructive-subtle-fg);
+}
+
+/* over a photo: a solid fill with its -fg ink, a 1px ring in the page color,
+   and an 8px mark in the ink whose shape tells the variants apart without
+   their color. the mark is a pseudo-element, so the label stays the name. */
+.ds-badge-on-photo {
+  gap: calc(var(--ds-spacing) * 1.5);
+  box-shadow: 0 0 0 1px var(--background);
+  background-color: var(--gray-12);
+  color: var(--gray-1);
+}
+.ds-badge-on-photo::before {
+  content: "";
+  box-sizing: border-box;
+  width: calc(var(--ds-spacing) * 2);
+  height: calc(var(--ds-spacing) * 2);
+  flex-shrink: 0;
+  background-color: currentColor;
+}
+/* neutral: a filled square, the mark as drawn above */
+.ds-badge-on-photo.ds-badge-neutral {
+  background-color: var(--gray-12);
+  color: var(--gray-1);
+}
+/* primary: a filled diamond */
+.ds-badge-on-photo.ds-badge-primary {
+  background-color: var(--primary);
+  color: var(--primary-fg);
+}
+.ds-badge-on-photo.ds-badge-primary::before {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+/* success: a filled circle */
+.ds-badge-on-photo.ds-badge-success {
+  background-color: var(--success);
+  color: var(--success-fg);
+}
+.ds-badge-on-photo.ds-badge-success::before {
+  border-radius: calc(infinity * 1px);
+}
+/* warning: a hollow ring */
+.ds-badge-on-photo.ds-badge-warning {
+  background-color: var(--warning);
+  color: var(--warning-fg);
+}
+.ds-badge-on-photo.ds-badge-warning::before {
+  border-radius: calc(infinity * 1px);
+  border: 2px solid currentColor;
+  background-color: transparent;
+}
+/* destructive: a filled cross */
+.ds-badge-on-photo.ds-badge-destructive {
+  background-color: var(--destructive);
+  color: var(--destructive-fg);
+}
+.ds-badge-on-photo.ds-badge-destructive::before {
+  clip-path: polygon(
+    20% 0,
+    50% 30%,
+    80% 0,
+    100% 20%,
+    70% 50%,
+    100% 80%,
+    80% 100%,
+    50% 70%,
+    20% 100%,
+    0 80%,
+    30% 50%,
+    0 20%
+  );
+}
+
+/* forced colors repaint every background, which would erase the filled marks:
+   each mark opts out and takes the system ink, the ring as its edge */
+@media (forced-colors: active) {
+  .ds-badge-on-photo::before {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+  .ds-badge-on-photo.ds-badge-warning::before {
+    background-color: transparent;
+    border-color: CanvasText;
+  }
 }

@@ -108,8 +108,8 @@
  * (packages/form/src/styles/radix-scale.ts) and the token file aliases as `--_a8`, `--_a11`,
  * `--_a12`, `--_p`, `--_p-hover` and `--_on-p`. 1 and 2 backgrounds, 3 a control's ground, 4 its
  * hover, 5 its press, 6 a border nothing operates and a separator, 7 the edge of a control a donor
- * operates and 8 that edge under the pointer, 9 a solid fill, 10 its hover, 11 and 12 text, and 11
- * the focus ring, the registry's own ring step.
+ * operates and 8 that edge under the pointer and the focus ring, the registry's own ring step, 9
+ * a solid fill, 10 its hover, 11 and 12 text.
  * nothing casts a shadow: a `box-shadow` here is a focus ring, a spread with no offset and no blur.
  *
  * the page ground, `--page-ground`, is slate 2 under a wash. a plane — the top bar, the card's
@@ -148,8 +148,8 @@
  * goal's progress, the initials badge, and a cover with no photo — the logo's cover, the logo on
  * its own slate-1 plate, and the feature's empty cover. the ink on 9 is the generated `--_on-p`,
  * the ink the generator picks for its step 9. 11 is a brand word, `--page-accent` — a link, the top
- * bar's Share and a tier's amount — and the focus ring, and 12 is that word under the pointer. 8 is
- * a brand edge.
+ * bar's Share and a tier's amount — and 12 is that word under the pointer. 8 is a brand edge and
+ * the focus ring.
  *
  * corners. a plane is `--page-plane-radius`, 12px, a step rounder than the card's `--_r`, and the
  * donation box takes it too wherever it is a plane; what stands on a plane is the card's `--_r` or
@@ -165,7 +165,7 @@
  * it to the job radix names for that step
  * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): text on 11
  * and 12, a solid fill on 9 with the generated `--_on-p` as its ink, a separator or an edge on 6, 7
- * and 8, the focus ring on 11, a ground on 1, 2 and 3 — the wash brand 2 and 3 over slate 2 —
+ * and 8, the focus ring on 8, a ground on 1, 2 and 3 — the wash brand 2 and 3 over slate 2 —
  * and a control's hover and press on 4 and 5. a failed video is the registry's red, which no seed
  * moves: the tint, red 3, inside a red 6 edge. legibility is radix's guarantee for a step
  * doing its job, and no ratio is measured here.

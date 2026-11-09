@@ -56,6 +56,22 @@
 .ds-check-field > input:checked::before {
   display: block;
 }
+/* indeterminate (set from script): the checked fill, and the check unrotated
+   into a flat bar, its bottom border alone */
+.ds-checkbox:indeterminate,
+.ds-check-field > input:indeterminate {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+.ds-checkbox:indeterminate::before,
+.ds-check-field > input:indeterminate::before {
+  display: block;
+  margin-top: 0;
+  width: calc(var(--ds-spacing) * 2);
+  height: 0;
+  border-right-width: 0;
+  rotate: 0deg;
+}
 .ds-checkbox:disabled,
 .ds-check-field > input:disabled {
   background-color: var(--gray-3);
@@ -65,16 +81,27 @@
 .ds-check-field > input:disabled::before {
   border-color: var(--gray-11);
 }
+/* an invalid box keeps its destructive edge under the pointer too */
+.ds-checkbox[aria-invalid="true"],
+.ds-checkbox[aria-invalid="true"]:hover,
+.ds-check-field > input[aria-invalid="true"],
+.ds-check-field > input[aria-invalid="true"]:hover {
+  border-color: var(--destructive);
+}
 .ds-checkbox:focus-visible,
 .ds-check-field > input:focus-visible {
   outline-style: solid;
   outline-width: 2px;
   outline-color: var(--ring);
 }
-.ds-checkbox:checked:not(:disabled):hover,
-.ds-check-field > input:checked:not(:disabled):hover {
-  background-color: var(--primary-hover);
-  border-color: var(--primary-hover);
+@media (hover: hover) {
+  .ds-checkbox:checked:not(:disabled):hover,
+  .ds-check-field > input:checked:not(:disabled):hover,
+  .ds-checkbox:indeterminate:not(:disabled):hover,
+  .ds-check-field > input:indeterminate:not(:disabled):hover {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+  }
 }
 
 /* a checkbox, its label and an error line: label and box in two columns */
@@ -89,7 +116,11 @@
   align-items: center;
 }
 .ds-check-field > label[data-required="true"]::after {
-  margin-left: calc(var(--ds-spacing) * 1);
+  margin-inline-start: calc(var(--ds-spacing) * 1);
+  /* the plain form first: an engine without alt-text content drops the
+     second declaration whole and keeps the star */
+  content: "*";
+  /* biome-ignore lint/suspicious/noDuplicateProperties: the fallback above is the point */
   content: "*" / "";
   color: var(--destructive-subtle-fg);
 }
