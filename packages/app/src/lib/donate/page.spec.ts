@@ -425,7 +425,6 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-8',
 				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-8',
 				'.page-messages-row:focus-visible | outline': 'brand-8',
-				'.page-ground .page-messages-more:focus-visible | box-shadow': 'brand-8',
 				'.page-video-box:focus-visible | outline': 'brand-8'
 			}
 		},

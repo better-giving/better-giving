@@ -617,8 +617,8 @@ describe('the registry field a box is drawn as', () => {
 
 describe('a read-only box', () => {
 	// every sheet a box in /admin is drawn by: this package's three and the registry's field, which
-	// is where `pointer-events: none` on `[readonly]` lives. resolved through `fileURLToPath`, which
-	// ../../styles/field-on-a-tight-stack.dom.spec.tsx argues.
+	// stops the pointer on a disabled box and must not on a read-only one. resolved through
+	// `fileURLToPath`, which ../../styles/field-on-a-tight-stack.dom.spec.tsx argues.
 	const registry = stripComments(
 		readFileSync(
 			join(dirname(fileURLToPath(import.meta.url)), '../../registry/styles/field-css.css'),
@@ -682,11 +682,11 @@ describe('a read-only box', () => {
 		]
 	];
 
-	it.each(READ_ONLY)('%s wears no registry box', (_, props) => {
+	it.each(READ_ONLY)('%s wears the registry box', (_, props) => {
 		const classes = boxClasses(render(Field, props));
 
-		expect(classes).toContain('adm-input');
-		expect(classes.filter((name) => name.startsWith('ds-'))).toEqual([]);
+		expect(classes.slice(0, 2)).toEqual(['ds-field-input', 'adm-field__box']);
+		expect(classes).not.toContain('adm-input');
 	});
 
 	it.each(READ_ONLY)(
@@ -709,21 +709,7 @@ describe('a read-only box', () => {
 			error: 'Make a key first.'
 		});
 
-		expect(boxClasses(root)).toEqual(['adm-input', 'adm-input--invalid']);
-	});
-
-	// the registry's `.ds-field-input[readonly]` states no `pointer-events: none` (the box keeps its
-	// text cursor and can be selected), so the registry's own box passes the same check the boxes
-	// above do. a registry that put the rule back fails here and in the cases above.
-	it('takes a press on the registry box too', () => {
-		const box = render(Field, {
-			id: 'zapier-key',
-			label: 'Zapier key',
-			readOnly: true
-		}).querySelector('input');
-		if (box === null) throw new Error('the field drew no box');
-		box.classList.add('ds-field-input');
-
-		expect(pointerEventsOn(box).filter((said) => said.endsWith('none }'))).toEqual([]);
+		expect(boxClasses(root)).toEqual(['ds-field-input', 'adm-field__box']);
+		expect(root.querySelector('input')?.getAttribute('aria-invalid')).toBe('true');
 	});
 });

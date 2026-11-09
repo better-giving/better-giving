@@ -1553,9 +1553,9 @@
 	/* the boxes this sheet still draws: the select, which is
 	   packages/operator/src/components/forms/SelectWithNote.jsx's machine trigger and put on it by
 	   that file's derived class list (carried-ok: .adm-select), and `.adm-input`, a text box a
-	   control draws by hand beside a run of choices and the read-only box
-	   packages/operator/src/components/forms/Field.jsx draws. every other box that file draws is the
-	   registry's `ds-field-input` and is placed and finished by `.adm-field__box` below. the
+	   control draws by hand beside a run of choices. every box
+	   packages/operator/src/components/forms/Field.jsx draws is the registry's `ds-field-input`
+	   and is placed and finished by `.adm-field__box` below. the
 	   height is `--admin-field-height`, which ./tokens.css holds at the registry box's own. */
 	.adm-input,
 	.adm-select {
@@ -1601,13 +1601,7 @@
 	   words in a refused box stand where they stood before it was refused. the select is marked by
 	   the machine's own `data-invalid`, off the message
 	   packages/operator/src/components/forms/SelectWithNote.jsx holds or an `aria-invalid` something
-	   larger than the one box marked it with. a read-only box Field.jsx draws is `.adm-input` and is
-	   marked by the derived `.adm-input--invalid`, off the same two.
-	   carried-ok: .adm-input--invalid — put on the box by the derived class list in
-	   packages/operator/src/components/forms/Field.jsx. */
-	.adm-input--invalid,
-	.adm-input--invalid:hover,
-	.adm-input--invalid.is-hover,
+	   larger than the one box marked it with. */
 	.adm-select[data-invalid],
 	.adm-select[data-invalid]:hover,
 	.adm-select[data-invalid].is-hover {
@@ -2576,7 +2570,7 @@
 
 	/* the room the press stands in: its own width, and the step of clear space between it and the
 	   last character of a value long enough to reach it. */
-	.adm-maskwrap > :is(.adm-field__box, .adm-input) {
+	.adm-maskwrap > .adm-field__box {
 		padding-inline-end: var(--admin-space-10);
 	}
 
@@ -2609,7 +2603,7 @@
 	   `--admin-control-size-sm` and 6.3rem as a small quiet press; with the reveal, the gap and the
 	   inset the cluster reaches about 8.95rem, and the sum below is 9.25rem. it is measured from
 	   those words, so new words are a new measurement. */
-	.adm-maskwrap:has(> .adm-maskwrap__presses) > :is(.adm-field__box, .adm-input) {
+	.adm-maskwrap:has(> .adm-maskwrap__presses) > .adm-field__box {
 		padding-inline-end: calc(var(--admin-space-9) * 4 + var(--admin-space-7));
 	}
 
@@ -2651,7 +2645,7 @@
 		block-size: var(--admin-brand-mark-size);
 	}
 
-	.adm-leadwrap :is(.adm-field__box, .adm-input) {
+	.adm-leadwrap .adm-field__box {
 		padding-inline-start: calc(var(--admin-space-4) + var(--admin-space-9) + var(--admin-space-3));
 	}
 

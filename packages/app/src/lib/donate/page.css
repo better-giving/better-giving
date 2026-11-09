@@ -1340,11 +1340,6 @@ body {
 	gap: var(--_sp2);
 }
 
-.page-ground .page-messages-more:focus-visible {
-	outline: var(--_focus-width) solid transparent;
-	box-shadow: 0 0 0 var(--_focus-width) var(--page-ring);
-}
-
 /* the turning ring a busy press shows beside its label. the registry has no spinner yet
    (a registry gap), so it is drawn here from the press's own ink and the
    form's spin; reduced motion slows it rather than stopping it, as the form's does. */

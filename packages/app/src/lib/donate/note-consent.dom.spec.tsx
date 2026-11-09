@@ -222,15 +222,15 @@ it('groups the two rows under the first one’s words, so the second is never re
 	);
 });
 
-it('neither shows nor describes the first-name hint once Anonymous is ticked, and brings it back on untick', async () => {
+it('keeps showing the first-name hint as the first box’s description while Anonymous is ticked, and after untick', async () => {
 	const { root } = await card();
 	press(box(root, NOTE_TOGGLE));
 	press(box(root, PUBLIC));
 	press(box(root, ANONYMOUS));
 
-	expect(root.querySelector('#note-public-hint')).toBeNull();
-	expect(root.textContent).not.toContain(copy.NOTE_PUBLIC_HINT);
-	expect(box(root, PUBLIC).hasAttribute('aria-describedby')).toBe(false);
+	expect(box(root, ANONYMOUS).checked).toBe(true);
+	expect(root.querySelector('#note-public-hint')?.textContent).toBe(copy.NOTE_PUBLIC_HINT);
+	expect(box(root, PUBLIC).getAttribute('aria-describedby')).toBe('note-public-hint');
 
 	press(box(root, ANONYMOUS));
 	expect(root.querySelector('#note-public-hint')?.textContent).toBe(copy.NOTE_PUBLIC_HINT);

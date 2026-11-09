@@ -115,6 +115,17 @@ describe('the videos section', () => {
 			'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1'
 		);
 		expect(frame?.getAttribute('title')).toBe(PANTRY.title);
+		// sandboxed to what the player needs: no top navigation, no forms, no downloads.
+		expect(frame?.getAttribute('sandbox')?.split(' ').sort()).toEqual([
+			'allow-popups',
+			'allow-popups-to-escape-sandbox',
+			'allow-presentation',
+			'allow-same-origin',
+			'allow-scripts'
+		]);
+		expect(frame?.getAttribute('allow')).toBe(
+			'autoplay; encrypted-media; picture-in-picture; fullscreen'
+		);
 		expect(document.activeElement).toBe(box);
 		// where focus is held is named for the video it holds.
 		expect(box?.getAttribute('role')).toBe('group');

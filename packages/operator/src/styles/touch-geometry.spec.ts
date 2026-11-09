@@ -663,7 +663,7 @@ describe("every box in a form stands at the registry box's height", () => {
 	});
 
 	it.each([
-		// the text box a control draws by hand, and the read-only box Field.jsx draws.
+		// the text box a control draws by hand.
 		['.adm-input'],
 		// SelectWithNote.jsx's trigger, until the registry's `select` item replaces it.
 		['.adm-select'],

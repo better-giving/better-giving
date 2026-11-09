@@ -401,8 +401,7 @@ export function AmountStep({
 						 * the second arriving leaves the first's box, and its focus, where it was. the hint
 						 * sits inside the label so pressing it ticks the box; a wrapping label names its box
 						 * by its whole subtree, so `aria-labelledby` names it by its words alone and the
-						 * hint is read once, as the description. the hint says how the name is shown, so it
-						 * goes while Anonymous is ticked.
+						 * hint is read once, as the description, ticked Anonymous or not.
 						 */}
 						{/* biome-ignore lint/a11y/useSemanticElements: the rows are a group named by the first
 						    one's words, so "Show it as Anonymous" is read as qualifying that box, as the
@@ -418,17 +417,15 @@ export function AmountStep({
 										type="checkbox"
 										id="note-public"
 										aria-labelledby="note-public-words"
-										aria-describedby={noteAnonymous ? undefined : 'note-public-hint'}
+										aria-describedby="note-public-hint"
 										checked={noteShown}
 										onChange={() => api.notePublicToggle.onClick()}
 									/>
 									<span>
 										<span id="note-public-words">{copy.notePublicLabel(config.orgLegalName)}</span>
-										{noteAnonymous ? null : (
-											<small className="hint" id="note-public-hint">
-												{copy.NOTE_PUBLIC_HINT}
-											</small>
-										)}
+										<small className="hint" id="note-public-hint">
+											{copy.NOTE_PUBLIC_HINT}
+										</small>
 									</span>
 								</label>
 							) : null}

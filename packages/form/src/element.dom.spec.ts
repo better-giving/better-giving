@@ -2141,13 +2141,15 @@ describe('the note the donor asks to show', () => {
 		expect(anonymous.hasAttribute('aria-describedby')).toBe(false);
 	});
 
-	it('takes the hint and its description away while Anonymous is ticked', async () => {
+	it('keeps the hint and its description while Anonymous is ticked, and after untick', async () => {
 		const card = opened(await mount());
 		press(card.find('#note-public'));
 		press(card.find('#note-anonymous'));
 
-		expect(card.all('#note-public-hint')).toHaveLength(0);
-		expect(card.find('#note-public').hasAttribute('aria-describedby')).toBe(false);
+		expect(card.text('#note-public-hint')).toBe(
+			'It shows with your first name and last initial, like “Maya R.”'
+		);
+		expect(card.find('#note-public').getAttribute('aria-describedby')).toBe('note-public-hint');
 
 		press(card.find('#note-anonymous'));
 		expect(card.text('#note-public-hint')).toBe(
@@ -2202,7 +2204,7 @@ describe('the note the donor asks to show', () => {
 		expect(card.shadow.activeElement).toBe(shown);
 	});
 
-	it('keeps focus on the Anonymous box as the hint goes', async () => {
+	it('keeps focus on the Anonymous box as it is ticked', async () => {
 		const card = opened(await mount());
 		press(card.find('#note-public'));
 		const anonymous = card.find('#note-anonymous');

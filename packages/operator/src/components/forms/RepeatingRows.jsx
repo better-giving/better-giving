@@ -113,10 +113,9 @@ import { FieldMessage } from './FieldMessage.jsx';
  * lets a row holding a long address be read to its end at 375px, and it takes no keystroke —
  * uneditable, which is what it is.
  *
- * **no sheet in packages/operator/src/styles draws a read-only box**, so the row stands in the
- * ordinary field ground and refuses a keystroke with nothing on the screen having said it would.
- * none is authored here: the look belongs in packages/operator/src/styles/adm.css, off the three
- * disabled control tokens, and until it is there this is what the row draws as.
+ * **the registry's box draws it read-only**: `ds-field-input[readonly]`
+ * (../../registry/styles/field-css.css) mutes it on the disabled fill, so the row says it takes no
+ * keystroke before one is tried, and keeps it selectable.
  *
  * @typedef {object} FixedRow
  * @property {string} id names the box, as a row's own does.

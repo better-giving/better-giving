@@ -123,6 +123,9 @@ function VideoFigure({
 						className="page-video-player"
 						src={youTubeEmbedUrl(video.videoId)}
 						title={video.title}
+						// the player's script needs its own origin to play, and its links out to youtube.com
+						// open as popups that must leave the sandbox to work as a plain tab.
+						sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
 						allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
 						allowFullScreen
 						referrerPolicy="strict-origin-when-cross-origin"
