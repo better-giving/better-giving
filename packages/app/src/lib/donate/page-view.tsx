@@ -52,10 +52,9 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 //   no mission or vision, nothing raised, no video and no message from a donor (`profileLayout`
 //   below), and otherwise the banner or the brand's band across the top, the logo over its foot, the
 //   name, the EIN and the raised figure, then the box, then About us, the videos and the messages
-//   from donors; wide, the
-//   box stands in a column of its own beside them and scrolls with the page as every box does. a
-//   heading saved for the page is the box's own heading there, over the card. the name is always
-//   drawn there, so the logo beside it says nothing of its own, and a logo the masthead would let
+//   from donors; wide, the box stands in a column of its own beside them and scrolls with the page
+//   as every box does. a heading saved for the page is the box's own heading there, over the card.
+//   the name is always drawn there, so the logo beside it says nothing of its own, and a logo the masthead would let
 //   stand in for the name is drawn whole at its own shape rather than in the square.
 //
 // every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
