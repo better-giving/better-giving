@@ -662,7 +662,10 @@ async function mintCommitment(
 			}
 		],
 		note: submission.note,
-		noteOnPage: submission.noteOnPage,
+		noteOnPage:
+			submission.noteOnPage === undefined
+				? undefined
+				: { shown: submission.noteOnPage, typedName: submission.donor },
 		tribute: submission.tribute,
 		programId: creditedProgram(form, submission),
 		occurredAt: new Date()

@@ -1,11 +1,12 @@
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { donation as donationTable } from '../db/schema';
+import { contact, donation as donationTable } from '../db/schema';
 import { writeOrgRow } from '../org/org-row.testing';
 import { ensureDonationPage } from './donation-page';
 import {
 	parseMessageCursor,
+	parseModeratedCursor,
 	readModeratedMessages,
 	readNoteStandings,
 	readShownMessages,
@@ -162,6 +163,38 @@ describe('readShownMessages()', () => {
 		expect(sent).not.toMatch(/Rivera|@example\.org|12345|123\.45/);
 	});
 
+	it('signs each of two donors sharing one address with the name typed on their own gift', async () => {
+		// a returning address is filed under the one contact it already has (`resolveDonor` in
+		// ../donations/donor.ts), so the name over a note is the gift's own and never the contact's.
+		const email = 'household@example.org';
+		await shownGift({ note: 'from Maya', firstName: 'Maya', lastName: 'Rivera', email });
+		await shownGift({
+			note: 'from Sam',
+			firstName: 'Sam',
+			lastName: 'Okoro',
+			email,
+			receivedAt: new Date('2026-09-11T11:00:00.000Z')
+		});
+		expect(await db.select({ id: contact.id }).from(contact)).toHaveLength(1);
+
+		const signed = (messages: readonly { name: string; note: string }[]) =>
+			messages.map(({ name, note }) => ({ name, note }));
+		const both = [
+			{ name: 'Sam O.', note: 'from Sam' },
+			{ name: 'Maya R.', note: 'from Maya' }
+		];
+		expect(signed((await readShownMessages(db, null)).messages)).toEqual(both);
+		expect(signed((await readModeratedMessages(db)).messages)).toEqual(both);
+	});
+
+	it('keeps a shown note’s name when the donor’s contact name changes later', async () => {
+		await shownGift({ firstName: 'Maya', lastName: 'Rivera' });
+		await db.update(contact).set({ firstName: 'Jordan', lastName: 'Lee', displayName: 'Jordan Lee' });
+
+		expect((await readShownMessages(db, null)).messages[0]?.name).toBe('Maya R.');
+		expect((await readModeratedMessages(db)).messages[0]?.name).toBe('Maya R.');
+	});
+
 	it('is newest first, a tie on the time broken the same way every load', async () => {
 		const at = new Date('2026-09-10T11:00:00.000Z');
 		await shownGift({ note: 'older', receivedAt: new Date('2026-09-01T11:00:00.000Z') });
@@ -269,13 +302,44 @@ describe('readModeratedMessages()', () => {
 		const one = await readModeratedMessages(db);
 		expect(one.messages).toHaveLength(50);
 		expect(one.total).toBe(52);
-		const two = await readModeratedMessages(db, parseMessageCursor(one.next ?? ''));
+		const two = await readModeratedMessages(db, parseModeratedCursor(one.next ?? ''));
 		const notes = [...one.messages, ...two.messages].map((m) => m.note);
 
 		expect(new Set(notes).size).toBe(52);
 		expect(notes.at(-1)).toBe('older');
 		expect(two).toMatchObject({ total: 52, next: null });
 		expect([...one.messages, ...two.messages].find((m) => m.id === hidden)?.hidden).toBe(true);
+	});
+
+	it('resumes past the row a page ended on, whatever left or joined the list between loads', async () => {
+		const at = new Date('2026-09-10T11:00:00.000Z');
+		const tied: { txn: string; donationId: string }[] = [];
+		for (let i = 1; i <= 52; i += 1) tied.push(await shownGift({ note: `tied ${i}`, receivedAt: at }));
+
+		const one = await readModeratedMessages(db);
+		const leaving = one.messages[10]?.id;
+		const left = tied.find((gift) => gift.donationId === leaving);
+		if (left === undefined) throw new Error('the first page lists no gift of this case');
+		await refund(db, left.txn, 10_000);
+		await shownGift({ note: 'newer', receivedAt: new Date('2026-09-20T11:00:00.000Z') });
+		const two = await readModeratedMessages(db, parseModeratedCursor(one.next ?? ''));
+
+		const read = [...one.messages, ...two.messages].map((m) => m.id);
+		expect(new Set(read).size).toBe(read.length);
+		expect(new Set(read)).toEqual(new Set(tied.map((gift) => gift.donationId)));
+		expect(two.next).toBeNull();
+	});
+});
+
+describe('parseModeratedCursor()', () => {
+	it.each([
+		'',
+		'not a cursor',
+		Buffer.from('99999999999999999999.a').toString('base64url'),
+		Buffer.from('abc.42a584bd-f5ca-4cd8-ab19-86068180e4bf').toString('base64url'),
+		Buffer.from('1789038000000.').toString('base64url')
+	])('refuses %j', (text) => {
+		expect(parseModeratedCursor(text)).toBeNull();
 	});
 });
 

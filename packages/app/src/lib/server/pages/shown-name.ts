@@ -9,7 +9,7 @@ const ANONYMOUS = 'Anonymous';
 
 const letters = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
-/** `contact.first_name` and `contact.last_name` as stored, either null. */
+/** the first and last name a donor typed on one gift's submission, either null. */
 export type NameParts = { readonly firstName: string | null; readonly lastName: string | null };
 
 export function shownName({ firstName, lastName }: NameParts, anonymous: boolean): string {

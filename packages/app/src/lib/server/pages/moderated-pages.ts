@@ -1,29 +1,42 @@
 import type { Db } from '../db/client';
-import { type MessageCursor, parseMessageCursor, readModeratedMessages } from './messages';
+import {
+	MODERATED_MESSAGE_LIMIT,
+	type ModeratedCursor,
+	type ModeratedMessage,
+	moderatedCursorText,
+	moderatedKeyAt,
+	readModeratedBetween,
+	readModeratedMessages
+} from './messages';
+
+const forScreen = (m: ModeratedMessage) => ({ ...m, receivedAt: m.receivedAt.toISOString() });
+
+/** the first page of /admin/donations/messages, as the screen lists it, and how many there are. */
+export async function readModeratedFirstPage(db: Db) {
+	const read = await readModeratedMessages(db);
+	return { messages: read.messages.map(forScreen), total: read.total, next: read.next };
+}
 
 /**
- * up to `pages` pages of /admin/donations/messages from `after`, or from the newest, as the screen
- * lists them; how many there are; and the cursor past the last page read, null on the list's end.
- * the read stops at the end of the list, however many pages were asked for.
+ * Show older messages: every listed message past the first page as it stands now, down through the
+ * `pages`th page after `after`, the cursor the first page ended on when the screen first asked; and
+ * the cursor past them, null on the list's end.
+ *
+ * the bottom is held by `after`, so a re-read draws the same rows; the top follows the first page,
+ * which the screen re-reads beside this. a message arriving pushes the first page's last row off
+ * it, and the read takes that row up rather than resuming past it; a message leaving pulls the
+ * next row onto the first page, and the read leaves it there. so the two together list every
+ * message once.
  */
-export async function readModeratedPages(db: Db, after: MessageCursor | null, pages: number) {
-	const messages: {
-		id: string;
-		name: string;
-		note: string;
-		receivedAt: string;
-		hidden: boolean;
-	}[] = [];
-	let cursor = after;
-	let read: Awaited<ReturnType<typeof readModeratedMessages>>;
-	let left = pages;
-	do {
-		read = await readModeratedMessages(db, cursor);
-		for (const m of read.messages) {
-			messages.push({ ...m, receivedAt: m.receivedAt.toISOString() });
-		}
-		cursor = read.next === null ? null : parseMessageCursor(read.next);
-		left -= 1;
-	} while (left > 0 && cursor !== null);
-	return { messages, total: read.total, next: read.next };
+export async function readOlderModeratedPages(db: Db, after: ModeratedCursor, pages: number) {
+	const [firstEnd, bottom] = await Promise.all([
+		moderatedKeyAt(db, null, MODERATED_MESSAGE_LIMIT - 1),
+		moderatedKeyAt(db, after, pages * MODERATED_MESSAGE_LIMIT - 1)
+	]);
+	if (firstEnd === null || !firstEnd.more) return { messages: [], next: null };
+	const messages = await readModeratedBetween(db, firstEnd.key, bottom?.key ?? null);
+	return {
+		messages: messages.map(forScreen),
+		next: bottom?.more === true ? moderatedCursorText(bottom.key) : null
+	};
 }

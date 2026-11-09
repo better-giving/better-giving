@@ -1,0 +1,13 @@
+-- the name over a public note on the donate page: `donation.note_shown_name`, exactly what the page
+-- prints, the donor's first name and last initial or "Anonymous", and null on every private gift.
+-- `src/lib/server/db/schema.ts` argues the column beside it.
+--
+-- no table is rebuilt: one native `ADD COLUMN`, appended after `note_hidden_at`, with its checks on
+-- the column, which sqlite tests against every gift already there. `donation` has children
+-- (`line_item`, `payment`), so the rebuild drizzle-kit drafts for a check would `DROP TABLE donation`
+-- under them. the checks are unqualified, so they survive a later rename of the table.
+--
+-- no backfill: a private gift reads null, which every check here admits. a database holding a
+-- public note refuses this file, because that note has no name to show and none can be derived
+-- that is sure to be its donor's.
+ALTER TABLE `donation` ADD `note_shown_name` text CONSTRAINT "donation_note_shown_name_not_blank_check" CHECK("note_shown_name" is null or trim("note_shown_name", char(32, 9, 10, 11, 12, 13, 160)) <> '') CONSTRAINT "donation_note_shown_name_public_check" CHECK(("note_public" = 1) = ("note_shown_name" is not null)) CONSTRAINT "donation_note_shown_name_anonymous_check" CHECK("note_anonymous" = 0 or "note_shown_name" = 'Anonymous');

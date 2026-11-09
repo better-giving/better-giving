@@ -6,7 +6,7 @@ import { DonorMessages, type DonorMessagesProps } from './messages';
 
 // Messages from donors, mounted over the pages the route hands it: nothing with none, a list with
 // no band when all are shown, the band and Show more while more remain, and a press through
-// loading, refusal and the answer that ends the list.
+// loading, a failed press and the answer that ends the list.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -85,10 +85,11 @@ describe('messages from donors', () => {
 		expect(rows(host)).toHaveLength(6);
 		const foot = host.querySelector('.page-messages-foot');
 		expect(foot?.textContent).toContain('Showing 6 of 48 messages');
-		// the count alone is the live region: the press's words change on every press.
-		expect([...host.querySelectorAll('[role="status"]')].map((s) => s.className)).toEqual([
-			'page-messages-count'
-		]);
+		// the band's status line is the one live region, the press outside it: its words change on every press.
+		const live = [...host.querySelectorAll('[role="status"], [role="alert"], [aria-live]')];
+		expect(live).toHaveLength(1);
+		expect(live[0]?.getAttribute('role')).toBe('status');
+		expect(live[0]?.textContent).toBe('Showing 6 of 48 messages');
 		expect(more(host)?.closest('[role="status"]')).toBeNull();
 		expect(more(host)?.textContent).toBe('Show more messages');
 		expect(more(host)?.getAttribute('aria-busy')).toBeNull();
@@ -167,22 +168,35 @@ describe('messages from donors', () => {
 		expect(document.activeElement).toBe(elsewhere);
 	});
 
-	it('says a refused press in an alert and keeps the press to try again', () => {
+	it('says a refused press in the band’s status line and keeps the press ready to try again', () => {
 		const onShowMore = vi.fn();
 		const { host, rerender } = mount({ initial: page(1, 6, 48, 'c6'), onShowMore });
-		act(() => more(host)?.click());
-		rerender({ status: 'error' });
-		const alert = host.querySelector('[role="alert"]');
-		expect(alert?.textContent).toBe('Couldn’t load more messages. Try again.');
-		// said once, by the alert, and not again by a live region around it.
-		expect(
-			alert?.parentElement?.closest('[aria-live], [role="status"], [role="alert"]')
-		).toBeNull();
-		expect(rows(host)).toHaveLength(6);
-		expect(more(host)?.textContent).toBe('Show more messages');
-		act(() => more(host)?.click());
-		expect(onShowMore).toHaveBeenCalledTimes(2);
+		const button = more(host);
+		button?.focus();
+		act(() => button?.click());
 		rerender({ status: 'loading' });
-		expect(host.querySelector('[role="alert"]')).toBeNull();
+		rerender({ status: 'error' });
+		const status = host.querySelector('.page-messages-foot [role="status"]');
+		expect(status?.querySelector('.page-messages-refused')?.textContent).toBe(
+			'Couldn’t load more messages. Try again.'
+		);
+		expect(status?.textContent).toContain('Showing 6 of 48 messages');
+		// one live region says it: no alert beside or around the status line.
+		expect(host.querySelectorAll('[role="alert"], [aria-live]')).toHaveLength(0);
+		expect(status?.contains(button ?? null)).toBe(false);
+		expect(host.querySelector('section')).not.toBeNull();
+		expect(rows(host)).toHaveLength(6);
+		expect(more(host)).toBe(button);
+		expect(button?.disabled).toBe(false);
+		expect(button?.getAttribute('aria-busy')).toBeNull();
+		expect(button?.textContent).toBe('Show more messages');
+		expect(document.activeElement).toBe(button);
+		act(() => button?.click());
+		expect(onShowMore).toHaveBeenCalledTimes(2);
+		expect(onShowMore).toHaveBeenLastCalledWith('c6');
+		rerender({ status: 'loading' });
+		expect(host.querySelector('.page-messages-refused')).toBeNull();
+		rerender({ status: 'idle', arrived: page(7, 6, 48, 'c12') });
+		expect(rows(host)).toHaveLength(12);
 	});
 });

@@ -163,6 +163,7 @@ export function DonationPageVideosCard({ seed }: { readonly seed: VideoCardSeed 
 			<Form
 				method="post"
 				preventScrollReset
+				className="adm-videoadd"
 				{...getFormProps(form)}
 				onSubmit={(event) => {
 					if (holdAdd || adding) {

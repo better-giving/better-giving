@@ -1,10 +1,8 @@
-import { and, desc, eq, inArray, isNull, lte, notExists, type SQL, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, notExists, or, type SQL, sql } from 'drizzle-orm';
 import { type DonorMessages, MESSAGES_PER_PAGE, type NoteStanding } from '../../donate/messages';
-import { readContactNameParts } from '../contacts/queries';
 import type { Db } from '../db/client';
 import { dispute, donation, payment } from '../db/schema';
 import { giftNetRaised } from '../ledger/queries';
-import { type NameParts, shownName } from './shown-name';
 
 // the donors' messages: a gift's note shown on the donate page, read for that page and for
 // /admin/donations/messages, and the one write, hiding or showing one again.
@@ -94,12 +92,13 @@ function cursorPast(
 	return cursorText({ receivedAt, passed: before + tied });
 }
 
-async function namesOf(db: Db, contactIds: readonly string[]) {
-	const parts = await readContactNameParts(db, contactIds);
-	const none: NameParts = { firstName: null, lastName: null };
-	return (contactId: string, anonymous: boolean) =>
-		shownName(parts.get(contactId) ?? none, anonymous);
-}
+/**
+ * the name a listed note is signed with, as the gift stored it when the donor opted in
+ * (`noteOnPageColumns` in ../donations/record.ts), and never read from the contact, which may be
+ * another donor's who shares the address. the checks on `note_shown_name` (../db/schema.ts) give
+ * every public note one, so the null is the column's type and no gift's.
+ */
+const signature = (stored: string | null) => stored ?? 'Anonymous';
 
 /** the six messages after `after`, or the newest six, as the donate page shows them. */
 export async function readShownMessages(
@@ -110,9 +109,8 @@ export async function readShownMessages(
 	const [rows, [counted]] = await Promise.all([
 		db
 			.select({
-				contactId: donation.contactId,
+				name: donation.noteShownName,
 				note: donation.note,
-				anonymous: donation.noteAnonymous,
 				receivedAt: donation.receivedAt
 			})
 			.from(donation)
@@ -123,13 +121,9 @@ export async function readShownMessages(
 		db.select({ total: sql<number>`count(*)` }).from(donation).where(shown(db))
 	]);
 	const page = rows.slice(0, MESSAGES_PER_PAGE);
-	const name = await namesOf(
-		db,
-		page.map((row) => row.contactId)
-	);
 	return {
 		messages: page.map((row) => ({
-			name: name(row.contactId, row.anonymous),
+			name: signature(row.name),
 			note: row.note ?? '',
 			receivedAt: row.receivedAt.toISOString()
 		})),
@@ -149,46 +143,136 @@ export type ModeratedMessage = {
 };
 
 /**
+ * a row of /admin/donations/messages, by the key the list is ordered on, newest first: the time it
+ * was received and the gift's id. a page resumes strictly past the row it ended on, so a message
+ * that joins or leaves the list between loads moves no other row across a page's edge. it names a
+ * gift, which the donor cursor above may not: this one reaches only a signed-in screen, which
+ * lists the same ids.
+ */
+export type ModeratedCursor = { readonly receivedAt: number; readonly id: string };
+
+/** the text a `ModeratedCursor` travels as, which `parseModeratedCursor` reads back. */
+export function moderatedCursorText({ receivedAt, id }: ModeratedCursor): string {
+	return Buffer.from(`${receivedAt}.${id}`).toString('base64url');
+}
+
+/** a `next` the admin reads handed out, or null for anything else. */
+export function parseModeratedCursor(text: string): ModeratedCursor | null {
+	const match = /^(\d+)\.(\S+)$/.exec(Buffer.from(text, 'base64url').toString());
+	if (match === null) return null;
+	const receivedAt = Number(match[1]);
+	if (!Number.isSafeInteger(receivedAt)) return null;
+	return { receivedAt, id: match[2] ?? '' };
+}
+
+const keyOf = (row: { readonly receivedAt: Date; readonly id: string }): ModeratedCursor => ({
+	receivedAt: row.receivedAt.getTime(),
+	id: row.id
+});
+
+/** the rows listed after `key`, newest first. */
+function olderThan(key: ModeratedCursor): SQL | undefined {
+	const at = new Date(key.receivedAt);
+	return or(
+		lt(donation.receivedAt, at),
+		and(eq(donation.receivedAt, at), lt(donation.id, key.id))
+	);
+}
+
+/** `key`'s own row and the rows listed before it, newest first. */
+function atOrNewerThan(key: ModeratedCursor): SQL | undefined {
+	const at = new Date(key.receivedAt);
+	return or(
+		gt(donation.receivedAt, at),
+		and(eq(donation.receivedAt, at), gte(donation.id, key.id))
+	);
+}
+
+const newestFirst = [desc(donation.receivedAt), desc(donation.id)] as const;
+
+/**
  * the `MODERATED_MESSAGE_LIMIT` listed messages after `after`, or the newest, hidden ones in their
  * place; how many there are; and the cursor to the next page, null on the last.
  */
 export async function readModeratedMessages(
 	db: Db,
-	after: MessageCursor | null = null
+	after: ModeratedCursor | null = null
 ): Promise<{ messages: ModeratedMessage[]; total: number; next: string | null }> {
-	const resume = resumeAt(after);
 	const [rows, [counted]] = await Promise.all([
-		db
-			.select({
-				id: donation.id,
-				contactId: donation.contactId,
-				note: donation.note,
-				anonymous: donation.noteAnonymous,
-				receivedAt: donation.receivedAt,
-				hiddenAt: donation.noteHiddenAt
-			})
-			.from(donation)
-			.where(and(listed(db), resume.where))
-			.orderBy(desc(donation.receivedAt), desc(donation.id))
-			.limit(MODERATED_MESSAGE_LIMIT + 1)
-			.offset(resume.offset),
+		moderatedRows(db, after === null ? undefined : olderThan(after)).limit(
+			MODERATED_MESSAGE_LIMIT + 1
+		),
 		db.select({ total: sql<number>`count(*)` }).from(donation).where(listed(db))
 	]);
 	const page = rows.slice(0, MODERATED_MESSAGE_LIMIT);
-	const name = await namesOf(
-		db,
-		page.map((row) => row.contactId)
-	);
+	const last = page.at(-1);
 	return {
-		messages: page.map((row) => ({
-			id: row.id,
-			name: name(row.contactId, row.anonymous),
-			note: row.note ?? '',
-			receivedAt: row.receivedAt,
-			hidden: row.hiddenAt !== null
-		})),
+		messages: page.map(moderated),
 		total: counted?.total ?? 0,
-		next: cursorPast(page, after, rows.length > MODERATED_MESSAGE_LIMIT)
+		next:
+			rows.length > MODERATED_MESSAGE_LIMIT && last !== undefined
+				? moderatedCursorText(keyOf(last))
+				: null
+	};
+}
+
+/**
+ * the key of the listed row `index` places past `after`, or past none from the newest, and whether
+ * any row follows it; null where the list ends first.
+ */
+export async function moderatedKeyAt(
+	db: Db,
+	after: ModeratedCursor | null,
+	index: number
+): Promise<{ key: ModeratedCursor; more: boolean } | null> {
+	const rows = await db
+		.select({ receivedAt: donation.receivedAt, id: donation.id })
+		.from(donation)
+		.where(and(listed(db), after === null ? undefined : olderThan(after)))
+		.orderBy(...newestFirst)
+		.limit(2)
+		.offset(index);
+	const [row] = rows;
+	return row === undefined ? null : { key: keyOf(row), more: rows.length > 1 };
+}
+
+/**
+ * every listed message after `below`, down to and including `through`'s row, or to the end of the
+ * list where `through` is null, newest first.
+ */
+export async function readModeratedBetween(
+	db: Db,
+	below: ModeratedCursor,
+	through: ModeratedCursor | null
+): Promise<ModeratedMessage[]> {
+	const rows = await moderatedRows(
+		db,
+		and(olderThan(below), through === null ? undefined : atOrNewerThan(through))
+	);
+	return rows.map(moderated);
+}
+
+function moderatedRows(db: Db, where: SQL | undefined) {
+	return db
+		.select({
+			id: donation.id,
+			name: donation.noteShownName,
+			note: donation.note,
+			receivedAt: donation.receivedAt,
+			hiddenAt: donation.noteHiddenAt
+		})
+		.from(donation)
+		.where(and(listed(db), where))
+		.orderBy(...newestFirst);
+}
+
+function moderated(row: Awaited<ReturnType<typeof moderatedRows>>[number]): ModeratedMessage {
+	return {
+		id: row.id,
+		name: signature(row.name),
+		note: row.note ?? '',
+		receivedAt: row.receivedAt,
+		hidden: row.hiddenAt !== null
 	};
 }
 

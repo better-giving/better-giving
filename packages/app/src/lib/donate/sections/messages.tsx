@@ -11,9 +11,10 @@ import { messageAge } from '../message-age';
 // going. the list keeps what it has shown and adds an answer only while a press is waiting on one,
 // so the same answer handed back again — a revalidation — adds nothing twice.
 //
-// while a press is out the button holds its focus, busy, and says "Loading"; the count line is the
-// live region that says the new count, and the button and a refusal's alert stand outside it, so
-// neither is read out again with it. when an answer is the last page the band and its button go, and
+// while a press is out the button holds its focus, busy, and says "Loading"; the band's status line is
+// the live region that says the new count, or that a press failed, and the button stands outside it, so
+// its changing words are not read out with it. a failed press leaves the list and the button as
+// they were, ready to press again. when an answer is the last page the band and its button go, and
 // focus moves to the first message the answer added, which takes focus for that alone.
 
 export type ShowMoreStatus = 'idle' | 'loading' | 'error';
@@ -113,16 +114,17 @@ export function DonorMessages({
 				</ul>
 				{shown.next === null ? null : (
 					<div className="page-messages-foot">
-						<p className="page-messages-count" role="status">
-							Showing {count.format(shown.messages.length)} of {count.format(shown.total)} messages
-						</p>
-						{/* the design draws no failed Show more (design-spec.md, Messages from donors): this
-						    sentence is the least that says so, and the button stays to try again. */}
-						{status === 'error' ? (
-							<p className="page-messages-refused" role="alert">
-								Couldn’t load more messages. Try again.
+						<div className="page-messages-said" role="status">
+							<p className="page-messages-count">
+								Showing {count.format(shown.messages.length)} of {count.format(shown.total)}{' '}
+								messages
 							</p>
-						) : null}
+							{/* the design draws no failed Show more (design-spec.md, Messages from donors): this
+							    sentence is the least that says so, and the button stays to try again. */}
+							{status === 'error' ? (
+								<p className="page-messages-refused">Couldn’t load more messages. Try again.</p>
+							) : null}
+						</div>
 						<button
 							type="button"
 							className="ds-btn ds-btn-secondary ds-btn-sm page-messages-more"

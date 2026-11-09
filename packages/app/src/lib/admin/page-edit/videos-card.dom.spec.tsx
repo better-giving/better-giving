@@ -125,6 +125,18 @@ const alerts = (host: HTMLElement) =>
 	[...host.querySelectorAll('[role="alert"]')].map((one) => one.textContent);
 
 describe('the Videos card', () => {
+	it('stands Add video on the link box’s row, inside the form adm.css widens it in under the middle breakpoint', async () => {
+		const host = await mount();
+		const add = named(host, 'Add video');
+		// `.adm-videoadd .adm-actions > .adm-btn` in packages/operator/src/styles/adm.css: full width
+		// under the box below 44rem, beside it from there.
+		expect(add.closest('form')?.classList.contains('adm-videoadd')).toBe(true);
+		expect(add.classList.contains('adm-btn')).toBe(true);
+		const row = add.parentElement;
+		expect(row?.classList.contains('adm-actions')).toBe(true);
+		expect(row?.firstElementChild?.contains(linkBox(host))).toBe(true);
+		expect(row?.lastElementChild).toBe(add);
+	});
 	it('lists the videos in order, each with its poster, title, length where known and a link out', async () => {
 		const host = await mount();
 		expect(host.querySelector('h2')?.textContent).toBe('Videos');

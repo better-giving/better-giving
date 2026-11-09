@@ -3,14 +3,16 @@ import { MIGRATIONS, openUnmigrated, rawSql, run, stmt } from './database.testin
 import { applyMigrations } from './migrate';
 import { rejectionCode } from './rejection.testing';
 
-// a gift's note shown on the donate page: `note_public`, `note_anonymous` and `note_hidden_at` on
-// `donation`, read off the applied migrations rather than off ./schema.ts.
+// a gift's note shown on the donate page: `note_public`, `note_anonymous`, `note_hidden_at` and
+// `note_shown_name` on `donation`, read off the applied migrations rather than off ./schema.ts.
 //
 // the migration is read over a database already holding gifts, because that is the one a deployment
 // has: a note written before the donor could be asked must stay private.
 
 const CONSENT_BY = '0034_donation_note_consent.sql';
 const CONSENT = MIGRATIONS.findIndex((m) => m.name === CONSENT_BY);
+const SHOWN_NAME_BY = '0035_donation_note_shown_name.sql';
+const SHOWN_NAME = MIGRATIONS.findIndex((m) => m.name === SHOWN_NAME_BY);
 
 const CONTACT_ID = '019fb400-0000-7000-8000-000000000001';
 const NOTED_ID = '019fb400-0000-7000-8000-000000000002';
@@ -64,6 +66,53 @@ describe(`${CONSENT_BY} over a database holding gifts`, () => {
 	});
 });
 
+describe(`${SHOWN_NAME_BY} over a database holding gifts`, () => {
+	const holdingGifts = async () => {
+		expect(SHOWN_NAME, `${SHOWN_NAME_BY} is committed`).toBeGreaterThan(0);
+		const bare = await openUnmigrated();
+		const before = rawSql(bare);
+		await applyMigrations(bare, MIGRATIONS.slice(0, SHOWN_NAME));
+		await before.run(insertContact);
+		return { bare, before };
+	};
+
+	it('leaves every private gift with no shown name', async () => {
+		const { bare, before } = await holdingGifts();
+		await before.run(insertDonation(NOTED_ID, ', note', ", 'in memory of my mother'"));
+		await before.run(insertDonation(SILENT_ID));
+
+		expect(await applyMigrations(bare, MIGRATIONS.slice(SHOWN_NAME, SHOWN_NAME + 1))).toEqual([
+			SHOWN_NAME_BY
+		]);
+
+		expect(
+			await before.all(
+				stmt('select id, note, note_public, note_shown_name from donation order by id')
+			)
+		).toEqual([
+			{ id: NOTED_ID, note: 'in memory of my mother', note_public: 0, note_shown_name: null },
+			{ id: SILENT_ID, note: null, note_public: 0, note_shown_name: null }
+		]);
+	});
+
+	it('refuses a database holding a public note, which has no name to show', async () => {
+		const { bare, before } = await holdingGifts();
+		await before.run(insertDonation(NOTED_ID, ', note, note_public', ", 'thank you', 1"));
+
+		const code = await rejectionCode(() =>
+			applyMigrations(bare, MIGRATIONS.slice(SHOWN_NAME, SHOWN_NAME + 1))
+		);
+		// `ADD COLUMN` reports a check an existing row fails as `SQLITE_ERROR` naming no constraint;
+		// the test above, on private gifts alone, is what ties the refusal to the public note.
+		expect(code).toContain(`migration ${SHOWN_NAME_BY} was not applied <- SQLITE_ERROR`);
+		expect(
+			await before.all(
+				stmt("select name from pragma_table_info('donation') where name = 'note_shown_name'")
+			)
+		).toEqual([]);
+	});
+});
+
 describe('the note flags on a new gift', () => {
 	let next = 0;
 	const fresh = () => `019fb400-0000-7000-8000-1000000000${String(++next).padStart(2, '0')}`;
@@ -111,13 +160,46 @@ describe('the note flags on a new gift', () => {
 		);
 	});
 
-	it('takes a public note shown as Anonymous, and one hidden', async () => {
+	it('refuses a public note with no name to show, and a private one with a name', async () => {
+		await refusedBy('donation_note_shown_name_public_check', ', note_public', ', 1');
+		await refusedBy('donation_note_shown_name_public_check', ', note_shown_name', ", 'Maya R.'");
+	});
+
+	it('refuses a blank shown name', async () => {
+		await refusedBy(
+			'donation_note_shown_name_not_blank_check',
+			', note_public, note_shown_name',
+			', 1, char(160)'
+		);
+	});
+
+	it("refuses a donor's name over a note shown as Anonymous", async () => {
+		await refusedBy(
+			'donation_note_shown_name_anonymous_check',
+			', note_public, note_anonymous, note_shown_name',
+			", 1, 1, 'Maya R.'"
+		);
+	});
+
+	it('takes a public note shown as Anonymous, one shown by name, and one hidden', async () => {
 		const anonymous = await run(
-			insertDonation(fresh(), ', note, note_public, note_anonymous', ", 'thank you', 1, 1")
+			insertDonation(
+				fresh(),
+				', note, note_public, note_anonymous, note_shown_name',
+				", 'thank you', 1, 1, 'Anonymous'"
+			)
+		);
+		const named = await run(
+			insertDonation(fresh(), ', note, note_public, note_shown_name', ", 'thank you', 1, 'Maya R.'")
 		);
 		const hidden = await run(
-			insertDonation(fresh(), ', note, note_public, note_hidden_at', ", 'thank you', 1, ?", 1)
+			insertDonation(
+				fresh(),
+				', note, note_public, note_hidden_at, note_shown_name',
+				", 'thank you', 1, ?, 'Maya R.'",
+				1
+			)
 		);
-		expect([anonymous.rowsAffected, hidden.rowsAffected]).toEqual([1, 1]);
+		expect([anonymous.rowsAffected, named.rowsAffected, hidden.rowsAffected]).toEqual([1, 1, 1]);
 	});
 });

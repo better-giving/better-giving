@@ -1314,6 +1314,13 @@ body {
 	background: var(--_n2);
 }
 
+/* the band's live region: the count, and under it a failed Show more, beside the button that
+   tries again. */
+.page-messages-said {
+	display: grid;
+	gap: var(--_sp1);
+}
+
 .page-messages-count {
 	margin: 0;
 	font-size: var(--_t-sm);
@@ -1321,10 +1328,7 @@ body {
 	color: var(--page-quiet);
 }
 
-/* a failed Show more, said on the band's own line ahead of the button that tries again. */
 .page-messages-refused {
-	flex-basis: 100%;
-	order: 1;
 	margin: 0;
 	font-size: var(--_t-sm);
 	line-height: var(--page-profile-lh-small);

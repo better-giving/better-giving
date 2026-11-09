@@ -14,7 +14,7 @@ import { defineForm, WHICH_FORM } from '$lib/forms/definition';
 import { invalid, type ParsedForm, parseForm, submittedForm } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
 import { setNoteHidden } from '$lib/server/pages/messages';
-import { readModeratedPages } from '$lib/server/pages/moderated-pages';
+import { readModeratedFirstPage } from '$lib/server/pages/moderated-pages';
 import { screenTitle } from '$lib/admin/screen-title';
 import { database } from '../context';
 import type { Route } from './+types/_app.admin.donations.messages';
@@ -45,7 +45,7 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 
 export async function loader({ context }: Route.LoaderArgs) {
 	try {
-		return await readModeratedPages(context.get(database), null, 1);
+		return await readModeratedFirstPage(context.get(database));
 	} catch (e) {
 		console.error('listing public messages failed:', e);
 		loadFailed('The public messages list');

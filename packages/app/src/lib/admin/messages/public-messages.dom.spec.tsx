@@ -304,6 +304,53 @@ describe('showing a message again', () => {
 	});
 });
 
+describe('the words a landed press says, through the per-row presses the route hands down', () => {
+	const statusLine = (host: HTMLElement) => host.querySelector('p[role="status"]')?.textContent;
+
+	it('says “Hidden from your page” after Hide, in the status line and on the press, for the confirmation time', () => {
+		vi.useFakeTimers();
+		const { host, rerender } = mount({ presses: {} });
+		const hide = press(host, 'Maya R.');
+		act(() => hide?.click());
+		act(() => dialogButton('Hide message')?.click());
+		rerender({ presses: { [MAYA.id]: { pending: true, outcome: null } } });
+		rerender({
+			messages: [{ ...MAYA, hidden: true }, DEV],
+			presses: {
+				[MAYA.id]: { pending: false, outcome: { donationId: MAYA.id, landed: 'hidden' } }
+			}
+		});
+		expect(hide?.textContent).toBe('Hidden from your page');
+		expect(statusLine(host)).toBe('Hidden from your page');
+		act(() => vi.advanceTimersByTime(CONFIRMATION_MS - 1));
+		expect(hide?.textContent).toBe('Hidden from your page');
+		expect(statusLine(host)).toBe('Hidden from your page');
+		act(() => vi.advanceTimersByTime(1));
+		expect(hide?.textContent).toBe('Show again');
+		expect(statusLine(host)).toBe('');
+	});
+
+	it('says “Showing again” after Show again, in the status line and on the press, for the confirmation time', () => {
+		vi.useFakeTimers();
+		const { host, rerender } = mount({ presses: {} });
+		const show = press(host, 'Dev P.');
+		act(() => show?.click());
+		rerender({ presses: { [DEV.id]: { pending: true, outcome: null } } });
+		rerender({
+			messages: [MAYA, { ...DEV, hidden: false }],
+			presses: { [DEV.id]: { pending: false, outcome: { donationId: DEV.id, landed: 'shown' } } }
+		});
+		expect(show?.textContent).toBe('Showing again');
+		expect(statusLine(host)).toBe('Showing again');
+		act(() => vi.advanceTimersByTime(CONFIRMATION_MS - 1));
+		expect(show?.textContent).toBe('Showing again');
+		expect(statusLine(host)).toBe('Showing again');
+		act(() => vi.advanceTimersByTime(1));
+		expect(show?.textContent).toBe('Hide');
+		expect(statusLine(host)).toBe('');
+	});
+});
+
 describe('presses on two rows at once', () => {
 	const ANA: ModeratedMessage = {
 		id: 'gift-ana',

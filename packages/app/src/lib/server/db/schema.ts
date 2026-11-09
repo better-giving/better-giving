@@ -1330,7 +1330,15 @@ export const donation = sqliteTable(
 		 * rather than a flag, so the moderation screen can say when. hiding touches nothing else on
 		 * the gift.
 		 */
-		noteHiddenAt: at('note_hidden_at')
+		noteHiddenAt: at('note_hidden_at'),
+
+		/**
+		 * the name the donate page prints over a public note, exactly as printed: the donor's first
+		 * name and last initial, or "Anonymous" when `note_anonymous` says so. null on every private
+		 * gift. written with the gift from what the donor typed, because a name derived later from
+		 * `contact` is whichever donor last used that email, and two donors can share one.
+		 */
+		noteShownName: text('note_shown_name')
 	},
 	(t) => [
 		check('donation_currency_check', currencyCheck(t.currency)),
@@ -1350,6 +1358,20 @@ export const donation = sqliteTable(
 		check(
 			'donation_note_hidden_public_check',
 			sql`${t.noteHiddenAt} is null or ${t.notePublic} = 1`
+		),
+		/**
+		 * a public note has a name to print and a private one keeps none, so the page never falls
+		 * back to the contact's name. migrations/0035 adds these on the column by plain
+		 * `ADD COLUMN`, which sqlite tests against every gift already there.
+		 */
+		check('donation_note_shown_name_not_blank_check', optionalNotBlank(t.noteShownName)),
+		check(
+			'donation_note_shown_name_public_check',
+			sql`(${t.notePublic} = 1) = (${t.noteShownName} is not null)`
+		),
+		check(
+			'donation_note_shown_name_anonymous_check',
+			sql`${t.noteAnonymous} = 0 or ${t.noteShownName} = 'Anonymous'`
 		),
 		/**
 		 * `> 0`, not `>= 0`. a zero-total donation is the shape a half-parsed form submit

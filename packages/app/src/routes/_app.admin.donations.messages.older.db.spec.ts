@@ -112,6 +112,28 @@ describe('GET /admin/donations/messages/older', () => {
 		expect(read.next).toBeNull();
 	});
 
+	it('keeps the list whole and every row once when a message arrives between loads', async () => {
+		const made = await shownGifts(103);
+		const after = await firstNext(staff);
+		const before = (await (await olderPages(staff, after, '1')).json()) as Older;
+		expect(before.messages.map((m) => m.id)).toEqual(made.slice(50, 100));
+
+		const { donationId: arrived } = await noteGift(db, formId, {
+			note: 'just in',
+			noteOnPage: 'named',
+			receivedAt: new Date(Date.UTC(2026, 9, 1))
+		});
+		// the re-read after a press: the first page again, and the older pages from the same cursor.
+		const first = (await (await screenAt.get(SCREEN, staff)).json()) as Older;
+		const again = (await (await olderPages(staff, after, '1')).json()) as Older;
+		const twice = (await (await olderPages(staff, after, '2')).json()) as Older;
+
+		expect(first.messages.map((m) => m.id)).toEqual([arrived, ...made.slice(0, 49)]);
+		expect(again.messages.map((m) => m.id)).toEqual(made.slice(49, 100));
+		expect(twice.messages.map((m) => m.id)).toEqual(made.slice(49));
+		expect(twice.next).toBeNull();
+	});
+
 	it.each([
 		['a cursor nobody handed out', 'bm90IGEgY3Vyc29y', '1'],
 		['no cursor', '', '1'],
