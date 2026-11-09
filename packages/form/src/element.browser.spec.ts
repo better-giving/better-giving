@@ -1126,7 +1126,7 @@ describe('the brand scale the element generates', () => {
 		// the registry's roles are declared on the same node and follow by substitution
 		expect(bytes(host, '--primary')).toEqual(bytes(host, scale['--accent-9'] as string));
 		expect(bytes(host, '--primary-fg')).toEqual(bytes(host, scale['--accent-contrast'] as string));
-		expect(bytes(host, '--ring')).toEqual(bytes(host, scale['--accent-11'] as string));
+		expect(bytes(host, '--ring')).toEqual(bytes(host, scale['--accent-8'] as string));
 		expect(bytes(host, '--_p')).toEqual(bytes(host, scale['--accent-9'] as string));
 	}
 

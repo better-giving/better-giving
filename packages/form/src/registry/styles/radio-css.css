@@ -11,9 +11,13 @@
   display: flex;
   align-items: center;
   gap: calc(var(--ds-spacing) * 4);
+  cursor: pointer;
+}
+.ds-radio:has(:disabled) {
+  cursor: not-allowed;
 }
 .ds-radio[data-required="true"]::after {
-  margin-left: calc(var(--ds-spacing) * 1);
+  margin-inline-start: calc(var(--ds-spacing) * 1);
   content: "*" / "";
   color: var(--destructive-subtle-fg);
 }
@@ -30,7 +34,7 @@
   outline-color: var(--ring);
 }
 @media (hover: hover) {
-  .ds-radio > input:hover {
+  .ds-radio > input:not(:disabled):hover {
     border-color: var(--input-hover);
   }
 }
@@ -47,8 +51,17 @@
 .ds-radio > input:checked::before {
   background-color: var(--primary);
 }
-.ds-radio > input:disabled:checked::before {
+.ds-radio > input:disabled {
   background-color: var(--gray-3);
+  border-color: var(--hairline);
+}
+.ds-radio > input:disabled:checked::before {
+  background-color: var(--gray-11);
+}
+/* an invalid radio keeps its destructive edge under the pointer too */
+.ds-radio > input[aria-invalid="true"],
+.ds-radio > input[aria-invalid="true"]:hover {
+  border-color: var(--destructive);
 }
 .ds-radio > input:focus-visible {
   outline-style: solid;
@@ -61,5 +74,8 @@
   .ds-radio > input:checked::before {
     forced-color-adjust: none;
     background-color: CanvasText;
+  }
+  .ds-radio > input:disabled:checked::before {
+    background-color: GrayText;
   }
 }

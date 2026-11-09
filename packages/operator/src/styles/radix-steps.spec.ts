@@ -175,10 +175,9 @@ const JOBS: Record<string, Record<string, string>> = {
 	}
 };
 
-// the aliases that read a registry role instead of a ladder step, because the registry's theme file
-// declares the job per appearance (../registry/styles/themes/default.css: `--hairline` is gray 6 in
-// light and 8 in dark, `--link` accent 9 and 11, and `--ring` the step its generator picks for each,
-// accent 11 in both), where a fixed step would be wrong in one of them.
+// the aliases that read a registry role instead of a ladder step, because the job is the registry's
+// to place: a theme sets `--hairline`, `--ring`, `--link` and `--link-hover` in each of its blocks
+// (../registry/styles/variables.usage.md → Themes), and a fixed step here would stop following it.
 // the label on a solid fill is the fill's own ink, white in both modes, where the neutral's step 1
 // turns near-black in dark. a visited link reads `--link` because the registry names no visited
 // ink.

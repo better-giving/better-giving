@@ -7,22 +7,30 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
 // a quiet small control at the start of any line of a page header's or a group's actions row
 // aligns by its word, which ./adm.css does by pulling the row or its first control out by the
-// padding the registry's small ghost press keeps (../registry/styles/button-css.css).
+// padding the registry's small ghost press keeps and the transparent edge every registry rank draws
+// (../registry/styles/button-css.css). the edge is declared on the press, so a pulled row takes the
+// padding and sets each of its controls back by its own edge.
 //
 // **the row wraps at the 375px floor, and a wrapped control starts a line too.** a pull on the
 // first control alone leaves every later line's word a padding in from the column's edge — the API
 // page's "Open agent prompt" under a flush "API reference". a row of nothing but quiet small
 // controls is pulled as one; a row holding anything else keeps the pull on its first control.
 //
-// what is asked is which element each rule stating the pull matches, in a row built here: the
+// what is asked is which element each rule stating a pull matches, in a row built here: the
 // pull counted twice on one line is as wrong as none, so the row and its first control are never
-// both pulled.
+// both pulled, and a control is set back by its edge only inside a row pulled by the padding alone.
 
 const css = sheet('adm.css');
-const PULL = 'calc(-1 * var(--admin-space-5))';
-const pulls = rulesIn(css)
-	.filter(({ stated }) => stated.get('margin-inline-start') === PULL)
-	.map(({ selector }) => selector);
+const PADDING = 'calc(-1 * var(--admin-space-5))';
+const PADDING_AND_EDGE = 'calc(-1 * (var(--admin-space-5) + var(--ds-btn-edge)))';
+const EDGE = 'calc(-1 * var(--ds-btn-edge))';
+const stating = (property: string, value: string) =>
+	rulesIn(css)
+		.filter(({ stated }) => stated.get(property) === value)
+		.map(({ selector }) => selector);
+const byPadding = stating('margin-inline-start', PADDING);
+const byPaddingAndEdge = stating('margin-inline-start', PADDING_AND_EDGE);
+const byEdge = stating('inset-inline-start', EDGE);
 
 function quiet(tag: 'a' | 'button') {
 	const control = document.createElement(tag);
@@ -43,14 +51,26 @@ function row(where: 'grouped' | 'header', items: readonly Element[]) {
 	return actions;
 }
 
-const pulled = (element: Element) => pulls.some((selector) => element.matches(selector));
+/** what each rule moves an element by: the padding, the padding and the edge, the edge alone. */
+const moved = (element: Element) =>
+	[
+		byPadding.some((selector) => element.matches(selector)) ? 'padding' : '',
+		byPaddingAndEdge.some((selector) => element.matches(selector)) ? 'padding and edge' : '',
+		byEdge.some((selector) => element.matches(selector)) ? 'edge' : ''
+	]
+		.filter(Boolean)
+		.join(', ');
 
 describe("an actions row's lines start on the column's edge by their word", () => {
-	it('finds the pull in the sheet', () => {
-		expect(pulls).not.toEqual([]);
+	it('finds every pull in the sheet', () => {
+		expect([byPadding, byPaddingAndEdge, byEdge].map((rules) => rules.length > 0)).toEqual([
+			true,
+			true,
+			true
+		]);
 	});
 
-	it('pulls by exactly the padding the registry gives a small ghost press', () => {
+	it('pulls by exactly the padding and the edge the registry gives a small ghost press', () => {
 		// the registry's step and the tier's multiple of it, against the token the pull spends.
 		// resolved through `fileURLToPath`, which ./field-on-a-tight-stack.dom.spec.tsx argues.
 		const registry = stripComments(
@@ -61,12 +81,24 @@ describe("an actions row's lines start on the column's edge by their word", () =
 		);
 		const step = ruleOf(registry, '.ds-btn').get('--ds-spacing');
 		const padding = ruleOf(registry, '.ds-btn-sm').get('padding-inline');
+		const press = ruleOf(registry, '.ds-btn');
 		const ghost = ruleOf(registry, '.ds-btn-ghost');
 		const token = ruleOf(sheet('tokens.css'), ':root').get('--admin-space-5');
 
-		expect([step, padding, ghost.get('border'), token]).toEqual([
+		expect([
+			step,
+			padding,
+			press.get('--ds-btn-edge'),
+			press.get('border'),
+			ghost.get('--ds-btn-edge'),
+			ghost.get('border'),
+			token
+		]).toEqual([
 			'0.25rem',
 			'calc(var(--ds-spacing) * 3)',
+			'1px',
+			'var(--ds-btn-edge) solid transparent',
+			undefined,
 			undefined,
 			'0.75rem'
 		]);
@@ -80,8 +112,8 @@ describe("an actions row's lines start on the column's edge by their word", () =
 			const items = [quiet('a'), quiet('button'), live, quiet('a')];
 			const actions = row(where, items);
 
-			expect(pulled(actions)).toBe(true);
-			expect(items.filter(pulled)).toEqual([]);
+			expect(moved(actions)).toBe('padding');
+			expect(items.map(moved)).toEqual(['edge', 'edge', '', 'edge']);
 		}
 	);
 
@@ -91,10 +123,11 @@ describe("an actions row's lines start on the column's edge by their word", () =
 			const first = quiet('a');
 			const grounded = document.createElement('button');
 			grounded.className = 'ds-btn ds-btn-secondary adm-btn';
-			const actions = row(where, [first, grounded, quiet('a')]);
+			const last = quiet('a');
+			const actions = row(where, [first, grounded, last]);
 
-			expect(pulled(actions)).toBe(false);
-			expect([first, grounded].map(pulled)).toEqual([true, false]);
+			expect(moved(actions)).toBe('');
+			expect([first, grounded, last].map(moved)).toEqual(['padding and edge', '', '']);
 		}
 	);
 });

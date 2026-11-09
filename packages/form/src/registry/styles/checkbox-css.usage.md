@@ -28,6 +28,9 @@ Import `styles/variables.css` and `styles/checkbox-css.css`. The class goes on t
 
 Hover darkens the edge (or the checked fill); disabled shows the disabled fill and a muted check; focus-visible shows a 2px outline in `--ring`. Keyboard focus only: a pointer press does not ring the box.
 
+- Indeterminate: set the input's `indeterminate` property from script (there is no attribute for it), which the browser announces as mixed, so the input takes no `aria-checked`; the box takes the checked fill with a flat bar, and hover steps it as it does a checked box.
+- `aria-invalid="true"` on the input takes the `--destructive` edge. On an unchecked box hover leaves it alone; a checked or indeterminate box shows it at rest, and under the pointer takes the `--primary-hover` fill and edge as any filled box does.
+
 ## Accessibility
 
 - The box is a native input, so it keeps its role, keyboard use and form value.
@@ -36,4 +39,4 @@ Hover darkens the edge (or the checked fill); disabled shows the disabled fill a
 
 ## Theming
 
-Reads roles from `variables`, so `data-theme`, `.dark` and `.light` recolor it. The spacing step and type size Tailwind owns are declared on the classes as `--ds-*` with the same values. A test holds the look equal to the Tailwind `checkbox` and `check-field` in light and dark, in the default and example themes.
+Reads roles from `variables`, so `data-theme`, `.dark` and `.light` recolor it. The spacing step and type size Tailwind owns are declared on the classes as `--ds-*` with the same values. Both are in rem, so the box and its label follow the reader's browser font size. A test holds the look equal to the Tailwind `checkbox` and `check-field` in light and dark, in the default and example themes.

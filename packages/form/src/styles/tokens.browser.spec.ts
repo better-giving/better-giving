@@ -318,7 +318,9 @@ describe('the colour layer', () => {
 		expect(bytes('--_n1')).toEqual(bytes('#fbfcfe'));
 		expect(bytes('--_p')).toEqual(bytes(UNSEEDED));
 		expect(bytes('--primary')).toEqual(bytes(UNSEEDED));
-		expect(bytes('--_focus-ring')).toEqual(bytes('--accent-11'));
+		// the default theme's accent step 8 (../registry/styles/themes/default.css), the ring the
+		// registry's own controls draw from `--ring`.
+		expect(bytes('--ring')).toEqual(bytes('#6daee9'));
 	});
 
 	it('leaves every alias alone whatever the seed is, which only the brand sheet moves', () => {
