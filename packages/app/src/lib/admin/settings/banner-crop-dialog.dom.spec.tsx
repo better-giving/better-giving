@@ -28,9 +28,11 @@ class StillResizeObserver {
 }
 Object.assign(window, { ResizeObserver: StillResizeObserver });
 
+/** every object url made: none, since an operator screen may not draw one. */
+let objectUrl: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
-	vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:banner');
-	vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+	objectUrl = vi.spyOn(URL, 'createObjectURL');
 	vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
 		const { width, height } = this.matches('.adm-cropper__viewport')
 			? box
@@ -52,11 +54,34 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
+/**
+ * what `find` finds once the card's read of its file has landed, or null if it never does: each
+ * turn a timer's tick inside `act`, so react draws what the read set before `find` looks again.
+ */
+async function settled<T>(find: () => T | null): Promise<T | null> {
+	for (let turn = 0; turn < 50; turn++) {
+		const found = find();
+		if (found !== null) return found;
+		await act(async () => {
+			await new Promise((done) => setTimeout(done, 10));
+		});
+	}
+	return null;
+}
+
+/** the photo under the crop, once the card has read its file: happy-dom's own `FileReader`. */
+async function drawnImage(): Promise<HTMLImageElement> {
+	const image = await settled(() =>
+		document.querySelector<HTMLImageElement>('img.adm-cropper__image')
+	);
+	if (image === null) throw new Error('no photo under the crop');
+	return image;
+}
+
 /** the photo under the crop loads at `natural`, drawn in a box of `shown`. */
 async function load(natural: Box, shown: Box) {
 	box = shown;
-	const image = document.querySelector<HTMLImageElement>('img.adm-cropper__image');
-	if (image === null) throw new Error('no image under the crop');
+	const image = await drawnImage();
 	Object.defineProperties(image, {
 		complete: { configurable: true, get: () => true },
 		naturalWidth: { configurable: true, get: () => natural.width },
@@ -90,6 +115,40 @@ async function opened() {
 }
 
 describe('the banner’s crop card', () => {
+	// the operator screens' `img-src` is `'self' data:` (`operatorPolicy` in
+	// ../../../document-policy.ts), so a `blob:` address would draw nothing in a browser.
+	it('draws the chosen photo from a `data:` address of its own bytes, and makes no `blob:` one', async () => {
+		mount(
+			<BannerCropDialog
+				file={new File(['png'], 'banner.png', { type: 'image/png' })}
+				onSave={vi.fn()}
+				onCancel={vi.fn()}
+				onSwap={vi.fn()}
+			/>
+		);
+		expect((await drawnImage()).getAttribute('src')).toBe(`data:image/png;base64,${btoa('png')}`);
+		expect(objectUrl).not.toHaveBeenCalled();
+	});
+
+	it('says the photo could not be opened where the file cannot be read, with Save banner closed', async () => {
+		vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+			queueMicrotask(() => this.onerror?.(new ProgressEvent('error') as ProgressEvent<FileReader>));
+		});
+		mount(
+			<BannerCropDialog
+				file={new File(['png'], 'banner.png', { type: 'image/png' })}
+				onSave={vi.fn()}
+				onCancel={vi.fn()}
+				onSwap={vi.fn()}
+			/>
+		);
+		const alert = await settled(() => document.querySelector('[role="alert"]'));
+		expect(alert?.textContent).toBe(
+			'That image couldn’t be opened here. Save it as a PNG, JPEG or WebP and choose it again.'
+		);
+		expect(document.querySelector('img.adm-cropper__image')).toBeNull();
+	});
+
 	it('opens on the widest centred 4:1 band, and says where it stands', async () => {
 		await opened();
 		expect(bandSaid()).toBe('1600 pixels across, 0 from the left and 600 from the top');

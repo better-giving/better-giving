@@ -74,8 +74,8 @@ const bandWords = (band: CropRect | null): string =>
 
 /** what a cropper has measured of its photo: the band kept, and the photo's own size. */
 type CropReading = {
-	/** the image the reading is of. */
-	readonly src: string;
+	/** the file the reading is of (`ImageSource`'s `id`). */
+	readonly id: string;
 	readonly band: CropRect | null;
 	readonly natural: Size | null;
 };
@@ -87,18 +87,18 @@ export function BannerCropDialog({
 	onSwap,
 	fallbackFocus
 }: BannerCropDialogProps): ReactNode {
-	const src = useImageSource(file);
+	const { id, src, unreadable } = useImageSource(file);
 	const [failed, setFailed] = useState<{ readonly file: File } | null>(null);
 	/* a failure is the file's that failed: a file swapped in by a drop is tried afresh. */
 	const refused: string | null = !takesLogo(file)
 		? LOGO_REFUSED['not-a-logo-type']
-		: failed?.file === file
+		: unreadable || failed?.file === file
 			? LOGO_REFUSED.unreadable
 			: null;
 	/* a reading is the image's it was taken from, so a dropped image states nothing until its own
 	   cropper has measured it. */
 	const [reading, setReading] = useState<CropReading | null>(null);
-	const current = reading?.src === src ? reading : null;
+	const current = reading?.id === id ? reading : null;
 	const natural = current?.natural ?? null;
 
 	return (
@@ -114,7 +114,8 @@ export function BannerCropDialog({
 		>
 			{src === null || refused !== null ? null : (
 				<BannerCropper
-					key={src}
+					key={id}
+					id={id}
 					src={src}
 					onRead={setReading}
 					onError={() => setFailed({ file })}
@@ -125,6 +126,8 @@ export function BannerCropDialog({
 }
 
 type BannerCropperProps = {
+	/** the file the photo is read from (`ImageSource`'s `id`). */
+	readonly id: string;
 	readonly src: string;
 	/** the band kept and the photo's own size, each time either changes. */
 	readonly onRead: (reading: CropReading) => void;
@@ -133,7 +136,7 @@ type BannerCropperProps = {
 };
 
 /** ark's cropper over one photo, opening on its widest centred band. */
-function BannerCropper({ src, onRead, onError }: BannerCropperProps): ReactNode {
+function BannerCropper({ id, src, onRead, onError }: BannerCropperProps): ReactNode {
 	/* the two measures the band's limits are stated from, as the last render's machine reported
 	   them: the limits are props of the machine, so they are read from a render before its own. */
 	const [measures, setMeasures] = useState<{ shown: Size; natural: Size } | null>(null);
@@ -174,10 +177,10 @@ function BannerCropper({ src, onRead, onError }: BannerCropperProps): ReactNode 
 	const centredOn = useRef<string | null>(null);
 	const centre = useEffectEvent(() => cropper.reset());
 	useEffect(() => {
-		if (measures === null || centredOn.current === src) return;
-		centredOn.current = src;
+		if (measures === null || centredOn.current === id) return;
+		centredOn.current = id;
 		centre();
-	}, [src, measures]);
+	}, [id, measures]);
 
 	const band =
 		shown !== null && natural !== null && measured(cropper.crop)
@@ -187,7 +190,7 @@ function BannerCropper({ src, onRead, onError }: BannerCropperProps): ReactNode 
 	const read = useEffectEvent(onRead);
 	useEffect(() => {
 		read({
-			src,
+			id,
 			band:
 				bandX === undefined ||
 				bandY === undefined ||
@@ -197,7 +200,7 @@ function BannerCropper({ src, onRead, onError }: BannerCropperProps): ReactNode 
 					: { x: bandX, y: bandY, width: bandWidth, height: bandHeight },
 			natural: naturalWide === 0 ? null : { width: naturalWide, height: naturalTall }
 		});
-	}, [src, bandX, bandY, bandWidth, bandHeight, naturalWide, naturalTall]);
+	}, [id, bandX, bandY, bandWidth, bandHeight, naturalWide, naturalTall]);
 
 	return (
 		<ImageCropper.RootProvider value={cropper} className="adm-cropper">

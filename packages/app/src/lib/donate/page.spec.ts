@@ -868,6 +868,40 @@ describe('the profile head’s quiet ink', () => {
 	});
 });
 
+describe('the profile head’s type', () => {
+	// happy-dom computes no face, so the weights are read off the sheet down to their numbers, and
+	// each is a weight packages/operator/src/styles/fonts.css registers a red hat display file at.
+	const fonts = stripComments(
+		readFileSync(require.resolve('@better-giving/operator/styles/fonts.css'), 'utf8')
+	);
+	const displayWeights = [
+		...fonts.matchAll(/font-family:\s*'Red Hat Display';[^}]*?font-weight:\s*(\d+)/g)
+	].map((m) => m[1]);
+	const ground = declared(page, '.page > .page-ground');
+	const weight = (value: string | undefined) => substitute({ ...formBase, ...ground }, value ?? '');
+
+	it('sets the name in red hat display at 700, a face the sheet registers', () => {
+		const name = declared(page, '.page-profile-name');
+		expect(name['font-family']).toBe('var(--page-font-display)');
+		expect(weight(name['font-weight'])).toBe('700');
+		expect(displayWeights).toContain('700');
+	});
+
+	it('sets About us in red hat display at 600, a face the sheet registers', () => {
+		const heading = declared(page, ".page[data-layout='profile'] .page-about .page-label");
+		expect(heading['font-family']).toBe('var(--page-font-display)');
+		expect(weight(heading['font-weight'])).toBe('600');
+		expect(displayWeights).toContain('600');
+	});
+
+	it('stands the raised plane 20px under the EIN, whose line is 20px', () => {
+		expect(declared(page, '.page-profile-who').gap).toBe('var(--page-gap-item)');
+		expect(ground['--page-gap-item']).toBe('1.25rem');
+		expect(declared(page, '.page-profile-ein')['line-height']).toBe('var(--page-profile-lh-small)');
+		expect(ground['--page-profile-lh-small']).toBe('1.25rem');
+	});
+});
+
 describe('the organisation’s name in the top bar', () => {
 	// happy-dom does no layout, so the cut is read off the sheet: a name that wrapped would stand the
 	// bar taller than the header's first-screen sum counts, and Share takes width from the name's row.

@@ -327,6 +327,9 @@ body {
 	--page-profile-subhead: 1.25rem;
 	--page-profile-lh-subhead: 1.75rem;
 	--page-profile-raised-inset: 1.25rem 1.5rem;
+	/* the EIN's and the raised label's line: the small step on a 20px line, where the card's body
+	   line height would make it 21. */
+	--page-profile-lh-small: 1.25rem;
 	--page-profile-measure: 62ch;
 	--page-w-display: 700;
 	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header says why */
@@ -1120,6 +1123,7 @@ body {
 
 .page-profile-ein {
 	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
 	color: var(--page-quiet);
 }
 
@@ -1149,6 +1153,7 @@ body {
 
 .page-profile-raised-label {
 	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
 	color: var(--page-quiet);
 }
 
@@ -1169,6 +1174,7 @@ body {
 .page[data-layout='profile'] .page-about .page-label {
 	margin-block-end: var(--_sp3);
 	font-family: var(--page-font-display);
+	font-weight: var(--_w-bold);
 	font-size: var(--page-profile-subhead);
 	line-height: var(--page-profile-lh-subhead);
 	letter-spacing: normal;

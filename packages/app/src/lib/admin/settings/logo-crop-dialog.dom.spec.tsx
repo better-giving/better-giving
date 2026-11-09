@@ -69,11 +69,37 @@ function mount(tree: ReactNode): { root: HTMLElement; render: Root['render'] } {
 	return { root, render: (next) => act(() => mounted.render(next)) };
 }
 
+/**
+ * what `find` finds once the card's read of its file has landed, or null if it never does: each
+ * turn a timer's tick inside `act`, so react draws what the read set before `find` looks again.
+ */
+async function settled<T>(find: () => T | null): Promise<T | null> {
+	for (let turn = 0; turn < 50; turn++) {
+		const found = find();
+		if (found !== null) return found;
+		await act(async () => {
+			await new Promise((done) => setTimeout(done, 10));
+		});
+	}
+	return null;
+}
+
+/**
+ * the image under the crop, once the card has read its file into the address it draws it from:
+ * happy-dom's own `FileReader`, as a browser reads it.
+ */
+async function drawnImage(root: HTMLElement): Promise<HTMLImageElement> {
+	const image = await settled(() =>
+		root.ownerDocument.querySelector<HTMLImageElement>('img.adm-cropper__image')
+	);
+	if (image === null) throw new Error('no image under the crop');
+	return image;
+}
+
 /** the image under the crop loads at `natural`, drawn in a box of `shown`. */
 async function load(root: HTMLElement, natural: Box, shown: Box) {
 	box = shown;
-	const image = root.ownerDocument.querySelector<HTMLImageElement>('img.adm-cropper__image');
-	if (image === null) throw new Error('no image under the crop');
+	const image = await drawnImage(root);
 	Object.defineProperties(image, {
 		complete: { configurable: true, get: () => true },
 		naturalWidth: { configurable: true, get: () => natural.width },
@@ -89,9 +115,7 @@ const squareSaid = (root: HTMLElement) =>
 	root.ownerDocument.querySelector('.adm-cropper__selection')?.getAttribute('aria-valuetext');
 
 it('opens a dropped image on the largest centred square of its own, as it opens the first', async () => {
-	let made = 0;
-	vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:logo-${++made}`);
-	vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+	const objectUrl = vi.spyOn(URL, 'createObjectURL');
 	vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
 		const { width, height } = this.matches('.adm-cropper__viewport')
 			? box
@@ -110,4 +134,24 @@ it('opens a dropped image on the largest centred square of its own, as it opens 
 	await load(root, { width: 300, height: 600 }, { width: 100, height: 200 });
 	await act(async () => resize(viewport(root)));
 	expect(squareSaid(root)).toBe('300 pixels across, 0 from the left and 150 from the top');
+	expect(objectUrl).not.toHaveBeenCalled();
+});
+
+// the operator screens' `img-src` is `'self' data:` (`operatorPolicy` in
+// ../../../document-policy.ts), so a `blob:` address would draw nothing in a browser.
+it('draws the chosen file from a `data:` address of its own bytes, and makes no `blob:` one', async () => {
+	const objectUrl = vi.spyOn(URL, 'createObjectURL');
+	const { root } = mount(
+		<LogoCropDialog
+			file={logoFile('logo.png')}
+			onSave={vi.fn()}
+			onCancel={vi.fn()}
+			onSwap={vi.fn()}
+		/>
+	);
+
+	const src = (await drawnImage(root)).getAttribute('src');
+
+	expect(src).toBe(`data:image/png;base64,${btoa('logo')}`);
+	expect(objectUrl).not.toHaveBeenCalled();
 });

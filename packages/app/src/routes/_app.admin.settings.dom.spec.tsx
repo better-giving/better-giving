@@ -188,6 +188,21 @@ function card(root: HTMLElement, heading: string): HTMLElement {
 	return found;
 }
 
+/**
+ * the crop card's image once the card has read the chosen file into the address it draws it from,
+ * happy-dom's own `FileReader` doing the reading: each turn a timer's tick inside `act`, so react
+ * draws what the read set before the card is looked at again.
+ */
+async function cardDrawn(): Promise<void> {
+	for (let turn = 0; turn < 50; turn++) {
+		if (document.querySelector('.adm-cropper__image') !== null) return;
+		await act(async () => {
+			await new Promise((done) => setTimeout(done, 10));
+		});
+	}
+	throw new Error('the crop card read no image');
+}
+
 const SET = {
 	from: 'giving@riverbanktrust.org',
 	host: 'smtp.riverbanktrust.org',
@@ -424,14 +439,15 @@ describe('the logo', () => {
 		[...within.querySelectorAll('button')].find((button) => button.textContent === words);
 	const cropCard = () => document.querySelector('dialog');
 
-	/** a file chosen at the logo's press, as the device's picker hands one back. */
-	function pick(root: HTMLElement, file: File) {
+	/** a file chosen at the logo's press, as the device's picker hands one back, and the crop card's read of it. */
+	async function pick(root: HTMLElement, file: File) {
 		const input = logo(root).querySelector<HTMLInputElement>('input[type="file"]');
 		if (input === null) throw new Error('no file input');
 		Object.defineProperty(input, 'files', { value: [file], configurable: true });
 		act(() => {
 			input.dispatchEvent(new Event('change', { bubbles: true }));
 		});
+		await cardDrawn();
 	}
 
 	/**
@@ -466,10 +482,10 @@ describe('the logo', () => {
 		expect(logo(stored).textContent).not.toContain('photo');
 	});
 
-	it('opens the crop card on a picked file, and sends nothing yet', () => {
+	it('opens the crop card on a picked file, and sends nothing yet', async () => {
 		const { root, sent } = screen({ notificationEmail: null, mail: SET });
 
-		pick(root, PICKED);
+		await pick(root, PICKED);
 
 		expect(cropCard()?.querySelector('h2')?.textContent).toBe('Crop the logo');
 		expect(cropCard()?.querySelector('.adm-cropper__image')).not.toBeNull();
@@ -478,7 +494,7 @@ describe('the logo', () => {
 
 	it('posts the largest centred square, cropped, as the logo’s file at Save', async () => {
 		const { root, sent } = screen({ notificationEmail: null, mail: SET });
-		pick(root, PICKED);
+		await pick(root, PICKED);
 		await measure();
 		const save = cropCard() && buttonNamed(cropCard() as HTMLElement, 'Save logo');
 
@@ -496,7 +512,7 @@ describe('the logo', () => {
 
 	it('closes the crop card at Cancel, and posts nothing', async () => {
 		const { root, sent } = screen({ notificationEmail: null, mail: SET });
-		pick(root, PICKED);
+		await pick(root, PICKED);
 		await measure();
 
 		await act(async () => buttonNamed(cropCard() as HTMLElement, 'Cancel')?.click());
@@ -541,14 +557,15 @@ describe('the banner', () => {
 		[...within.querySelectorAll('button')].find((button) => button.textContent === words);
 	const cropCard = () => document.querySelector('dialog');
 
-	/** a file chosen at the banner's press, as the device's picker hands one back. */
-	function pick(root: HTMLElement, file: File) {
+	/** a file chosen at the banner's press, as the device's picker hands one back, and the crop card's read of it. */
+	async function pick(root: HTMLElement, file: File) {
 		const input = banner(root).querySelector<HTMLInputElement>('input[type="file"]');
 		if (input === null) throw new Error('no file input');
 		Object.defineProperty(input, 'files', { value: [file], configurable: true });
 		act(() => {
 			input.dispatchEvent(new Event('change', { bubbles: true }));
 		});
+		await cardDrawn();
 	}
 
 	/** the photo in the crop card laid out and decoded: drawn 600 × 400, `natural` of its own. */
@@ -597,10 +614,10 @@ describe('the banner', () => {
 		expect(field.querySelector('button[aria-label="Remove the banner"]')).not.toBeNull();
 	});
 
-	it('opens the crop card on a picked file, and sends nothing yet', () => {
+	it('opens the crop card on a picked file, and sends nothing yet', async () => {
 		const { root, sent } = screen({ notificationEmail: null, mail: SET });
 
-		pick(root, PICKED);
+		await pick(root, PICKED);
 
 		expect(cropCard()?.querySelector('h2')?.textContent).toBe('Crop the banner');
 		expect(cropCard()?.querySelector('.adm-cropper__guide')?.getAttribute('aria-hidden')).toBe(
@@ -611,7 +628,7 @@ describe('the banner', () => {
 
 	it('posts the widest centred 4:1 band, cropped, as the banner’s file at Save banner', async () => {
 		const { root, sent } = screen({ notificationEmail: null, mail: SET });
-		pick(root, PICKED);
+		await pick(root, PICKED);
 		await measure({ width: 2400, height: 1600 });
 		expect(cropCard()?.textContent).toContain(
 			'2400 pixels across, 0 from the left and 500 from the top'
@@ -637,7 +654,7 @@ describe('the banner', () => {
 
 	it('closes the crop card at Cancel, and posts nothing', async () => {
 		const { root, sent } = screen({ notificationEmail: null, mail: SET });
-		pick(root, PICKED);
+		await pick(root, PICKED);
 		await measure({ width: 2400, height: 1600 });
 
 		await act(async () => buttonNamed(cropCard() as HTMLElement, 'Cancel')?.click());
@@ -660,7 +677,7 @@ describe('the banner', () => {
 		]
 	])('refuses a photo %s in an alert, with Save banner closed', async (_, natural, said) => {
 		const { root, sent } = screen({ notificationEmail: null, mail: SET });
-		pick(root, PICKED);
+		await pick(root, PICKED);
 		await measure(natural);
 
 		const alert = cropCard()?.querySelector('[role="alert"]');
@@ -694,7 +711,7 @@ describe('the banner', () => {
 		const { root } = screen({ notificationEmail: null, mail: SET }, async () => ({
 			error: 'Save the organisation details first, then add the banner.'
 		}));
-		pick(root, PICKED);
+		await pick(root, PICKED);
 		await measure({ width: 2400, height: 1600 });
 
 		await act(async () => buttonNamed(cropCard() as HTMLElement, 'Save banner')?.click());
