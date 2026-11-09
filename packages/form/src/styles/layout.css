@@ -7,8 +7,9 @@
  *
  * two mechanisms answer instead, and which one a rule takes is a decision rather than a habit. a
  * container query against the card is for a change the card makes as a whole — the interior's inset,
- * the pair of name fields, the amount tray's columns. a container query against the tray itself is
- * for a length the tray's own width decides, which is the grid lines drawn across it.
+ * the pair of name fields, the amount tray's columns. the tray is itself a query container for one
+ * reason: the grid lines drawn across it are measured in `cqi`, its own content width. no rule
+ * queries it.
  *
  * nothing in this file transitions. a reflow here is caused by a host resizing their own layout
  * or collapsing a sidebar, and animating a reflow they caused produces a scramble that reads as a
