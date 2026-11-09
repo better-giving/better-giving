@@ -712,9 +712,9 @@ describe('a read-only box', () => {
 		expect(boxClasses(root)).toEqual(['adm-input', 'adm-input--invalid']);
 	});
 
-	// registry 2.2.0 dropped `pointer-events: none` from `.ds-field-input[readonly]` (the box now
-	// keeps its text cursor and can be selected), so the registry's own box passes the same check
-	// the boxes above do. a registry that put the rule back fails here and in the cases above.
+	// the registry's `.ds-field-input[readonly]` states no `pointer-events: none` (the box keeps its
+	// text cursor and can be selected), so the registry's own box passes the same check the boxes
+	// above do. a registry that put the rule back fails here and in the cases above.
 	it('takes a press on the registry box too', () => {
 		const box = render(Field, {
 			id: 'zapier-key',

@@ -109,8 +109,8 @@
  * outweighs the zero-weight list, which would drop the press's `scale` and time the fill by
  * `--duration-fast`. that name is declared on the registry's `:root`
  * (../registry/styles/variables.css) and a shadow tree has no `:root`, so inside the card it is the
- * host page's, and the `reduce` collapse in ./tokens.css never reaches it. "restates the motion of every registry control that
- * brings its own" in ../element.dom.spec.ts holds it.
+ * host page's, and the `reduce` collapse in ./tokens.css never reaches it. "restates the motion of
+ * every registry control that brings its own" in ../element.dom.spec.ts holds it.
  */
 :where(
 	[part~='action'],
