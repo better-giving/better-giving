@@ -6,12 +6,14 @@ import type { PageType } from '../page/keys';
 import { type CampaignShape, campaignShape } from '../page/shape';
 import { isEmptyDocument } from '../rich-text/document';
 import { PageRoot } from './page-root';
+import type { DonateProfile } from './profile';
 import { AboutUs } from './sections/about-us';
 import { Cover } from './sections/cover';
 import { Faq } from './sections/faq';
 import { GoalBar } from './sections/goal-bar';
-import { OrgInfo } from './sections/org-info';
+import { hasContact, OrgContact, OrgInfo } from './sections/org-info';
 import { Photos } from './sections/photos';
+import { ProfileBanner, ProfileMark, ProfileName, ProfileRaised } from './sections/profile';
 import { ProgramChooser } from './sections/program-chooser';
 import { Share } from './sections/share';
 import { Story } from './sections/story';
@@ -42,6 +44,16 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 //   width with the title, lede and goal over it and the box over its right side.
 // - the Donation page: the title, the program chooser, then the box; About us. wide, the box stands
 //   beside the title and the chooser.
+// - the Donation page at /donate, and its preview, handed its profile head (`DonateProfile` in
+//   ./profile.ts): the profile layout in place of the masthead. it is compact — the logo beside the
+//   name and the box under them, one column at every width — where the organisation has no banner,
+//   no mission or vision and nothing raised (`profileLayout` below), and otherwise the banner or
+//   the brand's band across the top, the logo over its foot, the name, the EIN and the raised figure,
+//   then the box, then About us; wide, the box stands in a column of its own beside them and scrolls
+//   with the page as every box does. a heading saved for the page is the box's own heading there,
+//   over the card. the name is always drawn there, so the logo beside it says nothing of its own,
+//   and a logo the masthead would let stand in for the name is drawn whole at its own shape rather
+//   than in the square.
 //
 // every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
 // the letter's and the feature's box straight after the cover and the title, the goal and the lede
@@ -50,8 +62,9 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 // of the story and everything after it, which ./page-view.dom.spec.tsx holds.
 // the box is drawn exactly once, and no ancestor of it clips or transforms it.
 //
-// the masthead is the top bar over every page: it names the organisation at its start and, on a
-// page with a share section, ends on a Share link to it. with a logo, a logo at least
+// the masthead is the top bar over every page but the Donation page under its profile head: it
+// names the organisation at its start and, on a page with a share section, ends on a Share link to
+// it. with a logo, a logo at least
 // twice as wide as it is tall stands in for the name and carries it as its alt, and a narrower one
 // stands beside the name and says nothing of its own; the stored image's width and height decide.
 // with none, a badge of the name's initials stands beside the name, in the page's brand fill and
@@ -97,6 +110,11 @@ export type PageViewProps = {
 	readonly chosenProgramId?: string | null;
 	/** the chooser takes no pick: the gift it would change has already been asked for. */
 	readonly chooserLocked?: boolean;
+	/**
+	 * the Donation page's profile head, which the route reads for the Donation page alone; null or
+	 * absent draws the masthead and the Donation page's own layout.
+	 */
+	readonly profile?: DonateProfile | null | undefined;
 	/** drawn as the preview of a draft: a press reaches nothing. */
 	readonly preview?: boolean;
 	/** the caller's placement of the page root. */
@@ -117,18 +135,33 @@ export function PageView(props: PageViewProps) {
 					hasMission: org.mission !== null || org.vision !== null
 				})
 			: null;
+	const profile = props.type === 'donation_page' ? (props.profile ?? null) : null;
+	// under the profile head the footer is the ways to reach the organisation alone, which the head
+	// has named already, and none where it states none.
+	const foot =
+		profile === null ? (
+			<OrgInfo info={org.info} />
+		) : hasContact(profile.footer) ? (
+			<div className="page-org">
+				<OrgContact contact={profile.footer} />
+			</div>
+		) : null;
 	return (
 		<PageRoot
 			brandColour={look.brandColour}
-			layout={shape?.layout ?? 'donation'}
+			layout={shape?.layout ?? (profile === null ? 'donation' : 'profile')}
 			{...(className === undefined ? {} : { className })}
 		>
-			<Masthead name={org.name} logo={props.logo ?? null} shareTarget={SHARE_ID} />
+			{profile === null ? (
+				<Masthead name={org.name} logo={props.logo ?? null} shareTarget={SHARE_ID} />
+			) : null}
 			<main className="page-body">
-				{shape === null ? (
+				{shape !== null ? (
+					<CampaignLayout {...props} shape={shape} />
+				) : profile === null ? (
 					<DonationLayout {...props} />
 				) : (
-					<CampaignLayout {...props} shape={shape} />
+					<ProfileLayout {...props} profile={profile} />
 				)}
 			</main>
 			<section className="page-end" id={SHARE_ID} aria-labelledby={shareHeading} {...area('share')}>
@@ -140,11 +173,11 @@ export function PageView(props: PageViewProps) {
 					/>
 				</div>
 			</section>
-			<footer className="page-foot">
-				<div className="page-in">
-					<OrgInfo info={org.info} />
-				</div>
-			</footer>
+			{foot === null ? null : (
+				<footer className="page-foot">
+					<div className="page-in">{foot}</div>
+				</footer>
+			)}
 		</PageRoot>
 	);
 }
@@ -152,10 +185,22 @@ export function PageView(props: PageViewProps) {
 /** the share section's id, which the top bar's Share link jumps to. */
 const SHARE_ID = 'page-share';
 
-/** the donation box, inert in the preview, where a click on it opens the settings it draws. */
-function Box({ props, hideProgramSelect }: { props: PageViewProps; hideProgramSelect: boolean }) {
+/**
+ * the donation box, inert in the preview, where a click on it opens the settings it draws. a
+ * `heading` stands over the card, outside the inert part, so the preview reads it.
+ */
+function Box({
+	props,
+	hideProgramSelect,
+	heading
+}: {
+	props: PageViewProps;
+	hideProgramSelect: boolean;
+	heading?: string | undefined;
+}) {
 	return (
 		<div className="page-box" {...area('box')}>
+			{heading === undefined ? null : <h2 className="page-profile-box-heading">{heading}</h2>}
 			<div inert={props.preview ?? false}>{props.donationBox({ hideProgramSelect })}</div>
 		</div>
 	);
@@ -169,14 +214,13 @@ function Box({ props, hideProgramSelect }: { props: PageViewProps; hideProgramSe
  */
 export const TITLE_LONG = 28;
 
+/** whether `text`, its edges trimmed, runs past `TITLE_LONG` characters as a reader counts them. */
+const isLong = (text: string): boolean => [...graphemes.segment(text.trim())].length > TITLE_LONG;
+
 function Heading({ props }: { props: PageViewProps }) {
 	const title = titleHeading(props.page.heading, props);
 	return (
-		<h1
-			className="page-title"
-			data-long={[...graphemes.segment(title.trim())].length > TITLE_LONG ? '' : undefined}
-			{...area('title')}
-		>
+		<h1 className="page-title" data-long={isLong(title) ? '' : undefined} {...area('title')}>
 			{title}
 		</h1>
 	);
@@ -293,27 +337,83 @@ function CampaignLayout(props: PageViewProps & { readonly shape: CampaignShape }
 	}
 }
 
-function DonationLayout(props: PageViewProps) {
-	const chooser =
-		props.programMode === 'choice' && props.programs.length >= 2 ? (
-			<div {...area('chooser')}>
-				<ProgramChooser
-					programs={props.programs}
-					chosen={props.chosenProgramId ?? null}
-					onPick={props.onProgramPick}
-					locked={props.chooserLocked ?? false}
-					domId="page"
-					photos={props.programPhotos}
-				/>
+/** whether the page draws the program chooser: donors choose among two programs or more. */
+const offersChoice = (props: PageViewProps): boolean =>
+	props.programMode === 'choice' && props.programs.length >= 2;
+
+/** the program chooser, which stands only where `offersChoice`. */
+function Chooser({ props }: { props: PageViewProps }) {
+	return (
+		<div {...area('chooser')}>
+			<ProgramChooser
+				programs={props.programs}
+				chosen={props.chosenProgramId ?? null}
+				onPick={props.onProgramPick}
+				locked={props.chooserLocked ?? false}
+				domId="page"
+				photos={props.programPhotos}
+			/>
+		</div>
+	);
+}
+
+/**
+ * the profile head's layout from what it holds: compact where the organisation has no banner, no
+ * mission or vision and nothing raised, and the profile layout where it has any of them.
+ */
+export function profileLayout(profile: DonateProfile): 'compact' | 'profile' {
+	return profile.banner === null &&
+		profile.mission === null &&
+		profile.vision === null &&
+		profile.raised.raisedMinor <= 0
+		? 'compact'
+		: 'profile';
+}
+
+function ProfileLayout(props: PageViewProps & { readonly profile: DonateProfile }) {
+	const { profile } = props;
+	const layout = profileLayout(profile);
+	const choosing = offersChoice(props);
+	const heading = props.page.heading.trim();
+	return (
+		<div className="page-in page-layout" data-head={layout}>
+			{layout === 'profile' ? <ProfileBanner banner={profile.banner} /> : null}
+			<div className="page-profile-who" {...area('who')}>
+				<div className="page-profile-id">
+					<ProfileMark
+						name={profile.name}
+						logo={profile.logo}
+						wide={profile.logo !== null && isWordmark(profile.logo)}
+						letters={initials(profile.name)}
+					/>
+					<ProfileName name={profile.name} taxId={profile.taxId} long={isLong(profile.name)} />
+				</div>
+				<ProfileRaised raised={profile.raised} money={profile.money} />
+				{choosing ? <Chooser props={props} /> : null}
 			</div>
-		) : null;
+			<Box
+				props={props}
+				hideProgramSelect={choosing}
+				heading={heading === '' ? undefined : props.page.heading}
+			/>
+			{profile.mission === null && profile.vision === null ? null : (
+				<section {...area('about')}>
+					<AboutUs mission={profile.mission} vision={profile.vision} />
+				</section>
+			)}
+		</div>
+	);
+}
+
+function DonationLayout(props: PageViewProps) {
+	const choosing = offersChoice(props);
 	const { mission, vision } = props.org;
 	return (
 		<>
 			<div className="page-in page-layout">
 				<Heading props={props} />
-				{chooser}
-				<Box props={props} hideProgramSelect={chooser !== null} />
+				{choosing ? <Chooser props={props} /> : null}
+				<Box props={props} hideProgramSelect={choosing} />
 			</div>
 			{mission === null && vision === null ? null : (
 				<section className="page-about-area" data-area="about">
@@ -325,6 +425,10 @@ function DonationLayout(props: PageViewProps) {
 		</>
 	);
 }
+
+/** a logo at least twice as wide as it is tall, by the stored image's width and height. */
+const isWordmark = (logo: Pick<PageLogo, 'width' | 'height'>): boolean =>
+	logo.width >= 2 * logo.height;
 
 export function Masthead({
 	name,
@@ -372,7 +476,7 @@ export function Masthead({
 	return (
 		<header className="page-mast">
 			<div className="page-in page-mast-in">
-				{logo.width >= 2 * logo.height ? (
+				{isWordmark(logo) ? (
 					<p className="page-mast-name">{art(name)}</p>
 				) : (
 					<>

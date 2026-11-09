@@ -12,42 +12,58 @@ import type { OrgInfo as OrgInfoValues } from './types';
 // the legal name and EIN are who the organisation is; only the ways to reach it stand in `address`.
 
 export function OrgInfo({ info }: { readonly info: OrgInfoValues }) {
-	const contact =
-		info.addressLines.length > 0 || info.email !== null || info.socialLinks.length > 0;
 	return (
 		<div className="page-org">
 			<ul className="page-org-list">
 				<li className="page-org-name">{info.legalName}</li>
 				{info.ein === null ? null : <li>EIN {info.ein}</li>}
 			</ul>
-			{contact ? (
-				<address className="page-org-contact">
-					<ul className="page-org-list">
-						{info.addressLines.length === 0 ? null : <li>{info.addressLines.join(', ')}</li>}
-						{info.email === null ? null : (
-							<li>
-								<a href={`mailto:${info.email}`}>{info.email}</a>
-							</li>
-						)}
-						{info.socialLinks.length === 0 ? null : (
-							<li className="page-org-links">
-								{info.socialLinks.map((link) => (
-									<a
-										key={link.href}
-										className="page-org-social"
-										href={link.href}
-										target="_blank"
-										rel="noopener noreferrer"
-										aria-label={`${SOCIAL_PLATFORM_NAMES[link.platform]}, opens in a new tab`}
-									>
-										<BrandMark platform={link.platform} className="page-org-mark" />
-									</a>
-								))}
-							</li>
-						)}
-					</ul>
-				</address>
-			) : null}
+			<OrgContact contact={info} />
 		</div>
+	);
+}
+
+/** whether the organisation has stated any way to reach it, which `OrgContact` draws. */
+export function hasContact(contact: OrgContactValues): boolean {
+	return (
+		contact.addressLines.length > 0 || contact.email !== null || contact.socialLinks.length > 0
+	);
+}
+
+type OrgContactValues = Pick<OrgInfoValues, 'addressLines' | 'email' | 'socialLinks'>;
+
+/**
+ * the ways to reach the organisation alone: the footer's second half, and the whole of the Donation
+ * page's footer under its profile head, which names the organisation and its EIN already.
+ */
+export function OrgContact({ contact }: { readonly contact: OrgContactValues }) {
+	if (!hasContact(contact)) return null;
+	return (
+		<address className="page-org-contact">
+			<ul className="page-org-list">
+				{contact.addressLines.length === 0 ? null : <li>{contact.addressLines.join(', ')}</li>}
+				{contact.email === null ? null : (
+					<li>
+						<a href={`mailto:${contact.email}`}>{contact.email}</a>
+					</li>
+				)}
+				{contact.socialLinks.length === 0 ? null : (
+					<li className="page-org-links">
+						{contact.socialLinks.map((link) => (
+							<a
+								key={link.href}
+								className="page-org-social"
+								href={link.href}
+								target="_blank"
+								rel="noopener noreferrer"
+								aria-label={`${SOCIAL_PLATFORM_NAMES[link.platform]}, opens in a new tab`}
+							>
+								<BrandMark platform={link.platform} className="page-org-mark" />
+							</a>
+						))}
+					</li>
+				)}
+			</ul>
+		</address>
 	);
 }

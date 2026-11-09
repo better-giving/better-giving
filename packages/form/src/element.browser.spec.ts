@@ -324,6 +324,33 @@ describe('the box a host page holds before the element upgrades', () => {
 			);
 		});
 	}
+
+	// the common shape on a phone: five presets and Other on a 375px card, two tiles across and so
+	// three rows of them (`.tiles` in ./styles/layout.css), every cadence offered, at the card's 18px
+	// ceiling and at an ordinary root. the first step is the card that replaces the wait, so a host
+	// page holding the reserve is moved down by anything it stands taller than that.
+	for (const root of ['16px', '20px']) {
+		it(`holds the first step of five presets on a 375px card whose host root is ${root}`, async () => {
+			document.documentElement.style.fontSize = root;
+			const empty = waiting();
+			const upgraded = await mount({
+				...CONFIG,
+				suggestedAmountsMinor: [2500, 5000, 10_000, 25_000, 50_000],
+				frequencies: ['one_time', 'monthly', 'yearly']
+			});
+			upgraded.style.inlineSize = '375px';
+			await new Promise(requestAnimationFrame);
+			const tops = Array.from(
+				upgraded.shadowRoot?.querySelectorAll<HTMLElement>('.tiles > label') ?? [],
+				(tile) => Math.round(tile.getBoundingClientRect().top)
+			);
+
+			expect(new Set(tops).size).toBe(3);
+			expect(empty.getBoundingClientRect().height).toBeGreaterThanOrEqual(
+				upgraded.getBoundingClientRect().height
+			);
+		});
+	}
 });
 
 // the two closed choices on the amount step — the cause and the tribute's kind — are zag's select

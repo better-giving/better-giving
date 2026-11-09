@@ -73,13 +73,13 @@ export async function readOrgProfile(db: Db): Promise<OrgProfile | null> {
  * yesterday's value quietly surviving because the key was absent from the set. `ParsedOrgProfile`
  * is total over those columns, so there is no "unspecified" to confuse with "cleared".
  *
- * `deductibility_statement` is deliberately not among them, and it is one of two columns this
+ * `deductibility_statement` is deliberately not among them, and it is one of three columns this
  * function preserves rather than states: nothing posts it (./org-input.ts), a fork writes it on
  * its own deployment and ./deductibility.ts is what reads it — so naming it in the set would clear
  * a fork's own wording on the next identity save. its absence from `set` is what leaves it alone,
- * and an INSERT here leaves it null, which reads as the standard wording. the other is
- * `logo_image_id`, which has writes of its own (the logo writes below) because a logo it
- * replaces is freed with it.
+ * and an INSERT here leaves it null, which reads as the standard wording. the others are
+ * `logo_image_id` and `banner_image_id`, which have writes of their own (the logo and banner
+ * writes below) because a photo they replace is freed with it.
  *
  * `created_at` is left out of the update on purpose — it is the system time of the first
  * save and an upsert that refreshed it would erase when this deployment was set up.
@@ -211,11 +211,11 @@ export async function updateOrgNotificationEmail(
 }
 
 // ---------------------------------------------------------------------------
-// the profile's logo, `org_profile.logo_image_id`: a new photo put on or taken off, and the logo
-// it replaces freed in the same `batch()` where nothing else names it (../images/free.ts). no undo:
-// a freed image is gone.
+// the profile's logo, `org_profile.logo_image_id`, and its banner, `org_profile.banner_image_id`:
+// a new photo put on or taken off, and the photo it replaces freed in the same `batch()` where
+// nothing else names it (../images/free.ts). no undo: a freed image is gone.
 //
-// the write is compare-and-set on the logo it read, so the logo it frees is the one it replaced; a
+// the write is compare-and-set on the photo it read, so the photo it frees is the one it replaced; a
 // write landing between the two answers `stale`.
 // ---------------------------------------------------------------------------
 
@@ -238,45 +238,78 @@ export async function readOrgProfileLogo(db: Db): Promise<OrgLogo | null> {
  * write landed. so a stale write or a failed batch leaves no photo behind, and `no-profile` is
  * answered before anything is written.
  */
-export async function putNewOrgProfileLogo(
+export function putNewOrgProfileLogo(
 	db: Db,
-	photo: { readonly id: string; readonly statements: NewImageStatements }
+	photo: NewPhoto
 ): Promise<'written' | 'stale' | 'no-profile'> {
-	const read = await readLogo(db);
+	return putNewProfileImage(db, 'logoImageId', photo);
+}
+
+/** take the profile's logo off, freeing it. no profile has no logo, so that is `written` too. */
+export function removeOrgProfileLogo(db: Db): Promise<'written' | 'stale'> {
+	return removeProfileImage(db, 'logoImageId');
+}
+
+/** `putNewOrgProfileLogo`, for the donate page's banner. */
+export function putNewOrgProfileBanner(
+	db: Db,
+	photo: NewPhoto
+): Promise<'written' | 'stale' | 'no-profile'> {
+	return putNewProfileImage(db, 'bannerImageId', photo);
+}
+
+/** `removeOrgProfileLogo`, for the donate page's banner. */
+export function removeOrgProfileBanner(db: Db): Promise<'written' | 'stale'> {
+	return removeProfileImage(db, 'bannerImageId');
+}
+
+type NewPhoto = { readonly id: string; readonly statements: NewImageStatements };
+
+/** a column of the profile that names one image. */
+type ProfileImage = 'logoImageId' | 'bannerImageId';
+
+async function putNewProfileImage(
+	db: Db,
+	slot: ProfileImage,
+	photo: NewPhoto
+): Promise<'written' | 'stale' | 'no-profile'> {
+	const read = await readProfileImage(db, slot);
 	if (!read) return 'no-profile';
 	const [, , written] = await db.batch([
 		...photo.statements,
-		logoWrite(db, read.logo, photo.id),
+		profileImageWrite(db, slot, read.id, photo.id),
 		...freeImageStatements(db, photo.id),
-		...(read.logo === null ? [] : freeImageStatements(db, read.logo))
+		...(read.id === null ? [] : freeImageStatements(db, read.id))
 	]);
 	return written.length > 0 ? 'written' : 'stale';
 }
 
-/** take the profile's logo off, freeing it. no profile has no logo, so that is `written` too. */
-export async function removeOrgProfileLogo(db: Db): Promise<'written' | 'stale'> {
-	const read = await readLogo(db);
+async function removeProfileImage(db: Db, slot: ProfileImage): Promise<'written' | 'stale'> {
+	const read = await readProfileImage(db, slot);
 	if (!read) return 'written';
-	const write = logoWrite(db, read.logo, null);
-	if (read.logo === null) return (await write).length > 0 ? 'written' : 'stale';
-	const [written] = await db.batch([write, ...freeImageStatements(db, read.logo)]);
+	const write = profileImageWrite(db, slot, read.id, null);
+	if (read.id === null) return (await write).length > 0 ? 'written' : 'stale';
+	const [written] = await db.batch([write, ...freeImageStatements(db, read.id)]);
 	return written.length > 0 ? 'written' : 'stale';
 }
 
-/** the logo a write compares against; undefined where no profile is saved. */
-async function readLogo(db: Db): Promise<{ readonly logo: string | null } | undefined> {
+/** the image a write compares against; undefined where no profile is saved. */
+async function readProfileImage(
+	db: Db,
+	slot: ProfileImage
+): Promise<{ readonly id: string | null } | undefined> {
 	const [row] = await db
-		.select({ logo: orgProfile.logoImageId })
+		.select({ id: orgProfile[slot] })
 		.from(orgProfile)
 		.where(eq(orgProfile.id, ORG_PROFILE_ID));
 	return row;
 }
 
-/** the logo set to `next` where it is still `read`, returning a row only where it landed. */
-function logoWrite(db: Db, read: string | null, next: string | null) {
+/** the image set to `next` where it is still `read`, returning a row only where it landed. */
+function profileImageWrite(db: Db, slot: ProfileImage, read: string | null, next: string | null) {
 	return db
 		.update(orgProfile)
-		.set({ logoImageId: next })
-		.where(and(eq(orgProfile.id, ORG_PROFILE_ID), sql`${orgProfile.logoImageId} is ${read}`))
+		.set({ [slot]: next })
+		.where(and(eq(orgProfile.id, ORG_PROFILE_ID), sql`${orgProfile[slot]} is ${read}`))
 		.returning({ id: orgProfile.id });
 }

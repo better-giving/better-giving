@@ -232,7 +232,7 @@ export const CAMPAIGN_SETTINGS_INPUT = z
 	.check(pinnedProgramRule)
 	.check(boundsRule);
 
-/** the Donation page's General: its title, blank for "Donate to" and the organisation's name. */
+/** the Donation page's General: its title over the donation box, blank for none. */
 export const DONATION_PAGE_GENERAL_INPUT = z.object({
 	[EDIT_BOXES.heading]: z.string().trim().max(HEADING_MAX, atMost(HEADING_MAX)).optional()
 });

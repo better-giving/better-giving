@@ -28,8 +28,9 @@ import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
 import { BrandColourField } from '$lib/admin/settings/brand-colour-field';
+import { BannerPicker } from '$lib/admin/settings/banner-picker';
+import type { Cropped } from '$lib/admin/settings/crop-image';
 import { LogoPicker } from '$lib/admin/settings/logo-picker';
-import type { Squared } from '$lib/admin/settings/logo-square';
 import { FILLED, PICK_ANOTHER } from '$lib/admin/settings/nonprofit-finder';
 import { type FinderOut, OrgFinder, StandingWord } from '$lib/admin/settings/org-finder';
 import { useSocialLinkLeads } from '$lib/admin/settings/social-link-lead';
@@ -46,6 +47,7 @@ import {
 	whichForm
 } from '$lib/admin/use-admin-form';
 import { defineForm, type FormRejection, WHICH_FORM } from '$lib/forms/definition';
+import { BANNER_WIDTH_MIN, type BannerAnswer } from '$lib/org/banner';
 import type {
 	NonprofitFields,
 	NonprofitLookupAnswer,
@@ -79,9 +81,10 @@ import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.settings';
 
 // what this deployment knows about the organisation it serves, and what it sends with: the
-// organisation's details and logo, the address it reaches the organisation at, and the mail values
-// it was started with. three cards, read as a loader and written by the action below and by the
-// logo's own address (./_app.admin.settings_.logo.ts).
+// organisation's details, logo and banner, the address it reaches the organisation at, and the mail
+// values it was started with. three cards, read as a loader and written by the action below and by
+// the logo's and the banner's own addresses (./_app.admin.settings_.logo.ts,
+// ./_app.admin.settings_.banner.ts).
 //
 // **only the deployer's session reaches this page**, the predicate ./_app.admin.members.tsx reads —
 // `context.get(staff).id === STAFF_USER_ID` — read by the loader and by the action alike, and by
@@ -113,6 +116,9 @@ const SCREEN = '/admin/settings';
 
 /** where the logo is put on and taken off. */
 const LOGO_ADDRESS = `${SCREEN}/logo`;
+
+/** where the donation page's banner is put on and taken off (./_app.admin.settings_.banner.ts). */
+const BANNER_ADDRESS = `${SCREEN}/banner`;
 
 /**
  * where "Find your charity" asks: `?q=` searches by name, and `/<ein>` looks one organisation up
@@ -298,6 +304,10 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 				profile?.logoImageId == null
 					? null
 					: { id: profile.logoImageId, src: imageSrc(profile.logoImageId) },
+			banner:
+				profile?.bannerImageId == null
+					? null
+					: { id: profile.bannerImageId, src: imageSrc(profile.bannerImageId) },
 			notificationEmail: profile?.notificationEmail ?? null,
 			mail: mailSet
 				? { from: config.MAIL_FROM ?? '', host: config.SMTP_HOST ?? '', delivers }
@@ -422,6 +432,7 @@ export default function Settings({ loaderData, actionData }: Route.ComponentProp
 			<DetailsCard
 				details={loaderData.details}
 				logo={loaderData.logo}
+				banner={loaderData.banner}
 				landed={loaderData.saved === 'details'}
 				version={loaderData.version}
 				actionData={actionData}
@@ -493,10 +504,15 @@ function rowPress(
 function DetailsCard({
 	details,
 	logo,
+	banner,
 	landed,
 	version,
 	actionData
-}: CardSave & { readonly details: LoaderData['details']; readonly logo: LoaderData['logo'] }) {
+}: CardSave & {
+	readonly details: LoaderData['details'];
+	readonly logo: LoaderData['logo'];
+	readonly banner: LoaderData['banner'];
+}) {
 	const [form, fields] = useAdminForm(DETAILS_FORM, actionData, { defaultValue: details });
 	const hydrated = useHydrated();
 	const save = useSaveState({
@@ -508,7 +524,7 @@ function DetailsCard({
 	});
 	const links = fields[SOCIAL_LINKS_FIELD];
 	const linkLead = useSocialLinkLeads();
-	const finder = useOrgFinder(details.legal_name === '', version);
+	const finder = useOrgFinder(details.legal_name === '', JSON.stringify(details));
 
 	// a pick and a found lookup put their values in the boxes as edits, which arm Save details and
 	// save nothing.
@@ -635,6 +651,7 @@ function DetailsCard({
 					placeholder="https://www.instagram.com/your-organisation"
 				/>
 				<LogoControl logo={logo} />
+				<BannerControl banner={banner} />
 				<FormRefusal errors={form.errors} />
 				<div className="adm-actions">
 					<SaveButton label="Save details" state={buttonState(save)} />
@@ -662,10 +679,11 @@ function DetailsCard({
  * so its lookup fills the address alone, and an edit made to a picked value while it was out stands.
  *
  * it opens on a profile with no details yet, and otherwise only at "Pick a different
- * organisation". a save that lands — the profile's version moving — puts it away and drops the
- * fill's note, since the boxes then hold what was stored.
+ * organisation". a details save that lands — `seed`, the stored details, changing — puts it away
+ * and drops the fill's note, since the boxes then hold what was stored. the profile's version is
+ * not the signal: a logo or a banner put on or taken off moves it too, and leaves the finder be.
  */
-function useOrgFinder(empty: boolean, version: number) {
+function useOrgFinder(empty: boolean, seed: string) {
 	const searched = useFetcher<NonprofitSearchAnswer>();
 	const looked = useFetcher<NonprofitLookupAnswer>();
 	const [open, setOpen] = useState(empty);
@@ -674,9 +692,9 @@ function useOrgFinder(empty: boolean, version: number) {
 	/** the boxes the lookup out, or last answered, fills. */
 	const [fills, setFills] = useState<readonly (typeof FOUND_BOXES)[number][]>(FOUND_BOXES);
 
-	const [drawnAt, setDrawnAt] = useState(version);
-	if (version !== drawnAt) {
-		setDrawnAt(version);
+	const [drawnFrom, setDrawnFrom] = useState(seed);
+	if (seed !== drawnFrom) {
+		setDrawnFrom(seed);
 		setFilled(null);
 		if (!empty) setOpen(false);
 	}
@@ -721,41 +739,57 @@ type LogoAnswer =
 	| { readonly error: string; readonly reason?: 'failed' };
 
 /**
- * the logo, put on as soon as its crop is saved and resized, and taken off at Remove, each a fetcher
- * to its own address: neither is part of Save details, and the screen's loaders are read again
- * after either.
+ * a photo put on as soon as its crop is saved and resized, and taken off at Remove, each a fetcher
+ * to its own `address`: neither is part of Save details, and the screen's loaders are read again
+ * after either. the logo and the banner are each one of these.
  *
- * the refusal at the press is the latest answer's — a crop, a resize or an upload that failed — and
- * a crop that comes through clears it.
+ * the refusal at the press is the latest answer's — a crop, a resize or an upload that failed, the
+ * last said as `failed` — and a crop that comes through clears it.
  */
-function LogoControl({ logo }: { readonly logo: LoaderData['logo'] }) {
-	const hintId = `${useId()}-hint`;
-	const fetcher = useFetcher<LogoAnswer>();
+function usePhotoAddress<A extends LogoAnswer | BannerAnswer>(address: string, failed: string) {
+	const fetcher = useFetcher<A>();
 	const [refused, setRefused] = useState<string | null>(null);
 
 	const [answered, setAnswered] = useState(fetcher.data);
 	if (fetcher.data !== answered) {
 		setAnswered(fetcher.data);
 		if (fetcher.data !== undefined && 'error' in fetcher.data) {
-			setRefused(
-				fetcher.data.reason === 'failed'
-					? 'That didn’t go through. Choose the logo again.'
-					: fetcher.data.error
-			);
+			setRefused(fetcher.data.reason === 'failed' ? failed : fetcher.data.error);
 		}
 	}
 
-	const squared = (result: Squared) => {
-		if (!result.ok) {
-			setRefused(result.refused);
-			return;
+	return {
+		state:
+			fetcher.state === 'idle'
+				? refused === null
+					? undefined
+					: { refused }
+				: fetcher.formMethod === 'DELETE'
+					? ('removing' as const)
+					: ('uploading' as const),
+		onCropped: (result: Cropped) => {
+			if (!result.ok) {
+				setRefused(result.refused);
+				return;
+			}
+			setRefused(null);
+			const body = new FormData();
+			body.set('file', result.blob);
+			fetcher.submit(body, { method: 'post', action: address, encType: 'multipart/form-data' });
+		},
+		onRemove: () => {
+			setRefused(null);
+			fetcher.submit(null, { method: 'delete', action: address });
 		}
-		setRefused(null);
-		const body = new FormData();
-		body.set('file', result.blob);
-		fetcher.submit(body, { method: 'post', action: LOGO_ADDRESS, encType: 'multipart/form-data' });
 	};
+}
 
+function LogoControl({ logo }: { readonly logo: LoaderData['logo'] }) {
+	const hintId = `${useId()}-hint`;
+	const photo = usePhotoAddress<LogoAnswer>(
+		LOGO_ADDRESS,
+		'That didn’t go through. Choose the logo again.'
+	);
 	return (
 		<fieldset className="adm-fieldset" aria-describedby={hintId}>
 			<legend className="adm-fieldset__legend">Logo</legend>
@@ -764,20 +798,33 @@ function LogoControl({ logo }: { readonly logo: LoaderData['logo'] }) {
 			</p>
 			<LogoPicker
 				src={logo?.src}
-				onSquared={squared}
-				state={
-					fetcher.state === 'idle'
-						? refused === null
-							? undefined
-							: { refused }
-						: fetcher.formMethod === 'DELETE'
-							? 'removing'
-							: 'uploading'
-				}
-				onRemove={() => {
-					setRefused(null);
-					fetcher.submit(null, { method: 'delete', action: LOGO_ADDRESS });
-				}}
+				onSquared={photo.onCropped}
+				state={photo.state}
+				onRemove={photo.onRemove}
+			/>
+		</fieldset>
+	);
+}
+
+function BannerControl({ banner }: { readonly banner: LoaderData['banner'] }) {
+	const hintId = `${useId()}-hint`;
+	const photo = usePhotoAddress<BannerAnswer>(
+		BANNER_ADDRESS,
+		'That didn’t go through. Choose the banner again.'
+	);
+	return (
+		<fieldset className="adm-fieldset" aria-describedby={hintId}>
+			<legend className="adm-fieldset__legend">Banner</legend>
+			<p className="adm-hint" id={hintId}>
+				The wide picture across the top of your donation page. At least {BANNER_WIDTH_MIN} pixels
+				wide, as a PNG, JPEG or WebP. Keep faces and words in the middle: a phone shows the middle 3
+				to 1.
+			</p>
+			<BannerPicker
+				src={banner?.src}
+				onCropped={photo.onCropped}
+				state={photo.state}
+				onRemove={photo.onRemove}
 			/>
 		</fieldset>
 	);

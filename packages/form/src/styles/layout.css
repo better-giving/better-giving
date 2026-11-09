@@ -7,10 +7,9 @@
  *
  * two mechanisms answer instead, and which one a rule takes is a decision rather than a habit. a
  * container query against the card is for a change the card makes as a whole — the interior's inset,
- * the pair of name fields. the amount tiles take neither: they wrap on the width their own boxes
- * need, so there is no breakpoint to state and no count for one to be wrong about. that is what
- * leaves no preset count with a short row, which a stated column count cannot do at every count
- * between none and a dozen.
+ * the pair of name fields, the amount tray's columns. the tray is itself a query container for one
+ * reason: the grid lines drawn across it are measured in `cqi`, its own content width. no rule
+ * queries it.
  *
  * nothing in this file transitions. a reflow here is caused by a host resizing their own layout
  * or collapsing a sidebar, and animating a reflow they caused produces a scramble that reads as a
@@ -26,16 +25,16 @@
  * defend against. a host running `html { font-size: 62.5% }` would otherwise move a 22rem
  * breakpoint to 220px and put three tiles in a 240px sidebar.
  *
- * every length here is a token from ./tokens.css. the exceptions are the six shapes rather than
- * measures — the segment's own track minimum, a tile's, the reading measure the takeovers are held
+ * every length here is a token from ./tokens.css. the exceptions are the five shapes rather than
+ * measures — the segment's own track minimum, the reading measure the takeovers are held
  * to, the well the mandate scrolls in measured in lines, the box a host page holds before the
  * upgrade, and the smallest box that is still laid out, which carries a label to a screen reader
  * and nothing to the page — which are geometry rather than steps of a scale, and a token apiece
  * would be a scale nobody counts along.
  *
- * each of the six carries a `raw-length-ok:` note at its own rule, and so do the two breakpoints
- * above: that note is what carries a literal past the length sweep in ../element.dom.spec.ts, and
- * the silence a seventh would otherwise be written in is what that sweep refuses.
+ * each of the five carries a `raw-length-ok:` note at its own rule, and so does every breakpoint:
+ * that note is what carries a literal past the length sweep in ../element.dom.spec.ts, and the
+ * silence a sixth would otherwise be written in is what that sweep refuses.
  *
  * the `100%`, `50%`, `1fr` and `1lh` written elsewhere are relative constructions rather than
  * values — a share of the box, of the grid's free space, of the line's own height — and the
@@ -422,23 +421,17 @@ form {
 }
 
 /*
- * the amount grid: every row has the columns the first row has, and a row that comes out short
- * leaves its last cells empty rather than stretching what is on it.
+ * the amount grid: its cells are the org's presets and the other tile after them, two across on a
+ * narrow card and as many as there are cells up to four on a wide one, and every row is full —
+ * other takes whatever its row has left, so no cell on the board stands empty. a preset on the
+ * second row is the width of one on the first, because a wider one is two figures at two sizes
+ * that mean the same thing; other is the one box that spans.
  *
- * an org may serve any number of presets from none to a dozen, and no fixed column count places
- * every one of them without a short row, so the count is never stated. what is stated is a tile's
- * own width, and the engine answers with as many columns as fit at that width — the same columns on
- * every row, because a tile on the second row wider than the one above it is two figures at two
- * sizes that mean the same thing.
- *
- * the minimum is two numbers because it is doing two jobs at once. the fraction is the cap — three
- * to a row and never four, however wide a card gets, because these are shortcuts read at a glance
- * and a fourth column spends width the tiles themselves should have; the pixel off it is slack for
- * the engine's own rounding, so three of the minimum always fit where the arithmetic says three do.
- * the `em` is the floor — the width below which a four-figure amount stops fitting a tile — and it
- * is `em` off the card's clamped root for the reason every breakpoint in this file is: a `rem`
- * there resolves against the host document's root, so a page at `font-size: 62.5%` would put three
- * tiles in a 320px sidebar.
+ * the count of cells is read off the other tile's own place among the tray's children: it follows
+ * the presets (`build` in ../views.ts), so `:nth-child` on it is the number of cells, and the span
+ * it takes is what four, or two, leaves over. a tray with no other tile is bare or a skeleton and
+ * takes the columns and no span. the breakpoint is the card's wide one (`@container donate
+ * (min-width: 26em)` below), off the card's clamped root rather than the host document's.
  *
  * the free entry is one of these boxes rather than a control under them, and it takes a row of its
  * own: a tile's cell holds a figure and nothing else, and the entry carries a mark at each end of
@@ -452,11 +445,7 @@ form {
  */
 .tiles {
 	display: grid;
-	/* raw-length-ok: a tile's own floor and the pixel of rounding slack under the cap, both above. */
-	grid-template-columns: repeat(
-			auto-fill,
-			minmax(max(6em, calc((100% - 2 * var(--_sp2)) / 3 - 1px)), 1fr)
-		);
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: var(--_sp2);
 	container-type: inline-size;
 }
@@ -467,6 +456,11 @@ form {
 
 .tiles > .entry {
 	grid-column: 1 / -1;
+}
+
+/* two across: an odd cell count leaves other alone on its row. */
+.tiles > .other:nth-child(odd) {
+	grid-column: span 2;
 }
 
 .names {
@@ -959,6 +953,35 @@ form {
 @container donate (min-width: 26em) {
 	.card-body {
 		padding: var(--_inset-wide);
+	}
+
+	.tiles {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+	}
+
+	/* two presets and other are three cells, and three across is one full row. */
+	.tiles:has(> .other:nth-child(3)) {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+
+	/* four across, from the fifth cell on: other spans what its row has left. */
+	.tiles > .other:nth-child(odd) {
+		grid-column: auto;
+	}
+
+	/* raw-length-ok: `4n` is a step through the children, not a length. */
+	.tiles > .other:nth-child(4n + 5) {
+		grid-column: span 4;
+	}
+
+	/* raw-length-ok: as above. */
+	.tiles > .other:nth-child(4n + 6) {
+		grid-column: span 3;
+	}
+
+	/* raw-length-ok: as above. */
+	.tiles > .other:nth-child(4n + 7) {
+		grid-column: span 2;
 	}
 }
 

@@ -9,7 +9,7 @@ import {
 	type MiddlewareFunction,
 	type ShouldRevalidateFunctionArgs
 } from 'react-router';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_FORM, RESUMING_HEADING, STEP_HEADINGS } from '$lib/donate/copy';
 import { shownStep } from '$lib/donate/shown-step.testing';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
@@ -18,9 +18,11 @@ import { createDb } from '$lib/server/db/client';
 import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { createImage } from '$lib/server/images/image.testing';
-import { putLogo } from '$lib/server/org/logo.testing';
+import { putBanner, putLogo } from '$lib/server/org/logo.testing';
+import { gift, refund } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { saveProfile } from '$lib/server/org/profile.testing';
+import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument } from '../route-request.testing';
@@ -156,7 +158,8 @@ describe('GET /donate on a fresh deployment', () => {
 		const answered = await visit();
 		expect(answered.status).toBe(200);
 		const html = markup(answered.data);
-		expect(area(html, 'title')).toContain('Donate to Hope Foundation');
+		expect(area(html, 'title')).toContain('>Hope Foundation</h1>');
+		expect(area(html, 'box')).not.toContain('page-profile-box-heading');
 		expect(area(html, 'about')).toContain(MISSION);
 		expect(area(html, 'chooser')).toContain('Food bank');
 		expect(area(html, 'chooser')).toContain('Winter shelter');
@@ -209,12 +212,12 @@ describe('the organisation’s mission and vision on /donate', () => {
 });
 
 describe('the page /donate draws', () => {
-	// the stored heading is empty, so the title is the organisation's name on the day it is drawn.
+	// the profile head's title is the organisation's name on the day it is drawn.
 	it('greets donors by the organisation’s name as it stands, after a rename', async () => {
 		await visit();
 		await run(stmt(`update org_profile set legal_name = 'Hope Foundation of Easton'`));
 		const html = markup((await visit()).data);
-		expect(area(html, 'title')).toContain('Donate to Hope Foundation of Easton');
+		expect(area(html, 'title')).toContain('>Hope Foundation of Easton</h1>');
 	});
 
 	it('shares its own address on this deployment, with the page title as the message', async () => {
@@ -245,31 +248,89 @@ describe('the page /donate draws', () => {
 	});
 });
 
-/** the masthead the page opens with. */
-function masthead(html: string): string {
-	return /<header class="page-mast"[\s\S]*?<\/header>/.exec(html)?.[0] ?? '';
-}
-
 describe('the organisation’s logo on /donate', () => {
-	it('stands atop the page by its id, at its stored size, once one is set', async () => {
+	it('stands in the profile head by its id, at its stored size, once one is set', async () => {
 		const id = await putLogo(db, { contentType: 'image/png', width: 640, height: 160 });
 
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.view.logo).toEqual({ imageId: id, width: 640, height: 160 });
-		const mast = masthead(markup(answered.data));
-		expect(mast).toContain(`src="/image/${id}"`);
-		expect(mast).toContain('width="640"');
-		expect(mast).toContain('height="160"');
+		const html = markup(answered.data);
+		expect(html).not.toContain('class="page-mast"');
+		const who = area(html, 'who');
+		expect(who).toContain(`src="/image/${id}"`);
+		expect(who).toContain('alt="Hope Foundation logo"');
+		expect(who).toContain('width="640"');
+		expect(who).toContain('height="160"');
 	});
 
-	it('is not drawn where none is set, and the masthead names the organisation', async () => {
+	it('is not drawn where none is set, and the head draws the name’s initials beside the name', async () => {
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.view.logo).toBeNull();
-		const mast = masthead(markup(answered.data));
-		expect(mast).not.toContain('<img');
-		expect(mast).toContain('Hope Foundation');
+		const html = markup(answered.data);
+		const who = area(html, 'who');
+		expect(who).not.toContain('<img');
+		expect(who).toContain('>HF</span>');
+		expect(area(html, 'title')).toContain('Hope Foundation');
+	});
+});
+
+describe('the profile head /donate is handed', () => {
+	afterEach(async () => {
+		for (const table of [
+			'dispute',
+			'zapier_delivery',
+			'quickbooks_sync',
+			'ledger_entry',
+			'entry_group',
+			'payment',
+			'line_item',
+			'donation',
+			'recurring_plan',
+			'contact'
+		]) {
+			await run(stmt(`delete from ${table}`));
+		}
+	});
+
+	it('names the organisation, its EIN, photos, story, raised figure and footer', async () => {
+		await saveProfile(db, { mission: MISSION, vision: 'No family on Elm Street goes hungry.' });
+		const logo = await putLogo(db, { contentType: 'image/png', width: 640, height: 160 });
+		const banner = await putBanner(db, { contentType: 'image/png', width: 1600, height: 400 });
+		const { formId } = await ensureDonationPage(db);
+		await gift(db, formId, 10_000);
+		await refund(db, await gift(db, formId, 2_500), 500);
+
+		const answered = await visit();
+
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.profile).toEqual({
+			name: 'Hope Foundation',
+			taxId: '12-3456789',
+			banner: { src: `/image/${banner}` },
+			logo: { src: `/image/${logo}`, width: 640, height: 160 },
+			mission: MISSION,
+			vision: 'No family on Elm Street goes hungry.',
+			raised: { raisedMinor: 12_000, gifts: 2 },
+			money: { locale: expect.any(String), currency: 'USD' },
+			footer: {
+				addressLines: ['12 Kigali Road', 'Kigali', 'Rwanda'],
+				email: null,
+				socialLinks: []
+			}
+		});
+	});
+
+	it('hands no banner and nothing raised on a fresh deployment', async () => {
+		const answered = await visit();
+
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.profile).toMatchObject({
+			banner: null,
+			logo: null,
+			raised: { raisedMinor: 0, gifts: 0 }
+		});
 	});
 });
 
@@ -597,11 +658,13 @@ describe('/donate after the editor’s presses', () => {
 				updatedAt: new Date(row.updatedAt.getTime() + 1_000)
 			})
 			.where(eq(page.id, row.id));
-		expect(area(await previewed(), 'title')).toContain('Give to Elm Street');
-		expect(area(markup((await visit()).data), 'title')).toContain('Donate to Hope Foundation');
+		// the heading is the donation box's own under the profile head, the name the page's title.
+		expect(area(await previewed(), 'box')).toContain('>Give to Elm Street</h2>');
+		expect(area(await previewed(), 'title')).toContain('>Hope Foundation</h1>');
+		expect(area(markup((await visit()).data), 'box')).not.toContain('Give to Elm Street');
 
 		await press('page-publish');
-		expect(area(markup((await visit()).data), 'title')).toContain('Give to Elm Street');
+		expect(area(markup((await visit()).data), 'box')).toContain('>Give to Elm Street</h2>');
 	});
 
 	it('keeps drawing the published page through Discard changes', async () => {

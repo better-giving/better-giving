@@ -351,7 +351,12 @@ describe('every colour lands on the radix step for its job', () => {
 				".page-tiers[data-shape='cards'] .page-tier | background": 'slate-1',
 				'.page-goal-track | background': 'slate-3',
 				'.page-share-button | background': 'slate-1',
-				'.page-choose .page-choose-option:has(:checked) | background': 'slate-1'
+				'.page-choose .page-choose-option:has(:checked) | background': 'slate-1',
+				'.page > .page-ground | --page-profile-band': 'brand-3',
+				'.page-profile-banner | background': 'slate-3',
+				'.page-profile-band | background': 'brand-3',
+				'.page-profile-logo | background': 'slate-1',
+				'.page-profile-raised | background': 'slate-1'
 			}
 		},
 		'3, 4 and 5: a control’s ground, its hover and its press': {
@@ -383,7 +388,10 @@ describe('every colour lands on the radix step for its job', () => {
 				".page-choose-option:has([aria-disabled='true']:not(:checked)) | border-color": 'slate-7',
 				[`.page-choose .page-choose-option:hover${IDLE} | border-color`]: 'slate-8',
 				[`.page-choose .page-choose-option:active${IDLE} | border-color`]: 'slate-8',
-				'.page-choose .page-choose-option:has(:checked) | border-color': 'brand-8'
+				'.page-choose .page-choose-option:has(:checked) | border-color': 'brand-8',
+				'.page-profile-banner, .page-profile-band | border': 'slate-6',
+				'.page-profile-logo | border': 'slate-6',
+				'.page-profile-raised | border': 'slate-6'
 			}
 		},
 		[RING]: {
@@ -401,13 +409,15 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-mast-badge | background': 'brand-9',
 				[`${FEATURE} .page-cover-area:empty | background`]: 'brand-9',
 				".page-cover[data-source='logo'] | background": 'brand-9',
-				'.page-goal-fill | background': 'brand-9'
+				'.page-goal-fill | background': 'brand-9',
+				'.page-profile-badge | background': 'brand-9'
 			}
 		},
 		[ON_FILL]: {
 			allowed: ['on-brand-9'],
 			at: {
 				'.page-mast-badge | color': 'on-brand-9',
+				'.page-profile-badge | color': 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | --page-quiet`]: 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | color`]: 'on-brand-9'
 			}
@@ -447,7 +457,12 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-choose-option:has(:checked) .page-choose-name | color': 'brand-11',
 				".page-choose-option:has([aria-disabled='true']:not(:checked)) .page-choose-name | color":
 					'slate-11',
-				'.page-ground .amount-label | color': 'slate-11'
+				'.page-ground .amount-label | color': 'slate-11',
+				'.page-profile-ein | color': 'slate-11',
+				'.page-profile-raised-label | color': 'slate-11',
+				".page[data-layout='profile'] .page-about .page-label | color": 'slate-12',
+				".page[data-layout='profile'] :is(.page-about-statement, .page-about-beneath) | color":
+					'slate-12'
 			}
 		},
 		// a photo has no step. the scrim over the feature's cover is the one colour off the ladders, and
@@ -709,7 +724,9 @@ describe('no card inside a card', () => {
 				[".page[data-layout='letter'] [data-area='cover']", EDGE],
 				[".page-tiers[data-shape='cards'] .page-tier", EDGE],
 				['.page-share-button', EDGE],
-				['.page-mast', EDGE]
+				['.page-mast', EDGE],
+				['.page-profile-logo', EDGE],
+				['.page-profile-raised', EDGE]
 			].sort()
 		);
 	});
@@ -832,6 +849,80 @@ describe('the program options', () => {
 			'var(--_a11)'
 		);
 		expect(declared(page, '.page-choose-mark').color).toBe('var(--_a11)');
+	});
+});
+
+describe('the profile head’s box and logo', () => {
+	// happy-dom does no layout, so both are read off the sheet.
+	const PROFILE = ".page[data-layout='profile'] [data-head='profile']";
+	const WIDE = '@container page (min-width: 60rem)';
+
+	it('stands no box sticky, so a box a later step grows past the screen still shows its foot', () => {
+		expect(page.filter(({ decls }) => decls.position === 'sticky')).toEqual([]);
+		expect(declared(page, WIDE, `${PROFILE} > [data-area='box']`)).toMatchObject({
+			'grid-area': 'box'
+		});
+	});
+
+	it('draws a logo at least twice as wide as it is tall whole at its own shape, as the masthead does', () => {
+		expect(declared(page, '.page-profile-logo')).toMatchObject({
+			'object-fit': 'contain',
+			'max-inline-size': '100%'
+		});
+		expect(declared(page, '.page-profile-logo[data-wide]')).toEqual({ 'inline-size': 'auto' });
+		expect(
+			declared(page, "[data-head='compact'] .page-profile-id:has(> [data-wide])")['flex-direction']
+		).toBe('column');
+	});
+});
+
+describe('the profile head’s quiet ink', () => {
+	// the EIN and the raised label are slate 11, which stands only on slate 1 or 2: the label on the
+	// raised plane, and the EIN on the wash, under no ground of the head's own.
+	it('stands the raised label on the plane and the EIN on the wash', () => {
+		expect(declared(page, '.page-profile-raised').background).toBe('var(--page-plane)');
+		for (const selector of [
+			'.page-profile-who',
+			'.page-profile-id',
+			'.page-profile-names',
+			'.page-profile-ein',
+			'.page-profile-raised-label'
+		])
+			expect(declared(page, selector).background, selector).toBeUndefined();
+	});
+});
+
+describe('the profile head’s type', () => {
+	// happy-dom computes no face, so the weights are read off the sheet down to their numbers, and
+	// each is a weight packages/operator/src/styles/fonts.css registers a red hat display file at.
+	const fonts = stripComments(
+		readFileSync(require.resolve('@better-giving/operator/styles/fonts.css'), 'utf8')
+	);
+	const displayWeights = [
+		...fonts.matchAll(/font-family:\s*'Red Hat Display';[^}]*?font-weight:\s*(\d+)/g)
+	].map((m) => m[1]);
+	const ground = declared(page, '.page > .page-ground');
+	const weight = (value: string | undefined) => substitute({ ...formBase, ...ground }, value ?? '');
+
+	it('sets the name in red hat display at 700, a face the sheet registers', () => {
+		const name = declared(page, '.page-profile-name');
+		expect(name['font-family']).toBe('var(--page-font-display)');
+		expect(weight(name['font-weight'])).toBe('700');
+		expect(displayWeights).toContain('700');
+	});
+
+	it('sets About us in red hat display at 600, a face the sheet registers', () => {
+		const heading = declared(page, ".page[data-layout='profile'] .page-about .page-label");
+		expect(heading['font-family']).toBe('var(--page-font-display)');
+		expect(weight(heading['font-weight'])).toBe('600');
+		expect(displayWeights).toContain('600');
+	});
+
+	it('stands the raised plane 20px under the EIN, whose line is 20px', () => {
+		expect(declared(page, '.page-profile-who').gap).toBe('var(--page-gap-item)');
+		expect(ground['--page-gap-item']).toBe('1.25rem');
+		expect(declared(page, '.page-profile-ein')['line-height']).toBe('var(--page-profile-lh-small)');
+		expect(ground['--page-profile-lh-small']).toBe('1.25rem');
 	});
 });
 

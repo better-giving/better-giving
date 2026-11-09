@@ -966,23 +966,28 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the grid lines between the boxes: a hairline standing in each gap, in the separator rung, a step
- * fainter than the tray's own edge, drawn as one lattice — every vertical meets every horizontal
- * and both run through a cell nothing stands in, so the boxes on a tray read as pieces on one board
- * rather than words floating on a fill. the lines run to the tray's inset and no further, and a chosen box
+ * fainter than the tray's own edge, drawn as one lattice — every vertical meets the horizontal
+ * across each gap it reaches and neither runs past a box, so the boxes on a tray read as pieces on
+ * one board rather than words floating on a fill. the lines run to the tray's inset and no further, and a chosen box
  * stands clear of them on every side by that same inset: the gap is twice it, the line stands at
  * the gap's middle, and a chosen chip is a piece set on a square rather than a box drawn over a
  * rule. the lines run beside the chosen box as beside any other; a lattice broken either side of
  * one cell is a hole in the board, and the chip's own face and lift are what say chosen.
  *
- * the amount tray's verticals are its own background: one tile of gradient per column, the line
- * at the tile's trailing gap, repeated across the content box and clipped to it — so the column
- * after the last box has its line and the tray's inset has none. how many columns there are is
- * the engine's answer, written onto the tray as `--_cols` by ../views.ts (`markRows` there) off
- * the boxes' laid-out positions; until it is written the pitch is the whole width and no line
- * lands. the horizontals are drawn by the first box of each row after the first, which the same
- * pass marks `data-row-start`, the tray's whole content width across — measured in `cqi` off the
- * tray, which is a query container for exactly that length — and the free entry draws the one
- * above itself when it stands open on the tray.
+ * the amount tray's lines are drawn by its tiles, so a line stands only where a tile does. every
+ * row is full and the column count is the stylesheet's own — two across, four from the card's wide
+ * breakpoint on, three for three cells, which is one row either way (`.tiles` in ./layout.css) — so
+ * which tile opens a row is its place among the tray's children, and the two conditions below say
+ * it in `:nth-child` at the same breakpoint. the tiles come first among those children and the
+ * free entry after them (`build` in ../views.ts). nothing is measured, so the lines follow the card
+ * across the breakpoint however its width changes, and are there on a card first drawn hidden.
+ *
+ * each tile opening a row after the first draws the horizontal above that row, the tray's whole
+ * content width across — measured in `cqi` off the tray, which is a query container for exactly
+ * that length — and the free entry draws the one above itself when it stands open on the tray.
+ * every other tile draws the vertical before it, cell-high and then half the gap further into each
+ * gap it borders, so it meets the horizontal there and stops at the tray's inset on the outer rows.
+ * the geometry below is every tile's; a line lands only where a condition gives it `content`.
  *
  * the cadence track is one row and draws verticals only, each by the option after the gap and
  * cell-high.
@@ -992,58 +997,72 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	position: relative;
 }
 
-.tiles:not(.bare) {
-	/*
-	 * two layers, the second empty: the fill this tray takes above is a colour, and a colour is
-	 * clipped by the last layer's `background-clip`, so clipping the lines to the content box on a
-	 * single layer would clip the fill with them and leave the inset around every edge box the
-	 * card's own ground. the empty layer keeps the fill to the border box.
-	 */
-	background-image:
-		linear-gradient(
-			to right,
-			transparent calc(100% - (var(--_sp2) + var(--_border)) / 2),
-			var(--_n6) 0,
-			var(--_n6) calc(100% - (var(--_sp2) - var(--_border)) / 2),
-			transparent 0
-		),
-		none;
-	background-origin: content-box, border-box;
-	background-clip: content-box, border-box;
-	background-repeat: repeat-x, repeat;
-	background-size:
-		calc((100% + var(--_sp2)) / var(--_cols, 1)) 100%,
-		auto;
-}
-
-/* the skeleton's tray is a shape and not a board: it holds the place of the tiles, not of the
- * lines between them, and a lattice under blocks that say nothing is a drawing of a grid nobody
- * has been offered yet. the horizontals need no rule — they are drawn by `data-row-start`, which
- * ../views.ts writes onto tiles and never onto a shape. */
-.skeleton .tiles {
-	background-image: none;
+.segment > label + label::before,
+.tiles:not(.bare) > .entry::after {
+	content: '';
 }
 
 .segment > label + label::before,
-.tiles > label[data-row-start] ~ label[data-row-start]::after,
+.tiles > label::before,
+.tiles > label::after,
 .tiles:not(.bare) > .entry::after {
-	content: '';
 	position: absolute;
 	background: var(--_n6);
 }
 
-.segment > label + label::before {
+.segment > label + label::before,
+.tiles > label::before {
 	inset-inline-start: calc(-1 * (var(--_sp2) + var(--_border)) / 2);
 	inset-block: 0;
 	inline-size: var(--_border);
 }
 
-.tiles > label[data-row-start] ~ label[data-row-start]::after,
+/* on a row with the open entry under it. */
+.tiles:has(> .entry:not([hidden])) > label::before {
+	inset-block-end: calc(-1 * var(--_sp2) / 2);
+}
+
+.tiles > label::after,
 .tiles:not(.bare) > .entry::after {
 	inset-inline-start: 0;
 	inset-block-start: calc(-1 * (var(--_sp2) + var(--_border)) / 2);
 	inline-size: 100cqi;
 	block-size: var(--_border);
+}
+
+/* raw-length-ok: the card's wide breakpoint in ./layout.css, the one the columns change at. */
+@container donate not (min-width: 26em) {
+	.tiles > label:nth-child(even)::before,
+	.tiles > label:nth-child(odd):not(:first-child)::after {
+		content: '';
+	}
+
+	/* on a row with one above it, and on a row with one under it. */
+	.tiles > label:nth-child(n + 3)::before {
+		inset-block-start: calc(-1 * var(--_sp2) / 2);
+	}
+
+	.tiles > label:has(~ label:nth-child(odd))::before {
+		inset-block-end: calc(-1 * var(--_sp2) / 2);
+	}
+}
+
+/* raw-length-ok: as the breakpoint above. */
+@container donate (min-width: 26em) {
+	/* raw-length-ok: `4n` is a step through the children, not a length. */
+	.tiles > label:not(:nth-child(4n + 1))::before,
+	.tiles > label:nth-child(4n + 1):not(:first-child)::after {
+		content: '';
+	}
+
+	.tiles > label:nth-child(n + 5)::before {
+		inset-block-start: calc(-1 * var(--_sp2) / 2);
+	}
+
+	/* raw-length-ok: as above. */
+	.tiles > label:has(~ label:nth-child(4n + 1))::before {
+		inset-block-end: calc(-1 * var(--_sp2) / 2);
+	}
 }
 
 /*

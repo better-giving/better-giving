@@ -106,9 +106,13 @@ const squareWords = (square: CropSquare | null): string =>
 /**
  * every drop on the card taken by it, the ground around it included: while the card is up a drop
  * anywhere lands on its `dialog`, the ground being that element's own `::backdrop`. the operator
- * `Modal` hands no element out, so the card is found from an element drawn inside it.
+ * `Modal` hands no element out, so the card is found from an element drawn inside it. the banner's
+ * crop card (./banner-crop-dialog.tsx) takes the same types and drops the same way.
  */
-function useDropsOnCard(inside: RefObject<HTMLElement | null>, onSwap: (file: File) => void): void {
+export function useDropsOnCard(
+	inside: RefObject<HTMLElement | null>,
+	onSwap: (file: File) => void
+): void {
 	const swap = useEffectEvent(onSwap);
 	useEffect(() => {
 		const card = inside.current?.closest('dialog');
@@ -134,15 +138,57 @@ function useDropsOnCard(inside: RefObject<HTMLElement | null>, onSwap: (file: Fi
 	}, [inside]);
 }
 
-/** the address a file is drawn from: its own object url for as long as the card is up. */
-function useImageSource(file: File): string | null {
-	const [made, setMade] = useState<string | null>(null);
-	useEffect(() => {
-		const url = URL.createObjectURL(file);
-		setMade(url);
-		return () => URL.revokeObjectURL(url);
-	}, [file]);
+/**
+ * a chosen file as the card draws it: its `data:` address once read, or that it could not be read,
+ * and an `id` of its own, since two files of the same bytes read to the same address.
+ */
+export type ImageSource = {
+	readonly id: string;
+	readonly src: string | null;
+	readonly unreadable: boolean;
+};
+
+/** an id for each file a card is handed, the same for the same file however often it is asked. */
+const fileIds = new WeakMap<File, string>();
+let filesSeen = 0;
+const fileId = (file: File): string => {
+	const known = fileIds.get(file);
+	if (known !== undefined) return known;
+	filesSeen += 1;
+	const made = `file-${filesSeen}`;
+	fileIds.set(file, made);
 	return made;
+};
+
+/**
+ * the address a file is drawn from: the file itself read into a `data:` url. an object url
+ * (`blob:`) is no address an operator screen may load: the operator policy's `img-src` names
+ * `'self' data:` alone (`operatorPolicy` in ../../../document-policy.ts). nothing is held to
+ * release once the card is down; a read still running when the file changes or the card closes is
+ * aborted, and its answer is never taken. a file of a type the card refuses (`takesLogo`) is never
+ * read: nothing would draw it.
+ */
+export function useImageSource(file: File): ImageSource {
+	const [read, setRead] = useState<{ readonly file: File; readonly answer: ImageSource } | null>(
+		null
+	);
+	useEffect(() => {
+		if (!takesLogo(file)) return;
+		const reader = new FileReader();
+		reader.onload = () => {
+			const src = typeof reader.result === 'string' ? reader.result : null;
+			setRead({ file, answer: { id: fileId(file), src, unreadable: src === null } });
+		};
+		reader.onerror = () =>
+			setRead({ file, answer: { id: fileId(file), src: null, unreadable: true } });
+		reader.readAsDataURL(file);
+		return () => {
+			reader.onload = null;
+			reader.onerror = null;
+			if (reader.readyState === FileReader.LOADING) reader.abort();
+		};
+	}, [file]);
+	return read?.file === file ? read.answer : { id: fileId(file), src: null, unreadable: false };
 }
 
 /**
@@ -150,8 +196,8 @@ function useImageSource(file: File): string | null {
  * own size.
  */
 type CropReading = {
-	/** the image the reading is of. */
-	readonly src: string;
+	/** the file the reading is of (`ImageSource`'s `id`). */
+	readonly id: string;
 	readonly square: CropSquare | null;
 	readonly natural: Size | null;
 };
@@ -163,18 +209,18 @@ export function LogoCropDialog({
 	onSwap,
 	fallbackFocus
 }: LogoCropDialogProps): ReactNode {
-	const src = useImageSource(file);
+	const { id, src, unreadable } = useImageSource(file);
 	const [failed, setFailed] = useState<{ readonly file: File } | null>(null);
 	/* a failure is the file's that failed: a file swapped in by a drop is tried afresh. */
 	const refused: LogoRefusal | null = !takesLogo(file)
 		? 'not-a-logo-type'
-		: failed?.file === file
+		: unreadable || failed?.file === file
 			? 'unreadable'
 			: null;
 	/* a reading is the image's it was taken from, so a dropped image states nothing until its own
 	   cropper has measured it. */
 	const [reading, setReading] = useState<CropReading | null>(null);
-	const current = reading?.src === src ? reading : null;
+	const current = reading?.id === id ? reading : null;
 
 	return (
 		<LogoCropCard
@@ -189,13 +235,21 @@ export function LogoCropDialog({
 			    first does: the machine keeps the box it measured, and scales the square it holds into a
 			    box that changes shape rather than placing a new one. */}
 			{src === null || refused !== null ? null : (
-				<LogoCropper key={src} src={src} onRead={setReading} onError={() => setFailed({ file })} />
+				<LogoCropper
+					key={id}
+					id={id}
+					src={src}
+					onRead={setReading}
+					onError={() => setFailed({ file })}
+				/>
 			)}
 		</LogoCropCard>
 	);
 }
 
 type LogoCropperProps = {
+	/** the file the image is read from (`ImageSource`'s `id`). */
+	readonly id: string;
 	readonly src: string;
 	/** the square kept and the image's own size, each time either changes. */
 	readonly onRead: (reading: CropReading) => void;
@@ -204,7 +258,7 @@ type LogoCropperProps = {
 };
 
 /** ark's cropper over one image, opening on its largest centred square. */
-function LogoCropper({ src, onRead, onError }: LogoCropperProps): ReactNode {
+function LogoCropper({ id, src, onRead, onError }: LogoCropperProps): ReactNode {
 	/* the two measures the square's limits are stated from, as the last render's machine reported
 	   them: the limits are props of the machine, so they are read from a render before its own. */
 	const [measures, setMeasures] = useState<{ shown: Size; natural: Size } | null>(null);
@@ -247,10 +301,10 @@ function LogoCropper({ src, onRead, onError }: LogoCropperProps): ReactNode {
 	const centredOn = useRef<string | null>(null);
 	const centre = useEffectEvent(() => cropper.reset());
 	useEffect(() => {
-		if (measures === null || centredOn.current === src) return;
-		centredOn.current = src;
+		if (measures === null || centredOn.current === id) return;
+		centredOn.current = id;
 		centre();
-	}, [src, measures]);
+	}, [id, measures]);
 
 	const square =
 		shown !== null && natural !== null && measured(cropper.crop)
@@ -260,14 +314,14 @@ function LogoCropper({ src, onRead, onError }: LogoCropperProps): ReactNode {
 	const read = useEffectEvent(onRead);
 	useEffect(() => {
 		read({
-			src,
+			id,
 			square:
 				squareX === undefined || squareY === undefined || squareSize === undefined
 					? null
 					: { x: squareX, y: squareY, size: squareSize },
 			natural: naturalWide === 0 ? null : { width: naturalWide, height: naturalTall }
 		});
-	}, [src, squareX, squareY, squareSize, naturalWide, naturalTall]);
+	}, [id, squareX, squareY, squareSize, naturalWide, naturalTall]);
 
 	return (
 		<ImageCropper.RootProvider value={cropper} className="adm-cropper">

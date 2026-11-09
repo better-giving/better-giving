@@ -58,8 +58,8 @@ function contentWidth(tiles: HTMLElement): number {
 }
 
 /**
- * one tile per preset the deployment serves, plus the free entry last, as ../views.ts builds them.
- * the other tile is one more label on the tray and is not drawn here: a count is a count.
+ * one tile per preset the deployment serves, then the other tile, then the free entry last, as
+ * ../views.ts builds them — the other tile's place among them is what the columns are read off.
  *
  * the widest figure this component's own bounds allow is what each tile holds: the floor a tile
  * wraps against is the width that figure needs, so a narrower string would measure a flow no donor
@@ -72,6 +72,11 @@ function fill(tiles: HTMLElement, presets: number): void {
 		tile.textContent = '$1,000';
 		tiles.appendChild(tile);
 	}
+	const other = document.createElement('label');
+	other.setAttribute('part', 'amount-option');
+	other.className = 'other';
+	other.textContent = 'Other';
+	tiles.appendChild(other);
 	const entry = document.createElement('div');
 	entry.className = 'tile entry';
 	entry.setAttribute('part', 'amount-input');
@@ -189,122 +194,111 @@ afterEach(() => {
 });
 
 describe('how many tiles a row takes', () => {
-	// the amount grid states no breakpoint of its own: it holds three tiles where three of them are
-	// wide enough to hold a four-figure amount and two where they are not, which is a question about
-	// the tiles rather than about the card. what still has to be true is the thing a breakpoint was
-	// carrying — that the floor is read against the card's own clamped text and never against the
-	// host document's root — and that is now the `em` in ../styles/layout.css's tile minimum.
-	it('resolves the tile minimum against the card, not against the host document root', () => {
-		// the claim the `em` is there for. a host running `html { font-size: 62.5% }` — the 10px root
-		// a whole generation of CSS was written against — would make a `rem` floor 60px, and three
-		// tiles of 88px would fit the 280px this card leaves. read against the card's own 16px the
-		// floor is 96px, three of them do not fit, and the row stays at two.
-		const { tiles } = card('320px', '62.5%');
+	// the columns turn on the card's own breakpoint, and what has to be true of it is what is true of
+	// every breakpoint here: it is read against the card's own clamped text and never against the
+	// host document's root — the `em` in ../styles/layout.css's `@container donate (min-width: 26em)`.
+	it('resolves the breakpoint against the card, not against the host document root', () => {
+		// a host running `html { font-size: 62.5% }` would make a `rem` breakpoint 260px, and this
+		// 400px card would go four-up. read against the card's own 16px it is 416px, and the row
+		// stays at two.
+		const { tiles } = card('400px', '62.5%');
 		fill(tiles, 6);
 
 		expect(perRow(tiles)).toBe(2);
 	});
 
-	it('goes three-up once the card itself is genuinely wide enough', () => {
-		// the other half: the flow still opens up. a 400px card leaves 360px, and three tiles of 114px
-		// each are past the floor.
-		const { tiles } = card('400px', '62.5%');
+	it('goes four-up once the card itself is past the breakpoint', () => {
+		const { tiles } = card('420px', '62.5%');
 		fill(tiles, 6);
 
-		expect(perRow(tiles)).toBe(3);
+		expect(perRow(tiles)).toBe(4);
 	});
 
 	it('is unmoved by a host root that grew instead of shrank', () => {
-		// a `rem` floor moves in both directions. at a 24px root it would be 144px, which would hold
-		// this card at two and waste the width the third tile fits in.
-		const { tiles } = card('400px', '24px');
+		// at a 24px root a `rem` breakpoint would be 624px and hold this card at two.
+		const { tiles } = card('420px', '24px');
 		fill(tiles, 6);
 
-		expect(perRow(tiles)).toBe(3);
+		expect(perRow(tiles)).toBe(4);
 	});
 
 	it('follows the card’s own font-size, which is what the clamp then bounds', () => {
-		// the same card twice, at the two ends of the clamp band in ../styles/tokens.css. the floor
-		// tracks the card's text, so the card whose text is a fifth larger legitimately holds one
-		// tile fewer — and the clamp is what keeps that tracking inside a known range rather than
-		// following a host anywhere it likes.
-		const wide = card('370px', '16px');
+		// the same card twice, at the two ends of the clamp band in ../styles/tokens.css: the card
+		// whose text is an eighth larger has a breakpoint an eighth wider, and this card is under it.
+		const wide = card('440px', '16px');
 		fill(wide.tiles, 6);
 
-		expect(perRow(wide.tiles)).toBe(3);
+		expect(perRow(wide.tiles)).toBe(4);
 
 		document.body.replaceChildren();
-		const large = card('370px', '16px', '18px');
+		const large = card('440px', '16px', '18px');
 		fill(large.tiles, 6);
 
 		expect(perRow(large.tiles)).toBe(2);
 	});
 
-	// never four, however wide the card gets. the tiles are shortcuts past the free entry and a row
-	// of them is read at a glance; the width a wide card has spare goes into the tiles rather than
-	// into more of them.
-	it('never puts a fourth tile on a row, at any width', () => {
+	// never five, however wide the card gets: the tiles are shortcuts read at a glance, and the width
+	// a wide card has spare goes into the tiles rather than into more of them.
+	it('never puts a fifth tile on a row, at any width', () => {
 		const { tiles } = card('900px', '16px');
 		fill(tiles, 12);
 
-		expect(rows(tiles).map((line) => line.count)).toEqual([3, 3, 3, 3, 1]);
+		expect(rows(tiles).map((line) => line.count)).toEqual([4, 4, 4, 1, 1]);
+	});
+
+	// fewer cells than four are one row of exactly that many.
+	it('lays two presets and other out three across on a wide card', () => {
+		const { tiles } = card('900px', '16px');
+		fill(tiles, 2);
+
+		expect(rows(tiles).map((line) => line.count)).toEqual([3, 1]);
 	});
 });
 
-// the columns: every row of tiles has the ones the first row has, and a row that came out short
-// leaves a cell empty rather than stretching a tile into it. the count is the org's and every
-// count between none and the dozen `MAX_SUGGESTED_AMOUNTS` allows
-// (../../../app/src/lib/forms/amounts.ts) has to lay out that way, at the narrow card and at the
-// wide one — 7 and 11 are the counts no choice of two or three columns fills.
+// every row full: the org's count is anything between two and the dozen `MAX_SUGGESTED_AMOUNTS`
+// allows (../../../app/src/lib/forms/amounts.ts), and at each of them, narrow and wide, the
+// presets keep one width and the other tile takes whatever its row has left, so no cell stands
+// empty. none or one is a bare tray with no tile on it (`tiled` in ../views.ts) and has no cells.
 //
 // the free entry is inside the grid rather than under it, and it is the one box allowed the whole
-// row, so it is left out of the tiles measured here and measured on its own below.
+// row, so it is left out of the rows measured here and measured on its own below.
 describe('the amount grid at every count an org can serve', () => {
-	// none is a bare tray with no tile on it (`tiled` in ../views.ts) and has no columns to keep.
-	const COUNTS = [2, 5, 7, 12];
-	const WIDTHS = ['320px', '375px', '480px'];
+	const COUNTS = Array.from({ length: 11 }, (_, at) => at + 2);
+	const WIDTHS = ['320px', '375px', '480px', '900px'];
 
-	/** every tile's box, the entry left out. */
-	function presets(tiles: HTMLElement): DOMRect[] {
-		return Array.from(tiles.children)
-			.filter((child) => !child.classList.contains('entry'))
-			.map((child) => child.getBoundingClientRect());
+	/** the boxes a donor picks among, the entry left out. */
+	function cells(tiles: HTMLElement): HTMLElement[] {
+		return Array.from(tiles.children).filter(
+			(child): child is HTMLElement => !child.classList.contains('entry')
+		);
 	}
 
-	it.each(COUNTS)('draws every tile at one width, at %i presets', (count) => {
+	it.each(COUNTS)('draws every preset at one width, at %i presets', (count) => {
 		for (const width of WIDTHS) {
 			const { tiles } = card(width, '16px');
 			fill(tiles, count);
-			const boxes = presets(tiles);
+			const boxes = cells(tiles)
+				.filter((cell) => !cell.classList.contains('other'))
+				.map((cell) => cell.getBoundingClientRect());
 			const first = boxes[0]?.width;
 
 			for (const box of boxes) expect(box.width, width).toBeCloseTo(first ?? 0, 0);
 		}
 	});
 
-	it.each(COUNTS)('starts every tile on a column the first row has, at %i presets', (count) => {
+	it.each(COUNTS)('fills every row to the tray’s edge, at %i presets', (count) => {
 		for (const width of WIDTHS) {
 			const { tiles } = card(width, '16px');
 			fill(tiles, count);
-			const boxes = presets(tiles);
-			const columns = boxes
-				.filter((box) => Math.round(box.top) === Math.round(boxes[0]?.top ?? 0))
-				.map((box) => Math.round(box.left));
+			const edge = contentRight(tiles);
+			const lines = new Map<number, number>();
+			for (const cell of cells(tiles)) {
+				const box = cell.getBoundingClientRect();
+				lines.set(Math.round(box.top), Math.max(lines.get(Math.round(box.top)) ?? 0, box.right));
+			}
 
-			for (const box of boxes) expect(columns, width).toContain(Math.round(box.left));
+			for (const right of lines.values()) expect(right, width).toBeCloseTo(edge, 0);
 		}
-	});
-
-	// a short row keeps its cell: five tiles three-up is a second row of two at the first row's
-	// width, and the space where a third would stand is left empty.
-	it('leaves the cell a missing tile would have taken empty', () => {
-		const { tiles } = card('480px', '16px');
-		fill(tiles, 5);
-		const boxes = presets(tiles);
-		const edge = contentRight(tiles);
-
-		expect(rows(tiles).map((line) => line.count)).toEqual([3, 2, 1]);
-		expect(boxes[4]?.right).toBeLessThan(edge - (boxes[0]?.width ?? 0));
 	});
 
 	// and the free entry is the last box in the grid rather than a box under it — on its own row,

@@ -4977,6 +4977,17 @@
 		outline-offset: calc(var(--admin-focus-width) * -1);
 	}
 
+	/* the banner's crop (packages/app/src/lib/admin/settings/banner-crop-dialog.tsx): dashed lines
+	   over the middle 3:1 of its 4:1 band, the part a phone shows, each 12.5% in from its side. a
+	   mark on the band, never a target, so a press through it reaches the band. */
+	.adm-cropper__guide {
+		position: absolute;
+		inset-block: 0;
+		inset-inline: 12.5%;
+		border-inline: var(--admin-border-width) dashed var(--admin-surface);
+		pointer-events: none;
+	}
+
 	/* the corners are drawn as grips and the edges are grabbed without one. the machine places each
 	   and sizes the edges along their side; what is stated here is a grip's drawn size and an
 	   edge's thickness. */

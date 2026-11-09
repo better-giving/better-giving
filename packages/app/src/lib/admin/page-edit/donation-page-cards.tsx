@@ -44,7 +44,7 @@ type CardProps<Seed> = { readonly seed: Seed; readonly version: number };
 const firstError = (errors: Record<string, string[] | undefined> | undefined, name: string) =>
 	errors?.[name]?.[0];
 
-/** General: the page's title, blank for "Donate to" and the organisation's name. */
+/** General: the page's title, which stands over the donation box at /donate; blank for none. */
 export function DonationPageGeneralCard({ seed, version }: CardProps<DonationPageGeneralSeed>) {
 	const answer = useScreenAnswer();
 	const [form, fields] = useAdminForm(GENERAL, answer, { defaultValue: { ...seed.boxes } });
@@ -61,7 +61,7 @@ export function DonationPageGeneralCard({ seed, version }: CardProps<DonationPag
 				name={fields.heading.name}
 				label="Title"
 				optional
-				hint="Left empty, the page says “Donate to” and your organisation’s name."
+				hint="Shown over the donation box. Left empty, the box has no title."
 				defaultValue={seed.boxes.heading}
 				error={firstError(form.allErrors, fields.heading.name)}
 			/>

@@ -29,7 +29,8 @@ const ORG: OrgProfile = {
 	vision: null,
 	brandColour: null,
 	socialLinks: [],
-	logoImageId: null
+	logoImageId: null,
+	bannerImageId: null
 };
 
 const CONTRIBUTION: ReceiptContribution = {

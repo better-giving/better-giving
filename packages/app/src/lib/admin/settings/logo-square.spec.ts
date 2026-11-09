@@ -1,5 +1,7 @@
 import { LONG_SIDE_MAX, type Resized } from '@better-giving/operator/images/resize';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BANNER_REFUSED } from './banner-crop';
+import { cropBanner } from './banner-image';
 import { LOGO_REFUSED } from './logo-crop';
 import { squareLogo } from './logo-square';
 
@@ -110,5 +112,64 @@ describe('a saved crop', () => {
 			ok: false,
 			refused: LOGO_REFUSED['too-large-after-resize']
 		});
+	});
+});
+
+describe('a saved banner', () => {
+	it(`draws the 4:1 band at its own shape, no wider than the ${LONG_SIDE_MAX} the resize keeps`, async () => {
+		decodes(4000, 3000);
+
+		const kept = await cropBanner(PICKED, { x: 400, y: 100, width: 3200, height: 800 });
+
+		expect(canvases).toEqual([
+			{
+				width: LONG_SIDE_MAX,
+				height: 400,
+				drawn: [[400, 100, 3200, 800, 0, 0, LONG_SIDE_MAX, 400]]
+			}
+		]);
+		expect(resize.mock.calls[0]?.[0]?.name).toBe('banner.png');
+		expect(kept.ok).toBe(true);
+	});
+
+	it('refuses a band past the edge of the photo in the band’s words', async () => {
+		decodes(1600, 400);
+
+		const kept = await cropBanner(PICKED, { x: 400, y: 0, width: 1600, height: 400 });
+
+		expect(kept).toEqual({ ok: false, refused: BANNER_REFUSED['crop-outside'] });
+		expect(BANNER_REFUSED['crop-outside']).not.toMatch(/square/i);
+	});
+});
+
+describe('a canvas the browser will not draw or write', () => {
+	// an old Safari has no 2d `OffscreenCanvas`, and a large photo can be refused the memory to write.
+	it.each([
+		['no OffscreenCanvas at all', () => vi.stubGlobal('OffscreenCanvas', undefined)],
+		[
+			'a write that rejects',
+			() =>
+				vi.stubGlobal(
+					'OffscreenCanvas',
+					class extends FakeCanvas {
+						override async convertToBlob(): Promise<Blob> {
+							throw new DOMException('out of memory', 'EncodingError');
+						}
+					}
+				)
+		]
+	])('refuses the crop as unreadable with %s, rather than rejecting', async (_, breaks) => {
+		decodes(1000, 1000);
+		breaks();
+
+		expect(await squareLogo(PICKED, { x: 0, y: 0, size: 1000 })).toEqual({
+			ok: false,
+			refused: LOGO_REFUSED.unreadable
+		});
+		expect(await cropBanner(PICKED, { x: 0, y: 0, width: 1000, height: 250 })).toEqual({
+			ok: false,
+			refused: BANNER_REFUSED.unreadable
+		});
+		expect(resize).not.toHaveBeenCalled();
 	});
 });

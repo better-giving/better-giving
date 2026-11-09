@@ -13,12 +13,12 @@ import { deleteBytes } from './bytes';
 // image it names is freed from under it, bytes and all.
 
 /**
- * no row names `id`: no cause's photo, the profile's logo and no page document. a page document is
- * matched on its text, so an id anywhere in one keeps the image whichever block holds it.
+ * no row names `id`: no cause's photo, the profile's logo or banner and no page document. a page
+ * document is matched on its text, so an id anywhere in one keeps the image whichever block holds it.
  */
 function unreferenced(id: string): SQL {
 	return sql`not exists (select 1 from ${program} where ${program.imageId} = ${id})
-		and not exists (select 1 from ${orgProfile} where ${orgProfile.logoImageId} = ${id})
+		and not exists (select 1 from ${orgProfile} where ${orgProfile.logoImageId} = ${id} or ${orgProfile.bannerImageId} = ${id})
 		and not exists (select 1 from ${page} where instr(${page.draft}, ${id}) > 0 or instr(${page.published}, ${id}) > 0 or instr(${page.lastPublished}, ${id}) > 0)`;
 }
 

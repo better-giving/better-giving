@@ -2773,47 +2773,14 @@ export function createCard(
 	let repositioning = 0;
 	const view = doc.defaultView;
 	const rewrapped = (): void => {
-		if (view === null || repositioning !== 0 || amountStep.offsetParent === null) return;
+		if (!chooses || view === null || repositioning !== 0 || amountStep.offsetParent === null)
+			return;
 		repositioning = view.requestAnimationFrame(() => {
 			repositioning = 0;
-			if (chooses) placeThumb(true);
-			markRows();
+			placeThumb(true);
 		});
 	};
 	view?.addEventListener('resize', rewrapped);
-
-	/**
-	 * which tile opens a row of the amount grid, and how many columns the grid came out with —
-	 * written so the tray can rule its lattice (the grid-line rules in ./styles/parts.css).
-	 *
-	 * where the grid wraps is the engine's answer and no stylesheet can ask it, so both are read
-	 * here off the tiles' own laid-out boxes: a tile whose top differs from the one before it opens
-	 * a row and is marked `data-row-start`, which is what draws the horizontal above that row, and
-	 * the tiles sharing the first top are the columns, written onto the tray as `--_cols`, which
-	 * is the pitch its verticals repeat at. read on every patch and on the window resizing, the
-	 * same two moments the chip is placed at, and for the same reason a `ResizeObserver` is not
-	 * used for either (`placeThumb` above).
-	 *
-	 * a tray with no tiles writes no count at all: the rule divides by it, and the fallback stated
-	 * there is what a tray with nothing to rule takes.
-	 */
-	function markRows(): void {
-		if (amountStep.offsetParent === null) return;
-		const labels = [
-			...amountOptions.map(({ label }) => label),
-			...(otherTile === null ? [] : [otherTile.label])
-		];
-		const first = labels[0]?.offsetTop;
-		let above: number | null = null;
-		let cols = 0;
-		for (const label of labels) {
-			toggleAttribute(label, 'data-row-start', label.offsetTop !== above ? '' : null);
-			if (label.offsetTop === first) cols += 1;
-			above = label.offsetTop;
-		}
-		if (cols === 0) amountTiles.style.removeProperty('--_cols');
-		else amountTiles.style.setProperty('--_cols', String(cols));
-	}
 
 	function updateOptions(
 		nodes: readonly { label: HTMLElement; input: HTMLInputElement }[],
@@ -3000,7 +2967,6 @@ export function createCard(
 		// after the options are marked, because the chip is placed off the box the chosen one was
 		// laid out in and the token that says which one it is has just been written.
 		if (chooses) placeThumb();
-		markRows();
 
 		// the free entry is shown while the other tile holds, and always where there is no other
 		// tile; it reads as chosen when it holds the amount, which on a tray with tiles is the other
@@ -3741,12 +3707,15 @@ export function createCard(
 /**
  * the shape of a form, before this one's shape is known.
  *
- * what `build` above draws on the first step of the default form, top to bottom: the head, the
- * cadences, the amount entry with no shortcuts above it, the two optional asks and the button. the
- * note and the tribute are on every form whatever its configuration (`amountStep` above), so each
- * takes a row here; the shortcuts are the one thing a configuration adds, and the default form has
- * none (`DEFAULT_SHAPE`). so the layout the donor is looking at while the request is in flight is
- * the layout they end up with.
+ * what `build` above draws on the first step of the common form, top to bottom: the head, the
+ * cadences, the amount tiles, the two optional asks and the button. the note and the tribute are on
+ * every form whatever its configuration (`amountStep` above), so each takes a row here; the tiles
+ * are `DEFAULT_SHAPE`'s six, which is five presets and Other, and the free entry is not drawn
+ * because it stays hidden until Other is chosen. so on a form of that shape the layout the donor is
+ * looking at while the request is in flight is the layout they end up with, row for row: on a wide
+ * card six plain tiles come out four and two where the real tray's Other spans the rest of its row
+ * (`.tiles` in ./styles/layout.css), so the second row changes shape when the configuration lands
+ * and the height does not.
  *
  * returned already inside `.card-body`, which is the box that pads (`--_inset` in
  * ./styles/layout.css) and the one every other state on this card goes through — `createUnavailable`
@@ -3788,10 +3757,9 @@ export function createSkeleton(doc: Document): HTMLElement {
 	}
 	const amounts = make(doc, 'div', { class: 'group' }, [
 		make(doc, 'div', { class: 'skeleton-block skeleton-label' }),
-		// the shortcuts, on the real tray: the grid wraps these six as it wraps the
-		// org's own, so the rows the card grows to are the rows it will have. no box under them —
-		// the entry is hidden until the Other tile is chosen (`update` above), so a shape drawing it
-		// would reserve a row most cards never open.
+		// the tiles, on the real tray's grid: six cells take the rows five presets and Other take, at
+		// either column count. no box under them — the entry is hidden until the Other tile is chosen
+		// (`update` above), so a shape drawing it would reserve a row most cards never open.
 		tiles
 	]);
 	// hidden from the accessibility tree entirely: it is a shape, and the words for what is

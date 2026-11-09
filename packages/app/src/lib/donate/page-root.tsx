@@ -34,8 +34,11 @@ import type { Layout } from '../page/shape';
 // the form declares its ladder one node under `[data-donate-root]`, so a token reading a rung has to
 // be declared there too, and so does a ground drawn from one.
 
-/** the campaign layouts, the Donation page's own, and `plain` for the donation box alone. */
-export type RootLayout = Layout | 'donation' | 'plain';
+/**
+ * the campaign layouts, the Donation page's own, `profile` for the Donation page under its profile
+ * head, and `plain` for the donation box alone.
+ */
+export type RootLayout = Layout | 'donation' | 'profile' | 'plain';
 
 export type PageRootProps = {
 	/** lowercase `#rrggbb`, or `null` for a page drawn in the registry's default accent. */

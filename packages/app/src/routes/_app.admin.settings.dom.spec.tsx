@@ -1,20 +1,23 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub } from 'react-router';
+import { createRoutesStub, useLoaderData } from 'react-router';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import type { CropRect, Cropped } from '$lib/admin/settings/crop-image';
+import { BANNER_REFUSED } from '$lib/admin/settings/banner-crop';
 import type { CropSquare } from '$lib/admin/settings/logo-crop';
 import type { NonprofitLookupAnswer, NonprofitSearchAnswer } from '$lib/org/nonprofit-answers';
 import Settings from './_app.admin.settings';
 import { shouldRevalidate as searchShouldRevalidate } from './_app.admin.settings_.nonprofits';
 import { shouldRevalidate as lookupShouldRevalidate } from './_app.admin.settings_.nonprofits_.$ein';
+import { settled } from '$lib/admin/settings/settled.testing';
 
 // what the Settings screen says about the two things a deployment can be missing without any box
 // on it being wrong — the mail values, which are set in `.env`, and the notification address — and
-// what its logo, its brand colour and its link rows do as they are used.
+// what its logo, its banner, its brand colour and its link rows do as they are used.
 //
 // mounted rather than rendered to a string, inside a stub because the screen's forms and its
 // fetchers do not render without a router. what is asserted is the words a reader meets, scoped to
-// the card each belongs to, and what reaches the logo's address.
+// the card each belongs to, and what reaches the logo's and the banner's addresses.
 //
 // happy-dom lays nothing out and decodes no image, so the crop card's image is given the size a
 // browser would measure (`measure` below), and the crop and resize a save runs are
@@ -30,8 +33,22 @@ const squareLogo = vi.hoisted(() =>
 
 vi.mock('$lib/admin/settings/logo-square', () => ({ squareLogo }));
 
+// the banner's crop and resize are ../lib/admin/settings/logo-square.spec.ts's too, stood in for here
+// the same way.
+const cropBanner = vi.hoisted(() =>
+	vi.fn(
+		async (_file: File, _band: CropRect): Promise<Cropped> => ({
+			ok: true,
+			blob: new Blob(['band'], { type: 'image/png' })
+		})
+	)
+);
+
+vi.mock('$lib/admin/settings/banner-image', () => ({ cropBanner }));
+
 afterEach(() => {
 	squareLogo.mockClear();
+	cropBanner.mockClear();
 	vi.restoreAllMocks();
 });
 
@@ -77,10 +94,15 @@ type Drawn = {
 	} | null;
 	readonly details?: Partial<typeof DETAILS> | undefined;
 	readonly logo?: { readonly id: string; readonly src: string } | null | undefined;
+	readonly banner?: { readonly id: string; readonly src: string } | null | undefined;
 };
 
-/** one request to the logo's address: its method, and the body it carried. */
-type Sent = { readonly method: string; readonly body: FormData | null };
+/** one request to the logo's or the banner's address: which, its method, and the body it carried. */
+type Sent = {
+	readonly address: string;
+	readonly method: string;
+	readonly body: FormData | null;
+};
 
 /** how the two organisation addresses answer: a name search by its query, a lookup by its EIN. */
 type Nonprofits = {
@@ -93,48 +115,69 @@ type Asked = { readonly calls: string[]; readonly saves: FormData[] };
 
 const UNANSWERED = () => new Promise<never>(() => {});
 
+const STUB_ROUTE = 'settings';
+
+/** what the screen's loader answers from the next read on: the drawn values, these over them. */
+type Reread = {
+	readonly details?: Partial<typeof DETAILS>;
+	readonly logo?: { readonly id: string; readonly src: string } | null;
+	readonly banner?: { readonly id: string; readonly src: string } | null;
+	readonly version?: number;
+};
+
 /**
- * the screen, with the logo's address answering as `answer` says and the organisation addresses as
- * `nonprofits` does — each with its own module's `shouldRevalidate`, as the app routes it. every
- * request that reaches the logo's address is recorded in `sent`, every organisation call and every
- * save of the screen's own in `asked`.
+ * the screen, with the logo's and the banner's addresses answering as `answer` says and the
+ * organisation addresses as `nonprofits` does — each with its own module's `shouldRevalidate`, as
+ * the app routes it. every request that reaches the logo's or the banner's address is recorded in
+ * `sent`, every organisation call and every save of the screen's own in `asked`. the screen's loader
+ * answers what it was drawn with until `reread` names what the next read answers in its place.
  */
 function screen(
-	{ details, logo, ...over }: Drawn,
+	{ details, logo, banner, ...over }: Drawn,
 	answer: (request: Request) => Promise<unknown> = async () => ({ logo: null }),
 	{ search = UNANSWERED, lookup = UNANSWERED }: Nonprofits = {}
-): { readonly root: HTMLElement; readonly sent: Sent[]; readonly asked: Asked } {
+): {
+	readonly root: HTMLElement;
+	readonly sent: Sent[];
+	readonly asked: Asked;
+	readonly reread: (next: Reread) => void;
+} {
 	const sent: Sent[] = [];
 	const asked: Asked = { calls: [], saves: [] };
+	const drawn = {
+		details: { ...DETAILS, ...details },
+		logo: logo ?? null,
+		banner: banner ?? null,
+		saved: null,
+		version: 0,
+		...over
+	};
+	let read: typeof drawn = drawn;
 	const Stub = createRoutesStub([
 		{
+			id: STUB_ROUTE,
 			path: '/admin/settings',
+			loader: () => read,
 			action: async ({ request }) => {
 				asked.saves.push(await request.formData());
 				return null;
 			},
 			Component: () =>
 				createElement(Settings as never, {
-					loaderData: {
-						details: { ...DETAILS, ...details },
-						logo: logo ?? null,
-						saved: null,
-						version: 0,
-						...over
-					},
+					loaderData: useLoaderData(),
 					actionData: undefined,
 					params: {},
 					matches: []
 				})
 		},
-		{
-			path: '/admin/settings/logo',
-			action: async ({ request }) => {
+		...['/admin/settings/logo', '/admin/settings/banner'].map((path) => ({
+			path,
+			action: async ({ request }: { request: Request }) => {
 				const body = request.method === 'POST' ? await request.formData() : null;
-				sent.push({ method: request.method, body });
+				sent.push({ address: path, method: request.method, body });
 				return answer(request);
 			}
-		},
+		})),
 		{
 			path: '/admin/settings/nonprofits',
 			shouldRevalidate: searchShouldRevalidate,
@@ -154,9 +197,17 @@ function screen(
 		}
 	]);
 	return {
-		root: mount(createElement(Stub, { initialEntries: ['/admin/settings'] })),
+		root: mount(
+			createElement(Stub, {
+				initialEntries: ['/admin/settings'],
+				hydrationData: { loaderData: { [STUB_ROUTE]: drawn } }
+			})
+		),
 		sent,
-		asked
+		asked,
+		reread: ({ details: storedDetails, ...storedOver }) => {
+			read = { ...read, ...storedOver, details: { ...read.details, ...storedDetails } };
+		}
 	};
 }
 
@@ -167,6 +218,16 @@ function card(root: HTMLElement, heading: string): HTMLElement {
 	);
 	if (found === undefined) throw new Error(`the screen drew no card headed ${heading}`);
 	return found;
+}
+
+/**
+ * the crop card's image once the card has read the chosen file into the address it draws it from,
+ * happy-dom's own `FileReader` doing the reading.
+ */
+async function cardDrawn(): Promise<void> {
+	if ((await settled(() => document.querySelector('.adm-cropper__image'))) === null) {
+		throw new Error('the crop card read no image');
+	}
 }
 
 const SET = {
@@ -405,14 +466,15 @@ describe('the logo', () => {
 		[...within.querySelectorAll('button')].find((button) => button.textContent === words);
 	const cropCard = () => document.querySelector('dialog');
 
-	/** a file chosen at the logo's press, as the device's picker hands one back. */
-	function pick(root: HTMLElement, file: File) {
+	/** a file chosen at the logo's press, as the device's picker hands one back, and the crop card's read of it. */
+	async function pick(root: HTMLElement, file: File) {
 		const input = logo(root).querySelector<HTMLInputElement>('input[type="file"]');
 		if (input === null) throw new Error('no file input');
 		Object.defineProperty(input, 'files', { value: [file], configurable: true });
 		act(() => {
 			input.dispatchEvent(new Event('change', { bubbles: true }));
 		});
+		await cardDrawn();
 	}
 
 	/**
@@ -447,10 +509,10 @@ describe('the logo', () => {
 		expect(logo(stored).textContent).not.toContain('photo');
 	});
 
-	it('opens the crop card on a picked file, and sends nothing yet', () => {
+	it('opens the crop card on a picked file, and sends nothing yet', async () => {
 		const { root, sent } = screen({ notificationEmail: null, mail: SET });
 
-		pick(root, PICKED);
+		await pick(root, PICKED);
 
 		expect(cropCard()?.querySelector('h2')?.textContent).toBe('Crop the logo');
 		expect(cropCard()?.querySelector('.adm-cropper__image')).not.toBeNull();
@@ -459,7 +521,7 @@ describe('the logo', () => {
 
 	it('posts the largest centred square, cropped, as the logo’s file at Save', async () => {
 		const { root, sent } = screen({ notificationEmail: null, mail: SET });
-		pick(root, PICKED);
+		await pick(root, PICKED);
 		await measure();
 		const save = cropCard() && buttonNamed(cropCard() as HTMLElement, 'Save logo');
 
@@ -477,7 +539,7 @@ describe('the logo', () => {
 
 	it('closes the crop card at Cancel, and posts nothing', async () => {
 		const { root, sent } = screen({ notificationEmail: null, mail: SET });
-		pick(root, PICKED);
+		await pick(root, PICKED);
 		await measure();
 
 		await act(async () => buttonNamed(cropCard() as HTMLElement, 'Cancel')?.click());
@@ -504,6 +566,205 @@ describe('the logo', () => {
 		expect(remove?.textContent).toBe('Removing');
 		expect(remove?.getAttribute('aria-busy')).toBe('true');
 		expect(buttonNamed(logo(root), 'Replace logo')?.getAttribute('aria-disabled')).toBe('true');
+	});
+});
+
+describe('the banner', () => {
+	const PICKED = new File(['png'], 'harbor-banner.png', { type: 'image/png' });
+	const STORED = { id: 'img_2', src: '/image/img_2' };
+
+	const banner = (root: HTMLElement) => {
+		const found = [...card(root, 'Organisation details').querySelectorAll('fieldset')].find(
+			(set) => set.querySelector('legend')?.textContent === 'Banner'
+		);
+		if (found === undefined) throw new Error('no banner fieldset');
+		return found;
+	};
+	const buttonNamed = (within: ParentNode, words: string) =>
+		[...within.querySelectorAll('button')].find((button) => button.textContent === words);
+	const cropCard = () => document.querySelector('dialog');
+
+	/** a file chosen at the banner's press, as the device's picker hands one back, and the crop card's read of it. */
+	async function pick(root: HTMLElement, file: File) {
+		const input = banner(root).querySelector<HTMLInputElement>('input[type="file"]');
+		if (input === null) throw new Error('no file input');
+		Object.defineProperty(input, 'files', { value: [file], configurable: true });
+		act(() => {
+			input.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		await cardDrawn();
+	}
+
+	/** the photo in the crop card laid out and decoded: drawn 600 × 400, `natural` of its own. */
+	async function measure(natural: { width: number; height: number }) {
+		const image = document.querySelector<HTMLImageElement>('.adm-cropper__image');
+		const viewport = document.querySelector<HTMLElement>('.adm-cropper__viewport');
+		if (image === null || viewport === null) throw new Error('the crop card drew no image');
+		vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(
+			DOMRect.fromRect({ x: 0, y: 0, width: 600, height: 400 })
+		);
+		Object.defineProperty(image, 'naturalWidth', { value: natural.width });
+		Object.defineProperty(image, 'naturalHeight', { value: natural.height });
+		await act(async () => {
+			image.dispatchEvent(new Event('load'));
+		});
+	}
+
+	it('stands after the logo and before Save details, saying what a banner is', () => {
+		const root = screen({ notificationEmail: null, mail: SET }).root;
+		const legends = [...card(root, 'Organisation details').querySelectorAll('legend')].map(
+			(legend) => legend.textContent
+		);
+		expect(legends.indexOf('Banner')).toBe(legends.indexOf('Logo') + 1);
+		const field = banner(root);
+		expect(field.compareDocumentPosition(buttonNamed(root, 'Save details') as Node)).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING
+		);
+		expect(field.querySelector('.adm-hint')?.textContent).toBe(
+			'The wide picture across the top of your donation page. At least 1200 pixels wide, as a PNG, JPEG or WebP. Keep faces and words in the middle: a phone shows the middle 3 to 1.'
+		);
+	});
+
+	it('draws the empty band and Add banner with none stored', () => {
+		const field = banner(screen({ notificationEmail: null, mail: SET }).root);
+		expect(field.querySelector('.adm-placed__empty')).not.toBeNull();
+		expect(buttonNamed(field, 'Add banner')).toBeDefined();
+		expect(field.querySelector('button[aria-label="Remove the banner"]')).toBeNull();
+	});
+
+	it('draws the stored banner, Replace banner and Remove the banner with one', () => {
+		const field = banner(screen({ notificationEmail: null, mail: SET, banner: STORED }).root);
+		expect(field.querySelector('img.adm-placed__art--banner')?.getAttribute('src')).toBe(
+			'/image/img_2'
+		);
+		expect(buttonNamed(field, 'Replace banner')).toBeDefined();
+		expect(field.querySelector('button[aria-label="Remove the banner"]')).not.toBeNull();
+	});
+
+	it('opens the crop card on a picked file, and sends nothing yet', async () => {
+		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+
+		await pick(root, PICKED);
+
+		expect(cropCard()?.querySelector('h2')?.textContent).toBe('Crop the banner');
+		expect(cropCard()?.querySelector('.adm-cropper__guide')?.getAttribute('aria-hidden')).toBe(
+			'true'
+		);
+		expect(sent).toEqual([]);
+	});
+
+	it('posts the widest centred 4:1 band, cropped, as the banner’s file at Save banner', async () => {
+		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		await pick(root, PICKED);
+		await measure({ width: 2400, height: 1600 });
+		expect(cropCard()?.textContent).toContain(
+			'2400 pixels across, 0 from the left and 500 from the top'
+		);
+		const save = buttonNamed(cropCard() as HTMLElement, 'Save banner');
+
+		expect(save?.getAttribute('aria-disabled')).toBeNull();
+		await act(async () => save?.click());
+
+		expect(cropBanner).toHaveBeenCalledExactlyOnceWith(PICKED, {
+			x: 0,
+			y: 500,
+			width: 2400,
+			height: 600
+		});
+		await vi.waitFor(() => expect(sent).toHaveLength(1));
+		expect(sent[0]).toMatchObject({ address: '/admin/settings/banner', method: 'POST' });
+		const posted = sent[0]?.body?.get('file');
+		expect(posted).toBeInstanceOf(Blob);
+		expect(await (posted as Blob).text()).toBe('band');
+		expect(cropCard()).toBeNull();
+	});
+
+	it('closes the crop card at Cancel, and posts nothing', async () => {
+		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		await pick(root, PICKED);
+		await measure({ width: 2400, height: 1600 });
+
+		await act(async () => buttonNamed(cropCard() as HTMLElement, 'Cancel')?.click());
+
+		expect(cropCard()).toBeNull();
+		expect(cropBanner).not.toHaveBeenCalled();
+		expect(sent).toEqual([]);
+	});
+
+	it.each([
+		[
+			'narrower than 1200',
+			{ width: 900, height: 600 },
+			'That image is only 900 pixels wide. A banner needs at least 1200. Choose a larger one.'
+		],
+		[
+			'wide enough but shorter than 300',
+			{ width: 2000, height: 250 },
+			'That image is only 250 pixels tall. A banner needs at least 300. Choose a taller one.'
+		]
+	])('refuses a photo %s in an alert, with Save banner closed', async (_, natural, said) => {
+		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		await pick(root, PICKED);
+		await measure(natural);
+
+		const alert = cropCard()?.querySelector('[role="alert"]');
+		expect(alert?.textContent).toBe(said);
+		const save = buttonNamed(cropCard() as HTMLElement, 'Save banner');
+		expect(save?.getAttribute('aria-disabled')).toBe('true');
+		expect(save?.getAttribute('aria-describedby')).toBe(alert?.id);
+		await act(async () => save?.click());
+		expect(cropBanner).not.toHaveBeenCalled();
+		expect(sent).toEqual([]);
+	});
+
+	it('says the banner is being removed until the removal is answered', async () => {
+		const { root, sent } = screen(
+			{ notificationEmail: null, mail: SET, banner: STORED },
+			() => new Promise(() => {})
+		);
+		const remove = banner(root).querySelector<HTMLButtonElement>(
+			'button[aria-label="Remove the banner"]'
+		);
+
+		await act(async () => remove?.click());
+
+		await vi.waitFor(() => expect(sent).toHaveLength(1));
+		expect(sent[0]).toMatchObject({ address: '/admin/settings/banner', method: 'DELETE' });
+		expect(remove?.textContent).toBe('Removing');
+		expect(buttonNamed(banner(root), 'Replace banner')?.getAttribute('aria-disabled')).toBe('true');
+	});
+
+	it('says the crop step’s refusal under the press, and posts nothing', async () => {
+		cropBanner.mockResolvedValueOnce({ ok: false, refused: BANNER_REFUSED.unreadable });
+		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		await pick(root, PICKED);
+		await measure({ width: 2400, height: 1600 });
+
+		await act(async () => buttonNamed(cropCard() as HTMLElement, 'Save banner')?.click());
+
+		await vi.waitFor(() =>
+			expect(banner(root).querySelector('[role="status"]')?.textContent).toBe(
+				BANNER_REFUSED.unreadable
+			)
+		);
+		expect(cropCard()).toBeNull();
+		expect(sent).toEqual([]);
+	});
+
+	it('says the address’s refusal under the press', async () => {
+		const { root } = screen({ notificationEmail: null, mail: SET }, async () => ({
+			error: 'Save the organisation details first, then add the banner.'
+		}));
+		await pick(root, PICKED);
+		await measure({ width: 2400, height: 1600 });
+
+		await act(async () => buttonNamed(cropCard() as HTMLElement, 'Save banner')?.click());
+
+		await vi.waitFor(() =>
+			expect(banner(root).querySelector('[role="status"]')?.textContent).toBe(
+				'Save the organisation details first, then add the banner.'
+			)
+		);
 	});
 });
 
@@ -834,6 +1095,48 @@ describe('find your charity', () => {
 		expect(asked.saves[0]?.get('legal_name')).toBe('Riverside Community Food Bank');
 		await act(async () => {});
 		expect(asked.calls).toEqual(['lookup 95-1234567']);
+	});
+
+	it('stays open, with the note of what filled the boxes, when a photo goes on or comes off', async () => {
+		const { root, sent, reread } = screen(
+			{ notificationEmail: null, mail: SET, banner: { id: 'img_2', src: '/image/img_2' } },
+			async () => ({ banner: null }),
+			{ lookup: async () => FOUND }
+		);
+		await act(async () => buttonNamed(details(root), 'Pick a different organisation')?.click());
+		await press(root, '95-1234567');
+		await vi.waitFor(() => expect(note(root)).toBe('Filled from the IRS list. '));
+
+		// a photo's write moves the profile's version and leaves every details box as it was stored.
+		reread({ banner: null, version: 1 });
+		const remove = details(root).querySelector<HTMLButtonElement>(
+			'button[aria-label="Remove the banner"]'
+		);
+		await act(async () => remove?.click());
+		await vi.waitFor(() => expect(sent).toHaveLength(1));
+		await vi.waitFor(() =>
+			expect(details(root).querySelector('button[aria-label="Remove the banner"]')).toBeNull()
+		);
+
+		expect(finderBox(root)).not.toBeNull();
+		expect(note(root)).toBe('Filled from the IRS list. ');
+		expect(boxValue(root, 'legal_name')).toBe('Riverside Community Food Bank');
+	});
+
+	it('puts itself away, and the note with it, when the filled details are saved', async () => {
+		const { root, reread } = screen({ notificationEmail: null, mail: SET }, undefined, {
+			lookup: async () => FOUND
+		});
+		await act(async () => buttonNamed(details(root), 'Pick a different organisation')?.click());
+		await press(root, '95-1234567');
+		await vi.waitFor(() => expect(note(root)).toBe('Filled from the IRS list. '));
+
+		reread({ details: FOUND.fields, version: 1 });
+		await act(async () => buttonNamed(details(root), 'Save details')?.click());
+
+		await vi.waitFor(() => expect(finderBox(root)).toBeNull());
+		expect(note(root)).toBe('');
+		expect(buttonNamed(details(root), 'Pick a different organisation')).toBeDefined();
 	});
 
 	it('says each match’s standing, a revocation over its deductibility', async () => {

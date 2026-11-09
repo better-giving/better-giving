@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
+import { putBanner } from '$lib/server/org/logo.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import { deployedBindings, signInAsDeployer, signInAsMember } from '../staff-session.testing';
 import * as layout from './_app';
@@ -479,6 +480,7 @@ describe('sending a test email', () => {
 type Drawn = {
 	details: Record<string, string | string[]>;
 	logo: { id: string; src: string } | null;
+	banner: { id: string; src: string } | null;
 	notificationEmail: string | null;
 	mail: { from: string; host: string; delivers: boolean } | null;
 	saved: string | null;
@@ -552,6 +554,15 @@ describe('what the screen is drawn from', () => {
 		expect(read.details.social_links).toEqual([]);
 		expect(read.notificationEmail).toBeNull();
 		expect(read.logo).toBeNull();
+		expect(read.banner).toBeNull();
+	});
+
+	it('states the banner at the address it is served from, and none before one is put on', async () => {
+		expect((await drawn()).banner).toBeNull();
+
+		const id = await putBanner(db, { contentType: 'image/png', width: 1600, height: 400 });
+
+		expect((await drawn()).banner).toEqual({ id, src: `/image/${id}` });
 	});
 
 	it('names the save that just landed, on the page it lands on', async () => {

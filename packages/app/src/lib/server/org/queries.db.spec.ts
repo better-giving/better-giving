@@ -1,14 +1,16 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { defaultCampaign } from '../../page/defaults';
 import { createDb, type Db } from '../db/client';
-import { program } from '../db/schema';
+import { type OrgProfile, program } from '../db/schema';
 import { stored } from '../images/image.testing';
 import { newImageStatements } from '../images/queries';
 import { heroShowing, insertPage, SETTINGS } from '../pages/page-row.testing';
 import { parseOrgProfile, type OrgProfileFormValues, type ParsedOrgProfile } from './org-input';
 import {
+	putNewOrgProfileBanner,
 	putNewOrgProfileLogo,
 	readOrgProfile,
+	removeOrgProfileBanner,
 	removeOrgProfileLogo,
 	saveOrgProfile
 } from './queries';
@@ -365,111 +367,158 @@ describe('the not-blank constraints', () => {
 	});
 });
 
-describe('the profile logo', () => {
-	const BYTES = new Uint8Array([0x52, 0x49, 0x46, 0x46]);
-	const PHOTO = {
-		kind: 'photo',
-		contentType: 'image/webp',
-		width: 400,
-		height: 400,
-		alt: null
-	} as const;
-
-	/** a new photo put on as the logo, as the Settings logo upload puts one: its id and the answer. */
-	async function putLogo() {
-		const photo = newImageStatements(db, PHOTO, BYTES);
-		return { id: photo.id, written: await putNewOrgProfileLogo(db, photo) };
+// the logo and the banner: two slots, one shape of write, each an image the other may name too.
+const SLOTS = [
+	{
+		slot: 'logo',
+		column: 'logo_image_id',
+		other: 'banner_image_id',
+		putNew: putNewOrgProfileLogo,
+		remove: removeOrgProfileLogo,
+		read: (row: OrgProfile | null) => row?.logoImageId
+	},
+	{
+		slot: 'banner',
+		column: 'banner_image_id',
+		other: 'logo_image_id',
+		putNew: putNewOrgProfileBanner,
+		remove: removeOrgProfileBanner,
+		read: (row: OrgProfile | null) => row?.bannerImageId
 	}
+] as const;
 
-	const logo = async () => (await readOrgProfile(db))?.logoImageId;
+for (const { slot, column, other, putNew, remove, read } of SLOTS)
+	describe(`the profile ${slot}`, () => {
+		const BYTES = new Uint8Array([0x52, 0x49, 0x46, 0x46]);
+		const PHOTO = {
+			kind: 'photo',
+			contentType: 'image/webp',
+			width: 400,
+			height: 400,
+			alt: null
+		} as const;
 
-	it('stores the photo it puts on', async () => {
-		await save(FULL);
-		const { id, written } = await putLogo();
-		expect(written).toBe('written');
-		expect(await logo()).toBe(id);
-		expect(await stored(db, id)).toEqual({ row: true, bytes: true });
-	});
+		/** a new photo put on in the slot, as the Settings upload puts one: its id and the answer. */
+		async function putPhoto() {
+			const photo = newImageStatements(db, PHOTO, BYTES);
+			return { id: photo.id, written: await putNew(db, photo) };
+		}
 
-	it('frees the logo it replaces, row and bytes, and keeps the new one', async () => {
-		await save(FULL);
-		const first = await putLogo();
-		const second = await putLogo();
-		expect(second.written).toBe('written');
-		expect(await logo()).toBe(second.id);
-		expect(await stored(db, first.id)).toEqual({ row: false, bytes: false });
-		expect(await stored(db, second.id)).toEqual({ row: true, bytes: true });
-	});
+		const current = async () => read(await readOrgProfile(db));
 
-	it('is taken off by a remove, which frees it', async () => {
-		await save(FULL);
-		const { id } = await putLogo();
-		expect(await removeOrgProfileLogo(db)).toBe('written');
-		expect(await logo()).toBeNull();
-		expect(await stored(db, id)).toEqual({ row: false, bytes: false });
-	});
+		it('stores the photo it puts on', async () => {
+			await save(FULL);
+			const { id, written } = await putPhoto();
+			expect(written).toBe('written');
+			expect(await current()).toBe(id);
+			expect(await stored(db, id)).toEqual({ row: true, bytes: true });
+		});
 
-	it('is left alone by a profile save', async () => {
-		await save(FULL);
-		const { id } = await putLogo();
-		await save({ ...FULL, city: 'Huye' });
-		expect(await logo()).toBe(id);
-	});
+		it(`frees the ${slot} it replaces, row and bytes, and keeps the new one`, async () => {
+			await save(FULL);
+			const first = await putPhoto();
+			const second = await putPhoto();
+			expect(second.written).toBe('written');
+			expect(await current()).toBe(second.id);
+			expect(await stored(db, first.id)).toEqual({ row: false, bytes: false });
+			expect(await stored(db, second.id)).toEqual({ row: true, bytes: true });
+		});
 
-	it('answers a remove with no logo, or no profile, as written', async () => {
-		expect(await removeOrgProfileLogo(db)).toBe('written');
-		await save(FULL);
-		expect(await removeOrgProfileLogo(db)).toBe('written');
-	});
+		it('is taken off by a remove, which frees it', async () => {
+			await save(FULL);
+			const { id } = await putPhoto();
+			expect(await remove(db)).toBe('written');
+			expect(await current()).toBeNull();
+			expect(await stored(db, id)).toEqual({ row: false, bytes: false });
+		});
 
-	const REFERENCES: [string, (id: string) => Promise<unknown>][] = [
-		[
-			'a cause’s photo',
-			(id) => db.insert(program).values({ name: `Clean water ${id}`, imageId: id })
-		],
-		['a page’s draft', (id) => insertPage(db, 'campaign', heroShowing(id))],
-		[
-			'a page’s published document',
-			(id) =>
-				insertPage(db, 'campaign', { ...defaultCampaign(), settings: SETTINGS }, heroShowing(id))
-		],
-		[
-			'a page’s last published document',
-			async (id) => {
-				const plain = { ...defaultCampaign(), settings: SETTINGS };
-				const pageId = await insertPage(db, 'campaign', plain, plain);
-				await run(
-					stmt(
-						'update page set last_published = ? where id = ?',
-						JSON.stringify(heroShowing(id)),
-						pageId
-					)
-				);
+		it('is left alone by a profile save', async () => {
+			await save(FULL);
+			const { id } = await putPhoto();
+			await save({ ...FULL, city: 'Huye' });
+			expect(await current()).toBe(id);
+		});
+
+		it(`answers stale where the ${slot} moved after it was read, keeping what moved it`, async () => {
+			await save(FULL);
+			const replaced = await putPhoto();
+			const theirs = newImageStatements(db, PHOTO, BYTES);
+			await db.batch(theirs.statements);
+			// the photo the next put stores is the one insert this lets through, landing ahead of its write.
+			// a trigger takes no bound values, and the ids are uuids, so they are spelled into it.
+			await run(
+				stmt(
+					`create trigger move_slot after insert on image
+				 when new.id not in ('${replaced.id}', '${theirs.id}')
+				 begin update org_profile set ${column} = '${theirs.id}'; end`
+				)
+			);
+			try {
+				const ours = await putPhoto();
+				expect(ours.written).toBe('stale');
+				expect(await current()).toBe(theirs.id);
+				expect(await stored(db, ours.id)).toEqual({ row: false, bytes: false });
+				expect(await stored(db, theirs.id)).toEqual({ row: true, bytes: true });
+			} finally {
+				await run(stmt('drop trigger move_slot'));
 			}
-		]
-	];
+		});
 
-	it.each(REFERENCES)('keeps a replaced logo that is also %s', async (_, reference) => {
-		await save(FULL);
-		const { id } = await putLogo();
-		await reference(id);
-		expect((await putLogo()).written).toBe('written');
-		expect(await stored(db, id)).toEqual({ row: true, bytes: true });
-	});
+		it(`answers a remove with no ${slot}, or no profile, as written`, async () => {
+			expect(await remove(db)).toBe('written');
+			await save(FULL);
+			expect(await remove(db)).toBe('written');
+		});
 
-	it.each(REFERENCES)('keeps a removed logo that is also %s', async (_, reference) => {
-		await save(FULL);
-		const { id } = await putLogo();
-		await reference(id);
-		expect(await removeOrgProfileLogo(db)).toBe('written');
-		expect(await logo()).toBeNull();
-		expect(await stored(db, id)).toEqual({ row: true, bytes: true });
-	});
+		const REFERENCES: [string, (id: string) => Promise<unknown>][] = [
+			[
+				'a cause’s photo',
+				(id) => db.insert(program).values({ name: `Clean water ${id}`, imageId: id })
+			],
+			['a page’s draft', (id) => insertPage(db, 'campaign', heroShowing(id))],
+			[
+				'a page’s published document',
+				(id) =>
+					insertPage(db, 'campaign', { ...defaultCampaign(), settings: SETTINGS }, heroShowing(id))
+			],
+			[
+				'a page’s last published document',
+				async (id) => {
+					const plain = { ...defaultCampaign(), settings: SETTINGS };
+					const pageId = await insertPage(db, 'campaign', plain, plain);
+					await run(
+						stmt(
+							'update page set last_published = ? where id = ?',
+							JSON.stringify(heroShowing(id)),
+							pageId
+						)
+					);
+				}
+			],
+			['the profile’s other image', (id) => run(stmt(`update org_profile set ${other} = ?`, id))]
+		];
 
-	it('refuses a logo before the profile is saved, and leaves no photo behind', async () => {
-		const { id, written } = await putLogo();
-		expect(written).toBe('no-profile');
-		expect(await readOrgProfile(db)).toBeNull();
-		expect(await stored(db, id)).toEqual({ row: false, bytes: false });
+		it.each(REFERENCES)(`keeps a replaced ${slot} that is also %s`, async (_, reference) => {
+			await save(FULL);
+			const { id } = await putPhoto();
+			await reference(id);
+			expect((await putPhoto()).written).toBe('written');
+			expect(await stored(db, id)).toEqual({ row: true, bytes: true });
+		});
+
+		it.each(REFERENCES)(`keeps a removed ${slot} that is also %s`, async (_, reference) => {
+			await save(FULL);
+			const { id } = await putPhoto();
+			await reference(id);
+			expect(await remove(db)).toBe('written');
+			expect(await current()).toBeNull();
+			expect(await stored(db, id)).toEqual({ row: true, bytes: true });
+		});
+
+		it(`refuses a ${slot} before the profile is saved, and leaves no photo behind`, async () => {
+			const { id, written } = await putPhoto();
+			expect(written).toBe('no-profile');
+			expect(await readOrgProfile(db)).toBeNull();
+			expect(await stored(db, id)).toEqual({ row: false, bytes: false });
+		});
 	});
-});

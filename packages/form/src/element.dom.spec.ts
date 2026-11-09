@@ -5203,9 +5203,7 @@ describe('the stylesheets', () => {
 		// host document's root — the exact value the clamp exists to defend against — and a host
 		// running `html { font-size: 62.5% }` would put two names side by side in a 200px sidebar.
 		//
-		// the amount grid is no longer one of them and is the reason there are two conditions rather
-		// than three: it wraps on the width its own tiles need, so there is no breakpoint left to
-		// state. the floor it wraps against is an `em` for this same reason, and
+		// the amount grid's columns turn at the wide one, beside the card's inset, and
 		// ./styles/layout.browser.spec.ts is where that is measured rather than read.
 		const conditions = declarations(layoutStyles).match(/@container donate \([^)]*\)/g) ?? [];
 

@@ -182,6 +182,15 @@ describe('a published campaign at its address', () => {
 		expect(answered.data.view.sharing.url).toBe(`${OWN}/${SLUG}`);
 	});
 
+	it('is handed no profile head: that is the Donation page’s', async () => {
+		await campaign();
+
+		const answered = await visit();
+
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.profile).toBeNull();
+	});
+
 	it('names the campaign in the tab', async () => {
 		await campaign();
 		const answered = await visit();
