@@ -22,9 +22,9 @@ const browserZone = (): string | null => Intl.DateTimeFormat().resolvedOptions()
 
 // a zone this runtime cannot write in reads as no zone, so formatInstant is never handed one it
 // throws on: a server's ICU can know a name this browser's does not, and the browser's own is
-// checked the same way rather than trusted. a time the server wrote hydrates with the server's
-// text, unreported, and where the browser's zone is such a one the client's render writes it in
-// UTC (`LocalTime`).
+// checked the same way rather than trusted. hydration keeps the text the server wrote, unreported;
+// where the browser's zone is such a one, the client's render then writes the time in UTC
+// (`LocalTime`).
 const writable = (zone: string | null) => (zone !== null && canWriteIn(zone) ? zone : null);
 
 /**
