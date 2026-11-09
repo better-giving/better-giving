@@ -2280,7 +2280,12 @@ export const orgProfile = sqliteTable(
 		 * an `image`, null for none. no `_previous`: a replaced or removed logo is
 		 * freed where nothing else names it, by the logo writes in ../org/queries.ts.
 		 */
-		logoImageId: text('logo_image_id').references(() => image.id)
+		logoImageId: text('logo_image_id').references(() => image.id),
+		/**
+		 * the donate page's banner, an `image`, null for none. no `_previous`: a replaced or removed
+		 * banner is freed where nothing else names it, by the banner writes in ../org/queries.ts.
+		 */
+		bannerImageId: text('banner_image_id').references(() => image.id)
 	},
 	(t) => [
 		// the singleton constraint. `auth_signing_key_id_check` is the precedent.

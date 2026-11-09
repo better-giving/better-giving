@@ -5,7 +5,7 @@ import { createDb, type Db } from '../db/client';
 import { form, page } from '../db/schema';
 import { writeOrgRow } from '../org/org-row.testing';
 import { ensureDonationPage } from './donation-page';
-import { campaignRaised } from './goal';
+import { campaignRaised, organisationRaised } from './goal';
 import { insertPage } from './page-row.testing';
 import { gift, refund, repeatingGift } from './settled-gifts.testing';
 import { client, run, stmt } from '$lib/server/db/database.testing';
@@ -104,5 +104,54 @@ describe('campaignRaised()', () => {
 
 		expect((await campaignRaised(db, campaign)).raisedMinor).toBe(1_000);
 		expect((await campaignRaised(db, another)).raisedMinor).toBe(9_500);
+	});
+});
+
+describe('organisationRaised()', () => {
+	it('is a settled gift at its face value, counted once', async () => {
+		const donationPage = (await ensureDonationPage(db)).formId;
+		await gift(db, donationPage, 10_000);
+
+		expect(await organisationRaised(db, 'USD')).toEqual({ raisedMinor: 10_000, gifts: 1 });
+	});
+
+	it('is nothing from no gifts', async () => {
+		expect(await organisationRaised(db, 'USD')).toEqual({ raisedMinor: 0, gifts: 0 });
+	});
+
+	it('sums and counts every settled gift through every page and form, a refund taken off', async () => {
+		const donationPage = (await ensureDonationPage(db)).formId;
+		const campaign = await campaignForm();
+		await gift(db, donationPage, 10_000);
+		await gift(db, campaign, 2_500);
+		await refund(db, await gift(db, campaign, 4_000), 1_000);
+		await repeatingGift(db, donationPage, 1_500, 2);
+
+		expect(await organisationRaised(db, 'USD')).toEqual({ raisedMinor: 18_500, gifts: 5 });
+	});
+
+	it('counts no gift still pending and none given back in full', async () => {
+		const donationPage = (await ensureDonationPage(db)).formId;
+		await gift(db, donationPage, 10_000);
+		await gift(db, donationPage, 5_000, false);
+		await refund(db, await gift(db, donationPage, 3_000), 3_000);
+
+		expect(await organisationRaised(db, 'USD')).toEqual({ raisedMinor: 10_000, gifts: 1 });
+	});
+
+	it('is read again on every ask, so the next gift moves it', async () => {
+		const donationPage = (await ensureDonationPage(db)).formId;
+		await gift(db, donationPage, 10_000);
+		expect(await organisationRaised(db, 'USD')).toEqual({ raisedMinor: 10_000, gifts: 1 });
+
+		await gift(db, donationPage, 2_000);
+
+		expect(await organisationRaised(db, 'USD')).toEqual({ raisedMinor: 12_000, gifts: 2 });
+	});
+
+	it('adds no gift in another currency', async () => {
+		await gift(db, (await ensureDonationPage(db)).formId, 10_000);
+
+		expect(await organisationRaised(db, 'EUR')).toEqual({ raisedMinor: 0, gifts: 0 });
 	});
 });

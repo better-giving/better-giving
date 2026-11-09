@@ -79,9 +79,10 @@ import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.settings';
 
 // what this deployment knows about the organisation it serves, and what it sends with: the
-// organisation's details and logo, the address it reaches the organisation at, and the mail values
-// it was started with. three cards, read as a loader and written by the action below and by the
-// logo's own address (./_app.admin.settings_.logo.ts).
+// organisation's details, logo and banner, the address it reaches the organisation at, and the mail
+// values it was started with. three cards, read as a loader and written by the action below and by
+// the logo's and the banner's own addresses (./_app.admin.settings_.logo.ts,
+// ./_app.admin.settings_.banner.ts).
 //
 // **only the deployer's session reaches this page**, the predicate ./_app.admin.members.tsx reads —
 // `context.get(staff).id === STAFF_USER_ID` — read by the loader and by the action alike, and by
@@ -113,6 +114,9 @@ const SCREEN = '/admin/settings';
 
 /** where the logo is put on and taken off. */
 const LOGO_ADDRESS = `${SCREEN}/logo`;
+
+/** where the donation page's banner is put on and taken off (./_app.admin.settings_.banner.ts). */
+const BANNER_ADDRESS = `${SCREEN}/banner`;
 
 /**
  * where "Find your charity" asks: `?q=` searches by name, and `/<ein>` looks one organisation up
@@ -298,6 +302,10 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 				profile?.logoImageId == null
 					? null
 					: { id: profile.logoImageId, src: imageSrc(profile.logoImageId) },
+			banner:
+				profile?.bannerImageId == null
+					? null
+					: { id: profile.bannerImageId, src: imageSrc(profile.bannerImageId) },
 			notificationEmail: profile?.notificationEmail ?? null,
 			mail: mailSet
 				? { from: config.MAIL_FROM ?? '', host: config.SMTP_HOST ?? '', delivers }

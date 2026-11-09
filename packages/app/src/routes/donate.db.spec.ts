@@ -9,7 +9,7 @@ import {
 	type MiddlewareFunction,
 	type ShouldRevalidateFunctionArgs
 } from 'react-router';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_FORM, RESUMING_HEADING, STEP_HEADINGS } from '$lib/donate/copy';
 import { shownStep } from '$lib/donate/shown-step.testing';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
@@ -18,9 +18,11 @@ import { createDb } from '$lib/server/db/client';
 import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { createImage } from '$lib/server/images/image.testing';
-import { putLogo } from '$lib/server/org/logo.testing';
+import { putBanner, putLogo } from '$lib/server/org/logo.testing';
+import { gift, refund } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { saveProfile } from '$lib/server/org/profile.testing';
+import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument } from '../route-request.testing';
@@ -270,6 +272,64 @@ describe('the organisation’s logo on /donate', () => {
 		const mast = masthead(markup(answered.data));
 		expect(mast).not.toContain('<img');
 		expect(mast).toContain('Hope Foundation');
+	});
+});
+
+describe('the profile head /donate is handed', () => {
+	afterEach(async () => {
+		for (const table of [
+			'dispute',
+			'zapier_delivery',
+			'quickbooks_sync',
+			'ledger_entry',
+			'entry_group',
+			'payment',
+			'line_item',
+			'donation',
+			'recurring_plan',
+			'contact'
+		]) {
+			await run(stmt(`delete from ${table}`));
+		}
+	});
+
+	it('names the organisation, its EIN, photos, story, raised figure and footer', async () => {
+		await saveProfile(db, { mission: MISSION, vision: 'No family on Elm Street goes hungry.' });
+		const logo = await putLogo(db, { contentType: 'image/png', width: 640, height: 160 });
+		const banner = await putBanner(db, { contentType: 'image/png', width: 1600, height: 400 });
+		const { formId } = await ensureDonationPage(db);
+		await gift(db, formId, 10_000);
+		await refund(db, await gift(db, formId, 2_500), 500);
+
+		const answered = await visit();
+
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.profile).toEqual({
+			name: 'Hope Foundation',
+			taxId: '12-3456789',
+			banner: { src: `/image/${banner}` },
+			logo: { src: `/image/${logo}`, width: 640, height: 160 },
+			mission: MISSION,
+			vision: 'No family on Elm Street goes hungry.',
+			raised: { raisedMinor: 12_000, gifts: 2 },
+			money: { locale: expect.any(String), currency: 'USD' },
+			footer: {
+				addressLines: ['12 Kigali Road', 'Kigali', 'Rwanda'],
+				email: null,
+				socialLinks: []
+			}
+		});
+	});
+
+	it('hands no banner and nothing raised on a fresh deployment', async () => {
+		const answered = await visit();
+
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.profile).toMatchObject({
+			banner: null,
+			logo: null,
+			raised: { raisedMinor: 0, gifts: 0 }
+		});
 	});
 });
 

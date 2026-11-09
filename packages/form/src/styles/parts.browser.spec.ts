@@ -609,6 +609,129 @@ describe('the sizes the card draws its type at', () => {
 	});
 });
 
+// the amount tray as a board: its cells are the org's amounts and the other tile, four across on a
+// wide card and two on a narrow one, with other taking whatever its row has left — so every row is
+// full and every line the lattice draws runs between two tiles that exist (`.tiles` in
+// ./layout.css, the grid-line rules in ./parts.css).
+describe('the amount tray’s cells', () => {
+	afterEach(() => {
+		document.body.style.inlineSize = '';
+	});
+
+	/** the tray of a form suggesting `count` amounts, on a host `width` wide from its first paint. */
+	async function tray(count: number, width: string): Promise<HTMLElement> {
+		document.body.style.inlineSize = width;
+		const amounts = Array.from({ length: count }, (_, at) => (at + 1) * 2500);
+		const { shadow } = await mount({ ...CONFIG, suggestedAmountsMinor: amounts });
+		await new Promise(requestAnimationFrame);
+		return shadow.querySelector('.tiles') as HTMLElement;
+	}
+
+	/** the tray's content box, inside the pad and the hairline the boxes never reach. */
+	function content(tiles: HTMLElement): { left: number; right: number } {
+		const box = tiles.getBoundingClientRect();
+		const drawn = getComputedStyle(tiles);
+		return {
+			left: box.left + parseFloat(drawn.borderLeftWidth) + parseFloat(drawn.paddingLeft),
+			right: box.right - parseFloat(drawn.borderRightWidth) - parseFloat(drawn.paddingRight)
+		};
+	}
+
+	/** the tiles on screen, grouped into the rows the engine flowed them into. */
+	function rowsOf(tiles: HTMLElement): HTMLElement[][] {
+		const rows = new Map<number, HTMLElement[]>();
+		for (const tile of Array.from(tiles.querySelectorAll<HTMLElement>(':scope > label'))) {
+			const top = Math.round(tile.getBoundingClientRect().top);
+			rows.set(top, [...(rows.get(top) ?? []), tile]);
+		}
+		return Array.from(rows.values());
+	}
+
+	const CASES = [
+		{ count: 3, width: '1440px', rows: [4] },
+		{ count: 4, width: '1440px', rows: [4, 1] },
+		{ count: 6, width: '1440px', rows: [4, 3] },
+		{ count: 3, width: '375px', rows: [2, 2] },
+		{ count: 4, width: '375px', rows: [2, 2, 1] },
+		{ count: 6, width: '375px', rows: [2, 2, 2, 1] }
+	];
+
+	it.each(CASES)('flows $count amounts and other into rows of $rows at $width', async (shape) => {
+		const tiles = await tray(shape.count, shape.width);
+
+		expect(rowsOf(tiles).map((row) => row.length)).toEqual(shape.rows);
+	});
+
+	it.each(CASES)('leaves no cell empty for $count amounts at $width', async (shape) => {
+		const tiles = await tray(shape.count, shape.width);
+		const edge = content(tiles);
+
+		for (const row of rowsOf(tiles)) {
+			const first = row[0]?.getBoundingClientRect();
+			const last = row[row.length - 1]?.getBoundingClientRect();
+			expect(first?.left).toBeCloseTo(edge.left, 0);
+			expect(last?.right).toBeCloseTo(edge.right, 0);
+		}
+		expect(tiles.lastElementChild?.previousElementSibling?.classList.contains('other')).toBe(true);
+	});
+
+	// a vertical stands only between two tiles on one row, and every such pair has one; nothing on
+	// the tray's own ground rules a column through a cell or through the other tile's span.
+	it.each(CASES)(
+		'draws a line only between two tiles, for $count amounts at $width',
+		async (shape) => {
+			const tiles = await tray(shape.count, shape.width);
+
+			expect(getComputedStyle(tiles).backgroundImage).not.toContain('gradient');
+			for (const row of rowsOf(tiles)) {
+				row.forEach((tile, at) => {
+					const line = getComputedStyle(tile, '::before').content;
+					if (at === 0) expect(line, tile.textContent ?? '').toBe('none');
+					else expect(line, tile.textContent ?? '').not.toBe('none');
+				});
+			}
+		}
+	);
+
+	// a line drawn in a gap reaches the line across it, so the board meets at its crossings and stops
+	// at the tray's inset: the first row's verticals start at its tiles' top and the last row's end at
+	// their foot.
+	it('runs each vertical from the line above its row to the line below it', async () => {
+		const tiles = await tray(6, '375px');
+		const gap = parseFloat(getComputedStyle(tiles).rowGap);
+		const rows = rowsOf(tiles);
+		const last = rows.length - 1;
+
+		rows.forEach((row, at) => {
+			const tile = row[1];
+			if (tile === undefined) return;
+			const drawn = getComputedStyle(tile, '::before');
+			const height = tile.getBoundingClientRect().height;
+			const reach = (at > 0 ? gap / 2 : 0) + (at < last ? gap / 2 : 0);
+			expect(parseFloat(drawn.height), `row ${at}`).toBeCloseTo(height + reach, 0);
+		});
+	});
+
+	// other chosen: the entry opens under the tray's tiles on a row of its own, as before.
+	it('opens the entry across a whole row under the tiles once other is chosen', async () => {
+		const tiles = await tray(6, '1440px');
+		(tiles.querySelector('.other input') as HTMLInputElement).click();
+		await settle();
+		const entry = tiles.querySelector('.entry') as HTMLElement;
+		const edge = content(tiles);
+		const box = entry.getBoundingClientRect();
+		const lowest = Math.max(
+			...rowsOf(tiles)
+				.flat()
+				.map((tile) => tile.getBoundingClientRect().bottom)
+		);
+
+		expect(box.left).toBeCloseTo(edge.left, 0);
+		expect(box.right).toBeCloseTo(edge.right, 0);
+		expect(box.top).toBeGreaterThan(lowest);
+	});
+});
+
 describe('the free entry as laid out', () => {
 	// the input covers every pixel of the surface it is typed on (`[part~='amount-input']` in
 	// ../styles/parts.css), on a tray of tiles and on a bare one alike. measured on the input and not
@@ -3101,9 +3224,10 @@ describe('the surfaces a donor operates', () => {
 		const second = shadow.querySelector('.segment > label + label') as HTMLElement;
 
 		expect(getComputedStyle(second, '::before').backgroundColor).toBe(separator);
-		expect(
-			getComputedStyle(shadow.querySelector('.tiles') as HTMLElement).backgroundImage
-		).toContain(separator);
+		const tile = shadow.querySelector(
+			'.tiles > label[data-row-start] ~ label:not([data-row-start])'
+		) as HTMLElement;
+		expect(getComputedStyle(tile, '::before').backgroundColor).toBe(separator);
 	});
 
 	it('leaves the receipt bare: no fill, no frame, no pad', async () => {
@@ -3989,11 +4113,15 @@ describe('a refusal under its box', () => {
 	it.each(['375px', '560px'])('keeps the tray and every tile on it drawn at %s', async (width) => {
 		const { host, shadow } = await mount();
 		host.style.inlineSize = width;
-		await settle();
+		// the rows are re-marked on the window resizing (`rewrapped` in ../views.ts), not on the host's.
+		window.dispatchEvent(new Event('resize'));
+		await new Promise(requestAnimationFrame);
 		const tray = shadow.querySelector('.tiles') as HTMLElement;
 		const columns = () => getComputedStyle(tray).gridTemplateColumns;
 		const before = columns();
-		const cols = tray.style.getPropertyValue('--_cols');
+		const starts = () =>
+			Array.from(tray.children).map((child) => child.hasAttribute('data-row-start'));
+		const marked = starts();
 
 		(shadow.querySelector('.other input') as HTMLInputElement).click();
 		onward(shadow);
@@ -4006,7 +4134,7 @@ describe('a refusal under its box', () => {
 			expect(box.checkVisibility(), box.className).toBe(true);
 		}
 		expect(columns()).toBe(before);
-		expect(tray.style.getPropertyValue('--_cols')).toBe(cols);
+		expect(starts()).toEqual(marked);
 	});
 
 	// the seat is the column's own gap taken back, so a column drawn at another gap keeps it: the

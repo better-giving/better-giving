@@ -9,6 +9,7 @@ import { donationRevenueAccount, POSTING_ACCOUNTS, postableId } from './accounts
 import { createDb } from './client';
 import { MIGRATIONS, openUnmigrated, rawSql, stmt } from './database.testing';
 import { applyMigrations, type Migration } from './migrate';
+import { rejectionCode } from './rejection.testing';
 
 // every migration the test deployment has not applied, over a database that already holds gifts.
 //
@@ -84,6 +85,7 @@ const UNDO_PAGE_FORM = 'frm_undopage';
 const UNDO_PAGE = '019fb300-0000-7000-8000-000000000512';
 const PAGE_UNPUBLISHED_BY = '0032_page_unpublished.sql';
 const PAGE_UNPUBLISHED = MIGRATIONS.findIndex((m) => m.name === PAGE_UNPUBLISHED_BY);
+const ORG_BANNER_BY = '0033_org_profile_banner.sql';
 const BLOCK_PAGE_IMAGES = {
 	hero: '019fb300-0000-7000-8000-000000000502',
 	image: '019fb300-0000-7000-8000-000000000503'
@@ -1470,6 +1472,58 @@ describe('0032 lets a campaign be unpublished, keeping every page', () => {
 			'page_one_donation_page_idx',
 			'page_slug_idx'
 		]);
+	});
+});
+
+// what 0033 is for: the profile takes a banner beside its logo, an `image` like it, and the
+// profile the seed saved keeps every value it held, its logo included.
+describe('0033 gives the profile a banner, keeping the profile', () => {
+	let before: Map<string, Row[]>;
+	let after: Map<string, Row[]>;
+	let overSeed: string[];
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		({ before, after, overSeed } = await migrateOverSeed());
+	});
+
+	it('is in the chain', () => {
+		expect(MIGRATIONS.map((m) => m.name)).toContain(ORG_BANNER_BY);
+	});
+
+	it.skipIf(nowhereToStop)('keeps the profile and its logo, with no banner', () => {
+		expect(overSeed).toContain(ORG_BANNER_BY);
+		const profile = after.get('org_profile');
+		expect(profile).toHaveLength(1);
+		expect(profile?.[0]).toMatchObject({
+			legal_name: before.get('org_profile')?.[0]?.legal_name,
+			logo_image_id: CHAT_IMAGES.logo,
+			banner_image_id: null
+		});
+	});
+
+	it.skipIf(nowhereToStop)(
+		'takes a banner naming an image, and refuses one naming none',
+		async () => {
+			await run(stmt(`update org_profile set banner_image_id = ?`, CHAT_IMAGES.cause));
+			expect(await first(stmt('select banner_image_id from org_profile'))).toEqual({
+				banner_image_id: CHAT_IMAGES.cause
+			});
+			expect(
+				await rejectionCode(() =>
+					run(stmt(`update org_profile set banner_image_id = 'no-such-image'`))
+				)
+			).toMatch(/SQLITE_CONSTRAINT_FOREIGNKEY/);
+			await run(stmt(`update org_profile set banner_image_id = null`));
+		}
+	);
+
+	it.skipIf(nowhereToStop)('applies nothing when the chain runs again', async () => {
+		const applied = await recorded();
+		const profile = await all<Row>(stmt('select * from org_profile'));
+		await applyMigrations(bare, MIGRATIONS);
+		expect(await recorded()).toEqual(applied);
+		expect(await all<Row>(stmt('select * from org_profile'))).toEqual(profile);
 	});
 });
 

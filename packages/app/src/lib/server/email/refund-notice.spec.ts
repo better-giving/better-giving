@@ -24,7 +24,8 @@ const ORG: OrgProfile = {
 	vision: null,
 	brandColour: null,
 	socialLinks: [],
-	logoImageId: null
+	logoImageId: null,
+	bannerImageId: null
 };
 
 function input(overrides: Partial<RefundNoticeInput> = {}): RefundNoticeInput {

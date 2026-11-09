@@ -232,6 +232,13 @@
       "when": 1793170264086,
       "tag": "0032_page_unpublished",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1794201666626,
+      "tag": "0033_org_profile_banner",
+      "breakpoints": true
     }
   ]
 }

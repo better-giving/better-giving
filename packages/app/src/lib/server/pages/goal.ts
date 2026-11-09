@@ -2,7 +2,12 @@ import type { PageGoal } from '../../donate/sections/types';
 import type { Page } from '../../page/catalog';
 import { endDayOf } from '../../page/end-date';
 import type { Db } from '../db/client';
-import { type RaisedThroughForm, readRaisedThroughForm } from '../ledger/queries';
+import {
+	type RaisedByOrganisation,
+	type RaisedThroughForm,
+	readRaisedByOrganisation,
+	readRaisedThroughForm
+} from '../ledger/queries';
 
 // what a campaign's goal bar says has been given toward it: settled gifts through the campaign's
 // owned settings row, net of what was given back, recurring charges included and pending excluded —
@@ -23,6 +28,15 @@ export async function campaignRaised(db: Db, formId: string): Promise<RaisedThro
 		);
 	}
 	return raised;
+}
+
+/**
+ * what the organisation has raised through every form and page, in the Donation page's `currency`,
+ * and from how many gifts: the Donation page's raised figure, summed the way `campaignRaised` sums
+ * and on the same terms, never cached.
+ */
+export function organisationRaised(db: Db, currency: string): Promise<RaisedByOrganisation> {
+	return readRaisedByOrganisation(db, currency);
 }
 
 /**

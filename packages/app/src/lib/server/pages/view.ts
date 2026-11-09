@@ -2,6 +2,7 @@ import type { FormConfig } from '@better-giving/form/v1';
 import { data } from 'react-router';
 import type { OrgInfo } from '../../donate/sections/types';
 import type { PageWithCardProps } from '../../donate/page-with-card';
+import { type DonateProfile, donateProfile } from '../../donate/profile';
 import { type PageLook, titleHeading } from '../../donate/page-view';
 import type { Page } from '../../page/catalog';
 import type { PageType } from '../../page/keys';
@@ -17,7 +18,7 @@ import { present } from '../org/receipt-fields';
 import { createPaymentProviders } from '../payments/factory';
 import { readActiveProgramPhotos } from '../programs/queries';
 import { readDocument } from './document';
-import { pageGoal } from './goal';
+import { organisationRaised, pageGoal } from './goal';
 
 // everything a donor page draws beyond its own stored document, read for one page: the donation
 // page at /donate, a campaign at its address, and either one in the editor's preview.
@@ -47,7 +48,9 @@ import { pageGoal } from './goal';
 // live on every draw, so a save in the console reaches every page at once, the preview included.
 // so are the programs' photos, handed beside the served config for the programs its chooser offers
 // and never on its `v1` options, and so is a campaign's raised figure (./goal.ts), a sum over the
-// books that is never cached.
+// books that is never cached. the Donation page alone is handed its profile head beside the view
+// (`DonateProfile` in ../../donate/profile.ts) from those same reads, with what the organisation has
+// raised through every form (`organisationRaised` in ./goal.ts), likewise never cached.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {
@@ -67,7 +70,12 @@ export type PageSource = {
 export type PageViewData = Omit<PageWithCardProps, 'seams'>;
 
 export type LoadedPage =
-	| { readonly kind: 'page'; readonly view: PageViewData }
+	| {
+			readonly kind: 'page';
+			readonly view: PageViewData;
+			/** the Donation page's profile head; null for a campaign. */
+			readonly profile: DonateProfile | null;
+	  }
 	/** the stored document is missing or fails the rule: the card alone, in the page's look. */
 	| { readonly kind: 'plain'; readonly config: FormConfig; readonly look: PageLook }
 	/** the served config refuses the owned row: no card can be drawn. */
@@ -121,7 +129,17 @@ export async function loadPageView(
 	// the name the document was drafted with, so a rename reaches donors at Publish.
 	const pageName = page.name ?? source.name;
 	const orgName = config.orgLegalName;
-	const goal = await pageGoal(db, source.formId, page, config.locale);
+	const money = { locale: config.locale, currency: config.currency };
+	const [goal, raised] = await Promise.all([
+		pageGoal(db, source.formId, page, config.locale),
+		source.type === 'donation_page' ? organisationRaised(db, config.currency) : null
+	]);
+	const org = {
+		name: orgName,
+		mission: profile?.mission ?? null,
+		vision: profile?.vision ?? null,
+		info: orgInfo(config, profile)
+	};
 
 	return {
 		kind: 'page',
@@ -129,12 +147,7 @@ export async function loadPageView(
 			type: source.type,
 			page,
 			pageName,
-			org: {
-				name: orgName,
-				mission: profile?.mission ?? null,
-				vision: profile?.vision ?? null,
-				info: orgInfo(config, profile)
-			},
+			org,
 			logo,
 			programPhotos: chooserPhotos(config, photos),
 			look: { brandColour },
@@ -149,11 +162,21 @@ export async function loadPageView(
 				url: `${origin}${source.address}`
 			},
 			goal,
-			money: { locale: config.locale, currency: config.currency },
+			money,
 			config,
 			preview,
 			...openingOf(page.switches)
-		}
+		},
+		profile:
+			raised === null
+				? null
+				: donateProfile({
+						org,
+						logo,
+						bannerImageId: profile?.bannerImageId ?? null,
+						raised,
+						money
+					})
 	};
 }
 

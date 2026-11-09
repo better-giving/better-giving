@@ -2783,19 +2783,15 @@ export function createCard(
 	view?.addEventListener('resize', rewrapped);
 
 	/**
-	 * which tile opens a row of the amount grid, and how many columns the grid came out with —
-	 * written so the tray can rule its lattice (the grid-line rules in ./styles/parts.css).
+	 * which tile opens a row of the amount grid — written so the tiles can rule the tray's lattice
+	 * (the grid-line rules in ./styles/parts.css).
 	 *
-	 * where the grid wraps is the engine's answer and no stylesheet can ask it, so both are read
-	 * here off the tiles' own laid-out boxes: a tile whose top differs from the one before it opens
-	 * a row and is marked `data-row-start`, which is what draws the horizontal above that row, and
-	 * the tiles sharing the first top are the columns, written onto the tray as `--_cols`, which
-	 * is the pitch its verticals repeat at. read on every patch and on the window resizing, the
-	 * same two moments the chip is placed at, and for the same reason a `ResizeObserver` is not
-	 * used for either (`placeThumb` above).
-	 *
-	 * a tray with no tiles writes no count at all: the rule divides by it, and the fallback stated
-	 * there is what a tray with nothing to rule takes.
+	 * where the grid wraps is the engine's answer and no stylesheet can ask it, so it is read here off
+	 * the tiles' own laid-out boxes: a tile whose top differs from the one before it opens a row and
+	 * is marked `data-row-start`, which is what draws the horizontal above that row and leaves the
+	 * vertical before it undrawn. read on every patch and on the window resizing, the same two moments
+	 * the chip is placed at, and for the same reason a `ResizeObserver` is not used for either
+	 * (`placeThumb` above).
 	 */
 	function markRows(): void {
 		if (amountStep.offsetParent === null) return;
@@ -2803,16 +2799,11 @@ export function createCard(
 			...amountOptions.map(({ label }) => label),
 			...(otherTile === null ? [] : [otherTile.label])
 		];
-		const first = labels[0]?.offsetTop;
 		let above: number | null = null;
-		let cols = 0;
 		for (const label of labels) {
 			toggleAttribute(label, 'data-row-start', label.offsetTop !== above ? '' : null);
-			if (label.offsetTop === first) cols += 1;
 			above = label.offsetTop;
 		}
-		if (cols === 0) amountTiles.style.removeProperty('--_cols');
-		else amountTiles.style.setProperty('--_cols', String(cols));
 	}
 
 	function updateOptions(

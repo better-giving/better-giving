@@ -17,7 +17,7 @@ import type { BytesPort } from './bytes';
 // as long as the response says, a year, or until the cache's byte bound evicts it
 // (../runtime/response-cache.ts). an id's bytes do not outlive their image here, though: ./free.ts
 // deletes an image no row names any longer, which is what replacing or removing the organisation's
-// logo does (../org/queries.ts) and what an editor's write that lets a photo go does
+// logo or banner does (../org/queries.ts) and what an editor's write that lets a photo go does
 // (`freeLetGoStatements`' callers), and a freed image's bytes go on being served from this store
 // until the entry ages out or is evicted.
 //
