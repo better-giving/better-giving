@@ -1,5 +1,3 @@
-import { isTimeZone } from '../page/end-date';
-
 // an instant on an /admin screen, written in the viewer's own time zone: the zone the browser
 // resolves, carried to the server in the `admin_zone` cookie so a server render already reads the
 // same day (./viewer-time.react.tsx writes it). a value that is a date in its own right, such as a
@@ -18,7 +16,7 @@ export type InstantStyle = 'iso-day' | 'day' | 'moment';
  * offset such as `+08:00` as a zone, which the browser never writes, so a leading sign is refused.
  */
 export function parseViewerZone(raw: string | null | undefined): string | null {
-	return raw && !/^[+-]/.test(raw) && isTimeZone(raw) ? raw : null;
+	return raw && !/^[+-]/.test(raw) && canWriteIn(raw) ? raw : null;
 }
 
 const MONTH = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' });

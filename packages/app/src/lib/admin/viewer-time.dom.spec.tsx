@@ -16,7 +16,7 @@ const LATE_NIGHT = '2026-10-21T16:23:00.000Z';
 
 afterEach(() => {
 	// biome-ignore lint/suspicious/noDocumentCookie: the provider writes the cookie the same way (./viewer-time.react.tsx).
-	document.cookie = 'admin_zone=; Path=/admin; Max-Age=0';
+	document.cookie = 'admin_zone=; Path=/; Max-Age=0';
 });
 
 function page(serverZone: string | null, style: InstantStyle = 'day'): ReactElement {
@@ -140,16 +140,19 @@ it('writes the browser zone to the cookie once when the server read another', as
 });
 
 it.each([
-	['http:', 'admin_zone=Asia/Manila; Path=/admin; Max-Age=31536000; SameSite=Lax'],
-	['https:', 'admin_zone=Asia/Manila; Path=/admin; Max-Age=31536000; SameSite=Lax; Secure']
-])('writes the cookie for /admin alone, for a year, on %s', async (protocol, cookie) => {
-	browserIn('Asia/Manila');
-	pageProtocol(protocol);
-	const written = cookieWrites();
-	await serveThenHydrate(null);
+	['http:', 'admin_zone=Asia/Manila; Path=/; Max-Age=31536000; SameSite=Lax'],
+	['https:', 'admin_zone=Asia/Manila; Path=/; Max-Age=31536000; SameSite=Lax; Secure']
+])(
+	'writes the cookie at the root, so /admin.data carries it, for a year, on %s',
+	async (protocol, cookie) => {
+		browserIn('Asia/Manila');
+		pageProtocol(protocol);
+		const written = cookieWrites();
+		await serveThenHydrate(null);
 
-	expect(written.mock.calls).toEqual([[cookie]]);
-});
+		expect(written.mock.calls).toEqual([[cookie]]);
+	}
+);
 
 // happy-dom's `location` keeps `protocol` on its prototype, as `document` keeps `cookie`.
 function pageProtocol(protocol: string) {
@@ -215,15 +218,32 @@ describe('an instant that is not a date', () => {
 });
 
 describe('a zone this runtime cannot write in', () => {
-	it('leaves the time empty when the browser resolves a zone the runtime does not know', async () => {
-		browserIn('Mars/Olympus');
-		const { servedText, time, recovered, complained } = await serveThenHydrate(null, 'moment');
+	it.each([
+		['iso-day', '2026-10-21 UTC'],
+		['day', '21 Oct 2026 UTC'],
+		['moment', '21 Oct 2026, 16:23 UTC']
+	] as const)(
+		'writes %s in UTC, saying so, once hydrated in a browser zone the runtime does not know',
+		async (style, text) => {
+			browserIn('Mars/Olympus');
+			const { servedText, time, recovered, complained } = await serveThenHydrate(null, style);
 
-		expect(servedText).toBe('');
+			expect(servedText).toBe('');
+			expect(recovered).toEqual([]);
+			expect(complained).not.toHaveBeenCalled();
+			expect(time?.textContent).toBe(text);
+			expect(time?.getAttribute('datetime')).toBe(LATE_NIGHT);
+		}
+	);
+
+	it('moves from the server zone to UTC when the browser zone is one the runtime does not know', async () => {
+		browserIn('Mars/Olympus');
+		const { servedText, time, recovered, complained } = await serveThenHydrate('Asia/Manila');
+
+		expect(servedText).toBe('22 Oct 2026');
 		expect(recovered).toEqual([]);
 		expect(complained).not.toHaveBeenCalled();
-		expect(time?.textContent).toBe('');
-		expect(time?.getAttribute('datetime')).toBe(LATE_NIGHT);
+		expect(time?.textContent).toBe('21 Oct 2026 UTC');
 	});
 
 	it('writes no cookie when the browser resolves a zone the runtime does not know', async () => {
@@ -234,7 +254,7 @@ describe('a zone this runtime cannot write in', () => {
 		expect(written).not.toHaveBeenCalled();
 	});
 
-	it('writes no cookie and leaves the time empty when the browser resolves no zone at all', async () => {
+	it('writes no cookie and writes the time in UTC when the browser resolves no zone at all', async () => {
 		const real = Intl.DateTimeFormat.prototype.resolvedOptions;
 		vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockImplementation(function (
 			this: Intl.DateTimeFormat
@@ -246,7 +266,7 @@ describe('a zone this runtime cannot write in', () => {
 
 		expect(written).not.toHaveBeenCalled();
 		expect(complained).not.toHaveBeenCalled();
-		expect(time?.textContent).toBe('');
+		expect(time?.textContent).toBe('21 Oct 2026, 16:23 UTC');
 	});
 
 	it('serves an empty time for a zone the server was handed but cannot write in', () => {
@@ -290,5 +310,23 @@ describe('useViewerZone', () => {
 		expect(servedText).toBe('none');
 		expect(complained).not.toHaveBeenCalled();
 		expect(time?.textContent).toBe('none');
+	});
+});
+
+describe('browserIn', () => {
+	const resolved = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+	const machineZone = resolved();
+
+	it('takes the zone of a second call in the same test', () => {
+		browserIn('Asia/Manila');
+		browserIn('America/New_York');
+
+		expect(resolved()).toBe('America/New_York');
+		expect(new Intl.DateTimeFormat('en-US').resolvedOptions().locale).toBe('en-US');
+	});
+
+	it('leaves the machine zone in place once a test that called it twice has finished', () => {
+		expect(vi.isMockFunction(Intl.DateTimeFormat.prototype.resolvedOptions)).toBe(false);
+		expect(resolved()).toBe(machineZone);
 	});
 });

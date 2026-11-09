@@ -92,8 +92,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 	//
 	// `viewerZone` is the zone the `admin_zone` cookie names, so an instant on any screen beneath
 	// renders on the server in the viewer's own day ($lib/admin/viewer-time.react.tsx). the cookie is
-	// `Path=/admin`, and RFC 6265 path matching sends it on a document request and on a data request
-	// under /admin/, never on the data request for exactly /admin (`/admin.data`). there, before the
+	// `Path=/`, so it rides on document and data requests alike, `/admin.data` included. before the
 	// browser has written one, and for a value that is no zone, this is null, and the provider and
 	// `useViewerZone` use the browser's own zone instead.
 	return {
