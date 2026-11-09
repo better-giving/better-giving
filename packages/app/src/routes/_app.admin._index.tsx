@@ -46,8 +46,8 @@ const SCREEN_TITLE = 'Dashboard';
  *
  * `UTC` and never the viewer's zone, which an instant on /admin is written in
  * ($lib/admin/viewer-time.ts): the buckets are UTC calendar months summed in SQL
- * ($lib/server/months.ts), so the bucket decides the month, and a name
- * formatted in another zone would name a month the figure beneath it is not of.
+ * ($lib/server/months.ts), so the bucket decides the month, and a name formatted in another zone
+ * would name a month the figure beneath it is not of.
  *
  * `en-US` matches `DISPLAY_LOCALE` in $lib/donations/money.ts, which is private to that module —
  * one deployment states its figures in one language, and a second spelling of that decision is

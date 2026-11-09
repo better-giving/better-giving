@@ -2,8 +2,8 @@ import { dayOf, isTimeZone } from '../page/end-date';
 
 // an instant on an /admin screen, written in the viewer's own time zone: the zone the browser
 // resolves, carried to the server in the `admin_zone` cookie so a server render already reads the
-// same day (./viewer-time.react.tsx writes it). a value that is a date in its own right — a book entry's
-// day, a manual gift's received day — is not an instant and never comes through here.
+// same day (./viewer-time.react.tsx writes it). a value that is a date in its own right, such as a
+// book entry's day or a manual gift's received day, is not an instant and never comes through here.
 //
 // pure and not under `$lib/server/**`: the layout loader parses the cookie and a component formats.
 

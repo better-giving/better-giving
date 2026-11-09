@@ -16,7 +16,8 @@ import Donations from './_app.admin.donations._index';
 // workers case green.
 //
 // and the day a gift was received: an instant written in the viewer's zone the layout read, which
-// is the page's doing ($lib/admin/viewer-time.react.tsx), beside a gift in hand's day the loader crossed.
+// is the page's doing ($lib/admin/viewer-time.react.tsx), beside the day the loader crossed for a
+// gift in hand.
 //
 // it also holds the column apart from the message beside it. a dedication is a structured fact the
 // organisation reports on and a message is free text a donor wrote, and the whole argument for a
