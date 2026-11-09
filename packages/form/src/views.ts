@@ -1570,17 +1570,25 @@ export function createCard(
 	// is in the DOM only while the flow says it applies (`update` below): the first while the note
 	// is open, the second while the first is ticked. the name is `orgLegalName`, the one name the
 	// config carries and the one every other sentence on the card names the organisation by.
+	//
+	// the hint sits inside the `<label>` so that pressing it ticks the box, and a wrapping label
+	// names its control by its whole subtree (HTML-AAM, https://w3c.github.io/html-aam/#other-form-elements-accessible-name-computation),
+	// so `aria-labelledby` names the box by its words alone and the hint is read once, as its
+	// description.
 	const notePublicToggle = make(doc, 'input', {
 		part: part('checkbox'),
 		class: REGISTRY_CLASS.checkbox,
 		type: 'checkbox',
 		id: 'note-public',
+		'aria-labelledby': 'note-public-words',
 		'aria-describedby': 'note-public-hint'
 	});
 	const notePublicRow = make(doc, 'label', { class: 'check-row' }, [
 		notePublicToggle,
 		make(doc, 'span', {}, [
-			`Show my note on ${config.orgLegalName}’s page`,
+			make(doc, 'span', { id: 'note-public-words' }, [
+				`Show my note on ${config.orgLegalName}’s page`
+			]),
 			make(doc, 'small', { class: 'hint', id: 'note-public-hint' }, [
 				'It shows with your first name and last initial, like “Maya R.”'
 			])

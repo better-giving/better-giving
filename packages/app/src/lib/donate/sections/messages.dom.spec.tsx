@@ -84,8 +84,12 @@ describe('messages from donors', () => {
 		const { host } = mount({ initial: page(1, 6, 48, 'c6') });
 		expect(rows(host)).toHaveLength(6);
 		const foot = host.querySelector('.page-messages-foot');
-		expect(foot?.getAttribute('role')).toBe('status');
 		expect(foot?.textContent).toContain('Showing 6 of 48 messages');
+		// the count alone is the live region: the press's words change on every press.
+		expect([...host.querySelectorAll('[role="status"]')].map((s) => s.className)).toEqual([
+			'page-messages-count'
+		]);
+		expect(more(host)?.closest('[role="status"]')).toBeNull();
 		expect(more(host)?.textContent).toBe('Show more messages');
 		expect(more(host)?.getAttribute('aria-busy')).toBeNull();
 	});
@@ -168,9 +172,12 @@ describe('messages from donors', () => {
 		const { host, rerender } = mount({ initial: page(1, 6, 48, 'c6'), onShowMore });
 		act(() => more(host)?.click());
 		rerender({ status: 'error' });
-		expect(host.querySelector('[role="alert"]')?.textContent).toBe(
-			'Couldn’t load more messages. Try again.'
-		);
+		const alert = host.querySelector('[role="alert"]');
+		expect(alert?.textContent).toBe('Couldn’t load more messages. Try again.');
+		// said once, by the alert, and not again by a live region around it.
+		expect(
+			alert?.parentElement?.closest('[aria-live], [role="status"], [role="alert"]')
+		).toBeNull();
 		expect(rows(host)).toHaveLength(6);
 		expect(more(host)?.textContent).toBe('Show more messages');
 		act(() => more(host)?.click());

@@ -11,8 +11,9 @@ import { messageAge } from '../message-age';
 // going. the list keeps what it has shown and adds an answer only while a press is waiting on one,
 // so the same answer handed back again — a revalidation — adds nothing twice.
 //
-// while a press is out the button holds its focus, busy, and says "Loading"; the band is the live
-// region that says the new count. when an answer is the last page the band and its button go, and
+// while a press is out the button holds its focus, busy, and says "Loading"; the count line is the
+// live region that says the new count, and the button and a refusal's alert stand outside it, so
+// neither is read out again with it. when an answer is the last page the band and its button go, and
 // focus moves to the first message the answer added, which takes focus for that alone.
 
 export type ShowMoreStatus = 'idle' | 'loading' | 'error';
@@ -111,8 +112,8 @@ export function DonorMessages({
 					))}
 				</ul>
 				{shown.next === null ? null : (
-					<div className="page-messages-foot" role="status">
-						<p className="page-messages-count">
+					<div className="page-messages-foot">
+						<p className="page-messages-count" role="status">
 							Showing {count.format(shown.messages.length)} of {count.format(shown.total)} messages
 						</p>
 						{/* the design draws no failed Show more (design-spec.md, Messages from donors): this

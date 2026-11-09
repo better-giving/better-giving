@@ -14,13 +14,24 @@ import { LocalTime } from '$lib/admin/viewer-time.react';
 //
 // the route owns the writes. Hide asks first, in a confirm that opens on Cancel so Enter never hides
 // by accident; Show again does not ask, being harmless to undo. a press hands the gift's id to
-// `onHide` or `onShow`, `pending` says which press is out, and `outcome` is the answer the route had
-// back — which way it landed, or the sentence it was refused with. the rows themselves come from
-// the route's read, so a landed press is already drawn in them when its outcome arrives.
+// `onHide` or `onShow`, and each row's press stands as `presses` says: whether it is out, and the
+// answer the route had back — which way it landed, or the sentence it was refused with — so a press
+// on one row leaves another row's answer standing. without `presses`, one `pending` and one
+// `outcome` stand for the whole list. the rows themselves come from the route's read, so a landed
+// press is already drawn in them when its outcome arrives.
+//
+// the route owns the list too: `messages` is every row read so far, the older pages included, so a
+// press on an older row is drawn from the same re-read as one on the newest. `older` says whether
+// the read has more past them; Show older messages hands `onShowOlder` its cursor. when the last of
+// them arrives that press goes, and focus moves from it to the first row it brought.
 //
 // a landed press reports at the press, which stays where it is with focus on it: for a moment its
 // face is the word that says what happened, then it is the flipped press. a refused Hide is said in
 // the confirm, which stays open; a refused Show again is said under its press.
+//
+// a press is named by what it shows, then the row's name and day as their cells write them
+// (`aria-labelledby`), so two rows shown as the same name read apart and the name always holds the
+// words on the press, the landed ones included.
 
 /** a message as the screen lists it: a note a donor asked to show, and whether staff hid it. */
 export type ModeratedMessage = {
@@ -39,18 +50,37 @@ export type PressOutcome =
 	| { readonly donationId: string; readonly landed: 'hidden' | 'shown' }
 	| { readonly donationId: string; readonly refused: string };
 
+/** one row's press: whether it is out, and the answer to the last one; null before any. */
+export type PressState = { readonly pending: boolean; readonly outcome: PressOutcome | null };
+
+export type OlderStatus = 'idle' | 'loading' | 'error';
+
+/** the messages past the ones listed, as the route reads them a page at a time. */
+export type OlderMessages = {
+	/** the cursor the list ends on; null where nothing is older. */
+	readonly next: string | null;
+	readonly status: OlderStatus;
+	/** asks for the page after `after`, which arrives as more `messages`. */
+	readonly onShowOlder: (after: string) => void;
+};
+
 export type PublicMessagesProps = {
-	/** newest first, at most `limit`. */
+	/** newest first: every message read so far. */
 	readonly messages: readonly ModeratedMessage[];
-	/** every message listed, past the cap too. */
+	/** every message listed, past the ones read too. */
 	readonly total: number;
-	readonly limit: number;
-	/** the press in flight, by the gift it names; null with none. */
-	readonly pending: { readonly donationId: string } | null;
-	/** the answer to the last press; null before any. */
-	readonly outcome: PressOutcome | null;
+	/** @deprecated unread: the cap note counts the rows given. */
+	readonly limit?: number;
+	/** each row's press by the gift it names; a row not in it is at rest. read over `pending` and `outcome`. */
+	readonly presses?: Readonly<Record<string, PressState>>;
+	/** the press in flight, by the gift it names; null with none. unread where `presses` is given. */
+	readonly pending?: { readonly donationId: string } | null;
+	/** the answer to the last press; null before any. unread where `presses` is given. */
+	readonly outcome?: PressOutcome | null;
 	readonly onHide: (donationId: string) => void;
 	readonly onShow: (donationId: string) => void;
+	/** absent where the route reads no page past the first, which the cap note then says. */
+	readonly older?: OlderMessages;
 };
 
 const SCREEN_TITLE = 'Public messages';
@@ -60,6 +90,12 @@ const STANDFIRST =
 
 /** what a landed press says at the press, for the moment before it turns back into one. */
 const LANDED_WORDS = { hidden: 'Hidden from your page', shown: 'Showing again' } as const;
+
+type Landed = keyof typeof LANDED_WORDS;
+
+const AT_REST: PressState = { pending: false, outcome: null };
+
+const OLDER_FAILED = 'Couldn’t load older messages. Try again.';
 
 /**
  * the columns in the order a row is read. the date is the row's header and what the plane pins:
@@ -77,70 +113,132 @@ const COLUMNS = [
 export function PublicMessages({
 	messages,
 	total,
-	limit,
-	pending,
-	outcome,
+	presses,
+	pending = null,
+	outcome = null,
 	onHide,
-	onShow
+	onShow,
+	older
 }: PublicMessagesProps) {
-	// the confirm, open over one row's message, and the answer standing when it opened, so a refusal
-	// from before it is not said inside it.
+	const pressOf = (id: string): PressState =>
+		presses !== undefined
+			? (presses[id] ?? AT_REST)
+			: {
+					pending: pending?.donationId === id,
+					// one answer for the whole list stands down while any press is out.
+					outcome: pending === null && outcome?.donationId === id ? outcome : null
+				};
+	const settled = (id: string) => {
+		const state = pressOf(id);
+		return state.pending ? null : state.outcome;
+	};
+	const refusalOf = (id: string) => {
+		const answer = settled(id);
+		return answer !== null && 'refused' in answer ? answer.refused : null;
+	};
+	const landedOf = (id: string): Landed | null => {
+		const answer = settled(id);
+		return answer !== null && 'landed' in answer ? answer.landed : null;
+	};
+
+	// the confirm, open over one row's message, and whether Hide message was pressed in it, so a
+	// refusal from before it opened is not said inside it.
 	const [confirming, setConfirming] = useState<{
 		readonly id: string;
-		readonly before: PressOutcome | null;
+		readonly pressed: boolean;
 	} | null>(null);
-	const [moment, setMoment] = useState<Extract<PressOutcome, { landed: unknown }> | null>(null);
-	const [seen, setSeen] = useState(outcome);
-	if (outcome !== seen) {
-		setSeen(outcome);
-		if (outcome !== null && 'landed' in outcome) {
-			setMoment(outcome);
-			if (confirming?.id === outcome.donationId) setConfirming(null);
-		}
+
+	// each row's landing as last drawn, so the one that changed is told apart by its value: the
+	// record the route hands down may be a fresh object on every render.
+	const landings = Object.fromEntries(
+		messages.flatMap((m) => {
+			const landed = landedOf(m.id);
+			return landed === null ? [] : [[m.id, landed] as const];
+		})
+	);
+	const [seenLandings, setSeenLandings] = useState(landings);
+	const [announced, setAnnounced] = useState<{ readonly landed: Landed } | null>(null);
+	const fresh = messages.filter(
+		(m) => landings[m.id] !== undefined && landings[m.id] !== seenLandings[m.id]
+	);
+	if (
+		fresh.length > 0 ||
+		Object.keys(seenLandings).some((id) => landings[id] !== seenLandings[id])
+	) {
+		setSeenLandings(landings);
+		const last = fresh.at(-1);
+		if (last !== undefined) setAnnounced({ landed: landings[last.id] as Landed });
+		if (confirming !== null && fresh.some((m) => m.id === confirming.id)) setConfirming(null);
 	}
-	// keyed on the landing that started it, so a second press's moment runs its own length.
+	// keyed on the landing that started it, so a second landing's line runs its own length.
 	useEffect(() => {
-		if (moment === null) return;
-		const over = setTimeout(() => setMoment(null), CONFIRMATION_MS);
+		if (announced === null) return;
+		const over = setTimeout(() => setAnnounced(null), CONFIRMATION_MS);
 		return () => clearTimeout(over);
-	}, [moment]);
+	}, [announced]);
+
+	// where the rows Show older messages asked for start, until they arrive.
+	const [olderFrom, setOlderFrom] = useState<number | null>(null);
+	const [olderArrived, setOlderArrived] = useState<{
+		readonly firstId: string;
+		readonly last: boolean;
+	} | null>(null);
+	if (olderFrom !== null && messages.length > olderFrom) {
+		setOlderFrom(null);
+		setOlderArrived({ firstId: messages[olderFrom]?.id ?? '', last: older?.next === null });
+	}
 
 	// the press that opened the confirm, where focus goes back to where the browser recorded none.
 	const opener = useRef<HTMLElement | null>(null);
+	const ids = useId();
+	const cellId = (m: ModeratedMessage | string, cell: 'name' | 'day' | 'press') =>
+		`${ids}-${typeof m === 'string' ? m : m.id}-${cell}`;
 	const cancel = useRef<HTMLButtonElement>(null);
-	const refusalFor = (id: string) =>
-		pending === null && outcome !== null && 'refused' in outcome && outcome.donationId === id
-			? outcome.refused
-			: null;
+
+	// keyed on the arrival that unmounted Show older messages: focus was on it and would otherwise
+	// fall to the document. a reader who moved on meanwhile is left be.
+	useEffect(() => {
+		if (olderArrived === null || !olderArrived.last) return;
+		const active = document.activeElement;
+		if (active !== null && active !== document.body) return;
+		document.getElementById(cellId(olderArrived.firstId, 'press'))?.focus();
+	}, [olderArrived]);
 
 	if (messages.length === 0) {
 		return (
 			<Column wide>
 				<PageHeader title={SCREEN_TITLE} />
 				<EmptyState>
-					No donor has chosen to show a note yet. A note appears here when a donor ticks Show my
-					note on the gift form.
+					No donor has chosen to show a note yet. A note appears here when a donor ticks the box on
+					the gift form that starts “Show my note on”.
 				</EmptyState>
 			</Column>
 		);
 	}
 
 	const open = confirming === null ? null : messages.find((m) => m.id === confirming.id);
-	const confirmRefusal =
-		confirming !== null && outcome !== confirming.before ? refusalFor(confirming.id) : null;
+	const withheld = older === undefined ? total > messages.length : older.next !== null;
 
 	return (
 		<Column wide>
 			<PageHeader title={SCREEN_TITLE} standfirst={STANDFIRST} />
 			<DataTable
 				caption={`${total} ${total === 1 ? 'message' : 'messages'}, newest first.`}
-				capNote={total > messages.length ? `Only the most recent ${limit} are shown.` : undefined}
+				capNote={withheld ? `Only the most recent ${messages.length} are shown.` : undefined}
 				columns={COLUMNS}
 				rows={messages.map((m) => ({
 					id: m.id,
 					cells: {
-						received: <LocalTime at={m.receivedAt} style="iso-day" />,
-						name: m.hidden ? <span className="adm-cell__quiet">{m.name}</span> : m.name,
+						received: (
+							<span id={cellId(m, 'day')}>
+								<LocalTime at={m.receivedAt} style="iso-day" />
+							</span>
+						),
+						name: (
+							<span className={m.hidden ? 'adm-cell__quiet' : undefined} id={cellId(m, 'name')}>
+								{m.name}
+							</span>
+						),
 						note: m.hidden ? <span className="adm-cell__quiet">{m.note}</span> : m.note,
 						standing: m.hidden ? (
 							<StatusWord tone="note">Hidden</StatusWord>
@@ -150,34 +248,56 @@ export function PublicMessages({
 						press: (
 							<RowPress
 								message={m}
-								busy={pending?.donationId === m.id}
-								landed={moment?.donationId === m.id ? moment.landed : null}
-								refusal={confirming?.id === m.id ? null : refusalFor(m.id)}
+								id={cellId(m, 'press')}
+								labelledBy={`${ids}-from ${cellId(m, 'name')} ${ids}-received ${cellId(m, 'day')}`}
+								busy={pressOf(m.id).pending}
+								landed={landedOf(m.id)}
+								refusal={confirming?.id === m.id ? null : refusalOf(m.id)}
 								onPress={(target) => {
 									if (m.hidden) {
 										onShow(m.id);
 										return;
 									}
 									opener.current = target;
-									setConfirming({ id: m.id, before: outcome });
+									setConfirming({ id: m.id, pressed: false });
 								}}
 							/>
 						)
 					}
 				}))}
 			/>
-			{/* what a landed press says, for a reader on the press whose name stays the press's own. */}
+			{older === undefined || older.next === null ? null : (
+				<OlderPress
+					status={older.status}
+					onPress={() => {
+						if (older.next === null) return;
+						setOlderFrom(messages.length);
+						older.onShowOlder(older.next);
+					}}
+				/>
+			)}
+			{/* what a landed press says, said aloud: a focused press's name changing is not announced. */}
 			<p className="adm-vh" role="status">
-				{moment === null ? '' : LANDED_WORDS[moment.landed]}
+				{announced === null ? '' : LANDED_WORDS[announced.landed]}
 			</p>
+			{/* the words between a press's own and its row's cells, in every press's name. */}
+			<span hidden id={`${ids}-from`}>
+				the message from
+			</span>
+			<span hidden id={`${ids}-received`}>
+				received
+			</span>
 			{open == null ? null : (
 				<HideConfirm
 					message={open}
-					busy={pending?.donationId === open.id}
-					refusal={confirmRefusal}
+					busy={pressOf(open.id).pending}
+					refusal={confirming?.pressed ? refusalOf(open.id) : null}
 					cancelRef={cancel}
 					openerRef={opener}
-					onHide={() => onHide(open.id)}
+					onHide={() => {
+						setConfirming({ id: open.id, pressed: true });
+						onHide(open.id);
+					}}
 					onCancel={() => setConfirming(null)}
 				/>
 			)}
@@ -185,33 +305,84 @@ export function PublicMessages({
 	);
 }
 
+function OlderPress({
+	status,
+	onPress
+}: {
+	readonly status: OlderStatus;
+	readonly onPress: () => void;
+}) {
+	const refusalId = useId();
+	const loading = status === 'loading';
+	const failed = status === 'error';
+	return (
+		<div className="adm-actions">
+			<Button
+				type="button"
+				aria-busy={loading || undefined}
+				aria-disabled={loading || undefined}
+				aria-describedby={failed ? refusalId : undefined}
+				onClick={() => {
+					if (!loading) onPress();
+				}}
+			>
+				{loading ? 'Loading' : 'Show older messages'}
+			</Button>
+			{/* there before it speaks, so a failure is announced as it arrives. */}
+			<span id={refusalId} role="alert">
+				{failed ? (
+					<StatusWord register="momentary" blocked mark="circle-alert">
+						{OLDER_FAILED}
+					</StatusWord>
+				) : null}
+			</span>
+		</div>
+	);
+}
+
 function RowPress({
 	message,
+	id,
+	labelledBy,
 	busy,
 	landed,
 	refusal,
 	onPress
 }: {
 	readonly message: ModeratedMessage;
+	readonly id: string;
+	/** the ids after the press's own that its name reads: the row's name and day, as `aria-labelledby`. */
+	readonly labelledBy: string;
 	readonly busy: boolean;
-	readonly landed: 'hidden' | 'shown' | null;
+	/** which way this row's last press landed, standing until its next press goes out. */
+	readonly landed: Landed | null;
 	readonly refusal: string | null;
 	readonly onPress: (target: HTMLElement) => void;
 }) {
 	const refusalId = useId();
-	const held = busy || landed !== null;
+	// the press's face says a landing for a moment, keyed on the landing that changed: rows land on
+	// their own, so each runs its own moment.
+	const [moment, setMoment] = useState<Landed | null>(null);
+	const [seen, setSeen] = useState(landed);
+	if (landed !== seen) {
+		setSeen(landed);
+		if (landed !== null) setMoment(landed);
+	}
+	useEffect(() => {
+		if (moment === null) return;
+		const over = setTimeout(() => setMoment(null), CONFIRMATION_MS);
+		return () => clearTimeout(over);
+	}, [moment]);
+	const held = busy || moment !== null;
 	return (
 		<>
 			<Button
 				type="button"
 				variant="quiet"
 				size="sm"
-				mark={landed !== null ? undefined : message.hidden ? 'eye' : 'eye-off'}
-				aria-label={
-					message.hidden
-						? `Show the message from ${message.name} again`
-						: `Hide the message from ${message.name}`
-				}
+				mark={moment !== null ? undefined : message.hidden ? 'eye' : 'eye-off'}
+				id={id}
+				aria-labelledby={`${id} ${labelledBy}`}
 				aria-haspopup={message.hidden ? undefined : 'dialog'}
 				aria-busy={busy || undefined}
 				aria-disabled={held || undefined}
@@ -220,8 +391,8 @@ function RowPress({
 					if (!held) onPress(event.currentTarget);
 				}}
 			>
-				{landed !== null ? (
-					<StatusWord register="momentary">{LANDED_WORDS[landed]}</StatusWord>
+				{moment !== null ? (
+					<StatusWord register="momentary">{LANDED_WORDS[moment]}</StatusWord>
 				) : message.hidden ? (
 					'Show again'
 				) : (

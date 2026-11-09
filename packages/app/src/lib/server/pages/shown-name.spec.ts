@@ -27,6 +27,13 @@ describe('shownName', () => {
 		expect(shownName({ firstName: null, lastName: null }, false)).toBe('Anonymous');
 	});
 
+	it('prints only the first word of the first-name box, so a surname typed there is an initial', () => {
+		expect(shownName({ firstName: 'Maya Rodriguez', lastName: null }, false)).toBe('Maya R.');
+		expect(shownName({ firstName: 'Maya  de la Cruz', lastName: '' }, false)).toBe('Maya D.');
+		expect(shownName({ firstName: 'Maya Rodriguez', lastName: 'Rivera' }, false)).toBe('Maya R.');
+		expect(shownName({ firstName: 'Mary Ann', lastName: 'Smith' }, false)).toBe('Mary S.');
+	});
+
 	it('trims the first name and capitalises the initial', () => {
 		expect(shownName({ firstName: '  maya ', lastName: ' rivera' }, false)).toBe('maya R.');
 	});

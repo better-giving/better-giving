@@ -15,9 +15,13 @@ describe('message age', () => {
 		[before(3 * HOUR), '3 hours ago'],
 		[before(DAY + HOUR), 'yesterday'],
 		[before(3 * DAY), '3 days ago'],
+		[before(7 * DAY - 1), '6 days ago'],
+		[before(7 * DAY), 'last week'],
 		[before(8 * DAY), 'last week'],
 		[before(15 * DAY), '2 weeks ago'],
 		[before(34 * DAY), '4 weeks ago'],
+		[before(35 * DAY - 1), '4 weeks ago'],
+		[before(35 * DAY), 'October'],
 		['2026-03-14T09:00:00.000Z', 'March'],
 		['2025-12-24T09:00:00.000Z', 'December 2025']
 	])('says %s as "%s"', (at, words) => {

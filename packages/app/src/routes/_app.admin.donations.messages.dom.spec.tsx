@@ -6,11 +6,12 @@ import { WHICH_FORM } from '$lib/forms/definition';
 import { invalid } from '$lib/server/conform';
 import PublicMessagesScreen from './_app.admin.donations.messages';
 
-// Public messages as the route mounts it: what Hide and Show again post through the screen's one
-// fetcher, the press held while it is out, a landed press drawn over the re-read rows, and a
-// refusal carried back to the row it names. the loader and the action are stand-ins, one drawing
-// the rows below, the other recording each body and answering what the case scripts; what the real
-// ones do is ./_app.admin.donations.messages.db.spec.ts's.
+// Public messages as the route mounts it: what Hide and Show again post through each row's own
+// fetcher, the press held while it is out, a landed press drawn over the re-read rows, a refusal
+// carried back to the row it names, and Show older messages paging through the older read. the
+// loaders and the action are stand-ins, the loaders drawing the rows below, the action recording
+// each body and answering what the case scripts; what the real ones do is
+// ./_app.admin.donations.messages.db.spec.ts's and ./_app.admin.donations.messages.older.db.spec.ts's.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -35,38 +36,76 @@ const DEV: Row = {
 };
 
 /** what the action does with the next post: land it, leaving these rows, refuse it, or never settle. */
-type Answer =
-	| { readonly landed: 'hidden' | 'shown'; readonly rows: Row[] }
+type Settled =
+	| { readonly landed: 'hidden' | 'shown'; readonly rows: Row[]; readonly olderRows?: Row[] }
 	| { readonly refuse: string; readonly form: string; readonly status: 404 | 500 }
 	| 'hang';
+/** a settled answer, or one held until `once` resolves. */
+type Answer = Settled | { readonly once: Promise<void>; readonly answer: Settled };
+
+const ANA: Row = {
+	id: 'gift-ana',
+	name: 'Ana L.',
+	note: 'For the river cleanup.',
+	receivedAt: '2026-09-02T15:00:00.000Z',
+	hidden: false
+};
 
 let rows: Row[];
+/** the cursor the first page ends on, and the rows past it, which the older read pages through. */
+let next: string | null;
+let olderRows: Row[];
 let posted: Record<string, string>[];
 let answers: Answer[];
+let olderAsked: string[];
+let olderNext: string | null;
+let olderRefused: boolean;
 
 beforeEach(() => {
 	rows = [MAYA, DEV];
+	next = null;
+	olderRows = [];
 	posted = [];
 	answers = [];
+	olderAsked = [];
+	olderNext = null;
+	olderRefused = false;
 });
+
+/** the older read's stand-in: `olderRows` whatever count of pages is asked, or a refusal. */
+function olderRead({ request }: { request: Request }) {
+	const url = new URL(request.url);
+	olderAsked.push(`${url.pathname}${url.search}`);
+	// the screen tells a refusal by its `kind`, so the real read's 4xx/5xx status is left off here.
+	if (olderRefused) return { kind: 'refused' };
+	return { kind: 'messages', messages: olderRows, next: olderNext };
+}
 
 const never = () => new Promise<never>(() => {});
 
 async function answer({ request }: { request: Request }) {
 	const body = await request.formData();
 	posted.push(Object.fromEntries([...body].map(([k, v]) => [k, String(v)])));
-	const next = answers.shift();
-	if (next === undefined) throw new Error('the action was posted to with no answer ready');
-	if (next === 'hang') return never();
+	const due = answers.shift();
+	if (due === undefined) throw new Error('the action was posted to with no answer ready');
+	let settled: Settled;
+	if (typeof due === 'object' && 'once' in due) {
+		await due.once;
+		settled = due.answer;
+	} else {
+		settled = due;
+	}
+	if (settled === 'hang') return never();
 	const donationId = String(body.get('donation_id'));
-	if ('landed' in next) {
-		rows = next.rows;
-		return { landed: next.landed, donationId };
+	if ('landed' in settled) {
+		rows = settled.rows;
+		olderRows = settled.olderRows ?? olderRows;
+		return { landed: settled.landed, donationId };
 	}
 	// the real refusal's own shape, built by the helper the action answers with.
 	return invalid(
-		next.status,
-		{ id: next.form, result: { status: 'error', error: { '': [next.refuse] } } },
+		settled.status,
+		{ id: settled.form, result: { status: 'error', error: { '': [settled.refuse] } } },
 		{ donationId }
 	);
 }
@@ -95,11 +134,12 @@ async function screen(): Promise<HTMLElement> {
 	const Stub = createRoutesStub([
 		{
 			path: SCREEN,
-			loader: () => ({ messages: rows, total: rows.length, limit: 500 }),
+			loader: () => ({ messages: rows, total: rows.length + olderRows.length, next }),
 			action: answer,
 			HydrateFallback: () => null,
 			Component: Screen
-		}
+		},
+		{ path: `${SCREEN}/older`, loader: olderRead }
 	]);
 	const host = mount(createElement(Stub, { initialEntries: [SCREEN] }));
 	await settle();
@@ -118,6 +158,13 @@ const row = (host: HTMLElement, name: string) =>
 const press = (host: HTMLElement, name: string) => {
 	const found = row(host, name)?.querySelector<HTMLButtonElement>('button');
 	if (found == null) throw new Error(`no press on the row of ${name}`);
+	return found;
+};
+const showOlder = (host: HTMLElement) => {
+	const found = [...host.querySelectorAll('button')].find(
+		(b) => b.textContent === 'Show older messages'
+	);
+	if (found === undefined) throw new Error('no Show older messages on the screen');
 	return found;
 };
 const dialog = () => document.querySelector('dialog');
@@ -181,5 +228,83 @@ describe('Public messages, as the route wires it', () => {
 		expect(dialog()).toBeNull();
 		expect(row(host, 'Dev P.')?.querySelector('[role="alert"]')?.textContent).toBe(sentence);
 		expect(row(host, 'Maya R.')?.querySelector('[role="alert"]')).toBeNull();
+	});
+
+	it('draws both answers when a second row is pressed while the first is out', async () => {
+		const host = await screen();
+		let release = () => {};
+		const devAnswered = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const sentence = 'Couldn’t show this message again. Try again.';
+		answers.push(
+			{ once: devAnswered, answer: { refuse: sentence, form: 'message-show', status: 500 } },
+			{ landed: 'hidden', rows: [{ ...MAYA, hidden: true }, DEV] }
+		);
+
+		await click(press(host, 'Dev P.'));
+		await click(press(host, 'Maya R.'));
+		await click(dialogButton('Hide message'));
+		await settle();
+		release();
+		await settle();
+
+		expect(press(host, 'Maya R.').textContent).toBe('Hidden from your page');
+		expect(row(host, 'Dev P.')?.querySelector('[role="alert"]')?.textContent).toBe(sentence);
+	});
+
+	it('asks for the page past the first one’s cursor and lists it under the rows it has', async () => {
+		next = 'cursor/after+50';
+		olderRows = [ANA];
+		const host = await screen();
+
+		await click(showOlder(host));
+		await settle();
+
+		expect(olderAsked).toEqual([
+			`${SCREEN}/older?${new URLSearchParams({ after: 'cursor/after+50', pages: '1' })}`
+		]);
+		expect([...host.querySelectorAll('tbody tr')].map((tr) => tr.textContent)).toEqual([
+			expect.stringContaining('Maya R.'),
+			expect.stringContaining('Dev P.'),
+			expect.stringContaining('Ana L.')
+		]);
+	});
+
+	it('reads the older pages it holds again after a press, drawing an older row as it landed', async () => {
+		next = 'cursor/after+50';
+		olderRows = [ANA];
+		const host = await screen();
+		await click(showOlder(host));
+		await settle();
+		answers.push({ landed: 'hidden', rows, olderRows: [{ ...ANA, hidden: true }] });
+
+		await click(press(host, 'Ana L.'));
+		await click(dialogButton('Hide message'));
+		await settle();
+
+		expect(olderAsked.at(-1)).toBe(olderAsked[0]);
+		expect(press(host, 'Ana L.').textContent).toBe('Hidden from your page');
+		expect(row(host, 'Ana L.')?.textContent).toContain('Hidden');
+		expect(host.querySelectorAll('tbody tr')).toHaveLength(3);
+	});
+
+	it('asks for one page more from the same cursor on the next press, and keeps rows a refusal finds', async () => {
+		next = 'cursor/after+50';
+		olderRows = [ANA];
+		olderNext = 'cursor/after+100';
+		const host = await screen();
+		await click(showOlder(host));
+		await settle();
+		olderRefused = true;
+
+		await click(showOlder(host));
+		await settle();
+
+		expect(olderAsked.at(-1)).toBe(
+			`${SCREEN}/older?${new URLSearchParams({ after: 'cursor/after+50', pages: '2' })}`
+		);
+		expect(row(host, 'Ana L.')).not.toBeNull();
+		expect(host.textContent).toContain('Couldn’t load older messages. Try again.');
 	});
 });

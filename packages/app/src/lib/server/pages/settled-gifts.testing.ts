@@ -174,24 +174,31 @@ export async function refund(db: Db, txn: string, amountMinor: number): Promise<
 
 /**
  * the charge on `txn` disputed and withdrawn while the processor decides: `amountMinor` of it, or the
- * whole charge where that is null.
+ * whole charge where that is null. `closes` then closes it the way the processor decides —
+ * `'won'` returns the money, `'lost'` leaves it gone — and left out, the dispute stays open.
  */
 export async function dispute(
 	db: Db,
 	txn: string,
-	amountMinor: number | null = null
+	amountMinor: number | null = null,
+	closes?: 'won' | 'lost'
 ): Promise<void> {
 	sequence += 1;
+	const providerReversalId = `dp_goal_${sequence}`;
+	const deps = through(db, refusing('stripe', 'unsupported', 'not part of the dispute path'));
+	const facts = {
+		reversedTxnId: txn,
+		providerReversalId,
+		currency: 'USD',
+		reversedMetadata: {}
+	};
 	const opened = await recordReversal(
-		through(db, refusing('stripe', 'unsupported', 'not part of the dispute path')),
+		deps,
 		{
+			...facts,
 			kind: 'dispute_opened',
-			reversedTxnId: txn,
-			providerReversalId: `dp_goal_${sequence}`,
 			amountMinor,
-			currency: 'USD',
 			occurredAt: new Date('2026-09-20T12:00:00.000Z'),
-			reversedMetadata: {},
 			feeMinor: null,
 			respondBy: null,
 			reason: 'fraudulent',
@@ -202,6 +209,24 @@ export async function dispute(
 	if (!opened.ok || opened.outcome !== 'posted') {
 		throw new Error(`the fixture dispute was not posted: ${opened.detail}`);
 	}
+	if (closes === undefined) return;
+	const closedAt = new Date('2026-09-25T12:00:00.000Z');
+	const closed = await recordReversal(
+		deps,
+		closes === 'won'
+			? { ...facts, kind: 'dispute_won', occurredAt: closedAt, feeReturnedMinor: null }
+			: {
+					...facts,
+					kind: 'dispute_lost',
+					amountMinor,
+					occurredAt: closedAt,
+					feeMinor: null,
+					reason: 'fraudulent',
+					dashboardUrl: null
+				},
+		`evt_dp_close_goal_${sequence}`
+	);
+	if (!closed.ok) throw new Error(`the fixture dispute was not closed: ${closed.detail}`);
 }
 
 /**

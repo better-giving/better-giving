@@ -87,9 +87,14 @@ export async function addDonationPageVideo(
 
 		const read = await readYouTubeVideo(videoId, apiKey);
 		if (!read.ok) {
-			return read.reason === 'not_found'
-				? refuse(422, VIDEO_REFUSALS.notFound)
-				: refuse(500, VIDEO_REFUSALS.unreachable);
+			switch (read.reason) {
+				case 'not_found':
+					return refuse(422, VIDEO_REFUSALS.notFound);
+				case 'not_embeddable':
+					return refuse(422, VIDEO_REFUSALS.notEmbeddable);
+				case 'unreachable':
+					return refuse(500, VIDEO_REFUSALS.unreachable);
+			}
 		}
 		const poster = checkPhotoBytes(db, read.poster);
 		if (!poster.ok) {

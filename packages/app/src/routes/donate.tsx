@@ -1,9 +1,9 @@
 import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
-import { data, type ShouldRevalidateFunctionArgs, useFetcher } from 'react-router';
+import { data, type ShouldRevalidateFunctionArgs } from 'react-router';
 import { DonateNotice } from '$lib/donate/notice';
-import { PageWithCard } from '$lib/donate/page-with-card';
+import { PageWithCard, type PageWithCardProps } from '$lib/donate/page-with-card';
 import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/donate/plain-page';
-import type { ShowMoreStatus } from '$lib/donate/sections/messages';
+import { useShowMoreMessages } from '$lib/donate/show-more';
 import { shareImage } from '$lib/page/image-src';
 import { meterDonorPage } from '$lib/server/api/meter';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
@@ -12,7 +12,6 @@ import { loadPageView, refusedPage } from '$lib/server/pages/view';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/donate';
-import type { loader as showMoreLoader } from './donate.messages';
 
 // the donation page: the organisation's own donor page, at /donate on the deployment.
 //
@@ -130,36 +129,15 @@ export function links(): Route.LinkDescriptors {
 	return donorPageLinks();
 }
 
-/**
- * how Show more messages is going: busy while the read is out, and error where it was answered
- * with a refusal — a cursor the read could not take, or this address over the donor page limit.
- */
-function showMoreStatus(fetcher: {
-	state: string;
-	data?: { kind: string } | undefined;
-}): ShowMoreStatus {
-	if (fetcher.state !== 'idle') return 'loading';
-	return fetcher.data?.kind === 'refused' ? 'error' : 'idle';
-}
-
 export default function DonationPage({ loaderData }: Route.ComponentProps) {
-	const showMore = useFetcher<typeof showMoreLoader>();
 	switch (loaderData.kind) {
 		case 'page':
 			return (
-				<PageWithCard
+				<CardPage
 					{...loaderData.view}
 					profile={loaderData.profile}
 					resuming={loaderData.resuming}
-					donorMessages={{
-						now: loaderData.now,
-						status: showMoreStatus(showMore),
-						// the fetcher's own object, never a copy: the section tells a new answer from the
-						// one it already added by identity.
-						arrived: showMore.data?.kind === 'messages' ? showMore.data : null,
-						onShowMore: (after) =>
-							showMore.load(`/donate/messages?after=${encodeURIComponent(after)}`)
-					}}
+					now={loaderData.now}
 				/>
 			);
 		case 'plain':
@@ -177,4 +155,10 @@ export default function DonationPage({ loaderData }: Route.ComponentProps) {
 				</PlainPage>
 			);
 	}
+}
+
+/** the page and its card, with Show more messages counting ages from `now`, the loader's instant. */
+function CardPage({ now, ...page }: PageWithCardProps & { readonly now: string }) {
+	const donorMessages = useShowMoreMessages(now);
+	return <PageWithCard {...page} donorMessages={donorMessages} />;
 }

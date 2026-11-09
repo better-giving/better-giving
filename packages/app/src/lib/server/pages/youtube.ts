@@ -32,18 +32,24 @@ export type YouTubeRead =
 	  }
 	/**
 	 * `not_found`: YouTube holds no public video under the id — private, deleted or never there.
+	 * `not_embeddable`: the video is public, but its owner allows it on no other site.
 	 * `unreachable`: YouTube did not answer in a way to act on, and may next time.
 	 */
 	| YouTubeFailure;
 
-type YouTubeFailure = { readonly ok: false; readonly reason: 'not_found' | 'unreachable' };
+type YouTubeFailure = {
+	readonly ok: false;
+	readonly reason: 'not_found' | 'not_embeddable' | 'unreachable';
+};
 
 const OEMBED_TIMEOUT_MS = 5_000;
 const POSTER_TIMEOUT_MS = 10_000;
 const DATA_API_TIMEOUT_MS = 5_000;
 
-/** oEmbed's answers for a URL with no public video behind it: unknown, private, or not embeddable. */
-const NOT_FOUND_STATUSES = new Set([400, 401, 403, 404]);
+/** oEmbed's answers for a URL with no public video behind it: unknown, private or deleted. */
+const NOT_FOUND_STATUSES = new Set([400, 403, 404]);
+/** oEmbed's answer for a public video whose owner turned embedding off. */
+const NOT_EMBEDDABLE_STATUS = 401;
 
 const OEMBED = z.object({ title: z.string().trim().min(1) });
 const CONTENT_DETAILS = z.object({
@@ -81,6 +87,7 @@ async function readTitle(videoId: string): Promise<{ ok: true; title: string } |
 	if (!asked.ok) return { ok: false, reason: 'unreachable' };
 	const { response } = asked;
 	if (NOT_FOUND_STATUSES.has(response.status)) return { ok: false, reason: 'not_found' };
+	if (response.status === NOT_EMBEDDABLE_STATUS) return { ok: false, reason: 'not_embeddable' };
 	const read = response.ok ? OEMBED.safeParse(await response.json().catch(() => undefined)) : null;
 	if (read?.success !== true) {
 		console.warn(`YouTube's oEmbed endpoint answered HTTP ${response.status} with no title`);

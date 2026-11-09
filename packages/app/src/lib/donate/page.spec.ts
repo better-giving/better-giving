@@ -75,8 +75,18 @@ if (registryLight === undefined) throw new Error('the registry theme declares no
 const branded = generateBrandScale('#1f6feb');
 if (branded === null) throw new Error('the generator reads no scale from #1f6feb');
 const brandedScale = brandScaleCss('[data-donate-root]', branded);
+// the registry's roles, which the form's `--_` names alias: `--_bad-tint` is `--destructive-subtle`.
+const REGISTRY_COLORS = readFileSync(
+	join(dirname(FORM_TOKENS), '../registry/styles/colors.css'),
+	'utf8'
+);
+const registryRoles = blocks(REGISTRY_COLORS).find(
+	({ decls }) => decls['--destructive-subtle'] !== undefined
+);
+if (registryRoles === undefined) throw new Error('the registry declares no destructive role');
 const formBase: Scope = {
 	...seedDefaults,
+	...registryRoles.decls,
 	...declared(form, ':host, [data-donate-root]'),
 	...registryLight.decls,
 	...declared(form, ':host > *, [data-donate-root] > *')
@@ -132,14 +142,9 @@ describe('a page with no brand colour', () => {
 			join(dirname(FORM_TOKENS), '../registry/styles/variables.css'),
 			'utf8'
 		);
-		const colors = readFileSync(
-			join(dirname(FORM_TOKENS), '../registry/styles/colors.css'),
-			'utf8'
-		);
-
 		expect(formText).toContain("@import '../registry/styles/variables.css'");
 		expect(variables).toContain('@import "./colors.css"');
-		expect(colors).toContain('@import "./themes/default.css"');
+		expect(REGISTRY_COLORS).toContain('@import "./themes/default.css"');
 		expect(registryLight.at[0]?.split(',').map((one) => one.trim())).toContain(':root');
 		expect(root({ brandColour: null }).inline).toEqual({});
 	});
@@ -169,6 +174,13 @@ describe('the names ./page.css reads and writes', () => {
 		const read = [...reads(pageText, '--accent-')];
 		expect(read.length).toBeGreaterThan(0);
 		expect(read.filter((name) => !declares(brandedScale, '--accent-').has(name))).toEqual([]);
+	});
+
+	// no seed moves the status scales, so a `--destructive-*` step is the registry theme's on every page.
+	it('reads every `--destructive-*` step from the registry theme', () => {
+		const read = [...reads(pageText, '--destructive-')];
+		expect(read.length).toBeGreaterThan(0);
+		expect(read.filter((name) => registryLight.decls[name] === undefined)).toEqual([]);
 	});
 
 	it('re-points the form’s monospace token and the sent figure’s weight', () => {
@@ -324,15 +336,16 @@ describe('every colour lands on the radix step for its job', () => {
 	const OVER_FILL = `${FEATURE} .page-layout[data-cover='logo'] .page-hero-words, ${FEATURE} .page-layout[data-cover='none'] .page-hero-words`;
 	const IDLE = ":not(:has(:checked, [aria-disabled='true']))";
 	const BORDER =
-		'6, 7 and 8: a separator, a control’s edge, that edge under the pointer and a brand edge';
+		'6, 7 and 8: a separator, a control’s edge, that edge under the pointer, a brand edge and red 6 round a failure';
 	const RING =
 		'11: the focus ring, the registry’s ring step, in a step-1 gap where it rings a control';
 	const ON_FILL = 'the ink on a solid fill: the form’s `--_on-p`';
 	const TEXT = '11 and 12: text';
-	const SCRIM = 'the feature’s scrim, and slate 1 on it';
+	const SCRIM =
+		'a scrim over a photo — the feature’s, and the registry’s over a poster — and slate 1 on it';
 	const JOBS: Record<string, { allowed: readonly string[]; at: Record<string, string> }> = {
-		'1, 2 and 3: a ground, the wash brand 2 and 3 over slate 2': {
-			allowed: ['slate-1', 'slate-2', 'slate-3', 'brand-2', 'brand-3'],
+		'1, 2 and 3: a ground, the wash brand 2 and 3 over slate 2, and red 3 under a failure': {
+			allowed: ['slate-1', 'slate-2', 'slate-3', 'brand-2', 'brand-3', 'red-3'],
 			at: {
 				'.page > .page-ground | --page-ground': 'slate-2',
 				'.page > .page-ground | --page-wash': 'brand-2 brand-3',
@@ -360,7 +373,8 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-messages-plane | background': 'slate-1',
 				'.page-messages-foot | background': 'slate-2',
 				'.page-video-box | background': 'slate-3',
-				".page-video-box[data-face='loading'] .page-video-status | background": 'slate-3'
+				".page-video-box[data-face='loading'] .page-video-status | background": 'slate-3',
+				".page-video-box[data-face='error'] | background": 'red-3'
 			}
 		},
 		'3, 4 and 5: a control’s ground, its hover and its press': {
@@ -374,7 +388,7 @@ describe('every colour lands on the radix step for its job', () => {
 			}
 		},
 		[BORDER]: {
-			allowed: ['slate-6', 'slate-7', 'slate-8', 'brand-6', 'brand-7', 'brand-8'],
+			allowed: ['slate-6', 'slate-7', 'slate-8', 'brand-6', 'brand-7', 'brand-8', 'red-6'],
 			at: {
 				'.page > .page-ground | --page-plane-edge': 'slate-6',
 				'.page-mast | border-block-end': 'slate-6',
@@ -399,7 +413,8 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-messages-plane | border': 'slate-6',
 				'.page-messages-row + .page-messages-row | border-block-start': 'slate-6',
 				'.page-messages-foot | border-block-start': 'slate-6',
-				'.page-video-box | border': 'slate-6'
+				'.page-video-box | border': 'slate-6',
+				".page-video-box[data-face='error'] | border-color": 'red-6'
 			}
 		},
 		[RING]: {
@@ -410,7 +425,8 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-11',
 				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-11',
 				'.page-messages-row:focus-visible | outline': 'brand-11',
-				'.page-ground .page-messages-more:focus-visible | box-shadow': 'brand-11'
+				'.page-ground .page-messages-more:focus-visible | box-shadow': 'brand-11',
+				'.page-video-box:focus-visible | outline': 'brand-11'
 			}
 		},
 		'9: a solid fill, the generator’s step 9': {
@@ -482,8 +498,9 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-video-length | color': 'slate-11'
 			}
 		},
-		// a photo has no step. the scrim over the feature's cover is the one colour off the ladders, and
-		// what stands on it is slate 1, radix's white, with the goal's track on slate 8.
+		// a photo has no step. a scrim over one is off the ladders: the feature's over its cover, with
+		// slate 1, radix's white, on it and the goal's track on slate 8, and the registry's `--overlay`
+		// over a video's poster, which the play press stands on.
 		[SCRIM]: {
 			allowed: ['scrim', 'slate-1', 'slate-8'],
 			at: {
@@ -493,7 +510,8 @@ describe('every colour lands on the radix step for its job', () => {
 				[`${WIDE} » ${FEATURE} .page-hero-words | --page-quiet`]: 'slate-1',
 				[`${WIDE} » ${FEATURE} .page-hero-words | color`]: 'slate-1',
 				[`${WIDE} » ${FEATURE} .page-hero-words .page-goal-track | background`]: 'slate-8',
-				[`${WIDE} » ${FEATURE} .page-hero-words .page-goal-fill | background`]: 'slate-1'
+				[`${WIDE} » ${FEATURE} .page-hero-words .page-goal-fill | background`]: 'slate-1',
+				".page-video-box[data-face='poster']::after | background": 'scrim'
 			}
 		}
 	};

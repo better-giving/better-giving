@@ -24,7 +24,7 @@ const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com'
 const SHORT_HOST = 'youtu.be';
 
 /** the path heads on a YouTube host whose next segment is the video id. */
-const ID_PATHS = new Set(['shorts', 'embed']);
+const ID_PATHS = new Set(['shorts', 'embed', 'live']);
 
 /**
  * the video id `text` links to, or null where it is no link to one video: another host, a playlist,
@@ -89,6 +89,8 @@ export const VIDEO_REFUSALS = {
 		'That isn’t a YouTube link. Paste the address of a video from youtube.com or youtu.be.',
 	notFound:
 		'We couldn’t find a public video at that link. If it’s private or was deleted, donors couldn’t watch it. Make it public or unlisted on YouTube, then add it again.',
+	notEmbeddable:
+		'That video’s owner doesn’t let it play on other sites, so donors couldn’t watch it here. If it’s your video, turn on Allow embedding in YouTube Studio, then add it again.',
 	alreadyAdded: 'That video is already on your page.',
 	atCap: `A page shows at most ${VIDEOS_MAX} videos. Remove one to add another.`,
 	unreachable: 'We couldn’t reach YouTube just now. Try again in a moment.',

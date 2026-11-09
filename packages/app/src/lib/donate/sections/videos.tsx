@@ -10,7 +10,8 @@ import { type ShownVideo, VIDEOS_MAX, youTubeEmbedUrl, youTubeWatchUrl } from '.
 // loading panel; the iframe's `load` shows it and moves focus into it, and a player that has not
 // loaded within `PLAYER_WAIT_MS` is taken as failed and gives way to the link out. the load event
 // says the frame arrived, not that the video plays: a video YouTube refuses is its own player's
-// message, inside the frame. the link out exists only in the failed face.
+// message, inside the frame. the link out exists only in the failed face, and takes the focus the
+// box was holding when the player fails.
 
 /** how long a pressed video's player may take to load before the box says it couldn't. */
 const PLAYER_WAIT_MS = 15_000;
@@ -38,12 +39,18 @@ function VideoFigure({ video }: { readonly video: ShownVideo }) {
 	const [face, setFace] = useState<Face>('poster');
 	const box = useRef<HTMLDivElement>(null);
 	const player = useRef<HTMLIFrameElement>(null);
+	const watch = useRef<HTMLAnchorElement>(null);
 
 	// keyed on the face that landed: the press unmounts the play button, so focus is held on the box
-	// while the player loads, and handed into the player once it has.
+	// while the player loads, handed into the player once it has, and to the link out if it fails,
+	// unless the reader has moved it from the box meanwhile.
 	useEffect(() => {
 		if (face === 'playing') {
 			player.current?.focus();
+			return;
+		}
+		if (face === 'error') {
+			if (document.activeElement === box.current) watch.current?.focus();
 			return;
 		}
 		if (face !== 'loading') return;
@@ -111,7 +118,7 @@ function VideoFigure({ video }: { readonly video: ShownVideo }) {
 					<div className="page-video-error" role="alert">
 						<p className="page-video-error-title">Video unavailable</p>
 						<p className="page-video-error-body">We couldn’t load this video.</p>
-						<a href={youTubeWatchUrl(video.videoId)} target="_blank" rel="noopener">
+						<a ref={watch} href={youTubeWatchUrl(video.videoId)} target="_blank" rel="noopener">
 							Watch on YouTube<span className="vh"> (opens in a new tab)</span>
 						</a>
 					</div>

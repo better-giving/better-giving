@@ -166,11 +166,13 @@
  * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): text on 11
  * and 12, a solid fill on 9 with the generated `--_on-p` as its ink, a separator or an edge on 6, 7
  * and 8, the focus ring on 11, a ground on 1, 2 and 3 — the wash brand 2 and 3 over slate 2 —
- * and a control's hover and press on 4 and 5. legibility is radix's guarantee for a step
+ * and a control's hover and press on 4 and 5. a failed video is the registry's red, which no seed
+ * moves: the tint, red 3, inside a red 6 edge. legibility is radix's guarantee for a step
  * doing its job, and no ratio is measured here.
  *
- *   `--page-scrim` is the one colour off the ladders, laid over the feature's cover photo, which
- *   has no step and which the page cannot see, and it carries the note that says so. it is at its
+ *   a scrim is off the ladders, laid over a photo, which has no step and which the page cannot
+ *   see: the registry's `--overlay` over a video's poster, and `--page-scrim` over the feature's
+ *   cover photo, which carries the note that says why it is the page's own. `--page-scrim` is at its
  *   darkest from the cover's left edge across the 58% the words stand in, and fades over the rest,
  *   under the box. what stands on it is slate 1, radix's white: the words, the ring, and the goal's
  *   fill on a slate-8 track, a border step standing in for a ground because on the scrim the
@@ -1379,10 +1381,11 @@ body {
 	border-radius: var(--page-plane-radius);
 }
 
-/* the box takes focus only to hold it while a pressed player loads; it draws no ring of its own,
-   since the loading panel inside it is what a reader is shown. */
-.page-video-box:focus {
-	outline: none;
+/* the box takes focus only to hold it while a pressed player loads. the ring is drawn inside its
+   edge, since the box clips what it holds. */
+.page-video-box:focus-visible {
+	outline: var(--_focus-width) solid var(--page-ring);
+	outline-offset: calc(-1 * var(--_focus-width));
 }
 
 .page-video-poster,

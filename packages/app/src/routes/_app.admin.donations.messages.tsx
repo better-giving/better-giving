@@ -1,28 +1,34 @@
-import { useMemo } from 'react';
-import { href, useFetcher } from 'react-router';
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { href, useFetcher, useSubmit } from 'react-router';
 import { z } from 'zod';
 import type { CrumbHandle } from '$lib/admin/crumbs';
-import { type PressOutcome, PublicMessages } from '$lib/admin/messages/public-messages';
+import {
+	type OlderMessages,
+	type OlderStatus,
+	type PressOutcome,
+	type PressState,
+	PublicMessages
+} from '$lib/admin/messages/public-messages';
 import { type AdminActionData, resultFor } from '$lib/admin/use-admin-form';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
 import { invalid, type ParsedForm, parseForm, submittedForm } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
-import {
-	MODERATED_MESSAGE_LIMIT,
-	readModeratedMessages,
-	setNoteHidden
-} from '$lib/server/pages/messages';
+import { setNoteHidden } from '$lib/server/pages/messages';
+import { readModeratedPages } from '$lib/server/pages/moderated-pages';
 import { screenTitle } from '$lib/admin/screen-title';
 import { database } from '../context';
 import type { Route } from './+types/_app.admin.donations.messages';
+import type { loader as olderLoader } from './_app.admin.donations.messages.older';
 
 // Public messages: the notes donors asked to show on the donate page, each with Hide or Show again.
 // staff and members may both press either: it is moderation of what the page shows rather than
 // configuration, so no `STAFF_USER_ID` gate.
 //
 // what is listed and what a press writes are `$lib/server/pages/messages.ts`. a press answers on
-// this screen without navigating, so it suits a fetcher: a landed press returns which way it went
-// and the gift it named, and a refusal names the gift beside the form's error.
+// this screen without navigating, so it suits a fetcher, one per row so a second press cancels no
+// other row's: a landed press returns which way it went and the gift it named, and a refusal names
+// the gift beside the form's error. the list past the first page is read by
+// ./_app.admin.donations.messages.older.ts.
 
 const SCREEN_TITLE = 'Public messages';
 
@@ -38,25 +44,12 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
-	let read: Awaited<ReturnType<typeof readModeratedMessages>>;
 	try {
-		read = await readModeratedMessages(context.get(database));
+		return await readModeratedPages(context.get(database), null, 1);
 	} catch (e) {
 		console.error('listing public messages failed:', e);
 		loadFailed('The public messages list');
 	}
-	return {
-		messages: read.messages.map((m) => ({
-			id: m.id,
-			name: m.name,
-			note: m.note,
-			receivedAt: m.receivedAt.toISOString(),
-			hidden: m.hidden
-		})),
-		total: read.total,
-		// so the page can say the list is capped where `total` is past it.
-		limit: MODERATED_MESSAGE_LIMIT
-	};
 }
 
 const HIDE_FORM_ID = 'message-hide';
@@ -123,24 +116,113 @@ function pressOutcome(answer: AdminActionData): PressOutcome | null {
 	return refused === undefined ? null : { donationId, refused };
 }
 
+/** the fetcher a row's presses go through, one per gift, so a press on one row cancels no other's. */
+const pressKey = (donationId: string) => `message-press-${donationId}`;
+
 export default function PublicMessagesScreen({ loaderData }: Route.ComponentProps) {
-	const fetcher = useFetcher<AdminActionData>();
-	const pressed = fetcher.formData?.get(DONATION_ID);
+	const submit = useSubmit();
+	// every row pressed so far, in the order first pressed: each holds its own fetcher below.
+	const [pressed, setPressed] = useState<readonly string[]>([]);
+	const [presses, setPresses] = useState<Readonly<Record<string, PressState>>>({});
+	const record = useCallback((donationId: string, state: PressState) => {
+		setPresses((all) => {
+			const was = all[donationId];
+			if (was?.pending === state.pending && was.outcome === state.outcome) return all;
+			return { ...all, [donationId]: state };
+		});
+	}, []);
+	const press = (form: typeof HIDE_FORM_ID | typeof SHOW_FORM_ID) => (donationId: string) => {
+		setPressed((ids) => (ids.includes(donationId) ? ids : [...ids, donationId]));
+		submit(
+			{ [WHICH_FORM]: form, [DONATION_ID]: donationId },
+			{ method: 'post', navigate: false, fetcherKey: pressKey(donationId) }
+		);
+	};
+	const older = useOlderMessages(loaderData.messages, loaderData.next);
+	return (
+		<>
+			{pressed.map((donationId) => (
+				<RowPress key={donationId} donationId={donationId} onState={record} />
+			))}
+			<PublicMessages
+				messages={older.messages}
+				total={loaderData.total}
+				presses={presses}
+				onHide={press(HIDE_FORM_ID)}
+				onShow={press(SHOW_FORM_ID)}
+				older={older.wiring}
+			/>
+		</>
+	);
+}
+
+/**
+ * one pressed row's fetcher, which draws nothing and hands the screen where that row's press
+ * stands: a hook cannot be called once per row of a list that grows. handed up in a layout effect,
+ * so the screen redraws with it before the browser paints the state it replaces.
+ */
+function RowPress({
+	donationId,
+	onState
+}: {
+	readonly donationId: string;
+	readonly onState: (donationId: string, state: PressState) => void;
+}) {
+	const fetcher = useFetcher<AdminActionData>({ key: pressKey(donationId) });
 	// memoized on the answer itself: the screen tells one outcome from the next by identity, so a
 	// fresh object per render would replay the last landing on every one.
-	const answered = useMemo(() => pressOutcome(fetcher.data), [fetcher.data]);
-	const press = (form: typeof HIDE_FORM_ID | typeof SHOW_FORM_ID) => (donationId: string) =>
-		fetcher.submit({ [WHICH_FORM]: form, [DONATION_ID]: donationId }, { method: 'post' });
-	return (
-		<PublicMessages
-			messages={loaderData.messages}
-			total={loaderData.total}
-			limit={loaderData.limit}
-			pending={typeof pressed === 'string' ? { donationId: pressed } : null}
-			// held back until the re-read has landed, so a landed press is drawn over its new row.
-			outcome={fetcher.state === 'idle' ? answered : null}
-			onHide={press(HIDE_FORM_ID)}
-			onShow={press(SHOW_FORM_ID)}
-		/>
+	const outcome = useMemo(() => pressOutcome(fetcher.data), [fetcher.data]);
+	// pending through the re-read, so a landed press is drawn over its new row.
+	const pending = fetcher.state !== 'idle';
+	useLayoutEffect(
+		() => onState(donationId, { pending, outcome }),
+		[donationId, onState, pending, outcome]
 	);
+	return null;
+}
+
+type Row = Route.ComponentProps['loaderData']['messages'][number];
+
+/**
+ * the rows past the first page, read by one fetcher from the cursor the first page ended on when
+ * Show older messages was first pressed. each press asks for one page more than it holds, every
+ * held page with it, and the re-read after a press asks for the same again, so an older row is
+ * drawn as the press left it. a refused read keeps the rows it already had.
+ */
+function useOlderMessages(first: readonly Row[], firstNext: string | null) {
+	const fetcher = useFetcher<typeof olderLoader>();
+	const [from, setFrom] = useState<string | null>(null);
+	const [asked, setAsked] = useState(0);
+	const [kept, setKept] = useState<{
+		readonly answer: Extract<typeof fetcher.data, { kind: 'messages' }>;
+		readonly pages: number;
+	} | null>(null);
+	if (fetcher.data?.kind === 'messages' && fetcher.data !== kept?.answer) {
+		setKept({ answer: fetcher.data, pages: asked });
+	}
+	const status: OlderStatus =
+		fetcher.state !== 'idle' && asked > (kept?.pages ?? 0)
+			? 'loading'
+			: fetcher.state === 'idle' && fetcher.data?.kind === 'refused'
+				? 'error'
+				: 'idle';
+	// a row on both, after the first page shifted under a refund, is listed once, where it is newest.
+	const listed = new Set(first.map((m) => m.id));
+	return {
+		messages:
+			kept === null ? first : [...first, ...kept.answer.messages.filter((m) => !listed.has(m.id))],
+		wiring: {
+			next: kept === null ? firstNext : kept.answer.next,
+			status,
+			onShowOlder: (after: string) => {
+				const start = from ?? after;
+				const pages = (kept?.pages ?? 0) + 1;
+				setFrom(start);
+				setAsked(pages);
+				fetcher.load(
+					`${href('/admin/donations/messages/older')}?${new URLSearchParams({ after: start, pages: String(pages) })}`
+				);
+			}
+		} satisfies OlderMessages
+	};
 }

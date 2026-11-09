@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, notExists, type SQL, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lte, notExists, type SQL, sql } from 'drizzle-orm';
 import { type DonorMessages, MESSAGES_PER_PAGE, type NoteStanding } from '../../donate/messages';
 import { readContactNameParts } from '../contacts/queries';
 import type { Db } from '../db/client';
@@ -22,7 +22,10 @@ import { type NameParts, shownName } from './shown-name';
 // every read here runs on its request and nothing is cached: a list a hide or a refund changes is
 // neither a capability nor immutable bytes (AGENTS.md → Storage), so each reaches the next load.
 
-/** the most the admin screen lists, as the gifts list caps itself (`DONATION_LIST_LIMIT`). */
+/**
+ * the most one page of the admin screen lists, as the gifts list caps itself
+ * (`DONATION_LIST_LIMIT`).
+ */
 export const MODERATED_MESSAGE_LIMIT = 50;
 
 const openDispute = (db: Db) =>
@@ -47,21 +50,48 @@ function shown(db: Db): SQL {
 	return sql`${donation.noteHiddenAt} is null and ${listed(db)}`;
 }
 
-/** where a page of messages resumes: past the gift last shown, newest first. */
-export type MessageCursor = { readonly receivedAt: number; readonly id: string };
+/**
+ * where a page of messages resumes, newest first: past `passed` messages listed at `receivedAt`,
+ * and on to every older one. it names no gift: the cursor is public on the donate page, and a
+ * gift's id is what the crypto status poll answers to
+ * (routes/api.v1.forms.$id.donations.$donationId.ts). gifts tied on one instant keep their order,
+ * newest id first, so the count resumes them where the last page stopped.
+ */
+export type MessageCursor = { readonly receivedAt: number; readonly passed: number };
 
-function cursorText({ receivedAt, id }: MessageCursor): string {
-	return Buffer.from(`${receivedAt}.${id}`).toString('base64url');
+function cursorText({ receivedAt, passed }: MessageCursor): string {
+	return Buffer.from(`${receivedAt}.${passed}`).toString('base64url');
 }
 
 /** a `next` this module handed out, or null for anything else. */
 export function parseMessageCursor(text: string): MessageCursor | null {
-	const decoded = Buffer.from(text, 'base64url').toString();
-	const dot = decoded.indexOf('.');
-	const receivedAt = Number(decoded.slice(0, dot));
-	const id = decoded.slice(dot + 1);
-	if (dot < 1 || !Number.isSafeInteger(receivedAt) || id === '') return null;
-	return { receivedAt, id };
+	const match = /^(\d+)\.([1-9]\d*)$/.exec(Buffer.from(text, 'base64url').toString());
+	if (match === null) return null;
+	const receivedAt = Number(match[1]);
+	const passed = Number(match[2]);
+	if (!Number.isSafeInteger(receivedAt) || !Number.isSafeInteger(passed)) return null;
+	return { receivedAt, passed };
+}
+
+/** the filter and offset that resume a newest-first list at `after`, or start it. */
+function resumeAt(after: MessageCursor | null): { where: SQL | undefined; offset: number } {
+	return after === null
+		? { where: undefined, offset: 0 }
+		: { where: lte(donation.receivedAt, new Date(after.receivedAt)), offset: after.passed };
+}
+
+/** the cursor past `page`, the rows a list shows after `after`; null where nothing follows. */
+function cursorPast(
+	page: readonly { readonly receivedAt: Date }[],
+	after: MessageCursor | null,
+	more: boolean
+): string | null {
+	const last = page.at(-1);
+	if (!more || last === undefined) return null;
+	const receivedAt = last.receivedAt.getTime();
+	const tied = page.filter((row) => row.receivedAt.getTime() === receivedAt).length;
+	const before = after !== null && after.receivedAt === receivedAt ? after.passed : 0;
+	return cursorText({ receivedAt, passed: before + tied });
 }
 
 async function namesOf(db: Db, contactIds: readonly string[]) {
@@ -76,28 +106,23 @@ export async function readShownMessages(
 	db: Db,
 	after: MessageCursor | null
 ): Promise<DonorMessages> {
-	const resume =
-		after === null
-			? undefined
-			: sql`(${donation.receivedAt} < ${after.receivedAt}
-				or (${donation.receivedAt} = ${after.receivedAt} and ${donation.id} < ${after.id}))`;
+	const resume = resumeAt(after);
 	const [rows, [counted]] = await Promise.all([
 		db
 			.select({
-				id: donation.id,
 				contactId: donation.contactId,
 				note: donation.note,
 				anonymous: donation.noteAnonymous,
 				receivedAt: donation.receivedAt
 			})
 			.from(donation)
-			.where(and(shown(db), resume))
+			.where(and(shown(db), resume.where))
 			.orderBy(desc(donation.receivedAt), desc(donation.id))
-			.limit(MESSAGES_PER_PAGE + 1),
+			.limit(MESSAGES_PER_PAGE + 1)
+			.offset(resume.offset),
 		db.select({ total: sql<number>`count(*)` }).from(donation).where(shown(db))
 	]);
 	const page = rows.slice(0, MESSAGES_PER_PAGE);
-	const last = page.at(-1);
 	const name = await namesOf(
 		db,
 		page.map((row) => row.contactId)
@@ -109,10 +134,7 @@ export async function readShownMessages(
 			receivedAt: row.receivedAt.toISOString()
 		})),
 		total: counted?.total ?? 0,
-		next:
-			rows.length > MESSAGES_PER_PAGE && last
-				? cursorText({ receivedAt: last.receivedAt.getTime(), id: last.id })
-				: null
+		next: cursorPast(page, after, rows.length > MESSAGES_PER_PAGE)
 	};
 }
 
@@ -127,12 +149,14 @@ export type ModeratedMessage = {
 };
 
 /**
- * the newest `MODERATED_MESSAGE_LIMIT` listed messages, hidden ones in their place, and how many
- * there are.
+ * the `MODERATED_MESSAGE_LIMIT` listed messages after `after`, or the newest, hidden ones in their
+ * place; how many there are; and the cursor to the next page, null on the last.
  */
 export async function readModeratedMessages(
-	db: Db
-): Promise<{ messages: ModeratedMessage[]; total: number }> {
+	db: Db,
+	after: MessageCursor | null = null
+): Promise<{ messages: ModeratedMessage[]; total: number; next: string | null }> {
+	const resume = resumeAt(after);
 	const [rows, [counted]] = await Promise.all([
 		db
 			.select({
@@ -144,24 +168,27 @@ export async function readModeratedMessages(
 				hiddenAt: donation.noteHiddenAt
 			})
 			.from(donation)
-			.where(listed(db))
+			.where(and(listed(db), resume.where))
 			.orderBy(desc(donation.receivedAt), desc(donation.id))
-			.limit(MODERATED_MESSAGE_LIMIT),
+			.limit(MODERATED_MESSAGE_LIMIT + 1)
+			.offset(resume.offset),
 		db.select({ total: sql<number>`count(*)` }).from(donation).where(listed(db))
 	]);
+	const page = rows.slice(0, MODERATED_MESSAGE_LIMIT);
 	const name = await namesOf(
 		db,
-		rows.map((row) => row.contactId)
+		page.map((row) => row.contactId)
 	);
 	return {
-		messages: rows.map((row) => ({
+		messages: page.map((row) => ({
 			id: row.id,
 			name: name(row.contactId, row.anonymous),
 			note: row.note ?? '',
 			receivedAt: row.receivedAt,
 			hidden: row.hiddenAt !== null
 		})),
-		total: counted?.total ?? 0
+		total: counted?.total ?? 0,
+		next: cursorPast(page, after, rows.length > MODERATED_MESSAGE_LIMIT)
 	};
 }
 

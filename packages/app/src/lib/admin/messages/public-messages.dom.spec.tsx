@@ -57,6 +57,18 @@ const row = (host: HTMLElement, name: string) =>
 	[...host.querySelectorAll('tbody tr')].find((tr) => tr.textContent?.includes(name)) ?? null;
 const press = (host: HTMLElement, name: string) =>
 	row(host, name)?.querySelector<HTMLButtonElement>('button') ?? null;
+// the name a press is read by: its `aria-labelledby` nodes' text, the press's own included, as
+// https://www.w3.org/TR/accname-1.2/#step2B joins them.
+const nameOf = (button: HTMLElement | null) =>
+	(button?.getAttribute('aria-labelledby') ?? '')
+		.split(' ')
+		.filter(Boolean)
+		.map((id) => document.getElementById(id)?.textContent ?? '')
+		.join(' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+const dayOf = (host: HTMLElement, name: string) =>
+	row(host, name)?.querySelector('time')?.textContent;
 const dialog = () => document.querySelector('dialog');
 const dialogButton = (label: string) =>
 	[...(dialog()?.querySelectorAll('button') ?? [])].find((b) => b.textContent === label) ?? null;
@@ -71,7 +83,7 @@ describe('public messages, listed', () => {
 		expect(host.querySelector('h1')?.textContent).toBe('Public messages');
 		expect(host.querySelector('table')).toBeNull();
 		expect(host.querySelector('.adm-empty')?.textContent).toBe(
-			'No donor has chosen to show a note yet. A note appears here when a donor ticks Show my note on the gift form.'
+			'No donor has chosen to show a note yet. A note appears here when a donor ticks the box on the gift form that starts “Show my note on”.'
 		);
 	});
 
@@ -104,7 +116,8 @@ describe('public messages, listed', () => {
 		expect(shown?.querySelector('.adm-cell__quiet')).toBeNull();
 		const hide = press(host, 'Maya R.');
 		expect(hide?.textContent).toBe('Hide');
-		expect(hide?.getAttribute('aria-label')).toBe('Hide the message from Maya R.');
+		expect(dayOf(host, 'Maya R.')).toBeTruthy();
+		expect(nameOf(hide)).toBe(`Hide the message from Maya R. received ${dayOf(host, 'Maya R.')}`);
 		expect(hide?.getAttribute('aria-haspopup')).toBe('dialog');
 	});
 
@@ -117,8 +130,20 @@ describe('public messages, listed', () => {
 		).toEqual(['Dev P.', DEV.note]);
 		const show = press(host, 'Dev P.');
 		expect(show?.textContent).toBe('Show again');
-		expect(show?.getAttribute('aria-label')).toBe('Show the message from Dev P. again');
+		expect(nameOf(show)).toBe(
+			`Show again the message from Dev P. received ${dayOf(host, 'Dev P.')}`
+		);
 		expect(show?.hasAttribute('aria-haspopup')).toBe(false);
+	});
+
+	it('names apart the presses of two rows shown as the same name, by their day', () => {
+		const first = { ...MAYA, id: 'gift-a', name: 'Anonymous' };
+		const second = { ...DEV, id: 'gift-b', name: 'Anonymous', hidden: false };
+		const { host } = mount({ messages: [first, second] });
+		const names = [...host.querySelectorAll<HTMLButtonElement>('tbody button')].map(nameOf);
+		expect(names).toHaveLength(2);
+		expect(names[0]).toMatch(/^Hide the message from Anonymous received \S/);
+		expect(names[0]).not.toBe(names[1]);
 	});
 
 	it('keeps the rows in the order they were read, hidden ones included', () => {
@@ -220,11 +245,16 @@ describe('hiding a message', () => {
 		expect(press(host, 'Maya R.')).toBe(hide);
 		expect(document.activeElement).toBe(hide);
 		expect(hide?.textContent).toBe('Hidden from your page');
+		expect(nameOf(hide)).toBe(
+			`Hidden from your page the message from Maya R. received ${dayOf(host, 'Maya R.')}`
+		);
 		expect(hide?.getAttribute('aria-disabled')).toBe('true');
 		expect(host.querySelector('p[role="status"]')?.textContent).toBe('Hidden from your page');
 		act(() => vi.advanceTimersByTime(CONFIRMATION_MS));
 		expect(hide?.textContent).toBe('Show again');
-		expect(hide?.getAttribute('aria-label')).toBe('Show the message from Maya R. again');
+		expect(nameOf(hide)).toBe(
+			`Show again the message from Maya R. received ${dayOf(host, 'Maya R.')}`
+		);
 		expect(document.activeElement).toBe(hide);
 		expect(host.querySelector('p[role="status"]')?.textContent).toBe('');
 	});
@@ -271,5 +301,162 @@ describe('showing a message again', () => {
 		expect(refusal?.textContent).toBe('Couldn’t show this message again. Try again.');
 		expect(press(host, 'Dev P.')?.getAttribute('aria-describedby')).toBe(refusal?.id);
 		expect(press(host, 'Dev P.')?.hasAttribute('aria-disabled')).toBe(false);
+	});
+});
+
+describe('presses on two rows at once', () => {
+	const ANA: ModeratedMessage = {
+		id: 'gift-ana',
+		name: 'Ana K.',
+		note: 'For the library fund.',
+		receivedAt: '2026-11-01T15:00:00.000Z',
+		hidden: true
+	};
+	const idle = { pending: false, outcome: null };
+
+	it('keeps a first row’s refusal while a second row’s press is out', () => {
+		const { host, rerender } = mount({ messages: [MAYA, DEV, ANA], presses: {} });
+		act(() => press(host, 'Dev P.')?.click());
+		rerender({ presses: { [DEV.id]: { pending: true, outcome: null } } });
+		act(() => press(host, 'Ana K.')?.click());
+		const refused = 'Couldn’t show this message again. Try again.';
+		rerender({
+			presses: {
+				[DEV.id]: { pending: false, outcome: { donationId: DEV.id, refused } },
+				[ANA.id]: { pending: true, outcome: null }
+			}
+		});
+		expect(row(host, 'Dev P.')?.querySelector('[role="alert"]')?.textContent).toBe(refused);
+		expect(press(host, 'Dev P.')?.hasAttribute('aria-busy')).toBe(false);
+		expect(press(host, 'Ana K.')?.getAttribute('aria-busy')).toBe('true');
+		expect(row(host, 'Ana K.')?.querySelector('[role="alert"]')).toBeNull();
+	});
+
+	it('says each row’s landing at its own press, a second landing not cutting the first short', () => {
+		vi.useFakeTimers();
+		const { host, rerender } = mount({ messages: [MAYA, DEV, ANA], presses: {} });
+		rerender({
+			messages: [MAYA, { ...DEV, hidden: false }, ANA],
+			presses: { [DEV.id]: { pending: false, outcome: { donationId: DEV.id, landed: 'shown' } } }
+		});
+		act(() => vi.advanceTimersByTime(CONFIRMATION_MS / 2));
+		rerender({
+			messages: [MAYA, { ...DEV, hidden: false }, { ...ANA, hidden: false }],
+			presses: {
+				[DEV.id]: { pending: false, outcome: { donationId: DEV.id, landed: 'shown' } },
+				[ANA.id]: { pending: false, outcome: { donationId: ANA.id, landed: 'shown' } }
+			}
+		});
+		expect(press(host, 'Dev P.')?.textContent).toBe('Showing again');
+		expect(press(host, 'Ana K.')?.textContent).toBe('Showing again');
+		act(() => vi.advanceTimersByTime(CONFIRMATION_MS / 2));
+		expect(press(host, 'Dev P.')?.textContent).toBe('Hide');
+		expect(press(host, 'Ana K.')?.textContent).toBe('Showing again');
+		act(() => vi.advanceTimersByTime(CONFIRMATION_MS / 2));
+		expect(press(host, 'Ana K.')?.textContent).toBe('Hide');
+	});
+
+	it('says a refusal in the confirm while another row’s press is out', () => {
+		const { host, rerender } = mount({ messages: [MAYA, DEV], presses: {} });
+		act(() => press(host, 'Maya R.')?.click());
+		act(() => dialogButton('Hide message')?.click());
+		rerender({ presses: { [MAYA.id]: { pending: true, outcome: null } } });
+		const refused = 'Couldn’t hide this message. Try again.';
+		rerender({
+			presses: {
+				[MAYA.id]: { pending: false, outcome: { donationId: MAYA.id, refused } },
+				[DEV.id]: { pending: true, outcome: null }
+			}
+		});
+		expect(dialog()?.querySelector('[role="alert"]')?.textContent).toBe(refused);
+		expect(dialogButton('Hide message')?.hasAttribute('aria-busy')).toBe(false);
+	});
+
+	it('reads a row the record leaves out as at rest', () => {
+		const { host } = mount({ presses: { [DEV.id]: idle } });
+		expect(press(host, 'Maya R.')?.hasAttribute('aria-busy')).toBe(false);
+		expect(press(host, 'Dev P.')?.hasAttribute('aria-busy')).toBe(false);
+	});
+});
+
+describe('older messages', () => {
+	const olderButton = (host: HTMLElement) =>
+		[...host.querySelectorAll<HTMLButtonElement>('button')].find(
+			(b) => b.textContent === 'Show older messages' || b.textContent === 'Loading'
+		) ?? null;
+	const wiring = (over: Partial<NonNullable<PublicMessagesProps['older']>> = {}) => ({
+		next: 'cursor-1',
+		status: 'idle' as const,
+		onShowOlder: () => {},
+		...over
+	});
+
+	it('says what is withheld and asks for it where the read has more', () => {
+		const onShowOlder = vi.fn();
+		const { host } = mount({ total: 612, older: wiring({ onShowOlder }) });
+		expect(host.querySelector('.adm-tablecaption')?.textContent).toBe(
+			'612 messages, newest first. Only the most recent 2 are shown.'
+		);
+		act(() => olderButton(host)?.click());
+		expect(onShowOlder).toHaveBeenCalledExactlyOnceWith('cursor-1');
+	});
+
+	it('says nothing is withheld and draws no press where the read has no more', () => {
+		const { host } = mount({ total: 612, limit: 2, older: wiring({ next: null }) });
+		expect(host.querySelector('.adm-tablecaption')?.textContent).toBe(
+			'612 messages, newest first.'
+		);
+		expect(olderButton(host)).toBeNull();
+	});
+
+	it('holds the press busy while the older ones load', () => {
+		const onShowOlder = vi.fn();
+		const { host } = mount({ total: 612, older: wiring({ status: 'loading', onShowOlder }) });
+		const more = olderButton(host);
+		expect(more?.textContent).toBe('Loading');
+		expect(more?.getAttribute('aria-busy')).toBe('true');
+		act(() => more?.click());
+		expect(onShowOlder).not.toHaveBeenCalled();
+	});
+
+	it('says a failed load beside the press, which stays to try again', () => {
+		const { host } = mount({ total: 612, older: wiring({ status: 'error' }) });
+		const more = olderButton(host);
+		const alert = host.querySelector(
+			`#${CSS.escape(more?.getAttribute('aria-describedby') ?? '')}`
+		);
+		expect(alert?.getAttribute('role')).toBe('alert');
+		expect(alert?.textContent).toBe('Couldn’t load older messages. Try again.');
+		expect(more?.textContent).toBe('Show older messages');
+	});
+
+	it('keeps the failure line rendered and empty while nothing failed', () => {
+		const { host } = mount({ total: 612, older: wiring() });
+		expect(olderButton(host)?.hasAttribute('aria-describedby')).toBe(false);
+		const alert = host.querySelector('.adm-actions [role="alert"]');
+		expect(alert?.textContent).toBe('');
+	});
+
+	it('moves focus to the first older message when the last of them arrives', () => {
+		const { host, rerender } = mount({ total: 3, older: wiring() });
+		const more = olderButton(host);
+		more?.focus();
+		act(() => more?.click());
+		rerender({ older: wiring({ status: 'loading' }) });
+		const ANA = { ...MAYA, id: 'gift-ana', name: 'Ana K.', receivedAt: '2026-10-01T15:00:00.000Z' };
+		rerender({ messages: [MAYA, DEV, ANA], older: wiring({ next: null }) });
+		expect(olderButton(host)).toBeNull();
+		expect(document.activeElement).toBe(press(host, 'Ana K.'));
+	});
+
+	it('leaves focus on the press when more older ones remain', () => {
+		const { host, rerender } = mount({ total: 9, older: wiring() });
+		const more = olderButton(host);
+		more?.focus();
+		act(() => more?.click());
+		rerender({ older: wiring({ status: 'loading' }) });
+		const ANA = { ...MAYA, id: 'gift-ana', name: 'Ana K.', receivedAt: '2026-10-01T15:00:00.000Z' };
+		rerender({ messages: [MAYA, DEV, ANA], older: wiring({ next: 'cursor-2' }) });
+		expect(document.activeElement).toBe(olderButton(host));
 	});
 });

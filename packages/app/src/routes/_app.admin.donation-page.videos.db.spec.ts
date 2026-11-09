@@ -122,7 +122,11 @@ async function storedVideos(column: 'draft' | 'published') {
  * remembering each request. `oembed` and `poster` make the answer in their place, fresh each time.
  */
 function youtube(
-	options: { title?: string; oembed?: () => Response | Error; poster?: () => Response } = {}
+	options: {
+		title?: string;
+		oembed?: () => Response | Error;
+		poster?: (url: URL) => Response | Promise<Response>;
+	} = {}
 ) {
 	const calls: URL[] = [];
 	vi.stubGlobal(
@@ -136,7 +140,7 @@ function youtube(
 				return answer;
 			}
 			if (url.hostname === 'i.ytimg.com') {
-				return options.poster?.() ?? new Response(new Uint8Array(POSTER));
+				return (await options.poster?.(url)) ?? new Response(new Uint8Array(POSTER));
 			}
 			if (url.hostname === 'www.googleapis.com') {
 				return Response.json({ items: [{ contentDetails: { duration: 'PT3M42S' } }] });
@@ -250,7 +254,19 @@ describe('Add video', () => {
 		expect((await open()).seeds.videos).toMatchObject({ count: 6, cap: 6 });
 	});
 
-	it.each([401, 403, 404])(
+	it('refuses a video whose owner turned embedding off, which oEmbed answers 401 for', async () => {
+		youtube({ oembed: () => new Response('', { status: 401 }) });
+		const images = await imageCount();
+
+		const refused = await add(`https://youtu.be/${RENT}`);
+
+		expect(refused.status).toBe(422);
+		expect(await refusedUnder(refused, 'video_link')).toEqual([VIDEO_REFUSALS.notEmbeddable]);
+		expect(await storedVideos('draft')).toEqual([]);
+		expect(await imageCount()).toBe(images);
+	});
+
+	it.each([403, 404])(
 		'refuses a video YouTube answers %i for as not found, storing nothing',
 		async (status) => {
 			youtube({ oembed: () => new Response('', { status }) });
@@ -280,6 +296,79 @@ describe('Add video', () => {
 		expect(await refusedUnder(refused, 'video_link')).toEqual([VIDEO_REFUSALS.unreachable]);
 		expect(await storedVideos('draft')).toEqual([]);
 		expect(await imageCount()).toBe(images);
+	});
+
+	// the three arms below are a press that passed the early check and then lost a race: the page
+	// moved on while YouTube was being asked, which each case does from inside the poster fetch.
+
+	it('refuses a video added by another press while YouTube was being asked, storing no second poster', async () => {
+		let pressed = false;
+		youtube({
+			poster: async () => {
+				if (!pressed) {
+					pressed = true;
+					expect((await add(`https://youtu.be/${RENT}`)).status).toBe(200);
+				}
+				return new Response(new Uint8Array(POSTER));
+			}
+		});
+		const images = await imageCount();
+
+		const refused = await add(`https://youtu.be/${RENT}`);
+
+		expect(refused.status).toBe(409);
+		expect(await refusedUnder(refused, 'video_link')).toEqual([VIDEO_REFUSALS.alreadyAdded]);
+		expect(await storedVideos('draft')).toHaveLength(1);
+		expect(await imageCount()).toBe(images + 1);
+	});
+
+	it('answers 404 and stores no poster where the page is gone by the time the video is read', async () => {
+		await open();
+		const images = await imageCount();
+		youtube({
+			poster: async () => {
+				await client.execute('delete from page');
+				return new Response(new Uint8Array(POSTER));
+			}
+		});
+
+		const refused = await add(`https://youtu.be/${RENT}`);
+
+		expect(refused.status).toBe(404);
+		expect(await imageCount()).toBe(images);
+	});
+
+	it('lets one of two presses at once land, and frees the poster of the one the draft moved past', async () => {
+		await open();
+		const images = await imageCount();
+		// each video has its own poster, and neither press writes before both have read the draft.
+		const posters = new Map([
+			[RENT, jpegHeader(1280, 720)],
+			[FOOD, jpegHeader(640, 480)]
+		]);
+		let arrived = 0;
+		let release: () => void = () => {};
+		const both = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		youtube({
+			poster: async (url) => {
+				arrived += 1;
+				if (arrived === 2) release();
+				await both;
+				const id = url.pathname.split('/')[2] ?? '';
+				return new Response(new Uint8Array(posters.get(id) ?? POSTER));
+			}
+		});
+
+		const answers = await Promise.all([
+			add(`https://youtu.be/${RENT}`),
+			add(`https://youtu.be/${FOOD}`)
+		]);
+
+		expect(answers.map((answer) => answer.status).sort()).toEqual([200, 409]);
+		expect(await storedVideos('draft')).toHaveLength(1);
+		expect(await imageCount()).toBe(images + 1);
 	});
 });
 

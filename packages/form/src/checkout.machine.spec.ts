@@ -808,6 +808,43 @@ describe('the press that spends the money', () => {
 		expect(calls.quote[0]).not.toHaveProperty('note_anonymous');
 	});
 
+	it.each([
+		['Show my note', false],
+		['Show my note and Anonymous', true]
+	])(
+		'sends no tick for a note left empty, where the donor ticked %s: the press is refused',
+		async (_, anonymous) => {
+			// a tick with no words to show is a consent to nothing. a note once opened is required, so
+			// the gift is held at the amount step instead of reaching the endpoint with the consent alone.
+			const { actor, calls } = readyToSubmit();
+			actor.send({ type: 'GO_TO_STEP', step: 'amount' });
+			actor.send({ type: 'TOGGLE_NOTE' });
+			actor.send({ type: 'SET_NOTE', note: 'for the gala' });
+			actor.send({ type: 'TOGGLE_NOTE_PUBLIC' });
+			if (anonymous) actor.send({ type: 'TOGGLE_NOTE_ANONYMOUS' });
+			actor.send({ type: 'SET_NOTE', note: '' });
+			actor.send({ type: 'CONTINUE' });
+			await settle();
+
+			expect(actor.getSnapshot().value).toBe('amount');
+			expect(calls.quote).toEqual([]);
+
+			// the same press once the note is written is live, and carries the ticks.
+			actor.send({ type: 'SET_NOTE', note: 'for the gala' });
+			actor.send({ type: 'CONTINUE' });
+			actor.send({ type: 'CONTINUE' });
+			actor.send({ type: 'SET_METHOD', method: 'card' });
+			actor.send({ type: 'SUBMIT' });
+			await settle();
+
+			expect(calls.quote[0]).toMatchObject({
+				note: 'for the gala',
+				note_public: true,
+				...(anonymous ? { note_anonymous: true } : {})
+			});
+		}
+	);
+
 	it('sends the cause the donor chose', async () => {
 		const { actor, calls } = readyToSubmit({ config: CHOICE_CONFIG });
 		actor.send({ type: 'GO_TO_STEP', step: 'amount' });

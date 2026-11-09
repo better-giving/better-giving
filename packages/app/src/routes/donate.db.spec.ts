@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
 import {
@@ -127,17 +127,20 @@ async function visit(
 	};
 }
 
-/** the page's own tree, from what the loader handed it; the cast is the props react router adds. */
-/** the page as the server draws it, inside a router: its Show more messages is a fetcher. */
+/**
+ * the page's own tree, from what the loader handed it, drawn as the server draws it: inside a
+ * router, since its Show more messages is a fetcher. the cast is the props react router adds.
+ */
 function markup(loaderData: LoaderData): string {
-	const Stub = createRoutesStub([
-		{
-			path: '/donate',
-			Component: () =>
-				createElement(donatePage.default, { loaderData } as unknown as Route.ComponentProps)
-		}
-	]);
-	return renderToStaticMarkup(createElement(Stub, { initialEntries: ['/donate'] }));
+	return inRouter('/donate', () =>
+		createElement(donatePage.default, { loaderData } as unknown as Route.ComponentProps)
+	);
+}
+
+/** what `Component` draws at `path`, rendered inside a router. */
+function inRouter(path: string, Component: () => ReactNode): string {
+	const Stub = createRoutesStub([{ path, Component }]);
+	return renderToStaticMarkup(createElement(Stub, { initialEntries: [path] }));
 }
 
 /** one area of the page, from its opening tag to the next area's, by the name the renderer stamps on it. */
@@ -804,7 +807,7 @@ describe('/donate after the editor’s presses', () => {
 		);
 		expect(response.status).toBe(200);
 		const loaderData = (await response.json()) as PreviewRoute.ComponentProps['loaderData'];
-		return renderToStaticMarkup(
+		return inRouter(`/preview/${row.id}`, () =>
 			createElement(preview.default, { loaderData } as unknown as PreviewRoute.ComponentProps)
 		);
 	}

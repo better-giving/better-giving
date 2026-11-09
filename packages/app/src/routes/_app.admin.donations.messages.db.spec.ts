@@ -64,7 +64,7 @@ const press = (cookie: string, form: 'message-hide' | 'message-show', donationId
 type Listed = {
 	messages: { id: string; name: string; note: string; receivedAt: string; hidden: boolean }[];
 	total: number;
-	limit: number;
+	next: string | null;
 };
 
 describe('GET /admin/donations/messages', () => {
@@ -99,7 +99,7 @@ describe('GET /admin/donations/messages', () => {
 				}
 			],
 			total: 2,
-			limit: 50
+			next: null
 		});
 	});
 

@@ -166,7 +166,24 @@ describe('the videos section', () => {
 		expect(link?.getAttribute('target')).toBe('_blank');
 		expect(link?.getAttribute('rel')).toBe('noopener');
 		expect(link?.textContent).toBe('Watch on YouTube (opens in a new tab)');
-		expect(document.activeElement).toBe(box);
+		// focus was held on the box, which offers nothing to press: it goes to the one way on.
+		expect(document.activeElement).toBe(link);
+	});
+
+	it('leaves focus where a reader moved it while the player loaded', () => {
+		vi.useFakeTimers();
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+		const host = mount([PANTRY, RENT]);
+		play(host);
+		const other = host.querySelector<HTMLButtonElement>('.page-video-play');
+		act(() => other?.focus());
+		act(() => {
+			vi.advanceTimersByTime(15_000);
+		});
+		expect(host.querySelector<HTMLElement>('.page-video-box')?.dataset.face).toBe('error');
+		expect(document.activeElement).toBe(other);
 	});
 
 	it('does not fail a player that loaded before the wait ran out', () => {

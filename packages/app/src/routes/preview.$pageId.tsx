@@ -1,7 +1,8 @@
 import { data } from 'react-router';
 import { DonateNotice } from '$lib/donate/notice';
-import { PageWithCard } from '$lib/donate/page-with-card';
+import { PageWithCard, type PageWithCardProps } from '$lib/donate/page-with-card';
 import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/donate/plain-page';
+import { useShowMoreMessages } from '$lib/donate/show-more';
 import { staffGate } from '$lib/server/auth/gate';
 import { readPage } from '$lib/server/pages/queries';
 import { loadPageView, refusedPage } from '$lib/server/pages/view';
@@ -25,7 +26,8 @@ import type { Route } from './+types/preview.$pageId';
 //
 // **nothing in it acts.** the renderer's preview mode lets no press through and draws the donation
 // box inert, so no gift can start here ($lib/donate/page-view.tsx). a draft the read rule refuses
-// draws the box alone, inert here too.
+// draws the box alone, inert here too. Show more messages is a read, and asks /donate's own
+// (./donate.messages.ts), so the preview lists only the messages /donate shows.
 //
 // nobody may frame it (../document-policy.ts), and no cache keeps it: a draft read under a session.
 
@@ -72,19 +74,7 @@ export function links(): Route.LinkDescriptors {
 export default function PagePreview({ loaderData }: Route.ComponentProps) {
 	switch (loaderData.kind) {
 		case 'page':
-			return (
-				<PageWithCard
-					{...loaderData.view}
-					profile={loaderData.profile}
-					// drawn as /donate draws it; a press reaches nothing here, so Show more asks for nothing.
-					donorMessages={{
-						now: loaderData.now,
-						status: 'idle',
-						arrived: null,
-						onShowMore: () => {}
-					}}
-				/>
-			);
+			return <CardPage {...loaderData.view} profile={loaderData.profile} now={loaderData.now} />;
 		case 'plain':
 			return (
 				<div inert>
@@ -98,4 +88,10 @@ export default function PagePreview({ loaderData }: Route.ComponentProps) {
 				</PlainPage>
 			);
 	}
+}
+
+/** drawn as /donate draws it, and Show more asks /donate's own read for the next six. */
+function CardPage({ now, ...page }: PageWithCardProps & { readonly now: string }) {
+	const donorMessages = useShowMoreMessages(now);
+	return <PageWithCard {...page} donorMessages={donorMessages} />;
 }

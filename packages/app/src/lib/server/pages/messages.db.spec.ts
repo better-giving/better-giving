@@ -113,6 +113,22 @@ describe('readShownMessages()', () => {
 		expect((await readModeratedMessages(db)).total).toBe(0);
 	});
 
+	it('puts a gift back on the page when the dispute over it is won', async () => {
+		const { txn } = await shownGift();
+		await dispute(db, txn, null, 'won');
+
+		expect(await names()).toEqual(['Thank you']);
+		expect((await readModeratedMessages(db)).total).toBe(1);
+	});
+
+	it('keeps a gift off the page when the dispute over it is lost', async () => {
+		const { txn } = await shownGift();
+		await dispute(db, txn, null, 'lost');
+
+		expect((await readShownMessages(db, null)).total).toBe(0);
+		expect((await readModeratedMessages(db)).total).toBe(0);
+	});
+
 	it('takes a gift off while a dispute over part of it is open', async () => {
 		const { txn } = await shownGift({ amountMinor: 5_000 });
 		await dispute(db, txn, 1_000);
@@ -189,6 +205,37 @@ describe('readShownMessages()', () => {
 		expect(three).toMatchObject({ total: 14, next: null });
 	});
 
+	it('pages through gifts tied on one instant every message once, older ones after', async () => {
+		const at = new Date('2026-09-10T11:00:00.000Z');
+		for (let i = 1; i <= 14; i += 1) await shownGift({ note: `tied ${i}`, receivedAt: at });
+		await shownGift({ note: 'older', receivedAt: new Date('2026-09-01T11:00:00.000Z') });
+
+		const one = await readShownMessages(db, null);
+		const two = await readShownMessages(db, parseMessageCursor(one.next ?? ''));
+		const three = await readShownMessages(db, parseMessageCursor(two.next ?? ''));
+		const notes = [one, two, three].flatMap((page) => page.messages.map((m) => m.note));
+
+		expect(notes).toHaveLength(15);
+		expect(new Set(notes).size).toBe(15);
+		expect(notes.at(-1)).toBe('older');
+		expect(three.next).toBeNull();
+	});
+
+	it('hands out a next that names no gift', async () => {
+		const ids: string[] = [];
+		const at = new Date('2026-09-10T11:00:00.000Z');
+		for (let i = 1; i <= 7; i += 1) ids.push((await shownGift({ receivedAt: at })).donationId);
+
+		const { next } = await readShownMessages(db, null);
+
+		expect(next).not.toBeNull();
+		const decoded = Buffer.from(next ?? '', 'base64url').toString();
+		for (const id of ids) {
+			expect(next).not.toContain(id);
+			expect(decoded).not.toContain(id);
+		}
+	});
+
 	it('has no next page where exactly six are shown', async () => {
 		for (let day = 1; day <= 6; day += 1) {
 			await shownGift({ receivedAt: new Date(Date.UTC(2026, 8, day)) });
@@ -203,9 +250,32 @@ describe('parseMessageCursor()', () => {
 		'',
 		'not a cursor',
 		Buffer.from('abc.').toString('base64url'),
-		Buffer.from('.id').toString('base64url')
+		Buffer.from('.id').toString('base64url'),
+		Buffer.from('1789038000000.0').toString('base64url'),
+		Buffer.from('1789038000000.42a584bd-f5ca-4cd8-ab19-86068180e4bf').toString('base64url')
 	])('refuses %j', (text) => {
 		expect(parseMessageCursor(text)).toBeNull();
+	});
+});
+
+describe('readModeratedMessages()', () => {
+	it('pages past the newest fifty, hidden ones in their place, every message once', async () => {
+		const at = new Date('2026-09-10T11:00:00.000Z');
+		const { donationId: hidden } = await shownGift({ note: 'tied 0', receivedAt: at });
+		await setNoteHidden(db, hidden, true, new Date());
+		for (let i = 1; i <= 50; i += 1) await shownGift({ note: `tied ${i}`, receivedAt: at });
+		await shownGift({ note: 'older', receivedAt: new Date('2026-09-01T11:00:00.000Z') });
+
+		const one = await readModeratedMessages(db);
+		expect(one.messages).toHaveLength(50);
+		expect(one.total).toBe(52);
+		const two = await readModeratedMessages(db, parseMessageCursor(one.next ?? ''));
+		const notes = [...one.messages, ...two.messages].map((m) => m.note);
+
+		expect(new Set(notes).size).toBe(52);
+		expect(notes.at(-1)).toBe('older');
+		expect(two).toMatchObject({ total: 52, next: null });
+		expect([...one.messages, ...two.messages].find((m) => m.id === hidden)?.hidden).toBe(true);
 	});
 });
 
@@ -226,7 +296,8 @@ describe('hiding a message', () => {
 					hidden: true
 				}
 			],
-			total: 1
+			total: 1,
+			next: null
 		});
 	});
 

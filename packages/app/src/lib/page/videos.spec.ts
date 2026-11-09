@@ -19,6 +19,8 @@ describe('youTubeVideoId()', () => {
 		`https://youtube.com/shorts/${ID}?feature=share`,
 		`https://www.youtube.com/embed/${ID}`,
 		`https://m.youtube.com/embed/${ID}?start=3`,
+		`https://www.youtube.com/live/${ID}`,
+		`https://youtube.com/live/${ID}?si=abc`,
 		`  www.youtube.com/watch?v=${ID}  `,
 		`youtu.be/${ID}`
 	])('reads the video id from %s', (link) => {

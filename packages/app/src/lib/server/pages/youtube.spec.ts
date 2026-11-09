@@ -102,7 +102,14 @@ describe('readYouTubeVideo()', () => {
 		expect(calls.map(({ url }) => addressed(url))).toEqual(['oembed', 'maxres', 'hq']);
 	});
 
-	it.each([400, 401, 403, 404])(
+	it('finds the video not embeddable where oEmbed answers 401, and asks for no poster', async () => {
+		const calls = youtube({ oembed: status(401) });
+
+		expect(await readYouTubeVideo(ID, KEY)).toEqual({ ok: false, reason: 'not_embeddable' });
+		expect(calls).toHaveLength(1);
+	});
+
+	it.each([400, 403, 404])(
 		'finds no public video where oEmbed answers %i, and asks for no poster',
 		async (code) => {
 			const calls = youtube({ oembed: status(code) });
@@ -174,6 +181,23 @@ describe('readYouTubeVideo()', () => {
 			youtube({ oembed: oembed(), maxres: jpeg(), data });
 
 			expect(await readYouTubeVideo(ID, KEY)).toMatchObject({ ok: true, durationSeconds: null });
+		});
+
+		it.each<[string, Answer]>([
+			[
+				'the API cannot be reached',
+				new TypeError(`fetch failed for https://www.googleapis.com/youtube/v3/videos?key=${KEY}`)
+			],
+			['the key is refused', status(403)]
+		])('logs nothing of the key where %s', async (_, data) => {
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			youtube({ oembed: oembed(), maxres: jpeg(), data });
+
+			await readYouTubeVideo(ID, KEY);
+
+			// the warning is written, so an empty log would be a broken spy rather than a safe one.
+			expect(warn).toHaveBeenCalledTimes(1);
+			expect(JSON.stringify(warn.mock.calls)).not.toContain(KEY);
 		});
 
 		it('is not asked for where the key is blank', async () => {
