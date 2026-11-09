@@ -381,6 +381,7 @@ function ProfileLayout(props: PageViewProps & { readonly profile: DonateProfile 
 			<div className="page-profile-who" {...area('who')}>
 				<div className="page-profile-id">
 					<ProfileMark
+						name={profile.name}
 						logo={profile.logo}
 						wide={profile.logo !== null && isWordmark(profile.logo)}
 						letters={initials(profile.name)}

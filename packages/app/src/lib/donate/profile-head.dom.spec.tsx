@@ -155,12 +155,10 @@ describe('the banner', () => {
 });
 
 describe('the logo', () => {
-	// the name stands beside the logo as the h1 at every shape, so the logo, as the masthead's does
-	// beside the name, says nothing of its own.
-	it('draws the organisation’s logo beside its name, saying nothing of its own', () => {
+	it('names the organisation’s logo', () => {
 		const logo = draw(FULL).querySelector('.page-profile-logo');
 		expect(logo?.tagName).toBe('IMG');
-		expect(logo?.getAttribute('alt')).toBe('');
+		expect(logo?.getAttribute('alt')).toBe('Harbor Light logo');
 		expect(logo?.getAttribute('src')).toBe('/image/logo-1');
 		expect(logo?.hasAttribute('data-wide')).toBe(false);
 	});
@@ -176,7 +174,7 @@ describe('the logo', () => {
 				'.page-profile-logo'
 			);
 			expect(logo?.hasAttribute('data-wide')).toBe(wide);
-			expect(logo?.getAttribute('alt')).toBe('');
+			expect(logo?.getAttribute('alt')).toBe('Harbor Light logo');
 		}
 	);
 

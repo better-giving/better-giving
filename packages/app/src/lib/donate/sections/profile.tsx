@@ -20,14 +20,17 @@ export function ProfileBanner({ banner }: { readonly banner: DonateProfile['bann
 }
 
 /**
- * the logo or, with none, the badge of the name's initials; either stands beside the name, which is
- * always drawn, and says nothing of its own. with no letter in the name to make a badge, nothing.
+ * the logo, named for the organisation (the build spec's "{name} logo"); with none, the badge of the
+ * name's initials, which says nothing of its own beside the name; with no letter in the name to make
+ * a badge, nothing.
  */
 export function ProfileMark({
+	name,
 	logo,
 	wide,
 	letters
 }: {
+	readonly name: string;
 	readonly logo: DonateProfile['logo'];
 	/** the logo is a wordmark, drawn whole at its own shape rather than in the square. */
 	readonly wide: boolean;
@@ -39,7 +42,7 @@ export function ProfileMark({
 			<img
 				className="page-profile-logo"
 				src={logo.src}
-				alt=""
+				alt={`${name} logo`}
 				width={logo.width}
 				height={logo.height}
 				data-wide={wide ? '' : undefined}
