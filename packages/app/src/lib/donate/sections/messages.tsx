@@ -7,9 +7,10 @@ import { messageAge } from '../message-age';
 // with no message the section is not drawn at all: nothing stands where it would.
 //
 // the route owns the request. a press hands `onShowMore` the cursor the last page ended on, and the
-// route's answer arrives as `arrived` (the fetcher's data) while `status` says how the request is
-// going. the list keeps what it has shown and adds an answer only while a press is waiting on one,
-// so the same answer handed back again — a revalidation — adds nothing twice.
+// route's answer arrives as `arrived`, state `useShowMoreMessages` (../show-more.ts) sets once per
+// answer, while `status` says how the request is going. the list keeps what it has shown and adds an
+// answer only while a press is waiting on one, so the same answer handed back on a later render adds
+// nothing twice.
 //
 // while a press is out the button holds its focus, busy, and says "Loading"; the band's status line is
 // the live region that says the new count, or that a press failed, and the button stands outside it, so

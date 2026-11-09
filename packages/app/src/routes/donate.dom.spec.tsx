@@ -1,13 +1,14 @@
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, data, useLoaderData } from 'react-router';
+import { createRoutesStub, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { DonorMessagesWiring } from '$lib/donate/sections/messages';
 import DonationPage from './donate';
 
 // /donate's Show more messages as the route wires it: the cursor a press asks
-// ./donate.messages.ts for, and how that fetcher's state and answer reach the section as `status`
-// and `arrived`. the page itself is a stand-in that draws the wiring it was handed, so the card and
+// ./donate.messages.ts for, and how that request's state and answer reach the section as `status`
+// and `arrived`, a failure among them, which stays on the section and never reaches the page's
+// error boundary. the page itself is a stand-in that draws the wiring it was handed, so the card and
 // its checkout stay out of it; what the section does with the wiring is
 // $lib/donate/sections/messages.dom.spec.tsx's, and what the read answers is ./donate.db.spec.ts's.
 
@@ -44,28 +45,39 @@ const PAGE = {
 	next: null
 } as const;
 
-/** what the show-more read does with the next ask: answer it under a status, or never settle. */
-type Answer = { readonly body: unknown; readonly status: number } | 'hang';
+/**
+ * what the show-more read does with the next ask: answer it under a status, fail as an offline
+ * browser's `fetch` does, or never settle.
+ */
+type Answer = { readonly body: unknown; readonly status: number } | 'offline' | 'hang';
 
 let asked: string[];
 let answers: Answer[];
+
+const never = () => new Promise<never>(() => {});
+
+/** `fetch` as the browser runs it against ./donate.messages.ts, a resource route answering JSON. */
+async function showMore(input: RequestInfo | URL): Promise<Response> {
+	const url = new URL(String(input), 'http://localhost');
+	asked.push(`${url.pathname}${url.search}`);
+	const next = answers.shift();
+	if (next === undefined) throw new Error('show more was asked with no answer ready');
+	if (next === 'hang') return never();
+	if (next === 'offline') throw new TypeError('Failed to fetch');
+	return typeof next.body === 'string'
+		? new Response(next.body, { status: next.status, headers: { 'content-type': 'text/plain' } })
+		: Response.json(next.body, { status: next.status });
+}
 
 beforeEach(() => {
 	wired = undefined;
 	asked = [];
 	answers = [];
+	vi.stubGlobal('fetch', vi.fn(showMore));
+	onTestFinished(() => {
+		vi.unstubAllGlobals();
+	});
 });
-
-const never = () => new Promise<never>(() => {});
-
-function showMore({ request }: { request: Request }) {
-	const url = new URL(request.url);
-	asked.push(`${url.pathname}${url.search}`);
-	const next = answers.shift();
-	if (next === undefined) throw new Error('show more was asked with no answer ready');
-	if (next === 'hang') return never();
-	return data(next.body, { status: next.status });
-}
 
 function Page() {
 	return createElement(DonationPage as never, {
@@ -79,8 +91,13 @@ const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)))
 
 async function screen() {
 	const Stub = createRoutesStub([
-		{ path: '/donate', loader: () => LOADED, HydrateFallback: () => null, Component: Page },
-		{ path: '/donate/messages', loader: showMore }
+		{
+			path: '/donate',
+			loader: () => LOADED,
+			HydrateFallback: () => null,
+			Component: Page,
+			ErrorBoundary: () => createElement('p', { id: 'boundary' }, 'the page failed')
+		}
 	]);
 	const host = document.createElement('div');
 	document.body.appendChild(host);
@@ -95,7 +112,8 @@ async function screen() {
 		press: async () => {
 			await act(() => host.querySelector('button')?.click());
 			await settle();
-		}
+		},
+		boundary: () => host.querySelector('#boundary')
 	};
 }
 
@@ -143,12 +161,32 @@ describe('Show more messages on /donate', () => {
 		expect(current()).toMatchObject({ status: 'error', arrived: null });
 	});
 
-	it('says error when the address is over the donor page limit', async () => {
-		const { press } = await screen();
-		answers.push({ body: { kind: 'refused' }, status: 429 });
+	it.each([
+		['the address is over the donor page limit', { body: { kind: 'refused' }, status: 429 }],
+		['the read failed', { body: { kind: 'refused' }, status: 500 }],
+		['the read threw', { body: 'Unexpected Server Error', status: 500 }],
+		['the browser is offline', 'offline']
+	] as const)('says error in place when %s', async (_, answer) => {
+		const { press, boundary } = await screen();
+		answers.push(answer);
 
 		await press();
 
-		expect(current().status).toBe('error');
+		expect(current()).toMatchObject({ status: 'error', arrived: null });
+		expect(boundary()).toBeNull();
+	});
+
+	it('asks again on the next press after a failed one', async () => {
+		const { press, boundary } = await screen();
+		answers.push('offline', { body: PAGE, status: 200 });
+
+		await press();
+		await press();
+
+		expect(asked).toHaveLength(2);
+		expect(asked[1]).toBe(asked[0]);
+		expect(current().status).toBe('idle');
+		expect(current().arrived).toMatchObject({ messages: PAGE.messages });
+		expect(boundary()).toBeNull();
 	});
 });

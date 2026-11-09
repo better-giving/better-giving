@@ -6,7 +6,7 @@ import type { Route } from './+types/donate.messages';
 
 // Show more messages on /donate: the next six donors' messages after `?after=`, the `next` the page
 // or the last press was handed (`DonateProfile.messages` in $lib/donate/profile.ts). a `loader` and
-// no component, asked by a fetcher.
+// no component, asked by a plain `fetch` ($lib/donate/show-more.ts), which reads its JSON.
 //
 // nested under ./donate.tsx by its name, so that page's `meterDonorPage` charges every press to the
 // same bucket a view of the page spends. `no-store` like the page: a list a hide or a refund changes
@@ -21,8 +21,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	if (after !== null && cursor === null) {
 		return data({ kind: 'refused' } as const, { status: 400, headers: NO_STORE });
 	}
-	// a failed read answers as a refusal rather than a throw: a fetcher's thrown load is drawn by the
-	// page's error boundary in place of the whole page, a gift in progress with it.
+	// a failed read answers as a refusal rather than a throw, so its body is this route's JSON and
+	// not the runtime's plain-text 500.
 	let page: Awaited<ReturnType<typeof readShownMessages>>;
 	try {
 		page = await readShownMessages(context.get(database), cursor);

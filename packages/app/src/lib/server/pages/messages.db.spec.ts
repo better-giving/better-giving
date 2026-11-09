@@ -189,7 +189,9 @@ describe('readShownMessages()', () => {
 
 	it('keeps a shown note’s name when the donor’s contact name changes later', async () => {
 		await shownGift({ firstName: 'Maya', lastName: 'Rivera' });
-		await db.update(contact).set({ firstName: 'Jordan', lastName: 'Lee', displayName: 'Jordan Lee' });
+		await db
+			.update(contact)
+			.set({ firstName: 'Jordan', lastName: 'Lee', displayName: 'Jordan Lee' });
 
 		expect((await readShownMessages(db, null)).messages[0]?.name).toBe('Maya R.');
 		expect((await readModeratedMessages(db)).messages[0]?.name).toBe('Maya R.');
@@ -314,7 +316,8 @@ describe('readModeratedMessages()', () => {
 	it('resumes past the row a page ended on, whatever left or joined the list between loads', async () => {
 		const at = new Date('2026-09-10T11:00:00.000Z');
 		const tied: { txn: string; donationId: string }[] = [];
-		for (let i = 1; i <= 52; i += 1) tied.push(await shownGift({ note: `tied ${i}`, receivedAt: at }));
+		for (let i = 1; i <= 52; i += 1)
+			tied.push(await shownGift({ note: `tied ${i}`, receivedAt: at }));
 
 		const one = await readModeratedMessages(db);
 		const leaving = one.messages[10]?.id;

@@ -1,4 +1,18 @@
-import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, notExists, or, type SQL, sql } from 'drizzle-orm';
+import {
+	and,
+	desc,
+	eq,
+	gt,
+	gte,
+	inArray,
+	isNull,
+	lt,
+	lte,
+	notExists,
+	or,
+	type SQL,
+	sql
+} from 'drizzle-orm';
 import { type DonorMessages, MESSAGES_PER_PAGE, type NoteStanding } from '../../donate/messages';
 import type { Db } from '../db/client';
 import { dispute, donation, payment } from '../db/schema';
@@ -173,10 +187,7 @@ const keyOf = (row: { readonly receivedAt: Date; readonly id: string }): Moderat
 /** the rows listed after `key`, newest first. */
 function olderThan(key: ModeratedCursor): SQL | undefined {
 	const at = new Date(key.receivedAt);
-	return or(
-		lt(donation.receivedAt, at),
-		and(eq(donation.receivedAt, at), lt(donation.id, key.id))
-	);
+	return or(lt(donation.receivedAt, at), and(eq(donation.receivedAt, at), lt(donation.id, key.id)));
 }
 
 /** `key`'s own row and the rows listed before it, newest first. */

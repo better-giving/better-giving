@@ -86,6 +86,16 @@
 		transform: none;
 	}
 
+	/* a press whose face is, for a moment, the momentary words of what it just did
+	   (packages/app/src/lib/admin/messages/public-messages.tsx): held closed so focus stays on it,
+	   but drawn as those words on one line rather than as a closed press: on the closed fill the
+	   words read as a chip, and wrapped at the column's width they read as two lines of a label. */
+	.adm-btn.adm-saidpress[aria-disabled='true'] {
+		background-color: transparent;
+		cursor: default;
+		white-space: nowrap;
+	}
+
 	/* a quiet press that opened something is held at the pointed-at fill for as long as what it
 	   opened stands open: the two say the same thing — this is the control being acted through —
 	   and a press with no open state reads exactly as it did at rest while its panel is on the
@@ -4227,14 +4237,17 @@
 		color: var(--admin-ink-2);
 	}
 
-	/* the words a confirm asks about, quoted inside the card above its question: an edge on the
-	   card's own surface rather than a well, so the quiet line under the words stands on step 1. */
+	/* the words a confirm asks about, quoted inside the card above its question: a filled panel with
+	   no edge. the frame (https://doop-justin.fly.dev/c/nbLLq_xn6I, gSY9BfLEKp) fills it with
+	   `--panel`, step 3, but the quiet line under the words is step 11, which stands on step 1 or 2
+	   and never on step 3 — so the fill is step 2, the page's own ground, until the registry names a
+	   panel step that quiet ink may stand on. */
 	.adm-quote {
 		display: grid;
 		gap: var(--admin-space-1);
 		margin: 0;
 		padding: var(--admin-space-5) var(--admin-space-6);
-		border: var(--admin-rule);
+		background: var(--admin-page);
 		border-radius: var(--admin-radius);
 		overflow-wrap: anywhere;
 	}
@@ -4953,6 +4966,13 @@
 	   it speaks, and while empty the body's gap above it is taken back, so it holds no room. */
 	.adm-dialog__refusal:empty {
 		margin-block-start: calc(-1 * var(--admin-space-5));
+	}
+
+	/* a refusal said in the card's quiet ink rather than the attention hue, its circle-alert mark
+	   carrying what it is: the hide confirm (packages/app/src/lib/admin/messages/public-messages.tsx),
+	   as its frame draws it (https://doop-justin.fly.dev/c/nbLLq_xn6I, gSY9BfLEKp). */
+	.adm-dialog__refusal--ink > .adm-momentary {
+		color: var(--admin-ink-2);
 	}
 
 	/* a box with its unit or its address in front stated on the box itself: the box is the field,

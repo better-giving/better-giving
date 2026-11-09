@@ -67,7 +67,7 @@ function operatorPolicy(nonce: string): string[] {
 
 /**
  * the donor page: the operator base plus what the card, turnstile and the processors' client
- * halves load. the list is README.md's "If your site sends a Content-Security-Policy", the block an
+ * halves load, and the page's video player. the card's list is README.md's "If your site sends a Content-Security-Policy", the block an
  * integrator pastes, with this deployment's own origin as `'self'`; that section argues each line
  * and names the vendor pages it follows. the sources per vendor:
  *
@@ -125,7 +125,12 @@ function donorPolicy(nonce: string, paypal: PaypalOrigins): string[] {
 			'https://history.paypal.com',
 			'https://account.venmo.com',
 			'https://secure.dafpay.com',
-			'https://challenges.cloudflare.com'
+			'https://challenges.cloudflare.com',
+			// the page's own, not the card's, so not in the integrator's block: the player a donor's press
+			// on Play mounts (`youTubeEmbedUrl` in $lib/page/videos.ts). a frame source loads nothing
+			// by itself, so the browser still asks youtube for nothing until that press; the posters
+			// are this deployment's own images, and no other directive names youtube.
+			'https://www.youtube-nocookie.com'
 		].join(' '),
 		[
 			'img-src',

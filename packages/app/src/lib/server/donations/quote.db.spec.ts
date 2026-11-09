@@ -648,19 +648,26 @@ describe('mintQuote() — a note the donor asked to show on the page', () => {
 	it.each([
 		['a one-time gift', 'monthly', 'one_time'],
 		['a repeating gift', 'one_time', 'monthly']
-	])('signs %s with the name typed on it, not the one its contact holds', async (_, before, now) => {
-		const first = await mint(deps(), { frequency: before, firstName: 'Ben', lastName: 'Adeyemi' });
-		expect(first.ok).toBe(true);
-		expect((await mint(deps(), { frequency: now, note: 'Hi', note_public: true })).ok).toBe(true);
+	])(
+		'signs %s with the name typed on it, not the one its contact holds',
+		async (_, before, now) => {
+			const first = await mint(deps(), {
+				frequency: before,
+				firstName: 'Ben',
+				lastName: 'Adeyemi'
+			});
+			expect(first.ok).toBe(true);
+			expect((await mint(deps(), { frequency: now, note: 'Hi', note_public: true })).ok).toBe(true);
 
-		const rows = await db
-			.select({ contactId: donation.contactId, noteShownName: donation.noteShownName })
-			.from(donation)
-			.where(isNotNull(donation.note));
-		const filedUnder = await db.selectDistinct({ id: donation.contactId }).from(donation);
-		expect(filedUnder).toHaveLength(1);
-		expect(rows).toEqual([{ contactId: filedUnder[0]?.id, noteShownName: 'Ada O.' }]);
-	});
+			const rows = await db
+				.select({ contactId: donation.contactId, noteShownName: donation.noteShownName })
+				.from(donation)
+				.where(isNotNull(donation.note));
+			const filedUnder = await db.selectDistinct({ id: donation.contactId }).from(donation);
+			expect(filedUnder).toHaveLength(1);
+			expect(rows).toEqual([{ contactId: filedUnder[0]?.id, noteShownName: 'Ada O.' }]);
+		}
+	);
 
 	it('refuses a box that is not a boolean', async () => {
 		const result = await mint(deps(), { note: 'Keep it up', note_public: 'on' });

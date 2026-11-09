@@ -6,9 +6,9 @@ import type { Route } from './+types/_app.admin.donations.messages.older';
 
 // Show older messages on /admin/donations/messages: the list past its first page, down through
 // `?pages=` pages after `?after=`, the `next` the screen's first page ended on
-// (`readOlderModeratedPages` in $lib/server/pages/moderated-pages.ts). a `loader` and no component, asked by the screen's
-// fetcher, which asks for every older page it holds at once so the re-read after a press redraws
-// them all (./_app.admin.donations.messages.tsx).
+// (`readOlderModeratedPages` in $lib/server/pages/moderated-pages.ts). a `loader` and no
+// component, asked by the screen's fetcher, which asks for every older page it holds at once so
+// the re-read after a press redraws them all (./_app.admin.donations.messages.tsx).
 //
 // beneath ./_app.tsx, so the session gate is that layout's; staff and members read it alike, as they
 // do the screen. every failure answers rather than throws: a fetcher's thrown load is drawn by the

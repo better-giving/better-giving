@@ -527,7 +527,11 @@ function noteOnPageColumns(
 		return { notePublic: false, noteAnonymous: false, noteShownName: null };
 	}
 	const anonymous = onPage === 'anonymous';
-	return { notePublic: true, noteAnonymous: anonymous, noteShownName: shownName(typedName, anonymous) };
+	return {
+		notePublic: true,
+		noteAnonymous: anonymous,
+		noteShownName: shownName(typedName, anonymous)
+	};
 }
 
 /** the write itself, once the gift is known to add up. */

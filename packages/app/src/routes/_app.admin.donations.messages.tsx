@@ -206,7 +206,8 @@ function useOlderMessages(first: readonly Row[], firstNext: string | null) {
 			: fetcher.state === 'idle' && fetcher.data?.kind === 'refused'
 				? 'error'
 				: 'idle';
-	// a row on both, after the first page shifted under a refund, is listed once, where it is newest.
+	// a row on both, where the list changed between the first page's read and the older one's, is
+	// listed once, where it is newest.
 	const listed = new Set(first.map((m) => m.id));
 	return {
 		messages:

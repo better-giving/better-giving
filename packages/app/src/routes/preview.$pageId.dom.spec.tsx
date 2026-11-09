@@ -44,10 +44,25 @@ const PAGE = {
 } as const;
 
 let asked: string[];
+/** how the read answers the next ask: with the page, or failing as an offline browser's `fetch` does. */
+let answers: ('page' | 'offline')[];
 
 beforeEach(() => {
 	wired = undefined;
 	asked = [];
+	answers = [];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL) => {
+			const url = new URL(String(input), 'http://localhost');
+			asked.push(`${url.pathname}${url.search}`);
+			if (answers.shift() === 'offline') throw new TypeError('Failed to fetch');
+			return Response.json(PAGE);
+		})
+	);
+	onTestFinished(() => {
+		vi.unstubAllGlobals();
+	});
 });
 
 function Page() {
@@ -60,38 +75,55 @@ function Page() {
 
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
+async function preview() {
+	const Stub = createRoutesStub([
+		{
+			path: '/preview/:pageId',
+			loader: () => LOADED,
+			HydrateFallback: () => null,
+			Component: Page,
+			ErrorBoundary: () => createElement('p', { id: 'boundary' }, 'the preview failed')
+		}
+	]);
+	const host = document.createElement('div');
+	document.body.appendChild(host);
+	const root = createRoot(host);
+	act(() => root.render(createElement(Stub, { initialEntries: [PREVIEW] })));
+	onTestFinished(() => {
+		act(() => root.unmount());
+		host.remove();
+	});
+	await settle();
+	return {
+		press: async () => {
+			await act(() => host.querySelector('button')?.click());
+			await settle();
+		},
+		boundary: () => host.querySelector('#boundary')
+	};
+}
+
 describe('Show more messages in the preview', () => {
 	it('asks the read /donate asks, and hands its page to the section', async () => {
-		const Stub = createRoutesStub([
-			{
-				path: '/preview/:pageId',
-				loader: () => LOADED,
-				HydrateFallback: () => null,
-				Component: Page
-			},
-			{
-				path: '/donate/messages',
-				loader: ({ request }) => {
-					const url = new URL(request.url);
-					asked.push(`${url.pathname}${url.search}`);
-					return PAGE;
-				}
-			}
-		]);
-		const host = document.createElement('div');
-		document.body.appendChild(host);
-		const root = createRoot(host);
-		act(() => root.render(createElement(Stub, { initialEntries: [PREVIEW] })));
-		onTestFinished(() => {
-			act(() => root.unmount());
-			host.remove();
-		});
-		await settle();
+		const { press } = await preview();
+		answers.push('page');
 
-		await act(() => host.querySelector('button')?.click());
-		await settle();
+		await press();
 
 		expect(asked).toEqual([`/donate/messages?after=${encodeURIComponent('cursor/after+6')}`]);
 		expect(wired).toMatchObject({ now: NOW, status: 'idle', arrived: PAGE });
+	});
+
+	it('says error in place when the read never arrives, and asks again on the next press', async () => {
+		const { press, boundary } = await preview();
+		answers.push('offline', 'page');
+
+		await press();
+		expect(wired).toMatchObject({ status: 'error', arrived: null });
+		expect(boundary()).toBeNull();
+
+		await press();
+		expect(asked).toHaveLength(2);
+		expect(wired).toMatchObject({ status: 'idle', arrived: PAGE });
 	});
 });

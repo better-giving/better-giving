@@ -836,10 +836,21 @@ describe('the two ticks a step ends on', () => {
 	type Tick = {
 		readonly words: HTMLElement;
 		readonly field: HTMLElement;
+		/** the words of the last consent row under the field, where the body holds any. */
+		readonly lastConsent: HTMLElement | null;
 	};
 
-	/** one disclosure, as ../views.ts builds it: the tick, and the body it reveals. */
-	function disclosure(kind: string, says: string, open: boolean): Tick & { node: HTMLElement } {
+	/**
+	 * one disclosure, as ../views.ts builds it: the tick, and the body it reveals — with the note's
+	 * consent rows under its field when `consent` names them, as
+	 * packages/app/src/lib/donate/steps/amount.tsx draws them.
+	 */
+	function disclosure(
+		kind: string,
+		says: string,
+		open: boolean,
+		consent: readonly string[] = []
+	): Tick & { node: HTMLElement } {
 		const node = document.createElement('div');
 		node.className = `disclosure ${kind}`;
 		const row = document.createElement('label');
@@ -858,10 +869,27 @@ describe('the two ticks a step ends on', () => {
 		const field = document.createElement('textarea');
 		field.rows = 3;
 		inner.appendChild(field);
+		let lastConsent: HTMLElement | null = null;
+		if (consent.length > 0) {
+			const rows = document.createElement('div');
+			rows.className = 'consent';
+			consent.forEach((said, at) => {
+				const asked = document.createElement('label');
+				asked.className = at === 0 ? 'check-row' : 'check-row sub';
+				const box = document.createElement('input');
+				box.type = 'checkbox';
+				lastConsent = document.createElement('span');
+				lastConsent.textContent = said;
+				asked.appendChild(box);
+				asked.appendChild(lastConsent);
+				rows.appendChild(asked);
+			});
+			inner.appendChild(rows);
+		}
 		body.appendChild(inner);
 		node.appendChild(row);
 		node.appendChild(body);
-		return { node, words, field };
+		return { node, words, field, lastConsent };
 	}
 
 	/**
@@ -876,7 +904,10 @@ describe('the two ticks a step ends on', () => {
 	 * is a grid row drawn in ./parts.css and the field inside it is what this measures from, so a
 	 * card holding only ./layout.css would be measured down a stray line-box of its own.
 	 */
-	function tail(opened: 'none' | 'note'): {
+	function tail(
+		opened: 'none' | 'note',
+		consent: readonly string[] = []
+	): {
 		before: HTMLElement;
 		after: HTMLElement;
 		note: Tick;
@@ -895,7 +926,7 @@ describe('the two ticks a step ends on', () => {
 		before.style.cssText = 'block-size: 40px';
 		const after = document.createElement('div');
 		after.style.cssText = 'block-size: 44px';
-		const note = disclosure('note', 'Add a note', opened === 'note');
+		const note = disclosure('note', 'Add a note', opened === 'note', consent);
 		const tribute = disclosure('tribute', 'Dedicate this gift', false);
 		node.appendChild(before);
 		node.appendChild(note.node);
@@ -946,6 +977,36 @@ describe('the two ticks a step ends on', () => {
 		const { before, note, tribute } = tail('note');
 
 		expect(between(note.field, tribute.words)).toBeCloseTo(between(before, note.words), 0);
+	});
+
+	// an opened note that ends on its consent ticks ends on a row's slack rather than on a field's
+	// edge: the step put back under a field, stacked on that slack, stood the next ask further from
+	// the last consent tick than from the field it would otherwise follow.
+	it.each([
+		['the consent to show the note', ['Show my note on Harbor Light’s page']],
+		[
+			'the consent and its anonymous row',
+			['Show my note on Harbor Light’s page', 'Show it as Anonymous']
+		]
+	])('stands the next ask off %s no further than off an opened field', (_, consent) => {
+		const { note, tribute } = tail('note', consent);
+		const { note: plain, tribute: plainTribute } = tail('note');
+		if (note.lastConsent === null) throw new Error('the note drew no consent row');
+
+		expect(between(note.lastConsent, tribute.words)).toBeLessThanOrEqual(
+			between(plain.field, plainTribute.words)
+		);
+	});
+
+	// and still a step apart: the next ask is not one more consent row.
+	it('keeps the next ask further off the last consent tick than the closed pair stand', () => {
+		const { note, tribute } = tail('note', ['Show my note on Harbor Light’s page']);
+		const { note: closed, tribute: closedTribute } = tail('none');
+		if (note.lastConsent === null) throw new Error('the note drew no consent row');
+
+		expect(between(note.lastConsent, tribute.words)).toBeGreaterThan(
+			between(closed.words, closedTribute.words)
+		);
 	});
 });
 

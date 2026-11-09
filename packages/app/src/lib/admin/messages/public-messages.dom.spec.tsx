@@ -32,7 +32,6 @@ function mount(over: Partial<PublicMessagesProps> = {}) {
 	const props: PublicMessagesProps = {
 		messages: [MAYA, DEV],
 		total: 2,
-		limit: 500,
 		pending: null,
 		outcome: null,
 		onHide: () => {},
@@ -83,7 +82,7 @@ describe('public messages, listed', () => {
 		expect(host.querySelector('h1')?.textContent).toBe('Public messages');
 		expect(host.querySelector('table')).toBeNull();
 		expect(host.querySelector('.adm-empty')?.textContent).toBe(
-			'No donor has chosen to show a note yet. A note appears here when a donor ticks the box on the gift form that starts “Show my note on”.'
+			'No donor has chosen to show a note yet. A note appears here when a donor ticks Show my note on the gift form.'
 		);
 	});
 
@@ -103,7 +102,7 @@ describe('public messages, listed', () => {
 	});
 
 	it('says the list is capped where more are listed than it holds', () => {
-		const { host } = mount({ total: 612, limit: 2 });
+		const { host } = mount({ total: 612 });
 		expect(host.querySelector('.adm-tablecaption')?.textContent).toBe(
 			'612 messages, newest first. Only the most recent 2 are shown.'
 		);
@@ -217,6 +216,8 @@ describe('hiding a message', () => {
 		expect(refusal?.textContent).toBe('Couldn’t hide this message. Try again.');
 		expect(dialogButton('Hide message')?.getAttribute('aria-describedby')).toBe(refusal?.id);
 		expect(row(host, 'Maya R.')?.querySelector('[role="alert"]')).toBeNull();
+		// in the confirm's own ink rather than the attention hue: the circle-alert mark says it.
+		expect(refusal?.classList.contains('adm-dialog__refusal--ink')).toBe(true);
 	});
 
 	it('says no refusal from an earlier press in a confirm opened after it', () => {
@@ -322,12 +323,15 @@ describe('the words a landed press says, through the per-row presses the route h
 		});
 		expect(hide?.textContent).toBe('Hidden from your page');
 		expect(statusLine(host)).toBe('Hidden from your page');
+		// the words drawn as words on one line, not as a closed press's fill, and focus kept on it.
+		expect(hide?.classList.contains('adm-saidpress')).toBe(true);
 		act(() => vi.advanceTimersByTime(CONFIRMATION_MS - 1));
 		expect(hide?.textContent).toBe('Hidden from your page');
 		expect(statusLine(host)).toBe('Hidden from your page');
 		act(() => vi.advanceTimersByTime(1));
 		expect(hide?.textContent).toBe('Show again');
 		expect(statusLine(host)).toBe('');
+		expect(hide?.classList.contains('adm-saidpress')).toBe(false);
 	});
 
 	it('says “Showing again” after Show again, in the status line and on the press, for the confirmation time', () => {
@@ -449,7 +453,7 @@ describe('older messages', () => {
 	});
 
 	it('says nothing is withheld and draws no press where the read has no more', () => {
-		const { host } = mount({ total: 612, limit: 2, older: wiring({ next: null }) });
+		const { host } = mount({ total: 612, older: wiring({ next: null }) });
 		expect(host.querySelector('.adm-tablecaption')?.textContent).toBe(
 			'612 messages, newest first.'
 		);

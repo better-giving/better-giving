@@ -69,8 +69,6 @@ export type PublicMessagesProps = {
 	readonly messages: readonly ModeratedMessage[];
 	/** every message listed, past the ones read too. */
 	readonly total: number;
-	/** @deprecated unread: the cap note counts the rows given. */
-	readonly limit?: number;
 	/** each row's press by the gift it names; a row not in it is at rest. read over `pending` and `outcome`. */
 	readonly presses?: Readonly<Record<string, PressState>>;
 	/** the press in flight, by the gift it names; null with none. unread where `presses` is given. */
@@ -209,8 +207,8 @@ export function PublicMessages({
 			<Column wide>
 				<PageHeader title={SCREEN_TITLE} />
 				<EmptyState>
-					No donor has chosen to show a note yet. A note appears here when a donor ticks the box on
-					the gift form that starts “Show my note on”.
+					No donor has chosen to show a note yet. A note appears here when a donor ticks Show my
+					note on the gift form.
 				</EmptyState>
 			</Column>
 		);
@@ -380,6 +378,7 @@ function RowPress({
 				type="button"
 				variant="quiet"
 				size="sm"
+				className={moment !== null ? 'adm-saidpress' : undefined}
 				mark={moment !== null ? undefined : message.hidden ? 'eye' : 'eye-off'}
 				id={id}
 				aria-labelledby={`${id} ${labelledBy}`}
@@ -459,7 +458,7 @@ function HideConfirm({
 				records, and you can show it again.
 			</p>
 			{/* there before it speaks, so the refusal is announced as it arrives. */}
-			<p className="adm-dialog__refusal" id={refusalId} role="alert">
+			<p className="adm-dialog__refusal adm-dialog__refusal--ink" id={refusalId} role="alert">
 				{refusal === null ? null : (
 					<StatusWord register="momentary" blocked mark="circle-alert">
 						{refusal}

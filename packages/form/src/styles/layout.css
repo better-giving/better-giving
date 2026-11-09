@@ -790,6 +790,17 @@ form {
 	padding-block-end: calc(var(--_sp5) + var(--_sp4));
 }
 
+/*
+ * a body that ends on the note's consent ticks ends on a row rather than on a field, and that row's
+ * `--_row-min` slack already stands under its words. so the `--_sp4` above stays taken, as it is
+ * between the two disclosures' own ticks, and the next ask stands no further under the last consent
+ * row's words than under an opened field, and still further than the two closed ticks stand apart
+ * ("the two ticks a step ends on" in ./layout.browser.spec.ts).
+ */
+.disclosure:has(+ .disclosure) .disclosure-inner:has(> .consent > .check-row) {
+	padding-block-end: var(--_sp5);
+}
+
 .skeleton {
 	display: flex;
 	flex-direction: column;
