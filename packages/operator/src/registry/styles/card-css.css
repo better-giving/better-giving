@@ -22,16 +22,14 @@
   padding-inline: calc(var(--ds-spacing) * 6);
   padding-block: calc(var(--ds-spacing) * 4);
 }
-/* a heading in the header takes no margin and the header's own size, so the
-   header is one height with or without one, and the display face at 700, as
-   the base layer gives every heading after tailwind's reset. :where() keeps
-   this at one class, so a heading class of the page's own declared after this
-   file still wins. */
-.ds-card-header :where(h1, h2, h3, h4, h5, h6) {
+/* a heading in the header takes no margin and the header's own size and
+   weight, as it does under tailwind's reset, so the header is one height with
+   or without one. :where() keeps this at one class, so a heading class of the
+   page's own declared after this file still wins. */
+.ds-card-header > :where(h1, h2, h3, h4, h5, h6) {
   margin: 0;
   font-size: inherit;
-  font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: inherit;
 }
 .ds-card-body {
   --ds-spacing: 0.25rem;

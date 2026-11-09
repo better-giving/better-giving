@@ -28,6 +28,7 @@ import {
 } from '../db/schema';
 import type { ContactSort, ContactView, SortDir } from '../../contacts/sorts';
 import type { ParsedContact } from './contact-input';
+import type { NameParts } from '../pages/shown-name';
 
 // every read of `contact` and the insert that makes one, so the two non-obvious query shapes below
 // have one place to be stated rather than being re-derived at each call site. a change to a
@@ -706,6 +707,23 @@ export async function readContactNames(
 		.where(inArray(contact.id, [...ids]));
 
 	return new Map(rows.map((row) => [row.id, row.displayName]));
+}
+
+/**
+ * the first and last name of each of these contacts, keyed by id, for a row that signs a donor's
+ * public note (`shownName` in ../pages/shown-name.ts) and must print neither name whole nor
+ * anything else about them. bound one parameter per id, for the reason `readContactNames` states.
+ */
+export async function readContactNameParts(
+	db: Db,
+	ids: readonly string[]
+): Promise<Map<string, NameParts>> {
+	if (ids.length === 0) return new Map();
+	const rows = await db
+		.select({ id: contact.id, firstName: contact.firstName, lastName: contact.lastName })
+		.from(contact)
+		.where(inArray(contact.id, [...new Set(ids)]));
+	return new Map(rows.map(({ id, ...parts }) => [id, parts]));
 }
 
 /**

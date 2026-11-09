@@ -15,6 +15,7 @@ import type {
 import { endDayOf } from '../../page/end-date';
 import { stateAt } from '../../page/ended';
 import { imageSrc } from '../../page/image-src';
+import { shownVideos, type VideoCardSeed, VIDEOS_MAX } from '../../page/videos';
 import type { RichTextDocument } from '../../rich-text/document';
 import type { Db } from '../db/client';
 import type { Page } from '../db/schema';
@@ -94,7 +95,7 @@ export async function readCampaignEditSeeds(
 	};
 }
 
-/** the Donation page's three cards' seeds, `origin` read as `readCampaignEditSeeds` reads it. */
+/** the Donation page's four cards' seeds, `origin` read as `readCampaignEditSeeds` reads it. */
 export async function readDonationPageEditSeeds(
 	db: Db,
 	env: unknown,
@@ -104,8 +105,10 @@ export async function readDonationPageEditSeeds(
 	general: DonationPageGeneralSeed;
 	giving: DonationPageGivingSeed;
 	settings: DonationPageSettingsSeed;
+	videos: VideoCardSeed;
 }> {
 	const draft = readableDraft(row);
+	const videos = shownVideos(draft.videos);
 	const read = await readEditorSettings(db, env, row, origin);
 	return {
 		general: { boxes: { heading: draft.heading } },
@@ -118,7 +121,8 @@ export async function readDonationPageEditSeeds(
 		settings: {
 			boxes: { ...read.switches, share_message: draft.shareMessage ?? '' },
 			monthlyOffered: read.monthlyOffered
-		}
+		},
+		videos: { videos, count: videos.length, cap: VIDEOS_MAX }
 	};
 }
 

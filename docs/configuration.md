@@ -16,6 +16,7 @@ One install serves one organisation. The profile below is that organisation's. A
 | `BETTER_GIVING_PORT` | Optional. The host port Compose publishes, 3000 when unset (`compose.yaml`) |
 | `BETTER_AUTH_URL`, `TRUSTED_PROXY_HEADER` | [Your address](#your-address) |
 | `NONPROFITS_API_KEY` | Optional. [Your organisation's profile](#your-organisations-profile) |
+| `YOUTUBE_API_KEY` | Optional. [Videos](#videos) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `MAIL_FROM` | [Mail](#mail) |
 | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | [Stripe](#stripe). All three or none |
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_API_URL`, `PAYPAL_WEBHOOK_ID`, `PAYPAL_CHARITY_RATE_APPROVED` | [PayPal](#paypal) |
@@ -117,6 +118,12 @@ Set these in NOWPayments' dashboard before the first gift. Its help pages call t
 Let NOWPayments through the firewall. Its notifications arrive at the deployment's own address, and a bot or firewall rule in front of it drops them with no error here. An ordinary gift still pending is booked by the thirty-minute read below, so entering that gift by hand books it twice. What a dropped notification loses is a refund of a gift that already settled, and a repeat deposit that no notification names. NOWPayments gives its sending addresses to allowlist on request, at partners@nowpayments.io.
 
 A missed notification is caught up every thirty minutes: the deployment reads each crypto gift still pending after half an hour, until a day after its address closes, and settles or closes it. A run reads at most 100. One payment's own fault does not stop the rest. A read NOWPayments does not answer stops the run (`packages/app/src/lib/server/donations/pending-crypto-read.ts`). A payment the read finds already refunded is settled and refunded in the same pass ([Refunds and disputes](../DEPLOY.md#refunds-and-disputes)). The one exception is a repeat deposit whose notification never arrived: nothing names that payment to read, so it appears in NOWPayments' dashboard and never in `/admin` until entered by hand.
+
+## Videos
+
+In `/admin`, Donation page → Videos: paste a YouTube link and press Add video. The server reads the video's title and poster from YouTube once, when it is added, and stores both. Donors are shown that copy, and their browser contacts YouTube only after they press play. A video must be public or unlisted, and a page shows at most 6.
+
+`YOUTUBE_API_KEY` is optional. It is a YouTube Data API v3 key from a Google Cloud project with that API enabled ([Google's guide](https://developers.google.com/youtube/v3/getting-started)). Set, a video's length is read when it is added and shown beside it. Unset, or when YouTube doesn't answer, the video is added without a length. A video added before the key was set keeps no length until it is removed and added again.
 
 ## The spam check
 

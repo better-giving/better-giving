@@ -41,7 +41,8 @@ export const ENV_VAR_NAMES = [
 	'QUICKBOOKS_CLIENT_ID',
 	'QUICKBOOKS_CLIENT_SECRET',
 	'QUICKBOOKS_API_URL',
-	'NONPROFITS_API_KEY'
+	'NONPROFITS_API_KEY',
+	'YOUTUBE_API_KEY'
 ] as const;
 
 export type EnvVarName = (typeof ENV_VAR_NAMES)[number];
@@ -99,6 +100,7 @@ declare global {
 		readonly QUICKBOOKS_CLIENT_SECRET?: string;
 		readonly QUICKBOOKS_API_URL?: string;
 		readonly NONPROFITS_API_KEY?: string;
+		readonly YOUTUBE_API_KEY?: string;
 	}
 }
 

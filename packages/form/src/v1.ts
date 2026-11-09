@@ -573,6 +573,25 @@ export type QuoteRequest = {
 	readonly consentedToContact: boolean | null;
 	readonly note?: string;
 	/**
+	 * the donor's consent to show `note` above on the organisation's page, beside their first name
+	 * and last initial.
+	 *
+	 * absent and `false` both mean no. this client sends `true` or nothing, because an unticked box
+	 * submits no key (AGENTS.md → Forms), and every gift sent before this field existed reads as a
+	 * private note. sent only beside a note.
+	 *
+	 * snake_case where its neighbours are camelCase: the name is the one the endpoint parses, and a
+	 * field on this type is never renamed.
+	 */
+	readonly note_public?: boolean;
+	/**
+	 * the donor asking for the shown note to stand beside "Anonymous" rather than their name.
+	 *
+	 * absent and `false` both mean no, and this client sends it only beside `note_public`: a private
+	 * note has nobody to hide.
+	 */
+	readonly note_anonymous?: boolean;
+	/**
 	 * which of the form's programs the donor chose, absent where they chose none.
 	 *
 	 * an id and never a name: the name is what a donor reads and the id is what the gift is credited

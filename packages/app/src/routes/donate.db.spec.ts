@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
 import {
+	createRoutesStub,
 	createStaticHandler,
 	type LoaderFunction,
 	type MiddlewareFunction,
@@ -19,7 +20,8 @@ import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { createImage } from '$lib/server/images/image.testing';
 import { putBanner, putLogo } from '$lib/server/org/logo.testing';
-import { gift, refund } from '$lib/server/pages/settled-gifts.testing';
+import { setNoteHidden } from '$lib/server/pages/messages';
+import { gift, noteGift, refund } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { saveProfile } from '$lib/server/org/profile.testing';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
@@ -33,6 +35,7 @@ import * as surface from './api.v1';
 import * as gifts from './api.v1.forms.$id.donations';
 import type { Route } from './+types/donate';
 import * as donatePage from './donate';
+import * as donateMessages from './donate.messages';
 import type { Route as PreviewRoute } from './+types/preview.$pageId';
 import * as preview from './preview.$pageId';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
@@ -125,10 +128,16 @@ async function visit(
 }
 
 /** the page's own tree, from what the loader handed it; the cast is the props react router adds. */
+/** the page as the server draws it, inside a router: its Show more messages is a fetcher. */
 function markup(loaderData: LoaderData): string {
-	return renderToStaticMarkup(
-		createElement(donatePage.default, { loaderData } as unknown as Route.ComponentProps)
-	);
+	const Stub = createRoutesStub([
+		{
+			path: '/donate',
+			Component: () =>
+				createElement(donatePage.default, { loaderData } as unknown as Route.ComponentProps)
+		}
+	]);
+	return renderToStaticMarkup(createElement(Stub, { initialEntries: ['/donate'] }));
 }
 
 /** one area of the page, from its opening tag to the next area's, by the name the renderer stamps on it. */
@@ -318,7 +327,9 @@ describe('the profile head /donate is handed', () => {
 				addressLines: ['12 Kigali Road', 'Kigali', 'Rwanda'],
 				email: null,
 				socialLinks: []
-			}
+			},
+			messages: { messages: [], total: 0, next: null },
+			videos: []
 		});
 	});
 
@@ -331,6 +342,157 @@ describe('the profile head /donate is handed', () => {
 			logo: null,
 			raised: { raisedMinor: 0, gifts: 0 }
 		});
+	});
+});
+
+describe('messages from donors on /donate', () => {
+	afterEach(async () => {
+		for (const table of [
+			'dispute',
+			'zapier_delivery',
+			'quickbooks_sync',
+			'ledger_entry',
+			'entry_group',
+			'payment',
+			'line_item',
+			'donation',
+			'recurring_plan',
+			'contact'
+		]) {
+			await run(stmt(`delete from ${table}`));
+		}
+	});
+
+	/** `count` settled public notes, `day n` received on September n, newest last; their gift ids. */
+	async function notes(count: number): Promise<string[]> {
+		const { formId } = await ensureDonationPage(db);
+		const ids: string[] = [];
+		for (let day = 1; day <= count; day += 1) {
+			const { donationId } = await noteGift(db, formId, {
+				note: `day ${day}`,
+				noteOnPage: 'named',
+				firstName: 'Maya',
+				lastName: 'Rivera',
+				receivedAt: new Date(Date.UTC(2026, 8, day))
+			});
+			ids.push(donationId);
+		}
+		return ids;
+	}
+
+	/** the show-more read, under the donor page it nests in and so under that page's meter. */
+	const showMore = mountRoutes([
+		{ path: 'donate', module: donatePage },
+		{ path: 'messages', module: donateMessages }
+	]);
+	let showMoreCallers = 0;
+	function more(search: string, ip?: string): Promise<Response> {
+		showMoreCallers += 1;
+		return showMore(
+			new Request(`${OWN}/donate/messages${search}`, {
+				headers: { [CLIENT_IP_HEADER]: ip ?? `2001:db8:${3000 + showMoreCallers}::1` }
+			}),
+			{ env: envWith(STRIPE) }
+		);
+	}
+
+	async function handed() {
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		if (answered.data.profile === null) throw new Error('the Donation page drew no profile');
+		return answered.data.profile.messages;
+	}
+
+	it('hands the newest six, how many there are, and where the next six start', async () => {
+		await notes(8);
+
+		const messages = await handed();
+
+		expect(messages.messages.map((m) => m.note)).toEqual([
+			'day 8',
+			'day 7',
+			'day 6',
+			'day 5',
+			'day 4',
+			'day 3'
+		]);
+		expect(messages.messages[0]).toEqual({
+			name: 'Maya R.',
+			note: 'day 8',
+			receivedAt: '2026-09-08T00:00:00.000Z'
+		});
+		expect(messages.total).toBe(8);
+		expect(messages.next).toEqual(expect.any(String));
+	});
+
+	it('sends no byte of a hidden note to the browser', async () => {
+		const [hidden] = await notes(3);
+		await setNoteHidden(db, hidden ?? '', true, new Date());
+
+		const answered = await visit();
+
+		const sent = JSON.stringify(answered.data);
+		expect(sent).not.toContain('day 1');
+		expect(sent).toContain('day 2');
+		if (answered.data.kind === 'page') expect(answered.data.profile?.messages.total).toBe(2);
+	});
+
+	it('answers Show more messages with the next six, kept by no one', async () => {
+		await notes(8);
+		const { next } = await handed();
+
+		const response = await more(`?after=${encodeURIComponent(next ?? '')}`);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('cache-control')).toBe('no-store');
+		const body = (await response.json()) as { kind: string; messages: { note: string }[] };
+		expect(body).toMatchObject({ kind: 'messages', total: 8, next: null });
+		expect(body.messages.map((m) => m.note)).toEqual(['day 2', 'day 1']);
+	});
+
+	it('sends no hidden note on Show more messages either', async () => {
+		const ids = await notes(8);
+		await setNoteHidden(db, ids[0] ?? '', true, new Date());
+		const { next } = await handed();
+
+		const response = await more(`?after=${encodeURIComponent(next ?? '')}`);
+
+		const sent = await response.text();
+		expect(sent).toContain('day 2');
+		expect(sent).not.toContain('day 1');
+	});
+
+	it('answers 400 for a place in the list it never handed out', async () => {
+		const response = await more('?after=not-a-cursor');
+
+		expect(response.status).toBe(400);
+		expect(response.headers.get('cache-control')).toBe('no-store');
+	});
+
+	it('answers a failed read as a refusal, which the section says, rather than an error the page is swapped for', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		await run(stmt('alter table donation rename to donation_hidden'));
+		let response: Response;
+		try {
+			response = await more('');
+		} finally {
+			await run(stmt('alter table donation_hidden rename to donation'));
+		}
+
+		expect(response.status).toBe(500);
+		expect(response.headers.get('cache-control')).toBe('no-store');
+		expect(await response.json()).toEqual({ kind: 'refused' });
+	});
+
+	it('is charged to the donor page’s meter', async () => {
+		const ip = '203.0.113.92';
+		let last: Response | undefined;
+		for (let view = 0; view < 50; view += 1) {
+			last = await more('', ip);
+			if (last.status === 429) break;
+		}
+
+		expect(last?.status).toBe(429);
 	});
 });
 

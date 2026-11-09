@@ -64,6 +64,11 @@ export type ParsedQuoteRequest = {
 	 * of its own and `''` in that column is a message that was never written.
 	 */
 	readonly note: string | undefined;
+	/**
+	 * how the donor asked for `note` to be shown on the donate page, or absent where they kept it
+	 * private. only ever present beside a note.
+	 */
+	readonly noteOnPage: NoteOnPage | undefined;
 	/** the person this gift honors or remembers, or `null` where the donor marked none. */
 	readonly tribute: Tribute | null;
 	/**
@@ -368,6 +373,24 @@ const CONSENTED_TO_CONTACT = z
 			`\`consentedToContact\` is ${describe(issue.input)}, which is not \`true\`, \`false\` or \`null\`.`
 	})
 	.nullable();
+
+/**
+ * a note shown on the donate page: signed with the donor's first name and last initial, or as
+ * "Anonymous" (`shownName` in ../pages/shown-name.ts).
+ */
+export type NoteOnPage = 'named' | 'anonymous';
+
+/** one of the two consent boxes, which an unticked box leaves out of the body: absent is no. */
+const noteConsent = (field: string) =>
+	z
+		.boolean({
+			error: (issue) => `\`${field}\` is ${describe(issue.input)}, which is not a boolean.`
+		})
+		.optional();
+const NOTE_PUBLIC = noteConsent('note_public');
+const NOTE_ANONYMOUS = noteConsent('note_anonymous');
+const NOTE_CONSENT_FIX =
+	'Send `true` where the donor ticked the box, or leave the field out. `note_anonymous` counts only beside `note_public`.';
 
 /** the donor's message, where they wrote one. absence and blankness are settled below. */
 const NOTE = z
@@ -703,6 +726,19 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 	// check could not be, which is the reason this holds here rather than on the column.
 	const message = note.data?.trim() ?? '';
 
+	const notePublic = NOTE_PUBLIC.safeParse(posted.note_public);
+	if (!notePublic.success) return refusal(first(notePublic.error), NOTE_CONSENT_FIX);
+	const noteAnonymous = NOTE_ANONYMOUS.safeParse(posted.note_anonymous);
+	if (!noteAnonymous.success) return refusal(first(noteAnonymous.error), NOTE_CONSENT_FIX);
+	// a box over no note shows nothing, and Anonymous without Show my note is a private note: the
+	// columns' checks refuse anonymous without public (../db/schema.ts).
+	const noteOnPage: NoteOnPage | undefined =
+		message === '' || notePublic.data !== true
+			? undefined
+			: noteAnonymous.data === true
+				? 'anonymous'
+				: 'named';
+
 	const tribute = parseTribute(posted);
 	if (!tribute.ok) return tribute;
 
@@ -771,6 +807,7 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 			donor: parsedDonor.value,
 			consentedToContact: consentedToContact.data,
 			note: message === '' ? undefined : message,
+			noteOnPage,
 			tribute: tribute.value,
 			programId: program.value,
 			turnstileToken: turnstileToken.data,

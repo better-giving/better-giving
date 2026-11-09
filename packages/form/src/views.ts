@@ -194,6 +194,18 @@ function setHidden(node: HTMLElement, hidden: boolean): void {
 	if (node.hidden !== hidden) node.hidden = hidden;
 }
 
+/** puts a node in or out of a parent, touching the tree only when that changes. */
+function presentIn(
+	parent: HTMLElement,
+	node: HTMLElement,
+	present: boolean,
+	where: 'prepend' | 'append'
+): void {
+	if (present === (node.parentNode === parent)) return;
+	if (!present) node.remove();
+	else parent[where](node);
+}
+
 /**
  * the four screens the card has, in the order a donor meets them.
  *
@@ -1554,13 +1566,48 @@ export function createCard(
 	const noteMessage = make(doc, 'p', { class: 'message', id: 'note-problem', hidden: true }, [
 		'required, or untick to skip'
 	]);
+	// the consent to show the note on the organisation's page, and to sign it "Anonymous". each row
+	// is in the DOM only while the flow says it applies (`update` below): the first while the note
+	// is open, the second while the first is ticked. the name is `orgLegalName`, the one name the
+	// config carries and the one every other sentence on the card names the organisation by.
+	const notePublicToggle = make(doc, 'input', {
+		part: part('checkbox'),
+		class: REGISTRY_CLASS.checkbox,
+		type: 'checkbox',
+		id: 'note-public',
+		'aria-describedby': 'note-public-hint'
+	});
+	const notePublicRow = make(doc, 'label', { class: 'check-row' }, [
+		notePublicToggle,
+		make(doc, 'span', {}, [
+			`Show my note on ${config.orgLegalName}’s page`,
+			make(doc, 'small', { class: 'hint', id: 'note-public-hint' }, [
+				'It shows with your first name and last initial, like “Maya R.”'
+			])
+		])
+	]);
+	const noteAnonymousToggle = make(doc, 'input', {
+		part: part('checkbox'),
+		class: REGISTRY_CLASS.checkbox,
+		type: 'checkbox',
+		id: 'note-anonymous'
+	});
+	const noteAnonymousRow = make(doc, 'label', { class: 'check-row sub' }, [
+		noteAnonymousToggle,
+		make(doc, 'span', {}, ['Show it as Anonymous'])
+	]);
+	const noteConsent = make(doc, 'div', { class: 'consent' });
+	notePublicToggle.addEventListener('change', () => now().notePublicToggle.onClick());
+	noteAnonymousToggle.addEventListener('change', () => now().noteAnonymousToggle.onClick());
+
 	// the inner wrapper is what the disclosure's `0fr` row collapses over. it has no job of its own
 	// and no part name; ./styles/motion.css is where it earns its place.
 	const noteBody = make(doc, 'div', { class: 'disclosure-body', hidden: true }, [
 		make(doc, 'div', { class: 'disclosure-inner' }, [
 			make(doc, 'label', { part: part('label'), class: 'vh', for: 'note' }, ['Your note']),
 			noteField,
-			noteMessage
+			noteMessage,
+			noteConsent
 		])
 	]);
 	// the note says it is optional, and it is the only control on the card that says anything about
@@ -2987,6 +3034,14 @@ export function createCard(
 		const noteAsked = api.noteToggle.pressed === true;
 		if (noteToggle.checked !== noteAsked) noteToggle.checked = noteAsked;
 		setHidden(noteBody, !noteAsked);
+		const noteShown = api.notePublicToggle.pressed === true;
+		const noteAnonymous = api.noteAnonymousToggle.pressed === true;
+		if (notePublicToggle.checked !== noteShown) notePublicToggle.checked = noteShown;
+		if (noteAnonymousToggle.checked !== noteAnonymous) noteAnonymousToggle.checked = noteAnonymous;
+		// each row inserted or removed on its own rather than the pair replaced: a node detached and
+		// reattached loses focus, and the box a donor just pressed has it.
+		presentIn(noteConsent, notePublicRow, noteAsked, 'prepend');
+		presentIn(noteConsent, noteAnonymousRow, noteShown, 'append');
 
 		// the second disclosure on this step, patched from the projection exactly as the first is.
 		const tributeAsked = api.tributeToggle.pressed === true;

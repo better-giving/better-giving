@@ -157,6 +157,26 @@ describe('the shell over the dialog', () => {
 		expect(document.activeElement).toBe(dialogIn(root));
 	});
 
+	it('puts the focus on the harmless control the screen names, and exposes a question as an alert', () => {
+		function Asking() {
+			const keep = useRef<HTMLButtonElement>(null);
+			return (
+				<Modal
+					alert
+					title="Hide this message?"
+					commit="Hide message"
+					cancel="Cancel"
+					cancelProps={{ type: 'button', ref: keep }}
+					initialFocus={keep}
+					onDismiss={() => {}}
+				/>
+			);
+		}
+		const root = render(Asking, {});
+		expect(dialogIn(root).getAttribute('role')).toBe('alertdialog');
+		expect(document.activeElement?.textContent).toBe('Cancel');
+	});
+
 	/**
 	 * a card a control on the page put up and either dismissal takes away again: the press is what
 	 * mounts the dialog, and answering it unmounts the same element rather than closing it.

@@ -702,6 +702,22 @@ form {
 }
 
 /*
+ * the consent rows under the note. no gap: each row's `--_row-min` slack is what stands between
+ * them, as it is between the two disclosures' ticks (`.disclosure + .disclosure` below).
+ */
+.consent {
+	display: grid;
+}
+
+/*
+ * a row that qualifies the one above it, its box under that row's words: the registry box's
+ * width (four of `--ds-spacing`, which is `--_root-size` in ./parts.css) and the row's own gap.
+ */
+.check-row.sub {
+	margin-inline-start: calc(var(--_root-size) + var(--_sp3));
+}
+
+/*
  * a disclosure: the tick, and what it reveals directly under it. two on the amount step — the note
  * and the tribute — and one rule, so the pair cannot come to sit differently.
  *

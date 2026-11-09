@@ -1,8 +1,9 @@
 import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
-import { data, type ShouldRevalidateFunctionArgs } from 'react-router';
+import { data, type ShouldRevalidateFunctionArgs, useFetcher } from 'react-router';
 import { DonateNotice } from '$lib/donate/notice';
 import { PageWithCard } from '$lib/donate/page-with-card';
 import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/donate/plain-page';
+import type { ShowMoreStatus } from '$lib/donate/sections/messages';
 import { shareImage } from '$lib/page/image-src';
 import { meterDonorPage } from '$lib/server/api/meter';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
@@ -11,6 +12,7 @@ import { loadPageView, refusedPage } from '$lib/server/pages/view';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/donate';
+import type { loader as showMoreLoader } from './donate.messages';
 
 // the donation page: the organisation's own donor page, at /donate on the deployment.
 //
@@ -49,6 +51,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	// one `return { env }` from being published.
 	const { env } = context.get(platform);
 	const page = await ensureDonationPage(db);
+	const now = Date.now();
 	const loaded = await loadPageView(
 		db,
 		env,
@@ -61,7 +64,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 			address: '/donate'
 		},
 		request,
-		{ now: Date.now() }
+		{ now }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
 	// a donor back from authorizing their gift arrives here with the stamp naming the page's
@@ -70,7 +73,12 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	// claim once its flow starts. a stamp naming another form is no return of this page's.
 	const { formId } = loaded.kind === 'page' ? loaded.view.config : loaded.config;
 	const resuming = new URL(request.url).searchParams.get(RESUME_FORM_PARAM) === formId;
-	return data({ ...loaded, resuming }, { headers: { 'cache-control': 'no-store' } });
+	// the instant the page was read, which every donor message's age is counted from on the server
+	// and in the browser alike, so the two renders say the same.
+	return data(
+		{ ...loaded, resuming, now: new Date(now).toISOString() },
+		{ headers: { 'cache-control': 'no-store' } }
+	);
 }
 
 /**
@@ -122,7 +130,20 @@ export function links(): Route.LinkDescriptors {
 	return donorPageLinks();
 }
 
+/**
+ * how Show more messages is going: busy while the read is out, and error where it was answered
+ * with a refusal — a cursor the read could not take, or this address over the donor page limit.
+ */
+function showMoreStatus(fetcher: {
+	state: string;
+	data?: { kind: string } | undefined;
+}): ShowMoreStatus {
+	if (fetcher.state !== 'idle') return 'loading';
+	return fetcher.data?.kind === 'refused' ? 'error' : 'idle';
+}
+
 export default function DonationPage({ loaderData }: Route.ComponentProps) {
+	const showMore = useFetcher<typeof showMoreLoader>();
 	switch (loaderData.kind) {
 		case 'page':
 			return (
@@ -130,6 +151,15 @@ export default function DonationPage({ loaderData }: Route.ComponentProps) {
 					{...loaderData.view}
 					profile={loaderData.profile}
 					resuming={loaderData.resuming}
+					donorMessages={{
+						now: loaderData.now,
+						status: showMoreStatus(showMore),
+						// the fetcher's own object, never a copy: the section tells a new answer from the
+						// one it already added by identity.
+						arrived: showMore.data?.kind === 'messages' ? showMore.data : null,
+						onShowMore: (after) =>
+							showMore.load(`/donate/messages?after=${encodeURIComponent(after)}`)
+					}}
 				/>
 			);
 		case 'plain':

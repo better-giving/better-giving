@@ -77,13 +77,11 @@
   outline-color: var(--ring);
   color: var(--gray-12);
 }
-/* :user-invalid stays out of this :not(), which is not forgiving: an engine
-   without it would drop the hover. the :user-invalid rule below has the same
-   specificity and comes later, so it still keeps its edge under the pointer */
 .ds-field-input:hover:not(
   :disabled,
   [readonly],
   [aria-disabled="true"],
+  :user-invalid,
   [aria-invalid="true"]
 ) {
   border-color: var(--input-hover);
@@ -93,26 +91,15 @@
   opacity: 1;
 }
 .ds-field-input[aria-disabled="true"],
-.ds-field-input:disabled {
-  pointer-events: none;
-}
-/* read-only is muted like disabled but stays selectable and copyable: it takes
-   pointer events, text selection and focus, and keeps the text cursor. only the
-   hover edge is withheld, above. */
-.ds-field-input[aria-disabled="true"],
 .ds-field-input[readonly],
 .ds-field-input:disabled {
+  pointer-events: none;
   background-color: var(--gray-3);
   color: var(--gray-11);
 }
 /* :user-invalid, never :invalid, which paints every required-but-empty field
-   destructive before it is touched. data-manual-invalid opts a field out of
-   :user-invalid, for a field whose browser constraint is not its rule; it sets
-   aria-invalid itself. two rules, so an engine without :user-invalid keeps the
-   aria-invalid edge */
-.ds-field-input:user-invalid:not([data-manual-invalid]) {
-  border-color: var(--destructive);
-}
+   destructive before it is touched */
+.ds-field-input:user-invalid,
 .ds-field-input[aria-invalid="true"] {
   border-color: var(--destructive);
 }
@@ -150,13 +137,12 @@
   color: var(--gray-11);
   opacity: 1;
 }
-/* as on the input: :user-invalid is left to the later rule of equal
-   specificity, not listed in the unforgiving :has() */
 .ds-field-input-container:hover:not(
   :has(
     input:disabled,
     input[readonly],
     input[aria-disabled="true"],
+    input:user-invalid,
     input[aria-invalid="true"]
   )
 ) {
@@ -168,19 +154,13 @@
   outline-color: var(--ring);
 }
 .ds-field-input-container:has(input[aria-disabled="true"]),
-.ds-field-input-container:has(input:disabled) {
-  pointer-events: none;
-}
-/* read-only: muted, but the input inside stays selectable and copyable */
-.ds-field-input-container:has(input[aria-disabled="true"]),
 .ds-field-input-container:has(input[readonly]),
 .ds-field-input-container:has(input:disabled) {
+  pointer-events: none;
   background-color: var(--gray-3);
   color: var(--gray-11);
 }
-.ds-field-input-container:has(input:user-invalid:not([data-manual-invalid])) {
-  border-color: var(--destructive);
-}
+.ds-field-input-container:has(input:user-invalid),
 .ds-field-input-container:has(input[aria-invalid="true"]) {
   border-color: var(--destructive);
 }
@@ -190,45 +170,12 @@
   --ds-spacing: 0.25rem;
   --ds-text-xs: 0.75rem;
   margin: calc(var(--ds-spacing) * 1) 0 0;
-  text-align: start;
+  text-align: right;
   font-size: var(--ds-text-xs);
   color: var(--destructive-subtle-fg);
 }
 .ds-field-err:empty {
   display: none;
-}
-
-/* a field whose control has buttons beside it: [control column][action]. the
-   error and the hint go inside the control column, under the input, never
-   under the row. the action keeps the control's height with ds-btn-field.
-   when the row itself is under 384px (a phone-width column, or any container
-   that narrow, whatever the viewport) the action wraps under the control, and
-   the column takes the whole row so the message stays under the control. the
-   row is an inline-size container, so its width comes from its parent, never
-   its content: inside a shrink-to-fit parent, give the field a width. */
-.ds-field-row {
-  --ds-spacing: 0.25rem;
-  container-type: inline-size;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: calc(var(--ds-spacing) * 2);
-}
-.ds-field-control {
-  flex: 1 1 0%;
-  min-inline-size: 0;
-}
-@container (width < 24rem) {
-  .ds-field-control {
-    flex-basis: 100%;
-  }
-}
-.ds-field-action {
-  --ds-spacing: 0.25rem;
-  display: flex;
-  flex-shrink: 0;
-  align-items: flex-start;
-  gap: calc(var(--ds-spacing) * 2);
 }
 
 /* the same message laid over the field's bottom edge instead of in the flow;
@@ -240,9 +187,9 @@
   position: absolute;
   margin: 0;
   bottom: calc(var(--ds-spacing) * -5);
-  inset-inline-start: 0;
+  right: 0;
   font-size: var(--ds-text-xs);
   line-height: var(--ds-text-xs-lh);
-  text-align: start;
+  text-align: right;
   color: var(--destructive-subtle-fg);
 }

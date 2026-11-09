@@ -378,6 +378,10 @@ export type CheckoutEvent =
 	| { readonly type: 'SET_PROGRAM'; readonly programId: string | null }
 	/** the donor asking to write a note, or taking the ask back. */
 	| { readonly type: 'TOGGLE_NOTE' }
+	/** the donor asking to show the note on the organisation's page, or taking the ask back. */
+	| { readonly type: 'TOGGLE_NOTE_PUBLIC' }
+	/** the donor asking for the shown note to be signed "Anonymous", or taking the ask back. */
+	| { readonly type: 'TOGGLE_NOTE_ANONYMOUS' }
 	/**
 	 * a box in the tribute block, or several at once.
 	 *
@@ -628,6 +632,8 @@ function quoteRequest(context: CheckoutContext, payer: Payer): QuoteRequest {
 		consentedToContact: payer.consentedToContact,
 		...(payer.coin === undefined ? {} : { coin: payer.coin }),
 		...(fv.note === undefined ? {} : { note: fv.note }),
+		...(fv.noteShown === undefined ? {} : { note_public: true }),
+		...(fv.noteShown === 'anonymous' ? { note_anonymous: true } : {}),
 		// omitted where the donor chose no cause, which is what the endpoint reads as the gift going
 		// where it is needed most — and it is also every gift on a pinned form, because that pin is
 		// written from the form record and nothing on such a card writes an id onto the draft.
@@ -1538,14 +1544,42 @@ export const checkoutMachine = setup({
 				 * `missingAmountDecisions` (./value.ts) reads to hold a donor to a note they asked
 				 * for. closing it drops what was typed: the donor has said there is no note, and a
 				 * draft that kept the text would carry it to the endpoint on a gift whose card no
-				 * longer shows it.
+				 * longer shows it. the consent to show it goes with it, either way: an opened note
+				 * starts private.
 				 */
 				TOGGLE_NOTE: {
 					actions: assign({
 						draft: ({ context }) => ({
 							...context.draft,
-							note: context.draft.note === undefined ? '' : undefined
+							note: context.draft.note === undefined ? '' : undefined,
+							noteShown: undefined
 						})
+					})
+				},
+				/**
+				 * the donor asking to show the note, or taking it back. dropped on a closed note, for
+				 * `SET_TRIBUTE`'s reason below; taking it back takes "Anonymous" with it.
+				 */
+				TOGGLE_NOTE_PUBLIC: {
+					actions: assign({
+						draft: ({ context }) => {
+							const { note, noteShown } = context.draft;
+							if (note === undefined) return context.draft;
+							return { ...context.draft, noteShown: noteShown === undefined ? 'named' : undefined };
+						}
+					})
+				},
+				/** signing a shown note "Anonymous", or by name again. dropped on a private note. */
+				TOGGLE_NOTE_ANONYMOUS: {
+					actions: assign({
+						draft: ({ context }) => {
+							const { noteShown } = context.draft;
+							if (noteShown === undefined) return context.draft;
+							return {
+								...context.draft,
+								noteShown: noteShown === 'named' ? 'anonymous' : 'named'
+							};
+						}
 					})
 				},
 				/**

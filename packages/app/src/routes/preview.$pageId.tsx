@@ -37,6 +37,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const { env } = context.get(platform);
 	const page = await readPage(db, params.pageId);
 	if (page === null) throw data(null, { status: 404 });
+	const now = Date.now();
 	const loaded = await loadPageView(
 		db,
 		env,
@@ -51,10 +52,11 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			address: page.type === 'donation_page' || page.slug === null ? '/donate' : `/${page.slug}`
 		},
 		request,
-		{ now: Date.now(), preview: true }
+		{ now, preview: true }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
-	return loaded;
+	// the instant donor messages' ages are counted from, as /donate's loader hands it.
+	return { ...loaded, now: new Date(now).toISOString() };
 }
 
 export function headers(): Headers {
@@ -70,7 +72,19 @@ export function links(): Route.LinkDescriptors {
 export default function PagePreview({ loaderData }: Route.ComponentProps) {
 	switch (loaderData.kind) {
 		case 'page':
-			return <PageWithCard {...loaderData.view} profile={loaderData.profile} />;
+			return (
+				<PageWithCard
+					{...loaderData.view}
+					profile={loaderData.profile}
+					// drawn as /donate draws it; a press reaches nothing here, so Show more asks for nothing.
+					donorMessages={{
+						now: loaderData.now,
+						status: 'idle',
+						arrived: null,
+						onShowMore: () => {}
+					}}
+				/>
+			);
 		case 'plain':
 			return (
 				<div inert>

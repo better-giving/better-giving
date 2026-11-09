@@ -50,8 +50,9 @@
 
    the steps are the scale's roles: 9 is the solid fill, 3 and 4 the tinted
    ground at rest and hovered, 7 the edge of a control, 11 text on the tinted
-   ground. the ring is the page's --ring (step 8, light and dark), so it
-   follows the appearance as well as the theme.
+   ground. the ring is the page's --ring (the step the theme picks per
+   appearance: 11 in light and dark in both shipped themes), so it follows the
+   appearance as well as the theme.
 
    the hover and press of the fill are not declared here. a slot holding var()
    is resolved where it is declared, so a default declared on :root could not

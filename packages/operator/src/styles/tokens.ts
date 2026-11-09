@@ -41,7 +41,7 @@ export const ADMIN_TOKENS = {
 	'--admin-divider': '#d2dbe7',
 	'--admin-ink': '#1a2029',
 	'--admin-ink-muted': '#5d656f',
-	'--admin-link': '#206fad',
+	'--admin-link': '#1e6dab',
 	// a literal inside a sentence: its ground and its ink.
 	'--admin-code-bg': '#ecf1f7',
 	'--admin-code-ink': '#1a2029',

@@ -16,9 +16,20 @@ import { PageView, type PageViewProps } from './page-view';
 // gift holds and whether it still takes one, and from the press on Donate the chooser is locked, so
 // the page never shows a cause the gift was not asked for with.
 
+/**
+ * what the loader reads for the pair, which `PageViewData` in $lib/server/pages/view.ts is typed
+ * from. `donorMessages` is not among it: it is the route's own wiring, a callback no loader sends,
+ * and `PageWithCard` takes it beside these.
+ */
 export type PageWithCardProps = Omit<
 	PageViewProps,
-	'donationBox' | 'programs' | 'programMode' | 'onProgramPick' | 'chosenProgramId' | 'chooserLocked'
+	| 'donationBox'
+	| 'programs'
+	| 'programMode'
+	| 'onProgramPick'
+	| 'chosenProgramId'
+	| 'chooserLocked'
+	| 'donorMessages'
 > & {
 	/** the served configuration the card takes the gift against, as the card itself takes it. */
 	readonly config: FormConfig;
@@ -30,7 +41,13 @@ export type PageWithCardProps = Omit<
 	readonly resuming?: boolean;
 };
 
-export function PageWithCard({ config, seams, opening, resuming, ...page }: PageWithCardProps) {
+export function PageWithCard({
+	config,
+	seams,
+	opening,
+	resuming,
+	...page
+}: PageWithCardProps & Pick<PageViewProps, 'donorMessages'>) {
 	const [picked, setPicked] = useState<string | null>(null);
 	const [held, setHeld] = useState<{ programId: string | null; locked: boolean }>({
 		programId: null,

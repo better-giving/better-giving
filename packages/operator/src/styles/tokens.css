@@ -168,25 +168,24 @@
      8 hovered ui element border and focus rings · 9 solid backgrounds · 10 hovered solid ·
      11 low-contrast text · 12 high-contrast text
 
-   radix gives focus rings 7 or 8, and the registry fixes its ring on 8, in light and in dark
-   (`--ring`, ../registry/styles/themes/default.css; the contrast rule in
-   ../registry/styles/variables.usage.md). 8 is also a control's own edge under a pointer, so a
-   ring meets an edge on its own step wherever it hugs a hovered control; the exception under
-   legibility below is where that would read as one edge.
+   radix's table puts the focus ring on 7 and its prose allows 7 or 8; the registry's light
+   ring is the first step from 8 on, past the fill and its hover (9 and 10), that reads at 3:1 on
+   the page, its dark ring is picked from 8 on by a rule of its own (../registry/styles/colors.css),
+   and in its default theme both are 11 (`--ring`, ../registry/styles/themes/default.css). so a
+   ring is never a control's own edge, at rest or under a pointer.
 
    so a card, a panel, the top bar, the phone's bar and a text box's face are step 1 and the page
    is step 2. a control rests on 3, answers a pointer on 4 and is pressed or selected on 5. every
    rule, and the edge of everything that is not a control, is 6. a control's own edge is 7 at rest
-   and 8 under a pointer, and the focus ring is the registry's `--ring`: the accent's 8 in light
+   and 8 under a pointer, and the focus ring is the registry's `--ring`: the accent's 11 in light
    and in dark. a primary or destructive fill is 9 with its hover on 10, under a white
    label. text is 11 for the secondary run and 12 for the rest.
    no value is authored off its ladder and no alias points at a step its job does not name;
    ./radix-steps.spec.ts is what fails when one does. a few aliases read a registry role instead
    of a step (`--primary-fg`, `--destructive-fg`, `--link`, `--link-hover`, `--ring`, `--hairline`,
    `--overlay`, `--primary-fg` again for the ring inside a solid fill and `--link` again for a
-   visited link), where the job is the registry's to place: a theme sets `--ring`, `--link`,
-   `--link-hover` and `--hairline` in each of its blocks (../registry/styles/variables.usage.md →
-   Themes), so a fixed step here would stop following it.
+   visited link), where the registry resolves that job differently in dark than a fixed step
+   would.
 
    ---------- legibility ----------
 
@@ -198,19 +197,18 @@
    is re-tuned here: a value that reads wrong is another step of the same ladder or a gap to
    report, never a literal nudged.
 
-   the focus ring is drawn outside a control, in `--ring` (the accent's 8, light and dark)
+   the focus ring is drawn outside a control, in `--ring` (the accent's 11, light and dark)
    against whatever the control stands on. a button's ring is the registry's own outline
    (`.ds-btn:focus-visible`, ../registry/styles/button-css.css).
    the ring hugs. it starts at the control's own edge and no ground is drawn between the two,
    in either direction, because a band of the page laid inside the ring reads as the control
    sitting in a box that arrived with the keyboard. the one exception is a chosen control, a chip
-   or a boxed row, whose edge is the accent's 7 at rest and its 8, the ring's own step, under a
-   pointer: that edge and a ring abutting it read as one heavier edge, so there the ring stands
-   outside a band of the ground the control stands on, as the donor page rings its chosen option
-   (packages/app/src/lib/donate/page.css). and the ring is one hue, learned once: it never changes
-   with the control's tone, a destructive control's included, because that would spend an operator
-   screen's one alarm colour on the thing a reader is doing rather than on the thing the screen is
-   reporting.
+   or a boxed row, whose edge is the accent's 7: that edge and a ring abutting it read as one
+   heavier edge, so there the ring stands outside a band of the ground the control stands on, as
+   the donor page rings its chosen option (packages/app/src/lib/donate/page.css). and the ring is
+   one hue, learned once: it never changes with the control's tone, a destructive control's
+   included, because that would spend an operator screen's one alarm colour on the thing a reader
+   is doing rather than on the thing the screen is reporting.
 
    a text link takes no ring. a rectangle drawn around a run of words frames the text rather
    than the control, and in a dense ledger it collides with the lines above and below, so a
@@ -452,7 +450,7 @@
 		/* placeholder text is read rather than decorative — it is the example of the value a box is
 		   waiting for — so it is the secondary text step. */
 		--admin-field-placeholder: var(--admin-neutral-11);
-		/* one ring, one hue, everywhere, on the registry's `--ring` (the accent's 8, light and dark),
+		/* one ring, one hue, everywhere, on the registry's `--ring` (the accent's 11, light and dark),
 		   and it does not change with the control's tone. */
 		--admin-focus-ring: var(--ring);
 		--admin-selection-bg: var(--admin-accent-5);
@@ -696,6 +694,9 @@
 		--admin-measure-panel: 26rem;
 		/* the tallest a banner's preview stands on an edit screen; its width follows at 4:1. */
 		--admin-measure-banner: 8rem;
+		/* a listed video's poster, 16:9: 96px wide from the middle breakpoint and 72px under it. */
+		--admin-measure-poster: 6rem;
+		--admin-measure-poster-narrow: 4.5rem;
 		/* the column a dialog is read in. it is authored apart from the panel above rather
 		   than pointed at it: a route drawn outside the shell and a question asked over one
 		   are different objects, and neither may drag the other. */

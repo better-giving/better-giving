@@ -2,6 +2,7 @@ import { parseContact } from '../contacts/contact-input';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
 import type { SettleDeps } from '../donations/delivery';
+import type { NoteOnPage } from '../donations/quote-input';
 import { recordAuthorizedGift, recordDonation } from '../donations/record';
 import { recordReversal } from '../donations/reverse';
 import { settleDelivery, settleTransaction } from '../donations/settle';
@@ -54,14 +55,56 @@ export async function gift(
 	settles = true,
 	currency = 'USD'
 ): Promise<string> {
+	// one returning donor, as every case of `gift` has always read it.
+	return (await noteGift(db, formId, { amountMinor, settles, currency, email: 'ada@example.org' }))
+		.txn;
+}
+
+/** what a gift through `noteGift` says beside its money, each defaulted as `gift` writes it. */
+export type NoteGiftOver = {
+	readonly amountMinor?: number;
+	readonly settles?: boolean;
+	readonly currency?: string;
+	readonly note?: string;
+	readonly noteOnPage?: NoteOnPage | undefined;
+	/** an empty string is a name the donor left out. */
+	readonly firstName?: string;
+	readonly lastName?: string;
+	/** a fixed address makes the gifts one donor; left out, each gift is its own donor. */
+	readonly email?: string;
+	readonly receivedAt?: Date;
+};
+
+/**
+ * `gift`'s single gift, with the note, the consent, the donor's name and the time it was received
+ * a case asks for; its transaction id and its donation id.
+ */
+export async function noteGift(
+	db: Db,
+	formId: string,
+	{
+		amountMinor = 10_000,
+		settles = true,
+		currency = 'USD',
+		note,
+		noteOnPage,
+		firstName = 'Ada',
+		lastName = 'Okafor',
+		email,
+		receivedAt = new Date('2026-09-10T11:00:00.000Z')
+	}: NoteGiftOver = {}
+): Promise<{ txn: string; donationId: string }> {
 	sequence += 1;
 	const txn = `pi_goal_${sequence}`;
 	const donationId = crypto.randomUUID();
 	const donor = parseContact({
 		kind: 'individual',
-		first_name: 'Ada',
-		last_name: 'Okafor',
-		primary_email: 'ada@example.org'
+		first_name: firstName,
+		last_name: lastName,
+		// one donor per gift unless a case fixes the address, so each keeps the name its case gave: a
+		// returning address is matched to the contact it already has (`resolveDonor` in
+		// ../donations/donor.ts).
+		primary_email: email ?? `donor${sequence}@example.org`
 	});
 	if (!donor.ok) throw new Error('the fixture donor did not parse');
 	const recorded = await recordDonation(db, {
@@ -78,14 +121,15 @@ export async function gift(
 		],
 		method: 'card',
 		providerTxnId: txn,
-		occurredAt: new Date('2026-09-10T11:00:00.000Z'),
+		occurredAt: receivedAt,
 		consentedToContact: false,
-		note: undefined,
+		note,
+		noteOnPage,
 		tribute: null,
 		programId: null
 	});
 	if (!recorded.ok) throw new Error(`the fixture gift was not recorded: ${recorded.detail}`);
-	if (!settles) return txn;
+	if (!settles) return { txn, donationId };
 	const settled = await settleTransaction(
 		settling(db, {
 			providerTxnId: txn,
@@ -103,7 +147,7 @@ export async function gift(
 	if (!settled.ok || settled.outcome !== 'posted') {
 		throw new Error(`the fixture gift did not settle: ${settled.detail}`);
 	}
-	return txn;
+	return { txn, donationId };
 }
 
 /** part or all of the charge on `txn` refunded, as the processor reads the refund back. */
@@ -125,6 +169,38 @@ export async function refund(db: Db, txn: string, amountMinor: number): Promise<
 	);
 	if (!refunded.ok || refunded.outcome !== 'posted') {
 		throw new Error(`the fixture refund was not posted: ${refunded.detail}`);
+	}
+}
+
+/**
+ * the charge on `txn` disputed and withdrawn while the processor decides: `amountMinor` of it, or the
+ * whole charge where that is null.
+ */
+export async function dispute(
+	db: Db,
+	txn: string,
+	amountMinor: number | null = null
+): Promise<void> {
+	sequence += 1;
+	const opened = await recordReversal(
+		through(db, refusing('stripe', 'unsupported', 'not part of the dispute path')),
+		{
+			kind: 'dispute_opened',
+			reversedTxnId: txn,
+			providerReversalId: `dp_goal_${sequence}`,
+			amountMinor,
+			currency: 'USD',
+			occurredAt: new Date('2026-09-20T12:00:00.000Z'),
+			reversedMetadata: {},
+			feeMinor: null,
+			respondBy: null,
+			reason: 'fraudulent',
+			dashboardUrl: null
+		},
+		`evt_dp_goal_${sequence}`
+	);
+	if (!opened.ok || opened.outcome !== 'posted') {
+		throw new Error(`the fixture dispute was not posted: ${opened.detail}`);
 	}
 }
 

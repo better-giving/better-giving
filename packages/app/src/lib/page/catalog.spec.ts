@@ -6,7 +6,8 @@ import {
 	PHOTOS_MAX,
 	parsePage,
 	SHARE_MESSAGE_MAX,
-	TIERS_MAX
+	TIERS_MAX,
+	VIDEOS_MAX
 } from './catalog';
 
 // node pool, no database: the rule is a pure function of the page type and the document.
@@ -272,6 +273,70 @@ describe('what a page carries beside its content', () => {
 			ok: false,
 			path: ['settings', 'suggestedAmounts', 1],
 			message: 'an amount is a whole number of minor units above zero'
+		});
+	});
+});
+
+describe('videos', () => {
+	const video = (videoId: string, rest: Record<string, unknown> = {}) => ({
+		videoId,
+		title: 'How a rent grant works',
+		durationSeconds: 222,
+		posterImageId: IMAGE,
+		...rest
+	});
+
+	it('the Donation page holds them in their order, a length known or not', () => {
+		const input = page({
+			videos: [video('dQw4w9WgXcQ'), video('9bZkp7q19f0', { durationSeconds: null })]
+		});
+		expect(parsePage('donation_page', input)).toEqual({ ok: true, page: input });
+	});
+
+	it('reads a stored Donation page without the field as holding none', () => {
+		const read = parsePage('donation_page', page());
+		expect(read.ok && read.page.videos).toBeUndefined();
+	});
+
+	it(`refuses a seventh video`, () => {
+		const seven = Array.from({ length: VIDEOS_MAX + 1 }, (_, at) => video(`video-${at}abcd`));
+		expect(parsePage('donation_page', page({ videos: seven }))).toEqual({
+			ok: false,
+			path: ['videos'],
+			message: `the Donation page holds at most ${VIDEOS_MAX} videos`
+		});
+	});
+
+	it('refuses the same video twice', () => {
+		expect(
+			parsePage('donation_page', page({ videos: [video('dQw4w9WgXcQ'), video('dQw4w9WgXcQ')] }))
+		).toEqual({
+			ok: false,
+			path: ['videos', 1, 'videoId'],
+			message: 'the video dQw4w9WgXcQ is on the page already'
+		});
+	});
+
+	it.each([
+		['an id that is no YouTube id', { videoId: 'https://youtu.be/dQw4w9WgXcQ' }, 'videoId'],
+		[
+			'a poster held by address',
+			{ posterImageId: 'https://i.ytimg.com/vi/x/hqdefault.jpg' },
+			'posterImageId'
+		],
+		['a blank title', { title: '' }, 'title'],
+		['a length of zero', { durationSeconds: 0 }, 'durationSeconds'],
+		['a key of its own', { thumbnailUrl: 'https://i.ytimg.com/' }, '']
+	])('refuses %s', (_, change, key) => {
+		const read = parsePage('donation_page', page({ videos: [video('dQw4w9WgXcQ', change)] }));
+		expect(read).toMatchObject({ ok: false, path: ['videos', 0, ...(key === '' ? [] : [key])] });
+	});
+
+	it('a campaign holds none', () => {
+		expect(parsePage('campaign', page({ videos: [] }))).toEqual({
+			ok: false,
+			path: ['videos'],
+			message: 'a campaign has no videos; only the Donation page does'
 		});
 	});
 });

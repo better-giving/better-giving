@@ -14,6 +14,16 @@ describe('placedImageIds', () => {
 		).toEqual([HERO, IMAGE]);
 	});
 
+	it('names each video’s poster after the photos, in the videos’ order', () => {
+		const poster = (posterImageId: string) => ({
+			videoId: 'dQw4w9WgXcQ',
+			title: 'A visit',
+			durationSeconds: null,
+			posterImageId
+		});
+		expect(placedImageIds({ videos: [poster(IMAGE), poster(HERO)] })).toEqual([IMAGE, HERO]);
+	});
+
 	it('names nothing for a page with no photo', () => {
 		expect(placedImageIds({})).toEqual([]);
 	});

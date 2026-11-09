@@ -487,6 +487,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		occurredAt: new Date(),
 		consentedToContact: submission.consentedToContact,
 		note: submission.note,
+		noteOnPage: submission.noteOnPage,
 		tribute: submission.tribute,
 		programId: creditedProgram(form, submission)
 	});
@@ -661,6 +662,7 @@ async function mintCommitment(
 			}
 		],
 		note: submission.note,
+		noteOnPage: submission.noteOnPage,
 		tribute: submission.tribute,
 		programId: creditedProgram(form, submission),
 		occurredAt: new Date()
@@ -816,6 +818,7 @@ async function mintGrant(
 		occurredAt: new Date(),
 		consentedToContact: submission.consentedToContact,
 		note: submission.note,
+		noteOnPage: submission.noteOnPage,
 		tribute: submission.tribute,
 		programId: creditedProgram(form, submission)
 	});

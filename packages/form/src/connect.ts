@@ -341,6 +341,12 @@ export type CheckoutApi<
 	readonly noteToggle: T['button'];
 	readonly noteField: T['field'];
 	/**
+	 * the two ticks under the note: show it on the organisation's page, and sign it "Anonymous".
+	 * each `pressed` is the flow's answer, so a renderer draws a row off it rather than off its box.
+	 */
+	readonly notePublicToggle: T['button'];
+	readonly noteAnonymousToggle: T['button'];
+	/**
 	 * the causes the form offers, under the option that picks none.
 	 *
 	 * projected on every config and drawn on one, which is the division the header draws: which
@@ -731,6 +737,15 @@ export function connect<
 			name: 'note',
 			value: draft.note ?? '',
 			onChange: (note: string) => send({ type: 'SET_NOTE', note })
+		}),
+
+		notePublicToggle: button({
+			pressed: draft.noteShown !== undefined,
+			onClick: () => send({ type: 'TOGGLE_NOTE_PUBLIC' })
+		}),
+		noteAnonymousToggle: button({
+			pressed: draft.noteShown === 'anonymous',
+			onClick: () => send({ type: 'TOGGLE_NOTE_ANONYMOUS' })
 		}),
 
 		// the causes, in the org's own order, under the option a card rests on. that first option is an

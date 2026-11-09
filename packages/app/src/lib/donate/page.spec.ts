@@ -31,8 +31,8 @@ import { PageRoot } from './page-root';
 // a condition may carry.
 //
 // the sections: ./page-view.tsx and ./sections/*.tsx write no raw colour or length into a style object,
-// and every class they write is one ./page.css draws, or the form's layout sheet for its `.vh`: a
-// class nothing draws paints nothing and fails nowhere else.
+// and every class they write is one ./page.css draws, the form's layout sheet for its `.vh`, or the
+// registry's button the page links: a class nothing draws paints nothing and fails nowhere else.
 //
 // the edit edge: drawn only under `:root[data-editing]`, and solid on the innermost hovered section
 // alone.
@@ -144,14 +144,14 @@ describe('a page with no brand colour', () => {
 		expect(root({ brandColour: null }).inline).toEqual({});
 	});
 
-	it('draws the wash from the registry theme’s accent 2 and 3, and the ring from its accent 8', () => {
+	it('draws the wash from the registry theme’s accent 2 and 3, and the ring from its accent 11', () => {
 		expect(wash).toHaveLength(1);
 		expect(substitute(formBase, wash[0] ?? '')).toBe(
 			`radial-gradient(max(80cqi, 26rem) 38rem at 0% 14rem, ${literal('--accent-2')}, transparent 70%), ` +
 				`radial-gradient(max(65cqi, 24rem) 38rem at 100% 100%, ${literal('--accent-3')}, transparent 70%)`
 		);
-		expect(substitute(formBase, 'var(--_focus-ring)')).toBe(literal('--accent-8'));
-		expect(literal('--accent-8')).toMatch(/^oklch\(/);
+		expect(substitute(formBase, 'var(--_focus-ring)')).toBe(literal('--accent-11'));
+		expect(literal('--accent-11')).toMatch(/^oklch\(/);
 	});
 });
 
@@ -326,7 +326,7 @@ describe('every colour lands on the radix step for its job', () => {
 	const BORDER =
 		'6, 7 and 8: a separator, a control’s edge, that edge under the pointer and a brand edge';
 	const RING =
-		'8: the focus ring, the registry’s ring step, in a step-1 gap where it rings a control';
+		'11: the focus ring, the registry’s ring step, in a step-1 gap where it rings a control';
 	const ON_FILL = 'the ink on a solid fill: the form’s `--_on-p`';
 	const TEXT = '11 and 12: text';
 	const SCRIM = 'the feature’s scrim, and slate 1 on it';
@@ -356,7 +356,11 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-profile-banner | background': 'slate-3',
 				'.page-profile-band | background': 'brand-3',
 				'.page-profile-logo | background': 'slate-1',
-				'.page-profile-raised | background': 'slate-1'
+				'.page-profile-raised | background': 'slate-1',
+				'.page-messages-plane | background': 'slate-1',
+				'.page-messages-foot | background': 'slate-2',
+				'.page-video-box | background': 'slate-3',
+				".page-video-box[data-face='loading'] .page-video-status | background": 'slate-3'
 			}
 		},
 		'3, 4 and 5: a control’s ground, its hover and its press': {
@@ -391,16 +395,22 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-choose .page-choose-option:has(:checked) | border-color': 'brand-8',
 				'.page-profile-banner, .page-profile-band | border': 'slate-6',
 				'.page-profile-logo | border': 'slate-6',
-				'.page-profile-raised | border': 'slate-6'
+				'.page-profile-raised | border': 'slate-6',
+				'.page-messages-plane | border': 'slate-6',
+				'.page-messages-row + .page-messages-row | border-block-start': 'slate-6',
+				'.page-messages-foot | border-block-start': 'slate-6',
+				'.page-video-box | border': 'slate-6'
 			}
 		},
 		[RING]: {
-			allowed: ['brand-8', 'slate-1'],
+			allowed: ['brand-11', 'slate-1'],
 			at: {
-				'.page > .page-ground | --page-ring': 'brand-8',
-				'.page-ground a:focus-visible, .page-faq-question:focus-visible | box-shadow': 'brand-8',
-				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-8',
-				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-8'
+				'.page > .page-ground | --page-ring': 'brand-11',
+				'.page-ground a:focus-visible, .page-faq-question:focus-visible | box-shadow': 'brand-11',
+				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-11',
+				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-11',
+				'.page-messages-row:focus-visible | outline': 'brand-11',
+				'.page-ground .page-messages-more:focus-visible | box-shadow': 'brand-11'
 			}
 		},
 		'9: a solid fill, the generator’s step 9': {
@@ -462,7 +472,14 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-profile-raised-label | color': 'slate-11',
 				".page[data-layout='profile'] .page-about .page-label | color": 'slate-12',
 				".page[data-layout='profile'] :is(.page-about-statement, .page-about-beneath) | color":
-					'slate-12'
+					'slate-12',
+				'.page-messages-time | color': 'slate-11',
+				'.page-messages-count | color': 'slate-11',
+				'.page-messages-refused | color': 'red-11',
+				".page-video-box[data-face='loading'] .page-video-status | color": 'slate-12',
+				'.page-video-error-title | color': 'red-11',
+				'.page-video-error-body | color': 'slate-12',
+				'.page-video-length | color': 'slate-11'
 			}
 		},
 		// a photo has no step. the scrim over the feature's cover is the one colour off the ladders, and
@@ -726,7 +743,8 @@ describe('no card inside a card', () => {
 				['.page-share-button', EDGE],
 				['.page-mast', EDGE],
 				['.page-profile-logo', EDGE],
-				['.page-profile-raised', EDGE]
+				['.page-profile-raised', EDGE],
+				['.page-messages-plane', EDGE]
 			].sort()
 		);
 	});
@@ -1016,9 +1034,11 @@ describe('the sections ./page.css draws', () => {
 		...globSync(join(here, 'sections/*.tsx')).filter((file) => !file.includes('.spec.'))
 	];
 	const FORM_LAYOUT = require.resolve('@better-giving/form/styles/layout.css');
+	// the registry's button, which the page links beside its own sheet (./plain-page.tsx).
+	const FORM_BUTTON = require.resolve('@better-giving/form/registry/styles/button-css.css');
 	const drawn = new Set(
-		[pageText, readFileSync(FORM_LAYOUT, 'utf8')].flatMap((css) =>
-			[...stripComments(css).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1] ?? '')
+		[pageText, readFileSync(FORM_LAYOUT, 'utf8'), readFileSync(FORM_BUTTON, 'utf8')].flatMap(
+			(css) => [...stripComments(css).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1] ?? '')
 		)
 	);
 

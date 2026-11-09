@@ -48,7 +48,8 @@ function fixture(state: BannerState = 'public', hasEdits = false): Loaded {
 			settings: {
 				boxes: { open_on_monthly: false, dedication_on: false, share_message: '' },
 				monthlyOffered: true
-			}
+			},
+			videos: { videos: [], count: 0, cap: 6 }
 		}
 	};
 }
@@ -124,11 +125,11 @@ async function type(box: HTMLInputElement, text: string) {
 }
 
 describe('the Donation page edit page', () => {
-	it('is a form of its three cards, with no preview and no Unpublish', async () => {
+	it('is a form of its cards, Videos after General, with no preview and no Unpublish', async () => {
 		await screen();
 
 		expect(document.querySelector('iframe')).toBeNull();
-		expect(headings()).toEqual(['General', 'Donation settings', 'Settings']);
+		expect(headings()).toEqual(['General', 'Videos', 'Donation settings', 'Settings']);
 		const banner = document.querySelector('.adm-banner') as HTMLElement;
 		expect(banner.textContent).toContain('Your Donation page is public');
 		expect([...banner.querySelectorAll('button, a')].map((one) => one.textContent?.trim())).toEqual(

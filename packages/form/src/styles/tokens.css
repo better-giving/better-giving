@@ -60,16 +60,15 @@
  * the registry gap: it ships its themes as generated literals, made by its CLI's `theme:generate`,
  * and no runtime generator or seed hook, so the form keeps the generator's port to theme a seed a
  * host sets at runtime. ../styles/radix-scale.spec.ts holds the port to the registry — the registry's
- * default accent seed comes out as the registry's default accent scale. the registry's step aliases
- * sit on one step in every theme (../registry/styles/variables.usage.md: `--ring` accent 8, `--link`
- * accent 11), so a seeded card's ring is the seed's own step 8.
+ * default accent seed comes out as the registry's default accent scale — and the steps a runtime
+ * theme would have the CLI pick per theme (`--ring`, `--link`) stay the default theme's.
  *
  * the brand is spent by step. 9 fills the one control that commits the gift — the action — and the
  * boxes a donor does not choose a shape for: the fee switch set on, the box a donor ticks, the mark
  * on the step head saying where the donor is standing; 10 is each of those under the pointer. 8
  * edges the open payment rail on a step-1 face. 11 is the word on the quiet action, and 12 is that
  * word under the pointer. a chosen cadence and a chosen amount tile spend no brand step: each is
- * raised by `--_lift` below, its word in the neutral's 12. the focus ring is step 8, the step the
+ * raised by `--_lift` below, its word in the neutral's 12. the focus ring is step 11, the step the
  * registry's `--ring` is.
  *
  * one grey. the registry has one grey scale, so the card has no warm or cool grey — a registry gap
@@ -826,13 +825,13 @@
 	--_edge-unavailable: var(--_edge-control);
 
 	/*
-	 * the focus ring on the controls this card draws itself: the brand's step 8, one line
-	 * `--_focus-width` wide hugging the control's own edge. step 8 is the registry's `--ring` (radix's
-	 * focus-ring rung), which the registry's own controls draw theirs from (`.ds-btn:focus-visible`,
+	 * the focus ring on the controls this card draws itself: the brand's step 11, one line
+	 * `--_focus-width` wide hugging the control's own edge. step 11 is the registry's `--ring` in its
+	 * default theme, which the registry's own controls draw theirs from (`.ds-btn:focus-visible`,
 	 * `.ds-checkbox:focus-visible`), so every ring on the card is one colour; named by its step for
 	 * the reason the brand steps above are, so the donor page's re-themed accent reaches it too.
 	 */
-	--_focus-ring: var(--_a8);
+	--_focus-ring: var(--_a11);
 
 	/*
 	 * the lift: the one cast shadow on the card, and the named exception to the flat rule at the head

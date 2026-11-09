@@ -19,7 +19,7 @@ Import `styles/variables.css` and `styles/radio-css.css`. The class goes on the 
 
 ## States
 
-Hover darkens the edge, except on a disabled or invalid radio. Disabled takes the `--gray-3` fill and a `--hairline` edge, and a checked dot mutes to gray-11, as the checkbox does. `aria-invalid="true"` on the input takes the `--destructive` edge; for a group refused as a whole, put it on every radio in the group and the predicate once under the `<fieldset>`. Under forced colors (Windows High Contrast) the dot is drawn in the system ink, `CanvasText`. Focus-visible shows a 2px outline in `--ring`, for keyboard focus only.
+Hover darkens the edge; a disabled checked dot takes the disabled fill (the Tailwind `radio` does the same, so it is faint). Under forced colors (Windows High Contrast) the dot is drawn in the system ink, `CanvasText`. Focus-visible shows a 2px outline in `--ring`, for keyboard focus only.
 
 ## Accessibility
 
@@ -29,4 +29,4 @@ Hover darkens the edge, except on a disabled or invalid radio. Disabled takes th
 
 ## Theming
 
-Reads roles from `variables`, so `data-theme`, `.dark` and `.light` recolor it. The spacing step Tailwind owns is declared on the class as `--ds-spacing` with the same value. It is in rem, so the radio and its dot follow the reader's browser font size.
+Reads roles from `variables`, so `data-theme`, `.dark` and `.light` recolor it. The spacing step Tailwind owns is declared on the class as `--ds-spacing` with the same value. A test holds the look equal to the Tailwind `radio` in light and dark, in the default and example themes, except disabled: the Tailwind `radio` keeps the resting fill and edge there and mutes the checked dot to the disabled fill, where it can't be seen.

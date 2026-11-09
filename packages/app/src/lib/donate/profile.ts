@@ -1,4 +1,7 @@
+import type { Video } from '../page/catalog';
 import { imageSrc } from '../page/image-src';
+import { type ShownVideo, shownVideos } from '../page/videos';
+import type { DonorMessages } from './messages';
 import type { PageLogo } from './page-view';
 import type { OrgInfo, PageMoney, PageOrg } from './sections/types';
 
@@ -35,6 +38,18 @@ export type DonateProfile = {
 	/** how `raised` is worded: the served config's locale and currency. */
 	readonly money: PageMoney;
 	readonly footer: Pick<OrgInfo, 'addressLines' | 'email' | 'socialLinks'>;
+	/**
+	 * the newest six messages from donors, read on this request (`readShownMessages` in
+	 * ../server/pages/messages.ts); the next six are `/donate/messages?after=` `messages.next`.
+	 */
+	readonly messages: DonorMessages;
+	/**
+	 * the drawn document's videos in its order, none where it holds none: the published page's for a
+	 * donor, the draft's in the preview. each poster is served from this deployment, and nothing
+	 * here names a YouTube address: the player's is built from `videoId` once a donor presses play
+	 * (`youTubeEmbedUrl` in ../page/videos.ts).
+	 */
+	readonly videos: readonly ShownVideo[];
 };
 
 /** the profile head's fields, from the organisation, its photos and its raised figure as read. */
@@ -43,13 +58,17 @@ export function donateProfile({
 	logo,
 	bannerImageId,
 	raised,
-	money
+	money,
+	messages,
+	videos
 }: {
 	readonly org: PageOrg;
 	readonly logo: PageLogo | null;
 	readonly bannerImageId: string | null;
 	readonly raised: DonateProfile['raised'];
 	readonly money: PageMoney;
+	readonly messages: DonorMessages;
+	readonly videos: readonly Video[] | undefined;
 }): DonateProfile {
 	const { ein, addressLines, email, socialLinks } = org.info;
 	return {
@@ -64,6 +83,8 @@ export function donateProfile({
 		vision: org.vision,
 		raised,
 		money,
-		footer: { addressLines, email, socialLinks }
+		footer: { addressLines, email, socialLinks },
+		messages,
+		videos: shownVideos(videos)
 	};
 }

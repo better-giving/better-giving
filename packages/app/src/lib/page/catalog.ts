@@ -6,12 +6,13 @@
 // a page holds, and nothing that says how they are drawn. there is no layout, no colour, no block
 // list and no order — ./shape.ts picks a whole layout from what the content holds, and the brand
 // colour is the organisation's. no markup and no address but a link inside rich text, since every
-// value is a plain string, a number, a photo's stored id or a rich-text document.
+// value is a plain string, a number, a photo's stored id, a YouTube video's id or a rich-text
+// document.
 //
-// a campaign holds every key; the Donation page draws one fixed layout and holds only its heading,
-// its share message, its switches and its settings, so a campaign-only key on it is refused. a
-// section with nothing in it — no tiers, a blank story, no goal — is accepted and leaves itself out
-// at render. top-level keys the database reads are ./keys.ts's; `$lib/server/db/schema.ts` checks
+// a campaign holds every key but `videos`; the Donation page draws one fixed layout and holds only
+// its heading, its share message, its switches, its settings and its videos, so a key only the
+// other holds is refused on each. a section with nothing in it — no tiers, a blank story, no goal —
+// is accepted and leaves itself out at render. top-level keys the database reads are ./keys.ts's; `$lib/server/db/schema.ts` checks
 // the same names. `settings` is the draft donation settings publish copies onto the page's owned
 // form row, read by ./settings.ts's rule.
 //
@@ -24,6 +25,9 @@ import { richTextDocument } from '../rich-text/document';
 import { isTimeZone } from './end-date';
 import { PAGE_KEYS, type PageType } from './keys';
 import { draftSettings } from './settings';
+import { VIDEOS_MAX, YOUTUBE_VIDEO_ID } from './videos';
+
+export { VIDEOS_MAX };
 
 /** holds "Donate to " and the longest legal name, so the default Donation page always fits. */
 export const HEADING_MAX = 250;
@@ -40,6 +44,8 @@ export const ALT_MAX = 250;
 export const AMOUNT_LABEL_MAX = 40;
 /** the suggested amounts a campaign offers, and so the labels it holds at most. */
 export const CAMPAIGN_AMOUNTS_MAX = 4;
+/** a video's title as YouTube states it, cut to this at add time; YouTube's own cap is 100. */
+export const VIDEO_TITLE_MAX = 200;
 
 const TIER_AMOUNT = 'a tier’s amount is a whole number of minor units above zero';
 
@@ -59,6 +65,27 @@ export const photo = z.strictObject({
 });
 
 export type Photo = z.infer<typeof photo>;
+
+const DURATION = 'a video’s length is a whole number of seconds above zero, or null where unknown';
+
+/**
+ * a YouTube video on the Donation page, as the Videos card added it ($lib/server/pages/videos.ts):
+ * its id, and the title, length and poster read from YouTube then and stored, so drawing the page
+ * asks YouTube for nothing. the poster is a stored image like a photo, served from `imageSrc`.
+ */
+export const video = z.strictObject({
+	videoId: z.string().regex(YOUTUBE_VIDEO_ID, { error: 'a video id is YouTube’s 11-character id' }),
+	title: z
+		.string()
+		.min(1, { error: 'a video has a title' })
+		.max(VIDEO_TITLE_MAX, { error: `a video’s title holds at most ${VIDEO_TITLE_MAX} characters` }),
+	durationSeconds: z.int({ error: DURATION }).positive({ error: DURATION }).nullable(),
+	posterImageId: z.uuid({
+		error: 'a poster is the id of a stored image, never an address'
+	})
+});
+
+export type Video = z.infer<typeof video>;
 
 /** each content section's rule, which a section's save checks its boxes against before the page. */
 export const SECTION_DATA = {
@@ -133,6 +160,9 @@ const CAMPAIGN_ONLY = [
 	['amountLabels', 'suggested amount labels']
 ] as const;
 
+/** the keys only the Donation page holds, as a refusal names each. */
+const DONATION_PAGE_ONLY = [['videos', 'videos']] as const;
+
 const LABEL_AMOUNT = 'a labelled amount is a whole number of minor units above zero';
 
 /**
@@ -191,9 +221,37 @@ const pageDocument = (type: PageType) =>
 					error: (issue) => `${JSON.stringify(issue.input)} is not a time zone`
 				})
 				.optional(),
-			settings: draftSettings.optional()
+			settings: draftSettings.optional(),
+			// array order is the order the page draws them in.
+			videos: z
+				.array(video)
+				.max(VIDEOS_MAX, { error: `the Donation page holds at most ${VIDEOS_MAX} videos` })
+				.optional()
 		})
 		.check((ctx) => {
+			const seen = new Set<string>();
+			ctx.value.videos?.forEach(({ videoId }, at) => {
+				if (seen.has(videoId)) {
+					ctx.issues.push({
+						code: 'custom',
+						input: videoId,
+						path: ['videos', at, 'videoId'],
+						message: `the video ${videoId} is on the page already`
+					});
+				}
+				seen.add(videoId);
+			});
+			if (type === 'campaign') {
+				for (const [key, what] of DONATION_PAGE_ONLY) {
+					if (ctx.value[key] === undefined) continue;
+					ctx.issues.push({
+						code: 'custom',
+						input: ctx.value[key],
+						path: [key],
+						message: `${PAGE_NAMES[type]} has no ${what}; only ${PAGE_NAMES.donation_page} does`
+					});
+				}
+			}
 			if (type !== 'campaign') {
 				for (const [key, what] of CAMPAIGN_ONLY) {
 					if (ctx.value[key] === undefined) continue;

@@ -19,6 +19,7 @@ import { createPaymentProviders } from '../payments/factory';
 import { readActiveProgramPhotos } from '../programs/queries';
 import { readDocument } from './document';
 import { organisationRaised, pageGoal } from './goal';
+import { readShownMessages } from './messages';
 
 // everything a donor page draws beyond its own stored document, read for one page: the donation
 // page at /donate, a campaign at its address, and either one in the editor's preview.
@@ -50,7 +51,8 @@ import { organisationRaised, pageGoal } from './goal';
 // and never on its `v1` options, and so is a campaign's raised figure (./goal.ts), a sum over the
 // books that is never cached. the Donation page alone is handed its profile head beside the view
 // (`DonateProfile` in ../../donate/profile.ts) from those same reads, with what the organisation has
-// raised through every form (`organisationRaised` in ./goal.ts), likewise never cached.
+// raised through every form (`organisationRaised` in ./goal.ts) and its donors' newest messages
+// (`readShownMessages` in ./messages.ts), likewise never cached.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {
@@ -130,9 +132,11 @@ export async function loadPageView(
 	const pageName = page.name ?? source.name;
 	const orgName = config.orgLegalName;
 	const money = { locale: config.locale, currency: config.currency };
-	const [goal, raised] = await Promise.all([
+	const isDonationPage = source.type === 'donation_page';
+	const [goal, raised, messages] = await Promise.all([
 		pageGoal(db, source.formId, page, config.locale),
-		source.type === 'donation_page' ? organisationRaised(db, config.currency) : null
+		isDonationPage ? organisationRaised(db, config.currency) : null,
+		isDonationPage ? readShownMessages(db, null) : null
 	]);
 	const org = {
 		name: orgName,
@@ -168,14 +172,16 @@ export async function loadPageView(
 			...openingOf(page.switches)
 		},
 		profile:
-			raised === null
+			raised === null || messages === null
 				? null
 				: donateProfile({
 						org,
 						logo,
 						bannerImageId: profile?.bannerImageId ?? null,
 						raised,
-						money
+						money,
+						messages,
+						videos: page.videos
 					})
 	};
 }

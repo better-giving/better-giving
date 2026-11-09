@@ -74,7 +74,7 @@ describe('the hex a mail client renders', () => {
 	it('draws the mails in the operator ink, small print and link colour', () => {
 		expect(INK).toBe('#1a2029');
 		expect(INK_MUTED).toBe('#5d656f');
-		expect(LINK).toBe('#206fad');
+		expect(LINK).toBe('#1e6dab');
 	});
 });
 

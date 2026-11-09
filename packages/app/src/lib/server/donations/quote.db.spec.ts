@@ -569,6 +569,69 @@ describe('mintQuote() — a gift given in honor or memory of someone', () => {
 	});
 });
 
+describe('mintQuote() — a note the donor asked to show on the page', () => {
+	// `note_public` and `note_anonymous` on the v1 body (packages/form/src/v1.ts), stored on the
+	// gift. absent is no; anonymous stands only beside public, and neither beside no note.
+
+	const placed = async (over: Record<string, unknown>) => {
+		const result = await mint(deps(), over);
+		expect(result.ok).toBe(true);
+		const [gift] = await db
+			.select({ notePublic: donation.notePublic, noteAnonymous: donation.noteAnonymous })
+			.from(donation);
+		return gift;
+	};
+
+	it('stores a note shown under the donor’s name', async () => {
+		expect(await placed({ note: 'Keep it up', note_public: true })).toEqual({
+			notePublic: true,
+			noteAnonymous: false
+		});
+	});
+
+	it('stores a note shown as Anonymous', async () => {
+		expect(await placed({ note: 'Keep it up', note_public: true, note_anonymous: true })).toEqual({
+			notePublic: true,
+			noteAnonymous: true
+		});
+	});
+
+	it('keeps a note private where neither box came, as every client before these did', async () => {
+		expect(await placed({ note: 'Keep it up' })).toEqual({
+			notePublic: false,
+			noteAnonymous: false
+		});
+	});
+
+	it('keeps a note private where only Anonymous came', async () => {
+		expect(await placed({ note: 'Keep it up', note_anonymous: true })).toEqual({
+			notePublic: false,
+			noteAnonymous: false
+		});
+	});
+
+	it('stores neither where there is no note to show', async () => {
+		expect(await placed({ note: '   ', note_public: true, note_anonymous: true })).toEqual({
+			notePublic: false,
+			noteAnonymous: false
+		});
+	});
+
+	it('stores the consent on the gift a repeating gift opens with', async () => {
+		expect(await placed({ frequency: 'monthly', note: 'Monthly!', note_public: true })).toEqual({
+			notePublic: true,
+			noteAnonymous: false
+		});
+	});
+
+	it('refuses a box that is not a boolean', async () => {
+		const result = await mint(deps(), { note: 'Keep it up', note_public: 'on' });
+
+		expect(result.ok).toBe(false);
+		expect(await db.select().from(donation)).toEqual([]);
+	});
+});
+
 describe('mintQuote() — the fee is the server’s', () => {
 	it('grosses the charge up when the donor covers the fee', async () => {
 		const result = await mint(deps(), { coversFee: true, amountMinor: 10_000 });

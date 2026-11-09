@@ -343,6 +343,41 @@ describe('the amount step', () => {
 		expect(actor.getSnapshot().context.draft.note).toBeUndefined();
 	});
 
+	it('takes both ticks back when the note is closed, and reopens it private', () => {
+		const { actor } = harness();
+		actor.send({ type: 'TOGGLE_NOTE' });
+		actor.send({ type: 'TOGGLE_NOTE_PUBLIC' });
+		actor.send({ type: 'TOGGLE_NOTE_ANONYMOUS' });
+		actor.send({ type: 'TOGGLE_NOTE' });
+		expect(actor.getSnapshot().context.draft.noteShown).toBeUndefined();
+
+		actor.send({ type: 'TOGGLE_NOTE' });
+		expect(actor.getSnapshot().context.draft.noteShown).toBeUndefined();
+	});
+
+	it('takes Anonymous back with the consent to show the note', () => {
+		const { actor } = harness();
+		actor.send({ type: 'TOGGLE_NOTE' });
+		actor.send({ type: 'TOGGLE_NOTE_PUBLIC' });
+		actor.send({ type: 'TOGGLE_NOTE_ANONYMOUS' });
+		actor.send({ type: 'TOGGLE_NOTE_PUBLIC' });
+		expect(actor.getSnapshot().context.draft.noteShown).toBeUndefined();
+
+		actor.send({ type: 'TOGGLE_NOTE_PUBLIC' });
+		expect(actor.getSnapshot().context.draft.noteShown).toBe('named');
+	});
+
+	it('shows nothing for a note nobody opened, and signs nothing private', () => {
+		const { actor } = harness();
+		actor.send({ type: 'TOGGLE_NOTE_PUBLIC' });
+		actor.send({ type: 'TOGGLE_NOTE_ANONYMOUS' });
+		expect(actor.getSnapshot().context.draft.noteShown).toBeUndefined();
+
+		actor.send({ type: 'TOGGLE_NOTE' });
+		actor.send({ type: 'TOGGLE_NOTE_ANONYMOUS' });
+		expect(actor.getSnapshot().context.draft.noteShown).toBeUndefined();
+	});
+
 	it('carries the cause the donor chose onto the decided gift', () => {
 		const { actor } = harness({ config: CHOICE_CONFIG });
 		actor.send({ type: 'SET_AMOUNT', amountMinor: 2500 });
@@ -722,6 +757,55 @@ describe('the press that spends the money', () => {
 		});
 		expect(calls.quote[0]).not.toHaveProperty('tributeNotifyName');
 		expect(calls.quote[0]).not.toHaveProperty('tributeNotifyEmail');
+	});
+
+	it('sends a note the donor asked to show, under their name', async () => {
+		const { actor, calls } = readyToSubmit();
+		actor.send({ type: 'GO_TO_STEP', step: 'amount' });
+		actor.send({ type: 'TOGGLE_NOTE' });
+		actor.send({ type: 'SET_NOTE', note: 'for the gala' });
+		actor.send({ type: 'TOGGLE_NOTE_PUBLIC' });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote[0]).toMatchObject({ note: 'for the gala', note_public: true });
+		expect(calls.quote[0]).not.toHaveProperty('note_anonymous');
+	});
+
+	it('sends anonymous only beside public', async () => {
+		const { actor, calls } = readyToSubmit();
+		actor.send({ type: 'GO_TO_STEP', step: 'amount' });
+		actor.send({ type: 'TOGGLE_NOTE' });
+		actor.send({ type: 'SET_NOTE', note: 'for the gala' });
+		actor.send({ type: 'TOGGLE_NOTE_PUBLIC' });
+		actor.send({ type: 'TOGGLE_NOTE_ANONYMOUS' });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote[0]).toMatchObject({ note_public: true, note_anonymous: true });
+	});
+
+	it('sends neither flag on a note the donor kept private', async () => {
+		// an unticked box submits no key: absence is the value (AGENTS.md → Forms).
+		const { actor, calls } = readyToSubmit();
+		actor.send({ type: 'GO_TO_STEP', step: 'amount' });
+		actor.send({ type: 'TOGGLE_NOTE' });
+		actor.send({ type: 'SET_NOTE', note: 'for the gala' });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote[0]).toMatchObject({ note: 'for the gala' });
+		expect(calls.quote[0]).not.toHaveProperty('note_public');
+		expect(calls.quote[0]).not.toHaveProperty('note_anonymous');
 	});
 
 	it('sends the cause the donor chose', async () => {
@@ -1543,6 +1627,8 @@ const EVERY_EVENT: readonly CheckoutEvent[] = Object.values({
 	SET_FREQUENCY: { type: 'SET_FREQUENCY', frequency: 'monthly' },
 	SET_NOTE: { type: 'SET_NOTE', note: 'for the roof' },
 	TOGGLE_NOTE: { type: 'TOGGLE_NOTE' },
+	TOGGLE_NOTE_PUBLIC: { type: 'TOGGLE_NOTE_PUBLIC' },
+	TOGGLE_NOTE_ANONYMOUS: { type: 'TOGGLE_NOTE_ANONYMOUS' },
 	SET_PROGRAM: { type: 'SET_PROGRAM', programId: 'prg_water' },
 	SET_TRIBUTE: { type: 'SET_TRIBUTE', honoree: 'Margaret Chen' },
 	TOGGLE_TRIBUTE: { type: 'TOGGLE_TRIBUTE' },
