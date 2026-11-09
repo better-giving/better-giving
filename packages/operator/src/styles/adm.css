@@ -2895,9 +2895,10 @@
 		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
 	}
 
-	/* a taken row's edge is the accent's 7 and the ring its 11, one hue that abutting would read as
-	   one heavier edge, so the ring stands outside a band of the ground the row stands on (`--_ground`,
-	   which every plane states; ./plane-ground.spec.ts). */
+	/* a taken row's edge is the accent's 7 at rest and 8 under a pointer, and the ring is the accent's
+	   8 as well, one hue that abutting would read as one heavier edge, so the ring stands outside a
+	   band of the ground the row stands on (`--_ground`, which every plane states;
+	   ./plane-ground.spec.ts). */
 	.adm-check--boxed:has(input:checked:focus-visible),
 	.adm-check--boxed:has(input:checked.is-focus) {
 		box-shadow:
@@ -5832,13 +5833,15 @@
 
 	/* a quiet control at the start of the actions' own line aligns by its word rather than by its
 	   box: the quiet rank draws no ground, so what a reader takes for the start of the control is
-	   the first letter of its label, and that sits inside the inline padding. the pull is exactly
-	   that padding, which puts the word on the column's edge under the title's own first letter.
+	   the first letter of its label, and that sits inside the inline padding and the edge. the pull
+	   is exactly those two, which puts the word on the column's edge under the title's own first
+	   letter.
 
-	   it spends `--admin-space-5` because that is what the registry's small ghost press pads
-	   itself by, with no edge (the note at the rule). a full-size quiet control at this edge would
-	   be a line of its own spending its own padding, never this one widened to cover both — a pull
-	   that is not the padding it cancels is a second misalignment.
+	   it spends `--admin-space-5`, what the registry's small ghost press pads itself by, and
+	   `--ds-btn-edge`, the transparent edge every registry rank draws (the note at the rule). a
+	   full-size quiet control at this edge would be a line of its own spending its own padding,
+	   never this one widened to cover both — a pull that is not the room it cancels is a second
+	   misalignment.
 
 	   in a page header the row is spaced apart, so the pull shows only where it should. sharing the
 	   title's line the actions sit at the far end, and a negative margin comes off the group's
@@ -5857,18 +5860,37 @@
 	   word, while the gap between two controls on a line stays what it was. the live region a copy
 	   control stands beside it (`.adm-vh`) is out of the flow and no item of the row. a row with
 	   any other item in it keeps the pull on its first control alone, because a control with a
-	   ground aligns by its box and the row cannot know which item a line will start with. */
+	   ground aligns by its box and the row cannot know which item a line will start with.
+
+	   `--ds-btn-edge` is declared on the press (`.ds-btn`), so the row cannot read it: the row is
+	   pulled by the padding and each of its controls is set back by its own edge, which moves every
+	   line's word together and leaves the gaps between controls as they were. */
 	.adm-pageheader__row .adm-actions:not(:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh))),
-	.adm-grouped > .adm-actions:not(:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh))),
+	.adm-grouped > .adm-actions:not(:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh))) {
+		/* the registry's ghost small press is three of its spacing steps in from its word
+		   (`.ds-btn-sm`, ../registry/styles/button-css.css), which is this step. */
+		margin-inline-start: calc(-1 * var(--admin-space-5));
+	}
+
+	.adm-pageheader__row
+		.adm-actions:not(:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh)))
+		> .adm-btn--quiet.adm-btn--sm,
+	.adm-grouped
+		> .adm-actions:not(:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh)))
+		> .adm-btn--quiet.adm-btn--sm {
+		/* `.adm-btn` is `position: relative`, so this moves the drawn press and not the line. */
+		inset-inline-start: calc(-1 * var(--ds-btn-edge));
+	}
+
 	.adm-pageheader__row
 		.adm-actions:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh))
 		> .adm-btn--quiet.adm-btn--sm:first-child,
 	.adm-grouped
 		> .adm-actions:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh))
 		> .adm-btn--quiet.adm-btn--sm:first-child {
-		/* the registry's ghost small press is three of its spacing steps in from its word and draws
-		   no edge (`.ds-btn-sm`, ../registry/styles/button-css.css), which is this step. */
-		margin-inline-start: calc(-1 * var(--admin-space-5));
+		/* the padding, as the row above is pulled, and the edge outside it: every registry rank
+		   draws one, transparent on the ghost (`.ds-btn`, ../registry/styles/button-css.css). */
+		margin-inline-start: calc(-1 * (var(--admin-space-5) + var(--ds-btn-edge)));
 	}
 
 	/* the trail of pages above this one, drawn by

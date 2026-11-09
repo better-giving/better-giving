@@ -103,13 +103,22 @@
  * and `box-shadow` may not join this list: nearly every focus ring on this card is one too, so
  * putting it here fades a focus indicator in over `--_dur-fast` instead of drawing it on the key
  * press. the mark snaps, which is what a radio answering a press should do anyway.
+ *
+ * the action is also stated at `.ds-btn`, the registry class it carries (`REGISTRY_CLASS` in
+ * ../parts.ts). that class declares its own transition (../registry/styles/button-css.css) and
+ * outweighs the zero-weight list, which would drop the press's `scale` and time the fill by
+ * `--duration-fast`. that name is declared on the registry's `:root`
+ * (../registry/styles/variables.css) and a shadow tree has no `:root`, so inside the card it is the
+ * host page's, and the `reduce` collapse in ./tokens.css never reaches it. "restates the motion of every registry control that
+ * brings its own" in ../element.dom.spec.ts holds it.
  */
 :where(
 	[part~='action'],
 	[part~='action-quiet'],
 	[part~='frequency-option'],
 	[part~='amount-option']
-) {
+),
+[part~='action'].ds-btn {
 	transition:
 		scale var(--_move-press),
 		background-color var(--_move-state),

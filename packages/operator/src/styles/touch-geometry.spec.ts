@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { BUTTON_VARIANT_CLASS } from '../components/controls/Button.jsx';
 import { stripComments } from './raw-values';
 import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
@@ -248,10 +249,14 @@ const members = (floorRules[0]?.selector.split(', ') ?? []).map((member) =>
 /** a control as drawn: its border box, and the border its target's insets are measured inside. */
 type Drawn = { readonly inline: number; readonly block: number; readonly border: number };
 
-/** how big a target is, and how far it reaches past each edge of the control it is drawn on. */
+/**
+ * how big a target is, the border of the control it is drawn on, and how far it reaches past each
+ * edge of that control's border box.
+ */
 type Target = {
 	readonly inline: number;
 	readonly block: number;
+	readonly border: number;
 	readonly inlineStart: number;
 	readonly inlineEnd: number;
 	readonly blockStart: number;
@@ -274,21 +279,43 @@ const widthOf = (border: string | undefined, bound: Readonly<Record<string, stri
 	border === undefined ? 0 : evaluate(border.split(' ')[0], undefined, bound);
 
 /**
- * the registry's own names a small press is measured in, as `evaluate` reads them: the spacing step,
- * the small tier's height and the edge width, all declared on the registry's classes rather than in
- * ./tokens.css.
+ * the edge a button rank draws: the rank's own `--ds-btn-edge` where it states one, as
+ * `.ds-btn-outline` does, else the one `.ds-btn` states for every rank. a name neither states throws
+ * rather than reading as no edge.
  */
-const REGISTRY_SIZES = (): Record<string, string> => ({
+const buttonEdge = (rank: string): string => {
+	const edge =
+		ruleOf(registry, `.${rank}`).get('--ds-btn-edge') ??
+		ruleOf(registry, '.ds-btn').get('--ds-btn-edge');
+	if (edge === undefined || edge === '') {
+		throw new Error(`neither .${rank} nor .ds-btn states --ds-btn-edge`);
+	}
+	return edge;
+};
+
+/**
+ * the registry's own names a small press of one rank is measured in, as `evaluate` reads them: the
+ * spacing step, the small tier's height and the rank's edge width, all declared on the registry's
+ * classes rather than in ./tokens.css.
+ */
+const REGISTRY_SIZES = (rank: string): Record<string, string> => ({
 	'--ds-spacing': ruleOf(registry, '.ds-btn').get('--ds-spacing') ?? '',
 	'--ds-btn-size': ruleOf(registry, '.ds-btn-sm').get('--ds-btn-size') ?? '',
-	'--ds-btn-edge': ruleOf(registry, '.ds-btn').get('--ds-btn-edge') ?? ''
+	'--ds-btn-edge': buttonEdge(rank)
 });
 
-/** the quiet rank's edge, which is the one `.ds-btn` states: `.ds-btn-ghost` adds none. */
-const BUTTON_BORDER = () => {
-	expect(ruleOf(registry, '.ds-btn-ghost').get('border')).toBeUndefined();
-	return widthOf(ruleOf(registry, '.ds-btn').get('border'), REGISTRY_SIZES());
+/** the border a rank draws: its own shorthand where it states one, else `.ds-btn`'s, at its own edge. */
+const BUTTON_BORDER = (rank: string) => {
+	const border =
+		ruleOf(registry, `.${rank}`).get('border') ?? ruleOf(registry, '.ds-btn').get('border');
+	if (border === undefined) throw new Error(`neither .${rank} nor .ds-btn states a border`);
+	return widthOf(border, REGISTRY_SIZES(rank));
 };
+
+// every `.adm-btn` member below is `variant="quiet"` at `size="sm"`: a row's Remove
+// (../components/forms/RepeatingRows.jsx), and the top bar's globe, page link and way out
+// (../components/shell/AppShell.jsx, packages/app/src/routes/_app.tsx).
+const QUIET = BUTTON_VARIANT_CLASS.quiet;
 const ROW_REMOVE = '.adm-rows__row > .adm-rows__remove';
 const CHIP = '.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip';
 const GLOBE = '.adm-identity__lead > .adm-btn';
@@ -301,8 +328,8 @@ const WAY_OUT = '.adm-identity > .adm-signout > .adm-btn';
  */
 const barButton = (): Drawn => {
 	const small = ruleOf(registry, '.ds-btn-sm');
-	const border = BUTTON_BORDER();
-	const sizes = REGISTRY_SIZES();
+	const border = BUTTON_BORDER(QUIET);
+	const sizes = REGISTRY_SIZES(QUIET);
 	return {
 		inline:
 			2 * (border + evaluate(small.get('padding-inline'), undefined, sizes)) +
@@ -314,7 +341,7 @@ const barButton = (): Drawn => {
 
 /** the top bar's edges above and below a button in it, each a step of the bar's breathing room off it. */
 const barEdges = (member: string): (readonly [string, number, number])[] => {
-	const at = target(member);
+	const at = beyond(member);
 	const bar = ruleOf(css, '.adm-identity');
 	const room = (evaluate(bar.get('min-block-size')) - barButton().block) / 2;
 	return [
@@ -333,11 +360,11 @@ const MEMBERS: Record<string, Member> = {
 			return {
 				inline: evaluate(remove.get('inline-size')),
 				block: evaluate(remove.get('min-block-size')),
-				border: BUTTON_BORDER()
+				border: BUTTON_BORDER(QUIET)
 			};
 		},
 		neighbours: () => {
-			const at = target(ROW_REMOVE);
+			const at = beyond(ROW_REMOVE);
 			const [rowStep, boxStep] = terms(ruleOf(css, '.adm-rows').get('gap'));
 			return [
 				['its box', at.inlineStart, px(boxStep ?? '')],
@@ -359,7 +386,7 @@ const MEMBERS: Record<string, Member> = {
 		neighbours: () => [
 			[
 				'its box',
-				target('.adm-wellwrap').inlineStart,
+				beyond('.adm-wellwrap').inlineStart,
 				evaluate(ruleOf(css, '.adm-field > .adm-actions:has(> .adm-wellwrap)').get('gap'))
 			]
 		]
@@ -378,7 +405,7 @@ const MEMBERS: Record<string, Member> = {
 			};
 		},
 		neighbours: () => {
-			const at = target(CHIP);
+			const at = beyond(CHIP);
 			const row = ruleOf(css, '.adm-choicechips');
 			return [
 				['the chip beside it', at.inlineEnd + at.inlineStart, evaluate(row.get('column-gap'))],
@@ -394,7 +421,7 @@ const MEMBERS: Record<string, Member> = {
 			inline: evaluate(ruleOf(css, '.adm-identity__lead').get('inline-size'))
 		}),
 		neighbours: () => {
-			const at = target(GLOBE);
+			const at = beyond(GLOBE);
 			const bar = ruleOf(css, '.adm-identity');
 			return [
 				["the window's edge", at.inlineStart, evaluate(bar.get('padding-inline'))],
@@ -410,13 +437,13 @@ const MEMBERS: Record<string, Member> = {
 		holder: '.adm-btn',
 		drawn: barButton,
 		neighbours: () => {
-			const at = target(PAGE_LINK);
+			const at = beyond(PAGE_LINK);
 			const bar = ruleOf(css, '.adm-identity');
 			return [
 				['the name before it', at.inlineStart, evaluate(bar.get('gap'))],
 				[
 					'the way out after it',
-					at.inlineEnd + target(WAY_OUT).inlineStart,
+					at.inlineEnd + beyond(WAY_OUT).inlineStart,
 					evaluate(bar.get('gap'))
 				],
 				...barEdges(PAGE_LINK)
@@ -429,7 +456,7 @@ const MEMBERS: Record<string, Member> = {
 		holder: '.adm-btn',
 		drawn: barButton,
 		neighbours: () => {
-			const at = target(WAY_OUT);
+			const at = beyond(WAY_OUT);
 			const bar = ruleOf(css, '.adm-identity');
 			return [
 				['the name before it', at.inlineStart, evaluate(bar.get('gap'))],
@@ -441,9 +468,11 @@ const MEMBERS: Record<string, Member> = {
 };
 
 /**
- * the target the shared rule draws on a member. a size and an inset are measured from the holder's
- * padding box, so `100%` is the drawn size less the border and the border is added back to place
- * the target against the border box.
+ * the target the shared rule draws on a member, and how far it reaches past each edge of the
+ * control's border box. a size and an inset are measured from the holder's padding box, so `100%`
+ * is the drawn size less the border and the border is added back to place the target against the
+ * border box. a reach is as drawn and can be negative: a target on the padding box of a control
+ * already over the floor stops its border's width short of each edge.
  */
 function target(member: string): Target {
 	const entry = MEMBERS[member];
@@ -456,16 +485,30 @@ function target(member: string): Target {
 		-drawn.border - evaluate(stated.get('inset-inline-start'), drawn.inline - 2 * drawn.border);
 	const blockStart =
 		-drawn.border - evaluate(stated.get('inset-block-start'), drawn.block - 2 * drawn.border);
-	// the control's own border box is a target too, so a pseudo-element drawn on the padding box of a
-	// control already over the floor (the registry's button has an edge on every variant) reaches
-	// nothing past it rather than a line-width short of it.
 	return {
 		inline,
 		block,
-		inlineStart: Math.max(0, inlineStart),
-		inlineEnd: Math.max(0, inline - drawn.inline - inlineStart),
-		blockStart: Math.max(0, blockStart),
-		blockEnd: Math.max(0, block - drawn.block - blockStart)
+		border: drawn.border,
+		inlineStart,
+		inlineEnd: inline - drawn.inline - inlineStart,
+		blockStart,
+		blockEnd: block - drawn.block - blockStart
+	};
+}
+
+/**
+ * where a press on a member lands past its border box, which is what its neighbours are held off:
+ * the control's own box takes a press too, so a target that stops short of an edge reaches nothing
+ * past it.
+ */
+function beyond(member: string): Target {
+	const at = target(member);
+	return {
+		...at,
+		inlineStart: Math.max(0, at.inlineStart),
+		inlineEnd: Math.max(0, at.inlineEnd),
+		blockStart: Math.max(0, at.blockStart),
+		blockEnd: Math.max(0, at.blockEnd)
 	};
 }
 
@@ -502,10 +545,23 @@ describe('a control drawn under the floor takes a target at it', () => {
 		const at = target(member);
 		expect(at.inline).toBeGreaterThanOrEqual(px('--admin-touch-min'));
 		expect(at.block).toBeGreaterThanOrEqual(px('--admin-touch-min'));
+		// short of the border box by no more than the border itself: the line is the control's own.
 		for (const reach of [at.inlineStart, at.inlineEnd, at.blockStart, at.blockEnd]) {
-			expect(reach).toBeGreaterThanOrEqual(0);
+			expect(reach).toBeGreaterThanOrEqual(-at.border);
 		}
 	});
+
+	// the registry gives every rank an edge, transparent where none shows, and a rank may state its
+	// own width over `.ds-btn`'s.
+	it.each([...new Set(Object.values(BUTTON_VARIANT_CLASS)), 'ds-btn-outline'])(
+		'%s is measured at its own edge',
+		(rank) => {
+			const own = ruleOf(registry, `.${rank}`).get('--ds-btn-edge');
+
+			expect(BUTTON_BORDER(rank)).toBe(evaluate(own ?? buttonEdge('ds-btn')));
+			expect(BUTTON_BORDER(rank)).toBeGreaterThan(0);
+		}
+	);
 
 	it.each(members)('%s lies over nothing beside it', (member) => {
 		const neighbours = MEMBERS[member]?.neighbours() ?? [];

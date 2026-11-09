@@ -60,8 +60,9 @@
  * the registry gap: it ships its themes as generated literals, made by its CLI's `theme:generate`,
  * and no runtime generator or seed hook, so the form keeps the generator's port to theme a seed a
  * host sets at runtime. ../styles/radix-scale.spec.ts holds the port to the registry — the registry's
- * default accent seed comes out as the registry's default accent scale — and the steps a runtime
- * theme would have the CLI pick per theme (`--ring`, `--link`) stay the default theme's.
+ * default accent seed comes out as the registry's default accent scale. the registry's step aliases
+ * sit on one step in every theme (../registry/styles/variables.usage.md: `--ring` accent 8, `--link`
+ * accent 11), so a seeded card's ring is the seed's own step 8.
  *
  * the brand is spent by step. 9 fills the one control that commits the gift — the action — and the
  * boxes a donor does not choose a shape for: the fee switch set on, the box a donor ticks, the mark
