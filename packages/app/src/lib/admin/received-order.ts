@@ -12,7 +12,8 @@ export type Received = { readonly receivedOn: string } | { readonly receivedAt: 
 
 /**
  * `rows` newest first by the ISO day each shows in `zone`, keeping the given order within a day.
- * with no zone, nothing shows a day yet and `rows` is handed back as given.
+ * with no zone, `rows` is handed back as given: the server shows no day, and a browser with no zone
+ * shows UTC days, which the query's instant order already follows.
  */
 export function byDayShown<Row extends Received>(
 	rows: readonly Row[],

@@ -93,8 +93,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 	// `viewerZone` is the zone the `admin_zone` cookie names, so an instant on any screen beneath
 	// renders on the server in the viewer's own day ($lib/admin/viewer-time.react.tsx). the cookie is
 	// `Path=/`, so it rides on document and data requests alike, `/admin.data` included. before the
-	// browser has written one, and for a value that is no zone, this is null, and the provider and
-	// `useViewerZone` use the browser's own zone instead.
+	// browser has written one, and for a value that is no zone, this is null, and `useViewerZone` falls
+	// back to the browser's own zone, or to UTC where this runtime cannot write in that one
+	// (`LocalTime`).
 	return {
 		orgName: state?.profile?.legalName ?? null,
 		deployer: context.get(staff).id === STAFF_USER_ID,
