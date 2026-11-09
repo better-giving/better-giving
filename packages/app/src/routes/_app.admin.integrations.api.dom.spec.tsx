@@ -1,5 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { createRoutesStub, redirect } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { browserIn } from '$lib/admin/viewer-time.testing';
@@ -350,6 +351,35 @@ it('says in the revoke question the day the key was last used, in the viewer’s
 	await flow(`${SCREEN}?confirm=key-2`, [USED]);
 
 	expect(card()?.textContent).toContain('It was last used on 28 Sep 2026.');
+});
+
+it('leaves the day out of the server’s revoke question until the viewer’s zone is known', () => {
+	// a shared ?confirm= link opened with no `admin_zone` cookie: no ViewerZoneProvider names a zone.
+	const Stub = createRoutesStub([
+		{
+			path: SCREEN,
+			Component: () =>
+				createElement(Api as never, {
+					loaderData: {
+						keys: [USED],
+						revoking: USED,
+						revoked: null,
+						apiReference: API_REFERENCE,
+						agentPrompt: AGENT_PROMPT,
+						agentPromptHref: AGENT_PROMPT_HREF
+					},
+					actionData: undefined,
+					params: {},
+					matches: []
+				})
+		}
+	]);
+	const held = document.createElement('div');
+	held.innerHTML = renderToString(
+		createElement(Stub, { initialEntries: [`${SCREEN}?confirm=${USED.id}`] })
+	);
+
+	expect(held.querySelector('dialog')?.textContent).toContain('It was last used on .');
 });
 
 it('says in the revoke question that a key nothing presented was never used', async () => {

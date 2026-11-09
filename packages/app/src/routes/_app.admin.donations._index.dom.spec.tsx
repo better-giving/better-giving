@@ -4,6 +4,7 @@ import { renderToString } from 'react-dom/server';
 import { createRoutesStub } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { ViewerZoneProvider } from '$lib/admin/viewer-time.react';
+import { browserIn } from '$lib/admin/viewer-time.testing';
 import Donations from './_app.admin.donations._index';
 
 // the dedication cell, drawn.
@@ -303,6 +304,23 @@ describe('the day a gift was received', () => {
 
 		expect(cell(served(midnight, 'Asia/Manila'), 'Received')).toBe('2026-10-21');
 		expect(cell(served(midnight, 'America/New_York'), 'Received')).toBe('2026-10-20');
+	});
+
+	it.each([
+		['Asia/Manila', '2026-10-22'],
+		['America/New_York', '2026-10-21']
+	])('moves to the day of a browser in %s once mounted there', (zone, day) => {
+		browserIn(zone);
+		const late = [gift({ receivedAt: '2026-10-21T16:23:00.000Z' })];
+
+		expect(cell(screen(late), 'Received')).toBe(day);
+	});
+
+	it('keeps the day typed for money that arrived in hand, in the browser’s zone too', () => {
+		const inHand = [gift({ receivedAt: undefined, receivedOn: '2026-10-21', paidWith: 'Cash' })];
+
+		browserIn('Asia/Manila');
+		expect(cell(screen(inHand), 'Received')).toBe('2026-10-21');
 	});
 
 	it('keeps the day typed for money that arrived in hand, in every zone', () => {

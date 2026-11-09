@@ -2,6 +2,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, redirect } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
+import { browserIn } from '$lib/admin/viewer-time.testing';
 import RecurringGift from './_app.admin.recurring.$id';
 
 // every sentence on this screen that names a processor, drawn, and the card they are read in.
@@ -321,3 +322,33 @@ it.each([
 	expect(word?.textContent).toBe(label);
 	expect(word?.className).toBe(drawn);
 });
+
+/** the value beside the term `label` in the record's definition list. */
+function detailValue(root: HTMLElement, label: string): string | undefined {
+	const term = [...root.querySelectorAll('dt')].find((dt) => dt.textContent === label);
+	return term?.parentElement?.querySelector('dd')?.textContent ?? undefined;
+}
+
+it.each([
+	// each instant is late enough in UTC to fall on the next day in Manila and early enough to fall
+	// on the previous one in New York, so a date wired to the wrong field or written in UTC differs.
+	['Asia/Manila', ['2026-06-02', '2026-09-05', '2026-10-22']],
+	['America/New_York', ['2026-06-01', '2026-09-04', '2026-10-21']]
+] as const)(
+	'draws started, next charge and stopped as their own days for a browser in %s',
+	(zone, [started, next, stopped]) => {
+		browserIn(zone);
+		const root = screen(
+			commitment({
+				status: 'cancelled',
+				startedAt: '2026-06-01T16:30:00.000Z',
+				nextChargeAt: '2026-09-04T17:00:00.000Z',
+				endedAt: '2026-10-21T16:23:00.000Z'
+			})
+		);
+
+		expect(detailValue(root, 'Started')).toBe(started);
+		expect(detailValue(root, 'Next charge')).toBe(next);
+		expect(detailValue(root, 'Stopped')).toBe(stopped);
+	}
+);

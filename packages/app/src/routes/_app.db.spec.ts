@@ -189,6 +189,49 @@ describe('the viewer’s time zone', () => {
 		expect(await zoneRead('Mars/Olympus_Mons')).toBeNull();
 	});
 
+	// the cookie header as a browser sends it: `session` is the signed-in session cookie, placed
+	// wherever the case needs it among the others.
+	const zoneAmong = async (header: (session: string) => string) => {
+		const session = await signInAsDeployer(db, DEPLOYMENT);
+		const page = await drawn(header(session));
+		return (page.loaderData.app as { viewerZone: string | null }).viewerZone;
+	};
+
+	it.each([
+		['first', (s: string) => `admin_zone=Asia/Manila; ${s}`],
+		['in the middle', (s: string) => `theme=dark; admin_zone=Asia/Manila; ${s}`],
+		['last', (s: string) => `${s}; admin_zone=Asia/Manila`]
+	])('reads the cookie when it stands %s among the others', async (_where, header) => {
+		expect(await zoneAmong(header)).toBe('Asia/Manila');
+	});
+
+	it('does not take a cookie whose name only ends in admin_zone', async () => {
+		expect(await zoneAmong((s) => `${s}; x_admin_zone=Asia/Manila`)).toBeNull();
+		expect(await zoneAmong((s) => `${s}; admin_zone_old=Asia/Manila`)).toBeNull();
+	});
+
+	it('reads the right one when a similarly named cookie stands beside it', async () => {
+		expect(await zoneAmong((s) => `x_admin_zone=Europe/London; admin_zone=Asia/Manila; ${s}`)).toBe(
+			'Asia/Manila'
+		);
+	});
+
+	it('hands over no zone for an empty value', async () => {
+		expect(await zoneAmong((s) => `${s}; admin_zone=`)).toBeNull();
+	});
+
+	it('reads the first of two cookies by that name', async () => {
+		expect(
+			await zoneAmong((s) => `${s}; admin_zone=Asia/Manila; admin_zone=America/New_York`)
+		).toBe('Asia/Manila');
+	});
+
+	it('hands over an offset string as the runtime accepts it, unchanged', async () => {
+		// the browser never writes one (it writes an IANA name), but `isTimeZone` accepts '+08:00',
+		// so the loader passes it on and the screens format in that offset.
+		expect(await zoneAmong((s) => `${s}; admin_zone=+08:00`)).toBe('+08:00');
+	});
+
 	it('hands over no zone when the browser has written none', async () => {
 		const cookie = await signInAsDeployer(db, DEPLOYMENT);
 		const page = await drawn(cookie);

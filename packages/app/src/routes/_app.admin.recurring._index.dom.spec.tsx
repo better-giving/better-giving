@@ -2,6 +2,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
+import { browserIn } from '$lib/admin/viewer-time.testing';
 import RecurringGifts from './_app.admin.recurring._index';
 
 // the status word on each row of the recurring gifts list, drawn.
@@ -81,4 +82,16 @@ it.each([
 	const word = statusWord(screen([plan({ status, nextChargeAt: null })]));
 	expect(word?.textContent).toBe(label);
 	expect(word?.className).toBe(drawn);
+});
+
+it.each([
+	['Asia/Manila', '2026-10-22'],
+	['America/New_York', '2026-10-21']
+])('draws the next charge as the day in a browser in %s', (zone, day) => {
+	browserIn(zone);
+	const row = screen([plan({ nextChargeAt: '2026-10-21T16:23:00.000Z' })]).querySelector(
+		'tbody tr'
+	);
+
+	expect(row?.textContent).toContain(day);
 });

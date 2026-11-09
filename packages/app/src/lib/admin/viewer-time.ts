@@ -22,8 +22,8 @@ const MONTH = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC'
 
 /**
  * `at` in `zone`: `iso-day` is 2026-10-22, `day` is 22 Oct 2026, and `moment` is
- * 22 Oct 2026, 00:23 GMT+8 — the 24-hour clock and `Intl`'s short zone name. a zone the runtime
- * does not know throws a RangeError rather than reading as UTC.
+ * 22 Oct 2026, 00:23 UTC+8 — the 24-hour clock and the zone's offset from UTC at that instant. a
+ * zone the runtime does not know throws a RangeError rather than reading as UTC.
  */
 export function formatInstant(
 	at: Date | number | string,
@@ -39,21 +39,41 @@ export function formatInstant(
 	return `${Number(isoDay.slice(8))} ${MONTH.format(midnight)} ${isoDay.slice(0, 4)}`;
 }
 
+// every part of a moment is a number but the month, which is MONTH's en-US name in UTC: a zone's
+// name (`timeZoneName`) is spelt by the engine's own ICU, so a server render and the browser that
+// hydrates it could write the same zone two ways, which react 19 reports as a hydration error.
 function momentOf(ms: number, zone: string): string {
 	const parts = new Intl.DateTimeFormat('en-US', {
 		timeZone: zone,
 		hourCycle: 'h23',
-		day: 'numeric',
-		month: 'short',
 		year: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit',
-		timeZoneName: 'short'
+		month: 'numeric',
+		day: 'numeric',
+		hour: 'numeric',
+		minute: 'numeric',
+		second: 'numeric'
 	}).formatToParts(ms);
 	const part = (type: Intl.DateTimeFormatPartTypes) =>
-		parts.find((each) => each.type === type)?.value ?? '';
-	return (
-		`${part('day')} ${part('month')} ${part('year')}, ` +
-		`${part('hour')}:${part('minute')} ${part('timeZoneName')}`
-	);
+		Number(parts.find((each) => each.type === type)?.value);
+	const [year, month, day, hour, minute] = [
+		part('year'),
+		part('month'),
+		part('day'),
+		part('hour'),
+		part('minute')
+	];
+	const wall = Date.UTC(year, month - 1, day, hour, minute, part('second'));
+	const offsetMinutes = Math.round((wall - Math.floor(ms / 1000) * 1000) / 60_000);
+	const clock = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+	const monthName = MONTH.format(Date.UTC(year, month - 1, 1));
+	return `${day} ${monthName} ${year}, ${clock} ${offsetLabel(offsetMinutes)}`;
+}
+
+/** an offset from UTC in minutes as UTC, UTC+8, UTC-4 or UTC+5:30. */
+function offsetLabel(minutes: number): string {
+	if (minutes === 0) return 'UTC';
+	const sign = minutes > 0 ? '+' : '-';
+	const hours = Math.floor(Math.abs(minutes) / 60);
+	const rest = Math.abs(minutes) % 60;
+	return `UTC${sign}${hours}${rest === 0 ? '' : `:${String(rest).padStart(2, '0')}`}`;
 }

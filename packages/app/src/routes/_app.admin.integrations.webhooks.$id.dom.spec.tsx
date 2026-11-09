@@ -252,10 +252,10 @@ it('lists its recent deliveries: the event, when, where each stands, the answer 
 			[...tr.children].map((cell) => cell.textContent)
 		)
 	).toEqual([
-		['Gift made', '28 Sep 2026, 18:41 GMT+8', 'Delivered', '200', '1'],
-		['Donor added', '28 Sep 2026, 18:41 GMT+8', 'Waiting', '503', '2'],
-		['Gift refunded', '28 Sep 2026, 18:41 GMT+8', 'Failed', '—', '9'],
-		['Recurring charge failed', '28 Sep 2026, 18:41 GMT+8', 'Withheld', '—', '0']
+		['Gift made', '28 Sep 2026, 18:41 UTC+8', 'Delivered', '200', '1'],
+		['Donor added', '28 Sep 2026, 18:41 UTC+8', 'Waiting', '503', '2'],
+		['Gift refunded', '28 Sep 2026, 18:41 UTC+8', 'Failed', '—', '9'],
+		['Recurring charge failed', '28 Sep 2026, 18:41 UTC+8', 'Withheld', '—', '0']
 	]);
 	expect(table?.querySelector('time')?.getAttribute('datetime')).toBe('2026-09-28T10:41:00.000Z');
 });

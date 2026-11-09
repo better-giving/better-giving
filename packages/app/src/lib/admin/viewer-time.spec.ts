@@ -35,11 +35,24 @@ describe('formatInstant', () => {
 		);
 	});
 
-	it('writes a moment on the 24-hour clock with the short zone name', () => {
-		expect(formatInstant(LATE_NIGHT, 'Asia/Manila', 'moment')).toBe('22 Oct 2026, 00:23 GMT+8');
-		expect(formatInstant(LATE_NIGHT, 'America/New_York', 'moment')).toBe('21 Oct 2026, 12:23 EDT');
+	it('writes a moment on the 24-hour clock with the zone’s offset from UTC', () => {
+		expect(formatInstant(LATE_NIGHT, 'Asia/Manila', 'moment')).toBe('22 Oct 2026, 00:23 UTC+8');
+		expect(formatInstant(LATE_NIGHT, 'America/New_York', 'moment')).toBe(
+			'21 Oct 2026, 12:23 UTC-4'
+		);
 		expect(formatInstant(LATE_NIGHT, 'UTC', 'moment')).toBe('21 Oct 2026, 16:23 UTC');
-		expect(formatInstant(LATE_NIGHT, 'Asia/Kolkata', 'moment')).toBe('21 Oct 2026, 21:53 GMT+5:30');
+		expect(formatInstant(LATE_NIGHT, 'Asia/Kolkata', 'moment')).toBe('21 Oct 2026, 21:53 UTC+5:30');
+		expect(formatInstant(LATE_NIGHT, 'America/St_Johns', 'moment')).toBe(
+			'21 Oct 2026, 13:53 UTC-2:30'
+		);
+	});
+
+	it('writes the offset the zone has at that instant, either side of a clock change', () => {
+		// New York and London both leave summer time between these two instants
+		const winter = '2026-12-01T16:23:59.999Z';
+		expect(formatInstant(winter, 'America/New_York', 'moment')).toBe('1 Dec 2026, 11:23 UTC-5');
+		expect(formatInstant(winter, 'Europe/London', 'moment')).toBe('1 Dec 2026, 16:23 UTC');
+		expect(formatInstant(LATE_NIGHT, 'Europe/London', 'moment')).toBe('21 Oct 2026, 17:23 UTC+1');
 	});
 
 	it('takes the instant as a Date, epoch milliseconds or an ISO string alike', () => {
@@ -54,6 +67,15 @@ describe('formatInstant', () => {
 		for (const style of ['iso-day', 'day', 'moment'] as const) {
 			expect(() => formatInstant(LATE_NIGHT, 'Mars/Olympus', style)).toThrow(RangeError);
 		}
+	});
+});
+
+describe('an instant that is not a date', () => {
+	// Date.parse('') is NaN: the day styles throw from dayOf and a moment from Intl.format, so a
+	// loader that hands over an unparseable string takes the screen down rather than showing a blank.
+	it.each(['iso-day', 'day', 'moment'] as const)('throws a RangeError for %s', (style) => {
+		expect(() => formatInstant('', 'UTC', style)).toThrow(RangeError);
+		expect(() => formatInstant('not a date', 'Asia/Manila', style)).toThrow(RangeError);
 	});
 });
 
@@ -73,4 +95,8 @@ describe('parseViewerZone', () => {
 			expect(parseViewerZone(raw)).toBeNull();
 		}
 	);
+
+	it('takes an offset string only if the runtime does, and returns it unchanged', () => {
+		expect(parseViewerZone('+08:00')).toBe('+08:00');
+	});
 });
