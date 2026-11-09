@@ -226,10 +226,8 @@ describe('the viewer’s time zone', () => {
 		).toBe('Asia/Manila');
 	});
 
-	it('hands over an offset string as the runtime accepts it, unchanged', async () => {
-		// the browser never writes one (it writes an IANA name), but `isTimeZone` accepts '+08:00',
-		// so the loader passes it on and the screens format in that offset.
-		expect(await zoneAmong((s) => `${s}; admin_zone=+08:00`)).toBe('+08:00');
+	it('hands over no zone for an offset, which the runtime takes but the browser never writes', async () => {
+		expect(await zoneAmong((s) => `${s}; admin_zone=+08:00`)).toBeNull();
 	});
 
 	it('hands over no zone when the browser has written none', async () => {

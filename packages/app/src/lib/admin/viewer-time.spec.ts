@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { dayOf } from '../page/end-date';
 import { formatInstant, parseViewerZone, VIEWER_ZONE_COOKIE } from './viewer-time.ts';
 
 // an instant on an /admin screen, read in the viewer's zone: a gift at 00:23 in Manila is the 22nd
@@ -71,8 +72,8 @@ describe('formatInstant', () => {
 });
 
 describe('an instant that is not a date', () => {
-	// Date.parse('') is NaN: the day styles throw from dayOf and a moment from Intl.format, so a
-	// loader that hands over an unparseable string takes the screen down rather than showing a blank.
+	// Date.parse('') is NaN, and formatInstant refuses it rather than writing a day: `LocalTime` in
+	// ./viewer-time.react.tsx is the boundary that turns a missing or unparseable instant into a dash.
 	it.each(['iso-day', 'day', 'moment'] as const)('throws a RangeError for %s', (style) => {
 		expect(() => formatInstant('', 'UTC', style)).toThrow(RangeError);
 		expect(() => formatInstant('not a date', 'Asia/Manila', style)).toThrow(RangeError);
@@ -84,19 +85,59 @@ describe('parseViewerZone', () => {
 		expect(VIEWER_ZONE_COOKIE).toBe('admin_zone');
 	});
 
-	it('takes an IANA zone the runtime knows', () => {
-		expect(parseViewerZone('Asia/Manila')).toBe('Asia/Manila');
-		expect(parseViewerZone('UTC')).toBe('UTC');
-	});
+	it.each(['UTC', 'Asia/Manila', 'America/Argentina/Buenos_Aires', 'Etc/GMT+8'])(
+		'takes the IANA zone %j',
+		(zone) => {
+			expect(parseViewerZone(zone)).toBe(zone);
+		}
+	);
 
-	it.each([null, undefined, '', 'Mars/Olympus', 'Asia/Manila; Path=/', 'not a zone'])(
+	it.each([null, undefined, '', 'Mars/Olympus', 'Asia/Manila; Path=/', 'not a zone', '%%%'])(
 		'refuses %j',
 		(raw) => {
 			expect(parseViewerZone(raw)).toBeNull();
 		}
 	);
 
-	it('takes an offset string only if the runtime does, and returns it unchanged', () => {
-		expect(parseViewerZone('+08:00')).toBe('+08:00');
+	// `Intl` takes an offset as a zone, but the browser only ever writes an IANA name, so an offset
+	// in the cookie was written by something else.
+	it.each(['+08:00', '-03:00', '+0800', '-05', '+00:00'])('refuses the offset %j', (raw) => {
+		expect(parseViewerZone(raw)).toBeNull();
+	});
+});
+
+describe('the formats an instant is written with', () => {
+	// a spy that still builds the real thing, so a call that does build one goes on to format.
+	const formatsBuilt = () => {
+		const Real = Intl.DateTimeFormat;
+		return (
+			vi
+				.spyOn(Intl, 'DateTimeFormat')
+				// biome-ignore lint/complexity/useArrowFunction: the module under test calls it with `new`, which an arrow function cannot take.
+				.mockImplementation(function (...args: ConstructorParameters<typeof Real>) {
+					return new Real(...args);
+				})
+		);
+	};
+
+	it.each(['iso-day', 'day', 'moment'] as const)(
+		'builds no Intl.DateTimeFormat for %s once the zone has been written in',
+		(style) => {
+			formatInstant(LATE_NIGHT, 'Pacific/Chatham', style);
+			const built = formatsBuilt();
+			expect(formatInstant('2026-12-01T16:23:00Z', 'Pacific/Chatham', style)).toBeTruthy();
+			expect(built).not.toHaveBeenCalled();
+		}
+	);
+
+	it.each([
+		'2026-10-22T00:00:00.000Z',
+		'2026-10-21T23:59:59.999Z',
+		'2026-10-21T18:30:00.000Z',
+		'2026-10-21T18:29:59.999Z'
+	])('reads %s as the same day dayOf in ../page/end-date.ts does', (at) => {
+		for (const zone of ['UTC', 'Asia/Manila', 'America/New_York', 'Asia/Kolkata']) {
+			expect(formatInstant(at, zone, 'iso-day')).toBe(dayOf(Date.parse(at), zone));
+		}
 	});
 });
