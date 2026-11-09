@@ -2,6 +2,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, redirect } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
+import { browserIn } from '$lib/admin/viewer-time.testing';
 import Api from './_app.admin.integrations.api';
 
 // what the API page does with the answers its action gives: the key shown once in the card, and a
@@ -35,9 +36,15 @@ const LISTED = {
 	id: 'key-1',
 	name: 'Reporting sheet',
 	madeAt: '2026-09-28T12:00:00.000Z',
-	madeOn: '28 Sep 2026',
-	lastUsedAt: null,
 	lastUsedOn: 'Never'
+};
+
+/** a key something presented late on 27 Sep UTC, which is already 28 Sep in Manila. */
+const USED = {
+	id: 'key-2',
+	name: 'Donor wall',
+	madeAt: '2026-09-02T23:30:00.000Z',
+	lastUsedAt: '2026-09-27T16:23:00.000Z'
 };
 
 function screen(over: { keys?: readonly object[]; actionData?: object } = {}): HTMLElement {
@@ -194,8 +201,11 @@ it('names the empty table API keys', () => {
  * round: the make answers its key, and the revoke takes the row away and redirects to a load that
  * names it — which is what the route's server half does (the db spec beside this one).
  */
-async function flow(at: string): Promise<HTMLElement> {
-	let keys = [LISTED];
+async function flow(
+	at: string,
+	listed: readonly { id: string; name: string }[] = [LISTED]
+): Promise<HTMLElement> {
+	let keys = [...listed];
 	let revoked: string | null = null;
 	const Stub = createRoutesStub([
 		{
@@ -320,4 +330,30 @@ it('reports a blank name at the box and puts the caret there', () => {
 	expect(document.activeElement).toBe(box);
 	expect(box.getAttribute('aria-invalid')).toBe('true');
 	expect(root.textContent).toContain('required');
+});
+
+it('says when each key was made and last used in the viewer’s day, and Never for one unused', () => {
+	browserIn('Asia/Manila');
+	const root = screen({ keys: [USED, LISTED] });
+	const rows = [...root.querySelectorAll('tbody tr')].map((tr) =>
+		[...tr.children].slice(0, 3).map((cell) => cell.textContent)
+	);
+
+	expect(rows).toEqual([
+		['Donor wall', '3 Sep 2026', '28 Sep 2026'],
+		['Reporting sheet', '28 Sep 2026', 'Never']
+	]);
+});
+
+it('says in the revoke question the day the key was last used, in the viewer’s zone', async () => {
+	browserIn('Asia/Manila');
+	await flow(`${SCREEN}?confirm=key-2`, [USED]);
+
+	expect(card()?.textContent).toContain('It was last used on 28 Sep 2026.');
+});
+
+it('says in the revoke question that a key nothing presented was never used', async () => {
+	await flow(`${SCREEN}?confirm=key-1`);
+
+	expect(card()?.textContent).toContain('It has never been used.');
 });

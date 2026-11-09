@@ -112,6 +112,7 @@ type Loaded = {
 		consentedToContact: boolean | null;
 		gifts: number;
 		given: string;
+		createdAt: string;
 	}[];
 	summary: {
 		total: number;
@@ -253,6 +254,15 @@ describe('/admin/donors load — the consent answer', () => {
 		// two answers for.
 		const words = [...byName.values()].map(consentState);
 		expect(new Set(words).size).toBe(3);
+	});
+});
+
+describe('/admin/donors load — when each donor was added', () => {
+	it('hands over the instant, for the page to write in the viewer’s zone', async () => {
+		// a day cut here would be UTC's day, not the viewer's ($lib/admin/viewer-time.ts).
+		await donor('019fb700-0000-7000-8000-0000000000d1', 'Ada Okafor', true);
+		await run(stmt('update contact set created_at = ?', Date.UTC(2026, 9, 21, 16, 23)));
+		expect((await runLoad()).contacts[0]?.createdAt).toBe('2026-10-21T16:23:00.000Z');
 	});
 });
 

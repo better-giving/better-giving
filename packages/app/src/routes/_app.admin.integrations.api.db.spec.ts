@@ -73,9 +73,8 @@ type ListedKey = {
 	id: string;
 	name: string;
 	madeAt: string;
-	madeOn: string;
-	lastUsedAt: string | null;
-	lastUsedOn: string;
+	lastUsedAt?: string;
+	lastUsedOn?: string;
 };
 
 type Screen = {
@@ -158,7 +157,8 @@ describe('GET /admin/integrations/api — the keys', () => {
 		const { keys } = await visit(deployer);
 
 		expect(keys.map((key) => key.id)).toEqual([newer.id, older.id]);
-		expect(keys[1]).toMatchObject({ name: 'Reporting sheet', madeOn: '2 Sep 2026' });
+		// the instant, for the page to write in the viewer's zone: 23:30 UTC is 3 Sep in Manila.
+		expect(keys[1]).toMatchObject({ name: 'Reporting sheet', madeAt: '2026-09-02T23:30:00.000Z' });
 	});
 
 	it('says when each key was last used, and Never for one nothing has presented', async () => {
@@ -170,10 +170,11 @@ describe('GET /admin/integrations/api — the keys', () => {
 
 		const { keys } = await visit(deployer);
 
-		expect(Object.fromEntries(keys.map((key) => [key.name, key.lastUsedOn]))).toEqual({
-			'Reporting sheet': '27 Sep 2026',
-			'Donor wall': 'Never'
+		expect(keys.find((key) => key.name === 'Reporting sheet')).toMatchObject({
+			lastUsedAt: '2026-09-27T09:00:00.000Z'
 		});
+		expect(keys.find((key) => key.name === 'Donor wall')).toMatchObject({ lastUsedOn: 'Never' });
+		expect(keys.find((key) => key.name === 'Donor wall')).not.toHaveProperty('lastUsedAt');
 	});
 
 	it('never holds the key, nor anything the key could be rebuilt from', async () => {

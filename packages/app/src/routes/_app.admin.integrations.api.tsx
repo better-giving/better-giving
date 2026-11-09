@@ -12,6 +12,7 @@ import { type RefObject, useEffect, useRef, useState } from 'react';
 import { data, Form, Link, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { screenTitle } from '$lib/admin/screen-title';
+import { LocalTime } from '$lib/admin/viewer-time.react';
 import { type AdminActionData, boxProps, useAdminForm, whichForm } from '$lib/admin/use-admin-form';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
 import { publishedOrigin, readAuthEnv, readPin, STAFF_USER_ID } from '$lib/server/auth';
@@ -109,13 +110,6 @@ const NOT_HERE =
 	`No page at ${SCREEN} for a member’s session. API keys are made and revoked from the ` +
 	'deployer’s session: sign in with `ADMIN_PASSWORD` at /login.';
 
-/**
- * a day as the list says it — `2 Sep 2026` — in UTC, where the instant was stored. formatted by the
- * loader, so the Worker's render and the browser's hydration read one string.
- */
-const MONTH = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' });
-const dayOf = (at: Date) => `${at.getUTCDate()} ${MONTH.format(at)} ${at.getUTCFullYear()}`;
-
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
@@ -127,10 +121,12 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	const keys = (await listApiKeys(db)).map((key) => ({
 		id: key.id,
 		name: key.name,
+		// instants, which `LocalTime` writes as the day in the viewer's zone
+		// ($lib/admin/viewer-time.react.tsx); a key nothing has presented crosses the word instead.
 		madeAt: key.createdAt.toISOString(),
-		madeOn: dayOf(key.createdAt),
-		lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
-		lastUsedOn: key.lastUsedAt === null ? 'Never' : dayOf(key.lastUsedAt)
+		...(key.lastUsedAt === null
+			? { lastUsedOn: 'Never' }
+			: { lastUsedAt: key.lastUsedAt.toISOString() })
 	}));
 
 	// the key a revoke is being confirmed for, held in the address so the question can be shared,
@@ -347,13 +343,9 @@ function KeyPlane({ keys }: { readonly keys: readonly ListedKey[] }) {
 					id: key.id,
 					cells: {
 						name: key.name,
-						made: <time dateTime={key.madeAt}>{key.madeOn}</time>,
+						made: <LocalTime at={key.madeAt} style="day" />,
 						used:
-							key.lastUsedAt === null ? (
-								key.lastUsedOn
-							) : (
-								<time dateTime={key.lastUsedAt}>{key.lastUsedOn}</time>
-							),
+							'lastUsedOn' in key ? key.lastUsedOn : <LocalTime at={key.lastUsedAt} style="day" />,
 						// a link dressed as a button, because it writes nothing: it asks. named from its row,
 						// so a reader meeting it out of context is told which key it stops.
 						revoke: (
@@ -422,9 +414,13 @@ function RevokeCard({
 			>
 				<p className="adm-prose">Every request made with it is refused from now on.</p>
 				<p className="adm-prose">
-					{row.lastUsedAt === null
-						? 'It has never been used.'
-						: `It was last used on ${row.lastUsedOn}.`}
+					{'lastUsedOn' in row ? (
+						'It has never been used.'
+					) : (
+						<>
+							It was last used on <LocalTime at={row.lastUsedAt} style="day" />.
+						</>
+					)}
 				</p>
 			</Modal>
 		</Form>

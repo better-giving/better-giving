@@ -47,7 +47,7 @@ function plan(over: Partial<Plan> = {}): Plan {
 		amount: '$123.45',
 		interval: 'monthly',
 		status: 'active',
-		nextChargeOn: '2026-09-04',
+		nextChargeAt: '2026-09-04T14:00:00.000Z',
 		...over
 	};
 }
@@ -78,7 +78,7 @@ it.each([
 	['cancelled', 'Stopped', 'ds-badge ds-badge-neutral adm-state--note'],
 	['lapsed', 'Payment failed', 'ds-badge ds-badge-destructive']
 ] as const)('draws a %s commitment’s status word on its own rung', (status, label, drawn) => {
-	const word = statusWord(screen([plan({ status, nextChargeOn: null })]));
+	const word = statusWord(screen([plan({ status, nextChargeAt: null })]));
 	expect(word?.textContent).toBe(label);
 	expect(word?.className).toBe(drawn);
 });

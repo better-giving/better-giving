@@ -1,7 +1,9 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { createRoutesStub } from 'react-router';
-import { expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { ViewerZoneProvider } from '$lib/admin/viewer-time.react';
 import Donations from './_app.admin.donations._index';
 
 // the dedication cell, drawn.
@@ -11,6 +13,9 @@ import Donations from './_app.admin.donations._index';
 // where those are asserted — but `In memory of Margaret Chen` is the phrase and the honoree joined
 // here, in the page, and a join that lost the space or put the name first would ship with every
 // workers case green.
+//
+// and the day a gift was received: an instant written in the viewer's zone the layout read, which
+// is the page's doing ($lib/admin/viewer-time.react.tsx), beside a gift in hand's day the loader crossed.
 //
 // it also holds the column apart from the message beside it. a dedication is a structured fact the
 // organisation reports on and a message is free text a donor wrote, and the whole argument for a
@@ -50,7 +55,7 @@ function gift(over: Partial<Gift> = {}): Gift {
 		id: '019fb300-0000-7000-8000-000000000001',
 		donorName: 'Ada Okafor',
 		amount: '$123.45',
-		receivedOn: '2026-07-04',
+		receivedAt: '2026-07-04T14:00:00.000Z',
 		source: 'Annual appeal',
 		note: null,
 		status: 'completed',
@@ -72,6 +77,10 @@ function gift(over: Partial<Gift> = {}): Gift {
  * alone.
  */
 function screen(donations: Gift[]): HTMLElement {
+	return mount(stubbed(donations));
+}
+
+function stubbed(donations: Gift[]): ReactNode {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/donations',
@@ -83,7 +92,20 @@ function screen(donations: Gift[]): HTMLElement {
 				})
 		}
 	]);
-	return mount(createElement(Stub, { initialEntries: ['/admin/donations'] }));
+	return createElement(Stub, { initialEntries: ['/admin/donations'] });
+}
+
+/**
+ * the screen as the server sends it, under the zone the layout read off the `admin_zone` cookie
+ * (./_app.tsx). the server's text is what a viewer first reads, and the browser hydrates that same
+ * text ($lib/admin/viewer-time.dom.spec.tsx).
+ */
+function served(donations: Gift[], serverZone: string): HTMLElement {
+	const root = document.createElement('div');
+	root.innerHTML = renderToString(
+		<ViewerZoneProvider serverZone={serverZone}>{stubbed(donations)}</ViewerZoneProvider>
+	);
+	return root;
 }
 
 /**
@@ -266,4 +288,27 @@ it.each([
 ] as const)('draws an ended gift’s word as the note, for %s', (status, drawn) => {
 	const word = screen([gift({ status })]).querySelector('tbody .ds-badge');
 	expect(word?.className).toBe(drawn);
+});
+
+describe('the day a gift was received', () => {
+	it('is the viewer’s day for a gift given late at night in Manila', () => {
+		const late = [gift({ receivedAt: '2026-10-21T16:23:00.000Z' })];
+
+		expect(cell(served(late, 'Asia/Manila'), 'Received')).toBe('2026-10-22');
+		expect(cell(served(late, 'America/New_York'), 'Received')).toBe('2026-10-21');
+	});
+
+	it('turns at the viewer’s midnight, not at UTC’s', () => {
+		const midnight = [gift({ receivedAt: '2026-10-21T00:00:00.000Z' })];
+
+		expect(cell(served(midnight, 'Asia/Manila'), 'Received')).toBe('2026-10-21');
+		expect(cell(served(midnight, 'America/New_York'), 'Received')).toBe('2026-10-20');
+	});
+
+	it('keeps the day typed for money that arrived in hand, in every zone', () => {
+		const inHand = [gift({ receivedAt: undefined, receivedOn: '2026-10-21', paidWith: 'Cash' })];
+
+		expect(cell(served(inHand, 'Asia/Manila'), 'Received')).toBe('2026-10-21');
+		expect(cell(served(inHand, 'America/New_York'), 'Received')).toBe('2026-10-21');
+	});
 });

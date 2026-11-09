@@ -44,11 +44,10 @@ const SCREEN_TITLE = 'Dashboard';
 /**
  * the month the headline names, spelled out — 'September'.
  *
- * formatted in the loader for the reason every other value here is: an `Intl` call in the page runs
- * once on the server and again in the browser, in two different locales and time zones, which is a
- * hydration mismatch as well as a lie about whose month it is. `UTC` because the buckets are UTC
- * calendar months ($lib/server/months.ts), and a name formatted in another zone would name a month
- * the figure beneath it is not of.
+ * `UTC` and never the viewer's zone, which an instant on /admin is written in
+ * ($lib/admin/viewer-time.ts): the buckets are UTC calendar months summed in SQL
+ * ($lib/server/months.ts), so the bucket decides the month, and a name
+ * formatted in another zone would name a month the figure beneath it is not of.
  *
  * `en-US` matches `DISPLAY_LOCALE` in $lib/donations/money.ts, which is private to that module —
  * one deployment states its figures in one language, and a second spelling of that decision is

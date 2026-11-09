@@ -280,7 +280,8 @@ async function runLoad(configEnv?: Env) {
 			id: string;
 			donorName: string;
 			amount: string;
-			receivedOn: string;
+			receivedOn?: string;
+			receivedAt?: string;
 			source: string | null;
 			note: string | null;
 			status: string;
@@ -303,13 +304,27 @@ describe('/admin/donations load', () => {
 		expect(donations[0]?.amount).toBe('$123.45');
 	});
 
-	it('formats the business date server-side, to the day', async () => {
-		// an `Intl.DateTimeFormat` in the page would run once on the server and again in the
-		// browser, in two different locales and time zones — a hydration mismatch as well as a lie
-		// about whose "today" it is.
-		await gift();
-		const { donations } = await runLoad();
-		expect(donations[0]?.receivedOn).toBe('2026-07-04');
+	it('hands over the instant a gift was given, for the page to write in the viewer’s zone', async () => {
+		// 23:30 UTC is the next day east of Greenwich, so a day cut here would be UTC's day and not
+		// the viewer's ($lib/admin/viewer-time.ts).
+		const id = await gift();
+		await attempt(id);
+		const [row] = (await runLoad()).donations;
+		expect(row?.receivedAt).toBe('2026-07-04T23:30:00.000Z');
+		expect(row?.receivedOn).toBeUndefined();
+	});
+
+	it('hands over the day of a gift that arrived in hand, which is a date and no instant', async () => {
+		// `recordGiftInHand` stores the day typed as that day's UTC midnight, so the day is UTC's.
+		for (const method of ['cash', 'check']) {
+			await run(stmt('delete from payment'));
+			await run(stmt('delete from donation'));
+			const id = await gift({ receivedAt: Date.UTC(2026, 6, 4) });
+			await attempt(id, { method, provider: null });
+			const [row] = (await runLoad()).donations;
+			expect(row?.receivedOn).toBe('2026-07-04');
+			expect(row?.receivedAt).toBeUndefined();
+		}
 	});
 
 	it('hands the state over as a value, for the page to put a word to', async () => {
@@ -350,7 +365,7 @@ describe('/admin/donations load', () => {
 			'note',
 			'paidWith',
 			'program',
-			'receivedOn',
+			'receivedAt',
 			'repeating',
 			'source',
 			'status',

@@ -139,7 +139,7 @@ describe('on a deployment nobody has set up', () => {
 		const page = await drawn(cookie);
 
 		expect(page.statusCode).toBe(200);
-		expect(page.loaderData.app).toEqual({ orgName: null, deployer: true });
+		expect(page.loaderData.app).toEqual({ orgName: null, deployer: true, viewerZone: null });
 	});
 });
 
@@ -153,7 +153,11 @@ describe('the identity band', () => {
 
 		const page = await drawn(cookie);
 
-		expect(page.loaderData.app).toEqual({ orgName: 'Riverbank Trust', deployer: true });
+		expect(page.loaderData.app).toEqual({
+			orgName: 'Riverbank Trust',
+			deployer: true,
+			viewerZone: null
+		});
 	});
 
 	it('loses the name and not the page when the row cannot be read', async () => {
@@ -163,7 +167,31 @@ describe('the identity band', () => {
 		const page = await drawn(cookie, profileUnreadable());
 
 		expect(page.statusCode).toBe(200);
-		expect(page.loaderData.app).toEqual({ orgName: null, deployer: true });
+		expect(page.loaderData.app).toEqual({ orgName: null, deployer: true, viewerZone: null });
 		expect(errors).toHaveBeenCalledOnce();
+	});
+});
+
+describe('the viewer’s time zone', () => {
+	// the `admin_zone` cookie the browser writes ($lib/admin/viewer-time.react.tsx), read so the server
+	// renders an instant in the viewer's own day.
+	const zoneRead = async (zone: string) => {
+		const cookie = await signInAsDeployer(db, DEPLOYMENT);
+		const page = await drawn(`${cookie}; admin_zone=${zone}`);
+		return (page.loaderData.app as { viewerZone: string | null }).viewerZone;
+	};
+
+	it('hands over the zone the cookie names', async () => {
+		expect(await zoneRead('Asia/Manila')).toBe('Asia/Manila');
+	});
+
+	it('hands over no zone for a value the runtime does not know', async () => {
+		expect(await zoneRead('Mars/Olympus_Mons')).toBeNull();
+	});
+
+	it('hands over no zone when the browser has written none', async () => {
+		const cookie = await signInAsDeployer(db, DEPLOYMENT);
+		const page = await drawn(cookie);
+		expect((page.loaderData.app as { viewerZone: string | null }).viewerZone).toBeNull();
 	});
 });
