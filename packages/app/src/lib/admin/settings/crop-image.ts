@@ -1,5 +1,8 @@
-import { LONG_SIDE_MAX, resizeImage } from '@better-giving/operator/images/resize';
-import { LOGO_REFUSED, type LogoRefusal } from './logo-crop';
+import {
+	LONG_SIDE_MAX,
+	type ResizeRefusal,
+	resizeImage
+} from '@better-giving/operator/images/resize';
 
 // what a save in a crop card does with the rectangle it was handed: the logo's square
 // (./logo-square.ts) and the banner's 4:1 band (./banner-image.ts) alike. the rectangle is drawn
@@ -7,6 +10,12 @@ import { LOGO_REFUSED, type LogoRefusal } from './logo-crop';
 // (`@better-giving/operator/images/resize`), and handed back as the file the address takes. the
 // deployment's intake judges the photo again whatever arrives, so the resize is what keeps a
 // phone's twelve-megapixel photo under its cap rather than a rule.
+//
+// a crop never rejects: a canvas the browser will not make or write is `unreadable`, as the
+// resize's own is, so the press that waits on it always hears an answer.
+
+/** each way a crop is turned down, said in the words of the card it was saved from. */
+export type CropRefusal = ResizeRefusal | 'crop-outside';
 
 /** a rectangle kept of an image, in the image's own whole pixels. */
 export type CropRect = {
@@ -30,7 +39,7 @@ const inside = (crop: CropRect, width: number, height: number): boolean =>
  * drawn no longer on its long side than the resize keeps (`LONG_SIDE_MAX`), so a camera's full
  * frame is never a canvas some browsers refuse to hold.
  */
-async function drawn(file: File, crop: CropRect, name: string): Promise<File | LogoRefusal> {
+async function drawn(file: File, crop: CropRect, name: string): Promise<File | CropRefusal> {
 	let bitmap: ImageBitmap;
 	try {
 		bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
@@ -49,17 +58,24 @@ async function drawn(file: File, crop: CropRect, name: string): Promise<File | L
 		context.drawImage(bitmap, crop.x, crop.y, crop.width, crop.height, 0, 0, width, height);
 		const blob = await canvas.convertToBlob({ type: 'image/png' });
 		return new File([blob], name, { type: blob.type });
+	} catch {
+		return 'unreadable';
 	} finally {
 		bitmap.close();
 	}
 }
 
-/** `file` cropped to `crop` and resized, ready to post under `name`. */
-export async function cropImage(file: File, crop: CropRect, name: string): Promise<Cropped> {
+/** `file` cropped to `crop` and resized, ready to post under `name`, or refused in `words`. */
+export async function cropImage(
+	file: File,
+	crop: CropRect,
+	name: string,
+	words: Readonly<Record<CropRefusal, string>>
+): Promise<Cropped> {
 	const kept = await drawn(file, crop, name);
-	if (typeof kept === 'string') return { ok: false, refused: LOGO_REFUSED[kept] };
+	if (typeof kept === 'string') return { ok: false, refused: words[kept] };
 	const resized = await resizeImage(kept);
 	return resized.ok
 		? { ok: true, blob: resized.blob }
-		: { ok: false, refused: LOGO_REFUSED[resized.reason] };
+		: { ok: false, refused: words[resized.reason] };
 }

@@ -1,3 +1,4 @@
+import { BANNER_REFUSED } from './banner-crop';
 import { type CropRect, type Cropped, cropImage } from './crop-image';
 
 // what a save in the banner's crop card does with the 4:1 band it was handed: the band cropped and
@@ -6,7 +7,7 @@ import { type CropRect, type Cropped, cropImage } from './crop-image';
 // (packages/app/src/routes/_app.admin.settings_.banner.ts), which holds it to `bannerRefusal`
 // ($lib/org/banner.ts) again.
 
-/** `file` cropped to the band `crop` and resized, ready to post as the banner. */
+/** `file` cropped to the band `crop` and resized, or refused in `BANNER_REFUSED`'s words. */
 export function cropBanner(file: File, crop: CropRect): Promise<Cropped> {
-	return cropImage(file, crop, 'banner.png');
+	return cropImage(file, crop, 'banner.png', BANNER_REFUSED);
 }

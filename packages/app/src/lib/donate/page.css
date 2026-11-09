@@ -309,7 +309,7 @@ body {
 	--page-profile-gutter: 1rem;
 	--page-profile-box: 27.5rem;
 	--page-profile-gap: 2.5rem;
-	--page-profile-stick: 1.5rem;
+	--page-profile-box-lead: 1.5rem;
 	--page-profile-banner-ratio: 3 / 1;
 	--page-profile-band-block: 4.5rem;
 	--page-profile-band: var(--accent-3);
@@ -425,11 +425,9 @@ body {
  * root. a page's sections stand in `.page-layout`, each carrying `data-area` for the rules below to place it by; on a phone
  * the card's grid areas and the letter's and the feature's `order` stand them in the order a phone reads them,
  * and from `@container page (min-width: 60rem)` each layout moves them into its columns. the donation box is a `.page-box` among them, never inside another section, and no rule
- * below gives an ancestor of it a clip, a position or a transform. neither rail is sticky: a box
- * that a later step grows past the screen's height scrolls with the page, so its lower edge and what
- * stands under it can always be reached. the one sticky box is the profile layout's, from 60rem,
- * where the design puts it; there a box taller than the screen shows its foot once the column
- * beside it has scrolled past.
+ * below gives an ancestor of it a clip, a position or a transform. no box is sticky, the rails' and
+ * the profile layout's column included: a box that a later step grows past the screen's height
+ * scrolls with the page, so its lower edge and what stands under it can always be reached.
  *
  * ink. `--page-accent` is what a link and a listed tier's amount are drawn in, brand 11.
  * `--page-ring` is the focus ring, `--_n1` on the feature's scrim and the form's elsewhere. a tier
@@ -1006,9 +1004,12 @@ body {
    its share row and its footer stand in `--page-profile-width`; compact, in the box's column alone,
    one column at every width. on a phone the parts stand in source order, the banner, the who, the
    box and About us, so the box is on the first screen under the name; wide, the who and About us
-   stand in the first column, the box in the second, sticky `--page-profile-stick` from the top and
-   that far under the banner. the logo stands over the banner's foot by `--page-profile-logo-lift`,
-   inset `--page-profile-logo-inset`, so its block-start margin takes back the gap above it too. the
+   stand in the first column, the box in the second, `--page-profile-box-lead` under the banner, and
+   it scrolls with the page as every box does (the header above). the logo stands over the banner's
+   foot by `--page-profile-logo-lift`, inset `--page-profile-logo-inset`, so its block-start margin
+   takes back the gap above it too. a wordmark, a logo the masthead would let stand in for the name
+   (`data-wide`, ./page-view.tsx), keeps the square's height and is drawn whole at its own width, as
+   the masthead draws one, and in the compact layout stands over the name rather than beside it. the
    EIN and the raised label are the quiet ink on the wash and on the plane, slate 2 and slate 1. */
 .page[data-layout='profile'] .page-in {
 	max-inline-size: var(--page-profile-width);
@@ -1058,6 +1059,7 @@ body {
 }
 
 [data-head='profile'] :is(.page-profile-logo, .page-profile-badge) {
+	max-inline-size: calc(100% - var(--page-profile-logo-inset));
 	margin-block-start: calc(-1 * (var(--page-profile-logo-lift) + var(--page-profile-gap)));
 	margin-inline-start: var(--page-profile-logo-inset);
 }
@@ -1083,9 +1085,19 @@ body {
 
 .page-profile-logo {
 	display: block;
+	max-inline-size: 100%;
 	object-fit: contain;
 	background: var(--page-plane);
 	border: var(--_border) solid var(--page-plane-edge);
+}
+
+/* after the compact size, which it overrides at the same specificity. */
+.page-profile-logo[data-wide] {
+	inline-size: auto;
+}
+
+[data-head='compact'] .page-profile-id:has(> [data-wide]) {
+	flex-direction: column;
 }
 
 /* the initials on the brand's solid, the one ink the form draws on it. */
@@ -1219,9 +1231,7 @@ body {
 
 	.page[data-layout='profile'] [data-head='profile'] > [data-area='box'] {
 		grid-area: box;
-		position: sticky;
-		inset-block-start: var(--page-profile-stick);
-		margin-block-start: calc(var(--page-profile-stick) - var(--page-profile-gap));
+		margin-block-start: calc(var(--page-profile-box-lead) - var(--page-profile-gap));
 	}
 }
 

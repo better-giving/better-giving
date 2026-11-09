@@ -852,6 +852,30 @@ describe('the program options', () => {
 	});
 });
 
+describe('the profile head’s box and logo', () => {
+	// happy-dom does no layout, so both are read off the sheet.
+	const PROFILE = ".page[data-layout='profile'] [data-head='profile']";
+	const WIDE = '@container page (min-width: 60rem)';
+
+	it('stands no box sticky, so a box a later step grows past the screen still shows its foot', () => {
+		expect(page.filter(({ decls }) => decls.position === 'sticky')).toEqual([]);
+		expect(declared(page, WIDE, `${PROFILE} > [data-area='box']`)).toMatchObject({
+			'grid-area': 'box'
+		});
+	});
+
+	it('draws a logo at least twice as wide as it is tall whole at its own shape, as the masthead does', () => {
+		expect(declared(page, '.page-profile-logo')).toMatchObject({
+			'object-fit': 'contain',
+			'max-inline-size': '100%'
+		});
+		expect(declared(page, '.page-profile-logo[data-wide]')).toEqual({ 'inline-size': 'auto' });
+		expect(
+			declared(page, "[data-head='compact'] .page-profile-id:has(> [data-wide])")['flex-direction']
+		).toBe('column');
+	});
+});
+
 describe('the profile head’s quiet ink', () => {
 	// the EIN and the raised label are slate 11, which stands only on slate 1 or 2: the label on the
 	// raised plane, and the EIN on the wash, under no ground of the head's own.

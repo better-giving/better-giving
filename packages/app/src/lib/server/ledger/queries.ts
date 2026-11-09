@@ -439,9 +439,12 @@ export type RaisedByOrganisation = {
  * with the gifts it sums counted. a gift is a `donation` row, so each charge of a repeating gift
  * counts as one as it settles, and a gift still pending has no entry and counts as none.
  *
- * one statement for the reason `readRaisedThroughForm` gives, grouped per gift first so a gift
- * refunded in full nets to nothing and drops out of the count while its entries still net to zero
- * in the sum. a gift in hand and a hand correction match no payment, so neither is here.
+ * one statement, since the gifts are unbounded: reading their payment ids first would bind one
+ * parameter per payment, and SQLite refuses a statement past `SQLITE_MAX_VARIABLE_NUMBER` (32766,
+ * https://www.sqlite.org/limits.html). grouped per gift first so a gift refunded in full nets to
+ * nothing and drops out of the count while its entries still net to zero in the sum. a gift in
+ * hand is a settled manual payment and counts; a hand correction matches no payment and is not
+ * here (`goal.db.spec.ts`).
  */
 export async function readRaisedByOrganisation(
 	db: Db,

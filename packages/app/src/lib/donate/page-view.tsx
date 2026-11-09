@@ -49,8 +49,11 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 //   name and the box under them, one column at every width — where the organisation has no banner,
 //   no mission or vision and nothing raised (`profileLayout` below), and otherwise the banner or
 //   the brand's band across the top, the logo over its foot, the name, the EIN and the raised figure,
-//   then the box, then About us; wide, the box stands in a column of its own beside them. a heading
-//   saved for the page is the box's own heading there, over the card.
+//   then the box, then About us; wide, the box stands in a column of its own beside them and scrolls
+//   with the page as every box does. a heading saved for the page is the box's own heading there,
+//   over the card. the name is always drawn there, so the logo beside it says nothing of its own,
+//   and a logo the masthead would let stand in for the name is drawn whole at its own shape rather
+//   than in the square.
 //
 // every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
 // the letter's and the feature's box straight after the cover and the title, the goal and the lede
@@ -377,7 +380,11 @@ function ProfileLayout(props: PageViewProps & { readonly profile: DonateProfile 
 			{layout === 'profile' ? <ProfileBanner banner={profile.banner} /> : null}
 			<div className="page-profile-who" {...area('who')}>
 				<div className="page-profile-id">
-					<ProfileMark name={profile.name} logo={profile.logo} letters={initials(profile.name)} />
+					<ProfileMark
+						logo={profile.logo}
+						wide={profile.logo !== null && isWordmark(profile.logo)}
+						letters={initials(profile.name)}
+					/>
 					<ProfileName name={profile.name} taxId={profile.taxId} long={isLong(profile.name)} />
 				</div>
 				<ProfileRaised raised={profile.raised} money={profile.money} />
@@ -417,6 +424,10 @@ function DonationLayout(props: PageViewProps) {
 		</>
 	);
 }
+
+/** a logo at least twice as wide as it is tall, by the stored image's width and height. */
+const isWordmark = (logo: Pick<PageLogo, 'width' | 'height'>): boolean =>
+	logo.width >= 2 * logo.height;
 
 export function Masthead({
 	name,
@@ -464,7 +475,7 @@ export function Masthead({
 	return (
 		<header className="page-mast">
 			<div className="page-in page-mast-in">
-				{logo.width >= 2 * logo.height ? (
+				{isWordmark(logo) ? (
 					<p className="page-mast-name">{art(name)}</p>
 				) : (
 					<>

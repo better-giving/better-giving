@@ -15,9 +15,15 @@ import {
 	useState
 } from 'react';
 import { BANNER_RATIO, bannerSourceRefusal } from '$lib/org/banner';
-import { bandResizeDelta, centredBanner, naturalBanner, shownBannerMinimum } from './banner-crop';
+import {
+	BANNER_REFUSED,
+	bandResizeDelta,
+	centredBanner,
+	naturalBanner,
+	shownBannerMinimum
+} from './banner-crop';
 import type { CropRect } from './crop-image';
-import { LOGO_REFUSED, NUDGE, resizeCorner, type Size, squareResize, takesLogo } from './logo-crop';
+import { NUDGE, resizeCorner, type Size, squareResize, takesLogo } from './logo-crop';
 import { useDropsOnCard, useImageSource } from './logo-crop-dialog';
 
 // the 4:1 band an operator keeps of a photo for the donation page's banner, chosen before anything
@@ -91,9 +97,9 @@ export function BannerCropDialog({
 	const [failed, setFailed] = useState<{ readonly file: File } | null>(null);
 	/* a failure is the file's that failed: a file swapped in by a drop is tried afresh. */
 	const refused: string | null = !takesLogo(file)
-		? LOGO_REFUSED['not-a-logo-type']
+		? BANNER_REFUSED['not-a-logo-type']
 		: unreadable || failed?.file === file
-			? LOGO_REFUSED.unreadable
+			? BANNER_REFUSED.unreadable
 			: null;
 	/* a reading is the image's it was taken from, so a dropped image states nothing until its own
 	   cropper has measured it. */
@@ -215,7 +221,7 @@ function BannerCropper({ id, src, onRead, onError }: BannerCropperProps): ReactN
 						if (change === null) return;
 						event.preventDefault();
 						cropper.resize(
-							resizeCorner(cropper.crop, cropper.viewportRect, change),
+							resizeCorner(cropper.crop, cropper.viewportRect, change, BANNER_RATIO),
 							bandResizeDelta(change)
 						);
 					}}

@@ -975,14 +975,19 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * one cell is a hole in the board, and the chip's own face and lift are what say chosen.
  *
  * the amount tray's lines are drawn by its tiles, so a line stands only where a tile does. every
- * row is full (`.tiles` in ./layout.css), and the first tile of each row is marked `data-row-start`
- * by ../views.ts (`markRows` there) off the boxes' laid-out positions: each such tile after the
- * first draws the horizontal above its row, the tray's whole content width across — measured in
- * `cqi` off the tray, which is a query container for exactly that length — and the free entry draws the
- * one above itself when it stands open on the tray. every tile that does not open a row draws the
- * vertical before it, cell-high and then half the gap further into each gap it borders, so it meets
- * the horizontal there and stops at the tray's inset on the outer rows. until the marks are written
- * no line lands.
+ * row is full and the column count is the stylesheet's own — two across, four from the card's wide
+ * breakpoint on, three for three cells, which is one row either way (`.tiles` in ./layout.css) — so
+ * which tile opens a row is its place among the tray's children, and the two conditions below say
+ * it in `:nth-child` at the same breakpoint. the tiles come first among those children and the
+ * free entry after them (`build` in ../views.ts). nothing is measured, so the lines follow the card
+ * across the breakpoint however its width changes, and are there on a card first drawn hidden.
+ *
+ * each tile opening a row after the first draws the horizontal above that row, the tray's whole
+ * content width across — measured in `cqi` off the tray, which is a query container for exactly
+ * that length — and the free entry draws the one above itself when it stands open on the tray.
+ * every other tile draws the vertical before it, cell-high and then half the gap further into each
+ * gap it borders, so it meets the horizontal there and stops at the tray's inset on the outer rows.
+ * the geometry below is every tile's; a line lands only where a condition gives it `content`.
  *
  * the cadence track is one row and draws verticals only, each by the option after the gap and
  * cell-high.
@@ -993,37 +998,71 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 .segment > label + label::before,
-.tiles > label[data-row-start] ~ label:not([data-row-start])::before,
-.tiles > label[data-row-start] ~ label[data-row-start]::after,
 .tiles:not(.bare) > .entry::after {
 	content: '';
+}
+
+.segment > label + label::before,
+.tiles > label::before,
+.tiles > label::after,
+.tiles:not(.bare) > .entry::after {
 	position: absolute;
 	background: var(--_n6);
 }
 
 .segment > label + label::before,
-.tiles > label[data-row-start] ~ label:not([data-row-start])::before {
+.tiles > label::before {
 	inset-inline-start: calc(-1 * (var(--_sp2) + var(--_border)) / 2);
 	inset-block: 0;
 	inline-size: var(--_border);
 }
 
-/* on a row with one above it, and on a row with one under it — tiles or the open entry. */
-.tiles > label[data-row-start] ~ label[data-row-start] ~ label::before {
-	inset-block-start: calc(-1 * var(--_sp2) / 2);
-}
-
-.tiles > label[data-row-start] ~ label:has(~ label[data-row-start])::before,
-.tiles:has(> .entry:not([hidden])) > label[data-row-start] ~ label::before {
+/* on a row with the open entry under it. */
+.tiles:has(> .entry:not([hidden])) > label::before {
 	inset-block-end: calc(-1 * var(--_sp2) / 2);
 }
 
-.tiles > label[data-row-start] ~ label[data-row-start]::after,
+.tiles > label::after,
 .tiles:not(.bare) > .entry::after {
 	inset-inline-start: 0;
 	inset-block-start: calc(-1 * (var(--_sp2) + var(--_border)) / 2);
 	inline-size: 100cqi;
 	block-size: var(--_border);
+}
+
+/* raw-length-ok: the card's wide breakpoint in ./layout.css, the one the columns change at. */
+@container donate not (min-width: 26em) {
+	.tiles > label:nth-child(even)::before,
+	.tiles > label:nth-child(odd):not(:first-child)::after {
+		content: '';
+	}
+
+	/* on a row with one above it, and on a row with one under it. */
+	.tiles > label:nth-child(n + 3)::before {
+		inset-block-start: calc(-1 * var(--_sp2) / 2);
+	}
+
+	.tiles > label:has(~ label:nth-child(odd))::before {
+		inset-block-end: calc(-1 * var(--_sp2) / 2);
+	}
+}
+
+/* raw-length-ok: as the breakpoint above. */
+@container donate (min-width: 26em) {
+	/* raw-length-ok: `4n` is a step through the children, not a length. */
+	.tiles > label:not(:nth-child(4n + 1))::before,
+	.tiles > label:nth-child(4n + 1):not(:first-child)::after {
+		content: '';
+	}
+
+	.tiles > label:nth-child(n + 5)::before {
+		inset-block-start: calc(-1 * var(--_sp2) / 2);
+	}
+
+	/* raw-length-ok: as above. */
+	.tiles > label:has(~ label:nth-child(4n + 1))::before {
+		inset-block-end: calc(-1 * var(--_sp2) / 2);
+	}
 }
 
 /*

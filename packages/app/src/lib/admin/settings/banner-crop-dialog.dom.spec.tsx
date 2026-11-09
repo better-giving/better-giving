@@ -1,7 +1,9 @@
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { BANNER_REFUSED } from './banner-crop';
 import { BannerCropDialog } from './banner-crop-dialog';
+import { settled } from './settled.testing';
 
 // the band the banner's crop card opens on, and what the keyboard does to it: an arrow moves it 1
 // pixel of the box, Shift 10 and Ctrl or ⌘ 50, and Alt with an arrow resizes it with its 4:1 kept.
@@ -52,21 +54,6 @@ function mount(tree: ReactNode): HTMLElement {
 		root.remove();
 	});
 	return root;
-}
-
-/**
- * what `find` finds once the card's read of its file has landed, or null if it never does: each
- * turn a timer's tick inside `act`, so react draws what the read set before `find` looks again.
- */
-async function settled<T>(find: () => T | null): Promise<T | null> {
-	for (let turn = 0; turn < 50; turn++) {
-		const found = find();
-		if (found !== null) return found;
-		await act(async () => {
-			await new Promise((done) => setTimeout(done, 10));
-		});
-	}
-	return null;
 }
 
 /** the photo under the crop, once the card has read its file: happy-dom's own `FileReader`. */
@@ -181,5 +168,71 @@ describe('the banner’s crop card', () => {
 		await opened();
 		for (let i = 0; i < 3; i++) await press('ArrowLeft', { altKey: true, ctrlKey: true });
 		expect(bandSaid()).toMatch(/^1200 pixels across/);
+	});
+
+	it('refuses a file of a type a banner is not taken in, reads none of it, and keeps Save banner closed', async () => {
+		const read = vi.spyOn(FileReader.prototype, 'readAsDataURL');
+		const onSave = vi.fn();
+		mount(
+			<BannerCropDialog
+				file={new File(['heic'], 'photo.heic', { type: 'image/heic' })}
+				onSave={onSave}
+				onCancel={vi.fn()}
+				onSwap={vi.fn()}
+			/>
+		);
+
+		const alert = document.querySelector('[role="alert"]');
+		expect(alert?.textContent).toBe(BANNER_REFUSED['not-a-logo-type']);
+		expect(read).not.toHaveBeenCalled();
+		expect(document.querySelector('img.adm-cropper__image')).toBeNull();
+		const save = [...document.querySelectorAll('button')].find(
+			(b) => b.textContent === 'Save banner'
+		);
+		expect(save?.getAttribute('aria-disabled')).toBe('true');
+		await act(async () => save?.click());
+		expect(onSave).not.toHaveBeenCalled();
+	});
+
+	describe('a file dropped on the open card', () => {
+		const dropped = (file: File) =>
+			act(async () => {
+				const event = new Event('drop', { bubbles: true, cancelable: true });
+				Object.defineProperty(event, 'dataTransfer', { value: { files: [file] } });
+				document.querySelector('dialog')?.dispatchEvent(event);
+			});
+
+		it('is handed over to swap in when it is a type a banner takes', async () => {
+			const onSwap = vi.fn();
+			mount(
+				<BannerCropDialog
+					file={new File(['png'], 'banner.png', { type: 'image/png' })}
+					onSave={vi.fn()}
+					onCancel={vi.fn()}
+					onSwap={onSwap}
+				/>
+			);
+			const other = new File(['webp'], 'other.webp', { type: 'image/webp' });
+
+			await dropped(other);
+
+			expect(onSwap).toHaveBeenCalledExactlyOnceWith(other);
+		});
+
+		it('is left alone when it is a type a banner is not taken in', async () => {
+			const onSwap = vi.fn();
+			mount(
+				<BannerCropDialog
+					file={new File(['png'], 'banner.png', { type: 'image/png' })}
+					onSave={vi.fn()}
+					onCancel={vi.fn()}
+					onSwap={onSwap}
+				/>
+			);
+
+			await dropped(new File(['heic'], 'photo.heic', { type: 'image/heic' }));
+
+			expect(onSwap).not.toHaveBeenCalled();
+		});
 	});
 });

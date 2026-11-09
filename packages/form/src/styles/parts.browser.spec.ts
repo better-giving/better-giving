@@ -693,6 +693,32 @@ describe('the amount tray’s cells', () => {
 		}
 	);
 
+	// a host's own layout moving the card across the wide breakpoint — a sidebar collapsing, a
+	// drawer opening — fires no window `resize`, and the lattice is the card's layout either way: a
+	// vertical before every tile but a row's first, and a horizontal above every row but the first.
+	it.each([
+		{ from: '375px', to: '1440px' },
+		{ from: '1440px', to: '375px' }
+	])('rules the rows the tray has after the host goes from $from to $to', async ({ from, to }) => {
+		const tiles = await tray(5, from);
+		document.body.style.inlineSize = to;
+		await new Promise(requestAnimationFrame);
+
+		const rows = rowsOf(tiles);
+		expect(rows.length).toBeGreaterThan(1);
+		rows.forEach((row, at) => {
+			row.forEach((tile, column) => {
+				const name = `${to}, row ${at}: ${tile.textContent ?? ''}`;
+				const vertical = getComputedStyle(tile, '::before').content;
+				const horizontal = getComputedStyle(tile, '::after').content;
+				if (column === 0) expect(vertical, name).toBe('none');
+				else expect(vertical, name).not.toBe('none');
+				if (column === 0 && at > 0) expect(horizontal, name).not.toBe('none');
+				else expect(horizontal, name).toBe('none');
+			});
+		});
+	});
+
 	// a line drawn in a gap reaches the line across it, so the board meets at its crossings and stops
 	// at the tray's inset: the first row's verticals start at its tiles' top and the last row's end at
 	// their foot.
@@ -3224,9 +3250,7 @@ describe('the surfaces a donor operates', () => {
 		const second = shadow.querySelector('.segment > label + label') as HTMLElement;
 
 		expect(getComputedStyle(second, '::before').backgroundColor).toBe(separator);
-		const tile = shadow.querySelector(
-			'.tiles > label[data-row-start] ~ label:not([data-row-start])'
-		) as HTMLElement;
+		const tile = shadow.querySelector('.tiles > label:nth-child(2)') as HTMLElement;
 		expect(getComputedStyle(tile, '::before').backgroundColor).toBe(separator);
 	});
 
@@ -4113,15 +4137,16 @@ describe('a refusal under its box', () => {
 	it.each(['375px', '560px'])('keeps the tray and every tile on it drawn at %s', async (width) => {
 		const { host, shadow } = await mount();
 		host.style.inlineSize = width;
-		// the rows are re-marked on the window resizing (`rewrapped` in ../views.ts), not on the host's.
-		window.dispatchEvent(new Event('resize'));
 		await new Promise(requestAnimationFrame);
 		const tray = shadow.querySelector('.tiles') as HTMLElement;
 		const columns = () => getComputedStyle(tray).gridTemplateColumns;
 		const before = columns();
-		const starts = () =>
-			Array.from(tray.children).map((child) => child.hasAttribute('data-row-start'));
-		const marked = starts();
+		const lines = () =>
+			Array.from(tray.children).map(
+				(child) =>
+					`${getComputedStyle(child, '::before').content} ${getComputedStyle(child, '::after').content}`
+			);
+		const ruled = lines();
 
 		(shadow.querySelector('.other input') as HTMLInputElement).click();
 		onward(shadow);
@@ -4134,7 +4159,7 @@ describe('a refusal under its box', () => {
 			expect(box.checkVisibility(), box.className).toBe(true);
 		}
 		expect(columns()).toBe(before);
-		expect(starts()).toEqual(marked);
+		expect(lines()).toEqual(ruled);
 	});
 
 	// the seat is the column's own gap taken back, so a column drawn at another gap keeps it: the

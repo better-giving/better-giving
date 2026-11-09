@@ -20,16 +20,17 @@ export function ProfileBanner({ banner }: { readonly banner: DonateProfile['bann
 }
 
 /**
- * the logo, named for the organisation; with none, the badge of its initials, which says nothing
- * of its own beside the name; with no letter in the name to make one, nothing.
+ * the logo or, with none, the badge of the name's initials; either stands beside the name, which is
+ * always drawn, and says nothing of its own. with no letter in the name to make a badge, nothing.
  */
 export function ProfileMark({
-	name,
 	logo,
+	wide,
 	letters
 }: {
-	readonly name: string;
 	readonly logo: DonateProfile['logo'];
+	/** the logo is a wordmark, drawn whole at its own shape rather than in the square. */
+	readonly wide: boolean;
 	/** the name's initials, `''` where it holds no letter. */
 	readonly letters: string;
 }) {
@@ -38,9 +39,10 @@ export function ProfileMark({
 			<img
 				className="page-profile-logo"
 				src={logo.src}
-				alt={`${name} logo`}
+				alt=""
 				width={logo.width}
 				height={logo.height}
+				data-wide={wide ? '' : undefined}
 			/>
 		);
 	}

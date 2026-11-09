@@ -98,22 +98,24 @@ export type Corner = 'se' | 'sw' | 'ne' | 'nw';
 const GROWS_FROM: readonly Corner[] = ['se', 'sw', 'ne', 'nw'];
 
 /**
- * the corner a resize of `change` is made from, for `crop` in a box of `box`. a corner grows the
- * square out across both of the sides that meet at it, and the cropper stops each side at the box's
- * edge, so a square touching the right or the bottom edge would not grow from the bottom right at
- * all. a growing square is resized from the first corner with room for the whole change, or from the
- * one with the most room where none has it all; a shrinking one always from the bottom right, which
- * keeps the top left where it stands.
+ * the corner a resize of `change` in the width is made from, for `crop` held at `ratio` (width over
+ * height, 1 for the square) in a box of `box`. a corner grows the crop out across both of the sides
+ * that meet at it, `change` across and `change / ratio` down, and the cropper stops each side at the
+ * box's edge, so a crop touching the right or the bottom edge would not grow from the bottom right
+ * at all. a growing crop is resized from the first corner with room for the whole change, or from
+ * the one with the most room where none has it all, each counted in the width it lets the crop
+ * grow; a shrinking one always from the bottom right, which keeps the top left where it stands.
  */
-export function resizeCorner(crop: Rect, box: Size, change: number): Corner {
+export function resizeCorner(crop: Rect, box: Size, change: number, ratio = 1): Corner {
 	if (change <= 0) return 'se';
 	const right = box.width - crop.x - crop.width;
-	const below = box.height - crop.y - crop.height;
+	const below = (box.height - crop.y - crop.height) * ratio;
+	const above = crop.y * ratio;
 	const room: Readonly<Record<Corner, number>> = {
 		se: Math.min(right, below),
 		sw: Math.min(crop.x, below),
-		ne: Math.min(right, crop.y),
-		nw: Math.min(crop.x, crop.y)
+		ne: Math.min(right, above),
+		nw: Math.min(crop.x, above)
 	};
 	return (
 		GROWS_FROM.find((corner) => room[corner] >= change) ??

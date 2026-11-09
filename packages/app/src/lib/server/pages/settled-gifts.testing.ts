@@ -20,7 +20,7 @@ import { run, stmt } from '$lib/server/db/database.testing';
 
 // gifts through a form, put in the books by the path production writes them by — quoted by
 // `recordDonation`, settled by `settleTransaction`, refunded by `recordReversal`, collected by
-// `settleDelivery` — for a spec that reads what those writers post. every gift is in USD and needs
+// `settleDelivery` — for a spec that reads what those writers post. every gift but a one-off's `currency` is USD, and every one needs
 // an `org_profile` row, which its receipt reads. not a spec itself: no project's `include` matches
 // this name.
 
@@ -43,12 +43,13 @@ function settling(db: Db, settlement: Settlement): SettleDeps {
 
 let sequence = 0;
 
-/** a single gift quoted through `formId`, left pending unless `settles`; its transaction id. */
+/** a single gift quoted through `formId`, in USD unless `currency` says otherwise, left pending unless `settles`; its transaction id. */
 export async function gift(
 	db: Db,
 	formId: string,
 	amountMinor: number,
-	settles = true
+	settles = true,
+	currency = 'USD'
 ): Promise<string> {
 	sequence += 1;
 	const txn = `pi_goal_${sequence}`;
@@ -65,7 +66,7 @@ export async function gift(
 		donor: donor.value,
 		formId,
 		origin: null,
-		currency: 'USD',
+		currency,
 		processor: 'stripe',
 		totalMinor: amountMinor,
 		feeMinor: 0,
@@ -88,7 +89,7 @@ export async function gift(
 			status: 'succeeded',
 			method: 'card',
 			amountMinor,
-			currency: 'USD',
+			currency,
 			feeMinor: 150,
 			metadata: { donation_id: donationId },
 			occurredAt: SETTLED_AT,

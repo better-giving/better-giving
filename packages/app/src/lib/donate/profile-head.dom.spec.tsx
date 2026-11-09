@@ -155,12 +155,30 @@ describe('the banner', () => {
 });
 
 describe('the logo', () => {
-	it('names the organisation’s logo', () => {
+	// the name stands beside the logo as the h1 at every shape, so the logo, as the masthead's does
+	// beside the name, says nothing of its own.
+	it('draws the organisation’s logo beside its name, saying nothing of its own', () => {
 		const logo = draw(FULL).querySelector('.page-profile-logo');
 		expect(logo?.tagName).toBe('IMG');
-		expect(logo?.getAttribute('alt')).toBe('Harbor Light logo');
+		expect(logo?.getAttribute('alt')).toBe('');
 		expect(logo?.getAttribute('src')).toBe('/image/logo-1');
+		expect(logo?.hasAttribute('data-wide')).toBe(false);
 	});
+
+	it.each([
+		['twice as wide as it is tall', 800, 400, true],
+		['a wordmark', 1200, 300, true],
+		['a little under twice as wide', 799, 400, false]
+	])(
+		'draws a logo %s whole at its own shape where the masthead counts it wide',
+		(_, width, height, wide) => {
+			const logo = draw({ ...FULL, logo: { src: '/image/logo-1', width, height } }).querySelector(
+				'.page-profile-logo'
+			);
+			expect(logo?.hasAttribute('data-wide')).toBe(wide);
+			expect(logo?.getAttribute('alt')).toBe('');
+		}
+	);
 
 	it.each([
 		['The Hope Fund', 'HF'],

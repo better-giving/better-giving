@@ -1,7 +1,9 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { expect, it, onTestFinished, vi } from 'vitest';
+import { LOGO_REFUSED } from './logo-crop';
 import { LogoCropDialog } from './logo-crop-dialog';
+import { settled } from './settled.testing';
 
 // the square the crop card opens on, for the image it opens with and for one dropped on it after.
 //
@@ -70,21 +72,6 @@ function mount(tree: ReactNode): { root: HTMLElement; render: Root['render'] } {
 }
 
 /**
- * what `find` finds once the card's read of its file has landed, or null if it never does: each
- * turn a timer's tick inside `act`, so react draws what the read set before `find` looks again.
- */
-async function settled<T>(find: () => T | null): Promise<T | null> {
-	for (let turn = 0; turn < 50; turn++) {
-		const found = find();
-		if (found !== null) return found;
-		await act(async () => {
-			await new Promise((done) => setTimeout(done, 10));
-		});
-	}
-	return null;
-}
-
-/**
  * the image under the crop, once the card has read its file into the address it draws it from:
  * happy-dom's own `FileReader`, as a browser reads it.
  */
@@ -135,6 +122,26 @@ it('opens a dropped image on the largest centred square of its own, as it opens 
 	await act(async () => resize(viewport(root)));
 	expect(squareSaid(root)).toBe('300 pixels across, 0 from the left and 150 from the top');
 	expect(objectUrl).not.toHaveBeenCalled();
+});
+
+it('reads none of a file it refuses by its type, and says why', async () => {
+	const read = vi.spyOn(FileReader.prototype, 'readAsDataURL');
+	const { root } = mount(
+		<LogoCropDialog
+			file={new File(['heic'], 'photo.heic', { type: 'image/heic' })}
+			onSave={vi.fn()}
+			onCancel={vi.fn()}
+			onSwap={vi.fn()}
+		/>
+	);
+
+	const said = await settled(() =>
+		root.ownerDocument.body.textContent?.includes(LOGO_REFUSED['not-a-logo-type']) ? true : null
+	);
+
+	expect(said).toBe(true);
+	expect(read).not.toHaveBeenCalled();
+	expect(root.ownerDocument.querySelector('img.adm-cropper__image')).toBeNull();
 });
 
 // the operator screens' `img-src` is `'self' data:` (`operatorPolicy` in

@@ -7,7 +7,7 @@ import { post, postingStatements } from '../ledger/posting';
 import { HELD_UNTIL } from '../webhooks/events';
 import { donationRevenueAccount, POSTING_ACCOUNTS, postableId } from './accounts';
 import { createDb } from './client';
-import { MIGRATIONS, openUnmigrated, rawSql, stmt } from './database.testing';
+import { client, MIGRATIONS, openUnmigrated, rawSql, stmt } from './database.testing';
 import { applyMigrations, type Migration } from './migrate';
 import { rejectionCode } from './rejection.testing';
 
@@ -1487,8 +1487,21 @@ describe('0033 gives the profile a banner, keeping the profile', () => {
 		({ before, after, overSeed } = await migrateOverSeed());
 	});
 
-	it('is in the chain', () => {
-		expect(MIGRATIONS.map((m) => m.name)).toContain(ORG_BANNER_BY);
+	// the whole chain, which `client` holds whether or not there is an earlier file to stop at.
+	it('leaves a nullable banner_image_id on the profile that names an image', async () => {
+		const whole = rawSql(client);
+		const columns = await whole.all<{ name: string; notnull: number }>(
+			stmt(
+				`select name, "notnull" from pragma_table_info('org_profile') where name = 'banner_image_id'`
+			)
+		);
+		expect(columns).toEqual([{ name: 'banner_image_id', notnull: 0 }]);
+		const references = await whole.all<{ from: string; table: string; to: string }>(
+			stmt(
+				`select "from", "table", "to" from pragma_foreign_key_list('org_profile') where "from" = 'banner_image_id'`
+			)
+		);
+		expect(references).toEqual([{ from: 'banner_image_id', table: 'image', to: 'id' }]);
 	});
 
 	it.skipIf(nowhereToStop)('keeps the profile and its logo, with no banner', () => {

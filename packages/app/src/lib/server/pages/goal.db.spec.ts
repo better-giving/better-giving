@@ -3,6 +3,9 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import { form, page } from '../db/schema';
+import { postCorrection } from '../books/correct';
+import { recordGiftInHand } from '../donations/record-in-hand';
+import { parseContact } from '../contacts/contact-input';
 import { writeOrgRow } from '../org/org-row.testing';
 import { ensureDonationPage } from './donation-page';
 import { campaignRaised, organisationRaised } from './goal';
@@ -153,5 +156,55 @@ describe('organisationRaised()', () => {
 		await gift(db, (await ensureDonationPage(db)).formId, 10_000);
 
 		expect(await organisationRaised(db, 'EUR')).toEqual({ raisedMinor: 0, gifts: 0 });
+	});
+
+	it('adds only the gifts in the asked currency, and leaves the other currency out of the sum', async () => {
+		const donationPage = (await ensureDonationPage(db)).formId;
+		await gift(db, donationPage, 10_000);
+		await gift(db, donationPage, 7_000, true, 'EUR');
+
+		expect(await organisationRaised(db, 'USD')).toEqual({ raisedMinor: 10_000, gifts: 1 });
+		expect(await organisationRaised(db, 'EUR')).toEqual({ raisedMinor: 7_000, gifts: 1 });
+	});
+
+	it('adds a hand correction into the donation accounts to no figure', async () => {
+		const donationPage = (await ensureDonationPage(db)).formId;
+		await gift(db, donationPage, 10_000);
+		const posted = await postCorrection(db, {
+			sourceId: crypto.randomUUID(),
+			occurredAt: new Date('2026-09-15T00:00:00.000Z'),
+			amountMinor: 2_500,
+			outOf: postableId('undepositedFunds'),
+			into: postableId('donationsDeductible'),
+			note: 'a gift that never posted'
+		});
+		expect(posted).toEqual({ ok: true });
+
+		expect(await organisationRaised(db, 'USD')).toEqual({ raisedMinor: 10_000, gifts: 1 });
+	});
+
+	it('adds a gift entered in hand', async () => {
+		const donationPage = (await ensureDonationPage(db)).formId;
+		await gift(db, donationPage, 10_000);
+		const donor = parseContact({
+			kind: 'individual',
+			first_name: 'Bo',
+			last_name: 'Hand',
+			primary_email: 'bo@example.org'
+		});
+		if (!donor.ok) throw new Error('the fixture donor did not parse');
+		const recorded = await recordGiftInHand(db, {
+			donationId: '019fb600-0000-7000-8000-000000000001',
+			paymentId: '019fb601-0000-7000-8000-000000000001',
+			donor: { kind: 'new', contact: donor.value },
+			amountMinor: 3_000,
+			dated: new Date('2026-09-12T12:00:00.000Z'),
+			method: 'check',
+			programId: null,
+			source: null
+		});
+		expect(recorded.ok).toBe(true);
+
+		expect(await organisationRaised(db, 'USD')).toEqual({ raisedMinor: 13_000, gifts: 2 });
 	});
 });

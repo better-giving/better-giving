@@ -47,7 +47,7 @@ import {
 	whichForm
 } from '$lib/admin/use-admin-form';
 import { defineForm, type FormRejection, WHICH_FORM } from '$lib/forms/definition';
-import type { BannerAnswer } from '$lib/org/banner';
+import { BANNER_WIDTH_MIN, type BannerAnswer } from '$lib/org/banner';
 import type {
 	NonprofitFields,
 	NonprofitLookupAnswer,
@@ -524,7 +524,7 @@ function DetailsCard({
 	});
 	const links = fields[SOCIAL_LINKS_FIELD];
 	const linkLead = useSocialLinkLeads();
-	const finder = useOrgFinder(details.legal_name === '', version);
+	const finder = useOrgFinder(details.legal_name === '', JSON.stringify(details));
 
 	// a pick and a found lookup put their values in the boxes as edits, which arm Save details and
 	// save nothing.
@@ -679,10 +679,11 @@ function DetailsCard({
  * so its lookup fills the address alone, and an edit made to a picked value while it was out stands.
  *
  * it opens on a profile with no details yet, and otherwise only at "Pick a different
- * organisation". a save that lands — the profile's version moving — puts it away and drops the
- * fill's note, since the boxes then hold what was stored.
+ * organisation". a details save that lands — `seed`, the stored details, changing — puts it away
+ * and drops the fill's note, since the boxes then hold what was stored. the profile's version is
+ * not the signal: a logo or a banner put on or taken off moves it too, and leaves the finder be.
  */
-function useOrgFinder(empty: boolean, version: number) {
+function useOrgFinder(empty: boolean, seed: string) {
 	const searched = useFetcher<NonprofitSearchAnswer>();
 	const looked = useFetcher<NonprofitLookupAnswer>();
 	const [open, setOpen] = useState(empty);
@@ -691,9 +692,9 @@ function useOrgFinder(empty: boolean, version: number) {
 	/** the boxes the lookup out, or last answered, fills. */
 	const [fills, setFills] = useState<readonly (typeof FOUND_BOXES)[number][]>(FOUND_BOXES);
 
-	const [drawnAt, setDrawnAt] = useState(version);
-	if (version !== drawnAt) {
-		setDrawnAt(version);
+	const [drawnFrom, setDrawnFrom] = useState(seed);
+	if (seed !== drawnFrom) {
+		setDrawnFrom(seed);
 		setFilled(null);
 		if (!empty) setOpen(false);
 	}
@@ -815,8 +816,9 @@ function BannerControl({ banner }: { readonly banner: LoaderData['banner'] }) {
 		<fieldset className="adm-fieldset" aria-describedby={hintId}>
 			<legend className="adm-fieldset__legend">Banner</legend>
 			<p className="adm-hint" id={hintId}>
-				The wide picture across the top of your donation page. At least 1200 pixels wide, as a PNG,
-				JPEG or WebP. Keep faces and words in the middle: a phone shows the middle 3 to 1.
+				The wide picture across the top of your donation page. At least {BANNER_WIDTH_MIN} pixels
+				wide, as a PNG, JPEG or WebP. Keep faces and words in the middle: a phone shows the middle 3
+				to 1.
 			</p>
 			<BannerPicker
 				src={banner?.src}

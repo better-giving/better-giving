@@ -1,11 +1,25 @@
 import { BANNER_RATIO, BANNER_WIDTH_MIN } from '$lib/org/banner';
-import type { CropRect } from './crop-image';
-import type { Rect, Size } from './logo-crop';
+import type { CropRect, CropRefusal } from './crop-image';
+import { LOGO_REFUSED, type Rect, type Size } from './logo-crop';
 
 // the arithmetic between the 4:1 band an operator drags over a photo on the screen and the band a
 // save crops the photo to (./banner-crop-dialog.tsx draws the one, ./banner-image.ts crops by the
-// other). the photo is drawn whole, at no zoom, filling the box the band is dragged in, as the
-// logo's is (./logo-crop.ts), so one scale on each axis is the whole of the conversion.
+// other), and the words each refusal of a banner is said in. the photo is drawn whole, at no zoom,
+// filling the box the band is dragged in, as the logo's is (./logo-crop.ts), so one scale on each
+// axis is the whole of the conversion.
+
+/**
+ * what each refusal says, in the crop card or under the banner's press: the logo's words where they
+ * name no shape, and the band's own where the logo's say square. a photo too small for a banner is
+ * `bannerSourceRefusal`'s ($lib/org/banner.ts).
+ */
+export const BANNER_REFUSED: Readonly<Record<CropRefusal | 'not-a-logo-type', string>> = {
+	'not-an-image': LOGO_REFUSED['not-an-image'],
+	'not-a-logo-type': LOGO_REFUSED['not-a-logo-type'],
+	unreadable: LOGO_REFUSED.unreadable,
+	'too-large-after-resize': LOGO_REFUSED['too-large-after-resize'],
+	'crop-outside': 'That band runs past the edge of the image. Move it inside the image.'
+};
 
 /** the widest 4:1 band that fits a box of `size`, centred in it: the band a crop opens on. */
 export function centredBanner(size: Size): Rect {

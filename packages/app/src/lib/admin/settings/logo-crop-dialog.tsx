@@ -165,13 +165,15 @@ const fileId = (file: File): string => {
  * (`blob:`) is no address an operator screen may load: the operator policy's `img-src` names
  * `'self' data:` alone (`operatorPolicy` in ../../../document-policy.ts). nothing is held to
  * release once the card is down; a read still running when the file changes or the card closes is
- * aborted, and its answer is never taken.
+ * aborted, and its answer is never taken. a file of a type the card refuses (`takesLogo`) is never
+ * read: nothing would draw it.
  */
 export function useImageSource(file: File): ImageSource {
 	const [read, setRead] = useState<{ readonly file: File; readonly answer: ImageSource } | null>(
 		null
 	);
 	useEffect(() => {
+		if (!takesLogo(file)) return;
 		const reader = new FileReader();
 		reader.onload = () => {
 			const src = typeof reader.result === 'string' ? reader.result : null;

@@ -1,13 +1,15 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub } from 'react-router';
+import { createRoutesStub, useLoaderData } from 'react-router';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import type { CropRect } from '$lib/admin/settings/crop-image';
+import type { CropRect, Cropped } from '$lib/admin/settings/crop-image';
+import { BANNER_REFUSED } from '$lib/admin/settings/banner-crop';
 import type { CropSquare } from '$lib/admin/settings/logo-crop';
 import type { NonprofitLookupAnswer, NonprofitSearchAnswer } from '$lib/org/nonprofit-answers';
 import Settings from './_app.admin.settings';
 import { shouldRevalidate as searchShouldRevalidate } from './_app.admin.settings_.nonprofits';
 import { shouldRevalidate as lookupShouldRevalidate } from './_app.admin.settings_.nonprofits_.$ein';
+import { settled } from '$lib/admin/settings/settled.testing';
 
 // what the Settings screen says about the two things a deployment can be missing without any box
 // on it being wrong — the mail values, which are set in `.env`, and the notification address — and
@@ -34,10 +36,12 @@ vi.mock('$lib/admin/settings/logo-square', () => ({ squareLogo }));
 // the banner's crop and resize are ../lib/admin/settings/logo-square.spec.ts's too, stood in for here
 // the same way.
 const cropBanner = vi.hoisted(() =>
-	vi.fn(async (_file: File, _band: CropRect) => ({
-		ok: true as const,
-		blob: new Blob(['band'], { type: 'image/png' })
-	}))
+	vi.fn(
+		async (_file: File, _band: CropRect): Promise<Cropped> => ({
+			ok: true,
+			blob: new Blob(['band'], { type: 'image/png' })
+		})
+	)
 );
 
 vi.mock('$lib/admin/settings/banner-image', () => ({ cropBanner }));
@@ -111,36 +115,56 @@ type Asked = { readonly calls: string[]; readonly saves: FormData[] };
 
 const UNANSWERED = () => new Promise<never>(() => {});
 
+const STUB_ROUTE = 'settings';
+
+/** what the screen's loader answers from the next read on: the drawn values, these over them. */
+type Reread = {
+	readonly details?: Partial<typeof DETAILS>;
+	readonly logo?: { readonly id: string; readonly src: string } | null;
+	readonly banner?: { readonly id: string; readonly src: string } | null;
+	readonly version?: number;
+};
+
 /**
  * the screen, with the logo's and the banner's addresses answering as `answer` says and the
  * organisation addresses as `nonprofits` does — each with its own module's `shouldRevalidate`, as
  * the app routes it. every request that reaches the logo's or the banner's address is recorded in
- * `sent`, every organisation call and every save of the screen's own in `asked`.
+ * `sent`, every organisation call and every save of the screen's own in `asked`. the screen's loader
+ * answers what it was drawn with until `reread` names what the next read answers in its place.
  */
 function screen(
 	{ details, logo, banner, ...over }: Drawn,
 	answer: (request: Request) => Promise<unknown> = async () => ({ logo: null }),
 	{ search = UNANSWERED, lookup = UNANSWERED }: Nonprofits = {}
-): { readonly root: HTMLElement; readonly sent: Sent[]; readonly asked: Asked } {
+): {
+	readonly root: HTMLElement;
+	readonly sent: Sent[];
+	readonly asked: Asked;
+	readonly reread: (next: Reread) => void;
+} {
 	const sent: Sent[] = [];
 	const asked: Asked = { calls: [], saves: [] };
+	const drawn = {
+		details: { ...DETAILS, ...details },
+		logo: logo ?? null,
+		banner: banner ?? null,
+		saved: null,
+		version: 0,
+		...over
+	};
+	let read: typeof drawn = drawn;
 	const Stub = createRoutesStub([
 		{
+			id: STUB_ROUTE,
 			path: '/admin/settings',
+			loader: () => read,
 			action: async ({ request }) => {
 				asked.saves.push(await request.formData());
 				return null;
 			},
 			Component: () =>
 				createElement(Settings as never, {
-					loaderData: {
-						details: { ...DETAILS, ...details },
-						logo: logo ?? null,
-						banner: banner ?? null,
-						saved: null,
-						version: 0,
-						...over
-					},
+					loaderData: useLoaderData(),
 					actionData: undefined,
 					params: {},
 					matches: []
@@ -173,9 +197,17 @@ function screen(
 		}
 	]);
 	return {
-		root: mount(createElement(Stub, { initialEntries: ['/admin/settings'] })),
+		root: mount(
+			createElement(Stub, {
+				initialEntries: ['/admin/settings'],
+				hydrationData: { loaderData: { [STUB_ROUTE]: drawn } }
+			})
+		),
 		sent,
-		asked
+		asked,
+		reread: ({ details: storedDetails, ...storedOver }) => {
+			read = { ...read, ...storedOver, details: { ...read.details, ...storedDetails } };
+		}
 	};
 }
 
@@ -190,17 +222,12 @@ function card(root: HTMLElement, heading: string): HTMLElement {
 
 /**
  * the crop card's image once the card has read the chosen file into the address it draws it from,
- * happy-dom's own `FileReader` doing the reading: each turn a timer's tick inside `act`, so react
- * draws what the read set before the card is looked at again.
+ * happy-dom's own `FileReader` doing the reading.
  */
 async function cardDrawn(): Promise<void> {
-	for (let turn = 0; turn < 50; turn++) {
-		if (document.querySelector('.adm-cropper__image') !== null) return;
-		await act(async () => {
-			await new Promise((done) => setTimeout(done, 10));
-		});
+	if ((await settled(() => document.querySelector('.adm-cropper__image'))) === null) {
+		throw new Error('the crop card read no image');
 	}
-	throw new Error('the crop card read no image');
 }
 
 const SET = {
@@ -707,6 +734,23 @@ describe('the banner', () => {
 		expect(buttonNamed(banner(root), 'Replace banner')?.getAttribute('aria-disabled')).toBe('true');
 	});
 
+	it('says the crop step’s refusal under the press, and posts nothing', async () => {
+		cropBanner.mockResolvedValueOnce({ ok: false, refused: BANNER_REFUSED.unreadable });
+		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		await pick(root, PICKED);
+		await measure({ width: 2400, height: 1600 });
+
+		await act(async () => buttonNamed(cropCard() as HTMLElement, 'Save banner')?.click());
+
+		await vi.waitFor(() =>
+			expect(banner(root).querySelector('[role="status"]')?.textContent).toBe(
+				BANNER_REFUSED.unreadable
+			)
+		);
+		expect(cropCard()).toBeNull();
+		expect(sent).toEqual([]);
+	});
+
 	it('says the address’s refusal under the press', async () => {
 		const { root } = screen({ notificationEmail: null, mail: SET }, async () => ({
 			error: 'Save the organisation details first, then add the banner.'
@@ -1051,6 +1095,48 @@ describe('find your charity', () => {
 		expect(asked.saves[0]?.get('legal_name')).toBe('Riverside Community Food Bank');
 		await act(async () => {});
 		expect(asked.calls).toEqual(['lookup 95-1234567']);
+	});
+
+	it('stays open, with the note of what filled the boxes, when a photo goes on or comes off', async () => {
+		const { root, sent, reread } = screen(
+			{ notificationEmail: null, mail: SET, banner: { id: 'img_2', src: '/image/img_2' } },
+			async () => ({ banner: null }),
+			{ lookup: async () => FOUND }
+		);
+		await act(async () => buttonNamed(details(root), 'Pick a different organisation')?.click());
+		await press(root, '95-1234567');
+		await vi.waitFor(() => expect(note(root)).toBe('Filled from the IRS list. '));
+
+		// a photo's write moves the profile's version and leaves every details box as it was stored.
+		reread({ banner: null, version: 1 });
+		const remove = details(root).querySelector<HTMLButtonElement>(
+			'button[aria-label="Remove the banner"]'
+		);
+		await act(async () => remove?.click());
+		await vi.waitFor(() => expect(sent).toHaveLength(1));
+		await vi.waitFor(() =>
+			expect(details(root).querySelector('button[aria-label="Remove the banner"]')).toBeNull()
+		);
+
+		expect(finderBox(root)).not.toBeNull();
+		expect(note(root)).toBe('Filled from the IRS list. ');
+		expect(boxValue(root, 'legal_name')).toBe('Riverside Community Food Bank');
+	});
+
+	it('puts itself away, and the note with it, when the filled details are saved', async () => {
+		const { root, reread } = screen({ notificationEmail: null, mail: SET }, undefined, {
+			lookup: async () => FOUND
+		});
+		await act(async () => buttonNamed(details(root), 'Pick a different organisation')?.click());
+		await press(root, '95-1234567');
+		await vi.waitFor(() => expect(note(root)).toBe('Filled from the IRS list. '));
+
+		reread({ details: FOUND.fields, version: 1 });
+		await act(async () => buttonNamed(details(root), 'Save details')?.click());
+
+		await vi.waitFor(() => expect(finderBox(root)).toBeNull());
+		expect(note(root)).toBe('');
+		expect(buttonNamed(details(root), 'Pick a different organisation')).toBeDefined();
 	});
 
 	it('says each match’s standing, a revocation over its deductibility', async () => {
