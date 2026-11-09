@@ -46,8 +46,8 @@ describe('byDayShown', () => {
 	});
 
 	it('lists a gift of the day before below one of the next day, east of UTC', () => {
-		// Manila: 16:00Z on the 21st shows the 22nd, 15:59Z still shows the 21st. given with the online gift
-		// showing the 22nd after a row showing the 21st, it moves up beside the in-hand 22nd.
+		// Manila: 16:00Z on the 21st shows the 22nd, 15:59Z still shows the 21st. the online gift
+		// showing the 22nd is given after a row showing the 21st and moves up beside the in-hand 22nd.
 		const lateOnline = { id: 'late-online', receivedAt: '2026-10-21T16:00:00.000Z' };
 		const earlyOnline = { id: 'early-online', receivedAt: '2026-10-21T15:59:00.000Z' };
 		const typedOn21 = { id: 'typed-21', receivedOn: '2026-10-21' };

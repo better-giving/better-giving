@@ -40,8 +40,8 @@ export function ViewerZoneProvider({
 	useEffect(() => {
 		const zone = writable(browserZone());
 		if (zone !== null && zone !== serverZone) {
-			// every character of an IANA name is a valid cookie octet, so the value is written as is.
 			const secure = location.protocol === 'https:' ? '; Secure' : '';
+			// every character of an IANA name is a valid cookie octet, so the value is written as is.
 			// `Path=/admin` is not sent with the data request for exactly /admin, which react router
 			// spells /admin.data (RFC 6265 §5.1.4 path-match wants a `/` after the path): the layout
 			// loader's zone is null there, and after hydration the browser's own zone is the one shown.
