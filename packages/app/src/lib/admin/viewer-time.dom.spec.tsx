@@ -159,6 +159,37 @@ function pageProtocol(protocol: string) {
 	vi.spyOn(owner as Location, 'protocol', 'get').mockReturnValue(protocol);
 }
 
+// a server and a browser can format the same zone name with different tz data (a zone whose rules
+// changed recently), so a time's text is let differ at hydration: react keeps the server's text,
+// says nothing, and the browser's zone takes over on the next render.
+it('hydrates a time whose text the browser formats differently without a mismatch', async () => {
+	browserIn('Asia/Manila');
+	const host = document.createElement('div');
+	host.innerHTML = renderToString(page('Asia/Manila', 'moment')).replace(
+		'00:23 UTC+8',
+		'01:23 UTC+9'
+	);
+	document.body.appendChild(host);
+	const served = host.querySelector('time');
+
+	const recovered: unknown[] = [];
+	const complained = vi.spyOn(console, 'error');
+	const mounted = await act(async () =>
+		hydrateRoot(host, page('Asia/Manila', 'moment'), {
+			onRecoverableError: (error) => recovered.push(error)
+		})
+	);
+	onTestFinished(() => {
+		act(() => mounted.unmount());
+		host.remove();
+	});
+
+	expect(served?.textContent).toBe('22 Oct 2026, 01:23 UTC+9');
+	expect(recovered).toEqual([]);
+	expect(complained).not.toHaveBeenCalled();
+	expect(host.querySelector('time')).toBe(served);
+});
+
 describe('an instant that is not a date', () => {
 	it.each([
 		['a missing', undefined],
@@ -193,6 +224,29 @@ describe('a zone this runtime cannot write in', () => {
 		expect(complained).not.toHaveBeenCalled();
 		expect(time?.textContent).toBe('');
 		expect(time?.getAttribute('datetime')).toBe(LATE_NIGHT);
+	});
+
+	it('writes no cookie when the browser resolves a zone the runtime does not know', async () => {
+		browserIn('Etc/Unknown');
+		const written = cookieWrites();
+		await serveThenHydrate(null);
+
+		expect(written).not.toHaveBeenCalled();
+	});
+
+	it('writes no cookie and leaves the time empty when the browser resolves no zone at all', async () => {
+		const real = Intl.DateTimeFormat.prototype.resolvedOptions;
+		vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockImplementation(function (
+			this: Intl.DateTimeFormat
+		) {
+			return { ...real.call(this), timeZone: undefined as unknown as string };
+		});
+		const written = cookieWrites();
+		const { time, complained } = await serveThenHydrate(null, 'moment');
+
+		expect(written).not.toHaveBeenCalled();
+		expect(complained).not.toHaveBeenCalled();
+		expect(time?.textContent).toBe('');
 	});
 
 	it('serves an empty time for a zone the server was handed but cannot write in', () => {

@@ -130,6 +130,36 @@ describe('the formats an instant is written with', () => {
 		}
 	);
 
+	// `Intl` takes any casing of a zone, so a cookie can name a new spelling each time. the cache is
+	// emptied past its bound rather than grown; the only way to see that through the public API is
+	// that a spelling formatted long ago has to be built again.
+	it('forgets a spelling formatted before the cache filled, and still formats every one right', () => {
+		// bit k of n upper-cases the k-th letter of the zone's name
+		const spelling = (n: number) => {
+			let letter = 0;
+			return [...'America/Argentina/Buenos_Aires']
+				.map((char) =>
+					/[a-z]/i.test(char)
+						? (n >> letter++) & 1
+							? char.toUpperCase()
+							: char.toLowerCase()
+						: char
+				)
+				.join('');
+		};
+		const first = spelling(0);
+		expect(formatInstant(LATE_NIGHT, first, 'moment')).toBe('21 Oct 2026, 13:23 UTC-3');
+
+		// more distinct spellings than the cache holds, whatever it held before this case
+		for (let n = 1; n <= 1100; n++) {
+			expect(formatInstant(LATE_NIGHT, spelling(n), 'iso-day')).toBe('2026-10-21');
+		}
+
+		const built = formatsBuilt();
+		expect(formatInstant(LATE_NIGHT, first, 'moment')).toBe('21 Oct 2026, 13:23 UTC-3');
+		expect(built).toHaveBeenCalledTimes(1);
+	});
+
 	it.each([
 		'2026-10-22T00:00:00.000Z',
 		'2026-10-21T23:59:59.999Z',

@@ -90,9 +90,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 	// `deployer` is the predicate the pages in the rail's Integrations group read, read again here
 	// so a member is drawn no cell leading to their not-found ($lib/admin/destinations.ts).
 	//
-	// `viewerZone` is the zone the browser last wrote, so an instant on any screen beneath renders
-	// on the server in the viewer's own day; null before it has written one, or for a value that is
-	// no zone, and the browser then fills each instant once hydrated ($lib/admin/viewer-time.react.tsx).
+	// `viewerZone` is the zone the `admin_zone` cookie names, so an instant on any screen beneath
+	// renders on the server in the viewer's own day ($lib/admin/viewer-time.react.tsx). the cookie is
+	// `Path=/admin`, and RFC 6265 path matching sends it on a document request and on a data request
+	// under /admin/, never on the data request for exactly /admin (`/admin.data`). there, before the
+	// browser has written one, and for a value that is no zone, this is null, and the provider and
+	// `useViewerZone` use the browser's own zone instead.
 	return {
 		orgName: state?.profile?.legalName ?? null,
 		deployer: context.get(staff).id === STAFF_USER_ID,

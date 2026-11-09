@@ -229,8 +229,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 export default function Donations({ loaderData }: Route.ComponentProps) {
 	const { donations, limit, hasMore } = loaderData;
 	const count = donations.length;
-	// newest first by the day each row shows, which the stored order alone is not west of UTC
-	// ($lib/admin/received-order.ts).
+	// the zone each row's day is shown in, which is the zone the rows are ordered by.
 	const zone = useViewerZone();
 
 	return (
@@ -274,6 +273,8 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 				caption={count > 0 ? `${count} ${count === 1 ? 'gift' : 'gifts'}, newest first.` : 'Gifts'}
 				capNote={hasMore ? `Only the most recent ${limit} are shown.` : undefined}
 				columns={COLUMNS}
+				// newest first by the day each row shows, which the stored order alone is not west
+				// of UTC ($lib/admin/received-order.ts).
 				rows={byDayShown(donations, zone).map((d) => ({
 					// the gift's own id, which is what keys the row. it is never rendered — no
 					// column is keyed `id` — and it is here because keying by position instead
