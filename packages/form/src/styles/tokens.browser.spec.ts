@@ -318,7 +318,7 @@ describe('the colour layer', () => {
 		expect(bytes('--_n1')).toEqual(bytes('#fbfcfe'));
 		expect(bytes('--_p')).toEqual(bytes(UNSEEDED));
 		expect(bytes('--primary')).toEqual(bytes(UNSEEDED));
-		expect(bytes('--_focus-ring')).toEqual(bytes('--accent-11'));
+		expect(bytes('--_focus-ring')).toEqual(bytes('--accent-8'));
 	});
 
 	it('leaves every alias alone whatever the seed is, which only the brand sheet moves', () => {

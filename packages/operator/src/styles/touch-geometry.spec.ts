@@ -270,22 +270,24 @@ type Member = {
 };
 
 /** the width a border shorthand states, from its first term; none stated is none drawn. */
-const widthOf = (border: string | undefined) =>
-	border === undefined ? 0 : evaluate(border.split(' ')[0]);
+const widthOf = (border: string | undefined, bound: Readonly<Record<string, string>> = {}) =>
+	border === undefined ? 0 : evaluate(border.split(' ')[0], undefined, bound);
 
 /**
- * the registry's own names a small press is measured in, as `evaluate` reads them: the spacing step
- * and the small tier's height, both declared on the registry's classes rather than in ./tokens.css.
+ * the registry's own names a small press is measured in, as `evaluate` reads them: the spacing step,
+ * the small tier's height and the edge width, all declared on the registry's classes rather than in
+ * ./tokens.css.
  */
 const REGISTRY_SIZES = (): Record<string, string> => ({
 	'--ds-spacing': ruleOf(registry, '.ds-btn').get('--ds-spacing') ?? '',
-	'--ds-btn-size': ruleOf(registry, '.ds-btn-sm').get('--ds-btn-size') ?? ''
+	'--ds-btn-size': ruleOf(registry, '.ds-btn-sm').get('--ds-btn-size') ?? '',
+	'--ds-btn-edge': ruleOf(registry, '.ds-btn').get('--ds-btn-edge') ?? ''
 });
 
 /** the quiet rank's edge, which is the one `.ds-btn` states: `.ds-btn-ghost` adds none. */
 const BUTTON_BORDER = () => {
 	expect(ruleOf(registry, '.ds-btn-ghost').get('border')).toBeUndefined();
-	return widthOf(ruleOf(registry, '.ds-btn').get('border'));
+	return widthOf(ruleOf(registry, '.ds-btn').get('border'), REGISTRY_SIZES());
 };
 const ROW_REMOVE = '.adm-rows__row > .adm-rows__remove';
 const CHIP = '.adm-choicechips:not(.adm-choicechips--cards) > .adm-choicechip';
@@ -454,13 +456,16 @@ function target(member: string): Target {
 		-drawn.border - evaluate(stated.get('inset-inline-start'), drawn.inline - 2 * drawn.border);
 	const blockStart =
 		-drawn.border - evaluate(stated.get('inset-block-start'), drawn.block - 2 * drawn.border);
+	// the control's own border box is a target too, so a pseudo-element drawn on the padding box of a
+	// control already over the floor (the registry's button has an edge on every variant) reaches
+	// nothing past it rather than a line-width short of it.
 	return {
 		inline,
 		block,
-		inlineStart,
-		inlineEnd: inline - drawn.inline - inlineStart,
-		blockStart,
-		blockEnd: block - drawn.block - blockStart
+		inlineStart: Math.max(0, inlineStart),
+		inlineEnd: Math.max(0, inline - drawn.inline - inlineStart),
+		blockStart: Math.max(0, blockStart),
+		blockEnd: Math.max(0, block - drawn.block - blockStart)
 	};
 }
 

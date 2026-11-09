@@ -712,9 +712,10 @@ describe('a read-only box', () => {
 		expect(boxClasses(root)).toEqual(['adm-input', 'adm-input--invalid']);
 	});
 
-	// the gate's own check: the same box put back on the registry's class is the one it was written
-	// against, and the registry's sheet takes its pointer.
-	it('would fail on the registry box', () => {
+	// registry 2.2.0 dropped `pointer-events: none` from `.ds-field-input[readonly]` (the box now
+	// keeps its text cursor and can be selected), so the registry's own box passes the same check
+	// the boxes above do. a registry that put the rule back fails here and in the cases above.
+	it('takes a press on the registry box too', () => {
 		const box = render(Field, {
 			id: 'zapier-key',
 			label: 'Zapier key',
@@ -723,6 +724,6 @@ describe('a read-only box', () => {
 		if (box === null) throw new Error('the field drew no box');
 		box.classList.add('ds-field-input');
 
-		expect(pointerEventsOn(box)).toContain('.ds-field-input[readonly] { pointer-events: none }');
+		expect(pointerEventsOn(box).filter((said) => said.endsWith('none }'))).toEqual([]);
 	});
 });

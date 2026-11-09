@@ -165,7 +165,7 @@
  * it to the job radix names for that step
  * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): text on 11
  * and 12, a solid fill on 9 with the generated `--_on-p` as its ink, a separator or an edge on 6, 7
- * and 8, the focus ring on 11, a ground on 1, 2 and 3 — the wash brand 2 and 3 over slate 2 —
+ * and 8, the focus ring on 8, a ground on 1, 2 and 3 — the wash brand 2 and 3 over slate 2 —
  * and a control's hover and press on 4 and 5. legibility is radix's guarantee for a step
  * doing its job, and no ratio is measured here.
  *

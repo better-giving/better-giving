@@ -8,14 +8,19 @@
    every class carries the ds- prefix, so nothing here collides with the
    `btn-*` classes the `tokens` item ships.
 
-   a few sizes live only in tailwind's theme (the --spacing step, the type
-   ladder). they are declared below with the same values, under ds- names, and
-   button-css.test.tsx holds each one equal to tailwind's. the declarations sit
-   on the class, not on :root, so the button also works inside a shadow root.
+   a few values live only in tailwind's theme (the --spacing step, the type
+   ladder, the ease-in-out curve). they are declared below with the same
+   values, under ds- names, and button-css.test.tsx holds each one equal to
+   tailwind's. the declarations sit on the class, not on :root, so the button
+   also works inside a shadow root.
 
    bare .ds-btn is the md tier, as bare .btn is. the tier classes come after it
    in this file at the same specificity, which is what lets them win; keep that
-   order. */
+   order.
+
+   every variant has an edge, transparent where none shows, and every tier
+   takes its width, --ds-btn-edge, back out of padding-block, so each variant
+   of a tier is the tier's height whatever its edge, as on the tailwind .btn. */
 .ds-btn {
   --ds-spacing: 0.25rem;
   --ds-text-xs: 0.75rem;
@@ -25,17 +30,19 @@
   --ds-text-lg: 1.125rem;
   --ds-text-lg-lh: calc(1.75 / 1.125);
   --ds-field-size: calc(var(--ds-spacing) * 12.5);
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   /* published for ds-btn-icon, which squares a button on its tier's height */
   --ds-btn-size: calc(var(--ds-spacing) * 9);
+  --ds-btn-edge: 1px;
   box-sizing: border-box;
   display: flex;
   justify-content: center;
   align-items: center;
-  border: 0 solid var(--border);
+  border: var(--ds-btn-edge) solid transparent;
   outline-color: var(--ring);
   font-family: inherit;
   font-weight: 700;
-  padding-block: calc(var(--ds-spacing) * 2);
+  padding-block: calc(var(--ds-spacing) * 2 - var(--ds-btn-edge));
   padding-inline: calc(var(--ds-spacing) * 6);
   font-size: var(--ds-text-sm);
   line-height: var(--ds-text-sm-lh);
@@ -43,6 +50,9 @@
   border-radius: var(--radius);
   text-decoration: none;
   cursor: pointer;
+  transition-property: color, background-color, border-color;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-in-out);
 }
 
 .ds-btn-secondary {
@@ -117,6 +127,33 @@
   background-color: var(--destructive-hover);
 }
 
+/* the destructive action that opens a confirm step: no solid fill, so no press
+   nudge; the press is a third rung. its edge leaves --destructive when off or
+   in flight, below. */
+.ds-btn-destructive-outline {
+  background-color: transparent;
+  color: var(--destructive-subtle-fg);
+  border: 1px solid var(--destructive);
+}
+/* only where a pointer can hover: a tap opens the confirm and leaves `:hover`
+   on the button under it */
+@media (hover: hover) {
+  .ds-btn-destructive-outline:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"]
+  ) {
+    background-color: var(--destructive-subtle);
+  }
+}
+.ds-btn-destructive-outline:active:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
+  background-color: var(--destructive-subtle-active);
+}
+
 .ds-btn-success {
   background-color: var(--success);
   color: var(--success-fg);
@@ -159,12 +196,23 @@
   transform: translateY(1px);
 }
 
+/* the same inversion on the deep ground */
+.ds-btn-inverse-deep {
+  background-color: var(--primary-deep-fg);
+  color: var(--primary-deep);
+}
+.ds-btn-inverse-deep:active {
+  transform: translateY(1px);
+}
+
 /* an outline that takes its color from the surface it sits on: currentColor
    is whatever the surface set. oklab, like the tailwind opacity modifiers. */
 .ds-btn-outline {
   background-color: transparent;
   color: inherit;
-  border: 2px solid color-mix(in oklab, currentColor 40%, transparent);
+  --ds-btn-edge: 2px;
+  border: var(--ds-btn-edge) solid
+    color-mix(in oklab, currentColor 40%, transparent);
 }
 .ds-btn-outline:hover:not(
   :disabled,
@@ -173,7 +221,11 @@
 ) {
   background-color: color-mix(in oklab, currentColor 10%, transparent);
 }
-.ds-btn-outline:active {
+.ds-btn-outline:active:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
   background-color: color-mix(in oklab, currentColor 15%, transparent);
 }
 
@@ -185,13 +237,19 @@
 .ds-btn-inverse:focus-visible {
   outline-color: var(--primary-ring);
 }
+.ds-btn-inverse-deep:focus-visible {
+  outline-color: var(--primary-deep-fg);
+}
 
 .ds-btn-outline:disabled,
 .ds-btn-secondary:disabled,
 .ds-btn-success:disabled,
 .ds-btn-primary:disabled,
 .ds-btn-warning:disabled,
-.ds-btn-destructive:disabled {
+.ds-btn-destructive:disabled,
+.ds-btn-destructive-outline:disabled,
+.ds-btn-inverse:disabled,
+.ds-btn-inverse-deep:disabled {
   background-color: var(--gray-3);
   color: var(--gray-11);
 }
@@ -205,8 +263,11 @@
 .ds-btn-ghost[aria-busy="true"],
 .ds-btn-outline[aria-busy="true"],
 .ds-btn-destructive[aria-busy="true"],
+.ds-btn-destructive-outline[aria-busy="true"],
 .ds-btn-success[aria-busy="true"],
-.ds-btn-warning[aria-busy="true"] {
+.ds-btn-warning[aria-busy="true"],
+.ds-btn-inverse[aria-busy="true"],
+.ds-btn-inverse-deep[aria-busy="true"] {
   background-color: var(--gray-3);
   color: var(--gray-11);
   pointer-events: none;
@@ -219,9 +280,18 @@ a.ds-btn-success[aria-disabled="true"],
 a.ds-btn-primary[aria-disabled="true"],
 a.ds-btn-ghost[aria-disabled="true"],
 a.ds-btn-outline[aria-disabled="true"],
-a.ds-btn-destructive[aria-disabled="true"] {
+a.ds-btn-destructive[aria-disabled="true"],
+a.ds-btn-destructive-outline[aria-disabled="true"],
+a.ds-btn-inverse[aria-disabled="true"],
+a.ds-btn-inverse-deep[aria-disabled="true"],
+a.ds-btn-form-primary[aria-disabled="true"] {
   background-color: var(--gray-3);
   color: var(--gray-11);
+}
+.ds-btn-destructive-outline:disabled,
+.ds-btn-destructive-outline[aria-busy="true"],
+a.ds-btn-destructive-outline[aria-disabled="true"] {
+  border-color: var(--gray-7);
 }
 a.ds-btn[aria-disabled="true"] {
   pointer-events: none;
@@ -251,7 +321,11 @@ a.ds-btn[aria-disabled="true"] {
     color-mix(in oklch, var(--form-primary) 90%, black)
   );
 }
-.ds-btn-form-primary:active {
+.ds-btn-form-primary:active:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"]
+) {
   background-color: var(
     --form-primary-active,
     color-mix(in oklch, var(--form-primary) 90%, black)
@@ -270,7 +344,7 @@ a.ds-btn[aria-disabled="true"] {
 /* the size tiers */
 .ds-btn-sm {
   --ds-btn-size: calc(var(--ds-spacing) * 6);
-  padding-block: calc(var(--ds-spacing) * 1);
+  padding-block: calc(var(--ds-spacing) * 1 - var(--ds-btn-edge));
   padding-inline: calc(var(--ds-spacing) * 3);
   font-size: var(--ds-text-xs);
   line-height: var(--ds-text-xs-lh);
@@ -279,7 +353,7 @@ a.ds-btn[aria-disabled="true"] {
 }
 .ds-btn-md {
   --ds-btn-size: calc(var(--ds-spacing) * 9);
-  padding-block: calc(var(--ds-spacing) * 2);
+  padding-block: calc(var(--ds-spacing) * 2 - var(--ds-btn-edge));
   padding-inline: calc(var(--ds-spacing) * 6);
   font-size: var(--ds-text-sm);
   line-height: var(--ds-text-sm-lh);
@@ -287,7 +361,7 @@ a.ds-btn[aria-disabled="true"] {
 }
 .ds-btn-lg {
   --ds-btn-size: calc(var(--ds-spacing) * 13);
-  padding-block: calc(var(--ds-spacing) * 3);
+  padding-block: calc(var(--ds-spacing) * 3 - var(--ds-btn-edge));
   padding-inline: calc(var(--ds-spacing) * 8);
   font-size: var(--ds-text-lg);
   line-height: var(--ds-text-lg-lh);
@@ -296,7 +370,7 @@ a.ds-btn[aria-disabled="true"] {
 /* the height of a form field, for a button beside one */
 .ds-btn-field {
   --ds-btn-size: var(--ds-field-size);
-  padding-block: calc(var(--ds-spacing) * 2);
+  padding-block: calc(var(--ds-spacing) * 2 - var(--ds-btn-edge));
   padding-inline: calc(var(--ds-spacing) * 6);
   font-size: var(--ds-text-sm);
   line-height: var(--ds-text-sm-lh);
