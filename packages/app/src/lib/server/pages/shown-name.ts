@@ -8,6 +8,7 @@
 const ANONYMOUS = 'Anonymous';
 
 const letters = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const LETTER = /^\p{L}/u;
 
 /** the first and last name a donor typed on one gift's submission, either null. */
 export type NameParts = { readonly firstName: string | null; readonly lastName: string | null };
@@ -16,7 +17,10 @@ export function shownName({ firstName, lastName }: NameParts, anonymous: boolean
 	const [first = '', ...rest] = firstName?.trim().split(/\s+/) ?? [];
 	if (anonymous || first === '') return ANONYMOUS;
 	const surname = lastName?.trim() || rest.join(' ');
-	// a grapheme rather than `[0]`, so an accented or astral letter is not cut in half.
-	const [initial] = Array.from(letters.segment(surname), (s) => s.segment);
+	// the first letter rather than the first character, so "(Smith)" signs "S." and "-" signs none,
+	// and a grapheme rather than `[0]`, so an accented or astral letter is not cut in half.
+	const initial = Array.from(letters.segment(surname), (s) => s.segment).find((g) =>
+		LETTER.test(g)
+	);
 	return initial === undefined ? first : `${first} ${initial.toLocaleUpperCase()}.`;
 }

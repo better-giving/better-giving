@@ -12,8 +12,8 @@
 // a campaign holds every key but `videos`; the Donation page draws one fixed layout and holds only
 // its heading, its share message, its switches, its settings and its videos, so a key only the
 // other holds is refused on each. a section with nothing in it — no tiers, a blank story, no goal —
-// is accepted and leaves itself out at render. top-level keys the database reads are ./keys.ts's; `$lib/server/db/schema.ts` checks
-// the same names. `settings` is the draft donation settings publish copies onto the page's owned
+// is accepted and leaves itself out at render. top-level keys the database reads are ./keys.ts's;
+// `$lib/server/db/schema.ts` checks the same names. `settings` is the draft donation settings publish copies onto the page's owned
 // form row, read by ./settings.ts's rule.
 //
 // the rule reads shape only and never the page's data: nothing here looks up a program, a goal's

@@ -121,7 +121,7 @@ A missed notification is caught up every thirty minutes: the deployment reads ea
 
 ## Videos
 
-In `/admin`, Donation page → Videos: paste a YouTube link and press Add video. The server reads the video's title and poster from YouTube once, when it is added, and stores both. Donors are shown that copy, and their browser contacts YouTube only after they press play. A video must be public or unlisted, and a page shows at most 6.
+Videos are added in `/admin`, Donation page → Videos. The server reads the video's title and poster from YouTube once, when it is added, and stores both. Donors are shown that copy, and their browser contacts YouTube only after they press play. A video must be public or unlisted, and a page shows at most 6.
 
 `YOUTUBE_API_KEY` is optional. It is a YouTube Data API v3 key from a Google Cloud project with that API enabled ([Google's guide](https://developers.google.com/youtube/v3/getting-started)). Set, a video's length is read when it is added and shown beside it. Unset, or when YouTube doesn't answer, the video is added without a length. A video added before the key was set keeps no length until it is removed and added again.
 

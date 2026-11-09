@@ -51,6 +51,9 @@ const env = readEnv({}, specRateLimiters());
 // `allowedActionOrigins` is read off ../react-router.config.ts rather than left out, because the
 // vite plugin copies it into the build and the cross-origin cases below hold whatever it says.
 
+/** the one `www` host a donor page frames beyond the processors': a pressed play's player. */
+const YOUTUBE_PLAYER = 'https://www.youtube-nocookie.com';
+
 /** the origin every request in this file arrives on. not loopback, so the cookie is `__Secure-`. */
 const ORIGIN = 'https://give.example';
 
@@ -464,9 +467,10 @@ describe('the donor page', () => {
 			'https://c.paypal.com'
 		]);
 		for (const name of ['script-src', 'frame-src']) {
-			for (const sdk of ['https://www.paypal.com', 'https://www.payments.example']) {
-				expect(policy.get(name)).not.toContain(sdk);
-			}
+			const wwwHosts = (policy.get(name) ?? []).filter((source) =>
+				source.startsWith('https://www.')
+			);
+			expect(wwwHosts.filter((source) => source !== YOUTUBE_PLAYER)).toEqual([]);
 		}
 	});
 

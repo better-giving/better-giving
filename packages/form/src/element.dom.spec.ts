@@ -2141,6 +2141,32 @@ describe('the note the donor asks to show', () => {
 		expect(anonymous.hasAttribute('aria-describedby')).toBe(false);
 	});
 
+	it('takes the hint and its description away while Anonymous is ticked', async () => {
+		const card = opened(await mount());
+		press(card.find('#note-public'));
+		press(card.find('#note-anonymous'));
+
+		expect(card.all('#note-public-hint')).toHaveLength(0);
+		expect(card.find('#note-public').hasAttribute('aria-describedby')).toBe(false);
+
+		press(card.find('#note-anonymous'));
+		expect(card.text('#note-public-hint')).toBe(
+			'It shows with your first name and last initial, like “Maya R.”'
+		);
+		expect(card.find('#note-public').getAttribute('aria-describedby')).toBe('note-public-hint');
+	});
+
+	it('groups the two boxes under the first box’s words', async () => {
+		const card = opened(await mount());
+		press(card.find('#note-public'));
+		const group = card.find('#note-anonymous').closest('[role="group"]');
+
+		expect(group).not.toBeNull();
+		expect(group?.getAttribute('aria-labelledby')).toBe('note-public-words');
+		expect(group?.contains(card.find('#note-public'))).toBe(true);
+		expect(group?.getRootNode()).toBe(card.find('#note-public-words').getRootNode());
+	});
+
 	it('removes and resets the anonymous row when the first box is unticked', async () => {
 		const card = opened(await mount());
 		press(card.find('#note-public'));
@@ -2174,6 +2200,16 @@ describe('the note the donor asks to show', () => {
 		press(shown);
 
 		expect(card.shadow.activeElement).toBe(shown);
+	});
+
+	it('keeps focus on the Anonymous box as the hint goes', async () => {
+		const card = opened(await mount());
+		press(card.find('#note-public'));
+		const anonymous = card.find('#note-anonymous');
+		anonymous.focus();
+		press(anonymous);
+
+		expect(card.shadow.activeElement).toBe(anonymous);
 	});
 
 	it('takes the two boxes in order between the note and Dedicate', async () => {

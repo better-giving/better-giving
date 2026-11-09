@@ -1,9 +1,10 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { setNoteHidden } from '$lib/server/pages/messages';
-import { noteGift } from '$lib/server/pages/settled-gifts.testing';
+import * as moderatedPages from '$lib/server/pages/moderated-pages';
+import { noteGift, refund } from '$lib/server/pages/settled-gifts.testing';
 import { freshDeployment, page, signInAsDeployer, signInAsMember } from '../webhook-routes.testing';
 import * as screen from './_app.admin.donations.messages';
 import * as older from './_app.admin.donations.messages.older';
@@ -132,6 +133,45 @@ describe('GET /admin/donations/messages/older', () => {
 		expect(again.messages.map((m) => m.id)).toEqual(made.slice(49, 100));
 		expect(twice.messages.map((m) => m.id)).toEqual(made.slice(49));
 		expect(twice.next).toBeNull();
+	});
+
+	it('keeps the list whole and every row once when a message leaves between loads', async () => {
+		const made: { txn: string; donationId: string }[] = [];
+		for (let i = 0; i < 103; i += 1) {
+			made.push(
+				await noteGift(db, formId, {
+					note: `message ${i}`,
+					noteOnPage: 'named',
+					receivedAt: new Date(Date.UTC(2026, 8, 30) - i * 86_400_000)
+				})
+			);
+		}
+		const after = await firstNext(staff);
+		const leaving = made[0];
+		if (leaving === undefined) throw new Error('no gift was made');
+		await refund(db, leaving.txn, 10_000);
+
+		const first = (await (await screenAt.get(SCREEN, staff)).json()) as Older;
+		const older = (await (await olderPages(staff, after, '2')).json()) as Older;
+
+		// the next row is pulled onto the first page, and the read leaves it there.
+		const ids = [...first.messages, ...older.messages].map((m) => m.id);
+		expect(ids).toEqual(made.slice(1).map((gift) => gift.donationId));
+		expect(older.next).toBeNull();
+	});
+
+	it('answers a failed read at 500 as a refusal, and logs it', async () => {
+		await shownGifts(51);
+		const after = await firstNext(staff);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const failure = new Error('the read failed');
+		vi.spyOn(moderatedPages, 'readOlderModeratedPages').mockRejectedValueOnce(failure);
+
+		const response = await olderPages(staff, after, '1');
+
+		expect(response.status).toBe(500);
+		expect(await response.json()).toEqual({ kind: 'refused' });
+		expect(logged).toHaveBeenCalledWith(expect.stringContaining('older'), failure);
 	});
 
 	it.each([

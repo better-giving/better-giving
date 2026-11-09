@@ -348,6 +348,7 @@ describe('the amount step', () => {
 		actor.send({ type: 'TOGGLE_NOTE' });
 		actor.send({ type: 'TOGGLE_NOTE_PUBLIC' });
 		actor.send({ type: 'TOGGLE_NOTE_ANONYMOUS' });
+		expect(actor.getSnapshot().context.draft.noteShown).toBe('anonymous');
 		actor.send({ type: 'TOGGLE_NOTE' });
 		expect(actor.getSnapshot().context.draft.noteShown).toBeUndefined();
 

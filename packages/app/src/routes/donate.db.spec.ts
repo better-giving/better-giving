@@ -20,7 +20,7 @@ import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { createImage } from '$lib/server/images/image.testing';
 import { putBanner, putLogo } from '$lib/server/org/logo.testing';
-import { setNoteHidden } from '$lib/server/pages/messages';
+import * as messagesRead from '$lib/server/pages/messages';
 import { gift, noteGift, refund } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { saveProfile } from '$lib/server/org/profile.testing';
@@ -430,7 +430,7 @@ describe('messages from donors on /donate', () => {
 
 	it('sends no byte of a hidden note to the browser', async () => {
 		const [hidden] = await notes(3);
-		await setNoteHidden(db, hidden ?? '', true, new Date());
+		await messagesRead.setNoteHidden(db, hidden ?? '', true, new Date());
 
 		const answered = await visit();
 
@@ -455,7 +455,7 @@ describe('messages from donors on /donate', () => {
 
 	it('sends no hidden note on Show more messages either', async () => {
 		const ids = await notes(8);
-		await setNoteHidden(db, ids[0] ?? '', true, new Date());
+		await messagesRead.setNoteHidden(db, ids[0] ?? '', true, new Date());
 		const { next } = await handed();
 
 		const response = await more(`?after=${encodeURIComponent(next ?? '')}`);
@@ -465,6 +465,30 @@ describe('messages from donors on /donate', () => {
 		expect(sent).not.toContain('day 1');
 	});
 
+	it.each([
+		{ why: 'the stored page fails the read rule', breakPage: publishUnreadable },
+		{
+			why: 'the served config refuses',
+			breakPage: () => run(stmt('delete from org_profile')).then(() => undefined)
+		}
+	])('lists nothing where /donate draws no messages because $why', async ({ breakPage }) => {
+		await notes(8);
+		const { next } = await handed();
+		await breakPage();
+
+		for (const search of ['', `?after=${encodeURIComponent(next ?? '')}`]) {
+			const response = await more(search);
+
+			expect(response.status).toBe(200);
+			expect(await response.json()).toEqual({
+				kind: 'messages',
+				messages: [],
+				total: 0,
+				next: null
+			});
+		}
+	});
+
 	it('answers 400 for a place in the list it never handed out', async () => {
 		const response = await more('?after=not-a-cursor');
 
@@ -472,30 +496,60 @@ describe('messages from donors on /donate', () => {
 		expect(response.headers.get('cache-control')).toBe('no-store');
 	});
 
+	it('answers 400 for a place in the list dated past any date', async () => {
+		const pastAnyDate = Buffer.from('9000000000000000.1').toString('base64url');
+
+		const response = await more(`?after=${pastAnyDate}`);
+
+		expect(response.status).toBe(400);
+	});
+
 	it('answers a failed read as a refusal, which the section says, rather than an error the page is swapped for', async () => {
-		vi.spyOn(console, 'error').mockImplementation(() => {});
-		await run(stmt('alter table donation rename to donation_hidden'));
-		let response: Response;
-		try {
-			response = await more('');
-		} finally {
-			await run(stmt('alter table donation_hidden rename to donation'));
-		}
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const failure = new Error('the read failed');
+		vi.spyOn(messagesRead, 'readShownMessages').mockRejectedValueOnce(failure);
+
+		const response = await more('');
 
 		expect(response.status).toBe(500);
 		expect(response.headers.get('cache-control')).toBe('no-store');
 		expect(await response.json()).toEqual({ kind: 'refused' });
+		expect(logged).toHaveBeenCalledWith(expect.stringContaining('show more'), failure);
 	});
 
-	it('is charged to the donor page’s meter', async () => {
-		const ip = '203.0.113.92';
-		let last: Response | undefined;
-		for (let view = 0; view < 50; view += 1) {
-			last = await more('', ip);
-			if (last.status === 429) break;
+	// the section's budget is the page's: a press that had a meter of its own would leave a caller
+	// the page's whole budget on top of the press's.
+	describe('the meter', () => {
+		/** asks `ask` until it is refused, and how many it answered first. */
+		async function answeredBeforeRefused(ask: (turn: number) => Promise<number>) {
+			for (let answered = 0; answered < 200; answered += 1) {
+				if ((await ask(answered)) === 429) return answered;
+			}
+			throw new Error('200 asks and the limiter refused none of them');
 		}
 
-		expect(last?.status).toBe(429);
+		it('is the donor page’s: presses and views from one address spend one budget', async () => {
+			const alone = await answeredBeforeRefused(
+				async () => (await more('', '203.0.113.92')).status
+			);
+
+			const together = await answeredBeforeRefused(async (turn) =>
+				turn % 2 === 0
+					? (await more('', '203.0.113.93')).status
+					: (await visit(STRIPE, { [CLIENT_IP_HEADER]: '203.0.113.93' })).status
+			);
+
+			expect(alone).toBeGreaterThan(1);
+			expect(together).toBe(alone);
+		});
+
+		it('refuses a press once views have spent the budget', async () => {
+			await answeredBeforeRefused(
+				async () => (await visit(STRIPE, { [CLIENT_IP_HEADER]: '203.0.113.94' })).status
+			);
+
+			expect((await more('', '203.0.113.94')).status).toBe(429);
+		});
 	});
 });
 

@@ -7,11 +7,14 @@ import { type ShownVideo, VIDEOS_MAX, youTubeEmbedUrl, youTubeWatchUrl } from '.
 //
 // **a donor's browser asks YouTube for nothing until play is pressed**: the poster is our own copy
 // and nothing in the markup names a YouTube address. the press mounts the player's iframe under a
-// loading panel; the iframe's `load` shows it and moves focus into it, and a player that has not
-// loaded within `PLAYER_WAIT_MS` is taken as failed and gives way to the link out. the load event
-// says the frame arrived, not that the video plays: a video YouTube refuses is its own player's
-// message, inside the frame. the link out exists only in the failed face, and takes the focus the
-// box was holding when the player fails.
+// loading panel; the iframe's `load` shows it, and a player that has not loaded within
+// `PLAYER_WAIT_MS` is taken as failed and gives way to the link out. the load event says the frame
+// arrived, not that the video plays: a video YouTube refuses is its own player's message, inside the
+// frame. the link out exists only in the failed face. either face takes the focus the box was holding
+// while the player loaded, and leaves be a reader who moved it.
+//
+// one video plays at a time: the section holds which one was pressed last, and every other figure
+// is back to its poster, its player unmounted, so a second press never plays over the first.
 
 /** how long a pressed video's player may take to load before the box says it couldn't. */
 const PLAYER_WAIT_MS = 15_000;
@@ -20,6 +23,7 @@ type Face = 'poster' | 'loading' | 'playing' | 'error';
 
 export function Videos({ videos }: { readonly videos: readonly ShownVideo[] }) {
 	const headingId = useId();
+	const [pressed, setPressed] = useState<string | null>(null);
 	if (videos.length === 0) return null;
 	return (
 		<section aria-labelledby={headingId} data-area="videos">
@@ -28,29 +32,41 @@ export function Videos({ videos }: { readonly videos: readonly ShownVideo[] }) {
 			</h2>
 			<div className="page-videos-grid">
 				{videos.slice(0, VIDEOS_MAX).map((video) => (
-					<VideoFigure key={video.videoId} video={video} />
+					<VideoFigure
+						key={video.videoId}
+						video={video}
+						current={pressed === video.videoId}
+						onPlay={() => setPressed(video.videoId)}
+					/>
 				))}
 			</div>
 		</section>
 	);
 }
 
-function VideoFigure({ video }: { readonly video: ShownVideo }) {
-	const [face, setFace] = useState<Face>('poster');
+function VideoFigure({
+	video,
+	current,
+	onPlay
+}: {
+	readonly video: ShownVideo;
+	/** this is the video pressed last; every other one stands as its poster. */
+	readonly current: boolean;
+	readonly onPlay: () => void;
+}) {
+	const [pressedFace, setFace] = useState<Face>('poster');
+	const face = current ? pressedFace : 'poster';
 	const box = useRef<HTMLDivElement>(null);
 	const player = useRef<HTMLIFrameElement>(null);
 	const watch = useRef<HTMLAnchorElement>(null);
 
-	// keyed on the face that landed: the press unmounts the play button, so focus is held on the box
-	// while the player loads, handed into the player once it has, and to the link out if it fails,
-	// unless the reader has moved it from the box meanwhile.
+	// keyed on the face that landed: the press unmounts the play button, so focus is held on the box,
+	// a group named for the video, while the player loads, handed into the player once it has, and to
+	// the link out if it fails, unless the reader has moved it from the box meanwhile.
 	useEffect(() => {
-		if (face === 'playing') {
-			player.current?.focus();
-			return;
-		}
-		if (face === 'error') {
-			if (document.activeElement === box.current) watch.current?.focus();
+		if (face === 'playing' || face === 'error') {
+			if (document.activeElement !== box.current) return;
+			(face === 'playing' ? player : watch).current?.focus();
 			return;
 		}
 		if (face !== 'loading') return;
@@ -65,11 +81,16 @@ function VideoFigure({ video }: { readonly video: ShownVideo }) {
 	const length = video.durationSeconds === null ? null : clock(video.durationSeconds);
 	return (
 		<figure className="page-video">
+			{/* biome-ignore lint/a11y/useSemanticElements: a `<fieldset>` groups form controls, and this
+			    box holds a poster, a player or a link out. the role is here so the place focus is held
+			    while the player loads announces the video by name. */}
 			<div
 				className="page-video-box"
 				data-face={face}
 				ref={box}
 				tabIndex={face === 'poster' ? undefined : -1}
+				role="group"
+				aria-label={video.title}
 			>
 				{face === 'poster' ? (
 					<>
@@ -81,13 +102,16 @@ function VideoFigure({ video }: { readonly video: ShownVideo }) {
 							decoding="async"
 						/>
 						{/* the registry squares its large press at 52px (`ds-btn-icon` on `ds-btn-lg`); the
-						    word stands where the design's play glyph would, which neither the form's glyph
-						    set nor the operator's holds. */}
+						    word stands where a play glyph would, which neither the form's glyph set nor the
+						    operator's holds. */}
 						<button
 							type="button"
 							className="ds-btn ds-btn-primary ds-btn-lg ds-btn-icon page-video-play"
 							aria-label={playLabel(video)}
-							onClick={() => setFace('loading')}
+							onClick={() => {
+								onPlay();
+								setFace('loading');
+							}}
 						>
 							Play
 						</button>
@@ -119,7 +143,7 @@ function VideoFigure({ video }: { readonly video: ShownVideo }) {
 						<p className="page-video-error-title">Video unavailable</p>
 						<p className="page-video-error-body">We couldn’t load this video.</p>
 						<a ref={watch} href={youTubeWatchUrl(video.videoId)} target="_blank" rel="noopener">
-							Watch on YouTube<span className="vh"> (opens in a new tab)</span>
+							Watch on YouTube<span className="vh">: “{video.title}” (opens in a new tab)</span>
 						</a>
 					</div>
 				) : null}

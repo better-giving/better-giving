@@ -91,6 +91,13 @@ describe('readShownMessages()', () => {
 		expect((await readShownMessages(db, null)).total).toBe(0);
 	});
 
+	it('shows no note of only tabs, line breaks or non-breaking spaces', async () => {
+		await shownGift({ note: '\t\r\n\u000b\f\u00a0 ' });
+
+		expect((await readShownMessages(db, null)).total).toBe(0);
+		expect((await readModeratedMessages(db)).total).toBe(0);
+	});
+
 	it('takes a gift refunded in full off the page and the admin list', async () => {
 		const { txn } = await shownGift({ amountMinor: 5_000 });
 		await refund(db, txn, 5_000);

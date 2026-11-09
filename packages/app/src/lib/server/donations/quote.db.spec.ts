@@ -673,6 +673,9 @@ describe('mintQuote() — a note the donor asked to show on the page', () => {
 		const result = await mint(deps(), { note: 'Keep it up', note_public: 'on' });
 
 		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('invalid_request');
+		expect(result.message).toContain('note_public');
 		expect(await db.select().from(donation)).toEqual([]);
 	});
 });

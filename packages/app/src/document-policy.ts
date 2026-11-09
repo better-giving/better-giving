@@ -67,9 +67,10 @@ function operatorPolicy(nonce: string): string[] {
 
 /**
  * the donor page: the operator base plus what the card, turnstile and the processors' client
- * halves load, and the page's video player. the card's list is README.md's "If your site sends a Content-Security-Policy", the block an
- * integrator pastes, with this deployment's own origin as `'self'`; that section argues each line
- * and names the vendor pages it follows. the sources per vendor:
+ * halves load, and the page's video player. the card's list is README.md's "If your site sends a
+ * Content-Security-Policy", the block an integrator pastes, with this deployment's own origin as
+ * `'self'`; that section argues each line and names the vendor pages it follows. the sources per
+ * vendor:
  *
  * - stripe.js — https://docs.stripe.com/security/guide: `js.stripe.com` and `*.js.stripe.com` in
  *   script-src and frame-src, `api.stripe.com` in connect-src, and `hooks.stripe.com` in frame-src

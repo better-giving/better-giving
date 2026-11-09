@@ -121,8 +121,11 @@ const refusal = (sentence: string, key = 'video_link', id: string = VIDEO_FORMS.
 });
 
 const status = (host: HTMLElement) => host.querySelector('[role="status"]');
+// what the alert regions say: the press refusal's stands empty until it speaks.
 const alerts = (host: HTMLElement) =>
-	[...host.querySelectorAll('[role="alert"]')].map((one) => one.textContent);
+	[...host.querySelectorAll('[role="alert"]')]
+		.map((one) => one.textContent)
+		.filter((said) => said !== '');
 
 describe('the Videos card', () => {
 	it('stands Add video on the link box’s row, inside the form adm.css widens it in under the middle breakpoint', async () => {
@@ -152,13 +155,16 @@ describe('the Videos card', () => {
 		expect(rows[0]?.querySelector('img')?.getAttribute('alt')).toBe('');
 		expect(rows[0]?.querySelector('.adm-video__meta span')?.textContent).toBe('1:48');
 		expect(rows[2]?.querySelector('.adm-video__meta')?.textContent).toBe(
-			'Watch on YouTube (opens in a new tab)'
+			'Watch on YouTube: “Meet our volunteer drivers” (opens in a new tab)'
 		);
 		const link = rows[0]?.querySelector('a');
 		expect(link?.getAttribute('href')).toBe('https://www.youtube.com/watch?v=9bZkp7q19f0');
 		expect(link?.getAttribute('target')).toBe('_blank');
 		expect(link?.getAttribute('rel')).toBe('noopener');
-		expect(link?.textContent).toBe('Watch on YouTube (opens in a new tab)');
+		// named for its video, so a list of links reads each row apart.
+		expect(link?.textContent).toBe(
+			'Watch on YouTube: “How a rent grant works” (opens in a new tab)'
+		);
 	});
 
 	it('counts what is added in the link box’s hint, under its label', async () => {
@@ -285,6 +291,31 @@ describe('Add video', () => {
 		);
 		expect(alerts(host)).toEqual([]);
 	});
+
+	it('keeps focus on the page when Enter in the box adds the video that fills it', async () => {
+		const five = Array.from({ length: 5 }, (_, at) => video(`video-00${at}xx`, `Video ${at}`, 60));
+		const added = video('k3Ld9Qp2WmA', 'Thank you, 2025 donors', 58);
+		seed = seedOf(five);
+		answer = () => ({
+			body: { saved: VIDEO_FORMS.add, videoId: added.videoId },
+			after: [...five, added]
+		});
+		const host = await mount();
+		const box = linkBox(host);
+		await type(box, 'https://youtu.be/k3Ld9Qp2WmA');
+		await act(async () => {
+			box.focus();
+			// Enter in a box submits through the form's one submit press, focus staying in the box.
+			box.form?.requestSubmit(named(host, 'Add video'));
+		});
+		await settle();
+		await settle();
+		expect(posted).toHaveLength(1);
+		expect(linkBox(host).disabled).toBe(true);
+		// the box closes at the cap, so focus goes to the video it just added.
+		expect(document.activeElement).toBe(named(host, `Remove “${added.title}”`));
+		expect(status(host)?.textContent).toBe('Added “Thank you, 2025 donors”.');
+	});
 });
 
 describe('Move up and Move down', () => {
@@ -318,13 +349,20 @@ describe('Move up and Move down', () => {
 		expect(document.activeElement).toBe(named(host, `Move “${DRIVERS.title}” up`));
 	});
 
-	it('says a refused move with no box to carry it, beside the presses', async () => {
+	it('says a refused move in a region there before it speaks, described by the refused row alone', async () => {
 		answer = () => refusal(VIDEO_REFUSALS.gone, '', VIDEO_FORMS.move);
 		const host = await mount();
+		const region = host.querySelector('[role="alert"]');
+		expect(region?.textContent).toBe('');
 		await press(named(host, `Move “${PANTRY.title}” up`));
+		expect(host.querySelector('[role="alert"]')).toBe(region);
 		expect(alerts(host)).toEqual([VIDEO_REFUSALS.gone]);
-		const said = host.querySelector('[role="alert"]')?.id;
+		const said = region?.id;
+		expect(said).toBeTruthy();
 		expect(named(host, `Move “${PANTRY.title}” up`).getAttribute('aria-describedby')).toBe(said);
+		expect(named(host, `Remove “${PANTRY.title}”`).getAttribute('aria-describedby')).toBe(said);
+		expect(named(host, `Move “${RENT.title}” down`).hasAttribute('aria-describedby')).toBe(false);
+		expect(named(host, `Remove “${DRIVERS.title}”`).hasAttribute('aria-describedby')).toBe(false);
 		expect(status(host)?.textContent).toBe('');
 	});
 });
@@ -351,6 +389,16 @@ describe('Remove', () => {
 		const host = await mount();
 		await press(named(host, `Remove “${DRIVERS.title}”`));
 		expect(document.activeElement).toBe(linkBox(host));
+	});
+
+	it('says a refused remove, described by the refused row alone', async () => {
+		answer = () => refusal(VIDEO_REFUSALS.gone, '', VIDEO_FORMS.remove);
+		const host = await mount();
+		await press(named(host, `Remove “${RENT.title}”`));
+		expect(alerts(host)).toEqual([VIDEO_REFUSALS.gone]);
+		const said = host.querySelector('[role="alert"]')?.id;
+		expect(named(host, `Remove “${RENT.title}”`).getAttribute('aria-describedby')).toBe(said);
+		expect(named(host, `Remove “${PANTRY.title}”`).hasAttribute('aria-describedby')).toBe(false);
 	});
 
 	it('opens the box again once a full page has one removed', async () => {

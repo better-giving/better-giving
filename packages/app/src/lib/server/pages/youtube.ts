@@ -86,6 +86,7 @@ async function readTitle(videoId: string): Promise<{ ok: true; title: string } |
 	const asked = await ask(url, OEMBED_TIMEOUT_MS, 'oEmbed endpoint');
 	if (!asked.ok) return { ok: false, reason: 'unreachable' };
 	const { response } = asked;
+	if (!response.ok) await response.body?.cancel();
 	if (NOT_FOUND_STATUSES.has(response.status)) return { ok: false, reason: 'not_found' };
 	if (response.status === NOT_EMBEDDABLE_STATUS) return { ok: false, reason: 'not_embeddable' };
 	const read = response.ok ? OEMBED.safeParse(await response.json().catch(() => undefined)) : null;

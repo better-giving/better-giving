@@ -16,7 +16,9 @@ import { messageAge } from '../message-age';
 // the live region that says the new count, or that a press failed, and the button stands outside it, so
 // its changing words are not read out with it. a failed press leaves the list and the button as
 // they were, ready to press again. when an answer is the last page the band and its button go, and
-// focus moves to the first message the answer added, which takes focus for that alone.
+// focus moves to the first message the answer added, which takes focus for that alone. the band's
+// status line goes with them, so the final count is said by a line under the plane that stands
+// empty, and unseen, until then.
 
 export type ShowMoreStatus = 'idle' | 'loading' | 'error';
 
@@ -89,6 +91,8 @@ export function DonorMessages({
 	if (shown.total <= 0 || shown.messages.length === 0) return null;
 	const loading = status === 'loading';
 	const count = new Intl.NumberFormat(locale);
+	const showing = `Showing ${count.format(shown.messages.length)} of ${count.format(shown.total)} messages`;
+	const ended = shown.from !== null && shown.next === null;
 	return (
 		<section aria-labelledby={headingId} data-area="messages">
 			<h2 className="page-messages-heading" id={headingId}>
@@ -116,12 +120,9 @@ export function DonorMessages({
 				{shown.next === null ? null : (
 					<div className="page-messages-foot">
 						<div className="page-messages-said" role="status">
-							<p className="page-messages-count">
-								Showing {count.format(shown.messages.length)} of {count.format(shown.total)}{' '}
-								messages
-							</p>
-							{/* the design draws no failed Show more (design-spec.md, Messages from donors): this
-							    sentence is the least that says so, and the button stays to try again. */}
+							<p className="page-messages-count">{showing}</p>
+							{/* no failed Show more is drawn: this sentence is the least that says so, and the
+							    button stays to try again. */}
 							{status === 'error' ? (
 								<p className="page-messages-refused">Couldn’t load more messages. Try again.</p>
 							) : null}
@@ -149,6 +150,9 @@ export function DonorMessages({
 					</div>
 				)}
 			</div>
+			<p className="vh" role="status">
+				{ended ? showing : null}
+			</p>
 		</section>
 	);
 }

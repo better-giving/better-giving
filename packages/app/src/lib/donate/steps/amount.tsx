@@ -106,6 +106,7 @@ export function AmountStep({
 	const missingNote = missing.includes('note');
 	const noteAsked = api.noteToggle.pressed === true;
 	const noteShown = api.notePublicToggle.pressed === true;
+	const noteAnonymous = api.noteAnonymousToggle.pressed === true;
 	const amountWords = missingAmount ? amountProblem : refusal;
 	const amountDescribed = amountWords === '' ? undefined : 'amount-problem';
 	// a refusal sends the caret to the control holding the figure, so that control is described by it.
@@ -400,9 +401,15 @@ export function AmountStep({
 						 * the second arriving leaves the first's box, and its focus, where it was. the hint
 						 * sits inside the label so pressing it ticks the box; a wrapping label names its box
 						 * by its whole subtree, so `aria-labelledby` names it by its words alone and the
-						 * hint is read once, as the description.
+						 * hint is read once, as the description. the hint says how the name is shown, so it
+						 * goes while Anonymous is ticked.
 						 */}
-						<div className="consent">
+						{/* biome-ignore lint/a11y/useSemanticElements: the rows are a group named by the first
+						    one's words, so "Show it as Anonymous" is read as qualifying that box, as the
+						    element's `noteConsent` (packages/form/src/views.ts) is; a `<fieldset>` brings a
+						    border, padding and `min-inline-size` the form's `.consent`
+						    (packages/form/src/styles/layout.css) would have to undo. */}
+						<div className="consent" role="group" aria-labelledby="note-public-words">
 							{noteAsked ? (
 								<label className="check-row">
 									<input
@@ -411,15 +418,17 @@ export function AmountStep({
 										type="checkbox"
 										id="note-public"
 										aria-labelledby="note-public-words"
-										aria-describedby="note-public-hint"
+										aria-describedby={noteAnonymous ? undefined : 'note-public-hint'}
 										checked={noteShown}
 										onChange={() => api.notePublicToggle.onClick()}
 									/>
 									<span>
 										<span id="note-public-words">{copy.notePublicLabel(config.orgLegalName)}</span>
-										<small className="hint" id="note-public-hint">
-											{copy.NOTE_PUBLIC_HINT}
-										</small>
+										{noteAnonymous ? null : (
+											<small className="hint" id="note-public-hint">
+												{copy.NOTE_PUBLIC_HINT}
+											</small>
+										)}
 									</span>
 								</label>
 							) : null}
@@ -430,7 +439,7 @@ export function AmountStep({
 										className={REGISTRY_CLASS.checkbox}
 										type="checkbox"
 										id="note-anonymous"
-										checked={api.noteAnonymousToggle.pressed === true}
+										checked={noteAnonymous}
 										onChange={() => api.noteAnonymousToggle.onClick()}
 									/>
 									<span>{copy.NOTE_ANONYMOUS}</span>

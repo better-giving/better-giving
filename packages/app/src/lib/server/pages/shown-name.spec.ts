@@ -42,4 +42,15 @@ describe('shownName', () => {
 		expect(shownName({ firstName: 'Ana', lastName: 'Ölund' }, false)).toBe('Ana Ö.');
 		expect(shownName({ firstName: 'Ana', lastName: '𝒜bbot' }, false)).toBe('Ana 𝒜.');
 	});
+
+	it('takes the surname’s first letter, past any mark typed before it', () => {
+		expect(shownName({ firstName: 'Maya', lastName: '(Smith)' }, false)).toBe('Maya S.');
+		expect(shownName({ firstName: 'Maya', lastName: "'O'Brien" }, false)).toBe('Maya O.');
+		expect(shownName({ firstName: 'Maya', lastName: '1. Rivera' }, false)).toBe('Maya R.');
+	});
+
+	it('gives no initial where the surname holds no letter', () => {
+		expect(shownName({ firstName: 'Maya', lastName: '-' }, false)).toBe('Maya');
+		expect(shownName({ firstName: 'Maya', lastName: '(42)' }, false)).toBe('Maya');
+	});
 });

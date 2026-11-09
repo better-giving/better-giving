@@ -253,6 +253,13 @@
       "when": 1794226955696,
       "tag": "0035_donation_note_shown_name",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1794231783233,
+      "tag": "0036_donation_note_public_index",
+      "breakpoints": true
     }
   ]
 }

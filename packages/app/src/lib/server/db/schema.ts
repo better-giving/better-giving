@@ -1415,13 +1415,16 @@ export const donation = sqliteTable(
 		// `created_at`.
 		index('donation_received_at_idx').on(t.receivedAt),
 		/**
-		 * the donate page's messages, newest first: only the notes shown on the page, so a load
-		 * reads the page it sends rather than scanning and sorting every gift. the planner takes it
-		 * only for a read whose `where` says both of these terms.
+		 * the donate page's messages and the admin screen's, newest first: only the gifts whose donor
+		 * made the note public, so a load reads the page it sends rather than scanning and sorting
+		 * every gift. the planner takes it only for a read whose `where` says `note_public = 1`. it
+		 * leaves `note_hidden_at` out of its own `where` because the admin reads list hidden notes
+		 * too; the donate page's `note_hidden_at is null` is a filter on the rows it reads, and few
+		 * notes are hidden. `../pages/messages.plan.db.spec.ts` pins both reads to it.
 		 */
-		index('donation_note_shown_received_at_idx')
+		index('donation_note_public_received_at_idx')
 			.on(t.receivedAt, t.id)
-			.where(sql`${t.notePublic} = 1 and ${t.noteHiddenAt} is null`)
+			.where(sql`${t.notePublic} = 1`)
 	]
 );
 

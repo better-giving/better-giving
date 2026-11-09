@@ -116,6 +116,9 @@ describe('the videos section', () => {
 		);
 		expect(frame?.getAttribute('title')).toBe(PANTRY.title);
 		expect(document.activeElement).toBe(box);
+		// where focus is held is named for the video it holds.
+		expect(box?.getAttribute('role')).toBe('group');
+		expect(box?.getAttribute('aria-label')).toBe(PANTRY.title);
 		// the other video is still its poster.
 		expect(host.querySelectorAll('iframe')).toHaveLength(1);
 		expect(host.querySelectorAll('.page-video-play')).toHaveLength(1);
@@ -165,7 +168,10 @@ describe('the videos section', () => {
 		expect(link?.getAttribute('href')).toBe('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
 		expect(link?.getAttribute('target')).toBe('_blank');
 		expect(link?.getAttribute('rel')).toBe('noopener');
-		expect(link?.textContent).toBe('Watch on YouTube (opens in a new tab)');
+		// named for its video, so two failed players' links read apart.
+		expect(link?.textContent).toBe(
+			'Watch on YouTube: “A winter night with the pantry crew” (opens in a new tab)'
+		);
 		// focus was held on the box, which offers nothing to press: it goes to the one way on.
 		expect(document.activeElement).toBe(link);
 	});
@@ -184,6 +190,36 @@ describe('the videos section', () => {
 		});
 		expect(host.querySelector<HTMLElement>('.page-video-box')?.dataset.face).toBe('error');
 		expect(document.activeElement).toBe(other);
+	});
+
+	it('leaves focus where a reader moved it when the player loads', () => {
+		const elsewhere = document.createElement('input');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => elsewhere.remove());
+		const host = mount([PANTRY]);
+		play(host);
+		act(() => elsewhere.focus());
+		act(() => {
+			host.querySelector('iframe')?.dispatchEvent(new Event('load'));
+		});
+		expect(host.querySelector<HTMLElement>('.page-video-box')?.dataset.face).toBe('playing');
+		expect(document.activeElement).toBe(elsewhere);
+	});
+
+	it('plays one video at a time: a second press puts the first back to its poster', () => {
+		const host = mount([PANTRY, RENT]);
+		play(host, 0);
+		act(() => {
+			host.querySelector('iframe')?.dispatchEvent(new Event('load'));
+		});
+		// the first video's press is gone, so the second is the only one standing.
+		play(host, 0);
+		const boxes = [...host.querySelectorAll<HTMLElement>('.page-video-box')];
+		expect(boxes.map((box) => box.dataset.face)).toEqual(['poster', 'loading']);
+		expect(host.querySelectorAll('iframe')).toHaveLength(1);
+		expect(host.querySelector('iframe')?.getAttribute('title')).toBe(RENT.title);
+		expect(boxes[0]?.querySelector('.page-video-play')).not.toBeNull();
+		expect(document.activeElement).toBe(boxes[1]);
 	});
 
 	it('does not fail a player that loaded before the wait ran out', () => {

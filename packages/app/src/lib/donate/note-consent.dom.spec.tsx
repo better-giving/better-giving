@@ -146,6 +146,15 @@ function press(node: Element | null): void {
 	});
 }
 
+/** the amount radio a donor reads as `name` (`$25`): the label wrapping it names it. */
+function amountRadio(root: HTMLElement, name: string): HTMLInputElement {
+	const radio = [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(
+		(each) => each.closest('label')?.textContent === name
+	);
+	if (radio === undefined) throw new Error(`no amount named ${name}`);
+	return radio;
+}
+
 /** a keystroke's value, through the prototype setter react's change tracking reads. */
 function type(node: HTMLInputElement | HTMLTextAreaElement, value: string): void {
 	act(() => {
@@ -201,6 +210,33 @@ it('draws the second row unticked once the first is ticked, keeping the first bo
 	expect(shown.compareDocumentPosition(anonymous)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 });
 
+it('groups the two rows under the first one’s words, so the second is never read without them', async () => {
+	const { root } = await card();
+	press(box(root, NOTE_TOGGLE));
+	press(box(root, PUBLIC));
+
+	const group = box(root, ANONYMOUS).closest('[role="group"]');
+	expect(group?.contains(box(root, PUBLIC))).toBe(true);
+	expect(root.querySelector(`#${group?.getAttribute('aria-labelledby')}`)?.textContent).toBe(
+		'Show my note on Helping Hands’s page'
+	);
+});
+
+it('neither shows nor describes the first-name hint once Anonymous is ticked, and brings it back on untick', async () => {
+	const { root } = await card();
+	press(box(root, NOTE_TOGGLE));
+	press(box(root, PUBLIC));
+	press(box(root, ANONYMOUS));
+
+	expect(root.querySelector('#note-public-hint')).toBeNull();
+	expect(root.textContent).not.toContain(copy.NOTE_PUBLIC_HINT);
+	expect(box(root, PUBLIC).hasAttribute('aria-describedby')).toBe(false);
+
+	press(box(root, ANONYMOUS));
+	expect(root.querySelector('#note-public-hint')?.textContent).toBe(copy.NOTE_PUBLIC_HINT);
+	expect(box(root, PUBLIC).getAttribute('aria-describedby')).toBe('note-public-hint');
+});
+
 it('resets the second row when the first is unticked, and both when the note is', async () => {
 	const { root } = await card();
 	press(box(root, NOTE_TOGGLE));
@@ -244,7 +280,7 @@ describe('the gift it posts', () => {
 	async function give(ticks: readonly string[]): Promise<Record<string, unknown>> {
 		const bodies = sent();
 		const { root, payment } = await card();
-		press(root.querySelector('.tiles > label:nth-of-type(2)'));
+		press(amountRadio(root, '$25'));
 		press(box(root, NOTE_TOGGLE));
 		type(root.querySelector('textarea#note') as HTMLTextAreaElement, 'For the river project.');
 		for (const tick of ticks) press(box(root, tick));
@@ -260,24 +296,48 @@ describe('the gift it posts', () => {
 		expect(bodies).toHaveLength(1);
 		const [body] = bodies;
 		if (body === undefined) throw new Error('nothing posted');
-		expect(body).toMatchObject({ note: 'For the river project.' });
 		return body;
 	}
 
 	it('carries neither flag where neither box was ticked', async () => {
 		const body = await give([]);
+		expect(body).toMatchObject({ note: 'For the river project.' });
 		expect(body).not.toHaveProperty('note_public');
 		expect(body).not.toHaveProperty('note_anonymous');
 	});
 
 	it('carries note_public alone where only the first was ticked', async () => {
 		const body = await give([PUBLIC]);
+		expect(body).toMatchObject({ note: 'For the river project.' });
 		expect(body).toMatchObject({ note_public: true });
 		expect(body).not.toHaveProperty('note_anonymous');
 	});
 
 	it('carries both where both were ticked', async () => {
 		const body = await give([PUBLIC, ANONYMOUS]);
+		expect(body).toMatchObject({ note: 'For the river project.' });
 		expect(body).toMatchObject({ note_public: true, note_anonymous: true });
+	});
+
+	// a note that was asked for is required (`missingAmountDecisions` in packages/form/src/value.ts),
+	// so a ticked box over a blank note never reaches a post as a flag with nothing to show.
+	it('posts nothing where a box is ticked over a blank note, and goes on once the note is written', async () => {
+		const bodies = sent();
+		const { root } = await card();
+		press(amountRadio(root, '$25'));
+		press(box(root, NOTE_TOGGLE));
+		press(box(root, PUBLIC));
+
+		press(root.querySelector(CONTINUE));
+		await flush();
+
+		expect(root.querySelector('section.step:not([hidden]) #email')).toBeNull();
+		expect(bodies).toEqual([]);
+
+		type(root.querySelector('textarea#note') as HTMLTextAreaElement, 'For the river project.');
+		press(root.querySelector(CONTINUE));
+		await flush();
+
+		expect(root.querySelector('section.step:not([hidden]) #email')).not.toBeNull();
 	});
 });

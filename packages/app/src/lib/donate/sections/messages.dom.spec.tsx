@@ -85,8 +85,11 @@ describe('messages from donors', () => {
 		expect(rows(host)).toHaveLength(6);
 		const foot = host.querySelector('.page-messages-foot');
 		expect(foot?.textContent).toContain('Showing 6 of 48 messages');
-		// the band's status line is the one live region, the press outside it: its words change on every press.
-		const live = [...host.querySelectorAll('[role="status"], [role="alert"], [aria-live]')];
+		// the band's status line is the one live region speaking, the press outside it: its words
+		// change on every press. the end-of-list line stands empty beside it until the last page.
+		const live = [...host.querySelectorAll('[role="status"], [role="alert"], [aria-live]')].filter(
+			(region) => region.textContent !== ''
+		);
 		expect(live).toHaveLength(1);
 		expect(live[0]?.getAttribute('role')).toBe('status');
 		expect(live[0]?.textContent).toBe('Showing 6 of 48 messages');
@@ -155,6 +158,18 @@ describe('messages from donors', () => {
 		const first = rows(host)[6];
 		expect(first?.getAttribute('tabindex')).toBe('-1');
 		expect(document.activeElement).toBe(first);
+	});
+
+	it('says the final count once all are shown, in a line there before the last page arrived', () => {
+		const { host, rerender } = mount({ initial: page(1, 6, 8, 'c6') });
+		const end = host.querySelector('section > [role="status"]');
+		expect(end?.textContent).toBe('');
+		act(() => more(host)?.click());
+		rerender({ status: 'loading' });
+		rerender({ status: 'idle', arrived: page(7, 2, 8, null) });
+		expect(host.querySelector('section > [role="status"]')).toBe(end);
+		expect(end?.textContent).toBe('Showing 8 of 8 messages');
+		expect(host.querySelectorAll('[role="status"]')).toHaveLength(1);
 	});
 
 	it('leaves focus where a reader moved it while the last page loaded', () => {

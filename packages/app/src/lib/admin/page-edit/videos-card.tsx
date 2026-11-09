@@ -1,8 +1,8 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
-import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { Mark } from '@better-giving/operator/components/status/Mark';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { getFormProps } from '@conform-to/react';
 import { type MouseEvent, useEffect, useId, useRef, useState } from 'react';
 import { Form, useFormAction, useNavigation, useSubmit } from 'react-router';
@@ -36,7 +36,11 @@ import { formRefusal, useScreenAnswer } from './section-card';
 // back once the answer has landed and the list redrawn: on the move press just used, or the row's
 // other move press where that one has just reached an end; after a remove, on the next row's
 // Remove, or the link box where no row follows. what landed is said in the status line under the
-// box.
+// box. an add that fills the page closes the box, so focus standing in it goes to the added row's
+// Remove rather than to the document.
+//
+// a refused move or remove is said in a line above the list that is there before it speaks, and
+// only the refused row's presses name it as their description.
 
 const ADD = defineForm({ id: VIDEO_FORMS.add, schema: VIDEO_ADD_INPUT });
 
@@ -92,6 +96,8 @@ export function DonationPageVideosCard({ seed }: { readonly seed: VideoCardSeed 
 	const pressed = useRef<Press | null>(null);
 	const answered = useRef(answer);
 	const [said, setSaid] = useState('');
+	// the row whose move or remove the answer standing refused; null with none.
+	const [refusedRow, setRefusedRow] = useState<string | null>(null);
 
 	const { videos, count, cap } = seed;
 	const full = count >= cap;
@@ -111,13 +117,22 @@ export function DonationPageVideosCard({ seed }: { readonly seed: VideoCardSeed 
 				const added = videos.find((video) => video.videoId === landed.videoId);
 				form.reset();
 				setSaid(added === undefined ? '' : `Added “${added.title}”.`);
+				const active = document.activeElement;
+				const box = document.getElementById(fields.video_link.id);
+				if (full && (active === box || active === document.body || active === null)) {
+					presses.current.get(`${landed.videoId}:remove`)?.focus();
+				}
 			} else {
 				document.getElementById(fields.video_link.id)?.focus();
 			}
 			return;
 		}
+		if (landed === null) {
+			setRefusedRow(press.videoId);
+			return;
+		}
 		if (press.form === VIDEO_FORMS.move) {
-			if (landed?.saved !== VIDEO_FORMS.move) return;
+			if (landed.saved !== VIDEO_FORMS.move) return;
 			const atEnd =
 				(press.direction === 'up' && landed.position === 1) ||
 				(press.direction === 'down' && landed.position === landed.count);
@@ -128,12 +143,12 @@ export function DonationPageVideosCard({ seed }: { readonly seed: VideoCardSeed 
 			);
 			return;
 		}
-		if (landed?.saved !== VIDEO_FORMS.remove) return;
+		if (landed.saved !== VIDEO_FORMS.remove) return;
 		const next = videos[press.at];
 		if (next === undefined) document.getElementById(fields.video_link.id)?.focus();
 		else presses.current.get(`${next.videoId}:remove`)?.focus();
 		setSaid(`Removed “${press.title}”.`);
-	}, [answer, videos, form, fields.video_link.id]);
+	}, [answer, videos, full, form, fields.video_link.id]);
 
 	const linkError =
 		fields.video_link.errors?.[0] ?? formRefusal({ id: VIDEO_FORMS.add }, answer) ?? undefined;
@@ -148,6 +163,7 @@ export function DonationPageVideosCard({ seed }: { readonly seed: VideoCardSeed 
 		}
 		pressed.current = next;
 		setSaid('');
+		setRefusedRow(null);
 		body.set(WHICH_FORM, next.form);
 		submit(body, { method: 'post', preventScrollReset: true });
 	};
@@ -220,9 +236,13 @@ export function DonationPageVideosCard({ seed }: { readonly seed: VideoCardSeed 
 					</>
 				)}
 			</p>
-			{pressRefusal === null ? null : (
-				<FieldMessage id={`${id}-refused`}>{pressRefusal}</FieldMessage>
-			)}
+			<p className={pressRefusal === null ? 'adm-vh' : undefined} id={`${id}-refused`} role="alert">
+				{pressRefusal === null ? null : (
+					<StatusWord register="momentary" blocked mark="circle-alert">
+						{pressRefusal}
+					</StatusWord>
+				)}
+			</p>
 			{videos.length === 0 ? (
 				<p>
 					No videos yet. Add a YouTube link and donors will see it between About us and Messages
@@ -238,7 +258,9 @@ export function DonationPageVideosCard({ seed }: { readonly seed: VideoCardSeed 
 							last={at === videos.length - 1}
 							held={write.writing}
 							busy={write.videoId === video.videoId ? write.form : null}
-							describedBy={pressRefusal === null ? undefined : `${id}-refused`}
+							describedBy={
+								pressRefusal !== null && refusedRow === video.videoId ? `${id}-refused` : undefined
+							}
 							press={(dir) => (node) => {
 								const key = `${video.videoId}:${dir}`;
 								if (node === null) presses.current.delete(key);
@@ -323,7 +345,7 @@ function VideoRow({
 					{durationSeconds === null ? null : <span>{clock(durationSeconds)}</span>}
 					<a href={youTubeWatchUrl(video.videoId)} target="_blank" rel="noopener">
 						<Mark name="external-link" />
-						Watch on YouTube<span className="adm-vh"> (opens in a new tab)</span>
+						Watch on YouTube<span className="adm-vh">: “{title}” (opens in a new tab)</span>
 					</a>
 				</p>
 			</div>

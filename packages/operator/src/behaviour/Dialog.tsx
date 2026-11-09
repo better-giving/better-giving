@@ -173,8 +173,8 @@ export function Modal<
 			// the reader goes where the screen said, with nothing said to the box that held the focus,
 			// then to the card this one stood inside — still a shown modal, so nothing past it can take
 			// the focus — and with none of those they are left on the body.
-			const landing = [opener, fallback(), holder, enclosing].find((target) => target?.isConnected);
-			landing?.focus();
+			const back = [opener, fallback(), holder, enclosing].find((target) => target?.isConnected);
+			back?.focus();
 		};
 	}, []);
 

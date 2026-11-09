@@ -175,15 +175,19 @@ export function PublicMessages({
 		return () => clearTimeout(over);
 	}, [announced]);
 
-	// where the rows Show older messages asked for start, until they arrive.
-	const [olderFrom, setOlderFrom] = useState<number | null>(null);
+	// the row the list ended on when Show older messages was pressed, until the rows it asked for
+	// arrive after it. read by the row rather than by a count: a re-read in the meantime may bring a
+	// newer message, which lands at the top.
+	const [olderAfter, setOlderAfter] = useState<string | null>(null);
 	const [olderArrived, setOlderArrived] = useState<{
 		readonly firstId: string;
 		readonly last: boolean;
 	} | null>(null);
-	if (olderFrom !== null && messages.length > olderFrom) {
-		setOlderFrom(null);
-		setOlderArrived({ firstId: messages[olderFrom]?.id ?? '', last: older?.next === null });
+	const olderAnchor = olderAfter === null ? -1 : messages.findIndex((m) => m.id === olderAfter);
+	const olderFirst = olderAnchor === -1 ? undefined : messages[olderAnchor + 1];
+	if (olderFirst !== undefined) {
+		setOlderAfter(null);
+		setOlderArrived({ firstId: olderFirst.id, last: older?.next === null });
 	}
 
 	// the press that opened the confirm, where focus goes back to where the browser recorded none.
@@ -269,7 +273,7 @@ export function PublicMessages({
 					status={older.status}
 					onPress={() => {
 						if (older.next === null) return;
-						setOlderFrom(messages.length);
+						setOlderAfter(messages.at(-1)?.id ?? null);
 						older.onShowOlder(older.next);
 					}}
 				/>
@@ -398,13 +402,19 @@ function RowPress({
 					'Hide'
 				)}
 			</Button>
-			{refusal === null ? null : (
-				<span className="adm-cell__under" id={refusalId} role="alert">
+			{/* there before it speaks, so the refusal is announced as it arrives; it takes its place
+			    under the press only once it holds one. */}
+			<span
+				className={refusal === null ? undefined : 'adm-cell__under'}
+				id={refusalId}
+				role="alert"
+			>
+				{refusal === null ? null : (
 					<StatusWord register="momentary" blocked mark="circle-alert">
 						{refusal}
 					</StatusWord>
-				</span>
-			)}
+				)}
+			</span>
 		</>
 	);
 }

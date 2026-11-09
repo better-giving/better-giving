@@ -55,7 +55,7 @@ export async function gift(
 	settles = true,
 	currency = 'USD'
 ): Promise<string> {
-	// one returning donor, as every case of `gift` has always read it.
+	// one returning donor, the address every case of `gift` uses.
 	return (await noteGift(db, formId, { amountMinor, settles, currency, email: 'ada@example.org' }))
 		.txn;
 }

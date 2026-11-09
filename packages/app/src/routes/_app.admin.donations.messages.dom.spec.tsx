@@ -227,7 +227,8 @@ describe('Public messages, as the route wires it', () => {
 		expect(posted).toEqual([{ [WHICH_FORM]: 'message-show', donation_id: 'gift-dev' }]);
 		expect(dialog()).toBeNull();
 		expect(row(host, 'Dev P.')?.querySelector('[role="alert"]')?.textContent).toBe(sentence);
-		expect(row(host, 'Maya R.')?.querySelector('[role="alert"]')).toBeNull();
+		// the live region is in the row before anything is said, so it announces when it is filled.
+		expect(row(host, 'Maya R.')?.querySelector('[role="alert"]')?.textContent ?? '').toBe('');
 	});
 
 	it('draws both answers when a second row is pressed while the first is out', async () => {

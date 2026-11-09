@@ -232,10 +232,11 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// alone. its loader writes nothing, and an address no campaign could hold is refused before the
 	// database is read, so a scanner walking top-level paths costs this deployment no query.
 	CAMPAIGN_PAGE,
-	// Show more messages on the donation page, asked by that page's fetcher for a donor who holds no
-	// session. a read and nothing else, charged to the donation page's own meter by nesting under it,
-	// and what it answers is what the page already shows: a hidden note, a donor's surname, address
-	// or amount is in no row it reads out ($lib/server/pages/messages.ts).
+	// Show more messages on the donation page, fetched by that page ($lib/donate/show-more.ts) for a
+	// donor who holds no session. a read, charged to the donation page's own meter by nesting under
+	// it, and what it answers is what the page already shows: nothing where the page draws no
+	// messages ($lib/server/pages/view.ts), and a hidden note, a donor's surname, address or amount
+	// is in no row it reads out ($lib/server/pages/messages.ts).
 	'routes/donate.messages.ts',
 	// a page's photos, fetched by the `<img>` of a donor who holds no session. it reads bytes by id
 	// and writes nothing, and a draft's image is as reachable by its id as a live one's: the id is a

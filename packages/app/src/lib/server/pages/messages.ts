@@ -1,18 +1,4 @@
-import {
-	and,
-	desc,
-	eq,
-	gt,
-	gte,
-	inArray,
-	isNull,
-	lt,
-	lte,
-	notExists,
-	or,
-	type SQL,
-	sql
-} from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lte, notExists, type SQL, sql } from 'drizzle-orm';
 import { type DonorMessages, MESSAGES_PER_PAGE, type NoteStanding } from '../../donate/messages';
 import type { Db } from '../db/client';
 import { dispute, donation, payment } from '../db/schema';
@@ -23,7 +9,8 @@ import { giftNetRaised } from '../ledger/queries';
 //
 // a gift's note is listed while all of these hold, and only then:
 //   - the donor ticked Show my note (`note_public`),
-//   - the note is not blank,
+//   - the note is not blank, by the whitespace `note_shown_name`'s check trims
+//     (migrations/0035_donation_note_shown_name.sql),
 //   - the gift is settled and not reversed: it still stands above nothing in the books, on the
 //     figure the raised total counts gifts by (`giftNetRaised` in ../ledger/queries.ts), so a gift
 //     refunded in full or withdrawn by a dispute leaves on its own and a partly refunded one stays,
@@ -49,14 +36,15 @@ const openDispute = (db: Db) =>
 
 function listed(db: Db): SQL {
 	return sql`${donation.notePublic} = 1
-		and trim(${donation.note}) <> ''
+		and trim(${donation.note}, char(32, 9, 10, 11, 12, 13, 160)) <> ''
 		and ${giftNetRaised()} > 0
 		and ${notExists(openDispute(db))}`;
 }
 
 /**
- * listed and not hidden, spelled as literals so the planner can take
- * `donation_note_shown_received_at_idx`: a bound `?` proves nothing about a partial index's `WHERE`.
+ * listed and not hidden. `listed`'s `note_public = 1` is what lets the planner take
+ * `donation_note_public_received_at_idx` (../db/schema.ts), so every read here keeps it in its
+ * `where`; `note_hidden_at is null` filters the rows that index yields.
  */
 function shown(db: Db): SQL {
 	return sql`${donation.noteHiddenAt} is null and ${listed(db)}`;
@@ -81,7 +69,9 @@ export function parseMessageCursor(text: string): MessageCursor | null {
 	if (match === null) return null;
 	const receivedAt = Number(match[1]);
 	const passed = Number(match[2]);
-	if (!Number.isSafeInteger(receivedAt) || !Number.isSafeInteger(passed)) return null;
+	if (!Number.isSafeInteger(passed)) return null;
+	// a safe integer can still lie past the last instant a `Date` holds, which then binds as NaN.
+	if (Number.isNaN(new Date(receivedAt).getTime())) return null;
 	return { receivedAt, passed };
 }
 
@@ -184,19 +174,18 @@ const keyOf = (row: { readonly receivedAt: Date; readonly id: string }): Moderat
 	id: row.id
 });
 
-/** the rows listed after `key`, newest first. */
-function olderThan(key: ModeratedCursor): SQL | undefined {
-	const at = new Date(key.receivedAt);
-	return or(lt(donation.receivedAt, at), and(eq(donation.receivedAt, at), lt(donation.id, key.id)));
+/**
+ * the rows listed after `key`, newest first. a row value rather than an `or` of its two halves, so
+ * the planner seeks `donation_note_public_received_at_idx` from the cursor rather than scanning it
+ * from the top (`messages.plan.db.spec.ts`).
+ */
+function olderThan(key: ModeratedCursor): SQL {
+	return sql`(${donation.receivedAt}, ${donation.id}) < (${key.receivedAt}, ${key.id})`;
 }
 
 /** `key`'s own row and the rows listed before it, newest first. */
-function atOrNewerThan(key: ModeratedCursor): SQL | undefined {
-	const at = new Date(key.receivedAt);
-	return or(
-		gt(donation.receivedAt, at),
-		and(eq(donation.receivedAt, at), gte(donation.id, key.id))
-	);
+function atOrNewerThan(key: ModeratedCursor): SQL {
+	return sql`(${donation.receivedAt}, ${donation.id}) >= (${key.receivedAt}, ${key.id})`;
 }
 
 const newestFirst = [desc(donation.receivedAt), desc(donation.id)] as const;

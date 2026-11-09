@@ -982,32 +982,43 @@ describe('the two ticks a step ends on', () => {
 	// an opened note that ends on its consent ticks ends on a row's slack rather than on a field's
 	// edge: the step put back under a field, stacked on that slack, stood the next ask further from
 	// the last consent tick than from the field it would otherwise follow.
-	it.each([
+	const CONSENTS = [
 		['the consent to show the note', ['Show my note on Harbor Light’s page']],
 		[
 			'the consent and its anonymous row',
 			['Show my note on Harbor Light’s page', 'Show it as Anonymous']
 		]
-	])('stands the next ask off %s no further than off an opened field', (_, consent) => {
-		const { note, tribute } = tail('note', consent);
-		const { note: plain, tribute: plainTribute } = tail('note');
-		if (note.lastConsent === null) throw new Error('the note drew no consent row');
+	] as const;
+	// layout lands on fractions of a pixel, so a gap the CSS means to equal another may measure a
+	// hair either side of it.
+	const SUBPIXEL = 0.5;
 
-		expect(between(note.lastConsent, tribute.words)).toBeLessThanOrEqual(
-			between(plain.field, plainTribute.words)
-		);
-	});
+	it.each(CONSENTS)(
+		'stands the next ask off %s no further than off an opened field',
+		(_, consent) => {
+			const { note, tribute } = tail('note', [...consent]);
+			const { note: plain, tribute: plainTribute } = tail('note');
+			if (note.lastConsent === null) throw new Error('the note drew no consent row');
+
+			expect(between(note.lastConsent, tribute.words)).toBeLessThanOrEqual(
+				between(plain.field, plainTribute.words) + SUBPIXEL
+			);
+		}
+	);
 
 	// and still a step apart: the next ask is not one more consent row.
-	it('keeps the next ask further off the last consent tick than the closed pair stand', () => {
-		const { note, tribute } = tail('note', ['Show my note on Harbor Light’s page']);
-		const { note: closed, tribute: closedTribute } = tail('none');
-		if (note.lastConsent === null) throw new Error('the note drew no consent row');
+	it.each(CONSENTS)(
+		'keeps the next ask off %s further than the closed pair stand',
+		(_, consent) => {
+			const { note, tribute } = tail('note', [...consent]);
+			const { note: closed, tribute: closedTribute } = tail('none');
+			if (note.lastConsent === null) throw new Error('the note drew no consent row');
 
-		expect(between(note.lastConsent, tribute.words)).toBeGreaterThan(
-			between(closed.words, closedTribute.words)
-		);
-	});
+			expect(between(note.lastConsent, tribute.words)).toBeGreaterThan(
+				between(closed.words, closedTribute.words) + SUBPIXEL
+			);
+		}
+	);
 });
 
 describe('the tribute’s first line', () => {

@@ -7,7 +7,7 @@ import { type PageLook, titleHeading } from '../../donate/page-view';
 import type { Page } from '../../page/catalog';
 import type { PageType } from '../../page/keys';
 import type { Db } from '../db/client';
-import type { OrgProfile } from '../db/schema';
+import type { OrgProfile, Page as PageRow } from '../db/schema';
 import { cachedCadences } from '../forms/cadence-cache';
 import { cachedCoins } from '../forms/coin-cache';
 import type { FormRecord } from '../forms/form-input';
@@ -98,16 +98,13 @@ export async function loadPageView(
 	}
 ): Promise<LoadedPage> {
 	const origin = new URL(request.url).origin;
-	const processors = createPaymentProviders(env);
 	const parsed = readDocument(source, preview ? 'draft' : 'published', source.document);
 	const [served, profile, logo, photos] = await Promise.all([
-		readPublishedConfig(
+		readServedConfig(
 			db,
-			source.formId,
 			env,
-			() => cachedCadences(processors, origin),
-			() => cachedRails(processors, origin),
-			() => cachedCoins(processors, origin),
+			source.formId,
+			origin,
 			preview
 				? {
 						now,
@@ -184,6 +181,43 @@ export async function loadPageView(
 						videos: page.videos
 					})
 	};
+}
+
+/**
+ * whether the Donation page as a donor sees it draws its donors' messages: `loadPageView`'s two
+ * gates before it reads them, a served config the card can draw and a published document the rule
+ * reads, so Show more (routes/donate.messages.ts) lists nothing where the page lists none.
+ */
+export async function donationPageDrawsMessages(
+	db: Db,
+	env: unknown,
+	row: PageRow,
+	request: Request,
+	{ now }: { readonly now: number }
+): Promise<boolean> {
+	if (!readDocument(row, 'published', row.published).ok) return false;
+	const origin = new URL(request.url).origin;
+	return renderableConfig(await readServedConfig(db, env, row.formId, origin, { now })).ok;
+}
+
+/** the owned row's served config, read as ../../../routes/api.v1.forms.$id.config.ts reads it. */
+function readServedConfig(
+	db: Db,
+	env: unknown,
+	formId: string,
+	origin: string,
+	options: Parameters<typeof readPublishedConfig>[6]
+) {
+	const processors = createPaymentProviders(env);
+	return readPublishedConfig(
+		db,
+		formId,
+		env,
+		() => cachedCadences(processors, origin),
+		() => cachedRails(processors, origin),
+		() => cachedCoins(processors, origin),
+		options
+	);
 }
 
 /** where the page's switches open the box: only the flags that are on, and nothing when neither is. */

@@ -119,6 +119,19 @@ describe('readYouTubeVideo()', () => {
 		}
 	);
 
+	it.each([401, 404, 500])(
+		'lets go of oEmbed’s answer where it answers %i, as it does a poster’s',
+		async (code) => {
+			const answer = new Response('refused', { status: code });
+			youtube({ oembed: answer });
+			vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+			await readYouTubeVideo(ID, undefined);
+
+			expect(answer.bodyUsed).toBe(true);
+		}
+	);
+
 	it('finds no video where YouTube holds no poster for it', async () => {
 		youtube({ oembed: oembed(), maxres: status(404), hq: status(404) });
 

@@ -1574,7 +1574,8 @@ export function createCard(
 	// the hint sits inside the `<label>` so that pressing it ticks the box, and a wrapping label
 	// names its control by its whole subtree (HTML-AAM, https://w3c.github.io/html-aam/#other-form-elements-accessible-name-computation),
 	// so `aria-labelledby` names the box by its words alone and the hint is read once, as its
-	// description.
+	// description. the hint names the signature the note is shown with, so it is out of the tree, and
+	// out of the box's description, while the donor has ticked Anonymous instead (`update` below).
 	const notePublicToggle = make(doc, 'input', {
 		part: part('checkbox'),
 		class: REGISTRY_CLASS.checkbox,
@@ -1583,16 +1584,18 @@ export function createCard(
 		'aria-labelledby': 'note-public-words',
 		'aria-describedby': 'note-public-hint'
 	});
+	const notePublicHint = make(doc, 'small', { class: 'hint', id: 'note-public-hint' }, [
+		'It shows with your first name and last initial, like “Maya R.”'
+	]);
+	const notePublicText = make(doc, 'span', {}, [
+		make(doc, 'span', { id: 'note-public-words' }, [
+			`Show my note on ${config.orgLegalName}’s page`
+		]),
+		notePublicHint
+	]);
 	const notePublicRow = make(doc, 'label', { class: 'check-row' }, [
 		notePublicToggle,
-		make(doc, 'span', {}, [
-			make(doc, 'span', { id: 'note-public-words' }, [
-				`Show my note on ${config.orgLegalName}’s page`
-			]),
-			make(doc, 'small', { class: 'hint', id: 'note-public-hint' }, [
-				'It shows with your first name and last initial, like “Maya R.”'
-			])
-		])
+		notePublicText
 	]);
 	const noteAnonymousToggle = make(doc, 'input', {
 		part: part('checkbox'),
@@ -1604,7 +1607,14 @@ export function createCard(
 		noteAnonymousToggle,
 		make(doc, 'span', {}, ['Show it as Anonymous'])
 	]);
-	const noteConsent = make(doc, 'div', { class: 'consent' });
+	// a group named by the first box's words, so "Show it as Anonymous" is announced as qualifying
+	// that box. a `role` on the div rather than a `<fieldset>`, whose own border, padding and
+	// `min-inline-size` ./styles/layout.css's `.consent` would have to undo.
+	const noteConsent = make(doc, 'div', {
+		class: 'consent',
+		role: 'group',
+		'aria-labelledby': 'note-public-words'
+	});
 	notePublicToggle.addEventListener('change', () => now().notePublicToggle.onClick());
 	noteAnonymousToggle.addEventListener('change', () => now().noteAnonymousToggle.onClick());
 
@@ -3050,6 +3060,12 @@ export function createCard(
 		// reattached loses focus, and the box a donor just pressed has it.
 		presentIn(noteConsent, notePublicRow, noteAsked, 'prepend');
 		presentIn(noteConsent, noteAnonymousRow, noteShown, 'append');
+		presentIn(notePublicText, notePublicHint, !noteAnonymous, 'append');
+		toggleAttribute(
+			notePublicToggle,
+			'aria-describedby',
+			noteAnonymous ? null : 'note-public-hint'
+		);
 
 		// the second disclosure on this step, patched from the projection exactly as the first is.
 		const tributeAsked = api.tributeToggle.pressed === true;

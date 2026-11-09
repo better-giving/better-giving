@@ -1221,7 +1221,8 @@ body {
 	margin-block-start: var(--_sp4);
 }
 
-/* About us and the messages from donors, one area under the who: a section's step apart. */
+/* About us, the videos and the messages from donors, one area under the who: a section's step
+   apart. */
 .page-profile-more {
 	display: flex;
 	flex-direction: column;
@@ -1345,7 +1346,7 @@ body {
 }
 
 /* the turning ring a busy press shows beside its label. the registry has no spinner yet
-   (design-spec.md, registry gaps: spinner), so it is drawn here from the press's own ink and the
+   (a registry gap), so it is drawn here from the press's own ink and the
    form's spin; reduced motion slows it rather than stopping it, as the form's does. */
 .page-spinner {
 	box-sizing: border-box;
@@ -1360,8 +1361,7 @@ body {
 
 /* Videos (./sections/videos.tsx): a heading over a grid of figures, each a 16:9 box holding the
    poster, then the player, under a caption. the 16:9 box is drawn here because the registry has no
-   video frame yet (design-spec.md, registry gaps: `video-frame-css`, proposed for 2.2.0; the copied
-   registry is 2.1.0, bg-design.json). the play press is the registry's large button squared by its
+   video frame yet (a registry gap; the copied registry is 2.1.0, bg-design.json). the play press is the registry's large button squared by its
    own `ds-btn-icon`, 52px. */
 .page-videos-grid {
 	display: grid;
@@ -1441,7 +1441,7 @@ body {
 	--page-spinner: var(--page-video-spinner);
 }
 
-/* the design stops the ring under reduced motion and keeps it shown (design-spec.md, Videos). */
+/* the video's ring stops under reduced motion and stays shown. */
 @media (prefers-reduced-motion: reduce) {
 	.page-video-status .page-spinner {
 		animation: none;
