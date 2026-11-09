@@ -86,9 +86,9 @@ export type OrgProfileFieldErrors = Partial<
  * `deductibilityStatement` is not here and no screen posts one: `org_profile`'s column is a fork's
  * to write and ./deductibility.ts is what reads it, so a profile save leaves it exactly as it
  * found it (`saveOrgProfile` in ./queries.ts), and neither are `logoImageId` and `bannerImageId`,
- * which have writes of their own there. the fields are otherwise `org_profile`'s writable columns and no more — `id` is the
- * singleton literal ./queries.ts writes, and `created_at`/`updated_at` belong to the column
- * defaults.
+ * which have writes of their own there. the fields are otherwise `org_profile`'s writable columns
+ * and no more — `id` is the singleton literal ./queries.ts writes, and `created_at`/`updated_at`
+ * belong to the column defaults.
  *
  * the brand is what makes `parseOrgProfile` hard to skip. without it this is a structural
  * type, so `saveOrgProfile(db, { legalName: '', ... })` type-checks and the "the row's

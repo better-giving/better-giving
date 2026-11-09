@@ -34,8 +34,7 @@ import { useDropsOnCard, useImageSource } from './logo-crop-dialog';
 // `Modal`, ark's image cropper drawing the photo whole at no zoom, the same arrow steps, the same
 // drop to swap the photo, and the same Alt+arrow resize turned into a change of the whole band
 // (`squareResize`, `resizeCorner` in ./logo-crop.ts, `bandResizeDelta` in ./banner-crop.ts), which
-// the cropper’s own press would make to
-// one side alone. what differs is the shape — locked at `BANNER_RATIO`, opening on the widest
+// the cropper's own press would make to one side alone. what differs is the shape — locked at `BANNER_RATIO`, opening on the widest
 // centred band, never under `BANNER_WIDTH_MIN` of the photo's own pixels — the dashed guide over
 // the middle 3:1 a phone shows, and the rule a photo is turned down by (`bannerSourceRefusal` in
 // $lib/org/banner.ts), said in `role="alert"` with Save banner closed.
