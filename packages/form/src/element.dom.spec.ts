@@ -5811,26 +5811,49 @@ describe('the stylesheets', () => {
 	// ./styles/motion.css, so the part loses the movements that sheet gives it. each such part is
 	// restated there at its registry class, so what it moves is the motion sheet's.
 	it('restates the motion of every registry control that brings its own', () => {
-		const transitioned = registryControls
-			.split('}')
-			.filter((rule) => /\btransition/.test(rule.split('{')[1] ?? ''))
-			.flatMap((rule) => (rule.split('{')[0] ?? '').split(','))
-			.map((selector) => selector.trim());
+		// innermost blocks only, so a rule inside `@media (hover: hover)` is read under its own
+		// selector rather than the at-rule's; the list splits on the commas no `:not(...)` holds.
+		const rules = (sheet: string) =>
+			[...sheet.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, head = '', body = '']) => ({
+				selectors: head.split(/,(?![^(]*\))/).map((selector) => selector.trim()),
+				body
+			}));
+		/** what a block transitions: its `transition-property` list, or each `transition` layer's first word. */
+		const transitionedBy = (body: string) => {
+			const listed = /\btransition-property\s*:\s*([^;]+)/.exec(body)?.[1];
+			const layers = /\btransition\s*:\s*([^;]+)/.exec(body)?.[1];
+			if (listed) return listed.split(',').map((property) => property.trim());
+			return (layers ?? '').split(',').flatMap((layer) => layer.trim().split(/\s+/)[0] || []);
+		};
+		const propertiesAt = (sheet: string, matches: (selector: string) => boolean) =>
+			new Set(
+				rules(sheet)
+					.filter(({ selectors }) => selectors.some(matches))
+					.flatMap(({ body }) => transitionedBy(body))
+			);
 		const handed = Object.entries(REGISTRY_CLASS).flatMap(([part, list]) =>
 			list.split(' ').map((name) => ({ part, name }))
 		);
-		const brought = handed.filter(({ name }) => transitioned.includes(`.${name}`));
+		// the class names the selector's subject: `.ds-btn:hover:not(...)` brings motion to the
+		// action, `.ds-btn > svg` would not. a pseudo-class's arguments are dropped first, since the
+		// registry breaks a `:not(...)` list across lines.
+		const brought = handed
+			.map(({ part, name }) => ({
+				restated: `[part~='${part}'].${name}`,
+				registry: propertiesAt(registryControls, (selector) =>
+					new RegExp(`\\.${name}(?![\\w-])[^\\s>+~]*$`).test(selector.replace(/\([^()]*\)/g, '()'))
+				)
+			}))
+			.filter(({ registry }) => registry.size > 0);
 
 		expect(brought.length).toBeGreaterThan(0);
 		expect(
-			brought
-				.filter(
-					({ part, name }) =>
-						!new RegExp(
-							`\\[part~='${part}'\\]\\.${name}(?![\\w-])[^{]*\\{[^}]*\\btransition:`
-						).test(moving)
-				)
-				.map(({ part, name }) => `[part~='${part}'].${name}`)
+			brought.flatMap(({ restated, registry }) => {
+				const ours = propertiesAt(moving, (selector) => selector === restated);
+				return [...registry]
+					.filter((property) => !ours.has(property))
+					.map((property) => `${restated}: ${property}`);
+			})
 		).toEqual([]);
 	});
 

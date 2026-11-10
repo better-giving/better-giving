@@ -700,6 +700,23 @@ describe('a read-only box', () => {
 		}
 	);
 
+	// the positive twin: the same reader finds the registry's `pointer-events: none` on a disabled
+	// box, so the read-only case above is empty because no sheet states one, not because it cannot see.
+	it('is found stopping the pointer on a disabled box, which the read-only boxes are not', () => {
+		const box = render(Field, {
+			id: 'zapier-key',
+			label: 'Zapier key',
+			disabled: true,
+			value: 'x'
+		}).querySelector('input');
+		if (box === null) throw new Error('the field drew no box');
+
+		expect(box.disabled).toBe(true);
+		expect(pointerEventsOn(box).filter((said) => said.endsWith('none }'))).toContain(
+			'.ds-field-input:disabled { pointer-events: none }'
+		);
+	});
+
 	it('is refused on its own box, off the message it holds', () => {
 		const root = render(Field, {
 			id: 'zapier-key',

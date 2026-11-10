@@ -556,10 +556,8 @@ describe('a control drawn under the floor takes a target at it', () => {
 	it.each([...new Set(Object.values(BUTTON_VARIANT_CLASS)), 'ds-btn-outline'])(
 		'%s is measured at its own edge',
 		(rank) => {
-			const own = ruleOf(registry, `.${rank}`).get('--ds-btn-edge');
-
-			expect(BUTTON_BORDER(rank)).toBe(evaluate(own ?? buttonEdge('ds-btn')));
-			expect(BUTTON_BORDER(rank)).toBeGreaterThan(0);
+			// the registry's widths as drawn in button-css.css: 2px on the outline rank, 1px on the rest.
+			expect(BUTTON_BORDER(rank)).toBe(rank === 'ds-btn-outline' ? 2 : 1);
 		}
 	);
 

@@ -64,7 +64,7 @@ const seedDefaults: Scope = Object.fromEntries(
 );
 // a page with no brand colour renders no scale (./page-root.tsx), so its `--accent-*` steps are the
 // registry default theme's own: the light block of the copied sheet, which declares them on `:root`
-// and reaches the page by inheritance.
+// and on the page root's `[data-theme]`.
 const REGISTRY_THEME = readFileSync(
 	join(dirname(FORM_TOKENS), '../registry/styles/themes/default.css'),
 	'utf8'
@@ -311,6 +311,7 @@ describe('the page root', () => {
 			'data-brand-scope',
 			'data-donate-root',
 			'data-layout',
+			'data-theme',
 			'style'
 		]);
 	});
@@ -532,6 +533,31 @@ describe('every colour lands on the radix step for its job', () => {
 			step.split(' ').some((one) => !allowed.includes(one))
 		);
 		expect(off).toEqual([]);
+	});
+
+	// the registry's presses outside the card (Play, Show more) ring in its `--ring`, which no row
+	// above sees: a role is substituted where it is declared, on `:root` and on every `[data-theme]`,
+	// so on a root without `data-theme` it reads the default theme's accent 8, a blue.
+	it(`${RING}: the registry’s presses on the page ring in the brand’s 8`, () => {
+		const button = blocks(
+			readFileSync(require.resolve('@better-giving/form/registry/styles/button-css.css'), 'utf8')
+		);
+		const ring = declared(button, '.ds-btn:focus-visible').outline ?? '';
+		const theme = root().attributes['data-theme'];
+		const themed =
+			theme !== undefined &&
+			(registryLight.at[0] ?? '')
+				.split(',')
+				.map((one) => one.trim())
+				.includes(`[data-theme="${theme}"]`);
+		const brand = blocks(brandedScale)[0]?.decls ?? {};
+		const atRole: Scope = {
+			...registryLight.decls,
+			...registryRoles.decls,
+			...(themed ? brand : {})
+		};
+		expect(brand['--accent-8']).not.toBe(registryLight.decls['--accent-8']);
+		expect(substitute(atRole, ring)).toBe(`2px solid ${brand['--accent-8']}`);
 	});
 
 	it('sets text, a border and a ring only in the jobs that draw them', () => {

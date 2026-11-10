@@ -1,3 +1,4 @@
+import { CARD_THEME } from '@better-giving/form/parts';
 import { brandScaleCss, generateBrandScale } from '@better-giving/form/styles/radix-scale';
 import {
 	createContext,
@@ -29,6 +30,15 @@ import type { Layout } from '../page/shape';
 // id per page root, so two roots on one document never read each other's scale. ./card.tsx reads
 // the id with `useBrandScope`. the form's `--_a*` and `--_p` aliases are declared one node under
 // each root (packages/form/src/styles/tokens.css) and read these steps from there.
+//
+// it carries `data-theme` as the card's root does, for the registry's presses the page draws
+// outside the card (Play in ./sections/videos.tsx, Show more in ./sections/messages.tsx): their
+// `--primary` and `--ring` are roles the registry declares on `:root` and on every `[data-theme]`
+// (packages/form/src/registry/styles/colors.css) and a custom property is substituted where it is
+// declared, so read from `:root` they hold the default theme's blue. declared here they read the
+// brand's steps, because the scale's two-attribute selector outranks the theme's one. it has to be
+// this node and not the one inside: a `[data-theme]` below the scale would re-declare the default
+// accent over the inherited brand.
 //
 // the single node inside is where the page's own tokens are declared and its ground is painted:
 // the form declares its ladder one node under `[data-donate-root]`, so a token reading a rung has to
@@ -66,7 +76,8 @@ export function PageRoot({ brandColour, layout, className, children }: PageRootP
 	// a `PageWithCard` pick or lock report re-renders this root, and the colour has not moved.
 	const css = useMemo(() => {
 		// a page with no brand colour writes no scale: it draws the accent the registry's default theme
-		// declares on `:root` (packages/form/src/registry/styles/themes/default.css).
+		// declares on `:root` and on this node's `[data-theme]`
+		// (packages/form/src/registry/styles/themes/default.css).
 		if (brandColour === null) return null;
 		const scale = generateBrandScale(brandColour);
 		return scale === null ? null : brandScaleCss(brandScopeSelector(scope), scale);
@@ -77,6 +88,7 @@ export function PageRoot({ brandColour, layout, className, children }: PageRootP
 			data-donate-root=""
 			data-brand-scope={scope}
 			data-layout={layout}
+			data-theme={CARD_THEME}
 			style={
 				brandColour === null ? undefined : ({ '--donate-primary': brandColour } as CSSProperties)
 			}

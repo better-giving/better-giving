@@ -1356,7 +1356,7 @@ body {
 
 /* Videos (./sections/videos.tsx): a heading over a grid of figures, each a 16:9 box holding the
    poster, then the player, under a caption. the 16:9 box is drawn here because the registry has no
-   video frame yet (a registry gap; the copied registry is 2.1.0, bg-design.json). the play press is the registry's large button squared by its
+   video frame yet (a registry gap; the copied registry is 2.2.0, bg-design.json). the play press is the registry's large button squared by its
    own `ds-btn-icon`, 52px. */
 .page-videos-grid {
 	display: grid;
