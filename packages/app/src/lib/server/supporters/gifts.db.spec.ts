@@ -5,7 +5,7 @@ import { client } from '$lib/server/db/database.testing';
 import { donation, supporterPage } from '$lib/server/db/schema';
 import { mintQuote } from '$lib/server/donations/quote';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
-import { updateSupporterFundraisersEnabled } from '$lib/server/org/queries';
+import { setSupporterFundraisersEnabled } from '$lib/server/org/queries';
 import { organisationRaised } from '$lib/server/pages/goal';
 import { gift, refund } from '$lib/server/pages/settled-gifts.testing';
 import { soleProcessor } from '$lib/server/payments/processors.testing';
@@ -115,7 +115,7 @@ describe('a gift submitted through a fundraiser', () => {
 
 	it('is still taken on a live page once the organisation has switched fundraisers off', async () => {
 		const { pageId, formId } = await fundraiser('live');
-		expect(await updateSupporterFundraisersEnabled(db, false)).toBe('saved');
+		expect(await setSupporterFundraisersEnabled(db, false)).toBe('saved');
 		expect((await submit(formId)).ok).toBe(true);
 		expect(await db.select({ page: donation.supporterPageId }).from(donation)).toEqual([
 			{ page: pageId }

@@ -16,7 +16,7 @@ import { meterDonorPage } from '$lib/server/api/meter';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
 import { readOrgProfile, readOrgProfileLogo } from '$lib/server/org/queries';
 import { publishedName, readServedCampaign } from '$lib/server/pages/campaign';
-import { loadPageView, refusedPage } from '$lib/server/pages/view';
+import { loadPageView, refusedPage, withFundraiserEntry } from '$lib/server/pages/view';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/$slug';
@@ -92,11 +92,12 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		{ now }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
+	const drawn = await withFundraiserEntry(db, loaded);
 	// a donor's return from authorizing their gift, read as ./donate.tsx reads it: the stamp naming
 	// this campaign's own settings row, and nothing else.
-	const { formId } = loaded.kind === 'page' ? loaded.view.config : loaded.config;
+	const { formId } = drawn.kind === 'page' ? drawn.view.config : drawn.config;
 	const resuming = new URL(request.url).searchParams.get(RESUME_FORM_PARAM) === formId;
-	return data({ ...loaded, resuming }, { headers: { 'cache-control': 'no-store' } });
+	return data({ ...drawn, resuming }, { headers: { 'cache-control': 'no-store' } });
 }
 
 /**

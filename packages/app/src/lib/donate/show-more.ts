@@ -5,13 +5,20 @@ import type { DonorMessagesWiring, ShowMoreStatus } from './sections/messages';
 
 // Show more messages as /donate and the preview both wire it: a `fetch` of
 // ../../routes/donate.messages.ts, which reads only the messages /donate shows, so the preview pages
-// through the same list. a plain `fetch` rather than a fetcher: a fetcher's load that fails to reach
+// through the same list. a supporter's fundraiser wires it to its own,
+// ../../routes/f.$slug.messages.ts. a plain `fetch` rather than a fetcher: a fetcher's load that fails to reach
 // the server is drawn by the page's error boundary in place of the whole page, a gift in progress
 // with it, where this one only says error on the section. the route is a resource route, so it
 // answers JSON under its own status (`handleResourceRequest` in react-router's server runtime).
 
-/** the section's wiring, ages counted from `now`, the instant the page's loader read it. */
-export function useShowMoreMessages(now: string): DonorMessagesWiring {
+/**
+ * the section's wiring, ages counted from `now`, the instant the page's loader read it, each press
+ * asking `from` for the six after the last.
+ */
+export function useShowMoreMessages(
+	now: string,
+	from: string = href('/donate/messages')
+): DonorMessagesWiring {
 	const [status, setStatus] = useState<ShowMoreStatus>('idle');
 	const [arrived, setArrived] = useState<DonorMessages | null>(null);
 	const asking = useRef<AbortController | null>(null);
@@ -22,7 +29,7 @@ export function useShowMoreMessages(now: string): DonorMessagesWiring {
 		const ask = new AbortController();
 		asking.current = ask;
 		setStatus('loading');
-		const answer = await read(after, ask.signal);
+		const answer = await read(from, after, ask.signal);
 		if (ask.signal.aborted) return;
 		if (answer === null) {
 			setStatus('error');
@@ -38,9 +45,13 @@ export function useShowMoreMessages(now: string): DonorMessagesWiring {
  * the six after `after`, or null where the read was refused — a cursor it could not take, this
  * address over the donor page limit, a read that failed — or never reached the server.
  */
-async function read(after: string, signal: AbortSignal): Promise<DonorMessages | null> {
+async function read(
+	from: string,
+	after: string,
+	signal: AbortSignal
+): Promise<DonorMessages | null> {
 	try {
-		const response = await fetch(`${href('/donate/messages')}?${new URLSearchParams({ after })}`, {
+		const response = await fetch(`${from}?${new URLSearchParams({ after })}`, {
 			signal,
 			headers: { accept: 'application/json' }
 		});

@@ -1,7 +1,9 @@
 import { getFormProps } from '@conform-to/react';
 import { useCallback, useEffect, useState } from 'react';
 import { Form } from 'react-router';
+import { useAdminForm } from '$lib/admin/use-admin-form';
 import { FORM_CURRENCY, groupedEntry } from '$lib/forms/amounts';
+import { defineForm } from '$lib/forms/definition';
 import { SUPPORTER_STORY_MAX, SUPPORTER_TITLE_MAX } from '$lib/supporters/input';
 import { PHOTO_NOT_STORED } from './copy';
 import { StoryField, TextField } from './field';
@@ -9,12 +11,15 @@ import { EDIT_FORM, INTENT, INTENTS } from './forms';
 import { Mark } from './glyph';
 import { PhotoField } from './photo-field';
 import { type SupporterAccount, SupporterShell, type SupporterOrg } from './shell';
-import { boxOf, type FormResult, useSupporterForm } from './use-supporter-form';
+import { answered, boxOf, type FormResult } from './supporter-form';
 
 // /fundraise/pages/:id/edit: the supporter's name, which signs every page of theirs, and this page's
 // title, goal, story and photo. the address never changes once a page is out, so it is no box here.
 // Save changes posts `intent=save` and the screen stays: Saved stands beside the press for
 // `SAVED_FOR_MS` and focus stays on the press. Cancel goes back without saving.
+
+/** Save changes, as the route's action parses it. */
+const EDIT = defineForm({ id: EDIT_FORM.id, schema: EDIT_FORM.schema });
 
 /** how long Saved stands beside the press. */
 export const SAVED_FOR_MS = 4000;
@@ -59,12 +64,14 @@ export function EditFundraiser({
 	savedAt,
 	sending
 }: EditFundraiserProps) {
-	const [form, fields] = useSupporterForm(EDIT_FORM, lastResult, {
-		name: page.name,
-		title: page.title,
-		goal: groupedEntry(page.goalMinor, FORM_CURRENCY),
-		story: page.story,
-		photo_id: page.photoId ?? ''
+	const [form, fields] = useAdminForm(EDIT, answered(EDIT, lastResult), {
+		defaultValue: {
+			name: page.name,
+			title: page.title,
+			goal: groupedEntry(page.goalMinor, FORM_CURRENCY),
+			story: page.story,
+			photo_id: page.photoId ?? ''
+		}
 	});
 	const [photoWorking, setPhotoWorking] = useState(false);
 	const onPhotoWorking = useCallback((working: boolean) => setPhotoWorking(working), []);

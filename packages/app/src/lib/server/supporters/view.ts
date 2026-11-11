@@ -14,6 +14,8 @@ import { fundraiserRaised } from './pages';
 /** a live fundraiser, whole, and the settings row its donation form takes gifts through. */
 export type LiveFundraiser = {
 	readonly kind: 'live';
+	/** the page's id, which its Show more messages reads by. */
+	readonly id: string;
 	readonly title: string;
 	readonly story: string;
 	/** the supporter's name. */
@@ -50,6 +52,7 @@ function readPage(db: Db, where: SQL) {
 	return db
 		.select({
 			id: supporterPage.id,
+			slug: supporterPage.slug,
 			title: supporterPage.title,
 			story: supporterPage.story,
 			name: supporter.name,
@@ -79,6 +82,7 @@ async function drawnLive(db: Db, row: PageRow): Promise<Omit<LiveFundraiser, 'st
 	]);
 	return {
 		kind: 'live',
+		id: row.id,
 		title: row.title,
 		story: row.story,
 		name: row.name,
@@ -114,6 +118,8 @@ export async function readPublicFundraiser(db: Db, slug: string): Promise<Public
 
 /** staff's preview of any fundraiser: drawn as live, with what keeps the public from it. */
 export type FundraiserPreview = Omit<LiveFundraiser, 'kind' | 'startedAt'> & {
+	/** its address under `/f/`, which its share buttons name. */
+	readonly slug: string;
 	readonly startedAt: Date | null;
 	readonly status: SupporterPageStatus;
 	readonly endedAt: Date | null;
@@ -134,6 +140,7 @@ export async function readFundraiserPreview(
 	const { kind: _live, ...drawn } = await drawnLive(db, row);
 	return {
 		...drawn,
+		slug: row.slug,
 		startedAt: row.publishedAt,
 		status: row.status,
 		endedAt: row.endedAt,

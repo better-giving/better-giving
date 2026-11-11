@@ -17,8 +17,11 @@ export const ACCOUNT: SupporterAccount = {
 	signOutAction: '/fundraise/sign-out'
 };
 
-/** the screen at `/here`, and every body a form on it posted. */
-export function mountScreen(screen: () => ReactNode): {
+/** the screen at `/here`, and every body a form on it posted, each answered with `answer`'s. */
+export function mountScreen(
+	screen: () => ReactNode,
+	answer: (posted: FormData) => unknown = () => null
+): {
 	readonly root: HTMLElement;
 	readonly posted: FormData[];
 } {
@@ -28,8 +31,9 @@ export function mountScreen(screen: () => ReactNode): {
 			path: '/here',
 			Component: screen,
 			action: async ({ request }) => {
-				posted.push(await request.formData());
-				return null;
+				const body = await request.formData();
+				posted.push(body);
+				return answer(body);
 			}
 		}
 	]);

@@ -48,6 +48,8 @@ export type OwnFundraiserListing = Raised & {
 	readonly hidden: boolean;
 	readonly goalMinor: number;
 	readonly currency: string;
+	/** when it ended, while ended. */
+	readonly endedAt: Date | null;
 };
 
 /** the supporter's own pages, newest first. */
@@ -64,7 +66,8 @@ export async function listOwnFundraisers(
 				status: supporterPage.status,
 				hiddenAt: supporterPage.hiddenAt,
 				goalMinor: supporterPage.goalMinor,
-				currency: supporterPage.currency
+				currency: supporterPage.currency,
+				endedAt: supporterPage.endedAt
 			})
 			.from(supporterPage)
 			.where(eq(supporterPage.supporterId, supporterId))
@@ -97,7 +100,8 @@ export type OwnFundraiser = OwnFundraiserListing & {
 	readonly name: string;
 	readonly photoId: string | null;
 	readonly publishedAt: Date | null;
-	readonly endedAt: Date | null;
+	/** the note staff left when they hid it, passed on as written; null with none or while shown. */
+	readonly hiddenNote: string | null;
 	readonly giftList: readonly OwnFundraiserGift[];
 };
 
@@ -121,6 +125,7 @@ export async function readOwnFundraiser(
 			photoId: supporterPage.photoId,
 			status: supporterPage.status,
 			hiddenAt: supporterPage.hiddenAt,
+			hiddenNote: supporterPage.hiddenNote,
 			goalMinor: supporterPage.goalMinor,
 			currency: supporterPage.currency,
 			publishedAt: supporterPage.publishedAt,

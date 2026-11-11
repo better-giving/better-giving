@@ -1,4 +1,4 @@
-import { and, eq, exists, isNotNull, type SQL } from 'drizzle-orm';
+import { and, eq, exists, type SQL } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { z } from 'zod';
 import { defineForm, type RejectionStatus } from '../../forms/definition';
@@ -37,6 +37,7 @@ import { documentsOf, placedPhotos, readDocument } from './document';
 import { unchosenSettings } from './donation-page';
 import {
 	type DraftSettings,
+	heldAddresses,
 	nameToCarry,
 	ownedName,
 	planSlugMove,
@@ -352,8 +353,7 @@ async function addressFor(db: Db, row: Page): Promise<string | null> {
 	if (row.type !== 'campaign' || row.slug !== null) return row.slug;
 	// unreachable: `page_name_check` holds every campaign to a name.
 	if (row.name === null) throw new Error(`campaign ${row.id} has no name`);
-	const held = await db.select({ slug: page.slug }).from(page).where(isNotNull(page.slug));
-	return freeSlug(row.name, new Set(held.map((each) => each.slug)));
+	return freeSlug(row.name, await heldAddresses(db));
 }
 
 /** what an Undo did; `nothing` is a page no Publish has replaced. */

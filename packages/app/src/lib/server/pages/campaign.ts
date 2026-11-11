@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { NEW_FORM } from '../../forms/new-form';
 import type { Page as PageDocument } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
@@ -13,7 +13,7 @@ import { formInputValuesFrom, type ParsedForm, parseFormInput } from '../forms/f
 import { ownedFormInsert, readForm } from '../forms/queries';
 import { readDocument } from './document';
 import { ensureDonationPage } from './donation-page';
-import { SLUG_ATTEMPTS } from './queries';
+import { heldAddresses, SLUG_ATTEMPTS } from './queries';
 
 // a campaign's reads and its making. New campaign makes one page and the settings row it owns in
 // one `batch()`:
@@ -179,7 +179,7 @@ async function insertCampaign(
 	campaign: NewCampaign & { settings: ParsedForm; draft: string }
 ): Promise<string> {
 	for (let attempt = 1; ; attempt += 1) {
-		const held = await db.select({ slug: page.slug }).from(page).where(isNotNull(page.slug));
+		const held = await heldAddresses(db);
 		const owned = ownedFormInsert(db, campaign.settings);
 		try {
 			const [, [made]] = await db.batch([
@@ -189,7 +189,7 @@ async function insertCampaign(
 					.values({
 						type: 'campaign',
 						name: campaign.name,
-						slug: freeSlug(campaign.name, new Set(held.map((row) => row.slug))),
+						slug: freeSlug(campaign.name, held),
 						state: 'never_published',
 						formId: owned.id,
 						draft: campaign.draft

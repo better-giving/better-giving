@@ -1,11 +1,12 @@
 import type { FormConfig } from '@better-giving/form/v1';
 import { data } from 'react-router';
-import type { OrgInfo } from '../../donate/sections/types';
+import type { OrgInfo, PageMoney } from '../../donate/sections/types';
 import type { PageWithCardProps } from '../../donate/page-with-card';
 import { type DonateProfile, donateProfile } from '../../donate/profile';
 import { type PageLook, titleHeading } from '../../donate/page-view';
 import type { Page } from '../../page/catalog';
 import type { PageType } from '../../page/keys';
+import type { FundraiserOrg } from '../../supporter/public/types';
 import type { Db } from '../db/client';
 import type { OrgProfile, Page as PageRow } from '../db/schema';
 import { cachedCadences } from '../forms/cadence-cache';
@@ -13,7 +14,7 @@ import { cachedCoins } from '../forms/coin-cache';
 import type { FormRecord } from '../forms/form-input';
 import { readPublishedConfig, renderableConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
-import { readOrgProfile, readOrgProfileLogo } from '../org/queries';
+import { readOrgProfile, readOrgProfileLogo, supporterFundraisersEnabled } from '../org/queries';
 import { present } from '../org/receipt-fields';
 import { createPaymentProviders } from '../payments/factory';
 import { readActiveProgramPhotos } from '../programs/queries';
@@ -22,7 +23,8 @@ import { organisationRaised, pageGoal } from './goal';
 import { readShownMessages } from './messages';
 
 // everything a donor page draws beyond its own stored document, read for one page: the donation
-// page at /donate, a campaign at its address, and either one in the editor's preview.
+// page at /donate, a campaign at its address, and either one in the editor's preview. a supporter's
+// fundraiser has no document, and `loadFundraiserFrame` reads what its page draws beside its row.
 //
 // the card's configuration is the owned settings row's served config, read exactly as
 // ../../../routes/api.v1.forms.$id.config.ts reads it, so the page and the embed refuse on the same
@@ -184,6 +186,22 @@ export async function loadPageView(
 }
 
 /**
+ * a drawn page with the card that starts a supporter's fundraiser while the organisation takes them
+ * (`supporterFundraisersEnabled` in ../org/queries.ts): the Donation page, a campaign and the
+ * preview of either. the plain page draws the donation box alone, and no card.
+ */
+export async function withFundraiserEntry(
+	db: Db,
+	loaded: Exclude<LoadedPage, { kind: 'refused' }>
+): Promise<Exclude<LoadedPage, { kind: 'refused' }>> {
+	if (loaded.kind !== 'page') return loaded;
+	return {
+		...loaded,
+		view: { ...loaded.view, fundraiserEntry: await supporterFundraisersEnabled(db) }
+	};
+}
+
+/**
  * whether the Donation page as a donor sees it draws its donors' messages: `loadPageView`'s two
  * gates before it reads them, a served config the card can draw and a published document the rule
  * reads, so Show more (routes/donate.messages.ts) lists nothing where the page lists none.
@@ -198,6 +216,45 @@ export async function donationPageDrawsMessages(
 	if (!readDocument(row, 'published', row.published).ok) return false;
 	const origin = new URL(request.url).origin;
 	return renderableConfig(await readServedConfig(db, env, row.formId, origin, { now })).ok;
+}
+
+/** what a supporter's live fundraiser draws beyond its own row: the card's config and who it is for. */
+export type FundraiserFrame = {
+	readonly config: FormConfig;
+	readonly org: FundraiserOrg;
+	readonly look: PageLook;
+	readonly money: PageMoney;
+	readonly contact: Pick<OrgInfo, 'addressLines' | 'email' | 'socialLinks'>;
+};
+
+/**
+ * the frame of the fundraiser whose settings row is `formId`, read as `loadPageView` reads a page's:
+ * the served config by the same ladder, and the organisation's profile live. null where the served
+ * config refuses the row, which draws the same notice a refused page does.
+ */
+export async function loadFundraiserFrame(
+	db: Db,
+	env: unknown,
+	formId: string,
+	request: Request,
+	{ now }: { readonly now: number }
+): Promise<FundraiserFrame | null> {
+	const origin = new URL(request.url).origin;
+	const [served, profile, logo] = await Promise.all([
+		readServedConfig(db, env, formId, origin, { now }),
+		readOrgProfile(db),
+		readOrgProfileLogo(db)
+	]);
+	const result = renderableConfig(served);
+	if (!result.ok) return null;
+	const { config } = result;
+	return {
+		config,
+		org: { name: config.orgLegalName, taxId: config.ein, logo },
+		look: { brandColour: profile?.brandColour ?? null },
+		money: { locale: config.locale, currency: config.currency },
+		contact: donorContact(profile)
+	};
 }
 
 /** the owned row's served config, read as ../../../routes/api.v1.forms.$id.config.ts reads it. */
@@ -275,9 +332,14 @@ function chooserPhotos(
  * `notification_email` is operational — so none is drawn.
  */
 function orgInfo(config: FormConfig, profile: OrgProfile | null): OrgInfo {
+	return { legalName: config.orgLegalName, ein: config.ein, ...donorContact(profile) };
+}
+
+/** the ways to reach the organisation a donor page's footer states, off its profile alone. */
+export function donorContact(
+	profile: OrgProfile | null
+): Pick<OrgInfo, 'addressLines' | 'email' | 'socialLinks'> {
 	return {
-		legalName: config.orgLegalName,
-		ein: config.ein,
 		addressLines: profile === null ? [] : addressLines(profile),
 		email: null,
 		socialLinks: profile?.socialLinks ?? []

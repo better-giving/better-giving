@@ -671,7 +671,7 @@ const SERVED_FEE_COVERAGE = 'optional' as const;
  * every form is denominated in USD (`FORM_CURRENCY` in `$lib/forms/amounts.ts`); a form denominated
  * elsewhere is what turns this into data.
  */
-const SERVED_LOCALE = 'en-US';
+export const SERVED_LOCALE = 'en-US';
 
 /**
  * the same answer, or a refusal where what it holds is a config no donation form would render.

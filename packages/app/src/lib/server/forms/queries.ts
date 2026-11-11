@@ -332,14 +332,18 @@ export async function readForm(db: Db, id: string): Promise<StoredForm | null> {
  */
 export type OwningPage =
 	| { readonly type: 'donation_page' }
-	| { readonly type: 'campaign'; readonly name: string; readonly state: PageState };
+	| { readonly type: 'campaign'; readonly name: string; readonly state: PageState }
+	/** a supporter's fundraiser (`supporter_page`), named by its title. */
+	| { readonly type: 'fundraiser'; readonly title: string };
 
-/** the owning page off a row joined to `page`, or `null` for a row no page names. */
+/** the owning page off a row joined to `page` and `supporter_page`, or `null` for a row neither names. */
 function owningPage(row: {
 	pageType: PageType | null;
 	pageName: string | null;
 	pageState: PageState | null;
+	fundraiserTitle: string | null;
 }): OwningPage | null {
+	if (row.fundraiserTitle !== null) return { type: 'fundraiser', title: row.fundraiserTitle };
 	if (row.pageType === null) return null;
 	if (row.pageType === 'donation_page') return { type: 'donation_page' };
 	if (row.pageName === null || row.pageState === null) {
@@ -354,6 +358,12 @@ function owningPage(row: {
  * campaign's `state` is as of `now`: `ended` too for a live one past its published end (`isEnded`).
  */
 export async function readOwningPage(db: Db, id: string, now: number): Promise<OwningPage | null> {
+	const [fundraiser] = await db
+		.select({ title: supporterPage.title })
+		.from(supporterPage)
+		.where(eq(supporterPage.formId, id))
+		.limit(1);
+	if (fundraiser) return { type: 'fundraiser', title: fundraiser.title };
 	const [row] = await db
 		.select({
 			pageType: page.type,
@@ -365,7 +375,7 @@ export async function readOwningPage(db: Db, id: string, now: number): Promise<O
 		.where(eq(page.formId, id))
 		.limit(1);
 	if (!row) return null;
-	const owner = owningPage(row);
+	const owner = owningPage({ ...row, fundraiserTitle: null });
 	if (owner?.type !== 'campaign') return owner;
 	return { ...owner, state: stateAt({ state: owner.state, published: row.pagePublished }, now) };
 }
@@ -470,10 +480,12 @@ async function missed(db: Db, id: string): Promise<'gone' | 'stale' | PageOwned>
 			archivedAt: form.archivedAt,
 			pageType: page.type,
 			pageName: page.name,
-			pageState: page.state
+			pageState: page.state,
+			fundraiserTitle: supporterPage.title
 		})
 		.from(form)
 		.leftJoin(page, eq(page.formId, form.id))
+		.leftJoin(supporterPage, eq(supporterPage.formId, form.id))
 		.where(eq(form.id, id))
 		.limit(1);
 	if (row === undefined) return 'gone';

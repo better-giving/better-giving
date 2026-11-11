@@ -20,8 +20,7 @@ describe('starting a fundraiser, as posted', () => {
 			email: 'maya@example.org',
 			title: 'Run for the shelter',
 			goal: 50_000,
-			story: 'I am running 10k.',
-			photo_id: null
+			story: 'I am running 10k.'
 		});
 	});
 
@@ -69,9 +68,10 @@ describe('starting a fundraiser, as posted', () => {
 		).toEqual(['name', 'email', 'title', 'story']);
 	});
 
-	it('carries a photo by its id, and a blank box as none', () => {
-		expect(SUPPORTER_START_INPUT.parse({ ...START, photo_id: ' img-1 ' }).photo_id).toBe('img-1');
-		expect(SUPPORTER_START_INPUT.parse({ ...START, photo_id: '' }).photo_id).toBeNull();
+	it('drops a photo id posted beside it: a start’s photo is its own file part', () => {
+		expect(SUPPORTER_START_INPUT.parse({ ...START, photo_id: 'img-1' })).not.toHaveProperty(
+			'photo_id'
+		);
 	});
 });
 
@@ -85,6 +85,12 @@ describe('editing a fundraiser, as posted', () => {
 			story: 'I am running 10k.',
 			photo_id: null
 		});
+	});
+
+	it('carries a photo by its id, and a blank box as none', () => {
+		const { email: _email, ...edit } = START;
+		expect(SUPPORTER_EDIT_INPUT.parse({ ...edit, photo_id: ' img-1 ' }).photo_id).toBe('img-1');
+		expect(SUPPORTER_EDIT_INPUT.parse({ ...edit, photo_id: '' }).photo_id).toBeNull();
 	});
 });
 

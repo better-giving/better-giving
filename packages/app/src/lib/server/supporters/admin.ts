@@ -5,7 +5,7 @@ import { type Raised, raisedByPage } from './pages';
 
 // staff's side of supporter fundraisers: every page, and hiding one or showing it again. each is
 // behind the staff gate, and the routes that call these gate on it; the organisation setting is
-// `supporterFundraisersEnabled` and `updateSupporterFundraisersEnabled` in ../org/queries.ts, gated
+// `supporterFundraisersEnabled` and `setSupporterFundraisersEnabled` in ../org/queries.ts, gated
 // on `STAFF_USER_ID` like the deployer's other settings.
 
 /** one fundraiser as staff's list shows it. */

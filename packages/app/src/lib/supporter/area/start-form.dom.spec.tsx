@@ -1,20 +1,39 @@
 import { parseWithZod } from '@conform-to/zod/v4';
 import { act } from 'react';
+import { useActionData } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { SUPPORTER_START_INPUT } from '$lib/supporters/input';
 import { boxLabelled, button, mountScreen, ORG, one, submit } from './area.testing';
-import { START_FORM } from './forms';
+import type { StartRefusal } from './copy';
+import { PHOTO_FILE_FIELD, START_FORM } from './forms';
 import { StartFundraiser, type StartFundraiserProps } from './start-form';
+import type { FormResult } from './supporter-form';
 
 // /fundraise in each state it is drawn in: empty, refused box by box, refused as a whole, sending,
-// a photo turned down, and switched off.
+// a photo turned down, a photo carried with the start, and switched off.
+
+/** the crop's bytes, as `cropImage` hands them back. */
+const CROPPED = new File([new Uint8Array([137, 80, 78, 71])], 'photo.png', { type: 'image/png' });
+
+// happy-dom lays nothing out, so the crop card's frame is never measured: Use this photo here hands
+// back a frame as the card would, and the crop is the bytes above.
+vi.mock(import('./photo-crop-dialog'), () => ({
+	PhotoCropDialog: ({ onSave }) => (
+		<button type="button" onClick={() => onSave({ x: 0, y: 0, width: 1600, height: 900 })}>
+			Use this photo
+		</button>
+	)
+}));
+vi.mock(import('$lib/admin/settings/crop-image'), async (original) => ({
+	...(await original()),
+	cropImage: async () => ({ ok: true, blob: CROPPED })
+}));
 
 const BASE: StartFundraiserProps = {
 	org: ORG,
 	open: true,
 	donateHref: '/donate',
 	signInHref: '/fundraise/sign-in',
-	uploadUrl: '/fundraise/photos',
 	sending: false
 };
 
@@ -33,8 +52,7 @@ const FILLED = {
 	email: 'maya@example.org',
 	title: 'Keep the pantry trucks running this winter',
 	goal: '5,000',
-	story: 'I drive the Thursday route.',
-	photo_id: ''
+	story: 'I drive the Thursday route.'
 };
 
 describe('the start form, empty', () => {
@@ -85,7 +103,8 @@ describe('the start form, empty', () => {
 			'Get a sign-in link'
 		);
 		expect(one(root, 'input[name="intent"]').getAttribute('value')).toBe('start');
-		expect(one(root, 'input[name="photo_id"]').getAttribute('value')).toBe('');
+		expect(root.querySelector('input[name="photo_id"]')).toBeNull();
+		expect(one<HTMLInputElement>(root, `input[name="${PHOTO_FILE_FIELD}"]`).files).toHaveLength(0);
 	});
 
 	it('puts the public and the private in one paragraph', () => {
@@ -174,7 +193,7 @@ describe('the photo', () => {
 			vi.fn(async () => ({ width: 640, height: 480, close() {} }))
 		);
 		const { root } = start();
-		const chooser = one<HTMLInputElement>(root, 'input[type="file"]');
+		const chooser = one<HTMLInputElement>(root, 'input[type="file"]:not([name])');
 		expect(chooser.accept).toBe('image/png,image/jpeg,image/webp');
 		const file = new File(['x'], 'pantry.jpg', { type: 'image/jpeg' });
 		Object.defineProperty(chooser, 'files', { value: [file], configurable: true });
@@ -192,7 +211,7 @@ describe('the photo', () => {
 
 	it('turns down a file that is no PNG, JPEG or WebP', async () => {
 		const { root } = start();
-		const chooser = one<HTMLInputElement>(root, 'input[type="file"]');
+		const chooser = one<HTMLInputElement>(root, 'input[type="file"]:not([name])');
 		const file = new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' });
 		Object.defineProperty(chooser, 'files', { value: [file], configurable: true });
 		await act(async () => {
@@ -200,16 +219,100 @@ describe('the photo', () => {
 		});
 		expect(root.querySelector('.ds-field-err')?.textContent).toContain('isn’t a PNG, JPEG or WebP');
 	});
+});
 
-	it('shows a stored photo with Replace photo and Remove, and Remove empties the box', () => {
-		const { root } = start({ lastResult: serverResult({ ...FILLED, photo_id: 'img-1' }) });
-		expect(one<HTMLImageElement>(root, 'img.sa-photo-frame').getAttribute('src')).toBe(
-			'/image/img-1'
+describe('a photo posted with the start', () => {
+	/** choose a photo wide enough for a page and press Use this photo on its crop. */
+	async function addPhoto(root: HTMLElement) {
+		vi.stubGlobal(
+			'createImageBitmap',
+			vi.fn(async () => ({ width: 1600, height: 900, close() {} }))
 		);
-		expect(one(root, 'input[name="photo_id"]').getAttribute('value')).toBe('img-1');
+		const chooser = one<HTMLInputElement>(root, 'input[type="file"]:not([name])');
+		const file = new File(['x'], 'pantry.jpg', { type: 'image/jpeg' });
+		Object.defineProperty(chooser, 'files', { value: [file], configurable: true });
+		await act(async () => {
+			chooser.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		await act(async () => button(root, 'Use this photo').click());
+	}
+
+	function fill(form: HTMLFormElement) {
+		for (const [name, value] of Object.entries(FILLED)) {
+			const box = form.elements.namedItem(name);
+			if (box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement) box.value = value;
+		}
+	}
+
+	it('posts the cropped photo as the start’s photo file, beside the boxes', async () => {
+		const { root, posted } = start();
+		const form = one<HTMLFormElement>(root, `form#${START_FORM.id}`);
+		expect(form.getAttribute('enctype')).toBe('multipart/form-data');
+		await addPhoto(root);
+		expect(one<HTMLImageElement>(root, 'img.sa-photo-frame').getAttribute('src')).toMatch(/^blob:/);
+		expect(button(root, 'Replace photo')).toBeTruthy();
+		fill(form);
+		await submit(form);
+		expect(posted).toHaveLength(1);
+		const photo = posted[0]?.get(PHOTO_FILE_FIELD);
+		expect(photo).toBeInstanceOf(File);
+		expect((photo as File).name).toBe('photo.png');
+		expect((photo as File).type).toBe('image/png');
+		expect(new Uint8Array(await (photo as File).arrayBuffer())).toEqual(
+			new Uint8Array(await CROPPED.arrayBuffer())
+		);
+		expect(posted[0]?.has('photo_id')).toBe(false);
+		expect(posted[0]?.get('title')).toBe(FILLED.title);
+	});
+
+	it('empties the box under its refusal when the start refuses the photo, and keeps it otherwise', async () => {
+		const { root } = mountScreen(
+			function Answered() {
+				const answer = useActionData<{ result: FormResult; refused: StartRefusal | null }>();
+				return <StartFundraiser {...BASE} lastResult={answer?.result} refused={answer?.refused} />;
+			},
+			(body) => ({
+				result: serverResult(FILLED),
+				refused: body.get('goal') === '20' ? null : 'photo_missing'
+			})
+		);
+		const form = one<HTMLFormElement>(root, `form#${START_FORM.id}`);
+		await addPhoto(root);
+		fill(form);
+		boxLabelled(root, 'Goal').value = '20';
+		await submit(form);
+		expect(button(root, 'Replace photo')).toBeTruthy();
+		expect(one<HTMLInputElement>(root, `input[name="${PHOTO_FILE_FIELD}"]`).files).toHaveLength(1);
+
+		boxLabelled(root, 'Goal').value = FILLED.goal;
+		await submit(form);
+		const press = button(root, 'Add photo');
+		expect(one(root, `#${press.id}-err`).textContent).toBe(
+			'That photo didn’t upload. Add it again.'
+		);
+		expect(one<HTMLInputElement>(root, `input[name="${PHOTO_FILE_FIELD}"]`).files).toHaveLength(0);
+
+		await addPhoto(root);
+		expect(root.querySelector(`#${press.id}-err`)?.textContent ?? '').toBe('');
+		await submit(form);
+		expect(one(root, `#${button(root, 'Add photo').id}-err`).textContent).toBe(
+			'That photo didn’t upload. Add it again.'
+		);
+	});
+
+	it('posts no photo once Remove empties the box', async () => {
+		const { root, posted } = start();
+		const form = one<HTMLFormElement>(root, `form#${START_FORM.id}`);
+		await addPhoto(root);
 		act(() => button(root, 'Remove').click());
-		expect(one(root, 'input[name="photo_id"]').getAttribute('value')).toBe('');
 		expect(button(root, 'Add photo')).toBeTruthy();
+		expect(one<HTMLInputElement>(root, `input[name="${PHOTO_FILE_FIELD}"]`).files).toHaveLength(0);
+		fill(form);
+		await submit(form);
+		// a browser posts an empty file box as a nameless file of no bytes, and happy-dom posts none:
+		// the start reads both as no photo (`isPosted` in $lib/server/supporters/start.ts).
+		const photo = posted[0]?.get(PHOTO_FILE_FIELD) ?? null;
+		expect(photo === null || (photo instanceof File && photo.size === 0)).toBe(true);
 	});
 });
 

@@ -6,7 +6,7 @@ import { client, run, stmt } from '$lib/server/db/database.testing';
 import { form, page, supporter, supporterPage } from '$lib/server/db/schema';
 import { readForms } from '$lib/server/forms/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
-import { updateSupporterFundraisersEnabled } from '$lib/server/org/queries';
+import { setSupporterFundraisersEnabled } from '$lib/server/org/queries';
 import { insertPage } from '$lib/server/pages/page-row.testing';
 import { createRateLimiter } from '$lib/server/runtime/rate-limiter';
 import {
@@ -17,7 +17,7 @@ import {
 	startDeps,
 	startInput
 } from './fundraiser.testing';
-import { signInWithLink } from './links';
+import { resendConfirmLink, signInWithLink } from './links';
 import { startFundraiser } from './start';
 
 // Start a fundraiser, against the real tables: the supporter, the pending page and the settings row
@@ -114,7 +114,7 @@ describe('starting a fundraiser', () => {
 
 describe('a start refused', () => {
 	it('when the organisation has switched fundraisers off', async () => {
-		expect(await updateSupporterFundraisersEnabled(db, false)).toBe('saved');
+		expect(await setSupporterFundraisersEnabled(db, false)).toBe('saved');
 		const { deps, mailed, settled } = startDeps(db);
 		expect(await startFundraiser(deps, fromCaller(), startInput())).toEqual({
 			ok: false,
@@ -176,22 +176,95 @@ describe('a start refused', () => {
 		).toEqual({ ok: false, reason: 'too_many' });
 		expect(checks).toBe(1);
 	});
-
-	it('for a photo that was never stored, naming the photo', async () => {
-		const { deps } = startDeps(db);
-		expect(
-			await startFundraiser(deps, fromCaller(), startInput({ photo_id: 'no-such-image' }))
-		).toEqual({ ok: false, reason: 'photo_missing' });
-		expect(await db.select().from(supporterPage)).toEqual([]);
-	});
 });
 
 describe('the setting', () => {
 	it('reads on for a deployment with no profile, and cannot be switched off without one', async () => {
 		await run(stmt('delete from org_profile'));
-		expect(await updateSupporterFundraisersEnabled(db, false)).toBe('no-profile');
-		expect(await updateSupporterFundraisersEnabled(db, true)).toBe('saved');
+		expect(await setSupporterFundraisersEnabled(db, false)).toBe('no-profile');
+		expect(await setSupporterFundraisersEnabled(db, true)).toBe('saved');
 		const { deps } = startDeps(db);
 		expect((await startFundraiser(deps, fromCaller(), startInput())).ok).toBe(true);
+	});
+});
+
+describe('Send it again after a start', () => {
+	const LATER = new Date(STARTED_AT.getTime() + 5 * 60_000);
+
+	/** a resend for `page` at `email`, and every mail it sent once its work ran. */
+	async function resend(
+		page: { pageId: string },
+		email = 'maya@example.org',
+		over: { limiter?: ReturnType<typeof createRateLimiter>; request?: Request } = {}
+	) {
+		const { deps, mailed, settled } = startDeps(db, { now: LATER });
+		const answer = await resendConfirmLink(
+			{ ...deps, ...(over.limiter ? { limiter: over.limiter } : {}) },
+			over.request ?? fromCaller(),
+			{ email, pageId: page.pageId }
+		);
+		await settled();
+		return { answer, mailed };
+	}
+
+	const open = (token: string) =>
+		signInWithLink(
+			db,
+			new Request('https://give.example/f/link'),
+			token,
+			new Date(LATER.getTime() + 60_000)
+		);
+
+	it('mails a fresh confirm link that publishes the page, and the first one stops working', async () => {
+		const first = await pendingPage(db);
+		const { answer, mailed } = await resend(first);
+		expect(answer).toBe('sent');
+		expect(mailed).toEqual([
+			{
+				to: 'maya@example.org',
+				token: expect.any(String),
+				arm: { kind: 'first', pageTitle: 'Run for the shelter' }
+			}
+		]);
+		expect(await open(first.token)).toEqual({ ok: false });
+		expect(await open(mailed[0]?.token ?? '')).toMatchObject({
+			ok: true,
+			purpose: 'confirm',
+			page: { id: first.pageId }
+		});
+		expect(await pageRow(first.pageId)).toMatchObject({ status: 'live' });
+	});
+
+	it('leaves the confirm link of the supporter’s other pending page working', async () => {
+		const other = await pendingPage(db, { title: 'A second run' });
+		const resent = await pendingPage(db);
+		await resend(resent);
+		expect(await open(other.token)).toMatchObject({ ok: true, page: { id: other.pageId } });
+	});
+
+	it('answers an unknown address the same way and mails nobody', async () => {
+		const first = await pendingPage(db);
+		expect(await resend(first, 'nobody@example.org')).toEqual({ answer: 'sent', mailed: [] });
+		expect((await open(first.token)).ok).toBe(true);
+	});
+
+	it('mails nothing for a page already live', async () => {
+		const first = await pendingPage(db);
+		expect((await open(first.token)).ok).toBe(true);
+		expect(await resend(first)).toEqual({ answer: 'sent', mailed: [] });
+	});
+
+	it('answers too many tries past the address’s bucket, mailing nothing more', async () => {
+		const first = await pendingPage(db);
+		const limiter = createRateLimiter({ limit: 2, period: 60 });
+		const answers: string[] = [];
+		let sent = 0;
+		for (let n = 0; n < 3; n += 1) {
+			const { answer, mailed } = await resend(first, 'maya@example.org', { limiter });
+			answers.push(answer);
+			sent += mailed.length;
+		}
+		expect(answers).toEqual(['sent', 'sent', 'too_many']);
+		expect(sent).toBe(2);
 	});
 });

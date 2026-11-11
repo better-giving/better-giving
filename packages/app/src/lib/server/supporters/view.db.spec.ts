@@ -42,6 +42,7 @@ describe('a live fundraiser’s public page', () => {
 		await gift(db, page.formId, 10_000);
 		expect(await readPublicFundraiser(db, page.slug)).toEqual({
 			kind: 'live',
+			id: page.pageId,
 			title: 'Run for the shelter',
 			story: 'I am running 10k.',
 			name: 'Maya Rivera',
@@ -123,6 +124,7 @@ describe('a page the public may not see', () => {
 			.where(eq(supporterPage.id, hidden.pageId));
 		expect(await readFundraiserPreview(db, hidden.pageId)).toMatchObject({
 			title: 'Run for the shelter',
+			slug: hidden.slug,
 			status: 'live',
 			hidden: true,
 			hiddenNote: 'spam'

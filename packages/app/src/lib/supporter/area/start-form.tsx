@@ -1,19 +1,25 @@
 import { getFormProps } from '@conform-to/react';
 import { type ReactNode, useCallback, useState } from 'react';
 import { Form } from 'react-router';
+import { useAdminForm } from '$lib/admin/use-admin-form';
+import { defineForm } from '$lib/forms/definition';
 import { SUPPORTER_STORY_MAX, SUPPORTER_TITLE_MAX } from '$lib/supporters/input';
 import { StateCard } from './cards';
 import { PHOTO_NOT_STORED, START_REFUSED, type StartRefusal } from './copy';
 import { StoryField, TextField } from './field';
-import { INTENT, INTENTS, START_FORM } from './forms';
+import { INTENT, INTENTS, PHOTO_FILE_FIELD, START_FORM } from './forms';
 import { PhotoField } from './photo-field';
 import { SupporterShell, type SupporterOrg } from './shell';
-import { boxOf, type FormResult, useSupporterForm } from './use-supporter-form';
+import { answered, boxOf, type FormResult } from './supporter-form';
 
 // /fundraise: what a fundraiser is and what of it is public beside the form that starts one, or,
 // where the organisation has switched fundraisers off, the one card saying so with the way to give
 // directly. a start posts `intent=start` to the route standing here, which answers a refused box
-// through `lastResult` and a refusal of the whole post through `refused`.
+// through `lastResult` and a refusal of the whole post through `refused`. a starter has no session
+// to upload with, so the cropped photo is a `PHOTO_FILE_FIELD` file part of the start itself.
+
+/** Create my page, as the route's action parses it. */
+const START = defineForm({ id: START_FORM.id, schema: START_FORM.schema });
 
 export type StartFundraiserProps = {
 	readonly org: SupporterOrg;
@@ -23,8 +29,6 @@ export type StartFundraiserProps = {
 	readonly donateHref: string;
 	/** "Get a sign-in link". */
 	readonly signInHref: string;
-	/** where the photo's crop is posted; it answers `{ id }`. */
-	readonly uploadUrl: string;
 	/** the form's own result from a refused post. */
 	readonly lastResult?: FormResult;
 	/** why the last post was refused as a whole (`StartResult` in $lib/server/supporters/start.ts). */
@@ -64,15 +68,21 @@ export function StartFundraiser(props: StartFundraiserProps) {
 function StartLayout({
 	org,
 	signInHref,
-	uploadUrl,
 	lastResult,
 	refused,
 	sending,
 	challenge
 }: StartFundraiserProps) {
-	const [form, fields] = useSupporterForm(START_FORM, lastResult);
+	const [form, fields] = useAdminForm(START, answered(START, lastResult));
 	const [photoWorking, setPhotoWorking] = useState(false);
 	const onPhotoWorking = useCallback((working: boolean) => setPhotoWorking(working), []);
+	/* each answer refusing the photo puts the photo box back to empty, under its refusal: the crop
+	   it holds is the one refused, and posted again it would be refused again. an answer about
+	   anything else leaves the crop where it is. */
+	const [photoRefusals, setPhotoRefusals] = useState({ answer: lastResult, count: 0 });
+	if (refused === 'photo_missing' && photoRefusals.answer !== lastResult) {
+		setPhotoRefusals({ answer: lastResult, count: photoRefusals.count + 1 });
+	}
 	const refusal =
 		refused === undefined || refused === null || refused === 'photo_missing'
 			? form.errors?.[0]
@@ -120,10 +130,11 @@ function StartLayout({
 			</div>
 			<Form
 				method="post"
+				encType="multipart/form-data"
 				{...formProps}
 				onSubmit={(event) => {
-					// a second press while the first is in flight, or a submit before the photo's id is in,
-					// sends nothing.
+					// a second press while the first is in flight, or a submit before the crop is in, sends
+					// nothing.
 					if (sending || photoWorking) {
 						event.preventDefault();
 						return;
@@ -174,14 +185,10 @@ function StartLayout({
 					max={SUPPORTER_STORY_MAX}
 				/>
 				<PhotoField
-					id={fields.photo_id.id}
-					name={fields.photo_id.name}
-					photoId={
-						typeof fields.photo_id.initialValue === 'string' && fields.photo_id.initialValue !== ''
-							? fields.photo_id.initialValue
-							: null
-					}
-					uploadUrl={uploadUrl}
+					key={photoRefusals.count}
+					id={`${form.id}-photo`}
+					name={PHOTO_FILE_FIELD}
+					photoId={null}
 					error={refused === 'photo_missing' ? PHOTO_NOT_STORED : undefined}
 					onWorking={onPhotoWorking}
 				/>

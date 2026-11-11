@@ -58,6 +58,35 @@ export function linkInsert(
 }
 
 /**
+ * a link's row insert, as `linkInsert` makes it, behind a spend of every older unused link of the
+ * same purpose for the same supporter (and the same page, for `confirm`), for the caller's
+ * `batch()`: the newest link mailed is the one that works.
+ */
+export function replacingLinkInsert(
+	db: Db,
+	link: {
+		readonly supporterId: string;
+		readonly purpose: SupporterLinkPurpose;
+		readonly pageId: string | null;
+	},
+	now: Date
+) {
+	const fresh = linkInsert(db, link, now);
+	const spend = db
+		.update(supporterLink)
+		.set({ usedAt: now })
+		.where(
+			and(
+				eq(supporterLink.supporterId, link.supporterId),
+				eq(supporterLink.purpose, link.purpose),
+				link.pageId === null ? undefined : eq(supporterLink.supporterPageId, link.pageId),
+				isNull(supporterLink.usedAt)
+			)
+		);
+	return { token: fresh.token, statements: [spend, fresh.statement] as const };
+}
+
+/**
  * charges a press that mails a link against the caller's bucket and the address's, both on
  * `SIGN_IN_RATE_LIMITER`; `true` where either has nothing left. both are charged whichever refuses,
  * so a caller cannot spend one bucket while the other holds.
@@ -107,13 +136,59 @@ async function mailSignInLink(deps: SignInRequestDeps, email: string): Promise<v
 		.where(eq(supporter.email, email))
 		.limit(1);
 	if (!found) return;
-	const link = linkInsert(
+	const link = replacingLinkInsert(
 		deps.db,
 		{ supporterId: found.id, purpose: 'sign_in', pageId: null },
 		deps.now
 	);
-	await link.statement;
+	await deps.db.batch(link.statements);
 	await deps.sendLink({ to: email, token: link.token, arm: { kind: 'returning' } });
+}
+
+/**
+ * Send it again after a start: a fresh confirm link for the pending page `pageId`, which the
+ * supporter at `email` started, with every older unused confirm link for that page spent. answered
+ * and limited as `requestSignInLink` is, `sent` for every address and page, and nothing is mailed
+ * where the page is not that supporter's or is no longer pending.
+ */
+export async function resendConfirmLink(
+	deps: SignInRequestDeps,
+	request: Request,
+	asked: { readonly email: string; readonly pageId: string }
+): Promise<'sent' | 'too_many'> {
+	if (await overLinkLimit(deps.limiter, request, asked.email)) return 'too_many';
+	deps.defer(mailConfirmLink(deps, asked));
+	return 'sent';
+}
+
+async function mailConfirmLink(
+	deps: SignInRequestDeps,
+	asked: { readonly email: string; readonly pageId: string }
+): Promise<void> {
+	const [found] = await deps.db
+		.select({ supporterId: supporter.id, title: supporterPage.title })
+		.from(supporterPage)
+		.innerJoin(supporter, eq(supporter.id, supporterPage.supporterId))
+		.where(
+			and(
+				eq(supporterPage.id, asked.pageId),
+				eq(supporter.email, asked.email),
+				eq(supporterPage.status, 'pending')
+			)
+		)
+		.limit(1);
+	if (!found) return;
+	const link = replacingLinkInsert(
+		deps.db,
+		{ supporterId: found.supporterId, purpose: 'confirm', pageId: asked.pageId },
+		deps.now
+	);
+	await deps.db.batch(link.statements);
+	await deps.sendLink({
+		to: asked.email,
+		token: link.token,
+		arm: { kind: 'first', pageTitle: found.title }
+	});
 }
 
 /**

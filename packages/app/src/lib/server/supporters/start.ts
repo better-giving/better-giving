@@ -2,11 +2,13 @@ import { isNotNull, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { MAX_FORM_NAME } from '../../forms/input-schema';
 import { freeSlug, SUPPORTER_RESERVED_SEGMENTS } from '../../page/slug';
+import { PHOTO_FILE_FIELD } from '../../supporter/area/forms';
 import type { SupporterStart } from '../../supporters/input';
 import type { ChallengeResult } from '../api/challenge';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { page, supporter, supporterPage } from '../db/schema';
+import type { PostedPhoto } from '../images/intake';
 import { formInputValuesFrom, type ParsedForm, parseFormInput } from '../forms/form-input';
 import { ownedFormInsert, readForm } from '../forms/queries';
 import { supporterFundraisersEnabled } from '../org/queries';
@@ -14,12 +16,13 @@ import { ensureDonationPage } from '../pages/donation-page';
 import { SLUG_ATTEMPTS } from '../pages/queries';
 import type { RateLimiter } from '../runtime/rate-limiter';
 import { linkInsert, overLinkLimit, type SendLink } from './links';
+import { checkSupporterPhoto } from './photo';
 
 // Start a fundraiser: a member of the public makes a page of their own for this organisation. one
-// `batch()` writes the supporter (or finds the one at that address), the page `pending`, the
-// settings row it owns, and the confirm link; the link is mailed after the answer. the page goes
-// live when that link is opened (`signInWithLink` in ./links.ts), so an address typed by somebody
-// else puts nothing in public.
+// `batch()` writes the supporter (or finds the one at that address), the page `pending`, its photo
+// where one was posted with the start, the settings row it owns, and the confirm link; the link is
+// mailed after the answer. the page goes live when that link is opened (`signInWithLink` in
+// ./links.ts), so an address typed by somebody else puts nothing in public.
 //
 // the settings row is the Donation page's live row copied, as a campaign's is
 // (`createCampaign` in ../pages/campaign.ts), and made live: whether the page takes a gift is the
@@ -45,7 +48,7 @@ export type StartDeps = {
  * the page made, or why not: `too_many` over the caller's or the address's bucket, `closed` where
  * the organisation has switched fundraisers off, `challenge_failed` for a token or payload that did
  * not clear (a fresh challenge is the answer), `challenge_unavailable` where the check could not be
- * made, and `photo_missing` for a photo id no stored image carries.
+ * made, and `photo_missing` for a posted photo the photo rule refuses (./photo.ts).
  */
 export type StartResult =
 	| { readonly ok: true; readonly pageId: string; readonly slug: string }
@@ -59,10 +62,17 @@ export type StartResult =
 				| 'photo_missing';
 	  };
 
+/**
+ * `photo` is the start's own posted photo part, or null where none came: one is read only once the
+ * caller is under the limit and the spam check has cleared, and is stored in the same `batch()` as
+ * the page, so a refused start stores no photo. it is the only way a start gets a photo: the start
+ * schema states no photo id ($lib/supporters/input.ts).
+ */
 export async function startFundraiser(
 	deps: StartDeps,
 	request: Request,
-	input: SupporterStart
+	input: SupporterStart,
+	photo: FormDataEntryValue | null = null
 ): Promise<StartResult> {
 	if (await overLinkLimit(deps.limiter, request, input.email)) {
 		return { ok: false, reason: 'too_many' };
@@ -83,24 +93,26 @@ export async function startFundraiser(
 		};
 	}
 
+	const posted = isPosted(photo)
+		? await checkSupporterPhoto(deps.db, photo, PHOTO_FILE_FIELD)
+		: null;
+	if (posted !== null && !posted.ok) return { ok: false, reason: 'photo_missing' };
+
 	const settings = await copiedSettings(deps.db, input.title);
-	try {
-		const made = await insertFundraiser(deps, input, settings);
-		deps.defer(
-			deps.sendLink({
-				to: input.email,
-				token: made.token,
-				arm: { kind: 'first', pageTitle: input.title }
-			})
-		);
-		return { ok: true, pageId: made.pageId, slug: made.slug };
-	} catch (error) {
-		// the photo is the one key a caller names: every other id in the batch is minted here.
-		if (sqliteResultCode(error) === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
-			return { ok: false, reason: 'photo_missing' };
-		}
-		throw error;
-	}
+	const made = await insertFundraiser(deps, input, settings, posted);
+	deps.defer(
+		deps.sendLink({
+			to: input.email,
+			token: made.token,
+			arm: { kind: 'first', pageTitle: input.title }
+		})
+	);
+	return { ok: true, pageId: made.pageId, slug: made.slug };
+}
+
+/** whether a photo part came: a file input left empty posts a nameless file of no bytes. */
+function isPosted(photo: FormDataEntryValue | null): photo is FormDataEntryValue {
+	return photo !== null && photo !== '' && !(photo instanceof Blob && photo.size === 0);
 }
 
 /** the Donation page's live settings, named for the fundraiser and live. */
@@ -127,10 +139,11 @@ async function copiedSettings(
 }
 
 /**
- * the supporter, the page, its settings row and the confirm link in one `batch()`, at the first
- * address free when read: one no campaign and no other fundraiser holds, that no route answers at
- * the top level (`checkSlug`) or under `/f/`. a second start taking that address between the read
- * and the batch fails it whole on `supporter_page_slug_idx`, and the next attempt reads again.
+ * the supporter, the page, its posted photo, its settings row and the confirm link in one `batch()`,
+ * at the first address free when read: one no campaign and no other fundraiser holds, that no route
+ * answers at the top level (`checkSlug`) or under `/f/`. a second start taking that address between
+ * the read and the batch fails it whole on `supporter_page_slug_idx`, and the next attempt reads
+ * again.
  *
  * the supporter is named by its address in every statement after its own, because the row may be
  * the one this batch inserts or one already there, and nothing in a batch reads a returned id. an
@@ -139,7 +152,8 @@ async function copiedSettings(
 async function insertFundraiser(
 	deps: StartDeps,
 	input: SupporterStart,
-	{ settings, currency }: { settings: ParsedForm; currency: string }
+	{ settings, currency }: { settings: ParsedForm; currency: string },
+	photo: Extract<PostedPhoto, { ok: true }> | null
 ): Promise<{ pageId: string; slug: string; token: string }> {
 	const { db, now } = deps;
 	const supporterId = sql`(select ${supporter.id} from ${supporter} where ${supporter.email} = ${input.email})`;
@@ -159,6 +173,7 @@ async function insertFundraiser(
 		const link = linkInsert(db, { supporterId, purpose: 'confirm', pageId }, now);
 		try {
 			await db.batch([
+				...(photo?.statements ?? []),
 				db
 					.insert(supporter)
 					.values({ email: input.email, name: input.name, createdAt: now })
@@ -172,7 +187,7 @@ async function insertFundraiser(
 					story: input.story,
 					goalMinor: input.goal,
 					currency,
-					photoId: input.photo_id,
+					photoId: photo?.id ?? null,
 					formId: owned.id,
 					status: 'pending',
 					createdAt: now,

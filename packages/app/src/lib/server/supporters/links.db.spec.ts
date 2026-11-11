@@ -175,6 +175,13 @@ describe('opening a link', () => {
 		expect(await open(late, minutes(60))).toEqual({ ok: false });
 	});
 
+	it('stops working once a newer sign-in link is mailed', async () => {
+		const older = await mailedToken();
+		const newer = await mailedToken();
+		expect(await open(older)).toEqual({ ok: false });
+		expect((await open(newer)).ok).toBe(true);
+	});
+
 	it('refuses a token it never minted the same way', async () => {
 		expect(await open('not-a-token-anyone-was-sent')).toEqual({ ok: false });
 	});

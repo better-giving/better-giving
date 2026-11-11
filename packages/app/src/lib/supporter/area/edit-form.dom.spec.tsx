@@ -2,9 +2,26 @@ import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ACCOUNT, boxLabelled, button, mountScreen, ORG, one, submit } from './area.testing';
 import { EditFundraiser, type EditFundraiserProps, SAVED_FOR_MS } from './edit-form';
-import { EDIT_FORM } from './forms';
+import { EDIT_FORM, PHOTO_FILE_FIELD } from './forms';
 
 // /fundraise/pages/:id/edit: seeded from the page, posted as a save, Saved said beside the press.
+
+// happy-dom lays nothing out, so the crop card's frame is never measured: Use this photo here hands
+// back a frame as the card would, and the crop is a few bytes.
+vi.mock(import('./photo-crop-dialog'), () => ({
+	PhotoCropDialog: ({ onSave }) => (
+		<button type="button" onClick={() => onSave({ x: 0, y: 0, width: 1600, height: 900 })}>
+			Use this photo
+		</button>
+	)
+}));
+vi.mock(import('$lib/admin/settings/crop-image'), async (original) => ({
+	...(await original()),
+	cropImage: async () => ({
+		ok: true,
+		blob: new File([new Uint8Array([137, 80, 78, 71])], 'photo.png', { type: 'image/png' })
+	})
+}));
 
 const STORY =
 	'I drive the Thursday route for Harbor Light’s pantry, and I’ve seen what a full truck does for a street.';
@@ -63,6 +80,40 @@ describe('editing a page', () => {
 		expect(posted).toHaveLength(1);
 		expect(posted[0]?.get('intent')).toBe('save');
 		expect(posted[0]?.get('goal')).toBe('5,000');
+		expect(posted[0]?.get('photo_id')).toBe('img-1');
+		expect(posted[0]?.has(PHOTO_FILE_FIELD)).toBe(false);
+	});
+
+	it('uploads a new crop to the upload address and posts the id it answers', async () => {
+		vi.stubGlobal(
+			'createImageBitmap',
+			vi.fn(async () => ({ width: 1600, height: 900, close() {} }))
+		);
+		const uploaded: FormData[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init: RequestInit) => {
+				expect(url).toBe('/fundraise/photos');
+				uploaded.push(init.body as FormData);
+				return Response.json({ id: 'img-2' });
+			})
+		);
+		const { root, posted } = edit();
+		const chooser = one<HTMLInputElement>(root, 'input[type="file"]');
+		const file = new File(['x'], 'pantry.jpg', { type: 'image/jpeg' });
+		Object.defineProperty(chooser, 'files', { value: [file], configurable: true });
+		await act(async () => {
+			chooser.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		await act(async () => button(root, 'Use this photo').click());
+		expect(uploaded).toHaveLength(1);
+		expect(uploaded[0]?.get('file')).toBeInstanceOf(File);
+		expect(one<HTMLImageElement>(root, 'img.sa-photo-frame').getAttribute('src')).toBe(
+			'/image/img-2'
+		);
+		await submit(one<HTMLFormElement>(root, `form#${EDIT_FORM.id}`));
+		expect(posted[0]?.get('photo_id')).toBe('img-2');
+		expect(posted[0]?.has(PHOTO_FILE_FIELD)).toBe(false);
 	});
 
 	it('says Saved beside the press for a few seconds, focus staying on the press', () => {

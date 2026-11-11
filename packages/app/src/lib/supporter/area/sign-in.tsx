@@ -1,18 +1,23 @@
 import { getFormProps } from '@conform-to/react';
 import { useEffect, useRef, useState } from 'react';
 import { Form } from 'react-router';
+import { useAdminForm } from '$lib/admin/use-admin-form';
+import { defineForm } from '$lib/forms/definition';
 import { NoticeCard } from './cards';
 import { TextField } from './field';
 import { INTENT, INTENTS, SIGN_IN_FORM } from './forms';
 import { Mark } from './glyph';
 import { SupporterShell, type SupporterOrg } from './shell';
-import { boxOf, type FormResult, useSupporterForm } from './use-supporter-form';
+import { answered, boxOf, type FormResult } from './supporter-form';
 
 // the screens between a supporter and their own pages, none of which says whether an address has a
 // fundraiser here: Check your email after a start or a sign-in request, the sign-in request itself,
 // the one refusal an expired, used or unknown link gets, and the limit a caller or an address hits.
 // every post is an ordinary form post to the route standing here: `request-link` from the email box,
 // `resend` from Send it again.
+
+/** "Email me a link", as the route's action parses it. */
+const SIGN_IN = defineForm({ id: SIGN_IN_FORM.id, schema: SIGN_IN_FORM.schema });
 
 /** how long Send it again stays closed after a resend. */
 export const RESEND_WAIT_SECONDS = 60;
@@ -139,10 +144,10 @@ export type SignInProps = {
 
 /** /fundraise/sign-in, and the screen an expired or used link lands on. */
 export function SignIn({ org, state, lastResult, sending }: SignInProps) {
-	const [form, fields] = useSupporterForm(
-		SIGN_IN_FORM,
-		lastResult,
-		state.kind === 'too-many' ? { email: state.email } : undefined
+	const [form, fields] = useAdminForm(
+		SIGN_IN,
+		answered(SIGN_IN, lastResult),
+		state.kind === 'too-many' ? { defaultValue: { email: state.email } } : {}
 	);
 	const closed = state.kind === 'too-many';
 	const box = (

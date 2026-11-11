@@ -5,7 +5,7 @@ import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/do
 import { useShowMoreMessages } from '$lib/donate/show-more';
 import { staffGate } from '$lib/server/auth/gate';
 import { readPage } from '$lib/server/pages/queries';
-import { loadPageView, refusedPage } from '$lib/server/pages/view';
+import { loadPageView, refusedPage, withFundraiserEntry } from '$lib/server/pages/view';
 import { database, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/preview.$pageId';
@@ -58,7 +58,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	);
 	if (loaded.kind === 'refused') return refusedPage();
 	// the instant donor messages' ages are counted from, as /donate's loader hands it.
-	return { ...loaded, now: new Date(now).toISOString() };
+	return { ...(await withFundraiserEntry(db, loaded)), now: new Date(now).toISOString() };
 }
 
 export function headers(): Headers {

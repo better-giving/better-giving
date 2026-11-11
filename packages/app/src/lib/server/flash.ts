@@ -1,6 +1,7 @@
 import { createCookie, redirect } from 'react-router';
 
-// how the outcome of a write in /admin survives its own redirect.
+// how the outcome of a write in /admin, or on a supporter's screens under /fundraise, survives its
+// own redirect.
 //
 // every write on these screens is POST-redirect-GET, so the thing that just happened has to
 // reach the GET that lands. it travels as a cookie the redirect sets and the landing `loader`
@@ -64,12 +65,37 @@ export const CREATED_FLASH = 'admin_created';
 export const PASSWORD_RESET_FLASH = 'password_reset';
 
 /**
- * the three names above and nothing else.
+ * the address a supporter's link was just mailed to, and what the link does: `start <page id>
+ * <address>` or `sign-in <address>`. taken by `/fundraise/sent` alone, which says the address back,
+ * so it travels here and never in that screen's address.
+ */
+export const SUPPORTER_SENT_FLASH = 'supporter_sent';
+
+/**
+ * a supporter's page just taken live by its confirm link, `published`. taken by that page's manage
+ * screen, `/fundraise/pages/<id>`, which leads with Your page is live on that one visit.
+ */
+export const SUPPORTER_PUBLISHED_FLASH = 'supporter_published';
+
+/**
+ * why a supporter was sent to `/fundraise/sign-in`: `expired` for a link that no longer opens, or
+ * `too-many <address>` for a resend over its limit. taken by that screen alone.
+ */
+export const SUPPORTER_SIGN_IN_FLASH = 'supporter_sign_in';
+
+/**
+ * the names above and nothing else.
  *
- * a union rather than a `string`, so a screen cannot invent a fourth name and get a flash nothing
+ * a union rather than a `string`, so a screen cannot invent another name and get a flash nothing
  * takes — the whole scheme rests on every name having exactly one consumer.
  */
-export type FlashName = typeof SAVED_FLASH | typeof CREATED_FLASH | typeof PASSWORD_RESET_FLASH;
+export type FlashName =
+	| typeof SAVED_FLASH
+	| typeof CREATED_FLASH
+	| typeof PASSWORD_RESET_FLASH
+	| typeof SUPPORTER_SENT_FLASH
+	| typeof SUPPORTER_PUBLISHED_FLASH
+	| typeof SUPPORTER_SIGN_IN_FLASH;
 
 /**
  * how long a flash nobody lands on stays in the jar.
@@ -103,25 +129,16 @@ type Flash = { to: string; marker: string };
  * stores against `pnpm dev`, which serves over http. it is stated per response instead, off the
  * scheme the request arrived on.
  */
+const flashCookie = (name: FlashName) =>
+	createCookie(name, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: MAX_AGE_SECONDS });
+
 const cookies: Record<FlashName, ReturnType<typeof createCookie>> = {
-	[SAVED_FLASH]: createCookie(SAVED_FLASH, {
-		path: '/',
-		httpOnly: true,
-		sameSite: 'lax',
-		maxAge: MAX_AGE_SECONDS
-	}),
-	[CREATED_FLASH]: createCookie(CREATED_FLASH, {
-		path: '/',
-		httpOnly: true,
-		sameSite: 'lax',
-		maxAge: MAX_AGE_SECONDS
-	}),
-	[PASSWORD_RESET_FLASH]: createCookie(PASSWORD_RESET_FLASH, {
-		path: '/',
-		httpOnly: true,
-		sameSite: 'lax',
-		maxAge: MAX_AGE_SECONDS
-	})
+	[SAVED_FLASH]: flashCookie(SAVED_FLASH),
+	[CREATED_FLASH]: flashCookie(CREATED_FLASH),
+	[PASSWORD_RESET_FLASH]: flashCookie(PASSWORD_RESET_FLASH),
+	[SUPPORTER_SENT_FLASH]: flashCookie(SUPPORTER_SENT_FLASH),
+	[SUPPORTER_PUBLISHED_FLASH]: flashCookie(SUPPORTER_PUBLISHED_FLASH),
+	[SUPPORTER_SIGN_IN_FLASH]: flashCookie(SUPPORTER_SIGN_IN_FLASH)
 };
 
 /**

@@ -12,9 +12,10 @@ import { PHOTO_WIDTH_MIN, photoSourceRefusal } from './photo-crop';
 // photo (Replace photo once there is one) and Remove. a chosen file is measured first, and one too
 // small for a page is turned down under the press without a crop; the rest open the crop card
 // (./photo-crop-dialog.tsx), and Use this photo crops and resizes the frame here
-// (`cropImage` in $lib/admin/settings/crop-image.ts) and posts it to `uploadUrl`, whose answer's
-// `id` is what the form posts as `photo_id`. a refusal, the server's included, is said under the
-// press and describes it.
+// (`cropImage` in $lib/admin/settings/crop-image.ts). given an `uploadUrl`, the crop is posted there
+// and its answer's `id` is what the form posts under `name`; given none, the crop is the file the
+// form posts under `name` itself, which a form doing so sends as `multipart/form-data`. a refusal,
+// the server's included, is said under the press and describes it.
 
 /** what `uploadUrl` answers: the stored photo's id, or why it was not stored. */
 type UploadAnswer = { readonly id: string } | { readonly error: string };
@@ -54,24 +55,42 @@ async function upload(uploadUrl: string, blob: Blob): Promise<string | null> {
 export type PhotoFieldProps = {
 	/** the box's id; `${id}-hint` and `${id}-err` describe the press. */
 	readonly id: string;
-	/** the hidden box the stored photo's id posts under. */
+	/**
+	 * what the photo posts under: the stored photo's id in a hidden box where there is an
+	 * `uploadUrl`, the cropped file itself where there is none.
+	 */
 	readonly name: string;
 	/** the photo the page has now, or null. */
 	readonly photoId: string | null;
-	/** where a cropped photo is posted; it answers `{ id }`. */
-	readonly uploadUrl: string;
-	/** a refusal the server answered with, such as a photo id no stored image carries. */
+	/** where a cropped photo is posted, answering `{ id }`; absent, the crop posts with the form. */
+	readonly uploadUrl?: string | undefined;
+	/** a refusal the server answered with, about the photo the form last posted. */
 	readonly error?: string | undefined;
-	/** told while a crop or an upload runs, so the form holds its submit until the id is in. */
+	/** told while a crop or an upload runs, so the form holds its submit until the photo is in. */
 	readonly onWorking: (working: boolean) => void;
 };
 
 export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: PhotoFieldProps) {
 	const [stored, setStored] = useState(photoId);
+	/** the preview address of a crop held to post with the form, or null. */
+	const [held, setHeld] = useState<string | null>(null);
 	const [cropping, setCropping] = useState<File | null>(null);
 	const [working, setWorking] = useState(false);
 	const [refused, setRefused] = useState<string | null>(null);
 	const chooser = useRef<HTMLInputElement>(null);
+	const posted = useRef<HTMLInputElement>(null);
+
+	// a preview's address lives as long as the crop it draws.
+	useEffect(() => (held === null ? undefined : () => URL.revokeObjectURL(held)), [held]);
+
+	/* the crop goes into the posted file box's `files`, which a script can set only as a whole
+	   `FileList` and only one a `DataTransfer` made: so the box holds exactly the crop, or nothing. */
+	const hold = (file: File | null) => {
+		const list = new DataTransfer();
+		if (file !== null) list.items.add(file);
+		if (posted.current !== null) posted.current.files = list.files;
+		setHeld(file === null ? null : URL.createObjectURL(file));
+	};
 
 	useEffect(() => onWorking(working), [working, onWorking]);
 
@@ -92,10 +111,20 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 		setCropping(null);
 		setWorking(true);
 		const cropped = await cropImage(file, frame, 'photo.png', PHOTO_REFUSED);
-		const storedId = cropped.ok ? await upload(uploadUrl, cropped.blob) : null;
+		if (!cropped.ok) {
+			setWorking(false);
+			setRefused(cropped.refused);
+			return;
+		}
+		if (uploadUrl === undefined) {
+			setWorking(false);
+			hold(new File([cropped.blob], 'photo.png', { type: cropped.blob.type }));
+			return;
+		}
+		const storedId = await upload(uploadUrl, cropped.blob);
 		setWorking(false);
 		if (storedId !== null) setStored(storedId);
-		else setRefused(cropped.ok ? PHOTO_NOT_STORED : cropped.refused);
+		else setRefused(PHOTO_NOT_STORED);
 	};
 
 	const dropped = (event: DragEvent<HTMLElement>) => {
@@ -105,7 +134,8 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 	};
 
 	// the server's refusal is about the photo it was sent, and goes once another is chosen.
-	const shown = refused ?? (stored === photoId ? error : undefined);
+	const shown = refused ?? (stored === photoId && held === null ? error : undefined);
+	const src = held ?? (stored === null ? null : imageSrc(stored));
 	return (
 		<fieldset className="ds-field sa-fieldset">
 			<legend className="ds-label">
@@ -115,9 +145,13 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 				Shown at the top of your page. At least {PHOTO_WIDTH_MIN} pixels wide, as a PNG, JPEG or
 				WebP.
 			</p>
-			<input type="hidden" name={name} value={stored ?? ''} />
+			{uploadUrl === undefined ? (
+				<input ref={posted} type="file" name={name} hidden tabIndex={-1} />
+			) : (
+				<input type="hidden" name={name} value={stored ?? ''} />
+			)}
 			<div className="sa-photo">
-				{stored === null ? (
+				{src === null ? (
 					// registry gap: no dropzone; the well takes a dropped file, and the press beside it is
 					// the way in for a keyboard.
 					<div
@@ -127,7 +161,7 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 						onDrop={dropped}
 					/>
 				) : (
-					<img className="sa-photo-frame" src={imageSrc(stored)} alt="" />
+					<img className="sa-photo-frame" src={src} alt="" />
 				)}
 				<div className="sa-row">
 					<button
@@ -141,13 +175,13 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 						}}
 					>
 						<Mark name="image-up" />
-						{working ? 'Adding your photo…' : stored === null ? 'Add photo' : 'Replace photo'}
+						{working ? 'Adding your photo…' : src === null ? 'Add photo' : 'Replace photo'}
 					</button>
-					{stored === null || working ? null : (
+					{src === null || working ? null : (
 						<button
 							type="button"
 							className="ds-btn ds-btn-ghost ds-btn-sm"
-							onClick={() => setStored(null)}
+							onClick={() => (held === null ? setStored(null) : hold(null))}
 						>
 							<Mark name="trash" />
 							Remove

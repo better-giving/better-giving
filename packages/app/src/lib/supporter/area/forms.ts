@@ -18,6 +18,13 @@ export const SIGN_IN_FORM = defineForm({
 	schema: SUPPORTER_SIGN_IN_INPUT
 });
 
+/**
+ * the hidden box a start's spam check posts its answer in — a Turnstile token or an ALTCHA payload,
+ * whichever the deployment runs. no schema states it: the check reads it, and never the form's
+ * parse.
+ */
+export const CHALLENGE_FIELD = 'challenge';
+
 /** the hidden box each post names what it asks for in; no schema states it. */
 export const INTENT = 'intent';
 
@@ -32,3 +39,9 @@ export const INTENTS = {
 } as const;
 
 export type Intent = (typeof INTENTS)[keyof typeof INTENTS];
+
+/**
+ * the file part a start posts its cropped photo in, beside the boxes. no schema states it: the
+ * start's write reads it, and never the form's parse.
+ */
+export const PHOTO_FILE_FIELD = 'photo';

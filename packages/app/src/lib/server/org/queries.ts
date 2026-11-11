@@ -223,12 +223,12 @@ export async function supporterFundraisersEnabled(db: Db): Promise<boolean> {
 }
 
 /**
- * writes the supporter fundraisers setting, and nothing beside it. an update and never an insert,
+ * sets the supporter fundraisers setting, and nothing beside it. an update and never an insert,
  * for `updateOrgNotificationEmail`'s reason: with no profile there is no row to hold it, so turning
  * it off is `no-profile` and turning it on is already what no profile reads as. no version: the
  * setting is one switch, and the press is the whole of what it says.
  */
-export async function updateSupporterFundraisersEnabled(
+export async function setSupporterFundraisersEnabled(
 	db: Db,
 	enabled: boolean
 ): Promise<Exclude<OrgSave, 'stale'>> {

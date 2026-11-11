@@ -71,16 +71,19 @@ const PHOTO_ID = optionalText(200);
 const PAGE_BOXES = {
 	title: text(SUPPORTER_TITLE_MAX),
 	goal: GOAL,
-	story: text(SUPPORTER_STORY_MAX),
-	photo_id: PHOTO_ID
+	story: text(SUPPORTER_STORY_MAX)
 };
 
-/** Start a fundraiser. */
+/**
+ * Start a fundraiser. no photo id: a starter has no session to upload with, so the photo is the
+ * start's own file part (`PHOTO_FILE_FIELD` in $lib/supporter/area/forms.ts), and an id posted
+ * beside it is dropped by the parse.
+ */
 export const SUPPORTER_START_INPUT = z.object({ name: NAME, email: EMAIL, ...PAGE_BOXES });
 export type SupporterStart = z.output<typeof SUPPORTER_START_INPUT>;
 
 /** a supporter's edit of their own page: the address and the email are not boxes. */
-export const SUPPORTER_EDIT_INPUT = z.object({ name: NAME, ...PAGE_BOXES });
+export const SUPPORTER_EDIT_INPUT = z.object({ name: NAME, ...PAGE_BOXES, photo_id: PHOTO_ID });
 export type SupporterEdit = z.output<typeof SUPPORTER_EDIT_INPUT>;
 
 /** "Email me a link". */
@@ -89,10 +92,8 @@ export const SUPPORTER_SIGN_IN_INPUT = z.object({ email: EMAIL });
 /** staff hiding a page, with a note for staff. */
 export const SUPPORTER_HIDE_INPUT = z.object({ note: optionalText(SUPPORTER_HIDE_NOTE_MAX) });
 
-/** the organisation setting: a checkbox, which posts `on` ticked and no key unticked. */
-export const SUPPORTER_SETTING_INPUT = z.object({
-	enabled: z
-		.literal('on')
-		.optional()
-		.transform((ticked) => ticked === 'on')
-});
+/**
+ * the organisation setting: a checkbox, which posts `on` ticked and no key unticked. a boolean, which
+ * conform reads `on` into and `defineForm` ($lib/forms/definition.ts) lets arrive absent.
+ */
+export const SUPPORTER_SETTING_INPUT = z.object({ enabled: z.boolean().default(false) });

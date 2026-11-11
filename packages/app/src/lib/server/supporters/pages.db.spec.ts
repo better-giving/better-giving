@@ -7,6 +7,7 @@ import { supporter, supporterPage } from '$lib/server/db/schema';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { setNoteHidden } from '$lib/server/pages/messages';
 import { gift, noteGift, refund } from '$lib/server/pages/settled-gifts.testing';
+import { hideFundraiser } from './admin';
 import { emptySupporterTables, pendingPage, STARTED_AT } from './fundraiser.testing';
 import { signInWithLink } from './links';
 import {
@@ -69,6 +70,7 @@ describe('the list of a supporter’s own pages', () => {
 				hidden: false,
 				goalMinor: 50_000,
 				currency: 'USD',
+				endedAt: null,
 				raisedMinor: 0,
 				gifts: 0
 			},
@@ -80,9 +82,18 @@ describe('the list of a supporter’s own pages', () => {
 				hidden: false,
 				goalMinor: 50_000,
 				currency: 'USD',
+				endedAt: null,
 				raisedMinor: 10_000,
 				gifts: 1
 			}
+		]);
+	});
+
+	it('says when an ended page ended', async () => {
+		const page = await livePage();
+		await endOwnFundraiser(db, page.supporterId, page.pageId, LATER);
+		expect(await listOwnFundraisers(db, page.supporterId)).toMatchObject([
+			{ id: page.pageId, status: 'ended', endedAt: LATER }
 		]);
 	});
 });
@@ -126,6 +137,19 @@ describe('one page, as its supporter manages it', () => {
 				shown: { name: 'Ada O.', note: 'Go Maya!' }
 			}
 		]);
+	});
+
+	it('carries the note staff left when they hid it, word for word', async () => {
+		const page = await livePage();
+		expect(await readOwnFundraiser(db, page.supporterId, page.pageId)).toMatchObject({
+			hidden: false,
+			hiddenNote: null
+		});
+		await hideFundraiser(db, page.pageId, 'Please take the phone number out of the story.', LATER);
+		expect(await readOwnFundraiser(db, page.supporterId, page.pageId)).toMatchObject({
+			hidden: true,
+			hiddenNote: 'Please take the phone number out of the story.'
+		});
 	});
 
 	it('stops naming a donor whose note staff hid', async () => {
