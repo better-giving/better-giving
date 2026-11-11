@@ -5,6 +5,7 @@ import { imageSrc } from '../page/image-src';
 import type { PageType } from '../page/keys';
 import { type CampaignShape, campaignShape } from '../page/shape';
 import { isEmptyDocument } from '../rich-text/document';
+import { FundraiserEntryCard } from '../supporter/public/entry-card';
 import { PageRoot } from './page-root';
 import type { DonateProfile } from './profile';
 import { AboutUs } from './sections/about-us';
@@ -57,6 +58,10 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 //   the name is always drawn there, so the logo beside it says nothing of its own, and a logo the
 //   masthead would let stand in for the name is drawn whole at its own shape rather than in the
 //   square.
+//
+// while Supporter fundraisers is on (`fundraiserEntry`), the entry card that starts one stands after
+// the page's content: under the profile head between the videos and the messages from donors, and
+// on a campaign or the Donation page's own layout after the whole layout.
 //
 // every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
 // the letter's and the feature's box straight after the cover and the title, the goal and the lede
@@ -123,6 +128,11 @@ export type PageViewProps = {
 	 * counted from; absent, the section is not drawn whatever the profile holds.
 	 */
 	readonly donorMessages?: DonorMessagesWiring | undefined;
+	/**
+	 * whether Supporter fundraisers is on (`supporterFundraisersEnabled`): draws the entry card after
+	 * the page's content and before its messages. off or absent, nothing stands in its place.
+	 */
+	readonly fundraiserEntry?: boolean | undefined;
 	/** drawn as the preview of a draft: a press reaches nothing. */
 	readonly preview?: boolean;
 	/** the caller's placement of the page root. */
@@ -171,6 +181,11 @@ export function PageView(props: PageViewProps) {
 				) : (
 					<ProfileLayout {...props} profile={profile} />
 				)}
+				{props.fundraiserEntry === true && profile === null ? (
+					<div className="page-in page-fundraise-area" {...area('fundraise')}>
+						<FundraiserEntryCard orgName={org.name} />
+					</div>
+				) : null}
 			</main>
 			<section className="page-end" id={SHARE_ID} aria-labelledby={shareHeading} {...area('share')}>
 				<div className="page-in">
@@ -414,15 +429,16 @@ function ProfileLayout(props: PageViewProps & { readonly profile: DonateProfile 
 
 /**
  * what stands under the who on a phone and beside the box wide, in one area: About us, the videos,
- * then the messages from donors. each draws only where it has something, and with none of them
- * nothing is drawn.
+ * the entry card that starts a fundraiser, then the messages from donors. each draws only where it
+ * has something, and with none of them nothing is drawn.
  */
 function ProfileMore(props: PageViewProps & { readonly profile: DonateProfile }) {
 	const { profile, donorMessages } = props;
 	const about = profile.mission !== null || profile.vision !== null;
 	const videos = profile.videos.length > 0;
+	const entry = props.fundraiserEntry === true;
 	const messages = profile.messages.total > 0 ? donorMessages : undefined;
-	if (!about && !videos && messages === undefined) return null;
+	if (!about && !videos && !entry && messages === undefined) return null;
 	return (
 		<div className="page-profile-more" {...area('more')}>
 			{about ? (
@@ -431,6 +447,11 @@ function ProfileMore(props: PageViewProps & { readonly profile: DonateProfile })
 				</section>
 			) : null}
 			<Videos videos={profile.videos} />
+			{entry ? (
+				<div {...area('fundraise')}>
+					<FundraiserEntryCard orgName={profile.name} />
+				</div>
+			) : null}
 			{messages === undefined ? null : (
 				<DonorMessages {...messages} initial={profile.messages} locale={profile.money.locale} />
 			)}

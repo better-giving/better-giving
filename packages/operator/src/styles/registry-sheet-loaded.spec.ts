@@ -49,7 +49,14 @@ describe('the registry variables sheet', () => {
 // this package opens. so each entry sheet must import every one of them into the `registry` layer
 // packages/app/src/app.css orders, and every `ds-*` class a component spells must be one of theirs.
 
-const COMPONENT_SHEETS = ['button-css', 'badge-css', 'card-css', 'field-css'];
+const COMPONENT_SHEETS = [
+	'button-css',
+	'badge-css',
+	'card-css',
+	'field-css',
+	'switch-css',
+	'state-card-css'
+];
 
 /** the specifiers a sheet `@import`s into the `registry` layer. */
 const layeredImportsOf = (css: string) =>

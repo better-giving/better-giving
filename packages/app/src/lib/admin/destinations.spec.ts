@@ -13,6 +13,7 @@ describe('the rail', () => {
 		expect(DESTINATIONS.map((d) => d.href)).toEqual([
 			'/admin',
 			'/admin/campaigns',
+			'/admin/supporter-pages',
 			'/admin/forms',
 			'/admin/programs',
 			'/admin/donors',
@@ -32,7 +33,15 @@ describe('the rail', () => {
 	it('stands the dashboard alone, then the records of giving, then who can sign in, the settings and the payments, then the integrations, then the books', () => {
 		expect(DESTINATION_GROUPS.map((group) => group.destinations.map((d) => d.label))).toEqual([
 			['Dashboard'],
-			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
+			[
+				'Campaigns',
+				'Supporter pages',
+				'Donation forms',
+				'Programs',
+				'Donors',
+				'Gifts',
+				'Recurring gifts'
+			],
 			['Members', 'Settings', 'Payments'],
 			['Zapier', 'API', 'Webhooks', 'AI'],
 			['Books']
@@ -60,7 +69,15 @@ describe('who the rail is drawn for', () => {
 			destinationGroupsFor(false).map((group) => group.destinations.map((d) => d.label))
 		).toEqual([
 			['Dashboard'],
-			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
+			[
+				'Campaigns',
+				'Supporter pages',
+				'Donation forms',
+				'Programs',
+				'Donors',
+				'Gifts',
+				'Recurring gifts'
+			],
 			['Members'],
 			['Books']
 		]);
@@ -75,6 +92,23 @@ describe('the bar at a phone width', () => {
 			'Donors',
 			'Gifts'
 		]);
+	});
+});
+
+describe('the Supporter pages cell', () => {
+	it('stands after Campaigns, marked with the user-plus glyph, on the More sheet and for members too', () => {
+		const supporter = DESTINATIONS.find((d) => d.href === '/admin/supporter-pages');
+
+		expect(supporter).toEqual({
+			href: '/admin/supporter-pages',
+			label: 'Supporter pages',
+			short: 'Supporter',
+			mark: 'user-plus'
+		});
+		expect(currentDestination('/admin/supporter-pages')).toEqual({
+			label: 'Supporter pages',
+			kind: 'page'
+		});
 	});
 });
 

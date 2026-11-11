@@ -344,6 +344,8 @@ body {
 	--page-video-spinner: 1.25rem;
 	--page-video-caption-gap: 0.125rem;
 	--page-profile-measure: 62ch;
+	/* the entry card's widest, where it stands under a campaign or the Donation page's own layout. */
+	--page-fundraise-width: 44rem;
 	--page-w-display: 700;
 	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header says why */
 	--page-scrim: linear-gradient(
@@ -1338,6 +1340,70 @@ body {
 
 .page-messages-more {
 	gap: var(--_sp2);
+}
+
+/* the entry card that starts a supporter's fundraiser ($lib/supporter/public/entry-card.tsx): a
+   plane holding a heading, one sentence, and one secondary press with its note beside it. on a
+   phone the press runs the card's width and the note wraps under it; from 30rem they share a row.
+   under the profile head the card is one of the more area's sections and takes its column; under a
+   campaign or the Donation page's own layout it stands a section's step below the layout, at
+   `--page-fundraise-width`. the press is the registry's, linked beside this sheet, in its own ink
+   rather than a link's. */
+.page-fundraise-area {
+	margin-block-start: var(--page-gap-section);
+}
+
+.page-fundraise-area > .page-fundraise {
+	max-inline-size: var(--page-fundraise-width);
+}
+
+.page-fundraise {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp4);
+	padding: var(--page-profile-raised-inset);
+	background: var(--page-plane);
+	border: var(--_border) solid var(--page-plane-edge);
+	border-radius: var(--page-plane-radius);
+}
+
+.page-fundraise-heading {
+	font-family: var(--page-font-display);
+	font-size: var(--page-profile-subhead);
+	line-height: var(--page-profile-lh-subhead);
+	font-weight: var(--_w-bold);
+	text-wrap: balance;
+}
+
+.page-fundraise > p {
+	max-inline-size: var(--page-profile-measure);
+}
+
+.page-fundraise-act {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--_sp3) var(--_sp4);
+}
+
+.page-fundraise-act > .ds-btn {
+	inline-size: 100%;
+}
+
+.page-ground .page-fundraise-act > a.ds-btn {
+	color: inherit;
+}
+
+.page-fundraise-note {
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--page-quiet);
+}
+
+@container page (min-width: 30rem) {
+	.page-fundraise-act > .ds-btn {
+		inline-size: auto;
+	}
 }
 
 /* the turning ring a busy press shows beside its label. the registry has no spinner yet

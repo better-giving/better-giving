@@ -1,0 +1,548 @@
+/*
+ * the supporter's own screens: the start form, the sign-in screens, the list of their pages, a
+ * page's manage screen and its edit form (./*.tsx). they stand on the donor page's root
+ * ($lib/donate/page-root.tsx) and are linked after its sheets (./links.ts), so every value here is
+ * a name one of those declares: the form's private `--_` steps (packages/form/src/styles/tokens.css),
+ * the page's `--page-*` layer ($lib/donate/page.css) and the registry's roles (variables). none is
+ * written here; `48rem` is the page container's own width step, the one length page.css writes at
+ * its call site, and `100vmax` is the cropper's scrim reaching past any photo.
+ *
+ * the registry's component sheets draw the controls and the cards (button, badge, field, progress,
+ * notice-card, state-card, table); what is here places them, and draws the five things the
+ * registry has no part for, each marked where it stands: the input's prefix, the story's counter,
+ * the photo's well, the icon tile, and the dialog's surface.
+ */
+
+/* the screen under the bar. */
+.sa-main {
+	display: grid;
+	gap: var(--page-gap-group);
+	align-content: start;
+	padding-block: var(--page-gap-lead) var(--page-gap-section);
+}
+
+/* ── the bar's end ── */
+
+/* the signed-in address and Sign out, where a donor page's Share stands. */
+.sa-account {
+	display: flex;
+	align-items: center;
+	gap: var(--_sp2);
+	min-inline-size: 0;
+	margin-inline-start: auto;
+}
+
+.sa-account-email {
+	min-inline-size: 0;
+	overflow-wrap: anywhere;
+	font-size: var(--_t-sm);
+	color: var(--page-quiet);
+}
+
+/* ── type ── */
+
+.sa-h1 {
+	font-family: var(--page-font-display);
+	font-size: var(--page-display);
+	line-height: var(--page-lh-display);
+	letter-spacing: var(--page-tracking-display);
+	font-weight: var(--page-w-display);
+	color: var(--_n12);
+	text-wrap: balance;
+}
+
+.sa-h1-sm {
+	font-family: var(--page-font-display);
+	font-size: var(--page-heading);
+	line-height: var(--page-lh-heading);
+	letter-spacing: var(--page-tracking-heading);
+	font-weight: var(--page-w-display);
+	color: var(--_n12);
+}
+
+.sa-h1-sm:focus {
+	outline: none;
+}
+
+.sa-h2,
+.sa-dialog-title {
+	font-family: var(--page-font-display);
+	font-size: var(--_t-xl);
+	line-height: var(--_lh-tight);
+	font-weight: var(--_w-bold);
+	color: var(--_n12);
+}
+
+.sa-lede {
+	max-inline-size: var(--page-measure-lede);
+	font-size: var(--page-lede);
+	line-height: var(--page-lh-lede);
+	color: var(--page-quiet);
+}
+
+.sa-quiet {
+	font-size: var(--_t-sm);
+	line-height: var(--_lh-body);
+	color: var(--page-quiet);
+}
+
+.sa-quiet b,
+.sa-steps b {
+	font-weight: var(--_w-bold);
+	color: var(--_n12);
+}
+
+.sa-note {
+	font-size: var(--_t-sm);
+	color: var(--_n12);
+}
+
+.sa-address {
+	font-family: var(--page-font-mono);
+	font-size: var(--_t-xs);
+	color: var(--page-quiet);
+	overflow-wrap: anywhere;
+}
+
+.sa-link {
+	text-decoration: underline;
+}
+
+.sa-link:hover {
+	color: var(--link-hover);
+}
+
+.sa-optional {
+	font-weight: var(--_w-normal);
+	color: var(--page-quiet);
+}
+
+/* ── the registry's controls on this page ── */
+
+/* `.page-ground a` in $lib/donate/page.css inks every link in the page's accent, and it outranks a
+   registry button's single class, so a link drawn as a button takes back the ink its variant draws
+   (button-css: `--primary-fg` on the primary, gray 12 on the secondary, the text's own on the
+   ghost). */
+.sa-main a.ds-btn-primary {
+	color: var(--primary-fg);
+}
+
+.sa-main a.ds-btn-secondary {
+	color: var(--gray-12);
+}
+
+.sa-main a.ds-btn-ghost {
+	color: var(--_n12);
+}
+
+.sa-mark {
+	flex: none;
+	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
+}
+
+/* a row of presses, or a badge beside an address. */
+.sa-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--_sp3);
+}
+
+/* registry gap: field-css has no prefix slot. the sign sits in the container's own box, at the
+   field's inset, and the input after it starts a step in. */
+.sa-prefix {
+	padding-inline-start: var(--_sp4);
+	color: var(--page-quiet);
+}
+
+.ds-field-input-container > .sa-prefixed {
+	padding-inline-start: var(--_sp1);
+}
+
+.sa-story {
+	resize: vertical;
+}
+
+/* registry gap: field-css has no character counter. it stands at the box's end, under any refusal. */
+.sa-count {
+	margin-block-start: var(--_sp1);
+	text-align: end;
+	font-size: var(--_t-xs);
+	color: var(--page-quiet);
+}
+
+/* a refusal of the whole post, said above the press, in the refusal's ink. */
+.sa-refused {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--_sp2);
+	font-size: var(--_t-sm);
+	color: var(--destructive-subtle-fg);
+}
+
+.sa-saved {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--_sp1);
+	font-size: var(--_t-sm);
+	font-weight: var(--_w-bold);
+	color: var(--success-subtle-fg);
+}
+
+/* ── planes ── */
+
+/* a plane on the page's wash, as the donor page draws one. */
+.sa-plane {
+	background: var(--page-plane);
+	border: var(--_border) solid var(--page-plane-edge);
+	border-radius: var(--page-plane-radius);
+}
+
+.sa-form,
+.sa-card {
+	display: grid;
+	gap: var(--page-gap-item);
+	align-content: start;
+	padding: var(--page-card-inset);
+}
+
+.sa-narrow {
+	inline-size: 100%;
+	max-inline-size: var(--page-measure);
+}
+
+.sa-stack {
+	display: grid;
+	gap: var(--page-gap-item);
+}
+
+.sa-submit {
+	display: grid;
+	gap: var(--_sp3);
+}
+
+/* registry gap: no icon tile. the mail mark on the accent's tint, a row tall. */
+.sa-tile {
+	display: grid;
+	place-items: center;
+	inline-size: var(--_row-min);
+	block-size: var(--_row-min);
+	border-radius: var(--_r-in);
+	background: var(--secondary);
+	color: var(--accent-11);
+}
+
+/* ── the start form ── */
+
+.sa-start {
+	display: grid;
+	gap: var(--page-gap-group);
+	align-items: start;
+}
+
+.sa-start-aside {
+	display: grid;
+	gap: var(--page-gap-item);
+}
+
+.sa-steps {
+	display: grid;
+	gap: var(--_sp4);
+	padding: 0;
+	list-style: none;
+	max-inline-size: var(--page-measure-lede);
+}
+
+.sa-steps li {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: baseline;
+	gap: var(--_sp3);
+}
+
+@container page (min-width: 48rem) {
+	.sa-start {
+		grid-template-columns: minmax(0, 1fr) var(--page-measure);
+		gap: var(--page-col-gap);
+	}
+
+	.sa-start-aside {
+		position: sticky;
+		inset-block-start: var(--page-gap-lead);
+	}
+}
+
+/* ── the photo ── */
+
+.sa-photo {
+	display: grid;
+	gap: var(--_sp3);
+	justify-items: start;
+}
+
+.sa-photo-frame {
+	display: block;
+	box-sizing: border-box;
+	inline-size: 100%;
+	aspect-ratio: 16 / 9;
+	border: var(--_border) solid var(--page-plane-edge);
+	border-radius: var(--_r-in);
+	object-fit: cover;
+}
+
+/* the photo's group: a fieldset whose legend is the field's label, with none of the platform's
+   frame. */
+.sa-fieldset {
+	min-inline-size: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.sa-fieldset > legend {
+	padding: 0;
+}
+
+/* registry gap: no dropzone. the empty well a photo is dropped into. */
+.sa-photo-well {
+	border: var(--_border) dashed var(--_n8);
+	background: var(--panel);
+}
+
+/* ── lists and cards ── */
+
+.sa-list {
+	display: grid;
+	gap: var(--page-gap-item);
+	max-inline-size: var(--page-narrow);
+}
+
+.sa-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--_sp4);
+}
+
+.sa-cards {
+	display: grid;
+	gap: var(--_sp4);
+	padding: 0;
+	list-style: none;
+}
+
+.sa-card-top {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--_sp3);
+}
+
+.sa-card-title {
+	font-family: var(--page-font-display);
+	font-size: var(--_t-xl);
+	line-height: var(--_lh-tight);
+	font-weight: var(--page-w-display);
+}
+
+.sa-card-title a {
+	color: var(--_n12);
+	text-decoration: none;
+}
+
+.sa-card-title a:hover {
+	color: var(--link-hover);
+	text-decoration: underline;
+}
+
+.sa-stat {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--_sp1) var(--_sp3);
+}
+
+.sa-figure {
+	font-family: var(--page-font-display);
+	font-size: var(--page-heading);
+	line-height: var(--page-lh-heading);
+	font-weight: var(--page-w-display);
+	font-variant-numeric: tabular-nums lining-nums;
+	color: var(--_n12);
+}
+
+/* ── a page's manage screen ── */
+
+.sa-back {
+	display: inline-flex;
+	align-items: center;
+	justify-self: start;
+	gap: var(--_sp2);
+	font-size: var(--_t-sm);
+	font-weight: var(--_w-bold);
+	text-decoration: none;
+}
+
+.sa-back:hover {
+	color: var(--link-hover);
+}
+
+.sa-title-block {
+	display: grid;
+	gap: var(--_sp2);
+	justify-items: start;
+}
+
+.sa-manage {
+	display: grid;
+	gap: var(--page-gap-item);
+	align-items: start;
+}
+
+.sa-gifts {
+	display: grid;
+	gap: var(--_sp3);
+	min-inline-size: 0;
+}
+
+/* a note wraps: it is the one cell whose length is the donor's. */
+.ds-table-scroll .sa-note-cell {
+	white-space: normal;
+	min-inline-size: var(--page-measure-lede);
+}
+
+/* the registry's load-more row draws its button edge to edge; the cell holds no inset of its own. */
+.ds-table .sa-load-more {
+	padding: 0;
+}
+
+/* wide, the total and the gifts in the main column and the share and the end beside them, each
+   column stacking on its own: the share spans the rows the total and the first of the gifts stand
+   in, so the gifts start under the total whatever the share's height, and the last row takes the
+   rest. a hidden page has no share, and its end stands at the top of its column. */
+@container page (min-width: 48rem) {
+	.sa-manage {
+		grid-template-columns: minmax(0, 1fr) var(--page-box);
+		grid-template-rows: auto auto 1fr;
+		column-gap: var(--page-col-gap);
+	}
+
+	.sa-raised {
+		grid-area: 1 / 1;
+	}
+
+	.sa-share {
+		grid-area: 1 / 2 / span 2;
+	}
+
+	.sa-gifts {
+		grid-area: 2 / 1 / span 2;
+	}
+
+	.sa-end {
+		grid-area: 3 / 2;
+	}
+
+	.sa-manage:not(:has(> .sa-share)) .sa-end {
+		grid-area: 1 / 2 / span 3;
+	}
+}
+
+/* ── the dialog ── */
+
+/* registry gap: the registry's dialog is React-only. the card is `--popover` on the card corner with
+   the one floating shadow, over the registry's overlay. */
+.sa-dialog {
+	box-sizing: border-box;
+	inline-size: min(var(--page-measure), 100% - 2 * var(--page-gutter));
+	max-block-size: calc(100dvh - 2 * var(--page-gutter));
+	padding: var(--page-card-inset);
+	border: 0;
+	border-radius: var(--radius-card);
+	background: var(--popover);
+	color: var(--_n12);
+	box-shadow: var(--shadow-floating);
+}
+
+.sa-dialog[open] {
+	display: grid;
+	gap: var(--page-gap-item);
+}
+
+.sa-dialog::backdrop {
+	background: var(--overlay);
+}
+
+.sa-dialog:focus-visible {
+	outline: var(--_focus-width) solid var(--page-ring);
+}
+
+.sa-dialog-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--_sp3);
+}
+
+/* the page an end is asked about, quoted: its title over what it raised. */
+.sa-quote {
+	display: grid;
+	padding: var(--_sp3) var(--_sp4);
+	border-radius: var(--_r-in);
+	background: var(--panel);
+	font-size: var(--_t-sm);
+}
+
+.sa-quote b {
+	font-weight: var(--_w-bold);
+}
+
+/* the crop: the photo whole, the kept frame clear over a scrim, its corners and edges grips. */
+.sa-cropper {
+	display: grid;
+	justify-items: center;
+}
+
+.sa-cropper-viewport {
+	max-inline-size: 100%;
+	background: var(--panel);
+}
+
+.sa-cropper-image {
+	display: block;
+	max-inline-size: 100%;
+	max-block-size: var(--page-hero);
+}
+
+.sa-cropper-frame {
+	border: var(--_border-strong) solid var(--_n1);
+	box-shadow: 0 0 0 100vmax var(--overlay);
+	cursor: move;
+}
+
+.sa-cropper-frame:focus-visible {
+	outline: var(--_focus-width) solid var(--page-ring);
+	outline-offset: calc(var(--_focus-width) * -1);
+}
+
+.sa-cropper-handle:is(
+	[data-position='nw'],
+	[data-position='ne'],
+	[data-position='sw'],
+	[data-position='se']
+) {
+	inline-size: var(--_sp4);
+	block-size: var(--_sp4);
+	background: var(--_n1);
+	border: var(--_border) solid var(--_n6);
+}
+
+.sa-cropper-handle:is([data-position='n'], [data-position='s']) {
+	block-size: var(--_sp4);
+}
+
+.sa-cropper-handle:is([data-position='e'], [data-position='w']) {
+	inline-size: var(--_sp4);
+}

@@ -372,6 +372,7 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-profile-logo | background': 'slate-1',
 				'.page-profile-raised | background': 'slate-1',
 				'.page-messages-plane | background': 'slate-1',
+				'.page-fundraise | background': 'slate-1',
 				'.page-messages-foot | background': 'slate-2',
 				'.page-video-box | background': 'slate-3',
 				".page-video-box[data-face='loading'] .page-video-status | background": 'slate-3',
@@ -412,6 +413,7 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-profile-logo | border': 'slate-6',
 				'.page-profile-raised | border': 'slate-6',
 				'.page-messages-plane | border': 'slate-6',
+				'.page-fundraise | border': 'slate-6',
 				'.page-messages-row + .page-messages-row | border-block-start': 'slate-6',
 				'.page-messages-foot | border-block-start': 'slate-6',
 				'.page-video-box | border': 'slate-6',
@@ -491,6 +493,7 @@ describe('every colour lands on the radix step for its job', () => {
 					'slate-12',
 				'.page-messages-time | color': 'slate-11',
 				'.page-messages-count | color': 'slate-11',
+				'.page-fundraise-note | color': 'slate-11',
 				'.page-messages-refused | color': 'red-11',
 				".page-video-box[data-face='loading'] .page-video-status | color": 'slate-12',
 				'.page-video-error-title | color': 'red-11',
@@ -787,7 +790,8 @@ describe('no card inside a card', () => {
 				['.page-mast', EDGE],
 				['.page-profile-logo', EDGE],
 				['.page-profile-raised', EDGE],
-				['.page-messages-plane', EDGE]
+				['.page-messages-plane', EDGE],
+				['.page-fundraise', EDGE]
 			].sort()
 		);
 	});
