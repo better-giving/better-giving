@@ -222,19 +222,27 @@ it('groups the two rows under the first one’s words, so the second is never re
 	);
 });
 
-it('keeps showing the first-name hint as the first box’s description while Anonymous is ticked, and after untick', async () => {
+it('swaps the first box’s hint, in place, to the Anonymous signature while Anonymous is ticked, and back after untick', async () => {
 	const { root } = await card();
 	press(box(root, NOTE_TOGGLE));
 	press(box(root, PUBLIC));
-	press(box(root, ANONYMOUS));
+	const hint = root.querySelector('#note-public-hint');
+	expect(hint?.textContent).toBe('It shows with your first name and last initial, like “Maya R.”');
 
+	const anonymous = box(root, ANONYMOUS);
+	anonymous.focus();
+	press(anonymous);
 	expect(box(root, ANONYMOUS).checked).toBe(true);
-	expect(root.querySelector('#note-public-hint')?.textContent).toBe(copy.NOTE_PUBLIC_HINT);
+	expect(root.querySelector('#note-public-hint')).toBe(hint);
+	expect(hint?.textContent).toBe('Your note shows on Helping Hands’s page as Anonymous.');
 	expect(box(root, PUBLIC).getAttribute('aria-describedby')).toBe('note-public-hint');
+	expect(document.activeElement).toBe(anonymous);
 
-	press(box(root, ANONYMOUS));
-	expect(root.querySelector('#note-public-hint')?.textContent).toBe(copy.NOTE_PUBLIC_HINT);
+	press(anonymous);
+	expect(root.querySelector('#note-public-hint')).toBe(hint);
+	expect(hint?.textContent).toBe('It shows with your first name and last initial, like “Maya R.”');
 	expect(box(root, PUBLIC).getAttribute('aria-describedby')).toBe('note-public-hint');
+	expect(document.activeElement).toBe(anonymous);
 });
 
 it('resets the second row when the first is unticked, and both when the note is', async () => {

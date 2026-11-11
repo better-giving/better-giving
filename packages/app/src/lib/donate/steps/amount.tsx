@@ -401,7 +401,8 @@ export function AmountStep({
 						 * the second arriving leaves the first's box, and its focus, where it was. the hint
 						 * sits inside the label so pressing it ticks the box; a wrapping label names its box
 						 * by its whole subtree, so `aria-labelledby` names it by its words alone and the
-						 * hint is read once, as the description, ticked Anonymous or not.
+						 * hint is read once, as the description, ticked Anonymous or not; only its words
+						 * change, to the name the note will be signed with.
 						 */}
 						{/* biome-ignore lint/a11y/useSemanticElements: the rows are a group named by the first
 						    one's words, so "Show it as Anonymous" is read as qualifying that box, as the
@@ -424,7 +425,9 @@ export function AmountStep({
 									<span>
 										<span id="note-public-words">{copy.notePublicLabel(config.orgLegalName)}</span>
 										<small className="hint" id="note-public-hint">
-											{copy.NOTE_PUBLIC_HINT}
+											{noteAnonymous
+												? copy.notePublicHintAnonymous(config.orgLegalName)
+												: copy.NOTE_PUBLIC_HINT}
 										</small>
 									</span>
 								</label>

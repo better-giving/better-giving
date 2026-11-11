@@ -2141,17 +2141,20 @@ describe('the note the donor asks to show', () => {
 		expect(anonymous.hasAttribute('aria-describedby')).toBe(false);
 	});
 
-	it('keeps the hint and its description while Anonymous is ticked, and after untick', async () => {
+	it('swaps the hint in place to say Anonymous while it is ticked, and back after untick', async () => {
 		const card = opened(await mount());
 		press(card.find('#note-public'));
+		const hint = card.find('#note-public-hint');
 		press(card.find('#note-anonymous'));
 
+		expect(card.find('#note-public-hint')).toBe(hint);
 		expect(card.text('#note-public-hint')).toBe(
-			'It shows with your first name and last initial, like “Maya R.”'
+			'Your note shows on Acme Relief Fund’s page as Anonymous.'
 		);
 		expect(card.find('#note-public').getAttribute('aria-describedby')).toBe('note-public-hint');
 
 		press(card.find('#note-anonymous'));
+		expect(card.find('#note-public-hint')).toBe(hint);
 		expect(card.text('#note-public-hint')).toBe(
 			'It shows with your first name and last initial, like “Maya R.”'
 		);

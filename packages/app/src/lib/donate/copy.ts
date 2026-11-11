@@ -67,6 +67,10 @@ export function notePublicLabel(org: string): string {
 	return `Show my note on ${org}’s page`;
 }
 export const NOTE_PUBLIC_HINT = 'It shows with your first name and last initial, like “Maya R.”';
+/** the hint while "Show it as Anonymous" is ticked, worded as the element's (packages/form/src/views.ts, `notePublicHintAnonymous`). */
+export function notePublicHintAnonymous(org: string): string {
+	return `Your note shows on ${org}’s page as Anonymous.`;
+}
 export const NOTE_ANONYMOUS = 'Show it as Anonymous';
 
 export const DEDICATE = 'Dedicate this gift ';

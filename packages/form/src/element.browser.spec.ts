@@ -1103,7 +1103,7 @@ describe('the consent to show the note, as a screen reader reads it', () => {
 			);
 	});
 
-	it('keeps that name and description while Anonymous is ticked', async () => {
+	it('keeps that name and says Anonymous in the description while it is ticked, focus kept', async () => {
 		const root = shadow(await mount());
 		root.querySelector<HTMLInputElement>('.check-row [part~="checkbox"]')?.click();
 		const box = root.querySelector<HTMLInputElement>('#note-public');
@@ -1111,10 +1111,21 @@ describe('the consent to show the note, as a screen reader reads it', () => {
 		box.click();
 		const anonymous = root.querySelector<HTMLInputElement>('#note-anonymous');
 		if (anonymous === null) throw new Error('ticking the first box drew no Anonymous box');
-		anonymous.click();
+		await userEvent.click(anonymous);
+		await settle();
 
 		expect(anonymous.checked).toBe(true);
+		expect(root.activeElement).toBe(anonymous);
 		await expect.element(box).toHaveAccessibleName('Show my note on Acme Relief Fund’s page');
+		await expect
+			.element(box)
+			.toHaveAccessibleDescription('Your note shows on Acme Relief Fund’s page as Anonymous.');
+
+		await userEvent.click(anonymous);
+		await settle();
+
+		expect(anonymous.checked).toBe(false);
+		expect(root.activeElement).toBe(anonymous);
 		await expect
 			.element(box)
 			.toHaveAccessibleDescription(

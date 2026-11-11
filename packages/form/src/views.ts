@@ -1574,7 +1574,13 @@ export function createCard(
 	// the hint sits inside the `<label>` so that pressing it ticks the box, and a wrapping label
 	// names its control by its whole subtree (HTML-AAM, https://w3c.github.io/html-aam/#other-form-elements-accessible-name-computation),
 	// so `aria-labelledby` names the box by its words alone and the hint is read once, as its
-	// description. the hint and that description stay while Anonymous is ticked, as they do unticked.
+	// description. the hint and that description stay while Anonymous is ticked, as they do unticked;
+	// only its words change, to the name the note will be signed with (`update` below).
+	const notePublicHintNamed = 'It shows with your first name and last initial, like “Maya R.”';
+	const notePublicHintAnonymous = `Your note shows on ${config.orgLegalName}’s page as Anonymous.`;
+	const notePublicHint = make(doc, 'small', { class: 'hint', id: 'note-public-hint' }, [
+		notePublicHintNamed
+	]);
 	const notePublicToggle = make(doc, 'input', {
 		part: part('checkbox'),
 		class: REGISTRY_CLASS.checkbox,
@@ -1589,9 +1595,7 @@ export function createCard(
 			make(doc, 'span', { id: 'note-public-words' }, [
 				`Show my note on ${config.orgLegalName}’s page`
 			]),
-			make(doc, 'small', { class: 'hint', id: 'note-public-hint' }, [
-				'It shows with your first name and last initial, like “Maya R.”'
-			])
+			notePublicHint
 		])
 	]);
 	const noteAnonymousToggle = make(doc, 'input', {
@@ -3053,6 +3057,7 @@ export function createCard(
 		const noteAnonymous = api.noteAnonymousToggle.pressed === true;
 		if (notePublicToggle.checked !== noteShown) notePublicToggle.checked = noteShown;
 		if (noteAnonymousToggle.checked !== noteAnonymous) noteAnonymousToggle.checked = noteAnonymous;
+		setText(notePublicHint, noteAnonymous ? notePublicHintAnonymous : notePublicHintNamed);
 		// each row inserted or removed on its own rather than the pair replaced: a node detached and
 		// reattached loses focus, and the box a donor just pressed has it.
 		presentIn(noteConsent, notePublicRow, noteAsked, 'prepend');
