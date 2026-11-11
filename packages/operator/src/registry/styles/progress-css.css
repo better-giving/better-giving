@@ -1,0 +1,73 @@
+/* the registry's goal bar as plain css, no tailwind. reads only the variables
+   the `variables` item declares. progress-css.test.tsx renders the React
+   `Progress` beside it and asserts the same computed look in light and dark,
+   for the default and example themes.
+
+   the spacing step, the type size and weight, the easing and the recessed
+   shadow pair live only in tailwind's theme (the pair in ./theme.css); they
+   are declared here under ds- names with the same values, and the test holds
+   them equal. the declarations sit on the class, not on :root, so the bar
+   also works inside a shadow root.
+
+   the fill's width is the caller's, inline, capped at 100%. data-state on the
+   track is "met" at or over the goal and "empty" at 0. */
+.ds-progress {
+  --ds-spacing: 0.25rem;
+  --ds-text-sm: 0.875rem;
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-font-weight-semibold: 600;
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-inset-shadow-track: inset 0 2px 4px 0
+    color-mix(in oklch, var(--shadow-ink) 5%, transparent);
+  --ds-shadow-track-fill: 0 1px 2px 0
+    color-mix(in oklch, var(--shadow-ink) 5%, transparent);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--ds-spacing) * 3);
+}
+.ds-progress-track {
+  flex: 1;
+  block-size: calc(var(--ds-spacing) * 2);
+  border-radius: calc(infinity * 1px);
+  background-color: var(--panel);
+  box-shadow: var(--ds-inset-shadow-track);
+}
+.ds-progress-fill {
+  block-size: 100%;
+  border-radius: calc(infinity * 1px);
+  background-color: var(--primary);
+  box-shadow: var(--ds-shadow-track-fill);
+  transition-property: width;
+  transition-duration: var(--duration-slow);
+  transition-timing-function: var(--ds-ease-in-out);
+}
+.ds-progress-track[data-state="met"] > .ds-progress-fill {
+  background-color: var(--success);
+}
+/* a 0-wide fill would still paint its shadow as a smudge at the start */
+.ds-progress-track[data-state="empty"] > .ds-progress-fill {
+  box-shadow: none;
+}
+/* forced colors repaint every background to Canvas and drop the shadows,
+   which would leave track and fill one colour: the fill opts out and takes the
+   system ink, and the track draws its extent as an outline */
+@media (forced-colors: active) {
+  .ds-progress-track {
+    outline: 1px solid CanvasText;
+  }
+  .ds-progress-fill,
+  .ds-progress-track[data-state="met"] > .ds-progress-fill {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}
+/* aria-hidden: the track's aria-valuetext already says the percentage */
+.ds-progress-label {
+  min-inline-size: calc(var(--ds-spacing) * 13);
+  text-align: right;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  font-weight: var(--ds-font-weight-semibold);
+}

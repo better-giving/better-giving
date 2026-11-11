@@ -15,10 +15,9 @@ import {
 } from '../db/schema';
 
 // every read of `entry_group` and `ledger_entry`, so the table objects never leave this
-// directory — the same boundary ../donations/queries.ts draws around `donation`. three reads cross
-// that boundary from this side, each naming `donation` and `payment` to reach a gift's entries in
-// one statement: `readRaisedThroughForm`, which names `form` too, `giftNetRaised` and
-// `readRaisedByFormWithin`.
+// directory — the same boundary ../donations/queries.ts draws around `donation`. one read crosses
+// that boundary from this side: `readRaisedThroughForm` names `form`, `donation` and `payment` to
+// reach a form's entries in one statement, and says why.
 //
 // no writes, and that is a rule rather than a description. ./posting.ts is the only module that
 // may INSERT into either table, and ./sole-writer.spec.ts enforces it by exempting this whole
@@ -39,9 +38,10 @@ import {
  * bounded from two ends, the same two `DONATION_LIST_LIMIT` states in ../donations/queries.ts.
  * it is a `LIMIT` because the list is every posting a deployment has ever made and the newest
  * are the ones worth keeping. and the page's ids are bound into the follow-up read, one
- * parameter per id, and SQLite refuses a statement past `SQLITE_MAX_VARIABLE_NUMBER` (32766,
- * https://www.sqlite.org/limits.html) — so this number is that read's parameter count too. the
- * probe row never reaches that read, so the count bound is this number exactly.
+ * parameter per id, against D1's cap of 100 bound parameters per query — so this stays well
+ * under 100 whatever anyone later decides about page size, because a limit raised past it does
+ * not read slowly, it fails the query. the probe row never reaches that read, so the count bound
+ * is this number exactly.
  */
 export const ENTRY_GROUP_LIST_LIMIT = 50;
 
@@ -164,10 +164,10 @@ export type EntryGroupRange = {
  * lines — what an accountant's download is shaped from — up to `lineCap` lines.
  *
  * **one join and one read, which is the opposite of `listEntryGroups` above — deliberately.** that
- * function reads twice because its first read is a page, and the second binds one parameter per
- * entry id; this one binds three — the two ends and the bound — whatever the range holds, and one
- * round trip. so the next reader "fixing" this into the two-read shape would be paying a second
- * round trip for a problem this read does not have.
+ * function reads twice, and the second read's bound parameters are one per entry id, counted
+ * against D1's cap of 100 per query, where this one binds three — the two ends and the bound —
+ * whatever the range holds. so the next reader "fixing" this into the two-read shape would be
+ * paying for a guard this has no problem to solve.
  *
  * **the bound is lines and not entries, because the file's cap is lines** — one row per ledger line
  * in both templates (./journal-file.ts). it reads one past it rather than counting first: a range
@@ -261,8 +261,8 @@ export async function findEntryGroupById(db: Db, id: string): Promise<EntryGroup
  * the headers handed back with each one's lines under it, in posting order.
  *
  * one read for however many headers it is given, which is what keeps the parameter count
- * countable: the ids are bound one per header, against SQLite's `SQLITE_MAX_VARIABLE_NUMBER`
- * (32766), and `ENTRY_GROUP_LIST_LIMIT` is what holds the list caller under it.
+ * countable: the ids are bound one per header, against D1's cap of 100 bound parameters per query,
+ * and `ENTRY_GROUP_LIST_LIMIT` is what holds the list caller under it.
  *
  * shared by both reads above rather than written twice. the grouping is the half that would drift:
  * a second copy is a second place the `Map` fallback and the line ordering have to agree.
@@ -372,6 +372,8 @@ export async function readRaisedByMonth(db: Db): Promise<RaisedMonth[]> {
 export type RaisedThroughForm = {
 	/** minor units, net of anything that has been given back. */
 	raisedMinor: number;
+	/** the form's own, ISO-4217 uppercase. */
+	currency: string;
 };
 
 /**
@@ -393,8 +395,7 @@ const PAYMENT_KEYED: readonly EntrySourceType[] = ['payment', 'refund', 'fee', '
  *
  * one statement from `form` through `donation` and `payment` to the entries, which is why
  * `form`, `donation` and `payment` are named here: the gifts of a form are unbounded, and reading
- * their payment ids first would bind one parameter per payment, and SQLite refuses a statement past
- * `SQLITE_MAX_VARIABLE_NUMBER` (32766, https://www.sqlite.org/limits.html).
+ * their payment ids first would bind one parameter per payment against D1's cap of 100.
  * `donation_form_id_idx`, `payment_donation_id_idx`, `entry_group_source_idx` (probed once per
  * `PAYMENT_KEYED` type) and `ledger_entry_entry_group_id_idx` carry each join.
  *
@@ -406,7 +407,9 @@ export async function readRaisedThroughForm(
 ): Promise<RaisedThroughForm | null> {
 	const [row] = await db.all<RaisedThroughForm>(sql`
 		${DONATIONS_SUBTREE}
-		select coalesce(-sum(${ledgerEntry.amountMinor}), 0) as "raisedMinor"
+		select
+			${form.currency} as "currency",
+			coalesce(-sum(${ledgerEntry.amountMinor}), 0) as "raisedMinor"
 		from ${form}
 		left join ${donation} on ${donation.formId} = ${form.id}
 		left join ${payment} on ${payment.donationId} = ${donation.id}
@@ -423,11 +426,58 @@ export async function readRaisedThroughForm(
 	return row ?? null;
 }
 
+/** what the organisation has raised through every form, in one currency, and from how many gifts. */
+export type RaisedByOrganisation = {
+	/** minor units, net of anything that has been given back. */
+	raisedMinor: number;
+	/** the gifts still standing at more than nothing: a gift given back in full is no gift here. */
+	gifts: number;
+};
+
 /**
- * what one gift still stands at in the books, in its own currency: its payments' entries into the
- * donations subtree, net, as a scalar subquery on the outer row's `donation`. 0 for a gift still
- * pending, given back in full, or withdrawn by a dispute that has not been won; above 0 for one
- * partly given back.
+ * `readRaisedThroughForm`'s figure over every form's gifts rather than one's, in `currency` alone,
+ * with the gifts it sums counted. a gift is a `donation` row, so each charge of a repeating gift
+ * counts as one as it settles, and a gift still pending has no entry and counts as none.
+ *
+ * one statement, since the gifts are unbounded: reading their payment ids first would bind one
+ * parameter per payment, and SQLite refuses a statement past `SQLITE_MAX_VARIABLE_NUMBER` (32766,
+ * https://www.sqlite.org/limits.html). grouped per gift first so a gift refunded in full nets to
+ * nothing and drops out of the count while its entries still net to zero in the sum. a gift in
+ * hand is a settled manual payment and counts; a hand correction matches no payment and is not
+ * here (`goal.db.spec.ts`).
+ */
+export async function readRaisedByOrganisation(
+	db: Db,
+	currency: string
+): Promise<RaisedByOrganisation> {
+	const [row] = await db.all<RaisedByOrganisation>(sql`
+		${DONATIONS_SUBTREE},
+		per_gift(net) as (
+			select -sum(${ledgerEntry.amountMinor})
+			from ${donation}
+			join ${payment} on ${payment.donationId} = ${donation.id}
+			join ${entryGroup}
+				on ${entryGroup.sourceId} = ${payment.id}
+				and ${inArray(entryGroup.sourceType, PAYMENT_KEYED)}
+				and ${entryGroup.currency} = ${currency}
+			join ${ledgerEntry}
+				on ${ledgerEntry.entryGroupId} = ${entryGroup.id}
+				and ${ledgerEntry.accountId} in (select id from donations)
+			group by ${donation.id}
+		)
+		select
+			coalesce(sum(net), 0) as "raisedMinor",
+			count(*) filter (where net > 0) as "gifts"
+		from per_gift
+	`);
+	return row ?? { raisedMinor: 0, gifts: 0 };
+}
+
+/**
+ * what one gift still stands at in the books, in its own currency: `readRaisedByOrganisation`'s
+ * per-gift `net`, as a scalar subquery on the outer row's `donation`. 0 for a gift still pending,
+ * given back in full, or withdrawn by a dispute that has not been won; above 0 for one partly given
+ * back.
  */
 export function giftNetRaised(): SQL<number> {
 	return sql<number>`(

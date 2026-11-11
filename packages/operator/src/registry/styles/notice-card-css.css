@@ -1,0 +1,102 @@
+/* the registry's notice card as plain css, no tailwind: the card, its icon
+   box, title, body and actions row, in four tones. reads only the variables
+   the `variables` item declares, and the button-css classes for its actions.
+   notice-card-css.test.tsx renders the React `NoticeCard` beside it and
+   asserts the same computed look in light and dark, for the default and
+   example themes, at a phone and a desktop width.
+
+   the spacing step, the type sizes and the weight live only in tailwind's
+   theme; they are declared here under ds- names with the same values, and the
+   test holds them equal. a media query cannot read a variable, so its width is
+   written out: 40rem is tailwind's sm. each tone sets --ds-tone-fill,
+   --ds-tone-edge and --ds-tone-ink, which the card reads. */
+.ds-notice-card {
+  --ds-spacing: 0.25rem;
+  --ds-text-sm: 0.875rem;
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--ds-spacing) * 3);
+  padding: calc(var(--ds-spacing) * 6);
+  border: 1px solid var(--ds-tone-edge);
+  border-radius: var(--radius-card);
+  background-color: var(--ds-tone-fill);
+  color: var(--gray-12);
+}
+
+.ds-notice-card-info {
+  --ds-tone-fill: var(--secondary);
+  --ds-tone-edge: var(--accent-6);
+  --ds-tone-ink: var(--accent-11);
+}
+.ds-notice-card-success {
+  --ds-tone-fill: var(--success-subtle);
+  --ds-tone-edge: var(--success-6);
+  --ds-tone-ink: var(--success-11);
+}
+.ds-notice-card-warning {
+  --ds-tone-fill: var(--warning-subtle);
+  --ds-tone-edge: var(--warning-6);
+  --ds-tone-ink: var(--warning-11);
+}
+.ds-notice-card-destructive {
+  --ds-tone-fill: var(--destructive-subtle);
+  --ds-tone-edge: var(--destructive-6);
+  --ds-tone-ink: var(--destructive-11);
+}
+
+/* one title line tall, so the 20px glyph centers on the title's first line */
+.ds-notice-card-icon {
+  display: flex;
+  align-items: center;
+  block-size: calc(var(--ds-spacing) * 6);
+  flex-shrink: 0;
+  color: var(--ds-tone-ink);
+}
+
+/* the title and body, then the actions 16px under them */
+.ds-notice-card-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: calc(var(--ds-spacing) * 4);
+  min-inline-size: 0;
+}
+.ds-notice-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--ds-spacing) * 1);
+}
+.ds-notice-card-title {
+  --ds-text-base: 1rem;
+  --ds-text-base-lh: calc(1.5 / 1);
+  --ds-font-weight-semibold: 600;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--ds-text-base);
+  line-height: var(--ds-text-base-lh);
+  font-weight: var(--ds-font-weight-semibold);
+}
+.ds-notice-card-body {
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+
+.ds-notice-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(var(--ds-spacing) * 4);
+}
+
+/* under 640px: 16px in, and the actions stacked at full width */
+@media (width < 40rem) {
+  .ds-notice-card {
+    padding: calc(var(--ds-spacing) * 4);
+  }
+  .ds-notice-card-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

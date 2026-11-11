@@ -2,12 +2,10 @@ import type { FormConfig } from '@better-giving/form/v1';
 import { data } from 'react-router';
 import type { OrgInfo } from '../../donate/sections/types';
 import type { PageWithCardProps } from '../../donate/page-with-card';
-import type { DonorMessages } from '../../donate/messages';
 import { type DonateProfile, donateProfile } from '../../donate/profile';
 import { type PageLook, titleHeading } from '../../donate/page-view';
 import type { Page } from '../../page/catalog';
 import type { PageType } from '../../page/keys';
-import { writtenText } from '../../page/profile-shape';
 import type { Db } from '../db/client';
 import type { OrgProfile, Page as PageRow } from '../db/schema';
 import { cachedCadences } from '../forms/cadence-cache';
@@ -20,8 +18,8 @@ import { present } from '../org/receipt-fields';
 import { createPaymentProviders } from '../payments/factory';
 import { readActiveProgramPhotos } from '../programs/queries';
 import { readDocument } from './document';
-import { pageGoal } from './goal';
-import { type MessageCursor, readShownMessages } from './messages';
+import { organisationRaised, pageGoal } from './goal';
+import { readShownMessages } from './messages';
 
 // everything a donor page draws beyond its own stored document, read for one page: the donation
 // page at /donate, a campaign at its address, and either one in the editor's preview.
@@ -52,10 +50,9 @@ import { type MessageCursor, readShownMessages } from './messages';
 // so are the programs' photos, handed beside the served config for the programs its chooser offers
 // and never on its `v1` options, and so is a campaign's raised figure (./goal.ts), a sum over the
 // books that is never cached. the Donation page alone is handed its profile head beside the view
-// (`DonateProfile` in ../../donate/profile.ts) from those same reads, with its donors' newest
-// messages (`readShownMessages` in ./messages.ts), likewise never cached; its preview lists the
-// messages /donate lists, gated on the published page (`readDonationPageMessages`). the only
-// raised figure a page is handed is its own campaign's, for its goal bar.
+// (`DonateProfile` in ../../donate/profile.ts) from those same reads, with what the organisation has
+// raised through every form (`organisationRaised` in ./goal.ts) and its donors' newest messages
+// (`readShownMessages` in ./messages.ts), likewise never cached.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {
@@ -93,16 +90,11 @@ export async function loadPageView(
 	request: Request,
 	{
 		now,
-		preview
+		preview = false
 	}: {
 		/** the request's one clock, which the loader read the page's state against too. */
 		readonly now: number;
-		/**
-		 * set for the editor's preview of `source.document`, the draft: the page's published
-		 * document, which the Donation page's donors' messages are listed against as /donate lists
-		 * them.
-		 */
-		readonly preview?: { readonly published: string | null };
+		readonly preview?: boolean;
 	}
 ): Promise<LoadedPage> {
 	const origin = new URL(request.url).origin;
@@ -138,26 +130,15 @@ export async function loadPageView(
 	const orgName = config.orgLegalName;
 	const money = { locale: config.locale, currency: config.currency };
 	const isDonationPage = source.type === 'donation_page';
-	const [goal, messages] = await Promise.all([
+	const [goal, raised, messages] = await Promise.all([
 		pageGoal(db, source.formId, page, config.locale),
-		!isDonationPage
-			? null
-			: preview === undefined
-				? // a donor's page reached here past both of /donate's gates on its messages.
-					readShownMessages(db, null)
-				: readDonationPageMessages(
-						db,
-						env,
-						{ ...source, published: preview.published },
-						request,
-						{ now },
-						null
-					)
+		isDonationPage ? organisationRaised(db, config.currency) : null,
+		isDonationPage ? readShownMessages(db, null) : null
 	]);
 	const org = {
 		name: orgName,
-		mission: writtenText(profile?.mission ?? null),
-		vision: writtenText(profile?.vision ?? null),
+		mission: profile?.mission ?? null,
+		vision: profile?.vision ?? null,
 		info: orgInfo(config, profile)
 	};
 
@@ -184,51 +165,33 @@ export async function loadPageView(
 			goal,
 			money,
 			config,
-			preview: preview !== undefined,
+			preview,
 			...openingOf(page.switches)
 		},
 		profile:
-			messages === null
+			raised === null || messages === null
 				? null
 				: donateProfile({
 						org,
 						logo,
 						bannerImageId: profile?.bannerImageId ?? null,
+						raised,
+						money,
 						messages,
 						videos: page.videos
 					})
 	};
 }
 
-const NOTHING_LISTED: DonorMessages = { messages: [], total: 0, next: null };
-
-/**
- * the Donation page's donors' messages after `after`, or its newest six, as /donate lists them: none
- * where /donate draws none. Show more (routes/donate.messages.ts) and the preview's first six read
- * here, so the preview lists, and pages through, only what /donate does.
- */
-export async function readDonationPageMessages(
-	db: Db,
-	env: unknown,
-	row: Pick<PageRow, 'id' | 'type' | 'formId' | 'published'>,
-	request: Request,
-	{ now }: { readonly now: number },
-	after: MessageCursor | null
-): Promise<DonorMessages> {
-	return (await donationPageDrawsMessages(db, env, row, request, { now }))
-		? readShownMessages(db, after)
-		: NOTHING_LISTED;
-}
-
 /**
  * whether the Donation page as a donor sees it draws its donors' messages: `loadPageView`'s two
  * gates before it reads them, a served config the card can draw and a published document the rule
- * reads, both off the row as it stands and never off a draft.
+ * reads, so Show more (routes/donate.messages.ts) lists nothing where the page lists none.
  */
-async function donationPageDrawsMessages(
+export async function donationPageDrawsMessages(
 	db: Db,
 	env: unknown,
-	row: Pick<PageRow, 'id' | 'type' | 'formId' | 'published'>,
+	row: PageRow,
 	request: Request,
 	{ now }: { readonly now: number }
 ): Promise<boolean> {

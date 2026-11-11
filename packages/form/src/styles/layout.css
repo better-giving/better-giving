@@ -8,8 +8,8 @@
  * two mechanisms answer instead, and which one a rule takes is a decision rather than a habit. a
  * container query against the card is for a change the card makes as a whole — the interior's inset,
  * the pair of name fields, the amount tray's columns. the tray is itself a query container for one
- * reason: the grid lines drawn across it are measured in `cqi`, its own content width. the
- * frequency track (`.segment`) is a query container too, and ./parts.css queries it for its lines.
+ * reason: the grid lines drawn across it are measured in `cqi`, its own content width. no rule
+ * queries it.
  *
  * nothing in this file transitions. a reflow here is caused by a host resizing their own layout
  * or collapsing a sidebar, and animating a reflow they caused produces a scramble that reads as a
@@ -410,17 +410,14 @@ form {
 }
 
 /*
- * the frequency control: equal columns, one row, every option at the interactive floor. three
- * frequencies on a card too narrow for them wrap into a second row rather than shrinking an
- * option under it. the track is a query container so the lines between its
- * options can tell which option opens a row (./parts.css, the grid-line rules).
+ * the frequency control: equal columns, one row, every option at the interactive floor. four or
+ * more enabled frequencies wrap into a second row rather than shrinking an option under it.
  */
 .segment {
 	display: grid;
 	/* raw-length-ok: an option's own track minimum, which is a shape rather than a step. */
 	grid-template-columns: repeat(auto-fit, minmax(5.5em, 1fr));
 	gap: var(--_sp2);
-	container-type: inline-size;
 }
 
 /*
@@ -434,8 +431,7 @@ form {
  * the presets (`build` in ../views.ts), so `:nth-child` on it is the number of cells, and the span
  * it takes is what four, or two, leaves over. a tray with no other tile is bare or a skeleton and
  * takes the columns and no span. the breakpoint is the card's wide one (`@container donate
- * (min-width: calc(26em - 2px))` below), off the card's clamped root rather than the host
- * document's.
+ * (min-width: 26em)` below), off the card's clamped root rather than the host document's.
  *
  * the free entry is one of these boxes rather than a control under them, and it takes a row of its
  * own: a tile's cell holds a figure and nothing else, and the entry carries a mark at each end of
@@ -980,18 +976,8 @@ form {
 	}
 }
 
-/*
- * a card 26em across, its two hairlines included: the condition reads the container's content box,
- * which is the card inside its `--_border` on each side, so the 2px is those two at a 1px hairline
- * and no step. a border snapped to device pixels, or one a host restyles through `::part(card)`,
- * moves the turn by up to that hairline's difference either way.
- *
- * the 24em breakpoint above stays on the content box. it turns on whether the two name fields fit
- * the room inside the card, which is what the content box measures, while this one is the card's
- * own width as drawn, hairlines and all.
- */
 /* raw-length-ok: as the breakpoint above. */
-@container donate (min-width: calc(26em - 2px)) {
+@container donate (min-width: 26em) {
 	.card-body {
 		padding: var(--_inset-wide);
 	}

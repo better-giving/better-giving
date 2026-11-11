@@ -31,7 +31,6 @@ function mount(props: Partial<DonorMessagesProps> & Pick<DonorMessagesProps, 'in
 	const root = createRoot(host);
 	const base: DonorMessagesProps = {
 		locale: 'en-US',
-		shape: 'list',
 		now: NOW,
 		status: 'idle',
 		arrived: null,

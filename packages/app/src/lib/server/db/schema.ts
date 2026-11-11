@@ -1148,13 +1148,13 @@ export const form = sqliteTable(
  * no `archived_at` either: a donation with ledger entries behind it has no meaningful
  * soft delete. a mistake is a compensating entry.
  *
- * `recurring_id` and `program_id` are the two columns here pointing at a table younger than this
- * one, they arrived the same way, and it is the way the next such column has to arrive. a
+ * `recurring_id`, `program_id` and `supporter_page_id` are the columns here pointing at a table
+ * younger than this one, they arrived the same way, and it is the way the next such column has to arrive. a
  * `REFERENCES` to a table that does not exist yet is legal at CREATE TABLE — sqlite resolves a
  * foreign key when DML runs, not when the table is declared — so a column declared ahead of its
  * table ships green and explodes on the first non-null insert, months later. each arrives instead
  * as `ALTER TABLE donation ADD COLUMN <name> text REFERENCES <table>(id)` once that table exists,
- * legal precisely because an added column defaults null. both are at the bottom of this table.
+ * legal precisely because an added column defaults null. all three are at the bottom of this table.
  *
  * a charge collected under a commitment takes its cause from the gift that opened the series,
  * which is why `recurring_plan` carries no program column of its own.
@@ -1338,7 +1338,14 @@ export const donation = sqliteTable(
 		 * gift. written with the gift from what the donor typed, because a name derived later from
 		 * `contact` is whichever donor last used that email, and two donors can share one.
 		 */
-		noteShownName: text('note_shown_name')
+		noteShownName: text('note_shown_name'),
+
+		/**
+		 * the supporter fundraiser this gift was given through, and null on every other gift. a
+		 * fundraiser's total is a `SUM` over the gifts naming it, read by `donation_supporter_page_id_idx`.
+		 * arrives by `ADD COLUMN ... REFERENCES` for the reason the header above gives.
+		 */
+		supporterPageId: text('supporter_page_id').references(() => supporterPage.id)
 	},
 	(t) => [
 		check('donation_currency_check', currencyCheck(t.currency)),
@@ -1411,6 +1418,7 @@ export const donation = sqliteTable(
 		index('donation_form_id_idx').on(t.formId),
 		index('donation_recurring_id_idx').on(t.recurringId),
 		index('donation_program_id_idx').on(t.programId),
+		index('donation_supporter_page_id_idx').on(t.supporterPageId),
 		// every gift list and every period report filters on business time, never on
 		// `created_at`.
 		index('donation_received_at_idx').on(t.receivedAt),
@@ -2355,7 +2363,14 @@ export const orgProfile = sqliteTable(
 		 * the donate page's banner, an `image`, null for none. no `_previous`: a replaced or removed
 		 * banner is freed where nothing else names it, by the banner writes in ../org/queries.ts.
 		 */
-		bannerImageId: text('banner_image_id').references(() => image.id)
+		bannerImageId: text('banner_image_id').references(() => image.id),
+		/**
+		 * whether supporters may start a fundraiser for this organisation; on unless the deployer turns
+		 * it off. a deployment with no profile row yet has said nothing, which reads as on.
+		 */
+		supporterFundraisersEnabled: integer('supporter_fundraisers_enabled', { mode: 'boolean' })
+			.notNull()
+			.default(true)
 	},
 	(t) => [
 		// the singleton constraint. `auth_signing_key_id_check` is the precedent.
@@ -2386,7 +2401,11 @@ export const orgProfile = sqliteTable(
 			'org_profile_brand_colour_check',
 			sql`${t.brandColour} is null or ${t.brandColour} glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'`
 		),
-		check('org_profile_social_links_array_check', jsonArray(t.socialLinks))
+		check('org_profile_social_links_array_check', jsonArray(t.socialLinks)),
+		check(
+			'org_profile_supporter_fundraisers_enabled_bool_check',
+			boolCheck(t.supporterFundraisersEnabled)
+		)
 	]
 );
 
@@ -3567,6 +3586,176 @@ export const photoLink = sqliteTable(
 		)
 	]
 );
+
+// ---------------------------------------------------------------------------
+// supporter fundraisers: a member of the public raising money for this organisation on a page of
+// their own. a supporter signs in by a link mailed to them and holds a session of their own; none of
+// it is better-auth's, whose tables (./auth-schema.ts) are staff's alone.
+// ---------------------------------------------------------------------------
+
+/** a member of the public who has started a fundraiser, known by the address they sign in with. */
+export const supporter = sqliteTable(
+	'supporter',
+	{
+		id: id(),
+		/**
+		 * lowercase, so one address has one row. sqlite's `lower()` folds ASCII alone, so the check
+		 * refuses an ASCII capital and the parse lowercases the rest.
+		 */
+		email: text('email').notNull(),
+		name: text('name').notNull(),
+		createdAt: createdAt(),
+		/** the last time a sign-in link or a confirm link was opened; null until one has been. */
+		lastSignInAt: at('last_sign_in_at')
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		uniqueIndex('supporter_email_idx').on(t.email),
+		check('supporter_email_lowercase_check', sql`${t.email} = lower(${t.email})`),
+		check('supporter_email_not_blank_check', notBlank(t.email)),
+		check('supporter_name_not_blank_check', notBlank(t.name))
+	]
+);
+
+export const SUPPORTER_PAGE_STATUSES = ['pending', 'live', 'ended'] as const;
+export type SupporterPageStatus = (typeof SUPPORTER_PAGE_STATUSES)[number];
+
+/**
+ * one supporter's fundraiser. `pending` until the supporter opens the confirm link mailed to them,
+ * `live` from then, and `ended` for good; hiding is staff's, beside the status and not one of them.
+ *
+ * **it owns one `form` row**, exactly as a campaign `page` does (see the header on `page`): `form_id`
+ * is unique, the row is its donation settings, and a gift through it names that row in
+ * `donation.form_id` and this page in `donation.supporter_page_id`. a `form` row is named by a
+ * `page` or by a `supporter_page`, never both, and no constraint can say so across two tables:
+ * the writer that inserts the pair is what keeps it.
+ *
+ * a page a gift names is never deleted, for the reason `page` gives.
+ */
+export const supporterPage = sqliteTable(
+	'supporter_page',
+	{
+		id: id(),
+		/** no `ON DELETE` action — see the `ON DELETE` note over `program`. */
+		supporterId: text('supporter_id')
+			.notNull()
+			.references(() => supporter.id),
+		/** unique among supporter pages; the spelling, and what it may not shadow, are the parse's. */
+		slug: text('slug').notNull(),
+		title: text('title').notNull(),
+		story: text('story').notNull(),
+		goalMinor: integer('goal_minor').notNull(),
+		currency: text('currency').notNull(),
+		/** the page's photo, an `image`, null for none; `org_profile.banner_image_id` is the precedent. */
+		photoId: text('photo_id').references(() => image.id),
+		formId: text('form_id')
+			.notNull()
+			.references(() => form.id),
+		status: text('status').$type<SupporterPageStatus>().notNull(),
+		/** when the confirm link took the page live; null while `pending`. */
+		publishedAt: at('published_at'),
+		/** when the page ended; set exactly while `ended`. */
+		endedAt: at('ended_at'),
+		/** when staff took the page down, null while it is up. */
+		hiddenAt: at('hidden_at'),
+		/** staff's reason for hiding it, for staff; null for none. */
+		hiddenNote: text('hidden_note'),
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('supporter_page_status_check', enumCheck(t.status, SUPPORTER_PAGE_STATUSES)),
+		check('supporter_page_title_not_blank_check', notBlank(t.title)),
+		check('supporter_page_story_not_blank_check', notBlank(t.story)),
+		check('supporter_page_goal_minor_positive_check', sql`${t.goalMinor} > 0`),
+		check('supporter_page_currency_check', currencyCheck(t.currency)),
+		// `ended` takes either: a page may end before its confirm link was ever opened.
+		check(
+			'supporter_page_published_check',
+			sql`(${t.status} <> 'pending' or ${t.publishedAt} is null) and (${t.status} <> 'live' or ${t.publishedAt} is not null)`
+		),
+		check('supporter_page_ended_check', sql`(${t.status} = 'ended') = (${t.endedAt} is not null)`),
+		check('supporter_page_hidden_note_not_blank_check', optionalNotBlank(t.hiddenNote)),
+		check(
+			'supporter_page_hidden_note_hidden_check',
+			sql`${t.hiddenNote} is null or ${t.hiddenAt} is not null`
+		),
+		uniqueIndex('supporter_page_slug_idx').on(t.slug),
+		uniqueIndex('supporter_page_form_id_idx').on(t.formId),
+		// one supporter's pages, newest first; also the index `supporter_id`'s foreign key is checked by.
+		index('supporter_page_supporter_created_idx').on(t.supporterId, t.createdAt, t.id),
+		// every page, newest first, for the admin list.
+		index('supporter_page_created_idx').on(t.createdAt, t.id)
+	]
+);
+
+export const SUPPORTER_LINK_PURPOSES = ['confirm', 'sign_in'] as const;
+export type SupporterLinkPurpose = (typeof SUPPORTER_LINK_PURPOSES)[number];
+
+/**
+ * a single-use link mailed to a supporter, stored as its hash. a `confirm` link names the page that
+ * opening it publishes; a `sign_in` link names none.
+ */
+export const supporterLink = sqliteTable(
+	'supporter_link',
+	{
+		/** the lowercase hex SHA-256 of the token. */
+		tokenHash: text('token_hash').primaryKey(),
+		supporterId: text('supporter_id')
+			.notNull()
+			.references(() => supporter.id),
+		purpose: text('purpose').$type<SupporterLinkPurpose>().notNull(),
+		supporterPageId: text('supporter_page_id').references(() => supporterPage.id),
+		/** past this the link admits nothing. */
+		expiresAt: at('expires_at').notNull(),
+		/** set by the one opening that took it. */
+		usedAt: at('used_at'),
+		createdAt: createdAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check(
+			'supporter_link_token_hash_check',
+			sql`length(${t.tokenHash}) = 64 and ${t.tokenHash} not glob '*[^0-9a-f]*'`
+		),
+		check('supporter_link_purpose_check', enumCheck(t.purpose, SUPPORTER_LINK_PURPOSES)),
+		check(
+			'supporter_link_page_check',
+			sql`(${t.purpose} = 'confirm') = (${t.supporterPageId} is not null)`
+		)
+	]
+);
+
+/** a signed-in supporter's session, stored as the hash of its cookie value. */
+export const supporterSession = sqliteTable(
+	'supporter_session',
+	{
+		/** the lowercase hex SHA-256 of the cookie value. */
+		tokenHash: text('token_hash').primaryKey(),
+		supporterId: text('supporter_id')
+			.notNull()
+			.references(() => supporter.id),
+		createdAt: createdAt(),
+		expiresAt: at('expires_at').notNull()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check(
+			'supporter_session_token_hash_check',
+			sql`length(${t.tokenHash}) = 64 and ${t.tokenHash} not glob '*[^0-9a-f]*'`
+		)
+	]
+);
+
+export type Supporter = typeof supporter.$inferSelect;
+export type NewSupporter = typeof supporter.$inferInsert;
+export type SupporterPage = typeof supporterPage.$inferSelect;
+export type NewSupporterPage = typeof supporterPage.$inferInsert;
+export type SupporterLink = typeof supporterLink.$inferSelect;
+export type NewSupporterLink = typeof supporterLink.$inferInsert;
+export type SupporterSession = typeof supporterSession.$inferSelect;
+export type NewSupporterSession = typeof supporterSession.$inferInsert;
 
 export type ConnectorKey = typeof connectorKey.$inferSelect;
 export type ConnectorCode = typeof connectorCode.$inferSelect;

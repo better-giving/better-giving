@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "dir": "packages/operator/src/registry",
-  "registryVersion": "2.2.0",
+  "registryVersion": "2.2.1",
   "items": {
     "badge-css": {
       "version": "1.1.0",
@@ -29,6 +29,41 @@
       "files": {
         "styles/field-css.css": "8c95b96e5b8042a7e334b0e5554a990dd335ed9d6a8ff3099e6b6079120b1743",
         "styles/field-css.usage.md": "3881608aa3d300f02dd20569dd827c759f653782baa8e8fbd944a92c972ec436"
+      }
+    },
+    "notice-card-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/notice-card-css.css": "bd7bc28ec013a534478593ec82326ab367122fee4e718c4ff1d2f72604e1b214",
+        "styles/notice-card-css.usage.md": "da0261f1a63a8701ec91b2b8c235619771bdbcf10480ef4063b108d7114ee233"
+      }
+    },
+    "progress-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/progress-css.css": "0cd8b379f989620c766f96aaf170b6d1d6742eca8498643ee615df20b4551b58",
+        "styles/progress-css.usage.md": "5ce43bdba22c93621589e9e6c6616aaa8c4e4eb8d976ff19d485bb07b3b3bc60"
+      }
+    },
+    "state-card-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/state-card-css.css": "3922fab9ddca565ba4e1aab36e8ba176a5586cd4017224bd04f73ce9d6d18cbc",
+        "styles/state-card-css.usage.md": "8edf5a19f506602e2d61f55ba3ac33c96857bf58c01491f2f219487f6efd5e7f"
+      }
+    },
+    "switch-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/switch-css.css": "cac7e6db9436ca32d65a4ddce85e11a25f8a9da8751dfa6a246e45de0e597d7d",
+        "styles/switch-css.usage.md": "a5bf4ee18286da22c6d08a84a4b3ae14781990fabfbd3ec58127744b1c33f1ef"
+      }
+    },
+    "table-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/table-css.css": "403f2ce4723904d5b619c192becd0591b56f46b5ca806b88917fdd5ba6cbdcd3",
+        "styles/table-css.usage.md": "50c2513f14bbb979d0b2900f51f4196967b75b6502c2575c8cdab2ae064fd8b9"
       }
     },
     "variables": {

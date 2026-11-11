@@ -51,7 +51,7 @@
  *
  * the number is the tallest the card stands in its common shapes, taken at that 18px ceiling and at
  * a card narrow enough to put its amount tiles two across (below `@container donate (min-width:
- * calc(26em - 2px))` in ../styles/layout.css). it is the top of a range rather than
+ * 26em)` in ../styles/layout.css). it is the top of a range rather than
  * a fit, and the range is the deployment's own configuration: a form suggesting a dozen amounts
  * stands past this floor and a short one stands well inside it. either way the page settles once,
  * when the card replaces the wait — down by the difference where the card is taller, up by it where

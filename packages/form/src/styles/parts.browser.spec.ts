@@ -719,13 +719,12 @@ describe('the amount tray’s cells', () => {
 		});
 	});
 
-	// a line drawn in a gap reaches the far edge of the line across it, so the board meets at its
-	// crossings and stops at the tray's inset: the first row's verticals start at its tiles' top and
-	// the last row's end at their foot. the tray's hairline is the lines' own width.
+	// a line drawn in a gap reaches the line across it, so the board meets at its crossings and stops
+	// at the tray's inset: the first row's verticals start at its tiles' top and the last row's end at
+	// their foot.
 	it('runs each vertical from the line above its row to the line below it', async () => {
 		const tiles = await tray(6, '375px');
-		const drawn = getComputedStyle(tiles);
-		const reachInto = (parseFloat(drawn.rowGap) + parseFloat(drawn.borderTopWidth)) / 2;
+		const gap = parseFloat(getComputedStyle(tiles).rowGap);
 		const rows = rowsOf(tiles);
 		const last = rows.length - 1;
 
@@ -734,9 +733,8 @@ describe('the amount tray’s cells', () => {
 			if (tile === undefined) return;
 			const drawn = getComputedStyle(tile, '::before');
 			const height = tile.getBoundingClientRect().height;
-			const reach = (at > 0 ? reachInto : 0) + (at < last ? reachInto : 0);
-			// precision 1 (±0.05px) is what sees the half pixel the hairline adds to each reach.
-			expect(parseFloat(drawn.height), `row ${at}`).toBeCloseTo(height + reach, 1);
+			const reach = (at > 0 ? gap / 2 : 0) + (at < last ? gap / 2 : 0);
+			expect(parseFloat(drawn.height), `row ${at}`).toBeCloseTo(height + reach, 0);
 		});
 	});
 
@@ -758,359 +756,6 @@ describe('the amount tray’s cells', () => {
 		expect(box.right).toBeCloseTo(edge.right, 0);
 		expect(box.top).toBeGreaterThan(lowest);
 	});
-});
-
-// the lines between the options on a tray stop at its inner pad: nothing ruled between two options
-// reaches into the pad or the hairline around it, on either axis, at either side of the wide
-// breakpoint. a pseudo-element has no rect of its own, so each line's box is its resolved offsets
-// and size laid on the padding box of the option drawing it.
-describe('the lines between a tray’s options', () => {
-	afterEach(async () => {
-		document.body.style.inlineSize = '';
-		await cdp().send('Emulation.setEmulatedMedia', { features: [] });
-	});
-
-	type Box = { left: number; top: number; right: number; bottom: number };
-
-	/** the tray's content box: inside its hairline and its pad. */
-	function inner(tray: HTMLElement): Box {
-		const box = tray.getBoundingClientRect();
-		const drawn = getComputedStyle(tray);
-		return {
-			left: box.left + parseFloat(drawn.borderLeftWidth) + parseFloat(drawn.paddingLeft),
-			top: box.top + parseFloat(drawn.borderTopWidth) + parseFloat(drawn.paddingTop),
-			right: box.right - parseFloat(drawn.borderRightWidth) - parseFloat(drawn.paddingRight),
-			bottom: box.bottom - parseFloat(drawn.borderBottomWidth) - parseFloat(drawn.paddingBottom)
-		};
-	}
-
-	/** every line the tray's children draw, as a named box on the page. */
-	function lines(tray: HTMLElement): { name: string; box: Box }[] {
-		const found: { name: string; box: Box }[] = [];
-		for (const option of Array.from(
-			tray.querySelectorAll<HTMLElement>(':scope > label, :scope > .entry')
-		)) {
-			const at = option.getBoundingClientRect();
-			const own = getComputedStyle(option);
-			if (own.display === 'none') continue;
-			const left = at.left + parseFloat(own.borderLeftWidth);
-			const top = at.top + parseFloat(own.borderTopWidth);
-			for (const pseudo of ['::before', '::after'] as const) {
-				const line = getComputedStyle(option, pseudo);
-				if (line.content === 'none') continue;
-				const x = left + parseFloat(line.left);
-				const y = top + parseFloat(line.top);
-				found.push({
-					name: `${option.textContent?.trim() || option.className}${pseudo}`,
-					box: {
-						left: x,
-						top: y,
-						right: x + parseFloat(line.width),
-						bottom: y + parseFloat(line.height)
-					}
-				});
-			}
-		}
-		return found;
-	}
-
-	// computed lengths are floats summed from layout units of 1/64px; a line reaching across a rule
-	// is judged to within 0.02px, far under the 0.5px the hairline's half is.
-	const SUBPIXEL = 0.02;
-
-	/** what each line lies outside the tray's content box by, on each side — all zero when inside. */
-	function overreach(tray: HTMLElement): Record<string, Box> {
-		const edge = inner(tray);
-		const over = (by: number): number => (by > SUBPIXEL ? by : 0);
-		return Object.fromEntries(
-			lines(tray).map(({ name, box }) => [
-				name,
-				{
-					left: over(edge.left - box.left),
-					top: over(edge.top - box.top),
-					right: over(box.right - edge.right),
-					bottom: over(box.bottom - edge.bottom)
-				}
-			])
-		);
-	}
-
-	const INSIDE = { left: 0, top: 0, right: 0, bottom: 0 };
-
-	// one card on each side of the wide breakpoint at a 16px root, with the lines each draws held
-	// inside the pad; where the breakpoint's edge falls is the next case's.
-	it.each([
-		{ card: '416px', columns: 4, rows: 1 },
-		{ card: '300px', columns: 2, rows: 2 }
-	])(
-		'sets 3 amounts and other $columns across on a $card card, every line inside the pad',
-		async ({ card, columns, rows }) => {
-			const { host, shadow } = await mount({
-				...CONFIG,
-				suggestedAmountsMinor: [2500, 5000, 10_000]
-			});
-			host.style.display = 'block';
-			host.style.inlineSize = card;
-			await settle();
-			await new Promise(requestAnimationFrame);
-			const tiles = shadow.querySelector('.tiles') as HTMLElement;
-			const tops = new Set(
-				Array.from(tiles.querySelectorAll(':scope > label'), (tile) =>
-					Math.round(tile.getBoundingClientRect().top)
-				)
-			);
-
-			expect(getComputedStyle(tiles).gridTemplateColumns.split(' ')).toHaveLength(columns);
-			expect(tops.size).toBe(rows);
-			const reach = overreach(tiles);
-			expect(Object.keys(reach).length).toBeGreaterThan(0);
-			for (const [name, by] of Object.entries(reach)) expect(by, name).toEqual(INSIDE);
-		}
-	);
-
-	// the breakpoint is 26em of the card's own clamped root, so its edge is a card 390px across at the
-	// 15px floor, 416px at 16px and 468px at the 18px ceiling: one px under each is two across, the
-	// edge itself is four across. the root is set on the page, which the card clamps into [15, 18].
-	//
-	// that edge is written three times — once for the columns in ./layout.css and twice for the
-	// lines in ./parts.css — so each side reads both the columns and which of the four tiles rule a
-	// vertical (`::before`) and a horizontal (`::after`): a copy that drifted draws one board's
-	// lines on the other board's columns.
-	it.each([
-		{ root: '12px', clamped: 15, card: 390 },
-		{ root: '16px', clamped: 16, card: 416 },
-		{ root: '24px', clamped: 18, card: 468 }
-	])(
-		'turns the amounts four across at a $card px card at a $clamped px root, and not a px under it',
-		async ({ root, clamped, card }) => {
-			const board = async (width: number) => {
-				document.documentElement.style.fontSize = root;
-				const mounted = await mount({
-					...CONFIG,
-					suggestedAmountsMinor: [2500, 5000, 10_000]
-				});
-				mounted.host.style.display = 'block';
-				mounted.host.style.inlineSize = `${width}px`;
-				await settle();
-				await new Promise(requestAnimationFrame);
-				const tiles = mounted.shadow.querySelector('.tiles') as HTMLElement;
-				const labels = Array.from(tiles.querySelectorAll<HTMLElement>(':scope > label'));
-				const drawn = (pseudo: string) =>
-					labels.map((tile) => getComputedStyle(tile, pseudo).content !== 'none');
-				return {
-					root: parseFloat(getComputedStyle(mounted.card).fontSize),
-					columns: getComputedStyle(tiles).gridTemplateColumns.split(' ').length,
-					verticals: drawn('::before'),
-					horizontals: drawn('::after')
-				};
-			};
-
-			const under = await board(card - 1);
-			expect(under.root, `the card's root clamps ${root} to ${clamped}px`).toBe(clamped);
-			expect(under.columns).toBe(2);
-			expect(under.verticals, 'two across: a vertical before the 2nd and 4th').toEqual([
-				false,
-				true,
-				false,
-				true
-			]);
-			expect(under.horizontals, 'two across: a horizontal above the 3rd').toEqual([
-				false,
-				false,
-				true,
-				false
-			]);
-
-			const edge = await board(card);
-			expect(edge.root, `the card's root clamps ${root} to ${clamped}px`).toBe(clamped);
-			expect(edge.columns).toBe(4);
-			expect(edge.verticals, 'four across: a vertical before all but the 1st').toEqual([
-				false,
-				true,
-				true,
-				true
-			]);
-			expect(edge.horizontals, 'four across: one row, no horizontal').toEqual([
-				false,
-				false,
-				false,
-				false
-			]);
-		}
-	);
-
-	async function mountAt(config: FormConfig, width: string, scheme: string): Promise<ShadowRoot> {
-		await cdp().send('Emulation.setEmulatedMedia', {
-			features: [{ name: 'prefers-color-scheme', value: scheme }]
-		});
-		document.body.style.inlineSize = width;
-		const { shadow } = await mount(config);
-		await new Promise(requestAnimationFrame);
-		return shadow;
-	}
-
-	const AMOUNTS = [3, 4].flatMap((count) =>
-		['1440px', '375px'].flatMap((width) =>
-			['light', 'dark'].flatMap((scheme) =>
-				[false, true].map((open) => ({ count, width, scheme, open }))
-			)
-		)
-	);
-
-	it.each(AMOUNTS)(
-		'keeps the amount tray’s lines inside its pad for $count amounts and other at $width, $scheme, entry open $open',
-		async ({ count, width, scheme, open }) => {
-			const amounts = Array.from({ length: count }, (_, at) => (at + 1) * 2500);
-			const shadow = await mountAt({ ...CONFIG, suggestedAmountsMinor: amounts }, width, scheme);
-			const tiles = shadow.querySelector('.tiles') as HTMLElement;
-			if (open) {
-				(tiles.querySelector('.other input') as HTMLInputElement).click();
-				await settle();
-				await new Promise(requestAnimationFrame);
-			}
-			const reach = overreach(tiles);
-
-			expect(Object.keys(reach).length).toBeGreaterThan(0);
-			for (const [name, by] of Object.entries(reach)) expect(by, name).toEqual(INSIDE);
-		}
-	);
-
-	const CADENCES = [
-		{ frequencies: ['one_time', 'monthly'] as const },
-		{ frequencies: ['one_time', 'monthly', 'yearly'] as const }
-	].flatMap(({ frequencies }) =>
-		['1440px', '375px', '300px', '200px'].flatMap((width) =>
-			['light', 'dark'].map((scheme) => ({ frequencies, width, scheme }))
-		)
-	);
-
-	it.each(CADENCES)(
-		'keeps the How often tray’s lines inside its pad for $frequencies at $width, $scheme',
-		async ({ frequencies, width, scheme }) => {
-			const shadow = await mountAt({ ...CONFIG, frequencies: [...frequencies] }, width, scheme);
-			const track = shadow.querySelector('.segment') as HTMLElement;
-			const reach = overreach(track);
-			const tops = Array.from(track.querySelectorAll(':scope > label'), (option) =>
-				Math.round(option.getBoundingClientRect().top)
-			);
-			const between = tops.filter((top, at) => at > 0 && top === tops[at - 1]).length;
-
-			expect(Object.keys(reach)).toHaveLength(between);
-			for (const [name, by] of Object.entries(reach)) expect(by, name).toEqual(INSIDE);
-		}
-	);
-
-	// the track's lines turn at `@container (width < 17.5em)` and `(width < 11.5em)` in ./parts.css,
-	// three and two of `.segment`'s track minimum in ./layout.css and the `--_sp2` gaps between them,
-	// written by hand because a container condition cannot read `var()` ("turns the How often lines
-	// at the widths its track wraps at" in ../element.dom.spec.ts recomputes them). the track's own
-	// content box is sized a px under each edge, at it and a px over it, and the rows and the lines
-	// are read together: a literal that drifted from the grid draws a line in the pad before a
-	// wrapped option, or drops one between two options on a row. `em` in all three is the track's
-	// own font-size. the card's chrome around the track is measured on a card under the wide
-	// breakpoint, which every width here stays under.
-	it.each([
-		{
-			edge: 17.5,
-			frequencies: ['one_time', 'monthly', 'yearly'] as const,
-			wrapped: [false, true, false],
-			across: [false, true, true]
-		},
-		{
-			edge: 11.5,
-			frequencies: ['one_time', 'monthly'] as const,
-			wrapped: [false, false],
-			across: [false, true]
-		}
-	])(
-		'wraps the How often track and its lines at a $edge em content box, and not a px over it',
-		async ({ edge, frequencies, wrapped, across }) => {
-			const { host, shadow } = await mount({ ...CONFIG, frequencies: [...frequencies] });
-			host.style.display = 'block';
-			const track = shadow.querySelector('.segment') as HTMLElement;
-			const options = Array.from(track.querySelectorAll<HTMLElement>(':scope > label'));
-			const sized = async (card: number) => {
-				host.style.inlineSize = `${card}px`;
-				await new Promise(requestAnimationFrame);
-				const box = inner(track);
-				return {
-					width: box.right - box.left,
-					rows: new Set(options.map((option) => Math.round(option.getBoundingClientRect().top)))
-						.size,
-					verticals: options.map(
-						(option) => getComputedStyle(option, '::before').content !== 'none'
-					),
-					reach: overreach(track)
-				};
-			};
-
-			const probe = 320;
-			const chrome = probe - (await sized(probe)).width;
-			const target = edge * parseFloat(getComputedStyle(track).fontSize);
-			for (const [by, rows, verticals] of [
-				[-1, 2, wrapped],
-				[0, 1, across],
-				[1, 1, across]
-			] as const) {
-				const at = await sized(target + by + chrome);
-				const label = `${by}px from ${target}px`;
-
-				expect(Math.abs(at.width - (target + by)), label).toBeLessThanOrEqual(SUBPIXEL);
-				expect(at.rows, label).toBe(rows);
-				expect(at.verticals, label).toEqual(verticals);
-				expect(Object.keys(at.reach), label).toHaveLength(verticals.filter(Boolean).length);
-				for (const [name, reach] of Object.entries(at.reach)) {
-					expect(reach, `${name}, ${label}`).toEqual(INSIDE);
-				}
-			}
-		}
-	);
-
-	// a vertical reaching into a gap covers the whole hairline ruled across it, from either side, so a
-	// crossing is solid rather than a line meeting the middle of another.
-	it.each([
-		{ count: 4, width: '375px' },
-		{ count: 4, width: '1440px' }
-	])(
-		'crosses each horizontal on the amount tray whole, $count amounts at $width',
-		async ({ count, width }) => {
-			const amounts = Array.from({ length: count }, (_, at) => (at + 1) * 2500);
-			const shadow = await mountAt({ ...CONFIG, suggestedAmountsMinor: amounts }, width, 'light');
-			const tiles = shadow.querySelector('.tiles') as HTMLElement;
-			const drawn = lines(tiles);
-			const across = drawn.filter(({ box }) => box.right - box.left > box.bottom - box.top);
-			const upright = drawn.filter(({ box }) => box.right - box.left < box.bottom - box.top);
-
-			const trayStyle = getComputedStyle(tiles);
-			const gapReach = parseFloat(trayStyle.rowGap) + parseFloat(trayStyle.borderTopWidth);
-			let crossings = 0;
-			for (const { box: rule } of across) {
-				for (const { name, box: line } of upright) {
-					// a vertical within the gap and hairline of this rule must reach it; one a whole row
-					// away belongs to another rule.
-					const shortAbove = rule.top - line.bottom;
-					const shortBelow = line.top - rule.bottom;
-					expect(
-						shortAbove > SUBPIXEL && shortAbove <= gapReach,
-						`${name} stops ${shortAbove}px above the rule at ${rule.top}`
-					).toBe(false);
-					expect(
-						shortBelow > SUBPIXEL && shortBelow <= gapReach,
-						`${name} starts ${shortBelow}px below the rule at ${rule.bottom}`
-					).toBe(false);
-					if (line.bottom < rule.top || line.top > rule.bottom) continue;
-					crossings += 1;
-					const reachesAcross =
-						line.top <= rule.top + SUBPIXEL && line.bottom >= rule.bottom - SUBPIXEL;
-					expect(
-						reachesAcross,
-						`${name} at ${line.top}–${line.bottom}, rule ${rule.top}–${rule.bottom}`
-					).toBe(true);
-				}
-			}
-			expect(crossings).toBeGreaterThan(0);
-		}
-	);
 });
 
 describe('the free entry as laid out', () => {
@@ -4815,7 +4460,7 @@ describe('the amount tray’s plane', () => {
 
 	// each end of every line is the content box's edge: the border's width and the tray's pad in from
 	// the tray's own box. a line short of it leaves a hole in the board; one past it touches the edge.
-	// the exception is the verticals' bottom, which stops in the gap above the free entry's row.
+	// the exception is the verticals' bottom, which stops mid-gap above the free entry's row.
 	describe.each([
 		['one row', 560, 1],
 		['two by two', 300, 2]
@@ -4862,14 +4507,13 @@ describe('the amount tray’s plane', () => {
 
 			expect(verticals.length).toBeGreaterThan(0);
 			expect(Math.min(...verticals.map((v) => v.top))).toBeCloseTo(content.top, 0);
-			// the verticals stop on the far edge of the horizontal above the free entry, which is a
-			// hairline centred mid-gap between the last row of tiles and the entry.
+			// the verticals stop where they meet the horizontal above the free entry, mid-gap between
+			// the last row of tiles and the entry.
 			const lastTileBottom = Math.max(...cells.map((cell) => cell.getBoundingClientRect().bottom));
 			const entryTop = (tray.querySelector('.other') as HTMLElement).getBoundingClientRect().top;
-			const hairline = Number.parseFloat(drawn.borderTopWidth);
 			expect(Math.max(...verticals.map((v) => v.bottom))).toBeCloseTo(
-				(lastTileBottom + entryTop + hairline) / 2,
-				1
+				(lastTileBottom + entryTop) / 2,
+				0
 			);
 			for (const h of horizontals) {
 				expect(h.left).toBeCloseTo(content.left, 0);

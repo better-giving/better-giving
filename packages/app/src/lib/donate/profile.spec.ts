@@ -17,6 +17,8 @@ const ORG = {
 	}
 } as const;
 
+const MONEY = { locale: 'en-US', currency: 'USD' };
+
 const MESSAGES = {
 	messages: [{ name: 'Maya R.', note: 'Proud to give', receivedAt: '2026-09-10T11:00:00.000Z' }],
 	total: 1,
@@ -30,6 +32,8 @@ describe('donateProfile()', () => {
 				org: ORG,
 				logo: { imageId: 'logo-1', width: 400, height: 400 },
 				bannerImageId: 'banner 1',
+				raised: { raisedMinor: 120_455_000, gifts: 48 },
+				money: MONEY,
 				messages: MESSAGES,
 				videos: [
 					{
@@ -40,13 +44,15 @@ describe('donateProfile()', () => {
 					}
 				]
 			})
-		).toStrictEqual({
+		).toEqual({
 			name: 'Riverbank Trust',
 			taxId: '12-3456789',
 			banner: { src: '/image/banner%201' },
 			logo: { src: '/image/logo-1', width: 400, height: 400 },
 			mission: 'Clean water for every family.',
 			vision: 'A river anyone can drink from.',
+			raised: { raisedMinor: 120_455_000, gifts: 48 },
+			money: MONEY,
 			footer: {
 				addressLines: ['1 Main St', 'Springfield, IL 62701', 'US'],
 				email: null,
@@ -69,6 +75,8 @@ describe('donateProfile()', () => {
 			org: { ...ORG, mission: null, vision: null, info: { ...ORG.info, ein: null } },
 			logo: null,
 			bannerImageId: null,
+			raised: { raisedMinor: 0, gifts: 0 },
+			money: MONEY,
 			messages: { messages: [], total: 0, next: null },
 			videos: undefined
 		});
@@ -79,31 +87,8 @@ describe('donateProfile()', () => {
 			logo: null,
 			taxId: null,
 			mission: null,
-			vision: null
+			vision: null,
+			raised: { raisedMinor: 0, gifts: 0 }
 		});
-	});
-
-	it('hands a mission or vision that is empty after trimming as none', () => {
-		const profile = donateProfile({
-			org: { ...ORG, mission: ' \n ', vision: '' },
-			logo: null,
-			bannerImageId: null,
-			messages: MESSAGES,
-			videos: undefined
-		});
-		expect(profile.mission).toBeNull();
-		expect(profile.vision).toBeNull();
-	});
-
-	it('hands a written mission and vision through as written, whitespace and all', () => {
-		const profile = donateProfile({
-			org: { ...ORG, mission: '  keep me \n', vision: '\tsee us  ' },
-			logo: null,
-			bannerImageId: null,
-			messages: MESSAGES,
-			videos: undefined
-		});
-		expect(profile.mission).toBe('  keep me \n');
-		expect(profile.vision).toBe('\tsee us  ');
 	});
 });

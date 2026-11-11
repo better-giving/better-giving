@@ -1011,14 +1011,12 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * each tile opening a row after the first draws the horizontal above that row, the tray's whole
  * content width across — measured in `cqi` off the tray, which is a query container for exactly
  * that length — and the free entry draws the one above itself when it stands open on the tray.
- * every other tile draws the vertical before it, cell-high and then into each gap it borders as far
- * as the horizontal's far edge, so it crosses that whole hairline and stops at the tray's inset on
- * the outer rows. the geometry below is every tile's; a line lands only where a condition gives it
- * `content`.
+ * every other tile draws the vertical before it, cell-high and then half the gap further into each
+ * gap it borders, so it meets the horizontal there and stops at the tray's inset on the outer rows.
+ * the geometry below is every tile's; a line lands only where a condition gives it `content`.
  *
- * the cadence track draws verticals only, each by the option after the gap and cell-high, and none
- * before an option that opens a row: three cadences on a narrow card wrap (`.segment` in
- * ./layout.css), and a line before the one that wrapped would stand in the track's pad.
+ * the cadence track is one row and draws verticals only, each by the option after the gap and
+ * cell-high.
  */
 .segment > label,
 .tiles > label {
@@ -1058,7 +1056,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /* on a row with the open entry under it. */
 .tiles:has(> .entry:not([hidden])) > label::before {
-	inset-block-end: calc(-1 * (var(--_sp2) + var(--_border)) / 2);
+	inset-block-end: calc(-1 * var(--_sp2) / 2);
 }
 
 .tiles > label::after,
@@ -1069,31 +1067,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	block-size: var(--_border);
 }
 
-/*
- * where the track holds two options across, the odd ones open a row; where it holds one, every
- * option does. each width is that many of `.segment`'s track minimum in ./layout.css and the gaps
- * between them.
- */
-/* raw-length-ok: three track minimums and two `--_sp2` gaps. */
-@container (width < 17.5em) {
-	.segment > label:nth-child(odd)::before {
-		content: none;
-	}
-}
-
-/* raw-length-ok: two track minimums and one `--_sp2` gap. */
-@container (width < 11.5em) {
-	.segment > label + label::before {
-		content: none;
-	}
-}
-
-/*
- * raw-length-ok: the card's wide breakpoint in ./layout.css, the one the columns change at: 26em
- * border to border, less two hairlines at 1px, and ./layout.css's note on it says why that is exact
- * only at a 1px hairline.
- */
-@container donate not (min-width: calc(26em - 2px)) {
+/* raw-length-ok: the card's wide breakpoint in ./layout.css, the one the columns change at. */
+@container donate not (min-width: 26em) {
 	.tiles > label:nth-child(even)::before,
 	.tiles > label:nth-child(odd):not(:first-child)::after {
 		content: '';
@@ -1101,16 +1076,16 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 	/* on a row with one above it, and on a row with one under it. */
 	.tiles > label:nth-child(n + 3)::before {
-		inset-block-start: calc(-1 * (var(--_sp2) + var(--_border)) / 2);
+		inset-block-start: calc(-1 * var(--_sp2) / 2);
 	}
 
 	.tiles > label:has(~ label:nth-child(odd))::before {
-		inset-block-end: calc(-1 * (var(--_sp2) + var(--_border)) / 2);
+		inset-block-end: calc(-1 * var(--_sp2) / 2);
 	}
 }
 
 /* raw-length-ok: as the breakpoint above. */
-@container donate (min-width: calc(26em - 2px)) {
+@container donate (min-width: 26em) {
 	/* raw-length-ok: `4n` is a step through the children, not a length. */
 	.tiles > label:not(:nth-child(4n + 1))::before,
 	.tiles > label:nth-child(4n + 1):not(:first-child)::after {
@@ -1118,12 +1093,12 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	}
 
 	.tiles > label:nth-child(n + 5)::before {
-		inset-block-start: calc(-1 * (var(--_sp2) + var(--_border)) / 2);
+		inset-block-start: calc(-1 * var(--_sp2) / 2);
 	}
 
 	/* raw-length-ok: as above. */
 	.tiles > label:has(~ label:nth-child(4n + 1))::before {
-		inset-block-end: calc(-1 * (var(--_sp2) + var(--_border)) / 2);
+		inset-block-end: calc(-1 * var(--_sp2) / 2);
 	}
 }
 

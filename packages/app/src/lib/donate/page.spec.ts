@@ -333,13 +333,7 @@ describe('every colour lands on the radix step for its job', () => {
 	// `allowed` is the steps the job may land on; a new colour declaration fails the last case until it
 	// is placed in one of these.
 	const WIDE = '@container page (min-width: 60rem)';
-	const NARROW = '@container page (min-width: 48rem)';
 	const FEATURE = ".page[data-layout='feature']";
-	const HERO = `${FEATURE} .page-profile > .page-profile-who`;
-	const HERO_OVER_FILL = `${FEATURE} .page-profile-cover[data-cover='none'] + .page-profile-who`;
-	// the rail's own text, the box heading and the chooser's question, inherits the rail's ink.
-	const RAIL = `${FEATURE} .page-profile > .page-profile-rail`;
-	const RAIL_OVER_FILL = `${FEATURE} .page-profile-cover[data-cover='none'] ~ .page-profile-rail`;
 	const OVER_FILL = `${FEATURE} .page-layout[data-cover='logo'] .page-hero-words, ${FEATURE} .page-layout[data-cover='none'] .page-hero-words`;
 	const IDLE = ":not(:has(:checked, [aria-disabled='true']))";
 	const BORDER =
@@ -372,11 +366,11 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-goal-track | background': 'slate-3',
 				'.page-share-button | background': 'slate-1',
 				'.page-choose .page-choose-option:has(:checked) | background': 'slate-1',
+				'.page > .page-ground | --page-profile-band': 'brand-3',
 				'.page-profile-banner | background': 'slate-3',
-				".page[data-layout='letter'] .page-profile-banner | background": 'slate-1',
-				'.page-profile-cover | background': 'slate-3',
+				'.page-profile-band | background': 'brand-3',
 				'.page-profile-logo | background': 'slate-1',
-				[`${NARROW} » [data-shape='cards'] .page-messages-row | background`]: 'slate-1',
+				'.page-profile-raised | background': 'slate-1',
 				'.page-messages-plane | background': 'slate-1',
 				'.page-messages-foot | background': 'slate-2',
 				'.page-video-box | background': 'slate-3',
@@ -414,10 +408,9 @@ describe('every colour lands on the radix step for its job', () => {
 				[`.page-choose .page-choose-option:hover${IDLE} | border-color`]: 'slate-8',
 				[`.page-choose .page-choose-option:active${IDLE} | border-color`]: 'slate-8',
 				'.page-choose .page-choose-option:has(:checked) | border-color': 'brand-8',
-				'.page-profile-banner | border': 'slate-6',
-				".page[data-layout='letter'] .page-profile-banner | border": 'slate-6',
+				'.page-profile-banner, .page-profile-band | border': 'slate-6',
 				'.page-profile-logo | border': 'slate-6',
-				[`${NARROW} » [data-shape='cards'] .page-messages-row | border`]: 'slate-6',
+				'.page-profile-raised | border': 'slate-6',
 				'.page-messages-plane | border': 'slate-6',
 				'.page-messages-row + .page-messages-row | border-block-start': 'slate-6',
 				'.page-messages-foot | border-block-start': 'slate-6',
@@ -433,8 +426,6 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-8',
 				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-8',
 				'.page-messages-row:focus-visible | outline': 'brand-8',
-				'.page-profile-cover + .page-profile-who :is(.page-profile-logo, .page-profile-badge) | box-shadow':
-					'slate-1',
 				'.page-video-box:focus-visible | outline': 'brand-8'
 			}
 		},
@@ -445,8 +436,7 @@ describe('every colour lands on the radix step for its job', () => {
 				[`${FEATURE} .page-cover-area:empty | background`]: 'brand-9',
 				".page-cover[data-source='logo'] | background": 'brand-9',
 				'.page-goal-fill | background': 'brand-9',
-				'.page-profile-badge | background': 'brand-9',
-				".page-profile-cover[data-cover='none'] | background": 'brand-9'
+				'.page-profile-badge | background': 'brand-9'
 			}
 		},
 		[ON_FILL]: {
@@ -455,10 +445,7 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-mast-badge | color': 'on-brand-9',
 				'.page-profile-badge | color': 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | --page-quiet`]: 'on-brand-9',
-				[`${WIDE} » ${OVER_FILL} | color`]: 'on-brand-9',
-				[`${WIDE} » ${HERO_OVER_FILL} | --page-quiet`]: 'on-brand-9',
-				[`${WIDE} » ${HERO_OVER_FILL} | color`]: 'on-brand-9',
-				[`${WIDE} » ${RAIL_OVER_FILL} | color`]: 'on-brand-9'
+				[`${WIDE} » ${OVER_FILL} | color`]: 'on-brand-9'
 			}
 		},
 		[TEXT]: {
@@ -498,8 +485,10 @@ describe('every colour lands on the radix step for its job', () => {
 					'slate-11',
 				'.page-ground .amount-label | color': 'slate-11',
 				'.page-profile-ein | color': 'slate-11',
-				'.page-profile .page-about .page-label | color': 'slate-12',
-				'.page-profile :is(.page-about-statement, .page-about-beneath) | color': 'slate-12',
+				'.page-profile-raised-label | color': 'slate-11',
+				".page[data-layout='profile'] .page-about .page-label | color": 'slate-12',
+				".page[data-layout='profile'] :is(.page-about-statement, .page-about-beneath) | color":
+					'slate-12',
 				'.page-messages-time | color': 'slate-11',
 				'.page-messages-count | color': 'slate-11',
 				'.page-messages-refused | color': 'red-11',
@@ -522,11 +511,7 @@ describe('every colour lands on the radix step for its job', () => {
 				[`${WIDE} » ${FEATURE} .page-hero-words | color`]: 'slate-1',
 				[`${WIDE} » ${FEATURE} .page-hero-words .page-goal-track | background`]: 'slate-8',
 				[`${WIDE} » ${FEATURE} .page-hero-words .page-goal-fill | background`]: 'slate-1',
-				".page-video-box[data-face='poster']::after | background": 'scrim',
-				[`${WIDE} » .page-profile-cover[data-cover='photo']::after | background`]: 'scrim',
-				[`${WIDE} » ${HERO} | --page-quiet`]: 'slate-1',
-				[`${WIDE} » ${HERO} | color`]: 'slate-1',
-				[`${WIDE} » ${RAIL} | color`]: 'slate-1'
+				".page-video-box[data-face='poster']::after | background": 'scrim'
 			}
 		}
 	};
@@ -635,20 +620,6 @@ describe('the share row and the footer', () => {
 	});
 });
 
-describe('the video play press', () => {
-	// the press is the registry's large square, 13 of its spacing steps; the glyph is 6 of them.
-	it('draws its glyph at 6 spacing steps, against the large press’s 13', () => {
-		const button = blocks(
-			readFileSync(require.resolve('@better-giving/form/registry/styles/button-css.css'), 'utf8')
-		);
-		const glyph = declared(page, '.page-video-glyph');
-		const step = declared(button, '.ds-btn');
-		expect(substitute(step, glyph['inline-size'] ?? '')).toBe('calc(0.25rem * 6)');
-		expect(declared(button, '.ds-btn-lg')['--ds-btn-size']).toBe('calc(var(--ds-spacing) * 13)');
-		expect(glyph['block-size']).toBe(glyph['inline-size']);
-	});
-});
-
 describe('the scrim over the feature’s cover', () => {
 	const scrim = declared(page, '.page > .page-ground')['--page-scrim'] ?? '';
 	const stops = [...scrim.matchAll(/oklch\(([^/]+)\/\s*([\d.]+)\)\s*([\d.]+%)?/g)];
@@ -734,7 +705,7 @@ describe('the card layout', () => {
 	});
 
 	it('draws the box on the wide panel as part of the panel: no fill, edge, corner or inset of its own', () => {
-		expect(declared(page, WIDE, `${CARD} .page-layout [part~='card']`)).toEqual({
+		expect(declared(page, WIDE, `${CARD} [part~='card']`)).toEqual({
 			background: 'transparent',
 			border: '0',
 			'border-radius': '0',
@@ -742,9 +713,7 @@ describe('the card layout', () => {
 		});
 		// the card's interior inset is `.card-body`'s, which no part name reaches
 		// (packages/form/src/styles/layout.css), so the heading starts on the title's line only with it gone.
-		expect(declared(page, WIDE, `${CARD} .page-layout [part~='card'] > .card-body`)).toEqual({
-			padding: '0'
-		});
+		expect(declared(page, WIDE, `${CARD} [part~='card'] > .card-body`)).toEqual({ padding: '0' });
 		expect(declared(page, WIDE, `${CARD} [data-area='title']`).margin).toBe(
 			'var(--page-card-inset) 0 0'
 		);
@@ -785,7 +754,7 @@ describe('no card inside a card', () => {
 	it.each(
 		holding.map(({ layout, inside }) => [layout, inside.join(' ') || 'phone', inside] as const)
 	)('the box in the %s layout’s plane (%s) draws no fill or edge', (layout, _, inside) => {
-		const box = at(inside, `.page[data-layout='${layout}'] .page-layout [part~='card']`);
+		const box = at(inside, `.page[data-layout='${layout}'] [part~='card']`);
 		expect(box).toHaveLength(1);
 		expect(box[0]?.decls).toMatchObject({ background: 'transparent', border: '0' });
 	});
@@ -817,8 +786,7 @@ describe('no card inside a card', () => {
 				['.page-share-button', EDGE],
 				['.page-mast', EDGE],
 				['.page-profile-logo', EDGE],
-				[".page[data-layout='letter'] .page-profile-banner", EDGE],
-				["@container page (min-width: 48rem) » [data-shape='cards'] .page-messages-row", EDGE],
+				['.page-profile-raised', EDGE],
 				['.page-messages-plane', EDGE]
 			].sort()
 		);
@@ -947,67 +915,13 @@ describe('the program options', () => {
 
 describe('the profile head’s box and logo', () => {
 	// happy-dom does no layout, so both are read off the sheet.
+	const PROFILE = ".page[data-layout='profile'] [data-head='profile']";
 	const WIDE = '@container page (min-width: 60rem)';
 
-	it('stands no box sticky, and sets the rail in its grid cell from 60rem', () => {
+	it('stands no box sticky, so a box a later step grows past the screen still shows its foot', () => {
 		expect(page.filter(({ decls }) => decls.position === 'sticky')).toEqual([]);
-		expect(declared(page, WIDE, ".page[data-layout='letter'] .page-profile-rail")).toMatchObject({
-			'grid-column': '2',
-			'grid-row': '1 / -1'
-		});
-		expect(
-			declared(page, WIDE, ".page[data-layout='feature'] .page-profile > .page-profile-rail")
-		).toMatchObject({ 'grid-row': '1', 'align-self': 'start' });
-	});
-
-	it('leaves the rail’s own text to the rail’s ink, so the cover’s ink reaches the heading and the chooser’s question', () => {
-		const inked = page.filter(
-			({ at, decls }) =>
-				/\.page-(profile-box-heading|choose-legend)\b/.test(at.join(' » ')) && 'color' in decls
-		);
-		expect(inked).toEqual([]);
-	});
-
-	it('holds the card, its share row and its footer to the profile’s column at every width', () => {
-		expect(declared(page, ".page[data-profile][data-layout='card'] .page-in")).toEqual({
-			'max-inline-size': 'calc(var(--page-profile-box) + 2 * var(--page-gutter))'
-		});
-	});
-
-	it('holds the letter’s and the feature’s box to `--page-box` below 60rem, as a campaign’s, and lets the card’s fill its column', () => {
-		const held = page
-			.filter(({ at }) => at.length === 1 && /\.page-box > div > \*$/.test(at[0] ?? ''))
-			.map(({ at, decls }) => [at[0], decls['max-inline-size']]);
-		expect(held).toEqual([
-			['.page-box > div > *', 'var(--page-box)'],
-			[".page[data-profile][data-layout='card'] .page-box > div > *", 'none']
-		]);
-		expect(declared(page, WIDE, '.page[data-profile] .page-box > div > *')['max-inline-size']).toBe(
-			'none'
-		);
-	});
-
-	it('stands the letter’s rail top on the name’s from 60rem, under a banner as without one', () => {
-		const who = declared(
-			page,
-			WIDE,
-			".page[data-layout='letter'] .page-profile > :not(:first-child, .page-profile-rail)"
-		);
-		const rail = declared(
-			page,
-			WIDE,
-			".page[data-layout='letter'] .page-profile-banner ~ .page-profile-rail"
-		);
-		expect(rail['grid-row']).toBe('2 / -1');
-		expect(rail['margin-block-start']).toBe(who['margin-block-start']);
-		expect(
-			declared(page, WIDE, ".page[data-layout='letter'] .page-profile-rail")['margin-block-start']
-		).toBeUndefined();
-	});
-
-	it('takes back the campaign card’s margin on the name and the box', () => {
-		expect(declared(page, '.page[data-profile] :is(.page-profile-name, .page-box)')).toEqual({
-			margin: '0'
+		expect(declared(page, WIDE, `${PROFILE} > [data-area='box']`)).toMatchObject({
+			'grid-area': 'box'
 		});
 	});
 
@@ -1018,51 +932,23 @@ describe('the profile head’s box and logo', () => {
 		});
 		expect(declared(page, '.page-profile-logo[data-wide]')).toEqual({ 'inline-size': 'auto' });
 		expect(
-			declared(
-				page,
-				".page-profile-id:has(> [data-wide]), .page[data-layout='card'] .page-profile-banner + .page-profile-who .page-profile-id"
-			)['flex-direction']
+			declared(page, "[data-head='compact'] .page-profile-id:has(> [data-wide])")['flex-direction']
 		).toBe('column');
-	});
-
-	// the cover is positioned, so a static mark lifted over its foot is painted under it; the mark
-	// stacks itself above, as a leaf, so no ancestor of the box gains a position.
-	it('stands the mark over the feature’s cover foot, stacked above it', () => {
-		const over = declared(
-			page,
-			'.page-profile-cover + .page-profile-who :is(.page-profile-logo, .page-profile-badge)'
-		);
-		const cover = declared(page, '.page-profile-cover');
-		expect(over['margin-block-start']).toMatch(/^calc\(-1 \*/);
-		expect(over.position).toBe('relative');
-		expect(over['z-index']).toMatch(/^[1-9]\d*$/);
-		expect(cover.position).toBeDefined();
-		expect(cover.position).not.toBe('static');
-		expect(cover['z-index']).toBeUndefined();
-	});
-
-	it('leaves the mark’s ancestors out of the stacking the lift needs', () => {
-		const stacks = ['position', 'isolation', 'transform', 'z-index'];
-		const endsOnAncestor = (selector: string) =>
-			/\.page-profile-(who|id)(:[\w-]+(\([^)]*\))?|\[[^\]]*\])*$/.test(selector.trim());
-		const ancestors = page.filter(
-			(b) => b.at.length === 1 && b.at[0]?.split(',').some(endsOnAncestor)
-		);
-		// the sweep reaches the rules it claims to: the id's own base rule is one of them
-		expect(ancestors.map((b) => b.decls['flex-direction'])).toContain('column');
-		for (const { at, decls } of ancestors)
-			expect(
-				Object.keys(decls).filter((name) => stacks.includes(name)),
-				at[0]
-			).toEqual([]);
 	});
 });
 
 describe('the profile head’s quiet ink', () => {
-	// the EIN is slate 11, which stands only on slate 1 or 2: on the wash, under no ground of the
-	// head's own, and on the feature's cover in that cover's own ink.
-	it('stands the EIN on the wash', () => {
-		for (const selector of ['.page-profile-id', '.page-profile-names', '.page-profile-ein'])
+	// the EIN and the raised label are slate 11, which stands only on slate 1 or 2: the label on the
+	// raised plane, and the EIN on the wash, under no ground of the head's own.
+	it('stands the raised label on the plane and the EIN on the wash', () => {
+		expect(declared(page, '.page-profile-raised').background).toBe('var(--page-plane)');
+		for (const selector of [
+			'.page-profile-who',
+			'.page-profile-id',
+			'.page-profile-names',
+			'.page-profile-ein',
+			'.page-profile-raised-label'
+		])
 			expect(declared(page, selector).background, selector).toBeUndefined();
 	});
 });
@@ -1086,40 +972,18 @@ describe('the profile head’s type', () => {
 		expect(displayWeights).toContain('700');
 	});
 
-	it.each([
-		['About us', '.page-profile .page-about .page-label'],
-		['a heading saved for the page', '.page-profile-box-heading'],
-		['Videos and Messages from donors', '.page-messages-heading, .page-videos-heading']
-	])('sets %s in red hat display at 700, a face the sheet registers', (_, selector) => {
-		const heading = declared(page, selector);
+	it('sets About us in red hat display at 600, a face the sheet registers', () => {
+		const heading = declared(page, ".page[data-layout='profile'] .page-about .page-label");
 		expect(heading['font-family']).toBe('var(--page-font-display)');
-		expect(weight(heading['font-weight'])).toBe('700');
-		expect(displayWeights).toContain('700');
+		expect(weight(heading['font-weight'])).toBe('600');
+		expect(displayWeights).toContain('600');
 	});
 
-	it('sets the feature’s closing About us band at the display weight, 700, and no other band', () => {
-		expect(
-			weight(declared(page, ".page[data-layout='feature'] .page-about .page-label")['font-weight'])
-		).toBe('700');
-		expect(declared(page, '.page-about .page-label')['font-weight']).toBeUndefined();
-	});
-
-	it('sets the EIN on a 20px line', () => {
+	it('stands the raised plane 20px under the EIN, whose line is 20px', () => {
+		expect(declared(page, '.page-profile-who').gap).toBe('var(--page-gap-item)');
+		expect(ground['--page-gap-item']).toBe('1.25rem');
 		expect(declared(page, '.page-profile-ein')['line-height']).toBe('var(--page-profile-lh-small)');
 		expect(ground['--page-profile-lh-small']).toBe('1.25rem');
-	});
-
-	it('draws the feature’s hero name a step larger from 60rem, and the name elsewhere at one size', () => {
-		const hero = declared(
-			page,
-			'@container page (min-width: 60rem)',
-			".page[data-layout='feature'] .page-profile > .page-profile-who"
-		);
-		expect(hero['--page-profile-name']).toBe('var(--page-profile-name-hero)');
-		expect(ground['--page-profile-name-hero']).toBe('2.25rem');
-		const wide = declared(page, '@container page (min-width: 60rem)', '.page > .page-ground');
-		expect(wide['--page-profile-name']).toBeUndefined();
-		expect(ground['--page-profile-name']).toBe('1.875rem');
 	});
 });
 

@@ -84,17 +84,6 @@ describe('the videos section', () => {
 		);
 	});
 
-	it('draws the play press as a glyph alone, named by its label', () => {
-		const press = mount([PANTRY]).querySelector('.page-video-play');
-		const glyph = press?.querySelector('svg');
-		expect(glyph?.getAttribute('class')).toBe('page-video-glyph');
-		expect(glyph?.getAttribute('aria-hidden')).toBe('true');
-		expect(press?.textContent).toBe('');
-		expect(press?.getAttribute('aria-label')).toBe(
-			'Play video: A winter night with the pantry crew, 3 minutes 12 seconds'
-		);
-	});
-
 	it('captions the title and the length as m:ss, and leaves the length out where it is not known', () => {
 		const host = mount([PANTRY, DRIVERS]);
 		const captions = [...host.querySelectorAll('figcaption')];

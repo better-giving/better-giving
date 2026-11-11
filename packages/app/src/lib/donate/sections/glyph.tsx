@@ -1,8 +1,7 @@
 import { GLYPHS, type GlyphName } from '@better-giving/form/glyph';
 
-// a mark from the donation form's own set, drawn as react so the server render carries it. what it
-// means is named by the control it stands in, by the words beside it or the control's own label,
-// so it is hidden from a screen reader.
+// a mark from the donation form's own set, drawn as react so the server render carries it. it
+// stands beside words that name what it means, so it is hidden from a screen reader.
 
 export function Glyph({
 	name,

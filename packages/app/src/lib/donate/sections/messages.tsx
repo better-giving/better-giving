@@ -19,14 +19,8 @@ import { messageAge } from '../message-age';
 // focus moves to the first message the answer added, which takes focus for that alone. the band's
 // status line goes with them, so the final count is said by a line under the plane that stands
 // empty, and unseen, until then.
-//
-// `shape` is how the layout stands them: `list`, rows on one plane, or `cards`, each message a plane
-// of its own in a grid with the count and Show more under it (../page.css). the markup is the same.
 
 export type ShowMoreStatus = 'idle' | 'loading' | 'error';
-
-/** the section's `data-area`, which the preview leaves pressable (`PREVIEW_LIVE`, ../page-view.tsx). */
-export const MESSAGES_AREA = 'messages';
 
 /** what the route wires a page's messages section with. */
 export type DonorMessagesWiring = {
@@ -44,7 +38,6 @@ export type DonorMessagesProps = DonorMessagesWiring & {
 	readonly initial: DonorMessagesPage;
 	/** the page's locale, which the ages and the count are written in. */
 	readonly locale: string;
-	readonly shape: 'list' | 'cards';
 };
 
 type Shown = {
@@ -61,8 +54,7 @@ export function DonorMessages({
 	now,
 	status,
 	arrived,
-	onShowMore,
-	shape
+	onShowMore
 }: DonorMessagesProps) {
 	const headingId = useId();
 	const list = useRef<HTMLUListElement>(null);
@@ -102,7 +94,7 @@ export function DonorMessages({
 	const showing = `Showing ${count.format(shown.messages.length)} of ${count.format(shown.total)} messages`;
 	const ended = shown.from !== null && shown.next === null;
 	return (
-		<section aria-labelledby={headingId} data-area={MESSAGES_AREA} data-shape={shape}>
+		<section aria-labelledby={headingId} data-area="messages">
 			<h2 className="page-messages-heading" id={headingId}>
 				Messages from donors
 			</h2>

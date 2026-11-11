@@ -75,6 +75,8 @@ export const PAGE_LOADED = {
 		logo: null,
 		mission: null,
 		vision: null,
+		raised: { raisedMinor: 0, gifts: 0 },
+		money: { locale: 'en-US', currency: 'usd' },
 		footer: { addressLines: [], email: null, socialLinks: [] },
 		messages: { messages: FIRST_SIX, total: 12, next: CURSOR },
 		videos: []

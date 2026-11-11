@@ -1,0 +1,208 @@
+/* the registry's data table as plain css, no tailwind: the `.table` shell,
+   header row, row dividers, hover and figure columns of the `tokens` item, the
+   load-more row, and the `table` item's scroll region with its pinned first
+   column and its row headers. reads only the variables the `variables` item
+   declares. table-css.test.tsx renders the React table beside it and asserts
+   the same computed look in light and dark, for the default and example
+   themes.
+
+   the spacing step, the type size, the weights and the scrollbar width live
+   only in tailwind's theme; they are declared here under ds- names with the
+   same values, and the test holds them equal. 40rem in the media query is
+   tailwind's sm, written out because a query cannot read a variable. */
+.ds-table {
+  --ds-spacing: 0.25rem;
+  --ds-text-xs: 0.75rem;
+  --ds-text-sm: 0.875rem;
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-font-weight-medium: 500;
+  --ds-font-weight-semibold: 600;
+  --ds-table-fill: var(--card);
+  /* the control corner, not the card's: a 12px curve clips the header row's
+     first and last labels */
+  --ds-table-corner: var(--radius);
+  box-sizing: border-box;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-feature-settings: "tnum", "zero";
+  background-color: var(--ds-table-fill);
+  border-radius: var(--ds-table-corner);
+  border: 1px solid var(--hairline);
+  color: var(--gray-12);
+}
+
+.ds-table :is(th, td) {
+  box-sizing: border-box;
+  padding: calc(var(--ds-spacing) * 3) calc(var(--ds-spacing) * 4);
+  text-align: left;
+  border: 0 solid var(--hairline);
+}
+.ds-table th {
+  font-weight: var(--ds-font-weight-medium);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  color: var(--gray-11);
+}
+.ds-table thead th {
+  background-color: var(--panel);
+}
+.ds-table tbody tr {
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+/* the cell that names its row: <th scope="row"> */
+.ds-table tbody th[scope="row"] {
+  font-weight: var(--ds-font-weight-semibold);
+  color: var(--gray-12);
+}
+.ds-table :is(tbody, tfoot) > tr > :is(th, td) {
+  border-top-width: 1px;
+}
+.ds-table tbody > tr > * {
+  transition: background-color var(--duration-fast);
+}
+/* only where a pointer can hover: a tap leaves `:hover` on the row it hit */
+@media (hover: hover) {
+  .ds-table tbody > tr:hover > * {
+    background-color: var(--gray-4);
+  }
+}
+
+/* a filled row paints in its cells' boxes, which are square: the four corner
+   cells take the shell's corner so the fill stays inside it */
+.ds-table
+  > :is(thead, tbody, tfoot):not(:is(thead, tbody, tfoot) ~ *)
+  > tr:first-child
+  > :first-child {
+  border-start-start-radius: var(--ds-table-corner);
+}
+.ds-table
+  > :is(thead, tbody, tfoot):not(:is(thead, tbody, tfoot) ~ *)
+  > tr:first-child
+  > :last-child {
+  border-start-end-radius: var(--ds-table-corner);
+}
+.ds-table
+  > :is(thead, tbody, tfoot):not(:has(~ :is(thead, tbody, tfoot)))
+  > tr:last-child
+  > :first-child {
+  border-end-start-radius: var(--ds-table-corner);
+}
+.ds-table
+  > :is(thead, tbody, tfoot):not(:has(~ :is(thead, tbody, tfoot)))
+  > tr:last-child
+  > :last-child {
+  border-end-end-radius: var(--ds-table-corner);
+}
+
+/* a money or count column: header and cells both carry it */
+.ds-table :is(th, td).ds-num {
+  text-align: right;
+}
+
+/* the load-more row: a neutral control resting transparent, gray-4 hovered
+   and gray-5 pressed */
+.ds-table tfoot button {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--ds-spacing) * 2);
+  width: 100%;
+  padding: calc(var(--ds-spacing) * 2);
+  border: 0 solid var(--hairline);
+  border-end-start-radius: var(--ds-table-corner);
+  border-end-end-radius: var(--ds-table-corner);
+  background-color: transparent;
+  color: inherit;
+  /* the label sets on the table's own leading, as the tailwind row does */
+  font-family: inherit;
+  font-size: var(--ds-text-xs);
+  line-height: inherit;
+  font-weight: var(--ds-font-weight-semibold);
+  font-feature-settings: inherit;
+  font-variation-settings: inherit;
+  letter-spacing: inherit;
+  /* the browser's own focus ring, in the ring role: tailwind's base sets this
+     colour on every element */
+  outline-color: var(--ring);
+}
+@media (hover: hover) {
+  .ds-table tfoot button:hover:not(:disabled, [aria-disabled="true"]) {
+    background-color: var(--gray-4);
+  }
+}
+.ds-table tfoot button:active {
+  background-color: var(--gray-5);
+}
+.ds-table tfoot button:is(:disabled, [aria-disabled="true"]) {
+  background-color: var(--gray-3);
+  color: var(--gray-11);
+}
+
+/* a table already inside a card or a dialog is content of that surface */
+:where(.ds-card, [role="dialog"]) .ds-table {
+  --ds-table-fill: transparent;
+  --ds-table-corner: 0;
+  border-width: 0;
+}
+
+/* the frame a wide table scrolls in: a named region in the tab order, which
+   takes the table's shell so its overflow rounds the corners */
+.ds-table-scroll {
+  --ds-spacing: 0.25rem;
+  position: relative;
+  overflow-x: auto;
+  container-type: inline-size;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ring) var(--gray-6);
+}
+.ds-table-scroll:has(> .ds-table) {
+  box-sizing: border-box;
+  background-color: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--hairline);
+}
+.ds-table-scroll > .ds-table {
+  --ds-table-fill: transparent;
+  --ds-table-corner: 0;
+  border-width: 0;
+}
+:where(.ds-card, [role="dialog"]) .ds-table-scroll:has(> .ds-table) {
+  background-color: transparent;
+  border-radius: 0;
+  border-width: 0;
+}
+.ds-table-scroll:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: unrelated to the row-divider selector above */
+.ds-table-scroll :is(th, td) {
+  white-space: nowrap;
+}
+
+/* the first column pinned on the card's fill; the header's and a hovered
+   row's pinned cell keep their row's fill */
+.ds-table-scroll :is(th, td):first-child {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  background-color: var(--card);
+}
+.ds-table-scroll thead th:first-child {
+  background-color: var(--panel);
+}
+@media (hover: hover) {
+  .ds-table-scroll tbody tr:hover > :first-child {
+    background-color: var(--gray-4);
+  }
+}
+/* under 640px the pinned column is at least 11rem, so the next one is cut at
+   the edge: the cue that more is off-screen */
+@media (width < 40rem) {
+  .ds-table-scroll :is(th, td):first-child {
+    min-width: calc(var(--ds-spacing) * 44);
+  }
+}

@@ -30,7 +30,8 @@ const ORG: OrgProfile = {
 	brandColour: null,
 	socialLinks: [],
 	logoImageId: null,
-	bannerImageId: null
+	bannerImageId: null,
+	supporterFundraisersEnabled: true
 };
 
 const CONTRIBUTION: ReceiptContribution = {
