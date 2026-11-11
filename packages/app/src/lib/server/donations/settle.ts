@@ -57,6 +57,7 @@ import { recordReversal, type RefundNotice, reverseDelivery } from './reverse';
 import { sendGrantReceived, sendReceipt } from './receipt';
 import { sendSettledNotice } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
+import { supporterPageOf } from '../supporters/gifts';
 
 // what a verified delivery does to this deployment's records: it corrects the payment row
 // and, where money actually moved, puts the gift in the books.
@@ -1391,7 +1392,8 @@ async function recordRepeatDeposit(
 			origin: null,
 			tributeKind: dedication?.kind ?? null,
 			tributeHonoree: dedication?.honoree ?? null,
-			programId: first.donation.programId
+			programId: first.donation.programId,
+			supporterPageId: supporterPageOf(first.donation.formId)
 		}),
 		deps.db.insert(lineItem).values({
 			id: uuidv7(),

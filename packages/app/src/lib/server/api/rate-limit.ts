@@ -169,6 +169,26 @@ export function signInRateLimitKey(request: Request): string | null {
 }
 
 /**
+ * what one press that mails a supporter a link counts against — "Email me a link" and Start a
+ * fundraiser — by the caller, and `null` for a caller with no bucket at all. charged on
+ * `SIGN_IN_RATE_LIMITER` beside `supporterMailRateLimitKey`, under a prefix of its own, so a
+ * supporter's presses never spend the staff sign-in's guesses. the `/48`, for the reason
+ * `signInRateLimitKey` keys one: each press mails somebody.
+ */
+export function supporterLinkRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request, 48);
+	return payer === null ? null : `supporter-link ${payer}`;
+}
+
+/**
+ * the same presses by the address being mailed, lowercased by the parse: what bounds one inbox
+ * being posted to from many callers.
+ */
+export function supporterMailRateLimitKey(email: string): string {
+	return `supporter-link mail ${email}`;
+}
+
+/**
  * what one request on `/zapier` that failed the key check counts against: that surface and the
  * caller, charged against the surface limiter in `src/routes/zapier.ts`'s middleware.
  *

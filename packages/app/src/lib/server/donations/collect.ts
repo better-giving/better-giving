@@ -48,6 +48,7 @@ import {
 	recurringChargeFailedWebhookStatements,
 	recurringGiftStartedWebhookStatements
 } from '../webhooks/events';
+import { supporterPageOf } from '../supporters/gifts';
 
 // the books for a gift that repeats: what one collection under a standing commitment writes, and
 // what the commitment's own standing writes when it stops.
@@ -1312,7 +1313,10 @@ function chargeWrites(
 		// multi-row INSERT — D1 caps a query at 100 bound parameters
 		// (https://developers.cloudflare.com/d1/platform/limits/).
 		statements: [
-			db.insert(donation).values(giftRow),
+			db
+				.insert(donation)
+				// the fundraiser the series was begun on, off the form every charge in it is made through.
+				.values({ ...giftRow, supporterPageId: supporterPageOf(formId) }),
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
 			...settledGiftWrites(db, {

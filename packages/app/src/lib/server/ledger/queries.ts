@@ -11,13 +11,15 @@ import {
 	type EntryGroup,
 	type EntrySourceType,
 	type LedgerEntry,
-	payment
+	payment,
+	supporterPage
 } from '../db/schema';
 
 // every read of `entry_group` and `ledger_entry`, so the table objects never leave this
-// directory — the same boundary ../donations/queries.ts draws around `donation`. one read crosses
+// directory — the same boundary ../donations/queries.ts draws around `donation`. two reads cross
 // that boundary from this side: `readRaisedThroughForm` names `form`, `donation` and `payment` to
-// reach a form's entries in one statement, and says why.
+// reach a form's entries in one statement, and says why, and `readRaisedThroughFundraisers` names
+// `supporter_page` beside the last two for the same reason.
 //
 // no writes, and that is a rule rather than a description. ./posting.ts is the only module that
 // may INSERT into either table, and ./sole-writer.spec.ts enforces it by exempting this whole
@@ -471,6 +473,48 @@ export async function readRaisedByOrganisation(
 		from per_gift
 	`);
 	return row ?? { raisedMinor: 0, gifts: 0 };
+}
+
+/** what one supporter fundraiser has raised, in its own currency, and from how many gifts. */
+export type RaisedThroughFundraiser = RaisedByOrganisation & { pageId: string };
+
+/**
+ * `readRaisedByOrganisation`'s figure and count per supporter fundraiser, over the gifts naming each
+ * in `donation.supporter_page_id` and in the page's own currency: one row per page `where` admits
+ * that holds a gift with an entry, and none for a page with none. a page owns its settings row
+ * alone, so this is `readRaisedThroughForm` over that row, counted.
+ *
+ * one statement, for that function's reason: the gifts are unbounded. `donation_supporter_page_id_idx`
+ * carries the join from the page.
+ */
+export function readRaisedThroughFundraisers(
+	db: Db,
+	where: SQL
+): Promise<RaisedThroughFundraiser[]> {
+	return db.all<RaisedThroughFundraiser>(sql`
+		${DONATIONS_SUBTREE},
+		per_gift(page_id, net) as (
+			select ${supporterPage.id}, -sum(${ledgerEntry.amountMinor})
+			from ${supporterPage}
+			join ${donation} on ${donation.supporterPageId} = ${supporterPage.id}
+			join ${payment} on ${payment.donationId} = ${donation.id}
+			join ${entryGroup}
+				on ${entryGroup.sourceId} = ${payment.id}
+				and ${inArray(entryGroup.sourceType, PAYMENT_KEYED)}
+				and ${entryGroup.currency} = ${supporterPage.currency}
+			join ${ledgerEntry}
+				on ${ledgerEntry.entryGroupId} = ${entryGroup.id}
+				and ${ledgerEntry.accountId} in (select id from donations)
+			where ${where}
+			group by ${donation.id}
+		)
+		select
+			page_id as "pageId",
+			coalesce(sum(net), 0) as "raisedMinor",
+			count(*) filter (where net > 0) as "gifts"
+		from per_gift
+		group by page_id
+	`);
 }
 
 /**

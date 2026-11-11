@@ -1,6 +1,6 @@
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { image, orgProfile, page, program } from '../db/schema';
+import { image, orgProfile, page, program, supporterPage } from '../db/schema';
 import { deleteBytes } from './bytes';
 
 // freeing an image: its metadata row and its bytes deleted together, and only where nothing names it.
@@ -13,11 +13,13 @@ import { deleteBytes } from './bytes';
 // image it names is freed from under it, bytes and all.
 
 /**
- * no row names `id`: no cause's photo, the profile's logo or banner and no page document. a page
- * document is matched on its text, so an id anywhere in one keeps the image whichever block holds it.
+ * no row names `id`: no cause's photo, the profile's logo or banner, no page document and no
+ * supporter fundraiser's photo. a page document is matched on its text, so an id anywhere in one
+ * keeps the image whichever block holds it.
  */
 function unreferenced(id: string): SQL {
 	return sql`not exists (select 1 from ${program} where ${program.imageId} = ${id})
+		and not exists (select 1 from ${supporterPage} where ${supporterPage.photoId} = ${id})
 		and not exists (select 1 from ${orgProfile} where ${orgProfile.logoImageId} = ${id} or ${orgProfile.bannerImageId} = ${id})
 		and not exists (select 1 from ${page} where instr(${page.draft}, ${id}) > 0 or instr(${page.published}, ${id}) > 0 or instr(${page.lastPublished}, ${id}) > 0)`;
 }

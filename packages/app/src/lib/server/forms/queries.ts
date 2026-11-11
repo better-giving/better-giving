@@ -3,7 +3,7 @@ import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { FORM_CURRENCY } from '../../forms/amounts';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
-import { form, type Form, mintFormId, page, program } from '../db/schema';
+import { form, type Form, mintFormId, page, program, supporterPage } from '../db/schema';
 import { stateAt } from '../../page/ended';
 import type { PageState, PageType } from '../../page/keys';
 import type {
@@ -87,11 +87,20 @@ const FORM_COLUMNS = {
 /**
  * a `form` row no page names, which is what makes it one of the Forms screens'. a page's own row is
  * its donation settings and is edited in the page's editor (`page` in ../db/schema.ts), so the list
- * leaves it out and every write below refuses it at its `where`. the readers of one row by id —
- * the served config, the charge, a gift's own form — still read it.
+ * leaves it out and every write below refuses it at its `where`. a supporter's fundraiser owns a
+ * row the same way (`supporter_page` in ../db/schema.ts) and is left out alike. the readers of one
+ * row by id — the served config, the charge, a gift's own form — still read it.
  */
 function ownedByNoPage(db: Db) {
-	return notExists(db.select({ id: page.id }).from(page).where(eq(page.formId, form.id)));
+	return and(
+		notExists(db.select({ id: page.id }).from(page).where(eq(page.formId, form.id))),
+		notExists(
+			db
+				.select({ id: supporterPage.id })
+				.from(supporterPage)
+				.where(eq(supporterPage.formId, form.id))
+		)
+	);
 }
 
 /**

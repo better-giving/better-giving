@@ -23,6 +23,7 @@ import { PROCESSOR_LABELS, processorOf, type ProcessorName } from '../payments/p
 import { readActivePrograms, readProgram } from '../programs/queries';
 import { redactPublicId } from '../../redact';
 import type { FormRecord } from './form-input';
+import { fundraiserTakingGifts } from '../supporters/gifts';
 import { readForm, readOwningPage, type OwningPage } from './queries';
 
 // one `form` row plus this deployment's own details, as the config `GET /api/v1/forms/:id/config`
@@ -121,6 +122,12 @@ export interface PublishedConfigSources {
 	 * published from that page rather than set live under Forms, so the draft refusal names it.
 	 */
 	readonly owner: OwningPage | null;
+	/**
+	 * whether the supporter fundraiser whose settings `form` is takes a gift — live and shown
+	 * (`fundraiserTakingGifts` in ../supporters/gifts.ts) — and null or absent for a row no
+	 * fundraiser owns.
+	 */
+	readonly fundraiser?: boolean | null;
 	readonly profile: OrgProfile | null;
 	readonly env: ConfigEnv;
 	/**
@@ -252,8 +259,9 @@ export async function readPublishedConfig(
 		});
 	}
 
-	const [owner, profile, cadences, rails, coins, program] = await Promise.all([
+	const [owner, fundraiser, profile, cadences, rails, coins, program] = await Promise.all([
 		readOwningPage(db, stored.id, now),
+		fundraiserTakingGifts(db, stored.id),
 		readOrgProfile(db),
 		readCadences(),
 		readRails(),
@@ -262,7 +270,18 @@ export async function readPublishedConfig(
 		readFormProgram(db, drafted(stored))
 	]);
 	const form = drafted(asEnded(stored, owner));
-	return publishedConfig({ id, form, owner, profile, env, cadences, rails, coins, program });
+	return publishedConfig({
+		id,
+		form,
+		owner,
+		fundraiser,
+		profile,
+		env,
+		cadences,
+		rails,
+		coins,
+		program
+	});
 }
 
 /**
@@ -323,6 +342,17 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 			`No form with id \`${redactPublicId(id)}\` exists on this deployment.`,
 			'Check the `form` attribute on the donation element against the snippet shown under ' +
 				'Forms in /admin. A form is never deleted here, so an id that once worked still resolves.'
+		);
+	}
+
+	// a fundraiser's row serves while the page is live and shown, whatever the row's own status: the
+	// page's state is the one source, and pending, ended and hidden read alike to a caller.
+	if (sources.fundraiser === false) {
+		return refusal(
+			form,
+			'form_not_published',
+			`Form \`${redactPublicId(form.id)}\` holds the donation settings of a supporter's fundraiser that is not taking gifts.`,
+			'A fundraiser takes gifts while it is live. Give through the organisation’s own donation page instead.'
 		);
 	}
 

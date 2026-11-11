@@ -210,6 +210,36 @@ export async function updateOrgNotificationEmail(
 	return (await readOrgProfile(db)) === null ? 'no-profile' : 'stale';
 }
 
+/**
+ * whether supporters may start a fundraiser here: the stored setting, and on where no profile is
+ * saved yet, the column's own default.
+ */
+export async function supporterFundraisersEnabled(db: Db): Promise<boolean> {
+	const [row] = await db
+		.select({ enabled: orgProfile.supporterFundraisersEnabled })
+		.from(orgProfile)
+		.where(eq(orgProfile.id, ORG_PROFILE_ID));
+	return row?.enabled ?? true;
+}
+
+/**
+ * writes the supporter fundraisers setting, and nothing beside it. an update and never an insert,
+ * for `updateOrgNotificationEmail`'s reason: with no profile there is no row to hold it, so turning
+ * it off is `no-profile` and turning it on is already what no profile reads as. no version: the
+ * setting is one switch, and the press is the whole of what it says.
+ */
+export async function updateSupporterFundraisersEnabled(
+	db: Db,
+	enabled: boolean
+): Promise<Exclude<OrgSave, 'stale'>> {
+	const written = await db
+		.update(orgProfile)
+		.set({ supporterFundraisersEnabled: enabled })
+		.where(eq(orgProfile.id, ORG_PROFILE_ID))
+		.returning({ id: orgProfile.id });
+	return written.length > 0 || enabled ? 'saved' : 'no-profile';
+}
+
 // ---------------------------------------------------------------------------
 // the profile's logo, `org_profile.logo_image_id`, and its banner, `org_profile.banner_image_id`:
 // a new photo put on or taken off, and the photo it replaces freed in the same `batch()` where
