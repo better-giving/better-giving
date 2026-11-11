@@ -166,11 +166,13 @@
  * (https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale): text on 11
  * and 12, a solid fill on 9 with the generated `--_on-p` as its ink, a separator or an edge on 6, 7
  * and 8, the focus ring on 8, a ground on 1, 2 and 3 — the wash brand 2 and 3 over slate 2 —
- * and a control's hover and press on 4 and 5. legibility is radix's guarantee for a step
+ * and a control's hover and press on 4 and 5. a failed video is the registry's red, which no seed
+ * moves: the tint, red 3, inside a red 6 edge. legibility is radix's guarantee for a step
  * doing its job, and no ratio is measured here.
  *
- *   `--page-scrim` is the one colour off the ladders, laid over the feature's cover photo, which
- *   has no step and which the page cannot see, and it carries the note that says so. it is at its
+ *   a scrim is off the ladders, laid over a photo, which has no step and which the page cannot
+ *   see: the registry's `--overlay` over a video's poster, and `--page-scrim` over the feature's
+ *   cover photo, which carries the note that says why it is the page's own. `--page-scrim` is at its
  *   darkest from the cover's left edge across the 58% the words stand in, and fades over the rest,
  *   under the box. what stands on it is slate 1, radix's white: the words, the ring, and the goal's
  *   fill on a slate-8 track, a border step standing in for a ground because on the scrim the
@@ -330,6 +332,17 @@ body {
 	/* the EIN's and the raised label's line: the small step on a 20px line, where the card's body
 	   line height would make it 21. */
 	--page-profile-lh-small: 1.25rem;
+	/* a message's time: the extra-small step on a 16px line. */
+	--page-profile-lh-xs: 1rem;
+	--page-messages-inset: 1rem 1.25rem;
+	--page-messages-foot-inset: 0.75rem 1.25rem;
+	/* the busy ring on a small press, 14px whatever the press's own type size. */
+	--page-spinner: 0.875rem;
+	/* the videos' grid: 20px between rows, 24px between the two columns. */
+	--page-videos-gap: 1.25rem 1.5rem;
+	/* the ring a pressed video's player loads under, 20px. */
+	--page-video-spinner: 1.25rem;
+	--page-video-caption-gap: 0.125rem;
 	--page-profile-measure: 62ch;
 	--page-w-display: 700;
 	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header says why */
@@ -1208,6 +1221,294 @@ body {
 	margin-block-start: var(--_sp4);
 }
 
+/* About us, the videos and the messages from donors, one area under the who: a section's step
+   apart. */
+.page-profile-more {
+	display: flex;
+	flex-direction: column;
+	gap: var(--page-profile-gap);
+	min-inline-size: 0;
+}
+
+/* Messages from donors (./sections/messages.tsx): a heading over a plane that clips its list, each
+   message a row of its own under a separator, and a band under the list counting what is shown.
+   the plane is the page's plane recipe; the band is slate 2 rather than the drawn slate 3 panel,
+   because the count on it is the quiet ink, which stands only on slate 1 and 2 (build-2.md,
+   registry notes). */
+.page-messages-heading,
+.page-videos-heading {
+	margin-block-end: var(--_sp3);
+	font-family: var(--page-font-display);
+	font-weight: var(--_w-bold);
+	font-size: var(--page-profile-subhead);
+	line-height: var(--page-profile-lh-subhead);
+	text-wrap: balance;
+}
+
+.page-messages-plane {
+	overflow: hidden;
+	background: var(--page-plane);
+	border: var(--_border) solid var(--page-plane-edge);
+	border-radius: var(--page-plane-radius);
+}
+
+.page-messages-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.page-messages-row {
+	display: grid;
+	gap: var(--_sp1);
+	padding: var(--page-messages-inset);
+}
+
+.page-messages-row + .page-messages-row {
+	border-block-start: var(--_border) solid var(--page-plane-edge);
+}
+
+/* the first message a last Show more added takes focus when the button goes; the ring is drawn
+   inside the plane, which clips anything outside its edge. */
+.page-messages-row:focus-visible {
+	outline: var(--_focus-width) solid var(--page-ring);
+	outline-offset: calc(-1 * var(--_focus-width));
+}
+
+.page-messages-by {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	column-gap: var(--_sp3);
+}
+
+.page-messages-name {
+	font-size: var(--_t-md);
+	font-weight: var(--_w-bold);
+	overflow-wrap: anywhere;
+}
+
+.page-messages-time {
+	font-size: var(--_t-xs);
+	line-height: var(--page-profile-lh-xs);
+	color: var(--page-quiet);
+}
+
+.page-messages-note {
+	margin: 0;
+	max-inline-size: var(--page-profile-measure);
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+}
+
+.page-messages-foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--_sp3);
+	padding: var(--page-messages-foot-inset);
+	border-block-start: var(--_border) solid var(--page-plane-edge);
+	background: var(--_n2);
+}
+
+/* the band's live region: the count, and under it a failed Show more, beside the button that
+   tries again. */
+.page-messages-said {
+	display: grid;
+	gap: var(--_sp1);
+}
+
+.page-messages-count {
+	margin: 0;
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--page-quiet);
+}
+
+.page-messages-refused {
+	margin: 0;
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--_bad);
+}
+
+.page-messages-more {
+	gap: var(--_sp2);
+}
+
+/* the turning ring a busy press shows beside its label. the registry has no spinner yet
+   (a registry gap), so it is drawn here from the press's own ink and the
+   form's spin; reduced motion slows it rather than stopping it, as the form's does. */
+.page-spinner {
+	box-sizing: border-box;
+	inline-size: var(--page-spinner);
+	block-size: var(--page-spinner);
+	border: calc(var(--page-spinner) * 0.16) solid currentColor;
+	border-block-start-color: transparent;
+	border-inline-end-color: transparent;
+	border-radius: 50%;
+	animation: spin var(--_dur-spin) linear infinite;
+}
+
+/* Videos (./sections/videos.tsx): a heading over a grid of figures, each a 16:9 box holding the
+   poster, then the player, under a caption. the 16:9 box is drawn here because the registry has no
+   video frame yet (a registry gap). the play press is the registry's large button squared by its
+   own `ds-btn-icon`, 52px. */
+.page-videos-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--page-videos-gap);
+}
+
+.page-video {
+	margin: 0;
+	min-inline-size: 0;
+}
+
+.page-video-box {
+	position: relative;
+	display: grid;
+	place-items: center;
+	aspect-ratio: 16 / 9;
+	overflow: hidden;
+	background: var(--_n3);
+	border: var(--_border) solid var(--page-plane-edge);
+	border-radius: var(--page-plane-radius);
+}
+
+/* the box takes focus only to hold it while a pressed player loads. the ring is drawn inside its
+   edge, since the box clips what it holds. */
+.page-video-box:focus-visible {
+	outline: var(--_focus-width) solid var(--page-ring);
+	outline-offset: calc(-1 * var(--_focus-width));
+}
+
+.page-video-poster,
+.page-video-player {
+	position: absolute;
+	inset: 0;
+	inline-size: 100%;
+	block-size: 100%;
+	border: 0;
+}
+
+.page-video-poster {
+	object-fit: cover;
+}
+
+/* the registry's scrim over the poster, so the play press stands on it whatever the picture. */
+.page-video-box[data-face='poster']::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background: var(--overlay);
+}
+
+.page-video-play {
+	position: relative;
+	z-index: 1;
+}
+
+/* the live region is in every face and holds nothing but while loading; it never takes a press. */
+.page-video-status {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+.page-video-box[data-face='loading'] .page-video-status {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--_sp2);
+	background: var(--_n3);
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--_n12);
+}
+
+.page-video-status .page-spinner {
+	--page-spinner: var(--page-video-spinner);
+}
+
+/* the video's ring stops under reduced motion and stays shown. */
+@media (prefers-reduced-motion: reduce) {
+	.page-video-status .page-spinner {
+		animation: none;
+	}
+}
+
+.page-video-box[data-face='error'] {
+	background: var(--_bad-tint);
+	border-color: var(--destructive-6);
+}
+
+.page-video-error {
+	display: grid;
+	justify-items: center;
+	gap: var(--_sp1);
+	padding: var(--_sp4);
+	text-align: center;
+}
+
+.page-video-error p {
+	margin: 0;
+}
+
+.page-video-error-title {
+	font-size: var(--_t-md);
+	font-weight: var(--_w-bold);
+	color: var(--_bad);
+}
+
+.page-video-error-body {
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--_n12);
+}
+
+.page-video-error a {
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	text-decoration: underline;
+}
+
+.page-video-caption {
+	display: grid;
+	gap: var(--page-video-caption-gap);
+	margin-block-start: var(--_sp2);
+}
+
+.page-video-title {
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	font-weight: var(--_w-bold);
+	overflow-wrap: anywhere;
+}
+
+.page-video-length {
+	font-size: var(--_t-xs);
+	line-height: var(--page-profile-lh-xs);
+	color: var(--page-quiet);
+}
+
+/* two columns from 48rem of page width; an odd count opens with one video across both, so no row
+   is short. */
+@container page (min-width: 48rem) {
+	.page-videos-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.page-video:first-child:nth-last-child(odd) {
+		grid-column: 1 / -1;
+	}
+}
+
 @container page (min-width: 60rem) {
 	.page[data-layout='profile'] [data-head='profile'] {
 		display: grid;
@@ -1225,7 +1526,7 @@ body {
 		grid-area: who;
 	}
 
-	.page[data-layout='profile'] [data-head='profile'] > [data-area='about'] {
+	.page[data-layout='profile'] [data-head='profile'] > [data-area='more'] {
 		grid-area: more;
 	}
 

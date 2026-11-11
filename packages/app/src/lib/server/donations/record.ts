@@ -14,10 +14,11 @@ import {
 	type NewPayment,
 	type PaymentMethod as SettledRail
 } from '../db/schema';
+import { type NameParts, shownName } from '../pages/shown-name';
 import type { DepositInstructions, ProcessorName } from '../payments/provider';
 import type { QuotedRail } from '../payments/provider';
 import { resolveDonor } from './donor';
-import type { Tribute } from './quote-input';
+import type { NoteOnPage, Tribute } from './quote-input';
 
 // the write a gift makes at quote time: a donor, a donation, its lines and — where an attempt has
 // actually been opened — the settlement attempt, all of it in one `batch()`.
@@ -159,6 +160,11 @@ export type RecordDonationInput = {
 	readonly consentedToContact: boolean | null;
 	/** what the donor wrote for the organisation, or absent. stored on the gift, never parsed. */
 	readonly note: string | undefined;
+	/**
+	 * how the donor asked for `note` to be shown on the donate page; absent keeps it private, which
+	 * is every gift but one a donor submitted through `/api/v1` with the box ticked.
+	 */
+	readonly noteOnPage?: NoteOnPage | undefined;
 	/**
 	 * the person this gift honors or remembers, or `null` where the donor marked none.
 	 *
@@ -313,6 +319,13 @@ export type AuthorizedGiftInput = {
 	readonly lines: readonly DonationLine[];
 	readonly note: string | undefined;
 	/**
+	 * how the donor asked for `note` to be shown on the donate page, with the names they typed on
+	 * this submission, which sign it; absent keeps it private, which is every gift but one a donor
+	 * submitted through `/api/v1` with the box ticked. the names travel here because `contactId`
+	 * names whichever donor first used the address.
+	 */
+	readonly noteOnPage?: { readonly shown: NoteOnPage; readonly typedName: NameParts } | undefined;
+	/**
 	 * the dedication, all four columns of it.
 	 *
 	 * required for the reason `RecordDonationInput.tribute` is, and it carries more here: the person
@@ -428,6 +441,7 @@ export async function recordAuthorizedGift(
 		// (./collect.ts), so there is nothing yet for this gift to point at. that same null is what
 		// the claim at settlement is guarded on.
 		note: input.note ?? null,
+		...noteOnPageColumns(input.noteOnPage?.shown, input.noteOnPage?.typedName),
 		programId: input.programId,
 		...tributeColumns(input.tribute)
 	};
@@ -500,6 +514,26 @@ function tributeColumns(tribute: Tribute | null): TributeColumns {
 	};
 }
 
+/**
+ * `donation.note_public`, `note_anonymous` and `note_shown_name` for a note shown `onPage`, signed
+ * from the names typed on this gift's own submission, or kept private. a donor who opted in and
+ * typed no first name is signed "Anonymous", the one name the checks admit beside either box.
+ */
+function noteOnPageColumns(
+	onPage: NoteOnPage | undefined,
+	typedName: NameParts | undefined
+): Pick<NewDonation, 'notePublic' | 'noteAnonymous' | 'noteShownName'> {
+	if (onPage === undefined || typedName === undefined) {
+		return { notePublic: false, noteAnonymous: false, noteShownName: null };
+	}
+	const anonymous = onPage === 'anonymous';
+	return {
+		notePublic: true,
+		noteAnonymous: anonymous,
+		noteShownName: shownName(typedName, anonymous)
+	};
+}
+
 /** the write itself, once the gift is known to add up. */
 async function write(db: Db, input: RecordDonationInput): Promise<RecordedDonation> {
 	const donor = await resolveDonor(db, input.donor, input.consentedToContact);
@@ -518,6 +552,7 @@ async function write(db: Db, input: RecordDonationInput): Promise<RecordedDonati
 		// makes an explicit `undefined` a different thing from an omitted key. a message of
 		// whitespace never reaches here — see `parseQuoteRequest` in ./quote-input.ts.
 		note: input.note ?? null,
+		...noteOnPageColumns(input.noteOnPage, input.donor),
 		programId: input.programId,
 		// `tribute_notified_at` is deliberately not among these. the stamp is the settlement path's,
 		// claimed by a guarded update on a gift whose money has moved (../db/schema.ts) — writing one

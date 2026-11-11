@@ -10,8 +10,9 @@
  *   - `max(16px, 1em)`, twice: on the text boxes this sheet draws and on the registry's,
  *     `.ds-field-input`. iOS Safari zooms the page when a focused control computes below 16px, and
  *     this form is on someone else's page.
- *   - `max(12px, var(--_t-xs))`, five times: `.mandate`, `.fee-note`, the `(optional)` beside
- *     a label, the notify press inside the tribute and the words of a floated label. `em` compounds
+ *   - `max(12px, var(--_t-xs))`, six times: `.mandate`, `.fee-note`, the `(optional)` beside
+ *     a label, the `.hint` under the note's consent, the notify press inside the tribute and the
+ *     words of a floated label. `em` compounds
  *     against a parent already at `--_t-sm`, so the step documented as 12px draws at 10.5px and
  *     lower — the floor is what stops the compounding, and the token is what the size still follows
  *     above it. the press and the floated label compound against nothing and take the floor for the
@@ -753,6 +754,18 @@ textarea[part~='field'] {
 	 *
 	 * raw-length-ok: the floor, for that reason.
 	 */
+	font-size: max(12px, var(--_t-xs));
+}
+
+/*
+ * the line under the consent to show a note, saying how it will be signed. `.optional`'s voice and
+ * its floor, for its reason: the parent is `.check-row` at `--_t-sm`. unnamed for that reason too —
+ * a host that could paint it out could hide what a donor is agreeing to.
+ */
+.hint {
+	display: block;
+	color: var(--_n11);
+	/* raw-length-ok: `.optional`'s floor, for its reason. */
 	font-size: max(12px, var(--_t-xs));
 }
 

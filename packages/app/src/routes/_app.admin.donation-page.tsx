@@ -5,11 +5,13 @@ import {
 	DonationPageGivingCard,
 	DonationPageSettingsCard
 } from '$lib/admin/page-edit/donation-page-cards';
+import { DonationPageVideosCard } from '$lib/admin/page-edit/videos-card';
 import { ResetCard, UnreadableDraft } from '$lib/admin/page-edit/page-presses';
 import { PublishBanner } from '$lib/admin/page-edit/publish-banner';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formPress } from '$lib/admin/unreached';
 import { DONATION_PAGE_EDIT_FORM_IDS } from '$lib/page/edit-forms';
+import { VIDEO_FORM_IDS, VIDEO_FORMS } from '$lib/page/videos';
 import {
 	DISCARD_FORM_ID,
 	PUBLISH_FORM_ID,
@@ -25,12 +27,13 @@ import { answerPublishPress } from '$lib/server/pages/publish';
 import { answerResetPress, hasEditsToReset } from '$lib/server/pages/reset';
 import { saveDonationPageSection } from '$lib/server/pages/section-saves';
 import { editBanner, readDonationPageEditSeeds } from '$lib/server/pages/section-seeds';
+import { answerVideoPress } from '$lib/server/pages/videos';
 import { loadPageView } from '$lib/server/pages/view';
 import { database, platform } from '../context';
 import type { Route } from './+types/_app.admin.donation-page';
 
 // the Donation page's edit page, reached from the globe beside the organisation's name: a plain
-// form of section cards — General, Donation settings, Settings — under the banner that says
+// form of section cards — General, Videos, Donation settings, Settings — under the banner that says
 // whether donors see the draft, and Reset to default at the foot while there is something to reset.
 // the page is always at /donate and always public, so it has no name, no link and no Unpublish.
 //
@@ -38,8 +41,9 @@ import type { Route } from './+types/_app.admin.donation-page';
 // $lib/server/pages/donation-page.ts), so on a fresh deployment the globe opens this page rather
 // than a 404, as /donate answers before anyone has opened it.
 //
-// **every Save writes the draft**, a card at a time ($lib/server/pages/section-saves.ts), and
-// donors see it only at Publish changes ($lib/server/pages/publish.ts). until a Publish carries
+// **every Save writes the draft**, a card at a time ($lib/server/pages/section-saves.ts, and the
+// Videos card's presses in $lib/server/pages/videos.ts), and donors see it only at Publish changes
+// ($lib/server/pages/publish.ts). until a Publish carries
 // donation settings, the program follows the active programs ($lib/server/pages/donation-page.ts).
 //
 // **a draft the read rule refuses** ($lib/server/pages/document.ts) opens on a notice in the cards'
@@ -53,6 +57,7 @@ const SCREEN_TITLE = 'Donation page';
 
 const SCREEN_FORMS = [
 	...DONATION_PAGE_EDIT_FORM_IDS,
+	...VIDEO_FORM_IDS,
 	PUBLISH_FORM_ID,
 	UNDO_FORM_ID,
 	DISCARD_FORM_ID,
@@ -133,6 +138,10 @@ export async function action({ context, request }: Route.ActionArgs) {
 			return answerPublishPress(db, target, body, NO_DONATION_PAGE);
 		case RESET_FORM_ID:
 			return answerResetPress(db, body, NO_DONATION_PAGE);
+		case VIDEO_FORMS.add:
+		case VIDEO_FORMS.move:
+		case VIDEO_FORMS.remove:
+			return answerVideoPress(db, context.get(platform).env, pressed, body, NO_DONATION_PAGE);
 		default:
 			return saveDonationPageSection(db, target, pressed, body, NO_DONATION_PAGE);
 	}
@@ -175,6 +184,7 @@ export default function DonationPageEditPage({ loaderData }: Route.ComponentProp
 			) : (
 				<>
 					<DonationPageGeneralCard seed={loaderData.seeds.general} version={version} />
+					<DonationPageVideosCard seed={loaderData.seeds.videos} />
 					<DonationPageGivingCard seed={loaderData.seeds.giving} version={version} />
 					<DonationPageSettingsCard seed={loaderData.seeds.settings} version={version} />
 				</>

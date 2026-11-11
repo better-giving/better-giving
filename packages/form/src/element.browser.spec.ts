@@ -1085,6 +1085,55 @@ describe('the other tile by keyboard and by pointer', () => {
 	});
 });
 
+// a name and a description, computed by the accname rules from the label, its subtree and the ARIA
+// references (`toHaveAccessibleName`, https://vitest.dev/api/browser/assertions). here rather than
+// in the dom pool because this pool is the one where those matchers run.
+describe('the consent to show the note, as a screen reader reads it', () => {
+	it('names the box by its words alone and describes it by the hint alone', async () => {
+		const root = shadow(await mount());
+		root.querySelector<HTMLInputElement>('.check-row [part~="checkbox"]')?.click();
+		const box = root.querySelector<HTMLInputElement>('#note-public');
+		if (box === null) throw new Error('the note opened no consent box');
+
+		await expect.element(box).toHaveAccessibleName('Show my note on Acme Relief Fund’s page');
+		await expect
+			.element(box)
+			.toHaveAccessibleDescription(
+				'It shows with your first name and last initial, like “Maya R.”'
+			);
+	});
+
+	it('keeps that name and says Anonymous in the description while it is ticked, focus kept', async () => {
+		const root = shadow(await mount());
+		root.querySelector<HTMLInputElement>('.check-row [part~="checkbox"]')?.click();
+		const box = root.querySelector<HTMLInputElement>('#note-public');
+		if (box === null) throw new Error('the note opened no consent box');
+		box.click();
+		const anonymous = root.querySelector<HTMLInputElement>('#note-anonymous');
+		if (anonymous === null) throw new Error('ticking the first box drew no Anonymous box');
+		await userEvent.click(anonymous);
+		await settle();
+
+		expect(anonymous.checked).toBe(true);
+		expect(root.activeElement).toBe(anonymous);
+		await expect.element(box).toHaveAccessibleName('Show my note on Acme Relief Fund’s page');
+		await expect
+			.element(box)
+			.toHaveAccessibleDescription('Your note shows on Acme Relief Fund’s page as Anonymous.');
+
+		await userEvent.click(anonymous);
+		await settle();
+
+		expect(anonymous.checked).toBe(false);
+		expect(root.activeElement).toBe(anonymous);
+		await expect
+			.element(box)
+			.toHaveAccessibleDescription(
+				'It shows with your first name and last initial, like “Maya R.”'
+			);
+	});
+});
+
 // the brand scale is radix's custom-palette generator run on the seed the host computes
 // (./styles/radix-scale.ts), written as the registry's accent variables on the card's root before
 // first paint and again when the seed moves. read as painted bytes on both sides, so the hex block and

@@ -1,8 +1,9 @@
 import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
 import { data, type ShouldRevalidateFunctionArgs } from 'react-router';
 import { DonateNotice } from '$lib/donate/notice';
-import { PageWithCard } from '$lib/donate/page-with-card';
+import { PageWithCard, type PageWithCardProps } from '$lib/donate/page-with-card';
 import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/donate/plain-page';
+import { useShowMoreMessages } from '$lib/donate/show-more';
 import { shareImage } from '$lib/page/image-src';
 import { meterDonorPage } from '$lib/server/api/meter';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
@@ -49,6 +50,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	// one `return { env }` from being published.
 	const { env } = context.get(platform);
 	const page = await ensureDonationPage(db);
+	const now = Date.now();
 	const loaded = await loadPageView(
 		db,
 		env,
@@ -61,7 +63,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 			address: '/donate'
 		},
 		request,
-		{ now: Date.now() }
+		{ now }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
 	// a donor back from authorizing their gift arrives here with the stamp naming the page's
@@ -70,7 +72,12 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	// claim once its flow starts. a stamp naming another form is no return of this page's.
 	const { formId } = loaded.kind === 'page' ? loaded.view.config : loaded.config;
 	const resuming = new URL(request.url).searchParams.get(RESUME_FORM_PARAM) === formId;
-	return data({ ...loaded, resuming }, { headers: { 'cache-control': 'no-store' } });
+	// the instant the page was read, which every donor message's age is counted from on the server
+	// and in the browser alike, so the two renders say the same.
+	return data(
+		{ ...loaded, resuming, now: new Date(now).toISOString() },
+		{ headers: { 'cache-control': 'no-store' } }
+	);
 }
 
 /**
@@ -126,10 +133,11 @@ export default function DonationPage({ loaderData }: Route.ComponentProps) {
 	switch (loaderData.kind) {
 		case 'page':
 			return (
-				<PageWithCard
+				<CardPage
 					{...loaderData.view}
 					profile={loaderData.profile}
 					resuming={loaderData.resuming}
+					now={loaderData.now}
 				/>
 			);
 		case 'plain':
@@ -147,4 +155,10 @@ export default function DonationPage({ loaderData }: Route.ComponentProps) {
 				</PlainPage>
 			);
 	}
+}
+
+/** the page and its card, with Show more messages counting ages from `now`, the loader's instant. */
+function CardPage({ now, ...page }: PageWithCardProps & { readonly now: string }) {
+	const donorMessages = useShowMoreMessages(now);
+	return <PageWithCard {...page} donorMessages={donorMessages} />;
 }

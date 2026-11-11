@@ -62,6 +62,16 @@ export const ADD_A_NOTE = 'Add a note ';
 export const YOUR_NOTE = 'Your note';
 /** two ways out, because the donor may write the note or take back the ask. */
 export const NOTE_PROBLEM = 'required, or untick to skip';
+/** the consent under the note, worded as the element's (packages/form/src/views.ts, `notePublicRow`). */
+export function notePublicLabel(org: string): string {
+	return `Show my note on ${org}’s page`;
+}
+export const NOTE_PUBLIC_HINT = 'It shows with your first name and last initial, like “Maya R.”';
+/** the hint while "Show it as Anonymous" is ticked, worded as the element's (packages/form/src/views.ts, `notePublicHintAnonymous`). */
+export function notePublicHintAnonymous(org: string): string {
+	return `Your note shows on ${org}’s page as Anonymous.`;
+}
+export const NOTE_ANONYMOUS = 'Show it as Anonymous';
 
 export const DEDICATE = 'Dedicate this gift ';
 export const TRIBUTE_KIND_LABEL = 'How this gift is dedicated';

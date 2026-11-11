@@ -125,6 +125,23 @@ describe('completeAmount', () => {
 		expect(completeAmount({ amountMinor: 2500, frequency: 'one_time' }, CONFIG)).not.toBeNull();
 	});
 
+	it('carries how a shown note is signed beside the note it signs', () => {
+		const decided = { amountMinor: 2500, frequency: 'one_time' } as const;
+
+		expect(amount({ ...decided, note: 'for the gala', noteShown: 'anonymous' })).toMatchObject({
+			note: 'for the gala',
+			noteShown: 'anonymous'
+		});
+	});
+
+	it('sends no signature for a note that is not there', () => {
+		// the flow clears `noteShown` whenever the note closes (./checkout.machine.ts), and this is
+		// the value's own refusal of the pair should a draft arrive without that.
+		expect(
+			amount({ amountMinor: 2500, frequency: 'one_time', noteShown: 'named' })
+		).not.toHaveProperty('noteShown');
+	});
+
 	it('carries a trimmed tribute and omits an unopened one entirely', () => {
 		// absent must be unambiguous on the wire: `parseTribute` reads an absent `tributeKind` as a
 		// gift with no tribute, and an empty shape here would put a kind on every gift ever given.

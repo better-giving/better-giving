@@ -556,10 +556,8 @@ describe('a control drawn under the floor takes a target at it', () => {
 	it.each([...new Set(Object.values(BUTTON_VARIANT_CLASS)), 'ds-btn-outline'])(
 		'%s is measured at its own edge',
 		(rank) => {
-			const own = ruleOf(registry, `.${rank}`).get('--ds-btn-edge');
-
-			expect(BUTTON_BORDER(rank)).toBe(evaluate(own ?? buttonEdge('ds-btn')));
-			expect(BUTTON_BORDER(rank)).toBeGreaterThan(0);
+			// the registry's widths as drawn in button-css.css: 2px on the outline rank, 1px on the rest.
+			expect(BUTTON_BORDER(rank)).toBe(rank === 'ds-btn-outline' ? 2 : 1);
 		}
 	);
 
@@ -663,7 +661,7 @@ describe("every box in a form stands at the registry box's height", () => {
 	});
 
 	it.each([
-		// the text box a control draws by hand, and the read-only box Field.jsx draws.
+		// the text box a control draws by hand.
 		['.adm-input'],
 		// SelectWithNote.jsx's trigger, until the registry's `select` item replaces it.
 		['.adm-select'],

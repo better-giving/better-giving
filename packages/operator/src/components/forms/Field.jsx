@@ -285,14 +285,12 @@ export function Field({
 	   ../../styles/adm.css's: the row the box stands in, and the three things the registry draws no
 	   rule for — a multi-line box's height, a box marked as needed, and the mono face.
 
-	   a read-only box is ../../styles/adm.css's `.adm-input` instead, refused by its
-	   `.adm-input--invalid`, and wears no `ds-field-input`: the registry's sheet takes pointer events
-	   off a `[readonly]` box, and a credential or a locked row nobody can select by mouse or finger
-	   cannot be checked or copied by hand. ./Field.dom.spec.tsx holds it there. */
-	const readOnly = Boolean(rest.readOnly);
+	   a read-only box is the same registry box, which draws it muted and leaves it selectable: a
+	   credential or a locked row has to be checked or copied by hand. ./Field.dom.spec.tsx holds
+	   that no sheet takes its pointer away. */
 	const cls = [
-		...(readOnly ? ['adm-input'] : ['ds-field-input', 'adm-field__box']),
-		readOnly && refused ? 'adm-input--invalid' : '',
+		'ds-field-input',
+		'adm-field__box',
 		as === 'textarea' ? 'adm-field__box--multiline' : '',
 		!refused && needed ? 'adm-field__box--needed' : '',
 		code ? 'adm-field__box--code' : '',

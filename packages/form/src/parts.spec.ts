@@ -195,6 +195,16 @@ describe('the published manifest', () => {
 		expect(unemitted).toEqual([]);
 	});
 
+	it('names the two consent boxes under the note among the boxes `checkbox` reaches', () => {
+		// a host rule on the part lands on every box carrying it, so a box the description leaves out
+		// is one a host paints without having been told (src/views.ts, `notePublicToggle` and
+		// `noteAnonymousToggle`).
+		const checkbox = element?.cssParts?.find((cssPart) => cssPart.name === 'checkbox');
+
+		expect(checkbox?.description).toContain('“Show my note on');
+		expect(checkbox?.description).toContain('“Show it as Anonymous”');
+	});
+
 	it('publishes the two seeds and the retired shade, and no fourth', () => {
 		const published = (element?.cssProperties ?? []).map((property) => property.name);
 

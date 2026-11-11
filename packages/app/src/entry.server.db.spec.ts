@@ -51,6 +51,9 @@ const env = readEnv({}, specRateLimiters());
 // `allowedActionOrigins` is read off ../react-router.config.ts rather than left out, because the
 // vite plugin copies it into the build and the cross-origin cases below hold whatever it says.
 
+/** the one `www` host a donor page frames beyond the processors': a pressed play's player. */
+const YOUTUBE_PLAYER = 'https://www.youtube-nocookie.com';
+
 /** the origin every request in this file arrives on. not loopback, so the cookie is `__Secure-`. */
 const ORIGIN = 'https://give.example';
 
@@ -298,8 +301,19 @@ async function expectStrictDocument(response: Response): Promise<void> {
 	expect(policy.get('script-src')).toEqual(["'self'", `'nonce-${nonce}'`]);
 	expect(policy.get('img-src')).toEqual(["'self'", 'data:']);
 	expect(policy.get('style-src')).toEqual(["'self'", "'unsafe-inline'"]);
+	expect(policy.has('frame-src')).toBe(false);
+	expect(youTubeSources(policy)).toEqual([]);
 	expect(response.headers.get('referrer-policy')).toBe('same-origin');
 	await expectLocked(response, policy, nonce);
+}
+
+/** every directive's sources that name a youtube host, as `directive source`. */
+function youTubeSources(policy: Map<string, readonly string[]>): string[] {
+	return [...policy].flatMap(([name, sources]) =>
+		sources
+			.filter((source) => /youtube|youtu\.be/i.test(source))
+			.map((source) => `${name} ${source}`)
+	);
 }
 
 describe('a dashboard document', () => {
@@ -379,7 +393,8 @@ describe('the donor page', () => {
 			'https://history.paypal.com',
 			'https://account.venmo.com',
 			'https://secure.dafpay.com',
-			'https://challenges.cloudflare.com'
+			'https://challenges.cloudflare.com',
+			'https://www.youtube-nocookie.com'
 		]);
 		expect(policy.get('img-src')).toEqual([
 			"'self'",
@@ -452,8 +467,16 @@ describe('the donor page', () => {
 			'https://c.paypal.com'
 		]);
 		for (const name of ['script-src', 'frame-src']) {
-			expect(policy.get(name)?.some((source) => source.startsWith('https://www.'))).toBe(false);
+			const wwwHosts = (policy.get(name) ?? []).filter((source) =>
+				source.startsWith('https://www.')
+			);
+			expect(wwwHosts.filter((source) => source !== YOUTUBE_PLAYER)).toEqual([]);
 		}
+	});
+
+	it('frames the no-cookie youtube player a pressed play puts up, and names youtube nowhere else', async () => {
+		const policy = directives((await answer()).headers.get('content-security-policy'));
+		expect(youTubeSources(policy)).toEqual(['frame-src https://www.youtube-nocookie.com']);
 	});
 
 	it('lets no inline script run but by the nonce', async () => {
@@ -518,6 +541,7 @@ describe('the editor’s preview of a page', () => {
 		const policy = directives((await answer()).headers.get('content-security-policy'));
 		expect(policy.get('script-src')).toContain('https://js.stripe.com');
 		expect(policy.get('frame-src')).toContain('https://hooks.stripe.com');
+		expect(youTubeSources(policy)).toEqual(['frame-src https://www.youtube-nocookie.com']);
 		expect(policy.get('object-src')).toEqual(["'none'"]);
 		expect(policy.get('form-action')).toEqual(["'self'"]);
 	});

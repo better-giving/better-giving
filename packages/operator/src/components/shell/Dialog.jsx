@@ -28,6 +28,8 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  *   is minted here, and either way the label is the heading a reader can see rather than a second
  *   string beside it.
  * @property {ReactNode} [children]
+ * @property {boolean | undefined} [alert] a question that interrupts what the reader was doing and
+ *   wants an answer before they go on — a confirm — exposed as `alertdialog` rather than `dialog`.
  * @property {boolean | undefined} [inPage] which of the two presentations
  *   packages/operator/src/styles/adm.css draws this in, defaulting to the one the server sends: an
  *   open, whole, non-modal card standing where the lifted one will, on the same ground.
@@ -106,6 +108,7 @@ export function Dialog({
 	title,
 	titleId,
 	children,
+	alert = false,
 	inPage = true,
 	exit = 'Done',
 	exitProps,
@@ -131,6 +134,7 @@ export function Dialog({
 			ref={ref}
 			open
 			tabIndex={-1}
+			role={alert ? 'alertdialog' : undefined}
 			className={inPage ? 'adm-dialog adm-dialog--inline' : 'adm-dialog'}
 			aria-labelledby={heading}
 			aria-describedby={hasBody ? body : undefined}

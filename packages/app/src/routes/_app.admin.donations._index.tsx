@@ -3,6 +3,7 @@ import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { GiftNote, PublicMessagesLink } from '$lib/admin/messages/gift-note';
 import { DONATION_STATUS_TONES } from '$lib/admin/status-tones';
 import { href, Link } from 'react-router';
 import { byDayShown } from '$lib/admin/received-order';
@@ -15,6 +16,7 @@ import { loadFailed } from '$lib/server/db/load-failure';
 import type { PaymentMethod } from '$lib/server/db/schema';
 import { DONATION_LIST_LIMIT, listDonations } from '$lib/server/donations/queries';
 import { readTrackingIds } from '$lib/server/donations/tracking-ids';
+import { readNoteStandings } from '$lib/server/pages/messages';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/_app.admin.donations._index';
@@ -132,10 +134,16 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
+	const db = context.get(database);
 	let donations: Awaited<ReturnType<typeof listDonations>>['donations'];
 	let hasMore: boolean;
+	let noteStanding: Awaited<ReturnType<typeof readNoteStandings>>;
 	try {
-		({ donations, hasMore } = await listDonations(context.get(database)));
+		({ donations, hasMore } = await listDonations(db));
+		noteStanding = await readNoteStandings(
+			db,
+			donations.filter((d) => d.note !== null).map((d) => d.id)
+		);
 	} catch (e) {
 		// the diagnostic lives on the loader for the reason /admin/donors's does: this is where an
 		// unapplied migration actually surfaces, because the page cannot be drawn at all without
@@ -170,6 +178,10 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// whole, never truncated. a donor wrote it to be read, and a message stored where
 			// nobody can read it is the same loss as not having stored it.
 			note: d.note,
+			// where the note stands on the donate page, for the word under it: on the page, hidden
+			// from it by a press on /admin/donations/messages, or on no page (`NoteStanding` in
+			// `$lib/donate/messages.ts`). the list only reads it.
+			noteStanding: noteStanding(d.id),
 			// the value, not the word. `DONATION_STATUS_LABELS` in `$lib/donations/statuses.ts` is
 			// what the page renders it with, and a state with no label there is a type error.
 			status: d.status,
@@ -260,6 +272,7 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 						<Button as={Link} to={href('/admin/donations/export')} variant="quiet">
 							Export
 						</Button>
+						<PublicMessagesLink />
 						<Button as={Link} to={href('/admin/donations/new')}>
 							Add donation
 						</Button>
@@ -351,7 +364,7 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 						dedication: d.tribute
 							? `${TRIBUTE_KIND_LABELS[d.tribute.kind]} ${d.tribute.honoree}`
 							: null,
-						message: d.note
+						message: d.note === null ? null : <GiftNote note={d.note} standing={d.noteStanding} />
 					}
 				}))}
 				empty="No gifts yet."

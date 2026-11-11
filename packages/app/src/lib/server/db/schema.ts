@@ -1310,10 +1310,69 @@ export const donation = sqliteTable(
 		 * `donation_program_id_idx` below is the read: every figure a cause reports is a `SUM` over
 		 * the gifts naming it.
 		 */
-		programId: text('program_id').references(() => program.id)
+		programId: text('program_id').references(() => program.id),
+
+		/**
+		 * the donor asked for `note` to be shown on the donate page, and `note_anonymous` that it be
+		 * shown under "Anonymous" rather than their name. both false unless the donor ticked the box,
+		 * and false on every gift recorded before the form asked, so a note never turns public
+		 * without its donor having said so.
+		 *
+		 * a gift is listed only once it has settled and while it is not reversed, and only with a
+		 * note to show; neither flag says either of those, and a ticked box over an empty note is a
+		 * row this table accepts.
+		 */
+		notePublic: integer('note_public', { mode: 'boolean' }).notNull().default(false),
+		noteAnonymous: integer('note_anonymous', { mode: 'boolean' }).notNull().default(false),
+
+		/**
+		 * when staff took a public note off the donate page, and null while it is shown. a stamp
+		 * rather than a flag, so the moderation screen can say when. hiding touches nothing else on
+		 * the gift.
+		 */
+		noteHiddenAt: at('note_hidden_at'),
+
+		/**
+		 * the name the donate page prints over a public note, exactly as printed: the donor's first
+		 * name and last initial, or "Anonymous" when `note_anonymous` says so. null on every private
+		 * gift. written with the gift from what the donor typed, because a name derived later from
+		 * `contact` is whichever donor last used that email, and two donors can share one.
+		 */
+		noteShownName: text('note_shown_name')
 	},
 	(t) => [
 		check('donation_currency_check', currencyCheck(t.currency)),
+		check('donation_note_public_bool_check', boolCheck(t.notePublic)),
+		check('donation_note_anonymous_bool_check', boolCheck(t.noteAnonymous)),
+		/**
+		 * anonymous and hidden are both answers about a note on the page, so a private note carries
+		 * neither. migrations/0034 adds these on their columns by plain `ADD COLUMN`, which sqlite
+		 * tests against every gift already there: each of those reads private, anonymous 0, hidden
+		 * null. a check naming two columns blocks `DROP COLUMN` on both, which is the cost of
+		 * keeping the pair honest here rather than in every writer.
+		 */
+		check(
+			'donation_note_anonymous_public_check',
+			sql`${t.noteAnonymous} = 0 or ${t.notePublic} = 1`
+		),
+		check(
+			'donation_note_hidden_public_check',
+			sql`${t.noteHiddenAt} is null or ${t.notePublic} = 1`
+		),
+		/**
+		 * a public note has a name to print and a private one keeps none, so the page never falls
+		 * back to the contact's name. migrations/0035 adds these on the column by plain
+		 * `ADD COLUMN`, which sqlite tests against every gift already there.
+		 */
+		check('donation_note_shown_name_not_blank_check', optionalNotBlank(t.noteShownName)),
+		check(
+			'donation_note_shown_name_public_check',
+			sql`(${t.notePublic} = 1) = (${t.noteShownName} is not null)`
+		),
+		check(
+			'donation_note_shown_name_anonymous_check',
+			sql`${t.noteAnonymous} = 0 or ${t.noteShownName} = 'Anonymous'`
+		),
 		/**
 		 * `> 0`, not `>= 0`. a zero-total donation is the shape a half-parsed form submit
 		 * produces, and it posts an `entry_group` of zero-amount lines that
@@ -1354,7 +1413,18 @@ export const donation = sqliteTable(
 		index('donation_program_id_idx').on(t.programId),
 		// every gift list and every period report filters on business time, never on
 		// `created_at`.
-		index('donation_received_at_idx').on(t.receivedAt)
+		index('donation_received_at_idx').on(t.receivedAt),
+		/**
+		 * the donate page's messages and the admin screen's, newest first: only the gifts whose donor
+		 * made the note public, so a load reads the page it sends rather than scanning and sorting
+		 * every gift. the planner takes it only for a read whose `where` says `note_public = 1`. it
+		 * leaves `note_hidden_at` out of its own `where` because the admin reads list hidden notes
+		 * too; the donate page's `note_hidden_at is null` is a filter on the rows it reads, and few
+		 * notes are hidden. `../pages/messages.plan.db.spec.ts` pins both reads to it.
+		 */
+		index('donation_note_public_received_at_idx')
+			.on(t.receivedAt, t.id)
+			.where(sql`${t.notePublic} = 1`)
 	]
 );
 

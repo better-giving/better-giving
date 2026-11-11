@@ -92,11 +92,13 @@
 
 /*
  * the press landed, and the surface answered the pointer. `scale` rather than a size, so no
- * neighbour moves, and a fill and an edge, which nothing else on the card is measured against.
+ * neighbour moves, and a fill, an ink and an edge, which nothing else on the card is measured
+ * against.
  *
- * the `scale` is the one thing here that reads `--_move-press`; the fill and the edge are a state
- * arriving and read `--_move-state`, so a press moves the surface on one curve while what it is
- * painted in settles on another.
+ * the `scale` is the one thing here that reads `--_move-press`; the fill, the ink and the edge are a
+ * state arriving and read `--_move-state`, so a press moves the surface on one curve while what it
+ * is painted in settles on another. the ink is in the list because the action's busy state changes
+ * fill and ink together, and the registry's own transition on `.ds-btn` names all three.
  *
  * the edge is `border-color` and it is the action's. the mark a chosen frequency or amount tile
  * takes is the lift, a `box-shadow` (`[part~='amount-option'][part~='selected']` in ./parts.css),
@@ -121,6 +123,7 @@
 [part~='action'].ds-btn {
 	transition:
 		scale var(--_move-press),
+		color var(--_move-state),
 		background-color var(--_move-state),
 		border-color var(--_move-state);
 }

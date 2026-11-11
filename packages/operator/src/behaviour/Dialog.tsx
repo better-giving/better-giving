@@ -73,6 +73,12 @@ type ModalProps<
 	 * card comes down, so it is the element on the page then; it has to be one that takes focus.
 	 */
 	readonly fallbackFocus?: RefObject<HTMLElement | null> | undefined;
+	/**
+	 * where focus lands when the card is lifted, in place of the card itself: a control inside it
+	 * that answers the question harmlessly — a confirm's Cancel, so Enter never does the act by
+	 * accident. never the act: the reader would land on the answer before the question (the header).
+	 */
+	readonly initialFocus?: RefObject<HTMLElement | null> | undefined;
 };
 
 /** what a pointer press or a key can have put focus on, as opposed to a box that only holds it. */
@@ -99,7 +105,7 @@ export function Modal<
 	X extends ElementType = 'button',
 	D extends ElementType = 'button',
 	M extends ElementType = 'button'
->({ onDismiss, fallbackFocus, ...interior }: ModalProps<C, X, D, M>) {
+>({ onDismiss, fallbackFocus, initialFocus, ...interior }: ModalProps<C, X, D, M>) {
 	// which presentation the element is drawn in. it starts as the one the server sent — an open,
 	// whole, non-modal card where the lifted one will stand — and the effect turns it off at the
 	// moment the same element is lifted, so the modifier and the presentation cannot disagree.
@@ -108,6 +114,7 @@ export function Modal<
 	// the effect below runs once per card and reads this when the card comes down, so it takes the
 	// target the screen names at that moment rather than the one it named when the card went up.
 	const fallback = useEffectEvent(() => fallbackFocus?.current ?? null);
+	const landing = useEffectEvent(() => initialFocus?.current ?? null);
 	// set by a press that went down on the ground while the card was lifted, and spent by the click
 	// that press ends in.
 	const groundPress = useRef(false);
@@ -140,8 +147,9 @@ export function Modal<
 		// the platform's own dialog focusing steps look for the `autofocus` *attribute* and react
 		// writes none: it strips the prop and focuses at mount, which this call is after and would
 		// override either way. `tabIndex={-1}` over there is what makes the card a thing focus can
-		// land on at all.
-		node.focus();
+		// land on at all. a screen that names a harmless control inside the card lands there instead.
+		const named = landing();
+		(named !== null && node.contains(named) ? named : node).focus();
 		setInPage(false);
 		// listened for from here on and not before, which is the whole of the rule: a press that went
 		// down before the card was lifted is never recorded.
@@ -165,8 +173,8 @@ export function Modal<
 			// the reader goes where the screen said, with nothing said to the box that held the focus,
 			// then to the card this one stood inside — still a shown modal, so nothing past it can take
 			// the focus — and with none of those they are left on the body.
-			const landing = [opener, fallback(), holder, enclosing].find((target) => target?.isConnected);
-			landing?.focus();
+			const back = [opener, fallback(), holder, enclosing].find((target) => target?.isConnected);
+			back?.focus();
 		};
 	}, []);
 

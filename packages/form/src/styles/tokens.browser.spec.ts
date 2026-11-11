@@ -313,14 +313,18 @@ describe('the colour layer', () => {
 	// a host's own registry, or any page that names its variables the registry's way, stops at the
 	// card's root: the theme declares its own there, so nothing a page sets above reaches the card.
 	it('takes none of a host page’s registry-named variables', () => {
-		seed('--gray-1: #ff0000; --accent-9: #00ff00; --primary: #0000ff; --ring: #ff00ff;');
+		const ring = bytes('--_focus-ring');
+		seed(
+			'--gray-1: #ff0000; --accent-8: #ffff00; --accent-9: #00ff00; --primary: #0000ff; --ring: #ff00ff;'
+		);
 
 		expect(bytes('--_n1')).toEqual(bytes('#fbfcfe'));
 		expect(bytes('--_p')).toEqual(bytes(UNSEEDED));
 		expect(bytes('--primary')).toEqual(bytes(UNSEEDED));
-		// the default theme's accent step 8 (../registry/styles/themes/default.css), the ring the
-		// registry's own controls draw from `--ring`.
-		expect(bytes('--ring')).toEqual(bytes('#6daee9'));
+		// the card's focus ring and its accent step 8 are what they were before the page spoke.
+		expect(bytes('--_focus-ring')).toEqual(ring);
+		expect(bytes('--_focus-ring')).toEqual(bytes('--_a8'));
+		expect(bytes('--_a8')).not.toEqual(bytes('#ffff00'));
 	});
 
 	it('leaves every alias alone whatever the seed is, which only the brand sheet moves', () => {

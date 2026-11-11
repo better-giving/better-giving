@@ -60,6 +60,7 @@ function gift(over: Partial<Gift> = {}): Gift {
 		receivedAt: '2026-07-04T14:00:00.000Z',
 		source: 'Annual appeal',
 		note: null,
+		noteStanding: 'private',
 		status: 'completed',
 		paidWith: 'Card',
 		repeating: false,
@@ -148,6 +149,25 @@ it('opens the accountant’s export, beside the press that adds a gift', () => {
 	// on the same line as the press that adds one: both act on the list, and the export is the only
 	// way out of what the list holds.
 	expect(root.querySelector('.adm-tablelead')?.contains(link ?? null)).toBe(true);
+});
+
+it('leads to Public messages between Export and Add donation', () => {
+	const root = screen([gift()]);
+	const presses = [
+		...(root.querySelector('.adm-tablelead .adm-actions')?.querySelectorAll('a') ?? [])
+	];
+
+	expect(presses.map((a) => a.textContent)).toEqual(['Export', 'Public messages', 'Add donation']);
+	expect(presses[1]?.getAttribute('href')).toBe('/admin/donations/messages');
+});
+
+it('says under a note where it stands on the donate page, and nothing under a private one', () => {
+	const note = 'Thank you for everything you do.';
+	expect(cell(screen([gift({ note, noteStanding: 'shown' })]), 'Message')).toBe(
+		`${note}On the page`
+	);
+	expect(cell(screen([gift({ note, noteStanding: 'hidden' })]), 'Message')).toBe(`${note}Hidden`);
+	expect(cell(screen([gift({ note, noteStanding: 'private' })]), 'Message')).toBe(note);
 });
 
 it('keeps the press on a deployment that has taken no gifts', () => {

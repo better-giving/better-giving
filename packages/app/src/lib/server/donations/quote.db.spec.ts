@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, isNotNull, sql } from 'drizzle-orm';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import { createDb, type Db } from '../db/client';
@@ -566,6 +566,117 @@ describe('mintQuote() — a gift given in honor or memory of someone', () => {
 
 		const [gift] = await db.select().from(donation);
 		expect(gift?.tributeNotifiedAt).toBeNull();
+	});
+});
+
+describe('mintQuote() — a note the donor asked to show on the page', () => {
+	// `note_public` and `note_anonymous` on the v1 body (packages/form/src/v1.ts), stored on the
+	// gift with the name the page prints over it. absent is no; anonymous stands only beside public,
+	// and neither beside no note.
+
+	const placed = async (over: Record<string, unknown>) => {
+		const result = await mint(deps(), over);
+		expect(result.ok).toBe(true);
+		const [gift] = await db
+			.select({
+				notePublic: donation.notePublic,
+				noteAnonymous: donation.noteAnonymous,
+				noteShownName: donation.noteShownName
+			})
+			.from(donation);
+		return gift;
+	};
+
+	it('stores a note shown under the donor’s name', async () => {
+		expect(await placed({ note: 'Keep it up', note_public: true })).toEqual({
+			notePublic: true,
+			noteAnonymous: false,
+			noteShownName: 'Ada O.'
+		});
+	});
+
+	it('stores a note shown as Anonymous', async () => {
+		expect(await placed({ note: 'Keep it up', note_public: true, note_anonymous: true })).toEqual({
+			notePublic: true,
+			noteAnonymous: true,
+			noteShownName: 'Anonymous'
+		});
+	});
+
+	it('keeps a note private where neither box came, as every client before these did', async () => {
+		expect(await placed({ note: 'Keep it up' })).toEqual({
+			notePublic: false,
+			noteAnonymous: false,
+			noteShownName: null
+		});
+	});
+
+	it('keeps a note private where only Anonymous came', async () => {
+		expect(await placed({ note: 'Keep it up', note_anonymous: true })).toEqual({
+			notePublic: false,
+			noteAnonymous: false,
+			noteShownName: null
+		});
+	});
+
+	it('stores neither where there is no note to show', async () => {
+		expect(await placed({ note: '   ', note_public: true, note_anonymous: true })).toEqual({
+			notePublic: false,
+			noteAnonymous: false,
+			noteShownName: null
+		});
+	});
+
+	it('stores the consent on the gift a repeating gift opens with', async () => {
+		expect(await placed({ frequency: 'monthly', note: 'Monthly!', note_public: true })).toEqual({
+			notePublic: true,
+			noteAnonymous: false,
+			noteShownName: 'Ada O.'
+		});
+	});
+
+	it('signs a donor who typed no first name as Anonymous', async () => {
+		expect(await placed({ firstName: '', note: 'Keep it up', note_public: true })).toEqual({
+			notePublic: true,
+			noteAnonymous: false,
+			noteShownName: 'Anonymous'
+		});
+	});
+
+	// a returning address is filed under the contact it already has (`resolveDonor` in ./donor.ts),
+	// whose name another donor may have typed, so the note is signed from this gift's own names.
+	it.each([
+		['a one-time gift', 'monthly', 'one_time'],
+		['a repeating gift', 'one_time', 'monthly']
+	])(
+		'signs %s with the name typed on it, not the one its contact holds',
+		async (_, before, now) => {
+			const first = await mint(deps(), {
+				frequency: before,
+				firstName: 'Ben',
+				lastName: 'Adeyemi'
+			});
+			expect(first.ok).toBe(true);
+			expect((await mint(deps(), { frequency: now, note: 'Hi', note_public: true })).ok).toBe(true);
+
+			const rows = await db
+				.select({ contactId: donation.contactId, noteShownName: donation.noteShownName })
+				.from(donation)
+				.where(isNotNull(donation.note));
+			const filedUnder = await db.selectDistinct({ id: donation.contactId }).from(donation);
+			expect(filedUnder).toHaveLength(1);
+			expect(rows).toEqual([{ contactId: filedUnder[0]?.id, noteShownName: 'Ada O.' }]);
+		}
+	);
+
+	it('refuses a box that is not a boolean', async () => {
+		const result = await mint(deps(), { note: 'Keep it up', note_public: 'on' });
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('invalid_request');
+		expect(result.message).toContain('note_public');
+		expect(await db.select().from(donation)).toEqual([]);
 	});
 });
 

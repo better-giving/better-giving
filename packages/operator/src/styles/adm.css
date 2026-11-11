@@ -86,6 +86,16 @@
 		transform: none;
 	}
 
+	/* a press whose face is, for a moment, the momentary words of what it just did
+	   (packages/app/src/lib/admin/messages/public-messages.tsx): held closed so focus stays on it,
+	   but drawn as those words on one line rather than as a closed press: on the closed fill the
+	   words read as a chip, and wrapped at the column's width they read as two lines of a label. */
+	.adm-btn.adm-saidpress[aria-disabled='true'] {
+		background-color: transparent;
+		cursor: default;
+		white-space: nowrap;
+	}
+
 	/* a quiet press that opened something is held at the pointed-at fill for as long as what it
 	   opened stands open: the two say the same thing — this is the control being acted through —
 	   and a press with no open state reads exactly as it did at rest while its panel is on the
@@ -1543,9 +1553,9 @@
 	/* the boxes this sheet still draws: the select, which is
 	   packages/operator/src/components/forms/SelectWithNote.jsx's machine trigger and put on it by
 	   that file's derived class list (carried-ok: .adm-select), and `.adm-input`, a text box a
-	   control draws by hand beside a run of choices and the read-only box
-	   packages/operator/src/components/forms/Field.jsx draws. every other box that file draws is the
-	   registry's `ds-field-input` and is placed and finished by `.adm-field__box` below. the
+	   control draws by hand beside a run of choices. every box
+	   packages/operator/src/components/forms/Field.jsx draws is the registry's `ds-field-input`
+	   and is placed and finished by `.adm-field__box` below. the
 	   height is `--admin-field-height`, which ./tokens.css holds at the registry box's own. */
 	.adm-input,
 	.adm-select {
@@ -1591,13 +1601,7 @@
 	   words in a refused box stand where they stood before it was refused. the select is marked by
 	   the machine's own `data-invalid`, off the message
 	   packages/operator/src/components/forms/SelectWithNote.jsx holds or an `aria-invalid` something
-	   larger than the one box marked it with. a read-only box Field.jsx draws is `.adm-input` and is
-	   marked by the derived `.adm-input--invalid`, off the same two.
-	   carried-ok: .adm-input--invalid — put on the box by the derived class list in
-	   packages/operator/src/components/forms/Field.jsx. */
-	.adm-input--invalid,
-	.adm-input--invalid:hover,
-	.adm-input--invalid.is-hover,
+	   larger than the one box marked it with. */
 	.adm-select[data-invalid],
 	.adm-select[data-invalid]:hover,
 	.adm-select[data-invalid].is-hover {
@@ -2566,7 +2570,7 @@
 
 	/* the room the press stands in: its own width, and the step of clear space between it and the
 	   last character of a value long enough to reach it. */
-	.adm-maskwrap > :is(.adm-field__box, .adm-input) {
+	.adm-maskwrap > .adm-field__box {
 		padding-inline-end: var(--admin-space-10);
 	}
 
@@ -2599,7 +2603,7 @@
 	   `--admin-control-size-sm` and 6.3rem as a small quiet press; with the reveal, the gap and the
 	   inset the cluster reaches about 8.95rem, and the sum below is 9.25rem. it is measured from
 	   those words, so new words are a new measurement. */
-	.adm-maskwrap:has(> .adm-maskwrap__presses) > :is(.adm-field__box, .adm-input) {
+	.adm-maskwrap:has(> .adm-maskwrap__presses) > .adm-field__box {
 		padding-inline-end: calc(var(--admin-space-9) * 4 + var(--admin-space-7));
 	}
 
@@ -2641,7 +2645,7 @@
 		block-size: var(--admin-brand-mark-size);
 	}
 
-	.adm-leadwrap :is(.adm-field__box, .adm-input) {
+	.adm-leadwrap .adm-field__box {
 		padding-inline-start: calc(var(--admin-space-4) + var(--admin-space-9) + var(--admin-space-3));
 	}
 
@@ -4214,6 +4218,136 @@
 		color: var(--admin-ink-muted);
 	}
 
+	/* a word about a cell's value on the line under it, inside the same cell: where a donor's note
+	   stands on the donate page, under the note (packages/app/src/lib/admin/messages/gift-note.tsx). */
+	.adm-table .adm-cell__under {
+		display: block;
+		margin-block-start: var(--admin-space-2);
+	}
+
+	/* a row's words set back to the quiet ink while the record stands aside — a message hidden from
+	   the donate page (packages/app/src/lib/admin/messages/public-messages.tsx). the plane is the
+	   surface, step 1, which the quiet ink is read on. */
+	.adm-table .adm-cell__quiet {
+		color: var(--admin-ink-2);
+	}
+
+	/* the words a confirm asks about, quoted inside the card above its question: a filled panel with
+	   no edge. the frame (https://doop-justin.fly.dev/c/nbLLq_xn6I, gSY9BfLEKp) fills it with
+	   `--panel`, step 3, but the quiet line under the words is step 11, which stands on step 1 or 2
+	   and never on step 3 — so the fill is step 2, the page's own ground, until the registry names a
+	   panel step that quiet ink may stand on. */
+	.adm-quote {
+		display: grid;
+		gap: var(--admin-space-1);
+		margin: 0;
+		padding: var(--admin-space-5) var(--admin-space-6);
+		background: var(--admin-page);
+		border-radius: var(--admin-radius);
+		overflow-wrap: anywhere;
+	}
+
+	.adm-quote__by {
+		font-size: var(--admin-aside-size);
+		line-height: var(--admin-aside-lh);
+		color: var(--admin-ink-2);
+	}
+
+	/* the Donation page's videos in the order donors see them
+	   (packages/app/src/lib/admin/page-edit/videos-card.tsx): a row is the stored poster, the title
+	   over its length and a link out, and the row's presses. the list is edged on the card's own
+	   surface rather than filled, so the quiet meta line stands on step 1. a row of this shape is
+	   no operator part yet — `RepeatingRows` holds boxes, not a picture — so it is drawn here. under
+	   the middle breakpoint the presses drop under the row, at its end. */
+	.adm-videos {
+		margin: 0;
+		padding: 0;
+		border: var(--admin-rule);
+		border-radius: var(--admin-radius-plane);
+	}
+
+	.adm-video {
+		display: grid;
+		grid-template-columns: var(--admin-measure-poster-narrow) minmax(0, 1fr);
+		align-items: center;
+		gap: var(--admin-space-4) var(--admin-space-5);
+		padding: var(--admin-space-5) var(--admin-space-6);
+	}
+
+	.adm-video + .adm-video {
+		border-block-start: var(--admin-rule);
+	}
+
+	.adm-video__poster {
+		display: block;
+		inline-size: 100%;
+		aspect-ratio: 16 / 9;
+		object-fit: cover;
+		background: var(--admin-surface-fill);
+		border: var(--admin-rule);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-video__words {
+		display: grid;
+		gap: var(--admin-space-1);
+		min-inline-size: 0;
+	}
+
+	.adm-video__title {
+		margin: 0;
+		font-size: var(--admin-label-size);
+		font-weight: var(--admin-label-weight-strong);
+		overflow-wrap: anywhere;
+	}
+
+	.adm-video__meta {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--admin-space-1) var(--admin-space-5);
+		margin: 0;
+		font-size: var(--admin-caption-size);
+		line-height: var(--admin-caption-lh);
+		color: var(--admin-ink-2);
+	}
+
+	.adm-video__meta a {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--admin-space-2);
+		color: inherit;
+	}
+
+	.adm-video__actions {
+		grid-column: 1 / -1;
+		display: flex;
+		justify-content: end;
+		gap: var(--admin-space-2);
+	}
+
+	/* the card's Add video, on the link box's row (`beside` in
+	   packages/operator/src/components/forms/Field.jsx): under the middle breakpoint it takes a line
+	   of its own under the box, as wide as the box, rather than wrapping there at its word's width. */
+	.adm-videoadd .adm-actions > .adm-btn {
+		inline-size: 100%;
+	}
+
+	@media (min-width: 44rem) {
+		.adm-video {
+			grid-template-columns: var(--admin-measure-poster) minmax(0, 1fr) auto;
+			column-gap: var(--admin-space-6);
+		}
+
+		.adm-video__actions {
+			grid-column: auto;
+		}
+
+		.adm-videoadd .adm-actions > .adm-btn {
+			inline-size: auto;
+		}
+	}
+
 	/* the foot of a plane something can be added to, drawn as the row after the last one rather
 	   than a control beside the list: the place a reader is looking for one more record is the end
 	   of the list they have just read. it stands after the table rather than in its body, so a
@@ -4827,6 +4961,13 @@
 	   it speaks, and while empty the body's gap above it is taken back, so it holds no room. */
 	.adm-dialog__refusal:empty {
 		margin-block-start: calc(-1 * var(--admin-space-5));
+	}
+
+	/* a refusal said in the card's quiet ink rather than the attention hue, its circle-alert mark
+	   carrying what it is: the hide confirm (packages/app/src/lib/admin/messages/public-messages.tsx),
+	   as its frame draws it (https://doop-justin.fly.dev/c/nbLLq_xn6I, gSY9BfLEKp). */
+	.adm-dialog__refusal--ink > .adm-momentary {
+		color: var(--admin-ink-2);
 	}
 
 	/* a box with its unit or its address in front stated on the box itself: the box is the field,

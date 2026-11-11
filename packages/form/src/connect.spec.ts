@@ -529,6 +529,20 @@ describe('the prop getters', () => {
 		});
 	});
 
+	it('carries the two ticks that show the note, each pressing what it says', () => {
+		const { get } = api((send) => send({ type: 'TOGGLE_NOTE' } as never));
+		const pressed = (key: 'notePublicToggle' | 'noteAnonymousToggle') =>
+			(get()[key] as { pressed: boolean }).pressed;
+		const click = (key: 'notePublicToggle' | 'noteAnonymousToggle') =>
+			(get()[key] as { onClick: () => void }).onClick();
+
+		expect([pressed('notePublicToggle'), pressed('noteAnonymousToggle')]).toEqual([false, false]);
+		click('notePublicToggle');
+		expect([pressed('notePublicToggle'), pressed('noteAnonymousToggle')]).toEqual([true, false]);
+		click('noteAnonymousToggle');
+		expect([pressed('notePublicToggle'), pressed('noteAnonymousToggle')]).toEqual([true, true]);
+	});
+
 	// one getter per numbered step, in the order a donor is asked. what each carries is where the
 	// donor is and whether the flow would take a press — the two things a mark on the step head is
 	// drawn from, off `stepIsReachable` (./checkout.machine.ts) rather than re-derived here.

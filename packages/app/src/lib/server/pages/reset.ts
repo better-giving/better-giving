@@ -29,8 +29,10 @@ import { readOwnedRow, readTarget, settingsOfRow } from './queries';
 //   Reset is how that page is repaired and what the operator chose there cannot be read.
 // - the page's id and its owned row stay, so a gift already made on the page still names both.
 // - a page with no edits (`hasEditsToReset`) is refused: a Reset there would only move its version.
-// - a photo any of the three documents placed and the default does not is freed in the same
-//   `batch()`, where nothing else places it (../images/free.ts).
+// - the default holds no videos, so a Reset takes every video off the draft and the live page, and
+//   a video alone is an edit to reset.
+// - a photo or video poster any of the three documents placed and the default does not is freed in
+//   the same `batch()`, where nothing else places it (../images/free.ts).
 
 /** what a Reset to default did. */
 export type ResetOutcome =
@@ -79,7 +81,11 @@ export async function resetDonationPage(db: Db, version: Date): Promise<ResetOut
 
 /** the content of a Donation page's document Reset puts back. */
 function face(document: PageDocument) {
-	return { heading: document.heading, share: document.shareMessage ?? null };
+	return {
+		heading: document.heading,
+		share: document.shareMessage ?? null,
+		videos: document.videos ?? []
+	};
 }
 
 const DEFAULT_FACE = face(defaultDonationPage());

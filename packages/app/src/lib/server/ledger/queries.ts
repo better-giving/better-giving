@@ -474,6 +474,28 @@ export async function readRaisedByOrganisation(
 }
 
 /**
+ * what one gift still stands at in the books, in its own currency: `readRaisedByOrganisation`'s
+ * per-gift `net`, as a scalar subquery on the outer row's `donation`. 0 for a gift still pending,
+ * given back in full, or withdrawn by a dispute that has not been won; above 0 for one partly given
+ * back.
+ */
+export function giftNetRaised(): SQL<number> {
+	return sql<number>`(
+		${DONATIONS_SUBTREE}
+		select coalesce(-sum(${ledgerEntry.amountMinor}), 0)
+		from ${payment}
+		join ${entryGroup}
+			on ${entryGroup.sourceId} = ${payment.id}
+			and ${inArray(entryGroup.sourceType, PAYMENT_KEYED)}
+			and ${entryGroup.currency} = ${donation.currency}
+		join ${ledgerEntry}
+			on ${ledgerEntry.entryGroupId} = ${entryGroup.id}
+			and ${ledgerEntry.accountId} in (select id from donations)
+		where ${payment.donationId} = ${donation.id}
+	)`;
+}
+
+/**
  * a span of business time: from `from` and up to, never including, `before`; either end open where
  * it is null.
  */

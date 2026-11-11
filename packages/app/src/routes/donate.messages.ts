@@ -1,0 +1,46 @@
+import { data } from 'react-router';
+import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
+import { ensureDonationPage } from '$lib/server/pages/donation-page';
+import { parseMessageCursor, readShownMessages } from '$lib/server/pages/messages';
+import { donationPageDrawsMessages } from '$lib/server/pages/view';
+import { database, overDonorPageLimit, platform } from '../context';
+import type { Route } from './+types/donate.messages';
+
+// Show more messages on /donate: the next six donors' messages after `?after=`, the `next` the page
+// or the last press was handed (`DonateProfile.messages` in $lib/donate/profile.ts). a `loader` and
+// no component, asked by a plain `fetch` ($lib/donate/show-more.ts), which reads its JSON.
+//
+// nested under ./donate.tsx by its name, so that page's `meterDonorPage` charges every press to the
+// same bucket a view of the page spends. `no-store` like the page: a list a hide or a refund changes
+// is no capability and no immutable bytes ($lib/server/runtime/response-cache.ts).
+//
+// it lists nothing where the page lists nothing: a page drawn as the donation box alone, or refused,
+// draws no messages (`donationPageDrawsMessages` in $lib/server/pages/view.ts), and this answers
+// the same then, so a broken page shows its donors no messages here either.
+
+const NO_STORE = { 'cache-control': 'no-store' };
+
+const NOTHING_LISTED = { messages: [], total: 0, next: null } as const;
+
+export async function loader({ context, request }: Route.LoaderArgs) {
+	if (context.get(overDonorPageLimit)) return donorPageRateLimitRefusal();
+	const after = new URL(request.url).searchParams.get('after');
+	const cursor = after === null ? null : parseMessageCursor(after);
+	if (after !== null && cursor === null) {
+		return data({ kind: 'refused' } as const, { status: 400, headers: NO_STORE });
+	}
+	const db = context.get(database);
+	const { env } = context.get(platform);
+	// a failed read answers as a refusal rather than a throw, so its body is this route's JSON and
+	// not the runtime's plain-text 500.
+	let page: Awaited<ReturnType<typeof readShownMessages>>;
+	try {
+		const row = await ensureDonationPage(db);
+		const draws = await donationPageDrawsMessages(db, env, row, request, { now: Date.now() });
+		page = draws ? await readShownMessages(db, cursor) : NOTHING_LISTED;
+	} catch (e) {
+		console.error('reading donor messages for show more failed:', e);
+		return data({ kind: 'refused' } as const, { status: 500, headers: NO_STORE });
+	}
+	return data({ kind: 'messages', ...page } as const, { headers: NO_STORE });
+}

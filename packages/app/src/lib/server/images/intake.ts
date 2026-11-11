@@ -76,7 +76,7 @@ const tooLarge = (what: string): PhotoRefusal => ({
 const refused = (error: string): PhotoRefusal => ({ ok: false, refusal: 'refused', error });
 
 /** the body's bytes, or null once it runs past `max` — the rest is never read. */
-async function readUpTo(body: ReadableStream<Uint8Array> | null, max: number) {
+export async function readUpTo(body: ReadableStream<Uint8Array> | null, max: number) {
 	const chunks: Uint8Array[] = [];
 	let length = 0;
 	if (body !== null) {
@@ -119,9 +119,16 @@ export async function readPostedPhoto(db: Db, request: Request): Promise<PostedP
 	if (!(file instanceof Blob)) {
 		return refused('file is required: the photo, as the multipart body’s one file');
 	}
-	if (file.size > IMAGE_BYTES_MAX) return tooLarge(`file is ${file.size} bytes`);
+	return checkPhotoBytes(db, new Uint8Array(await file.arrayBuffer()));
+}
 
-	const bytes = new Uint8Array(await file.arrayBuffer());
+/**
+ * `bytes` held to a photo's size, type and pixel bounds, with the statements storing them as a
+ * `photo`: the rule a posted photo is held to, for bytes the server fetched itself — a video's
+ * poster ($lib/server/pages/videos.ts). each refusal's `error` names the photo `file`.
+ */
+export function checkPhotoBytes(db: Db, bytes: Uint8Array): PostedPhoto {
+	if (bytes.byteLength > IMAGE_BYTES_MAX) return tooLarge(`file is ${bytes.byteLength} bytes`);
 	const sniffed = sniffImage(bytes);
 	if (sniffed === null) {
 		return refused('file is not a WebP, JPEG or PNG image: its first bytes are none of the three');

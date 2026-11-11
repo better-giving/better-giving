@@ -19,6 +19,12 @@ const ORG = {
 
 const MONEY = { locale: 'en-US', currency: 'USD' };
 
+const MESSAGES = {
+	messages: [{ name: 'Maya R.', note: 'Proud to give', receivedAt: '2026-09-10T11:00:00.000Z' }],
+	total: 1,
+	next: null
+};
+
 describe('donateProfile()', () => {
 	it('hands every part its field, the photos at the addresses they are served from', () => {
 		expect(
@@ -27,7 +33,16 @@ describe('donateProfile()', () => {
 				logo: { imageId: 'logo-1', width: 400, height: 400 },
 				bannerImageId: 'banner 1',
 				raised: { raisedMinor: 120_455_000, gifts: 48 },
-				money: MONEY
+				money: MONEY,
+				messages: MESSAGES,
+				videos: [
+					{
+						videoId: 'dQw4w9WgXcQ',
+						title: 'How a rent grant works',
+						durationSeconds: 222,
+						posterImageId: 'poster 1'
+					}
+				]
 			})
 		).toEqual({
 			name: 'Riverbank Trust',
@@ -42,7 +57,16 @@ describe('donateProfile()', () => {
 				addressLines: ['1 Main St', 'Springfield, IL 62701', 'US'],
 				email: null,
 				socialLinks: [{ platform: 'instagram', href: 'https://instagram.com/riverbank' }]
-			}
+			},
+			messages: MESSAGES,
+			videos: [
+				{
+					videoId: 'dQw4w9WgXcQ',
+					title: 'How a rent grant works',
+					durationSeconds: 222,
+					posterUrl: '/image/poster%201'
+				}
+			]
 		});
 	});
 
@@ -52,10 +76,13 @@ describe('donateProfile()', () => {
 			logo: null,
 			bannerImageId: null,
 			raised: { raisedMinor: 0, gifts: 0 },
-			money: MONEY
+			money: MONEY,
+			messages: { messages: [], total: 0, next: null },
+			videos: undefined
 		});
 
 		expect(profile).toMatchObject({
+			videos: [],
 			banner: null,
 			logo: null,
 			taxId: null,

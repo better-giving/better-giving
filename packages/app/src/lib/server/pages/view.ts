@@ -7,7 +7,7 @@ import { type PageLook, titleHeading } from '../../donate/page-view';
 import type { Page } from '../../page/catalog';
 import type { PageType } from '../../page/keys';
 import type { Db } from '../db/client';
-import type { OrgProfile } from '../db/schema';
+import type { OrgProfile, Page as PageRow } from '../db/schema';
 import { cachedCadences } from '../forms/cadence-cache';
 import { cachedCoins } from '../forms/coin-cache';
 import type { FormRecord } from '../forms/form-input';
@@ -19,6 +19,7 @@ import { createPaymentProviders } from '../payments/factory';
 import { readActiveProgramPhotos } from '../programs/queries';
 import { readDocument } from './document';
 import { organisationRaised, pageGoal } from './goal';
+import { readShownMessages } from './messages';
 
 // everything a donor page draws beyond its own stored document, read for one page: the donation
 // page at /donate, a campaign at its address, and either one in the editor's preview.
@@ -50,7 +51,8 @@ import { organisationRaised, pageGoal } from './goal';
 // and never on its `v1` options, and so is a campaign's raised figure (./goal.ts), a sum over the
 // books that is never cached. the Donation page alone is handed its profile head beside the view
 // (`DonateProfile` in ../../donate/profile.ts) from those same reads, with what the organisation has
-// raised through every form (`organisationRaised` in ./goal.ts), likewise never cached.
+// raised through every form (`organisationRaised` in ./goal.ts) and its donors' newest messages
+// (`readShownMessages` in ./messages.ts), likewise never cached.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {
@@ -96,16 +98,13 @@ export async function loadPageView(
 	}
 ): Promise<LoadedPage> {
 	const origin = new URL(request.url).origin;
-	const processors = createPaymentProviders(env);
 	const parsed = readDocument(source, preview ? 'draft' : 'published', source.document);
 	const [served, profile, logo, photos] = await Promise.all([
-		readPublishedConfig(
+		readServedConfig(
 			db,
-			source.formId,
 			env,
-			() => cachedCadences(processors, origin),
-			() => cachedRails(processors, origin),
-			() => cachedCoins(processors, origin),
+			source.formId,
+			origin,
 			preview
 				? {
 						now,
@@ -130,9 +129,11 @@ export async function loadPageView(
 	const pageName = page.name ?? source.name;
 	const orgName = config.orgLegalName;
 	const money = { locale: config.locale, currency: config.currency };
-	const [goal, raised] = await Promise.all([
+	const isDonationPage = source.type === 'donation_page';
+	const [goal, raised, messages] = await Promise.all([
 		pageGoal(db, source.formId, page, config.locale),
-		source.type === 'donation_page' ? organisationRaised(db, config.currency) : null
+		isDonationPage ? organisationRaised(db, config.currency) : null,
+		isDonationPage ? readShownMessages(db, null) : null
 	]);
 	const org = {
 		name: orgName,
@@ -168,16 +169,55 @@ export async function loadPageView(
 			...openingOf(page.switches)
 		},
 		profile:
-			raised === null
+			raised === null || messages === null
 				? null
 				: donateProfile({
 						org,
 						logo,
 						bannerImageId: profile?.bannerImageId ?? null,
 						raised,
-						money
+						money,
+						messages,
+						videos: page.videos
 					})
 	};
+}
+
+/**
+ * whether the Donation page as a donor sees it draws its donors' messages: `loadPageView`'s two
+ * gates before it reads them, a served config the card can draw and a published document the rule
+ * reads, so Show more (routes/donate.messages.ts) lists nothing where the page lists none.
+ */
+export async function donationPageDrawsMessages(
+	db: Db,
+	env: unknown,
+	row: PageRow,
+	request: Request,
+	{ now }: { readonly now: number }
+): Promise<boolean> {
+	if (!readDocument(row, 'published', row.published).ok) return false;
+	const origin = new URL(request.url).origin;
+	return renderableConfig(await readServedConfig(db, env, row.formId, origin, { now })).ok;
+}
+
+/** the owned row's served config, read as ../../../routes/api.v1.forms.$id.config.ts reads it. */
+function readServedConfig(
+	db: Db,
+	env: unknown,
+	formId: string,
+	origin: string,
+	options: Parameters<typeof readPublishedConfig>[6]
+) {
+	const processors = createPaymentProviders(env);
+	return readPublishedConfig(
+		db,
+		formId,
+		env,
+		() => cachedCadences(processors, origin),
+		() => cachedRails(processors, origin),
+		() => cachedCoins(processors, origin),
+		options
+	);
 }
 
 /** where the page's switches open the box: only the flags that are on, and nothing when neither is. */

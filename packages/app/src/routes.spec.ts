@@ -232,6 +232,12 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// alone. its loader writes nothing, and an address no campaign could hold is refused before the
 	// database is read, so a scanner walking top-level paths costs this deployment no query.
 	CAMPAIGN_PAGE,
+	// Show more messages on the donation page, fetched by that page ($lib/donate/show-more.ts) for a
+	// donor who holds no session. a read, charged to the donation page's own meter by nesting under
+	// it, and what it answers is what the page already shows: nothing where the page draws no
+	// messages ($lib/server/pages/view.ts), and a hidden note, a donor's surname, address or amount
+	// is in no row it reads out ($lib/server/pages/messages.ts).
+	'routes/donate.messages.ts',
 	// a page's photos, fetched by the `<img>` of a donor who holds no session. it reads bytes by id
 	// and writes nothing, and a draft's image is as reachable by its id as a live one's: the id is a
 	// uuidv7 minted by `createImage` ($lib/server/images/queries.ts), whose random bits nobody outside
@@ -614,6 +620,7 @@ describe('the route surface', () => {
 		{ address: '/reset', file: 'routes/reset.tsx' },
 		{ address: '/admin', file: 'routes/_app.admin._index.tsx' },
 		{ address: '/donate', file: DONOR_PAGE },
+		{ address: '/donate/messages', file: 'routes/donate.messages.ts' },
 		{ address: '/preview/0198c1d2-0000-7000-8000-000000000001', file: PREVIEW_PAGE },
 		{ address: API_BASE_PATH, file: API_LAYOUT }
 	])('keeps $address on $file', async ({ address, file }) => {

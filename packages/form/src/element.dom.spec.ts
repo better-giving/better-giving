@@ -2090,6 +2090,151 @@ describe('the note the donor asked to write', () => {
 	});
 });
 
+// the note shown on the organisation's page, which is a second consent under the first: ticking
+// "Add a note" writes to the nonprofit, and only these ticks put the words in front of other donors.
+describe('the note the donor asks to show', () => {
+	function noteTick(card: Mounted): HTMLElement {
+		return card.all('.check-row [part~="checkbox"]')[0] as HTMLElement;
+	}
+
+	function opened(card: Mounted): Mounted {
+		press(noteTick(card));
+		return card;
+	}
+
+	it('draws neither row while the note is shut', async () => {
+		const card = await mount();
+
+		expect(card.all('#note-public')).toHaveLength(0);
+		expect(card.all('#note-anonymous')).toHaveLength(0);
+	});
+
+	it('opens the note with one unticked row naming the organisation', async () => {
+		const card = opened(await mount());
+		const row = card.find('#note-public').closest('.check-row') as HTMLElement;
+
+		expect((card.find('#note-public') as HTMLInputElement).checked).toBe(false);
+		expect(card.find('#note-public').getAttribute('part')).toBe('checkbox');
+		expect(row.parentElement?.closest('.disclosure-inner')).not.toBeNull();
+		expect(card.text('#note-public-hint')).toBe(
+			'It shows with your first name and last initial, like “Maya R.”'
+		);
+		expect(row.textContent).toBe(
+			'Show my note on Acme Relief Fund’s pageIt shows with your first name and last initial, like “Maya R.”'
+		);
+		expect(card.all('#note-anonymous')).toHaveLength(0);
+	});
+
+	it('names the hint as the first box’s description', async () => {
+		const card = opened(await mount());
+
+		expect(card.find('#note-public').getAttribute('aria-describedby')).toBe('note-public-hint');
+	});
+
+	it('draws the anonymous row, unticked, once the note is to be shown', async () => {
+		const card = opened(await mount());
+		press(card.find('#note-public'));
+
+		const anonymous = card.find('#note-anonymous') as HTMLInputElement;
+		expect(anonymous.checked).toBe(false);
+		expect(anonymous.closest('.check-row')?.textContent).toBe('Show it as Anonymous');
+		expect(anonymous.hasAttribute('aria-describedby')).toBe(false);
+	});
+
+	it('swaps the hint in place to say Anonymous while it is ticked, and back after untick', async () => {
+		const card = opened(await mount());
+		press(card.find('#note-public'));
+		const hint = card.find('#note-public-hint');
+		press(card.find('#note-anonymous'));
+
+		expect(card.find('#note-public-hint')).toBe(hint);
+		expect(card.text('#note-public-hint')).toBe(
+			'Your note shows on Acme Relief Fund’s page as Anonymous.'
+		);
+		expect(card.find('#note-public').getAttribute('aria-describedby')).toBe('note-public-hint');
+
+		press(card.find('#note-anonymous'));
+		expect(card.find('#note-public-hint')).toBe(hint);
+		expect(card.text('#note-public-hint')).toBe(
+			'It shows with your first name and last initial, like “Maya R.”'
+		);
+		expect(card.find('#note-public').getAttribute('aria-describedby')).toBe('note-public-hint');
+	});
+
+	it('groups the two boxes under the first box’s words', async () => {
+		const card = opened(await mount());
+		press(card.find('#note-public'));
+		const group = card.find('#note-anonymous').closest('[role="group"]');
+
+		expect(group).not.toBeNull();
+		expect(group?.getAttribute('aria-labelledby')).toBe('note-public-words');
+		expect(group?.contains(card.find('#note-public'))).toBe(true);
+		expect(group?.getRootNode()).toBe(card.find('#note-public-words').getRootNode());
+	});
+
+	it('removes and resets the anonymous row when the first box is unticked', async () => {
+		const card = opened(await mount());
+		press(card.find('#note-public'));
+		press(card.find('#note-anonymous'));
+		press(card.find('#note-public'));
+
+		expect(card.all('#note-anonymous')).toHaveLength(0);
+
+		press(card.find('#note-public'));
+		expect((card.find('#note-anonymous') as HTMLInputElement).checked).toBe(false);
+	});
+
+	it('resets both when Add a note is unticked', async () => {
+		const card = opened(await mount());
+		press(card.find('#note-public'));
+		press(card.find('#note-anonymous'));
+		press(noteTick(card));
+
+		expect(card.all('#note-public')).toHaveLength(0);
+		expect(card.all('#note-anonymous')).toHaveLength(0);
+
+		press(noteTick(card));
+		expect((card.find('#note-public') as HTMLInputElement).checked).toBe(false);
+		expect(card.all('#note-anonymous')).toHaveLength(0);
+	});
+
+	it('keeps focus on the box just pressed as the second row appears', async () => {
+		const card = opened(await mount());
+		const shown = card.find('#note-public');
+		shown.focus();
+		press(shown);
+
+		expect(card.shadow.activeElement).toBe(shown);
+	});
+
+	it('keeps focus on the Anonymous box as it is ticked', async () => {
+		const card = opened(await mount());
+		press(card.find('#note-public'));
+		const anonymous = card.find('#note-anonymous');
+		anonymous.focus();
+		press(anonymous);
+
+		expect(card.shadow.activeElement).toBe(anonymous);
+	});
+
+	it('takes the two boxes in order between the note and Dedicate', async () => {
+		// document order is the tab order: nothing on the card sets a `tabindex` on these.
+		const card = opened(await mount());
+		press(card.find('#note-public'));
+		const stops = card
+			.all('textarea, input[type="checkbox"]')
+			.map((node) => node.id || node.closest('.check-row')?.textContent?.trim());
+
+		expect(stops.slice(0, 5)).toEqual([
+			'Add a note (optional)',
+			'note',
+			'note-public',
+			'note-anonymous',
+			'Dedicate this gift (optional)'
+		]);
+	});
+});
+
 // a gift given for somebody else. the second disclosure on this step and the same construction as
 // the first, so what is asserted here is what is different: four boxes, and two pairings between
 // them that the flow holds rather than the controls.
@@ -5669,26 +5814,49 @@ describe('the stylesheets', () => {
 	// ./styles/motion.css, so the part loses the movements that sheet gives it. each such part is
 	// restated there at its registry class, so what it moves is the motion sheet's.
 	it('restates the motion of every registry control that brings its own', () => {
-		const transitioned = registryControls
-			.split('}')
-			.filter((rule) => /\btransition/.test(rule.split('{')[1] ?? ''))
-			.flatMap((rule) => (rule.split('{')[0] ?? '').split(','))
-			.map((selector) => selector.trim());
+		// innermost blocks only, so a rule inside `@media (hover: hover)` is read under its own
+		// selector rather than the at-rule's; the list splits on the commas no `:not(...)` holds.
+		const rules = (sheet: string) =>
+			[...sheet.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, head = '', body = '']) => ({
+				selectors: head.split(/,(?![^(]*\))/).map((selector) => selector.trim()),
+				body
+			}));
+		/** what a block transitions: its `transition-property` list, or each `transition` layer's first word. */
+		const transitionedBy = (body: string) => {
+			const listed = /\btransition-property\s*:\s*([^;]+)/.exec(body)?.[1];
+			const layers = /\btransition\s*:\s*([^;]+)/.exec(body)?.[1];
+			if (listed) return listed.split(',').map((property) => property.trim());
+			return (layers ?? '').split(',').flatMap((layer) => layer.trim().split(/\s+/)[0] || []);
+		};
+		const propertiesAt = (sheet: string, matches: (selector: string) => boolean) =>
+			new Set(
+				rules(sheet)
+					.filter(({ selectors }) => selectors.some(matches))
+					.flatMap(({ body }) => transitionedBy(body))
+			);
 		const handed = Object.entries(REGISTRY_CLASS).flatMap(([part, list]) =>
 			list.split(' ').map((name) => ({ part, name }))
 		);
-		const brought = handed.filter(({ name }) => transitioned.includes(`.${name}`));
+		// the class names the selector's subject: `.ds-btn:hover:not(...)` brings motion to the
+		// action, `.ds-btn > svg` would not. a pseudo-class's arguments are dropped first, since the
+		// registry breaks a `:not(...)` list across lines.
+		const brought = handed
+			.map(({ part, name }) => ({
+				restated: `[part~='${part}'].${name}`,
+				registry: propertiesAt(registryControls, (selector) =>
+					new RegExp(`\\.${name}(?![\\w-])[^\\s>+~]*$`).test(selector.replace(/\([^()]*\)/g, '()'))
+				)
+			}))
+			.filter(({ registry }) => registry.size > 0);
 
 		expect(brought.length).toBeGreaterThan(0);
 		expect(
-			brought
-				.filter(
-					({ part, name }) =>
-						!new RegExp(
-							`\\[part~='${part}'\\]\\.${name}(?![\\w-])[^{]*\\{[^}]*\\btransition:`
-						).test(moving)
-				)
-				.map(({ part, name }) => `[part~='${part}'].${name}`)
+			brought.flatMap(({ restated, registry }) => {
+				const ours = propertiesAt(moving, (selector) => selector === restated);
+				return [...registry]
+					.filter((property) => !ours.has(property))
+					.map((property) => `${restated}: ${property}`);
+			})
 		).toEqual([]);
 	});
 

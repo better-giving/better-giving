@@ -7,8 +7,9 @@ import type { DonateProfile } from './profile';
 
 // the Donation page under its profile head, mounted: which layout its content picks, and each part
 // on its own condition — the banner, the logo or its initials, the name and the EIN, the raised
-// figure, About us, the page's heading over the box, and the footer. how any of it looks, and where
-// ./page.css stands it at 60rem, is the stylesheet's and a person's looking at it.
+// figure, About us, the videos, the messages from donors, the page's heading over the box, and the footer. how
+// any of it looks, and where ./page.css stands it at 60rem, is the stylesheet's and a person's
+// looking at it.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -23,7 +24,9 @@ const BARE: DonateProfile = {
 	vision: null,
 	raised: { raisedMinor: 0, gifts: 0 },
 	money: { locale: 'en-US', currency: 'USD' },
-	footer: { addressLines: [], email: null, socialLinks: [] }
+	footer: { addressLines: [], email: null, socialLinks: [] },
+	messages: { messages: [], total: 0, next: null },
+	videos: []
 };
 
 const FULL: DonateProfile = {
@@ -40,6 +43,28 @@ const FULL: DonateProfile = {
 		socialLinks: [{ platform: 'instagram', href: 'https://instagram.com/harborlight' }]
 	}
 };
+
+const ONE_VIDEO: DonateProfile['videos'][number] = {
+	videoId: 'dQw4w9WgXcQ',
+	title: 'A winter night with the pantry crew',
+	durationSeconds: 192,
+	posterUrl: '/images/poster'
+};
+
+const ONE_MESSAGE: DonateProfile['messages'] = {
+	messages: [
+		{ name: 'Maya R.', note: 'Paying it forward.', receivedAt: '2026-11-07T10:00:00.000Z' }
+	],
+	total: 1,
+	next: null
+};
+
+const WIRING = {
+	now: '2026-11-09T12:00:00.000Z',
+	status: 'idle',
+	arrived: null,
+	onShowMore: () => {}
+} as const;
 
 function props(profile: DonateProfile | null, over: Partial<PageViewProps> = {}): PageViewProps {
 	return {
@@ -99,7 +124,9 @@ describe('the layout the profile head picks', () => {
 		['a banner', { banner: { src: '/image/b' } }],
 		['a mission', { mission: 'Books for every block.' }],
 		['a vision', { vision: 'A library card in every pocket.' }],
-		['anything raised', { raised: { raisedMinor: 2500, gifts: 1 } }]
+		['anything raised', { raised: { raisedMinor: 2500, gifts: 1 } }],
+		['a message from a donor', { messages: ONE_MESSAGE }],
+		['a video', { videos: [ONE_VIDEO] }]
 	] as const)('is the profile layout with %s alone', (_, filled) => {
 		expect(profileLayout({ ...BARE, ...filled })).toBe('profile');
 		expect(head(draw({ ...BARE, ...filled }))?.dataset.head).toBe('profile');
@@ -124,12 +151,25 @@ describe('the layout the profile head picks', () => {
 		expect(head(root)).toBeNull();
 	});
 
-	it('stands the parts in the order a phone reads them, the box before About us', () => {
-		const root = draw(FULL);
+	it('stands the parts in the order a phone reads them, the box before About us, the videos and the messages', () => {
+		const root = draw(
+			{ ...FULL, messages: ONE_MESSAGE, videos: [ONE_VIDEO] },
+			{ donorMessages: WIRING }
+		);
 		const order = [...root.querySelectorAll<HTMLElement>('[data-head] [data-area]')].map(
 			(node) => node.dataset.area
 		);
-		expect(order).toEqual(['banner', 'who', 'title', 'raised', 'box', 'about']);
+		expect(order).toEqual([
+			'banner',
+			'who',
+			'title',
+			'raised',
+			'box',
+			'more',
+			'about',
+			'videos',
+			'messages'
+		]);
 	});
 });
 
@@ -253,6 +293,58 @@ describe('About us', () => {
 
 	it('is left out where the organisation has written neither', () => {
 		expect(part(draw({ ...FULL, mission: null, vision: null }), 'about')).toBeNull();
+	});
+});
+
+describe('the videos', () => {
+	it('draws between About us and the messages from donors', () => {
+		const root = draw(
+			{ ...FULL, messages: ONE_MESSAGE, videos: [ONE_VIDEO] },
+			{ donorMessages: WIRING }
+		);
+		const videos = part(root, 'videos');
+		expect(videos?.querySelector('h2')?.textContent).toBe('Videos');
+		expect(videos?.previousElementSibling?.getAttribute('data-area')).toBe('about');
+		expect(videos?.nextElementSibling?.getAttribute('data-area')).toBe('messages');
+	});
+
+	it('stands alone in the area beside the box where nothing else does', () => {
+		const root = draw({ ...BARE, videos: [ONE_VIDEO] });
+		expect(part(root, 'more')?.querySelector('[data-area="videos"]')).not.toBeNull();
+	});
+
+	it('is left out with no video, and draws no area for it', () => {
+		const root = draw({ ...BARE, mission: 'Books for every block.' });
+		expect(part(root, 'videos')).toBeNull();
+		expect(root.textContent).not.toContain('Videos');
+	});
+});
+
+describe('messages from donors', () => {
+	it('draws under About us where a donor chose to show a note', () => {
+		const messages = part(
+			draw({ ...FULL, messages: ONE_MESSAGE }, { donorMessages: WIRING }),
+			'messages'
+		);
+		expect(messages?.querySelector('h2')?.textContent).toBe('Messages from donors');
+		expect(messages?.textContent).toContain('Paying it forward.');
+	});
+
+	it('stands alone in the area beside the box where there is no About us', () => {
+		const root = draw({ ...BARE, messages: ONE_MESSAGE }, { donorMessages: WIRING });
+		expect(part(root, 'about')).toBeNull();
+		expect(part(root, 'more')?.querySelector('[data-area="messages"]')).not.toBeNull();
+	});
+
+	it('is left out with no message, and draws no area for it', () => {
+		const root = draw({ ...BARE, mission: 'Books for every block.' }, { donorMessages: WIRING });
+		expect(part(root, 'messages')).toBeNull();
+		expect(root.textContent).not.toContain('Messages from donors');
+		expect(part(draw(BARE, { donorMessages: WIRING }), 'more')).toBeNull();
+	});
+
+	it('is left out where the route wires no Show more', () => {
+		expect(part(draw({ ...FULL, messages: ONE_MESSAGE }), 'messages')).toBeNull();
 	});
 });
 

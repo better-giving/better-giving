@@ -11,6 +11,7 @@ import { AboutUs } from './sections/about-us';
 import { Cover } from './sections/cover';
 import { Faq } from './sections/faq';
 import { GoalBar } from './sections/goal-bar';
+import { DonorMessages, type DonorMessagesWiring } from './sections/messages';
 import { hasContact, OrgContact, OrgInfo } from './sections/org-info';
 import { Photos } from './sections/photos';
 import { ProfileBanner, ProfileMark, ProfileName, ProfileRaised } from './sections/profile';
@@ -18,6 +19,7 @@ import { ProgramChooser } from './sections/program-chooser';
 import { Share } from './sections/share';
 import { Story } from './sections/story';
 import { Tiers } from './sections/tiers';
+import { Videos } from './sections/videos';
 import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './sections/types';
 
 // a donor page drawn from its stored content: the Donation page at /donate, a campaign at its
@@ -47,13 +49,14 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 // - the Donation page at /donate, and its preview, handed its profile head (`DonateProfile` in
 //   ./profile.ts): the profile layout in place of the masthead. it is compact — the logo beside the
 //   name and the box under them, one column at every width — where the organisation has no banner,
-//   no mission or vision and nothing raised (`profileLayout` below), and otherwise the banner or
-//   the brand's band across the top, the logo over its foot, the name, the EIN and the raised figure,
-//   then the box, then About us; wide, the box stands in a column of its own beside them and scrolls
-//   with the page as every box does. a heading saved for the page is the box's own heading there,
-//   over the card. the name is always drawn there, so the logo beside it says nothing of its own,
-//   and a logo the masthead would let stand in for the name is drawn whole at its own shape rather
-//   than in the square.
+//   no mission or vision, nothing raised, no video and no message from a donor (`profileLayout`
+//   below), and otherwise the banner or the brand's band across the top, the logo over its foot, the
+//   name, the EIN and the raised figure, then the box, then About us, the videos and the messages
+//   from donors; wide, the box stands in a column of its own beside them and scrolls with the page
+//   as every box does. a heading saved for the page is the box's own heading there, over the card.
+//   the name is always drawn there, so the logo beside it says nothing of its own, and a logo the
+//   masthead would let stand in for the name is drawn whole at its own shape rather than in the
+//   square.
 //
 // every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
 // the letter's and the feature's box straight after the cover and the title, the goal and the lede
@@ -115,6 +118,11 @@ export type PageViewProps = {
 	 * absent draws the masthead and the Donation page's own layout.
 	 */
 	readonly profile?: DonateProfile | null | undefined;
+	/**
+	 * what the profile's "Messages from donors" asks for six more with, and the clock its ages are
+	 * counted from; absent, the section is not drawn whatever the profile holds.
+	 */
+	readonly donorMessages?: DonorMessagesWiring | undefined;
 	/** drawn as the preview of a draft: a press reaches nothing. */
 	readonly preview?: boolean;
 	/** the caller's placement of the page root. */
@@ -359,13 +367,16 @@ function Chooser({ props }: { props: PageViewProps }) {
 
 /**
  * the profile head's layout from what it holds: compact where the organisation has no banner, no
- * mission or vision and nothing raised, and the profile layout where it has any of them.
+ * mission or vision, nothing raised, no video and no message from a donor, and the profile layout
+ * where it has any of them.
  */
 export function profileLayout(profile: DonateProfile): 'compact' | 'profile' {
 	return profile.banner === null &&
 		profile.mission === null &&
 		profile.vision === null &&
-		profile.raised.raisedMinor <= 0
+		profile.raised.raisedMinor <= 0 &&
+		profile.videos.length === 0 &&
+		profile.messages.total <= 0
 		? 'compact'
 		: 'profile';
 }
@@ -396,10 +407,32 @@ function ProfileLayout(props: PageViewProps & { readonly profile: DonateProfile 
 				hideProgramSelect={choosing}
 				heading={heading === '' ? undefined : props.page.heading}
 			/>
-			{profile.mission === null && profile.vision === null ? null : (
+			<ProfileMore {...props} profile={profile} />
+		</div>
+	);
+}
+
+/**
+ * what stands under the who on a phone and beside the box wide, in one area: About us, the videos,
+ * then the messages from donors. each draws only where it has something, and with none of them
+ * nothing is drawn.
+ */
+function ProfileMore(props: PageViewProps & { readonly profile: DonateProfile }) {
+	const { profile, donorMessages } = props;
+	const about = profile.mission !== null || profile.vision !== null;
+	const videos = profile.videos.length > 0;
+	const messages = profile.messages.total > 0 ? donorMessages : undefined;
+	if (!about && !videos && messages === undefined) return null;
+	return (
+		<div className="page-profile-more" {...area('more')}>
+			{about ? (
 				<section {...area('about')}>
 					<AboutUs mission={profile.mission} vision={profile.vision} />
 				</section>
+			) : null}
+			<Videos videos={profile.videos} />
+			{messages === undefined ? null : (
+				<DonorMessages {...messages} initial={profile.messages} locale={profile.money.locale} />
 			)}
 		</div>
 	);

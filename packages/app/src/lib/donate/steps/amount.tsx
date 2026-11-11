@@ -104,6 +104,9 @@ export function AmountStep({
 	const busy = api.continueButton['aria-busy'];
 	const missingAmount = missing.includes('amount');
 	const missingNote = missing.includes('note');
+	const noteAsked = api.noteToggle.pressed === true;
+	const noteShown = api.notePublicToggle.pressed === true;
+	const noteAnonymous = api.noteAnonymousToggle.pressed === true;
 	const amountWords = missingAmount ? amountProblem : refusal;
 	const amountDescribed = amountWords === '' ? undefined : 'amount-problem';
 	// a refusal sends the caret to the control holding the figure, so that control is described by it.
@@ -366,7 +369,7 @@ export function AmountStep({
 						part={part('checkbox')}
 						className={REGISTRY_CLASS.checkbox}
 						type="checkbox"
-						checked={api.noteToggle.pressed === true}
+						checked={noteAsked}
 						onChange={onNoteToggle}
 					/>
 					<span>
@@ -374,7 +377,7 @@ export function AmountStep({
 						<span className="optional">{copy.OPTIONAL}</span>
 					</span>
 				</label>
-				<div className="disclosure-body" hidden={api.noteToggle.pressed !== true}>
+				<div className="disclosure-body" hidden={!noteAsked}>
 					<div className="disclosure-inner">
 						<label part={part('label')} className="vh" htmlFor="note">
 							{copy.YOUR_NOTE}
@@ -392,6 +395,57 @@ export function AmountStep({
 						<p className="message" id="note-problem" hidden={!missingNote}>
 							{copy.NOTE_PROBLEM}
 						</p>
+						{/*
+						 * each row is in the tree only while the flow says it applies, the first while the
+						 * note is open and the second while the first is ticked, and each is its own child so
+						 * the second arriving leaves the first's box, and its focus, where it was. the hint
+						 * sits inside the label so pressing it ticks the box; a wrapping label names its box
+						 * by its whole subtree, so `aria-labelledby` names it by its words alone and the
+						 * hint is read once, as the description, ticked Anonymous or not; only its words
+						 * change, to the name the note will be signed with.
+						 */}
+						{/* biome-ignore lint/a11y/useSemanticElements: the rows are a group named by the first
+						    one's words, so "Show it as Anonymous" is read as qualifying that box, as the
+						    element's `noteConsent` (packages/form/src/views.ts) is; a `<fieldset>` brings a
+						    border, padding and `min-inline-size` the form's `.consent`
+						    (packages/form/src/styles/layout.css) would have to undo. */}
+						<div className="consent" role="group" aria-labelledby="note-public-words">
+							{noteAsked ? (
+								<label className="check-row">
+									<input
+										part={part('checkbox')}
+										className={REGISTRY_CLASS.checkbox}
+										type="checkbox"
+										id="note-public"
+										aria-labelledby="note-public-words"
+										aria-describedby="note-public-hint"
+										checked={noteShown}
+										onChange={() => api.notePublicToggle.onClick()}
+									/>
+									<span>
+										<span id="note-public-words">{copy.notePublicLabel(config.orgLegalName)}</span>
+										<small className="hint" id="note-public-hint">
+											{noteAnonymous
+												? copy.notePublicHintAnonymous(config.orgLegalName)
+												: copy.NOTE_PUBLIC_HINT}
+										</small>
+									</span>
+								</label>
+							) : null}
+							{noteShown ? (
+								<label className="check-row sub">
+									<input
+										part={part('checkbox')}
+										className={REGISTRY_CLASS.checkbox}
+										type="checkbox"
+										id="note-anonymous"
+										checked={noteAnonymous}
+										onChange={() => api.noteAnonymousToggle.onClick()}
+									/>
+									<span>{copy.NOTE_ANONYMOUS}</span>
+								</label>
+							) : null}
+						</div>
 					</div>
 				</div>
 			</div>

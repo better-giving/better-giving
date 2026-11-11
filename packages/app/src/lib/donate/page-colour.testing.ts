@@ -96,7 +96,9 @@ const LADDER: readonly [RegExp, (m: RegExpExecArray) => string][] = [
 	[/^--_p$/, () => 'brand-9'],
 	[/^--_on-p$/, () => 'on-brand-9'],
 	[/^--page-scrim$/, () => 'scrim'],
-	[/^--_bad$/, () => 'red-11']
+	[/^--overlay$/, () => 'scrim'],
+	[/^--_bad$/, () => 'red-11'],
+	[/^--destructive-(\d+)$/, (m) => `red-${m[1]}`]
 ];
 
 /**

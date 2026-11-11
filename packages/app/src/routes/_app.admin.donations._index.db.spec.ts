@@ -5,6 +5,9 @@ import { createDb, type Db } from '$lib/server/db/client';
 import { TRACKING_ID_BUDGET_MS } from '$lib/server/donations/tracking-ids';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import { finishSetup } from '../webhook-routes.testing';
+import { ensureDonationPage } from '$lib/server/pages/donation-page';
+import { setNoteHidden } from '$lib/server/pages/messages';
+import { noteGift } from '$lib/server/pages/settled-gifts.testing';
 import * as layout from './_app';
 import * as donations from './_app.admin.donations._index';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
@@ -284,6 +287,7 @@ async function runLoad(configEnv?: Env) {
 			receivedAt?: string;
 			source: string | null;
 			note: string | null;
+			noteStanding: string;
 			status: string;
 			paidWith: string | null;
 			coinReceived?: string;
@@ -296,6 +300,44 @@ async function runLoad(configEnv?: Env) {
 		hasMore: boolean;
 	};
 }
+
+describe('/admin/donations — a note on the donate page', () => {
+	afterEach(async () => {
+		for (const table of [
+			'dispute',
+			'zapier_delivery',
+			'quickbooks_sync',
+			'ledger_entry',
+			'entry_group',
+			'line_item',
+			'payment',
+			'donation',
+			'page'
+		]) {
+			await run(stmt(`delete from ${table}`));
+		}
+	});
+
+	it('says which notes are on the page and which are hidden', async () => {
+		const { formId: pageForm } = await ensureDonationPage(db);
+		const shown = await noteGift(db, pageForm, { note: 'shown', noteOnPage: 'named' });
+		const hidden = await noteGift(db, pageForm, { note: 'hidden', noteOnPage: 'named' });
+		await setNoteHidden(db, hidden.donationId, true, new Date());
+		const pending = await noteGift(db, pageForm, {
+			note: 'pending',
+			noteOnPage: 'named',
+			settles: false
+		});
+
+		const rows = new Map((await runLoad()).donations.map((d) => [d.id, d.noteStanding]));
+
+		expect([shown, hidden, pending].map(({ donationId }) => rows.get(donationId))).toEqual([
+			'shown',
+			'hidden',
+			'private'
+		]);
+	});
+});
 
 describe('/admin/donations load', () => {
 	it('formats the amount from the minor units the column holds', async () => {
@@ -353,6 +395,11 @@ describe('/admin/donations load', () => {
 		expect((await runLoad()).donations[0]?.note).toBe(message);
 	});
 
+	it('says a note the donor kept to themselves is on no page', async () => {
+		await gift({ note: 'just for you' });
+		expect((await runLoad()).donations[0]?.noteStanding).toBe('private');
+	});
+
 	it('publishes nothing the page does not render', async () => {
 		// a column reaches a browser by being selected. the projection is what stops the next one
 		// added to `donation` from doing so by default.
@@ -363,6 +410,7 @@ describe('/admin/donations load', () => {
 			'donorName',
 			'id',
 			'note',
+			'noteStanding',
 			'paidWith',
 			'program',
 			'receivedAt',

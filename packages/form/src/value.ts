@@ -71,6 +71,15 @@ export type AmountDraft = {
 	 */
 	readonly note?: string | undefined;
 	/**
+	 * whether the donor asked to show the note on the organisation's page, and under what name.
+	 *
+	 * absent is a private note, which is every note until the donor ticks otherwise. one field for
+	 * the two ticks rather than two booleans, for `note`'s reason above: anonymous without shown is a
+	 * pair that could disagree, and this shape cannot hold it. the machine drops it whenever `note`
+	 * goes (./checkout.machine.ts), so it is never present on a draft without a note.
+	 */
+	readonly noteShown?: NoteShown | undefined;
+	/**
 	 * the gift given for someone else, and whether the donor asked to dedicate one at all.
 	 *
 	 * exactly `note`'s distinction one level down, and for its reason: absent is a donor who never
@@ -96,6 +105,9 @@ export type AmountDraft = {
 	 */
 	readonly programId?: string | undefined;
 };
+
+/** how a shown note is signed: the donor's first name and last initial, or "Anonymous". */
+export type NoteShown = 'named' | 'anonymous';
 
 /**
  * the tribute block mid-edit: four boxes, each holding whatever is in it.
@@ -152,6 +164,8 @@ export type FormValue = {
 	readonly amountMinor: number;
 	readonly frequency: Frequency;
 	readonly note?: string;
+	/** present only beside `note`, and absent on a private one (`AmountDraft.noteShown` above). */
+	readonly noteShown?: NoteShown;
 	/**
 	 * the cause the gift is credited to, and `null` where the donor chose none.
 	 *
@@ -336,6 +350,7 @@ export function completeAmount(draft: AmountDraft, config: FormConfig): FormValu
 		frequency,
 		programId: draft.programId ?? null,
 		...(note.length > 0 ? { note } : {}),
+		...(note.length > 0 && draft.noteShown !== undefined ? { noteShown: draft.noteShown } : {}),
 		...(tribute === null ? {} : { tribute })
 	};
 }
