@@ -1999,7 +1999,7 @@ describe('the note the donor asked to write', () => {
 
 		expect(card.all('.step')[0]?.hidden).toBe(false);
 		expect(card.find('#note-problem').hidden).toBe(false);
-		expect(card.text('#note-problem')).toBe('required, or untick to skip');
+		expect(card.text('#note-problem')).toBe('Enter a note');
 		expect(card.find('#note').getAttribute('part')).toBe('field invalid');
 		expect(card.find('#note').getAttribute('aria-invalid')).toBe('true');
 		expect(card.find('#note').getAttribute('aria-describedby')).toBe('note-problem');
@@ -2307,7 +2307,7 @@ describe('the gift the donor dedicates', () => {
 
 		expect(card.all('.step')[0]?.hidden).toBe(false);
 		expect(card.find('#tribute-honoree-problem').hidden).toBe(false);
-		expect(card.text('#tribute-honoree-problem')).toBe('required, or untick to skip');
+		expect(card.text('#tribute-honoree-problem')).toBe('Enter their name');
 		expect(card.find('#tribute-honoree').getAttribute('part')).toBe('field invalid');
 		expect(card.find('#tribute-honoree').getAttribute('aria-invalid')).toBe('true');
 		expect(card.find('#tribute-honoree').getAttribute('aria-describedby')).toBe(

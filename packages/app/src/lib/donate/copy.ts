@@ -60,8 +60,8 @@ export const OPTIONAL = '(optional)';
 
 export const ADD_A_NOTE = 'Add a note ';
 export const YOUR_NOTE = 'Your note';
-/** two ways out, because the donor may write the note or take back the ask. */
-export const NOTE_PROBLEM = 'required, or untick to skip';
+/** what to do, never how to back out. */
+export const NOTE_PROBLEM = 'Enter a note';
 /** the consent under the note, worded as the element's (packages/form/src/views.ts, `notePublicRow`). */
 export function notePublicLabel(org: string): string {
 	return `Show my note on ${org}’s page`;
@@ -77,7 +77,7 @@ export const DEDICATE = 'Dedicate this gift ';
 export const TRIBUTE_KIND_LABEL = 'How this gift is dedicated';
 export const TRIBUTE_HONOREE_LABEL = 'Who this gift is for';
 export const TRIBUTE_HONOREE_PLACEHOLDER = 'Their name';
-export const TRIBUTE_HONOREE_PROBLEM = 'required, or untick to skip';
+export const TRIBUTE_HONOREE_PROBLEM = 'Enter their name';
 
 /**
  * the notify press, in the two directions it goes.

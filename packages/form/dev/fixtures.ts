@@ -176,7 +176,7 @@ function counting(count: number): ServedConfig {
 
 /** one suggestion: no tiles, and the box opens holding it. */
 const PRESETS_1 = counting(1);
-const PRESETS_5 = counting(5);
+const PRESETS_5 = counting(3);
 const PRESETS_7 = counting(7);
 /** twelve is the most an operator can save (`MAX_SUGGESTED_AMOUNTS` in packages/app/src/lib/forms/amounts.ts). */
 const PRESETS_12 = counting(12);

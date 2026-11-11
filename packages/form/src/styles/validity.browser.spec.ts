@@ -536,7 +536,8 @@ describe('the free entry the donor has already typed into', () => {
 			standing: 'on a tray',
 			suggested: CONFIG.suggestedAmountsMinor,
 			refused: true,
-			input: ['danger'],
+			// the tray carries the one red border, so the entry in it keeps its ordinary ring.
+			input: ['--_n1', '--_focus-ring'],
 			surface: []
 		},
 		{ standing: 'alone', suggested: [], refused: false, input: ['--_focus-ring'], surface: [] },

@@ -1560,11 +1560,10 @@ export function createCard(
 	// itself: a sentence about a note nobody has opened is a sentence about nothing. it carries no
 	// `::part()` name, for the reason ./parts.ts gives about every error surface.
 	//
-	// it names two ways out where the messages above it name one, and that is the difference the
-	// note has from every other decision on this step: the donor may write it or take back the ask,
-	// and naming only the first would leave a donor who ticked by accident stuck against the step.
+	// it says what to do and never how to back out (the product rule of 2026-11-11): the donor who
+	// ticked by accident finds the box without being told where it is.
 	const noteMessage = make(doc, 'p', { class: 'message', id: 'note-problem', hidden: true }, [
-		'required, or untick to skip'
+		'Enter a note'
 	]);
 	// the consent to show the note on the organisation's page, and to sign it "Anonymous". each row
 	// is in the DOM only while the flow says it applies (`update` below): the first while the note
@@ -1787,7 +1786,7 @@ export function createCard(
 			}),
 			'Who this gift is for',
 			'Their name',
-			'required, or untick to skip',
+			'Enter their name',
 			(api) => api.tributeHonoreeField
 		)
 	]);

@@ -939,10 +939,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * a fill and no edge. this is a container rather than a control, and ./tokens.css states at
  * `--_edge-control` that a container's edge identifies nothing — the receipt is that argument taken
  * to its end and draws none either, because a fill already says where a block starts and stops. the
- * tray is a plane inside the card, so it carries a plane's rung, `--_n2`, one rung off the card's
- * `--_n1`, and what stands on it is a rung off it again: a denomination rests on a control's own
- * `--_n3` and draws no edge at all, and a cadence draws no ground of its own until a pointer
- * reaches it. the hairline is around the group rather than around any one of them.
+ * cadence track is a plane inside the card, so it carries a plane's rung, `--_n2`, one rung off the
+ * card's `--_n1`, and a cadence draws no ground of its own until a pointer reaches it. the amount
+ * tray is filled with a control's own `--_n3` edge to edge (`.tiles:not(.bare)` below), and a
+ * denomination draws no ground of its own, so the tray's fill is what it rests on and the hover and
+ * press step that fill under the pointer. the hairline is around the group rather than around any one of them.
  *
  * the pad is what the chosen option stands inside — without it a chip would be flush to the track's
  * corner on three sides, and its lift would run into the track's own hairline. it is the smallest step on the scale, which is as much as can be given away: the
@@ -982,7 +983,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * the grid lines between the boxes: a hairline standing in each gap, in the separator rung, a step
+ * the grid lines between the boxes: a hairline standing in each gap, in the separator rung (the amount tray's in the border step after it, below), a step
  * fainter than the tray's own edge, drawn as one lattice — every vertical meets the horizontal
  * across each gap it reaches and neither runs past a box, so the boxes on a tray read as pieces on
  * one board rather than words floating on a fill. the lines run to the tray's inset and no further, and a chosen box
@@ -1025,6 +1026,17 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 .tiles:not(.bare) > .entry::after {
 	position: absolute;
 	background: var(--_n6);
+}
+
+/*
+ * on the amount tray's `--_n3` ground a `--_n6` line reads too faint, so its lines take the next
+ * border step, `--_n7`, which is the tray's own edge; the cadence track stays on `--_n6` over its
+ * `--_n2`.
+ */
+.tiles > label::before,
+.tiles > label::after,
+.tiles:not(.bare) > .entry::after {
+	background: var(--_n7);
 }
 
 .segment > label + label::before,
@@ -1792,17 +1804,14 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the quiet action at its own size: a text control, for stepping back off a numbered step and for
- * the second control on a full-card screen. underlined rather than coloured alone, because a word
- * that is only a hue is not a control on a page whose own links this component cannot see.
- *
- * it is the brand drawn as ink, step 11. the underline carries more than the sentence above says: a
- * word that is only a hue reads as a sentence to a donor who cannot tell the hue from the card's
- * quiet text, so the underline is the whole of what separates this from a sentence for them.
+ * the second control on a full-card screen. it is a button, and only a link `<a href>` is underlined
+ * (the product rule of 2026-11-11), so what says it is pressable is the brand drawn as ink, step 11,
+ * the pointer's step to 12 below, and the card's focus ring.
  */
 [part~='action-quiet'] {
 	display: inline-flex;
 	align-items: center;
-	/* the underline hugs the words rather than a box stretched to the column it stands in. */
+	/* the control hugs its words rather than a box stretched to the column it stands in. */
 	align-self: start;
 	gap: var(--_sp1);
 	min-block-size: var(--_row-min);
@@ -1813,14 +1822,13 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	color: var(--_a11);
 	font-size: var(--_t-sm);
 	font-weight: var(--_w-normal);
-	text-decoration: underline;
-	text-underline-offset: var(--_underline-offset);
+	text-decoration: none;
 	cursor: pointer;
 }
 
 /*
- * the word steps and the underline follows it, because both are `currentColor`: the brand's 11 at
- * rest, its 12 under the pointer, the other text step.
+ * the word steps under the pointer: the brand's 11 at rest, its 12 under the pointer, the other
+ * text step.
  */
 [part~='action-quiet']:hover {
 	color: var(--_a12);
@@ -2685,15 +2693,16 @@ button.step-dot:focus-visible .step-mark {
 }
 
 /*
- * on an invalid control the ring itself carries the state rather than sitting beside it. a tile is
- * named through `:has()` and the free entry through its input, because the token is on the part and
- * the input inside it is what takes the focus — and the free entry's ring is on that input for the
- * reason its block above gives. on a bare tray the entry's ring spans its edge as well, as the
- * ordinary one does there; the edge is already the danger, so the two read as one mark.
+ * on an invalid control the ring itself carries the state rather than sitting beside it. one error
+ * is one red border per group (the product rule of 2026-11-11): a tray of tiles draws it round the
+ * whole tray (`.tiles:not(.bare):has(> [part~='invalid'])` above), so the tiles and the free entry
+ * standing in it keep the ring they always take and draw no red of their own. the free entry
+ * carries the state alone only on a bare tray, where it is the outermost box and rings through its
+ * input, because the token is on the part and the input inside it is what takes the focus; the ring
+ * spans its edge as the ordinary one does there, and the edge is already the danger, so the two
+ * read as one mark.
  */
-[part~='invalid']:focus-visible,
-[part~='amount-option'][part~='invalid']:has(:focus-visible),
-[part~='amount-input'][part~='invalid'] input:focus-visible {
+[part~='invalid']:focus-visible {
 	box-shadow: 0 0 0 var(--_focus-width) var(--_bad-edge);
 }
 
