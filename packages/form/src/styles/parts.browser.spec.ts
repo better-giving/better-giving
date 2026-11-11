@@ -3166,15 +3166,15 @@ describe('the surfaces a donor operates', () => {
 			'[part~="amount-option"]:not([part~="selected"])'
 		) as HTMLElement;
 
-		// a control rests on rung 3 and stands on a tray one rung under it, which is a plane's rung 2.
-		expect(getComputedStyle(tile).backgroundColor).toBe(token(shadow, '--_n3'));
-		const drawn = [
-			shadow.querySelector('.segment') as HTMLElement,
-			shadow.querySelector('.tiles') as HTMLElement
-		];
-		for (const tray of drawn) {
-			expect(getComputedStyle(tray).backgroundColor).toBe(token(shadow, '--_n2'));
-		}
+		// the amount tray carries rung 3 edge to edge and a resting tile draws no ground of its own;
+		// the cadence track keeps a plane's rung 2.
+		expect(getComputedStyle(tile).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+		const tiles = shadow.querySelector('.tiles') as HTMLElement;
+		expect(getComputedStyle(tiles).backgroundColor).toBe(token(shadow, '--_n3'));
+		const segment = shadow.querySelector('.segment') as HTMLElement;
+		expect(getComputedStyle(segment).backgroundColor).toBe(token(shadow, '--_n2'));
+		const chosen = shadow.querySelector('[part~="amount-option"][part~="selected"]') as HTMLElement;
+		expect(getComputedStyle(chosen).backgroundColor).toBe(token(shadow, '--_n1'));
 		// a text box takes the card's own white face inside the outline that finds it.
 		const field = shadow.querySelector('[part~="field"]') as HTMLElement;
 		expect(getComputedStyle(field).backgroundColor).toBe(token(shadow, '--_n1'));

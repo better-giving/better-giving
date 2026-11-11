@@ -972,6 +972,10 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	padding: var(--_sp1);
 }
 
+.tiles:not(.bare) {
+	background: var(--_n3);
+}
+
 .bare > [part~='amount-input'] {
 	background: var(--_n1);
 	border: var(--_border) solid var(--_edge-control);
@@ -1163,7 +1167,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 [part~='amount-option'] {
 	min-block-size: var(--_row-min);
 	padding: var(--_sp2);
-	background: var(--_n3);
+	background: transparent;
 	color: var(--_n12);
 	border: 0;
 	border-radius: var(--_r-in);
@@ -1173,7 +1177,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * a step at a time from where each rests, which is the operator surfaces' two ranks. a tile rests on
- * a control's rung 3 and steps to 4 under the pointer and 5 under the press, as their neutral button
+ * the tray's rung 3 and steps to 4 under the pointer and 5 under the press, as their neutral button
  * does; a cadence draws no ground of its own on the tray's rung 2, so it takes the quiet rank's pair
  * instead, 3 and 4 — the first fill it shows a rung off the tray, as the tile's is a rung off its own.
  *
