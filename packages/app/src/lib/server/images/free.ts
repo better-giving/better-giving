@@ -1,4 +1,4 @@
-import { and, eq, type SQL, sql } from 'drizzle-orm';
+import { and, eq, lt, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { image, orgProfile, page, program, supporterPage } from '../db/schema';
 import { deleteBytes } from './bytes';
@@ -18,7 +18,7 @@ import { deleteBytes } from './bytes';
  * document is matched on its text, so an id anywhere in one keeps the image whichever block holds
  * it.
  */
-function unreferenced(id: string, besidesSupporterPage?: string): SQL {
+function unreferenced(id: string | SQLWrapper, besidesSupporterPage?: string): SQL {
 	const besides =
 		besidesSupporterPage === undefined
 			? sql``
@@ -48,6 +48,18 @@ export function unheldBeyond(id: string, supporterPageId: string): SQL {
 export function freeImageStatements(db: Db, id: string) {
 	const when = unreferenced(id);
 	return [deleteBytes(db, id, when), db.delete(image).where(and(eq(image.id, id), when))] as const;
+}
+
+/**
+ * the ids of images made before `before` that nothing names: what a sweep frees with
+ * `freeImageStatements`, whose own guard keeps any a reference written since this read names.
+ */
+export async function unheldImagesMadeBefore(db: Db, before: Date): Promise<string[]> {
+	const rows = await db
+		.select({ id: image.id })
+		.from(image)
+		.where(and(lt(image.createdAt, before), unreferenced(sql`${image}.${sql.identifier('id')}`)));
+	return rows.map((row) => row.id);
 }
 
 /**

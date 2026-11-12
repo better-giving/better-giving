@@ -5,8 +5,9 @@ import { staffGate } from '$lib/server/auth/gate';
 import { SERVED_LOCALE } from '$lib/server/forms/published-config';
 import { readOrgProfile, readOrgProfileLogo } from '$lib/server/org/queries';
 import { donorContact } from '$lib/server/pages/view';
+import { supporterShareUrl } from '$lib/server/supporters/area';
 import { readFundraiserPreview } from '$lib/server/supporters/view';
-import { database } from '../context';
+import { database, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/admin.supporter-pages.$id.preview';
 
@@ -27,6 +28,7 @@ export const middleware: Route.MiddlewareFunction[] = [staffGate];
 
 export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const db = context.get(database);
+	const { env } = context.get(platform);
 	const [preview, profile, logo] = await Promise.all([
 		readFundraiserPreview(db, params.id),
 		readOrgProfile(db),
@@ -53,7 +55,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		now: now.toISOString(),
 		sharing: {
 			message: preview.title,
-			url: `${new URL(request.url).origin}${href('/f/:slug', { slug: preview.slug })}`
+			url: supporterShareUrl(env, request, href('/f/:slug', { slug: preview.slug }))
 		},
 		contact: donorContact(profile),
 		fundraiserEntry: false

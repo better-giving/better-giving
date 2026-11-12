@@ -44,9 +44,14 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		takeFlash(request, SUPPORTER_SIGN_IN_FLASH)
 	]);
 	const state: SignInState = landed === null ? { kind: 'ask' } : stateOf(landed.marker);
-	// react router carries a loader's `Set-Cookie` onto the document itself
-	// (react-router/docs/how-to/headers.md).
-	return data({ org, state }, landed === null ? {} : { headers: { 'Set-Cookie': landed.clear } });
+	const headers: [string, string][] = [['cache-control', 'no-store']];
+	if (landed !== null) headers.push(['Set-Cookie', landed.clear]);
+	return data({ org, state }, { headers });
+}
+
+/** `no-store`, carried onto the document: the too-many state says an address back. */
+export function headers({ loaderHeaders }: Route.HeadersArgs) {
+	return loaderHeaders;
 }
 
 export async function action({ context, request }: Route.ActionArgs) {

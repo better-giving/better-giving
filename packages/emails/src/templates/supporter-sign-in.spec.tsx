@@ -12,6 +12,7 @@ function data(overrides: Partial<SupporterSignInData> = {}): SupporterSignInData
 		orgName: ORG,
 		link: LINK,
 		signInUrl: SIGN_IN,
+		linkLifetimeMs: 60 * 60 * 1000,
 		arm: { kind: 'first', pageTitle: 'Keep the pantry trucks running this winter' },
 		...overrides
 	};
@@ -21,7 +22,8 @@ function rendered(overrides: Partial<SupporterSignInData> = {}) {
 	return renderEmail(supporterSignIn.template(data(overrides)));
 }
 
-const EXPIRY = `This link works once and expires in an hour. If it has run out, ask for a new one at ${SIGN_IN}.`;
+const EXPIRY =
+	'This link works once and expires in an hour. If it has run out, ask for a new one at:';
 
 describe('supporterSignIn.template, first time', () => {
 	it('asks the supporter to confirm their address to publish', async () => {
@@ -64,6 +66,33 @@ describe('supporterSignIn.template, first time', () => {
 		const message = await rendered({ arm: { kind: 'first', pageTitle: 'Soup & <b>bread</b>' } });
 		expect(message.html).toContain('Soup &amp; &lt;b&gt;bread&lt;/b&gt;');
 		expect(message.html).not.toContain('<b>bread</b>');
+	});
+});
+
+// the sentence states the lifetime the sender hands in, so a change to it reaches the words.
+describe('supporterSignIn.template, the stated lifetime', () => {
+	it.each([
+		[30 * 60 * 1000, 'expires in 30 minutes.'],
+		[2 * 60 * 60 * 1000, 'expires in 2 hours.']
+	])('says %ims as “%s”', async (linkLifetimeMs, words) => {
+		const message = await rendered({ linkLifetimeMs });
+		for (const arm of [message.text, message.html]) {
+			expect(arm).toContain(`This link works once and ${words}`);
+			expect(arm).not.toContain('an hour');
+		}
+	});
+});
+
+// a client that linkifies an address followed by a full stop can keep the stop in the link.
+describe('supporterSignIn.template, the sign-in page address', () => {
+	it('stands on its own line in the plain-text arm, with nothing after it', async () => {
+		const message = await rendered();
+		expect(message.text.split('\n')).toContain(SIGN_IN);
+	});
+
+	it('is its own paragraph in the HTML arm, with nothing after it', async () => {
+		const message = await rendered();
+		expect(message.html).toMatch(new RegExp(`<p[^>]*>${SIGN_IN}</p>`));
 	});
 });
 

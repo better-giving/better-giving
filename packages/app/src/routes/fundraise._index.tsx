@@ -13,7 +13,6 @@ import { invalid, parseForm, unread } from '$lib/server/conform';
 import { redirectWithFlash, SUPPORTER_SENT_FLASH } from '$lib/server/flash';
 import { readPostedBody } from '$lib/server/images/intake';
 import { supporterFundraisersEnabled } from '$lib/server/org/queries';
-import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { linkMailer, readSupporterOrg, startChallenge } from '$lib/server/supporters/area';
 import { startFundraiser } from '$lib/server/supporters/start';
 import { database, platform } from '../context';
@@ -34,14 +33,17 @@ import type { Route } from './+types/fundraise._index';
 // the spam check is the one a donation runs, Turnstile where both its keys are set and ALTCHA
 // otherwise, drawn by the donation form's own widget (`createChallenge` in
 // `@better-giving/form/embed/challenge`) and checked against this deployment's own host. an ALTCHA
-// challenge is read from the Donation page's own challenge address: a challenge belongs to no form
-// ($lib/server/api/altcha.ts).
+// challenge belongs to no form ($lib/server/api/altcha.ts), and the challenge address issues one
+// for an id no form holds (./api.v1.forms.$id.challenge.ts), so the widget reads it at a fixed id
+// and the loader writes nothing: the Donation page is made only where AGENTS.md → Runtime says.
 
 /** the screen's form as the action parses it: the one `StartFundraiser` mounts. */
 const START = defineForm({ id: START_FORM.id, schema: START_FORM.schema });
 
 /** the two values the widget reads off a served config to pick its check and draw it. */
 type ChallengeConfig = Pick<FormConfig, 'turnstileSiteKey' | 'altchaChallengeUrl'>;
+
+const ALTCHA_CHALLENGE_URL = href('/api/v1/forms/:id/challenge', { id: 'fundraise' });
 
 export async function loader({ context }: Route.LoaderArgs) {
 	const db = context.get(database);
@@ -51,11 +53,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 		? null
 		: challengeKind(env) === 'turnstile'
 			? { turnstileSiteKey: (env.TURNSTILE_SITE_KEY ?? '').trim() }
-			: {
-					altchaChallengeUrl: href('/api/v1/forms/:id/challenge', {
-						id: (await ensureDonationPage(db)).formId
-					})
-				};
+			: { altchaChallengeUrl: ALTCHA_CHALLENGE_URL };
 	return { org, open, challenge };
 }
 

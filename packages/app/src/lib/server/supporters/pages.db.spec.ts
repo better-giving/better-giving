@@ -4,6 +4,7 @@ import { SUPPORTER_EDIT_INPUT } from '../../supporters/input';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client } from '$lib/server/db/database.testing';
 import { supporter, supporterPage } from '$lib/server/db/schema';
+import { createImage, stored } from '$lib/server/images/image.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { setNoteHidden } from '$lib/server/pages/messages';
 import { gift, noteGift, refund } from '$lib/server/pages/settled-gifts.testing';
@@ -229,7 +230,45 @@ describe('editing one’s own page', () => {
 			)
 		).toBe('photo_missing');
 	});
+
+	it('changes nothing on a page that has ended', async () => {
+		const page = await livePage();
+		await endOwnFundraiser(db, page.supporterId, page.pageId, LATER);
+
+		expect(await editOwnFundraiser(db, page.supporterId, page.pageId, edit(), LATER)).toBe(
+			'not_found'
+		);
+		expect(await readOwnFundraiser(db, page.supporterId, page.pageId)).toMatchObject({
+			name: 'Maya Rivera',
+			title: 'Run for the shelter',
+			goalMinor: 50_000,
+			story: 'I am running 10k.'
+		});
+	});
+
+	it('frees the photo a racing edit set, once the other edit replaces it', async () => {
+		const page = await livePage();
+		const first = await photo();
+		const second = await photo();
+
+		await Promise.all([
+			editOwnFundraiser(db, page.supporterId, page.pageId, edit({ photo_id: first }), LATER),
+			editOwnFundraiser(db, page.supporterId, page.pageId, edit({ photo_id: second }), LATER)
+		]);
+
+		const held = (await readOwnFundraiser(db, page.supporterId, page.pageId))?.photoId;
+		const letGo = held === first ? second : first;
+		expect([first, second]).toContain(held);
+		expect(await stored(db, letGo)).toEqual({ row: false, bytes: false });
+	});
 });
+
+const photo = () =>
+	createImage(
+		db,
+		{ kind: 'photo', contentType: 'image/webp', width: 1200, height: 800, alt: null },
+		new Uint8Array([0x52, 0x49, 0x46, 0x46])
+	);
 
 describe('ending one’s own page', () => {
 	it('ends it for good, and a second end changes nothing', async () => {

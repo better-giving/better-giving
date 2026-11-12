@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, desc, eq, exists, inArray, isNull, ne, type SQL, sql } from 'drizzle-orm';
 import type { SupporterEdit } from '../../supporters/input';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
@@ -171,17 +171,32 @@ async function readOwnGifts(db: Db, pageId: string): Promise<OwnFundraiserGift[]
 }
 
 /**
- * an edit written; `not_found` where the page is not the supporter's, and `photo_missing` for a
- * photo id no stored image carries, or one something other than this page holds: another
- * supporter's page, the organisation's profile, a cause or a page document (`unheldBeyond` in
- * ../images/free.ts). the address and the email are not the supporter's to change.
+ * an edit written; `not_found` where the page is not the supporter's or has ended, and
+ * `photo_missing` for a photo id no stored image carries, or one something other than this page
+ * holds: another supporter's page, the organisation's profile, a cause or a page document
+ * (`unheldBeyond` in ../images/free.ts). the address and the email are not the supporter's to change.
  */
 export type OwnEdit = 'saved' | 'not_found' | 'photo_missing';
+
+/** the photo of `pageId` where it is the supporter's and not ended, or null otherwise. */
+async function editablePhoto(
+	db: Db,
+	supporterId: string,
+	pageId: string
+): Promise<{ readonly photoId: string | null } | null> {
+	const [row] = await db
+		.select({ photoId: supporterPage.photoId })
+		.from(supporterPage)
+		.where(and(owned(supporterId, pageId), ne(supporterPage.status, 'ended')));
+	return row ?? null;
+}
 
 /**
  * writes a supporter's edit: their name, which signs every page of theirs, and the page's title,
  * goal, story and photo, in one `batch()` with the photo it let go of freed where nothing else
- * names it (../images/free.ts). both updates are guarded on the page being the supporter's.
+ * names it (../images/free.ts). both updates are guarded on the page being the supporter's, not
+ * ended, and still holding the photo read before the write; where another edit moved that photo
+ * first, the edit reads again and writes over it, so the photo that edit set is the one freed.
  */
 export async function editOwnFundraiser(
 	db: Db,
@@ -190,46 +205,49 @@ export async function editOwnFundraiser(
 	input: SupporterEdit,
 	now: Date
 ): Promise<OwnEdit> {
-	const [before] = await db
-		.select({ photoId: supporterPage.photoId })
-		.from(supporterPage)
-		.where(owned(supporterId, pageId));
-	if (!before) return 'not_found';
-	// every write rides the photo's guard, so a refused photo lands none of the edit.
-	const allowed = and(
-		owned(supporterId, pageId),
-		input.photo_id === null ? undefined : unheldBeyond(input.photo_id, pageId)
-	);
-	try {
-		const [, written] = await db.batch([
-			db
-				.update(supporter)
-				.set({ name: input.name })
-				.where(
-					and(
-						eq(supporter.id, supporterId),
-						exists(db.select({ id: supporterPage.id }).from(supporterPage).where(allowed))
-					)
-				),
-			db
-				.update(supporterPage)
-				.set({
-					title: input.title,
-					goalMinor: input.goal,
-					story: input.story,
-					photoId: input.photo_id,
-					updatedAt: now
-				})
-				.where(allowed)
-				.returning({ id: supporterPage.id }),
-			...freeLetGoStatements(db, [before.photoId], [input.photo_id])
-		]);
-		if (written.length > 0) return 'saved';
-		return input.photo_id === null ? 'not_found' : 'photo_missing';
-	} catch (error) {
-		if (sqliteResultCode(error) === 'SQLITE_CONSTRAINT_FOREIGNKEY') return 'photo_missing';
-		throw error;
+	let before = await editablePhoto(db, supporterId, pageId);
+	while (before !== null) {
+		const held = before.photoId;
+		// every write rides the photo's guard, so a refused photo lands none of the edit.
+		const allowed = and(
+			owned(supporterId, pageId),
+			ne(supporterPage.status, 'ended'),
+			held === null ? isNull(supporterPage.photoId) : eq(supporterPage.photoId, held),
+			input.photo_id === null ? undefined : unheldBeyond(input.photo_id, pageId)
+		);
+		try {
+			const [, written] = await db.batch([
+				db
+					.update(supporter)
+					.set({ name: input.name })
+					.where(
+						and(
+							eq(supporter.id, supporterId),
+							exists(db.select({ id: supporterPage.id }).from(supporterPage).where(allowed))
+						)
+					),
+				db
+					.update(supporterPage)
+					.set({
+						title: input.title,
+						goalMinor: input.goal,
+						story: input.story,
+						photoId: input.photo_id,
+						updatedAt: now
+					})
+					.where(allowed)
+					.returning({ id: supporterPage.id }),
+				...freeLetGoStatements(db, [held], [input.photo_id])
+			]);
+			if (written.length > 0) return 'saved';
+		} catch (error) {
+			if (sqliteResultCode(error) === 'SQLITE_CONSTRAINT_FOREIGNKEY') return 'photo_missing';
+			throw error;
+		}
+		before = await editablePhoto(db, supporterId, pageId);
+		if (before !== null && before.photoId === held) return 'photo_missing';
 	}
+	return 'not_found';
 }
 
 /**

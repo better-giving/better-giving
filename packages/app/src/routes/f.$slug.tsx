@@ -20,6 +20,7 @@ import {
 	supporterFundraisersEnabled
 } from '$lib/server/org/queries';
 import { loadFundraiserFrame, refusedPage } from '$lib/server/pages/view';
+import { supporterShareUrl } from '$lib/server/supporters/area';
 import { readPublicFundraiser } from '$lib/server/supporters/view';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
@@ -77,7 +78,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 					fundraiser: { ...shown, startedAt: startedAt.toISOString() },
 					sharing: {
 						message: fundraiser.title,
-						url: `${url.origin}${href('/f/:slug', { slug: params.slug })}`
+						url: supporterShareUrl(env, request, href('/f/:slug', { slug: params.slug }))
 					},
 					fundraiserEntry,
 					// a donor's return from authorizing their gift, read as ./donate.tsx reads it.

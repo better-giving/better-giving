@@ -10,8 +10,9 @@ import type { EmailTemplate } from '../template';
 // clock and no I/O. it is handed the link and the sign-in page's address rather than an origin and a
 // token, because which host this deployment answers on is the app's to know.
 //
-// the link is printed as itself in both arms and is the only anchor in the message. the sign-in
-// page's address is text, not a second link: it is where to ask again once this one has run out.
+// the link is printed as itself in both arms and is the only anchor the message writes. the sign-in
+// page's address is text on a line of its own, where to ask again once this link has run out: a
+// client that linkifies it has no full stop beside it to fold into the address.
 
 /** which mail this is: the first, which publishes a page, or a returning supporter's sign-in. */
 export type SupporterSignInArm =
@@ -25,6 +26,8 @@ export interface SupporterSignInData {
 	readonly link: string;
 	/** the address of the page that sends a new link. built by the caller. */
 	readonly signInUrl: string;
+	/** how long the link works for, in milliseconds. the app's own lifetime, handed in by the sender. */
+	readonly linkLifetimeMs: number;
 	readonly arm: SupporterSignInArm;
 }
 
@@ -50,7 +53,8 @@ export function template(data: SupporterSignInData): EmailTemplate {
 						{data.link}
 					</a>
 				</p>
-				<Paragraph>{expiry(data.signInUrl)}</Paragraph>
+				<Paragraph>{expiry(data.linkLifetimeMs)}</Paragraph>
+				<Paragraph>{data.signInUrl}</Paragraph>
 				<Divider />
 				<SmallPrint>{words.closing}</SmallPrint>
 			</Layout>
@@ -87,12 +91,20 @@ function returning(org: string): Words {
 }
 
 /**
- * the hour is the supporter link's lifetime, set by the app, which this package cannot import —
- * the two change together. stated in words rather than as a time: a link this short-lived is opened
- * in the sitting it was asked for.
+ * stated in words rather than as a time: a link this short-lived is opened in the sitting it was
+ * asked for. whole hours read as hours, anything else as minutes.
  */
-function expiry(signInUrl: string): string {
-	return `This link works once and expires in an hour. If it has run out, ask for a new one at ${signInUrl}.`;
+function expiry(lifetimeMs: number): string {
+	return `This link works once and expires in ${duration(lifetimeMs)}. If it has run out, ask for a new one at:`;
+}
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+
+function duration(ms: number): string {
+	if (ms === HOUR_MS) return 'an hour';
+	if (ms % HOUR_MS === 0) return `${ms / HOUR_MS} hours`;
+	return `${Math.round(ms / MINUTE_MS)} minutes`;
 }
 
 const LINK_STYLE: CSSProperties = { margin: box(0, 0, SPACE_6), wordBreak: 'break-all' };

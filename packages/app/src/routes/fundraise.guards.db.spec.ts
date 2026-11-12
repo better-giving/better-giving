@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client, run, stmt } from '$lib/server/db/database.testing';
-import { image, supporterPage } from '$lib/server/db/schema';
+import { image, page as pageRow, supporterPage } from '$lib/server/db/schema';
 import { pngHeader } from '$lib/server/images/headers.testing';
 import { UPLOAD_MAX } from '$lib/server/images/intake';
 import { gift, noteGift } from '$lib/server/pages/settled-gifts.testing';
@@ -403,6 +403,16 @@ describe('Email me a link', () => {
 	});
 });
 
+describe('the sign-in screen', () => {
+	it('is no-store on the document, since its too-many state says an address back', async () => {
+		const landed = await call(signIn.loader, request('/fundraise/sign-in'));
+		expect(landed.headers.get('cache-control')).toBe('no-store');
+		const loaderHeaders = new Headers(landed.headers);
+		const document = signIn.headers({ loaderHeaders } as Parameters<typeof signIn.headers>[0]);
+		expect(new Headers(document).get('cache-control')).toBe('no-store');
+	});
+});
+
 describe('a supporter’s share link', () => {
 	it('is on the pinned origin, whatever host the request named', async () => {
 		const { browser, pageId, slug } = await liveFundraiser(db, mailed);
@@ -414,6 +424,23 @@ describe('a supporter’s share link', () => {
 			{ id: pageId }
 		);
 		expect(drawn.data).toMatchObject({ page: { url: `${ORIGIN}/f/${slug}` } });
+	});
+
+	it('is the same pinned address on the public page and the staff preview', async () => {
+		const { pageId, slug } = await liveFundraiser(db, mailed);
+		const atHost = (path: string, cookie?: string) =>
+			new Request(`https://attacker.example${path}`, {
+				headers: { [CLIENT_IP_HEADER]: '192.0.2.79', ...(cookie ? { cookie } : {}) }
+			});
+		const shared = { sharing: { url: `${ORIGIN}/f/${slug}` } };
+		const publicPage = mountRoutes([{ path: 'f/:slug', module: fundraiserPage }]);
+		const drawn = await publicPage(atHost(`/f/${slug}`), { env: supporterEnv() });
+		expect(await drawn.json()).toMatchObject(shared);
+		const previewed = await previewScreen(
+			atHost(`/admin/supporter-pages/${pageId}/preview`, await signInAsMember(db)),
+			{ env: supporterEnv() }
+		);
+		expect(await previewed.json()).toMatchObject(shared);
 	});
 });
 
@@ -527,6 +554,19 @@ describe('a photo id posted with an edit', () => {
 		const taken = await saveWith(maya, logo);
 		expect(taken.data).toMatchObject({ photoMissing: true });
 		expect(await photoOf(maya.pageId)).toBeNull();
+	});
+});
+
+describe('Start a fundraiser, opened', () => {
+	it('writes nothing, and points the spam check at a challenge address', async () => {
+		expect(await db.$count(pageRow)).toBe(0);
+		const drawn = await call(start.loader, request('/fundraise'));
+		expect(drawn.data).toMatchObject({
+			challenge: {
+				altchaChallengeUrl: expect.stringMatching(/^\/api\/v1\/forms\/[^/]+\/challenge$/)
+			}
+		});
+		expect(await db.$count(pageRow)).toBe(0);
 	});
 });
 

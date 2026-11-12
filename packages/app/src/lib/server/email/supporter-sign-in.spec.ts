@@ -1,9 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { EmailMessage, EmailProvider, SendResult } from './provider';
 import { sendSupporterSignInEmail, type SupporterSignInInput } from './supporter-sign-in';
 
 // that the sign-in link leaves for the address it was asked for, and that the port's answer comes
 // back untouched. what the mail says is packages/emails/src/templates/supporter-sign-in.spec.tsx's.
+
+// the lifetime links.ts enforces, moved off the hour: the mail has to follow it there.
+vi.mock('../supporters/links', async (original) => ({
+	...(await original<typeof import('../supporters/links')>()),
+	LINK_LIFETIME_MS: 30 * 60 * 1000
+}));
 
 const LINK = 'https://give.example.org/fundraise/open?token=Hs6wP2nLq9ZbX4tYd8VkE3gR7cUa5MfJ';
 
@@ -53,6 +59,13 @@ describe('sendSupporterSignInEmail', () => {
 
 		expect(mail.sent[0]?.subject).toBe('Confirm your email to publish your fundraiser');
 		expect(mail.sent[0]?.text).toContain('Keep the pantry trucks running');
+	});
+
+	it('states the lifetime links.ts gives a link', async () => {
+		const mail = recording();
+		await sendSupporterSignInEmail({ email: mail.email }, input());
+
+		expect(mail.sent[0]?.text).toContain('This link works once and expires in 30 minutes.');
 	});
 
 	// what a failure means for the person who asked is the caller's: the port's answer is handed back

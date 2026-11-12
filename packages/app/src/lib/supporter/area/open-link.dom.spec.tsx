@@ -29,6 +29,20 @@ describe('opening a mailed link', () => {
 		expect(posted[0]?.get('token')).toBe('t0ken');
 	});
 
+	it('posts once on a double press, before the router says the first is out', async () => {
+		const { root, posted } = open({ purpose: 'confirm' });
+		const form = one<HTMLFormElement>(root, 'main form');
+		await submit(form);
+		await submit(form);
+		expect(posted).toHaveLength(1);
+	});
+
+	it('posts nothing on a press while the opening is out', async () => {
+		const { root, posted } = open({ opening: true });
+		await submit(one<HTMLFormElement>(root, 'main form'));
+		expect(posted).toHaveLength(0);
+	});
+
 	it('holds the press while the opening is out', () => {
 		const { root } = open({ opening: true });
 		expect(button(root, 'Continue').getAttribute('aria-busy')).toBe('true');

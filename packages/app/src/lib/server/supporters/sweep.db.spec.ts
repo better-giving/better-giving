@@ -1,6 +1,10 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { all, client, run, stmt } from '$lib/server/db/database.testing';
+import { createImage, stored } from '$lib/server/images/image.testing';
+import { writeOrgRow } from '$lib/server/org/org-row.testing';
+import { heroShowing, insertPage } from '$lib/server/pages/page-row.testing';
+import { emptySupporterTables, pendingPage } from './fundraiser.testing';
 import { sweepSupporterLeftovers } from './sweep';
 
 // the hourly sweep of what a supporter's sign-in leaves behind, against the real tables.
@@ -80,5 +84,53 @@ describe('sweeping supporter leftovers', () => {
 		await sweepSupporterLeftovers(db, NOW);
 
 		expect(await left('supporter_session')).toBe('c');
+	});
+});
+
+describe('sweeping photos nothing holds', () => {
+	beforeEach(async () => {
+		await emptySupporterTables();
+		for (const table of ['image_bytes', 'image']) await run(stmt(`delete from ${table}`));
+		await writeOrgRow(client);
+	});
+
+	/** a stored photo made `age` before the sweep runs. */
+	async function photo(age: number): Promise<string> {
+		const id = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 1200, height: 800, alt: null },
+			new Uint8Array([0x52, 0x49, 0x46, 0x46])
+		);
+		await run(stmt('update image set created_at = ? where id = ?', at(-age), id));
+		return id;
+	}
+
+	it('frees one a day old that no page holds, bytes and all', async () => {
+		const unsaved = await photo(25 * HOUR);
+
+		await sweepSupporterLeftovers(db, NOW);
+
+		expect(await stored(db, unsaved)).toEqual({ row: false, bytes: false });
+	});
+
+	it('keeps one not yet a day old, though nothing holds it', async () => {
+		const fresh = await photo(23 * HOUR);
+
+		await sweepSupporterLeftovers(db, NOW);
+
+		expect(await stored(db, fresh)).toEqual({ row: true, bytes: true });
+	});
+
+	it('keeps an old one a fundraiser or a page document holds', async () => {
+		const onFundraiser = await photo(25 * HOUR);
+		const onCampaign = await photo(25 * HOUR);
+		const { pageId } = await pendingPage(db);
+		await run(stmt('update supporter_page set photo_id = ? where id = ?', onFundraiser, pageId));
+		await insertPage(db, 'campaign', heroShowing(onCampaign));
+
+		await sweepSupporterLeftovers(db, NOW);
+
+		expect(await stored(db, onFundraiser)).toEqual({ row: true, bytes: true });
+		expect(await stored(db, onCampaign)).toEqual({ row: true, bytes: true });
 	});
 });
