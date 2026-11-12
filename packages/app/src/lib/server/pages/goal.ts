@@ -9,10 +9,10 @@ import { type RaisedThroughForm, readRaisedThroughForm } from '../ledger/queries
 // the dashboard's own raised figure (`readRaisedByMonth` in ../ledger/queries.ts) over that row's
 // gifts alone.
 //
-// a `SUM` over the books on every draw, never stored and never cached (CLAUDE.md → Bans → the
-// ledger). the served config's edge cache holds a capability; this is a number, and a cached one
-// would tell a donor a refunded gift still counts. ./goal.spec.ts holds that this module reaches
-// for no cache.
+// a `SUM` over the books on every draw, never stored and never cached (AGENTS.md → Ledger, gifts,
+// and schema; → Storage). the process's response cache (../runtime/response-cache.ts) holds a
+// capability or immutable bytes; this is a number, and a cached one would tell a donor a refunded
+// gift still counts. ./goal.spec.ts holds that this module reaches for no cache.
 
 /** what has been raised through the campaign whose owned settings row is `formId`. */
 export async function campaignRaised(db: Db, formId: string): Promise<RaisedThroughForm> {

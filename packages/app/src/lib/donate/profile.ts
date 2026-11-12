@@ -10,8 +10,8 @@ import type { OrgInfo, PageOrg } from './sections/types';
 // with the rest of the page (`loadPageView` in ../server/pages/view.ts); a campaign at its own
 // address is handed none.
 //
-// fields only: which layout the head takes, compact or profile, is the component's to pick from
-// what is here.
+// fields only: which layout the head takes, the card, the letter or the feature, is picked from what
+// is here by `profileShape` in $lib/page/profile-shape.ts.
 
 /** a stored photo as the page draws it: the address it is served from, and its shape. */
 export type ProfilePhoto = {

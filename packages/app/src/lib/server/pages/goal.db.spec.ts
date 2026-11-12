@@ -50,11 +50,11 @@ async function campaignForm(): Promise<string> {
 }
 
 describe('campaignRaised()', () => {
-	it('is a settled gift through the campaign, at its face value, in its currency', async () => {
+	it('is a settled gift through the campaign, at its face value', async () => {
 		const campaign = await campaignForm();
 		await gift(db, campaign, 10_000);
 
-		expect(await campaignRaised(db, campaign)).toEqual({ raisedMinor: 10_000, currency: 'USD' });
+		expect(await campaignRaised(db, campaign)).toEqual({ raisedMinor: 10_000 });
 	});
 
 	it('adds nothing for a gift still pending', async () => {

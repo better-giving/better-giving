@@ -51,8 +51,8 @@ import { readShownMessages } from './messages';
 // and never on its `v1` options, and so is a campaign's raised figure (./goal.ts), a sum over the
 // books that is never cached. the Donation page alone is handed its profile head beside the view
 // (`DonateProfile` in ../../donate/profile.ts) from those same reads, with its donors' newest
-// messages (`readShownMessages` in ./messages.ts), likewise never cached, and with nothing the
-// organisation has raised: a campaign's goal bar alone draws progress.
+// messages (`readShownMessages` in ./messages.ts), likewise never cached. the only raised figure
+// a page is handed is its own campaign's, for its goal bar.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {

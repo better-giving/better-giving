@@ -11,9 +11,9 @@ import { giftNetRaised } from '../ledger/queries';
 //   - the donor ticked Show my note (`note_public`),
 //   - the note is not blank, by the whitespace `note_shown_name`'s check trims
 //     (migrations/0035_donation_note_shown_name.sql),
-//   - the gift is settled and not reversed: it still stands above nothing in the books, on the
-//     figure the raised total counts gifts by (`giftNetRaised` in ../ledger/queries.ts), so a gift
-//     refunded in full or withdrawn by a dispute leaves on its own and a partly refunded one stays,
+//   - the gift is settled and not reversed: its own net in the books, in its own currency, is
+//     above nothing (`giftNetRaised` in ../ledger/queries.ts), so a gift refunded in full or
+//     withdrawn by a dispute leaves on its own and a partly refunded one stays,
 //   - and no dispute on it is open, which a dispute withdrawing only part of the gift would leave
 //     standing above nothing.
 // the page shows a listed note unless staff hid it (`note_hidden_at`); the admin screen lists both.
