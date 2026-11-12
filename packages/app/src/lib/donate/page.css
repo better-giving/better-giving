@@ -1069,10 +1069,14 @@ body {
 	flex-direction: column;
 }
 
+/* the banner's photo paints after a static mark's ground, so the mark lifted onto its foot stacks
+   itself above, a leaf beside the box and never its ancestor. */
 .page[data-layout='card']
 	.page-profile-banner
 	+ .page-profile-who
 	:is(.page-profile-logo, .page-profile-badge) {
+	position: relative;
+	z-index: 1;
 	max-inline-size: calc(100% - var(--page-profile-logo-inset));
 	margin-block-start: calc(-1 * (var(--page-profile-logo-lift) + var(--page-gap-group)));
 	margin-inline-start: var(--page-profile-logo-inset);
@@ -1286,7 +1290,11 @@ body {
 	flex-direction: column;
 }
 
+/* the cover is positioned, so it paints over a static mark lifted onto its foot: the mark stacks
+   itself above, a leaf beside the box and never its ancestor. */
 .page-profile-cover + .page-profile-who :is(.page-profile-logo, .page-profile-badge) {
+	position: relative;
+	z-index: 1;
 	margin-block-start: calc(-1 * (var(--page-profile-logo-lift) + var(--page-gap-group)));
 	box-shadow: 0 0 0 var(--_border) var(--page-plane);
 }

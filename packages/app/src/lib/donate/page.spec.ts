@@ -1024,6 +1024,28 @@ describe('the profile head’s box and logo', () => {
 			)['flex-direction']
 		).toBe('column');
 	});
+
+	// the cover is positioned and the banner's photo paints after the backgrounds, so a static mark
+	// lifted over either's foot is painted under it; the mark stacks itself above, as a leaf, so no
+	// ancestor of the box gains a position.
+	it.each([
+		[
+			'the feature’s cover',
+			'.page-profile-cover',
+			'.page-profile-cover + .page-profile-who :is(.page-profile-logo, .page-profile-badge)'
+		],
+		[
+			'the card’s banner',
+			'.page-profile-banner',
+			".page[data-layout='card'] .page-profile-banner + .page-profile-who :is(.page-profile-logo, .page-profile-badge)"
+		]
+	])('stands the mark over %s foot, stacked above it', (_, under, mark) => {
+		const over = declared(page, mark);
+		expect(over['margin-block-start']).toMatch(/^calc\(-1 \*/);
+		expect(over.position).toBe('relative');
+		const below = Number(declared(page, under)['z-index'] ?? 0);
+		expect(Number(over['z-index'])).toBeGreaterThan(below);
+	});
 });
 
 describe('the profile head’s quiet ink', () => {
