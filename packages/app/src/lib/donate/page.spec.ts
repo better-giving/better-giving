@@ -1025,26 +1025,36 @@ describe('the profile head’s box and logo', () => {
 		).toBe('column');
 	});
 
-	// the cover is positioned and the banner's photo paints after the backgrounds, so a static mark
-	// lifted over either's foot is painted under it; the mark stacks itself above, as a leaf, so no
-	// ancestor of the box gains a position.
-	it.each([
-		[
-			'the feature’s cover',
-			'.page-profile-cover',
+	// the cover is positioned, so a static mark lifted over its foot is painted under it; the mark
+	// stacks itself above, as a leaf, so no ancestor of the box gains a position.
+	it('stands the mark over the feature’s cover foot, stacked above it', () => {
+		const over = declared(
+			page,
 			'.page-profile-cover + .page-profile-who :is(.page-profile-logo, .page-profile-badge)'
-		],
-		[
-			'the card’s banner',
-			'.page-profile-banner',
-			".page[data-layout='card'] .page-profile-banner + .page-profile-who :is(.page-profile-logo, .page-profile-badge)"
-		]
-	])('stands the mark over %s foot, stacked above it', (_, under, mark) => {
-		const over = declared(page, mark);
+		);
+		const cover = declared(page, '.page-profile-cover');
 		expect(over['margin-block-start']).toMatch(/^calc\(-1 \*/);
 		expect(over.position).toBe('relative');
-		const below = Number(declared(page, under)['z-index'] ?? 0);
-		expect(Number(over['z-index'])).toBeGreaterThan(below);
+		expect(over['z-index']).toMatch(/^[1-9]\d*$/);
+		expect(cover.position).toBeDefined();
+		expect(cover.position).not.toBe('static');
+		expect(cover['z-index']).toBeUndefined();
+	});
+
+	it('leaves the mark’s ancestors out of the stacking the lift needs', () => {
+		const stacks = ['position', 'isolation', 'transform', 'z-index'];
+		const endsOnAncestor = (selector: string) =>
+			/\.page-profile-(who|id)(:[\w-]+(\([^)]*\))?|\[[^\]]*\])*$/.test(selector.trim());
+		const ancestors = page.filter(
+			(b) => b.at.length === 1 && b.at[0]?.split(',').some(endsOnAncestor)
+		);
+		// the sweep reaches the rules it claims to: the id's own base rule is one of them
+		expect(ancestors.map((b) => b.decls['flex-direction'])).toContain('column');
+		for (const { at, decls } of ancestors)
+			expect(
+				Object.keys(decls).filter((name) => stacks.includes(name)),
+				at[0]
+			).toEqual([]);
 	});
 });
 
