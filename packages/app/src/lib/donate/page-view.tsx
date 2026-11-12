@@ -12,7 +12,7 @@ import { AboutUs } from './sections/about-us';
 import { Cover } from './sections/cover';
 import { Faq } from './sections/faq';
 import { GoalBar } from './sections/goal-bar';
-import { DonorMessages, type DonorMessagesWiring } from './sections/messages';
+import { DonorMessages, type DonorMessagesWiring, MESSAGES_AREA } from './sections/messages';
 import { hasContact, OrgContact, OrgInfo } from './sections/org-info';
 import { Photos } from './sections/photos';
 import { ProfileBanner, ProfileCover, ProfileMark, ProfileName } from './sections/profile';
@@ -126,7 +126,7 @@ export type PageViewProps = {
 	 * counted from; absent, the section is not drawn whatever the profile holds.
 	 */
 	readonly donorMessages?: DonorMessagesWiring | undefined;
-	/** drawn as the preview of a draft: a press reaches nothing. */
+	/** drawn as the preview of a draft: a press reaches nothing outside `PREVIEW_LIVE`. */
 	readonly preview?: boolean;
 	/** the caller's placement of the page root. */
 	readonly className?: string;
@@ -624,7 +624,7 @@ const TAB_STOPS =
  * the one part of the preview a press still reaches: messages from donors, whose Show more is a read
  * of what /donate shows (../../routes/preview.$pageId.tsx), not an act on the draft.
  */
-const PREVIEW_LIVE = "[data-area='messages']";
+const PREVIEW_LIVE = `[data-area='${MESSAGES_AREA}']`;
 
 /**
  * in the preview a press reaches nothing outside `PREVIEW_LIVE`: the preview is a picture of the

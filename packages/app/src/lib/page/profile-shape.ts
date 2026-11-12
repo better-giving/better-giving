@@ -27,10 +27,19 @@ export type ProfileShape = {
 	readonly aboutUs: boolean;
 };
 
+/**
+ * a mission or vision as a page draws it: null where it is empty after trimming, the text unchanged
+ * otherwise. the one rule for "written", which `loadPageView` (../server/pages/view.ts) applies to
+ * the profile as read.
+ */
+export const writtenText = (text: string | null): string | null =>
+	text === null || text.trim() === '' ? null : text;
+
 export function profileShape(profile: ProfileContent): ProfileShape {
-	const written = [profile.mission, profile.vision].flatMap((text) =>
-		text === null || text.trim() === '' ? [] : [text.trim()]
-	);
+	const written = [profile.mission, profile.vision].flatMap((text) => {
+		const shown = writtenText(text);
+		return shown === null ? [] : [shown.trim()];
+	});
 	const storyLength = written.join('\n\n').length;
 	const extras = profile.videos.length + (profile.messages.total > 0 ? 1 : 0);
 	return {

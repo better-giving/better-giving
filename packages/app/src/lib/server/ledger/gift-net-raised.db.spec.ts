@@ -8,7 +8,7 @@ import { donation } from '../db/schema';
 import { recordGiftInHand } from '../donations/record-in-hand';
 import { writeOrgRow } from '../org/org-row.testing';
 import { ensureDonationPage } from '../pages/donation-page';
-import { dispute, noteGift, refund } from '../pages/settled-gifts.testing';
+import { dispute, noteGift, refund, repeatingGift } from '../pages/settled-gifts.testing';
 import { giftNetRaised } from './queries';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 
@@ -109,6 +109,53 @@ describe('giftNetRaised()', () => {
 		await dispute(db, txn, null, 'won');
 
 		expect(await netOf(donationId)).toBe(5_000);
+	});
+
+	it('leaves out the processor fee entry beside the gift in the same entry group', async () => {
+		const { donationId } = await noteGift(db, formId, { amountMinor: 10_000 });
+		const [fee] = await db.all<{ n: number; total: number }>(
+			sql`select count(*) as n, sum(amount_minor) as total from ledger_entry where account_id = ${postableId('processorFees')}`
+		);
+
+		expect(fee).toEqual({ n: 1, total: 150 });
+		expect(await netOf(donationId)).toBe(10_000);
+	});
+
+	it('is each collected charge of a repeating gift at its own amount, none carrying another’s', async () => {
+		await repeatingGift(db, formId, 2_000, 3);
+		const gifts = await db.all<{ id: string }>(sql`select id from donation`);
+		const nets = await Promise.all(gifts.map((gift) => netOf(gift.id)));
+
+		expect(nets).toEqual([2_000, 2_000, 2_000]);
+	});
+
+	it('takes only the part disputed while the dispute is open or lost, and all of it back once won', async () => {
+		const open = await noteGift(db, formId, { amountMinor: 5_000 });
+		await dispute(db, open.txn, 2_000);
+		const lost = await noteGift(db, formId, { amountMinor: 5_000 });
+		await dispute(db, lost.txn, 2_000, 'lost');
+		const won = await noteGift(db, formId, { amountMinor: 5_000 });
+		await dispute(db, won.txn, 2_000, 'won');
+
+		expect(await netOf(open.donationId)).toBe(3_000);
+		expect(await netOf(lost.donationId)).toBe(3_000);
+		expect(await netOf(won.donationId)).toBe(5_000);
+	});
+
+	it('is what a refund leaves of a gift whose dispute was won', async () => {
+		const { txn, donationId } = await noteGift(db, formId, { amountMinor: 5_000 });
+		await dispute(db, txn, null, 'won');
+		await refund(db, txn, 1_000);
+
+		expect(await netOf(donationId)).toBe(4_000);
+	});
+
+	it('is what two refunds leave of one gift', async () => {
+		const { txn, donationId } = await noteGift(db, formId, { amountMinor: 5_000 });
+		await refund(db, txn, 1_000);
+		await refund(db, txn, 1_500);
+
+		expect(await netOf(donationId)).toBe(2_500);
 	});
 
 	it('counts a gift entered in hand, and moves no gift by a hand correction into the donation accounts', async () => {

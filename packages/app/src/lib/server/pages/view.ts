@@ -6,6 +6,7 @@ import { type DonateProfile, donateProfile } from '../../donate/profile';
 import { type PageLook, titleHeading } from '../../donate/page-view';
 import type { Page } from '../../page/catalog';
 import type { PageType } from '../../page/keys';
+import { writtenText } from '../../page/profile-shape';
 import type { Db } from '../db/client';
 import type { OrgProfile, Page as PageRow } from '../db/schema';
 import { cachedCadences } from '../forms/cadence-cache';
@@ -136,8 +137,8 @@ export async function loadPageView(
 	]);
 	const org = {
 		name: orgName,
-		mission: profile?.mission ?? null,
-		vision: profile?.vision ?? null,
+		mission: writtenText(profile?.mission ?? null),
+		vision: writtenText(profile?.vision ?? null),
 		info: orgInfo(config, profile)
 	};
 

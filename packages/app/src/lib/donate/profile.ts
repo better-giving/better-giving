@@ -1,5 +1,6 @@
 import type { Video } from '../page/catalog';
 import { imageSrc } from '../page/image-src';
+import { writtenText } from '../page/profile-shape';
 import { type ShownVideo, shownVideos } from '../page/videos';
 import type { DonorMessages } from './messages';
 import type { PageLogo } from './page-view';
@@ -68,14 +69,10 @@ export function donateProfile({
 			logo === null
 				? null
 				: { src: imageSrc(logo.imageId), width: logo.width, height: logo.height },
-		mission: written(org.mission),
-		vision: written(org.vision),
+		mission: writtenText(org.mission),
+		vision: writtenText(org.vision),
 		footer: { addressLines, email, socialLinks },
 		messages,
 		videos: shownVideos(videos)
 	};
 }
-
-/** a mission or vision as the page draws it: null where it is empty after trimming. */
-const written = (text: string | null): string | null =>
-	text === null || text.trim() === '' ? null : text;

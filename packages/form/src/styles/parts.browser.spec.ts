@@ -735,7 +735,7 @@ describe('the amount tray’s cells', () => {
 			const drawn = getComputedStyle(tile, '::before');
 			const height = tile.getBoundingClientRect().height;
 			const reach = (at > 0 ? reachInto : 0) + (at < last ? reachInto : 0);
-			// precision 1 (±0.05px) fails on the half pixel the hairline adds to each reach.
+			// precision 1 (±0.05px) is what sees the half pixel the hairline adds to each reach.
 			expect(parseFloat(drawn.height), `row ${at}`).toBeCloseTo(height + reach, 1);
 		});
 	});
@@ -767,7 +767,6 @@ describe('the amount tray’s cells', () => {
 describe('the lines between a tray’s options', () => {
 	afterEach(async () => {
 		document.body.style.inlineSize = '';
-		document.documentElement.style.fontSize = '';
 		await cdp().send('Emulation.setEmulatedMedia', { features: [] });
 	});
 
@@ -838,8 +837,8 @@ describe('the lines between a tray’s options', () => {
 	// is judged to within 0.02px, far under the 0.5px the hairline's half is.
 	const SUBPIXEL = 0.02;
 
-	// the wide breakpoint is the card's own width: a card 26em across, hairline included, is the
-	// narrowest one that sets its amounts four up. the /donate rail is a 26rem card at a 16px root.
+	// one card on each side of the wide breakpoint at a 16px root, with the lines each draws held
+	// inside the pad; where the breakpoint's edge falls is the next case's.
 	it.each([
 		{ card: '416px', columns: 4, rows: 1 },
 		{ card: '300px', columns: 2, rows: 2 }
@@ -872,54 +871,73 @@ describe('the lines between a tray’s options', () => {
 	// the breakpoint is 26em of the card's own clamped root, so its edge is a card 390px across at the
 	// 15px floor, 416px at 16px and 468px at the 18px ceiling: one px under each is two across, the
 	// edge itself is four across. the root is set on the page, which the card clamps into [15, 18].
+	//
+	// that edge is written three times — once for the columns in ./layout.css and twice for the
+	// lines in ./parts.css — so each side reads both the columns and which of the four tiles rule a
+	// vertical (`::before`) and a horizontal (`::after`): a copy that drifted draws one board's
+	// lines on the other board's columns.
 	it.each([
 		{ root: '12px', clamped: 15, card: 390 },
 		{ root: '16px', clamped: 16, card: 416 },
 		{ root: '24px', clamped: 18, card: 468 }
 	])(
 		'turns the amounts four across at a $card px card at a $clamped px root, and not a px under it',
-		async ({ root, card }) => {
-			const across = async (width: number): Promise<number> => {
+		async ({ root, clamped, card }) => {
+			const board = async (width: number) => {
 				document.documentElement.style.fontSize = root;
-				const { host, shadow } = await mount({
+				const mounted = await mount({
 					...CONFIG,
 					suggestedAmountsMinor: [2500, 5000, 10_000]
 				});
-				host.style.display = 'block';
-				host.style.inlineSize = `${width}px`;
+				mounted.host.style.display = 'block';
+				mounted.host.style.inlineSize = `${width}px`;
 				await settle();
 				await new Promise(requestAnimationFrame);
-				const tiles = shadow.querySelector('.tiles') as HTMLElement;
-				return getComputedStyle(tiles).gridTemplateColumns.split(' ').length;
+				const tiles = mounted.shadow.querySelector('.tiles') as HTMLElement;
+				const labels = Array.from(tiles.querySelectorAll<HTMLElement>(':scope > label'));
+				const drawn = (pseudo: string) =>
+					labels.map((tile) => getComputedStyle(tile, pseudo).content !== 'none');
+				return {
+					root: parseFloat(getComputedStyle(mounted.card).fontSize),
+					columns: getComputedStyle(tiles).gridTemplateColumns.split(' ').length,
+					verticals: drawn('::before'),
+					horizontals: drawn('::after')
+				};
 			};
 
-			expect(await across(card - 1)).toBe(2);
-			expect(await across(card)).toBe(4);
+			const under = await board(card - 1);
+			expect(under.root, `the card's root clamps ${root} to ${clamped}px`).toBe(clamped);
+			expect(under.columns).toBe(2);
+			expect(under.verticals, 'two across: a vertical before the 2nd and 4th').toEqual([
+				false,
+				true,
+				false,
+				true
+			]);
+			expect(under.horizontals, 'two across: a horizontal above the 3rd').toEqual([
+				false,
+				false,
+				true,
+				false
+			]);
+
+			const edge = await board(card);
+			expect(edge.root, `the card's root clamps ${root} to ${clamped}px`).toBe(clamped);
+			expect(edge.columns).toBe(4);
+			expect(edge.verticals, 'four across: a vertical before all but the 1st').toEqual([
+				false,
+				true,
+				true,
+				true
+			]);
+			expect(edge.horizontals, 'four across: one row, no horizontal').toEqual([
+				false,
+				false,
+				false,
+				false
+			]);
 		}
 	);
-
-	// the /donate page sizes its card to `--page-box: 26rem` (packages/app/src/lib/donate/page.css),
-	// which at the 16px root is 416px: exactly the card the breakpoint sets four across. a page box
-	// narrower than that, or a breakpoint wider, would drop /donate to two rows of two.
-	it('draws 3 amounts and other in one row of four in the 26rem /donate card at a 16px root', async () => {
-		document.documentElement.style.fontSize = '16px';
-		const { host, shadow } = await mount({
-			...CONFIG,
-			suggestedAmountsMinor: [2500, 5000, 10_000]
-		});
-		host.style.display = 'block';
-		host.style.inlineSize = '26rem';
-		await settle();
-		await new Promise(requestAnimationFrame);
-		const tiles = shadow.querySelector('.tiles') as HTMLElement;
-		const labels = Array.from(tiles.querySelectorAll(':scope > label'));
-
-		expect(host.getBoundingClientRect().width).toBe(416);
-		expect(labels).toHaveLength(4);
-		expect(new Set(labels.map((tile) => Math.round(tile.getBoundingClientRect().top))).size).toBe(
-			1
-		);
-	});
 
 	async function mountAt(config: FormConfig, width: string, scheme: string): Promise<ShadowRoot> {
 		await cdp().send('Emulation.setEmulatedMedia', {

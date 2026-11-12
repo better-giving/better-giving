@@ -484,3 +484,67 @@ describe('Show more messages in the editor preview', () => {
 		expect(more?.getAttribute('tabindex')).not.toBe('-1');
 	});
 });
+
+describe('the preview’s stillness', () => {
+	const showMore = (root: HTMLElement) =>
+		[...(part(root, 'messages')?.querySelectorAll('button') ?? [])].find(
+			(b) => b.textContent === 'Show more messages'
+		);
+	const shareLink = (root: HTMLElement) =>
+		root.querySelector<HTMLAnchorElement>('[data-area="share"] a');
+
+	it('takes a stop outside the messages out of the tab order and leaves Show more its own', () => {
+		const root = draw(FEATURE, { preview: true });
+
+		expect(shareLink(root)?.tabIndex).toBe(-1);
+		expect(showMore(root)?.tabIndex).toBe(0);
+	});
+
+	it('leaves the same stop in the tab order with the preview off', () => {
+		const root = draw(FEATURE);
+
+		expect(shareLink(root)?.tabIndex).toBe(0);
+	});
+
+	it('lets a click outside the messages run its own handler with the preview off, and stops it in the preview', () => {
+		const onPress = vi.fn();
+		const donationBox = () => (
+			<button type="button" data-testid="outside" onClick={onPress}>
+				outside
+			</button>
+		);
+		const click = (root: HTMLElement) => {
+			const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+			act(() => root.querySelector('[data-testid="outside"]')?.dispatchEvent(event));
+			return event;
+		};
+
+		const live = click(draw(FEATURE, { donationBox }));
+		expect(live.defaultPrevented).toBe(false);
+		expect(onPress).toHaveBeenCalledTimes(1);
+
+		const still = click(draw(FEATURE, { donationBox, preview: true }));
+		expect(still.defaultPrevented).toBe(true);
+		expect(onPress).toHaveBeenCalledTimes(1);
+	});
+
+	// usePreviewStill stamps the stops present when the effect runs, which depends on [preview]
+	// alone: a stop a later render adds (the editor redrawing the preview from the draft) keeps its
+	// place in the tab order.
+	it.fails('takes a stop a later render adds out of the tab order too', () => {
+		const first = props(FEATURE, { preview: true });
+		const view = mount(<PageView {...first} />);
+		view.render(
+			<PageView
+				{...first}
+				donationBox={() => (
+					<a href="/added" data-testid="added">
+						added
+					</a>
+				)}
+			/>
+		);
+
+		expect(view.host.querySelector<HTMLAnchorElement>('[data-testid="added"]')?.tabIndex).toBe(-1);
+	});
+});

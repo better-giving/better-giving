@@ -25,6 +25,9 @@ import { messageAge } from '../message-age';
 
 export type ShowMoreStatus = 'idle' | 'loading' | 'error';
 
+/** the section's `data-area`, which the preview leaves pressable (`PREVIEW_LIVE`, ../page-view.tsx). */
+export const MESSAGES_AREA = 'messages';
+
 /** what the route wires a page's messages section with. */
 export type DonorMessagesWiring = {
 	/** when the page was read, ISO 8601: every message's age is counted from it, server and browser alike. */
@@ -99,7 +102,7 @@ export function DonorMessages({
 	const showing = `Showing ${count.format(shown.messages.length)} of ${count.format(shown.total)} messages`;
 	const ended = shown.from !== null && shown.next === null;
 	return (
-		<section aria-labelledby={headingId} data-area="messages" data-shape={shape}>
+		<section aria-labelledby={headingId} data-area={MESSAGES_AREA} data-shape={shape}>
 			<h2 className="page-messages-heading" id={headingId}>
 				Messages from donors
 			</h2>

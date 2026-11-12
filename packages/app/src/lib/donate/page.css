@@ -1345,24 +1345,20 @@ body {
 		margin-block-start: 0;
 	}
 
+	/* the rail stands on the cover, so its own text — a heading saved for the page, the chooser's
+	   question — takes the cover's ink as the who beside it does: slate 1 on the photo's scrim,
+	   `--_on-p` on the brand's solid. the chooser's options and the donation card are plates that set
+	   their own slate 12. */
 	.page[data-layout='feature'] .page-profile > .page-profile-rail {
 		z-index: 2;
 		grid-column: rail-start / rail-end;
 		grid-row: 1;
 		align-self: start;
 		margin-block: var(--page-gap-lead);
-	}
-
-	/* a heading saved for the page stands over the box on the cover, so it takes the cover's ink as the
-	   who beside it does: slate 1 on the photo's scrim, `--_on-p` on the brand's solid. */
-	.page[data-layout='feature'] .page-profile > .page-profile-rail .page-profile-box-heading {
 		color: var(--_n1);
 	}
 
-	.page[data-layout='feature']
-		.page-profile-cover[data-cover='none']
-		~ .page-profile-rail
-		.page-profile-box-heading {
+	.page[data-layout='feature'] .page-profile-cover[data-cover='none'] ~ .page-profile-rail {
 		color: var(--_on-p);
 	}
 }

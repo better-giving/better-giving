@@ -337,8 +337,9 @@ describe('every colour lands on the radix step for its job', () => {
 	const FEATURE = ".page[data-layout='feature']";
 	const HERO = `${FEATURE} .page-profile > .page-profile-who`;
 	const HERO_OVER_FILL = `${FEATURE} .page-profile-cover[data-cover='none'] + .page-profile-who`;
-	const HEADING = `${FEATURE} .page-profile > .page-profile-rail .page-profile-box-heading`;
-	const HEADING_OVER_FILL = `${FEATURE} .page-profile-cover[data-cover='none'] ~ .page-profile-rail .page-profile-box-heading`;
+	// the rail's own text, the box heading and the chooser's question, inherits the rail's ink.
+	const RAIL = `${FEATURE} .page-profile > .page-profile-rail`;
+	const RAIL_OVER_FILL = `${FEATURE} .page-profile-cover[data-cover='none'] ~ .page-profile-rail`;
 	const OVER_FILL = `${FEATURE} .page-layout[data-cover='logo'] .page-hero-words, ${FEATURE} .page-layout[data-cover='none'] .page-hero-words`;
 	const IDLE = ":not(:has(:checked, [aria-disabled='true']))";
 	const BORDER =
@@ -457,7 +458,7 @@ describe('every colour lands on the radix step for its job', () => {
 				[`${WIDE} » ${OVER_FILL} | color`]: 'on-brand-9',
 				[`${WIDE} » ${HERO_OVER_FILL} | --page-quiet`]: 'on-brand-9',
 				[`${WIDE} » ${HERO_OVER_FILL} | color`]: 'on-brand-9',
-				[`${WIDE} » ${HEADING_OVER_FILL} | color`]: 'on-brand-9'
+				[`${WIDE} » ${RAIL_OVER_FILL} | color`]: 'on-brand-9'
 			}
 		},
 		[TEXT]: {
@@ -526,7 +527,7 @@ describe('every colour lands on the radix step for its job', () => {
 				[`${WIDE} » ${HERO} | --page-ring`]: 'slate-1',
 				[`${WIDE} » ${HERO} | --page-quiet`]: 'slate-1',
 				[`${WIDE} » ${HERO} | color`]: 'slate-1',
-				[`${WIDE} » ${HEADING} | color`]: 'slate-1'
+				[`${WIDE} » ${RAIL} | color`]: 'slate-1'
 			}
 		}
 	};
@@ -944,6 +945,14 @@ describe('the profile head’s box and logo', () => {
 		expect(
 			declared(page, WIDE, ".page[data-layout='feature'] .page-profile > .page-profile-rail")
 		).toMatchObject({ 'grid-row': '1', 'align-self': 'start' });
+	});
+
+	it('leaves the rail’s own text to the rail’s ink, so the cover’s ink reaches the heading and the chooser’s question', () => {
+		const inked = page.filter(
+			({ at, decls }) =>
+				/\.page-(profile-box-heading|choose-legend)\b/.test(at.join(' » ')) && 'color' in decls
+		);
+		expect(inked).toEqual([]);
 	});
 
 	it('holds the card, its share row and its footer to the profile’s column at every width', () => {

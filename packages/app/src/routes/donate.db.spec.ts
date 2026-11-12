@@ -16,7 +16,7 @@ import { shownStep } from '$lib/donate/shown-step.testing';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { defaultDonationPage } from '$lib/page/defaults';
 import { createDb } from '$lib/server/db/client';
-import { page, program } from '$lib/server/db/schema';
+import { orgProfile, page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { createImage } from '$lib/server/images/image.testing';
 import { putBanner, putLogo } from '$lib/server/org/logo.testing';
@@ -215,6 +215,17 @@ describe('the organisation’s mission and vision on /donate', () => {
 
 	it('draw no About us where the profile holds neither', async () => {
 		await saveProfile(db);
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.org).toMatchObject({ mission: null, vision: null });
+		expect(area(markup(answered.data), 'about')).toBe('');
+	});
+
+	it('count a mission and vision of spaces alone as none, and draw no About us', async () => {
+		await saveProfile(db);
+		// spaces the column's check (`notBlank` in $lib/server/db/schema.ts) lets through.
+		await db.update(orgProfile).set({ mission: '\u2003\u3000', vision: '\u2002' });
 
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
