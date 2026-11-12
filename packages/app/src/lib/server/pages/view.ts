@@ -18,7 +18,7 @@ import { present } from '../org/receipt-fields';
 import { createPaymentProviders } from '../payments/factory';
 import { readActiveProgramPhotos } from '../programs/queries';
 import { readDocument } from './document';
-import { organisationRaised, pageGoal } from './goal';
+import { pageGoal } from './goal';
 import { readShownMessages } from './messages';
 
 // everything a donor page draws beyond its own stored document, read for one page: the donation
@@ -50,9 +50,9 @@ import { readShownMessages } from './messages';
 // so are the programs' photos, handed beside the served config for the programs its chooser offers
 // and never on its `v1` options, and so is a campaign's raised figure (./goal.ts), a sum over the
 // books that is never cached. the Donation page alone is handed its profile head beside the view
-// (`DonateProfile` in ../../donate/profile.ts) from those same reads, with what the organisation has
-// raised through every form (`organisationRaised` in ./goal.ts) and its donors' newest messages
-// (`readShownMessages` in ./messages.ts), likewise never cached.
+// (`DonateProfile` in ../../donate/profile.ts) from those same reads, with its donors' newest
+// messages (`readShownMessages` in ./messages.ts), likewise never cached, and with nothing the
+// organisation has raised: a campaign's goal bar alone draws progress.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {
@@ -130,9 +130,8 @@ export async function loadPageView(
 	const orgName = config.orgLegalName;
 	const money = { locale: config.locale, currency: config.currency };
 	const isDonationPage = source.type === 'donation_page';
-	const [goal, raised, messages] = await Promise.all([
+	const [goal, messages] = await Promise.all([
 		pageGoal(db, source.formId, page, config.locale),
-		isDonationPage ? organisationRaised(db, config.currency) : null,
 		isDonationPage ? readShownMessages(db, null) : null
 	]);
 	const org = {
@@ -169,14 +168,12 @@ export async function loadPageView(
 			...openingOf(page.switches)
 		},
 		profile:
-			raised === null || messages === null
+			messages === null
 				? null
 				: donateProfile({
 						org,
 						logo,
 						bannerImageId: profile?.bannerImageId ?? null,
-						raised,
-						money,
 						messages,
 						videos: page.videos
 					})

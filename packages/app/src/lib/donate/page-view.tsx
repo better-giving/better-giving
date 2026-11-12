@@ -3,6 +3,7 @@ import type { ProgramMode } from '../forms/program-modes';
 import type { Page } from '../page/catalog';
 import { imageSrc } from '../page/image-src';
 import type { PageType } from '../page/keys';
+import { type ProfileShape, profileShape } from '../page/profile-shape';
 import { type CampaignShape, campaignShape } from '../page/shape';
 import { isEmptyDocument } from '../rich-text/document';
 import { PageRoot } from './page-root';
@@ -14,7 +15,7 @@ import { GoalBar } from './sections/goal-bar';
 import { DonorMessages, type DonorMessagesWiring } from './sections/messages';
 import { hasContact, OrgContact, OrgInfo } from './sections/org-info';
 import { Photos } from './sections/photos';
-import { ProfileBanner, ProfileMark, ProfileName, ProfileRaised } from './sections/profile';
+import { ProfileBanner, ProfileCover, ProfileMark, ProfileName } from './sections/profile';
 import { ProgramChooser } from './sections/program-chooser';
 import { Share } from './sections/share';
 import { Story } from './sections/story';
@@ -47,16 +48,18 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 // - the Donation page: the title, the program chooser, then the box; About us. wide, the box stands
 //   beside the title and the chooser.
 // - the Donation page at /donate, and its preview, handed its profile head (`DonateProfile` in
-//   ./profile.ts): the profile layout in place of the masthead. it is compact — the logo beside the
-//   name and the box under them, one column at every width — where the organisation has no banner,
-//   no mission or vision, nothing raised, no video and no message from a donor (`profileLayout`
-//   below), and otherwise the banner or the brand's band across the top, the logo over its foot, the
-//   name, the EIN and the raised figure, then the box, then About us, the videos and the messages
-//   from donors; wide, the box stands in a column of its own beside them and scrolls with the page
-//   as every box does. a heading saved for the page is the box's own heading there, over the card.
-//   the name is always drawn there, so the logo beside it says nothing of its own, and a logo the
-//   masthead would let stand in for the name is drawn whole at its own shape rather than in the
-//   square.
+//   ./profile.ts): in place of the masthead, the card, the letter or the feature, picked from the
+//   profile's content as a campaign's is ($lib/page/profile-shape.ts).
+//   - card: the banner, the logo with the name and the EIN, About us, then the box, one column at
+//     every width.
+//   - letter: the banner framed, the logo beside the name and the EIN, then the box, About us, the
+//     videos and the messages from donors; wide, the box stands alone in a rail beside the rest.
+//   - feature: the cover, the logo, the name and the EIN, then the box, the videos, the messages
+//     as cards and About us as the closing band; wide, the cover runs the page's width with the
+//     words over its lower left and the box over its right side.
+//   a heading saved for the page is the box's own heading there, over the card. the name is always
+//   drawn there, so the logo beside it says nothing of its own, and a logo the masthead would let
+//   stand in for the name is drawn whole at its own shape rather than in the square.
 //
 // every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
 // the letter's and the feature's box straight after the cover and the title, the goal and the lede
@@ -144,6 +147,7 @@ export function PageView(props: PageViewProps) {
 				})
 			: null;
 	const profile = props.type === 'donation_page' ? (props.profile ?? null) : null;
+	const head = profile === null ? null : { profile, shape: profileShape(profile) };
 	// under the profile head the footer is the ways to reach the organisation alone, which the head
 	// has named already, and none where it states none.
 	const foot =
@@ -157,7 +161,8 @@ export function PageView(props: PageViewProps) {
 	return (
 		<PageRoot
 			brandColour={look.brandColour}
-			layout={shape?.layout ?? (profile === null ? 'donation' : 'profile')}
+			layout={shape?.layout ?? head?.shape.layout ?? 'donation'}
+			profile={profile !== null}
 			{...(className === undefined ? {} : { className })}
 		>
 			{profile === null ? (
@@ -166,10 +171,10 @@ export function PageView(props: PageViewProps) {
 			<main className="page-body">
 				{shape !== null ? (
 					<CampaignLayout {...props} shape={shape} />
-				) : profile === null ? (
+				) : head === null ? (
 					<DonationLayout {...props} />
 				) : (
-					<ProfileLayout {...props} profile={profile} />
+					<ProfileLayout {...props} profile={head.profile} shape={head.shape} />
 				)}
 			</main>
 			<section className="page-end" id={SHARE_ID} aria-labelledby={shareHeading} {...area('share')}>
@@ -365,77 +370,98 @@ function Chooser({ props }: { props: PageViewProps }) {
 	);
 }
 
-/**
- * the profile head's layout from what it holds: compact where the organisation has no banner, no
- * mission or vision, nothing raised, no video and no message from a donor, and the profile layout
- * where it has any of them.
- */
-export function profileLayout(profile: DonateProfile): 'compact' | 'profile' {
-	return profile.banner === null &&
-		profile.mission === null &&
-		profile.vision === null &&
-		profile.raised.raisedMinor <= 0 &&
-		profile.videos.length === 0 &&
-		profile.messages.total <= 0
-		? 'compact'
-		: 'profile';
-}
-
-function ProfileLayout(props: PageViewProps & { readonly profile: DonateProfile }) {
-	const { profile } = props;
-	const layout = profileLayout(profile);
+function ProfileLayout(
+	props: PageViewProps & { readonly profile: DonateProfile; readonly shape: ProfileShape }
+) {
+	const { profile, donorMessages } = props;
+	const { layout, aboutUs } = props.shape;
 	const choosing = offersChoice(props);
 	const heading = props.page.heading.trim();
-	return (
-		<div className="page-in page-layout" data-head={layout}>
-			{layout === 'profile' ? <ProfileBanner banner={profile.banner} /> : null}
-			<div className="page-profile-who" {...area('who')}>
-				<div className="page-profile-id">
-					<ProfileMark
-						name={profile.name}
-						logo={profile.logo}
-						wide={profile.logo !== null && isWordmark(profile.logo)}
-						letters={initials(profile.name)}
-					/>
-					<ProfileName name={profile.name} taxId={profile.taxId} long={isLong(profile.name)} />
-				</div>
-				<ProfileRaised raised={profile.raised} money={profile.money} />
-				{choosing ? <Chooser props={props} /> : null}
+	const who = (
+		<div className="page-profile-who" {...area('who')}>
+			<div className="page-profile-id">
+				<ProfileMark
+					name={profile.name}
+					logo={profile.logo}
+					wide={profile.logo !== null && isWordmark(profile.logo)}
+					letters={initials(profile.name)}
+				/>
+				<ProfileName name={profile.name} taxId={profile.taxId} long={isLong(profile.name)} />
 			</div>
+		</div>
+	);
+	const box = (
+		<>
+			{choosing ? <Chooser props={props} /> : null}
 			<Box
 				props={props}
 				hideProgramSelect={choosing}
 				heading={heading === '' ? undefined : props.page.heading}
 			/>
-			<ProfileMore {...props} profile={profile} />
+		</>
+	);
+	const rail = (
+		<div className="page-profile-rail" {...area('rail')}>
+			{box}
 		</div>
 	);
-}
+	const about = (
+		<section {...area('about')}>
+			<AboutUs mission={profile.mission} vision={profile.vision} />
+		</section>
+	);
+	const messages = (shape: 'list' | 'cards') =>
+		profile.messages.total > 0 && donorMessages !== undefined ? (
+			<DonorMessages
+				{...donorMessages}
+				initial={profile.messages}
+				locale={props.money.locale}
+				shape={shape}
+			/>
+		) : null;
+	const banner = profile.banner === null ? null : <ProfileBanner banner={profile.banner} />;
 
-/**
- * what stands under the who on a phone and beside the box wide, in one area: About us, the videos,
- * then the messages from donors. each draws only where it has something, and with none of them
- * nothing is drawn.
- */
-function ProfileMore(props: PageViewProps & { readonly profile: DonateProfile }) {
-	const { profile, donorMessages } = props;
-	const about = profile.mission !== null || profile.vision !== null;
-	const videos = profile.videos.length > 0;
-	const messages = profile.messages.total > 0 ? donorMessages : undefined;
-	if (!about && !videos && messages === undefined) return null;
-	return (
-		<div className="page-profile-more" {...area('more')}>
-			{about ? (
-				<section {...area('about')}>
-					<AboutUs mission={profile.mission} vision={profile.vision} />
-				</section>
-			) : null}
-			<Videos videos={profile.videos} />
-			{messages === undefined ? null : (
-				<DonorMessages {...messages} initial={profile.messages} locale={profile.money.locale} />
-			)}
-		</div>
-	);
+	switch (layout) {
+		case 'card':
+			return (
+				<div className="page-in page-profile">
+					{banner}
+					{who}
+					{aboutUs ? about : null}
+					{box}
+				</div>
+			);
+		case 'letter':
+			return (
+				<div className="page-in page-profile">
+					{banner}
+					{who}
+					{rail}
+					{aboutUs ? about : null}
+					<Videos videos={profile.videos} />
+					{messages('list')}
+				</div>
+			);
+		case 'feature':
+			return (
+				<>
+					<div className="page-profile">
+						<ProfileCover banner={profile.banner} />
+						{who}
+						{rail}
+						<Videos videos={profile.videos} />
+						{messages('cards')}
+					</div>
+					{aboutUs ? (
+						<section className="page-about-area" {...area('about')}>
+							<div className="page-in">
+								<AboutUs mission={profile.mission} vision={profile.vision} />
+							</div>
+						</section>
+					) : null}
+				</>
+			);
+	}
 }
 
 function DonationLayout(props: PageViewProps) {

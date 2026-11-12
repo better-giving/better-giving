@@ -24,7 +24,9 @@
  * the page root is two nodes, and ./page-root.tsx draws both. the outer one carries
  * `data-donate-root` — the selector the form's file declares its layer on outside a shadow root —
  * and `data-layout`, the whole layout the page is drawn in: `card`, `letter` or `feature` for a
- * campaign ($lib/page/shape.ts), `donation` for the Donation page, `plain` for the box alone. the
+ * campaign ($lib/page/shape.ts) and for the Donation page under its profile head, which adds
+ * `data-profile` ($lib/page/profile-shape.ts), `donation` for the Donation page without one, `plain`
+ * for the box alone. the
  * root sets `--donate-primary` inline from the brand colour, the page's one accent, and renders the
  * brand scale radix's custom-palette generator makes from it as a `<style>` beside, scoped to the
  * root and the card's own root inside it, so the card and every section take the same brand. no
@@ -303,34 +305,29 @@ body {
 	--page-accent: var(--_a11);
 	--page-ring: var(--_focus-ring);
 	/* the Donation page's profile head, at a phone's sizes; the wide ones are under 60rem below. the
-	   whole is `--page-profile-width` with its gutters, the box's column `--page-profile-box`, and
-	   `--page-profile-gap` is between the columns and between its sections. the band where no banner
-	   is put on is brand step 3, the registry's `--secondary`, read by the step's own name as the
-	   wash reads it. */
-	--page-profile-width: 73rem;
-	--page-profile-gutter: 1rem;
+	   card's column is `--page-profile-box`, and `--page-profile-gap` is between the letter's
+	   sections. the mark is `--page-profile-logo` square, lifted `--page-profile-logo-lift` over the
+	   foot of a banner it stands on; the feature's cover from 60rem draws it at
+	   `--page-profile-logo-hero` and the name at `--page-profile-name-hero`. */
 	--page-profile-box: 27.5rem;
 	--page-profile-gap: 2.5rem;
-	--page-profile-box-lead: 1.5rem;
 	--page-profile-banner-ratio: 3 / 1;
-	--page-profile-band-block: 4.5rem;
-	--page-profile-band: var(--accent-3);
 	--page-profile-logo: 4.5rem;
-	--page-profile-logo-compact: 4.5rem;
+	--page-profile-logo-hero: 6rem;
 	--page-profile-logo-lift: 2.25rem;
 	--page-profile-logo-inset: 1rem;
 	--page-profile-initials: 1.5rem;
+	--page-profile-initials-hero: 1.875rem;
 	--page-profile-name: 1.875rem;
 	--page-profile-lh-name: 2.25rem;
 	--page-profile-name-long: 1.5rem;
 	--page-profile-lh-name-long: 2rem;
-	--page-profile-figure: 1.875rem;
-	--page-profile-lh-figure: 2.25rem;
+	--page-profile-name-hero: 2.25rem;
+	--page-profile-lh-name-hero: 2.5rem;
 	--page-profile-subhead: 1.25rem;
 	--page-profile-lh-subhead: 1.75rem;
-	--page-profile-raised-inset: 1.25rem 1.5rem;
-	/* the EIN's and the raised label's line: the small step on a 20px line, where the card's body
-	   line height would make it 21. */
+	/* the EIN's line: the small step on a 20px line, where the card's body line height would make
+	   it 21. */
 	--page-profile-lh-small: 1.25rem;
 	/* a message's time: the extra-small step on a 16px line. */
 	--page-profile-lh-xs: 1rem;
@@ -363,15 +360,7 @@ body {
 		--page-cover-card: 10rem;
 		--page-cover-letter: 20rem;
 		--page-card-inset: 1.75rem;
-		--page-profile-gutter: 2rem;
 		--page-profile-banner-ratio: 4 / 1;
-		--page-profile-band-block: 7rem;
-		--page-profile-logo: 6rem;
-		--page-profile-logo-lift: 3rem;
-		--page-profile-logo-inset: 1.5rem;
-		--page-profile-initials: 1.875rem;
-		--page-profile-name: 2.25rem;
-		--page-profile-lh-name: 2.5rem;
 		--page-profile-name-long: 1.875rem;
 		--page-profile-lh-name-long: 2.25rem;
 	}
@@ -439,7 +428,7 @@ body {
  * the card's grid areas and the letter's and the feature's `order` stand them in the order a phone reads them,
  * and from `@container page (min-width: 60rem)` each layout moves them into its columns. the donation box is a `.page-box` among them, never inside another section, and no rule
  * below gives an ancestor of it a clip, a position or a transform. no box is sticky, the rails' and
- * the profile layout's column included: a box that a later step grows past the screen's height
+ * the profile head's included: a box that a later step grows past the screen's height
  * scrolls with the page, so its lower edge and what stands under it can always be reached.
  *
  * ink. `--page-accent` is what a link and a listed tier's amount are drawn in, brand 11.
@@ -729,14 +718,14 @@ body {
 	   panel's inset. the inset is `.card-body`'s, which no part name reaches
 	   (packages/form/src/styles/layout.css). with no corner drawn there is nothing to clip to, and a
 	   focus ring at the box's edge paints into the panel's inset rather than being cut off. */
-	.page[data-layout='card'] [part~='card'] {
+	.page[data-layout='card'] .page-layout [part~='card'] {
 		background: transparent;
 		border: 0;
 		border-radius: 0;
 		overflow: visible;
 	}
 
-	.page[data-layout='card'] [part~='card'] > .card-body {
+	.page[data-layout='card'] .page-layout [part~='card'] > .card-body {
 		padding: 0;
 	}
 }
@@ -1013,73 +1002,69 @@ body {
 	background: var(--page-band);
 }
 
-/* the Donation page under its profile head (./page-view.tsx, ./sections/profile.tsx). the page,
-   its share row and its footer stand in `--page-profile-width`; compact, in the box's column alone,
-   one column at every width. on a phone the parts stand in source order, the banner, the who, the
-   box and About us, so the box is on the first screen under the name; wide, the who and About us
-   stand in the first column, the box in the second, `--page-profile-box-lead` under the banner, and
-   it scrolls with the page as every box does (the header above). the logo stands over the banner's
-   foot by `--page-profile-logo-lift`, inset `--page-profile-logo-inset`, so its block-start margin
-   takes back the gap above it too. a wordmark, a logo the masthead would let stand in for the name
-   (`data-wide`, ./page-view.tsx), keeps the square's height and is drawn whole at its own width, as
-   the masthead draws one, and in the compact layout stands over the name rather than beside it. the
-   EIN and the raised label are the quiet ink on the wash and on the plane, slate 2 and slate 1. */
-.page[data-layout='profile'] .page-in {
-	max-inline-size: var(--page-profile-width);
-	padding-inline: var(--page-profile-gutter);
+/* the Donation page under its profile head (./page-view.tsx, ./sections/profile.tsx), drawn under
+   no masthead in the card, the letter or the feature its content picks
+   ($lib/page/profile-shape.ts), from parts of its own in `.page-profile`. the root carries
+   `data-profile` beside `data-layout`. its name and its box carry the campaign's `title` and `box`
+   areas, which the campaign card's rules above give a margin, so the rule after the column's takes
+   that margin back; the box's column is the profile's own, so its card fills it.
+
+   the card is one column `--page-profile-box` wide at every width, centred, the share row and the
+   footer in it: the banner, the name, About us, then the box, `--page-gap-group` apart. the logo
+   stands over the banner's foot by `--page-profile-logo-lift`, inset `--page-profile-logo-inset`,
+   so its block-start margin takes back the gap above it too; with no banner it stands beside the
+   name. a wordmark, a logo the masthead would let stand in for the name (`data-wide`,
+   ./page-view.tsx), keeps the square's height, is drawn whole at its own width, and stands over the
+   name rather than beside it. the EIN is the quiet ink on the wash. */
+.page[data-profile][data-layout='card'] .page-in {
+	max-inline-size: calc(var(--page-profile-box) + 2 * var(--page-gutter));
 }
 
-.page[data-layout='profile']:has([data-head='compact']) .page-in {
-	max-inline-size: calc(var(--page-profile-box) + 2 * var(--page-profile-gutter));
+.page-profile {
+	display: flex;
+	flex-direction: column;
+	gap: var(--page-gap-group);
+	min-inline-size: 0;
 }
 
-.page[data-layout='profile'] .page-layout {
-	gap: var(--page-profile-gap);
+.page-profile > * {
+	min-inline-size: 0;
 }
 
-.page[data-layout='profile'] .page-box > div > * {
+.page[data-profile] :is(.page-profile-name, .page-box) {
+	margin: 0;
+}
+
+.page[data-profile] .page-box > div > * {
 	max-inline-size: none;
 }
 
-.page-profile-banner,
-.page-profile-band {
+.page-profile-banner {
+	overflow: hidden;
+	aspect-ratio: var(--page-profile-banner-ratio);
+	background: var(--_n3);
 	border: var(--_border) solid var(--page-plane-edge);
 	border-radius: var(--page-plane-radius);
 }
 
-.page-profile-banner {
-	aspect-ratio: var(--page-profile-banner-ratio);
-	overflow: hidden;
-	background: var(--_n3);
-}
-
-.page-profile-band {
-	block-size: var(--page-profile-band-block);
-	background: var(--page-profile-band);
-}
-
-.page-profile-who {
-	display: flex;
-	flex-direction: column;
-	gap: var(--page-gap-item);
-}
-
 .page-profile-id {
 	display: flex;
-	flex-direction: column;
 	align-items: flex-start;
-	gap: var(--page-gap-item);
-}
-
-[data-head='profile'] :is(.page-profile-logo, .page-profile-badge) {
-	max-inline-size: calc(100% - var(--page-profile-logo-inset));
-	margin-block-start: calc(-1 * (var(--page-profile-logo-lift) + var(--page-profile-gap)));
-	margin-inline-start: var(--page-profile-logo-inset);
-}
-
-[data-head='compact'] .page-profile-id {
-	flex-direction: row;
 	gap: var(--_sp4);
+}
+
+.page-profile-id:has(> [data-wide]),
+.page[data-layout='card'] .page-profile-banner + .page-profile-who .page-profile-id {
+	flex-direction: column;
+}
+
+.page[data-layout='card']
+	.page-profile-banner
+	+ .page-profile-who
+	:is(.page-profile-logo, .page-profile-badge) {
+	max-inline-size: calc(100% - var(--page-profile-logo-inset));
+	margin-block-start: calc(-1 * (var(--page-profile-logo-lift) + var(--page-gap-group)));
+	margin-inline-start: var(--page-profile-logo-inset);
 }
 
 .page-profile-logo,
@@ -1091,11 +1076,6 @@ body {
 	border-radius: var(--page-plane-radius);
 }
 
-[data-head='compact'] :is(.page-profile-logo, .page-profile-badge) {
-	inline-size: var(--page-profile-logo-compact);
-	block-size: var(--page-profile-logo-compact);
-}
-
 .page-profile-logo {
 	display: block;
 	max-inline-size: 100%;
@@ -1104,13 +1084,9 @@ body {
 	border: var(--_border) solid var(--page-plane-edge);
 }
 
-/* after the compact size, which it overrides at the same specificity. */
+/* after the square, which it overrides at the same specificity. */
 .page-profile-logo[data-wide] {
 	inline-size: auto;
-}
-
-[data-head='compact'] .page-profile-id:has(> [data-wide]) {
-	flex-direction: column;
 }
 
 /* the initials on the brand's solid, the one ink the form draws on it. */
@@ -1131,7 +1107,8 @@ body {
 	min-inline-size: 0;
 }
 
-/* wrapped and balanced, never cut: a name past `TITLE_LONG` (./page-view.tsx) is a step smaller. */
+/* wrapped and balanced, never cut: a name past `TITLE_LONG` (./page-view.tsx) is a step smaller
+   below 60rem. */
 .page-profile-name {
 	overflow-wrap: anywhere;
 	font-family: var(--page-font-display);
@@ -1156,34 +1133,8 @@ body {
 	font-family: var(--page-font-mono);
 }
 
-/* the raised figure on a plane, its label beside it and under it where the row is too short. */
-.page-profile-raised {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
-	column-gap: var(--_sp3);
-	padding: var(--page-profile-raised-inset);
-	background: var(--page-plane);
-	border: var(--_border) solid var(--page-plane-edge);
-	border-radius: var(--page-plane-radius);
-}
-
-.page-profile-raised-figure {
-	font-family: var(--page-font-display);
-	font-size: var(--page-profile-figure);
-	line-height: var(--page-profile-lh-figure);
-	font-weight: var(--page-w-display);
-	font-variant-numeric: tabular-nums lining-nums;
-}
-
-.page-profile-raised-label {
-	font-size: var(--_t-sm);
-	line-height: var(--page-profile-lh-small);
-	color: var(--page-quiet);
-}
-
-.page-profile-first,
 .page-profile-box-heading {
+	margin-block-end: var(--_sp3);
 	font-family: var(--page-font-display);
 	font-size: var(--page-profile-subhead);
 	line-height: var(--page-profile-lh-subhead);
@@ -1191,12 +1142,16 @@ body {
 	text-wrap: balance;
 }
 
-.page-profile-box-heading {
-	margin-block-end: var(--_sp3);
+/* the box and, where donors choose a program, the chooser over it: one column of its own. */
+.page-profile-rail {
+	display: flex;
+	flex-direction: column;
+	gap: var(--page-gap-group);
 }
 
-/* About us under the profile head: a section heading over plain prose at the reading measure. */
-.page[data-layout='profile'] .page-about .page-label {
+/* About us in the card and the letter: a section heading over plain prose at the reading measure.
+   the feature's is the campaign's closing band, outside `.page-profile`. */
+.page-profile .page-about .page-label {
 	margin-block-end: var(--_sp3);
 	font-family: var(--page-font-display);
 	font-weight: var(--_w-bold);
@@ -1207,7 +1162,7 @@ body {
 	color: var(--_n12);
 }
 
-.page[data-layout='profile'] :is(.page-about-statement, .page-about-beneath) {
+.page-profile :is(.page-about-statement, .page-about-beneath) {
 	max-inline-size: var(--page-profile-measure);
 	font-size: var(--_t-md);
 	line-height: var(--_lh-body);
@@ -1217,17 +1172,186 @@ body {
 	color: var(--_n12);
 }
 
-.page[data-layout='profile'] .page-about-beneath {
+.page-profile .page-about-beneath {
 	margin-block-start: var(--_sp4);
 }
 
-/* About us, the videos and the messages from donors, one area under the who: a section's step
-   apart. */
-.page-profile-more {
-	display: flex;
+/* the letter. on a phone, in source order: the banner framed, the name, the box, then About us, the
+   videos and the messages, each section `--page-profile-gap` under the one before. wide, the box
+   stands alone in a `--page-box` rail beside a reading column held to `--page-measure`, the rail's
+   top on the name's, and the column is spaced by margins rather than a row gap, so a row left
+   empty adds nothing. a banner is framed as the campaign letter's cover is: a plane, the photo
+   inside its inset at the inner corner. */
+.page[data-layout='letter'] .page-profile-banner {
+	aspect-ratio: auto;
+	padding: var(--_sp2);
+	background: var(--page-plane);
+	border: var(--_border) solid var(--page-plane-edge);
+}
+
+.page[data-layout='letter'] .page-profile-banner .page-photo {
+	block-size: auto;
+	aspect-ratio: var(--page-profile-banner-ratio);
+	border-radius: var(--_r-in);
+}
+
+.page[data-layout='letter']
+	.page-profile
+	> :is([data-area='about'], [data-area='videos'], [data-area='messages']) {
+	margin-block-start: calc(var(--page-profile-gap) - var(--page-gap-group));
+}
+
+@container page (min-width: 60rem) {
+	.page[data-layout='letter'] .page-profile {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) var(--page-box);
+		grid-template-rows: repeat(5, auto) 1fr;
+		column-gap: var(--page-col-gap);
+		row-gap: 0;
+		align-items: start;
+	}
+
+	.page[data-layout='letter'] .page-profile > * {
+		grid-column: 1;
+		max-inline-size: var(--page-measure);
+	}
+
+	.page[data-layout='letter'] .page-profile > .page-profile-banner {
+		max-inline-size: none;
+	}
+
+	.page[data-layout='letter'] .page-profile > :not(:first-child, .page-profile-rail) {
+		margin-block-start: var(--page-profile-gap);
+	}
+
+	.page[data-layout='letter'] .page-profile-rail {
+		grid-column: 2;
+		grid-row: 1 / -1;
+		max-inline-size: none;
+	}
+
+	.page[data-layout='letter'] .page-profile-banner ~ .page-profile-rail {
+		grid-row: 2 / -1;
+	}
+}
+
+/* the feature. on a phone the cover runs the screen's width at `--page-hero-narrow`, the logo over
+   its foot in a step-1 ring, then the name, the box, the videos and the messages; the body adds no
+   lead over the cover. wide, one grid stands the cover across the page's width with the logo, the
+   name and the EIN over its lower left, `--page-band-inset` above and below them, and the box in
+   the rail over its right side `--page-gap-lead` off its top. the box stands in the cover's row
+   with that inset under it too, so the cover grows to the box's foot; the videos and the messages
+   run across both columns below, `--page-gap-section` apart, and About us closes the page as the
+   campaign's band. a saved banner is the cover's photo under `--page-scrim`, the words over it in
+   slate 1; with none the cover is the brand's solid and the words its `--_on-p`, with no scrim. */
+.page[data-profile][data-layout='feature'] .page-body {
+	padding-block-start: 0;
+}
+
+.page[data-layout='feature'] .page-profile {
+	box-sizing: border-box;
+	padding-inline: var(--page-gutter);
+}
+
+.page-profile-cover {
+	position: relative;
+	overflow: hidden;
+	block-size: var(--page-hero-narrow);
+	margin-inline: calc(-1 * var(--page-gutter));
+	background: var(--_n3);
+}
+
+.page-profile-cover[data-cover='none'] {
+	background: var(--_p);
+}
+
+.page-profile-cover .page-photo {
+	position: absolute;
+	inset: 0;
+}
+
+.page[data-layout='feature'] .page-profile-id {
 	flex-direction: column;
-	gap: var(--page-profile-gap);
-	min-inline-size: 0;
+}
+
+.page-profile-cover + .page-profile-who :is(.page-profile-logo, .page-profile-badge) {
+	margin-block-start: calc(-1 * (var(--page-profile-logo-lift) + var(--page-gap-group)));
+	box-shadow: 0 0 0 var(--_border) var(--page-plane);
+}
+
+@container page (min-width: 60rem) {
+	.page[data-layout='feature'] .page-profile {
+		display: grid;
+		grid-template-columns:
+			[full-start] minmax(var(--page-gutter), 1fr)
+			[main-start] minmax(
+				0,
+				calc(var(--page-width) - var(--page-box) - var(--page-col-gap) - 2 * var(--page-gutter))
+			)
+			[main-end] var(--page-col-gap) [rail-start] var(--page-box) [rail-end]
+			minmax(var(--page-gutter), 1fr) [full-end];
+		grid-template-rows: minmax(var(--page-hero), auto);
+		gap: 0;
+		padding-inline: 0;
+	}
+
+	.page[data-layout='feature'] .page-profile > * {
+		grid-column: main-start / rail-end;
+		margin-block-start: var(--page-gap-section);
+	}
+
+	.page[data-layout='feature'] .page-profile > .page-profile-cover {
+		grid-column: full-start / full-end;
+		grid-row: 1;
+		block-size: auto;
+		margin: 0;
+	}
+
+	.page-profile-cover[data-cover='photo']::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: var(--page-scrim);
+	}
+
+	.page[data-layout='feature'] .page-profile > .page-profile-who {
+		--page-ring: var(--_n1);
+		--page-quiet: var(--_n1);
+		--page-profile-logo: var(--page-profile-logo-hero);
+		--page-profile-initials: var(--page-profile-initials-hero);
+		--page-profile-name: var(--page-profile-name-hero);
+		--page-profile-lh-name: var(--page-profile-lh-name-hero);
+
+		z-index: 1;
+		grid-column: main-start / main-end;
+		grid-row: 1;
+		align-self: end;
+		margin: 0;
+		padding-block: var(--page-band-inset);
+		color: var(--_n1);
+	}
+
+	.page[data-layout='feature'] .page-profile-cover[data-cover='none'] + .page-profile-who {
+		--page-quiet: var(--_on-p);
+
+		color: var(--_on-p);
+	}
+
+	.page[data-layout='feature'] .page-profile-id {
+		gap: var(--page-gap-item);
+	}
+
+	.page-profile-cover + .page-profile-who :is(.page-profile-logo, .page-profile-badge) {
+		margin-block-start: 0;
+	}
+
+	.page[data-layout='feature'] .page-profile > .page-profile-rail {
+		z-index: 2;
+		grid-column: rail-start / rail-end;
+		grid-row: 1;
+		align-self: start;
+		margin-block: var(--page-gap-lead);
+	}
 }
 
 /* Messages from donors (./sections/messages.tsx): a heading over a plane that clips its list, each
@@ -1509,30 +1633,61 @@ body {
 	}
 }
 
+/* the feature's videos stand in one row of up to four from 60rem, four abreast where there are
+   more, every one the same width. */
 @container page (min-width: 60rem) {
-	.page[data-layout='profile'] [data-head='profile'] {
+	.page[data-layout='feature'] .page-profile .page-videos-grid {
+		grid-template-columns: none;
+		grid-auto-flow: column;
+		grid-auto-columns: minmax(0, 1fr);
+	}
+
+	.page[data-layout='feature'] .page-profile .page-videos-grid:has(> :nth-child(4)) {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-auto-flow: row;
+	}
+
+	.page[data-layout='feature'] .page-profile .page-video:first-child:nth-last-child(odd) {
+		grid-column: auto;
+	}
+}
+
+/* messages as cards (`shape: 'cards'`, the feature's) from 48rem: each message a plane of its own,
+   two abreast and three from 60rem, `--page-gap-item` apart, and the count and Show more on the
+   wash under them, at their start. below 48rem they are the list on one plane. */
+@container page (min-width: 48rem) {
+	[data-shape='cards'] > .page-messages-plane {
+		overflow: visible;
+		background: none;
+		border: 0;
+		border-radius: 0;
+	}
+
+	[data-shape='cards'] .page-messages-list {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) var(--page-profile-box);
-		grid-template-rows: auto auto 1fr;
-		grid-template-areas: 'banner banner' 'who box' 'more box';
-		align-items: start;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--page-gap-item);
 	}
 
-	.page[data-layout='profile'] [data-head='profile'] > [data-area='banner'] {
-		grid-area: banner;
+	[data-shape='cards'] .page-messages-row {
+		align-content: start;
+		background: var(--page-plane);
+		border: var(--_border) solid var(--page-plane-edge);
+		border-radius: var(--page-plane-radius);
 	}
 
-	.page[data-layout='profile'] [data-head='profile'] > [data-area='who'] {
-		grid-area: who;
+	[data-shape='cards'] .page-messages-foot {
+		justify-content: flex-start;
+		margin-block-start: var(--page-gap-item);
+		padding: 0;
+		background: none;
+		border: 0;
 	}
+}
 
-	.page[data-layout='profile'] [data-head='profile'] > [data-area='more'] {
-		grid-area: more;
-	}
-
-	.page[data-layout='profile'] [data-head='profile'] > [data-area='box'] {
-		grid-area: box;
-		margin-block-start: calc(var(--page-profile-box-lead) - var(--page-profile-gap));
+@container page (min-width: 60rem) {
+	[data-shape='cards'] .page-messages-list {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
 }
 

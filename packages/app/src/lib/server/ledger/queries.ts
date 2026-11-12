@@ -426,58 +426,11 @@ export async function readRaisedThroughForm(
 	return row ?? null;
 }
 
-/** what the organisation has raised through every form, in one currency, and from how many gifts. */
-export type RaisedByOrganisation = {
-	/** minor units, net of anything that has been given back. */
-	raisedMinor: number;
-	/** the gifts still standing at more than nothing: a gift given back in full is no gift here. */
-	gifts: number;
-};
-
 /**
- * `readRaisedThroughForm`'s figure over every form's gifts rather than one's, in `currency` alone,
- * with the gifts it sums counted. a gift is a `donation` row, so each charge of a repeating gift
- * counts as one as it settles, and a gift still pending has no entry and counts as none.
- *
- * one statement, since the gifts are unbounded: reading their payment ids first would bind one
- * parameter per payment, and SQLite refuses a statement past `SQLITE_MAX_VARIABLE_NUMBER` (32766,
- * https://www.sqlite.org/limits.html). grouped per gift first so a gift refunded in full nets to
- * nothing and drops out of the count while its entries still net to zero in the sum. a gift in
- * hand is a settled manual payment and counts; a hand correction matches no payment and is not
- * here (`goal.db.spec.ts`).
- */
-export async function readRaisedByOrganisation(
-	db: Db,
-	currency: string
-): Promise<RaisedByOrganisation> {
-	const [row] = await db.all<RaisedByOrganisation>(sql`
-		${DONATIONS_SUBTREE},
-		per_gift(net) as (
-			select -sum(${ledgerEntry.amountMinor})
-			from ${donation}
-			join ${payment} on ${payment.donationId} = ${donation.id}
-			join ${entryGroup}
-				on ${entryGroup.sourceId} = ${payment.id}
-				and ${inArray(entryGroup.sourceType, PAYMENT_KEYED)}
-				and ${entryGroup.currency} = ${currency}
-			join ${ledgerEntry}
-				on ${ledgerEntry.entryGroupId} = ${entryGroup.id}
-				and ${ledgerEntry.accountId} in (select id from donations)
-			group by ${donation.id}
-		)
-		select
-			coalesce(sum(net), 0) as "raisedMinor",
-			count(*) filter (where net > 0) as "gifts"
-		from per_gift
-	`);
-	return row ?? { raisedMinor: 0, gifts: 0 };
-}
-
-/**
- * what one gift still stands at in the books, in its own currency: `readRaisedByOrganisation`'s
- * per-gift `net`, as a scalar subquery on the outer row's `donation`. 0 for a gift still pending,
- * given back in full, or withdrawn by a dispute that has not been won; above 0 for one partly given
- * back.
+ * what one gift still stands at in the books, in its own currency: its payments' entries into the
+ * donations subtree, net, as a scalar subquery on the outer row's `donation`. 0 for a gift still
+ * pending, given back in full, or withdrawn by a dispute that has not been won; above 0 for one
+ * partly given back.
  */
 export function giftNetRaised(): SQL<number> {
 	return sql<number>`(

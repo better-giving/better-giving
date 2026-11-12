@@ -411,13 +411,16 @@ form {
 
 /*
  * the frequency control: equal columns, one row, every option at the interactive floor. four or
- * more enabled frequencies wrap into a second row rather than shrinking an option under it.
+ * more enabled frequencies, or three on a card too narrow for them, wrap into a second row rather
+ * than shrinking an option under it. the track is a query container so the lines between its
+ * options can tell which option opens a row (./parts.css, the grid-line rules).
  */
 .segment {
 	display: grid;
 	/* raw-length-ok: an option's own track minimum, which is a shape rather than a step. */
 	grid-template-columns: repeat(auto-fit, minmax(5.5em, 1fr));
 	gap: var(--_sp2);
+	container-type: inline-size;
 }
 
 /*

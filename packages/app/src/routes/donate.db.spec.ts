@@ -306,7 +306,7 @@ describe('the profile head /donate is handed', () => {
 		}
 	});
 
-	it('names the organisation, its EIN, photos, story, raised figure and footer', async () => {
+	it('names the organisation, its EIN, photos, story and footer, and nothing it has raised', async () => {
 		await saveProfile(db, { mission: MISSION, vision: 'No family on Elm Street goes hungry.' });
 		const logo = await putLogo(db, { contentType: 'image/png', width: 640, height: 160 });
 		const banner = await putBanner(db, { contentType: 'image/png', width: 1600, height: 400 });
@@ -324,8 +324,6 @@ describe('the profile head /donate is handed', () => {
 			logo: { src: `/image/${logo}`, width: 640, height: 160 },
 			mission: MISSION,
 			vision: 'No family on Elm Street goes hungry.',
-			raised: { raisedMinor: 12_000, gifts: 2 },
-			money: { locale: expect.any(String), currency: 'USD' },
 			footer: {
 				addressLines: ['12 Kigali Road', 'Kigali', 'Rwanda'],
 				email: null,
@@ -336,15 +334,11 @@ describe('the profile head /donate is handed', () => {
 		});
 	});
 
-	it('hands no banner and nothing raised on a fresh deployment', async () => {
+	it('hands no banner and no logo on a fresh deployment', async () => {
 		const answered = await visit();
 
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
-		expect(answered.data.profile).toMatchObject({
-			banner: null,
-			logo: null,
-			raised: { raisedMinor: 0, gifts: 0 }
-		});
+		expect(answered.data.profile).toMatchObject({ banner: null, logo: null });
 	});
 });
 

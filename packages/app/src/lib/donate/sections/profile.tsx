@@ -1,20 +1,37 @@
-import { formatOffer } from '@better-giving/form/money';
 import type { DonateProfile } from '../profile';
 
-// the Donation page's profile head at /donate: the banner or the brand's band over it, the logo or
-// a badge of the name's initials, the name and the EIN, and what the organisation has raised. each
-// part draws only where the organisation has what it shows; ../page-view.tsx picks the layout the
-// parts stand in and works out the initials and the name's length, which it shares with the
-// masthead and the title.
+// the Donation page's profile head at /donate: the banner, the logo or a badge of the name's
+// initials, and the name and the EIN. each part draws only where the organisation has what it
+// shows; ../page-view.tsx picks the layout the parts stand in ($lib/page/profile-shape.ts) and works
+// out the initials and the name's length, which it shares with the masthead and the title.
 
-/** the banner, or with none the band in the brand's step 3; decoration, so out of the reading. */
-export function ProfileBanner({ banner }: { readonly banner: DonateProfile['banner'] }) {
-	if (banner === null) {
-		return <div className="page-profile-band" data-area="banner" aria-hidden="true" />;
-	}
+/** the saved banner, framed, in the card and the letter; decoration, so out of the reading. */
+export function ProfileBanner({
+	banner
+}: {
+	readonly banner: NonNullable<DonateProfile['banner']>;
+}) {
 	return (
 		<div className="page-profile-banner" data-area="banner" aria-hidden="true">
 			<img className="page-photo" src={banner.src} alt="" />
+		</div>
+	);
+}
+
+/**
+ * the feature's cover: the saved banner as a photo the scrim lies over (`data-cover="photo"`), or
+ * with none the brand's own ground, which takes no scrim (`data-cover="none"`). decoration, so out
+ * of the reading.
+ */
+export function ProfileCover({ banner }: { readonly banner: DonateProfile['banner'] }) {
+	return (
+		<div
+			className="page-profile-cover"
+			data-area="banner"
+			data-cover={banner === null ? 'none' : 'photo'}
+			aria-hidden="true"
+		>
+			{banner === null ? null : <img className="page-photo" src={banner.src} alt="" />}
 		</div>
 	);
 }
@@ -78,36 +95,5 @@ export function ProfileName({
 				</p>
 			)}
 		</div>
-	);
-}
-
-/**
- * what has been raised, in full and never abbreviated, and from how many gifts; at nothing, the
- * invitation in its place, with no figure and no count.
- */
-export function ProfileRaised({
-	raised,
-	money
-}: {
-	readonly raised: DonateProfile['raised'];
-	readonly money: DonateProfile['money'];
-}) {
-	if (raised.raisedMinor <= 0) {
-		return (
-			<p className="page-profile-first" data-area="raised">
-				Be the first to give.
-			</p>
-		);
-	}
-	const gifts = new Intl.NumberFormat(money.locale).format(raised.gifts);
-	return (
-		<p className="page-profile-raised" data-area="raised">
-			<span className="page-profile-raised-figure">
-				{formatOffer(raised.raisedMinor, money.locale, money.currency)}
-			</span>{' '}
-			<span className="page-profile-raised-label">
-				raised from {raised.gifts === 1 ? '1 gift' : `${gifts} gifts`}
-			</span>
-		</p>
 	);
 }
