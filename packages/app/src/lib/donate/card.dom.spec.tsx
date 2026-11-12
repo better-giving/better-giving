@@ -892,7 +892,7 @@ describe('the way past the presets', () => {
  * the amount step's refusal as the region says it, with the subject the visible sentence takes from
  * where it stands.
  */
-const AMOUNT_REFUSED = 'Amount: between $5 and $5,000';
+const AMOUNT_REFUSED = 'Amount: Enter an amount between $5 and $5,000';
 
 // the caret lands on the entry, which is described by the sentence while it stands, so arriving there
 // reads it: the region saying it too is the refusal twice.
@@ -904,7 +904,7 @@ it('refuses a figure outside the bounds and states them on the entry the caret l
 	press(one(root, CONTINUE));
 
 	expect(one(root, '#amount-problem').hidden).toBe(false);
-	expect(one(root, '#amount-problem').textContent).toBe('between $5 and $5,000');
+	expect(one(root, '#amount-problem').textContent).toBe('Enter an amount between $5 and $5,000');
 	expect(input(root, '#amount-entry').getAttribute('aria-invalid')).toBe('true');
 	expect(input(root, '#amount-entry').getAttribute('aria-describedby')).toBe('amount-problem');
 	expect(document.activeElement).toBe(input(root, '#amount-entry'));

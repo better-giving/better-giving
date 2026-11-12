@@ -112,7 +112,7 @@ export const NOTIFY_EMAIL_PROBLEM = 'Enter their email address';
  * `$5.00` here would claim a precision nobody set.
  */
 export function amountProblem(offer: (minor: number) => string, min: number, max: number): string {
-	return `between ${offer(min)} and ${offer(max)}`;
+	return `Enter an amount between ${offer(min)} and ${offer(max)}`;
 }
 
 /**

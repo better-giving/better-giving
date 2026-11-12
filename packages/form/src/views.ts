@@ -1506,7 +1506,7 @@ export function createCard(
 	// twice: `update` reads this same string onto the live region, under the entry's label. they are
 	// offered the way a tile is, not stated the way a row is (./money.ts): `$5.00` here claims a
 	// precision nobody set.
-	const amountProblem = `between ${offer(config.minAmountMinor)} and ${offer(config.maxAmountMinor)}`;
+	const amountProblem = `Enter an amount between ${offer(config.minAmountMinor)} and ${offer(config.maxAmountMinor)}`;
 	const amountMessage = make(doc, 'p', { class: 'message', id: 'amount-problem', hidden: true }, [
 		amountProblem
 	]);

@@ -1709,7 +1709,7 @@ describe('the amount step', () => {
 		card.find('[part~="action"]:not([part~="submit"])').click();
 
 		expect(card.find('#amount-problem').hidden).toBe(false);
-		expect(card.find('#amount-problem').textContent).toBe('between $5 and $50,000');
+		expect(card.find('#amount-problem').textContent).toBe('Enter an amount between $5 and $50,000');
 	});
 
 	it('ties the message to the control with aria-describedby, never to a tooltip', async () => {
@@ -1756,7 +1756,7 @@ describe('the amount step', () => {
 		expect(entry.getAttribute('aria-invalid')).toBe('true');
 		expect(described).toBe('amount-problem');
 		expect(card.find(`#${described}`).hidden).toBe(false);
-		expect(card.text(`#${described}`)).toBe('between $5 and $50,000');
+		expect(card.text(`#${described}`)).toBe('Enter an amount between $5 and $50,000');
 
 		type(entry, '40');
 
@@ -1834,7 +1834,7 @@ describe('the amount step', () => {
 		// something twice is a clear and a write a task apart (`#announce` in ./element.ts).
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('Amount: between $5 and $50,000');
+		expect(card.text('[role="status"]')).toBe('Amount: Enter an amount between $5 and $50,000');
 	});
 
 	// the bounds on the card stand under the box they are about; the region's sentence has no box to
@@ -1846,8 +1846,8 @@ describe('the amount step', () => {
 		card.find('[part~="action"]:not([part~="submit"])').click();
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('Amount: between $5 and $50,000');
-		expect(card.text('#amount-problem')).toBe('between $5 and $50,000');
+		expect(card.text('[role="status"]')).toBe('Amount: Enter an amount between $5 and $50,000');
+		expect(card.text('#amount-problem')).toBe('Enter an amount between $5 and $50,000');
 	});
 
 	// the second press is the whole of this one, and it is the same defect the review step's refusal
