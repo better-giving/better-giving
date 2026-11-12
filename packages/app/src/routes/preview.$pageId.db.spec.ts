@@ -391,7 +391,8 @@ describe('donors’ messages in the preview of the Donation page', () => {
 			const donateShown = await donateAnswers(null);
 			expect(shown.messages).toHaveLength(listed);
 			expect(shown).toEqual(donateShown);
-			// /donate's own loader gates the page itself, which Show more and the preview share one read past
+			// /donate's own loader gates the page itself; Show more and the preview share one read past
+			// that gate.
 			const onDonate = await donateProfileMessages();
 			if (listed === 0) {
 				expect((onDonate as { messages: unknown[] } | null)?.messages ?? []).toEqual([]);

@@ -40,9 +40,9 @@ export function ProfileCover({ banner }: { readonly banner: DonateProfile['banne
 }
 
 /**
- * the logo, named for the organisation (`{name} logo`); with none, the badge of the
- * name's initials, which says nothing of its own beside the name; with no letter in the name to make
- * a badge, nothing.
+ * the logo, named for the organisation (`{name} logo`); with none, the badge of the name's initials,
+ * which says nothing of its own beside the name; with no letter in the name to make a badge,
+ * nothing.
  */
 export function ProfileMark({
 	name,

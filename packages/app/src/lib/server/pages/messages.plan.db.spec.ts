@@ -64,7 +64,8 @@ it('reads a span of the admin messages between two cursors from the same index',
 	expect(plan).not.toContainEqual(expect.stringMatching(/USE TEMP B-TREE FOR ORDER BY/));
 });
 
-// `giftNetRaised` (../ledger/queries.ts) runs once per public note, in the count and in the page, so each probe shows at least twice.
+// `giftNetRaised` (../ledger/queries.ts) runs once per public note, in the count and in the page, so
+// each probe shows at least twice.
 it('probes each gift’s net through the payment, entry group and ledger indexes, never a scan', async () => {
 	const plan = await planStepsOf(await statementsOf((db) => readShownMessages(db, null)));
 	const probes = [
