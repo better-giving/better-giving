@@ -1554,6 +1554,12 @@ body {
 	z-index: 1;
 }
 
+/* 24px: 6 of the registry button's own spacing steps, of which the press is 13. */
+.page-video-glyph {
+	inline-size: calc(var(--ds-spacing) * 6);
+	block-size: calc(var(--ds-spacing) * 6);
+}
+
 /* the live region is in every face and holds nothing but while loading; it never takes a press. */
 .page-video-status {
 	position: absolute;
@@ -2005,6 +2011,12 @@ body {
 
 .page-about .page-label {
 	margin-block-end: var(--_sp4);
+}
+
+/* the feature's closing band sets its label at the display weight; the Donation page's keeps the
+   page label's. */
+.page[data-layout='feature'] .page-about .page-label {
+	font-weight: var(--page-w-display);
 }
 
 .page-about-statement {

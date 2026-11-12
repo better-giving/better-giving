@@ -635,6 +635,19 @@ describe('the share row and the footer', () => {
 	});
 });
 
+describe('the video play press', () => {
+	// the press is the registry's large square, 13 of its spacing steps; the glyph is 6 of them.
+	it('draws its glyph at 24px on the press’s own spacing step', () => {
+		const button = blocks(
+			readFileSync(require.resolve('@better-giving/form/registry/styles/button-css.css'), 'utf8')
+		);
+		const glyph = declared(page, '.page-video-glyph');
+		const step = declared(button, '.ds-btn');
+		expect(substitute(step, glyph['inline-size'] ?? '')).toBe('calc(0.25rem * 6)');
+		expect(glyph['block-size']).toBe(glyph['inline-size']);
+	});
+});
+
 describe('the scrim over the feature’s cover', () => {
 	const scrim = declared(page, '.page > .page-ground')['--page-scrim'] ?? '';
 	const stops = [...scrim.matchAll(/oklch\(([^/]+)\/\s*([\d.]+)\)\s*([\d.]+%)?/g)];
@@ -1049,6 +1062,13 @@ describe('the profile head’s type', () => {
 		expect(heading['font-family']).toBe('var(--page-font-display)');
 		expect(weight(heading['font-weight'])).toBe('700');
 		expect(displayWeights).toContain('700');
+	});
+
+	it('sets the feature’s closing About us band at the display weight, 700, and no other band', () => {
+		expect(
+			weight(declared(page, ".page[data-layout='feature'] .page-about .page-label")['font-weight'])
+		).toBe('700');
+		expect(declared(page, '.page-about .page-label')['font-weight']).toBeUndefined();
 	});
 
 	it('sets the EIN on a 20px line', () => {

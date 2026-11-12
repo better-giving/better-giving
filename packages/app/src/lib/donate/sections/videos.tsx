@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { type ShownVideo, VIDEOS_MAX, youTubeEmbedUrl, youTubeWatchUrl } from '../../page/videos';
+import { Glyph } from './glyph';
 
 // "Videos" on /donate: the nonprofit's YouTube videos, each a poster this deployment serves with a
 // play press over it, in a grid of one column below 48rem of page width and two from there (an odd
@@ -101,9 +102,6 @@ function VideoFigure({
 							loading="lazy"
 							decoding="async"
 						/>
-						{/* the registry squares its large press at 52px (`ds-btn-icon` on `ds-btn-lg`); the
-						    word stands where a play glyph would, which neither the form's glyph set nor the
-						    operator's holds. */}
 						<button
 							type="button"
 							className="ds-btn ds-btn-primary ds-btn-lg ds-btn-icon page-video-play"
@@ -113,7 +111,7 @@ function VideoFigure({
 								setFace('loading');
 							}}
 						>
-							Play
+							<Glyph name="play" className="page-video-glyph" />
 						</button>
 					</>
 				) : null}

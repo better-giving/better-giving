@@ -5,7 +5,7 @@ const SVG = 'http://www.w3.org/2000/svg';
 
 /**
  * lucide's `chevron-down`, `search`, `check`, `copy`, `circle-alert`, `circle-help`, `arrow-right`,
- * `mail` and `link` (https://lucide.dev, ISC), each drawn in `currentColor` at its source's own
+ * `mail`, `link` and `play` (https://lucide.dev, ISC), each drawn in `currentColor` at its source's own
  * stroke. a circle or a rect is written as the path it describes.
  *
  * exported as data as well as through `glyph` below: the deployment's donor page draws its blocks
@@ -29,8 +29,8 @@ export const GLYPHS = {
 		'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3',
 		'M12 17h.01'
 	],
-	// the last three are the donor page's (the share buttons and the ended campaign's link); the
-	// card draws none of them.
+	// the last four are the donor page's (the share buttons, the ended campaign's link and the video's
+	// press); the card draws none of them.
 	'arrow-right': ['M5 12h14', 'm12 5 7 7-7 7'],
 	mail: [
 		'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z',
@@ -39,7 +39,8 @@ export const GLYPHS = {
 	link: [
 		'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71',
 		'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'
-	]
+	],
+	play: ['M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z']
 } as const;
 
 export type GlyphName = keyof typeof GLYPHS;
