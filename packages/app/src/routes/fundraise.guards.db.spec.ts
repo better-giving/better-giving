@@ -302,6 +302,22 @@ describe('a mailed link', () => {
 		expect(opened.headers.get('cache-control')).toBe('no-store');
 	});
 
+	it.each([
+		['live', { status: 'live' as const, publishedAt: new Date() }],
+		['ended', { status: 'ended' as const, endedAt: new Date() }]
+	])(
+		'names a confirm link’s press as a sign-in where its page is already %s',
+		async (_, change) => {
+			const browser = cookieJar();
+			await postStart(browser);
+			const token = tokenIn(mailed.at(-1)?.text ?? '');
+			await db.update(supporterPage).set(change);
+			const shown = await call(open.loader, request(`/fundraise/open?token=${token}`));
+			expect(shown.data).toMatchObject({ purpose: 'sign_in', page: null });
+			expect((await openLink(token)).location).toMatch(/^\/fundraise\/pages\//);
+		}
+	);
+
 	it('refuses a post from another site, spending nothing', async () => {
 		const browser = cookieJar();
 		await postStart(browser);
@@ -416,6 +432,56 @@ describe('the sign-in screen', () => {
 		const loaderHeaders = new Headers(landed.headers);
 		const document = signIn.headers({ loaderHeaders } as Parameters<typeof signIn.headers>[0]);
 		expect(new Headers(document).get('cache-control')).toBe('no-store');
+	});
+
+	/** "Email me a link" for `email`, posted from `address`. */
+	const askFrom = (address: string, email: string) =>
+		call(
+			signIn.action,
+			new Request(`${ORIGIN}/fundraise/sign-in`, {
+				method: 'POST',
+				headers: { [CLIENT_IP_HEADER]: address, 'sec-fetch-site': 'same-origin', origin: ORIGIN },
+				body: form({ intent: 'request-link', email })
+			})
+		);
+
+	it('names the caller bucket’s wait when that bucket refused the ask', async () => {
+		const { limit, period } = SPEC_RATE_LIMITS.SUPPORTER_LINK_CALLER_RATE_LIMITER;
+		for (let n = 0; n < limit; n += 1) await askFrom('192.0.2.90', `ask${n}@example.org`);
+		const refused = await askFrom('192.0.2.90', 'maya@example.org');
+		expect(refused.status).toBe(429);
+		expect(refused.data).toMatchObject({
+			tooMany: { email: 'maya@example.org', retryAfterSeconds: period }
+		});
+	});
+
+	it('names the address bucket’s wait when that bucket refused the ask', async () => {
+		const { limit, period } = SPEC_RATE_LIMITS.SUPPORTER_LINK_ADDRESS_RATE_LIMITER;
+		for (let n = 0; n < limit; n += 1) await askFrom(`192.0.2.${100 + n}`, 'maya@example.org');
+		const refused = await askFrom('192.0.2.99', 'maya@example.org');
+		expect(refused.status).toBe(429);
+		expect(refused.data).toMatchObject({
+			tooMany: { email: 'maya@example.org', retryAfterSeconds: period }
+		});
+	});
+
+	it('names the wait for a Send it again over its limit, which lands here', async () => {
+		const { limit, period } = SPEC_RATE_LIMITS.SUPPORTER_LINK_ADDRESS_RATE_LIMITER;
+		for (let n = 0; n < limit; n += 1) await askFrom(`192.0.2.${110 + n}`, 'maya@example.org');
+		const browser = cookieJar();
+		const resent = await call(
+			sent.action,
+			request('/fundraise/sent', { body: form({ intent: 'resend', email: 'maya@example.org' }) })
+		);
+		browser.take(resent);
+		expect(resent.location).toBe('/fundraise/sign-in');
+		const landed = await call(
+			signIn.loader,
+			request('/fundraise/sign-in', { cookie: browser.header() })
+		);
+		expect(landed.data).toMatchObject({
+			state: { kind: 'too-many', email: 'maya@example.org', retryAfterSeconds: period }
+		});
 	});
 });
 
@@ -542,6 +608,66 @@ describe('a supporter’s photo', () => {
 		expect(refused.status).toBe(429);
 		expect(refused.data).toEqual({ error: expect.stringMatching(/^[A-Z].*\.$/) });
 		expect(await db.$count(image)).toBe(before);
+	});
+
+	/** the photo posted from `address`, as a caller the proxy attributes to it. */
+	const postFrom = (cookie: string, address: string) => {
+		const body = new FormData();
+		body.set('file', new Blob([pngHeader(1600, 900)], { type: 'image/png' }));
+		const at = request('/fundraise/photo', { cookie, body });
+		at.headers.set(CLIENT_IP_HEADER, address);
+		return call(photo.action, at);
+	};
+
+	/** a second sign-in of maya, opened from "Email me a link": another session of the same supporter. */
+	async function secondSession() {
+		await call(
+			signIn.action,
+			request('/fundraise/sign-in', {
+				body: form({ intent: 'request-link', email: 'maya@example.org' })
+			})
+		);
+		await lastWork.settled();
+		const jar = cookieJar();
+		jar.take(await openLink(tokenIn(mailed.at(-1)?.text ?? '')));
+		return jar;
+	}
+
+	it('counts one supporter across sessions and addresses, though no one address crowds', async () => {
+		const { browser } = await liveFundraiser(db, mailed);
+		const other = await secondSession();
+		expect(other.header()).not.toBe(browser.header());
+		const { limit } = SPEC_RATE_LIMITS.SUPPORTER_PHOTO_RATE_LIMITER;
+		for (let n = 0; n < limit; n += 1) {
+			const session = n % 2 === 0 ? browser : other;
+			expect((await postFrom(session.header(), `203.0.113.${n + 1}`)).status).toBe(200);
+		}
+		const before = await db.$count(image);
+		expect((await postFrom(other.header(), '203.0.113.200')).status).toBe(429);
+		expect((await postFrom(browser.header(), '203.0.113.201')).status).toBe(429);
+		expect(await db.$count(image)).toBe(before);
+	});
+
+	it('counts one caller across supporters, though no one supporter crowds', async () => {
+		const { browser: maya } = await liveFundraiser(db, mailed);
+		const { browser: sam } = await liveFundraiser(db, mailed, {
+			...STARTED,
+			name: 'Sam Lee',
+			email: 'sam@example.org',
+			title: 'Swim for the shelter'
+		});
+		const { limit } = SPEC_RATE_LIMITS.SUPPORTER_PHOTO_RATE_LIMITER;
+		// one ipv6 /48, from two addresses in it
+		const inBlock = (n: number) => `2001:db8:1:${n}::1`;
+		for (let n = 0; n < limit - 1; n += 1) {
+			expect((await postFrom(maya.header(), inBlock(n))).status).toBe(200);
+		}
+		expect((await postFrom(sam.header(), inBlock(7))).status).toBe(200);
+		const before = await db.$count(image);
+		expect((await postFrom(sam.header(), inBlock(8))).status).toBe(429);
+		expect(await db.$count(image)).toBe(before);
+		// the same supporter from another block is still under their own count
+		expect((await postFrom(sam.header(), '2001:db8:2::1')).status).toBe(200);
 	});
 
 	it('is refused to a caller with no supporter session, staff included', async () => {

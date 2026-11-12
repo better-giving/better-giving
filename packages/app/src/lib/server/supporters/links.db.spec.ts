@@ -104,7 +104,7 @@ describe('asking for a sign-in link', () => {
 	it('answers too many tries past the bucket for one client address', async () => {
 		const request = () => from('198.51.100.7');
 		const limiters = { ...roomy(), byCaller: createRateLimiter({ limit: 2, period: 60 }) };
-		const answers: string[] = [];
+		const answers: unknown[] = [];
 		for (const email of ['a@example.org', 'b@example.org', 'c@example.org']) {
 			answers.push(
 				await requestSignInLink(
@@ -114,12 +114,12 @@ describe('asking for a sign-in link', () => {
 				)
 			);
 		}
-		expect(answers).toEqual(['sent', 'sent', 'too_many']);
+		expect(answers).toEqual(['sent', 'sent', { retryAfterSeconds: 60 }]);
 	});
 
 	it('answers too many tries past the bucket for one email, from any address', async () => {
 		const limiters = { ...roomy(), byAddress: createRateLimiter({ limit: 2, period: 3600 }) };
-		const answers: string[] = [];
+		const answers: unknown[] = [];
 		for (let n = 0; n < 3; n += 1) {
 			answers.push(
 				await requestSignInLink(
@@ -129,7 +129,7 @@ describe('asking for a sign-in link', () => {
 				)
 			);
 		}
-		expect(answers).toEqual(['sent', 'sent', 'too_many']);
+		expect(answers).toEqual(['sent', 'sent', { retryAfterSeconds: 3600 }]);
 	});
 
 	it('spends nothing of the address’s bucket for a caller over its own', async () => {
@@ -145,8 +145,8 @@ describe('asking for a sign-in link', () => {
 			);
 		const flooding = () => from('198.51.100.8');
 		expect(await press(flooding())).toBe('sent');
-		expect(await press(flooding())).toBe('too_many');
-		expect(await press(flooding())).toBe('too_many');
+		expect(await press(flooding())).toEqual({ retryAfterSeconds: 60 });
+		expect(await press(flooding())).toEqual({ retryAfterSeconds: 60 });
 		expect(await press(from())).toBe('sent');
 	});
 });

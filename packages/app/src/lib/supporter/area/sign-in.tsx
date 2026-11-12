@@ -23,9 +23,6 @@ const SIGN_IN = defineForm({ id: SIGN_IN_FORM.id, schema: SIGN_IN_FORM.schema })
 /** how long Send it again stays closed after a resend. */
 export const RESEND_WAIT_SECONDS = 60;
 
-/** how long Send a new link stays closed after Too many tries, where the server names no wait. */
-export const TOO_MANY_WAIT_SECONDS = 60;
-
 /** `0:42`. */
 const clock = (seconds: number) =>
 	`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -59,7 +56,7 @@ export function CheckEmail({
 	const heading = useRef<HTMLHeadingElement>(null);
 	// the heading takes focus when this screen arrives, so a screen reader starts at it.
 	useEffect(() => heading.current?.focus(), []);
-	const left = useCountdown(resentAt);
+	const left = useCountdown(resentAt === null ? 0 : RESEND_WAIT_SECONDS, resentAt);
 	const waiting = left > 0;
 	const press = usePressOnce(sending, resentAt);
 	return (
@@ -115,24 +112,30 @@ export function CheckEmail({
 	);
 }
 
-/** the whole seconds left of the wait that began when `startedAt` changed, counting down to 0. */
-function useCountdown(startedAt: number | null): number {
-	const [left, setLeft] = useState(0);
+/**
+ * the whole seconds left of a `seconds` wait, counting down to 0, begun again each time `startedBy`
+ * changes. a wait of 0 is none.
+ */
+function useCountdown(seconds: number, startedBy: unknown): number {
+	const [left, setLeft] = useState(seconds);
 	useEffect(() => {
-		if (startedAt === null) return;
+		if (seconds === 0) {
+			setLeft(0);
+			return;
+		}
 		const began = Date.now();
 		let every: ReturnType<typeof setInterval> | undefined;
 		// the interval stops itself at zero: a tick can land late, past any timer set to stop it.
 		const tick = () => {
 			const gone = Math.floor((Date.now() - began) / 1000);
-			const remaining = Math.max(0, RESEND_WAIT_SECONDS - gone);
+			const remaining = Math.max(0, seconds - gone);
 			setLeft(remaining);
 			if (remaining === 0) clearInterval(every);
 		};
 		every = setInterval(tick, 1000);
 		tick();
 		return () => clearInterval(every);
-	}, [startedAt]);
+	}, [seconds, startedBy]);
 	return left;
 }
 
@@ -146,8 +149,8 @@ export type SignInState =
 	| {
 			readonly kind: 'too-many';
 			readonly email: string;
-			/** how long the server says to wait; absent, `TOO_MANY_WAIT_SECONDS`. */
-			readonly retryAfterSeconds?: number | undefined;
+			/** how long the server says to wait before it takes another ask. */
+			readonly retryAfterSeconds: number;
 	  };
 
 export type SignInProps = {
@@ -165,7 +168,10 @@ export function SignIn({ org, state, lastResult, sending }: SignInProps) {
 		answered(SIGN_IN, lastResult),
 		state.kind === 'too-many' ? { defaultValue: { email: state.email } } : {}
 	);
-	const closed = useTooManyWait(state, lastResult);
+	// each Too many tries the screen draws starts the wait over: the state arriving, or another
+	// refused post (`lastResult`) while it stands.
+	const left = useCountdown(state.kind === 'too-many' ? state.retryAfterSeconds : 0, lastResult);
+	const waiting = left > 0;
 	const press = usePressOnce(sending, lastResult);
 	const formProps = getFormProps(form);
 	const box = (
@@ -199,10 +205,14 @@ export function SignIn({ org, state, lastResult, sending }: SignInProps) {
 			<button
 				type="submit"
 				className="ds-btn ds-btn-primary ds-btn-lg ds-btn-sentence"
-				disabled={closed}
+				disabled={waiting}
 				aria-busy={sending || undefined}
 			>
-				{state.kind === 'ask' ? 'Email me a link' : 'Send a new link'}
+				{state.kind === 'ask'
+					? 'Email me a link'
+					: waiting
+						? `Send a new link in ${clock(left)}`
+						: 'Send a new link'}
 			</button>
 			{state.kind === 'ask' ? (
 				<p className="sa-quiet">No password. The link works once and expires in an hour.</p>
@@ -218,28 +228,11 @@ export function SignIn({ org, state, lastResult, sending }: SignInProps) {
 					</NoticeCard>
 				) : state.kind === 'too-many' ? (
 					<NoticeCard tone="destructive" heading="h1" title="Too many tries" alert>
-						Wait a little, then ask for a new link.
+						Send a new link opens again when its countdown ends.
 					</NoticeCard>
 				) : null}
 				{box}
 			</div>
 		</SupporterShell>
 	);
-}
-
-/**
- * whether Send a new link is closed: from each Too many tries the screen draws — the state arriving,
- * or another refused post (`lastResult`) while it stands — until the wait is over.
- */
-function useTooManyWait(state: SignInState, lastResult: FormResult | undefined): boolean {
-	const tooMany = state.kind === 'too-many';
-	const wait = tooMany ? (state.retryAfterSeconds ?? TOO_MANY_WAIT_SECONDS) : 0;
-	const [over, setOver] = useState(false);
-	useEffect(() => {
-		if (!tooMany) return;
-		setOver(false);
-		const reopen = setTimeout(() => setOver(true), wait * 1000);
-		return () => clearTimeout(reopen);
-	}, [tooMany, wait, lastResult]);
-	return tooMany && !over;
 }

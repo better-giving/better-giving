@@ -5,6 +5,7 @@ import { createImage, stored } from '$lib/server/images/image.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { heroShowing, insertPage } from '$lib/server/pages/page-row.testing';
 import { heldAddresses } from '$lib/server/pages/queries';
+import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { emptySupporterTables, pendingPage, STARTED_AT } from './fundraiser.testing';
 import { signInWithLink } from './links';
 import { PENDING_PAGE_KEEP_MS, sweepSupporterLeftovers } from './sweep';
@@ -203,6 +204,83 @@ describe('sweeping fundraisers nobody confirmed', () => {
 		expect(await count('supporter_page where id = ?', pageId)).toBe(1);
 		expect(await count('form where id = ?', formId)).toBe(1);
 		expect(await stored(db, photoId)).toEqual({ row: true, bytes: true });
+	});
+
+	/** a second fundraiser, confirmed by its link inside the window, so no sweep touches it. */
+	async function livePage() {
+		const started = await pendingPage(db, {
+			name: 'Sam Lee',
+			email: 'sam@example.org',
+			title: 'Swim for the shelter'
+		});
+		const opened = await signInWithLink(
+			db,
+			new Request('https://give.example/fundraise/open'),
+			started.token,
+			new Date(STARTED_AT.getTime() + 60_000)
+		);
+		expect(opened).toMatchObject({ ok: true, published: true });
+		return started.pageId;
+	}
+
+	it('keeps one a gift went through its settings row, with that row and its photo', async () => {
+		const { pageId, photoId, formId } = await pendingWithPhoto();
+		await gift(db, formId, 2_500);
+		// the gift names the page only through its settings row
+		await run(stmt('update donation set supporter_page_id = null'));
+
+		await sweepSupporterLeftovers(db, pastWindow(1));
+
+		expect(await count('supporter_page where id = ?', pageId)).toBe(1);
+		expect(await count('form where id = ?', formId)).toBe(1);
+		expect(await stored(db, photoId)).toEqual({ row: true, bytes: true });
+	});
+
+	it('keeps one a gift names as its fundraiser, though the gift went through another form', async () => {
+		const { pageId, formId } = await pendingWithPhoto();
+		const otherPageId = await livePage();
+		const [other] = await all<{ form_id: string }>(
+			stmt('select form_id from supporter_page where id = ?', otherPageId)
+		);
+		await gift(db, other?.form_id ?? '', 2_500);
+		await run(stmt('update donation set supporter_page_id = ?', pageId));
+
+		await sweepSupporterLeftovers(db, pastWindow(1));
+
+		expect(await count('supporter_page where id = ?', pageId)).toBe(1);
+		expect(await count('form where id = ?', formId)).toBe(1);
+	});
+
+	it('deletes one with no gift beside a kept one with a gift, each by its own', async () => {
+		const quiet = await pendingWithPhoto();
+		const given = await pendingPage(db, {
+			name: 'Sam Lee',
+			email: 'sam@example.org',
+			title: 'Swim for the shelter'
+		});
+		const [row] = await all<{ form_id: string }>(
+			stmt('select form_id from supporter_page where id = ?', given.pageId)
+		);
+		await gift(db, row?.form_id ?? '', 2_500);
+
+		await sweepSupporterLeftovers(db, pastWindow(1));
+
+		expect(await count('supporter_page where id = ?', quiet.pageId)).toBe(0);
+		expect(await count('supporter_page where id = ?', given.pageId)).toBe(1);
+	});
+
+	it('keeps a photo another page holds, and deletes the page that shared it', async () => {
+		const { pageId, photoId } = await pendingWithPhoto();
+		const otherPageId = await livePage();
+		await run(stmt('update supporter_page set photo_id = ? where id = ?', photoId, otherPageId));
+
+		await sweepSupporterLeftovers(db, pastWindow(1));
+
+		expect(await count('supporter_page where id = ?', pageId)).toBe(0);
+		expect(await stored(db, photoId)).toEqual({ row: true, bytes: true });
+		expect(await count('supporter_page where id = ? and photo_id = ?', otherPageId, photoId)).toBe(
+			1
+		);
 	});
 
 	it('frees its address for a campaign', async () => {

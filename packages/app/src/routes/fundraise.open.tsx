@@ -15,10 +15,10 @@ import type { Route } from './+types/fundraise.open';
 // in $lib/server/supporters/links.ts): mail scanners fetch the links in a message, and a fetch
 // must neither publish a page nor sign anybody in. the press posts the token here, and the action
 // spends it (`signInWithLink`): it signs the supporter in, and a confirm link takes its page live.
-// a confirm link goes on to that page's
-// manage screen, saying once that it is live where this opening published it, and a sign-in link
-// to the supporter's list. a link used, expired or unknown goes to the sign-in screen's expired
-// state, from the GET and from the post alike.
+// a confirm link goes on to that page's manage screen, saying once that it is live where this
+// opening published it, and a sign-in link to the supporter's list. a confirm link whose page is
+// no longer pending publishes nothing, so its press is named as a sign-in's. a link used, expired
+// or unknown goes to the sign-in screen's expired state, from the GET and from the post alike.
 //
 // `no-store` on every answer: the screen carries the token, and the post's redirect sets the
 // session, which a kept copy would replay.
@@ -28,8 +28,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const token = new URL(request.url).searchParams.get('token') ?? '';
 	const link = token === '' ? null : await readOpeningLink(db, token, new Date());
 	if (link === null) throw unstored(await toExpiredLink(request));
+	const purpose = link.page === null ? 'sign_in' : link.purpose;
 	return data(
-		{ org: await readSupporterOrg(db), purpose: link.purpose, page: link.page, token },
+		{ org: await readSupporterOrg(db), purpose, page: link.page, token },
 		{ headers: { 'cache-control': 'no-store' } }
 	);
 }

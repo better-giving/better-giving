@@ -105,12 +105,12 @@ export async function action({ context, request }: Route.ActionArgs) {
 		ticket !== null && ticket.email === email
 			? await resendConfirmLink(deps, request, ticket)
 			: await requestSignInLink(deps, request, email);
-	if (asked === 'too_many') {
+	if (asked !== 'sent') {
 		return redirectWithFlash(
 			request,
 			SUPPORTER_SIGN_IN_FLASH,
 			href('/fundraise/sign-in'),
-			`too-many ${email}`
+			`too-many ${asked.retryAfterSeconds} ${email}`
 		);
 	}
 	return { resentAt: now.getTime() };

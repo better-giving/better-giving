@@ -525,9 +525,12 @@ describe('charging a bucket that is allowed to be absent', () => {
 	});
 
 	it('counts a caller with nothing left as limited', async () => {
-		expect(await isRateLimited({ limit: () => Promise.resolve({ success: false }) }, 'k')).toBe(
-			true
-		);
+		expect(
+			await isRateLimited(
+				{ limit: () => Promise.resolve({ success: false, retryAfterSeconds: 60 }) },
+				'k'
+			)
+		).toBe(true);
 	});
 
 	/**
@@ -565,7 +568,7 @@ describe('charging a bucket that is allowed to be absent', () => {
 		const refusing = {
 			limit: () => {
 				charged += 1;
-				return Promise.resolve({ success: false });
+				return Promise.resolve({ success: false, retryAfterSeconds: 60 });
 			}
 		};
 		expect(await isRateLimited(refusing, null)).toBe(false);
@@ -586,7 +589,7 @@ describe('an unattributable caller on the public surface', () => {
 
 	it('is refused by the surface bucket all the same', async () => {
 		const refusal = await refuseIfRateLimited(
-			{ limit: () => Promise.resolve({ success: false }) },
+			{ limit: () => Promise.resolve({ success: false, retryAfterSeconds: 60 }) },
 			anonymous
 		);
 		expect(refusal?.status).toBe(429);

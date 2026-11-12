@@ -552,9 +552,9 @@ function unboundSurface(): Response {
  * passed rather than reached for: it lives on the platform env, and this module never names one —
  * the call site does, which for this one is `src/routes/api.v1.ts`.
  *
- * the outcome is `{ success }` and there is nothing else to read. that is the right shape for what
- * it guards: the cost of a wrong answer here is one extra database read, or one donor asked to
- * reload.
+ * it reads `success` and nothing else, since its refusal words the whole period. that is the right
+ * shape for what it guards: the cost of a wrong answer here is one extra database read, or one
+ * donor asked to reload.
  *
  * the two ways it can fail to answer at all are answered opposite ways, and the difference is
  * whether waiting fixes it: a rejected `limit()` is transient and the request carries on
@@ -623,11 +623,22 @@ export async function isRateLimited(
 	limiter: RateLimiter | undefined,
 	key: string | null
 ): Promise<boolean> {
-	if (key === null || !limiter) return false;
+	return (await rateLimitWait(limiter, key)) !== null;
+}
+
+/**
+ * `isRateLimited`, answered with the seconds a refused caller has left to wait, and `null` wherever
+ * `isRateLimited` answers `false`.
+ */
+export async function rateLimitWait(
+	limiter: RateLimiter | undefined,
+	key: string | null
+): Promise<number | null> {
+	if (key === null || !limiter) return null;
 	try {
-		const { success } = await limiter.limit({ key });
-		return !success;
+		const answer = await limiter.limit({ key });
+		return answer.success ? null : answer.retryAfterSeconds;
 	} catch {
-		return false;
+		return null;
 	}
 }

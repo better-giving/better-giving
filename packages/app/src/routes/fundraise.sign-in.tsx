@@ -29,11 +29,13 @@ import type { Route } from './+types/fundraise.sign-in';
 /** the screen's form as the action parses it: the one `SignIn` mounts. */
 const SIGN_IN = defineForm({ id: SIGN_IN_FORM.id, schema: SIGN_IN_FORM.schema });
 
-/** the state a flash sends this screen in: `expired`, or `too-many <address>`. */
+/** the state a flash sends this screen in: `expired`, or `too-many <seconds> <address>`. */
 function stateOf(marker: string): SignInState {
 	if (marker === 'expired') return { kind: 'expired' };
-	if (marker.startsWith('too-many ')) {
-		return { kind: 'too-many', email: marker.slice('too-many '.length) };
+	const [kind, seconds, email] = marker.split(' ');
+	const retryAfterSeconds = Number(seconds);
+	if (kind === 'too-many' && email && Number.isInteger(retryAfterSeconds)) {
+		return { kind: 'too-many', email, retryAfterSeconds };
 	}
 	return { kind: 'ask' };
 }
@@ -72,7 +74,10 @@ export async function action({ context, request }: Route.ActionArgs) {
 		request,
 		email
 	);
-	if (asked === 'too_many') return invalid(429, submission.reject(), { tooMany: email });
+	if (asked !== 'sent') {
+		const tooMany = { email, retryAfterSeconds: asked.retryAfterSeconds };
+		return invalid(429, submission.reject(), { tooMany });
+	}
 	return redirectWithFlash(
 		request,
 		SUPPORTER_SENT_FLASH,
@@ -91,8 +96,7 @@ export function links(): Route.LinkDescriptors {
 
 export default function SignInRoute({ loaderData, actionData }: Route.ComponentProps) {
 	const tooMany = actionData?.tooMany;
-	const state: SignInState =
-		typeof tooMany === 'string' ? { kind: 'too-many', email: tooMany } : loaderData.state;
+	const state: SignInState = tooMany ? { kind: 'too-many', ...tooMany } : loaderData.state;
 	return (
 		<SignIn
 			org={loaderData.org}

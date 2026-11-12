@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { button, mountScreen, ORG, one, submit } from './area.testing';
+import { button, mountScreen, ORG, one, submit, submitTwice } from './area.testing';
 import { OpenLink, type OpenLinkProps } from './open-link';
 
 // the screen a mailed link opens on: one press that spends the link, named by what the link does.
@@ -36,6 +36,16 @@ describe('opening a mailed link', () => {
 		await submit(form);
 		expect(posted).toHaveLength(1);
 	});
+
+	it.each(['confirm', 'sign_in'] as const)(
+		'posts once on two presses in one tick of a %s link',
+		async (purpose) => {
+			const { root, posted } = open({ purpose });
+			await submitTwice(one<HTMLFormElement>(root, 'main form'));
+			expect(posted).toHaveLength(1);
+			expect(posted[0]?.get('token')).toBe('t0ken');
+		}
+	);
 
 	it('posts nothing on a press while the opening is out', async () => {
 		const { root, posted } = open({ opening: true });

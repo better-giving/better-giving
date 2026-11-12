@@ -370,14 +370,14 @@ describe('Send it again after a start', () => {
 	it('answers too many tries past the address’s bucket, mailing nothing more', async () => {
 		const first = await pendingPage(db);
 		const byAddress = createRateLimiter({ limit: 2, period: 3600 });
-		const answers: string[] = [];
+		const answers: unknown[] = [];
 		let sent = 0;
 		for (let n = 0; n < 3; n += 1) {
 			const { answer, mailed } = await resend(first, 'maya@example.org', { byAddress });
 			answers.push(answer);
 			sent += mailed.length;
 		}
-		expect(answers).toEqual(['sent', 'sent', 'too_many']);
+		expect(answers).toEqual(['sent', 'sent', { retryAfterSeconds: 3600 }]);
 		expect(sent).toBe(2);
 	});
 });

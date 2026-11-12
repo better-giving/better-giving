@@ -80,7 +80,8 @@ export const SUPPORTER_PUBLISHED_FLASH = 'supporter_published';
 
 /**
  * why a supporter was sent to `/fundraise/sign-in`: `expired` for a link that no longer opens, or
- * `too-many <address>` for a resend over its limit. taken by that screen alone.
+ * `too-many <seconds> <address>` for a resend over its limit, with the seconds left to wait. taken
+ * by that screen alone.
  */
 export const SUPPORTER_SIGN_IN_FLASH = 'supporter_sign_in';
 

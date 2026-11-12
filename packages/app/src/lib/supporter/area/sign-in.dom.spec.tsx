@@ -4,15 +4,10 @@ import { useActionData } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { SUPPORTER_SIGN_IN_INPUT } from '$lib/supporters/input';
 import { boxLabelled, mountScreen, ORG, one, submit, submitTwice } from './area.testing';
-import { SIGN_IN_FORM } from './forms';
-import {
-	CheckEmail,
-	type CheckEmailProps,
-	SignIn,
-	type SignInProps,
-	TOO_MANY_WAIT_SECONDS
-} from './sign-in';
+import { INTENTS, SIGN_IN_FORM } from './forms';
+import { CheckEmail, type CheckEmailProps, SignIn, type SignInProps } from './sign-in';
 import type { FormResult } from './supporter-form';
+import { usePosting } from './use-posting';
 
 // Check your email, the sign-in request, a link that no longer opens, and the limit reached.
 
@@ -109,6 +104,35 @@ describe('check your email', () => {
 		}
 	});
 
+	it('posts Send it again again once a resend lands and its wait ends', async () => {
+		vi.useFakeTimers();
+		try {
+			const { root, posted } = mountScreen(
+				// the sent route's mount: the resend's answer is the action's `resentAt`.
+				function Resent() {
+					const answer = useActionData<{ resentAt: number }>();
+					return (
+						<CheckEmail
+							{...CHECK}
+							resentAt={answer?.resentAt ?? null}
+							sending={usePosting(INTENTS.resend)}
+						/>
+					);
+				},
+				() => ({ resentAt: Date.now() })
+			);
+			const form = one<HTMLFormElement>(root, 'main form');
+			await submit(form);
+			expect(resend(root).disabled).toBe(true);
+			act(() => vi.advanceTimersByTime(60_000));
+			expect(resend(root).disabled).toBe(false);
+			await submit(form);
+			expect(posted).toHaveLength(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('keeps its status region on the page before anything is resent', () => {
 		const { root } = check({ kind: 'sign-in' });
 		expect(one(root, '[role="status"]').textContent).toBe('');
@@ -179,39 +203,71 @@ describe('the sign-in request', () => {
 	});
 
 	it('meets the limit with an alert, the box kept and the press closed', () => {
-		const { root } = signIn({ state: { kind: 'too-many', email: 'maya@example.org' } });
+		const { root } = signIn({
+			state: { kind: 'too-many', email: 'maya@example.org', retryAfterSeconds: 300 }
+		});
 		const notice = one(root, '.ds-notice-card');
 		expect(notice.className).toContain('ds-notice-card-destructive');
 		expect(notice.getAttribute('role')).toBe('alert');
 		expect(one(notice, 'h1').textContent).toBe('Too many tries');
-		expect(notice.textContent).toContain('Wait a little, then ask for a new link.');
+		expect(notice.textContent).toContain('Send a new link opens again when its countdown ends.');
 		expect(boxLabelled(root, 'Email').value).toBe('maya@example.org');
 		expect(resend(root).disabled).toBe(true);
 	});
 
-	it('opens the press again after the limit’s wait', () => {
+	it('counts the limit’s wait down in the closed press’s label', () => {
 		vi.useFakeTimers();
 		try {
-			const { root } = signIn({ state: { kind: 'too-many', email: 'maya@example.org' } });
-			act(() => vi.advanceTimersByTime(TOO_MANY_WAIT_SECONDS * 1000 - 1));
-			expect(resend(root).disabled).toBe(true);
-			act(() => vi.advanceTimersByTime(1));
+			const { root } = signIn({
+				state: { kind: 'too-many', email: 'maya@example.org', retryAfterSeconds: 125 }
+			});
+			expect(resend(root).textContent).toBe('Send a new link in 2:05');
+			act(() => vi.advanceTimersByTime(65_000));
+			expect(resend(root).textContent).toBe('Send a new link in 1:00');
+			act(() => vi.advanceTimersByTime(60_000));
 			expect(resend(root).disabled).toBe(false);
+			expect(resend(root).textContent).toBe('Send a new link');
 		} finally {
 			vi.useRealTimers();
 		}
 	});
 
-	it('waits as long as the server names', () => {
+	it('waits as long as the server names, from each refusal', async () => {
 		vi.useFakeTimers();
 		try {
-			const { root } = signIn({
-				state: { kind: 'too-many', email: 'maya@example.org', retryAfterSeconds: 5 }
-			});
+			const { root, posted } = mountScreen(
+				// the sign-in route's mount: a refusal's answer carries the box's result and the wait.
+				function Refused() {
+					const answer = useActionData<{
+						form: { result: FormResult };
+						tooMany: { email: string; retryAfterSeconds: number };
+					}>();
+					return (
+						<SignIn
+							org={ORG}
+							state={answer ? { kind: 'too-many', ...answer.tooMany } : { kind: 'ask' }}
+							lastResult={answer?.form.result}
+							sending={usePosting(INTENTS.requestLink)}
+						/>
+					);
+				},
+				(body) => ({
+					form: { result: parseWithZod(body, { schema: SUPPORTER_SIGN_IN_INPUT }).reply() },
+					tooMany: { email: 'maya@example.org', retryAfterSeconds: 5 }
+				})
+			);
+			const form = one<HTMLFormElement>(root, `form#${SIGN_IN_FORM.id}`);
+			boxLabelled(root, 'Email').value = 'maya@example.org';
+			await submit(form);
+			expect(resend(root).textContent).toBe('Send a new link in 0:05');
 			act(() => vi.advanceTimersByTime(4_999));
 			expect(resend(root).disabled).toBe(true);
 			act(() => vi.advanceTimersByTime(1));
 			expect(resend(root).disabled).toBe(false);
+			await submit(form);
+			expect(posted).toHaveLength(2);
+			expect(resend(root).disabled).toBe(true);
+			expect(resend(root).textContent).toBe('Send a new link in 0:05');
 		} finally {
 			vi.useRealTimers();
 		}

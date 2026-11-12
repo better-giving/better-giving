@@ -3,6 +3,7 @@ import type { Db } from '../db/client';
 import { supporter, supporterLink, supporterPage, type SupporterLinkPurpose } from '../db/schema';
 import {
 	isRateLimited,
+	rateLimitWait,
 	supporterLinkRateLimitKey,
 	supporterMailRateLimitKey
 } from '../api/rate-limit';
@@ -13,8 +14,8 @@ import { hashToken, mintToken } from './token';
 // the one-time links mailed to a supporter: asking for one, minting one, and opening one. a link is
 // stored as its hash, works once, and admits nothing 60 minutes after it was made. a newer link
 // spends no older one: asking needs no session, so a spend would let anyone who knows an address
-// spend the link its supporter is about to press. opening a
-// `confirm` link takes its pending page live and signs the supporter in; a `sign_in` link signs in.
+// spend the link its supporter is about to press. opening a `confirm` link takes its pending page
+// live and signs the supporter in; a `sign_in` link signs in.
 
 /** how long a link works for, from when it was made. */
 export const LINK_LIFETIME_MS = 60 * 60 * 1000;
@@ -89,15 +90,22 @@ export function addressOverLinkLimit(limiters: LinkLimiters, email: string): Pro
 	return isRateLimited(limiters.byAddress, supporterMailRateLimitKey(email));
 }
 
-/** both buckets, the caller's first; `true` where either has nothing left. */
+/** a link press refused: the seconds until the bucket that refused it admits again. */
+export type LinkRefusal = { readonly retryAfterSeconds: number };
+
+/**
+ * both buckets, the caller's first, the address's only where the caller's admitted; the refusal
+ * from whichever has nothing left, or `null`.
+ */
 async function overLinkLimit(
 	limiters: LinkLimiters,
 	request: Request,
 	email: string
-): Promise<boolean> {
-	return (
-		(await callerOverLinkLimit(limiters, request)) || (await addressOverLinkLimit(limiters, email))
-	);
+): Promise<LinkRefusal | null> {
+	const wait =
+		(await rateLimitWait(limiters.byCaller, supporterLinkRateLimitKey(request))) ??
+		(await rateLimitWait(limiters.byAddress, supporterMailRateLimitKey(email)));
+	return wait === null ? null : { retryAfterSeconds: wait };
 }
 
 export type SignInRequestDeps = {
@@ -112,15 +120,16 @@ export type SignInRequestDeps = {
 /**
  * "Email me a link". `sent` for every address, known or not, and the lookup, the mint and the mail
  * all run after the answer, in the deferred work, so neither the answer nor its timing says whether
- * the address has started a fundraiser. only an address with a `supporter` row is mailed.
- * `too_many` where the caller or the address is over its bucket, decided before anything is read.
+ * the address has started a fundraiser. only an address with a `supporter` row is mailed. a
+ * `LinkRefusal` where the caller or the address is over its bucket, decided before anything is read.
  */
 export async function requestSignInLink(
 	deps: SignInRequestDeps,
 	request: Request,
 	email: string
-): Promise<'sent' | 'too_many'> {
-	if (await overLinkLimit(deps.limiters, request, email)) return 'too_many';
+): Promise<'sent' | LinkRefusal> {
+	const refused = await overLinkLimit(deps.limiters, request, email);
+	if (refused !== null) return refused;
 	deps.defer(mailSignInLink(deps, email));
 	return 'sent';
 }
@@ -151,8 +160,9 @@ export async function resendConfirmLink(
 	deps: SignInRequestDeps,
 	request: Request,
 	asked: { readonly email: string; readonly pageId: string }
-): Promise<'sent' | 'too_many'> {
-	if (await overLinkLimit(deps.limiters, request, asked.email)) return 'too_many';
+): Promise<'sent' | LinkRefusal> {
+	const refused = await overLinkLimit(deps.limiters, request, asked.email);
+	if (refused !== null) return refused;
 	deps.defer(mailConfirmLink(deps, asked));
 	return 'sent';
 }
@@ -196,7 +206,10 @@ function opens(tokenHash: string, now: Date): SQL | undefined {
 	);
 }
 
-/** what a link is for while it still opens, and for a `confirm` link the page opening it publishes. */
+/**
+ * what a link is for while it still opens, and for a `confirm` link the page opening it publishes:
+ * null where that page is no longer pending, which the opening signs in to and leaves as it is.
+ */
 export type OpeningLink = {
 	readonly purpose: SupporterLinkPurpose;
 	readonly page: { readonly title: string; readonly photoId: string | null } | null;
@@ -218,7 +231,8 @@ export async function readOpeningLink(
 		.select({
 			purpose: supporterLink.purpose,
 			title: supporterPage.title,
-			photoId: supporterPage.photoId
+			photoId: supporterPage.photoId,
+			status: supporterPage.status
 		})
 		.from(supporterLink)
 		.leftJoin(supporterPage, eq(supporterPage.id, supporterLink.supporterPageId))
@@ -227,7 +241,10 @@ export async function readOpeningLink(
 	if (!link) return null;
 	return {
 		purpose: link.purpose,
-		page: link.title === null ? null : { title: link.title, photoId: link.photoId }
+		page:
+			link.title === null || link.status !== 'pending'
+				? null
+				: { title: link.title, photoId: link.photoId }
 	};
 }
 
