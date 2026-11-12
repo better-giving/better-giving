@@ -3515,7 +3515,15 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "supporter_link_supporter_id_idx": {
+          "name": "supporter_link_supporter_id_idx",
+          "columns": [
+            "supporter_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "supporter_link_supporter_id_supporter_id_fk": {
           "name": "supporter_link_supporter_id_supporter_id_fk",
@@ -3831,7 +3839,15 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "supporter_session_supporter_id_idx": {
+          "name": "supporter_session_supporter_id_idx",
+          "columns": [
+            "supporter_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "supporter_session_supporter_id_supporter_id_fk": {
           "name": "supporter_session_supporter_id_supporter_id_fk",

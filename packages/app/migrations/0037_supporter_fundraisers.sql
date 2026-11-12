@@ -36,6 +36,7 @@ CREATE TABLE `supporter_link` (
 	CONSTRAINT "supporter_link_page_check" CHECK(("supporter_link"."purpose" = 'confirm') = ("supporter_link"."supporter_page_id" is not null))
 ) STRICT;
 --> statement-breakpoint
+CREATE INDEX `supporter_link_supporter_id_idx` ON `supporter_link` (`supporter_id`);--> statement-breakpoint
 CREATE TABLE `supporter_page` (
 	`id` text PRIMARY KEY NOT NULL,
 	`supporter_id` text NOT NULL,
@@ -81,6 +82,7 @@ CREATE TABLE `supporter_session` (
 	CONSTRAINT "supporter_session_token_hash_check" CHECK(length("supporter_session"."token_hash") = 64 and "supporter_session"."token_hash" not glob '*[^0-9a-f]*')
 ) STRICT;
 --> statement-breakpoint
+CREATE INDEX `supporter_session_supporter_id_idx` ON `supporter_session` (`supporter_id`);--> statement-breakpoint
 ALTER TABLE `donation` ADD `supporter_page_id` text REFERENCES supporter_page(id);--> statement-breakpoint
 CREATE INDEX `donation_supporter_page_id_idx` ON `donation` (`supporter_page_id`);--> statement-breakpoint
 ALTER TABLE `org_profile` ADD `supporter_fundraisers_enabled` integer DEFAULT true NOT NULL CONSTRAINT "org_profile_supporter_fundraisers_enabled_bool_check" CHECK("supporter_fundraisers_enabled" in (0, 1));

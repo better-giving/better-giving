@@ -53,21 +53,23 @@ export async function sweepSupporterLeftovers(db: Db, now: Date): Promise<void> 
 		db.delete(supporterSession).where(lte(supporterSession.expiresAt, now)),
 		...unconfirmed,
 		...unheld.flatMap((id) => freeImageStatements(db, id)),
-		db.delete(supporter).where(abandonedSupporter(db))
+		deleteAbandonedSupporters(db)
 	]);
 }
 
 /**
- * a supporter who never signed in and has no page, no link and no session left: an address a start
- * named whose confirm link nobody opened, once the statements before it in the batch took the rest.
+ * deletes every supporter who never signed in and has no page, no link and no session left: an
+ * address a start named whose confirm link nobody opened, once the statements before it in the
+ * sweep's batch took the rest.
  */
+export function deleteAbandonedSupporters(db: Db) {
+	return db.delete(supporter).where(abandonedSupporter(db));
+}
+
 function abandonedSupporter(db: Db) {
 	const naming = (table: typeof supporterPage | typeof supporterLink | typeof supporterSession) =>
 		notExists(
-			db
-				.select({ id: table.supporterId })
-				.from(table)
-				.where(eq(table.supporterId, supporter.id))
+			db.select({ id: table.supporterId }).from(table).where(eq(table.supporterId, supporter.id))
 		);
 	return and(
 		isNull(supporter.lastSignInAt),

@@ -3727,7 +3727,10 @@ export const supporterLink = sqliteTable(
 		check(
 			'supporter_link_page_check',
 			sql`(${t.purpose} = 'confirm') = (${t.supporterPageId} is not null)`
-		)
+		),
+		// whether a supporter has a link left, asked by the sweep (`abandonedSupporter` in
+		// supporters/sweep.ts), and the index `supporter_id`'s foreign key is checked by.
+		index('supporter_link_supporter_id_idx').on(t.supporterId)
 	]
 );
 
@@ -3748,7 +3751,10 @@ export const supporterSession = sqliteTable(
 		check(
 			'supporter_session_token_hash_check',
 			sql`length(${t.tokenHash}) = 64 and ${t.tokenHash} not glob '*[^0-9a-f]*'`
-		)
+		),
+		// whether a supporter has a session left, asked by the sweep (`abandonedSupporter` in
+		// supporters/sweep.ts), and the index `supporter_id`'s foreign key is checked by.
+		index('supporter_session_supporter_id_idx').on(t.supporterId)
 	]
 );
 

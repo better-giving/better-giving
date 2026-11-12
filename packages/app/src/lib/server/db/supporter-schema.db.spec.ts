@@ -1,6 +1,7 @@
 import type { InStatement, InValue } from '@libsql/client';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { freeImageStatements } from '../images/free';
+import { deleteAbandonedSupporters } from '../supporters/sweep';
 import { POSTING_ACCOUNTS } from './accounts';
 import { createDb } from './client';
 import { all, client, MIGRATIONS, openUnmigrated, rawSql, run, stmt } from './database.testing';
@@ -346,5 +347,30 @@ describe('freeing an image, which asks whether a supporter page holds it as its 
 			)
 		);
 		expect(plan).not.toContainEqual(expect.stringMatching(/^SCAN supporter_page\b/));
+	});
+});
+
+describe.each([
+	['supporter_link', 'supporter_link_supporter_id_idx'],
+	['supporter_session', 'supporter_session_supporter_id_idx']
+])('%s, which names a supporter', (table, index) => {
+	const expectAskedThroughIndex = (plan: string[]) => {
+		expect(plan).toContainEqual(
+			expect.stringMatching(
+				new RegExp(`^SEARCH ${table} USING COVERING INDEX ${index} \\(supporter_id=\\?\\)`)
+			)
+		);
+		expect(plan).not.toContainEqual(expect.stringMatching(new RegExp(`^SCAN ${table}\\b`)));
+	};
+
+	it('is asked through its supporter index whether a supporter is abandoned', async () => {
+		expectAskedThroughIndex(await planOf(deleteAbandonedSupporters(createDb(client))));
+	});
+
+	it('is checked through its supporter index when a supporter is deleted', async () => {
+		const steps = await all<{ detail: string }>(
+			stmt('explain query plan delete from supporter where id = ?', null)
+		);
+		expectAskedThroughIndex(steps.map((step) => step.detail));
 	});
 });
