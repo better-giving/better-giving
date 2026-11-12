@@ -156,7 +156,7 @@ export async function readGifts(
 ): Promise<Map<string, ApiGift>> {
 	const ids = [...new Set(paymentIds)];
 	if (ids.length === 0) return new Map();
-	// two reads rather than one `batch()`: drizzle maps a D1 batch's rows by column name, and the
+	// two reads rather than one `batch()`: drizzle maps a batch's rows by column name, and the
 	// gift's joined columns repeat `id` and `name`.
 	const [rows, standing] = await Promise.all([
 		selectGifts(db).where(and(isGift(payment), inPage(payment.id, ids))),

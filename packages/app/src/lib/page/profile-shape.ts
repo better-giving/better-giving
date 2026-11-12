@@ -29,8 +29,8 @@ export type ProfileShape = {
 
 /**
  * a mission or vision as a page draws it: null where it is empty after trimming, the text unchanged
- * otherwise. the one rule for "written", which `loadPageView` (../server/pages/view.ts) applies to
- * the profile as read.
+ * otherwise. the one rule for "written": `loadPageView` (../server/pages/view.ts) applies it to the
+ * organisation it reads, and `donateProfile` (../donate/profile.ts) to the profile it builds.
  */
 export const writtenText = (text: string | null): string | null =>
 	text === null || text.trim() === '' ? null : text;

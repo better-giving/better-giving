@@ -524,7 +524,6 @@ describe('every colour lands on the radix step for its job', () => {
 				[`${WIDE} » ${FEATURE} .page-hero-words .page-goal-fill | background`]: 'slate-1',
 				".page-video-box[data-face='poster']::after | background": 'scrim',
 				[`${WIDE} » .page-profile-cover[data-cover='photo']::after | background`]: 'scrim',
-				[`${WIDE} » ${HERO} | --page-ring`]: 'slate-1',
 				[`${WIDE} » ${HERO} | --page-quiet`]: 'slate-1',
 				[`${WIDE} » ${HERO} | color`]: 'slate-1',
 				[`${WIDE} » ${RAIL} | color`]: 'slate-1'
@@ -936,7 +935,7 @@ describe('the profile head’s box and logo', () => {
 	// happy-dom does no layout, so both are read off the sheet.
 	const WIDE = '@container page (min-width: 60rem)';
 
-	it('stands no box sticky, so a box a later step grows past the screen still shows its foot', () => {
+	it('stands no box sticky, and sets the rail in its grid cell from 60rem', () => {
 		expect(page.filter(({ decls }) => decls.position === 'sticky')).toEqual([]);
 		expect(declared(page, WIDE, ".page[data-layout='letter'] .page-profile-rail")).toMatchObject({
 			'grid-column': '2',
@@ -959,6 +958,37 @@ describe('the profile head’s box and logo', () => {
 		expect(declared(page, ".page[data-profile][data-layout='card'] .page-in")).toEqual({
 			'max-inline-size': 'calc(var(--page-profile-box) + 2 * var(--page-gutter))'
 		});
+	});
+
+	it('holds the letter’s and the feature’s box to `--page-box` below 60rem, as a campaign’s, and lets the card’s fill its column', () => {
+		const held = page
+			.filter(({ at }) => at.length === 1 && /\.page-box > div > \*$/.test(at[0] ?? ''))
+			.map(({ at, decls }) => [at[0], decls['max-inline-size']]);
+		expect(held).toEqual([
+			['.page-box > div > *', 'var(--page-box)'],
+			[".page[data-profile][data-layout='card'] .page-box > div > *", 'none']
+		]);
+		expect(declared(page, WIDE, '.page[data-profile] .page-box > div > *')['max-inline-size']).toBe(
+			'none'
+		);
+	});
+
+	it('stands the letter’s rail top on the name’s from 60rem, under a banner as without one', () => {
+		const who = declared(
+			page,
+			WIDE,
+			".page[data-layout='letter'] .page-profile > :not(:first-child, .page-profile-rail)"
+		);
+		const rail = declared(
+			page,
+			WIDE,
+			".page[data-layout='letter'] .page-profile-banner ~ .page-profile-rail"
+		);
+		expect(rail['grid-row']).toBe('2 / -1');
+		expect(rail['margin-block-start']).toBe(who['margin-block-start']);
+		expect(
+			declared(page, WIDE, ".page[data-layout='letter'] .page-profile-rail")['margin-block-start']
+		).toBeUndefined();
 	});
 
 	it('takes back the campaign card’s margin on the name and the box', () => {
@@ -1012,6 +1042,7 @@ describe('the profile head’s type', () => {
 
 	it.each([
 		['About us', '.page-profile .page-about .page-label'],
+		['a heading saved for the page', '.page-profile-box-heading'],
 		['Videos and Messages from donors', '.page-messages-heading, .page-videos-heading']
 	])('sets %s in red hat display at 700, a face the sheet registers', (_, selector) => {
 		const heading = declared(page, selector);

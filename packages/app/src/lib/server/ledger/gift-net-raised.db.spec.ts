@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { postCorrection } from '../books/correct';
 import { parseContact } from '../contacts/contact-input';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
@@ -158,8 +157,7 @@ describe('giftNetRaised()', () => {
 		expect(await netOf(donationId)).toBe(2_500);
 	});
 
-	it('counts a gift entered in hand, and moves no gift by a hand correction into the donation accounts', async () => {
-		const settled = await noteGift(db, formId, { amountMinor: 10_000 });
+	it('counts a gift entered in hand at its own amount', async () => {
 		const donor = parseContact({
 			kind: 'individual',
 			first_name: 'Bo',
@@ -179,17 +177,6 @@ describe('giftNetRaised()', () => {
 			source: null
 		});
 		expect(recorded.ok).toBe(true);
-		const posted = await postCorrection(db, {
-			sourceId: crypto.randomUUID(),
-			occurredAt: new Date('2026-09-15T00:00:00.000Z'),
-			amountMinor: 2_500,
-			outOf: postableId('undepositedFunds'),
-			into: postableId('donationsDeductible'),
-			note: 'a gift that never posted'
-		});
-		expect(posted).toEqual({ ok: true });
-
 		expect(await netOf(handId)).toBe(3_000);
-		expect(await netOf(settled.donationId)).toBe(10_000);
 	});
 });

@@ -165,8 +165,8 @@ export type EntryGroupRange = {
  * **one join and one read, which is the opposite of `listEntryGroups` above — deliberately.** that
  * function reads twice because its first read is a page, and the second binds one parameter per
  * entry id; this one binds three — the two ends and the bound — whatever the range holds, and one
- * round trip. so the next reader "fixing" this into the two-read shape would be paying for a guard
- * this has no problem to solve.
+ * round trip. so the next reader "fixing" this into the two-read shape would be paying a second
+ * round trip for a problem this read does not have.
  *
  * **the bound is lines and not entries, because the file's cap is lines** — one row per ledger line
  * in both templates (./journal-file.ts). it reads one past it rather than counting first: a range

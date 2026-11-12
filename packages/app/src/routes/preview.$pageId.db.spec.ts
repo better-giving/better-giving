@@ -337,9 +337,10 @@ describe('donors’ messages in the preview of the Donation page', () => {
 	}
 
 	it.each([
-		{ why: 'the page is whole', breakPage: async () => {} },
+		{ why: 'the page is whole', listed: 6, breakPage: async () => {} },
 		{
 			why: 'the published page fails the read rule while the draft passes it',
+			listed: 0,
 			breakPage: async () => {
 				vi.spyOn(console, 'error').mockImplementation(() => {});
 				await run(stmt(`update page set published = '{}' where type = 'donation_page'`));
@@ -347,6 +348,7 @@ describe('donors’ messages in the preview of the Donation page', () => {
 		},
 		{
 			why: 'the settings row takes no gift until Publish',
+			listed: 0,
 			breakPage: () =>
 				run(
 					stmt(
@@ -355,8 +357,8 @@ describe('donors’ messages in the preview of the Donation page', () => {
 				).then(() => undefined)
 		}
 	])(
-		'lists the six /donate lists, and Show more the same next six, where $why',
-		async ({ breakPage }) => {
+		'lists what /donate lists ($listed messages), and Show more the same next six, where $why',
+		async ({ breakPage, listed }) => {
 			await notes();
 			await breakPage();
 			const page = await ensureDonationPage(db);
@@ -367,12 +369,16 @@ describe('donors’ messages in the preview of the Donation page', () => {
 			}
 			const shown = loaded.profile.messages;
 			const donateShown = await donateAnswers(null);
+			expect(shown.messages).toHaveLength(listed);
 			expect(shown).toEqual(donateShown);
-			if (shown.next !== null) {
-				expect(await donateAnswers(shown.next)).toEqual(
-					await donateAnswers((donateShown as typeof shown).next)
-				);
+			if (listed === 0) {
+				expect(shown.next).toBeNull();
+				return;
 			}
+			expect(shown.next).not.toBeNull();
+			const more = await donateAnswers(shown.next);
+			expect((more as typeof shown).messages).toHaveLength(2);
+			expect(more).toEqual(await donateAnswers((donateShown as typeof shown).next));
 		}
 	);
 });

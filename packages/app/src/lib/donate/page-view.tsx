@@ -64,8 +64,10 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 // every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
 // the letter's and the feature's box straight after the cover and the title, the goal and the lede
 // after it, so all of their box is on the first screen; the card's box begins on it, under the
-// plane, and ./page.css's header sums what stands ahead of it. the source order keeps the box ahead
-// of the story and everything after it, which ./page-view.dom.spec.tsx holds.
+// plane, and ./page.css's header sums what stands ahead of it. a campaign's source order keeps the
+// box ahead of the story and everything after it, which ./page-view.dom.spec.tsx holds. under the
+// profile head the letter and the feature stand the box straight after the name, and the card
+// draws About us ahead of it.
 // the box is drawn exactly once, and no ancestor of it clips or transforms it.
 //
 // the masthead is the top bar over every page but the Donation page under its profile head: it

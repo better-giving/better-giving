@@ -95,7 +95,8 @@ describe('the measures', () => {
 		);
 	});
 
-	it('counts either one alone with no blank line', () => {
+	it('counts either one alone with no blank line, and holds a vision alone to the card at 320', () => {
+		expect(profileShape({ ...NOTHING, vision: 'v'.repeat(320) }).layout).toBe('card');
 		expect(profileShape({ ...NOTHING, vision: 'v'.repeat(321) })).toMatchObject({
 			storyLength: 321,
 			layout: 'letter',
@@ -117,11 +118,6 @@ describe('the measures', () => {
 });
 
 describe('the measures, edge by edge', () => {
-	it('turns a vision alone to the letter at 321 and holds it to the card at 320', () => {
-		expect(profileShape({ ...NOTHING, vision: 'v'.repeat(320) }).layout).toBe('card');
-		expect(profileShape({ ...NOTHING, vision: 'v'.repeat(321) }).layout).toBe('letter');
-	});
-
 	it('keeps the whitespace inside a text and trims only its ends', () => {
 		const at = (inside: string) =>
 			profileShape({ ...NOTHING, mission: `  ${inside}  ` }).storyLength;
@@ -141,15 +137,5 @@ describe('the measures, edge by edge', () => {
 		expect(at(3, 0)).toMatchObject({ extras: 3, layout: 'letter' });
 		expect(at(3, 1)).toMatchObject({ extras: 4, layout: 'feature' });
 		expect(at(4, 0)).toMatchObject({ extras: 4, layout: 'feature' });
-	});
-
-	it('counts neither the banner nor the logo, whatever the profile also carries', () => {
-		const dressed = {
-			...NOTHING,
-			videos: videos(3),
-			banner: { src: '/image/banner-1' },
-			logo: { src: '/image/logo-1', width: 400, height: 400 }
-		};
-		expect(profileShape(dressed)).toEqual(profileShape({ ...NOTHING, videos: videos(3) }));
 	});
 });

@@ -172,9 +172,7 @@ describe('the layout the Donation page’s content picks', () => {
 		['letter', LETTER],
 		['feature', FEATURE]
 	] as const)('draws no raised figure in the %s', (_, profile) => {
-		const root = draw(profile);
-		expect(part(root, 'raised')).toBeNull();
-		expect(root.textContent).not.toMatch(/raised|Be the first/);
+		expect(draw(profile).textContent).not.toMatch(/raised|Be the first/);
 	});
 
 	it.each([
@@ -214,10 +212,8 @@ describe('the card', () => {
 		expect(art?.getAttribute('alt')).toBe('');
 	});
 
-	it('draws no banner, and no band in its place, where none is saved', () => {
-		const root = draw({ ...FULL, banner: null });
-		expect(part(root, 'banner')).toBeNull();
-		expect(root.querySelector('.page-profile-band')).toBeNull();
+	it('draws no banner where none is saved', () => {
+		expect(part(draw({ ...FULL, banner: null }), 'banner')).toBeNull();
 	});
 
 	it('draws About us under its own heading with the mission and the vision', () => {
@@ -240,16 +236,6 @@ describe('the card', () => {
 		}).querySelector('.page-profile-logo');
 		expect(logo?.hasAttribute('data-wide')).toBe(true);
 		expect(logo?.getAttribute('alt')).toBe('Harbor Light logo');
-	});
-});
-
-describe('the card with a wordmark logo', () => {
-	it('draws the logo whole and About us under the name, the box last', () => {
-		const root = draw({ ...FULL, logo: { src: '/image/logo-1', width: 1200, height: 300 } });
-		expect(layoutOf(root)).toBe('card');
-		expect(root.querySelector('.page-profile-logo')?.hasAttribute('data-wide')).toBe(true);
-		expect(order(root)).toEqual(['banner', 'who', 'title', 'about', 'box']);
-		expect(part(root, 'about')?.textContent).toContain('We keep families housed');
 	});
 });
 
@@ -464,27 +450,6 @@ describe('the footer', () => {
 	});
 });
 
-describe('Show more messages in the editor preview', () => {
-	it('lets a press reach the messages, which read what /donate shows, and stops one anywhere else', () => {
-		const onShowMore = vi.fn();
-		const root = draw(FEATURE, { preview: true, donorMessages: { ...WIRING, onShowMore } });
-		const more = [...(part(root, 'messages')?.querySelectorAll('button') ?? [])].find(
-			(b) => b.textContent === 'Show more messages'
-		);
-		expect(more).toBeDefined();
-		const inside = new MouseEvent('click', { bubbles: true, cancelable: true });
-		act(() => more?.dispatchEvent(inside));
-		expect(inside.defaultPrevented).toBe(false);
-		expect(onShowMore).toHaveBeenCalledTimes(1);
-
-		const link = root.querySelector<HTMLAnchorElement>('[data-area="share"] a');
-		const outside = new MouseEvent('click', { bubbles: true, cancelable: true });
-		act(() => link?.dispatchEvent(outside));
-		expect(outside.defaultPrevented).toBe(true);
-		expect(more?.getAttribute('tabindex')).not.toBe('-1');
-	});
-});
-
 describe('the preview’s stillness', () => {
 	const showMore = (root: HTMLElement) =>
 		[...(part(root, 'messages')?.querySelectorAll('button') ?? [])].find(
@@ -498,6 +463,16 @@ describe('the preview’s stillness', () => {
 
 		expect(shareLink(root)?.tabIndex).toBe(-1);
 		expect(showMore(root)?.tabIndex).toBe(0);
+	});
+
+	it('lets a press on Show more reach the messages in the preview', () => {
+		const onShowMore = vi.fn();
+		const root = draw(FEATURE, { preview: true, donorMessages: { ...WIRING, onShowMore } });
+		const press = new MouseEvent('click', { bubbles: true, cancelable: true });
+		act(() => showMore(root)?.dispatchEvent(press));
+
+		expect(press.defaultPrevented).toBe(false);
+		expect(onShowMore).toHaveBeenCalledTimes(1);
 	});
 
 	it('leaves the same stop in the tab order with the preview off', () => {

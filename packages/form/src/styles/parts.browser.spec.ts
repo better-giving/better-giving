@@ -1015,9 +1015,23 @@ describe('the lines between a tray’s options', () => {
 			const across = drawn.filter(({ box }) => box.right - box.left > box.bottom - box.top);
 			const upright = drawn.filter(({ box }) => box.right - box.left < box.bottom - box.top);
 
+			const trayStyle = getComputedStyle(tiles);
+			const gapReach = parseFloat(trayStyle.rowGap) + parseFloat(trayStyle.borderTopWidth);
 			let crossings = 0;
 			for (const { box: rule } of across) {
 				for (const { name, box: line } of upright) {
+					// a vertical within the gap and hairline of this rule must reach it; one a whole row
+					// away belongs to another rule.
+					const shortAbove = rule.top - line.bottom;
+					const shortBelow = line.top - rule.bottom;
+					expect(
+						shortAbove > SUBPIXEL && shortAbove <= gapReach,
+						`${name} stops ${shortAbove}px above the rule at ${rule.top}`
+					).toBe(false);
+					expect(
+						shortBelow > SUBPIXEL && shortBelow <= gapReach,
+						`${name} starts ${shortBelow}px below the rule at ${rule.bottom}`
+					).toBe(false);
 					if (line.bottom < rule.top || line.top > rule.bottom) continue;
 					crossings += 1;
 					const reachesAcross =
