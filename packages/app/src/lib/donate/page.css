@@ -26,11 +26,11 @@
  * and `data-layout`, the whole layout the page is drawn in: `card`, `letter` or `feature` for a
  * campaign ($lib/page/shape.ts) and for the Donation page under its profile head, which adds
  * `data-profile` ($lib/page/profile-shape.ts), `donation` for the Donation page without one, `plain`
- * for the box alone. the
- * root sets `--donate-primary` inline from the brand colour, the page's one accent, and renders the
- * brand scale radix's custom-palette generator makes from it as a `<style>` beside, scoped to the
- * root and the card's own root inside it, so the card and every section take the same brand. no
- * other `--donate-*` name is written here. the shade and the corners are the form's own defaults.
+ * for the box alone. the root sets `--donate-primary` inline from the brand colour, the page's one
+ * accent, and renders the brand scale radix's custom-palette generator makes from it as a `<style>`
+ * beside, scoped to the root and the card's own root inside it, so the card and every section take
+ * the same brand. no other `--donate-*` name is written here. the shade and the corners are the
+ * form's own defaults.
  * the inner node, `.page-ground`, is where every token below is declared and the ground is painted:
  * the form declares its ladder one node under `[data-donate-root]`, and a token that reads a rung
  * has to be declared at or under that node, or it reads a ladder that is not there.
