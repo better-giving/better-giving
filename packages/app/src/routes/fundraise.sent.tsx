@@ -97,7 +97,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 		db,
 		limiter: env.SIGN_IN_RATE_LIMITER,
 		defer: (work: Promise<unknown>) => deferred.waitUntil(work),
-		sendLink: linkMailer(db, env, new URL(request.url).origin),
+		sendLink: linkMailer(db, env),
 		now
 	};
 	const ticket = await readResendTicket(request);

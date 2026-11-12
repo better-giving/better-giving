@@ -16,7 +16,9 @@ import type { Route } from './+types/fundraise.photo';
 // bytes, never an SVG, under the photo cap. a photo narrower than a page photo is
 // (`checkSupporterPhoto` in $lib/server/supporters/photo.ts) is refused with a 400 before anything
 // is stored, as the banner's address refuses one that is no banner. the photo belongs to nothing
-// until a start or an edit names its id, and each of those refuses an id no stored image has.
+// until a start or an edit names its id, and each of those refuses an id no stored image has; an
+// edit also refuses one anything but its own page holds (`unheldBeyond` in
+// $lib/server/images/free.ts).
 
 /** a GET, a HEAD or an OPTIONS, which this address answers with the method it takes. */
 export function loader(): Response {

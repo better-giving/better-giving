@@ -76,7 +76,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 			db,
 			limiter: env.SIGN_IN_RATE_LIMITER,
 			defer: (work) => deferred.waitUntil(work),
-			sendLink: linkMailer(db, env, new URL(request.url).origin),
+			sendLink: linkMailer(db, env),
 			checkChallenge: startChallenge(env, request, body.get(CHALLENGE_FIELD)),
 			now: new Date()
 		},

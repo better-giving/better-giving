@@ -3,7 +3,7 @@ import type { SupporterEdit } from '../../supporters/input';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { donation, supporter, supporterPage, type SupporterPageStatus } from '../db/schema';
-import { freeLetGoStatements } from '../images/free';
+import { freeLetGoStatements, unheldBeyond } from '../images/free';
 import { giftNetRaised, readRaisedThroughFundraisers } from '../ledger/queries';
 import { noteShown } from '../pages/messages';
 
@@ -172,7 +172,9 @@ async function readOwnGifts(db: Db, pageId: string): Promise<OwnFundraiserGift[]
 
 /**
  * an edit written; `not_found` where the page is not the supporter's, and `photo_missing` for a
- * photo id no stored image carries. the address and the email are not the supporter's to change.
+ * photo id no stored image carries, or one something other than this page holds: another
+ * supporter's page, the organisation's profile, a cause or a page document (`unheldBeyond` in
+ * ../images/free.ts). the address and the email are not the supporter's to change.
  */
 export type OwnEdit = 'saved' | 'not_found' | 'photo_missing';
 
@@ -193,6 +195,11 @@ export async function editOwnFundraiser(
 		.from(supporterPage)
 		.where(owned(supporterId, pageId));
 	if (!before) return 'not_found';
+	// every write rides the photo's guard, so a refused photo lands none of the edit.
+	const allowed = and(
+		owned(supporterId, pageId),
+		input.photo_id === null ? undefined : unheldBeyond(input.photo_id, pageId)
+	);
 	try {
 		const [, written] = await db.batch([
 			db
@@ -201,12 +208,7 @@ export async function editOwnFundraiser(
 				.where(
 					and(
 						eq(supporter.id, supporterId),
-						exists(
-							db
-								.select({ id: supporterPage.id })
-								.from(supporterPage)
-								.where(owned(supporterId, pageId))
-						)
+						exists(db.select({ id: supporterPage.id }).from(supporterPage).where(allowed))
 					)
 				),
 			db
@@ -218,11 +220,12 @@ export async function editOwnFundraiser(
 					photoId: input.photo_id,
 					updatedAt: now
 				})
-				.where(owned(supporterId, pageId))
+				.where(allowed)
 				.returning({ id: supporterPage.id }),
 			...freeLetGoStatements(db, [before.photoId], [input.photo_id])
 		]);
-		return written.length > 0 ? 'saved' : 'not_found';
+		if (written.length > 0) return 'saved';
+		return input.photo_id === null ? 'not_found' : 'photo_missing';
 	} catch (error) {
 		if (sqliteResultCode(error) === 'SQLITE_CONSTRAINT_FOREIGNKEY') return 'photo_missing';
 		throw error;

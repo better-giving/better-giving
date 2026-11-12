@@ -191,6 +191,33 @@ async function mailConfirmLink(
 	});
 }
 
+/** a link that still opens: neither used nor expired at `now`. */
+function opens(tokenHash: string, now: Date): SQL | undefined {
+	return and(
+		eq(supporterLink.tokenHash, tokenHash),
+		isNull(supporterLink.usedAt),
+		gt(supporterLink.expiresAt, now)
+	);
+}
+
+/**
+ * what the link `token` is for while it still opens, or null for one used, expired or unknown,
+ * read without spending it: the screen in front of an opening names the press by it, and a mail
+ * scanner fetching that screen spends nothing.
+ */
+export async function readLinkPurpose(
+	db: Db,
+	token: string,
+	now: Date
+): Promise<SupporterLinkPurpose | null> {
+	const [link] = await db
+		.select({ purpose: supporterLink.purpose })
+		.from(supporterLink)
+		.where(opens(hashToken(token), now))
+		.limit(1);
+	return link?.purpose ?? null;
+}
+
 /**
  * a link opened: signed in, with the `Set-Cookie` value carrying the session, and for a `confirm`
  * link the page it named, now live unless it had already left `pending`. a used, expired or unknown
@@ -202,6 +229,11 @@ export type OpenedLink =
 			readonly setCookie: string;
 			readonly purpose: SupporterLinkPurpose;
 			readonly page: { readonly id: string; readonly slug: string } | null;
+			/**
+			 * whether this opening put the page in front of donors: it took it from `pending` to `live`,
+			 * and staff have not hidden it. false for a page ended or hidden before the link was opened.
+			 */
+			readonly published: boolean;
 	  }
 	| { readonly ok: false };
 
@@ -211,19 +243,14 @@ export async function signInWithLink(
 	token: string,
 	now: Date
 ): Promise<OpenedLink> {
-	const tokenHash = hashToken(token);
-	const open = and(
-		eq(supporterLink.tokenHash, tokenHash),
-		isNull(supporterLink.usedAt),
-		gt(supporterLink.expiresAt, now)
-	);
+	const open = opens(hashToken(token), now);
 	const unspent = (
 		column: typeof supporterLink.supporterId | typeof supporterLink.supporterPageId
 	) => db.select({ id: column }).from(supporterLink).where(open);
 
 	// one batch, and the link is spent last: the publish and the stamp are guarded on the link still
 	// being open, so they land exactly when the spend does, and a second opening lands none of them.
-	const [, , spent] = await db.batch([
+	const [publish, , spent] = await db.batch([
 		db
 			.update(supporterPage)
 			.set({ status: 'live', publishedAt: now })
@@ -232,7 +259,8 @@ export async function signInWithLink(
 					eq(supporterPage.status, 'pending'),
 					sql`${supporterPage.id} = (${unspent(supporterLink.supporterPageId)})`
 				)
-			),
+			)
+			.returning({ id: supporterPage.id }),
 		db
 			.update(supporter)
 			.set({ lastSignInAt: now })
@@ -251,7 +279,11 @@ export async function signInWithLink(
 			? null
 			: ((
 					await db
-						.select({ id: supporterPage.id, slug: supporterPage.slug })
+						.select({
+							id: supporterPage.id,
+							slug: supporterPage.slug,
+							hiddenAt: supporterPage.hiddenAt
+						})
 						.from(supporterPage)
 						.where(eq(supporterPage.id, link.pageId))
 				)[0] ?? null);
@@ -259,6 +291,7 @@ export async function signInWithLink(
 		ok: true,
 		setCookie: await startSupporterSession(db, request, link.supporterId, now),
 		purpose: link.purpose,
-		page
+		page: page === null ? null : { id: page.id, slug: page.slug },
+		published: publish.length > 0 && page?.hiddenAt === null
 	};
 }

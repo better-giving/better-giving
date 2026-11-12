@@ -1,7 +1,10 @@
-import type { InStatement } from '@libsql/client';
+import type { InStatement, InValue } from '@libsql/client';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { freeImageStatements } from '../images/free';
+import { replacingLinkInsert } from '../supporters/links';
 import { POSTING_ACCOUNTS } from './accounts';
-import { MIGRATIONS, openUnmigrated, rawSql, run, stmt } from './database.testing';
+import { createDb } from './client';
+import { all, client, MIGRATIONS, openUnmigrated, rawSql, run, stmt } from './database.testing';
 import { applyMigrations } from './migrate';
 import { rejectionCode } from './rejection.testing';
 
@@ -319,5 +322,58 @@ describe('a gift given through a supporter page', () => {
 
 	it('takes the page it was given through', async () => {
 		expect((await run(insertGift(pageId))).rowsAffected).toBe(1);
+	});
+});
+
+/** the plan sqlite picks for `query` with what it binds, one detail per step. */
+const planOf = async (query: { toSQL(): { sql: string; params: unknown[] } }) => {
+	const { sql, params } = query.toSQL();
+	const steps = await all<{ detail: string }>(
+		stmt(`explain query plan ${sql}`, ...(params as InValue[]))
+	);
+	return steps.map((step) => step.detail);
+};
+
+describe('the spend of a supporter’s older links, run before every link mailed', () => {
+	const db = createDb(client);
+
+	it.each([
+		['sign_in', null, /\(supporter_id=\? AND purpose=\?\)/],
+		[
+			'confirm',
+			'019fb500-0000-7000-8000-200000000001',
+			/\(supporter_id=\? AND purpose=\? AND supporter_page_id=\?\)/
+		]
+	] as const)(
+		'finds a %s link’s unused rows through the unused-link index',
+		async (purpose, pageId, terms) => {
+			const [spend] = replacingLinkInsert(
+				db,
+				{ supporterId: '019fb500-0000-7000-8000-200000000002', purpose, pageId },
+				new Date()
+			).statements;
+			const plan = await planOf(spend);
+			expect(plan).toContainEqual(
+				expect.stringMatching(/^SEARCH supporter_link USING INDEX supporter_link_unused_idx /)
+			);
+			expect(plan).toContainEqual(expect.stringMatching(terms));
+			expect(plan).not.toContainEqual(expect.stringMatching(/^SCAN supporter_link\b/));
+		}
+	);
+});
+
+describe('freeing an image, which asks whether a supporter page holds it as its photo', () => {
+	it('asks through the photo index', async () => {
+		const [, metadata] = freeImageStatements(
+			createDb(client),
+			'019fb500-0000-7000-8000-200000000003'
+		);
+		const plan = await planOf(metadata);
+		expect(plan).toContainEqual(
+			expect.stringMatching(
+				/^SEARCH supporter_page USING COVERING INDEX supporter_page_photo_id_idx \(photo_id=\?\)/
+			)
+		);
+		expect(plan).not.toContainEqual(expect.stringMatching(/^SCAN supporter_page\b/));
 	});
 });

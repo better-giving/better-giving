@@ -10,16 +10,17 @@ import {
 	NOT_YOUR_PAGE,
 	readSupporterOrg,
 	signedInSupporter,
-	supporterAccount
+	supporterAccount,
+	supporterShareUrl
 } from '$lib/server/supporters/area';
 import { endOwnFundraiser, readOwnFundraiser } from '$lib/server/supporters/pages';
-import { database } from '../context';
+import { database, platform } from '../context';
 import type { Route } from './+types/fundraise.pages.$id._index';
 
 // one of the signed-in supporter's pages: what it has raised, its link, its gifts and End. the page
 // is read for its own supporter alone, so another supporter's id is the same 404 as an unknown one
-// ($lib/server/supporters/pages.ts). the visit its confirm link opened says once that it is live,
-// off the flash ./fundraise.open.ts set.
+// ($lib/server/supporters/pages.ts). the visit after its confirm link published it says once that
+// it is live, off the flash ./fundraise.open.tsx set.
 //
 // End posts `intent=end` here; an end that lands is drawn by the re-read, and one that throws is
 // said in the confirm. what a gift shows its supporter is pages.ts's: never a donor's email, address
@@ -51,7 +52,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 				currency: page.currency,
 				endedAt: page.endedAt?.toISOString() ?? null,
 				address,
-				url: `${new URL(request.url).origin}${address}`,
+				url: supporterShareUrl(context.get(platform).env, request, address),
 				giftList: page.giftList.map((gift) => ({
 					amountMinor: gift.amountMinor,
 					receivedAt: gift.receivedAt.toISOString(),

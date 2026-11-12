@@ -6,6 +6,7 @@ import { image, supporterPage } from '$lib/server/db/schema';
 import { pngHeader } from '$lib/server/images/headers.testing';
 import { UPLOAD_MAX } from '$lib/server/images/intake';
 import { gift, noteGift } from '$lib/server/pages/settled-gifts.testing';
+import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { hideFundraiser } from '$lib/server/supporters/admin';
 import { SUPPORTER_SESSION_COOKIE } from '$lib/server/supporters/session';
 import { mountRoutes } from '../route-request.testing';
@@ -16,10 +17,13 @@ import {
 	freshSupporterDeployment,
 	lastWork,
 	liveFundraiser,
+	openLink,
 	ORIGIN,
+	postStart,
 	request,
 	STARTED,
 	supporterEnv,
+	tokenIn,
 	visitFundraiser
 } from '../supporter-routes.testing';
 import { formBody, page, signInAsDeployer, signInAsMember } from '../webhook-routes.testing';
@@ -223,7 +227,7 @@ describe('a mailed link', () => {
 	it('opens once: a second opening lands on the sign-in’s expired state', async () => {
 		const { token } = await liveFundraiser(db, mailed);
 		const again = cookieJar();
-		const reopened = await call(open.loader, request(`/fundraise/open?token=${token}`));
+		const reopened = await openLink(token);
 		again.take(reopened);
 		expect(reopened.location).toBe('/fundraise/sign-in');
 		expect(again.has(SUPPORTER_SESSION_COOKIE)).toBe(false);
@@ -241,17 +245,96 @@ describe('a mailed link', () => {
 		await lastWork.settled();
 		await run(stmt('update supporter_link set expires_at = 0'));
 		const token = /token=([A-Za-z0-9_-]+)/.exec(mailed.at(-1)?.text ?? '')?.[1] ?? '';
-		const opened = await call(open.loader, request(`/fundraise/open?token=${token}`));
+		const shown = await call(open.loader, request(`/fundraise/open?token=${token}`));
+		expect(shown.location).toBe('/fundraise/sign-in');
+		const opened = await openLink(token);
 		expect(opened.location).toBe('/fundraise/sign-in');
 		expect(opened.headers.getSetCookie().join()).not.toContain(SUPPORTER_SESSION_COOKIE);
 		expect((await visitFundraiser('run-for-the-shelter')).status).toBe(404);
 	});
 
 	it('answers a link nobody was sent the same way', async () => {
-		const opened = await call(open.loader, request('/fundraise/open?token=made-up'));
-		expect(opened.status).toBe(303);
-		expect(opened.location).toBe('/fundraise/sign-in');
+		for (const answer of [
+			await call(open.loader, request('/fundraise/open?token=made-up')),
+			await openLink('made-up')
+		]) {
+			expect(answer.status).toBe(303);
+			expect(answer.location).toBe('/fundraise/sign-in');
+			expect(answer.headers.get('cache-control')).toBe('no-store');
+		}
 	});
+
+	it('is not spent by a GET, which a mail scanner’s prefetch is: the page stays unpublished', async () => {
+		const browser = cookieJar();
+		await postStart(browser);
+		const token = tokenIn(mailed.at(-1)?.text ?? '');
+		for (let fetched = 0; fetched < 2; fetched += 1) {
+			const shown = await call(open.loader, request(`/fundraise/open?token=${token}`));
+			expect(shown.status).toBe(200);
+			expect(shown.data).toMatchObject({ purpose: 'confirm', token });
+			expect(shown.headers.get('cache-control')).toBe('no-store');
+			expect(shown.headers.getSetCookie()).toEqual([]);
+		}
+		expect((await visitFundraiser('run-for-the-shelter')).status).toBe(404);
+		expect((await openLink(token)).location).toMatch(/^\/fundraise\/pages\//);
+	});
+
+	it('names a sign-in link’s press as one, and its post goes on to the supporter’s pages', async () => {
+		await liveFundraiser(db, mailed);
+		await call(
+			signIn.action,
+			request('/fundraise/sign-in', {
+				body: form({ intent: 'request-link', email: 'maya@example.org' })
+			})
+		);
+		await lastWork.settled();
+		const token = tokenIn(mailed.at(-1)?.text ?? '');
+		const shown = await call(open.loader, request(`/fundraise/open?token=${token}`));
+		expect(shown.data).toMatchObject({ purpose: 'sign_in' });
+		const opened = await openLink(token);
+		expect(opened.location).toBe('/fundraise/pages');
+		expect(opened.headers.get('cache-control')).toBe('no-store');
+	});
+
+	it('refuses a post from another site, spending nothing', async () => {
+		const browser = cookieJar();
+		await postStart(browser);
+		const token = tokenIn(mailed.at(-1)?.text ?? '');
+		const forged = new Request(`${ORIGIN}/fundraise/open`, {
+			method: 'POST',
+			headers: {
+				[CLIENT_IP_HEADER]: '192.0.2.79',
+				origin: 'https://attacker.example',
+				'sec-fetch-site': 'cross-site'
+			},
+			body: form({ token })
+		});
+		expect((await call(open.action, forged)).status).toBe(403);
+		expect((await openLink(token)).location).toMatch(/^\/fundraise\/pages\//);
+	});
+
+	it.each([
+		['ended', { status: 'ended' as const, endedAt: new Date() }],
+		['hidden by staff', { hiddenAt: new Date() }]
+	])(
+		'says nothing is live where the page was %s before its confirm link was opened',
+		async (_, change) => {
+			const browser = cookieJar();
+			await postStart(browser);
+			const token = tokenIn(mailed.at(-1)?.text ?? '');
+			await db.update(supporterPage).set(change);
+			const opened = await openLink(token);
+			browser.take(opened);
+			const pageId = opened.location?.split('/').at(-1) ?? '';
+			expect(opened.location).toBe(`/fundraise/pages/${pageId}`);
+			const drawn = await call(
+				manage.loader,
+				request(`/fundraise/pages/${pageId}`, { cookie: browser.header() }),
+				{ id: pageId }
+			);
+			expect(drawn.data).toMatchObject({ justPublished: false });
+		}
+	);
 });
 
 describe('Email me a link', () => {
@@ -282,6 +365,55 @@ describe('Email me a link', () => {
 		expect(known.checking).toMatchObject({ kind: 'sign-in', email: 'maya@example.org' });
 		expect(unknown.checking).toMatchObject({ kind: 'sign-in', email: 'nobody@example.org' });
 		expect(mailed.map((message) => message.to)).toEqual(['maya@example.org']);
+	});
+
+	/** "Email me a link" for maya, asked at `host` by a caller that sends no browser headers. */
+	async function askAtHost(host: string, env = supporterEnv()) {
+		await call(
+			signIn.action,
+			new Request(`https://${host}/fundraise/sign-in`, {
+				method: 'POST',
+				headers: { [CLIENT_IP_HEADER]: '192.0.2.77' },
+				body: form({ intent: 'request-link', email: 'maya@example.org' })
+			}),
+			{},
+			env
+		);
+		await lastWork.settled();
+	}
+
+	it('builds the mailed link on the pinned origin, whatever host the request named', async () => {
+		await liveFundraiser(db, mailed);
+		mailed.length = 0;
+		await askAtHost('attacker.example');
+		expect(mailed).toHaveLength(1);
+		expect(mailed[0]?.text).toContain(`${ORIGIN}/fundraise/open?token=`);
+		expect(mailed[0]?.text).not.toContain('attacker.example');
+	});
+
+	it('mails no link where no origin is pinned, and tells the operator why', async () => {
+		await liveFundraiser(db, mailed);
+		mailed.length = 0;
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const { BETTER_AUTH_URL: _pinned, ...unpinned } = supporterEnv();
+		await askAtHost('attacker.example', unpinned);
+		expect(mailed).toEqual([]);
+		expect(logged.mock.calls.flat().join(' ')).toContain('BETTER_AUTH_URL');
+		logged.mockRestore();
+	});
+});
+
+describe('a supporter’s share link', () => {
+	it('is on the pinned origin, whatever host the request named', async () => {
+		const { browser, pageId, slug } = await liveFundraiser(db, mailed);
+		const drawn = await call(
+			manage.loader,
+			new Request(`https://attacker.example/fundraise/pages/${pageId}`, {
+				headers: { cookie: browser.header(), [CLIENT_IP_HEADER]: '192.0.2.78' }
+			}),
+			{ id: pageId }
+		);
+		expect(drawn.data).toMatchObject({ page: { url: `${ORIGIN}/f/${slug}` } });
 	});
 });
 
@@ -325,6 +457,76 @@ describe('a supporter’s photo', () => {
 	it('is refused to a caller with no supporter session, staff included', async () => {
 		expect((await post('', 1600, 900)).status).toBe(401);
 		expect((await post(await signInAsMember(db), 1600, 900)).status).toBe(401);
+	});
+});
+
+describe('a photo id posted with an edit', () => {
+	const upload = async (cookie: string) => {
+		const body = new FormData();
+		body.set('file', new Blob([pngHeader(1600, 900)], { type: 'image/png' }));
+		const stored = await call(photo.action, request('/fundraise/photo', { cookie, body }));
+		return (stored.data as { id: string }).id;
+	};
+	const saveWith = (who: { browser: ReturnType<typeof cookieJar>; pageId: string }, id: string) =>
+		call(
+			edit.action,
+			request(`/fundraise/pages/${who.pageId}/edit`, {
+				cookie: who.browser.header(),
+				body: form({
+					intent: 'save',
+					name: 'Maya Rivera',
+					title: 'Run for the shelter',
+					goal: '500',
+					story: 'I am running 10k for the shelter.',
+					photo_id: id
+				})
+			}),
+			{ id: who.pageId }
+		);
+	const photoOf = async (pageId: string) =>
+		(
+			await db
+				.select({ photoId: supporterPage.photoId })
+				.from(supporterPage)
+				.where(eq(supporterPage.id, pageId))
+		)[0]?.photoId;
+
+	it('cannot be another supporter’s photo, and the page keeps its own', async () => {
+		const maya = await liveFundraiser(db, mailed);
+		const ben = await liveFundraiser(db, mailed, {
+			...STARTED,
+			email: 'ben@example.org',
+			title: 'Bake sale for the shelter'
+		});
+		const mayas = await upload(maya.browser.header());
+		expect((await saveWith(maya, mayas)).data).toMatchObject({ savedAt: expect.any(Number) });
+		const bens = await upload(ben.browser.header());
+		expect((await saveWith(ben, bens)).data).toMatchObject({ savedAt: expect.any(Number) });
+
+		const taken = await saveWith(ben, mayas);
+		expect(taken.status).toBe(400);
+		expect(taken.data).toMatchObject({ photoMissing: true });
+		expect(await photoOf(ben.pageId)).toBe(bens);
+		expect(await photoOf(maya.pageId)).toBe(mayas);
+	});
+
+	it('may be the page’s own photo again, or one the supporter just stored', async () => {
+		const maya = await liveFundraiser(db, mailed);
+		const first = await upload(maya.browser.header());
+		expect((await saveWith(maya, first)).status).toBe(200);
+		expect((await saveWith(maya, first)).status).toBe(200);
+		const second = await upload(maya.browser.header());
+		expect((await saveWith(maya, second)).status).toBe(200);
+		expect(await photoOf(maya.pageId)).toBe(second);
+	});
+
+	it('cannot be the organisation’s own image', async () => {
+		const maya = await liveFundraiser(db, mailed);
+		const logo = await upload(maya.browser.header());
+		await run(stmt('update org_profile set logo_image_id = ?', logo));
+		const taken = await saveWith(maya, logo);
+		expect(taken.data).toMatchObject({ photoMissing: true });
+		expect(await photoOf(maya.pageId)).toBeNull();
 	});
 });
 

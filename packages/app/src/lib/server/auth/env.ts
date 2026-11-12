@@ -21,11 +21,13 @@ export interface AuthEnv {
 	 * at the same time. set it only to pin one canonical origin and stop
 	 * trusting the others. see the `baseURL` note in ./index.ts.
 	 *
-	 * it settles two things outside auth, both through `pinnedOrigin` below: the address
-	 * a QuickBooks connection is registered at and exchanged against, which Intuit
-	 * compares byte for byte (../accounting/connect-link.ts), and the dashboard link in
-	 * the mail a paused webhook destination sends from a cron run, which has no request
-	 * to derive one from (../webhooks/paused-mail.ts).
+	 * it settles three things outside auth: the address a QuickBooks connection is
+	 * registered at and exchanged against, which Intuit compares byte for byte
+	 * (../accounting/connect-link.ts), and the dashboard link in the mail a paused webhook
+	 * destination sends from a cron run, which has no request to derive one from
+	 * (../webhooks/paused-mail.ts), both through `pinnedOrigin` below; and the sign-in link
+	 * mailed to a supporter, which is not mailed at all while it is unset
+	 * (`supporterLinkOrigin` in ../supporters/area.ts).
 	 */
 	readonly BETTER_AUTH_URL?: string;
 	/** the v0 staff sign-in password. compared, never stored, never hashed. */

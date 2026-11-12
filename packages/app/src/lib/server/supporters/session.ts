@@ -20,8 +20,9 @@ const SESSION_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 
 /**
  * `sameSite: 'lax'` so the cookie rides the top-level navigation a mailed link is, which `strict`
- * would withhold. `secure` is stated per response, as ../auth/index.ts's `useSecureCookies` is: on
- * everywhere but a loopback host, where `pnpm dev` serves over http and no browser would keep it.
+ * would withhold. `secure` is stated per response, by the scheme the request arrived on, as
+ * ../flash.ts and ./resend-ticket.ts state theirs: a deployment served over plain http, on any host,
+ * gets a cookie the browser keeps.
  */
 const cookie = createCookie(SUPPORTER_SESSION_COOKIE, {
 	path: '/',
@@ -30,10 +31,7 @@ const cookie = createCookie(SUPPORTER_SESSION_COOKIE, {
 	maxAge: SESSION_LIFETIME_SECONDS
 });
 
-function isSecure(request: Request): boolean {
-	const { hostname } = new URL(request.url);
-	return !(hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '127.0.0.1');
-}
+const isSecure = (request: Request) => new URL(request.url).protocol === 'https:';
 
 /** the signed-in supporter, as a supporter screen may know them. */
 export type SignedInSupporter = {

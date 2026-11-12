@@ -11,6 +11,7 @@ import {
 	freshSupporterDeployment,
 	lastWork,
 	liveFundraiser,
+	openLink,
 	postStart,
 	request,
 	STARTED,
@@ -88,7 +89,12 @@ describe('starting a fundraiser and opening its confirm link', () => {
 		expect(mailed[0]?.to).toBe('maya@example.org');
 		const token = tokenIn(mailed[0]?.text ?? '');
 
-		const opened = await call(open.loader, request(`/fundraise/open?token=${token}`));
+		const shown = await call(open.loader, request(`/fundraise/open?token=${token}`));
+		expect(shown.status).toBe(200);
+		expect(shown.data).toMatchObject({ purpose: 'confirm' });
+		expect((await visitFundraiser('run-for-the-shelter')).status).toBe(404);
+
+		const opened = await openLink(token);
 		browser.take(opened);
 		expect(opened.status).toBe(303);
 		expect(opened.headers.get('cache-control')).toBe('no-store');
@@ -144,9 +150,9 @@ describe('Send it again on Check your email', () => {
 		expect(mailed[1]?.to).toBe('maya@example.org');
 		const fresh = tokenIn(mailed[1]?.text ?? '');
 
-		const stale = await call(open.loader, request(`/fundraise/open?token=${first}`));
+		const stale = await openLink(first);
 		expect(stale.location).toBe('/fundraise/sign-in');
-		const opened = await call(open.loader, request(`/fundraise/open?token=${fresh}`));
+		const opened = await openLink(fresh);
 		expect(opened.location).toMatch(/^\/fundraise\/pages\//);
 		const visited = await visitFundraiser('run-for-the-shelter');
 		expect(visited.data).toMatchObject({ kind: 'live' });
@@ -168,10 +174,7 @@ describe('Send it again on Check your email', () => {
 		await lastWork.settled();
 		await resendAfterStart(browser);
 		expect(mailed).toHaveLength(3);
-		const opened = await call(
-			open.loader,
-			request(`/fundraise/open?token=${tokenIn(mailed[2]?.text ?? '')}`)
-		);
+		const opened = await openLink(tokenIn(mailed[2]?.text ?? ''));
 		expect(opened.location).toBe('/fundraise/pages');
 		expect((await visitFundraiser('run-for-the-shelter')).data).not.toMatchObject({ kind: 'live' });
 	});

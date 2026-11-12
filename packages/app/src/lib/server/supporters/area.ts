@@ -1,10 +1,12 @@
 import { href, redirect } from 'react-router';
 import type { SupporterAccount, SupporterOrg } from '../../supporter/area/shell';
 import { type ChallengeResult, verifyChallenge } from '../api/challenge';
+import { readAuthEnv, readPin } from '../auth/env';
 import type { Db } from '../db/client';
 import { notFound } from '../db/load-failure';
 import { createEmailProvider } from '../email/factory';
 import { sendSupporterSignInEmail } from '../email/supporter-sign-in';
+import { redirectWithFlash, SUPPORTER_SIGN_IN_FLASH } from '../flash';
 import { readOrgProfile, readOrgProfileLogo } from '../org/queries';
 import type { SendLink } from './links';
 import { type OwnFundraiser, readOwnFundraiser } from './pages';
@@ -30,13 +32,57 @@ export async function readSupporterOrg(db: Db): Promise<SupporterOrg> {
 	};
 }
 
+/** the 303 a link used, expired or unknown gets: on to the sign-in screen's expired state. */
+export function toExpiredLink(request: Request): Promise<Response> {
+	return redirectWithFlash(request, SUPPORTER_SIGN_IN_FLASH, SIGN_IN_PATH, 'expired');
+}
+
 /**
- * mails a link, its address built on `origin`, the deployment's own as the request names it. a send
- * that fails is logged and nothing else: the screen that asked has already answered the same for
- * every address (`requestSignInLink` in ./links.ts).
+ * the origin a supporter's link is built on: the one `BETTER_AUTH_URL` pins (`readPin` in
+ * ../auth/env.ts), never the request's, so a request naming another `Host` cannot put that host in
+ * a mailed sign-in link. why there is none where the pin is unset or names no origin.
  */
-export function linkMailer(db: Db, env: Env, origin: string): SendLink {
+export function supporterLinkOrigin(
+	env: Env
+): { readonly ok: true; readonly origin: string } | { readonly ok: false; readonly why: string } {
+	const pin = readPin(readAuthEnv(env));
+	if (!pin.ok) return { ok: false, why: pin.message };
+	if (pin.origin === null) {
+		return {
+			ok: false,
+			why:
+				'`BETTER_AUTH_URL` is unset, so no supporter sign-in or confirm link can be mailed: a ' +
+				'link built on the request’s own host would carry whatever host the request named. Set it ' +
+				'to the address the deployment answers on (`https://give.example.org`, .env.example).'
+		};
+	}
+	return { ok: true, origin: pin.origin };
+}
+
+/**
+ * the address a supporter shares their page at: on the pinned origin where `BETTER_AUTH_URL` names
+ * one, and the request's own where it does not. it is drawn to the supporter who asked, never
+ * mailed.
+ */
+export function supporterShareUrl(env: Env, request: Request, path: string): string {
+	const pinned = supporterLinkOrigin(env);
+	return `${pinned.ok ? pinned.origin : new URL(request.url).origin}${path}`;
+}
+
+/**
+ * mails a link, its address built on `supporterLinkOrigin`. where that names none, nothing is mailed
+ * and the reason is logged for whoever runs the server; a send that fails is logged too. either way
+ * nothing else: the screen that asked has already answered the same for every address
+ * (`requestSignInLink` in ./links.ts).
+ */
+export function linkMailer(db: Db, env: Env): SendLink {
 	return async (mail) => {
+		const pinned = supporterLinkOrigin(env);
+		if (!pinned.ok) {
+			console.error('a supporter’s link was not mailed:', pinned.why);
+			return;
+		}
+		const { origin } = pinned;
 		const profile = await readOrgProfile(db);
 		const sent = await sendSupporterSignInEmail(
 			{ email: createEmailProvider(env) },

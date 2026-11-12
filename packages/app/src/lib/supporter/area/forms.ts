@@ -35,7 +35,8 @@ export const INTENTS = {
 	resend: 'resend',
 	save: 'save',
 	end: 'end',
-	signOut: 'sign-out'
+	signOut: 'sign-out',
+	open: 'open'
 } as const;
 
 export type Intent = (typeof INTENTS)[keyof typeof INTENTS];

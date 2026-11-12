@@ -23,7 +23,7 @@ import type { Route } from './+types/fundraise.sign-in';
 // $lib/server/supporters/links.ts). over the caller's or the address's limit it is the too-many
 // state, here.
 //
-// a link that no longer opens lands here too (./fundraise.open.ts), as does a resend over its
+// a link that no longer opens lands here too (./fundraise.open.tsx), as does a resend over its
 // limit (./fundraise.sent.tsx), each with a flash saying which ($lib/server/flash.ts).
 
 /** the screen's form as the action parses it: the one `SignIn` mounts. */
@@ -61,7 +61,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 			db,
 			limiter: env.SIGN_IN_RATE_LIMITER,
 			defer: (work) => deferred.waitUntil(work),
-			sendLink: linkMailer(db, env, new URL(request.url).origin),
+			sendLink: linkMailer(db, env),
 			now: new Date()
 		},
 		request,

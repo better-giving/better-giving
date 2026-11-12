@@ -13,15 +13,31 @@ import { deleteBytes } from './bytes';
 // image it names is freed from under it, bytes and all.
 
 /**
- * no row names `id`: no cause's photo, the profile's logo or banner, no page document and no
- * supporter fundraiser's photo. a page document is matched on its text, so an id anywhere in one
- * keeps the image whichever block holds it.
+ * no row names `id`, bar the supporter page `besidesSupporterPage` where one is given: no cause's
+ * photo, the profile's logo or banner, no page document and no supporter fundraiser's photo. a page
+ * document is matched on its text, so an id anywhere in one keeps the image whichever block holds
+ * it.
  */
-function unreferenced(id: string): SQL {
+function unreferenced(id: string, besidesSupporterPage?: string): SQL {
+	const besides =
+		besidesSupporterPage === undefined
+			? sql``
+			: sql` and ${supporterPage.id} <> ${besidesSupporterPage}`;
 	return sql`not exists (select 1 from ${program} where ${program.imageId} = ${id})
-		and not exists (select 1 from ${supporterPage} where ${supporterPage.photoId} = ${id})
+		and not exists (select 1 from ${supporterPage} where ${supporterPage.photoId} = ${id}${besides})
 		and not exists (select 1 from ${orgProfile} where ${orgProfile.logoImageId} = ${id} or ${orgProfile.bannerImageId} = ${id})
 		and not exists (select 1 from ${page} where instr(${page.draft}, ${id}) > 0 or instr(${page.published}, ${id}) > 0 or instr(${page.lastPublished}, ${id}) > 0)`;
+}
+
+/**
+ * nothing but the supporter page `supporterPageId` names image `id`, by the same holders a free
+ * asks after: the guard a supporter's edit writes a posted photo id under (../supporters/pages.ts),
+ * so a page takes only an image no other page, page document, profile or cause holds — its own, or
+ * one stored through /fundraise/photo and not yet saved, whose id only the browser that stored it
+ * was told.
+ */
+export function unheldBeyond(id: string, supporterPageId: string): SQL {
+	return unreferenced(id, supporterPageId);
 }
 
 /**

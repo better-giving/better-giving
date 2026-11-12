@@ -75,11 +75,47 @@ describe('starting a fundraiser', () => {
 			token,
 			new Date(STARTED_AT.getTime() + 60_000)
 		);
-		expect(opened).toMatchObject({ ok: true, purpose: 'confirm', page: { id: pageId } });
+		expect(opened).toMatchObject({
+			ok: true,
+			purpose: 'confirm',
+			page: { id: pageId },
+			published: true
+		});
 		expect(await pageRow(pageId)).toMatchObject({
 			status: 'live',
 			publishedAt: new Date(STARTED_AT.getTime() + 60_000)
 		});
+	});
+
+	it('says nothing was published where the page ended before its confirm link was opened', async () => {
+		const { pageId, token } = await pendingPage(db);
+		await db
+			.update(supporterPage)
+			.set({ status: 'ended', endedAt: STARTED_AT })
+			.where(eq(supporterPage.id, pageId));
+		const opened = await signInWithLink(
+			db,
+			new Request('https://give.example/f/link'),
+			token,
+			new Date(STARTED_AT.getTime() + 60_000)
+		);
+		expect(opened).toMatchObject({ ok: true, page: { id: pageId }, published: false });
+		expect(await pageRow(pageId)).toMatchObject({ status: 'ended', publishedAt: null });
+	});
+
+	it('says nothing was published where staff hid the page before its confirm link was opened', async () => {
+		const { pageId, token } = await pendingPage(db);
+		await db
+			.update(supporterPage)
+			.set({ hiddenAt: STARTED_AT })
+			.where(eq(supporterPage.id, pageId));
+		const opened = await signInWithLink(
+			db,
+			new Request('https://give.example/f/link'),
+			token,
+			new Date(STARTED_AT.getTime() + 60_000)
+		);
+		expect(opened).toMatchObject({ ok: true, page: { id: pageId }, published: false });
 	});
 
 	it('keeps one supporter per address and does not rename them', async () => {

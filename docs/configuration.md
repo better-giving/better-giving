@@ -36,7 +36,7 @@ The server refuses to start without either, or on a password under 12 characters
 
 ## Your address
 
-`BETTER_AUTH_URL` is the public origin, such as `https://give.example.org`. It is the address payment notices are registered at and QuickBooks is connected at. Unset, those use the origin of the request in front of them. It does not decide which origin may carry a session cookie.
+`BETTER_AUTH_URL` is the public origin, such as `https://give.example.org`. It is the address payment notices are registered at and QuickBooks is connected at. Unset, those use the origin of the request in front of them. Supporter fundraisers' sign-in and confirm links are built on it alone: unset, none is mailed, and the server log says so. It does not decide which origin may carry a session cookie.
 
 With `TRUSTED_PROXY_HEADER` unset, the client address is the TCP peer (`packages/app/src/lib/server/runtime/client-ip.ts`). Behind a proxy that peer is the proxy, and every donor shares one rate-limit bucket. Set the variable to the header your proxy writes the client address into, such as `x-forwarded-for` (its right-most entry is read). The app also reads `x-forwarded-proto` for the scheme once a proxy header is set. Set it only when every request passes through that proxy.
 

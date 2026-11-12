@@ -202,11 +202,10 @@ export function SupporterPages({
 		return () => clearTimeout(over);
 	}, [announced]);
 
-	// the press that opened the confirm, where focus goes back to where the browser recorded none.
-	const opener = useRef<HTMLElement | null>(null);
 	const cancel = useRef<HTMLButtonElement>(null);
 	const ids = useId();
 	const newTab = `${ids}-new-tab`;
+	const pressIdOf = (id: string) => `${ids}-${id}-press`;
 
 	const standfirst = `Fundraisers your supporters started for ${orgName}. Hide one that shouldn’t be public, and show it again if you change your mind. The gifts and the supporter’s own page stay either way.`;
 
@@ -242,14 +241,12 @@ export function SupporterPages({
 								<RowActions
 									page={p}
 									titleId={`${ids}-${p.id}-title`}
+									pressId={pressIdOf(p.id)}
 									newTabId={newTab}
 									busy={pressOf(p.id).pending}
 									landed={landedOf(p.id)}
 									refusal={confirming?.id === p.id ? null : refusalOf(p.id)}
-									onHidePress={(target) => {
-										opener.current = target;
-										setConfirming({ id: p.id, pressed: false });
-									}}
+									onHidePress={() => setConfirming({ id: p.id, pressed: false })}
 									onShow={(body) => onShow(p.id, body)}
 								/>
 							)
@@ -269,7 +266,7 @@ export function SupporterPages({
 					busy={pressOf(open.id).pending}
 					refusal={confirming?.pressed ? refusalOf(open.id) : null}
 					cancelRef={cancel}
-					openerRef={opener}
+					rowPress={pressIdOf(open.id)}
 					onHide={(body) => {
 						setConfirming({ id: open.id, pressed: true });
 						onHide(open.id, body);
@@ -413,6 +410,7 @@ function EmptyCard({
 function RowActions({
 	page,
 	titleId,
+	pressId,
 	newTabId,
 	busy,
 	landed,
@@ -423,17 +421,18 @@ function RowActions({
 	readonly page: SupporterPageRow;
 	/** the id of the page title's cell text, which every press here is named after. */
 	readonly titleId: string;
+	/** the id this row's Hide or Show again is drawn under, whichever of the two stands. */
+	readonly pressId: string;
 	readonly newTabId: string;
 	readonly busy: boolean;
 	/** which way this row's last press landed, standing until its next press goes out. */
 	readonly landed: Landed | null;
 	readonly refusal: string | null;
-	readonly onHidePress: (target: HTMLElement) => void;
+	readonly onHidePress: () => void;
 	readonly onShow: (body: FormData) => void;
 }) {
 	const ids = useId();
 	const openId = `${ids}-open`;
-	const pressId = `${ids}-press`;
 	const refusalId = `${ids}-refusal`;
 	// the press's face says a landing for a moment, keyed on the landing that changed: rows land on
 	// their own, so each runs its own moment.
@@ -502,8 +501,8 @@ function RowActions({
 						type="button"
 						aria-haspopup="dialog"
 						{...pressProps}
-						onClick={(event) => {
-							if (!held) onHidePress(event.currentTarget);
+						onClick={() => {
+							if (!held) onHidePress();
 						}}
 					>
 						{face}
@@ -532,7 +531,7 @@ function HideConfirm({
 	busy,
 	refusal,
 	cancelRef,
-	openerRef,
+	rowPress,
 	onHide,
 	onCancel
 }: {
@@ -540,7 +539,12 @@ function HideConfirm({
 	readonly busy: boolean;
 	readonly refusal: string | null;
 	readonly cancelRef: RefObject<HTMLButtonElement | null>;
-	readonly openerRef: RefObject<HTMLElement | null>;
+	/**
+	 * the id of the row's Hide or Show again. a landed Hide redraws that row with Show again in Hide's
+	 * place, so the press that opened this is gone when it comes down, and focus goes to the one
+	 * standing under the same id then.
+	 */
+	readonly rowPress: string;
 	readonly onHide: (body: FormData) => void;
 	readonly onCancel: () => void;
 }) {
@@ -555,6 +559,12 @@ function HideConfirm({
 		return read.success ? null : (read.error.issues[0]?.message ?? null);
 	};
 	const error = checked ? problem(note) : null;
+	// read by the Modal as the card comes down, so it is whichever press stands in the row by then.
+	const rowPressNow = {
+		get current() {
+			return document.getElementById(rowPress);
+		}
+	};
 	return (
 		<form
 			method="post"
@@ -585,7 +595,7 @@ function HideConfirm({
 				cancel="Cancel"
 				cancelProps={{ type: 'button', ref: cancelRef, onClick: onCancel }}
 				initialFocus={cancelRef}
-				fallbackFocus={openerRef}
+				fallbackFocus={rowPressNow}
 				onDismiss={onCancel}
 			>
 				<blockquote className="adm-quote">

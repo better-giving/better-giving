@@ -41,12 +41,14 @@ let limiters = specRateLimiters();
 
 /**
  * a deployment's bindings, Stripe's webhook secret among them so a served config takes a gift,
- * with an ALTCHA issuer that clears `SOLVED` and nothing else, on this case's limiters.
+ * with an ALTCHA issuer that clears `SOLVED` and nothing else, on this case's limiters, pinned to
+ * `ORIGIN`, which a mailed link is built on.
  */
 export function supporterEnv(): Env {
 	return {
 		...deployed(),
 		...limiters,
+		BETTER_AUTH_URL: ORIGIN,
 		STRIPE_WEBHOOK_SECRET: 'whsec_abc',
 		ALTCHA: {
 			challenge: async () => {
@@ -251,6 +253,11 @@ export function tokenIn(text: string): string {
 	return found[1];
 }
 
+/** the mailed link's `token` opened: its screen's press posted, as the supporter's browser posts it. */
+export function openLink(token: string): Promise<Answer> {
+	return call(open.action, request(`/fundraise/open?token=${token}`, { body: form({ token }) }));
+}
+
 /** Start a fundraiser as a person fills it in, the challenge solved. */
 export const STARTED = {
 	intent: 'start',
@@ -282,7 +289,7 @@ export async function liveFundraiser(
 	const browser = cookieJar();
 	await postStart(browser, fields);
 	const token = tokenIn(mailed.at(-1)?.text ?? '');
-	const opened = await call(open.loader, request(`/fundraise/open?token=${token}`));
+	const opened = await openLink(token);
 	browser.take(opened);
 	const pageId = opened.location?.split('/').at(-1) ?? '';
 	const [row] = await db

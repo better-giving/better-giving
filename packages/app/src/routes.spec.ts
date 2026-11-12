@@ -286,8 +286,8 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	'routes/fundraise.sign-in.tsx',
 	'routes/fundraise.sent.tsx',
 	// the mailed link itself: the single-use token is the credential, good for an hour, as
-	// ./routes/reset.tsx's is ($lib/server/supporters/links.ts).
-	'routes/fundraise.open.ts',
+	// ./routes/reset.tsx's is ($lib/server/supporters/links.ts), and only its press spends it.
+	'routes/fundraise.open.tsx',
 	// the supporter's own screens, their photo upload and their sign-out: behind the supporter's own
 	// session rather than staff's (`requireSupporter` in $lib/server/supporters/session.ts), which
 	// sends a caller with none to the sign-in, and which no staff session satisfies.

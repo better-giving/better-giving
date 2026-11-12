@@ -3686,7 +3686,10 @@ export const supporterPage = sqliteTable(
 		// one supporter's pages, newest first; also the index `supporter_id`'s foreign key is checked by.
 		index('supporter_page_supporter_created_idx').on(t.supporterId, t.createdAt, t.id),
 		// every page, newest first, for the admin list.
-		index('supporter_page_created_idx').on(t.createdAt, t.id)
+		index('supporter_page_created_idx').on(t.createdAt, t.id),
+		// whether a page holds an image, asked by images/free.ts before the image goes, and the
+		// index `photo_id`'s foreign key is checked by.
+		index('supporter_page_photo_id_idx').on(t.photoId)
 	]
 );
 
@@ -3723,7 +3726,12 @@ export const supporterLink = sqliteTable(
 		check(
 			'supporter_link_page_check',
 			sql`(${t.purpose} = 'confirm') = (${t.supporterPageId} is not null)`
-		)
+		),
+		// a supporter's unused links of one purpose, and one page's for `confirm`: the spend in
+		// `replacingLinkInsert` (supporters/links.ts) run before every link mailed.
+		index('supporter_link_unused_idx')
+			.on(t.supporterId, t.purpose, t.supporterPageId)
+			.where(sql`${t.usedAt} is null`)
 	]
 );
 

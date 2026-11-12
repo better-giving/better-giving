@@ -4,7 +4,7 @@ import { client, run, stmt } from '$lib/server/db/database.testing';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { createDeferredWork } from '$lib/server/runtime/deferred';
 import { createRateLimiter } from '$lib/server/runtime/rate-limiter';
-import { type LinkMail, requestSignInLink, signInWithLink } from './links';
+import { type LinkMail, readLinkPurpose, requestSignInLink, signInWithLink } from './links';
 import { readSupporterSession } from './session';
 
 // the emailed one-time link: who is mailed one, and what opening it does, against the real tables.
@@ -162,6 +162,17 @@ describe('opening a link', () => {
 		expect(opened.setCookie).toMatch(/; SameSite=Lax/);
 	});
 
+	it('leaves Secure off where the deployment is served over plain http, on any host', async () => {
+		const opened = await signInWithLink(
+			db,
+			new Request('http://192.168.1.20:3000/fundraise/open', { method: 'POST' }),
+			await mailedToken(),
+			minutes(1)
+		);
+		if (!opened.ok) throw new Error('the link was refused');
+		expect(opened.setCookie).not.toMatch(/; Secure/);
+	});
+
 	it('works once', async () => {
 		const token = await mailedToken();
 		expect((await open(token)).ok).toBe(true);
@@ -184,5 +195,26 @@ describe('opening a link', () => {
 
 	it('refuses a token it never minted the same way', async () => {
 		expect(await open('not-a-token-anyone-was-sent')).toEqual({ ok: false });
+	});
+});
+
+describe('reading what a link is for, as the screen in front of its opening does', () => {
+	it('names an open link’s purpose and spends nothing', async () => {
+		const { mailed } = await ask('maya@example.org');
+		const token = mailed[0]?.token ?? '';
+		expect(await readLinkPurpose(db, token, minutes(1))).toBe('sign_in');
+		expect(await readLinkPurpose(db, token, minutes(1))).toBe('sign_in');
+		expect(
+			(await signInWithLink(db, new Request('https://give.example/f/link'), token, minutes(2))).ok
+		).toBe(true);
+	});
+
+	it('names none for a link used, expired or never minted', async () => {
+		const { mailed } = await ask('maya@example.org');
+		const token = mailed[0]?.token ?? '';
+		expect(await readLinkPurpose(db, token, minutes(60))).toBeNull();
+		await signInWithLink(db, new Request('https://give.example/f/link'), token, minutes(1));
+		expect(await readLinkPurpose(db, token, minutes(2))).toBeNull();
+		expect(await readLinkPurpose(db, 'not-a-token-anyone-was-sent', minutes(1))).toBeNull();
 	});
 });

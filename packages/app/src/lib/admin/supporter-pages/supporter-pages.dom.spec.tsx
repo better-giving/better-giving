@@ -389,6 +389,20 @@ describe('Hide', () => {
 		expect(press(host, 'Maya Reyes')?.textContent).toBe('Show again');
 		expect(statusLine(host)).toBe('');
 	});
+
+	it('leaves focus on the row’s press once a landed Hide takes the confirm down', () => {
+		const { host, rerender } = mount();
+		act(() => press(host, 'Maya Reyes')?.click());
+		act(() => dialogButton('Hide page')?.click());
+		rerender({ presses: { 'page-maya': { pending: true, outcome: null } } });
+		rerender({
+			pages: [{ ...MAYA, hidden: true }, JO, DANA, SAM],
+			presses: { 'page-maya': { pending: false, outcome: { landed: 'hidden' } } }
+		});
+
+		expect(dialog()).toBeNull();
+		expect(document.activeElement).toBe(press(host, 'Maya Reyes'));
+	});
 });
 
 describe('Show again', () => {
