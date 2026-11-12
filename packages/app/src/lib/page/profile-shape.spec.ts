@@ -115,3 +115,41 @@ describe('the measures', () => {
 		expect(at(1).extras).toBe(3);
 	});
 });
+
+describe('the measures, edge by edge', () => {
+	it('turns a vision alone to the letter at 321 and holds it to the card at 320', () => {
+		expect(profileShape({ ...NOTHING, vision: 'v'.repeat(320) }).layout).toBe('card');
+		expect(profileShape({ ...NOTHING, vision: 'v'.repeat(321) }).layout).toBe('letter');
+	});
+
+	it('keeps the whitespace inside a text and trims only its ends', () => {
+		const at = (inside: string) =>
+			profileShape({ ...NOTHING, mission: `  ${inside}  ` }).storyLength;
+		expect(at('one  two\nthree')).toBe('one  two\nthree'.length);
+	});
+
+	it('counts the whitespace inside a text toward the 320 that holds the card', () => {
+		const mission = `${'m'.repeat(159)}\n\n${'m'.repeat(159)}`;
+		expect(mission).toHaveLength(320);
+		expect(profileShape({ ...NOTHING, mission }).layout).toBe('card');
+		expect(profileShape({ ...NOTHING, mission: `${mission}\n` + 'm' }).layout).toBe('letter');
+	});
+
+	it('turns to the feature at the fourth extra: three videos and a message, never three alone', () => {
+		const at = (count: number, total: number) =>
+			profileShape({ ...NOTHING, videos: videos(count), messages: { total } });
+		expect(at(3, 0)).toMatchObject({ extras: 3, layout: 'letter' });
+		expect(at(3, 1)).toMatchObject({ extras: 4, layout: 'feature' });
+		expect(at(4, 0)).toMatchObject({ extras: 4, layout: 'feature' });
+	});
+
+	it('counts neither the banner nor the logo, whatever the profile also carries', () => {
+		const dressed = {
+			...NOTHING,
+			videos: videos(3),
+			banner: { src: '/image/banner-1' },
+			logo: { src: '/image/logo-1', width: 400, height: 400 }
+		};
+		expect(profileShape(dressed)).toEqual(profileShape({ ...NOTHING, videos: videos(3) }));
+	});
+});
