@@ -7,7 +7,7 @@ import { uuidv7 } from 'uuidv7';
 import type { Db } from '$lib/server/db/client';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { authAccount, authSession, authUser, authVerification } from '$lib/server/db/auth-schema';
-import { type AuthEnv, pinnedOrigin } from './env';
+import { type AuthEnv, isLoopbackHost, pinnedOrigin } from './env';
 import { MEMBER_PASSWORD_MIN_LENGTH } from './invitations';
 import { deleteResetLinks } from './reset-links';
 import { staffCredentialPlugin } from './staff-plugin';
@@ -242,7 +242,11 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 	 */
 	const configuredBaseURL = pinnedOrigin(env) ?? undefined;
 	const effectiveOrigin = configuredBaseURL ?? runtime.requestOrigin;
-	const isLoopback = isLoopbackOrigin(effectiveOrigin);
+	// `process.env`, not `env`: better-auth reads `NODE_ENV` off the process too, and the image sets
+	// it (`Dockerfile`). a production request that looks loopback came through a proxy that
+	// forwarded `Host: 127.0.0.1`, so only a contributor's machine is treated as local.
+	const isLocalDevelopment =
+		process.env.NODE_ENV !== 'production' && isLoopbackOrigin(effectiveOrigin);
 
 	return betterAuth({
 		// `better-auth/minimal` instead of `better-auth`: the default entry point bundles
@@ -461,7 +465,7 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			 * after the derived value so it wins for the attribute, but the name prefix
 			 * comes from this knob alone — and `__Secure-` is the half a browser enforces.
 			 */
-			useSecureCookies: !isLoopback,
+			useSecureCookies: !isLocalDevelopment,
 
 			defaultCookieAttributes: {
 				httpOnly: true,
@@ -480,7 +484,7 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * (`DEV_PORT` in `packages/app/server/index.ts`) — without a localhost entry on a
 		 * deployed origin, which is never loopback. nothing in this repo listens on 8787.
 		 */
-		trustedOrigins: isLoopback ? ['http://localhost:5321', 'http://localhost:8787'] : [],
+		trustedOrigins: isLocalDevelopment ? ['http://localhost:5321', 'http://localhost:8787'] : [],
 
 		rateLimit: {
 			// every word below is about better-auth's own router, which this deployment does not
@@ -530,10 +534,6 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 }
 
 function isLoopbackOrigin(url: string): boolean {
-	try {
-		const hostname = new URL(url).hostname.toLowerCase();
-		return hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '127.0.0.1';
-	} catch {
-		return false;
-	}
+	const parsed = URL.parse(url);
+	return parsed !== null && isLoopbackHost(parsed.hostname);
 }

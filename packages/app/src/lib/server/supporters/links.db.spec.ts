@@ -42,6 +42,7 @@ function from(ip = `203.0.113.${++address}`): Request {
 const roomy = () => ({
 	signInByCaller: createRateLimiter({ limit: 100, period: 60 }),
 	signInByAddress: createRateLimiter({ limit: 100, period: 60 }),
+	resendByCaller: createRateLimiter({ limit: 100, period: 60 }),
 	resendByPage: createRateLimiter({ limit: 100, period: 60 })
 });
 

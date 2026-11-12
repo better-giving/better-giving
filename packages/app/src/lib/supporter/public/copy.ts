@@ -1,5 +1,6 @@
-// every word a donor reads on a supporter's fundraiser and on the entry card that starts one. the
-// donor page's own words stay in $lib/donate/copy.ts; these are the supporter feature's.
+// every word a donor reads on a supporter's fundraiser and on the entry card that starts one, and
+// the notice staff's preview of a hidden fundraiser draws. the donor page's own words stay in
+// $lib/donate/copy.ts; these are the supporter feature's.
 
 import { NO_FORM } from '../../donate/copy';
 

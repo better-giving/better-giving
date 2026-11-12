@@ -277,9 +277,13 @@ describe('Send it again after a start', () => {
 		const limiters = {
 			signInByCaller: roomy(),
 			signInByAddress: roomy(),
+			resendByCaller: roomy(),
 			resendByPage: over.byPage ?? roomy()
 		};
-		const answer = await resendConfirmLink({ ...deps, limiters }, { email, pageId: page.pageId });
+		const answer = await resendConfirmLink({ ...deps, limiters }, fromCaller(), {
+			email,
+			pageId: page.pageId
+		});
 		await settled();
 		return { answer, mailed };
 	}

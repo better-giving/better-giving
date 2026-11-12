@@ -25,6 +25,7 @@ export const SPEC_RATE_LIMITS = {
 	SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER: { limit: 3, period: 3600 },
 	SUPPORTER_START_RATE_LIMITER: { limit: 3, period: 3600 },
 	SUPPORTER_RESEND_RATE_LIMITER: { limit: 3, period: 3600 },
+	SUPPORTER_RESEND_CALLER_RATE_LIMITER: { limit: 3, period: 3600 },
 	SUPPORTER_PHOTO_RATE_LIMITER: { limit: 3, period: 86_400 }
 } as const satisfies Record<RateLimiterName, RateLimit>;
 

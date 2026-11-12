@@ -81,6 +81,14 @@ describe('publishedOrigin()', () => {
 			'http://127.0.0.1:5321'
 		);
 	});
+
+	// the hosts `loopbackPinRefusal` refuses and ./index.ts drops Secure on in development.
+	it.each(['http://127.8.9.10', 'http://[::1]:5321', 'http://give.localhost:5321'])(
+		'keeps the scheme on %s, which is this machine too',
+		(origin) => {
+			expect(publishedOrigin(new URL(`${origin}/x`), UNSET)).toBe(origin);
+		}
+	);
 });
 
 describe('loopbackPinRefusal', () => {
@@ -91,11 +99,13 @@ describe('loopbackPinRefusal', () => {
 		'http://127.8.9.10',
 		'http://[::1]:3000',
 		'http://give.localhost:5321'
-	])('refuses %s in production, naming the variable and the Secure flag', (pin) => {
+	])('refuses %s in production, naming the variable and the links it would write', (pin) => {
 		const refusal = loopbackPinRefusal({ NODE_ENV: 'production', BETTER_AUTH_URL: pin });
 		expect(refusal).toContain('`BETTER_AUTH_URL`');
 		expect(refusal).toContain(pin);
-		expect(refusal).toContain('Secure');
+		expect(refusal).toContain('link');
+		// production keeps Secure on every host (`createAuth` in ./index.ts, auth.spec.ts).
+		expect(refusal).not.toContain('Secure');
 	});
 
 	it.each([

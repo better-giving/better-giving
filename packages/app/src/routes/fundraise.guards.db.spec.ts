@@ -18,6 +18,7 @@ import { gift, noteGift } from '$lib/server/pages/settled-gifts.testing';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { SPEC_RATE_LIMITS } from '$lib/server/runtime/rate-limiter.testing';
 import { hideFundraiser } from '$lib/server/supporters/admin';
+import { writeResendTicket } from '$lib/server/supporters/resend-ticket';
 import { SUPPORTER_SESSION_COOKIE } from '$lib/server/supporters/session';
 import { PHOTO_WIDTH_MIN } from '$lib/supporter/area/photo-crop';
 import { mountRoutes } from '../route-request.testing';
@@ -554,7 +555,7 @@ describe('the sign-in screen', () => {
 		});
 	});
 
-	it('names the wait for a Send it again over its limit, which lands here', async () => {
+	it('names the wait for a Send it again with no resend ticket, which asks as this screen does', async () => {
 		const { limit, period } = SPEC_RATE_LIMITS.SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER;
 		for (let n = 0; n < limit; n += 1) await askFrom(`192.0.2.${110 + n}`, 'maya@example.org');
 		const browser = cookieJar();
@@ -646,6 +647,29 @@ describe('the supporter buckets', () => {
 		expect(landed.data).toMatchObject({
 			state: { kind: 'too-many', email: 's0@example.org', retryAfterSeconds: period }
 		});
+	});
+
+	it('refuses Send it again past the network’s count, whatever page a forged ticket names', async () => {
+		/** a ticket no start wrote: the cookie is unsigned, so a browser can name any page. */
+		const forged = async () => {
+			const jar = cookieJar();
+			const written = await writeResendTicket(request('/fundraise/sent'), {
+				pageId: crypto.randomUUID(),
+				email: 'maya@example.org'
+			});
+			const headers = new Headers([['set-cookie', written]]);
+			jar.take({ status: 200, headers, location: null, data: null });
+			return jar;
+		};
+		const { limit } = SPEC_RATE_LIMITS.SUPPORTER_RESEND_CALLER_RATE_LIMITER;
+		for (let n = 0; n < limit; n += 1) {
+			const resent = await resendFrom('192.0.2.190', await forged(), 'maya@example.org');
+			expect(resent.data).toEqual({ resentAt: expect.any(Number) });
+		}
+		const refused = await resendFrom('192.0.2.190', await forged(), 'maya@example.org');
+		expect(refused.location).toBe('/fundraise/sign-in');
+		const elsewhere = await resendFrom('192.0.2.191', await forged(), 'maya@example.org');
+		expect(elsewhere.data).toEqual({ resentAt: expect.any(Number) });
 	});
 
 	it('keep a start, a resend and a sign-in from draining each other on one network', async () => {

@@ -105,9 +105,6 @@ export function pinnedOrigin(env: AuthEnv): string | null {
 	return pin.origin;
 }
 
-/** the hosts a local dev server answers on, which keep the scheme they were asked at. */
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-
 /**
  * the origin this deployment tells an integrator to call, for a request at `url`: the one
  * `BETTER_AUTH_URL` pins where `pin` (`readPin` above) names one, so an address read at another
@@ -119,16 +116,16 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
  */
 export function publishedOrigin(url: URL, pin: PinReading): string {
 	const origin = new URL(pin.ok && pin.origin !== null ? pin.origin : url.origin);
-	return LOCAL_HOSTS.has(origin.hostname) ? origin.origin : `https://${origin.host}`;
+	return isLoopbackHost(origin.hostname) ? origin.origin : `https://${origin.host}`;
 }
 
 /**
  * why a production process must not start on its `BETTER_AUTH_URL`, or `null`: a pin naming a
- * loopback host (localhost, `*.localhost`, 127.x, ::1), which is never where a deployment answers.
- * the staff session cookie drops `Secure` on localhost, `*.localhost` and 127.0.0.1
- * (`useSecureCookies` in ./index.ts), so such a pin left in a deployed `.env` writes it without
- * the flag. `NODE_ENV` is `production` in the image (`Dockerfile`); any other value is a
- * contributor's machine, where loopback is the point.
+ * host `isLoopbackHost` below names, which is never where a deployment answers, and every address
+ * built from the pin (listed on `AuthEnv.BETTER_AUTH_URL` above) would name the server's own
+ * machine. the cookie is not the reason: in production ./index.ts keeps `Secure` on every host.
+ * `NODE_ENV` is `production` in the image (`Dockerfile`); any other value is a contributor's
+ * machine, where loopback is the point.
  */
 export function loopbackPinRefusal(
 	source: Readonly<{ NODE_ENV?: string | undefined; BETTER_AUTH_URL?: string | undefined }>
@@ -140,13 +137,21 @@ export function loopbackPinRefusal(
 	}
 	return (
 		`\`BETTER_AUTH_URL\` is \`${source.BETTER_AUTH_URL?.trim()}\`, a loopback address, and ` +
-		'`NODE_ENV` is `production`: no deployment answers there, and on one the staff sign-in ' +
-		'cookie is written without its Secure flag. Set it to the address the deployment answers on (`https://donate.example.org`), or ' +
+		'`NODE_ENV` is `production`: no deployment answers there, and every link built from it ' +
+		'(mailed sign-in and dashboard links, the QuickBooks connection) would point at the ' +
+		"server's own machine. Set it to the address the deployment answers on " +
+		'(`https://donate.example.org`), or ' +
 		'unset it so the origin is read off each request (DEPLOY.md, .env.example).'
 	);
 }
 
-function isLoopbackHost(hostname: string): boolean {
+/**
+ * whether a URL's `.hostname` is this machine: `localhost`, `*.localhost`, any 127.x.y.z, or
+ * `[::1]`. the one list for the refusal above, `publishedOrigin`, and the development cookie and
+ * `trustedOrigins` relaxation in ./index.ts. it expects `URL`'s normalisation (lowercase, `127.1`
+ * as `127.0.0.1`, IPv6 bracketed).
+ */
+export function isLoopbackHost(hostname: string): boolean {
 	return (
 		hostname === 'localhost' ||
 		hostname.endsWith('.localhost') ||

@@ -13,6 +13,7 @@ import { DonorMessages, type DonorMessagesWiring } from '../../donate/sections/m
 import { OrgContact } from '../../donate/sections/org-info';
 import { Share } from '../../donate/sections/share';
 import { imageSrc } from '../../page/image-src';
+import areaSheet from '../area/area.css?url';
 import { NoticeCard } from '../area/cards';
 import * as copy from './copy';
 import fundraiserSheet from './fundraiser.css?url';
@@ -50,9 +51,17 @@ export function fundraiserPageLinks() {
 	];
 }
 
-/** the live page's sheets, then the registry's notice card, which staff's preview draws over it. */
+/**
+ * the live page's sheets, then the registry's notice card, which staff's preview draws over it, and
+ * the supporter area's sheet, whose `.sa-mark` rule sizes the card's glyph (`Mark` in
+ * ../area/glyph.tsx draws an svg with no size of its own). every rule in that sheet is keyed to an
+ * `sa-` class, so it paints nothing else on this page.
+ */
 export function fundraiserPreviewLinks() {
-	return [...fundraiserPageLinks(), { rel: 'stylesheet' as const, href: registryNoticeCard }];
+	return [
+		...fundraiserPageLinks(),
+		...[registryNoticeCard, areaSheet].map((href) => ({ rel: 'stylesheet' as const, href }))
+	];
 }
 
 /** the first word of the supporter's name, which the story's heading and the box's name use. */

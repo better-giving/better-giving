@@ -35,6 +35,7 @@ export const RATE_LIMITS = {
 	SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER: { limit: 5, period: 3600 },
 	SUPPORTER_START_RATE_LIMITER: { limit: 5, period: 3600 },
 	SUPPORTER_RESEND_RATE_LIMITER: { limit: 3, period: 3600 },
+	SUPPORTER_RESEND_CALLER_RATE_LIMITER: { limit: 15, period: 3600 },
 	SUPPORTER_PHOTO_RATE_LIMITER: { limit: 10, period: 86_400 }
 } as const satisfies Record<string, RateLimit>;
 
@@ -100,6 +101,9 @@ export function createRateLimiters(
 		),
 		SUPPORTER_START_RATE_LIMITER: createRateLimiter(sizes.SUPPORTER_START_RATE_LIMITER),
 		SUPPORTER_RESEND_RATE_LIMITER: createRateLimiter(sizes.SUPPORTER_RESEND_RATE_LIMITER),
+		SUPPORTER_RESEND_CALLER_RATE_LIMITER: createRateLimiter(
+			sizes.SUPPORTER_RESEND_CALLER_RATE_LIMITER
+		),
 		SUPPORTER_PHOTO_RATE_LIMITER: createRateLimiter(sizes.SUPPORTER_PHOTO_RATE_LIMITER)
 	};
 }

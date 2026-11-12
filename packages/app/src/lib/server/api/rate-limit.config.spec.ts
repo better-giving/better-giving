@@ -58,6 +58,7 @@ const SUPPORTER_LIMITERS = [
 	'SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER',
 	'SUPPORTER_START_RATE_LIMITER',
 	'SUPPORTER_RESEND_RATE_LIMITER',
+	'SUPPORTER_RESEND_CALLER_RATE_LIMITER',
 	'SUPPORTER_PHOTO_RATE_LIMITER'
 ] as const satisfies readonly RateLimiterName[];
 
@@ -84,6 +85,21 @@ describe('the rate limiters the server builds', () => {
 		['SUPPORTER_PHOTO_RATE_LIMITER', 10, DAY]
 	] as const)('sizes %s at %i per %i seconds', (name, limit, period) => {
 		expect(size(name)).toEqual({ limit, period });
+	});
+
+	/**
+	 * Send it again per network, a size derived rather than decided: every page a network may start
+	 * in an hour, each resent as often as its own bucket allows, so the network's bucket refuses no
+	 * caller resending only the pages it started.
+	 */
+	it('sizes SUPPORTER_RESEND_CALLER_RATE_LIMITER at a network’s starts times each page’s resends', () => {
+		const start = size('SUPPORTER_START_RATE_LIMITER');
+		const resend = size('SUPPORTER_RESEND_RATE_LIMITER');
+		expect(start.period).toBe(resend.period);
+		expect(size('SUPPORTER_RESEND_CALLER_RATE_LIMITER')).toEqual({
+			limit: start.limit * resend.limit,
+			period: resend.period
+		});
 	});
 
 	/** a count of requests, so a fraction or a zero is a limit that means something else. */

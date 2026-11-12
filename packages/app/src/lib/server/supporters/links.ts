@@ -3,6 +3,7 @@ import type { Db } from '../db/client';
 import { supporter, supporterLink, supporterPage, type SupporterLinkPurpose } from '../db/schema';
 import {
 	rateLimitWait,
+	supporterResendCallerRateLimitKey,
 	supporterResendRateLimitKey,
 	supporterSignInAddressRateLimitKey,
 	supporterSignInCallerRateLimitKey
@@ -63,12 +64,13 @@ export function linkInsert(
 
 /**
  * the buckets a press that mails a link off the sign-in screen or Check your email is charged, off
- * the platform env: "Email me a link" by the caller and by the address, and Send it again by its
- * page. a start is charged its own (./start.ts). none shares a bucket with another.
+ * the platform env: "Email me a link" by the caller and by the address, and Send it again by the
+ * caller and by its page. a start is charged its own (./start.ts). none shares a bucket with another.
  */
 export type LinkLimiters = {
 	readonly signInByCaller: RateLimiter | undefined;
 	readonly signInByAddress: RateLimiter | undefined;
+	readonly resendByCaller: RateLimiter | undefined;
 	readonly resendByPage: RateLimiter | undefined;
 };
 
@@ -77,6 +79,7 @@ export function linkLimiters(env: Env): LinkLimiters {
 	return {
 		signInByCaller: env.SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER,
 		signInByAddress: env.SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER,
+		resendByCaller: env.SUPPORTER_RESEND_CALLER_RATE_LIMITER,
 		resendByPage: env.SUPPORTER_RESEND_RATE_LIMITER
 	};
 }
@@ -149,15 +152,21 @@ async function mailSignInLink(deps: SignInRequestDeps, email: string): Promise<v
  * Send it again after a start: a fresh confirm link for the pending page `pageId`, which the
  * supporter at `email` started, beside the confirm links already mailed for it. answered
  * as `requestSignInLink` is, `sent` for every address and page, and nothing is mailed where the
- * page is not that supporter's or is no longer pending. charged by the page alone, before anything
- * is read.
+ * page is not that supporter's or is no longer pending. charged by the caller, then by the page
+ * only where the caller's admitted, before anything is read: the page comes from a ticket a browser
+ * can write (./resend-ticket.ts), so the page's bucket alone refuses nobody who names a new one.
  */
 export async function resendConfirmLink(
 	deps: SignInRequestDeps,
+	request: Request,
 	asked: { readonly email: string; readonly pageId: string }
 ): Promise<'sent' | LinkRefusal> {
 	const refused = refusal(
-		await rateLimitWait(deps.limiters.resendByPage, supporterResendRateLimitKey(asked.pageId))
+		(await rateLimitWait(
+			deps.limiters.resendByCaller,
+			supporterResendCallerRateLimitKey(request)
+		)) ??
+			(await rateLimitWait(deps.limiters.resendByPage, supporterResendRateLimitKey(asked.pageId)))
 	);
 	if (refused !== null) return refused;
 	deps.defer(mailConfirmLink(deps, asked));

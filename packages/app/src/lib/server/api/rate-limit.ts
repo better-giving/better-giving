@@ -207,6 +207,16 @@ export function supporterResendRateLimitKey(pageId: string): string {
 }
 
 /**
+ * the same press by the caller's `/48`, as `supporterSignInCallerRateLimitKey` keys it, on
+ * `SUPPORTER_RESEND_CALLER_RATE_LIMITER`, and `null` for a caller with no bucket at all: the page id
+ * comes from a cookie a browser can write, so this is the bucket a fresh id per press does not move.
+ */
+export function supporterResendCallerRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request, 48);
+	return payer === null ? null : `supporter-resend caller ${payer}`;
+}
+
+/**
  * what one photo posted to `/fundraise/photo` counts against, on `SUPPORTER_PHOTO_RATE_LIMITER`:
  * the signed-in supporter, whichever of their sessions and networks posts it, and never the
  * network, so supporters sharing one are not refused as a group.

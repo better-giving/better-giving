@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getIp } from 'better-auth/api';
 import { getTableColumns, getTableName, is } from 'drizzle-orm';
 import { SQLiteTable } from 'drizzle-orm/sqlite-core';
@@ -146,6 +146,35 @@ describe('createAuth configuration', () => {
 		const dev = await testAuth().$context;
 		expect(dev.authCookies.sessionToken.attributes.secure).toBe(false);
 		expect(dev.authCookies.sessionToken.name).not.toMatch(/^__Secure-/);
+	});
+
+	// the hosts `isLoopbackHost` (./env.ts) names, which `loopbackPinRefusal` refuses as a pin.
+	it.each([
+		'http://127.0.0.1:3000',
+		'http://127.8.9.10',
+		'http://[::1]:3000',
+		'http://give.localhost:5321'
+	])('drops Secure on %s outside production', async (origin) => {
+		const local = await testAuth(TEST_ENV, origin).$context;
+		expect(local.authCookies.sessionToken.attributes.secure).toBe(false);
+		expect(local.authCookies.sessionToken.name).not.toMatch(/^__Secure-/);
+	});
+
+	// a reverse proxy that forwards `Host: 127.0.0.1:3000` makes every production request look
+	// loopback when nothing is pinned.
+	it('keeps the session cookie secure on a loopback origin in production', async () => {
+		vi.stubEnv('NODE_ENV', 'production');
+		try {
+			for (const origin of ['http://127.0.0.1:3000', DEV_ORIGIN]) {
+				const proxied = await testAuth(TEST_ENV, origin).$context;
+				expect(proxied.authCookies.sessionToken.attributes.secure).toBe(true);
+				expect(proxied.authCookies.sessionToken.name).toMatch(/^__Secure-/);
+			}
+			const pinned = await testAuth({ ...TEST_ENV, BETTER_AUTH_URL: DEV_ORIGIN }).$context;
+			expect(pinned.authCookies.sessionToken.name).toMatch(/^__Secure-/);
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it('keeps the cookie httpOnly and lax on both', async () => {
