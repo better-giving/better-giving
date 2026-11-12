@@ -1,5 +1,4 @@
 import { href, redirect } from 'react-router';
-import { APP_NAME } from '../../admin/screen-title';
 import type { SupporterAccount, SupporterOrg } from '../../supporter/area/shell';
 import { type ChallengeResult, verifyChallenge } from '../api/challenge';
 import type { Db } from '../db/client';
@@ -10,6 +9,9 @@ import { readOrgProfile, readOrgProfileLogo } from '../org/queries';
 import type { SendLink } from './links';
 import { type OwnFundraiser, readOwnFundraiser } from './pages';
 import { requireSupporter, type SignedInSupporter } from './session';
+
+/** what a deployment is called before an organisation's name is stored, as `APP_NAME` in ../../admin/screen-title.ts says it; a server module imports nothing from the admin folder (no-screen-imports.spec.ts). */
+const APP_NAME = 'Better Giving';
 
 // what the routes under /fundraise share: the organisation as every supporter screen names it, the
 // mail a link goes out in, the spam check a start runs, and the signed-in supporter. the rules are
