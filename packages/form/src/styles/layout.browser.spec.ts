@@ -1067,7 +1067,7 @@ describe('the tribute’s first line', () => {
 		name.placeholder = 'Their name';
 		const message = document.createElement('p');
 		message.className = 'message';
-		message.textContent = 'required, or untick to skip';
+		message.textContent = 'Enter their name';
 		node.appendChild(box.label);
 		node.appendChild(select);
 		node.appendChild(box.list);
@@ -1304,7 +1304,7 @@ describe('the notify press under the honoree', () => {
 		name.placeholder = 'Their name';
 		const message = document.createElement('p');
 		message.className = 'message';
-		message.textContent = 'required, or untick to skip';
+		message.textContent = 'Enter their name';
 		honoree.appendChild(kind);
 		honoree.appendChild(name);
 		honoree.appendChild(message);

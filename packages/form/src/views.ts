@@ -1506,7 +1506,7 @@ export function createCard(
 	// twice: `update` reads this same string onto the live region, under the entry's label. they are
 	// offered the way a tile is, not stated the way a row is (./money.ts): `$5.00` here claims a
 	// precision nobody set.
-	const amountProblem = `between ${offer(config.minAmountMinor)} and ${offer(config.maxAmountMinor)}`;
+	const amountProblem = `Enter an amount between ${offer(config.minAmountMinor)} and ${offer(config.maxAmountMinor)}`;
 	const amountMessage = make(doc, 'p', { class: 'message', id: 'amount-problem', hidden: true }, [
 		amountProblem
 	]);
@@ -1560,11 +1560,10 @@ export function createCard(
 	// itself: a sentence about a note nobody has opened is a sentence about nothing. it carries no
 	// `::part()` name, for the reason ./parts.ts gives about every error surface.
 	//
-	// it names two ways out where the messages above it name one, and that is the difference the
-	// note has from every other decision on this step: the donor may write it or take back the ask,
-	// and naming only the first would leave a donor who ticked by accident stuck against the step.
+	// it says what to do and never how to back out: the donor who ticked by accident finds the box
+	// without being told where it is.
 	const noteMessage = make(doc, 'p', { class: 'message', id: 'note-problem', hidden: true }, [
-		'required, or untick to skip'
+		'Enter a note'
 	]);
 	// the consent to show the note on the organisation's page, and to sign it "Anonymous". each row
 	// is in the DOM only while the flow says it applies (`update` below): the first while the note
@@ -1787,7 +1786,7 @@ export function createCard(
 			}),
 			'Who this gift is for',
 			'Their name',
-			'required, or untick to skip',
+			'Enter their name',
 			(api) => api.tributeHonoreeField
 		)
 	]);
@@ -1808,8 +1807,9 @@ export function createCard(
 					'Name of the person to tell',
 					'Name',
 					// short, because these two sit in half a card each once there is room for two columns.
-					// both ways out are still named: fill it in, or clear the other and tell nobody.
-					'required, or clear the email',
+					// it says what to do and never how to back out. "a name", not the honoree's "their
+					// name": both can show at once, and "their" would mean two people.
+					'Enter a name',
 					(api) => api.tributeNotifyNameField
 				)
 			),
@@ -1830,7 +1830,7 @@ export function createCard(
 					// two rules and one sentence, the way a name field on the details step has one for both
 					// of the rules it can break: an empty box and one holding something that is not an
 					// address are the same thing to a donor looking at the pair.
-					'needs an email address, or clear the name',
+					'Enter their email address',
 					(api) => api.tributeNotifyEmailField
 				)
 			)
@@ -2978,6 +2978,8 @@ export function createCard(
 			: refusal === undefined
 				? ''
 				: coinRefusalWords(refusal);
+		// either is a refused amount, and marks the tray, the tiles and the entry the same way.
+		const amountRefused = missingAmount || refusal !== undefined;
 		setText(amountMessage, amountWords);
 		setHidden(amountMessage, amountWords === '');
 		setHidden(noteMessage, !missingNote);
@@ -2988,18 +2990,14 @@ export function createCard(
 		for (const control of amountOptions.map((option) => option.input)) {
 			toggleAttribute(control, 'aria-describedby', refusal === undefined ? null : 'amount-problem');
 		}
-		toggleAttribute(
-			entryInput,
-			'aria-describedby',
-			refusal === undefined && !missingAmount ? null : 'amount-problem'
-		);
+		toggleAttribute(entryInput, 'aria-describedby', amountRefused ? 'amount-problem' : null);
 		// beside the part token rather than instead of it: the token is what a host's stylesheet
 		// paints, and this is what a screen reader is told, so a donor who cannot see the edge is
 		// not left with the sentence alone. it is written only where the role supports it — the free
 		// entry's text box — because an `aria-invalid` on a role that does not take it is an
 		// attribute nobody is read, and the amount group's own role is the one a fieldset already
 		// has.
-		toggleAttribute(entryInput, 'aria-invalid', missingAmount ? 'true' : null);
+		toggleAttribute(entryInput, 'aria-invalid', amountRefused ? 'true' : null);
 		// the note takes all three, the way a give-step field does: it is a single control with a
 		// role that supports the state and a sentence of its own to be described by.
 		toggleAttribute(noteField, 'part', partWhen('field', { invalid: missingNote }));
@@ -3019,7 +3017,7 @@ export function createCard(
 			amountOptions,
 			api.amountGroup,
 			'amount-option',
-			missingAmount,
+			amountRefused,
 			(option) => option.checked && !otherHolds
 		);
 		if (otherTile !== null) {
@@ -3027,7 +3025,7 @@ export function createCard(
 			toggleAttribute(
 				otherTile.label,
 				'part',
-				partWhen('amount-option', { selected: otherHolds, invalid: missingAmount })
+				partWhen('amount-option', { selected: otherHolds, invalid: amountRefused })
 			);
 		}
 		// after the options are marked, because the chip is placed off the box the chosen one was
@@ -3043,7 +3041,7 @@ export function createCard(
 			'part',
 			partWhen('amount-input', {
 				selected: typed && (otherTile === null || otherHolds),
-				invalid: missingAmount
+				invalid: amountRefused
 			})
 		);
 

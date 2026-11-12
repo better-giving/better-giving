@@ -314,24 +314,12 @@
 	--_lh-body: 1.5;
 
 	/*
-	 * how far an underline sits below the words it marks. `em`, because it is a text metric and has
-	 * to move with whatever size the words it is under are drawn at — which is the opposite of the
-	 * insets below, where two elements at two sizes have to agree on one length.
-	 *
-	 * one value, because every underline in this component is the same decision: a control that is a
-	 * word rather than a box (`[part~='action-quiet']` in ./parts.css), and two offsets would read as
-	 * two kinds of control.
-	 */
-	--_underline-offset: 0.15em;
-
-	/*
 	 * the one tracking step. the currency code beside the free amount entry is the only run of
 	 * capitals this card sets (`.adorn-trail` in ./parts.css), and three letters at `--_t-sm` close
 	 * up into a shape rather than into a word a donor reads as USD.
 	 *
 	 * `em`, because it is a text metric and has to move with whatever size the letters it opens are
-	 * drawn at — the same reason `--_underline-offset` above is, and the opposite of the insets
-	 * below.
+	 * drawn at — the opposite of the insets below.
 	 *
 	 * one value, because there is one such run. a second run of capitals takes this step; a run
 	 * that wanted a different one is a second entry here rather than a literal at its own rule.

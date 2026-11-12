@@ -1709,7 +1709,7 @@ describe('the amount step', () => {
 		card.find('[part~="action"]:not([part~="submit"])').click();
 
 		expect(card.find('#amount-problem').hidden).toBe(false);
-		expect(card.find('#amount-problem').textContent).toBe('between $5 and $50,000');
+		expect(card.find('#amount-problem').textContent).toBe('Enter an amount between $5 and $50,000');
 	});
 
 	it('ties the message to the control with aria-describedby, never to a tooltip', async () => {
@@ -1756,7 +1756,7 @@ describe('the amount step', () => {
 		expect(entry.getAttribute('aria-invalid')).toBe('true');
 		expect(described).toBe('amount-problem');
 		expect(card.find(`#${described}`).hidden).toBe(false);
-		expect(card.text(`#${described}`)).toBe('between $5 and $50,000');
+		expect(card.text(`#${described}`)).toBe('Enter an amount between $5 and $50,000');
 
 		type(entry, '40');
 
@@ -1834,7 +1834,7 @@ describe('the amount step', () => {
 		// something twice is a clear and a write a task apart (`#announce` in ./element.ts).
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('Amount: between $5 and $50,000');
+		expect(card.text('[role="status"]')).toBe('Amount: Enter an amount between $5 and $50,000');
 	});
 
 	// the bounds on the card stand under the box they are about; the region's sentence has no box to
@@ -1846,8 +1846,8 @@ describe('the amount step', () => {
 		card.find('[part~="action"]:not([part~="submit"])').click();
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('Amount: between $5 and $50,000');
-		expect(card.text('#amount-problem')).toBe('between $5 and $50,000');
+		expect(card.text('[role="status"]')).toBe('Amount: Enter an amount between $5 and $50,000');
+		expect(card.text('#amount-problem')).toBe('Enter an amount between $5 and $50,000');
 	});
 
 	// the second press is the whole of this one, and it is the same defect the review step's refusal
@@ -1999,7 +1999,7 @@ describe('the note the donor asked to write', () => {
 
 		expect(card.all('.step')[0]?.hidden).toBe(false);
 		expect(card.find('#note-problem').hidden).toBe(false);
-		expect(card.text('#note-problem')).toBe('required, or untick to skip');
+		expect(card.text('#note-problem')).toBe('Enter a note');
 		expect(card.find('#note').getAttribute('part')).toBe('field invalid');
 		expect(card.find('#note').getAttribute('aria-invalid')).toBe('true');
 		expect(card.find('#note').getAttribute('aria-describedby')).toBe('note-problem');
@@ -2307,7 +2307,7 @@ describe('the gift the donor dedicates', () => {
 
 		expect(card.all('.step')[0]?.hidden).toBe(false);
 		expect(card.find('#tribute-honoree-problem').hidden).toBe(false);
-		expect(card.text('#tribute-honoree-problem')).toBe('required, or untick to skip');
+		expect(card.text('#tribute-honoree-problem')).toBe('Enter their name');
 		expect(card.find('#tribute-honoree').getAttribute('part')).toBe('field invalid');
 		expect(card.find('#tribute-honoree').getAttribute('aria-invalid')).toBe('true');
 		expect(card.find('#tribute-honoree').getAttribute('aria-describedby')).toBe(
@@ -2474,6 +2474,28 @@ describe('the gift the donor dedicates', () => {
 		expect(card.all('.step')[0]?.hidden).toBe(false);
 		expect(card.find('#tribute-notify-name-problem').hidden).toBe(false);
 		expect(card.shadow.activeElement).toBe(card.find('#tribute-notify-name'));
+	});
+
+	// the two sentences the app's note card must match (`copy` in packages/app/src/lib/donate).
+	const NOTIFY_PROBLEM = {
+		name: 'Enter a name',
+		email: 'Enter their email address'
+	};
+
+	it('says what to do under each box of the pair a half answer leaves empty', async () => {
+		const card = await withTributeOpened();
+		type(card.find('#tribute-honoree'), 'Margaret Chen');
+		openNotify(card);
+		type(card.find('#tribute-notify-name'), 'James Okonkwo');
+		proceed(card);
+
+		expect(card.text('#tribute-notify-email-problem')).toBe(NOTIFY_PROBLEM.email);
+
+		type(card.find('#tribute-notify-name'), '');
+		type(card.find('#tribute-notify-email'), 'james@example.org');
+		proceed(card);
+
+		expect(card.text('#tribute-notify-name-problem')).toBe(NOTIFY_PROBLEM.name);
 	});
 
 	it('refuses an address for the person to tell that is not one', async () => {
@@ -7398,6 +7420,33 @@ describe('a crypto gift', () => {
 		await settle();
 
 		expect(card.text('#amount-problem')).toBe(words);
+	});
+
+	// a coin's refusal is a refused amount like the bounds are, so it is marked the way theirs is:
+	// the `invalid` token on every tile and the entry, which is what draws the tray's one red edge
+	// (`.tiles:not(.bare):has(> [part~='invalid'])` in ./styles/parts.css), and `aria-invalid` on the
+	// free entry's text box alone.
+	it('marks the amount it refused the way a refused press marks it, and clears with it', async () => {
+		const card = await onCrypto({
+			ports: { quote: () => Promise.reject({ code: 'above_maximum', message: 'refused' }) }
+		});
+		await pick(card, 'USDT');
+		card.find('[part~="submit"]').click();
+		await settle();
+		const tiles = card.all('[part~="amount-option"]');
+
+		expect(tiles.length).toBeGreaterThan(1);
+		expect(tiles.map((tile) => tile.getAttribute('part')?.split(' ').includes('invalid'))).toEqual(
+			tiles.map(() => true)
+		);
+		expect(card.find('[part~="amount-input"]').getAttribute('part')).toContain('invalid');
+		expect(card.find('#amount-entry').getAttribute('aria-invalid')).toBe('true');
+		expect(card.all('[aria-invalid="true"]').map((node) => node.id)).toEqual(['amount-entry']);
+
+		type(card.find('#amount-entry'), '50');
+
+		expect(card.all('[part~="invalid"]')).toEqual([]);
+		expect(card.find('#amount-entry').hasAttribute('aria-invalid')).toBe(false);
 	});
 
 	it('lands a coin the account no longer takes back in the list, marked', async () => {

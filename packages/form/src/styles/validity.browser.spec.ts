@@ -536,7 +536,8 @@ describe('the free entry the donor has already typed into', () => {
 			standing: 'on a tray',
 			suggested: CONFIG.suggestedAmountsMinor,
 			refused: true,
-			input: ['danger'],
+			// the tray carries the one red border, so the entry in it keeps its ordinary ring.
+			input: ['--_n1', '--_focus-ring'],
 			surface: []
 		},
 		{ standing: 'alone', suggested: [], refused: false, input: ['--_focus-ring'], surface: [] },
@@ -668,6 +669,48 @@ describe('the amount step’s problem edge', () => {
 		expect(getComputedStyle(tile).boxShadow).toBe('none');
 		expect(dangerWidth(tile, danger)).toBe(0);
 		expect(dangerWidth(entry, danger)).toBe(0);
+	});
+
+	// the control for the case above: the same tray before any press is refused draws its ordinary
+	// edge, so the danger read there is the refusal's and not the tray's resting colour.
+	it('is not drawn on a tray nothing has refused', async () => {
+		const card = await mount();
+		const tray = card.find('.tiles');
+		await painted(tray);
+
+		expect(edgeOf(tray)).not.toBe(dangerOf(card));
+		expect(dangerWidth(tray, dangerOf(card))).toBe(0);
+	});
+
+	// the keyboard donor tabbing onto a tile of a refused tray gets the ordinary ring on that tile
+	// while the tray keeps the one red edge: the tile draws no red of its own
+	// (`[part~='amount-option']:has(:focus-visible)` in ../styles/parts.css).
+	it('keeps the ordinary ring on a tile the keyboard reaches, with the tray’s edge still red', async () => {
+		const card = await mount();
+		await userEvent.click(card.find('.other input'));
+		proceed(card);
+		const tray = card.find('.tiles');
+		// focused directly: radios in a group are one tab stop, so which tile a Tab press reaches
+		// depends on the checked one. a key press first puts the engine in keyboard modality, which
+		// is what `:focus-visible` reads.
+		const tile = card.shadow.querySelectorAll("[part~='amount-option']")[1] as HTMLElement;
+		(card.shadow.activeElement as HTMLElement | null)?.blur();
+		await userEvent.keyboard('{Shift}');
+		(tile.querySelector('input') as HTMLInputElement).focus();
+		expect(tile.contains(card.shadow.activeElement)).toBe(true);
+		expect(tile.getAttribute('part')).toContain('invalid');
+		await painted(tray, tile);
+		const danger = dangerOf(card);
+
+		const drawn = getComputedStyle(tile)
+			.boxShadow.split(/,(?![^(]*\))/)
+			.map((layer) => shadowColour(layer.trim()));
+		// the ring is a layer of the tile's shadow, and none of the layers is the refusal's red.
+		expect(drawn).toContain(tokenOf(card, '--_focus-ring'));
+		expect(drawn).not.toContain(danger);
+		expect(dangerWidth(tile, danger)).toBe(0);
+		expect(edgeOf(tray)).toBe(danger);
+		expect(dangerWidth(tray, danger)).toBe(2);
 	});
 
 	// and a form suggesting one amount or none has no tray to mark: the entry is the outermost box

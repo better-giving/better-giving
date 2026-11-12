@@ -408,10 +408,11 @@ describe('the free amount entry with the keyboard in it', () => {
 		expect(drawn.some((body) => /box-shadow:[^;]*var\(--_focus-ring\)/.test(body))).toBe(true);
 	});
 
-	it('rings a refused entry in the danger colour, as every other refused control', () => {
-		const drawn = rulesFor("[part~='amount-input'][part~='invalid'] input:focus-visible");
+	it('rings a refused entry in the danger colour only where it stands alone on a bare tray', () => {
+		const drawn = rulesFor(".bare > [part~='amount-input'][part~='invalid'] input:focus-visible");
 
 		expect(drawn.some((body) => /box-shadow:[^;]*var\(--_bad-edge\)/.test(body))).toBe(true);
+		expect(rulesFor("[part~='amount-input'][part~='invalid'] input:focus-visible")).toEqual([]);
 	});
 });
 

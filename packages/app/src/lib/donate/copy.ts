@@ -60,8 +60,8 @@ export const OPTIONAL = '(optional)';
 
 export const ADD_A_NOTE = 'Add a note ';
 export const YOUR_NOTE = 'Your note';
-/** two ways out, because the donor may write the note or take back the ask. */
-export const NOTE_PROBLEM = 'required, or untick to skip';
+/** what to do, never how to back out. worded as the element's (packages/form/src/views.ts, `noteMessage`). */
+export const NOTE_PROBLEM = 'Enter a note';
 /** the consent under the note, worded as the element's (packages/form/src/views.ts, `notePublicRow`). */
 export function notePublicLabel(org: string): string {
 	return `Show my note on ${org}’s page`;
@@ -77,7 +77,8 @@ export const DEDICATE = 'Dedicate this gift ';
 export const TRIBUTE_KIND_LABEL = 'How this gift is dedicated';
 export const TRIBUTE_HONOREE_LABEL = 'Who this gift is for';
 export const TRIBUTE_HONOREE_PLACEHOLDER = 'Their name';
-export const TRIBUTE_HONOREE_PROBLEM = 'required, or untick to skip';
+/** worded as the element's (packages/form/src/views.ts, `tributeBox('tribute-honoree', …)`). */
+export const TRIBUTE_HONOREE_PROBLEM = 'Enter their name';
 
 /**
  * the notify press, in the two directions it goes.
@@ -91,11 +92,19 @@ export const NOTIFY_OPEN = '− Notify recipient';
 
 export const NOTIFY_NAME_LABEL = 'Name of the person to tell';
 export const NOTIFY_NAME_PLACEHOLDER = 'Name';
-/** short, because these two sit in half a card each. both ways out are still named. */
-export const NOTIFY_NAME_PROBLEM = 'required, or clear the email';
+/**
+ * short, because these two sit in half a card each. what to do, never how to back out. "a name",
+ * not the honoree's "their name": both can show at once. worded as the element's
+ * (packages/form/src/views.ts, `tributeBox('tribute-notify-name', …)`).
+ */
+export const NOTIFY_NAME_PROBLEM = 'Enter a name';
 export const NOTIFY_EMAIL_LABEL = 'Email address of the person to tell';
 export const NOTIFY_EMAIL_PLACEHOLDER = 'Email';
-export const NOTIFY_EMAIL_PROBLEM = 'needs an email address, or clear the name';
+/**
+ * one sentence for an empty box and one holding something that is not an address. worded as the
+ * element's (packages/form/src/views.ts, `tributeBox('tribute-notify-email', …)`).
+ */
+export const NOTIFY_EMAIL_PROBLEM = 'Enter their email address';
 
 /**
  * the bounds a gift is taken between, offered the way a tile is rather than stated the way a row is.
@@ -103,7 +112,7 @@ export const NOTIFY_EMAIL_PROBLEM = 'needs an email address, or clear the name';
  * `$5.00` here would claim a precision nobody set.
  */
 export function amountProblem(offer: (minor: number) => string, min: number, max: number): string {
-	return `between ${offer(min)} and ${offer(max)}`;
+	return `Enter an amount between ${offer(min)} and ${offer(max)}`;
 }
 
 /**

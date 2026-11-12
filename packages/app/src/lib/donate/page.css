@@ -453,7 +453,7 @@ body {
 
 .page-ground a {
 	color: var(--page-accent);
-	text-underline-offset: var(--_underline-offset);
+	text-underline-offset: 0.15em; /* raw-length-ok: a text metric, so it follows the words' own size. */
 }
 
 .page-ground a:focus-visible,
