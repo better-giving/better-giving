@@ -690,17 +690,14 @@ describe('the amount step’s problem edge', () => {
 		await userEvent.click(card.find('.other input'));
 		proceed(card);
 		const tray = card.find('.tiles');
-		const tiles = Array.from(
-			card.shadow.querySelectorAll("[part~='amount-option']")
-		) as HTMLElement[];
-		const onTile = () => tiles.find((tile) => tile.contains(card.shadow.activeElement));
-
+		// focused directly: radios in a group are one tab stop, so which tile a Tab press reaches
+		// depends on the checked one. a key press first puts the engine in keyboard modality, which
+		// is what `:focus-visible` reads.
+		const tile = card.shadow.querySelectorAll("[part~='amount-option']")[1] as HTMLElement;
 		(card.shadow.activeElement as HTMLElement | null)?.blur();
-		for (let presses = 0; presses < 12 && onTile() === undefined; presses++) {
-			await userEvent.keyboard('{Tab}');
-		}
-		const tile = onTile();
-		if (tile === undefined) throw new Error('the keyboard never reached a tile');
+		await userEvent.keyboard('{Shift}');
+		(tile.querySelector('input') as HTMLInputElement).focus();
+		expect(tile.contains(card.shadow.activeElement)).toBe(true);
 		expect(tile.getAttribute('part')).toContain('invalid');
 		await painted(tray, tile);
 		const danger = dangerOf(card);
@@ -708,7 +705,7 @@ describe('the amount step’s problem edge', () => {
 		const drawn = getComputedStyle(tile)
 			.boxShadow.split(/,(?![^(]*\))/)
 			.map((layer) => shadowColour(layer.trim()));
-		// the tile standing under the caret is the chosen one, so its lift is a layer beside the ring.
+		// the ring is a layer of the tile's shadow, and none of the layers is the refusal's red.
 		expect(drawn).toContain(tokenOf(card, '--_focus-ring'));
 		expect(drawn).not.toContain(danger);
 		expect(dangerWidth(tile, danger)).toBe(0);

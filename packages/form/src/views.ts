@@ -1807,8 +1807,8 @@ export function createCard(
 					'Name of the person to tell',
 					'Name',
 					// short, because these two sit in half a card each once there is room for two columns.
-					// it says what to do and never how to back out, like the note's. "a name", not the
-					// honoree's "their name": both can show at once, and "their" would mean two people.
+					// it says what to do and never how to back out. "a name", not the honoree's "their
+					// name": both can show at once, and "their" would mean two people.
 					'Enter a name',
 					(api) => api.tributeNotifyNameField
 				)
@@ -2978,6 +2978,8 @@ export function createCard(
 			: refusal === undefined
 				? ''
 				: coinRefusalWords(refusal);
+		// either is a refused amount, and marks the tray, the tiles and the entry the same way.
+		const amountRefused = missingAmount || refusal !== undefined;
 		setText(amountMessage, amountWords);
 		setHidden(amountMessage, amountWords === '');
 		setHidden(noteMessage, !missingNote);
@@ -2988,18 +2990,14 @@ export function createCard(
 		for (const control of amountOptions.map((option) => option.input)) {
 			toggleAttribute(control, 'aria-describedby', refusal === undefined ? null : 'amount-problem');
 		}
-		toggleAttribute(
-			entryInput,
-			'aria-describedby',
-			refusal === undefined && !missingAmount ? null : 'amount-problem'
-		);
+		toggleAttribute(entryInput, 'aria-describedby', amountRefused ? 'amount-problem' : null);
 		// beside the part token rather than instead of it: the token is what a host's stylesheet
 		// paints, and this is what a screen reader is told, so a donor who cannot see the edge is
 		// not left with the sentence alone. it is written only where the role supports it — the free
 		// entry's text box — because an `aria-invalid` on a role that does not take it is an
 		// attribute nobody is read, and the amount group's own role is the one a fieldset already
 		// has.
-		toggleAttribute(entryInput, 'aria-invalid', missingAmount ? 'true' : null);
+		toggleAttribute(entryInput, 'aria-invalid', amountRefused ? 'true' : null);
 		// the note takes all three, the way a give-step field does: it is a single control with a
 		// role that supports the state and a sentence of its own to be described by.
 		toggleAttribute(noteField, 'part', partWhen('field', { invalid: missingNote }));
@@ -3019,7 +3017,7 @@ export function createCard(
 			amountOptions,
 			api.amountGroup,
 			'amount-option',
-			missingAmount,
+			amountRefused,
 			(option) => option.checked && !otherHolds
 		);
 		if (otherTile !== null) {
@@ -3027,7 +3025,7 @@ export function createCard(
 			toggleAttribute(
 				otherTile.label,
 				'part',
-				partWhen('amount-option', { selected: otherHolds, invalid: missingAmount })
+				partWhen('amount-option', { selected: otherHolds, invalid: amountRefused })
 			);
 		}
 		// after the options are marked, because the chip is placed off the box the chosen one was
@@ -3043,7 +3041,7 @@ export function createCard(
 			'part',
 			partWhen('amount-input', {
 				selected: typed && (otherTile === null || otherHolds),
-				invalid: missingAmount
+				invalid: amountRefused
 			})
 		);
 

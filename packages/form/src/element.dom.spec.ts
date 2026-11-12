@@ -2476,6 +2476,29 @@ describe('the gift the donor dedicates', () => {
 		expect(card.shadow.activeElement).toBe(card.find('#tribute-notify-name'));
 	});
 
+	// the two sentences the app's note card must match (`copy` in packages/app/src/lib/donate); held
+	// in one place because the copy is still under review.
+	const NOTIFY_PROBLEM = {
+		name: 'Enter a name',
+		email: 'Enter their email address'
+	};
+
+	it('says what to do under each box of the pair a half answer leaves empty', async () => {
+		const card = await withTributeOpened();
+		type(card.find('#tribute-honoree'), 'Margaret Chen');
+		openNotify(card);
+		type(card.find('#tribute-notify-name'), 'James Okonkwo');
+		proceed(card);
+
+		expect(card.text('#tribute-notify-email-problem')).toBe(NOTIFY_PROBLEM.email);
+
+		type(card.find('#tribute-notify-name'), '');
+		type(card.find('#tribute-notify-email'), 'james@example.org');
+		proceed(card);
+
+		expect(card.text('#tribute-notify-name-problem')).toBe(NOTIFY_PROBLEM.name);
+	});
+
 	it('refuses an address for the person to tell that is not one', async () => {
 		// the mail goes to somebody who never gave us their address, on the domain every receipt
 		// also leaves from — so a value that is plainly not an address is caught here rather than
@@ -7398,6 +7421,33 @@ describe('a crypto gift', () => {
 		await settle();
 
 		expect(card.text('#amount-problem')).toBe(words);
+	});
+
+	// a coin's refusal is a refused amount like the bounds are, so it is marked the way theirs is:
+	// the `invalid` token on every tile and the entry, which is what draws the tray's one red edge
+	// (`.tiles:not(.bare):has(> [part~='invalid'])` in ./styles/parts.css), and `aria-invalid` on the
+	// free entry's text box alone.
+	it('marks the amount it refused the way a refused press marks it, and clears with it', async () => {
+		const card = await onCrypto({
+			ports: { quote: () => Promise.reject({ code: 'above_maximum', message: 'refused' }) }
+		});
+		await pick(card, 'USDT');
+		card.find('[part~="submit"]').click();
+		await settle();
+		const tiles = card.all('[part~="amount-option"]');
+
+		expect(tiles.length).toBeGreaterThan(1);
+		expect(tiles.map((tile) => tile.getAttribute('part')?.split(' ').includes('invalid'))).toEqual(
+			tiles.map(() => true)
+		);
+		expect(card.find('[part~="amount-input"]').getAttribute('part')).toContain('invalid');
+		expect(card.find('#amount-entry').getAttribute('aria-invalid')).toBe('true');
+		expect(card.all('[aria-invalid="true"]').map((node) => node.id)).toEqual(['amount-entry']);
+
+		type(card.find('#amount-entry'), '50');
+
+		expect(card.all('[part~="invalid"]')).toEqual([]);
+		expect(card.find('#amount-entry').hasAttribute('aria-invalid')).toBe(false);
 	});
 
 	it('lands a coin the account no longer takes back in the list, marked', async () => {

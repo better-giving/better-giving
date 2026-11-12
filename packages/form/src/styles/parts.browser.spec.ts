@@ -3242,14 +3242,15 @@ describe('the surfaces a donor operates', () => {
 		}
 	});
 
-	// the lattice between the boxes is ruled in a border step off its ground: the cadence track's
-	// `--_n2` takes rung 6, and the amount tray's `--_n3` takes rung 7, the tray's own edge, where
-	// rung 6 reads too faint.
-	it('rules the gaps on each tray in a border step that shows on its ground', async () => {
+	// the lattice between the boxes is a divider on both trays, so it is step 6, the step
+	// ../styles/tokens.css gives a divider, whatever ground it stands on. a refused amount turns the
+	// tray's own edge the danger colour and leaves the lines on step 6: the mark is the edge.
+	it('rules the gaps on both trays in the divider step, refused or not', async () => {
 		const { shadow } = await mount();
 		const second = shadow.querySelector('.segment > label + label') as HTMLElement;
+		const divider = token(shadow, '--_n6');
 
-		expect(getComputedStyle(second, '::before').backgroundColor).toBe(token(shadow, '--_n6'));
+		expect(getComputedStyle(second, '::before').backgroundColor).toBe(divider);
 
 		// every line the tray draws: both ends of every tile, and the open entry's top line.
 		(shadow.querySelector('.other input') as HTMLInputElement).click();
@@ -3264,13 +3265,20 @@ describe('the surfaces a donor operates', () => {
 				[tray.querySelector(':scope > .entry') as Element, '::after'] as const
 			] as const
 		).filter(([owner, end]) => getComputedStyle(owner, end).content !== 'none');
+		const colours = () =>
+			lines.map(([owner, end]) => [
+				`${owner.className || owner.localName}${end}`,
+				getComputedStyle(owner, end).backgroundColor
+			]);
 		expect(lines.length).toBeGreaterThan(4);
-		for (const [owner, end] of lines) {
-			expect(
-				getComputedStyle(owner, end).backgroundColor,
-				`${owner.className || owner.localName}${end}`
-			).toBe(token(shadow, '--_n7'));
-		}
+		expect(colours()).toEqual(colours().map(([line]) => [line, divider]));
+
+		// the free entry stands open and empty, so the press is refused for the amount.
+		onward(shadow);
+		await settle();
+
+		expect(getComputedStyle(tray).borderTopColor).toBe(token(shadow, '--_bad-edge'));
+		expect(colours()).toEqual(colours().map(([line]) => [line, divider]));
 	});
 
 	it('leaves the receipt bare: no fill, no frame, no pad', async () => {
@@ -4451,10 +4459,11 @@ describe('the amount tray’s plane', () => {
 
 	// each end of every line is the content box's edge: the border's width and the tray's pad in from
 	// the tray's own box. a line short of it leaves a hole in the board; one past it touches the edge.
+	// the exception is the verticals' bottom, which stops mid-gap above the free entry's row.
 	describe.each([
-		['one row', 560],
-		['two by two', 300]
-	])('the lines in the %s layout', (_name, width) => {
+		['one row', 560, 1],
+		['two by two', 300, 2]
+	])('the lines in the %s layout', (_name, width, rows) => {
 		it('end on the tray’s padding edge, both ways', async () => {
 			const { host, shadow } = await mount();
 			host.style.display = 'block';
@@ -4470,6 +4479,13 @@ describe('the amount tray’s plane', () => {
 				right: edge.right - inset,
 				bottom: edge.bottom - inset
 			};
+
+			// the case reached the layout it names: the suggested amounts stand in this many rows,
+			// the free entry's own row after them.
+			const cells = Array.from(tray.querySelectorAll("[part~='amount-option']:not(.other)"));
+			expect(new Set(cells.map((cell) => Math.round(cell.getBoundingClientRect().top))).size).toBe(
+				rows
+			);
 
 			const verticals: { top: number; bottom: number }[] = [];
 			const horizontals: { left: number; right: number }[] = [];
@@ -4490,12 +4506,20 @@ describe('the amount tray’s plane', () => {
 
 			expect(verticals.length).toBeGreaterThan(0);
 			expect(Math.min(...verticals.map((v) => v.top))).toBeCloseTo(content.top, 0);
-			expect(Math.max(...verticals.map((v) => v.bottom))).toBeLessThanOrEqual(content.bottom + 0.5);
+			// the verticals stop where they meet the horizontal above the free entry, mid-gap between
+			// the last row of tiles and the entry.
+			const lastTileBottom = Math.max(...cells.map((cell) => cell.getBoundingClientRect().bottom));
+			const entryTop = (tray.querySelector('.other') as HTMLElement).getBoundingClientRect().top;
+			expect(Math.max(...verticals.map((v) => v.bottom))).toBeCloseTo(
+				(lastTileBottom + entryTop) / 2,
+				0
+			);
 			for (const h of horizontals) {
 				expect(h.left).toBeCloseTo(content.left, 0);
 				expect(h.right).toBeCloseTo(content.right, 0);
 			}
-			if (width < 400) expect(horizontals.length).toBeGreaterThan(0);
+			// one above each row after the first, and the one above the free entry.
+			expect(horizontals).toHaveLength(rows);
 		});
 	});
 });
@@ -4503,13 +4527,17 @@ describe('the amount tray’s plane', () => {
 // only a link is underlined. a button, a quiet action or a part standing in as one reads as
 // pressable by its ink and its answer to a pointer, never by a line under its words.
 describe('what is underlined', () => {
-	it('is a link and nothing else, at rest and under the pointer', async () => {
+	it('is a link and nothing else, on every step, at rest and under the pointer', async () => {
 		const { shadow } = await mount();
 		const dedicate = Array.from(shadow.querySelectorAll('.step:not([hidden]) label'))
 			.find((label) => label.textContent?.includes('Dedicate this gift'))
 			?.querySelector('input[type="checkbox"]') as HTMLInputElement | undefined;
 		expect(dedicate, 'the dedicate box').toBeDefined();
 		dedicate?.click();
+		await settle();
+		fill(shadow, '#tribute-honoree', 'Margaret Chen');
+		// the notify press opens the pair it is a quiet action for, so both boxes are drawn too.
+		(shadow.querySelector('[aria-controls="tribute-notify"]') as HTMLElement).click();
 		await settle();
 
 		// the control: a link standing in the card keeps the engine's underline, so the sweep below
@@ -4520,25 +4548,42 @@ describe('what is underlined', () => {
 		shadow.querySelector('.step:not([hidden])')?.appendChild(link);
 		expect(getComputedStyle(link).textDecorationLine).toContain('underline');
 
-		const everything = Array.from(shadow.querySelectorAll('*')).filter(
-			(node) => !node.matches('a[href]')
-		) as HTMLElement[];
-		expect(everything.length).toBeGreaterThan(10);
-		for (const node of everything) {
-			expect(getComputedStyle(node).textDecorationLine, node.outerHTML.slice(0, 80)).not.toContain(
-				'underline'
-			);
-		}
+		const sweep = async (stepName: string) => {
+			const everything = Array.from(shadow.querySelectorAll('*')).filter(
+				(node) => !node.matches('a[href]')
+			) as HTMLElement[];
+			expect(everything.length).toBeGreaterThan(10);
+			for (const node of everything) {
+				expect(
+					getComputedStyle(node).textDecorationLine,
+					`${stepName}: ${node.outerHTML.slice(0, 80)}`
+				).not.toContain('underline');
+			}
+			const quiet = Array.from(
+				shadow.querySelectorAll(".step:not([hidden]) [part~='action-quiet']")
+			).filter((node) => node.getBoundingClientRect().width > 0) as HTMLElement[];
+			for (const action of quiet) {
+				await userEvent.hover(action);
+				try {
+					await landed(action);
+					expect(getComputedStyle(action).textDecorationLine, stepName).not.toContain('underline');
+					expect(getComputedStyle(action).color, stepName).toBe(used(shadow, '--_a12'));
+				} finally {
+					await userEvent.unhover(action);
+				}
+			}
+			return quiet.length;
+		};
 
-		const quiet = shadow.querySelector("[part~='action-quiet']") as HTMLElement;
-		expect(quiet).not.toBeNull();
-		await userEvent.hover(quiet);
-		try {
-			await landed(quiet);
-			expect(getComputedStyle(quiet).textDecorationLine).not.toContain('underline');
-			expect(getComputedStyle(quiet).color).toBe(used(shadow, '--_a12'));
-		} finally {
-			await userEvent.unhover(quiet);
-		}
+		// the notify press is a quiet action on the first step, so the hover read has a subject.
+		expect(await sweep('amount')).toBeGreaterThan(0);
+		await atDetails(shadow);
+		await sweep('details');
+		fill(shadow, '#email', 'donor@example.org');
+		fill(shadow, '#first-name', 'Ada');
+		fill(shadow, '#last-name', 'Lovelace');
+		onward(shadow);
+		await settle();
+		await sweep('review');
 	});
 });
