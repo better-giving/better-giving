@@ -1,6 +1,6 @@
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { defaultCampaign, defaultDonationPage } from '../page/defaults';
 import { PageView, type PageViewProps } from './page-view';
 import type { DonateProfile } from './profile';
@@ -243,7 +243,25 @@ describe('the card', () => {
 	});
 });
 
+describe('the card with a wordmark logo', () => {
+	it('draws the logo whole and About us under the name, the box last', () => {
+		const root = draw({ ...FULL, logo: { src: '/image/logo-1', width: 1200, height: 300 } });
+		expect(layoutOf(root)).toBe('card');
+		expect(root.querySelector('.page-profile-logo')?.hasAttribute('data-wide')).toBe(true);
+		expect(order(root)).toEqual(['banner', 'who', 'title', 'about', 'box']);
+		expect(part(root, 'about')?.textContent).toContain('We keep families housed');
+	});
+});
+
 describe('the letter', () => {
+	it('draws the banner, the name, About us and the box where there are no videos', () => {
+		const root = draw({ ...FULL, mission: 'm'.repeat(400) });
+		expect(layoutOf(root)).toBe('letter');
+		expect(order(root)).toEqual(['banner', 'who', 'title', 'box', 'about']);
+		expect(part(root, 'banner')?.querySelector('img')?.getAttribute('src')).toBe('/image/banner-1');
+		expect(part(root, 'videos')).toBeNull();
+	});
+
 	it('stands the name, the box, About us, the videos and the messages, in that order', () => {
 		const root = draw({ ...LETTER, messages: messages(1, 1) });
 		expect(layoutOf(root)).toBe('letter');
@@ -285,6 +303,14 @@ describe('the letter', () => {
 });
 
 describe('the feature', () => {
+	it('draws the brand ground and no About us with no banner and nothing written', () => {
+		const root = draw({ ...BARE, videos: videos(4) });
+		expect(layoutOf(root)).toBe('feature');
+		expect(part(root, 'banner')?.dataset.cover).toBe('none');
+		expect(part(root, 'about')).toBeNull();
+		expect(order(root)).toEqual(['banner', 'who', 'title', 'box', 'videos']);
+	});
+
 	it('stands the cover, the name, the box, the videos, the messages and About us', () => {
 		expect(order(draw(FEATURE))).toEqual([
 			'banner',
@@ -435,5 +461,26 @@ describe('the footer', () => {
 
 	it('is left off where the organisation states no way to reach it', () => {
 		expect(draw(BARE).querySelector('footer')).toBeNull();
+	});
+});
+
+describe('Show more messages in the editor preview', () => {
+	it('lets a press reach the messages, which read what /donate shows, and stops one anywhere else', () => {
+		const onShowMore = vi.fn();
+		const root = draw(FEATURE, { preview: true, donorMessages: { ...WIRING, onShowMore } });
+		const more = [...(part(root, 'messages')?.querySelectorAll('button') ?? [])].find(
+			(b) => b.textContent === 'Show more messages'
+		);
+		expect(more).toBeDefined();
+		const inside = new MouseEvent('click', { bubbles: true, cancelable: true });
+		act(() => more?.dispatchEvent(inside));
+		expect(inside.defaultPrevented).toBe(false);
+		expect(onShowMore).toHaveBeenCalledTimes(1);
+
+		const link = root.querySelector<HTMLAnchorElement>('[data-area="share"] a');
+		const outside = new MouseEvent('click', { bubbles: true, cancelable: true });
+		act(() => link?.dispatchEvent(outside));
+		expect(outside.defaultPrevented).toBe(true);
+		expect(more?.getAttribute('tabindex')).not.toBe('-1');
 	});
 });

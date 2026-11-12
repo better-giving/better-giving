@@ -24,10 +24,11 @@ import type { Route } from './+types/preview.$pageId';
 // ($lib/server/pages/view.ts). a campaign nobody has published draws its box too, though its row
 // takes no gift yet.
 //
-// **nothing in it acts.** the renderer's preview mode lets no press through and draws the donation
-// box inert, so no gift can start here ($lib/donate/page-view.tsx). a draft the read rule refuses
-// draws the box alone, inert here too. Show more messages is a read, and asks /donate's own
-// (./donate.messages.ts), so the preview lists only the messages /donate shows.
+// **nothing in it acts.** the renderer's preview mode lets no press through outside the messages
+// from donors and draws the donation box inert, so no gift can start here
+// ($lib/donate/page-view.tsx). a draft the read rule refuses draws the box alone, inert here too.
+// Show more messages is a read, and asks /donate's own (./donate.messages.ts), so the preview lists
+// only the messages /donate shows.
 //
 // nobody may frame it (../document-policy.ts), and no cache keeps it: a draft read under a session.
 

@@ -621,15 +621,25 @@ const TAB_STOPS =
 	'a[href], area[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]';
 
 /**
- * in the preview a press reaches nothing: the preview is a picture of the draft, so a link, a share
- * or a pick in it is not followed, and no handler of a section's hears it. nothing in it takes a tab
- * stop either — the donation box is inert, and every other stop is taken out of the order.
+ * the one part of the preview a press still reaches: messages from donors, whose Show more is a read
+ * of what /donate shows (../../routes/preview.$pageId.tsx), not an act on the draft.
+ */
+const PREVIEW_LIVE = "[data-area='messages']";
+
+/**
+ * in the preview a press reaches nothing outside `PREVIEW_LIVE`: the preview is a picture of the
+ * draft, so a link, a share or a pick in it is not followed, and no handler of a section's hears it.
+ * nothing else in it takes a tab stop either — the donation box is inert, and every other stop is
+ * taken out of the order.
  */
 function usePreviewStill(preview: boolean) {
 	useEffect(() => {
 		if (!preview) return;
-		for (const stop of document.querySelectorAll<HTMLElement>(TAB_STOPS)) stop.tabIndex = -1;
+		for (const stop of document.querySelectorAll<HTMLElement>(TAB_STOPS)) {
+			if (stop.closest(PREVIEW_LIVE) === null) stop.tabIndex = -1;
+		}
 		const still = (event: MouseEvent) => {
+			if (event.target instanceof Element && event.target.closest(PREVIEW_LIVE) !== null) return;
 			event.preventDefault();
 			event.stopPropagation();
 		};
