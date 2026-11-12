@@ -310,10 +310,11 @@ function decidingAttempt<T extends SettlementAttempt>(attempts: readonly T[]): T
  * `CONTACT_LIST_LIMIT` makes in ../contacts/queries.ts.
  *
  * the other end is the one this constant has that that one does not: the page's ids are bound into
- * two follow-up reads, one parameter per id, and D1 caps a query at 100 bound parameters. so this
- * has to stay well under 100 whatever anyone later decides about page size — a limit raised past it
- * does not read slowly, it fails the query. the probe row never reaches those reads (see
- * `listDonations`), so the count bound is this number exactly.
+ * two follow-up reads, one parameter per id, and SQLite refuses a statement past
+ * `SQLITE_MAX_VARIABLE_NUMBER` (32766, https://www.sqlite.org/limits.html). a limit raised past
+ * that does not read slowly, it fails the query; the page's size is otherwise a reading choice. the
+ * probe row never reaches those reads (see `listDonations`), so the count bound is this number
+ * exactly.
  */
 export const DONATION_LIST_LIMIT = 50;
 

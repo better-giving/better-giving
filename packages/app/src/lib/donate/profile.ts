@@ -1,16 +1,18 @@
 import type { Video } from '../page/catalog';
 import { imageSrc } from '../page/image-src';
+import { writtenText } from '../page/profile-shape';
 import { type ShownVideo, shownVideos } from '../page/videos';
 import type { DonorMessages } from './messages';
 import type { PageLogo } from './page-view';
-import type { OrgInfo, PageMoney, PageOrg } from './sections/types';
+import type { OrgInfo, PageOrg } from './sections/types';
 
-// what the Donation page's profile head draws at /donate: who the organisation is, what it has
-// raised and how to reach it. the loader reads it with the rest of the page
-// (`loadPageView` in ../server/pages/view.ts); a campaign at its own address is handed none.
+// what the Donation page's profile head draws at /donate: who the organisation is and how to reach
+// it, and never what it has raised: a campaign's goal bar alone draws progress. the loader reads it
+// with the rest of the page (`loadPageView` in ../server/pages/view.ts); a campaign at its own
+// address is handed none.
 //
-// fields only: which layout the head takes, compact or profile, is the component's to pick from
-// what is here.
+// fields only: which layout the head takes, the card, the letter or the feature, is picked from what
+// is here by `profileShape` in $lib/page/profile-shape.ts.
 
 /** a stored photo as the page draws it: the address it is served from, and its shape. */
 export type ProfilePhoto = {
@@ -29,14 +31,6 @@ export type DonateProfile = {
 	/** plain text, a blank line between paragraphs; null where the organisation has written none. */
 	readonly mission: string | null;
 	readonly vision: string | null;
-	/**
-	 * every settled gift through every page and form, net of refunds, in `money.currency`: a `SUM`
-	 * read on this request (`organisationRaised` in ../server/pages/goal.ts). `gifts` counts each
-	 * gift standing at more than nothing, each charge of a repeating gift as one.
-	 */
-	readonly raised: { readonly raisedMinor: number; readonly gifts: number };
-	/** how `raised` is worded: the served config's locale and currency. */
-	readonly money: PageMoney;
 	readonly footer: Pick<OrgInfo, 'addressLines' | 'email' | 'socialLinks'>;
 	/**
 	 * the newest six messages from donors, read on this request (`readShownMessages` in
@@ -52,21 +46,17 @@ export type DonateProfile = {
 	readonly videos: readonly ShownVideo[];
 };
 
-/** the profile head's fields, from the organisation, its photos and its raised figure as read. */
+/** the profile head's fields, from the organisation, its photos, messages and videos as read. */
 export function donateProfile({
 	org,
 	logo,
 	bannerImageId,
-	raised,
-	money,
 	messages,
 	videos
 }: {
 	readonly org: PageOrg;
 	readonly logo: PageLogo | null;
 	readonly bannerImageId: string | null;
-	readonly raised: DonateProfile['raised'];
-	readonly money: PageMoney;
 	readonly messages: DonorMessages;
 	readonly videos: readonly Video[] | undefined;
 }): DonateProfile {
@@ -79,10 +69,8 @@ export function donateProfile({
 			logo === null
 				? null
 				: { src: imageSrc(logo.imageId), width: logo.width, height: logo.height },
-		mission: org.mission,
-		vision: org.vision,
-		raised,
-		money,
+		mission: writtenText(org.mission),
+		vision: writtenText(org.vision),
 		footer: { addressLines, email, socialLinks },
 		messages,
 		videos: shownVideos(videos)

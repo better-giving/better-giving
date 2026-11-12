@@ -196,11 +196,13 @@ afterEach(() => {
 describe('how many tiles a row takes', () => {
 	// the columns turn on the card's own breakpoint, and what has to be true of it is what is true of
 	// every breakpoint here: it is read against the card's own clamped text and never against the
-	// host document's root — the `em` in ../styles/layout.css's `@container donate (min-width: 26em)`.
+	// host document's root — the `em` in ../styles/layout.css's
+	// `@container donate (min-width: calc(26em - 2px))`.
 	it('resolves the breakpoint against the card, not against the host document root', () => {
 		// a host running `html { font-size: 62.5% }` would make a `rem` breakpoint 260px, and this
-		// 400px card would go four-up. read against the card's own 16px it is 416px, and the row
-		// stays at two.
+		// 400px card would go four-up. read against the card's own 16px the breakpoint is 414px (26em
+		// less the real card's two hairlines, which this harness does not draw), and the row stays
+		// at two.
 		const { tiles } = card('400px', '62.5%');
 		fill(tiles, 6);
 

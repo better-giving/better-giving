@@ -378,9 +378,9 @@
 
 	/*
 	 * the card's content inset, at its two widths. one box takes both — `.card-body` in
-	 * ./layout.css, which is the only thing on this card that pads — and a container query at 26em
-	 * switches it from the first to the second, so the interior loosens as the card widens while
-	 * every control inside it stays on the same scale.
+	 * ./layout.css, which is the only thing on this card that pads — and a container query at a
+	 * 26em card switches it from the first to the second, so the interior loosens as the card widens
+	 * while every control inside it stays on the same scale.
 	 *
 	 * two tokens rather than one and a multiplier, because the wide step is not a ratio of the
 	 * narrow one. the narrow one carries the same multiplier `--_sp5` above does, which is what

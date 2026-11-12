@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb } from '$lib/server/db/client';
@@ -14,12 +14,16 @@ import { createImage } from '$lib/server/images/image.testing';
 import { saveCampaignMedia } from '$lib/server/pages/section-saves';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { readPage } from '$lib/server/pages/queries';
+import { noteGift } from '$lib/server/pages/settled-gifts.testing';
+import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { putLogo } from '$lib/server/org/logo.testing';
 import { NEW_FORM } from '$lib/forms/new-form';
 import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
 import { mountRoutes } from '../route-request.testing';
 import type { Route } from './+types/preview.$pageId';
+import * as donatePage from './donate';
+import * as donateMessagesRoute from './donate.messages';
 import * as preview from './preview.$pageId';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 import { readEnv } from '$lib/server/runtime/env';
@@ -277,6 +281,134 @@ describe('the organisation’s logo and the program photos in a preview', () => 
 		expect(view.logo).toEqual({ imageId: logo, width: 640, height: 160 });
 		expect(view.programPhotos).toEqual({ [food?.id ?? '']: photo });
 	});
+});
+
+describe('donors’ messages in the preview of the Donation page', () => {
+	afterEach(async () => {
+		for (const table of [
+			'dispute',
+			'zapier_delivery',
+			'quickbooks_sync',
+			'ledger_entry',
+			'entry_group',
+			'payment',
+			'line_item',
+			'donation',
+			'recurring_plan',
+			'contact'
+		]) {
+			await run(stmt(`delete from ${table}`));
+		}
+	});
+
+	/** /donate's Show more read, nested under the page whose meter charges it. */
+	const donateMessages = mountRoutes([
+		{ path: 'donate', module: donatePage },
+		{ path: 'messages', module: donateMessagesRoute }
+	]);
+	const donateDocument = mountRoutes([{ path: 'donate', module: donatePage }]);
+	let askers = 0;
+
+	/** the messages the profile head /donate itself is handed, or null where it draws no profile. */
+	async function donateProfileMessages(): Promise<unknown> {
+		askers += 1;
+		const answered = await donateDocument(
+			new Request(`${ORIGIN}/donate`, {
+				headers: { [CLIENT_IP_HEADER]: `2001:db8:${4000 + askers}::1` }
+			}),
+			{ env: DEPLOYED }
+		);
+		// a settings row not yet live is /donate's 404: it lists nothing
+		if (answered.status === 404) return null;
+		expect(answered.status).toBe(200);
+		const data = (await answered.json()) as {
+			kind: string;
+			profile?: { messages: unknown } | null;
+		};
+		return data.kind === 'page' ? (data.profile?.messages ?? null) : null;
+	}
+
+	/** what /donate's Show more answers for `after`, or for the newest six where it is null. */
+	async function donateAnswers(after: string | null): Promise<unknown> {
+		askers += 1;
+		const search = after === null ? '' : `?${new URLSearchParams({ after })}`;
+		const answered = await donateMessages(
+			new Request(`${ORIGIN}/donate/messages${search}`, {
+				headers: { [CLIENT_IP_HEADER]: `2001:db8:${4000 + askers}::1` }
+			}),
+			{ env: DEPLOYED }
+		);
+		expect(answered.status).toBe(200);
+		const { kind, ...messages } = (await answered.json()) as { kind: string };
+		expect(kind).toBe('messages');
+		return messages;
+	}
+
+	/** eight settled public notes on the Donation page's gifts, `day n` received on September n. */
+	async function notes(): Promise<void> {
+		const { formId } = await ensureDonationPage(db);
+		for (let day = 1; day <= 8; day += 1) {
+			await noteGift(db, formId, {
+				note: `day ${day}`,
+				noteOnPage: 'named',
+				receivedAt: new Date(Date.UTC(2026, 8, day))
+			});
+		}
+	}
+
+	it.each([
+		{ why: 'the page is whole', listed: 6, breakPage: async () => {} },
+		{
+			why: 'the published page fails the read rule while the draft passes it',
+			listed: 0,
+			breakPage: async () => {
+				vi.spyOn(console, 'error').mockImplementation(() => {});
+				await run(stmt(`update page set published = '{}' where type = 'donation_page'`));
+			}
+		},
+		{
+			why: 'the settings row takes no gift until Publish',
+			listed: 0,
+			breakPage: () =>
+				run(
+					stmt(
+						`update form set status = 'draft' where id = (select form_id from page where type = 'donation_page')`
+					)
+				).then(() => undefined)
+		}
+	])(
+		'lists what /donate lists ($listed messages), and Show more the same next six, where $why',
+		async ({ breakPage, listed }) => {
+			await notes();
+			await breakPage();
+			const page = await ensureDonationPage(db);
+
+			const loaded = await load(page.id);
+			if (loaded.kind !== 'page' || loaded.profile === null) {
+				throw new Error(`the preview drew ${loaded.kind} with no profile`);
+			}
+			const shown = loaded.profile.messages;
+			const donateShown = await donateAnswers(null);
+			expect(shown.messages).toHaveLength(listed);
+			expect(shown).toEqual(donateShown);
+			// /donate's own loader gates the page itself; Show more and the preview share one read past
+			// that gate.
+			const onDonate = await donateProfileMessages();
+			if (listed === 0) {
+				expect((onDonate as { messages: unknown[] } | null)?.messages ?? []).toEqual([]);
+			} else {
+				expect(onDonate).toEqual(shown);
+			}
+			if (listed === 0) {
+				expect(shown.next).toBeNull();
+				return;
+			}
+			expect(shown.next).not.toBeNull();
+			const more = await donateAnswers(shown.next);
+			expect((more as typeof shown).messages).toHaveLength(2);
+			expect(more).toEqual(await donateAnswers((donateShown as typeof shown).next));
+		}
+	);
 });
 
 describe('a draft the read rule refuses', () => {

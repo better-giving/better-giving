@@ -16,7 +16,8 @@ import type { Layout } from '../page/shape';
 // the form's private layer on outside a shadow root. so the brand clamp, the ladder and the corners
 // are declared here once for the whole page, and the donation card and every section under it read
 // the same ones. `data-layout` is the whole layout the page is drawn in, for ./page.css to arrange
-// the sections by.
+// the sections by, and `data-profile` marks the Donation page under its profile head, which is drawn
+// in the campaign's three layouts from parts of its own.
 //
 // the brand colour is the page's only accent, set inline as the `--donate-primary` seed. a page with
 // no brand colour sets none and writes no scale, and draws the registry's default theme, whose
@@ -44,16 +45,15 @@ import type { Layout } from '../page/shape';
 // the form declares its ladder one node under `[data-donate-root]`, so a token reading a rung has to
 // be declared there too, and so does a ground drawn from one.
 
-/**
- * the campaign layouts, the Donation page's own, `profile` for the Donation page under its profile
- * head, and `plain` for the donation box alone.
- */
-export type RootLayout = Layout | 'donation' | 'profile' | 'plain';
+/** the campaign layouts, the Donation page's own, and `plain` for the donation box alone. */
+export type RootLayout = Layout | 'donation' | 'plain';
 
 export type PageRootProps = {
 	/** lowercase `#rrggbb`, or `null` for a page drawn in the registry's default accent. */
 	readonly brandColour: string | null;
 	readonly layout: RootLayout;
+	/** the Donation page under its profile head, in one of the campaign layouts. */
+	readonly profile?: boolean | undefined;
 	/** the caller's placement; the root sets no outer spacing of its own. */
 	readonly className?: string;
 	readonly children: ReactNode;
@@ -71,7 +71,7 @@ export function brandScopeSelector(scope: string): string {
 	return `[data-donate-root][data-brand-scope="${scope}"]`;
 }
 
-export function PageRoot({ brandColour, layout, className, children }: PageRootProps) {
+export function PageRoot({ brandColour, layout, profile, className, children }: PageRootProps) {
 	const scope = useId();
 	// a `PageWithCard` pick or lock report re-renders this root, and the colour has not moved.
 	const css = useMemo(() => {
@@ -88,6 +88,7 @@ export function PageRoot({ brandColour, layout, className, children }: PageRootP
 			data-donate-root=""
 			data-brand-scope={scope}
 			data-layout={layout}
+			data-profile={profile === true ? '' : undefined}
 			data-theme={CARD_THEME}
 			style={
 				brandColour === null ? undefined : ({ '--donate-primary': brandColour } as CSSProperties)
