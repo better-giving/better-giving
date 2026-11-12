@@ -1010,11 +1010,14 @@ describe('the profile head’s type', () => {
 		expect(displayWeights).toContain('700');
 	});
 
-	it('sets About us in red hat display at 600, a face the sheet registers', () => {
-		const heading = declared(page, '.page-profile .page-about .page-label');
+	it.each([
+		['About us', '.page-profile .page-about .page-label'],
+		['Videos and Messages from donors', '.page-messages-heading, .page-videos-heading']
+	])('sets %s in red hat display at 700, a face the sheet registers', (_, selector) => {
+		const heading = declared(page, selector);
 		expect(heading['font-family']).toBe('var(--page-font-display)');
-		expect(weight(heading['font-weight'])).toBe('600');
-		expect(displayWeights).toContain('600');
+		expect(weight(heading['font-weight'])).toBe('700');
+		expect(displayWeights).toContain('700');
 	});
 
 	it('sets the EIN on a 20px line', () => {

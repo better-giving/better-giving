@@ -1154,7 +1154,7 @@ body {
 .page-profile .page-about .page-label {
 	margin-block-end: var(--_sp3);
 	font-family: var(--page-font-display);
-	font-weight: var(--_w-bold);
+	font-weight: var(--page-w-display);
 	font-size: var(--page-profile-subhead);
 	line-height: var(--page-profile-lh-subhead);
 	letter-spacing: normal;
@@ -1372,7 +1372,7 @@ body {
 .page-videos-heading {
 	margin-block-end: var(--_sp3);
 	font-family: var(--page-font-display);
-	font-weight: var(--_w-bold);
+	font-weight: var(--page-w-display);
 	font-size: var(--page-profile-subhead);
 	line-height: var(--page-profile-lh-subhead);
 	text-wrap: balance;

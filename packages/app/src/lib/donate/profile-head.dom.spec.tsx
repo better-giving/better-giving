@@ -528,23 +528,24 @@ describe('the preview’s stillness', () => {
 		expect(onPress).toHaveBeenCalledTimes(1);
 	});
 
-	// usePreviewStill stamps the stops present when the effect runs, which depends on [preview]
-	// alone: a stop a later render adds (the editor redrawing the preview from the draft) keeps its
-	// place in the tab order.
-	it.fails('takes a stop a later render adds out of the tab order too', () => {
-		const first = props(FEATURE, { preview: true });
-		const view = mount(<PageView {...first} />);
-		view.render(
-			<PageView
-				{...first}
-				donationBox={() => (
-					<a href="/added" data-testid="added">
-						added
-					</a>
-				)}
-			/>
-		);
+	it('takes a stop a later render adds out of the tab order too, and leaves Show more its own', async () => {
+		const view = mount(<PageView {...props(FEATURE, { preview: true })} />);
+		const footer = {
+			...FEATURE.footer,
+			socialLinks: [
+				...FEATURE.footer.socialLinks,
+				{ platform: 'facebook', href: 'https://facebook.com/harborlight' }
+			]
+		} as const;
+		view.render(<PageView {...props({ ...FEATURE, footer }, { preview: true })} />);
+		// a mutation observer's callback runs as a microtask, after the synchronous render returns.
+		await act(async () => {});
 
-		expect(view.host.querySelector<HTMLAnchorElement>('[data-testid="added"]')?.tabIndex).toBe(-1);
+		const added = view.host.querySelector<HTMLAnchorElement>(
+			'footer a[href="https://facebook.com/harborlight"]'
+		);
+		expect(added).not.toBeNull();
+		expect(added?.tabIndex).toBe(-1);
+		expect(showMore(view.host)?.tabIndex).toBe(0);
 	});
 });

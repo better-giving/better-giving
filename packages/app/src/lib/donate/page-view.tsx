@@ -630,20 +630,31 @@ const PREVIEW_LIVE = `[data-area='${MESSAGES_AREA}']`;
  * in the preview a press reaches nothing outside `PREVIEW_LIVE`: the preview is a picture of the
  * draft, so a link, a share or a pick in it is not followed, and no handler of a section's hears it.
  * nothing else in it takes a tab stop either — the donation box is inert, and every other stop is
- * taken out of the order.
+ * taken out of the order, a stop a later render adds as well.
+ *
+ * the stops are taken out by `tabindex` rather than by `inert` on everything but the messages, which
+ * would also take the preview out of the accessibility tree, and the preview is there to be read.
  */
 function usePreviewStill(preview: boolean) {
 	useEffect(() => {
 		if (!preview) return;
-		for (const stop of document.querySelectorAll<HTMLElement>(TAB_STOPS)) {
-			if (stop.closest(PREVIEW_LIVE) === null) stop.tabIndex = -1;
-		}
+		const unstop = () => {
+			for (const stop of document.querySelectorAll<HTMLElement>(TAB_STOPS)) {
+				if (stop.closest(PREVIEW_LIVE) === null) stop.tabIndex = -1;
+			}
+		};
+		unstop();
+		const added = new MutationObserver(unstop);
+		added.observe(document.body, { childList: true, subtree: true });
 		const still = (event: MouseEvent) => {
 			if (event.target instanceof Element && event.target.closest(PREVIEW_LIVE) !== null) return;
 			event.preventDefault();
 			event.stopPropagation();
 		};
 		document.addEventListener('click', still, true);
-		return () => document.removeEventListener('click', still, true);
+		return () => {
+			added.disconnect();
+			document.removeEventListener('click', still, true);
+		};
 	}, [preview]);
 }
