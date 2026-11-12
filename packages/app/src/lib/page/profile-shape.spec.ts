@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { type ProfileContent, profileShape } from './profile-shape';
 
 // node pool, no database: the Donation page's shape is a pure function of what its profile holds.
-// every row of the build spec's worked cases, then the measures' edges.
+// every row of the shape's worked cases, then the measures' edges.
 
 const NOTHING: ProfileContent = {
 	mission: null,
