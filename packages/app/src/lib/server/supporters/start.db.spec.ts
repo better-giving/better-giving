@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { slugFromTitle } from '../../page/slug';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client, run, stmt } from '$lib/server/db/database.testing';
@@ -161,6 +161,29 @@ describe('a start refused', () => {
 		expect(await db.select().from(supporterPage)).toEqual([]);
 	});
 
+	it('where no link can be mailed, before the spam check runs and writing nothing', async () => {
+		let checks = 0;
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const { deps, mailed, settled } = startDeps(db, {
+			linkOrigin: { ok: false, why: '`BETTER_AUTH_URL` is unset' },
+			checkChallenge: async () => {
+				checks += 1;
+				return { ok: true };
+			}
+		});
+		expect(await startFundraiser(deps, fromCaller(), startInput())).toEqual({
+			ok: false,
+			reason: 'unmailable'
+		});
+		await settled();
+		expect(checks).toBe(0);
+		expect(logged.mock.calls.flat().join(' ')).toContain('BETTER_AUTH_URL');
+		logged.mockRestore();
+		expect(mailed).toEqual([]);
+		expect(await db.select().from(supporter)).toEqual([]);
+		expect(await db.select().from(supporterPage)).toEqual([]);
+	});
+
 	it('when the spam check does not clear', async () => {
 		const { deps } = startDeps(db, {
 			checkChallenge: async () => ({
@@ -195,7 +218,10 @@ describe('a start refused', () => {
 	it('past the bucket for one client address, before the spam check runs', async () => {
 		let checks = 0;
 		const { deps } = startDeps(db, {
-			limiter: createRateLimiter({ limit: 1, period: 60 }),
+			limiters: {
+				byCaller: createRateLimiter({ limit: 1, period: 60 }),
+				byAddress: createRateLimiter({ limit: 100, period: 60 })
+			},
 			checkChallenge: async () => {
 				checks += 1;
 				return { ok: true };
@@ -211,6 +237,32 @@ describe('a start refused', () => {
 			await startFundraiser(deps, request(), startInput({ email: 'other@example.org' }))
 		).toEqual({ ok: false, reason: 'too_many' });
 		expect(checks).toBe(1);
+	});
+
+	it('past the address’s bucket only once the spam check clears', async () => {
+		let solved = false;
+		const { deps } = startDeps(db, {
+			limiters: {
+				byCaller: createRateLimiter({ limit: 100, period: 60 }),
+				byAddress: createRateLimiter({ limit: 1, period: 3600 })
+			},
+			checkChallenge: async () =>
+				solved
+					? { ok: true }
+					: { ok: false, reason: 'rejected', detail: 'not solved', operatorFix: null }
+		});
+		for (let n = 0; n < 3; n += 1) {
+			expect(await startFundraiser(deps, fromCaller(), startInput())).toEqual({
+				ok: false,
+				reason: 'challenge_failed'
+			});
+		}
+		solved = true;
+		expect((await startFundraiser(deps, fromCaller(), startInput())).ok).toBe(true);
+		expect(await startFundraiser(deps, fromCaller(), startInput())).toEqual({
+			ok: false,
+			reason: 'too_many'
+		});
 	});
 });
 
@@ -231,11 +283,13 @@ describe('Send it again after a start', () => {
 	async function resend(
 		page: { pageId: string },
 		email = 'maya@example.org',
-		over: { limiter?: ReturnType<typeof createRateLimiter>; request?: Request } = {}
+		over: { byAddress?: ReturnType<typeof createRateLimiter>; request?: Request } = {}
 	) {
 		const { deps, mailed, settled } = startDeps(db, { now: LATER });
 		const answer = await resendConfirmLink(
-			{ ...deps, ...(over.limiter ? { limiter: over.limiter } : {}) },
+			over.byAddress
+				? { ...deps, limiters: { ...deps.limiters, byAddress: over.byAddress } }
+				: deps,
 			over.request ?? fromCaller(),
 			{ email, pageId: page.pageId }
 		);
@@ -251,7 +305,7 @@ describe('Send it again after a start', () => {
 			new Date(LATER.getTime() + 60_000)
 		);
 
-	it('mails a fresh confirm link that publishes the page, and the first one stops working', async () => {
+	it('mails a fresh confirm link that publishes the page, beside the first', async () => {
 		const first = await pendingPage(db);
 		const { answer, mailed } = await resend(first);
 		expect(answer).toBe('sent');
@@ -262,13 +316,20 @@ describe('Send it again after a start', () => {
 				arm: { kind: 'first', pageTitle: 'Run for the shelter' }
 			}
 		]);
-		expect(await open(first.token)).toEqual({ ok: false });
 		expect(await open(mailed[0]?.token ?? '')).toMatchObject({
 			ok: true,
 			purpose: 'confirm',
-			page: { id: first.pageId }
+			page: { id: first.pageId },
+			published: true
 		});
 		expect(await pageRow(first.pageId)).toMatchObject({ status: 'live' });
+	});
+
+	it('leaves the first confirm link working, once, after a resend', async () => {
+		const first = await pendingPage(db);
+		await resend(first);
+		expect(await open(first.token)).toMatchObject({ ok: true, page: { id: first.pageId } });
+		expect(await open(first.token)).toEqual({ ok: false });
 	});
 
 	it('leaves the confirm link of the supporter’s other pending page working', async () => {
@@ -276,6 +337,22 @@ describe('Send it again after a start', () => {
 		const resent = await pendingPage(db);
 		await resend(resent);
 		expect(await open(other.token)).toMatchObject({ ok: true, page: { id: other.pageId } });
+	});
+
+	it('mails nothing for a page at another supporter’s address', async () => {
+		const mine = await pendingPage(db);
+		await pendingPage(db, { email: 'sam@example.org', name: 'Sam Ortiz', title: 'Sam’s swim' });
+		expect(await resend(mine, 'sam@example.org')).toEqual({ answer: 'sent', mailed: [] });
+		expect((await open(mine.token)).ok).toBe(true);
+	});
+
+	it('publishes once when a confirm link is pressed twice at the same moment', async () => {
+		const first = await pendingPage(db);
+		const [a, b] = await Promise.all([open(first.token), open(first.token)]);
+		expect([a.ok, b.ok].sort()).toEqual([false, true]);
+		const opened = a.ok ? a : b;
+		expect(opened).toMatchObject({ ok: true, published: true });
+		expect(await pageRow(first.pageId)).toMatchObject({ status: 'live' });
 	});
 
 	it('answers an unknown address the same way and mails nobody', async () => {
@@ -292,11 +369,11 @@ describe('Send it again after a start', () => {
 
 	it('answers too many tries past the address’s bucket, mailing nothing more', async () => {
 		const first = await pendingPage(db);
-		const limiter = createRateLimiter({ limit: 2, period: 60 });
+		const byAddress = createRateLimiter({ limit: 2, period: 3600 });
 		const answers: string[] = [];
 		let sent = 0;
 		for (let n = 0; n < 3; n += 1) {
-			const { answer, mailed } = await resend(first, 'maya@example.org', { limiter });
+			const { answer, mailed } = await resend(first, 'maya@example.org', { byAddress });
 			answers.push(answer);
 			sent += mailed.length;
 		}

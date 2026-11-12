@@ -44,7 +44,12 @@ beforeEach(async () => {
 
 /** a supporter's session, as the `Cookie` header a browser sends back. */
 async function supporterCookie(): Promise<string> {
-	const set = await startSupporterSession(db, new Request(`${ORIGIN}/f/link`), SUPPORTER_ID, NOW);
+	const set = await startSupporterSession(
+		db,
+		new Request(`${ORIGIN}/fundraise/open`),
+		SUPPORTER_ID,
+		NOW
+	);
 	return set.split(';', 1)[0] ?? '';
 }
 
@@ -101,7 +106,7 @@ describe('a supporter session', () => {
 	});
 
 	it('opens supporter pages until it expires thirty days on', async () => {
-		const request = new Request(`${ORIGIN}/f/mine`, {
+		const request = new Request(`${ORIGIN}/fundraise/pages`, {
 			headers: { cookie: await supporterCookie() }
 		});
 		const day = 24 * 60 * 60 * 1000;
@@ -112,7 +117,7 @@ describe('a supporter session', () => {
 	});
 
 	it('opens nothing once signed out, and the answer clears the cookie', async () => {
-		const request = new Request(`${ORIGIN}/f/mine`, {
+		const request = new Request(`${ORIGIN}/fundraise/pages`, {
 			headers: { cookie: await supporterCookie() }
 		});
 		const cleared = await endSupporterSession(db, request);
@@ -128,22 +133,25 @@ describe('a staff session', () => {
 	});
 
 	it('opens no supporter page: the supporter guard sends it to sign in', async () => {
-		const request = new Request(`${ORIGIN}/f/mine`, { headers: { cookie: await staffCookie() } });
-		const refused = await requireSupporter(db, request, NOW, '/f/sign-in').catch(
+		const request = new Request(`${ORIGIN}/fundraise/pages`, {
+			headers: { cookie: await staffCookie() }
+		});
+		const refused = await requireSupporter(db, request, NOW, '/fundraise/sign-in').catch(
 			(thrown: unknown) => thrown as Response
 		);
-		expect(refused).toBeInstanceOf(Response);
-		expect((refused as Response).headers.get('location')).toBe('/f/sign-in');
+		expect((refused as Response).status).toBe(303);
+		expect((refused as Response).headers.get('location')).toBe('/fundraise/sign-in');
 	});
 
 	it('opens no supporter page with its token moved under the supporter cookie name', async () => {
 		const value = (await staffCookie()).split('=').slice(1).join('=');
-		const request = new Request(`${ORIGIN}/f/mine`, {
+		const request = new Request(`${ORIGIN}/fundraise/pages`, {
 			headers: { cookie: `bg_supporter_session=${value}` }
 		});
-		const refused = await requireSupporter(db, request, NOW, '/f/sign-in').catch(
+		const refused = await requireSupporter(db, request, NOW, '/fundraise/sign-in').catch(
 			(thrown: unknown) => thrown as Response
 		);
-		expect(refused).toBeInstanceOf(Response);
+		expect((refused as Response).status).toBe(303);
+		expect((refused as Response).headers.get('location')).toBe('/fundraise/sign-in');
 	});
 });

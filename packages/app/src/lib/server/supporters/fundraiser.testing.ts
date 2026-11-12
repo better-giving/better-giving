@@ -69,11 +69,15 @@ export function startDeps(db: Db, over: Partial<StartDeps> = {}) {
 	const deferred = createDeferredWork();
 	const deps: StartDeps = {
 		db,
-		limiter: createRateLimiter({ limit: 100, period: 60 }),
+		limiters: {
+			byCaller: createRateLimiter({ limit: 100, period: 60 }),
+			byAddress: createRateLimiter({ limit: 100, period: 60 })
+		},
 		defer: (work) => deferred.waitUntil(work),
 		sendLink: async (mail) => {
 			mailed.push(mail);
 		},
+		linkOrigin: { ok: true, origin: 'https://give.example' },
 		checkChallenge: async () => ({ ok: true }),
 		now: STARTED_AT,
 		...over

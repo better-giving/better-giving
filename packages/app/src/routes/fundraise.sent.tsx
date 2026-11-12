@@ -13,7 +13,7 @@ import {
 	takeFlash
 } from '$lib/server/flash';
 import { linkMailer, readSupporterOrg } from '$lib/server/supporters/area';
-import { requestSignInLink, resendConfirmLink } from '$lib/server/supporters/links';
+import { linkLimiters, requestSignInLink, resendConfirmLink } from '$lib/server/supporters/links';
 import {
 	clearResendTicket,
 	readResendTicket,
@@ -95,7 +95,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 	const now = new Date();
 	const deps = {
 		db,
-		limiter: env.SIGN_IN_RATE_LIMITER,
+		limiters: linkLimiters(env),
 		defer: (work: Promise<unknown>) => deferred.waitUntil(work),
 		sendLink: linkMailer(db, env),
 		now

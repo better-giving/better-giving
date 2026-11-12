@@ -4,8 +4,10 @@ import { all, client, run, stmt } from '$lib/server/db/database.testing';
 import { createImage, stored } from '$lib/server/images/image.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { heroShowing, insertPage } from '$lib/server/pages/page-row.testing';
-import { emptySupporterTables, pendingPage } from './fundraiser.testing';
-import { sweepSupporterLeftovers } from './sweep';
+import { heldAddresses } from '$lib/server/pages/queries';
+import { emptySupporterTables, pendingPage, STARTED_AT } from './fundraiser.testing';
+import { signInWithLink } from './links';
+import { PENDING_PAGE_KEEP_MS, sweepSupporterLeftovers } from './sweep';
 
 // the hourly sweep of what a supporter's sign-in leaves behind, against the real tables.
 
@@ -20,9 +22,7 @@ const HOUR = 60 * 60_000;
 const at = (offset: number) => NOW.getTime() + offset;
 
 beforeEach(async () => {
-	for (const table of ['supporter_session', 'supporter_link', 'supporter']) {
-		await run(stmt(`delete from ${table}`));
-	}
+	await emptySupporterTables();
 	await run(
 		stmt(
 			`insert into supporter (id, email, name, created_at) values (?, 'maya@example.org', 'Maya', 0)`,
@@ -132,5 +132,85 @@ describe('sweeping photos nothing holds', () => {
 
 		expect(await stored(db, onFundraiser)).toEqual({ row: true, bytes: true });
 		expect(await stored(db, onCampaign)).toEqual({ row: true, bytes: true });
+	});
+});
+
+describe('sweeping fundraisers nobody confirmed', () => {
+	beforeEach(async () => {
+		await emptySupporterTables();
+		for (const table of ['image_bytes', 'image']) await run(stmt(`delete from ${table}`));
+		await writeOrgRow(client);
+	});
+
+	/** a sweep `offset` past the end of the confirm window of a page started at `STARTED_AT`. */
+	const pastWindow = (offset: number) =>
+		new Date(STARTED_AT.getTime() + PENDING_PAGE_KEEP_MS + offset);
+
+	/** a pending page holding a photo, with what it owns. */
+	async function pendingWithPhoto() {
+		const { pageId, slug, token } = await pendingPage(db);
+		const photoId = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 1200, height: 800, alt: null },
+			new Uint8Array([0x52, 0x49, 0x46, 0x46])
+		);
+		await run(stmt('update supporter_page set photo_id = ? where id = ?', photoId, pageId));
+		const [owned] = await all<{ form_id: string }>(
+			stmt('select form_id from supporter_page where id = ?', pageId)
+		);
+		return { pageId, slug, token, photoId, formId: owned?.form_id ?? '' };
+	}
+
+	const count = async (sql: string, ...args: string[]) =>
+		(await all<{ n: number }>(stmt(`select count(*) as n from ${sql}`, ...args)))[0]?.n;
+
+	it('deletes one past its window, with its settings row, its photo and its links', async () => {
+		const { pageId, photoId, formId } = await pendingWithPhoto();
+		// a link Send it again mailed late in the window, still open when the sweep runs.
+		await run(stmt('update supporter_link set expires_at = ?', pastWindow(60_000).getTime()));
+
+		await sweepSupporterLeftovers(db, pastWindow(1));
+
+		expect(await count('supporter_page where id = ?', pageId)).toBe(0);
+		expect(await count('form where id = ?', formId)).toBe(0);
+		expect(await count('supporter_link where supporter_page_id = ?', pageId)).toBe(0);
+		expect(await stored(db, photoId)).toEqual({ row: false, bytes: false });
+	});
+
+	// its first link is a day past expiry by then, and goes by the rule for every link.
+	it('keeps one still inside its window, with its settings row and its photo', async () => {
+		const { pageId, photoId, formId } = await pendingWithPhoto();
+
+		await sweepSupporterLeftovers(db, pastWindow(-1));
+
+		expect(await count('supporter_page where id = ?', pageId)).toBe(1);
+		expect(await count('form where id = ?', formId)).toBe(1);
+		expect(await stored(db, photoId)).toEqual({ row: true, bytes: true });
+	});
+
+	it('keeps one its confirm link published, however old', async () => {
+		const { pageId, token, photoId, formId } = await pendingWithPhoto();
+		const opened = await signInWithLink(
+			db,
+			new Request('https://give.example/fundraise/open'),
+			token,
+			new Date(STARTED_AT.getTime() + 60_000)
+		);
+		expect(opened).toMatchObject({ ok: true, published: true });
+
+		await sweepSupporterLeftovers(db, pastWindow(1));
+
+		expect(await count('supporter_page where id = ?', pageId)).toBe(1);
+		expect(await count('form where id = ?', formId)).toBe(1);
+		expect(await stored(db, photoId)).toEqual({ row: true, bytes: true });
+	});
+
+	it('frees its address for a campaign', async () => {
+		const { slug } = await pendingWithPhoto();
+		expect((await heldAddresses(db)).has(slug)).toBe(true);
+
+		await sweepSupporterLeftovers(db, pastWindow(1));
+
+		expect((await heldAddresses(db)).has(slug)).toBe(false);
 	});
 });

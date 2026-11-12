@@ -1,4 +1,4 @@
-import { type ReactNode, useId } from 'react';
+import { type ReactNode, type Ref, useId } from 'react';
 import { Mark, type MarkName } from './glyph';
 
 // the registry's two cards as the supporter's screens draw them (notice-card-css, state-card-css):
@@ -21,6 +21,7 @@ export function NoticeCard({
 	alert = false,
 	actions,
 	className,
+	ref,
 	children
 }: {
 	readonly tone: Tone;
@@ -30,6 +31,8 @@ export function NoticeCard({
 	readonly alert?: boolean;
 	readonly actions?: ReactNode;
 	readonly className?: string | undefined;
+	/** given, the card can take focus, so a screen can move the reader to an outcome it reports. */
+	readonly ref?: Ref<HTMLElement> | undefined;
 	readonly children: ReactNode;
 }) {
 	const titleId = `${useId()}-title`;
@@ -39,6 +42,8 @@ export function NoticeCard({
 			className={`ds-notice-card ds-notice-card-${tone}${className ? ` ${className}` : ''}`}
 			aria-labelledby={titleId}
 			role={alert ? 'alert' : undefined}
+			ref={ref}
+			tabIndex={ref === undefined ? undefined : -1}
 		>
 			<span className="ds-notice-card-icon">
 				<Mark name={TONE_MARK[tone]} />

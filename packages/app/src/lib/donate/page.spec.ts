@@ -424,7 +424,8 @@ describe('every colour lands on the radix step for its job', () => {
 			allowed: ['brand-8', 'slate-1'],
 			at: {
 				'.page > .page-ground | --page-ring': 'brand-8',
-				'.page-ground a:focus-visible, .page-faq-question:focus-visible | box-shadow': 'brand-8',
+				'.page-ground a:not(.ds-btn):focus-visible, .page-faq-question:focus-visible | box-shadow':
+					'brand-8',
 				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-8',
 				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-8',
 				'.page-messages-row:focus-visible | outline': 'brand-8',
@@ -495,6 +496,7 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-messages-time | color': 'slate-11',
 				'.page-messages-count | color': 'slate-11',
 				'.page-fundraise-note | color': 'slate-11',
+				'.page-ground .page-fundraise-act > a.ds-btn | color': 'slate-12',
 				'.page-messages-refused | color': 'red-11',
 				".page-video-box[data-face='loading'] .page-video-status | color": 'slate-12',
 				'.page-video-error-title | color': 'red-11',
@@ -662,6 +664,33 @@ describe('an ended page’s way on to /donate', () => {
 		expect(declared(page, own).color).toBe('var(--_on-p)');
 		expect(declared(page, '.page-ground a').color).toBe('var(--page-accent)');
 		expect(specificity(own)).toBeGreaterThan(specificity('.page-ground a'));
+	});
+});
+
+describe('the entry card’s press, a link drawn as the registry’s secondary press', () => {
+	const button = blocks(
+		readFileSync(require.resolve('@better-giving/form/registry/styles/button-css.css'), 'utf8')
+	);
+	const scope: Scope = { ...formBase, ...declared(page, '.page > .page-ground') };
+
+	it('draws its label in the variant’s own ink, not the ink of whatever holds it', () => {
+		const own = declared(page, '.page-ground .page-fundraise-act > a.ds-btn').color ?? '';
+		const variant = declared(button, '.ds-btn-secondary').color ?? '';
+		expect(own).not.toBe('inherit');
+		expect(substitute(scope, own)).toBe(substitute(scope, variant));
+	});
+
+	// the press is an `a`, so a page ring on every focused link would outrank `.ds-btn:focus-visible`.
+	it('leaves its ring to the registry: no page rule rings a focused link that is a press', () => {
+		const rings = page.filter(
+			({ decls }) => decls.outline !== undefined || decls['box-shadow'] !== undefined
+		);
+		const linkRings = rings
+			.flatMap(({ at }) => (at.at(-1) ?? '').split(','))
+			.map((selector) => selector.trim())
+			.filter((selector) => /(?:^|[\s>+~])a(?::not\([^)]*\))*:focus/.test(selector));
+		expect(linkRings).toEqual(['.page-ground a:not(.ds-btn):focus-visible']);
+		expect(declared(button, '.ds-btn:focus-visible').outline).toBe('2px solid var(--ring)');
 	});
 });
 

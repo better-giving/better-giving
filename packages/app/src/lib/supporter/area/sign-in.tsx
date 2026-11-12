@@ -9,6 +9,7 @@ import { INTENT, INTENTS, SIGN_IN_FORM } from './forms';
 import { Mark } from './glyph';
 import { SupporterShell, type SupporterOrg } from './shell';
 import { answered, boxOf, type FormResult } from './supporter-form';
+import { usePressOnce } from './use-press-once';
 
 // the screens between a supporter and their own pages, none of which says whether an address has a
 // fundraiser here: Check your email after a start or a sign-in request, the sign-in request itself,
@@ -21,6 +22,9 @@ const SIGN_IN = defineForm({ id: SIGN_IN_FORM.id, schema: SIGN_IN_FORM.schema })
 
 /** how long Send it again stays closed after a resend. */
 export const RESEND_WAIT_SECONDS = 60;
+
+/** how long Send a new link stays closed after Too many tries, where the server names no wait. */
+export const TOO_MANY_WAIT_SECONDS = 60;
 
 /** `0:42`. */
 const clock = (seconds: number) =>
@@ -36,7 +40,7 @@ export type CheckEmailProps = {
 	readonly differentAddressHref: string;
 	/**
 	 * when the last resend landed (ms since the epoch, the route's clock), or null before one. each
-	 * new value closes Send it again for a minute and says the older link stopped working.
+	 * new value closes Send it again for a minute and says a link is on its way again.
 	 */
 	readonly resentAt: number | null;
 	/** while a resend is in flight. */
@@ -57,6 +61,7 @@ export function CheckEmail({
 	useEffect(() => heading.current?.focus(), []);
 	const left = useCountdown(resentAt);
 	const waiting = left > 0;
+	const press = usePressOnce(sending, resentAt);
 	return (
 		<SupporterShell org={org}>
 			<section className="sa-plane sa-form sa-narrow" aria-labelledby="check-email-heading">
@@ -77,7 +82,13 @@ export function CheckEmail({
 						in an hour.
 					</p>
 				)}
-				<Form method="post" className="sa-row">
+				<Form
+					method="post"
+					className="sa-row"
+					onSubmit={(event) => {
+						if (!press.claim()) event.preventDefault();
+					}}
+				>
 					<input type="hidden" name={INTENT} value={INTENTS.resend} />
 					<input type="hidden" name="email" value={email} />
 					<button
@@ -97,7 +108,7 @@ export function CheckEmail({
 						? kind === 'start'
 							? 'Nothing in your inbox? Check your spam folder. Your page isn’t public until you open the link.'
 							: null
-						: 'Sent again. The newest link is the one that works.'}
+						: 'Sent again. Any link we sent in the last hour works once.'}
 				</p>
 			</section>
 		</SupporterShell>
@@ -110,17 +121,17 @@ function useCountdown(startedAt: number | null): number {
 	useEffect(() => {
 		if (startedAt === null) return;
 		const began = Date.now();
+		let every: ReturnType<typeof setInterval> | undefined;
+		// the interval stops itself at zero: a tick can land late, past any timer set to stop it.
 		const tick = () => {
 			const gone = Math.floor((Date.now() - began) / 1000);
-			setLeft(Math.max(0, RESEND_WAIT_SECONDS - gone));
+			const remaining = Math.max(0, RESEND_WAIT_SECONDS - gone);
+			setLeft(remaining);
+			if (remaining === 0) clearInterval(every);
 		};
+		every = setInterval(tick, 1000);
 		tick();
-		const every = setInterval(tick, 1000);
-		const done = setTimeout(() => clearInterval(every), RESEND_WAIT_SECONDS * 1000);
-		return () => {
-			clearInterval(every);
-			clearTimeout(done);
-		};
+		return () => clearInterval(every);
 	}, [startedAt]);
 	return left;
 }
@@ -132,7 +143,12 @@ function useCountdown(startedAt: number | null): number {
 export type SignInState =
 	| { readonly kind: 'ask' }
 	| { readonly kind: 'expired' }
-	| { readonly kind: 'too-many'; readonly email: string };
+	| {
+			readonly kind: 'too-many';
+			readonly email: string;
+			/** how long the server says to wait; absent, `TOO_MANY_WAIT_SECONDS`. */
+			readonly retryAfterSeconds?: number | undefined;
+	  };
 
 export type SignInProps = {
 	readonly org: SupporterOrg;
@@ -149,9 +165,23 @@ export function SignIn({ org, state, lastResult, sending }: SignInProps) {
 		answered(SIGN_IN, lastResult),
 		state.kind === 'too-many' ? { defaultValue: { email: state.email } } : {}
 	);
-	const closed = state.kind === 'too-many';
+	const closed = useTooManyWait(state, lastResult);
+	const press = usePressOnce(sending, lastResult);
+	const formProps = getFormProps(form);
 	const box = (
-		<Form method="post" {...getFormProps(form)} className="sa-plane sa-form">
+		<Form
+			method="post"
+			{...formProps}
+			onSubmit={(event) => {
+				if (!press.claim()) {
+					event.preventDefault();
+					return;
+				}
+				formProps.onSubmit(event);
+				if (event.defaultPrevented) press.release();
+			}}
+			className="sa-plane sa-form"
+		>
 			{state.kind === 'ask' ? (
 				<>
 					<h1 className="sa-h1-sm">Manage your fundraisers</h1>
@@ -188,11 +218,28 @@ export function SignIn({ org, state, lastResult, sending }: SignInProps) {
 					</NoticeCard>
 				) : state.kind === 'too-many' ? (
 					<NoticeCard tone="destructive" heading="h1" title="Too many tries" alert>
-						Wait a few minutes, then ask for a new link.
+						Wait a little, then ask for a new link.
 					</NoticeCard>
 				) : null}
 				{box}
 			</div>
 		</SupporterShell>
 	);
+}
+
+/**
+ * whether Send a new link is closed: from each Too many tries the screen draws — the state arriving,
+ * or another refused post (`lastResult`) while it stands — until the wait is over.
+ */
+function useTooManyWait(state: SignInState, lastResult: FormResult | undefined): boolean {
+	const tooMany = state.kind === 'too-many';
+	const wait = tooMany ? (state.retryAfterSeconds ?? TOO_MANY_WAIT_SECONDS) : 0;
+	const [over, setOver] = useState(false);
+	useEffect(() => {
+		if (!tooMany) return;
+		setOver(false);
+		const reopen = setTimeout(() => setOver(true), wait * 1000);
+		return () => clearTimeout(reopen);
+	}, [tooMany, wait, lastResult]);
+	return tooMany && !over;
 }

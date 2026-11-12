@@ -1,10 +1,18 @@
 import { parseWithZod } from '@conform-to/zod/v4';
 import { act } from 'react';
+import { useActionData } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { SUPPORTER_SIGN_IN_INPUT } from '$lib/supporters/input';
-import { boxLabelled, mountScreen, ORG, one, submit } from './area.testing';
+import { boxLabelled, mountScreen, ORG, one, submit, submitTwice } from './area.testing';
 import { SIGN_IN_FORM } from './forms';
-import { CheckEmail, type CheckEmailProps, SignIn, type SignInProps } from './sign-in';
+import {
+	CheckEmail,
+	type CheckEmailProps,
+	SignIn,
+	type SignInProps,
+	TOO_MANY_WAIT_SECONDS
+} from './sign-in';
+import type { FormResult } from './supporter-form';
 
 // Check your email, the sign-in request, a link that no longer opens, and the limit reached.
 
@@ -60,6 +68,28 @@ describe('check your email', () => {
 		expect(posted[0]?.get('email')).toBe('maya@example.org');
 	});
 
+	it('posts once on a double press of Send it again', async () => {
+		const { root, posted } = check();
+		await submitTwice(one<HTMLFormElement>(root, 'main form'));
+		expect(posted).toHaveLength(1);
+	});
+
+	it('opens Send it again when the countdown’s ticks land late', () => {
+		vi.useFakeTimers();
+		try {
+			const { root } = check({ resentAt: 1_000 });
+			// every tick from here lands half a second after the second it counts.
+			vi.setSystemTime(Date.now() - 500);
+			act(() => vi.advanceTimersByTime(60_000));
+			expect(resend(root).textContent).toBe('Send again in 0:01');
+			act(() => vi.advanceTimersByTime(1_000));
+			expect(resend(root).disabled).toBe(false);
+			expect(resend(root).textContent).toBe('Send it again');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('closes Send it again for a minute after a resend, counting down in its label', () => {
 		vi.useFakeTimers();
 		try {
@@ -67,7 +97,7 @@ describe('check your email', () => {
 			expect(resend(root).disabled).toBe(true);
 			expect(resend(root).textContent).toBe('Send again in 1:00');
 			expect(one(root, '[role="status"]').textContent).toBe(
-				'Sent again. The newest link is the one that works.'
+				'Sent again. Any link we sent in the last hour works once.'
 			);
 			act(() => vi.advanceTimersByTime(18_000));
 			expect(resend(root).textContent).toBe('Send again in 0:42');
@@ -95,6 +125,34 @@ describe('the sign-in request', () => {
 		await submit(one<HTMLFormElement>(root, `form#${SIGN_IN_FORM.id}`));
 		expect(posted[0]?.get('intent')).toBe('request-link');
 		expect(posted[0]?.get('email')).toBe('maya@example.org');
+	});
+
+	it('posts once on a double press of Email me a link', async () => {
+		const { root, posted } = signIn();
+		boxLabelled(root, 'Email').value = 'maya@example.org';
+		await submitTwice(one<HTMLFormElement>(root, `form#${SIGN_IN_FORM.id}`));
+		expect(posted).toHaveLength(1);
+	});
+
+	it('takes the press again once the answer lands', async () => {
+		const { root, posted } = mountScreen(
+			function Answered() {
+				return (
+					<SignIn
+						org={ORG}
+						state={{ kind: 'ask' }}
+						sending={false}
+						lastResult={useActionData<FormResult>()}
+					/>
+				);
+			},
+			(body) => parseWithZod(body, { schema: SUPPORTER_SIGN_IN_INPUT }).reply()
+		);
+		const form = one<HTMLFormElement>(root, `form#${SIGN_IN_FORM.id}`);
+		boxLabelled(root, 'Email').value = 'maya@example.org';
+		await submit(form);
+		await submit(form);
+		expect(posted).toHaveLength(2);
 	});
 
 	it('says how to write an address under a refused box', () => {
@@ -126,8 +184,37 @@ describe('the sign-in request', () => {
 		expect(notice.className).toContain('ds-notice-card-destructive');
 		expect(notice.getAttribute('role')).toBe('alert');
 		expect(one(notice, 'h1').textContent).toBe('Too many tries');
+		expect(notice.textContent).toContain('Wait a little, then ask for a new link.');
 		expect(boxLabelled(root, 'Email').value).toBe('maya@example.org');
 		expect(resend(root).disabled).toBe(true);
+	});
+
+	it('opens the press again after the limit’s wait', () => {
+		vi.useFakeTimers();
+		try {
+			const { root } = signIn({ state: { kind: 'too-many', email: 'maya@example.org' } });
+			act(() => vi.advanceTimersByTime(TOO_MANY_WAIT_SECONDS * 1000 - 1));
+			expect(resend(root).disabled).toBe(true);
+			act(() => vi.advanceTimersByTime(1));
+			expect(resend(root).disabled).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('waits as long as the server names', () => {
+		vi.useFakeTimers();
+		try {
+			const { root } = signIn({
+				state: { kind: 'too-many', email: 'maya@example.org', retryAfterSeconds: 5 }
+			});
+			act(() => vi.advanceTimersByTime(4_999));
+			expect(resend(root).disabled).toBe(true);
+			act(() => vi.advanceTimersByTime(1));
+			expect(resend(root).disabled).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('marks the press busy while the request is in flight', () => {

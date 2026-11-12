@@ -13,7 +13,7 @@ import {
 	takeFlash
 } from '$lib/server/flash';
 import { linkMailer, readSupporterOrg } from '$lib/server/supporters/area';
-import { requestSignInLink } from '$lib/server/supporters/links';
+import { linkLimiters, requestSignInLink } from '$lib/server/supporters/links';
 import { database, platform } from '../context';
 import type { Route } from './+types/fundraise.sign-in';
 
@@ -64,7 +64,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 	const asked = await requestSignInLink(
 		{
 			db,
-			limiter: env.SIGN_IN_RATE_LIMITER,
+			limiters: linkLimiters(env),
 			defer: (work) => deferred.waitUntil(work),
 			sendLink: linkMailer(db, env),
 			now: new Date()

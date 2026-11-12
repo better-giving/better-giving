@@ -1,10 +1,11 @@
 import type { ServerBuild } from 'react-router';
 import { createRequestHandler } from 'react-router';
 import { readStaffCredential } from '$lib/server/auth/credential';
-import { readAuthEnv } from '$lib/server/auth/env';
+import { readAuthEnv, readPin } from '$lib/server/auth/env';
 import { INTEGRATIONS_BASE_PATH, readOnlyRefusal } from '$lib/server/integrations/surface';
 import { createDb } from '$lib/server/db/client';
 import { stampClientIp } from '$lib/server/runtime/client-ip';
+import { stampCookieScheme } from '$lib/server/runtime/cookie-scheme';
 import { withForwardedProto } from '$lib/server/runtime/forwarded-proto';
 import { type Scheduler, startScheduler } from '$lib/server/runtime/scheduler';
 import { CRON_RUNS } from '../cron-runs';
@@ -40,10 +41,13 @@ export type App = (request: Request, peer: string | null) => Promise<Response>;
  * ($lib/server/runtime/client-ip.ts and forwarded-proto.ts state the rules it feeds).
  */
 export function createApp(runtime: Runtime, trustedProxyHeader: string | undefined): App {
+	const pin = readPin(readAuthEnv(runtime.env));
+	const pinnedOrigin = pin.ok ? pin.origin : null;
 	return async (arrived, peer) => {
 		if (unroutedOnReadApi(arrived)) return readOnlyRefusal(arrived.method);
 		const request = withForwardedProto(arrived, trustedProxyHeader);
 		stampClientIp(request, peer, trustedProxyHeader);
+		stampCookieScheme(request, pinnedOrigin);
 		return handleRequest(request, requestContext(runtime));
 	};
 }

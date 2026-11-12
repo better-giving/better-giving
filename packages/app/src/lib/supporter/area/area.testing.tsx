@@ -79,3 +79,12 @@ export async function submit(form: HTMLFormElement): Promise<void> {
 		form.requestSubmit(one<HTMLButtonElement>(form, 'button[type="submit"]'));
 	});
 }
+
+/** a double press: two submits in one tick, before the router has drawn the first as out. */
+export async function submitTwice(form: HTMLFormElement): Promise<void> {
+	const press = one<HTMLButtonElement>(form, 'button[type="submit"]');
+	await act(async () => {
+		form.requestSubmit(press);
+		form.requestSubmit(press);
+	});
+}

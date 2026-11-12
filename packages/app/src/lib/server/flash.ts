@@ -1,4 +1,5 @@
 import { createCookie, redirect } from 'react-router';
+import { cookiesSecure } from './runtime/cookie-scheme';
 
 // how the outcome of a write in /admin, or on a supporter's screens under /fundraise, survives its
 // own redirect.
@@ -127,7 +128,8 @@ type Flash = { to: string; marker: string };
  *
  * `secure` is not here, because it cannot be one value: `true` everywhere is a cookie no browser
  * stores against `pnpm dev`, which serves over http. it is stated per response instead, off the
- * scheme the request arrived on.
+ * scheme `BETTER_AUTH_URL` pins and the request's own where none is pinned
+ * (`cookiesSecure` in ./runtime/cookie-scheme.ts).
  */
 const flashCookie = (name: FlashName) =>
 	createCookie(name, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: MAX_AGE_SECONDS });
@@ -156,11 +158,6 @@ function screenPath(request: Request): string {
 	return pathname;
 }
 
-/** whether this response may claim the cookie is https-only. */
-function isSecure(request: Request): boolean {
-	return new URL(request.url).protocol === 'https:';
-}
-
 /**
  * write the marker and redirect to the screen that will take it.
  *
@@ -180,7 +177,7 @@ export async function redirectWithFlash(
 	return redirect(destination, {
 		status: 303,
 		headers: {
-			'Set-Cookie': await cookies[name].serialize(value, { secure: isSecure(request) })
+			'Set-Cookie': await cookies[name].serialize(value, { secure: cookiesSecure(request) })
 		}
 	});
 }
@@ -216,6 +213,6 @@ export async function takeFlash(
 
 	return {
 		marker,
-		clear: await cookie.serialize('', { maxAge: 0, secure: isSecure(request) })
+		clear: await cookie.serialize('', { maxAge: 0, secure: cookiesSecure(request) })
 	};
 }

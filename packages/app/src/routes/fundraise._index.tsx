@@ -13,8 +13,14 @@ import { invalid, parseForm, unread } from '$lib/server/conform';
 import { redirectWithFlash, SUPPORTER_SENT_FLASH } from '$lib/server/flash';
 import { readPostedBody } from '$lib/server/images/intake';
 import { supporterFundraisersEnabled } from '$lib/server/org/queries';
-import { linkMailer, readSupporterOrg, startChallenge } from '$lib/server/supporters/area';
-import { startFundraiser } from '$lib/server/supporters/start';
+import {
+	linkMailer,
+	readSupporterOrg,
+	startChallenge,
+	supporterLinkOrigin
+} from '$lib/server/supporters/area';
+import { linkLimiters } from '$lib/server/supporters/links';
+import { startFundraiser, UNMAILABLE_START } from '$lib/server/supporters/start';
 import { database, platform } from '../context';
 import type { SupporterPolicyHandle } from '../document-policy';
 import type { Route } from './+types/fundraise._index';
@@ -72,9 +78,10 @@ export async function action({ context, request }: Route.ActionArgs) {
 	const started = await startFundraiser(
 		{
 			db,
-			limiter: env.SIGN_IN_RATE_LIMITER,
+			limiters: linkLimiters(env),
 			defer: (work) => deferred.waitUntil(work),
 			sendLink: linkMailer(db, env),
+			linkOrigin: supporterLinkOrigin(env),
 			checkChallenge: startChallenge(env, request, body.get(CHALLENGE_FIELD)),
 			now: new Date()
 		},
@@ -94,6 +101,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 		// switched off since the form was drawn: the screen it is drawn again as says so.
 		case 'closed':
 			return redirect(href('/fundraise'), 303);
+		case 'unmailable':
+			return invalid(500, submission.reject({ formErrors: [UNMAILABLE_START] }), { refused: null });
 		case 'too_many':
 			return invalid(429, submission.reject(), { refused: started.reason });
 		case 'challenge_unavailable':

@@ -86,7 +86,9 @@ describe('the registry component sheets', () => {
 		const drawn = classesDrawnIn(COMPONENT_SHEETS.map((item) => `src/registry/styles/${item}.css`));
 		const components = globSync('src/components/*/*.jsx');
 		// the screens that spell one by hand, beside the components that draw it: /admin's and the
-		// gallery's previews. the donor pages are the donation form's and read none of these sheets.
+		// gallery's previews. the donor chain's supporter screens also link some of these sheets
+		// (../app/src/lib/supporter/area/links.ts, ../app/src/lib/supporter/public/fundraiser-page.tsx),
+		// and this case does not sweep the names they spell.
 		const screens = [
 			...globSync('../app/src/routes/_app.admin*.tsx'),
 			...globSync('../app/src/lib/admin/**/*.tsx'),

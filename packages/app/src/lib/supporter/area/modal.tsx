@@ -7,9 +7,9 @@ import { type ReactNode, type RefObject, useEffect, useEffectEvent, useRef } fro
 // up is the screen's state, never the element's.
 //
 // focus lands on `initialFocus` — a confirm's Cancel, so Enter never does the act by accident — and
-// goes back to the control that opened the card when the card comes down. react removes the element
-// while it is still in the top layer, so the browser's own restoration on `close()` never runs and
-// is written here instead.
+// goes back to the control that opened the card when the card comes down, or to `fallbackFocus`
+// where that control went with it. react removes the element while it is still in the top layer,
+// so the browser's own restoration on `close()` never runs and is written here instead.
 //
 // registry gap: the registry's dialog is React-only (its `dialog` item) and draws no plain-CSS
 // surface, so `.sa-dialog` in ./area.css is the card: `--popover` on the card corner, the one
@@ -21,6 +21,11 @@ export type ModalProps = {
 	readonly describedBy?: string | undefined;
 	readonly onDismiss: () => void;
 	readonly initialFocus: RefObject<HTMLElement | null>;
+	/**
+	 * where focus goes when the card comes down and the control that opened it is gone, read then:
+	 * the screen's answer may have removed the opener with the card.
+	 */
+	readonly fallbackFocus?: RefObject<HTMLElement | null> | undefined;
 	readonly className?: string | undefined;
 	readonly children: ReactNode;
 };
@@ -31,11 +36,13 @@ export function Modal({
 	describedBy,
 	onDismiss,
 	initialFocus,
+	fallbackFocus,
 	className,
 	children
 }: ModalProps) {
 	const element = useRef<HTMLDialogElement>(null);
 	const landing = useEffectEvent(() => initialFocus.current);
+	const fallback = useEffectEvent(() => fallbackFocus?.current ?? null);
 	useEffect(() => {
 		const node = element.current;
 		if (node === null) return;
@@ -44,7 +51,7 @@ export function Modal({
 		(landing() ?? node).focus();
 		return () => {
 			if (node.open) node.close();
-			if (opener?.isConnected) opener.focus();
+			[opener, fallback()].find((target) => target?.isConnected)?.focus();
 		};
 	}, []);
 	return (

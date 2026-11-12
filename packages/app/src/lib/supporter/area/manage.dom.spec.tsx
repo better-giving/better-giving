@@ -1,6 +1,7 @@
 import { act } from 'react';
+import { useActionData } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import { ACCOUNT, button, mountScreen, ORG, one } from './area.testing';
+import { ACCOUNT, button, mountScreen, ORG, one, submitTwice } from './area.testing';
 import type { OwnGift } from './gifts';
 import { type ManagedPage, ManageFundraiser, type ManageFundraiserProps } from './manage';
 
@@ -122,6 +123,24 @@ describe('just published', () => {
 		expect(one(notice, 'h2').textContent).toBe('Your page is live');
 		expect(one(notice, '.ds-notice-card-actions button').className).toBe('ds-btn ds-btn-primary');
 		expect(one(notice, '.ds-notice-card-actions button').textContent).toBe('Copy link');
+	});
+
+	it('shows the address as text beside Copy link, for copying by hand', () => {
+		const { root } = manage({ justPublished: true });
+		expect(one(one(root, '.ds-notice-card'), '.sa-address').textContent).toBe(PAGE.url);
+	});
+
+	it('says on Copy link itself when the copy fails', async () => {
+		vi.stubGlobal('navigator', {
+			clipboard: { writeText: () => Promise.reject(new Error('denied')) }
+		});
+		const { root } = manage({ justPublished: true });
+		const press = one<HTMLButtonElement>(root, '.ds-notice-card-actions button');
+		await act(async () => press.click());
+		expect(press.textContent).toBe('Couldn’t copy');
+		expect(one(one(root, '.ds-notice-card'), '[role="status"]').textContent).toBe(
+			'Couldn’t copy the link. Select the address and copy it.'
+		);
 	});
 });
 
@@ -323,6 +342,38 @@ describe('ending a page', () => {
 		const said = one(dialog, '[role="alert"]');
 		expect(said.textContent).toBe('Couldn’t end it. Try again.');
 		expect(dialog.open).toBe(true);
+	});
+
+	it('posts once on a double press of End fundraiser', async () => {
+		const { posted, dialog } = open();
+		await submitTwice(one<HTMLFormElement>(dialog, 'form'));
+		expect(posted).toHaveLength(1);
+	});
+
+	it('moves focus to the ended notice once the end lands', async () => {
+		const { root } = mountScreen(
+			function Answered() {
+				const ended = useActionData<boolean>() === true;
+				const page: ManagedPage = ended
+					? { ...PAGE, status: 'ended', endedAt: '2026-11-20T18:00:00.000Z' }
+					: PAGE;
+				return <ManageFundraiser {...BASE} page={page} />;
+			},
+			() => true
+		);
+		const opener = button(one(root, '.sa-end'), 'End fundraiser');
+		act(() => {
+			opener.focus();
+			opener.click();
+		});
+		const dialog = one<HTMLDialogElement>(root, 'dialog');
+		await act(async () => {
+			one<HTMLFormElement>(dialog, 'form').requestSubmit(button(dialog, 'End fundraiser'));
+		});
+		expect(root.querySelector('dialog')).toBeNull();
+		const notice = one(root, '.ds-notice-card');
+		expect(one(notice, 'h2').textContent).toBe('This fundraiser has ended');
+		expect(document.activeElement).toBe(notice);
 	});
 
 	it('marks the press busy while the end is in flight', () => {

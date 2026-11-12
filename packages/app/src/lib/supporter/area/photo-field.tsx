@@ -39,17 +39,30 @@ async function measure(file: File): Promise<{ width: number; height: number } | 
 	}
 }
 
-async function upload(uploadUrl: string, blob: Blob): Promise<string | null> {
+/**
+ * the stored photo's id, or the sentence saying why not: the server's own where it refused the photo
+ * or the caller (routes/fundraise.photo.ts), ours where the server failed or never answered.
+ */
+async function upload(
+	uploadUrl: string,
+	blob: Blob
+): Promise<{ readonly id: string } | { readonly refused: string }> {
 	const body = new FormData();
 	body.set('file', blob, 'photo.png');
+	let answer: Response;
+	let read: UploadAnswer;
 	try {
-		const answer = await fetch(uploadUrl, { method: 'POST', body });
-		if (!answer.ok) return null;
-		const read = (await answer.json()) as UploadAnswer;
-		return 'id' in read && typeof read.id === 'string' ? read.id : null;
+		answer = await fetch(uploadUrl, { method: 'POST', body });
+		read = (await answer.json()) as UploadAnswer;
 	} catch {
-		return null;
+		return { refused: PHOTO_NOT_STORED };
 	}
+	if (answer.ok && 'id' in read && typeof read.id === 'string') return { id: read.id };
+	// a 5xx's `error` is written for the log, not for a supporter.
+	if (answer.status < 500 && 'error' in read && typeof read.error === 'string') {
+		return { refused: read.error };
+	}
+	return { refused: PHOTO_NOT_STORED };
 }
 
 export type PhotoFieldProps = {
@@ -121,10 +134,10 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 			hold(new File([cropped.blob], 'photo.png', { type: cropped.blob.type }));
 			return;
 		}
-		const storedId = await upload(uploadUrl, cropped.blob);
+		const uploaded = await upload(uploadUrl, cropped.blob);
 		setWorking(false);
-		if (storedId !== null) setStored(storedId);
-		else setRefused(PHOTO_NOT_STORED);
+		if ('id' in uploaded) setStored(uploaded.id);
+		else setRefused(uploaded.refused);
 	};
 
 	const dropped = (event: DragEvent<HTMLElement>) => {

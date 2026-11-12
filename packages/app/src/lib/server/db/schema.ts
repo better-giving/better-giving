@@ -1149,12 +1149,13 @@ export const form = sqliteTable(
  * soft delete. a mistake is a compensating entry.
  *
  * `recurring_id`, `program_id` and `supporter_page_id` are the columns here pointing at a table
- * younger than this one, they arrived the same way, and it is the way the next such column has to arrive. a
- * `REFERENCES` to a table that does not exist yet is legal at CREATE TABLE — sqlite resolves a
- * foreign key when DML runs, not when the table is declared — so a column declared ahead of its
- * table ships green and explodes on the first non-null insert, months later. each arrives instead
- * as `ALTER TABLE donation ADD COLUMN <name> text REFERENCES <table>(id)` once that table exists,
- * legal precisely because an added column defaults null. all three are at the bottom of this table.
+ * younger than this one, they arrived the same way, and it is the way the next such column has to
+ * arrive. a `REFERENCES` to a table that does not exist yet is legal at CREATE TABLE — sqlite
+ * resolves a foreign key when DML runs, not when the table is declared — so a column declared ahead
+ * of its table ships green and explodes on the first non-null insert, months later. each arrives
+ * instead as `ALTER TABLE donation ADD COLUMN <name> text REFERENCES <table>(id)` once that table
+ * exists, legal precisely because an added column defaults null. all three are below the append
+ * line.
  *
  * a charge collected under a commitment takes its cause from the gift that opened the series,
  * which is why `recurring_plan` carries no program column of its own.
@@ -3727,8 +3728,8 @@ export const supporterLink = sqliteTable(
 			'supporter_link_page_check',
 			sql`(${t.purpose} = 'confirm') = (${t.supporterPageId} is not null)`
 		),
-		// a supporter's unused links of one purpose, and one page's for `confirm`: the spend in
-		// `replacingLinkInsert` (supporters/links.ts) run before every link mailed.
+		// a supporter's unused links of one purpose, and one page's for `confirm`. no query reads
+		// through it: a newer link spends no older one (supporters/links.ts).
 		index('supporter_link_unused_idx')
 			.on(t.supporterId, t.purpose, t.supporterPageId)
 			.where(sql`${t.usedAt} is null`)

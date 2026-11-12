@@ -49,13 +49,34 @@ const LIMITERS = [
 	}
 ] as const satisfies readonly { name: RateLimiterName; promised: () => Promise<string> }[];
 
+/**
+ * the limiters a supporter's screens answer for in words of their own ($lib/supporter/area/copy.ts),
+ * which name no period: the refusal is a screen state, not a sentence from here.
+ */
+const SUPPORTER_LIMITERS = [
+	'SUPPORTER_LINK_CALLER_RATE_LIMITER',
+	'SUPPORTER_LINK_ADDRESS_RATE_LIMITER',
+	'SUPPORTER_PHOTO_RATE_LIMITER'
+] as const satisfies readonly RateLimiterName[];
+
 describe('the rate limiters the server builds', () => {
 	it('declares one entry per limiter this app charges, and no more', () => {
-		expect(Object.keys(RATE_LIMITS).sort()).toEqual(LIMITERS.map(({ name }) => name).sort());
+		expect(Object.keys(RATE_LIMITS).sort()).toEqual(
+			[...LIMITERS.map(({ name }) => name), ...SUPPORTER_LIMITERS].sort()
+		);
+	});
+
+	/**
+	 * a press mailing a supporter needs no session and no challenge on sign-in, so this bucket is
+	 * what one inbox receives from this deployment's sender, whoever presses: a few an hour.
+	 */
+	it('mails one supporter address at most six links an hour', () => {
+		const { limit, period } = size('SUPPORTER_LINK_ADDRESS_RATE_LIMITER');
+		expect(limit / (period / 3600)).toBeLessThanOrEqual(6);
 	});
 
 	/** a count of requests, so a fraction or a zero is a limit that means something else. */
-	it.each(LIMITERS.map(({ name }) => name))(
+	it.each([...LIMITERS.map(({ name }) => name), ...SUPPORTER_LIMITERS])(
 		'gives %s a positive whole number of requests and of seconds',
 		(name) => {
 			const { limit, period } = size(name);

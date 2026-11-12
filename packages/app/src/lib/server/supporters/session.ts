@@ -2,6 +2,7 @@ import { and, eq, gt } from 'drizzle-orm';
 import { createCookie, redirect } from 'react-router';
 import type { Db } from '../db/client';
 import { supporter, supporterSession } from '../db/schema';
+import { cookiesSecure } from '../runtime/cookie-scheme';
 import { hashToken, mintToken } from './token';
 
 // a signed-in supporter: a cookie of its own backed by a `supporter_session` row, wholly apart from
@@ -20,9 +21,9 @@ const SESSION_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 
 /**
  * `sameSite: 'lax'` so the cookie rides the top-level navigation a mailed link is, which `strict`
- * would withhold. `secure` is stated per response, by the scheme the request arrived on, as
- * ../flash.ts and ./resend-ticket.ts state theirs: a deployment served over plain http, on any host,
- * gets a cookie the browser keeps.
+ * would withhold. `secure` is stated per response (`cookiesSecure` in ../runtime/cookie-scheme.ts),
+ * as ../flash.ts and ./resend-ticket.ts state theirs: a deployment served over plain http, on any
+ * host, gets a cookie the browser keeps.
  */
 const cookie = createCookie(SUPPORTER_SESSION_COOKIE, {
 	path: '/',
@@ -30,8 +31,6 @@ const cookie = createCookie(SUPPORTER_SESSION_COOKIE, {
 	sameSite: 'lax',
 	maxAge: SESSION_LIFETIME_SECONDS
 });
-
-const isSecure = (request: Request) => new URL(request.url).protocol === 'https:';
 
 /** the signed-in supporter, as a supporter screen may know them. */
 export type SignedInSupporter = {
@@ -54,7 +53,7 @@ export async function startSupporterSession(
 		createdAt: now,
 		expiresAt: new Date(now.getTime() + SESSION_LIFETIME_SECONDS * 1000)
 	});
-	return cookie.serialize(token, { secure: isSecure(request) });
+	return cookie.serialize(token, { secure: cookiesSecure(request) });
 }
 
 /** the cookie's token, or null where the request carries none this module wrote. */
@@ -103,5 +102,5 @@ export async function endSupporterSession(db: Db, request: Request): Promise<str
 	if (token !== null) {
 		await db.delete(supporterSession).where(eq(supporterSession.tokenHash, hashToken(token)));
 	}
-	return cookie.serialize('', { maxAge: 0, secure: isSecure(request) });
+	return cookie.serialize('', { maxAge: 0, secure: cookiesSecure(request) });
 }

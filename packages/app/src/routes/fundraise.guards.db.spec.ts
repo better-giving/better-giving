@@ -2,13 +2,15 @@ import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client, run, stmt } from '$lib/server/db/database.testing';
-import { image, page as pageRow, supporterPage } from '$lib/server/db/schema';
+import { IMAGE_BYTES_MAX, image, page as pageRow, supporterPage } from '$lib/server/db/schema';
 import { pngHeader } from '$lib/server/images/headers.testing';
 import { UPLOAD_MAX } from '$lib/server/images/intake';
 import { gift, noteGift } from '$lib/server/pages/settled-gifts.testing';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
+import { SPEC_RATE_LIMITS } from '$lib/server/runtime/rate-limiter.testing';
 import { hideFundraiser } from '$lib/server/supporters/admin';
 import { SUPPORTER_SESSION_COOKIE } from '$lib/server/supporters/session';
+import { PHOTO_WIDTH_MIN } from '$lib/supporter/area/photo-crop';
 import { mountRoutes } from '../route-request.testing';
 import {
 	call,
@@ -271,7 +273,11 @@ describe('a mailed link', () => {
 		for (let fetched = 0; fetched < 2; fetched += 1) {
 			const shown = await call(open.loader, request(`/fundraise/open?token=${token}`));
 			expect(shown.status).toBe(200);
-			expect(shown.data).toMatchObject({ purpose: 'confirm', token });
+			expect(shown.data).toMatchObject({
+				purpose: 'confirm',
+				token,
+				page: { title: 'Run for the shelter', photoId: null }
+			});
 			expect(shown.headers.get('cache-control')).toBe('no-store');
 			expect(shown.headers.getSetCookie()).toEqual([]);
 		}
@@ -290,7 +296,7 @@ describe('a mailed link', () => {
 		await lastWork.settled();
 		const token = tokenIn(mailed.at(-1)?.text ?? '');
 		const shown = await call(open.loader, request(`/fundraise/open?token=${token}`));
-		expect(shown.data).toMatchObject({ purpose: 'sign_in' });
+		expect(shown.data).toMatchObject({ purpose: 'sign_in', page: null });
 		const opened = await openLink(token);
 		expect(opened.location).toBe('/fundraise/pages');
 		expect(opened.headers.get('cache-control')).toBe('no-store');
@@ -478,6 +484,63 @@ describe('a supporter’s photo', () => {
 		const before = await db.$count(image);
 		const refused = await post(browser.header(), 800, 450);
 		expect(refused.status).toBe(400);
+		expect(await db.$count(image)).toBe(before);
+	});
+
+	it('is refused a page photo one pixel short of the minimum width, and stored at the minimum', async () => {
+		const { browser } = await liveFundraiser(db, mailed);
+		const before = await db.$count(image);
+		expect((await post(browser.header(), PHOTO_WIDTH_MIN - 1, 900)).status).toBe(400);
+		expect(await db.$count(image)).toBe(before);
+		expect((await post(browser.header(), PHOTO_WIDTH_MIN, 900)).status).toBe(200);
+		expect(await db.$count(image)).toBe(before + 1);
+	});
+
+	it.each([
+		[
+			'an svg',
+			'<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"/>',
+			'image/svg+xml'
+		],
+		['a text file called a png', 'not an image at all', 'image/png']
+	])('is refused for %s, whatever the post calls it, storing nothing', async (_, text, type) => {
+		const { browser } = await liveFundraiser(db, mailed);
+		const before = await db.$count(image);
+		const body = new FormData();
+		body.set('file', new Blob([text], { type }), 'photo.png');
+		const refused = await call(
+			photo.action,
+			request('/fundraise/photo', { cookie: browser.header(), body })
+		);
+		expect(refused.status).toBe(400);
+		expect(await db.$count(image)).toBe(before);
+	});
+
+	it('answers 413 for a photo over the cap, storing nothing, and takes one at the cap', async () => {
+		const { browser } = await liveFundraiser(db, mailed);
+		const before = await db.$count(image);
+		const sized = (bytes: number) => {
+			const file = new Uint8Array(bytes);
+			file.set(pngHeader(1600, 900));
+			const body = new FormData();
+			body.set('file', new Blob([file], { type: 'image/png' }));
+			return call(photo.action, request('/fundraise/photo', { cookie: browser.header(), body }));
+		};
+		expect((await sized(IMAGE_BYTES_MAX + 1)).status).toBe(413);
+		expect(await db.$count(image)).toBe(before);
+		expect((await sized(IMAGE_BYTES_MAX)).status).toBe(200);
+	});
+
+	it('is refused past the supporter’s count for the day, from any address, in a sentence, storing nothing', async () => {
+		const { browser } = await liveFundraiser(db, mailed);
+		const { limit } = SPEC_RATE_LIMITS.SUPPORTER_PHOTO_RATE_LIMITER;
+		for (let n = 0; n < limit; n += 1) {
+			expect((await post(browser.header(), 1600, 900)).status).toBe(200);
+		}
+		const before = await db.$count(image);
+		const refused = await post(browser.header(), 1600, 900);
+		expect(refused.status).toBe(429);
+		expect(refused.data).toEqual({ error: expect.stringMatching(/^[A-Z].*\.$/) });
 		expect(await db.$count(image)).toBe(before);
 	});
 

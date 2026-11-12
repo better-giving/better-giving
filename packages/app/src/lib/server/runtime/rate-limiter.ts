@@ -23,7 +23,10 @@ export const RATE_LIMITS = {
 	API_RATE_LIMITER: { limit: 600, period: 60 },
 	QUOTE_RATE_LIMITER: { limit: 60, period: 60 },
 	SIGN_IN_RATE_LIMITER: { limit: 10, period: 60 },
-	INTEGRATIONS_KEY_RATE_LIMITER: { limit: 120, period: 60 }
+	INTEGRATIONS_KEY_RATE_LIMITER: { limit: 120, period: 60 },
+	SUPPORTER_LINK_CALLER_RATE_LIMITER: { limit: 10, period: 600 },
+	SUPPORTER_LINK_ADDRESS_RATE_LIMITER: { limit: 5, period: 3600 },
+	SUPPORTER_PHOTO_RATE_LIMITER: { limit: 20, period: 86_400 }
 } as const satisfies Record<string, RateLimit>;
 
 export type RateLimiterName = keyof typeof RATE_LIMITS;
@@ -75,6 +78,11 @@ export function createRateLimiters(
 		API_RATE_LIMITER: createRateLimiter(sizes.API_RATE_LIMITER),
 		QUOTE_RATE_LIMITER: createRateLimiter(sizes.QUOTE_RATE_LIMITER),
 		SIGN_IN_RATE_LIMITER: createRateLimiter(sizes.SIGN_IN_RATE_LIMITER),
-		INTEGRATIONS_KEY_RATE_LIMITER: createRateLimiter(sizes.INTEGRATIONS_KEY_RATE_LIMITER)
+		INTEGRATIONS_KEY_RATE_LIMITER: createRateLimiter(sizes.INTEGRATIONS_KEY_RATE_LIMITER),
+		SUPPORTER_LINK_CALLER_RATE_LIMITER: createRateLimiter(sizes.SUPPORTER_LINK_CALLER_RATE_LIMITER),
+		SUPPORTER_LINK_ADDRESS_RATE_LIMITER: createRateLimiter(
+			sizes.SUPPORTER_LINK_ADDRESS_RATE_LIMITER
+		),
+		SUPPORTER_PHOTO_RATE_LIMITER: createRateLimiter(sizes.SUPPORTER_PHOTO_RATE_LIMITER)
 	};
 }

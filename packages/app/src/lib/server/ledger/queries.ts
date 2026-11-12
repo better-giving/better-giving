@@ -485,7 +485,10 @@ export type RaisedThroughFundraiser = RaisedByOrganisation & { pageId: string };
  * alone, so this is `readRaisedThroughForm` over that row, counted.
  *
  * one statement, for that function's reason: the gifts are unbounded. `donation_supporter_page_id_idx`
- * carries the join from the page.
+ * carries the join from the page. the joins are `cross join`, which sqlite reads as a fixed order
+ * (https://www.sqlite.org/optoverview.html#crossjoin): planned freely, it starts from
+ * `entry_group_source_idx` on the type alone and walks every payment the organisation has taken
+ * (`raised-through-fundraisers.db.spec.ts`).
  */
 export function readRaisedThroughFundraisers(
 	db: Db,
@@ -496,13 +499,13 @@ export function readRaisedThroughFundraisers(
 		per_gift(page_id, net) as (
 			select ${supporterPage.id}, -sum(${ledgerEntry.amountMinor})
 			from ${supporterPage}
-			join ${donation} on ${donation.supporterPageId} = ${supporterPage.id}
-			join ${payment} on ${payment.donationId} = ${donation.id}
-			join ${entryGroup}
+			cross join ${donation} on ${donation.supporterPageId} = ${supporterPage.id}
+			cross join ${payment} on ${payment.donationId} = ${donation.id}
+			cross join ${entryGroup}
 				on ${entryGroup.sourceId} = ${payment.id}
 				and ${inArray(entryGroup.sourceType, PAYMENT_KEYED)}
 				and ${entryGroup.currency} = ${supporterPage.currency}
-			join ${ledgerEntry}
+			cross join ${ledgerEntry}
 				on ${ledgerEntry.entryGroupId} = ${entryGroup.id}
 				and ${ledgerEntry.accountId} in (select id from donations)
 			where ${where}

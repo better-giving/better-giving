@@ -12,6 +12,7 @@ import { Mark } from './glyph';
 import { PhotoField } from './photo-field';
 import { type SupporterAccount, SupporterShell, type SupporterOrg } from './shell';
 import { answered, boxOf, type FormResult } from './supporter-form';
+import { usePressOnce } from './use-press-once';
 
 // /fundraise/pages/:id/edit: the supporter's name, which signs every page of theirs, and this page's
 // title, goal, story and photo. the address never changes once a page is out, so it is no box here.
@@ -76,6 +77,7 @@ export function EditFundraiser({
 	const [photoWorking, setPhotoWorking] = useState(false);
 	const onPhotoWorking = useCallback((working: boolean) => setPhotoWorking(working), []);
 	const saved = useSaved(savedAt);
+	const press = usePressOnce(sending, lastResult ?? savedAt);
 	const formProps = getFormProps(form);
 	return (
 		<SupporterShell org={org} account={account}>
@@ -88,11 +90,12 @@ export function EditFundraiser({
 				method="post"
 				{...formProps}
 				onSubmit={(event) => {
-					if (sending || photoWorking) {
+					if (photoWorking || !press.claim()) {
 						event.preventDefault();
 						return;
 					}
 					formProps.onSubmit(event);
+					if (event.defaultPrevented) press.release();
 				}}
 				aria-label="Edit your page"
 				className="sa-plane sa-form sa-narrow"

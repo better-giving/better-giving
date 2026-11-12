@@ -451,6 +451,8 @@ body {
  * ink. `--page-accent` is what a link and a listed tier's amount are drawn in, brand 11.
  * `--page-ring` is the focus ring, `--_n1` on the feature's scrim and the form's elsewhere. a tier
  * card or a share press on its plane, and a program option on its control ground, sets its own ink.
+ * a link drawn as the registry's press (`.ds-btn`) takes the press's ring from the registry's
+ * button sheet, which this sheet's link ring would otherwise outrank.
  */
 
 .page-ground :where(h1, h2, h3, p, ul, ol, figure) {
@@ -462,7 +464,7 @@ body {
 	text-underline-offset: 0.15em; /* raw-length-ok: a text metric, so it follows the words' own size. */
 }
 
-.page-ground a:focus-visible,
+.page-ground a:not(.ds-btn):focus-visible,
 .page-faq-question:focus-visible {
 	outline: var(--_focus-width) solid transparent;
 	box-shadow: 0 0 0 var(--_focus-width) var(--page-ring);
@@ -1351,8 +1353,8 @@ body {
    phone the press runs the card's width and the note wraps under it; from 30rem they share a row.
    under the profile head the card is one of the more area's sections and takes its column; under a
    campaign or the Donation page's own layout it stands a section's step below the layout, at
-   `--page-fundraise-width`. the press is the registry's, linked beside this sheet, in its own ink
-   rather than a link's. */
+   `--page-fundraise-width`. the press is the registry's, linked beside this sheet, and its ring the
+   registry's; its ink is restated below, since the page's link ink outranks the variant's. */
 .page-fundraise-area {
 	margin-block-start: var(--page-gap-section);
 }
@@ -1394,8 +1396,9 @@ body {
 	inline-size: 100%;
 }
 
+/* `ds-btn-secondary`'s ink, gray 12, which the form names `--_n12`. */
 .page-ground .page-fundraise-act > a.ds-btn {
-	color: inherit;
+	color: var(--_n12);
 }
 
 .page-fundraise-note {

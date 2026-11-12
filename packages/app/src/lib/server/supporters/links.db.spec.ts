@@ -4,7 +4,7 @@ import { client, run, stmt } from '$lib/server/db/database.testing';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { createDeferredWork } from '$lib/server/runtime/deferred';
 import { createRateLimiter } from '$lib/server/runtime/rate-limiter';
-import { type LinkMail, readLinkPurpose, requestSignInLink, signInWithLink } from './links';
+import { type LinkMail, readOpeningLink, requestSignInLink, signInWithLink } from './links';
 import { readSupporterSession } from './session';
 
 // the emailed one-time link: who is mailed one, and what opening it does, against the real tables.
@@ -38,14 +38,20 @@ function from(ip = `203.0.113.${++address}`): Request {
 	});
 }
 
+/** buckets no case here reaches. */
+const roomy = () => ({
+	byCaller: createRateLimiter({ limit: 100, period: 60 }),
+	byAddress: createRateLimiter({ limit: 100, period: 60 })
+});
+
 /** a sign-in request for `email`, and the mail it sent once the deferred work ran. */
-async function ask(email: string, options: { request?: Request; limit?: number } = {}) {
+async function ask(email: string, options: { request?: Request } = {}) {
 	const mailed: LinkMail[] = [];
 	const deferred = createDeferredWork();
 	const answer = await requestSignInLink(
 		{
 			db,
-			limiter: createRateLimiter({ limit: options.limit ?? 10, period: 60 }),
+			limiters: roomy(),
 			defer: (work) => deferred.waitUntil(work),
 			sendLink: async (mail) => {
 				mailed.push(mail);
@@ -80,7 +86,7 @@ describe('asking for a sign-in link', () => {
 		await requestSignInLink(
 			{
 				db,
-				limiter: createRateLimiter({ limit: 10, period: 60 }),
+				limiters: roomy(),
 				defer: (work) => held.push(work),
 				sendLink: async (mail) => {
 					mailed.push(mail);
@@ -97,12 +103,12 @@ describe('asking for a sign-in link', () => {
 
 	it('answers too many tries past the bucket for one client address', async () => {
 		const request = () => from('198.51.100.7');
-		const limiter = createRateLimiter({ limit: 2, period: 60 });
+		const limiters = { ...roomy(), byCaller: createRateLimiter({ limit: 2, period: 60 }) };
 		const answers: string[] = [];
 		for (const email of ['a@example.org', 'b@example.org', 'c@example.org']) {
 			answers.push(
 				await requestSignInLink(
-					{ db, limiter, defer: () => {}, sendLink: async () => {}, now: NOW },
+					{ db, limiters, defer: () => {}, sendLink: async () => {}, now: NOW },
 					request(),
 					email
 				)
@@ -112,18 +118,36 @@ describe('asking for a sign-in link', () => {
 	});
 
 	it('answers too many tries past the bucket for one email, from any address', async () => {
-		const limiter = createRateLimiter({ limit: 2, period: 60 });
+		const limiters = { ...roomy(), byAddress: createRateLimiter({ limit: 2, period: 3600 }) };
 		const answers: string[] = [];
 		for (let n = 0; n < 3; n += 1) {
 			answers.push(
 				await requestSignInLink(
-					{ db, limiter, defer: () => {}, sendLink: async () => {}, now: NOW },
+					{ db, limiters, defer: () => {}, sendLink: async () => {}, now: NOW },
 					from(),
 					'maya@example.org'
 				)
 			);
 		}
 		expect(answers).toEqual(['sent', 'sent', 'too_many']);
+	});
+
+	it('spends nothing of the address’s bucket for a caller over its own', async () => {
+		const limiters = {
+			byCaller: createRateLimiter({ limit: 1, period: 60 }),
+			byAddress: createRateLimiter({ limit: 2, period: 3600 })
+		};
+		const press = (request: Request) =>
+			requestSignInLink(
+				{ db, limiters, defer: () => {}, sendLink: async () => {}, now: NOW },
+				request,
+				'maya@example.org'
+			);
+		const flooding = () => from('198.51.100.8');
+		expect(await press(flooding())).toBe('sent');
+		expect(await press(flooding())).toBe('too_many');
+		expect(await press(flooding())).toBe('too_many');
+		expect(await press(from())).toBe('sent');
 	});
 });
 
@@ -179,6 +203,14 @@ describe('opening a link', () => {
 		expect(await open(token)).toEqual({ ok: false });
 	});
 
+	it('answers two openings at once with one session and one refusal', async () => {
+		const token = await mailedToken();
+		const [a, b] = await Promise.all([open(token), open(token)]);
+		expect([a.ok, b.ok].sort()).toEqual([false, true]);
+		const sessions = await client.execute('select count(*) as n from supporter_session');
+		expect(sessions.rows[0]?.n).toBe(1);
+	});
+
 	it('works until sixty minutes after it was made, and not after', async () => {
 		const early = await mailedToken();
 		expect((await open(early, minutes(59))).ok).toBe(true);
@@ -186,11 +218,22 @@ describe('opening a link', () => {
 		expect(await open(late, minutes(60))).toEqual({ ok: false });
 	});
 
-	it('stops working once a newer sign-in link is mailed', async () => {
+	// a request needs no session, so a newer link spending the older would let anyone who knows the
+	// address spend the link the supporter is about to press.
+	it.each([
+		['the older', 0],
+		['the newer', 1]
+	] as const)('keeps working after a newer one is mailed: %s opens, once', async (_, which) => {
+		const tokens = [await mailedToken(), await mailedToken()];
+		const token = tokens[which] ?? '';
+		expect((await open(token)).ok).toBe(true);
+		expect(await open(token)).toEqual({ ok: false });
+	});
+
+	it('keeps each link to its own hour when a newer one is mailed', async () => {
 		const older = await mailedToken();
-		const newer = await mailedToken();
-		expect(await open(older)).toEqual({ ok: false });
-		expect((await open(newer)).ok).toBe(true);
+		await mailedToken();
+		expect(await open(older, minutes(60))).toEqual({ ok: false });
 	});
 
 	it('refuses a token it never minted the same way', async () => {
@@ -202,8 +245,9 @@ describe('reading what a link is for, as the screen in front of its opening does
 	it('names an open link’s purpose and spends nothing', async () => {
 		const { mailed } = await ask('maya@example.org');
 		const token = mailed[0]?.token ?? '';
-		expect(await readLinkPurpose(db, token, minutes(1))).toBe('sign_in');
-		expect(await readLinkPurpose(db, token, minutes(1))).toBe('sign_in');
+		const unread = { purpose: 'sign_in', page: null };
+		expect(await readOpeningLink(db, token, minutes(1))).toEqual(unread);
+		expect(await readOpeningLink(db, token, minutes(1))).toEqual(unread);
 		expect(
 			(await signInWithLink(db, new Request('https://give.example/f/link'), token, minutes(2))).ok
 		).toBe(true);
@@ -212,9 +256,9 @@ describe('reading what a link is for, as the screen in front of its opening does
 	it('names none for a link used, expired or never minted', async () => {
 		const { mailed } = await ask('maya@example.org');
 		const token = mailed[0]?.token ?? '';
-		expect(await readLinkPurpose(db, token, minutes(60))).toBeNull();
+		expect(await readOpeningLink(db, token, minutes(60))).toBeNull();
 		await signInWithLink(db, new Request('https://give.example/f/link'), token, minutes(1));
-		expect(await readLinkPurpose(db, token, minutes(2))).toBeNull();
-		expect(await readLinkPurpose(db, 'not-a-token-anyone-was-sent', minutes(1))).toBeNull();
+		expect(await readOpeningLink(db, token, minutes(2))).toBeNull();
+		expect(await readOpeningLink(db, 'not-a-token-anyone-was-sent', minutes(1))).toBeNull();
 	});
 });

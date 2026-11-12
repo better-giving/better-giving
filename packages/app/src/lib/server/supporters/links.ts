@@ -11,7 +11,9 @@ import { startSupporterSession } from './session';
 import { hashToken, mintToken } from './token';
 
 // the one-time links mailed to a supporter: asking for one, minting one, and opening one. a link is
-// stored as its hash, works once, and admits nothing 60 minutes after it was made. opening a
+// stored as its hash, works once, and admits nothing 60 minutes after it was made. a newer link
+// spends no older one: asking needs no session, so a spend would let anyone who knows an address
+// spend the link its supporter is about to press. opening a
 // `confirm` link takes its pending page live and signs the supporter in; a `sign_in` link signs in.
 
 /** how long a link works for, from when it was made. */
@@ -58,55 +60,49 @@ export function linkInsert(
 }
 
 /**
- * a link's row insert, as `linkInsert` makes it, behind a spend of every older unused link of the
- * same purpose for the same supporter (and the same page, for `confirm`), for the caller's
- * `batch()`: the newest link mailed is the one that works.
+ * the buckets a press that mails a link is charged: `SUPPORTER_LINK_CALLER_RATE_LIMITER` and
+ * `SUPPORTER_LINK_ADDRESS_RATE_LIMITER` off the platform env.
  */
-export function replacingLinkInsert(
-	db: Db,
-	link: {
-		readonly supporterId: string;
-		readonly purpose: SupporterLinkPurpose;
-		readonly pageId: string | null;
-	},
-	now: Date
-) {
-	const fresh = linkInsert(db, link, now);
-	const spend = db
-		.update(supporterLink)
-		.set({ usedAt: now })
-		.where(
-			and(
-				eq(supporterLink.supporterId, link.supporterId),
-				eq(supporterLink.purpose, link.purpose),
-				link.pageId === null ? undefined : eq(supporterLink.supporterPageId, link.pageId),
-				isNull(supporterLink.usedAt)
-			)
-		);
-	return { token: fresh.token, statements: [spend, fresh.statement] as const };
+export type LinkLimiters = {
+	readonly byCaller: RateLimiter | undefined;
+	readonly byAddress: RateLimiter | undefined;
+};
+
+/** the buckets `env` carries for a press that mails a link. */
+export function linkLimiters(env: Env): LinkLimiters {
+	return {
+		byCaller: env.SUPPORTER_LINK_CALLER_RATE_LIMITER,
+		byAddress: env.SUPPORTER_LINK_ADDRESS_RATE_LIMITER
+	};
+}
+
+/** charges the caller's bucket; `true` where it has nothing left. */
+export function callerOverLinkLimit(limiters: LinkLimiters, request: Request): Promise<boolean> {
+	return isRateLimited(limiters.byCaller, supporterLinkRateLimitKey(request));
 }
 
 /**
- * charges a press that mails a link against the caller's bucket and the address's, both on
- * `SIGN_IN_RATE_LIMITER`; `true` where either has nothing left. both are charged whichever refuses,
- * so a caller cannot spend one bucket while the other holds.
+ * charges the address's bucket; `true` where it has nothing left. charged only for a press the
+ * caller's bucket admitted, so a caller over its own limit spends no supporter's.
  */
-export async function overLinkLimit(
-	limiter: RateLimiter | undefined,
+export function addressOverLinkLimit(limiters: LinkLimiters, email: string): Promise<boolean> {
+	return isRateLimited(limiters.byAddress, supporterMailRateLimitKey(email));
+}
+
+/** both buckets, the caller's first; `true` where either has nothing left. */
+async function overLinkLimit(
+	limiters: LinkLimiters,
 	request: Request,
 	email: string
 ): Promise<boolean> {
-	const [byCaller, byAddress] = await Promise.all([
-		isRateLimited(limiter, supporterLinkRateLimitKey(request)),
-		isRateLimited(limiter, supporterMailRateLimitKey(email))
-	]);
-	return byCaller || byAddress;
+	return (
+		(await callerOverLinkLimit(limiters, request)) || (await addressOverLinkLimit(limiters, email))
+	);
 }
 
 export type SignInRequestDeps = {
 	readonly db: Db;
-	/** `SIGN_IN_RATE_LIMITER` off the platform env. */
-	readonly limiter: RateLimiter | undefined;
+	readonly limiters: LinkLimiters;
 	/** the request's `platform.deferred.waitUntil`. */
 	readonly defer: (work: Promise<unknown>) => void;
 	readonly sendLink: SendLink;
@@ -124,7 +120,7 @@ export async function requestSignInLink(
 	request: Request,
 	email: string
 ): Promise<'sent' | 'too_many'> {
-	if (await overLinkLimit(deps.limiter, request, email)) return 'too_many';
+	if (await overLinkLimit(deps.limiters, request, email)) return 'too_many';
 	deps.defer(mailSignInLink(deps, email));
 	return 'sent';
 }
@@ -136,18 +132,18 @@ async function mailSignInLink(deps: SignInRequestDeps, email: string): Promise<v
 		.where(eq(supporter.email, email))
 		.limit(1);
 	if (!found) return;
-	const link = replacingLinkInsert(
+	const link = linkInsert(
 		deps.db,
 		{ supporterId: found.id, purpose: 'sign_in', pageId: null },
 		deps.now
 	);
-	await deps.db.batch(link.statements);
+	await link.statement;
 	await deps.sendLink({ to: email, token: link.token, arm: { kind: 'returning' } });
 }
 
 /**
  * Send it again after a start: a fresh confirm link for the pending page `pageId`, which the
- * supporter at `email` started, with every older unused confirm link for that page spent. answered
+ * supporter at `email` started, beside the confirm links already mailed for it. answered
  * and limited as `requestSignInLink` is, `sent` for every address and page, and nothing is mailed
  * where the page is not that supporter's or is no longer pending.
  */
@@ -156,7 +152,7 @@ export async function resendConfirmLink(
 	request: Request,
 	asked: { readonly email: string; readonly pageId: string }
 ): Promise<'sent' | 'too_many'> {
-	if (await overLinkLimit(deps.limiter, request, asked.email)) return 'too_many';
+	if (await overLinkLimit(deps.limiters, request, asked.email)) return 'too_many';
 	deps.defer(mailConfirmLink(deps, asked));
 	return 'sent';
 }
@@ -178,12 +174,12 @@ async function mailConfirmLink(
 		)
 		.limit(1);
 	if (!found) return;
-	const link = replacingLinkInsert(
+	const link = linkInsert(
 		deps.db,
 		{ supporterId: found.supporterId, purpose: 'confirm', pageId: asked.pageId },
 		deps.now
 	);
-	await deps.db.batch(link.statements);
+	await link.statement;
 	await deps.sendLink({
 		to: asked.email,
 		token: link.token,
@@ -200,22 +196,39 @@ function opens(tokenHash: string, now: Date): SQL | undefined {
 	);
 }
 
+/** what a link is for while it still opens, and for a `confirm` link the page opening it publishes. */
+export type OpeningLink = {
+	readonly purpose: SupporterLinkPurpose;
+	readonly page: { readonly title: string; readonly photoId: string | null } | null;
+};
+
 /**
  * what the link `token` is for while it still opens, or null for one used, expired or unknown,
  * read without spending it: the screen in front of an opening names the press by it, and a mail
- * scanner fetching that screen spends nothing.
+ * scanner fetching that screen spends nothing. a `confirm` link names its page's title and photo,
+ * since a start attaches to whoever holds the address (./start.ts) and the press publishes what
+ * somebody else may have written.
  */
-export async function readLinkPurpose(
+export async function readOpeningLink(
 	db: Db,
 	token: string,
 	now: Date
-): Promise<SupporterLinkPurpose | null> {
+): Promise<OpeningLink | null> {
 	const [link] = await db
-		.select({ purpose: supporterLink.purpose })
+		.select({
+			purpose: supporterLink.purpose,
+			title: supporterPage.title,
+			photoId: supporterPage.photoId
+		})
 		.from(supporterLink)
+		.leftJoin(supporterPage, eq(supporterPage.id, supporterLink.supporterPageId))
 		.where(opens(hashToken(token), now))
 		.limit(1);
-	return link?.purpose ?? null;
+	if (!link) return null;
+	return {
+		purpose: link.purpose,
+		page: link.title === null ? null : { title: link.title, photoId: link.photoId }
+	};
 }
 
 /**

@@ -1,6 +1,15 @@
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { ACCOUNT, boxLabelled, button, mountScreen, ORG, one, submit } from './area.testing';
+import {
+	ACCOUNT,
+	boxLabelled,
+	button,
+	mountScreen,
+	ORG,
+	one,
+	submit,
+	submitTwice
+} from './area.testing';
 import { EditFundraiser, type EditFundraiserProps, SAVED_FOR_MS } from './edit-form';
 import { EDIT_FORM, PHOTO_FILE_FIELD } from './forms';
 
@@ -140,6 +149,42 @@ describe('editing a page', () => {
 		expect(one(root, `#${press.id}-err`).textContent).toBe(
 			'That photo didn’t upload. Add it again.'
 		);
+	});
+
+	it('posts once on a double press of Save changes', async () => {
+		const { root, posted } = edit();
+		await submitTwice(one<HTMLFormElement>(root, `form#${EDIT_FORM.id}`));
+		expect(posted).toHaveLength(1);
+	});
+
+	it.each([
+		[401, 'Sign in to add a photo.', 'Sign in to add a photo.'],
+		[
+			429,
+			'You’ve added as many photos as we can take today.',
+			'You’ve added as many photos as we can take today.'
+		],
+		[500, 'the photo was not stored; post it again', 'That photo didn’t upload. Add it again.']
+	])('says a %i upload answer under the photo’s press', async (status, error, said) => {
+		vi.stubGlobal(
+			'createImageBitmap',
+			vi.fn(async () => ({ width: 1600, height: 900, close() {} }))
+		);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Response.json({ error }, { status }))
+		);
+		const { root } = edit();
+		const chooser = one<HTMLInputElement>(root, 'input[type="file"]');
+		const file = new File(['x'], 'pantry.jpg', { type: 'image/jpeg' });
+		Object.defineProperty(chooser, 'files', { value: [file], configurable: true });
+		await act(async () => {
+			chooser.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		await act(async () => button(root, 'Use this photo').click());
+		const press = button(root, 'Replace photo');
+		expect(one(root, `#${press.id}-err`).textContent).toBe(said);
+		expect(one<HTMLInputElement>(root, 'input[name="photo_id"]').value).toBe('img-1');
 	});
 
 	it('marks Save changes busy while the save is in flight', () => {

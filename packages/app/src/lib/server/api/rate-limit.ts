@@ -50,14 +50,15 @@ import { API_BASE_PATH } from './surface';
 // promises to the sizes declared there.
 
 /**
- * how long a refused caller is told to wait, in seconds — and every limiter's own period, which
- * is the longest a bucket can hold them.
+ * how long a refused caller is told to wait, in seconds — and the period of every limiter this
+ * module words a refusal for, which is the longest a bucket can hold them.
  *
- * `RATE_LIMITS` in ../runtime/rate-limiter.ts sets 60 on every one. the numbers have to agree,
- * because this one is a promise about when the same request works — a bucket that reset forty
- * seconds ago while the answer says to keep waiting is a donor sent away for nothing. nothing in
- * the language joins them, so `./rate-limit.config.spec.ts` holds every answer this module produces
- * to the period declared for the limiter that refused it.
+ * `RATE_LIMITS` in ../runtime/rate-limiter.ts sets 60 on each of those; the supporter limiters'
+ * refusals are screen states in $lib/supporter/area/copy.ts, which name no period. the numbers
+ * have to agree, because this one is a promise about when the same request works — a bucket that
+ * reset forty seconds ago while the answer says to keep waiting is a donor sent away for nothing.
+ * nothing in the language joins them, so `./rate-limit.config.spec.ts` holds every answer this
+ * module produces to the period declared for the limiter that refused it.
  */
 const PERIOD_SECONDS = 60;
 
@@ -169,11 +170,11 @@ export function signInRateLimitKey(request: Request): string | null {
 }
 
 /**
- * what one press that mails a supporter a link counts against — "Email me a link" and Start a
- * fundraiser — by the caller, and `null` for a caller with no bucket at all. charged on
- * `SIGN_IN_RATE_LIMITER` beside `supporterMailRateLimitKey`, under a prefix of its own, so a
- * supporter's presses never spend the staff sign-in's guesses. the `/48`, for the reason
- * `signInRateLimitKey` keys one: each press mails somebody.
+ * what one press that mails a supporter a link counts against — "Email me a link", Send it again
+ * and Start a fundraiser — by the caller, and `null` for a caller with no bucket at all. charged on
+ * `SUPPORTER_LINK_CALLER_RATE_LIMITER`, a limiter of its own, so no press spends the staff
+ * sign-in's guesses. the `/48`, for the reason `signInRateLimitKey` keys one: each press mails
+ * somebody.
  */
 export function supporterLinkRateLimitKey(request: Request): string | null {
 	const payer = attributedCaller(request, 48);
@@ -181,11 +182,26 @@ export function supporterLinkRateLimitKey(request: Request): string | null {
 }
 
 /**
- * the same presses by the address being mailed, lowercased by the parse: what bounds one inbox
- * being posted to from many callers.
+ * the same presses by the address being mailed, lowercased by the parse, on
+ * `SUPPORTER_LINK_ADDRESS_RATE_LIMITER`: what bounds one inbox being posted to from many callers,
+ * charged only for a press its caller's bucket admitted.
  */
 export function supporterMailRateLimitKey(email: string): string {
 	return `supporter-link mail ${email}`;
+}
+
+/**
+ * what one photo posted to `/fundraise/photo` counts against, on `SUPPORTER_PHOTO_RATE_LIMITER`:
+ * the signed-in supporter, whichever of their sessions posts it.
+ */
+export function supporterPhotoRateLimitKey(supporterId: string): string {
+	return `supporter-photo ${supporterId}`;
+}
+
+/** the same posts by the caller, and `null` for a caller with no bucket at all. */
+export function supporterPhotoCallerRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request, 48);
+	return payer === null ? null : `supporter-photo caller ${payer}`;
 }
 
 /**

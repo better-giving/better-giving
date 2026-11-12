@@ -20,7 +20,10 @@ export const SPEC_RATE_LIMITS = {
 	API_RATE_LIMITER: { limit: 20, period: 60 },
 	QUOTE_RATE_LIMITER: { limit: 3, period: 60 },
 	SIGN_IN_RATE_LIMITER: { limit: 3, period: 60 },
-	INTEGRATIONS_KEY_RATE_LIMITER: { limit: 3, period: 60 }
+	INTEGRATIONS_KEY_RATE_LIMITER: { limit: 3, period: 60 },
+	SUPPORTER_LINK_CALLER_RATE_LIMITER: { limit: 3, period: 600 },
+	SUPPORTER_LINK_ADDRESS_RATE_LIMITER: { limit: 3, period: 3600 },
+	SUPPORTER_PHOTO_RATE_LIMITER: { limit: 3, period: 86_400 }
 } as const satisfies Record<RateLimiterName, RateLimit>;
 
 /** a fresh set of limiters at `SPEC_RATE_LIMITS`, counting from nothing. */

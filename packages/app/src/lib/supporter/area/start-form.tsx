@@ -11,6 +11,7 @@ import { INTENT, INTENTS, PHOTO_FILE_FIELD, START_FORM } from './forms';
 import { PhotoField } from './photo-field';
 import { SupporterShell, type SupporterOrg } from './shell';
 import { answered, boxOf, type FormResult } from './supporter-form';
+import { usePressOnce } from './use-press-once';
 
 // /fundraise: what a fundraiser is and what of it is public beside the form that starts one, or,
 // where the organisation has switched fundraisers off, the one card saying so with the way to give
@@ -76,6 +77,9 @@ function StartLayout({
 	const [form, fields] = useAdminForm(START, answered(START, lastResult));
 	const [photoWorking, setPhotoWorking] = useState(false);
 	const onPhotoWorking = useCallback((working: boolean) => setPhotoWorking(working), []);
+	// a second post would re-spend the single-use spam answer, and its refusal would be drawn over
+	// the first post's way on to Check your email.
+	const press = usePressOnce(sending, lastResult ?? refused);
 	/* each answer refusing the photo puts the photo box back to empty, under its refusal: the crop
 	   it holds is the one refused, and posted again it would be refused again. an answer about
 	   anything else leaves the crop where it is. */
@@ -133,13 +137,13 @@ function StartLayout({
 				encType="multipart/form-data"
 				{...formProps}
 				onSubmit={(event) => {
-					// a second press while the first is in flight, or a submit before the crop is in, sends
-					// nothing.
-					if (sending || photoWorking) {
+					// a second press while the first is out, or a submit before the crop is in, sends nothing.
+					if (photoWorking || !press.claim()) {
 						event.preventDefault();
 						return;
 					}
 					formProps.onSubmit(event);
+					if (event.defaultPrevented) press.release();
 				}}
 				aria-labelledby={`${form.id}-heading`}
 				className="sa-plane sa-form"

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { SHARE_CHANNEL_LABELS, shareHref } from '$lib/page/share';
 import { NoticeCard } from './cards';
 import { giftCount, longDay, money, type PageState, pageState, statusBadge } from './copy';
@@ -73,6 +73,9 @@ export function ManageFundraiser({
 	const canEnd = state !== 'ended';
 	const shareable = state === 'live' || state === 'ended';
 	const [asking, setAsking] = useState(false);
+	// an end that lands takes End fundraiser away with the card, so the reader goes to the notice
+	// saying the page has ended.
+	const endedNotice = useRef<HTMLElement>(null);
 	const raisedWords = `${money(page.raisedMinor, page.currency)} from ${giftCount(page.gifts)}`;
 
 	return (
@@ -88,6 +91,8 @@ export function ManageFundraiser({
 					actions={<CopyLink url={page.url} className="ds-btn ds-btn-primary" />}
 				>
 					Share the link with the people who know you best. Most first gifts come from them.
+					<br />
+					<span className="sa-address">{page.url}</span>
 				</NoticeCard>
 			) : null}
 			{state === 'hidden' ? (
@@ -108,7 +113,7 @@ export function ManageFundraiser({
 				</NoticeCard>
 			) : null}
 			{state === 'ended' && page.endedAt !== null ? (
-				<NoticeCard tone="info" title="This fundraiser has ended">
+				<NoticeCard tone="info" title="This fundraiser has ended" ref={endedNotice}>
 					You ended it on {longDay(page.endedAt)}. Your page still shows the final total,{' '}
 					{raisedWords}.
 				</NoticeCard>
@@ -219,6 +224,7 @@ export function ManageFundraiser({
 					refused={endRefused}
 					sending={ending}
 					onCancel={() => setAsking(false)}
+					fallbackFocus={endedNotice}
 				/>
 			) : null}
 		</SupporterShell>

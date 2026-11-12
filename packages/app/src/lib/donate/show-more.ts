@@ -13,7 +13,9 @@ import type { DonorMessagesWiring, ShowMoreStatus } from './sections/messages';
 
 /**
  * the section's wiring, ages counted from `now`, the instant the page's loader read it, each press
- * asking `from` for the six after the last.
+ * asking `from` for the six after the last. a new `from` is another list: what the last one handed
+ * is dropped and its ask in flight abandoned, since a navigation between two fundraisers keeps
+ * this hook mounted.
  */
 export function useShowMoreMessages(
 	now: string,
@@ -21,8 +23,14 @@ export function useShowMoreMessages(
 ): DonorMessagesWiring {
 	const [status, setStatus] = useState<ShowMoreStatus>('idle');
 	const [arrived, setArrived] = useState<DonorMessages | null>(null);
+	const [listing, setListing] = useState(from);
+	if (listing !== from) {
+		setListing(from);
+		setStatus('idle');
+		setArrived(null);
+	}
 	const asking = useRef<AbortController | null>(null);
-	useEffect(() => () => asking.current?.abort(), []);
+	useEffect(() => () => asking.current?.abort(), [from]);
 
 	const onShowMore = async (after: string) => {
 		asking.current?.abort();

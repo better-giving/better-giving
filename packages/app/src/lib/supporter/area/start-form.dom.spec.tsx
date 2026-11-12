@@ -3,7 +3,7 @@ import { act } from 'react';
 import { useActionData } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { SUPPORTER_START_INPUT } from '$lib/supporters/input';
-import { boxLabelled, button, mountScreen, ORG, one, submit } from './area.testing';
+import { boxLabelled, button, mountScreen, ORG, one, submit, submitTwice } from './area.testing';
 import type { StartRefusal } from './copy';
 import { PHOTO_FILE_FIELD, START_FORM } from './forms';
 import { StartFundraiser, type StartFundraiserProps } from './start-form';
@@ -128,6 +128,30 @@ describe('a start', () => {
 		expect(posted[0]?.get('intent')).toBe('start');
 		expect(posted[0]?.get('goal')).toBe('5,000');
 		expect(posted[0]?.get('email')).toBe('maya@example.org');
+	});
+
+	it('posts once on a double press, before the router says the first is out', async () => {
+		const { root, posted } = start();
+		const form = one<HTMLFormElement>(root, `form#${START_FORM.id}`);
+		for (const [name, value] of Object.entries(FILLED)) {
+			const box = form.elements.namedItem(name);
+			if (box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement) box.value = value;
+		}
+		await submitTwice(form);
+		expect(posted).toHaveLength(1);
+	});
+
+	it('posts after a press the form itself refused', async () => {
+		const { root, posted } = start();
+		const form = one<HTMLFormElement>(root, `form#${START_FORM.id}`);
+		await submit(form);
+		expect(posted).toHaveLength(0);
+		for (const [name, value] of Object.entries(FILLED)) {
+			const box = form.elements.namedItem(name);
+			if (box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement) box.value = value;
+		}
+		await submit(form);
+		expect(posted).toHaveLength(1);
 	});
 });
 

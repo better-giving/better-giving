@@ -1,9 +1,14 @@
 import { data } from 'react-router';
+import {
+	isRateLimited,
+	supporterPhotoCallerRateLimitKey,
+	supporterPhotoRateLimitKey
+} from '$lib/server/api/rate-limit';
 import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
 import { readPostedBody } from '$lib/server/images/intake';
 import { checkSupporterPhoto } from '$lib/server/supporters/photo';
 import { readSupporterSession } from '$lib/server/supporters/session';
-import { database } from '../context';
+import { database, platform } from '../context';
 import type { Route } from './+types/fundraise.photo';
 
 // a supporter's page photo, stored: an `action` with no component, which the photo box posts its
@@ -19,6 +24,16 @@ import type { Route } from './+types/fundraise.photo';
 // until a start or an edit names its id, and each of those refuses an id no stored image has; an
 // edit also refuses one anything but its own page holds (`unheldBeyond` in
 // $lib/server/images/free.ts).
+//
+// photos are rows in the one database file, so each is charged before its body is read, against
+// the supporter, whichever session posts it, and against the caller, both on
+// `SUPPORTER_PHOTO_RATE_LIMITER`: a day's count. the sweep frees a photo nothing holds a day after
+// it was stored (`UNHELD_PHOTO_KEEP_MS` in $lib/server/supporters/sweep.ts), so a supporter can
+// leave at most twice that count unheld.
+
+/** what a supporter past the day's count is told, beside the photo box. */
+const TOO_MANY_PHOTOS =
+	'You’ve added as many photos as we can take today. Use one you’ve already added, or try again tomorrow.';
 
 /** a GET, a HEAD or an OPTIONS, which this address answers with the method it takes. */
 export function loader(): Response {
@@ -31,9 +46,14 @@ export function loader(): Response {
 export async function action({ context, request }: Route.ActionArgs) {
 	refuseWriteFromAnotherOrigin(request);
 	const db = context.get(database);
-	if ((await readSupporterSession(db, request, new Date())) === null) {
-		return data({ error: 'Sign in to add a photo.' }, 401);
-	}
+	const signedIn = await readSupporterSession(db, request, new Date());
+	if (signedIn === null) return data({ error: 'Sign in to add a photo.' }, 401);
+	const limiter = context.get(platform).env.SUPPORTER_PHOTO_RATE_LIMITER;
+	const refused = await Promise.all([
+		isRateLimited(limiter, supporterPhotoRateLimitKey(signedIn.supporterId)),
+		isRateLimited(limiter, supporterPhotoCallerRateLimitKey(request))
+	]);
+	if (refused.includes(true)) return data({ error: TOO_MANY_PHOTOS }, 429);
 	const posted = await readPostedBody(request);
 	const photo = posted.ok ? await checkSupporterPhoto(db, posted.body.get('file'), 'file') : posted;
 	if (!photo.ok) return data({ error: photo.error }, photo.refusal === 'too-large' ? 413 : 400);

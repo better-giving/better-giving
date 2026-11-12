@@ -14,8 +14,14 @@ import { ownedFormInsert, readForm } from '../forms/queries';
 import { supporterFundraisersEnabled } from '../org/queries';
 import { ensureDonationPage } from '../pages/donation-page';
 import { SLUG_ATTEMPTS } from '../pages/queries';
-import type { RateLimiter } from '../runtime/rate-limiter';
-import { linkInsert, overLinkLimit, type SendLink } from './links';
+import type { supporterLinkOrigin } from './area';
+import {
+	addressOverLinkLimit,
+	callerOverLinkLimit,
+	type LinkLimiters,
+	linkInsert,
+	type SendLink
+} from './links';
 import { checkSupporterPhoto } from './photo';
 
 // Start a fundraiser: a member of the public makes a page of their own for this organisation. one
@@ -31,10 +37,16 @@ import { checkSupporterPhoto } from './photo';
 
 export type StartDeps = {
 	readonly db: Db;
-	/** `SIGN_IN_RATE_LIMITER` off the platform env: a start mails a link. */
-	readonly limiter: RateLimiter | undefined;
+	/** a start mails a link, so it is charged as every press that mails one is. */
+	readonly limiters: LinkLimiters;
 	readonly defer: (work: Promise<unknown>) => void;
 	readonly sendLink: SendLink;
+	/**
+	 * the origin a mailed link is built on (`supporterLinkOrigin` in ./area.ts): where there is none,
+	 * the confirm link could never arrive, so a page started would stay pending with nothing to tell
+	 * the starter why.
+	 */
+	readonly linkOrigin: ReturnType<typeof supporterLinkOrigin>;
 	/**
 	 * the spam check the donation submission runs — `verifyChallenge` in ../api/challenge.ts,
 	 * Turnstile where both its keys are set and ALTCHA otherwise — bound by the route to this
@@ -44,11 +56,16 @@ export type StartDeps = {
 	readonly now: Date;
 };
 
+/** what the start screen says to `unmailable`: the fix is the operator's, never the starter's. */
+export const UNMAILABLE_START =
+	'We can’t send email just now, so your fundraiser wasn’t started. Try again later, or let the organisation know.';
+
 /**
  * the page made, or why not: `too_many` over the caller's or the address's bucket, `closed` where
- * the organisation has switched fundraisers off, `challenge_failed` for a token or payload that did
- * not clear (a fresh challenge is the answer), `challenge_unavailable` where the check could not be
- * made, and `photo_missing` for a posted photo the photo rule refuses (./photo.ts).
+ * the organisation has switched fundraisers off, `unmailable` where no link can be mailed
+ * (`linkOrigin`, logged for whoever runs the server), `challenge_failed` for a token or payload
+ * that did not clear (a fresh challenge is the answer), `challenge_unavailable` where the check
+ * could not be made, and `photo_missing` for a posted photo the photo rule refuses (./photo.ts).
  */
 export type StartResult =
 	| { readonly ok: true; readonly pageId: string; readonly slug: string }
@@ -57,6 +74,7 @@ export type StartResult =
 			readonly reason:
 				| 'too_many'
 				| 'closed'
+				| 'unmailable'
 				| 'challenge_failed'
 				| 'challenge_unavailable'
 				| 'photo_missing';
@@ -74,10 +92,12 @@ export async function startFundraiser(
 	input: SupporterStart,
 	photo: FormDataEntryValue | null = null
 ): Promise<StartResult> {
-	if (await overLinkLimit(deps.limiter, request, input.email)) {
-		return { ok: false, reason: 'too_many' };
-	}
+	if (await callerOverLinkLimit(deps.limiters, request)) return { ok: false, reason: 'too_many' };
 	if (!(await supporterFundraisersEnabled(deps.db))) return { ok: false, reason: 'closed' };
+	if (!deps.linkOrigin.ok) {
+		console.error('a fundraiser start was refused:', deps.linkOrigin.why);
+		return { ok: false, reason: 'unmailable' };
+	}
 
 	const challenge = await deps.checkChallenge();
 	if (!challenge.ok) {
@@ -91,6 +111,10 @@ export async function startFundraiser(
 			ok: false,
 			reason: challenge.reason === 'rejected' ? 'challenge_failed' : 'challenge_unavailable'
 		};
+	}
+	// after the challenge, so a start that never clears it spends nothing of the address's bucket.
+	if (await addressOverLinkLimit(deps.limiters, input.email)) {
+		return { ok: false, reason: 'too_many' };
 	}
 
 	const posted = isPosted(photo)

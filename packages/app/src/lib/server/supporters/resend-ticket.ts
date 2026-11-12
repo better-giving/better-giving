@@ -1,4 +1,5 @@
 import { createCookie } from 'react-router';
+import { cookiesSecure } from '../runtime/cookie-scheme';
 
 // what Send it again on /fundraise/sent (src/routes/fundraise.sent.tsx) resends after a start: the
 // pending page and the address its confirm link went to. the start's flash ($lib/server/flash.ts)
@@ -23,16 +24,14 @@ const ticket = createCookie('supporter_resend', {
 
 export type ResendTicket = { readonly pageId: string; readonly email: string };
 
-const isSecure = (request: Request) => new URL(request.url).protocol === 'https:';
-
 /** the `Set-Cookie` value naming the page a start just made. */
 export function writeResendTicket(request: Request, held: ResendTicket): Promise<string> {
-	return ticket.serialize(held, { secure: isSecure(request) });
+	return ticket.serialize(held, { secure: cookiesSecure(request) });
 }
 
 /** the `Set-Cookie` value dropping the ticket, for a screen drawn after a sign-in request. */
 export function clearResendTicket(request: Request): Promise<string> {
-	return ticket.serialize('', { maxAge: 0, secure: isSecure(request) });
+	return ticket.serialize('', { maxAge: 0, secure: cookiesSecure(request) });
 }
 
 /** the ticket the request carries, or null where it carries none this app wrote. */

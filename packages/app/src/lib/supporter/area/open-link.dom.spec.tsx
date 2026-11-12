@@ -43,6 +43,35 @@ describe('opening a mailed link', () => {
 		expect(posted).toHaveLength(0);
 	});
 
+	it('shows a confirm link’s page, its title and photo, above Publish my page', () => {
+		const { root } = open({
+			purpose: 'confirm',
+			page: { title: 'Keep the pantry trucks running this winter', photoId: 'img-1' }
+		});
+		expect(one(root, 'h1').textContent).toBe('Publish your fundraiser');
+		const photo = one<HTMLImageElement>(root, 'main img');
+		expect(photo.getAttribute('src')).toBe('/image/img-1');
+		const title = one(root, '.sa-quote');
+		expect(title.textContent).toBe('Keep the pantry trucks running this winter');
+		const press = button(root, 'Publish my page');
+		expect([...root.querySelectorAll('main img, main .sa-quote, main button')]).toEqual([
+			photo,
+			title,
+			press
+		]);
+	});
+
+	it('shows a confirm link’s page without a photo when it has none', () => {
+		const { root } = open({ purpose: 'confirm', page: { title: 'Pantry run', photoId: null } });
+		expect(one(root, '.sa-quote').textContent).toBe('Pantry run');
+		expect(root.querySelector('main img')).toBeNull();
+	});
+
+	it('shows no page on a sign-in link', () => {
+		const { root } = open({ page: null });
+		expect(root.querySelector('.sa-quote')).toBeNull();
+	});
+
 	it('holds the press while the opening is out', () => {
 		const { root } = open({ opening: true });
 		expect(button(root, 'Continue').getAttribute('aria-busy')).toBe('true');

@@ -140,7 +140,7 @@ describe('Send it again on Check your email', () => {
 		return pressed;
 	}
 
-	it('after a start, mails a fresh confirm link that publishes the page, and the first stops working', async () => {
+	it('after a start, mails a fresh confirm link that publishes the page, and the first still opens once', async () => {
 		const browser = cookieJar();
 		await postStart(browser);
 		const first = tokenIn(mailed[0]?.text ?? '');
@@ -150,12 +150,12 @@ describe('Send it again on Check your email', () => {
 		expect(mailed[1]?.to).toBe('maya@example.org');
 		const fresh = tokenIn(mailed[1]?.text ?? '');
 
-		const stale = await openLink(first);
-		expect(stale.location).toBe('/fundraise/sign-in');
 		const opened = await openLink(fresh);
 		expect(opened.location).toMatch(/^\/fundraise\/pages\//);
 		const visited = await visitFundraiser('run-for-the-shelter');
 		expect(visited.data).toMatchObject({ kind: 'live' });
+		expect((await openLink(first)).location).toMatch(/^\/fundraise\/pages\//);
+		expect((await openLink(first)).location).toBe('/fundraise/sign-in');
 	});
 
 	it('after a sign-in request that follows a start, mails a sign-in link and publishes nothing', async () => {
