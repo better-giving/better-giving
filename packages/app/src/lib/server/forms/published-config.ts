@@ -351,7 +351,7 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 		return refusal(
 			form,
 			'form_not_published',
-			`Form \`${redactPublicId(form.id)}\` holds the donation settings of a supporter's fundraiser that is not taking gifts.`,
+			`Form \`${redactPublicId(form.id)}\` holds the donation settings of a supporter’s fundraiser that is not taking gifts.`,
 			'A fundraiser takes gifts while it is live. Give through the organisation’s own donation page instead.'
 		);
 	}

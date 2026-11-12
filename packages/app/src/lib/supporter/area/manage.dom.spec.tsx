@@ -173,7 +173,7 @@ describe('the gifts', () => {
 			'A donor',
 			'Nov 10',
 			'$25.00',
-			'—'
+			'No note'
 		]);
 	});
 

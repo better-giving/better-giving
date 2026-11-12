@@ -24,7 +24,7 @@ import {
 } from './links';
 import { checkSupporterPhoto } from './photo';
 
-// Start a fundraiser: a member of the public makes a page of their own for this organisation. one
+// starting a fundraiser: a member of the public makes a page of their own for this organisation. one
 // `batch()` writes the supporter (or finds the one at that address), the page `pending`, its photo
 // where one was posted with the start, the settings row it owns, and the confirm link; the link is
 // mailed after the answer. the page goes live when that link is opened (`signInWithLink` in

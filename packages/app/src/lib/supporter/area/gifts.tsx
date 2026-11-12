@@ -86,7 +86,7 @@ export function Gifts({
 								</th>
 								<td>{shortDay(gift.receivedAt)}</td>
 								<td className="ds-num">{formatMinor(gift.amountMinor, currency)}</td>
-								<td className="sa-note-cell">{gift.shown?.note || '—'}</td>
+								<td className="sa-note-cell">{gift.shown?.note || 'No note'}</td>
 							</tr>
 						))}
 					</tbody>

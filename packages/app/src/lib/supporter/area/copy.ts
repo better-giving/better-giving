@@ -1,8 +1,7 @@
 import { formatMinorBrief } from '$lib/donations/money';
 import { SUPPORTER_GOAL_MIN_MINOR } from '$lib/supporters/input';
 
-// every sentence the supporter's own screens say, in a fundraiser's words. the frames on the doop
-// canvas vrE3RajhQ8 (frames 2 to 7) are where each was drawn; a sentence no frame draws is marked so.
+// every sentence the supporter's own screens say, in a fundraiser's words.
 
 /** a figure as the screens show a total or a goal: `$3,240`, and cents only where there are some. */
 export const money = (amountMinor: number, currency: string): string =>
@@ -23,10 +22,8 @@ export function boxSentence(box: string, message: string, currency: string): str
 		case 'email':
 			return 'Enter an email address like maya@example.org.';
 		case 'title':
-			// no frame draws this one.
 			return 'Enter a title for your page.';
 		case 'goal':
-			// no frame draws the cap's sentence.
 			return message === 'must be a smaller amount'
 				? 'Enter a smaller goal.'
 				: `Enter a goal of at least ${GOAL_FLOOR(currency)}.`;
@@ -41,7 +38,7 @@ export function boxSentence(box: string, message: string, currency: string): str
 export const counted = (used: number, max: number): string =>
 	`${used.toLocaleString('en-US')} of ${max.toLocaleString('en-US')}`;
 
-/** why a start or a save did not go through, said above the press. no frame draws these words. */
+/** why a start or a save did not go through, said above the press. */
 export const START_REFUSED = {
 	too_many: 'Too many tries. Wait a few minutes, then try again.',
 	challenge_failed: 'We couldn’t check that a person sent this. Try again.',
@@ -51,7 +48,7 @@ export const START_REFUSED = {
 
 export type StartRefusal = keyof typeof START_REFUSED | 'photo_missing';
 
-/** a photo that did not arrive or was not stored, under the photo's press. no frame draws it. */
+/** a photo that did not arrive or was not stored, under the photo's press. */
 export const PHOTO_NOT_STORED = 'That photo didn’t upload. Add it again.';
 
 /** the photo's source refused before a crop: the banner's sentence, said of a photo. */
@@ -73,7 +70,7 @@ export function pageState(status: 'pending' | 'live' | 'ended', hidden: boolean)
 	return hidden ? 'hidden' : status;
 }
 
-/** the status badge's words and tone. no frame draws a page still waiting on its link. */
+/** the status badge's words and tone. */
 export function statusBadge(
 	state: PageState,
 	orgName: string

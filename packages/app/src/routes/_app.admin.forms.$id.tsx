@@ -209,9 +209,9 @@ const ARCHIVED = 'archived';
 const NO_SUCH_PROGRAM = 'Choose an active program.';
 
 /**
- * whose a page-owned row is and where it is changed: the Donation page by the word screens call it
- * and a campaign by its own name, each in its editor; a supporter's fundraiser by its title, and
- * nowhere on the dashboard.
+ * the page that owns a page-owned row and where it is changed: the Donation page by the word screens
+ * call it and a campaign by its own name, each in its editor; a supporter's fundraiser by its
+ * title, and nowhere on the dashboard.
  */
 function ownedWhere(owner: OwningPage): string {
 	switch (owner.type) {
