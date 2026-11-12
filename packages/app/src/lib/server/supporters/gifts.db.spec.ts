@@ -6,7 +6,7 @@ import { donation, supporterPage } from '$lib/server/db/schema';
 import { mintQuote } from '$lib/server/donations/quote';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { setSupporterFundraisersEnabled } from '$lib/server/org/queries';
-import { organisationRaised } from '$lib/server/pages/goal';
+import { readRaisedByFormWithin } from '$lib/server/ledger/queries';
 import { gift, refund } from '$lib/server/pages/settled-gifts.testing';
 import { soleProcessor } from '$lib/server/payments/processors.testing';
 import { refusing } from '$lib/server/payments/provider';
@@ -143,7 +143,8 @@ describe('what a fundraiser has raised', () => {
 		await refund(db, refunded, 4_000);
 
 		expect(await fundraiserRaised(db, pageId)).toEqual({ raisedMinor: 10_000, gifts: 1 });
-		expect(await organisationRaised(db, 'USD')).toEqual({ raisedMinor: 10_000, gifts: 1 });
+		const byForm = await readRaisedByFormWithin(db, { from: null, before: null });
+		expect(byForm.reduce((sum, row) => sum + row.raisedMinor, 0)).toBe(10_000);
 	});
 
 	it('is nothing for a page with no gifts', async () => {

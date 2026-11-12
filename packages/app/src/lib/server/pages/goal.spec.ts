@@ -3,10 +3,10 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // the guard on "a campaign's raised figure is a `SUM` at read time, never stored and never cached"
-// (./goal.ts's header, CLAUDE.md → Bans → the ledger and → Storage). a source scan over the read and
-// the module that hands it to the page: a cache or a stored total added to either would still pass
-// every case in ./goal.db.spec.ts, because a fresh isolate reads through any cache the first
-// time.
+// (./goal.ts's header, AGENTS.md → Ledger, gifts, and schema and → Storage). a source scan over the
+// read and the module that hands it to the page: a cache or a stored total added to either would
+// still pass every case in ./goal.db.spec.ts, because each case's first read goes through any cache
+// before anything is in it.
 
 const GOAL = readFileSync(resolve(import.meta.dirname, 'goal.ts'), 'utf8');
 const LEDGER = readFileSync(resolve(import.meta.dirname, '../ledger/queries.ts'), 'utf8');
@@ -24,9 +24,11 @@ function importsOf(source: string): string[] {
 	return [...source.matchAll(/^import[^;]*?from '([^']+)';/gms)].map((match) => match[1] ?? '');
 }
 
-/** a cache, a KV namespace, or a write of any row: what would make the figure outlive the read. */
-const OUTLIVES_THE_READ =
-	/\bcaches\b|\bcache\.|edgeCache|KVNamespace|\.put\(|\binsert\b|\bupdate\b|\.batch\(/i;
+/**
+ * the process's response cache (../runtime/response-cache.ts), any other cache, or a write of any
+ * row: what would make the figure outlive the read.
+ */
+const OUTLIVES_THE_READ = /responseCache|\bcache\.|\.put\(|\binsert\b|\bupdate\b|\.batch\(/i;
 
 describe("a campaign's raised figure", () => {
 	it('reaches for no cache module', () => {

@@ -63,3 +63,21 @@ it('reads a span of the admin messages between two cursors from the same index',
 	);
 	expect(plan).not.toContainEqual(expect.stringMatching(/USE TEMP B-TREE FOR ORDER BY/));
 });
+
+// `giftNetRaised` (../ledger/queries.ts) runs once per public note, in the count and in the page, so
+// each probe shows at least twice.
+it('probes each gift’s net through the payment, entry group and ledger indexes, never a scan', async () => {
+	const plan = await planStepsOf(await statementsOf((db) => readShownMessages(db, null)));
+	const probes = [
+		/^SEARCH payment USING INDEX payment_donation_id_idx \(donation_id=\?\)$/,
+		/^SEARCH entry_group USING INDEX entry_group_source_idx \(source_type=\? AND source_id=\?\)$/,
+		/^SEARCH ledger_entry USING INDEX ledger_entry_entry_group_id_idx \(entry_group_id=\?\)$/
+	];
+
+	for (const probe of probes) {
+		expect(plan.filter((step) => probe.test(step)).length).toBeGreaterThanOrEqual(2);
+	}
+	expect(plan).not.toContainEqual(
+		expect.stringMatching(/^SCAN (payment|entry_group|ledger_entry)\b/)
+	);
+});

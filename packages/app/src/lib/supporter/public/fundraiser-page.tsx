@@ -94,7 +94,8 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 	return (
 		<PageRoot
 			brandColour={look.brandColour}
-			layout="profile"
+			layout="letter"
+			profile
 			className={className === undefined ? 'fundraiser-page' : `fundraiser-page ${className}`}
 		>
 			<main className="page-body">
@@ -141,7 +142,12 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 							</div>
 						</section>
 						{messages === undefined || fundraiser.messages === null ? null : (
-							<DonorMessages {...messages} initial={fundraiser.messages} locale={money.locale} />
+							<DonorMessages
+								{...messages}
+								initial={fundraiser.messages}
+								locale={money.locale}
+								shape="list"
+							/>
 						)}
 					</div>
 				</div>

@@ -2,22 +2,17 @@ import type { PageGoal } from '../../donate/sections/types';
 import type { Page } from '../../page/catalog';
 import { endDayOf } from '../../page/end-date';
 import type { Db } from '../db/client';
-import {
-	type RaisedByOrganisation,
-	type RaisedThroughForm,
-	readRaisedByOrganisation,
-	readRaisedThroughForm
-} from '../ledger/queries';
+import { type RaisedThroughForm, readRaisedThroughForm } from '../ledger/queries';
 
 // what a campaign's goal bar says has been given toward it: settled gifts through the campaign's
 // owned settings row, net of what was given back, recurring charges included and pending excluded —
 // the dashboard's own raised figure (`readRaisedByMonth` in ../ledger/queries.ts) over that row's
 // gifts alone.
 //
-// a `SUM` over the books on every draw, never stored and never cached (CLAUDE.md → Bans → the
-// ledger). the served config's edge cache holds a capability; this is a number, and a cached one
-// would tell a donor a refunded gift still counts. ./goal.spec.ts holds that this module reaches
-// for no cache.
+// a `SUM` over the books on every draw, never stored and never cached (AGENTS.md → Ledger, gifts,
+// and schema; → Storage). the process's response cache (../runtime/response-cache.ts) holds a
+// capability or immutable bytes; this is a number, and a cached one would tell a donor a refunded
+// gift still counts. ./goal.spec.ts holds that this module reaches for no cache.
 
 /** what has been raised through the campaign whose owned settings row is `formId`. */
 export async function campaignRaised(db: Db, formId: string): Promise<RaisedThroughForm> {
@@ -28,15 +23,6 @@ export async function campaignRaised(db: Db, formId: string): Promise<RaisedThro
 		);
 	}
 	return raised;
-}
-
-/**
- * what the organisation has raised through every form and page, in the Donation page's `currency`,
- * and from how many gifts: the Donation page's raised figure, summed the way `campaignRaised` sums
- * and on the same terms, never cached.
- */
-export function organisationRaised(db: Db, currency: string): Promise<RaisedByOrganisation> {
-	return readRaisedByOrganisation(db, currency);
 }
 
 /**
@@ -62,7 +48,7 @@ export async function pageGoal(
 
 /**
  * a day, `YYYY-MM-DD`, as a page states it: "December 31". the day's own midnight, worded in UTC,
- * so the words name that day whatever zone the worker or the donor is in.
+ * so the words name that day whatever zone the server or the donor is in.
  */
 function worded(day: string, locale: string): string {
 	return new Intl.DateTimeFormat(locale, {

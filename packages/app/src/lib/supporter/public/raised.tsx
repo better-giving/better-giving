@@ -38,10 +38,10 @@ export function FundraiserRaised({
 				</p>
 			) : null}
 			<p className="fundraiser-figures">
-				<span className="page-profile-raised-figure">
+				<span className="fundraiser-figure">
 					{formatOffer(totals.raisedMinor, money.locale, money.currency)}
 				</span>{' '}
-				<span className="page-profile-raised-label">{label}</span>
+				<span className="fundraiser-figure-label">{label}</span>
 			</p>
 			<div className="ds-progress">
 				<div

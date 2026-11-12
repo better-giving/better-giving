@@ -106,7 +106,7 @@ describe('readShownMessages()', () => {
 		expect((await readModeratedMessages(db)).total).toBe(0);
 	});
 
-	it('keeps a gift partly refunded on the page, as the raised total keeps counting it', async () => {
+	it('keeps a gift partly refunded on the page, while its net amount is above nothing', async () => {
 		const { txn } = await shownGift({ amountMinor: 5_000 });
 		await refund(db, txn, 1_000);
 

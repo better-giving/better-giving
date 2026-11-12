@@ -5,9 +5,9 @@ import { PageView, type PageViewProps } from '../../donate/page-view';
 import type { DonateProfile } from '../../donate/profile';
 import { defaultCampaign, defaultDonationPage } from '../../page/defaults';
 
-// the entry card that starts a supporter's fundraiser, mounted on the pages that draw it: under the
-// Donation page's profile head between its content and its messages, after a campaign's layout and
-// after the Donation page's own, and nowhere — with nothing in its place — while the feature is off.
+// the entry card that starts a supporter's fundraiser, mounted on the pages that draw it: after a
+// campaign's layout, after the Donation page's own and after its profile head's, and nowhere — with
+// nothing in its place — while the feature is off.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -18,8 +18,6 @@ const PROFILE: DonateProfile = {
 	logo: null,
 	mission: 'We keep families housed and fed through the winter.',
 	vision: null,
-	raised: { raisedMinor: 4_821_000, gifts: 612 },
-	money: { locale: 'en-US', currency: 'USD' },
 	footer: { addressLines: ['2200 Lake Avenue'], email: null, socialLinks: [] },
 	messages: {
 		messages: [
@@ -103,13 +101,18 @@ describe('the entry card', () => {
 		expect(root.querySelector('.ds-btn-primary')).toBeNull();
 	});
 
-	it('stands under the profile head after its content and before the messages from donors', () => {
+	it('stands after the profile head’s whole layout, the messages from donors included', () => {
 		const root = mount(
 			<PageView {...props({ profile: PROFILE, fundraiserEntry: true, donorMessages: WIRING })} />
 		);
-		const more = root.querySelector('[data-area="more"]');
-		const sections = [...(more?.children ?? [])].map((node) => (node as HTMLElement).dataset.area);
-		expect(sections).toEqual(['about', 'fundraise', 'messages']);
+		expect(areas(root).slice(-2)).toEqual(['fundraise', 'share']);
+		const entry = card(root);
+		const messages = root.querySelector('[data-area="messages"], .page-messages');
+		if (messages !== null && entry !== null) {
+			expect(
+				messages.compareDocumentPosition(entry) & Node.DOCUMENT_POSITION_FOLLOWING
+			).toBeTruthy();
+		}
 	});
 
 	it('stands after a campaign’s layout, and after the Donation page’s own', () => {
@@ -142,17 +145,5 @@ describe('the entry card', () => {
 			<PageView {...props({ type: 'campaign', page: defaultCampaign(), pageName: 'Coats' })} />
 		);
 		expect(campaign.querySelector('[data-area="fundraise"]')).toBeNull();
-	});
-
-	it('keeps the profile head’s more area out when the card is all it would hold and it is off', () => {
-		const bare = { ...PROFILE, mission: null, messages: { messages: [], total: 0, next: null } };
-		expect(
-			mount(<PageView {...props({ profile: bare })} />).querySelector('[data-area="more"]')
-		).toBeNull();
-		expect(
-			mount(<PageView {...props({ profile: bare, fundraiserEntry: true })} />).querySelector(
-				'[data-area="more"] .page-fundraise'
-			)
-		).not.toBeNull();
 	});
 });

@@ -22,6 +22,8 @@
 	--fundraiser-for-logo: 1.75rem;
 	--fundraiser-avatar: 2.75rem;
 	--fundraiser-recipient-logo: 3rem;
+	--fundraiser-figure: 1.875rem;
+	--fundraiser-lh-figure: 2.25rem;
 }
 
 @container page (min-width: 60rem) {
@@ -183,8 +185,7 @@
 	border-radius: var(--page-plane-radius);
 }
 
-/* what has been raised: a plane holding the figure, the bar and a line under it. the figure and its
-   label are the profile head's (`.page-profile-raised-*` in page.css). */
+/* what has been raised: a plane holding the figure, the bar and a line under it. */
 .fundraiser-raised,
 .fundraiser-recipient {
 	display: flex;
@@ -196,7 +197,21 @@
 }
 
 .fundraiser-raised {
-	padding: var(--page-profile-raised-inset);
+	padding: var(--page-fundraise-inset);
+}
+
+.fundraiser-figure {
+	font-family: var(--page-font-display);
+	font-size: var(--fundraiser-figure);
+	line-height: var(--fundraiser-lh-figure);
+	font-weight: var(--page-w-display);
+	font-variant-numeric: tabular-nums lining-nums;
+}
+
+.fundraiser-figure-label {
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--page-quiet);
 }
 
 .fundraiser-figures {
