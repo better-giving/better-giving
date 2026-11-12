@@ -52,6 +52,15 @@
 	}
 }
 
+.fundraiser-layout {
+	gap: var(--page-profile-gap);
+}
+
+/* the donation card takes the box's whole column, as it does under the Donation page's profile head. */
+.fundraiser-page .page-box > div > * {
+	max-inline-size: none;
+}
+
 .fundraiser-who,
 .fundraiser-more {
 	display: flex;

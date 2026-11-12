@@ -29,8 +29,8 @@ import type {
 // a supporter's fundraiser at /f/<slug>, in the three answers `readPublicFundraiser`
 // ($lib/server/supporters/view.ts) gives: live, ended, and not found.
 //
-// live, it is the Donation page's profile shell (`data-layout='profile'`, $lib/donate/page-root.tsx)
-// with a layout of its own in ./fundraiser.css: who it is for, the title, the supporter's byline,
+// live, it is drawn on the `plain` root ($lib/donate/page-root.tsx), which arranges nothing, and in
+// the layout ./fundraiser.css gives it: who it is for, the title, the supporter's byline,
 // the photo where there is one, and what has been raised, then the donation box and who the gift
 // goes to, then the story and the messages from donors. on a phone they stand in that order; from
 // 60rem the box and who it goes to are a column beside the rest. the donation box is the page's one
@@ -94,8 +94,7 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 	return (
 		<PageRoot
 			brandColour={look.brandColour}
-			layout="letter"
-			profile
+			layout="plain"
 			className={className === undefined ? 'fundraiser-page' : `fundraiser-page ${className}`}
 		>
 			<main className="page-body">
