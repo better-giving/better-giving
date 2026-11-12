@@ -943,11 +943,13 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * card's `--_n1`, and a cadence draws no ground of its own until a pointer reaches it. the amount
  * tray is filled with a control's own `--_n3` edge to edge (`.tiles:not(.bare)` below), and a
  * denomination draws no ground of its own, so the tray's fill is what it rests on and the hover and
- * press step that fill under the pointer. the hairline is around the group rather than around any one of them.
+ * press step that fill under the pointer. the hairline is around the group rather than around any
+ * one of them.
  *
  * the pad is what the chosen option stands inside — without it a chip would be flush to the track's
- * corner on three sides, and its lift would run into the track's own hairline. it is the smallest step on the scale, which is as much as can be given away: the
- * options carry the interactive floor and the track is that floor plus this on both sides of it.
+ * corner on three sides, and its lift would run into the track's own hairline. it is the smallest
+ * step on the scale, which is as much as can be given away: the options carry the interactive floor
+ * and the track is that floor plus this on both sides of it.
  *
  * nothing is clipped here, and the options do not reach the track's corner: the pad is what they
  * are inset by, so the chip and the lift under it never meet the track's own hairline.
@@ -957,8 +959,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * width in the arithmetic — the hairline stands outside both.
  *
  * the amount tray is the same surface: the tiles and the free entry stand on it as the cadences
- * stand on the track, and it is one rule so the two cannot come to be drawn differently. how the
- * boxes on each are laid out is ./layout.css's.
+ * stand on the track, so the two share the rule that draws the edge, the corner and the pad, and
+ * the tray's fill alone is restated after it. how the boxes on each are laid out is ./layout.css's.
  *
  * a tray with nothing to choose between is not drawn: a form suggesting one amount or none draws
  * the free entry alone (`tiled` in ../views.ts), and a box standing in a bare tray is a field like
@@ -983,14 +985,16 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * the grid lines between the boxes: a hairline standing in each gap, in the separator rung (the amount tray's in the border step after it, below), a step
- * fainter than the tray's own edge, drawn as one lattice — every vertical meets the horizontal
- * across each gap it reaches and neither runs past a box, so the boxes on a tray read as pieces on
- * one board rather than words floating on a fill. the lines run to the tray's inset and no further, and a chosen box
- * stands clear of them on every side by that same inset: the gap is twice it, the line stands at
- * the gap's middle, and a chosen chip is a piece set on a square rather than a box drawn over a
- * rule. the lines run beside the chosen box as beside any other; a lattice broken either side of
- * one cell is a hole in the board, and the chip's own face and lift are what say chosen.
+ * the grid lines between the boxes: a hairline standing in each gap, drawn as one lattice — every
+ * vertical meets the horizontal across each gap it reaches and neither runs past a box, so the
+ * boxes on a tray read as pieces on one board rather than words floating on a fill. the cadence
+ * track's lines are the separator rung, `--_n6`, a step fainter than the track's own edge; the
+ * amount tray's are `--_n7`, the tray's own edge (the rule after the geometry says why). the lines
+ * run to the tray's inset and no further, and a chosen box stands clear of them on every side by
+ * that same inset: the gap is twice it, the line stands at the gap's middle, and a chosen chip is a
+ * piece set on a square rather than a box drawn over a rule. the lines run beside the chosen box as
+ * beside any other; a lattice broken either side of one cell is a hole in the board, and the chip's
+ * own face and lift are what say chosen.
  *
  * the amount tray's lines are drawn by its tiles, so a line stands only where a tile does. every
  * row is full and the column count is the stylesheet's own — two across, four from the card's wide
@@ -1165,7 +1169,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * the denominations, offered rather than urged. they are a row of shortcuts past the free entry
  * below them on the same tray, and they stand at the card's base size like every other figure a
  * donor reads — what separates the two is the ground and the edge rather than the type: a figure
- * standing on its step-3 ground against a box at the same height on the card's own face
+ * standing bare on the tray's step-3 fill against a box at the same height on the card's own face
  * with a hairline and a caret in it. a figure is the card's own ink, the way a cadence on the
  * track is, chosen or not, and at the one weight both states are drawn at: what tells the chosen
  * one apart is its face and its lift.
@@ -1217,7 +1221,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 /*
  * chosen, and it is raised rather than filled or edged. the brand fills the one control that spends
  * the gift (`[part~='action']` below) and nothing else on the card, so a chosen tile is said the way
- * a chosen cadence is: it steps from the tiles' step 3 up to step 1, the card's own face, raised off
+ * a chosen cadence is: it steps from the tray's step 3 up to step 1, the card's own face, raised off
  * the tray by `--_lift`, and its figure stays the card's own ink. this tray is protected, and the
  * lift is the one cast shadow the card draws (./tokens.css names the exception). the face is a
  * figure on `--_n1` among figures on `--_n3`, which is a shape and not a colour, and the lift is the
@@ -1228,10 +1232,10 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * no shadow and replaces every fill — still has something to paint in the user's own colour. laid
  * inside the box, so picking a tile reflows nothing beside it.
  *
- * nothing answers a pointer on it: a face that stepped would step down onto 2, the tray's own
- * ground, or 3, its neighbours', which reads as the choice coming undone rather than as a press,
- * and the figure is already the ladder's darkest ink. this rule outranks the unchosen steps above
- * by coming after them at their weight.
+ * nothing answers a pointer on it: a face that stepped would step down toward 3, the tray's fill
+ * that its unchosen neighbours stand on bare, which reads as the choice coming undone rather than
+ * as a press, and the figure is already the ladder's darkest ink. this rule outranks the unchosen
+ * steps above by coming after them at their weight.
  */
 [part~='amount-option'][part~='selected'] {
 	background: var(--_n1);
@@ -1804,9 +1808,9 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the quiet action at its own size: a text control, for stepping back off a numbered step and for
- * the second control on a full-card screen. it is a button, and only a link `<a href>` is underlined
- * (the product rule of 2026-11-11), so what says it is pressable is the brand drawn as ink, step 11,
- * the pointer's step to 12 below, and the card's focus ring.
+ * the second control on a full-card screen. it is a button, and the card underlines a link `<a href>`
+ * and nothing else (`what is underlined` in ./parts.browser.spec.ts), so what says it is pressable
+ * is the brand drawn as ink, step 11, the pointer's step to 12 below, and the card's focus ring.
  */
 [part~='action-quiet'] {
 	display: inline-flex;
@@ -2694,9 +2698,9 @@ button.step-dot:focus-visible .step-mark {
 
 /*
  * on an invalid control the ring itself carries the state rather than sitting beside it. one error
- * is one red border per group (the product rule of 2026-11-11): a tray of tiles draws it round the
- * whole tray (`.tiles:not(.bare):has(> [part~='invalid'])` above), so the tiles and the free entry
- * standing in it keep the ring they always take and draw no red of their own. the free entry
+ * is one red border per group: a tray of tiles draws it round the whole tray
+ * (`.tiles:not(.bare):has(> [part~='invalid'])` above), so the tiles and the free entry standing in
+ * it keep the ring they always take and draw no red of their own. the free entry
  * carries the state alone only on a bare tray, where it is the outermost box and rings through its
  * input, because the token is on the part and the input inside it is what takes the focus; the ring
  * spans its edge as the ordinary one does there, and the edge is already the danger, so the two

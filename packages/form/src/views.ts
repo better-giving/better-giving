@@ -1560,8 +1560,8 @@ export function createCard(
 	// itself: a sentence about a note nobody has opened is a sentence about nothing. it carries no
 	// `::part()` name, for the reason ./parts.ts gives about every error surface.
 	//
-	// it says what to do and never how to back out (the product rule of 2026-11-11): the donor who
-	// ticked by accident finds the box without being told where it is.
+	// it says what to do and never how to back out: the donor who ticked by accident finds the box
+	// without being told where it is.
 	const noteMessage = make(doc, 'p', { class: 'message', id: 'note-problem', hidden: true }, [
 		'Enter a note'
 	]);
@@ -1807,8 +1807,9 @@ export function createCard(
 					'Name of the person to tell',
 					'Name',
 					// short, because these two sit in half a card each once there is room for two columns.
-					// both ways out are still named: fill it in, or clear the other and tell nobody.
-					'required, or clear the email',
+					// it says what to do and never how to back out, like the note's. "a name", not the
+					// honoree's "their name": both can show at once, and "their" would mean two people.
+					'Enter a name',
 					(api) => api.tributeNotifyNameField
 				)
 			),
@@ -1829,7 +1830,7 @@ export function createCard(
 					// two rules and one sentence, the way a name field on the details step has one for both
 					// of the rules it can break: an empty box and one holding something that is not an
 					// address are the same thing to a donor looking at the pair.
-					'needs an email address, or clear the name',
+					'Enter their email address',
 					(api) => api.tributeNotifyEmailField
 				)
 			)

@@ -349,3 +349,20 @@ describe('the gift it posts', () => {
 		expect(root.querySelector('section.step:not([hidden]) #email')).not.toBeNull();
 	});
 });
+
+// the card's refusal sentences are the element's own words, and the app may import nothing from the
+// element's internals, so the element's strings are written out here and held to them.
+describe('the refusal sentences the card shares with the element', () => {
+	it.each([
+		// packages/form/src/element.dom.spec.ts pins both of these on `#note-problem` and
+		// `#tribute-honoree-problem`.
+		['NOTE_PROBLEM', copy.NOTE_PROBLEM, 'Enter a note'],
+		['TRIBUTE_HONOREE_PROBLEM', copy.TRIBUTE_HONOREE_PROBLEM, 'Enter their name'],
+		// packages/form/src/views.ts, `tributeBox('tribute-notify-name', …)` and
+		// `tributeBox('tribute-notify-email', …)`.
+		['NOTIFY_NAME_PROBLEM', copy.NOTIFY_NAME_PROBLEM, 'Enter a name'],
+		['NOTIFY_EMAIL_PROBLEM', copy.NOTIFY_EMAIL_PROBLEM, 'Enter their email address']
+	])('says %s as the element does', (_name, ours, elements) => {
+		expect(ours).toBe(elements);
+	});
+});

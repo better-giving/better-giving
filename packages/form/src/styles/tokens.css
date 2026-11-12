@@ -319,8 +319,7 @@
 	 * up into a shape rather than into a word a donor reads as USD.
 	 *
 	 * `em`, because it is a text metric and has to move with whatever size the letters it opens are
-	 * drawn at — the opposite of the insets
-	 * below.
+	 * drawn at — the opposite of the insets below.
 	 *
 	 * one value, because there is one such run. a second run of capitals takes this step; a run
 	 * that wanted a different one is a second entry here rather than a literal at its own rule.

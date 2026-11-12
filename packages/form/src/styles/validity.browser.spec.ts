@@ -671,6 +671,51 @@ describe('the amount step’s problem edge', () => {
 		expect(dangerWidth(entry, danger)).toBe(0);
 	});
 
+	// the control for the case above: the same tray before any press is refused draws its ordinary
+	// edge, so the danger read there is the refusal's and not the tray's resting colour.
+	it('is not drawn on a tray nothing has refused', async () => {
+		const card = await mount();
+		const tray = card.find('.tiles');
+		await painted(tray);
+
+		expect(edgeOf(tray)).not.toBe(dangerOf(card));
+		expect(dangerWidth(tray, dangerOf(card))).toBe(0);
+	});
+
+	// the keyboard donor tabbing onto a tile of a refused tray gets the ordinary ring on that tile
+	// while the tray keeps the one red edge: the tile draws no red of its own
+	// (`[part~='amount-option']:has(:focus-visible)` in ../styles/parts.css).
+	it('keeps the ordinary ring on a tile the keyboard reaches, with the tray’s edge still red', async () => {
+		const card = await mount();
+		await userEvent.click(card.find('.other input'));
+		proceed(card);
+		const tray = card.find('.tiles');
+		const tiles = Array.from(
+			card.shadow.querySelectorAll("[part~='amount-option']")
+		) as HTMLElement[];
+		const onTile = () => tiles.find((tile) => tile.contains(card.shadow.activeElement));
+
+		(card.shadow.activeElement as HTMLElement | null)?.blur();
+		for (let presses = 0; presses < 12 && onTile() === undefined; presses++) {
+			await userEvent.keyboard('{Tab}');
+		}
+		const tile = onTile();
+		if (tile === undefined) throw new Error('the keyboard never reached a tile');
+		expect(tile.getAttribute('part')).toContain('invalid');
+		await painted(tray, tile);
+		const danger = dangerOf(card);
+
+		const drawn = getComputedStyle(tile)
+			.boxShadow.split(/,(?![^(]*\))/)
+			.map((layer) => shadowColour(layer.trim()));
+		// the tile standing under the caret is the chosen one, so its lift is a layer beside the ring.
+		expect(drawn).toContain(tokenOf(card, '--_focus-ring'));
+		expect(drawn).not.toContain(danger);
+		expect(dangerWidth(tile, danger)).toBe(0);
+		expect(edgeOf(tray)).toBe(danger);
+		expect(dangerWidth(tray, danger)).toBe(2);
+	});
+
 	// and a form suggesting one amount or none has no tray to mark: the entry is the outermost box
 	// there, standing on the card as every other field does, so it takes the field's own mark.
 	it('is drawn on the free entry itself where the entry stands alone', async () => {

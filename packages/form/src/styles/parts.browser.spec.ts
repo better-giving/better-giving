@@ -3250,8 +3250,27 @@ describe('the surfaces a donor operates', () => {
 		const second = shadow.querySelector('.segment > label + label') as HTMLElement;
 
 		expect(getComputedStyle(second, '::before').backgroundColor).toBe(token(shadow, '--_n6'));
-		const tile = shadow.querySelector('.tiles > label:nth-child(2)') as HTMLElement;
-		expect(getComputedStyle(tile, '::before').backgroundColor).toBe(token(shadow, '--_n7'));
+
+		// every line the tray draws: both ends of every tile, and the open entry's top line.
+		(shadow.querySelector('.other input') as HTMLInputElement).click();
+		await settle();
+		const tray = shadow.querySelector('.tiles') as HTMLElement;
+		const lines = (
+			[
+				...Array.from(tray.querySelectorAll(':scope > label')).flatMap((tile) => [
+					[tile, '::before'] as const,
+					[tile, '::after'] as const
+				]),
+				[tray.querySelector(':scope > .entry') as Element, '::after'] as const
+			] as const
+		).filter(([owner, end]) => getComputedStyle(owner, end).content !== 'none');
+		expect(lines.length).toBeGreaterThan(4);
+		for (const [owner, end] of lines) {
+			expect(
+				getComputedStyle(owner, end).backgroundColor,
+				`${owner.className || owner.localName}${end}`
+			).toBe(token(shadow, '--_n7'));
+		}
 	});
 
 	it('leaves the receipt bare: no fill, no frame, no pad', async () => {
@@ -4357,17 +4376,19 @@ describe('the amount tray’s plane', () => {
 			button: 'left',
 			clickCount: 1
 		});
-		await new Promise((resolve) => requestAnimationFrame(resolve));
-		await landed(element);
-		const fill = getComputedStyle(element).backgroundColor;
-		await session.send('Input.dispatchMouseEvent', {
-			type: 'mouseReleased',
-			x,
-			y,
-			button: 'left',
-			clickCount: 1
-		});
-		return fill;
+		try {
+			await new Promise((resolve) => requestAnimationFrame(resolve));
+			await landed(element);
+			return getComputedStyle(element).backgroundColor;
+		} finally {
+			await session.send('Input.dispatchMouseEvent', {
+				type: 'mouseReleased',
+				x,
+				y,
+				button: 'left',
+				clickCount: 1
+			});
+		}
 	}
 
 	const TRANSPARENT = 'rgba(0, 0, 0, 0)';
@@ -4383,10 +4404,13 @@ describe('the amount tray’s plane', () => {
 		expect(getComputedStyle(tile).backgroundColor).toBe(TRANSPARENT);
 
 		await userEvent.hover(tile);
-		await landed(tile);
-		expect(getComputedStyle(tile).backgroundColor).toBe(used(shadow, '--_n4'));
-		expect(await pressed(tile)).toBe(used(shadow, '--_n5'));
-		await userEvent.unhover(tile);
+		try {
+			await landed(tile);
+			expect(getComputedStyle(tile).backgroundColor).toBe(used(shadow, '--_n4'));
+			expect(await pressed(tile)).toBe(used(shadow, '--_n5'));
+		} finally {
+			await userEvent.unhover(tile);
+		}
 	});
 
 	it('keeps the chosen amount on its white face under the pointer', async () => {
@@ -4395,8 +4419,11 @@ describe('the amount tray’s plane', () => {
 
 		expect(getComputedStyle(chosen).backgroundColor).toBe(used(shadow, '--_n1'));
 		await userEvent.hover(chosen);
-		expect(getComputedStyle(chosen).backgroundColor).toBe(used(shadow, '--_n1'));
-		await userEvent.unhover(chosen);
+		try {
+			expect(getComputedStyle(chosen).backgroundColor).toBe(used(shadow, '--_n1'));
+		} finally {
+			await userEvent.unhover(chosen);
+		}
 	});
 
 	it('stands the chosen amount clear of the lines and the tray’s edge on every side', async () => {
@@ -4478,10 +4505,20 @@ describe('the amount tray’s plane', () => {
 describe('what is underlined', () => {
 	it('is a link and nothing else, at rest and under the pointer', async () => {
 		const { shadow } = await mount();
-		(
-			shadow.querySelectorAll(".step:not([hidden]) [part~='checkbox']")[1] as HTMLInputElement
-		).click();
+		const dedicate = Array.from(shadow.querySelectorAll('.step:not([hidden]) label'))
+			.find((label) => label.textContent?.includes('Dedicate this gift'))
+			?.querySelector('input[type="checkbox"]') as HTMLInputElement | undefined;
+		expect(dedicate, 'the dedicate box').toBeDefined();
+		dedicate?.click();
 		await settle();
+
+		// the control: a link standing in the card keeps the engine's underline, so the sweep below
+		// is reading a card that can underline and a blanket `none` could not pass it.
+		const link = document.createElement('a');
+		link.href = '#terms';
+		link.textContent = 'Terms';
+		shadow.querySelector('.step:not([hidden])')?.appendChild(link);
+		expect(getComputedStyle(link).textDecorationLine).toContain('underline');
 
 		const everything = Array.from(shadow.querySelectorAll('*')).filter(
 			(node) => !node.matches('a[href]')
@@ -4496,53 +4533,12 @@ describe('what is underlined', () => {
 		const quiet = shadow.querySelector("[part~='action-quiet']") as HTMLElement;
 		expect(quiet).not.toBeNull();
 		await userEvent.hover(quiet);
-		await landed(quiet);
-		expect(getComputedStyle(quiet).textDecorationLine).not.toContain('underline');
-		expect(getComputedStyle(quiet).color).toBe(used(shadow, '--_a12'));
-		await userEvent.unhover(quiet);
-	});
-});
-
-// one error is one red border per group: the tray draws it round the whole tray, so the free entry
-// standing in it keeps its ordinary look, and it draws its own red only where it stands alone.
-describe('one error border per group', () => {
-	const red = (shadow: ShadowRoot) => used(shadow, '--_bad-edge');
-
-	async function refused(config: FormConfig): Promise<ShadowRoot> {
-		const { shadow } = await mount(config);
-		const other = Array.from(shadow.querySelectorAll("[part~='amount-option'] input")).pop();
-		if (config.suggestedAmountsMinor.length > 0) (other as HTMLElement).click();
-		await settle();
-		fill(shadow, '[part~="amount-input"] input', '');
-		onward(shadow);
-		await settle();
-		return shadow;
-	}
-
-	it('leaves the free entry on a refused tray with no red of its own', async () => {
-		const shadow = await refused(CONFIG);
-		const tray = shadow.querySelector('.tiles') as HTMLElement;
-		const entry = shadow.querySelector("[part~='amount-input']") as HTMLElement;
-		const input = entry.querySelector('input') as HTMLInputElement;
-
-		expect(entry.getAttribute('part')).toContain('invalid');
-		await landed(tray);
-		expect(getComputedStyle(tray).borderTopColor).toBe(red(shadow));
-		await userEvent.keyboard('{Tab}');
-		input.focus();
-		for (const box of [entry, input]) {
-			const drawn = getComputedStyle(box);
-			expect(drawn.borderTopWidth).toBe('0px');
-			expect(drawn.boxShadow).not.toContain(red(shadow));
+		try {
+			await landed(quiet);
+			expect(getComputedStyle(quiet).textDecorationLine).not.toContain('underline');
+			expect(getComputedStyle(quiet).color).toBe(used(shadow, '--_a12'));
+		} finally {
+			await userEvent.unhover(quiet);
 		}
-	});
-
-	it('keeps the free entry’s own red where it stands alone on a bare tray', async () => {
-		const shadow = await refused({ ...CONFIG, suggestedAmountsMinor: [] });
-		const entry = shadow.querySelector(".bare > [part~='amount-input']") as HTMLElement;
-
-		expect(entry.getAttribute('part')).toContain('invalid');
-		await landed(entry);
-		expect(getComputedStyle(entry).borderTopColor).toBe(red(shadow));
 	});
 });
