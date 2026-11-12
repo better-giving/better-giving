@@ -59,8 +59,10 @@ describe('your fundraisers', () => {
 	it('carries the signed-in address and Sign out in the bar', () => {
 		const { root } = list();
 		const bar = one(root, '.page-mast');
-		expect(bar.textContent).toContain('maya@example.org ·');
 		const out = one<HTMLFormElement>(bar, 'form');
+		// the bar's own row on a phone: the organisation first, then the address and Sign out.
+		expect(out.previousElementSibling?.className).toBe('page-mast-name');
+		expect(one(out, '.sa-account-email').textContent).toBe('maya@example.org');
 		expect(out.getAttribute('action')).toBe('/fundraise/sign-out');
 		expect(one(out, 'input[name="intent"]').getAttribute('value')).toBe('sign-out');
 		expect(one(out, 'button').className).toBe('ds-btn ds-btn-ghost ds-btn-sm');

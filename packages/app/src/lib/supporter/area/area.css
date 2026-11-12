@@ -23,20 +23,45 @@
 
 /* ── the bar's end ── */
 
-/* the signed-in address and Sign out, where a donor page's Share stands. */
+/* signed in, the bar wraps: on a phone the organisation keeps the first row and its name wraps
+   whole rather than being cut (`.page-mast-name` in $lib/donate/page.css cuts it to one line), and
+   the address and Sign out take a row of their own under it. from 48rem they share the one row,
+   at its end, where a donor page's Share stands. */
+.page-mast-in:has(> .sa-account) {
+	flex-wrap: wrap;
+}
+
+.page-mast-in:has(> .sa-account) > .page-mast-name {
+	flex: 1;
+	white-space: normal;
+}
+
 .sa-account {
 	display: flex;
+	flex-basis: 100%;
 	align-items: center;
 	gap: var(--_sp2);
 	min-inline-size: 0;
-	margin-inline-start: auto;
 }
 
+/* an address breaks only where it cannot fit the row at all, and Sign out never does. */
 .sa-account-email {
 	min-inline-size: 0;
-	overflow-wrap: anywhere;
+	overflow-wrap: break-word;
 	font-size: var(--_t-sm);
 	color: var(--page-quiet);
+}
+
+.sa-account > .ds-btn {
+	flex: none;
+	white-space: nowrap;
+}
+
+@container page (min-width: 48rem) {
+	.sa-account {
+		flex-basis: auto;
+		margin-inline-start: auto;
+	}
 }
 
 /* ── type ── */
@@ -149,14 +174,23 @@
 	gap: var(--_sp3);
 }
 
-/* registry gap: field-css has no prefix slot. the sign sits in the container's own box, at the
-   field's inset, and the input after it starts a step in. */
+/* registry gap: field-css has no prefix slot. the sign sits in the container's own box on the
+   input's line, at the field's inset, and the input after it starts a step in and takes the rest of
+   the row. field-css draws the bare input as a block, which would stand it under the sign. */
+.ds-field-input-container:has(> .sa-prefix) {
+	display: flex;
+	align-items: center;
+}
+
 .sa-prefix {
+	flex: none;
 	padding-inline-start: var(--_sp4);
 	color: var(--page-quiet);
 }
 
 .ds-field-input-container > .sa-prefixed {
+	flex: 1;
+	min-inline-size: 0;
 	padding-inline-start: var(--_sp1);
 }
 
@@ -261,15 +295,12 @@
 	gap: var(--_sp3);
 }
 
+/* wide, the intro beside the form, both at the top of the row. the intro scrolls with the page: a
+   sticky one drifts down beside the form, off the form's top, as soon as the page scrolls. */
 @container page (min-width: 48rem) {
 	.sa-start {
 		grid-template-columns: minmax(0, 1fr) var(--page-measure);
 		gap: var(--page-col-gap);
-	}
-
-	.sa-start-aside {
-		position: sticky;
-		inset-block-start: var(--page-gap-lead);
 	}
 }
 

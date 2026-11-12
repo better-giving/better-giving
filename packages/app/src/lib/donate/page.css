@@ -428,8 +428,12 @@ body {
 	color: var(--page-quiet);
 }
 
+/* the label takes the fill's own ink back from `.page-ground a` below, which outranks the form's
+   `[part~='action']:where(:not(.ds-btn))` (packages/form/src/styles/parts.css) and would draw the
+   page's accent on the brand fill. */
 .ended [part~='action'] {
 	inline-size: auto;
+	color: var(--_on-p);
 	text-decoration: none;
 }
 

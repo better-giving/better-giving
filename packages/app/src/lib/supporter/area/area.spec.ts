@@ -49,3 +49,56 @@ describe('./area.css', () => {
 		expect([...drawn].filter((name) => !worn.has(name))).toEqual([]);
 	});
 });
+
+const WIDE = /@container page \(min-width: 48rem\)\s*\{([\s\S]*?)\n\}/g;
+
+/** what the rules whose selector is exactly `selector` state: on a phone, or from 48rem. */
+function stated(selector: string, at: 'phone' | 'wide' = 'phone'): Record<string, string> {
+	const source =
+		at === 'wide'
+			? [...SHEET.matchAll(WIDE)].map((m) => m[1] ?? '').join('\n')
+			: SHEET.replace(WIDE, '');
+	const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const out: Record<string, string> = {};
+	for (const [, body = ''] of source.matchAll(
+		new RegExp(`(?:^|\\n|\\})\\s*${escaped}\\s*\\{([^}]*)\\}`, 'g')
+	)) {
+		for (const [, property = '', value = ''] of body.matchAll(/([a-z-]+)\s*:\s*([^;]+);/g)) {
+			out[property] = value.trim();
+		}
+	}
+	return out;
+}
+
+// happy-dom lays nothing out, so where a box stands is read off the rule that places it.
+describe('the placements the frames draw', () => {
+	it('stands the goal’s sign on the input’s line, the input taking the rest of the row', () => {
+		expect(stated('.ds-field-input-container:has(> .sa-prefix)')).toMatchObject({
+			display: 'flex',
+			'align-items': 'center'
+		});
+		expect(stated('.ds-field-input-container > .sa-prefixed')).toMatchObject({
+			flex: '1',
+			'min-inline-size': '0'
+		});
+	});
+
+	it('gives the signed-in address and Sign out a row of their own on a phone, sharing it from 48rem', () => {
+		expect(stated('.page-mast-in:has(> .sa-account)')['flex-wrap']).toBe('wrap');
+		expect(stated('.page-mast-in:has(> .sa-account) > .page-mast-name')['white-space']).toBe(
+			'normal'
+		);
+		expect(stated('.sa-account')['flex-basis']).toBe('100%');
+		expect(stated('.sa-account', 'wide')['flex-basis']).toBe('auto');
+		expect(stated('.sa-account-email')['overflow-wrap']).toBe('break-word');
+		expect(stated('.sa-account > .ds-btn')).toMatchObject({
+			flex: 'none',
+			'white-space': 'nowrap'
+		});
+	});
+
+	it('tops the start form’s intro beside the form, and never sticks it', () => {
+		expect(stated('.sa-start')['align-items']).toBe('start');
+		expect(SHEET).not.toMatch(/position:\s*sticky/);
+	});
+});

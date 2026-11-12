@@ -446,6 +446,7 @@ describe('every colour lands on the radix step for its job', () => {
 			at: {
 				'.page-mast-badge | color': 'on-brand-9',
 				'.page-profile-badge | color': 'on-brand-9',
+				".ended [part~='action'] | color": 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | --page-quiet`]: 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | color`]: 'on-brand-9'
 			}
@@ -642,6 +643,25 @@ describe('the scrim over the feature’s cover', () => {
 		)?.decls;
 		expect(words?.color).toBe('var(--_n1)');
 		expect(words?.['--page-ring']).toBe('var(--_n1)');
+	});
+});
+
+describe('an ended page’s way on to /donate', () => {
+	// the link is the form's action drawn without the registry's class, so the label's ink is
+	// whichever `color` outranks the rest: the page's link rule, or the ended page's own.
+	const specificity = (selector: string) => {
+		const bare = selector.replace(/:where\([^)]*\)/g, '');
+		const ids = (bare.match(/#[\w-]+/g) ?? []).length;
+		const classes = (bare.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g) ?? []).length;
+		const types = (bare.match(/(?:^|[\s>+~])[a-z][\w-]*/gi) ?? []).length;
+		return ids * 10000 + classes * 100 + types;
+	};
+
+	it('draws its label in the fill’s ink, over the ink the page draws a link in', () => {
+		const own = ".ended [part~='action']";
+		expect(declared(page, own).color).toBe('var(--_on-p)');
+		expect(declared(page, '.page-ground a').color).toBe('var(--page-accent)');
+		expect(specificity(own)).toBeGreaterThan(specificity('.page-ground a'));
 	});
 });
 

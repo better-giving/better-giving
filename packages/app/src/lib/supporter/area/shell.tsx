@@ -91,7 +91,7 @@ function Account({ account }: { readonly account: SupporterAccount }) {
 	return (
 		<Form method="post" action={account.signOutAction} className="sa-account">
 			<input type="hidden" name={INTENT} value={INTENTS.signOut} />
-			<span className="sa-account-email">{account.email} ·</span>
+			<span className="sa-account-email">{account.email}</span>
 			<button type="submit" className="ds-btn ds-btn-ghost ds-btn-sm">
 				<Mark name="log-out" />
 				Sign out

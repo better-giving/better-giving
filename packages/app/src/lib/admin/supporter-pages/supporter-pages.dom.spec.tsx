@@ -272,6 +272,20 @@ describe('the list', () => {
 		expect(row(host, 'Sam Lee')?.querySelector('.ds-badge')?.textContent).toBe('Pending');
 	});
 
+	// at a phone's width the plane scrolls sideways in its own box with the supporter pinned, as the
+	// gifts list's does (`.adm-plane` in packages/operator/src/styles/adm.css): it stands in the column
+	// with nothing between them, and the head named only for a reader stays inside the plane that
+	// contains it rather than widening the page.
+	it('stands the plane in the column directly, the supporter pinned and every head inside it', () => {
+		const { host } = mount();
+		const plane = host.querySelector('.adm-plane');
+		expect(plane?.parentElement?.classList.contains('adm-column')).toBe(true);
+		expect(plane?.getAttribute('tabindex')).toBe('0');
+		expect(plane?.querySelector('thead th[data-pin]')?.textContent).toBe('Supporter');
+		expect(row(host, 'Maya Reyes')?.firstElementChild?.hasAttribute('data-pin')).toBe(true);
+		expect(host.querySelector('thead .adm-vh')?.closest('.adm-plane')).toBe(plane);
+	});
+
 	it('says one page in the singular', () => {
 		const { host } = mount({ pages: [MAYA] });
 		expect(host.querySelector('.adm-tablecaption')?.textContent).toBe(
