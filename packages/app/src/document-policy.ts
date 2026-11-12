@@ -1,4 +1,6 @@
 import type { EntryContext } from 'react-router';
+import { challengeKind } from '$lib/server/api/challenge';
+import type { ConfigEnv } from '$lib/server/config/env';
 import { PAYPAL_DEFAULT_API_URL, paypalApiOrigin, paypalSdkUrl } from '$lib/server/payments/paypal';
 
 // the content security policy and framing headers every document this deployment draws carries.
@@ -22,7 +24,8 @@ import { PAYPAL_DEFAULT_API_URL, paypalApiOrigin, paypalSdkUrl } from '$lib/serv
 // they load because their origins are listed in its policy.
 //
 // every document gets the dashboard's policy unless a route it matched says otherwise through its
-// `handle`, so a screen added later is strict until someone widens it on purpose.
+// `handle`, so a screen added later is strict until someone widens it on purpose. a supporter
+// screen's handle widens the dashboard's policy by what that screen draws and no further.
 //
 // no document may be framed. the preview of a page's draft (./routes/preview.$pageId.tsx) opens in
 // a tab of its own, under the donor page's policy, since what it draws is the donor page.
@@ -42,7 +45,27 @@ export interface DonorPolicyHandle {
 	readonly documentPolicy: 'donor';
 }
 
-type DocumentPolicy = 'operator' | DonorPolicyHandle['documentPolicy'];
+/**
+ * what a supporter screen's `handle` carries: `'photo'` where a photo is chosen, since its preview
+ * is a `blob:` url (`hold` in $lib/supporter/area/photo-field.tsx), and `'photo-and-challenge'`
+ * where the spam check is drawn beside it as well.
+ */
+export interface SupporterPolicyHandle {
+	readonly documentPolicy: 'photo' | 'photo-and-challenge';
+}
+
+type DocumentPolicy =
+	| 'operator'
+	| DonorPolicyHandle['documentPolicy']
+	| SupporterPolicyHandle['documentPolicy'];
+
+const HANDLE_POLICIES: readonly DocumentPolicy[] = ['donor', 'photo', 'photo-and-challenge'];
+
+/**
+ * turnstile's one origin — https://developers.cloudflare.com/turnstile/reference/content-security-policy/:
+ * `challenges.cloudflare.com` in script-src and frame-src.
+ */
+const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
 
 /** a fresh nonce: 128 bits, base64. */
 export function mintNonce(): string {
@@ -52,14 +75,27 @@ export function mintNonce(): string {
 /** the directives every policy shares, the ones that are never widened. */
 const LOCKED = ["object-src 'none'", "base-uri 'none'", "form-action 'self'"];
 
-/** every operator document: the dashboard, sign-in, and the error page under no surface. */
-function operatorPolicy(nonce: string): string[] {
+/**
+ * every operator document: the dashboard, sign-in, and the error page under no surface; and the
+ * supporter screens, with `blob:` images where `photo` and turnstile where `turnstile`. an ALTCHA
+ * check needs nothing added: its widget is the app's own module and reads its challenge from this
+ * origin.
+ */
+function operatorPolicy(
+	nonce: string,
+	widen: { readonly photo: boolean; readonly turnstile: boolean } = {
+		photo: false,
+		turnstile: false
+	}
+): string[] {
+	const turnstile = widen.turnstile ? [TURNSTILE_ORIGIN] : [];
 	return [
 		"default-src 'self'",
-		`script-src 'self' 'nonce-${nonce}'`,
+		['script-src', "'self'", `'nonce-${nonce}'`, ...turnstile].join(' '),
+		...(widen.turnstile ? [`frame-src ${TURNSTILE_ORIGIN}`] : []),
 		// the brand marks packages/operator/src/styles/base.css draws are under vite's 4 KiB
 		// `build.assetsInlineLimit`, so the built sheet carries them as `data:` urls.
-		"img-src 'self' data:",
+		['img-src', "'self'", 'data:', ...(widen.photo ? ['blob:'] : [])].join(' '),
 		"style-src 'self' 'unsafe-inline'",
 		...LOCKED
 	];
@@ -107,7 +143,7 @@ function donorPolicy(nonce: string, paypal: PaypalOrigins): string[] {
 			...paypal.sdk,
 			'https://c.paypal.com',
 			'https://cdn.givechariot.com',
-			'https://challenges.cloudflare.com'
+			TURNSTILE_ORIGIN
 		].join(' '),
 		[
 			'connect-src',
@@ -126,7 +162,7 @@ function donorPolicy(nonce: string, paypal: PaypalOrigins): string[] {
 			'https://history.paypal.com',
 			'https://account.venmo.com',
 			'https://secure.dafpay.com',
-			'https://challenges.cloudflare.com',
+			TURNSTILE_ORIGIN,
 			// the page's own, not the card's, so not in the integrator's block: the player a donor's press
 			// on Play mounts (`youTubeEmbedUrl` in $lib/page/videos.ts). a frame source loads nothing
 			// by itself, so the browser still asks youtube for nothing until that press; the posters
@@ -172,19 +208,38 @@ function paypalOrigins(apiUrl: string = PAYPAL_DEFAULT_API_URL): PaypalOrigins {
 /** the policy a route's `handle` asks for, or null where it asks for none. */
 function handlePolicy(handle: unknown): DocumentPolicy | null {
 	if (typeof handle !== 'object' || handle === null) return null;
-	const asked = (handle as Partial<DonorPolicyHandle>).documentPolicy;
-	return asked === 'donor' ? asked : null;
+	const asked: unknown = (handle as { readonly documentPolicy?: unknown }).documentPolicy;
+	return HANDLE_POLICIES.find((policy) => policy === asked) ?? null;
+}
+
+/** a document's policy directives, `env` read for paypal's address and the spam check in use. */
+function policyFor(
+	policy: DocumentPolicy,
+	nonce: string,
+	env: Pick<ConfigEnv, 'PAYPAL_API_URL' | 'TURNSTILE_SITE_KEY' | 'TURNSTILE_SECRET_KEY'>
+): string[] {
+	switch (policy) {
+		case 'operator':
+			return operatorPolicy(nonce);
+		case 'donor':
+			return donorPolicy(nonce, paypalOrigins(env.PAYPAL_API_URL));
+		case 'photo':
+			return operatorPolicy(nonce, { photo: true, turnstile: false });
+		case 'photo-and-challenge':
+			return operatorPolicy(nonce, { photo: true, turnstile: challengeKind(env) === 'turnstile' });
+	}
 }
 
 /**
- * sets a document's headers, under the policy the routes it matched choose. `paypalApiUrl` is the
- * deployment's `PAYPAL_API_URL`, read by the donor policy alone.
+ * sets a document's headers, under the policy the routes it matched choose. `env` is the
+ * deployment's: `PAYPAL_API_URL` for the donor policy, and the turnstile keys for the start of a
+ * fundraiser.
  */
 export function setDocumentHeaders(
 	headers: Headers,
 	context: EntryContext,
 	nonce: string,
-	paypalApiUrl: string | undefined
+	env: Pick<ConfigEnv, 'PAYPAL_API_URL' | 'TURNSTILE_SITE_KEY' | 'TURNSTILE_SECRET_KEY'>
 ): void {
 	const policy =
 		context.staticHandlerContext.matches
@@ -192,16 +247,11 @@ export function setDocumentHeaders(
 			.findLast((asked) => asked !== null) ?? 'operator';
 	headers.set(
 		'Content-Security-Policy',
-		[
-			...(policy === 'operator'
-				? operatorPolicy(nonce)
-				: donorPolicy(nonce, paypalOrigins(paypalApiUrl))),
-			"frame-ancestors 'none'"
-		].join('; ')
+		[...policyFor(policy, nonce, env), "frame-ancestors 'none'"].join('; ')
 	);
 	headers.set('X-Frame-Options', 'DENY');
 	headers.set(
 		'Referrer-Policy',
-		policy === 'operator' ? 'same-origin' : 'strict-origin-when-cross-origin'
+		policy === 'donor' ? 'strict-origin-when-cross-origin' : 'same-origin'
 	);
 }

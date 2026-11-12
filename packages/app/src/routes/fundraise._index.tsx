@@ -17,6 +17,7 @@ import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { linkMailer, readSupporterOrg, startChallenge } from '$lib/server/supporters/area';
 import { startFundraiser } from '$lib/server/supporters/start';
 import { database, platform } from '../context';
+import type { SupporterPolicyHandle } from '../document-policy';
 import type { Route } from './+types/fundraise._index';
 
 // Start a fundraiser: the form a member of the public makes a page with, or, while the organisation
@@ -104,6 +105,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 			return invalid(400, submission.reject(), { refused: started.reason });
 	}
 }
+
+export const handle: SupporterPolicyHandle = { documentPolicy: 'photo-and-challenge' };
 
 export function meta(): Route.MetaDescriptors {
 	return [{ title: 'Start a fundraiser' }];

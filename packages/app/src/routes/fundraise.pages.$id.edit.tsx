@@ -15,6 +15,7 @@ import {
 } from '$lib/server/supporters/area';
 import { editOwnFundraiser } from '$lib/server/supporters/pages';
 import { database } from '../context';
+import type { SupporterPolicyHandle } from '../document-policy';
 import type { Route } from './+types/fundraise.pages.$id.edit';
 
 // Edit your page: the supporter's name and this page's title, goal, story and photo, posted as
@@ -48,6 +49,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 export function headers() {
 	return { 'cache-control': 'no-store' };
 }
+
+export const handle: SupporterPolicyHandle = { documentPolicy: 'photo' };
 
 export async function action({ context, params, request }: Route.ActionArgs) {
 	refuseWriteFromAnotherOrigin(request);

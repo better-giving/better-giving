@@ -6,6 +6,7 @@ import {
 	UNSAFE_withComponentProps,
 	UNSAFE_withErrorBoundaryProps
 } from 'react-router';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import routerConfig from '../react-router.config';
 import { createAuth } from '$lib/server/auth';
@@ -15,6 +16,9 @@ import { createDb } from '$lib/server/db/client';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
+import { supporterPage } from '$lib/server/db/schema';
+import { emptySupporterTables, pendingPage } from '$lib/server/supporters/fundraiser.testing';
+import { startSupporterSession } from '$lib/server/supporters/session';
 import * as entryServer from './entry.server';
 import { requestContext } from './request-context';
 import * as root from './root';
@@ -24,6 +28,8 @@ import * as donorPage from './routes/donate';
 import * as stripeWebhook from './routes/api.stripe.webhook';
 import * as publicApi from './routes/api.v1';
 import * as servedConfig from './routes/api.v1.forms.$id.config';
+import * as startFundraiser from './routes/fundraise._index';
+import * as editFundraiser from './routes/fundraise.pages.$id.edit';
 import * as login from './routes/login';
 import * as previewPage from './routes/preview.$pageId';
 import { finishSetup } from './webhook-routes.testing';
@@ -169,6 +175,19 @@ const handle = createRequestHandler(
 			parentId: 'root',
 			path: 'preview/:pageId',
 			module: previewPage
+		},
+		{
+			id: 'routes/fundraise._index',
+			parentId: 'root',
+			path: 'fundraise',
+			index: true,
+			module: startFundraiser
+		},
+		{
+			id: 'routes/fundraise.pages.$id.edit',
+			parentId: 'root',
+			path: 'fundraise/pages/:id/edit',
+			module: editFundraiser
 		},
 		{ id: 'routes/api.v1', parentId: 'root', path: 'api/v1', module: publicApi },
 		{
@@ -548,6 +567,83 @@ describe('the editor’s preview of a page', () => {
 
 	it('is kept by no cache, since it is a draft read under a session', async () => {
 		expect((await answer()).headers.get('cache-control')).toBe('no-store');
+	});
+});
+
+/** the source turnstile's script and frame load from, and no other policy names. */
+const TURNSTILE = 'https://challenges.cloudflare.com';
+
+/** a deployment whose spam check is turnstile: both keys set, as `challengeKind` reads them. */
+const TURNSTILE_KEYS = {
+	TURNSTILE_SITE_KEY: '1x00000000000000000000AA',
+	TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA'
+};
+
+describe('the start of a fundraiser', () => {
+	it('loads turnstile where it is the check, and nothing else the donor page allows', async () => {
+		const response = await send('/fundraise', undefined, TURNSTILE_KEYS);
+		expect(response.status).toBe(200);
+		const policy = directives(response.headers.get('content-security-policy'));
+		const nonce = policyNonce(policy);
+		expect(policy.get('script-src')).toEqual(["'self'", `'nonce-${nonce}'`, TURNSTILE]);
+		expect(policy.get('frame-src')).toEqual([TURNSTILE]);
+		expect(policy.has('connect-src')).toBe(false);
+		expect(response.headers.get('referrer-policy')).toBe('same-origin');
+		await expectLocked(response, policy, nonce);
+	});
+
+	it('loads nothing from another origin where ALTCHA is the check', async () => {
+		const policy = directives(
+			(
+				await send('/fundraise', undefined, {
+					TURNSTILE_SITE_KEY: TURNSTILE_KEYS.TURNSTILE_SITE_KEY
+				})
+			).headers.get('content-security-policy')
+		);
+		expect(policy.get('script-src')).toEqual(["'self'", `'nonce-${policyNonce(policy)}'`]);
+		expect(policy.has('frame-src')).toBe(false);
+	});
+
+	it('draws the chosen photo’s `blob:` preview, whichever the check', async () => {
+		for (const vars of [{}, TURNSTILE_KEYS]) {
+			const policy = directives(
+				(await send('/fundraise', undefined, vars)).headers.get('content-security-policy')
+			);
+			expect(policy.get('img-src')).toEqual(["'self'", 'data:', 'blob:']);
+		}
+	});
+});
+
+describe('the edit of a fundraiser', () => {
+	let path: string;
+	let cookie: string;
+
+	beforeAll(async () => {
+		await emptySupporterTables();
+		const db = createDb(client);
+		const { pageId } = await pendingPage(db);
+		const [row] = await db
+			.select({ supporterId: supporterPage.supporterId })
+			.from(supporterPage)
+			.where(eq(supporterPage.id, pageId));
+		if (!row) throw new Error('the fixture fundraiser was not written');
+		path = `/fundraise/pages/${pageId}/edit`;
+		cookie = (
+			await startSupporterSession(db, new Request(ORIGIN), row.supporterId, new Date())
+		).split(';', 1)[0] as string;
+	});
+	afterAll(emptySupporterTables);
+
+	it('draws the chosen photo’s `blob:` preview, and loads turnstile nowhere', async () => {
+		const response = await send(path, { headers: { cookie } }, TURNSTILE_KEYS);
+		expect(response.status).toBe(200);
+		const policy = directives(response.headers.get('content-security-policy'));
+		const nonce = policyNonce(policy);
+		expect(policy.get('img-src')).toEqual(["'self'", 'data:', 'blob:']);
+		expect(policy.get('script-src')).toEqual(["'self'", `'nonce-${nonce}'`]);
+		expect(policy.has('frame-src')).toBe(false);
+		expect(response.headers.get('referrer-policy')).toBe('same-origin');
+		await expectLocked(response, policy, nonce);
 	});
 });
 
