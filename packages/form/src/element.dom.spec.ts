@@ -2476,8 +2476,7 @@ describe('the gift the donor dedicates', () => {
 		expect(card.shadow.activeElement).toBe(card.find('#tribute-notify-name'));
 	});
 
-	// the two sentences the app's note card must match (`copy` in packages/app/src/lib/donate); held
-	// in one place because the copy is still under review.
+	// the two sentences the app's note card must match (`copy` in packages/app/src/lib/donate).
 	const NOTIFY_PROBLEM = {
 		name: 'Enter a name',
 		email: 'Enter their email address'
