@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
+import { postCorrection } from '../books/correct';
 import { form, page } from '../db/schema';
 import { writeOrgRow } from '../org/org-row.testing';
 import { ensureDonationPage } from './donation-page';
@@ -79,6 +80,22 @@ describe('campaignRaised()', () => {
 		await repeatingGift(db, campaign, 2_500, 2);
 
 		expect((await campaignRaised(db, campaign)).raisedMinor).toBe(5_000);
+	});
+
+	it('is moved by no staff correction into the donation accounts', async () => {
+		const campaign = await campaignForm();
+		await gift(db, campaign, 10_000);
+		const posted = await postCorrection(db, {
+			sourceId: '019fb602-0000-7000-8000-000000000002',
+			occurredAt: new Date('2026-09-11T12:00:00.000Z'),
+			amountMinor: 2_500,
+			outOf: postableId('undepositedFunds'),
+			into: postableId('donationsDeductible'),
+			note: 'a gift taken in person, never entered.'
+		});
+		expect(posted).toEqual({ ok: true });
+
+		expect((await campaignRaised(db, campaign)).raisedMinor).toBe(10_000);
 	});
 
 	it('is moved by no gift through a form, the Donation page or another campaign', async () => {

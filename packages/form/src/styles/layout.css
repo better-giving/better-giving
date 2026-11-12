@@ -982,7 +982,13 @@ form {
 
 /*
  * a card 26em across, its two hairlines included: the condition reads the container's content box,
- * which is the card inside its `--_border` on each side, so the 2px is those two and no step.
+ * which is the card inside its `--_border` on each side, so the 2px is those two at a 1px hairline
+ * and no step. a border snapped to device pixels, or one a host restyles through `::part(card)`,
+ * moves the turn by up to that hairline's difference either way.
+ *
+ * the 24em breakpoint above stays on the content box. it turns on whether the two name fields fit
+ * the room inside the card, which is what the content box measures, while this one is the card's
+ * own width as drawn, hairlines and all.
  */
 /* raw-length-ok: as the breakpoint above. */
 @container donate (min-width: calc(26em - 2px)) {

@@ -48,7 +48,7 @@ export async function pageGoal(
 
 /**
  * a day, `YYYY-MM-DD`, as a page states it: "December 31". the day's own midnight, worded in UTC,
- * so the words name that day whatever zone the worker or the donor is in.
+ * so the words name that day whatever zone the server or the donor is in.
  */
 function worded(day: string, locale: string): string {
 	return new Intl.DateTimeFormat(locale, {

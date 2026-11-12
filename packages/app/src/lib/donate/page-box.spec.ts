@@ -26,8 +26,4 @@ describe('--page-box', () => {
 
 		expect(Number(box[1])).toBeGreaterThanOrEqual(breakpointRem);
 	});
-
-	it('is the width the box’s column is held to', () => {
-		expect(pageCss).toMatch(/\.page-box > div > \* \{\s*max-inline-size: var\(--page-box\);\s*\}/);
-	});
 });

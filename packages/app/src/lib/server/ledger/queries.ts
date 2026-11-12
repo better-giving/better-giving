@@ -15,9 +15,10 @@ import {
 } from '../db/schema';
 
 // every read of `entry_group` and `ledger_entry`, so the table objects never leave this
-// directory — the same boundary ../donations/queries.ts draws around `donation`. one read crosses
-// that boundary from this side: `readRaisedThroughForm` names `form`, `donation` and `payment` to
-// reach a form's entries in one statement, and says why.
+// directory — the same boundary ../donations/queries.ts draws around `donation`. three reads cross
+// that boundary from this side, each naming `donation` and `payment` to reach a gift's entries in
+// one statement: `readRaisedThroughForm`, which names `form` too, `giftNetRaised` and
+// `readRaisedByFormWithin`.
 //
 // no writes, and that is a rule rather than a description. ./posting.ts is the only module that
 // may INSERT into either table, and ./sole-writer.spec.ts enforces it by exempting this whole

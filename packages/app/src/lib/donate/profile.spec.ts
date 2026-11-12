@@ -94,4 +94,16 @@ describe('donateProfile()', () => {
 		expect(profile.mission).toBeNull();
 		expect(profile.vision).toBeNull();
 	});
+
+	it('hands a written mission and vision through as written, whitespace and all', () => {
+		const profile = donateProfile({
+			org: { ...ORG, mission: '  keep me \n', vision: '\tsee us  ' },
+			logo: null,
+			bannerImageId: null,
+			messages: MESSAGES,
+			videos: undefined
+		});
+		expect(profile.mission).toBe('  keep me \n');
+		expect(profile.vision).toBe('\tsee us  ');
+	});
 });

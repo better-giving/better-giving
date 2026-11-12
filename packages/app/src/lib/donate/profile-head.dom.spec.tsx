@@ -190,6 +190,7 @@ describe('the layout the Donation page’s content picks', () => {
 		['feature', FEATURE]
 	] as const)('stands the %s’s box ahead of everything after it', (_, profile) => {
 		const areas = order(draw(profile));
+		expect(areas).toContain('box');
 		for (const after of ['about', 'videos', 'messages'].filter((one) => areas.includes(one)))
 			expect(areas.indexOf('box')).toBeLessThan(areas.indexOf(after));
 	});
@@ -427,6 +428,29 @@ describe('the page’s own heading', () => {
 
 	it('draws no heading over the box where none is saved', () => {
 		expect(part(draw(FULL), 'box')?.querySelector('h2')).toBeNull();
+	});
+
+	it('stands over the program chooser where donors choose, so the order is heading, chooser, box', () => {
+		const page = { ...defaultDonationPage(), heading: 'Keep a family housed this winter' };
+		const programs = [
+			{ id: 'prog-food', name: 'Food pantry' },
+			{ id: 'prog-coats', name: 'Winter coats' }
+		];
+		for (const profile of [FULL, LETTER, FEATURE]) {
+			const root = draw(profile, { page, programs, programMode: 'choice' });
+			const heading = root.querySelector('main h2.page-profile-box-heading');
+			const question = part(root, 'chooser')?.querySelector('fieldset');
+			const box = part(root, 'box');
+			expect(root.querySelectorAll('main h2.page-profile-box-heading')).toHaveLength(1);
+			expect(heading?.textContent).toBe('Keep a family housed this winter');
+			if (heading == null || question == null || box == null) throw new Error('a part is missing');
+			expect(heading.compareDocumentPosition(question)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+			expect(order(root).filter((name) => name === 'chooser' || name === 'box')).toEqual([
+				'chooser',
+				'box'
+			]);
+			expect(box.querySelector('h2')).toBeNull();
+		}
 	});
 
 	it('reads in the preview, where the box under it is inert', () => {

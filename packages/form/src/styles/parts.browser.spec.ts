@@ -814,10 +814,14 @@ describe('the lines between a tray’s options', () => {
 		return found;
 	}
 
+	// computed lengths are floats summed from layout units of 1/64px; a line reaching across a rule
+	// is judged to within 0.02px, far under the 0.5px the hairline's half is.
+	const SUBPIXEL = 0.02;
+
 	/** what each line lies outside the tray's content box by, on each side — all zero when inside. */
 	function overreach(tray: HTMLElement): Record<string, Box> {
 		const edge = inner(tray);
-		const over = (by: number): number => Math.max(0, Math.round(by * 100) / 100);
+		const over = (by: number): number => (by > SUBPIXEL ? by : 0);
 		return Object.fromEntries(
 			lines(tray).map(({ name, box }) => [
 				name,
@@ -832,10 +836,6 @@ describe('the lines between a tray’s options', () => {
 	}
 
 	const INSIDE = { left: 0, top: 0, right: 0, bottom: 0 };
-
-	// computed lengths are floats summed from layout units of 1/64px; a line reaching across a rule
-	// is judged to within 0.02px, far under the 0.5px the hairline's half is.
-	const SUBPIXEL = 0.02;
 
 	// one card on each side of the wide breakpoint at a 16px root, with the lines each draws held
 	// inside the pad; where the breakpoint's edge falls is the next case's.
@@ -997,6 +997,72 @@ describe('the lines between a tray’s options', () => {
 
 			expect(Object.keys(reach)).toHaveLength(between);
 			for (const [name, by] of Object.entries(reach)) expect(by, name).toEqual(INSIDE);
+		}
+	);
+
+	// the track's lines turn at `@container (width < 17.5em)` and `(width < 11.5em)` in ./parts.css,
+	// three and two of `.segment`'s track minimum in ./layout.css and the `--_sp2` gaps between them,
+	// written by hand because a container condition cannot read `var()` ("turns the How often lines
+	// at the widths its track wraps at" in ../element.dom.spec.ts recomputes them). the track's own
+	// content box is sized a px under each edge, at it and a px over it, and the rows and the lines
+	// are read together: a literal that drifted from the grid draws a line in the pad before a
+	// wrapped option, or drops one between two options on a row. `em` in all three is the track's
+	// own font-size. the card's chrome around the track is measured on a card under the wide
+	// breakpoint, which every width here stays under.
+	it.each([
+		{
+			edge: 17.5,
+			frequencies: ['one_time', 'monthly', 'yearly'] as const,
+			wrapped: [false, true, false],
+			across: [false, true, true]
+		},
+		{
+			edge: 11.5,
+			frequencies: ['one_time', 'monthly'] as const,
+			wrapped: [false, false],
+			across: [false, true]
+		}
+	])(
+		'wraps the How often track and its lines at a $edge em content box, and not a px over it',
+		async ({ edge, frequencies, wrapped, across }) => {
+			const { host, shadow } = await mount({ ...CONFIG, frequencies: [...frequencies] });
+			host.style.display = 'block';
+			const track = shadow.querySelector('.segment') as HTMLElement;
+			const options = Array.from(track.querySelectorAll<HTMLElement>(':scope > label'));
+			const sized = async (card: number) => {
+				host.style.inlineSize = `${card}px`;
+				await new Promise(requestAnimationFrame);
+				const box = inner(track);
+				return {
+					width: box.right - box.left,
+					rows: new Set(options.map((option) => Math.round(option.getBoundingClientRect().top)))
+						.size,
+					verticals: options.map(
+						(option) => getComputedStyle(option, '::before').content !== 'none'
+					),
+					reach: overreach(track)
+				};
+			};
+
+			const probe = 320;
+			const chrome = probe - (await sized(probe)).width;
+			const target = edge * parseFloat(getComputedStyle(track).fontSize);
+			for (const [by, rows, verticals] of [
+				[-1, 2, wrapped],
+				[0, 1, across],
+				[1, 1, across]
+			] as const) {
+				const at = await sized(target + by + chrome);
+				const label = `${by}px from ${target}px`;
+
+				expect(Math.abs(at.width - (target + by)), label).toBeLessThanOrEqual(SUBPIXEL);
+				expect(at.rows, label).toBe(rows);
+				expect(at.verticals, label).toEqual(verticals);
+				expect(Object.keys(at.reach), label).toHaveLength(verticals.filter(Boolean).length);
+				for (const [name, reach] of Object.entries(at.reach)) {
+					expect(reach, `${name}, ${label}`).toEqual(INSIDE);
+				}
+			}
 		}
 	);
 

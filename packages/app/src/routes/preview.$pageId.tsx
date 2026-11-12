@@ -30,7 +30,9 @@ import type { Route } from './+types/preview.$pageId';
 // Show more messages is a read, and asks /donate's own (./donate.messages.ts); the first six are
 // read as that one reads, against the published page rather than the draft
 // (`readDonationPageMessages` in $lib/server/pages/view.ts), so the preview lists only the
-// messages /donate shows.
+// messages /donate shows. the layout counts those same messages, the ones /donate lists today
+// ($lib/page/profile-shape.ts), so where /donate lists none until Publish the preview counts none
+// and can draw another layout than /donate draws after it (./preview.$pageId.db.spec.ts).
 //
 // nobody may frame it (../document-policy.ts), and no cache keeps it: a draft read under a session.
 

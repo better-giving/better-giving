@@ -1,5 +1,6 @@
-// the few glyphs the card draws, each an inline svg in `currentColor`, so a glyph takes the ink of the
-// control it stands in and a host's `::part()` colour reaches it with the words around it.
+// the glyphs the card draws, and the donor page's few beside them, each an inline svg in
+// `currentColor`, so a glyph takes the ink of the control it stands in and a host's `::part()` colour
+// reaches it with the words around it.
 
 const SVG = 'http://www.w3.org/2000/svg';
 

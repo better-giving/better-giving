@@ -5,7 +5,10 @@ import type { DonateProfile } from '../profile';
 // shows; ../page-view.tsx picks the layout the parts stand in ($lib/page/profile-shape.ts) and works
 // out the initials and the name's length, which it shares with the masthead and the title.
 
-/** the saved banner, framed, in the card and the letter; decoration, so out of the reading. */
+/**
+ * the saved banner, in the card and the letter: edge to edge in the card, framed on a plane in the
+ * letter. decoration, so out of the reading.
+ */
 export function ProfileBanner({
 	banner
 }: {

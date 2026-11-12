@@ -306,7 +306,27 @@ describe('donors’ messages in the preview of the Donation page', () => {
 		{ path: 'donate', module: donatePage },
 		{ path: 'messages', module: donateMessagesRoute }
 	]);
+	const donateDocument = mountRoutes([{ path: 'donate', module: donatePage }]);
 	let askers = 0;
+
+	/** the messages the profile head /donate itself is handed, or null where it draws no profile. */
+	async function donateProfileMessages(): Promise<unknown> {
+		askers += 1;
+		const answered = await donateDocument(
+			new Request(`${ORIGIN}/donate`, {
+				headers: { [CLIENT_IP_HEADER]: `2001:db8:${4000 + askers}::1` }
+			}),
+			{ env: DEPLOYED }
+		);
+		// a settings row not yet live is /donate's 404: it lists nothing
+		if (answered.status === 404) return null;
+		expect(answered.status).toBe(200);
+		const data = (await answered.json()) as {
+			kind: string;
+			profile?: { messages: unknown } | null;
+		};
+		return data.kind === 'page' ? (data.profile?.messages ?? null) : null;
+	}
 
 	/** what /donate's Show more answers for `after`, or for the newest six where it is null. */
 	async function donateAnswers(after: string | null): Promise<unknown> {
@@ -371,6 +391,13 @@ describe('donors’ messages in the preview of the Donation page', () => {
 			const donateShown = await donateAnswers(null);
 			expect(shown.messages).toHaveLength(listed);
 			expect(shown).toEqual(donateShown);
+			// /donate's own loader gates the page itself, which Show more and the preview share one read past
+			const onDonate = await donateProfileMessages();
+			if (listed === 0) {
+				expect((onDonate as { messages: unknown[] } | null)?.messages ?? []).toEqual([]);
+			} else {
+				expect(onDonate).toEqual(shown);
+			}
 			if (listed === 0) {
 				expect(shown.next).toBeNull();
 				return;

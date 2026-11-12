@@ -637,13 +637,14 @@ describe('the share row and the footer', () => {
 
 describe('the video play press', () => {
 	// the press is the registry's large square, 13 of its spacing steps; the glyph is 6 of them.
-	it('draws its glyph at 24px on the press’s own spacing step', () => {
+	it('draws its glyph at 6 spacing steps, against the large press’s 13', () => {
 		const button = blocks(
 			readFileSync(require.resolve('@better-giving/form/registry/styles/button-css.css'), 'utf8')
 		);
 		const glyph = declared(page, '.page-video-glyph');
 		const step = declared(button, '.ds-btn');
 		expect(substitute(step, glyph['inline-size'] ?? '')).toBe('calc(0.25rem * 6)');
+		expect(declared(button, '.ds-btn-lg')['--ds-btn-size']).toBe('calc(var(--ds-spacing) * 13)');
 		expect(glyph['block-size']).toBe(glyph['inline-size']);
 	});
 });

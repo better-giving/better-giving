@@ -5381,6 +5381,22 @@ describe('the stylesheets', () => {
 		]);
 	});
 
+	it('turns the How often lines at the widths its track wraps at, from its minimum and its gap', () => {
+		// a container condition cannot read `var()`, so ./styles/parts.css writes the two widths the
+		// track wraps at as literals: three and two of `.segment`'s track minimum in
+		// ./styles/layout.css and the `--_sp2` gaps between them. both are recomputed here from the
+		// sheets, so a moved step or minimum goes red rather than drawing a line before a wrapped
+		// option. ./styles/parts.browser.spec.ts measures the same two edges on a mounted track.
+		const track = declarations(layoutStyles).match(/\.segment \{[^}]*\}/)?.[0] ?? '';
+		const minimum = Number(track.match(/minmax\(([\d.]+)em, 1fr\)/)?.[1]);
+		const step = Number(declarations(tokenSource).match(/--_sp2: ([\d.]+)em;/)?.[1]);
+
+		expect(track).toContain('gap: var(--_sp2);');
+		expect(declarations(partStyles).match(/@container \(width < [^)]*\)/g)).toEqual(
+			[3, 2].map((across) => `@container (width < ${across * minimum + (across - 1) * step}em)`)
+		);
+	});
+
 	it('derives every colour from a token and names none of its own', async () => {
 		// a literal here would be a second copy of the ramp that drifts from ./styles/tokens.css
 		// silently, and a host's seed would stop reaching that surface.

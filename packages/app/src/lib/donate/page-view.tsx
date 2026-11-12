@@ -57,9 +57,10 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 //   - feature: the cover, the logo, the name and the EIN, then the box, the videos, the messages
 //     as cards and About us as the closing band; wide, the cover runs the page's width with the
 //     words over its lower left and the box over its right side.
-//   a heading saved for the page is the box's own heading there, over the card. the name is always
-//   drawn there, so the logo beside it says nothing of its own, and a logo the masthead would let
-//   stand in for the name is drawn whole at its own shape rather than in the square.
+//   a heading saved for the page heads the box there: over the program chooser where donors choose
+//   a program, over the card where they don't. the name is always drawn there, so the logo beside
+//   it says nothing of its own, and a logo the masthead would let stand in for the name is drawn
+//   whole at its own shape rather than in the square.
 //
 // every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
 // the letter's and the feature's box straight after the cover and the title, the goal and the lede
@@ -215,10 +216,15 @@ function Box({
 }) {
 	return (
 		<div className="page-box" {...area('box')}>
-			{heading === undefined ? null : <h2 className="page-profile-box-heading">{heading}</h2>}
+			<BoxHeading heading={heading} />
 			<div inert={props.preview ?? false}>{props.donationBox({ hideProgramSelect })}</div>
 		</div>
 	);
+}
+
+/** a heading saved for the Donation page, over what the donor meets first under the profile head. */
+function BoxHeading({ heading }: { heading: string | undefined }) {
+	return heading === undefined ? null : <h2 className="page-profile-box-heading">{heading}</h2>;
 }
 
 /**
@@ -356,10 +362,14 @@ function CampaignLayout(props: PageViewProps & { readonly shape: CampaignShape }
 const offersChoice = (props: PageViewProps): boolean =>
 	props.programMode === 'choice' && props.programs.length >= 2;
 
-/** the program chooser, which stands only where `offersChoice`. */
-function Chooser({ props }: { props: PageViewProps }) {
+/**
+ * the program chooser, which stands only where `offersChoice`. a `heading` stands over it, so a
+ * reader moving by heading lands ahead of the chooser's question rather than past it.
+ */
+function Chooser({ props, heading }: { props: PageViewProps; heading?: string | undefined }) {
 	return (
 		<div {...area('chooser')}>
+			<BoxHeading heading={heading} />
 			<ProgramChooser
 				programs={props.programs}
 				chosen={props.chosenProgramId ?? null}
@@ -378,7 +388,7 @@ function ProfileLayout(
 	const { profile, donorMessages } = props;
 	const { layout, aboutUs } = props.shape;
 	const choosing = offersChoice(props);
-	const heading = props.page.heading.trim();
+	const heading = props.page.heading.trim() === '' ? undefined : props.page.heading;
 	const who = (
 		<div className="page-profile-who" {...area('who')}>
 			<div className="page-profile-id">
@@ -394,12 +404,8 @@ function ProfileLayout(
 	);
 	const box = (
 		<>
-			{choosing ? <Chooser props={props} /> : null}
-			<Box
-				props={props}
-				hideProgramSelect={choosing}
-				heading={heading === '' ? undefined : props.page.heading}
-			/>
+			{choosing ? <Chooser props={props} heading={heading} /> : null}
+			<Box props={props} hideProgramSelect={choosing} heading={choosing ? undefined : heading} />
 		</>
 	);
 	const rail = (

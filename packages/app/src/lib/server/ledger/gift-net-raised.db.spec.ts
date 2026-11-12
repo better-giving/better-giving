@@ -4,6 +4,7 @@ import { parseContact } from '../contacts/contact-input';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import { donation } from '../db/schema';
+import { postCorrection } from '../books/correct';
 import { recordGiftInHand } from '../donations/record-in-hand';
 import { writeOrgRow } from '../org/org-row.testing';
 import { ensureDonationPage } from '../pages/donation-page';
@@ -65,7 +66,9 @@ describe('giftNetRaised()', () => {
 		expect(await netOf(donationId)).toBe(7_000);
 	});
 
-	it('leaves out a payment whose entries are in a currency other than the gift’s', async () => {
+	// a guard with no producer: every writer posts in the gift's currency, so only a hand-edited row
+	// reaches it. the live other-currency path is the case above.
+	it('guard: leaves out a payment whose entries are in a currency other than the gift’s', async () => {
 		const { donationId } = await noteGift(db, formId, { amountMinor: 10_000 });
 		expect(await netOf(donationId)).toBe(10_000);
 		await run(stmt(`update entry_group set currency = 'EUR'`));
@@ -93,14 +96,18 @@ describe('giftNetRaised()', () => {
 		expect(await netOf(donationId)).toBe(4_000);
 	});
 
-	it('is nothing for a gift withdrawn by a dispute not yet won, or lost', async () => {
-		const open = await noteGift(db, formId);
-		await dispute(db, open.txn);
-		const lost = await noteGift(db, formId);
-		await dispute(db, lost.txn, null, 'lost');
+	it('is nothing for a gift withdrawn by a dispute not yet won', async () => {
+		const { txn, donationId } = await noteGift(db, formId);
+		await dispute(db, txn);
 
-		expect(await netOf(open.donationId)).toBe(0);
-		expect(await netOf(lost.donationId)).toBe(0);
+		expect(await netOf(donationId)).toBe(0);
+	});
+
+	it('is nothing for a gift withdrawn by a dispute lost', async () => {
+		const { txn, donationId } = await noteGift(db, formId);
+		await dispute(db, txn, null, 'lost');
+
+		expect(await netOf(donationId)).toBe(0);
 	});
 
 	it('is the whole gift again once the dispute over it is won', async () => {
@@ -108,6 +115,25 @@ describe('giftNetRaised()', () => {
 		await dispute(db, txn, null, 'won');
 
 		expect(await netOf(donationId)).toBe(5_000);
+	});
+
+	it('is unchanged by a staff correction into the donation accounts', async () => {
+		const { donationId } = await noteGift(db, formId, { amountMinor: 10_000 });
+		const posted = await postCorrection(db, {
+			sourceId: '019fb602-0000-7000-8000-000000000001',
+			occurredAt: new Date('2026-09-11T12:00:00.000Z'),
+			amountMinor: 2_500,
+			outOf: postableId('undepositedFunds'),
+			into: postableId('donationsDeductible'),
+			note: 'a gift taken in person, never entered.'
+		});
+		expect(posted).toEqual({ ok: true });
+		const [moved] = await db.all<{ total: number }>(
+			sql`select sum(amount_minor) as total from ledger_entry where account_id = ${postableId('donationsDeductible')}`
+		);
+		expect(moved?.total).toBe(-7_500);
+
+		expect(await netOf(donationId)).toBe(10_000);
 	});
 
 	it('leaves out the processor fee entry beside the gift in the same entry group', async () => {

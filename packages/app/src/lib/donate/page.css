@@ -424,12 +424,15 @@ body {
  * ── the donor page's sections ─────────────────────────────────────────────────────────────────
  *
  * ./page-view.tsx draws a page as a masthead, a body, the share section and a footer under the
- * root. a page's sections stand in `.page-layout`, each carrying `data-area` for the rules below to place it by; on a phone
- * the card's grid areas and the letter's and the feature's `order` stand them in the order a phone reads them,
- * and from `@container page (min-width: 60rem)` each layout moves them into its columns. the donation box is a `.page-box` among them, never inside another section, and no rule
- * below gives an ancestor of it a clip, a position or a transform. no box is sticky, the rails' and
- * the profile head's included: a box that a later step grows past the screen's height
- * scrolls with the page, so its lower edge and what stands under it can always be reached.
+ * root. a page's sections stand in `.page-layout`, each carrying `data-area` for the rules below to
+ * place it by; on a phone the card's grid areas and the letter's and the feature's `order` stand
+ * them in the order a phone reads them, and from `@container page (min-width: 60rem)` each layout
+ * moves them into its columns. under the profile head the parts stand in `.page-profile` instead,
+ * and in the letter and the feature the box stands in `.page-profile-rail` there. the donation box
+ * is a `.page-box` among them or in that rail, never inside another section, and no rule below
+ * gives an ancestor of it a clip, a position or a transform. no box is sticky, the rails' and the
+ * profile head's included: a box that a later step grows past the screen's height scrolls with the
+ * page, so its lower edge and what stands under it can always be reached.
  *
  * ink. `--page-accent` is what a link and a listed tier's amount are drawn in, brand 11.
  * `--page-ring` is the focus ring, `--_n1` on the feature's scrim and the form's elsewhere. a tier
