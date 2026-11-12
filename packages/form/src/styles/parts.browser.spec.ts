@@ -3242,15 +3242,16 @@ describe('the surfaces a donor operates', () => {
 		}
 	});
 
-	// the lattice between the boxes is a divider on both trays, so it is step 6, the step
-	// ../styles/tokens.css gives a divider, whatever ground it stands on. a refused amount turns the
-	// tray's own edge the danger colour and leaves the lines on step 6: the mark is the edge.
-	it('rules the gaps on both trays in the divider step, refused or not', async () => {
+	// the lattice between the boxes is ruled in a border step off its ground: the cadence track's
+	// `--_n2` takes rung 6, and the amount tray's `--_n3` takes rung 7, the tray's own edge, where
+	// rung 6 reads too faint. a refused amount turns the tray's edge the danger colour and leaves the
+	// lines where they are.
+	it('rules the gaps on each tray in a border step that shows on its ground, refused or not', async () => {
 		const { shadow } = await mount();
 		const second = shadow.querySelector('.segment > label + label') as HTMLElement;
-		const divider = token(shadow, '--_n6');
+		const divider = token(shadow, '--_n7');
 
-		expect(getComputedStyle(second, '::before').backgroundColor).toBe(divider);
+		expect(getComputedStyle(second, '::before').backgroundColor).toBe(token(shadow, '--_n6'));
 
 		// every line the tray draws: both ends of every tile, and the open entry's top line.
 		(shadow.querySelector('.other input') as HTMLInputElement).click();

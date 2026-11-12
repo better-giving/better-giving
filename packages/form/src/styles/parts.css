@@ -990,14 +990,15 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 /*
  * the grid lines between the boxes: a hairline standing in each gap, drawn as one lattice — every
  * vertical meets the horizontal across each gap it reaches and neither runs past a box, so the
- * boxes on a tray read as pieces on one board rather than words floating on a fill. a line is a
- * divider, so on both trays it is `--_n6`, the step ./tokens.css gives a divider, whatever ground it
- * stands on, and a step fainter than the tray's own `--_n7` edge; a refused amount recolours that
- * edge and leaves the lines where they are. the lines run to the tray's inset and no further, and a
- * chosen box stands clear of them on every side by that same inset: the gap is twice it, the line
- * stands at the gap's middle, and a chosen chip is a piece set on a square rather than a box drawn
- * over a rule. the lines run beside the chosen box as beside any other; a lattice broken either side
- * of one cell is a hole in the board, and the chip's own face and lift are what say chosen.
+ * boxes on a tray read as pieces on one board rather than words floating on a fill. the cadence
+ * track's lines are the separator rung, `--_n6`, a step fainter than the track's own edge; the
+ * amount tray's are `--_n7`, the tray's own edge (the rule after the geometry says why), and a
+ * refused amount recolours that edge and leaves the lines where they are. the lines run to the
+ * tray's inset and no further, and a chosen box stands clear of them on every side by that same
+ * inset: the gap is twice it, the line stands at the gap's middle, and a chosen chip is a piece set
+ * on a square rather than a box drawn over a rule. the lines run beside the chosen box as beside any
+ * other; a lattice broken either side of one cell is a hole in the board, and the chip's own face
+ * and lift are what say chosen.
  *
  * the amount tray's lines are drawn by its tiles, so a line stands only where a tile does. every
  * row is full and the column count is the stylesheet's own — two across, four from the card's wide
@@ -1033,6 +1034,17 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 .tiles:not(.bare) > .entry::after {
 	position: absolute;
 	background: var(--_n6);
+}
+
+/*
+ * on the amount tray's `--_n3` ground a `--_n6` line reads too faint, so its lines take the next
+ * border step, `--_n7`, which is the tray's own edge; the cadence track stays on `--_n6` over its
+ * `--_n2`.
+ */
+.tiles > label::before,
+.tiles > label::after,
+.tiles:not(.bare) > .entry::after {
+	background: var(--_n7);
 }
 
 .segment > label + label::before,
