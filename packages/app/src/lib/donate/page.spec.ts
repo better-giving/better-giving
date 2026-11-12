@@ -337,6 +337,8 @@ describe('every colour lands on the radix step for its job', () => {
 	const FEATURE = ".page[data-layout='feature']";
 	const HERO = `${FEATURE} .page-profile > .page-profile-who`;
 	const HERO_OVER_FILL = `${FEATURE} .page-profile-cover[data-cover='none'] + .page-profile-who`;
+	const HEADING = `${FEATURE} .page-profile > .page-profile-rail .page-profile-box-heading`;
+	const HEADING_OVER_FILL = `${FEATURE} .page-profile-cover[data-cover='none'] ~ .page-profile-rail .page-profile-box-heading`;
 	const OVER_FILL = `${FEATURE} .page-layout[data-cover='logo'] .page-hero-words, ${FEATURE} .page-layout[data-cover='none'] .page-hero-words`;
 	const IDLE = ":not(:has(:checked, [aria-disabled='true']))";
 	const BORDER =
@@ -454,7 +456,8 @@ describe('every colour lands on the radix step for its job', () => {
 				[`${WIDE} » ${OVER_FILL} | --page-quiet`]: 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | color`]: 'on-brand-9',
 				[`${WIDE} » ${HERO_OVER_FILL} | --page-quiet`]: 'on-brand-9',
-				[`${WIDE} » ${HERO_OVER_FILL} | color`]: 'on-brand-9'
+				[`${WIDE} » ${HERO_OVER_FILL} | color`]: 'on-brand-9',
+				[`${WIDE} » ${HEADING_OVER_FILL} | color`]: 'on-brand-9'
 			}
 		},
 		[TEXT]: {
@@ -522,7 +525,8 @@ describe('every colour lands on the radix step for its job', () => {
 				[`${WIDE} » .page-profile-cover[data-cover='photo']::after | background`]: 'scrim',
 				[`${WIDE} » ${HERO} | --page-ring`]: 'slate-1',
 				[`${WIDE} » ${HERO} | --page-quiet`]: 'slate-1',
-				[`${WIDE} » ${HERO} | color`]: 'slate-1'
+				[`${WIDE} » ${HERO} | color`]: 'slate-1',
+				[`${WIDE} » ${HEADING} | color`]: 'slate-1'
 			}
 		}
 	};

@@ -1352,6 +1352,19 @@ body {
 		align-self: start;
 		margin-block: var(--page-gap-lead);
 	}
+
+	/* a heading saved for the page stands over the box on the cover, so it takes the cover's ink as the
+	   who beside it does: slate 1 on the photo's scrim, `--_on-p` on the brand's solid. */
+	.page[data-layout='feature'] .page-profile > .page-profile-rail .page-profile-box-heading {
+		color: var(--_n1);
+	}
+
+	.page[data-layout='feature']
+		.page-profile-cover[data-cover='none']
+		~ .page-profile-rail
+		.page-profile-box-heading {
+		color: var(--_on-p);
+	}
 }
 
 /* Messages from donors (./sections/messages.tsx): a heading over a plane that clips its list, each
