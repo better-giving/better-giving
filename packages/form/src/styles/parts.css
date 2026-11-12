@@ -1089,7 +1089,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /* raw-length-ok: the card's wide breakpoint in ./layout.css, the one the columns change at. */
-@container donate not (min-width: 26em) {
+@container donate not (min-width: calc(26em - 2px)) {
 	.tiles > label:nth-child(even)::before,
 	.tiles > label:nth-child(odd):not(:first-child)::after {
 		content: '';
@@ -1106,7 +1106,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /* raw-length-ok: as the breakpoint above. */
-@container donate (min-width: 26em) {
+@container donate (min-width: calc(26em - 2px)) {
 	/* raw-length-ok: `4n` is a step through the children, not a length. */
 	.tiles > label:not(:nth-child(4n + 1))::before,
 	.tiles > label:nth-child(4n + 1):not(:first-child)::after {

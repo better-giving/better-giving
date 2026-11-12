@@ -5372,11 +5372,12 @@ describe('the stylesheets', () => {
 		//
 		// the amount grid's columns turn at the wide one, beside the card's inset, and
 		// ./styles/layout.browser.spec.ts is where that is measured rather than read.
-		const conditions = declarations(layoutStyles).match(/@container donate \([^)]*\)/g) ?? [];
+		const conditions =
+			declarations(layoutStyles).match(/@container donate \((?:[^()]|\([^)]*\))*\)/g) ?? [];
 
 		expect(conditions).toEqual([
 			'@container donate (min-width: 24em)',
-			'@container donate (min-width: 26em)'
+			'@container donate (min-width: calc(26em - 2px))'
 		]);
 	});
 

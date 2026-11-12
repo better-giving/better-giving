@@ -434,7 +434,8 @@ form {
  * the presets (`build` in ../views.ts), so `:nth-child` on it is the number of cells, and the span
  * it takes is what four, or two, leaves over. a tray with no other tile is bare or a skeleton and
  * takes the columns and no span. the breakpoint is the card's wide one (`@container donate
- * (min-width: 26em)` below), off the card's clamped root rather than the host document's.
+ * (min-width: calc(26em - 2px))` below), off the card's clamped root rather than the host
+ * document's.
  *
  * the free entry is one of these boxes rather than a control under them, and it takes a row of its
  * own: a tile's cell holds a figure and nothing else, and the entry carries a mark at each end of
@@ -979,8 +980,12 @@ form {
 	}
 }
 
+/*
+ * a card 26em across, its two hairlines included: the condition reads the container's content box,
+ * which is the card inside its `--_border` on each side, so the 2px is those two and no step.
+ */
 /* raw-length-ok: as the breakpoint above. */
-@container donate (min-width: 26em) {
+@container donate (min-width: calc(26em - 2px)) {
 	.card-body {
 		padding: var(--_inset-wide);
 	}

@@ -832,6 +832,37 @@ describe('the lines between a tray’s options', () => {
 
 	const INSIDE = { left: 0, top: 0, right: 0, bottom: 0 };
 
+	// the wide breakpoint is the card's own width: a card 26em across, hairline included, is the
+	// narrowest one that sets its amounts four up. the /donate rail is a 26rem card at a 16px root.
+	it.each([
+		{ card: '416px', columns: 4, rows: 1 },
+		{ card: '300px', columns: 2, rows: 2 }
+	])(
+		'sets 3 amounts and other $columns across on a $card card, every line inside the pad',
+		async ({ card, columns, rows }) => {
+			const { host, shadow } = await mount({
+				...CONFIG,
+				suggestedAmountsMinor: [2500, 5000, 10_000]
+			});
+			host.style.display = 'block';
+			host.style.inlineSize = card;
+			await settle();
+			await new Promise(requestAnimationFrame);
+			const tiles = shadow.querySelector('.tiles') as HTMLElement;
+			const tops = new Set(
+				Array.from(tiles.querySelectorAll(':scope > label'), (tile) =>
+					Math.round(tile.getBoundingClientRect().top)
+				)
+			);
+
+			expect(getComputedStyle(tiles).gridTemplateColumns.split(' ')).toHaveLength(columns);
+			expect(tops.size).toBe(rows);
+			const reach = overreach(tiles);
+			expect(Object.keys(reach).length).toBeGreaterThan(0);
+			for (const [name, by] of Object.entries(reach)) expect(by, name).toEqual(INSIDE);
+		}
+	);
+
 	async function mountAt(config: FormConfig, width: string, scheme: string): Promise<ShadowRoot> {
 		await cdp().send('Emulation.setEmulatedMedia', {
 			features: [{ name: 'prefers-color-scheme', value: scheme }]
