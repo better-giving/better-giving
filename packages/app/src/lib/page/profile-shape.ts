@@ -23,19 +23,20 @@ export type ProfileShape = {
 	readonly layout: Layout;
 	readonly storyLength: number;
 	readonly extras: number;
-	/** the organisation has written a mission or a vision. */
+	/** the organisation has written a mission or a vision: one that is empty after trimming is not written. */
 	readonly aboutUs: boolean;
 };
 
 export function profileShape(profile: ProfileContent): ProfileShape {
-	const storyLength = [profile.mission, profile.vision]
-		.flatMap((text) => (text === null || text.trim() === '' ? [] : [text.trim()]))
-		.join('\n\n').length;
+	const written = [profile.mission, profile.vision].flatMap((text) =>
+		text === null || text.trim() === '' ? [] : [text.trim()]
+	);
+	const storyLength = written.join('\n\n').length;
 	const extras = profile.videos.length + (profile.messages.total > 0 ? 1 : 0);
 	return {
 		layout: thresholdLayout(storyLength, extras),
 		storyLength,
 		extras,
-		aboutUs: profile.mission !== null || profile.vision !== null
+		aboutUs: written.length > 0
 	};
 }

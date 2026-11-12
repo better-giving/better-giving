@@ -66,6 +66,28 @@ describe('the layout /donate is drawn in, by the worked cases', () => {
 	});
 });
 
+describe('a mission or vision that is empty after trimming', () => {
+	it.each([
+		['whitespace for a mission', { mission: ' \n\t ' }],
+		['whitespace for both', { mission: '  ', vision: '\n' }],
+		['an empty string for a vision', { vision: '' }]
+	])('is not written: %s draws no About us and no story', (_, written) => {
+		expect(profileShape({ ...NOTHING, ...written })).toEqual({
+			layout: 'card',
+			storyLength: 0,
+			extras: 0,
+			aboutUs: false
+		});
+	});
+
+	it('still counts the other one when only one is blank', () => {
+		expect(profileShape({ ...NOTHING, mission: '   ', vision: 'v'.repeat(10) })).toMatchObject({
+			storyLength: 10,
+			aboutUs: true
+		});
+	});
+});
+
 describe('the measures', () => {
 	it('counts the mission and the vision trimmed, joined by one blank line', () => {
 		expect(profileShape({ ...NOTHING, mission: '  abc \n', vision: '\n de ' }).storyLength).toBe(

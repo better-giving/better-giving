@@ -68,10 +68,14 @@ export function donateProfile({
 			logo === null
 				? null
 				: { src: imageSrc(logo.imageId), width: logo.width, height: logo.height },
-		mission: org.mission,
-		vision: org.vision,
+		mission: written(org.mission),
+		vision: written(org.vision),
 		footer: { addressLines, email, socialLinks },
 		messages,
 		videos: shownVideos(videos)
 	};
 }
+
+/** a mission or vision as the page draws it: null where it is empty after trimming. */
+const written = (text: string | null): string | null =>
+	text === null || text.trim() === '' ? null : text;

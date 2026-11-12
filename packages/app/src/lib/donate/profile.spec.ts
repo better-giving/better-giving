@@ -82,4 +82,16 @@ describe('donateProfile()', () => {
 			vision: null
 		});
 	});
+
+	it('hands a mission or vision that is empty after trimming as none', () => {
+		const profile = donateProfile({
+			org: { ...ORG, mission: ' \n ', vision: '' },
+			logo: null,
+			bannerImageId: null,
+			messages: MESSAGES,
+			videos: undefined
+		});
+		expect(profile.mission).toBeNull();
+		expect(profile.vision).toBeNull();
+	});
 });
