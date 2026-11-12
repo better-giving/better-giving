@@ -738,7 +738,7 @@ describe('the amount tray’s cells', () => {
 		});
 	});
 
-	// other chosen: the entry opens under the tray's tiles on a row of its own, as before.
+	// other chosen: the entry opens under the tray's tiles on a row of its own.
 	it('opens the entry across a whole row under the tiles once other is chosen', async () => {
 		const tiles = await tray(6, '1440px');
 		(tiles.querySelector('.other input') as HTMLInputElement).click();
