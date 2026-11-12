@@ -2,9 +2,11 @@ import { data, href, redirect } from 'react-router';
 import { INTENTS } from '$lib/supporter/area/forms';
 import { supporterAreaLinks } from '$lib/supporter/area/links';
 import { OpenLink } from '$lib/supporter/area/open-link';
+import { StartFundraiser } from '$lib/supporter/area/start-form';
 import { usePosting } from '$lib/supporter/area/use-posting';
 import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
 import { redirectWithFlash, SUPPORTER_PUBLISHED_FLASH } from '$lib/server/flash';
+import { supporterFundraisersEnabled } from '$lib/server/org/queries';
 import { readSupporterOrg, toExpiredLink } from '$lib/server/supporters/area';
 import { readOpeningLink, signInWithLink } from '$lib/server/supporters/links';
 import { database } from '../context';
@@ -20,6 +22,11 @@ import type { Route } from './+types/fundraise.open';
 // no longer pending publishes nothing, so its press is named as a sign-in's. a link used, expired
 // or unknown goes to the sign-in screen's expired state, from the GET and from the post alike.
 //
+// while the organisation has switched fundraisers off, a confirm link whose page is still pending
+// draws the start form's off card instead, and its post spends nothing and comes back to it: the
+// page stays pending and the same link publishes once fundraisers are on again. a sign-in link,
+// and a confirm link whose page has left pending, opens as ever.
+//
 // `no-store` on every answer: the screen carries the token, and the post's redirect sets the
 // session, which a kept copy would replay.
 
@@ -29,10 +36,12 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const link = token === '' ? null : await readOpeningLink(db, token, new Date());
 	if (link === null) throw unstored(await toExpiredLink(request));
 	const purpose = link.page === null ? 'sign_in' : link.purpose;
-	return data(
-		{ org: await readSupporterOrg(db), purpose, page: link.page, token },
-		{ headers: { 'cache-control': 'no-store' } }
-	);
+	const org = await readSupporterOrg(db);
+	const opening =
+		purpose === 'confirm' && !(await supporterFundraisersEnabled(db))
+			? ({ org, closed: true } as const)
+			: ({ org, closed: false, purpose, page: link.page, token } as const);
+	return data(opening, { headers: { 'cache-control': 'no-store' } });
 }
 
 /** `no-store`, carried onto the document. */
@@ -46,9 +55,15 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	const token = typeof posted === 'string' ? posted : '';
 	const opened =
 		token === ''
-			? ({ ok: false } as const)
+			? ({ ok: false, reason: 'expired' } as const)
 			: await signInWithLink(context.get(database), request, token, new Date());
-	if (!opened.ok) return unstored(await toExpiredLink(request));
+	if (!opened.ok) {
+		return unstored(
+			opened.reason === 'closed'
+				? redirect(`${href('/fundraise/open')}?${new URLSearchParams({ token })}`, 303)
+				: await toExpiredLink(request)
+		);
+	}
 	const answer =
 		opened.purpose !== 'confirm' || opened.page === null
 			? redirect(href('/fundraise/pages'), 303)
@@ -72,7 +87,11 @@ function unstored(answer: Response): Response {
 export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
 	return [
 		{
-			title: loaderData.purpose === 'confirm' ? 'Publish your fundraiser' : 'Open your fundraiser'
+			title: loaderData.closed
+				? 'Start a fundraiser'
+				: loaderData.purpose === 'confirm'
+					? 'Publish your fundraiser'
+					: 'Open your fundraiser'
 		}
 	];
 }
@@ -82,13 +101,25 @@ export function links(): Route.LinkDescriptors {
 }
 
 export default function OpenRoute({ loaderData }: Route.ComponentProps) {
+	const opening = usePosting(INTENTS.open);
+	if (loaderData.closed) {
+		return (
+			<StartFundraiser
+				org={loaderData.org}
+				open={false}
+				donateHref={href('/donate')}
+				signInHref={href('/fundraise/sign-in')}
+				sending={false}
+			/>
+		);
+	}
 	return (
 		<OpenLink
 			org={loaderData.org}
 			purpose={loaderData.purpose}
 			page={loaderData.page}
 			token={loaderData.token}
-			opening={usePosting(INTENTS.open)}
+			opening={opening}
 		/>
 	);
 }

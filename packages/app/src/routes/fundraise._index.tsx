@@ -19,7 +19,6 @@ import {
 	startChallenge,
 	supporterLinkOrigin
 } from '$lib/server/supporters/area';
-import { linkLimiters } from '$lib/server/supporters/links';
 import { startFundraiser, UNMAILABLE_START } from '$lib/server/supporters/start';
 import { database, platform } from '../context';
 import type { SupporterPolicyHandle } from '../document-policy';
@@ -78,7 +77,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 	const started = await startFundraiser(
 		{
 			db,
-			limiters: linkLimiters(env),
+			limiter: env.SUPPORTER_START_RATE_LIMITER,
 			defer: (work) => deferred.waitUntil(work),
 			sendLink: linkMailer(db, env),
 			linkOrigin: supporterLinkOrigin(env),

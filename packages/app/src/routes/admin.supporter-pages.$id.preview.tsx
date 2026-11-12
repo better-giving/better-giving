@@ -1,6 +1,6 @@
 import { data, href } from 'react-router';
 import { APP_NAME } from '$lib/admin/screen-title';
-import { FundraiserPage, fundraiserPageLinks } from '$lib/supporter/public/fundraiser-page';
+import { FundraiserPage, fundraiserPreviewLinks } from '$lib/supporter/public/fundraiser-page';
 import { staffGate } from '$lib/server/auth/gate';
 import { SERVED_LOCALE } from '$lib/server/forms/published-config';
 import { readOrgProfile, readOrgProfileLogo } from '$lib/server/org/queries';
@@ -58,7 +58,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			url: supporterShareUrl(env, request, href('/f/:slug', { slug: preview.slug }))
 		},
 		contact: donorContact(profile),
-		fundraiserEntry: false
+		fundraiserEntry: false,
+		staffNotice: { hidden: preview.hidden, note: preview.hiddenNote }
 	};
 }
 
@@ -73,7 +74,7 @@ export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
 }
 
 export function links(): Route.LinkDescriptors {
-	return fundraiserPageLinks();
+	return fundraiserPreviewLinks();
 }
 
 export default function FundraiserPreviewRoute({ loaderData }: Route.ComponentProps) {

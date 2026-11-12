@@ -1,12 +1,13 @@
-import { and, eq, gt, isNull, type SQL, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, ne, notExists, or, type SQL, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { supporter, supporterLink, supporterPage, type SupporterLinkPurpose } from '../db/schema';
 import {
-	isRateLimited,
 	rateLimitWait,
-	supporterLinkRateLimitKey,
-	supporterMailRateLimitKey
+	supporterResendRateLimitKey,
+	supporterSignInAddressRateLimitKey,
+	supporterSignInCallerRateLimitKey
 } from '../api/rate-limit';
+import { supporterFundraisersEnabledSql } from '../org/queries';
 import type { RateLimiter } from '../runtime/rate-limiter';
 import { startSupporterSession } from './session';
 import { hashToken, mintToken } from './token';
@@ -61,51 +62,45 @@ export function linkInsert(
 }
 
 /**
- * the buckets a press that mails a link is charged: `SUPPORTER_LINK_CALLER_RATE_LIMITER` and
- * `SUPPORTER_LINK_ADDRESS_RATE_LIMITER` off the platform env.
+ * the buckets a press that mails a link off the sign-in screen or Check your email is charged, off
+ * the platform env: "Email me a link" by the caller and by the address, and Send it again by its
+ * page. a start is charged its own (./start.ts). none shares a bucket with another.
  */
 export type LinkLimiters = {
-	readonly byCaller: RateLimiter | undefined;
-	readonly byAddress: RateLimiter | undefined;
+	readonly signInByCaller: RateLimiter | undefined;
+	readonly signInByAddress: RateLimiter | undefined;
+	readonly resendByPage: RateLimiter | undefined;
 };
 
 /** the buckets `env` carries for a press that mails a link. */
 export function linkLimiters(env: Env): LinkLimiters {
 	return {
-		byCaller: env.SUPPORTER_LINK_CALLER_RATE_LIMITER,
-		byAddress: env.SUPPORTER_LINK_ADDRESS_RATE_LIMITER
+		signInByCaller: env.SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER,
+		signInByAddress: env.SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER,
+		resendByPage: env.SUPPORTER_RESEND_RATE_LIMITER
 	};
-}
-
-/** charges the caller's bucket; `true` where it has nothing left. */
-export function callerOverLinkLimit(limiters: LinkLimiters, request: Request): Promise<boolean> {
-	return isRateLimited(limiters.byCaller, supporterLinkRateLimitKey(request));
-}
-
-/**
- * charges the address's bucket; `true` where it has nothing left. charged only for a press the
- * caller's bucket admitted, so a caller over its own limit spends no supporter's.
- */
-export function addressOverLinkLimit(limiters: LinkLimiters, email: string): Promise<boolean> {
-	return isRateLimited(limiters.byAddress, supporterMailRateLimitKey(email));
 }
 
 /** a link press refused: the seconds until the bucket that refused it admits again. */
 export type LinkRefusal = { readonly retryAfterSeconds: number };
 
+const refusal = (wait: number | null): LinkRefusal | null =>
+	wait === null ? null : { retryAfterSeconds: wait };
+
 /**
- * both buckets, the caller's first, the address's only where the caller's admitted; the refusal
- * from whichever has nothing left, or `null`.
+ * "Email me a link"'s two buckets, the caller's first and the address's only where the caller's
+ * admitted, so a caller over its own limit spends no supporter's; the refusal from whichever has
+ * nothing left, or `null`.
  */
-async function overLinkLimit(
+async function signInRefusal(
 	limiters: LinkLimiters,
 	request: Request,
 	email: string
 ): Promise<LinkRefusal | null> {
-	const wait =
-		(await rateLimitWait(limiters.byCaller, supporterLinkRateLimitKey(request))) ??
-		(await rateLimitWait(limiters.byAddress, supporterMailRateLimitKey(email)));
-	return wait === null ? null : { retryAfterSeconds: wait };
+	return refusal(
+		(await rateLimitWait(limiters.signInByCaller, supporterSignInCallerRateLimitKey(request))) ??
+			(await rateLimitWait(limiters.signInByAddress, supporterSignInAddressRateLimitKey(email)))
+	);
 }
 
 export type SignInRequestDeps = {
@@ -128,7 +123,7 @@ export async function requestSignInLink(
 	request: Request,
 	email: string
 ): Promise<'sent' | LinkRefusal> {
-	const refused = await overLinkLimit(deps.limiters, request, email);
+	const refused = await signInRefusal(deps.limiters, request, email);
 	if (refused !== null) return refused;
 	deps.defer(mailSignInLink(deps, email));
 	return 'sent';
@@ -153,15 +148,17 @@ async function mailSignInLink(deps: SignInRequestDeps, email: string): Promise<v
 /**
  * Send it again after a start: a fresh confirm link for the pending page `pageId`, which the
  * supporter at `email` started, beside the confirm links already mailed for it. answered
- * and limited as `requestSignInLink` is, `sent` for every address and page, and nothing is mailed
- * where the page is not that supporter's or is no longer pending.
+ * as `requestSignInLink` is, `sent` for every address and page, and nothing is mailed where the
+ * page is not that supporter's or is no longer pending. charged by the page alone, before anything
+ * is read.
  */
 export async function resendConfirmLink(
 	deps: SignInRequestDeps,
-	request: Request,
 	asked: { readonly email: string; readonly pageId: string }
 ): Promise<'sent' | LinkRefusal> {
-	const refused = await overLinkLimit(deps.limiters, request, asked.email);
+	const refused = refusal(
+		await rateLimitWait(deps.limiters.resendByPage, supporterResendRateLimitKey(asked.pageId))
+	);
 	if (refused !== null) return refused;
 	deps.defer(mailConfirmLink(deps, asked));
 	return 'sent';
@@ -203,6 +200,32 @@ function opens(tokenHash: string, now: Date): SQL | undefined {
 		eq(supporterLink.tokenHash, tokenHash),
 		isNull(supporterLink.usedAt),
 		gt(supporterLink.expiresAt, now)
+	);
+}
+
+/**
+ * a link that spends: one that `opens`, and is not a `confirm` link whose page is still pending
+ * while the organisation has switched fundraisers off. that one stays unspent and its page pending,
+ * so the same link publishes once fundraisers are on again.
+ */
+function spends(db: Db, tokenHash: string, now: Date): SQL | undefined {
+	return and(
+		opens(tokenHash, now),
+		or(
+			ne(supporterLink.purpose, 'confirm'),
+			notExists(
+				db
+					.select({ id: supporterPage.id })
+					.from(supporterPage)
+					.where(
+						and(
+							eq(supporterPage.id, supporterLink.supporterPageId),
+							eq(supporterPage.status, 'pending')
+						)
+					)
+			),
+			supporterFundraisersEnabledSql(db)
+		)
 	);
 }
 
@@ -251,7 +274,8 @@ export async function readOpeningLink(
 /**
  * a link opened: signed in, with the `Set-Cookie` value carrying the session, and for a `confirm`
  * link the page it named, now live unless it had already left `pending`. a used, expired or unknown
- * token is one refusal with nothing in it to tell the three apart.
+ * token is one refusal, `expired`, with nothing in it to tell the three apart; `closed` is a confirm
+ * link left unspent because fundraisers are off (`spends`).
  */
 export type OpenedLink =
 	| {
@@ -265,7 +289,7 @@ export type OpenedLink =
 			 */
 			readonly published: boolean;
 	  }
-	| { readonly ok: false };
+	| { readonly ok: false; readonly reason: 'expired' | 'closed' };
 
 export async function signInWithLink(
 	db: Db,
@@ -273,13 +297,13 @@ export async function signInWithLink(
 	token: string,
 	now: Date
 ): Promise<OpenedLink> {
-	const open = opens(hashToken(token), now);
+	const open = spends(db, hashToken(token), now);
 	const unspent = (
 		column: typeof supporterLink.supporterId | typeof supporterLink.supporterPageId
 	) => db.select({ id: column }).from(supporterLink).where(open);
 
 	// one batch, and the link is spent last: the publish and the stamp are guarded on the link still
-	// being open, so they land exactly when the spend does, and a second opening lands none of them.
+	// spending, so they land exactly when the spend does, and a second opening lands none of them.
 	const [publish, , spent] = await db.batch([
 		db
 			.update(supporterPage)
@@ -302,7 +326,11 @@ export async function signInWithLink(
 		})
 	]);
 	const [link] = spent;
-	if (!link) return { ok: false };
+	if (!link) {
+		// read after the write only to word the refusal: a link still opening was held by `spends`.
+		const held = await readOpeningLink(db, token, now);
+		return { ok: false, reason: held?.page ? 'closed' : 'expired' };
+	}
 
 	const page =
 		link.pageId === null

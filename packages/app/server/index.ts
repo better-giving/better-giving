@@ -4,8 +4,10 @@
  * reads `DATABASE_URL` (a `file:` URL naming the database file), `PORT` and `HOST` (production
  * only; 3000 and every interface by default) and `TRUSTED_PROXY_HEADER`
  * (../src/lib/server/runtime/client-ip.ts, forwarded-proto.ts), plus every name `Env` carries
- * (../src/lib/server/runtime/env.ts), and refuses to start without `REQUIRED_ENV_VARS` there, or
- * on an env the built app refuses (`startRefusal` in ../src/server/app.ts).
+ * (../src/lib/server/runtime/env.ts), and refuses to start without `REQUIRED_ENV_VARS` there, on
+ * a loopback `BETTER_AUTH_URL` under `NODE_ENV=production` (`loopbackPinRefusal` in
+ * ../src/lib/server/auth/env.ts), or on an env the built app refuses (`startRefusal` in
+ * ../src/server/app.ts).
  * migrations are not applied here: `pnpm db:migrate` runs them before the server starts
  * (AGENTS.md → Schema).
  *
@@ -14,6 +16,7 @@
  */
 
 import { resolve } from 'node:path';
+import { loopbackPinRefusal } from '../src/lib/server/auth/env.ts';
 import { openDatabase } from '../src/lib/server/db/open.ts';
 import { missingRequiredEnv } from '../src/lib/server/runtime/env.ts';
 import { StartRefused, startServer } from './start.ts';
@@ -33,6 +36,12 @@ const root = resolve(import.meta.dirname, '..');
 const missing = missingRequiredEnv(process.env);
 if (missing.length > 0) {
 	for (const line of missing) console.error(line);
+	process.exit(1);
+}
+
+const loopbackPin = loopbackPinRefusal(process.env);
+if (loopbackPin !== null) {
+	console.error(loopbackPin);
 	process.exit(1);
 }
 

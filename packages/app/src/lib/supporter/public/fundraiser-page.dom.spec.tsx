@@ -191,6 +191,52 @@ describe('a live fundraiser, part way', () => {
 	});
 });
 
+describe('staff’s preview', () => {
+	const notice = (root: HTMLElement) => root.querySelector<HTMLElement>('.ds-notice-card');
+	const preview = (staffNotice: FundraiserPageViewProps['staffNotice']) =>
+		mount(<FundraiserPage {...props(PART_WAY, { donationBox: null, staffNotice })} />);
+
+	it('says over the title of a hidden page what a visitor sees instead', () => {
+		const root = preview({ hidden: true, note: null });
+		const card = notice(root);
+		expect(card?.className).toBe('ds-notice-card ds-notice-card-warning');
+		const title = card?.querySelector('.ds-notice-card-title');
+		expect(title?.textContent).toBe('Hidden from visitors');
+		expect(card?.getAttribute('aria-labelledby')).toBe(title?.id);
+		expect(card?.hasAttribute('role')).toBe(false);
+		expect(
+			[...(card?.querySelectorAll('.ds-notice-card-body > p') ?? [])].map((p) => p.textContent)
+		).toEqual(['Visitors see “This page is not taking gifts right now.” instead of this page.']);
+		const order = [...root.querySelectorAll('.ds-notice-card, h1')].map((node) => node.tagName);
+		expect(order).toEqual(['SECTION', 'H1']);
+	});
+
+	it('gives staff’s note word for word on its own line', () => {
+		const root = preview({ hidden: true, note: 'Please take out the phone number.' });
+		const lines = [...(notice(root)?.querySelectorAll('.ds-notice-card-body > p') ?? [])];
+		expect(lines.map((p) => p.textContent)).toEqual([
+			'Visitors see “This page is not taking gifts right now.” instead of this page.',
+			'Note for the supporter: Please take out the phone number.'
+		]);
+	});
+
+	it('writes the note as text, never as markup', () => {
+		const note = '<b>Call</b> <img src=x onerror="alert(1)"> us';
+		const root = preview({ hidden: true, note });
+		const line = notice(root)?.querySelectorAll('.ds-notice-card-body > p')[1];
+		expect(line?.textContent).toBe(`Note for the supporter: ${note}`);
+		expect(line?.children).toHaveLength(0);
+	});
+
+	it('draws nothing over a page visitors can see, nor where no notice is passed', () => {
+		for (const root of [preview({ hidden: false, note: 'left from before' }), preview(undefined)]) {
+			expect(notice(root)).toBeNull();
+			expect(text(root)).not.toContain('Hidden from visitors');
+			expect(text(root)).not.toContain('left from before');
+		}
+	});
+});
+
 describe('the photo', () => {
 	it('stands in its 16:9 block where there is one', () => {
 		const root = mount(<FundraiserPage {...props(PART_WAY)} />);

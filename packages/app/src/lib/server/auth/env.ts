@@ -121,3 +121,36 @@ export function publishedOrigin(url: URL, pin: PinReading): string {
 	const origin = new URL(pin.ok && pin.origin !== null ? pin.origin : url.origin);
 	return LOCAL_HOSTS.has(origin.hostname) ? origin.origin : `https://${origin.host}`;
 }
+
+/**
+ * why a production process must not start on its `BETTER_AUTH_URL`, or `null`: a pin naming a
+ * loopback host (localhost, `*.localhost`, 127.x, ::1), which is never where a deployment answers.
+ * the staff session cookie drops `Secure` on localhost, `*.localhost` and 127.0.0.1
+ * (`useSecureCookies` in ./index.ts), so such a pin left in a deployed `.env` writes it without
+ * the flag. `NODE_ENV` is `production` in the image (`Dockerfile`); any other value is a
+ * contributor's machine, where loopback is the point.
+ */
+export function loopbackPinRefusal(
+	source: Readonly<{ NODE_ENV?: string | undefined; BETTER_AUTH_URL?: string | undefined }>
+): string | null {
+	if (source.NODE_ENV !== 'production') return null;
+	const pin = readPin(readAuthEnv(source));
+	if (!pin.ok || pin.origin === null || !isLoopbackHost(new URL(pin.origin).hostname)) {
+		return null;
+	}
+	return (
+		`\`BETTER_AUTH_URL\` is \`${source.BETTER_AUTH_URL?.trim()}\`, a loopback address, and ` +
+		'`NODE_ENV` is `production`: no deployment answers there, and on one the staff sign-in ' +
+		'cookie is written without its Secure flag. Set it to the address the deployment answers on (`https://donate.example.org`), or ' +
+		'unset it so the origin is read off each request (DEPLOY.md, .env.example).'
+	);
+}
+
+function isLoopbackHost(hostname: string): boolean {
+	return (
+		hostname === 'localhost' ||
+		hostname.endsWith('.localhost') ||
+		hostname === '[::1]' ||
+		/^127\.\d+\.\d+\.\d+$/.test(hostname)
+	);
+}

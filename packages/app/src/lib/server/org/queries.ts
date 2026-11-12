@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, notExists, type SQL, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { image, orgProfile, type OrgProfile } from '../db/schema';
 import { freeImageStatements } from '../images/free';
@@ -220,6 +220,21 @@ export async function supporterFundraisersEnabled(db: Db): Promise<boolean> {
 		.from(orgProfile)
 		.where(eq(orgProfile.id, ORG_PROFILE_ID));
 	return row?.enabled ?? true;
+}
+
+/**
+ * `supporterFundraisersEnabled` as a condition, for a write that must land only while the setting
+ * is on and so reads it in its own statement: true where no profile row says off.
+ */
+export function supporterFundraisersEnabledSql(db: Db): SQL {
+	return notExists(
+		db
+			.select({ id: orgProfile.id })
+			.from(orgProfile)
+			.where(
+				and(eq(orgProfile.id, ORG_PROFILE_ID), eq(orgProfile.supporterFundraisersEnabled, false))
+			)
+	);
 }
 
 /**

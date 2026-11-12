@@ -1,9 +1,5 @@
 import { data } from 'react-router';
-import {
-	isRateLimited,
-	supporterPhotoCallerRateLimitKey,
-	supporterPhotoRateLimitKey
-} from '$lib/server/api/rate-limit';
+import { isRateLimited, supporterPhotoRateLimitKey } from '$lib/server/api/rate-limit';
 import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
 import { readPostedBody } from '$lib/server/images/intake';
 import { checkSupporterPhoto } from '$lib/server/supporters/photo';
@@ -26,10 +22,10 @@ import type { Route } from './+types/fundraise.photo';
 // $lib/server/images/free.ts).
 //
 // photos are rows in the one database file, so each is charged before its body is read, against
-// the supporter, whichever session posts it, and against the caller, both on
-// `SUPPORTER_PHOTO_RATE_LIMITER`: a day's count. the sweep frees a photo nothing holds a day after
-// it was stored (`UNHELD_PHOTO_KEEP_MS` in $lib/server/supporters/sweep.ts), so a supporter can
-// leave at most twice that count unheld.
+// the supporter alone, whichever session or network posts it, on `SUPPORTER_PHOTO_RATE_LIMITER`: a
+// day's count. never against the network, so supporters behind one address are not refused as a
+// group. the sweep frees a photo nothing holds a day after it was stored (`UNHELD_PHOTO_KEEP_MS` in
+// $lib/server/supporters/sweep.ts), so a supporter can leave at most twice that count unheld.
 
 /** what a supporter past the day's count is told, beside the photo box. */
 const TOO_MANY_PHOTOS =
@@ -49,11 +45,9 @@ export async function action({ context, request }: Route.ActionArgs) {
 	const signedIn = await readSupporterSession(db, request, new Date());
 	if (signedIn === null) return data({ error: 'Sign in to add a photo.' }, 401);
 	const limiter = context.get(platform).env.SUPPORTER_PHOTO_RATE_LIMITER;
-	const refused = await Promise.all([
-		isRateLimited(limiter, supporterPhotoRateLimitKey(signedIn.supporterId)),
-		isRateLimited(limiter, supporterPhotoCallerRateLimitKey(request))
-	]);
-	if (refused.includes(true)) return data({ error: TOO_MANY_PHOTOS }, 429);
+	if (await isRateLimited(limiter, supporterPhotoRateLimitKey(signedIn.supporterId))) {
+		return data({ error: TOO_MANY_PHOTOS }, 429);
+	}
 	const posted = await readPostedBody(request);
 	const photo = posted.ok ? await checkSupporterPhoto(db, posted.body.get('file'), 'file') : posted;
 	if (!photo.ok) return data({ error: photo.error }, photo.refusal === 'too-large' ? 413 : 400);

@@ -215,13 +215,10 @@ describe('a start refused', () => {
 		});
 	});
 
-	it('past the bucket for one client address, before the spam check runs', async () => {
+	it('past the bucket for one network, before the spam check runs', async () => {
 		let checks = 0;
 		const { deps } = startDeps(db, {
-			limiters: {
-				byCaller: createRateLimiter({ limit: 1, period: 60 }),
-				byAddress: createRateLimiter({ limit: 100, period: 60 })
-			},
+			limiter: createRateLimiter({ limit: 1, period: 3600 }),
 			checkChallenge: async () => {
 				checks += 1;
 				return { ok: true };
@@ -239,30 +236,20 @@ describe('a start refused', () => {
 		expect(checks).toBe(1);
 	});
 
-	it('past the address’s bucket only once the spam check clears', async () => {
-		let solved = false;
-		const { deps } = startDeps(db, {
-			limiters: {
-				byCaller: createRateLimiter({ limit: 100, period: 60 }),
-				byAddress: createRateLimiter({ limit: 1, period: 3600 })
-			},
-			checkChallenge: async () =>
-				solved
-					? { ok: true }
-					: { ok: false, reason: 'rejected', detail: 'not solved', operatorFix: null }
-		});
-		for (let n = 0; n < 3; n += 1) {
-			expect(await startFundraiser(deps, fromCaller(), startInput())).toEqual({
-				ok: false,
-				reason: 'challenge_failed'
+	it('from one network, whichever address in its /48 posts and whoever is named', async () => {
+		const { deps } = startDeps(db, { limiter: createRateLimiter({ limit: 2, period: 3600 }) });
+		const inBlock = (n: number) =>
+			new Request('https://give.example/f/start', {
+				method: 'POST',
+				headers: { 'x-better-giving-client-ip': `2001:db8:5:${n}::1` }
 			});
+		const answers = [];
+		for (let n = 0; n < 3; n += 1) {
+			answers.push(
+				(await startFundraiser(deps, inBlock(n), startInput({ email: `s${n}@example.org` }))).ok
+			);
 		}
-		solved = true;
-		expect((await startFundraiser(deps, fromCaller(), startInput())).ok).toBe(true);
-		expect(await startFundraiser(deps, fromCaller(), startInput())).toEqual({
-			ok: false,
-			reason: 'too_many'
-		});
+		expect(answers).toEqual([true, true, false]);
 	});
 });
 
@@ -283,16 +270,16 @@ describe('Send it again after a start', () => {
 	async function resend(
 		page: { pageId: string },
 		email = 'maya@example.org',
-		over: { byAddress?: ReturnType<typeof createRateLimiter>; request?: Request } = {}
+		over: { byPage?: ReturnType<typeof createRateLimiter> } = {}
 	) {
 		const { deps, mailed, settled } = startDeps(db, { now: LATER });
-		const answer = await resendConfirmLink(
-			over.byAddress
-				? { ...deps, limiters: { ...deps.limiters, byAddress: over.byAddress } }
-				: deps,
-			over.request ?? fromCaller(),
-			{ email, pageId: page.pageId }
-		);
+		const roomy = () => createRateLimiter({ limit: 100, period: 60 });
+		const limiters = {
+			signInByCaller: roomy(),
+			signInByAddress: roomy(),
+			resendByPage: over.byPage ?? roomy()
+		};
+		const answer = await resendConfirmLink({ ...deps, limiters }, { email, pageId: page.pageId });
 		await settled();
 		return { answer, mailed };
 	}
@@ -329,7 +316,7 @@ describe('Send it again after a start', () => {
 		const first = await pendingPage(db);
 		await resend(first);
 		expect(await open(first.token)).toMatchObject({ ok: true, page: { id: first.pageId } });
-		expect(await open(first.token)).toEqual({ ok: false });
+		expect(await open(first.token)).toEqual({ ok: false, reason: 'expired' });
 	});
 
 	it('leaves the confirm link of the supporter’s other pending page working', async () => {
@@ -367,17 +354,31 @@ describe('Send it again after a start', () => {
 		expect(await resend(first)).toEqual({ answer: 'sent', mailed: [] });
 	});
 
-	it('answers too many tries past the address’s bucket, mailing nothing more', async () => {
+	it('answers too many tries past the page’s bucket, from any caller, mailing nothing more', async () => {
 		const first = await pendingPage(db);
-		const byAddress = createRateLimiter({ limit: 2, period: 3600 });
+		const byPage = createRateLimiter({ limit: 2, period: 3600 });
 		const answers: unknown[] = [];
 		let sent = 0;
 		for (let n = 0; n < 3; n += 1) {
-			const { answer, mailed } = await resend(first, 'maya@example.org', { byAddress });
+			const { answer, mailed } = await resend(first, 'maya@example.org', { byPage });
 			answers.push(answer);
 			sent += mailed.length;
 		}
 		expect(answers).toEqual(['sent', 'sent', { retryAfterSeconds: 3600 }]);
 		expect(sent).toBe(2);
+	});
+
+	it('counts each page on its own', async () => {
+		const other = await pendingPage(db, { title: 'A second run' });
+		const first = await pendingPage(db);
+		const byPage = createRateLimiter({ limit: 1, period: 3600 });
+		expect((await resend(first, 'maya@example.org', { byPage })).answer).toBe('sent');
+		expect((await resend(first, 'maya@example.org', { byPage })).answer).toEqual({
+			retryAfterSeconds: 3600
+		});
+		expect(await resend(other, 'maya@example.org', { byPage })).toMatchObject({
+			answer: 'sent',
+			mailed: [{ arm: { kind: 'first', pageTitle: 'A second run' } }]
+		});
 	});
 });

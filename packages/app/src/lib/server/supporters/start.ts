@@ -5,6 +5,7 @@ import { freeSlug, SUPPORTER_RESERVED_SEGMENTS } from '../../page/slug';
 import { PHOTO_FILE_FIELD } from '../../supporter/area/forms';
 import type { SupporterStart } from '../../supporters/input';
 import type { ChallengeResult } from '../api/challenge';
+import { isRateLimited, supporterStartRateLimitKey } from '../api/rate-limit';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { page, supporter, supporterPage } from '../db/schema';
@@ -14,14 +15,9 @@ import { ownedFormInsert, readForm } from '../forms/queries';
 import { supporterFundraisersEnabled } from '../org/queries';
 import { ensureDonationPage } from '../pages/donation-page';
 import { SLUG_ATTEMPTS } from '../pages/queries';
+import type { RateLimiter } from '../runtime/rate-limiter';
 import type { supporterLinkOrigin } from './area';
-import {
-	addressOverLinkLimit,
-	callerOverLinkLimit,
-	type LinkLimiters,
-	linkInsert,
-	type SendLink
-} from './links';
+import { linkInsert, type SendLink } from './links';
 import { checkSupporterPhoto } from './photo';
 
 // starting a fundraiser: a member of the public makes a page of their own for this organisation. one
@@ -37,8 +33,8 @@ import { checkSupporterPhoto } from './photo';
 
 export type StartDeps = {
 	readonly db: Db;
-	/** a start mails a link, so it is charged as every press that mails one is. */
-	readonly limiters: LinkLimiters;
+	/** `SUPPORTER_START_RATE_LIMITER`, charged by the caller's network before anything else. */
+	readonly limiter: RateLimiter | undefined;
 	readonly defer: (work: Promise<unknown>) => void;
 	readonly sendLink: SendLink;
 	/**
@@ -61,7 +57,7 @@ export const UNMAILABLE_START =
 	'We can’t send email just now, so your fundraiser wasn’t started. Try again later, or let the organisation know.';
 
 /**
- * the page made, or why not: `too_many` over the caller's or the address's bucket, `closed` where
+ * the page made, or why not: `too_many` over the caller's network's bucket, `closed` where
  * the organisation has switched fundraisers off, `unmailable` where no link can be mailed
  * (`linkOrigin`, logged for whoever runs the server), `challenge_failed` for a token or payload
  * that did not clear (a fresh challenge is the answer), `challenge_unavailable` where the check
@@ -92,7 +88,9 @@ export async function startFundraiser(
 	input: SupporterStart,
 	photo: FormDataEntryValue | null = null
 ): Promise<StartResult> {
-	if (await callerOverLinkLimit(deps.limiters, request)) return { ok: false, reason: 'too_many' };
+	if (await isRateLimited(deps.limiter, supporterStartRateLimitKey(request))) {
+		return { ok: false, reason: 'too_many' };
+	}
 	if (!(await supporterFundraisersEnabled(deps.db))) return { ok: false, reason: 'closed' };
 	if (!deps.linkOrigin.ok) {
 		console.error('a fundraiser start was refused:', deps.linkOrigin.why);
@@ -112,11 +110,6 @@ export async function startFundraiser(
 			reason: challenge.reason === 'rejected' ? 'challenge_failed' : 'challenge_unavailable'
 		};
 	}
-	// after the challenge, so a start that never clears it spends nothing of the address's bucket.
-	if (await addressOverLinkLimit(deps.limiters, input.email)) {
-		return { ok: false, reason: 'too_many' };
-	}
-
 	const posted = isPosted(photo)
 		? await checkSupporterPhoto(deps.db, photo, PHOTO_FILE_FIELD)
 		: null;

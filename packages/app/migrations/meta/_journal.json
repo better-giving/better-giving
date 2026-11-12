@@ -267,13 +267,6 @@
       "when": 1794395901169,
       "tag": "0037_supporter_fundraisers",
       "breakpoints": true
-    },
-    {
-      "idx": 38,
-      "version": "6",
-      "when": 1794478159294,
-      "tag": "0038_supporter_lookup_indexes",
-      "breakpoints": true
     }
   ]
 }

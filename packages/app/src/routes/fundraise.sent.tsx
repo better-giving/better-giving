@@ -103,7 +103,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 	const ticket = await readResendTicket(request);
 	const asked =
 		ticket !== null && ticket.email === email
-			? await resendConfirmLink(deps, request, ticket)
+			? await resendConfirmLink(deps, ticket)
 			: await requestSignInLink(deps, request, email);
 	if (asked !== 'sent') {
 		return redirectWithFlash(

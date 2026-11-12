@@ -3708,6 +3708,13 @@
             "id"
           ],
           "isUnique": false
+        },
+        "supporter_page_photo_id_idx": {
+          "name": "supporter_page_photo_id_idx",
+          "columns": [
+            "photo_id"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {

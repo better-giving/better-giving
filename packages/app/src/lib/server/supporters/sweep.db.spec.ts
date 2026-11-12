@@ -292,3 +292,47 @@ describe('sweeping fundraisers nobody confirmed', () => {
 		expect((await heldAddresses(db)).has(slug)).toBe(false);
 	});
 });
+
+describe('sweeping supporters who never signed in', () => {
+	const supporters = async () =>
+		(await all<{ id: string }>(stmt('select id from supporter order by id'))).map((row) => row.id);
+
+	it('deletes one with no page, no link and no session left', async () => {
+		await sweepSupporterLeftovers(db, NOW);
+
+		expect(await supporters()).toEqual([]);
+	});
+
+	it('deletes one whose only page this same sweep took as unconfirmed', async () => {
+		await emptySupporterTables();
+		await writeOrgRow(client);
+		await pendingPage(db);
+
+		await sweepSupporterLeftovers(db, new Date(STARTED_AT.getTime() + PENDING_PAGE_KEEP_MS + 1));
+
+		expect(await supporters()).toEqual([]);
+	});
+
+	it.each([
+		['a link', () => link('a', at(HOUR))],
+		['a session', () => session('a', at(HOUR))],
+		['a sign-in', () => run(stmt('update supporter set last_sign_in_at = ?', at(-HOUR)))]
+	])('keeps one with %s', async (_, leave) => {
+		await leave();
+
+		await sweepSupporterLeftovers(db, NOW);
+
+		expect(await supporters()).toEqual([SUPPORTER]);
+	});
+
+	it('keeps one with a page', async () => {
+		await emptySupporterTables();
+		await writeOrgRow(client);
+		await pendingPage(db);
+		await run(stmt('delete from supporter_link'));
+
+		await sweepSupporterLeftovers(db, NOW);
+
+		expect(await supporters()).toHaveLength(1);
+	});
+});

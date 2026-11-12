@@ -1,4 +1,5 @@
 import registryBadge from '@better-giving/operator/registry/styles/badge-css.css?url';
+import registryNoticeCard from '@better-giving/operator/registry/styles/notice-card-css.css?url';
 import registryProgress from '@better-giving/operator/registry/styles/progress-css.css?url';
 import { formatOffer } from '@better-giving/form/money';
 import type { FormConfig } from '@better-giving/form/v1';
@@ -12,6 +13,7 @@ import { DonorMessages, type DonorMessagesWiring } from '../../donate/sections/m
 import { OrgContact } from '../../donate/sections/org-info';
 import { Share } from '../../donate/sections/share';
 import { imageSrc } from '../../page/image-src';
+import { NoticeCard } from '../area/cards';
 import * as copy from './copy';
 import fundraiserSheet from './fundraiser.css?url';
 import { FundraiserRaised } from './raised';
@@ -19,6 +21,7 @@ import type {
 	FundraiserEndedPageProps,
 	FundraiserOrg,
 	FundraiserPageProps,
+	FundraiserStaffNotice,
 	LiveFundraiserView
 } from './types';
 
@@ -47,6 +50,11 @@ export function fundraiserPageLinks() {
 	];
 }
 
+/** the live page's sheets, then the registry's notice card, which staff's preview draws over it. */
+export function fundraiserPreviewLinks() {
+	return [...fundraiserPageLinks(), { rel: 'stylesheet' as const, href: registryNoticeCard }];
+}
+
 /** the first word of the supporter's name, which the story's heading and the box's name use. */
 export function firstName(name: string): string {
 	return name.trim().split(/\s+/)[0] ?? name;
@@ -60,6 +68,11 @@ export type FundraiserPageViewProps = FundraiserPageProps & {
 	 * the fundraiser holds.
 	 */
 	readonly donorMessages?: DonorMessagesWiring | undefined;
+	/**
+	 * staff's preview only: hidden, a warning notice over the title says visitors do not see the
+	 * page, with staff's note. its card is drawn by the sheet `fundraiserPreviewLinks` adds.
+	 */
+	readonly staffNotice?: FundraiserStaffNotice | undefined;
 };
 
 export function FundraiserPage(props: FundraiserPageViewProps) {
@@ -78,6 +91,7 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 			<main className="page-body">
 				<div className="page-in page-layout fundraiser-layout">
 					<div className="fundraiser-who" data-area="who">
+						{props.staffNotice?.hidden ? <HiddenNotice note={props.staffNotice.note} /> : null}
 						<a className="fundraiser-for" href="/donate">
 							<OrgLogo org={org} className="fundraiser-for-logo" />
 							<span>
@@ -141,6 +155,19 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 				</div>
 			</footer>
 		</PageRoot>
+	);
+}
+
+function HiddenNotice({ note }: { readonly note: string | null }) {
+	return (
+		<NoticeCard tone="warning" title={copy.HIDDEN_TITLE}>
+			<p>{copy.HIDDEN_BODY}</p>
+			{note === null ? null : (
+				<p>
+					{copy.HIDDEN_NOTE_LABEL} {note}
+				</p>
+			)}
+		</NoticeCard>
 	);
 }
 

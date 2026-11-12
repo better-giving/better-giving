@@ -1,6 +1,8 @@
 // every word a donor reads on a supporter's fundraiser and on the entry card that starts one. the
 // donor page's own words stay in $lib/donate/copy.ts; these are the supporter feature's.
 
+import { NO_FORM } from '../../donate/copy';
+
 /** where the entry card and the footer send a supporter to start a fundraiser. */
 export const START_HREF = '/fundraise';
 
@@ -66,3 +68,8 @@ export function story(firstName: string): string {
 }
 
 export const SHARE_HEADING = 'Share this page';
+
+/** the notice over a hidden fundraiser's staff preview; a visitor gets `NO_FORM` in its place. */
+export const HIDDEN_TITLE = 'Hidden from visitors';
+export const HIDDEN_BODY = `Visitors see “${NO_FORM}” instead of this page.`;
+export const HIDDEN_NOTE_LABEL = 'Note for the supporter:';

@@ -170,38 +170,49 @@ export function signInRateLimitKey(request: Request): string | null {
 }
 
 /**
- * what one press that mails a supporter a link counts against — "Email me a link", Send it again
- * and Start a fundraiser — by the caller, and `null` for a caller with no bucket at all. charged on
- * `SUPPORTER_LINK_CALLER_RATE_LIMITER`, a limiter of its own, so no press spends the staff
+ * what one "Email me a link" counts against by the caller, on `SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER`,
+ * and `null` for a caller with no bucket at all: a limiter of its own, so no press spends the staff
  * sign-in's guesses. the `/48`, for the reason `signInRateLimitKey` keys one: each press mails
  * somebody.
  */
-export function supporterLinkRateLimitKey(request: Request): string | null {
+export function supporterSignInCallerRateLimitKey(request: Request): string | null {
 	const payer = attributedCaller(request, 48);
-	return payer === null ? null : `supporter-link ${payer}`;
+	return payer === null ? null : `supporter-sign-in ${payer}`;
 }
 
 /**
- * the same presses by the address being mailed, lowercased by the parse, on
- * `SUPPORTER_LINK_ADDRESS_RATE_LIMITER`: what bounds one inbox being posted to from many callers,
- * charged only for a press its caller's bucket admitted.
+ * the same press by the address being mailed, lowercased by the parse, on
+ * `SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER`: what bounds one inbox being posted to from many
+ * callers, charged only for a press its caller's bucket admitted.
  */
-export function supporterMailRateLimitKey(email: string): string {
-	return `supporter-link mail ${email}`;
+export function supporterSignInAddressRateLimitKey(email: string): string {
+	return `supporter-sign-in mail ${email}`;
+}
+
+/**
+ * what one Start a fundraiser counts against, on `SUPPORTER_START_RATE_LIMITER`: the caller's `/48`,
+ * as `supporterSignInCallerRateLimitKey` keys it, and `null` for a caller with no bucket at all.
+ */
+export function supporterStartRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request, 48);
+	return payer === null ? null : `supporter-start ${payer}`;
+}
+
+/**
+ * what one Send it again after a start counts against, on `SUPPORTER_RESEND_RATE_LIMITER`: the page
+ * it resends for, charged whether or not that page is pending, so the answer says nothing of it.
+ */
+export function supporterResendRateLimitKey(pageId: string): string {
+	return `supporter-resend ${pageId}`;
 }
 
 /**
  * what one photo posted to `/fundraise/photo` counts against, on `SUPPORTER_PHOTO_RATE_LIMITER`:
- * the signed-in supporter, whichever of their sessions posts it.
+ * the signed-in supporter, whichever of their sessions and networks posts it, and never the
+ * network, so supporters sharing one are not refused as a group.
  */
 export function supporterPhotoRateLimitKey(supporterId: string): string {
 	return `supporter-photo ${supporterId}`;
-}
-
-/** the same posts by the caller, and `null` for a caller with no bucket at all. */
-export function supporterPhotoCallerRateLimitKey(request: Request): string | null {
-	const payer = attributedCaller(request, 48);
-	return payer === null ? null : `supporter-photo caller ${payer}`;
 }
 
 /**

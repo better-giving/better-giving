@@ -6,8 +6,8 @@
 // refusal says how much of that is left. the 60-second limiters' wire and sign-in refusals word
 // the whole period (`PERIOD_SECONDS` in ../api/rate-limit.ts, held to the periods below by
 // ../api/rate-limit.config.spec.ts). the supporter limiters are refused in the words of the
-// supporter's screens ($lib/supporter/area/copy.ts), and a refused link press carries the seconds
-// left to the sign-in screen (`overLinkLimit` in ../supporters/links.ts).
+// supporter's screens ($lib/supporter/area/copy.ts), and a refused sign-in link or Send it again
+// carries the seconds left to the sign-in screen (`signInRefusal` in ../supporters/links.ts).
 
 /** one bucket's size: `limit` charges per key per `period` seconds. */
 export interface RateLimit {
@@ -31,9 +31,11 @@ export const RATE_LIMITS = {
 	QUOTE_RATE_LIMITER: { limit: 60, period: 60 },
 	SIGN_IN_RATE_LIMITER: { limit: 10, period: 60 },
 	INTEGRATIONS_KEY_RATE_LIMITER: { limit: 120, period: 60 },
-	SUPPORTER_LINK_CALLER_RATE_LIMITER: { limit: 10, period: 600 },
-	SUPPORTER_LINK_ADDRESS_RATE_LIMITER: { limit: 5, period: 3600 },
-	SUPPORTER_PHOTO_RATE_LIMITER: { limit: 20, period: 86_400 }
+	SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER: { limit: 20, period: 3600 },
+	SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER: { limit: 5, period: 3600 },
+	SUPPORTER_START_RATE_LIMITER: { limit: 5, period: 3600 },
+	SUPPORTER_RESEND_RATE_LIMITER: { limit: 3, period: 3600 },
+	SUPPORTER_PHOTO_RATE_LIMITER: { limit: 10, period: 86_400 }
 } as const satisfies Record<string, RateLimit>;
 
 export type RateLimiterName = keyof typeof RATE_LIMITS;
@@ -90,10 +92,14 @@ export function createRateLimiters(
 		QUOTE_RATE_LIMITER: createRateLimiter(sizes.QUOTE_RATE_LIMITER),
 		SIGN_IN_RATE_LIMITER: createRateLimiter(sizes.SIGN_IN_RATE_LIMITER),
 		INTEGRATIONS_KEY_RATE_LIMITER: createRateLimiter(sizes.INTEGRATIONS_KEY_RATE_LIMITER),
-		SUPPORTER_LINK_CALLER_RATE_LIMITER: createRateLimiter(sizes.SUPPORTER_LINK_CALLER_RATE_LIMITER),
-		SUPPORTER_LINK_ADDRESS_RATE_LIMITER: createRateLimiter(
-			sizes.SUPPORTER_LINK_ADDRESS_RATE_LIMITER
+		SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER: createRateLimiter(
+			sizes.SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER
 		),
+		SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER: createRateLimiter(
+			sizes.SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER
+		),
+		SUPPORTER_START_RATE_LIMITER: createRateLimiter(sizes.SUPPORTER_START_RATE_LIMITER),
+		SUPPORTER_RESEND_RATE_LIMITER: createRateLimiter(sizes.SUPPORTER_RESEND_RATE_LIMITER),
 		SUPPORTER_PHOTO_RATE_LIMITER: createRateLimiter(sizes.SUPPORTER_PHOTO_RATE_LIMITER)
 	};
 }

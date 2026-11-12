@@ -1,6 +1,13 @@
-import { and, eq, inArray, lt, lte, notExists, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, lte, notExists, or } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { donation, form, supporterLink, supporterPage, supporterSession } from '../db/schema';
+import {
+	donation,
+	form,
+	supporter,
+	supporterLink,
+	supporterPage,
+	supporterSession
+} from '../db/schema';
 import { freeImageStatements, unheldImagesMadeBefore } from '../images/free';
 
 /**
@@ -32,8 +39,9 @@ export const PENDING_PAGE_KEEP_MS = 7 * 24 * 60 * 60_000;
  * edit saved. the image table does not say which upload made an image, so a dashboard upload
  * (src/routes/_app.admin.images.ts) a day old and never saved goes too; every write naming an image
  * refuses one no longer stored. and every fundraiser still pending `PENDING_PAGE_KEEP_MS` after
- * its start, with its links, its settings row and its photo (`unconfirmedPageStatements`). one
- * batch; a throw is the scheduler's to log.
+ * its start, with its links, its settings row and its photo (`unconfirmedPageStatements`). last,
+ * every supporter none of that leaves anything of (`abandonedSupporter`). one batch; a throw is the
+ * scheduler's to log.
  */
 export async function sweepSupporterLeftovers(db: Db, now: Date): Promise<void> {
 	const unheld = await unheldImagesMadeBefore(db, new Date(now.getTime() - UNHELD_PHOTO_KEEP_MS));
@@ -44,8 +52,29 @@ export async function sweepSupporterLeftovers(db: Db, now: Date): Promise<void> 
 			.where(lt(supporterLink.expiresAt, new Date(now.getTime() - LINK_KEEP_PAST_EXPIRY_MS))),
 		db.delete(supporterSession).where(lte(supporterSession.expiresAt, now)),
 		...unconfirmed,
-		...unheld.flatMap((id) => freeImageStatements(db, id))
+		...unheld.flatMap((id) => freeImageStatements(db, id)),
+		db.delete(supporter).where(abandonedSupporter(db))
 	]);
+}
+
+/**
+ * a supporter who never signed in and has no page, no link and no session left: an address a start
+ * named whose confirm link nobody opened, once the statements before it in the batch took the rest.
+ */
+function abandonedSupporter(db: Db) {
+	const naming = (table: typeof supporterPage | typeof supporterLink | typeof supporterSession) =>
+		notExists(
+			db
+				.select({ id: table.supporterId })
+				.from(table)
+				.where(eq(table.supporterId, supporter.id))
+		);
+	return and(
+		isNull(supporter.lastSignInAt),
+		naming(supporterPage),
+		naming(supporterLink),
+		naming(supporterSession)
+	);
 }
 
 /**

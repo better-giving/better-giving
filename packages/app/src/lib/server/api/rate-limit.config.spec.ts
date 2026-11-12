@@ -54,10 +54,15 @@ const LIMITERS = [
  * which name no period: the refusal is a screen state, not a sentence from here.
  */
 const SUPPORTER_LIMITERS = [
-	'SUPPORTER_LINK_CALLER_RATE_LIMITER',
-	'SUPPORTER_LINK_ADDRESS_RATE_LIMITER',
+	'SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER',
+	'SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER',
+	'SUPPORTER_START_RATE_LIMITER',
+	'SUPPORTER_RESEND_RATE_LIMITER',
 	'SUPPORTER_PHOTO_RATE_LIMITER'
 ] as const satisfies readonly RateLimiterName[];
+
+const HOUR = 3600;
+const DAY = 86_400;
 
 describe('the rate limiters the server builds', () => {
 	it('declares one entry per limiter this app charges, and no more', () => {
@@ -67,12 +72,18 @@ describe('the rate limiters the server builds', () => {
 	});
 
 	/**
-	 * a press mailing a supporter needs no session and no challenge on sign-in, so this bucket is
-	 * what one inbox receives from this deployment's sender, whoever presses: a few an hour.
+	 * the supporter buckets as the organisation decided them: a sign-in link 5 an hour per address
+	 * and 20 per network, a start 5 an hour per network, Send it again 3 an hour per page, and 10
+	 * photos a day per supporter.
 	 */
-	it('mails one supporter address at most six links an hour', () => {
-		const { limit, period } = size('SUPPORTER_LINK_ADDRESS_RATE_LIMITER');
-		expect(limit / (period / 3600)).toBeLessThanOrEqual(6);
+	it.each([
+		['SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER', 5, HOUR],
+		['SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER', 20, HOUR],
+		['SUPPORTER_START_RATE_LIMITER', 5, HOUR],
+		['SUPPORTER_RESEND_RATE_LIMITER', 3, HOUR],
+		['SUPPORTER_PHOTO_RATE_LIMITER', 10, DAY]
+	] as const)('sizes %s at %i per %i seconds', (name, limit, period) => {
+		expect(size(name)).toEqual({ limit, period });
 	});
 
 	/** a count of requests, so a fraction or a zero is a limit that means something else. */

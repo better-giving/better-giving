@@ -56,6 +56,13 @@ export type FundraiserPageProps = {
 	readonly className?: string;
 };
 
+/** what staff's preview says of the page's standing, which a visitor's page never draws. */
+export type FundraiserStaffNotice = {
+	readonly hidden: boolean;
+	/** the note staff left when hiding it, as typed; null where there is none. */
+	readonly note: string | null;
+};
+
 export type EndedFundraiserView = FundraiserTotals & {
 	readonly title: string;
 	readonly name: string;

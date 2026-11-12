@@ -3727,12 +3727,7 @@ export const supporterLink = sqliteTable(
 		check(
 			'supporter_link_page_check',
 			sql`(${t.purpose} = 'confirm') = (${t.supporterPageId} is not null)`
-		),
-		// a supporter's unused links of one purpose, and one page's for `confirm`. no query reads
-		// through it: a newer link spends no older one (supporters/links.ts).
-		index('supporter_link_unused_idx')
-			.on(t.supporterId, t.purpose, t.supporterPageId)
-			.where(sql`${t.usedAt} is null`)
+		)
 	]
 );
 

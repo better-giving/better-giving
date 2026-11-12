@@ -40,8 +40,9 @@ function from(ip = `203.0.113.${++address}`): Request {
 
 /** buckets no case here reaches. */
 const roomy = () => ({
-	byCaller: createRateLimiter({ limit: 100, period: 60 }),
-	byAddress: createRateLimiter({ limit: 100, period: 60 })
+	signInByCaller: createRateLimiter({ limit: 100, period: 60 }),
+	signInByAddress: createRateLimiter({ limit: 100, period: 60 }),
+	resendByPage: createRateLimiter({ limit: 100, period: 60 })
 });
 
 /** a sign-in request for `email`, and the mail it sent once the deferred work ran. */
@@ -103,7 +104,7 @@ describe('asking for a sign-in link', () => {
 
 	it('answers too many tries past the bucket for one client address', async () => {
 		const request = () => from('198.51.100.7');
-		const limiters = { ...roomy(), byCaller: createRateLimiter({ limit: 2, period: 60 }) };
+		const limiters = { ...roomy(), signInByCaller: createRateLimiter({ limit: 2, period: 60 }) };
 		const answers: unknown[] = [];
 		for (const email of ['a@example.org', 'b@example.org', 'c@example.org']) {
 			answers.push(
@@ -118,7 +119,10 @@ describe('asking for a sign-in link', () => {
 	});
 
 	it('answers too many tries past the bucket for one email, from any address', async () => {
-		const limiters = { ...roomy(), byAddress: createRateLimiter({ limit: 2, period: 3600 }) };
+		const limiters = {
+			...roomy(),
+			signInByAddress: createRateLimiter({ limit: 2, period: 3600 })
+		};
 		const answers: unknown[] = [];
 		for (let n = 0; n < 3; n += 1) {
 			answers.push(
@@ -134,8 +138,9 @@ describe('asking for a sign-in link', () => {
 
 	it('spends nothing of the address’s bucket for a caller over its own', async () => {
 		const limiters = {
-			byCaller: createRateLimiter({ limit: 1, period: 60 }),
-			byAddress: createRateLimiter({ limit: 2, period: 3600 })
+			...roomy(),
+			signInByCaller: createRateLimiter({ limit: 1, period: 60 }),
+			signInByAddress: createRateLimiter({ limit: 2, period: 3600 })
 		};
 		const press = (request: Request) =>
 			requestSignInLink(
@@ -200,7 +205,7 @@ describe('opening a link', () => {
 	it('works once', async () => {
 		const token = await mailedToken();
 		expect((await open(token)).ok).toBe(true);
-		expect(await open(token)).toEqual({ ok: false });
+		expect(await open(token)).toEqual({ ok: false, reason: 'expired' });
 	});
 
 	it('answers two openings at once with one session and one refusal', async () => {
@@ -215,7 +220,7 @@ describe('opening a link', () => {
 		const early = await mailedToken();
 		expect((await open(early, minutes(59))).ok).toBe(true);
 		const late = await mailedToken();
-		expect(await open(late, minutes(60))).toEqual({ ok: false });
+		expect(await open(late, minutes(60))).toEqual({ ok: false, reason: 'expired' });
 	});
 
 	// a request needs no session, so a newer link spending the older would let anyone who knows the
@@ -227,17 +232,17 @@ describe('opening a link', () => {
 		const tokens = [await mailedToken(), await mailedToken()];
 		const token = tokens[which] ?? '';
 		expect((await open(token)).ok).toBe(true);
-		expect(await open(token)).toEqual({ ok: false });
+		expect(await open(token)).toEqual({ ok: false, reason: 'expired' });
 	});
 
 	it('keeps each link to its own hour when a newer one is mailed', async () => {
 		const older = await mailedToken();
 		await mailedToken();
-		expect(await open(older, minutes(60))).toEqual({ ok: false });
+		expect(await open(older, minutes(60))).toEqual({ ok: false, reason: 'expired' });
 	});
 
 	it('refuses a token it never minted the same way', async () => {
-		expect(await open('not-a-token-anyone-was-sent')).toEqual({ ok: false });
+		expect(await open('not-a-token-anyone-was-sent')).toEqual({ ok: false, reason: 'expired' });
 	});
 });
 

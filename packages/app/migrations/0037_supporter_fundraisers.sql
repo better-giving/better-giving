@@ -71,6 +71,7 @@ CREATE UNIQUE INDEX `supporter_page_slug_idx` ON `supporter_page` (`slug`);--> s
 CREATE UNIQUE INDEX `supporter_page_form_id_idx` ON `supporter_page` (`form_id`);--> statement-breakpoint
 CREATE INDEX `supporter_page_supporter_created_idx` ON `supporter_page` (`supporter_id`,`created_at`,`id`);--> statement-breakpoint
 CREATE INDEX `supporter_page_created_idx` ON `supporter_page` (`created_at`,`id`);--> statement-breakpoint
+CREATE INDEX `supporter_page_photo_id_idx` ON `supporter_page` (`photo_id`);--> statement-breakpoint
 CREATE TABLE `supporter_session` (
 	`token_hash` text PRIMARY KEY NOT NULL,
 	`supporter_id` text NOT NULL,
