@@ -135,7 +135,7 @@ export type PageViewProps = {
 	readonly donorMessages?: DonorMessagesWiring | undefined;
 	/**
 	 * whether Supporter fundraisers is on (`supporterFundraisersEnabled`): draws the entry card after
-	 * the page's content and before its messages. off or absent, nothing stands in its place.
+	 * the whole layout, messages included. off or absent, nothing stands in its place.
 	 */
 	readonly fundraiserEntry?: boolean | undefined;
 	/** drawn as the preview of a draft: a press reaches nothing outside `PREVIEW_LIVE`. */

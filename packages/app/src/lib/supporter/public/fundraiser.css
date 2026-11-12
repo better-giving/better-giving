@@ -1,9 +1,10 @@
 /*
  * a supporter's fundraiser at /f/<slug> (./fundraiser-page.tsx), on top of the donor page's own
  * sheet ($lib/donate/page.css) and the registry's badge and goal bar, which `fundraiserPageLinks`
- * links before this one. the page is the Donation page's profile shell, `data-layout='profile'`,
- * so its width, gutter, section step, planes, figure and EIN are page.css's; what is here is the
- * layout of its three areas and the few parts no donor page had before.
+ * links before this one. the page is drawn on the `plain` root ($lib/donate/page-root.tsx), which
+ * arranges nothing, so its width, gutter, section step, planes and EIN are page.css's; what is
+ * here is the layout of its three areas, its raised figure (`.fundraiser-figure`), and the few
+ * parts no donor page had before.
  *
  * every value is a token: the form's `--_` names, page.css's `--page-*` names, and the
  * `--fundraiser-*` names below, which are declared here and nowhere else. ./fundraiser-css.spec.ts
@@ -22,8 +23,9 @@
 	--fundraiser-for-logo: 1.75rem;
 	--fundraiser-avatar: 2.75rem;
 	--fundraiser-recipient-logo: 3rem;
-	--fundraiser-figure: 1.875rem;
-	--fundraiser-lh-figure: 2.25rem;
+	/* the raised figure is the profile name's step; page.css declares both on this same element. */
+	--fundraiser-figure: var(--page-profile-name);
+	--fundraiser-lh-figure: var(--page-profile-lh-name);
 }
 
 @container page (min-width: 60rem) {
@@ -268,7 +270,7 @@
 	font-family: var(--page-font-display);
 	font-size: var(--page-profile-subhead);
 	line-height: var(--page-profile-lh-subhead);
-	font-weight: var(--_w-bold);
+	font-weight: var(--page-w-display);
 	text-wrap: balance;
 }
 

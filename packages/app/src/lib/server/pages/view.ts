@@ -145,7 +145,7 @@ export async function loadPageView(
 		!isDonationPage
 			? null
 			: preview === undefined
-				? // a donor's page reached here past both of /donate's gates on its messages.
+				? // /donate's own read (routes/donate.tsx), past both of its gates on its messages.
 					readShownMessages(db, null)
 				: readDonationPageMessages(
 						db,
@@ -251,8 +251,22 @@ async function donationPageDrawsMessages(
 	{ now }: { readonly now: number }
 ): Promise<boolean> {
 	if (!readDocument(row, 'published', row.published).ok) return false;
+	return pageTakesGifts(db, env, row.formId, request, { now });
+}
+
+/**
+ * whether the published page on the settings row `formId` is drawn rather than refused: the served
+ * config gate `loadPageView` applies off the row as it stands, with none of the page's other reads.
+ */
+export async function pageTakesGifts(
+	db: Db,
+	env: unknown,
+	formId: string,
+	request: Request,
+	{ now }: { readonly now: number }
+): Promise<boolean> {
 	const origin = new URL(request.url).origin;
-	return renderableConfig(await readServedConfig(db, env, row.formId, origin, { now })).ok;
+	return renderableConfig(await readServedConfig(db, env, formId, origin, { now })).ok;
 }
 
 /** what a supporter's live fundraiser draws beyond its own row: the card's config and who it is for. */

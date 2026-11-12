@@ -17,10 +17,10 @@ import {
 
 // every read of `entry_group` and `ledger_entry`, so the table objects never leave this
 // directory — the same boundary ../donations/queries.ts draws around `donation`. four reads cross
-// that boundary from this side, each naming `donation` and `payment` to reach a gift's entries in
-// one statement: `readRaisedThroughForm`, which names `form` too, `giftNetRaised`,
-// `readRaisedByFormWithin`, and `readRaisedThroughFundraisers`, which names `supporter_page` beside
-// the last two for the same reason.
+// that boundary from this side to reach a gift's entries. three name `donation` and `payment` in
+// one statement: `readRaisedThroughForm`, which names `form` too, `readRaisedByFormWithin`, and
+// `readRaisedThroughFundraisers`, which names `supporter_page` too. `giftNetRaised` is a fragment
+// naming `payment`, correlated to the `donation` row of the statement its caller embeds it in.
 //
 // no writes, and that is a rule rather than a description. ./posting.ts is the only module that
 // may INSERT into either table, and ./sole-writer.spec.ts enforces it by exempting this whole
@@ -433,8 +433,8 @@ export type RaisedThroughFundraiser = { pageId: string; raisedMinor: number; gif
  * `donation.supporter_page_id` and in the page's own currency: one row per page `where` admits that
  * holds a gift with an entry, and none for a page with none. a gift is a `donation` row, so each
  * charge of a repeating gift counts as one as it settles; a gift refunded in full nets to nothing
- * and drops out of the count. a page owns its settings row alone, so this is `readRaisedThroughForm`
- * over that row, counted.
+ * and drops out of the count. the gifts are found by that column alone, never through the page's
+ * settings row.
  *
  * one statement, since the gifts are unbounded: reading their payment ids first would bind one
  * parameter per payment, and SQLite refuses a statement past `SQLITE_MAX_VARIABLE_NUMBER` (32766,
@@ -479,6 +479,11 @@ export function readRaisedThroughFundraisers(
  * donations subtree, net, as a scalar subquery on the outer row's `donation`. 0 for a gift still
  * pending, given back in full, or withdrawn by a dispute that has not been won; above 0 for one
  * partly given back.
+ *
+ * the caller's statement must name `donation` unaliased in its FROM, which the fragment's
+ * `donation.id` and `donation.currency` bind to, and must qualify its own columns: unqualified,
+ * `amount_minor` is ambiguous between `donation` and the `ledger_entry` read here
+ * (`readOwnGifts` in ../supporters/pages.ts).
  */
 export function giftNetRaised(): SQL<number> {
 	return sql<number>`(

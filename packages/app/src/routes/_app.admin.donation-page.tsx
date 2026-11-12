@@ -28,7 +28,7 @@ import { answerResetPress, hasEditsToReset } from '$lib/server/pages/reset';
 import { saveDonationPageSection } from '$lib/server/pages/section-saves';
 import { editBanner, readDonationPageEditSeeds } from '$lib/server/pages/section-seeds';
 import { answerVideoPress } from '$lib/server/pages/videos';
-import { loadPageView } from '$lib/server/pages/view';
+import { pageTakesGifts } from '$lib/server/pages/view';
 import { database, platform } from '../context';
 import type { Route } from './+types/_app.admin.donation-page';
 
@@ -79,23 +79,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	let takingGifts: boolean;
 	try {
 		row = await ensureDonationPage(db);
-		// the donor page's own refusal (`loadPageView` in $lib/server/pages/view.ts), on the
-		// published document: a fresh page is stored live even where that read refuses it.
-		const view = await loadPageView(
-			db,
-			env,
-			{
-				id: row.id,
-				type: 'donation_page',
-				formId: row.formId,
-				name: null,
-				document: row.published,
-				address: '/donate'
-			},
-			request,
-			{ now }
-		);
-		takingGifts = view.kind !== 'refused';
+		// the donor page's own refusal, the gate `loadPageView` applies ($lib/server/pages/view.ts):
+		// a fresh page is stored live even where that gate refuses it.
+		takingGifts = await pageTakesGifts(db, env, row.formId, request, { now });
 	} catch (e) {
 		console.error('loading the Donation page edit page failed:', e);
 		loadFailed('The Donation page');

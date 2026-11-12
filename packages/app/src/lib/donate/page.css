@@ -112,7 +112,8 @@
  * hover, 5 its press, 6 a border nothing operates and a separator, 7 the edge of a control a donor
  * operates and 8 that edge under the pointer and the focus ring, the registry's own ring step, 9
  * a solid fill, 10 its hover, 11 and 12 text.
- * nothing casts a shadow: a `box-shadow` here is a focus ring, a spread with no offset and no blur.
+ * nothing casts a shadow: a `box-shadow` here is a spread with no offset and no blur, a focus
+ * ring or the `--page-plane` ring a profile mark lifted onto a banner stands inside.
  *
  * the page ground, `--page-ground`, is slate 2 under a wash. a plane — the top bar, the card's
  * panel, which on a phone holds the cover, the title, the lede and the goal, the letter's cover
@@ -1500,10 +1501,10 @@ body {
 /* the entry card that starts a supporter's fundraiser ($lib/supporter/public/entry-card.tsx): a
    plane holding a heading, one sentence, and one secondary press with its note beside it. on a
    phone the press runs the card's width and the note wraps under it; from 30rem they share a row.
-   under the profile head the card is one of the more area's sections and takes its column; under a
-   campaign or the Donation page's own layout it stands a section's step below the layout, at
-   `--page-fundraise-width`. the press is the registry's, linked beside this sheet, and its ring the
-   registry's; its ink is restated below, since the page's link ink outranks the variant's. */
+   it stands a section's step below the whole layout, messages included, at
+   `--page-fundraise-width`, under the profile head as under a campaign or the Donation page's own
+   layout. the press is the registry's, linked beside this sheet, and its ring the registry's; its
+   ink is restated below, since the page's link ink outranks the variant's. */
 .page-fundraise-area {
 	margin-block-start: var(--page-gap-section);
 }
@@ -1526,7 +1527,7 @@ body {
 	font-family: var(--page-font-display);
 	font-size: var(--page-profile-subhead);
 	line-height: var(--page-profile-lh-subhead);
-	font-weight: var(--_w-bold);
+	font-weight: var(--page-w-display);
 	text-wrap: balance;
 }
 

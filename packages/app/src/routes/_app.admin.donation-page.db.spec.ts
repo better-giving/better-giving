@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
 import { form, page } from '$lib/server/db/schema';
@@ -16,6 +16,19 @@ import { client, stmt } from '$lib/server/db/database.testing';
 // for ../route-request.testing.ts's reason: the session gate is a `middleware` on ./_app.tsx.
 
 const EDITOR = '/admin/donation-page';
+
+const messagesRead = vi.hoisted(() => ({ calls: 0 }));
+
+vi.mock('$lib/server/pages/messages', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('$lib/server/pages/messages')>();
+	return {
+		...actual,
+		readShownMessages: (...args: Parameters<typeof actual.readShownMessages>) => {
+			messagesRead.calls += 1;
+			return actual.readShownMessages(...args);
+		}
+	};
+});
 
 let db: Db;
 let request: RouteRequester;
@@ -114,6 +127,13 @@ describe('whether the published Donation page is taking gifts', () => {
 		await rails([]);
 
 		expect(await open()).toMatchObject({ banner: { state: 'public' }, takingGifts: false });
+	});
+
+	it('reads none of the donors’ messages the published page lists', async () => {
+		messagesRead.calls = 0;
+
+		expect(await open()).toMatchObject({ takingGifts: true });
+		expect(messagesRead.calls).toBe(0);
 	});
 });
 
