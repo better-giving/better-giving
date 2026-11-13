@@ -11,8 +11,8 @@
    written out: 40rem is tailwind's sm. each tone sets --ds-tone-fill,
    --ds-tone-edge and --ds-tone-ink, which the card reads. */
 .ds-notice-card {
-  --ds-spacing: 0.25rem;
-  --ds-text-sm: 0.875rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
   --ds-text-sm-lh: calc(1.25 / 0.875);
   box-sizing: border-box;
   display: flex;
@@ -69,7 +69,7 @@
   gap: calc(var(--ds-spacing) * 1);
 }
 .ds-notice-card-title {
-  --ds-text-base: 1rem;
+  --ds-text-base: calc(1 * var(--ds-rem, 1rem));
   --ds-text-base-lh: calc(1.5 / 1);
   --ds-font-weight-semibold: 600;
   margin: 0;

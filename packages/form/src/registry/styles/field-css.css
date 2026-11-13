@@ -1,7 +1,8 @@
-/* the registry's form field as plain css: container, label, input, hint and
-   error, no tailwind. reads only the variables the `variables` item declares,
-   so a theme, `.dark` and `.light` recolor it like the tailwind `.field-input`,
-   `.field-err` and `.label` it mirrors. field-css.test.tsx renders both and
+/* the registry's form field as plain css: container, label, input, hints,
+   error and warning, no tailwind. reads only the variables the `variables`
+   item declares, so a theme, `.dark` and `.light` recolor it like the tailwind
+   `.field-input`, `.field-err`, `.field-warn`, `.field-help` and `.label` it
+   mirrors. field-css.test.tsx renders both and
    asserts the same computed look in light and dark, for the default and
    example themes.
 
@@ -10,15 +11,15 @@
    classes under ds- names with the same values, and the test holds each equal
    to the original. */
 .ds-field {
-  --ds-spacing: 0.25rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   box-sizing: border-box;
   min-width: 0;
 }
 
 /* the label sits 4px above the control, or flush when a hint follows */
 .ds-label {
-  --ds-spacing: 0.25rem;
-  --ds-text-sm: 0.875rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
   --ds-font-weight-medium: 500;
   display: block;
   margin: 0;
@@ -45,8 +46,8 @@
 }
 
 .ds-field-hint {
-  --ds-spacing: 0.25rem;
-  --ds-text-sm: 0.875rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
   --ds-text-sm-lh: calc(1.25 / 0.875);
   margin-block: 0 calc(var(--ds-spacing) * 2);
   color: var(--gray-11);
@@ -56,10 +57,12 @@
 }
 
 .ds-field-input {
-  --ds-spacing: 0.25rem;
-  --ds-text-sm: 0.875rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
   --ds-text-sm-lh: calc(1.25 / 0.875);
-  --ds-field-size: calc(var(--ds-spacing) * 12.5);
+  /* the input's own sum, padding + line + the px edge, so the controls pinned
+     to it stay level with the input at any --ds-rem */
+  --ds-field-size: calc(var(--ds-spacing) * 12 + 2px);
   box-sizing: border-box;
   width: 100%;
   margin: 0;
@@ -117,9 +120,20 @@
   border-color: var(--destructive);
 }
 
+/* a key, secret or id. read-only keeps the muted fill but takes full ink: the
+   value is what the reader came to read and copy */
+.ds-field-input-mono {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  text-overflow: ellipsis;
+}
+.ds-field-input-mono[readonly]:not(:disabled, [aria-disabled="true"]) {
+  color: var(--gray-12);
+}
+
 /* a wrapper that carries the control's look and holds an input of its own */
 .ds-field-input-container {
-  --ds-text-sm: 0.875rem;
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
   --ds-text-sm-lh: calc(1.25 / 0.875);
   box-sizing: border-box;
   width: 100%;
@@ -133,7 +147,7 @@
 /* the bare input inside: the container draws the edge, the fill and the ring,
    so the input brings none of its own and keeps ds-field-input's padding */
 .ds-field-input-container > input {
-  --ds-spacing: 0.25rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   box-sizing: border-box;
   display: block;
   width: 100%;
@@ -187,8 +201,8 @@
 
 /* the message under a control; empty, it takes no room */
 .ds-field-err {
-  --ds-spacing: 0.25rem;
-  --ds-text-xs: 0.75rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
   margin: calc(var(--ds-spacing) * 1) 0 0;
   text-align: start;
   font-size: var(--ds-text-xs);
@@ -198,16 +212,71 @@
   display: none;
 }
 
+/* the warning shares the error's slot and never colours the edge. the mark is
+   centred on the first line, so a wrapped message keeps it at the top */
+.ds-field-warn {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--ds-spacing) * 1);
+  margin: calc(var(--ds-spacing) * 1) 0 0;
+  text-align: start;
+  font-size: var(--ds-text-xs);
+  color: var(--warning-subtle-fg);
+}
+/* empty, it takes no room but stays rendered: display: none would drop the
+   polite live region, and one that appears with its text is often not read */
+.ds-field-warn:empty {
+  margin: 0;
+}
+.ds-field-warn > svg {
+  flex: none;
+  inline-size: calc(var(--ds-spacing) * 3);
+  block-size: calc(var(--ds-spacing) * 3);
+  margin-block-start: calc((1lh - var(--ds-spacing) * 3) / 2);
+}
+
+/* the hint under the control, below the message when one shows */
+.ds-field-help {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  margin: calc(var(--ds-spacing) * 1) 0 0;
+  text-align: start;
+  font-size: var(--ds-text-xs);
+  color: var(--gray-11);
+  overflow-wrap: break-word;
+}
+.ds-field-help:empty {
+  display: none;
+}
+
+/* text for assistive technology only: the "Warning: " before a warning, and
+   the status a button in ds-field-action reports */
+.ds-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border-width: 0;
+}
+
 /* a field whose control has buttons beside it: [control column][action]. the
-   error and the hint go inside the control column, under the input, never
+   message and the hint go inside the control column, under the input, never
    under the row. the action keeps the control's height with ds-btn-field.
    when the row itself is under 384px (a phone-width column, or any container
-   that narrow, whatever the viewport) the action wraps under the control, and
-   the column takes the whole row so the message stays under the control. the
-   row is an inline-size container, so its width comes from its parent, never
-   its content: inside a shrink-to-fit parent, give the field a width. */
+   that narrow, whatever the viewport) one button wraps under the control, and
+   the column takes the whole row so the message stays under the control; two
+   or more buttons wrap under 576px, and wrap among themselves when the row is
+   narrower than they are. the row is an inline-size container, so its width
+   comes from its parent, never its content: inside a shrink-to-fit parent,
+   give the field a width. */
 .ds-field-row {
-  --ds-spacing: 0.25rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   container-type: inline-size;
   display: flex;
   flex-wrap: wrap;
@@ -223,19 +292,30 @@
     flex-basis: 100%;
   }
 }
+@container (width < 36rem) {
+  .ds-field-control:has(+ .ds-field-action > .ds-btn ~ .ds-btn) {
+    flex-basis: 100%;
+  }
+}
 .ds-field-action {
-  --ds-spacing: 0.25rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   display: flex;
+  flex-wrap: wrap;
   flex-shrink: 0;
+  max-inline-size: 100%;
   align-items: flex-start;
   gap: calc(var(--ds-spacing) * 2);
+}
+/* a done label ("Copied") is no wider than this, so the row never shifts */
+.ds-field-action > [data-done] {
+  min-inline-size: calc(var(--ds-spacing) * 32);
 }
 
 /* the same message laid over the field's bottom edge instead of in the flow;
    the field container needs position: relative */
 .ds-field-error {
-  --ds-spacing: 0.25rem;
-  --ds-text-xs: 0.75rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
   --ds-text-xs-lh: calc(1 / 0.75);
   position: absolute;
   margin: 0;

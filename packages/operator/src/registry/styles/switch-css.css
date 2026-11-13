@@ -9,7 +9,7 @@
    shadows live only in tailwind's theme; they are declared here under ds-
    names with the same values, and the test holds each equal to tailwind's. */
 .ds-switch {
-  --ds-spacing: 0.25rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --ds-inset-shadow-track: inset 0 2px 4px 0
     color-mix(in oklch, var(--shadow-ink) 5%, transparent);
@@ -123,8 +123,8 @@
    medium rows are at least the field height and top-aligned; a row holding a
    small switch is the compact list row, 24px and centered. */
 .ds-switch-field {
-  --ds-spacing: 0.25rem;
-  --ds-field-size: calc(var(--ds-spacing) * 12.5);
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-field-size: calc(var(--ds-spacing) * 12 + 2px);
   box-sizing: border-box;
   display: grid;
   grid-template-columns: 1fr auto;
@@ -144,13 +144,13 @@
   color: var(--gray-11);
 }
 .ds-switch-text {
-  --ds-spacing: 0.25rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   display: flex;
   flex-direction: column;
   gap: calc(var(--ds-spacing) * 0.5);
 }
 .ds-switch-label {
-  --ds-text-sm: 0.875rem;
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
   --ds-text-sm-lh: calc(1.25 / 0.875);
   --ds-font-weight-medium: 500;
   font-size: var(--ds-text-sm);
@@ -158,7 +158,7 @@
   font-weight: var(--ds-font-weight-medium);
 }
 .ds-switch-hint {
-  --ds-text-xs: 0.75rem;
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
   --ds-text-xs-lh: calc(1 / 0.75);
   font-size: var(--ds-text-xs);
   line-height: var(--ds-text-xs-lh);
