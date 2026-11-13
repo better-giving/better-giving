@@ -228,7 +228,9 @@ describe('the sign-in request', () => {
 		expect(notice.className).toContain('ds-notice-card-destructive');
 		expect(notice.getAttribute('role')).toBe('alert');
 		expect(one(notice, 'h1').textContent).toBe('Too many tries');
-		expect(notice.textContent).toContain('You can ask for a new link again when the countdown ends.');
+		expect(notice.textContent).toContain(
+			'You can ask for a new link again when the countdown ends.'
+		);
 		expect(boxLabelled(root, 'Email').value).toBe('maya@example.org');
 		expect(closed(resend(root))).toBe(true);
 	});

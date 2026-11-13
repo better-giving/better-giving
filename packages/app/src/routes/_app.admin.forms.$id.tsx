@@ -474,9 +474,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	}
 
 	if (owner !== null) {
-		notFound(
-			`The donation settings \`${redactPublicId(params.id)}\` ${ownedWhere(owner)}.`
-		);
+		notFound(`The donation settings \`${redactPublicId(params.id)}\` ${ownedWhere(owner)}.`);
 	}
 
 	const archived = record.status === 'archived';
