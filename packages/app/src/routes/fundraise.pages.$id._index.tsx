@@ -51,6 +51,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 				gifts: page.gifts,
 				currency: page.currency,
 				endedAt: page.endedAt?.toISOString() ?? null,
+				publishedAt: page.publishedAt?.toISOString() ?? null,
 				address,
 				url: supporterShareUrl(context.get(platform).env, request, address),
 				giftList: page.giftList.map((gift) => ({

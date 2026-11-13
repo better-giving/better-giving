@@ -18,15 +18,17 @@ import {
 	useState
 } from 'react';
 import { buttonState } from '$lib/admin/save-button-state';
+import { whichForm } from '$lib/admin/use-admin-form';
 import { formatMinor } from '$lib/donations/money';
 import { SUPPORTER_HIDE_INPUT } from '$lib/supporters/input';
 
 // Supporter pages at /admin/supporter-pages: the organisation setting that lets supporters start
 // fundraisers, then every supporter's page, newest first, each with Open and Hide or Show again.
 //
-// the route owns the reads and the writes. every write is a real `<form method="post">` carrying a
-// hidden `intent` (`SUPPORTER_PAGES_INTENTS`), so the body a callback is handed is the body a
-// browser would post without script; the callback is where the route hands it to a fetcher.
+// the route owns the reads and the writes. every write is a real `<form method="post">` carrying
+// its form's id in the `whichForm` box (`SUPPORTER_PAGES_FORMS`, read by `submittedForm` in
+// $lib/server/conform.ts), so the body a callback is handed is the body a browser would post
+// without script; the callback is where the route hands it to a fetcher.
 //
 // the setting is the deployer's (AGENTS.md → Boundaries): a member is drawn the same switch,
 // disabled, with the reason as its hint, and no Save. it is read on Save and never applied on a
@@ -42,16 +44,14 @@ import { SUPPORTER_HIDE_INPUT } from '$lib/supporters/input';
 // the empty list is the registry's state card (state-card-css.usage.md), titled by what the setting
 // is, since with fundraisers off no list can start.
 
-/** the name of the hidden box every form on this screen says what it is in. */
-export const INTENT_FIELD = 'intent';
 /** the name of the hidden box a row's form names its page in. */
 export const PAGE_ID_FIELD = 'page_id';
 
-/** what each form on this screen posts as `intent`. */
-export const SUPPORTER_PAGES_INTENTS = {
-	saveSetting: 'save-setting',
-	hide: 'hide',
-	show: 'show'
+/** the id each form on this screen posts in its `whichForm` box. */
+export const SUPPORTER_PAGES_FORMS = {
+	saveSetting: 'supporter-setting',
+	hide: 'supporter-page-hide',
+	show: 'supporter-page-show'
 } as const;
 
 /** where a supporter's page stands on its own lifecycle, as the server lists it. */
@@ -104,11 +104,11 @@ export type SupporterPagesProps = {
 	readonly pages: readonly SupporterPageRow[];
 	/** each row's press by the page it names; a row not in it is at rest. */
 	readonly presses?: Readonly<Record<string, RowPress>>;
-	/** the setting form's body: `intent=save-setting`, and `enabled=on` when on. */
+	/** the setting form's body: its id, and `enabled=on` when on. */
 	readonly onSaveSetting: (body: FormData) => void;
-	/** a Hide confirmed: `intent=hide`, `page_id`, and `note` (blank for none). */
+	/** a Hide confirmed: its form's id, `page_id`, and `note` (blank for none). */
 	readonly onHide: (pageId: string, body: FormData) => void;
-	/** Show again: `intent=show` and `page_id`. */
+	/** Show again: its form's id and `page_id`. */
 	readonly onShow: (pageId: string, body: FormData) => void;
 };
 
@@ -356,7 +356,7 @@ function SettingCard({
 				onSave(new FormData(event.currentTarget));
 			}}
 		>
-			<input type="hidden" name={INTENT_FIELD} value={SUPPORTER_PAGES_INTENTS.saveSetting} />
+			<input {...whichForm(SUPPORTER_PAGES_FORMS.saveSetting)} />
 			<Section card>
 				<h2 id={headingId}>Start a fundraiser</h2>
 				{row}
@@ -490,7 +490,7 @@ function RowActions({
 							if (!held) onShow(new FormData(event.currentTarget));
 						}}
 					>
-						<input type="hidden" name={INTENT_FIELD} value={SUPPORTER_PAGES_INTENTS.show} />
+						<input {...whichForm(SUPPORTER_PAGES_FORMS.show)} />
 						<input type="hidden" name={PAGE_ID_FIELD} value={page.id} />
 						<Button type="submit" {...pressProps}>
 							{face}
@@ -580,7 +580,7 @@ function HideConfirm({
 				onHide(new FormData(event.currentTarget));
 			}}
 		>
-			<input type="hidden" name={INTENT_FIELD} value={SUPPORTER_PAGES_INTENTS.hide} />
+			<input {...whichForm(SUPPORTER_PAGES_FORMS.hide)} />
 			<input type="hidden" name={PAGE_ID_FIELD} value={page.id} />
 			<Modal
 				alert

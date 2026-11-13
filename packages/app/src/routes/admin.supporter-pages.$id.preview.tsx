@@ -1,5 +1,4 @@
 import { data, href } from 'react-router';
-import { APP_NAME } from '$lib/admin/screen-title';
 import { FundraiserPage, fundraiserPreviewLinks } from '$lib/supporter/public/fundraiser-page';
 import { staffGate } from '$lib/server/auth/gate';
 import { SERVED_LOCALE } from '$lib/server/forms/published-config';
@@ -41,7 +40,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			title: preview.title,
 			story: preview.story,
 			name: preview.name,
-			startedAt: (preview.startedAt ?? now).toISOString(),
+			startedAt: preview.startedAt?.toISOString() ?? null,
 			photoId: preview.photoId,
 			raisedMinor: preview.raisedMinor,
 			goalMinor: preview.goalMinor,
@@ -49,7 +48,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			goalReached: preview.goalReached,
 			messages: preview.messages
 		},
-		org: { name: profile?.legalName ?? APP_NAME, taxId: profile?.taxId ?? null, logo },
+		org: { name: profile?.legalName ?? null, taxId: profile?.taxId ?? null, logo },
 		look: { brandColour: profile?.brandColour ?? null },
 		money: { locale: SERVED_LOCALE, currency: preview.currency },
 		now: now.toISOString(),
@@ -59,7 +58,11 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		},
 		contact: donorContact(profile),
 		fundraiserEntry: false,
-		staffNotice: { hidden: preview.hidden, note: preview.hiddenNote }
+		staffNotice: {
+			hidden: preview.hidden,
+			note: preview.hiddenNote,
+			pending: preview.status === 'pending'
+		}
 	};
 }
 

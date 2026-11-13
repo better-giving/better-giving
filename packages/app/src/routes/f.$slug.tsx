@@ -1,6 +1,5 @@
 import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
 import { data, href, type ShouldRevalidateFunctionArgs } from 'react-router';
-import { APP_NAME } from '$lib/admin/screen-title';
 import * as copy from '$lib/donate/copy';
 import { useShowMoreMessages } from '$lib/donate/show-more';
 import {
@@ -56,7 +55,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 				{
 					kind,
 					fundraiser: { title, name, raisedMinor, goalMinor, gifts },
-					org: { name: profile?.legalName ?? APP_NAME, taxId: profile?.taxId ?? null, logo },
+					org: { name: profile?.legalName ?? null, taxId: profile?.taxId ?? null, logo },
 					look: { brandColour: profile?.brandColour ?? null },
 					money: { locale: SERVED_LOCALE, currency }
 				},

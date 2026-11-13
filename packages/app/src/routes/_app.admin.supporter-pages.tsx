@@ -4,18 +4,17 @@ import { z } from 'zod';
 import type { CrumbHandle } from '$lib/admin/crumbs';
 import { APP_NAME, screenTitle } from '$lib/admin/screen-title';
 import {
-	INTENT_FIELD,
 	PAGE_ID_FIELD,
 	type RowOutcome,
 	type RowPress,
-	SUPPORTER_PAGES_INTENTS,
+	SUPPORTER_PAGES_FORMS,
 	SupporterPages
 } from '$lib/admin/supporter-pages/supporter-pages';
 import { type AdminActionData, resultFor } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
 import { SUPPORTER_HIDE_INPUT, SUPPORTER_SETTING_INPUT } from '$lib/supporters/input';
 import { STAFF_USER_ID } from '$lib/server/auth';
-import { invalid, type ParsedForm, parseForm, unread } from '$lib/server/conform';
+import { invalid, type ParsedForm, parseForm, submittedForm } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
 import {
 	readOrgProfile,
@@ -84,18 +83,20 @@ export async function loader({ context }: Route.LoaderArgs) {
 	}
 }
 
-const SETTING = defineForm({ id: 'supporter-setting', schema: SUPPORTER_SETTING_INPUT });
+const SETTING = defineForm({
+	id: SUPPORTER_PAGES_FORMS.saveSetting,
+	schema: SUPPORTER_SETTING_INPUT
+});
 const HIDE = defineForm({
-	id: 'supporter-page-hide',
+	id: SUPPORTER_PAGES_FORMS.hide,
 	schema: SUPPORTER_HIDE_INPUT.extend({ [PAGE_ID_FIELD]: z.string() })
 });
 const SHOW = defineForm({
-	id: 'supporter-page-show',
+	id: SUPPORTER_PAGES_FORMS.show,
 	schema: z.object({ [PAGE_ID_FIELD]: z.string() })
 });
 
 const NOT_YOURS = 'Only whoever runs this server can change this.';
-const NO_SUCH_PRESS = `\`${INTENT_FIELD}\` names no press on this screen. it is one of: ${Object.values(SUPPORTER_PAGES_INTENTS).join(', ')}.`;
 const NO_PROFILE = 'Save the organisation details first, then switch fundraisers off.';
 const SETTING_FAILED = 'Couldn’t save the setting. Try again.';
 const NOT_LISTED = 'That page is no longer on this list. Reload to see the pages as they are now.';
@@ -107,9 +108,8 @@ const PRESS_FAILED = {
 export async function action({ context, request }: Route.ActionArgs) {
 	const db = context.get(database);
 	const body = await request.formData();
-	const intent = body.get(INTENT_FIELD);
-	switch (intent) {
-		case SUPPORTER_PAGES_INTENTS.saveSetting: {
+	switch (submittedForm(body, Object.values(SUPPORTER_PAGES_FORMS))) {
+		case SUPPORTER_PAGES_FORMS.saveSetting: {
 			const submission = parseForm(body, SETTING);
 			if (!submission.ok) return invalid(400, submission.reject());
 			if (context.get(staff).id !== STAFF_USER_ID) {
@@ -126,14 +126,12 @@ export async function action({ context, request }: Route.ActionArgs) {
 			}
 			return { saved: 'setting' as const };
 		}
-		case SUPPORTER_PAGES_INTENTS.hide:
+		case SUPPORTER_PAGES_FORMS.hide:
 			return rowPress('hide', parseForm(body, HIDE), (pageId, value) =>
 				hideFundraiser(db, pageId, value.note ?? null, new Date())
 			);
-		case SUPPORTER_PAGES_INTENTS.show:
+		case SUPPORTER_PAGES_FORMS.show:
 			return rowPress('show', parseForm(body, SHOW), (pageId) => showFundraiser(db, pageId));
-		default:
-			return invalid(400, unread(SETTING, NO_SUCH_PRESS));
 	}
 
 	async function rowPress<V extends { readonly [PAGE_ID_FIELD]: string }>(

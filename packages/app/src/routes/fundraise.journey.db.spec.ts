@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client } from '$lib/server/db/database.testing';
+import { WHICH_FORM } from '$lib/forms/definition';
 import { supporterPage } from '$lib/server/db/schema';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { endOwnFundraiser } from '$lib/server/supporters/pages';
@@ -259,7 +260,7 @@ describe('a fundraiser’s life, from its first edit to its end', () => {
 		// staff hide it: not found to the public, no gift taken, and the supporter told why.
 		const staff = await signInAsDeployer(db);
 		const hidden = await press(staff, {
-			intent: 'hide',
+			[WHICH_FORM]: 'supporter-page-hide',
 			page_id: pageId,
 			note: 'Please take the phone number out of the story.'
 		});
@@ -275,13 +276,13 @@ describe('a fundraiser’s life, from its first edit to its end', () => {
 		});
 
 		// and show it again: back as it stood.
-		const shown = await press(staff, { intent: 'show', page_id: pageId });
+		const shown = await press(staff, { [WHICH_FORM]: 'supporter-page-show', page_id: pageId });
 		expect(await shown.json()).toMatchObject({ landed: 'shown', pageId });
 		expect((await visitFundraiser(slug)).status).toBe(200);
 		expect(await takesGifts(formId)).toBe(true);
 
 		// the organisation switches fundraisers off: no new start, no entry card, the live page live.
-		const off = await press(staff, { intent: 'save-setting' });
+		const off = await press(staff, { [WHICH_FORM]: 'supporter-setting' });
 		expect(await off.json()).toMatchObject({ saved: 'setting' });
 		expect((await call(start.loader, request('/fundraise'))).data).toMatchObject({ open: false });
 		const refused = await call(
@@ -295,7 +296,7 @@ describe('a fundraiser’s life, from its first edit to its end', () => {
 			kind: 'live',
 			fundraiserEntry: false
 		});
-		await press(staff, { intent: 'save-setting', enabled: 'on' });
+		await press(staff, { [WHICH_FORM]: 'supporter-setting', enabled: 'on' });
 		expect(await entryCardOnDonate()).toBe(true);
 
 		// the supporter ends it: the address answers 200 with the final total, and takes no gift.
@@ -315,7 +316,10 @@ describe('a fundraiser’s life, from its first edit to its end', () => {
 			fundraiser: { title: 'Run for the new shelter', raisedMinor: 10_000, goalMinor: 75_000 }
 		});
 		expect(await takesGifts(formId)).toBe(false);
-		expect(await managed(browser, pageId)).toMatchObject({ status: 'ended' });
+		expect(await managed(browser, pageId)).toMatchObject({
+			status: 'ended',
+			publishedAt: expect.any(String)
+		});
 	});
 
 	it('lets a member hide and show, and not change the setting', async () => {
@@ -327,14 +331,25 @@ describe('a fundraiser’s life, from its first edit to its end', () => {
 			pages: [{ id: pageId, openHref: '/f/run-for-the-shelter' }]
 		});
 		expect(
-			await (await press(member, { intent: 'hide', page_id: pageId, note: '' })).json()
+			await (
+				await press(member, { [WHICH_FORM]: 'supporter-page-hide', page_id: pageId, note: '' })
+			).json()
 		).toMatchObject({ landed: 'hidden' });
 		const relisted = await adminScreen.get('/admin/supporter-pages', member);
 		expect(await relisted.json()).toMatchObject({
 			pages: [{ id: pageId, openHref: `/admin/supporter-pages/${pageId}/preview` }]
 		});
-		await press(member, { intent: 'save-setting' });
+		await press(member, { [WHICH_FORM]: 'supporter-setting' });
 		expect((await call(start.loader, request('/fundraise'))).data).toMatchObject({ open: true });
+	});
+
+	it('refuses a press naming no form on the screen, and writes nothing', async () => {
+		const { pageId, slug } = await liveFundraiser(db, mailed);
+		const staff = await signInAsDeployer(db);
+		const unnamed = await press(staff, { intent: 'hide', page_id: pageId, note: '' });
+		expect(unnamed.status).toBe(400);
+		expect(await unnamed.text()).toContain(WHICH_FORM);
+		expect((await visitFundraiser(slug)).status).toBe(200);
 	});
 
 	it('opens a page ended before its confirm link through the preview, as the public cannot see it', async () => {

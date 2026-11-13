@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client, run, stmt } from '$lib/server/db/database.testing';
+import { WHICH_FORM } from '$lib/forms/definition';
 import {
 	IMAGE_BYTES_MAX,
 	image,
@@ -18,6 +19,7 @@ import { gift, noteGift } from '$lib/server/pages/settled-gifts.testing';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { SPEC_RATE_LIMITS } from '$lib/server/runtime/rate-limiter.testing';
 import { hideFundraiser } from '$lib/server/supporters/admin';
+import { endOwnFundraiser } from '$lib/server/supporters/pages';
 import { writeResendTicket } from '$lib/server/supporters/resend-ticket';
 import { SUPPORTER_SESSION_COOKIE } from '$lib/server/supporters/session';
 import { PHOTO_WIDTH_MIN } from '$lib/supporter/area/photo-crop';
@@ -110,7 +112,7 @@ describe('a supporter’s session at /admin', () => {
 		const pressed = await adminScreen.post(
 			'/admin/supporter-pages',
 			supporter,
-			formBody({ intent: 'hide', page_id: pageId, note: '' })
+			formBody({ [WHICH_FORM]: 'supporter-page-hide', page_id: pageId, note: '' })
 		);
 		expect(pressed.status).toBe(303);
 		expect((await visitFundraiser(slug)).status).toBe(200);
@@ -166,6 +168,42 @@ describe('the staff preview of a fundraiser', () => {
 		});
 		expect(hiddenPage.markup).toContain('Hidden from visitors');
 		expect(hiddenPage.markup).toContain('Reported twice by donors');
+	});
+
+	it('draws a page still waiting on its confirm link as pending, with no start date', async () => {
+		await postStart(cookieJar());
+		const [started] = await db.select({ id: supporterPage.id }).from(supporterPage);
+		if (!started) throw new Error('the start wrote no page');
+		const member = await signInAsMember(db);
+		const drawn = await previewScreen(
+			request(`/admin/supporter-pages/${started.id}/preview`, { cookie: member }),
+			{ env: supporterEnv() }
+		);
+		expect(await drawn.json()).toMatchObject({
+			fundraiser: { startedAt: null },
+			staffNotice: { hidden: false, note: null, pending: true }
+		});
+	});
+
+	it('names no organisation where none is set, rather than the app’s own name', async () => {
+		const { pageId, slug } = await liveFundraiser(db, mailed);
+		const member = await signInAsMember(db);
+		await run(stmt('delete from org_profile'));
+		const drawn = await previewScreen(
+			request(`/admin/supporter-pages/${pageId}/preview`, { cookie: member }),
+			{ env: supporterEnv() }
+		);
+		expect(await drawn.json()).toMatchObject({ org: { name: null } });
+		const [row] = await db
+			.select({ supporterId: supporterPage.supporterId })
+			.from(supporterPage)
+			.where(eq(supporterPage.id, pageId));
+		if (!row) throw new Error('the page was not written');
+		await endOwnFundraiser(db, row.supporterId, pageId, new Date());
+		expect((await visitFundraiser(slug)).data).toMatchObject({
+			kind: 'ended',
+			org: { name: null }
+		});
 	});
 });
 

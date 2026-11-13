@@ -2,6 +2,7 @@ import { CONFIRMATION_MS } from '@better-giving/operator/save-state';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { WHICH_FORM } from '$lib/forms/definition';
 import { type SupporterPageRow, SupporterPages, type SupporterPagesProps } from './supporter-pages';
 
 // Supporter pages, mounted over the route's read and its answers: the setting for the deployer and
@@ -131,7 +132,7 @@ describe('the setting', () => {
 
 		act(() => saveButton(host)?.click());
 		expect(onSaveSetting).toHaveBeenCalledTimes(1);
-		expect(bodyOf(onSaveSetting.mock.calls[0]?.[0])).toEqual({ intent: 'save-setting' });
+		expect(bodyOf(onSaveSetting.mock.calls[0]?.[0])).toEqual({ [WHICH_FORM]: 'supporter-setting' });
 	});
 
 	it('posts enabled=on when turned back on from off', () => {
@@ -145,7 +146,7 @@ describe('the setting', () => {
 		act(() => toggle(host)?.click());
 		act(() => saveButton(host)?.click());
 		expect(bodyOf(onSaveSetting.mock.calls[0]?.[0])).toEqual({
-			intent: 'save-setting',
+			[WHICH_FORM]: 'supporter-setting',
 			enabled: 'on'
 		});
 	});
@@ -188,7 +189,7 @@ describe('the setting', () => {
 			'On. Only whoever runs this server can change this.'
 		);
 		expect(saveButton(host)).toBeNull();
-		expect(host.querySelector('input[name="intent"][value="save-setting"]')).toBeNull();
+		expect(host.querySelector(`input[name="${WHICH_FORM}"][value="supporter-setting"]`)).toBeNull();
 	});
 
 	it('says Off to a member while it is off', () => {
@@ -325,7 +326,7 @@ describe('Hide', () => {
 		expect(onHide).toHaveBeenCalledTimes(1);
 		expect(onHide.mock.calls[0]?.[0]).toBe('page-maya');
 		expect(bodyOf(onHide.mock.calls[0]?.[1])).toEqual({
-			intent: 'hide',
+			[WHICH_FORM]: 'supporter-page-hide',
 			page_id: 'page-maya',
 			note: 'Please replace the photo.'
 		});
@@ -414,7 +415,10 @@ describe('Show again', () => {
 		expect(dialog()).toBeNull();
 		expect(onShow).toHaveBeenCalledTimes(1);
 		expect(onShow.mock.calls[0]?.[0]).toBe('page-jo');
-		expect(bodyOf(onShow.mock.calls[0]?.[1])).toEqual({ intent: 'show', page_id: 'page-jo' });
+		expect(bodyOf(onShow.mock.calls[0]?.[1])).toEqual({
+			[WHICH_FORM]: 'supporter-page-show',
+			page_id: 'page-jo'
+		});
 	});
 
 	it('sends no second press while the first is out', () => {

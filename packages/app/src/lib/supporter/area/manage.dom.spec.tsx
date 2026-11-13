@@ -36,6 +36,7 @@ const PAGE: ManagedPage = {
 	gifts: 41,
 	currency: 'USD',
 	endedAt: null,
+	publishedAt: '2026-11-01T18:00:00.000Z',
 	address: '/f/keep-the-pantry-trucks-7k2p',
 	url: 'https://give.example.org/f/keep-the-pantry-trucks-7k2p',
 	giftList: GIFTS
@@ -320,6 +321,15 @@ describe('ended', () => {
 		).toEqual(['Email', 'Facebook', 'WhatsApp']);
 		expect(root.querySelector('.sa-end')).toBeNull();
 		expect(one(root, '.sa-raised h2').textContent).toBe('Final total');
+	});
+
+	it('drops Share and View page for a page ended before it was ever published', () => {
+		const { root } = manage(
+			{},
+			{ status: 'ended', endedAt: '2026-11-20T18:00:00.000Z', publishedAt: null }
+		);
+		expect(root.querySelector('.sa-share')).toBeNull();
+		expect([...root.querySelectorAll('main > .sa-head a')].map((a) => a.textContent)).toEqual([]);
 	});
 });
 

@@ -33,6 +33,8 @@ export type ManagedPage = {
 	readonly currency: string;
 	/** ISO 8601, while ended. */
 	readonly endedAt: string | null;
+	/** ISO 8601, once its confirm link was opened; null for a page the public has never seen. */
+	readonly publishedAt: string | null;
 	/** the page's public path, `/f/…`. */
 	readonly address: string;
 	/** the page's whole address, what Copy link and the share links carry. */
@@ -71,7 +73,7 @@ export function ManageFundraiser({
 	const state: PageState = pageState(page.status, page.hidden);
 	const badge = statusBadge(state, org.name);
 	const canEnd = state !== 'ended';
-	const shareable = state === 'live' || state === 'ended';
+	const shareable = (state === 'live' || state === 'ended') && page.publishedAt !== null;
 	const [asking, setAsking] = useState(false);
 	// a card no control opened goes back to End fundraiser; an end that lands takes that press away
 	// with the card, so the reader goes to the notice saying the page has ended.
