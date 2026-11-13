@@ -4,11 +4,10 @@
    item declares. card-css.test.tsx renders the React card beside it and asserts
    the same computed look in light and dark, for the default and example themes.
 
-   the spacing step (and, for .ds-card-create, the base type size and the
-   ease-in-out curve) live only in tailwind's theme; they are declared here
-   under ds- names with the same values, and the test holds them equal. */
+   the spacing step lives only in tailwind's theme; it is declared here under a
+   ds- name with the same value, and the test holds the two equal. */
 .ds-card {
-  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-spacing: 0.25rem;
   box-sizing: border-box;
   overflow: hidden;
   border-radius: var(--radius-card);
@@ -17,7 +16,7 @@
   color: var(--gray-12);
 }
 .ds-card-header {
-  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-spacing: 0.25rem;
   box-sizing: border-box;
   border-bottom: 1px solid var(--hairline);
   padding-inline: calc(var(--ds-spacing) * 6);
@@ -31,38 +30,18 @@
 .ds-card-header :where(h1, h2, h3, h4, h5, h6) {
   margin: 0;
   font-size: inherit;
-  line-height: inherit;
   font-family: var(--font-display);
   font-weight: 700;
 }
-/* a status, badge, count or icon beside text that can wrap sits on the text's
-   first line, not the middle of the block: the row aligns to the start and the
-   status's box is one line tall, the mark centred in it. 1lh is the box's own
-   line-height, inherited from the row, so the text beside it takes its size
-   from the row too. */
-.ds-card-status {
-  display: flex;
-  flex: none;
-  align-items: center;
-  block-size: 1lh;
-}
-/* the header holding a status is that row. :where() keeps it at one class, so
-   a class of the page's own on the header still wins */
-.ds-card-header:where(:has(> .ds-card-status)) {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: calc(var(--ds-spacing) * 2);
-}
 .ds-card-body {
-  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-spacing: 0.25rem;
   box-sizing: border-box;
   padding-inline: calc(var(--ds-spacing) * 6);
   padding-block: calc(var(--ds-spacing) * 5);
 }
 /* the actions row, on the well fill one rung in from the card */
 .ds-card-footer {
-  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-spacing: 0.25rem;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -71,75 +50,4 @@
   background-color: var(--panel);
   padding-inline: calc(var(--ds-spacing) * 6);
   padding-block: calc(var(--ds-spacing) * 4);
-}
-
-/* the card that starts making a new one, on an <a> or a <button>: the card
-   corner, a dashed field edge and no fill. it rests on the field's edge rungs
-   (7, 8 under the pointer) and the ghost fill rungs (none, 4 hovered, 5
-   pressed), with no press nudge. a 20px icon sits above the label. in a grid
-   it stretches to the row; alone it keeps 96px. */
-.ds-card-create {
-  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
-  --ds-text-base: calc(1 * var(--ds-rem, 1rem));
-  --ds-text-base-lh: calc(1.5 / 1);
-  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: calc(var(--ds-spacing) * 2);
-  min-block-size: calc(var(--ds-spacing) * 24);
-  margin: 0;
-  padding-block: calc(var(--ds-spacing) * 5);
-  padding-inline: calc(var(--ds-spacing) * 6);
-  border: 1px dashed var(--input);
-  border-radius: var(--radius-card);
-  background-color: transparent;
-  color: var(--gray-12);
-  font-family: var(--font-display);
-  font-size: var(--ds-text-base);
-  line-height: var(--ds-text-base-lh);
-  font-weight: 700;
-  letter-spacing: inherit;
-  text-transform: none;
-  text-align: center;
-  text-decoration: none;
-  cursor: pointer;
-  transition-property: color, background-color, border-color;
-  transition-duration: var(--duration-fast);
-  transition-timing-function: var(--ds-ease-in-out);
-}
-/* zero specificity, so a class on the icon sizes it wherever its sheet loads */
-:where(.ds-card-create) > :where(svg) {
-  flex: none;
-  inline-size: calc(var(--ds-spacing) * 5);
-  block-size: calc(var(--ds-spacing) * 5);
-}
-@media (hover: hover) {
-  .ds-card-create:hover:not([aria-disabled="true"]) {
-    background-color: var(--gray-4);
-    border-color: var(--input-hover);
-  }
-}
-/* after the hover at its specificity, so a press reads over it */
-.ds-card-create:active:not([aria-disabled="true"]) {
-  background-color: var(--gray-5);
-  border-color: var(--input-hover);
-}
-.ds-card-create:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-/* stays focusable, so a reason beside it can be reached */
-.ds-card-create[aria-disabled="true"] {
-  background-color: var(--gray-3);
-  border-color: var(--hairline);
-  color: var(--gray-11);
-  cursor: not-allowed;
-}
-/* an anchor has no disabled attribute: the pointer is kept off it here, and
-   the page's script stops Enter (see the usage note) */
-a.ds-card-create[aria-disabled="true"] {
-  pointer-events: none;
 }

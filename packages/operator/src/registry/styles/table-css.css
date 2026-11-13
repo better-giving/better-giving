@@ -11,9 +11,9 @@
    same values, and the test holds them equal. 40rem in the media query is
    tailwind's sm, written out because a query cannot read a variable. */
 .ds-table {
-  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
-  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
-  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-spacing: 0.25rem;
+  --ds-text-xs: 0.75rem;
+  --ds-text-sm: 0.875rem;
   --ds-text-sm-lh: calc(1.25 / 0.875);
   --ds-font-weight-medium: 500;
   --ds-font-weight-semibold: 600;
@@ -25,8 +25,7 @@
   min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  /* tabular figures so a column lines up; the zero stays plain */
-  font-feature-settings: "tnum";
+  font-feature-settings: "tnum", "zero";
   background-color: var(--ds-table-fill);
   border-radius: var(--ds-table-corner);
   border: 1px solid var(--hairline);
@@ -152,7 +151,7 @@
 /* the frame a wide table scrolls in: a named region in the tab order, which
    takes the table's shell so its overflow rounds the corners */
 .ds-table-scroll {
-  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-spacing: 0.25rem;
   position: relative;
   overflow-x: auto;
   container-type: inline-size;
@@ -185,10 +184,8 @@
 }
 
 /* the first column pinned on the card's fill; the header's and a hovered
-   row's pinned cell keep their row's fill. a footer row of one cell is not
-   part of it (below); `:where` keeps the exclusion from outranking the
-   header's and the hover's fill */
-.ds-table-scroll :is(th, td):first-child:not(:where(tfoot > tr > :only-child)) {
+   row's pinned cell keep their row's fill */
+.ds-table-scroll :is(th, td):first-child {
   position: sticky;
   inset-inline-start: 0;
   z-index: 1;
@@ -205,32 +202,7 @@
 /* under 640px the pinned column is at least 11rem, so the next one is cut at
    the edge: the cue that more is off-screen */
 @media (width < 40rem) {
-  .ds-table-scroll
-    :is(th, td):first-child:not(:where(tfoot > tr > :only-child)) {
+  .ds-table-scroll :is(th, td):first-child {
     min-width: calc(var(--ds-spacing) * 44);
   }
-}
-
-/* a footer row of one cell (load-more): as wide as the table, that cell cannot
-   stick, and its centred label sits mid-table, off a phone's screen. its child
-   is pinned instead, at the frame's visible width (100cqi: the frame is the
-   inline-size container), so it stays in view at any scroll. a cell with an
-   element child keeps no padding: inline padding would push that width past
-   the frame's edge; a cell of text alone (a note) keeps its padding.
-   `:has(> *)` adds no specificity */
-.ds-table-scroll tfoot > tr > :only-child:has(> *) {
-  padding: 0;
-}
-.ds-table-scroll tfoot > tr > :only-child > * {
-  position: sticky;
-  inset-inline-start: 0;
-  width: 100cqi;
-}
-/* flush with the frame's edges, which clip an outer ring: the 2px ring is
-   drawn 2px in from the child's edges, as site-nav-css draws its full-height
-   links' */
-.ds-table-scroll tfoot > tr > :only-child > :focus-visible {
-  outline-style: solid;
-  outline-width: 2px;
-  outline-offset: -4px;
 }

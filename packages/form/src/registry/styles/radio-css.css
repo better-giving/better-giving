@@ -7,7 +7,7 @@
    the spacing step lives only in tailwind's theme; it is declared here under a
    ds- name with the same value, and the test holds the two equal. */
 .ds-radio {
-  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-spacing: 0.25rem;
   display: flex;
   align-items: center;
   gap: calc(var(--ds-spacing) * 4);

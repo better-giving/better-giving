@@ -1,16 +1,15 @@
 /* the registry's badge as plain css: a small status chip, no tailwind. reads
-   only the variables the `variables` item declares. every status variant is a
-   tinted chip on the subtle fill with its subtle ink; .ds-badge-on-photo swaps
-   that for a solid fill, a ring and a shape mark. quiet and outline carry no
-   status.
+   only the variables the `variables` item declares. every variant is a tinted
+   chip on the subtle fill with its subtle ink; .ds-badge-on-photo swaps that
+   for a solid fill, a ring and a shape mark.
    badge-css.test.tsx renders the React badge beside it and asserts the same
    computed look in light and dark, for the default and example themes.
 
-   the type size and weights live only in tailwind's theme; they are declared
+   the type size and weight live only in tailwind's theme; they are declared
    here under ds- names with the same values, and the test holds them equal. */
 .ds-badge {
-  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
-  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-spacing: 0.25rem;
+  --ds-text-xs: 0.75rem;
   --ds-text-xs-lh: calc(1 / 0.75);
   --ds-font-weight-semibold: 600;
   box-sizing: border-box;
@@ -46,21 +45,6 @@
 .ds-badge-destructive {
   background-color: var(--destructive-subtle);
   color: var(--destructive-subtle-fg);
-}
-/* the two that carry no status. quiet: secondary metadata beside a title, the
-   neutral fill with the softer step-11 ink at 500. outline: an ended or
-   archived record, no fill, the edge an inset shadow so the chip keeps the
-   filled chips' height. neither takes .ds-badge-on-photo. */
-.ds-badge-quiet {
-  --ds-font-weight-medium: 500;
-  background-color: var(--gray-3);
-  color: var(--gray-11);
-  font-weight: var(--ds-font-weight-medium);
-}
-.ds-badge-outline {
-  background-color: transparent;
-  color: var(--gray-11);
-  box-shadow: inset 0 0 0 1px var(--hairline);
 }
 
 /* over a photo: a solid fill with its -fg ink, a 1px ring in the page color,

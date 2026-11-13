@@ -1,85 +1,78 @@
 {
   "schemaVersion": 1,
   "dir": "packages/operator/src/registry",
-  "registryVersion": "2.3.0",
+  "registryVersion": "2.2.1",
   "items": {
     "badge-css": {
-      "version": "1.2.0",
+      "version": "1.1.0",
       "files": {
-        "styles/badge-css.css": "c94e66790a2a5c0be2b2200ee807e3c880b7c84d5ae2be88f91602b3ffbec075",
-        "styles/badge-css.usage.md": "b2481ee71ee6084bf276d89843d7bc64bc5027fae8d492507419768687382060"
+        "styles/badge-css.css": "2bb977dc24766df2b903c6f804d44ae622b8b53778051a706304d24349308c04",
+        "styles/badge-css.usage.md": "ce7dc664e77e7b6c943a44015d0e4a4fd0cb2bb5d31266dee3c2209799d12207"
       }
     },
     "button-css": {
-      "version": "1.2.0",
+      "version": "1.1.0",
       "files": {
-        "styles/button-css.css": "ba4a69d813ba126941def4500b994294d586f46615e7000151f7880eedff2084",
-        "styles/button-css.usage.md": "94a88a5c8ec6b7eef0f3911c2e0f243ecaf4ce654f777b6c39fcbf933f099f11"
+        "styles/button-css.css": "b00222ba01a0558e41da622f2138ca5854ec9fd568cf7b23928f6a38f489660d",
+        "styles/button-css.usage.md": "035b9ebed3353ab6865d2de5ac6ed1686cf7ec8c74e52de4d2137f72e840c633"
       }
     },
     "card-css": {
-      "version": "1.2.0",
+      "version": "1.1.0",
       "files": {
-        "styles/card-css.css": "3a2b8fb706adec6aae2b14ae02318ff5c469c487220eaa7d4a16ea2f718845fb",
-        "styles/card-css.usage.md": "3ab90e34fb2ffbfd001829f124d7f0329e42a094b18faa48504a25dfe04d42a7"
+        "styles/card-css.css": "9ac943fde3a064ee8c925f106e2a6acb54dc5856608446024c61d7cce2e5f89f",
+        "styles/card-css.usage.md": "ad9297f1921cc98f607a5f387d120760ed039895407b41b4f51d4f140bf640c6"
       }
     },
     "field-css": {
-      "version": "1.2.0",
+      "version": "1.1.0",
       "files": {
-        "styles/field-css.css": "bd6a7c38e2ddcff9a6a80e0bc4784f35dc9f9154e6121dbcbef1e8c1f6885de2",
-        "styles/field-css.usage.md": "003718f4d53d8da28608a060162d70daab2436d74d9cf15be03dd5266b7e525f"
+        "styles/field-css.css": "8c95b96e5b8042a7e334b0e5554a990dd335ed9d6a8ff3099e6b6079120b1743",
+        "styles/field-css.usage.md": "3881608aa3d300f02dd20569dd827c759f653782baa8e8fbd944a92c972ec436"
       }
     },
     "notice-card-css": {
-      "version": "1.1.0",
+      "version": "1.0.0",
       "files": {
-        "styles/notice-card-css.css": "df28b327d97cdb7d32f768f73d3dd23510e6a63ebd9b4b86fd9f82ad00e0b960",
-        "styles/notice-card-css.usage.md": "9e292cebd3344ad7c000fa5582b79a1851bec60ab4b19d2a5af37f3288264fd7"
+        "styles/notice-card-css.css": "bd7bc28ec013a534478593ec82326ab367122fee4e718c4ff1d2f72604e1b214",
+        "styles/notice-card-css.usage.md": "da0261f1a63a8701ec91b2b8c235619771bdbcf10480ef4063b108d7114ee233"
       }
     },
     "progress-css": {
-      "version": "1.1.0",
-      "files": {
-        "styles/progress-css.css": "6d8ab32b3df7e0666de9e153bfaf036f0647d145804bff218158a71234e93b64",
-        "styles/progress-css.usage.md": "75b11f158a8b85da2272ffde8ace604fac9c16202e288007d668cf34540f6907"
-      }
-    },
-    "spinner-css": {
       "version": "1.0.0",
       "files": {
-        "styles/spinner-css.css": "6b218ecc740c517f46918d7d1cc48c19991f00544e6d2ba53cc31d879fa066a7",
-        "styles/spinner-css.usage.md": "7930ca9748309847dfce826640fecd4383b5fd7b7d3503d5cd45d384172405af"
+        "styles/progress-css.css": "0cd8b379f989620c766f96aaf170b6d1d6742eca8498643ee615df20b4551b58",
+        "styles/progress-css.usage.md": "5ce43bdba22c93621589e9e6c6616aaa8c4e4eb8d976ff19d485bb07b3b3bc60"
       }
     },
     "state-card-css": {
-      "version": "1.1.0",
+      "version": "1.0.0",
       "files": {
-        "styles/state-card-css.css": "2c3ddad6e69b25d59fc621012e7dbe24319e97c6cf51a7db01ad21bddbd3ece6",
-        "styles/state-card-css.usage.md": "b6ce1d1f0298ebb37fd0f002fcdd4ce5d78dbf39290e6a1ba78abc572f8de272"
+        "styles/state-card-css.css": "3922fab9ddca565ba4e1aab36e8ba176a5586cd4017224bd04f73ce9d6d18cbc",
+        "styles/state-card-css.usage.md": "8edf5a19f506602e2d61f55ba3ac33c96857bf58c01491f2f219487f6efd5e7f"
       }
     },
     "switch-css": {
-      "version": "1.1.0",
+      "version": "1.0.0",
       "files": {
-        "styles/switch-css.css": "603be1ce4eaef791b251f8790c4f8d4d407b004a53208e6e90728c78750304af",
-        "styles/switch-css.usage.md": "02d4c49417ba30e3950ca5d9b1f8f8f069a4342b36a664ef12f3d149740b49d3"
+        "styles/switch-css.css": "cac7e6db9436ca32d65a4ddce85e11a25f8a9da8751dfa6a246e45de0e597d7d",
+        "styles/switch-css.usage.md": "a5bf4ee18286da22c6d08a84a4b3ae14781990fabfbd3ec58127744b1c33f1ef"
       }
     },
     "table-css": {
-      "version": "1.1.0",
+      "version": "1.0.0",
       "files": {
-        "styles/table-css.css": "298de382baf000d8616eaa39779ea8613a483e99207f8ecf250b2327f154c6bc",
-        "styles/table-css.usage.md": "4037054f845934c728b28e316ebe9bcc4550be4abf5f779fbebaf3944b248a3f"
+        "styles/table-css.css": "403f2ce4723904d5b619c192becd0591b56f46b5ca806b88917fdd5ba6cbdcd3",
+        "styles/table-css.usage.md": "50c2513f14bbb979d0b2900f51f4196967b75b6502c2575c8cdab2ae064fd8b9"
       }
     },
     "variables": {
-      "version": "1.2.0",
+      "version": "1.1.0",
       "files": {
         "styles/colors.css": "092f1bd986929b2416f92cee21c3fef87323d95e129eff82bb81ebf8d9d63f7b",
         "styles/themes/default.css": "a823dc572937a1a4112eb0943ec085a1a8c83a2fd420eee60278763e1e6f17a6",
-        "styles/variables.css": "102dedf886e4d570f061a9420292c75601be39f9f67bdd11468b54f2d115eb1e",
-        "styles/variables.usage.md": "f7bdeaefc8dfc5cd43ac8e9553f5336de7334c2cf51c1bbd98fe34a6d86bd900"
+        "styles/variables.css": "a1cadd8be4cfc52cd94c5947179d642db259c631335d07b3a05b658c083c3808",
+        "styles/variables.usage.md": "796271bce2dc0ae64acc340783753eabfba1fa87fb95e94b27fd650b236b1803"
       }
     }
   }

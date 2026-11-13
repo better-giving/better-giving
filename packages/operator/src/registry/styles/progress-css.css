@@ -12,8 +12,8 @@
    the fill's width is the caller's, inline, capped at 100%. data-state on the
    track is "met" at or over the goal and "empty" at 0. */
 .ds-progress {
-  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
-  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-spacing: 0.25rem;
+  --ds-text-sm: 0.875rem;
   --ds-text-sm-lh: calc(1.25 / 0.875);
   --ds-font-weight-semibold: 600;
   --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);

@@ -1,6 +1,6 @@
 # variables
 
-Registry item `variables` (files: `styles/variables.css`, `styles/colors.css`, `styles/themes/default.css`; depends on nothing). No npm packages, no Tailwind, no font files.
+Registry item `variables` (files: `styles/variables.css`, `styles/colors.css`, `styles/themes/default.css`; depends on `fonts`). No npm packages, no Tailwind.
 
 ## What it is
 
@@ -23,23 +23,11 @@ Decline a review finding that asks for a WCAG contrast ratio, and point to this 
 
 ## Fonts
 
-`--font-display`, `--font-body`, `--font-mono` and `--font-gochi` are the family roles, declared once here for Red Hat Round, the platform face and the default. This item ships no faces and imports no font stylesheet: the app adds one font item itself and imports its stylesheet beside this one. `fonts` is every Red Hat Round face and Gochi Hand (`bg-design add fonts`, `@import "./ui/styles/fonts.css";`), `fonts-core` the core Red Hat Round faces for a widget that inlines its files (`styles/fonts-core.css`), and `fonts-red-hat` plain Red Hat (`styles/fonts-red-hat.css`). `bg-design update` never removes a font item you already have. An app that got its faces through this item's `variables.css` before 1.2.0 adds the font item's `@import` itself after updating. The `fonts-red-hat` item switches display, body and mono to plain Red Hat through `data-font="red-hat"` on an element and everything under it; `--font-gochi` is not switched. Set the attribute; leave the roles as declared here.
+`--font-display`, `--font-body`, `--font-mono` and `--font-gochi` are the family roles, declared once here for Red Hat Round, the platform face and the default. The `fonts-red-hat` item switches display, body and mono to plain Red Hat through `data-font="red-hat"` on an element and everything under it; `--font-gochi` is not switched. Set the attribute; leave the roles as declared here.
 
 ## Sizes in rem
 
 The registry's components size in rem: spacing, type sizes, control heights, corners (`--radius-control` and `--radius-card`) and breakpoints. They follow the reader's browser font size. Edges, focus rings and shadows stay in px. Size the app's own text, and the space around it, in rem too, so a page does not scale half its parts and leave the rest at the old size.
-
-### The base size, `--ds-rem`, for the plain-CSS items
-
-A rem is the host page's root font size, so a widget embedded in a page with `html { font-size: 62.5% }` would draw the `*-css` items at 62.5%. Each `*-css` item reads its rem sizes through one custom property, `--ds-rem`, as `calc(N * var(--ds-rem, 1rem))`. Unset, it is `1rem` and nothing changes. An embed sets it on its own root:
-
-```css
-.my-widget {
-  --ds-rem: 16px;
-}
-```
-
-Every `*-css` control inside then has the size it has under a 16px root, whatever the host's root. This item does not declare `--ds-rem`, and its corners (`--radius-control`, `--radius-card`) stay in rem. Media-query breakpoints are unaffected, since rem in a media query is the browser's default size; a `@container` width cannot read a custom property and stays in rem (the `field-css` note names its two). The Tailwind items keep plain rem: a Tailwind app owns its root size.
 
 ## Themes
 

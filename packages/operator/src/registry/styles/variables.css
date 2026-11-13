@@ -4,9 +4,8 @@
    app gets the same file through ./index.css.
 
    what is where: the palette and the two corners come from the brand colors.css
-   imported below (--primary, --radius-control, --radius-card, the ramp), and
-   the rest is declared here. no faces: the app imports a font item's
-   stylesheet (fonts, fonts-core or fonts-red-hat) beside this file.
+   imported below (--primary, --radius-control, --radius-card, the ramp), the
+   faces from ./fonts.css, and the rest is declared here.
 
    the type, shadow and speed values below are ALSO declared in ./theme.css,
    because tailwind needs them inside @theme to generate font-*, shadow-* and
@@ -14,6 +13,7 @@
    fails when either file moves alone. colors need no second copy: theme.css
    maps them with var(). */
 
+@import "./fonts.css";
 @import "./colors.css";
 
 :root {
