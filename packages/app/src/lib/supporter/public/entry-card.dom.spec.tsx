@@ -171,6 +171,28 @@ describe('the entry card', () => {
 		}
 	});
 
+	// ../../donate/page.css sizes the card under the profile head by the root's `data-layout`: the
+	// page's content width in the card and the feature, and the letter's own column tracks from 60rem.
+	it.each([
+		['card', BARE_PROFILE],
+		['letter', LETTER],
+		['feature', FEATURE]
+	])(
+		'stands in the %s’s content width, outside its layout, under the root naming it',
+		(layout, profile) => {
+			const root = mount(
+				<PageView {...props({ profile, fundraiserEntry: true, donorMessages: WIRING })} />
+			);
+			const area = root.querySelector<HTMLElement>('[data-area="fundraise"]');
+			const page = root.querySelector<HTMLElement>('.page');
+			expect(page?.dataset.layout).toBe(layout);
+			expect(page?.hasAttribute('data-profile')).toBe(true);
+			expect(area?.className).toBe('page-in page-fundraise-area');
+			expect(area?.parentElement?.matches('main.page-body')).toBe(true);
+			expect([...(area?.children ?? [])]).toEqual([card(root)]);
+		}
+	);
+
 	it('draws a bare profile with the feature on as the card, then the entry card, and no more area', () => {
 		const root = mount(
 			<PageView

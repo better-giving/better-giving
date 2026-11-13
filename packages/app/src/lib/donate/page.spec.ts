@@ -1292,3 +1292,43 @@ describe('the sections ./page.css draws', () => {
 		expect(written.filter((entry) => !drawn.has(entry.slice(entry.indexOf(' .') + 2)))).toEqual([]);
 	});
 });
+
+describe('the entry card’s width', () => {
+	const WIDE = '@container page (min-width: 60rem)';
+	const LETTER = ".page[data-layout='letter']";
+	const PROFILE_LETTER = ".page[data-profile][data-layout='letter']";
+	const PLAIN = '.page:not([data-profile]) .page-fundraise-area > .page-fundraise';
+	// the blocks that size the area or the card itself, not a part inside it.
+	const fundraise = page.filter(({ at }) => /\.page-fundraise(?:-area)?$/.test(at.at(-1) ?? ''));
+
+	it('stands in the profile letter’s reading column from 60rem: its tracks and its measure, beside the rail', () => {
+		const area = declared(page, WIDE, `${PROFILE_LETTER} .page-fundraise-area`);
+		const columns = declared(page, WIDE, `${LETTER} .page-profile`);
+		expect(area['grid-template-columns']).toBe(columns['grid-template-columns']);
+		expect(area['column-gap']).toBe(columns['column-gap']);
+		expect(
+			declared(page, WIDE, `${PROFILE_LETTER} .page-fundraise-area > .page-fundraise`)
+		).toEqual({
+			'max-inline-size': declared(page, WIDE, `${LETTER} .page-profile > *`)['max-inline-size']
+		});
+	});
+
+	it('is held to `--page-fundraise-width` under no profile head, and to no width of its own in the profile card and feature', () => {
+		const sized = fundraise.filter(
+			({ decls }) =>
+				decls['max-inline-size'] !== undefined ||
+				decls['inline-size'] !== undefined ||
+				decls['grid-template-columns'] !== undefined
+		);
+		expect(sized.map(({ at }) => at.join(' » '))).toEqual([
+			PLAIN,
+			`${WIDE} » ${PROFILE_LETTER} .page-fundraise-area`,
+			`${WIDE} » ${PROFILE_LETTER} .page-fundraise-area > .page-fundraise`
+		]);
+		expect(declared(page, PLAIN)).toEqual({ 'max-inline-size': 'var(--page-fundraise-width)' });
+		const readers = page.filter(({ decls }) =>
+			Object.values(decls).some((value) => value.includes('--page-fundraise-width'))
+		);
+		expect(readers.map(({ at }) => at.join(' » '))).toEqual([PLAIN]);
+	});
+});
