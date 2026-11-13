@@ -89,30 +89,19 @@ const evaluate = (
 	bound: Readonly<Record<string, string | number>> = {}
 ): number => {
 	const source = (value ?? '').trim();
-	// `var(--name, 1rem)` reads as its fallback where nothing binds the name: the registry's `--ds-rem`
-	// is never set here, so its fallback is the root's 16px.
-	const lexer =
-		/\s*(?:var\((--[\w-]+)(?:,\s*(\d*\.?\d+)(px|rem))?\)|(\d*\.?\d+)(%|px|rem)?|(calc\(|min\(|max\(|[-+*/(),]))/y;
+	const lexer = /\s*(?:var\((--[\w-]+)\)|(\d*\.?\d+)(%|px|rem)?|(calc\(|min\(|max\(|[-+*/(),]))/y;
 	const items: (number | string)[] = [];
-	const named = (name: string, fallback?: number): number => {
+	const named = (name: string): number => {
 		const given = bound[name];
-		if (given === undefined) return fallback ?? px(name);
+		if (given === undefined) return px(name);
 		return typeof given === 'number' ? given : evaluate(given, percent, bound);
 	};
 	while (lexer.lastIndex < source.length) {
 		const hit = lexer.exec(source);
 		if (hit === null) throw new Error(`not a length this spec reads: ${source}`);
-		const [, name, fallbackFigure, fallbackUnit, figure, unit, operator] = hit;
-		if (name !== undefined) {
-			items.push(
-				named(
-					name,
-					fallbackFigure === undefined
-						? undefined
-						: Number(fallbackFigure) * (fallbackUnit === 'rem' ? 16 : 1)
-				)
-			);
-		} else if (figure === undefined) items.push(operator === 'calc(' ? '(' : (operator ?? ''));
+		const [, name, figure, unit, operator] = hit;
+		if (name !== undefined) items.push(named(name));
+		else if (figure === undefined) items.push(operator === 'calc(' ? '(' : (operator ?? ''));
 		else if (unit !== '%') items.push(Number(figure) * (unit === 'rem' ? 16 : 1));
 		else if (percent === undefined)
 			throw new Error(`a percentage with nothing to be one of: ${source}`);
