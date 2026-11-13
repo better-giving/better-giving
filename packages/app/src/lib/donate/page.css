@@ -1218,7 +1218,12 @@ body {
 
 .page[data-layout='letter']
 	.page-profile
-	> :is([data-area='about'], [data-area='videos'], [data-area='messages']) {
+	> :is(
+		[data-area='about'],
+		[data-area='videos'],
+		[data-area='fundraise'],
+		[data-area='messages']
+	) {
 	margin-block-start: calc(var(--page-profile-gap) - var(--page-gap-group));
 }
 
@@ -1501,31 +1506,19 @@ body {
 /* the entry card that starts a supporter's fundraiser ($lib/supporter/public/entry-card.tsx): a
    plane holding a heading, one sentence, and one secondary press with its note beside it. on a
    phone the press runs the card's width and the note wraps under it; from 30rem they share a row.
-   it stands a section's step below the whole layout, messages included. under a campaign or the
-   Donation page's own layout it is held to `--page-fundraise-width` at the layout's start. under
-   the profile head it is as wide as the column it follows: the layout's whole width in the card
-   layout and the feature layout, and from 60rem in the letter layout the reading column alone, on
-   its own tracks and held to its measure, so it never runs under the box's rail. the press is the
+   under a campaign or the Donation page's own layout it stands a section's step below the whole
+   layout, held to `--page-fundraise-width` at its start. under the profile head it is one of the
+   column's own parts (./page-view.tsx), spaced and sized as they are: after the box in the card,
+   and just before the messages from donors in the letter, where from 60rem it keeps to the reading
+   column beside the rail, and in the feature. the press is the
    registry's, linked beside this sheet, and its ring the registry's; its ink is restated below,
    since the page's link ink outranks the variant's. */
-.page-fundraise-area {
+.page:not([data-profile]) .page-fundraise-area {
 	margin-block-start: var(--page-gap-section);
 }
 
 .page:not([data-profile]) .page-fundraise-area > .page-fundraise {
 	max-inline-size: var(--page-fundraise-width);
-}
-
-@container page (min-width: 60rem) {
-	.page[data-profile][data-layout='letter'] .page-fundraise-area {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) var(--page-box);
-		column-gap: var(--page-col-gap);
-	}
-
-	.page[data-profile][data-layout='letter'] .page-fundraise-area > .page-fundraise {
-		max-inline-size: var(--page-measure);
-	}
 }
 
 .page-fundraise {

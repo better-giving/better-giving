@@ -143,6 +143,41 @@ describe('editing a page', () => {
 		}
 	});
 
+	it('keeps the keyboard on the photo’s press when Remove takes itself away', () => {
+		const { root } = edit();
+		const remove = button(root, 'Remove');
+		act(() => {
+			remove.focus();
+			remove.click();
+		});
+		expect(root.contains(remove)).toBe(false);
+		expect(document.activeElement).toBe(button(root, 'Add photo'));
+	});
+
+	it('turns down a crop the resize took under the width a page takes, and sends nothing', async () => {
+		// the chosen photo, then the crop after a transparent photo's resize stepped it down.
+		const widths = [2400, 1024];
+		vi.stubGlobal(
+			'createImageBitmap',
+			vi.fn(async () => ({ width: widths.shift(), height: 1350, close() {} }))
+		);
+		const upload = vi.fn();
+		vi.stubGlobal('fetch', upload);
+		const { root } = edit();
+		const chooser = one<HTMLInputElement>(root, 'input[type="file"]');
+		const file = new File(['x'], 'pantry.png', { type: 'image/png' });
+		Object.defineProperty(chooser, 'files', { value: [file], configurable: true });
+		await act(async () => {
+			chooser.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		await act(async () => button(root, 'Use this photo').click());
+		expect(upload).not.toHaveBeenCalled();
+		const press = button(root, 'Replace photo');
+		expect(one(root, `#${press.id}-err`).textContent).toBe(
+			'That image is too large even after resizing. Choose a smaller one.'
+		);
+	});
+
 	it('says a photo that was not stored under the photo’s press', () => {
 		const { root } = edit({ photoMissing: true });
 		const press = button(root, 'Replace photo');

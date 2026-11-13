@@ -5,7 +5,7 @@
  * a name one of those declares: the form's private `--_` steps (packages/form/src/styles/tokens.css),
  * the page's `--page-*` layer ($lib/donate/page.css) and the registry's roles (variables). none is
  * written here; `48rem` is the page container's own width step, the one length page.css writes at
- * its call site, and `100vmax` is the cropper's scrim reaching past any photo.
+ * its call site, and a line carrying a `raw-length-ok:` note says why its length is no step.
  *
  * the registry's component sheets draw the controls and the cards (button, badge, field, progress,
  * notice-card, state-card, table); what is here places them, and draws the five things the
@@ -444,11 +444,6 @@
 	min-inline-size: var(--page-measure-lede);
 }
 
-/* the registry's load-more row draws its button edge to edge; the cell holds no inset of its own. */
-.ds-table .sa-load-more {
-	padding: 0;
-}
-
 /* wide, the total and the gifts in the main column and the share and the end beside them, each
    column stacking on its own: the share spans the rows the total and the first of the gifts stand
    in, so the gifts start under the total whatever the share's height, and the last row takes the
@@ -549,8 +544,12 @@
 
 .sa-cropper-frame {
 	border: var(--_border-strong) solid var(--_n1);
-	box-shadow: 0 0 0 100vmax var(--overlay);
+	box-shadow: 0 0 0 100vmax var(--overlay); /* raw-length-ok: past the longest side of any photo. */
 	cursor: move;
+	/* how far each handle's target reaches either side of it, read by `.sa-cropper-handle::before`:
+	   `--_sp5`, or less on a frame too small to keep that much clear in its middle for a drag.
+	   `--crop-width` is the frame's side as drawn, which the cropper states on its root. */
+	--_handle-reach: min(var(--_sp5), (var(--crop-width) - var(--_sp5)) / 2);
 }
 
 .sa-cropper-frame:focus-visible {
@@ -568,6 +567,8 @@
 	block-size: var(--_sp4);
 	background: var(--_n1);
 	border: var(--_border) solid var(--_n6);
+	/* a corner's target stands over the two edges' where they meet. */
+	z-index: 1;
 }
 
 .sa-cropper-handle:is([data-position='n'], [data-position='s']) {
@@ -576,4 +577,31 @@
 
 .sa-cropper-handle:is([data-position='e'], [data-position='w']) {
 	inline-size: var(--_sp4);
+}
+
+/* each handle is grabbed by more than it draws, which on a phone, where no key moves it, is the
+   only way to resize the frame: a `::before` reaching `--_handle-reach` either side of the corner or
+   edge the handle moves, off the handle's centre, `--_sp4` across. */
+.sa-cropper-handle::before {
+	content: '';
+	position: absolute;
+}
+
+.sa-cropper-handle:is(
+	[data-position='nw'],
+	[data-position='ne'],
+	[data-position='sw'],
+	[data-position='se']
+)::before {
+	inset: calc(var(--_sp4) / 2 - var(--_handle-reach));
+}
+
+.sa-cropper-handle:is([data-position='n'], [data-position='s'])::before {
+	inset-block: calc(var(--_sp4) / 2 - var(--_handle-reach));
+	inset-inline: 0;
+}
+
+.sa-cropper-handle:is([data-position='e'], [data-position='w'])::before {
+	inset-inline: calc(var(--_sp4) / 2 - var(--_handle-reach));
+	inset-block: 0;
 }

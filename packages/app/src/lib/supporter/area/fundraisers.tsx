@@ -7,7 +7,8 @@ import { type SupporterAccount, SupporterShell, type SupporterOrg } from './shel
 // /fundraise/pages: the signed-in supporter's own pages, newest first, one plane each — its title
 // opening Manage, its state, its address, what it has raised, and the way on. a hidden page says
 // visitors cannot see it and offers no View page; an ended one has nothing left to do but read, so
-// Manage steps down to the secondary press. View page is a live page's alone.
+// Manage steps down to the secondary press. View page stands wherever the address opens a page:
+// live, and ended, which shows its final total.
 
 /** one of the supporter's pages, as `listOwnFundraisers` reads it, with its two addresses. */
 export type FundraiserSummary = RaisedFigures & {
@@ -99,7 +100,7 @@ function FundraiserCard({
 				>
 					Manage
 				</a>
-				{state === 'live' ? (
+				{state === 'live' || state === 'ended' ? (
 					<a
 						className="ds-btn ds-btn-ghost"
 						href={page.address}

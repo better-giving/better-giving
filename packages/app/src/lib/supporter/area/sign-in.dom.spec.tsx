@@ -28,6 +28,10 @@ const signIn = (props: Partial<SignInProps> = {}) =>
 
 const resend = (root: HTMLElement) => one<HTMLButtonElement>(root, 'button[type="submit"]');
 
+/** a press closed for its countdown: `aria-disabled`, so it keeps the keyboard (./sign-in.tsx). */
+const closed = (press: HTMLButtonElement) =>
+	press.getAttribute('aria-disabled') === 'true' && !press.disabled;
+
 describe('check your email', () => {
 	it('puts focus on its heading when it arrives', () => {
 		const { root } = check();
@@ -78,7 +82,7 @@ describe('check your email', () => {
 			act(() => vi.advanceTimersByTime(60_000));
 			expect(resend(root).textContent).toBe('Send again in 0:01');
 			act(() => vi.advanceTimersByTime(1_000));
-			expect(resend(root).disabled).toBe(false);
+			expect(closed(resend(root))).toBe(false);
 			expect(resend(root).textContent).toBe('Send it again');
 		} finally {
 			vi.useRealTimers();
@@ -89,7 +93,7 @@ describe('check your email', () => {
 		vi.useFakeTimers();
 		try {
 			const { root } = check({ resentAt: 1_000 });
-			expect(resend(root).disabled).toBe(true);
+			expect(closed(resend(root))).toBe(true);
 			expect(resend(root).textContent).toBe('Send again in 1:00');
 			expect(one(root, '[role="status"]').textContent).toBe(
 				'Sent again. Any link we sent in the last hour works once.'
@@ -97,8 +101,22 @@ describe('check your email', () => {
 			act(() => vi.advanceTimersByTime(18_000));
 			expect(resend(root).textContent).toBe('Send again in 0:42');
 			act(() => vi.advanceTimersByTime(42_000));
-			expect(resend(root).disabled).toBe(false);
+			expect(closed(resend(root))).toBe(false);
 			expect(resend(root).textContent).toBe('Send it again');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('keeps the keyboard on Send it again while it counts down, and posts nothing from it', async () => {
+		vi.useFakeTimers();
+		try {
+			const { root, posted } = check({ resentAt: 1_000 });
+			act(() => resend(root).focus());
+			act(() => vi.advanceTimersByTime(1_000));
+			expect(document.activeElement).toBe(resend(root));
+			await submit(one<HTMLFormElement>(root, 'main form'));
+			expect(posted).toHaveLength(0);
 		} finally {
 			vi.useRealTimers();
 		}
@@ -123,9 +141,9 @@ describe('check your email', () => {
 			);
 			const form = one<HTMLFormElement>(root, 'main form');
 			await submit(form);
-			expect(resend(root).disabled).toBe(true);
+			expect(closed(resend(root))).toBe(true);
 			act(() => vi.advanceTimersByTime(60_000));
-			expect(resend(root).disabled).toBe(false);
+			expect(closed(resend(root))).toBe(false);
 			await submit(form);
 			expect(posted).toHaveLength(2);
 		} finally {
@@ -199,7 +217,7 @@ describe('the sign-in request', () => {
 		expect(one(notice, 'h1').textContent).toBe('That link has expired or was already used');
 		expect(notice.getAttribute('role')).toBeNull();
 		expect(resend(root).textContent).toBe('Send a new link');
-		expect(resend(root).disabled).toBe(false);
+		expect(closed(resend(root))).toBe(false);
 	});
 
 	it('meets the limit with an alert, the box kept and the press closed', () => {
@@ -212,7 +230,7 @@ describe('the sign-in request', () => {
 		expect(one(notice, 'h1').textContent).toBe('Too many tries');
 		expect(notice.textContent).toContain('Send a new link opens again when its countdown ends.');
 		expect(boxLabelled(root, 'Email').value).toBe('maya@example.org');
-		expect(resend(root).disabled).toBe(true);
+		expect(closed(resend(root))).toBe(true);
 	});
 
 	it('counts the limit’s wait down in the closed press’s label', () => {
@@ -225,7 +243,7 @@ describe('the sign-in request', () => {
 			act(() => vi.advanceTimersByTime(65_000));
 			expect(resend(root).textContent).toBe('Send a new link in 1:00');
 			act(() => vi.advanceTimersByTime(60_000));
-			expect(resend(root).disabled).toBe(false);
+			expect(closed(resend(root))).toBe(false);
 			expect(resend(root).textContent).toBe('Send a new link');
 		} finally {
 			vi.useRealTimers();
@@ -261,12 +279,12 @@ describe('the sign-in request', () => {
 			await submit(form);
 			expect(resend(root).textContent).toBe('Send a new link in 0:05');
 			act(() => vi.advanceTimersByTime(4_999));
-			expect(resend(root).disabled).toBe(true);
+			expect(closed(resend(root))).toBe(true);
 			act(() => vi.advanceTimersByTime(1));
-			expect(resend(root).disabled).toBe(false);
+			expect(closed(resend(root))).toBe(false);
 			await submit(form);
 			expect(posted).toHaveLength(2);
-			expect(resend(root).disabled).toBe(true);
+			expect(closed(resend(root))).toBe(true);
 			expect(resend(root).textContent).toBe('Send a new link in 0:05');
 		} finally {
 			vi.useRealTimers();

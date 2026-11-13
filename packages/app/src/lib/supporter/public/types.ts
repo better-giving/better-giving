@@ -8,7 +8,11 @@ import type { OrgInfo, PageMoney, PageSharing } from '../../donate/sections/type
 
 /** the organisation a supporter raises for, as the pages name it. */
 export type FundraiserOrg = {
-	readonly name: string;
+	/**
+	 * the organisation's legal name; null where none is set, which draws no line naming who the gift
+	 * goes to rather than a name that is not the organisation's.
+	 */
+	readonly name: string | null;
 	/** the EIN as printed, `12-3456789`; null draws no EIN. */
 	readonly taxId: string | null;
 	/** null or absent where the organisation has none. */
@@ -30,8 +34,8 @@ export type LiveFundraiserView = FundraiserTotals & {
 	readonly story: string;
 	/** the supporter's name as they gave it. */
 	readonly name: string;
-	/** when it went live, ISO 8601. */
-	readonly startedAt: string;
+	/** when it went live, ISO 8601; null in staff's preview of a page not yet published. */
+	readonly startedAt: string | null;
 	readonly photoId: string | null;
 	readonly goalReached: boolean;
 	/** its shown messages, the first page of them; null where there are none. */
@@ -59,6 +63,8 @@ export type FundraiserPageProps = {
 /** what staff's preview says of the page's standing, which a visitor's page never draws. */
 export type FundraiserStaffNotice = {
 	readonly hidden: boolean;
+	/** its supporter has not opened the confirm link; a hidden page says it is hidden instead. */
+	readonly pending?: boolean | undefined;
 	/** the note staff left when hiding it, as typed; null where there is none. */
 	readonly note: string | null;
 };

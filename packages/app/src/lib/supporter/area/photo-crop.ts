@@ -41,13 +41,18 @@ export function shownFrameMinimum(shown: Size, natural: Size): Size {
 
 /**
  * the frame `crop` keeps, in the photo's own whole pixels: its width a multiple of 16, so its height
- * is exactly nine sixteenths of it, and its corner held inside the photo.
+ * is exactly nine sixteenths of it, never under `PHOTO_WIDTH_MIN` (itself a multiple of 16, which
+ * the server refuses a photo below in $lib/server/supporters/photo.ts), and its corner held inside
+ * the photo. the cropper's own minimum is in the box's pixels and can land a fraction under it.
  */
 export function naturalFrame(crop: Rect, shown: Size, natural: Size): CropRect {
 	const across = natural.width / shown.width;
 	const down = natural.height / shown.height;
 	const widest = Math.min(natural.width, natural.height * PHOTO_RATIO);
-	const width = Math.floor(Math.min(Math.round(crop.width * across), widest) / 16) * 16;
+	const width = Math.max(
+		PHOTO_WIDTH_MIN,
+		Math.floor(Math.min(Math.round(crop.width * across), widest) / 16) * 16
+	);
 	const height = (width / 16) * 9;
 	const within = (at: number, room: number, side: number) =>
 		Math.min(Math.max(Math.round(at), 0), room - side);

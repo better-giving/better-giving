@@ -3,7 +3,15 @@ import {
 	type UseImageCropperProps,
 	useImageCropper
 } from '@ark-ui/react/image-cropper';
-import { type ReactNode, useEffect, useEffectEvent, useId, useRef, useState } from 'react';
+import {
+	type ReactNode,
+	type RefObject,
+	useEffect,
+	useEffectEvent,
+	useId,
+	useRef,
+	useState
+} from 'react';
 import type { CropRect } from '$lib/admin/settings/crop-image';
 import { NUDGE, resizeCorner, type Size, squareResize } from '$lib/admin/settings/logo-crop';
 import { useImageSource } from '$lib/admin/settings/logo-crop-dialog';
@@ -42,16 +50,32 @@ export type PhotoCropDialogProps = {
 	readonly file: File;
 	readonly onSave: (frame: CropRect) => void;
 	readonly onCancel: () => void;
+	/**
+	 * where focus goes when the card comes down and no control opened it: a drop, or a browser that
+	 * does not focus a pressed button.
+	 */
+	readonly fallbackFocus: RefObject<HTMLElement | null>;
 };
 
-export function PhotoCropDialog({ file, onSave, onCancel }: PhotoCropDialogProps): ReactNode {
+export function PhotoCropDialog({
+	file,
+	onSave,
+	onCancel,
+	fallbackFocus
+}: PhotoCropDialogProps): ReactNode {
 	const { id, src } = useImageSource(file);
 	const [frame, setFrame] = useState<{ readonly id: string; readonly rect: CropRect } | null>(null);
 	const kept = frame?.id === id ? frame.rect : null;
 	const title = `${useId()}-title`;
 	const cancel = useRef<HTMLButtonElement>(null);
 	return (
-		<Modal role="dialog" labelledBy={title} onDismiss={onCancel} initialFocus={cancel}>
+		<Modal
+			role="dialog"
+			labelledBy={title}
+			onDismiss={onCancel}
+			initialFocus={cancel}
+			fallbackFocus={[fallbackFocus]}
+		>
 			<h2 className="sa-dialog-title" id={title}>
 				{TITLE}
 			</h2>

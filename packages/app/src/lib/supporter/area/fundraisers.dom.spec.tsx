@@ -105,13 +105,14 @@ describe('your fundraisers', () => {
 		expect(one(card, 'a.ds-btn-primary').textContent).toBe('Manage');
 	});
 
-	it('steps an ended page’s Manage down, says when it ended, and lets the bar pass the goal', () => {
+	it('steps an ended page’s Manage down, keeps View page, says when it ended, and lets the bar pass the goal', () => {
 		const card = cards(list().root)[2] as HTMLElement;
 		expect(one(card, '.ds-badge').className).toBe('ds-badge ds-badge-neutral');
 		expect(one(card, '.ds-badge').textContent).toBe('Ended');
 		expect(card.textContent).toContain('of $1,000 goal · 23 gifts · ended Jan 6, 2026');
 		expect(card.querySelector('a.ds-btn-primary')).toBeNull();
 		expect(one(card, 'a.ds-btn-secondary').textContent).toBe('Manage');
+		expect(one(card, 'a.ds-btn-ghost').textContent).toBe('View page');
 		const track = one(card, '.ds-progress-track');
 		expect(track.dataset.state).toBe('met');
 		expect(track.getAttribute('aria-valuenow')).toBe('100');

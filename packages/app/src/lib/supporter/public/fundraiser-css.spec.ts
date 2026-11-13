@@ -99,13 +99,13 @@ describe('the names ./fundraiser.css reads', () => {
 
 describe('every colour lands on a token whose step does its job', () => {
 	// the job each property does, and the tokens whose step does it: page.css's header names the
-	// step behind each (`--page-quiet` slate 11, `--page-plane` slate 1, `--page-plane-edge` slate 6,
-	// `--page-ring` brand 8).
+	// step behind each (`--page-quiet` slate 11, `--page-accent` brand 11, `--page-plane` slate 1,
+	// `--page-plane-edge` slate 6). a link's ring is page.css's, drawn on every donor page's links.
 	const JOBS: [RegExp, readonly string[]][] = [
-		[/^color$/, ['--page-quiet', '--_n12', '--_a12', '--_on-p']],
+		[/^color$/, ['--page-quiet', '--_n12', '--page-accent', '--_on-p']],
 		[/^background(-color)?$/, ['--page-plane', '--_n3', '--_p']],
 		[/^border(?!-radius)/, ['--page-plane-edge']],
-		[/^outline$/, ['--page-ring']]
+		[/^outline$/, []]
 	];
 	const colourDeclarations = [
 		...stripComments(sheetText).matchAll(/(?:^|[;{\s])([a-z-]+)\s*:([^;{}]*);/gm)

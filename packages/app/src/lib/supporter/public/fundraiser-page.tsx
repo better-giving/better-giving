@@ -64,9 +64,21 @@ export function fundraiserPreviewLinks() {
 	];
 }
 
-/** the first word of the supporter's name, which the story's heading and the box's name use. */
+/** a title written ahead of a name: `Dr.`, `Mrs`. */
+const HONORIFIC = /^(?:mr|mrs|ms|mx|miss|dr|prof|rev|fr|sir|dame)\.?$/i;
+
+/** a lone letter, with or without its point: `J.`. */
+const INITIAL = /^\p{L}\.?$/u;
+
+/**
+ * what the story's heading, the box's name and the recipient line call the supporter: the first word
+ * of the name they gave, or the whole name where that word is a title or an initial ("Dr. Maya
+ * Reyes", "J. Reyes"). the start form has one name box, so nothing makes its first word a given name.
+ */
 export function firstName(name: string): string {
-	return name.trim().split(/\s+/)[0] ?? name;
+	const whole = name.trim();
+	const first = whole.split(/\s+/)[0] ?? whole;
+	return HONORIFIC.test(first) || INITIAL.test(first) ? whole : first;
 }
 
 export type FundraiserPageViewProps = FundraiserPageProps & {
@@ -79,7 +91,8 @@ export type FundraiserPageViewProps = FundraiserPageProps & {
 	readonly donorMessages?: DonorMessagesWiring | undefined;
 	/**
 	 * staff's preview only: hidden, a warning notice over the title says visitors do not see the
-	 * page, with staff's note. its card is drawn by the sheet `fundraiserPreviewLinks` adds.
+	 * page, with staff's note; not yet published, an info notice says so. its card is drawn by the
+	 * sheet `fundraiserPreviewLinks` adds.
 	 */
 	readonly staffNotice?: FundraiserStaffNotice | undefined;
 };
@@ -100,14 +113,22 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 			<main className="page-body">
 				<div className="page-in page-layout fundraiser-layout">
 					<div className="fundraiser-who" data-area="who">
-						{props.staffNotice?.hidden ? <HiddenNotice note={props.staffNotice.note} /> : null}
-						<a className="fundraiser-for" href="/donate">
-							<OrgLogo org={org} className="fundraiser-for-logo" />
-							<span>
-								{copy.FOR_LEAD}
-								<span className="fundraiser-for-name">{org.name}</span>
-							</span>
-						</a>
+						{props.staffNotice?.hidden ? (
+							<HiddenNotice note={props.staffNotice.note} />
+						) : props.staffNotice?.pending ? (
+							<NoticeCard tone="info" title={copy.PENDING_TITLE}>
+								<p>{copy.PENDING_BODY}</p>
+							</NoticeCard>
+						) : null}
+						{org.name === null ? null : (
+							<a className="fundraiser-for" href="/donate">
+								<OrgLogo org={org} className="fundraiser-for-logo" />
+								<span>
+									{copy.FOR_LEAD}
+									<span className="fundraiser-for-name">{org.name}</span>
+								</span>
+							</a>
+						)}
 						<h1 className="fundraiser-title" data-area="title">
 							{fundraiser.title}
 						</h1>
@@ -124,10 +145,12 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 						/>
 					</div>
 					<div className="fundraiser-side" data-area="side">
-						<section className="page-box" data-area="box" aria-label={copy.giveTo(first)}>
-							<div>{props.donationBox}</div>
-						</section>
-						<Recipient org={org} first={first} />
+						{props.donationBox === null ? null : (
+							<section className="page-box" data-area="box" aria-label={copy.giveTo(first)}>
+								<div>{props.donationBox}</div>
+							</section>
+						)}
+						{org.name === null ? null : <Recipient org={org} name={org.name} first={first} />}
 					</div>
 					<div className="fundraiser-more" data-area="more">
 						<section aria-labelledby={storyHeading} data-area="story">
@@ -161,9 +184,7 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 					<OrgContact contact={props.contact} />
 					{props.fundraiserEntry ? (
 						<p>
-							<a className="fundraiser-start" href={copy.START_HREF}>
-								{copy.START_YOUR_OWN}
-							</a>
+							<a href={copy.START_HREF}>{copy.START_YOUR_OWN}</a>
 						</p>
 					) : null}
 				</div>
@@ -228,15 +249,25 @@ function Byline({
 			)}
 			<p className="fundraiser-by">
 				<span className="fundraiser-by-name">{fundraiser.name}</span>
-				<span className="fundraiser-by-when">
-					{copy.startedOn(fundraiser.startedAt, now, locale)}
-				</span>
+				{fundraiser.startedAt === null ? null : (
+					<span className="fundraiser-by-when">
+						{copy.startedOn(fundraiser.startedAt, now, locale)}
+					</span>
+				)}
 			</p>
 		</div>
 	);
 }
 
-function Recipient({ org, first }: { readonly org: FundraiserOrg; readonly first: string }) {
+function Recipient({
+	org,
+	name,
+	first
+}: {
+	readonly org: FundraiserOrg;
+	readonly name: string;
+	readonly first: string;
+}) {
 	const labelId = useId();
 	return (
 		<section className="fundraiser-recipient" aria-labelledby={labelId}>
@@ -246,19 +277,17 @@ function Recipient({ org, first }: { readonly org: FundraiserOrg; readonly first
 			<div className="fundraiser-recipient-org">
 				<OrgLogo org={org} className="fundraiser-recipient-logo" />
 				<div className="page-profile-names">
-					<p className="fundraiser-recipient-name">{org.name}</p>
+					<p className="fundraiser-recipient-name">{name}</p>
 					{org.taxId === null ? null : (
 						<p className="page-profile-ein">
-							EIN <span className="page-profile-ein-number">{org.taxId}</span>
+							{copy.EIN} <span className="page-profile-ein-number">{org.taxId}</span>
 						</p>
 					)}
 				</div>
 			</div>
-			<p className="fundraiser-recipient-note">{copy.goesToNotTo(org.name, first)}</p>
+			<p className="fundraiser-recipient-note">{copy.goesToNotTo(name, first)}</p>
 			<p>
-				<a className="fundraiser-about" href="/donate">
-					{copy.about(org.name)}
-				</a>
+				<a href="/donate">{copy.about(name)}</a>
 			</p>
 		</section>
 	);
@@ -287,7 +316,12 @@ export function FundraiserPageWithCard({
 /** an ended fundraiser: an ended campaign's screen, its total under the thanks, and no box. */
 export function FundraiserEndedPage({ fundraiser, org, look, money }: FundraiserEndedPageProps) {
 	const raised = formatOffer(fundraiser.raisedMinor, money.locale, money.currency);
-	const goal = formatOffer(fundraiser.goalMinor, money.locale, money.currency);
+	const total = copy.endedTotal(
+		fundraiser.name,
+		formatOffer(fundraiser.goalMinor, money.locale, money.currency),
+		fundraiser.gifts,
+		money.locale
+	);
 	return (
 		<EndedCampaignPage
 			name={fundraiser.title}
@@ -296,8 +330,9 @@ export function FundraiserEndedPage({ fundraiser, org, look, money }: Fundraiser
 			look={look}
 		>
 			<p className="fundraiser-ended-total">
-				{fundraiser.name} raised <b>{raised}</b> of {goal} from{' '}
-				{copy.giftCount(fundraiser.gifts, money.locale)}.
+				{total.before}
+				<b>{raised}</b>
+				{total.after}
 			</p>
 		</EndedCampaignPage>
 	);

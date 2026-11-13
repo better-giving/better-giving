@@ -1,6 +1,6 @@
 // every word a donor reads on a supporter's fundraiser and on the entry card that starts one, and
-// the notice staff's preview of a hidden fundraiser draws. the donor page's own words stay in
-// $lib/donate/copy.ts; these are the supporter feature's.
+// the notices staff's preview of a hidden or unpublished fundraiser draws. the donor page's own
+// words stay in $lib/donate/copy.ts; these are the supporter feature's.
 
 import { NO_FORM } from '../../donate/copy';
 
@@ -41,6 +41,20 @@ export function giftCount(gifts: number, locale: string): string {
 	return gifts === 1 ? '1 gift' : `${new Intl.NumberFormat(locale).format(gifts)} gifts`;
 }
 
+/** beside the figure: `raised of $5,000 goal · 41 gifts`, the count left out at none. */
+export function raisedOfGoal(goal: string, gifts: number, locale: string): string {
+	return gifts === 0
+		? `raised of ${goal} goal`
+		: `raised of ${goal} goal · ${giftCount(gifts, locale)}`;
+}
+
+/** the ended page's line under the thanks, around its bold figure. */
+export function endedTotal(name: string, goal: string, gifts: number, locale: string) {
+	return { before: `${name} raised `, after: ` of ${goal} from ${giftCount(gifts, locale)}.` };
+}
+
+export const EIN = 'EIN';
+
 export const AMOUNT_RAISED = 'Amount raised';
 export const GOAL_REACHED = 'Goal reached';
 export const NO_GIFTS_YET = 'No gifts yet. Yours could be the first.';
@@ -74,3 +88,7 @@ export const SHARE_HEADING = 'Share this page';
 export const HIDDEN_TITLE = 'Hidden from visitors';
 export const HIDDEN_BODY = `Visitors see “${NO_FORM}” instead of this page.`;
 export const HIDDEN_NOTE_LABEL = 'Note for the supporter:';
+
+/** the notice over a fundraiser whose supporter has not opened their confirm link yet. */
+export const PENDING_TITLE = 'Not published yet';
+export const PENDING_BODY = `The supporter hasn’t opened the link we emailed them. Until they do, visitors see “${NO_FORM}” instead of this page.`;

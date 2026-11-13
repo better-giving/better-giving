@@ -26,10 +26,11 @@ export function FundraiserRaised({
 	const percent = percentOfGoal(totals);
 	const shown = Math.min(100, percent);
 	const none = totals.gifts === 0;
-	const goal = formatOffer(totals.goalMinor, money.locale, money.currency);
-	const label = none
-		? `raised of ${goal} goal`
-		: `raised of ${goal} goal · ${copy.giftCount(totals.gifts, money.locale)}`;
+	const label = copy.raisedOfGoal(
+		formatOffer(totals.goalMinor, money.locale, money.currency),
+		totals.gifts,
+		money.locale
+	);
 	return (
 		<div className="fundraiser-raised" data-area="raised">
 			{goalReached ? (

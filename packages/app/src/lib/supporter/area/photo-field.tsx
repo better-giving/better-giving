@@ -28,7 +28,7 @@ const PHOTO_REFUSED: Readonly<Record<CropRefusal, string>> = {
 };
 
 /** the photo's own size, or null where the browser cannot open it. */
-async function measure(file: File): Promise<{ width: number; height: number } | null> {
+async function measure(file: Blob): Promise<{ width: number; height: number } | null> {
 	try {
 		const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
 		const size = { width: bitmap.width, height: bitmap.height };
@@ -91,6 +91,7 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 	const [working, setWorking] = useState(false);
 	const [refused, setRefused] = useState<string | null>(null);
 	const chooser = useRef<HTMLInputElement>(null);
+	const press = useRef<HTMLButtonElement>(null);
 	const posted = useRef<HTMLInputElement>(null);
 
 	// a preview's address lives as long as the crop it draws.
@@ -127,6 +128,14 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 		if (!cropped.ok) {
 			setWorking(false);
 			setRefused(cropped.refused);
+			return;
+		}
+		// the resize steps a photo with any transparent pixel down in size to fit the byte cap, which
+		// can take it under the width the server takes however wide the frame was kept.
+		const kept = await measure(cropped.blob);
+		if (kept !== null && kept.width < PHOTO_WIDTH_MIN) {
+			setWorking(false);
+			setRefused(PHOTO_REFUSED['too-large-after-resize']);
 			return;
 		}
 		if (uploadUrl === undefined) {
@@ -178,6 +187,7 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 				)}
 				<div className="sa-row">
 					<button
+						ref={press}
 						type="button"
 						id={id}
 						className="ds-btn ds-btn-secondary ds-btn-sm"
@@ -194,7 +204,12 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 						<button
 							type="button"
 							className="ds-btn ds-btn-ghost ds-btn-sm"
-							onClick={() => (held === null ? setStored(null) : hold(null))}
+							onClick={() => {
+								if (held === null) setStored(null);
+								else hold(null);
+								// Remove leaves with its photo; the press that adds one stays.
+								press.current?.focus();
+							}}
 						>
 							<Mark name="trash" />
 							Remove
@@ -219,6 +234,7 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 					file={cropping}
 					onSave={(frame) => void keep(cropping, frame)}
 					onCancel={() => setCropping(null)}
+					fallbackFocus={press}
 				/>
 			)}
 		</fieldset>

@@ -21,8 +21,11 @@ export type EndDialogProps = {
 	readonly refused: boolean;
 	readonly sending: boolean;
 	readonly onCancel: () => void;
-	/** where focus goes when the card comes down and End fundraiser, which opened it, is gone. */
-	readonly fallbackFocus?: RefObject<HTMLElement | null> | undefined;
+	/**
+	 * where focus goes when the card comes down and no control opened it, or End fundraiser, which
+	 * did, is gone: the first of them on the page then.
+	 */
+	readonly fallbackFocus: readonly RefObject<HTMLElement | null>[];
 };
 
 export function EndDialog({

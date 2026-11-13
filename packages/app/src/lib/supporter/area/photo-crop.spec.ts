@@ -4,6 +4,7 @@ import {
 	frameResizeDelta,
 	naturalFrame,
 	PHOTO_HEIGHT_MIN,
+	PHOTO_WIDTH_MIN,
 	photoSourceRefusal,
 	shownFrameMinimum
 } from './photo-crop';
@@ -44,6 +45,17 @@ describe('a page photo’s 16:9 frame', () => {
 	it('never lets the frame shrink under the smallest a page takes', () => {
 		const least = shownFrameMinimum({ width: 800, height: 600 }, { width: 2400, height: 1800 });
 		expect(least.width).toBe(400);
+	});
+
+	it('keeps a frame no narrower than the server takes, where the cropper’s minimum lands a fraction under it', () => {
+		// 400 of 800 shown is 1199.6 of 2398 natural pixels.
+		const kept = naturalFrame(
+			{ x: 0, y: 0, width: 400, height: 225 },
+			{ width: 800, height: 600 },
+			{ width: 2398, height: 1798.5 }
+		);
+		expect(kept.width).toBe(PHOTO_WIDTH_MIN);
+		expect(kept.height).toBe(675);
 	});
 
 	it('resizes a shrinking frame from its height', () => {

@@ -5,7 +5,8 @@ import {
 	FundraiserEndedPage,
 	FundraiserNotFoundPage,
 	FundraiserPage,
-	type FundraiserPageViewProps
+	type FundraiserPageViewProps,
+	firstName
 } from './fundraiser-page';
 import type { EndedFundraiserView, LiveFundraiserView } from './types';
 
@@ -184,6 +185,29 @@ describe('a live fundraiser, part way', () => {
 		expect(start?.textContent).toBe('Start your own fundraiser');
 	});
 
+	it('calls a supporter by the whole name where its first word is a title or an initial', () => {
+		expect(firstName('  Maya Reyes ')).toBe('Maya');
+		expect(firstName('Dr. Maya Reyes')).toBe('Dr. Maya Reyes');
+		expect(firstName('Mrs Okafor')).toBe('Mrs Okafor');
+		expect(firstName('J. Robert Reyes')).toBe('J. Robert Reyes');
+		expect(firstName('Drew Okafor')).toBe('Drew');
+		const root = mount(<FundraiserPage {...props({ ...PART_WAY, name: 'Dr. Maya Reyes' })} />);
+		expect(root.querySelector('[data-area="story"] h2')?.textContent).toBe(
+			"Dr. Maya Reyes's story"
+		);
+		expect(text(root)).not.toContain("Dr.'s");
+		expect(text(root)).toContain('not to Dr. Maya Reyes.');
+	});
+
+	it('names no one as who the gift goes to where the organisation has no name set', () => {
+		const base = props(PART_WAY);
+		const root = mount(<FundraiserPage {...base} org={{ ...base.org, name: null }} />);
+		expect(root.querySelector('.fundraiser-for')).toBeNull();
+		expect(root.querySelector('.fundraiser-recipient')).toBeNull();
+		expect(text(root)).not.toContain('It goes to');
+		expect(root.querySelector('section.page-box')).not.toBeNull();
+	});
+
 	it('draws no way to start one while Supporter fundraisers is off', () => {
 		const root = mount(<FundraiserPage {...props(PART_WAY, { fundraiserEntry: false })} />);
 		expect(root.querySelector('a[href="/fundraise"]')).toBeNull();
@@ -226,6 +250,31 @@ describe('staff’s preview', () => {
 		const line = notice(root)?.querySelectorAll('.ds-notice-card-body > p')[1];
 		expect(line?.textContent).toBe(`Note for the supporter: ${note}`);
 		expect(line?.children).toHaveLength(0);
+	});
+
+	it('says over the title of a page not yet published that it is not public, and dates nothing', () => {
+		const root = mount(
+			<FundraiserPage
+				{...props(
+					{ ...PART_WAY, startedAt: null },
+					{ donationBox: null, staffNotice: { hidden: false, pending: true, note: null } }
+				)}
+			/>
+		);
+		const card = notice(root);
+		expect(card?.className).toBe('ds-notice-card ds-notice-card-info');
+		expect(card?.querySelector('.ds-notice-card-title')?.textContent).toBe('Not published yet');
+		expect(card?.textContent).toContain(
+			'visitors see “This page is not taking gifts right now.” instead of this page.'
+		);
+		expect(root.querySelector('.fundraiser-by')?.textContent).toBe('Maya Reyes');
+		expect(text(root)).not.toContain('Started this fundraiser');
+	});
+
+	it('draws no donation landmark where the preview hands no box', () => {
+		const root = preview({ hidden: true, note: null });
+		expect(root.querySelector('section.page-box')).toBeNull();
+		expect(root.querySelector('[aria-label^="Give to"]')).toBeNull();
 	});
 
 	it('draws nothing over a page visitors can see, nor where no notice is passed', () => {

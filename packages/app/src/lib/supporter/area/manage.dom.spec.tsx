@@ -167,14 +167,30 @@ describe('the gifts', () => {
 		]);
 	});
 
-	it('reads a gift whose donor showed nothing as A donor, with no note', () => {
+	it('reads a gift whose donor showed nothing as A donor, with a dash for the note', () => {
 		const row = manage().root.querySelectorAll('tbody tr')[1] as HTMLElement;
 		expect([...row.children].map((cell) => cell.textContent)).toEqual([
 			'A donor',
 			'Nov 10',
 			'$25.00',
-			'No note'
+			'—'
 		]);
+	});
+
+	it('gives each day its year where the gifts run across two', () => {
+		const { root } = manage(
+			{},
+			{
+				giftList: [
+					{ ...gift(1, 2_000, null), receivedAt: '2027-01-02T12:00:00.000Z' },
+					{ ...gift(1, 2_000, null), receivedAt: '2026-12-30T12:00:00.000Z' }
+				],
+				gifts: 2
+			}
+		);
+		expect(
+			[...root.querySelectorAll('tbody tr')].map((row) => row.children[1]?.textContent)
+		).toEqual(['Jan 2, 2027', 'Dec 30, 2026']);
 	});
 
 	it('draws nothing of a gift beyond its amount, its day and what was shown', () => {
@@ -206,12 +222,29 @@ describe('the gifts', () => {
 		expect(root.querySelectorAll('tbody tr')).toHaveLength(6);
 		expect(one(root, '.sa-gifts [role="status"]').textContent).toBe('Showing 6 of 41 gifts');
 		const more = button(root, 'Show more gifts');
-		expect(more.closest('tfoot')).not.toBeNull();
 		act(() => more.click());
 		expect(root.querySelectorAll('tbody tr')).toHaveLength(8);
-		expect(one(root, '.sa-gifts [role="status"]').textContent).toBe('Showing 8 of 41 gifts');
-		expect(root.querySelector('tfoot')).toBeNull();
+		expect(one(root, '.sa-gifts [role="status"]').textContent).toBe(
+			'Showing the newest 8 of 41 gifts'
+		);
+		expect(root.querySelector('.sa-gifts button')).toBeNull();
 		expect(document.activeElement).toBe(root.querySelectorAll('tbody th')[6]);
+	});
+
+	it('stands Show more gifts under the table, out of its pinned column, beside the count', () => {
+		const { root } = manage();
+		const more = button(root, 'Show more gifts');
+		expect(more.closest('table')).toBeNull();
+		expect(more.className).toBe('ds-btn ds-btn-secondary ds-btn-sm');
+		const frame = one(root, '.ds-table-scroll');
+		expect(frame.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(more.parentElement).toBe(one(root, '.sa-gifts [role="status"]').parentElement);
+	});
+
+	it('says every gift is shown once all of them were read', () => {
+		const { root } = manage({}, { gifts: GIFTS.length });
+		act(() => button(root, 'Show more gifts').click());
+		expect(one(root, '.sa-gifts [role="status"]').textContent).toBe('Showing 8 of 8 gifts');
 	});
 });
 
@@ -282,7 +315,9 @@ describe('ended', () => {
 		expect([...root.querySelectorAll('main > .sa-head a')].map((a) => a.textContent)).toEqual([
 			'View page'
 		]);
-		expect(root.querySelector('.sa-share')).not.toBeNull();
+		expect(
+			[...one(root, '.sa-share').querySelectorAll('a.ds-btn-sm')].map((a) => a.textContent)
+		).toEqual(['Email', 'Facebook', 'WhatsApp']);
 		expect(root.querySelector('.sa-end')).toBeNull();
 		expect(one(root, '.sa-raised h2').textContent).toBe('Final total');
 	});
@@ -318,6 +353,17 @@ describe('ending a page', () => {
 		act(() => {
 			dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
 		});
+		expect(root.querySelector('dialog')).toBeNull();
+		expect(document.activeElement).toBe(opener);
+	});
+
+	it('hands focus back to End fundraiser where the press that opened the card took none', () => {
+		// safari, and firefox on macos, leave a pressed button unfocused.
+		const { root } = manage();
+		const opener = button(one(root, '.sa-end'), 'End fundraiser');
+		(document.activeElement as HTMLElement | null)?.blur();
+		act(() => opener.click());
+		act(() => button(one(root, 'dialog'), 'Cancel').click());
 		expect(root.querySelector('dialog')).toBeNull();
 		expect(document.activeElement).toBe(opener);
 	});

@@ -64,7 +64,9 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 //   whole at its own shape rather than in the square.
 //
 // while Supporter fundraisers is on (`fundraiserEntry`), the entry card that starts one stands after
-// the whole layout, on a campaign, the Donation page and under the profile head alike.
+// the page's content: after a campaign's or the Donation page's own whole layout, and under the
+// profile head inside its column, after the box in the card and just before the messages from
+// donors in the letter and the feature.
 //
 // every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
 // the letter's and the feature's box straight after the cover and the title, the goal and the lede
@@ -135,7 +137,8 @@ export type PageViewProps = {
 	readonly donorMessages?: DonorMessagesWiring | undefined;
 	/**
 	 * whether Supporter fundraisers is on (`supporterFundraisersEnabled`): draws the entry card after
-	 * the whole layout, messages included. off or absent, nothing stands in its place.
+	 * the page's content and before the messages from donors. off or absent, nothing stands in its
+	 * place.
 	 */
 	readonly fundraiserEntry?: boolean | undefined;
 	/** drawn as the preview of a draft: a press reaches nothing outside `PREVIEW_LIVE`. */
@@ -188,7 +191,7 @@ export function PageView(props: PageViewProps) {
 				) : (
 					<ProfileLayout {...props} profile={head.profile} shape={head.shape} />
 				)}
-				{props.fundraiserEntry === true ? (
+				{props.fundraiserEntry === true && profile === null ? (
 					<div className="page-in page-fundraise-area" {...area('fundraise')}>
 						<FundraiserEntryCard orgName={org.name} />
 					</div>
@@ -442,6 +445,12 @@ function ProfileLayout(
 			/>
 		) : null;
 	const banner = profile.banner === null ? null : <ProfileBanner banner={profile.banner} />;
+	const entry =
+		props.fundraiserEntry === true ? (
+			<div className="page-fundraise-area" {...area('fundraise')}>
+				<FundraiserEntryCard orgName={props.org.name} />
+			</div>
+		) : null;
 
 	switch (layout) {
 		case 'card':
@@ -451,6 +460,7 @@ function ProfileLayout(
 					{who}
 					{aboutUs ? about : null}
 					{box}
+					{entry}
 				</div>
 			);
 		case 'letter':
@@ -461,6 +471,7 @@ function ProfileLayout(
 					{rail}
 					{aboutUs ? about : null}
 					<Videos videos={profile.videos} />
+					{entry}
 					{messages('list')}
 				</div>
 			);
@@ -472,6 +483,7 @@ function ProfileLayout(
 						{who}
 						{rail}
 						<Videos videos={profile.videos} />
+						{entry}
 						{messages('cards')}
 					</div>
 					{aboutUs ? (

@@ -73,9 +73,10 @@ export function ManageFundraiser({
 	const canEnd = state !== 'ended';
 	const shareable = state === 'live' || state === 'ended';
 	const [asking, setAsking] = useState(false);
-	// an end that lands takes End fundraiser away with the card, so the reader goes to the notice
-	// saying the page has ended.
+	// a card no control opened goes back to End fundraiser; an end that lands takes that press away
+	// with the card, so the reader goes to the notice saying the page has ended.
 	const endedNotice = useRef<HTMLElement>(null);
+	const endPress = useRef<HTMLButtonElement>(null);
 	const raisedWords = `${money(page.raisedMinor, page.currency)} from ${giftCount(page.gifts)}`;
 
 	return (
@@ -174,22 +175,18 @@ export function ManageFundraiser({
 								</div>
 							</div>
 						</div>
-						{state === 'ended' ? null : (
-							<div className="sa-row">
-								{(['email', 'facebook', 'whatsapp'] as const).map((channel) => (
-									<a
-										key={channel}
-										className="ds-btn ds-btn-secondary ds-btn-sm"
-										href={shareHref(channel, { url: page.url, message: page.title })}
-										{...(channel === 'email'
-											? {}
-											: { target: '_blank', rel: 'noopener noreferrer' })}
-									>
-										{SHARE_CHANNEL_LABELS[channel]}
-									</a>
-								))}
-							</div>
-						)}
+						<div className="sa-row">
+							{(['email', 'facebook', 'whatsapp'] as const).map((channel) => (
+								<a
+									key={channel}
+									className="ds-btn ds-btn-secondary ds-btn-sm"
+									href={shareHref(channel, { url: page.url, message: page.title })}
+									{...(channel === 'email' ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
+								>
+									{SHARE_CHANNEL_LABELS[channel]}
+								</a>
+							))}
+						</div>
 					</section>
 				) : null}
 
@@ -207,6 +204,7 @@ export function ManageFundraiser({
 						</h2>
 						<p className="sa-quiet">{END_CONSEQUENCE}</p>
 						<button
+							ref={endPress}
 							type="button"
 							className="ds-btn ds-btn-destructive-outline"
 							onClick={() => setAsking(true)}
@@ -224,7 +222,7 @@ export function ManageFundraiser({
 					refused={endRefused}
 					sending={ending}
 					onCancel={() => setAsking(false)}
-					fallbackFocus={endedNotice}
+					fallbackFocus={[endPress, endedNotice]}
 				/>
 			) : null}
 		</SupporterShell>

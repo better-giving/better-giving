@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatMinor } from '$lib/donations/money';
 import { StateCard } from './cards';
-import { giftCount, shortDay } from './copy';
+import { giftCount, longDay, shortDay } from './copy';
 
 // the gifts to a supporter's page, newest first, in the registry's table (table-css) inside its
 // scroll frame, the donor's name pinned as the row header. a gift shows a name and a note only where
 // its donor chose to show them on the page (`shown`, `noteShown` in $lib/server/pages/messages.ts);
-// every other gift reads A donor with no note. a gift carries nothing else a donor typed, so there
-// is no email, address or payment method here to leak.
+// every other gift reads A donor with a dash for its note. a gift carries nothing else a donor
+// typed, so there is no email, address or payment method here to leak. a day carries its year
+// where the gifts read run across two.
 //
 // the server reads at most `OWN_GIFT_LIST_LIMIT` of them ($lib/server/supporters/pages.ts) and
-// counts all of them; the table shows `GIFTS_AT_FIRST` and the registry's load-more row shows the
-// rest of what was read, a step at a time. when the last step takes the row away, focus goes to the
-// first gift it added rather than to the page.
+// counts all of them; the table shows `GIFTS_AT_FIRST` and Show more gifts, under the table beside
+// the count, shows the rest of what was read, a step at a time. registry gap: table-css's tfoot
+// load-more row stands under the pinned first column, which clips its button at phone width, so the
+// press is a secondary sm one below the frame. when the last step takes the press away, focus goes
+// to the first gift it added rather than to the page; past what was read, the count says only the
+// newest are shown.
 
 /** one gift as its supporter sees it. */
 export type OwnGift = {
@@ -40,6 +44,8 @@ export function Gifts({
 	const firstAdded = useRef<HTMLTableCellElement>(null);
 	const [landOn, setLandOn] = useState<number | null>(null);
 	const more = showing < gifts.length;
+	const day =
+		new Set(gifts.map((gift) => gift.receivedAt.slice(0, 4))).size > 1 ? longDay : shortDay;
 
 	// keyed to the row the last press added, so it runs once per press that took the button away.
 	useEffect(() => {
@@ -84,35 +90,34 @@ export function Gifts({
 								>
 									{gift.shown?.name ?? 'A donor'}
 								</th>
-								<td>{shortDay(gift.receivedAt)}</td>
+								<td>{day(gift.receivedAt)}</td>
 								<td className="ds-num">{formatMinor(gift.amountMinor, currency)}</td>
-								<td className="sa-note-cell">{gift.shown?.note || 'No note'}</td>
+								<td className="sa-note-cell">{gift.shown?.note || '—'}</td>
 							</tr>
 						))}
 					</tbody>
-					{more ? (
-						<tfoot>
-							<tr>
-								<td colSpan={4} className="sa-load-more">
-									<button
-										type="button"
-										onClick={() => {
-											const next = Math.min(showing + GIFTS_AT_FIRST, gifts.length);
-											if (next === gifts.length) setLandOn(showing);
-											setShowing(next);
-										}}
-									>
-										Show more gifts
-									</button>
-								</td>
-							</tr>
-						</tfoot>
-					) : null}
 				</table>
 			</section>
-			<p className="sa-quiet" role="status">
-				Showing {showing} of {giftCount(total)}
-			</p>
+			<div className="sa-row">
+				{more ? (
+					<button
+						type="button"
+						className="ds-btn ds-btn-secondary ds-btn-sm"
+						onClick={() => {
+							const next = Math.min(showing + GIFTS_AT_FIRST, gifts.length);
+							if (next === gifts.length) setLandOn(showing);
+							setShowing(next);
+						}}
+					>
+						Show more gifts
+					</button>
+				) : null}
+				<p className="sa-quiet" role="status">
+					{!more && total > showing
+						? `Showing the newest ${showing} of ${giftCount(total)}`
+						: `Showing ${showing} of ${giftCount(total)}`}
+				</p>
+			</div>
 		</>
 	);
 }

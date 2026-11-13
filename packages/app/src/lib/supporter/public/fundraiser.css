@@ -86,7 +86,7 @@
 }
 
 /* the line over the title: the organisation's logo and name, a way to /donate. the name is the
-   text ink, the lead-in the quiet one; under the pointer the name takes the link's hover ink. */
+   text ink, the lead-in the quiet one; under the pointer the name takes the page's link ink. */
 .page-ground a.fundraiser-for {
 	display: inline-flex;
 	align-items: center;
@@ -104,7 +104,7 @@
 }
 
 .page-ground a.fundraiser-for:hover .fundraiser-for-name {
-	color: var(--_a12);
+	color: var(--page-accent);
 	text-decoration: underline;
 }
 
@@ -126,13 +126,6 @@
 .fundraiser-recipient-logo {
 	inline-size: var(--fundraiser-recipient-logo);
 	block-size: var(--fundraiser-recipient-logo);
-}
-
-/* the page's own links ring as the registry's presses do: the ring step, its width off the edge. */
-.page-ground :is(a.fundraiser-for, a.fundraiser-about, a.fundraiser-start):focus-visible {
-	outline: var(--_border-strong) solid var(--page-ring);
-	outline-offset: var(--_border-strong);
-	box-shadow: none;
 }
 
 .fundraiser-title {

@@ -8,10 +8,19 @@ import { describe, expect, it } from 'vitest';
 // nothing and errors nowhere.
 
 const HERE = import.meta.dirname;
-const SHEET = readFileSync(join(HERE, 'area.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const SOURCE = readFileSync(join(HERE, 'area.css'), 'utf8');
+const uncommented = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+const SHEET = uncommented(SOURCE);
+
+/** the sheet as swept: a line carrying a `raw-length-ok:` note (AGENTS.md) is struck, and only it. */
+const SWEPT = uncommented(
+	SOURCE.split('\n')
+		.filter((line) => !line.includes('raw-length-ok:'))
+		.join('\n')
+);
 
 /** what a screen may write that is structure rather than a value (./area.css's header). */
-const STRUCTURE = new Set(['0', '100%', '100vmax', '100dvh', '1', '2', '3', '-1']);
+const STRUCTURE = new Set(['0', '100%', '100dvh', '1', '2', '3', '-1']);
 
 /** each `property: value` outside a custom property, with every `var(...)` taken out. */
 function literalsIn(css: string): { readonly declaration: string; readonly literal: string }[] {
@@ -39,7 +48,12 @@ const screens = readdirSync(HERE)
 
 describe('./area.css', () => {
 	it('writes no value of its own', () => {
-		expect(literalsIn(SHEET.replace(/@container page \(min-width: 48rem\)/g, ''))).toEqual([]);
+		expect(literalsIn(SWEPT.replace(/@container page \(min-width: 48rem\)/g, ''))).toEqual([]);
+	});
+
+	it('excuses only the lengths a `raw-length-ok:` note stands beside', () => {
+		const unswept = literalsIn(SHEET.replace(/@container page \(min-width: 48rem\)/g, ''));
+		expect(unswept.map(({ literal }) => literal)).toEqual(['100vmax']);
 	});
 
 	it('draws every sa- class the screens wear, and wears every one it draws', () => {

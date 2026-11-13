@@ -15,7 +15,9 @@ import { usePressOnce } from './use-press-once';
 // fundraiser here: Check your email after a start or a sign-in request, the sign-in request itself,
 // the one refusal an expired, used or unknown link gets, and the limit a caller or an address hits.
 // every post is an ordinary form post to the route standing here: `request-link` from the email box,
-// `resend` from Send it again.
+// `resend` from Send it again. a press closed for its countdown is `aria-disabled` and refuses the
+// submit itself, rather than `disabled`: the press just pressed holds the keyboard, and a disabled
+// one would drop it to the body and take its countdown out of reach.
 
 /** "Email me a link", as the route's action parses it. */
 const SIGN_IN = defineForm({ id: SIGN_IN_FORM.id, schema: SIGN_IN_FORM.schema });
@@ -83,7 +85,7 @@ export function CheckEmail({
 					method="post"
 					className="sa-row"
 					onSubmit={(event) => {
-						if (!press.claim()) event.preventDefault();
+						if (waiting || !press.claim()) event.preventDefault();
 					}}
 				>
 					<input type="hidden" name={INTENT} value={INTENTS.resend} />
@@ -91,7 +93,7 @@ export function CheckEmail({
 					<button
 						type="submit"
 						className="ds-btn ds-btn-secondary"
-						disabled={waiting}
+						aria-disabled={waiting || undefined}
 						aria-busy={sending || undefined}
 					>
 						{waiting ? `Send again in ${clock(left)}` : 'Send it again'}
@@ -179,7 +181,7 @@ export function SignIn({ org, state, lastResult, sending }: SignInProps) {
 			method="post"
 			{...formProps}
 			onSubmit={(event) => {
-				if (!press.claim()) {
+				if (waiting || !press.claim()) {
 					event.preventDefault();
 					return;
 				}
@@ -205,7 +207,7 @@ export function SignIn({ org, state, lastResult, sending }: SignInProps) {
 			<button
 				type="submit"
 				className="ds-btn ds-btn-primary ds-btn-lg ds-btn-sentence"
-				disabled={waiting}
+				aria-disabled={waiting || undefined}
 				aria-busy={sending || undefined}
 			>
 				{state.kind === 'ask'
