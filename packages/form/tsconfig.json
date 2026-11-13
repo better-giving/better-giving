@@ -14,7 +14,6 @@
 		"dev/**/*.ts",
 		"vite.config.ts",
 		"vite.embed.config.ts",
-		"vite.registry-faces.ts",
 		"vitest.config.ts",
 		"vitest.browser.config.ts"
 	]

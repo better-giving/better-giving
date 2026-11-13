@@ -10,9 +10,9 @@
  * default, which is the registry's own default accent step 9 (`--donate-primary` below).
  *
  * the registry arrives through the `@import` below: ../registry/styles/variables.css, which brings
- * its colors.css and the generated default theme. variables.css also `@import`s the registry's face
- * sheet, and the form's vite and vitest configs point that one import at an empty sheet
- * (../../vite.registry-faces.ts): the card loads no web font and packs none. it is set in whatever
+ * its colors.css and the generated default theme, and no face: the registry ships its faces as
+ * separate items and the form's lock copies none (../embed/registry-faces.spec.ts), so the card
+ * loads no web font and packs none. it is set in whatever
  * face the host page gives the element — the `:host` block below names no `font-family` — so on the
  * deployment's own pages it is that page's face and on a nonprofit's site it is theirs, with that
  * page's own fallbacks.
