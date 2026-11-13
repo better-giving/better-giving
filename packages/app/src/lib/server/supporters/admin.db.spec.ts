@@ -60,6 +60,7 @@ describe('every fundraiser, for staff', () => {
 				status: 'pending',
 				hidden: false,
 				hiddenNote: null,
+				published: false,
 				createdAt: STARTED_AT
 			},
 			{
@@ -75,6 +76,7 @@ describe('every fundraiser, for staff', () => {
 				status: 'live',
 				hidden: true,
 				hiddenNote: 'spam',
+				published: true,
 				createdAt: STARTED_AT
 			}
 		]);

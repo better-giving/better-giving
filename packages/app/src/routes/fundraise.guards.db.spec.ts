@@ -545,24 +545,22 @@ describe('the sign-in screen', () => {
 		});
 	});
 
-	it('names the address bucket’s wait when that bucket refused the ask', async () => {
-		const { limit, period } = SPEC_RATE_LIMITS.SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER;
+	it('answers a supporter’s own ask however often strangers asked for the address', async () => {
+		const { limit } = SPEC_RATE_LIMITS.SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER;
 		for (let n = 0; n < limit; n += 1) await askFrom(`192.0.2.${100 + n}`, 'maya@example.org');
-		const refused = await askFrom('192.0.2.99', 'maya@example.org');
-		expect(refused.status).toBe(429);
-		expect(refused.data).toMatchObject({
-			tooMany: { email: 'maya@example.org', retryAfterSeconds: period }
-		});
+		const own = await askFrom('192.0.2.99', 'maya@example.org');
+		expect(own.location).toBe('/fundraise/sent');
 	});
 
 	it('names the wait for a Send it again with no resend ticket, which asks as this screen does', async () => {
-		const { limit, period } = SPEC_RATE_LIMITS.SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER;
-		for (let n = 0; n < limit; n += 1) await askFrom(`192.0.2.${110 + n}`, 'maya@example.org');
+		const { limit, period } = SPEC_RATE_LIMITS.SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER;
+		for (let n = 0; n < limit; n += 1) await askFrom('192.0.2.97', `again${n}@example.org`);
 		const browser = cookieJar();
-		const resent = await call(
-			sent.action,
-			request('/fundraise/sent', { body: form({ intent: 'resend', email: 'maya@example.org' }) })
-		);
+		const resend = request('/fundraise/sent', {
+			body: form({ intent: 'resend', email: 'maya@example.org' })
+		});
+		resend.headers.set(CLIENT_IP_HEADER, '192.0.2.97');
+		const resent = await call(sent.action, resend);
 		browser.take(resent);
 		expect(resent.location).toBe('/fundraise/sign-in');
 		const landed = await call(
@@ -617,7 +615,7 @@ describe('the supporter buckets', () => {
 			)
 		);
 
-	it('refuses a start past the network’s count, with the form kept', async () => {
+	it('refuses a start past the network’s count', async () => {
 		const { limit } = SPEC_RATE_LIMITS.SUPPORTER_START_RATE_LIMITER;
 		for (let n = 0; n < limit; n += 1) {
 			expect((await startFrom('192.0.2.140', n)).status).toBe(303);
@@ -626,6 +624,20 @@ describe('the supporter buckets', () => {
 		expect(refused.status).toBe(429);
 		expect(refused.data).toMatchObject({ refused: 'too_many' });
 		expect((await startFrom('192.0.2.141', limit)).status).toBe(303);
+	});
+
+	it('charges a start before its body is read, a body that fails to parse included', async () => {
+		const { limit } = SPEC_RATE_LIMITS.SUPPORTER_START_RATE_LIMITER;
+		const { title: _missing, ...untitled } = STARTED;
+		for (let n = 0; n < limit; n += 1) {
+			const posted = fromAddress(request('/fundraise', { body: form(untitled) }), '192.0.2.143');
+			expect((await call(start.action, posted)).status).toBe(400);
+		}
+		const past = fromAddress(request('/fundraise', { body: form(STARTED) }), '192.0.2.143');
+		const refused = await call(start.action, past);
+		expect(refused.status).toBe(429);
+		expect(refused.data).toMatchObject({ refused: 'too_many' });
+		expect(past.bodyUsed).toBe(false);
 	});
 
 	it('refuses Send it again past the page’s count, naming its wait on the sign-in screen', async () => {

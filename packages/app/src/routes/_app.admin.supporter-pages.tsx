@@ -36,7 +36,7 @@ import type { Route } from './+types/_app.admin.supporter-pages';
 // $lib/server/org/queries.ts's. each press answers on this screen without navigating, through a
 // fetcher of its own, one per row so a press on one row cancels no other's. Open goes to the public
 // address, or to the staff preview (./admin.supporter-pages.$id.preview.tsx) for a page the public
-// cannot see: hidden, or still waiting on its confirm link.
+// cannot see: hidden, or never published by its confirm link, ended since or not.
 
 const SCREEN_TITLE = 'Supporter pages';
 
@@ -62,7 +62,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 			setting: { enabled, mayChange },
 			pages: pages.map((page) => {
 				const address = href('/f/:slug', { slug: page.slug });
-				const unseen = page.hidden || page.status === 'pending';
+				const unseen = page.hidden || !page.published;
 				return {
 					id: page.id,
 					supporterName: page.supporterName,

@@ -20,6 +20,8 @@ export type FundraiserListing = Raised & {
 	readonly status: SupporterPageStatus;
 	readonly hidden: boolean;
 	readonly hiddenNote: string | null;
+	/** whether its confirm link was ever opened: a page never published has no public face. */
+	readonly published: boolean;
 	readonly createdAt: Date;
 };
 
@@ -38,6 +40,7 @@ export async function listAllFundraisers(db: Db): Promise<FundraiserListing[]> {
 				status: supporterPage.status,
 				hiddenAt: supporterPage.hiddenAt,
 				hiddenNote: supporterPage.hiddenNote,
+				publishedAt: supporterPage.publishedAt,
 				createdAt: supporterPage.createdAt
 			})
 			.from(supporterPage)
@@ -45,10 +48,11 @@ export async function listAllFundraisers(db: Db): Promise<FundraiserListing[]> {
 			.orderBy(desc(supporterPage.createdAt), desc(supporterPage.id)),
 		raisedByPage(db, sql`1`)
 	]);
-	return rows.map(({ hiddenAt, ...row }) => ({
+	return rows.map(({ hiddenAt, publishedAt, ...row }) => ({
 		...row,
 		...raised(row.id),
-		hidden: hiddenAt !== null
+		hidden: hiddenAt !== null,
+		published: publishedAt !== null
 	}));
 }
 

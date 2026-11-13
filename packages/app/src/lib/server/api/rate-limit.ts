@@ -181,12 +181,16 @@ export function supporterSignInCallerRateLimitKey(request: Request): string | nu
 }
 
 /**
- * the same press by the address being mailed, lowercased by the parse, on
- * `SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER`: what bounds one inbox being posted to from many
- * callers, charged only for a press its caller's bucket admitted.
+ * the same press by the address being mailed, lowercased by the parse, from the caller's `/48`, on
+ * `SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER`: what bounds one network posting to one inbox, charged
+ * only for a press its caller's bucket admitted. keyed with the network, so a stranger's presses
+ * never spend the supporter's own; an unattributed caller shares the address's one bucket.
  */
-export function supporterSignInAddressRateLimitKey(email: string): string {
-	return `supporter-sign-in mail ${email}`;
+export function supporterSignInAddressRateLimitKey(request: Request, email: string): string {
+	const payer = attributedCaller(request, 48);
+	return payer === null
+		? `supporter-sign-in mail ${email}`
+		: `supporter-sign-in mail ${payer} ${email}`;
 }
 
 /**

@@ -47,13 +47,16 @@ const roomy = () => ({
 });
 
 /** a sign-in request for `email`, and the mail it sent once the deferred work ran. */
-async function ask(email: string, options: { request?: Request } = {}) {
+async function ask(
+	email: string,
+	options: { request?: Request; limiters?: ReturnType<typeof roomy> } = {}
+) {
 	const mailed: LinkMail[] = [];
 	const deferred = createDeferredWork();
 	const answer = await requestSignInLink(
 		{
 			db,
-			limiters: roomy(),
+			limiters: options.limiters ?? roomy(),
 			defer: (work) => deferred.waitUntil(work),
 			sendLink: async (mail) => {
 				mailed.push(mail);
@@ -119,22 +122,22 @@ describe('asking for a sign-in link', () => {
 		expect(answers).toEqual(['sent', 'sent', { retryAfterSeconds: 60 }]);
 	});
 
-	it('answers too many tries past the bucket for one email, from any address', async () => {
-		const limiters = {
-			...roomy(),
-			signInByAddress: createRateLimiter({ limit: 2, period: 3600 })
-		};
-		const answers: unknown[] = [];
+	it('answers sent and mails nothing past one network’s count for one email', async () => {
+		const limiters = { ...roomy(), signInByAddress: createRateLimiter({ limit: 2, period: 3600 }) };
+		const asks = [];
 		for (let n = 0; n < 3; n += 1) {
-			answers.push(
-				await requestSignInLink(
-					{ db, limiters, defer: () => {}, sendLink: async () => {}, now: NOW },
-					from(),
-					'maya@example.org'
-				)
-			);
+			asks.push(await ask('maya@example.org', { request: from('198.51.100.9'), limiters }));
 		}
-		expect(answers).toEqual(['sent', 'sent', { retryAfterSeconds: 3600 }]);
+		expect(asks.map((asked) => asked.answer)).toEqual(['sent', 'sent', 'sent']);
+		expect(asks.map((asked) => asked.mailed.length)).toEqual([1, 1, 0]);
+	});
+
+	it('leaves a supporter’s own asks to them, however often strangers ask for the address', async () => {
+		const limiters = { ...roomy(), signInByAddress: createRateLimiter({ limit: 2, period: 3600 }) };
+		for (let n = 0; n < 6; n += 1) await ask('maya@example.org', { request: from(), limiters });
+		const own = await ask('maya@example.org', { request: from('198.51.100.10'), limiters });
+		expect(own.answer).toBe('sent');
+		expect(own.mailed).toHaveLength(1);
 	});
 
 	it('spends nothing of the address’s bucket for a caller over its own', async () => {

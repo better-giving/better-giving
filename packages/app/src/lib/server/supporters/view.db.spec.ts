@@ -116,6 +116,17 @@ describe('a page the public may not see', () => {
 		expect(await readPublicFundraiser(db, pending.slug)).toEqual(unknown);
 	});
 
+	it('stays unknown once a page nobody confirmed is ended', async () => {
+		const pending = await pendingPage(db, { title: 'Words a stranger typed' });
+		const [row] = await db
+			.select({ supporterId: supporterPage.supporterId })
+			.from(supporterPage)
+			.where(eq(supporterPage.id, pending.pageId));
+		if (!row) throw new Error('the page was not written');
+		await endOwnFundraiser(db, row.supporterId, pending.pageId, LIVE_AT);
+		expect(await readPublicFundraiser(db, pending.slug)).toEqual({ kind: 'not_found' });
+	});
+
 	it('is still drawn for staff’s preview, saying why the public cannot see it', async () => {
 		const hidden = await livePage();
 		await db

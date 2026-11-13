@@ -3,11 +3,13 @@ import type { FormConfig } from '@better-giving/form/v1';
 import { useEffect, useRef, useState } from 'react';
 import { href, redirect } from 'react-router';
 import { defineForm } from '$lib/forms/definition';
+import { START_REFUSED } from '$lib/supporter/area/copy';
 import { CHALLENGE_FIELD, INTENTS, PHOTO_FILE_FIELD, START_FORM } from '$lib/supporter/area/forms';
 import { supporterAreaLinks } from '$lib/supporter/area/links';
 import { StartFundraiser } from '$lib/supporter/area/start-form';
 import { usePosting } from '$lib/supporter/area/use-posting';
 import { challengeKind } from '$lib/server/api/challenge';
+import { isRateLimited, supporterStartRateLimitKey } from '$lib/server/api/rate-limit';
 import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { redirectWithFlash, SUPPORTER_SENT_FLASH } from '$lib/server/flash';
@@ -31,9 +33,11 @@ import type { Route } from './+types/fundraise._index';
 // carried in a flash ($lib/server/flash.ts) and never in the address bar.
 //
 // a starter has no session, so the cropped photo travels with the start as its `PHOTO_FILE_FIELD`
-// part rather than through /fundraise/photo. the body is read once, no further than the photo
-// intake's cap (`readPostedBody` in $lib/server/images/intake.ts), and the photo is checked and
-// stored by the start only once the limit and the spam check have passed.
+// part rather than through /fundraise/photo. a start is charged to the network's bucket before the
+// body is read, so a post past the count reads none of its upload and one that fails to parse has
+// still spent a start. the body is read once, no further than the photo intake's cap
+// (`readPostedBody` in $lib/server/images/intake.ts), and the photo is checked and stored by the
+// start only once the spam check has passed.
 //
 // the spam check is the one a donation runs, Turnstile where both its keys are set and ALTCHA
 // otherwise, drawn by the donation form's own widget (`createChallenge` in
@@ -66,6 +70,9 @@ export async function action({ context, request }: Route.ActionArgs) {
 	refuseWriteFromAnotherOrigin(request);
 	const db = context.get(database);
 	const { env, deferred } = context.get(platform);
+	if (await isRateLimited(env.SUPPORTER_START_RATE_LIMITER, supporterStartRateLimitKey(request))) {
+		return invalid(429, unread(START, START_REFUSED.too_many), { refused: 'too_many' as const });
+	}
 	const posted = await readPostedBody(request);
 	if (!posted.ok) {
 		return invalid(400, unread(START, posted.error), { refused: 'photo_missing' as const });
@@ -77,14 +84,12 @@ export async function action({ context, request }: Route.ActionArgs) {
 	const started = await startFundraiser(
 		{
 			db,
-			limiter: env.SUPPORTER_START_RATE_LIMITER,
 			defer: (work) => deferred.waitUntil(work),
 			sendLink: linkMailer(db, env),
 			linkOrigin: supporterLinkOrigin(env),
 			checkChallenge: startChallenge(env, request, body.get(CHALLENGE_FIELD)),
 			now: new Date()
 		},
-		request,
 		submission.value,
 		body.get(PHOTO_FILE_FIELD)
 	);
@@ -102,8 +107,6 @@ export async function action({ context, request }: Route.ActionArgs) {
 			return redirect(href('/fundraise'), 303);
 		case 'unmailable':
 			return invalid(500, submission.reject({ formErrors: [UNMAILABLE_START] }), { refused: null });
-		case 'too_many':
-			return invalid(429, submission.reject(), { refused: started.reason });
 		case 'challenge_unavailable':
 			return invalid(500, submission.reject(), { refused: started.reason });
 		case 'challenge_failed':

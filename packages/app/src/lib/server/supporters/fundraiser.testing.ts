@@ -2,7 +2,6 @@ import { SUPPORTER_START_INPUT, type SupporterStart } from '../../supporters/inp
 import type { Db } from '../db/client';
 import { CLIENT_IP_HEADER } from '../runtime/client-ip';
 import { createDeferredWork } from '../runtime/deferred';
-import { createRateLimiter } from '../runtime/rate-limiter';
 import { run, stmt } from '$lib/server/db/database.testing';
 import type { LinkMail } from './links';
 import { type StartDeps, type StartResult, startFundraiser } from './start';
@@ -69,7 +68,6 @@ export function startDeps(db: Db, over: Partial<StartDeps> = {}) {
 	const deferred = createDeferredWork();
 	const deps: StartDeps = {
 		db,
-		limiter: createRateLimiter({ limit: 100, period: 60 }),
 		defer: (work) => deferred.waitUntil(work),
 		sendLink: async (mail) => {
 			mailed.push(mail);
@@ -88,7 +86,7 @@ export async function pendingPage(
 	over: Partial<Record<keyof SupporterStart, string>> = {}
 ): Promise<{ pageId: string; slug: string; token: string }> {
 	const { deps, mailed, settled } = startDeps(db);
-	const started: StartResult = await startFundraiser(deps, fromCaller(), startInput(over));
+	const started: StartResult = await startFundraiser(deps, startInput(over));
 	if (!started.ok) throw new Error(`the fixture fundraiser was refused: ${started.reason}`);
 	await settled();
 	const mail = mailed.at(-1);

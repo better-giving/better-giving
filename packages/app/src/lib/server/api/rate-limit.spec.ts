@@ -13,6 +13,8 @@ import {
 	refuseIfRateLimited,
 	signInRateLimitKey,
 	signInRateLimitMessage,
+	supporterSignInAddressRateLimitKey,
+	supporterStartRateLimitKey,
 	zapierRateLimitKey
 } from './rate-limit';
 
@@ -310,7 +312,8 @@ describe('what the tighter buckets count against', () => {
 
 	const TIGHT = [
 		['a sign-in attempt', signInRateLimitKey],
-		['a quote submission', quoteRateLimitKey]
+		['a quote submission', quoteRateLimitKey],
+		['a fundraiser start', supporterStartRateLimitKey]
 	] as const;
 
 	/**
@@ -348,6 +351,21 @@ describe('what the tighter buckets count against', () => {
 	it.each(TIGHT)('does not move for %s when the same /48 is spelled differently', (_what, key) => {
 		expect(key(from('2001:db8:1::1'))).toBe(key(from('2001:0db8:0001:0000::2')));
 		expect(key(from('2001:DB8:1::1'))).toBe(key(from('2001:db8:1:0:0:0:0.0.0.2')));
+	});
+
+	it('keys a supporter sign-in ask by the network and the address together', () => {
+		const ask = (ip: string, email: string) => supporterSignInAddressRateLimitKey(from(ip), email);
+		expect(ask('2001:db8:1::1', 'maya@example.org')).toBe(
+			ask('2001:db8:1:ff::2', 'maya@example.org')
+		);
+		expect(ask('203.0.113.7', 'maya@example.org')).not.toBe(
+			ask('198.51.100.4', 'maya@example.org')
+		);
+		expect(ask('203.0.113.7', 'maya@example.org')).not.toBe(ask('203.0.113.7', 'ben@example.org'));
+		const unattributed = new Request('https://give.example.workers.dev/');
+		expect(supporterSignInAddressRateLimitKey(unattributed, 'maya@example.org')).toBe(
+			'supporter-sign-in mail maya@example.org'
+		);
 	});
 
 	/** the `/48` is an ipv6 rule; an ipv4 caller is still keyed on its whole address. */

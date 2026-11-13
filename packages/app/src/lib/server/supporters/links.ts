@@ -90,22 +90,6 @@ export type LinkRefusal = { readonly retryAfterSeconds: number };
 const refusal = (wait: number | null): LinkRefusal | null =>
 	wait === null ? null : { retryAfterSeconds: wait };
 
-/**
- * "Email me a link"'s two buckets, the caller's first and the address's only where the caller's
- * admitted, so a caller over its own limit spends no supporter's; the refusal from whichever has
- * nothing left, or `null`.
- */
-async function signInRefusal(
-	limiters: LinkLimiters,
-	request: Request,
-	email: string
-): Promise<LinkRefusal | null> {
-	return refusal(
-		(await rateLimitWait(limiters.signInByCaller, supporterSignInCallerRateLimitKey(request))) ??
-			(await rateLimitWait(limiters.signInByAddress, supporterSignInAddressRateLimitKey(email)))
-	);
-}
-
 export type SignInRequestDeps = {
 	readonly db: Db;
 	readonly limiters: LinkLimiters;
@@ -119,16 +103,24 @@ export type SignInRequestDeps = {
  * "Email me a link". `sent` for every address, known or not, and the lookup, the mint and the mail
  * all run after the answer, in the deferred work, so neither the answer nor its timing says whether
  * the address has started a fundraiser. only an address with a `supporter` row is mailed. a
- * `LinkRefusal` where the caller or the address is over its bucket, decided before anything is read.
+ * `LinkRefusal` only where the caller is over its own bucket, decided before anything is read; past
+ * the address's bucket the answer is `sent` too and nothing is mailed, so no wait on the screen
+ * reflects anyone else's presses for that address.
  */
 export async function requestSignInLink(
 	deps: SignInRequestDeps,
 	request: Request,
 	email: string
 ): Promise<'sent' | LinkRefusal> {
-	const refused = await signInRefusal(deps.limiters, request, email);
-	if (refused !== null) return refused;
-	deps.defer(mailSignInLink(deps, email));
+	const callerRefused = refusal(
+		await rateLimitWait(deps.limiters.signInByCaller, supporterSignInCallerRateLimitKey(request))
+	);
+	if (callerRefused !== null) return callerRefused;
+	const addressWait = await rateLimitWait(
+		deps.limiters.signInByAddress,
+		supporterSignInAddressRateLimitKey(request, email)
+	);
+	if (addressWait === null) deps.defer(mailSignInLink(deps, email));
 	return 'sent';
 }
 

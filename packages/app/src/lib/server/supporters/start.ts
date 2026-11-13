@@ -5,7 +5,6 @@ import { freeSlug, SUPPORTER_RESERVED_SEGMENTS } from '../../page/slug';
 import { PHOTO_FILE_FIELD } from '../../supporter/area/forms';
 import type { SupporterStart } from '../../supporters/input';
 import type { ChallengeResult } from '../api/challenge';
-import { isRateLimited, supporterStartRateLimitKey } from '../api/rate-limit';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { page, supporter, supporterPage } from '../db/schema';
@@ -15,7 +14,6 @@ import { ownedFormInsert, readForm } from '../forms/queries';
 import { supporterFundraisersEnabled } from '../org/queries';
 import { ensureDonationPage } from '../pages/donation-page';
 import { SLUG_ATTEMPTS } from '../pages/queries';
-import type { RateLimiter } from '../runtime/rate-limiter';
 import type { supporterLinkOrigin } from './area';
 import { linkInsert, type SendLink } from './links';
 import { checkSupporterPhoto } from './photo';
@@ -33,8 +31,6 @@ import { checkSupporterPhoto } from './photo';
 
 export type StartDeps = {
 	readonly db: Db;
-	/** `SUPPORTER_START_RATE_LIMITER`, charged by the caller's network before anything else. */
-	readonly limiter: RateLimiter | undefined;
 	readonly defer: (work: Promise<unknown>) => void;
 	readonly sendLink: SendLink;
 	/**
@@ -57,18 +53,17 @@ export const UNMAILABLE_START =
 	'We can’t send email just now, so your fundraiser wasn’t started. Try again later, or let the organisation know.';
 
 /**
- * the page made, or why not: `too_many` over the caller's network's bucket, `closed` where
- * the organisation has switched fundraisers off, `unmailable` where no link can be mailed
- * (`linkOrigin`, logged for whoever runs the server), `challenge_failed` for a token or payload
- * that did not clear (a fresh challenge is the answer), `challenge_unavailable` where the check
- * could not be made, and `photo_missing` for a posted photo the photo rule refuses (./photo.ts).
+ * the page made, or why not: `closed` where the organisation has switched fundraisers off,
+ * `unmailable` where no link can be mailed (`linkOrigin`, logged for whoever runs the server),
+ * `challenge_failed` for a token or payload that did not clear (a fresh challenge is the answer),
+ * `challenge_unavailable` where the check could not be made, and `photo_missing` for a posted photo
+ * the photo rule refuses (./photo.ts).
  */
 export type StartResult =
 	| { readonly ok: true; readonly pageId: string; readonly slug: string }
 	| {
 			readonly ok: false;
 			readonly reason:
-				| 'too_many'
 				| 'closed'
 				| 'unmailable'
 				| 'challenge_failed'
@@ -77,20 +72,19 @@ export type StartResult =
 	  };
 
 /**
- * `photo` is the start's own posted photo part, or null where none came: one is read only once the
- * caller is under the limit and the spam check has cleared, and is stored in the same `batch()` as
- * the page, so a refused start stores no photo. it is the only way a start gets a photo: the start
- * schema states no photo id ($lib/supporters/input.ts).
+ * a start the route has already charged to `SUPPORTER_START_RATE_LIMITER` by the caller's network,
+ * before it read the body (src/routes/fundraise._index.tsx).
+ *
+ * `photo` is the start's own posted photo part, or null where none came: it is sniffed and checked
+ * only once the spam check has cleared, and is stored in the same `batch()` as the page, so a
+ * refused start stores no photo. it is the only way a start gets a photo: the start schema states
+ * no photo id ($lib/supporters/input.ts).
  */
 export async function startFundraiser(
 	deps: StartDeps,
-	request: Request,
 	input: SupporterStart,
 	photo: FormDataEntryValue | null = null
 ): Promise<StartResult> {
-	if (await isRateLimited(deps.limiter, supporterStartRateLimitKey(request))) {
-		return { ok: false, reason: 'too_many' };
-	}
 	if (!(await supporterFundraisersEnabled(deps.db))) return { ok: false, reason: 'closed' };
 	if (!deps.linkOrigin.ok) {
 		console.error('a fundraiser start was refused:', deps.linkOrigin.why);

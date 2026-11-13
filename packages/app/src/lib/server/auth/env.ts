@@ -18,8 +18,9 @@ export interface AuthEnv {
 	/**
 	 * optional override, unset by default. when unset, the origin is derived from each
 	 * request — which is what makes a deployment answer correctly on more than one hostname
-	 * at the same time. set it only to pin one canonical origin and stop
-	 * trusting the others. see the `baseURL` note in ./index.ts.
+	 * at the same time. set, it pins one canonical origin and staff sign-in stops trusting the
+	 * others (the `baseURL` note in ./index.ts); supporter fundraisers need it set, since no
+	 * supporter link is mailed without it (below).
 	 *
 	 * it settles three things outside auth: the address a QuickBooks connection is
 	 * registered at and exchanged against, which Intuit compares byte for byte

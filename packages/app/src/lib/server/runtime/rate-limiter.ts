@@ -6,8 +6,9 @@
 // refusal says how much of that is left. the 60-second limiters' wire and sign-in refusals word
 // the whole period (`PERIOD_SECONDS` in ../api/rate-limit.ts, held to the periods below by
 // ../api/rate-limit.config.spec.ts). the supporter limiters are refused in the words of the
-// supporter's screens ($lib/supporter/area/copy.ts), and a refused sign-in link or Send it again
-// carries the seconds left to the sign-in screen (`signInRefusal` in ../supporters/links.ts).
+// supporter's screens ($lib/supporter/area/copy.ts), and a sign-in link refused by the caller's
+// bucket, or a refused Send it again, carries the seconds left to the sign-in screen
+// (`requestSignInLink` and `resendConfirmLink` in ../supporters/links.ts).
 
 /** one bucket's size: `limit` charges per key per `period` seconds. */
 export interface RateLimit {

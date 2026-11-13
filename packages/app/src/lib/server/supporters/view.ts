@@ -7,9 +7,10 @@ import { fundraiserRaised } from './pages';
 
 // a supporter's fundraiser as the public reads it at /f/<slug>, and as staff preview it.
 //
-// the public read answers one of three: live, ended, or `not_found` — and a page that is hidden or
-// still pending is `not_found` exactly as an address nobody holds, so no title, name or total of one
-// reaches a browser. nothing here names the donor of a gift but a message its donor chose to show.
+// the public read answers one of three: live, ended, or `not_found` — and a page that is hidden,
+// still pending, or ended before it was ever published is `not_found` exactly as an address nobody
+// holds, so no title, name or total of one reaches a browser. nothing here names the donor of a
+// gift but a message its donor chose to show.
 
 /** a live fundraiser, whole, and the settings row its donation form takes gifts through. */
 export type LiveFundraiser = {
@@ -100,6 +101,8 @@ async function drawnLive(db: Db, row: PageRow): Promise<Omit<LiveFundraiser, 'st
 export async function readPublicFundraiser(db: Db, slug: string): Promise<PublicFundraiser> {
 	const [row] = await readPage(db, eq(supporterPage.slug, slug));
 	if (!row || row.hiddenAt !== null || row.status === 'pending') return NOT_FOUND;
+	// a page ended before its confirm link was opened holds words nobody at that address agreed to.
+	if (row.publishedAt === null) return NOT_FOUND;
 	if (row.status === 'ended') {
 		const raised = await fundraiserRaised(db, row.id);
 		return {
@@ -111,8 +114,6 @@ export async function readPublicFundraiser(db: Db, slug: string): Promise<Public
 			currency: row.currency
 		};
 	}
-	// unreachable: `supporter_page_published_check` holds a live page to a publish time.
-	if (row.publishedAt === null) throw new Error(`live fundraiser ${row.id} has no publish time`);
 	return { ...(await drawnLive(db, row)), startedAt: row.publishedAt };
 }
 

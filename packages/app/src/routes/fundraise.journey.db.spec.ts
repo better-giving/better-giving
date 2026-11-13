@@ -1,7 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client } from '$lib/server/db/database.testing';
+import { supporterPage } from '$lib/server/db/schema';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
+import { endOwnFundraiser } from '$lib/server/supporters/pages';
 import { SUPPORTER_SESSION_COOKIE } from '$lib/server/supporters/session';
 import { mountRoutes } from '../route-request.testing';
 import {
@@ -333,6 +335,19 @@ describe('a fundraiser’s life, from its first edit to its end', () => {
 		});
 		await press(member, { intent: 'save-setting' });
 		expect((await call(start.loader, request('/fundraise'))).data).toMatchObject({ open: true });
+	});
+
+	it('opens a page ended before its confirm link through the preview, as the public cannot see it', async () => {
+		await postStart(cookieJar());
+		const [started] = await db
+			.select({ id: supporterPage.id, supporterId: supporterPage.supporterId })
+			.from(supporterPage);
+		if (!started) throw new Error('the start wrote no page');
+		await endOwnFundraiser(db, started.supporterId, started.id, new Date());
+		const listed = await adminScreen.get('/admin/supporter-pages', await signInAsMember(db));
+		expect(await listed.json()).toMatchObject({
+			pages: [{ id: started.id, openHref: `/admin/supporter-pages/${started.id}/preview` }]
+		});
 	});
 });
 

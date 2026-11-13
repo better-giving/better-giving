@@ -42,7 +42,7 @@ const pageRow = async (id: string) => {
 describe('starting a fundraiser', () => {
 	it('makes a pending page owning a settings row of its own, in the nonprofit currency', async () => {
 		const { deps, mailed, settled } = startDeps(db);
-		const started = await startFundraiser(deps, fromCaller(), startInput());
+		const started = await startFundraiser(deps, startInput());
 		if (!started.ok) throw new Error(started.reason);
 		await settled();
 
@@ -152,7 +152,7 @@ describe('a start refused', () => {
 	it('when the organisation has switched fundraisers off', async () => {
 		expect(await setSupporterFundraisersEnabled(db, false)).toBe('saved');
 		const { deps, mailed, settled } = startDeps(db);
-		expect(await startFundraiser(deps, fromCaller(), startInput())).toEqual({
+		expect(await startFundraiser(deps, startInput())).toEqual({
 			ok: false,
 			reason: 'closed'
 		});
@@ -171,7 +171,7 @@ describe('a start refused', () => {
 				return { ok: true };
 			}
 		});
-		expect(await startFundraiser(deps, fromCaller(), startInput())).toEqual({
+		expect(await startFundraiser(deps, startInput())).toEqual({
 			ok: false,
 			reason: 'unmailable'
 		});
@@ -193,7 +193,7 @@ describe('a start refused', () => {
 				operatorFix: null
 			})
 		});
-		expect(await startFundraiser(deps, fromCaller(), startInput())).toEqual({
+		expect(await startFundraiser(deps, startInput())).toEqual({
 			ok: false,
 			reason: 'challenge_failed'
 		});
@@ -209,47 +209,10 @@ describe('a start refused', () => {
 				operatorFix: null
 			})
 		});
-		expect(await startFundraiser(deps, fromCaller(), startInput())).toEqual({
+		expect(await startFundraiser(deps, startInput())).toEqual({
 			ok: false,
 			reason: 'challenge_unavailable'
 		});
-	});
-
-	it('past the bucket for one network, before the spam check runs', async () => {
-		let checks = 0;
-		const { deps } = startDeps(db, {
-			limiter: createRateLimiter({ limit: 1, period: 3600 }),
-			checkChallenge: async () => {
-				checks += 1;
-				return { ok: true };
-			}
-		});
-		const request = () =>
-			new Request('https://give.example/f/start', {
-				method: 'POST',
-				headers: { 'x-better-giving-client-ip': '198.51.100.9' }
-			});
-		expect((await startFundraiser(deps, request(), startInput())).ok).toBe(true);
-		expect(
-			await startFundraiser(deps, request(), startInput({ email: 'other@example.org' }))
-		).toEqual({ ok: false, reason: 'too_many' });
-		expect(checks).toBe(1);
-	});
-
-	it('from one network, whichever address in its /48 posts and whoever is named', async () => {
-		const { deps } = startDeps(db, { limiter: createRateLimiter({ limit: 2, period: 3600 }) });
-		const inBlock = (n: number) =>
-			new Request('https://give.example/f/start', {
-				method: 'POST',
-				headers: { 'x-better-giving-client-ip': `2001:db8:5:${n}::1` }
-			});
-		const answers = [];
-		for (let n = 0; n < 3; n += 1) {
-			answers.push(
-				(await startFundraiser(deps, inBlock(n), startInput({ email: `s${n}@example.org` }))).ok
-			);
-		}
-		expect(answers).toEqual([true, true, false]);
 	});
 });
 
@@ -259,7 +222,7 @@ describe('the setting', () => {
 		expect(await setSupporterFundraisersEnabled(db, false)).toBe('no-profile');
 		expect(await setSupporterFundraisersEnabled(db, true)).toBe('saved');
 		const { deps } = startDeps(db);
-		expect((await startFundraiser(deps, fromCaller(), startInput())).ok).toBe(true);
+		expect((await startFundraiser(deps, startInput())).ok).toBe(true);
 	});
 });
 
