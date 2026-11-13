@@ -94,7 +94,7 @@ describe("an actions row's lines start on the column's edge by their word", () =
 			ghost.get('border'),
 			token
 		]).toEqual([
-			'0.25rem',
+			'calc(0.25 * var(--ds-rem, 1rem))',
 			'calc(var(--ds-spacing) * 3)',
 			'1px',
 			'var(--ds-btn-edge) solid transparent',

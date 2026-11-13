@@ -649,7 +649,7 @@ describe('the video play press', () => {
 		);
 		const glyph = declared(page, '.page-video-glyph');
 		const step = declared(button, '.ds-btn');
-		expect(substitute(step, glyph['inline-size'] ?? '')).toBe('calc(0.25rem * 6)');
+		expect(substitute(step, glyph['inline-size'] ?? '')).toBe('calc(calc(0.25 * 1rem) * 6)');
 		expect(declared(button, '.ds-btn-lg')['--ds-btn-size']).toBe('calc(var(--ds-spacing) * 13)');
 		expect(glyph['block-size']).toBe(glyph['inline-size']);
 	});
