@@ -7,8 +7,8 @@ import { defaultCampaign, defaultDonationPage } from '../../page/defaults';
 import { FundraiserPage } from './fundraiser-page';
 
 // the entry card that starts a supporter's fundraiser, mounted on the pages that draw it: after a
-// campaign's layout and after the Donation page's own, inside the profile head's column before the
-// messages from donors, and nowhere — with nothing in its place — while the feature is off.
+// campaign's layout, after the Donation page's own and after its profile head's, and nowhere — with
+// nothing in its place — while the feature is off.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -136,7 +136,7 @@ describe('the entry card', () => {
 		expect(root.querySelector('.ds-btn-primary')).toBeNull();
 	});
 
-	it('stands before the profile head’s messages from donors, after everything else in its column', () => {
+	it('stands after the profile head’s whole layout, the messages from donors included', () => {
 		const root = mount(
 			<PageView {...props({ profile: PROFILE, fundraiserEntry: true, donorMessages: WIRING })} />
 		);
@@ -144,39 +144,42 @@ describe('the entry card', () => {
 		const entry = card(root);
 		if (messages === null || entry === null)
 			throw new Error('messages or the entry card is missing');
-		expect(entry.compareDocumentPosition(messages) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		const main = areas(root).filter((area) => area !== 'share');
-		expect(main.slice(main.indexOf('fundraise'))).toEqual(['fundraise', 'messages']);
+		expect(messages.compareDocumentPosition(entry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(areas(root).slice(-2)).toEqual(['fundraise', 'share']);
 	});
 
 	it.each([
-		['card', BARE_PROFILE, []],
-		['letter', LETTER, ['messages']],
-		['feature', FEATURE, ['messages', 'about']]
+		['card', BARE_PROFILE],
+		['letter', LETTER],
+		['feature', FEATURE]
 	])(
-		'stands in the %s’s column, one of its parts, with only %j after it',
-		(layout, profile, after) => {
+		'stands after the %s’s whole layout, its footer and closing parts included, on the hooks page.css sizes it by',
+		(layout, profile) => {
 			const root = mount(
 				<PageView {...props({ profile, fundraiserEntry: true, donorMessages: WIRING })} />
 			);
-			// ../../donate/page.css spaces and sizes it as the column's other parts, by the root's
-			// `data-layout`.
+			// ../../donate/page.css sizes the card under the profile head by the root's `data-layout`: the
+			// content width of a `.page-in` in the card and the feature, the letter's tracks from 60rem.
 			const page = root.querySelector<HTMLElement>('.page');
 			expect(page?.dataset.layout).toBe(layout);
 			expect(page?.hasAttribute('data-profile')).toBe(true);
 			const area = root.querySelector<HTMLElement>('[data-area="fundraise"]');
-			expect(area?.className).toBe('page-fundraise-area');
-			expect(area?.parentElement?.classList.contains('page-profile')).toBe(true);
+			expect(area?.className).toBe('page-in page-fundraise-area');
+			expect(area?.parentElement?.matches('main.page-body')).toBe(true);
 			expect([...(area?.children ?? [])]).toEqual([card(root)]);
-			const all = areas(root).filter((name) => name !== 'share');
-			expect(all.filter((name) => name === 'fundraise')).toHaveLength(1);
-			// the parts inside the messages and About us are their own, not the column's.
-			const column = [
-				...(area?.parentElement?.parentElement?.querySelectorAll<HTMLElement>(
-					'.page-profile > [data-area], main > [data-area]'
-				) ?? [])
-			].map((node) => node.dataset.area);
-			expect(column.slice(column.indexOf('fundraise') + 1)).toEqual(after);
+			const all = areas(root);
+			expect(all.slice(-2)).toEqual(['fundraise', 'share']);
+			expect(all.filter((area) => area === 'fundraise')).toHaveLength(1);
+			const entry = card(root);
+			const earlier = [...root.querySelectorAll<HTMLElement>('main [data-area]')].filter(
+				(node) => node.dataset.area !== 'fundraise' && node.dataset.area !== 'share'
+			);
+			expect(earlier.length).toBeGreaterThan(0);
+			for (const node of earlier) {
+				expect(node.compareDocumentPosition(entry as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+					Node.DOCUMENT_POSITION_FOLLOWING
+				);
+			}
 		}
 	);
 
@@ -191,7 +194,6 @@ describe('the entry card', () => {
 		expect(root.querySelector('[data-area="messages"]')).toBeNull();
 		expect(root.querySelector('[data-area="about"]')).toBeNull();
 		expect(areas(root).slice(-2)).toEqual(['fundraise', 'share']);
-		expect(card(root)?.closest('.page-profile')).not.toBeNull();
 	});
 
 	it('stands after a campaign’s layout, and after the Donation page’s own', () => {
