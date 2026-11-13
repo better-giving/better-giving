@@ -1298,12 +1298,35 @@ describe('the entry card’s width', () => {
 	const LETTER = ".page[data-layout='letter']";
 	const PROFILE_LETTER = ".page[data-profile][data-layout='letter']";
 	const PLAIN = '.page:not([data-profile]) .page-fundraise-area > .page-fundraise';
-	// the blocks that size the area or the card itself, not a part inside it.
-	const fundraise = page.filter(({ at }) => /\.page-fundraise(?:-area)?$/.test(at.at(-1) ?? ''));
+	// a selector list split at its top-level commas, and a selector's last compound, after its last
+	// top-level combinator, so neither cuts inside `:is()` or `:not()`.
+	const topLevel = (selector: string, split: (char: string) => boolean): string[] => {
+		const parts = [''];
+		let depth = 0;
+		for (const char of selector) {
+			depth += char === '(' ? 1 : char === ')' ? -1 : 0;
+			if (depth === 0 && split(char)) parts.push('');
+			else parts[parts.length - 1] += char;
+		}
+		return parts.map((part) => part.trim()).filter((part) => part !== '');
+	};
+	const subject = (selector: string) => topLevel(selector, (char) => /[\s>+~]/.test(char)).at(-1);
+	// a block that may size the area or the card itself: one of its selectors names either, none of
+	// the card's parts, and ends on one of them or on `*`.
+	const sizesTheCard = (selector: string) =>
+		topLevel(selector, (char) => char === ',').some(
+			(one) =>
+				one.includes('page-fundraise') &&
+				!/page-fundraise-(?:heading|act|note)/.test(one) &&
+				/page-fundraise|^\*$/.test(subject(one) ?? '')
+		);
+	const fundraise = page.filter(({ at }) => sizesTheCard(at.at(-1) ?? ''));
+	const WIDTHS = ['max-inline-size', 'inline-size', 'max-width', 'width', 'grid-template-columns'];
 
 	it('stands in the profile letter’s reading column from 60rem: its tracks and its measure, beside the rail', () => {
 		const area = declared(page, WIDE, `${PROFILE_LETTER} .page-fundraise-area`);
 		const columns = declared(page, WIDE, `${LETTER} .page-profile`);
+		expect(area.display).toBe(columns.display);
 		expect(area['grid-template-columns']).toBe(columns['grid-template-columns']);
 		expect(area['column-gap']).toBe(columns['column-gap']);
 		expect(
@@ -1314,12 +1337,7 @@ describe('the entry card’s width', () => {
 	});
 
 	it('is held to `--page-fundraise-width` under no profile head, and to no width of its own in the profile card and feature', () => {
-		const sized = fundraise.filter(
-			({ decls }) =>
-				decls['max-inline-size'] !== undefined ||
-				decls['inline-size'] !== undefined ||
-				decls['grid-template-columns'] !== undefined
-		);
+		const sized = fundraise.filter(({ decls }) => WIDTHS.some((name) => decls[name] !== undefined));
 		expect(sized.map(({ at }) => at.join(' » '))).toEqual([
 			PLAIN,
 			`${WIDE} » ${PROFILE_LETTER} .page-fundraise-area`,
@@ -1330,5 +1348,11 @@ describe('the entry card’s width', () => {
 			Object.values(decls).some((value) => value.includes('--page-fundraise-width'))
 		);
 		expect(readers.map(({ at }) => at.join(' » '))).toEqual([PLAIN]);
+	});
+
+	it('wraps the organisation’s name in its heading as the profile head wraps it, never past the plane', () => {
+		expect(declared(page, '.page-fundraise-heading')['overflow-wrap']).toBe(
+			declared(page, '.page-profile-name')['overflow-wrap']
+		);
 	});
 });

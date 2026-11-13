@@ -152,44 +152,34 @@ describe('the entry card', () => {
 		['card', BARE_PROFILE],
 		['letter', LETTER],
 		['feature', FEATURE]
-	])('stands after the %s’s whole layout, its footer and closing parts included', (_, profile) => {
-		const root = mount(
-			<PageView {...props({ profile, fundraiserEntry: true, donorMessages: WIRING })} />
-		);
-		const all = areas(root);
-		expect(all.slice(-2)).toEqual(['fundraise', 'share']);
-		expect(all.filter((area) => area === 'fundraise')).toHaveLength(1);
-		const entry = card(root);
-		const earlier = [...root.querySelectorAll<HTMLElement>('main [data-area]')].filter(
-			(node) => node.dataset.area !== 'fundraise' && node.dataset.area !== 'share'
-		);
-		expect(earlier.length).toBeGreaterThan(0);
-		for (const node of earlier) {
-			expect(node.compareDocumentPosition(entry as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-				Node.DOCUMENT_POSITION_FOLLOWING
-			);
-		}
-	});
-
-	// ../../donate/page.css sizes the card under the profile head by the root's `data-layout`: the
-	// page's content width in the card and the feature, and the letter's own column tracks from 60rem.
-	it.each([
-		['card', BARE_PROFILE],
-		['letter', LETTER],
-		['feature', FEATURE]
 	])(
-		'stands in the %s’s content width, outside its layout, under the root naming it',
+		'stands after the %s’s whole layout, its footer and closing parts included, on the hooks page.css sizes it by',
 		(layout, profile) => {
 			const root = mount(
 				<PageView {...props({ profile, fundraiserEntry: true, donorMessages: WIRING })} />
 			);
-			const area = root.querySelector<HTMLElement>('[data-area="fundraise"]');
+			// ../../donate/page.css sizes the card under the profile head by the root's `data-layout`: the
+			// content width of a `.page-in` in the card and the feature, the letter's tracks from 60rem.
 			const page = root.querySelector<HTMLElement>('.page');
 			expect(page?.dataset.layout).toBe(layout);
 			expect(page?.hasAttribute('data-profile')).toBe(true);
+			const area = root.querySelector<HTMLElement>('[data-area="fundraise"]');
 			expect(area?.className).toBe('page-in page-fundraise-area');
 			expect(area?.parentElement?.matches('main.page-body')).toBe(true);
 			expect([...(area?.children ?? [])]).toEqual([card(root)]);
+			const all = areas(root);
+			expect(all.slice(-2)).toEqual(['fundraise', 'share']);
+			expect(all.filter((area) => area === 'fundraise')).toHaveLength(1);
+			const entry = card(root);
+			const earlier = [...root.querySelectorAll<HTMLElement>('main [data-area]')].filter(
+				(node) => node.dataset.area !== 'fundraise' && node.dataset.area !== 'share'
+			);
+			expect(earlier.length).toBeGreaterThan(0);
+			for (const node of earlier) {
+				expect(node.compareDocumentPosition(entry as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+					Node.DOCUMENT_POSITION_FOLLOWING
+				);
+			}
 		}
 	);
 
