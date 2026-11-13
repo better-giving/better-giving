@@ -1,6 +1,6 @@
-import { and, eq, type SQL, sql } from 'drizzle-orm';
+import { and, eq, lt, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { image, orgProfile, page, program } from '../db/schema';
+import { image, orgProfile, page, program, supporterPage } from '../db/schema';
 import { deleteBytes } from './bytes';
 
 // freeing an image: its metadata row and its bytes deleted together, and only where nothing names it.
@@ -13,13 +13,31 @@ import { deleteBytes } from './bytes';
 // image it names is freed from under it, bytes and all.
 
 /**
- * no row names `id`: no cause's photo, the profile's logo or banner and no page document. a page
- * document is matched on its text, so an id anywhere in one keeps the image whichever block holds it.
+ * no row names `id`, bar the supporter page `besidesSupporterPage` where one is given: no cause's
+ * photo, the profile's logo or banner, no page document and no supporter fundraiser's photo. a page
+ * document is matched on its text, so an id anywhere in one keeps the image whichever block holds
+ * it.
  */
-function unreferenced(id: string): SQL {
+function unreferenced(id: string | SQLWrapper, besidesSupporterPage?: string): SQL {
+	const besides =
+		besidesSupporterPage === undefined
+			? sql``
+			: sql` and ${supporterPage.id} <> ${besidesSupporterPage}`;
 	return sql`not exists (select 1 from ${program} where ${program.imageId} = ${id})
+		and not exists (select 1 from ${supporterPage} where ${supporterPage.photoId} = ${id}${besides})
 		and not exists (select 1 from ${orgProfile} where ${orgProfile.logoImageId} = ${id} or ${orgProfile.bannerImageId} = ${id})
 		and not exists (select 1 from ${page} where instr(${page.draft}, ${id}) > 0 or instr(${page.published}, ${id}) > 0 or instr(${page.lastPublished}, ${id}) > 0)`;
+}
+
+/**
+ * nothing but the supporter page `supporterPageId` names image `id`, by the same holders a free
+ * asks after: the guard a supporter's edit writes a posted photo id under (../supporters/pages.ts),
+ * so a page takes only an image no other page, page document, profile or cause holds — its own, or
+ * one stored through /fundraise/photo and not yet saved, whose id only the browser that stored it
+ * was told.
+ */
+export function unheldBeyond(id: string, supporterPageId: string): SQL {
+	return unreferenced(id, supporterPageId);
 }
 
 /**
@@ -30,6 +48,18 @@ function unreferenced(id: string): SQL {
 export function freeImageStatements(db: Db, id: string) {
 	const when = unreferenced(id);
 	return [deleteBytes(db, id, when), db.delete(image).where(and(eq(image.id, id), when))] as const;
+}
+
+/**
+ * the ids of images made before `before` that nothing names: what a sweep frees with
+ * `freeImageStatements`, whose own guard keeps any a reference written since this read names.
+ */
+export async function unheldImagesMadeBefore(db: Db, before: Date): Promise<string[]> {
+	const rows = await db
+		.select({ id: image.id })
+		.from(image)
+		.where(and(lt(image.createdAt, before), unreferenced(sql`${image}.${sql.identifier('id')}`)));
+	return rows.map((row) => row.id);
 }
 
 /**

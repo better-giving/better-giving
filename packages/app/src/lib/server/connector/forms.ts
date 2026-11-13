@@ -540,9 +540,17 @@ function pageOwned(
 	page: { readonly type: string; readonly name?: string | null },
 	saved: readonly string[]
 ): Refused {
+	const told = saved.length === 0 ? 'Nothing was changed' : `Only ${saved.join('; ')} was saved`;
+	if (page.type === 'fundraiser') {
+		return {
+			ok: false,
+			status: 409,
+			code: 'page_owned',
+			detail: `${told}: form ${id} holds the donation settings of a supporter’s fundraiser, which are not changed as a form.`
+		};
+	}
 	const whose =
 		page.type === 'campaign' ? `the campaign “${page.name ?? ''}”` : 'the donation page';
-	const told = saved.length === 0 ? 'Nothing was changed' : `Only ${saved.join('; ')} was saved`;
 	return {
 		ok: false,
 		status: 409,

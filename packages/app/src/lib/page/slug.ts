@@ -83,6 +83,25 @@ export function reservedSegments(routeFiles: readonly string[]): ReadonlySet<str
 	return reserved;
 }
 
+/**
+ * the second URL segments a set of route files answers beneath the first segment `prefix`, by
+ * `reservedSegments`' reading of what follows it: what a supporter's page at `/f/<slug>` may not be.
+ */
+export function reservedUnder(prefix: string, routeFiles: readonly string[]): ReadonlySet<string> {
+	const beneath: string[] = [];
+	for (const file of routeFiles) {
+		const folder = file.indexOf('/');
+		const name = folder === -1 ? file.slice(0, file.lastIndexOf('.')) : file.slice(0, folder);
+		const segments = routeSegments(name).filter(
+			({ text, raw }) => !(text.startsWith('_') && raw.startsWith('_'))
+		);
+		const [first, ...rest] = segments;
+		if (first?.text !== prefix || rest.length === 0) continue;
+		beneath.push(`${rest.map(({ raw }) => raw).join('.')}.tsx`);
+	}
+	return reservedSegments(beneath);
+}
+
 // the route files' names alone, from `../../../vite/route-files.ts`'s plugin, so nothing here is an
 // import edge into a route module. the plugin leaves out the files src/routes.ts's
 // `ignoredRouteFiles` leaves out, by the one pattern the plugin module exports: a spec is not an
@@ -100,6 +119,15 @@ export const RESERVED_SEGMENTS: ReadonlySet<string> = new Set([
 	'assets',
 	RUNTIME_PATH_PREFIX.replaceAll('/', '')
 ]);
+
+/** the prefix a supporter's fundraiser is served under: `/f/<slug>`. */
+export const SUPPORTER_PAGE_PREFIX = 'f';
+
+/** every segment under `/f/` the routes answer, which a supporter's page address may not be. */
+export const SUPPORTER_RESERVED_SEGMENTS: ReadonlySet<string> = reservedUnder(
+	SUPPORTER_PAGE_PREFIX,
+	ROUTE_FILES
+);
 
 /** a refusal names what to change: the character, the limit, or the address it would shadow. */
 export type SlugCheck =

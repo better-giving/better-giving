@@ -50,9 +50,10 @@ export default async function handleRequest(
 		responseHeaders,
 		routerContext,
 		nonce,
-		// narrowed as $lib/server/payments/factory.ts narrows it, so the policy reads the address the
-		// served config's `sdkUrl` was built from — a blank value is unset to both.
-		readConfigEnv(loadContext.get(platform).env).PAYPAL_API_URL
+		// narrowed as $lib/server/payments/factory.ts narrows it, so the policy reads the paypal address
+		// the served config's `sdkUrl` was built from — a blank value is unset to both — and the
+		// turnstile keys as `challengeKind` reads them.
+		readConfigEnv(loadContext.get(platform).env)
 	);
 	return new Response(body, { headers: responseHeaders, status: responseStatusCode });
 }

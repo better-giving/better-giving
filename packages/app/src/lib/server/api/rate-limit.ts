@@ -50,14 +50,15 @@ import { API_BASE_PATH } from './surface';
 // promises to the sizes declared there.
 
 /**
- * how long a refused caller is told to wait, in seconds — and every limiter's own period, which
- * is the longest a bucket can hold them.
+ * how long a refused caller is told to wait, in seconds — and the period of every limiter this
+ * module words a refusal for, which is the longest a bucket can hold them.
  *
- * `RATE_LIMITS` in ../runtime/rate-limiter.ts sets 60 on every one. the numbers have to agree,
- * because this one is a promise about when the same request works — a bucket that reset forty
- * seconds ago while the answer says to keep waiting is a donor sent away for nothing. nothing in
- * the language joins them, so `./rate-limit.config.spec.ts` holds every answer this module produces
- * to the period declared for the limiter that refused it.
+ * `RATE_LIMITS` in ../runtime/rate-limiter.ts sets 60 on each of those; the supporter limiters'
+ * refusals are screen states in $lib/supporter/area/copy.ts, which name no period. the numbers
+ * have to agree, because this one is a promise about when the same request works — a bucket that
+ * reset forty seconds ago while the answer says to keep waiting is a donor sent away for nothing.
+ * nothing in the language joins them, so `./rate-limit.config.spec.ts` holds every answer this
+ * module produces to the period declared for the limiter that refused it.
  */
 const PERIOD_SECONDS = 60;
 
@@ -166,6 +167,66 @@ export function quoteRateLimitKey(request: Request): string | null {
 export function signInRateLimitKey(request: Request): string | null {
 	const payer = attributedCaller(request, 48);
 	return payer === null ? null : `sign-in ${payer}`;
+}
+
+/**
+ * what one "Email me a link" counts against by the caller, on `SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER`,
+ * and `null` for a caller with no bucket at all: a limiter of its own, so no press spends the staff
+ * sign-in's guesses. the `/48`, for the reason `signInRateLimitKey` keys one: each press mails
+ * somebody.
+ */
+export function supporterSignInCallerRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request, 48);
+	return payer === null ? null : `supporter-sign-in ${payer}`;
+}
+
+/**
+ * the same press by the address being mailed, lowercased by the parse, from the caller's `/48`, on
+ * `SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER`: what bounds one network posting to one inbox, charged
+ * only for a press its caller's bucket admitted. keyed with the network, so a stranger's presses
+ * never spend the supporter's own; an unattributed caller shares the address's one bucket.
+ */
+export function supporterSignInAddressRateLimitKey(request: Request, email: string): string {
+	const payer = attributedCaller(request, 48);
+	return payer === null
+		? `supporter-sign-in mail ${email}`
+		: `supporter-sign-in mail ${payer} ${email}`;
+}
+
+/**
+ * what one Start a fundraiser counts against, on `SUPPORTER_START_RATE_LIMITER`: the caller's `/48`,
+ * as `supporterSignInCallerRateLimitKey` keys it, and `null` for a caller with no bucket at all.
+ */
+export function supporterStartRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request, 48);
+	return payer === null ? null : `supporter-start ${payer}`;
+}
+
+/**
+ * what one Send it again after a start counts against, on `SUPPORTER_RESEND_RATE_LIMITER`: the page
+ * it resends for, charged whether or not that page is pending, so the answer says nothing of it.
+ */
+export function supporterResendRateLimitKey(pageId: string): string {
+	return `supporter-resend ${pageId}`;
+}
+
+/**
+ * the same press by the caller's `/48`, as `supporterSignInCallerRateLimitKey` keys it, on
+ * `SUPPORTER_RESEND_CALLER_RATE_LIMITER`, and `null` for a caller with no bucket at all: the page id
+ * comes from a cookie a browser can write, so this is the bucket a fresh id per press does not move.
+ */
+export function supporterResendCallerRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request, 48);
+	return payer === null ? null : `supporter-resend caller ${payer}`;
+}
+
+/**
+ * what one photo posted to `/fundraise/photo` counts against, on `SUPPORTER_PHOTO_RATE_LIMITER`:
+ * the signed-in supporter, whichever of their sessions and networks posts it, and never the
+ * network, so supporters sharing one are not refused as a group.
+ */
+export function supporterPhotoRateLimitKey(supporterId: string): string {
+	return `supporter-photo ${supporterId}`;
 }
 
 /**
@@ -516,9 +577,9 @@ function unboundSurface(): Response {
  * passed rather than reached for: it lives on the platform env, and this module never names one —
  * the call site does, which for this one is `src/routes/api.v1.ts`.
  *
- * the outcome is `{ success }` and there is nothing else to read. that is the right shape for what
- * it guards: the cost of a wrong answer here is one extra database read, or one donor asked to
- * reload.
+ * it reads `success` and nothing else, since its refusal words the whole period. that is the right
+ * shape for what it guards: the cost of a wrong answer here is one extra database read, or one
+ * donor asked to reload.
  *
  * the two ways it can fail to answer at all are answered opposite ways, and the difference is
  * whether waiting fixes it: a rejected `limit()` is transient and the request carries on
@@ -587,11 +648,22 @@ export async function isRateLimited(
 	limiter: RateLimiter | undefined,
 	key: string | null
 ): Promise<boolean> {
-	if (key === null || !limiter) return false;
+	return (await rateLimitWait(limiter, key)) !== null;
+}
+
+/**
+ * `isRateLimited`, answered with the seconds a refused caller has left to wait, and `null` wherever
+ * `isRateLimited` answers `false`.
+ */
+export async function rateLimitWait(
+	limiter: RateLimiter | undefined,
+	key: string | null
+): Promise<number | null> {
+	if (key === null || !limiter) return null;
 	try {
-		const { success } = await limiter.limit({ key });
-		return !success;
+		const answer = await limiter.limit({ key });
+		return answer.success ? null : answer.retryAfterSeconds;
 	} catch {
-		return false;
+		return null;
 	}
 }

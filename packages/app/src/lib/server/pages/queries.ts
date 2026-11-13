@@ -1,11 +1,23 @@
-import { and, eq, exists, gt, inArray, isNull, notExists, or, type SQL, sql } from 'drizzle-orm';
+import {
+	and,
+	eq,
+	exists,
+	gt,
+	inArray,
+	isNotNull,
+	isNull,
+	notExists,
+	or,
+	type SQL,
+	sql
+} from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import type { Page as PageDocument } from '../../page/catalog';
 import { pastPublishedEnd, stateAt } from '../../page/ended';
 import { PAGE_KEYS } from '../../page/keys';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
-import { form, type Page, page, photoLink } from '../db/schema';
+import { form, type Page, page, photoLink, supporterPage } from '../db/schema';
 import { freeLetGoStatements } from '../images/free';
 import { MAX_FORM_NAME } from '../../forms/input-schema';
 import type { ParsedFormGiving, ParsedFormProgram } from '../forms/form-input';
@@ -211,6 +223,7 @@ export async function planSlugMove(
 > {
 	if (row.slug === slug) return { kind: 'unchanged' };
 
+	if (await fundraiserHolds(db, slug)) return { kind: 'taken', by: FUNDRAISER_HOLDER };
 	const holder = await slugHolder(db, slug, now);
 	if (holder !== null && holder.state !== 'ended') return { kind: 'taken', by: holder.name };
 	if (row.state !== 'never_published' && row.slug !== null && !confirmed.move) {
@@ -240,12 +253,13 @@ export async function planSlugMove(
 }
 
 /**
- * who took `slug` while a batch moving a campaign to it ran: a campaign took the address, or an
- * ended holder was published again, between the read and the write, and `page_slug_idx` refused the
- * batch whole. any other failure is thrown on.
+ * who took `slug` while a batch moving a campaign to it ran: a campaign or a supporter's fundraiser
+ * took the address, or an ended holder was published again, between the read and the write, and the
+ * database refused the batch whole (`addressTaken`). any other failure is thrown on.
  */
 export async function slugRace(db: Db, slug: string, now: number, error: unknown): Promise<string> {
-	if (sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;
+	if (!addressTaken(error)) throw error;
+	if (await fundraiserHolds(db, slug)) return FUNDRAISER_HOLDER;
 	const taker = await slugHolder(db, slug, now);
 	if (taker === null) throw error;
 	return taker.name;
@@ -294,6 +308,47 @@ async function slugHolder(
 
 /** a free address is found this many times before a write taking one gives up on the race. */
 export const SLUG_ATTEMPTS = 5;
+
+/**
+ * whether a write was refused for an address another row took between its read and its batch:
+ * `page_slug_idx` or `supporter_page_slug_idx` for one in its own table, or a slug guard trigger
+ * (`supporterPage` in ../db/schema.ts) for one in the other table. the schema holds no other
+ * trigger, so `SQLITE_CONSTRAINT_TRIGGER` is always an address.
+ */
+export function addressTaken(error: unknown): boolean {
+	const code = sqliteResultCode(error);
+	return code === 'SQLITE_CONSTRAINT_UNIQUE' || code === 'SQLITE_CONSTRAINT_TRIGGER';
+}
+
+/**
+ * how a refusal names a fundraiser holding an address: never its title or its supporter, which a
+ * staff screen has no reason to repeat.
+ */
+const FUNDRAISER_HOLDER = 'a supporter’s fundraiser';
+
+/**
+ * whether a supporter's fundraiser holds `slug` at `/f/<slug>`, which a campaign's address never
+ * repeats, as a fundraiser's never repeats a campaign's (`insertFundraiser` in
+ * ../supporters/start.ts). this read words the refusal; the slug guard triggers are what hold the
+ * rule against a start taking the address in the same instant (`addressTaken`).
+ */
+async function fundraiserHolds(db: Db, slug: string): Promise<boolean> {
+	const [held] = await db
+		.select({ id: supporterPage.id })
+		.from(supporterPage)
+		.where(eq(supporterPage.slug, slug))
+		.limit(1);
+	return held !== undefined;
+}
+
+/** every address a new campaign's `freeSlug` passes over: every campaign's, and every fundraiser's. */
+export async function heldAddresses(db: Db): Promise<ReadonlySet<string | null>> {
+	const [campaigns, fundraisers] = await Promise.all([
+		db.select({ slug: page.slug }).from(page).where(isNotNull(page.slug)),
+		db.select({ slug: supporterPage.slug }).from(supporterPage)
+	]);
+	return new Set([...campaigns, ...fundraisers].map((row) => row.slug));
+}
 
 /** the name `document` holds where `row` is a campaign named otherwise; null where there is none. */
 export function nameToCarry(

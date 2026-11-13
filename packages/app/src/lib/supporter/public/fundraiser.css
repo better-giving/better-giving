@@ -1,0 +1,283 @@
+/*
+ * a supporter's fundraiser at /f/<slug> (./fundraiser-page.tsx), on top of the donor page's own
+ * sheet ($lib/donate/page.css) and the registry's badge and goal bar, which `fundraiserPageLinks`
+ * links before this one. the page is drawn on the `plain` root ($lib/donate/page-root.tsx), which
+ * arranges nothing, so its width, gutter, section step, planes and EIN are page.css's; what is
+ * here is the layout of its three areas, its raised figure (`.fundraiser-figure`), and the few
+ * parts no donor page had before.
+ *
+ * every value is a token: the form's `--_` names, page.css's `--page-*` names, and the
+ * `--fundraiser-*` names below, which are declared here and nowhere else. ./fundraiser-css.spec.ts
+ * holds the sheet to that, and to its colours landing on the steps their jobs take.
+ *
+ * the layout changes at the one container width the profile head does, 60rem: under it the who,
+ * the box with who the gift goes to, then the story and the messages, one column; from it the box
+ * and who the gift goes to are a `--page-profile-box` column beside the rest. like every donor
+ * page's box, the column scrolls with the page rather than sticking: a box a later step grows past
+ * the screen's height keeps its lower edge reachable.
+ */
+
+.fundraiser-page > .page-ground {
+	--fundraiser-title: 1.75rem;
+	--fundraiser-measure-title: 22ch;
+	--fundraiser-for-logo: 1.75rem;
+	--fundraiser-avatar: 2.75rem;
+	--fundraiser-recipient-logo: 3rem;
+	/* the raised figure is the profile name's step; page.css declares both on this same element. */
+	--fundraiser-figure: var(--page-profile-name);
+	--fundraiser-lh-figure: var(--page-profile-lh-name);
+}
+
+@container page (min-width: 60rem) {
+	.fundraiser-page > .page-ground {
+		--fundraiser-title: 2.25rem;
+	}
+
+	.fundraiser-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) var(--page-profile-box);
+		grid-template-rows: auto 1fr;
+		grid-template-areas: 'who side' 'more side';
+		align-items: start;
+	}
+
+	.fundraiser-layout > [data-area='who'] {
+		grid-area: who;
+	}
+
+	.fundraiser-layout > [data-area='side'] {
+		grid-area: side;
+	}
+
+	.fundraiser-layout > [data-area='more'] {
+		grid-area: more;
+	}
+}
+
+.fundraiser-layout {
+	gap: var(--page-profile-gap);
+}
+
+/* the donation card takes the box's whole column, as it does under the Donation page's profile head. */
+.fundraiser-page .page-box > div > * {
+	max-inline-size: none;
+}
+
+.fundraiser-who,
+.fundraiser-more {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.fundraiser-who {
+	gap: var(--page-gap-item);
+}
+
+.fundraiser-more {
+	gap: var(--page-profile-gap);
+}
+
+.fundraiser-side {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp4);
+	min-inline-size: 0;
+}
+
+/* the line over the title: the organisation's logo and name, a way to /donate. the name is the
+   text ink, the lead-in the quiet one; under the pointer the name takes the page's link ink. */
+.page-ground a.fundraiser-for {
+	display: inline-flex;
+	align-items: center;
+	align-self: flex-start;
+	gap: var(--_sp3);
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--page-quiet);
+	text-decoration: none;
+}
+
+.fundraiser-for-name {
+	font-weight: var(--_w-bold);
+	color: var(--_n12);
+}
+
+.page-ground a.fundraiser-for:hover .fundraiser-for-name {
+	color: var(--page-accent);
+	text-decoration: underline;
+}
+
+.fundraiser-for-logo,
+.fundraiser-recipient-logo {
+	box-sizing: border-box;
+	flex: none;
+	object-fit: contain;
+	background: var(--page-plane);
+	border: var(--_border) solid var(--page-plane-edge);
+	border-radius: var(--_r-in);
+}
+
+.fundraiser-for-logo {
+	inline-size: var(--fundraiser-for-logo);
+	block-size: var(--fundraiser-for-logo);
+}
+
+.fundraiser-recipient-logo {
+	inline-size: var(--fundraiser-recipient-logo);
+	block-size: var(--fundraiser-recipient-logo);
+}
+
+.fundraiser-title {
+	max-inline-size: var(--fundraiser-measure-title);
+	overflow-wrap: break-word;
+	font-family: var(--page-font-display);
+	font-size: var(--fundraiser-title);
+	line-height: var(--page-lh-display);
+	letter-spacing: var(--page-tracking-display);
+	font-weight: var(--page-w-display);
+	text-wrap: balance;
+}
+
+/* the supporter's byline. registry gap: the registry has no avatar, so the initials tile is the
+   profile head's logo tile (`.page-profile-badge` in page.css) at the byline's size: the brand's
+   solid, its one ink, the plane's corner. */
+.fundraiser-byline {
+	display: flex;
+	align-items: center;
+	gap: var(--_sp3);
+}
+
+.fundraiser-avatar {
+	display: grid;
+	flex: none;
+	place-items: center;
+	inline-size: var(--fundraiser-avatar);
+	block-size: var(--fundraiser-avatar);
+	border-radius: var(--page-plane-radius);
+	background: var(--_p);
+	color: var(--_on-p);
+	font-family: var(--page-font-display);
+	font-size: var(--_t-md);
+	font-weight: var(--page-w-display);
+}
+
+.fundraiser-by {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.fundraiser-by-name {
+	font-weight: var(--_w-bold);
+	line-height: var(--_lh-tight);
+	overflow-wrap: anywhere;
+}
+
+.fundraiser-by-when {
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--page-quiet);
+}
+
+/* the photo, 16:9, cropped to its frame, the sunken well until its bytes arrive. */
+.fundraiser-photo {
+	aspect-ratio: 16 / 9;
+	overflow: hidden;
+	background: var(--_n3);
+	border: var(--_border) solid var(--page-plane-edge);
+	border-radius: var(--page-plane-radius);
+}
+
+/* what has been raised: a plane holding the figure, the bar and a line under it. */
+.fundraiser-raised,
+.fundraiser-recipient {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp3);
+	background: var(--page-plane);
+	border: var(--_border) solid var(--page-plane-edge);
+	border-radius: var(--page-plane-radius);
+}
+
+.fundraiser-raised {
+	padding: var(--page-fundraise-inset);
+}
+
+.fundraiser-figure {
+	font-family: var(--page-font-display);
+	font-size: var(--fundraiser-figure);
+	line-height: var(--fundraiser-lh-figure);
+	font-weight: var(--page-w-display);
+	font-variant-numeric: tabular-nums lining-nums;
+}
+
+.fundraiser-figure-label {
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--page-quiet);
+}
+
+.fundraiser-figures {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	column-gap: var(--_sp3);
+}
+
+.fundraiser-raised-note,
+.fundraiser-recipient-note {
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--page-quiet);
+}
+
+/* who the gift goes to, under the box. */
+.fundraiser-recipient {
+	padding: var(--_sp5);
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+}
+
+.fundraiser-recipient-label {
+	font-weight: var(--_w-bold);
+	color: var(--page-quiet);
+}
+
+.fundraiser-recipient-org {
+	display: flex;
+	align-items: center;
+	gap: var(--_sp3);
+}
+
+.fundraiser-recipient-name {
+	font-family: var(--page-font-display);
+	font-size: var(--_t-md);
+	line-height: var(--_lh-tight);
+	font-weight: var(--_w-bold);
+	overflow-wrap: anywhere;
+}
+
+.fundraiser-heading {
+	margin-block-end: var(--_sp3);
+	font-family: var(--page-font-display);
+	font-size: var(--page-profile-subhead);
+	line-height: var(--page-profile-lh-subhead);
+	font-weight: var(--page-w-display);
+	text-wrap: balance;
+}
+
+/* the story: plain text, a paragraph per blank line and a line break kept inside one. */
+.fundraiser-story {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp3);
+	max-inline-size: var(--page-profile-measure);
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+}
+
+/* an ended fundraiser's total, under the thanks: the text ink, where the thanks is the quiet one. */
+.ended .fundraiser-ended-total {
+	color: var(--_n12);
+}

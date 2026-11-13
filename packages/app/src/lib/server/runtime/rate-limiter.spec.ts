@@ -34,6 +34,19 @@ describe('createRateLimiter', () => {
 		expect((await limiter.limit({ key: 'a' })).success).toBe(true);
 	});
 
+	it('names the seconds left in the window on a refusal, rounded up', async () => {
+		const time = clock();
+		const limiter = createRateLimiter({ limit: 1, period: 600 }, time.now);
+		await limiter.limit({ key: 'a' });
+
+		time.advance(1);
+		expect(await limiter.limit({ key: 'a' })).toEqual({ success: false, retryAfterSeconds: 600 });
+		time.advance(119_999);
+		expect(await limiter.limit({ key: 'a' })).toEqual({ success: false, retryAfterSeconds: 480 });
+		time.advance(479_999);
+		expect(await limiter.limit({ key: 'a' })).toEqual({ success: false, retryAfterSeconds: 1 });
+	});
+
 	it('counts each key on its own', async () => {
 		const limiter = createRateLimiter({ limit: 1, period: 60 }, clock().now);
 		await limiter.limit({ key: 'a' });

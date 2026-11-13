@@ -2,8 +2,8 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
 
 /**
  * every destination the staff surface has, in the order an operator works: the state of giving in
- * one look, then the campaigns and forms that take the money, the donors it came from, the gifts
- * themselves, the ones that repeat, who may sign in, the organisation's settings and its payments,
+ * one look, then the campaigns, the fundraisers supporters start beside them, and the forms that
+ * take the money, the donors it came from, the gifts themselves, the ones that repeat, who may sign in, the organisation's settings and its payments,
  * the systems outside that read it, and the books all of it lands in. the dashboard is first
  * because it is the surface's own address and what an operator opens on, and each record after it
  * is a step further from the page or form that produced it.
@@ -89,6 +89,14 @@ export const DESTINATION_GROUPS = [
 				short: 'Campaigns',
 				mark: 'megaphone',
 				bar: true
+			},
+			// directly after the campaigns: a supporter's page raises money the way a campaign does, and
+			// a supporter starts one from a campaign's card (./supporter-pages/supporter-pages.tsx).
+			{
+				href: '/admin/supporter-pages',
+				label: 'Supporter pages',
+				short: 'Supporter',
+				mark: 'user-plus'
 			},
 			{ href: '/admin/forms', label: 'Donation forms', short: 'Forms', mark: 'form' },
 			// directly after the forms, because a program is what a form asks a donor about: it is named

@@ -6,6 +6,8 @@
 @import '@better-giving/operator/registry/styles/badge-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/card-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/field-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/switch-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/state-card-css.css' layer(registry);
 @import '@better-giving/operator/styles/tokens.css';
 @import '@better-giving/operator/styles/base.css';
 @import '@better-giving/operator/styles/adm.css';
@@ -57,8 +59,8 @@
    `:root` (light, and dark under `.dark`, in ../../operator/src/registry/styles/themes/default.css),
    and being unlayered it outranks a `color-scheme` any of the layers sets; none sets one.
 
-   the registry's four component sheets (button-css, badge-css, card-css and field-css, beside
-   variables.css) are copied unlayered and imported into `registry`, between `base` and
+   the registry's six component sheets /admin draws with (button-css, badge-css, card-css,
+   field-css, switch-css and state-card-css, beside variables.css) are copied unlayered and imported into `registry`, between `base` and
    `elements`. so a `ds-*` class outranks the reset and the document defaults under it, and a rule
    of adm.css's outranks it: the registry's usage notes expect the page's own classes to be read
    after its sheets (a heading class in a `ds-card-header`, card-css.usage.md). what that order

@@ -19,6 +19,7 @@ import type { DepositInstructions, ProcessorName } from '../payments/provider';
 import type { QuotedRail } from '../payments/provider';
 import { resolveDonor } from './donor';
 import type { NoteOnPage, Tribute } from './quote-input';
+import { supporterPageOf } from '../supporters/gifts';
 
 // the write a gift makes at quote time: a donor, a donation, its lines and — where an attempt has
 // actually been opened — the settlement attempt, all of it in one `batch()`.
@@ -447,7 +448,10 @@ export async function recordAuthorizedGift(
 	};
 
 	const writes: Writes = [
-		db.insert(donation).values(donationRow),
+		db
+			.insert(donation)
+			// the fundraiser the form belongs to, read off the form inside the insert (../supporters/gifts.ts).
+			.values({ ...donationRow, supporterPageId: supporterPageOf(input.formId) }),
 		...input.lines.map((line) =>
 			db.insert(lineItem).values({
 				id: uuidv7(),
@@ -605,7 +609,10 @@ async function write(db: Db, input: RecordDonationInput): Promise<RecordedDonati
 	// `donation.contact_id` has to resolve when its statement runs — which is a requirement of the
 	// insert case and harmless in the update one.
 	const gift: Writes = [
-		db.insert(donation).values(donationRow),
+		db
+			.insert(donation)
+			// the fundraiser the form belongs to, read off the form inside the insert (../supporters/gifts.ts).
+			.values({ ...donationRow, supporterPageId: supporterPageOf(input.formId) }),
 		...lineRows.map((row) => db.insert(lineItem).values(row)),
 		db.insert(payment).values(paymentRow)
 	];

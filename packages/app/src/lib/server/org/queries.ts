@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, notExists, type SQL, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { image, orgProfile, type OrgProfile } from '../db/schema';
 import { freeImageStatements } from '../images/free';
@@ -208,6 +208,51 @@ export async function updateOrgNotificationEmail(
 		.returning({ id: orgProfile.id });
 	if (written.length > 0) return 'saved';
 	return (await readOrgProfile(db)) === null ? 'no-profile' : 'stale';
+}
+
+/**
+ * whether supporters may start a fundraiser here: the stored setting, and on where no profile is
+ * saved yet, the column's own default.
+ */
+export async function supporterFundraisersEnabled(db: Db): Promise<boolean> {
+	const [row] = await db
+		.select({ enabled: orgProfile.supporterFundraisersEnabled })
+		.from(orgProfile)
+		.where(eq(orgProfile.id, ORG_PROFILE_ID));
+	return row?.enabled ?? true;
+}
+
+/**
+ * `supporterFundraisersEnabled` as a condition, for a write that must land only while the setting
+ * is on and so reads it in its own statement: true where no profile row says off.
+ */
+export function supporterFundraisersEnabledSql(db: Db): SQL {
+	return notExists(
+		db
+			.select({ id: orgProfile.id })
+			.from(orgProfile)
+			.where(
+				and(eq(orgProfile.id, ORG_PROFILE_ID), eq(orgProfile.supporterFundraisersEnabled, false))
+			)
+	);
+}
+
+/**
+ * sets the supporter fundraisers setting, and nothing beside it. an update and never an insert,
+ * for `updateOrgNotificationEmail`'s reason: with no profile there is no row to hold it, so turning
+ * it off is `no-profile` and turning it on is already what no profile reads as. no version: the
+ * setting is one switch, and the press is the whole of what it says.
+ */
+export async function setSupporterFundraisersEnabled(
+	db: Db,
+	enabled: boolean
+): Promise<Exclude<OrgSave, 'stale'>> {
+	const written = await db
+		.update(orgProfile)
+		.set({ supporterFundraisersEnabled: enabled })
+		.where(eq(orgProfile.id, ORG_PROFILE_ID))
+		.returning({ id: orgProfile.id });
+	return written.length > 0 || enabled ? 'saved' : 'no-profile';
 }
 
 // ---------------------------------------------------------------------------

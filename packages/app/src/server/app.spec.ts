@@ -1,13 +1,25 @@
 import { createClient } from '@libsql/client';
 import { MIN_ADMIN_PASSWORD_LENGTH } from '@better-giving/operator/admin-password';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { COOKIE_SCHEME_HEADER, cookiesSecure } from '$lib/server/runtime/cookie-scheme';
 import { createDeferredWork } from '$lib/server/runtime/deferred';
-import { startCron, startRefusal } from './app';
+import { createApp, startCron, startRefusal } from './app';
 
 // this module is the server bundle's entry (../../vite.config.ts), so what it exports is what
 // ../../server/start.ts can reach in build/server/index.js.
 
 const cron = vi.hoisted(() => ({ minute: vi.fn(async () => {}) }));
+
+/** the request each call of the app handed the router, which answers nothing of its own. */
+const routed = vi.hoisted(() => [] as Request[]);
+
+vi.mock(import('react-router'), async (actual) => ({
+	...(await actual()),
+	createRequestHandler: () => async (request: Request) => {
+		routed.push(request);
+		return new Response(null, { status: 204 });
+	}
+}));
 
 vi.mock(import('../cron-runs'), () => ({
 	CRON_RUNS: { '* * * * *': cron.minute },
@@ -60,5 +72,41 @@ describe('what the bundle refuses to start on', () => {
 		const env = { ADMIN_PASSWORD: 'correct-horse-battery' } as unknown as Env;
 
 		expect(startRefusal(env)).toBeNull();
+	});
+});
+
+describe('the scheme a cookie is written for', () => {
+	/** the app over `env`, asked once at `url` with `headers`: the request the router was handed. */
+	async function route(
+		env: Record<string, string>,
+		url: string,
+		headers: Record<string, string> = {}
+	) {
+		routed.length = 0;
+		const client = createClient({ url: ':memory:' });
+		const app = createApp(
+			{ env: env as unknown as Env, deferred: createDeferredWork(vi.fn()), client },
+			undefined
+		);
+		await app(new Request(url, { headers }), '192.0.2.1');
+		client.close();
+		const [request] = routed;
+		if (!request) throw new Error('the app routed nothing');
+		return request;
+	}
+
+	it('is the https pin’s, for a request that arrived as plain http', async () => {
+		const request = await route(
+			{ BETTER_AUTH_URL: 'https://donate.example.org' },
+			'http://donate.example.org/fundraise/open'
+		);
+		expect(cookiesSecure(request)).toBe(true);
+	});
+
+	it('is the request’s where nothing is pinned, whatever the caller claimed', async () => {
+		const request = await route({}, 'http://donate.example.org/fundraise/open', {
+			[COOKIE_SCHEME_HEADER]: 'https:'
+		});
+		expect(cookiesSecure(request)).toBe(false);
 	});
 });

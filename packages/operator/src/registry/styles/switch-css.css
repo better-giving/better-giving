@@ -1,0 +1,166 @@
+/* the registry's switch as plain css, no tailwind. reads only the variables
+   the `variables` item declares. a native checkbox with role="switch", drawn
+   as a track (the input) and a thumb (its ::before) that slides at
+   --duration-fast, so the reduced-motion guard in variables.css stills it.
+   switch-css.test.tsx renders the React `Switch` beside these and asserts the
+   same computed look in light and dark, for the default and example themes.
+
+   the spacing step, the type ladder, the easing, the field height and the two
+   shadows live only in tailwind's theme; they are declared here under ds-
+   names with the same values, and the test holds each equal to tailwind's. */
+.ds-switch {
+  --ds-spacing: 0.25rem;
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-inset-shadow-track: inset 0 2px 4px 0
+    color-mix(in oklch, var(--shadow-ink) 5%, transparent);
+  --ds-shadow-handle:
+    0 1px 3px 0 color-mix(in oklch, var(--shadow-ink) 10%, transparent),
+    0 1px 2px -1px color-mix(in oklch, var(--shadow-ink) 10%, transparent);
+  --ds-switch-w: calc(var(--ds-spacing) * 11);
+  --ds-switch-h: calc(var(--ds-spacing) * 6);
+  --ds-switch-thumb: calc(var(--ds-spacing) * 5);
+  appearance: none;
+  box-sizing: border-box;
+  position: relative;
+  flex-shrink: 0;
+  margin: 0;
+  cursor: pointer;
+  inline-size: var(--ds-switch-w);
+  block-size: var(--ds-switch-h);
+  border-radius: calc(infinity * 1px);
+  background-color: var(--gray-9);
+  box-shadow: var(--ds-inset-shadow-track);
+  transition-property: background-color;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-in-out);
+}
+/* the small size: 36x20 with a 16px thumb, for a compact list row */
+.ds-switch.ds-switch-sm {
+  --ds-switch-w: calc(var(--ds-spacing) * 9);
+  --ds-switch-h: calc(var(--ds-spacing) * 5);
+  --ds-switch-thumb: calc(var(--ds-spacing) * 4);
+}
+/* the thumb, 2px in from either end */
+.ds-switch::before {
+  content: "";
+  box-sizing: border-box;
+  position: absolute;
+  top: 50%;
+  inset-inline-start: calc(var(--ds-spacing) * 0.5);
+  inline-size: var(--ds-switch-thumb);
+  block-size: var(--ds-switch-thumb);
+  margin-top: calc(var(--ds-switch-thumb) / -2);
+  border-radius: calc(infinity * 1px);
+  background-color: var(--primary-fg);
+  box-shadow: var(--ds-shadow-handle);
+  transition-property: translate;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-in-out);
+}
+.ds-switch:checked {
+  background-color: var(--primary);
+}
+.ds-switch:checked::before {
+  translate: calc(
+    var(--ds-switch-w) -
+    var(--ds-switch-thumb) -
+    var(--ds-spacing)
+  );
+}
+/* right to left the thumb rests at the right and slides left */
+.ds-switch:checked:dir(rtl)::before {
+  translate: calc(
+    var(--ds-switch-thumb) +
+    var(--ds-spacing) -
+    var(--ds-switch-w)
+  );
+}
+@media (hover: hover) {
+  .ds-switch:hover:not(:disabled) {
+    background-color: var(--gray-10);
+  }
+  .ds-switch:checked:hover:not(:disabled) {
+    background-color: var(--primary-hover);
+  }
+}
+.ds-switch:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.ds-switch:disabled {
+  cursor: not-allowed;
+  background-color: var(--gray-3);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.ds-switch:disabled::before {
+  background-color: var(--gray-7);
+  box-shadow: none;
+}
+.ds-switch:disabled:checked::before {
+  background-color: var(--gray-11);
+}
+/* forced colors repaint both fills to Canvas and drop the shadows, which would
+   leave no track and no thumb: the track draws its extent as an outline, and
+   the thumb opts out to take the system ink, Highlight when on */
+@media (forced-colors: active) {
+  .ds-switch {
+    outline: 1px solid CanvasText;
+  }
+  .ds-switch::before {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+  .ds-switch:checked::before {
+    background-color: Highlight;
+  }
+  .ds-switch:disabled::before,
+  .ds-switch:disabled:checked::before {
+    background-color: GrayText;
+  }
+}
+
+/* a label row: the words and an optional hint, then the switch at the end.
+   medium rows are at least the field height and top-aligned; a row holding a
+   small switch is the compact list row, 24px and centered. */
+.ds-switch-field {
+  --ds-spacing: 0.25rem;
+  --ds-field-size: calc(var(--ds-spacing) * 12.5);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: flex-start;
+  gap: calc(var(--ds-spacing) * 4);
+  min-block-size: var(--ds-field-size);
+  padding-block: calc(var(--ds-spacing) * 3);
+  cursor: pointer;
+}
+.ds-switch-field:has(.ds-switch-sm) {
+  align-items: center;
+  min-block-size: calc(var(--ds-spacing) * 6);
+  padding-block: calc(var(--ds-spacing) * 1.5);
+}
+.ds-switch-field:has(:disabled) {
+  cursor: not-allowed;
+  color: var(--gray-11);
+}
+.ds-switch-text {
+  --ds-spacing: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--ds-spacing) * 0.5);
+}
+.ds-switch-label {
+  --ds-text-sm: 0.875rem;
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-font-weight-medium: 500;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  font-weight: var(--ds-font-weight-medium);
+}
+.ds-switch-hint {
+  --ds-text-xs: 0.75rem;
+  --ds-text-xs-lh: calc(1 / 0.75);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  color: var(--gray-11);
+}

@@ -1,4 +1,4 @@
-import { and, eq, exists, isNotNull, type SQL } from 'drizzle-orm';
+import { and, eq, exists, type SQL } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { z } from 'zod';
 import { defineForm, type RejectionStatus } from '../../forms/definition';
@@ -22,7 +22,6 @@ import {
 import { checkSlug, freeSlug } from '../../page/slug';
 import { invalid, type ParsedForm, parseForm, submittedForm, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
-import { sqliteResultCode } from '../db/rejection';
 import { form, type Page, page, program } from '../db/schema';
 import {
 	formInputValuesFrom,
@@ -36,7 +35,9 @@ import { freeLetGoStatements } from '../images/free';
 import { documentsOf, placedPhotos, readDocument } from './document';
 import { unchosenSettings } from './donation-page';
 import {
+	addressTaken,
 	type DraftSettings,
+	heldAddresses,
 	nameToCarry,
 	ownedName,
 	planSlugMove,
@@ -298,15 +299,15 @@ export async function publishPage(
 			);
 			return made ? { kind: 'published', undoable: replaced !== null } : { kind: 'stale' };
 		} catch (error) {
-			if (moving && sqliteResultCode(error) === 'SQLITE_CONSTRAINT_UNIQUE') {
+			if (moving && addressTaken(error)) {
 				const by = await slugRace(db, movedTo, at.now, error);
 				return refused(
 					`the link /${movedTo} is taken by ${by}. Change it under General, then publish again`
 				);
 			}
-			// another campaign took the free address between the read and the batch.
+			// another campaign or a fundraiser took the free address between the read and the batch.
 			const retry = row.slug === null && attempt < SLUG_ATTEMPTS;
-			if (!retry || sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;
+			if (!retry || !addressTaken(error)) throw error;
 		}
 	}
 }
@@ -352,8 +353,7 @@ async function addressFor(db: Db, row: Page): Promise<string | null> {
 	if (row.type !== 'campaign' || row.slug !== null) return row.slug;
 	// unreachable: `page_name_check` holds every campaign to a name.
 	if (row.name === null) throw new Error(`campaign ${row.id} has no name`);
-	const held = await db.select({ slug: page.slug }).from(page).where(isNotNull(page.slug));
-	return freeSlug(row.name, new Set(held.map((each) => each.slug)));
+	return freeSlug(row.name, await heldAddresses(db));
 }
 
 /** what an Undo did; `nothing` is a page no Publish has replaced. */

@@ -12,6 +12,7 @@ export * as invitation from './templates/invitation';
 export * as passwordReset from './templates/password-reset';
 export * as receipt from './templates/receipt';
 export * as refundNotice from './templates/refund-notice';
+export * as supporterSignIn from './templates/supporter-sign-in';
 export * as testSend from './templates/test-send';
 export * as tribute from './templates/tribute';
 export * as uncollected from './templates/uncollected';

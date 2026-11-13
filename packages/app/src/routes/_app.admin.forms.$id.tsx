@@ -209,11 +209,19 @@ const ARCHIVED = 'archived';
 const NO_SUCH_PROGRAM = 'Choose an active program.';
 
 /**
- * the page a refusal names as the owner of a row: the Donation page by the word screens call it,
- * a campaign by its own name.
+ * the page that owns a page-owned row and where it is changed: the Donation page by the word screens
+ * call it and a campaign by its own name, each in its editor; a supporter's fundraiser by its
+ * title, and nowhere on the dashboard.
  */
-function ownerWords(owner: OwningPage): string {
-	return owner.type === 'donation_page' ? 'the Donation page' : `the campaign “${owner.name}”`;
+function ownedWhere(owner: OwningPage): string {
+	switch (owner.type) {
+		case 'donation_page':
+			return 'belong to the Donation page and are edited in its editor rather than under /admin/forms';
+		case 'campaign':
+			return `belong to the campaign “${owner.name}” and are edited in its editor rather than under /admin/forms`;
+		case 'fundraiser':
+			return `belong to the supporter fundraiser “${owner.title}” and cannot be edited from the dashboard`;
+	}
 }
 
 /**
@@ -221,7 +229,7 @@ function ownerWords(owner: OwningPage): string {
  * save or an archive for one — the loader 404s it — so this answers a hand-built body, at that 404.
  */
 function pageOwnedRefusal(owner: OwningPage): string {
-	return `Nothing was changed: these donation settings belong to ${ownerWords(owner)} and are edited in its editor rather than under /admin/forms.`;
+	return `Nothing was changed: these donation settings ${ownedWhere(owner)}.`;
 }
 
 /**
@@ -466,9 +474,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	}
 
 	if (owner !== null) {
-		notFound(
-			`The donation settings \`${redactPublicId(params.id)}\` belong to ${ownerWords(owner)} and are edited in its editor rather than under /admin/forms.`
-		);
+		notFound(`The donation settings \`${redactPublicId(params.id)}\` ${ownedWhere(owner)}.`);
 	}
 
 	const archived = record.status === 'archived';

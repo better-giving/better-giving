@@ -1,0 +1,103 @@
+/* the registry's state card as plain css, no tailwind: empty, loading and
+   error. reads only the variables the `variables` item declares, and the
+   button-css classes for its action. state-card-css.test.tsx renders the React
+   `EmptyState`, `LoadingState` and `ErrorState` beside it and asserts the same
+   computed look in light and dark, for the default and example themes.
+
+   the spacing step, the type sizes, the weight, the column width and the
+   spinner's loop live only in tailwind's theme (the loop in ./theme.css); they
+   are declared here under ds- names with the same values, and the test holds
+   them equal. the loop turns on its own ds-spin keyframes, tailwind's spin
+   under a ds- name: keyframes are document-global, and a host's spin would
+   win. */
+.ds-state-card {
+  --ds-spacing: 0.25rem;
+  --ds-text-sm: 0.875rem;
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--ds-spacing) * 2);
+  inline-size: 100%;
+  padding: calc(var(--ds-spacing) * 8) calc(var(--ds-spacing) * 4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background-color: var(--card);
+  color: var(--gray-11);
+  text-align: center;
+}
+
+.ds-state-card-title {
+  --ds-text-base: 1rem;
+  --ds-text-base-lh: calc(1.5 / 1);
+  --ds-font-weight-semibold: 600;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--ds-text-base);
+  line-height: var(--ds-text-base-lh);
+  font-weight: var(--ds-font-weight-semibold);
+  color: var(--gray-12);
+}
+
+.ds-state-card-body {
+  --ds-container-md: 28rem;
+  max-inline-size: var(--ds-container-md);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+
+/* the action or the retry sits a further 8px down */
+.ds-state-card-action {
+  margin-top: calc(var(--ds-spacing) * 2);
+}
+
+/* loading: the spinner and its one line */
+.ds-state-card-loading {
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+.ds-state-card-spinner {
+  --ds-animate-spinner: ds-spin 0.8s linear infinite;
+  box-sizing: border-box;
+  inline-size: calc(var(--ds-spacing) * 5);
+  block-size: calc(var(--ds-spacing) * 5);
+  flex-shrink: 0;
+  border: 2px solid var(--gray-6);
+  border-top-color: var(--primary);
+  border-radius: calc(infinity * 1px);
+  animation: var(--ds-animate-spinner);
+}
+/* a loop stills rather than shortens: at a collapsed duration it would jitter */
+@media (prefers-reduced-motion: reduce) {
+  .ds-state-card-spinner {
+    animation: none;
+  }
+}
+/* forced colors repaint ring and arc one colour, which leaves a turning ring
+   that looks still: the spinner opts out and takes the system inks */
+@media (forced-colors: active) {
+  .ds-state-card-spinner {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+    border-top-color: Highlight;
+  }
+}
+@keyframes ds-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* error: the destructive band, its ink on the title, the sentence in gray-12 */
+.ds-state-card-error {
+  border-color: var(--destructive-6);
+  background-color: var(--destructive-subtle);
+}
+.ds-state-card-error .ds-state-card-title {
+  color: var(--destructive-subtle-fg);
+}
+.ds-state-card-error .ds-state-card-body {
+  color: var(--gray-12);
+}

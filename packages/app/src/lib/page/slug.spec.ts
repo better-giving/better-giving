@@ -1,8 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { checkSlug, RESERVED_SEGMENTS, reservedSegments, slugFromTitle } from './slug';
+import {
+	checkSlug,
+	RESERVED_SEGMENTS,
+	reservedSegments,
+	reservedUnder,
+	slugFromTitle
+} from './slug';
 
 // node pool, no database: the rule is a pure function, and vitest reads the route files through the
 // same `virtual:route-files` plugin the build does (../../../vitest.config.ts registers it).
+
+describe('the segments a route file answers under a prefix', () => {
+	it('reads the segment after the prefix, files and folders alike', () => {
+		expect([
+			...reservedUnder('f', [
+				'f.sign-in.tsx',
+				'f.mine/route.tsx',
+				'f.$slug.tsx',
+				'f.tsx',
+				'fx.y.tsx'
+			])
+		]).toEqual(['sign-in', 'mine']);
+	});
+
+	it('looks through a pathless layout in front of the prefix', () => {
+		expect([...reservedUnder('f', ['_supporter.f.start.tsx'])]).toEqual(['start']);
+	});
+});
 
 describe('the top-level segments a route file answers', () => {
 	it('reads the first segment under a pathless layout', () => {

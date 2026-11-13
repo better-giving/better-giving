@@ -6,8 +6,9 @@ import { sniffImage } from './sniff';
 // a photo posted as `multipart/form-data` with the photo in `file`, stored — the one intake every
 // route taking a photo runs (src/routes/_app.admin.images.ts for a page's photo,
 // src/routes/_app.admin.settings_.logo.ts for the organisation's logo,
-// src/routes/_app.admin.settings_.banner.ts for the donation page's banner), so the bounds are
-// written once.
+// src/routes/_app.admin.settings_.banner.ts for the donation page's banner,
+// src/routes/fundraise.photo.ts and src/routes/fundraise._index.tsx for a supporter's page photo),
+// so the bounds are written once.
 //
 // the photo is resized in the browser first (`@better-giving/operator/images/resize`), which is why
 // everything here is a refusal rather than a repair. each bound is checked again because a route
@@ -99,27 +100,44 @@ export async function readUpTo(body: ReadableStream<Uint8Array> | null, max: num
 	return bytes;
 }
 
-/** the photo `request` posts in `file`, checked, with the statements storing it as a `photo`. */
-export async function readPostedPhoto(db: Db, request: Request): Promise<PostedPhoto> {
+/**
+ * the body `request` posts, read no further than `UPLOAD_MAX`: a photo's post, or a form post that
+ * carries a photo beside its boxes (the start of a fundraiser, src/routes/fundraise._index.tsx).
+ */
+export async function readPostedBody(
+	request: Request
+): Promise<{ readonly ok: true; readonly body: FormData } | PhotoRefusal> {
 	const declared = Number(request.headers.get('content-length'));
 	if (declared > UPLOAD_MAX) return tooLarge(`the upload is ${declared} bytes`);
-	const body = await readUpTo(request.body, UPLOAD_MAX);
-	if (body === null) return tooLarge(`the upload is over ${IMAGE_BYTES_MAX} bytes`);
-
-	let file: FormDataEntryValue | null;
+	const bytes = await readUpTo(request.body, UPLOAD_MAX);
+	if (bytes === null) return tooLarge(`the upload is over ${IMAGE_BYTES_MAX} bytes`);
 	try {
-		file = (
-			await new Response(body, {
-				headers: { 'content-type': request.headers.get('content-type') ?? '' }
-			}).formData()
-		).get('file');
+		const body = await new Response(bytes, {
+			headers: { 'content-type': request.headers.get('content-type') ?? '' }
+		}).formData();
+		return { ok: true, body };
 	} catch {
 		return refused('the body is not multipart/form-data; post the photo as `file`');
 	}
+}
+
+/** a posted file part checked as a photo, with the statements storing it; `name` is its box. */
+export async function checkPostedPhoto(
+	db: Db,
+	file: FormDataEntryValue | null,
+	name = 'file'
+): Promise<PostedPhoto> {
 	if (!(file instanceof Blob)) {
-		return refused('file is required: the photo, as the multipart body’s one file');
+		return refused(`${name} is required: the photo, as the multipart body’s one file`);
 	}
 	return checkPhotoBytes(db, new Uint8Array(await file.arrayBuffer()));
+}
+
+/** the photo `request` posts in `file`, checked, with the statements storing it as a `photo`. */
+export async function readPostedPhoto(db: Db, request: Request): Promise<PostedPhoto> {
+	const posted = await readPostedBody(request);
+	if (!posted.ok) return posted;
+	return checkPostedPhoto(db, posted.body.get('file'));
 }
 
 /**

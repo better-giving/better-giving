@@ -58,6 +58,12 @@ describe('campaignRaised()', () => {
 		expect(await campaignRaised(db, campaign)).toEqual({ raisedMinor: 10_000 });
 	});
 
+	it('is nothing for a campaign no gift went through', async () => {
+		const campaign = await campaignForm();
+
+		expect(await campaignRaised(db, campaign)).toEqual({ raisedMinor: 0 });
+	});
+
 	it('adds nothing for a gift still pending', async () => {
 		const campaign = await campaignForm();
 		await gift(db, campaign, 10_000);

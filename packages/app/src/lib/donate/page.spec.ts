@@ -378,6 +378,7 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-profile-logo | background': 'slate-1',
 				[`${NARROW} » [data-shape='cards'] .page-messages-row | background`]: 'slate-1',
 				'.page-messages-plane | background': 'slate-1',
+				'.page-fundraise | background': 'slate-1',
 				'.page-messages-foot | background': 'slate-2',
 				'.page-video-box | background': 'slate-3',
 				".page-video-box[data-face='loading'] .page-video-status | background": 'slate-3',
@@ -419,6 +420,7 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-profile-logo | border': 'slate-6',
 				[`${NARROW} » [data-shape='cards'] .page-messages-row | border`]: 'slate-6',
 				'.page-messages-plane | border': 'slate-6',
+				'.page-fundraise | border': 'slate-6',
 				'.page-messages-row + .page-messages-row | border-block-start': 'slate-6',
 				'.page-messages-foot | border-block-start': 'slate-6',
 				'.page-video-box | border': 'slate-6',
@@ -429,7 +431,8 @@ describe('every colour lands on the radix step for its job', () => {
 			allowed: ['brand-8', 'slate-1'],
 			at: {
 				'.page > .page-ground | --page-ring': 'brand-8',
-				'.page-ground a:focus-visible, .page-faq-question:focus-visible | box-shadow': 'brand-8',
+				'.page-ground a:not(.ds-btn):focus-visible, .page-faq-question:focus-visible | box-shadow':
+					'brand-8',
 				'.page-ground .page-share-button:focus-visible | box-shadow': 'brand-8',
 				'.page-choose-option:has(:focus-visible) | box-shadow': 'slate-1 brand-8',
 				'.page-messages-row:focus-visible | outline': 'brand-8',
@@ -454,6 +457,7 @@ describe('every colour lands on the radix step for its job', () => {
 			at: {
 				'.page-mast-badge | color': 'on-brand-9',
 				'.page-profile-badge | color': 'on-brand-9',
+				".ended [part~='action'] | color": 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | --page-quiet`]: 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | color`]: 'on-brand-9',
 				[`${WIDE} » ${HERO_OVER_FILL} | --page-quiet`]: 'on-brand-9',
@@ -502,6 +506,8 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-profile :is(.page-about-statement, .page-about-beneath) | color': 'slate-12',
 				'.page-messages-time | color': 'slate-11',
 				'.page-messages-count | color': 'slate-11',
+				'.page-fundraise-note | color': 'slate-11',
+				'.page-ground .page-fundraise-act > a.ds-btn | color': 'slate-12',
 				'.page-messages-refused | color': 'red-11',
 				".page-video-box[data-face='loading'] .page-video-status | color": 'slate-12',
 				'.page-video-error-title | color': 'red-11',
@@ -671,6 +677,52 @@ describe('the scrim over the feature’s cover', () => {
 	});
 });
 
+describe('an ended page’s way on to /donate', () => {
+	// the link is the form's action drawn without the registry's class, so the label's ink is
+	// whichever `color` outranks the rest: the page's link rule, or the ended page's own.
+	const specificity = (selector: string) => {
+		const bare = selector.replace(/:where\([^)]*\)/g, '');
+		const ids = (bare.match(/#[\w-]+/g) ?? []).length;
+		const classes = (bare.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g) ?? []).length;
+		const types = (bare.match(/(?:^|[\s>+~])[a-z][\w-]*/gi) ?? []).length;
+		return ids * 10000 + classes * 100 + types;
+	};
+
+	it('draws its label in the fill’s ink, over the ink the page draws a link in', () => {
+		const own = ".ended [part~='action']";
+		expect(declared(page, own).color).toBe('var(--_on-p)');
+		expect(declared(page, '.page-ground a').color).toBe('var(--page-accent)');
+		expect(specificity(own)).toBeGreaterThan(specificity('.page-ground a'));
+	});
+});
+
+describe('the entry card’s press, a link drawn as the registry’s secondary press', () => {
+	const button = blocks(
+		readFileSync(require.resolve('@better-giving/form/registry/styles/button-css.css'), 'utf8')
+	);
+	const scope: Scope = { ...formBase, ...declared(page, '.page > .page-ground') };
+
+	it('draws its label in the variant’s own ink, not the ink of whatever holds it', () => {
+		const own = declared(page, '.page-ground .page-fundraise-act > a.ds-btn').color ?? '';
+		const variant = declared(button, '.ds-btn-secondary').color ?? '';
+		expect(own).not.toBe('inherit');
+		expect(substitute(scope, own)).toBe(substitute(scope, variant));
+	});
+
+	// the press is an `a`, so a page ring on every focused link would outrank `.ds-btn:focus-visible`.
+	it('leaves its ring to the registry: no page rule rings a focused link that is a press', () => {
+		const rings = page.filter(
+			({ decls }) => decls.outline !== undefined || decls['box-shadow'] !== undefined
+		);
+		const linkRings = rings
+			.flatMap(({ at }) => (at.at(-1) ?? '').split(','))
+			.map((selector) => selector.trim())
+			.filter((selector) => /(?:^|[\s>+~])a(?::not\([^)]*\))*:focus/.test(selector));
+		expect(linkRings).toEqual(['.page-ground a:not(.ds-btn):focus-visible']);
+		expect(declared(button, '.ds-btn:focus-visible').outline).toBe('2px solid var(--ring)');
+	});
+});
+
 describe('a long title', () => {
 	// happy-dom does no layout, so the step is read off the sheet: smaller below 60rem, where the box
 	// stands under the title, and the display size from 60rem.
@@ -819,7 +871,8 @@ describe('no card inside a card', () => {
 				['.page-profile-logo', EDGE],
 				[".page[data-layout='letter'] .page-profile-banner", EDGE],
 				["@container page (min-width: 48rem) » [data-shape='cards'] .page-messages-row", EDGE],
-				['.page-messages-plane', EDGE]
+				['.page-messages-plane', EDGE],
+				['.page-fundraise', EDGE]
 			].sort()
 		);
 	});
@@ -1237,5 +1290,69 @@ describe('the sections ./page.css draws', () => {
 		);
 		expect(written.length).toBeGreaterThan(0);
 		expect(written.filter((entry) => !drawn.has(entry.slice(entry.indexOf(' .') + 2)))).toEqual([]);
+	});
+});
+
+describe('the entry card’s width', () => {
+	const WIDE = '@container page (min-width: 60rem)';
+	const LETTER = ".page[data-layout='letter']";
+	const PROFILE_LETTER = ".page[data-profile][data-layout='letter']";
+	const PLAIN = '.page:not([data-profile]) .page-fundraise-area > .page-fundraise';
+	// a selector list split at its top-level commas, and a selector's last compound, after its last
+	// top-level combinator, so neither cuts inside `:is()` or `:not()`.
+	const topLevel = (selector: string, split: (char: string) => boolean): string[] => {
+		const parts = [''];
+		let depth = 0;
+		for (const char of selector) {
+			depth += char === '(' ? 1 : char === ')' ? -1 : 0;
+			if (depth === 0 && split(char)) parts.push('');
+			else parts[parts.length - 1] += char;
+		}
+		return parts.map((part) => part.trim()).filter((part) => part !== '');
+	};
+	const subject = (selector: string) => topLevel(selector, (char) => /[\s>+~]/.test(char)).at(-1);
+	// a block that may size the area or the card itself: one of its selectors names either, none of
+	// the card's parts, and ends on one of them or on `*`.
+	const sizesTheCard = (selector: string) =>
+		topLevel(selector, (char) => char === ',').some(
+			(one) =>
+				one.includes('page-fundraise') &&
+				!/page-fundraise-(?:heading|act|note)/.test(one) &&
+				/page-fundraise|^\*$/.test(subject(one) ?? '')
+		);
+	const fundraise = page.filter(({ at }) => sizesTheCard(at.at(-1) ?? ''));
+	const WIDTHS = ['max-inline-size', 'inline-size', 'max-width', 'width', 'grid-template-columns'];
+
+	it('stands in the profile letter’s reading column from 60rem: its tracks and its measure, beside the rail', () => {
+		const area = declared(page, WIDE, `${PROFILE_LETTER} .page-fundraise-area`);
+		const columns = declared(page, WIDE, `${LETTER} .page-profile`);
+		expect(area.display).toBe(columns.display);
+		expect(area['grid-template-columns']).toBe(columns['grid-template-columns']);
+		expect(area['column-gap']).toBe(columns['column-gap']);
+		expect(
+			declared(page, WIDE, `${PROFILE_LETTER} .page-fundraise-area > .page-fundraise`)
+		).toEqual({
+			'max-inline-size': declared(page, WIDE, `${LETTER} .page-profile > *`)['max-inline-size']
+		});
+	});
+
+	it('is held to `--page-fundraise-width` under no profile head, and to no width of its own in the profile card and feature', () => {
+		const sized = fundraise.filter(({ decls }) => WIDTHS.some((name) => decls[name] !== undefined));
+		expect(sized.map(({ at }) => at.join(' » '))).toEqual([
+			PLAIN,
+			`${WIDE} » ${PROFILE_LETTER} .page-fundraise-area`,
+			`${WIDE} » ${PROFILE_LETTER} .page-fundraise-area > .page-fundraise`
+		]);
+		expect(declared(page, PLAIN)).toEqual({ 'max-inline-size': 'var(--page-fundraise-width)' });
+		const readers = page.filter(({ decls }) =>
+			Object.values(decls).some((value) => value.includes('--page-fundraise-width'))
+		);
+		expect(readers.map(({ at }) => at.join(' » '))).toEqual([PLAIN]);
+	});
+
+	it('wraps the organisation’s name in its heading as the profile head wraps it, never past the plane', () => {
+		expect(declared(page, '.page-fundraise-heading')['overflow-wrap']).toBe(
+			declared(page, '.page-profile-name')['overflow-wrap']
+		);
 	});
 });

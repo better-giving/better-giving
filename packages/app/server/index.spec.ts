@@ -44,4 +44,22 @@ describe('the server entry, started without what it needs', () => {
 		expect(lines.join('\n')).toContain('DATABASE_URL');
 		expect(lines.join('\n')).not.toMatch(/ADMIN_PASSWORD|BETTER_AUTH_SECRET/);
 	});
+
+	it('refuses a loopback BETTER_AUTH_URL in production, and takes it in development', () => {
+		const set = { ADMIN_PASSWORD: 'a', BETTER_AUTH_SECRET: 'b' };
+		const production = start({
+			...set,
+			NODE_ENV: 'production',
+			BETTER_AUTH_URL: 'http://localhost:5321'
+		});
+
+		expect(production.status).toBe(1);
+		expect(production.lines.join('\n')).toContain('BETTER_AUTH_URL');
+		expect(production.lines.join('\n')).not.toContain('DATABASE_URL');
+
+		const development = start({ ...set, BETTER_AUTH_URL: 'http://localhost:5321' });
+
+		expect(development.status).toBe(1);
+		expect(development.lines.join('\n')).toContain('DATABASE_URL');
+	});
 });

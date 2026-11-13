@@ -49,13 +49,61 @@ const LIMITERS = [
 	}
 ] as const satisfies readonly { name: RateLimiterName; promised: () => Promise<string> }[];
 
+/**
+ * the limiters a supporter's screens answer for in words of their own ($lib/supporter/area/copy.ts),
+ * which name no period: the refusal is a screen state, not a sentence from here.
+ */
+const SUPPORTER_LIMITERS = [
+	'SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER',
+	'SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER',
+	'SUPPORTER_START_RATE_LIMITER',
+	'SUPPORTER_RESEND_RATE_LIMITER',
+	'SUPPORTER_RESEND_CALLER_RATE_LIMITER',
+	'SUPPORTER_PHOTO_RATE_LIMITER'
+] as const satisfies readonly RateLimiterName[];
+
+const HOUR = 3600;
+const DAY = 86_400;
+
 describe('the rate limiters the server builds', () => {
 	it('declares one entry per limiter this app charges, and no more', () => {
-		expect(Object.keys(RATE_LIMITS).sort()).toEqual(LIMITERS.map(({ name }) => name).sort());
+		expect(Object.keys(RATE_LIMITS).sort()).toEqual(
+			[...LIMITERS.map(({ name }) => name), ...SUPPORTER_LIMITERS].sort()
+		);
+	});
+
+	/**
+	 * the supporter buckets' sizes: a sign-in link 5 an hour per address
+	 * and 20 per network, a start 5 an hour per network, Send it again 3 an hour per page, and 10
+	 * photos a day per supporter.
+	 */
+	it.each([
+		['SUPPORTER_SIGN_IN_ADDRESS_RATE_LIMITER', 5, HOUR],
+		['SUPPORTER_SIGN_IN_CALLER_RATE_LIMITER', 20, HOUR],
+		['SUPPORTER_START_RATE_LIMITER', 5, HOUR],
+		['SUPPORTER_RESEND_RATE_LIMITER', 3, HOUR],
+		['SUPPORTER_PHOTO_RATE_LIMITER', 10, DAY]
+	] as const)('sizes %s at %i per %i seconds', (name, limit, period) => {
+		expect(size(name)).toEqual({ limit, period });
+	});
+
+	/**
+	 * Send it again per network, a size derived rather than decided: every page a network may start
+	 * in an hour, each resent as often as its own bucket allows, so the network's bucket refuses no
+	 * caller resending only the pages it started.
+	 */
+	it('sizes SUPPORTER_RESEND_CALLER_RATE_LIMITER at a network’s starts times each page’s resends', () => {
+		const start = size('SUPPORTER_START_RATE_LIMITER');
+		const resend = size('SUPPORTER_RESEND_RATE_LIMITER');
+		expect(start.period).toBe(resend.period);
+		expect(size('SUPPORTER_RESEND_CALLER_RATE_LIMITER')).toEqual({
+			limit: start.limit * resend.limit,
+			period: resend.period
+		});
 	});
 
 	/** a count of requests, so a fraction or a zero is a limit that means something else. */
-	it.each(LIMITERS.map(({ name }) => name))(
+	it.each([...LIMITERS.map(({ name }) => name), ...SUPPORTER_LIMITERS])(
 		'gives %s a positive whole number of requests and of seconds',
 		(name) => {
 			const { limit, period } = size(name);

@@ -88,8 +88,11 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-	// before the forms, because `page.form_id` points there and nothing carries an ON DELETE.
+	// before the forms, because `page.form_id` and `supporter_page.form_id` point there and nothing
+	// carries an ON DELETE.
 	await run(stmt('delete from page'));
+	await run(stmt('delete from supporter_page'));
+	await run(stmt('delete from supporter'));
 	await run(stmt('delete from form'));
 	// after the forms, because `form.program_id` points here and nothing carries an ON DELETE.
 	await run(stmt('delete from program'));
@@ -591,6 +594,62 @@ describe('/admin/forms/[id] — a write aimed at a page’s own donation setting
 		// the form's own writes landed, so the read below is of rows the same statements reached past.
 		expect((await readForm(db, FORM_ID))?.name).toBe('Gala 2026');
 		expect(await Promise.all(owned.map((id) => readForm(db, id)))).toEqual(before);
+	});
+});
+
+/** a live donation-settings row a supporter's pending fundraiser owns, written past drizzle. */
+async function fundraiserOwned(): Promise<string> {
+	const id = 'frm_fundraiserowned';
+	await run(
+		stmt(
+			`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+		                   suggested_amounts, allowed_origins, created_at, updated_at)
+		 values (?, 'Fundraiser: Run for the shelter', 'live', ?, 'USD', 500, 1000000, '[2500]', '[]', 0, 0)`,
+			id,
+			revenueAccountId
+		)
+	);
+	await run(
+		stmt(
+			`insert into supporter (id, email, name, created_at)
+			 values ('019fb600-0000-7000-8000-0000000000f1', 'maya@example.org', 'Maya Rivera', 0)`
+		)
+	);
+	await run(
+		stmt(
+			`insert into supporter_page (id, supporter_id, slug, title, story, goal_minor, currency,
+			                            form_id, status, created_at, updated_at)
+			 values ('019fb600-0000-7000-8000-0000000000f2', '019fb600-0000-7000-8000-0000000000f1',
+			         'run-for-the-shelter', 'Run for the shelter', 'I am running.', 50000, 'USD', ?,
+			         'pending', 0, 0)`,
+			id
+		)
+	);
+	return id;
+}
+
+describe('/admin/forms/[id] — a supporter fundraiser’s own donation settings', () => {
+	it('404s for the row, naming the fundraiser', async () => {
+		const id = await fundraiserOwned();
+		const response = await visit({ id });
+		expect(response.status).toBe(404);
+		const body = (await response.json()) as string;
+		expect(body).toContain(id);
+		expect(body).toContain('the supporter fundraiser “Run for the shelter”');
+	});
+
+	it('refuses every save and the archive as the fundraiser’s, never as stale, and writes nothing', async () => {
+		const id = await fundraiserOwned();
+		const before = await readForm(db, id);
+		for (const form of [NAME_FORM, PROGRAM_FORM, GIVING_FORM, ORIGINS_FORM]) {
+			const { failure } = await post(form, id, submission(form));
+			expect(failure?.status, form).toBe(404);
+			expect(failure?.message, form).toContain('the supporter fundraiser “Run for the shelter”');
+		}
+		const { failure } = await post(ARCHIVE_FORM, id, {});
+		expect(failure?.status).toBe(404);
+		expect(failure?.message).toContain('the supporter fundraiser “Run for the shelter”');
+		expect(await readForm(db, id)).toEqual(before);
 	});
 });
 

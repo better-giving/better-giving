@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
+import { sweepSupporterLeftovers } from '$lib/server/supporters/sweep';
 import { parseCron } from '$lib/server/runtime/scheduler';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { mailPause } from '$lib/server/webhooks/paused-mail';
@@ -19,7 +20,7 @@ import type { Db } from '$lib/server/db/client';
 // the jobs are mocked, because what is under test is which ones an expression reaches and with
 // what time — their own behaviour is held by
 // $lib/server/donations/pending-crypto-read.db.spec.ts,
-// $lib/server/donations/refund-notice.db.spec.ts,
+// $lib/server/donations/refund-notice.db.spec.ts, $lib/server/supporters/sweep.db.spec.ts,
 // $lib/server/accounting/deliver.db.spec.ts, $lib/server/zapier/deliver.db.spec.ts and
 // $lib/server/webhooks/deliver.db.spec.ts, against a real database.
 
@@ -28,6 +29,9 @@ vi.mock('$lib/server/donations/pending-crypto-read', () => ({
 }));
 vi.mock('$lib/server/donations/refund-notice', () => ({
 	sendOwedRefundNotices: vi.fn(async () => {})
+}));
+vi.mock('$lib/server/supporters/sweep', () => ({
+	sweepSupporterLeftovers: vi.fn(async () => {})
 }));
 vi.mock('$lib/server/accounting/deliver', () => ({
 	sendDueEntries: vi.fn(async () => {})
@@ -67,6 +71,7 @@ async function fires(cron: string, runEnv = env): Promise<void> {
 const JOBS = [
 	readPendingCryptoGifts,
 	sendOwedRefundNotices,
+	sweepSupporterLeftovers,
 	sendDueEntries,
 	sendDueZapierEvents,
 	sendDueWebhooks
@@ -126,6 +131,12 @@ describe('which run an expression reaches', () => {
 			expect(sendDueEntries).not.toHaveBeenCalled();
 		}
 	);
+
+	it('sweeps the supporter links and sessions that admit nothing at a quarter past, from the run’s own time', async () => {
+		await fires('15 * * * *');
+
+		expect(sweepSupporterLeftovers).toHaveBeenCalledExactlyOnceWith(db, SCHEDULED_AT);
+	});
 
 	it('sends what the books, the Zaps and the destinations are owed every minute, from the run’s own time', async () => {
 		await fires('* * * * *');

@@ -42,11 +42,12 @@ function listed(db: Db): SQL {
 }
 
 /**
- * listed and not hidden. `listed`'s `note_public = 1` is what lets the planner take
- * `donation_note_public_received_at_idx` (../db/schema.ts), so every read here keeps it in its
- * `where`; `note_hidden_at is null` filters the rows that index yields.
+ * listed and not hidden: a note the page shows. `listed`'s `note_public = 1` is what lets the planner
+ * take `donation_note_public_received_at_idx` (../db/schema.ts), so every read here keeps it in its
+ * `where`; `note_hidden_at is null` filters the rows that index yields. a supporter's view of their
+ * own fundraiser's gifts shows a gift's name and note on this same test (../supporters/pages.ts).
  */
-function shown(db: Db): SQL {
+export function noteShown(db: Db): SQL {
 	return sql`${donation.noteHiddenAt} is null and ${listed(db)}`;
 }
 
@@ -104,12 +105,20 @@ function cursorPast(
  */
 const signature = (stored: string | null) => stored ?? 'Anonymous';
 
-/** the six messages after `after`, or the newest six, as the donate page shows them. */
+/**
+ * the six messages after `after`, or the newest six, as the donate page shows them — or, given
+ * `fundraiser`, as that supporter fundraiser's page shows its own gifts' messages.
+ */
 export async function readShownMessages(
 	db: Db,
-	after: MessageCursor | null
+	after: MessageCursor | null,
+	fundraiser: string | null = null
 ): Promise<DonorMessages> {
 	const resume = resumeAt(after);
+	const onPage = and(
+		noteShown(db),
+		fundraiser === null ? undefined : eq(donation.supporterPageId, fundraiser)
+	);
 	const [rows, [counted]] = await Promise.all([
 		db
 			.select({
@@ -118,11 +127,11 @@ export async function readShownMessages(
 				receivedAt: donation.receivedAt
 			})
 			.from(donation)
-			.where(and(shown(db), resume.where))
+			.where(and(onPage, resume.where))
 			.orderBy(desc(donation.receivedAt), desc(donation.id))
 			.limit(MESSAGES_PER_PAGE + 1)
 			.offset(resume.offset),
-		db.select({ total: sql<number>`count(*)` }).from(donation).where(shown(db))
+		db.select({ total: sql<number>`count(*)` }).from(donation).where(onPage)
 	]);
 	const page = rows.slice(0, MESSAGES_PER_PAGE);
 	return {

@@ -7,6 +7,7 @@ import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-rea
 import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
+import { sweepSupporterLeftovers } from '$lib/server/supporters/sweep';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
@@ -18,10 +19,11 @@ import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
  *
  * every thirty minutes, the crypto gifts no IPN settled are read back. at a quarter past and a
  * quarter to, in a run of their own, the donor notices of refunds that did not send are sent
- * again. every minute, in one run, what this deployment owes is sent: the organisation's books, its
- * Zaps and its webhook destinations — a minute because a gift is meant to arrive while it is still
- * the thing somebody is looking at, and a run on a deployment owing nothing is an indexed read of
- * each outbox and no call to anybody. what a row that has already failed waits is the backoff on
+ * again; at a quarter past, the connector's and the supporters' spent links, codes and sessions
+ * are swept with them. every minute, in one run, what this deployment owes is sent: the
+ * organisation's books, its Zaps and its webhook destinations — a minute because a gift is meant
+ * to arrive while it is still the thing somebody is looking at, and a run on a deployment owing
+ * nothing is an indexed read of each outbox and no call to anybody. what a row that has already failed waits is the backoff on
  * the row rather than this interval.
  *
  * the keys are the schedule, so a schedule with no work cannot be written; ./cron-runs.spec.ts
@@ -43,7 +45,11 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, db: Db, now: Date) =>
 		),
 
 	'15 * * * *': (env, db, now) =>
-		allRun([owedRefundNotices(env, db, now), sweepConnectorLeftovers(db, now)]),
+		allRun([
+			owedRefundNotices(env, db, now),
+			sweepConnectorLeftovers(db, now),
+			sweepSupporterLeftovers(db, now)
+		]),
 	'45 * * * *': (env, db, now) => owedRefundNotices(env, db, now),
 
 	'* * * * *': (env, db, now) => {

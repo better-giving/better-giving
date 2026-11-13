@@ -119,6 +119,9 @@ const DONOR_PAGE = 'routes/donate.tsx';
 /** a campaign, at its own top-level address. */
 const CAMPAIGN_PAGE = 'routes/$slug.tsx';
 
+/** a supporter's fundraiser, at `/f/{slug}`. */
+const FUNDRAISER_PAGE = 'routes/f.$slug.tsx';
+
 /**
  * the donor's pages, which with the preview below are the screens outside the layout that wear no
  * operator stylesheet.
@@ -129,7 +132,7 @@ const CAMPAIGN_PAGE = 'routes/$slug.tsx';
  * they are named here so the sweep below can hold every *other* screen outside the layout to
  * carrying the operator sheet without holding these to it.
  */
-const DONOR_PAGES: readonly string[] = [DONOR_PAGE, CAMPAIGN_PAGE];
+const DONOR_PAGES: readonly string[] = [DONOR_PAGE, CAMPAIGN_PAGE, FUNDRAISER_PAGE];
 
 /**
  * the editor's preview of a page, the one route outside the protected layout that is behind the
@@ -138,6 +141,15 @@ const DONOR_PAGES: readonly string[] = [DONOR_PAGE, CAMPAIGN_PAGE];
  * it to mounting the gate, and to the donor page's sheets rather than the operator's.
  */
 const PREVIEW_PAGE = 'routes/preview.$pageId.tsx';
+
+/**
+ * staff's look at a supporter's fundraiser the public cannot see, outside the layout and behind the
+ * login for the editor's preview's reason, and held to the same two things.
+ */
+const FUNDRAISER_PREVIEW_PAGE = 'routes/admin.supporter-pages.$id.preview.tsx';
+
+/** the routes outside the protected layout that mount its gate themselves. */
+const PREVIEW_PAGES: readonly string[] = [PREVIEW_PAGE, FUNDRAISER_PREVIEW_PAGE];
 
 /**
  * every route file that is deliberately served to anonymous callers.
@@ -254,7 +266,36 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// link's 256-bit token is the permission, good once, for half an hour, for one photo on one page,
 	// and only while the connection that asked for it stands ($lib/server/connector/photos.ts). its
 	// write lands in the page's draft alone, through the dashboard's own guarded writer.
-	'routes/photo.$token.tsx'
+	'routes/photo.$token.tsx',
+	// a supporter's fundraiser, opened from a link its supporter shared, and public for the reasons
+	// a campaign's page is: no session, no submission, the gift through the endpoint above against the
+	// fundraiser's own settings row, which serves only while the page is live and shown. its loader
+	// writes nothing, and a page the public may not see is the same 404 an unknown address is.
+	FUNDRAISER_PAGE,
+	// Show more messages on that page, as ./routes/donate.messages.ts is on the donation page: a
+	// read, charged to the page's own meter by nesting under it, listing only what the page shows.
+	'routes/f.$slug.messages.ts',
+	// Start a fundraiser, for a member of the public who holds no session by definition. its write is
+	// owed what /api/v1's submission is: the spam check a donation runs, and the sign-in limiter by
+	// the caller and by the address before anything is read, since each start mails somebody. the
+	// page it makes is not public until the mailed link is opened ($lib/server/supporters/start.ts).
+	'routes/fundraise._index.tsx',
+	// where a supporter signs in and the screen after a link is sent: each post mails a link, and
+	// owes the same limiter, by the caller and the address, and answers the same for every address
+	// ($lib/server/supporters/links.ts).
+	'routes/fundraise.sign-in.tsx',
+	'routes/fundraise.sent.tsx',
+	// the mailed link itself: the single-use token is the credential, good for an hour, as
+	// ./routes/reset.tsx's is ($lib/server/supporters/links.ts), and only its press spends it.
+	'routes/fundraise.open.tsx',
+	// the supporter's own screens, their photo upload and their sign-out: behind the supporter's own
+	// session rather than staff's (`requireSupporter` in $lib/server/supporters/session.ts), which
+	// sends a caller with none to the sign-in, and which no staff session satisfies.
+	'routes/fundraise.pages._index.tsx',
+	'routes/fundraise.pages.$id._index.tsx',
+	'routes/fundraise.pages.$id.edit.tsx',
+	'routes/fundraise.photo.ts',
+	'routes/fundraise.sign-out.ts'
 ];
 
 /**
@@ -343,7 +384,7 @@ function ungatedRoutes(manifest: readonly RouteRecord[], allowed: readonly strin
 		.filter(
 			(route) =>
 				!under(route, PROTECTED_LAYOUT) &&
-				route.file !== PREVIEW_PAGE &&
+				!PREVIEW_PAGES.includes(route.file) &&
 				!allowed.includes(route.file) &&
 				!zapierRoute(route) &&
 				!integrationsRoute(route) &&
@@ -622,6 +663,12 @@ describe('the route surface', () => {
 		{ address: '/donate', file: DONOR_PAGE },
 		{ address: '/donate/messages', file: 'routes/donate.messages.ts' },
 		{ address: '/preview/0198c1d2-0000-7000-8000-000000000001', file: PREVIEW_PAGE },
+		{
+			address: '/admin/supporter-pages/0198c1d2-0000-7000-8000-000000000001/preview',
+			file: FUNDRAISER_PREVIEW_PAGE
+		},
+		{ address: '/f/run-for-the-shelter', file: FUNDRAISER_PAGE },
+		{ address: '/fundraise', file: 'routes/fundraise._index.tsx' },
 		{ address: API_BASE_PATH, file: API_LAYOUT }
 	])('keeps $address on $file', async ({ address, file }) => {
 		expect(await matchedFileAt(address)).toBe(file);
@@ -699,20 +746,24 @@ describe('where middleware is mounted', () => {
 				CONNECTOR_LAYOUT,
 				PROTECTED_LAYOUT,
 				ZAPIER_LAYOUT,
-				PREVIEW_PAGE,
+				...PREVIEW_PAGES,
 				DONOR_PAGE,
-				CAMPAIGN_PAGE
+				CAMPAIGN_PAGE,
+				FUNDRAISER_PAGE
 			].sort()
 		);
 	});
 
 	// a donor page reads what `/api/v1` bounds and more, so it is metered as that surface is, on a
 	// bucket of its own ($lib/server/api/meter.ts, `meterDonorPage`). the meter alone, and on both.
-	it.each([DONOR_PAGE, CAMPAIGN_PAGE])('is the donor page meter alone on %s', (file) => {
-		expect(readFromDisk(file) ?? '').toMatch(
-			/export const middleware: Route\.MiddlewareFunction\[\] = \[meterDonorPage\];/
-		);
-	});
+	it.each([DONOR_PAGE, CAMPAIGN_PAGE, FUNDRAISER_PAGE])(
+		'is the donor page meter alone on %s',
+		(file) => {
+			expect(readFromDisk(file) ?? '').toMatch(
+				/export const middleware: Route\.MiddlewareFunction\[\] = \[meterDonorPage\];/
+			);
+		}
+	);
 
 	// the preview is one of the exceptions above, and what it mounts is the layout's own session gate
 	// and nothing else — a gate of its own would be a second one to keep true.
@@ -720,9 +771,11 @@ describe('where middleware is mounted', () => {
 		expect(readFromDisk(PROTECTED_LAYOUT) ?? '').toMatch(
 			/export const middleware: Route\.MiddlewareFunction\[\] = \[staffGate\];/
 		);
-		expect(readFromDisk(PREVIEW_PAGE) ?? '').toMatch(
-			/export const middleware: Route\.MiddlewareFunction\[\] = \[staffGate\];/
-		);
+		for (const preview of PREVIEW_PAGES) {
+			expect(readFromDisk(preview) ?? '').toMatch(
+				/export const middleware: Route\.MiddlewareFunction\[\] = \[staffGate\];/
+			);
+		}
 	});
 
 	it('is never the root route, which every request passes through', () => {
@@ -828,7 +881,7 @@ describe('the stylesheet a screen outside the layout carries', () => {
 	 * the import rather than the name, because ./routes/donate.tsx's header names the helper to say
 	 * it does not use it.
 	 */
-	it.each([...DONOR_PAGES, PREVIEW_PAGE])(
+	it.each([...DONOR_PAGES, ...PREVIEW_PAGES])(
 		'imports neither the helper nor the sheet on %s',
 		(file) => {
 			const source = readFromDisk(file) ?? '';
@@ -937,7 +990,8 @@ describe('the session the gate resolved', () => {
 		const offenders = routes
 			.filter(
 				(r) =>
-					(r.file !== PROTECTED_LAYOUT && under(r, PROTECTED_LAYOUT)) || r.file === PREVIEW_PAGE
+					(r.file !== PROTECTED_LAYOUT && under(r, PROTECTED_LAYOUT)) ||
+					PREVIEW_PAGES.includes(r.file)
 			)
 			.filter((r) => resolvesItsOwnSession(readFromDisk(r.file) ?? ''))
 			.map((r) => r.file);

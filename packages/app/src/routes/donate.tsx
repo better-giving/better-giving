@@ -8,7 +8,7 @@ import { shareImage } from '$lib/page/image-src';
 import { meterDonorPage } from '$lib/server/api/meter';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
-import { loadPageView, refusedPage } from '$lib/server/pages/view';
+import { loadPageView, refusedPage, withFundraiserEntry } from '$lib/server/pages/view';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/donate';
@@ -66,16 +66,17 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		{ now }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
+	const drawn = await withFundraiserEntry(db, loaded);
 	// a donor back from authorizing their gift arrives here with the stamp naming the page's
 	// settings row, and the card's first paint is then the wait for that gift rather than an empty
 	// donation box. the stamp is the whole of what is read: the token beside it is the card's to
 	// claim once its flow starts. a stamp naming another form is no return of this page's.
-	const { formId } = loaded.kind === 'page' ? loaded.view.config : loaded.config;
+	const { formId } = drawn.kind === 'page' ? drawn.view.config : drawn.config;
 	const resuming = new URL(request.url).searchParams.get(RESUME_FORM_PARAM) === formId;
 	// the instant the page was read, which every donor message's age is counted from on the server
 	// and in the browser alike, so the two renders say the same.
 	return data(
-		{ ...loaded, resuming, now: new Date(now).toISOString() },
+		{ ...drawn, resuming, now: new Date(now).toISOString() },
 		{ headers: { 'cache-control': 'no-store' } }
 	);
 }

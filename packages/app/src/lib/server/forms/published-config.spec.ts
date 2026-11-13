@@ -86,6 +86,7 @@ function orgProfile(overrides: Partial<OrgProfile> = {}): OrgProfile {
 		socialLinks: [],
 		logoImageId: null,
 		bannerImageId: null,
+		supporterFundraisersEnabled: true,
 		createdAt: new Date(0),
 		updatedAt: new Date(0),
 		...overrides

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type PinReading, pinnedOrigin, publishedOrigin } from './env';
+import { loopbackPinRefusal, type PinReading, pinnedOrigin, publishedOrigin } from './env';
 
 describe('pinnedOrigin', () => {
 	it('answers null where no pin is set', () => {
@@ -80,5 +80,47 @@ describe('publishedOrigin()', () => {
 		expect(publishedOrigin(new URL('http://127.0.0.1:5321/x'), UNSET)).toBe(
 			'http://127.0.0.1:5321'
 		);
+	});
+
+	// the hosts `loopbackPinRefusal` refuses and ./index.ts drops Secure on in development.
+	it.each(['http://127.8.9.10', 'http://[::1]:5321', 'http://give.localhost:5321'])(
+		'keeps the scheme on %s, which is this machine too',
+		(origin) => {
+			expect(publishedOrigin(new URL(`${origin}/x`), UNSET)).toBe(origin);
+		}
+	);
+});
+
+describe('loopbackPinRefusal', () => {
+	it.each([
+		'http://localhost:5321',
+		'https://localhost',
+		'http://127.0.0.1:3000',
+		'http://127.8.9.10',
+		'http://[::1]:3000',
+		'http://give.localhost:5321'
+	])('refuses %s in production, naming the variable and the links it would write', (pin) => {
+		const refusal = loopbackPinRefusal({ NODE_ENV: 'production', BETTER_AUTH_URL: pin });
+		expect(refusal).toContain('`BETTER_AUTH_URL`');
+		expect(refusal).toContain(pin);
+		expect(refusal).toContain('link');
+		// production keeps Secure on every host (`createAuth` in ./index.ts, auth.spec.ts).
+		expect(refusal).not.toContain('Secure');
+	});
+
+	it.each([
+		['production', 'https://donate.example.org'],
+		['production', 'http://localhostish.example.org'],
+		['production', 'http://128.0.0.1'],
+		['production', undefined],
+		['development', 'http://localhost:5321'],
+		[undefined, 'http://localhost:5321']
+	])('refuses nothing where NODE_ENV is %s and the pin %s', (nodeEnv, pin) => {
+		expect(
+			loopbackPinRefusal({
+				...(nodeEnv === undefined ? {} : { NODE_ENV: nodeEnv }),
+				...(pin === undefined ? {} : { BETTER_AUTH_URL: pin })
+			})
+		).toBeNull();
 	});
 });

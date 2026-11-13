@@ -6,6 +6,7 @@ import type { PageType } from '../page/keys';
 import { type ProfileShape, profileShape } from '../page/profile-shape';
 import { type CampaignShape, campaignShape } from '../page/shape';
 import { isEmptyDocument } from '../rich-text/document';
+import { FundraiserEntryCard } from '../supporter/public/entry-card';
 import { PageRoot } from './page-root';
 import type { DonateProfile } from './profile';
 import { AboutUs } from './sections/about-us';
@@ -61,6 +62,9 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 //   a program, over the card where they don't. the name is always drawn there, so the logo beside
 //   it says nothing of its own, and a logo the masthead would let stand in for the name is drawn
 //   whole at its own shape rather than in the square.
+//
+// while Supporter fundraisers is on (`fundraiserEntry`), the entry card that starts one stands after
+// the whole layout, on a campaign, the Donation page and under the profile head alike.
 //
 // every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
 // the letter's and the feature's box straight after the cover and the title, the goal and the lede
@@ -129,6 +133,11 @@ export type PageViewProps = {
 	 * counted from; absent, the section is not drawn whatever the profile holds.
 	 */
 	readonly donorMessages?: DonorMessagesWiring | undefined;
+	/**
+	 * whether Supporter fundraisers is on (`supporterFundraisersEnabled`): draws the entry card after
+	 * the whole layout, messages included. off or absent, nothing stands in its place.
+	 */
+	readonly fundraiserEntry?: boolean | undefined;
 	/** drawn as the preview of a draft: a press reaches nothing outside `PREVIEW_LIVE`. */
 	readonly preview?: boolean;
 	/** the caller's placement of the page root. */
@@ -179,6 +188,11 @@ export function PageView(props: PageViewProps) {
 				) : (
 					<ProfileLayout {...props} profile={head.profile} shape={head.shape} />
 				)}
+				{props.fundraiserEntry === true ? (
+					<div className="page-in page-fundraise-area" {...area('fundraise')}>
+						<FundraiserEntryCard orgName={org.name} />
+					</div>
+				) : null}
 			</main>
 			<section className="page-end" id={SHARE_ID} aria-labelledby={shareHeading} {...area('share')}>
 				<div className="page-in">

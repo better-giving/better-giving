@@ -18,14 +18,17 @@ export interface AuthEnv {
 	/**
 	 * optional override, unset by default. when unset, the origin is derived from each
 	 * request — which is what makes a deployment answer correctly on more than one hostname
-	 * at the same time. set it only to pin one canonical origin and stop
-	 * trusting the others. see the `baseURL` note in ./index.ts.
+	 * at the same time. set, it pins one canonical origin and staff sign-in stops trusting the
+	 * others (the `baseURL` note in ./index.ts); supporter fundraisers need it set, since no
+	 * supporter link is mailed without it (below).
 	 *
-	 * it settles two things outside auth, both through `pinnedOrigin` below: the address
-	 * a QuickBooks connection is registered at and exchanged against, which Intuit
-	 * compares byte for byte (../accounting/connect-link.ts), and the dashboard link in
-	 * the mail a paused webhook destination sends from a cron run, which has no request
-	 * to derive one from (../webhooks/paused-mail.ts).
+	 * it settles three things outside auth: the address a QuickBooks connection is
+	 * registered at and exchanged against, which Intuit compares byte for byte
+	 * (../accounting/connect-link.ts), and the dashboard link in the mail a paused webhook
+	 * destination sends from a cron run, which has no request to derive one from
+	 * (../webhooks/paused-mail.ts), both through `pinnedOrigin` below; and the sign-in link
+	 * mailed to a supporter, which is not mailed at all while it is unset
+	 * (`supporterLinkOrigin` in ../supporters/area.ts).
 	 */
 	readonly BETTER_AUTH_URL?: string;
 	/** the v0 staff sign-in password. compared, never stored, never hashed. */
@@ -103,9 +106,6 @@ export function pinnedOrigin(env: AuthEnv): string | null {
 	return pin.origin;
 }
 
-/** the hosts a local dev server answers on, which keep the scheme they were asked at. */
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-
 /**
  * the origin this deployment tells an integrator to call, for a request at `url`: the one
  * `BETTER_AUTH_URL` pins where `pin` (`readPin` above) names one, so an address read at another
@@ -117,5 +117,46 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
  */
 export function publishedOrigin(url: URL, pin: PinReading): string {
 	const origin = new URL(pin.ok && pin.origin !== null ? pin.origin : url.origin);
-	return LOCAL_HOSTS.has(origin.hostname) ? origin.origin : `https://${origin.host}`;
+	return isLoopbackHost(origin.hostname) ? origin.origin : `https://${origin.host}`;
+}
+
+/**
+ * why a production process must not start on its `BETTER_AUTH_URL`, or `null`: a pin naming a
+ * host `isLoopbackHost` below names, which is never where a deployment answers, and every address
+ * built from the pin (listed on `AuthEnv.BETTER_AUTH_URL` above) would name the server's own
+ * machine. the cookie is not the reason: in production ./index.ts keeps `Secure` on every host.
+ * `NODE_ENV` is `production` in the image (`Dockerfile`); any other value is a contributor's
+ * machine, where loopback is the point.
+ */
+export function loopbackPinRefusal(
+	source: Readonly<{ NODE_ENV?: string | undefined; BETTER_AUTH_URL?: string | undefined }>
+): string | null {
+	if (source.NODE_ENV !== 'production') return null;
+	const pin = readPin(readAuthEnv(source));
+	if (!pin.ok || pin.origin === null || !isLoopbackHost(new URL(pin.origin).hostname)) {
+		return null;
+	}
+	return (
+		`\`BETTER_AUTH_URL\` is \`${source.BETTER_AUTH_URL?.trim()}\`, a loopback address, and ` +
+		'`NODE_ENV` is `production`: no deployment answers there, and every link built from it ' +
+		'(mailed sign-in and dashboard links, the QuickBooks connection) would point at the ' +
+		"server's own machine. Set it to the address the deployment answers on " +
+		'(`https://donate.example.org`), or ' +
+		'unset it so the origin is read off each request (DEPLOY.md, .env.example).'
+	);
+}
+
+/**
+ * whether a URL's `.hostname` is this machine: `localhost`, `*.localhost`, any 127.x.y.z, or
+ * `[::1]`. the one list for the refusal above, `publishedOrigin`, and the development cookie and
+ * `trustedOrigins` relaxation in ./index.ts. it expects `URL`'s normalisation (lowercase, `127.1`
+ * as `127.0.0.1`, IPv6 bracketed).
+ */
+export function isLoopbackHost(hostname: string): boolean {
+	return (
+		hostname === 'localhost' ||
+		hostname.endsWith('.localhost') ||
+		hostname === '[::1]' ||
+		/^127\.\d+\.\d+\.\d+$/.test(hostname)
+	);
 }

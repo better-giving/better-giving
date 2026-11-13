@@ -11,14 +11,16 @@ import {
 	type EntryGroup,
 	type EntrySourceType,
 	type LedgerEntry,
-	payment
+	payment,
+	supporterPage
 } from '../db/schema';
 
 // every read of `entry_group` and `ledger_entry`, so the table objects never leave this
-// directory — the same boundary ../donations/queries.ts draws around `donation`. three reads cross
-// that boundary from this side, each naming `donation` and `payment` to reach a gift's entries in
-// one statement: `readRaisedThroughForm`, which names `form` too, `giftNetRaised` and
-// `readRaisedByFormWithin`.
+// directory — the same boundary ../donations/queries.ts draws around `donation`. four reads cross
+// that boundary from this side to reach a gift's entries. three name `donation` and `payment` in
+// one statement: `readRaisedThroughForm`, which names `form` too, `readRaisedByFormWithin`, and
+// `readRaisedThroughFundraisers`, which names `supporter_page` too. `giftNetRaised` is a fragment
+// naming `payment`, correlated to the `donation` row of the statement its caller embeds it in.
 //
 // no writes, and that is a rule rather than a description. ./posting.ts is the only module that
 // may INSERT into either table, and ./sole-writer.spec.ts enforces it by exempting this whole
@@ -423,11 +425,65 @@ export async function readRaisedThroughForm(
 	return row ?? null;
 }
 
+/** what one supporter fundraiser has raised, in its own currency, and from how many gifts. */
+export type RaisedThroughFundraiser = { pageId: string; raisedMinor: number; gifts: number };
+
+/**
+ * the figure and the count of gifts per supporter fundraiser, over the gifts naming each in
+ * `donation.supporter_page_id` and in the page's own currency: one row per page `where` admits that
+ * holds a gift with an entry, and none for a page with none. a gift is a `donation` row, so each
+ * charge of a repeating gift counts as one as it settles; a gift refunded in full nets to nothing
+ * and drops out of the count. the gifts are found by that column alone, never through the page's
+ * settings row.
+ *
+ * one statement, since the gifts are unbounded: reading their payment ids first would bind one
+ * parameter per payment, and SQLite refuses a statement past `SQLITE_MAX_VARIABLE_NUMBER` (32766,
+ * https://www.sqlite.org/limits.html). `donation_supporter_page_id_idx`
+ * carries the join from the page. the joins are `cross join`, which sqlite reads as a fixed order
+ * (https://www.sqlite.org/optoverview.html#crossjoin): planned freely, it starts from
+ * `entry_group_source_idx` on the type alone and walks every payment the organisation has taken
+ * (`raised-through-fundraisers.db.spec.ts`).
+ */
+export function readRaisedThroughFundraisers(
+	db: Db,
+	where: SQL
+): Promise<RaisedThroughFundraiser[]> {
+	return db.all<RaisedThroughFundraiser>(sql`
+		${DONATIONS_SUBTREE},
+		per_gift(page_id, net) as (
+			select ${supporterPage.id}, -sum(${ledgerEntry.amountMinor})
+			from ${supporterPage}
+			cross join ${donation} on ${donation.supporterPageId} = ${supporterPage.id}
+			cross join ${payment} on ${payment.donationId} = ${donation.id}
+			cross join ${entryGroup}
+				on ${entryGroup.sourceId} = ${payment.id}
+				and ${inArray(entryGroup.sourceType, PAYMENT_KEYED)}
+				and ${entryGroup.currency} = ${supporterPage.currency}
+			cross join ${ledgerEntry}
+				on ${ledgerEntry.entryGroupId} = ${entryGroup.id}
+				and ${ledgerEntry.accountId} in (select id from donations)
+			where ${where}
+			group by ${donation.id}
+		)
+		select
+			page_id as "pageId",
+			coalesce(sum(net), 0) as "raisedMinor",
+			count(*) filter (where net > 0) as "gifts"
+		from per_gift
+		group by page_id
+	`);
+}
+
 /**
  * what one gift still stands at in the books, in its own currency: its payments' entries into the
  * donations subtree, net, as a scalar subquery on the outer row's `donation`. 0 for a gift still
  * pending, given back in full, or withdrawn by a dispute that has not been won; above 0 for one
  * partly given back.
+ *
+ * the caller's statement must name `donation` unaliased in its FROM, which the fragment's
+ * `donation.id` and `donation.currency` bind to, and must qualify its own columns: unqualified,
+ * `amount_minor` is ambiguous between `donation` and the `ledger_entry` read here
+ * (`readOwnGifts` in ../supporters/pages.ts).
  */
 export function giftNetRaised(): SQL<number> {
 	return sql<number>`(

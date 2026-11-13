@@ -49,7 +49,14 @@ describe('the registry variables sheet', () => {
 // this package opens. so each entry sheet must import every one of them into the `registry` layer
 // packages/app/src/app.css orders, and every `ds-*` class a component spells must be one of theirs.
 
-const COMPONENT_SHEETS = ['button-css', 'badge-css', 'card-css', 'field-css'];
+const COMPONENT_SHEETS = [
+	'button-css',
+	'badge-css',
+	'card-css',
+	'field-css',
+	'switch-css',
+	'state-card-css'
+];
 
 /** the specifiers a sheet `@import`s into the `registry` layer. */
 const layeredImportsOf = (css: string) =>
@@ -79,7 +86,9 @@ describe('the registry component sheets', () => {
 		const drawn = classesDrawnIn(COMPONENT_SHEETS.map((item) => `src/registry/styles/${item}.css`));
 		const components = globSync('src/components/*/*.jsx');
 		// the screens that spell one by hand, beside the components that draw it: /admin's and the
-		// gallery's previews. the donor pages are the donation form's and read none of these sheets.
+		// gallery's previews. the donor chain's supporter screens also link some of these sheets
+		// (../app/src/lib/supporter/area/links.ts, ../app/src/lib/supporter/public/fundraiser-page.tsx),
+		// and this case does not sweep the names they spell.
 		const screens = [
 			...globSync('../app/src/routes/_app.admin*.tsx'),
 			...globSync('../app/src/lib/admin/**/*.tsx'),

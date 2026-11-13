@@ -3,7 +3,7 @@ import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { FORM_CURRENCY } from '../../forms/amounts';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
-import { form, type Form, mintFormId, page, program } from '../db/schema';
+import { form, type Form, mintFormId, page, program, supporterPage } from '../db/schema';
 import { stateAt } from '../../page/ended';
 import type { PageState, PageType } from '../../page/keys';
 import type {
@@ -87,11 +87,20 @@ const FORM_COLUMNS = {
 /**
  * a `form` row no page names, which is what makes it one of the Forms screens'. a page's own row is
  * its donation settings and is edited in the page's editor (`page` in ../db/schema.ts), so the list
- * leaves it out and every write below refuses it at its `where`. the readers of one row by id —
- * the served config, the charge, a gift's own form — still read it.
+ * leaves it out and every write below refuses it at its `where`. a supporter's fundraiser owns a
+ * row the same way (`supporter_page` in ../db/schema.ts) and is left out alike. the readers of one
+ * row by id — the served config, the charge, a gift's own form — still read it.
  */
 function ownedByNoPage(db: Db) {
-	return notExists(db.select({ id: page.id }).from(page).where(eq(page.formId, form.id)));
+	return and(
+		notExists(db.select({ id: page.id }).from(page).where(eq(page.formId, form.id))),
+		notExists(
+			db
+				.select({ id: supporterPage.id })
+				.from(supporterPage)
+				.where(eq(supporterPage.formId, form.id))
+		)
+	);
 }
 
 /**
@@ -323,14 +332,18 @@ export async function readForm(db: Db, id: string): Promise<StoredForm | null> {
  */
 export type OwningPage =
 	| { readonly type: 'donation_page' }
-	| { readonly type: 'campaign'; readonly name: string; readonly state: PageState };
+	| { readonly type: 'campaign'; readonly name: string; readonly state: PageState }
+	/** a supporter's fundraiser (`supporter_page`), named by its title. */
+	| { readonly type: 'fundraiser'; readonly title: string };
 
-/** the owning page off a row joined to `page`, or `null` for a row no page names. */
+/** the owning page off a row joined to `page` and `supporter_page`, or `null` for a row neither names. */
 function owningPage(row: {
 	pageType: PageType | null;
 	pageName: string | null;
 	pageState: PageState | null;
+	fundraiserTitle: string | null;
 }): OwningPage | null {
+	if (row.fundraiserTitle !== null) return { type: 'fundraiser', title: row.fundraiserTitle };
 	if (row.pageType === null) return null;
 	if (row.pageType === 'donation_page') return { type: 'donation_page' };
 	if (row.pageName === null || row.pageState === null) {
@@ -345,6 +358,12 @@ function owningPage(row: {
  * campaign's `state` is as of `now`: `ended` too for a live one past its published end (`isEnded`).
  */
 export async function readOwningPage(db: Db, id: string, now: number): Promise<OwningPage | null> {
+	const [fundraiser] = await db
+		.select({ title: supporterPage.title })
+		.from(supporterPage)
+		.where(eq(supporterPage.formId, id))
+		.limit(1);
+	if (fundraiser) return { type: 'fundraiser', title: fundraiser.title };
 	const [row] = await db
 		.select({
 			pageType: page.type,
@@ -356,7 +375,7 @@ export async function readOwningPage(db: Db, id: string, now: number): Promise<O
 		.where(eq(page.formId, id))
 		.limit(1);
 	if (!row) return null;
-	const owner = owningPage(row);
+	const owner = owningPage({ ...row, fundraiserTitle: null });
 	if (owner?.type !== 'campaign') return owner;
 	return { ...owner, state: stateAt({ state: owner.state, published: row.pagePublished }, now) };
 }
@@ -461,10 +480,12 @@ async function missed(db: Db, id: string): Promise<'gone' | 'stale' | PageOwned>
 			archivedAt: form.archivedAt,
 			pageType: page.type,
 			pageName: page.name,
-			pageState: page.state
+			pageState: page.state,
+			fundraiserTitle: supporterPage.title
 		})
 		.from(form)
 		.leftJoin(page, eq(page.formId, form.id))
+		.leftJoin(supporterPage, eq(supporterPage.formId, form.id))
 		.where(eq(form.id, id))
 		.limit(1);
 	if (row === undefined) return 'gone';

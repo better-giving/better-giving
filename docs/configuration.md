@@ -36,11 +36,13 @@ The server refuses to start without either, or on a password under 12 characters
 
 ## Your address
 
-`BETTER_AUTH_URL` is the public origin, such as `https://give.example.org`. It is the address payment notices are registered at and QuickBooks is connected at. Unset, those use the origin of the request in front of them. It does not decide which origin may carry a session cookie.
+`BETTER_AUTH_URL` is the public origin, such as `https://give.example.org`. It is the address payment notices are registered at and QuickBooks is connected at. Unset, those use the origin of the request in front of them. Supporter fundraisers' sign-in and confirm links are built on it alone: unset, none is mailed, and the server log says so. It does not decide which origin may carry a session cookie.
 
 With `TRUSTED_PROXY_HEADER` unset, the client address is the TCP peer (`packages/app/src/lib/server/runtime/client-ip.ts`). Behind a proxy that peer is the proxy, and every donor shares one rate-limit bucket. Set the variable to the header your proxy writes the client address into, such as `x-forwarded-for` (its right-most entry is read). The app also reads `x-forwarded-proto` for the scheme once a proxy header is set. Set it only when every request passes through that proxy.
 
-The session cookie is `Secure` unless the origin that check sees is loopback: `localhost`, a host ending in `.localhost`, or `127.0.0.1` (`isLoopbackOrigin` in `packages/app/src/lib/server/auth/index.ts`). An `https://` value in `BETTER_AUTH_URL` makes the cookie `Secure` even when the page is `http://localhost`. Plain `http://[::1]` is not on that list, so the browser drops the cookie and sign-in returns to the form with no error. The same drop happens on any other plain `http` address. Until the `https` address is up, sign in at `http://localhost:3000` or `http://127.0.0.1:3000` on the host itself, with `BETTER_AUTH_URL` unset or set to that same origin, or through `ssh -L 3000:localhost:3000 <host>`.
+The session cookie is `Secure` unless `NODE_ENV` is not `production` and the origin is loopback (`isLoopbackHost` in `packages/app/src/lib/server/auth/env.ts`: `localhost`, a host ending in `.localhost`, `127.x` or `[::1]`). The image sets `NODE_ENV=production`, so a deployment's cookie is always `Secure`: a browser served the page over plain `http` may drop it, and sign-in returns to the form with no error. Serve the deployment over `https`.
+
+With `NODE_ENV=production`, the server refuses to start on a `BETTER_AUTH_URL` naming a loopback host, because every link it builds, mailed sign-in links included, would name the server's own machine (`loopbackPinRefusal` in the same file). `pnpm dev` and any other `NODE_ENV` take it.
 
 ## Your organisation's profile
 

@@ -112,7 +112,8 @@
  * hover, 5 its press, 6 a border nothing operates and a separator, 7 the edge of a control a donor
  * operates and 8 that edge under the pointer and the focus ring, the registry's own ring step, 9
  * a solid fill, 10 its hover, 11 and 12 text.
- * nothing casts a shadow: a `box-shadow` here is a focus ring, a spread with no offset and no blur.
+ * nothing casts a shadow: a `box-shadow` here is a spread with no offset and no blur, a focus
+ * ring or the `--page-plane` ring a profile mark lifted onto a banner stands inside.
  *
  * the page ground, `--page-ground`, is slate 2 under a wash. a plane — the top bar, the card's
  * panel, which on a phone holds the cover, the title, the lede and the goal, the letter's cover
@@ -341,6 +342,9 @@ body {
 	--page-video-spinner: 1.25rem;
 	--page-video-caption-gap: 0.125rem;
 	--page-profile-measure: 62ch;
+	/* the entry card's widest, where it stands under a campaign or the Donation page's own layout. */
+	--page-fundraise-width: 44rem;
+	--page-fundraise-inset: 1.25rem 1.5rem;
 	--page-w-display: 700;
 	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header says why */
 	--page-scrim: linear-gradient(
@@ -415,8 +419,12 @@ body {
 	color: var(--page-quiet);
 }
 
+/* the label takes the fill's own ink back from `.page-ground a` below, which outranks the form's
+   `[part~='action']:where(:not(.ds-btn))` (packages/form/src/styles/parts.css) and would draw the
+   page's accent on the brand fill. */
 .ended [part~='action'] {
 	inline-size: auto;
+	color: var(--_on-p);
 	text-decoration: none;
 }
 
@@ -437,6 +445,8 @@ body {
  * ink. `--page-accent` is what a link and a listed tier's amount are drawn in, brand 11.
  * `--page-ring` is the focus ring, `--_n1` on the feature's scrim and the form's elsewhere. a tier
  * card or a share press on its plane, and a program option on its control ground, sets its own ink.
+ * a link drawn as the registry's press (`.ds-btn`) takes the press's ring from the registry's
+ * button sheet, which this sheet's link ring would otherwise outrank.
  */
 
 .page-ground :where(h1, h2, h3, p, ul, ol, figure) {
@@ -448,7 +458,7 @@ body {
 	text-underline-offset: 0.15em; /* raw-length-ok: a text metric, so it follows the words' own size. */
 }
 
-.page-ground a:focus-visible,
+.page-ground a:not(.ds-btn):focus-visible,
 .page-faq-question:focus-visible {
 	outline: var(--_focus-width) solid transparent;
 	box-shadow: 0 0 0 var(--_focus-width) var(--page-ring);
@@ -1486,6 +1496,87 @@ body {
 
 .page-messages-more {
 	gap: var(--_sp2);
+}
+
+/* the entry card that starts a supporter's fundraiser ($lib/supporter/public/entry-card.tsx): a
+   plane holding a heading, one sentence, and one secondary press with its note beside it. on a
+   phone the press runs the card's width and the note wraps under it; from 30rem they share a row.
+   it stands a section's step below the whole layout, messages included. under a campaign or the
+   Donation page's own layout it is held to `--page-fundraise-width` at the layout's start. under
+   the profile head it is as wide as the column it follows: the layout's whole width in the card
+   layout and the feature layout, and from 60rem in the letter layout the reading column alone, on
+   its own tracks and held to its measure, so it never runs under the box's rail. the press is the
+   registry's, linked beside this sheet, and its ring the registry's; its ink is restated below,
+   since the page's link ink outranks the variant's. */
+.page-fundraise-area {
+	margin-block-start: var(--page-gap-section);
+}
+
+.page:not([data-profile]) .page-fundraise-area > .page-fundraise {
+	max-inline-size: var(--page-fundraise-width);
+}
+
+@container page (min-width: 60rem) {
+	.page[data-profile][data-layout='letter'] .page-fundraise-area {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) var(--page-box);
+		column-gap: var(--page-col-gap);
+	}
+
+	.page[data-profile][data-layout='letter'] .page-fundraise-area > .page-fundraise {
+		max-inline-size: var(--page-measure);
+	}
+}
+
+.page-fundraise {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp4);
+	padding: var(--page-fundraise-inset);
+	background: var(--page-plane);
+	border: var(--_border) solid var(--page-plane-edge);
+	border-radius: var(--page-plane-radius);
+}
+
+.page-fundraise-heading {
+	overflow-wrap: anywhere;
+	font-family: var(--page-font-display);
+	font-size: var(--page-profile-subhead);
+	line-height: var(--page-profile-lh-subhead);
+	font-weight: var(--page-w-display);
+	text-wrap: balance;
+}
+
+.page-fundraise > p {
+	max-inline-size: var(--page-profile-measure);
+}
+
+.page-fundraise-act {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--_sp3) var(--_sp4);
+}
+
+.page-fundraise-act > .ds-btn {
+	inline-size: 100%;
+}
+
+/* `ds-btn-secondary`'s ink, gray 12, which the form names `--_n12`. */
+.page-ground .page-fundraise-act > a.ds-btn {
+	color: var(--_n12);
+}
+
+.page-fundraise-note {
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--page-quiet);
+}
+
+@container page (min-width: 30rem) {
+	.page-fundraise-act > .ds-btn {
+		inline-size: auto;
+	}
 }
 
 /* the turning ring a busy press shows beside its label. the registry has no spinner yet
