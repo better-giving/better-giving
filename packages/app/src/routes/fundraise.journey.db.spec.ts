@@ -39,7 +39,7 @@ import * as signIn from './fundraise.sign-in';
 // the real database: the start, the mailed confirm link, the manage screen, the edit, a gift on the
 // public page, staff hiding and showing it again, the organisation switching fundraisers off, and
 // the end. no /admin browser spec exists (AGENTS.md → Never), and packages/form is the one browser
-// package, so this is the end-to-end evidence for the slice.
+// package, so this spec is the one end-to-end check of the supporter flow.
 //
 // the mail transport is the one thing stubbed, for ./forgot.db.spec.ts's reason: the link is
 // composed by the routes, and the address in the message is the assertion worth having.

@@ -100,7 +100,7 @@ const DAY_IN_YEAR = new Intl.DateTimeFormat('en-US', {
 });
 
 /**
- * `Jan 6, 2026`: the day a page ended, and a gift's where the gifts run across two years, in UTC so
+ * `Jan 6, 2026`: the day a page ended, and a gift's day where the gifts run across two years, in UTC so
  * the server's render and the browser's agree.
  */
 export const longDay = (iso: string): string => DAY.format(new Date(iso));

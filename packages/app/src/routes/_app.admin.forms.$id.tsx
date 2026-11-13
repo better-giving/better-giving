@@ -216,11 +216,11 @@ const NO_SUCH_PROGRAM = 'Choose an active program.';
 function ownedWhere(owner: OwningPage): string {
 	switch (owner.type) {
 		case 'donation_page':
-			return 'belong to the Donation page and are edited in its editor';
+			return 'belong to the Donation page and are edited in its editor rather than under /admin/forms';
 		case 'campaign':
-			return `belong to the campaign “${owner.name}” and are edited in its editor`;
+			return `belong to the campaign “${owner.name}” and are edited in its editor rather than under /admin/forms`;
 		case 'fundraiser':
-			return `belong to the supporter fundraiser “${owner.title}” and are not edited`;
+			return `belong to the supporter fundraiser “${owner.title}” and cannot be edited from the dashboard`;
 	}
 }
 
@@ -229,7 +229,7 @@ function ownedWhere(owner: OwningPage): string {
  * save or an archive for one — the loader 404s it — so this answers a hand-built body, at that 404.
  */
 function pageOwnedRefusal(owner: OwningPage): string {
-	return `Nothing was changed: these donation settings ${ownedWhere(owner)} rather than under /admin/forms.`;
+	return `Nothing was changed: these donation settings ${ownedWhere(owner)}.`;
 }
 
 /**
@@ -475,7 +475,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 
 	if (owner !== null) {
 		notFound(
-			`The donation settings \`${redactPublicId(params.id)}\` ${ownedWhere(owner)} rather than under /admin/forms.`
+			`The donation settings \`${redactPublicId(params.id)}\` ${ownedWhere(owner)}.`
 		);
 	}
 

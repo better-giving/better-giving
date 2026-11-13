@@ -230,7 +230,7 @@ export function SignIn({ org, state, lastResult, sending }: SignInProps) {
 					</NoticeCard>
 				) : state.kind === 'too-many' ? (
 					<NoticeCard tone="destructive" heading="h1" title="Too many tries" alert>
-						Send a new link opens again when its countdown ends.
+						You can ask for a new link again when the countdown ends.
 					</NoticeCard>
 				) : null}
 				{box}

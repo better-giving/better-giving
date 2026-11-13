@@ -8,7 +8,7 @@ import { giftCount, longDay, shortDay } from './copy';
 // its donor chose to show them on the page (`shown`, `noteShown` in $lib/server/pages/messages.ts);
 // every other gift reads A donor with a dash for its note. a gift carries nothing else a donor
 // typed, so there is no email, address or payment method here to leak. a day carries its year
-// where the gifts read run across two.
+// where the gifts it shows run across two years.
 //
 // the server reads at most `OWN_GIFT_LIST_LIMIT` of them ($lib/server/supporters/pages.ts) and
 // counts all of them; the table shows `GIFTS_AT_FIRST` and Show more gifts, under the table beside

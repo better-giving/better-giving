@@ -4061,7 +4061,7 @@
 	   leaves a control alone once any of it is showing inside this padding.
 
 	   `position: relative` makes the plane the containing block of the absolutely positioned boxes
-	   inside it — a column head named only for a reader (`.adm-vh` in ./base.css) among them. without
+	   inside it, a column head named only for a reader (`.adm-vh` in ./base.css) among them. without
 	   it, below the rail's width, their containing block is the viewport, the plane's overflow clips
 	   none of them, and a head past the plane's edge widens the whole page into a sideways scroll. */
 	.adm-plane {

@@ -73,7 +73,7 @@ describe('the rate limiters the server builds', () => {
 	});
 
 	/**
-	 * the supporter buckets as the organisation decided them: a sign-in link 5 an hour per address
+	 * the supporter buckets' sizes: a sign-in link 5 an hour per address
 	 * and 20 per network, a start 5 an hour per network, Send it again 3 an hour per page, and 10
 	 * photos a day per supporter.
 	 */

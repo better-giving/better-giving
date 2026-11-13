@@ -93,7 +93,7 @@ export function ManageFundraiser({
 					title="Your page is live"
 					actions={<CopyLink url={page.url} className="ds-btn ds-btn-primary" />}
 				>
-					Share the link with the people who know you best. Most first gifts come from them.
+					Share the link with the people who know you best.
 					<br />
 					<span className="sa-address">{page.url}</span>
 				</NoticeCard>
