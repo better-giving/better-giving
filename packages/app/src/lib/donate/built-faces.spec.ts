@@ -3,14 +3,15 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { appAlias, type BuiltSheet, buildSheet, facesDeclared } from './built-sheet.testing';
 
 // the faces each surface's css carries once the build has followed every `@import`. the registry's
-// own `variables.css` imports no face sheet, and /admin and the donor pages are set in the plain
-// red hat families packages/operator/src/styles/fonts.css declares. a reading of either source
-// stays green if a round face came back through an `@import`, because the source never names one:
-// the build is where it would come out. this builds with the config's own alias list, so a change
-// to it is read here.
+// own `variables.css` imports a `./fonts.css` that is red hat round, and packages/app/vite.config.ts
+// aliases that import to an empty sheet so /admin and the donor pages are set in the plain red hat
+// families packages/operator/src/styles/fonts.css declares. a reading of either source stays green
+// when that alias stops matching, because the source never names a round face: the build is where
+// one would come out. this builds with the config's own alias list, so a change to it is read here.
 //
 // the donation form's tokens sheet is the other half: the card loads no web font (AGENTS.md → One
-// look, one source), so it builds to no `@font-face` at all.
+// look, one source), so it builds to no `@font-face` at all, and the same alias must still empty the
+// registry's face import there.
 
 type RoleDeclaration = { layers: string[]; selector: string; value: string; important: boolean };
 
