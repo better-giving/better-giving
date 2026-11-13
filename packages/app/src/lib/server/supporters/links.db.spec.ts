@@ -1,11 +1,13 @@
+import { createHash } from 'node:crypto';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createCookie } from 'react-router';
 import { createDb, type Db } from '$lib/server/db/client';
-import { client, run, stmt } from '$lib/server/db/database.testing';
+import { all, client, run, stmt } from '$lib/server/db/database.testing';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { createDeferredWork } from '$lib/server/runtime/deferred';
 import { createRateLimiter } from '$lib/server/runtime/rate-limiter';
 import { type LinkMail, readOpeningLink, requestSignInLink, signInWithLink } from './links';
-import { readSupporterSession } from './session';
+import { readSupporterSession, SUPPORTER_SESSION_COOKIE } from './session';
 
 // the emailed one-time link: who is mailed one, and what opening it does, against the real tables.
 
@@ -185,6 +187,25 @@ describe('opening a link', () => {
 			email: 'maya@example.org',
 			name: 'Maya Rivera'
 		});
+	});
+
+	it('keeps only the sha-256 of the mailed token and of the cookie’s value', async () => {
+		const token = await mailedToken();
+		const sha256 = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
+		expect(await all(stmt('select token_hash from supporter_link'))).toEqual([
+			{ token_hash: sha256(token) }
+		]);
+
+		const opened = await open(token);
+		if (!opened.ok) throw new Error('the link was refused');
+		// the cookie's value is the token as react router encodes it, so read it back with its own parser.
+		const value = await createCookie(SUPPORTER_SESSION_COOKIE).parse(
+			opened.setCookie.split(';', 1)[0] ?? ''
+		);
+		expect(value).toEqual(expect.any(String));
+		expect(await all(stmt('select token_hash from supporter_session'))).toEqual([
+			{ token_hash: sha256(value as string) }
+		]);
 	});
 
 	it('sets the cookie HttpOnly, Secure and SameSite=Lax', async () => {

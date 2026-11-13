@@ -26,6 +26,7 @@ import { endAsItStands } from '$lib/server/pages/page-row.testing';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { saveProfile } from '$lib/server/org/profile.testing';
+import { setSupporterFundraisersEnabled } from '$lib/server/org/queries';
 import { putLogo } from '$lib/server/org/logo.testing';
 import { ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
@@ -189,6 +190,20 @@ describe('a published campaign at its address', () => {
 
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.profile).toBeNull();
+	});
+
+	it('draws the card that starts a fundraiser while the setting is on, and none once it is off', async () => {
+		await campaign();
+		await saveProfile(db);
+		const entryCard = async () => {
+			const answered = await visit();
+			if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+			return answered.data.view.fundraiserEntry;
+		};
+
+		expect(await entryCard()).toBe(true);
+		expect(await setSupporterFundraisersEnabled(db, false)).toBe('saved');
+		expect(await entryCard()).toBe(false);
 	});
 
 	it('names the campaign in the tab', async () => {

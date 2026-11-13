@@ -316,7 +316,7 @@ describe('a mailed link', () => {
 		expect(landed.data).toMatchObject({ state: { kind: 'expired' } });
 	});
 
-	it('opens nothing an hour after it was made', async () => {
+	it('opens nothing once its row has expired', async () => {
 		const browser = cookieJar();
 		const started = await call(start.action, request('/fundraise', { body: form(STARTED) }));
 		browser.take(started);

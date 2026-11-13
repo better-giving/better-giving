@@ -37,6 +37,11 @@ describe('starting a fundraiser, as posted', () => {
 		]);
 	});
 
+	it('takes a goal of exactly the cap a campaign goal has', () => {
+		const atCap = String(GOAL_MINOR_MAX / 100);
+		expect(SUPPORTER_START_INPUT.parse({ ...START, goal: atCap }).goal).toBe(GOAL_MINOR_MAX);
+	});
+
 	it('refuses a goal past the cap a campaign goal has', () => {
 		const over = String((GOAL_MINOR_MAX + 1) / 100);
 		expect(issuesAt(SUPPORTER_START_INPUT.safeParse({ ...START, goal: over }))).toEqual(['goal']);
