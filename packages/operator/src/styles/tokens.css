@@ -501,12 +501,10 @@
 		   (../registry/styles/variables.css), which ./fonts.css re-points at plain red hat: Red Hat
 		   Text, Red Hat Display and Red Hat Mono, self-hosted and declared beside them. the
 		   registry's own faces are red hat round, the face of Better Giving's hosted platform, and a
-		   self-hosted deployment is set in plain red hat, which the registry does not carry yet: that
-		   is the gap its `fonts-red-hat` item closes in 2.2.0, which replaces ./fonts.css. the
+		   self-hosted deployment is set in plain red hat, which ./fonts.css declares. the
 		   re-point is there rather than here because that sheet is the one the donor pages link too,
 		   and its header carries why each is `!important`. this file only aliases the three roles.
-		   nothing reads the registry's round faces, so packages/app/vite.config.ts and
-		   packages/gallery/vite.config.ts resolve its `@import "./fonts.css"` to an empty sheet.
+		   nothing reads the registry's round faces: its variables.css imports no face sheet.
 
 		   a size and a line height are separate tokens here rather than one `font` shorthand,
 		   because the shorthand resets `font-variant-numeric` and a money column silently stops
