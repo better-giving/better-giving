@@ -22,7 +22,6 @@ import {
 import { checkSlug, freeSlug } from '../../page/slug';
 import { invalid, type ParsedForm, parseForm, submittedForm, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
-import { sqliteResultCode } from '../db/rejection';
 import { form, type Page, page, program } from '../db/schema';
 import {
 	formInputValuesFrom,
@@ -36,6 +35,7 @@ import { freeLetGoStatements } from '../images/free';
 import { documentsOf, placedPhotos, readDocument } from './document';
 import { unchosenSettings } from './donation-page';
 import {
+	addressTaken,
 	type DraftSettings,
 	heldAddresses,
 	nameToCarry,
@@ -299,15 +299,15 @@ export async function publishPage(
 			);
 			return made ? { kind: 'published', undoable: replaced !== null } : { kind: 'stale' };
 		} catch (error) {
-			if (moving && sqliteResultCode(error) === 'SQLITE_CONSTRAINT_UNIQUE') {
+			if (moving && addressTaken(error)) {
 				const by = await slugRace(db, movedTo, at.now, error);
 				return refused(
 					`the link /${movedTo} is taken by ${by}. Change it under General, then publish again`
 				);
 			}
-			// another campaign took the free address between the read and the batch.
+			// another campaign or a fundraiser took the free address between the read and the batch.
 			const retry = row.slug === null && attempt < SLUG_ATTEMPTS;
-			if (!retry || sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;
+			if (!retry || !addressTaken(error)) throw error;
 		}
 	}
 }

@@ -3632,6 +3632,14 @@ export type SupporterPageStatus = (typeof SUPPORTER_PAGE_STATUSES)[number];
  * the writer that inserts the pair is what keeps it.
  *
  * a page a gift names is never deleted, for the reason `page` gives.
+ *
+ * **its `slug` is never a campaign's `page.slug`**, though `/f/<slug>` and `/<slug>` do not shadow
+ * each other. no index spans two tables, so four triggers hold it:
+ * `supporter_page_slug_insert_guard` and `supporter_page_slug_update_guard` here,
+ * `page_slug_insert_guard` and `page_slug_update_guard` on `page`, each a `RAISE(ABORT)` that fails
+ * the batch with `SQLITE_CONSTRAINT_TRIGGER` (`addressTaken` in pages/queries.ts). drizzle-kit
+ * neither emits nor tracks a trigger, and a table is dropped with its triggers: a rebuild of either
+ * table recreates its two by hand. pages/fundraiser-addresses.db.spec.ts fails where one is missing.
  */
 export const supporterPage = sqliteTable(
 	'supporter_page',
@@ -3641,7 +3649,10 @@ export const supporterPage = sqliteTable(
 		supporterId: text('supporter_id')
 			.notNull()
 			.references(() => supporter.id),
-		/** unique among supporter pages; the spelling, and what it may not shadow, are the parse's. */
+		/**
+		 * unique among supporter pages and never a campaign's (the triggers above); the spelling, and
+		 * what it may not shadow, are the parse's.
+		 */
 		slug: text('slug').notNull(),
 		title: text('title').notNull(),
 		story: text('story').notNull(),
@@ -3730,7 +3741,10 @@ export const supporterLink = sqliteTable(
 		),
 		// whether a supporter has a link left, asked by the sweep (`abandonedSupporter` in
 		// supporters/sweep.ts), and the index `supporter_id`'s foreign key is checked by.
-		index('supporter_link_supporter_id_idx').on(t.supporterId)
+		index('supporter_link_supporter_id_idx').on(t.supporterId),
+		// the index `supporter_page_id`'s foreign key is checked by, and the sweep's delete of a
+		// pending page's links (supporters/sweep.ts) reads.
+		index('supporter_link_supporter_page_id_idx').on(t.supporterPageId)
 	]
 );
 

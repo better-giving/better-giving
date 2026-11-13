@@ -7,13 +7,12 @@ import { stateAt } from '../../page/ended';
 import { MAX_FORM_NAME } from '../../forms/input-schema';
 import { freeSlug } from '../../page/slug';
 import type { Db } from '../db/client';
-import { sqliteResultCode } from '../db/rejection';
 import { page, type Page } from '../db/schema';
 import { formInputValuesFrom, type ParsedForm, parseFormInput } from '../forms/form-input';
 import { ownedFormInsert, readForm } from '../forms/queries';
 import { readDocument } from './document';
 import { ensureDonationPage } from './donation-page';
-import { heldAddresses, SLUG_ATTEMPTS } from './queries';
+import { addressTaken, heldAddresses, SLUG_ATTEMPTS } from './queries';
 
 // a campaign's reads and its making. New campaign makes one page and the settings row it owns in
 // one `batch()`:
@@ -171,8 +170,8 @@ export async function createCampaign(db: Db, request: NewCampaign): Promise<{ pa
 
 /**
  * the page and its owned settings row in one `batch()`, at the first address free when read. a
- * second create taking that address between the read and the batch fails it whole on
- * `page_slug_idx`, and the next attempt reads the addresses again.
+ * campaign or fundraiser taking that address between the read and the batch fails it whole
+ * (`addressTaken`), and the next attempt reads the addresses again.
  */
 async function insertCampaign(
 	db: Db,
@@ -199,7 +198,7 @@ async function insertCampaign(
 			if (!made) throw new Error('inserting the campaign returned no row');
 			return made.id;
 		} catch (error) {
-			if (attempt === SLUG_ATTEMPTS || sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') {
+			if (attempt === SLUG_ATTEMPTS || !addressTaken(error)) {
 				throw error;
 			}
 		}

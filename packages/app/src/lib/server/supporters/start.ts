@@ -6,14 +6,13 @@ import { PHOTO_FILE_FIELD } from '../../supporter/area/forms';
 import type { SupporterStart } from '../../supporters/input';
 import type { ChallengeResult } from '../api/challenge';
 import type { Db } from '../db/client';
-import { sqliteResultCode } from '../db/rejection';
 import { page, supporter, supporterPage } from '../db/schema';
 import type { PostedPhoto } from '../images/intake';
 import { formInputValuesFrom, type ParsedForm, parseFormInput } from '../forms/form-input';
 import { ownedFormInsert, readForm } from '../forms/queries';
 import { supporterFundraisersEnabled } from '../org/queries';
 import { ensureDonationPage } from '../pages/donation-page';
-import { SLUG_ATTEMPTS } from '../pages/queries';
+import { addressTaken, SLUG_ATTEMPTS } from '../pages/queries';
 import type { supporterLinkOrigin } from './area';
 import { linkInsert, type SendLink } from './links';
 import { checkSupporterPhoto } from './photo';
@@ -152,9 +151,8 @@ async function copiedSettings(
 /**
  * the supporter, the page, its posted photo, its settings row and the confirm link in one `batch()`,
  * at the first address free when read: one no campaign and no other fundraiser holds, that no route
- * answers at the top level (`checkSlug`) or under `/f/`. a second start taking that address between
- * the read and the batch fails it whole on `supporter_page_slug_idx`, and the next attempt reads
- * again.
+ * answers at the top level (`checkSlug`) or under `/f/`. a start or campaign taking that address
+ * between the read and the batch fails it whole (`addressTaken`), and the next attempt reads again.
  *
  * the supporter is named by its address in every statement after its own, because the row may be
  * the one this batch inserts or one already there, and nothing in a batch reads a returned id. an
@@ -208,7 +206,7 @@ async function insertFundraiser(
 			]);
 			return { pageId, slug, token: link.token };
 		} catch (error) {
-			if (attempt === SLUG_ATTEMPTS || sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') {
+			if (attempt === SLUG_ATTEMPTS || !addressTaken(error)) {
 				throw error;
 			}
 		}
