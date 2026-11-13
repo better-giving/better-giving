@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
+import { noRegistryFaces } from './vite.registry-faces';
 
 // the pool that runs specs in a real Chromium, for what happy-dom (the `dom` project in
 // vitest.config.ts) cannot prove about the embeddable form's custom element. layout, `@container`
@@ -25,6 +26,7 @@ import { defineConfig } from 'vitest/config';
 // about `deploy`'s gate, not about who runs the suite at all.
 
 export default defineConfig({
+	resolve: { alias: [noRegistryFaces] },
 	server: { fs: { allow: [resolve(import.meta.dirname, '../..')] } },
 	// pre-bundled up front: discovered mid-run, vite re-optimizes and reloads the page under the spec
 	// that imported them, which fails or repeats whatever that spec was doing.
