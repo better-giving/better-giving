@@ -1,3 +1,4 @@
+import registryAvatar from '@better-giving/operator/registry/styles/avatar-css.css?url';
 import registryBadge from '@better-giving/operator/registry/styles/badge-css.css?url';
 import registryNoticeCard from '@better-giving/operator/registry/styles/notice-card-css.css?url';
 import registryProgress from '@better-giving/operator/registry/styles/progress-css.css?url';
@@ -40,11 +41,11 @@ import type {
 // pending and unknown alike are the plain notice an unknown campaign address gets, so a visitor
 // learns nothing of a page that is not public.
 
-/** a donor page's sheets, then the registry's badge and goal bar, then this page's own. */
+/** a donor page's sheets, then the registry's avatar, badge and goal bar, then this page's own. */
 export function fundraiserPageLinks() {
 	return [
 		...donorPageLinks(),
-		...[registryBadge, registryProgress, fundraiserSheet].map((href) => ({
+		...[registryAvatar, registryBadge, registryProgress, fundraiserSheet].map((href) => ({
 			rel: 'stylesheet' as const,
 			href
 		}))
@@ -240,12 +241,11 @@ function Byline({
 	const letters = initials(fundraiser.name);
 	return (
 		<div className="fundraiser-byline">
-			{/* registry gap: the registry has no avatar. the initials tile is drawn here on the page
-			    logo's tile recipe, in ./fundraiser.css. */}
+			{/* beside the name it stands for, so out of the accessibility tree (avatar-css.usage.md). */}
 			{letters === '' ? null : (
-				<div className="fundraiser-avatar" aria-hidden="true">
-					{letters}
-				</div>
+				<span className="ds-avatar ds-avatar-lg" aria-hidden="true">
+					<span>{letters}</span>
+				</span>
 			)}
 			<p className="fundraiser-by">
 				<span className="fundraiser-by-name">{fundraiser.name}</span>

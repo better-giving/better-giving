@@ -1838,13 +1838,10 @@ body {
 	text-wrap: balance;
 }
 
+/* a band's small uppercase label, worn with the registry's `ds-eyebrow` (lead-css), which sets its
+   type; its place and its ink are the page's. */
 .page-label {
 	margin-block-end: var(--_sp2);
-	font-size: var(--_t-sm);
-	line-height: var(--_lh-tight);
-	font-weight: var(--_w-bold);
-	letter-spacing: var(--_tracking);
-	text-transform: uppercase;
 	color: var(--page-quiet);
 }
 

@@ -20,7 +20,9 @@ export function Tiers({
 }) {
 	return (
 		<div className="page-tiers" data-shape={shape}>
-			<h2 className={shape === 'list' ? 'page-label' : 'page-heading'}>What your gift does</h2>
+			<h2 className={shape === 'list' ? 'page-label ds-eyebrow' : 'page-heading'}>
+				What your gift does
+			</h2>
 			<ul className="page-tiers-list" data-columns={columns(tiers.length)}>
 				{tiers.map((tier, index) => (
 					<li className="page-tier" key={index}>

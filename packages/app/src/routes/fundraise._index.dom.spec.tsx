@@ -13,14 +13,16 @@ import StartRoute from './fundraise._index';
 
 const widget = vi.hoisted(() => ({
 	configs: [] as unknown[],
+	mounts: [] as unknown[],
 	resets: 0,
 	stops: 0,
 	hand: null as null | ((token: string) => void)
 }));
 
 vi.mock('@better-giving/form/embed/challenge', () => ({
-	createChallenge: (config: unknown, _mount: unknown, onToken: (token: string) => void) => {
+	createChallenge: (config: unknown, mount: unknown, onToken: (token: string) => void) => {
 		widget.configs.push(config);
+		widget.mounts.push(mount);
 		widget.hand = onToken;
 		return {
 			reset: () => {
@@ -74,6 +76,14 @@ it('starts the widget on the loader’s config and posts its answer in the chall
 	expect(box(root)?.value).toBe('');
 	act(() => widget.hand?.('solved-payload'));
 	expect(box(root)?.value).toBe('solved-payload');
+});
+
+it('draws the widget in the registry’s spam slot, the answer box beside it', () => {
+	widget.mounts.length = 0;
+	const root = screen(undefined);
+	const slot = root.querySelector('.ds-spam-slot');
+	expect(widget.mounts).toEqual([slot?.querySelector(':scope > .ds-spam-widget')]);
+	expect(box(root)?.parentElement).toBe(slot);
 });
 
 it('asks the widget for a fresh answer once the action has answered', () => {

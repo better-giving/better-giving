@@ -1,0 +1,148 @@
+/* the registry's spam-check slot as plain css, no tailwind: the form's last
+   slot before the actions, the box a provider's check is drawn in, and its
+   states. reads only the variables the `variables` item declares.
+   spam-check-css.test.tsx renders the React `SpamCheck` beside it and asserts
+   the same computed look in light and dark, for the default and example
+   themes.
+
+   the spacing step, the type sizes and the weights live only in tailwind's
+   theme; they are declared here under ds- names with the same values, and the
+   test holds them equal. */
+
+/* the slot: the box, then the message a send before a pass shows under it */
+.ds-spam-slot {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  display: grid;
+  gap: calc(var(--ds-spacing) * 1);
+}
+/* a provider widget that draws itself, mounted in the slot: the slot keeps
+   65px for it, so the page does not move when it arrives */
+.ds-spam-widget {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  min-block-size: calc(var(--ds-spacing) * 16.25);
+}
+
+.ds-spam-check {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--ds-spacing) * 3);
+  inline-size: 100%;
+  min-block-size: calc(var(--ds-spacing) * 16.25);
+  padding: calc(var(--ds-spacing) * 3) calc(var(--ds-spacing) * 4);
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background-color: var(--surface);
+  color: var(--gray-12);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+.ds-spam-check:focus {
+  outline: none;
+}
+/* the glyph that stands in for the box once it is pressed */
+.ds-spam-check > svg {
+  flex: none;
+  inline-size: calc(var(--ds-spacing) * 5);
+  block-size: calc(var(--ds-spacing) * 5);
+}
+.ds-spam-check[data-state="verifying"] {
+  color: var(--gray-11);
+}
+.ds-spam-check[data-state="verified"] {
+  border-color: var(--success-6);
+  background-color: var(--success-subtle);
+  color: var(--success-subtle-fg);
+}
+.ds-spam-check[data-state="error"],
+.ds-spam-check[data-state="unavailable"] {
+  border-color: var(--destructive-6);
+  background-color: var(--destructive-subtle);
+  color: var(--destructive-subtle-fg);
+}
+/* sent before a pass */
+.ds-spam-check[data-invalid] {
+  border-color: var(--destructive);
+}
+
+/* the 22px box's holder: the box and its hit area */
+.ds-spam-check-target {
+  position: relative;
+  display: grid;
+  flex: none;
+}
+/* the 22px box, a native checkbox drawn on --surface with the --input edge */
+.ds-spam-check-box {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  box-sizing: border-box;
+  inline-size: calc(var(--ds-spacing) * 5.5);
+  block-size: calc(var(--ds-spacing) * 5.5);
+  margin: 0;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background-color: var(--surface);
+  cursor: pointer;
+  appearance: none;
+}
+@media (hover: hover) {
+  .ds-spam-check-box:hover {
+    border-color: var(--input-hover);
+  }
+}
+.ds-spam-check-box:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* the hit area: --ds-hit-target (from `variables`) square at least, centred
+   on the box, which keeps its drawn size. an absolute box's insets are
+   measured from the padding edge, which 100% is too. a label for the box, as
+   Gecko draws no ::after on an <input> */
+.ds-spam-check-hit {
+  position: absolute;
+  inset: min(0px, calc((100% - var(--ds-hit-target)) / 2));
+  cursor: pointer;
+}
+
+.ds-spam-check-label {
+  --ds-font-weight-medium: 500;
+  flex: 1 1 0%;
+  min-inline-size: 0;
+  font-weight: var(--ds-font-weight-medium);
+}
+
+/* "Protected by …", at the end; under the label at a phone's width, on the
+   label's start edge (the 22px box and the 12px gap) */
+.ds-spam-check-by {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-xs-lh: calc(1 / 0.75);
+  --ds-font-weight-semibold: 600;
+  flex: none;
+  margin: 0;
+  color: var(--gray-11);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  text-align: end;
+}
+.ds-spam-check-by a {
+  color: var(--link);
+  font-weight: var(--ds-font-weight-semibold);
+}
+@media (width < 48rem) {
+  .ds-spam-check {
+    flex-wrap: wrap;
+  }
+  .ds-spam-check > .ds-spam-check-by {
+    flex-basis: 100%;
+    padding-inline-start: calc(var(--ds-spacing) * 8.5);
+    text-align: start;
+  }
+}
+
+/* invisible mode: the provider's line alone in the slot, on the start edge */
+.ds-spam-slot > .ds-spam-check-by {
+  text-align: start;
+}

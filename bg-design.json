@@ -3,6 +3,13 @@
   "dir": "packages/operator/src/registry",
   "registryVersion": "2.4.0",
   "items": {
+    "avatar-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/avatar-css.css": "14a21333d6d124ceaff40cb4f6e7054e94721a4d56dc78b9982398f1ea627a69",
+        "styles/avatar-css.usage.md": "17e0866bce99cab5e4980ab29a339c16d77f5b5138eb20f61000727c911d6be7"
+      }
+    },
     "badge-css": {
       "version": "1.2.0",
       "files": {
@@ -38,6 +45,20 @@
         "styles/field-css.usage.md": "0206f8468701bf01c666e0e79ac17de296a8035d28516b41d5c8024ca74f06b8"
       }
     },
+    "file-dropzone-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/file-dropzone-css.css": "564b0ab6afc0afdfcb54202a3f983627cb2b709f5fad7399746147385554e0a6",
+        "styles/file-dropzone-css.usage.md": "b187dfe356f7a023750531e33212f06a9cc10fcdef78fec3454641fd32bb5a19"
+      }
+    },
+    "lead-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/lead-css.css": "196c7b8b69233312951c638610138b0af2dbf7dc8b5e73c69178ed03019e802d",
+        "styles/lead-css.usage.md": "9a3d23137b4b3c1b9d71fc6efbcab88f216638c141768fc1b4fb812436c0c10d"
+      }
+    },
     "notice-card-css": {
       "version": "1.1.0",
       "files": {
@@ -57,6 +78,13 @@
       "files": {
         "styles/select-css.css": "060c6ad8a95b32d5eeddb652bc9a8538348d8298272ba45615a21a1ad706c38e",
         "styles/select-css.usage.md": "9f0f9f6421cf3085cdf1d6bc20051f65f5c8cc1838db4571971b11cf1c0f6a1a"
+      }
+    },
+    "spam-check-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/spam-check-css.css": "06438c1436c347c82a5a44a32ff2c9f15f651eb98ae69c502a13bf6c47aa8f34",
+        "styles/spam-check-css.usage.md": "9c627e55b491bbdfd9fcc412c354f56dedff4cc429ca64c8acea315bbf6c4809"
       }
     },
     "spinner-css": {
@@ -85,6 +113,13 @@
       "files": {
         "styles/table-css.css": "298de382baf000d8616eaa39779ea8613a483e99207f8ecf250b2327f154c6bc",
         "styles/table-css.usage.md": "4037054f845934c728b28e316ebe9bcc4550be4abf5f779fbebaf3944b248a3f"
+      }
+    },
+    "text-button-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/text-button-css.css": "1795c6bca3296894b3d347665c595158f6f1fd0f4e9c56174a168ddccefbdc47",
+        "styles/text-button-css.usage.md": "8d59a8c7e9a37eb74dae3b1c4528a794293f81b163cb166c006c8126ce5e011d"
       }
     },
     "variables": {

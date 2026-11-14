@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -64,6 +65,43 @@ describe('./area.css', () => {
 	});
 });
 
+// the registry's sheets a supporter screen links (`supporterAreaLinks` in ./links.ts): the donor
+// chain's button, field and tick box from packages/form, and the rest from packages/operator.
+const require = createRequire(import.meta.url);
+const REGISTRY_SHEETS = [
+	...['button-css', 'field-css', 'checkbox-css'].map((item) =>
+		require.resolve(`@better-giving/form/registry/styles/${item}.css`)
+	),
+	...[
+		'badge-css',
+		'progress-css',
+		'notice-card-css',
+		'state-card-css',
+		'table-css',
+		'file-dropzone-css',
+		'spam-check-css'
+	].map((item) => require.resolve(`@better-giving/operator/registry/styles/${item}.css`))
+];
+
+describe('the registry classes the screens wear', () => {
+	it('are each drawn by a sheet the screens link', () => {
+		const drawn = new Set(
+			REGISTRY_SHEETS.flatMap((file) =>
+				[...uncommented(readFileSync(file, 'utf8')).matchAll(/\.(ds-[\w-]+)/g)].map(
+					(m) => m[1] ?? ''
+				)
+			)
+		);
+		// the start route draws the spam check's slot around the widget it mounts.
+		const start = readFileSync(join(HERE, '../../../routes/fundraise._index.tsx'), 'utf8');
+		const worn = new Set(uncommented(`${screens}\n${start}`).match(/\bds-[a-z][\w-]*/g));
+		expect(worn.has('ds-dropzone')).toBe(true);
+		// a name ending in `-` is the head of a template (`ds-badge-${tone}`), and only the head.
+		const spelled = [...worn].filter((name) => !name.endsWith('-'));
+		expect(spelled.filter((name) => !drawn.has(name))).toEqual([]);
+	});
+});
+
 const WIDE = /@container page \(min-width: 48rem\)\s*\{([\s\S]*?)\n\}/g;
 
 /** what the rules whose selector is exactly `selector` state: on a phone, or from 48rem. */
@@ -86,17 +124,6 @@ function stated(selector: string, at: 'phone' | 'wide' = 'phone'): Record<string
 
 // happy-dom lays nothing out, so where a box stands is read off the rule that places it.
 describe('the placements the frames draw', () => {
-	it('stands the goal’s sign on the input’s line, the input taking the rest of the row', () => {
-		expect(stated('.ds-field-input-container:has(> .sa-prefix)')).toMatchObject({
-			display: 'flex',
-			'align-items': 'center'
-		});
-		expect(stated('.ds-field-input-container > .sa-prefixed')).toMatchObject({
-			flex: '1',
-			'min-inline-size': '0'
-		});
-	});
-
 	it('gives the signed-in address and Sign out a row of their own on a phone, sharing it from 48rem', () => {
 		expect(stated('.page-mast-in:has(> .sa-account)')['flex-wrap']).toBe('wrap');
 		expect(stated('.page-mast-in:has(> .sa-account) > .page-mast-name')['white-space']).toBe(

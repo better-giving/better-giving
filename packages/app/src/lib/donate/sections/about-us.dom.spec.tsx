@@ -62,6 +62,15 @@ describe('about us', () => {
 	});
 });
 
+describe('about us, labelled', () => {
+	it('labels the band with the registry’s eyebrow', () => {
+		const host = mount(<AboutUs mission={MISSION} vision={null} />);
+		const label = host.querySelector('h2');
+		expect(label?.textContent).toBe('About us');
+		expect(label?.classList.contains('ds-eyebrow')).toBe(true);
+	});
+});
+
 describe('about us, both written', () => {
 	it('sets the mission as the statement and the vision beneath it', () => {
 		const host = mount(<AboutUs mission={MISSION} vision={VISION} />);

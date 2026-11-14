@@ -5,6 +5,7 @@ import formLayout from '@better-giving/form/styles/layout.css?url';
 import formMotion from '@better-giving/form/styles/motion.css?url';
 import formParts from '@better-giving/form/styles/parts.css?url';
 import formTokens from '@better-giving/form/styles/tokens.css?url';
+import registryLead from '@better-giving/operator/registry/styles/lead-css.css?url';
 import hostedFaces from '@better-giving/operator/styles/fonts.css?url';
 import { part } from '@better-giving/form/parts';
 import type { FormConfig } from '@better-giving/form/v1';
@@ -20,8 +21,8 @@ import { Masthead, type PageLogo, type PageLook } from './page-view';
 // an ended campaign's screen.
 
 /**
- * the form's sheets, the self-hosted faces, and the page's own chrome, in that order, for a donor
- * page's `links`.
+ * the form's sheets, the self-hosted faces, the registry's eyebrow, and the page's own chrome, in
+ * that order, for a donor page's `links`.
  *
  * the form's are in the order `sheetsFor` in packages/form/src/element.ts adopts them, which is
  * cascade order for the equal-specificity rules they are almost entirely made of: its tokens, the
@@ -32,7 +33,8 @@ import { Masthead, type PageLogo, type PageLook } from './page-view';
  * `--font-*` roles, which the form's token sheet declares unlayered, from inside a layer with
  * `!important`, which outranks them wherever it is linked. ./page.css reads those roles. none of
  * them is hoisted with a `precedence`: a donor page's whole document is these, so there is nothing
- * for a precedence to order them against. the embed links none of these.
+ * for a precedence to order them against. the registry's lead-css comes just before ./page.css,
+ * which its usage note asks of a class worn beside `ds-eyebrow`. the embed links none of these.
  */
 export function donorPageLinks() {
 	return [
@@ -44,6 +46,7 @@ export function donorPageLinks() {
 		formLayout,
 		formMotion,
 		hostedFaces,
+		registryLead,
 		pageChrome
 	].map((href) => ({
 		rel: 'stylesheet' as const,

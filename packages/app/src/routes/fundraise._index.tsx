@@ -176,10 +176,12 @@ function ChallengeBox({
 		setToken('');
 		widget.current?.reset();
 	}, [answer]);
+	// the widget draws itself, so it stands in the registry's widget box, which keeps its height
+	// before it arrives (spam-check-css.usage.md).
 	return (
-		<>
-			<div ref={mount} />
+		<div className="ds-spam-slot">
+			<div ref={mount} className="ds-spam-widget" />
 			<input type="hidden" name={CHALLENGE_FIELD} value={token} />
-		</>
+		</div>
 	);
 }

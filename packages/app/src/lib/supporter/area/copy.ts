@@ -38,6 +38,10 @@ export function boxSentence(box: string, message: string, currency: string): str
 export const counted = (used: number, max: number): string =>
 	`${used.toLocaleString('en-US')} of ${max.toLocaleString('en-US')}`;
 
+/** what the story's status says near its cap: `88 characters left`. */
+export const charactersLeft = (left: number): string =>
+	`${left.toLocaleString('en-US')} ${left === 1 ? 'character' : 'characters'} left`;
+
 /** why a start or a save did not go through, said above the press. */
 export const START_REFUSED = {
 	too_many: 'Too many tries. Wait a few minutes, then try again.',

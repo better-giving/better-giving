@@ -140,6 +140,7 @@ describe('the classes the supporter pages write', () => {
 		pageText,
 		readFileSync(require.resolve('@better-giving/form/styles/layout.css'), 'utf8'),
 		readFileSync(require.resolve('@better-giving/form/registry/styles/button-css.css'), 'utf8'),
+		readFileSync(require.resolve('@better-giving/operator/registry/styles/avatar-css.css'), 'utf8'),
 		readFileSync(require.resolve('@better-giving/operator/registry/styles/badge-css.css'), 'utf8'),
 		readFileSync(
 			require.resolve('@better-giving/operator/registry/styles/progress-css.css'),
