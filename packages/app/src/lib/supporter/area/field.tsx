@@ -1,5 +1,5 @@
-import { type InputHTMLAttributes, useState } from 'react';
-import { counted } from './copy';
+import { type InputHTMLAttributes, useEffect, useRef, useState } from 'react';
+import { charactersLeft, counted } from './copy';
 
 // one box of a supporter's form, in the registry's field classes (field-css): the label above,
 // "(optional)" in the label's own words, the hint, the box, then the refusal under it. it is the
@@ -34,7 +34,7 @@ export function TextField({
 	label,
 	hint,
 	prefix,
-	...input
+	...attributes
 }: Shared &
 	Pick<
 		InputHTMLAttributes<HTMLInputElement>,
@@ -44,15 +44,17 @@ export function TextField({
 		readonly prefix?: string | undefined;
 	}) {
 	const { id, name, defaultValue, error } = box;
+	const input = useRef<HTMLInputElement>(null);
 	const control = (
 		<input
 			id={id}
 			name={name}
 			defaultValue={defaultValue}
-			className={prefix === undefined ? 'ds-field-input' : 'sa-prefixed'}
+			ref={input}
+			className={prefix === undefined ? 'ds-field-input' : undefined}
 			aria-invalid={error ? 'true' : undefined}
 			aria-describedby={describedBy(hint && `${id}-hint`, error && `${id}-err`)}
-			{...input}
+			{...attributes}
 		/>
 	);
 	return (
@@ -68,9 +70,16 @@ export function TextField({
 			{prefix === undefined ? (
 				control
 			) : (
-				// registry gap: field-css has no prefix slot. the container is its own, holding a bare input.
 				<div className="ds-field-input-container">
-					<span className="sa-prefix" aria-hidden="true">
+					{/* a press on the sign focuses the box, as a press on the label does. */}
+					<span
+						className="ds-field-affix ds-field-prefix"
+						aria-hidden="true"
+						onMouseDown={(event) => {
+							event.preventDefault();
+							input.current?.focus();
+						}}
+					>
 						{prefix}
 					</span>
 					{control}
@@ -81,10 +90,26 @@ export function TextField({
 	);
 }
 
-/** the story's box: a textarea with the count of what is typed against its cap under it. */
+/** how long the typing has to stop before the count's crossing is said. */
+const SETTLED_MS = 1000;
+
+/** the share of the cap from which the counter takes the warning ink (field-css.usage.md). */
+const NEAR = 0.9;
+
+/**
+ * the story's box: a textarea with the count of what is typed against its cap under it, in
+ * field-css's counter. the count is drawn for the eye and describes the box; a crossing into the
+ * last tenth of the cap is said once the typing stops, in a status kept on the page.
+ */
 export function StoryField({ box, label, hint, max }: Shared & { readonly max: number }) {
 	const { id, name, defaultValue, error } = box;
 	const [used, setUsed] = useState(defaultValue?.length ?? 0);
+	const [said, setSaid] = useState('');
+	const settling = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	/** the length last typed, read when the typing stops. */
+	const latest = useRef(used);
+	useEffect(() => () => clearTimeout(settling.current), []);
+	const near = used >= max * NEAR;
 	return (
 		<div className="ds-field">
 			<label className="ds-label" htmlFor={id}>
@@ -104,32 +129,43 @@ export function StoryField({ box, label, hint, max }: Shared & { readonly max: n
 				maxLength={max}
 				aria-invalid={error ? 'true' : undefined}
 				aria-describedby={describedBy(hint && `${id}-hint`, error && `${id}-err`, `${id}-count`)}
-				onInput={(event) => setUsed(event.currentTarget.value.length)}
+				onInput={(event) => {
+					const typed = event.currentTarget.value.length;
+					const crossed = typed >= max * NEAR !== near;
+					latest.current = typed;
+					setUsed(typed);
+					// a crossing waits for the typing to stop, and every key until then puts it off.
+					if (!crossed && settling.current === undefined) return;
+					clearTimeout(settling.current);
+					settling.current = setTimeout(() => {
+						settling.current = undefined;
+						const now = latest.current;
+						setSaid(now >= max * NEAR ? charactersLeft(max - now) : '');
+					}, SETTLED_MS);
+				}}
 			/>
-			<Refusal id={id} error={error} />
-			{/* registry gap: field-css has no character counter. */}
-			<p className="sa-count" id={`${id}-count`}>
-				{counted(used, max)}
+			<div className="ds-field-meta">
+				<Refusal id={id} error={error} />
+				<span
+					className="ds-field-counter"
+					id={`${id}-count`}
+					data-state={near ? 'near' : undefined}
+					aria-hidden="true"
+				>
+					{counted(used, max)}
+				</span>
+			</div>
+			<p className="ds-sr-only" role="status">
+				{said}
 			</p>
 		</div>
 	);
 }
 
-/**
- * the sentence under a refused box. `live` where it arrives with focus already on the control it
- * describes — a photo turned down after the file chooser closed — so it is said as it lands.
- */
-export function Refusal({
-	id,
-	error,
-	live = false
-}: {
-	readonly id: string;
-	readonly error?: string | undefined;
-	readonly live?: boolean;
-}) {
+/** the sentence under a refused box. */
+function Refusal({ id, error }: { readonly id: string; readonly error?: string | undefined }) {
 	return error ? (
-		<p className="ds-field-err" id={`${id}-err`} role={live ? 'alert' : undefined}>
+		<p className="ds-field-err" id={`${id}-err`}>
 			{error}
 		</p>
 	) : null;

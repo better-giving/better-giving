@@ -30,9 +30,10 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  * @property {ReactNode} [children]
  * @property {boolean | undefined} [alert] a question that interrupts what the reader was doing and
  *   wants an answer before they go on — a confirm — exposed as `alertdialog` rather than `dialog`.
- * @property {boolean | undefined} [inPage] which of the two presentations
- *   packages/operator/src/styles/adm.css draws this in, defaulting to the one the server sends: an
- *   open, whole, non-modal card standing where the lifted one will, on the same ground.
+ * @property {boolean | undefined} [inPage] which of the two presentations this is drawn in,
+ *   defaulting to the one the server sends: an open, whole, non-modal card standing where the
+ *   lifted one will, on the ground `.adm-dialog--inline` in packages/operator/src/styles/adm.css
+ *   paints.
  *   ../../behaviour/Dialog.tsx is what turns it off, at the moment the same element is lifted into
  *   the top layer.
  * @property {ReactNode} [exit] the one way out of the "once" arrangement.
@@ -49,7 +50,9 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  * @property {ComponentProps<'dialog'>['onClick'] | undefined} [onClick]
  */
 
-/* the card, in the two presentations one element has.
+/* the card, in the two presentations one element has. the box is the registry's `ds-dialog` at its
+ * `ds-dialog-panel` size, the one for prompts and confirms, and the surface inside it is its
+ * `ds-dialog-surface` (packages/operator/src/registry/styles/dialog-css.css).
  *
  * **nothing here decides whether the dialog exists.** it is a `dialog` the server renders `open`,
  * so a screen puts one in its markup from an action result or from a parameter on the URL and
@@ -135,34 +138,38 @@ export function Dialog({
 			open
 			tabIndex={-1}
 			role={alert ? 'alertdialog' : undefined}
-			className={inPage ? 'adm-dialog adm-dialog--inline' : 'adm-dialog'}
+			className={
+				inPage ? 'ds-dialog ds-dialog-panel adm-dialog--inline' : 'ds-dialog ds-dialog-panel'
+			}
 			aria-labelledby={heading}
 			aria-describedby={hasBody ? body : undefined}
 			onCancel={onCancel}
 			onClick={onClick}
 		>
-			<h2 id={heading}>{title}</h2>
-			{hasBody ? (
-				<div className="adm-dialog__body" id={body}>
-					{children}
+			<div className="ds-dialog-surface adm-dialog__surface">
+				<h2 id={heading}>{title}</h2>
+				{hasBody ? (
+					<div className="adm-dialog__body" id={body}>
+						{children}
+					</div>
+				) : null}
+				<div className="adm-dialog__actions">
+					{danger ? (
+						<Control variant="danger" {...(dangerProps ?? {})}>
+							{danger}
+						</Control>
+					) : commit ? (
+						<Control variant="primary" {...(commitProps ?? {})}>
+							{commit}
+						</Control>
+					) : null}
+					{cancel ? <Control {...(cancelProps ?? {})}>{cancel}</Control> : null}
+					{!danger && !commit ? (
+						<Control variant="primary" {...(exitProps ?? {})}>
+							{exit}
+						</Control>
+					) : null}
 				</div>
-			) : null}
-			<div className="adm-dialog__actions">
-				{danger ? (
-					<Control variant="danger" {...(dangerProps ?? {})}>
-						{danger}
-					</Control>
-				) : commit ? (
-					<Control variant="primary" {...(commitProps ?? {})}>
-						{commit}
-					</Control>
-				) : null}
-				{cancel ? <Control {...(cancelProps ?? {})}>{cancel}</Control> : null}
-				{!danger && !commit ? (
-					<Control variant="primary" {...(exitProps ?? {})}>
-						{exit}
-					</Control>
-				) : null}
 			</div>
 		</dialog>
 	);

@@ -21,7 +21,7 @@
 /**
  * a state a pointer or the keyboard reaches, pinned on an element by class.
  *
- * each is drawn as the twin beside its own pseudo-class — `.adm-create:hover, .adm-create.is-hover` —
+ * each is drawn as the twin beside its own pseudo-class — `.adm-input:hover, .adm-input.is-hover` —
  * because a state a pointer reaches is a state no page can put on an element, and a specimen has
  * to be able to. so a screen writes none of these: the one place in this repository that writes
  * them is packages/gallery, whose previews pin every member of this set on every component that
@@ -38,8 +38,9 @@
 /**
  * the register an operator surface speaks in. `note` is the bare `.adm-banner` and the bare
  * `.adm-status` rather than a modifier of either: a note is a fact, and a fact is not coloured.
- * the status word is the one place it is a modifier (`.adm-state--note`), because that badge is
- * already neutral before any tone reaches it and what `note` adds there is the loss of its ground.
+ * the status word is the one place it is a variant (the registry's `ds-badge-outline`), because
+ * that badge is already neutral before any tone reaches it and what `note` adds there is the loss
+ * of its ground.
  *
  * @typedef {'blocker' | 'attention' | 'note' | 'done'} Tone
  */

@@ -18,8 +18,21 @@ describe('the dialog the server renders', () => {
 
 		expect(dialog).not.toBeNull();
 		expect(dialog?.hasAttribute('open')).toBe(true);
-		// the presentation the sheet draws for an element no script has lifted yet.
-		expect(dialog?.className).toBe('adm-dialog adm-dialog--inline');
+		// the registry's confirm-sized box, and the presentation ../../styles/adm.css draws for an
+		// element no script has lifted yet.
+		expect(dialog?.className).toBe('ds-dialog ds-dialog-panel adm-dialog--inline');
+	});
+
+	it("draws its heading, body and actions on the registry's surface inside the box", () => {
+		const root = render(Dialog, { title: 'Rotate the signing secret?', children: 'It stops.' });
+		const surface = root.querySelector('dialog > .ds-dialog-surface');
+
+		expect(surface).not.toBeNull();
+		expect(
+			[...(surface?.children ?? [])].map(
+				(child) => child.tagName.toLowerCase() + (child.className ? `.${child.className}` : '')
+			)
+		).toEqual(['h2', 'div.adm-dialog__body', 'div.adm-dialog__actions']);
 	});
 
 	it('is labelled by the heading a reader can see', () => {

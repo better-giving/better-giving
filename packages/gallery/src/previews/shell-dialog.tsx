@@ -21,7 +21,7 @@ import { useState } from 'react';
  * next press here reaches its button.
  *
  * **the control row is not independent slots.** `danger` and `commit` each suppress `exit`
- * (packages/operator/src/components/shell/Dialog.jsx:157), so a card that asks has its act first
+ * (packages/operator/src/components/shell/Dialog.jsx:167), so a card that asks has its act first
  * and `cancel` or nothing beside it. that rule is invisible in any single specimen and is the
  * reason the arrangements are walked in order: exit alone, exit and cancel, commit and cancel,
  * danger and cancel, danger alone, and none at all. the commit and the danger pair stand the act in

@@ -649,7 +649,7 @@ describe('the video play press', () => {
 		);
 		const glyph = declared(page, '.page-video-glyph');
 		const step = declared(button, '.ds-btn');
-		expect(substitute(step, glyph['inline-size'] ?? '')).toBe('calc(0.25rem * 6)');
+		expect(substitute(step, glyph['inline-size'] ?? '')).toBe('calc(calc(0.25 * 1rem) * 6)');
 		expect(declared(button, '.ds-btn-lg')['--ds-btn-size']).toBe('calc(var(--ds-spacing) * 13)');
 		expect(glyph['block-size']).toBe(glyph['inline-size']);
 	});
@@ -1266,11 +1266,17 @@ describe('the sections ./page.css draws', () => {
 		...globSync(join(here, 'sections/*.tsx')).filter((file) => !file.includes('.spec.'))
 	];
 	const FORM_LAYOUT = require.resolve('@better-giving/form/styles/layout.css');
-	// the registry's button, which the page links beside its own sheet (./plain-page.tsx).
+	// the registry's button, busy ring and eyebrow, which the page links beside its own sheet
+	// (./plain-page.tsx).
 	const FORM_BUTTON = require.resolve('@better-giving/form/registry/styles/button-css.css');
+	const SPINNER = require.resolve('@better-giving/operator/registry/styles/spinner-css.css');
+	const LEAD = require.resolve('@better-giving/operator/registry/styles/lead-css.css');
 	const drawn = new Set(
-		[pageText, readFileSync(FORM_LAYOUT, 'utf8'), readFileSync(FORM_BUTTON, 'utf8')].flatMap(
-			(css) => [...stripComments(css).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1] ?? '')
+		[
+			pageText,
+			...[FORM_LAYOUT, FORM_BUTTON, SPINNER, LEAD].map((file) => readFileSync(file, 'utf8'))
+		].flatMap((css) =>
+			[...stripComments(css).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1] ?? '')
 		)
 	);
 

@@ -334,12 +334,8 @@ body {
 	--page-profile-lh-xs: 1rem;
 	--page-messages-inset: 1rem 1.25rem;
 	--page-messages-foot-inset: 0.75rem 1.25rem;
-	/* the busy ring on a small press, 14px whatever the press's own type size. */
-	--page-spinner: 0.875rem;
 	/* the videos' grid: 20px between rows, 24px between the two columns. */
 	--page-videos-gap: 1.25rem 1.5rem;
-	/* the ring a pressed video's player loads under, 20px. */
-	--page-video-spinner: 1.25rem;
 	--page-video-caption-gap: 0.125rem;
 	--page-profile-measure: 62ch;
 	/* the entry card's widest, where it stands under a campaign or the Donation page's own layout. */
@@ -1579,20 +1575,6 @@ body {
 	}
 }
 
-/* the turning ring a busy press shows beside its label. the registry has no spinner yet
-   (a registry gap), so it is drawn here from the press's own ink and the
-   form's spin; reduced motion slows it rather than stopping it, as the form's does. */
-.page-spinner {
-	box-sizing: border-box;
-	inline-size: var(--page-spinner);
-	block-size: var(--page-spinner);
-	border: calc(var(--page-spinner) * 0.16) solid currentColor;
-	border-block-start-color: transparent;
-	border-inline-end-color: transparent;
-	border-radius: 50%;
-	animation: spin var(--_dur-spin) linear infinite;
-}
-
 /* Videos (./sections/videos.tsx): a heading over a grid of figures, each a 16:9 box holding the
    poster, then the player, under a caption. the 16:9 box is drawn here because the registry has no
    video frame yet (a registry gap). the play press is the registry's large button squared by its
@@ -1675,17 +1657,6 @@ body {
 	font-size: var(--_t-sm);
 	line-height: var(--page-profile-lh-small);
 	color: var(--_n12);
-}
-
-.page-video-status .page-spinner {
-	--page-spinner: var(--page-video-spinner);
-}
-
-/* the video's ring stops under reduced motion and stays shown. */
-@media (prefers-reduced-motion: reduce) {
-	.page-video-status .page-spinner {
-		animation: none;
-	}
 }
 
 .page-video-box[data-face='error'] {
@@ -1838,13 +1809,10 @@ body {
 	text-wrap: balance;
 }
 
+/* a band's small uppercase label, worn with the registry's `ds-eyebrow` (lead-css), which sets its
+   type; its place and its ink are the page's. */
 .page-label {
 	margin-block-end: var(--_sp2);
-	font-size: var(--_t-sm);
-	line-height: var(--_lh-tight);
-	font-weight: var(--_w-bold);
-	letter-spacing: var(--_tracking);
-	text-transform: uppercase;
 	color: var(--page-quiet);
 }
 

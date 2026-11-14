@@ -9,7 +9,7 @@
    here while `.adm-setting` itself is drawn above.
 
    the state ladder is written twice on every stateful rule: once as the pseudo and once as
-   the twin class beside it (`.adm-create:hover, .adm-create.is-hover`), because a state that can
+   the twin class beside it (`.adm-input:hover, .adm-input.is-hover`), because a state that can
    only be reached with a pointer is a state nobody can put on a page and look at. `disabled`
    takes no twin and needs none — it is a real attribute, so a screen sets the attribute and
    gets the product's own rendering.
@@ -44,18 +44,14 @@
 	   a button's look is the registry's, every rank and size of it: `ds-btn` and its variants in
 	   ../registry/styles/button-css.css, read in the `registry` layer under this one
 	   (packages/app/src/app.css). ../components/controls/Button.jsx writes `.adm-btn` beside them,
-	   and what this sheet draws on it is what the registry has no rule for, and nothing it does:
-	   the space between a mark and its words, the holder a target past the drawn edge is placed
-	   against, a press closed by `aria-disabled` on a `<button>`, and a quiet press holding open
-	   what it opened. a rule here restating a rank's ground, ink, edge, size or corner would outrank
-	   the registry's and is the one thing this block does not hold. */
-
-	/* the gap is the mark's and the words', which the registry's flex row draws touching. the
-	   position is the containing block of the target past the drawn edge below. */
-	.adm-btn {
-		gap: var(--admin-space-3);
-		position: relative;
-	}
+	   and what this sheet draws on it is what the registry has no rule for, and nothing it does: a
+	   focus ring that is not a second one, a press whose face is its own outcome, and a press held
+	   open by a machine that says so with `data-state`. the space between a mark and its words, the
+	   holder a target past the drawn edge is placed against (`position: relative` on every
+	   `ds-btn`), a press closed by `aria-disabled` on a `<button>`, a press in flight and a press
+	   held open by `aria-expanded` are all the registry's. a rule here restating a rank's ground,
+	   ink, edge, size or corner would outrank the registry's and is the one thing this block does
+	   not hold. */
 
 	/* one ring. the registry draws a button's focus as an outline (`.ds-btn:focus-visible`), and
 	   ./base.css rings every focused surface with a shadow, and a focused link with a tint bled past
@@ -63,27 +59,6 @@
 	.adm-btn:focus-visible,
 	.adm-btn.is-focus {
 		box-shadow: none;
-	}
-
-	/* closed by `aria-disabled`, the press turned away in its own handler so the reader standing on
-	   it keeps the focus (../components/controls/SaveButton.jsx argues it). the registry draws the
-	   closed fill for `:disabled` on a button and for `aria-disabled` on an anchor alone, so a
-	   `<button>` closed this way would otherwise draw at rest beside a natively closed one. the
-	   registry's hover rules already pass over it; this is its ground and ink, every rank alike, and
-	   the pair is the registry's own closed pair, which its `:disabled` and `aria-busy` rules draw
-	   too (./tokens.css, `--admin-button-*-disabled`). a press in flight is closed the same way. */
-	.adm-btn[aria-disabled='true'] {
-		background-color: var(--admin-button-bg-disabled);
-		color: var(--admin-button-ink-disabled);
-		cursor: not-allowed;
-	}
-
-	/* the registry's primary and destructive press rules move the press down a pixel and do not
-	   pass over `aria-disabled`, so a closed press of either rank would still nudge under a
-	   pointer. */
-	.adm-btn[aria-disabled='true']:active,
-	.adm-btn[aria-disabled='true'].is-active {
-		transform: none;
 	}
 
 	/* a press whose face is, for a moment, the momentary words of what it just did
@@ -99,15 +74,13 @@
 	/* a quiet press that opened something is held at the pointed-at fill for as long as what it
 	   opened stands open: the two say the same thing — this is the control being acted through —
 	   and a press with no open state reads exactly as it did at rest while its panel is on the
-	   screen. both spellings, because a trigger states it in whichever its machine writes:
-	   `aria-expanded` on a control that says what it opened, `data-state` on one whose machine
-	   drives the pair.
+	   screen. the registry holds a press that states `aria-expanded`; this is the other spelling,
+	   `data-state`, on a trigger whose machine drives the pair.
 
 	   the one press of another rank held this way is a placed image's own, while the file chooser
 	   it opened stands open (packages/app/src/lib/admin/page-edit/replace-photo.tsx states it): a
 	   dialog's trigger of any rank writes `data-state` too, and is under the dialog it opened.
 	   the fill is the registry's hover step for the quiet and the secondary rank alike. */
-	.adm-btn--quiet[aria-expanded='true'],
 	.adm-btn--quiet[data-state='open'],
 	.adm-placed .adm-btn[data-state='open'] {
 		background-color: var(--admin-control-quiet-bg-active);
@@ -119,7 +92,8 @@
 	   aimed at at that floor: a transparent `::before`, at least `--admin-touch-min` square and
 	   centred on the control, out of flow, so the drawn size and the row it stands in stay what
 	   they were. a control joins this list rather than growing a target of its own. the holder is
-	   `position: relative`, as `.adm-btn` and `.adm-wellwrap` are.
+	   `position: relative`, as every `.ds-btn` is (`:where(.ds-btn)` in
+	   ../registry/styles/button-css.css) and `.adm-wellwrap` is.
 
 	   the box is sized outright and centred off `100%`: an absolute box is placed against the
 	   holder's padding box, which a bordered control draws inside its border, so a size stated
@@ -1258,17 +1232,6 @@
 		padding: var(--admin-space-6);
 	}
 
-	/* an ended record's status word: the registry's neutral badge with its ground taken away
-	   (packages/operator/src/components/status/StatusWord.jsx). a record at rest keeps the badge's
-	   ground, and the ground is what tells the two apart — one ink step between them is not a
-	   difference a list of a hundred rows shows. the registry has no groundless chip, so this is the
-	   one rule here drawn over a `ds-badge`, and it goes when the registry draws one.
-	   ./state-in-a-cell.spec.ts holds it. */
-	.adm-state--note {
-		color: var(--admin-tone-note-ink);
-		background: none;
-	}
-
 	/* the momentary register: this just happened, on this control. it reports beside the
 	   control that caused it and is never a toast and never a banner at the head of the page.
 	   three tones: the accent for done, attention for blocked, and ink for a press that changed
@@ -1550,15 +1513,12 @@
 		color: var(--admin-ink-muted);
 	}
 
-	/* the boxes this sheet still draws: the select, which is
-	   packages/operator/src/components/forms/SelectWithNote.jsx's machine trigger and put on it by
-	   that file's derived class list (carried-ok: .adm-select), and `.adm-input`, a text box a
-	   control draws by hand beside a run of choices. every box
-	   packages/operator/src/components/forms/Field.jsx draws is the registry's `ds-field-input`
-	   and is placed and finished by `.adm-field__box` below. the
-	   height is `--admin-field-height`, which ./tokens.css holds at the registry box's own. */
-	.adm-input,
-	.adm-select {
+	/* the box this sheet still draws: `.adm-input`, a text box a control draws by hand beside a run
+	   of choices. every box packages/operator/src/components/forms/Field.jsx draws is the
+	   registry's `ds-field-input` and is placed and finished by `.adm-field__box` below, and the
+	   select's box is the registry's `ds-select-trigger` (`.adm-selectwrap` below). the height is
+	   `--admin-field-height`, which ./tokens.css holds at the registry box's own. */
+	.adm-input {
 		inline-size: 100%;
 		min-block-size: var(--admin-field-height);
 		padding: var(--admin-space-3) var(--admin-space-4);
@@ -1570,19 +1530,27 @@
 		transition: var(--admin-transition-state);
 	}
 
+	/* carried-ok: .adm-select — put on the select's box by the derived class list in
+	   packages/operator/src/components/forms/SelectWithNote.jsx. its `:hover` is the registry's
+	   `ds-field-input`; the twin is what a specimen pins, on the same step. */
 	.adm-input:hover,
 	.adm-input.is-hover,
-	.adm-select:hover,
 	.adm-select.is-hover {
 		border-color: var(--admin-field-border-hover);
 	}
 
+	/* the select's box is ringed by the registry's outline (`.ds-field-input:focus-visible`,
+	   ../registry/styles/field-css.css), so ./base.css's shadow ring comes off it, as it does off
+	   `.adm-field__box` below. the outline keys on `:focus-visible` alone, so the twin draws no ring. */
+	.adm-select:focus-visible,
+	.adm-select.is-focus {
+		box-shadow: none;
+	}
+
 	/* the ground, the ink and the border are the whole of unavailable, and `opacity` is reset
 	   rather than left alone: a user agent lightens a disabled control and one arriving by
-	   inheritance is still an opacity used as a lightener, which ./tokens.css bans. the select is
-	   read off the machine's own `data-disabled`, which it writes on its trigger. */
+	   inheritance is still an opacity used as a lightener, which ./tokens.css bans. */
 	.adm-input:disabled,
-	.adm-select[data-disabled],
 	.adm-affixed:has(> input:disabled) {
 		background: var(--admin-field-bg-disabled);
 		border-color: var(--admin-control-border-disabled);
@@ -1593,26 +1561,6 @@
 
 	.adm-input::placeholder {
 		color: var(--admin-field-placeholder);
-	}
-
-	/* refused. a save that would not take what is in a box says so on the box. the hover twins are
-	   named with it so the refusal outranks the hover rung, which on touch stays on a box after a
-	   tap. the second pixel of border is taken back out of the padding on the same rung, so the
-	   words in a refused box stand where they stood before it was refused. the select is marked by
-	   the machine's own `data-invalid`, off the message
-	   packages/operator/src/components/forms/SelectWithNote.jsx holds or an `aria-invalid` something
-	   larger than the one box marked it with. */
-	.adm-select[data-invalid],
-	.adm-select[data-invalid]:hover,
-	.adm-select[data-invalid].is-hover {
-		border-color: var(--admin-field-border-invalid);
-		border-width: var(--admin-border-width-strong);
-		padding: calc(
-				var(--admin-space-3) -
-				var(--admin-border-width-strong) +
-				var(--admin-border-width)
-			)
-			calc(var(--admin-space-4) - var(--admin-border-width-strong) + var(--admin-border-width));
 	}
 
 	/* carried-ok: .adm-field__box — put on the box by the derived class list in
@@ -1628,8 +1576,8 @@
 	}
 
 	/* a multi-line box: the registry's floor is a single line's. */
-	/* carried-ok: .adm-field__box--multiline .adm-field__box--needed .adm-field__box--code — each is
-	   put on the box by the derived class list in packages/operator/src/components/forms/Field.jsx. */
+	/* carried-ok: .adm-field__box--multiline — put on the box by the derived class list in
+	   packages/operator/src/components/forms/Field.jsx. */
 	.adm-field__box--multiline {
 		/* raw-length-ok: a textarea's floor is a shape — how much of what is typed into it is
 		   visible at once — rather than a measure anything else is read at. */
@@ -1638,23 +1586,12 @@
 		resize: vertical;
 	}
 
-	/* needed but not invalid: something elsewhere on the page requires this box to be filled
-	   for the deployment to work, and the operator has not done anything wrong. the registry draws
-	   a refused box and no needed one. */
-	.adm-field__box--needed {
-		border-color: var(--admin-field-border-needed);
-		border-width: var(--admin-border-width-strong);
-	}
-
-	/* the mono face, for a box holding a literal (Field's `code`). the registry's box takes the
-	   page's face. */
-	.adm-field__box--code {
-		font-family: var(--admin-font-mono);
-		font-size: var(--admin-code-size);
-	}
-
 	/* the select: ark's select machine (packages/operator/src/components/forms/SelectWithNote.jsx),
-	   read off the `data-*` attributes it writes on its own parts.
+	   read off the `data-*` attributes it writes on its own parts. its box is the machine's trigger
+	   drawn as the registry's listbox trigger, `ds-field-input ds-select-trigger` with its
+	   `ds-select-chevron` (../registry/styles/select-css.css): the field height, the value cut at its
+	   end, the chevron turning while open, and the refused edge off the `aria-invalid` the machine
+	   writes.
 
 	   the wrapper is the machine's root. it is what stands in the field's row, and it is positioned
 	   so the list's positioner has something to place against. */
@@ -1662,25 +1599,6 @@
 		position: relative;
 		display: block;
 		inline-size: 100%;
-	}
-
-	/* the box is the machine's trigger, a button: the chosen line at its start and the caret at its
-	   end. a button centres its words by default, and a box holding a value reads from its start. */
-	.adm-select {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		align-items: center;
-		gap: var(--admin-space-3);
-		text-align: start;
-		cursor: pointer;
-	}
-
-	/* the chosen line, on one line. a name longer than the box is cut at its end. */
-	.adm-select__value {
-		min-inline-size: 0;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
 	}
 
 	/* ---------- the range slider -------------------------------------------------------
@@ -1775,21 +1693,6 @@
 		line-height: var(--admin-caption-lh);
 		font-feature-settings: var(--admin-figures-tabular);
 		color: var(--admin-ink-muted);
-	}
-
-	/* the select's caret: the machine's indicator, inside the box that is its trigger. */
-	.adm-select__caret {
-		display: grid;
-		place-items: center;
-		padding: 0;
-		background: none;
-		border: 0;
-		color: var(--admin-ink-2);
-		cursor: pointer;
-	}
-
-	.adm-select__caret[data-disabled] {
-		color: var(--admin-ink-disabled);
 	}
 
 	/* the list, over whatever follows the box. a field's own box is positioned — the select's
@@ -2649,19 +2552,6 @@
 		padding-inline-start: calc(var(--admin-space-4) + var(--admin-space-9) + var(--admin-space-3));
 	}
 
-	.adm-field__needed {
-		display: flex;
-		align-items: flex-start;
-		gap: var(--admin-space-3);
-		font-size: var(--admin-hint-size);
-		line-height: var(--admin-hint-lh);
-		color: var(--admin-tone-attention-ink);
-	}
-
-	.adm-field__needed .adm-mark {
-		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
-	}
-
 	/* the steps inside a group, and they are margins rather than a `gap` for a reason that shows on
 	   the first of them only: a fieldset's rendered legend sits outside the box the fieldset's other
 	   children form, so it is not a grid item and no gap is ever drawn under it. stated as a gap,
@@ -3197,7 +3087,8 @@
 	   and a word read as one thing rather than a pair spread over a track apiece — a word placed in
 	   a track of its own lands past the width of the presses beside it, which is a word a hand's
 	   breadth from the mark it belongs to. so the step between the status's mark and its word is
-	   the button's own step between a mark and its words (`.adm-btn` above). the item is set at the start of its
+	   the small button's own step between a mark and its words (`.ds-btn-sm`'s gap in
+	   ../registry/styles/button-css.css). the item is set at the start of its
 	   track, because the
 	   control's rank centres it and a control centred in a track sized by a longer one beside it is
 	   off its column by half the difference. and what stands there starts one line-width in whether
@@ -3796,15 +3687,15 @@
 	/* ---------- the create card ---------------------------------------------------------
 
 	   the press that leads a list of records, drawn as a card of its own so a list opens with the
-	   way to add to it. dashed, and the dashes are the whole of what says it holds nothing: a solid
-	   edge here is another record.
+	   way to add to it. the press is the registry's `ds-card-create` (../registry/styles/card-css.css):
+	   the dashed edge that says it holds nothing, the plus, the word, and every state it has.
 
-	   its height is a record's, and a ghost is how. every child stands in the one grid area and the
-	   first of them is a whole record's markup at `visibility: hidden`, so the card measures what a
-	   card beside it measures — and it goes on measuring it with no record on the page at all,
-	   which is what an empty list needs and why the ghost is inside this card rather than a sibling
-	   of it. `visibility` and not `display: none`: a hidden box is still laid out, and laying it out
-	   is the entire job.
+	   its height is a record's, and a ghost is how. the press and a whole record's markup at
+	   `visibility: hidden` stand in the one grid area of this holder, so the press stretches to what
+	   a card beside it measures — and it goes on measuring it with no record on the page at all,
+	   which is what an empty list needs, where the registry's own floor is shorter than a record.
+	   `visibility` and not `display: none`: a hidden box is still laid out, and laying it out is the
+	   entire job.
 
 	   the ghost is a sample and never a copy of a real record, and that is what an empty list turns
 	   on: a screen reaching into its own list for the shape has nothing to reach for on the one page
@@ -3812,72 +3703,25 @@
 	   `aria-hidden` on it — a reader has no use for a record that is not there. */
 	.adm-create {
 		display: grid;
-		border: var(--admin-border-width) dashed var(--admin-border);
-		border-radius: var(--admin-radius);
-		color: var(--admin-ink-muted);
-		text-decoration-line: none;
 	}
 
-	/* one area, and every child stacked in it. the ghost gives the area its size and the body is
-	   centred over it. */
 	.adm-create > * {
 		grid-area: 1 / 1;
+	}
+
+	/* the press is a link, and ./base.css bleeds a focused link's tint past its box: around a
+	   record-sized card that is a halo beside the registry's own outline
+	   (`.ds-card-create:focus-visible`, ../registry/styles/card-css.css), which is the one ring.
+	   the press is the box's one focusable child: the ghost beside it holds nothing focusable. */
+	.adm-create > :focus-visible,
+	.adm-create > .is-focus {
+		box-shadow: none;
 	}
 
 	.adm-create__ghost {
 		visibility: hidden;
 		display: grid;
 		gap: var(--admin-space-4);
-	}
-
-	.adm-create__body {
-		place-self: center;
-		display: grid;
-		justify-items: center;
-		gap: var(--admin-space-3);
-	}
-
-	/* the plus in a ring, and the ring is dashed for the card's own reason rather than filled: a
-	   solid circle is a button, and here the card is the press. raw-length-ok: 50% — a circle,
-	   which is a shape and not a step on the size scale. */
-	.adm-create__plus {
-		display: grid;
-		place-items: center;
-		inline-size: var(--admin-space-9);
-		block-size: var(--admin-space-9);
-		border: var(--admin-border-width) dashed var(--admin-border);
-		border-radius: 50%;
-		background: var(--admin-surface-sunken);
-	}
-
-	.adm-create__word {
-		font-size: var(--admin-caption-size);
-		line-height: var(--admin-caption-lh);
-	}
-
-	/* carried-ok: .is-hover .is-focus — the twin beside each state pseudo, here and below. */
-	.adm-create:hover,
-	.adm-create.is-hover {
-		color: var(--admin-ink-2);
-		border-color: var(--admin-ink-muted);
-	}
-
-	/* the circle's edge steps with the card's, so the two dashed edges move together. */
-	.adm-create:hover .adm-create__plus,
-	.adm-create.is-hover .adm-create__plus {
-		border-color: var(--admin-ink-muted);
-	}
-
-	/* the ring is stated here for `.adm-dest`'s reason below: this card is an anchor, and the
-	   focused-link treatment in ./base.css spends its emphasis on a bleed of tint past the box —
-	   around a card the size of a record that is a halo with no edge in it, and the dashed edge
-	   that is the whole of what says "create" is what a reader loses track of. the tint fill from
-	   that rule stands: this card sets no ground of its own, so the fill is the one it takes when
-	   the keyboard reaches it. the corner is the card's and is not restated, and neither is the
-	   transparent outline that sheet's general focus rule draws. */
-	.adm-create:focus-visible,
-	.adm-create.is-focus {
-		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
 	}
 
 	/* ---------- setting row -------------------------------------------------------------
@@ -4507,45 +4351,16 @@
 	   heading and the consequence is the body, and neither is drawn in a coloured band — a dialog
 	   interrupts by being one, and a band inside it would be the card raising its voice at a
 	   reader who cannot press anything else anyway. a refusal a press came back with is the one
-	   thing in here that does take a band: it reports rather than asks. */
-	.adm-dialog {
+	   thing in here that does take a band: it reports rather than asks.
+
+	   the box, its scrim and its surface are the registry's `ds-dialog`, `ds-dialog-panel` and
+	   `ds-dialog-surface` (../registry/styles/dialog-css.css). what is here is the rows inside the
+	   surface, and the ground a floated date label knocks out in, which is the surface's fill:
+	   `--popover` is step 1, as `--admin-surface` is. */
+	.adm-dialog__surface {
 		display: grid;
 		gap: var(--admin-space-5);
-		inline-size: min(var(--admin-measure-dialog), calc(100% - var(--admin-space-9)));
-		max-inline-size: none;
-		max-block-size: calc(100% - var(--admin-space-9));
-		overflow: auto;
-		padding: var(--admin-space-8);
 		--_ground: var(--admin-surface);
-		background: var(--admin-surface);
-		border: var(--admin-border-width) solid var(--admin-divider);
-		border-radius: var(--admin-radius-plane);
-	}
-
-	/* the card stands in one box whichever presentation it is in, and that box is stated here and
-	   in the rule above rather than left to the browser: its own sheet caps a shown modal's width
-	   and height by amounts of its own and gives the open, never-lifted element neither. so the
-	   caps above are this sheet's — the inline cap is the width itself, and the block cap leaves the
-	   same margin the width does, scrolling inside the card past it.
-
-	   the margin is put back too: ./base.css zeroes `margin` and `padding` over `*`, which is
-	   written for the elements /admin draws as boxes and reaches `dialog` as well, and what it
-	   removes there is what centres the element. a shown modal is `position: fixed` against all four
-	   insets, so `margin: auto` is the whole of what centres it; the in-page presentation below is
-	   given the same position and insets, so the one margin centres both. */
-	.adm-dialog:modal,
-	.adm-dialog--inline {
-		margin: auto;
-	}
-
-	/* the ground a shown modal is read against, and one of the two places the system's single alpha
-	   is painted as a ground — `.adm-sheetscrim` is the other, under the phone bar's More sheet. it
-	   is the element's own `::backdrop`, which the browser draws with no box in the markup to carry
-	   a class at all — so a screen showing a modal draws no ground of its own.
-	   the pseudo-element exists only for an element in the top layer, which is why this states no
-	   `:modal`, and why the in-page presentation below paints the same ground by another means. */
-	.adm-dialog::backdrop {
-		background: var(--admin-scrim);
 	}
 
 	/* the presentation of a dialog the server rendered open, held until the attachment lifts the
@@ -4556,15 +4371,18 @@
 	   the server's markup and pressable before the script arrives, and a press that goes down on
 	   "Yes, delete" and comes up after `showModal()` has to come up on the same control — a card
 	   that stood anywhere else before the lift ends that press on the ground instead, and the answer
-	   is lost. so this states the modal's own position and insets, and the box above is the one both
-	   are drawn in.
+	   is lost. `.ds-dialog` places the box fixed against all four insets and centres it by its
+	   margins whether or not it is a shown modal, so the open element and the lifted one are the
+	   one box, and nothing here places it.
 
 	   the ground is the card's own shadow spread past every edge of the window, because an open
 	   `dialog` that was never shown modally has no `::backdrop` and a pseudo-element of the card's
-	   would paint over the card's own surface. a shadow takes no press: before the script, a press
-	   on the ground reaches the page under it, which is the one way out a question with no script
-	   over it has besides its own controls. it stands at step 3 of the ladder stated at `.adm-rail`,
-	   over the phone's bar and the top bar as the top layer is.
+	   would paint over the card's own surface. it stands in for the registry's elevation until the
+	   lift, and not an outline: forced colours paint an outline solid and drop a shadow. a shadow
+	   takes no press: before the script, a press on the ground reaches the page under it, which is
+	   the one way out a question with no script over it has besides its own controls. it stands at
+	   step 3 of the ladder stated at `.adm-rail`, over the phone's bar and the top bar as the top
+	   layer is.
 
 	   `:not(:modal)` because the lift and the modifier coming off are two moments — the element is in
 	   the top layer a frame before ../behaviour/Dialog.tsx's render takes the class away, and a
@@ -4575,8 +4393,6 @@
 	   open in the server's markup and packages/operator/src/behaviour/Dialog.tsx is what takes the
 	   modifier off, at the moment the same element is lifted. */
 	.adm-dialog--inline:not(:modal) {
-		position: fixed;
-		inset: 0;
 		z-index: 3;
 		/* raw-length-ok: the spread is past the longest side of any window, which no step is. */
 		box-shadow: 0 0 0 100vmax var(--admin-scrim);
@@ -5238,13 +5054,6 @@
 		gap: var(--admin-space-1);
 		padding: var(--admin-space-2);
 		border-block-end: var(--admin-rule);
-	}
-
-	/* a mark or a list the words at the caret carry. the fill is the soft rank's pressed one, so a
-	   press standing on is read as held down. */
-	.adm-rte__bar > .adm-btn[aria-pressed='true'] {
-		background: var(--admin-control-soft-bg-active);
-		color: var(--admin-ink);
 	}
 
 	/* a rule between groups of presses, as tall as the line it stands in. */
@@ -6025,7 +5834,8 @@
 	.adm-grouped
 		> .adm-actions:not(:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh)))
 		> .adm-btn--quiet.adm-btn--sm {
-		/* `.adm-btn` is `position: relative`, so this moves the drawn press and not the line. */
+		/* a `.ds-btn` is `position: relative` (`:where(.ds-btn)` in ../registry/styles/button-css.css),
+		   so this moves the drawn press and not the line. */
 		inset-inline-start: calc(-1 * var(--ds-btn-edge));
 	}
 

@@ -35,12 +35,12 @@
    reader looking for the token that does a job has to rule it out first. what is exempt is
    a member of a scale — a rung of a ramp, a spacing step, a type step, a weight — because a
    scale is read by counting along it and one with holes in it is no longer one anybody can
-   count along. twenty-two of the forty-eight steps are unread today and stay for
+   count along. twenty-three of the forty-eight steps are unread today and stay for
    that reason: `--admin-neutral-9` and `-10`; `--admin-accent-1`, `-4`, `-6` and `-10`;
    `--admin-blocker-1`, `-2`, `-4`, `-5`, `-6`, `-7`, `-9` and `-10`; `--admin-attention-1`, `-2`,
-   `-4`, `-5`, `-6`, `-7`, `-9` and `-10`. two more are unread outside colour: `--admin-text-xl` and
-   `--admin-weight-bold`. the exemption is membership of a scale and never a token that has merely
-   not been reached for yet. those twenty-four are named again in
+   `-4`, `-5`, `-6`, `-7`, `-8`, `-9` and `-10`. two more are unread outside colour: `--admin-text-xl`
+   and `--admin-weight-bold`. the exemption is membership of a scale and never a token that has
+   merely not been reached for yet. those twenty-five are named again in
    packages/app/src/lib/admin/styles/conformance.spec.ts, which is what fails when the two
    lists stop agreeing — in both directions, so a step this paragraph calls unread that something
    has since reached for fails it as well.
@@ -92,9 +92,11 @@
    the screen is opaque at every point and the `transparent` stops are how a tint ends rather than
    a shade of their own.
 
-   flat. no surface casts a shadow: a plane, a menu, a list, the calendar, a sheet, the phone's
-   bar and the dialog are each told from what they stand on by a step-6 edge and nothing else. a
-   `box-shadow` in /admin is a focus ring, a link's bleed or the scrim's spread, and never depth.
+   flat. no surface /admin draws casts a shadow: a plane, a menu, a list, the calendar, a sheet and
+   the phone's bar are each told from what they stand on by a step-6 edge and nothing else. a
+   `box-shadow` in ./adm.css is a focus ring, a link's bleed or the scrim's spread, and never
+   depth. the dialog is the registry's (`ds-dialog`, ../registry/styles/dialog-css.css), and it
+   keeps the registry's floating shadow over its step-6 edge.
 
    light and dark are the registry's, and this file authors neither. the ladders are aliases onto
    the registry's scales, which carry both modes, so the `dark` class on `<html>` re-points every
@@ -331,7 +333,7 @@
 		--admin-surface-fill: var(--admin-neutral-3);
 		/* step 6, the subtle border: every rule, inside a plane or on the page, and the edge of
 		   every surface that is not a control — a plane, the top bar, a rail tile, a menu, a list,
-		   the calendar, a sheet, the phone's bar and the dialog. */
+		   the calendar, a sheet and the phone's bar. */
 		--admin-divider: var(--hairline);
 		--admin-border: var(--admin-neutral-7);
 		--admin-ink: var(--admin-neutral-12);
@@ -368,7 +370,7 @@
 		   once: `ink` is the word at step 11, `mark` is the glyph beside it at step 11 as well,
 		   `tint` is a band drawn in that tone at step 3, `deep` is the word on the band at step 12.
 		   a band draws no edge: the tint carries the tone. a status word is the registry's badge,
-		   and an ended one (`note`) is its 11 with no ground (./adm.css `.adm-state--note`). */
+		   and an ended one (`note`) is its outline chip, step 11 with no ground. */
 		--admin-tone-blocker-ink: var(--admin-blocker-11);
 		--admin-tone-blocker-mark: var(--admin-blocker-11);
 		--admin-tone-blocker-tint: var(--admin-blocker-3);
@@ -413,19 +415,12 @@
 		--admin-control-border-hover: var(--admin-neutral-8);
 		--admin-control-border-active: var(--admin-neutral-8);
 		--admin-control-border-disabled: var(--admin-neutral-6);
-		/* a closed button, which is not drawn from the ladder above: the registry button's own
-		   closed pair (`:disabled` and `aria-busy` in ../registry/styles/button-css.css), step 3
-		   under step 11, so a press closed by `aria-disabled` in ./adm.css draws what a natively
-		   closed one does. */
-		--admin-button-bg-disabled: var(--admin-neutral-3);
-		--admin-button-ink-disabled: var(--admin-neutral-11);
 		/* the ground of a control whose whole boundary is that ground: a press standing on a band
-		   it shares with the value it acts on. it takes the neutral button's three steps, so the two
-		   ranks answer a pointer alike and differ by the edge alone, and it names its own so either
-		   rank may be re-pointed without the other. */
+		   it shares with the value it acts on. it takes the neutral button's rest and hover steps, so
+		   the two ranks answer a pointer alike and differ by the edge alone, and it names its own so
+		   either rank may be re-pointed without the other. */
 		--admin-control-soft-bg: var(--admin-neutral-3);
 		--admin-control-soft-bg-hover: var(--admin-neutral-4);
-		--admin-control-soft-bg-active: var(--admin-neutral-5);
 		--admin-control-quiet-bg-hover: var(--admin-neutral-3);
 		--admin-control-quiet-bg-active: var(--admin-neutral-4);
 		--admin-primary-bg: var(--admin-accent-9);
@@ -443,12 +438,9 @@
 		--admin-field-bg-disabled: var(--admin-neutral-3);
 		--admin-field-border: var(--admin-neutral-7);
 		--admin-field-border-hover: var(--admin-neutral-8);
-		/* the hovered border step in the tone, so a refused box and a needed one are bounded at the
-		   weight a box under a pointer is. */
+		/* the hovered border step in the tone, so a refused box is bounded at the weight a box under
+		   a pointer is. */
 		--admin-field-border-invalid: var(--admin-blocker-8);
-		/* needed but not invalid: something elsewhere on the page requires this box to be filled for
-		   the deployment to work, and the operator has not done anything wrong. */
-		--admin-field-border-needed: var(--admin-attention-8);
 		/* placeholder text is read rather than decorative — it is the example of the value a box is
 		   waiting for — so it is the secondary text step. */
 		--admin-field-placeholder: var(--admin-neutral-11);
@@ -501,12 +493,10 @@
 		   (../registry/styles/variables.css), which ./fonts.css re-points at plain red hat: Red Hat
 		   Text, Red Hat Display and Red Hat Mono, self-hosted and declared beside them. the
 		   registry's own faces are red hat round, the face of Better Giving's hosted platform, and a
-		   self-hosted deployment is set in plain red hat, which the registry does not carry yet: that
-		   is the gap its `fonts-red-hat` item closes in 2.2.0, which replaces ./fonts.css. the
+		   self-hosted deployment is set in plain red hat, which ./fonts.css declares. the
 		   re-point is there rather than here because that sheet is the one the donor pages link too,
 		   and its header carries why each is `!important`. this file only aliases the three roles.
-		   nothing reads the registry's round faces, so packages/app/vite.config.ts and
-		   packages/gallery/vite.config.ts resolve its `@import "./fonts.css"` to an empty sheet.
+		   nothing reads the registry's round faces: its variables.css imports no face sheet.
 
 		   a size and a line height are separate tokens here rather than one `font` shorthand,
 		   because the shorthand resets `font-variant-numeric` and a money column silently stops
@@ -699,9 +689,9 @@
 		/* a listed video's poster, 16:9: 96px wide from the middle breakpoint and 72px under it. */
 		--admin-measure-poster: 6rem;
 		--admin-measure-poster-narrow: 4.5rem;
-		/* the column a dialog is read in. it is authored apart from the panel above rather
-		   than pointed at it: a route drawn outside the shell and a question asked over one
-		   are different objects, and neither may drag the other. */
+		/* the column a wide sheet is read in (`.adm-sheet--wide` in ./adm.css), and a mail's
+		   (`MEASURE` in packages/emails/src/tokens.ts). it is authored apart from the panel above
+		   rather than pointed at it, so neither may drag the other. */
 		--admin-measure-dialog: 34rem;
 
 		/* ---- spacing -------------------------------------------------------------------
@@ -741,7 +731,7 @@
 		   rounded control reads as a tag and a control is not a tag. `--admin-radius` is a
 		   control's and a field's corner, and a destination's and its mark tile's in the rail.
 		   `--admin-radius-plane` is the corner of a plane on the page — a card, a panel, a record, a
-		   table's plane, a group, a status panel — and of the dialog and a choice drawn as a card,
+		   table's plane, a group, a status panel — and of a choice drawn as a card,
 		   twice the control's because a plane is the larger object and a corner keeps its proportion
 		   to what it rounds. `--admin-radius-0` is the word for
 		   square, so a rule that means square says it rather than leaving the corner unstated.
@@ -793,11 +783,11 @@
 
 		/* ---- edges ----------------------------------------------------------------------
 
-		   an operator screen casts no shadow. what floats over the flow — a menu, a select's list, a
-		   finder's list, the calendar, the two sheets and the phone's bar of destinations — is told
-		   from what it covers by this step-6 edge, the same subtle border a plane wears on the page,
-		   and the dialog by that edge over the scrim. depth is a change of surface or a rule and
-		   nothing else. */
+		   what ./adm.css draws casts no shadow. what floats over the flow — a menu, a select's list,
+		   a finder's list, the calendar, the two sheets and the phone's bar of destinations — is told
+		   from what it covers by this step-6 edge, the same subtle border a plane wears on the page.
+		   depth is a change of surface or a rule and nothing else. the dialog is the registry's, and
+		   its elevation is the registry's too (the head of this file). */
 		--admin-overlay-border: var(--admin-neutral-6);
 
 		/* ---- control metrics -------------------------------------------------------------
@@ -819,12 +809,11 @@
 		   against this paragraph. */
 		--admin-control-height: 2.25rem;
 		--admin-control-height-sm: 1.75rem;
-		/* the height of every box ./adm.css draws itself — select, date box, affixed box, a
-		   hand-drawn text box — and of what stands square beside one, so it is one height with the
-		   registry's `ds-field-input`. it is that box's `--ds-field-size`, 12.5 steps of 0.25rem in
-		   ../registry/styles/field-css.css, which the registry declares on its own class and not
-		   on `:root`, so no box outside it can read it. the registry's `select` item, arriving in
-		   registry 2.2.0, replaces the select's local rule. */
+		/* the height of every box ./adm.css draws itself — date box, affixed box, a hand-drawn text
+		   box — and of what stands square beside one, so it is one height with the registry's
+		   `ds-field-input` and its `ds-select-trigger`. it is that box's `--ds-field-size`, 12.5
+		   steps of 0.25rem in ../registry/styles/field-css.css, which the registry declares on its
+		   own class and not on `:root`, so no box outside it can read it. */
 		--admin-field-height: 3.125rem;
 		--admin-touch-min: 2.75rem;
 

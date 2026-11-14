@@ -1,0 +1,148 @@
+/* the registry's text button as plain css, no tailwind: an action drawn as
+   text, no fill, edge or padding, in the font of the text around it at weight
+   600. reads only the variables the `variables` item declares.
+   text-button-css.test.tsx renders the React `TextButton` beside it and asserts
+   the same computed look in light and dark, for the default and example themes.
+
+   nothing underlines, at rest, hovered or pressed: only a link does. a hover
+   or press takes the next ink of the same role and the press nudges 1px down.
+   the spacing step, the type sizes, the weight and the easing live only in
+   tailwind's theme; they are declared here under ds- names with the same
+   values, and the test holds them equal. the busy glyph's loop is tailwind's
+   animate-spin on ds-spin, held to the React glyph's by the same test. */
+.ds-text-btn {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-font-weight-semibold: 600;
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-tone: var(--gray-11);
+  --ds-tone-hover: var(--gray-12);
+  position: relative;
+  display: inline-block;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0 solid;
+  border-radius: var(--radius);
+  background-color: transparent;
+  color: var(--ds-tone);
+  font: inherit;
+  font-weight: var(--ds-font-weight-semibold);
+  letter-spacing: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  appearance: none;
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color,
+    fill, stroke;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-in-out);
+}
+.ds-text-btn-primary {
+  --ds-tone: var(--link);
+  --ds-tone-hover: var(--link-hover);
+}
+.ds-text-btn-destructive {
+  --ds-tone: var(--destructive-subtle-fg);
+  --ds-tone-hover: var(--destructive-12);
+}
+
+/* sizes: bare is the size and line of the text around it */
+.ds-text-btn-xs {
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-xs-lh: calc(1 / 0.75);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+}
+.ds-text-btn-sm {
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+.ds-text-btn-base {
+  --ds-text-base: calc(1 * var(--ds-rem, 1rem));
+  --ds-text-base-lh: calc(1.5 / 1);
+  font-size: var(--ds-text-base);
+  line-height: var(--ds-text-base-lh);
+}
+.ds-text-btn-lg {
+  --ds-text-lg: calc(1.125 * var(--ds-rem, 1rem));
+  --ds-text-lg-lh: calc(1.75 / 1.125);
+  font-size: var(--ds-text-lg);
+  line-height: var(--ds-text-lg-lh);
+}
+
+/* the hit area: one line tall plus what --ds-hit-target (from `variables`)
+   needs, and at least that wide, centred on the label. the drawn box and the
+   line it sits in keep their size. */
+.ds-text-btn::after {
+  content: "";
+  position: absolute;
+  inset-block: calc((1lh - var(--ds-hit-target)) / 2);
+  inset-inline: min(0px, calc((100% - var(--ds-hit-target)) / 2));
+}
+
+@media (hover: hover) {
+  .ds-text-btn:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"],
+    [data-done="true"]
+  ) {
+    color: var(--ds-tone-hover);
+  }
+}
+.ds-text-btn:active:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"],
+  [data-done="true"]
+) {
+  color: var(--ds-tone-hover);
+  translate: 0 1px;
+}
+.ds-text-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* off: native disabled, or aria-disabled on a button that keeps focus so a
+   reason can still be shown (stop its click in script) */
+.ds-text-btn:is(:disabled, [aria-disabled="true"]) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+/* in flight: gray-11, a turning glyph before the "…" label, no pointer */
+.ds-text-btn[aria-busy="true"] {
+  pointer-events: none;
+  color: var(--gray-11);
+}
+/* done: the success ink and a check before the done label, for 2000ms */
+.ds-text-btn[data-done="true"] {
+  pointer-events: none;
+  color: var(--success-subtle-fg);
+}
+
+/* the glyph a busy or done label carries: 1em, 4px before the words */
+.ds-text-btn > svg {
+  display: inline;
+  inline-size: 1em;
+  block-size: 1em;
+  margin-inline-end: var(--ds-spacing);
+  vertical-align: middle;
+}
+.ds-text-btn-spin {
+  --ds-text-btn-loop: ds-spin 1s linear infinite;
+  animation: var(--ds-text-btn-loop);
+}
+/* a loop stills rather than shortens: at a collapsed duration it would jitter */
+@media (prefers-reduced-motion: reduce) {
+  .ds-text-btn-spin {
+    animation: none;
+  }
+}
+@keyframes ds-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

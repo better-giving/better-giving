@@ -104,6 +104,13 @@ async function choose(root: HTMLElement, words: string): Promise<void> {
 }
 
 describe('a select with a note mounted into a document', () => {
+	it("draws its box as the registry's select trigger, at the field's size", () => {
+		const root = render(Bound, {});
+
+		// touch-geometry.spec.ts holds these two classes' rules to the field size; this holds the box to wearing them.
+		expect(trigger(root).matches('.ds-field-input.ds-select-trigger')).toBe(true);
+	});
+
 	it('submits a name, and the value an option carries rather than the words shown for it', () => {
 		const root = render(Bound, { defaultValue: 'acct_9002' });
 

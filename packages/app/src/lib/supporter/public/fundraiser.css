@@ -21,7 +21,6 @@
 	--fundraiser-title: 1.75rem;
 	--fundraiser-measure-title: 22ch;
 	--fundraiser-for-logo: 1.75rem;
-	--fundraiser-avatar: 2.75rem;
 	--fundraiser-recipient-logo: 3rem;
 	/* the raised figure is the profile name's step; page.css declares both on this same element. */
 	--fundraiser-figure: var(--page-profile-name);
@@ -139,27 +138,11 @@
 	text-wrap: balance;
 }
 
-/* the supporter's byline. registry gap: the registry has no avatar, so the initials tile is the
-   profile head's logo tile (`.page-profile-badge` in page.css) at the byline's size: the brand's
-   solid, its one ink, the plane's corner. */
+/* the supporter's byline: the registry's avatar (avatar-css) beside the name and the day. */
 .fundraiser-byline {
 	display: flex;
 	align-items: center;
 	gap: var(--_sp3);
-}
-
-.fundraiser-avatar {
-	display: grid;
-	flex: none;
-	place-items: center;
-	inline-size: var(--fundraiser-avatar);
-	block-size: var(--fundraiser-avatar);
-	border-radius: var(--page-plane-radius);
-	background: var(--_p);
-	color: var(--_on-p);
-	font-family: var(--page-font-display);
-	font-size: var(--_t-md);
-	font-weight: var(--page-w-display);
 }
 
 .fundraiser-by {

@@ -120,7 +120,7 @@ describe('the videos section', () => {
 		const status = box?.querySelector('[role="status"]');
 		expect(status?.getAttribute('aria-live')).toBe('polite');
 		expect(status?.textContent).toBe('Loading video…');
-		expect(status?.querySelector('.page-spinner')?.getAttribute('aria-hidden')).toBe('true');
+		expect(status?.querySelector('.ds-spinner')?.getAttribute('aria-hidden')).toBe('true');
 		const frame = host.querySelector('iframe');
 		expect(frame?.getAttribute('src')).toBe(
 			'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1'

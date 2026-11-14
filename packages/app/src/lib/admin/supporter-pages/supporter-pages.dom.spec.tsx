@@ -264,7 +264,7 @@ describe('the list', () => {
 	it('draws an ended row as Ended and a pending one as Pending, each on a hueless chip', () => {
 		const { host } = mount();
 		expect(row(host, 'Dana Whitfield')?.querySelector('.ds-badge')?.className).toBe(
-			'ds-badge ds-badge-neutral adm-state--note'
+			'ds-badge ds-badge-outline'
 		);
 		expect(row(host, 'Dana Whitfield')?.querySelector('.ds-badge')?.textContent).toBe('Ended');
 		expect(row(host, 'Sam Lee')?.querySelector('.ds-badge')?.className).toBe(

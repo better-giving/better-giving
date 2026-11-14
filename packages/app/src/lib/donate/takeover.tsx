@@ -456,7 +456,7 @@ export function TakeoverScreen({
 				onClick={onPrimary}
 			>
 				<span className="action-label">{screen.primary?.label ?? ''}</span>
-				<span className="spinner" aria-hidden="true" />
+				<span className="ds-spinner" aria-hidden="true" />
 			</button>
 			<p className="aside" hidden={screen.primaryNote === ''}>
 				{screen.primaryNote}

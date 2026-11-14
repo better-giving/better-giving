@@ -1,0 +1,147 @@
+/* the registry's avatar as plain css, no tailwind: a person or organization
+   as a photo, a logo or initials on --secondary, the sizes, the square and
+   logo tiles, a button or link form, and the overlapping group with its
+   overflow chip. reads only the variables the `variables` item declares.
+   avatar-css.test.tsx renders the React `Avatar` and `AvatarGroup` beside it
+   and asserts the same computed look in light and dark, for the default and
+   example themes.
+
+   the spacing step, the type sizes, the weight and the easing live only in
+   tailwind's theme; they are declared here under ds- names with the same
+   values, and the test holds them equal. each size sets --ds-avatar, which a
+   group reads for the quarter each avatar overlaps the one before it. */
+.ds-avatar {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-font-weight-bold: 700;
+  --ds-avatar: calc(var(--ds-spacing) * 8);
+  position: relative;
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  inline-size: var(--ds-avatar);
+  block-size: var(--ds-avatar);
+  margin: 0;
+  padding: 0;
+  border: 0 solid var(--border);
+  border-radius: calc(infinity * 1px);
+  background-color: var(--secondary);
+  color: var(--accent-12);
+  font-family: var(--font-body);
+  font-size: var(--ds-text-xs);
+  line-height: 1;
+  font-weight: var(--ds-font-weight-bold);
+  text-transform: uppercase;
+  text-decoration: none;
+  vertical-align: middle;
+  user-select: none;
+}
+.ds-avatar-sm {
+  --ds-avatar: calc(var(--ds-spacing) * 6);
+}
+.ds-avatar-lg {
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-avatar: calc(var(--ds-spacing) * 10);
+  font-size: var(--ds-text-sm);
+}
+.ds-avatar-xl {
+  --ds-text-xl: calc(1.25 * var(--ds-rem, 1rem));
+  --ds-avatar: calc(var(--ds-spacing) * 16);
+  font-size: var(--ds-text-xl);
+}
+.ds-avatar-2xl {
+  --ds-text-3xl: calc(1.875 * var(--ds-rem, 1rem));
+  --ds-avatar: calc(var(--ds-spacing) * 24);
+  font-size: var(--ds-text-3xl);
+}
+
+/* the square tile: the control corner up to 40px, the card corner above */
+.ds-avatar-square {
+  border-radius: var(--radius);
+}
+.ds-avatar-square:is(.ds-avatar-xl, .ds-avatar-2xl) {
+  border-radius: var(--radius-card);
+}
+/* a logo tile: the page fill with a hairline, the image contained */
+.ds-avatar-logo {
+  border-width: 1px;
+  border-color: var(--hairline);
+  background-color: var(--gray-1);
+}
+
+/* no name: lucide's user-round at 55% */
+.ds-avatar > svg {
+  inline-size: 55%;
+  block-size: 55%;
+}
+/* the photo or logo over the initials, which show while it loads and if it
+   fails (remove the img on its error event) */
+.ds-avatar-img {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+.ds-avatar-logo .ds-avatar-img {
+  object-fit: contain;
+}
+
+/* a button or a link: secondary hovered, active pressed and held open, the
+   ring, and a hit area grown to --ds-hit-target (from `variables`) */
+:is(button, a).ds-avatar {
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color,
+    fill, stroke;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-in-out);
+}
+:is(button, a).ds-avatar::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((100% - var(--ds-hit-target)) / 2));
+}
+@media (hover: hover) {
+  :is(button, a).ds-avatar:hover:not([aria-expanded="true"]) {
+    background-color: var(--secondary-hover);
+  }
+}
+:is(button, a).ds-avatar:is(:active, [aria-expanded="true"]) {
+  background-color: var(--secondary-active);
+}
+:is(button, a).ds-avatar:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* forced colors drop that fill: a Highlight ring 2px out marks it held */
+@media (forced-colors: active) {
+  :is(button, a).ds-avatar[aria-expanded="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
+/* the stack: each avatar a quarter over the one before, a 2px ring of the
+   surface it sits on between them (--ds-avatar-ring: --background, or --card
+   on a card) */
+.ds-avatar-group {
+  --ds-avatar-ring: var(--background);
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+.ds-avatar-group > .ds-avatar {
+  box-shadow: 0 0 0 2px var(--ds-avatar-ring);
+}
+.ds-avatar-group > .ds-avatar:not(:first-child) {
+  margin-inline-start: calc(var(--ds-avatar) * -0.25);
+}
+/* the overflow chip, "+9" */
+.ds-avatar-more {
+  background-color: var(--gray-3);
+  color: var(--gray-12);
+}

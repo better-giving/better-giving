@@ -34,7 +34,7 @@ describe('the shell over the dialog', () => {
 
 		// the modifier is the observable end of the upgrade: it is what the server sent, and the
 		// effect drops it at the moment the same element is shown modally.
-		expect(dialogIn(root).className).toBe('adm-dialog');
+		expect(dialogIn(root).className).toBe('ds-dialog ds-dialog-panel');
 		expect(dialogIn(root).open).toBe(true);
 	});
 

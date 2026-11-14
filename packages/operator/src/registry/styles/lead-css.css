@@ -1,0 +1,43 @@
+/* the lead row as plain css: a status, badge, count or icon beside text that
+   can wrap sits on the text's first line, not the middle of the block. reads
+   only the variables the `variables` item declares; lead-css.test.tsx holds it
+   equal to the tailwind `lead-row` and `lead-1lh` of the `tokens` item.
+
+   the row aligns to the start and the mark's box is one line tall, the mark
+   centred in it. 1lh is the box's own line-height, inherited from the row, so
+   give the text's size to the row, not to the text alone. the first child is
+   the text and takes the room; :where() keeps that rule at one class, so a
+   class of the page's own on the child still wins. */
+.ds-lead-row {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  display: flex;
+  align-items: start;
+  gap: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 3);
+}
+.ds-lead-row > :where(:first-child) {
+  flex: 1 1 0%;
+  min-inline-size: 0;
+}
+.ds-lead-1lh {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(var(--ds-spacing) * 2);
+  block-size: 1lh;
+}
+
+/* the small uppercase label above a section heading: the `eyebrow` utility of
+   the `tokens` item, 12px bold uppercase on the label tracking from
+   `variables`. its colour is the caller's, and a class of the caller's own
+   declared later still sets another size */
+.ds-eyebrow {
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-xs-lh: calc(1 / 0.75);
+  --ds-font-weight-bold: 700;
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  font-weight: var(--ds-font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ds-tracking-label);
+}

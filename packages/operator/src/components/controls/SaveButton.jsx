@@ -90,10 +90,9 @@ export function SaveButton({
 				// them cannot re-open a press the state has closed.
 				{...rest}
 				// the caller's class is added to ./Button.jsx's, never put in place of it. the states
-				// draw no class of their own: pending, done and disabled are each the closed press
-				// `.adm-btn[aria-disabled='true']` draws in ../../styles/adm.css, in the registry's own
-				// closed pair, the one its `:disabled` and `aria-busy` rules draw
-				// (../../registry/styles/button-css.css).
+				// draw no class of their own: pending, done and disabled are each the closed press the
+				// registry draws for `aria-busy` and for `aria-disabled` on a `<button>`
+				// (../../registry/styles/button-css.css), in its one closed pair.
 				className={className}
 				// the press is closed while its own write is in flight as well as for the two conditions
 				// beside it: a press left open under `aria-busy` is one operator intent and two writes,

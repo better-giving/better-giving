@@ -51,10 +51,11 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {((value: string) => void) | undefined} [onValueChange] an option was chosen.
  * @property {boolean | undefined} [defaultOpen] the list open on the first draw. a specimen's prop:
  *   a screen opens a list by the press an operator makes on it.
- * @property {PointerState | undefined} [state] the state pinned by class rather than reached,
- *   for ./Field.jsx's reason, and unavailable is not one of them for its reason either: the
- *   sheet draws `.adm-select[data-disabled]` with no twin beside it, so a control that cannot be
- *   used takes `disabled` above.
+ * @property {Exclude<PointerState, 'focus'> | undefined} [state] the state pinned by class rather
+ *   than reached, so a specimen can show it with no pointer on the box. hover is the one it offers:
+ *   focus is the registry's outline off `:focus-visible` alone, which no class draws, and
+ *   unavailable is the registry's `.ds-field-input:disabled`, so a control that cannot be used
+ *   takes `disabled` above.
  * @property {string | undefined} [className]
  * @property {string | undefined} [aria-describedby] the blocks the box is described by, where the
  *   caller names them itself. stated, it replaces the ones this control composes off its id.
@@ -222,15 +223,23 @@ export function SelectWithNote({
 				}}
 			>
 				<Select.Trigger
-					className={['adm-select', state ? `is-${state}` : '', className]
+					className={[
+						'ds-field-input',
+						'ds-select-trigger',
+						'adm-select',
+						state ? `is-${state}` : '',
+						className
+					]
 						.filter(Boolean)
 						.join(' ')}
 					aria-label={named}
 					aria-describedby={describedBy}
 				>
-					<Select.ValueText className="adm-select__value" />
-					<Select.Indicator className="adm-select__caret">
-						<Mark name="chevron-down" />
+					<Select.ValueText />
+					{/* the registry's chevron is the indicator's own box, 20px, so the mark fills it at
+					    the large size. */}
+					<Select.Indicator className="ds-select-chevron">
+						<Mark name="chevron-down" size="lg" />
 					</Select.Indicator>
 				</Select.Trigger>
 				{/* an empty list is not drawn at all: the box opening onto a bare surface over the note

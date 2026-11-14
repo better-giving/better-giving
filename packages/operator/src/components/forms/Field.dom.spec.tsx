@@ -331,11 +331,11 @@ describe('a field mounted into a document', () => {
 		});
 
 		expect(plain.querySelector('.adm-field')?.children[1]?.className).toBe(
-			'ds-field-input adm-field__box adm-field__box--code'
+			'ds-field-input adm-field__box ds-field-input-mono'
 		);
 		expect(masked.querySelector('.adm-field')?.children[1]?.className).toBe('adm-maskwrap');
 		expect(masked.querySelector('.adm-maskwrap > input')?.className).toBe(
-			'ds-field-input adm-field__box adm-field__box--code'
+			'ds-field-input adm-field__box ds-field-input-mono'
 		);
 		expect(masked.querySelector('.adm-actions')).toBeNull();
 	});
@@ -391,7 +391,7 @@ describe('a field mounted into a document', () => {
 		).toEqual([
 			'INPUT.ds-field-input adm-field__box',
 			'P.ds-field-err adm-field__error',
-			'P.adm-field__needed'
+			'P.ds-field-warn adm-field__needed'
 		]);
 		expect(root.querySelector('input')?.getAttribute('aria-describedby')).toBe(
 			'api-key-make-name-err api-key-make-name-need'
@@ -559,7 +559,7 @@ describe('a field that reports what was found about its value', () => {
 		const root = render(Field, { id: 'org-tax_id', label: 'EIN', status: 'Not on the IRS list.' });
 
 		expect(root.querySelector('input')?.getAttribute('aria-invalid')).toBeNull();
-		expect(boxClasses(root)).not.toContain('adm-field__box--needed');
+		expect(boxClasses(root)).toEqual(['ds-field-input', 'adm-field__box']);
 	});
 });
 
@@ -593,17 +593,33 @@ describe('the registry field a box is drawn as', () => {
 		expect(root.querySelector('label')?.textContent).toBe('Phone (optional)');
 	});
 
-	it('marks a multi-line box and a needed box with the two finishes the registry has no rule for', () => {
+	it('marks a multi-line box with the one finish the registry has no rule for', () => {
 		const textarea = render(Field, { id: 'thanks', label: 'Thank-you message', as: 'textarea' });
-		const needed = render(Field, { id: 'to', label: 'To', needed: 'Type an address.' });
 
-		expect([boxClasses(textarea), boxClasses(needed)]).toEqual([
-			['ds-field-input', 'adm-field__box', 'adm-field__box--multiline'],
-			['ds-field-input', 'adm-field__box', 'adm-field__box--needed']
+		expect(boxClasses(textarea)).toEqual([
+			'ds-field-input',
+			'adm-field__box',
+			'adm-field__box--multiline'
 		]);
 	});
 
-	it('draws a refused box as refused and not as needed, since the refusal is the louder', () => {
+	it("says a needed box under it in the registry's warning and leaves the box's edge alone", () => {
+		// field-css's warning never colours the edge, so a needed box is the plain box, and the note
+		// under it is the `ds-field-warn` row with its mark.
+		const root = render(Field, { id: 'to', label: 'To', needed: 'Type an address.' });
+
+		expect(boxClasses(root)).toEqual(['ds-field-input', 'adm-field__box']);
+		expect(root.querySelector('#to-need')?.className).toBe('ds-field-warn adm-field__needed');
+		expect(root.querySelector('#to-need > svg')?.getAttribute('aria-hidden')).toBe('true');
+	});
+
+	it('draws a literal in the registry mono box', () => {
+		const root = render(Field, { id: 'key', label: 'Key', code: true });
+
+		expect(boxClasses(root)).toEqual(['ds-field-input', 'adm-field__box', 'ds-field-input-mono']);
+	});
+
+	it('draws a refused box as refused, the needed note still under it', () => {
 		const root = render(Field, {
 			id: 'to',
 			label: 'To',

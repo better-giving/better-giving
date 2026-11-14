@@ -29,4 +29,4 @@ Hover darkens the edge, except on a disabled or invalid radio. Disabled takes th
 
 ## Theming
 
-Reads roles from `variables`, so `data-theme`, `.dark` and `.light` recolor it. The spacing step Tailwind owns is declared on the class as `--ds-spacing` with the same value. It is in rem, so the radio and its dot follow the reader's browser font size.
+Reads roles from `variables`, so `data-theme`, `.dark` and `.light` recolor it. The spacing step Tailwind owns is declared on the class as `--ds-spacing` with the same value. It is in rem, so the radio and its dot follow the reader's browser font size. Each of those rem sizes is declared as `calc(N * var(--ds-rem, 1rem))`, which is the rem while `--ds-rem` is unset; an embed under a host page that changes its root font size sets `--ds-rem: 16px` on its own root and gets this size back (see the `variables` note).

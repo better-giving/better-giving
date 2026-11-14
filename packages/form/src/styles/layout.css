@@ -715,10 +715,10 @@ form {
 
 /*
  * a row that qualifies the one above it, its box under that row's words: the registry box's
- * width (four of `--ds-spacing`, which is `--_root-size` in ./parts.css) and the row's own gap.
+ * width (four of `--ds-spacing`, which is one `--ds-rem` in ./tokens.css) and the row's own gap.
  */
 .check-row.sub {
-	margin-inline-start: calc(var(--_root-size) + var(--_sp3));
+	margin-inline-start: calc(var(--ds-rem) + var(--_sp3));
 }
 
 /*
@@ -950,6 +950,11 @@ form {
 	 * makes the code read as a block of its own rather than as part of the sentence.
 	 */
 	margin-block-start: calc((var(--_t-sm) - var(--_t-sm) * var(--_lh-body)) / 2);
+}
+
+/* the registry's busy ring on the action, shown only while a press is in flight (./parts.css). */
+[part~='action']:not([part~='busy']) > .ds-spinner {
+	display: none;
 }
 
 .status {

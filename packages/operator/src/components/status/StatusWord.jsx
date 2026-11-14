@@ -11,9 +11,10 @@ import { Mark } from './Mark.jsx';
  * @property {ReactNode} [children]
  * @property {StatusRegister | undefined} [register]
  * @property {boolean | undefined} [unset] no value at all, which says something different from
- *   `secondary`. stated by callers and drawn as the neutral badge: the registry's badge-css has no
- *   chip quieter than that one.
- * @property {boolean | undefined} [secondary] the quiet one of two words, drawn as `unset` is.
+ *   `secondary`. stated by callers and drawn as the neutral badge: the registry's quiet chip is
+ *   metadata beside a status and its outline chip an ended record, and an absent value is neither.
+ * @property {boolean | undefined} [secondary] the quiet one of two words, drawn as the registry's
+ *   quiet chip (`ds-badge-quiet`), which is secondary metadata beside a title.
  * @property {Tone | undefined} [tone] where a record stands on its own lifecycle ladder: `done`
  *   live by the operator's hand, `attention` waiting on somebody, `blocker` failed or refused,
  *   `note` retired, stopped or ended. a record at rest, such as a gift that settled or a repeating
@@ -38,9 +39,9 @@ import { Mark } from './Mark.jsx';
 
 /**
  * the badge each tone is drawn as. `done` is the accent's chip and never the success one, because
- * done is the accent on these surfaces (packages/operator/src/styles/tokens.css); `note` has no
- * groundless chip in the registry and takes the neutral one a record at rest takes, with its ground
- * taken away below.
+ * done is the accent on these surfaces (packages/operator/src/styles/tokens.css); `note` is the
+ * registry's outline chip, the one for a record that has ended, with no ground where a record at
+ * rest has the neutral one.
  *
  * @type {Record<Tone, string>}
  */
@@ -48,7 +49,7 @@ export const BADGE_VARIANT_CLASS = {
 	done: 'ds-badge-primary',
 	attention: 'ds-badge-warning',
 	blocker: 'ds-badge-destructive',
-	note: 'ds-badge-neutral'
+	note: 'ds-badge-outline'
 };
 
 /* three registers, and the register is carried by position and accompaniment, never by hue alone.
@@ -63,6 +64,7 @@ export function StatusWord({
 	children,
 	register = 'descriptive',
 	tone,
+	secondary = false,
 	mark,
 	blocked = false,
 	neutral = false
@@ -85,18 +87,17 @@ export function StatusWord({
 		);
 	}
 	/* the descriptive word is the registry's badge (../../registry/styles/badge-css.css), one variant
-	   per tone and the neutral chip for everything else. `secondary` and `unset` are stated by a
-	   caller and draw nothing of their own: the badge has no quieter chip to step down to.
-
-	   an ended record (`note`) takes the neutral chip and `.adm-state--note` over it, which takes the
-	   ground away: the registry has no groundless chip, and without one `Refunded` and `Completed`
-	   would be the same drawing (../../styles/state-in-a-cell.spec.ts). */
+	   per tone, the quiet chip for the quiet one of two words and the neutral chip for everything
+	   else. an ended record (`note`) is the outline chip, with no ground, so `Refunded` and
+	   `Completed` are not the same drawing (../../styles/state-in-a-cell.spec.ts). */
 	return (
 		<span
 			className={
 				tone
-					? `ds-badge ${BADGE_VARIANT_CLASS[tone]}${tone === 'note' ? ' adm-state--note' : ''}`
-					: 'ds-badge ds-badge-neutral'
+					? `ds-badge ${BADGE_VARIANT_CLASS[tone]}`
+					: secondary
+						? 'ds-badge ds-badge-quiet'
+						: 'ds-badge ds-badge-neutral'
 			}
 		>
 			{children}

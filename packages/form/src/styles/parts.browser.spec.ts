@@ -510,9 +510,9 @@ describe('the sizes the card draws its type at', () => {
 
 	// the registry's controls state their spacing step, type sizes and corners in `rem`, which a host
 	// that shrank its root shrinks with them: on a `10px` root they would draw the action 32px tall
-	// with an 11px label and the tick box at 10px. the head of ./parts.css and the colour
-	// layer of ./tokens.css take each of those figures off the card's clamped root instead,
-	// which that host's root leaves at the clamp's 15px floor.
+	// with an 11px label and the tick box at 10px. the registry reads those figures through its
+	// `--ds-rem`, which ./tokens.css sets to the card's clamped root, and the colour layer there
+	// takes the corners off it; that host's root leaves it at the clamp's 15px floor.
 	it('draws the registry’s controls off the card’s clamped root, on a host whose root is 10px', async () => {
 		document.documentElement.style.fontSize = '10px';
 		const { shadow, card } = await mount();
@@ -523,6 +523,7 @@ describe('the sizes the card draws its type at', () => {
 		const tick = shadow.querySelector('.ds-checkbox') as HTMLElement;
 
 		expect(root).toBe(15);
+		expect(step(shadow, '--ds-rem')).toBe(root);
 		expect(action.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
 		expect(px(action)).toBeCloseTo(root * 1.125, 1);
 		// four of the registry's spacing steps, which is one root.
@@ -4143,25 +4144,59 @@ describe('the ring and the brand never touch', () => {
 });
 
 // a press in flight is the registry's own busy state on its button (`aria-busy` in
-// ../registry/styles/button-css.usage.md → States), with the form's spinner beside the label. the
-// registry has no busy look that keeps the fill: its busy state is its disabled fill, which is the
-// registry gap this pins, so a registry release that adds one is a change this case reports.
+// ../registry/styles/button-css.usage.md → States), with the registry's busy ring beside the label
+// (../registry/styles/spinner-css.usage.md). the registry has no busy look that keeps the fill: its
+// busy state is its disabled fill, which is the registry gap this pins, so a registry release that
+// adds one is a change this case reports.
 describe('the action while a press is in flight', () => {
-	it('draws the registry’s busy state and the spinner beside an unchanged label', async () => {
+	afterEach(async () => {
+		await cdp().send('Emulation.setEmulatedMedia', { features: [] });
+	});
+
+	async function busyAction(): Promise<{ shadow: ShadowRoot; action: HTMLElement }> {
 		const { shadow } = await mount();
 		const action = shadow.querySelector(".step:not([hidden]) [part~='action']") as HTMLElement;
-		const label = (action.querySelector('.action-label') as HTMLElement).textContent;
 		action.setAttribute('aria-busy', 'true');
 		action.setAttribute('part', 'action busy');
 		await landed(action);
+		return { shadow, action };
+	}
+
+	it('draws the registry’s busy state and the registry’s ring beside an unchanged label', async () => {
+		const { shadow } = await mount();
+		const resting = shadow.querySelector(".step:not([hidden]) [part~='action']") as HTMLElement;
+		const label = (resting.querySelector('.action-label') as HTMLElement).textContent;
+		expect(getComputedStyle(resting.querySelector('.ds-spinner') as HTMLElement).display).toBe(
+			'none'
+		);
+
+		const { action } = await busyAction();
 		const drawn = getComputedStyle(action);
+		const ring = getComputedStyle(action.querySelector('.ds-spinner') as HTMLElement);
 
 		expect(action.classList.contains('ds-btn-primary')).toBe(true);
 		expect(paintedBytes(drawn.backgroundColor)).toEqual(paintedBytes(used(shadow, '--gray-3')));
 		expect(paintedBytes(drawn.color)).toEqual(paintedBytes(used(shadow, '--gray-11')));
 		expect(drawn.pointerEvents).toBe('none');
-		expect(getComputedStyle(action.querySelector('.spinner') as HTMLElement).opacity).toBe('1');
+		expect(ring.display).toBe('block');
+		expect(ring.position).toBe('absolute');
+		expect(ring.animationName).toBe('ds-spin');
+		expect(paintedBytes(ring.borderTopColor)).toEqual(paintedBytes(used(shadow, '--primary')));
 		expect((action.querySelector('.action-label') as HTMLElement).textContent).toBe(label);
+	});
+
+	// the registry stands its ring still under reduced motion, and a still ring on a press that is
+	// still checking a card is a lie about the money: the card keeps it turning, slowed.
+	it('keeps the ring turning, slowed, under prefers-reduced-motion: reduce', async () => {
+		await cdp().send('Emulation.setEmulatedMedia', {
+			features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
+		});
+		const { action } = await busyAction();
+		const ring = getComputedStyle(action.querySelector('.ds-spinner') as HTMLElement);
+
+		expect(ring.animationName).toBe('ds-spin');
+		expect(ring.animationDuration).toBe('2.4s');
+		expect(ring.animationIterationCount).toBe('infinite');
 	});
 });
 

@@ -135,7 +135,7 @@ function VideoFigure({
 				<div className="page-video-status" role="status" aria-live="polite">
 					{face === 'loading' ? (
 						<>
-							<span className="page-spinner" aria-hidden="true" />
+							<span className="ds-spinner" aria-hidden="true" />
 							Loading video…
 						</>
 					) : null}

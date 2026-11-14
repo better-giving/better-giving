@@ -39,7 +39,6 @@ const NOT_A_GROUND = new Map([
 const painting = rulesIn(css).filter(({ stated }) => stated.get('background') === PLANE_FILL);
 
 const PLANE_EDGE = 'var(--admin-rule)';
-const DIALOG_EDGE = 'var(--admin-border-width) solid var(--admin-divider)';
 const tokens = sheet('tokens.css');
 
 /** the value ./tokens.css states for a custom property, spaces collapsed. */
@@ -54,8 +53,7 @@ const NOT_A_CARD = new Map([
 	['.adm-identity', 'the top band, step 1 with the rule under it and no edge round it'],
 	['.adm-rail', "the phone's bar, which floats and wears the overlay's edge"],
 	['.adm-moresheet', "the bar's More sheet, which floats as the bar does"],
-	['.adm-sheet', 'a sheet, which floats over the flow with the overlay’s edge'],
-	['.adm-dialog', 'the dialog, which takes the divider edge over the scrim']
+	['.adm-sheet', 'a sheet, which floats over the flow with the overlay’s edge']
 ]);
 
 describe('every plane states the ground a floated date label knocks out in', () => {
@@ -122,10 +120,11 @@ describe('every plane is a step-1 card with a step-6 edge on the page', () => {
 		expect(nested.map(({ selector }) => selector)).toEqual([]);
 	});
 
-	it('draws the dialog with the divider edge, no shadow and the plane corner', () => {
-		expect(ruleOf(css, '.adm-dialog').get('border')).toBe(DIALOG_EDGE);
-		expect(ruleOf(css, '.adm-dialog').has('box-shadow')).toBe(false);
-		expect(ruleOf(css, '.adm-dialog').get('border-radius')).toBe('var(--admin-radius-plane)');
+	it("states the dialog surface's own fill as the ground, which the registry paints", () => {
+		// the surface is the registry's `ds-dialog-surface` on `--popover`, step 1 as the plane's
+		// fill is, so the floated label inside a dialog knocks out in the colour it stands on.
+		expect(ruleOf(css, '.adm-dialog__surface').get('--_ground')).toBe(PLANE_FILL);
+		expect(token('--admin-surface')).toBe('var(--admin-neutral-1)');
 	});
 
 	it('names only rules that still paint the fill', () => {

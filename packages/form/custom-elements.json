@@ -122,7 +122,7 @@
 						},
 						{
 							"name": "action",
-							"description": "Every primary button, each the design registry's primary button at its large size (its `ds-btn ds-btn-primary ds-btn-lg` classes), spanning the card's column: the registry's fill, ink, corner, type, hover, press and focus ring, and while the press is in flight the registry's busy look — its disabled fill and ink, with a spinner beside the unchanged label. Takes the role token `submit` on the control that spends the money, and the state token `busy`. Never takes `disabled`: a press is bounded by the flow's shape, not by an attribute."
+							"description": "Every primary button, each the design registry's primary button at its large size (its `ds-btn ds-btn-primary ds-btn-lg` classes), spanning the card's column: the registry's fill, ink, corner, type, hover, press and focus ring, and while the press is in flight the registry's busy look — its disabled fill and ink, with the registry's busy ring beside the unchanged label. Takes the role token `submit` on the control that spends the money, and the state token `busy`. Never takes `disabled`: a press is bounded by the flow's shape, not by an attribute."
 						},
 						{
 							"name": "action-quiet",

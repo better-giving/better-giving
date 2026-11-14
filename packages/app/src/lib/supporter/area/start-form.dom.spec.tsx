@@ -37,6 +37,9 @@ const BASE: StartFundraiserProps = {
 	sending: false
 };
 
+/** the photo's empty dropzone, the control a press or a drop adds a photo through. */
+const photoArea = (root: HTMLElement) => one(root, '.ds-dropzone');
+
 const start = (props: Partial<StartFundraiserProps> = {}) =>
 	mountScreen(() => <StartFundraiser {...BASE} {...props} />);
 
@@ -83,10 +86,15 @@ describe('the start form, empty', () => {
 		const { root } = start();
 		const goal = boxLabelled(root, 'Goal');
 		expect(goal.inputMode).toBe('decimal');
-		expect(goal.parentElement?.textContent).toContain('$');
+		const sign = one(root, '.ds-field-input-container > .ds-field-affix.ds-field-prefix');
+		expect(sign.textContent).toBe('$');
+		expect(sign.getAttribute('aria-hidden')).toBe('true');
+		expect(sign.nextElementSibling).toBe(goal);
 		const story = boxLabelled(root, 'Your story');
 		expect(story.getAttribute('aria-describedby')).toContain(`${story.id}-count`);
-		expect(one(root, `#${story.id}-count`).textContent).toBe('0 of 1,500');
+		const count = one(root, `.ds-field-meta > .ds-field-counter#${story.id}-count`);
+		expect(count.textContent).toBe('0 of 1,500');
+		expect(count.getAttribute('aria-hidden')).toBe('true');
 		act(() => {
 			story.value = 'Fuel and repairs';
 			story.dispatchEvent(new Event('input', { bubbles: true }));
@@ -199,9 +207,9 @@ describe('a refused start', () => {
 		expect(root.querySelector('[aria-invalid]')).toBeNull();
 	});
 
-	it('says a photo that was not stored under the photo’s press', () => {
+	it('says a photo that was not stored under the photo’s area', () => {
 		const { root } = start({ refused: 'photo_missing' });
-		const press = button(root, 'Add photo');
+		const press = photoArea(root);
 		expect(one(root, `#${press.id}-err`).textContent).toBe(
 			'That photo didn’t upload. Add it again.'
 		);
@@ -211,7 +219,7 @@ describe('a refused start', () => {
 });
 
 describe('the photo', () => {
-	it('turns down an image too narrow before any crop, under its press', async () => {
+	it('turns down an image too narrow before any crop, under its area', async () => {
 		vi.stubGlobal(
 			'createImageBitmap',
 			vi.fn(async () => ({ width: 640, height: 480, close() {} }))
@@ -224,7 +232,8 @@ describe('the photo', () => {
 		await act(async () => {
 			chooser.dispatchEvent(new Event('change', { bubbles: true }));
 		});
-		const press = button(root, 'Add photo');
+		const press = photoArea(root);
+		expect(press.getAttribute('aria-invalid')).toBe('true');
 		const refusal = one(root, `#${press.id}-err`);
 		expect(refusal.textContent).toBe(
 			'That image is only 640 pixels wide. A photo needs at least 1200. Choose a larger one.'
@@ -242,6 +251,57 @@ describe('the photo', () => {
 			chooser.dispatchEvent(new Event('change', { bubbles: true }));
 		});
 		expect(root.querySelector('.ds-field-err')?.textContent).toContain('isn’t a PNG, JPEG or WebP');
+	});
+});
+
+describe('a photo dropped on its area', () => {
+	/** whether the crop card is up: the stand-in above draws Use this photo, and only the crop draws it. */
+	const cropOpen = (root: HTMLElement) =>
+		[...root.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Use this photo');
+
+	/** a drop of `files` on the area, as a browser sends one. */
+	async function drop(area: HTMLElement, files: File[]) {
+		const event = new Event('drop', { bubbles: true, cancelable: true });
+		Object.defineProperty(event, 'dataTransfer', { value: { files } });
+		await act(async () => {
+			area.dispatchEvent(event);
+		});
+	}
+
+	it('refuses a drop of more than one file, every file of it', async () => {
+		const { root } = start();
+		const area = photoArea(root);
+		const pantry = new File(['x'], 'pantry.jpg', { type: 'image/jpeg' });
+		await drop(area, [pantry, pantry]);
+		expect(one(root, `#${area.id}-err`).textContent).toBe('Drop one file at a time.');
+		expect(cropOpen(root)).toBe(false);
+	});
+
+	it('refuses a dropped file that is no PNG, JPEG or WebP, with no crop', async () => {
+		const { root } = start();
+		const area = photoArea(root);
+		await drop(area, [new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' })]);
+		expect(one(root, `#${area.id}-err`).textContent).toContain('isn’t a PNG, JPEG or WebP');
+		expect(cropOpen(root)).toBe(false);
+	});
+
+	it('takes an empty drop for nothing: no refusal, no crop', async () => {
+		const { root } = start();
+		const area = photoArea(root);
+		await drop(area, []);
+		expect(area.getAttribute('aria-invalid')).not.toBe('true');
+		expect(root.querySelector(`#${area.id}-err`)?.textContent ?? '').toBe('');
+		expect(cropOpen(root)).toBe(false);
+	});
+
+	it('crops a single dropped photo', async () => {
+		vi.stubGlobal(
+			'createImageBitmap',
+			vi.fn(async () => ({ width: 1600, height: 900, close() {} }))
+		);
+		const { root } = start();
+		await drop(photoArea(root), [new File(['x'], 'pantry.jpg', { type: 'image/jpeg' })]);
+		expect(button(root, 'Use this photo')).toBeTruthy();
 	});
 });
 
@@ -273,7 +333,9 @@ describe('a photo posted with the start', () => {
 		const form = one<HTMLFormElement>(root, `form#${START_FORM.id}`);
 		expect(form.getAttribute('enctype')).toBe('multipart/form-data');
 		await addPhoto(root);
-		expect(one<HTMLImageElement>(root, 'img.sa-photo-frame').getAttribute('src')).toMatch(/^blob:/);
+		expect(one<HTMLImageElement>(root, '.ds-dropzone-img > img').getAttribute('src')).toMatch(
+			/^blob:/
+		);
 		expect(button(root, 'Replace photo')).toBeTruthy();
 		fill(form);
 		await submit(form);
@@ -310,7 +372,7 @@ describe('a photo posted with the start', () => {
 
 		boxLabelled(root, 'Goal').value = FILLED.goal;
 		await submit(form);
-		const press = button(root, 'Add photo');
+		const press = photoArea(root);
 		expect(one(root, `#${press.id}-err`).textContent).toBe(
 			'That photo didn’t upload. Add it again.'
 		);
@@ -319,9 +381,41 @@ describe('a photo posted with the start', () => {
 		await addPhoto(root);
 		expect(root.querySelector(`#${press.id}-err`)?.textContent ?? '').toBe('');
 		await submit(form);
-		expect(one(root, `#${button(root, 'Add photo').id}-err`).textContent).toBe(
+		expect(one(root, `#${photoArea(root).id}-err`).textContent).toBe(
 			'That photo didn’t upload. Add it again.'
 		);
+	});
+
+	// file-dropzone-css.usage.md, States: a file picked from the focused area unmounts what held
+	// focus, and focus moves to the new preview's Replace.
+	it('puts the keyboard on Replace photo once the photo picked from the focused area is in', async () => {
+		const { root } = start();
+		act(() => photoArea(root).focus());
+		await addPhoto(root);
+		expect(document.activeElement).toBe(button(root, 'Replace photo'));
+	});
+
+	it('keeps the keyboard on the area when the photo picked from it is turned down', async () => {
+		const { root } = start();
+		act(() => photoArea(root).focus());
+		await addPhoto(root);
+		vi.stubGlobal(
+			'createImageBitmap',
+			vi
+				.fn()
+				.mockResolvedValueOnce({ width: 1600, height: 900, close() {} })
+				.mockResolvedValueOnce({ width: 1000, height: 562, close() {} })
+		);
+		act(() => button(root, 'Remove').click());
+		const chooser = one<HTMLInputElement>(root, 'input[type="file"]:not([name])');
+		const file = new File(['x'], 'pantry.jpg', { type: 'image/jpeg' });
+		Object.defineProperty(chooser, 'files', { value: [file], configurable: true });
+		await act(async () => {
+			chooser.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		await act(async () => button(root, 'Use this photo').click());
+		expect(photoArea(root).getAttribute('role')).toBe('button');
+		expect(document.activeElement).toBe(photoArea(root));
 	});
 
 	it('posts no photo once Remove empties the box', async () => {
@@ -329,7 +423,7 @@ describe('a photo posted with the start', () => {
 		const form = one<HTMLFormElement>(root, `form#${START_FORM.id}`);
 		await addPhoto(root);
 		act(() => button(root, 'Remove').click());
-		expect(button(root, 'Add photo')).toBeTruthy();
+		expect(photoArea(root).getAttribute('role')).toBe('button');
 		expect(one<HTMLInputElement>(root, `input[name="${PHOTO_FILE_FIELD}"]`).files).toHaveLength(0);
 		fill(form);
 		await submit(form);
@@ -346,7 +440,7 @@ describe('sending', () => {
 		const press = one<HTMLButtonElement>(root, 'button[type="submit"]');
 		expect(press.getAttribute('aria-busy')).toBe('true');
 		expect(press.textContent).toBe('Creating your page…');
-		expect(one(root, '[role="status"]').textContent).toBe(
+		expect(one(root, '.sa-submit > [role="status"]').textContent).toBe(
 			'Keep this tab open. It takes a few seconds.'
 		);
 	});

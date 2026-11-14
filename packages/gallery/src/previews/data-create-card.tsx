@@ -11,8 +11,8 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * beside it measures. the pair below is that claim standing next to the thing it is a claim about:
  * a create card and a real record card in one list, which is the only way to see the two agree.
  * the card on its own above it is the state that matters more — a list with no records in it still
- * draws a full-height card, because the height comes from inside the card rather than from a
- * sibling.
+ * draws a full-height card, because the height comes from the ghost under the press rather than
+ * from a record beside it.
  *
  * the ghost is written out of the classes rather than mounted from `RecordCard`, and that is a
  * constraint rather than a shortcut: the card is one press, and `RecordCard` draws its name as a
@@ -28,9 +28,10 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * `as` is left at its default here. the gallery has no router, and a mounted list hands its own
  * link in — which is the same escape every other press in this package takes.
  *
- * hover and focus are pinned rather than reached. focus is the one to look at: this card is an
- * anchor the size of a whole record, and packages/operator/src/styles/adm.css restates the ring on
- * it so the keyboard draws an edge rather than a halo of tint around a card that big.
+ * the press is the registry's `ds-card-create`, whose hover, press and focus are drawn off the
+ * pseudo-classes alone, so none is pinned here: reach them with the pointer and the keyboard. its
+ * focus is the registry's outline and nothing else: packages/operator/src/styles/adm.css takes the
+ * focused link's bleed from packages/operator/src/styles/base.css off it.
  */
 
 const programme = (
@@ -89,14 +90,6 @@ export default function DataCreateCardPreview() {
 					emptyOrigins="No sites yet, so this form is refused everywhere."
 					origins={['https://riverside-shelter.org']}
 				/>
-			</div>
-			<div className="adm-list">
-				<CreateCard href="#create-hover" ghost={programme} state="hover">
-					Create program
-				</CreateCard>
-				<CreateCard href="#create-focus" ghost={programme} state="focus">
-					Create program
-				</CreateCard>
 			</div>
 		</div>
 	);

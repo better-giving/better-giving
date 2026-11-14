@@ -7,10 +7,10 @@
  * written here; `48rem` is the page container's own width step, the one length page.css writes at
  * its call site, and a line carrying a `raw-length-ok:` note says why its length is no step.
  *
- * the registry's component sheets draw the controls and the cards (button, badge, field, progress,
- * notice-card, state-card, table); what is here places them, and draws the five things the
- * registry has no part for, each marked where it stands: the input's prefix, the story's counter,
- * the photo's well, the icon tile, and the dialog's surface.
+ * the registry's component sheets draw the controls and the cards (button, badge, field with its
+ * prefix and counter, file-dropzone, spam-check, progress, notice-card, state-card, table); what is
+ * here places them, and draws the two things the registry has no part for, each marked where it
+ * stands: the icon tile, and the dialog's surface.
  */
 
 /* the screen under the bar. */
@@ -174,36 +174,8 @@
 	gap: var(--_sp3);
 }
 
-/* registry gap: field-css has no prefix slot. the sign sits in the container's own box on the
-   input's line, at the field's inset, and the input after it starts a step in and takes the rest of
-   the row. field-css draws the bare input as a block, which would stand it under the sign. */
-.ds-field-input-container:has(> .sa-prefix) {
-	display: flex;
-	align-items: center;
-}
-
-.sa-prefix {
-	flex: none;
-	padding-inline-start: var(--_sp4);
-	color: var(--page-quiet);
-}
-
-.ds-field-input-container > .sa-prefixed {
-	flex: 1;
-	min-inline-size: 0;
-	padding-inline-start: var(--_sp1);
-}
-
 .sa-story {
 	resize: vertical;
-}
-
-/* registry gap: field-css has no character counter. it stands at the box's end, under any refusal. */
-.sa-count {
-	margin-block-start: var(--_sp1);
-	text-align: end;
-	font-size: var(--_t-xs);
-	color: var(--page-quiet);
 }
 
 /* a refusal of the whole post, said above the press, in the refusal's ink. */
@@ -306,12 +278,7 @@
 
 /* ── the photo ── */
 
-.sa-photo {
-	display: grid;
-	gap: var(--_sp3);
-	justify-items: start;
-}
-
+/* the photo a confirm link's page shows (./open-link.tsx), 16:9 and cropped to its frame. */
 .sa-photo-frame {
 	display: block;
 	box-sizing: border-box;
@@ -320,25 +287,6 @@
 	border: var(--_border) solid var(--page-plane-edge);
 	border-radius: var(--_r-in);
 	object-fit: cover;
-}
-
-/* the photo's group: a fieldset whose legend is the field's label, with none of the platform's
-   frame. */
-.sa-fieldset {
-	min-inline-size: 0;
-	margin: 0;
-	padding: 0;
-	border: 0;
-}
-
-.sa-fieldset > legend {
-	padding: 0;
-}
-
-/* registry gap: no dropzone. the empty well a photo is dropped into. */
-.sa-photo-well {
-	border: var(--_border) dashed var(--_n8);
-	background: var(--panel);
 }
 
 /* ── lists and cards ── */

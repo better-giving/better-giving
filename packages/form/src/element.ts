@@ -48,6 +48,7 @@ import type { FormConfig, Frequency, PaymentMethod } from './v1';
 import buttonStyles from './registry/styles/button-css.css?inline';
 import checkboxStyles from './registry/styles/checkbox-css.css?inline';
 import fieldStyles from './registry/styles/field-css.css?inline';
+import spinnerStyles from './registry/styles/spinner-css.css?inline';
 import tokens from './styles/tokens.css?inline';
 import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
@@ -399,7 +400,7 @@ function sheetsFor(doc: Document): readonly CSSStyleSheet[] {
 	// placed.
 	const shadow = [
 		build(tokens),
-		build(`${buttonStyles}\n${fieldStyles}\n${checkboxStyles}`),
+		build(`${buttonStyles}\n${fieldStyles}\n${checkboxStyles}\n${spinnerStyles}`),
 		build(partStyles),
 		build(layoutStyles),
 		build(motionStyles)

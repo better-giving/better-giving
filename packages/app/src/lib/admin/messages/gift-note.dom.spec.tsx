@@ -33,7 +33,7 @@ describe('a note in the gifts list', () => {
 		const host = mount(<GiftNote note={NOTE} standing="shown" />);
 		const word = host.querySelector('.adm-cell__under .ds-badge');
 		expect(word?.textContent).toBe('On the page');
-		expect(word?.classList.contains('adm-state--note')).toBe(false);
+		expect(word?.classList.contains('ds-badge-outline')).toBe(false);
 		expect(host.querySelector('.adm-cell__quiet')).toBeNull();
 	});
 
@@ -41,7 +41,7 @@ describe('a note in the gifts list', () => {
 		const host = mount(<GiftNote note={NOTE} standing="hidden" />);
 		const word = host.querySelector('.adm-cell__under .ds-badge');
 		expect(word?.textContent).toBe('Hidden');
-		expect(word?.classList.contains('adm-state--note')).toBe(true);
+		expect(word?.classList.contains('ds-badge-outline')).toBe(true);
 		expect(host.querySelector('.adm-cell__quiet')?.textContent).toBe(NOTE);
 	});
 });

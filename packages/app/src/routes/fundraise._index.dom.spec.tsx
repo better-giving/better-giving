@@ -13,14 +13,16 @@ import StartRoute from './fundraise._index';
 
 const widget = vi.hoisted(() => ({
 	configs: [] as unknown[],
+	mounts: [] as unknown[],
 	resets: 0,
 	stops: 0,
 	hand: null as null | ((token: string) => void)
 }));
 
 vi.mock('@better-giving/form/embed/challenge', () => ({
-	createChallenge: (config: unknown, _mount: unknown, onToken: (token: string) => void) => {
+	createChallenge: (config: unknown, mount: unknown, onToken: (token: string) => void) => {
 		widget.configs.push(config);
+		widget.mounts.push(mount);
 		widget.hand = onToken;
 		return {
 			reset: () => {
@@ -74,6 +76,31 @@ it('starts the widget on the loader’s config and posts its answer in the chall
 	expect(box(root)?.value).toBe('');
 	act(() => widget.hand?.('solved-payload'));
 	expect(box(root)?.value).toBe('solved-payload');
+});
+
+it('mounts the widget bare in the registry’s spam slot, the answer box beside it', () => {
+	widget.mounts.length = 0;
+	const root = screen(undefined);
+	const slot = root.querySelector('.ds-spam-slot');
+	expect(widget.mounts).toHaveLength(1);
+	expect(widget.mounts[0]).toBe(slot?.firstElementChild);
+	expect((widget.mounts[0] as HTMLElement).className).toBe('');
+	expect(root.querySelector('.ds-spam-widget')).toBeNull();
+	expect(box(root)?.parentElement).toBe(slot);
+});
+
+it.each([
+	[CHALLENGE, 'ALTCHA', 'https://altcha.org/'],
+	[
+		{ turnstileSiteKey: '1x00000000000000000000AA' },
+		'Cloudflare Turnstile',
+		'https://www.cloudflare.com/products/turnstile/'
+	]
+] as const)('names the check’s provider alone in the slot (%o)', (challenge, name, url) => {
+	const root = screen(undefined, challenge as never);
+	const line = root.querySelector('.ds-spam-slot > .ds-spam-check-by');
+	expect(line?.textContent).toBe(`Protected by ${name}`);
+	expect(line?.querySelector('a')?.getAttribute('href')).toBe(url);
 });
 
 it('asks the widget for a fresh answer once the action has answered', () => {

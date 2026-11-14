@@ -117,7 +117,7 @@ describe('editing a page', () => {
 		await act(async () => button(root, 'Use this photo').click());
 		expect(uploaded).toHaveLength(1);
 		expect(uploaded[0]?.get('file')).toBeInstanceOf(File);
-		expect(one<HTMLImageElement>(root, 'img.sa-photo-frame').getAttribute('src')).toBe(
+		expect(one<HTMLImageElement>(root, '.ds-dropzone-img > img').getAttribute('src')).toBe(
 			'/image/img-2'
 		);
 		await submit(one<HTMLFormElement>(root, `form#${EDIT_FORM.id}`));
@@ -143,7 +143,7 @@ describe('editing a page', () => {
 		}
 	});
 
-	it('keeps the keyboard on the photo’s press when Remove takes itself away', () => {
+	it('puts the keyboard on the photo’s area when Remove takes itself away', () => {
 		const { root } = edit();
 		const remove = button(root, 'Remove');
 		act(() => {
@@ -151,7 +151,7 @@ describe('editing a page', () => {
 			remove.click();
 		});
 		expect(root.contains(remove)).toBe(false);
-		expect(document.activeElement).toBe(button(root, 'Add photo'));
+		expect(document.activeElement).toBe(one(root, '.ds-dropzone[role="button"]'));
 	});
 
 	it('turns down a crop the resize took under the width a page takes, and sends nothing', async () => {

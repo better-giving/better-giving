@@ -7,9 +7,8 @@ import { SaveButton } from '@better-giving/operator/components/controls/SaveButt
  * four close the press with `aria-disabled` — a save in flight takes no second press, a button
  * reporting one stands over a group with nothing left in it to save, and `disabled` is that same
  * group before any press. a press in flight is the registry's `aria-busy` look, the disabled fill
- * with the resting label still in it; done and disabled are the closed press
- * `.adm-btn[aria-disabled='true']` draws in packages/operator/src/styles/adm.css, done with the tick
- * and its own words in place of the label.
+ * with the resting label still in it; done and disabled are the closed press the registry draws for
+ * `aria-disabled` on a `<button>`, done with the tick and its own words in place of the label.
  */
 export default function ControlsSaveButtonPreview() {
 	return (

@@ -114,8 +114,8 @@ describe('a live fundraiser, part way', () => {
 		expect(forLine?.querySelector('img')?.getAttribute('alt')).toBe('');
 		expect(root.querySelector('h1')?.textContent).toBe(PART_WAY.title);
 		expect(root.querySelectorAll('h1')).toHaveLength(1);
-		const avatar = root.querySelector('.fundraiser-avatar');
-		expect(avatar?.tagName).toBe('DIV');
+		const avatar = root.querySelector('.fundraiser-byline > .ds-avatar');
+		expect(avatar?.classList.contains('ds-avatar-lg')).toBe(true);
 		expect(avatar?.getAttribute('aria-hidden')).toBe('true');
 		expect(avatar?.textContent).toBe('MR');
 		expect(root.querySelector('.fundraiser-by')?.textContent).toBe(

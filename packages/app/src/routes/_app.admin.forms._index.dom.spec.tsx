@@ -143,7 +143,9 @@ it('leads the list with the way to add to it, on an empty list and a populated o
 	// the create card is the list's first card in both readings, which is what makes the empty list
 	// the same screen as the full one rather than a sentence standing in for it.
 	for (const forms of [[], [GENERAL, APPEAL]]) {
-		const lead = list(screen(null, forms)).firstElementChild;
+		// the card's press is the registry's `ds-card-create`, inside the holder that stands it at a
+		// record's height.
+		const lead = list(screen(null, forms)).firstElementChild?.querySelector('.ds-card-create');
 
 		expect(lead?.getAttribute('href')).toBe('/admin/forms/new');
 		expect(lead?.textContent).toContain('Create donation form');

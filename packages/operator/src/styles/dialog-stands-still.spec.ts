@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ruleOf, sheet } from './sheet-rule.testing';
+import { stripComments } from './raw-values';
+import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
 // a question the server drew stands where the lifted one will, so nothing moves when
 // ../behaviour/Dialog.tsx calls `showModal()`.
@@ -9,18 +13,27 @@ import { ruleOf, sheet } from './sheet-rule.testing';
 // has to come up on the same control. a card drawn anywhere else before the lift ends that press on
 // the `::backdrop`, and the answer the reader gave is lost.
 //
-// a shown modal is `position: fixed` against all four insets in the browser's own sheet, and
-// `margin: auto` in ./adm.css is what centres it; its caps are this sheet's too, because the
-// browser caps a shown modal and leaves an open, never-lifted element uncapped. so what is held
-// here is the in-page presentation stating the same position, insets and margin, and restating
-// nothing the one box is drawn with.
+// the box is the registry's `ds-dialog` (../registry/styles/dialog-css.css), which places it fixed
+// against all four insets and centres it by its margins on the class itself rather than on
+// `:modal`, so the open element and the shown modal are one box. what is held here is that the
+// registry still places it that way, and that the in-page presentation in ./adm.css restates
+// nothing the box is placed or sized by.
 
 const css = sheet('adm.css');
-const card = ruleOf(css, '.adm-dialog');
+// resolved through `fileURLToPath`, which ./field-on-a-tight-stack.dom.spec.tsx argues.
+const registry = stripComments(
+	readFileSync(
+		join(dirname(fileURLToPath(import.meta.url)), '../registry/styles/dialog-css.css'),
+		'utf8'
+	)
+);
+const box = ruleOf(registry, '.ds-dialog');
 const inPage = ruleOf(css, '.adm-dialog--inline:not(:modal)');
 
-/** what sizes and places the card, which the two presentations share. */
+/** what places and sizes the card, which the two presentations share. */
 const BOX = [
+	'position',
+	'inset',
 	'inline-size',
 	'max-inline-size',
 	'max-block-size',
@@ -32,26 +45,38 @@ const BOX = [
 ];
 
 describe('the question the server drew stands where the lifted one will', () => {
-	it('is fixed against all four insets, as a shown modal is', () => {
-		expect(inPage.get('position')).toBe('fixed');
-		expect(inPage.get('inset')).toBe('0');
+	it('is fixed against all four insets and centred by its margins, open or shown modally', () => {
+		expect([box.get('position'), box.get('inset'), box.get('margin')]).toEqual([
+			'fixed',
+			'0',
+			'auto'
+		]);
+		// the placement is the class's own: a rule keyed on `:modal` or `[open]` would place one
+		// presentation and not the other.
+		const placing = rulesIn(registry).filter(
+			({ selector, stated }) =>
+				/\.ds-dialog\b(?!-)/.test(selector) &&
+				/:modal|\[open\]/.test(selector) &&
+				(stated.has('position') || stated.has('inset') || stated.has('margin'))
+		);
+		expect(placing.map(({ selector }) => selector)).toEqual([]);
 	});
 
-	it('is centred by the margin a shown modal is centred by', () => {
-		expect(ruleOf(css, '.adm-dialog--inline').get('margin')).toBe('auto');
+	it("is capped by the registry's own rule, not by the browser's", () => {
+		expect(box.has('max-inline-size')).toBe(true);
+		expect(box.has('max-block-size')).toBe(true);
 	});
 
-	it("is capped by the card's own rule in both presentations, not by the browser's", () => {
-		expect(card.has('max-inline-size')).toBe(true);
-		expect(card.has('max-block-size')).toBe(true);
-	});
-
-	it('restates nothing the card is sized or placed by', () => {
+	it('restates nothing the card is placed or sized by', () => {
+		expect([...inPage.keys()]).not.toEqual([]);
 		expect(BOX.filter((property) => inPage.has(property))).toEqual([]);
 	});
 
 	it('stands over the bar, on the scrim the top layer draws', () => {
 		expect(inPage.get('z-index')).toBe('3');
 		expect(inPage.get('box-shadow')).toContain('var(--admin-scrim)');
+		// the scrim is the registry's `--overlay`, the colour its `::backdrop` paints.
+		expect(ruleOf(registry, '.ds-dialog::backdrop').get('background-color')).toBe('var(--overlay)');
+		expect(sheet('tokens.css')).toMatch(/--admin-scrim:\s*var\(--overlay\)/);
 	});
 });

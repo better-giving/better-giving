@@ -10,12 +10,11 @@
  * default, which is the registry's own default accent step 9 (`--donate-primary` below).
  *
  * the registry arrives through the `@import` below: ../registry/styles/variables.css, which brings
- * its colors.css and the generated default theme. variables.css also `@import`s the registry's face
- * sheet, and the form's vite and vitest configs point that one import at an empty sheet
- * (../../vite.registry-faces.ts): the card loads no web font and packs none. it is set in whatever
- * face the host page gives the element — the `:host` block below names no `font-family` — so on the
- * deployment's own pages it is that page's face and on a nonprofit's site it is theirs, with that
- * page's own fallbacks.
+ * its colors.css and the generated default theme, and no face sheet ("builds from registry sheets
+ * that import no face" in ../embed/build.spec.ts): the card loads no web font and packs none. it is
+ * set in whatever face the host page gives the element — the `:host` block below names no
+ * `font-family` — so on the deployment's own pages it is that page's face and on a nonprofit's site
+ * it is theirs, with that page's own fallbacks.
  *
  * the registry declares its scales on `:root` and on every `[data-theme]` element, and a shadow tree
  * has no `:root`: the card's root node carries `data-theme="default"`, and everything here that reads
@@ -37,11 +36,11 @@
  * a control whose ground is transparent at rest takes 3 under the pointer and 4 under the press,
  * which is the one variation the radix page the registry's scales come from states.
  *
- * the button, the text box, the box a donor ticks and the network badge are the registry's own
- * controls (`ds-btn`, `ds-field-input`, `ds-checkbox`, `ds-badge`), drawn by its copied component
- * sheets; ./parts.css draws the controls the registry has none of — the amount tiles and chips, the
- * cadence tray, the floating-label name boxes, the fee switch, the step marks — from the aliases
- * below.
+ * the button, the text box, the box a donor ticks, the network badge and the busy ring are the
+ * registry's own controls (`ds-btn`, `ds-field-input`, `ds-checkbox`, `ds-badge`, `ds-spinner`),
+ * drawn by its copied component sheets; ./parts.css draws the controls the registry has none of —
+ * the amount tiles and chips, the cadence tray, the floating-label name boxes, the fee switch, the
+ * step marks — from the aliases below.
  *
  * two public seeds are what a host page sets, and there is no third. `--donate-primary` takes a
  * value — the brand colour — and `--donate-corner` takes a preset: one of three corner pairs, so a
@@ -87,12 +86,47 @@
  *
  * `em` throughout, off the clamped root below. the element is a guest in a document it does not
  * own, so a host that set `html { font-size: 62.5% }` must not be able to render the card at 10px,
- * while a reader's own browser zoom still moves type and spacing together. the registry's corners and
- * its component sheets are stated in `rem`, which that host does shrink — a registry gap. so the form
- * takes each `rem` figure it draws off the clamped root instead: the corner pair in the colour layer
- * below, and the button's, text box's, tick box's and badge's spacing step and type sizes at the head
- * of ./parts.css. at a 16px root each is exactly the registry's figure. the text box's type is held
- * at 16px besides (`.ds-field-input` in ./parts.css), and the badge's at 12px.
+ * while a reader's own browser zoom still moves type and spacing together. the registry's component
+ * sheets read their `rem` figures through its `--ds-rem`, which the `:host` block below sets to the
+ * clamped root, so every registry control on the card draws off it. eight things the registry
+ * states that the form cannot take as stated, each a registry gap, the first three listed and the
+ * rest numbered in the paragraphs after:
+ *
+ *   - its corner pair stays in `rem` with no `--ds-rem` (../registry/styles/variables.usage.md →
+ *     Sizes in rem), which a host that shrank its root shrinks: the pair is re-declared off the
+ *     clamped root in the colour layer below, at its own figures.
+ *   - its text box's type is `0.875` of the base, 14px on a 16px root, under the 16px a focused
+ *     control needs to keep iOS Safari from zooming a page this card is a guest on: held at 16px
+ *     (`.ds-field-input` in ./parts.css).
+ *   - its badge's type is `0.75` of the base, 11.25px at the clamp's floor, under the 12px floor the
+ *     card's small print keeps: held at 12px (`.ds-badge` in ./parts.css).
+ *
+ * the registry states its large button's height on its class alone (`--ds-btn-size` on `.ds-btn-lg`),
+ * so the skeleton's placeholder for it restates the figure (`.skeleton-action` in ./parts.css) — a
+ * fourth gap.
+ *
+ * the registry's busy ring stands still under `prefers-reduced-motion`, and a ring standing still on
+ * a press that is still checking a card is a lie about somebody's money: the card keeps it turning,
+ * slowed (`--_dur-spin` below, and ./motion.css) — a fifth.
+ *
+ * the registry's `select-css` is not copied. its trigger is the text box the closed choices already
+ * carry (`ds-field-input`, at the field's height), and what it adds the card cannot take: its list is
+ * a floating layer on `--shadow-floating` at the card corner with the chosen row on an accent ground,
+ * where this card's open list is flat at the inner corner and says the chosen row by its tick alone
+ * (`[part~='select-list']` in ./parts.css) — the one list the closed choices and the coin list share,
+ * and the coin list is a combobox `select-css` has no class for — and its chevron turns over
+ * `--duration-fast`, which the registry declares on `:root` and a shadow tree has none of. a sixth.
+ *
+ * the registry states its busy ring's size on its class alone, five of its spacing steps
+ * (`.ds-spinner` in ../registry/styles/spinner-css.css), as no variable a rule placing it can read,
+ * so the status line restates the figure off `--ds-rem` to centre the ring on its first line
+ * (`.status > .ds-spinner` in ./parts.css, held equal to the registry's by "centres the status’s
+ * ring on a size equal to the registry’s" in ./spinner.spec.ts) — a seventh.
+ *
+ * the registry puts a mark beside a button's words in the button's own flex row, spaced by its gap
+ * (../registry/styles/button-css.usage.md → Markup contract). the action's busy ring is placed out
+ * of flow against the action's inline end instead, so the words do not move on a press
+ * (`[part~='action'] > .ds-spinner` in ./parts.css) — an eighth.
  *
  * no shade is ever made with alpha. a translucent fill takes on whatever the host's page put behind
  * it, and this component is painted onto a page it cannot see; the registry's alpha steps
@@ -216,6 +250,17 @@
 	hyphens: manual;
 
 	--_root-size: clamp(15px, 1rem, 18px);
+
+	/*
+	 * the registry's base size for its plain-CSS controls (../registry/styles/variables.usage.md →
+	 * Sizes in rem): every `*-css` sheet reads its `rem` figures as `calc(N * var(--ds-rem, 1rem))`, so
+	 * the button, the text box, the tick box, the badge and the busy ring draw off the card's clamped
+	 * root rather than the host's. here rather than on the colour layer below, so the
+	 * `[data-theme]` node under it — and the deployment's own `[data-donate-root]`, which is one —
+	 * resolves the registry's `--ds-hit-target` against it too. "draws the registry’s controls off
+	 * the card’s clamped root" in ./parts.browser.spec.ts holds it.
+	 */
+	--ds-rem: var(--_root-size);
 
 	/*
 	 * the face for a string a donor checks against a wallet character by character — an address, a
@@ -638,30 +683,17 @@
 	--_glyph-beside: 1.15em;
 
 	/*
-	 * the busy spinner drawn on the action (`.spinner` in ./parts.css): the ring's box and its
-	 * stroke. `em` for the reason `--_box` above is — it is drawn inside a control, at that
-	 * control's own words, and a report sized off the root would drift off the label it stands
-	 * beside as the label grew.
-	 *
-	 * the stroke is a fraction of the box rather than `--_border`, and it is stated against the box
-	 * so the shape closes on itself the way the switch's does: one pixel of stroke on a ring this
-	 * size reads as an artifact rather than as a ring, and a change to the box has to carry the
-	 * stroke with it.
-	 *
-	 * no radius. it is a circle by construction, one of the three shapes the comment on `--_r` in the
-	 * preset layer sets outside the pair.
-	 */
-	--_spinner: 0.875em;
-	--_spinner-stroke: calc(var(--_spinner) * 0.16);
-
-	/*
 	 * two motions and a spinner. `fast` is a tile or a rail answering the press; `screen` is
 	 * the direction-aware card entry, so a donor knows which way they moved — forward slides
-	 * in from the trailing edge, back from the leading edge.
+	 * in from the trailing edge, back from the leading edge. `spin` is one turn of the registry's
+	 * busy ring (`.ds-spinner` in ../registry/styles/spinner-css.css), its own `0.8s`, restated
+	 * because the registry states the turn on its class alone and stands the ring still under
+	 * reduced motion (the head of this file); "turns the ring at the registry's own speed" in
+	 * ./spinner.spec.ts holds the two equal.
 	 */
 	--_dur-fast: 120ms;
 	--_dur-screen: 220ms;
-	--_dur-spin: 900ms;
+	--_dur-spin: 0.8s;
 
 	/*
 	 * two curves, and what each is for.
@@ -850,8 +882,8 @@
 	 * in to end at the same place.
 	 *
 	 * the shapes round by nature are outside the pair rather than exceptions to it, and no preset
-	 * moves them: the fee switch (`--_switch-radius`, where that list is kept), the busy spinner and
-	 * the marks on the step head (`.spinner` and `.step-mark` in ./parts.css), and the registry's
+	 * moves them: the fee switch (`--_switch-radius`, where that list is kept), the registry's busy
+	 * ring (`.ds-spinner`), the marks on the step head (`.step-mark` in ./parts.css), and the registry's
 	 * badge, a pill by its own rule.
 	 *
 	 * the registry states the pair in `rem` (../registry/styles/colors.css), which a host that shrank

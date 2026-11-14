@@ -14,10 +14,12 @@ import { SelectWithNote } from '@better-giving/operator/components/forms/SelectW
  * the empty list is what the control draws before anything has been created — a select with no
  * options, which is a control an operator can focus and cannot answer.
  *
- * the two pointer states are the whole of what the control pins: packages/operator/src/styles/adm.css
- * gives `.adm-select` a hover twin and packages/operator/src/styles/base.css draws every
- * `.is-focus`. unavailable is not pinned at all — the sheet draws the machine's `data-disabled`
- * with no twin beside it — so the specimen for it is the real attribute the control hands on.
+ * hover is the one state the control pins: packages/operator/src/styles/adm.css gives `.adm-select`
+ * a hover twin. focus is the registry's outline (`.ds-field-input:focus-visible` in
+ * packages/operator/src/registry/styles/field-css.css), drawn off the pseudo-class alone, so it is
+ * reached with the keyboard rather than pinned. unavailable is not pinned either — the registry
+ * draws `.ds-field-input:disabled` with no twin beside it — so the specimen for it is the real
+ * attribute the control hands on.
  *
  * the open list is the one specimen drawn open, and it is last so that it opens over nothing: the
  * list is the machine's, a press anywhere else on the page closes it, and a reader opens any other
@@ -97,7 +99,6 @@ export default function FormsSelectWithNotePreview() {
 				options={funds}
 			/>
 			<SelectWithNote id="forms-select-hover" label="hover" options={funds} state="hover" />
-			<SelectWithNote id="forms-select-focus" label="focus" options={funds} state="focus" />
 			<SelectWithNote
 				id="forms-select-really-disabled"
 				label="disabled attribute"

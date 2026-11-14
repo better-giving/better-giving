@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { linkedSheets } from '../linked-sheets.testing';
 
 // ./area.css writes no value of its own (its header): every colour, length, weight and duration
 // is a `var()` of the donor page's, the form's or the registry's. and every `sa-*` class the
@@ -64,6 +65,56 @@ describe('./area.css', () => {
 	});
 });
 
+// the sheets a supporter screen's route links, as `supporterAreaLinks` (./links.ts) emits them:
+// dropping one from that list, or linking one nothing draws from, changes what is read here.
+const LINKED = await linkedSheets(
+	[join(HERE, 'links.ts'), join(HERE, '../../donate/plain-page.tsx')],
+	async () => (await import('./links')).supporterAreaLinks()
+);
+
+describe('the registry classes the screens wear', () => {
+	it('links the donor chain, the registry parts a supporter screen draws, and its own sheet', () => {
+		const names = LINKED.map((file) => file.split('/').pop());
+		expect(names).toEqual(
+			expect.arrayContaining([
+				'button-css.css',
+				'field-css.css',
+				'checkbox-css.css',
+				'badge-css.css',
+				'progress-css.css',
+				'notice-card-css.css',
+				'state-card-css.css',
+				'table-css.css',
+				'file-dropzone-css.css',
+				'spam-check-css.css',
+				'area.css'
+			])
+		);
+	});
+
+	it('are each drawn by a sheet the screens link', () => {
+		const drawn = new Set(
+			LINKED.flatMap((file) =>
+				[...uncommented(readFileSync(file, 'utf8')).matchAll(/\.(ds-[\w-]+)/g)].map(
+					(m) => m[1] ?? ''
+				)
+			)
+		);
+		// the start route draws the spam check's slot around the widget it mounts.
+		const start = readFileSync(join(HERE, '../../../routes/fundraise._index.tsx'), 'utf8');
+		const written = uncommented(`${screens}\n${start}`);
+		const worn = new Set(written.match(/\bds-[a-z][\w-]*/g));
+		expect(worn.has('ds-dropzone')).toBe(true);
+		// a name ending in `-` is the head of a template (`ds-badge-${tone}`): some drawn class carries it.
+		const [heads, spelled] = [
+			[...worn].filter((name) => name.endsWith('-')),
+			[...worn].filter((name) => !name.endsWith('-'))
+		];
+		expect(spelled.filter((name) => !drawn.has(name))).toEqual([]);
+		expect(heads.filter((head) => ![...drawn].some((name) => name.startsWith(head)))).toEqual([]);
+	});
+});
+
 const WIDE = /@container page \(min-width: 48rem\)\s*\{([\s\S]*?)\n\}/g;
 
 /** what the rules whose selector is exactly `selector` state: on a phone, or from 48rem. */
@@ -86,17 +137,6 @@ function stated(selector: string, at: 'phone' | 'wide' = 'phone'): Record<string
 
 // happy-dom lays nothing out, so where a box stands is read off the rule that places it.
 describe('the placements the frames draw', () => {
-	it('stands the goal’s sign on the input’s line, the input taking the rest of the row', () => {
-		expect(stated('.ds-field-input-container:has(> .sa-prefix)')).toMatchObject({
-			display: 'flex',
-			'align-items': 'center'
-		});
-		expect(stated('.ds-field-input-container > .sa-prefixed')).toMatchObject({
-			flex: '1',
-			'min-inline-size': '0'
-		});
-	});
-
 	it('gives the signed-in address and Sign out a row of their own on a phone, sharing it from 48rem', () => {
 		expect(stated('.page-mast-in:has(> .sa-account)')['flex-wrap']).toBe('wrap');
 		expect(stated('.page-mast-in:has(> .sa-account) > .page-mast-name')['white-space']).toBe(

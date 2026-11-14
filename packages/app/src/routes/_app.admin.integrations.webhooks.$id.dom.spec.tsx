@@ -277,7 +277,7 @@ it('draws a delivered row’s word as the neutral pill, in no tone, and keeps th
 		['Delivered', 'ds-badge ds-badge-neutral'],
 		['Waiting', 'ds-badge ds-badge-warning'],
 		['Failed', 'ds-badge ds-badge-destructive'],
-		['Withheld', 'ds-badge ds-badge-neutral adm-state--note']
+		['Withheld', 'ds-badge ds-badge-outline']
 	]);
 });
 

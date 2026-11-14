@@ -38,4 +38,4 @@ Import `styles/variables.css`, `styles/button-css.css` and `styles/notice-card-c
 
 ## Theming
 
-Reads roles and scale steps from `variables`, so `data-theme`, `.dark` and `.light` recolor it. The spacing step, type sizes and weight Tailwind owns are declared on the classes as `--ds-*` with the same values. The spacing step and type sizes are in rem, so the card follows the reader's browser font size.
+Reads roles and scale steps from `variables`, so `data-theme`, `.dark` and `.light` recolor it. The spacing step, type sizes and weight Tailwind owns are declared on the classes as `--ds-*` with the same values. The spacing step and type sizes are in rem, so the card follows the reader's browser font size. Each of those rem sizes is declared as `calc(N * var(--ds-rem, 1rem))`, which is the rem while `--ds-rem` is unset; an embed under a host page that changes its root font size sets `--ds-rem: 16px` on its own root and gets this size back (see the `variables` note). The breakpoints stay in rem: in a media query rem is the browser's default font size, so a host's root size does not move them. The corner comes from `variables` and stays in rem.

@@ -26,7 +26,6 @@ const registry = stripComments(
 );
 const registryRules = rulesIn(registry);
 const css = sheet('adm.css');
-const tokens = sheet('tokens.css');
 
 /** the rules that hover or press a rank, which must pass over a closed press. */
 const reachesAnOpenPress = ({ selector }: { selector: string }) =>
@@ -79,28 +78,57 @@ describe("the registry's closed press", () => {
 	});
 });
 
-describe("the operator sheet's closed press", () => {
-	const closed = rulesIn(css).find(({ selector }) => selector === ".adm-btn[aria-disabled='true']");
-	const pressed = rulesIn(css).find(({ selector }) =>
-		selector.includes(".adm-btn[aria-disabled='true']:active")
-	);
+describe('a press closed by aria-disabled on a button', () => {
+	// ../components/controls/SaveButton.jsx closes its press this way so the reader standing on it
+	// keeps the focus. the registry draws it — the closed pair, the not-allowed pointer and no press
+	// nudge — and ./adm.css leaves it to the registry but for the one press whose face is its own
+	// outcome.
+	const closed = registryRules.find(({ selector }) => selector === `button.ds-btn${DISABLED}`);
 
-	it('closes a button held shut by aria-disabled on the same fill and ink as the registry closes it', () => {
-		expect(closed?.stated.get('background-color')).toBe('var(--admin-button-bg-disabled)');
-		expect(closed?.stated.get('color')).toBe('var(--admin-button-ink-disabled)');
+	it('is drawn by the registry on the closed pair, with no nudge', () => {
+		expect(closed?.stated.get('background-color')).toBe('var(--gray-3)');
+		expect(closed?.stated.get('color')).toBe('var(--gray-11)');
 		expect(closed?.stated.get('cursor')).toBe('not-allowed');
+		expect(closed?.stated.get('transform')).toBe('none');
 	});
 
-	it('names the pair it draws in the token sheet', () => {
-		expect(tokens).toMatch(/--admin-button-bg-disabled:\s*var\(--admin-neutral-3\)/);
-		expect(tokens).toMatch(/--admin-button-ink-disabled:\s*var\(--admin-neutral-11\)/);
-	});
-
-	it('takes the pixel off a closed press, as the pointer and as the forced state', () => {
-		expect(pressed?.selector.split(',').map((part) => part.trim())).toEqual([
-			".adm-btn[aria-disabled='true']:active",
-			".adm-btn[aria-disabled='true'].is-active"
+	it('is the same pair the registry closes a native and a busy press with', () => {
+		const busy = registryRules.find(({ selector }) => selector.includes(`.ds-btn-primary${BUSY}`));
+		expect([busy?.stated.get('background-color'), busy?.stated.get('color')]).toEqual([
+			closed?.stated.get('background-color'),
+			closed?.stated.get('color')
 		]);
-		expect(pressed?.stated.get('transform')).toBe('none');
+	});
+
+	it('takes no ground, ink or nudge from the operator sheet but on the outcome press', () => {
+		const restated = rulesIn(css)
+			.filter(({ selector }) => /\.adm-btn\b[^,]*\[aria-disabled='true'\]/.test(selector))
+			.filter(({ stated }) =>
+				['background-color', 'background', 'color', 'transform'].some((p) => stated.has(p))
+			)
+			.map(({ selector }) => selector);
+		expect(restated).toEqual([".adm-btn.adm-saidpress[aria-disabled='true']"]);
+	});
+});
+
+// a mark beside a press's words is spaced by the registry's flex gap, on the md tier and on each
+// tier that restates it. a gap from ./adm.css as well would outrank the registry's and put a second
+// measure between the two, and none at all leaves the mark touching the words.
+describe('the space between a mark and its words', () => {
+	const TIERS = ['.ds-btn', '.ds-btn-sm', '.ds-btn-md', '.ds-btn-lg', '.ds-btn-field'];
+
+	it('is drawn by the registry on every tier', () => {
+		const gaps = TIERS.map(
+			(tier) => registryRules.find(({ selector }) => selector === tier)?.stated.get('gap') ?? ''
+		);
+		expect(gaps.filter((gap) => !/^calc\(var\(--ds-spacing\) \* [\d.]+\)$/.test(gap))).toEqual([]);
+	});
+
+	it('is not restated on a press by the operator sheet', () => {
+		const restated = rulesIn(css)
+			.filter(({ selector }) => /\.adm-btn\b/.test(selector) && !selector.includes('::'))
+			.filter(({ stated }) => stated.has('gap') || stated.has('column-gap'))
+			.map(({ selector }) => selector);
+		expect(restated).toEqual([]);
 	});
 });

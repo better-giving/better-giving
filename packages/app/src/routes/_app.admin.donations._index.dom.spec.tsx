@@ -290,9 +290,9 @@ it('draws a settled gift’s word as the neutral pill, in no tone', () => {
 
 it.each([
 	['completed', 'ds-badge ds-badge-neutral'],
-	['refunded', 'ds-badge ds-badge-neutral adm-state--note'],
-	['partially_refunded', 'ds-badge ds-badge-neutral adm-state--note'],
-	['cancelled', 'ds-badge ds-badge-neutral adm-state--note']
+	['refunded', 'ds-badge ds-badge-outline'],
+	['partially_refunded', 'ds-badge ds-badge-outline'],
+	['cancelled', 'ds-badge ds-badge-outline']
 ] as const)(
 	'draws %s beside a grant’s tracking id in the same tone as without one',
 	(status, drawn) => {
@@ -304,9 +304,9 @@ it.each([
 );
 
 it.each([
-	['refunded', 'ds-badge ds-badge-neutral adm-state--note'],
-	['partially_refunded', 'ds-badge ds-badge-neutral adm-state--note'],
-	['cancelled', 'ds-badge ds-badge-neutral adm-state--note']
+	['refunded', 'ds-badge ds-badge-outline'],
+	['partially_refunded', 'ds-badge ds-badge-outline'],
+	['cancelled', 'ds-badge ds-badge-outline']
 ] as const)('draws an ended gift’s word as the note, for %s', (status, drawn) => {
 	const word = screen([gift({ status })]).querySelector('tbody .ds-badge');
 	expect(word?.className).toBe(drawn);

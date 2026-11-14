@@ -1,0 +1,204 @@
+/* the registry's file dropzone as plain css, no tailwind: the area to drop
+   on or press, the upload in flight, and the held file as a preview. reads
+   only the variables the `variables` item declares, plus --ds-dropzone-edge,
+   declared here. file-dropzone-css.test.tsx renders the React `FileDropzone`
+   beside it and asserts the same computed look in light and dark, for the
+   default and example themes.
+
+   the spacing step, the type sizes, the weights, the line height and the
+   easing live only in tailwind's theme; they are declared here under ds-
+   names with the same values, and the test holds them equal. */
+.ds-dropzone {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  /* the strong-border step, dashed: a shape over an existing role */
+  --ds-dropzone-edge: 1px dashed var(--input-hover);
+  position: relative;
+  box-sizing: border-box;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: calc(var(--ds-spacing) * 2);
+  min-block-size: calc(var(--ds-spacing) * 32);
+  padding: calc(var(--ds-spacing) * 5) calc(var(--ds-spacing) * 4);
+  border: var(--ds-dropzone-edge);
+  border-radius: var(--radius);
+  background-color: var(--panel);
+  color: var(--gray-11);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  text-align: center;
+  cursor: pointer;
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color,
+    fill, stroke;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-in-out);
+}
+.ds-dropzone > svg {
+  inline-size: calc(var(--ds-spacing) * 6);
+  block-size: calc(var(--ds-spacing) * 6);
+}
+@media (hover: hover) {
+  .ds-dropzone:hover:not([aria-disabled="true"], [aria-busy="true"]) {
+    background-color: var(--gray-4);
+  }
+}
+.ds-dropzone:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.ds-dropzone[aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+/* a file held over it: 2px of --ring on --secondary; the edge takes 1px of
+   the padding, so the box does not move */
+.ds-dropzone[data-dragging] {
+  border-width: 2px;
+  border-color: var(--ring);
+  background-color: var(--secondary);
+  padding: calc(var(--ds-spacing) * 5 - 1px) calc(var(--ds-spacing) * 4 - 1px);
+}
+/* in flight: a solid hairline on --card, the rows from the start edge */
+.ds-dropzone[aria-busy="true"] {
+  cursor: progress;
+  justify-items: stretch;
+  border-style: solid;
+  border-color: var(--hairline);
+  background-color: var(--card);
+  text-align: start;
+}
+/* still focusable, so the hint is read */
+.ds-dropzone[aria-disabled="true"] {
+  cursor: not-allowed;
+  background-color: var(--gray-3);
+  opacity: 0.6;
+}
+
+/* the prompt, and the link-styled words in it */
+.ds-dropzone-title {
+  --ds-font-weight-medium: 500;
+  color: var(--gray-12);
+  font-weight: var(--ds-font-weight-medium);
+}
+.ds-dropzone[data-dragging] .ds-dropzone-title {
+  color: var(--accent-12);
+}
+.ds-dropzone-link {
+  --ds-font-weight-semibold: 600;
+  color: var(--link);
+  font-weight: var(--ds-font-weight-semibold);
+}
+/* the prompt as a button's look (a ds-btn ds-btn-secondary ds-btn-sm span)
+   where there is nothing to drag from: under 640px or on a coarse pointer.
+   it is also a .ds-btn, whose display: flex it must outrank whichever
+   stylesheet loads last, hence the scope */
+.ds-dropzone .ds-dropzone-touch {
+  display: none;
+}
+@media (width < 40rem) {
+  .ds-dropzone {
+    min-block-size: calc(var(--ds-spacing) * 28);
+  }
+  .ds-dropzone-title {
+    display: none;
+  }
+  .ds-dropzone .ds-dropzone-touch {
+    display: inline-flex;
+  }
+}
+@media (pointer: coarse) {
+  .ds-dropzone-title {
+    display: none;
+  }
+  .ds-dropzone .ds-dropzone-touch {
+    display: inline-flex;
+  }
+}
+
+/* the file's glyph, name and size on one row, and Cancel at its end */
+.ds-dropzone-file {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--ds-spacing) * 3);
+  inline-size: 100%;
+  min-inline-size: 0;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  text-align: start;
+}
+.ds-dropzone-file > svg {
+  flex: none;
+  inline-size: calc(var(--ds-spacing) * 6);
+  block-size: calc(var(--ds-spacing) * 6);
+  color: var(--gray-11);
+}
+.ds-dropzone-name {
+  --ds-leading-tight: 1.25;
+  --ds-font-weight-semibold: 600;
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-xs-lh: calc(1 / 0.75);
+  display: grid;
+  flex: 1 1 0%;
+  min-inline-size: 0;
+  line-height: var(--ds-leading-tight);
+}
+.ds-dropzone-name > b {
+  overflow: hidden;
+  color: var(--gray-12);
+  font-weight: var(--ds-font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-dropzone-name > span {
+  color: var(--gray-11);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+}
+
+/* the held file: the image in a hairline frame, its row, Replace and Remove */
+.ds-dropzone-preview {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  display: grid;
+  justify-items: start;
+  gap: calc(var(--ds-spacing) * 2.5);
+}
+.ds-dropzone-img {
+  box-sizing: border-box;
+  inline-size: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+.ds-dropzone-img > img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+.ds-dropzone-actions {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 3);
+  inline-size: 100%;
+}
+
+/* the hint under the area, after the message when one shows */
+.ds-dropzone-hint {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  margin: calc(var(--ds-spacing) * 2) 0 0;
+  color: var(--gray-11);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  overflow-wrap: break-word;
+}

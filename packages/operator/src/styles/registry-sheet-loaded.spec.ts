@@ -54,8 +54,10 @@ const COMPONENT_SHEETS = [
 	'badge-css',
 	'card-css',
 	'field-css',
+	'select-css',
 	'switch-css',
-	'state-card-css'
+	'state-card-css',
+	'dialog-css'
 ];
 
 /** the specifiers a sheet `@import`s into the `registry` layer. */

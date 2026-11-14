@@ -530,8 +530,8 @@ describe('the root size', () => {
 
 	// a drawn shape whose token did not resolve is not a defect anything else here can see: the
 	// declaration is invalid at computed-value time, the non-inherited property it was assigned to
-	// falls to its initial value, and what renders is a checkbox with no size or a spinner with no
-	// ring rather than an error. that fallback is `0px` and it matches a length pattern, so the
+	// falls to its initial value, and what renders is a checkbox with no size or a switch with no
+	// thumb rather than an error. that fallback is `0px` and it matches a length pattern, so the
 	// assertion has to be a positive number — a drawn shape at zero is the same defect anyway.
 	it('resolves every drawn shape to a real length', () => {
 		const unresolved = [
@@ -539,8 +539,6 @@ describe('the root size', () => {
 			'--_box',
 			'--_glyph-among',
 			'--_glyph-beside',
-			'--_spinner',
-			'--_spinner-stroke',
 			'--_switch-inline',
 			'--_switch-block',
 			'--_switch-thumb'

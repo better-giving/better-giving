@@ -18,7 +18,7 @@ export function AboutUs({
 	const [statement, beneath] = mission === null ? [vision, null] : [mission, vision];
 	return (
 		<div className="page-about">
-			<h2 className="page-label">About us</h2>
+			<h2 className="page-label ds-eyebrow">About us</h2>
 			{statement === null ? null : (
 				<div className="page-about-statement">
 					<Paragraphs text={statement} />

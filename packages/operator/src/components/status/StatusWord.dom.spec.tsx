@@ -1,4 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { stripComments } from '../../styles/raw-values';
+import { ruleOf } from '../../styles/sheet-rule.testing';
 import { render } from '../render.testing';
 import { Mark } from './Mark.jsx';
 import { StatusWord } from './StatusWord.jsx';
@@ -80,16 +85,51 @@ describe('a descriptive word', () => {
 			'ds-badge ds-badge-primary',
 			'ds-badge ds-badge-warning',
 			'ds-badge ds-badge-destructive',
-			// an ended record's ground is taken away by ../../styles/adm.css, so it is told from one at
+			// an ended record is the registry's outline chip, with no ground, so it is told from one at
 			// rest (../../styles/state-in-a-cell.spec.ts).
-			'ds-badge ds-badge-neutral adm-state--note'
+			'ds-badge ds-badge-outline'
 		]);
 	});
 
-	it('draws the quiet and the unset word as the neutral badge, which has nothing quieter', () => {
+	it('draws the quiet word as the registry’s quiet chip and the unset word as the neutral one', () => {
 		expect([drawn({ secondary: true }), drawn({ unset: true })]).toEqual([
-			'ds-badge ds-badge-neutral',
+			'ds-badge ds-badge-quiet',
 			'ds-badge ds-badge-neutral'
 		]);
+	});
+
+	it('lets a tone win over the quiet word', () => {
+		expect(drawn({ tone: 'done', secondary: true })).toBe('ds-badge ds-badge-primary');
+		expect(drawn({ tone: 'note', secondary: true })).toBe('ds-badge ds-badge-outline');
+	});
+
+	it('wears only variants the registry’s badge sheet states', () => {
+		// resolved through `fileURLToPath`, which ../../styles/field-on-a-tight-stack.dom.spec.tsx argues.
+		const badge = stripComments(
+			readFileSync(
+				join(dirname(fileURLToPath(import.meta.url)), '../../registry/styles/badge-css.css'),
+				'utf8'
+			)
+		);
+		const worn = new Set(
+			[
+				drawn({}),
+				drawn({ secondary: true }),
+				drawn({ unset: true }),
+				...(['done', 'attention', 'blocker', 'note'] as const).map((tone) => drawn({ tone }))
+			].flatMap((classes) => (classes ?? '').split(' '))
+		);
+
+		expect([...worn].sort()).toEqual([
+			'ds-badge',
+			'ds-badge-destructive',
+			'ds-badge-neutral',
+			'ds-badge-outline',
+			'ds-badge-primary',
+			'ds-badge-quiet',
+			'ds-badge-warning'
+		]);
+		const unstated = [...worn].filter((name) => ruleOf(badge, `.${name}`).size === 0);
+		expect(unstated).toEqual([]);
 	});
 });
