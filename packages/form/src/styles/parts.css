@@ -2417,8 +2417,15 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * class alone, five of its spacing steps (`.ds-spinner` in ../registry/styles/spinner-css.css), and
  * as no variable a rule placing it can read — a gap the head of ./tokens.css lists, held equal to
  * the registry's in ./spinner.spec.ts — so the figure is restated off the registry's own base.
+ *
+ * the status stands the ring and its words on the card's centre line as one group
+ * (./layout.css), so the ring keeps its box here as well: a ring with no width, before its sheet
+ * has reached the tree, would leave the words half a gap off that line.
  */
 .status > .ds-spinner {
+	flex: none;
+	inline-size: calc(var(--ds-rem) * 1.25);
+	block-size: calc(var(--ds-rem) * 1.25);
 	margin-block-start: calc((1lh - var(--ds-rem) * 1.25) / 2);
 }
 

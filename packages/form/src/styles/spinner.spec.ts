@@ -39,9 +39,16 @@ describe('the busy ring', () => {
 			)?.[1]
 		);
 
+		const boxed = Number(
+			/\.status > \.ds-spinner\s*\{[^}]*inline-size:\s*calc\(var\(--ds-rem\) \* ([\d.]+)\);\s*block-size:\s*calc\(var\(--ds-rem\) \* ([\d.]+)\);/.exec(
+				read('./parts.css')
+			)?.[1]
+		);
+
 		// a pattern that stops matching reads NaN on both sides, which `toBe` calls equal.
 		expect(restated).toBeGreaterThan(0);
 		expect(restated).toBe(step * steps);
+		expect(boxed).toBe(restated);
 	});
 
 	it('draws no ring of its own', () => {
