@@ -1266,13 +1266,15 @@ describe('the sections ./page.css draws', () => {
 		...globSync(join(here, 'sections/*.tsx')).filter((file) => !file.includes('.spec.'))
 	];
 	const FORM_LAYOUT = require.resolve('@better-giving/form/styles/layout.css');
-	// the registry's button and eyebrow, which the page links beside its own sheet (./plain-page.tsx).
+	// the registry's button, busy ring and eyebrow, which the page links beside its own sheet
+	// (./plain-page.tsx).
 	const FORM_BUTTON = require.resolve('@better-giving/form/registry/styles/button-css.css');
+	const SPINNER = require.resolve('@better-giving/operator/registry/styles/spinner-css.css');
 	const LEAD = require.resolve('@better-giving/operator/registry/styles/lead-css.css');
 	const drawn = new Set(
 		[
 			pageText,
-			...[FORM_LAYOUT, FORM_BUTTON, LEAD].map((file) => readFileSync(file, 'utf8'))
+			...[FORM_LAYOUT, FORM_BUTTON, SPINNER, LEAD].map((file) => readFileSync(file, 'utf8'))
 		].flatMap((css) =>
 			[...stripComments(css).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1] ?? '')
 		)

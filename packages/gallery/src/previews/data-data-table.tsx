@@ -52,10 +52,10 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  *
  * the last plane is the descriptive status word in a cell: the badge
  * src/previews/status-status-word.tsx shows, the same chip in a row as anywhere else. a settled
- * gift is the neutral badge and a refunded one the ended word with no ground
- * (`.adm-state--note` in packages/operator/src/styles/adm.css), and a row of them is the only way
- * to see that the two read apart, so every rung a gift takes is drawn at once, with the quiet word
- * beside a figure and a word long enough to wrap.
+ * gift is the neutral badge and a refunded one the ended word with no ground (the registry's
+ * `ds-badge-outline`, packages/operator/src/registry/styles/badge-css.css), and a row of them is
+ * the only way to see that the two read apart, so every rung a gift takes is drawn at once, with
+ * the quiet word beside a figure and a word long enough to wrap.
  *
  * the key list is the pinned column holding a name with no break in it — a pasted address, which
  * is a name an operator may give a key — beside two short ones. the pin has to wrap it at the width

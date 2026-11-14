@@ -29,7 +29,9 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * link in — which is the same escape every other press in this package takes.
  *
  * the press is the registry's `ds-card-create`, whose hover, press and focus are drawn off the
- * pseudo-classes alone, so none is pinned here: reach them with the pointer and the keyboard.
+ * pseudo-classes alone, so none is pinned here: reach them with the pointer and the keyboard. its
+ * focus is the registry's outline and nothing else: packages/operator/src/styles/adm.css takes the
+ * focused link's bleed from packages/operator/src/styles/base.css off it.
  */
 
 const programme = (

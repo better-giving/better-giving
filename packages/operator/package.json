@@ -95,6 +95,7 @@
 		"./registry/styles/file-dropzone-css.css": "./src/registry/styles/file-dropzone-css.css",
 		"./registry/styles/spam-check-css.css": "./src/registry/styles/spam-check-css.css",
 		"./registry/styles/lead-css.css": "./src/registry/styles/lead-css.css",
+		"./registry/styles/spinner-css.css": "./src/registry/styles/spinner-css.css",
 		"./styles/fonts.css": "./src/styles/fonts.css",
 		"./styles/raw-values": "./src/styles/raw-values.ts",
 		"./brand/zapier.png": "./src/styles/brand/zapier.png"

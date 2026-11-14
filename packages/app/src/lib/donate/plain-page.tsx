@@ -6,6 +6,7 @@ import formMotion from '@better-giving/form/styles/motion.css?url';
 import formParts from '@better-giving/form/styles/parts.css?url';
 import formTokens from '@better-giving/form/styles/tokens.css?url';
 import registryLead from '@better-giving/operator/registry/styles/lead-css.css?url';
+import registrySpinner from '@better-giving/operator/registry/styles/spinner-css.css?url';
 import hostedFaces from '@better-giving/operator/styles/fonts.css?url';
 import { part } from '@better-giving/form/parts';
 import type { FormConfig } from '@better-giving/form/v1';
@@ -27,7 +28,9 @@ import { Masthead, type PageLogo, type PageLook } from './page-view';
  * the form's are in the order `sheetsFor` in packages/form/src/element.ts adopts them, which is
  * cascade order for the equal-specificity rules they are almost entirely made of: its tokens, the
  * registry's button, text box and tick box the card's controls carry the classes of
- * (`REGISTRY_CLASS` in packages/form/src/parts.ts), then its parts, layout and motion. the faces sit
+ * (`REGISTRY_CLASS` in packages/form/src/parts.ts) and its busy ring, then its parts, layout and
+ * motion. the busy ring is the operator package's copy of spinner-css, the same file as the form's,
+ * because the form's `exports` map names no spinner sheet. the faces sit
  * after them and before the page, and their place orders nothing: the sheet
  * (packages/operator/src/styles/fonts.css) registers the files and re-points the registry's three
  * `--font-*` roles, which the form's token sheet declares unlayered, from inside a layer with
@@ -42,6 +45,7 @@ export function donorPageLinks() {
 		registryButton,
 		registryField,
 		registryCheckbox,
+		registrySpinner,
 		formParts,
 		formLayout,
 		formMotion,

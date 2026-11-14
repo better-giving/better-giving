@@ -1538,6 +1538,14 @@
 		border-color: var(--admin-field-border-hover);
 	}
 
+	/* the select's box is ringed by the registry's outline (`.ds-field-input:focus-visible`,
+	   ../registry/styles/field-css.css), so ./base.css's shadow ring comes off it, as it does off
+	   `.adm-field__box` below. the outline keys on `:focus-visible` alone, so the twin draws no ring. */
+	.adm-select:focus-visible,
+	.adm-select.is-focus {
+		box-shadow: none;
+	}
+
 	/* the ground, the ink and the border are the whole of unavailable, and `opacity` is reset
 	   rather than left alone: a user agent lightens a disabled control and one arriving by
 	   inheritance is still an opacity used as a lightener, which ./tokens.css bans. */
@@ -3697,6 +3705,15 @@
 
 	.adm-create > * {
 		grid-area: 1 / 1;
+	}
+
+	/* the press is a link, and ./base.css bleeds a focused link's tint past its box: around a
+	   record-sized card that is a halo beside the registry's own outline
+	   (`.ds-card-create:focus-visible`, ../registry/styles/card-css.css), which is the one ring.
+	   the press is the box's one focusable child: the ghost beside it holds nothing focusable. */
+	.adm-create > :focus-visible,
+	.adm-create > .is-focus {
+		box-shadow: none;
 	}
 
 	.adm-create__ghost {

@@ -347,7 +347,7 @@ export function GiveStep({
 				onClick={onSubmit}
 			>
 				<span className="action-label">{submitLabel}</span>
-				<span className="spinner" aria-hidden="true" />
+				<span className="ds-spinner" aria-hidden="true" />
 			</button>
 			{/* after the press rather than before it: what it holds is what that press is waiting on. */}
 			<ChallengeBox mount={heldChallengeMount} />

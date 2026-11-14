@@ -148,7 +148,7 @@ export function DonorMessages({
 						>
 							{loading ? (
 								<>
-									<span className="page-spinner" aria-hidden="true" />
+									<span className="ds-spinner ds-spinner-sm" aria-hidden="true" />
 									Loading
 								</>
 							) : (

@@ -4,11 +4,11 @@ import { donorPageLinks } from './plain-page';
 
 // the sheets a donor page links, in the order `donorPageLinks()` in ./plain-page.tsx states: the
 // form's in the order `sheetsFor` in packages/form/src/element.ts adopts them — its tokens, the
-// registry's button, text box and tick box, then its parts, layout and motion — and then the faces,
-// the registry's eyebrow and the page's own chrome.
+// registry's button, text box, tick box and busy ring, then its parts, layout and motion — and then
+// the faces, the registry's eyebrow and the page's own chrome.
 //
 // the spec pool processes no css, so a `?url` import of a sheet reads as an empty string here and
-// ten empty hrefs would say nothing about which sheet stands where. each import is answered with
+// eleven empty hrefs would say nothing about which sheet stands where. each import is answered with
 // its own specifier instead.
 
 vi.mock('@better-giving/form/styles/tokens.css?url', () => ({ default: 'form/tokens' }));
@@ -20,6 +20,9 @@ vi.mock('@better-giving/form/registry/styles/field-css.css?url', () => ({
 }));
 vi.mock('@better-giving/form/registry/styles/checkbox-css.css?url', () => ({
 	default: 'registry/checkbox'
+}));
+vi.mock('@better-giving/operator/registry/styles/spinner-css.css?url', () => ({
+	default: 'registry/spinner'
 }));
 vi.mock('@better-giving/form/styles/parts.css?url', () => ({ default: 'form/parts' }));
 vi.mock('@better-giving/form/styles/layout.css?url', () => ({ default: 'form/layout' }));
@@ -38,6 +41,7 @@ it('links the form’s sheets with the registry’s controls between its tokens 
 		'registry/button',
 		'registry/field',
 		'registry/checkbox',
+		'registry/spinner',
 		'form/parts',
 		'form/layout',
 		'form/motion',

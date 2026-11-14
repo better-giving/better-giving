@@ -36,11 +36,11 @@
  * a control whose ground is transparent at rest takes 3 under the pointer and 4 under the press,
  * which is the one variation the radix page the registry's scales come from states.
  *
- * the button, the text box, the box a donor ticks and the network badge are the registry's own
- * controls (`ds-btn`, `ds-field-input`, `ds-checkbox`, `ds-badge`), drawn by its copied component
- * sheets; ./parts.css draws the controls the registry has none of — the amount tiles and chips, the
- * cadence tray, the floating-label name boxes, the fee switch, the step marks — from the aliases
- * below.
+ * the button, the text box, the box a donor ticks, the network badge and the busy ring are the
+ * registry's own controls (`ds-btn`, `ds-field-input`, `ds-checkbox`, `ds-badge`, `ds-spinner`),
+ * drawn by its copied component sheets; ./parts.css draws the controls the registry has none of —
+ * the amount tiles and chips, the cadence tray, the floating-label name boxes, the fee switch, the
+ * step marks — from the aliases below.
  *
  * two public seeds are what a host page sets, and there is no third. `--donate-primary` takes a
  * value — the brand colour — and `--donate-corner` takes a preset: one of three corner pairs, so a

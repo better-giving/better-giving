@@ -88,9 +88,10 @@ const CONTROL =
 /** whether a press at this point, targeting the element itself, is outside the card's box. */
 function onGround(node: HTMLDialogElement, event: MouseEvent | ReactMouseEvent): boolean {
 	if (event.target !== node) return false;
-	// a press on the card's own padding targets the element too — the card is one box and its
-	// padding is inside it — so the point is what separates the ground from the card. there is no
-	// second node to aim at: the ground is the element's own `::backdrop`.
+	// a press on the element's own edge targets it too — the padding is on the surface inside it
+	// (`ds-dialog-surface`), and the border is the element's — so the point is what separates the
+	// ground from the card. there is no second node to aim at: the ground is the element's own
+	// `::backdrop`.
 	const box = node.getBoundingClientRect();
 	return (
 		event.clientX < box.left ||

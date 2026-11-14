@@ -144,7 +144,7 @@ export function DetailsStep({
 				onClick={onContinue}
 			>
 				<span className="action-label">{copy.CONTINUE}</span>
-				<span className="spinner" aria-hidden="true" />
+				<span className="ds-spinner" aria-hidden="true" />
 			</button>
 
 			<ChallengeBox mount={challengeMount} />

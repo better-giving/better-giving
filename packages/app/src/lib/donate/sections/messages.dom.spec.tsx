@@ -116,7 +116,7 @@ describe('messages from donors', () => {
 		expect(more(host)).toBe(button);
 		expect(button?.getAttribute('aria-busy')).toBe('true');
 		expect(button?.textContent).toBe('Loading');
-		expect(button?.querySelector('.page-spinner')?.getAttribute('aria-hidden')).toBe('true');
+		expect(button?.querySelector('.ds-spinner')?.getAttribute('aria-hidden')).toBe('true');
 		expect(document.activeElement).toBe(button);
 		act(() => button?.click());
 		expect(onShowMore).toHaveBeenCalledOnce();

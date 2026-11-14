@@ -52,9 +52,9 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {boolean | undefined} [defaultOpen] the list open on the first draw. a specimen's prop:
  *   a screen opens a list by the press an operator makes on it.
  * @property {PointerState | undefined} [state] the state pinned by class rather than reached,
- *   for ./Field.jsx's reason, and unavailable is not one of them for its reason either: the
- *   sheet draws `.adm-select[data-disabled]` with no twin beside it, so a control that cannot be
- *   used takes `disabled` above.
+ *   so a specimen can show it with no pointer on the box. hover is the one with a twin: focus is
+ *   the registry's outline off `:focus-visible` alone, and unavailable is the registry's
+ *   `.ds-field-input:disabled`, so a control that cannot be used takes `disabled` above.
  * @property {string | undefined} [className]
  * @property {string | undefined} [aria-describedby] the blocks the box is described by, where the
  *   caller names them itself. stated, it replaces the ones this control composes off its id.
