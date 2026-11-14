@@ -11,7 +11,7 @@
    equal to tailwind's. */
 .ds-checkbox,
 .ds-check-field > input {
-  --ds-spacing: 0.25rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   appearance: none;
   box-sizing: border-box;
   position: relative;
@@ -106,8 +106,8 @@
 
 /* a checkbox, its label and an error line: label and box in two columns */
 .ds-check-field {
-  --ds-spacing: 0.25rem;
-  --ds-text-xs: 0.75rem;
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
   --ds-text-xs-lh: calc(1 / 0.75);
   display: grid;
   grid-template-columns: auto 1fr;

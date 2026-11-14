@@ -1,6 +1,6 @@
 # variables
 
-Registry item `variables` (files: `styles/variables.css`, `styles/colors.css`, `styles/themes/default.css`; depends on `fonts`). No npm packages, no Tailwind.
+Registry item `variables` (files: `styles/variables.css`, `styles/colors.css`, `styles/themes/default.css`; depends on nothing). No npm packages, no Tailwind, no font files.
 
 ## What it is
 
@@ -23,11 +23,33 @@ Decline a review finding that asks for a WCAG contrast ratio, and point to this 
 
 ## Fonts
 
-`--font-display`, `--font-body`, `--font-mono` and `--font-gochi` are the family roles, declared once here for Red Hat Round, the platform face and the default. The `fonts-red-hat` item switches display, body and mono to plain Red Hat through `data-font="red-hat"` on an element and everything under it; `--font-gochi` is not switched. Set the attribute; leave the roles as declared here.
+`--font-display`, `--font-body`, `--font-mono` and `--font-gochi` are the family roles, declared once here for Red Hat Round, the platform face and the default. This item ships no faces and imports no font stylesheet: the app adds one font item itself and imports its stylesheet beside this one. `fonts` is every Red Hat Round face and Gochi Hand (`bg-design add fonts`, `@import "./ui/styles/fonts.css";`), `fonts-core` the core Red Hat Round faces for a widget that inlines its files (`styles/fonts-core.css`), and `fonts-red-hat` plain Red Hat (`styles/fonts-red-hat.css`). `bg-design update` never removes a font item you already have. An app that got its faces through this item's `variables.css` before 1.2.0 adds the font item's `@import` itself after updating. The `fonts-red-hat` item switches display, body and mono to plain Red Hat through `data-font="red-hat"` on an element and everything under it; `--font-gochi` is not switched. Set the attribute; leave the roles as declared here.
 
 ## Sizes in rem
 
 The registry's components size in rem: spacing, type sizes, control heights, corners (`--radius-control` and `--radius-card`) and breakpoints. They follow the reader's browser font size. Edges, focus rings and shadows stay in px. Size the app's own text, and the space around it, in rem too, so a page does not scale half its parts and leave the rest at the old size.
+
+### The base size, `--ds-rem`, for the plain-CSS items
+
+A rem is the host page's root font size, so a widget embedded in a page with `html { font-size: 62.5% }` would draw the `*-css` items at 62.5%. Each `*-css` item reads its rem sizes through one custom property, `--ds-rem`, as `calc(N * var(--ds-rem, 1rem))`. Unset, it is `1rem` and nothing changes. An embed sets it on its own root:
+
+```css
+.my-widget {
+  --ds-rem: 16px;
+}
+```
+
+Every `*-css` control inside then has the size it has under a 16px root, whatever the host's root. This item does not declare `--ds-rem`, and its corners (`--radius-control`, `--radius-card`) stay in rem. Media-query breakpoints are unaffected, since rem in a media query is the browser's default size; a `@container` width cannot read a custom property and stays in rem (the `field-css` note names its two). The Tailwind items keep plain rem: a Tailwind app owns its root size.
+
+### Target size, `--ds-hit-target`
+
+`--ds-hit-target` is the hit area a control drawn smaller than a tap grows to, without changing its drawn size or the layout: `1.5rem` (24px), and `2.75rem` (44px) where the pointer is coarse. It is declared once, here, on `:root` and every `[data-theme]` element, and every item that draws a control smaller than a tap reads it: the small button (`btn-sm` in `tokens`, `ds-btn-sm` in `button-css`), the text button (`text-button`, `ds-text-btn` in `text-button-css`), the bare icon button (`bare-icon-button`, `ds-icon-bare` in `bare-icon-button-css`), the avatar as a button or link (`avatar`, `ds-avatar` in `avatar-css`) and the spam-check box (`spam-check`, `ds-spam-check-hit` in `spam-check-css`). The Tailwind items get it through `index.css`, which imports this file. Set it on a container to change the area for everything inside.
+
+It is `calc(N * var(--ds-rem, 1rem))`, resolved where it is declared. An embed that sets `--ds-rem` gets the 24px and 44px back only when it sets it on a `[data-theme]` element (`<div data-theme="default" style="--ds-rem: 16px">`); on a plain element, `--ds-hit-target` keeps the value resolved above it.
+
+### Tracking, `--ds-tracking-label` and `--ds-tracking-badge`
+
+The two letter-spacing roles of the plain-CSS items, declared beside `--ds-hit-target` on `:root` and every `[data-theme]` element: `--ds-tracking-label` (0.12em), the small uppercase label's (an eyebrow, a group title; `lead-css`'s `ds-eyebrow`, `menu-css`'s `ds-menu-label` and `nav-list-css`'s `ds-nav-title` read it), and `--ds-tracking-badge` (0.08em), the badge role. No item reads `--ds-tracking-badge` yet: neither `badge` nor `badge-css` sets a letter-spacing. They equal the `tokens` item's `--tracking-label` and `--tracking-badge`, which a test holds; they are in `em`, so they follow the text they sit on.
 
 ## Themes
 

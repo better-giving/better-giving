@@ -4,8 +4,9 @@
    app gets the same file through ./index.css.
 
    what is where: the palette and the two corners come from the brand colors.css
-   imported below (--primary, --radius-control, --radius-card, the ramp), the
-   faces from ./fonts.css, and the rest is declared here.
+   imported below (--primary, --radius-control, --radius-card, the ramp), and
+   the rest is declared here. no faces: the app imports a font item's
+   stylesheet (fonts, fonts-core or fonts-red-hat) beside this file.
 
    the type, shadow and speed values below are ALSO declared in ./theme.css,
    because tailwind needs them inside @theme to generate font-*, shadow-* and
@@ -13,7 +14,6 @@
    fails when either file moves alone. colors need no second copy: theme.css
    maps them with var(). */
 
-@import "./fonts.css";
 @import "./colors.css";
 
 :root {
@@ -74,6 +74,26 @@
   --form-border: var(--accent-7);
   --form-ring: var(--ring);
   --form-secondary: var(--form-subtle);
+}
+
+/* the hit area a control too small to tap draws around itself (a ::after),
+   without changing its drawn size: 24px, 44px where the pointer is coarse.
+   declared where the roles are, so it re-resolves on a [data-theme] root that
+   sets its own --ds-rem (an embed under a host whose root size differs).
+   beside it the two tracking roles, theme.css's --tracking-label and
+   --tracking-badge under ds- names: the uppercase label's, and the badge role,
+   which no item reads yet */
+:root,
+[data-theme] {
+  --ds-hit-target: calc(1.5 * var(--ds-rem, 1rem));
+  --ds-tracking-label: 0.12em;
+  --ds-tracking-badge: 0.08em;
+}
+@media (pointer: coarse) {
+  :root,
+  [data-theme] {
+    --ds-hit-target: calc(2.75 * var(--ds-rem, 1rem));
+  }
 }
 
 /* the reduced-motion guard rides on the three speeds, as in ./theme.css. */
