@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { linkedSheets } from '../linked-sheets.testing';
 
 // ./area.css writes no value of its own (its header): every colour, length, weight and duration
 // is a `var()` of the donor page's, the form's or the registry's. and every `sa-*` class the
@@ -65,28 +65,36 @@ describe('./area.css', () => {
 	});
 });
 
-// the registry's sheets a supporter screen links (`supporterAreaLinks` in ./links.ts): the donor
-// chain's button, field and tick box from packages/form, and the rest from packages/operator.
-const require = createRequire(import.meta.url);
-const REGISTRY_SHEETS = [
-	...['button-css', 'field-css', 'checkbox-css'].map((item) =>
-		require.resolve(`@better-giving/form/registry/styles/${item}.css`)
-	),
-	...[
-		'badge-css',
-		'progress-css',
-		'notice-card-css',
-		'state-card-css',
-		'table-css',
-		'file-dropzone-css',
-		'spam-check-css'
-	].map((item) => require.resolve(`@better-giving/operator/registry/styles/${item}.css`))
-];
+// the sheets a supporter screen's route links, as `supporterAreaLinks` (./links.ts) emits them:
+// dropping one from that list, or linking one nothing draws from, changes what is read here.
+const LINKED = await linkedSheets(
+	[join(HERE, 'links.ts'), join(HERE, '../../donate/plain-page.tsx')],
+	async () => (await import('./links')).supporterAreaLinks()
+);
 
 describe('the registry classes the screens wear', () => {
+	it('links the donor chain, the registry parts a supporter screen draws, and its own sheet', () => {
+		const names = LINKED.map((file) => file.split('/').pop());
+		expect(names).toEqual(
+			expect.arrayContaining([
+				'button-css.css',
+				'field-css.css',
+				'checkbox-css.css',
+				'badge-css.css',
+				'progress-css.css',
+				'notice-card-css.css',
+				'state-card-css.css',
+				'table-css.css',
+				'file-dropzone-css.css',
+				'spam-check-css.css',
+				'area.css'
+			])
+		);
+	});
+
 	it('are each drawn by a sheet the screens link', () => {
 		const drawn = new Set(
-			REGISTRY_SHEETS.flatMap((file) =>
+			LINKED.flatMap((file) =>
 				[...uncommented(readFileSync(file, 'utf8')).matchAll(/\.(ds-[\w-]+)/g)].map(
 					(m) => m[1] ?? ''
 				)
@@ -94,11 +102,16 @@ describe('the registry classes the screens wear', () => {
 		);
 		// the start route draws the spam check's slot around the widget it mounts.
 		const start = readFileSync(join(HERE, '../../../routes/fundraise._index.tsx'), 'utf8');
-		const worn = new Set(uncommented(`${screens}\n${start}`).match(/\bds-[a-z][\w-]*/g));
+		const written = uncommented(`${screens}\n${start}`);
+		const worn = new Set(written.match(/\bds-[a-z][\w-]*/g));
 		expect(worn.has('ds-dropzone')).toBe(true);
-		// a name ending in `-` is the head of a template (`ds-badge-${tone}`), and only the head.
-		const spelled = [...worn].filter((name) => !name.endsWith('-'));
+		// a name ending in `-` is the head of a template (`ds-badge-${tone}`): some drawn class carries it.
+		const [heads, spelled] = [
+			[...worn].filter((name) => name.endsWith('-')),
+			[...worn].filter((name) => !name.endsWith('-'))
+		];
 		expect(spelled.filter((name) => !drawn.has(name))).toEqual([]);
+		expect(heads.filter((head) => ![...drawn].some((name) => name.startsWith(head)))).toEqual([]);
 	});
 });
 

@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vitest';
 // well would outrank the registry's by order and put a second measure between the two, and none at
 // all leaves the mark touching the words. modelled on "the space between a mark and its words" in
 // packages/operator/src/styles/closed-press.spec.ts, which the form may not import (AGENTS.md →
-// Workspace).
+// Workspace). the form's one press, the action, has no in-flow mark today: its busy ring is out of
+// flow (`[part~='action'] > .ds-spinner` in ./parts.css, a gap the head of ./tokens.css lists), so
+// the registry's gap is unused there, and what this holds is that the form states none of its own.
 
 type Rule = { readonly selector: string; readonly stated: ReadonlyMap<string, string> };
 

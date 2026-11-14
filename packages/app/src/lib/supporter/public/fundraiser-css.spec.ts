@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { linkedSheets } from '../linked-sheets.testing';
 
 // the gate over ./fundraiser.css and the components beside it, the supporter pages' half of what
 // $lib/donate/page.spec.ts holds page.css to.
@@ -132,24 +133,22 @@ describe('every colour lands on a token whose step does its job', () => {
 	});
 });
 
-describe('the classes the supporter pages write', () => {
+describe('the classes the supporter pages write', async () => {
 	const here = relative(process.cwd(), import.meta.dirname);
 	const components = globSync(join(here, '*.tsx')).filter((file) => !file.includes('.spec.'));
-	const sheets = [
-		sheetText,
-		pageText,
-		readFileSync(require.resolve('@better-giving/form/styles/layout.css'), 'utf8'),
-		readFileSync(require.resolve('@better-giving/form/registry/styles/button-css.css'), 'utf8'),
-		readFileSync(require.resolve('@better-giving/operator/registry/styles/avatar-css.css'), 'utf8'),
-		readFileSync(require.resolve('@better-giving/operator/registry/styles/badge-css.css'), 'utf8'),
-		readFileSync(
-			require.resolve('@better-giving/operator/registry/styles/progress-css.css'),
-			'utf8'
-		)
-	];
+	// the sheets the live page links, as `fundraiserPageLinks` emits them.
+	const sheets = await linkedSheets(
+		[
+			join(import.meta.dirname, 'fundraiser-page.tsx'),
+			join(import.meta.dirname, '../../donate/plain-page.tsx')
+		],
+		async () => (await import('./fundraiser-page')).fundraiserPageLinks()
+	);
 	const drawn = new Set(
-		sheets.flatMap((css) =>
-			[...stripComments(css).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1] ?? '')
+		sheets.flatMap((file) =>
+			[...stripComments(readFileSync(file, 'utf8')).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map(
+				(m) => m[1] ?? ''
+			)
 		)
 	);
 
@@ -169,5 +168,13 @@ describe('the classes the supporter pages write', () => {
 		);
 		expect(written.length).toBeGreaterThan(0);
 		expect(written.filter((entry) => !drawn.has(entry.slice(entry.indexOf(' .') + 2)))).toEqual([]);
+	});
+
+	it('writes only template heads a linked sheet draws a class under', () => {
+		// a class built in a template (`ds-badge-${tone}`) is checked by its head, the part before `${`.
+		const heads = components.flatMap((file) =>
+			[...readFileSync(file, 'utf8').matchAll(/\b([a-z][\w]*-)\$\{/g)].map((m) => m[1] ?? '')
+		);
+		expect(heads.filter((head) => ![...drawn].some((name) => name.startsWith(head)))).toEqual([]);
 	});
 });

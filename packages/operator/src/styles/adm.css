@@ -92,7 +92,8 @@
 	   aimed at at that floor: a transparent `::before`, at least `--admin-touch-min` square and
 	   centred on the control, out of flow, so the drawn size and the row it stands in stay what
 	   they were. a control joins this list rather than growing a target of its own. the holder is
-	   `position: relative`, as `.adm-btn` and `.adm-wellwrap` are.
+	   `position: relative`, as every `.ds-btn` is (`:where(.ds-btn)` in
+	   ../registry/styles/button-css.css) and `.adm-wellwrap` is.
 
 	   the box is sized outright and centred off `100%`: an absolute box is placed against the
 	   holder's padding box, which a bordered control draws inside its border, so a size stated
@@ -3086,7 +3087,8 @@
 	   and a word read as one thing rather than a pair spread over a track apiece — a word placed in
 	   a track of its own lands past the width of the presses beside it, which is a word a hand's
 	   breadth from the mark it belongs to. so the step between the status's mark and its word is
-	   the button's own step between a mark and its words (`.adm-btn` above). the item is set at the start of its
+	   the small button's own step between a mark and its words (`.ds-btn-sm`'s gap in
+	   ../registry/styles/button-css.css). the item is set at the start of its
 	   track, because the
 	   control's rank centres it and a control centred in a track sized by a longer one beside it is
 	   off its column by half the difference. and what stands there starts one line-width in whether
@@ -5832,7 +5834,8 @@
 	.adm-grouped
 		> .adm-actions:not(:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh)))
 		> .adm-btn--quiet.adm-btn--sm {
-		/* `.adm-btn` is `position: relative`, so this moves the drawn press and not the line. */
+		/* a `.ds-btn` is `position: relative` (`:where(.ds-btn)` in ../registry/styles/button-css.css),
+		   so this moves the drawn press and not the line. */
 		inset-inline-start: calc(-1 * var(--ds-btn-edge));
 	}
 

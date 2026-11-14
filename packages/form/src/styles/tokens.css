@@ -116,6 +116,17 @@
  * and the coin list is a combobox `select-css` has no class for — and its chevron turns over
  * `--duration-fast`, which the registry declares on `:root` and a shadow tree has none of. a sixth.
  *
+ * the registry states its busy ring's size on its class alone, five of its spacing steps
+ * (`.ds-spinner` in ../registry/styles/spinner-css.css), as no variable a rule placing it can read,
+ * so the status line restates the figure off `--ds-rem` to centre the ring on its first line
+ * (`.status > .ds-spinner` in ./parts.css, held equal to the registry's by "centres the status’s
+ * ring on a size equal to the registry’s" in ./spinner.spec.ts) — a seventh.
+ *
+ * the registry puts a mark beside a button's words in the button's own flex row, spaced by its gap
+ * (../registry/styles/button-css.usage.md → Markup contract). the action's busy ring is placed out
+ * of flow against the action's inline end instead, so the words do not move on a press
+ * (`[part~='action'] > .ds-spinner` in ./parts.css) — an eighth.
+ *
  * no shade is ever made with alpha. a translucent fill takes on whatever the host's page put behind
  * it, and this component is painted onto a page it cannot see; the registry's alpha steps
  * (`--accent-a*`, `--gray-a*`) are copied with its theme and read by nothing here. the one

@@ -231,7 +231,8 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 				<input type="hidden" name={name} value={stored ?? ''} />
 			)}
 			{/* the busy area and the empty one stand in one place as one element type, so the node, and
-			    focus on it, carries from the one to the other. */}
+			    focus on it, carries from the one to the other. the preview is keyed apart: the busy
+			    node it would take over can't hold focus, so focus on it falls to the body and lands. */}
 			{pending !== null ? (
 				// biome-ignore lint/a11y/useSemanticElements: the busy area is the empty one's own node, and a `<fieldset>` would replace it.
 				<div
@@ -290,7 +291,7 @@ export function PhotoField({ id, name, photoId, uploadUrl, error, onWorking }: P
 					</span>
 				</div>
 			) : (
-				<div className="ds-dropzone-preview">
+				<div key="preview" className="ds-dropzone-preview">
 					<div className="ds-dropzone-img">
 						<img src={src} alt="" />
 					</div>

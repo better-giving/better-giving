@@ -255,6 +255,10 @@ describe('the photo', () => {
 });
 
 describe('a photo dropped on its area', () => {
+	/** whether the crop card is up: the stand-in above draws Use this photo, and only the crop draws it. */
+	const cropOpen = (root: HTMLElement) =>
+		[...root.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Use this photo');
+
 	/** a drop of `files` on the area, as a browser sends one. */
 	async function drop(area: HTMLElement, files: File[]) {
 		const event = new Event('drop', { bubbles: true, cancelable: true });
@@ -270,7 +274,24 @@ describe('a photo dropped on its area', () => {
 		const pantry = new File(['x'], 'pantry.jpg', { type: 'image/jpeg' });
 		await drop(area, [pantry, pantry]);
 		expect(one(root, `#${area.id}-err`).textContent).toBe('Drop one file at a time.');
-		expect(root.querySelector('dialog, button')?.textContent).not.toBe('Use this photo');
+		expect(cropOpen(root)).toBe(false);
+	});
+
+	it('refuses a dropped file that is no PNG, JPEG or WebP, with no crop', async () => {
+		const { root } = start();
+		const area = photoArea(root);
+		await drop(area, [new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' })]);
+		expect(one(root, `#${area.id}-err`).textContent).toContain('isn’t a PNG, JPEG or WebP');
+		expect(cropOpen(root)).toBe(false);
+	});
+
+	it('takes an empty drop for nothing: no refusal, no crop', async () => {
+		const { root } = start();
+		const area = photoArea(root);
+		await drop(area, []);
+		expect(area.getAttribute('aria-invalid')).not.toBe('true');
+		expect(root.querySelector(`#${area.id}-err`)?.textContent ?? '').toBe('');
+		expect(cropOpen(root)).toBe(false);
 	});
 
 	it('crops a single dropped photo', async () => {
@@ -363,6 +384,38 @@ describe('a photo posted with the start', () => {
 		expect(one(root, `#${photoArea(root).id}-err`).textContent).toBe(
 			'That photo didn’t upload. Add it again.'
 		);
+	});
+
+	// file-dropzone-css.usage.md, States: a file picked from the focused area unmounts what held
+	// focus, and focus moves to the new preview's Replace.
+	it('puts the keyboard on Replace photo once the photo picked from the focused area is in', async () => {
+		const { root } = start();
+		act(() => photoArea(root).focus());
+		await addPhoto(root);
+		expect(document.activeElement).toBe(button(root, 'Replace photo'));
+	});
+
+	it('keeps the keyboard on the area when the photo picked from it is turned down', async () => {
+		const { root } = start();
+		act(() => photoArea(root).focus());
+		await addPhoto(root);
+		vi.stubGlobal(
+			'createImageBitmap',
+			vi
+				.fn()
+				.mockResolvedValueOnce({ width: 1600, height: 900, close() {} })
+				.mockResolvedValueOnce({ width: 1000, height: 562, close() {} })
+		);
+		act(() => button(root, 'Remove').click());
+		const chooser = one<HTMLInputElement>(root, 'input[type="file"]:not([name])');
+		const file = new File(['x'], 'pantry.jpg', { type: 'image/jpeg' });
+		Object.defineProperty(chooser, 'files', { value: [file], configurable: true });
+		await act(async () => {
+			chooser.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		await act(async () => button(root, 'Use this photo').click());
+		expect(photoArea(root).getAttribute('role')).toBe('button');
+		expect(document.activeElement).toBe(photoArea(root));
 	});
 
 	it('posts no photo once Remove empties the box', async () => {

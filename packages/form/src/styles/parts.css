@@ -1759,11 +1759,12 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the action: the registry's primary button on the element (`.ds-btn.ds-btn-primary.ds-btn-lg`,
- * ../registry/styles/button-css.css), which paints it, sizes it, spaces a mark beside its words and
- * draws its hover, press, busy and focus. what is the form's is that it spans the column, that the
- * spinner is placed against it, and that its figures are tabular, so a total in its label never
- * reflows as it changes. "is not restated on a press by the form’s sheets" in ./press-gap.spec.ts
- * keeps the space the registry's.
+ * ../registry/styles/button-css.css), which paints it, sizes it and draws its hover, press, busy
+ * and focus. what is the form's is that it spans the column, that the spinner is placed against it
+ * out of flow (a registry gap the head of ./tokens.css lists), and that its figures are tabular, so
+ * a total in its label never reflows as it changes. the registry's flex gap between a mark and its
+ * words goes unused: the label is the action's only in-flow child. "is not restated on a press by
+ * the form’s sheets" in ./press-gap.spec.ts keeps the form from stating a gap of its own.
  *
  * busy is a report, not a gate: the press is bounded by the flow's shape — `quoting` has no `SUBMIT`
  * handler. the label does not change: its width would jump, and the label is a promise about the
@@ -1866,7 +1867,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * (`.ds-spinner`, ../registry/styles/spinner-css.css), which draws itself. out of flow, so the words
  * on the control do not move at the moment a donor presses it — the label restates the money and a
  * figure that shifts under the cursor reads as a flinch. the words for what is happening are on the
- * card's live region either way. ./layout.css shows it only while the action is busy.
+ * card's live region either way. out of flow is a registry gap the head of ./tokens.css lists.
+ * ./layout.css shows it only while the action is busy.
  */
 [part~='action'] > .ds-spinner {
 	position: absolute;
@@ -2413,8 +2415,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 /*
  * the ring on the status's first line, which may wrap. the registry states the ring's size on its
  * class alone, five of its spacing steps (`.ds-spinner` in ../registry/styles/spinner-css.css), and
- * as no variable a rule placing it can read — the gap the head of ./tokens.css lists beside the
- * large button's height — so the figure is restated off the registry's own base.
+ * as no variable a rule placing it can read — a gap the head of ./tokens.css lists, held equal to
+ * the registry's in ./spinner.spec.ts — so the figure is restated off the registry's own base.
  */
 .status > .ds-spinner {
 	margin-block-start: calc((1lh - var(--ds-rem) * 1.25) / 2);

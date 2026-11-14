@@ -176,12 +176,25 @@ function ChallengeBox({
 		setToken('');
 		widget.current?.reset();
 	}, [answer]);
-	// the widget draws itself, so it stands in the registry's widget box, which keeps its height
-	// before it arrives (spam-check-css.usage.md).
+	// both checks run invisible: ALTCHA draws nothing into `mount`, and Turnstile draws only once it
+	// needs an interaction (`appearance` in packages/form/src/embed/turnstile.ts). so the mount gets
+	// no 65px widget box and the provider's line stands alone in the slot (spam-check-css.usage.md).
+	const provider = PROVIDER_LINE[config.altchaChallengeUrl === undefined ? 'turnstile' : 'altcha'];
 	return (
 		<div className="ds-spam-slot">
-			<div ref={mount} className="ds-spam-widget" />
+			<div ref={mount} />
+			<span className="ds-spam-check-by">
+				Protected by <a href={provider.href}>{provider.name}</a>
+			</span>
 			<input type="hidden" name={CHALLENGE_FIELD} value={token} />
 		</div>
 	);
 }
+
+const PROVIDER_LINE = {
+	altcha: { name: 'ALTCHA', href: 'https://altcha.org/' },
+	turnstile: {
+		name: 'Cloudflare Turnstile',
+		href: 'https://www.cloudflare.com/products/turnstile/'
+	}
+} as const;
