@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { embedConfig, importAllowed, importerJudged } from '../../vite.embed.config';
 import { RUNTIME_PATH_PREFIX } from './loader';
@@ -39,25 +38,26 @@ describe('the runtime half', () => {
 		expect(config.build?.lib).toMatchObject({ formats: ['iife'] });
 	});
 
-	// the registry's variables `@import` its face sheet, and the form loads no web font, so both
-	// halves point that one import at an empty sheet (../../vite.registry-faces.ts).
-	it('points the registry’s face import at a sheet with no face, in both halves', () => {
-		const empty = fileURLToPath(new URL('../../vite.no-faces.css', import.meta.url));
+	// the form loads no web font (../styles/tokens.css), and nothing the build reads brings one: the
+	// registry's variables sheet imports its colours and nothing else, and the form's lock copies no
+	// font item (../registry/styles/variables.usage.md → Fonts). the shipped bytes are read for a face
+	// in ./build-output.spec.ts.
+	it('builds from registry sheets that import no face', () => {
 		const variables = readFileSync(
 			new URL('../registry/styles/variables.css', import.meta.url),
 			'utf8'
+		).replace(/\/\*[\s\S]*?\*\//g, '');
+		const lock: { items: Record<string, unknown> } = JSON.parse(
+			readFileSync(new URL('../../bg-design.json', import.meta.url), 'utf8')
 		);
 
-		// the one import the alias exists for, written as it is in the registry's variables sheet
-		expect(variables).toContain('@import "./fonts.css"');
-		expect(readFileSync(empty, 'utf8')).not.toMatch(/@font-face|@import/);
-		for (const mode of ['runtime', 'loader'] as const) {
-			const aliases = embedConfig({ mode }).resolve?.alias;
-			if (!Array.isArray(aliases) || aliases.length !== 1) throw new Error(`${mode}: one alias`);
-			const [alias] = aliases;
-			expect(alias?.find instanceof RegExp && alias.find.test('./fonts.css'), mode).toBe(true);
-			expect(alias?.replacement, mode).toBe(empty);
-		}
+		expect([...variables.matchAll(/@import\s+"([^"]+)"/g)].map(([, path]) => path)).toEqual([
+			'./colors.css'
+		]);
+		expect(Object.keys(lock.items).filter((name) => name.startsWith('fonts'))).toEqual([]);
+		expect(readdirSync(new URL('../registry/styles', import.meta.url))).not.toContainEqual(
+			expect.stringMatching(/^fonts/)
+		);
 	});
 });
 
