@@ -88,8 +88,9 @@
  * own, so a host that set `html { font-size: 62.5% }` must not be able to render the card at 10px,
  * while a reader's own browser zoom still moves type and spacing together. the registry's component
  * sheets read their `rem` figures through its `--ds-rem`, which the `:host` block below sets to the
- * clamped root, so every registry control on the card draws off it. three things the registry states
- * that the form cannot take as stated, each a registry gap:
+ * clamped root, so every registry control on the card draws off it. eight things the registry
+ * states that the form cannot take as stated, each a registry gap, the first three listed and the
+ * rest numbered in the paragraphs after:
  *
  *   - its corner pair stays in `rem` with no `--ds-rem` (../registry/styles/variables.usage.md →
  *     Sizes in rem), which a host that shrank its root shrinks: the pair is re-declared off the

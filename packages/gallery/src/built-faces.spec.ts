@@ -9,8 +9,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 // set in the plain red hat families packages/operator/src/styles/fonts.css declares, and the
 // registry's variables.css imports no face sheet. a reading of the sources stays green if a round
 // face came back through an `@import`, because no source here names one: the build is where it
-// would come out. packages/app/src/lib/donate/built-faces.spec.ts is the same check for /admin; the two share
-// no helper because the workspace graph (AGENTS.md → Workspace) lets neither package import the other.
+// would come out. packages/app/src/lib/donate/built-faces.spec.ts is the same check for /admin; the
+// two share no helper because the workspace graph (AGENTS.md → Workspace) lets neither package
+// import the other.
 
 const appCss = fileURLToPath(new URL('./app.css', import.meta.url));
 
