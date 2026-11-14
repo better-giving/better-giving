@@ -38,7 +38,6 @@ import { Mark } from '../status/Mark.jsx';
 
 /**
  * the registry's button-css class each rank is drawn by (../../registry/styles/button-css.css).
- * `soft` has no borderless neutral fill there and takes the secondary rank, edge and all.
  *
  * @type {Record<ButtonVariant, string>}
  */
@@ -47,13 +46,13 @@ export const BUTTON_VARIANT_CLASS = {
 	primary: 'ds-btn-primary',
 	danger: 'ds-btn-destructive',
 	quiet: 'ds-btn-ghost',
-	soft: 'ds-btn-secondary'
+	soft: 'ds-btn-soft'
 };
 
-/* the look is the registry's: `ds-btn`, one rank and the small tier. `adm-btn` and its two
-   modifiers are packages/operator/src/styles/adm.css's hooks and draw no rank of their own: where a
-   screen places a press, and the states the registry has no rule for (a press closed by
-   `aria-disabled`, held open, held down).
+/* the look is the registry's: `ds-btn`, one rank and the small tier, the gap between a mark and its
+   words, and every state a press states with an attribute — closed, in flight, held open.
+   `adm-btn` and its two modifiers are packages/operator/src/styles/adm.css's hooks and draw no rank
+   of their own: where a screen places a press, and a press held open by a machine's `data-state`.
 
    there is deliberately no pending or done state here — a button that reports its own write is
    ./SaveButton.jsx. a press in flight is `aria-busy`, the attribute a caller states anyway, and the

@@ -281,9 +281,10 @@ export function Field({
 			)
 		].join(' ') || undefined;
 	/* the box is the registry's `ds-field-input` (../../registry/styles/field-css.css), which draws a
-	   refused box off the `aria-invalid` below. `adm-field__box` and its modifiers are
-	   ../../styles/adm.css's: the row the box stands in, and the three things the registry draws no
-	   rule for — a multi-line box's height, a box marked as needed, and the mono face.
+	   refused box off the `aria-invalid` below, and its `ds-field-input-mono` for a literal.
+	   `adm-field__box` and its modifier are ../../styles/adm.css's: the row the box stands in, and a
+	   multi-line box's height, which the registry draws no rule for. a needed box keeps its edge:
+	   the registry's warning, which the needed note is, never colours the box.
 
 	   a read-only box is the same registry box, which draws it muted and leaves it selectable: a
 	   credential or a locked row has to be checked or copied by hand. ./Field.dom.spec.tsx holds
@@ -291,9 +292,8 @@ export function Field({
 	const cls = [
 		'ds-field-input',
 		'adm-field__box',
+		code ? 'ds-field-input-mono' : '',
 		as === 'textarea' ? 'adm-field__box--multiline' : '',
-		!refused && needed ? 'adm-field__box--needed' : '',
-		code ? 'adm-field__box--code' : '',
 		className
 	]
 		.filter(Boolean)
@@ -345,7 +345,7 @@ export function Field({
 					    on the screen holds no room (`.adm-field > .adm-field__needed` in
 					    packages/operator/src/styles/adm.css). */}
 					{status === undefined ? null : (
-						<p className="adm-field__needed" id={`${id}-status`} role="status">
+						<p className="ds-field-warn adm-field__needed" id={`${id}-status`} role="status">
 							{statusSaid ? <span className="adm-vh">{statusSaid}</span> : null}
 							{status ? (
 								<>
@@ -398,9 +398,10 @@ export function Field({
    announcing itself at the same time leaves a reader unable to tell which of the two answered the
    press.
 
-   the refusal is the registry's `ds-field-err` (../../registry/styles/field-css.css), and
-   `.adm-field__error` beside it is ../../styles/adm.css's row for it and draws nothing else. the
-   standing row has no registry message to be and stays adm.css's own.
+   the refusal is the registry's `ds-field-err` and the standing row its `ds-field-warn`
+   (../../registry/styles/field-css.css), the message that does not block, with its mark on the
+   first line. `.adm-field__error` and `.adm-field__needed` beside them are ../../styles/adm.css's
+   rows for them and draw nothing else.
 
    the `<p>` is returned with nothing around it. adm.css places `.adm-field > .adm-field__error` and
    `.adm-field > .adm-field__needed` in the field's own grid rows, and a wrapper between the field
@@ -419,7 +420,7 @@ export function Field({
 export function FieldMessage({ children, tone = 'error', id }) {
 	if (tone === 'needed')
 		return (
-			<p className="adm-field__needed" id={id}>
+			<p className="ds-field-warn adm-field__needed" id={id}>
 				<Mark name="triangle-alert" />
 				<span>{children}</span>
 			</p>

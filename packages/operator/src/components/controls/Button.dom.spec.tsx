@@ -44,8 +44,8 @@ describe('the element a caller asks for', () => {
 
 describe('what a button draws inside itself', () => {
 	it('puts the mark and the words straight into the press, in the order they were handed', () => {
-		// the registry's button is a flex row, and `.adm-btn` in ../../styles/adm.css is the gap
-		// between its items, so the mark and the words are items of the press itself.
+		// the registry's button is a flex row whose gap stands between its items, so the mark and the
+		// words are items of the press itself.
 		const button = only(render(Button, { mark: 'plus', children: 'Add a form' }));
 
 		expect([button.firstElementChild?.classList.contains('adm-mark'), button.textContent]).toEqual([
@@ -108,7 +108,7 @@ describe('what the element wears', () => {
 			'ds-btn-primary',
 			'ds-btn-destructive',
 			'ds-btn-ghost',
-			'ds-btn-secondary'
+			'ds-btn-soft'
 		]);
 	});
 

@@ -24,6 +24,13 @@
         "styles/card-css.usage.md": "a2a2eaddf23d77dead1176d22d36004284daf31f4915cc0521a68f5fe95b37dd"
       }
     },
+    "dialog-css": {
+      "version": "1.0.1",
+      "files": {
+        "styles/dialog-css.css": "0c2f322d6ac89ab8406ff27f0e37d99a5a26b38adbfbbf36a4127bf698851164",
+        "styles/dialog-css.usage.md": "a5b368ddd66e9e88a4c9e523555743f6bb06c447027355b942cd9c61304d5cee"
+      }
+    },
     "field-css": {
       "version": "1.3.0",
       "files": {
@@ -43,6 +50,13 @@
       "files": {
         "styles/progress-css.css": "6d8ab32b3df7e0666de9e153bfaf036f0647d145804bff218158a71234e93b64",
         "styles/progress-css.usage.md": "75b11f158a8b85da2272ffde8ace604fac9c16202e288007d668cf34540f6907"
+      }
+    },
+    "select-css": {
+      "version": "1.1.1",
+      "files": {
+        "styles/select-css.css": "060c6ad8a95b32d5eeddb652bc9a8538348d8298272ba45615a21a1ad706c38e",
+        "styles/select-css.usage.md": "9f0f9f6421cf3085cdf1d6bc20051f65f5c8cc1838db4571971b11cf1c0f6a1a"
       }
     },
     "spinner-css": {

@@ -94,7 +94,8 @@ describe("an actions row's lines start on the column's edge by their word", () =
 			ghost.get('border'),
 			token
 		]).toEqual([
-			'0.25rem',
+			// 0.25rem: no operator sheet sets `--ds-rem`, so the registry's step reads its fallback.
+			'calc(0.25 * var(--ds-rem, 1rem))',
 			'calc(var(--ds-spacing) * 3)',
 			'1px',
 			'var(--ds-btn-edge) solid transparent',

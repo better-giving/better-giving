@@ -123,7 +123,7 @@ describe('public messages, listed', () => {
 	it('draws a hidden row in the quiet ink, its word without a ground, and a Show again press', () => {
 		const { host } = mount();
 		const hidden = row(host, 'Dev P.');
-		expect(hidden?.querySelector('.ds-badge.adm-state--note')?.textContent).toBe('Hidden');
+		expect(hidden?.querySelector('.ds-badge.ds-badge-outline')?.textContent).toBe('Hidden');
 		expect(
 			[...(hidden?.querySelectorAll('.adm-cell__quiet') ?? [])].map((q) => q.textContent)
 		).toEqual(['Dev P.', DEV.note]);

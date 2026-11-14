@@ -84,7 +84,7 @@ const REFERENCE = /var\(\s*(--admin-[\w-]+)/g;
 // something has since reached for goes on claiming to be unread, and nothing about the tree says
 // otherwise. `exempts no token anything reads` is what fails then.
 //
-// the same twenty-four are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
+// the same twenty-five are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
 // the paragraph is what a reader meets, and this is what fails.
 const SCALE_EXEMPT = [
 	// the unread steps of the four ladders. each ladder is radix's twelve steps because the step
@@ -111,13 +111,14 @@ const SCALE_EXEMPT = [
 	'--admin-blocker-7',
 	'--admin-blocker-9',
 	'--admin-blocker-10',
-	// the attention amber: a band, an edge on a needed box and a word, and no screen fills with it.
+	// the attention amber: a band and a word, and no screen fills with it or edges a box in it.
 	'--admin-attention-1',
 	'--admin-attention-2',
 	'--admin-attention-4',
 	'--admin-attention-5',
 	'--admin-attention-6',
 	'--admin-attention-7',
+	'--admin-attention-8',
 	'--admin-attention-9',
 	'--admin-attention-10',
 	// the one rung of the type scale nothing reads: the step between the section heading's size

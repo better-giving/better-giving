@@ -85,6 +85,8 @@
 		"./registry/styles/progress-css.css": "./src/registry/styles/progress-css.css",
 		"./registry/styles/card-css.css": "./src/registry/styles/card-css.css",
 		"./registry/styles/field-css.css": "./src/registry/styles/field-css.css",
+		"./registry/styles/select-css.css": "./src/registry/styles/select-css.css",
+		"./registry/styles/dialog-css.css": "./src/registry/styles/dialog-css.css",
 		"./registry/styles/notice-card-css.css": "./src/registry/styles/notice-card-css.css",
 		"./registry/styles/state-card-css.css": "./src/registry/styles/state-card-css.css",
 		"./registry/styles/table-css.css": "./src/registry/styles/table-css.css",

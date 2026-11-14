@@ -6,8 +6,10 @@
 @import '@better-giving/operator/registry/styles/badge-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/card-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/field-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/select-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/switch-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/state-card-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/dialog-css.css' layer(registry);
 @import '@better-giving/operator/styles/tokens.css';
 @import '@better-giving/operator/styles/base.css';
 @import '@better-giving/operator/styles/adm.css';
@@ -43,8 +45,7 @@
    with the other. the registry's variables.css
    comes next and is unlayered: it declares the design registry's scales and roles
    (bg-design.json at the repository root records the copied item, and `pnpm design:check`
-   fails when a copied file is edited). its own `@import "./fonts.css"` names a file no lock
-   copies, and ../vite.config.ts resolves it to an empty sheet. tokens.css fills `tokens` with
+   fails when a copied file is edited). it imports no face sheet. tokens.css fills `tokens` with
    the `--admin-*` names the rest read: every colour, face and control or plane radius an alias onto a registry property, and the type
    scale, spacing, measures, pill radius, border and focus widths, control metrics and motion
    literals of its own. the registry carries none of those but durations, and its
@@ -59,8 +60,9 @@
    `:root` (light, and dark under `.dark`, in ../../operator/src/registry/styles/themes/default.css),
    and being unlayered it outranks a `color-scheme` any of the layers sets; none sets one.
 
-   the registry's six component sheets /admin draws with (button-css, badge-css, card-css,
-   field-css, switch-css and state-card-css, beside variables.css) are copied unlayered and imported into `registry`, between `base` and
+   the registry's component sheets /admin draws with (button-css, badge-css, card-css, field-css,
+   select-css, switch-css, state-card-css and dialog-css, beside variables.css) are copied
+   unlayered and imported into `registry`, between `base` and
    `elements`. so a `ds-*` class outranks the reset and the document defaults under it, and a rule
    of adm.css's outranks it: the registry's usage notes expect the page's own classes to be read
    after its sheets (a heading class in a `ds-card-header`, card-css.usage.md). what that order

@@ -326,8 +326,10 @@ describe('the list', () => {
 describe('New campaign', () => {
 	async function opened(): Promise<HTMLDialogElement> {
 		const root = await screen();
-		// the card leading the list; its text carries the hidden sample's too.
-		const create = root.querySelector<HTMLAnchorElement>('.adm-list > a:first-child');
+		// the press of the card leading the list; the hidden sample stands beside it.
+		const create = root.querySelector<HTMLAnchorElement>(
+			'.adm-list > .adm-create:first-child > a.ds-card-create'
+		);
 		if (create === null) throw new Error('no create card');
 		await press(create);
 		return shown('New campaign');

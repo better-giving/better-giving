@@ -222,15 +222,23 @@ export function SelectWithNote({
 				}}
 			>
 				<Select.Trigger
-					className={['adm-select', state ? `is-${state}` : '', className]
+					className={[
+						'ds-field-input',
+						'ds-select-trigger',
+						'adm-select',
+						state ? `is-${state}` : '',
+						className
+					]
 						.filter(Boolean)
 						.join(' ')}
 					aria-label={named}
 					aria-describedby={describedBy}
 				>
-					<Select.ValueText className="adm-select__value" />
-					<Select.Indicator className="adm-select__caret">
-						<Mark name="chevron-down" />
+					<Select.ValueText />
+					{/* the registry's chevron is the indicator's own box, 20px, so the mark fills it at
+					    the large size. */}
+					<Select.Indicator className="ds-select-chevron">
+						<Mark name="chevron-down" size="lg" />
 					</Select.Indicator>
 				</Select.Trigger>
 				{/* an empty list is not drawn at all: the box opening onto a bare surface over the note

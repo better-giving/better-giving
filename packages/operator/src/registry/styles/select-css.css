@@ -1,0 +1,208 @@
+/* the registry's select as plain css, no tailwind: a native <select> on the
+   field look, and the trigger, popup and rows of a listbox. reads only the
+   variables the `variables` item declares, plus .ds-field-input from
+   field-css for the control itself. select-css.test.tsx renders the React
+   `NativeSelect` and `Select` beside it and asserts the same computed look in
+   light and dark, for the default and example themes.
+
+   the spacing step, the type ladder, the font weight and the easing live only
+   in tailwind's theme; they are declared here under ds- names with the same
+   values, and the test holds them equal. */
+
+/* the chevron, in the native select and the listbox trigger alike */
+.ds-select-chevron {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  display: block;
+  inline-size: calc(var(--ds-spacing) * 5);
+  block-size: calc(var(--ds-spacing) * 5);
+  flex-shrink: 0;
+  color: var(--gray-11);
+}
+
+/* the native select: .ds-field-input on the <select>, inside this wrapper,
+   which carries the chevron over the control's end edge */
+.ds-select {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  position: relative;
+}
+/* exactly the field height, as the field-height button is, so it lines up
+   with the fields and buttons in its row */
+.ds-select > select {
+  --ds-field-size: calc(var(--ds-spacing) * 12 + 2px);
+  block-size: var(--ds-field-size);
+  appearance: none;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  padding-inline-end: calc(var(--ds-spacing) * 11);
+}
+.ds-select > select:disabled {
+  cursor: not-allowed;
+}
+.ds-select > select:focus-visible,
+.ds-select-trigger:focus-visible {
+  outline-style: solid;
+  outline-width: 2px;
+}
+/* the chevron takes no pointer, so a press on it lands on the select */
+.ds-select > .ds-select-chevron {
+  position: absolute;
+  top: 50%;
+  inset-inline-end: calc(var(--ds-spacing) * 4);
+  translate: 0 -50%;
+  pointer-events: none;
+}
+
+/* the inline size beside buttons: the md button's 36px box, its 8px block
+   padding less the 1px edge as the button's is, and a 12px side inset. it
+   sits in the line at its content's width; stretched by the caller (a
+   full-width row on a phone), the select fills it */
+.ds-select-inline {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-font-weight-semibold: 600;
+  display: inline-block;
+}
+.ds-select-inline > select {
+  block-size: auto;
+  min-inline-size: calc(var(--ds-spacing) * 36);
+  min-block-size: calc(var(--ds-spacing) * 9);
+  padding-block: calc(var(--ds-spacing) * 1.75);
+  padding-inline: calc(var(--ds-spacing) * 3) calc(var(--ds-spacing) * 9);
+  font-weight: var(--ds-font-weight-semibold);
+}
+.ds-select-inline > .ds-select-chevron {
+  inset-inline-end: calc(var(--ds-spacing) * 2.5);
+  inline-size: calc(var(--ds-spacing) * 4);
+  block-size: calc(var(--ds-spacing) * 4);
+}
+
+/* the listbox trigger: a <button class="ds-field-input ds-select-trigger">
+   holding the value and the chevron, which turns over while aria-expanded */
+.ds-select-trigger {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-field-size: calc(var(--ds-spacing) * 12 + 2px);
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  block-size: var(--ds-field-size);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--ds-spacing) * 3);
+  cursor: pointer;
+  text-align: start;
+}
+.ds-select-trigger:disabled {
+  cursor: not-allowed;
+}
+/* no value yet: the placeholder reads in the muted ink */
+.ds-select-trigger[data-placeholder-shown] {
+  color: var(--gray-11);
+}
+.ds-select-trigger > :first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-select-trigger > .ds-select-chevron {
+  transition-property: transform, translate, scale, rotate;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-in-out);
+}
+.ds-select-trigger[aria-expanded="true"] > .ds-select-chevron {
+  rotate: 180deg;
+}
+
+/* the popup: the floating fill, hairline edge and shadow on the container
+   corner, a 4px inset and 2px between rows. where it sits, and its stacking,
+   are the caller's */
+.ds-listbox {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--ds-spacing) * 0.5);
+  max-block-size: calc(var(--ds-spacing) * 80);
+  overflow-y: auto;
+  /* a popover's own inset: 0 would keep right set beside the page's left,
+     and under dir="rtl" left is the one dropped */
+  inset: auto;
+  margin: 0;
+  padding: calc(var(--ds-spacing) * 1);
+  list-style: none;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background-color: var(--popover);
+  color: var(--gray-12);
+  box-shadow: var(--shadow-floating);
+  outline: none;
+}
+
+/* a row: aria-selected="true" is the checked one, data-highlighted the one
+   the arrow keys are on, aria-disabled="true" one that cannot be picked */
+.ds-option {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--ds-spacing) * 3);
+  padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 4);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.ds-option[aria-selected="true"] {
+  background-color: var(--secondary-active);
+}
+.ds-option[data-highlighted],
+.ds-option:hover {
+  background-color: var(--secondary-hover);
+}
+/* the checked row keeps step 5 under the keyboard or the pointer */
+.ds-option[aria-selected="true"]:is([data-highlighted], :hover) {
+  background-color: var(--secondary-active);
+}
+.ds-option[aria-disabled="true"] {
+  pointer-events: none;
+  color: var(--gray-11);
+}
+.ds-option-label {
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-font-weight-semibold: 600;
+  display: block;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  font-weight: var(--ds-font-weight-semibold);
+}
+/* the second line steps up to gray-12 on a highlighted or checked row: gray-11
+   on those tints is under the contrast a line of text needs */
+.ds-option-meta {
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-xs-lh: calc(1 / 0.75);
+  display: block;
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  color: var(--gray-11);
+}
+.ds-option[aria-selected="true"] .ds-option-meta,
+.ds-option[data-highlighted] .ds-option-meta,
+.ds-option:hover .ds-option-meta {
+  color: var(--gray-12);
+}
+.ds-option-check {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  display: block;
+  inline-size: calc(var(--ds-spacing) * 4);
+  block-size: calc(var(--ds-spacing) * 4);
+  flex-shrink: 0;
+  color: var(--gray-12);
+}
+.ds-option:not([aria-selected="true"]) .ds-option-check {
+  display: none;
+}
+/* forced colors repaint both tints to Canvas, and focus sits on the trigger,
+   not the row, so the row the arrow keys are on needs a mark the palette
+   keeps: the same inset outline components.css draws on `.selector-opt` */
+@media (forced-colors: active) {
+  .ds-option[data-highlighted] {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
+}

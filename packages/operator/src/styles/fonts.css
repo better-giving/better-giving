@@ -3,10 +3,13 @@
    already on, so a fork inherits the faces along with everything else and no reader of an
    operator screen is announced to anybody.
 
-   these are this deployment's faces and not the design registry's. the registry's `fonts` item is
-   red hat round, the face of Better Giving's hosted platform; a self-hosted deployment is set in
-   plain red hat, which the registry does not carry until its `fonts-red-hat` item in 2.2.0, and
-   that item replaces this sheet and the ten files beside it.
+   these are this deployment's faces and not the design registry's. the registry's `variables`
+   item ships no face and imports none; its `fonts` item is red hat round, the face of Better
+   Giving's hosted platform, and a self-hosted deployment is set in plain red hat from this sheet
+   and the ten files beside it. the registry's `fonts-red-hat` item is plain red hat in seven
+   files, with no text 400 italic, no display 500 and no mono 500, which the weights below are
+   for, and it switches the roles by a `data-font` attribute rather than by the `!important`
+   re-point below; so it does not stand in for this sheet.
 
    this sheet also points the registry's `--font-body`, `--font-display` and `--font-mono`
    (../registry/styles/variables.css) at the three families declared here, in the `:root` block

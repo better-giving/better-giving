@@ -45,6 +45,14 @@ const field = stripComments(
 	)
 );
 
+// the registry's listbox trigger, which ../components/forms/SelectWithNote.jsx draws its box as.
+const select = stripComments(
+	readFileSync(
+		join(dirname(fileURLToPath(import.meta.url)), '../registry/styles/select-css.css'),
+		'utf8'
+	)
+);
+
 /** the `var()` names and `env()` calls a value adds up, in the order it spells them. */
 const terms = (value: string | undefined) =>
 	[...(value ?? '').matchAll(/var\((--[\w-]+)\)|env\(([\w-]+)\)/g)].map(
@@ -89,18 +97,21 @@ const evaluate = (
 	bound: Readonly<Record<string, string | number>> = {}
 ): number => {
 	const source = (value ?? '').trim();
-	const lexer = /\s*(?:var\((--[\w-]+)\)|(\d*\.?\d+)(%|px|rem)?|(calc\(|min\(|max\(|[-+*/(),]))/y;
+	const lexer =
+		/\s*(?:var\((--[\w-]+)(?:,\s*([^()]+))?\)|(\d*\.?\d+)(%|px|rem)?|(calc\(|min\(|max\(|[-+*/(),]))/y;
 	const items: (number | string)[] = [];
-	const named = (name: string): number => {
+	// a fallback is what the browser reads for a name no sheet sets: the registry spells its rem
+	// sizes `var(--ds-rem, 1rem)`, and nothing on an operator surface sets `--ds-rem`.
+	const named = (name: string, fallback: string | undefined): number => {
 		const given = bound[name];
-		if (given === undefined) return px(name);
+		if (given === undefined) return fallback === undefined ? px(name) : evaluate(fallback);
 		return typeof given === 'number' ? given : evaluate(given, percent, bound);
 	};
 	while (lexer.lastIndex < source.length) {
 		const hit = lexer.exec(source);
 		if (hit === null) throw new Error(`not a length this spec reads: ${source}`);
-		const [, name, figure, unit, operator] = hit;
-		if (name !== undefined) items.push(named(name));
+		const [, name, fallback, figure, unit, operator] = hit;
+		if (name !== undefined) items.push(named(name, fallback));
 		else if (figure === undefined) items.push(operator === 'calc(' ? '(' : (operator ?? ''));
 		else if (unit !== '%') items.push(Number(figure) * (unit === 'rem' ? 16 : 1));
 		else if (percent === undefined)
@@ -529,14 +540,17 @@ describe('a control drawn under the floor takes a target at it', () => {
 	it.each(members)('%s is placed against its own box and shows its pointer', (member) => {
 		const holder = ruleOf(css, MEMBERS[member]?.holder ?? '');
 		const naming = rulesIn(css).filter(({ selector }) => selector.split(', ').includes(member));
-		// a button's pointer is the registry's, drawn on the `ds-btn` it wears beside `.adm-btn`.
+		// a button's pointer and its position are the registry's, drawn on the `ds-btn` it wears
+		// beside `.adm-btn`: the position on `:where(.ds-btn)`, at no specificity, so a rule naming
+		// the member below would outrank it.
+		const isButton = MEMBERS[member]?.holder === '.adm-btn';
 		const cursor =
-			holder.get('cursor') ??
-			(MEMBERS[member]?.holder === '.adm-btn'
-				? ruleOf(registry, '.ds-btn').get('cursor')
-				: undefined);
+			holder.get('cursor') ?? (isButton ? ruleOf(registry, '.ds-btn').get('cursor') : undefined);
+		const position =
+			holder.get('position') ??
+			(isButton ? ruleOf(registry, ':where(.ds-btn)').get('position') : undefined);
 
-		expect(holder.get('position')).toBe('relative');
+		expect(position).toBe('relative');
 		for (const { stated } of naming) expect(stated.get('position') ?? 'relative').toBe('relative');
 		expect(cursor ?? 'auto').not.toBe('auto');
 	});
@@ -660,11 +674,24 @@ describe("every box in a form stands at the registry box's height", () => {
 		expect(ruleOf(field, '.ds-field-input').get('min-block-size')).toBe('var(--ds-field-size)');
 	});
 
+	it("stands SelectWithNote.jsx's trigger, the registry's select trigger, at the field size", () => {
+		const trigger = ruleOf(select, '.ds-select-trigger');
+		expect(trigger.get('block-size')).toBe('var(--ds-field-size)');
+		expect(
+			evaluate(trigger.get('--ds-field-size'), undefined, {
+				'--ds-spacing': trigger.get('--ds-spacing') ?? ''
+			})
+		).toBe(fieldSize());
+		// and no rule of this sheet's sizes it over the registry's.
+		const sizing = rulesIn(css)
+			.filter(({ selector }) => /\.adm-select\b(?![_-])/.test(selector))
+			.filter(({ stated }) => stated.has('block-size') || stated.has('min-block-size'));
+		expect(sizing.map(({ selector }) => selector)).toEqual([]);
+	});
+
 	it.each([
 		// the text box a control draws by hand.
 		['.adm-input'],
-		// SelectWithNote.jsx's trigger, until the registry's `select` item replaces it.
-		['.adm-select'],
 		// DateField.jsx's and DateRangeField.jsx's box.
 		['.adm-datebox'],
 		// a box with its unit or address in front.

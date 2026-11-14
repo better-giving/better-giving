@@ -12,7 +12,7 @@ import { useState } from 'react';
  * its arrangements are covered there; what these specimens are for is what the top layer changes.
  *
  * **a modal cannot be a resting specimen, and that is the element rather than the gallery.** the top
- * layer paints over the whole document with `.adm-dialog::backdrop` behind it, keeps the tab ring
+ * layer paints over the whole document with `.ds-dialog::backdrop` behind it, keeps the tab ring
  * inside the card and makes everything else inert — so a modal standing open on this page would
  * cover every other preview and there would be nothing to look at. each one is opened by the press
  * beside it instead, which is also the only honest specimen: the element arrives open in a screen's

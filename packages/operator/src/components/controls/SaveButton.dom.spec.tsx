@@ -141,7 +141,7 @@ describe('a save button mounted into a document', () => {
 
 	it('writes the same names in every state, which the registry and the closed press draw', () => {
 		// no state wears a class of its own: pending is the registry's `aria-busy` look, and done and
-		// disabled are `.adm-btn[aria-disabled='true']` in ../../styles/adm.css. a name written for
+		// disabled are its `button.ds-btn[aria-disabled='true']`. a name written for
 		// one would be a class nothing draws — which paints nothing, errors nowhere, and reads as a
 		// state the sheet handles.
 		for (const state of ['idle', 'pending', 'done', 'disabled'] as const) {

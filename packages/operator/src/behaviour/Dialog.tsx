@@ -47,9 +47,9 @@ import { Dialog, type DialogProps } from '../components/shell/Dialog.jsx';
 // question that arrived in the server's markup is pressable before this runs, and a press begun
 // then ends after the lift: one that went down on the page under the in-page ground would end on
 // the `::backdrop` and dismiss a question nobody answered. the in-page card stands in the box the
-// lifted one does (`.adm-dialog--inline` in ../styles/adm.css), which is what keeps a press begun
-// on one of its controls ending on the same control. the same rule keeps a drag that starts
-// inside the card and ends outside it from reading as a press on the ground.
+// lifted one does (`.ds-dialog` in ../registry/styles/dialog-css.css places both), which is what
+// keeps a press begun on one of its controls ending on the same control. the same rule keeps a
+// drag that starts inside the card and ends outside it from reading as a press on the ground.
 
 type ModalProps<
 	C extends ElementType = 'button',

@@ -80,15 +80,15 @@ describe('a descriptive word', () => {
 			'ds-badge ds-badge-primary',
 			'ds-badge ds-badge-warning',
 			'ds-badge ds-badge-destructive',
-			// an ended record's ground is taken away by ../../styles/adm.css, so it is told from one at
+			// an ended record is the registry's outline chip, with no ground, so it is told from one at
 			// rest (../../styles/state-in-a-cell.spec.ts).
-			'ds-badge ds-badge-neutral adm-state--note'
+			'ds-badge ds-badge-outline'
 		]);
 	});
 
-	it('draws the quiet and the unset word as the neutral badge, which has nothing quieter', () => {
+	it('draws the quiet word as the registry’s quiet chip and the unset word as the neutral one', () => {
 		expect([drawn({ secondary: true }), drawn({ unset: true })]).toEqual([
-			'ds-badge ds-badge-neutral',
+			'ds-badge ds-badge-quiet',
 			'ds-badge ds-badge-neutral'
 		]);
 	});

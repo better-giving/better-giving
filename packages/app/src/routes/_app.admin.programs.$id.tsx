@@ -632,7 +632,7 @@ function StoredRecord({ description }: { readonly description: string | null }) 
  * with the browser's own Back.
  *
  * the second step is a dialog, which is what every destructive confirmation on an operator surface
- * takes — `.adm-dialog` in packages/operator/src/styles/adm.css states it. the `<form>` stands
+ * takes — `.adm-dialog__surface` in packages/operator/src/styles/adm.css states it. the `<form>` stands
  * around the whole card rather than around the control that submits it, which is the rule
  * packages/operator/src/components/shell/Dialog.jsx's header states: its actions row holds controls
  * and never a `form`, and a submit belongs to the form enclosing it whether or not the element is

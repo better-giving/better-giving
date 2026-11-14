@@ -1,0 +1,166 @@
+/* the registry's modal dialog as plain css, no tailwind, on a native <dialog>
+   opened with showModal(): the top layer, the focus trap, Escape and the
+   return of focus to the opener are the browser's. reads only the variables
+   the `variables` item declares. dialog-css.test.tsx opens the React `Modal`
+   and this one in turn and asserts the same computed look in light and dark,
+   for the default and example themes, at every size.
+
+   the box is geometry, elevation, edge and corner only, as `modal_box` is: the
+   surface inside it is .ds-dialog-surface. the container widths, the easings
+   and the sheet's 40rem breakpoint (tailwind's sm, written out because a query
+   cannot read a variable) live only in tailwind's theme; they are declared
+   here under ds- names with the same values, and the test holds them equal. */
+.ds-dialog {
+  --ds-container-md: calc(28 * var(--ds-rem, 1rem));
+  --ds-container-lg: calc(32 * var(--ds-rem, 1rem));
+  --ds-container-2xl: calc(42 * var(--ds-rem, 1rem));
+  --ds-container-3xl: calc(48 * var(--ds-rem, 1rem));
+  --ds-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ds-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  box-sizing: border-box;
+  /* the browser's dialog box, undone: its edge swapped for the hairline, no
+     fill or size cap. centred by its margins, never a translate, as modal_box
+     is */
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  padding: 0;
+  /* the floating layer's edge; the sheet draws it only from 40rem */
+  border: 1px solid var(--hairline);
+  background-color: transparent;
+  color: inherit;
+  inline-size: 90vw;
+  max-inline-size: none;
+  block-size: fit-content;
+  max-block-size: 90dvh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ring) var(--gray-6);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-floating);
+
+  /* the popup motion: in at --duration-fast easing out, out easing in. the
+     exit keeps the box in the top layer until it has faded (overlay and
+     display, discrete); a browser without that drops it at once */
+  scale: 0.95;
+  opacity: 0;
+  transition-property: opacity, scale, overlay, display;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-in);
+  transition-behavior: allow-discrete;
+}
+/* none, not 1, at rest: any scale is a transform, which would make the box the
+   containing block of a position: fixed panel inside it. none interpolates
+   with 0.95 as 1 does */
+.ds-dialog[open] {
+  scale: none;
+  opacity: 1;
+  transition-timing-function: var(--ds-ease-out);
+}
+@starting-style {
+  .ds-dialog[open] {
+    scale: 0.95;
+    opacity: 0;
+  }
+}
+
+/* the scrim: --overlay over the page, fading at --duration-base */
+.ds-dialog::backdrop {
+  background-color: var(--overlay);
+  opacity: 0;
+  transition-property: opacity, overlay, display;
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ds-ease-in);
+  transition-behavior: allow-discrete;
+}
+.ds-dialog[open]::backdrop {
+  opacity: 1;
+  transition-timing-function: var(--ds-ease-out);
+}
+@starting-style {
+  .ds-dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/* the page under an open modal does not scroll. no scrollbar-gutter here: it
+   would reserve a gutter on a page that had no scrollbar, and shift it */
+:root:has(.ds-dialog:modal) {
+  overflow: hidden;
+}
+
+/* the size scale from 40rem: sm (512px) is the bare box; below it every size
+   but the sheet is 90vw */
+@media (width >= 40rem) {
+  .ds-dialog {
+    inline-size: 100%;
+    max-inline-size: var(--ds-container-lg);
+  }
+  .ds-dialog-panel {
+    max-inline-size: var(--ds-container-md);
+  }
+  .ds-dialog-md {
+    max-inline-size: var(--ds-container-2xl);
+  }
+  .ds-dialog-lg {
+    max-inline-size: var(--ds-container-3xl);
+  }
+}
+
+/* the sheet: the whole viewport below 40rem, a 480px box from it. display is
+   set only while open: the browser's own display: none is what keeps a closed
+   dialog off the page */
+.ds-dialog-sheet {
+  margin: 0;
+  inline-size: 100%;
+  block-size: 100dvh;
+  max-block-size: none;
+  overflow: hidden;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  border-radius: 0;
+  border-width: 0;
+}
+.ds-dialog-sheet[open] {
+  display: flex;
+  flex-direction: column;
+}
+@media (width >= 40rem) {
+  .ds-dialog-sheet {
+    margin: auto;
+    inline-size: 480px;
+    max-inline-size: none;
+    block-size: fit-content;
+    max-block-size: 90dvh;
+    overflow-x: visible;
+    overflow-y: auto;
+    border-radius: var(--radius-card);
+    border-width: 1px;
+  }
+}
+
+/* the surface the box leaves to its content: the popover fill on the card
+   corner, 24px in */
+.ds-dialog-surface {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  box-sizing: border-box;
+  padding: calc(var(--ds-spacing) * 6);
+  border-radius: var(--radius-card);
+  background-color: var(--popover);
+  color: var(--gray-12);
+}
+/* in the sheet it fills the box and scrolls its own height, so the skin the
+   other sizes wear on the box is the surface's here. below 40rem the box is
+   the whole viewport, and a corner would show the scrim behind it */
+.ds-dialog-sheet > .ds-dialog-surface {
+  flex: 1;
+  min-block-size: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ring) var(--gray-6);
+}
+@media (width < 40rem) {
+  .ds-dialog-sheet > .ds-dialog-surface {
+    border-radius: 0;
+  }
+}

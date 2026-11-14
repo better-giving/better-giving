@@ -315,7 +315,7 @@ function statusWord(root: HTMLElement): Element | null {
 
 it.each([
 	['active', 'Active', 'ds-badge ds-badge-neutral'],
-	['cancelled', 'Stopped', 'ds-badge ds-badge-neutral adm-state--note'],
+	['cancelled', 'Stopped', 'ds-badge ds-badge-outline'],
 	['lapsed', 'Payment failed', 'ds-badge ds-badge-destructive']
 ] as const)('draws a %s commitment’s status word on its own rung', (status, label, drawn) => {
 	const word = statusWord(screen(commitment({ status, nextChargeAt: null })));
