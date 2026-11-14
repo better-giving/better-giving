@@ -1,0 +1,129 @@
+# Copy to .github/workflows/bg-design-update.yml in an app that uses the
+# design registry. It checks the registry every weekday and keeps one PR, from
+# the branch design-registry/update, open while a component you copied in has a
+# newer version. Components you edited locally are left alone and listed in the
+# PR. Commits you add to that branch are kept: the job never overwrites a branch
+# that has a commit by anyone but github-actions[bot].
+#
+# Needs: Settings → Actions → General → "Allow GitHub Actions to create and
+# approve pull requests".
+#
+# Checks on the PR: a push or PR made with the default GITHUB_TOKEN starts no
+# other workflows, so your CI and design-check never run on the update PR and
+# required checks stay "Expected". Add a repo secret DESIGN_REGISTRY_PR_TOKEN (a
+# fine-grained PAT or GitHub App token with contents + pull requests write) and
+# the push and the PR use it instead, which does start them.
+#
+# The design-registry-release dispatch below is a hook for your own tooling.
+# The registry repo does not send it: its GITHUB_TOKEN cannot dispatch into
+# another repo. The schedule is how updates normally arrive.
+name: Update design registry
+
+on:
+  schedule:
+    - cron: "17 14 * * 1-5"
+  workflow_dispatch:
+  repository_dispatch:
+    types: [design-registry-release]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  REGISTRY: https://design.better.giving/registry
+  # set to the directory bg-design.json lives in, if not the repo root
+  APP_DIR: .
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # full history: the push guard compares the remote branch's commits
+          fetch-depth: 0
+          token: ${{ secrets.DESIGN_REGISTRY_PR_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Take new versions
+        id: update
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -uo pipefail
+          cli="$RUNNER_TEMP/bg-design.mjs"
+          curl --fail --silent --show-error --location "${REGISTRY%/}/cli.mjs" --output "$cli"
+          # no pipe, so the CLI's own exit code is the one tested
+          node "$cli" update --registry "$REGISTRY" > "$RUNNER_TEMP/update.txt" 2>&1
+          code=$?
+          cat "$RUNNER_TEMP/update.txt"
+          # 0 = updated, 3 = finished but skipped locally edited items (listed in
+          # the PR). Anything else (1 runtime error, 2 usage) is a failure.
+          case "$code" in
+            0|3) ;;
+            *) echo "::error::bg-design update failed with exit code $code"; exit 1 ;;
+          esac
+          version=$(node -p 'require("./bg-design.json").registryVersion') || exit 1
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Open the PR
+        env:
+          GH_TOKEN: ${{ secrets.DESIGN_REGISTRY_PR_TOKEN || github.token }}
+          VERSION: ${{ steps.update.outputs.version }}
+          BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "design registry already current"
+            exit 0
+          fi
+          branch="design-registry/update"
+          git config user.name "github-actions[bot]"
+          git config user.email "$BOT_EMAIL"
+          git checkout -B "$branch"
+          git add -A
+          git commit -m "Update design registry to ${VERSION}"
+
+          # ls-remote exits 2 when the branch is absent; any other failure is real
+          rc=0
+          git ls-remote --exit-code --heads origin "$branch" >/dev/null || rc=$?
+          case "$rc" in
+            0)
+              git fetch --no-tags origin "+refs/heads/${branch}:refs/remotes/origin/${branch}"
+              remote_sha=$(git rev-parse "origin/${branch}")
+              # commits on the remote branch that main does not have
+              others=$(git log --format='%ae' "origin/${branch}" --not "HEAD~1" | grep -vxF "$BOT_EMAIL" || true)
+              if [ -n "$others" ]; then
+                echo "::warning::origin/${branch} has commits that are not from github-actions[bot]; leaving it alone. Merge or close that PR, or delete the branch, to resume updates."
+                exit 0
+              fi
+              if [ "$(git rev-parse "origin/${branch}^{tree}")" = "$(git rev-parse 'HEAD^{tree}')" ]; then
+                echo "origin/${branch} already has this tree; not pushing"
+              else
+                git push --force-with-lease="${branch}:${remote_sha}" origin "$branch"
+              fi
+              ;;
+            2) git push --set-upstream origin "$branch" ;;
+            *) echo "::error::could not read origin"; exit 1 ;;
+          esac
+
+          title="Update design registry to ${VERSION}"
+          {
+            echo "## Summary"
+            echo
+            echo "Updates the design registry components to registry ${VERSION}."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/update.txt"
+            echo '```'
+            echo
+            echo "If a pnpm add line is listed above, run it: the new version needs those packages."
+          } > "$RUNNER_TEMP/body.md"
+          # open PRs only: a closed one is not reused, so a new one can open
+          number=$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi
