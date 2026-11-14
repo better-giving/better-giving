@@ -172,7 +172,7 @@ function make<K extends keyof HTMLElementTagNameMap>(
  * the accessibility tree because the words for what is happening are on the card's live region.
  */
 function spinner(doc: Document): HTMLElement {
-	return make(doc, 'span', { class: 'spinner', 'aria-hidden': 'true' });
+	return make(doc, 'span', { class: 'ds-spinner', 'aria-hidden': 'true' });
 }
 
 /** sets an attribute or removes it, so an absent state leaves no empty attribute behind. */

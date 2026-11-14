@@ -459,7 +459,7 @@ export function createDepositBlock(
 	// the send-by stands under the code rather than among the notes: what closes is the address and
 	// the code for it, and a line sitting at the foot of the screen names neither.
 	const expiry = make('p', 'expiry');
-	const spinner = make('span', 'spinner');
+	const spinner = make('span', 'ds-spinner');
 	spinner.setAttribute('aria-hidden', 'true');
 	const statusWords = make('span', '');
 	// the last beat of the instruction rather than a third thing stacked under it: send, and then

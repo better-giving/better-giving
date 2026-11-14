@@ -109,37 +109,16 @@
  */
 
 /*
- * the registry's controls on the card's clamped root rather than on the host's. each copied component
- * sheet declares its own spacing step and type sizes on its class in `rem`, so under a host's
- * `html { font-size: 62.5% }` they would draw the action 32px tall with an 11px label and the tick
- * box at 10px.
- *
- * each figure below is the registry's own `rem` figure taken off `--_root-size` (./tokens.css), so at
- * a 16px root every control draws exactly what the registry draws, and under any host root it draws
- * what the registry would on a root inside the card's clamp band. this sheet is adopted after the
- * registry's, so each rule takes its values by order at the registry's own weight. "draws the
- * registry’s controls off the card’s clamped root" in ./parts.browser.spec.ts holds them.
+ * the registry's controls draw off the card's clamped root through its `--ds-rem` (./tokens.css), so
+ * nothing here restates their spacing step or type sizes. the badge's type is the one figure taken
+ * back: a network code a donor checks against a wallet, at the registry's `0.75` of the base, which
+ * the clamp's floor takes to 11.25px — under the 12px floor the card's own small print states at its
+ * sites (`max(12px, var(--_t-xs))`, this file's header). this sheet is adopted after the registry's,
+ * so the rule takes the size by order at the registry's own weight.
  */
-.ds-btn {
-	--ds-spacing: calc(var(--_root-size) * 0.25);
-	--ds-text-lg: calc(var(--_root-size) * 1.125);
-}
-
-.ds-checkbox,
-.ds-field-input {
-	--ds-spacing: calc(var(--_root-size) * 0.25);
-}
-
 .ds-badge {
-	--ds-spacing: calc(var(--_root-size) * 0.25);
-	/*
-	 * a network code a donor checks against a wallet, at the registry's `0.75rem` off the root, which
-	 * the clamp's floor takes to 11.25px — under the 12px floor the card's own small print states at
-	 * its sites (`max(12px, var(--_t-xs))`, this file's header).
-	 *
-	 * raw-length-ok: the floor, for that reason.
-	 */
-	--ds-text-xs: max(12px, calc(var(--_root-size) * 0.75));
+	/* raw-length-ok: the floor, for that reason. */
+	--ds-text-xs: max(12px, calc(var(--ds-rem) * 0.75));
 }
 
 [part~='card'] {
@@ -1780,13 +1759,19 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the action: the registry's primary button on the element (`.ds-btn.ds-btn-primary.ds-btn-lg`,
- * ../registry/styles/button-css.css), which paints it, sizes it and draws its hover, press, busy and
- * focus. what is the form's is that it spans the column, that the spinner is placed against it, and
- * that its figures are tabular, so a total in its label never reflows as it changes.
+ * ../registry/styles/button-css.css), which paints it, sizes it, spaces a mark beside its words and
+ * draws its hover, press, busy and focus. what is the form's is that it spans the column, that the
+ * spinner is placed against it, and that its figures are tabular, so a total in its label never
+ * reflows as it changes. "is not restated on a press by the form’s sheets" in ./press-gap.spec.ts
+ * keeps the space the registry's.
+ *
+ * busy is a report, not a gate: the press is bounded by the flow's shape — `quoting` has no `SUBMIT`
+ * handler. the label does not change: its width would jump, and the label is a promise about the
+ * money. what changes is `aria-busy`, which the registry draws as its in-flight look, the spinner and
+ * the live region.
  */
 [part~='action'] {
 	position: relative;
-	gap: var(--_sp2);
 	inline-size: 100%;
 	font-variant-numeric: tabular-nums lining-nums;
 }
@@ -1820,20 +1805,6 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 [part~='action']:where(:not(.ds-btn)):active {
 	background: var(--_p-hover);
 	border-color: var(--_p-hover);
-}
-
-/*
- * busy is a report, not a gate: the press is bounded by the flow's shape — `quoting` has no `SUBMIT`
- * handler — and this only stops a second click from being aimed at a control that has already left.
- * the label does not change: its width would jump, and the label is a promise about the money. what
- * changes is `aria-busy`, the spinner and the live region. the registry's button draws `aria-busy` as
- * its disabled fill; the form-drawn one below holds its step-10 fill.
- */
-[part~='action']:where(:not(.ds-btn))[part~='busy'] {
-	background: var(--_p-hover);
-	border-color: var(--_p-hover);
-	pointer-events: none;
-	cursor: progress;
 }
 
 /*
@@ -1891,25 +1862,15 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * busy is reported beside the label, never in place of it. out of flow, so the words on the
- * control do not move at the moment a donor presses it — the label restates the money and a figure
- * that shifts under the cursor reads as a flinch. drawn in the control's own ink, and the words
- * for what is happening are on the card's live region either way.
+ * busy is reported beside the label, never in place of it: the registry's busy ring
+ * (`.ds-spinner`, ../registry/styles/spinner-css.css), which draws itself. out of flow, so the words
+ * on the control do not move at the moment a donor presses it — the label restates the money and a
+ * figure that shifts under the cursor reads as a flinch. the words for what is happening are on the
+ * card's live region either way. ./layout.css shows it only while the action is busy.
  */
-.spinner {
+[part~='action'] > .ds-spinner {
 	position: absolute;
 	inset-inline-end: var(--_sp4);
-	inline-size: var(--_spinner);
-	block-size: var(--_spinner);
-	border: var(--_spinner-stroke) solid currentColor;
-	border-block-start-color: transparent;
-	border-inline-end-color: transparent;
-	border-radius: 50%;
-	opacity: 0;
-}
-
-[part~='busy'] .spinner {
-	opacity: 1;
 }
 
 /*
@@ -2025,12 +1986,12 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * (`.ds-btn-lg` in ../registry/styles/button-css.css), which stands over `--_row-min`, so a block at
  * the floor leaves the shape short by that difference. the registry states the button's height on
  * its class alone, as `--ds-btn-size`, and as no variable a box that is not a button can read — a
- * registry gap — so its thirteen spacing steps are restated here, off the card's root as the action's
- * own are (`.ds-btn` at the head of this sheet), and "draws the action's placeholder at the action's
- * own height" in ./parts.browser.spec.ts holds the two equal.
+ * registry gap — so its thirteen spacing steps are restated here, off the registry's own base
+ * (`--ds-rem` in ./tokens.css) as the action's are, and "draws the action's placeholder at the
+ * action's own height" in ./parts.browser.spec.ts holds the two equal.
  */
 .skeleton-action {
-	block-size: calc(var(--_root-size) * 3.25);
+	block-size: calc(var(--ds-rem) * 3.25);
 }
 
 /*
@@ -2442,18 +2403,21 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	shape-rendering: crispEdges;
 }
 
-/* what the screen is waiting for, beside a spinner that stays drawn while it waits. */
+/* what the screen is waiting for, beside the registry's busy ring, drawn while it waits. */
 .status {
 	margin: 0;
 	color: var(--_n11);
 	font-size: var(--_t-xs);
 }
 
-.status .spinner {
-	position: static;
-	flex: none;
-	margin-block-start: calc((1lh - var(--_spinner)) / 2);
-	opacity: 1;
+/*
+ * the ring on the status's first line, which may wrap. the registry states the ring's size on its
+ * class alone, five of its spacing steps (`.ds-spinner` in ../registry/styles/spinner-css.css), and
+ * as no variable a rule placing it can read — the gap the head of ./tokens.css lists beside the
+ * large button's height — so the figure is restated off the registry's own base.
+ */
+.status > .ds-spinner {
+	margin-block-start: calc((1lh - var(--ds-rem) * 1.25) / 2);
 }
 
 /*

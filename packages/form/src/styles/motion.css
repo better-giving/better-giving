@@ -240,13 +240,15 @@
 }
 
 /*
- * bounded by the request that started it: the only loop here, and it ends when the flow does. the
- * address screen's status is the same loop, bounded by that screen, which stands only while the gift
- * is still being read.
+ * the registry's busy ring on its own keyframes, `ds-spin` (../registry/styles/spinner-css.css), at
+ * the card's restated turn: the registry stands the ring still under reduced motion, and this rule
+ * outweighs that one, so the ring slows with `--_dur-spin` instead (the head of ./tokens.css). the
+ * only loop here, bounded by the request that started it on the action and by the address screen,
+ * which stands only while the gift is still being read, on the status.
  */
-[part~='busy'] .spinner,
-.status .spinner {
-	animation: spin var(--_dur-spin) linear infinite;
+[part~='action'] > .ds-spinner,
+.status > .ds-spinner {
+	animation: ds-spin var(--_dur-spin) linear infinite;
 }
 
 /*
@@ -302,11 +304,5 @@
 @keyframes money-continuity {
 	from {
 		scale: 0.818;
-	}
-}
-
-@keyframes spin {
-	to {
-		rotate: 360deg;
 	}
 }

@@ -38,6 +38,13 @@
         "styles/radio-css.usage.md": "19745a47a5648028b09d894b2e145503a39fa0c164b3f6c37b098029db12348c"
       }
     },
+    "spinner-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/spinner-css.css": "6b218ecc740c517f46918d7d1cc48c19991f00544e6d2ba53cc31d879fa066a7",
+        "styles/spinner-css.usage.md": "7930ca9748309847dfce826640fecd4383b5fd7b7d3503d5cd45d384172405af"
+      }
+    },
     "variables": {
       "version": "1.3.0",
       "files": {
