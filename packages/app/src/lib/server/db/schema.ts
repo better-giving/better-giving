@@ -3836,12 +3836,12 @@ export const giftMatch = sqliteTable(
 		/** staff's or the system's reason, for staff; a donor sees only that the claim is closed. */
 		voidReason: text('void_reason'),
 		createdAt: createdAt(),
-		// append new columns below this line — see rule 1 at the top of this file.
 		/**
 		 * how many sends of the pack failed. the sweep stops trying at `PACK_TRIES` in
 		 * $lib/server/matching/pack.ts, and a failure no retry can mend sets it there at once.
 		 */
 		packTries: integer('pack_tries').notNull().default(0)
+		// append new columns below this line — see rule 1 at the top of this file.
 	},
 	(t) => [
 		// also the index `donation_id`'s foreign key is checked by.

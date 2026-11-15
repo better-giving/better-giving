@@ -1505,6 +1505,14 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "pack_tries": {
+          "name": "pack_tries",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         }
       },
       "indexes": {
@@ -1592,6 +1600,10 @@
         "gift_match_void_reason_not_blank_check": {
           "name": "gift_match_void_reason_not_blank_check",
           "value": "\"gift_match\".\"void_reason\" is null or trim(\"gift_match\".\"void_reason\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "gift_match_pack_tries_check": {
+          "name": "gift_match_pack_tries_check",
+          "value": "\"gift_match\".\"pack_tries\" >= 0"
         }
       }
     },

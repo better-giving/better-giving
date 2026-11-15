@@ -265,6 +265,30 @@ describe('the stamps', () => {
 	});
 });
 
+describe('the pack’s failed sends', () => {
+	it('count none on a row that names no count', async () => {
+		const donationId = await gift();
+		await run(insertMatch({ id: fresh(), donation_id: donationId, token: token(), created_at: 0 }));
+		expect(
+			await all(stmt('select pack_tries from gift_match where donation_id = ?', donationId))
+		).toEqual([{ pack_tries: 0 }]);
+	});
+
+	it('refuse a count below nothing', async () => {
+		await refusedBy(
+			SQLITE_CONSTRAINT_CHECK,
+			'gift_match_pack_tries_check',
+			insertMatch({
+				id: fresh(),
+				donation_id: await gift(),
+				token: token(),
+				pack_tries: -1,
+				created_at: 0
+			})
+		);
+	});
+});
+
 describe('the reminder sweep', () => {
 	it('reads only the rows still owed a reminder, through its partial index', async () => {
 		const plan = await all<{ detail: string }>(
