@@ -184,6 +184,11 @@ async function failed(db: Db, donationId: string, now: Date): Promise<void> {
 export type EmployerDeps = PackDeps & {
 	/** the deferred-work tracker ($lib/server/runtime/deferred.ts), so the answer waits on no mail. */
 	readonly defer: (work: Promise<unknown>) => void;
+	/**
+	 * the request's, where its caller may stop waiting for the answer (the donation form's Skip and
+	 * its timeout): once it has aborted, the write that already landed stands and no pack is deferred.
+	 */
+	readonly signal?: AbortSignal;
 };
 
 /**
@@ -198,6 +203,7 @@ export async function employerNamed(
 	now: Date
 ): Promise<MatchWrite> {
 	const written = await nameEmployer(deps.db, key, typed);
+	if (deps.signal?.aborted) return written;
 	if (written.ok && written.state.employer !== null && written.state.packSentAt === null) {
 		deps.defer(sendOwedPack(deps, written.state.donationId, now));
 	}

@@ -178,22 +178,40 @@ it('marks the box over a blank press, puts the caret in it, and lets it go once 
 	const send = find<HTMLButtonElement>('[part~="action"]');
 	const blank = { ...SCREEN, refusal: 'Enter your employer’s name.', boxRefused: true };
 	send.focus();
+	send.click();
 	block.update(blank, CONTROLS);
 
 	expect(find('.message').textContent).toBe('Enter your employer’s name.');
 	expect(field.getAttribute('aria-invalid')).toBe('true');
 	expect(field.getAttribute('aria-describedby')).toBe(`employer-hint ${find('.message').id}`);
 	expect(document.activeElement).toBe(field);
-	expect(handlers.refused).toHaveBeenCalledTimes(1);
+	// the caret moved, so the box it landed on says the refusal and the card's region is not asked to.
+	expect(handlers.send).toHaveBeenLastCalledWith(false);
+	expect(handlers.refused).not.toHaveBeenCalled();
 
-	// a second blank press changes nothing the flow holds, so the press itself returns the caret.
-	send.focus();
+	// a second press from the box itself, where moving the caret says nothing: the region's to say.
 	send.click();
 	expect(document.activeElement).toBe(field);
+	expect(handlers.send).toHaveBeenLastCalledWith(true);
 
 	block.update(SCREEN, { ...CONTROLS, value: 'N' });
 	expect(field.hasAttribute('aria-invalid')).toBe(false);
 	expect(find('.message').hidden).toBe(true);
+});
+
+it('reads a press off the box the donor left, not off the last paint', () => {
+	// typed into a box still drawn refused, then Send before the card is patched again: the press is
+	// a write, and the caret stays on the button that made it.
+	const { block, handlers, find } = mount();
+	const blank = { ...SCREEN, refusal: 'Enter your employer’s name.', boxRefused: true };
+	block.update(blank, CONTROLS);
+	const field = find<HTMLInputElement>('input');
+	const send = find<HTMLButtonElement>('[part~="action"]');
+	field.value = 'Northwind';
+	send.focus();
+	send.click();
+	expect(document.activeElement).toBe(send);
+	expect(handlers.send).toHaveBeenLastCalledWith(false);
 });
 
 it('draws nothing on a thank-you with no ask, and leaves Enter to the screen', () => {

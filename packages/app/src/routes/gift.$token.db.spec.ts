@@ -112,11 +112,11 @@ const handler = createStaticHandler([
 
 type LoaderData = Route.ComponentProps['loaderData'];
 
-async function visit(token: string): Promise<{ status: number; data: LoaderData }> {
+async function visit(token: string, on: Env = env): Promise<{ status: number; data: LoaderData }> {
 	const answered = await queryDocument(
 		handler,
 		new Request(`${OWN}/gift/${token}`),
-		requestContext({ env, deferred: createDeferredWork(), client })
+		requestContext({ env: on, deferred: createDeferredWork(), client })
 	);
 	return {
 		status: answered.statusCode,
@@ -201,6 +201,24 @@ describe('the page', () => {
 			)
 		);
 		expect((await visit(token)).data).toMatchObject({ gift: { refundedAt: at } });
+	});
+
+	it('promises the armed reminder only where an address is pinned for the sweep', async () => {
+		const { donationId, token } = await gift();
+		await run(
+			stmt(
+				`update gift_match set employer = 'Northwind', pack_sent_at = ?, reminder_due_at = ?
+				 where donation_id = ?`,
+				T0.getTime(),
+				T0.getTime() + 3 * DAY_MS,
+				donationId
+			)
+		);
+
+		expect((await visit(token)).data).toMatchObject({ gift: { reminderPromised: false } });
+		expect((await visit(token, { ...env, BETTER_AUTH_URL: OWN })).data).toMatchObject({
+			gift: { reminderPromised: true }
+		});
 	});
 });
 

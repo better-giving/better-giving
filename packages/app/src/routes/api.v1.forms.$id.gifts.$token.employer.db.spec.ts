@@ -101,7 +101,19 @@ beforeEach(async () => {
 
 function post(
 	body: unknown,
-	{ formId = FORM_ID, token = TOKEN, origin = ALLOWED, method = 'POST' } = {}
+	{
+		formId = FORM_ID,
+		token = TOKEN,
+		origin = ALLOWED,
+		method = 'POST',
+		signal
+	}: {
+		formId?: string;
+		token?: string;
+		origin?: string;
+		method?: string;
+		signal?: AbortSignal;
+	} = {}
 ) {
 	const deferred = createDeferredWork();
 	const response = routes(
@@ -112,7 +124,12 @@ function post(
 				origin,
 				'content-type': 'application/json'
 			},
-			...(method === 'POST' ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {})
+			...(method === 'POST'
+				? body instanceof ReadableStream
+					? { body, duplex: 'half' }
+					: { body: typeof body === 'string' ? body : JSON.stringify(body) }
+				: {}),
+			...(signal === undefined ? {} : { signal })
 		}),
 		{ deferred }
 	);
@@ -153,6 +170,29 @@ describe('naming the employer', () => {
 		expect(sent).toHaveLength(1);
 		expect(sent[0]).toMatchObject({ to: 'maya@example.org' });
 		expect(sent[0]?.subject).toContain('Northwind Logistics');
+	});
+
+	// the form's Skip and its timeout abort the request, which node-fetch-server turns into the
+	// request's signal. here it aborts while the body is read, past the layout's middleware.
+	it('stores nothing and sends no pack where the form stopped waiting before the write', async () => {
+		const stopped = new AbortController();
+		// no queue to fill, so nothing pulls the body until the action reads it.
+		const body = new ReadableStream<Uint8Array>(
+			{
+				pull(controller) {
+					stopped.abort();
+					controller.enqueue(new TextEncoder().encode(JSON.stringify({ employer: 'Northwind' })));
+					controller.close();
+				}
+			},
+			{ highWaterMark: 0 }
+		);
+		const { response, settled } = post(body, { signal: stopped.signal });
+		await (await response).text();
+		await settled();
+
+		expect(await stored()).toMatchObject({ employer: null, pack_sent_at: null });
+		expect(sent).toHaveLength(0);
 	});
 
 	it('stores it and stamps the pack as failed, arming no reminder, where the pack cannot be written', async () => {

@@ -7,6 +7,7 @@
 //
 // what the donor types leaves through `input` and nowhere else: no attribute, no event, no console.
 
+import { employerAnswer } from './employer';
 import { glyph } from './glyph';
 import { part, partWhen, REGISTRY_CLASS } from './parts';
 import { MAX_EMPLOYER } from './v1';
@@ -38,11 +39,16 @@ export type EmployerAskControls = {
 
 export type EmployerAskHandlers = {
 	readonly input: (typed: string) => void;
-	readonly send: () => void;
+	/**
+	 * Send pressed. `unmoved` is a press over a blank box made with the caret already in it: the box
+	 * says the refusal on the caret's arrival, and a caret that does not move arrives nowhere, so the
+	 * card's region is that refusal's one channel.
+	 */
+	readonly send: (unmoved: boolean) => void;
 	readonly skip: () => void;
 	/**
-	 * a refusal has just been drawn. the card's region states it (`announce` in ./views.ts) and says
-	 * only changed words, so a second refusal in a row is reported here to be said again.
+	 * a write's refusal has just been drawn. it moves no caret, so the card's region states it and
+	 * says only changed words, so a second refusal in a row is reported here to be said again.
 	 */
 	readonly refused: () => void;
 };
@@ -142,16 +148,17 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 	root.hidden = true;
 
 	field.addEventListener('input', () => handlers.input(field.value));
-	// a blank press repeated changes nothing the flow holds and draws nothing new, so the caret is
-	// returned to the box here rather than by `update`.
+	// the failed press's caret goes to the box it failed for. whether it failed is the flow's guard
+	// (`employerIsGiven` in ./checkout.machine.ts) over the box as the donor left it, read here rather
+	// than off the patch the press asks for, so a press is answered the same whenever that lands.
 	send.addEventListener('click', () => {
-		handlers.send();
-		if (drawnBoxRefused) field.focus();
+		const blank = drawnPhase === 'asking' && employerAnswer(field.value) === null;
+		handlers.send(blank && (field.getRootNode() as Document | ShadowRoot).activeElement === field);
+		if (blank) field.focus();
 	});
 	skip.addEventListener('click', () => handlers.skip());
 
 	let drawnPhase: EmployerAskScreen['phase'] | null = null;
-	let drawnBoxRefused = false;
 
 	return {
 		root,
@@ -161,7 +168,6 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 				// the default button leaves with the ask, so Enter on another screen presses its own.
 				attribute(send, 'type', 'button');
 				drawnPhase = null;
-				drawnBoxRefused = false;
 				return;
 			}
 			const open = screen.phase === 'asking' || screen.phase === 'sending';
@@ -179,8 +185,7 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 			attribute(send, 'aria-busy', controls.busy ? 'true' : null);
 			attribute(send, 'part', partWhen('action', { busy: controls.busy }));
 
-			const newlyRefused = screen.refusal !== '' && refusal.hidden;
-			if (newlyRefused) handlers.refused();
+			if (screen.refusal !== '' && refusal.hidden && !screen.boxRefused) handlers.refused();
 			text(refusal, screen.refusal);
 			hide(refusal, screen.refusal === '');
 			attribute(
@@ -189,9 +194,6 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 				screen.refusal === '' ? HINT_ID : `${HINT_ID} ${REFUSAL_ID}`
 			);
 			attribute(field, 'aria-invalid', screen.boxRefused ? 'true' : null);
-			// the failed press's caret goes to the box it failed for.
-			if (newlyRefused && screen.boxRefused) field.focus();
-			drawnBoxRefused = screen.boxRefused;
 
 			text(doneHeading, screen.doneHeading);
 			text(doneBody, screen.doneBody);

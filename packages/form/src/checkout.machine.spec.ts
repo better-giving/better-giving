@@ -3068,6 +3068,28 @@ describe('the employer ask on the thank-you', () => {
 		expect(actor.getSnapshot().context.employerRefusal).toBe('refused');
 	});
 
+	it('keeps a failed write’s refusal under a blank press, and hands it back once the box is answered', async () => {
+		// a blank press is no write, so it lands nothing that answers the one before it.
+		let answer: () => Promise<void> = () => Promise.reject(new Error('refused'));
+		const { actor, clock } = await thanked({ employer: () => answer() });
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		await settle();
+		actor.send({ type: 'SET_EMPLOYER', employer: '' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		expect(actor.getSnapshot().context.employerRefusal).toBe('blank');
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind Logistics' });
+		expect(actor.getSnapshot().context.employerRefusal).toBe('refused');
+
+		answer = neverAnswers;
+		actor.send({ type: 'SEND_EMPLOYER' });
+		clock.advance(PORT_TIMEOUT_MS);
+		actor.send({ type: 'SET_EMPLOYER', employer: ' ' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind Logistics' });
+		expect(actor.getSnapshot().context.employerRefusal).toBe('unconfirmed');
+	});
+
 	it('sends the trimmed employer once, to the gift the quote named, and lets the text go', async () => {
 		const { actor, calls } = await thanked();
 		actor.send({ type: 'SET_EMPLOYER', employer: '  Northwind Logistics ' });

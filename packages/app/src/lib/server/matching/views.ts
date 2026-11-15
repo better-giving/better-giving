@@ -1,5 +1,5 @@
 import { formatDate, formatMoney } from '@better-giving/emails';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import { authUser } from '../db/auth-schema';
 import type { Db } from '../db/client';
 import { type GiftMatch, giftMatch } from '../db/schema';
@@ -8,6 +8,7 @@ import { mailingAddress } from '../email/match';
 import { readOrgProfile } from '../org/queries';
 import { type MatchStatus, matchStatus } from '../../matching/status';
 import { DONOR, SYSTEM } from './match';
+import { reminderOwed } from './reminders';
 
 // what the two screens about one gift's match are drawn from: the donor's own gift page, reached by
 // its token with no sign-in, and the staff gift detail in /admin. each answers plain values a route
@@ -47,6 +48,12 @@ export type GiftPageView = {
 	readonly packSentAt: Date | null;
 	/** when the one reminder falls due, or `null` where no employer was named. */
 	readonly reminderDueAt: Date | null;
+	/**
+	 * whether the reminder sweep will send the one reminder: it is owed (`reminderOwed` in
+	 * ./reminders.ts) and `BETTER_AUTH_URL` pins the address the sweep links the page on. a pack
+	 * sent on the request's host armed none.
+	 */
+	readonly reminderPromised: boolean;
 	readonly remindedAt: Date | null;
 	readonly filedAt: Date | null;
 	readonly matchedAt: Date | null;
@@ -61,11 +68,24 @@ export type GiftPageView = {
 /**
  * the gift page for `token`, or `null` — an unknown token's answer — where no gift holds it or the
  * gift holding it is not in the books yet: a gift written at quote time may never be collected, and
- * its page shows nothing until it is.
+ * its page shows nothing until it is. `pinned` is whether `BETTER_AUTH_URL` pins an origin, which
+ * the reminder sweep needs to send anything (`sendDueReminders` in ./reminders.ts).
  */
-export async function readGiftPage(db: Db, token: string): Promise<GiftPageView | null> {
-	const [row] = await db.select().from(giftMatch).where(eq(giftMatch.token, token)).limit(1);
-	if (row === undefined) return null;
+export async function readGiftPage(
+	db: Db,
+	token: string,
+	pinned: boolean
+): Promise<GiftPageView | null> {
+	const [read] = await db
+		.select({
+			...getTableColumns(giftMatch),
+			reminderOwed: sql`${and(...reminderOwed(db))}`.mapWith(Boolean)
+		})
+		.from(giftMatch)
+		.where(eq(giftMatch.token, token))
+		.limit(1);
+	if (read === undefined) return null;
+	const { reminderOwed: owed, ...row } = read;
 	const gift = await readMatchGift(db, row.donationId);
 	if (gift === null || !gift.inBooks) return null;
 	const filing = await filingOf(db, gift);
@@ -76,6 +96,7 @@ export async function readGiftPage(db: Db, token: string): Promise<GiftPageView 
 		employer: row.employer,
 		packSentAt: row.packSentAt,
 		reminderDueAt: row.reminderDueAt,
+		reminderPromised: pinned && owed,
 		remindedAt: row.remindedAt,
 		filedAt: row.filedAt,
 		matchedAt: row.matchedAt,

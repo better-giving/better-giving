@@ -37,6 +37,11 @@ export type Takeover = {
 	readonly method: string;
 	/** announced through the live region, for the reader who is not looking at the figure. */
 	readonly announce: string;
+	/**
+	 * announced as the screen arrives and held until another sentence replaces it, where `announce`
+	 * is said for as long as the screen stands: a sentence that must not come back once it has gone.
+	 */
+	readonly arrival: string;
 	readonly mandate: string;
 	readonly deadline: string;
 	readonly failure: string;
@@ -81,6 +86,7 @@ export const BLANK: Takeover = {
 	aside: '',
 	method: '',
 	announce: '',
+	arrival: '',
 	mandate: '',
 	deadline: '',
 	failure: '',
@@ -342,18 +348,18 @@ export function takeoverFor(
 			const employer = employerAskScreen(state.employer);
 			// while the ask is open, Skip is the way out of it and the start-over waits until it closes.
 			const asking = employer?.phase === 'asking' || employer?.phase === 'sending';
-			// a refusal is said for as long as it stands, resend included, and the region goes quiet
-			// once the ask closes: the row the caret lands on says how it closed.
-			const refusal = state.employer?.refusal ?? null;
-			const said = (thanks: string): string =>
-				refusal !== null ? EMPLOYER_REFUSALS[refusal] : asking || employer === null ? thanks : '';
+			// with an ask, the thank-you is said once, as packages/form/src/views.ts says it: the ask's
+			// refusals are said as they land (`askNews` in ./card.tsx), and the row the caret lands on as
+			// it closes says how it closed.
+			const said = (thanks: string) =>
+				employer === null ? { announce: thanks } : { arrival: thanks };
 			const secondary = asking ? null : { label: copy.BACK_TO_START };
 			if (state.method === 'crypto') {
 				return {
 					...BLANK,
 					heading: copy.SUCCESS_HEADING,
 					body: copy.arrivedBody(org, sendsReceipt(config)),
-					announce: said(copy.ARRIVED_ANNOUNCE),
+					...said(copy.ARRIVED_ANNOUNCE),
 					secondary,
 					employer
 				};
@@ -364,7 +370,7 @@ export function takeoverFor(
 				receipt: 'charged',
 				totalLabel: copy.CHARGED_TODAY,
 				body: copy.successBody(org, sendsReceipt(config)),
-				announce: said(copy.SUCCESS_ANNOUNCE),
+				...said(copy.SUCCESS_ANNOUNCE),
 				// the quiet control rather than the primary the two recovery screens use. this donor is
 				// owed no act — a gift was made — and a loud control over a thank-you asks for one.
 				secondary,
@@ -547,7 +553,12 @@ export type EmployerAskBlockProps = {
 	/** the box as the flow holds it (`employerField` in @better-giving/form/connect). */
 	readonly box: FieldBox;
 	readonly busy: boolean;
-	readonly onSend: () => void;
+	/**
+	 * Send pressed. `caretInBox` is a press made with the caret already in the box, Enter in it: a
+	 * blank refusal is said by the box as the caret arrives there, and a caret that does not move
+	 * arrives nowhere, so the card's region is that refusal's one channel.
+	 */
+	readonly onSend: (caretInBox: boolean) => void;
 	readonly onSkip: () => void;
 };
 
@@ -640,7 +651,7 @@ export function EmployerAskBlock({ screen, box, busy, onSend, onSkip }: Employer
 						className={EMPLOYER_SEND_CLASS}
 						aria-busy={busy || undefined}
 						onClick={() => {
-							onSend();
+							onSend(document.activeElement === field.current);
 							// a blank press repeated changes nothing the flow holds, so no effect moves the caret.
 							if (boxRefused) field.current?.focus();
 						}}

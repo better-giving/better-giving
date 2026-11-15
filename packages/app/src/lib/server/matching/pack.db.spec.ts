@@ -541,6 +541,35 @@ describe('naming the employer, with the pack behind it', () => {
 		expect(mail.sent).toHaveLength(1);
 	});
 
+	it('stores the employer and defers no pack where the caller stopped waiting during the write', async () => {
+		const other = await gift();
+		const mail = mailer();
+		const deferred: Promise<unknown>[] = [];
+		const stopped = new AbortController();
+
+		const written = employerNamed(
+			{
+				db,
+				email: mail.port,
+				giftOrigin: PINNED,
+				defer: (work: Promise<unknown>) => void deferred.push(work),
+				signal: stopped.signal
+			},
+			{ donationId: other },
+			'Northwind',
+			T0
+		);
+		stopped.abort();
+
+		expect(await written).toMatchObject({
+			ok: true,
+			changed: true,
+			state: { employer: 'Northwind' }
+		});
+		expect(deferred).toHaveLength(0);
+		expect(mail.sent).toHaveLength(0);
+	});
+
 	it('sends the pack on a save of the same employer where the first never went', async () => {
 		const other = await gift();
 		const deferred: Promise<unknown>[] = [];

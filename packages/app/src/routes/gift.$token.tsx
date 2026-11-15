@@ -61,8 +61,10 @@ const FILED_FORM = defineForm({
 
 export async function loader({ context, params }: Route.LoaderArgs) {
 	const db = context.get(database);
+	// the origin the scheduled sweep names the page on (src/cron-runs.ts), which it sends nothing without.
+	const swept = giftLinkOrigin(context.get(platform).env, null) !== null;
 	const [gift, profile, logo] = await Promise.all([
-		readGiftPage(db, params.token),
+		readGiftPage(db, params.token, swept),
 		readOrgProfile(db),
 		readOrgProfileLogo(db)
 	]);
@@ -100,7 +102,7 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 	if (body === null) return refuse(400, unread(FILED_FORM, NOT_A_POST), 'filed', NOT_A_POST);
 	const intent = body.get('intent') === 'filed' ? 'filed' : 'employer';
 	// the loader's 404 for the loader's reasons, so a post learns no more about a token than a visit.
-	if ((await readGiftPage(db, params.token)) === null) {
+	if ((await readGiftPage(db, params.token, false)) === null) {
 		const rejection =
 			intent === 'filed' ? unread(FILED_FORM, UNKNOWN) : unread(EMPLOYER_FORM, UNKNOWN);
 		return refuse(404, rejection, intent, UNKNOWN);

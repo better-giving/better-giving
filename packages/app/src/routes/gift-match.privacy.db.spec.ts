@@ -375,7 +375,7 @@ describe('the employer is present for staff', () => {
 		const token = await first<{ token: string }>(
 			stmt('select token from gift_match where donation_id = ?', donationId)
 		);
-		expect((await readGiftPage(db, token?.token ?? ''))?.employer).toBe(EMPLOYER);
+		expect((await readGiftPage(db, token?.token ?? '', true))?.employer).toBe(EMPLOYER);
 	});
 });
 

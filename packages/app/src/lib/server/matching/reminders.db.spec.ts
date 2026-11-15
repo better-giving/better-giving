@@ -242,6 +242,46 @@ describe('the reminder sweep', () => {
 		expect(await remindedAt(second)).toBe(DUE.getTime());
 	});
 
+	// as above, but the racing sweep's send fails, so it hands its row back due an hour on while the
+	// held sweep's listing still names it: only the claim's due-time term keeps that row for the hour.
+	it('keeps a reminder handed back by an overlapping run for its hour retry', async () => {
+		await namedGift();
+		await namedGift();
+		const other = await open();
+		let release: () => void = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const sent: EmailMessage[] = [];
+		const gated: EmailProvider = {
+			async send(message) {
+				sent.push(message);
+				if (sent.length === 1) await held;
+				return { ok: true };
+			}
+		};
+		const failing = mailer(false);
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const slow = sendDueReminders({ db, email: gated, giftOrigin: PINNED }, DUE);
+		const racing = sendDueReminders({ db: other.db, email: failing.port, giftOrigin: PINNED }, DUE);
+		await racing;
+		release();
+		await slow;
+
+		expect(failing.sent).toHaveLength(1);
+		expect(sent).toHaveLength(1);
+		const rows = await rawSql(client).all<{ reminded_at: number | null; reminder_due_at: number }>(
+			stmt('select reminded_at, reminder_due_at from gift_match order by reminder_due_at')
+		);
+		expect(
+			rows.map(({ reminded_at, reminder_due_at }) => ({ reminded_at, reminder_due_at }))
+		).toEqual([
+			{ reminded_at: DUE.getTime(), reminder_due_at: DUE.getTime() },
+			{ reminded_at: null, reminder_due_at: DUE.getTime() + REMINDER_RETRY_AFTER_MS }
+		]);
+	});
+
 	it('sends a due reminder after a restart, from fresh handles over the same file', async () => {
 		const id = await namedGift();
 		const restarted = await open();

@@ -343,8 +343,9 @@ export type State =
  *
  * `asking` is the box open, `sending` the write in flight, and `sent` and `skipped` the two ways it
  * closes. `refused` is the last write refused or unanswered with none landed since, so it stands
- * over a resend too, and `refusal` says which of the two, or that Send was pressed over a blank box
- * (`EmployerRefusal` in ./checkout.machine.ts), which is no write and leaves `refused` false.
+ * over a resend and a blank press too, and `refusal` says which of the two, or that Send was pressed
+ * over a blank box (`EmployerRefusal` in ./checkout.machine.ts), which is no write and leaves
+ * `refused` as it was.
  * `giftUrl` is the gift page the screen links to, and `email` the address the details are mailed to.
  * what the donor typed is not here: it is the box's own value (`employerField` below).
  */
@@ -507,7 +508,7 @@ function employerAskOf(snapshot: CheckoutSnapshot): EmployerAsk | null {
 		: {
 				phase,
 				giftUrl,
-				refused: refusal === 'refused' || refusal === 'unconfirmed',
+				refused: context.employerWriteRefusal !== null,
 				refusal,
 				email: context.payer.email
 			};

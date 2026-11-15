@@ -38,6 +38,11 @@ import type { Route } from './+types/api.v1.forms.$id.gifts.$token.employer';
 //
 // the body is read exactly once, here. the employer is the donor's own words: no answer and no log
 // line here carries it.
+//
+// the form's Skip and its timeout abort the request, and node-fetch-server aborts `request.signal`
+// when the connection closes. the signal is read after the body, where an aborted request writes
+// nothing, and after the write, where it defers no pack. a write already in flight when the form
+// stops waiting still lands, so neither side may promise a skipped write did not happen.
 
 export async function action({ context, params, request }: Route.ActionArgs): Promise<Response> {
 	if (request.method !== 'POST') return methodNotAllowed(request.method);
@@ -46,6 +51,8 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 	const headers = corsHeaders(request, await readFormOrigins(db, params.id));
 
 	const typed = employerIn(await readJsonBody(request));
+	// react router throws an aborted request's reason after the action anyway; this throws it first.
+	if (request.signal.aborted) throw request.signal.reason;
 	if (typed === null) {
 		return Response.json(
 			{
@@ -61,7 +68,8 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 			db,
 			email: createEmailProvider(env),
 			giftOrigin: giftLinkOrigin(env, new URL(request.url)),
-			defer: (work) => deferred.waitUntil(work)
+			defer: (work) => deferred.waitUntil(work),
+			signal: request.signal
 		},
 		{ token: params.token, formId: params.id },
 		typed,

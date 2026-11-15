@@ -58,6 +58,7 @@ function view(stamps: Stamps = {}): GiftPageView {
 		copyText: filingDetailsText(filing),
 		status: matchStatus(row),
 		reminderDueAt: stamps.reminderDueAt ?? null,
+		reminderPromised: (stamps.reminderDueAt ?? null) !== null,
 		refundedAt: stamps.refundedAt ?? null
 	};
 }

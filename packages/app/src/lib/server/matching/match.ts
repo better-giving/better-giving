@@ -82,7 +82,8 @@ function keyed(key: MatchKey): SQL {
 	if (!('token' in key)) return eq(giftMatch.donationId, key.donationId);
 	const byToken = eq(giftMatch.token, key.token);
 	if (key.formId === undefined) return byToken;
-	return sql`${byToken} and ${giftMatch.donationId} in (select ${donation.id} from ${donation} where ${donation.formId} = ${key.formId})`;
+	// correlated, so it probes the gift the token found rather than listing every gift on the form.
+	return sql`${byToken} and exists (select 1 from ${donation} where ${donation.id} = ${giftMatch.donationId} and ${donation.formId} = ${key.formId})`;
 }
 
 /** the row as a write reports it. */
@@ -114,11 +115,16 @@ function stateOf(row: GiftMatch): MatchState {
 	};
 }
 
+/** the row `key` names, read: at most one, since each key is unique on its own. */
+export function matchRow(db: Db, key: MatchKey) {
+	return db.select().from(giftMatch).where(keyed(key)).limit(1);
+}
+
 /** the answer to a conditional update: what it wrote, or the row it left alone. */
 async function answered(db: Db, key: MatchKey, written: GiftMatch[]): Promise<MatchWrite> {
 	const [landed] = written;
 	if (landed !== undefined) return { ok: true, changed: true, state: stateOf(landed) };
-	const [standing] = await db.select().from(giftMatch).where(keyed(key)).limit(1);
+	const [standing] = await matchRow(db, key);
 	if (standing === undefined) return { ok: false, reason: 'not_found' };
 	return { ok: true, changed: false, state: stateOf(standing) };
 }

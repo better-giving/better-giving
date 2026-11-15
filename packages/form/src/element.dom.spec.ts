@@ -8095,8 +8095,13 @@ describe('the employer ask on the thank-you', () => {
 		expect(secondary(card).hidden).toBe(true);
 	});
 
-	it('refuses a press over a blank box out loud, writes nothing, and puts the caret in the box', async () => {
+	// one refusal, one channel, the details step's rule: the box the caret is sent to carries the
+	// sentence by `aria-describedby`, so arriving there is the announcement.
+	it('refuses a press over a blank box on the box it puts the caret in, and writes nothing', async () => {
 		const { card, written } = await thanked();
+		await settle();
+		const thanks = card.text('.vh[role="status"]');
+		expect(thanks).toBe('Your gift went through.');
 		const send = card.find('.employer [part~="action"]');
 		expect(send.hasAttribute('aria-disabled')).toBe(false);
 		press(send);
@@ -8107,14 +8112,70 @@ describe('the employer ask on the thank-you', () => {
 		const refusal = 'Enter your employer’s name.';
 		const box = card.find('#employer');
 		expect(shows(card, '#employer-problem')).toBe(refusal);
+		expect(box.getAttribute('aria-describedby')).toBe('employer-hint employer-problem');
 		expect(box.getAttribute('aria-invalid')).toBe('true');
 		expect(card.shadow.activeElement).toBe(box);
-		await settle();
-		expect(card.text('.vh[role="status"]')).toBe(refusal);
+		expect(card.text('.vh[role="status"]')).toBe(thanks);
 
 		type(box, 'Northwind Logistics');
 		expect(card.find('#employer-problem').hidden).toBe(true);
 		expect(box.hasAttribute('aria-invalid')).toBe(false);
+		await settle();
+		expect(card.text('.vh[role="status"]')).toBe(thanks);
+	});
+
+	// Enter in the box, or a second press: `focus()` on the box the caret is already in announces
+	// nothing, so the region is the refusal's one channel, and says it again on every such press.
+	it('says a blank press out loud where the caret was already in the box, every time', async () => {
+		const { card } = await thanked();
+		const box = card.find('#employer');
+		const send = card.find('.employer [part~="action"]');
+		const refusal = 'Enter your employer’s name.';
+		box.focus();
+		press(send);
+		await settle();
+		expect(card.text('.vh[role="status"]')).toBe(refusal);
+
+		press(send);
+		// cleared and written a task apart, which is what makes the same words news.
+		expect(card.text('.vh[role="status"]')).toBe('');
+		await settle();
+		expect(card.text('.vh[role="status"]')).toBe(refusal);
+	});
+
+	it('does not say the thank-you again once a blank press is answered by typing', async () => {
+		const { card } = await thanked();
+		const box = card.find('#employer');
+		box.focus();
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+
+		type(box, 'N');
+		await settle();
+		expect(card.text('.vh[role="status"]')).not.toBe('Your gift went through.');
+	});
+
+	it('keeps a failed write’s sentence under the box through a blank press, without saying it again', async () => {
+		const { card } = await thanked(() => Promise.reject(new Error('refused')));
+		const box = card.find('#employer');
+		type(box, 'Northwind');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		await settle();
+		const unsaved = 'Your employer was not saved. Try again, or skip this.';
+		expect(card.text('.vh[role="status"]')).toBe(unsaved);
+
+		type(box, '');
+		box.focus();
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		expect(shows(card, '#employer-problem')).toBe('Enter your employer’s name.');
+
+		type(box, 'Northwind Logistics');
+		await settle();
+		expect(shows(card, '#employer-problem')).toBe(unsaved);
+		expect(box.hasAttribute('aria-invalid')).toBe(false);
+		expect(card.text('.vh[role="status"]')).not.toBe(unsaved);
 	});
 
 	it('sends the trimmed employer and says the details are on their way', async () => {

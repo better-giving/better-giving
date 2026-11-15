@@ -1,7 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { client, run, stmt } from '../db/database.testing';
+import type { EmailProvider } from '../email/provider';
 import { DONOR, markFiled, nameEmployer, voidMatch } from './match';
+import { sendOwedPack } from './pack';
 import { filingDetailsText, readGiftPage, readStaffMatch } from './views';
 
 // what the donor's gift page and the staff gift detail are read from, against a real database.
@@ -82,7 +84,7 @@ describe('the gift page', () => {
 	it('shows the filing details with the nonprofit as filer', async () => {
 		const { token } = await gift();
 
-		const page = await readGiftPage(db, token);
+		const page = await readGiftPage(db, token, true);
 
 		expect(page?.filing).toEqual({
 			nonprofit: 'Greenfield Food Bank Inc.',
@@ -98,12 +100,12 @@ describe('the gift page', () => {
 	});
 
 	it('is no gift for an unknown token', async () => {
-		expect(await readGiftPage(db, 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz')).toBeNull();
+		expect(await readGiftPage(db, 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz', true)).toBeNull();
 	});
 
 	it('is no gift until the gift reaches the books', async () => {
 		const { token } = await gift(false);
-		expect(await readGiftPage(db, token)).toBeNull();
+		expect(await readGiftPage(db, token, true)).toBeNull();
 	});
 
 	it('leaves the mailing address out where the profile has none', async () => {
@@ -111,7 +113,7 @@ describe('the gift page', () => {
 		await profile(false);
 		const { token } = await gift();
 
-		const page = await readGiftPage(db, token);
+		const page = await readGiftPage(db, token, true);
 
 		expect(page?.filing.mailingAddress).toBeNull();
 	});
@@ -121,7 +123,7 @@ describe('the gift page', () => {
 		await nameEmployer(db, { donationId }, 'Northwind Logistics');
 		await voidMatch(db, { donationId }, STAFF, 'Donor asked us to stop', T1);
 
-		const page = await readGiftPage(db, token);
+		const page = await readGiftPage(db, token, true);
 
 		expect(page).toMatchObject({ status: 'voided', employer: 'Northwind Logistics', voidedAt: T1 });
 		const serialized = JSON.stringify(page);
@@ -134,7 +136,7 @@ describe('the gift page', () => {
 		await refunded(donationId, 5_000, T0);
 		await refunded(donationId, 10_000, T1);
 
-		const page = await readGiftPage(db, token);
+		const page = await readGiftPage(db, token, true);
 
 		expect(page).toMatchObject({ refundedAt: T1, filing: { amountMinor: 0 } });
 	});
@@ -143,7 +145,7 @@ describe('the gift page', () => {
 		const { donationId, token } = await gift();
 		await refunded(donationId, 5_000, T1);
 
-		const page = await readGiftPage(db, token);
+		const page = await readGiftPage(db, token, true);
 
 		expect(page).toMatchObject({ refundedAt: null, filing: { amountMinor: 10_000 } });
 		expect(page?.copyText).toContain('Gift amount: USD 100.00');
@@ -156,17 +158,61 @@ describe('the gift page', () => {
 			stmt('insert into dispute (payment_id, created_at, updated_at) values (?, 0, 0)', withdrawal)
 		);
 
-		expect(await readGiftPage(db, token)).toMatchObject({
+		expect(await readGiftPage(db, token, true)).toMatchObject({
 			refundedAt: null,
 			filing: { amountMinor: 15_000 }
 		});
 
 		await run(stmt(`update dispute set outcome = 'lost', closed_at = ?`, T1.getTime()));
 
-		expect(await readGiftPage(db, token)).toMatchObject({
+		expect(await readGiftPage(db, token, true)).toMatchObject({
 			refundedAt: null,
 			filing: { amountMinor: 0 }
 		});
+	});
+});
+
+describe('the reminder the gift page promises', () => {
+	const ORIGIN = 'https://give.example.org';
+	const email: EmailProvider = { send: async () => ({ ok: true }) };
+
+	/** a gift with an employer named and its pack sent at `T0` on an origin pinned or not. */
+	async function packed(pinned: boolean) {
+		const named = await gift();
+		await nameEmployer(db, { donationId: named.donationId }, 'Northwind Logistics');
+		await sendOwedPack({ db, email, giftOrigin: { origin: ORIGIN, pinned } }, named.donationId, T0);
+		return named;
+	}
+
+	it('is promised once the pack went on a pinned address, while a pinned sweep runs', async () => {
+		const { token } = await packed(true);
+
+		expect((await readGiftPage(db, token, true))?.reminderPromised).toBe(true);
+		expect((await readGiftPage(db, token, false))?.reminderPromised).toBe(false);
+	});
+
+	it('is not promised where the pack went on the request’s host', async () => {
+		const { token } = await packed(false);
+		expect((await readGiftPage(db, token, true))?.reminderPromised).toBe(false);
+	});
+
+	it('is not promised before any pack, once it went, or once the gift is filed', async () => {
+		const unsent = await gift();
+		await nameEmployer(db, { donationId: unsent.donationId }, 'Northwind Logistics');
+		const reminded = await packed(true);
+		await run(
+			stmt(
+				'update gift_match set reminded_at = ? where donation_id = ?',
+				T1.getTime(),
+				reminded.donationId
+			)
+		);
+		const filed = await packed(true);
+		await markFiled(db, { donationId: filed.donationId }, DONOR, T1);
+
+		for (const { token } of [unsent, reminded, filed]) {
+			expect((await readGiftPage(db, token, true))?.reminderPromised).toBe(false);
+		}
 	});
 });
 

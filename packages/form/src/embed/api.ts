@@ -250,8 +250,9 @@ export function employerUrl(origin: string, formId: string, giftToken: string): 
  * sentence over the open ask (`sending` in ../checkout.machine.ts). a rejection names the address and
  * the status and never the employer, which is free text the donor typed for the deployment alone.
  *
- * aborted by the flow's signal, unlike the quote: this write spends nothing, and one the flow has
- * stopped waiting for would still save and mail under a card that said otherwise.
+ * aborted by the flow's signal, unlike the quote: this write spends nothing, so the request ends once
+ * the flow stops waiting for it. the abort stops this side reading the answer and promises nothing
+ * about the deployment, which may finish a write it has already taken and save and mail regardless.
  *
  * `credentials: 'omit'` for `createQuote`'s reason.
  */

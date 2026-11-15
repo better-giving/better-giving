@@ -9,6 +9,7 @@ import {
 	giftMatchInsert,
 	markFiled,
 	markMatched,
+	matchRow,
 	nameEmployer,
 	REMINDER_AFTER_MS,
 	refundVoidStatement,
@@ -395,6 +396,22 @@ describe('naming the employer', () => {
 			state: { status: 'voided' }
 		});
 		expect((await row()).employer).toBeNull();
+	});
+
+	// the form's check probes the one gift the token found, never every gift on the form.
+	it('reads a token on a form as one token lookup and one gift probe', async () => {
+		const query = matchRow(db, { token: 'x'.repeat(32), formId: 'form' }).toSQL();
+		const plan = (
+			await all<{ detail: string }>(
+				stmt(`explain query plan ${query.sql}`, ...(query.params as (string | number)[]))
+			)
+		)
+			.map((p) => p.detail)
+			.join('\n');
+		expect(plan).not.toContain('LIST SUBQUERY');
+		expect(plan).toMatch(
+			/SEARCH donation USING (INTEGER PRIMARY KEY|INDEX sqlite_autoindex_donation_1)/
+		);
 	});
 
 	it('finds the gift by its token', async () => {

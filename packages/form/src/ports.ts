@@ -204,8 +204,10 @@ export type CheckoutPorts = {
 	 * so an adapter sends it in the body and writes it nowhere else.
 	 *
 	 * `signal` aborts when the ask closes or reopens before the answer, Skip or `PORT_TIMEOUT_MS`
-	 * (./checkout.machine.ts): the endpoint records the employer and mails the details, so an adapter
-	 * hands it to the request rather than let the write land under a card that has moved on.
+	 * (./checkout.machine.ts), and when the element is torn down with the write in flight (`#stop` in
+	 * ./element.ts stops the flow, and the invoked write with it). an adapter hands it to the request,
+	 * so the browser stops waiting on an answer no card reads; it does not unsave a write the
+	 * deployment has already taken, which may still record the employer and mail the details.
 	 */
 	employer?(
 		input: {

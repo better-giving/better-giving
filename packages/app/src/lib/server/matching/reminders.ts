@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, lte } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, lte, type SQL } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { giftMatch } from '../db/schema';
 import { readMatchGift } from '../donations/queries';
@@ -16,12 +16,12 @@ import type { PackDeps } from './pack';
 // the claim pattern ../donations/receipt.ts states for the receipt. a row is selected by the
 // predicate `gift_match_reminder_due_idx` is built on ($lib/server/db/schema.ts; the plan is pinned by
 // ../db/gift-match-schema.db.spec.ts and ./reminders.db.spec.ts), then claimed by one UPDATE that
-// stamps `reminded_at` only where it is still null and the gift is still unfiled, unmatched and
-// unvoided, and only a claim that returned its row sends. a send that did not go hands the claim
-// back and moves the due time on by `REMINDER_RETRY_AFTER_MS`, so a reminder that cannot go is
-// retried and never hammered, and never keeps a due one behind it out of the run. one that can never
-// go — no donor address, no gift, nothing to sign it with — is handed back disarmed instead, its
-// due time cleared, so it leaves the sweep and is logged once.
+// stamps `reminded_at` only where it is still null, the row is still due and the gift is still
+// unfiled, unmatched and unvoided, and only a claim that returned its row sends. a send that did
+// not go hands the claim back and moves the due time on by `REMINDER_RETRY_AFTER_MS`, so a reminder
+// that cannot go is retried and never hammered, and never keeps a due one behind it out of the run.
+// one that can never go — no donor address, no gift, nothing to sign it with — is handed back
+// disarmed instead, its due time cleared, so it leaves the sweep and is logged once.
 //
 // a run with no pinned origin sends nothing and says nothing: the pack arms a reminder only under a
 // pin, so a row armed then waits for one to be set again.
@@ -34,21 +34,28 @@ export const REMINDER_RETRY_AFTER_MS = 60 * 60_000;
 /** the most reminders one run claims. a run sends them one after another over one SMTP transport. */
 export const REMINDERS_PER_RUN = 50;
 
+/**
+ * a row the sweep will remind once its due time comes, under a pinned origin: armed, not yet
+ * reminded, the gift unfiled, unmatched, unvoided and in the books. the gift page's promise
+ * (`reminderPromised` in ./views.ts) reads the same terms.
+ */
+export function reminderOwed(db: Db): SQL[] {
+	return [
+		isNotNull(giftMatch.reminderDueAt),
+		isNull(giftMatch.remindedAt),
+		isNull(giftMatch.filedAt),
+		isNull(giftMatch.matchedAt),
+		isNull(giftMatch.voidedAt),
+		inBooks(db)
+	];
+}
+
 /** the rows owed a reminder by `now`, oldest due first, through `gift_match_reminder_due_idx`. */
 export function dueReminders(db: Db, now: Date) {
 	return db
 		.select({ donationId: giftMatch.donationId })
 		.from(giftMatch)
-		.where(
-			and(
-				lte(giftMatch.reminderDueAt, now),
-				isNull(giftMatch.remindedAt),
-				isNull(giftMatch.filedAt),
-				isNull(giftMatch.matchedAt),
-				isNull(giftMatch.voidedAt),
-				inBooks(db)
-			)
-		)
+		.where(and(lte(giftMatch.reminderDueAt, now), ...reminderOwed(db)))
 		.orderBy(asc(giftMatch.reminderDueAt))
 		.limit(REMINDERS_PER_RUN);
 }
@@ -79,7 +86,8 @@ async function remind(
 			.where(
 				and(
 					eq(giftMatch.donationId, donationId),
-					isNotNull(giftMatch.reminderDueAt),
+					// still due: a run overlapping this one may have handed the row back for later.
+					lte(giftMatch.reminderDueAt, now),
 					isNull(giftMatch.remindedAt),
 					isNull(giftMatch.filedAt),
 					isNull(giftMatch.matchedAt),

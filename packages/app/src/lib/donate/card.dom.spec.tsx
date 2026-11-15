@@ -3256,19 +3256,75 @@ describe('the thank-you’s employer ask', () => {
 		expect(link(root).hidden).toBe(true);
 	});
 
+	/** every sentence the card's region is handed from here on. */
+	function heard(root: HTMLElement): string[] {
+		const node = one(root, '[data-donate-root] > [role="status"]');
+		const written: string[] = [];
+		const watch = new MutationObserver(() => written.push(node.textContent ?? ''));
+		watch.observe(node, { childList: true, characterData: true, subtree: true });
+		onTestFinished(() => watch.disconnect());
+		return written;
+	}
+
+	/** Send pressed with the caret left in the box, as Enter in it presses the form's submit. */
+	async function sentFromBox(root: HTMLElement): Promise<void> {
+		await act(async () => {
+			box(root).focus();
+			send(root).click();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+	}
+
 	it('refuses a blank Send under the box with the caret in it, and sends nothing', async () => {
 		const named = deployment();
 		const root = await thanked();
+		const written = heard(root);
 
 		type(box(root), '   ');
 		await pressed(send(root));
+		await settled();
 
 		expect(named).toEqual([]);
 		expect(ask(root).hidden).toBe(false);
 		expect(one(root, '#employer-problem').textContent).toBe(copy.EMPLOYER_BLANK);
 		expect(box(root).getAttribute('aria-invalid')).toBe('true');
 		expect(document.activeElement).toBe(box(root));
+		// the box the caret lands in says the refusal, so the region saying it as well is heard twice.
+		expect(written).toEqual([]);
+	});
+
+	it('says a blank Send made from the box through the region, again on every one', async () => {
+		deployment();
+		const root = await thanked();
+
+		type(box(root), '   ');
+		await sentFromBox(root);
+		await settled();
+
+		expect(document.activeElement).toBe(box(root));
 		expect(region(root)).toBe(copy.EMPLOYER_BLANK);
+
+		await sentFromBox(root);
+		expect(region(root)).toBe('');
+		await settled();
+
+		expect(region(root)).toBe(copy.EMPLOYER_BLANK);
+	});
+
+	it('says the thank-you once, never again as the box takes an answer after a blank Send', async () => {
+		deployment();
+		const root = await thanked();
+		expect(region(root)).toBe(copy.SUCCESS_ANNOUNCE);
+
+		type(box(root), '   ');
+		await sentFromBox(root);
+		await settled();
+		const written = heard(root);
+		type(box(root), 'Northwind Logistics');
+		await settled();
+
+		expect(one(root, '#employer-problem').hidden).toBe(true);
+		expect(written).not.toContain(copy.SUCCESS_ANNOUNCE);
 	});
 
 	it('takes a named employer, and sends it under the gift page’s token', async () => {

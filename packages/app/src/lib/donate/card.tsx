@@ -127,12 +127,13 @@ function visibleStep(state: State, last: Screen): Screen {
 }
 
 /**
- * a sentence a moment on a numbered step said, rather than one the step says while it stands.
+ * a sentence a moment said, rather than one the screen says while it stands.
  *
- * `restating` names what it states that a later snapshot on the same step can make false — the total
- * it read out, or the fields it asked for — and it is said no longer than that stands.
+ * `restating` names what it states that a later snapshot on the same screen can make false — the
+ * total it read out, the fields it asked for, or the employer ask's refusal — and it is said no
+ * longer than that stands.
  */
-type News = { readonly words: string; readonly restating?: 'total' | 'fields' };
+type News = { readonly words: string; readonly restating?: 'total' | 'fields' | 'ask' };
 
 /** what a busy flow says out loud, which is not one sentence: a mint and a charge are different news. */
 function workingWords(state: State): string {
@@ -389,7 +390,7 @@ function CheckoutCard({
 	 */
 	const [shot, setShot] = useState<{
 		at: CheckoutSnapshot;
-		kind: 'details' | 'copy' | 'one-time';
+		kind: 'details' | 'copy' | 'one-time' | 'ask';
 		words?: string;
 		on?: string;
 	} | null>(null);
@@ -458,6 +459,8 @@ function CheckoutCard({
 		news: (News & { on: Screen }) | null;
 		/** the last press a commit answered, as `nonce` counts them. */
 		again: number;
+		/** the employer ask's refusal as the last commit drew it under the box, or `''`. */
+		ask: string;
 	}>({
 		outsaid: null,
 		retitle: { on: null, words: '' },
@@ -466,7 +469,8 @@ function CheckoutCard({
 		offer: '',
 		total: { step: null, figure: '' },
 		news: null,
-		again: 0
+		again: 0,
+		ask: ''
 	});
 
 	/**
@@ -627,14 +631,6 @@ function CheckoutCard({
 	useEffect(() => {
 		deposit?.update(takeover.deposit);
 	});
-
-	// a refused employer write is said by the region (`announce` in ./takeover.tsx), whose words do not
-	// change between two refusals in a row: the sentence leaves the box while the resend is in flight,
-	// so its return is a refusal to be said again.
-	const employerRefusal = takeover.employer?.refusal ?? '';
-	useEffect(() => {
-		if (employerRefusal !== '') setNonce((at) => at + 1);
-	}, [employerRefusal]);
 
 	// read in the render rather than in the effect below: the commit between them hides whatever this
 	// screen stops drawing, and a hidden node gives the caret up.
@@ -892,6 +888,19 @@ function CheckoutCard({
 		focusOn(paymentMount.current);
 	}
 
+	/**
+	 * the thank-you's employer Send. a blank press is said by the box the caret is put in
+	 * (`EmployerAskBlock` in ./takeover.tsx), so the region says it only for a press made with the
+	 * caret already there, and again on every such press: the words do not change between two.
+	 */
+	function onEmployerSend(caretInBox: boolean): void {
+		api.sendEmployerButton.onClick();
+		const after = now().state;
+		if (!caretInBox || after.step !== 'success' || after.employer?.refusal !== 'blank') return;
+		setShot({ at: read(), kind: 'ask' });
+		setNonce((at) => at + 1);
+	}
+
 	/** the fee decision; what it does to the total is said with every other move of it (`total`). */
 	function onFee(): void {
 		api.feeToggle.onClick();
@@ -1021,6 +1030,23 @@ function CheckoutCard({
 		// a semicolon because each already holds a colon, and a comma runs one field into the next.
 		.join('; ');
 	const detailsSaid = spent === 'details' ? detailsRefusal : '';
+	// the employer ask's refusal is news as a write's refusal lands under the box, which moves no
+	// caret, and for a blank press that moved none (`onEmployerSend`); a blank refusal clearing back
+	// to the write's refusal it stood over is neither.
+	const askRefusal = takeover.employer?.refusal ?? '';
+	const askSaid =
+		spent === 'ask'
+			? askRefusal
+			: askRefusal !== '' && takeover.employer?.boxRefused !== true && kept.current.ask === ''
+				? askRefusal
+				: '';
+	// the thank-you's sentence, said as its screen arrives rather than while it stands (`arrival` in
+	// ./takeover.tsx).
+	const arrival =
+		takeover.arrival !== '' &&
+		(screen.current.shown !== 'takeover' || takeover.heading !== screen.current.heading)
+			? takeover.arrival
+			: '';
 	const bounds = copy.amountProblem(offer, config.minAmountMinor, config.maxAmountMinor);
 	// what a numbered step was refused for, said out loud, and one sentence however many steps there
 	// are: the two are mutually exclusive, because a press is refused on the step it was made on. each
@@ -1060,14 +1086,18 @@ function CheckoutCard({
 	const arrived: News | null =
 		detailsSaid !== ''
 			? { words: detailsSaid, restating: 'fields' }
-			: totalMoved
-				? { words: reading?.words ?? '', restating: 'total' }
-				: offerArrived
-					? { words: oneTimeOffer }
-					: spent === 'one-time'
-						? { words: copy.MADE_ONE_TIME }
-						: null;
-	const restated = { total: reading?.words ?? '', fields: detailsRefusal };
+			: askSaid !== ''
+				? { words: askSaid, restating: 'ask' }
+				: arrival !== ''
+					? { words: arrival }
+					: totalMoved
+						? { words: reading?.words ?? '', restating: 'total' }
+						: offerArrived
+							? { words: oneTimeOffer }
+							: spent === 'one-time'
+								? { words: copy.MADE_ONE_TIME }
+								: null;
+	const restated = { total: reading?.words ?? '', fields: detailsRefusal, ask: askRefusal };
 	const prior = repeating ? null : kept.current.news;
 	const news =
 		prior !== null &&
@@ -1116,7 +1146,8 @@ function CheckoutCard({
 					: news === null || replaced(news.words)
 						? null
 						: news,
-			again: nonce
+			again: nonce,
+			ask: askRefusal
 		};
 	});
 
@@ -1230,7 +1261,7 @@ function CheckoutCard({
 								screen={takeover.employer}
 								box={api.employerField.box}
 								busy={api.sendEmployerButton['aria-busy']}
-								onSend={() => api.sendEmployerButton.onClick()}
+								onSend={onEmployerSend}
 								onSkip={() => api.skipEmployerButton.onClick()}
 							/>
 						}
