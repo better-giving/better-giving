@@ -133,7 +133,7 @@ async function send(
 		displayName: org?.legalName ?? '',
 		donorName: gift.donorName,
 		employer,
-		amountMinor: gift.totalMinor,
+		amountMinor: gift.remainingMinor,
 		currency: gift.currency,
 		givenAt: gift.receivedAt,
 		giftPageUrl: giftPageUrl(origin, token)

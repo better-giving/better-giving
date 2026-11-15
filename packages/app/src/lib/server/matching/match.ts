@@ -1,6 +1,7 @@
 import { and, eq, exists, isNotNull, isNull, ne, or, type SQL, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { donation, type GiftMatch, giftMatch, payment } from '../db/schema';
+import { dispute, donation, type GiftMatch, giftMatch, payment } from '../db/schema';
+import { nothingLeftOfGift } from '../donations/queries';
 import {
 	type MatchFilter,
 	type MatchStamps,
@@ -18,8 +19,9 @@ import { giftPageUrl } from './links';
 // so a repeat is a no-op and never an error, and nothing here is a read-then-write.
 //
 // the rules the statements hold, each a case in ./match.db.spec.ts:
-//   - matched is terminal: no void, no filed and no employer after it. a refund still voids it
-//     (`refundVoidStatement`).
+//   - matched is terminal: no void, no filed and no employer after it. a full refund or a lost
+//     dispute still voids it (`refundVoidStatement`, `disputeLostVoidStatement`); a partial refund
+//     and a dispute opened or won leave every match as it stood.
 //   - voided is terminal: no filed, no matched and no employer after it.
 //   - matched may come before filed, and counts as filed without stamping it.
 //   - filed needs no employer named.
@@ -27,11 +29,14 @@ import { giftPageUrl } from './links';
 /** `filed_by` when the donor pressed "I've filed it" on their gift page. */
 export const DONOR = 'donor';
 
-/** `voided_by` when a refund closed the match. */
+/** `voided_by` when a full refund or a lost dispute closed the match. */
 export const SYSTEM = 'system';
 
-/** the void reason a refund writes. */
+/** the void reason a full refund writes. */
 export const REFUND_REASON = 'Gift refunded';
+
+/** the void reason a lost dispute writes. */
+export const DISPUTE_LOST_REASON = 'Dispute lost';
 
 /** how long after the pack is sent (`sendOwedPack` in ./pack.ts) its one reminder falls due. */
 export const REMINDER_AFTER_MS = 3 * 24 * 60 * 60_000;
@@ -170,16 +175,48 @@ export async function voidMatch(
 }
 
 /**
- * a refund's void, for the refund's own `batch()` in ../donations/reverse.ts. it voids a matched
- * gift too — staff take no action after matched, and a refund still closes it — leaves an
- * earlier void as it stood, and matches no row on a gift that has none. it sets the three columns
- * the void's checks pair, so it cannot be what refuses the refund's batch.
+ * a refund's void, for the refund's own `batch()` in ../donations/reverse.ts, after the refund row's
+ * insert: it lands only where that refund left nothing of the gift (`nothingLeftOfGift` in
+ * ../donations/queries.ts), so a partial refund leaves the match as it stood and the one that takes
+ * the rest closes it. it voids a matched gift too — staff take no action after matched, and a
+ * refund still closes it — leaves an earlier void as it stood, and matches no row on a gift that
+ * has none. it sets the three columns the void's checks pair, so it cannot be what refuses the
+ * refund's batch.
  */
 export function refundVoidStatement(db: Db, donationId: string, now: Date) {
 	return db
 		.update(giftMatch)
 		.set({ voidedAt: now, voidedBy: SYSTEM, voidReason: REFUND_REASON })
-		.where(and(eq(giftMatch.donationId, donationId), isNull(giftMatch.voidedAt)));
+		.where(
+			and(
+				eq(giftMatch.donationId, donationId),
+				isNull(giftMatch.voidedAt),
+				nothingLeftOfGift(db, giftMatch.donationId)
+			)
+		);
+}
+
+/**
+ * a lost dispute's void, for the `batch()` in ../donations/reverse.ts that records the dispute on
+ * the withdrawal row `withdrawalId` lost, after the statement that closes it: it lands only where
+ * that dispute's row reads lost, so a close another delivery decided the other way voids nothing.
+ * a dispute opened or won voids nothing, since a win puts the money back. otherwise as
+ * `refundVoidStatement`.
+ */
+export function disputeLostVoidStatement(
+	db: Db,
+	donationId: string,
+	withdrawalId: string,
+	now: Date
+) {
+	const lost = db
+		.select({ one: sql`1` })
+		.from(dispute)
+		.where(and(eq(dispute.paymentId, withdrawalId), eq(dispute.outcome, 'lost')));
+	return db
+		.update(giftMatch)
+		.set({ voidedAt: now, voidedBy: SYSTEM, voidReason: DISPUTE_LOST_REASON })
+		.where(and(eq(giftMatch.donationId, donationId), isNull(giftMatch.voidedAt), exists(lost)));
 }
 
 /**

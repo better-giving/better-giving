@@ -34,13 +34,14 @@ import {
 	type SettleResult
 } from './delivery';
 import { reinstatementEntry, reversalEntry, settleUpEntry, unpostable } from './entries';
-import { refundVoidStatement } from '../matching/match';
+import { disputeLostVoidStatement, refundVoidStatement } from '../matching/match';
 import { sendRefundNotice } from './refund-notice';
 
 // what a refund or a dispute does to a gift already in the books: a payment row of its own, and an
-// entry group taking the money back out, in one `batch()` — a refund's with the void of the gift's
-// employer match beside them (`refundVoidStatement` in ../matching/match.ts). the only module that writes a
-// refund-direction row or a `dispute` row, gated by ./sole-refund-writer.spec.ts.
+// entry group taking the money back out, in one `batch()` — a refund that leaves nothing of the
+// gift, and a dispute's loss, with the void of the gift's employer match beside them
+// (`refundVoidStatement` and `disputeLostVoidStatement` in ../matching/match.ts). the only module
+// that writes a refund-direction row or a `dispute` row, gated by ./sole-refund-writer.spec.ts.
 //
 // ---------------------------------------------------------------------------
 // the refund is a row of its own and never a status on the gift's.
@@ -385,7 +386,8 @@ async function withdraw(
 			// owed by a refund that tells its donor, until ./refund-notice.ts clears it.
 			noticeOwedSince: reversal.kind === 'refund' && notice === 'send' ? new Date() : null
 		}),
-		// a refund closes the gift's employer match in the batch that writes it; a dispute does not,
+		// a refund that leaves nothing of the gift, and a dispute recorded lost, close the gift's
+		// employer match in the batch that writes them; a partial refund and a dispute opened do not,
 		// since a win puts the money back (../matching/match.ts).
 		...(reversal.kind === 'refund'
 			? [refundVoidStatement(deps.db, reversed.donationId, new Date())]
@@ -397,7 +399,10 @@ async function withdraw(
 						...(reversal.kind === 'dispute_lost'
 							? { outcome: 'lost', closedAt: reversal.occurredAt }
 							: {})
-					})
+					}),
+					...(reversal.kind === 'dispute_lost'
+						? [disputeLostVoidStatement(deps.db, reversed.donationId, refundId, new Date())]
+						: [])
 				]),
 		...(typeof posting === 'string' ? [] : posting)
 	]);
@@ -728,8 +733,11 @@ async function closeLost(
 					entry: settleUp,
 					finalRefundPaymentId: recorded.id
 				});
-	// the lowering goes ahead of the close, whose update is what makes `stillOpen` false.
-	const batch: Writes = lowered === null ? [close, ...settled] : [lowered, close, ...settled];
+	// the lowering goes ahead of the close, whose update is what makes `stillOpen` false; the
+	// match's void follows it, reading the close.
+	const voided = disputeLostVoidStatement(deps.db, recorded.donationId, recorded.id, new Date());
+	const batch: Writes =
+		lowered === null ? [close, voided, ...settled] : [lowered, close, voided, ...settled];
 	const closeAt = batch.indexOf(close);
 	const committed = await commit(deps.db, batch);
 	if (committed === 'failed') return 'failed';

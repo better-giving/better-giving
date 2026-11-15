@@ -129,21 +129,62 @@ describe('the gift page', () => {
 		expect(serialized).not.toContain(STAFF);
 	});
 
-	it('says when the gift was refunded', async () => {
+	it('says when the gift was refunded whole', async () => {
 		const { donationId, token } = await gift();
+		await refunded(donationId, 5_000, T0);
+		await refunded(donationId, 10_000, T1);
+
+		const page = await readGiftPage(db, token);
+
+		expect(page).toMatchObject({ refundedAt: T1, filing: { amountMinor: 0 } });
+	});
+
+	it('shows what is left of a gift partly refunded, and calls it no refund', async () => {
+		const { donationId, token } = await gift();
+		await refunded(donationId, 5_000, T1);
+
+		const page = await readGiftPage(db, token);
+
+		expect(page).toMatchObject({ refundedAt: null, filing: { amountMinor: 10_000 } });
+		expect(page?.copyText).toContain('Gift amount: USD 100.00');
+	});
+
+	it('takes nothing off for a dispute still open, and calls a lost one no refund', async () => {
+		const { donationId, token } = await gift();
+		const withdrawal = await refunded(donationId, 15_000, T1);
 		await run(
-			stmt(
-				`insert into payment (id, donation_id, amount_minor, currency, direction, method, status, occurred_at, created_at)
-				 values (?, ?, 15000, 'USD', 'refund', 'card', 'succeeded', ?, 0)`,
-				fresh(),
-				donationId,
-				T1.getTime()
-			)
+			stmt('insert into dispute (payment_id, created_at, updated_at) values (?, 0, 0)', withdrawal)
 		);
 
-		expect((await readGiftPage(db, token))?.refundedAt).toEqual(T1);
+		expect(await readGiftPage(db, token)).toMatchObject({
+			refundedAt: null,
+			filing: { amountMinor: 15_000 }
+		});
+
+		await run(stmt(`update dispute set outcome = 'lost', closed_at = ?`, T1.getTime()));
+
+		expect(await readGiftPage(db, token)).toMatchObject({
+			refundedAt: null,
+			filing: { amountMinor: 0 }
+		});
 	});
 });
+
+/** `amountMinor` of `donationId` sent back at `at`, succeeded; answers the refund row's id. */
+async function refunded(donationId: string, amountMinor: number, at: Date): Promise<string> {
+	const id = fresh();
+	await run(
+		stmt(
+			`insert into payment (id, donation_id, amount_minor, currency, direction, method, status, occurred_at, created_at)
+			 values (?, ?, ?, 'USD', 'refund', 'card', 'succeeded', ?, 0)`,
+			id,
+			donationId,
+			amountMinor,
+			at.getTime()
+		)
+	);
+	return id;
+}
 
 describe('the copied details', () => {
 	const filing = {
@@ -212,6 +253,16 @@ describe('the staff gift detail', () => {
 			]
 		});
 		expect(detail?.mailingAddressMissing).toBe(false);
+	});
+
+	it('keeps the gift as given after a partial refund', async () => {
+		const { donationId } = await gift();
+		await refunded(donationId, 5_000, T1);
+
+		expect((await readStaffMatch(db, donationId))?.gift).toMatchObject({
+			amountMinor: 15_000,
+			status: 'partially_refunded'
+		});
 	});
 
 	it('says the mailing address is missing, and carries no match for a gift recorded before it', async () => {

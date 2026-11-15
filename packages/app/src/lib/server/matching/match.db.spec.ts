@@ -5,6 +5,7 @@ import { all, client, run, stmt } from '../db/database.testing';
 import { donation, giftMatch } from '../db/schema';
 import {
 	DONOR,
+	disputeLostVoidStatement,
 	giftMatchInsert,
 	markFiled,
 	markMatched,
@@ -154,8 +155,40 @@ describe('void', () => {
 	});
 });
 
+/** `direction` money on `gift`, succeeded: what it collected, or a refund of it. answers its id. */
+async function moved(
+	gift: string,
+	direction: 'inbound' | 'refund',
+	amountMinor: number
+): Promise<string> {
+	const id = fresh();
+	await run(
+		stmt(
+			`insert into payment (id, donation_id, amount_minor, currency, direction, method, status, occurred_at, created_at)
+			 values (?, ?, ?, 'USD', ?, 'card', 'succeeded', 0, 0)`,
+			id,
+			gift,
+			amountMinor,
+			direction
+		)
+	);
+	return id;
+}
+
 describe('the refund void', () => {
+	beforeEach(async () => {
+		await moved(donationId, 'inbound', 15_000);
+	});
+
+	it('leaves the match open while anything of the gift is left', async () => {
+		await moved(donationId, 'refund', 5_000);
+		await db.batch([refundVoidStatement(db, donationId, T0)]);
+		expect(await row()).toMatchObject({ voidedAt: null, voidedBy: null, voidReason: null });
+	});
+
 	it('voids by system with the reason Gift refunded', async () => {
+		await moved(donationId, 'refund', 5_000);
+		await moved(donationId, 'refund', 10_000);
 		await db.batch([refundVoidStatement(db, donationId, T0)]);
 		expect(await row()).toMatchObject({
 			voidedAt: T0,
@@ -166,6 +199,7 @@ describe('the refund void', () => {
 
 	it('voids a matched gift too, and leaves an earlier void as it was', async () => {
 		await markMatched(db, { donationId }, STAFF, T0);
+		await moved(donationId, 'refund', 15_000);
 		await db.batch([refundVoidStatement(db, donationId, T1)]);
 		expect(await row()).toMatchObject({ matchedAt: T0, voidedBy: SYSTEM });
 
@@ -191,6 +225,41 @@ describe('the refund void', () => {
 	it('is a no-op for a gift with no row', async () => {
 		await db.batch([refundVoidStatement(db, fresh(), T0)]);
 		expect(await row()).toMatchObject({ voidedAt: null, voidedBy: null, voidReason: null });
+	});
+});
+
+describe('the lost dispute void', () => {
+	/** a dispute withdrawing the whole gift, closed as `outcome` says; answers its withdrawal row. */
+	async function disputed(outcome: 'lost' | 'won' | null): Promise<string> {
+		await moved(donationId, 'inbound', 15_000);
+		const withdrawal = await moved(donationId, 'refund', 15_000);
+		await run(
+			stmt(
+				'insert into dispute (payment_id, outcome, closed_at, created_at, updated_at) values (?, ?, ?, 0, 0)',
+				withdrawal,
+				outcome,
+				outcome === null ? null : 0
+			)
+		);
+		return withdrawal;
+	}
+
+	it('voids by system with the reason Dispute lost', async () => {
+		const withdrawal = await disputed('lost');
+		await db.batch([disputeLostVoidStatement(db, donationId, withdrawal, T0)]);
+		expect(await row()).toMatchObject({
+			voidedAt: T0,
+			voidedBy: SYSTEM,
+			voidReason: 'Dispute lost'
+		});
+	});
+
+	it('leaves the match open while the dispute is open or once it is won', async () => {
+		for (const outcome of [null, 'won'] as const) {
+			const withdrawal = await disputed(outcome);
+			await db.batch([disputeLostVoidStatement(db, donationId, withdrawal, T0)]);
+			expect(await row()).toMatchObject({ voidedAt: null, voidedBy: null, voidReason: null });
+		}
 	});
 });
 

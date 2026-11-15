@@ -145,6 +145,24 @@ describe('the pack', () => {
 		expect(await row()).toMatchObject({ packSentAt: T0, packFailedAt: null });
 	});
 
+	it('states what is left of a gift partly refunded', async () => {
+		await run(
+			stmt(
+				`insert into payment (id, donation_id, amount_minor, currency, direction, method, status, occurred_at, created_at)
+				 values (?, ?, 5000, 'USD', 'refund', 'check', 'succeeded', ?, 0)`,
+				fresh(),
+				donationId,
+				T0.getTime()
+			)
+		);
+		const mail = mailer();
+
+		await sendOwedPack({ db, email: mail.port, giftOrigin: ORIGIN }, donationId, T0);
+
+		expect(mail.sent[0]?.text).toContain('100.00');
+		expect(mail.sent[0]?.text).not.toContain('150.00');
+	});
+
 	it('is not sent for a gift that has not reached the books', async () => {
 		const pending = await gift(false);
 		await nameEmployer(db, { donationId: pending }, 'Northwind');

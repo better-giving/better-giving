@@ -106,7 +106,7 @@ async function send(
 		org,
 		donorName: gift.donorName,
 		employer,
-		amountMinor: gift.totalMinor,
+		amountMinor: gift.remainingMinor,
 		currency: gift.currency,
 		givenAt: gift.receivedAt,
 		receiptSentAt: gift.receiptSentAt,

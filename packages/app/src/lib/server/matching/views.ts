@@ -27,6 +27,7 @@ export type FilingDetails = {
 	readonly nonprofit: string | null;
 	readonly ein: string | null;
 	readonly mailingAddress: string | null;
+	/** what is left of the gift after its refunds (`MatchGift.remainingMinor`), read at view time. */
 	readonly amountMinor: number;
 	readonly currency: string;
 	readonly givenAt: Date;
@@ -50,7 +51,10 @@ export type GiftPageView = {
 	readonly filedAt: Date | null;
 	readonly matchedAt: Date | null;
 	readonly voidedAt: Date | null;
-	/** when the latest refund of the gift went back, or `null` where none has. */
+	/**
+	 * when the gift was refunded whole (`MatchGift.refundedAt`), or `null` where something of it is
+	 * left: a partial refund shows what is left in `filing` and reads as no refund here.
+	 */
 	readonly refundedAt: Date | null;
 };
 
@@ -86,7 +90,7 @@ async function filingOf(db: Db, gift: MatchGift): Promise<FilingDetails> {
 		nonprofit: org?.legalName ?? null,
 		ein: org?.taxId ?? null,
 		mailingAddress: mailingAddress(org),
-		amountMinor: gift.totalMinor,
+		amountMinor: gift.remainingMinor,
 		currency: gift.currency,
 		givenAt: gift.receivedAt,
 		receiptSentAt: gift.receiptSentAt,

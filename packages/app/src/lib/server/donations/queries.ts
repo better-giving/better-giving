@@ -183,6 +183,30 @@ export function refundStands(db: Db, row: typeof payment) {
 }
 
 /**
+ * the gift `donationId` names was collected and nothing of it is left: the refunds of it that stand
+ * (`refundStands` above) add up to what its inbound attempts collected, the total `projectStatus`
+ * measures refunds against. a dispute still open takes nothing off, as there.
+ */
+export function nothingLeftOfGift(db: Db, donationId: SQLiteColumn): SQL {
+	const minor = sql<number>`coalesce(sum(${payment.amountMinor}), 0)`;
+	const collected = db
+		.select({ minor })
+		.from(payment)
+		.where(
+			and(
+				eq(payment.donationId, donationId),
+				eq(payment.direction, 'inbound'),
+				eq(payment.status, 'succeeded')
+			)
+		);
+	const taken = db
+		.select({ minor })
+		.from(payment)
+		.where(and(eq(payment.donationId, donationId), refundStands(db, payment)));
+	return sql`(${collected}) > 0 and (${collected}) <= (${taken})`;
+}
+
+/**
  * `gift` is its donor's first settled gift: no other succeeded inbound payment of theirs exists.
  * the one rule both feeds read "new donor" by — `zapierStatements` in ../zapier/events.ts and
  * `webhookStatements` in ../webhooks/events.ts — inside the statement that owes the event, never
@@ -765,7 +789,16 @@ export type MatchGift = Pick<
 	readonly method: Payment['method'] | null;
 	/** whether an inbound attempt succeeded: the gift is in the books. */
 	readonly inBooks: boolean;
-	/** when the latest succeeded refund went back, or `null` where none has. */
+	/**
+	 * what is left of the gift: what it collected, less the refunds of it that stand
+	 * (`refundStands`), never below nothing — the figure ./refund-notice.ts tells the donor. a
+	 * dispute still open takes nothing off; a lost one does.
+	 */
+	readonly remainingMinor: number;
+	/**
+	 * when the latest refund went back, where refunds alone left nothing of the gift; `null` where
+	 * something is left, or where a lost dispute took part of it, which is no refund.
+	 */
 	readonly refundedAt: Date | null;
 };
 
@@ -786,17 +819,34 @@ export async function readMatchGift(db: Db, id: string): Promise<MatchGift | nul
 		.limit(1);
 	if (row === undefined) return null;
 
-	const [summaries, attempts] = await Promise.all([
+	const disputed = db
+		.select({ one: sql`1` })
+		.from(dispute)
+		.where(eq(dispute.paymentId, payment.id));
+	const [summaries, attempts, [taken]] = await Promise.all([
 		readContactSummaries(db, [row.contactId]),
 		db
 			.select(ATTEMPT_COLUMNS)
 			.from(payment)
 			.leftJoin(dispute, eq(dispute.paymentId, payment.id))
-			.where(eq(payment.donationId, id))
+			.where(eq(payment.donationId, id)),
+		db
+			.select({
+				standingMinor: sql<number>`coalesce(sum(${payment.amountMinor}), 0)`,
+				refundedMinor: sql<number>`coalesce(sum(case when ${notExists(disputed)} then ${payment.amountMinor} else 0 end), 0)`,
+				lastRefundedAt:
+					sql<Date | null>`max(case when ${notExists(disputed)} then ${payment.occurredAt} end)`.mapWith(
+						payment.occurredAt
+					)
+			})
+			.from(payment)
+			.where(and(eq(payment.donationId, id), refundStands(db, payment)))
 	]);
 	const { contactId, ...gift } = row;
 	const summary = summaries.get(contactId);
-	const refunds = attempts.filter((a) => a.direction === 'refund' && a.status === 'succeeded');
+	const settled = attempts.filter((a) => a.direction === 'inbound' && a.status === 'succeeded');
+	const collected = sum(settled);
+	const refundedWhole = collected > 0 && (taken?.refundedMinor ?? 0) >= collected;
 	return {
 		...gift,
 		// the donor row cannot be missing — see `listDonations` above for why, and for the word.
@@ -804,7 +854,8 @@ export async function readMatchGift(db: Db, id: string): Promise<MatchGift | nul
 		donorEmail: summary?.primaryEmail ?? null,
 		status: projectStatus(attempts),
 		method: projectRail(attempts)?.method ?? null,
-		inBooks: attempts.some((a) => a.direction === 'inbound' && a.status === 'succeeded'),
-		refundedAt: latestOf(refunds)?.occurredAt ?? null
+		inBooks: settled.length > 0,
+		remainingMinor: Math.max(0, collected - (taken?.standingMinor ?? 0)),
+		refundedAt: refundedWhole ? (taken?.lastRefundedAt ?? null) : null
 	};
 }

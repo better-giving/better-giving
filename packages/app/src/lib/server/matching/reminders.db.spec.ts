@@ -98,6 +98,20 @@ async function namedGift(settled = true): Promise<string> {
 	return id;
 }
 
+/** `amountMinor` of the gift `id` sent back, succeeded. */
+async function refunded(id: string, amountMinor: number): Promise<void> {
+	await rawSql(client).run(
+		stmt(
+			`insert into payment (id, donation_id, amount_minor, currency, direction, method, status, occurred_at, created_at)
+			 values (?, ?, ?, 'USD', 'refund', 'card', 'succeeded', ?, 0)`,
+			fresh(),
+			id,
+			amountMinor,
+			T0.getTime()
+		)
+	);
+}
+
 beforeAll(async () => {
 	({ client, db } = await open());
 	await applyMigrations(client, MIGRATIONS);
@@ -321,8 +335,20 @@ describe('the reminder sweep', () => {
 		expect(await remindedAt(id)).toBeNull();
 	});
 
+	it('states what is left of a gift partly refunded', async () => {
+		const id = await namedGift();
+		await refunded(id, 5000);
+		const mail = mailer();
+
+		await sendDueReminders({ db, email: mail.port, giftOrigin: ORIGIN }, DUE);
+
+		expect(mail.sent[0]?.text).toContain('100.00');
+		expect(mail.sent[0]?.text).not.toContain('150.00');
+	});
+
 	it('does not remind a refunded gift', async () => {
 		const id = await namedGift();
+		await refunded(id, 15000);
 		await db.batch([refundVoidStatement(db, id, T0)]);
 		const mail = mailer();
 
