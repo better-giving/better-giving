@@ -106,6 +106,8 @@ export type ButtonProps = {
 	readonly pressed?: boolean;
 	/** whether the flow would take a press on a mark on the step head. */
 	readonly available?: boolean;
+	/** whether the thank-you's employer box holds an answer the flow would send. */
+	readonly given?: boolean;
 };
 
 type Shapes = {

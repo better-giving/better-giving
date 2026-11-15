@@ -1679,8 +1679,14 @@ it('draws its controls with the registry’s classes, on the elements the elemen
 			expect(node.className, node.outerHTML).toBe(REGISTRY_CLASS.action);
 			seen.action += 1;
 		}
+		// the employer ask's Skip stands beside its Send at the registry's press size, which the
+		// registry draws (`[part~='action-quiet']` in packages/form/src/styles/parts.css).
 		for (const node of every(root, '[part~="action-quiet"]')) {
-			expect(registryClasses(node), node.outerHTML).toEqual([]);
+			expect(registryClasses(node), node.outerHTML).toEqual(
+				node.closest('.employer-actions') === null
+					? []
+					: ['ds-btn', 'ds-btn-secondary', 'ds-btn-lg']
+			);
 		}
 		for (const node of every(root, '[part~="field"]')) {
 			expect(node.className, node.outerHTML).toBe(REGISTRY_CLASS.field);
@@ -3169,5 +3175,168 @@ describe('a crypto gift', () => {
 		expect(coins(root).querySelector('[aria-disabled="true"] .coin-ticker')?.textContent).toBe(
 			'USDT'
 		);
+	});
+});
+
+describe('the thank-you’s employer ask', () => {
+	const GIFT_URL = 'https://giving.example.org/gift/tok_1';
+	const QUOTE = {
+		paymentToken: 'pi_1_secret_x',
+		feeMinor: 106,
+		totalMinor: 2606,
+		giftUrl: GIFT_URL
+	};
+
+	/**
+	 * the deployment's two endpoints: the quote, naming the gift page, and the employer write, which
+	 * answers `employer` in turn and records each body it was sent.
+	 */
+	function deployment(employer: (() => Response)[] = []) {
+		const named: unknown[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init?: RequestInit) => {
+				if (url.endsWith('/gifts/tok_1/employer')) {
+					named.push(JSON.parse(String(init?.body)));
+					return employer.shift()?.() ?? Response.json({ ok: true });
+				}
+				return Response.json(QUOTE);
+			})
+		);
+		return named;
+	}
+
+	async function thanked() {
+		const { root, payment } = await card(CONFIG, {
+			confirm: async () => ({ paymentIntent: { status: 'succeeded' } })
+		});
+		await walkToGive(root);
+		payment.pick('card');
+		await act(async () => {
+			one(root, 'button[part~="submit"]').click();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+		expect(one(screen(root), ':scope > h2').textContent).toBe(copy.SUCCESS_HEADING);
+		return root;
+	}
+
+	async function pressed(node: HTMLElement): Promise<void> {
+		await act(async () => {
+			node.focus();
+			node.click();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+	}
+
+	const ask = (root: HTMLElement) => one(root, '.employer-ask');
+	const box = (root: HTMLElement) => input(root, '#employer');
+	const send = (root: HTMLElement) => one(ask(root), '.employer-actions > button[type="submit"]');
+	const skip = (root: HTMLElement) => one(ask(root), 'button[part~="action-quiet"]');
+	const back = (root: HTMLElement) => one(screen(root), ':scope > .foot > button');
+	/** the card's own region, beside the row that states the ask closing. */
+	const region = (root: HTMLElement) =>
+		one(root, '[data-donate-root] > [role="status"]').textContent;
+	const done = (root: HTMLElement) => one(root, '.employer-done');
+	const link = (root: HTMLElement) => one(root, 'a[part~="link"]');
+
+	it('asks with Send held while the box is blank, focusable, and no way back to the start', async () => {
+		deployment();
+		const root = await thanked();
+
+		expect(ask(root).hidden).toBe(false);
+		expect(one(ask(root), 'h3').textContent).toBe(copy.EMPLOYER_ASK_HEADING);
+		expect(one(root, 'label[for="employer"]').textContent).toBe(copy.EMPLOYER_LABEL);
+		expect(box(root).value).toBe('');
+		expect(box(root).maxLength).toBe(200);
+		expect(send(root).getAttribute('aria-disabled')).toBe('true');
+		expect(send(root).hidden).toBe(false);
+		expect(back(root).hidden).toBe(true);
+		expect(done(root).hidden).toBe(true);
+		expect(link(root).hidden).toBe(true);
+	});
+
+	it('takes a named employer: Send is live, and sends it under the gift page’s token', async () => {
+		const named = deployment();
+		const root = await thanked();
+
+		type(box(root), '  Northwind Logistics ');
+		expect(send(root).hasAttribute('aria-disabled')).toBe(false);
+		await pressed(send(root));
+
+		expect(named).toEqual([{ employer: 'Northwind Logistics' }]);
+	});
+
+	it('says the details went, links the gift page, puts the caret on the row and offers the start', async () => {
+		deployment();
+		const root = await thanked();
+
+		type(box(root), 'Northwind Logistics');
+		await pressed(send(root));
+
+		expect(ask(root).hidden).toBe(true);
+		expect(done(root).hidden).toBe(false);
+		expect(done(root).getAttribute('role')).toBe('status');
+		expect(one(done(root), 'h3').textContent).toBe(copy.EMPLOYER_SENT_HEADING);
+		expect(one(done(root), 'p').textContent).toBe(copy.employerSentBody('donor@example.org'));
+		expect(done(root).querySelector('svg.employer-done-mark')).not.toBeNull();
+		expect(document.activeElement).toBe(done(root));
+		expect(link(root).hidden).toBe(false);
+		expect(link(root).getAttribute('href')).toBe(GIFT_URL);
+		expect(link(root).textContent).toBe(copy.OPEN_GIFT_PAGE);
+		expect(back(root).textContent).toBe(copy.BACK_TO_START);
+		expect(back(root).hidden).toBe(false);
+		expect(root.textContent).not.toContain('Northwind Logistics');
+	});
+
+	it('sends nothing on Skip and points the donor at the gift page', async () => {
+		const named = deployment();
+		const root = await thanked();
+
+		await pressed(skip(root));
+
+		expect(named).toEqual([]);
+		expect(ask(root).hidden).toBe(true);
+		expect(one(done(root), 'h3').textContent).toBe(copy.EMPLOYER_SKIPPED_HEADING);
+		expect(one(done(root), 'p').textContent).toBe(copy.EMPLOYER_SKIPPED_BODY);
+		expect(done(root).querySelector('svg')).toBeNull();
+		expect(document.activeElement).toBe(done(root));
+		expect(link(root).getAttribute('href')).toBe(GIFT_URL);
+		expect(back(root).textContent).toBe(copy.BACK_TO_START);
+		expect(back(root).hidden).toBe(false);
+	});
+
+	it('keeps the ask open over a refused write, says it, and says it again on a second refusal', async () => {
+		deployment([
+			() => new Response('{}', { status: 500 }),
+			() => new Response('{}', { status: 500 })
+		]);
+		const root = await thanked();
+
+		type(box(root), 'Northwind Logistics');
+		await pressed(send(root));
+		await settled();
+
+		expect(ask(root).hidden).toBe(false);
+		expect(one(root, '#employer-problem').textContent).toBe(copy.EMPLOYER_REFUSAL);
+		expect(box(root).getAttribute('aria-describedby')).toBe('employer-hint employer-problem');
+		expect(region(root)).toBe(copy.EMPLOYER_REFUSAL);
+
+		await pressed(send(root));
+		await settled();
+
+		expect(region(root)).toBe(copy.EMPLOYER_REFUSAL);
+		expect(one(root, '#employer-problem').hidden).toBe(false);
+	});
+
+	it('draws no ask on a thank-you whose quote named no gift page', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Response.json({ ...QUOTE, giftUrl: undefined }))
+		);
+		const root = await thanked();
+
+		expect(one(root, '.employer').hidden).toBe(true);
+		expect(back(root).textContent).toBe(copy.BACK_TO_START);
+		expect(back(root).hidden).toBe(false);
 	});
 });

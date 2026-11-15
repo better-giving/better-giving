@@ -88,6 +88,7 @@
 		"./registry/styles/select-css.css": "./src/registry/styles/select-css.css",
 		"./registry/styles/dialog-css.css": "./src/registry/styles/dialog-css.css",
 		"./registry/styles/notice-card-css.css": "./src/registry/styles/notice-card-css.css",
+		"./registry/styles/text-button-css.css": "./src/registry/styles/text-button-css.css",
 		"./registry/styles/state-card-css.css": "./src/registry/styles/state-card-css.css",
 		"./registry/styles/table-css.css": "./src/registry/styles/table-css.css",
 		"./registry/styles/switch-css.css": "./src/registry/styles/switch-css.css",

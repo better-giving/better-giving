@@ -32,7 +32,7 @@ import { useBrandScope } from './page-root';
 import { AmountStep, type AmountRefs } from './steps/amount';
 import { DetailsStep, fieldProblem, type DetailsRefs } from './steps/details';
 import { GiveStep, readReceipt, Receipt, type ReceiptReading } from './steps/give';
-import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
+import { BLANK, EmployerAskBlock, takeoverFor, TakeoverScreen } from './takeover';
 
 // the donation card, drawn in the document tree.
 //
@@ -628,6 +628,14 @@ function CheckoutCard({
 		deposit?.update(takeover.deposit);
 	});
 
+	// a refused employer write is said by the region (`announce` in ./takeover.tsx), whose words do not
+	// change between two refusals in a row: the sentence leaves the box while the resend is in flight,
+	// so its return is a refusal to be said again.
+	const employerRefusal = takeover.employer?.refusal ?? '';
+	useEffect(() => {
+		if (employerRefusal !== '') setNonce((at) => at + 1);
+	}, [employerRefusal]);
+
 	// read in the render rather than in the effect below: the commit between them hides whatever this
 	// screen stops drawing, and a hidden node gives the caret up.
 	const caret = typeof document === 'undefined' ? null : document.activeElement;
@@ -1217,6 +1225,16 @@ function CheckoutCard({
 						headingRef={headings.takeover}
 						sectionRef={takeoverSection}
 						deposit={deposit?.root ?? null}
+						employer={
+							<EmployerAskBlock
+								screen={takeover.employer}
+								box={api.employerField.box}
+								given={api.sendEmployerButton.given === true}
+								busy={api.sendEmployerButton['aria-busy']}
+								onSend={() => api.sendEmployerButton.onClick()}
+								onSkip={() => api.skipEmployerButton.onClick()}
+							/>
+						}
 						onPrimary={onPrimary}
 						onSecondary={onSecondary}
 					/>

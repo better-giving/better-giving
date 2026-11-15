@@ -556,6 +556,25 @@ export const ARRIVED_ANNOUNCE = 'Your gift arrived.';
 /** the label names its destination, because a bare "back" beside a charged figure reads as undoing it. */
 export const BACK_TO_START = 'Back to start';
 
+/** the thank-you's employer ask, as packages/form/src/views.ts words it for the element. */
+export const EMPLOYER_ASK_HEADING = 'Does your employer match gifts?';
+export const EMPLOYER_ASK_HINT =
+	'Many do. Tell us where you work and we’ll email you what their form asks for.';
+export const EMPLOYER_LABEL = 'Employer (if they match gifts)';
+export const EMPLOYER_SEND = 'Send me the details';
+export const EMPLOYER_SKIP = 'Skip';
+/** said over the open ask, and in the region, while a refused or unanswered write stands. */
+export const EMPLOYER_REFUSAL = 'Your employer was not saved. Try again, or skip this.';
+export const EMPLOYER_SENT_HEADING = 'Details sent';
+/** names the address the details went to and never the employer, which the donor typed for the deployment alone. */
+export function employerSentBody(email: string): string {
+	return `We’ve emailed what you need to ask your employer to match your gift to ${email}. They are also on your gift page.`;
+}
+export const EMPLOYER_SKIPPED_HEADING = 'Employer matching';
+export const EMPLOYER_SKIPPED_BODY =
+	'If your employer matches gifts, what you need to ask for it is on your gift page. The link is in your receipt.';
+export const OPEN_GIFT_PAGE = 'Open your gift page';
+
 /** the failure. */
 export const FAILED_HEADING = 'This gift was not completed';
 export const TRY_AGAIN = 'Try again';
@@ -615,4 +634,78 @@ export const CAMPAIGN_ENDED_THANKS = 'Thank you to everyone who gave.';
 /** the way on from an ended campaign to the Donation page, naming the organisation where set. */
 export function donateTo(orgName: string | null): string {
 	return orgName === null ? 'Donate' : `Donate to ${orgName}`;
+}
+
+// ── the gift page ────────────────────────────────────────────────────────────────────────────
+//
+// /gift/{token}: one donor's page for one gift ($lib/donate/gift-page.tsx). `org` is the
+// organisation's display name; the filing rows carry its legal name.
+
+export const GIFT_HEADING = 'Your gift';
+export function giftSummary(amount: string, day: string): string {
+	return `${amount} on ${day}`;
+}
+export const GIFT_REFUNDED_BADGE = 'Refunded';
+export const GIFT_REFUNDED_TITLE = 'This gift was refunded';
+export function giftRefundedBody(org: string, day: string): string {
+	return `${org} refunded this gift on ${day}. Don’t submit it to an employer for matching.`;
+}
+/** the one thing a donor is told of a void: never the reason, which is staff's. */
+export const GIFT_CLOSED_TITLE = 'This match request is closed';
+export function giftClosedBody(org: string): string {
+	return `${org} closed it, so there is nothing more to file. Your receipt is unchanged.`;
+}
+
+export const FILING_HEADING = 'Details to ask your employer to match';
+export function filingHint(org: string): string {
+	return `Your employer’s giving portal asks for these. ${org} is the nonprofit you file for.`;
+}
+/** the rows' labels, in the order `filingDetailsText` in $lib/server/matching/views.ts copies them. */
+export const FILING_LABELS = {
+	nonprofit: 'Nonprofit',
+	ein: 'EIN',
+	mailingAddress: 'Mailing address',
+	amount: 'Gift amount',
+	date: 'Gift date',
+	receipt: 'Receipt'
+} as const;
+export function receiptEmailed(email: string, day: string): string {
+	return `Emailed to ${email} on ${day}`;
+}
+export function receiptSent(day: string): string {
+	return `Sent on ${day}`;
+}
+export const COPY_DETAILS = 'Copy details';
+export const DETAILS_COPIED = 'Copied';
+export const DETAILS_NOT_COPIED = 'Couldn’t copy';
+
+export const EMPLOYER_HEADING = 'Your employer';
+export const EMPLOYER_HINT =
+	'Optional. Name them and we’ll email these details to you, and remind you once.';
+export const SAVE_EMPLOYER = 'Save employer';
+export const CHANGE_EMPLOYER = 'Change';
+/** its accessible name, the visible word first. */
+export const CHANGE_EMPLOYER_NAME = 'Change your employer';
+/** `remindOn` is null once the reminder is no longer coming: it went, or the gift was marked filed. */
+export function employerEmailed(sentOn: string, remindOn: string | null): string {
+	const emailed = `We emailed the details on ${sentOn}.`;
+	return remindOn === null
+		? emailed
+		: `${emailed} We’ll remind you once, on ${remindOn}, if you haven’t marked it filed.`;
+}
+
+export const FILED_HEADING = 'Filed it?';
+export function filedHint(org: string): string {
+	return `Tell ${org} once you’ve submitted the details to your employer.`;
+}
+export const MARK_FILED = 'I’ve filed it';
+export function markedFiled(day: string): string {
+	return `You marked this filed on ${day}.`;
+}
+export function orgCanSee(org: string): string {
+	return `${org} can see it.`;
+}
+/** the matched row; a match staff recorded with no employer named reads as the donor's employer. */
+export function matchArrived(employer: string | null, day: string): string {
+	return `${employer ?? 'Your employer'}’s match arrived on ${day}. Thank you.`;
 }

@@ -77,6 +77,7 @@ function draw(state: State, config: FormConfig = CONFIG): HTMLElement {
 				headingRef={createRef<HTMLHeadingElement>()}
 				sectionRef={createRef<HTMLElement>()}
 				deposit={null}
+				employer={null}
 				onPrimary={() => {}}
 				onSecondary={() => {}}
 			/>

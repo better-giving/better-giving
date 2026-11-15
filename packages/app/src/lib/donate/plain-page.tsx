@@ -37,9 +37,11 @@ import { Masthead, type PageLogo, type PageLook } from './page-view';
  * `!important`, which outranks them wherever it is linked. ./page.css reads those roles. none of
  * them is hoisted with a `precedence`: a donor page's whole document is these, so there is nothing
  * for a precedence to order them against. the registry's lead-css comes just before ./page.css,
- * which its usage note asks of a class worn beside `ds-eyebrow`. the embed links none of these.
+ * which its usage note asks of a class worn beside `ds-eyebrow`. `registry` is a page's own further
+ * registry sheets, linked after the eyebrow and before ./page.css for the same reason. the embed
+ * links none of these.
  */
-export function donorPageLinks() {
+export function donorPageLinks(registry: readonly string[] = []) {
 	return [
 		formTokens,
 		registryButton,
@@ -51,6 +53,7 @@ export function donorPageLinks() {
 		formMotion,
 		hostedFaces,
 		registryLead,
+		...registry,
 		pageChrome
 	].map((href) => ({
 		rel: 'stylesheet' as const,

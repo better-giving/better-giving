@@ -424,6 +424,175 @@ body {
 	text-decoration: none;
 }
 
+/* a gift's own page (`GiftPage` in ./gift-page.tsx): the profile head's identity row, the title and
+   the gift's figure and day, then its cards, at the ended page's reading measure. the identity row
+   stands a group's step off the title and the cards an item's step apart. each card is a plane, its
+   heading tight over its hint and its parts `--_sp4` apart; the details are a key-value list with a
+   separator over each row, the label column as wide as its longest label from 30rem and stacked
+   over the value under it. the registry's presses keep their own width from 30rem and run the
+   card's width under it. the name and the title are a step smaller below 60rem, the profile head's
+   long-name step. */
+.stage.gift {
+	max-inline-size: calc(var(--page-measure) + 2 * var(--page-gutter));
+}
+
+.gift {
+	display: flex;
+	flex-direction: column;
+	gap: var(--page-gap-item);
+}
+
+.gift-head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp1);
+	margin-block-start: calc(var(--page-gap-group) - var(--page-gap-item));
+}
+
+.gift-org,
+.gift-title {
+	overflow-wrap: anywhere;
+	font-family: var(--page-font-display);
+	font-size: var(--page-profile-name-long);
+	line-height: var(--page-profile-lh-name-long);
+	font-weight: var(--page-w-display);
+	text-wrap: balance;
+}
+
+.gift-sum {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--_sp1) var(--_sp3);
+	color: var(--page-quiet);
+	font-variant-numeric: tabular-nums lining-nums;
+}
+
+.gift-card {
+	display: grid;
+	gap: var(--_sp4);
+	padding: var(--_sp5);
+	background: var(--page-plane);
+	border: var(--_border) solid var(--page-plane-edge);
+	border-radius: var(--page-plane-radius);
+}
+
+.gift-card-head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp1);
+	min-inline-size: 0;
+}
+
+.gift-card-title {
+	font-family: var(--page-font-display);
+	font-size: var(--page-profile-subhead);
+	line-height: var(--page-profile-lh-subhead);
+	font-weight: var(--_w-bold);
+	text-wrap: balance;
+}
+
+.gift-hint {
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--page-quiet);
+}
+
+.gift-details {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	margin: 0;
+}
+
+.gift-detail {
+	display: grid;
+	grid-column: 1 / -1;
+	grid-template-columns: subgrid;
+	row-gap: var(--_sp1);
+	padding-block: var(--_sp3);
+	border-block-start: var(--_border) solid var(--page-plane-edge);
+}
+
+.gift-detail :is(dt, dd) {
+	margin: 0;
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+}
+
+.gift-detail dt {
+	color: var(--page-quiet);
+}
+
+.gift-detail dd {
+	overflow-wrap: anywhere;
+}
+
+.gift-mono {
+	font-family: var(--page-font-mono);
+}
+
+/* the employer named: a control's ground under the name, Change at the row's end. */
+.gift-employer {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--_sp1) var(--_sp3);
+	padding: var(--_sp3) var(--_sp4);
+	background: var(--_n3);
+	border-radius: var(--_r-in);
+}
+
+.gift-employer-name {
+	min-inline-size: 0;
+	overflow-wrap: anywhere;
+	font-weight: var(--_w-bold);
+}
+
+/* the filed row: the tick in the success ink beside the line it marks, centred on its first line. */
+.gift-done {
+	display: flex;
+	align-items: start;
+	gap: var(--_sp3);
+}
+
+.gift-done-line {
+	font-weight: var(--_w-bold);
+}
+
+.gift-done-mark,
+.gift-notice-mark {
+	flex: none;
+	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
+}
+
+.gift-done-mark {
+	margin-block-start: calc(
+		(var(--_lh-body) * 1em - var(--_glyph-beside)) /
+		2
+	); /* raw-length-ok: 1em is the line's own size, which its line box is measured in. */
+	color: var(--_ok-ink);
+}
+
+/* a refused filed press, under the press it describes, in the word the card says a refusal in. */
+.gift-refusal {
+	font-size: var(--_t-sm);
+	line-height: var(--page-profile-lh-small);
+	color: var(--_bad);
+}
+
+@container page (min-width: 30rem) {
+	.gift-details {
+		grid-template-columns: max-content minmax(0, 1fr);
+		column-gap: var(--_sp4);
+	}
+
+	.gift-card > .ds-btn {
+		justify-self: start;
+	}
+}
+
 /*
  * ── the donor page's sections ─────────────────────────────────────────────────────────────────
  *

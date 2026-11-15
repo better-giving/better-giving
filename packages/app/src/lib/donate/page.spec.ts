@@ -382,7 +382,9 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-messages-foot | background': 'slate-2',
 				'.page-video-box | background': 'slate-3',
 				".page-video-box[data-face='loading'] .page-video-status | background": 'slate-3',
-				".page-video-box[data-face='error'] | background": 'red-3'
+				".page-video-box[data-face='error'] | background": 'red-3',
+				'.gift-card | background': 'slate-1',
+				'.gift-employer | background': 'slate-3'
 			}
 		},
 		'3, 4 and 5: a control’s ground, its hover and its press': {
@@ -424,7 +426,9 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-messages-row + .page-messages-row | border-block-start': 'slate-6',
 				'.page-messages-foot | border-block-start': 'slate-6',
 				'.page-video-box | border': 'slate-6',
-				".page-video-box[data-face='error'] | border-color": 'red-6'
+				".page-video-box[data-face='error'] | border-color": 'red-6',
+				'.gift-card | border': 'slate-6',
+				'.gift-detail | border-block-start': 'slate-6'
 			}
 		},
 		[RING]: {
@@ -466,7 +470,7 @@ describe('every colour lands on the radix step for its job', () => {
 			}
 		},
 		[TEXT]: {
-			allowed: ['slate-11', 'slate-12', 'brand-11', 'brand-12', 'red-11'],
+			allowed: ['slate-11', 'slate-12', 'brand-11', 'brand-12', 'red-11', 'green-11'],
 			at: {
 				'.page > .page-ground | --page-quiet': 'slate-11',
 				'.page > .page-ground | --page-accent': 'brand-11',
@@ -512,7 +516,12 @@ describe('every colour lands on the radix step for its job', () => {
 				".page-video-box[data-face='loading'] .page-video-status | color": 'slate-12',
 				'.page-video-error-title | color': 'red-11',
 				'.page-video-error-body | color': 'slate-12',
-				'.page-video-length | color': 'slate-11'
+				'.page-video-length | color': 'slate-11',
+				'.gift-sum | color': 'slate-11',
+				'.gift-hint | color': 'slate-11',
+				'.gift-detail dt | color': 'slate-11',
+				'.gift-done-mark | color': 'green-11',
+				'.gift-refusal | color': 'red-11'
 			}
 		},
 		// a photo has no step. a scrim over one is off the ladders: the feature's over its cover, with
@@ -872,7 +881,8 @@ describe('no card inside a card', () => {
 				[".page[data-layout='letter'] .page-profile-banner", EDGE],
 				["@container page (min-width: 48rem) » [data-shape='cards'] .page-messages-row", EDGE],
 				['.page-messages-plane', EDGE],
-				['.page-fundraise', EDGE]
+				['.page-fundraise', EDGE],
+				['.gift-card', EDGE]
 			].sort()
 		);
 	});
@@ -1263,6 +1273,7 @@ describe('the sections ./page.css draws', () => {
 	const here = relative(process.cwd(), import.meta.dirname);
 	const components = [
 		join(here, 'page-view.tsx'),
+		join(here, 'gift-page.tsx'),
 		...globSync(join(here, 'sections/*.tsx')).filter((file) => !file.includes('.spec.'))
 	];
 	const FORM_LAYOUT = require.resolve('@better-giving/form/styles/layout.css');
@@ -1271,10 +1282,18 @@ describe('the sections ./page.css draws', () => {
 	const FORM_BUTTON = require.resolve('@better-giving/form/registry/styles/button-css.css');
 	const SPINNER = require.resolve('@better-giving/operator/registry/styles/spinner-css.css');
 	const LEAD = require.resolve('@better-giving/operator/registry/styles/lead-css.css');
+	// the registry's text box, and the notice card, badge and text button the gift page links
+	// (`giftPageLinks` in ./gift-page.tsx).
+	const FIELD = require.resolve('@better-giving/form/registry/styles/field-css.css');
+	const GIFT = ['notice-card-css', 'badge-css', 'text-button-css'].map((item) =>
+		require.resolve(`@better-giving/operator/registry/styles/${item}.css`)
+	);
 	const drawn = new Set(
 		[
 			pageText,
-			...[FORM_LAYOUT, FORM_BUTTON, SPINNER, LEAD].map((file) => readFileSync(file, 'utf8'))
+			...[FORM_LAYOUT, FORM_BUTTON, SPINNER, LEAD, FIELD, ...GIFT].map((file) =>
+				readFileSync(file, 'utf8')
+			)
 		].flatMap((css) =>
 			[...stripComments(css).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1] ?? '')
 		)
