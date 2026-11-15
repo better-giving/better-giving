@@ -228,6 +228,27 @@ describe('the cards a gift’s stamps stand', () => {
 		expect(root.textContent).toContain('$150.00 on November 12, 2026');
 	});
 
+	it('states one figure where nothing was refunded', async () => {
+		const { root } = await page(view());
+
+		expect(rows(root)).toContainEqual(['Gift amount', '$150.00']);
+		expect(root.querySelector('.gift-sum')?.textContent).toBe('$150.00 on November 12, 2026');
+		expect(root.textContent).not.toContain('after refunds');
+	});
+
+	it('states what is left beside what was given after a partial refund, as the copied details do', async () => {
+		const partial = view({ filing: { amountMinor: 10000 } });
+		const { root } = await page(partial);
+
+		expect(rows(root)).toContainEqual(['Gift amount', '$100.00 after refunds, of $150.00 given']);
+		expect(root.querySelector('.gift-sum')?.textContent).toBe(
+			'$100.00 after refunds, of $150.00 given on November 12, 2026'
+		);
+		expect(partial.copyText).toContain(
+			'Gift amount: USD 100.00 after refunds, of USD 150.00 given'
+		);
+	});
+
 	it('hides the details, the employer and the filed card on a refunded gift', async () => {
 		const { root } = await page(
 			view({

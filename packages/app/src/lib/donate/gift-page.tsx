@@ -1,6 +1,7 @@
 import registryBadge from '@better-giving/operator/registry/styles/badge-css.css?url';
 import registryNoticeCard from '@better-giving/operator/registry/styles/notice-card-css.css?url';
 import registryTextButton from '@better-giving/operator/registry/styles/text-button-css.css?url';
+import { amountAfterRefunds } from '@better-giving/emails';
 import { GLYPHS as FORM_GLYPHS } from '@better-giving/form/glyph';
 import { MAX_EMPLOYER } from '@better-giving/form/v1';
 import { type RefObject, useEffect, useId, useRef, useState } from 'react';
@@ -70,6 +71,15 @@ const DAY_IN_YEAR = new Intl.DateTimeFormat('en-US', {
 const day = (at: Date): string => DAY.format(at);
 const dayInYear = (at: Date): string => DAY_IN_YEAR.format(at);
 
+// the gift's amount in `giftAmount`'s words and rule (packages/emails/src/templates/gift-amount.ts),
+// as the copied details and the mails state it, with the figures spelled the way a screen spells money.
+function amountStated({ amountMinor, givenMinor, currency }: GiftPageView['filing']): string {
+	const left = formatMinor(amountMinor, currency);
+	return amountMinor < givenMinor
+		? amountAfterRefunds(left, formatMinor(givenMinor, currency))
+		: left;
+}
+
 export function GiftPage({ orgName, logo, look, gift, result }: GiftPageProps) {
 	const refunded = gift.refundedAt !== null;
 	const live = !refunded && gift.voidedAt === null;
@@ -129,12 +139,7 @@ export function GiftPage({ orgName, logo, look, gift, result }: GiftPageProps) {
 				<header className="gift-head">
 					<h1 className="gift-title">{copy.GIFT_HEADING}</h1>
 					<p className="gift-sum">
-						<span>
-							{copy.giftSummary(
-								formatMinor(filing.amountMinor, filing.currency),
-								day(filing.givenAt)
-							)}
-						</span>
+						<span>{copy.giftSummary(amountStated(filing), day(filing.givenAt))}</span>
 						{refunded ? (
 							<span className="ds-badge ds-badge-outline">{copy.GIFT_REFUNDED_BADGE}</span>
 						) : null}
@@ -302,7 +307,7 @@ function FilingCard({ gift, orgName }: { readonly gift: GiftPageView; readonly o
 		[copy.FILING_LABELS.nonprofit, filing.nonprofit, false],
 		[copy.FILING_LABELS.ein, filing.ein, true],
 		[copy.FILING_LABELS.mailingAddress, filing.mailingAddress, false],
-		[copy.FILING_LABELS.amount, formatMinor(filing.amountMinor, filing.currency), false],
+		[copy.FILING_LABELS.amount, amountStated(filing), false],
 		[copy.FILING_LABELS.date, day(filing.givenAt), false],
 		[copy.FILING_LABELS.receipt, receipt, false]
 	];
