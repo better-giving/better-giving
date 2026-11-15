@@ -96,8 +96,8 @@ export function GiftPage({ orgName, logo, look, gift, result }: GiftPageProps) {
 	const saved =
 		result !== undefined && 'done' in result && result.done === 'employer' ? result : null;
 	const navigation = useNavigation();
-	// out until the page the answer leads to is drawn: the router keeps the post's body through
-	// `loading`, so a press stays held between the answer and the reload it carries.
+	// a press is held until the page the answer leads to is drawn: the router keeps the post's
+	// body through `loading`, so a press stays held between the answer and the reload it carries.
 	const posting = (intent: 'employer' | 'filed') =>
 		navigation.state !== 'idle' && navigation.formData?.get('intent') === intent;
 

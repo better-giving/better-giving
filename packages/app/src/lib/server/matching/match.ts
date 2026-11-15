@@ -190,8 +190,8 @@ export async function voidMatch(
  * where that refund left nothing of the gift (`nothingLeftOfGift` in ../donations/queries.ts), so
  * a partial refund leaves the match as it stood and the one that takes the rest closes it. it voids
  * a matched gift too — staff take no action after matched, and a refund still closes it — leaves an
- * earlier void as it stood, and matches no row on a gift that has none. it sets the three columns the void's checks pair, so it cannot be what refuses the
- * refund's batch.
+ * earlier void as it stood, and matches no row on a gift that has none. it sets the three columns
+ * the void's checks pair, so it cannot be what refuses the refund's batch.
  */
 export function refundVoidStatement(db: Db, donationId: string, now: Date) {
 	return db

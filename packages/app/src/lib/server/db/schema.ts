@@ -3797,7 +3797,8 @@ export function mintGiftMatchToken(): string {
  * app; a gift recorded before migrations/0039 has none, since the row is written only in the batch that records the gift.
  *
  * status is the set of stamps, not a column: each `_at` is when, and each `_by` beside it is who,
- * as `'donor'`, `'system'` (the void of a refund or a lost dispute that left nothing of the gift), or the staff member as better-auth names them —
+ * as `'donor'`, `'system'` (the void of a refund or a lost dispute that left nothing of the gift),
+ * or the staff member as better-auth names them —
  * `connector_key.allowed_by` is the precedent. no foreign key on a `_by`, since two of its values
  * are no user. the checks pair each stamp with its `_by` and refuse nothing else: matched before
  * filed is real (an employer's money can arrive first), and void against matched is the app's

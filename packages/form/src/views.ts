@@ -2645,7 +2645,7 @@ export function createCard(
 	const employerAsk = createEmployerAsk(doc, {
 		input: (typed) => now().employerField.onChange(typed),
 		// the patch the press asks for has been drawn by the time `onClick` returns, so the flags are
-		// set after it and spent by a patch of their own — the details Continue's reason.
+		// set after it and spent by a patch of their own, as the details Continue's `unmoved` is.
 		send: (unmoved) => {
 			now().sendEmployerButton.onClick();
 			if (!unmoved) return;

@@ -25,7 +25,8 @@ import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
  * again; at a quarter past, the connector's and the supporters' spent links, codes and sessions
  * are swept with them. every ten minutes, the employer match reminders that fell due are sent
  * ($lib/server/matching/reminders.ts), and the match packs owed and never tried, or that failed
- * an hour or more before, are sent ($lib/server/matching/pack.ts). every minute, in one run, what this deployment owes is sent: the
+ * an hour or more before, are sent ($lib/server/matching/pack.ts). every minute, in one run, what
+ * this deployment owes is sent: the
  * organisation's books, its Zaps and its webhook destinations — a minute because a gift is meant
  * to arrive while it is still the thing somebody is looking at, and a run on a deployment owing
  * nothing is an indexed read of each outbox and no call to anybody. what a row that has already failed waits is the backoff on

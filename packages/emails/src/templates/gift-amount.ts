@@ -1,8 +1,8 @@
 import { formatMoney } from '../format';
 
 // a gift's amount as the match pack, its reminder, the gift page and its copied details state it:
-// what is left of the gift, and where refunds took part of it, what was given beside it, since the
-// receipt the donor files with states what was given.
+// what is left of the gift, with what was given beside it where refunds took part of it, because
+// the receipt the donor files states what was given.
 
 /** what is left and what was given, each already spelled, where refunds took part of the gift. */
 export function amountAfterRefunds(left: string, given: string): string {

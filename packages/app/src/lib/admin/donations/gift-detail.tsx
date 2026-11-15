@@ -144,8 +144,8 @@ export function GiftDetail({
 	const [search] = useSearchParams();
 	const asking = live && search.get(CONFIRM) === CONFIRM_VOID;
 	const navigation = useNavigation();
-	// out until the screen the answer leads to is drawn: the router keeps the post's body through
-	// `loading`, so a press stays held between the answer and the reload it carries.
+	// a press is held until the screen the answer leads to is drawn: the router keeps the post's
+	// body through `loading`, so a press stays held between the answer and the reload it carries.
 	const pending = (intent: string) =>
 		navigation.state !== 'idle' && navigation.formData?.get(MATCH_INTENT) === intent;
 

@@ -1,7 +1,7 @@
 import { matchPack } from '@better-giving/emails';
 
 // the pack a donor gets on naming their employer, at its fullest: a profile with a mailing address
-// and a receipt already sent, so every row of the filing block prints, and the reminder it promises. the cases that drop a row are
+// and a receipt already sent, so every row of the filing block prints and the reminder is promised. the cases that drop a row are
 // in packages/emails/src/templates/match-pack.spec.tsx.
 export default function MatchPack() {
 	return matchPack.template({

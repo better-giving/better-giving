@@ -40,8 +40,8 @@ import { sendRefundNotice } from './refund-notice';
 // what a refund or a dispute does to a gift already in the books: a payment row of its own, and an
 // entry group taking the money back out, in one `batch()` — a refund that leaves nothing of the
 // gift, a refund that settles an open dispute among them, and a dispute's loss that does, with the
-// void of the gift's employer match beside them (`refundVoidStatement` and `disputeLostVoidStatement` in
-// ../matching/match.ts), and a refund or a loss put back with that void cleared (`reopenStatement`
+// void of the gift's employer match beside them (`refundVoidStatement` and
+// `disputeLostVoidStatement` in ../matching/match.ts), and a refund or a loss put back with that void cleared (`reopenStatement`
 // there). the only module that writes a refund-direction row or a `dispute` row, gated by
 // ./sole-refund-writer.spec.ts.
 //
@@ -120,7 +120,8 @@ import { sendRefundNotice } from './refund-notice';
 // closed one way after it was recorded closed the other changes nothing and is told to staff.
 //
 // a refund of a gift whose open dispute holds the money closes that dispute `refunded` at the
-// refund's figure, through the same close and settle-up as a loss, and never a second withdrawal (`disputeHolding` below): the
+// refund's figure, through the same close and settle-up as a loss, and never a second withdrawal
+// (`disputeHolding` below): the
 // donor has the money back once, and is sent no notice, as for any dispute. the close is dated by
 // the refund, which is how a redelivery of it is found, since no row holds the refund's own id. a
 // refund naming more than the dispute withdrew takes no more of the gift, and staff are told the
@@ -1170,7 +1171,8 @@ async function reinstate(
 		);
 	}
 	// a win that follows this dispute's own close, lost or refunded, puts the money back. the close's
-	// ledger lines stay; the group below is a new one. a row already won is a redelivery and writes nothing.
+	// ledger lines stay; the group below is a new one. a row already won is a redelivery and writes
+	// nothing.
 	let restoringLoss = false;
 	if (reversal.kind === 'dispute_won') {
 		const [closed] = await deps.db
