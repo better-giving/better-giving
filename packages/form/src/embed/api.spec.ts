@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createQuote, createStatusRead } from './api';
+import { createEmployerWrite, createQuote, createStatusRead } from './api';
 
 // the write both surfaces spend, asserted where it lives rather than through either of them.
 //
@@ -252,5 +252,51 @@ describe('the read the address screen makes', () => {
 
 	it('refuses where the runtime could not tell which deployment served it', async () => {
 		await expect(createStatusRead(null)(read)).rejects.toBeDefined();
+	});
+});
+
+describe('the employer write the thank-you makes', () => {
+	const write = {
+		formId: 'frm_a8x2k9',
+		giftToken: '7Qk3-mVx9Lr2NpA4',
+		employer: 'Northwind Logistics'
+	};
+
+	it('posts the employer to the gift on the deployment, as json and with no credential', async () => {
+		const fetched = stubFetch(json({ ok: true }));
+
+		await expect(createEmployerWrite(DEPLOYMENT)(write)).resolves.toBeUndefined();
+		expect(fetched).toHaveBeenCalledWith(
+			'https://donate.example/api/v1/forms/frm_a8x2k9/gifts/7Qk3-mVx9Lr2NpA4/employer',
+			expect.objectContaining({
+				method: 'POST',
+				credentials: 'omit',
+				headers: expect.objectContaining({ 'content-type': 'application/json' }),
+				body: JSON.stringify({ employer: 'Northwind Logistics' })
+			})
+		);
+	});
+
+	// the donor's text is theirs: a refusal names the address and the status and never what was sent.
+	it.each([
+		['a refusal', () => json({ error: 'gift_not_found', message: 'No such gift.' }, 404)],
+		['a success that is not ours', () => json({ ok: false })],
+		['a body that is not JSON', () => new Response('<html>', { status: 200 })]
+	])('refuses %s without repeating the employer', async (_case, response) => {
+		stubFetch(response());
+		const refused = await refusal(createEmployerWrite(DEPLOYMENT)(write));
+		expect(refused.message).not.toContain('Northwind');
+	});
+
+	it('refuses a request the browser would not send', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Promise.reject(new TypeError('Failed to fetch')))
+		);
+		await expect(createEmployerWrite(DEPLOYMENT)(write)).rejects.toBeDefined();
+	});
+
+	it('refuses where the runtime could not tell which deployment served it', async () => {
+		await expect(createEmployerWrite(null)(write)).rejects.toBeDefined();
 	});
 });

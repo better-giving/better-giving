@@ -4979,3 +4979,127 @@ describe('what is underlined', () => {
 		await sweep('review');
 	});
 });
+
+// the thank-you's employer ask (../employer-ask.ts): the send drawn unavailable over a blank box, the
+// skip as the registry's secondary press, the two side by side only where the card is wide, and the
+// `link` part in the link ink with the card's ring. each is a used value a selector decides, which
+// is this pool's question.
+describe('the employer ask on the thank-you', () => {
+	afterEach(() => {
+		document.body.style.inlineSize = '';
+	});
+
+	/** a card gift that went through on a quote naming its gift page, on a body `width` wide. */
+	async function thanked(width: string): Promise<ShadowRoot> {
+		document.body.style.inlineSize = width;
+		const tag = `${DONATE_FORM_TAG}-${(tags += 1)}`;
+		defineDonateForm(
+			{
+				loadConfig: async () => CONFIG,
+				checkout: (config, _mount, onRail) => {
+					queueMicrotask(() => onRail('card'));
+					return {
+						input: {
+							config,
+							ports: {
+								...PORTS,
+								quote: async () => ({
+									paymentToken: 'pi_1_secret_x',
+									feeMinor: 106,
+									totalMinor: 2606,
+									giftUrl: 'https://giving.example.org/gift/7Qk3'
+								}),
+								employer: async () => {}
+							}
+						},
+						cadence: () => {},
+						offerFund: () => {},
+						offerCrypto: () => {},
+						offerVenmo: () => {},
+						rows: () => {},
+						repeatingUnavailable: () => {},
+						stop: () => {}
+					};
+				},
+				challenge: (_config, _node, onToken) => {
+					queueMicrotask(() => onToken('tk_ready'));
+					return { reset: () => {}, stop: () => {} };
+				}
+			},
+			tag
+		);
+		const host = document.createElement(tag);
+		host.setAttribute('form', CONFIG.formId);
+		document.body.appendChild(host);
+		await settle();
+		const shadow = host.shadowRoot as ShadowRoot;
+		await atReview(shadow);
+		(shadow.querySelector(".step:not([hidden]) [part~='submit']") as HTMLElement).click();
+		await settle();
+		await settle();
+		expect(shadow.querySelector('.employer')?.hasAttribute('hidden')).toBe(false);
+		return shadow;
+	}
+
+	const send = (shadow: ShadowRoot) =>
+		shadow.querySelector(".employer [part~='action']") as HTMLElement;
+	const skip = (shadow: ShadowRoot) =>
+		shadow.querySelector(".employer [part~='action-quiet']") as HTMLElement;
+
+	it('stands the two presses side by side and equal on a wide card, one under the other on a narrow one', async () => {
+		const wide = await thanked('1440px');
+		const [a, b] = [send(wide), skip(wide)].map((press) => press.getBoundingClientRect());
+		expect(Math.abs((a?.top ?? 0) - (b?.top ?? 0))).toBeLessThan(DEVICE_PIXEL);
+		expect(Math.abs((a?.width ?? 0) - (b?.width ?? 0))).toBeLessThan(DEVICE_PIXEL);
+
+		const narrow = await thanked('375px');
+		const [c, d] = [send(narrow), skip(narrow)].map((press) => press.getBoundingClientRect());
+		expect(d?.top ?? 0).toBeGreaterThan(c?.bottom ?? 0);
+		expect(Math.abs((c?.width ?? 0) - (d?.width ?? 0))).toBeLessThan(DEVICE_PIXEL);
+	});
+
+	it('draws the send in the registry’s disabled look over a blank box, and its fill once typed into', async () => {
+		const shadow = await thanked('1440px');
+		await landed(send(shadow));
+		expect(getComputedStyle(send(shadow)).backgroundColor).toBe(used(shadow, '--_n3'));
+		expect(getComputedStyle(send(shadow)).color).toBe(used(shadow, '--_n11'));
+
+		// the brand's solid, at rest or under a pointer an earlier case left resting on it.
+		fill(shadow, '#employer', 'Northwind Logistics');
+		await settle();
+		await landed(send(shadow));
+		expect([used(shadow, '--_p'), used(shadow, '--_p-hover')]).toContain(
+			getComputedStyle(send(shadow)).backgroundColor
+		);
+	});
+
+	it('draws Skip as the registry’s secondary press rather than the quiet text control', async () => {
+		const shadow = await thanked('1440px');
+		const drawn = getComputedStyle(skip(shadow));
+		expect(drawn.backgroundColor).toBe(used(shadow, '--gray-3'));
+		expect(drawn.borderTopStyle).toBe('solid');
+		expect(drawn.color).toBe(used(shadow, '--gray-12'));
+	});
+
+	it('draws the gift page link in the link ink, underlined, with the card’s ring', async () => {
+		const shadow = await thanked('1440px');
+		skip(shadow).click();
+		await settle();
+		const link = shadow.querySelector("[part~='link']") as HTMLElement;
+		const drawn = getComputedStyle(link);
+		expect(drawn.color).toBe(used(shadow, '--link'));
+		expect(drawn.textDecorationLine).toContain('underline');
+
+		const ringed = await caretOn(link);
+		expect(ringed.boxShadow).toContain(used(shadow, '--_focus-ring'));
+	});
+
+	it('marks a sent ask in the success ink', async () => {
+		const shadow = await thanked('1440px');
+		fill(shadow, '#employer', 'Northwind Logistics');
+		send(shadow).click();
+		await settle();
+		const mark = shadow.querySelector('.employer-done-mark') as SVGElement;
+		expect(getComputedStyle(mark).color).toBe(used(shadow, '--success-subtle-fg'));
+	});
+});

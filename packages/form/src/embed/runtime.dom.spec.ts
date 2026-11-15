@@ -261,6 +261,32 @@ describe('the anti-abuse challenge', () => {
 	});
 });
 
+describe('the employer write the shipped ports make', () => {
+	it('posts to the deployment that served the runtime', async () => {
+		const fetched = stubFetch(json({ ok: true }));
+		const employer = createFormRuntime(DEPLOYMENT, document).checkout(
+			{
+				formId: 'frm_a8x2k9',
+				providers: [{ name: 'stripe', publishableKey: 'pk_live_x' }],
+				currency: 'USD',
+				minAmountMinor: 500,
+				paymentMethods: ['card']
+			} as never,
+			document.createElement('div'),
+			() => {},
+			() => {},
+			'first',
+			NO_FUND,
+			document.createElement('div')
+		).input.ports.employer;
+
+		await employer?.({ formId: 'frm_a8x2k9', giftToken: 'tok', employer: 'Northwind' });
+		expect(fetched.mock.calls[0]?.[0]).toBe(
+			`${DEPLOYMENT}/api/v1/forms/frm_a8x2k9/gifts/tok/employer`
+		);
+	});
+});
+
 describe('the clock the shipped ports read', () => {
 	// the clock is a port so a ten-day window can be asserted in a millisecond, but the shipped
 	// one has to be the real clock or every deadline the flow reads is wrong.

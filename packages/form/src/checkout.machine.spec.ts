@@ -107,6 +107,7 @@ type Calls = {
 	confirm: ConfirmInput[];
 	resume: string[];
 	status: string[];
+	employer: { formId: string; giftToken: string; employer: string }[];
 };
 
 const QUOTE: Quote = { paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 };
@@ -119,6 +120,8 @@ type HarnessOptions = {
 	readonly confirm?: (input: ConfirmInput) => Promise<import('./ports').ConfirmOutcome>;
 	readonly resumeWith?: () => Promise<import('./ports').ConfirmOutcome>;
 	readonly status?: () => Promise<DonationStatus>;
+	/** what the employer write answers; `null` builds the ports without one. */
+	readonly employer?: (() => Promise<void>) | null;
 };
 
 /**
@@ -129,7 +132,7 @@ type HarnessOptions = {
  * stand-in instead of on the machine.
  */
 function harness(options: HarnessOptions = {}) {
-	const calls: Calls = { quote: [], confirm: [], resume: [], status: [] };
+	const calls: Calls = { quote: [], confirm: [], resume: [], status: [], employer: [] };
 	const clock = manualClock();
 
 	const ports: CheckoutPorts = {
@@ -149,7 +152,15 @@ function harness(options: HarnessOptions = {}) {
 			calls.status.push(paymentToken);
 			return options.status?.() ?? Promise.resolve({ state: 'waiting' as const });
 		},
-		now: clock.now
+		now: clock.now,
+		...(options.employer === null
+			? {}
+			: {
+					employer: (input) => {
+						calls.employer.push(input);
+						return options.employer?.() ?? Promise.resolve();
+					}
+				})
 	};
 
 	const actor = createActor(checkoutMachine, {
@@ -930,7 +941,7 @@ describe('the press that spends the money', () => {
 		const { actor, calls } = readyToSubmit();
 		actor.send({ type: 'SUBMIT' });
 		await settle();
-		expect(actor.getSnapshot().value).toBe('success');
+		expect(actor.getSnapshot().matches('success')).toBe(true);
 		expect(calls.confirm).toHaveLength(1);
 	});
 
@@ -966,7 +977,7 @@ describe('the press that spends the money', () => {
 		actor.send({ type: 'CONFIRM' });
 		await settle();
 		expect(calls.confirm).toHaveLength(1);
-		expect(actor.getSnapshot().value).toBe('success');
+		expect(actor.getSnapshot().matches('success')).toBe(true);
 	});
 
 	it('lets the donor back out to the review step with the gift and their details intact', async () => {
@@ -1064,7 +1075,7 @@ describe('a press over fields the donor has not finished', () => {
 		actor.send({ type: 'SUBMIT' });
 		await settle();
 
-		expect(actor.getSnapshot().value).toBe('success');
+		expect(actor.getSnapshot().matches('success')).toBe(true);
 		expect(calls.confirm).toHaveLength(2);
 		expect(calls.quote).toHaveLength(2);
 	});
@@ -1140,7 +1151,7 @@ describe('where the correction screen is and is not shown', () => {
 	it('charges through when the estimate matched', async () => {
 		// $25.00 at 2.9% + 30c is $26.06, and the server says the same.
 		const { actor, calls } = await route({});
-		expect(actor.getSnapshot().value).toBe('success');
+		expect(actor.getSnapshot().matches('success')).toBe(true);
 		expect(calls.confirm[0]?.paymentToken).toBe('pi_1_secret_x');
 	});
 
@@ -1163,7 +1174,7 @@ describe('where the correction screen is and is not shown', () => {
 			},
 			quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 0, totalMinor: 2500 })
 		});
-		expect(actor.getSnapshot().value).toBe('success');
+		expect(actor.getSnapshot().matches('success')).toBe(true);
 		expect(actor.getSnapshot().context.reconciliation?.kind).toBe('unestimated');
 	});
 
@@ -1174,7 +1185,7 @@ describe('where the correction screen is and is not shown', () => {
 			{ quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 0, totalMinor: 2500 }) },
 			(send) => send({ type: 'TOGGLE_FEE_COVERAGE' } as never)
 		);
-		expect(actor.getSnapshot().value).toBe('success');
+		expect(actor.getSnapshot().matches('success')).toBe(true);
 		expect(actor.getSnapshot().context.reconciliation?.kind).toBe('unestimated');
 	});
 
@@ -1380,7 +1391,7 @@ describe('3DS and the cold return', () => {
 		const { actor, calls } = harness({ resume: { paymentToken: 'pi_3ds_secret_x' } });
 		await settle();
 		expect(calls.resume).toEqual(['pi_3ds_secret_x']);
-		expect(actor.getSnapshot().value).toBe('success');
+		expect(actor.getSnapshot().matches('success')).toBe(true);
 	});
 
 	it('never shows the amount step to a returning donor, not even for one frame', () => {
@@ -1697,7 +1708,10 @@ const EVERY_EVENT: readonly CheckoutEvent[] = Object.values({
 	CONFIRM: { type: 'CONFIRM' },
 	ACCEPT_MANDATE: { type: 'ACCEPT_MANDATE' },
 	DECLINE_MANDATE: { type: 'DECLINE_MANDATE' },
-	RETRY: { type: 'RETRY' }
+	RETRY: { type: 'RETRY' },
+	SET_EMPLOYER: { type: 'SET_EMPLOYER', employer: 'Northwind Logistics' },
+	SEND_EMPLOYER: { type: 'SEND_EMPLOYER' },
+	SKIP_EMPLOYER: { type: 'SKIP_EMPLOYER' }
 } satisfies { [K in CheckoutEvent['type']]: Extract<CheckoutEvent, { type: K }> });
 
 describe('an outcome nobody can classify', () => {
@@ -2759,7 +2773,19 @@ describe('a crypto gift', () => {
 		state = 'received';
 		clock.advance(DEPOSIT_POLL_MS);
 		await settle();
-		expect(actor.getSnapshot().value).toBe('success');
+		expect(actor.getSnapshot().matches('success')).toBe(true);
+	});
+
+	it('asks for the employer once the gift arrives, where the quote named its gift page', async () => {
+		// a crypto gift is not settled until it arrives, so the ask waits for the arrived screen.
+		const { actor, clock } = await awaitingDeposit({
+			quote: async () => ({ ...DEPOSIT_QUOTE, giftUrl: 'https://giving.example.org/gift/c1' }),
+			status: async () => ({ state: 'received' })
+		});
+		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
+		clock.advance(DEPOSIT_POLL_MS);
+		await settle();
+		expect(actor.getSnapshot().matches({ success: 'asking' })).toBe(true);
 	});
 
 	// only the server's own `expired` withdraws the address: a rejection is how a rate-limited read
@@ -2832,7 +2858,7 @@ describe('a crypto gift', () => {
 		state = 'received';
 		clock.advance(DEPOSIT_POLL_MS);
 		await settle();
-		expect(actor.getSnapshot().value).toBe('success');
+		expect(actor.getSnapshot().matches('success')).toBe(true);
 	});
 
 	it('closes the address at once for a quote whose send-by has already passed here', async () => {
@@ -2976,5 +3002,107 @@ describe('a gift through PayPal or Venmo', () => {
 	it('offers no Venmo on a form that does not offer the rail', () => {
 		const { actor } = readyToSubmit({ config: { ...WALLET_CONFIG, paymentMethods: ['paypal'] } });
 		expect(venmoIsOffered(actor.getSnapshot())).toBe(false);
+	});
+});
+
+describe('the employer ask on the thank-you', () => {
+	const GIFT_URL = 'https://giving.example.org/gift/7Qk3-mVx9Lr2NpA4';
+	const GIFT_QUOTE: Quote = { ...QUOTE, giftUrl: GIFT_URL };
+
+	/** a card gift that went through on a quote naming its gift page. */
+	async function thanked(options: HarnessOptions = {}) {
+		const h = readyToSubmit({ quote: async () => GIFT_QUOTE, ...options });
+		h.actor.send({ type: 'SUBMIT' });
+		await settle();
+		return h;
+	}
+
+	it('asks on a gift whose quote named its gift page', async () => {
+		const { actor } = await thanked();
+		expect(actor.getSnapshot().matches({ success: 'asking' })).toBe(true);
+	});
+
+	it('asks nothing where the quote named no gift page, or no write was given to send it', async () => {
+		// both are deployments without the gift page and mail behind it, or a surface not wired to
+		// the write, and an ask there is a promise of an email nothing sends.
+		const bare = readyToSubmit();
+		bare.actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(bare.actor.getSnapshot().matches({ success: 'unasked' })).toBe(true);
+
+		const unwired = await thanked({ employer: null });
+		expect(unwired.actor.getSnapshot().matches({ success: 'unasked' })).toBe(true);
+	});
+
+	it('asks nothing where the gift page is not an address on the web', async () => {
+		// the address is drawn as a link on a page this card does not own.
+		const { actor } = await thanked({
+			quote: async () => ({ ...QUOTE, giftUrl: 'javascript:alert(1)//gift/x' })
+		});
+		expect(actor.getSnapshot().matches({ success: 'unasked' })).toBe(true);
+	});
+
+	it('takes no send over a blank box', async () => {
+		const { actor, calls } = await thanked();
+		actor.send({ type: 'SEND_EMPLOYER' });
+		actor.send({ type: 'SET_EMPLOYER', employer: '   ' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		await settle();
+		expect(actor.getSnapshot().matches({ success: 'asking' })).toBe(true);
+		expect(calls.employer).toEqual([]);
+	});
+
+	it('sends the trimmed employer once, to the gift the quote named, and lets the text go', async () => {
+		const { actor, calls } = await thanked();
+		actor.send({ type: 'SET_EMPLOYER', employer: '  Northwind Logistics ' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		await settle();
+		expect(calls.employer).toEqual([
+			{ formId: CONFIG.formId, giftToken: '7Qk3-mVx9Lr2NpA4', employer: 'Northwind Logistics' }
+		]);
+		expect(actor.getSnapshot().matches({ success: 'sent' })).toBe(true);
+		expect(actor.getSnapshot().context.employer).toBe('');
+	});
+
+	it('skips without writing anything', async () => {
+		const { actor, calls } = await thanked();
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind Logistics' });
+		actor.send({ type: 'SKIP_EMPLOYER' });
+		await settle();
+		expect(actor.getSnapshot().matches({ success: 'skipped' })).toBe(true);
+		expect(calls.employer).toEqual([]);
+	});
+
+	it('reopens the ask over a refused write with the donor’s text kept, and sends it again', async () => {
+		let answer: () => Promise<void> = () => Promise.reject(new Error('refused'));
+		const { actor, calls } = await thanked({ employer: () => answer() });
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind Logistics' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		await settle();
+		expect(actor.getSnapshot().matches({ success: 'asking' })).toBe(true);
+		expect(actor.getSnapshot().context).toMatchObject({
+			employer: 'Northwind Logistics',
+			employerRefused: true
+		});
+
+		// the refusal stands while the write is sent again, and is answered by the send that lands.
+		answer = () => Promise.resolve();
+		actor.send({ type: 'SEND_EMPLOYER' });
+		expect(actor.getSnapshot().context.employerRefused).toBe(true);
+		await settle();
+		expect(calls.employer).toHaveLength(2);
+		expect(actor.getSnapshot().matches({ success: 'sent' })).toBe(true);
+		expect(actor.getSnapshot().context.employerRefused).toBe(false);
+	});
+
+	it('reopens the ask when the write goes unanswered', async () => {
+		const { actor, clock } = await thanked({ employer: neverAnswers });
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind Logistics' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		expect(actor.getSnapshot().matches({ success: 'sending' })).toBe(true);
+		clock.advance(PORT_TIMEOUT_MS);
+		expect(actor.getSnapshot().matches({ success: 'asking' })).toBe(true);
+		expect(actor.getSnapshot().context.employerRefused).toBe(true);
 	});
 });

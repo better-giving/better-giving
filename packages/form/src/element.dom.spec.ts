@@ -8057,3 +8057,116 @@ describe('the events a host page hears', () => {
 		expect(names.size).toBe(3);
 	});
 });
+
+describe('the employer ask on the thank-you', () => {
+	const GIFT_URL = 'https://giving.example.org/gift/7Qk3-mVx9Lr2NpA4';
+
+	/** a card gift on a quote naming its gift page, with every employer write recorded. */
+	async function thanked(employer: (text: string) => Promise<void> = async () => {}) {
+		const written: string[] = [];
+		const card = await atSubmitted({
+			ports: {
+				quote: async () => ({
+					paymentToken: 'pi_1_secret_x',
+					feeMinor: 106,
+					totalMinor: 2606,
+					giftUrl: GIFT_URL
+				}),
+				employer: async (input) => {
+					written.push(input.employer);
+					return employer(input.employer);
+				}
+			}
+		});
+		return { card, written };
+	}
+
+	it('asks under the receipt, with Send the card’s one default button and no way back yet', async () => {
+		const { card } = await thanked();
+		expect(shows(card, '.employer h3')).toBe('Does your employer match gifts?');
+		expect(card.find('#employer').getAttribute('part')).toBe('field');
+		expect(card.all('button[type="submit"]')).toEqual([card.find('.employer [part~="action"]')]);
+		// Skip is the way out while the ask is open, so the start-over waits for it to close.
+		expect(secondary(card).hidden).toBe(true);
+	});
+
+	it('writes nothing on a press over a blank box', async () => {
+		const { card, written } = await thanked();
+		const send = card.find('.employer [part~="action"]');
+		expect(send.getAttribute('aria-disabled')).toBe('true');
+		press(send);
+		await settle();
+		expect(written).toEqual([]);
+		expect(card.find('.employer [role="group"]').hidden).toBe(false);
+	});
+
+	it('sends the trimmed employer and says the details are on their way', async () => {
+		const { card, written } = await thanked();
+		type(card.find('#employer'), '  Northwind Logistics ');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+
+		expect(written).toEqual(['Northwind Logistics']);
+		const status = card.find('.employer [role="status"]');
+		expect(status.textContent).toBe(
+			'Details sentWe’ve emailed what you need to ask your employer to match your gift to donor@example.org. They are also on your gift page.'
+		);
+		expect(card.shadow.activeElement).toBe(status);
+		expect(card.find('[part="link"]').getAttribute('href')).toBe(GIFT_URL);
+		expect(shows(card, '[part="link"]')).toBe('Open your gift page');
+		expect(shows(card, '.takeover > .foot > [part~="action-quiet"]')).toBe('Back to start');
+	});
+
+	it('keeps the employer off the host page: no attribute, no event, no light-DOM node', async () => {
+		const heard: string[] = [];
+		const listen = (event: Event) => heard.push(JSON.stringify((event as CustomEvent).detail));
+		for (const name of ['bg-donate:ready', 'bg-donate:unavailable', 'bg-donate:success']) {
+			document.addEventListener(name, listen);
+		}
+		const { card } = await thanked();
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		for (const name of ['bg-donate:ready', 'bg-donate:unavailable', 'bg-donate:success']) {
+			document.removeEventListener(name, listen);
+		}
+		expect(heard.join('')).not.toContain('Northwind');
+		expect(card.host.outerHTML).not.toContain('Northwind');
+	});
+
+	it('skips without writing, and points to the gift page', async () => {
+		const { card, written } = await thanked();
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action-quiet"]'));
+		await settle();
+
+		expect(written).toEqual([]);
+		expect(card.find('.employer [role="status"]').textContent).toBe(
+			'Employer matchingIf your employer matches gifts, what you need to ask for it is on your gift page. The link is in your receipt.'
+		);
+		expect(shows(card, '[part="link"]')).toBe('Open your gift page');
+		expect(secondary(card).hidden).toBe(false);
+	});
+
+	it('keeps the ask open with the donor’s text over a refused write', async () => {
+		const { card } = await thanked(() => Promise.reject(new Error('refused')));
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+
+		const refusal = 'Your employer was not saved. Try again, or skip this.';
+		expect((card.find('#employer') as HTMLInputElement).value).toBe('Northwind Logistics');
+		expect(shows(card, '#employer-problem')).toBe(refusal);
+		// through the card's one region, which the thank-you was speaking in: said again, so it is
+		// written a task after the clear.
+		await settle();
+		expect(card.text('.vh[role="status"]')).toBe(refusal);
+		expect(secondary(card).hidden).toBe(true);
+	});
+
+	it('asks nothing where the quote named no gift page', async () => {
+		const card = await atSubmitted({ ports: { employer: async () => {} } });
+		expect(card.find('.employer').hidden).toBe(true);
+		expect(shows(card, '.takeover > .foot > [part~="action-quiet"]')).toBe('Back to start');
+	});
+});

@@ -354,6 +354,53 @@ form {
 	gap: var(--_sp1);
 }
 
+/*
+ * the thank-you's employer ask (../employer-ask.ts), under the receipt and a divider's step below it.
+ * its parts stand at the takeover's own rhythm, the heading tight over its hint, and the status row
+ * that replaces the ask puts its mark beside the words it marks.
+ */
+.employer {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp4);
+	padding-block-start: var(--_sp5);
+}
+
+.employer-ask {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp4);
+}
+
+.employer-head,
+.employer-done > div {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp1);
+}
+
+.employer-done {
+	display: flex;
+	align-items: start;
+	gap: var(--_sp3);
+}
+
+/* centred on the heading's first line, which is the card's base size at the tight leading. */
+.employer-done-mark {
+	flex: none;
+	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
+	/* raw-length-ok: 1em is the heading's own size, which its line box is measured in. */
+	margin-block-start: calc((var(--_lh-tight) * 1em - var(--_glyph-beside)) / 2);
+}
+
+/* the two presses, one under the other on a narrow card and side by side on the wide one (below). */
+.employer-actions {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--_sp3);
+}
+
 /* the block the receipt is moved into when a takeover states the money. */
 .receipt-slot {
 	display: flex;
@@ -1003,6 +1050,10 @@ form {
 
 	.tiles {
 		grid-template-columns: repeat(4, minmax(0, 1fr));
+	}
+
+	.employer-actions {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
 	/* two presets and other are three cells, and three across is one full row. */

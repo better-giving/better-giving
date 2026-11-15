@@ -16,9 +16,10 @@
 // covered — every one of those is answered by ./connect.ts and read here. a predicate recomputed
 // in this file is the same answer derived twice, on a page nobody here can reach.
 
-import type { CheckoutApi, PropTypes, State } from './connect';
+import type { CheckoutApi, EmployerAsk, PropTypes, State } from './connect';
 import { createCoinPicker, type CoinOption } from './coin-picker';
 import { createSelect } from './select';
+import { createEmployerAsk, type EmployerAskScreen } from './employer-ask';
 import {
 	coinDifference,
 	createDepositBlock,
@@ -96,6 +97,8 @@ type ButtonProps = {
 	readonly label?: string;
 	/** whether the flow would take a press on a mark on the step head. */
 	readonly available?: boolean;
+	/** whether the employer box holds an answer the flow would send. */
+	readonly given?: boolean;
 };
 
 export type DomApi = CheckoutApi<{
@@ -540,6 +543,8 @@ type Takeover = {
 	 * control that leaves, where it reads as permission rather than as a note nobody needed.
 	 */
 	readonly secondaryNote: string;
+	/** the thank-you's employer ask under the receipt (./employer-ask.ts), on the one screen that has it. */
+	readonly employer: EmployerAskScreen | null;
 };
 
 const BLANK: Takeover = {
@@ -558,7 +563,8 @@ const BLANK: Takeover = {
 	primaryNote: '',
 	deposit: null,
 	secondary: null,
-	secondaryNote: ''
+	secondaryNote: '',
+	employer: null
 };
 
 /**
@@ -646,6 +652,44 @@ function depositScreen(
 			words: expiresIn
 		},
 		status: 'Waiting for your gift'
+	};
+}
+
+/** what the thank-you says over an employer write that was refused or went unanswered. */
+const EMPLOYER_REFUSAL = 'Your employer was not saved. Try again, or skip this.';
+
+/**
+ * the thank-you's employer ask in the words a donor reads, or `null` on a thank-you without one.
+ *
+ * the sent line names the address the details went to and never the employer: what the donor typed
+ * goes to the deployment and is drawn nowhere on a page this card is a guest on.
+ */
+function employerAskScreen(ask: EmployerAsk | undefined): EmployerAskScreen | null {
+	if (ask === undefined) return null;
+	const closed =
+		ask.phase === 'sent'
+			? {
+					doneHeading: 'Details sent',
+					doneBody: `We’ve emailed what you need to ask your employer to match your gift to ${ask.email}. They are also on your gift page.`
+				}
+			: ask.phase === 'skipped'
+				? {
+						doneHeading: 'Employer matching',
+						doneBody:
+							'If your employer matches gifts, what you need to ask for it is on your gift page. The link is in your receipt.'
+					}
+				: { doneHeading: '', doneBody: '' };
+	return {
+		phase: ask.phase,
+		heading: 'Does your employer match gifts?',
+		hint: 'Many do. Tell us where you work and we’ll email you what their form asks for.',
+		label: 'Employer (if they match gifts)',
+		send: 'Send me the details',
+		skip: 'Skip',
+		refusal: ask.phase === 'asking' && ask.refused ? EMPLOYER_REFUSAL : '',
+		...closed,
+		link: 'Open your gift page',
+		giftUrl: ask.giftUrl
 	};
 }
 
@@ -800,16 +844,28 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 		// a gift sent from the donor's own wallet is valued on arrival, so no figure the card holds is
 		// what arrived, and the crypto arm draws no receipt figures.
 		case 'success': {
+			const employer = employerAskScreen(state.employer);
+			// while the ask is open, Skip is the way out of it and the start-over waits until it closes.
+			const asking = employer?.phase === 'asking' || employer?.phase === 'sending';
+			// the region states a refused write for as long as it stands, resend included, and goes
+			// quiet once the ask closes: the row the caret lands on says how it closed.
+			const said = (thanks: string): string =>
+				state.employer?.refused === true
+					? EMPLOYER_REFUSAL
+					: asking || employer === null
+						? thanks
+						: '';
 			if (state.method === 'crypto') {
 				return {
 					...BLANK,
+					employer,
 					heading: 'Thank you',
 					body:
 						config.receipts === true
 							? `Your gift arrived. A receipt is on its way to your email. ${org} has your gift.`
 							: `Your gift arrived. ${org} has your gift.`,
-					announce: 'Your gift arrived.',
-					secondary: { label: 'Back to start' }
+					announce: said('Your gift arrived.'),
+					secondary: asking ? null : { label: 'Back to start' }
 				};
 			}
 			return {
@@ -822,7 +878,7 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 					config.receipts === true
 						? `A receipt is on its way to your email. ${org} has your gift.`
 						: `${org} has your gift.`,
-				announce: 'Your gift went through.',
+				announce: said('Your gift went through.'),
 				// the quiet control rather than the primary the two recovery screens use. this donor
 				// is owed no act — a gift was made — and a loud control over a thank-you asks for
 				// one. it is the only ending that offers this: every other one either has money in
@@ -832,7 +888,8 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				// the label names its destination rather than saying "go back", because it is drawn
 				// directly under a receipt whose total row reads `Charged today`, and a bare "back"
 				// beside a figure that has just been charged reads as undoing the charge.
-				secondary: { label: 'Back to start' }
+				secondary: asking ? null : { label: 'Back to start' },
+				employer
 			};
 		}
 
@@ -2565,6 +2622,16 @@ export function createCard(
 	const secondaryNote = make(doc, 'p', { class: 'aside', hidden: true });
 	const foot = make(doc, 'div', { class: 'foot', hidden: true }, [secondaryButton, secondaryNote]);
 
+	// the presses read the flow at press time, as the two takeover controls above do.
+	const employerAsk = createEmployerAsk(doc, {
+		input: (typed) => now().employerField.onChange(typed),
+		send: () => now().sendEmployerButton.onClick(),
+		skip: () => now().skipEmployerButton.onClick(),
+		refused: () => {
+			repeated = true;
+		}
+	});
+
 	const takeover = make(doc, 'section', { class: 'step takeover', hidden: true }, [
 		takeoverHeading,
 		takeoverBody,
@@ -2577,6 +2644,7 @@ export function createCard(
 		depositBlock.root,
 		primaryButton,
 		primaryNote,
+		employerAsk.root,
 		foot
 	]);
 
@@ -2957,6 +3025,11 @@ export function createCard(
 		toggleAttribute(body, 'aria-busy', busy && !solving ? 'true' : null);
 
 		paintTakeover(screen, busy);
+		employerAsk.update(screen.employer, {
+			value: api.employerField.value,
+			given: api.sendEmployerButton.given === true,
+			busy: api.sendEmployerButton['aria-busy']
+		});
 
 		// the press is forgotten on the way off the step, the way `updateDetails` and `updatePayment`
 		// below forget theirs: asking is a thing a press does, and returning to a step is not a press.
@@ -3890,7 +3963,7 @@ export function createUnavailable(
 	}
 	const body = make(doc, 'div', { class: 'card-body' }, [alert]);
 	if (retry !== undefined) {
-		// the published `action` name rather than one of its own: the vocabulary is closed at fourteen
+		// the published `action` name rather than one of its own: the vocabulary is closed
 		// (./parts.ts), and a host who has painted the form's primary control has painted this one.
 		// the words directly in the control rather than in a `.action-label` span: that span is where
 		// the patch writes a label beside a spinner, and this card is never patched and never busy.

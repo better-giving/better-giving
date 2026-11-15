@@ -65,9 +65,11 @@ import {
 	type FormValue,
 	type PayerField
 } from './value';
+import { employerAnswer } from './employer';
 import {
 	FREQUENCIES,
 	FREQUENCY_LABELS,
+	MAX_EMPLOYER,
 	NO_PROGRAM_LABEL,
 	TRIBUTE_KIND_LABELS,
 	TRIBUTE_KINDS,
@@ -314,7 +316,11 @@ export type State =
 	  }
 	| { readonly step: 'depositExpired' }
 	| { readonly step: 'verificationExpired' }
-	| ({ readonly step: 'success' } & CommittedRail)
+	| ({
+			readonly step: 'success';
+			/** the employer ask under the receipt, present only where this thank-you makes it. */
+			readonly employer?: EmployerAsk;
+	  } & CommittedRail)
 	| {
 			readonly step: 'failed';
 			readonly message: string;
@@ -330,6 +336,22 @@ export type State =
 			 */
 			readonly refusedByRail?: true;
 	  };
+
+/**
+ * where the thank-you's employer ask stands.
+ *
+ * `asking` is the box open, `sending` the write in flight, and `sent` and `skipped` the two ways it
+ * closes. `refused` is the last write refused or unanswered with none landed since, so it stands
+ * over a resend too. `giftUrl` is the gift page the screen links to, and `email` the address the
+ * details are mailed to. what the donor typed is not here: it is the box's own value
+ * (`employerField` below).
+ */
+export type EmployerAsk = {
+	readonly phase: 'asking' | 'sending' | 'sent' | 'skipped';
+	readonly giftUrl: string;
+	readonly refused: boolean;
+	readonly email: string;
+};
 
 /** the whole surface a host renders from. */
 export type CheckoutApi<
@@ -390,6 +412,16 @@ export type CheckoutApi<
 	readonly retryButton: T['button'];
 	/** the review step's offer of a one-time gift taken — see `oneTimeInstead` on that step. */
 	readonly oneTimeButton: T['button'];
+	/**
+	 * the thank-you's employer box, and its two presses.
+	 *
+	 * `given` on the send is whether the box holds an answer the flow takes, which a renderer draws as
+	 * the control being unavailable while it stays focusable: a blank press is refused by the flow's
+	 * guard (`employerIsGiven` in ./checkout.machine.ts), never by an attribute.
+	 */
+	readonly employerField: T['field'];
+	readonly sendEmployerButton: T['button'];
+	readonly skipEmployerButton: T['button'];
 	/**
 	 * the marks on the step head, one per numbered step and in the order a donor is asked.
 	 *
@@ -460,6 +492,18 @@ function topLevelStateOf(snapshot: CheckoutSnapshot): TopLevelState {
 	return (typeof value === 'string' ? value : Object.keys(value)[0]) as TopLevelState;
 }
 
+/** the employer ask on a thank-you that makes one, or `null`. */
+function employerAskOf(snapshot: CheckoutSnapshot): EmployerAsk | null {
+	const { context } = snapshot;
+	const giftUrl = context.quote?.giftUrl;
+	if (giftUrl === undefined || context.payer === null) return null;
+	const phases = ['asking', 'sending', 'sent', 'skipped'] as const;
+	const phase = phases.find((name) => snapshot.matches({ success: name }));
+	return phase === undefined
+		? null
+		: { phase, giftUrl, refused: context.employerRefused, email: context.payer.email };
+}
+
 /**
  * the machine's flat snapshot as the value-carrying union above.
  *
@@ -497,8 +541,12 @@ export function toState(snapshot: CheckoutSnapshot): State {
 				? { step: 'amount', missing, ...refusal }
 				: { step: 'amount', fv, missing, ...refusal };
 		}
-		case 'success':
-			return { step: 'success', ...rail };
+		case 'success': {
+			const employer = employerAskOf(snapshot);
+			return employer === null
+				? { step: 'success', ...rail }
+				: { step: 'success', ...rail, employer };
+		}
 		case 'redirecting':
 			return { step: 'redirecting', ...rail };
 		case 'processing':
@@ -929,6 +977,20 @@ export function connect<
 		backButton: button({ onClick: () => send({ type: 'BACK' }) }),
 		retryButton: button({ onClick: () => send({ type: 'RETRY' }) }),
 		oneTimeButton: button({ onClick: () => send({ type: 'MAKE_ONE_TIME' }) }),
+
+		employerField: normalize.field({
+			name: 'employer',
+			value: context.employer,
+			maxLength: MAX_EMPLOYER,
+			onChange: (employer: string) => send({ type: 'SET_EMPLOYER', employer })
+		}),
+		// busy while its own write is in flight, which no other control on the screen is.
+		sendEmployerButton: button({
+			given: employerAnswer(context.employer) !== null,
+			'aria-busy': snapshot.matches({ success: 'sending' }),
+			onClick: () => send({ type: 'SEND_EMPLOYER' })
+		}),
+		skipEmployerButton: button({ onClick: () => send({ type: 'SKIP_EMPLOYER' }) }),
 
 		// off the top-level state rather than off the projected `State` above, because the two do
 		// not answer the same question: `working` collapses five machine states into one screen, and

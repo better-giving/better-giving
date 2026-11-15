@@ -831,6 +831,13 @@
 	--_warn-ink: var(--warning-subtle-fg);
 
 	/*
+	 * the success ink, `--success-subtle-fg` (the registry's "success ink everywhere"), on the one mark
+	 * that draws it: the tick beside `Details sent` on the thank-you's closed employer ask
+	 * (`.employer-done-mark` in ./parts.css). an ink and no band, so the two bands above stay two.
+	 */
+	--_ok-ink: var(--success-subtle-fg);
+
+	/*
 	 * the edge every box a donor operates carries at rest — a floating text box, the free entry
 	 * standing on its own, a payment rail, a step mark — is step 7, the step the registry's `--input`
 	 * is, and under the pointer it is step 8, its `--input-hover`. the trays carry step 7 by the same

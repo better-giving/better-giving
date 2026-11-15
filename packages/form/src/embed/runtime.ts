@@ -25,7 +25,14 @@
 // on the way in would be this runtime overruling the account that was actually asked.
 
 import { defineDonateForm, type FormBoot, type FormRuntime } from '../element';
-import { apiWords, createQuote, createStatusRead, EmbedFailure, readJson } from './api';
+import {
+	apiWords,
+	createEmployerWrite,
+	createQuote,
+	createStatusRead,
+	EmbedFailure,
+	readJson
+} from './api';
 import { createPaymentSurface, quoteThrough } from './surface';
 import { takeResumeToken } from './resume';
 import { createChallenge } from './challenge';
@@ -116,6 +123,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 	// itself — a payment SDK is initialised with the publishable key it carries.
 	const post = createQuote(origin);
 	const status = createStatusRead(origin);
+	const employer = createEmployerWrite(origin);
 
 	/**
 	 * the return this page came back with, per form, held from the one read that could claim it.
@@ -189,7 +197,8 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 						confirm: surface.confirm,
 						resume: surface.resume,
 						status,
-						now: () => Date.now()
+						now: () => Date.now(),
+						employer
 					},
 					...(resumeToken === null ? {} : { resume: { paymentToken: resumeToken } })
 				},

@@ -138,6 +138,15 @@
 }
 
 /*
+ * a send the flow will refuse is not pressed in. the registry takes its own nudge off an
+ * `aria-disabled` button (`transform: none` in ../registry/styles/button-css.css), and the press here
+ * is `scale`, which that does not reach.
+ */
+[part~='action'][aria-disabled='true']:active {
+	scale: none;
+}
+
+/*
  * the chosen cadence travelling to the option a donor picked, which is the second of the two things
  * on this card whose answer to a press is where it now stands rather than that it was pressed.
  *

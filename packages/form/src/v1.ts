@@ -511,6 +511,15 @@ export type Quote = {
 	 * `paymentToken` is the donation id `DonationStatus` below is read by.
 	 */
 	readonly deposit?: Deposit;
+	/**
+	 * the absolute address of this gift's own page, `{origin}/gift/{token}`, where the donor finds
+	 * what an employer's matching portal asks for.
+	 *
+	 * present when the deployment has the gift page and the mail behind it, and absent otherwise; the
+	 * thank-you asks for the donor's employer only where it is present. its last path segment is the
+	 * `:token` `EmployerRequest` below is posted to.
+	 */
+	readonly giftUrl?: string;
 };
 
 /** what the machine sends to mint a `Quote`. */
@@ -675,6 +684,26 @@ export type DonationState = (typeof DONATION_STATES)[number];
  */
 export type DonationStatus = {
 	readonly state: DonationState;
+};
+
+/** the most characters `EmployerRequest.employer` may hold once trimmed. */
+export const MAX_EMPLOYER = 200;
+
+/**
+ * `POST /api/v1/forms/:id/gifts/:token/employer` — the donor naming the employer that may match a
+ * gift, from the thank-you.
+ *
+ * `:token` is the last path segment of `Quote.giftUrl`. `employer` is free text the donor typed,
+ * trimmed, 1 to `MAX_EMPLOYER` characters, and checked for nothing else: no list of employers exists
+ * to check it against. a refusal answers with `ApiError` below.
+ */
+export type EmployerRequest = {
+	readonly employer: string;
+};
+
+/** what an accepted `EmployerRequest` answers. */
+export type EmployerAnswer = {
+	readonly ok: true;
 };
 
 /**
