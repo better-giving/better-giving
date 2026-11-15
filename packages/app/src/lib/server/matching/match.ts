@@ -1,16 +1,4 @@
-import {
-	and,
-	eq,
-	exists,
-	inArray,
-	isNotNull,
-	isNull,
-	ne,
-	notExists,
-	or,
-	type SQL,
-	sql
-} from 'drizzle-orm';
+import { and, eq, exists, isNotNull, isNull, ne, or, type SQL, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { dispute, donation, type GiftMatch, giftMatch, payment } from '../db/schema';
 import { nothingLeftOfGift } from '../donations/queries';
@@ -31,19 +19,21 @@ import { type GiftOrigin, giftPageUrl } from './links';
 // so a repeat is a no-op and never an error, and nothing here is a read-then-write.
 //
 // the rules the statements hold, each a case in ./match.db.spec.ts:
-//   - matched is terminal: no void, no filed and no employer after it. a full refund or a lost
-//     dispute still voids it (`refundVoidStatement`, `disputeLostVoidStatement`); a partial refund
-//     and a dispute opened or won leave every match as it stood.
+//   - matched is terminal: no void, no filed and no employer after it. a refund or a lost dispute
+//     that leaves nothing of the gift still voids it (`refundVoidStatement`,
+//     `disputeLostVoidStatement`); a partial refund, a dispute lost for part of the gift and a
+//     dispute opened or won leave every match as it stood.
 //   - voided is terminal: no filed, no matched and no employer after it. the one way back is a
 //     void the system wrote, cleared when the refund or the loss behind it is put back
-//     (`reopenStatement`); matched stays as it stood under the void.
+//     (`reopenStatement`); matched stays as it stood under the void, and a reminder not yet sent
+//     falls due `REMINDER_AFTER_MS` after the reopen.
 //   - matched may come before filed, and counts as filed without stamping it.
 //   - filed needs no employer named.
 
 /** `filed_by` when the donor pressed "I've filed it" on their gift page. */
 export const DONOR = 'donor';
 
-/** `voided_by` when a full refund or a lost dispute closed the match. */
+/** `voided_by` when a refund or a lost dispute that left nothing of the gift closed the match. */
 export const SYSTEM = 'system';
 
 /** the void reason a full refund writes. */
@@ -219,9 +209,10 @@ export function refundVoidStatement(db: Db, donationId: string, now: Date) {
 /**
  * a lost dispute's void, for the `batch()` in ../donations/reverse.ts that records the dispute on
  * the withdrawal row `withdrawalId` lost, after the statement that closes it: it lands only where
- * that dispute's row reads lost, so a close another delivery decided the other way voids nothing.
- * a dispute opened or won voids nothing, since a win puts the money back. otherwise as
- * `refundVoidStatement`.
+ * that dispute's row reads lost, so a close another delivery decided the other way voids nothing,
+ * and only where nothing of the gift is left (`nothingLeftOfGift`), so a loss of part of it leaves
+ * the match open as a partial refund does. a dispute opened or won voids nothing, since a win puts
+ * the money back. otherwise as `refundVoidStatement`.
  */
 export function disputeLostVoidStatement(
 	db: Db,
@@ -236,40 +227,43 @@ export function disputeLostVoidStatement(
 	return db
 		.update(giftMatch)
 		.set({ voidedAt: now, voidedBy: SYSTEM, voidReason: DISPUTE_LOST_REASON })
-		.where(and(eq(giftMatch.donationId, donationId), isNull(giftMatch.voidedAt), exists(lost)));
+		.where(
+			and(
+				eq(giftMatch.donationId, donationId),
+				isNull(giftMatch.voidedAt),
+				exists(lost),
+				nothingLeftOfGift(db, giftMatch.donationId)
+			)
+		);
 }
 
 /**
  * the void a refund or a lost dispute wrote, cleared, for the `batch()` in ../donations/reverse.ts
  * that puts back a refund that did not stand or a dispute won after its loss, after the statements
- * that flip the refund row and close the dispute: it lands only where the system wrote the void for
- * one of those two reasons, something of the gift is left again (`nothingLeftOfGift`), and no lost
- * dispute on the gift still stands. a void staff wrote stays. it clears the three columns the void's
- * checks pair and touches no other, so a match that was matched before the void reads matched again.
+ * that flip the refund row and close the dispute: it lands only where the system wrote the void —
+ * `voided_by` names the writer, and the system writes no void but those two, so the stored reason
+ * text is never read — and something of the gift is left again (`nothingLeftOfGift`, which counts
+ * a lost dispute's withdrawal and not one the organisation's refund closed). a void staff wrote
+ * stays. it clears the three columns the void's checks pair, so a match that was matched before the
+ * void reads matched again, and moves an armed reminder not yet sent to `REMINDER_AFTER_MS` after
+ * `now`, so the reopen is not reminded of at once on a due time that passed under the void.
  */
-export function reopenStatement(db: Db, donationId: string) {
-	const lostStands = db
-		.select({ one: sql`1` })
-		.from(dispute)
-		.innerJoin(payment, eq(payment.id, dispute.paymentId))
-		.where(
-			and(
-				eq(payment.donationId, donationId),
-				eq(payment.status, 'succeeded'),
-				eq(dispute.outcome, 'lost')
-			)
-		);
+export function reopenStatement(db: Db, donationId: string, now: Date) {
+	const rearmed = new Date(now.getTime() + REMINDER_AFTER_MS);
 	return db
 		.update(giftMatch)
-		.set({ voidedAt: null, voidedBy: null, voidReason: null })
+		.set({
+			voidedAt: null,
+			voidedBy: null,
+			voidReason: null,
+			reminderDueAt: sql`case when ${giftMatch.reminderDueAt} is not null and ${giftMatch.remindedAt} is null then ${rearmed.getTime()} else ${giftMatch.reminderDueAt} end`
+		})
 		.where(
 			and(
 				eq(giftMatch.donationId, donationId),
 				eq(giftMatch.voidedBy, SYSTEM),
-				inArray(giftMatch.voidReason, [REFUND_REASON, DISPUTE_LOST_REASON]),
 				// parenthesised: `not` binds tighter than the `and` inside `nothingLeftOfGift`.
-				sql`not (${nothingLeftOfGift(db, giftMatch.donationId)})`,
-				notExists(lostStands)
+				sql`not (${nothingLeftOfGift(db, giftMatch.donationId)})`
 			)
 		)
 		.returning({ donationId: giftMatch.donationId });

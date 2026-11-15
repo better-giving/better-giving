@@ -1982,8 +1982,11 @@ export const payment = sqliteTable(
 	]
 );
 
-/** how a dispute closed. an open dispute has no outcome at all. */
-export const DISPUTE_OUTCOMES = ['won', 'lost'] as const;
+/**
+ * how a dispute closed. an open dispute has no outcome at all. `refunded` is a dispute the
+ * organisation's own full refund closed while it was open, which is not a loss.
+ */
+export const DISPUTE_OUTCOMES = ['won', 'lost', 'refunded'] as const;
 export type DisputeOutcome = (typeof DISPUTE_OUTCOMES)[number];
 
 /**
@@ -3794,7 +3797,7 @@ export function mintGiftMatchToken(): string {
  * app; a gift recorded before migrations/0039 has none, since the row is written only in the batch that records the gift.
  *
  * status is the set of stamps, not a column: each `_at` is when, and each `_by` beside it is who,
- * as `'donor'`, `'system'` (the void of a full refund or a lost dispute), or the staff member as better-auth names them —
+ * as `'donor'`, `'system'` (the void of a refund or a lost dispute that left nothing of the gift), or the staff member as better-auth names them —
  * `connector_key.allowed_by` is the precedent. no foreign key on a `_by`, since two of its values
  * are no user. the checks pair each stamp with its `_by` and refuse nothing else: matched before
  * filed is real (an employer's money can arrive first), and void against matched is the app's
@@ -3831,8 +3834,13 @@ export const giftMatch = sqliteTable(
 		voidedBy: text('voided_by'),
 		/** staff's or the system's reason, for staff; a donor sees only that the claim is closed. */
 		voidReason: text('void_reason'),
-		createdAt: createdAt()
+		createdAt: createdAt(),
 		// append new columns below this line — see rule 1 at the top of this file.
+		/**
+		 * how many sends of the pack failed. the sweep stops trying at `PACK_TRIES` in
+		 * $lib/server/matching/pack.ts, and a failure no retry can mend sets it there at once.
+		 */
+		packTries: integer('pack_tries').notNull().default(0)
 	},
 	(t) => [
 		// also the index `donation_id`'s foreign key is checked by.
@@ -3852,6 +3860,7 @@ export const giftMatch = sqliteTable(
 		check('gift_match_voided_by_not_blank_check', optionalNotBlank(t.voidedBy)),
 		check('gift_match_void_reason_check', sql`(${t.voidedAt} is null) = (${t.voidReason} is null)`),
 		check('gift_match_void_reason_not_blank_check', optionalNotBlank(t.voidReason)),
+		check('gift_match_pack_tries_check', sql`${t.packTries} >= 0`),
 		// the reminder sweep: only the rows still owed one, by when it falls due. the sweep's
 		// `reminder_due_at <= ?` implies the `is not null` term, so the planner can take it.
 		index('gift_match_reminder_due_idx')

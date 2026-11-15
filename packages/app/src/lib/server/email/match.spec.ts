@@ -42,6 +42,7 @@ function pack(overrides: Partial<MatchPackInput> = {}): MatchPackInput {
 		donorName: 'Maya Reyes',
 		employer: 'Northwind Logistics',
 		amountMinor: 15_000,
+		givenMinor: 15_000,
 		currency: 'USD',
 		givenAt: new Date('2026-11-12T15:00:00Z'),
 		receiptSentAt: new Date('2026-11-12T15:01:00Z'),
@@ -57,6 +58,7 @@ function reminder(overrides: Partial<MatchReminderInput> = {}): MatchReminderInp
 		donorName: 'Maya Reyes',
 		employer: 'Northwind Logistics',
 		amountMinor: 15_000,
+		givenMinor: 15_000,
 		currency: 'USD',
 		givenAt: new Date('2026-11-12T15:00:00Z'),
 		giftPageUrl: URL,
@@ -75,6 +77,15 @@ describe('renderMatchPack', () => {
 			expect(arm).toContain('84-2761093');
 			expect(arm).toContain('1250 Mill Street, Suite 200, Cincinnati, OH 45202, United States');
 			expect(arm).toContain('USD 150.00');
+		}
+	});
+
+	it('states what is left after refunds beside what was given, in both arms', async () => {
+		const result = await renderMatchPack(pack({ amountMinor: 10_000 }));
+
+		if (!result.ok) throw new Error(result.detail);
+		for (const arm of [result.message.text, result.message.html]) {
+			expect(arm).toContain('USD 100.00 after refunds, of USD 150.00 given');
 		}
 	});
 
@@ -132,6 +143,15 @@ describe('renderMatchPack', () => {
 });
 
 describe('renderMatchReminder', () => {
+	it('states what is left after refunds beside what was given, in both arms', async () => {
+		const result = await renderMatchReminder(reminder({ amountMinor: 10_000 }));
+
+		if (!result.ok) throw new Error(result.detail);
+		for (const arm of [result.message.text, result.message.html]) {
+			expect(arm).toContain('USD 100.00 after refunds, of USD 150.00 given');
+		}
+	});
+
 	it('writes the reminder by the display name', async () => {
 		const result = await renderMatchReminder(reminder());
 

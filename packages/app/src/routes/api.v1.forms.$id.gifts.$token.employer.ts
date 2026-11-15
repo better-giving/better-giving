@@ -41,8 +41,9 @@ import type { Route } from './+types/api.v1.forms.$id.gifts.$token.employer';
 //
 // the form's Skip and its timeout abort the request, and node-fetch-server aborts `request.signal`
 // when the connection closes. the signal is read after the body, where an aborted request writes
-// nothing, and after the write, where it defers no pack. a write already in flight when the form
-// stops waiting still lands, so neither side may promise a skipped write did not happen.
+// nothing. a write already in flight when the form stops waiting still lands and still owes its
+// pack, which goes to the deferred-work tracker rather than the request (`employerNamed` in
+// $lib/server/matching/pack.ts), so neither side may promise a skipped write did not happen.
 
 export async function action({ context, params, request }: Route.ActionArgs): Promise<Response> {
 	if (request.method !== 'POST') return methodNotAllowed(request.method);
@@ -68,8 +69,7 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 			db,
 			email: createEmailProvider(env),
 			giftOrigin: giftLinkOrigin(env, new URL(request.url)),
-			defer: (work) => deferred.waitUntil(work),
-			signal: request.signal
+			defer: (work) => deferred.waitUntil(work)
 		},
 		{ token: params.token, formId: params.id },
 		typed,

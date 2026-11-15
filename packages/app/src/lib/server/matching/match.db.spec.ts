@@ -255,7 +255,7 @@ describe('the reopen', () => {
 	it('clears a system void once the refund behind it no longer stands, and keeps matched', async () => {
 		await markMatched(db, { donationId }, STAFF, T0);
 		await cancelled(await refundedInFull());
-		const [reopened] = await db.batch([reopenStatement(db, donationId)]);
+		const [reopened] = await db.batch([reopenStatement(db, donationId, T1)]);
 		expect(reopened).toEqual([{ donationId }]);
 		expect(await row()).toMatchObject({
 			matchedAt: T0,
@@ -268,18 +268,32 @@ describe('the reopen', () => {
 
 	it('leaves the void while nothing of the gift is left', async () => {
 		await refundedInFull();
-		await db.batch([reopenStatement(db, donationId)]);
+		await db.batch([reopenStatement(db, donationId, T1)]);
 		expect(await row()).toMatchObject({ voidedBy: SYSTEM, voidReason: 'Gift refunded' });
 	});
 
 	it('leaves a void staff wrote', async () => {
 		await moved(donationId, 'inbound', 15_000);
 		await voidMatch(db, { donationId }, STAFF, 'Gift refunded', T0);
-		await db.batch([reopenStatement(db, donationId)]);
+		await db.batch([reopenStatement(db, donationId, T1)]);
 		expect(await row()).toMatchObject({ voidedBy: STAFF, voidReason: 'Gift refunded' });
 	});
 
-	it('leaves the void while a lost dispute on the gift stands', async () => {
+	it('leaves the void while a lost dispute took the whole gift', async () => {
+		const refundId = await refundedInFull();
+		const withdrawal = await moved(donationId, 'refund', 15_000);
+		await run(
+			stmt(
+				`insert into dispute (payment_id, outcome, closed_at, created_at, updated_at) values (?, 'lost', 0, 0, 0)`,
+				withdrawal
+			)
+		);
+		await cancelled(refundId);
+		await db.batch([reopenStatement(db, donationId, T1)]);
+		expect(await row()).toMatchObject({ voidedBy: SYSTEM });
+	});
+
+	it('clears the void past a lost dispute that took only part of the gift', async () => {
 		const refundId = await refundedInFull();
 		const withdrawal = await moved(donationId, 'refund', 1_000);
 		await run(
@@ -289,16 +303,92 @@ describe('the reopen', () => {
 			)
 		);
 		await cancelled(refundId);
-		await db.batch([reopenStatement(db, donationId)]);
-		expect(await row()).toMatchObject({ voidedBy: SYSTEM });
+		await db.batch([reopenStatement(db, donationId, T1)]);
+		expect(await row()).toMatchObject({ voidedAt: null, voidedBy: null, voidReason: null });
+	});
+
+	it('re-arms a reminder not yet sent to three days from the reopen', async () => {
+		const stale = new Date(T0.getTime() - 1);
+		await run(
+			stmt(
+				'update gift_match set reminder_due_at = ? where donation_id = ?',
+				stale.getTime(),
+				donationId
+			)
+		);
+		await cancelled(await refundedInFull());
+		await db.batch([reopenStatement(db, donationId, T1)]);
+		expect(await row()).toMatchObject({
+			voidedAt: null,
+			reminderDueAt: new Date(T1.getTime() + REMINDER_AFTER_MS)
+		});
+	});
+
+	it('keeps a reminder already sent sent, and arms none where none was armed', async () => {
+		const other = fresh();
+		await db.batch([
+			db.insert(donation).values({
+				id: other,
+				contactId: CONTACT_ID,
+				totalMinor: 15_000,
+				currency: 'USD',
+				receivedAt: T0
+			}),
+			giftMatchInsert(db, other)
+		]);
+		await run(
+			stmt(
+				'update gift_match set reminder_due_at = ?, reminded_at = ? where donation_id = ?',
+				T0.getTime(),
+				T0.getTime(),
+				donationId
+			)
+		);
+		for (const id of [donationId, other]) {
+			await moved(id, 'inbound', 15_000);
+			const refundId = await moved(id, 'refund', 15_000);
+			await db.batch([refundVoidStatement(db, id, T1)]);
+			await cancelled(refundId);
+			await db.batch([reopenStatement(db, id, T1)]);
+		}
+		expect(await row()).toMatchObject({ voidedAt: null, reminderDueAt: T0, remindedAt: T0 });
+		const [untouched] = await db.select().from(giftMatch).where(eq(giftMatch.donationId, other));
+		expect(untouched).toMatchObject({ voidedAt: null, reminderDueAt: null, remindedAt: null });
+	});
+
+	it('clears the void past a dispute the organisation’s own refund closed, which is no loss', async () => {
+		const refundId = await refundedInFull();
+		const withdrawal = await moved(donationId, 'refund', 1_000);
+		await run(
+			stmt(
+				`insert into dispute (payment_id, outcome, closed_at, created_at, updated_at) values (?, 'refunded', 0, 0, 0)`,
+				withdrawal
+			)
+		);
+		await cancelled(refundId);
+		await db.batch([reopenStatement(db, donationId, T1)]);
+		expect(await row()).toMatchObject({ voidedAt: null, voidedBy: null, voidReason: null });
+	});
+
+	it('clears a system void by its writer, whatever its reason reads', async () => {
+		const refundId = await refundedInFull();
+		await run(
+			stmt(
+				"update gift_match set void_reason = 'Refunded in full' where donation_id = ?",
+				donationId
+			)
+		);
+		await cancelled(refundId);
+		await db.batch([reopenStatement(db, donationId, T1)]);
+		expect(await row()).toMatchObject({ voidedAt: null, voidedBy: null, voidReason: null });
 	});
 });
 
 describe('the lost dispute void', () => {
-	/** a dispute withdrawing the whole gift, closed as `outcome` says; answers its withdrawal row. */
-	async function disputed(outcome: 'lost' | 'won' | null): Promise<string> {
+	/** a dispute withdrawing `amountMinor` of the gift, closed as `outcome` says; answers its withdrawal row. */
+	async function disputed(outcome: 'lost' | 'won' | null, amountMinor = 15_000): Promise<string> {
 		await moved(donationId, 'inbound', 15_000);
-		const withdrawal = await moved(donationId, 'refund', 15_000);
+		const withdrawal = await moved(donationId, 'refund', amountMinor);
 		await run(
 			stmt(
 				'insert into dispute (payment_id, outcome, closed_at, created_at, updated_at) values (?, ?, ?, 0, 0)',
@@ -330,6 +420,19 @@ describe('the lost dispute void', () => {
 			voidedBy: SYSTEM,
 			voidReason: 'Dispute lost'
 		});
+	});
+
+	it('leaves the match open where the lost dispute took only part of the gift', async () => {
+		const withdrawal = await disputed('lost', 5_000);
+		await db.batch([disputeLostVoidStatement(db, donationId, withdrawal, T0)]);
+		expect(await row()).toMatchObject({ voidedAt: null, voidedBy: null, voidReason: null });
+	});
+
+	it('voids where the lost dispute took what a partial refund left', async () => {
+		const withdrawal = await disputed('lost', 10_000);
+		await moved(donationId, 'refund', 5_000);
+		await db.batch([disputeLostVoidStatement(db, donationId, withdrawal, T0)]);
+		expect(await row()).toMatchObject({ voidedAt: T0, voidReason: 'Dispute lost' });
 	});
 
 	it('leaves the match open while the dispute is open or once it is won', async () => {

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
-import { sendFailedPacks } from '$lib/server/matching/pack';
+import { sendUnsentPacks } from '$lib/server/matching/pack';
 import { sendDueReminders } from '$lib/server/matching/reminders';
 import { sweepSupporterLeftovers } from '$lib/server/supporters/sweep';
 import { parseCron } from '$lib/server/runtime/scheduler';
@@ -37,7 +37,7 @@ vi.mock('$lib/server/matching/reminders', () => ({
 	sendDueReminders: vi.fn(async () => {})
 }));
 vi.mock('$lib/server/matching/pack', () => ({
-	sendFailedPacks: vi.fn(async () => {})
+	sendUnsentPacks: vi.fn(async () => {})
 }));
 vi.mock('$lib/server/supporters/sweep', () => ({
 	sweepSupporterLeftovers: vi.fn(async () => {})
@@ -82,7 +82,7 @@ const JOBS = [
 	sendOwedRefundNotices,
 	sweepSupporterLeftovers,
 	sendDueReminders,
-	sendFailedPacks,
+	sendUnsentPacks,
 	sendDueEntries,
 	sendDueZapierEvents,
 	sendDueWebhooks
@@ -165,7 +165,7 @@ describe('which run an expression reaches', () => {
 				{ db, email: expect.anything(), giftOrigin },
 				SCHEDULED_AT
 			);
-			expect(sendFailedPacks).toHaveBeenCalledExactlyOnceWith(
+			expect(sendUnsentPacks).toHaveBeenCalledExactlyOnceWith(
 				{ db, email: expect.anything(), giftOrigin },
 				SCHEDULED_AT
 			);
@@ -266,6 +266,20 @@ describe('which run an expression reaches', () => {
 			for (const other of others) {
 				expect(other).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
 			}
+		}
+	);
+
+	it.each([
+		['the match reminders', sendDueReminders, sendUnsentPacks],
+		['the unsent match packs', sendUnsentPacks, sendDueReminders]
+	] as const)(
+		'still runs the other ten-minute job when %s one throws, and reports the throw',
+		async (_, failing, other) => {
+			const fault = new Error('the mail provider went away');
+			vi.mocked(failing).mockRejectedValue(fault);
+
+			await expect(fires('*/10 * * * *')).rejects.toBe(fault);
+			expect(other).toHaveBeenCalledExactlyOnceWith(expect.anything(), SCHEDULED_AT);
 		}
 	);
 

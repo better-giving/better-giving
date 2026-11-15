@@ -106,20 +106,23 @@ describe('a dispute belongs to one payment row that exists', () => {
 	});
 });
 
-describe('a dispute closes won or lost, and only then', () => {
-	it.each(['won', 'lost'])('accepts a dispute closed %s', async (outcome) => {
+describe('a dispute closes won, lost or refunded, and only then', () => {
+	it.each(['won', 'lost', 'refunded'])('accepts a dispute closed %s', async (outcome) => {
 		const id = freshWithdrawal();
 		await insertDispute(id, { outcome, closedAt: 9 });
 		expect(await disputeRow(id)).toMatchObject({ outcome, closed_at: 9 });
 	});
 
-	it.each(['WON', 'pending', 'withdrawn', ''])('refuses an outcome of %j', async (outcome) => {
-		const message = await rejectionCode(() =>
-			insertDispute(freshWithdrawal(), { outcome, closedAt: 9 })
-		);
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('dispute_outcome_check');
-	});
+	it.each(['WON', 'Refunded', 'pending', 'withdrawn', ''])(
+		'refuses an outcome of %j',
+		async (outcome) => {
+			const message = await rejectionCode(() =>
+				insertDispute(freshWithdrawal(), { outcome, closedAt: 9 })
+			);
+			expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+			expect(message).toContain('dispute_outcome_check');
+		}
+	);
 
 	it.each([
 		['a close with no outcome', null, 9],

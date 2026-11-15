@@ -322,12 +322,17 @@ describe('the reminder sweep', () => {
 	});
 
 	// the sweep lists both rows, then the first send closes the second row's match: the listing is
-	// stale by the time the second claim runs, so only the claim's own filed, matched and voided guards
-	// can refuse it.
+	// stale by the time the second claim runs, so only the claim's own guards, `reminderOwed`'s
+	// terms, can refuse it.
 	it.each([
 		['filed', (id: string) => markFiled(db, { donationId: id }, 'donor', T0)],
 		['matched', (id: string) => markMatched(db, { donationId: id }, 'staff', T0)],
-		['voided', (id: string) => voidMatch(db, { donationId: id }, 'staff', 'Duplicate gift', T0)]
+		['voided', (id: string) => voidMatch(db, { donationId: id }, 'staff', 'Duplicate gift', T0)],
+		[
+			'out of the books',
+			(id: string) =>
+				rawSql(client).run(stmt("update payment set status = 'pending' where donation_id = ?", id))
+		]
 	])('never reminds a gift %s after the sweep listed it', async (_, close) => {
 		const first = await namedGift();
 		const second = await namedGift();
@@ -354,7 +359,7 @@ describe('the reminder sweep', () => {
 		expect(await remindedAt(second)).toBeNull();
 	});
 
-	it('reminds a gift again once a refund that voided its match is put back', async () => {
+	it('reminds a gift three days after a refund that voided its match is put back', async () => {
 		const id = await namedGift();
 		await refunded(id, 15000);
 		await db.batch([refundVoidStatement(db, id, T0)]);
@@ -369,11 +374,14 @@ describe('the reminder sweep', () => {
 				id
 			)
 		);
-		await db.batch([reopenStatement(db, id)]);
+		await db.batch([reopenStatement(db, id, DUE)]);
 		await sendDueReminders(deps, DUE);
+		expect(mail.sent).toHaveLength(0);
+		const rearmed = new Date(DUE.getTime() + 3 * 24 * 60 * 60_000);
+		await sendDueReminders(deps, rearmed);
 
 		expect(mail.sent).toHaveLength(1);
-		expect(await remindedAt(id)).toBe(DUE.getTime());
+		expect(await remindedAt(id)).toBe(rearmed.getTime());
 	});
 
 	it('hands a failed send back, retries it once the wait is up, and sends once in total', async () => {
@@ -433,15 +441,14 @@ describe('the reminder sweep', () => {
 		expect(await remindedAt(id)).toBeNull();
 	});
 
-	it('states what is left of a gift partly refunded', async () => {
+	it('states what is left of a gift partly refunded, beside what was given', async () => {
 		const id = await namedGift();
 		await refunded(id, 5000);
 		const mail = mailer();
 
 		await sendDueReminders({ db, email: mail.port, giftOrigin: PINNED }, DUE);
 
-		expect(mail.sent[0]?.text).toContain('100.00');
-		expect(mail.sent[0]?.text).not.toContain('150.00');
+		expect(mail.sent[0]?.text).toContain('USD 100.00 after refunds, of USD 150.00 given');
 	});
 
 	it('does not remind a refunded gift', async () => {
@@ -527,9 +534,10 @@ describe('the reminder sweep', () => {
 	}, 30_000);
 
 	// a pack sent on a request's host arms none (./pack.ts), so a row armed here was armed under a pin
-	// since removed: it waits, armed, for one to be set again, and the run is no log line each time.
-	it('sends nothing, claims nothing and logs nothing where no origin names the gift page', async () => {
+	// since removed: it waits, armed, for one to be set again, and each run says so to the operator.
+	it('sends nothing and claims nothing where no origin names the gift page, and says why once a run', async () => {
 		const id = await namedGift();
+		await namedGift();
 		const mail = mailer();
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -538,6 +546,20 @@ describe('the reminder sweep', () => {
 		expect(mail.sent).toHaveLength(0);
 		expect(await remindedAt(id)).toBeNull();
 		expect(await dueAtOf(id)).toBe(DUE.getTime());
+		expect(warn).toHaveBeenCalledTimes(1);
+		expect(warn.mock.calls[0]?.[0]).toContain('BETTER_AUTH_URL');
+		expect(warn.mock.calls[0]?.[0]).not.toContain('Northwind');
+	});
+
+	it('says nothing where no origin is pinned and no reminder is due', async () => {
+		await namedGift();
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		await sendDueReminders(
+			{ db, email: mailer().port, giftOrigin: null },
+			new Date(DUE.getTime() - 1)
+		);
+
 		expect(warn).not.toHaveBeenCalled();
 	});
 

@@ -18,7 +18,7 @@ import {
 import { soleProcessor } from '../payments/processors.testing';
 import type { SettleDeps } from './delivery';
 import { markMatched } from '../matching/match';
-import { listDonations } from './queries';
+import { listDonations, readMatchGift } from './queries';
 import { recordDonation } from './record';
 import { createDestination } from '../webhooks/destinations';
 import type { WebhookEvent } from '../../webhooks/catalog';
@@ -384,6 +384,19 @@ describe('recordReversal() — the gift’s employer match', () => {
 		});
 	});
 
+	it('reads a gift whose open dispute a full refund closed as refunded, never as $0 never refunded', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), opened(), 'evt_d1');
+
+		await recordReversal(deps(), refund(), 'evt_r1');
+
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'refunded' })]);
+		expect(await readMatchGift(db, gift.donationId)).toMatchObject({
+			remainingMinor: 0,
+			refundedAt: REFUNDED_AT
+		});
+	});
+
 	it('is reopened when the refund that voided it fails, and staff are told', async () => {
 		const gift = await settledGift();
 		await recordReversal(deps(), refund(), 'evt_r1');
@@ -421,16 +434,49 @@ describe('recordReversal() — the gift’s employer match', () => {
 		expect(mail.sent[0]?.text).toMatch(/employer match, which the loss had closed, is open again/);
 	});
 
-	it('stays voided when a refund fails while a lost dispute still takes the rest', async () => {
+	// a dispute lost for part of the gift leaves the match open, as a partial refund does.
+	it('is reopened when a refund fails while a lost dispute took only part of the gift', async () => {
 		const gift = await settledGift();
 		await recordReversal(deps(), lost({ amountMinor: 4_000 }), 'evt_d1');
+		expect(await matchOf(gift.donationId)).toMatchObject({ voided_at: null });
 		await recordReversal(deps(), refund({ amountMinor: 6_000 }), 'evt_r1');
+		expect(await matchOf(gift.donationId)).toMatchObject({ void_reason: 'Gift refunded' });
 		const mail = mailer();
 
 		await recordReversal(deps({ email: mail.port }), refundFailed(), 'evt_r2');
 
-		expect(await matchOf(gift.donationId)).toMatchObject({ voided_by: 'system' });
-		expect(mail.sent[0]?.text).not.toMatch(/employer match/);
+		expect(await matchOf(gift.donationId)).toEqual({
+			voided_at: null,
+			voided_by: null,
+			void_reason: null
+		});
+		expect(mail.sent[0]?.text).toMatch(
+			/employer match, which the refund had closed, is open again/
+		);
+	});
+
+	it('is reopened when a refund fails while the rest went back through a refund that closed a dispute', async () => {
+		const gift = await settledGift();
+		await recordReversal(deps(), refund({ amountMinor: 4_000 }), 'evt_r1');
+		await recordReversal(deps(), opened({ amountMinor: 6_000 }), 'evt_d1');
+		await recordReversal(
+			deps(),
+			refund({
+				providerReversalId: 're_2',
+				amountMinor: 6_000,
+				occurredAt: new Date('2026-08-23T09:00:00.000Z')
+			}),
+			'evt_r2'
+		);
+		expect(await matchOf(gift.donationId)).toMatchObject({ void_reason: 'Gift refunded' });
+
+		await recordReversal(deps(), refundFailed(), 'evt_r3');
+
+		expect(await matchOf(gift.donationId)).toEqual({
+			voided_at: null,
+			voided_by: null,
+			void_reason: null
+		});
 	});
 
 	it('keeps a staff void when the refund after it fails', async () => {
@@ -459,7 +505,7 @@ describe('recordReversal() — the gift’s employer match', () => {
 
 		await recordReversal(deps(), refund({ amountMinor: 4_000 }), 'evt_r1');
 
-		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'lost' })]);
+		expect(await disputeRows()).toEqual([expect.objectContaining({ outcome: 'refunded' })]);
 		expect(await matchOf(gift.donationId)).toMatchObject({ voided_at: null });
 	});
 
@@ -1974,7 +2020,7 @@ describe('recordReversal() — a dispute lost after it opened', () => {
 });
 
 describe('recordReversal() — a refund of a gift whose open dispute holds the money', () => {
-	it('closes the dispute lost at the refund’s amount rather than withdrawing the gift again', async () => {
+	it('closes the dispute refunded at the refund’s amount rather than withdrawing the gift again', async () => {
 		const gift = await settledGift();
 		await recordReversal(deps(), opened(), 'evt_d1');
 
@@ -1985,7 +2031,7 @@ describe('recordReversal() — a refund of a gift whose open dispute holds the m
 			['dp_1', 10_000]
 		]);
 		expect(await disputeRows()).toEqual([
-			expect.objectContaining({ outcome: 'lost', closedAt: REFUNDED_AT })
+			expect.objectContaining({ outcome: 'refunded', closedAt: REFUNDED_AT })
 		]);
 		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'refunded', given: 0 });
 	});

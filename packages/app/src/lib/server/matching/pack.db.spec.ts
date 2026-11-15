@@ -12,7 +12,7 @@ import {
 	reopenStatement,
 	voidMatch
 } from './match';
-import { employerNamed, sendFailedPacks, sendOwedPack } from './pack';
+import { employerNamed, PACK_TRIES, sendOwedPack, sendUnsentPacks } from './pack';
 
 // the pack, against a real database: sent once, only for a gift in the books, and a send that did
 // not go is stamped as failed rather than thrown at the donor.
@@ -153,7 +153,7 @@ describe('the pack', () => {
 		expect(await row()).toMatchObject({ packSentAt: T0, packFailedAt: null });
 	});
 
-	it('states what is left of a gift partly refunded', async () => {
+	it('states what is left of a gift partly refunded, beside what was given', async () => {
 		await run(
 			stmt(
 				`insert into payment (id, donation_id, amount_minor, currency, direction, method, status, occurred_at, created_at)
@@ -167,8 +167,7 @@ describe('the pack', () => {
 
 		await sendOwedPack({ db, email: mail.port, giftOrigin: PINNED }, donationId, T0);
 
-		expect(mail.sent[0]?.text).toContain('100.00');
-		expect(mail.sent[0]?.text).not.toContain('150.00');
+		expect(mail.sent[0]?.text).toContain('USD 100.00 after refunds, of USD 150.00 given');
 	});
 
 	it('is not sent for a gift that has not reached the books', async () => {
@@ -228,7 +227,7 @@ describe('the pack', () => {
 				donationId
 			)
 		);
-		await db.batch([reopenStatement(db, donationId)]);
+		await db.batch([reopenStatement(db, donationId, T0)]);
 
 		expect(await sendOwedPack({ db, email: mail.port, giftOrigin: PINNED }, donationId, T0)).toBe(
 			'sent'
@@ -379,10 +378,10 @@ describe('the retry of a pack that failed', () => {
 	it('sends it once an hour has passed since it failed, and once', async () => {
 		const mail = mailer();
 
-		await sendFailedPacks({ db, email: mail.port, giftOrigin: PINNED }, at(HOUR - 1));
+		await sendUnsentPacks({ db, email: mail.port, giftOrigin: PINNED }, at(HOUR - 1));
 		expect(mail.sent).toHaveLength(0);
-		await sendFailedPacks({ db, email: mail.port, giftOrigin: PINNED }, at(HOUR));
-		await sendFailedPacks({ db, email: mail.port, giftOrigin: PINNED }, at(3 * HOUR));
+		await sendUnsentPacks({ db, email: mail.port, giftOrigin: PINNED }, at(HOUR));
+		await sendUnsentPacks({ db, email: mail.port, giftOrigin: PINNED }, at(3 * HOUR));
 
 		expect(mail.sent).toHaveLength(1);
 		expect(mail.sent[0]).toMatchObject({ to: 'maya@example.org' });
@@ -397,10 +396,10 @@ describe('the retry of a pack that failed', () => {
 		const failing = mailer(false);
 
 		for (const minutes of [60, 70, 80, 110, 119]) {
-			await sendFailedPacks({ db, email: failing.port, giftOrigin: PINNED }, at(minutes * 60_000));
+			await sendUnsentPacks({ db, email: failing.port, giftOrigin: PINNED }, at(minutes * 60_000));
 		}
 		expect(failing.sent).toHaveLength(1);
-		await sendFailedPacks({ db, email: failing.port, giftOrigin: PINNED }, at(2 * HOUR));
+		await sendUnsentPacks({ db, email: failing.port, giftOrigin: PINNED }, at(2 * HOUR));
 
 		expect(failing.sent).toHaveLength(2);
 		expect(await row()).toMatchObject({ packSentAt: null, packFailedAt: at(2 * HOUR) });
@@ -426,9 +425,9 @@ describe('the retry of a pack that failed', () => {
 		});
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 
-		const first = sendFailedPacks({ db, email: failing(true), giftOrigin: PINNED }, at(HOUR));
+		const first = sendUnsentPacks({ db, email: failing(true), giftOrigin: PINNED }, at(HOUR));
 		await vi.waitFor(() => expect(tried).toHaveLength(1));
-		await sendFailedPacks({ db, email: failing(false), giftOrigin: PINNED }, at(HOUR));
+		await sendUnsentPacks({ db, email: failing(false), giftOrigin: PINNED }, at(HOUR));
 		release();
 		await first;
 
@@ -453,7 +452,7 @@ describe('the retry of a pack that failed', () => {
 		);
 		await Promise.all(deferred);
 
-		await sendFailedPacks({ db, email: mail.port, giftOrigin: PINNED }, at(2 * HOUR));
+		await sendUnsentPacks({ db, email: mail.port, giftOrigin: PINNED }, at(2 * HOUR));
 
 		expect(mail.sent).toHaveLength(1);
 	});
@@ -461,7 +460,7 @@ describe('the retry of a pack that failed', () => {
 	// the sweep's claim holds the row inside the send while the donor's save runs to its end.
 	it('sends one pack when a donor saves while the sweep holds the claim', async () => {
 		const held = holdingMailer();
-		const sweep = sendFailedPacks({ db, email: held.port, giftOrigin: PINNED }, at(HOUR));
+		const sweep = sendUnsentPacks({ db, email: held.port, giftOrigin: PINNED }, at(HOUR));
 		await held.reached;
 
 		const deferred: Promise<unknown>[] = [];
@@ -488,11 +487,11 @@ describe('the retry of a pack that failed', () => {
 		const mail = mailer();
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-		await sendFailedPacks({ db, email: mail.port, giftOrigin: PINNED }, at(HOUR));
+		await sendUnsentPacks({ db, email: mail.port, giftOrigin: PINNED }, at(HOUR));
 		expect(mail.sent).toHaveLength(0);
 		expect(logged).not.toHaveBeenCalled();
 		await orgProfile();
-		await sendFailedPacks({ db, email: mail.port, giftOrigin: PINNED }, at(HOUR + 10 * 60_000));
+		await sendUnsentPacks({ db, email: mail.port, giftOrigin: PINNED }, at(HOUR + 10 * 60_000));
 
 		expect(mail.sent).toHaveLength(1);
 		logged.mockRestore();
@@ -504,7 +503,7 @@ describe('the retry of a pack that failed', () => {
 		);
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-		await sendFailedPacks({ db, email: mailer().port, giftOrigin: PINNED }, at(2 * HOUR));
+		await sendUnsentPacks({ db, email: mailer().port, giftOrigin: PINNED }, at(2 * HOUR));
 
 		expect(logged).not.toHaveBeenCalled();
 		expect(await row()).toMatchObject({ packSentAt: null, packFailedAt: T0 });
@@ -513,8 +512,99 @@ describe('the retry of a pack that failed', () => {
 
 	it('sends nothing where no pinned origin names the page', async () => {
 		const mail = mailer();
-		await sendFailedPacks({ db, email: mail.port, giftOrigin: null }, at(2 * HOUR));
+		await sendUnsentPacks({ db, email: mail.port, giftOrigin: null }, at(2 * HOUR));
 		expect(mail.sent).toHaveLength(0);
+	});
+
+	it('stops trying after PACK_TRIES sends that failed, the first among them', async () => {
+		const failing = mailer(false);
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		for (let hour = 1; hour <= PACK_TRIES + 2; hour += 1) {
+			await sendUnsentPacks({ db, email: failing.port, giftOrigin: PINNED }, at(hour * HOUR));
+		}
+
+		expect(failing.sent).toHaveLength(PACK_TRIES - 1);
+		expect(await row()).toMatchObject({
+			packSentAt: null,
+			packFailedAt: at((PACK_TRIES - 1) * HOUR)
+		});
+		vi.restoreAllMocks();
+	});
+
+	it.each([
+		['the host refused the donor’s mailbox', { addressRefused: true } as const],
+		['the message may have gone anyway', { indeterminate: true }]
+	])('never tries again a send where %s', async (_, how) => {
+		const other = await gift();
+		await nameEmployer(db, { donationId: other }, 'Contoso');
+		const refusing: EmailProvider = {
+			async send() {
+				return {
+					ok: false,
+					reason: 'rejected',
+					detail: '550 no such user',
+					indeterminate: false,
+					...how
+				};
+			}
+		};
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		await sendOwedPack({ db, email: refusing, giftOrigin: PINNED }, other, T0);
+		const mail = mailer();
+
+		await sendUnsentPacks({ db, email: mail.port, giftOrigin: PINNED }, at(3 * HOUR));
+
+		expect(mail.sent.map((m) => m.subject)).not.toContainEqual(expect.stringContaining('Contoso'));
+		expect(await row(other)).toMatchObject({ packSentAt: null, packFailedAt: T0 });
+		vi.restoreAllMocks();
+	});
+
+	it('still sends on the donor’s own save where the sweep stopped trying', async () => {
+		const refusing: EmailProvider = {
+			async send() {
+				return {
+					ok: false,
+					reason: 'rejected',
+					detail: '550',
+					indeterminate: false,
+					addressRefused: true
+				};
+			}
+		};
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		await sendOwedPack({ db, email: refusing, giftOrigin: PINNED }, donationId, at(HOUR));
+		const mail = mailer();
+
+		expect(
+			await sendOwedPack({ db, email: mail.port, giftOrigin: PINNED }, donationId, at(2 * HOUR))
+		).toBe('sent');
+		vi.restoreAllMocks();
+	});
+
+	// the employer write landed and the pack it deferred never ran: the process stopped first.
+	it('sends a pack never tried, at once and once', async () => {
+		const other = await gift();
+		await nameEmployer(db, { donationId: other }, 'Contoso');
+		const mail = mailer();
+
+		await sendUnsentPacks({ db, email: mail.port, giftOrigin: PINNED }, at(1));
+		await sendUnsentPacks({ db, email: mail.port, giftOrigin: PINNED }, at(2));
+
+		expect(mail.sent.map((m) => m.subject)).toEqual([expect.stringContaining('Contoso')]);
+		expect(await row(other)).toMatchObject({ packSentAt: at(1), packFailedAt: null });
+	});
+
+	it('stamps a pack never tried as failed where the donor has no email address', async () => {
+		const other = await gift();
+		await nameEmployer(db, { donationId: other }, 'Contoso');
+		await run(stmt('update donation set contact_id = ? where id = ?', NO_EMAIL_CONTACT_ID, other));
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await sendUnsentPacks({ db, email: mailer().port, giftOrigin: PINNED }, at(1));
+
+		expect(await row(other)).toMatchObject({ packSentAt: null, packFailedAt: at(1) });
+		vi.restoreAllMocks();
 	});
 });
 
@@ -539,35 +629,6 @@ describe('naming the employer, with the pack behind it', () => {
 		await Promise.all(deferred);
 
 		expect(mail.sent).toHaveLength(1);
-	});
-
-	it('stores the employer and defers no pack where the caller stopped waiting during the write', async () => {
-		const other = await gift();
-		const mail = mailer();
-		const deferred: Promise<unknown>[] = [];
-		const stopped = new AbortController();
-
-		const written = employerNamed(
-			{
-				db,
-				email: mail.port,
-				giftOrigin: PINNED,
-				defer: (work: Promise<unknown>) => void deferred.push(work),
-				signal: stopped.signal
-			},
-			{ donationId: other },
-			'Northwind',
-			T0
-		);
-		stopped.abort();
-
-		expect(await written).toMatchObject({
-			ok: true,
-			changed: true,
-			state: { employer: 'Northwind' }
-		});
-		expect(deferred).toHaveLength(0);
-		expect(mail.sent).toHaveLength(0);
 	});
 
 	it('sends the pack on a save of the same employer where the first never went', async () => {

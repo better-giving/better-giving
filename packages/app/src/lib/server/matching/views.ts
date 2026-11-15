@@ -1,4 +1,4 @@
-import { formatDate, formatMoney } from '@better-giving/emails';
+import { formatDate, giftAmount } from '@better-giving/emails';
 import { and, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import { authUser } from '../db/auth-schema';
 import type { Db } from '../db/client';
@@ -30,6 +30,11 @@ export type FilingDetails = {
 	readonly mailingAddress: string | null;
 	/** what is left of the gift after its refunds (`MatchGift.remainingMinor`), read at view time. */
 	readonly amountMinor: number;
+	/**
+	 * what was given, the receipt's figure (`MatchGift.totalMinor`): where `amountMinor` is less,
+	 * the amount is stated as both (`giftAmount` and `amountAfterRefunds` in @better-giving/emails).
+	 */
+	readonly givenMinor: number;
 	readonly currency: string;
 	readonly givenAt: Date;
 	/** when the receipt went, or `null` where none has. */
@@ -46,7 +51,10 @@ export type GiftPageView = {
 	readonly status: MatchStatus | null;
 	readonly employer: string | null;
 	readonly packSentAt: Date | null;
-	/** when the one reminder falls due, or `null` where no employer was named. */
+	/**
+	 * when the one reminder falls due, or `null` where none is armed (`reminderPromised` says
+	 * whether one will go).
+	 */
 	readonly reminderDueAt: Date | null;
 	/**
 	 * whether the reminder sweep will send the one reminder: it is owed (`reminderOwed` in
@@ -112,6 +120,7 @@ async function filingOf(db: Db, gift: MatchGift): Promise<FilingDetails> {
 		ein: org?.taxId ?? null,
 		mailingAddress: mailingAddress(org),
 		amountMinor: gift.remainingMinor,
+		givenMinor: gift.totalMinor,
 		currency: gift.currency,
 		givenAt: gift.receivedAt,
 		receiptSentAt: gift.receiptSentAt,
@@ -136,7 +145,7 @@ export function filingDetailsText(filing: FilingDetails): string {
 		['Nonprofit', filing.nonprofit],
 		['EIN', filing.ein],
 		['Mailing address', filing.mailingAddress],
-		['Gift amount', formatMoney(filing.amountMinor, filing.currency)],
+		['Gift amount', giftAmount(filing.amountMinor, filing.givenMinor, filing.currency)],
 		['Gift date', formatDate(filing.givenAt)],
 		['Receipt', receipt]
 	];

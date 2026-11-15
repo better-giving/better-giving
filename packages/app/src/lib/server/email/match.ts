@@ -29,6 +29,8 @@ export interface MatchPackInput {
 	 * `readMatchGift` in ../donations/queries.ts reads it (`remainingMinor`).
 	 */
 	readonly amountMinor: number;
+	/** minor units — what was given, `donation.total_minor`; stated beside a smaller `amountMinor`. */
+	readonly givenMinor: number;
 	/** ISO-4217, uppercase, as `donation.currency` holds it. */
 	readonly currency: string;
 	/** `donation.received_at`. */
@@ -54,6 +56,8 @@ export interface MatchReminderInput {
 	 * `readMatchGift` in ../donations/queries.ts reads it (`remainingMinor`).
 	 */
 	readonly amountMinor: number;
+	/** minor units — what was given, `donation.total_minor`; stated beside a smaller `amountMinor`. */
+	readonly givenMinor: number;
 	/** ISO-4217, uppercase, as `donation.currency` holds it. */
 	readonly currency: string;
 	/** `donation.received_at`. */
@@ -128,6 +132,7 @@ export async function renderMatchPack(input: MatchPackInput): Promise<MatchPackR
 				employer: input.employer,
 				filer: { legalName, ein, address: mailingAddress(input.org) },
 				amountMinor: input.amountMinor,
+				givenMinor: input.givenMinor,
 				currency: input.currency,
 				givenAt: input.givenAt,
 				receiptSentAt: input.receiptSentAt,
@@ -159,6 +164,7 @@ export async function renderMatchReminder(input: MatchReminderInput): Promise<Ma
 				donorName: input.donorName,
 				employer: input.employer,
 				amountMinor: input.amountMinor,
+				givenMinor: input.givenMinor,
 				currency: input.currency,
 				givenAt: input.givenAt,
 				giftPageUrl: input.giftPageUrl

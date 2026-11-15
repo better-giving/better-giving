@@ -7,7 +7,7 @@ import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-rea
 import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { giftLinkOrigin } from '$lib/server/matching/links';
-import { sendFailedPacks } from '$lib/server/matching/pack';
+import { sendUnsentPacks } from '$lib/server/matching/pack';
 import { sendDueReminders } from '$lib/server/matching/reminders';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { sweepSupporterLeftovers } from '$lib/server/supporters/sweep';
@@ -24,8 +24,8 @@ import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
  * quarter to, in a run of their own, the donor notices of refunds that did not send are sent
  * again; at a quarter past, the connector's and the supporters' spent links, codes and sessions
  * are swept with them. every ten minutes, the employer match reminders that fell due are sent
- * ($lib/server/matching/reminders.ts), and the match packs that failed an hour or more before are
- * sent again ($lib/server/matching/pack.ts). every minute, in one run, what this deployment owes is sent: the
+ * ($lib/server/matching/reminders.ts), and the match packs owed and never tried, or that failed
+ * an hour or more before, are sent ($lib/server/matching/pack.ts). every minute, in one run, what this deployment owes is sent: the
  * organisation's books, its Zaps and its webhook destinations — a minute because a gift is meant
  * to arrive while it is still the thing somebody is looking at, and a run on a deployment owing
  * nothing is an indexed read of each outbox and no call to anybody. what a row that has already failed waits is the backoff on
@@ -62,7 +62,7 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, db: Db, now: Date) =>
 	// ./lib/server/outbox/budget.ts sizes that run's posts.
 	'*/10 * * * *': (env, db, now) => {
 		const deps = { db, email: createEmailProvider(env), giftOrigin: giftLinkOrigin(env, null) };
-		return allRun([sendDueReminders(deps, now), sendFailedPacks(deps, now)]);
+		return allRun([sendDueReminders(deps, now), sendUnsentPacks(deps, now)]);
 	},
 
 	'* * * * *': (env, db, now) => {

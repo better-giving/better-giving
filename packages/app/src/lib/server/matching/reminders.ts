@@ -16,15 +16,15 @@ import type { PackDeps } from './pack';
 // the claim pattern ../donations/receipt.ts states for the receipt. a row is selected by the
 // predicate `gift_match_reminder_due_idx` is built on ($lib/server/db/schema.ts; the plan is pinned by
 // ../db/gift-match-schema.db.spec.ts and ./reminders.db.spec.ts), then claimed by one UPDATE that
-// stamps `reminded_at` only where it is still null, the row is still due and the gift is still
-// unfiled, unmatched and unvoided, and only a claim that returned its row sends. a send that did
+// stamps `reminded_at` only where the row is still due and still owed (`reminderOwed`, the terms
+// the selection reads), and only a claim that returned its row sends. a send that did
 // not go hands the claim back and moves the due time on by `REMINDER_RETRY_AFTER_MS`, so a reminder
 // that cannot go is retried and never hammered, and never keeps a due one behind it out of the run.
 // one that can never go — no donor address, no gift, nothing to sign it with — is handed back
 // disarmed instead, its due time cleared, so it leaves the sweep and is logged once.
 //
-// a run with no pinned origin sends nothing and says nothing: the pack arms a reminder only under a
-// pin, so a row armed then waits for one to be set again.
+// a run with no pinned origin sends nothing: the pack arms a reminder only under a pin, so a row
+// armed then waits for one to be set again, and a run that finds one due says so, once.
 //
 // no log line carries the employer.
 
@@ -33,6 +33,10 @@ export const REMINDER_RETRY_AFTER_MS = 60 * 60_000;
 
 /** the most reminders one run claims. a run sends them one after another over one SMTP transport. */
 export const REMINDERS_PER_RUN = 50;
+
+const UNPINNED =
+	'employer match reminders are due and none was sent: a scheduled run has no request to name the ' +
+	"gift page on, so BETTER_AUTH_URL in .env has to pin this deployment's address (.env.example).";
 
 /**
  * a row the sweep will remind once its due time comes, under a pinned origin: armed, not yet
@@ -66,8 +70,12 @@ export function dueReminders(db: Db, now: Date) {
  */
 export async function sendDueReminders(deps: PackDeps, now: Date): Promise<void> {
 	const origin = deps.giftOrigin;
-	if (origin === null) return;
-	for (const { donationId } of await dueReminders(deps.db, now)) {
+	const due = await dueReminders(deps.db, now);
+	if (origin === null) {
+		if (due.length > 0) console.warn(UNPINNED);
+		return;
+	}
+	for (const { donationId } of due) {
 		await remind(deps, origin, donationId, now);
 	}
 }
@@ -88,10 +96,7 @@ async function remind(
 					eq(giftMatch.donationId, donationId),
 					// still due: a run overlapping this one may have handed the row back for later.
 					lte(giftMatch.reminderDueAt, now),
-					isNull(giftMatch.remindedAt),
-					isNull(giftMatch.filedAt),
-					isNull(giftMatch.matchedAt),
-					isNull(giftMatch.voidedAt)
+					...reminderOwed(deps.db)
 				)
 			)
 			.returning({ token: giftMatch.token, employer: giftMatch.employer });
@@ -140,6 +145,7 @@ async function send(
 		donorName: gift.donorName,
 		employer,
 		amountMinor: gift.remainingMinor,
+		givenMinor: gift.totalMinor,
 		currency: gift.currency,
 		givenAt: gift.receivedAt,
 		giftPageUrl: giftPageUrl(origin, token)

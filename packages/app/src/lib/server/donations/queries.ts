@@ -10,6 +10,7 @@ import {
 	lt,
 	ne,
 	notExists,
+	notInArray,
 	or,
 	type SQL,
 	sql
@@ -166,18 +167,23 @@ export function projectStatus(attempts: readonly SettlementAttempt[]): DonationS
 
 /**
  * `row` is a refund whose money is gone for good: a refund-direction row still `succeeded`, and no
- * dispute on it that is open or was won. every read of what a gift has lost for good takes it from
- * here — the Zapier feed, the read API's `amount_refunded_minor`, the refund notice.
+ * dispute on it that is open or was won — one lost, or closed by the organisation's refund, stands.
+ * every read of what a gift has lost for good takes it from here — the Zapier feed, the read API's
+ * `amount_refunded_minor`, the refund notice.
  *
  * it parts from `projectStatus` above during an open dispute: there the withdrawal is a succeeded
- * refund and the gift reads `disputed`; here it stands for nothing until the dispute is lost.
+ * refund and the gift reads `disputed`; here it stands for nothing until the dispute is lost or
+ * refunded.
  */
 export function refundStands(db: Db, row: typeof payment) {
 	const unsettled = db
 		.select({ one: sql`1` })
 		.from(dispute)
 		.where(
-			and(eq(dispute.paymentId, row.id), or(isNull(dispute.outcome), ne(dispute.outcome, 'lost')))
+			and(
+				eq(dispute.paymentId, row.id),
+				or(isNull(dispute.outcome), notInArray(dispute.outcome, ['lost', 'refunded']))
+			)
 		);
 	return and(eq(row.direction, 'refund'), eq(row.status, 'succeeded'), notExists(unsettled));
 }
@@ -188,22 +194,13 @@ export function refundStands(db: Db, row: typeof payment) {
  * measures refunds against. a dispute still open takes nothing off, as there.
  */
 export function nothingLeftOfGift(db: Db, donationId: SQLiteColumn): SQL {
-	const minor = sql<number>`coalesce(sum(${payment.amountMinor}), 0)`;
-	const collected = db
-		.select({ minor })
+	// one scan of the gift's payments for both sums; `coalesce` reads a gift with no rows as 0.
+	const collected = sql`coalesce(sum(case when ${and(eq(payment.direction, 'inbound'), eq(payment.status, 'succeeded'))} then ${payment.amountMinor} end), 0)`;
+	const taken = sql`coalesce(sum(case when ${refundStands(db, payment)} then ${payment.amountMinor} end), 0)`;
+	return sql`(${db
+		.select({ nothingLeft: sql`${collected} > 0 and ${collected} <= ${taken}` })
 		.from(payment)
-		.where(
-			and(
-				eq(payment.donationId, donationId),
-				eq(payment.direction, 'inbound'),
-				eq(payment.status, 'succeeded')
-			)
-		);
-	const taken = db
-		.select({ minor })
-		.from(payment)
-		.where(and(eq(payment.donationId, donationId), refundStands(db, payment)));
-	return sql`(${collected}) > 0 and (${collected}) <= (${taken})`;
+		.where(eq(payment.donationId, donationId))})`;
 }
 
 /**
@@ -791,13 +788,14 @@ export type MatchGift = Pick<
 	readonly inBooks: boolean;
 	/**
 	 * what is left of the gift: what it collected, less the refunds of it that stand
-	 * (`refundStands`), never below nothing — the figure ./refund-notice.ts tells the donor. a
-	 * dispute still open takes nothing off; a lost one does.
+	 * (`refundStands`), never below nothing — the same rule ./refund-notice.ts applies. a dispute
+	 * still open takes nothing off; a lost one does.
 	 */
 	readonly remainingMinor: number;
 	/**
-	 * when the latest refund went back, where refunds alone left nothing of the gift; `null` where
-	 * something is left, or where a lost dispute took part of it, which is no refund.
+	 * when the latest refund went back, where refunds alone left nothing of the gift — a dispute the
+	 * organisation's refund closed among them; `null` where something is left, or where a lost
+	 * dispute took part of it, which is no refund.
 	 */
 	readonly refundedAt: Date | null;
 };
@@ -819,10 +817,9 @@ export async function readMatchGift(db: Db, id: string): Promise<MatchGift | nul
 		.limit(1);
 	if (row === undefined) return null;
 
-	const disputed = db
-		.select({ one: sql`1` })
-		.from(dispute)
-		.where(eq(dispute.paymentId, payment.id));
+	// a refund row's dispute, where it has one, is lost or refunded (`refundStands`): a loss is no
+	// refund, and a refund's close is dated by the refund (`closedByRefund` in ./reverse.ts).
+	const notLost = sql`${dispute.outcome} is not 'lost'`;
 	const [summaries, attempts, [taken]] = await Promise.all([
 		readContactSummaries(db, [row.contactId]),
 		db
@@ -833,13 +830,14 @@ export async function readMatchGift(db: Db, id: string): Promise<MatchGift | nul
 		db
 			.select({
 				standingMinor: sql<number>`coalesce(sum(${payment.amountMinor}), 0)`,
-				refundedMinor: sql<number>`coalesce(sum(case when ${notExists(disputed)} then ${payment.amountMinor} else 0 end), 0)`,
+				refundedMinor: sql<number>`coalesce(sum(case when ${notLost} then ${payment.amountMinor} else 0 end), 0)`,
 				lastRefundedAt:
-					sql<Date | null>`max(case when ${notExists(disputed)} then ${payment.occurredAt} end)`.mapWith(
+					sql<Date | null>`max(case when ${notLost} then coalesce(${dispute.closedAt}, ${payment.occurredAt}) end)`.mapWith(
 						payment.occurredAt
 					)
 			})
 			.from(payment)
+			.leftJoin(dispute, eq(dispute.paymentId, payment.id))
 			.where(and(eq(payment.donationId, id), refundStands(db, payment)))
 	]);
 	const { contactId, ...gift } = row;

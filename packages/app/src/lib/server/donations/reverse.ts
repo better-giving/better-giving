@@ -1,5 +1,5 @@
 import { formatDateTime } from '@better-giving/emails';
-import { and, eq, exists, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, exists, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { type ReversalEntry, reversalWrites, type Writes } from '../books/writes';
 import type { Db } from '../db/client';
@@ -39,8 +39,8 @@ import { sendRefundNotice } from './refund-notice';
 
 // what a refund or a dispute does to a gift already in the books: a payment row of its own, and an
 // entry group taking the money back out, in one `batch()` — a refund that leaves nothing of the
-// gift, a refund that settles an open dispute among them, and a dispute's loss, with the void of the
-// gift's employer match beside them (`refundVoidStatement` and `disputeLostVoidStatement` in
+// gift, a refund that settles an open dispute among them, and a dispute's loss that does, with the
+// void of the gift's employer match beside them (`refundVoidStatement` and `disputeLostVoidStatement` in
 // ../matching/match.ts), and a refund or a loss put back with that void cleared (`reopenStatement`
 // there). the only module that writes a refund-direction row or a `dispute` row, gated by
 // ./sole-refund-writer.spec.ts.
@@ -119,8 +119,8 @@ import { sendRefundNotice } from './refund-notice';
 // once, and otherwise nothing is written and staff are told on each delivery. a dispute reported
 // closed one way after it was recorded closed the other changes nothing and is told to staff.
 //
-// a refund of a gift whose open dispute holds the money is that dispute lost at the refund's figure,
-// through the same close and settle-up, and never a second withdrawal (`disputeHolding` below): the
+// a refund of a gift whose open dispute holds the money closes that dispute `refunded` at the
+// refund's figure, through the same close and settle-up as a loss, and never a second withdrawal (`disputeHolding` below): the
 // donor has the money back once, and is sent no notice, as for any dispute. the close is dated by
 // the refund, which is how a redelivery of it is found, since no row holds the refund's own id. a
 // refund naming more than the dispute withdrew takes no more of the gift, and staff are told the
@@ -388,8 +388,8 @@ async function withdraw(
 			// owed by a refund that tells its donor, until ./refund-notice.ts clears it.
 			noticeOwedSince: reversal.kind === 'refund' && notice === 'send' ? new Date() : null
 		}),
-		// a refund that leaves nothing of the gift, and a dispute recorded lost, close the gift's
-		// employer match in the batch that writes them; a partial refund and a dispute opened do not,
+		// a refund or a dispute recorded lost that leaves nothing of the gift closes the gift's
+		// employer match in the batch that writes it; a partial one and a dispute opened do not,
 		// since a win puts the money back (../matching/match.ts).
 		...(reversal.kind === 'refund'
 			? [refundVoidStatement(deps.db, reversed.donationId, new Date())]
@@ -549,9 +549,10 @@ async function disputeHolding(
 ): Promise<Payment | null> {
 	// a refund with no usable time closed nothing, and libSQL refuses to bind an invalid date, so it
 	// finds an open dispute only; the refund itself is refused further on (`recordReversal`).
+	// a close a refund made before migration 0040 reads `lost`.
 	const closedByThis = Number.isNaN(refundedAt.getTime())
 		? undefined
-		: and(eq(dispute.outcome, 'lost'), eq(dispute.closedAt, refundedAt));
+		: and(inArray(dispute.outcome, ['refunded', 'lost']), eq(dispute.closedAt, refundedAt));
 	const [row] = await db
 		.select({ payment })
 		.from(payment)
@@ -675,8 +676,9 @@ async function withdrawnBefore(
  * the settle-up's `('adjustment', withdrawal row)` on `entry_group_source_idx`, or matches no open
  * row where there is nothing to settle.
  *
- * `byRefund` is a close a refund made (`closedByRefund`): the employer match is then voided as that
- * refund's, only where it left nothing of the gift, rather than as a dispute lost.
+ * `byRefund` is a close a refund made (`closedByRefund`): the dispute closes `refunded`, which is
+ * no loss, and the employer match is voided as that refund's, only where it left nothing of the
+ * gift, rather than as a dispute lost.
  */
 async function closeLost(
 	deps: SettleDeps,
@@ -715,7 +717,7 @@ async function closeLost(
 	const took = reversal.amountMinor;
 	const close = deps.db
 		.update(dispute)
-		.set({ outcome: 'lost', closedAt: reversal.occurredAt })
+		.set({ outcome: byRefund ? 'refunded' : 'lost', closedAt: reversal.occurredAt })
 		.where(stillOpen)
 		.returning({ paymentId: dispute.paymentId });
 	const lowered =
@@ -1167,8 +1169,8 @@ async function reinstate(
 			`the dispute fee given back is ${feeReturnedMinor}, which is not a whole number of minor units.`
 		);
 	}
-	// a win that follows this dispute's own loss puts the money back. the loss's ledger lines stay;
-	// the group below is a new one. a row already won is a redelivery and writes nothing.
+	// a win that follows this dispute's own close, lost or refunded, puts the money back. the close's
+	// ledger lines stay; the group below is a new one. a row already won is a redelivery and writes nothing.
 	let restoringLoss = false;
 	if (reversal.kind === 'dispute_won') {
 		const [closed] = await deps.db
@@ -1182,7 +1184,7 @@ async function reinstate(
 				detail: `dispute ${reversal.providerReversalId} is already recorded as won; this delivery changed nothing.`
 			};
 		}
-		restoringLoss = closed?.outcome === 'lost';
+		restoringLoss = closed?.outcome === 'lost' || closed?.outcome === 'refunded';
 	}
 
 	const withdrawal = await findEntryGroup(deps.db, 'refund', refundRow.id);
@@ -1231,7 +1233,7 @@ async function reinstate(
 			)
 		)
 		.returning({ id: payment.id });
-	const reopen = reopenStatement(deps.db, refundRow.donationId);
+	const reopen = reopenStatement(deps.db, refundRow.donationId, new Date());
 	const batch: Writes = [
 		flip,
 		...(reversal.kind === 'dispute_won'
@@ -1242,7 +1244,9 @@ async function reinstate(
 						.where(
 							and(
 								eq(dispute.paymentId, refundRow.id),
-								restoringLoss ? eq(dispute.outcome, 'lost') : isNull(dispute.outcome)
+								restoringLoss
+									? inArray(dispute.outcome, ['lost', 'refunded'])
+									: isNull(dispute.outcome)
 							)
 						)
 				]

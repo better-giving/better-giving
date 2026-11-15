@@ -281,6 +281,20 @@
       "when": 1794707057059,
       "tag": "0039_gift_match",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1794759693578,
+      "tag": "0040_dispute_closed_by_refund",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1794761317872,
+      "tag": "0041_gift_match_pack_tries",
+      "breakpoints": true
     }
   ]
 }

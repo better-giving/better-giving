@@ -1540,6 +1540,169 @@ describe('0033 gives the profile a banner, keeping the profile', () => {
 	});
 });
 
+// what 0040 is for: a dispute closes `refunded`, and every dispute already open, won or lost keeps
+// every value it held. the seed above runs in front of 0010, which made `dispute`, so this case
+// stops the chain on a database of its own in front of 0040 and writes its disputes there.
+describe('0040 lets a dispute close refunded, keeping every dispute', () => {
+	const DISPUTE_REFUNDED_BY = '0040_dispute_closed_by_refund.sql';
+	const DISPUTE_REFUNDED = MIGRATIONS.findIndex((m) => m.name === DISPUTE_REFUNDED_BY);
+	const withdrawal = (n: number) => `019fb340-0000-7000-8001-${String(n).padStart(12, '0')}`;
+	let db: Awaited<ReturnType<typeof openUnmigrated>>;
+	let on: ReturnType<typeof rawSql>;
+	let disputesBefore: Row[];
+
+	beforeAll(async () => {
+		db = await openUnmigrated();
+		on = rawSql(db);
+		await applyMigrations(db, MIGRATIONS.slice(0, DISPUTE_REFUNDED));
+		await db.batch([
+			stmt(`insert into contact (id, kind, display_name, created_at, updated_at)
+			 values ('019fb340-0000-7000-8000-000000000001', 'individual', 'Probe Donor', 0, 0)`),
+			stmt(`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+			 values ('019fb340-0000-7000-8000-000000000002', '019fb340-0000-7000-8000-000000000001',
+			         10000, 'USD', 0, 0)`),
+			...[0, 1, 2, 3].map((i) =>
+				stmt(
+					`insert into payment (id, donation_id, amount_minor, currency, direction, method, status,
+					                      provider, provider_txn_id, occurred_at, created_at)
+					 values (?, '019fb340-0000-7000-8000-000000000002', 10000, 'USD', 'refund', 'card',
+					         'succeeded', 'stripe', ?, 0, 0)`,
+					withdrawal(i),
+					`du_rebuild_${i}`
+				)
+			),
+			stmt(
+				`insert into dispute (payment_id, outcome, respond_by, reason, closed_at, created_at, updated_at)
+				 values (?, null, 5, 'fraudulent', null, 1, 2),
+				        (?, 'won', null, null, 9, 3, 4),
+				        (?, 'lost', 7, 'product_not_received', 11, 5, 6)`,
+				withdrawal(0),
+				withdrawal(1),
+				withdrawal(2)
+			)
+		]);
+		disputesBefore = await on.all<Row>(stmt('select * from dispute order by payment_id'));
+		await applyMigrations(db, MIGRATIONS.slice(DISPUTE_REFUNDED));
+	});
+
+	it('is in the chain', () => {
+		expect(DISPUTE_REFUNDED).toBeGreaterThan(0);
+	});
+
+	it('keeps every dispute, column for column', async () => {
+		expect(disputesBefore).toHaveLength(3);
+		expect(await on.all<Row>(stmt('select * from dispute order by payment_id'))).toEqual(
+			disputesBefore
+		);
+	});
+
+	it('takes a dispute closed refunded, and still refuses an outcome it does not name', async () => {
+		await on.run(
+			stmt(
+				`insert into dispute (payment_id, outcome, closed_at, created_at, updated_at)
+				 values (?, 'refunded', 13, 0, 0)`,
+				withdrawal(3)
+			)
+		);
+		expect(
+			await on.first(stmt('select outcome from dispute where payment_id = ?', withdrawal(3)))
+		).toEqual({ outcome: 'refunded' });
+		const message = await rejectionCode(() =>
+			on.run(stmt(`update dispute set outcome = 'withdrawn' where payment_id = ?`, withdrawal(2)))
+		);
+		expect(message).toContain('SQLITE_CONSTRAINT_CHECK');
+		expect(message).toContain('dispute_outcome_check');
+	});
+
+	it('makes dispute_updated_at_idx again, and leaves no foreign key pointing at nothing', async () => {
+		const indexes = await on.all<{ name: string }>(
+			stmt(
+				`select name from sqlite_master where type = 'index' and tbl_name = 'dispute' and name not like 'sqlite_%'`
+			)
+		);
+		expect(indexes.map((r) => r.name)).toEqual(['dispute_updated_at_idx']);
+		expect(await on.all(stmt('select * from pragma_foreign_key_check'))).toEqual([]);
+	});
+});
+
+// what 0041 is for: a match counts the pack's failed sends, and every match already written keeps
+// every value it held, its count 0. `gift_match` is made by 0039, past the seed above, so this case
+// stops the chain on a database of its own in front of 0041 and writes its matches there.
+describe('0041 counts a pack’s failed sends, keeping every match', () => {
+	const PACK_TRIES_BY = '0041_gift_match_pack_tries.sql';
+	const PACK_TRIES = MIGRATIONS.findIndex((m) => m.name === PACK_TRIES_BY);
+	const gift = (n: number) => `019fb341-0000-7000-8001-${String(n).padStart(12, '0')}`;
+	const token = (c: string) => c.repeat(32);
+	let db: Awaited<ReturnType<typeof openUnmigrated>>;
+	let on: ReturnType<typeof rawSql>;
+	let matchesBefore: Row[];
+
+	beforeAll(async () => {
+		db = await openUnmigrated();
+		on = rawSql(db);
+		await applyMigrations(db, MIGRATIONS.slice(0, PACK_TRIES));
+		await db.batch([
+			stmt(`insert into contact (id, kind, display_name, created_at, updated_at)
+			 values ('019fb341-0000-7000-8000-000000000001', 'individual', 'Probe Donor', 0, 0)`),
+			...[0, 1].map((i) =>
+				stmt(
+					`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+					 values (?, '019fb341-0000-7000-8000-000000000001', 10000, 'USD', 0, 0)`,
+					gift(i)
+				)
+			),
+			stmt(
+				`insert into gift_match (id, donation_id, token, employer, pack_sent_at, pack_failed_at,
+				                         reminder_due_at, reminded_at, filed_at, filed_by, matched_at,
+				                         matched_by, voided_at, voided_by, void_reason, created_at)
+				 values ('019fb341-0000-7000-8002-000000000000', ?, ?, 'Northwind', 1, null, 2, 3, 4,
+				         'donor', 5, 'staff', 6, 'system', 'Gift refunded', 7),
+				        ('019fb341-0000-7000-8002-000000000001', ?, ?, null, null, 8, null, null, null,
+				         null, null, null, null, null, null, 9)`,
+				gift(0),
+				token('a'),
+				gift(1),
+				token('b')
+			)
+		]);
+		matchesBefore = await on.all<Row>(stmt('select * from gift_match order by id'));
+		await applyMigrations(db, MIGRATIONS.slice(PACK_TRIES));
+	});
+
+	it('is in the chain', () => {
+		expect(PACK_TRIES).toBeGreaterThan(0);
+	});
+
+	it('keeps every match, column for column, each counting no failed send', async () => {
+		expect(matchesBefore).toHaveLength(2);
+		expect(await on.all<Row>(stmt('select * from gift_match order by id'))).toEqual(
+			matchesBefore.map((r) => ({ ...r, pack_tries: 0 }))
+		);
+	});
+
+	it('refuses a count below nothing', async () => {
+		const message = await rejectionCode(() =>
+			on.run(stmt('update gift_match set pack_tries = -1 where donation_id = ?', gift(1)))
+		);
+		expect(message).toContain('SQLITE_CONSTRAINT_CHECK');
+		expect(message).toContain('gift_match_pack_tries_check');
+	});
+
+	it('makes its three indexes again, and leaves no foreign key pointing at nothing', async () => {
+		const indexes = await on.all<{ name: string }>(
+			stmt(
+				`select name from sqlite_master where type = 'index' and tbl_name = 'gift_match' and name not like 'sqlite_%' order by name`
+			)
+		);
+		expect(indexes.map((r) => r.name)).toEqual([
+			'gift_match_donation_id_idx',
+			'gift_match_reminder_due_idx',
+			'gift_match_token_idx'
+		]);
+		expect(await on.all(stmt('select * from pragma_foreign_key_check'))).toEqual([]);
+	});
+});
+
 // what 0028 is for: the page chat is gone, and with it every image only a chat turn named, while an
 // image a page, a cause or the logo still draws stays, a photo whatever kind it was made as.
 describe('0028 drops the page chat and the illustration kind', () => {

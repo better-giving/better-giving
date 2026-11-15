@@ -91,6 +91,7 @@ describe('the gift page', () => {
 			ein: '12-3456789',
 			mailingAddress: '1250 Mill Street, Suite 200, Cincinnati, OH 45202, United States',
 			amountMinor: 15_000,
+			givenMinor: 15_000,
 			currency: 'USD',
 			givenAt: T0,
 			receiptSentAt: T0,
@@ -138,7 +139,7 @@ describe('the gift page', () => {
 
 		const page = await readGiftPage(db, token, true);
 
-		expect(page).toMatchObject({ refundedAt: T1, filing: { amountMinor: 0 } });
+		expect(page).toMatchObject({ refundedAt: T1, filing: { amountMinor: 0, givenMinor: 15_000 } });
 	});
 
 	it('shows what is left of a gift partly refunded, and calls it no refund', async () => {
@@ -147,8 +148,11 @@ describe('the gift page', () => {
 
 		const page = await readGiftPage(db, token, true);
 
-		expect(page).toMatchObject({ refundedAt: null, filing: { amountMinor: 10_000 } });
-		expect(page?.copyText).toContain('Gift amount: USD 100.00');
+		expect(page).toMatchObject({
+			refundedAt: null,
+			filing: { amountMinor: 10_000, givenMinor: 15_000 }
+		});
+		expect(page?.copyText).toContain('Gift amount: USD 100.00 after refunds, of USD 150.00 given');
 	});
 
 	it('takes nothing off for a dispute still open, and calls a lost one no refund', async () => {
@@ -238,6 +242,7 @@ describe('the copied details', () => {
 		ein: '12-3456789',
 		mailingAddress: '1250 Mill Street, Cincinnati, OH 45202, United States',
 		amountMinor: 15_000,
+		givenMinor: 15_000,
 		currency: 'USD',
 		givenAt: T0,
 		receiptSentAt: T0,
