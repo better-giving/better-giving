@@ -114,7 +114,7 @@ export function template(data: MatchPackData): EmailTemplate {
 				<Paragraph>{greeting}</Paragraph>
 				<Paragraph>{thanks}</Paragraph>
 				<Paragraph>{LEAD}</Paragraph>
-				<RecordPanel lead={null} rows={rows} emphasised={[LABELS.amount]} />
+				<RecordPanel lead={null} rows={rows} emphasised={[LABELS.amount]} pinLabels />
 				<GiftPageSentence lead={MARK_FILED} url={data.giftPageUrl} />
 				<Divider />
 				<SmallPrint>{ONE_REMINDER}</SmallPrint>

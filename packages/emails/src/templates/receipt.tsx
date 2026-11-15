@@ -484,7 +484,7 @@ function ReceiptDocument(copy: ReceiptCopy & { readonly subject: string }) {
 		<Layout title={copy.subject}>
 			<Paragraph>{copy.greeting}</Paragraph>
 			<Paragraph>{copy.thanks}</Paragraph>
-			<RecordPanel lead={RECEIPT_LEAD} rows={copy.rows} emphasised={EMPHASISED} />
+			<RecordPanel lead={RECEIPT_LEAD} rows={copy.rows} emphasised={EMPHASISED} pinLabels={false} />
 			{copy.discloses ? <Disclosure /> : null}
 			<Paragraph>{copy.closing}</Paragraph>
 			{copy.giftPageUrl === null ? null : (

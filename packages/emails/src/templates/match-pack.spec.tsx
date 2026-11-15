@@ -80,6 +80,19 @@ describe('matchPack.template — the details a donor files with their employer',
 		expect(html).toContain('<strong>USD 150.00</strong>');
 	});
 
+	/**
+	 * the frame (u0iJjljOBA) sets every label on one line and at the top of its row, so a value that
+	 * wraps — the legal name, the address — hangs under its label rather than centring against it.
+	 */
+	it('keeps each label on one line, at the top of its row', async () => {
+		const [, html] = await arms();
+		const label = /<td style="([^"]*)">Gift amount<\/td>/.exec(html);
+		expect(label?.[1]).toContain('white-space:nowrap');
+		expect(label?.[1]).toContain('vertical-align:top');
+		const value = /<td style="([^"]*)">1250 Mill Street/.exec(html);
+		expect(value?.[1]).toContain('vertical-align:top');
+	});
+
 	/** never invent an address: a profile without one drops the row in both arms. */
 	it('leaves the address row out when the profile holds no mailing address', async () => {
 		const [text, html] = await arms({ filer: { ...data().filer, address: null } });

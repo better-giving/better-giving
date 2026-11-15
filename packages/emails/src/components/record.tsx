@@ -45,6 +45,16 @@ const VALUE_CELL_STYLE: CSSProperties = {
 	wordBreak: 'break-word'
 };
 
+/* a pinned block's cells: the label on one line, so `Gift amount` never breaks in two, and both
+   cells at the top of the row, so a value that wraps hangs under its label instead of centring
+   against it. */
+const PINNED_LABEL_CELL_STYLE: CSSProperties = {
+	...LABEL_CELL_STYLE,
+	whiteSpace: 'nowrap',
+	verticalAlign: 'top'
+};
+const PINNED_VALUE_CELL_STYLE: CSSProperties = { ...VALUE_CELL_STYLE, verticalAlign: 'top' };
+
 /**
  * the block in the HTML arm: a label and its value, one row each, in the order they were decided,
  * on a tinted panel.
@@ -61,14 +71,22 @@ const VALUE_CELL_STYLE: CSSProperties = {
 export function RecordPanel({
 	lead,
 	rows,
-	emphasised
+	emphasised,
+	pinLabels
 }: {
 	/** a line over the rows, inside the panel, or `null` for none. */
 	readonly lead: string | null;
 	readonly rows: readonly RecordRow[];
 	/** the labels whose values are set in bold. */
 	readonly emphasised: readonly string[];
+	/**
+	 * labels held to one line and both cells set at the top of the row. ../templates/receipt.tsx
+	 * passes `false` and keeps the cells it has always printed.
+	 */
+	readonly pinLabels: boolean;
 }) {
+	const labelStyle = pinLabels ? PINNED_LABEL_CELL_STYLE : LABEL_CELL_STYLE;
+	const valueStyle = pinLabels ? PINNED_VALUE_CELL_STYLE : VALUE_CELL_STYLE;
 	return (
 		<div style={PANEL_STYLE}>
 			{lead === null ? null : <p style={LEAD_STYLE}>{lead}</p>}
@@ -76,8 +94,8 @@ export function RecordPanel({
 				<tbody>
 					{rows.map(({ label, value }) => (
 						<tr key={label}>
-							<td style={LABEL_CELL_STYLE}>{label}</td>
-							<td style={VALUE_CELL_STYLE}>
+							<td style={labelStyle}>{label}</td>
+							<td style={valueStyle}>
 								{emphasised.includes(label) ? <strong>{value}</strong> : value}
 							</td>
 						</tr>
