@@ -341,6 +341,12 @@ body {
 	/* the entry card's widest, where it stands under a campaign or the Donation page's own layout. */
 	--page-fundraise-width: 44rem;
 	--page-fundraise-inset: 1.25rem 1.5rem;
+	/* the gift page's details from 30rem: the label column's floor, so the longest label stands a
+	   column's width off its value. */
+	--page-detail-label: 10rem;
+	/* a mark beside a line of body text, lowered onto the line's centre. unregistered, so both `em`s
+	   resolve on the mark that spends it, whose size is the line's. */
+	--page-glyph-drop: calc((var(--_lh-body) * 1em - var(--_glyph-beside)) / 2);
 	--page-w-display: 700;
 	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header says why */
 	--page-scrim: linear-gradient(
@@ -428,8 +434,8 @@ body {
    the gift's figure and day, then its cards, at the ended page's reading measure. the identity row
    stands a group's step off the title and the cards an item's step apart. each card is a plane, its
    heading tight over its hint and its parts `--_sp4` apart; the details are a key-value list with a
-   separator over each row, the label column as wide as its longest label from 30rem and stacked
-   over the value under it. the registry's presses keep their own width from 30rem and run the
+   separator over each row, the label column `--page-detail-label` wide from 30rem, or its longest
+   label where that is wider, and stacked over the value under it. the registry's presses keep their own width from 30rem and run the
    card's width under it. the name and the title are a step smaller below 60rem, the profile head's
    long-name step. */
 .stage.gift {
@@ -568,11 +574,14 @@ body {
 }
 
 .gift-done-mark {
-	margin-block-start: calc(
-		(var(--_lh-body) * 1em - var(--_glyph-beside)) /
-		2
-	); /* raw-length-ok: 1em is the line's own size, which its line box is measured in. */
+	margin-block-start: var(--page-glyph-drop);
 	color: var(--_ok-ink);
+}
+
+/* the thank-you's employer ask on this page: its two presses are the registry's md press, a row
+   tall while they stack below 30rem, and their own height side by side from it (below). */
+.page .employer-actions > .ds-btn {
+	min-block-size: var(--_row-min);
 }
 
 /* a refused filed press, under the press it describes, in the word the card says a refusal in. */
@@ -584,8 +593,12 @@ body {
 
 @container page (min-width: 30rem) {
 	.gift-details {
-		grid-template-columns: max-content minmax(0, 1fr);
+		grid-template-columns: minmax(var(--page-detail-label), max-content) minmax(0, 1fr);
 		column-gap: var(--_sp4);
+	}
+
+	.page .employer-actions > .ds-btn {
+		min-block-size: 0;
 	}
 
 	.gift-card > .ds-btn {

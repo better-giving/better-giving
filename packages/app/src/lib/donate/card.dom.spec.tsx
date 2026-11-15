@@ -1676,16 +1676,17 @@ it('draws its controls with the registry’s classes, on the elements the elemen
 		[...node.classList].filter((name) => name.startsWith('ds-'));
 	const collect = (): void => {
 		for (const node of every(root, '[part~="action"]')) {
-			expect(node.className, node.outerHTML).toBe(REGISTRY_CLASS.action);
+			// the employer ask's Send is the md press beside its Skip (`EmployerAskBlock` in ./takeover.tsx).
+			expect(node.className, node.outerHTML).toBe(
+				node.closest('.employer-actions') === null ? REGISTRY_CLASS.action : 'ds-btn ds-btn-primary'
+			);
 			seen.action += 1;
 		}
-		// the employer ask's Skip stands beside its Send at the registry's press size, which the
-		// registry draws (`[part~='action-quiet']` in packages/form/src/styles/parts.css).
+		// the employer ask's Skip stands beside its Send at the registry's md press, which the registry
+		// draws (`[part~='action-quiet']` in packages/form/src/styles/parts.css).
 		for (const node of every(root, '[part~="action-quiet"]')) {
 			expect(registryClasses(node), node.outerHTML).toEqual(
-				node.closest('.employer-actions') === null
-					? []
-					: ['ds-btn', 'ds-btn-secondary', 'ds-btn-lg']
+				node.closest('.employer-actions') === null ? [] : ['ds-btn', 'ds-btn-secondary']
 			);
 		}
 		for (const node of every(root, '[part~="field"]')) {

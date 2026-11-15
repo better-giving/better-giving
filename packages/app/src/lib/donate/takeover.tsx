@@ -546,6 +546,13 @@ export type EmployerAskBlockProps = {
 	readonly onSkip: () => void;
 };
 
+/**
+ * the two presses at the registry's md size rather than the card's large action: two large presses
+ * do not fit one line each side by side in the card's column. ./page.css holds them a row tall while
+ * they stack.
+ */
+const EMPLOYER_SEND_CLASS = 'ds-btn ds-btn-primary';
+
 const EMPLOYER_HEADING_ID = 'employer-heading';
 const EMPLOYER_HINT_ID = 'employer-hint';
 const EMPLOYER_PROBLEM_ID = 'employer-problem';
@@ -620,7 +627,7 @@ export function EmployerAskBlock({
 					<button
 						type={open ? 'submit' : 'button'}
 						part={partWhen('action', { busy })}
-						className={REGISTRY_CLASS.action}
+						className={EMPLOYER_SEND_CLASS}
 						aria-disabled={given ? undefined : true}
 						aria-busy={busy || undefined}
 						onClick={onSend}
@@ -631,7 +638,7 @@ export function EmployerAskBlock({
 					<button
 						type="button"
 						part={part('action-quiet')}
-						className="ds-btn ds-btn-secondary ds-btn-lg"
+						className="ds-btn ds-btn-secondary"
 						onClick={onSkip}
 					>
 						{copy.EMPLOYER_SKIP}
