@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
-import { donation, entryGroup, ledgerEntry } from '../db/schema';
+import { donation, entryGroup, giftMatch, ledgerEntry } from '../db/schema';
 import { parseContact, type ParsedContact } from '../contacts/contact-input';
 import { listContacts, readDonorSummary } from '../contacts/queries';
 import { findEntryGroup } from '../ledger/queries';
@@ -56,6 +56,16 @@ function gift(over: Partial<GiftInHand> = {}): GiftInHand {
 }
 
 describe('recordGiftInHand() — what the screens read back', () => {
+	it('writes the gift’s employer match row beside it', async () => {
+		const input = gift();
+		expect((await recordGiftInHand(db, input)).ok).toBe(true);
+		const rows = await db
+			.select()
+			.from(giftMatch)
+			.where(eq(giftMatch.donationId, input.donationId));
+		expect(rows).toHaveLength(1);
+	});
+
 	it('reads as completed on the gifts list rather than pending', async () => {
 		const input = gift();
 

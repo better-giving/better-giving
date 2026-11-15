@@ -130,6 +130,16 @@ describe('recordDonation() — the ledger is not written', () => {
 });
 
 describe('recordDonation() — the rows one gift writes', () => {
+	it('writes the gift’s employer match row beside it, with no stamps', async () => {
+		const input = gift();
+		await recorded(input);
+		expect(
+			await all(
+				stmt('select employer, filed_at from gift_match where donation_id = ?', input.donationId)
+			)
+		).toEqual([{ employer: null, filed_at: null }]);
+	});
+
 	it('writes the contact, the donation, its lines and its payment', async () => {
 		const input = gift();
 
@@ -584,6 +594,16 @@ describe('recordAuthorizedGift() — the gift a repeating commitment was authori
 			...over
 		};
 	}
+
+	it('writes the gift’s employer match row beside it', async () => {
+		const input = await authorized();
+		expect((await recordAuthorizedGift(db, input)).ok).toBe(true);
+		expect(
+			await all(
+				stmt('select count(*) as n from gift_match where donation_id = ?', input.donationId)
+			)
+		).toEqual([{ n: 1 }]);
+	});
 
 	it('writes the gift and its line, and no payment', async () => {
 		const input = await authorized();

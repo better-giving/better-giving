@@ -18,7 +18,17 @@ import { alias, type SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { readContactNames, readContactSummaries } from '../contacts/queries';
 import type { Db } from '../db/client';
 import { type TimeWindow, withinWindow } from '../ledger/queries';
-import { dispute, donation, payment, program, type Donation, type Payment } from '../db/schema';
+import {
+	dispute,
+	donation,
+	giftMatch,
+	payment,
+	program,
+	type Donation,
+	type Payment
+} from '../db/schema';
+import { matchFilterWhere } from '../matching/match';
+import { type MatchFilter, type MatchStatus, matchStatus } from '../../matching/status';
 import type { DonationStatus } from '../../donations/statuses';
 import { projectTribute } from '../../donations/tributes';
 
@@ -29,7 +39,8 @@ import { projectTribute } from '../../donations/tributes';
 // `program` is named here too, and only as a left join for the cause's name — the same crossing
 // `findTarget` in ./settle.ts makes into `form`, and for the same saving: a name for a column on the
 // page, at no second round trip. ../programs/queries.ts owns every write of that table and every
-// read that has a rule in it.
+// read that has a rule in it. `gift_match` is named the same way, as a left join for the list's
+// match word and its filter; ../matching/match.ts owns every write of it and the filter's rule.
 //
 // the exceptions are `listContacts`, `readDonorSummary` and `findPaymentDonor` in
 // ../contacts/queries.ts. the first two name `donation` and `payment` to answer two questions about
@@ -383,6 +394,22 @@ const DONATION_COLUMNS = {
 } satisfies Record<keyof DonationSelection, SQLiteColumn>;
 
 /**
+ * the stamps the list's match word is read off, and the row's id, which is what tells a gift with
+ * a row and no stamps from a gift with none: drizzle answers a left-joined object `null` only where
+ * every field in it is.
+ */
+const MATCH_COLUMNS = {
+	id: giftMatch.id,
+	employer: giftMatch.employer,
+	packSentAt: giftMatch.packSentAt,
+	packFailedAt: giftMatch.packFailedAt,
+	remindedAt: giftMatch.remindedAt,
+	filedAt: giftMatch.filedAt,
+	matchedAt: giftMatch.matchedAt,
+	voidedAt: giftMatch.voidedAt
+};
+
+/**
  * an attempt with the gift it settles, which the grouping needs, and the processor's own id for the
  * charge, which is what a screen asks the processor about the deciding attempt by.
  */
@@ -474,6 +501,18 @@ export type DonationListRow = Omit<
 	 * in.
 	 */
 	tribute: { kind: TributeKind; honoree: string } | null;
+	/**
+	 * the gift's employer match: its one word (`matchStatus` in ../../matching/status.ts) and the
+	 * employer the donor named, for staff. `null` on a gift recorded before matching, which has no
+	 * row. the employer reaches no public surface; this read is /admin's.
+	 */
+	match: { status: MatchStatus | null; employer: string | null } | null;
+};
+
+/** what the gifts list is narrowed to. */
+export type DonationListFilter = {
+	/** the match filter, as `MATCH_FILTERS` names it. absent, every gift. */
+	readonly match?: MatchFilter;
 };
 
 /**
@@ -517,14 +556,21 @@ export type DonationPage = {
  * the probe is dropped before the two follow-up reads, so the ids bound into them number
  * `DONATION_LIST_LIMIT` at most.
  */
-export async function listDonations(db: Db): Promise<DonationPage> {
+export async function listDonations(
+	db: Db,
+	filter: DonationListFilter = {}
+): Promise<DonationPage> {
 	const rows = await db
-		.select(DONATION_COLUMNS)
+		.select({ ...DONATION_COLUMNS, match: MATCH_COLUMNS })
 		.from(donation)
 		// left, because a gift credited to no cause is the ordinary one and an inner join would
 		// answer with a page holding only the gifts that name one. nothing deletes from `program`
 		// (../programs/queries.ts), so a gift naming a cause always finds its name.
 		.leftJoin(program, eq(donation.programId, program.id))
+		// left for the same reason: a gift recorded before matching has no row. one per gift at most
+		// (`gift_match_donation_id_idx`), so the join adds no row.
+		.leftJoin(giftMatch, eq(giftMatch.donationId, donation.id))
+		.where(filter.match === undefined ? undefined : matchFilterWhere(filter.match))
 		.orderBy(desc(donation.receivedAt), desc(donation.id))
 		.limit(DONATION_LIST_LIMIT + 1);
 
@@ -558,25 +604,28 @@ export async function listDonations(db: Db): Promise<DonationPage> {
 	}
 
 	return {
-		donations: page.map(({ contactId, recurringId, tributeKind, tributeHonoree, ...row }) => {
-			const attempts = byDonation.get(row.id) ?? [];
-			const deciding = decidingAttempt(attempts);
-			return {
-				...row,
-				// a gift whose donor row is missing is unreachable — `donation.contact_id` is NOT NULL
-				// and its foreign key is `NO ACTION`, so the parent cannot be deleted out from under it.
-				// the fallback is here because the lookup is a `Map`, and a blank cell would be a worse
-				// answer to a state that cannot happen than a word saying so.
-				donorName: names.get(contactId) ?? 'Unknown donor',
-				status: projectStatus(attempts),
-				rail: projectRail(attempts),
-				providerTxnId: deciding?.providerTxnId ?? null,
-				providerReference: deciding?.providerReference ?? null,
-				coinReceived: projectCoinReceived(attempts),
-				repeating: recurringId !== null,
-				tribute: projectTribute(tributeKind, tributeHonoree)
-			};
-		}),
+		donations: page.map(
+			({ contactId, recurringId, tributeKind, tributeHonoree, match, ...row }) => {
+				const attempts = byDonation.get(row.id) ?? [];
+				const deciding = decidingAttempt(attempts);
+				return {
+					...row,
+					// a gift whose donor row is missing is unreachable — `donation.contact_id` is NOT NULL
+					// and its foreign key is `NO ACTION`, so the parent cannot be deleted out from under it.
+					// the fallback is here because the lookup is a `Map`, and a blank cell would be a worse
+					// answer to a state that cannot happen than a word saying so.
+					donorName: names.get(contactId) ?? 'Unknown donor',
+					status: projectStatus(attempts),
+					rail: projectRail(attempts),
+					providerTxnId: deciding?.providerTxnId ?? null,
+					providerReference: deciding?.providerReference ?? null,
+					coinReceived: projectCoinReceived(attempts),
+					repeating: recurringId !== null,
+					tribute: projectTribute(tributeKind, tributeHonoree),
+					match: match === null ? null : { status: matchStatus(match), employer: match.employer }
+				};
+			}
+		),
 		hasMore
 	};
 }
@@ -700,5 +749,62 @@ export async function findRecordedGift(db: Db, id: string): Promise<RecordedGift
 		donorName: summary?.displayName ?? 'Unknown donor',
 		donorEmail: summary?.primaryEmail ?? null,
 		method: attempt?.method ?? null
+	};
+}
+
+/** one gift as its employer match reads it: the paperwork's figures, the donor, and its standing. */
+export type MatchGift = Pick<
+	Donation,
+	'id' | 'formId' | 'totalMinor' | 'currency' | 'receivedAt' | 'receiptSentAt'
+> & {
+	readonly donorName: string;
+	readonly donorEmail: string | null;
+	/** derived, never stored. see `projectStatus`. */
+	readonly status: DonationStatus;
+	/** how the gift arrived, or `null` where nothing has been attempted. see `projectRail`. */
+	readonly method: Payment['method'] | null;
+	/** whether an inbound attempt succeeded: the gift is in the books. */
+	readonly inBooks: boolean;
+	/** when the latest succeeded refund went back, or `null` where none has. */
+	readonly refundedAt: Date | null;
+};
+
+/** one gift's figures, donor and standing for its employer match, or `null` where no gift has the id. */
+export async function readMatchGift(db: Db, id: string): Promise<MatchGift | null> {
+	const [row] = await db
+		.select({
+			id: donation.id,
+			formId: donation.formId,
+			totalMinor: donation.totalMinor,
+			currency: donation.currency,
+			receivedAt: donation.receivedAt,
+			receiptSentAt: donation.receiptSentAt,
+			contactId: donation.contactId
+		})
+		.from(donation)
+		.where(eq(donation.id, id))
+		.limit(1);
+	if (row === undefined) return null;
+
+	const [summaries, attempts] = await Promise.all([
+		readContactSummaries(db, [row.contactId]),
+		db
+			.select(ATTEMPT_COLUMNS)
+			.from(payment)
+			.leftJoin(dispute, eq(dispute.paymentId, payment.id))
+			.where(eq(payment.donationId, id))
+	]);
+	const { contactId, ...gift } = row;
+	const summary = summaries.get(contactId);
+	const refunds = attempts.filter((a) => a.direction === 'refund' && a.status === 'succeeded');
+	return {
+		...gift,
+		// the donor row cannot be missing — see `listDonations` above for why, and for the word.
+		donorName: summary?.displayName ?? 'Unknown donor',
+		donorEmail: summary?.primaryEmail ?? null,
+		status: projectStatus(attempts),
+		method: projectRail(attempts)?.method ?? null,
+		inBooks: attempts.some((a) => a.direction === 'inbound' && a.status === 'succeeded'),
+		refundedAt: latestOf(refunds)?.occurredAt ?? null
 	};
 }

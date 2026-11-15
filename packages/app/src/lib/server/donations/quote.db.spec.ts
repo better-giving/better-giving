@@ -2,7 +2,7 @@ import { eq, isNotNull, sql } from 'drizzle-orm';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import { createDb, type Db } from '../db/client';
-import { contact, donation, entryGroup, lineItem, payment } from '../db/schema';
+import { contact, donation, entryGroup, giftMatch, lineItem, payment } from '../db/schema';
 import type {
 	DepositInstructions,
 	Intent,
@@ -88,6 +88,7 @@ beforeAll(async () => {
 beforeEach(async () => {
 	await run(stmt('delete from payment'));
 	await run(stmt('delete from line_item'));
+	await run(stmt('delete from gift_match'));
 	await run(stmt('delete from donation'));
 	await run(stmt('delete from contact'));
 	await run(stmt('delete from form'));
@@ -352,6 +353,20 @@ const mint = async (
 	return result;
 };
 
+/** mail values that deliver (`mailDelivers` in ../email/delivers.ts), which the gift page needs. */
+const MAIL_ENV = {
+	SMTP_HOST: 'mail.example.org',
+	SMTP_USERNAME: 'giving',
+	SMTP_PASSWORD: 'notarealpassword',
+	MAIL_FROM: 'giving@example.org'
+};
+
+/** the token of the gift page `giftUrl` names, which is the one the gift's match row holds. */
+async function giftUrlNamesItsRow(giftUrl: string | undefined) {
+	const [match] = await db.select().from(giftMatch);
+	expect(giftUrl).toBe(`https://give.example.workers.dev/gift/${match?.token}`);
+}
+
 describe('mintQuote() — a gift that goes through', () => {
 	it('answers with the token and the server’s own numbers', async () => {
 		const result = await mint();
@@ -362,6 +377,18 @@ describe('mintQuote() — a gift that goes through', () => {
 			feeMinor: 0,
 			totalMinor: 10_000
 		});
+	});
+
+	it('answers the gift page’s address where the deployment delivers mail', async () => {
+		const result = await mint(deps({ env: { ...STRIPE_ENV, ...MAIL_ENV } }));
+
+		await giftUrlNamesItsRow(result.ok ? result.quote.giftUrl : undefined);
+	});
+
+	it('answers no gift page where the deployment cannot deliver mail', async () => {
+		const result = await mint();
+
+		expect(result.ok && 'giftUrl' in result.quote).toBe(false);
 	});
 
 	it('writes the gift, its line and its pending payment', async () => {
@@ -811,6 +838,14 @@ describe('mintQuote() — a repeating gift', () => {
 			feeMinor: 0,
 			totalMinor: 10_000
 		});
+	});
+
+	it('answers the gift page’s address of the gift it wrote', async () => {
+		const result = await mint(deps({ env: { ...STRIPE_ENV, ...MAIL_ENV } }), {
+			frequency: 'monthly'
+		});
+
+		await giftUrlNamesItsRow(result.ok ? result.quote.giftUrl : undefined);
 	});
 
 	it.each(['monthly', 'yearly'] as const)(
@@ -1727,6 +1762,15 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 			authorizedSessionId: SESSION,
 			deploymentOrigin: 'https://give.example.workers.dev'
 		});
+	});
+
+	it('answers the gift page’s address of the gift it wrote', async () => {
+		const result = await mint(
+			chariotDeps(chariotProvider().port, { env: { ...CHARIOT_ENV, ...MAIL_ENV } }),
+			fundGift()
+		);
+
+		await giftUrlNamesItsRow(result.ok ? result.quote.giftUrl : undefined);
 	});
 
 	it('records the payment against Chariot and the grant it created', async () => {

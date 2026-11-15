@@ -68,6 +68,7 @@ beforeEach(async () => {
 	// the auth tables are left alone: the session above is signed in once and every case here is
 	// about gifts rather than about who is reading them.
 	await run(stmt('delete from payment'));
+	await run(stmt('delete from gift_match'));
 	await run(stmt('delete from donation'));
 	await run(stmt('delete from recurring_plan'));
 	await run(stmt('delete from contact'));
@@ -311,6 +312,7 @@ describe('/admin/donations — a note on the donate page', () => {
 			'entry_group',
 			'line_item',
 			'payment',
+			'gift_match',
 			'donation',
 			'page'
 		]) {
@@ -360,6 +362,7 @@ describe('/admin/donations load', () => {
 		// `recordGiftInHand` stores the day typed as that day's UTC midnight, so the day is UTC's.
 		for (const method of ['cash', 'check']) {
 			await run(stmt('delete from payment'));
+			await run(stmt('delete from gift_match'));
 			await run(stmt('delete from donation'));
 			const id = await gift({ receivedAt: Date.UTC(2026, 6, 4) });
 			await attempt(id, { method, provider: null });

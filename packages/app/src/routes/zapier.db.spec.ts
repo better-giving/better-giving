@@ -92,6 +92,7 @@ beforeEach(async () => {
 		'ledger_entry',
 		'entry_group',
 		'payment',
+		'gift_match',
 		'donation',
 		'contact'
 	]) {

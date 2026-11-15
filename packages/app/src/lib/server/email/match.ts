@@ -157,9 +157,9 @@ export async function renderMatchReminder(input: MatchReminderInput): Promise<Ma
  * the profile's mailing address on one line — `1250 Mill Street, Suite 200, Cincinnati, OH 45202,
  * United States` — or `null` where its street, city or country is unsaved, the three a receipt
  * requires (`RECEIPT_FIELDS` in ../org/receipt-fields.ts). a part address is no address to file,
- * and the pack leaves the row out rather than print one.
+ * and the pack and the gift page (../matching/views.ts) leave the row out rather than print one.
  */
-function mailingAddress(org: OrgProfile | null): string | null {
+export function mailingAddress(org: OrgProfile | null): string | null {
 	if (org === null) return null;
 	const { addressLine1, city, country } = org;
 	if (!present(addressLine1) || !present(city) || !present(country)) return null;

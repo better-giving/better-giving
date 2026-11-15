@@ -18,7 +18,15 @@ let db: Db;
 
 beforeEach(async () => {
 	db = createDb(client);
-	for (const table of ['ledger_entry', 'entry_group', 'dispute', 'payment', 'donation', 'contact'])
+	for (const table of [
+		'ledger_entry',
+		'entry_group',
+		'dispute',
+		'payment',
+		'gift_match',
+		'donation',
+		'contact'
+	])
 		await run(stmt(`delete from ${table}`));
 });
 

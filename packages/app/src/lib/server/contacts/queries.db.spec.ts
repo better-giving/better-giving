@@ -47,6 +47,7 @@ beforeAll(async () => {
 beforeEach(async () => {
 	// children first — every FK in this schema is `NO ACTION`.
 	await run(stmt('delete from payment'));
+	await run(stmt('delete from gift_match'));
 	await run(stmt('delete from donation'));
 	await run(stmt('delete from recurring_plan'));
 	await run(stmt('delete from contact'));

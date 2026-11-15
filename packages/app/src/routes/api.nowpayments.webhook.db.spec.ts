@@ -224,6 +224,7 @@ beforeEach(async () => {
 		'entry_group',
 		'payment',
 		'line_item',
+		'gift_match',
 		'donation',
 		'contact',
 		'form'
@@ -697,7 +698,8 @@ describe('POST /api/nowpayments/webhook — a refunded payment', () => {
 			{
 				db: createDb(client),
 				processors: createPaymentProviders(envWith(CONFIGURED)),
-				email: { send: async () => ({ ok: true }) }
+				email: { send: async () => ({ ok: true }) },
+				giftOrigin: null
 			},
 			now
 		);

@@ -70,6 +70,7 @@ beforeEach(async () => {
 		'webhook_destination',
 		'dispute',
 		'payment',
+		'gift_match',
 		'donation',
 		'recurring_plan',
 		'contact',

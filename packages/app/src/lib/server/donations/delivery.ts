@@ -122,6 +122,11 @@ export type SettleDeps = MailDeps & {
 	 * in ../forms/coin-cache.ts. absent, or answering null, a coin is named by its code uppercased.
 	 */
 	readonly payableCoins?: () => Promise<readonly PayableCoin[] | null>;
+	/**
+	 * the origin a gift page is linked on from the receipt and the pack (`ReceiptDeps` in
+	 * ./receipt.ts). absent, neither links one.
+	 */
+	readonly giftOrigin?: string | null;
 };
 
 export { alert, type MailDeps } from '../email/alert';

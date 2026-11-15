@@ -5,6 +5,7 @@ import { cachedCoins } from '$lib/server/forms/coin-cache';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/api.nowpayments.webhook';
+import { giftLinkOrigin } from '$lib/server/matching/links';
 
 // where a crypto gift reaches the books: the IPNs NOWPayments posts to the address each payment was
 // minted with (`ipn_callback_url`, built by `webhookAddress` in $lib/server/payments/webhook-address.ts).
@@ -43,6 +44,8 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 			provider: processors.for('nowpayments'),
 			processors,
 			email: createEmailProvider(env),
+			// the host the processor delivered to is this deployment's, unless a pin names another.
+			giftOrigin: giftLinkOrigin(env, new URL(request.url)),
 			payableCoins: () => cachedCoins(processors, new URL(request.url).origin)
 		},
 		// `Headers` iterates lowercase, which is the keying the adapter reads its header by.

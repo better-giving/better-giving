@@ -48,6 +48,7 @@ import {
 	recurringChargeFailedWebhookStatements,
 	recurringGiftStartedWebhookStatements
 } from '../webhooks/events';
+import { giftMatchInsert } from '../matching/match';
 import { supporterPageOf } from '../supporters/gifts';
 
 // the books for a gift that repeats: what one collection under a standing commitment writes, and
@@ -1307,8 +1308,8 @@ function chargeWrites(
 	};
 
 	return {
-		// foreign-key order: the gift, its line and its payment, then the entries keyed to that
-		// payment, then the queue row keyed to one of those entries, then the rows each listening
+		// foreign-key order: the gift, its line, its payment and its employer match row, then the
+		// entries keyed to that payment, then the queue row keyed to one of those entries, then the rows each listening
 		// Zap and destination is owed, about the payment. one statement per row and never a
 		// multi-row INSERT — D1 caps a query at 100 bound parameters
 		// (https://developers.cloudflare.com/d1/platform/limits/).
@@ -1319,6 +1320,7 @@ function chargeWrites(
 				.values({ ...giftRow, supporterPageId: supporterPageOf(formId) }),
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
+			giftMatchInsert(db, donationId),
 			...settledGiftWrites(db, {
 				charge: chargeEntry(gift, settlement),
 				fee: feeEntry(gift, settlement),

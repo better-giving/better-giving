@@ -17,12 +17,16 @@ import {
 import { type NameParts, shownName } from '../pages/shown-name';
 import type { DepositInstructions, ProcessorName } from '../payments/provider';
 import type { QuotedRail } from '../payments/provider';
+import { giftMatchInsert } from '../matching/match';
 import { resolveDonor } from './donor';
 import type { NoteOnPage, Tribute } from './quote-input';
 import { supporterPageOf } from '../supporters/gifts';
 
-// the write a gift makes at quote time: a donor, a donation, its lines and — where an attempt has
-// actually been opened — the settlement attempt, all of it in one `batch()`.
+// the write a gift makes at quote time: a donor, a donation, its lines, its employer match row
+// (../matching/match.ts) and — where an attempt has actually been opened — the settlement attempt,
+// all of it in one `batch()`. the match row is written here rather than at settlement because the
+// quote answers its gift page's address (`Quote.giftUrl`); that page shows nothing until the gift
+// reaches the books (../matching/views.ts).
 //
 // ---------------------------------------------------------------------------
 // two writers, because there are two kinds of quote and only one of them opens an attempt.
@@ -72,7 +76,7 @@ import { supporterPageOf } from '../supporters/gifts';
 //
 // the file is `record.ts` rather than `queries.ts`, unlike its neighbours in ../contacts and
 // ../forms. those own one table each and every read and write of it; this owns no table and
-// composes four, and calling it `queries.ts` would promise that `donation` is read here, which it
+// composes five, and calling it `queries.ts` would promise that `donation` is read here, which it
 // is not.
 // ---------------------------------------------------------------------------
 
@@ -122,6 +126,11 @@ export type RecordDonationInput = {
 	 * a UUIDv7 generated app-side, like every id in this schema except `form.id`.
 	 */
 	readonly donationId: string;
+	/**
+	 * the token of the gift's page (`gift_match.token`), where the caller answers its address before
+	 * this write is readable — `Quote.giftUrl` in packages/form/src/v1.ts. absent, the column mints one.
+	 */
+	readonly giftToken?: string;
 	/**
 	 * the payer, already parsed.
 	 *
@@ -306,6 +315,11 @@ export type RecordResult = { readonly ok: true; readonly value: RecordedDonation
 export type AuthorizedGiftInput = {
 	/** the gift's id, minted before the commitment was created and carried on it. */
 	readonly donationId: string;
+	/**
+	 * the token of the gift's page (`gift_match.token`), where the caller answers its address before
+	 * this write is readable — `Quote.giftUrl` in packages/form/src/v1.ts. absent, the column mints one.
+	 */
+	readonly giftToken?: string;
 	/** the donor's row, already committed — `commitDonor` in ./donor.ts. */
 	readonly contactId: string;
 	readonly formId: string;
@@ -382,7 +396,7 @@ const QUOTED_RAIL_METHODS: Readonly<Record<QuotedRail, SettledRail>> = Object.fr
 /**
  * writes one gift, atomically, and hands back the ids it wrote under.
  *
- * the statements go in one `batch()` in foreign-key order — contact, donation, lines, payment —
+ * the statements go in one `batch()` in foreign-key order — contact, donation, lines, payment, match —
  * one statement per row and never a multi-row `INSERT`. `Db` has no `transaction`
  * (../db/client.ts), so this batch is the only atomic unit available and everything the gift is made
  * of has to be inside it: a donation with no payment, or a contact with no gift, is a state nothing
@@ -461,7 +475,8 @@ export async function recordAuthorizedGift(
 				unitPriceMinor: line.amountMinor,
 				lineTotalMinor: line.amountMinor
 			} satisfies NewLineItem)
-		)
+		),
+		giftMatchInsert(db, input.donationId, input.giftToken)
 	];
 
 	try {
@@ -614,7 +629,8 @@ async function write(db: Db, input: RecordDonationInput): Promise<RecordedDonati
 			// the fundraiser the form belongs to, read off the form inside the insert (../supporters/gifts.ts).
 			.values({ ...donationRow, supporterPageId: supporterPageOf(input.formId) }),
 		...lineRows.map((row) => db.insert(lineItem).values(row)),
-		db.insert(payment).values(paymentRow)
+		db.insert(payment).values(paymentRow),
+		giftMatchInsert(db, input.donationId, input.giftToken)
 	];
 	// a matched donor whose consent was never asked contributes no statement at all — see
 	// `resolveDonor` in ./donor.ts. the batch stays non-empty either way, which is what `Writes` says.

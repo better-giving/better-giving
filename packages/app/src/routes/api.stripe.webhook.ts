@@ -4,6 +4,7 @@ import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/api.stripe.webhook';
+import { giftLinkOrigin } from '$lib/server/matching/links';
 
 // where Stripe's notices about a gift land — a payment that settles it, a refund, or a dispute — and
 // reach the books: the processor's own callback, and one of the routes in this app whose caller is a
@@ -60,7 +61,9 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 			db: context.get(database),
 			provider: processors.for('stripe'),
 			processors,
-			email: createEmailProvider(env)
+			email: createEmailProvider(env),
+			// the host the processor delivered to is this deployment's, unless a pin names another.
+			giftOrigin: giftLinkOrigin(env, new URL(request.url))
 		},
 		// the headers whole, because which of them verifies a delivery is the adapter's fact
 		// ($lib/server/payments/provider.ts). `Headers` iterates lowercase, which is the keying that

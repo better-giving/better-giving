@@ -309,6 +309,7 @@ describe('the profile head /donate is handed', () => {
 			'entry_group',
 			'payment',
 			'line_item',
+			'gift_match',
 			'donation',
 			'recurring_plan',
 			'contact'
@@ -363,6 +364,7 @@ describe('messages from donors on /donate', () => {
 			'entry_group',
 			'payment',
 			'line_item',
+			'gift_match',
 			'donation',
 			'recurring_plan',
 			'contact'

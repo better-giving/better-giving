@@ -23,6 +23,7 @@ beforeEach(async () => {
 	await client.batch([
 		stmt('delete from payment'),
 		stmt('delete from line_item'),
+		stmt('delete from gift_match'),
 		stmt('delete from donation'),
 		stmt('delete from page'),
 		stmt('delete from form')

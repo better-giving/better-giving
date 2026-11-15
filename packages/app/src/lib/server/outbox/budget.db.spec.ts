@@ -339,6 +339,7 @@ describe('the QuickBooks run', () => {
 			'ledger_entry',
 			'entry_group',
 			'payment',
+			'gift_match',
 			'donation',
 			'recurring_plan',
 			'contact',

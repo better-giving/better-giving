@@ -17,6 +17,8 @@ import {
 	type ReceiptResult
 } from '../email/receipt';
 import { formatMinor } from '../../donations/money';
+import { readGiftPageUrl } from '../matching/match';
+import { sendOwedPack } from '../matching/pack';
 import { readOrgProfile } from '../org/queries';
 import { alert, type MailDeps } from './delivery';
 
@@ -60,6 +62,13 @@ import { alert, type MailDeps } from './delivery';
 // it: a non-200 makes the processor redeliver, the redelivery's posting is refused by the
 // constraint that refuses a duplicate, and only the mail would run again — a donor receipted twice
 // for one gift.
+
+/**
+ * the mail deps, and the origin the gift page is linked on (`giftLinkOrigin` in
+ * ../matching/links.ts). absent or `null`, the receipt carries no match note and no pack is sent
+ * from here: a link to the page needs an origin to name it on.
+ */
+export type ReceiptDeps = MailDeps & { readonly giftOrigin?: string | null };
 
 /**
  * what one call did, for a caller that has something to say about it.
@@ -130,8 +139,12 @@ export type ReceiptTarget = {
  * ./settled-notice.ts is the one that does. the answer is a courtesy to callers and never a
  * signal to act on: every arm that needed an operator has already told one.
  */
-export async function sendReceipt(deps: MailDeps, target: ReceiptTarget): Promise<ReceiptOutcome> {
+export async function sendReceipt(
+	deps: ReceiptDeps,
+	target: ReceiptTarget
+): Promise<ReceiptOutcome> {
 	return claimAndSend(deps, target.donationId, target.donorEmail, 'receipt', async () => {
+		const giftPageUrl = await readGiftPageUrl(deps.db, target.donationId, deps.giftOrigin ?? null);
 		const rendered = await renderReceipt({
 			// a document a donor files, so an incomplete profile is refused rather than printed with a
 			// gap in it — which is the refusal this function's own header describes, and the backlog
@@ -145,7 +158,8 @@ export async function sendReceipt(deps: MailDeps, target: ReceiptTarget): Promis
 			goodsOrServices: { kind: 'none' },
 			tribute: target.tribute,
 			program: target.program,
-			crypto: target.crypto
+			crypto: target.crypto,
+			...(giftPageUrl === null ? {} : { giftPageUrl })
 		});
 		if (rendered.ok) return rendered;
 		return {
@@ -213,7 +227,7 @@ export type GrantReceivedTarget = Omit<GrantNoticeInput, 'org'> & {
  * is never later sent a receipt by anything that reads that stamp.
  */
 export async function sendGrantReceived(
-	deps: MailDeps,
+	deps: ReceiptDeps,
 	target: GrantReceivedTarget
 ): Promise<ReceiptOutcome> {
 	return claimAndSend(deps, target.donationId, target.donorEmail, 'thank-you', async () => {
@@ -224,6 +238,20 @@ export async function sendGrantReceived(
 	});
 }
 
+/**
+ * the employer match pack, where the donor named an employer before the gift reached the books:
+ * this step is where both settlement paths say it has, so it asks ../matching/pack.ts once more,
+ * whatever the receipt came to. that module claims before it sends, so a pack the naming already
+ * sent is not sent again, and it never throws.
+ */
+async function packOwedNow(deps: ReceiptDeps, donationId: string): Promise<void> {
+	await sendOwedPack(
+		{ db: deps.db, email: deps.email, giftOrigin: deps.giftOrigin ?? null },
+		donationId,
+		new Date()
+	);
+}
+
 /** a rendered message, or why it could not be written and what an operator does about it. */
 type Rendering =
 	| { readonly ok: true; readonly message: RenderedEmail }
@@ -231,10 +259,11 @@ type Rendering =
 
 /**
  * the gift claimed, the message rendered and sent, and the claim handed back on every way out that
- * did not send. `noun` is what an operator's alert calls the message.
+ * did not send; then the employer match pack the gift owes, whatever the message came to
+ * (`packOwedNow`). `noun` is what an operator's alert calls the message.
  */
 async function claimAndSend(
-	deps: MailDeps,
+	deps: ReceiptDeps,
 	donationId: string,
 	donorEmail: string | null,
 	noun: 'receipt' | 'thank-you',
@@ -242,6 +271,21 @@ async function claimAndSend(
 ): Promise<ReceiptOutcome> {
 	if (donorEmail === null) return 'no_address';
 
+	try {
+		return await claimed(deps, donationId, donorEmail, noun, render);
+	} finally {
+		await packOwedNow(deps, donationId);
+	}
+}
+
+/** `claimAndSend` for a donor with an address: the claim, the render, the send. never throws. */
+async function claimed(
+	deps: ReceiptDeps,
+	donationId: string,
+	donorEmail: string,
+	noun: 'receipt' | 'thank-you',
+	render: () => Promise<Rendering>
+): Promise<ReceiptOutcome> {
 	try {
 		// the gift claimed, or nothing. `.returning()` is what says which happened: no row means the
 		// gift already carries a stamp — or is not there at all, which is the same "nothing to

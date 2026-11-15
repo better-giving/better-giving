@@ -14,6 +14,7 @@ import {
 	type NewLineItem,
 	type NewPayment
 } from '../db/schema';
+import { giftMatchInsert } from '../matching/match';
 import { type ResolvedDonor, resolveDonor } from './donor';
 import type { RecordedGift } from './queries';
 import { receivedInHandEntry } from './entries';
@@ -171,13 +172,15 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 			occurredAt: gift.dated
 		};
 
-		// foreign-key order: the donor, the gift, what names the gift, then the books, then what the
+		// foreign-key order: the donor, the gift, what names the gift and its employer match row
+		// (../matching/match.ts), then the books, then what the
 		// books owe QuickBooks — `quickbooks_sync.entry_group_id` points at the group above it — then
 		// what the gift owes each listening Zap and destination, about the payment above.
 		const rows: Writes = [
 			db.insert(donation).values(donationRow),
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
+			giftMatchInsert(db, gift.donationId),
 			...settledGiftWrites(db, { charge: posting, fee: null, contactId: donor.contactId })
 		];
 		await db.batch([...donor.statements, ...rows]);

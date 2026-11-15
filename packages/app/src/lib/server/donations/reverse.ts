@@ -34,10 +34,12 @@ import {
 	type SettleResult
 } from './delivery';
 import { reinstatementEntry, reversalEntry, settleUpEntry, unpostable } from './entries';
+import { refundVoidStatement } from '../matching/match';
 import { sendRefundNotice } from './refund-notice';
 
 // what a refund or a dispute does to a gift already in the books: a payment row of its own, and an
-// entry group taking the money back out, in one `batch()`. the only module that writes a
+// entry group taking the money back out, in one `batch()` — a refund's with the void of the gift's
+// employer match beside them (`refundVoidStatement` in ../matching/match.ts). the only module that writes a
 // refund-direction row or a `dispute` row, gated by ./sole-refund-writer.spec.ts.
 //
 // ---------------------------------------------------------------------------
@@ -383,8 +385,10 @@ async function withdraw(
 			// owed by a refund that tells its donor, until ./refund-notice.ts clears it.
 			noticeOwedSince: reversal.kind === 'refund' && notice === 'send' ? new Date() : null
 		}),
+		// a refund closes the gift's employer match in the batch that writes it; a dispute does not,
+		// since a win puts the money back (../matching/match.ts).
 		...(reversal.kind === 'refund'
-			? []
+			? [refundVoidStatement(deps.db, reversed.donationId, new Date())]
 			: [
 					deps.db.insert(dispute).values({
 						paymentId: refundId,

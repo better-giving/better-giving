@@ -58,6 +58,8 @@ type PendingCryptoReadDeps = {
 	readonly db: Db;
 	readonly processors: Processors;
 	readonly email: EmailProvider;
+	/** the origin the receipts this run sends link a gift page on: the pin alone, with no request. */
+	readonly giftOrigin: string | null;
 };
 
 /**
@@ -77,6 +79,7 @@ export async function readPendingCryptoGifts(
 		provider,
 		processors: deps.processors,
 		email: deps.email,
+		giftOrigin: deps.giftOrigin,
 		// the adapter keeps the account's coin lists for its life, a failed read included, so a run
 		// reads them once and a run whose read failed names every coin by its code.
 		payableCoins: async () => {

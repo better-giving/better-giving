@@ -50,6 +50,7 @@ beforeEach(async () => {
 		'entry_group',
 		'payment',
 		'line_item',
+		'gift_match',
 		'donation',
 		'contact',
 		'form',
@@ -248,7 +249,7 @@ function mailer() {
 }
 
 function deps(source: unknown = NOWPAYMENTS_ENV, email: EmailProvider = mailer().port) {
-	return { db, processors: createPaymentProviders(source), email };
+	return { db, processors: createPaymentProviders(source), email, giftOrigin: null };
 }
 
 async function statusOf(paymentId: string) {
@@ -488,7 +489,7 @@ describe('readPendingCryptoGifts()', () => {
 		};
 
 		await readPendingCryptoGifts(
-			{ db, processors: soleProcessor(port), email: mailer().port },
+			{ db, processors: soleProcessor(port), email: mailer().port, giftOrigin: null },
 			NOW
 		);
 
