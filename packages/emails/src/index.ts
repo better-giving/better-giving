@@ -9,6 +9,8 @@ export * as destinationPaused from './templates/destination-paused';
 export * as grantReceived from './templates/grant-received';
 export * as grantRequested from './templates/grant-requested';
 export * as invitation from './templates/invitation';
+export * as matchPack from './templates/match-pack';
+export * as matchReminder from './templates/match-reminder';
 export * as passwordReset from './templates/password-reset';
 export * as receipt from './templates/receipt';
 export * as refundNotice from './templates/refund-notice';

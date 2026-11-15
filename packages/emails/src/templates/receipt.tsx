@@ -1,21 +1,10 @@
 import { Fragment, type CSSProperties } from 'react';
 import { Divider, Layout, Paragraph, SmallPrint } from '../components/layout';
+import { RecordPanel, type RecordRow, recordLines } from '../components/record';
 import { formatDate, formatMoney } from '../format';
 import type { EmailTemplate } from '../template';
-import {
-	BLOCK_BG,
-	BORDER_WIDTH_STRONG,
-	box,
-	FONT_MONO,
-	INK,
-	PANEL_BG,
-	RADIUS_PLANE,
-	SPACE_2,
-	SPACE_4,
-	SPACE_6,
-	SPACE_8,
-	WEIGHT_BOLD
-} from '../tokens';
+import { BLOCK_BG, BORDER_WIDTH_STRONG, box, INK, SPACE_4, SPACE_6, WEIGHT_BOLD } from '../tokens';
+import { GiftPageSentence, giftPageLine } from './gift-page';
 import { greetingFor } from './greeting';
 
 // the donor's receipt — the one document this app produces that somebody else files with a
@@ -200,6 +189,12 @@ export interface ReceiptData {
 	 * could match nothing on it.
 	 */
 	readonly crypto: CryptoReceived | null;
+	/**
+	 * the address of the donor's own page for this gift, where the filing details an employer's
+	 * giving portal asks for are printed. given, the receipt closes on `MATCH_NOTE`; absent, it is
+	 * the receipt it was before the note existed, byte for byte.
+	 */
+	readonly giftPageUrl?: string;
 }
 
 /**
@@ -247,7 +242,7 @@ export function template(data: ReceiptData): EmailTemplate {
 	 * is the same blank field `identityLines` proves away below, and nobody's name is not a reason
 	 * to refuse somebody the receipt for a gift they made.
 	 */
-	const rows: readonly ReceiptRow[] = [
+	const rows: readonly RecordRow[] = [
 		...(data.donorName === null ? [] : [{ label: RECEIPT_LABELS.donor, value: data.donorName }]),
 		{ label: RECEIPT_LABELS.recipient, value: org.legalName },
 		{ label: RECEIPT_LABELS.date, value: date },
@@ -270,7 +265,8 @@ export function template(data: ReceiptData): EmailTemplate {
 		...(data.program === null ? [] : [{ label: RECEIPT_LABELS.program, value: data.program }])
 	];
 
-	const copy: ReceiptCopy = { org, greeting, thanks, rows, closing, discloses };
+	const giftPageUrl = data.giftPageUrl ?? null;
+	const copy: ReceiptCopy = { org, greeting, thanks, rows, closing, discloses, giftPageUrl };
 	return {
 		subject,
 		text: textArm(copy),
@@ -284,16 +280,12 @@ interface ReceiptCopy {
 	readonly greeting: string;
 	readonly thanks: string;
 	/** the receipt block, in print order. */
-	readonly rows: readonly ReceiptRow[];
+	readonly rows: readonly RecordRow[];
 	/** the goods-or-services statement and the keep-this line, one paragraph. */
 	readonly closing: string;
 	readonly discloses: boolean;
-}
-
-/** one line of the receipt block: a label, and a value already spelled. */
-interface ReceiptRow {
-	readonly label: string;
-	readonly value: string;
+	/** the gift page the match note ends on, or `null` where the receipt prints no note. */
+	readonly giftPageUrl: string | null;
 }
 
 /**
@@ -345,7 +337,7 @@ const CRYPTO_LABELS = {
  * the crypto labels widen it on a crypto receipt alone, so every other receipt's column stays
  * where it was.
  */
-function labelWidth(rows: readonly ReceiptRow[]): number {
+function labelWidth(rows: readonly RecordRow[]): number {
 	const crypto = rows.some((row) => row.label === CRYPTO_LABELS.valueWhenReceived);
 	const labels = [
 		...Object.values(RECEIPT_LABELS),
@@ -355,7 +347,7 @@ function labelWidth(rows: readonly ReceiptRow[]): number {
 }
 
 /** the amount row, or a crypto gift's three in its place. */
-function amountRows(crypto: CryptoReceived | null, amount: string): ReceiptRow[] {
+function amountRows(crypto: CryptoReceived | null, amount: string): RecordRow[] {
 	return crypto === null
 		? [{ label: RECEIPT_LABELS.amount, value: amount }]
 		: [
@@ -394,6 +386,17 @@ const SUPPORT = 'Your support is what makes our work possible.';
  * read as two footers stacked under the record.
  */
 const KEEP_THIS = 'Please keep this receipt with your tax records.';
+
+/**
+ * the employer match note, up to the gift page address it ends on — after the keep-this paragraph
+ * and never among the statutory sentences, because it is an offer and not part of the record.
+ *
+ * it names no employer, no ratio and no deadline: it goes to every donor, and only the employer's
+ * own portal knows whether it matches.
+ */
+const MATCH_NOTE =
+	'Does your employer match gifts? Everything their giving portal will ask for is on your gift ' +
+	"page, including our legal name, EIN and address and this gift's date and amount:";
 
 /**
  * the goods-or-services sentence — the branch that always prints, in all three of its forms.
@@ -460,17 +463,16 @@ function textArm(copy: ReceiptCopy): string {
 
 	// one line per row, and the labels padded to a column: this arm is what gets pasted into a
 	// spreadsheet and read down, so the values have to line up when it is.
-	const width = labelWidth(copy.rows);
-	for (const { label, value } of copy.rows) {
-		lines.push(`${label.padEnd(width)}${value}`);
-	}
+	lines.push(...recordLines(copy.rows, labelWidth(copy.rows)));
 	lines.push(TEXT_RULE, '');
 
 	if (copy.discloses) {
 		lines.push(TEXT_RULE, DISCLOSURE_HEADING.toUpperCase(), '', DISCLOSURE, TEXT_RULE, '');
 	}
 
-	lines.push(copy.closing, '', '--');
+	lines.push(copy.closing, '');
+	if (copy.giftPageUrl !== null) lines.push(giftPageLine(MATCH_NOTE, copy.giftPageUrl), '');
+	lines.push('--');
 	lines.push(...identityLines(copy.org).map((line) => line.text));
 
 	return lines.join('\n');
@@ -482,9 +484,12 @@ function ReceiptDocument(copy: ReceiptCopy & { readonly subject: string }) {
 		<Layout title={copy.subject}>
 			<Paragraph>{copy.greeting}</Paragraph>
 			<Paragraph>{copy.thanks}</Paragraph>
-			<ReceiptPanel rows={copy.rows} />
+			<RecordPanel lead={RECEIPT_LEAD} rows={copy.rows} emphasised={EMPHASISED} />
 			{copy.discloses ? <Disclosure /> : null}
 			<Paragraph>{copy.closing}</Paragraph>
+			{copy.giftPageUrl === null ? null : (
+				<GiftPageSentence lead={MATCH_NOTE} url={copy.giftPageUrl} />
+			)}
 			<Divider />
 			<SmallPrint>
 				{identityLines(copy.org).map((line, index) => (
@@ -529,70 +534,11 @@ const DISCLOSURE_HEADING_STYLE: CSSProperties = {
 };
 
 /**
- * the ground the block sits on. the disclosure's step, carrying no border at all, which is the
- * whole of how the two are kept apart: the statutory standard for the disclosure
- * is prominence, and a second block matching its rule would be two blocks competing for the same
- * eye. the heavy treatment — a border, and a heading over it — stays the disclosure's alone.
+ * the rows set apart in the HTML arm. only the amount is emphasised: it is the figure the donor's
+ * bank shows and the one an eye scanning the document is looking for. on a crypto gift that is the
+ * amount received, the figure the donor's wallet shows.
  */
-const PANEL_STYLE: CSSProperties = {
-	margin: box(0, 0, SPACE_6),
-	padding: SPACE_6,
-	background: PANEL_BG,
-	borderRadius: RADIUS_PLANE
-};
-
-const LEAD_STYLE: CSSProperties = { margin: box(0, 0, SPACE_4) };
-const TABLE_STYLE: CSSProperties = { margin: 0, borderCollapse: 'collapse' };
-const LABEL_CELL_STYLE: CSSProperties = { padding: box(0, SPACE_8, SPACE_2, 0) };
-/* the values are set in the system's monospace stack, so the column reads down. the labels do not
-   take it: a label set like a figure reads as another figure. a value with no space in it breaks
-   inside the cell rather than widening the table past a phone; `word-break: break-word` is the
-   same break for a client that predates `overflow-wrap: anywhere`. */
-const VALUE_CELL_STYLE: CSSProperties = {
-	padding: box(0, 0, SPACE_2),
-	fontFamily: FONT_MONO,
-	overflowWrap: 'anywhere',
-	wordBreak: 'break-word'
-};
-
-/** the rows set apart in the HTML arm, which `ReceiptPanel` argues. */
 const EMPHASISED: readonly string[] = [RECEIPT_LABELS.amount, CRYPTO_LABELS.amountReceived];
-
-/**
- * the block in the HTML arm: a label and its value, one row each, in the order they were decided,
- * on a tinted panel.
- *
- * a table inside the panel rather than the panel doing the work, because a background is among the
- * first things a client drops and a `<td>` is not — which is the state ../components/layout.tsx
- * says an email arrives in. stripped of every style this is still a lead paragraph over four
- * labelled rows; a block leaning on CSS to separate them collapses into one line on a document
- * somebody files, where it reads as a single wrong number. `role="presentation"` because it is a
- * layout, not data with headers.
- *
- * only the amount is emphasised: it is the figure the donor's bank shows and the one an eye
- * scanning the document is looking for. on a crypto gift that is the amount received, the figure
- * the donor's wallet shows. matched on the label rather than on the position, so the emphasis
- * follows the row wherever the order is edited.
- */
-function ReceiptPanel({ rows }: { readonly rows: readonly ReceiptRow[] }) {
-	return (
-		<div style={PANEL_STYLE}>
-			<p style={LEAD_STYLE}>{RECEIPT_LEAD}</p>
-			<table role="presentation" cellPadding="0" cellSpacing="0" border={0} style={TABLE_STYLE}>
-				<tbody>
-					{rows.map(({ label, value }) => (
-						<tr key={label}>
-							<td style={LABEL_CELL_STYLE}>{label}</td>
-							<td style={VALUE_CELL_STYLE}>
-								{EMPHASISED.includes(label) ? <strong>{value}</strong> : value}
-							</td>
-						</tr>
-					))}
-				</tbody>
-			</table>
-		</div>
-	);
-}
 
 /** one line of the identity block: which detail it came from, and the text to print. */
 interface IdentityLine {

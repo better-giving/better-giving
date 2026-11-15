@@ -744,3 +744,47 @@ describe('receipt.template — the HTML arm', () => {
 		expect(message.html).not.toContain('<b>two</b>');
 	});
 });
+
+describe('receipt.template — the employer match note', () => {
+	const URL = 'https://giving.example.org/gift/7Qk3-mVx9Lr2NpA4';
+	const NOTE =
+		'Does your employer match gifts? Everything their giving portal will ask for is on your gift ' +
+		"page, including our legal name, EIN and address and this gift's date and amount: " +
+		URL;
+
+	it('carries the note and the gift page address in both arms when it is handed one', async () => {
+		const [text, html] = await arms({ giftPageUrl: URL });
+		expect(text).toContain(NOTE);
+		// the html arm writes the apostrophe as an entity, and the address as its own anchor.
+		expect(html).toContain('Does your employer match gifts?');
+		expect(html).toContain(`<a href="${URL}"`);
+	});
+
+	/** after the goods-or-services paragraph: the statutory content stays where it was. */
+	it('prints after the keep-this paragraph and above the identity block', async () => {
+		for (const arm of await arms({ giftPageUrl: URL })) {
+			const keep = arm.indexOf('Please keep this receipt with your tax records.');
+			const note = arm.indexOf('Does your employer match gifts?');
+			expect(keep).toBeGreaterThan(-1);
+			expect(note).toBeGreaterThan(keep);
+			expect(arm.indexOf('EIN: 12-3456789')).toBeGreaterThan(note);
+		}
+	});
+
+	/** the note is the whole difference: taken back out, what is left is today's receipt to the byte. */
+	it('leaves the receipt as it was, byte for byte, without a gift page address', async () => {
+		const without = await rendered();
+		const withNote = await rendered({ giftPageUrl: URL });
+		for (const arm of [without.text, without.html]) expect(arm).not.toContain('employer');
+		expect(withNote.text.replace(`${NOTE}\n\n`, '')).toBe(without.text);
+		expect(withNote.html.replace(/<p [^>]*>Does your employer.*?<\/a><\/p>/, '')).toBe(
+			without.html
+		);
+	});
+
+	it('keeps the subject it always had', async () => {
+		expect((await rendered({ giftPageUrl: URL })).subject).toBe(
+			'Your donation receipt from Hope Foundation'
+		);
+	});
+});
