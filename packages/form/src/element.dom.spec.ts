@@ -8283,6 +8283,36 @@ describe('the employer ask on the thank-you', () => {
 		expect(card.find('.employer [role="status"]').textContent).toBe(skipped);
 	});
 
+	// a host page that routes away mid-send takes the card with it, and the request has no card left
+	// to answer (`signal` on `CheckoutPorts.employer` in ./ports.ts).
+	it('abandons the write in flight when the element leaves the document', async () => {
+		let sent: AbortSignal | undefined;
+		const card = await atSubmitted({
+			ports: {
+				quote: async () => ({
+					paymentToken: 'pi_1_secret_x',
+					feeMinor: 106,
+					totalMinor: 2606,
+					giftUrl: GIFT_URL
+				}),
+				employer: (_input, signal) => {
+					sent = signal;
+					return new Promise<void>(() => {});
+				}
+			}
+		});
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		expect(sent?.aborted).toBe(false);
+
+		card.host.remove();
+		// the teardown is a task behind the departure (`#leaving` in ./element.ts).
+		await settle();
+
+		expect(sent?.aborted).toBe(true);
+	});
+
 	it('keeps what the donor types while the write is in flight', async () => {
 		let refuse: (() => void) | undefined;
 		const { card } = await thanked(

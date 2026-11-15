@@ -5080,19 +5080,20 @@ describe('the employer ask on the thank-you', () => {
 		}
 	});
 
-	it('draws the send in the registry’s disabled look over a blank box, and its fill once typed into', async () => {
+	// a press over a blank box is refused under the box, never held back by its look (`action` in
+	// ../../custom-elements.json).
+	it('draws the send in the brand’s solid over a blank box and once typed into', async () => {
 		const shadow = await thanked('1440px');
-		await landed(send(shadow));
-		expect(getComputedStyle(send(shadow)).backgroundColor).toBe(used(shadow, '--_n3'));
-		expect(getComputedStyle(send(shadow)).color).toBe(used(shadow, '--_n11'));
-
 		// the brand's solid, at rest or under a pointer an earlier case left resting on it.
+		const solid = [used(shadow, '--_p'), used(shadow, '--_p-hover')];
+		await landed(send(shadow));
+		expect(send(shadow).hasAttribute('aria-disabled')).toBe(false);
+		expect(solid).toContain(getComputedStyle(send(shadow)).backgroundColor);
+
 		fill(shadow, '#employer', 'Northwind Logistics');
 		await settle();
 		await landed(send(shadow));
-		expect([used(shadow, '--_p'), used(shadow, '--_p-hover')]).toContain(
-			getComputedStyle(send(shadow)).backgroundColor
-		);
+		expect(solid).toContain(getComputedStyle(send(shadow)).backgroundColor);
 	});
 
 	it('draws Skip as the registry’s secondary press rather than the quiet text control', async () => {

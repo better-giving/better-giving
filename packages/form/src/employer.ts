@@ -25,10 +25,12 @@ export function giftToken(giftUrl: string): string | null {
 /**
  * what the donor typed as the endpoint takes it, or `null` for a blank box or one past the limit.
  *
- * a run of control characters becomes one space before the trim, because the endpoint refuses any
- * (`CONTROL` in packages/app/src/lib/server/matching/match.ts) and a text box keeps a pasted tab.
+ * a run of whitespace and control characters holding at least one control character becomes one
+ * space before the trim, because the endpoint refuses any (`CONTROL` in
+ * packages/app/src/lib/server/matching/match.ts) and a text box keeps a pasted tab; spaces typed
+ * with no control character among them stay as typed.
  */
 export function employerAnswer(typed: string): string | null {
-	const trimmed = typed.replace(/\p{Cc}+/gu, ' ').trim();
+	const trimmed = typed.replace(/\s*\p{Cc}[\s\p{Cc}]*/gu, ' ').trim();
 	return trimmed.length === 0 || trimmed.length > MAX_EMPLOYER ? null : trimmed;
 }
