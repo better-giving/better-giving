@@ -3,7 +3,15 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { type ChangeEvent, type ReactNode, useId, useState } from 'react';
+import {
+	type ChangeEvent,
+	type KeyboardEvent,
+	type ReactNode,
+	useEffect,
+	useId,
+	useRef,
+	useState
+} from 'react';
 import { Form, href, Link, useSubmit } from 'react-router';
 import { GiftNote, PublicMessagesLink } from '$lib/admin/messages/gift-note';
 import { byDayShown, type Received } from '$lib/admin/received-order';
@@ -249,6 +257,13 @@ const FILTER_ORDER = [
  * blank. a choice navigates straight away rather than waiting on a press, and keeps the page where
  * it was, since what changes is the rows under it.
  *
+ * a choice is a pick, not a step. a pick — a click or tap on an option, Enter in the open list, a
+ * phone's picker — fires `change` with no key down on the box, and navigates. a step — an arrow,
+ * Home, End or a typed letter on the closed box — fires its `change` inside the keydown's own task,
+ * as Chromium does, and only moves what the box shows. Enter on the closed box, or leaving
+ * it, then applies what it shows, so the box never names a filter the rows were not read under.
+ * each navigates once: a value already applied is not applied again.
+ *
  * the box is controlled and never remounted, so the focus stays on it across the navigation a
  * choice makes. it shows the last choice made here until the list is read under another filter
  * (Back, a pasted address), which it then shows instead.
@@ -262,19 +277,49 @@ export function MatchFilterSelect({ value }: { readonly value: MatchFilter | nul
 		setReadUnder(value);
 		setShown(value ?? '');
 	}
-	const choose = (event: ChangeEvent<HTMLSelectElement>) => {
-		const chosen = event.currentTarget.value;
-		setShown(chosen);
+	// the filter last navigated to, so Enter and leaving after a pick do not navigate again.
+	const applied = useRef(value ?? '');
+	useEffect(() => {
+		applied.current = value ?? '';
+	}, [value]);
+	// set by a key on the box and cleared a task later: a `change` while it is set is that key's step.
+	const stepping = useRef(false);
+	const apply = (chosen: string) => {
+		if (chosen === applied.current) return;
+		applied.current = chosen;
 		void submit(chosen === '' ? {} : { match: chosen }, {
 			method: 'get',
 			preventScrollReset: true
+		});
+	};
+	const choose = (event: ChangeEvent<HTMLSelectElement>) => {
+		const chosen = event.currentTarget.value;
+		setShown(chosen);
+		if (!stepping.current) apply(chosen);
+	};
+	const key = (event: KeyboardEvent<HTMLSelectElement>) => {
+		if (event.key === 'Enter') {
+			apply(event.currentTarget.value);
+			return;
+		}
+		stepping.current = true;
+		setTimeout(() => {
+			stepping.current = false;
 		});
 	};
 	return (
 		<Form method="get" className="adm-actions" preventScrollReset>
 			<label htmlFor={id}>Match</label>
 			<div className="ds-select ds-select-inline">
-				<select id={id} name="match" className="ds-field-input" value={shown} onChange={choose}>
+				<select
+					id={id}
+					name="match"
+					className="ds-field-input"
+					value={shown}
+					onChange={choose}
+					onKeyDown={key}
+					onBlur={(event) => apply(event.currentTarget.value)}
+				>
 					<option value="">Any</option>
 					{FILTER_ORDER.map((filter) => (
 						<option key={filter} value={filter}>

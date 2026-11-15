@@ -1,4 +1,4 @@
-import { act, createElement, type ReactNode } from 'react';
+import { act, createElement, type ReactNode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLocation, useSearchParams } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
@@ -218,6 +218,101 @@ describe('the filter', () => {
 		expect(select(root)).toBe(box);
 		expect(document.activeElement).toBe(box);
 		expect(box.value).toBe('filed');
+	});
+
+	describe('applies a pick and never a step', () => {
+		// the list read under the address's own filter, with every navigation the filter made logged.
+		function picked() {
+			const navigations: string[] = [];
+			function Listed() {
+				const { key, search } = useLocation();
+				useEffect(() => {
+					if (key !== 'default') navigations.push(search);
+				}, [key, search]);
+				return createElement(GiftsTable, {
+					donations: [gift()],
+					limit: 500,
+					hasMore: false,
+					match: (new URLSearchParams(search).get('match') as MatchFilter | null) ?? null
+				});
+			}
+			const Stub = createRoutesStub([{ path: '/admin/donations', Component: Listed }]);
+			const root = mount(createElement(Stub, { initialEntries: ['/admin/donations'] }));
+			const box = select(root);
+			if (box === null) throw new Error('no filter');
+			box.focus();
+			return { box, navigations };
+		}
+
+		// a key on the closed box as Chromium runs it: the keydown, then the value and its `change`
+		// in that same task.
+		const step = (box: HTMLSelectElement, to: string) =>
+			act(async () => {
+				box.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+				box.value = to;
+				box.dispatchEvent(new Event('change', { bubbles: true }));
+			});
+		const enter = (box: HTMLSelectElement) =>
+			act(async () => {
+				box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+			});
+		// an option clicked, tapped or entered in the open list: a `change` with no key on the box.
+		const pick = (box: HTMLSelectElement, to: string) =>
+			act(async () => {
+				box.value = to;
+				box.dispatchEvent(new Event('change', { bubbles: true }));
+			});
+		// the task after a key, where its step has ended.
+		const nextTask = () => act(() => new Promise((done) => setTimeout(done)));
+
+		it('moves what the box shows on an arrow step, and navigates nowhere', async () => {
+			const { box, navigations } = picked();
+
+			await step(box, 'no_employer');
+			await step(box, 'pack_sent');
+			await nextTask();
+
+			expect(box.value).toBe('pack_sent');
+			expect(navigations).toEqual([]);
+		});
+
+		it('applies what the box shows on Enter, once, and keeps the focus on it', async () => {
+			const { box, navigations } = picked();
+
+			await step(box, 'no_employer');
+			await step(box, 'pack_sent');
+			await nextTask();
+			await enter(box);
+			await enter(box);
+
+			expect(navigations).toEqual(['?match=pack_sent']);
+			expect(document.activeElement).toBe(box);
+			expect(box.value).toBe('pack_sent');
+		});
+
+		it('applies a pointer pick at once, even just after an arrow step', async () => {
+			const { box, navigations } = picked();
+
+			await step(box, 'no_employer');
+			await nextTask();
+			await pick(box, 'filed');
+
+			expect(navigations).toEqual(['?match=filed']);
+			expect(document.activeElement).toBe(box);
+		});
+
+		it('applies what the box shows when the focus leaves it after a step, and nothing after a pick', async () => {
+			const stepped = picked();
+			await step(stepped.box, 'reminded');
+			await nextTask();
+			await act(async () => stepped.box.blur());
+			expect(stepped.navigations).toEqual(['?match=reminded']);
+
+			const chosen = picked();
+			await pick(chosen.box, 'voided');
+			await act(async () => chosen.box.blur());
+			expect(chosen.navigations).toEqual(['?match=voided']);
+		});
 	});
 
 	it('says a filter matched nothing, and counts what it matched', () => {
