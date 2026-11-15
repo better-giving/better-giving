@@ -68,8 +68,8 @@ it('draws Send unavailable over a blank box yet still pressable, and Skip beside
 	const send = find<HTMLButtonElement>('[part~="action"]');
 	expect(send.textContent).toBe('Send me the details');
 	expect(send.getAttribute('aria-disabled')).toBe('true');
-	// never the attribute: it would take the button out of the tab order and swallow the press the
-	// flow answers with a sentence.
+	// never `disabled`: it would take the button out of the tab order and swallow the press the flow
+	// answers with a sentence.
 	expect(send.disabled).toBe(false);
 	// the default button of the card's form, so Enter in the box presses it and the flow decides.
 	expect(send.type).toBe('submit');
