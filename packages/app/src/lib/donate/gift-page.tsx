@@ -8,6 +8,7 @@ import { Form, useNavigation } from 'react-router';
 import { formatMinor } from '../donations/money';
 import { imageSrc } from '../page/image-src';
 import type { GiftPageView } from '../server/matching/views';
+import { usePressOnce } from '../supporter/area/use-press-once';
 import * as copy from './copy';
 import { PageRoot } from './page-root';
 import { initials, isWordmark, type PageLogo, type PageLook } from './page-view';
@@ -23,14 +24,16 @@ import { SETTLE_MS } from './sections/share';
 // and text button linked beside the donor sheets (`giftPageLinks`).
 //
 // what renders is read off the stamps alone: the details unless the gift was refunded; the
-// employer card on a live gift, one neither refunded nor voided; the filed card while nothing is
-// filed, matched or voided, and a status row in its place once it is. a voided gift states that
-// the request is closed and never why — the view carries no reason.
+// employer card on a live gift, one neither refunded nor voided, while its match is open or an
+// employer is named, since a matched gift takes no new name (the action refuses it CLOSED); the
+// filed card while nothing is filed, matched or voided, and a status row in its place once it is.
+// a voided gift states that the request is closed and never why — the view carries no reason.
 //
 // both posts are `<Form method="post">` to the page's own address with a flat `intent` field, and
 // work without script: `employer` with one `employer` box, `filed` with nothing else. with script,
-// a press whose post is in flight is held — `aria-disabled` and `aria-busy`, so it keeps the focus —
-// and its form refuses a second submit until the answer lands.
+// a press whose post is out is held — `aria-disabled` and `aria-busy`, so it keeps the focus — and
+// its form refuses a second submit until the page the answer leads to is drawn; a blank Save is
+// refused here, under the box, with the sentence the action refuses one with.
 
 /** what the action answers a post with. `intent` places a refusal at the control that was pressed. */
 export type GiftPageResult =
@@ -83,8 +86,10 @@ export function GiftPage({ orgName, logo, look, gift, result }: GiftPageProps) {
 	const saved =
 		result !== undefined && 'done' in result && result.done === 'employer' ? result : null;
 	const navigation = useNavigation();
+	// out until the page the answer leads to is drawn: the router keeps the post's body through
+	// `loading`, so a press stays held between the answer and the reload it carries.
 	const posting = (intent: 'employer' | 'filed') =>
-		navigation.state === 'submitting' && navigation.formData?.get('intent') === intent;
+		navigation.state !== 'idle' && navigation.formData?.get('intent') === intent;
 
 	const employerShown = useRef<HTMLDivElement | null>(null);
 	const employerBox = useRef<HTMLInputElement | null>(null);
@@ -145,13 +150,14 @@ export function GiftPage({ orgName, logo, look, gift, result }: GiftPageProps) {
 					<Notice tone="info" title={copy.GIFT_CLOSED_TITLE} body={copy.giftClosedBody(orgName)} />
 				) : null}
 				{refunded ? null : <FilingCard gift={gift} orgName={orgName} />}
-				{live ? (
+				{live && (gift.matchedAt === null || gift.employer !== null) ? (
 					<EmployerCard
 						gift={gift}
 						filed={filed}
 						refusal={refusal?.intent === 'employer' ? refusal.error : null}
 						saved={saved}
 						pending={posting('employer')}
+						result={result}
 						shownRef={employerShown}
 						boxRef={employerBox}
 					/>
@@ -168,6 +174,7 @@ export function GiftPage({ orgName, logo, look, gift, result }: GiftPageProps) {
 						orgName={orgName}
 						refusal={refusal?.intent === 'filed' ? refusal.error : null}
 						pending={posting('filed')}
+						result={result}
 					/>
 				) : null}
 			</main>
@@ -268,6 +275,16 @@ function CardHead({
 
 type Copied = 'idle' | 'copied' | 'failed';
 
+const COPY_MARK = { idle: 'copy', copied: 'tick', failed: 'alert' } as const satisfies Record<
+	Copied,
+	keyof typeof GLYPHS
+>;
+const COPY_WORDS: Record<Copied, string> = {
+	idle: copy.COPY_DETAILS,
+	copied: copy.DETAILS_COPIED,
+	failed: copy.DETAILS_NOT_COPIED
+};
+
 /**
  * the paperwork, as rows and as the text Copy details writes. a row with no value is left out, as
  * `filingDetailsText` leaves it out of that text — the mailing address the one that ordinarily is.
@@ -290,8 +307,9 @@ function FilingCard({ gift, orgName }: { readonly gift: GiftPageView; readonly o
 		[copy.FILING_LABELS.receipt, receipt, false]
 	];
 
-	// the outcome is said in a polite region rendered empty from the first paint, keyed by the press
-	// so a second press inside the first one's moment is said too, and settled after `SETTLE_MS`.
+	// the outcome is the press's own words and mark, as Copy link's is (./sections/share.tsx), and is
+	// said in a polite region rendered empty from the first paint, keyed by the press so a second
+	// press inside the first one's moment is said too; both settle after `SETTLE_MS`.
 	const [copied, setCopied] = useState<Copied>('idle');
 	const [press, setPress] = useState(0);
 	const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -324,8 +342,8 @@ function FilingCard({ gift, orgName }: { readonly gift: GiftPageView; readonly o
 				)}
 			</dl>
 			<button type="button" className="ds-btn ds-btn-secondary" onClick={copyDetails}>
-				<Mark name="copy" />
-				{copy.COPY_DETAILS}
+				<Mark name={COPY_MARK[copied]} />
+				{COPY_WORDS[copied]}
 			</button>
 			<p className="vh" role="status">
 				{copied === 'idle' ? null : (
@@ -352,6 +370,7 @@ function EmployerCard({
 	refusal,
 	saved,
 	pending,
+	result,
 	shownRef,
 	boxRef
 }: {
@@ -361,6 +380,8 @@ function EmployerCard({
 	/** the action's answer to a saved employer, a new object on every save. */
 	readonly saved: GiftPageResult | null;
 	readonly pending: boolean;
+	/** the action's last answer, whichever post it was to, which lets a held press go. */
+	readonly result: GiftPageResult | undefined;
 	readonly shownRef: RefObject<HTMLDivElement | null>;
 	readonly boxRef: RefObject<HTMLInputElement | null>;
 }) {
@@ -431,6 +452,7 @@ function EmployerCard({
 			named={employer}
 			refusal={refusal}
 			pending={pending}
+			result={result}
 			boxRef={boxRef}
 			onCancel={
 				employer === null
@@ -449,6 +471,7 @@ function EmployerForm({
 	named,
 	refusal,
 	pending,
+	result,
 	boxRef,
 	onCancel
 }: {
@@ -456,6 +479,7 @@ function EmployerForm({
 	readonly named: string | null;
 	readonly refusal: string | null;
 	readonly pending: boolean;
+	readonly result: GiftPageResult | undefined;
 	readonly boxRef: RefObject<HTMLInputElement | null>;
 	/** closes the box on the saved name; `null` where nobody is named yet. */
 	readonly onCancel: (() => void) | null;
@@ -465,9 +489,13 @@ function EmployerForm({
 	const refusalId = useId();
 	const [typed, setTyped] = useState(named ?? '');
 	const blank = typed.trim() === '';
+	// a blank Save marks the box, and from then on the mark follows what is typed.
+	const [checked, setChecked] = useState(false);
+	const problem = checked && blank ? copy.EMPLOYER_BLANK : refusal;
+	const press = usePressOnce(pending, result);
 	// the hint is the no-employer card's; a donor changing a named employer has read it.
 	const hint = named === null ? copy.EMPLOYER_HINT : undefined;
-	const described = [hint === undefined ? null : hintId, refusal === null ? null : refusalId]
+	const described = [hint === undefined ? null : hintId, problem === null ? null : refusalId]
 		.filter((id) => id !== null)
 		.join(' ');
 	return (
@@ -475,11 +503,14 @@ function EmployerForm({
 			method="post"
 			className="gift-card"
 			aria-labelledby={headingId}
-			// `aria-disabled` rather than `disabled`, so Save stays in the tab order; a blank box and a
-			// second submit while the first is in flight are stopped here, and the action refuses a
-			// blank box that arrives without script.
+			// a blank box is refused here with the caret put in it, and the action refuses one that
+			// arrives without script; a second submit is refused until the first one's page is drawn.
 			onSubmit={(event) => {
-				if (blank || pending) event.preventDefault();
+				if (blank) {
+					event.preventDefault();
+					setChecked(true);
+					boxRef.current?.focus();
+				} else if (!press.claim()) event.preventDefault();
 			}}
 		>
 			<CardHead id={headingId} title={copy.EMPLOYER_HEADING} hint={hint} hintId={hintId} />
@@ -498,19 +529,20 @@ function EmployerForm({
 					value={typed}
 					onChange={(event) => setTyped(event.target.value)}
 					aria-describedby={described === '' ? undefined : described}
-					aria-invalid={refusal === null ? undefined : true}
+					aria-invalid={problem === null ? undefined : true}
 				/>
-				{refusal === null ? null : (
+				{problem === null ? null : (
 					<p className="ds-field-err" id={refusalId}>
-						{refusal}
+						{problem}
 					</p>
 				)}
 			</div>
 			<div className="gift-presses">
+				{/* `aria-disabled` rather than `disabled` while a post is out, so Save keeps the focus. */}
 				<button
 					type="submit"
 					className="ds-btn ds-btn-primary"
-					aria-disabled={blank || pending || undefined}
+					aria-disabled={pending || undefined}
 					aria-busy={pending || undefined}
 				>
 					{copy.SAVE_EMPLOYER}
@@ -528,21 +560,24 @@ function EmployerForm({
 function FiledCard({
 	orgName,
 	refusal,
-	pending
+	pending,
+	result
 }: {
 	readonly orgName: string;
 	readonly refusal: string | null;
 	readonly pending: boolean;
+	readonly result: GiftPageResult | undefined;
 }) {
 	const headingId = useId();
 	const refusalId = useId();
+	const press = usePressOnce(pending, result);
 	return (
 		<Form
 			method="post"
 			className="gift-card"
 			aria-labelledby={headingId}
 			onSubmit={(event) => {
-				if (pending) event.preventDefault();
+				if (!press.claim()) event.preventDefault();
 			}}
 		>
 			<CardHead id={headingId} title={copy.FILED_HEADING} hint={copy.filedHint(orgName)} />

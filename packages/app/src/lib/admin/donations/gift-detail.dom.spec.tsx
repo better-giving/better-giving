@@ -144,6 +144,79 @@ describe('the presses', () => {
 	});
 });
 
+/**
+ * the screen with a loader that answers its first read at once and holds every later one until
+ * `reload` lets it go, so a case can press while the post's answer is still landing.
+ */
+function reloading(): {
+	root: HTMLElement;
+	posted: Record<string, FormDataEntryValue>[];
+	reload: () => void;
+} {
+	const posted: Record<string, FormDataEntryValue>[] = [];
+	let reads = 0;
+	let reload = () => {};
+	const Stub = createRoutesStub([
+		{
+			path: '/admin/donations/:id',
+			Component: () => createElement(GiftDetail, props()),
+			loader: async () => {
+				reads += 1;
+				if (reads > 1) {
+					await new Promise<void>((resolve) => {
+						reload = resolve;
+					});
+				}
+				return null;
+			},
+			action: async ({ request }) => {
+				posted.push(Object.fromEntries(await request.formData()));
+				return null;
+			}
+		}
+	]);
+	return {
+		root: mount(createElement(Stub, { initialEntries: [HERE] })),
+		posted,
+		reload: () => reload()
+	};
+}
+
+describe('a press in flight', () => {
+	const press = (root: HTMLElement, words: string) =>
+		[...root.querySelectorAll('button')].find((b) => b.textContent === words);
+
+	it('stays held while its answer is still landing', async () => {
+		const { root, posted, reload } = reloading();
+		await settle();
+
+		await act(async () => press(root, 'Mark filed')?.click());
+		await settle();
+		expect(press(root, 'Mark filed')?.getAttribute('aria-busy')).toBe('true');
+		await act(async () => press(root, 'Mark filed')?.click());
+		await settle();
+
+		expect(posted).toHaveLength(1);
+		await act(async () => reload());
+		await settle();
+		expect(press(root, 'Mark filed')?.hasAttribute('aria-busy')).toBe(false);
+	});
+
+	it('posts once for two presses in one tick', async () => {
+		const { root, posted } = reloading();
+		await settle();
+
+		const matched = press(root, 'Mark matched');
+		await act(async () => {
+			matched?.form?.requestSubmit(matched);
+			matched?.form?.requestSubmit(matched);
+		});
+		await settle();
+
+		expect(posted).toHaveLength(1);
+	});
+});
+
 describe('the void', () => {
 	const voidLink = (root: HTMLElement) =>
 		[...root.querySelectorAll('a')].find((a) => a.textContent === 'Void…');

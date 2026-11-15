@@ -142,6 +142,40 @@ async function answering(gift: GiftPageView, answer: GiftPageResult) {
 	return { root, posts, release: () => release() };
 }
 
+/**
+ * the page with a loader that answers its first read at once and holds every later one until
+ * `reload` lets it go, so a case can press while a post's answer is still landing.
+ */
+async function reloading(gift: GiftPageView) {
+	const posts: Record<string, string>[] = [];
+	let reads = 0;
+	let reload = () => {};
+	const Stub = createRoutesStub([
+		{
+			path: '/gift/:token',
+			Component: () => (
+				<GiftPage orgName={ORG} logo={null} look={{ brandColour: null }} gift={gift} />
+			),
+			loader: async () => {
+				reads += 1;
+				if (reads > 1) {
+					await new Promise<void>((resolve) => {
+						reload = resolve;
+					});
+				}
+				return null;
+			},
+			action: async ({ request }) => {
+				const fields = await request.formData();
+				posts.push(Object.fromEntries([...fields].map(([key, value]) => [key, String(value)])));
+				return null;
+			}
+		}
+	]);
+	const root = await mount(<Stub initialEntries={['/gift/tok_1']} />);
+	return { root, posts, reload: () => reload() };
+}
+
 /** the cards the page stands, by their headings. */
 function cards(root: HTMLElement): string[] {
 	return [...root.querySelectorAll('h2')].map((heading) => heading.textContent ?? '');
@@ -252,6 +286,16 @@ describe('the cards a gift’s stamps stand', () => {
 		]);
 	});
 
+	it('draws no employer box on a gift matched with nobody named', async () => {
+		const { root } = await page(view({ matchedAt: new Date('2026-11-25T10:00:00Z') }));
+
+		expect(cards(root)).toEqual([copy.FILING_HEADING]);
+		expect(root.querySelector('input[name="employer"]')).toBeNull();
+		expect(root.querySelector('[role="status"].gift-done')?.textContent).toBe(
+			copy.matchArrived(null, 'November 25, 2026')
+		);
+	});
+
 	it('says a match arrived in the filed row’s place', async () => {
 		const { root } = await page(view({ ...NAMED, matchedAt: new Date('2026-11-25T10:00:00Z') }));
 
@@ -288,6 +332,8 @@ describe('the details', () => {
 
 		expect(root.querySelector('.gift-card [role="status"]')).toBe(region);
 		expect(region?.textContent).toBe(copy.DETAILS_COPIED);
+		// the press says it too, where a sighted donor's eye is.
+		expect(button(root, copy.DETAILS_COPIED)).toBeDefined();
 	});
 
 	it('says a copy the browser refused', async () => {
@@ -302,6 +348,8 @@ describe('the details', () => {
 		expect(root.querySelector('.gift-card [role="status"]')?.textContent).toBe(
 			copy.DETAILS_NOT_COPIED
 		);
+		expect(button(root, copy.DETAILS_NOT_COPIED)).toBeDefined();
+		expect(() => button(root, copy.COPY_DETAILS)).toThrow();
 	});
 });
 
@@ -312,17 +360,54 @@ describe('the posts', () => {
 		return found;
 	}
 
-	it('holds Save employer while the box is blank, focusable, and posts nothing', async () => {
+	it('refuses Save employer on a blank box under the box, with the caret in it, posting nothing', async () => {
 		const { root, posts } = await page(view());
 		const save = button(root, copy.SAVE_EMPLOYER);
 
-		expect(save.getAttribute('aria-disabled')).toBe('true');
-		expect(save.disabled).toBe(false);
-		await press(save);
-		expect(posts).toEqual([]);
-
+		expect(save.hasAttribute('aria-disabled')).toBe(false);
+		expect(root.querySelector('.ds-field-err')).toBeNull();
 		type(box(root), '   ');
-		expect(save.getAttribute('aria-disabled')).toBe('true');
+		await press(save);
+
+		expect(posts).toEqual([]);
+		const refusal = root.querySelector('.ds-field-err');
+		expect(refusal?.textContent).toBe(copy.EMPLOYER_BLANK);
+		expect(box(root).getAttribute('aria-describedby')?.split(' ')).toContain(refusal?.id);
+		expect(box(root).getAttribute('aria-invalid')).toBe('true');
+		expect(document.activeElement).toBe(box(root));
+
+		// a name clears it as it is typed.
+		type(box(root), EMPLOYER);
+		expect(root.querySelector('.ds-field-err')).toBeNull();
+		expect(box(root).hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	it('posts the filed press once while its answer is still landing', async () => {
+		const { root, posts, reload } = await reloading(view());
+
+		await press(button(root, copy.MARK_FILED));
+		expect(button(root, copy.MARK_FILED).getAttribute('aria-busy')).toBe('true');
+		await press(button(root, copy.MARK_FILED));
+		expect(posts).toEqual([{ intent: 'filed' }]);
+
+		await act(async () => {
+			reload();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+		expect(button(root, copy.MARK_FILED).hasAttribute('aria-busy')).toBe(false);
+	});
+
+	it('posts once for two presses in one tick', async () => {
+		const { root, posts } = await reloading(view());
+		const filed = button(root, copy.MARK_FILED);
+
+		await act(async () => {
+			filed.form?.requestSubmit(filed);
+			filed.form?.requestSubmit(filed);
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+
+		expect(posts).toEqual([{ intent: 'filed' }]);
 	});
 
 	it('posts the employer under its intent, and nothing else', async () => {

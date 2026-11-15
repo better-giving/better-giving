@@ -18,6 +18,7 @@ import { DONATION_STATUS_LABELS, type DonationStatus } from '$lib/donations/stat
 import { defineForm, type FormRejection } from '$lib/forms/definition';
 import { MATCH_FORMS, MATCH_INTENT, VOID_MATCH_INPUT } from '$lib/matching/forms';
 import { MATCH_STATUS_LABELS, type MatchStatus } from '$lib/matching/status';
+import { usePressOnce } from '$lib/supporter/area/use-press-once';
 
 // one gift at /admin/donations/{id}, and the employer match on it: what the gift was, where the
 // match stands, every stamp on it in order, and the three presses staff run it with. the route
@@ -143,8 +144,10 @@ export function GiftDetail({
 	const [search] = useSearchParams();
 	const asking = live && search.get(CONFIRM) === CONFIRM_VOID;
 	const navigation = useNavigation();
+	// out until the screen the answer leads to is drawn: the router keeps the post's body through
+	// `loading`, so a press stays held between the answer and the reload it carries.
 	const pending = (intent: string) =>
-		navigation.state === 'submitting' && navigation.formData?.get(MATCH_INTENT) === intent;
+		navigation.state !== 'idle' && navigation.formData?.get(MATCH_INTENT) === intent;
 
 	return (
 		// one column, and the column is what spaces it: no block below carries a margin of its own.
@@ -202,7 +205,13 @@ export function GiftDetail({
 			</section>
 
 			{match === null ? null : (
-				<MatchCard match={match} live={live} heading={matchHeading} pending={pending} />
+				<MatchCard
+					match={match}
+					live={live}
+					heading={matchHeading}
+					pending={pending}
+					result={result}
+				/>
 			)}
 
 			{/* outside the cards: a card clips what overflows it, and the dialog arrives from the
@@ -233,13 +242,15 @@ function MatchCard({
 	match,
 	live,
 	heading,
-	pending
+	pending,
+	result
 }: {
 	readonly match: NonNullable<GiftDetailProps['match']>;
 	readonly live: boolean;
 	readonly heading: RefObject<HTMLHeadingElement | null>;
 	/** whether a press carrying this intent is in flight. */
 	readonly pending: (intent: string) => boolean;
+	readonly result: GiftMatchResult | undefined;
 }) {
 	const filed = match.status === 'filed';
 
@@ -295,19 +306,18 @@ function MatchCard({
 			{live ? (
 				<footer className="ds-card-footer adm-cardpresses">
 					{filed ? null : (
-						<Form method="post">
-							<input {...whichForm(MATCH_FORMS.filed)} />
-							<input type="hidden" name={MATCH_INTENT} value="filed" />
-							<PendingButton pending={pending('filed')}>Mark filed</PendingButton>
-						</Form>
+						<PressForm intent="filed" pending={pending('filed')} result={result}>
+							Mark filed
+						</PressForm>
 					)}
-					<Form method="post">
-						<input {...whichForm(MATCH_FORMS.matched)} />
-						<input type="hidden" name={MATCH_INTENT} value="matched" />
-						<PendingButton variant="primary" pending={pending('matched')}>
-							Mark matched
-						</PendingButton>
-					</Form>
+					<PressForm
+						intent="matched"
+						variant="primary"
+						pending={pending('matched')}
+						result={result}
+					>
+						Mark matched
+					</PressForm>
 					{/* a link and not a button: it writes nothing, it asks. `preventScrollReset` because
 					    the question opens at this same address. */}
 					<Button
@@ -324,6 +334,40 @@ function MatchCard({
 	);
 }
 
+/**
+ * one stamp's form and its press, posting once per press: `pending` arrives a render late, so a
+ * second submit in the same tick is refused by the claim `usePressOnce` holds until the answer.
+ */
+function PressForm({
+	intent,
+	pending,
+	result,
+	variant,
+	children
+}: {
+	readonly intent: 'filed' | 'matched';
+	readonly pending: boolean;
+	readonly result: GiftMatchResult | undefined;
+	readonly variant?: 'primary' | undefined;
+	readonly children: ReactNode;
+}) {
+	const press = usePressOnce(pending, result);
+	return (
+		<Form
+			method="post"
+			onSubmit={(event) => {
+				if (!press.claim()) event.preventDefault();
+			}}
+		>
+			<input {...whichForm(MATCH_FORMS[intent])} />
+			<input type="hidden" name={MATCH_INTENT} value={intent} />
+			<PendingButton variant={variant} pending={pending}>
+				{children}
+			</PendingButton>
+		</Form>
+	);
+}
+
 /** a press in flight keeps its focus: held by `aria-disabled` and a refused click, never `disabled`. */
 function PendingButton({
 	pending,
@@ -331,7 +375,7 @@ function PendingButton({
 	children
 }: {
 	readonly pending: boolean;
-	readonly variant?: 'primary';
+	readonly variant?: 'primary' | undefined;
 	readonly children: ReactNode;
 }) {
 	return (
@@ -374,11 +418,25 @@ function VoidDialog({
 		[reasonId]
 	);
 	const leave = () => navigate('.', { preventScrollReset: true });
+	const press = usePressOnce(pending, result);
+	const formProps = getFormProps(form);
 
 	return (
 		// the `form` stands around the whole card, never inside its actions row
 		// (packages/operator/src/components/shell/Dialog.jsx says why).
-		<Form method="post" {...getFormProps(form)}>
+		<Form
+			method="post"
+			{...formProps}
+			onSubmit={(event) => {
+				if (!press.claim()) {
+					event.preventDefault();
+					return;
+				}
+				formProps.onSubmit(event);
+				// a reason the form refused before posting hands the claim back.
+				if (event.defaultPrevented) press.release();
+			}}
+		>
 			<input {...whichForm(VOID_MATCH_FORM.id)} />
 			<input type="hidden" name={MATCH_INTENT} value="void" />
 			<Modal

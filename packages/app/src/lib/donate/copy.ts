@@ -563,8 +563,11 @@ export const EMPLOYER_ASK_HINT =
 export const EMPLOYER_LABEL = 'Employer (if they match gifts)';
 export const EMPLOYER_SEND = 'Send me the details';
 export const EMPLOYER_SKIP = 'Skip';
-/** said over the open ask, and in the region, while a refused or unanswered write stands. */
+/** said over the open ask, and in the region, while a refused write stands. */
 export const EMPLOYER_REFUSAL = 'Your employer was not saved. Try again, or skip this.';
+/** in its place where the write was called off unanswered, so may have been saved after all. */
+export const EMPLOYER_UNCONFIRMED =
+	'We couldn’t confirm your employer was saved. Try again, or skip this.';
 export const EMPLOYER_SENT_HEADING = 'Details sent';
 /** names the address the details went to and never the employer, which the donor typed for the deployment alone. */
 export function employerSentBody(email: string): string {
@@ -683,6 +686,12 @@ export const EMPLOYER_HEADING = 'Your employer';
 export const EMPLOYER_HINT =
 	'Optional. Name them and we’ll email these details to you, and remind you once.';
 export const SAVE_EMPLOYER = 'Save employer';
+/**
+ * under the box over a blank Save here and a blank Send on the thank-you, the sentence the gift
+ * page's action refuses a blank box with (`EMPLOYER_BLANK` in src/routes/gift.$token.tsx) and the
+ * element says (`EMPLOYER_REFUSAL` in packages/form/src/views.ts).
+ */
+export const EMPLOYER_BLANK = 'Enter your employer’s name.';
 export const CHANGE_EMPLOYER = 'Change';
 /** its accessible name, the visible word first. */
 export const CHANGE_EMPLOYER_NAME = 'Change your employer';

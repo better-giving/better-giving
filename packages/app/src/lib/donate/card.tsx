@@ -1229,7 +1229,6 @@ function CheckoutCard({
 							<EmployerAskBlock
 								screen={takeover.employer}
 								box={api.employerField.box}
-								given={api.sendEmployerButton.given === true}
 								busy={api.sendEmployerButton['aria-busy']}
 								onSend={() => api.sendEmployerButton.onClick()}
 								onSkip={() => api.skipEmployerButton.onClick()}

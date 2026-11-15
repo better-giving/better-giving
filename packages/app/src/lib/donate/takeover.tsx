@@ -62,8 +62,10 @@ export type Takeover = {
 /** where the employer ask stands and what it says, as packages/form/src/employer-ask.ts draws it. */
 export type EmployerAskScreen = {
 	readonly phase: EmployerAsk['phase'];
-	/** the sentence under the box while a refused or unanswered write stands, or `''`. */
+	/** the sentence under the box over a refused or unanswered write or a blank Send, or `''`. */
 	readonly refusal: string;
+	/** the refusal is the box's: Send was pressed over a blank one. */
+	readonly boxRefused: boolean;
 	/** the status row's heading and line once the ask is closed, `''` while it is open. */
 	readonly doneHeading: string;
 	readonly doneBody: string;
@@ -90,6 +92,13 @@ export const BLANK: Takeover = {
 	employer: null
 };
 
+/** what the thank-you says over a refused ask, by why it stands refused, as packages/form/src/views.ts does. */
+const EMPLOYER_REFUSALS: Readonly<Record<NonNullable<EmployerAsk['refusal']>, string>> = {
+	refused: copy.EMPLOYER_REFUSAL,
+	unconfirmed: copy.EMPLOYER_UNCONFIRMED,
+	blank: copy.EMPLOYER_BLANK
+};
+
 /** the ask in the words a donor reads, or `null` on a thank-you that makes none. */
 function employerAskScreen(ask: EmployerAsk | undefined): EmployerAskScreen | null {
 	if (ask === undefined) return null;
@@ -101,7 +110,8 @@ function employerAskScreen(ask: EmployerAsk | undefined): EmployerAskScreen | nu
 				: { doneHeading: '', doneBody: '' };
 	return {
 		phase: ask.phase,
-		refusal: ask.phase === 'asking' && ask.refused ? copy.EMPLOYER_REFUSAL : '',
+		refusal: ask.phase === 'asking' && ask.refusal !== null ? EMPLOYER_REFUSALS[ask.refusal] : '',
+		boxRefused: ask.phase === 'asking' && ask.refusal === 'blank',
 		...closed,
 		giftUrl: ask.giftUrl
 	};
@@ -332,14 +342,11 @@ export function takeoverFor(
 			const employer = employerAskScreen(state.employer);
 			// while the ask is open, Skip is the way out of it and the start-over waits until it closes.
 			const asking = employer?.phase === 'asking' || employer?.phase === 'sending';
-			// a refused write is said for as long as it stands, resend included, and the region goes
-			// quiet once the ask closes: the row the caret lands on says how it closed.
+			// a refusal is said for as long as it stands, resend included, and the region goes quiet
+			// once the ask closes: the row the caret lands on says how it closed.
+			const refusal = state.employer?.refusal ?? null;
 			const said = (thanks: string): string =>
-				state.employer?.refused === true
-					? copy.EMPLOYER_REFUSAL
-					: asking || employer === null
-						? thanks
-						: '';
+				refusal !== null ? EMPLOYER_REFUSALS[refusal] : asking || employer === null ? thanks : '';
 			const secondary = asking ? null : { label: copy.BACK_TO_START };
 			if (state.method === 'crypto') {
 				return {
@@ -539,8 +546,6 @@ export type EmployerAskBlockProps = {
 	readonly screen: EmployerAskScreen | null;
 	/** the box as the flow holds it (`employerField` in @better-giving/form/connect). */
 	readonly box: FieldBox;
-	/** the box holds an answer the flow takes. */
-	readonly given: boolean;
 	readonly busy: boolean;
 	readonly onSend: () => void;
 	readonly onSkip: () => void;
@@ -563,28 +568,30 @@ const EMPLOYER_PROBLEM_ID = 'employer-problem';
  * element's ask draw this one. always rendered, hidden on a screen with no ask.
  *
  * Send is the submit while the ask is open, so Enter in the box presses it through the card's
- * `<form>`; `aria-disabled` rather than `disabled`, which implicit submission would skip silently and
- * which takes the press out of the tab order. a blank box is refused by the flow's guard. the caret
- * lands on the status row as the ask closes, so the press that closed it is answered where the donor
- * is.
+ * `<form>`, over a blank box too: the flow refuses that press with a sentence under the box, marks
+ * the box invalid and the caret goes into it, so the press is never held back by `disabled` or
+ * `aria-disabled`. the caret lands on the status row as the ask closes, so the press that closed it
+ * is answered where the donor is.
  */
-export function EmployerAskBlock({
-	screen,
-	box,
-	given,
-	busy,
-	onSend,
-	onSkip
-}: EmployerAskBlockProps) {
+export function EmployerAskBlock({ screen, box, busy, onSend, onSkip }: EmployerAskBlockProps) {
 	const phase = screen?.phase ?? null;
 	const open = phase === 'asking' || phase === 'sending';
+	const boxRefused = screen?.boxRefused === true;
 	const status = useRef<HTMLDivElement | null>(null);
+	const field = useRef<HTMLInputElement | null>(null);
 	const drawn = useRef<typeof phase>(phase);
+	const drawnBoxRefused = useRef(boxRefused);
 	useEffect(() => {
 		const before = drawn.current;
 		drawn.current = phase;
 		if (!open && (before === 'asking' || before === 'sending')) status.current?.focus();
 	}, [phase, open]);
+	// the failed press's caret goes to the box it failed for.
+	useEffect(() => {
+		const before = drawnBoxRefused.current;
+		drawnBoxRefused.current = boxRefused;
+		if (boxRefused && !before) field.current?.focus();
+	}, [boxRefused]);
 	const refusal = screen?.refusal ?? '';
 	return (
 		<div className="employer" hidden={screen === null}>
@@ -610,6 +617,7 @@ export function EmployerAskBlock({
 					</label>
 					<input
 						{...box}
+						ref={field}
 						id={box.name}
 						part={part('field')}
 						className={REGISTRY_CLASS.field}
@@ -617,6 +625,8 @@ export function EmployerAskBlock({
 						aria-describedby={
 							refusal === '' ? EMPLOYER_HINT_ID : `${EMPLOYER_HINT_ID} ${EMPLOYER_PROBLEM_ID}`
 						}
+						// only over a blank Send: a refused write refused nothing about what was typed.
+						aria-invalid={boxRefused || undefined}
 					/>
 					{/* said through the card's one region rather than a live region of its own. */}
 					<p id={EMPLOYER_PROBLEM_ID} className="message" hidden={refusal === ''}>
@@ -628,9 +638,12 @@ export function EmployerAskBlock({
 						type={open ? 'submit' : 'button'}
 						part={partWhen('action', { busy })}
 						className={EMPLOYER_SEND_CLASS}
-						aria-disabled={given ? undefined : true}
 						aria-busy={busy || undefined}
-						onClick={onSend}
+						onClick={() => {
+							onSend();
+							// a blank press repeated changes nothing the flow holds, so no effect moves the caret.
+							if (boxRefused) field.current?.focus();
+						}}
 					>
 						<span className="action-label">{copy.EMPLOYER_SEND}</span>
 						<span className="ds-spinner" aria-hidden="true" />

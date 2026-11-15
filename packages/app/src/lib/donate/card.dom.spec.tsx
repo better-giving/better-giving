@@ -3240,7 +3240,7 @@ describe('the thank-you’s employer ask', () => {
 	const done = (root: HTMLElement) => one(root, '.employer-done');
 	const link = (root: HTMLElement) => one(root, 'a[part~="link"]');
 
-	it('asks with Send held while the box is blank, focusable, and no way back to the start', async () => {
+	it('asks with Send live over a blank box, and no way back to the start', async () => {
 		deployment();
 		const root = await thanked();
 
@@ -3249,19 +3249,33 @@ describe('the thank-you’s employer ask', () => {
 		expect(one(root, 'label[for="employer"]').textContent).toBe(copy.EMPLOYER_LABEL);
 		expect(box(root).value).toBe('');
 		expect(box(root).maxLength).toBe(200);
-		expect(send(root).getAttribute('aria-disabled')).toBe('true');
+		expect(send(root).hasAttribute('aria-disabled')).toBe(false);
 		expect(send(root).hidden).toBe(false);
 		expect(back(root).hidden).toBe(true);
 		expect(done(root).hidden).toBe(true);
 		expect(link(root).hidden).toBe(true);
 	});
 
-	it('takes a named employer: Send is live, and sends it under the gift page’s token', async () => {
+	it('refuses a blank Send under the box with the caret in it, and sends nothing', async () => {
+		const named = deployment();
+		const root = await thanked();
+
+		type(box(root), '   ');
+		await pressed(send(root));
+
+		expect(named).toEqual([]);
+		expect(ask(root).hidden).toBe(false);
+		expect(one(root, '#employer-problem').textContent).toBe(copy.EMPLOYER_BLANK);
+		expect(box(root).getAttribute('aria-invalid')).toBe('true');
+		expect(document.activeElement).toBe(box(root));
+		expect(region(root)).toBe(copy.EMPLOYER_BLANK);
+	});
+
+	it('takes a named employer, and sends it under the gift page’s token', async () => {
 		const named = deployment();
 		const root = await thanked();
 
 		type(box(root), '  Northwind Logistics ');
-		expect(send(root).hasAttribute('aria-disabled')).toBe(false);
 		await pressed(send(root));
 
 		expect(named).toEqual([{ employer: 'Northwind Logistics' }]);
