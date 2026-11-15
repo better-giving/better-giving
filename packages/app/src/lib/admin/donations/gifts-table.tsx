@@ -12,7 +12,7 @@ import {
 	useRef,
 	useState
 } from 'react';
-import { Form, href, Link, useSubmit } from 'react-router';
+import { Form, href, Link, useNavigation, useSubmit } from 'react-router';
 import { GiftNote, PublicMessagesLink } from '$lib/admin/messages/gift-note';
 import { byDayShown, type Received } from '$lib/admin/received-order';
 import { DONATION_STATUS_TONES, MATCH_STATUS_TONES } from '$lib/admin/status-tones';
@@ -260,9 +260,10 @@ const FILTER_ORDER = [
  * a choice is a pick, not a step. a pick — a click or tap on an option, Enter in the open list, a
  * phone's picker — fires `change` with no key down on the box, and navigates. a step — an arrow,
  * Home, End or a typed letter on the closed box — fires its `change` inside the keydown's own task,
- * as Chromium does, and only moves what the box shows. Enter on the closed box, or leaving
- * it, then applies what it shows, so the box never names a filter the rows were not read under.
- * each navigates once: a value already applied is not applied again.
+ * as Chromium does, and only moves what the box shows. Enter on the closed box, opening its list
+ * with a pointer, or leaving it, then applies what it shows, so the box never names a filter the
+ * rows were not read under, and Escape puts back the filter last applied. each navigates once: a
+ * value already applied is not applied again.
  *
  * the box is controlled and never remounted, so the focus stays on it across the navigation a
  * choice makes. it shows the last choice made here until the list is read under another filter
@@ -277,11 +278,15 @@ export function MatchFilterSelect({ value }: { readonly value: MatchFilter | nul
 		setReadUnder(value);
 		setShown(value ?? '');
 	}
-	// the filter last navigated to, so Enter and leaving after a pick do not navigate again.
+	// the filter last navigated to, so Enter and leaving after a pick do not navigate again. it is
+	// put back to the filter the rows were read under whenever the router comes to rest, so a
+	// navigation that never landed (Back, or a click elsewhere while it was going) leaves the box's
+	// choice still to apply.
 	const applied = useRef(value ?? '');
+	const { state: navigating } = useNavigation();
 	useEffect(() => {
-		applied.current = value ?? '';
-	}, [value]);
+		if (navigating === 'idle') applied.current = value ?? '';
+	}, [navigating, value]);
 	// set by a key on the box and cleared a task later: a `change` while it is set is that key's step.
 	const stepping = useRef(false);
 	const apply = (chosen: string) => {
@@ -302,6 +307,10 @@ export function MatchFilterSelect({ value }: { readonly value: MatchFilter | nul
 			apply(event.currentTarget.value);
 			return;
 		}
+		if (event.key === 'Escape') {
+			setShown(applied.current);
+			return;
+		}
 		stepping.current = true;
 		setTimeout(() => {
 			stepping.current = false;
@@ -318,6 +327,9 @@ export function MatchFilterSelect({ value }: { readonly value: MatchFilter | nul
 					value={shown}
 					onChange={choose}
 					onKeyDown={key}
+					// opening the list with a pointer commits a step: picking the option the step left
+					// showing fires no `change`.
+					onPointerDown={(event) => apply(event.currentTarget.value)}
 					onBlur={(event) => apply(event.currentTarget.value)}
 				>
 					<option value="">Any</option>

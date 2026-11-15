@@ -528,13 +528,14 @@ describe('the thank-you’s employer ask', () => {
 		['unconfirmed', copy.EMPLOYER_UNCONFIRMED],
 		['blank', copy.EMPLOYER_BLANK]
 	] as const)(
-		'says why an ask stands refused (%s) in its own words, under the box and in the region',
+		'says why an ask stands refused (%s) in its own words under the box, leaving the region to the card',
 		(why, words) => {
 			const screen = takeoverFor(asked(why), CONFIG, money);
 
 			expect(screen.employer?.refusal).toBe(words);
 			expect(screen.employer?.boxRefused).toBe(why === 'blank');
-			expect(screen.announce).toBe(words);
+			// the card says a refusal as it lands, not while it stands (`askSaid` in ./card.tsx).
+			expect(screen.announce).toBe('');
 		}
 	);
 

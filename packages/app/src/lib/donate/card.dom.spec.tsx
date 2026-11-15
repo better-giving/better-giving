@@ -3303,11 +3303,13 @@ describe('the thank-you’s employer ask', () => {
 
 		expect(document.activeElement).toBe(box(root));
 		expect(region(root)).toBe(copy.EMPLOYER_BLANK);
+		const written = heard(root);
 
 		await sentFromBox(root);
-		expect(region(root)).toBe('');
 		await settled();
 
+		// the region holds the same words as before, so the repeat is a clear and a write a task apart.
+		expect(written).toEqual(['', copy.EMPLOYER_BLANK]);
 		expect(region(root)).toBe(copy.EMPLOYER_BLANK);
 	});
 
@@ -3391,10 +3393,15 @@ describe('the thank-you’s employer ask', () => {
 		expect(one(root, '#employer-problem').textContent).toBe(copy.EMPLOYER_REFUSAL);
 		expect(box(root).getAttribute('aria-describedby')).toBe('employer-hint employer-problem');
 		expect(region(root)).toBe(copy.EMPLOYER_REFUSAL);
+		const written = heard(root);
 
 		await pressed(send(root));
 		await settled();
 
+		// a region left holding the refusal is announced by nobody, so the resend must take it out
+		// of the region before writing it back.
+		expect(written.at(-1)).toBe(copy.EMPLOYER_REFUSAL);
+		expect(written.slice(0, -1).some((text) => text !== copy.EMPLOYER_REFUSAL)).toBe(true);
 		expect(region(root)).toBe(copy.EMPLOYER_REFUSAL);
 		expect(one(root, '#employer-problem').hidden).toBe(false);
 	});

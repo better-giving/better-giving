@@ -34,6 +34,19 @@ const reachesAnOpenPress = ({ selector }: { selector: string }) =>
 	/:(?:hover|active):not\(/.test(selector);
 
 describe("the registry's closed press", () => {
+	it('is held to every rank the admin ships', () => {
+		// RANKS is derived from the map by a prefix strip, so a shrunk map or a renamed prefix would
+		// shrink every `toEqual(RANKS)` below with it and stay green.
+		expect([...RANKS].sort()).toEqual([
+			'destructive',
+			'destructive-outline',
+			'ghost',
+			'primary',
+			'secondary',
+			'soft'
+		]);
+	});
+
 	it('is read from the rules it should be', () => {
 		// a sheet renamed or reshaped reads as no rule disagreeing with another.
 		expect(registryRules.filter(reachesAnOpenPress).length).toBeGreaterThan(6);

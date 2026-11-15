@@ -166,6 +166,29 @@ describe('a save button mounted into a document', () => {
 		]);
 	});
 
+	it('keeps the done look while a caller closes every press on the page, and still turns a press away', () => {
+		// a route closes every press while any write to it is going, so a group's "Saved" meets the
+		// next group's save inside its confirmation. stated closed then, the tick is drawn on the
+		// closed press's grey fill.
+		const clicked = vi.fn();
+		const submitted = vi.fn((event: Event) => event.preventDefault());
+		const form = document.createElement('form');
+		form.addEventListener('submit', submitted);
+		document.body.append(form);
+		const { root } = mount(SaveButton, { state: 'done', disabled: true, onClick: clicked });
+		form.append(root);
+		const button = pressed(root);
+		button.click();
+		form.remove();
+
+		expect([
+			button.getAttribute('data-done'),
+			button.hasAttribute('aria-disabled'),
+			clicked.mock.calls.length,
+			submitted.mock.calls.length
+		]).toEqual(['true', false, 0, 0]);
+	});
+
 	it('states the done look only once the save has landed', () => {
 		for (const state of ['idle', 'pending', 'disabled'] as const) {
 			const button = pressed(render(SaveButton, { state }));

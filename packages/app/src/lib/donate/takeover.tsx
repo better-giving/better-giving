@@ -349,7 +349,7 @@ export function takeoverFor(
 			// while the ask is open, Skip is the way out of it and the start-over waits until it closes.
 			const asking = employer?.phase === 'asking' || employer?.phase === 'sending';
 			// with an ask, the thank-you is said once, as packages/form/src/views.ts says it: the ask's
-			// refusals are said as they land (`askNews` in ./card.tsx), and the row the caret lands on as
+			// refusals are said as they land (`askSaid` in ./card.tsx), and the row the caret lands on as
 			// it closes says how it closed.
 			const said = (thanks: string) =>
 				employer === null ? { announce: thanks } : { arrival: thanks };

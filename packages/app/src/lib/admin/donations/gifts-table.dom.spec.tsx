@@ -1,6 +1,6 @@
 import { act, createElement, type ReactNode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, useLocation, useSearchParams } from 'react-router';
+import { createRoutesStub, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { MatchFilter, MatchStatus } from '$lib/matching/status';
 import { type GiftRow, GiftsTable, type GiftsTableProps } from './gifts-table';
@@ -313,6 +313,90 @@ describe('the filter', () => {
 			await act(async () => chosen.box.blur());
 			expect(chosen.navigations).toEqual(['?match=voided']);
 		});
+
+		it('applies what the box shows when the list is opened with a pointer after a step', async () => {
+			// the pick that follows may be the option the step already shows, which fires no `change`.
+			const { box, navigations } = picked();
+
+			await step(box, 'filed');
+			await nextTask();
+			await act(async () => {
+				box.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+			});
+			await act(async () => {
+				box.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+			});
+
+			expect(navigations).toEqual(['?match=filed']);
+			expect(box.value).toBe('filed');
+		});
+
+		it('puts back the applied filter on Escape, so leaving after it navigates nowhere', async () => {
+			const { box, navigations } = picked();
+
+			await step(box, 'reminded');
+			await nextTask();
+			await act(async () => {
+				box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+			});
+			await act(async () => box.blur());
+
+			expect(box.value).toBe('');
+			expect(navigations).toEqual([]);
+		});
+	});
+
+	it('applies the box again after a navigation it made never landed', async () => {
+		// the filtered read is held until the case lets it go, and the case leaves for another
+		// address first, as Back or a click elsewhere on the page would.
+		let navigate: ((to: string) => Promise<void> | void) | null = null;
+		const navigations: string[] = [];
+		function Listed() {
+			const { key, search } = useLocation();
+			navigate = useNavigate();
+			useEffect(() => {
+				if (key !== 'default') navigations.push(search);
+			}, [key, search]);
+			return createElement(GiftsTable, {
+				donations: [gift()],
+				limit: 500,
+				hasMore: false,
+				match: (new URLSearchParams(search).get('match') as MatchFilter | null) ?? null
+			});
+		}
+		let held = true;
+		const Stub = createRoutesStub([
+			{
+				path: '/admin/donations',
+				Component: Listed,
+				loader: ({ request }: { request: Request }) =>
+					held && new URL(request.url).searchParams.has('match')
+						? new Promise<null>(() => {})
+						: null
+			}
+		]);
+		const root = mount(createElement(Stub, { initialEntries: ['/admin/donations'] }));
+		// a route with a loader draws once its first read settles.
+		await act(() => new Promise((done) => setTimeout(done)));
+		const box = select(root);
+		if (box === null) throw new Error('no filter');
+		box.focus();
+
+		await act(async () => {
+			box.value = 'filed';
+			box.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		await act(async () => {
+			await navigate?.('/admin/donations?page=2');
+		});
+		held = false;
+		expect([navigations, box.value]).toEqual([['?page=2'], 'filed']);
+
+		await act(async () => {
+			box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		});
+
+		expect(navigations).toEqual(['?page=2', '?match=filed']);
 	});
 
 	it('says a filter matched nothing, and counts what it matched', () => {

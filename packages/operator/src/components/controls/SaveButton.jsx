@@ -109,14 +109,16 @@ export function SaveButton({
 				// and answers the operator with a second tick over the same values. it is turned away
 				// below but not stated closed: the registry's done look takes no pointer and stays
 				// focusable, and draws only on a press with no `aria-disabled` on it
-				// (../../registry/styles/button-css.usage.md, Done).
+				// (../../registry/styles/button-css.usage.md, Done). that holds under a caller's
+				// `disabled` too: a route closing every press while any write to it is going would
+				// otherwise draw the tick on the closed press's grey fill.
 				//
 				// closed by `aria-disabled` and a press turned away here, never by `disabled`: a natively
 				// closed control cannot hold focus, so the caret would drop to the document on the press
 				// and the tick would land on a button nobody is standing on. cancelling the click cancels
 				// the submission it would make, Enter in a box of the form included — implicit
 				// submission is a click on this button.
-				aria-disabled={drawnClosed || undefined}
+				aria-disabled={(drawnClosed && !done) || undefined}
 				aria-busy={busy || undefined}
 				data-done={done || undefined}
 				onClick={(event) => {

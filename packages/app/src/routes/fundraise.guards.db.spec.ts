@@ -170,6 +170,21 @@ describe('the staff preview of a fundraiser', () => {
 		expect(hiddenPage.markup).toContain('Reported twice by donors');
 	});
 
+	// Show more reads the public list, which refuses a hidden page, so the preview draws no messages.
+	it('draws no messages, even where the page has one shown', async () => {
+		const { pageId, formId, slug } = await liveFundraiser(db, mailed);
+		await noteGift(db, formId, { note: 'Go Maya!', noteOnPage: 'named' });
+		expect(JSON.stringify((await visitFundraiser(slug)).data)).toContain('Go Maya!');
+		const member = await signInAsMember(db);
+
+		const drawn = await previewScreen(
+			request(`/admin/supporter-pages/${pageId}/preview`, { cookie: member }),
+			{ env: supporterEnv() }
+		);
+
+		expect(await drawn.json()).toMatchObject({ fundraiser: { messages: null } });
+	});
+
 	it('draws a page still waiting on its confirm link as pending, with no start date', async () => {
 		await postStart(cookieJar());
 		const [started] = await db.select({ id: supporterPage.id }).from(supporterPage);
