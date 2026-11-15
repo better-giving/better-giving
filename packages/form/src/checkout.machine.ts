@@ -2563,7 +2563,8 @@ export const checkoutMachine = setup({
 						// a blank box takes no press, Enter included, and says nothing: the control
 						// is drawn unavailable over it.
 						SEND_EMPLOYER: { guard: 'employerIsGiven', target: 'sending' },
-						SKIP_EMPLOYER: { target: 'skipped' }
+						// a refusal leaves with the ask, so the card's region stops saying it.
+						SKIP_EMPLOYER: { target: 'skipped', actions: assign({ employerRefused: false }) }
 					}
 				},
 				/**
@@ -2572,8 +2573,17 @@ export const checkoutMachine = setup({
 				 * sends it again: the endpoint records the employer named last. a refusal stands
 				 * until a write lands, so the card's region is not handed the thank-you again over a
 				 * resend (`announce` on the `success` screen in ./views.ts).
+				 *
+				 * the box stays open to typing, and what is typed here is what a reopened ask holds;
+				 * the write already sent carries the text as it was pressed. Skip is drawn and
+				 * pressable throughout, so it is taken here too: leaving stops the invoked write,
+				 * and its answer lands on nothing.
 				 */
 				sending: {
+					on: {
+						SET_EMPLOYER: { actions: assign({ employer: ({ event }) => event.employer }) },
+						SKIP_EMPLOYER: { target: 'skipped', actions: assign({ employerRefused: false }) }
+					},
 					invoke: {
 						src: 'writeEmployer',
 						input: ({ context }) => {

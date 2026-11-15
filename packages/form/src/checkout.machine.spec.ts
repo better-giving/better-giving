@@ -3105,4 +3105,44 @@ describe('the employer ask on the thank-you', () => {
 		expect(actor.getSnapshot().matches({ success: 'asking' })).toBe(true);
 		expect(actor.getSnapshot().context.employerRefused).toBe(true);
 	});
+
+	it('takes a Skip while the write is in flight, and lets its answer land on nothing', async () => {
+		let land: (() => void) | undefined;
+		const { actor } = await thanked({
+			employer: () =>
+				new Promise<void>((resolve) => {
+					land = resolve;
+				})
+		});
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind Logistics' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		actor.send({ type: 'SKIP_EMPLOYER' });
+		expect(actor.getSnapshot().matches({ success: 'skipped' })).toBe(true);
+
+		land?.();
+		await settle();
+		expect(actor.getSnapshot().matches({ success: 'skipped' })).toBe(true);
+	});
+
+	it('keeps what the donor types while the write is in flight', async () => {
+		const { actor, clock } = await thanked({ employer: neverAnswers });
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind Logistics' });
+		clock.advance(PORT_TIMEOUT_MS);
+		expect(actor.getSnapshot().matches({ success: 'asking' })).toBe(true);
+		expect(actor.getSnapshot().context.employer).toBe('Northwind Logistics');
+	});
+
+	it('lets a refusal go when the donor skips', async () => {
+		const { actor } = await thanked({ employer: () => Promise.reject(new Error('refused')) });
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind Logistics' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		await settle();
+		expect(actor.getSnapshot().context.employerRefused).toBe(true);
+
+		actor.send({ type: 'SKIP_EMPLOYER' });
+		expect(actor.getSnapshot().matches({ success: 'skipped' })).toBe(true);
+		expect(actor.getSnapshot().context.employerRefused).toBe(false);
+	});
 });

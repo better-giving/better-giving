@@ -293,10 +293,14 @@ describe('the employer write the thank-you makes', () => {
 			'fetch',
 			vi.fn(async () => Promise.reject(new TypeError('Failed to fetch')))
 		);
-		await expect(createEmployerWrite(DEPLOYMENT)(write)).rejects.toBeDefined();
+		await expect(createEmployerWrite(DEPLOYMENT)(write)).rejects.toThrow('Failed to fetch');
 	});
 
-	it('refuses where the runtime could not tell which deployment served it', async () => {
-		await expect(createEmployerWrite(null)(write)).rejects.toBeDefined();
+	it('refuses where the runtime could not tell which deployment served it, and sends nothing', async () => {
+		const fetched = stubFetch(json({ ok: true }));
+		await expect(createEmployerWrite(null)(write)).rejects.toThrow(
+			'could not tell which deployment it was served from'
+		);
+		expect(fetched).not.toHaveBeenCalled();
 	});
 });

@@ -8164,6 +8164,60 @@ describe('the employer ask on the thank-you', () => {
 		expect(secondary(card).hidden).toBe(true);
 	});
 
+	it('closes the ask on a Skip pressed while the write is in flight', async () => {
+		let land: (() => void) | undefined;
+		const { card } = await thanked(
+			() =>
+				new Promise<void>((resolve) => {
+					land = resolve;
+				})
+		);
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		press(card.find('.employer [part~="action-quiet"]'));
+		await settle();
+
+		const skipped =
+			'Employer matchingIf your employer matches gifts, what you need to ask for it is on your gift page. The link is in your receipt.';
+		expect(card.find('.employer [role="status"]').textContent).toBe(skipped);
+		expect(secondary(card).hidden).toBe(false);
+
+		land?.();
+		await settle();
+		expect(card.find('.employer [role="status"]').textContent).toBe(skipped);
+	});
+
+	it('keeps what the donor types while the write is in flight', async () => {
+		let refuse: (() => void) | undefined;
+		const { card } = await thanked(
+			() =>
+				new Promise<void>((_, reject) => {
+					refuse = () => reject(new Error('refused'));
+				})
+		);
+		type(card.find('#employer'), 'Northwind');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		type(card.find('#employer'), 'Northwind Logistics');
+		refuse?.();
+		await settle();
+
+		expect((card.find('#employer') as HTMLInputElement).value).toBe('Northwind Logistics');
+	});
+
+	it('stops saying a refusal once the donor skips', async () => {
+		const { card } = await thanked(() => Promise.reject(new Error('refused')));
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		await settle();
+		press(card.find('.employer [part~="action-quiet"]'));
+		await settle();
+		await settle();
+
+		expect(card.text('.vh[role="status"]')).toBe('');
+	});
+
 	it('asks nothing where the quote named no gift page', async () => {
 		const card = await atSubmitted({ ports: { employer: async () => {} } });
 		expect(card.find('.employer').hidden).toBe(true);

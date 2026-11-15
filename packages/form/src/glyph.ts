@@ -5,9 +5,10 @@
 const SVG = 'http://www.w3.org/2000/svg';
 
 /**
- * lucide's `chevron-down`, `search`, `check`, `copy`, `circle-alert`, `circle-help`, `circle-check`,
- * `arrow-right`, `mail`, `link` and `play` (https://lucide.dev, ISC), each drawn in `currentColor` at its source's own
- * stroke. a circle or a rect is written as the path it describes.
+ * lucide's icons (https://lucide.dev, ISC), by their key here and lucide's name beside it where the two
+ * differ:`chevron` (`chevron-down`), `search`, `tick` (`check`), `copy`, `alert` (`circle-alert`),
+ * `help` (`circle-help`), `done` (`circle-check`), `arrow-right`, `mail`, `link` and `play`, each
+ * drawn in `currentColor` at its source's own stroke. a circle or a rect is written as the path it describes.
  *
  * exported as data as well as through `glyph` below: the deployment's donor page draws its blocks
  * in react, on the server, where there is no document to build a node in, and it takes its marks
