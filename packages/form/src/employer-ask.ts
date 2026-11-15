@@ -58,6 +58,14 @@ const HEADING_ID = 'employer-heading';
 const HINT_ID = 'employer-hint';
 const REFUSAL_ID = 'employer-problem';
 
+/**
+ * the two presses at the registry's md tier rather than the large one the card's other actions take
+ * (`REGISTRY_CLASS` in ./parts.ts): side by side in half the column, the large tier's type and
+ * padding break `Send me the details` onto a second line.
+ */
+const SEND_CLASS = 'ds-btn ds-btn-primary';
+const SKIP_CLASS = 'ds-btn ds-btn-secondary';
+
 export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers): EmployerAskView {
 	const make = <K extends keyof HTMLElementTagNameMap>(
 		tag: K,
@@ -101,14 +109,11 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 	// a submit button while the ask is open, so Enter in the box presses it through the card's own
 	// `<form>`; `aria-disabled` rather than `disabled`, which the platform's implicit submission would
 	// skip silently and which takes the control out of the tab order.
-	const send = make('button', { type: 'submit', class: REGISTRY_CLASS.action }, [
-		sendLabel,
-		spinner
-	]);
+	const send = make('button', { type: 'submit', class: SEND_CLASS }, [sendLabel, spinner]);
 	const skip = make('button', {
 		type: 'button',
 		part: part('action-quiet'),
-		class: 'ds-btn ds-btn-secondary ds-btn-lg'
+		class: SKIP_CLASS
 	});
 	const ask = make('div', { role: 'group', 'aria-labelledby': HEADING_ID, class: 'employer-ask' }, [
 		make('div', { class: 'employer-head' }, [heading, hint]),

@@ -5058,6 +5058,28 @@ describe('the employer ask on the thank-you', () => {
 		expect(Math.abs((c?.width ?? 0) - (d?.width ?? 0))).toBeLessThan(DEVICE_PIXEL);
 	});
 
+	// the large tier broke `Send me the details` onto two lines in half the column, and both presses
+	// stood twice their height beside it.
+	it('holds each label on one line at the registry’s md height when wide, and the touch floor when stacked', async () => {
+		const wide = await thanked('1440px');
+		for (const press of [send(wide), skip(wide)]) {
+			const words = press.querySelector('.action-label') ?? press;
+			const lines = words.getClientRects();
+			expect(lines.length, press.textContent ?? '').toBe(1);
+			// the registry's `min-block-size` on the bare `ds-btn` is the md tier's height.
+			const md = parseFloat(getComputedStyle(press).minHeight);
+			expect(press.classList.contains('ds-btn-lg')).toBe(false);
+			expect(Math.abs(press.getBoundingClientRect().height - md)).toBeLessThan(DEVICE_PIXEL);
+		}
+
+		const narrow = await thanked('375px');
+		for (const press of [send(narrow), skip(narrow)]) {
+			expect(
+				Math.abs(press.getBoundingClientRect().height - step(narrow, '--_row-min'))
+			).toBeLessThan(DEVICE_PIXEL);
+		}
+	});
+
 	it('draws the send in the registry’s disabled look over a blank box, and its fill once typed into', async () => {
 		const shadow = await thanked('1440px');
 		await landed(send(shadow));

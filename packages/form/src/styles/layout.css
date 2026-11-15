@@ -394,11 +394,23 @@ form {
 	margin-block-start: calc((var(--_lh-tight) * 1em - var(--_glyph-beside)) / 2);
 }
 
-/* the two presses, one under the other on a narrow card and side by side on the wide one (below). */
+/*
+ * the two presses, one under the other on a narrow card and side by side on the wide one (below), at
+ * the registry's md tier (`SEND_CLASS` in ../employer-ask.ts). stacked, each takes the card's touch
+ * floor as its height: the registry has no tier at that height, and a full-width press is the one a
+ * thumb reaches for.
+ */
 .employer-actions {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	gap: var(--_sp3);
+}
+
+/* raw-length-ok: the card's wide breakpoint, as the query below states it. */
+@container donate not (min-width: calc(26em - 2px)) {
+	.employer-actions > * {
+		min-block-size: var(--_row-min);
+	}
 }
 
 /* the block the receipt is moved into when a takeover states the money. */
