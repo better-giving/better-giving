@@ -96,6 +96,16 @@ describe('mark filed', () => {
 		expect((await row()).filedAt).toBeNull();
 	});
 
+	it('is refused after voided, reporting the state', async () => {
+		await voidMatch(db, { donationId }, STAFF, 'Duplicate gift', T0);
+		expect(await markFiled(db, { donationId }, DONOR, T1)).toMatchObject({
+			ok: true,
+			changed: false,
+			state: { status: 'voided' }
+		});
+		expect((await row()).filedAt).toBeNull();
+	});
+
 	it('answers not_found for a gift with no row', async () => {
 		expect(await markFiled(db, { donationId: fresh() }, DONOR, T0)).toEqual({
 			ok: false,
@@ -304,6 +314,18 @@ describe('the lost dispute void', () => {
 		await db.batch([disputeLostVoidStatement(db, donationId, withdrawal, T0)]);
 		expect(await row()).toMatchObject({
 			voidedAt: T0,
+			voidedBy: SYSTEM,
+			voidReason: 'Dispute lost'
+		});
+	});
+
+	it('voids a matched gift too, keeping matched_at', async () => {
+		await markMatched(db, { donationId }, STAFF, T0);
+		const withdrawal = await disputed('lost');
+		await db.batch([disputeLostVoidStatement(db, donationId, withdrawal, T1)]);
+		expect(await row()).toMatchObject({
+			matchedAt: T0,
+			voidedAt: T1,
 			voidedBy: SYSTEM,
 			voidReason: 'Dispute lost'
 		});

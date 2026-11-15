@@ -14,6 +14,7 @@ import {
 	nameEmployer,
 	REMINDER_AFTER_MS,
 	refundVoidStatement,
+	reopenStatement,
 	voidMatch
 } from './match';
 import { sendOwedPack } from './pack';
@@ -278,6 +279,61 @@ describe('the reminder sweep', () => {
 
 		expect(mail.sent).toHaveLength(0);
 		expect(await remindedAt(id)).toBeNull();
+	});
+
+	// the sweep lists both rows, then the first send closes the second row's match: the listing is
+	// stale by the time the second claim runs, so only the claim's own filed, matched and voided guards
+	// can refuse it.
+	it.each([
+		['filed', (id: string) => markFiled(db, { donationId: id }, 'donor', T0)],
+		['matched', (id: string) => markMatched(db, { donationId: id }, 'staff', T0)],
+		['voided', (id: string) => voidMatch(db, { donationId: id }, 'staff', 'Duplicate gift', T0)]
+	])('never reminds a gift %s after the sweep listed it', async (_, close) => {
+		const first = await namedGift();
+		const second = await namedGift();
+		await rawSql(client).run(
+			stmt(
+				'update gift_match set reminder_due_at = ? where donation_id = ?',
+				DUE.getTime() - 1,
+				first
+			)
+		);
+		const sent: EmailMessage[] = [];
+		const closing: EmailProvider = {
+			async send(message) {
+				sent.push(message);
+				if (sent.length === 1) await close(second);
+				return { ok: true };
+			}
+		};
+
+		await sendDueReminders({ db, email: closing, giftOrigin: PINNED }, DUE);
+
+		expect(sent).toHaveLength(1);
+		expect(await remindedAt(first)).toBe(DUE.getTime());
+		expect(await remindedAt(second)).toBeNull();
+	});
+
+	it('reminds a gift again once a refund that voided its match is put back', async () => {
+		const id = await namedGift();
+		await refunded(id, 15000);
+		await db.batch([refundVoidStatement(db, id, T0)]);
+		const mail = mailer();
+		const deps = { db, email: mail.port, giftOrigin: PINNED };
+		await sendDueReminders(deps, DUE);
+		expect(mail.sent).toHaveLength(0);
+
+		await rawSql(client).run(
+			stmt(
+				"update payment set status = 'cancelled' where donation_id = ? and direction = 'refund'",
+				id
+			)
+		);
+		await db.batch([reopenStatement(db, id)]);
+		await sendDueReminders(deps, DUE);
+
+		expect(mail.sent).toHaveLength(1);
+		expect(await remindedAt(id)).toBe(DUE.getTime());
 	});
 
 	it('hands a failed send back, retries it once the wait is up, and sends once in total', async () => {

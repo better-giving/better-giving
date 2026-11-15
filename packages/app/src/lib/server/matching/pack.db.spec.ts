@@ -5,7 +5,13 @@ import { client, run, stmt } from '../db/database.testing';
 import { giftMatch } from '../db/schema';
 import { sendReceipt } from '../donations/receipt';
 import type { EmailMessage, EmailProvider } from '../email/provider';
-import { nameEmployer, voidMatch } from './match';
+import {
+	markMatched,
+	nameEmployer,
+	refundVoidStatement,
+	reopenStatement,
+	voidMatch
+} from './match';
 import { employerNamed, sendFailedPacks, sendOwedPack } from './pack';
 
 // the pack, against a real database: sent once, only for a gift in the books, and a send that did
@@ -187,6 +193,47 @@ describe('the pack', () => {
 			'not_owed'
 		);
 		expect(mail.sent).toHaveLength(0);
+	});
+
+	it('is not sent for a matched gift', async () => {
+		await markMatched(db, { donationId }, 'staff', T0);
+		const mail = mailer();
+
+		expect(await sendOwedPack({ db, email: mail.port, giftOrigin: PINNED }, donationId, T0)).toBe(
+			'not_owed'
+		);
+		expect(mail.sent).toHaveLength(0);
+		expect(await row()).toMatchObject({ packSentAt: null, packFailedAt: null });
+	});
+
+	it('is owed again once a refund that voided its match is put back', async () => {
+		await run(
+			stmt(
+				`insert into payment (id, donation_id, amount_minor, currency, direction, method, status, occurred_at, created_at)
+				 values (?, ?, 15000, 'USD', 'refund', 'check', 'succeeded', ?, 0)`,
+				fresh(),
+				donationId,
+				T0.getTime()
+			)
+		);
+		await db.batch([refundVoidStatement(db, donationId, T0)]);
+		const mail = mailer();
+		expect(await sendOwedPack({ db, email: mail.port, giftOrigin: PINNED }, donationId, T0)).toBe(
+			'not_owed'
+		);
+
+		await run(
+			stmt(
+				"update payment set status = 'cancelled' where donation_id = ? and direction = 'refund'",
+				donationId
+			)
+		);
+		await db.batch([reopenStatement(db, donationId)]);
+
+		expect(await sendOwedPack({ db, email: mail.port, giftOrigin: PINNED }, donationId, T0)).toBe(
+			'sent'
+		);
+		expect(mail.sent).toHaveLength(1);
 	});
 
 	it('stamps a send that failed, and hands the claim back', async () => {

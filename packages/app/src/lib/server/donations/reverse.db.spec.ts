@@ -340,6 +340,27 @@ describe('recordReversal() — the gift’s employer match', () => {
 		});
 	});
 
+	it('is voided by a dispute lost on a matched gift, keeping matched_at', async () => {
+		const gift = await settledGift();
+		await markMatched(db, { donationId: gift.donationId }, 'staff-1', REFUNDED_AT);
+		await recordReversal(deps(), opened(), 'evt_d1');
+
+		await recordReversal(deps(), lost(), 'evt_d2');
+
+		expect(
+			await first(
+				stmt(
+					'select matched_at, voided_by, void_reason from gift_match where donation_id = ?',
+					gift.donationId
+				)
+			)
+		).toEqual({
+			matched_at: REFUNDED_AT.getTime(),
+			voided_by: 'system',
+			void_reason: 'Dispute lost'
+		});
+	});
+
 	it('is voided by a dispute lost with no opening recorded', async () => {
 		const gift = await settledGift();
 

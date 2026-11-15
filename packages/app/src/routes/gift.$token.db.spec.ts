@@ -296,13 +296,17 @@ describe('naming the employer', () => {
 		expect((await stamps(donationId))?.employer).toBe('🌱'.repeat(200));
 	});
 
-	it('is refused in plain words on a voided gift, never a 404 or a 500', async () => {
+	it.each([
+		['voided', (donationId: string) => voidMatch(db, { donationId }, STAFF, REASON, T0)],
+		['matched', (donationId: string) => markMatched(db, { donationId }, STAFF, T0)]
+	])('is refused in plain words on a %s gift, never a 404 or a 500', async (_, close) => {
 		const { donationId, token } = await gift();
-		await voidMatch(db, { donationId }, STAFF, REASON, T0);
+		await close(donationId);
 		const answered = await post(token, { intent: 'employer', employer: 'Northwind Traders' });
 		expect(answered.status).toBe(409);
 		expect(answered.data).toMatchObject({ intent: 'employer', error: expect.any(String) });
 		expect(JSON.stringify(answered.data)).not.toContain(REASON);
+		expect((await stamps(donationId))?.employer).toBeNull();
 	});
 });
 
@@ -332,6 +336,14 @@ describe('marking it filed', () => {
 		const answered = await post(token, { intent: 'filed' });
 		expect(answered.status).toBe(409);
 		expect(answered.data).toMatchObject({ intent: 'filed', error: expect.any(String) });
+		expect((await stamps(donationId))?.filed_at).toBeNull();
+	});
+
+	it('answers a matched gift as filed, which counts as filed, stamping nothing', async () => {
+		const { donationId, token } = await gift();
+		await markMatched(db, { donationId }, STAFF, T0);
+		const answered = await post(token, { intent: 'filed' });
+		expect(answered).toMatchObject({ status: 200, data: { done: 'filed' } });
 		expect((await stamps(donationId))?.filed_at).toBeNull();
 	});
 });
