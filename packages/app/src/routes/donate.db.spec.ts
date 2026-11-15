@@ -496,6 +496,19 @@ describe('messages from donors on /donate', () => {
 		}
 	});
 
+	it('lists nothing, and makes no page, where the Donation page has never been made', async () => {
+		const response = await more('');
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			kind: 'messages',
+			messages: [],
+			total: 0,
+			next: null
+		});
+		expect(await donationPageRows()).toBe(0);
+	});
+
 	it('answers 400 for a place in the list it never handed out', async () => {
 		const response = await more('?after=not-a-cursor');
 
@@ -515,6 +528,7 @@ describe('messages from donors on /donate', () => {
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const failure = new Error('the read failed');
 		vi.spyOn(messagesRead, 'readShownMessages').mockRejectedValueOnce(failure);
+		await ensureDonationPage(db);
 
 		const response = await more('');
 

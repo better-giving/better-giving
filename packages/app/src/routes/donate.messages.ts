@@ -1,7 +1,7 @@
 import { data } from 'react-router';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
-import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { parseMessageCursor } from '$lib/server/pages/messages';
+import { readTarget } from '$lib/server/pages/queries';
 import { readDonationPageMessages } from '$lib/server/pages/view';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { Route } from './+types/donate.messages';
@@ -17,9 +17,12 @@ import type { Route } from './+types/donate.messages';
 // it lists nothing where the page lists nothing: a page drawn as the donation box alone, or refused,
 // draws no messages (`readDonationPageMessages` in $lib/server/pages/view.ts), and this answers
 // the same then, so a broken page shows its donors no messages here either. the editor's preview
-// reads its first six there too, so its Show more continues the list it drew.
+// reads its first six there too, so its Show more continues the list it drew. it reads the page's
+// row and never makes it: a page never made lists nothing (AGENTS.md → Runtime names the loaders
+// that write).
 
 const NO_STORE = { 'cache-control': 'no-store' };
+const NOTHING_LISTED = { messages: [], total: 0, next: null };
 
 export async function loader({ context, request }: Route.LoaderArgs) {
 	if (context.get(overDonorPageLimit)) return donorPageRateLimitRefusal();
@@ -34,8 +37,11 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	// not the runtime's plain-text 500.
 	let page: Awaited<ReturnType<typeof readDonationPageMessages>>;
 	try {
-		const row = await ensureDonationPage(db);
-		page = await readDonationPageMessages(db, env, row, request, { now: Date.now() }, cursor);
+		const row = await readTarget(db, { type: 'donation_page' });
+		page =
+			row === null
+				? NOTHING_LISTED
+				: await readDonationPageMessages(db, env, row, request, { now: Date.now() }, cursor);
 	} catch (e) {
 		console.error('reading donor messages for show more failed:', e);
 		return data({ kind: 'refused' } as const, { status: 500, headers: NO_STORE });

@@ -34,14 +34,16 @@ import {
 	type SettleResult
 } from './delivery';
 import { reinstatementEntry, reversalEntry, settleUpEntry, unpostable } from './entries';
-import { disputeLostVoidStatement, refundVoidStatement } from '../matching/match';
+import { disputeLostVoidStatement, refundVoidStatement, reopenStatement } from '../matching/match';
 import { sendRefundNotice } from './refund-notice';
 
 // what a refund or a dispute does to a gift already in the books: a payment row of its own, and an
 // entry group taking the money back out, in one `batch()` — a refund that leaves nothing of the
-// gift, and a dispute's loss, with the void of the gift's employer match beside them
-// (`refundVoidStatement` and `disputeLostVoidStatement` in ../matching/match.ts). the only module
-// that writes a refund-direction row or a `dispute` row, gated by ./sole-refund-writer.spec.ts.
+// gift, a refund that settles an open dispute among them, and a dispute's loss, with the void of the
+// gift's employer match beside them (`refundVoidStatement` and `disputeLostVoidStatement` in
+// ../matching/match.ts), and a refund or a loss put back with that void cleared (`reopenStatement`
+// there). the only module that writes a refund-direction row or a `dispute` row, gated by
+// ./sole-refund-writer.spec.ts.
 //
 // ---------------------------------------------------------------------------
 // the refund is a row of its own and never a status on the gift's.
@@ -617,7 +619,9 @@ async function withdrawnBefore(
 	};
 	if (reversal.kind === 'refund') return already;
 	const closed =
-		reversal.kind === 'dispute_lost' ? await closeLost(deps, reversal, recorded) : null;
+		reversal.kind === 'dispute_lost'
+			? await closeLost(deps, reversal, recorded, closingRefund !== null)
+			: null;
 	if (typeof closed === 'object' && closed !== null) {
 		return refundRefused(deps, reversal, closed.refused);
 	}
@@ -670,11 +674,15 @@ async function withdrawnBefore(
  * a redelivery reads the dispute closed and writes nothing; one racing the first is refused whole by
  * the settle-up's `('adjustment', withdrawal row)` on `entry_group_source_idx`, or matches no open
  * row where there is nothing to settle.
+ *
+ * `byRefund` is a close a refund made (`closedByRefund`): the employer match is then voided as that
+ * refund's, only where it left nothing of the gift, rather than as a dispute lost.
  */
 async function closeLost(
 	deps: SettleDeps,
 	reversal: Extract<Reversal, { kind: 'dispute_lost' }>,
-	recorded: Payment
+	recorded: Payment,
+	byRefund: boolean
 ): Promise<'closed' | 'settled' | 'failed' | DisputeOutcome | null | { readonly refused: string }> {
 	const before = await outcomeOf(deps.db, recorded.id);
 	if (before !== null) return before;
@@ -734,8 +742,10 @@ async function closeLost(
 					finalRefundPaymentId: recorded.id
 				});
 	// the lowering goes ahead of the close, whose update is what makes `stillOpen` false; the
-	// match's void follows it, reading the close.
-	const voided = disputeLostVoidStatement(deps.db, recorded.donationId, recorded.id, new Date());
+	// match's void follows it, reading the close and the lowered amount.
+	const voided = byRefund
+		? refundVoidStatement(deps.db, recorded.donationId, new Date())
+		: disputeLostVoidStatement(deps.db, recorded.donationId, recorded.id, new Date());
 	const batch: Writes =
 		lowered === null ? [close, voided, ...settled] : [lowered, close, voided, ...settled];
 	const closeAt = batch.indexOf(close);
@@ -1109,7 +1119,8 @@ async function refundNotPosted(
 /**
  * a withdrawal that did not stand — a refund that failed, or a dispute won: its row flips to
  * `cancelled` and its group is mirrored back under `('payment', refund row)`, in one `batch()`, with
- * a won dispute's row closed in the same batch.
+ * a won dispute's row closed and the employer match's system void cleared, where the gift is no
+ * longer fully taken, in the same batch.
  *
  * the flip is guarded in the statement (`where status = 'succeeded'`), and this is the one place a
  * `succeeded` payment is ever walked back — a refund-direction row, whose money came back.
@@ -1220,6 +1231,7 @@ async function reinstate(
 			)
 		)
 		.returning({ id: payment.id });
+	const reopen = reopenStatement(deps.db, refundRow.donationId);
 	const batch: Writes = [
 		flip,
 		...(reversal.kind === 'dispute_won'
@@ -1235,6 +1247,8 @@ async function reinstate(
 						)
 				]
 			: []),
+		// after the flip and the close, which are what it reads.
+		reopen,
 		...(putBack === null
 			? []
 			: reversalWrites(deps.db, {
@@ -1247,6 +1261,7 @@ async function reinstate(
 			: reversalWrites(deps.db, { kind: 'settle_up', entry: settleUp, finalRefundPaymentId: null }))
 	];
 	const flipAt = batch.indexOf(flip);
+	const reopenAt = batch.indexOf(reopen);
 	const committed = await commit(deps.db, batch);
 	if (committed === 'failed') {
 		return {
@@ -1268,9 +1283,11 @@ async function reinstate(
 		};
 	}
 
-	if (reversal.kind === 'refund_failed') await refundDidNotStand(deps, reversal, refundRow);
+	const reopened = Array.isArray(committed[reopenAt]) && committed[reopenAt].length > 0;
+	if (reversal.kind === 'refund_failed')
+		await refundDidNotStand(deps, reversal, refundRow, reopened);
 	if (restoringLoss && reversal.kind === 'dispute_won')
-		await wonAfterLoss(deps, reversal, refundRow, withdrawal !== null);
+		await wonAfterLoss(deps, reversal, refundRow, withdrawal !== null, reopened);
 	return withdrawal === null
 		? {
 				ok: true,
@@ -1412,16 +1429,19 @@ async function wonAfterLoss(
 	deps: SettleDeps,
 	reversal: WonDisputeRead,
 	refundRow: Payment,
-	posted: boolean
+	posted: boolean,
+	reopened: boolean
 ): Promise<void> {
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
 		headline: `A ${processor} dispute marked lost is now reported won`,
-		body: posted
-			? `${processor} reported a dispute as won after your records had it as lost. The money is ` +
-				'back on the gift and the donor’s total. The record that took the money off is unchanged, and a new one puts it back.'
-			: `${processor} reported a dispute as won after your records had it as lost. Nothing new ` +
-				'was posted: your records never held the money it took. The gift counts the money again.',
+		body:
+			(posted
+				? `${processor} reported a dispute as won after your records had it as lost. The money is ` +
+					'back on the gift and the donor’s total. The record that took the money off is unchanged, and a new one puts it back.'
+				: `${processor} reported a dispute as won after your records had it as lost. Nothing new ` +
+					'was posted: your records never held the money it took. The gift counts the money again.') +
+			(reopened ? ' The gift’s employer match, which the loss had closed, is open again.' : ''),
 		facts: [
 			{ label: `${processor} dispute ID`, value: reversal.providerReversalId },
 			{ label: 'Refund ID', value: refundRow.id },
@@ -1471,12 +1491,13 @@ async function closedTheOtherWay(
 /**
  * staff told a refund did not stand, because the donor may already hold word that it went out and
  * nothing here writes to them — and a Zap may already have heard of it, keyed on its row, with
- * nothing to follow.
+ * nothing to follow. `reopened` is whether the same batch cleared the employer match's void.
  */
 async function refundDidNotStand(
 	deps: SettleDeps,
 	reversal: FailedRefundRead,
-	refundRow: Payment
+	refundRow: Payment,
+	reopened: boolean
 ): Promise<void> {
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
@@ -1484,7 +1505,8 @@ async function refundDidNotStand(
 		body:
 			'A refund on a gift failed, so the money stays with your organisation and counts on the ' +
 			'gift and the donor’s total again. The donor may already have been told the refund was ' +
-			'coming, and nothing has told them it failed.',
+			'coming, and nothing has told them it failed.' +
+			(reopened ? ' The gift’s employer match, which the refund had closed, is open again.' : ''),
 		facts: [
 			{ label: 'Refund ID', value: refundRow.id },
 			{ label: 'Gift ID', value: refundRow.donationId },

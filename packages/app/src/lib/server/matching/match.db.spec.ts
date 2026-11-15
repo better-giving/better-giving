@@ -12,6 +12,7 @@ import {
 	nameEmployer,
 	REMINDER_AFTER_MS,
 	refundVoidStatement,
+	reopenStatement,
 	SYSTEM,
 	voidMatch
 } from './match';
@@ -225,6 +226,60 @@ describe('the refund void', () => {
 	it('is a no-op for a gift with no row', async () => {
 		await db.batch([refundVoidStatement(db, fresh(), T0)]);
 		expect(await row()).toMatchObject({ voidedAt: null, voidedBy: null, voidReason: null });
+	});
+});
+
+describe('the reopen', () => {
+	/** a full refund the system voided the match for; answers the refund row. */
+	async function refundedInFull(): Promise<string> {
+		await moved(donationId, 'inbound', 15_000);
+		const refundId = await moved(donationId, 'refund', 15_000);
+		await db.batch([refundVoidStatement(db, donationId, T1)]);
+		return refundId;
+	}
+
+	const cancelled = (refundId: string) =>
+		run(stmt(`update payment set status = 'cancelled' where id = ?`, refundId));
+
+	it('clears a system void once the refund behind it no longer stands, and keeps matched', async () => {
+		await markMatched(db, { donationId }, STAFF, T0);
+		await cancelled(await refundedInFull());
+		const [reopened] = await db.batch([reopenStatement(db, donationId)]);
+		expect(reopened).toEqual([{ donationId }]);
+		expect(await row()).toMatchObject({
+			matchedAt: T0,
+			matchedBy: STAFF,
+			voidedAt: null,
+			voidedBy: null,
+			voidReason: null
+		});
+	});
+
+	it('leaves the void while nothing of the gift is left', async () => {
+		await refundedInFull();
+		await db.batch([reopenStatement(db, donationId)]);
+		expect(await row()).toMatchObject({ voidedBy: SYSTEM, voidReason: 'Gift refunded' });
+	});
+
+	it('leaves a void staff wrote', async () => {
+		await moved(donationId, 'inbound', 15_000);
+		await voidMatch(db, { donationId }, STAFF, 'Gift refunded', T0);
+		await db.batch([reopenStatement(db, donationId)]);
+		expect(await row()).toMatchObject({ voidedBy: STAFF, voidReason: 'Gift refunded' });
+	});
+
+	it('leaves the void while a lost dispute on the gift stands', async () => {
+		const refundId = await refundedInFull();
+		const withdrawal = await moved(donationId, 'refund', 1_000);
+		await run(
+			stmt(
+				`insert into dispute (payment_id, outcome, closed_at, created_at, updated_at) values (?, 'lost', 0, 0, 0)`,
+				withdrawal
+			)
+		);
+		await cancelled(refundId);
+		await db.batch([reopenStatement(db, donationId)]);
+		expect(await row()).toMatchObject({ voidedBy: SYSTEM });
 	});
 });
 

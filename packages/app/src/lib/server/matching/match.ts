@@ -1,4 +1,16 @@
-import { and, eq, exists, isNotNull, isNull, ne, or, type SQL, sql } from 'drizzle-orm';
+import {
+	and,
+	eq,
+	exists,
+	inArray,
+	isNotNull,
+	isNull,
+	ne,
+	notExists,
+	or,
+	type SQL,
+	sql
+} from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { dispute, donation, type GiftMatch, giftMatch, payment } from '../db/schema';
 import { nothingLeftOfGift } from '../donations/queries';
@@ -22,7 +34,9 @@ import { type GiftOrigin, giftPageUrl } from './links';
 //   - matched is terminal: no void, no filed and no employer after it. a full refund or a lost
 //     dispute still voids it (`refundVoidStatement`, `disputeLostVoidStatement`); a partial refund
 //     and a dispute opened or won leave every match as it stood.
-//   - voided is terminal: no filed, no matched and no employer after it.
+//   - voided is terminal: no filed, no matched and no employer after it. the one way back is a
+//     void the system wrote, cleared when the refund or the loss behind it is put back
+//     (`reopenStatement`); matched stays as it stood under the void.
 //   - matched may come before filed, and counts as filed without stamping it.
 //   - filed needs no employer named.
 
@@ -176,11 +190,11 @@ export async function voidMatch(
 
 /**
  * a refund's void, for the refund's own `batch()` in ../donations/reverse.ts, after the refund row's
- * insert: it lands only where that refund left nothing of the gift (`nothingLeftOfGift` in
- * ../donations/queries.ts), so a partial refund leaves the match as it stood and the one that takes
- * the rest closes it. it voids a matched gift too — staff take no action after matched, and a
- * refund still closes it — leaves an earlier void as it stood, and matches no row on a gift that
- * has none. it sets the three columns the void's checks pair, so it cannot be what refuses the
+ * insert or, for a refund that settles an open dispute, after that dispute's close: it lands only
+ * where that refund left nothing of the gift (`nothingLeftOfGift` in ../donations/queries.ts), so
+ * a partial refund leaves the match as it stood and the one that takes the rest closes it. it voids
+ * a matched gift too — staff take no action after matched, and a refund still closes it — leaves an
+ * earlier void as it stood, and matches no row on a gift that has none. it sets the three columns the void's checks pair, so it cannot be what refuses the
  * refund's batch.
  */
 export function refundVoidStatement(db: Db, donationId: string, now: Date) {
@@ -217,6 +231,42 @@ export function disputeLostVoidStatement(
 		.update(giftMatch)
 		.set({ voidedAt: now, voidedBy: SYSTEM, voidReason: DISPUTE_LOST_REASON })
 		.where(and(eq(giftMatch.donationId, donationId), isNull(giftMatch.voidedAt), exists(lost)));
+}
+
+/**
+ * the void a refund or a lost dispute wrote, cleared, for the `batch()` in ../donations/reverse.ts
+ * that puts back a refund that did not stand or a dispute won after its loss, after the statements
+ * that flip the refund row and close the dispute: it lands only where the system wrote the void for
+ * one of those two reasons, something of the gift is left again (`nothingLeftOfGift`), and no lost
+ * dispute on the gift still stands. a void staff wrote stays. it clears the three columns the void's
+ * checks pair and touches no other, so a match that was matched before the void reads matched again.
+ */
+export function reopenStatement(db: Db, donationId: string) {
+	const lostStands = db
+		.select({ one: sql`1` })
+		.from(dispute)
+		.innerJoin(payment, eq(payment.id, dispute.paymentId))
+		.where(
+			and(
+				eq(payment.donationId, donationId),
+				eq(payment.status, 'succeeded'),
+				eq(dispute.outcome, 'lost')
+			)
+		);
+	return db
+		.update(giftMatch)
+		.set({ voidedAt: null, voidedBy: null, voidReason: null })
+		.where(
+			and(
+				eq(giftMatch.donationId, donationId),
+				eq(giftMatch.voidedBy, SYSTEM),
+				inArray(giftMatch.voidReason, [REFUND_REASON, DISPUTE_LOST_REASON]),
+				// parenthesised: `not` binds tighter than the `and` inside `nothingLeftOfGift`.
+				sql`not (${nothingLeftOfGift(db, giftMatch.donationId)})`,
+				notExists(lostStands)
+			)
+		)
+		.returning({ donationId: giftMatch.donationId });
 }
 
 /**
