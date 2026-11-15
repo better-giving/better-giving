@@ -3056,7 +3056,8 @@ export function createCard(
 		paintTakeover(screen, busy);
 		employerAsk.update(screen.employer, {
 			value: api.employerField.value,
-			busy: api.sendEmployerButton['aria-busy']
+			busy: api.sendEmployerButton['aria-busy'],
+			given: api.sendEmployerButton.given === true
 		});
 
 		// the press is forgotten on the way off the step, the way `updateDetails` and `updatePayment`

@@ -419,8 +419,9 @@ export type CheckoutApi<
 	/**
 	 * the thank-you's employer box, and its two presses.
 	 *
-	 * `given` on the send is whether the box holds an answer the flow takes. a blank press is taken
-	 * and refused by the flow (`refusal` on `EmployerAsk` above), never held back by an attribute.
+	 * `given` on the send is whether the box holds an answer the flow takes, and the send is drawn
+	 * `aria-disabled` while it is not. a blank press is still taken and refused by the flow
+	 * (`refusal` on `EmployerAsk` above), never held back by `disabled`.
 	 */
 	readonly employerField: T['field'];
 	readonly sendEmployerButton: T['button'];

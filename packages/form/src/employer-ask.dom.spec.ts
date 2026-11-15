@@ -20,7 +20,7 @@ const SCREEN: EmployerAskScreen = {
 	giftUrl: 'https://giving.example.org/gift/7Qk3-mVx9Lr2NpA4'
 };
 
-const CONTROLS = { value: '', busy: false };
+const CONTROLS = { value: '', busy: false, given: false };
 
 const mounted: HTMLElement[] = [];
 
@@ -61,17 +61,24 @@ it('asks in a group named by its own heading, with the box labelled over it', ()
 	expect(field.getAttribute('aria-describedby')).toBe(find('.employer-hint').id);
 });
 
-it('draws Send pressable over a blank box, the flow being what refuses it, and Skip beside it', () => {
-	const { block, find } = mount();
+it('draws Send unavailable over a blank box yet still pressable, and Skip beside it', () => {
+	const { block, handlers, find } = mount();
 	block.update(SCREEN, CONTROLS);
 
 	const send = find<HTMLButtonElement>('[part~="action"]');
 	expect(send.textContent).toBe('Send me the details');
-	expect(send.hasAttribute('aria-disabled')).toBe(false);
+	expect(send.getAttribute('aria-disabled')).toBe('true');
+	// never the attribute: it would take the button out of the tab order and swallow the press the
+	// flow answers with a sentence.
 	expect(send.disabled).toBe(false);
 	// the default button of the card's form, so Enter in the box presses it and the flow decides.
 	expect(send.type).toBe('submit');
+	send.click();
+	expect(handlers.send).toHaveBeenCalledTimes(1);
 	expect(find('[part~="action-quiet"]').textContent).toBe('Skip');
+
+	block.update(SCREEN, { ...CONTROLS, value: 'Northwind', given: true });
+	expect(send.hasAttribute('aria-disabled')).toBe(false);
 });
 
 it('hands back what is typed and each press, and draws nothing of the closed ask', () => {
@@ -94,7 +101,7 @@ it('hands back what is typed and each press, and draws nothing of the closed ask
 
 it('replaces the ask with the status row and the gift page link once sent, and puts the caret there', () => {
 	const { block, find } = mount();
-	block.update(SCREEN, { ...CONTROLS, value: 'Northwind' });
+	block.update(SCREEN, { ...CONTROLS, value: 'Northwind', given: true });
 	block.update({ ...SCREEN, phase: 'sending' }, { ...CONTROLS, busy: true });
 	block.update(
 		{ ...SCREEN, phase: 'sent', doneHeading: 'Details sent', doneBody: 'We’ve emailed you.' },
@@ -143,7 +150,7 @@ it('takes no caret on a first paint that is already closed', () => {
 
 it('marks the send busy while its write is in flight', () => {
 	const { block, find } = mount();
-	block.update({ ...SCREEN, phase: 'sending' }, { value: 'Northwind', busy: true });
+	block.update({ ...SCREEN, phase: 'sending' }, { value: 'Northwind', busy: true, given: true });
 	const send = find('[part~="action"]');
 	expect(send.getAttribute('aria-busy')).toBe('true');
 	expect(send.getAttribute('part')).toBe('action busy');
@@ -154,8 +161,8 @@ it('states a refused write under the box, tied to it, and reports each refusal a
 	// block reports each one and the card says it again.
 	const { block, handlers, find } = mount();
 	const refused = { ...SCREEN, refusal: 'Your employer was not saved.' };
-	block.update(refused, { value: 'Northwind', busy: false });
-	block.update(refused, { value: 'Northwind Logistics', busy: false });
+	block.update(refused, { value: 'Northwind', busy: false, given: true });
+	block.update(refused, { value: 'Northwind Logistics', busy: false, given: true });
 
 	const message = find('.message');
 	expect(message.hidden).toBe(false);
@@ -165,9 +172,9 @@ it('states a refused write under the box, tied to it, and reports each refusal a
 	expect(message.hasAttribute('role')).toBe(false);
 	expect(handlers.refused).toHaveBeenCalledTimes(1);
 
-	block.update({ ...SCREEN, phase: 'sending' }, { value: 'Northwind', busy: true });
+	block.update({ ...SCREEN, phase: 'sending' }, { value: 'Northwind', busy: true, given: true });
 	expect(message.hidden).toBe(true);
-	block.update(refused, { value: 'Northwind', busy: false });
+	block.update(refused, { value: 'Northwind', busy: false, given: true });
 	expect(handlers.refused).toHaveBeenCalledTimes(2);
 });
 
@@ -194,7 +201,7 @@ it('marks the box over a blank press, puts the caret in it, and lets it go once 
 	expect(document.activeElement).toBe(field);
 	expect(handlers.send).toHaveBeenLastCalledWith(true);
 
-	block.update(SCREEN, { ...CONTROLS, value: 'N' });
+	block.update(SCREEN, { ...CONTROLS, value: 'N', given: true });
 	expect(field.hasAttribute('aria-invalid')).toBe(false);
 	expect(find('.message').hidden).toBe(true);
 });

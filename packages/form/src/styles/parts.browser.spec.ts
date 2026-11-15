@@ -5080,20 +5080,26 @@ describe('the employer ask on the thank-you', () => {
 		}
 	});
 
-	// a press over a blank box is refused under the box, never held back by its look (`action` in
-	// ../../custom-elements.json).
-	it('draws the send in the brand’s solid over a blank box and once typed into', async () => {
-		const shadow = await thanked('1440px');
-		// the brand's solid, at rest or under a pointer an earlier case left resting on it.
-		const solid = [used(shadow, '--_p'), used(shadow, '--_p-hover')];
-		await landed(send(shadow));
-		expect(send(shadow).hasAttribute('aria-disabled')).toBe(false);
-		expect(solid).toContain(getComputedStyle(send(shadow)).backgroundColor);
+	// over a blank box the send is `aria-disabled` and the registry draws it so (`button.ds-btn
+	// [aria-disabled]` in ../registry/styles/button-css.css), at both widths the approved frames draw.
+	it('draws the send in the registry’s disabled look over a blank box, and the brand’s solid once typed into', async () => {
+		for (const width of ['1440px', '375px']) {
+			const shadow = await thanked(width);
+			await landed(send(shadow));
+			expect(send(shadow).getAttribute('aria-disabled')).toBe('true');
+			expect(getComputedStyle(send(shadow)).backgroundColor).toBe(used(shadow, '--_n3'));
+			expect(getComputedStyle(send(shadow)).color).toBe(used(shadow, '--_n11'));
 
-		fill(shadow, '#employer', 'Northwind Logistics');
-		await settle();
-		await landed(send(shadow));
-		expect(solid).toContain(getComputedStyle(send(shadow)).backgroundColor);
+			fill(shadow, '#employer', 'Northwind Logistics');
+			await settle();
+			await landed(send(shadow));
+			expect(send(shadow).hasAttribute('aria-disabled')).toBe(false);
+			// the brand's solid, at rest or under a pointer an earlier case left resting on it.
+			expect([used(shadow, '--_p'), used(shadow, '--_p-hover')]).toContain(
+				getComputedStyle(send(shadow)).backgroundColor
+			);
+			expect(getComputedStyle(send(shadow)).color).toBe(used(shadow, '--primary-fg'));
+		}
 	});
 
 	it('draws Skip as the registry’s secondary press rather than the quiet text control', async () => {

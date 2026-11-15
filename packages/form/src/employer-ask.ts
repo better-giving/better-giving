@@ -35,6 +35,8 @@ export type EmployerAskScreen = {
 export type EmployerAskControls = {
 	readonly value: string;
 	readonly busy: boolean;
+	/** the box holds an answer the flow would send (`given` on `sendEmployerButton` in ./connect.ts). */
+	readonly given: boolean;
 };
 
 export type EmployerAskHandlers = {
@@ -115,8 +117,10 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 	const sendLabel = make('span', { class: 'action-label' });
 	const spinner = make('span', { class: 'ds-spinner', 'aria-hidden': 'true' });
 	// a submit button while the ask is open, so Enter in the box presses it through the card's own
-	// `<form>`, over a blank box too: the flow refuses that press with a sentence, so it is never held
-	// back by `disabled` or `aria-disabled`.
+	// `<form>`, over a blank box too. over a blank box it is `aria-disabled`, which the registry draws
+	// in its disabled fill and ink (`button.ds-btn[aria-disabled]` in
+	// ./registry/styles/button-css.css), and never `disabled`: it stays in the tab order and its press
+	// still reaches the flow, which refuses it with a sentence and the caret in the box.
 	const send = make('button', { type: 'submit', class: EMPLOYER_CLASS.action }, [
 		sendLabel,
 		spinner
@@ -183,6 +187,7 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 			text(skip, screen.skip);
 			attribute(send, 'type', open ? 'submit' : 'button');
 			attribute(send, 'aria-busy', controls.busy ? 'true' : null);
+			attribute(send, 'aria-disabled', open && !controls.given ? 'true' : null);
 			attribute(send, 'part', partWhen('action', { busy: controls.busy }));
 
 			if (screen.refusal !== '' && refusal.hidden && !screen.boxRefused) handlers.refused();

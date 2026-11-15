@@ -8102,8 +8102,10 @@ describe('the employer ask on the thank-you', () => {
 		await settle();
 		const thanks = card.text('.vh[role="status"]');
 		expect(thanks).toBe('Your gift went through.');
-		const send = card.find('.employer [part~="action"]');
-		expect(send.hasAttribute('aria-disabled')).toBe(false);
+		const send = card.find('.employer [part~="action"]') as HTMLButtonElement;
+		// drawn unavailable, yet focusable and taking the press the refusal answers.
+		expect(send.getAttribute('aria-disabled')).toBe('true');
+		expect(send.disabled).toBe(false);
 		press(send);
 		await settle();
 		expect(written).toEqual([]);
@@ -8120,6 +8122,7 @@ describe('the employer ask on the thank-you', () => {
 		type(box, 'Northwind Logistics');
 		expect(card.find('#employer-problem').hidden).toBe(true);
 		expect(box.hasAttribute('aria-invalid')).toBe(false);
+		expect(send.hasAttribute('aria-disabled')).toBe(false);
 		await settle();
 		expect(card.text('.vh[role="status"]')).toBe(thanks);
 	});
