@@ -3772,6 +3772,99 @@ export const supporterSession = sqliteTable(
 	]
 );
 
+// ---------------------------------------------------------------------------
+// employer matching: the paperwork a donor files with their employer for a gift, and the stamps
+// that follow it. nothing here says an employer matches.
+// ---------------------------------------------------------------------------
+
+/** 32 symbols of `FORM_ID_ALPHABET` at 5 bits each: 160 bits. */
+const GIFT_MATCH_TOKEN_LENGTH = 32;
+
+/** a fresh `gift_match.token`, as the column's default mints it. */
+export function mintGiftMatchToken(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(GIFT_MATCH_TOKEN_LENGTH));
+	let out = '';
+	for (const b of bytes) out += FORM_ID_ALPHABET[b & 31];
+	return out;
+}
+
+/**
+ * one gift's employer match: the donor's own page for it at `/gift/{token}`, with no sign-in, and
+ * the stamps of what has happened to the claim since. at most one row per donation, written by the
+ * app; a gift recorded before migrations/0039 has none until the app writes it.
+ *
+ * status is the set of stamps, not a column: each `_at` is when, and each `_by` beside it is who,
+ * as `'donor'`, `'system'` (a refund's void), or the staff member as better-auth names them —
+ * `connector_key.allowed_by` is the precedent. no foreign key on a `_by`, since two of its values
+ * are no user. the checks pair each stamp with its `_by` and refuse nothing else: matched before
+ * filed is real (an employer's money can arrive first), and void against matched is the app's
+ * rule.
+ */
+export const giftMatch = sqliteTable(
+	'gift_match',
+	{
+		id: id(),
+		/** `NO ACTION`, as every domain foreign key is (rule 2 at the top of this file). */
+		donationId: text('donation_id')
+			.notNull()
+			.references(() => donation.id),
+		/**
+		 * the gift page's address, stored as minted rather than as a hash as `supporter_link` and
+		 * `photo_link` store theirs: the pack, the reminder and staff rebuild `/gift/{token}` long
+		 * after it was minted, and a hash cannot give the address back. it admits one gift's page and
+		 * its "I've filed it" and employer writes, never a session.
+		 */
+		token: text('token').notNull().$defaultFn(mintGiftMatchToken),
+		/** what the donor typed, never shown on a public page, a donor message or the connector. */
+		employer: text('employer'),
+		packSentAt: at('pack_sent_at'),
+		packFailedAt: at('pack_failed_at'),
+		/** when the one reminder falls due; the sweep reads `gift_match_reminder_due_idx`. */
+		reminderDueAt: at('reminder_due_at'),
+		/** the reminder's send-once claim, stamped before the send and cleared if the send fails. */
+		remindedAt: at('reminded_at'),
+		filedAt: at('filed_at'),
+		filedBy: text('filed_by'),
+		matchedAt: at('matched_at'),
+		matchedBy: text('matched_by'),
+		voidedAt: at('voided_at'),
+		voidedBy: text('voided_by'),
+		/** staff's or the system's reason, for staff; a donor sees only that the claim is closed. */
+		voidReason: text('void_reason'),
+		createdAt: createdAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		// also the index `donation_id`'s foreign key is checked by.
+		uniqueIndex('gift_match_donation_id_idx').on(t.donationId),
+		uniqueIndex('gift_match_token_idx').on(t.token),
+		check(
+			'gift_match_token_check',
+			sql`length(${t.token}) = ${sql.raw(String(GIFT_MATCH_TOKEN_LENGTH))} and ${t.token} not glob '*[^${sql.raw(FORM_ID_ALPHABET)}]*'`
+		),
+		check('gift_match_employer_not_blank_check', optionalNotBlank(t.employer)),
+		check('gift_match_employer_length_check', sql`length(${t.employer}) <= 200`),
+		check('gift_match_filed_by_check', sql`(${t.filedAt} is null) = (${t.filedBy} is null)`),
+		check('gift_match_filed_by_not_blank_check', optionalNotBlank(t.filedBy)),
+		check('gift_match_matched_by_check', sql`(${t.matchedAt} is null) = (${t.matchedBy} is null)`),
+		check('gift_match_matched_by_not_blank_check', optionalNotBlank(t.matchedBy)),
+		check('gift_match_voided_by_check', sql`(${t.voidedAt} is null) = (${t.voidedBy} is null)`),
+		check('gift_match_voided_by_not_blank_check', optionalNotBlank(t.voidedBy)),
+		check('gift_match_void_reason_check', sql`(${t.voidedAt} is null) = (${t.voidReason} is null)`),
+		check('gift_match_void_reason_not_blank_check', optionalNotBlank(t.voidReason)),
+		// the reminder sweep: only the rows still owed one, by when it falls due. the sweep's
+		// `reminder_due_at <= ?` implies the `is not null` term, so the planner can take it.
+		index('gift_match_reminder_due_idx')
+			.on(t.reminderDueAt)
+			.where(
+				sql`${t.reminderDueAt} is not null and ${t.remindedAt} is null and ${t.filedAt} is null and ${t.matchedAt} is null and ${t.voidedAt} is null`
+			)
+	]
+);
+
+export type GiftMatch = typeof giftMatch.$inferSelect;
+export type NewGiftMatch = typeof giftMatch.$inferInsert;
+
 export type Supporter = typeof supporter.$inferSelect;
 export type NewSupporter = typeof supporter.$inferInsert;
 export type SupporterPage = typeof supporterPage.$inferSelect;
