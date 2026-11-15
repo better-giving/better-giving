@@ -166,37 +166,37 @@ export function GiftDetail({
 			    inert, so a banner up here would be behind it. */}
 			{asking ? null : refusal}
 
-			<div className="adm-cardpair">
-				<section className="ds-card" aria-labelledby="gift-card-title">
-					<header className="ds-card-header">
-						<h2 id="gift-card-title">Gift</h2>
-					</header>
-					<div className="ds-card-body adm-record__body">
-						<dl>
-							<Row label="Donor">{gift.donorName}</Row>
-							<Row label="Email">{gift.donorEmail ?? 'None'}</Row>
-							<Row label="Amount">
-								<span className="adm-num">{amount}</span>
-							</Row>
-							<Row label="Date">{received}</Row>
-							<Row label="Paid with">{gift.paidWith ?? 'None'}</Row>
-							<Row label="Receipt">
-								{gift.receiptSentAt === null ? (
-									'Not sent'
-								) : (
-									<>
-										Sent <LocalTime at={gift.receiptSentAt} style="day" />
-									</>
-								)}
-							</Row>
-						</dl>
-					</div>
-				</section>
+			{/* the two cards stacked in the column rather than abreast: each holds label and value
+			    rows, and side by side in the measured column neither has the width to read in full. */}
+			<section className="ds-card" aria-labelledby="gift-card-title">
+				<header className="ds-card-header">
+					<h2 id="gift-card-title">Gift</h2>
+				</header>
+				<div className="ds-card-body adm-record__body">
+					<dl>
+						<Row label="Donor">{gift.donorName}</Row>
+						<Row label="Email">{gift.donorEmail ?? 'None'}</Row>
+						<Row label="Amount">
+							<span className="adm-num">{amount}</span>
+						</Row>
+						<Row label="Date">{received}</Row>
+						<Row label="Paid with">{gift.paidWith ?? 'None'}</Row>
+						<Row label="Receipt">
+							{gift.receiptSentAt === null ? (
+								'Not sent'
+							) : (
+								<>
+									Sent <LocalTime at={gift.receiptSentAt} style="day" />
+								</>
+							)}
+						</Row>
+					</dl>
+				</div>
+			</section>
 
-				{match === null ? null : (
-					<MatchCard match={match} live={live} heading={matchHeading} pending={pending} />
-				)}
-			</div>
+			{match === null ? null : (
+				<MatchCard match={match} live={live} heading={matchHeading} pending={pending} />
+			)}
 
 			{/* outside the cards: a card clips what overflows it, and the dialog arrives from the
 			    server in the page's flow before it is lifted. */}
@@ -286,7 +286,7 @@ function MatchCard({
 			    would change nothing. Mark matched stands before filed as well, since staff can see the
 			    employer's money before the donor says they filed. */}
 			{live ? (
-				<footer className="ds-card-footer">
+				<footer className="ds-card-footer adm-cardpresses">
 					{filed ? null : (
 						<Form method="post">
 							<input {...whichForm(MATCH_FORMS.filed)} />

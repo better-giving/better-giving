@@ -6367,7 +6367,33 @@
 		min-block-size: var(--ds-field-size);
 	}
 
+	/* a card's footer of presses, each on its own form or a link (the employer match card,
+	   packages/app/src/lib/admin/donations/gift-detail.tsx). under the middle breakpoint a column of
+	   full-width presses, as a phone's thumb wants them; from it one row, each press its label's
+	   width on one line. */
+	.adm-cardpresses {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.adm-cardpresses > *,
+	.adm-cardpresses > form > .adm-btn {
+		inline-size: 100%;
+	}
+
 	@media (min-width: 44rem) {
+		.adm-cardpresses {
+			flex-direction: row;
+			flex-wrap: wrap;
+			align-items: center;
+		}
+
+		.adm-cardpresses > *,
+		.adm-cardpresses > form > .adm-btn {
+			inline-size: auto;
+			white-space: nowrap;
+		}
+
 		/* the rail is not here, and needs nothing here: cells as wide as their labels take one
 		   line as soon as there is room for one, and every width has to be a width they fit at
 		   rather than a width they are re-tracked for. */
