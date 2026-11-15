@@ -3,6 +3,7 @@
 
 export { formatDate, formatDateTime, formatMoney } from './format';
 export type { EmailTemplate } from './template';
+export { amountAfterRefunds, giftAmount } from './templates/gift-amount';
 export * as adminAlert from './templates/admin-alert';
 export * as cryptoPending from './templates/crypto-pending';
 export * as destinationPaused from './templates/destination-paused';

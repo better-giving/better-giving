@@ -17,6 +17,7 @@ function data(overrides: Partial<MatchPackData> = {}): MatchPackData {
 			address: '1250 Mill Street, Suite 200, Cincinnati, OH 45202, United States'
 		},
 		amountMinor: 15_000,
+		givenMinor: 15_000,
 		currency: 'USD',
 		givenAt: new Date('2026-11-12T15:00:00Z'),
 		receiptSentAt: new Date('2026-11-12T15:01:00Z'),
@@ -101,6 +102,13 @@ describe('matchPack.template — the details a donor files with their employer',
 		expect(label?.[1]).toContain('vertical-align:top');
 		const value = /<td style="([^"]*)">1250 Mill Street/.exec(html);
 		expect(value?.[1]).toContain('vertical-align:top');
+	});
+
+	/** the receipt states what was given, so a figure below it says why, in its own row. */
+	it('states what is left after refunds beside what was given, in both arms', async () => {
+		const [text, html] = await arms({ amountMinor: 10_000, givenMinor: 15_000 });
+		expect(text).toContain('Gift amount  USD 100.00 after refunds, of USD 150.00 given');
+		expect(html).toContain('<strong>USD 100.00 after refunds, of USD 150.00 given</strong>');
 	});
 
 	/** never invent an address: a profile without one drops the row in both arms. */

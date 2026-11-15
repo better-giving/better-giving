@@ -1,8 +1,9 @@
 import { Divider, Heading, Layout, Paragraph, SmallPrint } from '../components/layout';
 import { RecordPanel, type RecordRow, recordLines } from '../components/record';
-import { formatDate, formatMoney } from '../format';
+import { formatDate } from '../format';
 import type { EmailTemplate } from '../template';
 import { EMPLOYER_SUBJECT_MAX, employerName, singleLine } from './employer';
+import { giftAmount } from './gift-amount';
 import { GiftPageSentence, giftPageLine } from './gift-page';
 import { greetingFor } from './greeting';
 
@@ -39,6 +40,8 @@ export interface MatchPackData {
 	readonly filer: MatchFiler;
 	/** minor units — what is left of the gift after the refunds that stand on it. */
 	readonly amountMinor: number;
+	/** minor units — what was given, the receipt's figure; the amount row states it where it is more. */
+	readonly givenMinor: number;
 	/** ISO-4217, uppercase. */
 	readonly currency: string;
 	/** `donation.received_at` — the date the receipt prints. */
@@ -91,7 +94,7 @@ export function template(data: MatchPackData): EmailTemplate {
 		{ label: LABELS.nonprofit, value: data.filer.legalName },
 		{ label: LABELS.ein, value: data.filer.ein },
 		...(data.filer.address === null ? [] : [{ label: LABELS.address, value: data.filer.address }]),
-		{ label: LABELS.amount, value: formatMoney(data.amountMinor, data.currency) },
+		{ label: LABELS.amount, value: giftAmount(data.amountMinor, data.givenMinor, data.currency) },
 		{ label: LABELS.date, value: formatDate(data.givenAt) },
 		...(data.receiptSentAt === null
 			? []

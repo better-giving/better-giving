@@ -13,6 +13,7 @@ function data(overrides: Partial<MatchReminderData> = {}): MatchReminderData {
 		donorName: 'Maya Reyes',
 		employer: 'Northwind Logistics',
 		amountMinor: 15_000,
+		givenMinor: 15_000,
 		currency: 'USD',
 		givenAt: new Date('2026-11-12T15:00:00Z'),
 		giftPageUrl: URL,
@@ -56,6 +57,15 @@ describe('matchReminder.template — the one reminder to file', () => {
 		expect(text).toContain(`If you haven't filed yet, the details are on your gift page: ${URL}`);
 		expect(text).toContain("we won't write again.");
 		expect(html).toContain(`<a href="${URL}"`);
+	});
+
+	it('states what is left after refunds beside what was given, in both arms', async () => {
+		for (const arm of await arms({ amountMinor: 10_000, givenMinor: 15_000 })) {
+			expect(arm).toContain(
+				'You told us Northwind Logistics may match your gift from November 12, 2026: ' +
+					'USD 100.00 after refunds, of USD 150.00 given.'
+			);
+		}
 	});
 
 	it('escapes the employer the donor typed', async () => {

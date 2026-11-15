@@ -2,6 +2,7 @@ import { Divider, Heading, Layout, Paragraph, SmallPrint } from '../components/l
 import { formatDate, formatMoney } from '../format';
 import type { EmailTemplate } from '../template';
 import { employerName, singleLine } from './employer';
+import { giftAmount } from './gift-amount';
 import { GiftPageSentence, giftPageLine } from './gift-page';
 import { greetingFor } from './greeting';
 
@@ -19,8 +20,10 @@ export interface MatchReminderData {
 	readonly donorName: string | null;
 	/** the employer the donor named, as typed. capped and kept to one line here. */
 	readonly employer: string;
-	/** minor units — the gift as the receipt states it. */
+	/** minor units — what is left of the gift after the refunds that stand on it. */
 	readonly amountMinor: number;
+	/** minor units — what was given, the receipt's figure; the lead states it where it is more. */
+	readonly givenMinor: number;
 	/** ISO-4217, uppercase. */
 	readonly currency: string;
 	/** `donation.received_at` — the date the receipt prints. */
@@ -35,9 +38,14 @@ const ONLY_ONE = 'This is the only reminder we will send.';
 export function template(data: MatchReminderData): EmailTemplate {
 	const subject = singleLine(`Did you file the match for your gift to ${data.displayName}?`);
 	const greeting = greetingFor(data.donorName);
+	const employer = employerName(data.employer);
+	const day = formatDate(data.givenAt);
+	const gift =
+		data.amountMinor < data.givenMinor
+			? `may match your gift from ${day}: ${giftAmount(data.amountMinor, data.givenMinor, data.currency)}.`
+			: `may match your ${formatMoney(data.amountMinor, data.currency)} gift from ${day}.`;
 	const lead =
-		`You told us ${employerName(data.employer)} may match your ` +
-		`${formatMoney(data.amountMinor, data.currency)} gift from ${formatDate(data.givenAt)}. ` +
+		`You told us ${employer} ${gift} ` +
 		"If you haven't filed yet, the details are on your gift page:";
 
 	return {

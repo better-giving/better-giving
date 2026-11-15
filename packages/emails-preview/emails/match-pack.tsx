@@ -14,6 +14,7 @@ export default function MatchPack() {
 			address: '1250 Mill Street, Suite 200, Cincinnati, OH 45202, United States'
 		},
 		amountMinor: 15_000,
+		givenMinor: 15_000,
 		currency: 'USD',
 		givenAt: new Date('2026-11-12T15:00:00Z'),
 		receiptSentAt: new Date('2026-11-12T15:01:00Z'),

@@ -7,6 +7,7 @@ export default function MatchReminder() {
 		donorName: 'Maya Reyes',
 		employer: 'Northwind Logistics',
 		amountMinor: 15_000,
+		givenMinor: 15_000,
 		currency: 'USD',
 		givenAt: new Date('2026-11-12T15:00:00Z'),
 		giftPageUrl: 'https://giving.greenfieldfoodbank.example/gift/7Qk3-mVx9Lr2NpA4'
