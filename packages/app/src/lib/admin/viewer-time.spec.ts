@@ -48,6 +48,13 @@ describe('formatInstant', () => {
 		);
 	});
 
+	it('writes a day-time on the 24-hour clock with no offset', () => {
+		expect(formatInstant(LATE_NIGHT, 'Asia/Manila', 'day-time')).toBe('22 Oct 2026, 00:23');
+		expect(formatInstant(LATE_NIGHT, 'America/New_York', 'day-time')).toBe('21 Oct 2026, 12:23');
+		expect(formatInstant(LATE_NIGHT, 'UTC', 'day-time')).toBe('21 Oct 2026, 16:23');
+		expect(formatInstant(LATE_NIGHT, 'Asia/Kolkata', 'day-time')).toBe('21 Oct 2026, 21:53');
+	});
+
 	it('writes the offset the zone has at that instant, either side of a clock change', () => {
 		// New York and London both leave summer time between these two instants
 		const winter = '2026-12-01T16:23:59.999Z';
@@ -65,7 +72,7 @@ describe('formatInstant', () => {
 	});
 
 	it('refuses a zone the runtime does not know rather than reading it as UTC', () => {
-		for (const style of ['iso-day', 'day', 'moment'] as const) {
+		for (const style of ['iso-day', 'day', 'day-time', 'moment'] as const) {
 			expect(() => formatInstant(LATE_NIGHT, 'Mars/Olympus', style)).toThrow(RangeError);
 		}
 	});
@@ -74,10 +81,13 @@ describe('formatInstant', () => {
 describe('an instant that is not a date', () => {
 	// Date.parse('') is NaN, and formatInstant refuses it rather than writing a day: `LocalTime` in
 	// ./viewer-time.react.tsx is the boundary that turns a missing or unparseable instant into a dash.
-	it.each(['iso-day', 'day', 'moment'] as const)('throws a RangeError for %s', (style) => {
-		expect(() => formatInstant('', 'UTC', style)).toThrow(RangeError);
-		expect(() => formatInstant('not a date', 'Asia/Manila', style)).toThrow(RangeError);
-	});
+	it.each(['iso-day', 'day', 'day-time', 'moment'] as const)(
+		'throws a RangeError for %s',
+		(style) => {
+			expect(() => formatInstant('', 'UTC', style)).toThrow(RangeError);
+			expect(() => formatInstant('not a date', 'Asia/Manila', style)).toThrow(RangeError);
+		}
+	);
 });
 
 describe('parseViewerZone', () => {

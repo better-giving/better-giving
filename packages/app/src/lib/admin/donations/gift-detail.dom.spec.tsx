@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLocation } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { formatInstant } from '$lib/admin/viewer-time';
+import { browserIn } from '$lib/admin/viewer-time.testing';
 import type { MatchStatus } from '$lib/matching/status';
 import { GiftDetail, type GiftDetailProps } from './gift-detail';
 
@@ -391,6 +392,25 @@ describe('the history', () => {
 			['Details emailed to the donor', 'By Better Giving'],
 			['Voided', 'By Amara Lindqvist', 'Reason: Northwind does not match gifts to this nonprofit']
 		]);
+	});
+
+	it.each([
+		['Asia/Manila', '15 Nov 2026, 00:30'],
+		['UTC', '14 Nov 2026, 16:30']
+	])('writes each stamp’s time in a browser in %s, with no offset', (zone, text) => {
+		browserIn(zone);
+		const { root } = screen({
+			match: {
+				status: 'reminded',
+				employer: 'Northwind Logistics',
+				history: [{ event: 'reminded', who: 'Better Giving', at: '2026-11-14T16:30:00.000Z' }]
+			}
+		});
+		const time = root.querySelector('ol > li time');
+
+		expect(time?.textContent).toBe(text);
+		expect(time?.textContent).not.toContain('UTC');
+		expect(time?.getAttribute('datetime')).toBe('2026-11-14T16:30:00.000Z');
 	});
 });
 

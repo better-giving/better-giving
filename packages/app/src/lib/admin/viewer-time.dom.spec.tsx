@@ -221,6 +221,7 @@ describe('a zone this runtime cannot write in', () => {
 	it.each([
 		['iso-day', '2026-10-21 UTC'],
 		['day', '21 Oct 2026 UTC'],
+		['day-time', '21 Oct 2026, 16:23 UTC'],
 		['moment', '21 Oct 2026, 16:23 UTC']
 	] as const)(
 		'writes %s in UTC, saying so, once hydrated in a browser zone the runtime does not know',

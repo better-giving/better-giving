@@ -8,8 +8,8 @@
 /** the cookie the browser writes its IANA zone to, and the layout loader reads. */
 export const VIEWER_ZONE_COOKIE = 'admin_zone';
 
-/** the three ways an /admin screen writes an instant. */
-export type InstantStyle = 'iso-day' | 'day' | 'moment';
+/** the four ways an /admin screen writes an instant. */
+export type InstantStyle = 'iso-day' | 'day' | 'day-time' | 'moment';
 
 /**
  * `raw`, when it is an IANA zone the runtime knows; null for anything else. `Intl` also takes an
@@ -21,7 +21,7 @@ export function parseViewerZone(raw: string | null | undefined): string | null {
 
 const MONTH = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' });
 
-// one wall-clock format per zone, built on first use: the three styles all read the same parts.
+// one wall-clock format per zone, built on first use: the four styles all read the same parts.
 // IANA's names, links included, number under a thousand, but `Intl` takes any casing of each, so
 // the cache is emptied past that rather than grown by whatever the cookie names.
 const WALL_CLOCK_LIMIT = 1000;
@@ -56,10 +56,10 @@ export function canWriteIn(zone: string): boolean {
 }
 
 /**
- * `at` in `zone`: `iso-day` is 2026-10-22, `day` is 22 Oct 2026, and `moment` is
- * 22 Oct 2026, 00:23 UTC+8 — the 24-hour clock and the zone's offset from UTC at that instant. an
- * instant that is not a date, or a zone the runtime does not know, throws a RangeError rather than
- * reading as some other day or as UTC.
+ * `at` in `zone`: `iso-day` is 2026-10-22, `day` is 22 Oct 2026, `day-time` is 22 Oct 2026, 00:23
+ * on the 24-hour clock, and `moment` is 22 Oct 2026, 00:23 UTC+8 — that clock and the zone's offset
+ * from UTC at that instant. an instant that is not a date, or a zone the runtime does not know,
+ * throws a RangeError rather than reading as some other day or as UTC.
  */
 export function formatInstant(
 	at: Date | number | string,
@@ -90,10 +90,13 @@ export function formatInstant(
 	const monthName = MONTH.format(Date.UTC(year, month - 1, 1));
 	if (style === 'day') return `${day} ${monthName} ${year}`;
 
+	const clock = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+	const dayTime = `${day} ${monthName} ${year}, ${clock}`;
+	if (style === 'day-time') return dayTime;
+
 	const wallMs = Date.UTC(year, month - 1, day, hour, minute, part('second'));
 	const offsetMinutes = Math.round((wallMs - Math.floor(ms / 1000) * 1000) / 60_000);
-	const clock = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-	return `${day} ${monthName} ${year}, ${clock} ${offsetLabel(offsetMinutes)}`;
+	return `${dayTime} ${offsetLabel(offsetMinutes)}`;
 }
 
 /** an offset from UTC in minutes as UTC, UTC+8, UTC-4 or UTC+5:30. */

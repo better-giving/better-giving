@@ -294,7 +294,7 @@ function MatchCard({
 									</div>
 								</div>
 								<div className="adm-setting__value">
-									<LocalTime at={row.at} style="moment" />
+									<LocalTime at={row.at} style="day-time" />
 								</div>
 							</li>
 						))}
