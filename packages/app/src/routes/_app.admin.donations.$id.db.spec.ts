@@ -287,7 +287,7 @@ describe('the three presses', () => {
 
 		const again = await markFiled(member);
 		expect(again.status).toBe(409);
-		expect(await again.json()).toEqual({
+		expect(await again.json()).toMatchObject({
 			error:
 				'This match was already marked filed, so nothing changed. Reload the page to see how it stands.'
 		});
@@ -323,7 +323,7 @@ describe('the three presses', () => {
 
 		const again = await voidIt(member, 'A second reason');
 		expect(again.status).toBe(409);
-		expect(await again.json()).toEqual({
+		expect(await again.json()).toMatchObject({
 			error:
 				'This match was already voided, so nothing changed. Reload the page to see how it stands.'
 		});
@@ -346,9 +346,11 @@ describe('the three presses', () => {
 		await matchRow({ matched_at: 1, matched_by: STAFF_USER_ID });
 		const response = await voidIt(deployer, 'Changed our mind');
 		expect(response.status).toBe(409);
-		expect(await response.json()).toEqual({
+		expect(await response.json()).toMatchObject({
 			error:
-				'This match was already marked matched, so nothing changed. Reload the page to see how it stands.'
+				'This match was already marked matched, so nothing changed. Reload the page to see how it stands.',
+			// the pressed form's own rejection rides beside the sentence, so the dialog keeps its reason.
+			form: { id: 'match-void', result: { status: 'error' } }
 		});
 		expect((await stamps())?.voided_at).toBeNull();
 	});

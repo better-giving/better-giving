@@ -90,9 +90,14 @@ it('tells a member who cannot open Settings who can save the address, with no pr
 });
 
 it('reports a refused press in the words the action answered', () => {
-	const root = screen(loaderData(), {
+	// as the action answers it through `invalid()`. the generated type folds this arm into the
+	// rejection that carries no sentence — an object with `form` is a supertype of one with `form` and
+	// `error` — so the value is handed over as the wire carries it.
+	const refused = {
 		error:
-			'This match was already voided, so nothing changed. Reload the page to see how it stands.'
-	});
+			'This match was already voided, so nothing changed. Reload the page to see how it stands.',
+		form: { id: 'match-filed', result: { status: 'error', error: {} } }
+	};
+	const root = screen(loaderData(), refused as Props['actionData']);
 	expect(root.textContent).toContain('This match was already voided, so nothing changed.');
 });

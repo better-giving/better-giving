@@ -1,10 +1,15 @@
-import { data, href } from 'react-router';
+import { href } from 'react-router';
 import type { CrumbHandle } from '$lib/admin/crumbs';
 import { GiftDetail, type MatchHistoryRow } from '$lib/admin/donations/gift-detail';
 import { screenTitle } from '$lib/admin/screen-title';
-import type { FormRejection } from '$lib/forms/definition';
+import { defineForm, type FormRejection } from '$lib/forms/definition';
 import { REQUIRED } from '$lib/forms/input-schema';
-import { MARK_FILED_FORM, MARK_MATCHED_FORM, VOID_MATCH_FORM } from '$lib/matching/forms';
+import {
+	MARK_FILED_INPUT,
+	MARK_MATCHED_INPUT,
+	MATCH_FORMS,
+	VOID_MATCH_INPUT
+} from '$lib/matching/forms';
 import type { MatchStatus } from '$lib/matching/status';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, type RejectionReasons, submittedForm } from '$lib/server/conform';
@@ -25,7 +30,8 @@ import type { Route } from './+types/_app.admin.donations.$id';
 //
 // a press answers in place with the component's `result` and never redirects: the router
 // revalidates the loader after a 2xx action, so the card is read again beneath the banner. a refusal
-// is a 4xx, which the router does not revalidate on, so its sentence says to reload.
+// is a 4xx or a 5xx through `invalid()`, with the pressed form's rejection and the `error` sentence
+// the screen reports; the router does not revalidate on one, so the sentence says to reload.
 
 /** what to say when there is no such gift, wherever it is asked. */
 const NO_SUCH_GIFT =
@@ -126,7 +132,11 @@ function unchanged(status: MatchStatus | null): string {
 
 const WRITE_FAILED = 'This was not saved. Reload the page and try again.';
 
-const SCREEN_FORMS = [MARK_FILED_FORM.id, MARK_MATCHED_FORM.id, VOID_MATCH_FORM.id] as const;
+const MARK_FILED_FORM = defineForm({ id: MATCH_FORMS.filed, schema: MARK_FILED_INPUT });
+const MARK_MATCHED_FORM = defineForm({ id: MATCH_FORMS.matched, schema: MARK_MATCHED_INPUT });
+const VOID_MATCH_FORM = defineForm({ id: MATCH_FORMS.void, schema: VOID_MATCH_INPUT });
+
+const SCREEN_FORMS = [MATCH_FORMS.filed, MATCH_FORMS.matched, MATCH_FORMS.void] as const;
 
 /**
  * the three presses on the match. **the request body is read exactly once, here** — `parseForm`
@@ -145,32 +155,34 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 	async function written(
 		write: () => ReturnType<typeof markFiled>,
 		done: 'filed' | 'matched' | 'void',
-		reject: (reasons: RejectionReasons) => FormRejection
+		reject: (reasons?: RejectionReasons) => FormRejection
 	) {
 		let answer: Awaited<ReturnType<typeof markFiled>>;
 		try {
 			answer = await write();
 		} catch (e) {
 			console.error(`the match's ${done} press failed:`, e);
-			return data({ error: WRITE_FAILED }, { status: 500 });
+			return invalid(500, reject(), { error: WRITE_FAILED });
 		}
 		if (!answer.ok) {
 			if (answer.reason === 'not_found') notFound(NO_SUCH_GIFT);
 			// `voidMatch` refuses a blank reason as the schema does, and it goes under the box the same.
 			return invalid(400, reject({ fieldErrors: { reason: [REQUIRED] } }));
 		}
-		if (!answer.changed) return data({ error: unchanged(answer.state.status) }, { status: 409 });
+		if (!answer.changed) {
+			return invalid(409, reject(), { error: unchanged(answer.state.status) });
+		}
 		return { done };
 	}
 
 	// `submittedForm` refuses a body naming none of the three, so what is left after two is the void.
 	const which = submittedForm(body, SCREEN_FORMS);
-	if (which === MARK_FILED_FORM.id) {
+	if (which === MATCH_FORMS.filed) {
 		const parsed = parseForm(body, MARK_FILED_FORM);
 		if (!parsed.ok) return invalid(400, parsed.reject());
 		return written(() => markFiled(db, key, by, now), 'filed', parsed.reject);
 	}
-	if (which === MARK_MATCHED_FORM.id) {
+	if (which === MATCH_FORMS.matched) {
 		const parsed = parseForm(body, MARK_MATCHED_FORM);
 		if (!parsed.ok) return invalid(400, parsed.reject());
 		return written(() => markMatched(db, key, by, now), 'matched', parsed.reject);

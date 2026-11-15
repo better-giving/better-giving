@@ -15,13 +15,8 @@ import { boxProps, useAdminForm, whichForm } from '$lib/admin/use-admin-form';
 import { LocalTime } from '$lib/admin/viewer-time.react';
 import { formatMinor } from '$lib/donations/money';
 import { DONATION_STATUS_LABELS, type DonationStatus } from '$lib/donations/statuses';
-import type { FormRejection } from '$lib/forms/definition';
-import {
-	MARK_FILED_FORM,
-	MARK_MATCHED_FORM,
-	MATCH_INTENT,
-	VOID_MATCH_FORM
-} from '$lib/matching/forms';
+import { defineForm, type FormRejection } from '$lib/forms/definition';
+import { MATCH_FORMS, MATCH_INTENT, VOID_MATCH_INPUT } from '$lib/matching/forms';
 import { MATCH_STATUS_LABELS, type MatchStatus } from '$lib/matching/status';
 
 // one gift at /admin/donations/{id}, and the employer match on it: what the gift was, where the
@@ -57,8 +52,11 @@ export type MatchHistoryRow = {
 /** what the last press on this screen answered with. */
 export type GiftMatchResult =
 	| { readonly done: 'filed' | 'matched' | 'void' }
-	/** the write failed for a reason no box carries. */
-	| { readonly error: string }
+	/**
+	 * the write failed for a reason no box carries, answered through `invalid()` with the pressed
+	 * form's rejection beside the sentence.
+	 */
+	| { readonly error: string; readonly form?: FormRejection }
 	/** the void's reason was refused, through `$lib/server/conform.ts`'s `invalid()`. */
 	| { readonly form: FormRejection };
 
@@ -101,6 +99,9 @@ const DONE_WORDS = {
 	matched: 'Marked matched',
 	void: 'Match voided'
 } as const;
+
+/** the void's form, over the id and schema the route's action states its own with. */
+const VOID_MATCH_FORM = defineForm({ id: MATCH_FORMS.void, schema: VOID_MATCH_INPUT });
 
 /** the search parameter the void's confirm is held on, and its one value. */
 const CONFIRM = 'confirm';
@@ -288,13 +289,13 @@ function MatchCard({
 				<footer className="ds-card-footer">
 					{filed ? null : (
 						<Form method="post">
-							<input {...whichForm(MARK_FILED_FORM.id)} />
+							<input {...whichForm(MATCH_FORMS.filed)} />
 							<input type="hidden" name={MATCH_INTENT} value="filed" />
 							<PendingButton pending={pending('filed')}>Mark filed</PendingButton>
 						</Form>
 					)}
 					<Form method="post">
-						<input {...whichForm(MARK_MATCHED_FORM.id)} />
+						<input {...whichForm(MATCH_FORMS.matched)} />
 						<input type="hidden" name={MATCH_INTENT} value="matched" />
 						<PendingButton variant="primary" pending={pending('matched')}>
 							Mark matched
