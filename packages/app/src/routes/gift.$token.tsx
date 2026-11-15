@@ -71,8 +71,8 @@ export async function loader({ context, params }: Route.LoaderArgs) {
 	if (gift === null || profile === null) return refusedPage();
 	return {
 		kind: 'gift',
-		// the legal name, since the profile holds no display name for the prose to use (STAND-34
-		// brief, PM answer 6: prose uses the display name, the filing rows the legal name).
+		// the legal name: the profile holds no display name for the prose to use, and the filing rows
+		// name the legal one.
 		orgName: profile.legalName,
 		logo,
 		look: { brandColour: profile.brandColour },

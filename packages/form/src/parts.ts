@@ -20,7 +20,7 @@
 // `link` is the one name added since the list was first published, and it is a surface rather than a
 // state: the thank-you's `Open your gift page` is a text link, which no existing name draws — every
 // `action` and `action-quiet` is a button. the addition was decided with the employer-matching
-// thank-you (STAND-34), and a further name needs the same argument made again.
+// thank-you, and a further name needs the same argument made again.
 //
 // what is absent is load-bearing. across the shadow boundary a host's normal declaration beats an
 // inner one, so naming a surface is handing over control of it. layout containers are unnamed

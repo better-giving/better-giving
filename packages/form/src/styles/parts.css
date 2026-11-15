@@ -1423,7 +1423,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * every tile carries the token rather than one of them (`updateOptions` in ../views.ts marks the
  * whole group from one refused amount, missing or refused by a coin), and a tile can be chosen and
  * marked at once — the other tile while the amount is missing, or the tile holding the figure a coin
- * refused. neither collides with anything now: the lift a chosen tile draws
+ * refused. neither collides with anything: the lift a chosen tile draws
  * (`[part~='amount-option'][part~='selected']` above) is on the tile and the mark is on the tray,
  * where one line on the tile would have had to carry both.
  *
