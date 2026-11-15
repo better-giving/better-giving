@@ -273,9 +273,9 @@ async function commitment() {
  * same serialization a browser receives, which is what makes the key sweep below a claim about
  * what crosses rather than about what was constructed.
  */
-async function runLoad(configEnv?: Env) {
+async function runLoad(configEnv?: Env, search = '') {
 	const response = await request(
-		new Request(`${ORIGIN}/admin/donations`, { headers: { cookie } }),
+		new Request(`${ORIGIN}/admin/donations${search}`, { headers: { cookie } }),
 		configEnv === undefined ? undefined : { env: configEnv }
 	);
 	expect(response.status).toBe(200);
@@ -296,10 +296,30 @@ async function runLoad(configEnv?: Env) {
 			tribute: { kind: string; honoree: string } | null;
 			program: string | null;
 			trackingId: string | null;
+			match: { status: string | null; employer: string | null } | null;
 		}[];
 		limit: number;
 		hasMore: boolean;
+		match: string | null;
 	};
+}
+
+/** a match row on the gift `donationId`, holding these columns. */
+async function matchRow(
+	donationId: string,
+	columns: Record<string, string | number> = {}
+): Promise<void> {
+	const names = Object.keys(columns);
+	await run(
+		stmt(
+			`insert into gift_match (id, donation_id, token, created_at${names.map((n) => `, ${n}`).join('')})
+			 values (?, ?, ?, 0${names.map(() => ', ?').join('')})`,
+			`${donationId.slice(0, -4)}f${donationId.slice(-3)}`,
+			donationId,
+			`${donationId.slice(-4)}abcdefghjkmnpqrstvwxyz012345`,
+			...Object.values(columns)
+		)
+	);
 }
 
 describe('/admin/donations — a note on the donate page', () => {
@@ -412,6 +432,7 @@ describe('/admin/donations load', () => {
 			'amount',
 			'donorName',
 			'id',
+			'match',
 			'note',
 			'noteStanding',
 			'paidWith',
@@ -738,5 +759,83 @@ describe('/admin/donations load', () => {
 		const response = await request(new Request(`${ORIGIN}/admin/donations`));
 		expect(response.status).toBe(303);
 		expect(response.headers.get('location')).toContain('/login');
+	});
+});
+
+describe('/admin/donations — the Match filter', () => {
+	/** one gift per word, one with a row naming nobody, and one recorded before matching. */
+	async function seedEveryState() {
+		const ids: Record<string, string> = {};
+		const seeded: [string, Record<string, string | number> | null][] = [
+			[
+				'voided',
+				{ employer: 'Northwind', voided_at: 2, voided_by: 'system', void_reason: 'Gift refunded' }
+			],
+			['matched', { employer: 'Northwind', matched_at: 1, matched_by: 's', pack_sent_at: 1 }],
+			['filed', { employer: 'Northwind', filed_at: 1, filed_by: 'donor' }],
+			['send_failed', { employer: 'Northwind', pack_failed_at: 1 }],
+			['reminded', { employer: 'Northwind', pack_sent_at: 1, reminded_at: 2 }],
+			['pack_sent', { employer: 'Northwind', pack_sent_at: 1 }],
+			['untouched', {}],
+			['before', null]
+		];
+		for (const [at, [word, columns]] of seeded.entries()) {
+			const id = await gift({
+				id: `019fb300-0000-7000-8000-0000000001${String(at).padStart(2, '0')}`,
+				receivedAt: Date.UTC(2026, 6, 4, at)
+			});
+			if (columns !== null) await matchRow(id, columns);
+			ids[word] = id;
+		}
+		return ids;
+	}
+
+	it('lists every gift under Any, each with its word and employer', async () => {
+		const ids = await seedEveryState();
+		const loaded = await runLoad();
+		const byId = new Map(loaded.donations.map((d) => [d.id, d.match]));
+
+		expect(loaded.match).toBeNull();
+		expect(byId.size).toBe(8);
+		expect(byId.get(ids.reminded ?? '')).toEqual({ status: 'reminded', employer: 'Northwind' });
+		expect(byId.get(ids.untouched ?? '')).toEqual({ status: null, employer: null });
+		expect(byId.get(ids.before ?? '')).toBeNull();
+	});
+
+	it.each(['voided', 'matched', 'filed', 'send_failed', 'reminded', 'pack_sent'] as const)(
+		'keeps exactly the gift whose word is %s',
+		async (word) => {
+			const ids = await seedEveryState();
+			const loaded = await runLoad(undefined, `?match=${word}`);
+
+			expect(loaded.match).toBe(word);
+			expect(loaded.donations.map((d) => d.id)).toEqual([ids[word]]);
+		}
+	);
+
+	it('keeps a gift whose match names no employer under No employer named', async () => {
+		const ids = await seedEveryState();
+		const kept = (await runLoad(undefined, '?match=no_employer')).donations.map((d) => d.id);
+
+		expect(kept).toContain(ids.untouched);
+		expect(kept).not.toContain(ids.reminded);
+	});
+
+	it('reads an empty or unknown filter as Any rather than refusing it', async () => {
+		await seedEveryState();
+		for (const search of ['?match=', '?match=bogus', '?match=NO_EMPLOYER']) {
+			const loaded = await runLoad(undefined, search);
+			expect(loaded.match).toBeNull();
+			expect(loaded.donations).toHaveLength(8);
+		}
+	});
+
+	it('names the employer for staff and never sends the void reason', async () => {
+		const ids = await seedEveryState();
+		const loaded = await runLoad();
+		const voided = loaded.donations.find((d) => d.id === ids.voided);
+
+		expect(voided?.match).toEqual({ status: 'voided', employer: 'Northwind' });
+		expect(JSON.stringify(loaded)).not.toContain('Gift refunded');
 	});
 });

@@ -1,5 +1,6 @@
 import { formatDate, formatMoney } from '@better-giving/emails';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
+import { authUser } from '../db/auth-schema';
 import type { Db } from '../db/client';
 import { type GiftMatch, giftMatch } from '../db/schema';
 import { type MatchGift, readMatchGift } from '../donations/queries';
@@ -175,6 +176,25 @@ export async function readStaffMatch(db: Db, donationId: string): Promise<StaffM
 				: { status: matchStatus(row), employer: row.employer, history: historyOf(row) },
 		mailingAddressMissing: mailingAddress(org) === null
 	};
+}
+
+/**
+ * the name each staff member in `history` signs in under, by their id. a member removed since has
+ * no row, and no entry here.
+ */
+export async function readStaffNames(
+	db: Db,
+	history: readonly MatchEvent[]
+): Promise<Map<string, string>> {
+	const ids = [
+		...new Set(history.flatMap(({ who }) => (who.kind === 'staff' ? [who.userId] : [])))
+	];
+	if (ids.length === 0) return new Map();
+	const rows = await db
+		.select({ id: authUser.id, name: authUser.name })
+		.from(authUser)
+		.where(inArray(authUser.id, ids));
+	return new Map(rows.map((row) => [row.id, row.name]));
 }
 
 function actor(by: string): MatchActor {

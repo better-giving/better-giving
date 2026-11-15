@@ -616,6 +616,19 @@ describe('the route surface', () => {
 		expect(await statusAt('/admin/books/journal')).toBe(404);
 	});
 
+	// a gift's own page takes the segment after /admin/donations, and the named screens beside it
+	// keep theirs.
+	it('serves a gift’s own page under the gifts list, beside the screens named there', async () => {
+		expect(await matchedFileAt('/admin/donations/019fb300-0000-7000-8000-000000000001')).toBe(
+			'routes/_app.admin.donations.$id.tsx'
+		);
+		for (const named of ['new', 'export', 'messages']) {
+			expect(await matchedFileAt(`/admin/donations/${named}`)).toBe(
+				`routes/_app.admin.donations.${named}.tsx`
+			);
+		}
+	});
+
 	/**
 	 * an address nothing claims matches no route, so it matches nothing under the protected layout
 	 * either and the gate never runs for it — which is what puts the error page in front of a
