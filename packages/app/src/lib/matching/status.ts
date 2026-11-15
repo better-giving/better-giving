@@ -27,6 +27,22 @@ export const MATCH_FILTERS = ['no_employer', ...MATCH_STATUSES] as const;
 
 export type MatchFilter = (typeof MATCH_FILTERS)[number];
 
+/** the word a screen draws for each status. */
+export const MATCH_STATUS_LABELS: Record<MatchStatus, string> = {
+	voided: 'Voided',
+	matched: 'Matched',
+	filed: 'Filed',
+	send_failed: 'Send failed',
+	reminded: 'Reminded',
+	pack_sent: 'Pack sent'
+};
+
+/** what each filter is called on the gifts list's Match select. */
+export const MATCH_FILTER_LABELS: Record<MatchFilter, string> = {
+	no_employer: 'No employer named',
+	...MATCH_STATUS_LABELS
+};
+
 /** the stamps the word is read off, as the row holds them. */
 export type MatchStamps = {
 	readonly employer: string | null;

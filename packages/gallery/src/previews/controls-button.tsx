@@ -2,7 +2,7 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 
 /*
  * the smoke preview: every rank and size packages/operator/src/components/controls/Button.jsx draws
- * from the registry's button-css (packages/operator/src/registry/styles/button-css.css) — the five
+ * from the registry's button-css (packages/operator/src/registry/styles/button-css.css) — the six
  * ranks, the small size, a mark before and after and a mark alone, and `as` handed a plain anchor
  * rather than a router's link, since this package declares no router.
  *
@@ -21,6 +21,7 @@ export default function ButtonPreview() {
 			<Button>default</Button>
 			<Button variant="primary">primary</Button>
 			<Button variant="danger">danger</Button>
+			<Button variant="danger-outline">danger outline</Button>
 			<Button variant="quiet">quiet</Button>
 			<Button variant="soft">soft</Button>
 			<Button size="sm">small</Button>

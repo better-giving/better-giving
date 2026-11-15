@@ -1,6 +1,7 @@
 import type { Tone } from '@better-giving/operator/components/closed-sets';
 import type { DonationStatus } from '$lib/donations/statuses';
 import { FORM_STATUS_LABELS, type FormStatus } from '$lib/forms/statuses';
+import type { MatchStatus } from '$lib/matching/status';
 import type { ProgramStatus } from '$lib/programs/statuses';
 import type { RecurringPlanStatus } from '$lib/recurring/statuses';
 
@@ -91,4 +92,18 @@ export const DONATION_STATUS_TONES: Record<DonationStatus, Tone | undefined> = {
 	refunded: 'note',
 	disputed: 'attention',
 	partially_refunded: 'note'
+};
+
+// an employer match is its own ladder beside the gift's. the pack going out and the one reminder
+// are the app doing its job and ask nothing of staff, so they are at rest. `filed` is waiting on
+// the employer's money, and `matched` is the money in — the state the whole claim exists to reach,
+// so the accent. `voided` is ended. `send_failed` is the pack the mail server refused, which is the
+// row staff scan the list to find.
+export const MATCH_STATUS_TONES: Record<MatchStatus, Tone | undefined> = {
+	pack_sent: undefined,
+	reminded: undefined,
+	filed: 'attention',
+	matched: 'done',
+	voided: 'note',
+	send_failed: 'blocker'
 };

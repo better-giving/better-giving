@@ -60,7 +60,7 @@ function closed<Union extends string>() {
 }
 
 const BUTTON_VARIANTS = closed<ButtonVariant>()(
-	['default', 'primary', 'danger', 'quiet', 'soft'],
+	['default', 'primary', 'danger', 'danger-outline', 'quiet', 'soft'],
 	true
 );
 const BUTTON_SIZES = closed<ButtonSize>()(['md', 'sm'], true);
