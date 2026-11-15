@@ -250,10 +250,13 @@ export function employerUrl(origin: string, formId: string, giftToken: string): 
  * sentence over the open ask (`sending` in ../checkout.machine.ts). a rejection names the address and
  * the status and never the employer, which is free text the donor typed for the deployment alone.
  *
+ * aborted by the flow's signal, unlike the quote: this write spends nothing, and one the flow has
+ * stopped waiting for would still save and mail under a card that said otherwise.
+ *
  * `credentials: 'omit'` for `createQuote`'s reason.
  */
 export function createEmployerWrite(origin: string | null): NonNullable<CheckoutPorts['employer']> {
-	return async ({ formId, giftToken, employer }) => {
+	return async ({ formId, giftToken, employer }, signal) => {
 		if (origin === null) {
 			throw new Error('the embedded runtime could not tell which deployment it was served from');
 		}
@@ -263,7 +266,8 @@ export function createEmployerWrite(origin: string | null): NonNullable<Checkout
 			method: 'POST',
 			credentials: 'omit',
 			headers: { 'content-type': 'application/json', accept: 'application/json' },
-			body: JSON.stringify(body)
+			body: JSON.stringify(body),
+			signal
 		});
 		if (!response.ok) throw new Error(`POST ${url} answered ${response.status}`);
 		const parsed = await readJson(response);

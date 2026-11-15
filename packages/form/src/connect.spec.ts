@@ -795,8 +795,21 @@ describe('the employer ask projection', () => {
 		expect(get().state).toEqual({
 			step: 'success',
 			method: 'card',
-			employer: { phase: 'asking', giftUrl: GIFT_URL, refused: false, email: 'donor@example.org' }
+			employer: {
+				phase: 'asking',
+				giftUrl: GIFT_URL,
+				refused: false,
+				refusal: null,
+				email: 'donor@example.org'
+			}
 		});
+	});
+
+	it('carries why the ask stands refused, and a blank press is not a refused write', async () => {
+		const { get } = api(submittedOn('card'), asked);
+		await settle();
+		(get().sendEmployerButton as { onClick: () => void }).onClick();
+		expect(get().state).toMatchObject({ employer: { refused: false, refusal: 'blank' } });
 	});
 
 	it('carries no ask on a thank-you that has none', async () => {

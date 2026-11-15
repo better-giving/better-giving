@@ -341,9 +341,17 @@ export type CheckoutContext = {
 	 * it is emptied once that write is answered.
 	 */
 	readonly employer: string;
-	/** the last employer write was refused or went unanswered, and none has landed since. */
-	readonly employerRefused: boolean;
+	/** why the thank-you's employer ask stands refused, or `null` where nothing refuses it. */
+	readonly employerRefusal: EmployerRefusal | null;
 };
+
+/**
+ * `refused` is the last write answered no or never reached the deployment, and `unconfirmed` the last
+ * write called off unanswered after `PORT_TIMEOUT_MS`, which may have landed before it was: both stand
+ * until a write lands. `blank` is Send pressed over a box holding no answer, and stands until it holds
+ * one.
+ */
+export type EmployerRefusal = 'refused' | 'unconfirmed' | 'blank';
 
 /**
  * the three steps a donor fills in, in the order they are asked.
@@ -1107,11 +1115,11 @@ export const checkoutMachine = setup({
 		writeEmployer: fromPromise<
 			void,
 			{ ports: CheckoutPorts; formId: string; giftToken: string; employer: string }
-		>(({ input: { ports, ...input } }) => {
+		>(({ input: { ports, ...input }, signal }) => {
 			if (ports.employer === undefined) {
 				throw new Error('unreachable: the employer is asked only where its port is given');
 			}
-			return ports.employer(input);
+			return ports.employer(input, signal);
 		})
 	},
 	guards: {
@@ -1462,7 +1470,7 @@ export const checkoutMachine = setup({
 		refusedCoins: [],
 		repeatingUnavailable: false,
 		employer: '',
-		employerRefused: false
+		employerRefusal: null
 	}),
 	// four reports from surfaces that resolve on their own schedule. none of them is a step in the
 	// flow and none moves it from here, so all four are accepted wherever the machine happens to be.
@@ -2559,12 +2567,24 @@ export const checkoutMachine = setup({
 				unasked: {},
 				asking: {
 					on: {
-						SET_EMPLOYER: { actions: assign({ employer: ({ event }) => event.employer }) },
-						// a blank box takes no press, Enter included, and says nothing: the control
-						// is drawn unavailable over it.
-						SEND_EMPLOYER: { guard: 'employerIsGiven', target: 'sending' },
+						// a blank press is answered by the box holding an answer, a refused write only
+						// by a write that lands.
+						SET_EMPLOYER: {
+							actions: assign({
+								employer: ({ event }) => event.employer,
+								employerRefusal: ({ context, event }) =>
+									context.employerRefusal === 'blank' && employerAnswer(event.employer) !== null
+										? null
+										: context.employerRefusal
+							})
+						},
+						// a blank box takes the press, Enter included, and is refused for it.
+						SEND_EMPLOYER: [
+							{ guard: 'employerIsGiven', target: 'sending' },
+							{ actions: assign({ employerRefusal: 'blank' }) }
+						],
 						// a refusal leaves with the ask, so the card's region stops saying it.
-						SKIP_EMPLOYER: { target: 'skipped', actions: assign({ employerRefused: false }) }
+						SKIP_EMPLOYER: { target: 'skipped', actions: assign({ employerRefusal: null }) }
 					}
 				},
 				/**
@@ -2577,12 +2597,13 @@ export const checkoutMachine = setup({
 				 * the box stays open to typing, and what is typed here is what a reopened ask holds;
 				 * the write already sent carries the text as it was pressed. Skip is drawn and
 				 * pressable throughout, so it is taken here too: leaving stops the invoked write,
-				 * and its answer lands on nothing.
+				 * which aborts its request (`CheckoutPorts.employer` in ./ports.ts), and its answer
+				 * lands on nothing.
 				 */
 				sending: {
 					on: {
 						SET_EMPLOYER: { actions: assign({ employer: ({ event }) => event.employer }) },
-						SKIP_EMPLOYER: { target: 'skipped', actions: assign({ employerRefused: false }) }
+						SKIP_EMPLOYER: { target: 'skipped', actions: assign({ employerRefusal: null }) }
 					},
 					invoke: {
 						src: 'writeEmployer',
@@ -2594,11 +2615,11 @@ export const checkoutMachine = setup({
 							}
 							return { ports: context.ports, formId: context.config.formId, giftToken, employer };
 						},
-						onDone: { target: 'sent', actions: assign({ employer: '', employerRefused: false }) },
-						onError: { target: 'asking', actions: assign({ employerRefused: true }) }
+						onDone: { target: 'sent', actions: assign({ employer: '', employerRefusal: null }) },
+						onError: { target: 'asking', actions: assign({ employerRefusal: 'refused' }) }
 					},
 					after: {
-						portTimeout: { target: 'asking', actions: assign({ employerRefused: true }) }
+						portTimeout: { target: 'asking', actions: assign({ employerRefusal: 'unconfirmed' }) }
 					}
 				},
 				sent: {},

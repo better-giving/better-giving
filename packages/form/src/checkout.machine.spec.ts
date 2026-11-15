@@ -120,8 +120,8 @@ type HarnessOptions = {
 	readonly confirm?: (input: ConfirmInput) => Promise<import('./ports').ConfirmOutcome>;
 	readonly resumeWith?: () => Promise<import('./ports').ConfirmOutcome>;
 	readonly status?: () => Promise<DonationStatus>;
-	/** what the employer write answers; `null` builds the ports without one. */
-	readonly employer?: (() => Promise<void>) | null;
+	/** what the employer write answers, handed its signal; `null` builds the ports without one. */
+	readonly employer?: ((signal: AbortSignal) => Promise<void>) | null;
 };
 
 /**
@@ -156,9 +156,9 @@ function harness(options: HarnessOptions = {}) {
 		...(options.employer === null
 			? {}
 			: {
-					employer: (input) => {
+					employer: (input, signal) => {
 						calls.employer.push(input);
-						return options.employer?.() ?? Promise.resolve();
+						return options.employer?.(signal) ?? Promise.resolve();
 					}
 				})
 	};
@@ -3042,14 +3042,30 @@ describe('the employer ask on the thank-you', () => {
 		expect(actor.getSnapshot().matches({ success: 'unasked' })).toBe(true);
 	});
 
-	it('takes no send over a blank box', async () => {
+	it('refuses a send over a blank box, and lets the refusal go once the box holds an answer', async () => {
 		const { actor, calls } = await thanked();
 		actor.send({ type: 'SEND_EMPLOYER' });
+		expect(actor.getSnapshot().context.employerRefusal).toBe('blank');
 		actor.send({ type: 'SET_EMPLOYER', employer: '   ' });
 		actor.send({ type: 'SEND_EMPLOYER' });
 		await settle();
 		expect(actor.getSnapshot().matches({ success: 'asking' })).toBe(true);
+		expect(actor.getSnapshot().context.employerRefusal).toBe('blank');
 		expect(calls.employer).toEqual([]);
+
+		actor.send({ type: 'SET_EMPLOYER', employer: 'N' });
+		expect(actor.getSnapshot().context.employerRefusal).toBeNull();
+	});
+
+	it('keeps a refused write’s refusal while the donor edits the box', async () => {
+		// it is what happened to the last write, which typing does not change; only a blank press is
+		// answered by typing.
+		const { actor } = await thanked({ employer: () => Promise.reject(new Error('refused')) });
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		await settle();
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind Logistics' });
+		expect(actor.getSnapshot().context.employerRefusal).toBe('refused');
 	});
 
 	it('sends the trimmed employer once, to the gift the quote named, and lets the text go', async () => {
@@ -3083,17 +3099,17 @@ describe('the employer ask on the thank-you', () => {
 		expect(actor.getSnapshot().matches({ success: 'asking' })).toBe(true);
 		expect(actor.getSnapshot().context).toMatchObject({
 			employer: 'Northwind Logistics',
-			employerRefused: true
+			employerRefusal: 'refused'
 		});
 
 		// the refusal stands while the write is sent again, and is answered by the send that lands.
 		answer = () => Promise.resolve();
 		actor.send({ type: 'SEND_EMPLOYER' });
-		expect(actor.getSnapshot().context.employerRefused).toBe(true);
+		expect(actor.getSnapshot().context.employerRefusal).toBe('refused');
 		await settle();
 		expect(calls.employer).toHaveLength(2);
 		expect(actor.getSnapshot().matches({ success: 'sent' })).toBe(true);
-		expect(actor.getSnapshot().context.employerRefused).toBe(false);
+		expect(actor.getSnapshot().context.employerRefusal).toBeNull();
 	});
 
 	it('reopens the ask when the write goes unanswered', async () => {
@@ -3103,7 +3119,8 @@ describe('the employer ask on the thank-you', () => {
 		expect(actor.getSnapshot().matches({ success: 'sending' })).toBe(true);
 		clock.advance(PORT_TIMEOUT_MS);
 		expect(actor.getSnapshot().matches({ success: 'asking' })).toBe(true);
-		expect(actor.getSnapshot().context.employerRefused).toBe(true);
+		// unconfirmed rather than refused: the request may have landed before it was called off.
+		expect(actor.getSnapshot().context.employerRefusal).toBe('unconfirmed');
 	});
 
 	it('takes a Skip while the write is in flight, and lets its answer land on nothing', async () => {
@@ -3124,6 +3141,28 @@ describe('the employer ask on the thank-you', () => {
 		expect(actor.getSnapshot().matches({ success: 'skipped' })).toBe(true);
 	});
 
+	it('aborts the write in flight when the donor skips, or when it goes unanswered', async () => {
+		// the endpoint records the employer and mails the details, so a write left running after the
+		// ask closed or reopened would do both behind a card saying otherwise.
+		const signals: AbortSignal[] = [];
+		const { actor, clock } = await thanked({
+			employer: (signal) => {
+				signals.push(signal);
+				return neverAnswers();
+			}
+		});
+		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind Logistics' });
+		actor.send({ type: 'SEND_EMPLOYER' });
+		expect(signals[0]?.aborted).toBe(false);
+		clock.advance(PORT_TIMEOUT_MS);
+		expect(signals[0]?.aborted).toBe(true);
+
+		actor.send({ type: 'SEND_EMPLOYER' });
+		expect(signals[1]?.aborted).toBe(false);
+		actor.send({ type: 'SKIP_EMPLOYER' });
+		expect(signals[1]?.aborted).toBe(true);
+	});
+
 	it('keeps what the donor types while the write is in flight', async () => {
 		const { actor, clock } = await thanked({ employer: neverAnswers });
 		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind' });
@@ -3139,10 +3178,10 @@ describe('the employer ask on the thank-you', () => {
 		actor.send({ type: 'SET_EMPLOYER', employer: 'Northwind Logistics' });
 		actor.send({ type: 'SEND_EMPLOYER' });
 		await settle();
-		expect(actor.getSnapshot().context.employerRefused).toBe(true);
+		expect(actor.getSnapshot().context.employerRefusal).toBe('refused');
 
 		actor.send({ type: 'SKIP_EMPLOYER' });
 		expect(actor.getSnapshot().matches({ success: 'skipped' })).toBe(true);
-		expect(actor.getSnapshot().context.employerRefused).toBe(false);
+		expect(actor.getSnapshot().context.employerRefusal).toBeNull();
 	});
 });

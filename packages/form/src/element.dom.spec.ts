@@ -11,7 +11,7 @@ import {
 import manifestText from '../custom-elements.json?raw';
 import { CARD_THEME, PART_NAMES, REGISTRY_CLASS, ROLE_TOKENS, STATE_TOKENS } from './parts';
 import type { CheckoutPorts, FundReports } from './ports';
-import { DEPOSIT_POLL_MS, type Failure } from './checkout.machine';
+import { DEPOSIT_POLL_MS, type Failure, PORT_TIMEOUT_MS } from './checkout.machine';
 import {
 	PAYMENT_METHODS,
 	type FormConfig,
@@ -22,6 +22,7 @@ import {
 	type QuoteRequest
 } from './v1';
 import { DEFAULT_SHAPE } from './views';
+import { EMPLOYER_CLASS } from './employer-ask';
 import { createFormRuntime } from './embed/runtime';
 import { APPEARANCE_INPUTS } from './styles/appearance';
 import partStyles from './styles/parts.css?inline';
@@ -5873,8 +5874,12 @@ describe('the stylesheets', () => {
 					.filter(({ selectors }) => selectors.some(matches))
 					.flatMap(({ body }) => transitionedBy(body))
 			);
-		const handed = Object.entries(REGISTRY_CLASS).flatMap(([part, list]) =>
-			list.split(' ').map((name) => ({ part, name }))
+		// keyed by the part each class rides on: the card's own controls and the thank-you's employer
+		// ask (./employer-ask.ts), whose two presses take the md tier.
+		const handed = [REGISTRY_CLASS, EMPLOYER_CLASS].flatMap((classes) =>
+			Object.entries(classes).flatMap(([part, list]) =>
+				list.split(' ').map((name) => ({ part, name }))
+			)
 		);
 		// the class names the selector's subject: `.ds-btn:hover:not(...)` brings motion to the
 		// action, `.ds-btn > svg` would not. a pseudo-class's arguments are dropped first, since the
@@ -8090,14 +8095,26 @@ describe('the employer ask on the thank-you', () => {
 		expect(secondary(card).hidden).toBe(true);
 	});
 
-	it('writes nothing on a press over a blank box', async () => {
+	it('refuses a press over a blank box out loud, writes nothing, and puts the caret in the box', async () => {
 		const { card, written } = await thanked();
 		const send = card.find('.employer [part~="action"]');
-		expect(send.getAttribute('aria-disabled')).toBe('true');
+		expect(send.hasAttribute('aria-disabled')).toBe(false);
 		press(send);
 		await settle();
 		expect(written).toEqual([]);
 		expect(card.find('.employer [role="group"]').hidden).toBe(false);
+
+		const refusal = 'Enter your employer’s name.';
+		const box = card.find('#employer');
+		expect(shows(card, '#employer-problem')).toBe(refusal);
+		expect(box.getAttribute('aria-invalid')).toBe('true');
+		expect(card.shadow.activeElement).toBe(box);
+		await settle();
+		expect(card.text('.vh[role="status"]')).toBe(refusal);
+
+		type(box, 'Northwind Logistics');
+		expect(card.find('#employer-problem').hidden).toBe(true);
+		expect(box.hasAttribute('aria-invalid')).toBe(false);
 	});
 
 	it('sends the trimmed employer and says the details are on their way', async () => {
@@ -8162,6 +8179,24 @@ describe('the employer ask on the thank-you', () => {
 		await settle();
 		expect(card.text('.vh[role="status"]')).toBe(refusal);
 		expect(secondary(card).hidden).toBe(true);
+	});
+
+	it('says an unanswered write could not be confirmed saved, since it may have landed', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+		const { card } = await thanked(() => new Promise<void>(() => {}));
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		await vi.advanceTimersByTimeAsync(PORT_TIMEOUT_MS);
+
+		const refusal = 'We couldn’t confirm your employer was saved. Try again, or skip this.';
+		expect(shows(card, '#employer-problem')).toBe(refusal);
+		expect(card.find('#employer').hasAttribute('aria-invalid')).toBe(false);
+		// said again over the thank-you, so it is written a task after the clear.
+		await vi.advanceTimersByTimeAsync(1);
+		expect(card.text('.vh[role="status"]')).toBe(refusal);
 	});
 
 	it('closes the ask on a Skip pressed while the write is in flight', async () => {

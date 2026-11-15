@@ -261,11 +261,12 @@ describe('the employer write the thank-you makes', () => {
 		giftToken: '7Qk3-mVx9Lr2NpA4',
 		employer: 'Northwind Logistics'
 	};
+	const open = new AbortController().signal;
 
 	it('posts the employer to the gift on the deployment, as json and with no credential', async () => {
 		const fetched = stubFetch(json({ ok: true }));
 
-		await expect(createEmployerWrite(DEPLOYMENT)(write)).resolves.toBeUndefined();
+		await expect(createEmployerWrite(DEPLOYMENT)(write, open)).resolves.toBeUndefined();
 		expect(fetched).toHaveBeenCalledWith(
 			'https://donate.example/api/v1/forms/frm_a8x2k9/gifts/7Qk3-mVx9Lr2NpA4/employer',
 			expect.objectContaining({
@@ -277,6 +278,18 @@ describe('the employer write the thank-you makes', () => {
 		);
 	});
 
+	it('sends the write on the signal it is handed, so the flow can call it off', async () => {
+		// a Skip or a timeout aborts it (`CheckoutPorts.employer` in ../ports.ts): the endpoint saves
+		// and mails on arrival, so a request left running does both behind the card.
+		const fetched = stubFetch(json({ ok: true }));
+		const leaving = new AbortController();
+		await createEmployerWrite(DEPLOYMENT)(write, leaving.signal);
+		expect(fetched).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({ signal: leaving.signal })
+		);
+	});
+
 	// the donor's text is theirs: a refusal names the address and the status and never what was sent.
 	it.each([
 		['a refusal', () => json({ error: 'gift_not_found', message: 'No such gift.' }, 404)],
@@ -284,7 +297,7 @@ describe('the employer write the thank-you makes', () => {
 		['a body that is not JSON', () => new Response('<html>', { status: 200 })]
 	])('refuses %s without repeating the employer', async (_case, response) => {
 		stubFetch(response());
-		const refused = await refusal(createEmployerWrite(DEPLOYMENT)(write));
+		const refused = await refusal(createEmployerWrite(DEPLOYMENT)(write, open));
 		expect(refused.message).not.toContain('Northwind');
 	});
 
@@ -293,12 +306,12 @@ describe('the employer write the thank-you makes', () => {
 			'fetch',
 			vi.fn(async () => Promise.reject(new TypeError('Failed to fetch')))
 		);
-		await expect(createEmployerWrite(DEPLOYMENT)(write)).rejects.toThrow('Failed to fetch');
+		await expect(createEmployerWrite(DEPLOYMENT)(write, open)).rejects.toThrow('Failed to fetch');
 	});
 
 	it('refuses where the runtime could not tell which deployment served it, and sends nothing', async () => {
 		const fetched = stubFetch(json({ ok: true }));
-		await expect(createEmployerWrite(null)(write)).rejects.toThrow(
+		await expect(createEmployerWrite(null)(write, open)).rejects.toThrow(
 			'could not tell which deployment it was served from'
 		);
 		expect(fetched).not.toHaveBeenCalled();

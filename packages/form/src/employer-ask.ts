@@ -2,8 +2,8 @@
 //
 // a block of its own the takeover holds under the receipt, the way ./deposit.ts is the address
 // screen's. it draws what it is handed — the words are the card's (`takeoverFor` in ./views.ts) and
-// the box's value, whether it holds an answer and whether its write is in flight are the flow's
-// (`employerField` and `sendEmployerButton` in ./connect.ts) — and decides nothing about the flow.
+// the box's value and whether its write is in flight are the flow's (`employerField` and
+// `sendEmployerButton` in ./connect.ts) — and decides nothing about the flow.
 //
 // what the donor types leaves through `input` and nowhere else: no attribute, no event, no console.
 
@@ -19,8 +19,10 @@ export type EmployerAskScreen = {
 	readonly label: string;
 	readonly send: string;
 	readonly skip: string;
-	/** the sentence over a refused or unanswered write, or `''`. */
+	/** the sentence over a refused or unanswered write or a blank press, or `''`. */
 	readonly refusal: string;
+	/** the refusal is the box's: Send was pressed over a blank one. */
+	readonly boxRefused: boolean;
 	/** the status row's heading and line once the ask is closed, `''` while it is open. */
 	readonly doneHeading: string;
 	readonly doneBody: string;
@@ -31,8 +33,6 @@ export type EmployerAskScreen = {
 /** the box and the send as the flow holds them on this snapshot. */
 export type EmployerAskControls = {
 	readonly value: string;
-	/** the box holds an answer the flow takes. */
-	readonly given: boolean;
 	readonly busy: boolean;
 };
 
@@ -63,8 +63,10 @@ const REFUSAL_ID = 'employer-problem';
  * (`REGISTRY_CLASS` in ./parts.ts): side by side in half the column, the large tier's type and
  * padding break `Send me the details` onto a second line.
  */
-const SEND_CLASS = 'ds-btn ds-btn-primary';
-const SKIP_CLASS = 'ds-btn ds-btn-secondary';
+export const EMPLOYER_CLASS = {
+	action: 'ds-btn ds-btn-primary',
+	'action-quiet': 'ds-btn ds-btn-secondary'
+} as const;
 
 export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers): EmployerAskView {
 	const make = <K extends keyof HTMLElementTagNameMap>(
@@ -100,20 +102,23 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 		autocomplete: 'organization'
 	});
 	// the card's error idiom (`.message` in ./styles/parts.css): under the box, tied to it while shown,
-	// and said through the card's one region rather than a live region of its own. the box is not
-	// marked invalid, because nothing about what was typed was refused.
+	// and said through the card's one region rather than a live region of its own. the box is marked
+	// invalid only over a blank press: a refused write refused nothing about what was typed.
 	const refusal = make('p', { id: REFUSAL_ID, class: 'message' });
 	refusal.hidden = true;
 	const sendLabel = make('span', { class: 'action-label' });
 	const spinner = make('span', { class: 'ds-spinner', 'aria-hidden': 'true' });
 	// a submit button while the ask is open, so Enter in the box presses it through the card's own
-	// `<form>`; `aria-disabled` rather than `disabled`, which the platform's implicit submission would
-	// skip silently and which takes the control out of the tab order.
-	const send = make('button', { type: 'submit', class: SEND_CLASS }, [sendLabel, spinner]);
+	// `<form>`, over a blank box too: the flow refuses that press with a sentence, so it is never held
+	// back by `disabled` or `aria-disabled`.
+	const send = make('button', { type: 'submit', class: EMPLOYER_CLASS.action }, [
+		sendLabel,
+		spinner
+	]);
 	const skip = make('button', {
 		type: 'button',
 		part: part('action-quiet'),
-		class: SKIP_CLASS
+		class: EMPLOYER_CLASS['action-quiet']
 	});
 	const ask = make('div', { role: 'group', 'aria-labelledby': HEADING_ID, class: 'employer-ask' }, [
 		make('div', { class: 'employer-head' }, [heading, hint]),
@@ -137,10 +142,16 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 	root.hidden = true;
 
 	field.addEventListener('input', () => handlers.input(field.value));
-	send.addEventListener('click', () => handlers.send());
+	// a blank press repeated changes nothing the flow holds and draws nothing new, so the caret is
+	// returned to the box here rather than by `update`.
+	send.addEventListener('click', () => {
+		handlers.send();
+		if (drawnBoxRefused) field.focus();
+	});
 	skip.addEventListener('click', () => handlers.skip());
 
 	let drawnPhase: EmployerAskScreen['phase'] | null = null;
+	let drawnBoxRefused = false;
 
 	return {
 		root,
@@ -150,6 +161,7 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 				// the default button leaves with the ask, so Enter on another screen presses its own.
 				attribute(send, 'type', 'button');
 				drawnPhase = null;
+				drawnBoxRefused = false;
 				return;
 			}
 			const open = screen.phase === 'asking' || screen.phase === 'sending';
@@ -164,11 +176,11 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 			text(sendLabel, screen.send);
 			text(skip, screen.skip);
 			attribute(send, 'type', open ? 'submit' : 'button');
-			attribute(send, 'aria-disabled', controls.given ? null : 'true');
 			attribute(send, 'aria-busy', controls.busy ? 'true' : null);
 			attribute(send, 'part', partWhen('action', { busy: controls.busy }));
 
-			if (screen.refusal !== '' && refusal.hidden) handlers.refused();
+			const newlyRefused = screen.refusal !== '' && refusal.hidden;
+			if (newlyRefused) handlers.refused();
 			text(refusal, screen.refusal);
 			hide(refusal, screen.refusal === '');
 			attribute(
@@ -176,6 +188,10 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 				'aria-describedby',
 				screen.refusal === '' ? HINT_ID : `${HINT_ID} ${REFUSAL_ID}`
 			);
+			attribute(field, 'aria-invalid', screen.boxRefused ? 'true' : null);
+			// the failed press's caret goes to the box it failed for.
+			if (newlyRefused && screen.boxRefused) field.focus();
+			drawnBoxRefused = screen.boxRefused;
 
 			text(doneHeading, screen.doneHeading);
 			text(doneBody, screen.doneBody);

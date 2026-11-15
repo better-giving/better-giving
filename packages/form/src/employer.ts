@@ -22,8 +22,13 @@ export function giftToken(giftUrl: string): string | null {
 	return match?.[1] ?? null;
 }
 
-/** what the donor typed as the endpoint takes it, or `null` for a blank box or one past the limit. */
+/**
+ * what the donor typed as the endpoint takes it, or `null` for a blank box or one past the limit.
+ *
+ * a run of control characters becomes one space before the trim, because the endpoint refuses any
+ * (`CONTROL` in packages/app/src/lib/server/matching/match.ts) and a text box keeps a pasted tab.
+ */
 export function employerAnswer(typed: string): string | null {
-	const trimmed = typed.trim();
+	const trimmed = typed.replace(/\p{Cc}+/gu, ' ').trim();
 	return trimmed.length === 0 || trimmed.length > MAX_EMPLOYER ? null : trimmed;
 }

@@ -199,14 +199,22 @@ export type CheckoutPorts = {
 	 *
 	 * optional, and the one port that is: it spends nothing and is asked after the gift is made, so a
 	 * surface that leaves it out loses the employer ask and nothing else (`asksForEmployer` in
-	 * ./checkout.machine.ts). `employer` arrives trimmed and within `MAX_EMPLOYER` (./v1.ts). it is
-	 * free text a donor typed, so an adapter sends it in the body and writes it nowhere else.
+	 * ./checkout.machine.ts). `employer` arrives as `employerAnswer` in ./employer.ts reads it: with no
+	 * control character, trimmed and within `MAX_EMPLOYER` (./v1.ts). it is free text a donor typed,
+	 * so an adapter sends it in the body and writes it nowhere else.
+	 *
+	 * `signal` aborts when the ask closes or reopens before the answer, Skip or `PORT_TIMEOUT_MS`
+	 * (./checkout.machine.ts): the endpoint records the employer and mails the details, so an adapter
+	 * hands it to the request rather than let the write land under a card that has moved on.
 	 */
-	employer?(input: {
-		readonly formId: string;
-		readonly giftToken: string;
-		readonly employer: string;
-	}): Promise<void>;
+	employer?(
+		input: {
+			readonly formId: string;
+			readonly giftToken: string;
+			readonly employer: string;
+		},
+		signal: AbortSignal
+	): Promise<void>;
 };
 
 /**

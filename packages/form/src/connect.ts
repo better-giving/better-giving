@@ -49,6 +49,7 @@ import {
 	type checkoutMachine,
 	type CheckoutEvent,
 	type CoinRefusal,
+	type EmployerRefusal,
 	type Failure,
 	type NumberedStep
 } from './checkout.machine';
@@ -342,14 +343,16 @@ export type State =
  *
  * `asking` is the box open, `sending` the write in flight, and `sent` and `skipped` the two ways it
  * closes. `refused` is the last write refused or unanswered with none landed since, so it stands
- * over a resend too. `giftUrl` is the gift page the screen links to, and `email` the address the
- * details are mailed to. what the donor typed is not here: it is the box's own value
- * (`employerField` below).
+ * over a resend too, and `refusal` says which of the two, or that Send was pressed over a blank box
+ * (`EmployerRefusal` in ./checkout.machine.ts), which is no write and leaves `refused` false.
+ * `giftUrl` is the gift page the screen links to, and `email` the address the details are mailed to.
+ * what the donor typed is not here: it is the box's own value (`employerField` below).
  */
 export type EmployerAsk = {
 	readonly phase: 'asking' | 'sending' | 'sent' | 'skipped';
 	readonly giftUrl: string;
 	readonly refused: boolean;
+	readonly refusal: EmployerRefusal | null;
 	readonly email: string;
 };
 
@@ -415,9 +418,8 @@ export type CheckoutApi<
 	/**
 	 * the thank-you's employer box, and its two presses.
 	 *
-	 * `given` on the send is whether the box holds an answer the flow takes, which a renderer draws as
-	 * the control being unavailable while it stays focusable: a blank press is refused by the flow's
-	 * guard (`employerIsGiven` in ./checkout.machine.ts), never by an attribute.
+	 * `given` on the send is whether the box holds an answer the flow takes. a blank press is taken
+	 * and refused by the flow (`refusal` on `EmployerAsk` above), never held back by an attribute.
 	 */
 	readonly employerField: T['field'];
 	readonly sendEmployerButton: T['button'];
@@ -498,10 +500,17 @@ function employerAskOf(snapshot: CheckoutSnapshot): EmployerAsk | null {
 	const giftUrl = context.quote?.giftUrl;
 	if (giftUrl === undefined || context.payer === null) return null;
 	const phases = ['asking', 'sending', 'sent', 'skipped'] as const;
+	const refusal = context.employerRefusal;
 	const phase = phases.find((name) => snapshot.matches({ success: name }));
 	return phase === undefined
 		? null
-		: { phase, giftUrl, refused: context.employerRefused, email: context.payer.email };
+		: {
+				phase,
+				giftUrl,
+				refused: refusal === 'refused' || refusal === 'unconfirmed',
+				refusal,
+				email: context.payer.email
+			};
 }
 
 /**

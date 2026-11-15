@@ -34,3 +34,12 @@ it('answers with nothing past the length the endpoint takes', () => {
 	expect(employerAnswer(` ${'x'.repeat(MAX_EMPLOYER)} `)).toHaveLength(MAX_EMPLOYER);
 	expect(employerAnswer('x'.repeat(MAX_EMPLOYER + 1))).toBeNull();
 });
+
+it('collapses control characters to one space, since the endpoint refuses any', () => {
+	// a text box drops a pasted line break but keeps a pasted tab, and the endpoint answers 400 to
+	// every resend of it (packages/app/src/routes/api.v1.forms.$id.gifts.$token.employer.ts).
+	expect(employerAnswer('Northwind\tLogistics')).toBe('Northwind Logistics');
+	expect(employerAnswer('Northwind \t\u0007 Logistics')).toBe('Northwind   Logistics');
+	expect(employerAnswer('\tNorthwind Logistics\u007f')).toBe('Northwind Logistics');
+	expect(employerAnswer('\u0000\t')).toBeNull();
+});

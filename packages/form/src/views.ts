@@ -655,8 +655,16 @@ function depositScreen(
 	};
 }
 
-/** what the thank-you says over an employer write that was refused or went unanswered. */
-const EMPLOYER_REFUSAL = 'Your employer was not saved. Try again, or skip this.';
+/**
+ * what the thank-you says over a refused employer ask, by why it stands refused. an unanswered write
+ * was called off without knowing whether the deployment saved it, so it is not said to have failed.
+ * the blank sentence is the gift page's (`EMPLOYER_BLANK` in packages/app/src/routes/gift.$token.tsx).
+ */
+const EMPLOYER_REFUSAL: Readonly<Record<NonNullable<EmployerAsk['refusal']>, string>> = {
+	refused: 'Your employer was not saved. Try again, or skip this.',
+	unconfirmed: 'We couldn’t confirm your employer was saved. Try again, or skip this.',
+	blank: 'Enter your employer’s name.'
+};
 
 /**
  * the thank-you's employer ask in the words a donor reads, or `null` on a thank-you without one.
@@ -686,7 +694,8 @@ function employerAskScreen(ask: EmployerAsk | undefined): EmployerAskScreen | nu
 		label: 'Employer (if they match gifts)',
 		send: 'Send me the details',
 		skip: 'Skip',
-		refusal: ask.phase === 'asking' && ask.refused ? EMPLOYER_REFUSAL : '',
+		refusal: ask.phase === 'asking' && ask.refusal !== null ? EMPLOYER_REFUSAL[ask.refusal] : '',
+		boxRefused: ask.phase === 'asking' && ask.refusal === 'blank',
 		...closed,
 		link: 'Open your gift page',
 		giftUrl: ask.giftUrl
@@ -847,14 +856,11 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 			const employer = employerAskScreen(state.employer);
 			// while the ask is open, Skip is the way out of it and the start-over waits until it closes.
 			const asking = employer?.phase === 'asking' || employer?.phase === 'sending';
-			// the region states a refused write for as long as it stands, resend included, and goes
-			// quiet once the ask closes: the row the caret lands on says how it closed.
+			// the region states a refusal for as long as it stands, resend included, and goes quiet
+			// once the ask closes: the row the caret lands on says how it closed.
+			const refusal = state.employer?.refusal ?? null;
 			const said = (thanks: string): string =>
-				state.employer?.refused === true
-					? EMPLOYER_REFUSAL
-					: asking || employer === null
-						? thanks
-						: '';
+				refusal !== null ? EMPLOYER_REFUSAL[refusal] : asking || employer === null ? thanks : '';
 			if (state.method === 'crypto') {
 				return {
 					...BLANK,
@@ -3027,7 +3033,6 @@ export function createCard(
 		paintTakeover(screen, busy);
 		employerAsk.update(screen.employer, {
 			value: api.employerField.value,
-			given: api.sendEmployerButton.given === true,
 			busy: api.sendEmployerButton['aria-busy']
 		});
 
