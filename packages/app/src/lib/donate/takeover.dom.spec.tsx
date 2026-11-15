@@ -1,13 +1,13 @@
-import type { State } from '@better-giving/form/connect';
+import type { EmployerAsk, State } from '@better-giving/form/connect';
 import { formatMinor } from '@better-giving/form/money';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
 import type { FormValue } from '@better-giving/form/value';
-import { act, createRef, type ReactNode } from 'react';
+import { act, createRef, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import * as copy from './copy';
 import { DonateNotice } from './notice';
-import { takeoverFor, TakeoverScreen } from './takeover';
+import { EmployerAskBlock, takeoverFor, TakeoverScreen } from './takeover';
 
 // every screen that takes the whole card, drawn.
 //
@@ -77,6 +77,7 @@ function draw(state: State, config: FormConfig = CONFIG): HTMLElement {
 				headingRef={createRef<HTMLHeadingElement>()}
 				sectionRef={createRef<HTMLElement>()}
 				deposit={null}
+				employer={null}
 				onPrimary={() => {}}
 				onSecondary={() => {}}
 			/>
@@ -503,4 +504,144 @@ it('draws the no-form notice in the page’s own dress', () => {
 	expect(root.querySelector('.notice')?.textContent).toBe(copy.NO_FORM);
 	// the card's dress reaches none of it: there is no form here for the form's sheets to paint.
 	expect(root.querySelector('[part]')).toBe(null);
+});
+
+describe('the thank-you’s employer ask', () => {
+	const ASK: EmployerAsk = {
+		phase: 'asking',
+		giftUrl: 'https://give.example.org/gift/tok_1',
+		refused: false,
+		refusal: null,
+		email: 'donor@example.org'
+	};
+	const asked = (refusal: EmployerAsk['refusal']): State => ({
+		step: 'success',
+		employer: {
+			...ASK,
+			refused: refusal === 'refused' || refusal === 'unconfirmed',
+			refusal
+		}
+	});
+
+	it.each([
+		['refused', copy.EMPLOYER_REFUSAL],
+		['unconfirmed', copy.EMPLOYER_UNCONFIRMED],
+		['blank', copy.EMPLOYER_BLANK]
+	] as const)(
+		'says why an ask stands refused (%s) in its own words under the box, leaving the region to the card',
+		(why, words) => {
+			const screen = takeoverFor(asked(why), CONFIG, money);
+
+			expect(screen.employer?.refusal).toBe(words);
+			expect(screen.employer?.boxRefused).toBe(why === 'blank');
+			// the card says a refusal as it lands, not while it stands (`askSaid` in ./card.tsx).
+			expect(screen.announce).toBe('');
+		}
+	);
+
+	/** the block over a flow the case drives: `refuse` sets the refusal the next Send leaves. */
+	function block() {
+		const sends: number[] = [];
+		let refuse: EmployerAsk['refusal'] = null;
+		let draw = (_: EmployerAsk['refusal']) => {};
+		function Mounted() {
+			const [refusal, setRefusal] = useState<EmployerAsk['refusal']>(null);
+			draw = setRefusal;
+			return (
+				<EmployerAskBlock
+					screen={takeoverFor(asked(refusal), CONFIG, money).employer}
+					box={{ name: 'employer', value: '', onChange: () => {} }}
+					busy={false}
+					given={false}
+					onSend={() => {
+						sends.push(sends.length);
+						setRefusal(refuse);
+					}}
+					onSkip={() => {}}
+				/>
+			);
+		}
+		const root = mount(<Mounted />);
+		const box = root.querySelector('input');
+		const send = root.querySelector('.employer-actions > button[type="submit"]');
+		if (!(box instanceof HTMLInputElement) || !(send instanceof HTMLButtonElement)) {
+			throw new Error('no employer box or Send');
+		}
+		return {
+			root,
+			box,
+			send,
+			sends,
+			refuseWith: (why: EmployerAsk['refusal']) => {
+				refuse = why;
+			},
+			draw: (why: EmployerAsk['refusal']) => act(() => draw(why))
+		};
+	}
+
+	it('takes a blank Send, muted and pressable, and refuses it under the box with the caret in it', () => {
+		const { root, box, send, sends, refuseWith } = block();
+		expect(send.getAttribute('aria-disabled')).toBe('true');
+		expect(send.hasAttribute('disabled')).toBe(false);
+
+		refuseWith('blank');
+		act(() => send.click());
+
+		expect(sends).toHaveLength(1);
+		expect(root.querySelector('#employer-problem')?.textContent).toBe(copy.EMPLOYER_BLANK);
+		expect(box.getAttribute('aria-invalid')).toBe('true');
+		expect(box.getAttribute('aria-describedby')).toBe('employer-hint employer-problem');
+		expect(document.activeElement).toBe(box);
+	});
+
+	it('describes a blank Send by the ask hint, and drops it once a name is given', () => {
+		let give = (_: boolean) => {};
+		function Mounted() {
+			const [given, setGiven] = useState(false);
+			give = setGiven;
+			return (
+				<EmployerAskBlock
+					screen={takeoverFor(asked(null), CONFIG, money).employer}
+					box={{ name: 'employer', value: '', onChange: () => {} }}
+					busy={false}
+					given={given}
+					onSend={() => {}}
+					onSkip={() => {}}
+				/>
+			);
+		}
+		const root = mount(<Mounted />);
+		const send = root.querySelector('.employer-actions > button[type="submit"]');
+		if (!(send instanceof HTMLButtonElement)) throw new Error('no Send');
+
+		const hint = document.getElementById(send.getAttribute('aria-describedby') ?? '');
+		expect(hint?.textContent).toBe(copy.EMPLOYER_ASK_HINT);
+		expect(root.contains(hint)).toBe(true);
+
+		act(() => give(true));
+		expect(send.hasAttribute('aria-disabled')).toBe(false);
+		expect(send.hasAttribute('aria-describedby')).toBe(false);
+	});
+
+	it('puts the caret back in the box on a blank Send repeated', () => {
+		const { box, send, sends, refuseWith } = block();
+		refuseWith('blank');
+		act(() => send.click());
+
+		act(() => send.focus());
+		act(() => send.click());
+
+		expect(sends).toHaveLength(2);
+		expect(document.activeElement).toBe(box);
+	});
+
+	it('marks nothing about the box over a write that was refused', () => {
+		const { box, send, draw } = block();
+		act(() => send.focus());
+
+		draw('unconfirmed');
+
+		expect(box.hasAttribute('aria-invalid')).toBe(false);
+		expect(document.activeElement).toBe(send);
+	});
 });

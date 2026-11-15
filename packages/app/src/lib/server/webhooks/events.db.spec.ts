@@ -24,6 +24,7 @@ beforeEach(async () => {
 		'webhook_destination_event',
 		'webhook_destination',
 		'payment',
+		'gift_match',
 		'donation',
 		'contact'
 	]) {

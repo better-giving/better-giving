@@ -5,6 +5,7 @@ import { createRoutesStub } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { ViewerZoneProvider } from '$lib/admin/viewer-time.react';
 import { browserIn } from '$lib/admin/viewer-time.testing';
+import type { MatchFilter } from '$lib/matching/status';
 import Donations from './_app.admin.donations._index';
 
 // the dedication cell, drawn.
@@ -67,6 +68,7 @@ function gift(over: Partial<Gift> = {}): Gift {
 		tribute: null,
 		program: null,
 		trackingId: null,
+		match: null,
 		...over
 	};
 }
@@ -79,17 +81,17 @@ function gift(over: Partial<Gift> = {}): Gift {
  * for, and the cast is ./_app.admin.forms.new.dom.spec.tsx's — the props under test are `loaderData`
  * alone.
  */
-function screen(donations: Gift[]): HTMLElement {
-	return mount(stubbed(donations));
+function screen(donations: Gift[], match: MatchFilter | null = null): HTMLElement {
+	return mount(stubbed(donations, match));
 }
 
-function stubbed(donations: Gift[]): ReactNode {
+function stubbed(donations: Gift[], match: MatchFilter | null = null): ReactNode {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/donations',
 			Component: () =>
 				createElement(Donations as never, {
-					loaderData: { donations, limit: 50, hasMore: false },
+					loaderData: { donations, limit: 50, hasMore: false, match },
 					params: {},
 					matches: []
 				})
@@ -126,6 +128,29 @@ function cell(root: HTMLElement, label: string): string {
 	const held = at === 0 ? row?.querySelector('th') : row?.querySelectorAll('td')[at - 1];
 	return held?.textContent ?? '';
 }
+
+it('pins the donor first and the match beside it, the date after', () => {
+	const headers = [...screen([gift()]).querySelectorAll('thead th')].map((th) => th.textContent);
+	expect(headers.slice(0, 4)).toEqual(['Donor', 'Match', 'Received', 'Amount']);
+});
+
+it('links the donor’s name to the gift’s own page', () => {
+	const root = screen([gift()]);
+	const link = root.querySelector('tbody th a');
+	expect(link?.textContent).toBe('Ada Okafor');
+	expect(link?.getAttribute('href')).toBe('/admin/donations/019fb300-0000-7000-8000-000000000001');
+});
+
+it('draws the match’s word with the employer the donor named under it', () => {
+	const root = screen([gift({ match: { status: 'reminded', employer: 'Northwind' } })]);
+	expect(cell(root, 'Match')).toBe('RemindedNorthwind');
+});
+
+it('shows the filter the list was read under, and says a filter matched nothing', () => {
+	const root = screen([], 'filed');
+	expect(root.querySelector<HTMLSelectElement>('select[name="match"]')?.value).toBe('filed');
+	expect(root.textContent).toContain('No gifts match this filter.');
+});
 
 it('draws no heading of its own: the frame names the page in a hidden one', () => {
 	expect(screen([gift({})]).querySelector('h1')).toBe(null);
@@ -364,11 +389,15 @@ describe('the day a gift was received', () => {
 			receivedAt: '2026-10-21T13:00:00.000Z'
 		})
 	];
-	const rowsOf = (root: HTMLElement) =>
-		[...root.querySelectorAll('tbody tr')].map((tr) => [
-			tr.querySelector('th')?.textContent,
-			tr.querySelectorAll('td')[0]?.textContent
+	/** each row's received day and its donor, the donor being the row's `th`. */
+	const rowsOf = (root: HTMLElement) => {
+		const headers = [...root.querySelectorAll('thead th')].map((th) => th.textContent);
+		const received = headers.indexOf('Received') - 1;
+		return [...root.querySelectorAll('tbody tr')].map((tr) => [
+			tr.querySelectorAll('td')[received]?.textContent,
+			tr.querySelector('th')?.textContent
 		]);
+	};
 
 	it('never lists a later day below an earlier one, west of UTC', () => {
 		// newest first by the stored instant, as `listDonations` orders them: the in-hand gift is

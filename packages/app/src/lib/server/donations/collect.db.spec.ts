@@ -5,6 +5,7 @@ import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
 import {
 	donation,
+	giftMatch,
 	entryGroup,
 	ledgerEntry,
 	lineItem,
@@ -88,6 +89,7 @@ beforeEach(async () => {
 		'entry_group',
 		'payment',
 		'line_item',
+		'gift_match',
 		'donation',
 		'recurring_plan',
 		'contact',
@@ -603,6 +605,19 @@ describe('settleDelivery() — the receipt for a collection', () => {
 		const gifts = await collected();
 		expect(gifts).toHaveLength(2);
 		expect(gifts[1]?.receiptSentAt).not.toBeNull();
+	});
+
+	it('writes a later collection its own employer match row', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		await collectAgain(mailer().port);
+
+		const gifts = await collected();
+		const rows = await db
+			.select()
+			.from(giftMatch)
+			.where(eq(giftMatch.donationId, gifts[1]?.id ?? ''));
+		expect(rows).toHaveLength(1);
 	});
 
 	it('receipts the charge that opens a commitment exactly once', async () => {

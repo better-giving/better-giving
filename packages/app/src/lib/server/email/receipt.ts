@@ -84,6 +84,11 @@ export interface ReceiptInput {
 	 * `contribution.totalMinor`, the value at arrival.
 	 */
 	readonly crypto: CryptoReceived | null;
+	/**
+	 * the address of the donor's own page for this gift. given, the receipt closes on the employer
+	 * match note that links to it; absent, it is the receipt it always was.
+	 */
+	readonly giftPageUrl?: string;
 }
 
 /**
@@ -280,7 +285,8 @@ export async function renderReceipt(input: ReceiptInput): Promise<ReceiptResult>
 								honoree: input.tribute.honoree
 							},
 				program: input.program,
-				crypto: input.crypto
+				crypto: input.crypto,
+				...(input.giftPageUrl === undefined ? {} : { giftPageUrl: input.giftPageUrl })
 			})
 		)
 	};

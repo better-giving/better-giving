@@ -508,7 +508,7 @@ function DonationLayout(props: PageViewProps) {
 }
 
 /** a logo at least twice as wide as it is tall, by the stored image's width and height. */
-const isWordmark = (logo: Pick<PageLogo, 'width' | 'height'>): boolean =>
+export const isWordmark = (logo: Pick<PageLogo, 'width' | 'height'>): boolean =>
 	logo.width >= 2 * logo.height;
 
 export function Masthead({

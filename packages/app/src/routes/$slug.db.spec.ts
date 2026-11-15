@@ -73,6 +73,7 @@ beforeEach(async () => {
 		stmt('delete from entry_group'),
 		stmt('delete from line_item'),
 		stmt('delete from payment'),
+		stmt('delete from gift_match'),
 		stmt('delete from donation'),
 		stmt('delete from page'),
 		stmt('delete from form'),

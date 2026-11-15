@@ -33,6 +33,7 @@ beforeAll(async () => {
 beforeEach(async () => {
 	// children first — every FK in this schema is `NO ACTION`.
 	await run(stmt('delete from payment'));
+	await run(stmt('delete from gift_match'));
 	await run(stmt('delete from donation'));
 	await run(stmt('delete from recurring_plan'));
 	await run(stmt('delete from contact'));
@@ -363,5 +364,78 @@ describe('readGiftsByMonth()', () => {
 			{ month: '2026-08', gifts: 1 },
 			{ month: '2026-09', gifts: 1 }
 		]);
+	});
+});
+
+describe('listDonations() — the employer match', () => {
+	/** a gift with a match row holding these columns, or none where `columns` is null. */
+	async function matched(columns: Record<string, string | number> | null): Promise<string> {
+		const id = await gift(await donor('Maya Reyes'));
+		if (columns === null) return id;
+		const names = Object.keys(columns);
+		await run(
+			stmt(
+				`insert into gift_match (id, donation_id, token, created_at${names.map((n) => `, ${n}`).join('')})
+				 values (?, ?, ?, 0${names.map(() => ', ?').join('')})`,
+				nextId(),
+				id,
+				`${String(sequence).padStart(4, '0')}abcdefghjkmnpqrstvwxyz012345`,
+				...Object.values(columns)
+			)
+		);
+		return id;
+	}
+
+	/** one gift per word, one with nobody named and no stamps, and one recorded before matching. */
+	async function seedEveryState() {
+		const employer = 'Northwind';
+		return {
+			voided: await matched({
+				employer,
+				matched_at: 1,
+				matched_by: 's',
+				voided_at: 2,
+				voided_by: 'system',
+				void_reason: 'Gift refunded'
+			}),
+			matched: await matched({ employer, matched_at: 1, matched_by: 's', pack_sent_at: 1 }),
+			filed: await matched({ filed_at: 1, filed_by: 'donor' }),
+			send_failed: await matched({ employer, pack_failed_at: 1, reminded_at: 2 }),
+			reminded: await matched({ employer, pack_sent_at: 1, reminded_at: 2 }),
+			pack_sent: await matched({ employer, pack_sent_at: 1 }),
+			untouched: await matched({}),
+			before: await matched(null)
+		};
+	}
+
+	it('carries each gift’s word and employer, and nothing for a gift recorded before matching', async () => {
+		const ids = await seedEveryState();
+		const { donations } = await listDonations(db);
+		const byId = new Map(donations.map((d) => [d.id, d.match]));
+
+		expect(byId.get(ids.voided)).toEqual({ status: 'voided', employer: 'Northwind' });
+		expect(byId.get(ids.filed)).toEqual({ status: 'filed', employer: null });
+		expect(byId.get(ids.untouched)).toEqual({ status: null, employer: null });
+		expect(byId.get(ids.before)).toBeNull();
+	});
+
+	it.each(['voided', 'matched', 'filed', 'send_failed', 'reminded', 'pack_sent'] as const)(
+		'filters to the gifts whose word is %s, as the row reads it',
+		async (word) => {
+			const ids = await seedEveryState();
+			const { donations } = await listDonations(db, { match: word });
+
+			expect(donations.map((d) => d.id)).toEqual([ids[word]]);
+			expect(donations[0]?.match?.status).toBe(word);
+		}
+	);
+
+	it('filters to the gifts that name no employer, those recorded before matching among them', async () => {
+		const ids = await seedEveryState();
+		const { donations } = await listDonations(db, { match: 'no_employer' });
+
+		expect(donations.map((d) => d.id).sort()).toEqual(
+			[ids.filed, ids.untouched, ids.before].sort()
+		);
 	});
 });

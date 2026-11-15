@@ -31,7 +31,14 @@ beforeAll(() => {
 });
 
 beforeEach(async () => {
-	for (const table of ['payment', 'line_item', 'donation', 'contact', 'org_profile']) {
+	for (const table of [
+		'payment',
+		'line_item',
+		'gift_match',
+		'donation',
+		'contact',
+		'org_profile'
+	]) {
 		await run(stmt(`delete from ${table}`));
 	}
 	await run(

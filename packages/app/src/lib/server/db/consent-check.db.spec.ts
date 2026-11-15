@@ -44,6 +44,7 @@ describe('the check on contact.consented_to_contact', () => {
 	beforeEach(async () => {
 		// storage is isolated per file rather than per test, so rows written by one `it` are
 		// visible to the next.
+		await run(stmt('delete from gift_match'));
 		await run(stmt('delete from donation'));
 		await run(stmt('delete from contact'));
 	});
@@ -100,6 +101,7 @@ describe('the check on contact.consented_to_contact', () => {
 
 describe('the rest of the table, off the applied migrations', () => {
 	beforeAll(async () => {
+		await run(stmt('delete from gift_match'));
 		await run(stmt('delete from donation'));
 		await run(stmt('delete from contact'));
 		await client.batch([

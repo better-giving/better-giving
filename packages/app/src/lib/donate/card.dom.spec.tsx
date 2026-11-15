@@ -1676,11 +1676,18 @@ it('draws its controls with the registry’s classes, on the elements the elemen
 		[...node.classList].filter((name) => name.startsWith('ds-'));
 	const collect = (): void => {
 		for (const node of every(root, '[part~="action"]')) {
-			expect(node.className, node.outerHTML).toBe(REGISTRY_CLASS.action);
+			// the employer ask's Send is the md press beside its Skip (`EmployerAskBlock` in ./takeover.tsx).
+			expect(node.className, node.outerHTML).toBe(
+				node.closest('.employer-actions') === null ? REGISTRY_CLASS.action : 'ds-btn ds-btn-primary'
+			);
 			seen.action += 1;
 		}
+		// the employer ask's Skip stands beside its Send at the registry's md press, which the registry
+		// draws (`[part~='action-quiet']` in packages/form/src/styles/parts.css).
 		for (const node of every(root, '[part~="action-quiet"]')) {
-			expect(registryClasses(node), node.outerHTML).toEqual([]);
+			expect(registryClasses(node), node.outerHTML).toEqual(
+				node.closest('.employer-actions') === null ? [] : ['ds-btn', 'ds-btn-secondary']
+			);
 		}
 		for (const node of every(root, '[part~="field"]')) {
 			expect(node.className, node.outerHTML).toBe(REGISTRY_CLASS.field);
@@ -3169,5 +3176,261 @@ describe('a crypto gift', () => {
 		expect(coins(root).querySelector('[aria-disabled="true"] .coin-ticker')?.textContent).toBe(
 			'USDT'
 		);
+	});
+});
+
+describe('the thank-you’s employer ask', () => {
+	const GIFT_URL = 'https://giving.example.org/gift/tok_1';
+	const QUOTE = {
+		paymentToken: 'pi_1_secret_x',
+		feeMinor: 106,
+		totalMinor: 2606,
+		giftUrl: GIFT_URL
+	};
+
+	/**
+	 * the deployment's two endpoints: the quote, naming the gift page, and the employer write, which
+	 * answers `employer` in turn and records each body it was sent.
+	 */
+	function deployment(employer: (() => Response)[] = []) {
+		const named: unknown[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init?: RequestInit) => {
+				if (url.endsWith('/gifts/tok_1/employer')) {
+					named.push(JSON.parse(String(init?.body)));
+					return employer.shift()?.() ?? Response.json({ ok: true });
+				}
+				return Response.json(QUOTE);
+			})
+		);
+		return named;
+	}
+
+	async function thanked() {
+		const { root, payment } = await card(CONFIG, {
+			confirm: async () => ({ paymentIntent: { status: 'succeeded' } })
+		});
+		await walkToGive(root);
+		payment.pick('card');
+		await act(async () => {
+			one(root, 'button[part~="submit"]').click();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+		expect(one(screen(root), ':scope > h2').textContent).toBe(copy.SUCCESS_HEADING);
+		return root;
+	}
+
+	async function pressed(node: HTMLElement): Promise<void> {
+		await act(async () => {
+			node.focus();
+			node.click();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+	}
+
+	const ask = (root: HTMLElement) => one(root, '.employer-ask');
+	const box = (root: HTMLElement) => input(root, '#employer');
+	const send = (root: HTMLElement) => one(ask(root), '.employer-actions > button[type="submit"]');
+	const skip = (root: HTMLElement) => one(ask(root), 'button[part~="action-quiet"]');
+	const back = (root: HTMLElement) => one(screen(root), ':scope > .foot > button');
+	/** the card's own region, beside the row that states the ask closing. */
+	const region = (root: HTMLElement) =>
+		one(root, '[data-donate-root] > [role="status"]').textContent;
+	const done = (root: HTMLElement) => one(root, '.employer-done');
+	const link = (root: HTMLElement) => one(root, 'a[part~="link"]');
+
+	it('asks with Send muted over a blank box, and no way back to the start', async () => {
+		deployment();
+		const root = await thanked();
+
+		expect(ask(root).hidden).toBe(false);
+		expect(one(ask(root), 'h3').textContent).toBe(copy.EMPLOYER_ASK_HEADING);
+		expect(one(root, 'label[for="employer"]').textContent).toBe(copy.EMPLOYER_LABEL);
+		expect(box(root).value).toBe('');
+		expect(box(root).maxLength).toBe(200);
+		// the registry's `button.ds-btn[aria-disabled="true"]` look: gray-3 fill, gray-11 ink.
+		expect(send(root).getAttribute('aria-disabled')).toBe('true');
+		expect(send(root).hasAttribute('disabled')).toBe(false);
+		expect(send(root).className).toBe('ds-btn ds-btn-primary');
+		expect(send(root).hidden).toBe(false);
+		expect(back(root).hidden).toBe(true);
+		expect(done(root).hidden).toBe(true);
+		expect(link(root).hidden).toBe(true);
+	});
+
+	it('draws Send the enabled primary once the box holds a name, and muted again when emptied', async () => {
+		deployment();
+		const root = await thanked();
+
+		type(box(root), 'Northwind Logistics');
+		await settled();
+		expect(send(root).hasAttribute('aria-disabled')).toBe(false);
+
+		type(box(root), '   ');
+		await settled();
+		expect(send(root).getAttribute('aria-disabled')).toBe('true');
+	});
+
+	/** every sentence the card's region is handed from here on. */
+	function heard(root: HTMLElement): string[] {
+		const node = one(root, '[data-donate-root] > [role="status"]');
+		const written: string[] = [];
+		const watch = new MutationObserver(() => written.push(node.textContent ?? ''));
+		watch.observe(node, { childList: true, characterData: true, subtree: true });
+		onTestFinished(() => watch.disconnect());
+		return written;
+	}
+
+	/** Send pressed with the caret left in the box, as Enter in it presses the form's submit. */
+	async function sentFromBox(root: HTMLElement): Promise<void> {
+		await act(async () => {
+			box(root).focus();
+			send(root).click();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+	}
+
+	it('refuses a blank Send under the box with the caret in it, and sends nothing', async () => {
+		const named = deployment();
+		const root = await thanked();
+		const written = heard(root);
+
+		type(box(root), '   ');
+		await pressed(send(root));
+		await settled();
+
+		expect(named).toEqual([]);
+		expect(ask(root).hidden).toBe(false);
+		expect(one(root, '#employer-problem').textContent).toBe(copy.EMPLOYER_BLANK);
+		expect(box(root).getAttribute('aria-invalid')).toBe('true');
+		expect(document.activeElement).toBe(box(root));
+		// the box the caret lands in says the refusal, so the region saying it as well is heard twice.
+		expect(written).toEqual([]);
+	});
+
+	it('says a blank Send made from the box through the region, again on every one', async () => {
+		deployment();
+		const root = await thanked();
+
+		type(box(root), '   ');
+		await sentFromBox(root);
+		await settled();
+
+		expect(document.activeElement).toBe(box(root));
+		expect(region(root)).toBe(copy.EMPLOYER_BLANK);
+		const written = heard(root);
+
+		await sentFromBox(root);
+		await settled();
+
+		// the region holds the same words as before, so the repeat is a clear and a write a task apart.
+		expect(written).toEqual(['', copy.EMPLOYER_BLANK]);
+		expect(region(root)).toBe(copy.EMPLOYER_BLANK);
+	});
+
+	it('says the thank-you once, never again as the box takes an answer after a blank Send', async () => {
+		deployment();
+		const root = await thanked();
+		expect(region(root)).toBe(copy.SUCCESS_ANNOUNCE);
+
+		type(box(root), '   ');
+		await sentFromBox(root);
+		await settled();
+		const written = heard(root);
+		type(box(root), 'Northwind Logistics');
+		await settled();
+
+		expect(one(root, '#employer-problem').hidden).toBe(true);
+		expect(written).not.toContain(copy.SUCCESS_ANNOUNCE);
+	});
+
+	it('takes a named employer, and sends it under the gift page’s token', async () => {
+		const named = deployment();
+		const root = await thanked();
+
+		type(box(root), '  Northwind Logistics ');
+		await pressed(send(root));
+
+		expect(named).toEqual([{ employer: 'Northwind Logistics' }]);
+	});
+
+	it('says the details went, links the gift page, puts the caret on the row and offers the start', async () => {
+		deployment();
+		const root = await thanked();
+
+		type(box(root), 'Northwind Logistics');
+		await pressed(send(root));
+
+		expect(ask(root).hidden).toBe(true);
+		expect(done(root).hidden).toBe(false);
+		expect(done(root).getAttribute('role')).toBe('status');
+		expect(one(done(root), 'h3').textContent).toBe(copy.EMPLOYER_SENT_HEADING);
+		expect(one(done(root), 'p').textContent).toBe(copy.employerSentBody('donor@example.org'));
+		expect(done(root).querySelector('svg.employer-done-mark')).not.toBeNull();
+		expect(document.activeElement).toBe(done(root));
+		expect(link(root).hidden).toBe(false);
+		expect(link(root).getAttribute('href')).toBe(GIFT_URL);
+		expect(link(root).textContent).toBe(copy.OPEN_GIFT_PAGE);
+		expect(back(root).textContent).toBe(copy.BACK_TO_START);
+		expect(back(root).hidden).toBe(false);
+		expect(root.textContent).not.toContain('Northwind Logistics');
+	});
+
+	it('sends nothing on Skip and points the donor at the gift page', async () => {
+		const named = deployment();
+		const root = await thanked();
+
+		await pressed(skip(root));
+
+		expect(named).toEqual([]);
+		expect(ask(root).hidden).toBe(true);
+		expect(one(done(root), 'h3').textContent).toBe(copy.EMPLOYER_SKIPPED_HEADING);
+		expect(one(done(root), 'p').textContent).toBe(copy.EMPLOYER_SKIPPED_BODY);
+		expect(done(root).querySelector('svg')).toBeNull();
+		expect(document.activeElement).toBe(done(root));
+		expect(link(root).getAttribute('href')).toBe(GIFT_URL);
+		expect(back(root).textContent).toBe(copy.BACK_TO_START);
+		expect(back(root).hidden).toBe(false);
+	});
+
+	it('keeps the ask open over a refused write, says it, and says it again on a second refusal', async () => {
+		deployment([
+			() => new Response('{}', { status: 500 }),
+			() => new Response('{}', { status: 500 })
+		]);
+		const root = await thanked();
+
+		type(box(root), 'Northwind Logistics');
+		await pressed(send(root));
+		await settled();
+
+		expect(ask(root).hidden).toBe(false);
+		expect(one(root, '#employer-problem').textContent).toBe(copy.EMPLOYER_REFUSAL);
+		expect(box(root).getAttribute('aria-describedby')).toBe('employer-hint employer-problem');
+		expect(region(root)).toBe(copy.EMPLOYER_REFUSAL);
+		const written = heard(root);
+
+		await pressed(send(root));
+		await settled();
+
+		// a region left holding the refusal is announced by nobody, so the resend must take it out
+		// of the region before writing it back.
+		expect(written.at(-1)).toBe(copy.EMPLOYER_REFUSAL);
+		expect(written.slice(0, -1).some((text) => text !== copy.EMPLOYER_REFUSAL)).toBe(true);
+		expect(region(root)).toBe(copy.EMPLOYER_REFUSAL);
+		expect(one(root, '#employer-problem').hidden).toBe(false);
+	});
+
+	it('draws no ask on a thank-you whose quote named no gift page', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Response.json({ ...QUOTE, giftUrl: undefined }))
+		);
+		const root = await thanked();
+
+		expect(one(root, '.employer').hidden).toBe(true);
+		expect(back(root).textContent).toBe(copy.BACK_TO_START);
+		expect(back(root).hidden).toBe(false);
 	});
 });

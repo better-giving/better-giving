@@ -4,7 +4,7 @@ import { Mark } from '../status/Mark.jsx';
  * @import { ComponentProps, ElementType, ReactNode } from 'react'
  * @import { MarkName } from '../status/Mark.jsx'
  *
- * @typedef {'default' | 'primary' | 'danger' | 'quiet' | 'soft'} ButtonVariant
+ * @typedef {'default' | 'primary' | 'danger' | 'danger-outline' | 'quiet' | 'soft'} ButtonVariant
  * @typedef {'md' | 'sm'} ButtonSize
  *
  * @typedef {object} ButtonOwnProps
@@ -45,6 +45,7 @@ export const BUTTON_VARIANT_CLASS = {
 	default: 'ds-btn-secondary',
 	primary: 'ds-btn-primary',
 	danger: 'ds-btn-destructive',
+	'danger-outline': 'ds-btn-destructive-outline',
 	quiet: 'ds-btn-ghost',
 	soft: 'ds-btn-soft'
 };

@@ -132,11 +132,11 @@ export type ConfirmInput = {
 };
 
 /**
- * the outside world, in five functions.
+ * the outside world, in five functions and one optional sixth.
  *
  * small on purpose. Every function added here is one more thing a headless adapter must
  * implement and one more thing the spec must stand in for; the flow needs exactly these, and
- * the discipline that keeps the seam honest is refusing to add a sixth for convenience.
+ * the discipline that keeps the seam honest is refusing to add another for convenience.
  */
 export type CheckoutPorts = {
 	/**
@@ -193,6 +193,30 @@ export type CheckoutPorts = {
 
 	/** Unix ms. A port because ten days is not a thing a test can wait for. */
 	now(): number;
+
+	/**
+	 * `POST /api/v1/forms/:id/gifts/:token/employer` — the employer the donor named on the thank-you.
+	 *
+	 * optional, and the one port that is: it spends nothing and is asked after the gift is made, so a
+	 * surface that leaves it out loses the employer ask and nothing else (`asksForEmployer` in
+	 * ./checkout.machine.ts). `employer` arrives as `employerAnswer` in ./employer.ts reads it: with no
+	 * control character, trimmed and within `MAX_EMPLOYER` (./v1.ts). it is free text a donor typed,
+	 * so an adapter sends it in the body and writes it nowhere else.
+	 *
+	 * `signal` aborts when the ask closes or reopens before the answer, Skip or `PORT_TIMEOUT_MS`
+	 * (./checkout.machine.ts), and when the element is torn down with the write in flight (`#stop` in
+	 * ./element.ts stops the flow, and the invoked write with it). an adapter hands it to the request,
+	 * so the browser stops waiting on an answer no card reads; it does not unsave a write the
+	 * deployment has already taken, which may still record the employer and mail the details.
+	 */
+	employer?(
+		input: {
+			readonly formId: string;
+			readonly giftToken: string;
+			readonly employer: string;
+		},
+		signal: AbortSignal
+	): Promise<void>;
 };
 
 /**

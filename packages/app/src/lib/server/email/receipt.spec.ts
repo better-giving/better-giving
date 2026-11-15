@@ -275,3 +275,19 @@ describe('renderReceipt — when it refuses', () => {
 		expect(result.ok).toBe(true);
 	});
 });
+
+describe('renderReceipt — the employer match note', () => {
+	const URL = 'https://giving.example.org/gift/7Qk3-mVx9Lr2NpA4';
+
+	it('hands the gift page to the template, which closes on the note', async () => {
+		const message = await rendered({ giftPageUrl: URL });
+		expect(message.text).toContain(`this gift's date and amount: ${URL}`);
+		expect(message.html).toContain(`<a href="${URL}"`);
+	});
+
+	it('renders the receipt it always did without one', async () => {
+		const message = await rendered();
+		expect(message.text).not.toContain('employer');
+		expect(message.html).not.toContain('/gift/');
+	});
+});

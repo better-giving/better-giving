@@ -27,6 +27,7 @@ beforeEach(async () => {
 	await run(stmt('delete from ledger_entry'));
 	await run(stmt('delete from entry_group'));
 	await run(stmt('delete from payment'));
+	await run(stmt('delete from gift_match'));
 	await run(stmt('delete from donation'));
 	await run(stmt('delete from contact'));
 });

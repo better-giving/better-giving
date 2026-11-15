@@ -121,6 +121,7 @@ describe('commitDonor() — what a changed donor owes a listening destination', 
 			'webhook_destination_event',
 			'webhook_destination',
 			'payment',
+			'gift_match',
 			'donation'
 		]) {
 			await run(stmt(`delete from ${table}`));

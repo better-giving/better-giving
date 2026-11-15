@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { POSTING_ACCOUNTS, postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
-import { donation, entryGroup, ledgerEntry, lineItem, payment } from '../db/schema';
+import { donation, entryGroup, giftMatch, ledgerEntry, lineItem, payment } from '../db/schema';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import { parseContact, type ParsedContact } from '../contacts/contact-input';
 import type {
@@ -73,6 +73,7 @@ beforeEach(async () => {
 		'entry_group',
 		'payment',
 		'line_item',
+		'gift_match',
 		'donation',
 		'contact',
 		'form',
@@ -2167,6 +2168,19 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 			const receipt = mail.sent.find((m) => m.to === 'ada@example.org');
 			expect(receipt?.text).toContain('In memory of Margaret Chen');
 			expect(receipt?.text).toContain('5.14');
+		});
+
+		it('writes the deposit’s own gift an employer match row', async () => {
+			await pendingCrypto();
+
+			await settleDelivery(deps({ provider: repeat() }), DELIVERY);
+
+			const [child] = await db.select().from(payment).where(eq(payment.providerTxnId, CHILD_ID));
+			const rows = await db
+				.select()
+				.from(giftMatch)
+				.where(eq(giftMatch.donationId, child?.donationId ?? ''));
+			expect(rows).toHaveLength(1);
 		});
 
 		it('queues the deposit’s own gift for QuickBooks', async () => {

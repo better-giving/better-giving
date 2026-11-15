@@ -22,13 +22,15 @@ export interface AuthEnv {
 	 * others (the `baseURL` note in ./index.ts); supporter fundraisers need it set, since no
 	 * supporter link is mailed without it (below).
 	 *
-	 * it settles three things outside auth: the address a QuickBooks connection is
+	 * it settles four things outside auth: the address a QuickBooks connection is
 	 * registered at and exchanged against, which Intuit compares byte for byte
 	 * (../accounting/connect-link.ts), and the dashboard link in the mail a paused webhook
 	 * destination sends from a cron run, which has no request to derive one from
 	 * (../webhooks/paused-mail.ts), both through `pinnedOrigin` below; and the sign-in link
 	 * mailed to a supporter, which is not mailed at all while it is unset
-	 * (`supporterLinkOrigin` in ../supporters/area.ts).
+	 * (`supporterLinkOrigin` in ../supporters/area.ts). a gift page's address is built on it too
+	 * where set, and the employer match reminder, sent from a cron run, is not sent while it is
+	 * unset (`giftLinkOrigin` in ../matching/links.ts).
 	 */
 	readonly BETTER_AUTH_URL?: string;
 	/** the v0 staff sign-in password. compared, never stored, never hashed. */

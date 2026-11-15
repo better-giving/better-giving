@@ -38,7 +38,8 @@ import { PAYPAL_DEFAULT_API_URL, paypalApiOrigin, paypalSdkUrl } from '$lib/serv
 //
 // the donor page sends its referrer as `strict-origin-when-cross-origin`, so the processors it
 // loads see this deployment's origin exactly as they see an integrator's on a page that sets no
-// policy; every other document keeps its referrer to its own origin.
+// policy; every other document keeps its referrer to its own origin, but one whose route already
+// answers `no-referrer`, which sends none.
 
 /** what a route's `handle` carries to have its documents drawn under the donor page's policy. */
 export interface DonorPolicyHandle {
@@ -250,6 +251,9 @@ export function setDocumentHeaders(
 		[...policyFor(policy, nonce, env), "frame-ancestors 'none'"].join('; ')
 	);
 	headers.set('X-Frame-Options', 'DENY');
+	// a route whose address is a capability answers `no-referrer` itself (./routes/gift.$token.tsx),
+	// stricter than either policy, and keeps it.
+	if (headers.get('Referrer-Policy') === 'no-referrer') return;
 	headers.set(
 		'Referrer-Policy',
 		policy === 'donor' ? 'strict-origin-when-cross-origin' : 'same-origin'

@@ -30,6 +30,7 @@ import * as publicApi from './routes/api.v1';
 import * as servedConfig from './routes/api.v1.forms.$id.config';
 import * as startFundraiser from './routes/fundraise._index';
 import * as editFundraiser from './routes/fundraise.pages.$id.edit';
+import * as giftPage from './routes/gift.$token';
 import * as login from './routes/login';
 import * as previewPage from './routes/preview.$pageId';
 import { finishSetup } from './webhook-routes.testing';
@@ -189,6 +190,7 @@ const handle = createRequestHandler(
 			path: 'fundraise/pages/:id/edit',
 			module: editFundraiser
 		},
+		{ id: 'routes/gift.$token', parentId: 'root', path: 'gift/:token', module: giftPage },
 		{ id: 'routes/api.v1', parentId: 'root', path: 'api/v1', module: publicApi },
 		{
 			id: 'routes/api.v1.forms.$id.config',
@@ -644,6 +646,84 @@ describe('the edit of a fundraiser', () => {
 		expect(policy.has('frame-src')).toBe(false);
 		expect(response.headers.get('referrer-policy')).toBe('same-origin');
 		await expectLocked(response, policy, nonce);
+	});
+});
+
+describe('the donor’s gift page', () => {
+	const CONTACT_ID = '019fba00-0000-7000-8000-0000000000e1';
+	const DONATION_ID = '019fba00-0000-7000-8000-0000000000e2';
+	const TOKEN = '0000abcdefghjkmnpqrstvwxyz0123e3';
+
+	// one gift in the books with its match row, and the profile its page is drawn under; all of it
+	// goes again after, since the cases above are drawn on a deployment that has saved none.
+	beforeAll(async () => {
+		await writeOrgRow(client, { tax_id: '12-3456789' });
+		await run(
+			stmt(
+				`insert into contact (id, kind, display_name, primary_email, created_at, updated_at)
+				 values (?, 'individual', 'Maya Reyes', 'maya.reyes@example.com', 0, 0)`,
+				CONTACT_ID
+			)
+		);
+		await run(
+			stmt(
+				`insert into donation (id, contact_id, total_minor, currency, fee_minor, received_at, created_at)
+				 values (?, ?, 15000, 'USD', 0, 0, 0)`,
+				DONATION_ID,
+				CONTACT_ID
+			)
+		);
+		await run(
+			stmt(
+				`insert into payment (id, donation_id, amount_minor, currency, direction, method, status, occurred_at, created_at)
+				 values ('019fba00-0000-7000-8000-0000000000e4', ?, 15000, 'USD', 'inbound', 'card', 'succeeded', 0, 0)`,
+				DONATION_ID
+			)
+		);
+		await run(
+			stmt(
+				`insert into gift_match (id, donation_id, token, created_at)
+				 values ('019fba00-0000-7000-8000-0000000000e5', ?, ?, 0)`,
+				DONATION_ID,
+				TOKEN
+			)
+		);
+	});
+	afterAll(async () => {
+		for (const table of ['gift_match', 'payment', 'donation', 'contact', 'org_profile']) {
+			await run(stmt(`delete from ${table}`));
+		}
+	});
+
+	// the address is the capability, so no copy of it is kept and no referrer carries it onward —
+	// the policy's own `same-origin` would hand it to every request the page makes.
+	it.each([
+		{ what: 'the page', token: TOKEN, status: 200 },
+		{ what: 'the 404', token: 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz', status: 404 }
+	])('is kept by no cache and sends no referrer, on $what', async ({ token, status }) => {
+		const response = await send(`/gift/${token}`);
+		expect(response.status).toBe(status);
+		expect(response.headers.get('content-type')).toMatch(/^text\/html/);
+		expect(response.headers.get('cache-control')).toBe('no-store');
+		expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+	});
+
+	// the page's forms post through react router's `.data` address once it has hydrated, an answer
+	// ./entry.server.tsx never draws, so the route's own `headers` is all that carries the pair.
+	it.each([
+		{ what: 'accepted', fields: { intent: 'filed' } },
+		{ what: 'refused', fields: { intent: 'employer', employer: ' ' } }
+	])('is kept by no cache and sends no referrer, on a post $what', async ({ fields }) => {
+		const body = new FormData();
+		for (const [name, value] of Object.entries(fields)) body.set(name, value);
+		const response = await send(`/gift/${TOKEN}.data`, {
+			method: 'POST',
+			headers: { origin: ORIGIN },
+			body
+		});
+		expect(response.headers.get('content-type')).toBe('text/x-script');
+		expect(response.headers.get('cache-control')).toBe('no-store');
+		expect(response.headers.get('referrer-policy')).toBe('no-referrer');
 	});
 });
 

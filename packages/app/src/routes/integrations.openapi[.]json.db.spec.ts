@@ -40,7 +40,7 @@ let caller = 0;
 const address = () => `192.0.2.${caller}`;
 
 beforeEach(async () => {
-	for (const table of ['api_key', 'payment', 'donation', 'contact'])
+	for (const table of ['api_key', 'payment', 'gift_match', 'donation', 'contact'])
 		await run(stmt(`delete from ${table}`));
 	caller += 1;
 });

@@ -293,6 +293,7 @@ describe('donors’ messages in the preview of the Donation page', () => {
 			'entry_group',
 			'payment',
 			'line_item',
+			'gift_match',
 			'donation',
 			'recurring_plan',
 			'contact'

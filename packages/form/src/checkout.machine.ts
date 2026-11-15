@@ -107,6 +107,7 @@ import {
 	type Payer,
 	type PayerDraft
 } from './value';
+import { employerAnswer, giftToken } from './employer';
 import { isChariotRail } from './embed/rails';
 import {
 	DONATION_STATES,
@@ -333,7 +334,30 @@ export type CheckoutContext = {
 	 * it once. kept for the card's life: a processor that never came up does not come up later.
 	 */
 	readonly repeatingUnavailable: boolean;
+	/**
+	 * what the donor has typed into the thank-you's employer box, kept until the write takes it.
+	 *
+	 * free text, so it leaves this machine for the employer port (./ports.ts) and for nothing else, and
+	 * it is emptied once that write is answered.
+	 */
+	readonly employer: string;
+	/** why the thank-you's employer ask stands refused, or `null` where nothing refuses it. */
+	readonly employerRefusal: EmployerRefusal | null;
+	/**
+	 * the last write's refusal, which a blank press stands over without answering, so it is what
+	 * `employerRefusal` goes back to once the box holds an answer. `null` where no write has failed
+	 * since one landed.
+	 */
+	readonly employerWriteRefusal: Exclude<EmployerRefusal, 'blank'> | null;
 };
+
+/**
+ * `refused` is the last write answered no or never reached the deployment, and `unconfirmed` the last
+ * write called off unanswered after `PORT_TIMEOUT_MS`, which may have landed before it was: both stand
+ * until a write lands. `blank` is Send pressed over a box holding no answer, and stands until it holds
+ * one, over a failed write's refusal it does not answer (`employerWriteRefusal`).
+ */
+export type EmployerRefusal = 'refused' | 'unconfirmed' | 'blank';
 
 /**
  * the three steps a donor fills in, in the order they are asked.
@@ -463,7 +487,13 @@ export type CheckoutEvent =
 	| { readonly type: 'CONFIRM' }
 	| { readonly type: 'ACCEPT_MANDATE' }
 	| { readonly type: 'DECLINE_MANDATE' }
-	| { readonly type: 'RETRY' };
+	| { readonly type: 'RETRY' }
+	/** the thank-you's employer box, as the donor types it. */
+	| { readonly type: 'SET_EMPLOYER'; readonly employer: string }
+	/** `Send me the details`, which the flow takes only over a box that is not blank. */
+	| { readonly type: 'SEND_EMPLOYER' }
+	/** `Skip`, which sends nothing and writes nothing. */
+	| { readonly type: 'SKIP_EMPLOYER' };
 
 /**
  * how long a donor is given to find the microdeposits in their bank account.
@@ -1046,6 +1076,18 @@ function unroutedOutcome(_outcome: never): null {
 	return null;
 }
 
+/**
+ * the token of the gift page the thank-you asks for an employer on, or `null` where it asks nothing:
+ * the quote named no gift page on the web, or this surface was given no employer port.
+ *
+ * exported for ./connect.ts, so the screen and the guard that opens the ask read one answer.
+ */
+export function giftTokenOf(context: CheckoutContext): string | null {
+	const giftUrl = context.quote?.giftUrl;
+	if (giftUrl === undefined || context.ports.employer === undefined) return null;
+	return giftToken(giftUrl);
+}
+
 export const checkoutMachine = setup({
 	types: {
 		context: {} as CheckoutContext,
@@ -1072,11 +1114,32 @@ export const checkoutMachine = setup({
 		readDeposit: fromPromise<
 			DonationStatus,
 			{ ports: CheckoutPorts; formId: string; paymentToken: string }
-		>(({ input }) => input.ports.status({ formId: input.formId, paymentToken: input.paymentToken }))
+		>(({ input }) =>
+			input.ports.status({ formId: input.formId, paymentToken: input.paymentToken })
+		),
+		/** `POST /api/v1/forms/:id/gifts/:token/employer`, reached only past `asksForEmployer`. */
+		writeEmployer: fromPromise<
+			void,
+			{ ports: CheckoutPorts; formId: string; giftToken: string; employer: string }
+		>(({ input: { ports, ...input }, signal }) => {
+			if (ports.employer === undefined) {
+				throw new Error('unreachable: the employer is asked only where its port is given');
+			}
+			return ports.employer(input, signal);
+		})
 	},
 	guards: {
 		/** the donor arrived on a URL carrying a payment token, so this is a return rather than a start. */
 		isResuming: ({ context }) => context.resumeToken !== null,
+
+		/**
+		 * the thank-you asks for the donor's employer: the quote named a gift page on the web and this
+		 * surface can write to it. a resumed gift holds no quote and is not asked.
+		 */
+		asksForEmployer: ({ context }) => giftTokenOf(context) !== null,
+
+		/** the employer box holds an answer the endpoint takes. */
+		employerIsGiven: ({ context }) => employerAnswer(context.employer) !== null,
 
 		// the two predicates a step's own Continue is refused on, and the two `stepIsReachable`
 		// above asks of a mark pressed forwards. stated once as functions rather than twice as
@@ -1411,7 +1474,10 @@ export const checkoutMachine = setup({
 		heldChallenge: null,
 		coinRefusal: null,
 		refusedCoins: [],
-		repeatingUnavailable: false
+		repeatingUnavailable: false,
+		employer: '',
+		employerRefusal: null,
+		employerWriteRefusal: null
 	}),
 	// four reports from surfaces that resolve on their own schedule. none of them is a step in the
 	// flow and none moves it from here, so all four are accepted wherever the machine happens to be.
@@ -2497,7 +2563,93 @@ export const checkoutMachine = setup({
 		 * the org's own page console, on somebody else's website. There is no transition out of
 		 * here, which is what "terminal" is supposed to mean.
 		 */
-		success: {},
+		success: {
+			initial: 'opening',
+			states: {
+				/** which of the two thank-yous this gift gets, decided once on arrival. */
+				opening: {
+					always: [{ guard: 'asksForEmployer', target: 'asking' }, { target: 'unasked' }]
+				},
+				/** no gift page to name an employer on, so the thank-you is the receipt alone. */
+				unasked: {},
+				asking: {
+					on: {
+						// a blank press is answered by the box holding an answer, which hands back the
+						// failed write it stood over: that is answered only by a write that lands.
+						SET_EMPLOYER: {
+							actions: assign({
+								employer: ({ event }) => event.employer,
+								employerRefusal: ({ context, event }) =>
+									context.employerRefusal === 'blank' && employerAnswer(event.employer) !== null
+										? context.employerWriteRefusal
+										: context.employerRefusal
+							})
+						},
+						// a blank box takes the press, Enter included, and is refused for it.
+						SEND_EMPLOYER: [
+							{ guard: 'employerIsGiven', target: 'sending' },
+							{ actions: assign({ employerRefusal: 'blank' }) }
+						],
+						// a refusal leaves with the ask, so the card's region stops saying it.
+						SKIP_EMPLOYER: {
+							target: 'skipped',
+							actions: assign({ employerRefusal: null, employerWriteRefusal: null })
+						}
+					}
+				},
+				/**
+				 * the write is in flight. a refusal, a dropped answer or no answer inside
+				 * `PORT_TIMEOUT_MS` reopens the ask with the donor's text kept, and a second press
+				 * sends it again: the endpoint records the employer named last. a refusal stands
+				 * until a write lands, resend included.
+				 *
+				 * the box stays open to typing, and what is typed here is what a reopened ask holds;
+				 * the write already sent carries the text as it was pressed. Skip is drawn and
+				 * pressable throughout, so it is taken here too: leaving stops the invoked write,
+				 * which aborts its request (`CheckoutPorts.employer` in ./ports.ts), and its answer
+				 * lands on nothing.
+				 */
+				sending: {
+					on: {
+						SET_EMPLOYER: { actions: assign({ employer: ({ event }) => event.employer }) },
+						SKIP_EMPLOYER: {
+							target: 'skipped',
+							actions: assign({ employerRefusal: null, employerWriteRefusal: null })
+						}
+					},
+					invoke: {
+						src: 'writeEmployer',
+						input: ({ context }) => {
+							const giftToken = giftTokenOf(context);
+							const employer = employerAnswer(context.employer);
+							if (giftToken === null || employer === null) {
+								throw new Error('unreachable: a send is taken only past both guards');
+							}
+							return { ports: context.ports, formId: context.config.formId, giftToken, employer };
+						},
+						onDone: {
+							target: 'sent',
+							actions: assign({ employer: '', employerRefusal: null, employerWriteRefusal: null })
+						},
+						onError: {
+							target: 'asking',
+							actions: assign({ employerRefusal: 'refused', employerWriteRefusal: 'refused' })
+						}
+					},
+					after: {
+						portTimeout: {
+							target: 'asking',
+							actions: assign({
+								employerRefusal: 'unconfirmed',
+								employerWriteRefusal: 'unconfirmed'
+							})
+						}
+					}
+				},
+				sent: {},
+				skipped: {}
+			}
+		},
 
 		/**
 		 * the rail refused, and the donor may try again with different details.

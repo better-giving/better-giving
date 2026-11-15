@@ -1,5 +1,4 @@
 import { CreateCard } from '@better-giving/operator/components/data/CreateCard';
-import { RecordCard } from '@better-giving/operator/components/data/RecordCard';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 
@@ -7,12 +6,12 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * the card that leads a list of records, and the whole of what is worth looking at here is its
  * height.
  *
- * the ghost is a record's markup drawn hidden, so the dashed card measures exactly what a card
- * beside it measures. the pair below is that claim standing next to the thing it is a claim about:
- * a create card and a real record card in one list, which is the only way to see the two agree.
- * the card on its own above it is the state that matters more — a list with no records in it still
- * draws a full-height card, because the height comes from the ghost under the press rather than
- * from a record beside it.
+ * the ghost is a record's markup drawn hidden, so the dashed card measures what a record in the
+ * same list measures. each card stands alone here, which is the state that matters most — a list
+ * with no records in it still draws a full-height card, because the height comes from the ghost
+ * under the press rather than from a record beside it. no `RecordCard` stands beside them: the
+ * ghosts are the hand-drawn `.adm-record` the programme and form lists draw, and `RecordCard` is
+ * the registry's `ds-card`, a different record with a different height.
  *
  * the ghost is written out of the classes rather than mounted from `RecordCard`, and that is a
  * constraint rather than a shortcut: the card is one press, and `RecordCard` draws its name as a
@@ -79,17 +78,6 @@ export default function DataCreateCardPreview() {
 				<CreateCard href="#create-form" ghost={form}>
 					Create donation form
 				</CreateCard>
-				<RecordCard
-					titleAs="h3"
-					title="Year-end appeal"
-					href="#year-end"
-					mark="form"
-					state="Live"
-					tone="done"
-					originsLabel="Allowed on"
-					emptyOrigins="No sites yet, so this form is refused everywhere."
-					origins={['https://riverside-shelter.org']}
-				/>
 			</div>
 		</div>
 	);

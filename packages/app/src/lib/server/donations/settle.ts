@@ -57,6 +57,7 @@ import { recordReversal, type RefundNotice, reverseDelivery } from './reverse';
 import { sendGrantReceived, sendReceipt } from './receipt';
 import { sendSettledNotice } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
+import { giftMatchInsert } from '../matching/match';
 import { supporterPageOf } from '../supporters/gifts';
 
 // what a verified delivery does to this deployment's records: it corrects the payment row
@@ -1341,8 +1342,8 @@ async function reportedUnsettled(
  * of its own.
  *
  * nothing was authorized for it, so no row waits for it and it is inserted whole — the donation, its
- * one line, a payment pointing at the first one (`payment.parent_payment_id`), the postings and the
- * queue row they owe QuickBooks, in one `batch()`. the donor, the form, the cause, the fund and the
+ * one line, its employer match row, a payment pointing at the first one
+ * (`payment.parent_payment_id`), the postings and the queue row they owe QuickBooks, in one `batch()`. the donor, the form, the cause, the fund and the
  * dedication are the first gift's; the date is the day it arrived, and no covered fee is recorded because none was quoted. nobody the
  * donor named is told again: the notify columns stay null, as `chargeWrites` in ./collect.ts leaves
  * them. the first gift is read and never written.
@@ -1419,6 +1420,7 @@ async function recordRepeatDeposit(
 			coinAmount: settlement.arrival?.coinAmount ?? null,
 			parentPaymentId: first.payment.id
 		}),
+		giftMatchInsert(deps.db, donationId),
 		...settledGiftWrites(deps.db, {
 			charge: chargeEntry(gift, settlement),
 			fee: feeEntry(gift, settlement),

@@ -7,13 +7,15 @@ import { formatMinor } from '../../donations/money';
 import { majorText } from '../../forms/amounts';
 import { type ChallengeCheck, type ChallengeResult, challengeKind } from '../api/challenge';
 import type { Db } from '../db/client';
-import { donation, payment } from '../db/schema';
+import { donation, mintGiftMatchToken, payment } from '../db/schema';
+import { mailDelivers } from '../email/delivers';
 import type { EmailProvider } from '../email/provider';
 import type { FormRecord } from '../forms/form-input';
 import { cachedCadences } from '../forms/cadence-cache';
 import { cachedCoins } from '../forms/coin-cache';
 import { readPublishedConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
+import { giftLinkOrigin, giftPageUrl } from '../matching/links';
 import { processorSetupFix, type Processors } from '../payments/factory';
 import {
 	commitmentMetadata,
@@ -410,6 +412,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	// say which gift it was — reading the id back off the write afterwards would be a second round
 	// trip, which is a second commit, with the intent already live.
 	const donationId = uuidv7();
+	const giftToken = mintGiftMatchToken();
 
 	// the rail the donor was quoted on selects the adapter, and the same value carries the processor
 	// onto the row below: `payment_provider_txn_idx` is keyed on the pair, so the name a row is
@@ -466,6 +469,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 
 	const written = await recordDonation(deps.db, {
 		donationId,
+		giftToken,
 		donor: submission.donor,
 		formId: form.id,
 		origin: attributedOrigin(attempt.request, form.allowedOrigins),
@@ -528,7 +532,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		);
 	}
 
-	return { ok: true, quote, form };
+	return { ok: true, quote: { ...quote, ...giftPageOf(deps, attempt, giftToken) }, form };
 }
 
 /**
@@ -611,6 +615,7 @@ async function mintCommitment(
 	// confirm screen and presses again mints a second gift and a second commitment on purpose — a key
 	// derived from the donor instead would hand them back the one they already had.
 	const donationId = uuidv7();
+	const giftToken = mintGiftMatchToken();
 
 	const gift = await deps.processors.forRail(submission.method).createRecurringGift({
 		amountMinor: priced.chargeMinor,
@@ -648,6 +653,7 @@ async function mintCommitment(
 
 	const written = await recordAuthorizedGift(deps.db, {
 		donationId,
+		giftToken,
 		contactId: donor.value.contactId,
 		formId: form.id,
 		origin: attributedOrigin(attempt.request, form.allowedOrigins),
@@ -692,9 +698,10 @@ async function mintCommitment(
 		quote: {
 			paymentToken: gift.value.paymentToken,
 			feeMinor: priced.feeMinor,
-			totalMinor: priced.chargeMinor
+			totalMinor: priced.chargeMinor,
 			// `mandate` is absent for the reason the single branch states it: the wording that
 			// authorizes a bank debit is the provider's and arrives in the donor's own browser.
+			...giftPageOf(deps, attempt, giftToken)
 		},
 		form
 	};
@@ -753,6 +760,7 @@ async function mintGrant(
 	}
 
 	const donationId = uuidv7();
+	const giftToken = mintGiftMatchToken();
 	const provider = deps.processors.forRail('daf');
 	const created = await provider.createIntent({
 		amountMinor: total,
@@ -805,6 +813,7 @@ async function mintGrant(
 
 	const written = await recordDonation(deps.db, {
 		donationId,
+		giftToken,
 		donor: submission.donor,
 		formId: form.id,
 		origin: attributedOrigin(attempt.request, form.allowedOrigins),
@@ -838,7 +847,7 @@ async function mintGrant(
 				tribute: submission.tribute
 			})
 		);
-		return { ok: true, quote, form };
+		return { ok: true, quote: { ...quote, ...giftPageOf(deps, attempt, giftToken) }, form };
 	}
 	// the session's grant already has its gift, and its donor was told when that gift was written.
 	// the answer is that gift's figures: a resend may carry another split of the same total.
@@ -891,6 +900,24 @@ async function mintGrant(
 		'This is a fault in this deployment rather than anything about the request, and an operator ' +
 			`has been told. ${LOGS_SAY_WHY}`
 	);
+}
+
+/**
+ * the gift page's address for the gift this quote wrote, as `Quote.giftUrl` carries it
+ * (packages/form/src/v1.ts): present where the deployment delivers mail, because the page and the
+ * mail that links it are one feature and a thank-you asking for an employer would promise mail that
+ * never comes. written only beside a write that stored `token`, never on a duplicate's answer, whose
+ * gift holds another. the page shows nothing until the gift reaches the books
+ * (../matching/views.ts).
+ */
+function giftPageOf(
+	deps: QuoteDeps,
+	attempt: QuoteAttempt,
+	token: string
+): { readonly giftUrl?: string } {
+	if (!mailDelivers(deps.env)) return {};
+	const origin = giftLinkOrigin(deps.env, new URL(attempt.request.url));
+	return origin === null ? {} : { giftUrl: giftPageUrl(origin, token) };
 }
 
 /** where and how much to send, as `Deposit` in packages/form/src/v1.ts carries it. */

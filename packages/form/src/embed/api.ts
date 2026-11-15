@@ -22,7 +22,7 @@
 // a host page pasting the snippet reaches this through ./runtime.ts and never by name.
 
 import type { CheckoutPorts } from '../ports';
-import type { DonationStatus } from '../v1';
+import type { DonationStatus, EmployerAnswer, EmployerRequest } from '../v1';
 import { LOADER_PATH } from './loader';
 
 /** the write one press makes. `v1` is permanent, so this path is too. */
@@ -235,5 +235,45 @@ export function createStatusRead(origin: string | null): CheckoutPorts['status']
 		const parsed = await readJson(response);
 		if (!parsed.ok) throw new Error(`GET ${url} answered a body that is not JSON`);
 		return parsed.value as DonationStatus;
+	};
+}
+
+/** where the thank-you names a gift's employer. `v1` is permanent, so this path is too. */
+export function employerUrl(origin: string, formId: string, giftToken: string): string {
+	return `${origin}/api/v1/forms/${encodeURIComponent(formId)}/gifts/${encodeURIComponent(giftToken)}/employer`;
+}
+
+/**
+ * the port the thank-you's employer ask sends: `POST /api/v1/forms/:id/gifts/:token/employer`.
+ *
+ * every way it fails is a rejection and none is worded, because the flow answers each with the same
+ * sentence over the open ask (`sending` in ../checkout.machine.ts). a rejection names the address and
+ * the status and never the employer, which is free text the donor typed for the deployment alone.
+ *
+ * aborted by the flow's signal, unlike the quote: this write spends nothing, so the request ends once
+ * the flow stops waiting for it. the abort stops this side reading the answer and promises nothing
+ * about the deployment, which may finish a write it has already taken and save and mail regardless.
+ *
+ * `credentials: 'omit'` for `createQuote`'s reason.
+ */
+export function createEmployerWrite(origin: string | null): NonNullable<CheckoutPorts['employer']> {
+	return async ({ formId, giftToken, employer }, signal) => {
+		if (origin === null) {
+			throw new Error('the embedded runtime could not tell which deployment it was served from');
+		}
+		const url = employerUrl(origin, formId, giftToken);
+		const body: EmployerRequest = { employer };
+		const response = await fetch(url, {
+			method: 'POST',
+			credentials: 'omit',
+			headers: { 'content-type': 'application/json', accept: 'application/json' },
+			body: JSON.stringify(body),
+			signal
+		});
+		if (!response.ok) throw new Error(`POST ${url} answered ${response.status}`);
+		const parsed = await readJson(response);
+		const answer = parsed.ok ? (parsed.value as Partial<EmployerAnswer> | null) : null;
+		if (answer?.ok !== true)
+			throw new Error(`POST ${url} answered a body that is not { "ok": true }`);
 	};
 }

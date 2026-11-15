@@ -35,6 +35,7 @@ export async function freshDeployment(): Promise<void> {
 		'webhook_destination_event',
 		'webhook_destination',
 		'payment',
+		'gift_match',
 		'donation',
 		'contact',
 		'auth_member_invitation',

@@ -37,6 +37,7 @@ import { loadFailed } from '$lib/server/db/load-failure';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { findRecordedGift, type RecordedGift } from '$lib/server/donations/queries';
 import { sendReceipt } from '$lib/server/donations/receipt';
+import { giftLinkOrigin } from '$lib/server/matching/links';
 import {
 	holdsSubmittedGift,
 	recordGiftInHand,
@@ -321,7 +322,11 @@ export async function action({ context, request }: Route.ActionArgs) {
 		if (receiptDonor === null) return 'not_sent';
 
 		return sendReceipt(
-			{ db, email: createEmailProvider(context.get(platform).env) },
+			{
+				db,
+				email: createEmailProvider(context.get(platform).env),
+				giftOrigin: giftLinkOrigin(context.get(platform).env, new URL(request.url))
+			},
 			{
 				donationId: gift.donation_id,
 				donorName: receiptDonor.displayName,

@@ -433,6 +433,21 @@ export const FIXTURES: Readonly<Record<FixtureName, Fixture>> = {
 export const DEPOSIT_ENDINGS = ['received', 'expired', 'late'] as const;
 export type DepositEnding = (typeof DEPOSIT_ENDINGS)[number];
 
+/**
+ * how the thank-you's employer ask answers, which `?employer=` on the page picks (./main.ts).
+ *
+ * `saved` and `refused` are the write's two answers, each after `EMPLOYER_WRITE_MS` so the busy send
+ * can be seen; `absent` is a deployment without the gift page and its mail, so the quote names no
+ * gift page and the thank-you asks nothing.
+ */
+export const EMPLOYER_ANSWERS = ['saved', 'refused', 'absent'] as const;
+export type EmployerAnswer = (typeof EMPLOYER_ANSWERS)[number];
+
+const EMPLOYER_WRITE_MS = 600;
+
+/** the gift page a dev quote names. it is on no server: the link is there to be looked at. */
+const DEV_GIFT_URL = 'https://giving.example.org/gift/dev-7Qk3-mVx9Lr2NpA4';
+
 /** readings of `waiting` before the ending, each `DEPOSIT_POLL_MS` in ../src/checkout.machine.ts apart. */
 const READINGS_BEFORE_ENDING = 3;
 
@@ -498,8 +513,9 @@ function deposit(
  * review step would read as broken rather than as unwired. this is the same arithmetic the card
  * already shows in its fee row, so the two agree and no correction screen is reached.
  */
-function ports(config: FormConfig, ending: DepositEnding): CheckoutPorts {
+function ports(config: FormConfig, ending: DepositEnding, employer: EmployerAnswer): CheckoutPorts {
 	let minted = 0;
+	const gift = employer === 'absent' ? {} : { giftUrl: DEV_GIFT_URL };
 	/** readings made per donation id, so each address counts to its ending from zero. */
 	const readings = new Map<string, number>();
 	return {
@@ -510,14 +526,15 @@ function ports(config: FormConfig, ending: DepositEnding): CheckoutPorts {
 			const feeMinor = covered?.feeMinor ?? 0;
 			const totalMinor = covered?.totalMinor ?? request.amountMinor;
 			if (request.method !== 'crypto' || request.coin === undefined) {
-				return { paymentToken: `pi_dev_${request.formId}`, feeMinor, totalMinor };
+				return { paymentToken: `pi_dev_${request.formId}`, feeMinor, totalMinor, ...gift };
 			}
 			minted += 1;
 			return {
 				paymentToken: `don_dev_${minted}`,
 				feeMinor,
 				totalMinor,
-				deposit: deposit(request.coin, totalMinor, feeMinor, ending)
+				deposit: deposit(request.coin, totalMinor, feeMinor, ending),
+				...gift
 			};
 		},
 		confirm: async () => ({ kind: 'succeeded' }),
@@ -528,7 +545,12 @@ function ports(config: FormConfig, ending: DepositEnding): CheckoutPorts {
 			if (ending === 'late' || read <= READINGS_BEFORE_ENDING) return { state: 'waiting' };
 			return { state: ending };
 		},
-		now: () => Date.now()
+		now: () => Date.now(),
+		employer: async () => {
+			await after(EMPLOYER_WRITE_MS, undefined);
+			if (employer === 'refused')
+				throw new Error('the refused answer in packages/form/dev/fixtures.ts');
+		}
 	};
 }
 
@@ -554,7 +576,7 @@ function ports(config: FormConfig, ending: DepositEnding): CheckoutPorts {
  * ../src/embed/surface.ts withholds, since the crypto half never reports the same — so the card row
  * is counted in the box's header and never drawn.
  */
-export function devRuntime(ending: DepositEnding): FormRuntime {
+export function devRuntime(ending: DepositEnding, employer: EmployerAnswer): FormRuntime {
 	return {
 		loadConfig: async (formId) => {
 			const fixture = Object.values(FIXTURES).find((one) => one.formId === formId);
@@ -571,7 +593,7 @@ export function devRuntime(ending: DepositEnding): FormRuntime {
 				const surface = createPaymentSurface(config, mount, onRail, onUnavailable, fund, coins, {
 					stripe: { load: async () => null }
 				});
-				const fake = ports(config, ending);
+				const fake = ports(config, ending, employer);
 				const quote: CheckoutPorts['quote'] = async (request) => {
 					const answered = await fake.quote(request);
 					surface.quoted(request, answered);
@@ -595,7 +617,7 @@ export function devRuntime(ending: DepositEnding): FormRuntime {
 			// arrives: a rail named inside this call would reach a machine that does not exist yet.
 			queueMicrotask(() => onRail(config.paymentMethods[0] ?? null));
 			return {
-				input: { config, ports: ports(config, ending) },
+				input: { config, ports: ports(config, ending, employer) },
 				cadence: () => {},
 				offerFund: () => {},
 				offerCrypto: () => {},

@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { entryGroup, payment } from '../db/schema';
 import type { EmailProvider } from '../email/provider';
+import type { GiftOrigin } from '../matching/links';
 import type { Processors } from '../payments/factory';
 import { settleTransaction } from './settle';
 
@@ -58,6 +59,8 @@ type PendingCryptoReadDeps = {
 	readonly db: Db;
 	readonly processors: Processors;
 	readonly email: EmailProvider;
+	/** the origin the receipts this run sends link a gift page on: the pin alone, with no request. */
+	readonly giftOrigin: GiftOrigin | null;
 };
 
 /**
@@ -77,6 +80,7 @@ export async function readPendingCryptoGifts(
 		provider,
 		processors: deps.processors,
 		email: deps.email,
+		giftOrigin: deps.giftOrigin,
 		// the adapter keeps the account's coin lists for its life, a failed read included, so a run
 		// reads them once and a run whose read failed names every coin by its code.
 		payableCoins: async () => {

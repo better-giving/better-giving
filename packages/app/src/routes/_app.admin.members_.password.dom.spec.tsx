@@ -73,6 +73,9 @@ it('reports the change at the press that made it, with nothing left to press', (
 	act(() => (button as HTMLButtonElement).click());
 
 	expect(button.textContent).toBe('Password changed');
-	expect(button.getAttribute('aria-disabled')).toBe('true');
+	// the registry's done look, which draws only on a press not stated closed; the press is turned
+	// away all the same (`SaveButton` in packages/operator/src/components/controls/SaveButton.jsx).
+	expect(button.getAttribute('data-done')).toBe('true');
+	expect(button.hasAttribute('aria-disabled')).toBe(false);
 	expect(submitted).not.toHaveBeenCalled();
 });

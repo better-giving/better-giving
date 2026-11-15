@@ -1,10 +1,12 @@
-import type { State } from '@better-giving/form/connect';
+import type { EmployerAsk, State } from '@better-giving/form/connect';
 import { coinDifference, type DepositScreen, isFigure } from '@better-giving/form/deposit';
 import { RECONCILIATION_LABELS } from '@better-giving/form/fee';
 import { PAYMENT_METHOD_LABELS, type FormConfig } from '@better-giving/form/v1';
 import { part, partWhen, REGISTRY_CLASS } from '@better-giving/form/parts';
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import * as copy from './copy';
+import type { FieldBox } from './normalize';
+import { Glyph } from './sections/glyph';
 
 // every state that takes the whole card, in the words a donor reads.
 //
@@ -35,6 +37,11 @@ export type Takeover = {
 	readonly method: string;
 	/** announced through the live region, for the reader who is not looking at the figure. */
 	readonly announce: string;
+	/**
+	 * announced as the screen arrives and held until another sentence replaces it, where `announce`
+	 * is said for as long as the screen stands: a sentence that must not come back once it has gone.
+	 */
+	readonly arrival: string;
 	readonly mandate: string;
 	readonly deadline: string;
 	readonly failure: string;
@@ -53,6 +60,21 @@ export type Takeover = {
 	 * control that leaves, where it reads as permission rather than as a note nobody needed.
 	 */
 	readonly secondaryNote: string;
+	/** the thank-you's employer ask under the receipt, on the one screen that makes it. */
+	readonly employer: EmployerAskScreen | null;
+};
+
+/** where the employer ask stands and what it says, as packages/form/src/employer-ask.ts draws it. */
+export type EmployerAskScreen = {
+	readonly phase: EmployerAsk['phase'];
+	/** the sentence under the box over a refused or unanswered write or a blank Send, or `''`. */
+	readonly refusal: string;
+	/** the refusal is the box's: Send was pressed over a blank one. */
+	readonly boxRefused: boolean;
+	/** the status row's heading and line once the ask is closed, `''` while it is open. */
+	readonly doneHeading: string;
+	readonly doneBody: string;
+	readonly giftUrl: string;
 };
 
 export const BLANK: Takeover = {
@@ -64,6 +86,7 @@ export const BLANK: Takeover = {
 	aside: '',
 	method: '',
 	announce: '',
+	arrival: '',
 	mandate: '',
 	deadline: '',
 	failure: '',
@@ -71,8 +94,34 @@ export const BLANK: Takeover = {
 	primaryNote: '',
 	deposit: null,
 	secondary: null,
-	secondaryNote: ''
+	secondaryNote: '',
+	employer: null
 };
+
+/** what the thank-you says over a refused ask, by why it stands refused, as packages/form/src/views.ts does. */
+const EMPLOYER_REFUSALS: Readonly<Record<NonNullable<EmployerAsk['refusal']>, string>> = {
+	refused: copy.EMPLOYER_REFUSAL,
+	unconfirmed: copy.EMPLOYER_UNCONFIRMED,
+	blank: copy.EMPLOYER_BLANK
+};
+
+/** the ask in the words a donor reads, or `null` on a thank-you that makes none. */
+function employerAskScreen(ask: EmployerAsk | undefined): EmployerAskScreen | null {
+	if (ask === undefined) return null;
+	const closed =
+		ask.phase === 'sent'
+			? { doneHeading: copy.EMPLOYER_SENT_HEADING, doneBody: copy.employerSentBody(ask.email) }
+			: ask.phase === 'skipped'
+				? { doneHeading: copy.EMPLOYER_SKIPPED_HEADING, doneBody: copy.EMPLOYER_SKIPPED_BODY }
+				: { doneHeading: '', doneBody: '' };
+	return {
+		phase: ask.phase,
+		refusal: ask.phase === 'asking' && ask.refusal !== null ? EMPLOYER_REFUSALS[ask.refusal] : '',
+		boxRefused: ask.phase === 'asking' && ask.refusal === 'blank',
+		...closed,
+		giftUrl: ask.giftUrl
+	};
+}
 
 /**
  * a timestamp as a date the donor can act on.
@@ -295,14 +344,24 @@ export function takeoverFor(
 
 		// a gift sent from the donor's own wallet is valued on arrival, so no figure the card holds is
 		// what arrived, and this screen draws no receipt at all.
-		case 'success':
+		case 'success': {
+			const employer = employerAskScreen(state.employer);
+			// while the ask is open, Skip is the way out of it and the start-over waits until it closes.
+			const asking = employer?.phase === 'asking' || employer?.phase === 'sending';
+			// with an ask, the thank-you is said once, as packages/form/src/views.ts says it: the ask's
+			// refusals are said as they land (`askSaid` in ./card.tsx), and the row the caret lands on as
+			// it closes says how it closed.
+			const said = (thanks: string) =>
+				employer === null ? { announce: thanks } : { arrival: thanks };
+			const secondary = asking ? null : { label: copy.BACK_TO_START };
 			if (state.method === 'crypto') {
 				return {
 					...BLANK,
 					heading: copy.SUCCESS_HEADING,
 					body: copy.arrivedBody(org, sendsReceipt(config)),
-					announce: copy.ARRIVED_ANNOUNCE,
-					secondary: { label: copy.BACK_TO_START }
+					...said(copy.ARRIVED_ANNOUNCE),
+					secondary,
+					employer
 				};
 			}
 			return {
@@ -311,11 +370,13 @@ export function takeoverFor(
 				receipt: 'charged',
 				totalLabel: copy.CHARGED_TODAY,
 				body: copy.successBody(org, sendsReceipt(config)),
-				announce: copy.SUCCESS_ANNOUNCE,
+				...said(copy.SUCCESS_ANNOUNCE),
 				// the quiet control rather than the primary the two recovery screens use. this donor is
 				// owed no act — a gift was made — and a loud control over a thank-you asks for one.
-				secondary: { label: copy.BACK_TO_START }
+				secondary,
+				employer
 			};
+		}
 
 		// `state.fix` is not among what this screen says. it names a publishable key, an environment
 		// value or a screen in /admin, and it is addressed to whoever administers the deployment rather
@@ -363,6 +424,8 @@ export type TakeoverScreenProps = {
 	 * patched from `screen.deposit`; `null` until the live flow has started.
 	 */
 	readonly deposit: HTMLElement | null;
+	/** the employer ask (`EmployerAskBlock` below), drawn on every screen and shown on the one with an ask. */
+	readonly employer: ReactNode;
 	readonly onPrimary: () => void;
 	readonly onSecondary: () => void;
 };
@@ -375,6 +438,7 @@ export function TakeoverScreen({
 	headingRef,
 	sectionRef,
 	deposit,
+	employer,
 	onPrimary,
 	onSecondary
 }: TakeoverScreenProps) {
@@ -461,6 +525,7 @@ export function TakeoverScreen({
 			<p className="aside" hidden={screen.primaryNote === ''}>
 				{screen.primaryNote}
 			</p>
+			{employer}
 			{/*
 			 * the way out and the line that makes taking it safe are one group, so the line stands under
 			 * the control at the group's own step rather than a screen's step away from it. every other
@@ -480,5 +545,162 @@ export function TakeoverScreen({
 				</p>
 			</div>
 		</section>
+	);
+}
+
+export type EmployerAskBlockProps = {
+	readonly screen: EmployerAskScreen | null;
+	/** the box as the flow holds it (`employerField` in @better-giving/form/connect). */
+	readonly box: FieldBox;
+	readonly busy: boolean;
+	/** whether the box holds an answer the flow would send (`given` on `sendEmployerButton`). */
+	readonly given: boolean;
+	/**
+	 * Send pressed. `caretInBox` is a press made with the caret already in the box, Enter in it: a
+	 * blank refusal is said by the box as the caret arrives there, and a caret that does not move
+	 * arrives nowhere, so the card's region is that refusal's one channel.
+	 */
+	readonly onSend: (caretInBox: boolean) => void;
+	readonly onSkip: () => void;
+};
+
+/**
+ * the two presses at the registry's md size rather than the card's large action: two large presses
+ * do not fit one line each side by side in the card's column. ./page.css holds them a row tall while
+ * they stack.
+ */
+const EMPLOYER_SEND_CLASS = 'ds-btn ds-btn-primary';
+
+const EMPLOYER_HEADING_ID = 'employer-heading';
+const EMPLOYER_HINT_ID = 'employer-hint';
+const EMPLOYER_PROBLEM_ID = 'employer-problem';
+
+/**
+ * the thank-you's employer ask: the box and its two presses, and the row and link that replace them
+ * once it closes, in packages/form/src/employer-ask.ts's tree, so the form's sheets that draw the
+ * element's ask draw this one. always rendered, hidden on a screen with no ask.
+ *
+ * Send is the submit while the ask is open, so Enter in the box presses it through the card's
+ * `<form>`, over a blank box too: the flow refuses that press with a sentence under the box, marks
+ * the box invalid and the caret goes into it. over a blank box Send is `aria-disabled`, which the
+ * registry's button-css draws gray and leaves focusable and pressable, so the press is never held
+ * back by `disabled`. the caret lands on the status row as the ask closes, so the press that closed
+ * it is answered where the donor is.
+ */
+export function EmployerAskBlock({
+	screen,
+	box,
+	busy,
+	given,
+	onSend,
+	onSkip
+}: EmployerAskBlockProps) {
+	const phase = screen?.phase ?? null;
+	const open = phase === 'asking' || phase === 'sending';
+	const boxRefused = screen?.boxRefused === true;
+	const status = useRef<HTMLDivElement | null>(null);
+	const field = useRef<HTMLInputElement | null>(null);
+	const drawn = useRef<typeof phase>(phase);
+	const drawnBoxRefused = useRef(boxRefused);
+	useEffect(() => {
+		const before = drawn.current;
+		drawn.current = phase;
+		if (!open && (before === 'asking' || before === 'sending')) status.current?.focus();
+	}, [phase, open]);
+	// the failed press's caret goes to the box it failed for.
+	useEffect(() => {
+		const before = drawnBoxRefused.current;
+		drawnBoxRefused.current = boxRefused;
+		if (boxRefused && !before) field.current?.focus();
+	}, [boxRefused]);
+	const refusal = screen?.refusal ?? '';
+	return (
+		<div className="employer" hidden={screen === null}>
+			{/* biome-ignore lint/a11y/useSemanticElements: the element's tree (packages/form/src/employer-ask.ts), which the form's sheets draw; a `<fieldset>` brings the platform's border and inset they do not take back. */}
+			<div
+				role="group"
+				aria-labelledby={EMPLOYER_HEADING_ID}
+				className="employer-ask"
+				hidden={!open}
+			>
+				<div className="employer-head">
+					{/* `tabindex` as every `heading` on the card carries one, so the caret has somewhere to land. */}
+					<h3 id={EMPLOYER_HEADING_ID} part={part('heading')} tabIndex={-1}>
+						{copy.EMPLOYER_ASK_HEADING}
+					</h3>
+					<p id={EMPLOYER_HINT_ID} className="aside employer-hint">
+						{copy.EMPLOYER_ASK_HINT}
+					</p>
+				</div>
+				<div className="field-row">
+					<label part={part('label')} htmlFor={box.name}>
+						{copy.EMPLOYER_LABEL}
+					</label>
+					<input
+						{...box}
+						ref={field}
+						id={box.name}
+						part={part('field')}
+						className={REGISTRY_CLASS.field}
+						autoComplete="organization"
+						aria-describedby={
+							refusal === '' ? EMPLOYER_HINT_ID : `${EMPLOYER_HINT_ID} ${EMPLOYER_PROBLEM_ID}`
+						}
+						// only over a blank Send: a refused write refused nothing about what was typed.
+						aria-invalid={boxRefused || undefined}
+					/>
+					{/* said through the card's one region rather than a live region of its own. */}
+					<p id={EMPLOYER_PROBLEM_ID} className="message" hidden={refusal === ''}>
+						{refusal}
+					</p>
+				</div>
+				<div className="employer-actions">
+					<button
+						type={open ? 'submit' : 'button'}
+						part={partWhen('action', { busy })}
+						className={EMPLOYER_SEND_CLASS}
+						aria-busy={busy || undefined}
+						aria-disabled={(open && !given) || undefined}
+						// the hint says why a Send over a blank box is off.
+						aria-describedby={open && !given ? EMPLOYER_HINT_ID : undefined}
+						onClick={() => {
+							onSend(document.activeElement === field.current);
+							// a blank press repeated changes nothing the flow holds, so no effect moves the caret.
+							if (boxRefused) field.current?.focus();
+						}}
+					>
+						<span className="action-label">{copy.EMPLOYER_SEND}</span>
+						<span className="ds-spinner" aria-hidden="true" />
+					</button>
+					<button
+						type="button"
+						part={part('action-quiet')}
+						className="ds-btn ds-btn-secondary"
+						onClick={onSkip}
+					>
+						{copy.EMPLOYER_SKIP}
+					</button>
+				</div>
+			</div>
+			{/* a status only once there is one to state, so the card's own region stays its only one before. */}
+			<div
+				role={screen === null || open ? undefined : 'status'}
+				tabIndex={-1}
+				className="employer-done"
+				hidden={open}
+				ref={status}
+			>
+				{phase === 'sent' ? <Glyph name="done" className="employer-done-mark" /> : null}
+				<div>
+					<h3 part={part('heading')} tabIndex={-1}>
+						{screen?.doneHeading ?? ''}
+					</h3>
+					<p className="aside">{screen?.doneBody ?? ''}</p>
+				</div>
+			</div>
+			<a part={part('link')} href={screen?.giftUrl} hidden={open}>
+				{copy.OPEN_GIFT_PAGE}
+			</a>
+		</div>
 	);
 }

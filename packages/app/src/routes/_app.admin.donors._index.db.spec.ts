@@ -64,6 +64,7 @@ beforeEach(async () => {
 	// the auth tables are left alone: the session above is signed in once and every case here is
 	// about donors rather than about who is reading them.
 	await run(stmt('delete from payment'));
+	await run(stmt('delete from gift_match'));
 	await run(stmt('delete from donation'));
 	await run(stmt('delete from recurring_plan'));
 	await run(stmt('delete from contact'));

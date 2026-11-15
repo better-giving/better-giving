@@ -163,6 +163,51 @@ function landed(element: HTMLElement): Promise<unknown> {
 	);
 }
 
+/** the middle of an element in the outer page's coordinates, for a real pointer. */
+function centre(element: HTMLElement): { x: number; y: number } {
+	const box = element.getBoundingClientRect();
+	const frame = window.frameElement?.getBoundingClientRect();
+	const scale = frame ? frame.width / window.innerWidth : 1;
+	return {
+		x: (frame?.left ?? 0) + (box.left + box.width / 2) * scale,
+		y: (frame?.top ?? 0) + (box.top + box.height / 2) * scale
+	};
+}
+
+/**
+ * what `read` takes off a real pressed button, its fill unless told otherwise, read while it is held
+ * and released after. `:active` holds only under a pointer the browser itself pressed, so a
+ * dispatched event would read the button at rest.
+ */
+async function pressed(
+	element: HTMLElement,
+	read: (drawn: CSSStyleDeclaration) => string = (drawn) => drawn.backgroundColor
+): Promise<string> {
+	const session = cdp();
+	const { x, y } = centre(element);
+	await session.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+	await session.send('Input.dispatchMouseEvent', {
+		type: 'mousePressed',
+		x,
+		y,
+		button: 'left',
+		clickCount: 1
+	});
+	try {
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+		await landed(element);
+		return read(getComputedStyle(element));
+	} finally {
+		await session.send('Input.dispatchMouseEvent', {
+			type: 'mouseReleased',
+			x,
+			y,
+			button: 'left',
+			clickCount: 1
+		});
+	}
+}
+
 /**
  * one element on the page, upgraded, carrying the sheets its own code adopted.
  *
@@ -4752,44 +4797,6 @@ describe('the inherited text properties the card puts back', () => {
 // the amount tray is one grey plane with the amounts standing on it: the tray carries `--_n3` edge
 // to edge, a resting amount draws no ground, and only the chosen one is a white piece.
 describe('the amount tray’s plane', () => {
-	/** the middle of an element in the outer page's coordinates, for a real pointer. */
-	function centre(element: HTMLElement): { x: number; y: number } {
-		const box = element.getBoundingClientRect();
-		const frame = window.frameElement?.getBoundingClientRect();
-		const scale = frame ? frame.width / window.innerWidth : 1;
-		return {
-			x: (frame?.left ?? 0) + (box.left + box.width / 2) * scale,
-			y: (frame?.top ?? 0) + (box.top + box.height / 2) * scale
-		};
-	}
-
-	/** the fill under a real pressed button, read while it is held and released after. */
-	async function pressed(element: HTMLElement): Promise<string> {
-		const session = cdp();
-		const { x, y } = centre(element);
-		await session.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-		await session.send('Input.dispatchMouseEvent', {
-			type: 'mousePressed',
-			x,
-			y,
-			button: 'left',
-			clickCount: 1
-		});
-		try {
-			await new Promise((resolve) => requestAnimationFrame(resolve));
-			await landed(element);
-			return getComputedStyle(element).backgroundColor;
-		} finally {
-			await session.send('Input.dispatchMouseEvent', {
-				type: 'mouseReleased',
-				x,
-				y,
-				button: 'left',
-				clickCount: 1
-			});
-		}
-	}
-
 	const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 
 	it('draws rest, hover and press of an unchosen amount as nothing, rung 4 and rung 5, over the tray’s rung 3', async () => {
@@ -4977,5 +4984,175 @@ describe('what is underlined', () => {
 		onward(shadow);
 		await settle();
 		await sweep('review');
+	});
+});
+
+// the thank-you's employer ask (../employer-ask.ts): the send drawn unavailable over a blank box, the
+// skip as the registry's secondary press, the two side by side only where the card is wide, and the
+// `link` part in the link ink with the card's ring. each is a used value a selector decides, which
+// is this pool's question.
+describe('the employer ask on the thank-you', () => {
+	afterEach(() => {
+		document.body.style.inlineSize = '';
+	});
+
+	/** a card gift that went through on a quote naming its gift page, on a body `width` wide. */
+	async function thanked(width: string): Promise<ShadowRoot> {
+		document.body.style.inlineSize = width;
+		const tag = `${DONATE_FORM_TAG}-${(tags += 1)}`;
+		defineDonateForm(
+			{
+				loadConfig: async () => CONFIG,
+				checkout: (config, _mount, onRail) => {
+					queueMicrotask(() => onRail('card'));
+					return {
+						input: {
+							config,
+							ports: {
+								...PORTS,
+								quote: async () => ({
+									paymentToken: 'pi_1_secret_x',
+									feeMinor: 106,
+									totalMinor: 2606,
+									giftUrl: 'https://giving.example.org/gift/7Qk3'
+								}),
+								employer: async () => {}
+							}
+						},
+						cadence: () => {},
+						offerFund: () => {},
+						offerCrypto: () => {},
+						offerVenmo: () => {},
+						rows: () => {},
+						repeatingUnavailable: () => {},
+						stop: () => {}
+					};
+				},
+				challenge: (_config, _node, onToken) => {
+					queueMicrotask(() => onToken('tk_ready'));
+					return { reset: () => {}, stop: () => {} };
+				}
+			},
+			tag
+		);
+		const host = document.createElement(tag);
+		host.setAttribute('form', CONFIG.formId);
+		document.body.appendChild(host);
+		await settle();
+		const shadow = host.shadowRoot as ShadowRoot;
+		await atReview(shadow);
+		(shadow.querySelector(".step:not([hidden]) [part~='submit']") as HTMLElement).click();
+		await settle();
+		await settle();
+		expect(shadow.querySelector('.employer')?.hasAttribute('hidden')).toBe(false);
+		return shadow;
+	}
+
+	const send = (shadow: ShadowRoot) =>
+		shadow.querySelector(".employer [part~='action']") as HTMLElement;
+	const skip = (shadow: ShadowRoot) =>
+		shadow.querySelector(".employer [part~='action-quiet']") as HTMLElement;
+
+	it('stands the two presses side by side and equal on a wide card, one under the other on a narrow one', async () => {
+		const wide = await thanked('1440px');
+		const [a, b] = [send(wide), skip(wide)].map((press) => press.getBoundingClientRect());
+		expect(Math.abs((a?.top ?? 0) - (b?.top ?? 0))).toBeLessThan(DEVICE_PIXEL);
+		expect(Math.abs((a?.width ?? 0) - (b?.width ?? 0))).toBeLessThan(DEVICE_PIXEL);
+
+		const narrow = await thanked('375px');
+		const [c, d] = [send(narrow), skip(narrow)].map((press) => press.getBoundingClientRect());
+		expect(d?.top ?? 0).toBeGreaterThan(c?.bottom ?? 0);
+		expect(Math.abs((c?.width ?? 0) - (d?.width ?? 0))).toBeLessThan(DEVICE_PIXEL);
+	});
+
+	// the large tier broke `Send me the details` onto two lines in half the column, and both presses
+	// stood twice their height beside it.
+	it('holds each label on one line at the registry’s md height when wide, and the touch floor when stacked', async () => {
+		const wide = await thanked('1440px');
+		for (const press of [send(wide), skip(wide)]) {
+			const words = press.querySelector('.action-label') ?? press;
+			const lines = words.getClientRects();
+			expect(lines.length, press.textContent ?? '').toBe(1);
+			// the registry's `min-block-size` on the bare `ds-btn` is the md tier's height.
+			const md = parseFloat(getComputedStyle(press).minHeight);
+			expect(press.classList.contains('ds-btn-lg')).toBe(false);
+			expect(Math.abs(press.getBoundingClientRect().height - md)).toBeLessThan(DEVICE_PIXEL);
+		}
+
+		const narrow = await thanked('375px');
+		for (const press of [send(narrow), skip(narrow)]) {
+			expect(
+				Math.abs(press.getBoundingClientRect().height - step(narrow, '--_row-min'))
+			).toBeLessThan(DEVICE_PIXEL);
+		}
+	});
+
+	// over a blank box the send is `aria-disabled` and the registry draws it so (`button.ds-btn
+	// [aria-disabled]` in ../registry/styles/button-css.css), at both widths the approved frames draw.
+	it('draws the send in the registry’s disabled look over a blank box, and the brand’s solid once typed into', async () => {
+		for (const width of ['1440px', '375px']) {
+			const shadow = await thanked(width);
+			await landed(send(shadow));
+			expect(send(shadow).getAttribute('aria-disabled')).toBe('true');
+			expect(getComputedStyle(send(shadow)).backgroundColor).toBe(used(shadow, '--_n3'));
+			expect(getComputedStyle(send(shadow)).color).toBe(used(shadow, '--_n11'));
+
+			fill(shadow, '#employer', 'Northwind Logistics');
+			await settle();
+			await landed(send(shadow));
+			expect(send(shadow).hasAttribute('aria-disabled')).toBe(false);
+			// the brand's solid, at rest or under a pointer an earlier case left resting on it.
+			expect([used(shadow, '--_p'), used(shadow, '--_p-hover')]).toContain(
+				getComputedStyle(send(shadow)).backgroundColor
+			);
+			expect(getComputedStyle(send(shadow)).color).toBe(used(shadow, '--primary-fg'));
+		}
+	});
+
+	// the registry takes the press nudge off an aria-disabled button (`button.ds-btn[aria-disabled]`
+	// in ../registry/styles/button-css.css), and the card's own press is a `scale` that rule does not
+	// name (./motion.css).
+	it('leaves the send unmoved under a press over a blank box, and pressed in once typed into', async () => {
+		const shadow = await thanked('1440px');
+		send(shadow).scrollIntoView({ block: 'center' });
+		const resting = getComputedStyle(send(shadow)).scale;
+		expect(send(shadow).getAttribute('aria-disabled')).toBe('true');
+		expect(await pressed(send(shadow), (drawn) => drawn.scale)).toBe(resting);
+
+		fill(shadow, '#employer', 'Northwind Logistics');
+		await settle();
+		await landed(send(shadow));
+		expect(send(shadow).hasAttribute('aria-disabled')).toBe(false);
+		expect(await pressed(send(shadow), (drawn) => drawn.scale)).not.toBe(resting);
+	});
+
+	it('draws Skip as the registry’s secondary press rather than the quiet text control', async () => {
+		const shadow = await thanked('1440px');
+		const drawn = getComputedStyle(skip(shadow));
+		expect(drawn.backgroundColor).toBe(used(shadow, '--gray-3'));
+		expect(drawn.borderTopStyle).toBe('solid');
+		expect(drawn.color).toBe(used(shadow, '--gray-12'));
+	});
+
+	it('draws the gift page link in the link ink, underlined, with the card’s ring', async () => {
+		const shadow = await thanked('1440px');
+		skip(shadow).click();
+		await settle();
+		const link = shadow.querySelector("[part~='link']") as HTMLElement;
+		const drawn = getComputedStyle(link);
+		expect(drawn.color).toBe(used(shadow, '--link'));
+		expect(drawn.textDecorationLine).toContain('underline');
+
+		const ringed = await caretOn(link);
+		expect(ringed.boxShadow).toContain(used(shadow, '--_focus-ring'));
+	});
+
+	it('marks a sent ask in the success ink', async () => {
+		const shadow = await thanked('1440px');
+		fill(shadow, '#employer', 'Northwind Logistics');
+		send(shadow).click();
+		await settle();
+		const mark = shadow.querySelector('.employer-done-mark') as SVGElement;
+		expect(getComputedStyle(mark).color).toBe(used(shadow, '--success-subtle-fg'));
 	});
 });

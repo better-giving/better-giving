@@ -1423,7 +1423,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * every tile carries the token rather than one of them (`updateOptions` in ../views.ts marks the
  * whole group from one refused amount, missing or refused by a coin), and a tile can be chosen and
  * marked at once — the other tile while the amount is missing, or the tile holding the figure a coin
- * refused. neither collides with anything now: the lift a chosen tile draws
+ * refused. neither collides with anything: the lift a chosen tile draws
  * (`[part~='amount-option'][part~='selected']` above) is on the tile and the mark is on the tray,
  * where one line on the tile would have had to carry both.
  *
@@ -1810,11 +1810,13 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the quiet action at its own size: a text control, for stepping back off a numbered step and for
- * the second control on a full-card screen. it is a button, and the card underlines a link `<a href>`
+ * the second control on a full-card screen. the one quiet action drawn as the registry's secondary
+ * button — the employer ask's Skip, beside its Send (../employer-ask.ts) — is the registry's to draw,
+ * so both rules here leave it out by where it stands. it is a button, and the card underlines a link `<a href>`
  * and nothing else (`what is underlined` in ./parts.browser.spec.ts), so what says it is pressable
  * is the brand drawn as ink, step 11, the pointer's step to 12 below, and the card's focus ring.
  */
-[part~='action-quiet'] {
+[part~='action-quiet']:where(:not(.employer-actions > *)) {
 	display: inline-flex;
 	align-items: center;
 	/* the control hugs its words rather than a box stretched to the column it stands in. */
@@ -1836,7 +1838,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * the word steps under the pointer: the brand's 11 at rest, its 12 under the pointer, the other
  * text step.
  */
-[part~='action-quiet']:hover {
+[part~='action-quiet']:where(:not(.employer-actions > *)):hover {
 	color: var(--_a12);
 }
 
@@ -2025,6 +2027,40 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	color: var(--_n11);
 	font-size: var(--_t-sm);
 	overflow-wrap: anywhere;
+}
+
+/*
+ * the thank-you's employer ask (../employer-ask.ts): a divider off the receipt, its headings at the
+ * card's base size under the takeover's own, the tick in the success ink, and the link to the gift
+ * page. the send over a blank box is the registry's `button.ds-btn[aria-disabled]`.
+ */
+.employer {
+	border-block-start: var(--_border) solid var(--_n6);
+}
+
+.employer [part~='heading'] {
+	font-size: var(--_t-md);
+}
+
+.employer-done-mark {
+	color: var(--_ok-ink);
+}
+
+/*
+ * the link to the gift page: the registry's link ink (`--link` is accent 11) at the quiet size and
+ * the labels' weight, underlined as every link on the card is (`what is underlined` in
+ * ./parts.browser.spec.ts), stepping to 12 under the pointer as the quiet action does.
+ */
+[part~='link'] {
+	align-self: start;
+	color: var(--_a11);
+	font-size: var(--_t-sm);
+	font-weight: var(--_w-bold);
+	border-radius: var(--_r-in);
+}
+
+[part~='link']:hover {
+	color: var(--_a12);
 }
 
 /*
@@ -2516,7 +2552,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * inside `:where()` so this rule keeps the one-class weight every block below overrides it at, and
  * the rule after it takes the engine's own outline back, which the exclusion alone would uncover.
  */
-:where(button, input, textarea, select, [tabindex]):where(
+:where(a[href], button, input, textarea, select, [tabindex]):where(
 	:not([tabindex='-1'], .ds-btn, .ds-checkbox)
 ):focus-visible,
 [part~='amount-option']:has(:focus-visible) {

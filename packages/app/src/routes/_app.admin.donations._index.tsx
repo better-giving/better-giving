@@ -1,20 +1,11 @@
-import { TRIBUTE_KIND_LABELS } from '@better-giving/form/v1';
-import { DataTable } from '@better-giving/operator/components/data/DataTable';
-import { Button } from '@better-giving/operator/components/controls/Button';
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { GiftNote, PublicMessagesLink } from '$lib/admin/messages/gift-note';
-import { DONATION_STATUS_TONES } from '$lib/admin/status-tones';
-import { href, Link } from 'react-router';
-import { byDayShown } from '$lib/admin/received-order';
+import { GiftsTable } from '$lib/admin/donations/gifts-table';
 import { screenTitle } from '$lib/admin/screen-title';
-import { LocalTime, useViewerZone } from '$lib/admin/viewer-time.react';
-import { IN_HAND_METHOD_LABELS, IN_HAND_METHODS, type InHandMethod } from '$lib/donations/methods';
 import { formatMinor } from '$lib/donations/money';
-import { DONATION_STATUS_LABELS } from '$lib/donations/statuses';
+import { MATCH_FILTERS, type MatchFilter } from '$lib/matching/status';
 import { loadFailed } from '$lib/server/db/load-failure';
-import type { PaymentMethod } from '$lib/server/db/schema';
 import { DONATION_LIST_LIMIT, listDonations } from '$lib/server/donations/queries';
+import { isInHand, RAIL_LABELS } from '$lib/server/donations/rails';
 import { readTrackingIds } from '$lib/server/donations/tracking-ids';
 import { readNoteStandings } from '$lib/server/pages/messages';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -29,102 +20,8 @@ import type { Route } from './+types/_app.admin.donations._index';
 //
 // this file is deliberately thin. what a gift's state is lives in
 // `$lib/server/donations/queries.ts`, what each state is called lives in
-// `$lib/donations/statuses.ts`, and the only job here is turning rows into what the page renders.
-
-/** the element the table's caption is named by, and the only id this screen mints. */
-const CAPTION_ID = 'gifts-caption';
-
-/**
- * what each column is worth, in the order an operator reads a row.
- *
- * the first is the row's own header and what the plane pins to the leading edge: a gift carries no
- * name and no visible id, so the day it arrived is what identifies it in a list ordered by that
- * same day. `DataTable` decides that from position — the first column is the `th` — so the order
- * here is the arrangement and not only the sequence.
- *
- * a `kind` is the reading a cell takes, drawn by packages/operator/src/styles/adm.css: a date is
- * one value and never wraps, money is end-aligned tabular figures, and a whole message wraps and
- * keeps a floor under its column. the two with no kind are prose.
- *
- * a `width` is the column's share of the table, and the nine sum to the whole of it. it is stated
- * here rather than taken from a token because a share is a fact about these nine columns and
- * nothing a design system could hold — packages/operator/src/styles/tokens.css's header names a
- * table column's percentage among the few things a screen still writes. the date, the figure and the
- * rail take the smallest shares of the columns holding a value, because what each holds is one short
- * one.
- *
- * the message is where a new column's share comes from, and it is the only column it could come
- * from. every other one holds a single value of a roughly fixed width, so narrowing it wraps a name
- * or a phrase; the message already wraps by design and `whole` keeps a floor under its column, so a
- * smaller share widens the plane and scrolls it rather than losing anything.
- *
- * the dedication is a column of its own and not a line inside another. it is not the message: a
- * message is free text a donor wrote and is never parsed, and a dedication is a structured fact the
- * organisation reports on, so folding one into the other re-fuses the two things the columns behind
- * them keep apart. and it is not `Repeating`'s precedent either — that word sits inside the money
- * cell because it is a fact about the money, which a gift given in someone's memory is not.
- *
- * the cause sits after Source and before the dedication, which is the order an operator reads a
- * gift in: where it came from, what it was given to, and who it was given for. `Program` is the
- * fundraiser's own word and the schema's word at once — the table is `program`, and it is what the
- * screen an operator makes one on is called.
- *
- * `Paid with` stands between the state and the source: the figure and its state are the money, how
- * it arrived qualifies both, and Source is where the gift came from. it is a column rather than a
- * word under the figure, which is where `Repeating` sits — a rail is what an operator scans a
- * whole list down, and the money cell already carries the one qualifier a figure can hold on the
- * line beneath it without becoming a paragraph. the header is the fundraiser's phrase and never
- * `method`, which is the column's name in the schema.
- *
- * `Dedication` and not the schema's `tribute`: it is the fundraiser's own word, and the word the
- * donor is asked in — packages/form/src/views.ts writes `Dedicate this gift` on the tick that opens
- * it. the column carries no `kind`, so it is prose: what is in it is one short line, and `whole`'s
- * floor is for a column holding a paragraph.
- */
-const COLUMNS = [
-	{ key: 'received', label: 'Received', kind: 'date', width: '11%' },
-	{ key: 'donor', label: 'Donor', width: '15%' },
-	{ key: 'amount', label: 'Amount', kind: 'money', width: '11%' },
-	{ key: 'status', label: 'Status', width: '11%' },
-	{ key: 'paidWith', label: 'Paid with', width: '9%' },
-	{ key: 'source', label: 'Source', width: '12%' },
-	{ key: 'program', label: 'Program', width: '11%' },
-	{ key: 'dedication', label: 'Dedication', width: '16%' },
-	{ key: 'message', label: 'Message', kind: 'whole', width: '4%' }
-] as const;
-
-/**
- * what each rail is called on this screen.
- *
- * the word is resolved in the loader below rather than looked up in the page, which is where this
- * parts company with `DONATION_STATUS_LABELS` and `TRIBUTE_KIND_LABELS`: those vocabularies are
- * declared outside `$lib/server/**` because a component may import them, and this one is the
- * `payment` table's own — `PAYMENT_METHODS` in `$lib/server/db/schema.ts`, which a component may
- * not reach at all. so what crosses is the word, and the type is what keeps the table total: a
- * rail added to the column is a compile error here rather than a raw `ach` on a screen.
- *
- * every word is the fundraiser's. `Bank transfer` and never `ACH`, which is the schema's word and
- * exactly the initialism CLAUDE.md keeps off a screen. `PayPal` and `Venmo` are the two a donor
- * read on the button they pressed, so they are what a staff member holding that donor's email
- * hears — and `Venmo` is never `PayPal` here, though PayPal is what settled it.
- *
- * the two rails money arrives on in hand are `IN_HAND_METHOD_LABELS`' words, spread rather than
- * spelled again, so a cheque reads `Cheque` here and on the screen that adds one.
- */
-const RAIL_LABELS: Record<PaymentMethod, string> = {
-	...IN_HAND_METHOD_LABELS,
-	card: 'Card',
-	ach: 'Bank transfer',
-	paypal: 'PayPal',
-	venmo: 'Venmo',
-	daf: 'Donor-advised fund',
-	crypto: 'Crypto'
-};
-
-/** whether the gift's money arrived in hand, which dates it by a day rather than an instant. */
-function isInHand(method: PaymentMethod | undefined): method is InHandMethod {
-	return (IN_HAND_METHODS as readonly (PaymentMethod | undefined)[]).includes(method);
-}
+// `$lib/donations/statuses.ts`, the table is `GiftsTable` ($lib/admin/donations/gifts-table.tsx),
+// and the only job here is turning rows into what the page renders.
 
 /** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Gifts';
@@ -133,13 +30,24 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
 
-export async function loader({ context }: Route.LoaderArgs) {
+/**
+ * the Match filter the address names, or `null` for Any. an empty, unknown or misspelt value is Any
+ * and never a refusal: the parameter is a view of the list, and a stale link still lands on it.
+ */
+function matchFilterOf(value: string | null): MatchFilter | null {
+	return (MATCH_FILTERS as readonly (string | null)[]).includes(value)
+		? (value as MatchFilter)
+		: null;
+}
+
+export async function loader({ context, request }: Route.LoaderArgs) {
 	const db = context.get(database);
+	const match = matchFilterOf(new URL(request.url).searchParams.get('match'));
 	let donations: Awaited<ReturnType<typeof listDonations>>['donations'];
 	let hasMore: boolean;
 	let noteStanding: Awaited<ReturnType<typeof readNoteStandings>>;
 	try {
-		({ donations, hasMore } = await listDonations(db));
+		({ donations, hasMore } = await listDonations(db, match === null ? {} : { match }));
 		noteStanding = await readNoteStandings(
 			db,
 			donations.filter((d) => d.note !== null).map((d) => d.id)
@@ -185,8 +93,9 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// the value, not the word. `DONATION_STATUS_LABELS` in `$lib/donations/statuses.ts` is
 			// what the page renders it with, and a state with no label there is a type error.
 			status: d.status,
-			// the rail the gift arrived on, as the word for it — see `RAIL_LABELS` above for why
-			// this one is resolved here and the state above is not. null on a gift with no
+			// the rail the gift arrived on, as the word for it — see `RAIL_LABELS` in
+			// `$lib/server/donations/rails.ts` for why this one is resolved here and the state
+			// above is not. null on a gift with no
 			// settlement attempt at all, which the table dashes itself.
 			//
 			// the rail and never the processor behind it, which is where the provider the read
@@ -225,150 +134,37 @@ export async function loader({ context }: Route.LoaderArgs) {
 			// the stored value first, on every Chariot gift whatever its state; read live only for a
 			// pending grant stored without one (`readTrackingIds`). null on every other gift and on
 			// one Chariot did not answer for in time. the grant id it was asked by stays here.
-			trackingId: trackingIds.get(d.id) ?? null
+			trackingId: trackingIds.get(d.id) ?? null,
+			// the match's one word and the employer the donor named, for staff. the reason a match was
+			// voided is staff's too, and stays on the gift's own page.
+			match: d.match
 		})),
 		// so the page can say the list is capped rather than silently showing a prefix.
 		limit: DONATION_LIST_LIMIT,
 		// exact, and not computed here: `listDonations` fetches one row past the cap and reports
 		// whether it came back, then returns at most the cap. this route never sees that row, which
 		// is why the count above and this flag cannot disagree.
-		hasMore
+		hasMore,
+		// the filter the rows were read under, so the select shows it and the empty row says which
+		// emptiness this is.
+		match
 	};
 }
 
 // what this page owes is that every gift a deployment has taken can be read: who gave, how much,
-// when, what state it is in, and what they wrote.
+// when, what state it is in, what they wrote, and where its employer match stands.
 export default function Donations({ loaderData }: Route.ComponentProps) {
-	const { donations, limit, hasMore } = loaderData;
-	const count = donations.length;
-	// the zone each row's day is shown in, which is the zone the rows are ordered by.
-	const zone = useViewerZone();
-
 	return (
-		// one column and the column is what spaces it: every block below carries no margin of its
-		// own, so one that is not rendered leaves no space behind it. the wide measure, because a
-		// table plane is what it exists for.
+		// one column, the wide measure, because a table plane is what it exists for. the table sits in
+		// the column directly, and nothing wraps it. a grid item's automatic minimum size is its
+		// min-content size, so a plain element between the column and the plane is one the column can
+		// never make narrower than the whole table: the page then scrolls sideways instead of the
+		// plane, and the pinned first column goes with it — `position: sticky` resolves against a box
+		// that never scrolls. `.adm-plane` is a scroll box, which is the one kind of item whose
+		// automatic minimum is zero, so as the column's own child it shrinks and scrolls at every
+		// width.
 		<Column wide>
-			{/* the table sits in the column directly, and nothing wraps it. a grid item's automatic
-			    minimum size is its min-content size, so a plain element between the column and the
-			    plane is one the column can never make narrower than the whole table: the page then
-			    scrolls sideways instead of the plane, and the pinned first column goes with it —
-			    `position: sticky` resolves against a box that never scrolls. `.adm-plane` is a
-			    scroll box, which is the one kind of item whose automatic minimum is zero, so as the
-			    column's own child it shrinks and scrolls at every width. the cost is the step
-			    between the caption and the table it names, which is now the column's gap and the
-			    margin-block-end of the line the caption shares with the press together. */}
-			<DataTable
-				captionId={CAPTION_ID}
-				// the page's presses, drawn at the trailing edge of the caption's line — links
-				// dressed as buttons, because both navigate. the way out of the list leads and is
-				// the quieter of the two: adding a gift is what an operator is here to do.
-				//
-				// wrapped in a row of their own rather than handed over as two children:
-				// `.adm-tablelead` spreads its own children apart, so the second would stand at the
-				// caption's end with the first left in the middle of the line.
-				press={
-					<div className="adm-actions">
-						<Button as={Link} to={href('/admin/donations/export')} variant="quiet">
-							Export
-						</Button>
-						<PublicMessagesLink />
-						<Button as={Link} to={href('/admin/donations/new')}>
-							Add donation
-						</Button>
-					</div>
-				}
-				// with rows, the sentence that says what the table holds and is what names it.
-				// with none there is no count worth stating and none is drawn — the word is the
-				// screen's own noun, which `DataTable` gives the plane as its name so a region
-				// with nothing in it is still announced as one. the row inside the table is
-				// what says what the screen is waiting for.
-				caption={count > 0 ? `${count} ${count === 1 ? 'gift' : 'gifts'}, newest first.` : 'Gifts'}
-				capNote={hasMore ? `Only the most recent ${limit} are shown.` : undefined}
-				columns={COLUMNS}
-				// newest first by the day each row shows, which the stored order alone is not west
-				// of UTC ($lib/admin/received-order.ts).
-				rows={byDayShown(donations, zone).map((d) => ({
-					// the gift's own id, which is what keys the row. it is never rendered — no
-					// column is keyed `id` — and it is here because keying by position instead
-					// hands two rows that swap places each other's cells, which they do once the
-					// browser's zone is known.
-					id: d.id,
-					cells: {
-						received:
-							'receivedOn' in d ? (
-								<time dateTime={d.receivedOn}>{d.receivedOn}</time>
-							) : (
-								<LocalTime at={d.receivedAt} style="iso-day" />
-							),
-						donor: d.donorName,
-						// the word sits after the figure and inside the money cell, because it is a
-						// fact about the money and belongs beside the number a scanner is already
-						// reading. `secondary` is the quiet tone — there is a value here and it is
-						// quiet — because the figure is what the column is for and this qualifies it.
-						//
-						// the cell states `noted` and that beats the column's money, because what is in it
-						// is a figure with a word under it rather than a figure. the number is still read as
-						// money — end-aligned tabular figures on one line, so every amount in the column
-						// lands on the same edge whether or not the gift repeats — and the word takes the
-						// line beneath rather than the room past the end of the figure, which is room the
-						// column does not have.
-						amount: d.repeating
-							? {
-									reading: 'noted' as const,
-									value: (
-										<>
-											{d.amount} <StatusWord secondary>Repeating</StatusWord>
-										</>
-									)
-								}
-							: d.amount,
-						// a grant carries the id the organisation marks it received by in Chariot's
-						// dashboard, beside its state. code, because an operator retypes it.
-						status: d.trackingId ? (
-							<>
-								<StatusWord tone={DONATION_STATUS_TONES[d.status]}>
-									{DONATION_STATUS_LABELS[d.status]}
-								</StatusWord>{' '}
-								Tracking ID <code className="adm-code adm-code--unbroken">{d.trackingId}</code>
-							</>
-						) : (
-							<StatusWord tone={DONATION_STATUS_TONES[d.status]}>
-								{DONATION_STATUS_LABELS[d.status]}
-							</StatusWord>
-						),
-						// the word the loader resolved, printed. a gift with nothing attempted hands
-						// over nothing and the table dashes the cell itself.
-						//
-						// a crypto gift something arrived in carries the coin beside the word, in the
-						// quiet tone `Repeating` takes beside a figure: the rail is what the column is
-						// scanned for, and the coin qualifies it.
-						paidWith: d.coinReceived ? (
-							<>
-								{d.paidWith} <StatusWord secondary>{d.coinReceived}</StatusWord>
-							</>
-						) : (
-							d.paidWith
-						),
-						// a cell with nothing in it is dashed and set in the muted ink by the table
-						// itself, which is why neither column reaches for a fallback here.
-						source: d.source,
-						// the name as it is stored. a gift credited to no cause hands over nothing and
-						// the table dashes the cell itself, the same as the dedication below.
-						program: d.program,
-						// the sentence a fundraiser says, written out here rather than in the loader:
-						// the phrase is a word a component may look up, which is what `status` above
-						// does, and there is no locale in it to get wrong twice the way the date and
-						// the figure would be. a gift given for nobody hands over nothing and the
-						// table dashes the cell itself.
-						dedication: d.tribute
-							? `${TRIBUTE_KIND_LABELS[d.tribute.kind]} ${d.tribute.honoree}`
-							: null,
-						message: d.note === null ? null : <GiftNote note={d.note} standing={d.noteStanding} />
-					}
-				}))}
-				empty="No gifts yet."
-			/>
+			<GiftsTable {...loaderData} />
 		</Column>
 	);
 }

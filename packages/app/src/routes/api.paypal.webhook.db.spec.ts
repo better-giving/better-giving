@@ -316,6 +316,7 @@ describe('POST /api/paypal/webhook — a capture refund', () => {
 			'entry_group',
 			'payment',
 			'line_item',
+			'gift_match',
 			'donation',
 			'contact',
 			'form'
@@ -543,7 +544,7 @@ describe('POST /api/paypal/webhook — a failed repeat payment', () => {
 	/** the rows a collection would write, counted, since earlier cases in this file leave theirs. */
 	async function rowCounts() {
 		const counts: Record<string, number> = {};
-		for (const table of ['recurring_plan', 'donation', 'payment', 'entry_group']) {
+		for (const table of ['recurring_plan', 'gift_match', 'donation', 'payment', 'entry_group']) {
 			const rows = await first<{
 				n: number;
 			}>(stmt(`select count(*) as n from ${table}`));

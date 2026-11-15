@@ -619,7 +619,15 @@ describe('a deployment set up on NOWPayments', () => {
 	}
 
 	beforeEach(async () => {
-		for (const table of ['entry_group', 'payment', 'line_item', 'donation', 'contact', 'form']) {
+		for (const table of [
+			'entry_group',
+			'payment',
+			'line_item',
+			'gift_match',
+			'donation',
+			'contact',
+			'form'
+		]) {
 			await run(stmt(`delete from ${table}`));
 		}
 	});

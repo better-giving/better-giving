@@ -11,7 +11,7 @@ import {
 import manifestText from '../custom-elements.json?raw';
 import { CARD_THEME, PART_NAMES, REGISTRY_CLASS, ROLE_TOKENS, STATE_TOKENS } from './parts';
 import type { CheckoutPorts, FundReports } from './ports';
-import { DEPOSIT_POLL_MS, type Failure } from './checkout.machine';
+import { DEPOSIT_POLL_MS, type Failure, PORT_TIMEOUT_MS } from './checkout.machine';
 import {
 	PAYMENT_METHODS,
 	type FormConfig,
@@ -22,6 +22,7 @@ import {
 	type QuoteRequest
 } from './v1';
 import { DEFAULT_SHAPE } from './views';
+import { EMPLOYER_CLASS } from './employer-ask';
 import { createFormRuntime } from './embed/runtime';
 import { APPEARANCE_INPUTS } from './styles/appearance';
 import partStyles from './styles/parts.css?inline';
@@ -5873,8 +5874,12 @@ describe('the stylesheets', () => {
 					.filter(({ selectors }) => selectors.some(matches))
 					.flatMap(({ body }) => transitionedBy(body))
 			);
-		const handed = Object.entries(REGISTRY_CLASS).flatMap(([part, list]) =>
-			list.split(' ').map((name) => ({ part, name }))
+		// keyed by the part each class rides on: the card's own controls and the thank-you's employer
+		// ask (./employer-ask.ts), whose two presses take the md tier.
+		const handed = [REGISTRY_CLASS, EMPLOYER_CLASS].flatMap((classes) =>
+			Object.entries(classes).flatMap(([part, list]) =>
+				list.split(' ').map((name) => ({ part, name }))
+			)
 		);
 		// the class names the selector's subject: `.ds-btn:hover:not(...)` brings motion to the
 		// action, `.ds-btn > svg` would not. a pseudo-class's arguments are dropped first, since the
@@ -8055,5 +8060,300 @@ describe('the events a host page hears', () => {
 
 		expect([...names].sort()).toEqual([...(listed ?? [])].sort());
 		expect(names.size).toBe(3);
+	});
+});
+
+describe('the employer ask on the thank-you', () => {
+	const GIFT_URL = 'https://giving.example.org/gift/7Qk3-mVx9Lr2NpA4';
+
+	/** a card gift on a quote naming its gift page, with every employer write recorded. */
+	async function thanked(employer: (text: string) => Promise<void> = async () => {}) {
+		const written: string[] = [];
+		const card = await atSubmitted({
+			ports: {
+				quote: async () => ({
+					paymentToken: 'pi_1_secret_x',
+					feeMinor: 106,
+					totalMinor: 2606,
+					giftUrl: GIFT_URL
+				}),
+				employer: async (input) => {
+					written.push(input.employer);
+					return employer(input.employer);
+				}
+			}
+		});
+		return { card, written };
+	}
+
+	it('asks under the receipt, with Send the card’s one default button and no way back yet', async () => {
+		const { card } = await thanked();
+		expect(shows(card, '.employer h3')).toBe('Does your employer match gifts?');
+		expect(card.find('#employer').getAttribute('part')).toBe('field');
+		expect(card.all('button[type="submit"]')).toEqual([card.find('.employer [part~="action"]')]);
+		// Skip is the way out while the ask is open, so the start-over waits for it to close.
+		expect(secondary(card).hidden).toBe(true);
+	});
+
+	// one refusal, one channel, the details step's rule: the box the caret is sent to carries the
+	// sentence by `aria-describedby`, so arriving there is the announcement.
+	it('refuses a press over a blank box on the box it puts the caret in, and writes nothing', async () => {
+		const { card, written } = await thanked();
+		await settle();
+		const thanks = card.text('.vh[role="status"]');
+		expect(thanks).toBe('Your gift went through.');
+		const send = card.find('.employer [part~="action"]') as HTMLButtonElement;
+		// drawn unavailable, yet focusable and taking the press the refusal answers.
+		expect(send.getAttribute('aria-disabled')).toBe('true');
+		expect(send.disabled).toBe(false);
+		press(send);
+		await settle();
+		expect(written).toEqual([]);
+		expect(card.find('.employer [role="group"]').hidden).toBe(false);
+
+		const refusal = 'Enter your employer’s name.';
+		const box = card.find('#employer');
+		expect(shows(card, '#employer-problem')).toBe(refusal);
+		expect(box.getAttribute('aria-describedby')).toBe('employer-hint employer-problem');
+		expect(box.getAttribute('aria-invalid')).toBe('true');
+		expect(card.shadow.activeElement).toBe(box);
+		expect(card.text('.vh[role="status"]')).toBe(thanks);
+
+		type(box, 'Northwind Logistics');
+		expect(card.find('#employer-problem').hidden).toBe(true);
+		expect(box.hasAttribute('aria-invalid')).toBe(false);
+		expect(send.hasAttribute('aria-disabled')).toBe(false);
+		await settle();
+		expect(card.text('.vh[role="status"]')).toBe(thanks);
+
+		type(box, '');
+		expect(send.getAttribute('aria-disabled')).toBe('true');
+		expect(send.disabled).toBe(false);
+	});
+
+	// Enter in the box, or a second press: `focus()` on the box the caret is already in announces
+	// nothing, so the region is the refusal's one channel, and says it again on every such press.
+	it('says a blank press out loud where the caret was already in the box, every time', async () => {
+		const { card } = await thanked();
+		const box = card.find('#employer');
+		const send = card.find('.employer [part~="action"]');
+		const refusal = 'Enter your employer’s name.';
+		box.focus();
+		press(send);
+		await settle();
+		expect(card.text('.vh[role="status"]')).toBe(refusal);
+
+		press(send);
+		// cleared and written a task apart, which is what makes the same words news.
+		expect(card.text('.vh[role="status"]')).toBe('');
+		await settle();
+		expect(card.text('.vh[role="status"]')).toBe(refusal);
+	});
+
+	it('does not say the thank-you again once a blank press is answered by typing', async () => {
+		const { card } = await thanked();
+		const box = card.find('#employer');
+		box.focus();
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+
+		type(box, 'N');
+		await settle();
+		expect(card.text('.vh[role="status"]')).not.toBe('Your gift went through.');
+	});
+
+	it('keeps a failed write’s sentence under the box through a blank press, without saying it again', async () => {
+		const { card } = await thanked(() => Promise.reject(new Error('refused')));
+		const box = card.find('#employer');
+		type(box, 'Northwind');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		await settle();
+		const unsaved = 'Your employer was not saved. Try again, or skip this.';
+		expect(card.text('.vh[role="status"]')).toBe(unsaved);
+
+		type(box, '');
+		box.focus();
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		expect(shows(card, '#employer-problem')).toBe('Enter your employer’s name.');
+
+		type(box, 'Northwind Logistics');
+		await settle();
+		expect(shows(card, '#employer-problem')).toBe(unsaved);
+		expect(box.hasAttribute('aria-invalid')).toBe(false);
+		expect(card.text('.vh[role="status"]')).not.toBe(unsaved);
+	});
+
+	it('sends the trimmed employer and says the details are on their way', async () => {
+		const { card, written } = await thanked();
+		type(card.find('#employer'), '  Northwind Logistics ');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+
+		expect(written).toEqual(['Northwind Logistics']);
+		const status = card.find('.employer [role="status"]');
+		expect(status.textContent).toBe(
+			'Details sentWe’ve emailed what you need to ask your employer to match your gift to donor@example.org. They are also on your gift page.'
+		);
+		expect(card.shadow.activeElement).toBe(status);
+		expect(card.find('[part="link"]').getAttribute('href')).toBe(GIFT_URL);
+		expect(shows(card, '[part="link"]')).toBe('Open your gift page');
+		expect(shows(card, '.takeover > .foot > [part~="action-quiet"]')).toBe('Back to start');
+	});
+
+	it('keeps the employer off the host page: no attribute, no event, no light-DOM node', async () => {
+		const heard: string[] = [];
+		const listen = (event: Event) => heard.push(JSON.stringify((event as CustomEvent).detail));
+		for (const name of ['bg-donate:ready', 'bg-donate:unavailable', 'bg-donate:success']) {
+			document.addEventListener(name, listen);
+		}
+		const { card } = await thanked();
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		for (const name of ['bg-donate:ready', 'bg-donate:unavailable', 'bg-donate:success']) {
+			document.removeEventListener(name, listen);
+		}
+		expect(heard.join('')).not.toContain('Northwind');
+		expect(card.host.outerHTML).not.toContain('Northwind');
+	});
+
+	it('skips without writing, and points to the gift page', async () => {
+		const { card, written } = await thanked();
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action-quiet"]'));
+		await settle();
+
+		expect(written).toEqual([]);
+		expect(card.find('.employer [role="status"]').textContent).toBe(
+			'Employer matchingIf your employer matches gifts, what you need to ask for it is on your gift page. The link is in your receipt.'
+		);
+		expect(shows(card, '[part="link"]')).toBe('Open your gift page');
+		expect(secondary(card).hidden).toBe(false);
+	});
+
+	it('keeps the ask open with the donor’s text over a refused write', async () => {
+		const { card } = await thanked(() => Promise.reject(new Error('refused')));
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+
+		const refusal = 'Your employer was not saved. Try again, or skip this.';
+		expect((card.find('#employer') as HTMLInputElement).value).toBe('Northwind Logistics');
+		expect(shows(card, '#employer-problem')).toBe(refusal);
+		// through the card's one region, which the thank-you was speaking in: said again, so it is
+		// written a task after the clear.
+		await settle();
+		expect(card.text('.vh[role="status"]')).toBe(refusal);
+		expect(secondary(card).hidden).toBe(true);
+	});
+
+	it('says an unanswered write could not be confirmed saved, since it may have landed', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+		const { card } = await thanked(() => new Promise<void>(() => {}));
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		await vi.advanceTimersByTimeAsync(PORT_TIMEOUT_MS);
+
+		const refusal = 'We couldn’t confirm your employer was saved. Try again, or skip this.';
+		expect(shows(card, '#employer-problem')).toBe(refusal);
+		expect(card.find('#employer').hasAttribute('aria-invalid')).toBe(false);
+		// said again over the thank-you, so it is written a task after the clear.
+		await vi.advanceTimersByTimeAsync(1);
+		expect(card.text('.vh[role="status"]')).toBe(refusal);
+	});
+
+	it('closes the ask on a Skip pressed while the write is in flight', async () => {
+		let land: (() => void) | undefined;
+		const { card } = await thanked(
+			() =>
+				new Promise<void>((resolve) => {
+					land = resolve;
+				})
+		);
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		press(card.find('.employer [part~="action-quiet"]'));
+		await settle();
+
+		const skipped =
+			'Employer matchingIf your employer matches gifts, what you need to ask for it is on your gift page. The link is in your receipt.';
+		expect(card.find('.employer [role="status"]').textContent).toBe(skipped);
+		expect(secondary(card).hidden).toBe(false);
+
+		land?.();
+		await settle();
+		expect(card.find('.employer [role="status"]').textContent).toBe(skipped);
+	});
+
+	// a host page that routes away mid-send takes the card with it, and the request has no card left
+	// to answer (`signal` on `CheckoutPorts.employer` in ./ports.ts).
+	it('abandons the write in flight when the element leaves the document', async () => {
+		let sent: AbortSignal | undefined;
+		const card = await atSubmitted({
+			ports: {
+				quote: async () => ({
+					paymentToken: 'pi_1_secret_x',
+					feeMinor: 106,
+					totalMinor: 2606,
+					giftUrl: GIFT_URL
+				}),
+				employer: (_input, signal) => {
+					sent = signal;
+					return new Promise<void>(() => {});
+				}
+			}
+		});
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		expect(sent?.aborted).toBe(false);
+
+		card.host.remove();
+		// the teardown is a task behind the departure (`#leaving` in ./element.ts).
+		await settle();
+
+		expect(sent?.aborted).toBe(true);
+	});
+
+	it('keeps what the donor types while the write is in flight', async () => {
+		let refuse: (() => void) | undefined;
+		const { card } = await thanked(
+			() =>
+				new Promise<void>((_, reject) => {
+					refuse = () => reject(new Error('refused'));
+				})
+		);
+		type(card.find('#employer'), 'Northwind');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		type(card.find('#employer'), 'Northwind Logistics');
+		refuse?.();
+		await settle();
+
+		expect((card.find('#employer') as HTMLInputElement).value).toBe('Northwind Logistics');
+	});
+
+	it('stops saying a refusal once the donor skips', async () => {
+		const { card } = await thanked(() => Promise.reject(new Error('refused')));
+		type(card.find('#employer'), 'Northwind Logistics');
+		press(card.find('.employer [part~="action"]'));
+		await settle();
+		await settle();
+		press(card.find('.employer [part~="action-quiet"]'));
+		await settle();
+		await settle();
+
+		expect(card.text('.vh[role="status"]')).toBe('');
+	});
+
+	it('asks nothing where the quote named no gift page', async () => {
+		const card = await atSubmitted({ ports: { employer: async () => {} } });
+		expect(card.find('.employer').hidden).toBe(true);
+		expect(shows(card, '.takeover > .foot > [part~="action-quiet"]')).toBe('Back to start');
 	});
 });

@@ -2,6 +2,8 @@ import { defineDonateForm, DONATE_FORM_TAG } from '../src/element';
 import {
 	DEPOSIT_ENDINGS,
 	devRuntime,
+	EMPLOYER_ANSWERS,
+	type EmployerAnswer,
 	FIXTURE_NAMES,
 	FIXTURES,
 	type DepositEnding,
@@ -36,11 +38,14 @@ function need<T extends HTMLElement>(id: string, kind: new () => T): T {
 
 const stage = need('stage', HTMLElement);
 
-// `?deposit=` has no control on the panel: it is read once, at registration, because the runtime is.
+// `?deposit=` and `?employer=` have no control on the panel: each is read once, at registration,
+// because the runtime is.
 const wantedEnding = remembered('deposit');
 const ending: DepositEnding = DEPOSIT_ENDINGS.find((one) => one === wantedEnding) ?? 'received';
+const wantedAnswer = remembered('employer');
+const employer: EmployerAnswer = EMPLOYER_ANSWERS.find((one) => one === wantedAnswer) ?? 'saved';
 
-defineDonateForm(devRuntime(ending));
+defineDonateForm(devRuntime(ending, employer));
 const element = document.createElement(DONATE_FORM_TAG);
 
 // --- the seed ---

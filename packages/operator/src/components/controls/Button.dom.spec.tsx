@@ -99,14 +99,15 @@ describe('what the element wears', () => {
 	});
 
 	it('wears the registry’s rank for every variant, and the secondary rank for the default', () => {
-		const ranks = (['default', 'primary', 'danger', 'quiet', 'soft'] as const).map(
-			(variant) => only(render(Button, { variant, children: 'Go' })).classList[1]
-		);
+		const ranks = (
+			['default', 'primary', 'danger', 'danger-outline', 'quiet', 'soft'] as const
+		).map((variant) => only(render(Button, { variant, children: 'Go' })).classList[1]);
 
 		expect(ranks).toEqual([
 			'ds-btn-secondary',
 			'ds-btn-primary',
 			'ds-btn-destructive',
+			'ds-btn-destructive-outline',
 			'ds-btn-ghost',
 			'ds-btn-soft'
 		]);

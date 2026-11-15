@@ -5,7 +5,7 @@
 // ./checkout.machine.ts through ./connect.ts and renders it; it re-implements none of it.
 //
 // the public surface is closed and permanent. two attributes (`form`, `variant`), three seed custom
-// properties, fourteen `::part()` names and two slots — all published in `custom-elements.json`,
+// properties, fifteen `::part()` names and two slots — all published in `custom-elements.json`,
 // all add-never-rename, exactly like `v1` (CLAUDE.md, "Permanent contracts"). one object-valued
 // attribute would make React support version-dependent, so the attributes stay primitive.
 //

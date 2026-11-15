@@ -2,7 +2,7 @@ import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { donation } from '../db/schema';
+import { donation, giftMatch } from '../db/schema';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import type { PaymentProvider } from '../payments/provider';
 import type { SettleDeps } from './delivery';
@@ -31,7 +31,14 @@ beforeAll(() => {
 });
 
 beforeEach(async () => {
-	for (const table of ['payment', 'line_item', 'donation', 'contact', 'org_profile']) {
+	for (const table of [
+		'payment',
+		'line_item',
+		'gift_match',
+		'donation',
+		'contact',
+		'org_profile'
+	]) {
 		await run(stmt(`delete from ${table}`));
 	}
 	await run(
@@ -131,6 +138,54 @@ describe('sendReceipt()', () => {
 		expect(outcome).toBe('sent');
 		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
 		expect(await stampOf()).not.toBeNull();
+	});
+
+	it('closes on the match note linking the gift page, where the gift has a match row', async () => {
+		const [match] = await db.insert(giftMatch).values({ donationId: DONATION_ID }).returning();
+		const mail = mailer();
+
+		await sendReceipt(
+			{ ...deps(mail.port), giftOrigin: { origin: 'https://give.example.org', pinned: true } },
+			target()
+		);
+
+		expect(mail.sent[0]?.text).toContain(`https://give.example.org/gift/${match?.token}`);
+	});
+
+	it('carries no match note on a gift that has no match row, nor where no origin names the page', async () => {
+		const mail = mailer();
+		await sendReceipt(
+			{ ...deps(mail.port), giftOrigin: { origin: 'https://give.example.org', pinned: true } },
+			target()
+		);
+		await db.update(donation).set({ receiptSentAt: null }).where(eq(donation.id, DONATION_ID));
+		await db.insert(giftMatch).values({ donationId: DONATION_ID });
+		await sendReceipt({ ...deps(mail.port), giftOrigin: null }, target());
+
+		expect(mail.sent).toHaveLength(2);
+		for (const message of mail.sent) expect(message.text).not.toContain('/gift/');
+	});
+
+	it('sends the pack owed for an employer named before the gift reached the books', async () => {
+		await db.insert(giftMatch).values({ donationId: DONATION_ID, employer: 'Northwind Logistics' });
+		await run(
+			stmt(
+				`insert into payment (id, donation_id, amount_minor, currency, direction, method, status, occurred_at, created_at)
+				 values ('019fb300-0000-7000-8000-000000000012', ?, 2500, 'USD', 'inbound', 'card', 'succeeded', 0, 0)`,
+				DONATION_ID
+			)
+		);
+		const mail = mailer();
+
+		await sendReceipt(
+			{ ...deps(mail.port), giftOrigin: { origin: 'https://give.example.org', pinned: true } },
+			target()
+		);
+
+		expect(mail.sent.map((m) => m.subject)).toEqual([
+			expect.stringContaining('receipt'),
+			expect.stringContaining('Northwind Logistics')
+		]);
 	});
 
 	it('sends with only the database and the mail transport, for a gift no processor took', async () => {

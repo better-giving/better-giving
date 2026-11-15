@@ -779,3 +779,67 @@ describe('the crypto projection', () => {
 		});
 	});
 });
+
+describe('the employer ask projection', () => {
+	const GIFT_URL = 'https://giving.example.org/gift/7Qk3-mVx9Lr2NpA4';
+	const asked = {
+		ports: {
+			quote: async () => ({ ...(await MATCHED_QUOTE()), giftUrl: GIFT_URL }),
+			employer: async () => {}
+		}
+	};
+
+	it('carries the ask on the thank-you, with the gift page and the address the details go to', async () => {
+		const { get } = api(submittedOn('card'), asked);
+		await settle();
+		expect(get().state).toEqual({
+			step: 'success',
+			method: 'card',
+			employer: {
+				phase: 'asking',
+				giftUrl: GIFT_URL,
+				refused: false,
+				refusal: null,
+				email: 'donor@example.org'
+			}
+		});
+	});
+
+	it('carries why the ask stands refused, and a blank press is not a refused write', async () => {
+		const { get } = api(submittedOn('card'), asked);
+		await settle();
+		(get().sendEmployerButton as { onClick: () => void }).onClick();
+		expect(get().state).toMatchObject({ employer: { refused: false, refusal: 'blank' } });
+	});
+
+	it('carries no ask on a thank-you that has none', async () => {
+		const { get } = api(submittedOn('card'), { ports: { quote: MATCHED_QUOTE } });
+		await settle();
+		expect(get().state).toEqual({ step: 'success', method: 'card' });
+	});
+
+	it('wires the box and the two presses to the flow', async () => {
+		const { get, actor } = api(submittedOn('card'), asked);
+		await settle();
+		expect(get().employerField).toMatchObject({ name: 'employer', value: '', maxLength: 200 });
+		expect(get().sendEmployerButton).toMatchObject({ given: false, 'aria-busy': false });
+
+		(get().employerField as { onChange: (value: string) => void }).onChange('Northwind Logistics');
+		expect(get().employerField).toMatchObject({ value: 'Northwind Logistics' });
+		expect(get().sendEmployerButton).toMatchObject({ given: true });
+
+		(get().sendEmployerButton as { onClick: () => void }).onClick();
+		expect(get().state).toMatchObject({ employer: { phase: 'sending' } });
+		expect(get().sendEmployerButton).toMatchObject({ 'aria-busy': true });
+		await settle();
+		expect(get().state).toMatchObject({ employer: { phase: 'sent' } });
+		expect(actor.getSnapshot().context.employer).toBe('');
+	});
+
+	it('skips on the quiet press', async () => {
+		const { get } = api(submittedOn('card'), asked);
+		await settle();
+		(get().skipEmployerButton as { onClick: () => void }).onClick();
+		expect(get().state).toMatchObject({ employer: { phase: 'skipped' } });
+	});
+});

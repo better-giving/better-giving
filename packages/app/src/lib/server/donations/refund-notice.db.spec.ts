@@ -22,7 +22,7 @@ const GIFT_ID = '019fb400-0000-7000-8000-000000000003';
 const REFUND_ID = '019fb400-0000-7000-8000-000000000004';
 
 beforeEach(async () => {
-	for (const table of ['dispute', 'payment', 'donation', 'contact', 'org_profile']) {
+	for (const table of ['dispute', 'payment', 'gift_match', 'donation', 'contact', 'org_profile']) {
 		await run(stmt(`delete from ${table}`));
 	}
 	await run(

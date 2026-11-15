@@ -250,6 +250,7 @@ describe('POST /api/stripe/webhook — a refund', () => {
 			'entry_group',
 			'payment',
 			'line_item',
+			'gift_match',
 			'donation',
 			'contact',
 			'form'

@@ -501,14 +501,16 @@
 		   a size and a line height are separate tokens here rather than one `font` shorthand,
 		   because the shorthand resets `font-variant-numeric` and a money column silently stops
 		   lining up wherever one is applied over it. a figure-bearing element states
-		   `--admin-figures-tabular` for itself.
+		   `--admin-figures-tabular` for itself. the zero stays plain, as it does in
+		   the registry's table-css figures: a slashed zero is the code face's mark, and an
+		   amount is not a literal.
 
 		   sentence case everywhere, and there is no caps role: a screen that wants one is asking
 		   for emphasis this system draws with weight and tone instead. */
 		--admin-font-sans: var(--font-body);
 		--admin-font-display: var(--font-display);
 		--admin-font-mono: var(--font-mono);
-		--admin-figures-tabular: 'tnum' 1, 'lnum' 1, 'zero' 1;
+		--admin-figures-tabular: 'tnum' 1, 'lnum' 1;
 
 		--admin-text-2xs: 0.6875rem;
 		--admin-text-xs: 0.75rem;

@@ -18,7 +18,7 @@ it('reads pending crypto gifts through their partial index, never a scan of paym
 	const email = { send: async () => ({ ok: true as const }) };
 
 	const prepared = await statementsOf((db) =>
-		readPendingCryptoGifts({ db, processors, email }, new Date())
+		readPendingCryptoGifts({ db, processors, email, giftOrigin: null }, new Date())
 	);
 
 	const [read] = prepared;

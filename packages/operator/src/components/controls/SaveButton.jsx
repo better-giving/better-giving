@@ -47,7 +47,9 @@ export function SaveButton({
 	...rest
 }) {
 	const busy = state === 'pending';
-	const closed = state === 'disabled' || state === 'done' || busy || Boolean(disabled);
+	const done = state === 'done';
+	const drawnClosed = state === 'disabled' || busy || Boolean(disabled);
+	const closed = drawnClosed || done;
 
 	// whether the region below is holding the confirmation, which it takes a task after the state
 	// turns (the effect below).
@@ -90,9 +92,9 @@ export function SaveButton({
 				// them cannot re-open a press the state has closed.
 				{...rest}
 				// the caller's class is added to ./Button.jsx's, never put in place of it. the states
-				// draw no class of their own: pending, done and disabled are each the closed press the
-				// registry draws for `aria-busy` and for `aria-disabled` on a `<button>`
-				// (../../registry/styles/button-css.css), in its one closed pair.
+				// draw no class of their own: pending and disabled are the closed press the registry
+				// draws for `aria-busy` and for `aria-disabled` on a `<button>`, and done is its
+				// `data-done` look (../../registry/styles/button-css.css).
 				className={className}
 				// the press is closed while its own write is in flight as well as for the two conditions
 				// beside it: a press left open under `aria-busy` is one operator intent and two writes,
@@ -104,15 +106,21 @@ export function SaveButton({
 				// only over a group holding nothing left to save, so `done` and `disabled` are true
 				// together and the rung that picks the tick over the closed word decides the label alone
 				// (packages/operator/src/save-state.ts). a press on it posts a form with no change in it
-				// and answers the operator with a second tick over the same values.
+				// and answers the operator with a second tick over the same values. it is turned away
+				// below but not stated closed: the registry's done look takes no pointer and stays
+				// focusable, and draws only on a press with no `aria-disabled` on it
+				// (../../registry/styles/button-css.usage.md, Done). that holds under a caller's
+				// `disabled` too: a route closing every press while any write to it is going would
+				// otherwise draw the tick on the closed press's grey fill.
 				//
 				// closed by `aria-disabled` and a press turned away here, never by `disabled`: a natively
 				// closed control cannot hold focus, so the caret would drop to the document on the press
 				// and the tick would land on a button nobody is standing on. cancelling the click cancels
 				// the submission it would make, Enter in a box of the form included — implicit
 				// submission is a click on this button.
-				aria-disabled={closed || undefined}
+				aria-disabled={(drawnClosed && !done) || undefined}
 				aria-busy={busy || undefined}
+				data-done={done || undefined}
 				onClick={(event) => {
 					if (closed) {
 						event.preventDefault();
@@ -124,7 +132,7 @@ export function SaveButton({
 				{/* the resting label stands in every state but done, under a press too: swapped for a
 				    word of its own, a button reporting a write would resize the row of actions it is in
 				    at the moment it is closed to a press. */}
-				{state === 'done' ? (
+				{done ? (
 					<span className="adm-save__done">
 						<Mark name="check" />
 						{doneLabel}

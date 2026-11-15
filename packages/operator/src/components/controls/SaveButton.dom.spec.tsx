@@ -140,8 +140,8 @@ describe('a save button mounted into a document', () => {
 	});
 
 	it('writes the same names in every state, which the registry and the closed press draw', () => {
-		// no state wears a class of its own: pending is the registry's `aria-busy` look, and done and
-		// disabled are the registry's `button.ds-btn[aria-disabled='true']`. a name written for one
+		// no state wears a class of its own: pending is the registry's `aria-busy` look, disabled is
+		// its `button.ds-btn[aria-disabled='true']` and done its `data-done`. a name written for one
 		// would be a class nothing draws — which paints nothing, errors nowhere, and reads as a state
 		// the sheet handles.
 		for (const state of ['idle', 'pending', 'done', 'disabled'] as const) {
@@ -151,6 +151,49 @@ describe('a save button mounted into a document', () => {
 				state,
 				['adm-btn', 'ds-btn', 'ds-btn-primary']
 			]);
+		}
+	});
+
+	it('draws a landed save as the registry’s done look, not as the closed press', () => {
+		// the registry draws `data-done` only on a press with no `aria-disabled` on it
+		// (../../registry/styles/button-css.css), so a save that worked stated closed as well is
+		// drawn on the same grey fill as a group with nothing to save.
+		const button = pressed(render(SaveButton, { state: 'done' }));
+
+		expect([button.getAttribute('data-done'), button.hasAttribute('aria-disabled')]).toEqual([
+			'true',
+			false
+		]);
+	});
+
+	it('keeps the done look while a caller closes every press on the page, and still turns a press away', () => {
+		// a route closes every press while any write to it is going, so a group's "Saved" meets the
+		// next group's save inside its confirmation. stated closed then, the tick is drawn on the
+		// closed press's grey fill.
+		const clicked = vi.fn();
+		const submitted = vi.fn((event: Event) => event.preventDefault());
+		const form = document.createElement('form');
+		form.addEventListener('submit', submitted);
+		document.body.append(form);
+		const { root } = mount(SaveButton, { state: 'done', disabled: true, onClick: clicked });
+		form.append(root);
+		const button = pressed(root);
+		button.click();
+		form.remove();
+
+		expect([
+			button.getAttribute('data-done'),
+			button.hasAttribute('aria-disabled'),
+			clicked.mock.calls.length,
+			submitted.mock.calls.length
+		]).toEqual(['true', false, 0, 0]);
+	});
+
+	it('states the done look only once the save has landed', () => {
+		for (const state of ['idle', 'pending', 'disabled'] as const) {
+			const button = pressed(render(SaveButton, { state }));
+
+			expect([state, button.hasAttribute('data-done')]).toEqual([state, false]);
 		}
 	});
 

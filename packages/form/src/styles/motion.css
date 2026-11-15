@@ -93,7 +93,9 @@
 /*
  * the press landed, and the surface answered the pointer. `scale` rather than a size, so no
  * neighbour moves, and a fill, an ink and an edge, which nothing else on the card is measured
- * against.
+ * against. an `aria-disabled` control does not move, as the registry takes its own press nudge off
+ * one (`button.ds-btn[aria-disabled]` in ../registry/styles/button-css.css), whose `transform: none`
+ * leaves `scale` alone.
  *
  * the `scale` is the one thing here that reads `--_move-press`; the fill, the ink and the edge are a
  * state arriving and read `--_move-state`, so a press moves the surface on one curve while what it
@@ -107,12 +109,13 @@
  * press. the mark snaps, which is what a radio answering a press should do anyway.
  *
  * the action is also stated at `.ds-btn`, the registry class it carries (`REGISTRY_CLASS` in
- * ../parts.ts). that class declares its own transition (../registry/styles/button-css.css) and
- * outweighs the zero-weight list, which would drop the press's `scale` and time the fill by
- * `--duration-fast`. that name is declared on the registry's `:root`
- * (../registry/styles/variables.css) and a shadow tree has no `:root`, so inside the card it is the
- * host page's, and the `reduce` collapse in ./tokens.css never reaches it. "restates the motion of
- * every registry control that brings its own" in ../element.dom.spec.ts holds it.
+ * ../parts.ts), and so is the quiet action the thank-you's employer ask draws Skip as
+ * (`EMPLOYER_CLASS` in ../employer-ask.ts). that class declares its own transition
+ * (../registry/styles/button-css.css) and outweighs the zero-weight list, which would drop the
+ * press's `scale` and time the fill by `--duration-fast`. that name is declared on the registry's
+ * `:root` (../registry/styles/variables.css) and a shadow tree has no `:root`, so inside the card
+ * it is the host page's, and the `reduce` collapse in ./tokens.css never reaches it. "restates the
+ * motion of every registry control that brings its own" in ../element.dom.spec.ts holds it.
  */
 :where(
 	[part~='action'],
@@ -120,7 +123,8 @@
 	[part~='frequency-option'],
 	[part~='amount-option']
 ),
-[part~='action'].ds-btn {
+[part~='action'].ds-btn,
+[part~='action-quiet'].ds-btn {
 	transition:
 		scale var(--_move-press),
 		color var(--_move-state),
@@ -133,7 +137,7 @@
 	[part~='action-quiet'],
 	[part~='frequency-option'],
 	[part~='amount-option']
-):active {
+):active:where(:not([aria-disabled='true'])) {
 	scale: 0.985;
 }
 

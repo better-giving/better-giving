@@ -4,6 +4,7 @@ import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/api.chariot.webhook';
+import { giftLinkOrigin } from '$lib/server/matching/links';
 
 // where a DAF grant reaches the books: the `grant.updated` deliveries Chariot's event subscription
 // posts here. a grant marked received becomes a gift, and one cancelled after it was received is
@@ -48,7 +49,9 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 			db: context.get(database),
 			provider: processors.for('chariot'),
 			processors,
-			email: createEmailProvider(env)
+			email: createEmailProvider(env),
+			// the host the processor delivered to is this deployment's, unless a pin names another.
+			giftOrigin: giftLinkOrigin(env, new URL(request.url))
 		},
 		// `Headers` iterates lowercase, which is the keying the adapter reads its header by.
 		{ body: await request.text(), headers: Object.fromEntries(request.headers) }

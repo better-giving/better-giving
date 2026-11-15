@@ -46,7 +46,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			goalMinor: preview.goalMinor,
 			gifts: preview.gifts,
 			goalReached: preview.goalReached,
-			messages: preview.messages
+			messages: null
 		},
 		org: { name: profile?.legalName ?? null, taxId: profile?.taxId ?? null, logo },
 		look: { brandColour: profile?.brandColour ?? null },
