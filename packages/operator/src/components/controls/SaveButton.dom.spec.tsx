@@ -140,8 +140,8 @@ describe('a save button mounted into a document', () => {
 	});
 
 	it('writes the same names in every state, which the registry and the closed press draw', () => {
-		// no state wears a class of its own: pending is the registry's `aria-busy` look, and done and
-		// disabled are the registry's `button.ds-btn[aria-disabled='true']`. a name written for one
+		// no state wears a class of its own: pending is the registry's `aria-busy` look, disabled is
+		// its `button.ds-btn[aria-disabled='true']` and done its `data-done`. a name written for one
 		// would be a class nothing draws — which paints nothing, errors nowhere, and reads as a state
 		// the sheet handles.
 		for (const state of ['idle', 'pending', 'done', 'disabled'] as const) {
@@ -151,6 +151,26 @@ describe('a save button mounted into a document', () => {
 				state,
 				['adm-btn', 'ds-btn', 'ds-btn-primary']
 			]);
+		}
+	});
+
+	it('draws a landed save as the registry’s done look, not as the closed press', () => {
+		// the registry draws `data-done` only on a press with no `aria-disabled` on it
+		// (../../registry/styles/button-css.css), so a save that worked stated closed as well is
+		// drawn on the same grey fill as a group with nothing to save.
+		const button = pressed(render(SaveButton, { state: 'done' }));
+
+		expect([button.getAttribute('data-done'), button.hasAttribute('aria-disabled')]).toEqual([
+			'true',
+			false
+		]);
+	});
+
+	it('states the done look only once the save has landed', () => {
+		for (const state of ['idle', 'pending', 'disabled'] as const) {
+			const button = pressed(render(SaveButton, { state }));
+
+			expect([state, button.hasAttribute('data-done')]).toEqual([state, false]);
 		}
 	});
 

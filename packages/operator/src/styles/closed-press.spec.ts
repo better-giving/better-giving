@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { BUTTON_VARIANT_CLASS } from '../components/controls/Button.jsx';
 import { stripComments } from './raw-values';
 import { rulesIn, sheet } from './sheet-rule.testing';
 
@@ -13,7 +14,8 @@ import { rulesIn, sheet } from './sheet-rule.testing';
 // pointer that started it. no /admin screen gets a `*.browser.spec.ts` (AGENTS.md, Never), so the
 // selectors are read as text, as ./touch-geometry.spec.ts reads its rules.
 
-const RANKS = ['primary', 'secondary', 'ghost', 'outline', 'destructive', 'success', 'warning'];
+// every rank ../components/controls/Button.jsx ships, so a rank added there is held here too.
+const RANKS = Object.values(BUTTON_VARIANT_CLASS).map((rank) => rank.replace(/^ds-btn-/, ''));
 const BUSY = '[aria-busy="true"]';
 const DISABLED = '[aria-disabled="true"]';
 
