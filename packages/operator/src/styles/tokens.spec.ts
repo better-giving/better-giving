@@ -223,4 +223,11 @@ describe('the mail token mirror still says what tokens.css says', () => {
 			plane: ['var(--radius-card)']
 		});
 	});
+
+	it('draws figures tabular with the zero plain, as the registry’s table does', () => {
+		const table = stripComments(readFileSync(REGISTRY('table-css.css'), 'utf8'));
+		expect(table).toMatch(/\.ds-table\s*\{[^}]*font-feature-settings:\s*"tnum";/);
+		expect(table).not.toMatch(/['"]zero['"]/);
+		expect(css.get('--admin-figures-tabular')).toEqual(["'tnum' 1, 'lnum' 1"]);
+	});
 });

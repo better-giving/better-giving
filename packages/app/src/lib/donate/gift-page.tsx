@@ -549,11 +549,12 @@ function EmployerForm({
 				)}
 			</div>
 			<div className="gift-presses">
-				{/* `aria-disabled` rather than `disabled` while a post is out, so Save keeps the focus. */}
+				{/* `aria-disabled` rather than `disabled` over a blank box or while a post is out, so Save
+				    keeps the focus and a blank press still reaches the refusal above. */}
 				<button
 					type="submit"
 					className="ds-btn ds-btn-primary"
-					aria-disabled={pending || undefined}
+					aria-disabled={pending || blank || undefined}
 					aria-busy={pending || undefined}
 				>
 					{copy.SAVE_EMPLOYER}

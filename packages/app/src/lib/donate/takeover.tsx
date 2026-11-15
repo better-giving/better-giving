@@ -553,6 +553,8 @@ export type EmployerAskBlockProps = {
 	/** the box as the flow holds it (`employerField` in @better-giving/form/connect). */
 	readonly box: FieldBox;
 	readonly busy: boolean;
+	/** whether the box holds an answer the flow would send (`given` on `sendEmployerButton`). */
+	readonly given: boolean;
 	/**
 	 * Send pressed. `caretInBox` is a press made with the caret already in the box, Enter in it: a
 	 * blank refusal is said by the box as the caret arrives there, and a caret that does not move
@@ -580,11 +582,19 @@ const EMPLOYER_PROBLEM_ID = 'employer-problem';
  *
  * Send is the submit while the ask is open, so Enter in the box presses it through the card's
  * `<form>`, over a blank box too: the flow refuses that press with a sentence under the box, marks
- * the box invalid and the caret goes into it, so the press is never held back by `disabled` or
- * `aria-disabled`. the caret lands on the status row as the ask closes, so the press that closed it
- * is answered where the donor is.
+ * the box invalid and the caret goes into it. over a blank box Send is `aria-disabled`, which the
+ * registry's button-css draws gray and leaves focusable and pressable, so the press is never held
+ * back by `disabled`. the caret lands on the status row as the ask closes, so the press that closed
+ * it is answered where the donor is.
  */
-export function EmployerAskBlock({ screen, box, busy, onSend, onSkip }: EmployerAskBlockProps) {
+export function EmployerAskBlock({
+	screen,
+	box,
+	busy,
+	given,
+	onSend,
+	onSkip
+}: EmployerAskBlockProps) {
 	const phase = screen?.phase ?? null;
 	const open = phase === 'asking' || phase === 'sending';
 	const boxRefused = screen?.boxRefused === true;
@@ -650,6 +660,7 @@ export function EmployerAskBlock({ screen, box, busy, onSend, onSkip }: Employer
 						part={partWhen('action', { busy })}
 						className={EMPLOYER_SEND_CLASS}
 						aria-busy={busy || undefined}
+						aria-disabled={(open && !given) || undefined}
 						onClick={() => {
 							onSend(document.activeElement === field.current);
 							// a blank press repeated changes nothing the flow holds, so no effect moves the caret.

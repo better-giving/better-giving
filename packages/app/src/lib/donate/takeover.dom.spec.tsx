@@ -552,6 +552,7 @@ describe('the thank-you’s employer ask', () => {
 					screen={takeoverFor(asked(refusal), CONFIG, money).employer}
 					box={{ name: 'employer', value: '', onChange: () => {} }}
 					busy={false}
+					given={false}
 					onSend={() => {
 						sends.push(sends.length);
 						setRefusal(refuse);
@@ -578,9 +579,10 @@ describe('the thank-you’s employer ask', () => {
 		};
 	}
 
-	it('takes a blank Send, and refuses it under the box with the caret in it', () => {
+	it('takes a blank Send, muted and pressable, and refuses it under the box with the caret in it', () => {
 		const { root, box, send, sends, refuseWith } = block();
-		expect(send.hasAttribute('aria-disabled')).toBe(false);
+		expect(send.getAttribute('aria-disabled')).toBe('true');
+		expect(send.hasAttribute('disabled')).toBe(false);
 
 		refuseWith('blank');
 		act(() => send.click());

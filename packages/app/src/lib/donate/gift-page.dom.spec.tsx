@@ -341,6 +341,19 @@ describe('the cards a gift’s stamps stand', () => {
 });
 
 describe('the details', () => {
+	it('sets the EIN in the code face and the amount in the text face', async () => {
+		const { root } = await page(view());
+		const value = (label: string) =>
+			[...root.querySelectorAll('dl > div')]
+				.find((row) => row.querySelector('dt')?.textContent === label)
+				?.querySelector('dd');
+
+		expect(value('EIN')?.className).toBe('gift-mono');
+		expect(value('Gift amount')?.className).toBe('');
+		expect(root.querySelector('.page-profile-ein-number')?.textContent).toBe('84-2761093');
+		expect(root.querySelector('.gift-sum')?.querySelector('.gift-mono')).toBeNull();
+	});
+
 	it('leaves a profile with no mailing address out of the rows and out of the copied text', async () => {
 		const writes: string[] = [];
 		vi.stubGlobal('navigator', {
@@ -398,9 +411,13 @@ describe('the posts', () => {
 		const { root, posts } = await page(view());
 		const save = button(root, copy.SAVE_EMPLOYER);
 
-		expect(save.hasAttribute('aria-disabled')).toBe(false);
+		// muted while blank, by the registry's `button.ds-btn[aria-disabled="true"]`, and pressable.
+		expect(save.getAttribute('aria-disabled')).toBe('true');
+		expect(save.hasAttribute('disabled')).toBe(false);
+		expect(save.className).toBe('ds-btn ds-btn-primary');
 		expect(root.querySelector('.ds-field-err')).toBeNull();
 		type(box(root), '   ');
+		expect(save.getAttribute('aria-disabled')).toBe('true');
 		await press(save);
 
 		expect(posts).toEqual([]);
@@ -414,6 +431,7 @@ describe('the posts', () => {
 		type(box(root), EMPLOYER);
 		expect(root.querySelector('.ds-field-err')).toBeNull();
 		expect(box(root).hasAttribute('aria-invalid')).toBe(false);
+		expect(save.hasAttribute('aria-disabled')).toBe(false);
 	});
 
 	it('posts the filed press once while its answer is still landing', async () => {

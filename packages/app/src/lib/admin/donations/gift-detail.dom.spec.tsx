@@ -2,12 +2,14 @@ import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLocation } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
+import { formatInstant } from '$lib/admin/viewer-time';
 import type { MatchStatus } from '$lib/matching/status';
 import { GiftDetail, type GiftDetailProps } from './gift-detail';
 
 // the gift detail at /admin/donations/{id}, mounted over the route's read: the presses only while
 // the claim is live, the void's confirm opening on its reason and refusing a blank one, Escape and
-// Cancel taking it down, the history's rows, and the missing-address notice for staff and members.
+// Cancel taking it down, the gift card's amount and receipt rows, the history's rows, and the
+// missing-address notice for staff and members.
 //
 // not the browser spec AGENTS.md bans over a dashboard screen: nothing here reads a computed style.
 
@@ -325,6 +327,42 @@ describe('an answered press', () => {
 		expect(dialog()?.querySelector('.adm-banner--blocker')?.textContent).toContain(
 			'This gift has no match to void.'
 		);
+	});
+});
+
+describe('the gift card', () => {
+	const value = (root: HTMLElement, label: string) => {
+		const row = [...root.querySelectorAll('dt')].find((dt) => dt.textContent === label);
+		const dd = row?.nextElementSibling;
+		if (!(dd instanceof HTMLElement)) throw new Error(`no ${label} row`);
+		return dd;
+	};
+
+	it('sets the amount in the text face with tabular figures, never the code face', () => {
+		const { root } = screen();
+		const amount = value(root, 'Amount');
+
+		expect(amount.textContent).toBe('$150.00');
+		expect(amount.firstElementChild?.className).toBe('adm-num');
+		expect(amount.querySelector('code, .adm-code, .adm-chip, .adm-url')).toBeNull();
+	});
+
+	it('states the receipt as one run with one space between the word and the day', () => {
+		const at = '2026-11-15T12:00:00.000Z';
+		const { root } = screen({ gift: { ...props().gift, receiptSentAt: at } });
+		const receipt = value(root, 'Receipt');
+		const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+		// the value cell is a flex row with a gap, so the word and the day are one item in it.
+		expect(receipt.childNodes).toHaveLength(1);
+		expect(receipt.textContent).toBe(`Sent ${formatInstant(at, zone, 'day')}`);
+		expect(receipt.textContent).toMatch(/^Sent \d{1,2} Nov 2026$/);
+	});
+
+	it('states a receipt not sent in words', () => {
+		const { root } = screen({ gift: { ...props().gift, receiptSentAt: null } });
+
+		expect(value(root, 'Receipt').textContent).toBe('Not sent');
 	});
 });
 

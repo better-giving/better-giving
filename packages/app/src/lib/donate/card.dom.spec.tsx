@@ -3240,7 +3240,7 @@ describe('the thank-you’s employer ask', () => {
 	const done = (root: HTMLElement) => one(root, '.employer-done');
 	const link = (root: HTMLElement) => one(root, 'a[part~="link"]');
 
-	it('asks with Send live over a blank box, and no way back to the start', async () => {
+	it('asks with Send muted over a blank box, and no way back to the start', async () => {
 		deployment();
 		const root = await thanked();
 
@@ -3249,11 +3249,27 @@ describe('the thank-you’s employer ask', () => {
 		expect(one(root, 'label[for="employer"]').textContent).toBe(copy.EMPLOYER_LABEL);
 		expect(box(root).value).toBe('');
 		expect(box(root).maxLength).toBe(200);
-		expect(send(root).hasAttribute('aria-disabled')).toBe(false);
+		// the registry's `button.ds-btn[aria-disabled="true"]` look: gray-3 fill, gray-11 ink.
+		expect(send(root).getAttribute('aria-disabled')).toBe('true');
+		expect(send(root).hasAttribute('disabled')).toBe(false);
+		expect(send(root).className).toBe('ds-btn ds-btn-primary');
 		expect(send(root).hidden).toBe(false);
 		expect(back(root).hidden).toBe(true);
 		expect(done(root).hidden).toBe(true);
 		expect(link(root).hidden).toBe(true);
+	});
+
+	it('draws Send the enabled primary once the box holds a name, and muted again when emptied', async () => {
+		deployment();
+		const root = await thanked();
+
+		type(box(root), 'Northwind Logistics');
+		await settled();
+		expect(send(root).hasAttribute('aria-disabled')).toBe(false);
+
+		type(box(root), '   ');
+		await settled();
+		expect(send(root).getAttribute('aria-disabled')).toBe('true');
 	});
 
 	/** every sentence the card's region is handed from here on. */
