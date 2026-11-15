@@ -256,19 +256,19 @@ const stamps = (donationId: string) =>
 	);
 
 describe('naming the employer', () => {
-	it('stores it, arms the reminder three days on, and mails the pack after the answer', async () => {
+	// no address is pinned here, so the pack promises no reminder and arms none (`GiftOrigin` in
+	// $lib/server/matching/links.ts).
+	it('stores it and mails the pack after the answer, arming no reminder', async () => {
 		const { donationId, token } = await gift();
 		sent.length = 0;
-		const before = Date.now();
 
 		const answered = await post(token, { intent: 'employer', employer: '  Northwind Traders ' });
 
 		expect(answered).toMatchObject({ status: 200, data: { done: 'employer' } });
 		const row = await stamps(donationId);
 		expect(row?.employer).toBe('Northwind Traders');
-		expect(row?.reminder_due_at).toBeGreaterThanOrEqual(before + 3 * DAY_MS);
-		expect(row?.reminder_due_at).toBeLessThanOrEqual(Date.now() + 3 * DAY_MS);
 		await running.settled();
+		expect((await stamps(donationId))?.reminder_due_at).toBeNull();
 		expect(sent.map((message) => message.to)).toEqual(['maya.reyes@example.com']);
 		expect((await stamps(donationId))?.pack_sent_at).not.toBeNull();
 	});

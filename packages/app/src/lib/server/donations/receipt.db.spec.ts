@@ -144,14 +144,20 @@ describe('sendReceipt()', () => {
 		const [match] = await db.insert(giftMatch).values({ donationId: DONATION_ID }).returning();
 		const mail = mailer();
 
-		await sendReceipt({ ...deps(mail.port), giftOrigin: 'https://give.example.org' }, target());
+		await sendReceipt(
+			{ ...deps(mail.port), giftOrigin: { origin: 'https://give.example.org', pinned: true } },
+			target()
+		);
 
 		expect(mail.sent[0]?.text).toContain(`https://give.example.org/gift/${match?.token}`);
 	});
 
 	it('carries no match note on a gift that has no match row, nor where no origin names the page', async () => {
 		const mail = mailer();
-		await sendReceipt({ ...deps(mail.port), giftOrigin: 'https://give.example.org' }, target());
+		await sendReceipt(
+			{ ...deps(mail.port), giftOrigin: { origin: 'https://give.example.org', pinned: true } },
+			target()
+		);
 		await db.update(donation).set({ receiptSentAt: null }).where(eq(donation.id, DONATION_ID));
 		await db.insert(giftMatch).values({ donationId: DONATION_ID });
 		await sendReceipt({ ...deps(mail.port), giftOrigin: null }, target());
@@ -171,7 +177,10 @@ describe('sendReceipt()', () => {
 		);
 		const mail = mailer();
 
-		await sendReceipt({ ...deps(mail.port), giftOrigin: 'https://give.example.org' }, target());
+		await sendReceipt(
+			{ ...deps(mail.port), giftOrigin: { origin: 'https://give.example.org', pinned: true } },
+			target()
+		);
 
 		expect(mail.sent.map((m) => m.subject)).toEqual([
 			expect.stringContaining('receipt'),

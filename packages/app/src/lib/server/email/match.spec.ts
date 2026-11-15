@@ -46,6 +46,7 @@ function pack(overrides: Partial<MatchPackInput> = {}): MatchPackInput {
 		givenAt: new Date('2026-11-12T15:00:00Z'),
 		receiptSentAt: new Date('2026-11-12T15:01:00Z'),
 		giftPageUrl: URL,
+		reminds: true,
 		...overrides
 	};
 }

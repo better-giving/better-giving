@@ -21,6 +21,7 @@ function data(overrides: Partial<MatchPackData> = {}): MatchPackData {
 		givenAt: new Date('2026-11-12T15:00:00Z'),
 		receiptSentAt: new Date('2026-11-12T15:01:00Z'),
 		giftPageUrl: URL,
+		reminds: true,
 		...overrides
 	};
 }
@@ -62,6 +63,15 @@ describe('matchPack.template — the details a donor files with their employer',
 		);
 		expect(text).toContain(`so we stop reminding you: ${URL}`);
 		expect(html).toContain(`<a href="${URL}"`);
+	});
+
+	it('promises no reminder, and asks to mark the gift filed, where none will be sent', async () => {
+		const [text, html] = await arms({ reminds: false });
+		for (const arm of [text, html]) {
+			expect(arm).not.toMatch(/remind/i);
+			expect(arm).toContain('When you have filed, mark it on your gift page:');
+		}
+		expect(text).toContain(`mark it on your gift page: ${URL}`);
 	});
 
 	it('states the filing details with the nonprofit as the filer, in both arms', async () => {

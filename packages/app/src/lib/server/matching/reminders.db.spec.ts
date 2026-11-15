@@ -28,6 +28,8 @@ import {
 // fresh handles over the same file, which is all a restarted process has.
 
 const ORIGIN = 'https://give.example.org';
+/** the origin `BETTER_AUTH_URL` pins, which the scheduled runs name too (`giftLinkOrigin`). */
+const PINNED = { origin: ORIGIN, pinned: true };
 const CONTACT_ID = '019fb900-0000-7000-8000-000000000001';
 const NO_EMAIL_CONTACT_ID = '019fb900-0000-7000-8000-000000000002';
 const T0 = new Date('2026-11-12T12:00:00.000Z');
@@ -94,7 +96,7 @@ async function namedGift(settled = true): Promise<string> {
 		)
 	);
 	await nameEmployer(db, { donationId: id }, 'Northwind Logistics');
-	await sendOwedPack({ db, email: mailer().port, giftOrigin: ORIGIN }, id, T0);
+	await sendOwedPack({ db, email: mailer().port, giftOrigin: PINNED }, id, T0);
 	return id;
 }
 
@@ -172,9 +174,9 @@ describe('the reminder sweep', () => {
 		const id = await namedGift();
 		const mail = mailer();
 
-		await sendDueReminders({ db, email: mail.port, giftOrigin: ORIGIN }, DUE);
+		await sendDueReminders({ db, email: mail.port, giftOrigin: PINNED }, DUE);
 		await sendDueReminders(
-			{ db, email: mail.port, giftOrigin: ORIGIN },
+			{ db, email: mail.port, giftOrigin: PINNED },
 			new Date(DUE.getTime() + 60_000)
 		);
 
@@ -192,9 +194,9 @@ describe('the reminder sweep', () => {
 		await rawSql(client).run(
 			stmt("update payment set status = 'succeeded' where donation_id = ?", id)
 		);
-		await sendOwedPack({ db, email: mailer().port, giftOrigin: ORIGIN }, id, settledAt);
+		await sendOwedPack({ db, email: mailer().port, giftOrigin: PINNED }, id, settledAt);
 		const mail = mailer();
-		const deps = { db, email: mail.port, giftOrigin: ORIGIN };
+		const deps = { db, email: mail.port, giftOrigin: PINNED };
 
 		await sendDueReminders(deps, new Date(settledAt.getTime() + 60_000));
 		expect(mail.sent).toHaveLength(0);
@@ -228,8 +230,8 @@ describe('the reminder sweep', () => {
 		};
 		const quick = mailer();
 
-		const slow = sendDueReminders({ db, email: gated, giftOrigin: ORIGIN }, DUE);
-		const racing = sendDueReminders({ db: other.db, email: quick.port, giftOrigin: ORIGIN }, DUE);
+		const slow = sendDueReminders({ db, email: gated, giftOrigin: PINNED }, DUE);
+		const racing = sendDueReminders({ db: other.db, email: quick.port, giftOrigin: PINNED }, DUE);
 		await racing;
 		release();
 		await slow;
@@ -244,7 +246,7 @@ describe('the reminder sweep', () => {
 		const restarted = await open();
 		const mail = mailer();
 
-		await sendDueReminders({ db: restarted.db, email: mail.port, giftOrigin: ORIGIN }, DUE);
+		await sendDueReminders({ db: restarted.db, email: mail.port, giftOrigin: PINNED }, DUE);
 
 		expect(mail.sent).toHaveLength(1);
 		expect(await remindedAt(id)).toBe(DUE.getTime());
@@ -255,7 +257,7 @@ describe('the reminder sweep', () => {
 		const mail = mailer();
 
 		await sendDueReminders(
-			{ db, email: mail.port, giftOrigin: ORIGIN },
+			{ db, email: mail.port, giftOrigin: PINNED },
 			new Date(DUE.getTime() - 1)
 		);
 
@@ -272,7 +274,7 @@ describe('the reminder sweep', () => {
 		await close(id);
 		const mail = mailer();
 
-		await sendDueReminders({ db, email: mail.port, giftOrigin: ORIGIN }, DUE);
+		await sendDueReminders({ db, email: mail.port, giftOrigin: PINNED }, DUE);
 
 		expect(mail.sent).toHaveLength(0);
 		expect(await remindedAt(id)).toBeNull();
@@ -281,17 +283,17 @@ describe('the reminder sweep', () => {
 	it('hands a failed send back, retries it once the wait is up, and sends once in total', async () => {
 		const id = await namedGift();
 		const failing = mailer(false);
-		await sendDueReminders({ db, email: failing.port, giftOrigin: ORIGIN }, DUE);
+		await sendDueReminders({ db, email: failing.port, giftOrigin: PINNED }, DUE);
 		expect(await remindedAt(id)).toBeNull();
 
 		const mail = mailer();
-		await sendDueReminders({ db, email: mail.port, giftOrigin: ORIGIN }, DUE);
+		await sendDueReminders({ db, email: mail.port, giftOrigin: PINNED }, DUE);
 		expect(mail.sent).toHaveLength(0);
 
 		const retry = new Date(DUE.getTime() + REMINDER_RETRY_AFTER_MS);
-		await sendDueReminders({ db, email: mail.port, giftOrigin: ORIGIN }, retry);
+		await sendDueReminders({ db, email: mail.port, giftOrigin: PINNED }, retry);
 		await sendDueReminders(
-			{ db, email: mail.port, giftOrigin: ORIGIN },
+			{ db, email: mail.port, giftOrigin: PINNED },
 			new Date(retry.getTime() + REMINDER_RETRY_AFTER_MS)
 		);
 		expect(mail.sent).toHaveLength(1);
@@ -310,7 +312,7 @@ describe('the reminder sweep', () => {
 		await rawSql(client).run(unsendable(id));
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const mail = mailer();
-		const deps = { db, email: mail.port, giftOrigin: ORIGIN };
+		const deps = { db, email: mail.port, giftOrigin: PINNED };
 
 		await sendDueReminders(deps, DUE);
 		await sendDueReminders(deps, new Date(DUE.getTime() + REMINDER_RETRY_AFTER_MS));
@@ -329,7 +331,7 @@ describe('the reminder sweep', () => {
 		);
 		const mail = mailer();
 
-		await sendDueReminders({ db, email: mail.port, giftOrigin: ORIGIN }, DUE);
+		await sendDueReminders({ db, email: mail.port, giftOrigin: PINNED }, DUE);
 
 		expect(mail.sent).toHaveLength(0);
 		expect(await remindedAt(id)).toBeNull();
@@ -340,7 +342,7 @@ describe('the reminder sweep', () => {
 		await refunded(id, 5000);
 		const mail = mailer();
 
-		await sendDueReminders({ db, email: mail.port, giftOrigin: ORIGIN }, DUE);
+		await sendDueReminders({ db, email: mail.port, giftOrigin: PINNED }, DUE);
 
 		expect(mail.sent[0]?.text).toContain('100.00');
 		expect(mail.sent[0]?.text).not.toContain('150.00');
@@ -352,7 +354,7 @@ describe('the reminder sweep', () => {
 		await db.batch([refundVoidStatement(db, id, T0)]);
 		const mail = mailer();
 
-		await sendDueReminders({ db, email: mail.port, giftOrigin: ORIGIN }, DUE);
+		await sendDueReminders({ db, email: mail.port, giftOrigin: PINNED }, DUE);
 
 		expect(mail.sent).toHaveLength(0);
 		expect(await remindedAt(id)).toBeNull();
@@ -367,14 +369,14 @@ describe('the reminder sweep', () => {
 			}
 		};
 
-		await sendDueReminders({ db, email: throwing, giftOrigin: ORIGIN }, DUE);
+		await sendDueReminders({ db, email: throwing, giftOrigin: PINNED }, DUE);
 
 		expect(await remindedAt(id)).toBeNull();
 		expect(await dueAtOf(id)).toBe(DUE.getTime() + REMINDER_RETRY_AFTER_MS);
 		expect(logged).toHaveBeenCalledTimes(1);
 		const mail = mailer();
 		await sendDueReminders(
-			{ db, email: mail.port, giftOrigin: ORIGIN },
+			{ db, email: mail.port, giftOrigin: PINNED },
 			new Date(DUE.getTime() + REMINDER_RETRY_AFTER_MS)
 		);
 		expect(mail.sent).toHaveLength(1);
@@ -405,7 +407,7 @@ describe('the reminder sweep', () => {
 			}
 		};
 
-		await sendDueReminders({ db, email: port, giftOrigin: ORIGIN }, DUE);
+		await sendDueReminders({ db, email: port, giftOrigin: PINNED }, DUE);
 
 		expect(sent).toHaveLength(1);
 		expect(await remindedAt(good)).toBe(DUE.getTime());
@@ -418,7 +420,7 @@ describe('the reminder sweep', () => {
 		const ids: string[] = [];
 		for (let i = 0; i < REMINDERS_PER_RUN + 2; i += 1) ids.push(await namedGift());
 		const mail = mailer();
-		const deps = { db, email: mail.port, giftOrigin: ORIGIN };
+		const deps = { db, email: mail.port, giftOrigin: PINNED };
 
 		await sendDueReminders(deps, DUE);
 		expect(mail.sent).toHaveLength(REMINDERS_PER_RUN);
@@ -428,14 +430,19 @@ describe('the reminder sweep', () => {
 		for (const id of ids) expect(await remindedAt(id)).toBe(DUE.getTime());
 	}, 30_000);
 
-	it('sends nothing and claims nothing where no origin names the gift page', async () => {
+	// a pack sent on a request's host arms none (./pack.ts), so a row armed here was armed under a pin
+	// since removed: it waits, armed, for one to be set again, and the run is no log line each time.
+	it('sends nothing, claims nothing and logs nothing where no origin names the gift page', async () => {
 		const id = await namedGift();
 		const mail = mailer();
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
 		await sendDueReminders({ db, email: mail.port, giftOrigin: null }, DUE);
 
 		expect(mail.sent).toHaveLength(0);
 		expect(await remindedAt(id)).toBeNull();
+		expect(await dueAtOf(id)).toBe(DUE.getTime());
+		expect(warn).not.toHaveBeenCalled();
 	});
 
 	it('reads the due rows through the partial index', async () => {

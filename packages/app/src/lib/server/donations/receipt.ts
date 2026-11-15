@@ -17,6 +17,7 @@ import {
 	type ReceiptResult
 } from '../email/receipt';
 import { formatMinor } from '../../donations/money';
+import type { GiftOrigin } from '../matching/links';
 import { readGiftPageUrl } from '../matching/match';
 import { sendOwedPack } from '../matching/pack';
 import { readOrgProfile } from '../org/queries';
@@ -68,7 +69,7 @@ import { alert, type MailDeps } from './delivery';
  * ../matching/links.ts). absent or `null`, the receipt carries no match note and no pack is sent
  * from here: a link to the page needs an origin to name it on.
  */
-export type ReceiptDeps = MailDeps & { readonly giftOrigin?: string | null };
+export type ReceiptDeps = MailDeps & { readonly giftOrigin?: GiftOrigin | null };
 
 /**
  * what one call did, for a caller that has something to say about it.

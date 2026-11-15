@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { entryGroup, payment } from '../db/schema';
 import type { EmailProvider } from '../email/provider';
+import type { GiftOrigin } from '../matching/links';
 import type { Processors } from '../payments/factory';
 import { settleTransaction } from './settle';
 
@@ -59,7 +60,7 @@ type PendingCryptoReadDeps = {
 	readonly processors: Processors;
 	readonly email: EmailProvider;
 	/** the origin the receipts this run sends link a gift page on: the pin alone, with no request. */
-	readonly giftOrigin: string | null;
+	readonly giftOrigin: GiftOrigin | null;
 };
 
 /**

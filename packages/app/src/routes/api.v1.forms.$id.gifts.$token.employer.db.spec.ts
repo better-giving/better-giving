@@ -1,5 +1,4 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { REMINDER_AFTER_MS } from '$lib/server/matching/match';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { createDeferredWork } from '$lib/server/runtime/deferred';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
@@ -134,6 +133,8 @@ const stored = () =>
 	);
 
 describe('naming the employer', () => {
+	// no address is pinned here, so the pack promises no reminder and arms none (`GiftOrigin` in
+	// $lib/server/matching/links.ts).
 	it('stores it, answers ok with the form’s CORS, and tries the pack after the answer', async () => {
 		const { response, settled } = post({ employer: '  Northwind Logistics ' });
 		const answer = await response;
@@ -148,7 +149,7 @@ describe('naming the employer', () => {
 			pack_sent_at: expect.any(Number),
 			pack_failed_at: null
 		});
-		expect(row?.reminder_due_at).toBe((row?.pack_sent_at ?? 0) + REMINDER_AFTER_MS);
+		expect(row?.reminder_due_at).toBeNull();
 		expect(sent).toHaveLength(1);
 		expect(sent[0]).toMatchObject({ to: 'maya@example.org' });
 		expect(sent[0]?.subject).toContain('Northwind Logistics');

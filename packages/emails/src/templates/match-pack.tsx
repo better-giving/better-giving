@@ -37,7 +37,7 @@ export interface MatchPackData {
 	/** the employer the donor named, as typed. capped and kept to one line here. */
 	readonly employer: string;
 	readonly filer: MatchFiler;
-	/** minor units — the gift as the receipt states it. */
+	/** minor units — what is left of the gift after the refunds that stand on it. */
 	readonly amountMinor: number;
 	/** ISO-4217, uppercase. */
 	readonly currency: string;
@@ -50,6 +50,11 @@ export interface MatchPackData {
 	readonly receiptSentAt: Date | null;
 	/** the donor's own page for this gift. built by the caller. */
 	readonly giftPageUrl: string;
+	/**
+	 * whether the one reminder three days on will be sent. `false` drops the promise and the
+	 * "stop reminding you" clause, so the pack promises no mail the caller will not send.
+	 */
+	readonly reminds: boolean;
 }
 
 /** the block's labels, in one place so the two arms cannot word the record differently. */
@@ -66,7 +71,9 @@ const LABELS = {
 const LABEL_WIDTH = Math.max(...Object.values(LABELS).map((label) => label.length)) + 2;
 
 const LEAD = 'Here is what the portal will ask for:';
-const MARK_FILED = 'When you have filed, mark it on your gift page so we stop reminding you:';
+const MARK_FILED = 'When you have filed, mark it on your gift page:';
+const MARK_FILED_TO_STOP =
+	'When you have filed, mark it on your gift page so we stop reminding you:';
 const ONE_REMINDER = "We will remind you once, in three days, if it isn't marked filed.";
 
 export function template(data: MatchPackData): EmailTemplate {
@@ -75,6 +82,7 @@ export function template(data: MatchPackData): EmailTemplate {
 		`Details to ask ${employerName(data.employer, EMPLOYER_SUBJECT_MAX)} to match your gift`
 	);
 	const greeting = greetingFor(data.donorName);
+	const markFiled = data.reminds ? MARK_FILED_TO_STOP : MARK_FILED;
 	const thanks =
 		`Thank you for naming your employer. If ${employer} matches gifts, you claim the match ` +
 		"yourself through its giving portal. We can't say whether it matches or how much; its " +
@@ -103,10 +111,8 @@ export function template(data: MatchPackData): EmailTemplate {
 			'',
 			...recordLines(rows, LABEL_WIDTH),
 			'',
-			giftPageLine(MARK_FILED, data.giftPageUrl),
-			'',
-			'--',
-			ONE_REMINDER
+			giftPageLine(markFiled, data.giftPageUrl),
+			...(data.reminds ? ['', '--', ONE_REMINDER] : [])
 		].join('\n'),
 		node: (
 			<Layout title={subject}>
@@ -115,9 +121,13 @@ export function template(data: MatchPackData): EmailTemplate {
 				<Paragraph>{thanks}</Paragraph>
 				<Paragraph>{LEAD}</Paragraph>
 				<RecordPanel lead={null} rows={rows} emphasised={[LABELS.amount]} pinLabels />
-				<GiftPageSentence lead={MARK_FILED} url={data.giftPageUrl} />
-				<Divider />
-				<SmallPrint>{ONE_REMINDER}</SmallPrint>
+				<GiftPageSentence lead={markFiled} url={data.giftPageUrl} />
+				{data.reminds ? (
+					<>
+						<Divider />
+						<SmallPrint>{ONE_REMINDER}</SmallPrint>
+					</>
+				) : null}
 			</Layout>
 		)
 	};

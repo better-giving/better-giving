@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
+import { sendFailedPacks } from '$lib/server/matching/pack';
 import { sendDueReminders } from '$lib/server/matching/reminders';
 import { sweepSupporterLeftovers } from '$lib/server/supporters/sweep';
 import { parseCron } from '$lib/server/runtime/scheduler';
@@ -22,7 +23,7 @@ import type { Db } from '$lib/server/db/client';
 // what time — their own behaviour is held by
 // $lib/server/donations/pending-crypto-read.db.spec.ts,
 // $lib/server/donations/refund-notice.db.spec.ts, $lib/server/supporters/sweep.db.spec.ts,
-// $lib/server/matching/reminders.db.spec.ts,
+// $lib/server/matching/reminders.db.spec.ts, $lib/server/matching/pack.db.spec.ts,
 // $lib/server/accounting/deliver.db.spec.ts, $lib/server/zapier/deliver.db.spec.ts and
 // $lib/server/webhooks/deliver.db.spec.ts, against a real database.
 
@@ -34,6 +35,9 @@ vi.mock('$lib/server/donations/refund-notice', () => ({
 }));
 vi.mock('$lib/server/matching/reminders', () => ({
 	sendDueReminders: vi.fn(async () => {})
+}));
+vi.mock('$lib/server/matching/pack', () => ({
+	sendFailedPacks: vi.fn(async () => {})
 }));
 vi.mock('$lib/server/supporters/sweep', () => ({
 	sweepSupporterLeftovers: vi.fn(async () => {})
@@ -78,6 +82,7 @@ const JOBS = [
 	sendOwedRefundNotices,
 	sweepSupporterLeftovers,
 	sendDueReminders,
+	sendFailedPacks,
 	sendDueEntries,
 	sendDueZapierEvents,
 	sendDueWebhooks
@@ -145,14 +150,22 @@ describe('which run an expression reaches', () => {
 	});
 
 	it.each([
-		['the pinned address', 'https://donate.example.org/', 'https://donate.example.org'],
+		[
+			'the pinned address',
+			'https://donate.example.org/',
+			{ origin: 'https://donate.example.org', pinned: true }
+		],
 		['no address where none is pinned', undefined, null]
 	] as const)(
-		'sends the employer match reminders due every ten minutes, on %s',
+		'sends the employer match reminders due, and the packs that failed, every ten minutes, on %s',
 		async (_, pin, giftOrigin) => {
 			await fires('*/10 * * * *', { BETTER_AUTH_URL: pin } as unknown as typeof env);
 
 			expect(sendDueReminders).toHaveBeenCalledExactlyOnceWith(
+				{ db, email: expect.anything(), giftOrigin },
+				SCHEDULED_AT
+			);
+			expect(sendFailedPacks).toHaveBeenCalledExactlyOnceWith(
 				{ db, email: expect.anything(), giftOrigin },
 				SCHEDULED_AT
 			);

@@ -24,7 +24,10 @@ export interface MatchPackInput {
 	readonly donorName: string | null;
 	/** the employer the donor named, as stored. */
 	readonly employer: string;
-	/** minor units — `donation.total_minor`, the gift as the receipt states it. */
+	/**
+	 * minor units — what is left of the gift after the refunds that stand on it, as
+	 * `readMatchGift` in ../donations/queries.ts reads it (`remainingMinor`).
+	 */
 	readonly amountMinor: number;
 	/** ISO-4217, uppercase, as `donation.currency` holds it. */
 	readonly currency: string;
@@ -34,6 +37,8 @@ export interface MatchPackInput {
 	readonly receiptSentAt: Date | null;
 	/** the absolute address of the donor's own page for this gift. */
 	readonly giftPageUrl: string;
+	/** whether the one reminder will be sent: the pack promises it only then. */
+	readonly reminds: boolean;
 }
 
 /** the reminder: sent once, three days after the pack, while the gift is not marked filed. */
@@ -44,7 +49,10 @@ export interface MatchReminderInput {
 	readonly donorName: string | null;
 	/** the employer the donor named, as stored. */
 	readonly employer: string;
-	/** minor units — `donation.total_minor`. */
+	/**
+	 * minor units — what is left of the gift after the refunds that stand on it, as
+	 * `readMatchGift` in ../donations/queries.ts reads it (`remainingMinor`).
+	 */
 	readonly amountMinor: number;
 	/** ISO-4217, uppercase, as `donation.currency` holds it. */
 	readonly currency: string;
@@ -86,15 +94,20 @@ const EMPLOYER_UNNAMED: EmployerUnnamed = {
 	detail: 'No match mail was written: the gift names no employer.'
 };
 
+/** the filing fields the profile lacks, in the settings form's vocabulary; none where both are saved. */
+export function missingFilerFields(org: OrgProfile | null): readonly FilerField[] {
+	return [
+		...(present(org?.legalName ?? null) ? [] : (['legal_name'] as const)),
+		...(present(org?.taxId ?? null) ? [] : (['tax_id'] as const))
+	];
+}
+
 /** renders the pack, or says what stops it being written. */
 export async function renderMatchPack(input: MatchPackInput): Promise<MatchPackResult> {
 	const legalName = input.org?.legalName ?? null;
 	const ein = input.org?.taxId ?? null;
 	if (!present(legalName) || !present(ein)) {
-		const missing: FilerField[] = [
-			...(present(legalName) ? [] : (['legal_name'] as const)),
-			...(present(ein) ? [] : (['tax_id'] as const))
-		];
+		const missing = missingFilerFields(input.org);
 		return {
 			ok: false,
 			reason: 'filer_incomplete',
@@ -118,7 +131,8 @@ export async function renderMatchPack(input: MatchPackInput): Promise<MatchPackR
 				currency: input.currency,
 				givenAt: input.givenAt,
 				receiptSentAt: input.receiptSentAt,
-				giftPageUrl: input.giftPageUrl
+				giftPageUrl: input.giftPageUrl,
+				reminds: input.reminds
 			})
 		)
 	};

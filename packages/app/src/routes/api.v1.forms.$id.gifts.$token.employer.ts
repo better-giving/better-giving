@@ -10,8 +10,9 @@ import type { Route } from './+types/api.v1.forms.$id.gifts.$token.employer';
 // the donor naming the employer that may match their gift, from the donation form's thank-you:
 // `EmployerRequest` in packages/form/src/v1.ts in, `EmployerAnswer` out. it does what naming the
 // employer on the gift page does (`employerNamed` in $lib/server/matching/pack.ts): the employer
-// stored, and the pack mailed after the answer where none has gone, which arms the one reminder. a
-// voided or matched gift's is refused with the gift page's 409.
+// stored, and the pack mailed after the answer where none has gone, which arms the one reminder
+// where `BETTER_AUTH_URL` pins the address. a voided or matched gift's is refused with the gift
+// page's 409.
 //
 // a resource route: `POST` reaches the `action`, and `GET`, `HEAD` and `OPTIONS` the `loader`.
 //

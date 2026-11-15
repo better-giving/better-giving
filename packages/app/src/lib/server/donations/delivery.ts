@@ -3,6 +3,7 @@ import type { Writes } from '../books/writes';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import type { MailDeps } from '../email/alert';
+import type { GiftOrigin } from '../matching/links';
 import type { Processors } from '../payments/factory';
 import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../payments/provider';
 
@@ -126,7 +127,7 @@ export type SettleDeps = MailDeps & {
 	 * the origin a gift page is linked on from the receipt and the pack (`ReceiptDeps` in
 	 * ./receipt.ts). absent, neither links one.
 	 */
-	readonly giftOrigin?: string | null;
+	readonly giftOrigin?: GiftOrigin | null;
 };
 
 export { alert, type MailDeps } from '../email/alert';

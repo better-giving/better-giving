@@ -4,7 +4,7 @@ import { giftMatch } from '../db/schema';
 import { readMatchGift } from '../donations/queries';
 import { renderMatchReminder } from '../email/match';
 import { readOrgProfile } from '../org/queries';
-import { giftPageUrl } from './links';
+import { type GiftOrigin, giftPageUrl } from './links';
 import { inBooks } from './match';
 import type { PackDeps } from './pack';
 
@@ -22,6 +22,9 @@ import type { PackDeps } from './pack';
 // retried and never hammered, and never keeps a due one behind it out of the run. one that can never
 // go — no donor address, no gift, nothing to sign it with — is handed back disarmed instead, its
 // due time cleared, so it leaves the sweep and is logged once.
+//
+// a run with no pinned origin sends nothing and says nothing: the pack arms a reminder only under a
+// pin, so a row armed then waits for one to be set again.
 //
 // no log line carries the employer.
 
@@ -56,20 +59,15 @@ export function dueReminders(db: Db, now: Date) {
  */
 export async function sendDueReminders(deps: PackDeps, now: Date): Promise<void> {
 	const origin = deps.giftOrigin;
-	const due = await dueReminders(deps.db, now);
-	if (due.length === 0) return;
-	if (origin === null) {
-		console.warn(
-			`${due.length} employer match reminder(s) are due and none was sent: a scheduled run has no request to name the gift page on, so BETTER_AUTH_URL has to pin this deployment's address (.env.example).`
-		);
-		return;
+	if (origin === null) return;
+	for (const { donationId } of await dueReminders(deps.db, now)) {
+		await remind(deps, origin, donationId, now);
 	}
-	for (const { donationId } of due) await remind(deps, origin, donationId, now);
 }
 
 async function remind(
 	deps: PackDeps,
-	origin: string,
+	origin: GiftOrigin,
 	donationId: string,
 	now: Date
 ): Promise<void> {
@@ -116,7 +114,7 @@ const never = (why: string): Unsent => ({ why, permanent: true });
 /** the reminder rendered and sent, or why it was not. */
 async function send(
 	deps: PackDeps,
-	origin: string,
+	origin: GiftOrigin,
 	donationId: string,
 	token: string,
 	employer: string

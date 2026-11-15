@@ -8,7 +8,7 @@ import {
 	type MatchStatus,
 	matchStatus
 } from '../../matching/status';
-import { giftPageUrl } from './links';
+import { type GiftOrigin, giftPageUrl } from './links';
 
 // a gift's employer match: its row, and every write it takes. the only module that writes
 // `gift_match` but for the reminder's claim (./reminders.ts) and the pack's (./pack.ts).
@@ -255,7 +255,7 @@ export async function nameEmployer(db: Db, key: MatchKey, typed: string): Promis
 export async function readGiftPageUrl(
 	db: Db,
 	donationId: string,
-	origin: string | null
+	origin: GiftOrigin | null
 ): Promise<string | null> {
 	if (origin === null) return null;
 	const [row] = await db
